@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: MIT
+package {
+    default_applicable_licenses: ["eliza_first_run_license"],
+}
+license {
+    name: "eliza_first_run_license",
+    visibility: [":__subpackages__"],
+    license_kinds: ["SPDX-license-identifier-MIT"],
+    license_text: ["LICENSE"],
+}
+java_library {
+    name: "eliza-first-run-policy",
+    srcs: ["src/ai/eliza/firstrun/*.java"],
+    sdk_version: "core_current",
+}
+
+android_app {
+    name: "ElizaFirstRun",
+    manifest: "AndroidManifest.xml",
+    srcs: ["host/**/*.java"],
+    resource_dirs: ["res"],
+    static_libs: ["eliza-first-run-policy"],
+    platform_apis: true,
+    privileged: true,
+    certificate: "platform",
+    required: ["privapp-permissions-eliza-first-run"],
+}
+prebuilt_etc {
+    name: "privapp-permissions-eliza-first-run",
+    src: "permissions/privapp-permissions-eliza-first-run.xml",
+    sub_dir: "permissions",
+    filename_from_src: true,
+}

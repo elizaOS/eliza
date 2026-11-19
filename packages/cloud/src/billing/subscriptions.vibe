@@ -1,5 +1,5 @@
 // spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"; spec/cloud/billing/subscriptions.md, "Story: Change my plan one command at a time"
-import { apply, customerIdOf, initial, isLive, parseState, type CommandKind, type LatestInvoice, type ProviderStatus, type Subscription, type SubscriptionStatus } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+import { apply, customerIdOf, initial, isLive, parseState, windowFrom, type CommandKind, type ProviderStatus, type Subscription, type SubscriptionStatus } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import { Deployment } from "../profile/profile.vibe"
 import { foreign, toInt, toText, type Tx } from "../store/connection.vibe"
 import { RowCorrupt } from "../store/rows.vibe"
@@ -14,9 +14,6 @@ const wireStatus: Readonly<Record<SubscriptionStatus, string>> = {
 const providerStatus: Readonly<Record<Exclude<SubscriptionObservation["status"], "none">, ProviderStatus>> = {
   incomplete: "ProviderIncomplete", active: "ProviderActive", past_due: "ProviderPastDue", unpaid: "ProviderUnpaid",
   canceled: "ProviderCanceled", incomplete_expired: "ProviderIncompleteExpired"
-}
-const latestInvoice: Readonly<Record<SubscriptionObservation["latestInvoice"], LatestInvoice>> = {
-  open: "InvoiceOpen", paid: "InvoicePaid", failed: "InvoiceFailed"
 }
 
 function invalid(key: string, cause: string): RowCorrupt {
@@ -48,9 +45,10 @@ export effect function observeSubscription(tx: Tx, organizationId: string) {
   }, customerId))).observation
 }
 
-export effect function reconcileSubscription(tx: Tx, organizationId: string, observed: SubscriptionObservation, now: number) {
+export effect function reconcileSubscription(tx: Tx, organizationId: string, observed: SubscriptionObservation, now: number, verifiedCheckout?: string) {
   const row = (try tx.query("SELECT state,revision,status,customer_id,provider_subscription_id FROM subscriptions WHERE key=$1 FOR UPDATE", [organizationId]))[0]
   const persisted = row === undefined ? initial : parseState(row.state)
+  let recovered: Subscription | undefined
   if (row !== undefined && persisted === undefined) {
     const legacy = row.state
     if (typeof legacy !== "object" || legacy === null || Array.isArray(legacy) ||
@@ -60,28 +58,40 @@ export effect function reconcileSubscription(tx: Tx, organizationId: string, obs
         !("status" in legacy) || legacy.status !== row.status ||
         !("periodEnd" in legacy) || typeof legacy.periodEnd !== "number" || !Number.isSafeInteger(legacy.periodEnd) ||
         Object.keys(legacy).length !== 5) throw invalid(organizationId, "unrecognized persisted subscription state")
-    if (row.provider_subscription_id && row.provider_subscription_id !== observed.subscriptionId &&
-        row.status !== "canceled" && row.status !== "incomplete_expired") throw invalid(organizationId, "provider changed a legacy live subscription identity")
-    if (row.provider_subscription_id && row.provider_subscription_id === observed.subscriptionId &&
-        (row.status === "canceled" || row.status === "incomplete_expired") && observed.status !== row.status) throw invalid(organizationId, "provider rewrote an ended subscription")
+    if (legacy.subscriptionId !== observed.subscriptionId || legacy.customerId !== observed.customerId ||
+        (legacy.subscriptionId !== null && typeof legacy.subscriptionId !== "string"))
+      throw invalid(organizationId, "provider did not confirm the stored subscription identity")
+    const status = Object.entries(wireStatus).find(([, wire]) => wire === legacy.status)?.[0]
+    const legacyPlan = parsePlanKey(legacy.planKey)
+    const restored = parseState({ ...initial, status, subscriptionId: legacy.subscriptionId ?? "", planKey: legacyPlan,
+      customer: { tag: "PinnedCustomer", customerId: observed.customerId }, revision: toInt(row.revision),
+      periodStart: observed.startsAt, periodEnd: observed.endsAt, cancelAtPeriodEnd: observed.cancelAtPeriodEnd,
+      dunning: status === "Dunning" || status === "PastDue" || status === "Unpaid"
+        ? windowFrom({ ...initial, periodEnd: legacy.periodEnd }, now) : initial.dunning })
+    if (restored === undefined) throw invalid(organizationId, "stored subscription cannot be restored from verified provider state")
+    recovered = restored
   }
   if (row?.customer_id !== undefined && row.customer_id !== null && row.customer_id !== observed.customerId) throw invalid(organizationId, "provider customer changed")
   const priorRevision = persisted?.revision ?? toInt(row?.revision)
   if (!Number.isSafeInteger(priorRevision) || priorRevision < 0) throw invalid(organizationId, "invalid persisted revision")
-  let state: Subscription = persisted ?? { ...initial, revision: priorRevision }
+  let state: Subscription = persisted ?? recovered ?? { ...initial, revision: priorRevision }
   if (state.customer.tag === "NoCustomer") state = (try apply(state, { type: "pinCustomer", customerId: observed.customerId })).state
   if (customerIdOf(state) !== observed.customerId) throw invalid(organizationId, "provider customer changed")
   if (observed.subscriptionId !== null && observed.status !== "none") {
     const planKey = parsePlanKey(observed.plan)
     if (planKey === undefined || planKey === "Free") throw invalid(organizationId, "unknown paid plan")
     if (state.subscriptionId !== observed.subscriptionId) {
-      if (isLive(state.status) || state.liveCommand.tag !== "NoLiveCommand") throw invalid(organizationId, "provider changed a live subscription identity")
-      state = (try apply(state, { type: "adoptVerified", subscriptionId: observed.subscriptionId, planKey, customerId: observed.customerId })).state
+      if (isLive(state.status)) throw invalid(organizationId, "provider changed a live subscription identity")
+      if (verifiedCheckout === undefined) return state
+      if (state.liveCommand.tag === "NoLiveCommand") state = (try apply(state, {
+        type: "claimCommand", kind: "CheckoutCommand", commandId: verifiedCheckout, expectedRevision: state.revision
+      })).state
+      state = (try apply(state, { type: "checkoutPaid", commandId: verifiedCheckout, subscriptionId: observed.subscriptionId, planKey, customerId: observed.customerId })).state
     }
     if (!isLive(state.status) && observed.status === "active") throw invalid(organizationId, "provider rewrote an ended subscription")
     if (isLive(state.status)) state = (try apply(state, {
       type: "reconcile", subscriptionId: observed.subscriptionId, planKey, providerStatus: providerStatus[observed.status],
-      latestInvoice: latestInvoice[observed.latestInvoice], invoiceId: observed.payment?.id ?? "", periodStart: observed.startsAt,
+      latestInvoice: observed.latestInvoice, invoiceId: observed.payment?.id ?? "", periodStart: observed.startsAt,
       periodEnd: observed.endsAt, cancelAtPeriodEnd: observed.cancelAtPeriodEnd, now
     })).state
   } else if (state.subscriptionId !== "" || row?.provider_subscription_id) {

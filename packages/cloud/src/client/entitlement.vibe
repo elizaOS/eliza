@@ -73,7 +73,7 @@ const numericDate = Schema.Int.check(Schema.isGreaterThan(0))
 const amount = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const label = (maximum: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(maximum), Schema.isPattern(/^[^\p{Cc}]*$/u))
 
-const Header = Schema.Struct({ alg: Schema.String, typ: Schema.String, kid: label(128) })
+const Header = Schema.Struct({ alg: Schema.String, typ: Schema.String, kid: label(128), crit: Schema.optionalKey(Schema.Unknown) })
 
 const Claims = Schema.Struct({
   iss: Schema.String,
@@ -119,7 +119,7 @@ export async function verifyEntitlement(token: string, expected: EntitlementExpe
   const header = readHeader(jsonOf(head))
   const signature = bytesOf(signed)
   if (header._tag === "None" || signature === undefined) throw invalid("Malformed")
-  if (header.value.alg !== "ES256" || header.value.typ !== entitlementType) throw invalid("UnsupportedHeader")
+  if (header.value.alg !== "ES256" || header.value.typ !== entitlementType || header.value.crit !== undefined) throw invalid("UnsupportedHeader")
   if (expected.keys.length > maxEntitlementKeys) throw invalid("TooManyKeys")
   const key = expected.keys.find((listed) => listed.kid === header.value.kid)
   if (key === undefined) throw invalid("UnknownKey")

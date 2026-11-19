@@ -32,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -184,8 +185,15 @@ public class AgentService extends Service {
       service.later(() -> service.settled(service::syncCredential));
       return;
     }
-    try { if (registered.current() != null) start(context); }
-    catch (Exception unreadable) { Log.w(TAG, "The device credential could not be read", unreadable); }
+    if (signedIn()) start(context);
+  }
+
+  static boolean signedIn() {
+    try { return registered.current() != null; }
+    catch (Exception unreadable) {
+      Log.w(TAG, "The device credential could not be read", unreadable);
+      return false;
+    }
   }
 
   public static Review reviewRecovery(Context context) {
@@ -459,7 +467,7 @@ public class AgentService extends Service {
     PayloadCheck.Check payload;
     try {
       payload = PayloadCheck.prepare(name -> getAssets().open(name), versionCode(), List.of(Build.SUPPORTED_ABIS),
-        Path.of(getApplicationInfo().nativeLibraryDir), directories.runtime(), directories.sync());
+        Paths.get(getApplicationInfo().nativeLibraryDir), directories.runtime(), directories.sync());
     } catch (IOException | PackageManager.NameNotFoundException failed) {
       step(new AgentPolicy.Refuse(AgentPolicy.Cause.PAYLOAD, "The agent runtime could not be verified: " + failed.getMessage()));
       return;

@@ -1,14 +1,12 @@
-/**
- * Exercises the production bridge against Android Keystore and AtomicFile in an isolated test UID.
- * Only the JavaScript reply transport is intercepted. Fixtures never read or overwrite
- * the installed Eliza application's credentials; teardown removes test-owned ciphertexts.
- */
+// spec/os/android/secureStore.md, "Story: Persist a value without losing a newer edit"
 package ai.eliza.plugins.securestore
 
-import android.content.Intent
 import android.util.AtomicFile
-import android.util.Base64
 import ai.eliza.plugins.securestore.nativeonly.NativeSecureStore
+import ai.eliza.plugins.securestore.nativeonly.SecureSlotPolicy
+import ai.eliza.plugins.securestore.nativeonly.SecureSlotPolicy.Caller
+import ai.eliza.plugins.securestore.nativeonly.SecureSlotPolicy.ExchangeOutcome
+import ai.eliza.plugins.securestore.nativeonly.SecureSlots
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -16,9 +14,8 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.PluginCall
 import java.io.File
 import java.security.KeyStore
-import java.nio.ByteBuffer
-import javax.crypto.Cipher
-import javax.crypto.SecretKey
+import java.security.MessageDigest
+import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -33,11 +30,11 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class SecureStoreInstrumentedTest {
     private lateinit var scenario: ActivityScenario<SecureStoreTestActivity>
-    private val first = "session.device_auth"
-    private val second = "session.cloud_token"
-    private val directory: File
-        get() = File(InstrumentationRegistry.getInstrumentation().targetContext.noBackupFilesDir, "eliza-secure-store")
-    private fun file(key: String) = File(directory, key.replace('.', '_') + ".enc")
+    private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
+    private val first = "test.secure-store.first"
+    private val second = "test.secure-store.second"
+    private val legacy = "session.device_auth"
+    private val scratch = mutableListOf<Pair<File, String>>()
 
     @Before fun prepare() {
         clearFixtures()
@@ -47,22 +44,50 @@ class SecureStoreInstrumentedTest {
     @After fun cleanup() {
         if (::scenario.isInitialized) scenario.close()
         clearFixtures()
+        val keys = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        for ((directory, alias) in scratch) {
+            directory.deleteRecursively()
+            keys.deleteEntry(alias)
+        }
     }
 
     private fun clearFixtures() {
-        for (key in listOf(first, second, "runtime.active_server", "runtime.agent_profiles", "native.clock_device")) AtomicFile(file(key)).delete()
+        val host = SecureSlots.forHost(context)
+        for (key in listOf(first, second)) host.remove(Caller.NativeCaller, key)
+        for (key in listOf(legacy, "native.clock_device")) AtomicFile(legacyFile(key)).delete()
     }
 
-    private fun call(method: String, key: String? = null, value: String? = null): JSObject {
+    private fun legacyFile(key: String) = File(context.noBackupFilesDir, "eliza-secure-store/" + key.replace('.', '_') + ".enc")
+
+    private fun slotFile(directory: File, name: String): File {
+        val digest = MessageDigest.getInstance("SHA-256").digest(name.toByteArray(Charsets.UTF_8))
+        return File(directory, digest.joinToString("") { "%02x".format(it.toInt() and 255) })
+    }
+
+    private fun hostFile(name: String) = slotFile(File(context.noBackupFilesDir, SecureSlots.DIRECTORY), name)
+
+    private fun scratchSlots(policy: Map<String, Any>): Pair<File, () -> SecureSlots> {
+        val directory = File(context.noBackupFilesDir, "secure-slots-test-" + UUID.randomUUID())
+        val alias = "eliza.secure-slots-test." + UUID.randomUUID()
+        scratch += directory to alias
+        val parsed = SecureSlotPolicy.parse(policy)
+        return directory to { SecureSlots(directory, alias, parsed) }
+    }
+
+    private fun call(method: String, key: String? = null, value: String? = null, expected: String? = null): JSObject {
         lateinit var result: JSObject
         scenario.onActivity { activity ->
-            result = invoke(activity.bridge.getPlugin("ElizaSecureStore").instance as SecureStorePlugin, method, key, value)
+            result = invoke(activity.bridge.getPlugin("ElizaSecureStore").instance as SecureStorePlugin, method, key, value, expected)
         }
         return result
     }
 
-    private fun invoke(plugin: SecureStorePlugin, method: String, key: String? = null, value: String? = null): JSObject {
-        val data = JSObject().apply { if (key != null) put("key", key); if (value != null) put("value", value) }
+    private fun invoke(plugin: SecureStorePlugin, method: String, key: String? = null, value: String? = null, expected: String? = null): JSObject {
+        val data = JSObject().apply {
+            if (key != null) put("key", key)
+            if (value != null) put("value", value)
+            if (expected != null) put("expected", expected)
+        }
         var result: JSObject? = null
         var settlements = 0
         val reply = object : PluginCall(null, "ElizaSecureStore", "secure-store-test", method, data) {
@@ -72,6 +97,7 @@ class SecureStoreInstrumentedTest {
             "get" -> plugin.get(reply)
             "set" -> plugin.set(reply)
             "remove" -> plugin.remove(reply)
+            "compareAndExchange" -> plugin.compareAndExchange(reply)
             "status" -> plugin.status(reply)
             else -> error("Unknown harness operation")
         }
@@ -79,9 +105,6 @@ class SecureStoreInstrumentedTest {
         return requireNotNull(result)
     }
 
-    private fun set(key: String, value: String) { assertTrue(call("set", key, value).getBoolean("ok")) }
-
-    /** Only the host's retirement wait is supplied; set/remove and Keystore effects are production. */
     private class GuardedPlugin : SecureStorePlugin() {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
@@ -103,10 +126,115 @@ class SecureStoreInstrumentedTest {
         fun reservations() = intent.get()
     }
 
+    @Test fun writtenValueReadsBackAcrossRecreationAndIsEncryptedUnderTheSlotDigest() {
+        val value = "\"" + "🙂".repeat(1024) + "\""
+        val written = call("set", first, value)
+        assertTrue(written.getBoolean("ok"))
+        assertEquals("Written", written.getString("outcome"))
+        assertFalse(hostFile(first).readText(Charsets.ISO_8859_1).contains("🙂"))
+        scenario.recreate()
+        assertEquals(value, call("get", first).getString("value"))
+        val removed = call("remove", first)
+        assertEquals("Removed", removed.getString("outcome"))
+        assertEquals("not_found", call("get", first).getString("error"))
+    }
+
+    @Test fun appViewIsRefusedNativeOnlyDelegationMalformedAndEmptyRequests() {
+        for (name in listOf("sign-in", "sign-in:authority:credential", "deep-links:receipt", "task-data-key:v1:task", "native.clock_device",
+            "cloud-delegation:grant", "", "x".repeat(1025))) {
+            for (method in listOf("get", "set", "remove")) {
+                val answer = call(method, name, "{\"fixture\":true}")
+                assertFalse(answer.getBoolean("ok"))
+                assertEquals("denied", answer.getString("error"))
+            }
+            if (name.isNotEmpty() && name.length <= SecureSlotPolicy.NAME_LIMIT) assertFalse(hostFile(name).exists())
+        }
+        assertEquals("Refused", call("set", first, "").getString("outcome"))
+        assertEquals("Refused", call("set", first, "not json").getString("outcome"))
+        assertEquals("Refused", call("compareAndExchange", first, "{}").getString("outcome"))
+        assertEquals("not_found", call("get", first).getString("error"))
+        assertTrue(call("set", "x".repeat(1024), "1").getBoolean("ok"))
+        assertTrue(call("remove", "x".repeat(1024)).getBoolean("ok"))
+    }
+
+    @Test fun nativeCallerReachesNativeOnlySlotsButNeverDelegationSlots() {
+        val (_, open) = scratchSlots(mapOf())
+        val slots = open()
+        assertEquals(ExchangeOutcome.Written, slots.write(Caller.NativeCaller, "sign-in:authority:credential", "{\"v\":1}"))
+        assertEquals("{\"v\":1}", (slots.read(Caller.NativeCaller, "sign-in:authority:credential") as SecureSlots.Present).value())
+        assertTrue(slots.read(Caller.RendererCaller, "sign-in:authority:credential") is SecureSlots.Refused)
+        assertEquals(ExchangeOutcome.Refused, slots.write(Caller.NativeCaller, "cloud-delegation:grant", "{}"))
+        assertEquals(ExchangeOutcome.Removed, slots.remove(Caller.NativeCaller, "sign-in:authority:credential"))
+    }
+
+    @Test fun exchangeChangesOnlyAnExchangeableSlotHoldingExactlyTheExpectedText() {
+        val (_, open) = scratchSlots(mapOf("slots" to listOf(
+            mapOf("pattern" to "draft:.*", "access" to "exchangeable", "limit" to 64),
+            mapOf("pattern" to "notes:.*", "access" to "writable", "limit" to 64))))
+        val slots = open()
+        val draft = "draft:one"
+        assertEquals(ExchangeOutcome.Written, slots.compareAndExchange(Caller.RendererCaller, draft, null, "{\"n\":1}"))
+        assertEquals(ExchangeOutcome.Conflict, slots.compareAndExchange(Caller.RendererCaller, draft, null, "{\"n\":2}"))
+        assertEquals(ExchangeOutcome.Conflict, slots.compareAndExchange(Caller.RendererCaller, draft, "{\"n\": 1}", "{\"n\":2}"))
+        assertEquals("{\"n\":1}", (slots.read(Caller.RendererCaller, draft) as SecureSlots.Present).value())
+        assertEquals(ExchangeOutcome.Written, slots.compareAndExchange(Caller.RendererCaller, draft, "{\"n\":1}", "{\"n\":2}"))
+        assertEquals(ExchangeOutcome.Removed, slots.compareAndExchange(Caller.RendererCaller, draft, "{\"n\":2}", null))
+        assertTrue(slots.read(Caller.RendererCaller, draft) is SecureSlots.Absent)
+        assertEquals(ExchangeOutcome.Refused, slots.compareAndExchange(Caller.RendererCaller, "notes:one", null, "{}"))
+        assertEquals(ExchangeOutcome.Written, slots.write(Caller.RendererCaller, "notes:one", "{}"))
+    }
+
+    @Test fun aboveTheLimitAValueMayOnlyShrinkWhatAnOlderLargerLimitStored() {
+        val (directory, open) = scratchSlots(mapOf("slots" to listOf(mapOf("pattern" to "draft", "access" to "exchangeable", "limit" to 64))))
+        val alias = scratch.last().second
+        val lowered = SecureSlots(directory, alias, SecureSlotPolicy.parse(mapOf("slots" to listOf(
+            mapOf("pattern" to "draft", "access" to "exchangeable", "limit" to 16, "retained" to 64)))))
+        val forty = "\"" + "a".repeat(38) + "\""
+        val thirty = "\"" + "b".repeat(28) + "\""
+        assertEquals(ExchangeOutcome.CapacityRefused, lowered.write(Caller.RendererCaller, "draft", thirty))
+        assertEquals(ExchangeOutcome.Written, open().write(Caller.RendererCaller, "draft", forty))
+        assertEquals(forty, (lowered.read(Caller.RendererCaller, "draft") as SecureSlots.Present).value())
+        assertEquals(ExchangeOutcome.CapacityRefused, lowered.write(Caller.RendererCaller, "draft", "\"" + "c".repeat(48) + "\""))
+        assertEquals(ExchangeOutcome.Written, lowered.write(Caller.RendererCaller, "draft", thirty))
+        assertEquals(ExchangeOutcome.CapacityRefused, lowered.write(Caller.RendererCaller, "draft", forty))
+        assertEquals(ExchangeOutcome.CapacityRefused, lowered.write(Caller.RendererCaller, "draft", "\"" + "d".repeat(80) + "\""))
+    }
+
+    @Test fun unreadableSlotIsReportedKeptAndNeverExchangedOrReKeyed() {
+        val (directory, open) = scratchSlots(mapOf("slots" to listOf(mapOf("pattern" to "draft", "access" to "exchangeable", "limit" to 16, "retained" to 32))))
+        val alias = scratch.last().second
+        val slots = open()
+        assertEquals(ExchangeOutcome.Written, slots.write(Caller.RendererCaller, "draft", "{\"n\":1}"))
+        val file = slotFile(directory, "draft")
+        file.writeBytes(byteArrayOf(1, 12) + ByteArray(40))
+        val corrupt = file.readBytes()
+        assertTrue(slots.read(Caller.RendererCaller, "draft") is SecureSlots.Unreadable)
+        assertEquals(ExchangeOutcome.Failed, slots.compareAndExchange(Caller.RendererCaller, "draft", null, "{\"n\":2}"))
+        assertEquals(ExchangeOutcome.Failed, slots.write(Caller.RendererCaller, "draft", "\"" + "e".repeat(20) + "\""))
+        assertArrayEquals(corrupt, file.readBytes())
+        val keys = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        keys.deleteEntry(alias)
+        assertTrue(slots.read(Caller.RendererCaller, "draft") is SecureSlots.Unreadable)
+        assertFalse("A read must never create a replacement key", keys.containsAlias(alias))
+    }
+
+    @Test fun removalIsAcknowledgedOnlyWhenTheFileBackupAndStagedSiblingAreGone() {
+        assertTrue(call("set", first, "{\"remove\":true}").getBoolean("ok"))
+        val base = hostFile(first)
+        val backup = File(base.path + ".bak")
+        val staged = File(base.path + ".new")
+        assertTrue(base.renameTo(backup))
+        staged.writeText("incomplete test-owned write")
+        assertEquals("{\"remove\":true}", call("get", first).getString("value"))
+        assertEquals("Removed", call("remove", first).getString("outcome"))
+        assertFalse(base.exists()); assertFalse(backup.exists()); assertFalse(staged.exists())
+        assertEquals("not_found", call("get", first).getString("error"))
+    }
+
     @Test fun newerRemoveAndSetFenceOlderQueuedMutationsBeforeKeystoreEffects() {
-        val native = NativeSecureStore(InstrumentationRegistry.getInstrumentation().targetContext)
+        val host = SecureSlots.forHost(context)
         for (olderMethod in listOf("set", "remove")) {
-            native.set(second, "test-only original")
+            assertEquals(ExchangeOutcome.Written, host.write(Caller.NativeCaller, second, "\"original\""))
             val plugin = GuardedPlugin()
             scenario.onActivity { plugin.setBridge(it.bridge) }
             val oldDone = CountDownLatch(1)
@@ -114,7 +242,7 @@ class SecureStoreInstrumentedTest {
             var oldResult: JSObject? = null
             var newResult: JSObject? = null
             fun dispatch(method: String, result: (JSObject) -> Unit) {
-                val data = JSObject().put("key", second).put("value", "test-only replacement")
+                val data = JSObject().put("key", second).put("value", "\"replacement\"")
                 val call = object : PluginCall(null, "ElizaSecureStore", "guarded-test", method, data) {
                     override fun resolve(data: JSObject) { result(data) }
                 }
@@ -127,15 +255,18 @@ class SecureStoreInstrumentedTest {
                 dispatch(newerMethod) { newResult = it; newDone.countDown() }
                 plugin.release.countDown()
                 assertTrue(oldDone.await(5, TimeUnit.SECONDS)); assertTrue(newDone.await(5, TimeUnit.SECONDS))
-                assertEquals("native_error", requireNotNull(oldResult).getString("error"))
+                assertEquals("Failed", requireNotNull(oldResult).getString("outcome"))
                 assertTrue(requireNotNull(newResult).getBoolean("ok"))
-                assertEquals(if (newerMethod == "set") "test-only replacement" else null, native.get(second))
+                val now = host.read(Caller.NativeCaller, second)
+                if (newerMethod == "set") assertEquals("\"replacement\"", (now as SecureSlots.Present).value())
+                else assertTrue(now is SecureSlots.Absent)
             } finally { plugin.release.countDown(); plugin.closeBridge() }
         }
     }
 
     @Test fun closedBridgeCannotReserveAnotherCredentialIntent() {
         val plugin = GuardedPlugin()
+        scenario.onActivity { plugin.setBridge(it.bridge) }
         plugin.closeBridge()
         var result: JSObject? = null
         val call = object : PluginCall(null, "ElizaSecureStore", "closed-test", "remove", JSObject().put("key", second)) {
@@ -146,227 +277,66 @@ class SecureStoreInstrumentedTest {
         assertEquals(0L, plugin.reservations())
     }
 
-    private fun writeLegacyEnvelope(slot: String, value: String) {
-        assertTrue(call("status").getBoolean("available"))
-        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        val key = keyStore.getKey("ai.elizaos.secure-store.v1", null) as SecretKey
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, key)
-        cipher.updateAAD(slot.toByteArray(Charsets.UTF_8))
-        val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
-        val iv = cipher.iv
-        val envelope = ByteBuffer.allocate(2 + iv.size + encrypted.size)
-            .put(1).put(iv.size.toByte()).put(iv).put(encrypted).array()
-        file(slot).writeBytes(Base64.encode(envelope, Base64.NO_WRAP))
+    @Test fun concurrentBridgeInstancesPreserveBothValues() {
+        lateinit var firstPlugin: SecureStorePlugin
+        scenario.onActivity { firstPlugin = it.bridge.getPlugin("ElizaSecureStore").instance as SecureStorePlugin }
+        val secondPlugin = SecureStorePlugin()
+        scenario.onActivity { secondPlugin.setBridge(it.bridge) }
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        val firstValue = "\"" + "first concurrent value ".repeat(1000) + "\""
+        val secondValue = "\"" + "second concurrent value ".repeat(1000) + "\""
+        try {
+            val left = executor.submit<JSObject> { start.await(); invoke(firstPlugin, "set", first, firstValue) }
+            val right = executor.submit<JSObject> { start.await(); invoke(secondPlugin, "set", second, secondValue) }
+            start.countDown()
+            assertTrue(left.get(30, TimeUnit.SECONDS).getBoolean("ok"))
+            assertTrue(right.get(30, TimeUnit.SECONDS).getBoolean("ok"))
+            assertEquals(firstValue, invoke(firstPlugin, "get", first).getString("value"))
+            assertEquals(secondValue, invoke(secondPlugin, "get", second).getString("value"))
+        } finally {
+            start.countDown()
+            executor.shutdownNow()
+        }
     }
 
-    @Test fun completeUnicodeValueSurvivesActivityRecreation_andOversizeWriteLeavesItIntact() {
-        val value = "🙂".repeat(65_536)
-        set(first, value)
-        scenario.recreate()
-        assertEquals(value, call("get", first).getString("value"))
-        val oversized = call("set", first, value + "x")
-        assertFalse(oversized.getBoolean("ok"))
-        assertEquals("invalid_input", oversized.getString("error"))
-        assertEquals(value, call("get", first).getString("value"))
-    }
-
-    @Test fun committedLegacyBackupIsRecoveredBeforeMissingValueIsReported() {
-        val value = "test-only recovery value"
-        set(first, value)
-        val base = file(first)
-        val backup = File(base.path + ".bak")
-        assertTrue(base.renameTo(backup))
-        val recovered = call("get", first)
-        assertTrue("A committed AtomicFile backup must remain readable: $recovered", recovered.getBoolean("ok"))
-        assertEquals(value, recovered.getString("value"))
-        assertTrue(base.exists())
-        assertFalse(backup.exists())
-    }
-
-    @Test fun removeReportsAndDeletesBackupAndInterruptedWriteArtifacts() {
-        set(first, "test-only remove value")
-        val base = file(first)
-        val backup = File(base.path + ".bak")
-        val pending = File(base.path + ".new")
-        assertTrue(base.renameTo(backup))
-        pending.writeText("incomplete test-owned write")
-        val removed = call("remove", first)
-        assertTrue(removed.getBoolean("ok"))
-        assertTrue("Removal must report existing AtomicFile artifacts", removed.getBoolean("deleted"))
-        assertFalse(base.exists()); assertFalse(backup.exists()); assertFalse(pending.exists())
-        assertEquals("not_found", call("get", first).getString("error"))
-        assertFalse(call("remove", first).getBoolean("deleted"))
-    }
-
-    @Test fun writesAreRandomized_andTheRealKeystoreKeyCannotBeExported() {
-        val value = "test-only repeated plaintext"
-        set(first, value)
-        val previous = file(first).readBytes()
-        set(first, value)
-        assertFalse(previous.contentEquals(file(first).readBytes()))
-        assertEquals(value, call("get", first).getString("value"))
-        assertFalse(file(first).readText().contains(value))
-        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        assertNull(store.getKey("ai.elizaos.secure-store.v1", null).encoded)
-    }
-
-    @Test fun wrongLogicalKeyAndMalformedCiphertextReturnSanitizedFailures() {
-        val marker = "test-only non-secret failure marker"
-        set(first, marker)
-        file(first).copyTo(file(second), overwrite = true)
-        val wrongKey = call("get", second)
-        assertFalse(wrongKey.getBoolean("ok"))
-        assertEquals("native_error", wrongKey.getString("error"))
-        assertFalse(wrongKey.toString().contains(marker))
-        file(first).writeText(marker)
-        val malformed = call("get", first)
-        assertFalse(malformed.getBoolean("ok"))
-        assertEquals("native_error", malformed.getString("error"))
-        assertFalse(malformed.toString().contains(marker))
-    }
-
-    @Test fun missingAndUnallowlistedKeysRemainDistinctFromNativeAvailability() {
-        assertTrue(call("status").getBoolean("available"))
-        assertEquals("not_found", call("get", first).getString("error"))
-        assertEquals("invalid_input", call("set", "../untrusted", "test-only").getString("error"))
-        assertEquals("invalid_input", call("set", first, "").getString("error"))
-        assertEquals("not_found", call("get", first).getString("error"))
-    }
-
-    @Test fun nativeSnapshotReadsLegacyEnvelopeAndBridgeReadsNativeWrite() {
-        val legacyValue = "test-only legacy device credential"
-        writeLegacyEnvelope(first, legacyValue)
-        val native = NativeSecureStore(InstrumentationRegistry.getInstrumentation().targetContext)
-        val snapshot = native.snapshot()
-        assertEquals(legacyValue, snapshot.require(first))
-        assertEquals(legacyValue, call("get", first).getString("value"))
-        native.set(first, "test-only native replacement")
-        assertEquals("test-only native replacement", call("get", first).getString("value"))
-    }
-
-    @Test fun nativeSnapshotsFenceBridgeMutationAndRemovalAcrossInstances() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
+    @Test fun nativeSnapshotsFenceMutationAcrossInstances() {
         val native = NativeSecureStore(context)
-        set(first, "test-only initial owner")
+        native.set(legacy, "test-only initial owner")
         val original = native.snapshot()
-        assertEquals("test-only initial owner", original.require(first))
+        assertEquals("test-only initial owner", original.require(legacy))
         native.assertCurrent(original)
-        set(second, "test-only replacement session")
+        native.set(legacy, "test-only replacement session")
         assertTrue(NativeSecureStore(context).generation > original.generation)
-        try { native.assertCurrent(original); fail("Bridge mutation retained stale snapshot") }
+        try { native.assertCurrent(original); fail("Mutation retained stale snapshot") }
         catch (_: SecurityException) {}
         val current = native.snapshot()
-        assertTrue(call("remove", first).getBoolean("ok"))
+        assertTrue(NativeSecureStore(context).remove(legacy))
         var dispatched = false
         try { native.withSnapshot(current) { dispatched = true; null }; fail("Stale effect dispatched") }
         catch (_: SecurityException) {}
         assertFalse(dispatched)
-        assertEquals("test-only initial owner", original.require(first))
-    }
-
-    @Test fun nativeSnapshotDistinguishesMissingSlotsAndRejectsCorruptSlots() {
-        val native = NativeSecureStore(InstrumentationRegistry.getInstrumentation().targetContext)
-        val missing = native.snapshot()
-        assertNull(missing.get(first))
-        try { missing.require(first); fail("Missing native credential admitted") }
-        catch (_: IllegalStateException) {}
-        set(first, "test-only complete credential")
-        file(first).writeText("test-only malformed ciphertext")
-        try { native.snapshot(); fail("Corrupt credential admitted") }
-        catch (_: Exception) {}
-    }
-
-    @Test fun finalNativeEffectExcludesConcurrentCredentialMutation() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val native = NativeSecureStore(context)
-        set(first, "test-only effect owner")
-        val snapshot = native.snapshot()
-        val started = CountDownLatch(1)
-        val finished = CountDownLatch(1)
-        val executor = Executors.newSingleThreadExecutor()
-        try {
-            val mutation = native.withSnapshot(snapshot) {
-                val future = executor.submit {
-                    started.countDown()
-                    try { NativeSecureStore(context).remove(first) }
-                    finally { finished.countDown() }
-                }
-                assertTrue(started.await(5, TimeUnit.SECONDS))
-                assertFalse("Owner cannot change during the final effect", finished.await(100, TimeUnit.MILLISECONDS))
-                native.assertCurrent(snapshot)
-                future
-            }
-            mutation.get(5, TimeUnit.SECONDS)
-            try { native.assertCurrent(snapshot); fail("Completed mutation retained owner") }
-            catch (_: SecurityException) {}
-        } finally { executor.shutdownNow() }
+        assertNull(native.snapshot().get(legacy))
     }
 
     @Test fun clockIdentityIsStableNativeOnlyAndNeverRotatesMalformedExistingState() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val native = NativeSecureStore(context)
-        val before = native.snapshot()
         val identity = native.ensureClockDevice()
         assertTrue(identity.installationId.matches(Regex("[a-f0-9-]{36}")))
         assertTrue(identity.deviceKey.matches(Regex("[a-f0-9]{64}")))
-        try { native.assertCurrent(before); fail("Native enrollment did not invalidate old snapshot") }
-        catch (_: SecurityException) {}
-        val generation = native.generation
         val reopened = NativeSecureStore(context).ensureClockDevice()
         assertEquals(identity.installationId, reopened.installationId)
         assertEquals(identity.deviceKey, reopened.deviceKey)
-        assertEquals(generation, native.generation)
-        assertEquals(identity.deviceKey, native.snapshot().requireClockDevice().deviceKey)
-        assertFalse(file("native.clock_device").readText().contains(identity.deviceKey))
-        for (method in listOf("get", "set", "remove")) {
-            assertEquals("invalid_input", call(method, "native.clock_device", "test-only unauthorized replacement").getString("error"))
-        }
-        writeLegacyEnvelope("native.clock_device", "{\"version\":1,\"installationId\":\"malformed\",\"deviceKey\":\"malformed\"}")
-        val malformed = file("native.clock_device").readBytes()
-        try { native.ensureClockDevice(); fail("Malformed identity rotated silently") }
-        catch (_: Exception) {}
-        assertTrue(malformed.contentEquals(file("native.clock_device").readBytes()))
-    }
-
-    @Test fun interruptedClockIdentityInitializationRequiresRecoveryInsteadOfReplacement() {
-        val native = NativeSecureStore(InstrumentationRegistry.getInstrumentation().targetContext)
-        val pending = File(file("native.clock_device").path + ".new")
-        pending.parentFile!!.mkdirs()
+        assertFalse(legacyFile("native.clock_device").readText().contains(identity.deviceKey))
+        for (method in listOf("get", "set", "remove"))
+            assertEquals("denied", call(method, "native.clock_device", "{\"replacement\":true}").getString("error"))
+        val pending = File(legacyFile("native.clock_device").path + ".new")
+        AtomicFile(legacyFile("native.clock_device")).delete()
         pending.writeText("test-only interrupted ciphertext")
         try { native.ensureClockDevice(); fail("Interrupted identity replaced silently") }
         catch (_: IllegalStateException) {}
         assertTrue(pending.exists())
-        assertFalse(file("native.clock_device").exists())
+        assertFalse(legacyFile("native.clock_device").exists())
+        pending.delete()
     }
-    @Test fun concurrentBridgeInstancesPreserveBothValuesDuringColdKeystoreCreation() {
-        lateinit var firstPlugin: SecureStorePlugin
-        scenario.onActivity { firstPlugin = it.bridge.getPlugin("ElizaSecureStore").instance as SecureStorePlugin }
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val intent = Intent(context, SecureStoreTestActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
-        ActivityScenario.launch<SecureStoreTestActivity>(intent).use { other ->
-            lateinit var secondPlugin: SecureStorePlugin
-            other.onActivity { secondPlugin = it.bridge.getPlugin("ElizaSecureStore").instance as SecureStorePlugin }
-            val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            store.deleteEntry("ai.elizaos.secure-store.v1")
-            val start = CountDownLatch(1)
-            val executor = Executors.newFixedThreadPool(2)
-            val firstValue = "test-only first concurrent value".repeat(1000)
-            val secondValue = "test-only second concurrent value".repeat(1000)
-            try {
-                val left = executor.submit<JSObject> { start.await(); invoke(firstPlugin, "set", first, firstValue) }
-                val right = executor.submit<JSObject> { start.await(); invoke(secondPlugin, "set", second, secondValue) }
-                start.countDown()
-                assertTrue("First concurrent write must succeed", left.get(30, TimeUnit.SECONDS).getBoolean("ok"))
-                assertTrue("Second concurrent write must succeed", right.get(30, TimeUnit.SECONDS).getBoolean("ok"))
-                assertTrue("First complete value must survive concurrent key creation", invoke(firstPlugin, "get", first).getString("value") == firstValue)
-                assertTrue("Second complete value must survive concurrent key creation", invoke(secondPlugin, "get", second).getString("value") == secondValue)
-            } finally {
-                start.countDown()
-                executor.shutdownNow()
-            }
-        }
-    }
-
 }

@@ -1,0 +1,307 @@
+// spec/agent/voice/clientAudio.md, "Story: Dictate into my draft without losing my own words"; spec/agent/voice/clientAudio.md, "A recording becomes review text through the host's result or the recording, never a send"; spec/agent/voice/clientAudio.md, "A stale transcription never replaces a newer draft"
+import { assert, it } from "@effect/vitest"
+import { DraftTranscriptGuard, type RecordingPhase } from "../src/voice/index.vibe"
+
+module node {
+  import { Effect } from "effect"
+  import {
+    RecordedTranscriptionController, RecordedTranscriptionError, RecordingBoundRefused,
+    type PauseObserver, type RecordedTranscriptionOptions, type RecorderEvents, type RecordingPhase,
+  } from "../src/voice/index.vibe"
+
+  interface Chunk { readonly size: number; readonly type: string; readonly label: string }
+  interface Stream { getTracks(): ReadonlyArray<{ stop(): void }> }
+  type Options = RecordedTranscriptionOptions<Stream, Chunk>
+  type Controller = RecordedTranscriptionController<Stream, Chunk>
+
+  const recorderMime = "audio/webm;codecs=opus"
+  const boundMax = 2147483647
+
+  const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 2))
+
+  async function settled(controller: Controller): Promise<void> {
+    for (let i = 0; i < 1000 && controller.pending; i++) await settle()
+  }
+
+  const outcomeOf = (error: unknown): string =>
+    error === null ? "none" : error instanceof RecordedTranscriptionError ? error.code : error instanceof Error ? error.message : "unknown"
+
+  function rig(overrides: Partial<Options> = {}, words: Record<string, string> = {}) {
+    const seen = {
+      phases: [] as RecordingPhase[], errors: [] as string[], transcripts: [] as Array<[string, boolean]>,
+      encoded: [] as Array<[string, string]>, transcribed: [] as Array<[string, string]>, log: [] as string[],
+      authorized: 0, acquired: 0, recorders: 0, recorderStops: 0, tracksStopped: 0,
+      state: "inactive" as "inactive" | "recording" | "paused",
+      events: undefined as RecorderEvents<Chunk> | undefined,
+      receive: undefined as ((chunk: Chunk) => Promise<void>) | undefined,
+      pause: undefined as (() => void) | undefined,
+    }
+    const options: Options = {
+      authorize: async () => { seen.authorized += 1 },
+      acquire: async () => {
+        seen.acquired += 1
+        return { getTracks: () => [{ stop: () => { seen.tracksStopped += 1 } }] }
+      },
+      recorder: (_stream, events) => {
+        seen.recorders += 1
+        seen.events = events
+        return {
+          state: () => seen.state,
+          mimeType: () => recorderMime,
+          start: (timesliceMs) => {
+            seen.log.push(`start:${timesliceMs}`)
+            seen.state = "recording"
+          },
+          stop: () => {
+            seen.recorderStops += 1
+            seen.state = "inactive"
+            events.stopped()
+          },
+        }
+      },
+      encode: async (chunks, mimeType) => {
+        const label = chunks.map((chunk) => chunk.label).join("+")
+        seen.encoded.push([label, mimeType])
+        return label
+      },
+      transcribe: async (audio, mimeType) => {
+        seen.transcribed.push([audio, mimeType])
+        return { text: words[audio] ?? "" }
+      },
+      preview: async (_stream, receive) => {
+        seen.receive = receive
+        return () => seen.log.push("close-preview")
+      },
+      changed: ({ phase, error }) => {
+        seen.phases.push(phase)
+        if (error !== null) seen.errors.push(outcomeOf(error))
+      },
+      maximumBytes: 1000,
+      maximumMs: 60000,
+      timesliceMs: 250,
+      ...overrides,
+    }
+    const observePause: PauseObserver<Stream> = (_stream, finish) => {
+      seen.pause = finish
+      return () => seen.log.push("unobserve")
+    }
+    const deliver = (text: string, final: boolean) => { seen.transcripts.push([text, final]) }
+    return { seen, options, observePause, deliver }
+  }
+
+  const open = (options: Options) => Effect.runPromise(RecordedTranscriptionController.open(options))
+
+  export async function refusedBounds() {
+    const refused: string[] = []
+    for (const bound of ["maximumBytes", "maximumMs", "timesliceMs"] as const) {
+      for (const value of [0, -1, boundMax + 1, 2.5, Number.NaN]) {
+        const error = await Effect.runPromise(Effect.flip(RecordedTranscriptionController.open({ ...rig().options, [bound]: value })))
+        refused.push(error instanceof RecordingBoundRefused ? `${error.bound}:${error.value}` : "other")
+      }
+    }
+    const widest = await open({ ...rig().options, maximumBytes: boundMax, maximumMs: boundMax, timesliceMs: 1 })
+    return { refused, opened: widest.phase }
+  }
+
+  export async function secondStart() {
+    const { seen, options, observePause, deliver } = rig({}, { a: "From the recording." })
+    const controller = await open(options)
+    const first = controller.start(deliver, observePause)
+    await controller.start(deliver, observePause)
+    await first
+    seen.events?.data({ size: 3, type: recorderMime, label: "a" })
+    controller.finish()
+    await settled(controller)
+    return {
+      calls: [seen.authorized, seen.acquired, seen.recorders, seen.recorderStops],
+      log: seen.log, phases: seen.phases, transcripts: seen.transcripts, transcribed: seen.transcribed,
+    }
+  }
+
+  export async function stoppedBy(trigger: "finish" | "pause" | "time" | "bytes") {
+    const { seen, options, observePause, deliver } = rig({ maximumBytes: 4, maximumMs: trigger === "time" ? 20 : 60000 }, { "a+b": "Two chunks." })
+    const controller = await open(options)
+    await controller.start(deliver, observePause)
+    const before = [seen.recorderStops, seen.tracksStopped]
+    seen.events?.data({ size: 2, type: recorderMime, label: "a" })
+    seen.events?.data({ size: trigger === "bytes" ? 3 : 2, type: recorderMime, label: "b" })
+    const atLimit = [seen.state, seen.recorderStops]
+    if (trigger === "finish" || trigger === "bytes") controller.finish()
+    if (trigger === "pause") seen.pause?.()
+    await settled(controller)
+    controller.finish()
+    return {
+      before, atLimit, after: [seen.recorderStops, seen.tracksStopped], recorders: seen.recorders,
+      phases: seen.phases, errors: seen.errors, transcripts: seen.transcripts, encoded: seen.encoded,
+      unobserved: seen.log.filter((entry) => entry === "unobserve").length,
+    }
+  }
+
+  export async function hostResult(host: "words" | "blank" | "undefined" | "rejected" | "none", chunk: boolean, words: Record<string, string> = { a: "From the recording." }) {
+    const finalTranscript = host === "none" ? undefined
+      : host === "words" ? async () => ({ text: "From the host." })
+      : host === "blank" ? async () => ({ text: "  " })
+      : host === "undefined" ? async () => undefined
+      : async () => { throw new Error("host refused") }
+    const { seen, options, observePause, deliver } = rig(finalTranscript === undefined ? {} : { finalTranscript }, words)
+    const controller = await open(options)
+    await controller.start(deliver, observePause)
+    if (chunk) seen.events?.data({ size: 3, type: recorderMime, label: "a" })
+    controller.finish()
+    await settled(controller)
+    return { transcripts: seen.transcripts, errors: seen.errors, encoded: seen.encoded, transcribed: seen.transcribed, phase: controller.phase }
+  }
+
+  export async function previews() {
+    const { seen, options, observePause, deliver } = rig({}, { p1: "  ", p2: "Hello there", p3: "late", rec: "Hello there, friend." })
+    const controller = await open(options)
+    await controller.start(deliver, observePause)
+    await seen.receive?.({ size: 2, type: "", label: "p1" })
+    await seen.receive?.({ size: 2, type: "audio/wav", label: "p2" })
+    seen.events?.data({ size: 3, type: recorderMime, label: "rec" })
+    controller.finish()
+    await seen.receive?.({ size: 2, type: "audio/wav", label: "p3" })
+    await settled(controller)
+    return { transcripts: seen.transcripts, encoded: seen.encoded, log: seen.log }
+  }
+
+  export async function cancelled() {
+    let release: () => void = () => undefined
+    const held = new Promise<void>((resolve) => { release = resolve })
+    const late = rig({}, { a: "Too late.", p: "Late preview." })
+    late.options = {
+      ...late.options,
+      transcribe: async (audio, mimeType) => {
+        late.seen.transcribed.push([audio, mimeType])
+        if (audio === "a") await held
+        return { text: audio === "a" ? "Too late." : "Late preview." }
+      },
+    }
+    const controller = await open(late.options)
+    await controller.start(late.deliver, late.observePause)
+    late.seen.events?.data({ size: 3, type: recorderMime, label: "a" })
+    controller.finish()
+    for (let i = 0; i < 1000 && late.seen.transcribed.length === 0; i++) await settle()
+    const whileTranscribing = controller.phase
+    controller.cancel()
+    release()
+    await settle()
+    await settle()
+
+    const active = rig({}, { p: "Late preview." })
+    const second = await open(active.options)
+    await second.start(active.deliver, active.observePause)
+    const receive = active.seen.receive
+    second.cancel()
+    await receive?.({ size: 2, type: "audio/wav", label: "p" })
+    active.seen.events?.data({ size: 3, type: recorderMime, label: "a" })
+    await settle()
+    return {
+      whileTranscribing, afterTranscribing: { phase: controller.phase, pending: controller.pending, transcripts: late.seen.transcripts, phases: late.seen.phases },
+      active: {
+        phase: second.phase, transcripts: active.seen.transcripts, encoded: active.seen.encoded,
+        released: [active.seen.recorderStops, active.seen.tracksStopped], log: active.seen.log,
+      },
+    }
+  }
+}
+import { cancelled, hostResult, previews, refusedBounds, secondStart, stoppedBy } from node
+
+const recorded: RecordingPhase[] = ["RecordingConnecting", "RecordingActive", "RecordingTranscribing", "RecordingIdle"]
+
+it.effect("Dictate into my draft: open refuses a bound of 0, over 2,147,483,647 or not a whole number", () => effect {
+  const got = try tryPromise(() => refusedBounds())
+  try Effect.try(() => assert.deepStrictEqual(got, {
+    refused: ["maximumBytes", "maximumMs", "timesliceMs"].flatMap((bound) =>
+      ["0", "-1", "2147483648", "2.5", "NaN"].map((value) => `${bound}:${value}`)),
+    opened: "RecordingIdle",
+  }))
+})
+
+it.effect("Dictate into my draft: a second Start while one is pending does nothing", () => effect {
+  const got = try tryPromise(() => secondStart())
+  try Effect.try(() => assert.deepStrictEqual(got, {
+    calls: [1, 1, 1, 1], log: ["start:250", "close-preview", "unobserve"], phases: recorded,
+    transcripts: [["From the recording.", true]], transcribed: [["a", "audio/webm;codecs=opus"]],
+  }))
+})
+
+it.effect("Dictate into my draft: finish, the pause observer, the time limit and the byte limit stop the same recorder and release the tracks", () => effect {
+  const runs = try tryPromise(() => Promise.all((["finish", "pause", "time", "bytes"] as const).map((trigger) => stoppedBy(trigger))))
+  const kept: unknown = { atLimit: ["recording", 0], transcripts: [["Two chunks.", true]], errors: [], encoded: [["a+b", "audio/webm;codecs=opus"]] }
+  try Effect.try(() => {
+    for (const run of runs) {
+      assert.deepStrictEqual([run.before, run.after, run.recorders, run.phases, run.unobserved], [[0, 0], [1, 1], 1, recorded, 1])
+    }
+    assert.deepStrictEqual(runs.slice(0, 3).map(({ atLimit, transcripts, errors, encoded }) => ({ atLimit, transcripts, errors, encoded })), [kept, kept, kept])
+    assert.deepStrictEqual([runs[3]?.atLimit, runs[3]?.transcripts, runs[3]?.errors, runs[3]?.encoded], [["inactive", 1], [], ["too-large"], []])
+  })
+})
+
+it.effect("Dictate into my draft: a host result other than undefined wins, only undefined uploads under the recorder type", () => effect {
+  const runs = try tryPromise(() => Promise.all([
+    hostResult("words", false), hostResult("blank", true), hostResult("rejected", true), hostResult("undefined", true),
+    hostResult("none", true), hostResult("undefined", false), hostResult("none", true, {}),
+  ]))
+  const upload: Array<[string, string]> = [["a", "audio/webm;codecs=opus"]]
+  try Effect.try(() => assert.deepStrictEqual(runs.map(({ transcripts, errors, encoded, transcribed, phase }) => [transcripts, errors, encoded, transcribed, phase]), [
+    [[["From the host.", true]], [], [], [], "RecordingIdle"],
+    [[], ["empty-transcript"], [], [], "RecordingIdle"],
+    [[], ["host refused"], [], [], "RecordingIdle"],
+    [[["From the recording.", true]], [], upload, upload, "RecordingIdle"],
+    [[["From the recording.", true]], [], upload, upload, "RecordingIdle"],
+    [[], ["empty-audio"], [], [], "RecordingIdle"],
+    [[], ["empty-transcript"], upload, upload, "RecordingIdle"],
+  ]))
+})
+
+it.effect("Dictate into my draft: previews are only nonblank, non-final text of the current capture", () => effect {
+  const got = try tryPromise(() => previews())
+  try Effect.try(() => assert.deepStrictEqual(got, {
+    transcripts: [["Hello there", false], ["Hello there, friend.", true]],
+    encoded: [["p1", "audio/wav"], ["p2", "audio/wav"], ["rec", "audio/webm;codecs=opus"]],
+    log: ["start:250", "close-preview", "unobserve"],
+  }))
+})
+
+it.effect("Dictate into my draft: cancel releases everything and drops late results", () => effect {
+  const got = try tryPromise(() => cancelled())
+  try Effect.try(() => assert.deepStrictEqual(got, {
+    whileTranscribing: "RecordingTranscribing",
+    afterTranscribing: { phase: "RecordingIdle", pending: false, transcripts: [], phases: [...recorded.slice(0, 3), "RecordingIdle"] },
+    active: { phase: "RecordingIdle", transcripts: [], encoded: [], released: [1, 1], log: ["start:250", "close-preview", "unobserve"] },
+  }))
+})
+
+it.effect("Dictate into my draft: a stale transcription never replaces a newer draft", () => effect {
+  const compose = (original: string, text: string) => `${original} ${text}`.trim()
+  const fresh = new DraftTranscriptGuard()
+  fresh.observe("Hi")
+  const unedited = fresh.begin(compose)
+  const preview = unedited("there", false)
+  fresh.observe(fresh.value)
+  const final = unedited("there, friend", true)
+
+  const edited = new DraftTranscriptGuard()
+  edited.observe("Draft")
+  const late = edited.begin(compose)
+  edited.observe("Draft I typed")
+  const afterEdit = [late("words", false), late("words", true), edited.value]
+
+  const retired = new DraftTranscriptGuard()
+  const older = retired.begin(compose)
+  const newer = retired.begin(compose)
+  const replaced = [older("old", true), newer("new", true)]
+  retired.invalidate()
+  const invalidated = newer("newer", true)
+
+  try Effect.try(() => assert.deepStrictEqual([preview, final, fresh.value, afterEdit, replaced, invalidated, retired.value], [
+    { kind: "applied", value: "Hi there" },
+    { kind: "applied", value: "Hi there, friend" },
+    "Hi there, friend",
+    [{ kind: "ignored" }, { kind: "conflict", value: "words" }, "Draft I typed"],
+    [{ kind: "ignored" }, { kind: "applied", value: "new" }],
+    { kind: "ignored" },
+    "new",
+  ]))
+})

@@ -1,0 +1,93 @@
+// spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"
+import { assert, it } from "@effect/vitest"
+import {
+  comparePeer, decodeObservation, decodeVoiceUiContext, encodeTurnContext, learnPeer, notLearned, readTurnContext,
+  sendsOptionalFields, statusRead, statusReadFailed, type Observation, type PeerSupport, type TurnContext,
+} from "../src/conversation/turn-context.schema.vibe"
+import { call, startInProcess, type InProcess } from "./support/kernel.vibe"
+
+const calendar: Observation = {
+  view: "calendar", revision: 7, sensitive: false, timeZone: "Europe/Berlin",
+  selectedObject: { kind: "event", id: "evt_42", revision: "W/\"etag-1\"", occurrenceId: "occ-3", timingVersion: 2 },
+  calendarDay: { date: "2026-11-19", timeZone: "Europe/Berlin" },
+}
+const voiceUi = { uiViewPath: "/calendar/day", uiViewSubview: "agenda", uiBrowserSurface: "native", viewDelivery: "completed-action", uiClientId: "renderer-1", agentActionMode: "direct-request-v1" } as const
+
+effect function readStatus(agent: InProcess) {
+  const answer = try call(agent, { method: "GET", path: "/api/status" })
+  return "json" in answer && answer.status === 200 ? statusRead(answer.json) : statusReadFailed
+}
+
+effect function turn(support: PeerSupport, agent: InProcess, context: TurnContext) {
+  const read = try readStatus(agent)
+  return { support: comparePeer(support, read), metadata: encodeTurnContext(context, { optionalFields: sendsOptionalFields(support, read) }) }
+}
+
+const outcomeOf = (outcome: Effect.Effect<unknown, { readonly _tag: string }>) => Effect.match(outcome, { onFailure: (error) => error._tag, onSuccess: () => "carried" })
+
+it.effect('A screen reaches the agent whole, only as the process instance the client compared allows, and nothing else does (spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more")', effect () => {
+  const first = try startInProcess()
+  const learned = learnPeer(learnPeer(notLearned, statusReadFailed), try readStatus(first))
+  const sent = try turn(learned, first, { observation: calendar, voiceUi })
+  const decoded = try decodeObservation(sent.metadata.observation)
+  const bound = try decodeVoiceUiContext(sent.metadata.voiceUi, "renderer-1")
+  const stored = readTurnContext({ content: { text: "what is on this day?", metadata: { ...sent.metadata, voiceUi: bound, draft: "kept, never decoded" } } })
+
+  const second = try startInProcess()
+  const restarted = try turn(sent.support, second, { observation: calendar })
+  const relearned = learnPeer(restarted.support, try readStatus(second))
+  const ordinary = try decodeObservation(restarted.metadata.observation)
+
+  const { calendarDay: _day, ...withoutDay } = calendar
+  try Effect.try(() => assert.deepStrictEqual({
+    learned: learned.tag, decoded, bound, stored, restarted: restarted.support, relearnedSends: sendsOptionalFields(relearned, try readStatus(second)), ordinary,
+  }, {
+    learned: "SamePeer", decoded: calendar, bound: voiceUi, stored: { observation: calendar, voiceUi },
+    restarted: { tag: "OrdinaryOnly" }, relearnedSends: false, ordinary: withoutDay,
+  }))
+
+  const observations = [
+    [{ view: "vault", revision: 1, sensitive: true }, "carried"],
+    [{ view: "notes", revision: 1, sensitive: false, timeZone: "America/Argentina/Buenos_Aires", selectedObject: { kind: "note", id: "n".repeat(512), revision: "r".repeat(256), accountId: "a".repeat(256), sourceRevision: "s".repeat(256), occurrenceId: "o".repeat(256) } }, "carried"],
+    [{ ...withoutDay, sensitive: true }, "ObservationDropped"],
+    [{ view: "calendar", revision: 1, sensitive: true, timeZone: "Europe/Berlin", calendarDay: calendar.calendarDay }, "ObservationDropped"],
+    [{ ...calendar, sensitive: undefined }, "ObservationDropped"],
+    [{ ...calendar, view: "notes" }, "ObservationDropped"],
+    [{ ...calendar, calendarDay: { date: "2026-11-19", timeZone: "America/New_York" } }, "ObservationDropped"],
+    [{ ...calendar, calendarDay: { date: "2026-02-29", timeZone: "Europe/Berlin" } }, "ObservationDropped"],
+    [{ ...calendar, calendarDay: { date: "1969-12-31", timeZone: "Europe/Berlin" } }, "ObservationDropped"],
+    [{ ...withoutDay, timeZone: "Mars/Olympus_Mons" }, "ObservationDropped"],
+    [{ ...withoutDay, selectedObject: { kind: "event", id: "Buy milk and call mum" } }, "ObservationDropped"],
+    [{ ...withoutDay, selectedObject: { ...calendar.selectedObject, title: "Dentist" } }, "ObservationDropped"],
+    [{ ...withoutDay, revision: -1 }, "ObservationDropped"],
+    [{ ...withoutDay, sensitive: "no" }, "ObservationDropped"],
+    [{ ...withoutDay, contents: "the whole screen" }, "ObservationDropped"],
+    ["calendar", "ObservationDropped"],
+  ] as const
+  const decodedObservations = try Effect.forEach(observations, ([observation]) => outcomeOf(decodeObservation(observation)))
+  const contexts = try Effect.forEach([
+    [{}, undefined],
+    [{ uiViewPath: "", unknownKey: "not carried" }, undefined],
+    [{ ...voiceUi, uiViewPath: "//elsewhere.example/calendar" }, undefined],
+    [{ ...voiceUi, uiViewPath: "calendar" }, undefined],
+    [{ ...voiceUi, uiViewPath: `/${"a".repeat(2048)}` }, undefined],
+    [{ ...voiceUi, uiViewSubview: "s".repeat(129) }, undefined],
+    [{ ...voiceUi, uiTimeZone: 1 }, undefined],
+    [{ ...voiceUi, uiBrowserSurface: "web" }, undefined],
+    [{ ...voiceUi, viewDelivery: undefined }, undefined],
+    [{ ...voiceUi, uiClientId: undefined }, undefined],
+    [{ ...voiceUi, uiClientId: "renderer one" }, undefined],
+    [voiceUi, "renderer-2"],
+    [{ ...voiceUi, agentActionMode: "full-control" }, undefined],
+    [[], undefined],
+  ] as const, ([context, clientId]) => outcomeOf(decodeVoiceUiContext(context, clientId)))
+  const silent = try decodeVoiceUiContext({ uiViewPath: "", unknownKey: "not carried" })
+  const unreadable = readTurnContext({ content: { text: "this one", metadata: { observation: { ...calendar, sensitive: true }, voiceUi: { ...voiceUi, uiViewPath: "//x" } } } })
+
+  try Effect.try(() => assert.deepStrictEqual({ observations: decodedObservations, contexts, silent, unreadable }, {
+    observations: observations.map(([, expected]) => expected),
+    contexts: ["carried", "carried", ...Array.from({ length: 12 }, () => "VoiceUiContextInvalid")],
+    silent: { uiViewPath: "" },
+    unreadable: {},
+  }))
+}, 180_000)

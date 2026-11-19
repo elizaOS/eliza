@@ -1,0 +1,429 @@
+// spec/os/android/calendar.md, "Story: Read my calendar and open Android's editor"; spec/os/android/calendar.md, "Story: Change exactly the event I reviewed"; spec/os/android/calendar.md, "Story: Delete the event, one occurrence or the whole series as I chose"; spec/os/android/reminderAlarms.md, "Story: Get my reminder at its time, even after a reboot"
+import { assert, it } from "@effect/vitest"
+import { CalendarNotAllowed, CalendarRefused, InvalidCalendarFields, InvalidCalendarRange, calendarClient } from "../../src/bridges/calendar.vibe"
+import { ReminderNotAllowed, reminderStanding, remindersClient } from "../../src/bridges/reminders.vibe"
+import type { DeletionClock } from "../../src/bridges/deletion-window.vibe"
+
+module android {
+  import type {
+    AndroidCalendarEvent,
+    AndroidCalendarPlugin,
+    AndroidCalendarReadback,
+    AndroidCalendarRecurrence,
+    AndroidCalendarRow,
+    CalendarPick,
+  } from "../../src/bridges/definitions/calendar.ts"
+  import type { AndroidReminderRecord, AndroidRemindersPlugin } from "../../src/bridges/definitions/reminders.ts"
+
+  export const T0 = Date.UTC(2026, 10, 20, 9)
+  export const DAY = 86400000
+  export const CALENDAR: AndroidCalendarRow = { id: "7", name: "Device", writable: true, local: true }
+
+  interface Row { event: AndroidCalendarEvent; recurrence: AndroidCalendarRecurrence; revision: number; excluded: number[] }
+
+  export interface Device {
+    granted: boolean
+    unlocked: boolean
+    rows: Row[]
+    lists: number
+    saves: number
+    loseNextSave: boolean
+    opened: string[]
+    dispatched: string[]
+  }
+
+  /** @throws {never} */
+  function row(id: string, begin: number, recurrence: AndroidCalendarRecurrence): Row {
+    const event = { id, calendarId: CALENDAR.id, title: `Event ${id}`, begin, end: begin + 3600000, allDay: false, recurring: recurrence !== "one-off" }
+    return { event, recurrence, revision: 1, excluded: [] }
+  }
+
+  /** @throws {never} */
+  export function device(): Device {
+    return {
+      granted: false,
+      unlocked: true,
+      rows: [row("1", T0, "one-off"), row("2", T0 + DAY, "rule"), row("3", T0 + 2 * DAY, "one-off")],
+      lists: 0,
+      saves: 0,
+      loseNextSave: false,
+      opened: [],
+      dispatched: [],
+    }
+  }
+
+  /** @throws {never} */
+  export function pick(phone: Device, id: string): CalendarPick {
+    const found = phone.rows.find((one) => one.event.id === id)?.event ?? { id, calendarId: CALENDAR.id, begin: T0, end: T0 + 1, allDay: false, recurring: false }
+    return { event: { ...found }, calendar: CALENDAR }
+  }
+
+  /** @throws {never} */
+  export function changeOnDevice(phone: Device, id: string, title: string): void {
+    const found = phone.rows.find((one) => one.event.id === id)
+    if (found === undefined) return
+    found.event.title = title
+    found.revision += 1
+  }
+
+  /** @throws {never} */
+  export function androidCalendar(phone: Device): AndroidCalendarPlugin {
+    const find = (id: string) => phone.rows.find((one) => one.event.id === id)
+    const revisionOf = (one: Row) => `r${one.event.id}.${one.revision}`
+    return {
+      checkPermissions: async () => ({ calendar: phone.granted ? "granted" : "denied" }),
+      requestAccess: async () => {
+        phone.granted = true
+        return { status: "granted" }
+      },
+      list: async ({ begin, end }) => {
+        phone.lists += 1
+        if (!phone.granted) return { status: "permission-required" }
+        const events = phone.rows.filter((one) => one.event.begin < end && one.event.end > begin).map((one) => ({ ...one.event }))
+        return { status: "ready", calendars: [CALENDAR], events, truncated: false }
+      },
+      open: async ({ id }) => {
+        phone.opened.push(id)
+        return { status: "opened" }
+      },
+      insertHandoff: async ({ event }) =>
+        event.title.trim() === "" ? { status: "invalid" } : { status: "opened", alertsPrefilled: (event.alerts ?? []).length > 0 },
+      inspect: async ({ id }) => {
+        if (!phone.granted) return { status: "permission-required" }
+        if (!phone.unlocked) return { status: "unavailable" }
+        const one = find(id)
+        if (one === undefined) return { status: "conflict" }
+        if (one.recurrence !== "one-off") return { status: "external" }
+        return { status: "ready", revision: revisionOf(one), sourceRevision: "s7" }
+      },
+      save: async ({ id, expected, title, body, location, begin, end }) => {
+        phone.saves += 1
+        const one = find(id)
+        if (one === undefined || revisionOf(one) !== expected.revision) return { status: "conflict" }
+        one.event = { ...one.event, title, begin, end, ...(body === undefined ? {} : { body }), ...(location === undefined ? {} : { location }) }
+        one.revision += 1
+        if (phone.loseNextSave) {
+          phone.loseNextSave = false
+          throw new Error("Binder transaction failed")
+        }
+        return { status: "saved", id, calendarId: CALENDAR.id }
+      },
+      inspectDeletion: async ({ id }) => {
+        if (!phone.granted) return { status: "permission-required" }
+        if (!phone.unlocked) return { status: "unavailable" }
+        const one = find(id)
+        if (one === undefined) return { status: "conflict" }
+        return {
+          status: "ready",
+          recurrence: one.recurrence,
+          writable: true,
+          revision: revisionOf(one),
+          sourceRevision: "s7",
+          evidence: {
+            selectedRow: "ParentRow",
+            sync: "LocalUnsynced",
+            sourceCurrent: true,
+            bounded: true,
+            otherExceptions: false,
+            liveException: "NoLiveException",
+            instances: 1,
+            begin: one.event.begin,
+            finish: one.event.end,
+            exceptionOriginal: -1,
+          },
+        }
+      },
+      dispatchDeletion: async ({ id, revision, change, originalStart }) => {
+        phone.dispatched.push(change)
+        if (!phone.granted) return { status: "permission-required" }
+        const one = find(id)
+        if (one === undefined || revisionOf(one) !== revision) return { status: "conflict" }
+        const kept: AndroidCalendarReadback = { parentAfter: "ParentLive", fieldsMatch: false, exclusionExact: false, cancelledAtStart: 0, instanceRemains: false }
+        if (change === "DeleteRow") {
+          phone.rows = phone.rows.filter((other) => other !== one)
+          return { status: "committed", readback: { ...kept, parentAfter: "ParentGone" } }
+        }
+        one.excluded.push(originalStart)
+        one.revision += 1
+        return { status: "committed", readback: change === "ExcludeOccurrence" ? { ...kept, exclusionExact: true } : { ...kept, cancelledAtStart: 1 } }
+      },
+    }
+  }
+
+  type ReminderCalls = Pick<AndroidRemindersPlugin, "listReminders" | "scheduleReminder" | "cancelReminder">
+
+  /** @throws {never} */
+  export function reminderRecord(id: string, changes: Partial<AndroidReminderRecord> = {}): AndroidReminderRecord {
+    const target = { sourceId: "device", sourceRevision: "s1", reminderId: id, occurrenceId: `${id}-1`, revision: `${id}.1` }
+    const base = { id, title: `Reminder ${id}`, body: "", occurrenceId: `${id}-1`, target, createdAt: T0 - DAY }
+    return { ...base, at: T0, dueAt: T0, status: "scheduled", mode: "inexact", history: [], ...changes } as AndroidReminderRecord
+  }
+
+  /** @throws {never} */
+  export function androidReminders(records: Map<string, AndroidReminderRecord>, writes: string[]): AndroidRemindersPlugin {
+    const calls: ReminderCalls = {
+      listReminders: async () => ({ reminders: [...records.values()], notificationsEnabled: true }),
+      scheduleReminder: async ({ id, title, at }) => {
+        writes.push(`schedule ${id}`)
+        records.set(id, reminderRecord(id, { title, at, dueAt: at }))
+        return { id, status: "scheduled", at, mode: "inexact", message: "Reminder scheduled" }
+      },
+      cancelReminder: async ({ id }) => {
+        writes.push(`cancel ${id}`)
+        const found = records.get(id)
+        if (found !== undefined) records.set(id, { ...found, status: "cancelled" } as AndroidReminderRecord)
+        return { id, status: "cancelled", mode: "inexact", message: "Reminder cancelled" }
+      },
+    }
+    return calls as AndroidRemindersPlugin
+  }
+}
+import { DAY, T0, androidCalendar, androidReminders, changeOnDevice, device, pick, reminderRecord } from android
+
+const MAX_SPAN = 370 * DAY
+
+effect function refusal(call: () => Promise<unknown>) {
+  const { cause } = try flip(tryPromise(() => call()))
+  if (cause instanceof InvalidCalendarRange) return `invalid range ${cause.begin}..${cause.end}`
+  if (cause instanceof InvalidCalendarFields) return `invalid ${cause.problem}`
+  if (cause instanceof CalendarRefused) return `refused ${cause.method} ${cause.admission}`
+  if (cause instanceof CalendarNotAllowed) return `not allowed ${cause.action}`
+  if (cause instanceof ReminderNotAllowed) return `not allowed ${cause.action} ${cause.id}`
+  return cause
+}
+
+it.live("Read a bounded range and open Android's editor without taking it for a change (spec/os/android/calendar.md, \"Story: Read my calendar and open Android's editor\"; spec/os/android/calendar.md, \"A read covers a non-empty range of at most 370 days inside the safe integer range\"; spec/os/android/calendar.md, \"Opening Android's editor changes no row, review, staged deletion or write gate\")", () => effect {
+  const phone = device()
+  const calendar = calendarClient({ plugin: androidCalendar(phone) })
+  const empty = try refusal(() => calendar.list({ begin: T0, end: T0 }))
+  const reversed = try refusal(() => calendar.list({ begin: T0, end: T0 - 1 }))
+  const negative = try refusal(() => calendar.list({ begin: -1, end: T0 }))
+  const tooLong = try refusal(() => calendar.list({ begin: T0, end: T0 + MAX_SPAN + 1 }))
+  const unsafe = try refusal(() => calendar.list({ begin: Number.MAX_SAFE_INTEGER - 1000, end: Number.MAX_SAFE_INTEGER + 1 }))
+  const queriedBeforeGrant = phone.lists
+  const ungranted = try promise(() => calendar.list({ begin: T0, end: T0 + DAY }))
+  const access = try promise(() => calendar.requestAccess())
+  const year = try promise(() => calendar.list({ begin: T0, end: T0 + MAX_SPAN }))
+  const handoff = try promise(() => calendar.insertHandoff({ title: "Dentist", begin: T0, end: T0 + 3600000, allDay: false, alerts: [10] }))
+  const refusedHandoff = try promise(() => calendar.insertHandoff({ title: " ", begin: T0, end: T0 + 3600000, allDay: false }))
+
+  const review = try Effect.try(() => calendar.review(pick(phone, "1")))
+  const before = try promise(() => review.state())
+  const opened = try promise(() => review.openEditor())
+  const after = try promise(() => review.state())
+
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      empty, reversed, negative, tooLong, unsafe, queriedBeforeGrant, ungranted, access,
+      listed: year.status === "ready" ? year.events.map((event) => event.id) : year.status,
+      handoff, refusedHandoff, opened, openedOnDevice: phone.opened,
+      unchanged: { row: after.row, review: after.review, deletion: after.deletion, gate: after.gate },
+      lastResult: after.lastResult,
+    },
+    {
+      empty: `invalid range ${T0}..${T0}`,
+      reversed: `invalid range ${T0}..${T0 - 1}`,
+      negative: `invalid range -1..${T0}`,
+      tooLong: `invalid range ${T0}..${T0 + MAX_SPAN + 1}`,
+      unsafe: `invalid range ${Number.MAX_SAFE_INTEGER - 1000}..${Number.MAX_SAFE_INTEGER + 1}`,
+      queriedBeforeGrant: 0,
+      ungranted: { status: "permission-required" },
+      access: { status: "granted" },
+      listed: ["1", "2", "3"],
+      handoff: { outcome: "Opened", reply: { status: "opened", alertsPrefilled: true } },
+      refusedHandoff: { outcome: "Refused", reply: { status: "invalid" } },
+      opened: "Opened",
+      openedOnDevice: ["1"],
+      unchanged: { row: before.row, review: before.review, deletion: before.deletion, gate: before.gate },
+      lastResult: { tag: "EditorShown" },
+    },
+  ))
+})
+
+it.live("Change only the event I reviewed, under the current ticket, and block after a lost answer until an explicit read (spec/os/android/calendar.md, \"Story: Change exactly the event I reviewed\"; spec/os/android/calendar.md, \"Only the current inspection ticket supplies the native confirmation\"; spec/os/android/calendar.md, \"An edit compares the reviewed revision and changes the row in one provider batch\")", () => effect {
+  const phone = device()
+  phone.granted = true
+  const calendar = calendarClient({ plugin: androidCalendar(phone) })
+  const review = try Effect.try(() => calendar.review(pick(phone, "1")))
+  const fields = { title: "Planning", body: "Room 4", begin: T0, end: T0 + 3600000 }
+
+  const first = try promise(() => review.inspectUpdate())
+  const second = try promise(() => review.inspectUpdate())
+  const firstTicket = first.kind === "ready" ? first.ticket : try die(new Error("No first ticket"))
+  const secondTicket = second.kind === "ready" ? second.ticket : try die(new Error("No second ticket"))
+  const retired = try refusal(() => review.save(firstTicket, fields))
+  const emptyTitle = try refusal(() => review.save(secondTicket, { ...fields, title: "  " }))
+  const applied = try promise(() => review.save(secondTicket, fields))
+  const consumed = try refusal(() => review.save(secondTicket, fields))
+  const titleAfterApply = phone.rows[0]?.event.title
+
+  const third = try promise(() => review.inspectUpdate())
+  changeOnDevice(phone, "1", "Changed on the phone")
+  const savesBeforeStale = phone.saves
+  const stale = try promise(() => review.save(third.kind === "ready" ? third.ticket : firstTicket, { ...fields, title: "Overwrite" }))
+  const staleWrote = phone.saves - savesBeforeStale
+
+  const paused = try promise(() => review.inspectUpdate())
+  try promise(() => review.pause())
+  const afterPause = try refusal(() => review.save(paused.kind === "ready" ? paused.ticket : firstTicket, fields))
+
+  const beforeLoss = try promise(() => review.inspectUpdate())
+  phone.loseNextSave = true
+  const lost = try promise(() => review.save(beforeLoss.kind === "ready" ? beforeLoss.ticket : firstTicket, { ...fields, title: "Lost answer" }))
+  const gateAfterLoss = (try promise(() => review.state())).gate
+  const blockedReview = try promise(() => review.inspectUpdate())
+  const blocked = try refusal(() => review.save(blockedReview.kind === "ready" ? blockedReview.ticket : firstTicket, fields))
+  const gateAfterRead = try promise(() => review.refresh())
+  const retried = try promise(() => review.inspectUpdate())
+  const settledAgain = try promise(() => review.save(retried.kind === "ready" ? retried.ticket : firstTicket, { ...fields, title: "Checked" }))
+
+  phone.unlocked = false
+  const locked = try refusal(() => review.inspectUpdate())
+  phone.unlocked = true
+  const series = try promise(() => calendar.review(pick(phone, "2")).inspectUpdate())
+
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      first: first.kind, second: second.kind, retired, emptyTitle, applied, consumed, titleAfterApply,
+      stale, staleWrote, titleAfterStale: phone.rows[0]?.event.title, afterPause,
+      lost, gateAfterLoss, blocked, gateAfterRead, settledAgain, finalTitle: phone.rows[0]?.event.title, locked, series,
+    },
+    {
+      first: "ready",
+      second: "ready",
+      retired: "not allowed save",
+      emptyTitle: "invalid empty-title",
+      applied: "Applied",
+      consumed: "not allowed save",
+      titleAfterApply: "Planning",
+      stale: "Conflict",
+      staleWrote: 0,
+      titleAfterStale: "Changed on the phone",
+      afterPause: "not allowed save",
+      lost: "Uncertain",
+      gateAfterLoss: "WriteUnsettled",
+      blocked: "not allowed save",
+      gateAfterRead: "WriteIdle",
+      settledAgain: "Applied",
+      finalTitle: "Checked",
+      locked: "refused inspect HostNotReady",
+      series: { kind: "editor" },
+    },
+  ))
+})
+
+it.live("Delete one occurrence or the whole event only after the undo window, and never more than the reviewed scope (spec/os/android/calendar.md, \"Story: Delete the event, one occurrence or the whole series as I chose\"; spec/os/android/calendar.md, \"The provider resolves the selected instance and decides the permitted scope\"; spec/os/android/calendar.md, \"A confirmed deletion is staged on the review clock and dispatched only through its claim\")", () => effect {
+  const phone = device()
+  phone.granted = true
+  let now: DeletionClock = { continuity: "boot1", elapsed: 1000, wall: T0 }
+  const at = (elapsed: number) => {
+    now = { ...now, elapsed, wall: T0 + elapsed }
+  }
+  const calendar = calendarClient({ plugin: androidCalendar(phone), clock: () => now })
+
+  const series = try Effect.try(() => calendar.review(pick(phone, "2")))
+  const occurrence = try promise(() => series.inspectDeletion())
+  const wrongScope = try promise(() => series.inspectDeletion("event"))
+  const retiredTicket = occurrence.kind === "ready" ? occurrence.ticket : try die(new Error("No occurrence ticket"))
+  const retired = try refusal(() => series.stageDeletion(retiredTicket))
+  const again = try promise(() => series.inspectDeletion())
+  const deadline = try promise(() => series.stageDeletion(again.kind === "ready" ? again.ticket : retiredTicket))
+  at(5000)
+  const early = try refusal(() => series.dispatchDeletion())
+  try promise(() => series.undoDeletion())
+  const undone = (try promise(() => series.state())).lastResult
+  const undoTwice = try refusal(() => series.undoDeletion())
+  const restaged = try promise(() => series.inspectDeletion("occurrence"))
+  try promise(() => series.stageDeletion(restaged.kind === "ready" ? restaged.ticket : retiredTicket))
+  at(15001)
+  const lateUndo = try refusal(() => series.undoDeletion())
+  const excluded = try promise(() => series.dispatchDeletion())
+  const seriesRow = (try promise(() => series.state())).row.tag
+
+  const single = try Effect.try(() => calendar.review(pick(phone, "1")))
+  const asSeries = try promise(() => single.inspectDeletion("series"))
+  const whole = try promise(() => single.inspectDeletion())
+  now = { continuity: "", elapsed: 0, wall: 0 }
+  const noClock = try refusal(() => single.stageDeletion(whole.kind === "ready" ? whole.ticket : retiredTicket))
+  now = { continuity: "boot1", elapsed: 20000, wall: T0 + 20000 }
+  const wholeAgain = try promise(() => single.inspectDeletion())
+  try promise(() => single.stageDeletion(wholeAgain.kind === "ready" ? wholeAgain.ticket : retiredTicket))
+  at(30001)
+  phone.granted = false
+  const revoked = try refusal(() => single.dispatchDeletion())
+  phone.granted = true
+  const deleted = try promise(() => single.dispatchDeletion())
+  const singleRow = (try promise(() => single.state())).row.tag
+
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      occurrence: occurrence.kind === "ready" ? occurrence.change : occurrence.kind, wrongScope, retired, deadline, early, undone, undoTwice,
+      lateUndo, excluded, seriesRow, seriesExclusions: phone.rows.find((one) => one.event.id === "2")?.excluded,
+      asSeries, whole: whole.kind === "ready" ? whole.change : whole.kind, noClock, revoked, deleted, singleRow,
+      left: phone.rows.map((one) => one.event.id), dispatched: phone.dispatched,
+    },
+    {
+      occurrence: "ExcludeOccurrence",
+      wrongScope: { kind: "conflict" },
+      retired: "not allowed stageDeletion",
+      deadline: { deadlineContinuity: "boot1", createdElapsed: 1000, expiresElapsed: 11000, expiresAt: T0 + 10000 },
+      early: "not allowed dispatchDeletion",
+      undone: { tag: "DeletionUndone" },
+      undoTwice: "not allowed undoDeletion",
+      lateUndo: "not allowed undoDeletion",
+      excluded: "Applied",
+      seriesRow: "RowLive",
+      seriesExclusions: [T0 + DAY],
+      asSeries: { kind: "conflict" },
+      whole: "DeleteRow",
+      noClock: "not allowed stageDeletion",
+      revoked: "refused dispatchDeletion PermissionRequired",
+      deleted: "Applied",
+      singleRow: "RowGone",
+      left: ["2", "3"],
+      dispatched: ["ExcludeOccurrence", "DeleteRow"],
+    },
+  ))
+})
+
+it.live("Arm one alarm per dated reminder and change none that is being deleted (spec/os/android/reminderAlarms.md, \"Story: Get my reminder at its time, even after a reboot\"; spec/os/android/reminderAlarms.md, \"A reminder has at most one alarm, only while it is scheduled and not being deleted\")", () => effect {
+  const records = new Map([
+    ["deleting", reminderRecord("deleting", { pendingDeletion: "token-1" })],
+    ["posted", reminderRecord("posted", { status: "posted", postedAt: T0 })],
+    ["todo", reminderRecord("todo", { undated: true, status: "todo", mode: "none", history: [] } as never)],
+  ])
+  const writes: string[] = []
+  const reminders = remindersClient({ plugin: androidReminders(records, writes) })
+  const target = (id: string) => ({ id, target: reminderRecord(id).target, operationId: `op-${id}`, bindingHash: "hash" })
+
+  const created = try promise(() => reminders.schedule({ id: "fresh", title: "Stretch", at: T0 + DAY }))
+  const rescheduled = try promise(() => reminders.schedule({ id: "posted", title: "Call back", at: T0 + DAY }))
+  const deletingSchedule = try refusal(() => reminders.schedule({ id: "deleting", title: "Again", at: T0 + DAY }))
+  const deletingCancel = try refusal(() => reminders.cancel(target("deleting")))
+  const todoSchedule = try refusal(() => reminders.schedule({ id: "todo", title: "Dated now", at: T0 + DAY }))
+  const todoCancel = try promise(() => reminders.cancel(target("todo")))
+  const absentCancel = try refusal(() => reminders.cancel(target("missing")))
+  const standings = ["fresh", "deleting", "todo", "missing"].map((id) => reminderStanding(records.get(id)))
+  const closed = reminderStanding(reminderRecord("done", { status: "completed", completedAt: T0 }))
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { created: created.status, rescheduled: rescheduled.status, deletingSchedule, deletingCancel, todoSchedule, todoCancel: todoCancel.status, absentCancel, standings, closed, writes },
+    {
+      created: "scheduled",
+      rescheduled: "scheduled",
+      deletingSchedule: "not allowed schedule deleting",
+      deletingCancel: "not allowed cancel deleting",
+      todoSchedule: "not allowed schedule todo",
+      todoCancel: "cancelled",
+      absentCancel: "not allowed cancel missing",
+      standings: [
+        { kind: "Stored", status: "StoredScheduled", deletion: "NotDeleting" },
+        { kind: "Stored", status: "StoredScheduled", deletion: "DeletionPending" },
+        { kind: "Untimed" },
+        { kind: "Absent" },
+      ],
+      closed: { kind: "Stored", status: "StoredClosed", deletion: "NotDeleting" },
+      writes: ["schedule fresh", "schedule posted", "cancel todo"],
+    },
+  ))
+})

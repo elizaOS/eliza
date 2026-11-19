@@ -23,7 +23,7 @@ export type SignInFailureCode =
   | "google-unavailable"
   | "storage";
 
-export type GoogleOutcome = "connected" | "refused" | "not-requested";
+export type GoogleOutcome = "not-requested" | "held" | "connected" | "refused";
 
 export type SecondFactor = "totp" | "sms";
 
@@ -60,7 +60,7 @@ export interface SignInReceipt {
 
 export type SignInSettled =
   | { kind: "signedIn"; receipt: SignInReceipt }
-  | { kind: "failed"; requestId: SignInRequestId; attemptId: SignInAttemptId; code: SignInFailureCode };
+  | { kind: "failed"; requestId: SignInRequestId; attemptId: SignInAttemptId; google: GoogleOutcome; code: SignInFailureCode };
 
 export type SignInProgress =
   | { kind: "codeSent"; requestId: SignInRequestId; attemptId: SignInAttemptId; expiresAt: number; resendAt: number }
@@ -69,9 +69,9 @@ export type SignInProgress =
 
 export type SignInRefusal =
   | { kind: "settled"; settled: Extract<SignInSettled, { kind: "failed" }> }
-  | { kind: "kept"; requestId: SignInRequestId; step: OpenStep }
-  | { kind: "resendLater"; resendAt: number }
-  | { kind: "refused" };
+  | { kind: "kept"; code: SignInFailureCode; requestId: SignInRequestId; step: OpenStep }
+  | { kind: "resendLater"; code: SignInFailureCode; resendAt: number }
+  | { kind: "refused"; code: SignInFailureCode };
 
 export type SignInAccount =
   | { kind: "signedOut" }
@@ -115,7 +115,7 @@ export interface ElizaSignInPlugin {
   verify(options: { requestId: SignInRequestId; code: SignInCode; method?: SecondFactor }): Promise<unknown>;
   sendFactorCode(options: RequestOptions): Promise<unknown>;
   cancel(options: RequestOptions): Promise<unknown>;
-  signOut(): Promise<unknown>;
+  signOut(options: EnvironmentOptions): Promise<unknown>;
   status(options: ReadinessOptions): Promise<unknown>;
   serviceInfo(options: EnvironmentOptions): Promise<unknown>;
   addListener(eventName: keyof SignInEvents, listener: (event: unknown) => void): Promise<PluginListenerHandle>;
@@ -128,7 +128,7 @@ export interface SignInClient {
   verify(options: VerifyOptions): Promise<SignInProgress>;
   sendFactorCode(options: RequestOptions): Promise<RequestOptions>;
   cancel(options: RequestOptions): Promise<boolean>;
-  signOut(): Promise<SignInAccount>;
+  signOut(options: EnvironmentOptions): Promise<SignInAccount>;
   status(options: ReadinessOptions): Promise<SignInStatus>;
   readiness(options: ReadinessOptions): Promise<SignInReadiness>;
   serviceDocument(options: EnvironmentOptions): Promise<ServiceDocument>;

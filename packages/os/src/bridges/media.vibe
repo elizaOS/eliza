@@ -1,0 +1,226 @@
+// spec/os/android/media/catalog.md, "A next cursor is issued only for a full page with a lookahead row and reaches the caller only with the published page"; spec/os/android/media/review.md, "A reply claims success only when every row is verified"; spec/os/android/media/trash.md, "A batch names 1 to 20 distinct items and reports each one in its order"; spec/os/android/media/trash.md, "Deleting uses the consumed snapshot and reports only its rows"; spec/os/android/media/albums.md, "A write names the listed album revision and an added item its current revision"; spec/os/android/media/editCopy.md, "A removed recorded video copy settles only by an explicit review"; spec/os/android/files/documentGrants.md, "Forgetting gives back the exact grant only when no selection and no note still name the document"
+import { rowVerified, rowsComplete, type RowOutcome as RowReply } from "../../gen/os__android__media__rows.effect.vibe"
+import { MalformedReply, nativeCall, settled } from "./bridge.vibe"
+import type {
+  BatchReport,
+  DeviceLibraryClient,
+  DeviceLibraryPlugin,
+  MediaCursor,
+  MediaItem,
+  PermittedPhotosClient,
+  PermittedPhotosPlugin,
+  PhotosClient,
+  PhotosPlugin,
+  Reviewed,
+  RowOutcome,
+  RowStatus,
+  SelectedDocumentsClient,
+  SelectedDocumentsPlugin,
+  TrashReceipt,
+} from "./definitions/media.ts"
+import {
+  AlbumList,
+  AlbumWritten,
+  BatchReport as Batch,
+  ChangedItem,
+  DocumentHandoff,
+  DocumentText,
+  EditPreview,
+  EditReceipt,
+  KeepOutcome,
+  LibraryAccess,
+  LibraryPage,
+  LibraryScope,
+  LibrarySummary,
+  MediaItem as Item,
+  MediaPage,
+  PdfPage,
+  PreparedTrash,
+  Reset,
+  SelectedDocument,
+  SharedMany,
+  ShareOpened,
+  Thumbnails,
+  TrashReceipt as Receipt,
+  Validated,
+  VideoEditSession,
+  Watching,
+} from "./media.schema.vibe"
+
+export type * from "./definitions/media.ts"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { DeviceLibraryPlugin, PermittedPhotosPlugin, PhotosPlugin, SelectedDocumentsPlugin } from "./definitions/media.ts"
+
+  /** @throws {never} */
+  export function photosPlugin(name = "ElizaPhotos"): PhotosPlugin {
+    return registerPlugin<PhotosPlugin>(name)
+  }
+
+  /** @throws {never} */
+  export function permittedPhotosPlugin(name = "ElizaPhotos"): PermittedPhotosPlugin {
+    return registerPlugin<PermittedPhotosPlugin>(name)
+  }
+
+  /** @throws {never} */
+  export function deviceLibraryPlugin(name = "ElizaDeviceLibrary"): DeviceLibraryPlugin {
+    return registerPlugin<DeviceLibraryPlugin>(name)
+  }
+
+  /** @throws {never} */
+  export function selectedDocumentsPlugin(name: string): SelectedDocumentsPlugin {
+    return registerPlugin<SelectedDocumentsPlugin>(name)
+  }
+}
+import { deviceLibraryPlugin, permittedPhotosPlugin, photosPlugin, selectedDocumentsPlugin } from capacitor
+export { deviceLibraryPlugin, permittedPhotosPlugin, photosPlugin, selectedDocumentsPlugin }
+
+export error UnconfirmedRow { plugin: string; method: string; id: string; status: RowStatus }
+
+const REPLY: Readonly<Record<RowStatus, RowReply>> = {
+  favorited: "RowApplied",
+  unfavorited: "RowApplied",
+  trashed: "RowApplied",
+  restored: "RowApplied",
+  deleted: "RowApplied",
+  unchanged: "RowUnchanged",
+  stale: "RowStale",
+  unverified: "RowUnverified",
+  unsupported: "RowUnverified",
+}
+
+effect function reply<A, I>(plugin: string, method: string, shape: Schema.Codec<A, I>, call: () => Promise<unknown>) {
+  const raw = try nativeCall(plugin, method, call)
+  return try mapError(Schema.decodeUnknownEffect(shape)(raw), (refusal) => new MalformedReply({ plugin, method, issue: refusal.message }))
+}
+
+effect function done(plugin: string, method: string, call: () => Promise<unknown>) {
+  try nativeCall(plugin, method, call)
+}
+
+effect function sameRows(plugin: string, method: string, asked: readonly string[], answered: readonly string[]) {
+  if (answered.length !== asked.length || answered.some((id, index) => id !== asked[index]))
+    throw new MalformedReply({ plugin, method, issue: "The reply does not name each requested item in its order" })
+}
+
+function paged<Page extends { readonly next: "" | MediaCursor }>(page: Page): Omit<Page, "next"> & { readonly next: MediaCursor | null } {
+  return { ...page, next: page.next === "" ? null : page.next }
+}
+
+effect function batch(plugin: string, method: string, items: readonly Reviewed[], call: () => Promise<unknown>) {
+  const report = try reply(plugin, method, Batch, call)
+  try sameRows(plugin, method, items.map((item) => item.id), report.outcomes.map((row) => row.id))
+  const outcomes = report.outcomes.map((row): RowOutcome => row.item !== undefined && "kind" in row.item ? { id: row.id, status: row.status, item: row.item } : { id: row.id, status: row.status })
+  const confirmed: BatchReport = { status: rowsComplete(outcomes.map((row) => REPLY[row.status])) ? "complete" : "partial", outcomes }
+  return confirmed
+}
+
+effect function oneRow(plugin: string, method: string, item: Reviewed, call: () => Promise<unknown>) {
+  const changed = try reply(plugin, method, ChangedItem, call)
+  try sameRows(plugin, method, [item.id], [changed.id])
+  if (!rowVerified(REPLY[changed.status])) throw new UnconfirmedRow({ plugin, method, id: changed.id, status: changed.status })
+  return changed
+}
+
+effect function oneItem(plugin: string, method: string, id: string, call: () => Promise<unknown>) {
+  const item: MediaItem = try reply(plugin, method, Item, call)
+  try sameRows(plugin, method, [id], [item.id])
+  return item
+}
+
+effect function receipt(plugin: string, method: string, operationId: string, call: () => Promise<unknown>) {
+  const answered = try reply(plugin, method, EditReceipt, call)
+  try sameRows(plugin, method, [operationId], [answered.operationId])
+  return answered
+}
+
+effect function deleted(plugin: string, call: () => Promise<unknown>) {
+  const answered = try reply(plugin, "deletePreparedTrash", Receipt, call)
+  const settledRows: TrashReceipt = { ...answered, status: answered.skippedIds.length + answered.failedIds.length === 0 ? "deleted" : "partial" }
+  return settledRows
+}
+
+function heard<A, I>(plugin: string, event: string, shape: Schema.Codec<A, I>, listener: (value: A) => void): (raw: unknown) => void {
+  return (raw) =>
+    void runFork(matchEffect(Schema.decodeUnknownEffect(shape)(raw), {
+      onSuccess: (parsed) => sync(() => listener(parsed)),
+      onFailure: (refusal) => logError("A native media event did not match its shape", { plugin, event, issue: refusal.message }),
+    }))
+}
+
+export function permittedPhotosClient(plugin: PermittedPhotosPlugin = permittedPhotosPlugin(), name = "ElizaPhotos"): PermittedPhotosClient {
+  return {
+    libraryAccess: () => settled(reply(name, "libraryAccess", LibraryAccess, () => plugin.libraryAccess())),
+    watchLibrary: async (active) => (await settled(reply(name, "watchLibrary", Watching, () => plugin.watchLibrary({ active })))).active,
+    openLibrarySettings: () => settled(done(name, "openLibrarySettings", () => plugin.openLibrarySettings())),
+    requestLibraryAccess: () => settled(reply(name, "requestLibraryAccess", LibraryAccess, () => plugin.requestLibraryAccess())),
+    listPermitted: async (options = {}) => paged(await settled(reply(name, "listPermitted", MediaPage, () => plugin.listPermitted(options)))),
+    readPermitted: (options) => settled(oneItem(name, "readPermitted", options.id, () => plugin.readPermitted(options))),
+    share: (item) => settled(reply(name, "share", ShareOpened, () => plugin.share(item))),
+    onLibraryChanged: (listener) => plugin.addListener("libraryChanged", () => listener()),
+  }
+}
+
+export function photosClient(plugin: PhotosPlugin = photosPlugin(), name = "ElizaPhotos"): PhotosClient {
+  return {
+    ...permittedPhotosClient(plugin, name),
+    beginEdit: (item) => settled(reply(name, "beginEdit", EditPreview, () => plugin.beginEdit(item))),
+    previewEdit: (edit) => settled(reply(name, "previewEdit", EditPreview, () => plugin.previewEdit(edit))),
+    saveEdit: (edit) => settled(receipt(name, "saveEdit", edit.sessionId, () => plugin.saveEdit(edit))),
+    editResult: (operationId) => settled(receipt(name, "editResult", operationId, () => plugin.editResult({ operationId }))),
+    cancelEdit: (sessionId) => settled(done(name, "cancelEdit", () => plugin.cancelEdit({ sessionId }))),
+    beginVideoEdit: (item) => settled(reply(name, "beginVideoEdit", VideoEditSession, () => plugin.beginVideoEdit(item))),
+    saveVideoEdit: (edit) => settled(receipt(name, "saveVideoEdit", edit.sessionId, () => plugin.saveVideoEdit(edit))),
+    cancelVideoEdit: (sessionId) => settled(done(name, "cancelVideoEdit", () => plugin.cancelVideoEdit(sessionId === undefined ? {} : { sessionId }))),
+    reviewRemovedVideoCopy: (operationId) => settled(receipt(name, "reviewRemovedVideoCopy", operationId, () => plugin.reviewRemovedVideoCopy({ operationId }))),
+    list: async (options = {}) => paged(await settled(reply(name, "list", MediaPage, () => plugin.list(options)))),
+    thumbnails: async (ids) => (await settled(reply(name, "thumbnails", Thumbnails, () => plugin.thumbnails({ ids })))).items,
+    read: (options) => settled(oneItem(name, "read", options.id, () => plugin.read(options))),
+    keepCapture: (options) => settled(reply(name, "keepCapture", KeepOutcome, () => plugin.keepCapture(options))),
+    shareMany: (items) => settled(reply(name, "shareMany", SharedMany, () => plugin.shareMany({ items }))),
+    setTrashed: (item, trashed) => settled(oneRow(name, "setTrashed", item, () => plugin.setTrashed({ id: item.id, revision: item.revision, trashed }))),
+    setFavorite: (item, favorite) => settled(oneRow(name, "setFavorite", item, () => plugin.setFavorite({ id: item.id, revision: item.revision, favorite }))),
+    deletePermittedTrash: (items) => settled(batch(name, "deletePermittedTrash", items, () => plugin.deletePermittedTrash({ items }))),
+    changeMany: (operation, items) => settled(batch(name, "changeMany", items, () => plugin.changeMany({ operation, items }))),
+    summary: () => settled(reply(name, "summary", LibrarySummary, () => plugin.summary())),
+    prepareDeleteTrash: (selection) => settled(reply(name, "prepareDeleteTrash", PreparedTrash, () => plugin.prepareDeleteTrash(selection))),
+    cancelDeleteTrash: (confirmation) => settled(done(name, "cancelDeleteTrash", () => plugin.cancelDeleteTrash({ confirmation }))),
+    deletePreparedTrash: (confirmation) => settled(deleted(name, () => plugin.deletePreparedTrash({ confirmation }))),
+    albums: async () => (await settled(reply(name, "albums", AlbumList, () => plugin.albums()))).items,
+    changeAlbum: (change) => settled(reply(name, "changeAlbum", AlbumWritten, () => plugin.changeAlbum(change))),
+  }
+}
+
+export function deviceLibraryClient(plugin: DeviceLibraryPlugin = deviceLibraryPlugin(), name = "ElizaDeviceLibrary"): DeviceLibraryClient {
+  return {
+    scope: () => settled(reply(name, "scope", LibraryScope, () => plugin.scope())),
+    requestAccess: () => settled(reply(name, "requestAccess", LibraryScope, () => plugin.requestAccess())),
+    watch: async (active) => (await settled(reply(name, "watch", Watching, () => plugin.watch({ active })))).active,
+    page: async (options = {}) => paged(await settled(reply(name, "page", LibraryPage, () => plugin.page(options)))),
+    inspect: (id, pixels) => settled(oneItem(name, "inspect", id, () => plugin.inspect(pixels === undefined ? { id } : { id, pixels }))),
+    validate: async (items) => {
+      const answered = await settled(reply(name, "validate", Validated, () => plugin.validate({ items })))
+      await settled(sameRows(name, "validate", items.map((item) => item.id), answered.items.map((row) => row.id)))
+      return answered.items
+    },
+    changes: () => settled(reply(name, "changes", Reset, () => plugin.changes())),
+    requestChange: (operation, items) => settled(batch(name, "requestChange", items, () => plugin.requestChange({ operation, items }))),
+    share: (items) => settled(reply(name, "share", SharedMany, () => plugin.share({ items }))),
+    onLibraryChanged: (listener) => plugin.addListener("libraryChanged", () => listener()),
+    onScopeChanged: (listener) => plugin.addListener("scopeChanged", heard(name, "scopeChanged", LibraryScope, listener)),
+  }
+}
+
+export function selectedDocumentsClient(plugin: SelectedDocumentsPlugin, name = "SelectedDocuments"): SelectedDocumentsClient {
+  return {
+    restore: () => settled(reply(name, "restoreSelected", SelectedDocument, () => plugin.restoreSelected())),
+    describe: (selectionId) => settled(reply(name, "describeSelected", SelectedDocument, () => plugin.describeSelected({ selectionId }))),
+    rename: (selectionId, newName) => settled(reply(name, "renameSelected", SelectedDocument, () => plugin.renameSelected({ selectionId, name: newName }))),
+    pdf: (selectionId, page) => settled(reply(name, "pdfSelected", PdfPage, () => plugin.pdfSelected({ selectionId, page }))),
+    read: (selectionId) => settled(reply(name, "readSelected", DocumentText, () => plugin.readSelected({ selectionId }))),
+    open: (selectionId) => settled(reply(name, "openSelected", DocumentHandoff, () => plugin.openSelected({ selectionId }))),
+    share: (selectionId) => settled(reply(name, "shareSelected", DocumentHandoff, () => plugin.shareSelected({ selectionId }))),
+    forget: (selectionId) => settled(done(name, "forgetSelected", () => plugin.forgetSelected({ selectionId }))),
+  }
+}

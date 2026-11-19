@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<permissions>
+    <privapp-permissions package="ai.eliza.firstrun">
+        <permission name="android.permission.MANAGE_ROLE_HOLDERS"/>
+    </privapp-permissions>
+</permissions>

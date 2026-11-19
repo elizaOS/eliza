@@ -1,30 +1,131 @@
-// spec/agent/access/transport.md, "Story: Answer each local request exactly once"; spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"
+// spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"
 module node {
-  export type ReplyFrame =
-    | { readonly type: "token"; readonly text: string; readonly fullText: string }
-    | { readonly type: "done"; readonly fullText: string }
-    | { readonly type: "error"; readonly message: string }
+  import { logger } from "@elizaos/core"
+  import type { LocalRoute } from "../access/routes.vibe"
+  import { append, replace, start, type Cadence } from "./stream-snapshot.ts"
 
-  function writeReplyStream(run: (emit: (frame: ReplyFrame) => void, signal: AbortSignal) => Promise<void>, incoming: AbortSignal): Response {
-    const cancelled = new AbortController()
-    const signal = AbortSignal.any([incoming, cancelled.signal])
+  export type Activity = "thinking" | "streaming" | "running_action" | "running_tool" | "evaluating" | "waking" | "speaking"
+
+  export interface ActionResultFrame {
+    readonly action: string
+    readonly data: unknown
+  }
+
+  export type Terminal =
+    | {
+      readonly type: "done"; readonly fullText: string; readonly messageId: string
+      readonly actionResults: readonly ActionResultFrame[]; readonly taskChoices?: readonly unknown[]; readonly failureKind?: string
+    }
+    | { readonly type: "error"; readonly code: string; readonly message: string }
+
+  type Provisional = { readonly provisional?: true }
+
+  export type ReplyFrame =
+    | ({ readonly type: "token"; readonly text: string } & Provisional)
+    | ({ readonly type: "token"; readonly fullText: string } & Provisional)
+    | { readonly type: "status"; readonly activity: Activity }
+    | { readonly type: "tool"; readonly name: string }
+    | Terminal
+
+  export interface ReplyWriter {
+    readonly append: (text: string, provisional?: boolean) => Promise<void>
+    readonly replace: (fullText: string, provisional?: boolean) => Promise<void>
+    readonly status: (activity: Activity) => Promise<void>
+    readonly tool: (name: string) => Promise<void>
+  }
+
+  export type StreamStart =
+    | { readonly kind: "refused"; readonly status: number; readonly error: string }
+    | { readonly kind: "admitted"; readonly run: (writer: ReplyWriter, signal: AbortSignal) => Promise<Terminal> }
+
+  export type StartStream = (conversationId: string, body: unknown, headers: ReadonlyMap<string, string>) => Promise<StreamStart>
+
+  const turnFailed: Terminal = { type: "error", code: "turn_failed", message: "The turn did not complete" }
+  const marked = (provisional: boolean | undefined): Provisional => provisional === true ? { provisional: true } : {}
+
+  function frameChannel(signal: AbortSignal, cancel: () => void) {
     const encoder = new TextEncoder()
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        function emit(frame: ReplyFrame) {
-          if (!signal.aborted) controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`))
-        }
-        void run(emit, signal)
-          .catch(() => emit({ type: "error", message: "The turn did not complete" }))
-          .finally(() => { if (!cancelled.signal.aborted) controller.close() })
-      },
-      cancel() { cancelled.abort() },
+    let demand = Promise.withResolvers<void>()
+    let taken = Promise.withResolvers<void>()
+    let controller: ReadableStreamDefaultController<Uint8Array> | undefined
+    const body = new ReadableStream<Uint8Array>({
+      start(opened) { controller = opened },
+      pull() { demand.resolve(); return taken.promise },
+      cancel,
+    }, { highWaterMark: 0 })
+    const stopped = new Promise<void>((resolve) => {
+      if (signal.aborted) resolve()
+      else signal.addEventListener("abort", () => resolve(), { once: true })
     })
-    return new Response(stream, {
+    let tail = Promise.resolve()
+    const send = (frame: ReplyFrame): Promise<void> => tail = tail.then(async () => {
+      await Promise.race([demand.promise, stopped])
+      if (signal.aborted || controller === undefined) return
+      demand = Promise.withResolvers()
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`))
+      const given = taken
+      taken = Promise.withResolvers()
+      given.resolve()
+    })
+    const close = (): Promise<void> => tail = tail.then(() => { if (!signal.aborted) controller?.close() })
+    return { body, send, close }
+  }
+
+  export function writeReplyStream(run: (writer: ReplyWriter, signal: AbortSignal) => Promise<Terminal>, incoming: AbortSignal): Response {
+    const disconnected = new AbortController()
+    const signal = AbortSignal.any([incoming, disconnected.signal])
+    const channel = frameChannel(signal, () => disconnected.abort())
+    let cadence: Cadence = start
+    let fullText = ""
+    let ended = false
+    const send = (frame: ReplyFrame) => ended ? Promise.resolve() : channel.send(frame)
+    const writer: ReplyWriter = {
+      append: (text, provisional) => {
+        if (ended || text === "") return Promise.resolve()
+        fullText += text
+        const next = append(cadence, text.length)
+        cadence = next.cadence
+        return send(next.snapshot ? { type: "token", fullText, ...marked(provisional) } : { type: "token", text, ...marked(provisional) })
+      },
+      replace: (text, provisional) => {
+        if (ended) return Promise.resolve()
+        fullText = text
+        cadence = replace(text.length)
+        return send({ type: "token", fullText, ...marked(provisional) })
+      },
+      status: (activity) => send({ type: "status", activity }),
+      tool: (name) => send({ type: "tool", name }),
+    }
+    const finish = (terminal: Terminal) => {
+      if (ended) return
+      void channel.send(terminal)
+      ended = true
+      void channel.close()
+    }
+    void writer.status("thinking")
+    void run(writer, signal).then(finish, (error: unknown) => {
+      if (!signal.aborted) logger.warn({ src: "agent", error: String(error) }, "A streamed turn failed")
+      finish(turnFailed)
+    })
+    return new Response(channel.body, {
       headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store" },
     })
   }
 
-  export { writeReplyStream }
+  const streamProtocolField = (body: unknown) => typeof body === "object" && body !== null && Object.hasOwn(body, "streamProtocol")
+
+  export function streamRoutes(startStream: StartStream): LocalRoute[] {
+    return [{
+      method: "POST", path: "/api/conversations/{id}/messages/stream", stream: true,
+      handler: async ({ parameters, body, headers, signal }) => {
+        if (streamProtocolField(body)) return { status: 400, body: { error: "stream_protocol_unsupported" } }
+        const started = await startStream(parameters.get("id") ?? "", body, headers)
+        switch (started.kind) {
+          case "refused": return { status: started.status, body: { error: started.error } }
+          case "admitted": return writeReplyStream(started.run, signal)
+        }
+      },
+    }]
+  }
 }
-export { writeReplyStream, type ReplyFrame } from node
+export { streamRoutes, writeReplyStream, type Activity, type ActionResultFrame, type ReplyFrame, type ReplyWriter, type StartStream, type StreamStart, type Terminal } from node

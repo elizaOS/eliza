@@ -1,3 +1,4 @@
+// spec/os/android/secureStore.md, "A write is acknowledged only after it reads back exactly, and a removal only after every file of the slot is gone"
 package ai.eliza.plugins.securestore
 
 import android.os.Bundle
@@ -11,6 +12,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -25,8 +27,12 @@ class SecureStoreTestActivity : BridgeActivity() {
 @RunWith(AndroidJUnit4::class)
 class SecureStoreBridgeInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
-    private val key = "session.device_auth"
-    private val file get() = File(context.noBackupFilesDir, "eliza-secure-store/session_device_auth.enc")
+    private val key = "test.secure-store.bridge"
+    private val file: File
+        get() {
+            val digest = MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8))
+            return File(File(context.noBackupFilesDir, "eliza-secure-slots"), digest.joinToString("") { "%02x".format(it.toInt() and 255) })
+        }
 
     private fun evaluate(scenario: ActivityScenario<SecureStoreTestActivity>, script: String): String {
         val done = CountDownLatch(1)
@@ -83,20 +89,21 @@ class SecureStoreBridgeInstrumentedTest {
                 val status = call(scenario, "status")
                 assertTrue(status.getBoolean("available"))
                 assertEquals("android_keystore", status.getString("backend"))
-                val value = "test-only credential 🔐 ${System.nanoTime()}"
-                assertTrue(call(scenario, "set", options(value)).getBoolean("ok"))
+                val value = "\"test-only credential 🔐 ${System.nanoTime()}\""
+                assertEquals("Written", call(scenario, "set", options(value)).getString("outcome"))
                 val ciphertext = file.readBytes()
-                assertFalse(ciphertext.toString(Charsets.UTF_8).contains(value))
+                assertFalse(ciphertext.toString(Charsets.UTF_8).contains("test-only"))
                 assertEquals(value, call(scenario, "get", options()).getString("value"))
                 scenario.recreate()
                 ready(scenario)
                 assertEquals(value, call(scenario, "get", options()).getString("value"))
                 assertTrue(call(scenario, "set", options(value)).getBoolean("ok"))
                 assertFalse("each write must use a fresh nonce", ciphertext.contentEquals(file.readBytes()))
-                assertTrue(call(scenario, "remove", options()).getBoolean("deleted"))
+                assertEquals("Removed", call(scenario, "remove", options()).getString("outcome"))
                 assertFalse(file.exists())
                 assertEquals("not_found", call(scenario, "get", options()).getString("error"))
-                assertFalse(call(scenario, "remove", options()).getBoolean("deleted"))
+                val exchange = call(scenario, "compareAndExchange", options(value).put("expected", JSONObject.NULL))
+                assertEquals("Refused", exchange.getString("outcome"))
             } finally {
                 call(scenario, "remove", options())
             }
@@ -108,14 +115,15 @@ class SecureStoreBridgeInstrumentedTest {
         ActivityScenario.launch(SecureStoreTestActivity::class.java).use { scenario ->
             ready(scenario)
             try {
-                for (invalid in listOf(options("value", "../escape"), options(""), options("é".repeat(131073)))) {
-                    assertEquals("invalid_input", call(scenario, "set", invalid).getString("error"))
+                for (invalid in listOf(options("{}", "sign-in:escape"), options("{}", "cloud-delegation:grant"), options(""), options("not json"))) {
+                    assertEquals("denied", call(scenario, "set", invalid).getString("error"))
                 }
-                assertTrue(call(scenario, "set", options("test-only-secret")).getBoolean("ok"))
+                assertEquals("storage_full", call(scenario, "set", options("\"" + "é".repeat(131073) + "\"")).getString("error"))
+                assertTrue(call(scenario, "set", options("\"test-only-secret\"")).getBoolean("ok"))
                 file.writeText("corrupt ciphertext")
                 val result = call(scenario, "get", options())
                 assertFalse(result.getBoolean("ok"))
-                assertEquals("native_error", result.getString("error"))
+                assertEquals("unreadable", result.getString("error"))
                 assertFalse(result.has("value"))
             } finally {
                 call(scenario, "remove", options())

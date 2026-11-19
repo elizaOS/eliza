@@ -110,6 +110,7 @@ it.effect('A stopped inbox answers 503 with Retry-After, never an empty list or 
   const [notice] = try notifyAll(service, [{ title: "Call the dentist", category: "reminder" }])
   try host("inbox stop", () => service.stop())
   const asked = try call(agent, { method: "GET", path: "/api/notifications?nativeTransport=true" })
+  const owner = try list(agent, "?unreadOnly=true")
   const marked = try markRead(agent, notice.id)
   const malformed = try list(agent, "?limit=101")
   try Effect.try(() => {
@@ -117,7 +118,7 @@ it.effect('A stopped inbox answers 503 with Retry-After, never an empty list or 
     if (!("status" in asked)) return
     assert.strictEqual(asked.status, 503)
     assert.match(asked.headers["retry-after"] ?? "", /^[1-9][0-9]*$/)
-    assert.deepStrictEqual([marked.status, malformed.status], [503, 400])
+    assert.deepStrictEqual([owner.status, marked.status, malformed.status], [503, 503, 400])
   })
 }, 120_000)
 

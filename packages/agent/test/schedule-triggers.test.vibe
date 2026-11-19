@@ -215,11 +215,12 @@ module node {
   }
 
   async function removal(bench: Bench, id: string) {
-    const stale = await ask<Replies["any"]>(bench, "DELETE", `/api/triggers/${id}`, { expectedRevision: 1 })
-    const removed = await ask<Replies["any"]>(bench, "DELETE", `/api/triggers/${id}`, { expectedRevision: 4 })
+    const malformed = await ask<Replies["any"]>(bench, "DELETE", `/api/triggers/${id}?expectedRevision=first`)
+    const stale = await ask<Replies["any"]>(bench, "DELETE", `/api/triggers/${id}?expectedRevision=1`)
+    const removed = await ask<Replies["any"]>(bench, "DELETE", `/api/triggers/${id}?expectedRevision=4`)
     const read = await ask<Replies["any"]>(bench, "GET", `/api/triggers/${id}`)
     const runs = await ask<Replies["any"]>(bench, "GET", `/api/triggers/${id}/runs`)
-    return { stale: `${stale.status} ${stale.body.error ?? ""}`, removed: removed.body, read: read.status, runs: runs.status }
+    return { malformed: malformed.status, stale: `${stale.status} ${stale.body.error ?? ""}`, removed: removed.body, read: read.status, runs: runs.status }
   }
 
   export async function triggerJourney(bench: Bench) {
@@ -320,7 +321,7 @@ it.effect('A trigger is saved disabled, fires once on schedule, keeps edits made
       kept: 100, statuses: ["error"], inferences: 0, fellBackTo: 0,
     },
     limit: { accepted: 100, refused: [429], listed: 104 },
-    removed: { stale: "409 stale_revision", removed: { ok: true }, read: 404, runs: 404 },
+    removed: { malformed: 400, stale: "409 stale_revision", removed: { ok: true }, read: 404, runs: 404 },
   }))
 }, 300_000)
 

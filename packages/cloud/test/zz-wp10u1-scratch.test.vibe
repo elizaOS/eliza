@@ -1,0 +1,61 @@
+// spec/cloud/operator.md, "Story: Operate the deployment without reading secrets"
+import { assert, describe, it } from "@effect/vitest"
+import { testCloud, type TestCloud } from "./support/cloud.vibe"
+import { deviceKey, openAccount, operator, printed } from "./support/operator.vibe"
+
+effect function check(run: () => void) {
+  try Effect.try(run)
+}
+
+effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
+  return try cloud.store.transaction((tx) => tx.query(text, params))
+}
+
+describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\")", () => {
+  it.live("Fund an active account, list and revoke a lost device, and refuse every command on another or an unreadable database (spec/cloud/operator.md, \"Story: Operate the deployment without reading secrets\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const now = try Clock.currentTimeMillis
+    try openAccount(cloud, { userId: "user-operated", organizationId: "org-operated" })
+    const shown = (result: { readonly exit: Exit.Exit<unknown, unknown>; readonly out: ReadonlyArray<string>; readonly err: ReadonlyArray<string> }) =>
+      [Exit.isSuccess(result.exit), result.out, result.err.map((line) => /"error":"([a-z_]+)"/.exec(line)?.[1])]
+    const credits = ["credits", "add", "--organization", "org-operated", "--amount", "5000000", "--request", "pilot-1"]
+    const added = try printed(operator(cloud, credits))
+    const replayed = try printed(operator(cloud, credits))
+    const missing = try printed(operator(cloud, ["credits", "add", "--organization", "org-missing", "--amount", "1", "--request", "pilot-2"]))
+    const device = { deviceName: "Lost phone", createdAt: now - 1000, expiresAt: now + 86_400_000 }
+    const key = try deviceKey(cloud, "user-operated", device)
+    const entitlement = effect () => (try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${key}` } }))
+    const before = try entitlement()
+    const listed = try printed(operator(cloud, ["account", "devices", "--user", "user-operated"]))
+    const revoked = try printed(operator(cloud, ["account", "revoke-devices", "--user", "user-operated"]))
+    const after = try entitlement()
+    const listedAfter = try printed(operator(cloud, ["account", "devices", "--user", "user-operated"]))
+    const otherDatabase = try printed(operator(cloud, [...credits.slice(0, -1), "pilot-3"], {
+      edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, databaseIdentity: "c".repeat(64) } } })
+    }))
+    try sql(cloud, "DELETE FROM cloud_identity", [])
+    const unreadable = try printed(operator(cloud, [...credits.slice(0, -1), "pilot-4"]))
+    const balance = try sql(cloud, "SELECT count(*)::int AS entries FROM credit_entries WHERE organization_id = 'org-operated' AND kind = 'add'", [])
+    const body = after.body as { readonly error?: string; readonly reason?: string }
+    try check(() => assert.deepStrictEqual(
+      {
+        added: shown(added), replayed: shown(replayed), missing: shown(missing),
+        before: before.status, listed: shown(listed), revoked: shown(revoked), after: [after.status, body.error, body.reason], listedAfter: shown(listedAfter),
+        otherDatabase: shown(otherDatabase), unreadable: shown(unreadable), entries: balance[0]?.entries
+      },
+      {
+        added: [true, ["organization org-operated: 5000000 µUSD added, balance 5000000 µUSD"], []],
+        replayed: [true, ["organization org-operated: credits already added by this request, balance 5000000 µUSD"], []],
+        missing: [false, [], ["not_found"]],
+        before: 200,
+        listed: [true, [JSON.stringify(device)], []],
+        revoked: [true, ["user user-operated: 1 device keys ended, every session ended"], []],
+        after: [401, "authentication_required", "credential_revoked"],
+        listedAfter: [true, [], []],
+        otherDatabase: [false, [], ["precondition_failed"]],
+        unreadable: [false, [], ["service_unavailable"]],
+        entries: 1
+      }
+    ))
+  }), 30_000)
+})

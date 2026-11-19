@@ -365,7 +365,7 @@ export effect function startScheduledTaskTicks(runtime: IAgentRuntime, tasks: Sc
       return undefined
     }),
   }
-  try Effect.try(() => runtime.registerTaskWorker(worker))
+  try sync(() => runtime.registerTaskWorker(worker))
   const boot = fork.detached bootQuietly(runtime)
   return {
     stop: effect function () {

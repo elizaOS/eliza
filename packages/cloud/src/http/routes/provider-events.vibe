@@ -1,0 +1,5 @@
+// spec/cloud/billing/providerEvents.md, "Story: Apply each payment event once, whatever the delivery order"
+import type { Area } from "../routes.vibe"
+import { routes, sweeps } from "../../billing/provider-events.vibe"
+
+export const area: Area = { routes, sweeps }

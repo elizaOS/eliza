@@ -1,4 +1,4 @@
-// spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account", "Story: Reach a runtime that is not running yet", "Story: Understand why the runtime refused"
+// spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account", "Story: Reach a runtime that is not running yet", "Story: Understand why the runtime refused", "A stream is sent at most once and only in its generation"
 import {
   enabled, initial, machineOver,
   type BridgeCall, type Event, type Stage, type StatusReport,
@@ -6,6 +6,7 @@ import {
 
 type Command = BridgeCall
   | { readonly tag: "Probe"; readonly id: number; readonly generation: number }
+  | { readonly tag: "Open"; readonly id: number }
   | { readonly tag: "Finish"; readonly id: number; readonly stage: Extract<Stage, { tag: "Failed" | "Refused" | "Replied" }> }
 
 export effect function createRuntimeCoordinator() {
@@ -18,11 +19,13 @@ export effect function createRuntimeCoordinator() {
     const update = try machine.send(event)
     const commands: Command[] = [...update.out]
     for (const request of update.state.requests) {
+      const before = previous.requests.find((entry) => entry.id === request.id)?.stage.tag
       switch (request.stage.tag) {
         case "Probing":
-          if (previous.requests.find((entry) => entry.id === request.id)?.stage.tag !== "Probing") {
-            commands.push({ tag: "Probe", id: request.id, generation: request.gen })
-          }
+          if (before !== "Probing") commands.push({ tag: "Probe", id: request.id, generation: request.gen })
+          break
+        case "Streaming":
+          if (before !== "Streaming") commands.push({ tag: "Open", id: request.id })
           break
         case "Failed":
         case "Refused":

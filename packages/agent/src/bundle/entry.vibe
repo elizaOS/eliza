@@ -1,0 +1,30 @@
+// spec/agent/plugins/bundle.md, "A bundle is built only when every listed plugin and the product plugin ship as packages and the load smoke loaded them"
+import { extname } from "node:path"
+import { fileURLToPath } from "node:url"
+
+export interface BundleEntryInput {
+  readonly plugins: readonly string[]
+  readonly productPlugin?: string | undefined
+  readonly cli?: string | undefined
+}
+
+export const agentCliModule = fileURLToPath(new URL(`../cli${extname(fileURLToPath(import.meta.url))}`, import.meta.url))
+
+export function bundleEntrySource({ plugins, productPlugin, cli = agentCliModule }: BundleEntryInput): string {
+  const packages = productPlugin === undefined ? plugins : [...plugins, productPlugin]
+  const imports = packages.map((name, index) => `import * as plugin${index} from ${JSON.stringify(name)}`)
+  const entries = packages.map((name, index) =>
+    `  { packageName: ${JSON.stringify(name)}, plugin: plugin${index}.default ?? plugin${index}.plugin },`)
+  return [
+    `import { runAgentCli } from ${JSON.stringify(cli)}`,
+    ...imports,
+    "",
+    "runAgentCli({",
+    "  bundled: [",
+    ...entries,
+    "  ],",
+    ...(productPlugin === undefined ? [] : [`  productPlugin: ${JSON.stringify(productPlugin)},`]),
+    "})",
+    "",
+  ].join("\n")
+}

@@ -1,76 +1,191 @@
 // spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"; spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; spec/os/signIn/readiness.md, "Story: Read the service's own terms"
-import type { ElizaSignInPlugin, SignInEvents, SignInFailureCode } from "./definitions/sign-in.ts"
-import { Cancelled, Progress, Readiness, Refusal, Service, SignOut, Status, events, requestIdOf, signInCode, strict } from "./sign-in.schema.vibe"
+import type { PluginListenerHandle } from "@capacitor/core"
+import { BridgeUnavailable, MalformedReply, NativeRejection, nativeCall, settled } from "./bridge.vibe"
+import type {
+  ElizaSignInPlugin,
+  EnvironmentName,
+  ServiceDocument,
+  SignInAccount,
+  SignInClient,
+  SignInEvents,
+  SignInOptions,
+  SignInProgress,
+  SignInReadiness,
+  SignInRefusal,
+  SignInSettled,
+} from "./definitions/sign-in.ts"
+import {
+  Account,
+  Cancelled,
+  Failed,
+  FactorCodeSent,
+  Kept,
+  Later,
+  Progress,
+  Readiness,
+  Rejected,
+  Service,
+  Settled,
+  SignedOut,
+  Status,
+  requestIdOf,
+  signInCode,
+} from "./sign-in.schema.vibe"
 
 export type * from "./definitions/sign-in.ts"
 export { requestIdOf, signInCode }
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
-  import { Cause, Effect, Exit } from "effect"
   import type { ElizaSignInPlugin } from "./definitions/sign-in.ts"
 
   /** @throws {never} */
   export function signInPlugin(name = "ElizaSignIn"): ElizaSignInPlugin {
     return registerPlugin<ElizaSignInPlugin>(name)
   }
-
-  /** @throws {never} */
-  export async function answered<A, E>(effect: Effect.Effect<A, E>): Promise<A> {
-    const exit = await Effect.runPromiseExit(effect)
-    if (Exit.isSuccess(exit)) return exit.value
-    throw Cause.squash(exit.cause)
-  }
 }
-import { answered, signInPlugin } from capacitor
+import { signInPlugin } from capacitor
 export { signInPlugin }
 
-export type SignInCall = keyof ElizaSignInPlugin
+export error SignInRefused { method: string; refusal: SignInRefusal }
 
-export error SignInRefused { call: SignInCall; code: SignInFailureCode; attemptKept: boolean; resendAt: number | undefined }
+type Wire<S extends { readonly Type: unknown }> = S["Type"]
 
-export error SignInCallFailed { call: SignInCall; cause: unknown }
+function failedOf(failed: Wire<typeof Failed>): Extract<SignInSettled, { kind: "failed" }> {
+  return { kind: "failed", requestId: failed.requestId, attemptId: failed.attemptId, google: failed.google, code: failed.failure }
+}
 
-export error MalformedSignInReply { call: SignInCall; issue: string }
-
-function rejection(call: SignInCall, cause: unknown) {
-  return match (Schema.decodeUnknownOption(Refusal)(cause)) {
-    when Option.Some(let refusal): new SignInRefused({
-      call,
-      code: refusal.code,
-      attemptKept: refusal.data?.attemptKept === true,
-      resendAt: refusal.data?.resendAt,
-    });
-    default: new SignInCallFailed({ call, cause });
+function settledOf(settled: Wire<typeof Settled>): SignInSettled {
+  switch (settled.step) {
+    case "signed-in":
+      return { kind: "signedIn", receipt: { requestId: settled.requestId, attemptId: settled.attemptId, credentialId: settled.credentialId, google: settled.google } }
+    case "failed":
+      return failedOf(settled)
   }
 }
 
-effect function reply<A>(call: SignInCall, shape: Schema.Codec<A, unknown>, run: () => Promise<unknown>) {
-  const raw = try tryPromise({ try: () => run(), catch: (cause) => rejection(call, cause) })
-  return try mapError(Schema.decodeUnknownEffect(shape)(raw, strict), (refusal) => new MalformedSignInReply({ call, issue: refusal.message }))
+function progressOf(progress: Wire<typeof Progress>): SignInProgress {
+  switch (progress.step) {
+    case "code-sent":
+      return { kind: "codeSent", requestId: progress.requestId, attemptId: progress.attemptId, expiresAt: progress.expiresAt, resendAt: progress.resendAt }
+    case "second-factor":
+      return { kind: "secondFactor", requestId: progress.requestId, attemptId: progress.attemptId, factors: progress.methods, expiresAt: progress.expiresAt }
+    case "signed-in":
+      return { kind: "signedIn", receipt: { requestId: progress.requestId, attemptId: progress.attemptId, credentialId: progress.credentialId, google: progress.google } }
+  }
 }
 
-function heard<Name extends keyof SignInEvents>(name: Name, listener: (event: SignInEvents[Name]) => void) {
-  const shape: Schema.Codec<SignInEvents[Name], unknown> = events[name]
-  return (event: unknown) =>
-    runFork(matchEffect(Schema.decodeUnknownEffect(shape)(event, strict), {
-      onSuccess: (parsed) => sync(() => listener(parsed)),
-      onFailure: (refusal) => logError("A native sign-in event did not match its shape", { event: name, issue: refusal.message }),
-    }))
+function accountOf(account: Wire<typeof Account>): SignInAccount {
+  return account.signedIn
+    ? { kind: "signedIn", userId: account.userId, organizationId: account.organizationId, credentialId: account.credentialId, keyExpiresAt: account.keyExpiresAt }
+    : { kind: "signedOut" }
 }
 
-export function signInClient(plugin: ElizaSignInPlugin = signInPlugin()): ElizaSignInPlugin {
+function readinessOf(readiness: Wire<typeof Readiness>): SignInReadiness {
+  const { environment, methodsKnown, email, sms, google } = readiness
+  return { environment, methodsKnown, email, sms, google, googleMode: readiness.googleMode === "browser" ? "Browser" : "Picker" }
+}
+
+function serviceOf(environment: EnvironmentName, service: Wire<typeof Service>): ServiceDocument {
+  switch (service.outcome) {
+    case "service_shown":
+      return { kind: "ServiceShown", environment, service: service.service }
+    case "service_unavailable":
+      return { kind: "ServiceUnavailable", environment }
+    case "service_unknown_environment":
+      return { kind: "ServiceUnknownEnvironment", environment }
+  }
+}
+
+function refusalOf(data: unknown, code: Wire<typeof Rejected>["code"]): SignInRefusal {
+  const failed = Schema.decodeUnknownOption(Failed)(data)
+  if (Option.isSome(failed)) return { kind: "settled", settled: failedOf(failed.value) }
+  const kept = Schema.decodeUnknownOption(Kept)(data)
+  if (Option.isSome(kept)) return { kind: "kept", code, requestId: kept.value.requestId, step: kept.value.step }
+  const later = Schema.decodeUnknownOption(Later)(data)
+  if (Option.isSome(later)) return { kind: "resendLater", code, resendAt: later.value.resendAt }
+  return { kind: "refused", code }
+}
+
+function refused(method: string) {
+  return (failure: BridgeUnavailable | NativeRejection): BridgeUnavailable | NativeRejection | SignInRefused => {
+    if (!(failure instanceof NativeRejection)) return failure
+    const rejected = Schema.decodeUnknownOption(Rejected)(failure.cause)
+    return Option.isSome(rejected) ? new SignInRefused({ method, refusal: refusalOf(rejected.value.data, rejected.value.code) }) : failure
+  }
+}
+
+const PLUGIN = "ElizaSignIn"
+
+effect function parsed<A, I>(method: string, shape: Schema.Codec<A, I>, raw: unknown) {
+  return try mapError(Schema.decodeUnknownEffect(shape)(raw), (refusal) => new MalformedReply({ plugin: PLUGIN, method, issue: refusal.message }))
+}
+
+effect function answer<A, I>(method: string, shape: Schema.Codec<A, I>, run: () => Promise<unknown>) {
+  const raw = try mapError(nativeCall(PLUGIN, method, run), refused(method))
+  return try parsed(method, shape, raw)
+}
+
+effect function progress(method: string, run: () => Promise<unknown>) {
+  return progressOf(try answer(method, Progress, run))
+}
+
+effect function heard<Name extends keyof SignInEvents>(name: Name, listener: (event: SignInEvents[Name]) => void, event: unknown) {
+  if (name === "signInSettled") {
+    const settledEvent = try parsed(name, Settled, event)
+    listener(settledOf(settledEvent) as SignInEvents[Name])
+  } else {
+    const changed = try parsed(name, Readiness, event)
+    listener(readinessOf(changed) as SignInEvents[Name])
+  }
+}
+
+effect function listened<Name extends keyof SignInEvents>(name: Name, listener: (event: SignInEvents[Name]) => void, event: unknown) {
+  heard(name, listener, event) catch effect (failure) => {
+    try logError("A native sign-in event did not match its shape", { event: name, failure })
+  }
+}
+
+effect function started(plugin: ElizaSignInPlugin, options: SignInOptions) {
+  const { requestId, environment } = options
+  switch (options.method) {
+    case "email":
+      return try progress("startEmail", () => plugin.startEmail({ requestId, environment, email: options.email }))
+    case "sms":
+      return try progress("startPhone", () => plugin.startPhone({ requestId, environment, phone: options.phone }))
+    case "google":
+      return try progress("startGoogle", () => plugin.startGoogle({ requestId, environment }))
+  }
+}
+
+effect function reauthenticated(plugin: ElizaSignInPlugin, options: SignInOptions) {
+  const { requestId, environment } = options
+  const start: SignInOptions = options.method === "email" ? { method: "email", requestId, environment, email: options.email }
+    : options.method === "sms" ? { method: "sms", requestId, environment, phone: options.phone }
+    : { method: "google", requestId, environment }
+  return try progress("reauthenticate", () => plugin.reauthenticate(start))
+}
+
+effect function readinessAnswer(plugin: ElizaSignInPlugin, environment: EnvironmentName, retry: boolean | undefined) {
+  const status = try answer("status", Status, () => plugin.status(retry === undefined ? { environment } : { environment, retry }))
+  return { readiness: readinessOf(status), account: accountOf(status.account) }
+}
+
+export function signInClient(plugin: ElizaSignInPlugin = signInPlugin()): SignInClient {
   return {
-    start: (options) => answered(reply("start", Progress, () => plugin.start(options))),
-    verify: (options) => answered(reply("verify", Progress, () => plugin.verify(options))),
-    resend: (options) => answered(reply("resend", Progress, () => plugin.resend(options))),
-    cancel: (options) => answered(reply("cancel", Cancelled, () => plugin.cancel(options))),
-    reauthenticate: (options) => answered(reply("reauthenticate", Progress, () => plugin.reauthenticate(options))),
-    signOut: (options) => answered(reply("signOut", SignOut, () => plugin.signOut(options))),
-    status: (options) => answered(reply("status", Status, () => plugin.status(options))),
-    readiness: (options) => answered(reply("readiness", Readiness, () => plugin.readiness(options))),
-    serviceDocument: (options) => answered(reply("serviceDocument", Service, () => plugin.serviceDocument(options))),
-    addListener: (eventName, listener) =>
-      answered(tryPromise({ try: () => plugin.addListener(eventName, heard(eventName, listener)), catch: (cause) => rejection("addListener", cause) })),
+    start: (options) => settled(started(plugin, options)),
+    reauthenticate: (options) => settled(reauthenticated(plugin, options)),
+    resend: ({ requestId }) => settled(progress("resend", () => plugin.resend({ requestId }))),
+    verify: ({ requestId, code, factor }) =>
+      settled(progress("verify", () => plugin.verify(factor === undefined ? { requestId, code } : { requestId, code, method: factor }))),
+    sendFactorCode: ({ requestId }) => settled(answer("sendFactorCode", FactorCodeSent, () => plugin.sendFactorCode({ requestId }))),
+    cancel: ({ requestId }) => settled(map(answer("cancel", Cancelled, () => plugin.cancel({ requestId })), (reply) => reply.cancelled)),
+    signOut: ({ environment }) => settled(map(answer("signOut", SignedOut, () => plugin.signOut({ environment })), (reply) => accountOf(reply.account))),
+    status: ({ environment, retry }) => settled(readinessAnswer(plugin, environment, retry)),
+    readiness: ({ environment, retry }) => settled(map(readinessAnswer(plugin, environment, retry), (status) => status.readiness)),
+    serviceDocument: ({ environment }) =>
+      settled(map(answer("serviceInfo", Service, () => plugin.serviceInfo({ environment })), (reply) => serviceOf(environment, reply))),
+    addListener: async (eventName, listener) =>
+      (await settled(nativeCall(PLUGIN, "addListener", () => plugin.addListener(eventName, (event) => runFork(listened(eventName, listener, event)))))) as PluginListenerHandle,
   }
 }

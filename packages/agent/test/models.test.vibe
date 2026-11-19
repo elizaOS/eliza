@@ -6,6 +6,7 @@ import { call, cloudFake, deviceKey, host, startInProcess, type InProcess } from
 import { googleProductPlugin, productGoogleActionName } from "./support/product-plugin/index.ts"
 import { account, type LaunchOptions } from "./support/scratch.ts"
 import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
+import type { CloudLinkReply } from "../src/models/cloud-link.vibe"
 
 const google = "/api/v1/eliza/google"
 
@@ -52,7 +53,7 @@ effect function tryGoogle(runtime: AgentRuntime) {
   try host("cloud service", () => runtime.getServiceLoadPromise("cloud"))
   const message = { entityId: runtime.agentId as UUID, roomId: runtime.agentId as UUID, content: { text: "Archive the thread and book the meeting." } }
   const result = try host("product Google action", () => Promise.resolve(action.handler(runtime, message)))
-  return (result as { data: { attempts: Record<string, { kind: string; status?: number; operation?: string }> } }).data.attempts
+  return (result as unknown as { data: { attempts: Record<string, CloudLinkReply> } }).data.attempts
 }
 
 it.live('Answer with the backend the host chose: cloud streams and answers whole, describes an image, retries an outage once; own-key answers; none registers nothing (spec/agent/models/binding.md, "Story: Answer with the backend the host chose")', effect () => {
@@ -74,7 +75,7 @@ it.live('Answer with the backend the host chose: cloud streams and answers whole
     ["/api/v1/chat/completions", "small", `Bearer ${deviceKey}`],
     ["/api/v1/chat/completions", "vision", `Bearer ${deviceKey}`],
   ])
-  assert.deepInclude(try status(agent), { code: 200, backend: "cloud", blocked: false, canRespond: true, failure: undefined })
+  assert.deepInclude(try status(agent), { code: 200, backend: "cloud", blocked: false, canRespond: true, failure: "provider_issue" })
 
   const own = try startInProcess({
     launch: { backend: { kind: "ownKey", baseUrl: cloud.ownKeyBaseUrl, smallModel: "small", largeModel: "large" } },

@@ -1,0 +1,424 @@
+// spec/os/image/provisioning.md, "Story: Make my launcher Home on first boot"; spec/os/image/provisioning.md, "Story: Keep my launcher eligible for the phone and messages roles without assigning them"; spec/os/image/provisioning.md, "Story: Keep image-only features honest"; spec/os/image/provisioning.md, "Story: Start voice from the power button only on a listener image"; spec/os/image/provisioning.md, "Story: Leave the lock screen, alarms and secure capture to the system"
+import {
+  capabilityOverlay,
+  clockRequirement,
+  imageFeatureVersion,
+  listenerActivation,
+  provisioningDefaults,
+  secureCameraStaging,
+  type ActivationProblem,
+  type CameraSource,
+  type ClockRequirement,
+  type ComponentKind,
+  type ComponentMark,
+  type FeatureKind,
+  type Handles,
+  type HostResource,
+  type LauncherManifest,
+  type ListenerStaging,
+  type ManifestComponent,
+  type OverlayPolicy,
+  type OverlayProblem,
+  type ProvisioningDefaults,
+  type ProvisioningProblem,
+  type ProvisioningRequest,
+  type SystemuiPatch,
+} from "../../gen/os__image__provisioning.effect.vibe"
+import type { StagingMode } from "../../gen/os__image__apk.effect.vibe"
+import { parseXmlTree, type ManifestNode } from "./apk.vibe"
+
+export type ProvisioningAdmitted = Extract<ProvisioningDefaults, { tag: "ProvisioningAdmitted" }>
+
+export interface ListenerActivationWritten {
+  readonly feature: string
+  readonly assistant: string
+  readonly power: string | null
+}
+
+export interface ImageProvisioningOverlayOptions {
+  readonly mode: StagingMode
+  readonly hostValues: string
+  readonly module?: string
+  readonly overlayable?: string
+  readonly resource?: string
+}
+
+export error InvalidPackage { packageName: string }
+export error LauncherManifestUnread { packageName: string; message: string }
+export error ProvisioningNotAdmitted { packageName: string; problem: ProvisioningProblem; message: string }
+export error ListenerActivationRefused { packageName: string; problem: ActivationProblem; message: string }
+export error UnknownSystemuiPatch { patch: string }
+export error InvalidOverlayName { name: string; value: string }
+export error ImageOverlayRefused { packageName: string; problem: OverlayProblem; message: string }
+export error ClockRequiredTwice { makefile: string }
+export error SecureCameraUnverified { message: string }
+export error ProductMakefileMissing { output: string }
+
+export const IMAGE_FEATURE_VERSION = imageFeatureVersion
+export const POWER_VOICE_META_DATA = "ai.eliza.os.POWER_VOICE_ACTIVITY"
+export const CLOCK_MODULE = "DeskClock"
+
+const PACKAGE_NAME = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/
+const OVERLAYABLE_NAME = /^[A-Za-z][A-Za-z0-9_]*$/
+const RESOURCE_NAME = /^[a-z][a-z0-9_]*$/
+const DEFAULT = "android.intent.category.DEFAULT"
+const SYSTEMUI_PATCHES: Readonly<Record<string, SystemuiPatch>> = { chip: "ChipPatch", ops: "OpsPatch", assist: "AssistPatch", power: "PowerPatch" }
+const COMPONENT_KINDS: Readonly<Record<string, ComponentKind>> = {
+  activity: "ActivityKind",
+  "activity-alias": "ActivityKind",
+  service: "ServiceKind",
+  receiver: "ReceiverKind",
+  provider: "ProviderKind",
+}
+
+type Recognised = Exclude<Handles, "DialIntent" | "OtherIntent"> | "DialPlain" | "DialTel"
+type DataRule = { readonly kind: "none" } | { readonly kind: "any" } | { readonly kind: "scheme"; readonly scheme: string } | { readonly kind: "mimeType"; readonly mimeType: string }
+
+interface FilterPattern {
+  readonly recognised: Recognised
+  readonly action: string
+  readonly categories: readonly string[]
+  readonly data: DataRule
+}
+
+const NO_DATA: DataRule = { kind: "none" }
+const ANY_DATA: DataRule = { kind: "any" }
+const FILTER_PATTERNS: readonly FilterPattern[] = [
+  { recognised: "HomeIntent", action: "android.intent.action.MAIN", categories: ["android.intent.category.HOME", DEFAULT], data: NO_DATA },
+  { recognised: "AssistIntent", action: "android.intent.action.ASSIST", categories: [DEFAULT], data: NO_DATA },
+  { recognised: "AutofillIntent", action: "android.service.autofill.AutofillService", categories: [], data: ANY_DATA },
+  { recognised: "InCallIntent", action: "android.telecom.InCallService", categories: [], data: ANY_DATA },
+  { recognised: "DialPlain", action: "android.intent.action.DIAL", categories: [DEFAULT], data: NO_DATA },
+  { recognised: "DialTel", action: "android.intent.action.DIAL", categories: [DEFAULT], data: { kind: "scheme", scheme: "tel" } },
+  { recognised: "SmsDeliverIntent", action: "android.provider.Telephony.SMS_DELIVER", categories: [], data: NO_DATA },
+  { recognised: "WapPushMmsIntent", action: "android.provider.Telephony.WAP_PUSH_DELIVER", categories: [], data: { kind: "mimeType", mimeType: "application/vnd.wap.mms-message" } },
+  { recognised: "RespondViaSmstoIntent", action: "android.intent.action.RESPOND_VIA_MESSAGE", categories: [DEFAULT], data: { kind: "scheme", scheme: "smsto" } },
+  { recognised: "SendToSmstoIntent", action: "android.intent.action.SENDTO", categories: [DEFAULT], data: { kind: "scheme", scheme: "smsto" } },
+  { recognised: "SecureCaptureIntent", action: "android.media.action.STILL_IMAGE_CAMERA_SECURE", categories: [], data: ANY_DATA },
+  { recognised: "SecureCaptureIntent", action: "android.media.action.IMAGE_CAPTURE_SECURE", categories: [], data: ANY_DATA },
+]
+
+const PROBLEM_TEXT: Readonly<Record<ProvisioningProblem["tag"], string>> = {
+  AutofillUnprotected: "every AutofillService must be protected by android.permission.BIND_AUTOFILL_SERVICE",
+  EnabledAssistWithoutRole: "a product without the assistant role may declare only disabled ACTION_ASSIST activities",
+  HomeNotExactlyOne: "the APK must declare exactly one MAIN/HOME/DEFAULT activity",
+  HomeNotExported: "the MAIN/HOME/DEFAULT activity must be explicitly exported",
+  AssistNotExactlyOne: "a product that takes the assistant role must declare exactly one ACTION_ASSIST activity",
+  AssistNotExported: "the ACTION_ASSIST activity must be explicitly exported",
+  AutofillNotExactlyOne: "the APK may declare at most one AutofillService",
+  AutofillNotExported: "the AutofillService must be explicitly exported",
+  AutofillMissing: "the product requires an AutofillService and the APK declares none",
+  AllFilesAccessMissing: "the product requires all-files access and the APK does not request android.permission.MANAGE_EXTERNAL_STORAGE",
+  RoleHandlerUnfit: "a phone or messages role handler is not declared exactly once, disabled, with its exact protection",
+  LockScreenSurfaceDeclared: "the system owns the lock screen and the APK declares an activity shown when locked, turning the screen on or handling secure capture",
+}
+
+const ACTIVATION_TEXT: Readonly<Record<ActivationProblem, string>> = {
+  NotAListenerImage: "listener activation is written only for a product with the listener assistant",
+  AssistAndPowerPatches: "the power and assist SystemUI bundles change the same source and cannot both be staged",
+  AssistNotDisabledPlain: "the launcher must declare exactly one exported, disabled ACTION_ASSIST activity with only the plain assist filter and no permission",
+  PowerChildNotProtected: `the activity named by ${POWER_VOICE_META_DATA} must be exported, disabled, protected by android.permission.STATUS_BAR_SERVICE and have no intent filter`,
+  PowerPatchMissing: "power voice requires the power SystemUI bundle",
+  LongPressOverlayMissing: "power voice requires the listener overlay's long-press assistant behaviour",
+}
+
+const OVERLAY_TEXT: Readonly<Record<OverlayProblem, string>> = {
+  OverlayInDevelopment: "the image provisioning overlay is written only for a production image",
+  ResourceDefaultsTrue: "the host's provisioning resource must be declared only with a false default",
+  ResourceNotOverlayable: "the host does not expose the provisioning resource in the named overlayable",
+  ResourceOverlayableByOthers: "the host's overlayable must allow only system|product overlays for the provisioning resource",
+}
+
+function xml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;")
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+const isTrue = (value: string | undefined) => value === "0xffffffff" || value === "true"
+const isFalse = (value: string | undefined) => value === "0x0" || value === "false"
+const childrenNamed = (node: ManifestNode, name: string) => node.children.filter((child) => child.name === name)
+
+function qualify(packageName: string, name: string): string {
+  return name.startsWith(".") ? `${packageName}${name}` : name.includes(".") ? name : `${packageName}.${name}`
+}
+
+function dataFits(rule: DataRule, data: readonly ManifestNode[]): boolean {
+  const restricted = data.some((node) => Object.keys(node.attrs).some((attribute) => attribute !== "scheme" && attribute !== "mimeType"))
+  switch (rule.kind) {
+    case "any":
+      return true
+    case "none":
+      return data.length === 0
+    case "scheme":
+      return !restricted && data.some((node) => node.attrs.scheme === rule.scheme) && data.every((node) => node.attrs.mimeType === undefined)
+    case "mimeType":
+      return !restricted && data.some((node) => node.attrs.mimeType === rule.mimeType) && data.every((node) => node.attrs.scheme === undefined)
+  }
+}
+
+function filterRecognises(filter: ManifestNode): Recognised[] {
+  const actions = childrenNamed(filter, "action").map((node) => node.attrs.name ?? "")
+  const categories = childrenNamed(filter, "category").map((node) => node.attrs.name ?? "")
+  const data = childrenNamed(filter, "data")
+  const groups = childrenNamed(filter, "uri-relative-filter-group").length > 0
+  const matched = FILTER_PATTERNS.filter((pattern) =>
+    actions.includes(pattern.action) && pattern.categories.every((category) => categories.includes(category)) && (pattern.data.kind === "any" || (!groups && dataFits(pattern.data, data))))
+  const explained = actions.every((action) => matched.some((pattern) => pattern.action === action))
+    && categories.every((category) => matched.some((pattern) => pattern.categories.includes(category)))
+  return [...new Set(matched.map((pattern) => pattern.recognised))].concat(explained && matched.length > 0 ? [] : ["OtherIntent" as Recognised])
+}
+
+function componentHandles(node: ManifestNode, kind: ComponentKind, packageName: string): Handles[] {
+  const recognised = childrenNamed(node, "intent-filter").flatMap(filterRecognises)
+  const plain = recognised.includes("DialPlain")
+  const tel = recognised.includes("DialTel")
+  const dial: Handles[] = plain && tel ? ["DialIntent"] : plain || tel ? ["OtherIntent"] : []
+  const handles = recognised.flatMap((entry): Handles[] => entry === "DialPlain" || entry === "DialTel" ? [] : [entry as Handles])
+  const mms: Handles[] = kind === "ProviderKind" && node.attrs.authorities === `${packageName}.mms` ? ["MmsAuthority"] : []
+  return [...handles, ...dial, ...mms]
+}
+
+function componentMarks(node: ManifestNode, kind: ComponentKind): ComponentMark[] {
+  const metaData = (name: string) => childrenNamed(node, "meta-data").some((child) => child.attrs.name === name && isTrue(child.attrs.value))
+  const set = (attribute: string) => node.attrs[attribute] !== undefined && !isFalse(node.attrs[attribute])
+  const marks: ReadonlyArray<readonly [ComponentMark, boolean]> = [
+    ["InCallUi", metaData("android.telecom.IN_CALL_SERVICE_UI")],
+    ["CarModeUi", metaData("android.telecom.IN_CALL_SERVICE_CAR_MODE_UI")],
+    ["GrantsUri", kind === "ProviderKind" && isTrue(node.attrs.grantUriPermissions)],
+    ["ShowWhenLocked", kind === "ActivityKind" && (set("showWhenLocked") || set("showOnLockScreen"))],
+    ["TurnScreenOn", kind === "ActivityKind" && set("turnScreenOn")],
+  ]
+  return marks.filter(([, present]) => present).map(([mark]) => mark)
+}
+
+function powerVoiceActivity(packageName: string, assist: readonly ManifestNode[]): string {
+  const named = assist.length === 1 ? assist.flatMap((node) => childrenNamed(node, "meta-data")).filter((child) => child.attrs.name === POWER_VOICE_META_DATA) : []
+  const value = named.length === 1 ? named.map((child) => child.attrs.value ?? "").join("") : ""
+  return value === "" || value.includes("/") ? "" : value.startsWith(".") ? `${packageName}${value}` : value
+}
+
+export effect function validPackage(packageName: string) {
+  if (!PACKAGE_NAME.test(packageName)) throw new InvalidPackage({ packageName })
+  return packageName
+}
+
+export effect function launcherManifest(tree: string, packageName: string) {
+  try validPackage(packageName)
+  const root = parseXmlTree(tree)
+  const manifest = childrenNamed(root, "manifest")[0]
+  const application = manifest === undefined ? undefined : childrenNamed(manifest, "application")[0]
+  if (manifest?.attrs.package !== packageName || application === undefined)
+    throw new LauncherManifestUnread({ packageName, message: `The manifest is not the ${packageName} launcher's, or declares no application` })
+  const read = application.children.flatMap((node) => {
+    const kind = COMPONENT_KINDS[node.name]
+    if (kind === undefined) return []
+    const component: ManifestComponent = {
+      name: qualify(packageName, node.attrs.name ?? ""),
+      kind,
+      exported: isTrue(node.attrs.exported),
+      enabledByDefault: !isFalse(node.attrs.enabled),
+      permission: node.attrs.permission ?? "",
+      handles: componentHandles(node, kind, packageName),
+      marks: componentMarks(node, kind),
+    }
+    return [{ node, component }]
+  })
+  const components = read.map((entry) => entry.component)
+  const assistNodes = read.filter((entry) => entry.component.kind === "ActivityKind" && entry.component.handles.includes("AssistIntent")).map((entry) => entry.node)
+  const requested = ["uses-permission", "uses-permission-sdk-23"].flatMap((name) => childrenNamed(manifest, name).flatMap((node) => node.attrs.name ?? []))
+  const parsed: LauncherManifest = { components, requestedPermissions: requested, powerVoiceActivity: powerVoiceActivity(packageName, assistNodes) }
+  return parsed
+}
+
+export effect function provisioningComponents(tree: string, packageName: string, request: ProvisioningRequest) {
+  const manifest = try launcherManifest(tree, packageName)
+  const defaults = provisioningDefaults(manifest, request)
+  switch (defaults.tag) {
+    case "ProvisioningRefused": {
+      const detail = defaults.problem.tag === "RoleHandlerUnfit" ? ` (${defaults.problem.handles})` : ""
+      throw new ProvisioningNotAdmitted({ packageName, problem: defaults.problem, message: `Refusing the ${packageName} launcher: ${PROBLEM_TEXT[defaults.problem.tag]}${detail}` })
+    }
+    case "ProvisioningAdmitted":
+      return defaults
+  }
+}
+
+export function imageFeatureName(packageName: string, kind: FeatureKind = "AospImageFeature"): string {
+  switch (kind) {
+    case "AospImageFeature":
+      return `${packageName}.aosp_image`
+    case "ListenerFeature":
+      return `${packageName}.feature.LISTENER`
+  }
+}
+
+function directoryLine(variable: string, directory: string): string {
+  return `${variable} := $(patsubst %/,%,$(dir $(lastword $(filter %/product.mk,$(MAKEFILE_LIST)))))/${directory}`
+}
+
+effect function productMakefile(output: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const makefile = path.join(output, "product.mk")
+  if (!(try files.exists(makefile))) throw new ProductMakefileMissing({ output })
+  return makefile
+}
+
+effect function stage(output: string, written: Readonly<Record<string, string>>, product: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const makefile = try productMakefile(output)
+  for (const [name, content] of Object.entries(written)) {
+    const file = path.join(output, name)
+    try files.makeDirectory(path.dirname(file), { recursive: true })
+    try files.writeFileString(file, content, { flag: "wx" })
+  }
+  try files.writeFileString(makefile, product, { flag: "a" })
+  return Object.keys(written)
+}
+
+function componentOverride(packageName: string, components: readonly string[]): string {
+  return `    <component-override package="${xml(packageName)}">\n${components.map((component) => `        <component class="${xml(component)}" enabled="true" />\n`).join("")}    </component-override>\n`
+}
+
+export effect function writeRoleOverrides(output: string, packageName: string, overrides: readonly string[]) {
+  try validPackage(packageName)
+  const name = `${packageName}-telephony-components.xml`
+  const content = `<?xml version="1.0" encoding="utf-8"?>\n<config>\n${componentOverride(packageName, overrides)}</config>\n`
+  return try stage(output, { [`provisioning/sysconfig/${name}`]: content }, `\n${directoryLine("launcher_role_overrides_dir", "provisioning/sysconfig")}\nPRODUCT_COPY_FILES += $(launcher_role_overrides_dir)/${name}:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/sysconfig/${name}\n`)
+}
+
+export effect function writeProvisioningOverlay(output: string, packageName: string, admitted: ProvisioningAdmitted) {
+  try validPackage(packageName)
+  const component = `${xml(packageName)}/${xml(admitted.home)}`
+  const assistant = admitted.assistant.tag === "DefaultOf" ? `    <string name="config_defaultAssistant" translatable="false">${xml(packageName)}</string>\n` : ""
+  const autofill = admitted.autofill.tag === "DefaultOf" ? `    <string name="config_defaultAutofillService" translatable="false">${xml(packageName)}/${xml(admitted.autofill.name)}</string>\n` : ""
+  const config = assistant + autofill
+  const written: Record<string, string> = {
+    "provisioning/preferred-apps/launcher-home.xml": `<?xml version="1.0" encoding="utf-8"?>\n<preferred-activities>\n    <item name="${component}" match="100000" set="1">\n        <set name="${component}" />\n        <filter>\n            <action name="android.intent.action.MAIN" />\n            <cat name="android.intent.category.HOME" />\n            <cat name="android.intent.category.DEFAULT" />\n        </filter>\n    </item>\n</preferred-activities>\n`,
+    ...(config === "" ? {} : { "provisioning/overlay/frameworks/base/core/res/res/values/config.xml": `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n${config}</resources>\n` }),
+  }
+  const product = `\n${directoryLine("launcher_provisioning_dir", "provisioning")}\n${config === "" ? "" : "PRODUCT_PACKAGE_OVERLAYS += $(launcher_provisioning_dir)/overlay\n"}PRODUCT_COPY_FILES += $(launcher_provisioning_dir)/preferred-apps/launcher-home.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/preferred-apps/launcher-home.xml\n`
+  const staged = try stage(output, written, product)
+  return admitted.overrides.length === 0 ? staged : [...staged, ...(try writeRoleOverrides(output, packageName, admitted.overrides))]
+}
+
+export effect function writeImageCapability(output: string, packageName: string) {
+  try validPackage(packageName)
+  const feature = imageFeatureName(packageName, "AospImageFeature")
+  return try stage(
+    output,
+    { [`image-capability/${feature}.xml`]: `<?xml version="1.0" encoding="utf-8"?>\n<permissions>\n    <feature name="${feature}" version="${IMAGE_FEATURE_VERSION}" />\n</permissions>\n` },
+    `\n${directoryLine("image_capability_dir", "image-capability")}\nPRODUCT_COPY_FILES += $(image_capability_dir)/${feature}.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/permissions/${feature}.xml\n`,
+  )
+}
+
+export function hostResource(valuesXml: string, overlayable: string, resource: string): HostResource {
+  const declared = [...valuesXml.matchAll(new RegExp(`<bool\\s+name="${escapeRegExp(resource)}"\\s*>([^<]*)</bool>`, "g"))].map((match) => (match[1] ?? "").trim())
+  const block = new RegExp(`<overlayable\\s+name="${escapeRegExp(overlayable)}"[^>]*>([\\s\\S]*?)</overlayable>`).exec(valuesXml)?.[1] ?? ""
+  const item = new RegExp(`<item\\s+type="bool"\\s+name="${escapeRegExp(resource)}"\\s*/>`)
+  const policies = [...block.matchAll(/<policy\s+type="([^"]+)"\s*>([\s\S]*?)<\/policy>/g)]
+    .filter((policy) => item.test(policy[2] ?? ""))
+    .map((policy): OverlayPolicy => [...new Set((policy[1] ?? "").split("|"))].sort().join("|") === "product|system" ? "SystemOrProductPolicy" : "OtherPolicy")
+  return { defaultsFalse: declared.length > 0 && declared.every((value) => value === "false"), policies }
+}
+
+effect function overlayName(name: string, value: string, pattern: RegExp) {
+  if (!pattern.test(value)) throw new InvalidOverlayName({ name, value })
+  return value
+}
+
+export effect function writeImageProvisioningOverlay(output: string, packageName: string, options: ImageProvisioningOverlayOptions) {
+  try validPackage(packageName)
+  const module = try overlayName("module", options.module ?? "ImageProvisioningOverlay", OVERLAYABLE_NAME)
+  const overlayable = try overlayName("overlayable", options.overlayable ?? "ImageProvisioning", OVERLAYABLE_NAME)
+  const resource = try overlayName("resource", options.resource ?? "aosp_image_capability", RESOURCE_NAME)
+  const verdict = capabilityOverlay(options.mode, hostResource(options.hostValues, overlayable, resource))
+  switch (verdict.tag) {
+    case "CapabilityOverlayRefused":
+      throw new ImageOverlayRefused({ packageName, problem: verdict.problem, message: `Refusing the ${packageName} image provisioning overlay: ${OVERLAY_TEXT[verdict.problem]}` })
+    case "CapabilityOverlayWritten":
+      return try stage(
+        output,
+        {
+          "image-capabilities/Android.bp": `runtime_resource_overlay {\n    name: "${module}",\n    product_specific: true,\n    sdk_version: "current",\n}\n`,
+          "image-capabilities/AndroidManifest.xml": `<?xml version="1.0" encoding="utf-8"?>\n<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${packageName}.imagecapabilities">\n    <overlay android:targetPackage="${packageName}" android:targetName="${overlayable}" android:isStatic="true" android:priority="10" />\n    <application android:hasCode="false" />\n</manifest>\n`,
+          "image-capabilities/res/values/capabilities.xml": `<?xml version="1.0" encoding="utf-8"?>\n<resources><bool name="${resource}">true</bool></resources>\n`,
+        },
+        `\nPRODUCT_PACKAGES += ${module}\n`,
+      )
+  }
+}
+
+export effect function listenerStagingOf(patches: readonly string[], overlayConfig: string) {
+  const known: SystemuiPatch[] = []
+  for (const patch of patches) {
+    const bundle = SYSTEMUI_PATCHES[patch]
+    if (bundle === undefined) throw new UnknownSystemuiPatch({ patch })
+    known.push(bundle)
+  }
+  const staging: ListenerStaging = {
+    patches: [...new Set(known)],
+    longPressAssistant: /<integer\s+name="config_longPressOnPowerBehavior"\s*>\s*5\s*<\/integer>/.test(overlayConfig),
+  }
+  return staging
+}
+
+export effect function writeListenerActivation(output: string, packageName: string, tree: string, request: ProvisioningRequest, staging: ListenerStaging) {
+  const manifest = try launcherManifest(tree, packageName)
+  const activation = listenerActivation(manifest, request, staging)
+  switch (activation.tag) {
+    case "ActivationRefused":
+      throw new ListenerActivationRefused({ packageName, problem: activation.problem, message: `Refusing listener activation for ${packageName}: ${ACTIVATION_TEXT[activation.problem]}` })
+    case "ActivationWritten": {
+      const feature = imageFeatureName(packageName, "ListenerFeature")
+      const power = activation.power.tag === "DefaultOf" ? activation.power.name : null
+      const content = `<?xml version="1.0" encoding="utf-8"?>\n<config>\n    <feature name="${feature}" version="${IMAGE_FEATURE_VERSION}" />\n${componentOverride(packageName, power === null ? [activation.assistant] : [activation.assistant, power])}</config>\n`
+      try stage(output, { [`listener-activation/${feature}.xml`]: content }, `\n${directoryLine("listener_activation_dir", "listener-activation")}\nPRODUCT_COPY_FILES += $(listener_activation_dir)/${feature}.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/sysconfig/${feature}.xml\n`)
+      const written: ListenerActivationWritten = { feature, assistant: activation.assistant, power }
+      return written
+    }
+  }
+}
+
+export function clockLines(makefile: string): number {
+  return [...makefile.matchAll(/^\s*PRODUCT_PACKAGES\s*[:+]?=\s*(.*)$/gm)].flatMap((line) => (line[1] ?? "").split(/\s+/)).filter((token) => token === CLOCK_MODULE).length
+}
+
+export effect function requireClockProduct(output: string) {
+  const files = try FileSystem.FileSystem
+  const makefile = try productMakefile(output)
+  const requirement: ClockRequirement = clockRequirement(clockLines(try files.readFileString(makefile)))
+  switch (requirement) {
+    case "ClockNamedTwice":
+      throw new ClockRequiredTwice({ makefile })
+    case "ClockAdded":
+      try files.writeFileString(makefile, `\nPRODUCT_PACKAGES += ${CLOCK_MODULE}\n`, { flag: "a" })
+      return requirement
+    case "ClockKept":
+      return requirement
+  }
+}
+
+export effect function writeSecureCameraOverlay(output: string, source: CameraSource) {
+  const staged = secureCameraStaging(source)
+  switch (staged.tag) {
+    case "CameraRefused":
+      throw new SecureCameraUnverified({ message: "The secure camera overlay is staged only from Camera2 source verified against its reviewed contract" })
+    case "CameraStaged": {
+      const contract = staged.contract.tag === "Sha256" ? staged.contract.hex : ""
+      return try stage(
+        output,
+        {
+          "secure-camera/overlay/frameworks/base/core/res/res/values/config.xml": `<?xml version="1.0" encoding="utf-8"?>\n<resources><bool name="config_cameraDoubleTapPowerGestureEnabled">true</bool></resources>\n`,
+          "secure-camera/overlay/frameworks/base/packages/SystemUI/res/values/config.xml": `<?xml version="1.0" encoding="utf-8"?>\n<resources><string name="config_cameraGesturePackage" translatable="false">${staged.gesturePackage}</string></resources>\n`,
+          "secure-camera/source-evidence.json": `${JSON.stringify({ gesturePackage: staged.gesturePackage, contractSha256: contract, sourceVerified: true, imageVerified: false, lockedCaptureVerified: false }, null, 2)}\n`,
+        },
+        `\n${directoryLine("secure_camera_dir", "secure-camera")}\nPRODUCT_PACKAGES += Camera2\nPRODUCT_PACKAGE_OVERLAYS += $(secure_camera_dir)/overlay\n`,
+      )
+    }
+  }
+}

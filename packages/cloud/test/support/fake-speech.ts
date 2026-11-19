@@ -226,7 +226,7 @@ export function speechFake(): SpeechFake {
     const route = path === "/stt/turns/websocket" ? stt : path === "/tts/websocket" ? tts : undefined;
     if (!keyed(request.headers) || route === undefined || scripted.kind === "refuse") {
       const status = scripted.kind === "refuse" ? scripted.status : route === undefined ? 404 : 401;
-      socket.end(`HTTP/1.1 ${status} Refused\r\nconnection: close\r\ncontent-length: 0\r\n\r\n`);
+      socket.end(`HTTP/1.1 ${status} Refused\r\ncontent-length: 7\r\n\r\nrefused`);
       return;
     }
     const peer = accept(request, socket, route);
