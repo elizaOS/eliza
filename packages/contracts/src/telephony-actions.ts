@@ -927,6 +927,12 @@ export function requestedSmsDraftRecipient(
     1,
   );
   const query = raw.trim().replace(/,$/u, "");
+  if (
+    /^(?:this|the (?:open|current|selected))\s+(?:conversation|thread)$/iu.test(
+      query,
+    )
+  )
+    return { kind: "unaddressed" };
   if (/[,&;]|\b(?:and|or|but|not|them|him|her)\b/iu.test(query))
     return { kind: "ambiguous" };
   const number = query.replace(/[ ().-]/g, "");
