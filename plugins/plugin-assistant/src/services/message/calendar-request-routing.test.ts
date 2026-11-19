@@ -269,6 +269,11 @@ describe("the calendar event phrasings name their operation", () => {
     [REMOVE, "delete"],
     ["cancel my 3pm meeting", "delete"],
     ["take v613 check off my calendar", "delete"],
+    // Voice transcripts capitalize and spell out the meridiem.
+    ["Add an event called V613 check tomorrow at 3 p.m.", "create"],
+    ["Move V613 check to 4 PM.", "update"],
+    ["Delete the calendar event V613 check.", "delete"],
+    ["add an event called team notes review tomorrow", "create"],
   ])("%s", (text, expected) => {
     expect(calendarEventRequest(text)).toBe(expected);
   });
@@ -290,6 +295,23 @@ describe("the calendar event phrasings name their operation", () => {
     "add an event to my phone's calendar tomorrow at 3pm",
     "what's on my calendar tomorrow?",
     "open my calendar",
+    // An event word that only describes another record.
+    "add a note about the meeting",
+    "create a meeting note",
+    "delete the meeting notes",
+    "clear my meeting notes",
+    "remove the meeting link from the note",
+    "delete the meeting from my notes",
+    "remove the meeting reminder",
+    "make an appointment reminder",
+    "create an event workflow",
+    "add a reminder to my calendar",
+    // A pronoun's target comes from the turn's history, not this route.
+    "move it to 4pm",
+    "move that one to 4pm",
+    // Settings set to a time.
+    "change my status to 5pm",
+    "change my wake-up to 7am",
   ])("leaves other requests alone: %s", (text) => {
     expect(calendarEventRequest(text)).toBeUndefined();
   });

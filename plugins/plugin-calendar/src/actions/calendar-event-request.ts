@@ -29,26 +29,26 @@ const EVENT_NOUN = String.raw`(?:calendar\s+)?(?:event|appointment|meeting|calen
 // Up to three describing words before the noun ("a dentist appointment", "my
 // 3pm meeting"); a preposition ends them, so "add Sam to the meeting" is an
 // attendee change, not a new event.
-const DESCRIBING = String.raw`(?:(?!(?:to|from|for|with|on|in|at|into|onto|of)\b)[\p{L}\p{N}'’:.-]+\s+){0,3}?`;
+const DESCRIBING = String.raw`((?:(?!(?:to|from|for|with|on|in|at|into|onto|of)\b)[\p{L}\p{N}'’:.-]+\s+){0,3}?)`;
 const DETERMINER = String.raw`(?:(?:a|an|the|my|one|this|that|our)\s+)?`;
 const CREATE_VERB = String.raw`(?:add|create|make|schedule|book|put|set\s+up|plan|new)`;
 const CREATE_EVENT = new RegExp(
-  `${COURTESY}${CREATE_VERB}\\s+${DETERMINER}(?:new\\s+)?${DESCRIBING}${EVENT_NOUN}\\b`,
-  "iu",
+  `${COURTESY}${CREATE_VERB}\\s+${DETERMINER}(?:new\\s+)?${DESCRIBING}${EVENT_NOUN}\\b(.*)$`,
+  "isu",
 );
 // "add v613 check to my calendar", "put lunch with Sam on the calendar".
 const CREATE_ON_CALENDAR = new RegExp(
-  `${COURTESY}(?:add|put|schedule|book)\\s+\\S[\\s\\S]*?\\s+(?:to|on|in|onto|into)\\s+(?:my|the|our)\\s+calendar\\b`,
+  `${COURTESY}(?:add|put|schedule|book)\\s+(\\S[\\s\\S]*?)\\s+(?:to|on|in|onto|into)\\s+(?:my|the|our)\\s+calendar\\b`,
   "iu",
 );
 const DELETE_VERB = String.raw`(?:delete|remove|cancel|clear|drop|erase)`;
 const DELETE_EVENT = new RegExp(
-  `${COURTESY}${DELETE_VERB}\\s+${DETERMINER}${DESCRIBING}${EVENT_NOUN}\\b`,
-  "iu",
+  `${COURTESY}${DELETE_VERB}\\s+${DETERMINER}${DESCRIBING}${EVENT_NOUN}\\b(.*)$`,
+  "isu",
 );
 // "take v613 check off my calendar", "remove lunch from the calendar".
 const DELETE_FROM_CALENDAR = new RegExp(
-  `${COURTESY}(?:delete|remove|take|clear|drop)\\s+\\S[\\s\\S]*?\\s+(?:off|from|out\\s+of)\\s+(?:my|the|our)\\s+calendar[.!?]*$`,
+  `${COURTESY}(?:delete|remove|take|clear|drop)\\s+(\\S[\\s\\S]*?)\\s+(?:off|from|out\\s+of)\\s+(?:my|the|our)\\s+calendar[.!?]*$`,
   "iu",
 );
 const DAY = String.raw`(?:today|tonight|tomorrow|(?:this|next)\s+(?:week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))`;
@@ -64,6 +64,43 @@ const MOVE_EVENT = new RegExp(
 // Things other than events that the same verbs act on in this phone's apps.
 const NOT_AN_EVENT =
   /\b(?:notes?|files?|folders?|reminders?|alarms?|timers?|contacts?|tabs?|photos?|pictures?|images?|videos?|albums?|messages?|texts?|emails?|mails?|tasks?|to-?dos?|workflows?|apps?|icons?|widgets?|windows?|songs?|tracks?|playlists?|wallpaper|brightness|volume|settings?|lists?|line|lines)\b/iu;
+// An event word that only describes another record: "the meeting notes",
+// "a meeting link", "the appointment reminder".
+const EVENT_ATTRIBUTE = new RegExp(
+  String.raw`^\s*(?:${NOT_AN_EVENT.source.slice(2, -2)}|links?|agendas?|minutes|recordings?|transcripts?|summar(?:y|ies))\b`,
+  "iu",
+);
+// The event word sits inside another record: "delete the meeting from my
+// notes", "add an event to my tasks".
+const IN_OTHER_RECORD =
+  /\b(?:from|in|into|to|on|onto|off)\s+(?:my|the|our|a|an|this|that)\s+(?:[\p{L}\p{N}'’-]+\s+)?(?:notes?|files?|folders?|reminders?|alarms?|timers?|contacts?|tabs?|photos?|albums?|messages?|texts?|emails?|tasks?|to-?dos?|workflows?|lists?|playlists?)\b/iu;
+// A pronoun ("move it to 4pm") names its target only through the turn's
+// history, which the referential effect reroute owns; the target may be an
+// alarm, a reminder or a workflow rather than an event.
+const PRONOUN = /^(?:it|that|this|them|those|these|that\s+one|this\s+one)$/iu;
+// Non-event settings the same move/change verbs set to a time.
+const NOT_AN_EVENT_TIME =
+  /\b(?:status|clocks?|time\s*zone|timezone|thermostat|temperature|wake[\s-]?up|bedtime|sleep|quiet\s+hours|do\s+not\s+disturb|dnd|focus|schedule\s+send)\b/iu;
+
+/** True when the matched event words name an event rather than describe another record. */
+function namesEvent(describing: string, rest: string): boolean {
+  return (
+    !NOT_AN_EVENT.test(describing) &&
+    !EVENT_ATTRIBUTE.test(rest) &&
+    !IN_OTHER_RECORD.test(rest)
+  );
+}
+
+function eventMatch(pattern: RegExp, request: string): boolean {
+  const match = pattern.exec(request);
+  return Boolean(match && namesEvent(match[1] ?? "", match[2] ?? ""));
+}
+
+function subjectMatch(pattern: RegExp, request: string): boolean {
+  const match = pattern.exec(request);
+  return Boolean(match && !NOT_AN_EVENT.test(match[1] ?? ""));
+}
+
 // The phone's own calendar is the device calendar review, not this route.
 const PHONE_CALENDAR =
   /\b(?:phone|device|android|system|os)(?:['’]s)?\s+(?:own\s+)?calendar\b|\bcalendar\s+(?:app\s+)?on\s+(?:this|my|the)\s+(?:phone|device)\b/iu;
@@ -79,12 +116,25 @@ export function calendarEventRequest(
 ): CalendarEventRequest | undefined {
   const request = text.trim();
   if (!request || request.length > 300 || PHONE_CALENDAR.test(request)) return;
-  if (DELETE_EVENT.test(request) || DELETE_FROM_CALENDAR.test(request))
+  if (
+    eventMatch(DELETE_EVENT, request) ||
+    subjectMatch(DELETE_FROM_CALENDAR, request)
+  )
     return "delete";
-  if (CREATE_EVENT.test(request) || CREATE_ON_CALENDAR.test(request))
+  if (
+    eventMatch(CREATE_EVENT, request) ||
+    subjectMatch(CREATE_ON_CALENDAR, request)
+  )
     return "create";
   const move = MOVE_EVENT.exec(request);
-  if (move && !NOT_AN_EVENT.test(move[1] ?? "")) return "update";
+  const subject = (move?.[1] ?? "").trim();
+  if (
+    move &&
+    !PRONOUN.test(subject) &&
+    !NOT_AN_EVENT.test(subject) &&
+    !NOT_AN_EVENT_TIME.test(subject)
+  )
+    return "update";
   return;
 }
 
