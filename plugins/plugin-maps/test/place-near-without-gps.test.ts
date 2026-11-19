@@ -303,6 +303,26 @@ describe("a kind of place near a named place", () => {
       kind: "pharmacy",
       anchor: "Union Square",
     });
+    expect(
+      anchoredPlaceQuery("find a pharmacy near Union Square, please"),
+    ).toEqual({ kind: "pharmacy", anchor: "Union Square" });
+  });
+
+  it.each([
+    "find a pharmacy near me, please",
+    "find a pharmacy near me please",
+    "is there a pharmacy near me open now?",
+    "find a pharmacy near by",
+  ])("hands %s to the phone", async (text) => {
+    const searched: Search[] = [];
+    const result = await place(provider({}, searched), text, {
+      query: "pharmacy",
+      useCurrentLocation: true,
+    });
+    expect(searched).toEqual([]);
+    expect(result).toMatchObject({
+      data: { reason: "missing_location", awaitingUserInput: true },
+    });
   });
 
   it.each([
