@@ -35,7 +35,7 @@ public final class NativeSecureStore {
     private static final String CLOCK_DEVICE_SLOT = SecureSlotPolicy.CLOCK_DEVICE_SLOT;
     private static long generation;
     private static final String[] SNAPSHOT_KEYS = {
-        "runtime.active_server", "session.device_auth", "session.steward_token", "runtime.agent_profiles", CLOCK_DEVICE_SLOT
+        "runtime.active_server", "session.device_auth", "session.cloud_token", "runtime.agent_profiles", CLOCK_DEVICE_SLOT
     };
     private final File directory;
     private final SecureSlotPolicy policy;
