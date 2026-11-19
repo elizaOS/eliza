@@ -1,11 +1,11 @@
 # Booted-image verification
 
 Read-only checks of a booted device against what was staged: the exact
-image, the launcher's bytes, its place as Home and its privileges when it is
-privileged, the stock launcher kept
-as a way back, the system clock's alarm handlers, a WebView provider, the
-first-boot grants, the wake listener when one was staged, the system secure
-camera, SELinux and verified boot. Sources: develop's
+image, the launcher's bytes, its place as Home and its privileges when it
+is privileged, the stock launcher kept as a way back, the system clock's
+alarm handlers, a WebView provider, the first-boot grants, the wake
+listener when one was staged, the system secure camera, SELinux and
+verified boot. Sources: develop's
 `verify-launcher-image.mjs` and the device halves of
 `aosp-clock-handlers.mjs`, `sense-listener.mjs` (`verifyAospListener`) and
 `secure-camera.mjs` (`verifySecureCameraImage`). The shell is `verifyImage`
@@ -48,7 +48,6 @@ import listener as L from "./listener"
 type CheckOutcome = Pass | Fail | Unknown
 type Reading = Unread | Read({ holds: bool })
 pure def outcomeOf(reading: Reading): CheckOutcome = match reading { | Unread => Unknown | Read(r) => if (r.holds) Pass else Fail }
-pure val readingValues = Set(Unread, Read({ holds: true }), Read({ holds: false }))
 pure def outcomeIf(read: bool, holds: bool): CheckOutcome = if (not(read)) Unknown else if (holds) Pass else Fail
 ```
 

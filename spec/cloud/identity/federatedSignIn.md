@@ -232,11 +232,12 @@ pure def sometimesBrowserSecondFactor(a: GoogleAttempt): bool = a.code == CodeRe
 > instead of opening a browser, so that one tap signs me in, while a token
 > taken from my phone or another app cannot.
 
-### A native challenge needs S256, lives five minutes and is bound to a nonce, the client and the device's verifier
+### A native challenge needs S256, opens only on an unused attempt row, and lives five minutes
 
 The route first admits the client with its sign-in return and native Google
-(`nativeClients/registry`). A link challenge names the signed-in user who
-opened it.
+(`nativeClients/registry`). The row keeps the nonce, the client and the
+digest of the device's verifier; a link challenge names the signed-in user
+who opened it.
 
 ```quint
 pure val nativeLifetime: Millis = 5 * millisPerMinute

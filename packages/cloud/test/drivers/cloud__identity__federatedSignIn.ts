@@ -11,13 +11,12 @@ const attempt = (key: string) => `attempt-${key}`;
 const emitted = new Map<string, unknown>();
 
 function columns(state: GoogleAttempt) {
-  const issued = state.code.tag === "CodeIssued";
-  const open = state.native.tag === "ChallengeOpen";
+  const { code, native } = state;
   return {
-    route: open ? "native" : "browser",
+    route: native.tag === "ChallengeOpen" ? "native" : "browser",
     client_id: "com.example.one",
-    pending: issued || open,
-    expires_at: issued ? state.code.redeemBy : open ? state.native.openUntil : state.stateExpiresAt,
+    pending: code.tag === "CodeIssued" || native.tag === "ChallengeOpen",
+    expires_at: code.tag === "CodeIssued" ? code.redeemBy : native.tag === "ChallengeOpen" ? native.openUntil : state.stateExpiresAt,
     updated_at: state.now,
   };
 }

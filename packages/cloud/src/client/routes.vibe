@@ -15,7 +15,10 @@ export interface NamedRoute<N extends string> extends DeviceRoute {
 
 export type ParamsOf<R> = R extends NamedRoute<infer N> ? Readonly<Record<N, string>> : never
 
-export error UnlistedRoute { method: HttpMethod; pattern: string }
+export interface UnlistedRoute {
+  readonly method: HttpMethod
+  readonly pattern: string
+}
 
 function sameSegment(a: Segment, b: Segment): boolean {
   switch (a.tag) {
@@ -24,14 +27,17 @@ function sameSegment(a: Segment, b: Segment): boolean {
   }
 }
 
+const unlisted: UnlistedRoute[] = []
+
 function on<const P extends `/${string}`>(method: HttpMethod, pattern: P): NamedRoute<ParamNames<P>> {
   const path = pattern.split("/").slice(1).map((part): Segment =>
     part.startsWith(":") ? { tag: "Param", name: part.slice(1) } : { tag: "Literal", text: part })
+  const params = path.flatMap((segment) => segment.tag === "Param" ? [segment.name as ParamNames<P>] : [])
   const listed = deviceRoutes.find((route) => route.method === method && route.path.length === path.length &&
     route.path.every((segment, index) => sameSegment(segment, path[index] as Segment)))
-  if (listed === undefined) throw new UnlistedRoute({ method, pattern })
-  const params = path.flatMap((segment) => segment.tag === "Param" ? [segment.name as ParamNames<P>] : [])
-  return { ...listed, params }
+  if (listed !== undefined) return { ...listed, params }
+  unlisted.push({ method, pattern })
+  return { method, path, auth: "Public", headers: [], params }
 }
 
 const google = "/api/v1/eliza/google"
@@ -138,6 +144,13 @@ export const routesByName = {
 } as const
 
 export type DeviceRouteName = keyof typeof routesByName
+
+export const unlistedRoutes: ReadonlyArray<UnlistedRoute> = unlisted
+
+export function isListed(route: DeviceRoute): boolean {
+  return deviceRoutes.some((listed) => listed.method === route.method && listed.path.length === route.path.length &&
+    listed.path.every((segment, index) => sameSegment(segment, route.path[index] as Segment)))
+}
 
 export function httpVerb(method: HttpMethod): "GET" | "POST" | "PATCH" | "DELETE" {
   switch (method) {

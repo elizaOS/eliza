@@ -1,0 +1,36 @@
+// spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"
+import { it } from "@effect/vitest"
+import { expect } from "vitest"
+import { readCloudError, networkError, isCredentialInvalid } from "../../../src/client/errors.vibe"
+import { routesByName, unlistedRoutes, pathOf, admitsHeader, isListed, deviceRoutes } from "../../../src/client/routes.vibe"
+
+function res(status: number, body: string, retryAfter: string | null = null) {
+  return { status, headers: { get: (n: string) => n === "retry-after" ? retryAfter : null }, text: async () => body }
+}
+
+it("u3", async () => {
+  expect(unlistedRoutes).toEqual([])
+  expect(Object.values(routesByName).every(isListed)).toBe(true)
+  expect(Object.keys(routesByName).length).toBe(deviceRoutes.length)
+  expect(pathOf(routesByName.mapsTile, { z: "1", x: "a/b", y: "3" })).toBe("/api/v1/maps/tiles/1/a%2Fb/3")
+  expect(pathOf(routesByName.user)).toBe("/api/v1/user")
+  expect(admitsHeader(routesByName.calendarEventChange, "if-match")).toBe(true)
+  expect(admitsHeader(routesByName.user, "if-match")).toBe(false)
+  expect(admitsHeader(routesByName.redeem, "idempotency-key")).toBe(true)
+  const e1 = await readCloudError(res(401, JSON.stringify({ error: "authentication_required", errorDescription: "x", retryable: false, reason: "credential_expired" })))
+  expect(e1.failure).toEqual({ tag: "CloudCredentialInvalid", reason: "CredentialExpired" })
+  expect(isCredentialInvalid(e1)).toBe(true)
+  const e2 = await readCloudError(res(402, JSON.stringify({ error: "allowance_exhausted", errorDescription: "x", retryable: true, resetsAt: 99 })))
+  expect(e2.failure).toEqual({ tag: "CloudAllowanceExhausted", resetsAt: 99 })
+  const e3 = await readCloudError(res(429, "not json", "10"), 1000)
+  expect(e3.failure).toEqual({ tag: "CloudRateLimited", retryAt: 11000 })
+  const e4 = await readCloudError(res(403, JSON.stringify({ error: "speech_consent_required", errorDescription: "x", retryable: false })))
+  expect(e4.failure).toEqual({ tag: "CloudConsentRequired" })
+  const e5 = await readCloudError(res(503, JSON.stringify({ error: "service_unavailable", errorDescription: "x", retryable: true, retryAt: 5 })))
+  expect(e5.failure).toEqual({ tag: "CloudUnavailable", retryAfter: 5 })
+  const e6 = await readCloudError(res(502, "<html>"))
+  expect(e6.failure).toEqual({ tag: "CloudProviderIssue" })
+  const e7 = await readCloudError(res(402, JSON.stringify({ error: "insufficient_credits", errorDescription: "x", retryable: false })))
+  expect(e7.failure).toEqual({ tag: "CloudInsufficientCredits" })
+  expect(networkError(new Error("x")).failure).toEqual({ tag: "CloudNetwork" })
+})
