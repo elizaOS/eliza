@@ -327,8 +327,6 @@ key change settles it, and a settled request never changes. The shell
 replays a cache-warming `503` itself before it reports an answer.
 
 ```quint
-pure val noBatch: BatchRequest = { requestId: 0, direction: Transcribe, version: 0, verdict: BatchPending }
-pure def batchOf(s: CloudSpeech, requestId: int): BatchRequest = s.batches.select(b => b.requestId == requestId).nthOr(0, noBatch)
 pure def pending(s: CloudSpeech, requestId: int): bool = s.batches.some(b => b.requestId == requestId and b.verdict == BatchPending)
 pure def canBatchRequested(s: CloudSpeech, requestId: int, direction: SpeechDirection): bool =
   s.credential >= 1 and requestId >= 1 and not(s.batches.some(b => b.requestId == requestId))
@@ -345,9 +343,8 @@ pure def batchCancelled(s: CloudSpeech, requestId: int): SpeechStep = settleBatc
 pure val requestIdValues = Set(1, 2)
 pure def settledId(n: SpeechNotice): int = match n { | BatchSettled(b) => b.requestId | _ => 0 }
 pure def stepABatchRequestSettlesOnce(before: CloudSpeech, via: str, after: CloudSpeech, out: List[SpeechNotice]): bool =
-  before.batches.every(b => (b.verdict != BatchPending implies batchOf(after, b.requestId).verdict == b.verdict)
-    and (out.select(n => settledId(n) == b.requestId).length() == (if (b.verdict == BatchPending and batchOf(after, b.requestId).verdict != BatchPending) 1 else 0)))
-  and after.batches.length() >= before.batches.length()
+  before.batches.every(b => after.batches.some(a => a.requestId == b.requestId and (b.verdict != BatchPending implies a.verdict == b.verdict))
+    and out.select(n => settledId(n) == b.requestId).length() == (if (b.verdict == BatchPending and not(pending(after, b.requestId))) 1 else 0))
 pure def alwaysBatchRequestsAreDistinct(s: CloudSpeech): bool = s.batches.every(b => b.requestId >= 1 and s.batches.select(x => x.requestId == b.requestId).length() == 1)
 pure def sometimesBatchRateLimited(s: CloudSpeech): bool = s.batches.some(b => b.verdict == BatchFailed({ failure: Cr::RequestFailed, wait: RetryAt({ retryAtMs: 5000 }) }))
 pure def sometimesBatchDoneAndCancelled(s: CloudSpeech): bool = s.batches.some(b => b.verdict == BatchDone) and s.batches.some(b => b.verdict == BatchCancelled)

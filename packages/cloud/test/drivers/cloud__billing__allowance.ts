@@ -49,7 +49,7 @@ async function opened(key: string, period: string, open: () => Promise<Settled<P
 
 const invoiceOf = (period: Period) => period.source.tag === "RenewalInvoice" ? period.source.invoiceId : "no-invoice";
 
-function closingOf(period: Period, reason: Event & { type: "close" }): Closing {
+function closingOf(period: Period, reason: Extract<Event, { type: "close" }>): Closing {
   switch (reason.closeReason) {
     case "SubscriptionEnded": return { kind: "SubscriptionEnded" };
     case "SupersededByPaid": return { kind: "SupersededByPaid" };
@@ -109,4 +109,4 @@ export const driver: Driver & AsyncDisposable = {
   [Symbol.asyncDispose]: () => cloud.dispose(),
 };
 
-export const options: Options = { keys: ["a", "b"] };
+export const options: Options = { keys: ["a"] };

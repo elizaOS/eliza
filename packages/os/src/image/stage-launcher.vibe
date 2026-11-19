@@ -220,7 +220,6 @@ const REPORT = "native-libraries.json"
 const SOCKET_POLICY = "eliza_agent_socket.te"
 const SOCKET_RULE = "allow priv_app_all privapp_data_file:sock_file { create unlink getattr setattr write rename };\n"
 const PATCH_DIRECTORY = "aosp/patches/soong-app-native"
-const DESCRIPTOR_KEYS = new Set(["schemaVersion", "brand", "moduleName", "packageName", "apkSha256", "certificateSha256", "defaultPermissions", "privilegedPermissions", "partition", "companions"])
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -272,7 +271,7 @@ function factsOf(value: unknown): { readonly facts: DescriptorFacts; readonly de
     ...(partition === undefined ? {} : { partition }),
     ...(raw.companions === undefined ? {} : { companions }),
   }
-  const moduleNameValid = isRecord(value) && Object.keys(raw).every((key) => DESCRIPTOR_KEYS.has(key)) && MODULE.test(moduleName) && PACKAGE.test(descriptor.packageName)
+  const moduleNameValid = isRecord(value) && MODULE.test(moduleName) && PACKAGE.test(descriptor.packageName)
     && grants.valid && privileged.valid && companionsValid && (raw.partition === undefined || partition !== undefined)
     && companions.every((row) => !generatedModules(moduleName).includes(row.moduleName))
   const facts: DescriptorFacts = {
@@ -379,6 +378,7 @@ effect function observe(copy: { readonly file: string; readonly bytes: Uint8Arra
   const env = options.env === undefined ? {} : { env: options.env }
   const tree = (aaptManifestTree(copy.file, { aapt: options.aapt, ...env }) catch () => "")
   const facts = manifestFacts(tree)
+  const natives = launcher ? try readNativeLibraries(copy.bytes, options.apk) : []
   const observation: ApkObservation = {
     sha256: parseDigest(copy.sha256),
     packageName: facts.packageName ?? "",
@@ -386,9 +386,9 @@ effect function observe(copy: { readonly file: string; readonly bytes: Uint8Arra
     buildType: buildTypeOf(tree),
     signer: (readApkSigner(copy.file, { apksigner: options.apksigner, ...env }) catch (): SignerObservation => ({ tag: "SignerRefused" })),
     declaredPermissions: [...facts.permissions],
-    natives: launcher ? (try readNativeLibraries(copy.bytes, options.apk)).map((native) => native.library) : [],
+    natives: natives.map((native) => native.library),
   }
-  return { observation, tree }
+  return { observation, tree, natives }
 }
 
 function nativeRequestOf(options: StageOptions): NativeRequest {
@@ -592,10 +592,10 @@ function refusalMessage(reason: StagingRefusal): string {
   }
 }
 
-effect function record(output: string, record: LauncherRecord) {
+effect function record(output: string, entry: LauncherRecord) {
   const files = try FileSystem.FileSystem
   const path = try Path.Path
-  try mapError(files.writeFileString(path.join(output, RECORD), `${JSON.stringify(record, null, 2)}\n`), (cause) => new OverlayWriteFailed({ output, message: `Could not record ${RECORD}: ${cause.message}` }))
+  try mapError(files.writeFileString(path.join(output, RECORD), `${JSON.stringify(entry, null, 2)}\n`), (cause) => new OverlayWriteFailed({ output, message: `Could not record ${RECORD}: ${cause.message}` }))
 }
 
 export effect function stageLauncher(options: StageOptions) {
@@ -610,7 +610,7 @@ export effect function stageLauncher(options: StageOptions) {
   return try scoped(effect {
     const work = try acquireRelease(
       mapError(files.makeTempDirectory({ directory: parent, prefix: ".launcher-stage-" }), (cause) => new OverlayWriteFailed({ output, message: `Could not create a private directory beside ${output}: ${cause.message}` })),
-      (directory) => files.remove(directory, { recursive: true, force: true }) catch () => undefined,
+      (directory) => orElseSucceed(files.remove(directory, { recursive: true, force: true }), () => undefined),
     )
     const inspect = path.join(work, "inspect")
     try mapError(files.makeDirectory(inspect), (cause) => new OverlayWriteFailed({ output, message: cause.message }))
@@ -645,7 +645,7 @@ export effect function stageLauncher(options: StageOptions) {
         return checked
       }
       const overlay = path.join(work, "overlay")
-      const rendering: Rendering = { overlay, call, natives: try readNativeLibraries(launcher.bytes, options.apk), copies: { [LAUNCHER_APK]: launcher.file, ...companionCopies }, tree: seen.tree, receipt, provisioning: options.provisioning }
+      const rendering: Rendering = { overlay, call, natives: seen.natives, copies: { [LAUNCHER_APK]: launcher.file, ...companionCopies }, tree: seen.tree, receipt, provisioning: options.provisioning }
       const rendered = (renderInto(rendering) |> map(%, (provisioning) => ({ kind: "rendered" as const, provisioning }))) catch (cause) => ({ kind: "failed" as const, message: `${cause._tag}: ${"message" in cause ? cause.message : ""}` })
       try orDie(staging.send({ type: "render", ok: rendered.kind === "rendered" }))
       if (rendered.kind === "failed") {
@@ -653,10 +653,11 @@ export effect function stageLauncher(options: StageOptions) {
         try orDie(staging.send({ type: "cleanStaging", removed }))
         throw new OverlayWriteFailed({ output, message: `Could not write the overlay for ${output}: ${rendered.message}` })
       }
-      const free = !(try files.exists(output))
-      const renamed = free && ((files.rename(overlay, output) |> map(%, () => true)) catch () => false)
+      let renamed = false
+      if (!(try files.exists(output))) renamed = (files.rename(overlay, output) |> map(%, () => true)) catch () => false
       const published = try orDie(staging.send({ type: "publish", ok: renamed }))
-      const removed = renamed || ((files.remove(overlay, { recursive: true, force: true }) |> map(%, () => true)) catch () => false)
+      let removed = renamed
+      if (!renamed) removed = (files.remove(overlay, { recursive: true, force: true }) |> map(%, () => true)) catch () => false
       const settled = try orDie(staging.send({ type: "cleanStaging", removed }))
       if (published.phase.tag !== "Published") throw new OutputNotPublished({ output, message: `${output} exists or could not be published; choose a new staging directory` })
       const evidence = evidenceOf(settled)

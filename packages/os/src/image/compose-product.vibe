@@ -1,0 +1,810 @@
+// spec/os/image/product.md, "Story: Compose my product from a pinned device profile"; spec/os/image/product.md, "Story: Enroll my product's update channel"; spec/os/image/firstRun.md, "First run requires Home, the assistant the image declares, and the dialer and SMS app only where the image declares them and the device has telephony"
+import { parseDigest } from "./apk.vibe"
+import { finalizeNative } from "./stage-launcher.vibe"
+import { hexOf, type Digest } from "../../gen/os__image__apk.effect.vibe"
+import { stagedDescriptor } from "../../gen/os__image__firstRun.effect.vibe"
+import {
+  compositionProblems,
+  deviceName,
+  enrollmentOutcome,
+  enrollmentProblems,
+  isPixel,
+  lunchChoices,
+  lunchFor,
+  recordAdmitted,
+  type BootArchive,
+  type BuildSettings,
+  type CompositionCall,
+  type CompositionOutput,
+  type CompositionProblem,
+  type DeviceProfile,
+  type Enrollment,
+  type EnrollmentCheckout,
+  type EnrollmentOutcome,
+  type EnrollmentProblem,
+  type LunchChoice,
+  type ProductDescriptor,
+  type RecordClaim,
+  type StagedArtifact,
+  type UpdaterSource,
+} from "../../gen/os__image__product.effect.vibe"
+import type { DefaultRole, ProvisioningRequest } from "../../gen/os__image__provisioning.effect.vibe"
+import { admitProduct, canAdmitProduct, type BuildPurpose, type ProductName, type SourceVerdict } from "../../gen/os__image__sourceLock.effect.vibe"
+import type { LauncherDescriptor } from "../../gen/os__image__staging.effect.vibe"
+
+module node {
+  import { X509Certificate, createHash } from "node:crypto"
+  import { crc32 } from "node:zlib"
+
+  export interface ArchiveFacts {
+    readonly storedOnly: boolean
+    readonly descAtRoot: boolean
+    readonly framesInEveryPart: boolean
+    readonly parts: readonly string[]
+  }
+
+  export interface ArchiveFile {
+    readonly name: string
+    readonly bytes: Uint8Array
+  }
+
+  /** @throws {never} */
+  export function sha256Hex(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function utf8(text: string): Uint8Array {
+    return Buffer.from(text, "utf8")
+  }
+
+  /** @throws {never} */
+  export function textOf(bytes: Uint8Array): string {
+    return Buffer.from(bytes).toString("utf8")
+  }
+
+  /** @throws {never} */
+  export function parseJson(text: string): unknown {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function certificateSha256(pem: Uint8Array): string | undefined {
+    try {
+      return new X509Certificate(pem).fingerprint256.replaceAll(":", "").toLowerCase()
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function urlParts(text: string): { readonly scheme: string; readonly host: string } {
+    try {
+      const url = new URL(text)
+      return { scheme: url.protocol.replace(/:$/, ""), host: url.hostname }
+    } catch {
+      return { scheme: "", host: "" }
+    }
+  }
+
+  /** @throws {never} */
+  export function storedZip(files: readonly ArchiveFile[]): Uint8Array {
+    const locals: Buffer[] = []
+    const centrals: Buffer[] = []
+    let offset = 0
+    for (const file of files) {
+      const name = Buffer.from(file.name, "utf8")
+      const checksum = crc32(file.bytes) >>> 0
+      const local = Buffer.alloc(30)
+      local.writeUInt32LE(0x04034b50, 0)
+      local.writeUInt16LE(10, 4)
+      local.writeUInt16LE(0x0800, 6)
+      local.writeUInt16LE(0x21, 12)
+      local.writeUInt32LE(checksum, 14)
+      local.writeUInt32LE(file.bytes.byteLength, 18)
+      local.writeUInt32LE(file.bytes.byteLength, 22)
+      local.writeUInt16LE(name.length, 26)
+      const central = Buffer.alloc(46)
+      central.writeUInt32LE(0x02014b50, 0)
+      central.writeUInt16LE(20, 4)
+      central.writeUInt16LE(10, 6)
+      central.writeUInt16LE(0x0800, 8)
+      central.writeUInt16LE(0x21, 14)
+      central.writeUInt32LE(checksum, 16)
+      central.writeUInt32LE(file.bytes.byteLength, 20)
+      central.writeUInt32LE(file.bytes.byteLength, 24)
+      central.writeUInt16LE(name.length, 28)
+      central.writeUInt32LE(offset, 42)
+      locals.push(local, name, Buffer.from(file.bytes))
+      centrals.push(central, name)
+      offset += 30 + name.length + file.bytes.byteLength
+    }
+    const directory = Buffer.concat(centrals)
+    const end = Buffer.alloc(22)
+    end.writeUInt32LE(0x06054b50, 0)
+    end.writeUInt16LE(files.length, 8)
+    end.writeUInt16LE(files.length, 10)
+    end.writeUInt32LE(directory.length, 12)
+    end.writeUInt32LE(offset, 16)
+    return Buffer.concat([...locals, directory, end])
+  }
+
+  function safeName(name: string): boolean {
+    return name !== "" && !name.startsWith("/") && !name.includes("\\") && !name.split("/").some((part) => part === "" || part === "." || part === "..")
+  }
+
+  /** @throws {never} */
+  export function animationParts(desc: string): string[] {
+    return [...new Set(desc.split(/\r?\n/).map((line) => line.trim()).filter((line) => /^[pcf]\s/.test(line)).map((line) => line.split(/\s+/)[3] ?? ""))]
+  }
+
+  /** @throws {never} */
+  export function inspectBootArchive(bytes: Uint8Array): ArchiveFacts | undefined {
+    const data = Buffer.from(bytes)
+    if (data.length < 22) return undefined
+    let end = -1
+    for (let at = data.length - 22; at >= Math.max(0, data.length - 22 - 0xffff); at--)
+      if (data.readUInt32LE(at) === 0x06054b50) {
+        end = at
+        break
+      }
+    if (end < 0) return undefined
+    const count = data.readUInt16LE(end + 10)
+    const size = data.readUInt32LE(end + 12)
+    const start = data.readUInt32LE(end + 16)
+    if (count === 0xffff || size === 0xffffffff || start === 0xffffffff || start + size > end) return undefined
+    const entries = new Map<string, Buffer>()
+    let storedOnly = true
+    let at = start
+    for (let index = 0; index < count; index++) {
+      if (at + 46 > start + size || data.readUInt32LE(at) !== 0x02014b50) return undefined
+      const method = data.readUInt16LE(at + 10)
+      const compressed = data.readUInt32LE(at + 20)
+      const expanded = data.readUInt32LE(at + 24)
+      const nameLength = data.readUInt16LE(at + 28)
+      const local = data.readUInt32LE(at + 42)
+      const name = data.subarray(at + 46, at + 46 + nameLength).toString("utf8")
+      at += 46 + nameLength + data.readUInt16LE(at + 30) + data.readUInt16LE(at + 32)
+      if (name.endsWith("/")) continue
+      if (!safeName(name) || entries.has(name) || local + 30 > data.length || data.readUInt32LE(local) !== 0x04034b50) return undefined
+      const payload = local + 30 + data.readUInt16LE(local + 26) + data.readUInt16LE(local + 28)
+      if (payload + compressed > data.length) return undefined
+      if (method !== 0 || compressed !== expanded) storedOnly = false
+      entries.set(name, data.subarray(payload, payload + compressed))
+    }
+    const desc = entries.get("desc.txt")
+    const parts = desc === undefined ? [] : animationParts(desc.toString("utf8"))
+    const framesInEveryPart =
+      parts.length > 0 &&
+      parts.every((part) => part !== "" && [...entries.keys()].some((name) => name.startsWith(`${part}/`) && !name.slice(part.length + 1).includes("/") && name.toLowerCase().endsWith(".png")))
+    return { storedOnly, descAtRoot: desc !== undefined, framesInEveryPart, parts }
+  }
+}
+import { animationParts, certificateSha256, inspectBootArchive, parseJson, sha256Hex, storedZip, textOf, urlParts, utf8, type ArchiveFile } from node
+
+export type RawRecord = Readonly<Record<string, unknown>>
+
+export type BootAnimationInput =
+  | { readonly kind: "stock" }
+  | { readonly kind: "archive"; readonly file: string }
+  | { readonly kind: "frames"; readonly directory: string }
+
+export interface ComposeRequest {
+  readonly output: string
+  readonly descriptor: string
+  readonly launcher: LauncherDescriptor
+  readonly source: SourceVerdict
+  readonly purpose: BuildPurpose
+  readonly provisioning: ProvisioningRequest
+  readonly bootAnimation?: BootAnimationInput
+  readonly deferredSoong?: boolean
+  readonly aosp?: string
+}
+
+export interface UpdateChannel {
+  readonly manifestUrl: string
+  readonly hosts: readonly string[]
+  readonly product: string
+  readonly device: string
+  readonly otaCertificateSha256: string
+}
+
+export interface EnrollmentRequest {
+  readonly checkout: string
+  readonly descriptor: string
+  readonly channel: UpdateChannel
+  readonly certificate: string
+  readonly productMakefileSha256: string
+  readonly receipt: string
+  readonly execute: boolean
+  readonly aosp?: string
+}
+
+export interface ProductRecord {
+  readonly schema: 1
+  readonly product: string
+  readonly device: string
+  readonly sourceProfile: string
+  readonly purpose: BuildPurpose
+  readonly lunch: string
+  readonly lunchChoices: readonly string[]
+  readonly descriptorSha256: string
+  readonly sourceLock: string
+  readonly launcher: { readonly moduleName: string; readonly packageName: string; readonly apkSha256: string }
+  readonly bootAnimation: { readonly sha256: string; readonly parts: readonly string[] } | null
+  readonly systemUpdater: { readonly enabled: false } | null
+  readonly firstRun: { readonly roles: readonly string[] } | null
+  readonly artifacts: readonly { readonly path: string; readonly sha256: string; readonly descriptorSha256: string }[]
+  readonly claims: readonly RecordClaim[]
+}
+
+export interface EnrollmentRecord {
+  readonly schema: 1
+  readonly outcome: EnrollmentOutcome
+  readonly product: string
+  readonly device: string
+  readonly manifestUrl: string
+  readonly hosts: readonly string[]
+  readonly otaCertificateSha256: string
+  readonly productMakefile: string
+  readonly productMakefileBefore: string
+  readonly productMakefileAfter: string
+  readonly files: Readonly<Record<string, string>>
+}
+
+export error ProductInputUnreadable { place: string; message: string }
+export error ProductRefused { product: string; problems: readonly CompositionProblem[]; message: string }
+export error RecordRefused { product: string; message: string }
+export error EnrollmentRefused { product: string; problems: readonly EnrollmentProblem[]; checkout: EnrollmentCheckout; message: string }
+export error EnrollmentChanged { place: string; message: string }
+
+interface StagedFile {
+  readonly bytes: Uint8Array
+  readonly mode: number
+}
+
+interface SourceFile extends StagedFile {
+  readonly path: string
+}
+
+interface ReadDescriptor {
+  readonly descriptor: ProductDescriptor
+  readonly sha256: string
+}
+
+interface ReadBootAnimation {
+  readonly archive: BootArchive
+  readonly bytes: Uint8Array | undefined
+  readonly parts: readonly string[]
+}
+
+const TOKEN = /^[a-z][a-z0-9_]*$/
+const PACKAGE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/
+const MODULE = /^[A-Z][A-Za-z0-9]*$/
+const LABEL = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,79}$/
+const RELEASE = /^[a-z0-9_]+$/
+const MIME = /^vnd\.android\.cursor\.dir\/vnd\.[a-z0-9][a-z0-9_.-]*$/
+const HEX64 = /^[0-9a-f]{64}$/
+const PLACEHOLDER = /^(unset|todo|tbd)$/i
+const CLOCK_LINE = /^\s*PRODUCT_PACKAGES\s*\+=\s*DeskClock\s*$/gm
+const UPDATER_DISABLED = /<bool name="os_update_enabled">false<\/bool>/
+const MAX_BOOT_ANIMATION_BYTES = 64 * 1024 * 1024
+const BOOT_ANIMATION_DESTINATION = "$(TARGET_COPY_OUT_PRODUCT)/media/bootanimation.zip"
+const CUTTLEFISH_PRODUCT = "device/google/cuttlefish/vsoc_x86_64_only/phone/aosp_cf.mk"
+const PIXEL_PRODUCT = "vendor/google_devices/stallion/stallion.mk"
+const TEMPLATE_PIXEL_CONFIG = { moduleName: "PixelConfig", packageName: "ai.eliza.hardware.pixelconfig", mimeType: "vnd.android.cursor.dir/vnd.eliza.pixel-flags" }
+const PART_EXTRAS = new Set(["trim.txt", "audio.wav"])
+const FONTS = ["clock_font.png", "progress_font.png"]
+const COMMON_KEYS = ["schemaVersion", "target", "sourceProfile", "vendorDirectory", "productName", "model", "brand", "manufacturer", "releaseConfig", "launcher", "listener", "systemUpdater", "firstRun", "bootAnimation", "description"]
+const TARGET_KEYS: Readonly<Record<string, readonly string[]>> = {
+  pixel10a: [...COMMON_KEYS, "pixelConfig"],
+  cuttlefish_x86_64: [...COMMON_KEYS, "hostPackages", "platformCertificateSha256"],
+}
+const ALL_OUTPUTS: readonly CompositionOutput[] = ["ProductList", "ProductMakefile", "DeviceTemplates", "BrandAssets", "CompositionRecord", "SystemUpdaterSources", "FirstRunSources"]
+const ROLE_ORDER: readonly DefaultRole[] = ["HomeRole", "AssistantRole", "DialerRole", "SmsRole"]
+const ROLE_NAMES: Readonly<Record<DefaultRole, string>> = { HomeRole: "home", AssistantRole: "assistant", DialerRole: "dialer", SmsRole: "sms" }
+
+function isRecord(value: unknown): value is RawRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value : ""
+}
+
+function exactKeys(value: unknown, keys: readonly string[]): boolean {
+  return isRecord(value) && Object.keys(value).every((key) => keys.includes(key))
+}
+
+function optionalFlag(value: unknown): boolean {
+  return value === undefined || typeof value === "boolean"
+}
+
+function identityValid(value: unknown): boolean {
+  return exactKeys(value, ["moduleName", "packageName"]) && MODULE.test(text((value as RawRecord).moduleName)) && PACKAGE.test(text((value as RawRecord).packageName))
+}
+
+function placeholderCount(value: unknown): number {
+  if (typeof value === "string") return PLACEHOLDER.test(value.trim()) || /placeholder/i.test(value) ? 1 : 0
+  if (Array.isArray(value)) return value.reduce((total: number, item: unknown) => total + placeholderCount(item), 0)
+  if (isRecord(value)) return Object.entries(value).reduce((total, [key, item]) => total + (key === "description" ? 0 : placeholderCount(item)), 0)
+  return 0
+}
+
+function deviceProfile(raw: RawRecord): DeviceProfile {
+  if (raw.target === "pixel10a") {
+    const config = isRecord(raw.pixelConfig) ? raw.pixelConfig : {}
+    return { tag: "PixelProfile", pixelConfig: { moduleName: text(config.moduleName), packageName: text(config.packageName), mimeType: text(config.mimeType) } }
+  }
+  const hosts = Array.isArray(raw.hostPackages) ? raw.hostPackages : []
+  return {
+    tag: "CuttlefishProfile",
+    hostPackages: hosts.map((host: unknown) => (isRecord(host) ? { name: text(host.name), version: text(host.version), sha256: parseDigest(host.sha256) } : { name: "", version: "", sha256: parseDigest(undefined) })),
+    platformCertificate: parseDigest(raw.platformCertificateSha256),
+  }
+}
+
+function syntaxValid(raw: RawRecord): boolean {
+  const keys = TARGET_KEYS[text(raw.target)]
+  const pixel = raw.target === "pixel10a"
+  const config = isRecord(raw.pixelConfig) ? raw.pixelConfig : {}
+  const hosts = raw.hostPackages
+  return (
+    keys !== undefined &&
+    exactKeys(raw, keys) &&
+    TOKEN.test(text(raw.vendorDirectory)) &&
+    TOKEN.test(text(raw.productName)) &&
+    RELEASE.test(text(raw.releaseConfig)) &&
+    [raw.model, raw.brand, raw.manufacturer].every((label) => LABEL.test(text(label))) &&
+    identityValid(raw.launcher) &&
+    (raw.listener === undefined || identityValid(raw.listener)) &&
+    optionalFlag(raw.systemUpdater) &&
+    optionalFlag(raw.firstRun) &&
+    (raw.bootAnimation === undefined || (exactKeys(raw.bootAnimation, ["sha256"]) && HEX64.test(text((raw.bootAnimation as RawRecord).sha256)))) &&
+    (pixel
+      ? exactKeys(raw.pixelConfig, ["moduleName", "packageName", "mimeType"]) && MODULE.test(text(config.moduleName)) && PACKAGE.test(text(config.packageName)) && MIME.test(text(config.mimeType))
+      : (hosts === undefined || (Array.isArray(hosts) && hosts.every((host) => exactKeys(host, ["name", "version", "sha256"])))) && (raw.platformCertificateSha256 === undefined || typeof raw.platformCertificateSha256 === "string"))
+  )
+}
+
+export function productDescriptor(raw: unknown): ProductDescriptor | undefined {
+  if (!isRecord(raw) || TARGET_KEYS[text(raw.target)] === undefined) return undefined
+  const launcher = isRecord(raw.launcher) ? raw.launcher : {}
+  const boot = isRecord(raw.bootAnimation) ? raw.bootAnimation : undefined
+  return {
+    schemaVersion: typeof raw.schemaVersion === "number" ? raw.schemaVersion : 0,
+    syntaxValid: syntaxValid(raw),
+    placeholderFields: placeholderCount(raw),
+    device: deviceProfile(raw),
+    sourceProfile: text(raw.sourceProfile),
+    vendorDirectory: text(raw.vendorDirectory),
+    productName: text(raw.productName),
+    model: text(raw.model),
+    brand: text(raw.brand),
+    manufacturer: text(raw.manufacturer),
+    releaseConfig: text(raw.releaseConfig),
+    launcherModule: text(launcher.moduleName),
+    launcherPackage: text(launcher.packageName),
+    listener: isRecord(raw.listener) ? { tag: "WithListener", moduleName: text(raw.listener.moduleName), packageName: text(raw.listener.packageName) } : { tag: "NoListener" },
+    systemUpdater: raw.systemUpdater === true,
+    firstRun: raw.firstRun === true,
+    bootAnimation: boot === undefined ? { tag: "StockBootAnimation" } : { tag: "PinnedBootAnimation", sha256: parseDigest(boot.sha256) },
+  }
+}
+
+function productName(name: string): ProductName {
+  const split = name.indexOf("_")
+  return split < 0 ? { brand: name, target: "" } : { brand: name.slice(0, split), target: name.slice(split + 1) }
+}
+
+function outputName(d: ProductDescriptor, output: CompositionOutput): string {
+  switch (output) {
+    case "ProductList":
+      return "AndroidProducts.mk"
+    case "ProductMakefile":
+      return `${d.productName}.mk`
+    case "DeviceTemplates":
+      return "stallion"
+    case "BrandAssets":
+      return "brand"
+    case "CompositionRecord":
+      return "physical-product.json"
+    case "SystemUpdaterSources":
+      return "system-updater"
+    case "FirstRunSources":
+      return "first-run"
+    default: {
+      const _exhaustive: never = output
+      return _exhaustive
+    }
+  }
+}
+
+function lunchName(choice: LunchChoice): string {
+  return `${choice.product}-${choice.release}-${choice.variant === "UserBuild" ? "user" : "userdebug"}`
+}
+
+function assignments(makefiles: string, name: string): string[] {
+  return [...makefiles.matchAll(new RegExp(`^\\s*${name}\\s*[:+?]?=\\s*(.*?)\\s*$`, "gm"))].map((found) => found[1] ?? "")
+}
+
+export function buildSettings(makefiles: readonly string[]): BuildSettings {
+  const all = makefiles.map((makefile) => makefile.replace(/#.*$/gm, "")).join("\n")
+  const stock = assignments(all, "USE_STOCK_KERNEL")
+  const compression = assignments(all, "PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD").at(-1)
+  const abDisabled = [...assignments(all, "PRODUCT_VIRTUAL_AB_OTA"), ...assignments(all, "PRODUCT_VIRTUAL_AB_COMPRESSION")].some((value) => value === "false")
+  return {
+    kernel: ["TARGET_PREBUILT_KERNEL", "TARGET_KERNEL_SOURCE", "TARGET_KERNEL_CONFIG"].some((name) => assignments(all, name).length > 0) || stock.some((value) => value !== "true") ? "CustomKernel" : "StockKernel",
+    snapshots: abDisabled || compression === undefined ? "NoVirtualAb" : compression === "lz4" ? "Lz4Snapshots" : "OtherSnapshots",
+    selinux: /androidboot\.selinux\s*=\s*permissive/.test(all) ? "SelinuxPermissive" : "SelinuxEnforcing",
+    neverallows: assignments(all, "SELINUX_IGNORE_NEVERALLOWS").some((value) => value === "true") ? "NeverallowsIgnored" : "NeverallowsChecked",
+  }
+}
+
+function clockLines(makefiles: readonly string[]): number {
+  return makefiles.reduce((total, makefile) => total + [...makefile.matchAll(CLOCK_LINE)].length, 0)
+}
+
+function escapeXml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;")
+}
+
+function firstRunRoles(d: ProductDescriptor, provisioning: ProvisioningRequest): string[] {
+  const roles = stagedDescriptor(provisioning, true).roles
+  const listener = d.listener
+  const assistant = provisioning.assistant.tag === "ListenerAssistant" && listener.tag === "WithListener" ? listener.packageName : d.launcherPackage
+  return ROLE_ORDER.filter((role) => roles.includes(role)).map((role) => `${ROLE_NAMES[role]}=${role === "AssistantRole" ? assistant : d.launcherPackage}`)
+}
+
+function firstRunOverlay(roles: readonly string[]): string {
+  return `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <bool name="first_run_enabled">true</bool>\n    <string-array name="first_run_roles" translatable="false">\n${roles.map((role) => `        <item>${escapeXml(role)}</item>\n`).join("")}    </string-array>\n</resources>\n`
+}
+
+function productMakefile(d: ProductDescriptor, parts: { readonly bootAnimation: boolean; readonly clock: boolean }): string {
+  const vendor = `vendor/${d.vendorDirectory}`
+  const head = isPixel(d) ? `USE_STOCK_KERNEL := true\n$(call inherit-product, ${PIXEL_PRODUCT})\n` : `$(call inherit-product, ${CUTTLEFISH_PRODUCT})\n`
+  return [
+    head,
+    `$(call inherit-product, ${vendor}/product.mk)\n\n`,
+    `PRODUCT_NAME := ${d.productName}\nPRODUCT_DEVICE := ${deviceName(d)}\nPRODUCT_MODEL := ${d.model}\nPRODUCT_BRAND := ${d.brand}\nPRODUCT_MANUFACTURER := ${d.manufacturer}\n`,
+    isPixel(d) ? "" : "PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := lz4\n",
+    parts.bootAnimation ? `PRODUCT_COPY_FILES += ${vendor}/brand/bootanimation.zip:${BOOT_ANIMATION_DESTINATION}\n` : "",
+    parts.clock ? "PRODUCT_PACKAGES += DeskClock\n" : "",
+    d.systemUpdater ? `$(call inherit-product, ${vendor}/system-updater/product.mk)\n` : "",
+    d.firstRun ? `$(call inherit-product, ${vendor}/first-run/product.mk)\nPRODUCT_PACKAGE_OVERLAYS += ${vendor}/first-run/overlay\n` : "",
+  ].join("")
+}
+
+function productList(d: ProductDescriptor): string {
+  return `PRODUCT_MAKEFILES := $(LOCAL_DIR)/${d.productName}.mk\nCOMMON_LUNCH_CHOICES := \\\n${lunchChoices(d).map((choice) => `    ${lunchName(choice)}`).join(" \\\n")}\n`
+}
+
+function deviceTemplates(d: ProductDescriptor, templates: readonly SourceFile[]): SourceFile[] {
+  const device = d.device
+  if (device.tag !== "PixelProfile") return []
+  const config = device.pixelConfig
+  return templates.map((file) => {
+    const original = textOf(file.bytes)
+    let rendered = original.replaceAll("@VENDOR_DIRECTORY@", d.vendorDirectory).replaceAll("@PIXEL_CONFIG_MODULE@", config.moduleName)
+    if (file.path.startsWith("vendor-config/"))
+      rendered = rendered.replaceAll(TEMPLATE_PIXEL_CONFIG.moduleName, config.moduleName).replaceAll(TEMPLATE_PIXEL_CONFIG.packageName, config.packageName).replaceAll(TEMPLATE_PIXEL_CONFIG.mimeType, config.mimeType)
+    const relative = file.path.replace(`src/${TEMPLATE_PIXEL_CONFIG.packageName.replaceAll(".", "/")}/`, `src/${config.packageName.replaceAll(".", "/")}/`)
+    return { path: `stallion/${relative}`, bytes: rendered === original ? file.bytes : utf8(rendered), mode: file.mode }
+  })
+}
+
+effect function packageAosp() {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const start = try path.fromFileUrl(new URL(".", import.meta.url))
+  let directory = start
+  while (!(try files.exists(path.join(directory, "aosp", "devices", "pixel10a", "device.mk")))) {
+    const parent = path.dirname(directory)
+    if (parent === directory) throw new ProductInputUnreadable({ place: start, message: "The os package's aosp directory is missing" })
+    directory = parent
+  }
+  return path.join(directory, "aosp")
+}
+
+effect function readBytes(place: string) {
+  const files = try FileSystem.FileSystem
+  return try mapError(files.readFile(place), (cause) => new ProductInputUnreadable({ place, message: cause.message }))
+}
+
+effect function readSourceTree(root: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const unreadable = (cause: { readonly message: string }) => new ProductInputUnreadable({ place: root, message: cause.message })
+  const tree: SourceFile[] = []
+  for (const name of (try mapError(files.readDirectory(root, { recursive: true }), unreadable)).sort()) {
+    const place = path.join(root, name)
+    const info = try mapError(files.lstat(place), unreadable)
+    if (info.type === "Directory") continue
+    if (info.type !== "File") throw new ProductInputUnreadable({ place, message: "Only regular files are staged" })
+    tree.push({ path: name.split(path.sep).join("/"), bytes: try readBytes(place), mode: info.mode & 0o777 })
+  }
+  return tree
+}
+
+effect function readDescriptor(place: string) {
+  const bytes = try readBytes(place)
+  const descriptor = productDescriptor(parseJson(textOf(bytes)))
+  if (descriptor === undefined) throw new ProductRefused({ product: place, problems: ["DescriptorInvalid"], message: `${place} is not a product descriptor for pixel10a or cuttlefish_x86_64` })
+  const read: ReadDescriptor = { descriptor, sha256: sha256Hex(bytes) }
+  return read
+}
+
+effect function packFrames(directory: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const kind = effect (place: string) => ((try files.lstat(place)).type catch () => "Missing")
+  if ((try kind(path.join(directory, "desc.txt"))) !== "File") throw new ProductInputUnreadable({ place: directory, message: "desc.txt must be a regular file" })
+  const desc = try readBytes(path.join(directory, "desc.txt"))
+  const parts = animationParts(textOf(desc))
+  const issues: string[] = parts.length === 0 ? ["desc.txt declares no p, c or f animation parts"] : []
+  const entries: ArchiveFile[] = [{ name: "desc.txt", bytes: desc }]
+  for (const part of parts) {
+    const segments = part.split("/")
+    if (part === "" || part.includes("\\") || segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
+      issues.push(`invalid part path ${part}`)
+      continue
+    }
+    if ((try kind(path.join(directory, ...segments))) !== "Directory") {
+      issues.push(`part ${part} is not a directory`)
+      continue
+    }
+    let frames = 0
+    for (const name of (try mapError(files.readDirectory(path.join(directory, ...segments)), (cause) => new ProductInputUnreadable({ place: directory, message: cause.message }))).sort()) {
+      const place = path.join(directory, ...segments, name)
+      if ((try kind(place)) !== "File") issues.push(`${part}/${name} is not a regular file`)
+      else if (name.toLowerCase().endsWith(".png")) frames += 1
+      else if (!PART_EXTRAS.has(name)) issues.push(`${part}/${name} is not a frame, trim.txt or audio.wav`)
+      else continue
+      if ((try kind(place)) === "File") entries.push({ name: `${part}/${name}`, bytes: try readBytes(place) })
+    }
+    if (frames === 0) issues.push(`part ${part} has no PNG frames`)
+  }
+  for (const font of FONTS) {
+    const found = try kind(path.join(directory, font))
+    if (found === "Missing") continue
+    if (found !== "File") issues.push(`${font} is not a regular file`)
+    else entries.push({ name: font, bytes: try readBytes(path.join(directory, font)) })
+  }
+  if (issues.length) throw new ProductInputUnreadable({ place: directory, message: `The boot animation frames cannot be packed: ${issues.join("; ")}` })
+  return storedZip(entries)
+}
+
+export effect function packBootAnimation(directory: string) {
+  const bytes = try packFrames(directory)
+  return { bytes, sha256: sha256Hex(bytes) }
+}
+
+effect function readBootAnimation(input: BootAnimationInput) {
+  const files = try FileSystem.FileSystem
+  let bytes: Uint8Array
+  switch (input.kind) {
+    case "stock": {
+      const stock: ReadBootAnimation = { archive: { tag: "NoBootArchive" }, bytes: undefined, parts: [] }
+      return stock
+    }
+    case "archive": {
+      const info = try mapError(files.lstat(input.file), (cause) => new ProductInputUnreadable({ place: input.file, message: cause.message }))
+      if (info.type !== "File" || Number(info.size) > MAX_BOOT_ANIMATION_BYTES) throw new ProductInputUnreadable({ place: input.file, message: "The boot animation must be a regular file of at most 64 MiB" })
+      bytes = try readBytes(input.file)
+      break
+    }
+    case "frames":
+      bytes = try packFrames(input.directory)
+      break
+    default: {
+      const _exhaustive: never = input
+      return _exhaustive
+    }
+  }
+  const facts = inspectBootArchive(bytes)
+  const read: ReadBootAnimation = {
+    archive: { tag: "BootArchiveRead", sha256: { tag: "Sha256", hex: sha256Hex(bytes) }, storedOnly: facts?.storedOnly ?? false, descAtRoot: facts?.descAtRoot ?? false, framesInEveryPart: facts?.framesInEveryPart ?? false },
+    bytes,
+    parts: facts?.parts ?? [],
+  }
+  return read
+}
+
+effect function consumerMakefiles(output: string, d: ProductDescriptor) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const ours = new Set(ALL_OUTPUTS.map((name) => outputName(d, name)))
+  const makefiles: string[] = []
+  for (const name of (try mapError(files.readDirectory(output), (cause) => new ProductInputUnreadable({ place: output, message: cause.message }))).sort()) {
+    if (!name.endsWith(".mk") || ours.has(name)) continue
+    makefiles.push(textOf(try readBytes(path.join(output, name))))
+  }
+  if (makefiles.length === 0) throw new ProductInputUnreadable({ place: output, message: "No staged launcher makefile; stage the launcher into this overlay first" })
+  return makefiles
+}
+
+function updaterState(tree: readonly SourceFile[]): UpdaterSource {
+  const config = tree.find((file) => file.path === "res/values/config.xml")
+  return config !== undefined && UPDATER_DISABLED.test(textOf(config.bytes)) ? "ReviewedDisabledUpdater" : "EnabledUpdater"
+}
+
+effect function publish(output: string, planned: ReadonlyMap<string, StagedFile>) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const failed = (place: string) => (cause: { readonly message: string }) => new ProductInputUnreadable({ place, message: cause.message })
+  try scoped(effect {
+    const temporary = try mapError(files.makeTempDirectoryScoped({ directory: output, prefix: ".compose-" }), failed(output))
+    for (const [relative, file] of planned) {
+      const target = path.join(temporary, ...relative.split("/"))
+      try mapError(files.makeDirectory(path.dirname(target), { recursive: true }), failed(target))
+      try mapError(files.writeFile(target, file.bytes, { flag: "wx", mode: file.mode }), failed(target))
+    }
+    for (const top of new Set([...planned.keys()].map((relative) => relative.split("/")[0] ?? relative)))
+      try mapError(files.rename(path.join(temporary, top), path.join(output, top)), failed(path.join(output, top)))
+  })
+  for (const [relative, file] of planned) {
+    const place = path.join(output, ...relative.split("/"))
+    if (sha256Hex(try readBytes(place)) !== sha256Hex(file.bytes)) throw new ProductInputUnreadable({ place, message: "A staged file changed after it was written" })
+  }
+}
+
+export effect function composeProduct(request: ComposeRequest) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const aosp = request.aosp ?? (try packageAosp())
+  const { descriptor: d, sha256: descriptorSha256 } = try readDescriptor(request.descriptor)
+  const existing: CompositionOutput[] = []
+  for (const output of ALL_OUTPUTS) {
+    if (try files.exists(path.join(request.output, outputName(d, output)))) existing.push(output)
+  }
+  const consumer = try consumerMakefiles(request.output, d)
+  const boot = try readBootAnimation(request.bootAnimation ?? { kind: "stock" })
+  const updater = d.systemUpdater ? try readSourceTree(path.join(aosp, "system-updater")) : []
+  const firstRun = d.firstRun ? try readSourceTree(path.join(aosp, "first-run")) : []
+  if (d.firstRun && !firstRun.some((file) => file.path === "product.mk")) throw new ProductInputUnreadable({ place: path.join(aosp, "first-run"), message: "The first-run sources have no product.mk" })
+  const templates = isPixel(d) ? try readSourceTree(path.join(aosp, "devices", "pixel10a")) : []
+  const roles = d.firstRun ? firstRunRoles(d, request.provisioning) : []
+  const clock = clockLines(consumer)
+  const planned = new Map<string, StagedFile>()
+  const add = (relative: string, bytes: Uint8Array, mode = 0o644) => planned.set(relative, { bytes, mode })
+  add("AndroidProducts.mk", utf8(productList(d)))
+  add(`${d.productName}.mk`, utf8(productMakefile(d, { bootAnimation: boot.bytes !== undefined, clock: clock === 0 })))
+  for (const file of deviceTemplates(d, templates)) add(file.path, file.bytes, file.mode)
+  if (boot.bytes !== undefined) add("brand/bootanimation.zip", boot.bytes)
+  for (const file of updater) add(`system-updater/${file.path}`, file.bytes, file.mode)
+  for (const file of firstRun) add(`first-run/${file.path}`, file.bytes, file.mode)
+  if (d.firstRun) add(`first-run/overlay/vendor/${d.vendorDirectory}/first-run/res/values/config.xml`, utf8(firstRunOverlay(roles)))
+  const composed = [...planned].filter(([relative]) => relative.endsWith(".mk")).map(([, file]) => textOf(file.bytes))
+  const brandToken = d.brand.toLowerCase()
+  const named = productName(d.productName)
+  const source = canAdmitProduct(request.source, brandToken, named, request.purpose) ? admitProduct(request.source, brandToken, named, request.purpose) : request.source
+  const call: CompositionCall = {
+    descriptor: d,
+    purpose: request.purpose,
+    brandToken,
+    source,
+    launcher: request.launcher,
+    existing,
+    settings: buildSettings([...consumer, ...composed]),
+    bootArchive: boot.archive,
+    clockLines: clock,
+    updater: d.systemUpdater ? updaterState(updater) : "ReviewedDisabledUpdater",
+  }
+  const problems = compositionProblems(call)
+  if (problems.length) throw new ProductRefused({ product: d.productName, problems, message: `${d.productName} cannot be composed: ${problems.join(", ")}` })
+  try publish(request.output, planned)
+  const digest: Digest = { tag: "Sha256", hex: descriptorSha256 }
+  const artifacts: StagedArtifact[] = [...planned.keys()].map((relative) => ({ path: relative, descriptorDigest: digest }))
+  const claims: RecordClaim[] = ["ProductStaged"]
+  if (!recordAdmitted(digest, artifacts, claims)) throw new RecordRefused({ product: d.productName, message: "The composition record does not bind every artifact to the descriptor" })
+  const archive = boot.archive
+  const record: ProductRecord = {
+    schema: 1,
+    product: d.productName,
+    device: deviceName(d),
+    sourceProfile: d.sourceProfile,
+    purpose: request.purpose,
+    lunch: lunchName(lunchFor(d, request.purpose)),
+    lunchChoices: lunchChoices(d).map(lunchName),
+    descriptorSha256,
+    sourceLock: source.lock.digest,
+    launcher: { moduleName: request.launcher.moduleName, packageName: request.launcher.packageName, apkSha256: hexOf(request.launcher.apkSha256) },
+    bootAnimation: archive.tag === "BootArchiveRead" ? { sha256: hexOf(archive.sha256), parts: boot.parts } : null,
+    systemUpdater: d.systemUpdater ? { enabled: false } : null,
+    firstRun: d.firstRun ? { roles } : null,
+    artifacts: [...planned].map(([relative, file]) => ({ path: relative, sha256: sha256Hex(file.bytes), descriptorSha256 })),
+    claims,
+  }
+  try mapError(files.writeFileString(path.join(request.output, "physical-product.json"), `${JSON.stringify(record, null, 2)}\n`, { flag: "wx" }), (cause) => new ProductInputUnreadable({ place: request.output, message: cause.message }))
+  if (request.deferredSoong === true) try finalizeNative(request.output)
+  return record
+}
+
+effect function checkoutUpdater(reviewed: readonly SourceFile[], staged: string) {
+  const present = (try readSourceTree(staged)) catch (): SourceFile[] => []
+  const digests = new Map(present.map((file) => [file.path, sha256Hex(file.bytes)]))
+  const same = present.length === reviewed.length && reviewed.every((file) => digests.get(file.path) === sha256Hex(file.bytes))
+  const state: UpdaterSource = !same ? "ChangedUpdater" : updaterState(present)
+  return state
+}
+
+function enrollmentMakefile(relative: string): string {
+  return `PRODUCT_PACKAGE_OVERLAYS += ${relative}/overlay\nPRODUCT_ENFORCE_RRO_EXCLUDED_OVERLAYS += ${relative}/overlay\nPRODUCT_OTA_PUBLIC_KEYS += ${relative}/releasekey.x509.pem\nPRODUCT_EXTRA_OTA_KEYS += ${relative}/releasekey\nPRODUCT_EXTRA_RECOVERY_KEYS += ${relative}/releasekey\n`
+}
+
+function updaterOverlay(channel: UpdateChannel, certificate: string): string {
+  return `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <bool name="os_update_enabled">true</bool>\n    <string name="os_update_manifest" translatable="false">${escapeXml(channel.manifestUrl)}</string>\n    <string-array name="os_update_hosts" translatable="false">\n${channel.hosts.map((host) => `        <item>${escapeXml(host)}</item>\n`).join("")}    </string-array>\n    <string name="os_update_product" translatable="false">${escapeXml(channel.product)}</string>\n    <string name="os_update_device" translatable="false">${escapeXml(channel.device)}</string>\n    <string name="os_update_ota_certificate" translatable="false">${certificate}</string>\n</resources>\n`
+}
+
+export effect function enrollUpdater(request: EnrollmentRequest) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const aosp = request.aosp ?? (try packageAosp())
+  const { descriptor: d } = try readDescriptor(request.descriptor)
+  const checkout = try mapError(files.realPath(request.checkout), (cause) => new ProductInputUnreadable({ place: request.checkout, message: cause.message }))
+  const vendor = `vendor/${d.vendorDirectory}`
+  const relative = `${vendor}/system-update-enrollment`
+  const makefilePlace = path.join(checkout, vendor, `${d.productName}.mk`)
+  const destination = path.join(checkout, relative)
+  const before = try readBytes(makefilePlace)
+  const certificateBytes = try readBytes(request.certificate)
+  const certificate = certificateSha256(certificateBytes) ?? ""
+  const enrollment: Enrollment = {
+    manifestUrl: urlParts(request.channel.manifestUrl),
+    hosts: [...request.channel.hosts],
+    product: request.channel.product,
+    device: request.channel.device,
+    otaCertificate: parseDigest(request.channel.otaCertificateSha256),
+  }
+  const state: EnrollmentCheckout = {
+    updater: try checkoutUpdater(try readSourceTree(path.join(aosp, "system-updater")), path.join(checkout, vendor, "system-updater")),
+    updaterInherited: textOf(before).includes(`$(call inherit-product, ${vendor}/system-updater/product.mk)`),
+    productMakefileMatches: HEX64.test(request.productMakefileSha256) && sha256Hex(before) === request.productMakefileSha256,
+    enrollmentExists: (try files.exists(destination)) || (try files.exists(request.receipt)),
+  }
+  const channelCertificate = parseDigest(request.channel.otaCertificateSha256)
+  const certificateRead = parseDigest(certificate)
+  const outcome = enrollmentOutcome(request.execute ? "Execute" : "PlanOnly", enrollment, d, channelCertificate, certificateRead, state)
+  if (outcome === "EnrollmentRefused") {
+    const problems = enrollmentProblems(enrollment, d, channelCertificate, certificateRead)
+    const reasons = [...problems, ...Object.entries(state).filter(([key, value]) => (key === "updater" ? value !== "ReviewedDisabledUpdater" : key === "enrollmentExists" ? value === true : value === false)).map(([key, value]) => `${key}=${String(value)}`)]
+    throw new EnrollmentRefused({ product: d.productName, problems, checkout: state, message: `The update channel cannot be enrolled into ${checkout}: ${reasons.join(", ")}` })
+  }
+  const outputs = new Map<string, Uint8Array>([
+    ["releasekey.x509.pem", certificateBytes],
+    ["enrollment.mk", utf8(enrollmentMakefile(relative))],
+    [`overlay/${vendor}/system-updater/res/values/config.xml`, utf8(updaterOverlay(request.channel, certificate))],
+  ])
+  const after = utf8(`${textOf(before)}\n$(call inherit-product, ${relative}/enrollment.mk)\n`)
+  const record: EnrollmentRecord = {
+    schema: 1,
+    outcome,
+    product: request.channel.product,
+    device: request.channel.device,
+    manifestUrl: request.channel.manifestUrl,
+    hosts: [...request.channel.hosts],
+    otaCertificateSha256: certificate,
+    productMakefile: path.relative(checkout, makefilePlace).split(path.sep).join("/"),
+    productMakefileBefore: sha256Hex(before),
+    productMakefileAfter: sha256Hex(after),
+    files: Object.fromEntries([...outputs].map(([name, bytes]) => [`${relative}/${name}`, sha256Hex(bytes)])),
+  }
+  if (outcome === "EnrollmentPlanned") return record
+  const failed = (place: string) => (cause: { readonly message: string }) => new ProductInputUnreadable({ place, message: cause.message })
+  if (sha256Hex(try readBytes(makefilePlace)) !== record.productMakefileBefore) throw new EnrollmentChanged({ place: makefilePlace, message: "The product makefile changed before the enrollment was written" })
+  try mapError(files.makeDirectory(destination), failed(destination))
+  for (const [name, bytes] of outputs) {
+    const target = path.join(destination, ...name.split("/"))
+    try mapError(files.makeDirectory(path.dirname(target), { recursive: true }), failed(target))
+    try mapError(files.writeFile(target, bytes, { flag: "wx" }), failed(target))
+    if (sha256Hex(try readBytes(target)) !== sha256Hex(bytes)) throw new EnrollmentChanged({ place: target, message: "An enrollment file changed after it was written" })
+  }
+  try mapError(files.writeFile(makefilePlace, after), failed(makefilePlace))
+  try mapError(files.makeDirectory(path.dirname(request.receipt), { recursive: true }), failed(request.receipt))
+  try mapError(files.writeFileString(request.receipt, `${JSON.stringify(record, null, 2)}\n`, { flag: "wx", mode: 0o600 }), failed(request.receipt))
+  return record
+}

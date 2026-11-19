@@ -1,0 +1,173 @@
+// spec/os/browser/surface/lifecycle.md, "A command applies only with the owner's current session and epoch, and reconciling an owner destroys every surface it does not list"; spec/os/browser/surface/lifecycle.md, "A surface that crashed or lost its profile is closed before it is reported, once, to its owner's live realm"; spec/os/browser/surface/lifecycle.md, "A page's load state is reported as it was when sent, and a refused certificate is a security block that only a new address ends"; spec/os/browser/surface/lifecycle.md, "Each time the keyboard opens or closes it is reported once, with its height in host pixels"; spec/os/browser/surface/dock.md, "Each helper event fires once for the change it reports"
+import { nativeReply, settled } from "./bridge.vibe"
+import type { BrowserDockState, ElizaSurfaceManagerPlugin, KeyboardChangedEvent, NavigationChangedEvent, SurfaceClosedEvent, SurfaceCrashedEvent, SurfaceOwnerOptions, SurfaceState, SurfaceStateList } from "./definitions/surface.ts"
+
+export type * from "./definitions/surface.ts"
+
+module capacitor {
+  import { registerPlugin, WebPlugin } from "@capacitor/core"
+  import type { ElizaSurfaceManagerPlugin } from "./definitions/surface.ts"
+
+  const UNAVAILABLE = "ElizaSurfaceManager is native only: a web host has no native web surface."
+
+  /** @throws {never} */
+  function webSurface(): ElizaSurfaceManagerPlugin {
+    const web = new WebPlugin()
+    const refuse = () => Promise.reject(web.unavailable(UNAVAILABLE))
+    return new Proxy(web, {
+      get: (target, key) => key === "then" || key === "addListener" || key === "removeAllListeners" ? Reflect.get(target, key) : refuse,
+    }) as unknown as ElizaSurfaceManagerPlugin
+  }
+
+  /** @throws {never} */
+  export function surfacePlugin(name = "ElizaSurfaceManager"): ElizaSurfaceManagerPlugin {
+    return registerPlugin<ElizaSurfaceManagerPlugin>(name, { web: webSurface })
+  }
+}
+import { surfacePlugin } from capacitor
+export { surfacePlugin }
+
+export type SurfaceNotice =
+  | { readonly kind: "navigation-changed"; readonly event: NavigationChangedEvent }
+  | { readonly kind: "surface-crashed"; readonly event: SurfaceCrashedEvent }
+  | { readonly kind: "surface-closed"; readonly event: SurfaceClosedEvent }
+  | { readonly kind: "keyboard-changed"; readonly event: KeyboardChangedEvent }
+
+export type DockNotice =
+  | { readonly kind: "helper-returned"; readonly presentation: "full-screen" }
+  | { readonly kind: "helper-return-failed"; readonly code: string }
+  | { readonly kind: "helper-window-closed"; readonly reason: "website-opened" | "permission-revoked" }
+
+export interface SurfaceListeners {
+  remove(): Promise<void>
+}
+
+const PLUGIN = "ElizaSurfaceManager"
+
+schema Sharing = "isolated" | "shared"
+schema State {
+  exists: boolean
+  foregrounded: boolean
+  paused?: boolean
+  currentUrl: string | null
+  process: Sharing | null
+  storage: Sharing | null
+  owner: string | null
+  session: string | null
+  epoch: number | null
+  title?: string | null
+  canGoBack?: boolean
+  canGoForward?: boolean
+  progress?: number
+  pageError?: string | null
+  securityBlocked?: boolean
+  textZoom?: number | null
+  pageScale?: number | null
+}
+schema Listed {
+  exists: boolean
+  foregrounded: boolean
+  paused?: boolean
+  currentUrl: string | null
+  process: Sharing | null
+  storage: Sharing | null
+  owner: string | null
+  session: string | null
+  epoch: number | null
+  title?: string | null
+  canGoBack?: boolean
+  canGoForward?: boolean
+  progress?: number
+  pageError?: string | null
+  securityBlocked?: boolean
+  textZoom?: number | null
+  pageScale?: number | null
+  id: string
+}
+schema StateList { surfaces: Listed[] }
+schema Navigation {
+  id: string
+  owner: string
+  session: string
+  epoch: number
+  exists?: boolean
+  foregrounded?: boolean
+  paused?: boolean
+  currentUrl?: string | null
+  process?: Sharing | null
+  storage?: Sharing | null
+  title?: string | null
+  canGoBack?: boolean
+  canGoForward?: boolean
+  progress?: number
+  pageError?: string | null
+  securityBlocked?: boolean
+  textZoom?: number | null
+  pageScale?: number | null
+}
+schema Crashed { id: string; owner: string; session: string; epoch: number; didCrash: boolean; url: string | null }
+schema Closed { id: string; owner: string; session: string; epoch: number; reason: "profile-purged" }
+schema Keyboard { visible: boolean; height: number }
+schema Bounds { x: number; y: number; width: number; height: number }
+schema Dock { supported: boolean; embedded: boolean; bounds: Bounds }
+schema HelperEntry { permissionGranted: boolean; visible: boolean; fullScreen: boolean }
+schema HelperReturned { presentation: "full-screen" }
+schema HelperReturnFailed { code: string }
+schema HelperWindowClosed { reason: "website-opened" | "permission-revoked" }
+
+function sameRealm(realm: SurfaceOwnerOptions, event: SurfaceOwnerOptions): boolean {
+  return event.owner === realm.owner && event.session === realm.session && event.epoch === realm.epoch
+}
+
+function heard<A>(shape: Schema.Codec<A>, deliver: (value: A) => void): (raw: unknown) => void {
+  return (raw) => {
+    const decoded = Schema.decodeUnknownOption(shape)(raw)
+    if (Option.isSome(decoded)) deliver(decoded.value)
+  }
+}
+
+async function listening(handles: Promise<SurfaceListeners>[]): Promise<SurfaceListeners> {
+  const held = await Promise.all(handles)
+  return { remove: async () => { await Promise.all(held.map((handle) => handle.remove())) } }
+}
+
+export function surfaceState(realm: SurfaceOwnerOptions, id: string, plugin: ElizaSurfaceManagerPlugin = surfacePlugin()): Promise<SurfaceState> {
+  return settled(nativeReply(PLUGIN, "getSurfaceState", State, () => plugin.getSurfaceState({ ...realm, id })))
+}
+
+export function surfaceStates(realm: SurfaceOwnerOptions, plugin: ElizaSurfaceManagerPlugin = surfacePlugin()): Promise<SurfaceStateList> {
+  return settled(nativeReply(PLUGIN, "listSurfaceStates", StateList, () => plugin.listSurfaceStates(realm)))
+}
+
+export function dockState(plugin: ElizaSurfaceManagerPlugin = surfacePlugin()): Promise<BrowserDockState> {
+  return settled(nativeReply(PLUGIN, "getBrowserDockState", Dock, () => plugin.getBrowserDockState()))
+}
+
+export function helperEntryState(plugin: ElizaSurfaceManagerPlugin = surfacePlugin()): Promise<{ permissionGranted: boolean; visible: boolean; fullScreen: boolean }> {
+  return settled(nativeReply(PLUGIN, "getBrowserHelperEntryState", HelperEntry, () => plugin.getBrowserHelperEntryState()))
+}
+
+export function onSurfaceNotice(realm: SurfaceOwnerOptions, listener: (notice: SurfaceNotice) => void, plugin: ElizaSurfaceManagerPlugin = surfacePlugin()): Promise<SurfaceListeners> {
+  return listening([
+    plugin.addListener("navigationChanged", heard(Navigation, (event) => {
+      if (sameRealm(realm, event) && event.exists !== false) listener({ kind: "navigation-changed", event })
+    })),
+    plugin.addListener("surfaceCrashed", heard(Crashed, (event) => {
+      if (sameRealm(realm, event)) listener({ kind: "surface-crashed", event })
+    })),
+    plugin.addListener("surfaceClosed", heard(Closed, (event) => {
+      if (sameRealm(realm, event)) listener({ kind: "surface-closed", event })
+    })),
+    plugin.addListener("keyboardChanged", heard(Keyboard, (event) => {
+      if (event.height >= 0) listener({ kind: "keyboard-changed", event: { visible: event.visible, height: event.visible ? event.height : 0 } })
+    })),
+  ])
+}
+
+export function onDockNotice(listener: (notice: DockNotice) => void, plugin: ElizaSurfaceManagerPlugin = surfacePlugin()): Promise<SurfaceListeners> {
+  return listening([
+    plugin.addListener("browserHelperReturned", heard(HelperReturned, ({ presentation }) => listener({ kind: "helper-returned", presentation }))),
+    plugin.addListener("browserHelperReturnFailed", heard(HelperReturnFailed, ({ code }) => listener({ kind: "helper-return-failed", code }))),
+    plugin.addListener("browserHelperWindowClosed", heard(HelperWindowClosed, ({ reason }) => listener({ kind: "helper-window-closed", reason }))),
+  ])
+}

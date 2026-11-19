@@ -262,6 +262,7 @@ it.live("Change only the event I reviewed, under the current ticket, and block a
   const savesBeforeStale = phone.saves
   const stale = try promise(() => review.save(third.kind === "ready" ? third.ticket : firstTicket, { ...fields, title: "Overwrite" }))
   const staleWrote = phone.saves - savesBeforeStale
+  const titleAfterStale = phone.rows[0]?.event.title
 
   const paused = try promise(() => review.inspectUpdate())
   try promise(() => review.pause())
@@ -285,7 +286,7 @@ it.live("Change only the event I reviewed, under the current ticket, and block a
   try Effect.try(() => assert.deepStrictEqual(
     {
       first: first.kind, second: second.kind, retired, emptyTitle, applied, consumed, titleAfterApply,
-      stale, staleWrote, titleAfterStale: phone.rows[0]?.event.title, afterPause,
+      stale, staleWrote, titleAfterStale, afterPause,
       lost, gateAfterLoss, blocked, gateAfterRead, settledAgain, finalTitle: phone.rows[0]?.event.title, locked, series,
     },
     {

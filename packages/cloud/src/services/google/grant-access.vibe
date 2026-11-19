@@ -204,31 +204,52 @@ function refusalOf(failure: GoogleFailure): Refused {
   }
 }
 
-effect function settleRefresh(connectionId: string, event: ConnectionEvent, now: number) {
+error RefreshDropped
+
+type Settled = { readonly kind: "kept"; readonly connection: Connection } | { readonly kind: "dropped" }
+
+effect function settleRefresh(connectionId: string, from: string, event: ConnectionEvent, now: number) {
   const store = try Store
-  const stepped = store.transaction((tx) => stepRow(tx, connectionRows, connectionId, event, connectionColumns(event.type === "refreshed" ? { last_used_at: now } : {}))) catch effect (failure) => {
-    if (failure._tag === "ConnectionRejected") throw refused("GoogleReauthRequired")
-    throw failure
-  }
-  return stepped.state
+  return try store.transaction(effect (tx: Tx) => {
+    const loaded = try loadRow(tx, connectionRows, connectionId)
+    if (loaded.state.status !== "Active" || loaded.state.tokens !== from) return { kind: "dropped" } satisfies Settled
+    const stepped = stepRow(tx, connectionRows, connectionId, event, connectionColumns(event.type === "refreshed" ? { last_used_at: now } : {})) catch effect (failure) => {
+      if (failure._tag === "ConnectionRejected") throw refused("GoogleReauthRequired")
+      throw failure
+    }
+    return { kind: "kept", connection: stepped.state } satisfies Settled
+  })
 }
 
-effect function refreshed(claimed: { readonly grant: Omit<GoogleGrant, "accessToken">; readonly tokens: string }, capability: GoogleCapability) {
-  const connectionId = claimed.grant.connectionId
-  const answer = refreshAccess(claimed.tokens) catch effect (failure) => {
+type ClaimedRefresh = { readonly grant: Omit<GoogleGrant, "accessToken">; readonly tokens: string }
+
+effect function closeRefresh(claimed: ClaimedRefresh, event: ConnectionEvent, refusal: Refused) {
+  const now = try Clock.currentTimeMillis
+  const settled = try settleRefresh(claimed.grant.connectionId, claimed.tokens, event, now)
+  if (settled.kind === "dropped") throw new RefreshDropped()
+  throw refusal
+}
+
+effect function refreshed(claimed: ClaimedRefresh, capability: GoogleCapability) {
+  const held = openTokens(claimed.tokens) catch effect () => { return try closeRefresh(claimed, { type: "grantInvalid" }, refused("GoogleReauthRequired")) }
+  if (held.refreshToken === "") {
     const now = try Clock.currentTimeMillis
-    if (failure._tag === "SealingFailed" || failure._tag === "InvalidGrant") {
-      try settleRefresh(connectionId, { type: "grantInvalid" }, now)
-      throw refused("GoogleReauthRequired")
+    if (held.expiresAt <= now) return try closeRefresh(claimed, { type: "refreshFailed" }, refused("GoogleReauthRequired"))
+    try settleRefresh(claimed.grant.connectionId, claimed.tokens, { type: "refreshFailed" }, now)
+    return { ...claimed.grant, accessToken: held.accessToken } satisfies GoogleGrant
+  }
+  const answer = refreshAccess(claimed.tokens) catch effect (failure) => {
+    switch (failure._tag) {
+      case "SealingFailed": return try closeRefresh(claimed, { type: "fail" }, refused("GoogleReauthRequired"))
+      case "InvalidGrant": return try closeRefresh(claimed, { type: "grantInvalid" }, refused("GoogleReauthRequired"))
+      default: return try closeRefresh(claimed, { type: "refreshFailed" }, refusalOf(failure))
     }
-    try settleRefresh(connectionId, { type: "refreshFailed" }, now)
-    throw refusalOf(failure)
   }
   const now = try Clock.currentTimeMillis
-  const scopes = answer.scopes ?? claimed.grant.scopes
-  const connection = try settleRefresh(connectionId, { type: "refreshed", scopes, tokens: answer.sealed, expiresAt: answer.tokens.expiresAt }, now)
-  if (!holds(connection.scopes, capability)) throw refused("AccessDenied", "CapabilityMissing")
-  return { ...claimed.grant, scopes: connection.scopes, accessToken: answer.tokens.accessToken } satisfies GoogleGrant
+  const settled = try settleRefresh(claimed.grant.connectionId, claimed.tokens, { type: "refreshed", scopes: answer.scopes ?? claimed.grant.scopes, tokens: answer.sealed, expiresAt: answer.tokens.expiresAt }, now)
+  if (settled.kind === "dropped") throw new RefreshDropped()
+  if (!holds(settled.connection.scopes, capability)) throw refused("AccessDenied", "CapabilityMissing")
+  return { ...claimed.grant, scopes: settled.connection.scopes, accessToken: answer.tokens.accessToken } satisfies GoogleGrant
 }
 
 export effect function useGrant(owner: Owner, grantId: string | undefined, capability: GoogleCapability, expectedAccountId?: string) {
@@ -238,20 +259,29 @@ export effect function useGrant(owner: Owner, grantId: string | undefined, capab
     const now = try Clock.currentTimeMillis
     return try store.transaction((tx) => claim(tx, owner, grantId, capability, expectedAccountId, now))
   }
-  let claimed: Claimed = try attempt
-  while (claimed.kind === "wait") {
-    try sleep(refreshPoll)
-    claimed = try attempt
-  }
-  switch (claimed.kind) {
-    case "ready": {
-      const tokens = openTokens(claimed.tokens) catch effect () => { throw refused("GoogleReauthRequired") }
-      return { ...claimed.grant, accessToken: tokens.accessToken } satisfies GoogleGrant
-    }
-    case "refresh": return try refreshed(claimed, capability)
-    default: {
-      const _exhaustive: never = claimed
-      return _exhaustive
+  while (true) {
+    const claimed: Claimed = try attempt
+    switch (claimed.kind) {
+      case "wait": {
+        try sleep(refreshPoll)
+        break
+      }
+      case "ready": {
+        const tokens = openTokens(claimed.tokens) catch effect () => { throw refused("GoogleReauthRequired") }
+        return { ...claimed.grant, accessToken: tokens.accessToken } satisfies GoogleGrant
+      }
+      case "refresh": {
+        const grant = refreshed(claimed, capability) catch effect (failure) => {
+          if (failure._tag === "RefreshDropped") return undefined
+          throw failure
+        }
+        if (grant !== undefined) return grant
+        break
+      }
+      default: {
+        const _exhaustive: never = claimed
+        return _exhaustive
+      }
     }
   }
 }
