@@ -2,8 +2,10 @@ import { authoredNoteText } from "./note-authored.js";
 import { applyNotePatch } from "./note-patch.js";
 import { assertNotesServiceMutation } from "./request-effect-gate.js";
 import {
+  NOTES_RECORDING_CLEANUP_VERIFIER_SERVICE,
   NOTES_TRASH_CLEANUP_LIMIT,
   NOTES_TRASH_RETENTION_SETTING,
+  type NotesRecordingCleanupVerifier,
   notesTrashExpired,
   notesTrashRecordingId,
   notesTrashRecordingReferences,
@@ -477,7 +479,8 @@ export class NotesService extends Service {
       entry.deletedAt === receipt.deletedAt;
     const pending = await this.readTrashRecordingCleanup(signal);
     if (!pending.some(matches)) return false;
-    if (!(await this.verifyRecordingCleanup?.(receipt, signal)))
+    // Only a literal true proves the erase; a host service is typed loosely at runtime.
+    if ((await this.recordingCleanupVerifier()?.(receipt, signal)) !== true)
       throw new ElizaError("The device has not confirmed recording erase.", {
         code: "NOTES_TRASH_RECORDING_UNAVAILABLE",
         severity: "ephemeral",
@@ -492,6 +495,18 @@ export class NotesService extends Service {
       return true;
     });
     return value;
+  }
+
+  /** The constructor verifier, else the host's registered verifier service, else none. */
+  private recordingCleanupVerifier(): VerifyRecordingCleanup | undefined {
+    if (this.verifyRecordingCleanup) return this.verifyRecordingCleanup;
+    const runtime = this.eventRuntime;
+    if (typeof runtime?.getService !== "function") return undefined;
+    const host = runtime.getService(
+      NOTES_RECORDING_CLEANUP_VERIFIER_SERVICE,
+    ) as Partial<NotesRecordingCleanupVerifier> | null;
+    const verify = host?.verifyRecordingCleanup;
+    return typeof verify === "function" ? verify.bind(host) : undefined;
   }
 
   listNotes(): StickyNote[] {

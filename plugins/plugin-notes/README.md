@@ -60,7 +60,12 @@ Restore checks the deadline in the same transaction that would restore the note.
 The commit removes the note and records any owned recording cleanup together.
 An authenticated owner reads pending work at `GET /api/notes/trash/recordings`.
 The host supplies `verifyRecordingCleanup` to prove the matching native erase
-before `POST /api/notes/trash/recordings/complete` retires the receipt.
+before `POST /api/notes/trash/recordings/complete` retires the receipt. A host
+that starts the stock service registers a runtime service of type
+`NOTES_RECORDING_CLEANUP_VERIFIER_SERVICE` with a `verifyRecordingCleanup`
+method; the service looks it up at acknowledgement time, and a verifier passed
+to the `NotesService` constructor takes precedence. Without either, no receipt
+is retired.
 Hosts enable the policy after connecting their recording store and cleanup
 scheduler. Notes content and recording transcripts stay out of cleanup receipts.
 

@@ -22,6 +22,10 @@ export {
   NotesService,
 } from "./service.js";
 export type { EncryptedNotesDocumentPort } from "./store.js";
+export {
+  NOTES_RECORDING_CLEANUP_VERIFIER_SERVICE,
+  type NotesRecordingCleanupVerifier,
+} from "./trash-retention.js";
 export type {
   NoteFormat,
   NoteJson,

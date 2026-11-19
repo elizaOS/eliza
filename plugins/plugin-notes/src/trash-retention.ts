@@ -1,10 +1,31 @@
-import type { StickyNote, TrashedNote } from "./types.js";
+import type {
+  NotesTrashRecordingCleanup,
+  StickyNote,
+  TrashedNote,
+} from "./types.js";
 
 export const NOTES_TRASH_RETENTION_SETTING = "ELIZA_NOTES_TRASH_RETENTION_DAYS";
 export const NOTES_TRASH_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
 export const NOTES_TRASH_CLEANUP_LIMIT = 10_000;
 // Matches the installed native RecordingStore recording and owner identity bound.
 export const NOTES_RECORDING_ID = /^[A-Za-z0-9_-]{1,100}$/;
+
+/**
+ * Service type a host registers to prove a native recording erase. A host whose recordings live
+ * outside the agent (for example a phone's own recording store) registers a runtime service of
+ * this type; NotesService looks it up when a cleanup is acknowledged, so registration order does
+ * not matter. A verifier passed to the NotesService constructor takes precedence.
+ */
+export const NOTES_RECORDING_CLEANUP_VERIFIER_SERVICE =
+  "notes-recording-cleanup-verifier";
+
+/** Resolves true only once the host has confirmed this exact recording is gone. */
+export interface NotesRecordingCleanupVerifier {
+  verifyRecordingCleanup(
+    receipt: NotesTrashRecordingCleanup,
+    signal?: AbortSignal,
+  ): Promise<boolean>;
+}
 
 export function notesTrashExpired(entry: TrashedNote, now: number): boolean {
   return now - Date.parse(entry.deletedAt) >= NOTES_TRASH_RETENTION_MS;
