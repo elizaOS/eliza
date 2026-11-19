@@ -6,6 +6,8 @@ import {
   conversationClientUserMemoryId,
   type IDatabaseAdapter,
   type Memory,
+  runWithTrajectoryContext,
+  SecretSwapSession,
   type UUID,
 } from "@elizaos/core";
 import { getTableConfig, PgDialect } from "drizzle-orm/pg-core";
@@ -423,5 +425,147 @@ it("refuses a keypad prefill the owner did not write", async () => {
     );
   } finally {
     await f.pg.close();
+  }
+});
+
+/**
+ * v613 (Pixel): secret swap showed the planner "call __ELIZA_CONTACT_<s>_6__"
+ * in place of the owner's number, and the model wrote 6505715862. The model
+ * must copy the reference; the execution boundary restores it.
+ */
+function swapped(request: string, history = "") {
+  const session = new SecretSwapSession();
+  const prompt = session.substituteText(`${history}\n${request}`);
+  const reference = session.entries.find((entry) => entry.kind === "phone")
+    ?.placeholder as string;
+  return { session, prompt, reference };
+}
+
+/** The model's raw arguments, restored as executePlannedToolCall restores them. */
+function restored(session: SecretSwapSession, operation: unknown) {
+  return session.restoreInValue(operation, { failOnUnresolved: true });
+}
+
+function inTurn<T>(session: SecretSwapSession, fn: () => Promise<T>) {
+  return runWithTrajectoryContext(
+    { secretSwapSession: session },
+    fn,
+  ) as Promise<T>;
+}
+
+const REQUEST = "can you call 415-555-0100 when you get a sec";
+
+it("refuses invented digits for a swapped number and names its reference", async () => {
+  const f = await fixture();
+  try {
+    const { session, prompt, reference } = swapped(REQUEST);
+    expect(reference).toMatch(/^__ELIZA_CONTACT_[0-9a-f]+_\d+__$/);
+    expect(prompt).not.toContain("415-555-0100");
+    const result = await inTurn(session, () =>
+      f.run(REQUEST, restored(session, call("6505715862"))),
+    );
+    await refused(f, result);
+    const modelText = (result as { text: string }).text;
+    expect(modelText).toContain(reference);
+    expect(modelText).toContain("verbatim");
+    // The owner sees an honest reply, never a reference.
+    expect((result as { userFacingText: string }).userFacingText).not.toContain(
+      "__ELIZA_",
+    );
+  } finally {
+    await f.pg.close();
+  }
+});
+
+it("accepts the copied reference and reviews the owner's number", async () => {
+  const f = await fixture();
+  try {
+    const { session, reference } = swapped(REQUEST);
+    const operation = restored(session, call(reference));
+    expect(operation).toEqual(call("415-555-0100"));
+    expect(
+      await inTurn(session, () => f.run(REQUEST, operation)),
+    ).toMatchObject({ success: true });
+    expect((await f.rows())[0].operation).toEqual(call("4155550100"));
+  } finally {
+    await f.pg.close();
+  }
+});
+
+it("accepts a country code before the copied reference", async () => {
+  const f = await fixture();
+  try {
+    const { session, reference } = swapped(REQUEST);
+    expect(
+      await inTurn(session, () =>
+        f.run(REQUEST, restored(session, call(`+1${reference}`))),
+      ),
+    ).toMatchObject({ success: true });
+    expect((await f.rows())[0].operation).toEqual(call("4155550100"));
+  } finally {
+    await f.pg.close();
+  }
+});
+
+it("accepts a contact target the owner named beside a swapped number", async () => {
+  const f = await fixture();
+  try {
+    const request = "can you call Maya, she was asking about 415-555-0100";
+    const { session } = swapped(request);
+    const contact = {
+      type: "phone_call",
+      target: { kind: "contact", query: "Maya" },
+    };
+    expect(
+      await inTurn(session, () => f.run(request, restored(session, contact))),
+    ).toMatchObject({ success: true });
+    expect((await f.rows())[0].operation).toEqual(contact);
+  } finally {
+    await f.pg.close();
+  }
+});
+
+it("replays the v613 prompt: coordinates stay, the call is the owner's number", async () => {
+  // History as the phone's planner saw it: an earlier Maps card, then the call.
+  const history = [
+    "user: where is the ferry building",
+    "assistant: Here it is.",
+    "[MAPSCARD]",
+    JSON.stringify({
+      kind: "place",
+      name: "Ferry Building",
+      latitude: 37.7955287,
+      longitude: -122.3934801,
+    }),
+    "[/MAPSCARD]",
+    "user: call 415-555-0100",
+  ].join("\n");
+  for (const proposed of ["6505715862", "__REFERENCE__"]) {
+    const f = await fixture();
+    try {
+      const { session, prompt, reference } = swapped("", history);
+      expect(prompt).toContain('"longitude":-122.3934801');
+      expect(prompt).toContain('"latitude":37.7955287');
+      expect(prompt).toContain(`user: call ${reference}`);
+      expect(session.entries.map((entry) => entry.value)).toEqual([
+        "415-555-0100",
+      ]);
+      const operation = restored(
+        session,
+        call(proposed === "__REFERENCE__" ? reference : proposed),
+      );
+      expect(
+        await inTurn(session, () => f.run("call 415-555-0100", operation)),
+      ).toMatchObject({ success: true });
+      // Whatever the model wrote, the review is for the number the owner wrote.
+      expect(await f.rows()).toEqual([
+        {
+          operation: call("4155550100"),
+          reason: "Call the recipient the owner wrote.",
+        },
+      ]);
+    } finally {
+      await f.pg.close();
+    }
   }
 });

@@ -1118,6 +1118,18 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
     text: "Phone-native Notes and Calendar data uses these device reviews. A lookup, named record or new event the phone resolves itself works from Home or the Notes or Calendar view; an operation on an exact record or source needs it selected on the phone. Other Notes and Calendar requests, and any turn with a canonical Notes or Calendar selection, use the canonical NOTES or CALENDAR service; a phone capability never redirects a canonical record.",
   },
   {
+    // v613: "call 415-555-0100" reached the planner as a contact reference and
+    // the model wrote ten digits of its own; the phone then dialed them.
+    types: [
+      "phone_call",
+      "phone_dial",
+      "phone_keypad",
+      "sms_compose",
+      "sms_send",
+    ],
+    text: "Phone numbers in the owner's message appear to you as contact references (__ELIZA_CONTACT_…__), never as digits. To call, dial or text that number, copy its whole reference verbatim as the number, every character and underscore; a country code such as +1 before it is allowed. Never write digits for a number you only saw as a reference: they are invented, and the proposal is refused.",
+  },
+  {
     types: ["sms_send"],
     text: "Reviewed SIM SMS requires sms.send.v1, exact canonical recipients, body and the active subscriptionId shown by the phone. Never invent a SIM ID or substitute an external compose intent. The owner reviews the exact content on the unlocked phone. submitted proves submission only; sent proves all sent callbacks; delivered requires all matching delivery reports. Unknown or partial failure must never be automatically retried.",
   },

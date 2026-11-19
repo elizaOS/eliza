@@ -25,16 +25,65 @@ export type TelephonyTargetRefusal =
   /** The owner's recipient does not fit a form this phone negotiated. */
   | "form";
 
+/**
+ * A number the owner wrote in this message that reached the planner only as a
+ * secret-swap contact reference (`__ELIZA_CONTACT_<session>_<n>__`).
+ */
+export type SwappedPhoneReference = {
+  readonly placeholder: string;
+  /** The owner's number in dial form. */
+  readonly number: string;
+};
+
+const CONTACT_REFERENCE_PREFIX = "__ELIZA_CONTACT_";
+
+/**
+ * The owner's numbers in `text` that this turn's secret-swap session replaced
+ * with contact references. The planner never saw their digits, so the only
+ * way it can name one is by copying its reference, which the execution
+ * boundary restores; any digits it writes for one are invented.
+ */
+export function swappedPhoneReferences(
+  entries:
+    | readonly { placeholder: string; value: string; kind: string }[]
+    | undefined,
+  text: string,
+): SwappedPhoneReference[] {
+  if (!entries?.length) return [];
+  const written = writtenPhoneNumbers(text);
+  const references: SwappedPhoneReference[] = [];
+  for (const entry of entries) {
+    if (
+      entry.kind !== "phone" ||
+      !entry.placeholder.startsWith(CONTACT_REFERENCE_PREFIX)
+    )
+      continue;
+    const number = dialForms(entry.value)[0];
+    if (number && written.some((owned) => samePhoneNumber(owned, number)))
+      references.push({ placeholder: entry.placeholder, number });
+  }
+  return references;
+}
+
 /** Policy refusal before persistence; never represents a human review decision. */
 export class DeviceTelephonyTargetNotRequestedError extends Error {
   readonly code = "DEVICE_TELEPHONY_TARGET_NOT_REQUESTED";
-  constructor(readonly refusal: TelephonyTargetRefusal) {
+  /**
+   * @param references The owner's swapped numbers: a refused number then
+   * tells the model which reference to copy in place of its invented digits.
+   */
+  constructor(
+    readonly refusal: TelephonyTargetRefusal,
+    readonly references: readonly string[] = [],
+  ) {
     super(
       refusal === "form"
         ? "This phone cannot take the recipient the owner wrote in this form. No proposal was created; nothing was called or sent."
         : refusal === "contact"
           ? "The current original request does not name this contact. Use only the name the owner wrote in this message. No proposal was created; nothing was called or sent."
-          : "The current original request does not contain this phone number. Use only a number the owner wrote in this message, by copying its contact reference exactly. No proposal was created; nothing was called or sent.",
+          : references.length > 0
+            ? `The current original request does not contain this phone number. The owner's number reaches you only as a contact reference, so digits you write for it are invented. Copy ${references.length === 1 ? "this reference" : "one of these references"} verbatim as the number, every character and underscore (a country code such as +1 before it is allowed): ${references.join(", ")}. No proposal was created; nothing was called or sent.`
+            : "The current original request does not contain this phone number. Use only a number the owner wrote in this message, by copying its contact reference exactly. No proposal was created; nothing was called or sent.",
     );
   }
 }
@@ -173,18 +222,56 @@ function recipientNumbers(text: string, body: unknown): string[] {
   );
 }
 
+/** A refused number: with swapped numbers, the references to copy instead. */
+function numberRefusal(
+  references: readonly SwappedPhoneReference[],
+): DeviceTelephonyTargetNotRequestedError {
+  return new DeviceTelephonyTargetNotRequestedError(
+    "number",
+    references.map((reference) => reference.placeholder),
+  );
+}
+
+/**
+ * The owner's number for a proposed one. When the owner's number was swapped,
+ * the proposal must be that number's restored reference (an optional country
+ * code before it aside): digits equal to it can only come from the reference,
+ * since the planner never saw them. Any other digits are invented, unless they
+ * are a number the owner wrote that the planner saw as written.
+ */
+function groundedNumber(
+  proposed: string,
+  owned: readonly string[],
+  references: readonly SwappedPhoneReference[],
+): string {
+  const number = ownerNumber(proposed, owned);
+  // Only a number that can be the recipient is offered: never one in the body.
+  if (!number)
+    throw numberRefusal(
+      references.filter((reference) =>
+        owned.some((owner) => samePhoneNumber(owner, reference.number)),
+      ),
+    );
+  return number;
+}
+
 function groundTarget(
   target:
     | { kind: "number"; number: string }
     | { kind: "contact"; query: string },
   text: string,
   body: unknown,
+  references: readonly SwappedPhoneReference[],
 ): AuthoredTelephonyTarget {
-  if (target.kind === "number") {
-    const number = ownerNumber(target.number, recipientNumbers(text, body));
-    if (!number) throw new DeviceTelephonyTargetNotRequestedError("number");
-    return { kind: "number", number };
-  }
+  if (target.kind === "number")
+    return {
+      kind: "number",
+      number: groundedNumber(
+        target.number,
+        recipientNumbers(text, body),
+        references,
+      ),
+    };
   if (!writesContactName(textWithoutBody(text, body).text, target.query))
     throw new DeviceTelephonyTargetNotRequestedError("contact");
   return target;
@@ -223,6 +310,7 @@ function withTarget<T extends TargetedOperation>(
 export function groundTelephonyTarget(
   operation: DeviceOperation,
   text: string,
+  references: readonly SwappedPhoneReference[] = [],
 ): { operation: DeviceOperation; handedThrough: boolean } {
   const authored = authoredTelephonyTarget(text);
   const command =
@@ -265,7 +353,7 @@ export function groundTelephonyTarget(
       return {
         operation: withTarget(
           operation,
-          groundTarget(operation.target, text, undefined),
+          groundTarget(operation.target, text, undefined, references),
         ),
         handedThrough: false,
       };
@@ -274,7 +362,7 @@ export function groundTelephonyTarget(
         return {
           operation: withTarget(
             operation,
-            groundTarget(operation.target, text, operation.body),
+            groundTarget(operation.target, text, operation.body, references),
           ),
           handedThrough: false,
         };
@@ -282,22 +370,24 @@ export function groundTelephonyTarget(
         { kind: "contact", query: operation.query },
         text,
         operation.body,
+        references,
       );
       return { operation, handedThrough: false };
     case "sms_send": {
       const owned = recipientNumbers(text, operation.body);
-      const recipients = operation.recipients.map((recipient) => {
-        const number = ownerNumber(recipient, owned);
-        if (!number) throw new DeviceTelephonyTargetNotRequestedError("number");
-        return number;
-      });
+      const recipients = operation.recipients.map((recipient) =>
+        groundedNumber(recipient, owned, references),
+      );
       return { operation: { ...operation, recipients }, handedThrough: false };
     }
     case "phone_keypad": {
       if (operation.number === undefined)
         return { operation, handedThrough: false };
-      const number = ownerNumber(operation.number, writtenPhoneNumbers(text));
-      if (!number) throw new DeviceTelephonyTargetNotRequestedError("number");
+      const number = groundedNumber(
+        operation.number,
+        writtenPhoneNumbers(text),
+        references,
+      );
       return { operation: { ...operation, number }, handedThrough: false };
     }
     default:
