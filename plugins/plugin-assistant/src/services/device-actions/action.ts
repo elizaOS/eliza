@@ -120,6 +120,10 @@ import {
   validateTelephonyActionResult,
 } from "./telephony-actions-contract.ts";
 import { authoredKeypadRequest } from "./telephony-request.ts";
+import {
+  DeviceTelephonyTargetNotRequestedError,
+  telephonyTargetRefusalReply,
+} from "./telephony-target-grounding.ts";
 
 const reminderSchemas: ActionParameterSchema[] = [
   "reminder_read_selected",
@@ -762,10 +766,13 @@ export const FOREGROUND_REVIEW_GUIDANCE = FOREGROUND_PROPOSAL_GUIDANCE.map(
   (fragment) => fragment.text,
 ).join(" ");
 
+// The owner's number usually reaches the planner as a contact reference. A
+// digits-only instruction made a model write digits it did not have (v612:
+// "call 415-555-0100" became a call to 6505715862), so the reference comes first.
 const phoneNumberSchema = {
   type: "string",
   description:
-    "2 to 20 digits with an optional leading +, for example +14155550100 or 5550100. Leave out spaces, dashes, dots and brackets.",
+    "A number the owner wrote in this message. When it appears as a __ELIZA_CONTACT_ reference, copy that whole reference exactly; never write digits you were not given. Otherwise 2 to 20 digits with an optional leading +, for example +14155550100 or 5550100.",
 };
 /** A recipient the phone resolves: an exact number, or a contact named by text. */
 const phoneTargetSchema: ActionParameterSchema = {
@@ -1621,6 +1628,19 @@ export const proposeDeviceAction: Action = {
         p.afterRead,
       );
     } catch (error) {
+      if (error instanceof DeviceTelephonyTargetNotRequestedError)
+        return {
+          success: false,
+          text: error.message,
+          userFacingText: telephonyTargetRefusalReply(error.refusal),
+          verifiedUserFacing: true,
+          data: {
+            code: error.code,
+            proposalCreated: false,
+            executed: false,
+            retryable: false,
+          },
+        };
       if (!(error instanceof DeviceBrowserNotRequestedError)) throw error;
       // Plain copy that is true either way: with no address in the user's
       // words, say how to ask; with one, only that it was not opened.

@@ -74,3 +74,39 @@ export function authoredKeypadRequest(
     return;
   }
 }
+
+/** The recipient a whole-message call or text command names, as the owner wrote it. */
+export type AuthoredTelephonyTarget =
+  | { kind: "number"; number: string }
+  | { kind: "contact"; query: string };
+
+/**
+ * The recipient of a whole-message call or text command ("call 415-555-0100",
+ * "text my mom saying ..."), taken from the owner's own words: a written
+ * number in its dial form, or the name they wrote. `target` is absent when
+ * the command wrote something number-shaped that is not one dialable number.
+ * The model's recipient never replaces this one.
+ */
+export function authoredTelephonyTarget(
+  text: string,
+): { request: AuthoredTelephonyRequest; target?: AuthoredTelephonyTarget } | undefined {
+  const request = authoredTelephonyRequest(text);
+  if (!request) return;
+  // A greedy name also takes a trailing "please", "now" or "for me".
+  const written = (request === "call" ? CALL : TEXT)
+    .exec(text.trim())?.[1]
+    ?.replace(/[.!?]+$/u, "")
+    .replace(/(?:,?\s+(?:please|now|for\s+me))+$/iu, "")
+    .trim();
+  if (!written) return { request };
+  if (/^[+\d(]/.test(written)) {
+    try {
+      return { request, target: { kind: "number", number: phoneDialNumber(written) } };
+    } catch {
+      return { request };
+    }
+  }
+  // "call my mom": the address book knows "mom", not "my mom".
+  const query = written.replace(/^(?:my|our)\s+/iu, "").replace(/[.!?]+$/u, "");
+  return query ? { request, target: { kind: "contact", query } } : { request };
+}

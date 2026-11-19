@@ -58,6 +58,11 @@ import type {
 } from "../approval/types.ts";
 import { hostAuthoredText } from "./authored-text.ts";
 import {
+  DeviceTelephonyTargetNotRequestedError,
+  groundTelephonyTarget,
+  namesTelephonyTarget,
+} from "./telephony-target-grounding.ts";
+import {
   BROWSER_CONTROL_TYPES,
   BROWSER_FIND_CAPABILITY,
   BROWSER_HISTORY_CAPABILITY,
@@ -2412,16 +2417,23 @@ export class DeviceActionService {
       validated.type === "browser_navigate" ||
       validated.type === "browser_search";
     const selectedTelephony = selectedTelephonyView(validated) !== undefined;
+    // A model-planned call, dial, text or keypad prefill names its recipient
+    // from the owner's own words in this message (telephony-target-grounding).
+    // Without a model turn (host code, tests) there is no model recipient.
+    const telephonyTarget =
+      namesTelephonyTarget(validated) &&
+      getDeviceActionTurn()?.runtime === this.runtime;
     const foregroundTurn =
       isPhotosViewOperation(validated) || isFilesOperation(validated)
         ? getDeviceActionTurn()
         : undefined;
     const signal = foregroundTurn && getStreamingContext()?.abortSignal;
     const requestOrigin = await freshRequestedMessageId(this.runtime, c, {
-      allowReviewed: browserRequest || selectedTelephony,
+      allowReviewed: browserRequest || selectedTelephony || telephonyTarget,
       // A tab word and find text are compared with the owner's words too.
       readText:
         browserRequest ||
+        telephonyTarget ||
         validated.type === "browser_tab_switch" ||
         validated.type === "browser_find",
     });
@@ -2448,6 +2460,40 @@ export class DeviceActionService {
           }
         : requestOrigin?.assertCurrent;
     assertCurrent?.();
+    let telephonyReason: string | undefined;
+    if (telephonyTarget) {
+      // No durable original request means no words to ground a recipient in.
+      if (!requestOrigin)
+        throw new DeviceTelephonyTargetNotRequestedError(
+          validated.type === "sms_compose" && "query" in validated
+            ? "contact"
+            : "number",
+        );
+      const grounded = groundTelephonyTarget(
+        validated,
+        requestOrigin.requestText,
+      );
+      validated = grounded.operation;
+      // A handed-through recipient may need a form the model's did not (a
+      // contact lookup in place of a number): the phone must have it.
+      if (
+        !deviceOperationSupportedByCapabilities(
+          validated.type,
+          c.capabilities,
+        ) ||
+        !deviceOperationFormSupported(validated, c.capabilities) ||
+        (isPhoneDial(validated) &&
+          !phoneDialCapabilityAvailable(validated, c.capabilities))
+      )
+        throw new DeviceTelephonyTargetNotRequestedError("form");
+      // The review shows the owner's recipient; the model's reason may still
+      // name the number it invented.
+      if (grounded.handedThrough)
+        telephonyReason =
+          validated.type === "sms_compose" || validated.type === "sms_send"
+            ? "Text the recipient the owner wrote."
+            : "Call the recipient the owner wrote.";
+    }
     if (validated.type === "browser_navigate") {
       // The durable original request owns the destination: the user's typed
       // address, never the model's spelling of it.
@@ -2581,7 +2627,7 @@ export class DeviceActionService {
           validated.type === "browser_navigate";
         const queuedReason = directOpen
           ? "Open the address the owner typed."
-          : text(reason, 1000);
+          : (telephonyReason ?? text(reason, 1000));
         // This is the canonical queue's transaction API: no notification or effect before commit.
         // A direct request binds its key to that message: a key reused in a later turn is a new review.
         const idempotencyKey = `device:${digest([
