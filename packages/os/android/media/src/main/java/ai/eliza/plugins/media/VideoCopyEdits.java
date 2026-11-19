@@ -685,6 +685,15 @@ public final class VideoCopyEdits {
   @SuppressWarnings("deprecation")
   // API29-compatible pending visibility; never infer absence from the default collection.
   private Uri copy(String token, JSONObject record) throws Exception {
+    Uri found = ownedRow(token);
+    if (record.has("pendingId")
+        && (found == null
+            || !record.getString("pendingId").equals(Long.toString(ContentUris.parseId(found)))))
+      throw new IOException("Recorded video copy needs recovery review");
+    return found;
+  }
+  @SuppressWarnings("deprecation")
+  private Uri ownedRow(String token) throws Exception {
     Uri found = null;
     try (Cursor row = context.getContentResolver().query(MediaStore.setIncludePending(OUTPUTS),
              new String[] {"_id"}, "owner_package_name=? AND _display_name=?",

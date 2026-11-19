@@ -161,15 +161,20 @@ function wireOf(shell: Shell, frame: ServerFrame, pcm: Uint8Array | undefined): 
   }
 }
 
+function encodeWire(wire: RelayWire): string | Uint8Array | undefined {
+  const written = writeRelay(wire)
+  if (written.kind === "Unwritable") return undefined
+  return wire.kind === "Audio" ? Uint8Array.from(written.bytes) : textOf(written.bytes)
+}
+
 effect function write(shell: Shell, writer: Socket.Writer, frame: ServerFrame, pcm: Uint8Array | undefined): Sent!! {
   const wire = wireOf(shell, frame, pcm)
   if (typeof wire === "number") {
     writer.write(new Socket.CloseEvent(wire)) catch () => { shell.gone = true }
     return shell.gone ? "gone" : "sent"
   }
-  const written = writeRelay(wire)
-  if (written.kind === "Unwritable") return "unwritable"
-  const chunk = wire.kind === "Audio" ? Uint8Array.from(written.bytes) : textOf(written.bytes)
+  const chunk = encodeWire(wire)
+  if (chunk === undefined) return "unwritable"
   writer.write(chunk) catch () => { shell.gone = true }
   return shell.gone ? "gone" : "sent"
 }

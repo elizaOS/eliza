@@ -5,7 +5,7 @@ import { agentClient } from "../../src/bridges/agent.vibe"
 
 module android {
   import { CapacitorException } from "@capacitor/core"
-  import type { AgentEvents, AgentRoute, ElizaAgentPlugin } from "../../src/bridges/definitions/agent.ts"
+  import type { AgentEvents, AgentRoute, AgentStatus, ElizaAgentPlugin } from "../../src/bridges/definitions/agent.ts"
 
   export interface Device {
     installed: boolean
@@ -49,7 +49,7 @@ module android {
       await installed()
       if (!list.includes(`${method} ${path}`)) throw refuse("RouteRefused")
     }
-    const status = async () => {
+    const status = async (): Promise<AgentStatus> => {
       await installed()
       return wire(phone.status)
     }
@@ -101,7 +101,7 @@ effect function refusal(call: () => Promise<unknown>) {
 }
 
 effect function settle() {
-  try promise(() => new Promise((done) => setTimeout(done, 10)))
+  try sleep("10 millis")
 }
 
 it.live("Ask the agent only on the routes my app allows, and read its status without the plugin (spec/os/agentService/channel.md, \"Story: Ask the agent only on the routes my app allows\"; spec/os/agentService/channel.md, \"A call is refused before any I/O unless the agent is serving, its id is free and its list admits it\"; spec/os/agentService/channel.md, \"The launch's root token stays inside the service\")", () => effect {

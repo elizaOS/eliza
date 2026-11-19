@@ -116,8 +116,8 @@ pure def send(s: Turns, room: int, key: str, fingerprint: int, now: int, inferen
   val view = viewOf(s, room, key, t)
   val a = decide(inferenceReady, view, key != "", roomBusy(s, room), fingerprint, s.nextId)
   val answer = List(SendAnswered({ admission: a }))
-  val started = { ...s, turns: s.turns.append({ id: s.nextId, room: room, key: key, startedAt: t, phase: Running }), nextId: s.nextId + 1, clock: t }
-  val cut = { id: s.nextId, room: room, userMessage: recordAt(s, room, key).userMessage, units: List(), kind: CutByRestart, heard: NotReported }
+  val started: Turns = { ...s, turns: s.turns.append({ id: s.nextId, room: room, key: key, startedAt: t, phase: Running }), nextId: s.nextId + 1, clock: t }
+  val cut: Reply = { id: s.nextId, room: room, userMessage: recordAt(s, room, key).userMessage, units: List(), kind: CutByRestart, heard: NotReported }
   match a {
     | Unkeyed(_) => { state: started, out: answer }
     | Owner(_) => { state: { ...started, records: s.records.append({ room: room, key: key, fingerprint: fingerprint, userMessage: s.nextId, phase: KeyRunning({ turn: s.nextId }) }) }, out: answer }
