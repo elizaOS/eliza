@@ -458,11 +458,13 @@ function walkSecretSwapValue(
 	value: unknown,
 	depth: number,
 	ctx: SecretSwapWalkContext,
-	mapString: (text: string, key?: string) => string,
+	mapString: (text: string, key?: string, field?: string) => string,
 	key?: string,
+	/** The root object's property this value sits under. */
+	field?: string,
 ): unknown {
 	if (typeof value === "string") {
-		return mapString(value, key);
+		return mapString(value, key, field);
 	}
 	if (value === null || typeof value !== "object") {
 		return value;
@@ -497,6 +499,8 @@ function walkSecretSwapValue(
 					depth + 1,
 					ctx,
 					mapString,
+					undefined,
+					field,
 				);
 			}
 			return next;
@@ -526,7 +530,14 @@ function walkSecretSwapValue(
 			defineSecretSwapValue(
 				next,
 				key,
-				walkSecretSwapValue(descriptor.value, depth + 1, ctx, mapString, key),
+				walkSecretSwapValue(
+					descriptor.value,
+					depth + 1,
+					ctx,
+					mapString,
+					key,
+					depth === 0 ? key : field,
+				),
 			);
 		}
 		return next;
@@ -623,6 +634,8 @@ export class SecretSwapSession {
 	 */
 	private learnText(
 		text: string,
+		/** false: learn no contact data here; a set: learn it, except these values. */
+		contacts: boolean | ReadonlySet<string> = true,
 	): { value: string; start: number; end: number }[] {
 		// 1) Assignment-style secrets (KEY=…, "token":"…", Bearer …, PEM blocks)
 		// from the shared redact pattern set — value-extracted, including short values.
@@ -643,6 +656,14 @@ export class SecretSwapSession {
 			disabledKinds: this.disabledKinds,
 		})) {
 			const trimmed = match.value.trim();
+			// Authored interface text documents a format with an example; a phone
+			// number or address there is not anyone's contact.
+			if (
+				(match.kind === "email" || match.kind === "phone") &&
+				(contacts === false ||
+					(typeof contacts === "object" && contacts.has(trimmed)))
+			)
+				continue;
 			if (
 				trimmed.length >= MIN_PII_VALUE_LENGTH &&
 				!this.exemptValues.has(trimmed) &&
@@ -656,9 +677,12 @@ export class SecretSwapSession {
 		return assignments;
 	}
 
-	substituteText(text: string): string {
+	substituteText(
+		text: string,
+		contacts: boolean | ReadonlySet<string> = true,
+	): string {
 		let result = text;
-		const assignments = this.learnText(text);
+		const assignments = this.learnText(text, contacts);
 		// Replace credential capture spans before general known-value matching. This
 		// covers short punctuation-only assignments without rewriting JSON syntax.
 		let cursor = 0;
@@ -707,14 +731,55 @@ export class SecretSwapSession {
 		return pattern.test(text);
 	}
 
-	substituteInValue<T>(value: T): T {
+	/**
+	 * `authoredFields` names properties of the root object that hold authored
+	 * interface text, such as a request's tool definitions. Contact data is not
+	 * learned from them: an example number in a schema description would become
+	 * a reference, change the definition's bytes with every nonce, and be listed
+	 * as a contact of the request. A request also carries copies of those
+	 * definitions in other fields, so outside `conversationFields` an example
+	 * found in the authored fields is not learned either. Credentials are
+	 * learned everywhere, a contact that is not such an example is learned
+	 * everywhere else, and a value learned anywhere is replaced everywhere.
+	 */
+	substituteInValue<T>(
+		value: T,
+		options: {
+			authoredFields?: readonly string[];
+			conversationFields?: readonly string[];
+		} = {},
+	): T {
+		const authored = new Set(options.authoredFields ?? []);
+		const conversation = new Set(options.conversationFields ?? []);
+		const examples = new Set<string>();
+		if (authored.size)
+			walkSecretSwapValue(
+				value,
+				0,
+				createSecretSwapWalkContext(),
+				(text, _key, field) => {
+					if (field !== undefined && authored.has(field))
+						for (const match of detectPii(text, {
+							disabledKinds: this.disabledKinds,
+						}))
+							if (match.kind === "email" || match.kind === "phone")
+								examples.add(match.value.trim());
+					return text;
+				},
+			);
+		const contacts = (field?: string) =>
+			field !== undefined && authored.has(field)
+				? false
+				: examples.size && (field === undefined || !conversation.has(field))
+					? examples
+					: true;
 		// Snapshot descriptors and learn the entire graph before replacement, so
 		// a credential discovered in a later field protects earlier references too.
 		const snapshot = walkSecretSwapValue(
 			value,
 			0,
 			createSecretSwapWalkContext(),
-			(text, key) => {
+			(text, key, field) => {
 				if (
 					key &&
 					isCredentialField(key) &&
@@ -723,7 +788,7 @@ export class SecretSwapSession {
 					this.replyProtectedValues.add(text);
 					this.entryForValue(text, "secret");
 				}
-				this.learnText(text);
+				this.learnText(text, contacts(field));
 				return text;
 			},
 		);
@@ -731,7 +796,7 @@ export class SecretSwapSession {
 			snapshot,
 			0,
 			createSecretSwapWalkContext(),
-			(text) => this.substituteText(text),
+			(text, _key, field) => this.substituteText(text, contacts(field)),
 		) as T;
 	}
 
