@@ -223,11 +223,13 @@ export function generateAndroidConsumerHost({
   upstreamRoot = fs.realpathSync(upstreamRoot);
   const roots = { consumer: consumerRoot, upstream: upstreamRoot };
   if (dependencyRoot) roots.dependencies = fs.realpathSync(dependencyRoot);
+  const workspace =
+    roots.dependencies && workspaceRoot(path.dirname(roots.dependencies));
   const packageRoots = [
     consumerRoot,
     upstreamRoot,
     roots.dependencies,
-    roots.dependencies && workspaceRoot(path.dirname(roots.dependencies)),
+    workspace && inside(workspace, consumerRoot) ? workspace : null,
   ].filter(Boolean);
   output = path.resolve(output);
   if (inside(requestedConsumerRoot, output)) {
