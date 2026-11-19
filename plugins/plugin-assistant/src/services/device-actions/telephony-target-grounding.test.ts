@@ -305,6 +305,9 @@ describe("numbers the owner spoke", () => {
     expect(spokenPhoneNumbers("call me at four")).toEqual([]);
     expect(spokenPhoneNumbers("call Maya at 5 or 6:30")).toEqual([]);
     expect(spokenPhoneNumbers("order A4155550100")).toEqual([]);
+    expect(
+      spokenPhoneNumbers("five five five constructor seven eight nine"),
+    ).toEqual(["555", "789"]);
     // A written number is still read as written.
     expect(ownerPhoneNumbers("call 415-555-0100")).toContain("4155550100");
   });
