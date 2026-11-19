@@ -541,11 +541,32 @@ export interface AnchoredPlaceQuery {
   anchor: string;
 }
 
-/** Words after "near" that mean the owner's own position, not a named place. */
+/**
+ * Words after "near" that mean the owner's own position, not a named place:
+ * "near me", "close to where I am right now", "around midnight near me".
+ */
 const OWN_POSITION =
-  /^(?:me|here|us|by|myself|my\s+(?:location|position|place|current\s+location)|where\s+(?:i|we)\s+(?:am|are)|this\s+(?:place|spot|location)|current\s+location|(?:my|the)\s+phone)$/iu;
+  /^(?:me|here|us|myself|this\s+(?:place|spot|location)|(?:my|the)\s+phone)$|^(?:my\s+(?:location|position|place|current\s+location)|where\s+(?:i|we)\s+(?:am|are)|current\s+location)\b|\b(?:near|around|close\s+to|next\s+to)\s+(?:me|here|us)$/iu;
+
+/**
+ * "around midnight", "near 5pm", "around Christmas", "near the end": a time
+ * or a position in something, not a place to search around. "near home",
+ * "near my office" name the owner's own places, which a provider search by
+ * that word cannot find. A street address ("near 1 Market St") still counts.
+ */
+export const NEAR_NOT_A_PLACE =
+  /^(?:home|work|the\s+office|(?:my|our)\s+.+|(?:the\s+)?(?:top|bottom|end|beginning|start|middle|deadline|weekend|holidays?)|midnight|noon|midday|dawn|dusk|sunrise|sunset|lunch(?:time)?|dinner(?:time)?|breakfast|christmas(?:\s+eve)?|thanksgiving|easter|halloween|new\s+year(?:'s|’s)?(?:\s+(?:eve|day))?|(?:mon|tues|wednes|thurs|fri|satur|sun)day|january|february|march|april|june|july|august|september|october|november|december|line\s+\d+|page\s+\d+|\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.?|p\.m\.?|o'?clock)?)$/iu;
+
+/**
+ * Things the owner keeps on the phone, not kinds of places: "photos near the
+ * Ferry Building" is a Photos search, "messages around Thanksgiving" a
+ * Messages search.
+ */
+export const NEAR_NOT_A_PLACE_KIND =
+  /\b(?:photos?|pictures?|pics?|images?|videos?|clips?|selfies?|screenshots?|e-?mails?|mail|messages?|texts?|chats?|notes?|files?|documents?|docs?|songs?|music|tracks?|albums?|playlists?|podcasts?|events?|meetings?|appointments?|reminders?|alarms?|contacts?|tasks?|to-?dos?|bugs?|issues?|errors?|lines?|comments?|posts?|tweets?|results?|calls?|voicemails?)$/iu;
+
 const ANCHORED_QUERY =
-  /^\s*(?:(?:please|can\s+you|could\s+you)\s+)*(?:(?:find|show|search\s+for|look\s+for|look\s+up|locate|get)\s+(?:me\s+)?)?(?:(?:is|are)\s+there\s+)?(?:(?:the|a|an|some|any)\s+)?(?:(?:nearest|closest)\s+)?(.{1,80}?)\s+(?:near|around|close\s+to|next\s+to|by)\s+(.{1,120}?)[\s?.!]*$/iu;
+  /^\s*(?:(?:please|can\s+you|could\s+you)\s+)*(?:(?:i|we)\s+(?:need|want)\s+|(?:i'?m|i’m|we'?re|we’re)\s+looking\s+for\s+)?(?:(?:find|show|search\s+for|look\s+for|look\s+up|locate|get)\s+(?:me\s+)?)?(?:(?:is|are)\s+there\s+)?(?:(?:the|a|an|some|any)\s+)?(?:(?:nearest|closest)\s+)?(.{1,80}?)\s+(?:near|around|close\s+to|next\s+to)\s+(.{1,120}?)[\s?.!]*$/iu;
 
 /**
  * The named place a search is near ("pharmacy near the Ferry Building"), or
@@ -558,7 +579,14 @@ export function anchoredPlaceQuery(
   const match = ANCHORED_QUERY.exec(query);
   const kind = match?.[1]?.trim();
   const anchor = match?.[2]?.trim();
-  if (!kind || !anchor || OWN_POSITION.test(anchor)) return undefined;
+  if (
+    !kind ||
+    !anchor ||
+    OWN_POSITION.test(anchor) ||
+    NEAR_NOT_A_PLACE.test(anchor) ||
+    NEAR_NOT_A_PLACE_KIND.test(kind)
+  )
+    return undefined;
   return { kind, anchor };
 }
 

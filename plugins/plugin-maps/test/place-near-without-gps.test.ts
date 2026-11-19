@@ -299,6 +299,29 @@ describe("a kind of place near a named place", () => {
       kind: "coffee shops",
       anchor: "Union Square",
     });
+    expect(anchoredPlaceQuery("I need a pharmacy near Union Square")).toEqual({
+      kind: "pharmacy",
+      anchor: "Union Square",
+    });
+  });
+
+  it.each([
+    // A business whose name says "by" is searched by its name.
+    "Café by the Sea",
+    "Hotel by the Bay",
+    "Stand By Me Cafe",
+    // A travel mode or a time is not a place to search around.
+    "find the nearest pharmacy by car",
+    "find a pharmacy open around 9pm",
+    "find a pharmacy open around midnight near me",
+    "pharmacy close to where I am right now",
+    // The owner's own places are not a provider search for the word.
+    "find a pharmacy near home",
+    "coffee next to my office",
+    // Things on the phone, not kinds of places.
+    "photos near the Ferry Building",
+  ])("names no place to search around in %s", (query) => {
+    expect(anchoredPlaceQuery(query)).toBeUndefined();
   });
 });
 
@@ -311,6 +334,8 @@ describe("phone chat routes a search near a named place to Maps", () => {
     "is there a pharmacy near Union Square?",
     "where is the closest pharmacy near the Ferry Building",
     "show me coffee shops close to Dolores Park",
+    "Parking near the Ferry Building",
+    "Hotels near SFO",
   ])("%s", (text) => {
     expect(isMapsPlaceNearNamedRequest(text)).toBe(true);
   });
@@ -324,6 +349,21 @@ describe("phone chat routes a search near a named place to Maps", () => {
     "find my keys near the couch",
     "find the bug near that line",
     "put the lamp near the window",
+    // Photos, Messages, Notes and Calendar searches.
+    "show photos near the Eiffel Tower",
+    "show me photos near Golden Gate Park",
+    "find emails near Christmas",
+    "search for messages around Thanksgiving",
+    "Show notes near the end",
+    "find files near the top",
+    "show the bug near line 40",
+    // A time, not a place.
+    "find a pharmacy open around midnight",
+    "get coffee around noon",
+    // A verb or a question, not a kind of place.
+    "Meet John near the Ferry Building",
+    "Text Sarah around Union Square",
+    "what is near the Ferry Building",
   ])("leaves %s to other routes", (text) => {
     expect(isMapsPlaceNearNamedRequest(text)).toBe(false);
   });

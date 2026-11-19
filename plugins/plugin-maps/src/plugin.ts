@@ -11,6 +11,8 @@ import {
   bindPromotedMapsSaveHandler,
   mapsAction,
   mapsNavigationAction,
+  NEAR_NOT_A_PLACE,
+  NEAR_NOT_A_PLACE_KIND,
 } from "./action.js";
 import { MAPS_VIEW_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";
@@ -371,6 +373,12 @@ const PLACE_NEAR_ME_REQUEST = new RegExp(
 
 const NEAR_NAMED = String.raw`\s+(?:near|around|close\s+to|next\s+to)\s+`;
 /**
+ * "Meet John near the Ferry Building", "Text Sarah around Union Square",
+ * "what is near the Ferry Building": a bare phrase that starts with a verb or
+ * a question word is not a kind of place.
+ */
+const NOT_A_BARE_KIND = String.raw`(?!(?:meet|text|call|phone|ring|message|email|e-mail|mail|send|tell|ask|remind|play|take|bring|drop|pick|leave|put|place|stay|sit|stand|wait|park|live|work|walk|drive|ride|run|go|come|be|keep|move|set|schedule|book|save|share|show|find|get|what|what's|what’s|who|whom|whose|where|when|why|how|which|is|are|was|were|do|does|did|can|could|should|would|will|i|i'm|i’m|we|you|it|they|he|she)\b)`;
+/**
  * "find a pharmacy near the Ferry Building", "is there a coffee shop near
  * Union Square?", "pharmacy near the Ferry Building": a kind of place around a
  * named place. A search verb or question allows a lowercase spoken place; the
@@ -379,7 +387,7 @@ const NEAR_NAMED = String.raw`\s+(?:near|around|close\s+to|next\s+to)\s+`;
 const PLACE_NEAR_NAMED_REQUEST = new RegExp(
   [
     String.raw`^\s*${COURTESY}(?:${FIND_VERB}|(?:is|are)\s+there\s+${NOT_A_PLACE_THERE})(?<spokenKind>${PLACE_KIND})${NEAR_NAMED}(?<spoken>[\p{L}\p{N}'’&.-]+(?:\s+[\p{L}\p{N}'’&.-]+){0,5})${END}`,
-    String.raw`^\s*${COURTESY}(?<namedKind>(?:(?:a|an|some|any)\s+)?[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,3})${NEAR_NAMED}(?<named>(?:the\s+)?\p{Lu}[\p{L}\p{N}'’&.-]*(?:\s+[\p{L}\p{N}'’&.-]+){0,5})${END}`,
+    String.raw`^\s*${COURTESY}${NOT_A_BARE_KIND}(?<namedKind>(?:(?:a|an|some|any)\s+)?[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,3})${NEAR_NAMED}(?<named>(?:the\s+)?\p{Lu}[\p{L}\p{N}'’&.-]*(?:\s+[\p{L}\p{N}'’&.-]+){0,5})${END}`,
   ].join("|"),
   "u",
 );
@@ -402,7 +410,14 @@ export function isMapsPlaceNearNamedRequest(text: string): boolean {
   );
   const place = (match?.groups?.spoken ?? match?.groups?.named)?.trim();
   const kind = (match?.groups?.spokenKind ?? match?.groups?.namedKind)?.trim();
-  if (!place || !kind || NEAR_OWN_POSITION.test(place)) return false;
+  if (
+    !place ||
+    !kind ||
+    NEAR_OWN_POSITION.test(place) ||
+    NEAR_NOT_A_PLACE.test(place) ||
+    NEAR_NOT_A_PLACE_KIND.test(kind)
+  )
+    return false;
   // "find my keys near the couch", "find the bug near that line": about
   // someone's things or the conversation, not a kind of place.
   return ![kind, place.replace(/^the\s+/iu, "")].some((words) =>
