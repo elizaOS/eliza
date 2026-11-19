@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const plugin = fileURLToPath(new URL("../..", import.meta.url));
-test("device credential grants fence stale results and expire by elapsed time", (t) => {
+test("timed and foreground credential grants fence stale results", (t) => {
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "credential-access-"));
   t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
   const bin = (name) =>
@@ -32,5 +32,5 @@ test("device credential grants fence stale results and expire by elapsed time", 
     ["-cp", classes, "CredentialAccessSessionTest"],
     { timeout: 60000, encoding: "utf8" },
   );
-  assert.match(output, /34 assertions passed/);
+  assert.match(output, /40 assertions passed/);
 });

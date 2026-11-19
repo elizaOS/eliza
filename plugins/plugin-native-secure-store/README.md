@@ -61,7 +61,7 @@ A host that needs only the native classes includes `android-nativeonly` alone. H
 picker UI, signer trust, permission declarations and release/debug policy, and
 must preserve deployed aliases, AAD and filenames when adopting them. Custody
 uses Android API 26+; browser structure parsing requires API 28+. Production
-password keys use device authentication by default. The explicit Android 15+
+password keys use device authentication by default. The explicit
 device-unlocked policy below is a separate custody version. The unauthenticated
 constructor mode is only for host-restricted synthetic tests. Autofill metadata key strings
 retain their existing browser wire protocol identifiers.
@@ -194,11 +194,12 @@ backups, logs, outcomes, or evidence are encrypted. Device instrumentation cover
 real Keystore persistence, owner isolation, concurrent creation, stale deletion,
 and corruption; compile-only results are not device proof.
 
-`KeyPolicy.deviceUnlocked(context)` is an explicit Android 15+ alternative for a
-new custody version. It checks the OS user/device lock and requires a configured
-screen lock on every native read/write. Its separate Keystore key has
-`unlockedDeviceRequired` without an app authentication window. Earlier Android
-versions are refused because of the [documented platform issues](https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec.Builder#setUnlockedDeviceRequired(boolean)).
+`KeyPolicy.deviceUnlocked(context)` is an explicit alternative for a new custody version.
+It checks the OS user and device lock on every native read and write. On Android 15+
+the separate Keystore key also requires an unlocked device. Earlier Android versions use
+the native state check and a non-exportable installation key, avoiding the documented
+[pre-15 platform issues](https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec.Builder#setUnlockedDeviceRequired(boolean)).
+The host is responsible for binding access to its foreground native window.
 Reserve a new alias and no-backup directory; existing authentication-bound aliases
 are refused under this policy. An encrypted versioned provenance marker binds
 the alias and AAD to the native creation path; existing keys cannot acquire a

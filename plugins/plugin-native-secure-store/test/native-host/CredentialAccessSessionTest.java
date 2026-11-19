@@ -66,6 +66,17 @@ public final class CredentialAccessSessionTest {
     catch (IllegalArgumentException expected) { checks++; }
     try { new CredentialAccessSession(null, 1); throw new AssertionError(); }
     catch (IllegalArgumentException expected) { checks++; }
+    CredentialAccessSession foreground = CredentialAccessSession.foregroundWindow();
+    check(foreground.currentTicket() == 0);
+    long window = foreground.begin();
+    check(foreground.complete(window, true) && foreground.authenticated(window));
+    check(foreground.currentTicket() == window);
+    foreground.stop();
+    check(!foreground.authenticated(window));
+    long nextWindow = foreground.begin();
+    check(nextWindow > window && foreground.complete(nextWindow, true));
+    foreground.lock(window);
+    check(!foreground.authenticated(window) && foreground.authenticated(nextWindow));
     System.out.println("CredentialAccessSession: " + checks + " assertions passed");
   }
 }

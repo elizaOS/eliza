@@ -224,6 +224,7 @@ test("client rejects leaking native responses and maps errors without echoing in
     biometric: true,
     autofill: { supported: true, selected: "this-app" },
   });
+  assert.deepEqual(await client.unlock(), { unlockRemainingMs: 5 });
   await assert.rejects(
     client.list(),
     (error) =>
@@ -300,6 +301,39 @@ test("client rejects leaking native responses and maps errors without echoing in
     passwordsError({ code: "not-admitted", message: SYNTHETIC }).code,
     "not-admitted",
   );
+});
+
+test("foreground custody preserves no deadline and distinct native refusals", async () => {
+  const foreground = {
+    available: true,
+    custody: "device-unlocked",
+    locked: false,
+    unlockRemainingMs: null,
+    unlockSeconds: 0,
+    biometric: false,
+    autofill: { supported: true, selected: "none" },
+  };
+  let status = foreground;
+  const client = createPasswordsClient({
+    async status() {
+      return status;
+    },
+    async unlock() {
+      return { unlocked: true, unlockRemainingMs: null };
+    },
+  });
+  assert.deepEqual(await client.status(), foreground);
+  assert.deepEqual(await client.unlock(), { unlockRemainingMs: null });
+
+  for (const reason of [
+    "not-admitted",
+    "device-locked",
+    "legacy-authorization-required",
+    "legacy-key-unavailable",
+  ]) {
+    status = { ...foreground, available: false, locked: true, reason };
+    assert.deepEqual(await client.status(), status);
+  }
 });
 
 test("vault binding metadata is complete or explicitly rejected", () => {
