@@ -2558,6 +2558,11 @@ export class DeviceActionService {
         validated.type === "browser_find",
     });
     let deliveredSenderDraft: typeof validated | undefined;
+    // A draft the service built from the owner's own addressing clause names
+    // the recipient the owner wrote, so it is not grounded a second time. The
+    // whole-message reading would take "to four one five ..." as a spoken
+    // "two" and hand a different number through.
+    let addressedSmsDraft: typeof validated | undefined;
     let telephonyReason: string | undefined;
     if (validated.type === "sms_latest_sender") {
       const scope = requestOrigin
@@ -2591,12 +2596,14 @@ export class DeviceActionService {
         c.capabilities.includes(SMS_COMPOSE_TARGET_CAPABILITY);
       if (recipient?.kind === "contact" && !targets) {
         // A phone without targets names the contact by its search text.
-        if (c.capabilities?.includes(SMS_COMPOSE_CAPABILITY))
-          validated = validateDeviceOperation({
+        if (c.capabilities?.includes(SMS_COMPOSE_CAPABILITY)) {
+          addressedSmsDraft = validateDeviceOperation({
             type: "sms_compose",
             query: recipient.query,
             body: validated.body,
           });
+          validated = addressedSmsDraft;
+        }
       } else if (recipient && recipient.kind !== "unaddressed") {
         if (!targets)
           throw new DeviceActionError(
@@ -2625,12 +2632,13 @@ export class DeviceActionService {
           });
           validated = deliveredSenderDraft;
         } else {
-          validated = validateDeviceOperation({
+          addressedSmsDraft = validateDeviceOperation({
             type: "sms_compose",
             target: recipient,
             body,
             draft: true,
           });
+          validated = addressedSmsDraft;
         }
       }
     }
@@ -2674,8 +2682,9 @@ export class DeviceActionService {
               ? "contact"
               : "number",
           );
-        const grounded = deliveredSenderDraft
-          ? { operation: deliveredSenderDraft, handedThrough: false }
+        const resolved = deliveredSenderDraft ?? addressedSmsDraft;
+        const grounded = resolved
+          ? { operation: resolved, handedThrough: false }
           : groundTelephonyTarget(
               validated,
               requestOrigin.requestText,
