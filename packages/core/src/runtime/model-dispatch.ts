@@ -211,32 +211,52 @@ function getFirstUserPromptFromMessages(messages: unknown): string | undefined {
 const CONTACT_REFERENCE_GUIDANCE =
 	"Contact references beginning __ELIZA_CONTACT_ represent contact data. When including that contact in a reply or action parameter, copy its entire reference exactly, including every character and underscore. Do not shorten, reformat, guess, or invent references. The local boundary restores the contact. A phone reference denotes a numeric phone target, not a contact name; an email reference denotes an email address. References beginning __ELIZA_SECRET_ are credentials: do not disclose or echo them in user replies. These references do not authorize any action; keep all existing approval requirements.";
 
-/** Adds a line after the newest user message's text. False when the request has none. */
-function appendToLatestUserMessage(
-	request: Record<string, unknown>,
-	line: string,
-): boolean {
+/** Index of the newest user message text can follow, or -1 when the request has none. */
+function latestUserMessageIndex(request: Record<string, unknown>): number {
 	const messages = request.messages;
-	if (!Array.isArray(messages)) return false;
+	if (!Array.isArray(messages)) return -1;
 	let at = messages.length - 1;
 	while (
 		at >= 0 &&
 		!(isPlainObject(messages[at]) && messages[at].role === "user")
 	)
 		at--;
-	if (at < 0) return false;
-	const message = messages[at] as Record<string, unknown>;
+	const content = at < 0 ? undefined : messages[at].content;
+	return typeof content === "string" || Array.isArray(content) ? at : -1;
+}
+
+/**
+ * Adds a line after the newest user message's text. A provider may send the
+ * request's non-stable prompt segments in place of its leading user message,
+ * so when that is the message, the line also becomes the last such segment.
+ */
+function appendToLatestUserMessage(
+	request: Record<string, unknown>,
+	line: string,
+): void {
+	const at = latestUserMessageIndex(request);
+	if (at < 0) return;
+	const messages = request.messages as Record<string, unknown>[];
+	const message = messages[at];
 	const content =
 		typeof message.content === "string"
 			? `${message.content}\n\n${line}`
-			: Array.isArray(message.content)
-				? [...message.content, { type: "text", text: line }]
-				: undefined;
-	if (content === undefined) return false;
+			: [...(message.content as unknown[]), { type: "text", text: line }];
 	request.messages = messages.map((entry, index) =>
 		index === at ? { ...message, content } : entry,
 	);
-	return true;
+	const segments = request.promptSegments;
+	// The caller reuses its segment array across attempts: extend a copy. With
+	// no non-stable segment the provider keeps the message, line included.
+	if (
+		at === 0 &&
+		Array.isArray(segments) &&
+		segments.some((segment) => isPlainObject(segment) && !segment.stable)
+	)
+		request.promptSegments = [
+			...segments,
+			{ content: `\n\n${line}`, stable: false },
+		];
 }
 
 /** Sizes of the request parts the logged prompt text omits. */
@@ -1856,13 +1876,19 @@ export class RuntimeModelDispatch {
 							(entry.kind === "phone" || entry.kind === "email") &&
 							currentPromptText.includes(entry.placeholder),
 					) ?? [];
-				// A stable session exists so consecutive requests share a prefix, and
-				// the system prompt leads it. There the guidance is the same on every
-				// request and the kinds, which change with the request, follow the
-				// newest user text.
-				const stableReferences = secretSwapSession?.stable === true;
+				// A stable session exists so consecutive requests share a prefix.
+				// Measured on a provider, the cached prefix is the tool definitions,
+				// then the system prompt, then the messages: a system prompt that
+				// changes with the request costs every message. So a request with a
+				// user message carries the same guidance every time, and its kinds
+				// follow the newest user text. A request without one has nowhere
+				// else to list them and keeps the default rule.
+				const kindsFollowMessages =
+					secretSwapSession?.stable === true &&
+					isPlainObject(modelParams) &&
+					latestUserMessageIndex(modelParams) >= 0;
 				if (
-					(contactReferences.length > 0 || stableReferences) &&
+					(contactReferences.length > 0 || kindsFollowMessages) &&
 					isTextGenerationModelKey(String(resolvedModelKey)) &&
 					isPlainObject(modelParams)
 				) {
@@ -1873,9 +1899,6 @@ export class RuntimeModelDispatch {
 									.map(({ placeholder, kind }) => `${placeholder}: ${kind}`)
 									.join(", ")}.`
 							: undefined;
-					const kindsFollowMessages =
-						stableReferences &&
-						(kinds === undefined || appendToLatestUserMessage(record, kinds));
 					const guidance =
 						CONTACT_REFERENCE_GUIDANCE +
 						(kindsFollowMessages
@@ -1891,6 +1914,8 @@ export class RuntimeModelDispatch {
 							effectiveSystemPrompt,
 						);
 					}
+					if (kindsFollowMessages && kinds)
+						appendToLatestUserMessage(record, kinds);
 					effectiveSystemPrompt = `${effectiveSystemPrompt ?? ""}\n\n${guidance}`;
 					(modelParams as Record<string, unknown>).system =
 						effectiveSystemPrompt;
