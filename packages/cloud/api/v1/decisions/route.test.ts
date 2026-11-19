@@ -6,6 +6,29 @@ let authenticated = true;
 const rateLimited: { windowMs: number; maxRequests: number; key?: string }[] =
   [];
 const blockedKeys = new Set<string>();
+const organizationCalls = new Map<string, number>();
+const freePolicy = {
+  authority: { source: "legacy" },
+  subscriptionFunded: false,
+  tierSourceCreditTotal: "0" as string | null,
+  tier: { status: "available" },
+};
+let policy = freePolicy;
+let policyError = false;
+mock.module(
+  "@elizaos/cloud-shared/lib/services/organization-quota-policy",
+  () => ({
+    requireOrganizationRateTier: () => {
+      throw new Error(
+        "Clef requires a quota observation, not an inference tier",
+      );
+    },
+    readOrganizationQuotaPolicy: async () => {
+      if (policyError) throw new Error("Billing policy storage unavailable");
+      return policy;
+    },
+  }),
+);
 const logged: unknown[][] = [];
 mock.module("@elizaos/cloud-shared/auth", () => ({
   requireUserOrApiKeyWithOrg: async () => {
@@ -34,8 +57,12 @@ mock.module(
           maxRequests: config.maxRequests,
           ...(key ? { key } : {}),
         });
-        if (key && blockedKeys.has(key)) {
-          return c.json({ code: "rate_limit_exceeded" }, 429);
+        if (key) {
+          const count = (organizationCalls.get(key) ?? 0) + 1;
+          organizationCalls.set(key, count);
+          if (blockedKeys.has(key) || count > config.maxRequests) {
+            return c.json({ code: "rate_limit_exceeded" }, 429);
+          }
         }
         await next();
       },
@@ -74,6 +101,9 @@ beforeEach(() => {
   authenticated = true;
   rateLimited.length = 0;
   blockedKeys.clear();
+  organizationCalls.clear();
+  policy = freePolicy;
+  policyError = false;
   logged.length = 0;
 });
 
@@ -125,6 +155,58 @@ test("an organization over its daily cap gets 429 and no Clef call", async () =>
   expect(response.status).toBe(429);
   expect(runs).toHaveLength(0);
   expect(JSON.stringify(logged)).not.toContain(SECRET);
+});
+
+test("a settled purchase raises the same organization's cap until revoked", async () => {
+  const run = mock(async () => ({
+    model: "clef-flash",
+    answers: { ask: { type: "noul", noul: 0.1 } },
+  }));
+  const env = { AI: { run }, CLEF_DECISIONS_ENABLED: "true" };
+  organizationCalls.set(ORG_DAILY.key, 2_000);
+
+  policy = { ...freePolicy, tierSourceCreditTotal: "4.99" };
+  expect((await post(modeRequest, env)).status).toBe(429);
+
+  policy = { ...freePolicy, tierSourceCreditTotal: "5.00" };
+  expect((await post(modeRequest, env)).status).toBe(200);
+  expect(rateLimited.at(-1)).toEqual({ ...ORG_DAILY, maxRequests: 4_000 });
+  expect(organizationCalls.get(ORG_DAILY.key)).toBe(2_002);
+
+  policy = freePolicy;
+  expect((await post(modeRequest, env)).status).toBe(429);
+  expect(run).toHaveBeenCalledTimes(1);
+});
+
+test("a funded subscription raises the cap while a promo grant or unavailable policy keeps the base cap", async () => {
+  const run = mock(async () => ({
+    model: "clef-flash",
+    answers: { ask: { type: "noul", noul: 0.1 } },
+  }));
+  const env = { AI: { run }, CLEF_DECISIONS_ENABLED: "true" };
+  organizationCalls.set(ORG_DAILY.key, 2_000);
+  const funded = {
+    ...freePolicy,
+    subscriptionFunded: true,
+    tierSourceCreditTotal: null,
+  };
+
+  policy = { ...funded, authority: { source: "subscription" } };
+  expect((await post(modeRequest, env)).status).toBe(200);
+
+  policy = { ...funded, authority: { source: "promo_grant" } };
+  expect((await post(modeRequest, env)).status).toBe(429);
+
+  policy = {
+    ...funded,
+    authority: { source: "subscription" },
+    tier: { status: "unavailable" },
+  };
+  expect((await post(modeRequest, env)).status).toBe(429);
+
+  policyError = true;
+  expect((await post(modeRequest, env)).status).toBe(429);
+  expect(run).toHaveBeenCalledTimes(1);
 });
 
 test("disabled and invalid requests do not spend the daily cap", async () => {

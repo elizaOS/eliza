@@ -12,10 +12,9 @@
  * clients keep their own rule. A `mode` answer is a suggestion; it never lowers
  * a client's safety floor. Request text is not stored or logged.
  *
- * Clef calls are not charged credits, so platform cost is bounded by two
- * fail-closed limits instead: 30 requests a minute per credential, then 2,000
- * Clef calls a day per organization however many keys it holds. Both 503 when
- * the limiter store is unreachable rather than serving unlimited calls.
+ * Clef calls do not debit credits. Shared Redis enforces 30 requests a minute
+ * per credential and a daily cap across the organization's credentials.
+ * The daily cap is 2,000, or 4,000 with a qualifying purchase or subscription.
  */
 
 import {
@@ -33,6 +32,8 @@ import {
   resolveClefModel,
   runClefDecision,
 } from "@elizaos/cloud-shared/lib/providers/cloudflare-clef";
+import { resolveOrgTierFromSourceValues } from "@elizaos/cloud-shared/lib/services/org-rate-limits";
+import { readOrganizationQuotaPolicy } from "@elizaos/cloud-shared/lib/services/organization-quota-policy";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
@@ -45,10 +46,32 @@ const CLEF_DECISIONS_CREDENTIAL_LIMIT: RateLimitConfig = {
 };
 
 /** Per organization, across all its keys and users; only Clef calls count. */
-const CLEF_DECISIONS_ORG_DAILY_LIMIT: RateLimitConfig = {
-  windowMs: 86_400_000,
-  maxRequests: 2_000,
-};
+const CLEF_DECISIONS_DAILY_WINDOW_MS = 86_400_000;
+const CLEF_DECISIONS_DAILY_LIMIT = 2_000;
+const CLEF_DECISIONS_FUNDED_DAILY_LIMIT = 4_000;
+
+async function organizationDailyLimit(organizationId: string): Promise<number> {
+  try {
+    const policy = await readOrganizationQuotaPolicy(organizationId);
+    if (policy.tier.status === "available") {
+      const funded =
+        policy.authority.source === "subscription"
+          ? policy.subscriptionFunded
+          : policy.tierSourceCreditTotal !== null &&
+            resolveOrgTierFromSourceValues(
+              organizationId,
+              policy.tierSourceCreditTotal,
+            ).tierData.tierName !== "free";
+      if (funded) return CLEF_DECISIONS_FUNDED_DAILY_LIMIT;
+    }
+  } catch {
+    // error-policy:J2 An unavailable funding decision preserves the base cap.
+    logger.warn("[Decisions] Funded quota policy unavailable", {
+      organizationId,
+    });
+  }
+  return CLEF_DECISIONS_DAILY_LIMIT;
+}
 
 /** Admits one Clef call against the organization's daily cap, or answers 429/503. */
 async function admitOrganizationDecision(
@@ -57,7 +80,8 @@ async function admitOrganizationDecision(
 ): Promise<Response | null> {
   let admitted = false;
   const limiter = moneyRateLimit({
-    ...CLEF_DECISIONS_ORG_DAILY_LIMIT,
+    windowMs: CLEF_DECISIONS_DAILY_WINDOW_MS,
+    maxRequests: await organizationDailyLimit(organizationId),
     keyGenerator: () => `clef-decisions:org:${organizationId}`,
   });
   const blocked = await limiter(c, async () => {
