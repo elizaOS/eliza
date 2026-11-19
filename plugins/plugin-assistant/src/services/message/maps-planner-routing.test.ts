@@ -539,6 +539,10 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     ["where can I get coffee nearby?", ["MAPS_PLACE", "MAPS_NAVIGATION_START"]],
     ["any good tacos around here?", ["MAPS_PLACE", "MAPS_NAVIGATION_START"]],
     ["find a pharmacy nearby", ["MAPS_PLACE", "MAPS_NAVIGATION_START"]],
+    // A named place to search around needs no position from the phone.
+    ["pharmacy near the Ferry Building", ["MAPS_PLACE"]],
+    ["find a pharmacy near the ferry building", ["MAPS_PLACE"]],
+    ["is there a pharmacy near Union Square?", ["MAPS_PLACE"]],
     [
       "Are there any coffee shops close by?",
       ["MAPS_PLACE", "MAPS_NAVIGATION_START"],

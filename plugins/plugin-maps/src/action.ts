@@ -181,8 +181,11 @@ function awaitingLocation(
   intent: MapsLocateCard["intent"],
   prompt: string,
   subject: Pick<MapsLocateCard, "query" | "destination" | "travelMode">,
+  /** What the owner can say instead when the phone has no fix; the card keeps the prompt alone. */
+  instead?: string,
 ): ActionResult {
-  const userFacingText = appendMapsCard(prompt, {
+  const reply = instead ? `${prompt} ${instead}` : prompt;
+  const userFacingText = appendMapsCard(reply, {
     kind: "locate",
     intent,
     prompt,
@@ -190,7 +193,7 @@ function awaitingLocation(
   });
   return {
     success: false,
-    text: prompt,
+    text: reply,
     userFacingText,
     verifiedUserFacing: true,
     data: {
@@ -520,6 +523,83 @@ function namedTravelMode(params: Params): TravelMode | undefined {
     : undefined;
 }
 
+/** "nearest pharmacy" → "pharmacy", for an example the owner can say back. */
+function placeKind(query: string): string {
+  return (
+    query
+      .replace(
+        /^(?:(?:the|a|an|some|any)\s+)?(?:(?:nearest|closest)\s+)?/iu,
+        "",
+      )
+      .trim() || query
+  );
+}
+
+/** "pharmacy near the Ferry Building": a kind of place and the named place it is near. */
+export interface AnchoredPlaceQuery {
+  kind: string;
+  anchor: string;
+}
+
+/** Words after "near" that mean the owner's own position, not a named place. */
+const OWN_POSITION =
+  /^(?:me|here|us|by|myself|my\s+(?:location|position|place|current\s+location)|where\s+(?:i|we)\s+(?:am|are)|this\s+(?:place|spot|location)|current\s+location|(?:my|the)\s+phone)$/iu;
+const ANCHORED_QUERY =
+  /^\s*(?:(?:please|can\s+you|could\s+you)\s+)*(?:(?:find|show|search\s+for|look\s+for|look\s+up|locate|get)\s+(?:me\s+)?)?(?:(?:is|are)\s+there\s+)?(?:(?:the|a|an|some|any)\s+)?(?:(?:nearest|closest)\s+)?(.{1,80}?)\s+(?:near|around|close\s+to|next\s+to|by)\s+(.{1,120}?)[\s?.!]*$/iu;
+
+/**
+ * The named place a search is near ("pharmacy near the Ferry Building"), or
+ * undefined for "near me" and for a query that names no place to search
+ * around. Such a search needs no position from the phone.
+ */
+export function anchoredPlaceQuery(
+  query: string,
+): AnchoredPlaceQuery | undefined {
+  const match = ANCHORED_QUERY.exec(query);
+  const kind = match?.[1]?.trim();
+  const anchor = match?.[2]?.trim();
+  if (!kind || !anchor || OWN_POSITION.test(anchor)) return undefined;
+  return { kind, anchor };
+}
+
+/** The named place an anchored search is near, or the reply that it was not found. */
+async function searchAnchor(
+  service: MapsService,
+  anchored: AnchoredPlaceQuery,
+  params: Params,
+): Promise<PlaceRef | ActionResult> {
+  const { page } = await service.searchPlacesResult(
+    { query: anchored.anchor, limit: 5 },
+    text(params.provider),
+  );
+  const anchor =
+    dominantPlace(anchored.anchor, page.places) ??
+    (page.places.length === 1 ? page.places[0] : undefined);
+  if (anchor) return anchor;
+  const reply =
+    page.places.length === 0
+      ? `I couldn't find “${anchored.anchor}” to search near. Name another place or area to search near.`
+      : [
+          `Which “${anchored.anchor}” should I search near?`,
+          ...page.places.map(
+            (place, index) => `${index + 1}. ${placeLabel(place)}`,
+          ),
+          `Tell me which one, such as “${anchored.kind} near ${(page.places[0] as PlaceRef).formattedAddress ?? (page.places[0] as PlaceRef).name}”.`,
+        ].join("\n");
+  return {
+    success: false,
+    text: reply,
+    userFacingText: reply,
+    verifiedUserFacing: true,
+    data: {
+      actionName: "MAPS",
+      action: "place",
+      reason: page.places.length === 0 ? "anchor_not_found" : "missing_input",
+      awaitingUserInput: true,
+    },
+  };
+}
+
 /**
  * A destination that is a kind of place near the user (nearest pharmacy) is
  * not searched here: without a position the provider answers from anywhere.
@@ -537,6 +617,7 @@ function nearbyDestination(
     "route-origin",
     `I need your precise location to start the route to ${query}.`,
     { query, ...(travelMode ? { travelMode } : {}) },
+    `If the phone can't get a location fix, tell me where you're starting from, or name a place to search near, such as “${placeKind(query)} near the Ferry Building”.`,
   );
 }
 
@@ -881,7 +962,19 @@ async function execute(
         }
         const latitude = number(params.latitude);
         const longitude = number(params.longitude);
+        // "pharmacy near the Ferry Building" names its own search point, so
+        // it needs no position from the phone. A planner may pass the whole
+        // phrase as the query, or only the kind of place with
+        // useCurrentLocation; the owner's own words decide.
+        const anchored =
+          latitude === undefined && longitude === undefined
+            ? (anchoredPlaceQuery(query) ??
+              (flag(params.useCurrentLocation)
+                ? anchoredPlaceQuery(replyText(message) ?? "")
+                : undefined))
+            : undefined;
         if (
+          !anchored &&
           flag(params.useCurrentLocation) &&
           latitude === undefined &&
           longitude === undefined
@@ -893,12 +986,21 @@ async function execute(
               "place-near",
               `I need your precise location to search near you for “${query}”.`,
               { query },
+              `If the phone can't get a location fix, name a place or area to search near instead, such as “${placeKind(query)} near the Ferry Building”.`,
             ),
             callback,
           );
         }
-        const near =
-          latitude !== undefined || longitude !== undefined
+        let anchor: PlaceRef | undefined;
+        if (anchored) {
+          const found = await searchAnchor(service, anchored, params);
+          if (!("coordinates" in found)) return result(action, found, callback);
+          anchor = found;
+        }
+        const searchQuery = anchored?.kind ?? query;
+        const near = anchor
+          ? anchor.coordinates
+          : latitude !== undefined || longitude !== undefined
             ? validated(
                 coordinatesSchema,
                 { latitude, longitude },
@@ -908,7 +1010,7 @@ async function execute(
         const { page, provider: searchProvider } =
           await service.searchPlacesResult(
             {
-              query,
+              query: searchQuery,
               near,
               // Ask the provider for the closest places, not the closest of
               // its most relevant ones.
@@ -926,31 +1028,36 @@ async function execute(
           ? [...page.places].sort((a, b) => away(a) - away(b))
           : page.places;
         const empty = places.length === 0;
+        const nearName = anchor ? ` near ${anchor.name}` : "";
+        const none = anchor
+          ? `I couldn't find “${searchQuery}” near ${anchor.name}.`
+          : "No matching places were found.";
         return result(
           action,
           {
             success: true,
             text: empty
-              ? "No matching places were found."
+              ? none
               : [
-                  `Found ${places.length} place${places.length === 1 ? "" : "s"}${near ? ", nearest first" : ""}:`,
+                  `Found ${places.length} place${places.length === 1 ? "" : "s"}${nearName}${near ? ", nearest first" : ""}:`,
                   ...places.map(
                     (place) =>
                       `${place.name}${place.formattedAddress ? `, ${place.formattedAddress}` : ""}${near ? ` (${distanceText(away(place))} away)` : ""}`,
                   ),
                 ].join("\n"),
             userFacingText: empty
-              ? "No matching places were found."
+              ? none
               : appendMapsCard(
-                  places
-                    .map(
+                  [
+                    ...(anchor ? [`Near ${anchor.name}:`] : []),
+                    ...places.map(
                       (place) =>
                         `${place.name}${near ? `, ${distanceText(away(place))} away` : ""}`,
-                    )
-                    .join("\n"),
+                    ),
+                  ].join("\n"),
                   {
                     kind: "places",
-                    query,
+                    query: searchQuery,
                     places: places
                       .slice(0, MAPS_CARD_MAX_PLACES)
                       .map(toCardPlace),
