@@ -26,7 +26,7 @@ function refusal(answer: Answer): string {
 }
 
 effect function googleCloud() {
-  const google = googleIdentityFake(secrets.GOOGLE_CLIENT_SECRET ?? "")
+  const google = try Effect.try(() => googleIdentityFake(secrets.GOOGLE_CLIENT_SECRET ?? ""))
   const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", google.handler) })
   const now = try Clock.currentTimeMillis
   try cloud.inside(cloud.store.transaction(effect (tx: Tx) => { try registerClient(tx, try decodeRegistration(app), now) }))
@@ -97,16 +97,17 @@ describe("WP1 Identity: Google sign-in", () => {
     const { callbackPath } = try throughGoogle(cloud)
     const first = try tryPromise(() => visit(`${cloud.url}${callbackPath}`))
     const replayed = try tryPromise(() => visit(`${cloud.url}${callbackPath}`))
-    google.denyNext()
+    try check(() => google.denyNext())
     const denied = try throughGoogle(cloud, { state: "app-state-2" })
     const deniedBack = try tryPromise(() => visit(`${cloud.url}${denied.callbackPath}`))
     const unknown = try tryPromise(() => visit(`${cloud.url}/api/v1/auth/google/callback?code=x&state=never-issued`))
+    const unknownBody = try Effect.try(() => JSON.parse(unknown.body) as { readonly error?: string })
     try check(() => assert.deepStrictEqual(
       {
         first: fragment(first.location).has("code"),
         replayed: [replayed.status, replayed.location.startsWith(`${signInReturn}#`), fragment(replayed.location).get("error"), fragment(replayed.location).get("state")],
         denied: [deniedBack.status, fragment(deniedBack.location).get("error"), fragment(deniedBack.location).get("state")],
-        unknown: [unknown.status, unknown.location, JSON.parse(unknown.body).error],
+        unknown: [unknown.status, unknown.location, unknownBody.error],
         tokenRequests: google.tokenRequests.length
       },
       {

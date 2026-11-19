@@ -4,7 +4,6 @@ package ai.eliza.os.agent;
 import ai.eliza.os.agent.ChannelPolicy.FailCode;
 import ai.eliza.os.agent.ChannelPolicy.Outcome;
 import ai.eliza.os.agent.ChannelPolicy.Topic;
-import android.app.Activity;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -90,7 +89,7 @@ public class AgentPlugin extends Plugin {
   @PluginMethod public void unsubscribeEvents(PluginCall call) { abort(call); }
 
   @PluginMethod public void reviewRecovery(PluginCall call) {
-    AgentService.Review review = AgentService.reviewRecovery(getContext(), focused());
+    AgentService.Review review = AgentService.reviewRecovery(getContext());
     JSObject answer = new JSObject();
     if (review == null) answer.put("kind", "unavailable");
     else answer.put("kind", "reviewable").put("reviewToken", review.token()).put("retainedCount", review.retainedCount());
@@ -111,17 +110,8 @@ public class AgentPlugin extends Plugin {
   }
 
   private JSObject status() {
-    AgentPolicy.Status status = AgentService.status(getContext());
-    JSObject projected = new JSObject().put("available", status.available()).put("state", status.state())
-      .put("epoch", status.epoch()).put("requestBodyLimit", status.requestBodyLimit());
-    if (!"failed".equals(status.state())) return projected;
-    projected.put("failure", status.failure());
-    return status.error() == null ? projected : projected.put("error", status.error());
-  }
-
-  private boolean focused() {
-    Activity activity = getActivity();
-    return activity != null && activity.hasWindowFocus();
+    try { return JSObject.fromJSONObject(AgentService.status(getContext())); }
+    catch (JSONException impossible) { throw new IllegalStateException(impossible); }
   }
 
   private void command(PluginCall call, Runnable action) {
