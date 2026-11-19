@@ -1,24 +1,21 @@
 # Sign-in flow
 
-The device half of sign-in: the `ElizaSignIn` plugin's one native sign-in
-slot and the renderer requests it answers. A person signs in with an email
-code, an SMS code or Google (the account picker, or the browser when the
-host selects it), finishes a second factor when the cloud asks for one, and
-the device key is then exchanged and kept by
-[the device credential](./credential.md). The same flow re-authenticates the
-signed-in account for a billing change. The cloud's halves are
-`spec/cloud/identity/{codeChallenges,secondFactor,federatedSignIn}.md` and
-`spec/cloud/nativeClients/deviceKeys.md`; a browser return reaches this flow
-through [browser returns](./browserReturn.md).
+The device half of sign-in: the plugin's one native sign-in slot and the
+renderer requests it answers. A person signs in with an email code, an SMS
+code or Google (the account picker, or the browser when the host selects
+it), finishes a second factor when the cloud asks, and the device key is
+then exchanged and kept by [the device credential](./credential.md). The
+same flow re-authenticates the signed-in account for a billing change. The
+cloud's halves are `spec/cloud/identity/{codeChallenges,secondFactor,federatedSignIn}.md`;
+a browser return reaches this flow through [browser returns](./browserReturn.md).
 
 Codes, PKCE verifiers, ID tokens, Google's one-use server code, keys and
 sessions stay in the Java shell; the model sees attempt numbers, steps and
-outcomes. The shell turns each cloud reply into a `CloudReply`: the
-answers `signed_in` and `mfa_required`, a refusal by its code and reason, or
-no usable answer (no connection, a timeout). It carries out `ConnectGoogle`,
-`AbandonExchange` (the credential's `signInEnded`) and `HandSession` (the
-credential's `grantSession`), and answers each renderer call with its
-`Settled` receipt.
+outcomes. The shell turns each cloud reply into a `CloudReply` (`signed_in`,
+`mfa_required`, a refusal by code and reason, or no usable answer), carries
+out `ConnectGoogle`, `AbandonExchange` (the credential's `signInEnded`) and
+`HandSession` (the credential's `grantSession`), and answers each renderer
+call with its `Settled` receipt.
 
 ## Story: Sign in with a code, Google or a second factor
 
@@ -29,11 +26,10 @@ credential's `grantSession`), and answers each renderer call with its
 
 ### A registration that is incomplete or ambiguous is refused when the plugin loads, and then nothing starts
 
-The host gives its client id, its environments with their redirects and
-App Link host, its Google mode and its Google scopes as data. The shell
-checks the registration once, at load; a refused one leaves every call
-refused and never falls back to a hosted page. A release build admits
-only the production environment unless the host enables test environments.
+The host gives its client id, environments (redirects, App Link host),
+Google mode and Google scopes as data, checked once at load. A refused
+registration leaves every call refused, never a hosted page. A release
+build admits only production unless the host enables test environments.
 
 ```quint
 import readiness.* from "./readiness"
@@ -70,7 +66,7 @@ pure def sometimesTestEnvironmentInUse(s: SignIn): bool = s.phase != Idle and s.
 ### A sign-in starts only a method the readiness answer offers, and Google in the host's mode
 
 Email and SMS send a code first; the picker opens Android's account
-picker; the browser path waits for its return. Starting replaces a sign-in
+picker; the browser path waits for its return. A start replaces a sign-in
 that waits for the person, never one waiting for an answer.
 
 ```quint
@@ -94,12 +90,11 @@ pure val weight_start = 3
 ### One renderer request is open at a time, it is open exactly while the slot waits for an answer, and only it is settled
 
 Each call (start, resend, verify, reauthenticate) opens the next request;
-a call while a request is open is refused (`busy`). A request is settled
-once, when the slot comes to rest, with a receipt of its request and
-attempt numbers and an verdict: the credential id and the Google report,
-or a failure code from a closed list of ten. The shell refuses malformed
-input (`invalid-input`) before the model; no receipt carries a code, a
-verifier, a key or a session.
+a call while one is open is refused (`busy`). A request is settled once,
+when the slot comes to rest, with its request and attempt numbers and a
+verdict: the credential id and Google report, or one of ten failure codes.
+The shell refuses malformed input (`invalid-input`) before the model; no
+receipt carries a code, a verifier, a key or a session.
 
 ```quint
 type Verdict = CodeOnItsWay | FactorAsked | SignedInAs({ credentialId: str, google: GoogleReport }) | AccountConfirmed
@@ -151,10 +146,9 @@ pure def checkRefused(stage: Stage, failure: FailureCode, s: SignIn): SignInStep
 pure def canVerify(s: SignIn, attempt: int): bool = attempt == s.attempt and (s.phase == CodeSent or s.phase == SecondFactor)
 pure def verify(s: SignIn, attempt: int): SignIn =
   { ...s, lastRequest: s.lastRequest + 1, open: s.lastRequest + 1, phase: Verifying({ stage: if (s.phase == SecondFactor) FactorStage else CodeStage }) }
-pure def lawLockedOrRateLimitedIsTooManyAttempts(checkingCode: bool, reason: T::RefusalReason): bool =
-  failureOf(checkingCode, T::RateLimited, reason) == TooManyAttempts and failureOf(checkingCode, T::AccessDenied, T::ChallengeLocked) == TooManyAttempts
-pure def lawServerTroubleIsNeverAWrongCode(checkingCode: bool, code: T::RefusalCode, reason: T::RefusalReason): bool =
-  failureOf(checkingCode, code, reason) == WrongCode implies code == T::CredentialProofInvalid
+pure def lawPassingTroubleIsNeverThePersonsFault(checkingCode: bool, code: T::RefusalCode, reason: T::RefusalReason): bool = {
+  val failure = failureOf(checkingCode, code, reason)
+  T::isRetryable(code) implies (failure == TooManyAttempts or failure == Unavailable or failure == GoogleUnavailable) }
 pure val attemptValues = Set(1, 2, 3)
 pure val weight_verify = 3
 pure def sometimesTooManyAttempts(s: SignIn): bool = s.phase == Failed({ failure: TooManyAttempts })
@@ -162,10 +156,9 @@ pure def sometimesTooManyAttempts(s: SignIn): bool = s.phase == Failed({ failure
 
 ### A code is sent before it is asked for, and the cloud's answer moves the attempt on
 
-A sent code waits for the person; an answer to a code or a factor either
-starts the key exchange, asks for a second factor, or is refused as above.
-The SecondFactor step is the device half of the cloud's second-factor
-challenge; Google's picker sign-in may also ask for it.
+An answer to a code or a factor starts the key exchange, asks for a
+second factor (the device half of the cloud's challenge, which Google's
+picker may also ask for), or is refused as above.
 
 ```quint
 pure def fallbackOf(phase: SignInPhase): int = match phase { | Sending(x) => x.fallback | _ => 0 }
@@ -205,9 +198,9 @@ pure def sometimesSecondFactorAsked(s: SignIn): bool = s.phase == SecondFactor
 
 ### The person is signed in only when the credential has the new key acknowledged
 
-A `signed_in` answer starts the credential's exchange, whose attempt number
-the shell passes in. The acknowledgement names the credential; a refused
-token or acknowledgement ends the sign-in as `expired`.
+A `signed_in` answer starts the credential's exchange under the attempt
+number the shell passes in; a refused token or acknowledgement ends the
+sign-in as `expired`.
 
 ```quint
 type KeyOutcome = KeyAcknowledged({ credentialId: str }) | KeyRefused
@@ -244,11 +237,10 @@ pure def sometimesSignedInWithGoogleInTheBrowser(s: SignIn): bool = s.phase == S
 
 ### Google's one-use server code is asked for only under the host's registered scopes, and is held in memory until it is redeemed or dropped
 
-With scopes registered, the picker asks Google for exactly those scopes;
-the server code it grants is held in memory and travels with the one call
-`POST /api/v1/app-auth/mobile/google`, which redeems it when it signs the
-person in. A declined grant reports Google refused. A second factor keeps
-the code; a refusal, an expiry or a cancel drops it.
+With scopes registered the picker asks Google for exactly those; the
+granted code travels with `POST /api/v1/app-auth/mobile/google`, which
+redeems it when it signs the person in. A declined grant reports Google
+refused. A second factor keeps the code; a refusal, expiry or cancel drops it.
 
 ```quint
 type PickerResult = Picked({ granted: bool }) | PickerDismissed | NoGoogleAccount
@@ -264,20 +256,20 @@ pure def scopedPicker(s: SignIn): bool = scopesRegistered(s.plugin) and s.method
 pure def holdsCode(phase: SignInPhase): bool = match phase { | Verifying(v) => v.stage != CodeStage | SecondFactor => true | Exchanging(e) => true | _ => false }
 pure def alwaysServerCodeOnlyUnderScopes(s: SignIn): bool =
   (s.serverCode != NoServerCode implies scopedPicker(s)) and (s.serverCode == HeldCode implies (holdsCode(s.phase) and s.google == GoogleNotRequested))
-    and (s.phase == Connecting implies s.serverCode == SpentCode)
+    and (s.phase == Picking implies s.serverCode == NoServerCode) and (s.phase == Connecting implies s.serverCode == SpentCode)
 pure def alwaysGoogleReportedOnlyWhenAsked(s: SignIn): bool = s.google != GoogleNotRequested implies scopedPicker(s)
-pure def stepServerCodeRedeemedAtMostOnce(before: SignIn, via: str, after: SignIn, out: List[SignInEffect]): bool =
-  (out.includes(ConnectGoogle) implies (before.serverCode == HeldCode and after.serverCode == SpentCode))
-    and ((after.attempt == before.attempt and (before.serverCode == SpentCode or before.serverCode == DroppedCode)) implies after.serverCode == before.serverCode)
 ```
 
 ### After a second factor the held code is sent once, with the new key, only after the cloud acknowledged it
 
-`POST /api/v1/eliza/google/connect/native` carries the held code and is
-authorised by the acknowledged key. A key the cloud never acknowledged
-drops the code.
+`POST /api/v1/eliza/google/connect/native` carries the held code,
+authorised by the acknowledged key; a key never acknowledged drops it. A
+spent or dropped code stays so for the rest of its attempt.
 
 ```quint
+pure def stepServerCodeRedeemedAtMostOnce(before: SignIn, via: str, after: SignIn, out: List[SignInEffect]): bool =
+  (out.includes(ConnectGoogle) implies (before.serverCode == HeldCode and after.serverCode == SpentCode))
+    and ((after.attempt == before.attempt and (before.serverCode == SpentCode or before.serverCode == DroppedCode)) implies after.serverCode == before.serverCode)
 pure def sometimesConnectingAfterSecondFactor(s: SignIn): bool = s.phase == Connecting
 ```
 
@@ -320,11 +312,11 @@ pure def sometimesEarlierCodeKeptAfterRefusedResend(s: SignIn): bool = s.phase =
 
 ### A cancel retires only its own attempt, abandons its key exchange, and a stale cancel changes nothing
 
-A cancel of the attempt that owns the slot settles the open request as
-`cancelled`, drops a held server code and empties the slot; during the key
-exchange it asks the credential to end that exchange. A cancel naming an
-earlier attempt, or arriving after the sign-in ended, is acknowledged and
-changes nothing. A sign-in already connecting Google cannot be cancelled.
+A cancel of the owning attempt settles the open request as `cancelled`,
+drops a held server code, empties the slot and, during the key exchange,
+asks the credential to end it. A cancel naming an earlier attempt, or after
+the sign-in ended, changes nothing; one already connecting Google cannot be
+cancelled.
 
 ```quint
 pure def cancellable(phase: SignInPhase): bool = match phase { | Idle => false | Connecting => false | SignedIn => false | Reauthenticated => false | Failed(f) => false | _ => true }
@@ -339,7 +331,7 @@ pure def cancel(s: SignIn, attempt: int): SignInStep =
 pure def stepCancelRetiresTheSlotOrNothing(before: SignIn, via: str, after: SignIn): bool =
   via == "cancel" implies (after == before or (cancellable(before.phase) and after.phase == Idle and after.lastAttempt == before.lastAttempt))
 pure val weight_cancel = 2
-pure def sometimesCancelled(s: SignIn): bool = s.phase == Idle and s.lastAttempt >= 2
+pure def sometimesCancelled(s: SignIn): bool = s.phase == Idle and s.lastAttempt >= 1
 ```
 
 ### An attempt waiting for the person ends as expired when its deadline passes
@@ -363,8 +355,8 @@ pure def sometimesExpired(s: SignIn): bool = s.phase == Failed({ failure: Expire
 
 The shell passes the credential's account. The picker is not offered: its
 one call answers with a device key, not a session. A session for another
-user ends the attempt as `wrong-account`; the matching one is handed to
-the credential as its in-memory account session.
+user ends the attempt as `wrong-account`; the matching one is handed to the
+credential as its in-memory account session.
 
 ```quint
 pure def canReauthenticate(s: SignIn, environment: Environment, method: SignInMethod, readiness: Readiness, device: DeviceFacts, account: C::Account): bool =

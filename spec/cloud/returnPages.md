@@ -110,8 +110,10 @@ there instead, so this page is never shown.
 pure def connectedAnswer(row: EnvironmentProfile, r: Registration): PageAnswer =
   if (r.enabled and r.connectReturn == NoConnectReturn) Shows({ page: ReturnToApp({ serviceName: row.name, appName: r.displayName, purpose: ConnectedPage, offer: NoAction }) })
   else notFoundAnswer
-pure def lawAConnectReturnIsNeverShadowed(row: EnvironmentProfile, r: Registration): bool =
-  connectUrls(r.connectReturn).length() > 0 implies not(showsReturnToApp(connectedAnswer(row, r)))
+pure def lawAConnectReturnIsNeverShadowed(row: EnvironmentProfile, r: Registration): bool = match connectedAnswer(row, r) {
+  | Shows(s) => connectUrls(r.connectReturn).length() == 0 and r.enabled and pageOffers(s.page) == NoAction
+  | Refused(x) => not(retryableOf(x.refusal))
+}
 ```
 
 ### The pinned script forwards into the app link only the purpose's well-formed results, where the app reads them
