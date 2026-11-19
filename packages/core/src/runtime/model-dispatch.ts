@@ -1374,7 +1374,18 @@ export class RuntimeModelDispatch {
 					session: SecretSwapSession,
 					value: ModelParamsMap[T],
 				): ModelParamsMap[T] => {
-					if (!secretSwapPromptOnly) return session.substituteInValue(value);
+					// Tool definitions and response schemas are authored, and the
+					// request carries copies of them: see `authoredFields`.
+					if (!secretSwapPromptOnly)
+						return session.substituteInValue(value, {
+							authoredFields: ["tools", "responseSchema"],
+							conversationFields: [
+								"messages",
+								"prompt",
+								"system",
+								"promptSegments",
+							],
+						});
 					if (!isPlainObject(value)) return value;
 					const record = value as Record<string, unknown>;
 					if (typeof record.prompt === "string") {
