@@ -360,6 +360,14 @@ describe("phone chat routes a search near a named place to Maps", () => {
     // A time, not a place.
     "find a pharmacy open around midnight",
     "get coffee around noon",
+    // Weather, traffic and news around a place, and a price.
+    "what's the weather near Austin",
+    "weather near Austin",
+    "traffic near the Bay Bridge",
+    "news around Austin",
+    "find a TV around 500 dollars",
+    "find a hotel around 150 a night",
+    "find a hotel around 100 euros a night",
     // A verb or a question, not a kind of place.
     "Meet John near the Ferry Building",
     "Text Sarah around Union Square",
