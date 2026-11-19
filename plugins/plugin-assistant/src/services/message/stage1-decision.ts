@@ -52,9 +52,13 @@ import {
   replyTextFieldEvaluator,
   topicsFieldEvaluator,
 } from "../../runtime/builtin-field-evaluators";
+import { windowHistoryRetention } from "../../runtime/history-retention.ts";
 import { getMessageHandlerReply } from "../../runtime/message-handler";
 import { cacheProviderOptions } from "../../runtime/planner-loop";
-import { getEvaluatorProgressState } from "../evaluator-progress.ts";
+import {
+  getEvaluatorProgressState,
+  postTurnReviewRuns,
+} from "../evaluator-progress.ts";
 import { HISTORY_RETENTION_EVALUATOR } from "../history-retention.ts";
 import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";
 import { resolveStage1SenderRole } from "./addressing.js";
@@ -276,22 +280,28 @@ export async function generateStage1Decision(
     )
   ) {
     try {
-      const checkpoint = await getEvaluatorProgressState(
+      const scope = {
+        agentId: args.runtime.agentId,
+        roomId: args.message.roomId,
+        entityId: args.message.entityId,
+        roles: [senderRole],
+      };
+      const reviewed = await getEvaluatorProgressState(
         args.runtime,
         args.message,
         HISTORY_RETENTION_EVALUATOR,
       );
       stage1TurnSignal.throwIfAborted();
+      // Where post-turn review is skipped nothing else advances the boundary.
+      const window = postTurnReviewRuns(args.message)
+        ? undefined
+        : windowHistoryRetention(context, scope, reviewed);
       history = projectReviewedHistory(
         context,
-        {
-          agentId: args.runtime.agentId,
-          roomId: args.message.roomId,
-          entityId: args.message.entityId,
-          roles: [senderRole],
-        },
-        checkpoint,
+        scope,
+        window ? window.checkpoint : reviewed,
       );
+      if (history && window?.windowed) history.windowed = true;
     } catch (error) {
       stage1TurnSignal.throwIfAborted();
       args.runtime.reportError("MessageService.historyRetention", error, {

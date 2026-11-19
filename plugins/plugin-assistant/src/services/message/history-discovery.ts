@@ -140,6 +140,9 @@ const QUOTATION_ENDS = new Map([
 export interface HistoryDiscovery {
   /** Complete background review; distinct from current-request relevance. */
   checkpoint?: HistoryRetentionCheckpoint;
+  /** The boundary was set by position on a host without a reviewer; nothing
+   * before it was classified. */
+  windowed?: boolean;
   sourceSetId: string;
   scope: HistoryRetentionScope;
   visibleEventIds: ReadonlySet<string>;
@@ -231,6 +234,7 @@ export function withBackgroundHistory(
         scope: history.scope,
         checkpoint: history.checkpoint,
         loadedSourceIds: [...history.loadedSourceIds],
+        ...(history.windowed ? { windowed: true } : {}),
       } as unknown as JsonValue,
     },
   };
@@ -238,7 +242,12 @@ export function withBackgroundHistory(
 
 /** Revalidate the complete review and exact current-turn originals on every view. */
 export function projectBackgroundHistory(context: ContextObject) {
-  const full = { context, applied: false, omittedSourceCount: 0 };
+  const full = {
+    context,
+    applied: false,
+    omittedSourceCount: 0,
+    windowed: false,
+  };
   // Any explicit foreground review owns its fallback semantics, including full.
   if (context.metadata?.completionContext !== undefined) return full;
   const raw = context.metadata?.backgroundHistory;
@@ -248,6 +257,7 @@ export function projectBackgroundHistory(context: ContextObject) {
     scope: HistoryRetentionScope;
     checkpoint: HistoryRetentionCheckpoint;
     loadedSourceIds: string[];
+    windowed?: boolean;
   };
   if (
     !view.scope ||
@@ -280,15 +290,28 @@ export function projectBackgroundHistory(context: ContextObject) {
       .map((source) => source.event),
   );
   if (!omitted.size) return full;
+  const events = selectHistoricalNavigation(context, included, {
+    historicalEffects: "settled",
+    requestNotes: true,
+  }).events.filter((event) => !omitted.has(event));
+  // The scope sentence introduces navigation entries; alone it describes nothing.
+  const navigationShown = events.some(
+    (event) =>
+      event.type === "segment" &&
+      "segment" in event &&
+      (event.segment as { label?: string }).label ===
+        "runtime:historical_navigation",
+  );
   return {
     context: {
       ...context,
-      events: selectHistoricalNavigation(context, included, {
-        historicalEffects: "settled",
-      }).events.filter((event) => !omitted.has(event)),
+      events: navigationShown
+        ? events
+        : events.filter((event) => event.id !== "historical-navigation-scope"),
     },
     applied: true,
     omittedSourceCount: omitted.size,
+    windowed: view.windowed === true,
   };
 }
 
@@ -442,9 +465,10 @@ export function requestedHistory(
   if (explicitRead) return requested;
   // A complete background review permits its advertised view without assigning
   // foreground relevance. Explicit malformed/incomplete selections still restore.
+  // A reply with no decision at all selected nothing either: it takes the
+  // ordinary Stage-1 retry instead of restoring the whole room.
   if (
-    raw &&
-    !("completionContext" in raw) &&
+    !(raw && "completionContext" in raw) &&
     projection.checkpoint &&
     validateHistoryRetention(context, projection.scope, projection.checkpoint)
   )
