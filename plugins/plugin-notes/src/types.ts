@@ -37,6 +37,16 @@ export interface TrashedNote {
   deletedAt: string;
 }
 
+/** One owner-confirmed permanent erase, bound to the Notes revision the owner saw. */
+export type NotesTrashErase =
+  | { scope: "all"; expectedRevision: number }
+  | {
+      scope: "entry";
+      expectedRevision: number;
+      id: string;
+      deletedAt: string;
+    };
+
 /** A committed Trash deletion whose device recording still needs cleanup. */
 export interface NotesTrashRecordingCleanup {
   operationId: string;

@@ -26,6 +26,7 @@ import {
   NOTES_SCHEMA_VERSION,
   type NoteFormat,
   type NotesDocument,
+  type NotesTrashErase,
   type NotesTrashRecordingCleanup,
   type StickyColor,
   type StickyNote,
@@ -539,14 +540,7 @@ export function parseNotesTrashRecordingCleanup(
   };
 }
 
-export function parseNotesTrashErase(value: unknown):
-  | { scope: "all"; expectedRevision: number }
-  | {
-      scope: "entry";
-      expectedRevision: number;
-      id: string;
-      deletedAt: string;
-    } {
+export function parseNotesTrashErase(value: unknown): NotesTrashErase {
   const input = requireRecord(value, "notes trash erase");
   const expectedRevision = parseRevision(input.expectedRevision);
   if (input.scope === "all") {
