@@ -304,6 +304,7 @@ pure def lawSharedBackupVerificationTransfersNothing(approved: SharedBackupBindi
   approved.purpose == SharedBackupVerify implies not(sharedBackupCanSend(approved, approved, true, false))
 pure def lawSharedBackupProofIsSingleUse(approved: SharedBackupBinding, active: SharedBackupBinding): bool =
   not(sharedBackupCanSend(approved, active, true, true))
+```
 
 ## Story: Open saved passwords on a device without a screen lock
 
