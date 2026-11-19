@@ -306,12 +306,20 @@ describe("a kind of place near a named place", () => {
     expect(
       anchoredPlaceQuery("find a pharmacy near Union Square, please"),
     ).toEqual({ kind: "pharmacy", anchor: "Union Square" });
+    expect(anchoredPlaceQuery("find a gas station near us 101")).toEqual({
+      kind: "gas station",
+      anchor: "us 101",
+    });
+    expect(anchoredPlaceQuery("find a coffee shop near US Bank Tower")).toEqual(
+      { kind: "coffee shop", anchor: "US Bank Tower" },
+    );
   });
 
   it.each([
     "find a pharmacy near me, please",
     "find a pharmacy near me please",
     "is there a pharmacy near me open now?",
+    "find a pharmacy near us open now",
     "find a pharmacy near by",
   ])("hands %s to the phone", async (text) => {
     const searched: Search[] = [];

@@ -550,6 +550,12 @@ const OWN_POSITION =
   /^(?:me|here)\b|^(?:us|by|myself|this\s+(?:place|spot|location)|(?:my|the)\s+phone)$|^(?:my\s+(?:location|position|place|current\s+location)|where\s+(?:i|we)\s+(?:am|are)|current\s+location)\b|\b(?:near|around|close\s+to|next\s+to)\s+(?:me|here|us)$/iu;
 
 /**
+ * "near us open now": a lowercase "us" also takes words after it. "US Bank
+ * Tower" and "us 101" stay named places.
+ */
+const OWN_POSITION_US = /^us\b(?![\s-]*\d)/u;
+
+/**
  * "around midnight", "near 5pm", "around Christmas", "near the end": a time
  * or a position in something, not a place to search around. "near home",
  * "near my office" name the owner's own places, which a provider search by
@@ -584,6 +590,7 @@ export function anchoredPlaceQuery(
     !kind ||
     !anchor ||
     OWN_POSITION.test(anchor) ||
+    OWN_POSITION_US.test(anchor) ||
     NEAR_NOT_A_PLACE.test(anchor) ||
     NEAR_NOT_A_PLACE_KIND.test(kind)
   )
