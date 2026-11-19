@@ -15,7 +15,7 @@ import { IdempotencyKey, PlaceDetailsRequest, ReverseRequest, RoutesRequest, Tex
 type Metered = Exclude<MapsOperation, "Capabilities" | "Viewport">
 
 type Answer =
-  | { readonly kind: "json"; readonly body: Schema.Unknown }
+  | { readonly kind: "json"; readonly body: unknown }
   | { readonly kind: "tile"; readonly tile: MapsTile }
 
 interface Entered {

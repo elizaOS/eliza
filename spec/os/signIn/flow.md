@@ -116,8 +116,8 @@ pure def alwaysOneRequestOpenWhileWaiting(s: SignIn): bool = s.open >= 0 and s.o
 pure def alwaysAttemptsAreNumbered(s: SignIn): bool =
   s.attempt >= 0 and s.attempt <= s.lastAttempt and ((s.attempt == 0) iff (s.phase == Idle)) and fallbackOf(s.phase) >= 0 and fallbackOf(s.phase) < s.attempt + (if (s.attempt == 0) 1 else 0)
 pure def stepOnlyTheOpenRequestIsSettled(before: SignIn, via: str, after: SignIn, out: List[SignInEffect]): bool = {
-  val settled = out.select(e => isSettled(e))
-  settled.length() <= 1 and ((settled.length() == 1) iff (before.open != 0 and after.open == 0)) and settled.every(e => settledRequest(e) == before.open)
+  val receipts = out.select(e => isSettled(e))
+  receipts.length() <= 1 and ((receipts.length() == 1) iff (before.open != 0 and after.open == 0)) and receipts.every(e => settledRequest(e) == before.open)
 }
 ```
 

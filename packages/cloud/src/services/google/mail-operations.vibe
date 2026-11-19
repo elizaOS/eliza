@@ -309,6 +309,10 @@ effect function labelOperation(grant: Grant, raw: unknown, fresh: boolean) {
   } satisfies Reviewed
 }
 
+effect function draftGone(grant: Grant, draftId: string) {
+  return Effect.as(google(grant, "GET", `/drafts/${draftId}?format=minimal`), false) catch (failure) => failure._tag === "NotFound"
+}
+
 effect function deleteDraftOperation(grant: Grant, raw: unknown, fresh: boolean) {
   const proposal = try strict(DraftDeleteProposal, raw)
   const draftId = try draftAt(grant, proposal.draftId, proposal.expectedDigest, fresh)
@@ -319,7 +323,11 @@ effect function deleteDraftOperation(grant: Grant, raw: unknown, fresh: boolean)
     digest: requestDigest(review),
     review,
     target: { kind: "draft", id: draftId },
-    perform: Effect.as(google(grant, "DELETE", `/drafts/${draftId}`), deleted) catch (failure) => failedReply(failure)
+    perform: effect {
+      const refusal = Effect.as(google(grant, "DELETE", `/drafts/${draftId}`), undefined) catch (failure) => failure._tag === "InvalidResponse" ? undefined : failedReply(failure)
+      if (refusal !== undefined) return refusal
+      return (try draftGone(grant, draftId)) ? deleted : unclear
+    }
   } satisfies Reviewed
 }
 
@@ -411,8 +419,7 @@ effect function lookupSeen(scope: Scope, kind: OperationKind, target: Target) {
     }
     case "draft": {
       if (kind !== "draft-delete") return nothingSeen
-      const gone = Effect.as(google(grant, "GET", `/drafts/${target.id}?format=minimal`), false) catch (failure) => failure._tag === "NotFound"
-      return gone ? effectSeen({ draftId: target.id, deleted: true }) : nothingSeen
+      return (try draftGone(grant, target.id)) ? effectSeen({ draftId: target.id, deleted: true }) : nothingSeen
     }
     case "rfc822": {
       const label = kind === "send" ? "SENT" : "DRAFT"

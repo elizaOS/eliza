@@ -208,9 +208,9 @@ effect function execute(host: ApprovalsHost, executor: CalendarApprovalExecutor,
   return unconfirmed
 }
 
-function answer(id: string, decision: ApprovalDecision, reply: Reply | undefined, outcome: LedgerOutcome | undefined): ApprovalResolution {
+effect function answer(id: string, decision: ApprovalDecision, reply: Reply | undefined, outcome: LedgerOutcome | undefined): ApprovalResolution!! {
   if (reply?.tag === "Refused") return { kind: "refused", requestId: id, refusal: reply.refusal }
-  if (reply?.tag !== "Resolved") return { kind: "refused", requestId: id, refusal: "NotFound" }
+  if (reply?.tag !== "Resolved") return try die(new ApprovalsUnavailable({ reason: "the queue answered a decision with no reply" }))
   const told = reply.kind === "KindRejected" ? declined : outcome ?? lapsedChange
   return {
     kind: "resolved",

@@ -40,13 +40,7 @@ const Target = Schema.Struct({
   revision: Schema.String,
   timingVersion: Schema.optionalKey(Schema.Literal(2)),
 })
-const Recurrence = Schema.Struct({
-  rule: Schema.Literals(["daily", "weekdays", "weekly"]),
-  zone: Schema.String,
-  date: Schema.String,
-  time: Schema.String,
-  leadMinutes: Schema.Int,
-})
+schema Recurrence { rule: "daily" | "weekdays" | "weekly"; zone: string; date: string; time: string; leadMinutes: number }
 const Base = {
   id: Schema.String,
   title: Schema.String,
@@ -83,12 +77,7 @@ const Row = Schema.Union([
   }),
 ])
 const Listing = Schema.Struct({ reminders: Schema.mutable(Schema.Array(Row)), notificationsEnabled: Schema.Boolean })
-const Refusal = Schema.Struct({
-  id: Schema.String,
-  status: Schema.Literals(["failed", "past", "permission-denied", "storage-full"]),
-  mode: Schema.Literal("inexact"),
-  message: Schema.String,
-})
+schema Refusal { id: string; status: "failed" | "past" | "permission-denied" | "storage-full"; mode: "inexact"; message: string }
 const Scheduled = Schema.Union([
   Refusal,
   Schema.Struct({
@@ -101,7 +90,10 @@ const Scheduled = Schema.Union([
     message: Schema.String,
   }),
 ])
-const Schedule = Schema.Struct({ at: Instant, recurrence: Schema.NullOr(Recurrence), dueAt: Schema.optionalKey(Instant), alertMinutes: Schema.optionalKey(Alert) })
+const Schedule = Schema.Union([
+  Schema.Struct({ at: Instant, recurrence: Schema.NullOr(Recurrence), dueAt: Instant, alertMinutes: Alert }),
+  Schema.Struct({ at: Instant, recurrence: Schema.NullOr(Recurrence) }),
+])
 const CreationSchedule = Schema.Struct({ at: Instant, dueAt: Instant, alertMinutes: Alert, recurrence: Schema.NullOr(Recurrence) })
 const Outcome = {
   version: Schema.Literal(1),
@@ -123,12 +115,12 @@ const Receipt = Schema.Union([
   Schema.Struct({ status: Schema.Literal("succeeded"), result: Result }),
   Schema.Struct({ status: Schema.Literal("unknown"), result: Schema.optionalKey(Result), message: Schema.optionalKey(Schema.String) }),
 ])
-const Cancelled = Schema.Struct({ id: Schema.String, status: Schema.Literals(["cancelled", "unknown"]), mode: Schema.Literal("inexact"), message: Schema.String })
+schema Cancelled { id: string; status: "cancelled" | "unknown"; mode: "inexact"; message: string }
 const TodoSaved = Schema.Union([
   Refusal,
   Schema.Struct({ id: Schema.String, status: Schema.Literal("saved"), mode: Schema.Literal("none"), target: Target, message: Schema.String }),
 ])
-const TodoDecided = Schema.Struct({ id: Schema.String, status: Schema.Literals(["todo", "completed", "cancelled"]), target: Target })
+schema TodoDecided { id: string; status: "todo" | "completed" | "cancelled"; target: Target }
 const PendingTap = Schema.Union([
   Schema.Struct({ token: Schema.String, target: Target, retained: Schema.Boolean, question: Schema.optionalKey(Schema.Boolean) }),
   Schema.Struct({}),

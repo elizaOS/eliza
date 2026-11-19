@@ -51,8 +51,9 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -89,7 +90,7 @@ public class AgentService extends Service {
     public LaunchRefused(String reason) { super(reason); }
   }
 
-  private final ScheduledExecutorService effects = Executors.newSingleThreadScheduledExecutor(task -> daemon(task, "ElizaAgentService"));
+  private final ScheduledThreadPoolExecutor effects = effectExecutor();
   private final ExecutorService work = Executors.newCachedThreadPool(task -> daemon(task, "ElizaAgentWork"));
   private final AgentSocketClient client = AgentSocketClient.android();
   private final Handler main = new Handler(Looper.getMainLooper());
@@ -180,7 +181,7 @@ public class AgentService extends Service {
   public static void credentialChanged(Context context) {
     AgentService service = live;
     if (service != null) {
-      service.effects.execute(() -> service.settled(service::syncCredential));
+      service.later(() -> service.settled(service::syncCredential));
       return;
     }
     try { if (registered.current() != null) start(context); }
@@ -294,7 +295,7 @@ public class AgentService extends Service {
       policy = new AgentPolicy(active == null ? null : remember(active.account()), held);
       live = this;
     }
-    effects.execute(() -> settled(this::syncCredential));
+    later(() -> settled(this::syncCredential));
     changed();
   }
 
@@ -311,7 +312,7 @@ public class AgentService extends Service {
 
   @Override public void onDestroy() {
     synchronized (LOCK) { if (live == this) live = null; }
-    effects.execute(() -> {
+    later(() -> {
       cancelTimers();
       if (child != null) {
         CHANNEL.retire(child.epoch);
@@ -369,7 +370,12 @@ public class AgentService extends Service {
   }
 
   private void post(AgentPolicy.Event... events) {
-    effects.execute(() -> settled(() -> { for (AgentPolicy.Event event : events) step(event); }));
+    later(() -> settled(() -> { for (AgentPolicy.Event event : events) step(event); }));
+  }
+
+  private void later(Runnable task) {
+    try { effects.execute(task); }
+    catch (RejectedExecutionException closed) { Log.d(TAG, "The agent service has ended and takes no more work"); }
   }
 
   private <T> T call(Callable<T> task) throws IOException {
@@ -378,7 +384,7 @@ public class AgentService extends Service {
       Throwable cause = failed.getCause() instanceof IllegalStateException state && state.getCause() instanceof IOException io ? io : failed.getCause();
       if (cause instanceof IOException io) throw io;
       throw new IOException("The agent service could not carry out the request", cause);
-    } catch (TimeoutException | InterruptedException | java.util.concurrent.RejectedExecutionException unanswered) {
+    } catch (TimeoutException | InterruptedException | RejectedExecutionException unanswered) {
       if (unanswered instanceof InterruptedException) Thread.currentThread().interrupt();
       throw new IOException("The agent service did not answer", unanswered);
     }
@@ -414,19 +420,15 @@ public class AgentService extends Service {
   }
 
   private void carryOut(Effect effect) {
-    switch (effect) {
-      case AgentPolicy.Check check -> effects.schedule(() -> settled(() -> check(check)), check.delayMs(), TimeUnit.MILLISECONDS);
-      case AgentPolicy.Kill kill -> {
-        cancelTimers();
-        AgentSupervisor.Child target = child;
-        if (target != null && target.epoch == base + kill.epoch()) work.execute(target::stop);
-      }
-      case AgentPolicy.PushCredential push -> push(push);
-      case AgentPolicy.RecoveryReview recovery -> {
-        if (review != null) review.complete(new Review(recovery.token().epoch() + "." + recovery.token().nonce(), retained()));
-      }
-      case AgentPolicy.Archive archive -> archive(archive);
-    }
+    if (effect instanceof AgentPolicy.Check check) effects.schedule(() -> settled(() -> check(check)), check.delayMs(), TimeUnit.MILLISECONDS);
+    else if (effect instanceof AgentPolicy.Kill kill) {
+      cancelTimers();
+      AgentSupervisor.Child target = child;
+      if (target != null && target.epoch == base + kill.epoch()) work.execute(target::stop);
+    } else if (effect instanceof AgentPolicy.PushCredential push) push(push);
+    else if (effect instanceof AgentPolicy.RecoveryReview recovery) {
+      if (review != null) review.complete(new Review(recovery.token().epoch() + "." + recovery.token().nonce(), retained()));
+    } else archive((AgentPolicy.Archive) effect);
   }
 
   private void check(AgentPolicy.Check check) {
@@ -467,8 +469,6 @@ public class AgentService extends Service {
       return;
     }
     PayloadCheck.PreparedPayload prepared = ((PayloadCheck.Ready) payload).payload();
-    syncCredential();
-    if (policy.state().phase() != Phase.CHECKING || policy.state().epoch() != check.epoch()) return;
     AgentCredentials.Active active;
     String storageKey;
     try {
@@ -478,6 +478,8 @@ public class AgentService extends Service {
       step(new AgentPolicy.FailUnclassified("The device credential could not be read: " + unreadable.getMessage()));
       return;
     }
+    sync(active);
+    if (policy.state().phase() != Phase.CHECKING || policy.state().epoch() != check.epoch()) return;
     Map<String, String> variables = new LinkedHashMap<>();
     String document = null;
     String refusal = null;
@@ -505,9 +507,9 @@ public class AgentService extends Service {
       spawned = AgentSupervisor.spawn(epoch, command, frame, (spawnedEpoch, pid) -> journal.record(Math.toIntExact(pid), spawnedEpoch),
         readyEpoch -> HealthPolicy.classify(probe(agentSocket, launchToken, () -> true), readyEpoch) == HealthPolicy.Probe.OK,
         new AgentSupervisor.Listener() {
-          @Override public void ready(long readyEpoch) { effects.execute(() -> settled(() -> ready(readyEpoch))); }
-          @Override public void readinessTimedOut(long timedOut) { effects.execute(() -> settled(() -> { if (owns(timedOut)) step(new AgentPolicy.ReadyTimeout()); })); }
-          @Override public void exited(long exitedEpoch, int code) { effects.execute(() -> settled(() -> exited(exitedEpoch, code))); }
+          @Override public void ready(long readyEpoch) { later(() -> settled(() -> ready(readyEpoch))); }
+          @Override public void readinessTimedOut(long timedOut) { later(() -> settled(() -> { if (owns(timedOut)) step(new AgentPolicy.ReadyTimeout()); })); }
+          @Override public void exited(long exitedEpoch, int code) { later(() -> settled(() -> exited(exitedEpoch, code))); }
         });
       socket = agentSocket;
     } catch (IOException | RuntimeException failed) {
@@ -565,7 +567,7 @@ public class AgentService extends Service {
         HealthPolicy.JournaledChild journaled = observed instanceof ChildJournal.Journaled entry ? new HealthPolicy.JournaledChild(entry.childEpoch(), entry.alive()) : null;
         seen = new HealthPolicy.ConnectChecked(!accepts(agentSocket), journaled);
       }
-      effects.execute(() -> settled(() -> {
+      later(() -> settled(() -> {
         if (!owns(launchEpoch) || policy.state().phase() != Phase.RUNNING) return;
         HealthPolicy.Verdict verdict = HealthPolicy.verdict(watch, seen, launchEpoch);
         watch = HealthPolicy.afterObservation(watch, seen, launchEpoch);
@@ -609,12 +611,11 @@ public class AgentService extends Service {
   }
 
   private void syncCredential() {
-    AgentCredentials.Active active;
-    try { active = credentials().current(); }
-    catch (Exception unreadable) {
-      Log.w(TAG, "The device credential could not be read", unreadable);
-      return;
-    }
+    try { sync(credentials().current()); }
+    catch (Exception unreadable) { Log.w(TAG, "The device credential could not be read", unreadable); }
+  }
+
+  private void sync(AgentCredentials.Active active) {
     AgentPolicy.State state = policy.state();
     boolean expired = active != null && active.expiresAt() > 0 && active.expiresAt() <= System.currentTimeMillis();
     if (active == null || expired) {
@@ -743,6 +744,14 @@ public class AgentService extends Service {
 
   private static void changed() {
     for (Runnable observer : observers) notices.execute(observer);
+  }
+
+  private static ScheduledThreadPoolExecutor effectExecutor() {
+    ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, task -> daemon(task, "ElizaAgentService"));
+    executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+    executor.setContinueExistingPeriodicTasksAfterShutdownPolicy(false);
+    executor.setRemoveOnCancelPolicy(true);
+    return executor;
   }
 
   private static ExecutorService daemonSingle(String name) {

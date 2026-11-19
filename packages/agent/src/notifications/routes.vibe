@@ -76,7 +76,14 @@ interface Answer {
 }
 
 module node {
-  export function sent({ status, body, retryAfter }: { readonly status: number; readonly body: object; readonly retryAfter?: number }): Answer {
+  interface Sent {
+    readonly status: number
+    readonly body: object
+    readonly retryAfter?: number
+  }
+
+  export async function sent(answer: Promise<Sent>): Promise<Response> {
+    const { status, body, retryAfter } = await answer
     return Response.json(body, { status, ...(retryAfter === undefined ? {} : { headers: { "retry-after": String(retryAfter) } }) })
   }
 }
@@ -169,11 +176,11 @@ export function notificationRoutes(runtime: AgentRuntime): LocalRoute[] {
     {
       method: "GET", path: "/api/notifications",
       query: listKeys.map((key) => ({ key, accepts: { kind: "any" as const } })),
-      handler: ({ query }) => runPromise(listAnswered(runtime, query)).then(sent),
+      handler: ({ query }) => sent(runPromise(listAnswered(runtime, query))),
     },
     {
       method: "POST", path: "/api/notifications/{id}/read",
-      handler: ({ parameters }) => runPromise(markAnswered(runtime, parameters.get("id") ?? "")).then(sent),
+      handler: ({ parameters }) => sent(runPromise(markAnswered(runtime, parameters.get("id") ?? ""))),
     },
   ]
 }

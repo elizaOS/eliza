@@ -81,8 +81,7 @@ open class SecureStorePlugin : Plugin() {
             }
             is SecureSlots.Absent -> failure("not_found")
             is SecureSlots.Unreadable -> failure("unreadable")
-            is SecureSlots.Refused -> failure("denied")
-            else -> failure("native_error")
+            else -> failure("denied")
         })
     }
 

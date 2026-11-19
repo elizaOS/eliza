@@ -290,11 +290,6 @@ export interface LibraryPageOptions extends ListOptions {
   readonly to?: number;
 }
 
-/**
- * The read-only Photos bridge. Abstract in Java (`PermittedPhotosPlugin`):
- * the host registers its subclass under its own name. Every reply is parsed
- * by `../media.vibe`, so the native results are `unknown` here.
- */
 export interface PermittedPhotosPlugin {
   libraryAccess(): Promise<unknown>;
   watchLibrary(options: { active: boolean }): Promise<unknown>;
@@ -306,7 +301,6 @@ export interface PermittedPhotosPlugin {
   addListener(event: "libraryChanged", listener: () => void): Promise<PluginListenerHandle>;
 }
 
-/** Photos management (`PhotosPlugin`): edits, captures, owned library, trash and albums. */
 export interface PhotosPlugin extends PermittedPhotosPlugin {
   beginEdit(options: { id: string; revision: string }): Promise<unknown>;
   previewEdit(options: PhotoEdit): Promise<unknown>;
@@ -334,7 +328,6 @@ export interface PhotosPlugin extends PermittedPhotosPlugin {
   changeAlbum(options: AlbumChange): Promise<unknown>;
 }
 
-/** The agent's album facade (`DeviceLibraryPlugin`) over the Photos catalog and review. */
 export interface DeviceLibraryPlugin {
   scope(): Promise<unknown>;
   requestAccess(): Promise<unknown>;
@@ -350,10 +343,6 @@ export interface DeviceLibraryPlugin {
   addListener(event: "scopeChanged", listener: (scope: unknown) => void): Promise<PluginListenerHandle>;
 }
 
-/**
- * The `SelectedDocumentCalls` contract a host plugin binds, by opaque
- * selection id only: the renderer never passes a URI or a path.
- */
 export interface SelectedDocumentsPlugin {
   restoreSelected(): Promise<unknown>;
   describeSelected(options: { selectionId: string }): Promise<unknown>;

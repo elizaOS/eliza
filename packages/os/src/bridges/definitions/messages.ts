@@ -1,4 +1,6 @@
 // spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "A message's reported status is supported by the evidence of every part"; spec/os/android/messages.md, "Only the owner's reviewed sends and incoming messages are written to the Android providers"; spec/os/android/messages.md, "A deletion removes only the selected settled row and confirms only a removal Android reported"
+import type { Receipt } from "../../../gen/core__receipts.ts";
+import type { HandoffOutcome } from "../../../gen/os__android__bridge.ts";
 import type { DeleteStatus, PartEvidence, PartState, SendStatus } from "../../../gen/os__android__messages.ts";
 import { groupSendAvailable, maxPartsPerRecipient, roleRequestOffered, statusSupported } from "../../../gen/os__android__messages.ts";
 import { normalizePhoneNumber, type PhoneNumber, type TelephonyStatus } from "./phone.ts";
