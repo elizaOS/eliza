@@ -1,9 +1,18 @@
-// spec/os/signIn/cloudRequests.md, "Story: Reach my account's cloud services without holding my key"; spec/os/signIn/credential.md, "An expired key keeps the account, and only the account read signs out on a revoked or unknown key"; spec/os/signIn/credential.md, "An account session is held in memory only for the active key's account, for at most one hour"
+// spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"
 package ai.eliza.plugins.signin;
 
-import ai.eliza.plugins.signin.CloudRequestPolicy.Admitted;
-import ai.eliza.plugins.signin.CloudRequestPolicy.Failure;
-import ai.eliza.plugins.signin.CloudRequestPolicy.Refused;
+import ai.eliza.plugins.signin.CloudRequestPolicy.Attach;
+import ai.eliza.plugins.signin.CloudRequestPolicy.Handoff;
+import ai.eliza.plugins.signin.CloudRequestPolicy.Holding;
+import ai.eliza.plugins.signin.CloudRequestPolicy.KeyRejected;
+import ai.eliza.plugins.signin.CloudRequestPolicy.Planned;
+import ai.eliza.plugins.signin.CloudRequestPolicy.Refusal;
+import ai.eliza.plugins.signin.CloudRequestPolicy.Refuse;
+import ai.eliza.plugins.signin.CloudRequestPolicy.RefreshSessionFirst;
+import ai.eliza.plugins.signin.CloudRequestPolicy.Send;
+import ai.eliza.plugins.signin.CloudRequestPolicy.SessionRejected;
+import ai.eliza.plugins.signin.CloudRequestPolicy.WithKey;
+import ai.eliza.plugins.signin.CloudRequestPolicy.WithSession;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,52 +23,61 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 public final class CloudRequests {
-  public interface Custody {
-    Key deviceKey(String apiOrigin);
-    String accountSession(String apiOrigin);
-    void keyRejected(String apiOrigin, long version, String reason);
-    void sessionRejected(String apiOrigin);
-  }
-
-  public record Key(long version, String value) {}
+  public record Custody(DeviceCredentialStore credentials, AccountSession session) {}
 
   public sealed interface Outcome permits Answered, Failed {}
-  public record Answered(int status, String etag, String contentType, byte[] body, LargeBodyGrant.Grant grant) implements Outcome {}
+  public record Answered(int status, String etag, String contentType, String retryAfter, byte[] body, LargeBodyGrant.Grant grant) implements Outcome {}
   public record Failed(Failure failure) implements Outcome {}
+
+  public enum Failure {
+    NO_ORIGIN, NOT_LISTED, BODY_TOO_LARGE, HEADER_REFUSED, SIGN_IN_REQUIRED, REAUTH_REQUIRED, REPLY_TOO_LARGE, NETWORK;
+    static Failure of(Refusal refusal) {
+      return switch (refusal) {
+        case NO_ORIGIN -> NO_ORIGIN;
+        case NOT_LISTED -> NOT_LISTED;
+        case BODY_TOO_LARGE -> BODY_TOO_LARGE;
+        case HEADER_REFUSED -> HEADER_REFUSED;
+        case SIGN_IN_REQUIRED -> SIGN_IN_REQUIRED;
+        case REAUTH_REQUIRED -> REAUTH_REQUIRED;
+      };
+    }
+  }
 
   private static final int TIMEOUT_MS = 30_000;
   private static final int UNAUTHORIZED = 401;
 
   private final CloudRequestPolicy policy;
-  private final String apiOrigin;
-  private final Custody custody;
   private final LargeBodyGrant grants;
 
-  public CloudRequests(CloudRequestPolicy policy, String apiOrigin, Custody custody, LargeBodyGrant grants) {
+  public CloudRequests(CloudRequestPolicy policy, LargeBodyGrant grants) {
     this.policy = policy;
-    this.apiOrigin = apiOrigin;
-    this.custody = custody;
     this.grants = grants;
   }
 
-  public Outcome send(String method, String target, Map<String, String> headers, byte[] body) {
-    CloudRequestPolicy.Decision decision = policy.admit(method, target, headers, body);
-    if (decision instanceof Refused refused) return new Failed(refused.failure());
-    Admitted admitted = (Admitted) decision;
-    Key key = null;
-    String bearer = null;
-    switch (admitted.credential()) {
-      case DEVICE_KEY -> {
-        key = custody.deviceKey(apiOrigin);
-        if (key == null) return new Failed(Failure.SIGNED_OUT);
-        bearer = key.value();
+  public Outcome send(String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body) {
+    DeviceCredentialStore store = custody.credentials();
+    CredentialReader.Credential key = store.current();
+    DeviceCredentialStore.SessionRead session = store.readSession();
+    Holding holding = new Holding(key == null ? 0 : key.version(), session != DeviceCredentialStore.SessionRead.NONE, session == DeviceCredentialStore.SessionRead.USABLE);
+    Planned planned = policy.plan(holding, CloudRequestPolicy.originOf(apiOrigin), method, target, headers, body);
+    Attach attach;
+    String bearer;
+    switch (planned.plan()) {
+      case Refuse refuse -> { return new Failed(Failure.of(refuse.why())); }
+      case RefreshSessionFirst refresh -> {
+        bearer = custody.session().accessToken();
+        attach = new WithSession(holding.key());
       }
-      case ACCOUNT_SESSION -> {
-        bearer = custody.accountSession(apiOrigin);
-        if (bearer == null) return new Failed(Failure.REAUTH_REQUIRED);
+      case Send send -> {
+        attach = send.attach();
+        bearer = switch (attach) {
+          case WithKey k -> key.value();
+          case WithSession s -> custody.session().accessToken();
+          case CloudRequestPolicy.Bare b -> null;
+        };
       }
-      case NONE -> { }
     }
+    if (attach instanceof WithSession && bearer == null) return new Failed(Failure.REAUTH_REQUIRED);
     HttpURLConnection connection = null;
     try {
       connection = (HttpURLConnection) URI.create(apiOrigin + target).toURL().openConnection();
@@ -68,10 +86,10 @@ public final class CloudRequests {
       connection.setConnectTimeout(TIMEOUT_MS);
       connection.setReadTimeout(TIMEOUT_MS);
       connection.setRequestMethod(method);
-      if (bearer != null) connection.setRequestProperty("Authorization", "Bearer " + bearer);
-      for (Map.Entry<String, String> header : admitted.headers().entrySet()) connection.setRequestProperty(header.getKey(), header.getValue());
+      for (Map.Entry<String, String> header : planned.headers().entrySet()) connection.setRequestProperty(header.getKey(), header.getValue());
+      if (bearer != null) connection.setRequestProperty(CloudRequestPolicy.AUTHORIZATION, "Bearer " + bearer);
       if (body != null) {
-        connection.setRequestProperty("Content-Type", "application/json");
+        if (!planned.headers().containsKey("Content-Type")) connection.setRequestProperty("Content-Type", "application/json");
         connection.setDoOutput(true);
         connection.setFixedLengthStreamingMode(body.length);
         try (OutputStream out = connection.getOutputStream()) { out.write(body); }
@@ -79,17 +97,18 @@ public final class CloudRequests {
       int status = connection.getResponseCode();
       Answered answered = answer(connection, status);
       if (status == UNAUTHORIZED) {
-        switch (admitted.credential()) {
-          case DEVICE_KEY -> custody.keyRejected(apiOrigin, key.version(), CloudRequestPolicy.credentialReason(text(answered.body())));
-          case ACCOUNT_SESSION -> custody.sessionRejected(apiOrigin);
-          case NONE -> { }
+        String text = answered.body() == null ? null : new String(answered.body(), StandardCharsets.UTF_8);
+        switch (CloudRequestPolicy.reportOf(attach, planned.route(), status, CloudRequestPolicy.reasonOf(text))) {
+          case KeyRejected rejected -> store.rejected(rejected.version(), rejected.reason(), rejected.on());
+          case SessionRejected rejected -> custody.session().drop();
+          case CloudRequestPolicy.NoReport none -> { }
         }
       }
       return answered;
     } catch (LargeBodyGrant.Oversize oversize) {
-      return new Failed(Failure.TOO_LARGE);
-    } catch (IllegalArgumentException unsendable) {
-      return new Failed(Failure.ROUTE_REFUSED);
+      return new Failed(Failure.REPLY_TOO_LARGE);
+    } catch (IllegalArgumentException unaddressable) {
+      return new Failed(Failure.NOT_LISTED);
     } catch (IOException unanswered) {
       return new Failed(Failure.NETWORK);
     } finally {
@@ -98,20 +117,19 @@ public final class CloudRequests {
   }
 
   private Answered answer(HttpURLConnection connection, int status) throws IOException {
-    String etag = connection.getHeaderField("ETag"), contentType = connection.getContentType();
-    if (CloudRequestPolicy.deliveryOf(connection.getContentLengthLong()) == CloudRequestPolicy.Delivery.TOO_LARGE) throw new LargeBodyGrant.Oversize();
+    String etag = connection.getHeaderField("ETag"), contentType = connection.getContentType(), retryAfter = connection.getHeaderField("Retry-After");
+    if (CloudRequestPolicy.handoffOf(connection.getContentLengthLong()) == Handoff.REPLY_TOO_LARGE) throw new LargeBodyGrant.Oversize();
     InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
-    if (stream == null) return new Answered(status, etag, contentType, new byte[0], null);
+    if (stream == null) return new Answered(status, etag, contentType, retryAfter, new byte[0], null);
     try (InputStream in = stream) {
       ByteArrayOutputStream head = new ByteArrayOutputStream();
       byte[] buffer = new byte[64 << 10];
       for (int n; (n = in.read(buffer, 0, (int) Math.min(buffer.length, CloudRequestPolicy.INLINE_LIMIT + 1 - head.size()))) > 0;) {
         head.write(buffer, 0, n);
-        if (head.size() > CloudRequestPolicy.INLINE_LIMIT) return new Answered(status, etag, contentType, null, grants.spill(head.toByteArray(), in, contentType));
+        if (CloudRequestPolicy.handoffOf(head.size()) == Handoff.CACHED_BODY)
+          return new Answered(status, etag, contentType, retryAfter, null, grants.spill(head.toByteArray(), in, contentType));
       }
-      return new Answered(status, etag, contentType, head.toByteArray(), null);
+      return new Answered(status, etag, contentType, retryAfter, head.toByteArray(), null);
     }
   }
-
-  private static String text(byte[] body) { return body == null ? null : new String(body, StandardCharsets.UTF_8); }
 }

@@ -25,6 +25,9 @@ import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/go
 import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
+import { signedCaller } from "./support/caller.vibe"
+import { callDeclaring } from "./support/http.ts"
+import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
 
 effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
   return match (try exit(program)) {
@@ -502,7 +505,106 @@ describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/regis
 })
 
 describe.todo("WP3 Checkout and provider events (spec/cloud/billing/checkout.md, \"Story: Subscribe once, whichever screen or payer finishes it\")")
-describe.todo("WP6 Speech (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\")")
+function oneSecondWav(): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(44 + 32_000)
+  const view = new DataView(bytes.buffer)
+  const text = (at: number, value: string) => { for (let index = 0; index < value.length; index += 1) bytes[at + index] = value.charCodeAt(index) }
+  text(0, "RIFF")
+  view.setUint32(4, 36 + 32_000, true)
+  text(8, "WAVE")
+  text(12, "fmt ")
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, 1, true)
+  view.setUint32(24, 16_000, true)
+  view.setUint32(28, 32_000, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  text(36, "data")
+  view.setUint32(40, 32_000, true)
+  return bytes
+}
+
+function recording(fields: Readonly<Record<string, string>>): FormData {
+  const form = new FormData()
+  form.append("audio", new Blob([oneSecondWav()], { type: "audio/wav" }), "clip.wav")
+  for (const [name, value] of Object.entries(fields)) form.append(name, value)
+  return form
+}
+
+describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
+  it.live("Speak a reply with context and timings, transcribe a recording, and charge each once (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\"; spec/cloud/services/speech.md, \"Story: Transcribe a recording\")", () => scoped(effect {
+    const speech = try sync(() => speechFake())
+    const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
+    const caller = try signedCaller(cloud, "speaker")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 1_000_000, requestKey: "speech-funding" }))
+    const tts = (body: unknown) => cloud.call("/api/v1/voice/tts", { json: body, headers: caller.headers })
+    const stt = (fields: Readonly<Record<string, string>>, headers = caller.headers) => cloud.call("/api/v1/voice/stt", { form: recording(fields), headers })
+
+    const plain = try tts({ text: "Hello there", previousText: "Earlier words.", nextText: "Later words.", speed: 1.1 })
+    const timed = try tts({ text: "Hi you", previousText: "Before", withTimestamps: true })
+    const lines = String(timed.body).trim().split("\n").map((line) => JSON.parse(line) as { readonly type: string; readonly sequence?: number; readonly alignment?: { readonly characters: ReadonlyArray<string> } })
+    const anonymous = try cloud.call("/api/v1/voice/tts", { json: { text: "Hello" } })
+    const foreignVoice = try tts({ text: "Hello", voiceId: "voice-elsewhere" })
+    try sync(() => speech.script({ kind: "refuse", status: 422 }, { kind: "refuse", status: 503, retryAfterSeconds: 7 }))
+    const rejected = try tts({ text: "Rejected" })
+    const busy = try tts({ text: "Busy" })
+
+    const heard = try stt({ languageCode: "en-US", provider: "speech" })
+    const otherProvider = try stt({ provider: "elsewhere" })
+    const otherLanguage = try stt({ languageCode: "fr" })
+    const tooLarge = try promise(() => callDeclaring(cloud.url, "/api/v1/voice/stt", 25 * 1024 * 1024 + 1, { "content-type": "multipart/form-data; boundary=x" }))
+
+    const usage = try sql(cloud, "SELECT service, quote, charged, outcome FROM usage_records WHERE organization_id = $1 ORDER BY settled_at, hold_key", [caller.organizationId])
+    try check(() => assert.deepStrictEqual(
+      {
+        plain: [plain.status, plain.headers["content-type"], plain.headers["x-eliza-tts-provider"], plain.headers["x-eliza-tts-speed"], String(plain.body).length > 0],
+        sentPlain: speech.synthesized[0],
+        timed: [timed.status, timed.headers["content-type"], timed.headers["x-eliza-tts-timing"], lines.map((line) => [line.type, line.sequence, line.alignment?.characters.join("")])],
+        sentTimed: [speech.synthesized[1]?.path, speech.synthesized[1]?.body.previous_text, speech.synthesized[1]?.body.transcript],
+        anonymous: anonymous.status,
+        foreignVoice: [foreignVoice.status, (foreignVoice.body as { readonly error: string }).error],
+        rejected: [rejected.status, (rejected.body as { readonly error: string }).error],
+        busy: [busy.status, (busy.body as { readonly error: string }).error, Number(busy.headers["retry-after"]) >= 7],
+        heard: [heard.status, heard.body, heard.headers["x-eliza-stt-provider"]],
+        sentHeard: speech.transcribed.map((each) => [each.mimeType, each.model, each.language, each.audio.length]),
+        otherProvider: [otherProvider.status, (otherProvider.body as { readonly error: string }).error],
+        otherLanguage: [otherLanguage.status, (otherLanguage.body as { readonly error: string }).error],
+        tooLarge: [tooLarge.status, (tooLarge.body as { readonly error: string }).error],
+        usage: usage.map((row) => [row.service, Number(row.quote), Number(row.charged), row.outcome])
+      },
+      {
+        plain: [200, "audio/mpeg", "speech", "1.1", true],
+        sentPlain: {
+          path: "/tts/bytes",
+          body: {
+            model_id: "model-1", transcript: "Hello there", voice: { mode: "id", id: "voice-1" },
+            output_format: { container: "mp3", sample_rate: 44_100, bit_rate: 128_000 },
+            speed: 1.1, apply_text_normalization: "auto", previous_text: "Earlier words.", next_text: "Later words."
+          }
+        },
+        timed: [200, "application/x-ndjson", "character-v1", [["audio", 0, "Hi "], ["audio", 1, "you"], ["done", undefined, undefined]]],
+        sentTimed: ["/tts/timestamps", "Before", "Hi you"],
+        anonymous: 401,
+        foreignVoice: [400, "invalid_request"],
+        rejected: [502, "provider_invalid_response"],
+        busy: [503, "provider_unavailable", true],
+        heard: [200, { transcript: spokenTranscript, duration_ms: 2_500, words: spokenTranscript.split(" ").map((word, index) => ({ text: word, startMs: index * 400, endMs: index * 400 + 300 })) }, "speech"],
+        sentHeard: [["audio/wav", "ink-whisper", "en", 44 + 32_000]],
+        otherProvider: [400, "invalid_request"],
+        otherLanguage: [400, "invalid_request"],
+        tooLarge: [413, "content_too_large"],
+        usage: [
+          ["speech", 396, 396, "known"],
+          ["speech", 216, 216, "known"],
+          ["speech", 288, 0, "known"],
+          ["speech", 144, 144, "unknown"],
+          ["speech", 100, 250, "known"]
+        ]
+      }
+    ))
+  }), 60_000)
+})
 describe.todo("WP7 Maps (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\")")
 describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => {
   it.live("Triage, search and read my mail at the history Google answered, refusing a stale attachment and an oversized body (spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {

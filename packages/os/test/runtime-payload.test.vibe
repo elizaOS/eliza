@@ -106,86 +106,85 @@ effect function pinnedBundle(root: string, agent: string, manifest: Readonly<Rec
 }
 
 it.effect("Ship the agent with a pinned Node runtime and only the files my build listed: stage a two-file bundle and refuse every broken rule (spec/os/build/runtimePayload.md, \"Story: Ship the agent with a pinned Node runtime\"; spec/os/build/runtimePayload.md, \"A Node runtime file is used only when it matches its ABI's lock entry\"; spec/os/build/runtimePayload.md, \"The APK carries exactly one Node runtime for each targeted ABI and none for another\"; spec/os/build/runtimePayload.md, \"Story: Ship only the files my build listed\"; spec/os/build/runtimePayload.md, \"The inventory lists every staged payload file once, by digest and size, and nothing else\"; spec/os/build/runtimePayload.md, \"The bundle carries no Node-API addon and a cloud-only payload carries no model or inference library\"; spec/os/build/runtimePayload.md, \"The workflow worker is staged only under the digest the bundle manifest pins\"; spec/os/build/runtimePayload.md, \"A payload is admitted only when every staging rule holds\")", effect () => {
-  provide NodeServices.layer {
-    provide FetchHttpClient.layer {
-      const files = try FileSystem.FileSystem
-      const path = try Path.Path
-      const fixtures = try fixture("runtime-payload")
-      const root = try scratch("payload")
-      const bundleDir = path.join(fixtures, "bundle")
-      const elf = try files.readFile(path.join(fixtures, "node-arm64-v8a.so"))
-      const served = try release(elf)
-      const url = `${served.base}${ASSET}`
-      const lock = try lockFile(root, [{ abi: "arm64-v8a", sha256: sha256(elf), url }])
-      const base = { abi: ["arm64-v8a"] as const, bundleDir, lock, runtimes: [{ kind: "fetched", abi: "arm64-v8a", url }] as const }
-      const out = (name: string) => path.join(root, "out", name)
+  provide NodeServices.layer, FetchHttpClient.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const fixtures = try fixture("runtime-payload")
+    const root = try scratch("payload")
+    const bundleDir = path.join(fixtures, "bundle")
+    const elf = try files.readFile(path.join(fixtures, "node-arm64-v8a.so"))
+    const served = try release(elf)
+    const url = `${served.base}${ASSET}`
+    const lock = try lockFile(root, [{ abi: "arm64-v8a", sha256: sha256(elf), url }])
+    const base = { abi: ["arm64-v8a"] as const, bundleDir, lock, runtimes: [{ kind: "fetched", abi: "arm64-v8a", url }] as const }
+    const out = (name: string) => path.join(root, "out", name)
 
-      const staged = try stageRuntimePayload({ ...base, output: out("admitted") })
-      const main = path.join(staged.output, "android", "app", "src", "main")
-      const inventoryText = try files.readFileString(path.join(main, INVENTORY_ASSET))
-      const agentText = try files.readFileString(path.join(bundleDir, "agent.mjs"))
-      const manifestText = try files.readFileString(path.join(bundleDir, "manifest.json"))
-      assert.deepStrictEqual(JSON.parse(inventoryText), {
-        schema: 1,
-        files: [
-          { path: "assets/agent/agent.mjs", sha256: sha256(agentText), size: agentText.length },
-          { path: "assets/agent/manifest.json", sha256: sha256(manifestText), size: manifestText.length },
-          { path: "lib/arm64-v8a/libeliza_node.so", sha256: sha256(elf), size: elf.length },
-        ],
-      })
-      assert.strictEqual((try files.stat(path.join(main, "jniLibs", "arm64-v8a", "libeliza_node.so"))).mode & 0o777, 0o755)
-      assert.strictEqual(staged.workflowWorker, undefined)
-      assert.strictEqual(try refusal({ ...base, output: out("admitted") }), "PayloadOutputExists")
+    const staged = try stageRuntimePayload({ ...base, output: out("admitted") })
+    const main = path.join(staged.output, "android", "app", "src", "main")
+    const inventoryText = try files.readFileString(path.join(main, INVENTORY_ASSET))
+    const agentText = try files.readFileString(path.join(bundleDir, "agent.mjs"))
+    const manifestText = try files.readFileString(path.join(bundleDir, "manifest.json"))
+    assert.deepStrictEqual(try Effect.try(() => JSON.parse(inventoryText)), {
+      schema: 1,
+      files: [
+        { path: "assets/agent/agent.mjs", sha256: sha256(agentText), size: agentText.length },
+        { path: "assets/agent/manifest.json", sha256: sha256(manifestText), size: manifestText.length },
+        { path: "lib/arm64-v8a/libeliza_node.so", sha256: sha256(elf), size: elf.length },
+      ],
+    })
+    assert.strictEqual((try files.stat(path.join(main, "jniLibs", "arm64-v8a", "libeliza_node.so"))).mode & 0o777, 0o755)
+    assert.strictEqual(staged.workflowWorker, undefined)
+    assert.strictEqual(try refusal({ ...base, output: out("admitted") }), "PayloadOutputExists")
 
-      const wrongDigest = try lockFile(path.join(root, "wrong-digest"), [{ abi: "arm64-v8a", sha256: "0".repeat(64), url }])
-      assert.strictEqual(try refusal({ ...base, lock: wrongDigest, output: out("digest") }), "RuntimeNotPinned arm64-v8a")
-      assert.strictEqual(try refusal({ ...base, runtimes: [{ kind: "fetched", abi: "arm64-v8a", url: `${served.base}/elsewhere/node.zip` }], output: out("url") }), "RuntimeNotPinned arm64-v8a")
-      assert.strictEqual(try refusal({ ...base, runtimes: [{ kind: "fetched", abi: "arm64-v8a", url: `${served.base}/missing.zip` }], output: out("missing") }), "RuntimeFetchFailed")
+    const wrongDigest = try lockFile(path.join(root, "wrong-digest"), [{ abi: "arm64-v8a", sha256: "0".repeat(64), url }])
+    assert.strictEqual(try refusal({ ...base, lock: wrongDigest, output: out("digest") }), "RuntimeNotPinned arm64-v8a")
+    assert.strictEqual(try refusal({ ...base, runtimes: [{ kind: "fetched", abi: "arm64-v8a", url: `${served.base}/elsewhere/node.zip` }], output: out("url") }), "RuntimeNotPinned arm64-v8a")
+    assert.strictEqual(try refusal({ ...base, runtimes: [{ kind: "fetched", abi: "arm64-v8a", url: `${served.base}/missing.zip` }], output: out("missing") }), "RuntimeFetchFailed")
 
-      const built = path.join(root, "built")
-      try writeTree(built, {
-        "libeliza_node.so": elf,
-        "node-runtime.json": JSON.stringify({ schema: 1, abi: "arm64-v8a", version: VERSION, ndk: NDK, apiLevel: 29, sha256: sha256(elf) }),
-      })
-      assert.strictEqual(try refusal({ ...base, runtimes: [...base.runtimes, { kind: "built", dir: built }], output: out("second") }), "RuntimeLayoutInvalid arm64-v8a")
-      assert.strictEqual(try refusal({ ...base, nativeLibraries: [{ abi: "arm64-v8a", file: path.join(built, "libeliza_node.so"), sha256: sha256(elf) }], output: out("library") }), "RuntimeLayoutInvalid arm64-v8a")
-      const builtX86 = path.join(root, "built-x86")
-      try writeTree(builtX86, {
-        "libeliza_node.so": try files.readFile(path.join(fixtures, "node-x86_64.so")),
-        "node-runtime.json": JSON.stringify({ schema: 1, abi: "x86_64", version: VERSION, ndk: NDK, apiLevel: 29, sha256: sha256(try files.readFile(path.join(fixtures, "node-x86_64.so"))) }),
-      })
-      assert.strictEqual(try refusal({ ...base, runtimes: [...base.runtimes, { kind: "built", dir: builtX86 }], output: out("untargeted") }), "RuntimeLayoutInvalid x86_64")
-      const onlyBuilt = try refusal({ ...base, runtimes: [{ kind: "built", dir: built }], output: out("built") })
-      assert.strictEqual(onlyBuilt, "PayloadAdmitted")
+    const built = path.join(root, "built")
+    try writeTree(built, {
+      "libeliza_node.so": elf,
+      "node-runtime.json": JSON.stringify({ schema: 1, abi: "arm64-v8a", version: VERSION, ndk: NDK, apiLevel: 29, sha256: sha256(elf) }),
+    })
+    assert.strictEqual(try refusal({ ...base, runtimes: [...base.runtimes, { kind: "built", dir: built }], output: out("second") }), "RuntimeLayoutInvalid arm64-v8a")
+    assert.strictEqual(try refusal({ ...base, nativeLibraries: [{ abi: "arm64-v8a", file: path.join(built, "libeliza_node.so"), sha256: sha256(elf) }], output: out("library") }), "RuntimeLayoutInvalid arm64-v8a")
+    const builtX86 = path.join(root, "built-x86")
+    try writeTree(builtX86, {
+      "libeliza_node.so": try files.readFile(path.join(fixtures, "node-x86_64.so")),
+      "node-runtime.json": JSON.stringify({ schema: 1, abi: "x86_64", version: VERSION, ndk: NDK, apiLevel: 29, sha256: sha256(try files.readFile(path.join(fixtures, "node-x86_64.so"))) }),
+    })
+    assert.strictEqual(try refusal({ ...base, runtimes: [...base.runtimes, { kind: "built", dir: builtX86 }], output: out("untargeted") }), "RuntimeLayoutInvalid x86_64")
+    const onlyBuilt = try refusal({ ...base, runtimes: [{ kind: "built", dir: built }], output: out("built") })
+    assert.strictEqual(onlyBuilt, "PayloadAdmitted")
+    assert.strictEqual(try refusal({ abi: base.abi, bundleDir, runtimes: [{ kind: "built", dir: built }], output: out("packaged-lock") }), "RuntimeNotPinned arm64-v8a")
 
-      const addonBundle = path.join(root, "addon-bundle")
-      try writeTree(addonBundle, { "agent.mjs": agentText, "manifest.json": manifestText, "native/sqlite.node": "addon" })
-      assert.strictEqual(try refusal({ ...base, bundleDir: addonBundle, output: out("addon") }), "ForbiddenContent assets/agent/native/sqlite.node")
+    const addonBundle = path.join(root, "addon-bundle")
+    try writeTree(addonBundle, { "agent.mjs": agentText, "manifest.json": manifestText, "native/sqlite.node": "addon" })
+    assert.strictEqual(try refusal({ ...base, bundleDir: addonBundle, output: out("addon") }), "ForbiddenContent assets/agent/native/sqlite.node")
 
-      const models = path.join(root, "models")
-      try writeTree(models, { "small.gguf": "weights" })
-      assert.strictEqual(try refusal({ ...base, extraAssets: [{ dir: models, name: "models", files: [{ path: "small.gguf", sha256: sha256("weights") }] }], output: out("model") }), "ForbiddenContent assets/models/small.gguf")
+    const models = path.join(root, "models")
+    try writeTree(models, { "small.gguf": "weights" })
+    assert.strictEqual(try refusal({ ...base, extraAssets: [{ dir: models, name: "models", files: [{ path: "small.gguf", sha256: sha256("weights") }] }], output: out("model") }), "ForbiddenContent assets/models/small.gguf")
 
-      const sounds = path.join(root, "sounds")
-      try writeTree(sounds, { "chime.ogg": "chime", "extra.ogg": "unlisted" })
-      assert.strictEqual(try refusal({ ...base, extraAssets: [{ dir: sounds, name: "sounds", files: [{ path: "chime.ogg", sha256: sha256("chime") }] }], output: out("unlisted") }), "InventoryInexact assets/sounds/extra.ogg")
-      const withSounds = try stageRuntimePayload({ ...base, extraAssets: [{ dir: sounds, name: "sounds", files: [{ path: "chime.ogg", sha256: sha256("chime") }, { path: "extra.ogg", sha256: sha256("unlisted") }] }], output: out("sounds") })
-      assert.deepStrictEqual(withSounds.inventory.filter((row) => row.path.startsWith("assets/sounds/")).map((row) => row.path), ["assets/sounds/chime.ogg", "assets/sounds/extra.ogg"])
+    const sounds = path.join(root, "sounds")
+    try writeTree(sounds, { "chime.ogg": "chime", "extra.ogg": "unlisted" })
+    assert.strictEqual(try refusal({ ...base, extraAssets: [{ dir: sounds, name: "sounds", files: [{ path: "chime.ogg", sha256: sha256("chime") }] }], output: out("unlisted") }), "InventoryInexact assets/sounds/extra.ogg")
+    const withSounds = try stageRuntimePayload({ ...base, extraAssets: [{ dir: sounds, name: "sounds", files: [{ path: "chime.ogg", sha256: sha256("chime") }, { path: "extra.ogg", sha256: sha256("unlisted") }] }], output: out("sounds") })
+    assert.deepStrictEqual(withSounds.inventory.filter((row) => row.path.startsWith("assets/sounds/")).map((row) => row.path), ["assets/sounds/chime.ogg", "assets/sounds/extra.ogg"])
 
-      const worker = path.join(root, "worker")
-      try writeTree(worker, { "worker.mjs": "export const worker = 1\n", "lib/helper.mjs": "export {}\n" })
-      const manifest: Record<string, unknown> = JSON.parse(manifestText)
-      const workerSha = sha256("export const worker = 1\n")
-      const workflowWorker = { dir: worker, executable: "worker.mjs" }
-      assert.strictEqual(try refusal({ ...base, bundleDir: try pinnedBundle(root, agentText, manifest, "1".repeat(64)), workflowWorker, output: out("worker-mismatch") }), "WorkerNotPinned workflow worker")
-      assert.strictEqual(try refusal({ ...base, bundleDir: try pinnedBundle(root, agentText, manifest, workerSha), output: out("pin-only") }), "WorkerNotPinned workflow worker")
-      assert.strictEqual(try refusal({ ...base, workflowWorker, output: out("worker-only") }), "WorkerNotPinned workflow worker")
-      const withWorker = try stageRuntimePayload({ ...base, bundleDir: try pinnedBundle(root, agentText, manifest, workerSha), workflowWorker, output: out("worker") })
-      assert.deepStrictEqual(withWorker.workflowWorker, { runtimeDir: "agent/workflow-worker", executable: "worker.mjs", sha256: workerSha })
-      assert.includeMembers(withWorker.inventory.map((row) => row.path), ["assets/agent/workflow-worker/worker.mjs", "assets/agent/workflow-worker/lib/helper.mjs"])
+    const worker = path.join(root, "worker")
+    try writeTree(worker, { "worker.mjs": "export const worker = 1\n", "lib/helper.mjs": "export {}\n" })
+    const manifest: Record<string, unknown> = try Effect.try(() => JSON.parse(manifestText))
+    const workerSha = sha256("export const worker = 1\n")
+    const workflowWorker = { dir: worker, executable: "worker.mjs" }
+    assert.strictEqual(try refusal({ ...base, bundleDir: try pinnedBundle(root, agentText, manifest, "1".repeat(64)), workflowWorker, output: out("worker-mismatch") }), "WorkerNotPinned workflow worker")
+    assert.strictEqual(try refusal({ ...base, bundleDir: try pinnedBundle(root, agentText, manifest, workerSha), output: out("pin-only") }), "WorkerNotPinned workflow worker")
+    assert.strictEqual(try refusal({ ...base, workflowWorker, output: out("worker-only") }), "WorkerNotPinned workflow worker")
+    const withWorker = try stageRuntimePayload({ ...base, bundleDir: try pinnedBundle(root, agentText, manifest, workerSha), workflowWorker, output: out("worker") })
+    assert.deepStrictEqual(withWorker.workflowWorker, { runtimeDir: "agent/workflow-worker", executable: "worker.mjs", sha256: workerSha })
+    assert.includeMembers(withWorker.inventory.map((row) => row.path), ["assets/agent/workflow-worker/worker.mjs", "assets/agent/workflow-worker/lib/helper.mjs"])
 
-      const leftovers = (try files.readDirectory(path.join(root, "out"))).sort()
-      assert.deepStrictEqual(leftovers, ["admitted", "built", "sounds", "worker"])
-    }
+    const leftovers = (try files.readDirectory(path.join(root, "out"))).sort()
+    assert.deepStrictEqual(leftovers, ["admitted", "built", "sounds", "worker"])
   }
 })

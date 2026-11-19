@@ -1,7 +1,9 @@
 // spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"; spec/agent/models/binding.md, "Plugins reach the cloud only through the cloud service of a cloud backend, and a managed Google change needs the owner's consent"
-import type { Action } from "@elizaos/core";
+import type { Action, IAgentRuntime } from "@elizaos/core";
 import type { AgentPlugin } from "../../../src/host/module.vibe";
 import type { CloudLinkReply, CloudLinkService } from "../../../src/models/cloud-link.vibe";
+import { scheduledTasksServiceType, type ScheduledTasksApi, type TaskTrigger } from "../../../src/schedule/scheduled-task-routes.vibe";
+import type { DeliveryResult } from "../../../src/schedule/scheduled-tasks.vibe";
 
 export const productActionName = "PRODUCT_ACTION";
 
@@ -59,6 +61,45 @@ export const googleProductPlugin = {
   name: "google-product-fixture",
   description: "A product plugin fixture that reaches managed Google only through the cloud service.",
   actions: [productGoogleAction],
+} satisfies AgentPlugin;
+
+export const scheduledDeliveries = { script: [] as DeliveryResult[], attempts: [] as string[] };
+
+interface ProductTask {
+  readonly kind: string;
+  readonly ownerVisible: boolean;
+  readonly promptInstructions: string;
+  readonly trigger: TaskTrigger;
+  readonly idempotencyKey?: string;
+}
+
+let scheduledRuntime: IAgentRuntime | undefined;
+
+export const scheduledProductPlugin = {
+  name: "scheduled-product-fixture",
+  description: "A product plugin fixture that creates scheduled task rows through the scheduled-tasks module and scripts their delivery.",
+  init: (_config, runtime) => {
+    scheduledRuntime = runtime;
+    return Promise.resolve();
+  },
+  routes: [
+    {
+      method: "POST",
+      path: "/api/product/scheduled-tasks",
+      handler: async ({ body }) => {
+        const tasks = scheduledRuntime?.getService<ScheduledTasksApi>(scheduledTasksServiceType);
+        if (tasks === null || tasks === undefined) return { status: 503, body: { error: "no_scheduled_tasks" } };
+        const made = await tasks.create({
+          ...(body as ProductTask),
+          delivery: (task) => {
+            scheduledDeliveries.attempts.push(task.taskId);
+            return Promise.resolve(scheduledDeliveries.script.shift() ?? { kind: "delivered" });
+          },
+        });
+        return { status: 200, body: { created: made.kind, taskId: made.task.taskId, revision: made.task.revision } };
+      },
+    },
+  ],
 } satisfies AgentPlugin;
 
 export default productPlugin;

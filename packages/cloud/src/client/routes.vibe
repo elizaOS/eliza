@@ -1,18 +1,9 @@
 // spec/cloud/client.md, "Story: Use the cloud from the device as configured"
-export type HttpMethod = "Get" | "Post" | "Patch" | "Delete"
+import type { AuthClass, DeviceRoute, HttpMethod, RouteLookup, Segment } from "../../gen/cloud__client.ts"
+import { admitsHeader as tableAdmitsHeader, baseHeaders, deviceRoutes, idempotencyKey, ifMatch, routeFor } from "../../gen/cloud__client.effect.vibe"
 
-export type Segment =
-  | { readonly tag: "Literal"; readonly value: string }
-  | { readonly tag: "Param"; readonly value: string }
-
-export type AuthClass = "Public" | "KeyOrSession" | "Session" | "FreshSession" | "StepUp"
-
-export interface DeviceRoute {
-  readonly method: HttpMethod
-  readonly path: ReadonlyArray<Segment>
-  readonly auth: AuthClass
-  readonly headers: ReadonlyArray<string>
-}
+export type { AuthClass, DeviceRoute, HttpMethod, RouteLookup, Segment }
+export { baseHeaders, deviceRoutes, idempotencyKey, ifMatch }
 
 type SegmentParam<S extends string> = S extends `:${infer Name}` ? Name : never
 
@@ -24,15 +15,23 @@ export interface NamedRoute<N extends string> extends DeviceRoute {
 
 export type ParamsOf<R> = R extends NamedRoute<infer N> ? Readonly<Record<N, string>> : never
 
-export const idempotencyKey = "Idempotency-Key"
-export const ifMatch = "If-Match"
-export const baseHeaders: ReadonlyArray<string> = ["Authorization", "Content-Type", "X-Request-ID", "Traceparent", "Tracestate"]
+export error UnlistedRoute { method: HttpMethod; pattern: string }
 
-function on<const P extends `/${string}`>(method: HttpMethod, pattern: P, auth: AuthClass, headers: ReadonlyArray<string> = []): NamedRoute<ParamNames<P>> {
+function sameSegment(a: Segment, b: Segment): boolean {
+  switch (a.tag) {
+    case "Literal": return b.tag === "Literal" && a.text === b.text
+    case "Param": return b.tag === "Param" && a.name === b.name
+  }
+}
+
+function on<const P extends `/${string}`>(method: HttpMethod, pattern: P): NamedRoute<ParamNames<P>> {
   const path = pattern.split("/").slice(1).map((part): Segment =>
-    part.startsWith(":") ? { tag: "Param", value: part.slice(1) } : { tag: "Literal", value: part })
-  const params = path.flatMap((segment) => segment.tag === "Param" ? [segment.value as ParamNames<P>] : [])
-  return { method, path, auth, headers, params }
+    part.startsWith(":") ? { tag: "Param", name: part.slice(1) } : { tag: "Literal", text: part })
+  const listed = deviceRoutes.find((route) => route.method === method && route.path.length === path.length &&
+    route.path.every((segment, index) => sameSegment(segment, path[index] as Segment)))
+  if (listed === undefined) throw new UnlistedRoute({ method, pattern })
+  const params = path.flatMap((segment) => segment.tag === "Param" ? [segment.name as ParamNames<P>] : [])
+  return { ...listed, params }
 }
 
 const google = "/api/v1/eliza/google"
@@ -40,107 +39,105 @@ const events = `${google}/calendar/events` as const
 const inbox = `${google}/gmail/inbox-v1` as const
 
 export const routesByName = {
-  publicService: on("Get", "/api/public/service", "Public"),
-  authMethods: on("Get", "/api/v1/auth/methods", "Public"),
-  emailCodeSend: on("Post", "/api/v1/auth/email/code/send", "Public"),
-  emailCodeVerify: on("Post", "/api/v1/auth/email/code/verify", "Public"),
-  smsCodeSend: on("Post", "/api/v1/auth/sms/code/send", "Public"),
-  smsCodeVerify: on("Post", "/api/v1/auth/sms/code/verify", "Public"),
-  googleAuthorize: on("Get", "/api/v1/auth/google/authorize", "Public"),
-  googleExchange: on("Post", "/api/v1/auth/google/exchange", "Public"),
-  googleNativeChallenge: on("Post", "/api/v1/auth/google/native/challenge", "Public"),
-  mfaComplete: on("Post", "/api/v1/auth/mfa/complete", "Public"),
-  mfaSmsSend: on("Post", "/api/v1/auth/mfa/sms/send", "Public"),
-  refresh: on("Post", "/api/v1/auth/refresh", "Public"),
-  logout: on("Post", "/api/v1/auth/logout", "Session"),
-  mfaStepUp: on("Post", "/api/v1/auth/mfa/step-up", "Session"),
-  mfaFactors: on("Get", "/api/v1/auth/mfa", "Session"),
-  mfaTotpEnroll: on("Post", "/api/v1/auth/mfa/totp/enroll", "StepUp"),
-  mfaTotpConfirm: on("Post", "/api/v1/auth/mfa/totp/confirm", "StepUp"),
-  mfaSmsEnroll: on("Post", "/api/v1/auth/mfa/sms/enroll", "StepUp"),
-  mfaSmsConfirm: on("Post", "/api/v1/auth/mfa/sms/confirm", "StepUp"),
-  mfaFactorDelete: on("Delete", "/api/v1/auth/mfa/:factorId", "StepUp"),
-  signInMethods: on("Get", "/api/v1/user/methods", "Session"),
-  phoneCodeSend: on("Post", "/api/v1/user/methods/phone/code/send", "Session"),
-  phoneCodeVerify: on("Post", "/api/v1/user/methods/phone/code/verify", "Session"),
-  googleMethodChallenge: on("Post", "/api/v1/user/methods/google/challenge", "Session"),
-  googleMethodLink: on("Post", "/api/v1/user/methods/google/link", "Session"),
-  signInMethodDelete: on("Delete", "/api/v1/user/methods/:methodId", "StepUp"),
-  user: on("Get", "/api/v1/user", "KeyOrSession"),
-  referrals: on("Get", "/api/v1/referrals", "KeyOrSession"),
-  referralApply: on("Post", "/api/v1/referrals/apply", "KeyOrSession"),
-  mobileConfig: on("Get", "/api/v1/app-auth/mobile/config", "Public"),
-  connect: on("Post", "/api/v1/app-auth/connect", "Session"),
-  mobileToken: on("Post", "/api/v1/app-auth/mobile/token", "Public"),
-  mobileAck: on("Post", "/api/v1/app-auth/mobile/ack", "Public"),
-  mobileGoogle: on("Post", "/api/v1/app-auth/mobile/google", "Public"),
-  currentKeyRevoke: on("Delete", "/api/v1/api-keys/current", "KeyOrSession"),
-  plans: on("Get", "/api/v1/subscriptions/plans", "Public"),
-  entitlementKeys: on("Get", "/api/v1/subscription/entitlement-keys", "Public"),
-  billingLimits: on("Get", "/api/v1/billing/limits", "KeyOrSession"),
-  entitlement: on("Get", "/api/v1/subscription/entitlement", "KeyOrSession"),
-  redeem: on("Post", "/api/v1/subscription/redeem", "KeyOrSession", [idempotencyKey]),
-  checkout: on("Post", "/api/v1/subscriptions/checkout", "KeyOrSession", [idempotencyKey]),
-  checkoutConfirm: on("Post", "/api/v1/subscriptions/checkout/confirm", "KeyOrSession"),
-  cancel: on("Post", "/api/v1/subscriptions/cancel", "FreshSession"),
-  cancelUndo: on("Post", "/api/v1/subscriptions/cancel/undo", "FreshSession"),
-  cancelStatus: on("Get", "/api/v1/subscriptions/cancel/:commandId", "FreshSession"),
-  cancelUndoStatus: on("Get", "/api/v1/subscriptions/cancel/undo/:commandId", "FreshSession"),
-  cancelUndoReview: on("Get", "/api/v1/subscriptions/cancel/undo/review", "FreshSession"),
-  upgradeReview: on("Post", "/api/v1/subscriptions/upgrade/review", "FreshSession"),
-  upgradeConfirm: on("Post", "/api/v1/subscriptions/upgrade/confirm", "FreshSession"),
-  downgradeReview: on("Post", "/api/v1/subscriptions/downgrade/review", "FreshSession"),
-  downgradeConfirm: on("Post", "/api/v1/subscriptions/downgrade/confirm", "FreshSession"),
-  upgradeStatus: on("Get", "/api/v1/subscriptions/upgrade/:commandId", "FreshSession"),
-  downgradeStatus: on("Get", "/api/v1/subscriptions/downgrade/:commandId", "FreshSession"),
-  upgradePayment: on("Post", "/api/v1/subscriptions/upgrade/:commandId/payment", "FreshSession"),
-  commands: on("Get", "/api/v1/subscriptions/commands", "KeyOrSession"),
-  portal: on("Post", "/api/v1/subscriptions/portal", "FreshSession"),
-  invoices: on("Get", "/api/v1/billing/invoices", "KeyOrSession"),
-  invoice: on("Get", "/api/v1/billing/invoices/:invoiceId", "KeyOrSession"),
-  models: on("Get", "/api/v1/models", "KeyOrSession"),
-  chatCompletions: on("Post", "/api/v1/chat/completions", "KeyOrSession"),
-  textToSpeech: on("Post", "/api/v1/voice/tts", "KeyOrSession"),
-  speechToText: on("Post", "/api/v1/voice/stt", "KeyOrSession"),
-  speechConsent: on("Post", "/api/v1/voice/speech/consent", "KeyOrSession"),
-  speechSession: on("Post", "/api/v1/voice/speech/session", "KeyOrSession"),
-  speechSocket: on("Get", "/api/v1/voice/speech/ws", "Public"),
-  speechSessionRevoke: on("Post", "/api/v1/voice/speech/session/:sessionId/revoke", "KeyOrSession"),
-  mapsCapabilities: on("Get", "/api/v1/maps/capabilities", "KeyOrSession"),
-  mapsGeocode: on("Post", "/api/v1/maps/geocode", "KeyOrSession", [idempotencyKey]),
-  mapsReverse: on("Post", "/api/v1/maps/reverse", "KeyOrSession", [idempotencyKey]),
-  mapsPlacesSearch: on("Post", "/api/v1/maps/places/search", "KeyOrSession", [idempotencyKey]),
-  mapsPlaceDetails: on("Post", "/api/v1/maps/places/details", "KeyOrSession", [idempotencyKey]),
-  mapsRoutes: on("Post", "/api/v1/maps/routes", "KeyOrSession", [idempotencyKey]),
-  mapsViewport: on("Post", "/api/v1/maps/tiles/viewport", "KeyOrSession"),
-  mapsTile: on("Get", "/api/v1/maps/tiles/:z/:x/:y", "KeyOrSession", [idempotencyKey]),
-  googleStatus: on("Get", `${google}/status`, "KeyOrSession"),
-  googleAccounts: on("Get", `${google}/accounts`, "KeyOrSession"),
-  googleConnect: on("Post", `${google}/connect/initiate`, "KeyOrSession"),
-  googleConnectNative: on("Post", `${google}/connect/native`, "KeyOrSession"),
-  googleDisconnect: on("Post", `${google}/disconnect`, "KeyOrSession"),
-  gmailTriage: on("Get", `${google}/gmail/triage`, "KeyOrSession"),
-  gmailSearch: on("Get", `${google}/gmail/search`, "KeyOrSession"),
-  gmailRead: on("Get", `${google}/gmail/read`, "KeyOrSession"),
-  inboxCapabilities: on("Get", `${inbox}/capabilities`, "KeyOrSession"),
-  inboxThread: on("Get", `${inbox}/thread`, "KeyOrSession"),
-  inboxAttachment: on("Get", `${inbox}/attachment`, "KeyOrSession"),
-  inboxDrafts: on("Get", `${inbox}/drafts`, "KeyOrSession"),
-  inboxDraft: on("Get", `${inbox}/draft`, "KeyOrSession"),
-  inboxOperationPrepare: on("Post", `${inbox}/operations`, "KeyOrSession"),
-  inboxOperationDispatch: on("Post", `${inbox}/operations/:requestId/dispatch`, "KeyOrSession"),
-  inboxOperation: on("Get", `${inbox}/operations/:requestId`, "KeyOrSession"),
-  calendars: on("Get", `${google}/calendar/calendars`, "KeyOrSession"),
-  calendarFeed: on("Get", `${google}/calendar/feed`, "KeyOrSession"),
-  calendarEvent: on("Get", `${events}/:eventId`, "KeyOrSession"),
-  calendarEventCreate: on("Post", events, "KeyOrSession", [idempotencyKey]),
-  calendarEventChange: on("Patch", `${events}/:eventId`, "KeyOrSession", [ifMatch]),
-  calendarEventDelete: on("Delete", `${events}/:eventId`, "KeyOrSession", [ifMatch])
+  publicService: on("Get", "/api/public/service"),
+  authMethods: on("Get", "/api/v1/auth/methods"),
+  emailCodeSend: on("Post", "/api/v1/auth/email/code/send"),
+  emailCodeVerify: on("Post", "/api/v1/auth/email/code/verify"),
+  smsCodeSend: on("Post", "/api/v1/auth/sms/code/send"),
+  smsCodeVerify: on("Post", "/api/v1/auth/sms/code/verify"),
+  googleAuthorize: on("Get", "/api/v1/auth/google/authorize"),
+  googleExchange: on("Post", "/api/v1/auth/google/exchange"),
+  googleNativeChallenge: on("Post", "/api/v1/auth/google/native/challenge"),
+  mfaComplete: on("Post", "/api/v1/auth/mfa/complete"),
+  mfaSmsSend: on("Post", "/api/v1/auth/mfa/sms/send"),
+  refresh: on("Post", "/api/v1/auth/refresh"),
+  logout: on("Post", "/api/v1/auth/logout"),
+  mfaStepUp: on("Post", "/api/v1/auth/mfa/step-up"),
+  mfaFactors: on("Get", "/api/v1/auth/mfa"),
+  mfaTotpEnroll: on("Post", "/api/v1/auth/mfa/totp/enroll"),
+  mfaTotpConfirm: on("Post", "/api/v1/auth/mfa/totp/confirm"),
+  mfaSmsEnroll: on("Post", "/api/v1/auth/mfa/sms/enroll"),
+  mfaSmsConfirm: on("Post", "/api/v1/auth/mfa/sms/confirm"),
+  mfaFactorDelete: on("Delete", "/api/v1/auth/mfa/:factorId"),
+  signInMethods: on("Get", "/api/v1/user/methods"),
+  phoneCodeSend: on("Post", "/api/v1/user/methods/phone/code/send"),
+  phoneCodeVerify: on("Post", "/api/v1/user/methods/phone/code/verify"),
+  googleMethodChallenge: on("Post", "/api/v1/user/methods/google/challenge"),
+  googleMethodLink: on("Post", "/api/v1/user/methods/google/link"),
+  signInMethodDelete: on("Delete", "/api/v1/user/methods/:methodId"),
+  user: on("Get", "/api/v1/user"),
+  referrals: on("Get", "/api/v1/referrals"),
+  referralApply: on("Post", "/api/v1/referrals/apply"),
+  mobileConfig: on("Get", "/api/v1/app-auth/mobile/config"),
+  connect: on("Post", "/api/v1/app-auth/connect"),
+  mobileToken: on("Post", "/api/v1/app-auth/mobile/token"),
+  mobileAck: on("Post", "/api/v1/app-auth/mobile/ack"),
+  mobileGoogle: on("Post", "/api/v1/app-auth/mobile/google"),
+  currentKeyRevoke: on("Delete", "/api/v1/api-keys/current"),
+  plans: on("Get", "/api/v1/subscriptions/plans"),
+  entitlementKeys: on("Get", "/api/v1/subscription/entitlement-keys"),
+  billingLimits: on("Get", "/api/v1/billing/limits"),
+  entitlement: on("Get", "/api/v1/subscription/entitlement"),
+  redeem: on("Post", "/api/v1/subscription/redeem"),
+  checkout: on("Post", "/api/v1/subscriptions/checkout"),
+  checkoutConfirm: on("Post", "/api/v1/subscriptions/checkout/confirm"),
+  cancel: on("Post", "/api/v1/subscriptions/cancel"),
+  cancelUndo: on("Post", "/api/v1/subscriptions/cancel/undo"),
+  cancelStatus: on("Get", "/api/v1/subscriptions/cancel/:commandId"),
+  cancelUndoStatus: on("Get", "/api/v1/subscriptions/cancel/undo/:commandId"),
+  cancelUndoReview: on("Get", "/api/v1/subscriptions/cancel/undo/review"),
+  upgradeReview: on("Post", "/api/v1/subscriptions/upgrade/review"),
+  upgradeConfirm: on("Post", "/api/v1/subscriptions/upgrade/confirm"),
+  downgradeReview: on("Post", "/api/v1/subscriptions/downgrade/review"),
+  downgradeConfirm: on("Post", "/api/v1/subscriptions/downgrade/confirm"),
+  upgradeStatus: on("Get", "/api/v1/subscriptions/upgrade/:commandId"),
+  downgradeStatus: on("Get", "/api/v1/subscriptions/downgrade/:commandId"),
+  upgradePayment: on("Post", "/api/v1/subscriptions/upgrade/:commandId/payment"),
+  commands: on("Get", "/api/v1/subscriptions/commands"),
+  portal: on("Post", "/api/v1/subscriptions/portal"),
+  invoices: on("Get", "/api/v1/billing/invoices"),
+  invoice: on("Get", "/api/v1/billing/invoices/:invoiceId"),
+  models: on("Get", "/api/v1/models"),
+  chatCompletions: on("Post", "/api/v1/chat/completions"),
+  textToSpeech: on("Post", "/api/v1/voice/tts"),
+  speechToText: on("Post", "/api/v1/voice/stt"),
+  speechConsent: on("Post", "/api/v1/voice/speech/consent"),
+  speechSession: on("Post", "/api/v1/voice/speech/session"),
+  speechSocket: on("Get", "/api/v1/voice/speech/ws"),
+  speechSessionRevoke: on("Post", "/api/v1/voice/speech/session/:sessionId/revoke"),
+  mapsCapabilities: on("Get", "/api/v1/maps/capabilities"),
+  mapsGeocode: on("Post", "/api/v1/maps/geocode"),
+  mapsReverse: on("Post", "/api/v1/maps/reverse"),
+  mapsPlacesSearch: on("Post", "/api/v1/maps/places/search"),
+  mapsPlaceDetails: on("Post", "/api/v1/maps/places/details"),
+  mapsRoutes: on("Post", "/api/v1/maps/routes"),
+  mapsViewport: on("Post", "/api/v1/maps/tiles/viewport"),
+  mapsTile: on("Get", "/api/v1/maps/tiles/:z/:x/:y"),
+  googleStatus: on("Get", `${google}/status`),
+  googleAccounts: on("Get", `${google}/accounts`),
+  googleConnect: on("Post", `${google}/connect/initiate`),
+  googleConnectNative: on("Post", `${google}/connect/native`),
+  googleDisconnect: on("Post", `${google}/disconnect`),
+  gmailTriage: on("Get", `${google}/gmail/triage`),
+  gmailSearch: on("Get", `${google}/gmail/search`),
+  gmailRead: on("Get", `${google}/gmail/read`),
+  inboxCapabilities: on("Get", `${inbox}/capabilities`),
+  inboxThread: on("Get", `${inbox}/thread`),
+  inboxAttachment: on("Get", `${inbox}/attachment`),
+  inboxDrafts: on("Get", `${inbox}/drafts`),
+  inboxDraft: on("Get", `${inbox}/draft`),
+  inboxOperationPrepare: on("Post", `${inbox}/operations`),
+  inboxOperationDispatch: on("Post", `${inbox}/operations/:requestId/dispatch`),
+  inboxOperation: on("Get", `${inbox}/operations/:requestId`),
+  calendars: on("Get", `${google}/calendar/calendars`),
+  calendarFeed: on("Get", `${google}/calendar/feed`),
+  calendarEvent: on("Get", `${events}/:eventId`),
+  calendarEventCreate: on("Post", events),
+  calendarEventChange: on("Patch", `${events}/:eventId`),
+  calendarEventDelete: on("Delete", `${events}/:eventId`)
 } as const
 
 export type DeviceRouteName = keyof typeof routesByName
-
-export const deviceRoutes: ReadonlyArray<DeviceRoute> = Object.values(routesByName)
 
 export function httpVerb(method: HttpMethod): "GET" | "POST" | "PATCH" | "DELETE" {
   switch (method) {
@@ -153,25 +150,15 @@ export function httpVerb(method: HttpMethod): "GET" | "POST" | "PATCH" | "DELETE
 
 export function pathOf<R extends NamedRoute<string>>(route: R, ...[params]: R extends NamedRoute<never> ? [] : [ParamsOf<R>]): string {
   const values: Readonly<Record<string, string>> = params ?? {}
-  return route.path.map((segment) => `/${segment.tag === "Param" ? encodeURIComponent(values[segment.value] ?? "") : segment.value}`).join("")
+  return route.path.map((segment) => `/${segment.tag === "Param" ? encodeURIComponent(values[segment.name] ?? "") : segment.text}`).join("")
 }
 
 export function admitsHeader(route: DeviceRoute, name: string): boolean {
   const wanted = name.toLowerCase()
-  return [...baseHeaders, ...route.headers].some((header) => header.toLowerCase() === wanted)
+  const listed = [...baseHeaders, ...route.headers].find((header) => header.toLowerCase() === wanted)
+  return listed !== undefined && tableAdmitsHeader(route, listed)
 }
 
-function literalCount(route: DeviceRoute): number {
-  return route.path.filter((segment) => segment.tag === "Literal").length
-}
-
-function routeMatches(route: DeviceRoute, method: HttpMethod, parts: ReadonlyArray<string>): boolean {
-  return route.method === method && route.path.length === parts.length &&
-    route.path.every((segment, index) => segment.tag === "Literal" ? segment.value === parts[index] : (parts[index] ?? "") !== "")
-}
-
-export function routeFor(method: HttpMethod, pathname: string): DeviceRoute | undefined {
-  const parts = pathname.split("/").slice(1)
-  return deviceRoutes.reduce<DeviceRoute | undefined>((best, route) =>
-    routeMatches(route, method, parts) && (best === undefined || literalCount(route) > literalCount(best)) ? route : best, undefined)
+export function lookupPath(method: HttpMethod, pathname: string): RouteLookup {
+  return routeFor(method, pathname.split("/").slice(1))
 }

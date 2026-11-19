@@ -75,7 +75,7 @@ it.effect('View declarations are exactly {id, label, path, aliases?} within thei
     [{ ...view, path: `/${"p".repeat(256)}` }], [{ ...view, aliases: [] }], [{ ...view, aliases: ["a", "b", "c", "d", "e"] }],
     [{ ...view, aliases: ["Memo"] }], [{ ...view, aliases: ["memo "] }], [{ ...view, viewType: "gui" }],
     Array.from({ length: 33 }, (_, at) => ({ id: `v${at}`, label: `V${at}`, path: `/v${at}` })),
-    Array.from({ length: 32 }, (_, at) => ({ id: `v${at}`, label: "l".repeat(80), path: `/${"p".repeat(255)}`, aliases: ["a", "b", "c", "d"] })),
+    Array.from({ length: 32 }, (_, at) => ({ id: `v${at}`.padEnd(64, "v"), label: `${at}${"語".repeat(78)}`, path: `/${"p".repeat(255)}`, aliases: ["a", "b", "c", "d"] })),
   ].map(withViews), (document) => refusal(document))
   try Effect.try(() => assert.deepStrictEqual([accepted.launch.views?.map((declared) => declared.id), refused],
     [["notes", "chat"], refused.map(() => "LaunchDocumentRejected")]))

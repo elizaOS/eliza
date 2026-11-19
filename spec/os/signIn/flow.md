@@ -46,14 +46,14 @@ type Plugin = NotLoaded | Loaded({ googleScopes: bool, testEnvironments: bool })
 type Purpose = SignInPurpose | ReauthPurpose({ account: C::Account })
 type Stage = CodeStage | FactorStage | GoogleStage
 type FailureCode = Cancelled | Busy | InvalidInput | WrongCode | Expired | TooManyAttempts | Unavailable | GoogleUnavailable | WrongAccount | Rejected
-type Step = Idle | Sending({ fallback: int }) | CodeSent | Picking | Verifying({ stage: Stage }) | SecondFactor
+type SignInPhase = Idle | Sending({ fallback: int }) | CodeSent | Picking | Verifying({ stage: Stage }) | SecondFactor
   | Exchanging({ credentialAttempt: int }) | Connecting | SignedIn | Reauthenticated | Failed({ failure: FailureCode })
 type ServerCode = NoServerCode | HeldCode | SpentCode | DroppedCode
 type GoogleReport = GoogleNotRequested | GoogleConnected | GoogleRefused
 type SignIn = { plugin: Plugin, lastRequest: int, open: int, lastAttempt: int, attempt: int, environment: Environment, method: SignInMethod,
-  purpose: Purpose, step: Step, serverCode: ServerCode, google: GoogleReport, credentialId: str }
+  purpose: Purpose, phase: SignInPhase, serverCode: ServerCode, google: GoogleReport, credentialId: str }
 pure val initial: SignIn = { plugin: NotLoaded, lastRequest: 0, open: 0, lastAttempt: 0, attempt: 0, environment: Production, method: EmailCode,
-  purpose: SignInPurpose, step: Idle, serverCode: NoServerCode, google: GoogleNotRequested, credentialId: "" }
+  purpose: SignInPurpose, phase: Idle, serverCode: NoServerCode, google: GoogleNotRequested, credentialId: "" }
 pure def isLoaded(p: Plugin): bool = match p { | Loaded(l) => true | _ => false }
 pure def admits(p: Plugin, environment: Environment): bool = match p { | Loaded(l) => environment == Production or l.testEnvironments | _ => false }
 pure def scopesRegistered(p: Plugin): bool = match p { | Loaded(l) => l.googleScopes | _ => false }
@@ -61,10 +61,10 @@ pure def canLoad(s: SignIn): bool = s.plugin == NotLoaded
 pure def load(s: SignIn, registration: Registration, build: BuildKind): SignIn =
   { ...s, plugin: if (registration.complete) Loaded({ googleScopes: registration.googleScopes, testEnvironments: registration.testEnvironments or build == DebugBuild }) else RegistrationRefused }
 pure val registrationValues = Set({ complete: true, googleScopes: true, testEnvironments: false }, { complete: true, googleScopes: false, testEnvironments: true }, { complete: false, googleScopes: true, testEnvironments: true })
-pure def alwaysNothingStartsWithoutARegistration(s: SignIn): bool = not(isLoaded(s.plugin)) implies (s.step == Idle and s.lastAttempt == 0 and s.lastRequest == 0)
-pure def alwaysAttemptInAnAdmittedEnvironment(s: SignIn): bool = s.step != Idle implies admits(s.plugin, s.environment)
+pure def alwaysNothingStartsWithoutARegistration(s: SignIn): bool = not(isLoaded(s.plugin)) implies (s.phase == Idle and s.lastAttempt == 0 and s.lastRequest == 0)
+pure def alwaysAttemptInAnAdmittedEnvironment(s: SignIn): bool = s.phase != Idle implies admits(s.plugin, s.environment)
 pure def sometimesRegistrationRefused(s: SignIn): bool = s.plugin == RegistrationRefused
-pure def sometimesTestEnvironmentInUse(s: SignIn): bool = s.step != Idle and s.environment == Staging
+pure def sometimesTestEnvironmentInUse(s: SignIn): bool = s.phase != Idle and s.environment == Staging
 ```
 
 ### A sign-in starts only a method the readiness answer offers, and Google in the host's mode
@@ -74,20 +74,20 @@ picker; the browser path waits for its return. Starting replaces a sign-in
 that waits for the person, never one waiting for an answer.
 
 ```quint
-pure def isBusy(step: Step): bool = match step { | Sending(x) => true | Picking => true | Verifying(v) => true | Exchanging(e) => true | Connecting => true | _ => false }
-pure def firstStep(method: SignInMethod): Step = match method { | Google(g) => if (g.mode == Picker) Picking else Verifying({ stage: GoogleStage }) | _ => Sending({ fallback: 0 }) }
+pure def isBusy(phase: SignInPhase): bool = match phase { | Sending(x) => true | Picking => true | Verifying(v) => true | Exchanging(e) => true | Connecting => true | _ => false }
+pure def firstStep(method: SignInMethod): SignInPhase = match method { | Google(g) => if (g.mode == Picker) Picking else Verifying({ stage: GoogleStage }) | _ => Sending({ fallback: 0 }) }
 pure def opened(environment: Environment, method: SignInMethod, purpose: Purpose, s: SignIn): SignIn =
   { ...s, lastRequest: s.lastRequest + 1, open: s.lastRequest + 1, lastAttempt: s.lastAttempt + 1, attempt: s.lastAttempt + 1, environment: environment,
-    method: method, purpose: purpose, step: firstStep(method), serverCode: NoServerCode, google: GoogleNotRequested, credentialId: "" }
+    method: method, purpose: purpose, phase: firstStep(method), serverCode: NoServerCode, google: GoogleNotRequested, credentialId: "" }
 pure def canStart(s: SignIn, environment: Environment, method: SignInMethod, readiness: Readiness, device: DeviceFacts): bool =
-  not(isBusy(s.step)) and admits(s.plugin, environment) and offered(readiness, device, method)
+  not(isBusy(s.phase)) and admits(s.plugin, environment) and offered(readiness, device, method)
 pure def start(s: SignIn, environment: Environment, method: SignInMethod, readiness: Readiness, device: DeviceFacts): SignIn = opened(environment, method, SignInPurpose, s)
 pure def isCodeMethod(method: SignInMethod): bool = method == EmailCode or method == SmsCode
-pure def fitsMethod(step: Step, method: SignInMethod): bool = match step {
+pure def fitsMethod(phase: SignInPhase, method: SignInMethod): bool = match phase {
   | Sending(x) => isCodeMethod(method) | CodeSent => isCodeMethod(method) | Picking => method == Google({ mode: Picker })
   | Verifying(v) => if (v.stage == CodeStage) isCodeMethod(method) else if (v.stage == GoogleStage) not(isCodeMethod(method)) else true
   | _ => true }
-pure def alwaysStepsFitTheMethod(s: SignIn): bool = fitsMethod(s.step, s.method)
+pure def alwaysStepsFitTheMethod(s: SignIn): bool = fitsMethod(s.phase, s.method)
 pure val weight_start = 3
 ```
 
@@ -96,25 +96,25 @@ pure val weight_start = 3
 Each call (start, resend, verify, reauthenticate) opens the next request;
 a call while a request is open is refused (`busy`). A request is settled
 once, when the slot comes to rest, with a receipt of its request and
-attempt numbers and an outcome: the credential id and the Google report,
+attempt numbers and an verdict: the credential id and the Google report,
 or a failure code from a closed list of ten. The shell refuses malformed
 input (`invalid-input`) before the model; no receipt carries a code, a
 verifier, a key or a session.
 
 ```quint
-type Outcome = CodeOnItsWay | FactorAsked | SignedInAs({ credentialId: str, google: GoogleReport }) | AccountConfirmed
+type Verdict = CodeOnItsWay | FactorAsked | SignedInAs({ credentialId: str, google: GoogleReport }) | AccountConfirmed
   | TryAgain({ retry: FailureCode }) | Ended({ problem: FailureCode })
-type SignInEffect = Settled({ request: int, attempt: int, outcome: Outcome }) | ConnectGoogle | AbandonExchange({ abandoned: int })
+type SignInEffect = Settled({ request: int, attempt: int, verdict: Verdict }) | ConnectGoogle | AbandonExchange({ abandoned: int })
   | HandSession({ account: C::Account, accessExpiresAt: T::Millis })
 type SignInStep = { state: SignIn, out: List[SignInEffect] }
 pure def unchanged(s: SignIn): SignInStep = { state: s, out: List() }
-pure def rest(step: Step, outcome: Outcome, s: SignIn): SignInStep =
-  { state: { ...s, step: step, open: 0 }, out: List(Settled({ request: s.open, attempt: s.attempt, outcome: outcome })) }
+pure def rest(phase: SignInPhase, verdict: Verdict, s: SignIn): SignInStep =
+  { state: { ...s, phase: phase, open: 0 }, out: List(Settled({ request: s.open, attempt: s.attempt, verdict: verdict })) }
 pure def isSettled(e: SignInEffect): bool = match e { | Settled(x) => true | _ => false }
 pure def settledRequest(e: SignInEffect): int = match e { | Settled(x) => x.request | _ => 0 }
-pure def alwaysOneRequestOpenWhileWaiting(s: SignIn): bool = s.open >= 0 and s.open <= s.lastRequest and ((s.open != 0) iff isBusy(s.step))
+pure def alwaysOneRequestOpenWhileWaiting(s: SignIn): bool = s.open >= 0 and s.open <= s.lastRequest and ((s.open != 0) iff isBusy(s.phase))
 pure def alwaysAttemptsAreNumbered(s: SignIn): bool =
-  s.attempt >= 0 and s.attempt <= s.lastAttempt and ((s.attempt == 0) iff (s.step == Idle)) and fallbackOf(s.step) >= 0 and fallbackOf(s.step) < s.attempt + (if (s.attempt == 0) 1 else 0)
+  s.attempt >= 0 and s.attempt <= s.lastAttempt and ((s.attempt == 0) iff (s.phase == Idle)) and fallbackOf(s.phase) >= 0 and fallbackOf(s.phase) < s.attempt + (if (s.attempt == 0) 1 else 0)
 pure def stepOnlyTheOpenRequestIsSettled(before: SignIn, via: str, after: SignIn, out: List[SignInEffect]): bool = {
   val settled = out.select(e => isSettled(e))
   settled.length() <= 1 and ((settled.length() == 1) iff (before.open != 0 and after.open == 0)) and settled.every(e => settledRequest(e) == before.open)
@@ -141,23 +141,23 @@ pure def failureOf(checkingCode: bool, code: T::RefusalCode, reason: T::RefusalR
   else if (T::isRetryable(code)) Unavailable
   else Rejected
 pure def endedState(failure: FailureCode, s: SignIn): SignIn =
-  { ...s, step: Failed({ failure: failure }), open: 0, serverCode: if (s.serverCode == HeldCode) DroppedCode else s.serverCode,
+  { ...s, phase: Failed({ failure: failure }), open: 0, serverCode: if (s.serverCode == HeldCode) DroppedCode else s.serverCode,
     google: if (s.serverCode == HeldCode) GoogleRefused else s.google }
 pure def endWith(failure: FailureCode, s: SignIn): SignInStep =
-  { state: endedState(failure, s), out: List(Settled({ request: s.open, attempt: s.attempt, outcome: Ended({ problem: failure }) })) }
+  { state: endedState(failure, s), out: List(Settled({ request: s.open, attempt: s.attempt, verdict: Ended({ problem: failure }) })) }
 pure def checkRefused(stage: Stage, failure: FailureCode, s: SignIn): SignInStep =
   if (stage != GoogleStage and (failure == WrongCode or failure == Unavailable)) rest(if (stage == FactorStage) SecondFactor else CodeSent, TryAgain({ retry: failure }), s)
   else endWith(failure, s)
-pure def canVerify(s: SignIn, attempt: int): bool = attempt == s.attempt and (s.step == CodeSent or s.step == SecondFactor)
+pure def canVerify(s: SignIn, attempt: int): bool = attempt == s.attempt and (s.phase == CodeSent or s.phase == SecondFactor)
 pure def verify(s: SignIn, attempt: int): SignIn =
-  { ...s, lastRequest: s.lastRequest + 1, open: s.lastRequest + 1, step: Verifying({ stage: if (s.step == SecondFactor) FactorStage else CodeStage }) }
+  { ...s, lastRequest: s.lastRequest + 1, open: s.lastRequest + 1, phase: Verifying({ stage: if (s.phase == SecondFactor) FactorStage else CodeStage }) }
 pure def lawLockedOrRateLimitedIsTooManyAttempts(checkingCode: bool, reason: T::RefusalReason): bool =
   failureOf(checkingCode, T::RateLimited, reason) == TooManyAttempts and failureOf(checkingCode, T::AccessDenied, T::ChallengeLocked) == TooManyAttempts
 pure def lawServerTroubleIsNeverAWrongCode(checkingCode: bool, code: T::RefusalCode, reason: T::RefusalReason): bool =
   failureOf(checkingCode, code, reason) == WrongCode implies code == T::CredentialProofInvalid
 pure val attemptValues = Set(1, 2, 3)
 pure val weight_verify = 3
-pure def sometimesTooManyAttempts(s: SignIn): bool = s.step == Failed({ failure: TooManyAttempts })
+pure def sometimesTooManyAttempts(s: SignIn): bool = s.phase == Failed({ failure: TooManyAttempts })
 ```
 
 ### A code is sent before it is asked for, and the cloud's answer moves the attempt on
@@ -168,15 +168,15 @@ The SecondFactor step is the device half of the cloud's second-factor
 challenge; Google's picker sign-in may also ask for it.
 
 ```quint
-pure def fallbackOf(step: Step): int = match step { | Sending(x) => x.fallback | _ => 0 }
+pure def fallbackOf(phase: SignInPhase): int = match phase { | Sending(x) => x.fallback | _ => 0 }
 pure def isRefusal(reply: CloudReply): bool = match reply { | Refused(r) => true | _ => false }
 pure def authenticatedFits(reply: CloudReply): bool = match reply { | Authenticated(a) => a.userId != "" and a.credentialAttempt >= 1 and a.accessExpiresAt > 0 | _ => true }
-pure def replyFits(step: Step, reply: CloudReply): bool = match step {
+pure def replyFits(phase: SignInPhase, reply: CloudReply): bool = match phase {
   | Sending(x) => reply == Delivered or reply == Unanswered or isRefusal(reply)
   | Verifying(v) => reply != Delivered and authenticatedFits(reply)
   | _ => false }
 pure def sendFailed(fallback: int, failure: FailureCode, s: SignIn): SignInStep =
-  if (fallback >= 1) { state: { ...s, attempt: fallback, step: CodeSent, open: 0 }, out: List(Settled({ request: s.open, attempt: fallback, outcome: TryAgain({ retry: failure }) })) }
+  if (fallback >= 1) { state: { ...s, attempt: fallback, phase: CodeSent, open: 0 }, out: List(Settled({ request: s.open, attempt: fallback, verdict: TryAgain({ retry: failure }) })) }
   else endWith(failure, s)
 pure def sendAnswered(fallback: int, reply: CloudReply, s: SignIn): SignInStep = match reply {
   | Delivered => rest(CodeSent, CodeOnItsWay, s)
@@ -189,10 +189,10 @@ pure def checkAnswered(stage: Stage, reply: CloudReply, s: SignIn): SignInStep =
   | Refused(r) => checkRefused(stage, failureOf(stage != GoogleStage, r.code, r.reason), s)
   | Unanswered => checkRefused(stage, Unavailable, s)
   | Delivered => unchanged(s) }
-pure def canCloudAnswered(s: SignIn, attempt: int, reply: CloudReply): bool = attempt >= 1 and attempt == s.attempt and replyFits(s.step, reply)
+pure def canCloudAnswered(s: SignIn, attempt: int, reply: CloudReply): bool = attempt >= 1 and attempt == s.attempt and replyFits(s.phase, reply)
 pure def cloudAnswered(s: SignIn, attempt: int, reply: CloudReply): SignInStep = {
-  val step = s.step
-  match step { | Sending(x) => sendAnswered(x.fallback, reply, s) | Verifying(v) => checkAnswered(v.stage, reply, s) | _ => unchanged(s) } }
+  val phase = s.phase
+  match phase { | Sending(x) => sendAnswered(x.fallback, reply, s) | Verifying(v) => checkAnswered(v.stage, reply, s) | _ => unchanged(s) } }
 pure val replyValues = Set(Delivered, FactorRequired, Unanswered,
   Authenticated({ userId: "u1", credentialAttempt: 1, accessExpiresAt: 900000, google: GoogleConnected }),
   Authenticated({ userId: "u2", credentialAttempt: 2, accessExpiresAt: 900000, google: GoogleRefused }),
@@ -200,7 +200,7 @@ pure val replyValues = Set(Delivered, FactorRequired, Unanswered,
   Refused({ code: T::RateLimited, reason: T::NoReason }), Refused({ code: T::AuthenticationRequired, reason: T::CredentialExpired }),
   Refused({ code: T::ServiceUnavailable, reason: T::NoReason }))
 pure val weight_cloudAnswered = 5
-pure def sometimesSecondFactorAsked(s: SignIn): bool = s.step == SecondFactor
+pure def sometimesSecondFactorAsked(s: SignIn): bool = s.phase == SecondFactor
 ```
 
 ### The person is signed in only when the credential has the new key acknowledged
@@ -216,24 +216,24 @@ pure def authenticated(stage: Stage, userId: str, credentialAttempt: int, access
   val redeemed = stage == GoogleStage and s.serverCode == HeldCode
   match p {
     | ReauthPurpose(r) => if (userId == r.account.userId)
-        { state: { ...s, step: Reauthenticated, open: 0 }, out: List(Settled({ request: s.open, attempt: s.attempt, outcome: AccountConfirmed }), HandSession({ account: r.account, accessExpiresAt: accessExpiresAt })) }
+        { state: { ...s, phase: Reauthenticated, open: 0 }, out: List(Settled({ request: s.open, attempt: s.attempt, verdict: AccountConfirmed }), HandSession({ account: r.account, accessExpiresAt: accessExpiresAt })) }
       else endWith(WrongAccount, s)
-    | SignInPurpose => { state: { ...s, step: Exchanging({ credentialAttempt: credentialAttempt }), serverCode: if (redeemed) SpentCode else s.serverCode,
+    | SignInPurpose => { state: { ...s, phase: Exchanging({ credentialAttempt: credentialAttempt }), serverCode: if (redeemed) SpentCode else s.serverCode,
         google: if (redeemed) (if (google == GoogleConnected) GoogleConnected else GoogleRefused) else s.google }, out: List() }
   } }
 pure def keyNamed(key: KeyOutcome): bool = match key { | KeyAcknowledged(k) => k.credentialId != "" | KeyRefused => true }
-pure def canExchangeSettled(s: SignIn, credentialAttempt: int, key: KeyOutcome): bool = s.step == Exchanging({ credentialAttempt: credentialAttempt }) and keyNamed(key)
+pure def canExchangeSettled(s: SignIn, credentialAttempt: int, key: KeyOutcome): bool = s.phase == Exchanging({ credentialAttempt: credentialAttempt }) and keyNamed(key)
 pure def exchangeSettled(s: SignIn, credentialAttempt: int, key: KeyOutcome): SignInStep = match key {
-  | KeyAcknowledged(k) => if (s.serverCode == HeldCode) { state: { ...s, step: Connecting, serverCode: SpentCode, credentialId: k.credentialId }, out: List(ConnectGoogle) }
+  | KeyAcknowledged(k) => if (s.serverCode == HeldCode) { state: { ...s, phase: Connecting, serverCode: SpentCode, credentialId: k.credentialId }, out: List(ConnectGoogle) }
       else rest(SignedIn, SignedInAs({ credentialId: k.credentialId, google: s.google }), { ...s, credentialId: k.credentialId })
   | KeyRefused => endWith(Expired, s) }
 pure val credentialAttemptValues = Set(1, 2)
 pure val keyValues = Set(KeyAcknowledged({ credentialId: "c1" }), KeyRefused)
 pure val weight_exchangeSettled = 3
-pure def alwaysExchangeHasAnAttempt(s: SignIn): bool = { val step = s.step  match step { | Exchanging(e) => e.credentialAttempt >= 1 and s.purpose == SignInPurpose | _ => true } }
-pure def alwaysSignedInHasACredential(s: SignIn): bool = (s.step == SignedIn or s.step == Connecting) implies (s.credentialId != "" and s.purpose == SignInPurpose)
-pure def sometimesSignedInWithACode(s: SignIn): bool = s.step == SignedIn and isCodeMethod(s.method)
-pure def sometimesSignedInWithGoogleInTheBrowser(s: SignIn): bool = s.step == SignedIn and s.method == Google({ mode: Browser })
+pure def alwaysExchangeHasAnAttempt(s: SignIn): bool = { val phase = s.phase  match phase { | Exchanging(e) => e.credentialAttempt >= 1 and s.purpose == SignInPurpose | _ => true } }
+pure def alwaysSignedInHasACredential(s: SignIn): bool = (s.phase == SignedIn or s.phase == Connecting) implies (s.credentialId != "" and s.purpose == SignInPurpose)
+pure def sometimesSignedInWithACode(s: SignIn): bool = s.phase == SignedIn and isCodeMethod(s.method)
+pure def sometimesSignedInWithGoogleInTheBrowser(s: SignIn): bool = s.phase == SignedIn and s.method == Google({ mode: Browser })
 ```
 
 ## Story: Connect my Google mail and calendar with the same sign-in
@@ -252,19 +252,19 @@ the code; a refusal, an expiry or a cancel drops it.
 
 ```quint
 type PickerResult = Picked({ granted: bool }) | PickerDismissed | NoGoogleAccount
-pure def canPickerAnswered(s: SignIn, attempt: int, picked: PickerResult): bool = attempt == s.attempt and s.step == Picking
+pure def canPickerAnswered(s: SignIn, attempt: int, picked: PickerResult): bool = attempt == s.attempt and s.phase == Picking
 pure def pickerAnswered(s: SignIn, attempt: int, picked: PickerResult): SignInStep = match picked {
-  | Picked(p) => { state: { ...s, step: Verifying({ stage: GoogleStage }), serverCode: if (scopesRegistered(s.plugin) and p.granted) HeldCode else NoServerCode,
+  | Picked(p) => { state: { ...s, phase: Verifying({ stage: GoogleStage }), serverCode: if (scopesRegistered(s.plugin) and p.granted) HeldCode else NoServerCode,
       google: if (scopesRegistered(s.plugin) and not(p.granted)) GoogleRefused else GoogleNotRequested }, out: List() }
   | PickerDismissed => endWith(Cancelled, s)
   | NoGoogleAccount => endWith(GoogleUnavailable, s) }
 pure val pickedValues = Set(Picked({ granted: true }), Picked({ granted: false }), PickerDismissed, NoGoogleAccount)
 pure val weight_pickerAnswered = 3
 pure def scopedPicker(s: SignIn): bool = scopesRegistered(s.plugin) and s.method == Google({ mode: Picker }) and s.purpose == SignInPurpose
-pure def holdsCode(step: Step): bool = match step { | Verifying(v) => v.stage != CodeStage | SecondFactor => true | Exchanging(e) => true | _ => false }
+pure def holdsCode(phase: SignInPhase): bool = match phase { | Verifying(v) => v.stage != CodeStage | SecondFactor => true | Exchanging(e) => true | _ => false }
 pure def alwaysServerCodeOnlyUnderScopes(s: SignIn): bool =
-  (s.serverCode != NoServerCode implies scopedPicker(s)) and (s.serverCode == HeldCode implies (holdsCode(s.step) and s.google == GoogleNotRequested))
-    and (s.step == Connecting implies s.serverCode == SpentCode)
+  (s.serverCode != NoServerCode implies scopedPicker(s)) and (s.serverCode == HeldCode implies (holdsCode(s.phase) and s.google == GoogleNotRequested))
+    and (s.phase == Connecting implies s.serverCode == SpentCode)
 pure def alwaysGoogleReportedOnlyWhenAsked(s: SignIn): bool = s.google != GoogleNotRequested implies scopedPicker(s)
 pure def stepServerCodeRedeemedAtMostOnce(before: SignIn, via: str, after: SignIn, out: List[SignInEffect]): bool =
   (out.includes(ConnectGoogle) implies (before.serverCode == HeldCode and after.serverCode == SpentCode))
@@ -278,7 +278,7 @@ authorised by the acknowledged key. A key the cloud never acknowledged
 drops the code.
 
 ```quint
-pure def sometimesConnectingAfterSecondFactor(s: SignIn): bool = s.step == Connecting
+pure def sometimesConnectingAfterSecondFactor(s: SignIn): bool = s.phase == Connecting
 ```
 
 ### A Google refusal never fails the sign-in, and a scoped picker sign-in always says what became of Google
@@ -287,15 +287,15 @@ The receipt reports `google` as connected, refused or not requested; any
 answer to the connect call, or none, signs the person in.
 
 ```quint
-pure def canGoogleConnected(s: SignIn, attempt: int, connected: bool): bool = attempt == s.attempt and s.step == Connecting
+pure def canGoogleConnected(s: SignIn, attempt: int, connected: bool): bool = attempt == s.attempt and s.phase == Connecting
 pure def googleConnected(s: SignIn, attempt: int, connected: bool): SignInStep = {
   val report = if (connected) GoogleConnected else GoogleRefused
   rest(SignedIn, SignedInAs({ credentialId: s.credentialId, google: report }), { ...s, google: report }) }
-pure def pastPicker(step: Step): bool = match step { | Verifying(v) => true | SecondFactor => true | Exchanging(e) => true | SignedIn => true | _ => false }
-pure def alwaysScopedPickerReportsGoogle(s: SignIn): bool = (scopedPicker(s) and pastPicker(s.step)) implies (s.serverCode == HeldCode or s.google != GoogleNotRequested)
-pure def stepGoogleNeverFailsSignIn(before: SignIn, after: SignIn): bool = before.step == Connecting implies (after.step == Connecting or after.step == SignedIn)
-pure def sometimesSignedInWithGoogleConnected(s: SignIn): bool = s.step == SignedIn and s.google == GoogleConnected
-pure def sometimesSignedInThoughGoogleRefused(s: SignIn): bool = s.step == SignedIn and s.google == GoogleRefused
+pure def pastPicker(phase: SignInPhase): bool = match phase { | Verifying(v) => true | SecondFactor => true | Exchanging(e) => true | SignedIn => true | _ => false }
+pure def alwaysScopedPickerReportsGoogle(s: SignIn): bool = (scopedPicker(s) and pastPicker(s.phase)) implies (s.serverCode == HeldCode or s.google != GoogleNotRequested)
+pure def stepGoogleNeverFailsSignIn(before: SignIn, after: SignIn): bool = before.phase == Connecting implies (after.phase == Connecting or after.phase == SignedIn)
+pure def sometimesSignedInWithGoogleConnected(s: SignIn): bool = s.phase == SignedIn and s.google == GoogleConnected
+pure def sometimesSignedInThoughGoogleRefused(s: SignIn): bool = s.phase == SignedIn and s.google == GoogleRefused
 ```
 
 ## Story: Cancel or resend exactly the request I mean
@@ -311,11 +311,11 @@ the slot is verified. While a resend is on its way, a cancel naming either
 the new or the earlier attempt ends both.
 
 ```quint
-pure def canResend(s: SignIn, attempt: int): bool = attempt == s.attempt and s.step == CodeSent
+pure def canResend(s: SignIn, attempt: int): bool = attempt == s.attempt and s.phase == CodeSent
 pure def resend(s: SignIn, attempt: int): SignIn =
-  { ...s, lastRequest: s.lastRequest + 1, open: s.lastRequest + 1, lastAttempt: s.lastAttempt + 1, attempt: s.lastAttempt + 1, step: Sending({ fallback: s.attempt }) }
-pure def sometimesResendInFlight(s: SignIn): bool = fallbackOf(s.step) >= 1
-pure def sometimesEarlierCodeKeptAfterRefusedResend(s: SignIn): bool = s.step == CodeSent and s.attempt < s.lastAttempt
+  { ...s, lastRequest: s.lastRequest + 1, open: s.lastRequest + 1, lastAttempt: s.lastAttempt + 1, attempt: s.lastAttempt + 1, phase: Sending({ fallback: s.attempt }) }
+pure def sometimesResendInFlight(s: SignIn): bool = fallbackOf(s.phase) >= 1
+pure def sometimesEarlierCodeKeptAfterRefusedResend(s: SignIn): bool = s.phase == CodeSent and s.attempt < s.lastAttempt
 ```
 
 ### A cancel retires only its own attempt, abandons its key exchange, and a stale cancel changes nothing
@@ -327,19 +327,19 @@ earlier attempt, or arriving after the sign-in ended, is acknowledged and
 changes nothing. A sign-in already connecting Google cannot be cancelled.
 
 ```quint
-pure def cancellable(step: Step): bool = match step { | Idle => false | Connecting => false | SignedIn => false | Reauthenticated => false | Failed(f) => false | _ => true }
-pure def ownsCancel(s: SignIn, attempt: int): bool = cancellable(s.step) and (attempt == s.attempt or (fallbackOf(s.step) >= 1 and attempt == fallbackOf(s.step)))
-pure def abandonedOf(step: Step): int = match step { | Exchanging(e) => e.credentialAttempt | _ => 0 }
+pure def cancellable(phase: SignInPhase): bool = match phase { | Idle => false | Connecting => false | SignedIn => false | Reauthenticated => false | Failed(f) => false | _ => true }
+pure def ownsCancel(s: SignIn, attempt: int): bool = cancellable(s.phase) and (attempt == s.attempt or (fallbackOf(s.phase) >= 1 and attempt == fallbackOf(s.phase)))
+pure def abandonedOf(phase: SignInPhase): int = match phase { | Exchanging(e) => e.credentialAttempt | _ => 0 }
 pure def canCancel(s: SignIn, attempt: int): bool = attempt >= 1 and attempt <= s.lastAttempt
 pure def cancel(s: SignIn, attempt: int): SignInStep =
   if (not(ownsCancel(s, attempt))) unchanged(s)
-  else { state: { ...endedState(Cancelled, s), step: Idle, attempt: 0 },
-    out: (if (s.open != 0) List(Settled({ request: s.open, attempt: s.attempt, outcome: Ended({ problem: Cancelled }) })) else List())
-      .concat(if (abandonedOf(s.step) >= 1) List(AbandonExchange({ abandoned: abandonedOf(s.step) })) else List()) }
+  else { state: { ...endedState(Cancelled, s), phase: Idle, attempt: 0 },
+    out: (if (s.open != 0) List(Settled({ request: s.open, attempt: s.attempt, verdict: Ended({ problem: Cancelled }) })) else List())
+      .concat(if (abandonedOf(s.phase) >= 1) List(AbandonExchange({ abandoned: abandonedOf(s.phase) })) else List()) }
 pure def stepCancelRetiresTheSlotOrNothing(before: SignIn, via: str, after: SignIn): bool =
-  via == "cancel" implies (after == before or (cancellable(before.step) and after.step == Idle and after.lastAttempt == before.lastAttempt))
+  via == "cancel" implies (after == before or (cancellable(before.phase) and after.phase == Idle and after.lastAttempt == before.lastAttempt))
 pure val weight_cancel = 2
-pure def sometimesCancelled(s: SignIn): bool = s.step == Idle and s.lastAttempt >= 2
+pure def sometimesCancelled(s: SignIn): bool = s.phase == Idle and s.lastAttempt >= 2
 ```
 
 ### An attempt waiting for the person ends as expired when its deadline passes
@@ -348,9 +348,9 @@ The shell's timer names the attempt; an attempt waiting for an answer
 waits for it.
 
 ```quint
-pure def canExpire(s: SignIn, attempt: int): bool = attempt == s.attempt and (s.step == CodeSent or s.step == SecondFactor)
+pure def canExpire(s: SignIn, attempt: int): bool = attempt == s.attempt and (s.phase == CodeSent or s.phase == SecondFactor)
 pure def expire(s: SignIn, attempt: int): SignIn = endedState(Expired, s)
-pure def sometimesExpired(s: SignIn): bool = s.step == Failed({ failure: Expired })
+pure def sometimesExpired(s: SignIn): bool = s.phase == Failed({ failure: Expired })
 ```
 
 ## Story: Re-authenticate the signed-in account
@@ -372,13 +372,13 @@ pure def canReauthenticate(s: SignIn, environment: Environment, method: SignInMe
 pure def reauthenticate(s: SignIn, environment: Environment, method: SignInMethod, readiness: Readiness, device: DeviceFacts, account: C::Account): SignIn =
   opened(environment, method, ReauthPurpose({ account: account }), s)
 pure def reauthFits(s: SignIn): bool = { val p = s.purpose  match p {
-  | ReauthPurpose(r) => r.account.userId != "" and s.method != Google({ mode: Picker }) and s.step != SignedIn and s.step != Connecting
-  | SignInPurpose => s.step != Reauthenticated } }
+  | ReauthPurpose(r) => r.account.userId != "" and s.method != Google({ mode: Picker }) and s.phase != SignedIn and s.phase != Connecting
+  | SignInPurpose => s.phase != Reauthenticated } }
 pure def alwaysReauthenticationStaysWithTheAccount(s: SignIn): bool = reauthFits(s)
 pure def handsOwnAccount(e: SignInEffect, before: SignIn, after: SignIn): bool = match e {
-  | HandSession(h) => before.purpose == ReauthPurpose({ account: h.account }) and after.step == Reauthenticated | _ => true }
+  | HandSession(h) => before.purpose == ReauthPurpose({ account: h.account }) and after.phase == Reauthenticated | _ => true }
 pure def stepSessionOnlyForTheSignedInAccount(before: SignIn, via: str, after: SignIn, out: List[SignInEffect]): bool = out.every(e => handsOwnAccount(e, before, after))
 pure val weight_reauthenticate = 2
-pure def sometimesReauthenticated(s: SignIn): bool = s.step == Reauthenticated
-pure def sometimesWrongAccountRefused(s: SignIn): bool = s.step == Failed({ failure: WrongAccount })
+pure def sometimesReauthenticated(s: SignIn): bool = s.phase == Reauthenticated
+pure def sometimesWrongAccountRefused(s: SignIn): bool = s.phase == Failed({ failure: WrongAccount })
 ```

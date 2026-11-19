@@ -1,12 +1,20 @@
 // spec/agent/host/process.md, "Story: Boot from a launch and serve only when ready"; spec/agent/host/process.md, "Story: Tell the host whether the agent can answer"; spec/agent/host/process.md, "Story: Stop on a signal and exit with an honest code"
-import { chmod } from "node:fs/promises"
-import { join } from "node:path"
+module node {
+  import { chmod } from "node:fs/promises"
+  import { join } from "node:path"
+
+  export function storeOwners(state: string, mode: number): Promise<void> {
+    return chmod(join(state, ".store-v4-owners"), mode)
+  }
+}
+import { storeOwners } from node
 import { assert, it } from "@effect/vitest"
 import { healthReply } from "../gen/agent__host__process.ts"
 import { agentChild, boot, host, ready, scratch, startInProcess } from "./support/kernel.vibe"
 import { launchDocument, launchFrame, writeLaunch } from "./support/scratch.ts"
+import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
 
-const healthOf = (answer: { status: number; json?: unknown } | { kind: string }) => "status" in answer ? [answer.status, answer.json] : answer
+const healthOf = (answer: LocalAnswer | Refusal) => "status" in answer ? [answer.status, answer.json] : answer
 
 it.effect('A cloud launch with no plugins reaches Ready, echoes its epoch on health and exits 0 on SIGTERM (spec/agent/host/process.md, "A cloud launch becomes ready with no plugin loaded"; spec/agent/host/process.md, "Health is 200 only when boot is done and no stop began, and it echoes this launch\'s epoch")', effect () => {
   const booted = try boot({ cloud: true, frame: { epoch: 7 } })
@@ -32,10 +40,10 @@ it.effect('A repeated SIGTERM joins the stop already running and the process sti
 
 it.effect('After stop the phase reports the exit, health says stopping and a second stop joins with the same code (spec/agent/host/process.md, "A requested stop ends in an exit")', effect () => {
   const started = try startInProcess()
-  const before = healthReply(started.agent.phase())
+  const before = try Effect.try(() => healthReply(started.agent.phase()))
   const first = try host("stop", () => started.agent.stop())
   const second = try host("stop again", () => started.agent.stop())
-  const after = started.agent.phase()
+  const after = try Effect.try(() => started.agent.phase())
   try Effect.try(() => assert.deepStrictEqual({ before, first, second, outcome: after.outcome, health: healthReply(after) }, {
     before: { tag: "HealthReady", epoch: 1 }, first: 0, second: 0,
     outcome: { tag: "ExitedWith", code: 0 }, health: { tag: "HealthUnavailable", phase: "stopping" },
@@ -45,8 +53,7 @@ it.effect('After stop the phase reports the exit, health says stopping and a sec
 it.effect('A store whose release fails on stop exits 1 (spec/agent/host/process.md, "The exit code is the boot failure\'s code, else 0 after a clean release and 1 after a failed one")', effect () => {
   const booted = try boot({ launch: { persistMemory: true } })
   try ready(booted)
-  const owners = join(booted.state.path, ".store-v4-owners")
-  try acquireRelease(host("lock owners", () => chmod(owners, 0o500)), () => orDie(host("unlock owners", () => chmod(owners, 0o700))))
+  try acquireRelease(host("lock owners", () => storeOwners(booted.state.path, 0o500)), () => orDie(host("unlock owners", () => storeOwners(booted.state.path, 0o700))))
   try Effect.try(() => booted.child.signal("SIGTERM"))
   const exited = try host("exit", () => booted.child.exited)
   try Effect.try(() => assert.strictEqual(exited.code, 1, exited.stderr))

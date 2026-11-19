@@ -69,8 +69,12 @@ function rowOf(notice: AgentNotification): Row {
   }
 }
 
-const reply = (status: number, body: object, retryAfter?: number): Response =>
-  Response.json(body, { status, ...(retryAfter === undefined ? {} : { headers: { "retry-after": String(retryAfter) } }) })
+module node {
+  export function reply(status: number, body: object, retryAfter?: number): Response {
+    return Response.json(body, { status, ...(retryAfter === undefined ? {} : { headers: { "retry-after": String(retryAfter) } }) })
+  }
+}
+import { reply } from node
 
 function unavailable(runtime: AgentRuntime, recover: boolean): Response {
   const retryAfter = recover ? NotificationService.requestRecovery(runtime).retryAfterSeconds : startingRetrySeconds

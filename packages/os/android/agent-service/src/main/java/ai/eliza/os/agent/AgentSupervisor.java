@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent within a budget"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent within a budget"
 package ai.eliza.os.agent;
 
 import java.io.File;
@@ -13,25 +13,10 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 final class AgentSupervisor {
-  static final long READY_TIMEOUT_MS = 60_000L;
   static final long READY_POLL_MS = 1_000L;
   static final long STOP_GRACE_MS = 5_000L;
   static final long LOG_BYTES = 1024 * 1024;
   static final String AGENT_SCRIPT = "agent.mjs";
-
-  enum ExitClass { CLEAN, RELEASE_FAILED, CONFIG, CREDENTIAL, STORAGE, AGENT, CRASH }
-
-  static ExitClass exitClass(int code) {
-    return switch (code) {
-      case 0 -> ExitClass.CLEAN;
-      case 1 -> ExitClass.RELEASE_FAILED;
-      case 78 -> ExitClass.CONFIG;
-      case 77 -> ExitClass.CREDENTIAL;
-      case 74 -> ExitClass.STORAGE;
-      case 70 -> ExitClass.AGENT;
-      default -> ExitClass.CRASH;
-    };
-  }
 
   record Command(Path node, Path bundleDir, Path launchDocument, Path stateDir, Path socket, Path log) {
     ProcessBuilder builder() throws IOException {
@@ -113,7 +98,7 @@ final class AgentSupervisor {
   }
 
   private static void awaitReady(Child child, Readiness readiness, Listener listener) {
-    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(READY_TIMEOUT_MS);
+    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(AgentPolicy.READY_TIMEOUT_MS);
     while (child.alive() && !child.stopping()) {
       boolean ready = false;
       try { ready = readiness.ready(child.epoch); }

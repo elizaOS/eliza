@@ -405,6 +405,8 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
     port,
     target,
     fire,
+    startRun,
+    idle,
     start,
     stop,
     plugin: {

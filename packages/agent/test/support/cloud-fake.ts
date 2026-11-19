@@ -14,7 +14,8 @@ export type CloudReply =
   | { readonly kind: "refusal"; readonly status: number; readonly error: string; readonly retryable: boolean; readonly reason?: string; readonly retryAt?: number | string; readonly resetsAt?: number; readonly retryAfterSeconds?: number }
   | { readonly kind: "images" }
   | { readonly kind: "drop" }
-  | { readonly kind: "hang" };
+  | { readonly kind: "hang" }
+  | { readonly kind: "held"; readonly gate: Promise<void>; readonly reply: CloudReply };
 
 export interface CloudCall {
   readonly method: string;
@@ -59,6 +60,7 @@ export const rateLimited = (retryAt: number): CloudReply => refusal(429, "rate_l
 export const unavailable = (retryAfterSeconds: number): CloudReply => refusal(503, "service_unavailable", { retryable: true, retryAfterSeconds });
 export const dropped = (): CloudReply => ({ kind: "drop" });
 export const echoImages = (): CloudReply => ({ kind: "images" });
+export const held = (gate: Promise<void>, reply: CloudReply): CloudReply => ({ kind: "held", gate, reply });
 export const answerJson = (body: unknown, status = 200): RouteReply => ({ kind: "json", status, body });
 export const answerStatus = (status: number): RouteReply => ({ kind: "status", status });
 
@@ -124,6 +126,9 @@ function imageUrls(body: unknown): string[] {
 function answerCompletion(response: ServerResponse, reply: CloudReply, body: unknown, dialect: Dialect): void {
   switch (reply.kind) {
     case "hang":
+      return;
+    case "held":
+      void reply.gate.then(() => answerCompletion(response, reply.reply, body, dialect));
       return;
     case "drop":
       response.destroy();

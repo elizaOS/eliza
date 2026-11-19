@@ -15,7 +15,7 @@ import { IdempotencyKey, PlaceDetailsRequest, ReverseRequest, RoutesRequest, Tex
 type Metered = Exclude<MapsOperation, "Capabilities" | "Viewport">
 
 type Answer =
-  | { readonly kind: "json"; readonly body: unknown }
+  | { readonly kind: "json"; readonly body: Schema.Unknown }
   | { readonly kind: "tile"; readonly tile: MapsTile }
 
 interface Entered {
@@ -34,11 +34,9 @@ interface Call {
   readonly run: MapsReply<Answer>!!MapsContext
 }
 
-const KeptAnswer = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("answered"), body: Schema.Unknown }),
-  Schema.Struct({ kind: Schema.Literal("refused"), code: Schema.Literals(["NoRoute", "UnsupportedMode", "UnsupportedRegion", "ProviderInvalidResponse", "ProviderUnavailable"]) })
-])
-type KeptAnswer = typeof KeptAnswer.Type
+schema KeptAnswer =
+  | { readonly kind: "answered"; readonly body: Schema.Unknown }
+  | { readonly kind: "refused"; readonly code: "NoRoute" | "UnsupportedMode" | "UnsupportedRegion" | "ProviderInvalidResponse" | "ProviderUnavailable" }
 
 export error KeptAnswerCorrupt { holdKey: string }
 
@@ -153,17 +151,13 @@ effect function repeatKept(holdKey: string, stored: unknown, now: number): Answe
   return { kind: "json", body: answer.body }
 }
 
-effect function lostStanding(context: RouteContext, caller: Signed, ticket: HoldTicket): Refused | undefined {
-  const reauthenticated = (effect {
-    try authenticate(context.request.headers.authorization, "ServiceAccess")
-    return undefined
-  }) catch (failure) => failure instanceof Refused ? failure : refused("ServiceUnavailable", "NoReason", context.now + providerPause)
-  if (reauthenticated !== undefined) return reauthenticated
+effect function keepStanding(context: RouteContext, caller: Signed, ticket: HoldTicket) {
+  try authenticate(context.request.headers.authorization, "ServiceAccess")
   const store = try Store
   const now = try Clock.currentTimeMillis
   const lane = try store.transaction((tx) => laneFor(tx, caller.organizationId, "MeteredMaps", now))
   const laneUnchanged = lane !== "Refused" && (ticket.hold.fromAllowance === 0 || lane === "AllowanceThenCredits")
-  return mayDispatch(true, true, laneUnchanged) ? undefined : refused("BillingStateConflict")
+  if (!mayDispatch(true, true, laneUnchanged)) throw refused("BillingStateConflict")
 }
 
 effect function record(holdKey: string, status: string, answer: KeptAnswer | undefined, now: number) {
@@ -197,11 +191,10 @@ effect function metered(context: RouteContext, entered: Entered, call: Call): An
     "INSERT INTO maps_requests (hold_key, operation, request_digest, status, created_at) VALUES ($1, $2, $3, 'running', $4)",
     [ticket.key, wireOperation[call.op], digest, context.now]
   ))
-  const lost = try lostStanding(context, entered.caller, ticket)
-  if (lost !== undefined) {
+  keepStanding(context, entered.caller, ticket) catch effect (failure) => {
     try settle(ticket.key, meteringOf(settlementOf(false, { tag: "ReplyLost" }, quote, 0)))
     try record(ticket.key, "released", undefined, context.now)
-    throw lost
+    throw failure
   }
   try markDispatched(ticket.key)
   const reply = try call.run
@@ -260,7 +253,7 @@ effect function routes(context: RouteContext) {
 
 effect function tile(context: RouteContext) {
   const entered = try enter(context, "Tile")
-  const address = tileAddressOf(context.params)
+  const address = try Effect.try({ try: () => tileAddressOf(context.params), catch: () => refused("InvalidRequest") })
   if (address === undefined) throw refused("InvalidRequest")
   const fetch = entered.provider.tile
   if (fetch === undefined) throw refused("CapabilityUnavailable")

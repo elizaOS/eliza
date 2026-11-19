@@ -1,25 +1,23 @@
 # Subscriptions
 
 The organization's subscription as the payment provider holds it, and the one
-billing command that may run for the organization at a time. One
-`Subscription` is one row per organization. Every change reads the provider's
-live subscription and its latest invoice and applies them in one transaction
-through `reconcile`; the checkout (`spec/cloud/billing/checkout.md`), the
-commands (`spec/cloud/billing/subscriptionCommands.md`) and the event drain
-(`spec/cloud/billing/providerEvents.md`) all end there. Sources are develop
-`packages/cloud/shared/src/lib/services/subscription-reconciliation.ts`,
-`subscription-payment-grace.ts`, `stripe-customer-authority.ts`,
-`db/repositories/subscription-dunning-finalization.ts` and the Quint model
-`SubscriptionTerminalReceipt`. Downstream readers show the status, the period
-end, the cancel control and the pending plan from the billing snapshot, list
-invoices and open the provider's billing portal.
+billing command that may run for the organization at a time; one row per
+organization. Checkout (`spec/cloud/billing/checkout.md`), the commands
+(`spec/cloud/billing/subscriptionCommands.md`) and the event drain
+(`spec/cloud/billing/providerEvents.md`) all end in `reconcile`, which applies
+the provider's live subscription and latest invoice in one transaction.
+Sources are develop `packages/cloud/shared/src/lib/services/`
+`subscription-reconciliation.ts`, `subscription-payment-grace.ts`,
+`stripe-paid-renewal.ts`, `stripe-customer-authority.ts` and the Quint model
+`SubscriptionTerminalReceipt`. Downstream readers show the status, period
+end, cancel control and pending plan, list invoices and open the portal.
 
-Provider calls, the subscription's identity checks against the provider
-(customer, price, environment) and the answer shapes stay in the shell.
-Develop's upgrade, schedule and evidence recovery files are not ported: a
-lost reply is recovered by reading the live subscription again. On the wire
-the statuses are `pending`, `incomplete`, `active`, `dunning`, `past_due`,
-`unpaid`, `canceled` and `incomplete_expired`; no subscription is `null`.
+Provider calls, identity checks against the provider (customer, price,
+environment) and answer shapes stay in the shell. Develop's upgrade, schedule
+and evidence recovery files are not ported: a lost reply is recovered by
+reading the live subscription again. Wire statuses are `pending`,
+`incomplete`, `active`, `dunning`, `past_due`, `unpaid`, `canceled` and
+`incomplete_expired`; no subscription is `null`.
 
 ## Story: Keep my plan as the provider says it is
 
@@ -27,7 +25,7 @@ the statuses are `pending`, `incomplete`, `active`, `dunning`, `past_due`,
 > payment provider says about my subscription, so that I get what I paid for
 > and nothing I did not.
 
-### A subscription is pending, live or ended, and only an active or dunning one is entitled
+### A subscription is live or ended, and only an active or dunning one is entitled
 
 Pending is a paid checkout not yet reconciled; it gives neither paid limits
 nor an entitlement, and neither does an incomplete first payment. An ended
@@ -278,8 +276,7 @@ pure def controlOf(s: Subscription): CancelControl = {
 }
 pure def offeredKind(c: CancelControl): CommandKind = if (c.offer == UndoAction) UndoCommand else CancelCommand
 pure def alwaysControlMatchesTheCommand(s: Subscription): bool = { val c = controlOf(s)
-  (c.eligible iff (c.offer != NoAction and canClaimCommand(s, offeredKind(c), "control", c.expectedRevision)))
-  and ((c.offer == NoAction) iff not(canClaimCommand(s, CancelCommand, "control", s.revision) or canClaimCommand(s, UndoCommand, "control", s.revision) or s.status != Active or s.planned != NoPlannedChange or s.liveCommand != NoLiveCommand)) }
+  c.eligible iff (c.offer != NoAction and canClaimCommand(s, offeredKind(c), "control", c.expectedRevision)) }
 pure def sometimesUndoOffered(s: Subscription): bool = controlOf(s).offer == UndoAction and controlOf(s).eligible
 ```
 

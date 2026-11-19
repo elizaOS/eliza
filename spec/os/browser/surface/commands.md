@@ -44,9 +44,9 @@ pure def load(id: str, s: SurfaceCommands, approval: Approval, closesDialog: boo
   { ...s, controls: s.controls.listMap(c => if (forId(s, id, c)) { ...c, approval: approval, history: NotObserved, dialogOpen: c.dialogOpen and not(closesDialog) } else c) }
 pure def canNavigate(s: SurfaceCommands, realm: L::Realm, id: str, href: str, origin: str): bool = L::owns(s.host, realm, id) and href != "" and origin != ""
 pure def navigate(s: SurfaceCommands, realm: L::Realm, id: str, href: str, origin: str): SurfaceCommands = {
-  val loading = { ...s.host, surfaces: s.host.surfaces.listMap(x => if (x.id == id) { ...x, page: { href: href, result: L::PageLoading } } else x) }
-  val moved = load(id, s, NoApproval, true)
-  settle(loading, { ...moved, controls: moved.controls.listMap(c => if (forId(s, id, c)) { ...c, origin: origin } else c) })
+  val startedHost = { ...s.host, surfaces: s.host.surfaces.listMap(x => if (x.id == id) { ...x, page: { href: href, result: L::PageLoading } } else x) }
+  val cleared = load(id, s, NoApproval, true)
+  afterHostChange(startedHost, { ...cleared, controls: cleared.controls.listMap(c => if (forId(s, id, c)) { ...c, origin: origin } else c) })
 }
 pure def canReloadSurface(s: SurfaceCommands, realm: L::Realm, id: str): bool = L::owns(s.host, realm, id)
 pure def reloadSurface(s: SurfaceCommands, realm: L::Realm, id: str): SurfaceCommands = load(id, s, NoApproval, true)
@@ -83,29 +83,29 @@ pure def ready(x: L::NativeSurface): bool = x.presented and not(x.paused) and x.
 pure def mayHoldDialog(x: L::NativeSurface): bool = x.policy.answersRequests and x.presented and not(x.paused)
 pure def keepValid(c: SurfaceControl, x: L::NativeSurface): SurfaceControl =
   { ...c, history: if (ready(x)) c.history else NotObserved, dialogOpen: c.dialogOpen and mayHoldDialog(x) }
-pure def settle(host: L::SurfaceHost, s: SurfaceCommands): SurfaceCommands =
+pure def afterHostChange(host: L::SurfaceHost, s: SurfaceCommands): SurfaceCommands =
   { ...s, host: host, controls: s.controls.select(c => host.surfaces.some(x => x.gen == c.gen))
     .listMap(c => host.surfaces.foldl(c, (acc, x) => if (x.gen == c.gen) keepValid(acc, x) else acc)) }
 pure def canLearnSupport(s: SurfaceCommands): bool = L::canLearnSupport(s.host)
-pure def learnSupport(s: SurfaceCommands, isolatedRenderer: bool, multiProfile: bool): SurfaceCommands = settle(L::learnSupport(s.host, isolatedRenderer, multiProfile), s)
+pure def learnSupport(s: SurfaceCommands, isolatedRenderer: bool, multiProfile: bool): SurfaceCommands = afterHostChange(L::learnSupport(s.host, isolatedRenderer, multiProfile), s)
 pure def canReconcileOwner(s: SurfaceCommands, realm: L::Realm, desiredIds: Set[str]): bool = L::canReconcileOwner(s.host, realm, desiredIds)
-pure def reconcileOwner(s: SurfaceCommands, realm: L::Realm, desiredIds: Set[str]): SurfaceCommands = settle(L::reconcileOwner(s.host, realm, desiredIds), s)
+pure def reconcileOwner(s: SurfaceCommands, realm: L::Realm, desiredIds: Set[str]): SurfaceCommands = afterHostChange(L::reconcileOwner(s.host, realm, desiredIds), s)
 pure def canCreateSurface(s: SurfaceCommands, realm: L::Realm, id: str, policy: L::SurfacePolicy, url: str, origin: str): bool =
   L::canCreateSurface(s.host, realm, id, policy, url) and origin != ""
 pure def createSurface(s: SurfaceCommands, realm: L::Realm, id: str, policy: L::SurfacePolicy, url: str, origin: str): SurfaceCommands = {
-  val made = settle(L::createSurface(s.host, realm, id, policy, url), s)
+  val made = afterHostChange(L::createSurface(s.host, realm, id, policy, url), s)
   { ...made, controls: made.controls.append({ gen: s.host.issued + 1, origin: origin, approval: NoApproval, history: NotObserved, dialogOpen: false }) }
 }
 pure def canPresentSurface(s: SurfaceCommands, realm: L::Realm, id: str): bool = L::canPresentSurface(s.host, realm, id)
-pure def presentSurface(s: SurfaceCommands, realm: L::Realm, id: str): SurfaceCommands = settle(L::presentSurface(s.host, realm, id), s)
+pure def presentSurface(s: SurfaceCommands, realm: L::Realm, id: str): SurfaceCommands = afterHostChange(L::presentSurface(s.host, realm, id), s)
 pure def canPauseSurface(s: SurfaceCommands, realm: L::Realm, id: str): bool = L::canPauseSurface(s.host, realm, id)
-pure def pauseSurface(s: SurfaceCommands, realm: L::Realm, id: str): SurfaceCommands = settle(L::pauseSurface(s.host, realm, id), s)
+pure def pauseSurface(s: SurfaceCommands, realm: L::Realm, id: str): SurfaceCommands = afterHostChange(L::pauseSurface(s.host, realm, id), s)
 pure def canResumeSurface(s: SurfaceCommands, realm: L::Realm, id: str): bool = L::canResumeSurface(s.host, realm, id)
-pure def resumeSurface(s: SurfaceCommands, realm: L::Realm, id: str): SurfaceCommands = settle(L::resumeSurface(s.host, realm, id), s)
+pure def resumeSurface(s: SurfaceCommands, realm: L::Realm, id: str): SurfaceCommands = afterHostChange(L::resumeSurface(s.host, realm, id), s)
 pure def canDestroySurface(s: SurfaceCommands, realm: L::Realm, id: str): bool = L::canDestroySurface(s.host, realm, id)
-pure def destroySurface(s: SurfaceCommands, realm: L::Realm, id: str): SurfaceCommands = settle(L::destroySurface(s.host, realm, id), s)
+pure def destroySurface(s: SurfaceCommands, realm: L::Realm, id: str): SurfaceCommands = afterHostChange(L::destroySurface(s.host, realm, id), s)
 pure def canPageFinished(s: SurfaceCommands, id: str): bool = L::canPageFinished(s.host, id)
-pure def pageFinished(s: SurfaceCommands, id: str): SurfaceCommands = settle(L::pageFinished(s.host, id).state, s)
+pure def pageFinished(s: SurfaceCommands, id: str): SurfaceCommands = afterHostChange(L::pageFinished(s.host, id).state, s)
 pure def canDialogOpened(s: SurfaceCommands, id: str): bool = s.host.surfaces.some(x => x.id == id and mayHoldDialog(x))
 pure def dialogOpened(s: SurfaceCommands, id: str): SurfaceCommands = { ...s, controls: s.controls.listMap(c => if (forId(s, id, c)) { ...c, dialogOpen: true } else c) }
 pure def canDialogClosed(s: SurfaceCommands, id: str): bool = s.controls.some(c => forId(s, id, c) and c.dialogOpen)
@@ -210,7 +210,7 @@ pure def held(s: SurfaceCommands, id: str, origin: str): bool =
 pure def canPageNavigates(s: SurfaceCommands, id: str, href: str, origin: str): bool = L::canPageStarted(s.host, id, href) and origin != ""
 pure def pageNavigates(s: SurfaceCommands, id: str, href: str, origin: str): CommandChange =
   if (held(s, id, origin)) { state: s, out: s.host.surfaces.select(x => x.id == id).listMap(x => NavigationRequested({ id: id, realm: x.realm, href: href })) }
-  else { state: settle(L::pageStarted(s.host, id, href),
+  else { state: afterHostChange(L::pageStarted(s.host, id, href),
     { ...s, controls: s.controls.listMap(c => if (forId(s, id, c)) { ...c, origin: origin, approval: NoApproval } else c) }), out: List() }
 pure def stepAnInterceptingPageLeavesItsOriginOnlyAsApproved(before: SurfaceCommands, via: str, after: SurfaceCommands): bool =
   after.controls.every(c => before.controls.every(b => b.gen != c.gen or b.origin == c.origin or not(interceptsAt(before.host, b.gen)) or

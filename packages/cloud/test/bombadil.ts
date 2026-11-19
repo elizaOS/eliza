@@ -58,10 +58,8 @@ const payerActions = extract((state) => (isPayerPage(state) ? state.document.que
 
 const addressScrubbed = extract((state) => !isReturnToApp(state) || (state.window.location.search === "" && state.window.location.hash === ""));
 
-/** No element's text equals a value the address carried in its query or fragment. */
 export const noQueryOrFragmentValueShown = always(() => !valueShown.current);
 
-/** A ReturnToApp page offers exactly one link: the intent link to the return it is served at, in the fixture's package. */
 export const returnToAppOpensOnlyTheFixtureApp = always(() => {
   const page = returnLinks.current;
   if (page === null) return true;
@@ -75,7 +73,6 @@ export const returnToAppOpensOnlyTheFixtureApp = always(() => {
   );
 });
 
-/** A page has no form, no inline handler, and either no script or exactly the pinned inline script. */
 export const onlyThePinnedScriptRuns = always(() => {
   const page = pageCode.current;
   if (page === null) return true;
@@ -83,8 +80,6 @@ export const onlyThePinnedScriptRuns = always(() => {
   return page.forms === 0 && !page.handlers && (script === undefined || (others.length === 0 && script.src === null && script.type === null && script.text === forwardScript));
 });
 
-/** A CheckoutOutcome page offers no link, form or script. */
 export const checkoutOutcomeOffersNoAction = always(() => payerActions.current === 0);
 
-/** Once ReturnToApp has loaded, the address bar holds no query or fragment. */
 export const returnToAppScrubsTheAddress = always(() => addressScrubbed.current);
