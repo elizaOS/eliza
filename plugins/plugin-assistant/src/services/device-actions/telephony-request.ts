@@ -8,16 +8,23 @@ import { phoneDialNumber } from "./phone-dial-contract.ts";
 export type AuthoredTelephonyRequest = "call" | "text";
 
 // A dialable number as typed, or a short name ("mom", "Sam Lee").
-const TARGET = String.raw`(?:\+?[\d(][\d\s().-]{5,}\d|[\p{L}][\p{L}'’.-]*(?:\s+[\p{L}][\p{L}'’.-]*){0,2})`;
+const target = (names: "{0,2}" | "{0,2}?") =>
+  String.raw`(?:\+?[\d(][\d\s().-]{5,}\d|[\p{L}][\p{L}'’.-]*(?:\s+[\p{L}][\p{L}'’.-]*)${names})`;
+const TARGET = target("{0,2}");
 const COURTESY = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?`;
 const CALL = new RegExp(
   `${COURTESY}(?:call|ring|phone|dial)\\s+(${TARGET})(?:,?\\s+(?:please|now|for\\s+me))?[.!?]*$`,
   "iu",
 );
-const TEXT = new RegExp(
-  `${COURTESY}(?:text|sms|send\\s+(?:a\\s+)?(?:text|sms)(?:\\s+message)?\\s+to)\\s+(${TARGET})\\s*,?\\s+(?:saying|that|to\\s+say)\\s+\\S[\\s\\S]*$`,
-  "iu",
-);
+const textCommand = (recipient: string) =>
+  new RegExp(
+    `${COURTESY}(?:text|sms|send\\s+(?:a\\s+)?(?:text|sms)(?:\\s+message)?\\s+to)\\s+(${recipient})\\s*,?\\s+(?:saying|that|to\\s+say)\\s+\\S[\\s\\S]*$`,
+    "iu",
+  );
+const TEXT = textCommand(TARGET);
+// The same messages, with the name ending at the first "saying", "that" or
+// "to say": "text mom saying that I'm late" is to "mom", not "mom saying".
+const TEXT_RECIPIENT = textCommand(target("{0,2}?"));
 // Words that make "call X" something else ("call it a day", "call me",
 // "call Sam on WhatsApp") or name another service; those stay with the planner.
 // "phone dialer", "phone keypad" and "dial pad" name the keypad, not a callee.
@@ -73,4 +80,67 @@ export function authoredKeypadRequest(
     // Not one dialable number as written ("415 302 4399 and 5").
     return;
   }
+}
+
+/** The recipient a whole-message call or text command names, as the owner wrote it. */
+export type AuthoredTelephonyTarget =
+  | { kind: "number"; number: string }
+  | { kind: "contact"; query: string };
+
+/**
+ * The recipient of a whole-message call or text command ("call 415-555-0100",
+ * "text my mom saying ..."), taken from the owner's own words: a written
+ * number in its dial form, or the name they wrote. `target` is absent when
+ * the command wrote something number-shaped that is not one dialable number.
+ * The model's recipient never replaces this one.
+ */
+export function authoredTelephonyTarget(
+  text: string,
+):
+  | { request: AuthoredTelephonyRequest; target?: AuthoredTelephonyTarget }
+  | undefined {
+  const request = authoredTelephonyRequest(text);
+  if (!request) return;
+  // A greedy name also takes a trailing "please", "now" or "for me".
+  const written = (request === "call" ? CALL : TEXT_RECIPIENT)
+    .exec(text.trim())?.[1]
+    ?.replace(/[.!?]+$/u, "")
+    .replace(/(?:,?\s+(?:please|now|for\s+me))+$/iu, "")
+    .trim();
+  if (!written) return { request };
+  if (/^[+\d(]/.test(written)) {
+    try {
+      return {
+        request,
+        target: { kind: "number", number: phoneDialNumber(written) },
+      };
+    } catch {
+      return { request };
+    }
+  }
+  // "call my mom": the address book knows "mom", not "my mom".
+  const query = written.replace(/^(?:my|our)\s+/iu, "").replace(/[.!?]+$/u, "");
+  return query ? { request, target: { kind: "contact", query } } : { request };
+}
+
+/**
+ * Whether `text` (the owner's own words) writes `number` as a dial number.
+ * A keypad filled in with any other number (one taken from an email, a page or
+ * an earlier read) stays on its review card.
+ */
+export function writesDialNumber(text: string, number: string): boolean {
+  let wanted: string;
+  try {
+    wanted = phoneDialNumber(number);
+  } catch {
+    return false;
+  }
+  for (const [written] of text.matchAll(/\+?[\d(][\d ().-]*\d/g)) {
+    try {
+      if (phoneDialNumber(written) === wanted) return true;
+    } catch {
+      // Not a dial number as written; keep looking.
+    }
+  }
+  return false;
 }

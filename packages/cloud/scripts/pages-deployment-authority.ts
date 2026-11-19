@@ -19,7 +19,8 @@ export const PAGES_AUTHORITY_SCHEMA =
 export const PAGES_PUBLIC_CHECK_SCHEMA =
   "elizaos.cloudflare.pages-public-check/v1";
 export const DEPLOYED_BROWSER_SMOKE_SCHEMA =
-  "elizaos.cloud.deployed-browser-smoke/v3";
+  "elizaos.cloud.deployed-browser-smoke/v4";
+const LEGACY_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v3";
 export const DEPLOYED_RENDERER_PROOF_SCHEMA =
   "elizaos.cloud.deployed-renderer-proof/v1";
 
@@ -835,12 +836,12 @@ export function parsePagesPublicCheck(value, expectedPhase) {
   return parsed;
 }
 
-export function parseDeployedBrowserSmoke(value) {
+export function parseDeployedBrowserSmoke(
+  value,
+  expectedSchema = DEPLOYED_BROWSER_SMOKE_SCHEMA,
+) {
   const smoke = requireExactKeys(value, REMOTE_SMOKE_KEYS, "remoteSmoke");
-  if (
-    smoke.schema !== DEPLOYED_BROWSER_SMOKE_SCHEMA ||
-    smoke.outcome !== "success"
-  ) {
+  if (smoke.schema !== expectedSchema || smoke.outcome !== "success") {
     fail("remote browser smoke did not close successfully");
   }
   const correlation = requireExactKeys(
@@ -857,7 +858,7 @@ export function parseDeployedBrowserSmoke(value) {
     fail("remoteSmoke.referenceBinding.runtime must be dedicated");
   }
   return {
-    schema: DEPLOYED_BROWSER_SMOKE_SCHEMA,
+    schema: expectedSchema,
     sourceSha: requireString(smoke.sourceSha, "remoteSmoke.sourceSha", SHA40),
     rendererOrigin: requireHttpsUrl(
       smoke.rendererOrigin,
@@ -941,17 +942,23 @@ function parseLatency(value) {
   };
 }
 
-export function createDeployedRendererProof({
-  authority: authorityValue,
-  preflight: preflightValue,
-  remoteSmoke: remoteSmokeValue,
-  latency: latencyValue,
-  continuity: continuityValue,
-  postflight: postflightValue,
-}) {
+function assembleDeployedRendererProof(
+  {
+    authority: authorityValue,
+    preflight: preflightValue,
+    remoteSmoke: remoteSmokeValue,
+    latency: latencyValue,
+    continuity: continuityValue,
+    postflight: postflightValue,
+  },
+  expectedSchema,
+) {
   const authority = parsePagesDeploymentAuthority(authorityValue);
   const preflight = parsePagesPublicCheck(preflightValue, "preflight");
-  const remoteSmoke = parseDeployedBrowserSmoke(remoteSmokeValue);
+  const remoteSmoke = parseDeployedBrowserSmoke(
+    remoteSmokeValue,
+    expectedSchema,
+  );
   const latency = parseLatency(latencyValue);
   const continuity = parseCloudLiveContinuityEvidence(continuityValue);
   const postflight = parsePagesPublicCheck(postflightValue, "postflight");
@@ -968,10 +975,15 @@ export function createDeployedRendererProof({
   }
   if (
     preflight.renderer.origin !== authority.aliasUrl ||
-    remoteSmoke.rendererOrigin !== authority.aliasUrl ||
+    remoteSmoke.rendererOrigin !==
+      (expectedSchema === LEGACY_BROWSER_SMOKE_SCHEMA
+        ? authority.aliasUrl
+        : "https://cloud-staging.eliza.app") ||
     postflight.renderer.origin !== authority.aliasUrl
   ) {
-    fail("renderer observations do not match the deployment alias");
+    fail(
+      "renderer observations do not match the deployment alias and browser origin",
+    );
   }
   if (
     preflight.renderer.buildId !== remoteSmoke.rendererBuildId ||
@@ -1009,6 +1021,10 @@ export function createDeployedRendererProof({
   };
 }
 
+export function createDeployedRendererProof(value) {
+  return assembleDeployedRendererProof(value, DEPLOYED_BROWSER_SMOKE_SCHEMA);
+}
+
 export function parseDeployedRendererProof(value) {
   const proof = requireExactKeys(value, PROOF_KEYS, "deployed proof");
   if (
@@ -1017,7 +1033,12 @@ export function parseDeployedRendererProof(value) {
   ) {
     fail("deployed proof identity is invalid");
   }
-  const rebuilt = createDeployedRendererProof(proof);
+  const rebuilt = assembleDeployedRendererProof(
+    proof,
+    proof.remoteSmoke?.schema === LEGACY_BROWSER_SMOKE_SCHEMA
+      ? LEGACY_BROWSER_SMOKE_SCHEMA
+      : DEPLOYED_BROWSER_SMOKE_SCHEMA,
+  );
   const workflow = parseWorkflow(proof.workflow, "deployed proof.workflow");
   if (
     workflow.runId !== rebuilt.authority.workflow.runId ||

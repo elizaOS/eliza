@@ -127,6 +127,7 @@
         "shared phone and reminder-read parity refuses a telephony result that contradicts the reviewed operation or its status",
         "shared phone and reminder-read parity uploads a settled telephony refusal with its typed result",
         "shared phone and reminder-read parity places a reply draft without a review only for the requesting message",
+        "shared phone and reminder-read parity opens the keypad without a review only for the requesting message and never calls",
         "shared phone and reminder-read parity leaves a contact SMS with an unknown outcome unresolved and never sends it again",
         "shared phone and reminder-read parity retains uncertain contact writes across receipt recovery without repeating or guessing",
         "shared phone and reminder-read parity does not reconcile a lost call result from the owner's guess",

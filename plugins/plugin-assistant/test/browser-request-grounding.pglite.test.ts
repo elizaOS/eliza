@@ -98,11 +98,15 @@ async function fixture() {
   )!;
   runtime.registerAction(proposeDeviceAction);
   runtime.registerAction(browser);
+  for (const tool of deviceActionTools)
+    if (tool.name.startsWith("DEVICE_BROWSER_") && tool !== browser)
+      runtime.registerAction(tool);
   const enqueue = vi.spyOn(PgApprovalQueue.prototype, "enqueueTransactional");
   const decide = vi.spyOn(DeviceActionService.prototype, "decide");
   async function run(
     request: string,
-    specialized = false,
+    /** true: DEVICE_BROWSER_OPEN; a name: that typed device tool. */
+    specialized: boolean | string = false,
     direct = false,
     destination = "https://example.com/dashboard",
     custody = "current",
@@ -186,7 +190,11 @@ async function fixture() {
         const action = runtime.actions.find(
           (a) =>
             a.name ===
-            (specialized ? "DEVICE_BROWSER_OPEN" : "PROPOSE_DEVICE_ACTION"),
+            (typeof specialized === "string"
+              ? specialized
+              : specialized
+                ? "DEVICE_BROWSER_OPEN"
+                : "PROPOSE_DEVICE_ACTION"),
         )!;
         const options = {
           parameters: {
@@ -427,6 +435,154 @@ it.each([false, true])(
     }
   },
 );
+// v612: "open the phone dialer" in direct-request mode opened the keypad, but
+// the reply was the review text: the bound keypad proposal was not answered
+// as the requested handoff it is. An empty or a typed-number keypad opens
+// with no review text; ask-first keeps the review.
+it.each([
+  [false, "open the phone dialer", { type: "phone_keypad" }],
+  [true, "open the phone dialer", { type: "phone_keypad" }],
+  [
+    true,
+    "open the dialer and type 415 302 4399",
+    { type: "phone_keypad", number: "4153024399" },
+  ],
+] as const)(
+  "answers a requested keypad without review text only in direct request mode=%s (%s)",
+  async (direct, request, operation) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, { capabilities: ["phone.keypad.v1"] });
+      const result = await f.run(
+        request,
+        false,
+        direct,
+        undefined,
+        "current",
+        operation,
+      );
+      const rows = (
+        await f.pg.query<{ payload: Record<string, unknown> }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows).toHaveLength(1);
+      expect(result).toMatchObject(
+        direct
+          ? {
+              success: true,
+              userFacingText:
+                "number" in operation
+                  ? `Opening the keypad with ${operation.number}.`
+                  : "Opening the keypad.",
+              data: {
+                state: "pending",
+                executed: false,
+                awaitingDeviceExecution: true,
+                directRequest: true,
+                approvalRequired: false,
+              },
+            }
+          : {
+              success: true,
+              userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+              data: { awaitingUserInput: true, approvalRequired: true },
+            },
+      );
+      expect(result.userFacingText).not.toBe(
+        direct ? DEVICE_APPROVAL_REVIEW_TEXT : "Opening the keypad.",
+      );
+      if (direct) {
+        expect(rows[0].payload.requestMessageId).toEqual(expect.any(String));
+        expect(rows[0].payload.operation).toEqual(operation);
+      } else expect(rows[0].payload).not.toHaveProperty("requestMessageId");
+      expect(isRequestedDeviceHandoff(result as PlannerToolResult)).toBe(
+        direct,
+      );
+      expect(isPersistedDeviceApprovalPause(result as PlannerToolResult)).toBe(
+        !direct,
+      );
+      expect(f.decide).not.toHaveBeenCalled();
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+// A number the owner did not write (the model took it from an email) never
+// reaches the phone: telephony-target-grounding refuses it before a proposal is
+// persisted, so there is neither "Opening the keypad with ..." nor a review.
+it("refuses a keypad number the owner did not write instead of opening it", async () => {
+  const f = await fixture();
+  try {
+    Object.assign(f.credential, { capabilities: ["phone.keypad.v1"] });
+    const result = await f.run(
+      "open the dialer for the number in the landlord's email",
+      false,
+      true,
+      undefined,
+      "current",
+      { type: "phone_keypad", number: "4155550100" },
+    );
+    const rows = (
+      await f.pg.query<{ payload: Record<string, unknown> }>(
+        "SELECT payload FROM approval_requests",
+      )
+    ).rows;
+    expect(rows).toHaveLength(0);
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        code: "DEVICE_TELEPHONY_TARGET_NOT_REQUESTED",
+        proposalCreated: false,
+        executed: false,
+      },
+    });
+    expect(result.userFacingText).not.toMatch(/Opening the keypad/);
+    expect(isRequestedDeviceHandoff(result as PlannerToolResult)).toBe(false);
+  } finally {
+    await f.pg.close();
+  }
+});
+// The same v612 dialer request with the chat host's document envelope around
+// the owner's words: it still binds and opens without review text.
+it.each(["augmented", "augmented-other"] as const)(
+  "binds a requested keypad through a host-bound document envelope only to the owner's words (%s)",
+  async (custody) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, { capabilities: ["phone.keypad.v1"] });
+      const result = await f.run(
+        "open the phone dialer",
+        false,
+        true,
+        undefined,
+        custody,
+        { type: "phone_keypad" },
+      );
+      const rows = (
+        await f.pg.query<{ payload: Record<string, unknown> }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows).toHaveLength(1);
+      if (custody === "augmented") {
+        expect(result).toMatchObject({
+          userFacingText: "Opening the keypad.",
+          data: { directRequest: true, approvalRequired: false },
+        });
+        expect(rows[0].payload.requestMessageId).toEqual(expect.any(String));
+      } else {
+        expect(result).toMatchObject({
+          userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+          data: { approvalRequired: true },
+        });
+        expect(rows[0].payload).not.toHaveProperty("requestMessageId");
+      }
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
 // v610: "take a photo" matched a bundled FAQ line, so the planner's copy of
 // the message was the document envelope. The owner's words still bind it.
 it.each(["augmented", "augmented-other"] as const)(
@@ -609,22 +765,22 @@ it.each([
     }
   },
 );
-it("accepts a fresh durably bound voice user message, never a lifecycle message", async () => {
-  const f = await fixture();
-  try {
-    const result = await f.run(
-      "open example.com/dashboard",
-      true,
-      false,
-      undefined,
-      "voice",
-    );
-    expect(result).toMatchObject({ success: true });
-    expect(f.enqueue).toHaveBeenCalledTimes(1);
-  } finally {
-    await f.pg.close();
-  }
-});
+it.each([
+  ["open example.com/dashboard", undefined],
+  ["Open alphacompute dot ai in the browser.", "https://alphacompute.ai/"],
+])(
+  "accepts the browser address from a bound voice turn: %s",
+  async (request, url) => {
+    const f = await fixture();
+    try {
+      const result = await f.run(request, true, false, url, "voice");
+      expect(result).toMatchObject({ success: true });
+      expect(f.enqueue).toHaveBeenCalledTimes(1);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
 it("does not treat a matching hostname as authority for a different path", async () => {
   const f = await fixture();
   try {
@@ -957,6 +1113,146 @@ it.each([
     }
   },
 );
+// v612 (Pixel, Browser in front): "switch to the example.com tab" was routed
+// to the browser context, where the tab operation was not offered, and the
+// agent said it could only go back, forward or reload. Each Browser control is
+// now its own browser-context tool over the same proposal path.
+it.each([
+  [
+    "DEVICE_BROWSER_TAB_SWITCH",
+    { type: "browser_tab_switch", target: "example.com" },
+    "browser.tabs.v1",
+    "Doing that in Browser.",
+    "switch to the example.com tab",
+  ],
+  [
+    "DEVICE_BROWSER_TAB_NEW",
+    { type: "browser_tab_new", private: true },
+    "browser.tabs.v1",
+    "Doing that in Browser.",
+    "open a new private tab",
+  ],
+  [
+    "DEVICE_BROWSER_SEARCH",
+    { type: "browser_search", query: "cats" },
+    "browser.search.v1",
+    "Searching the web for “cats”.",
+    "search for cats",
+  ],
+  [
+    "DEVICE_BROWSER_PAGE_SEARCH",
+    { type: "browser_find", text: "domain" },
+    "browser.find.v1",
+    "Doing that in Browser.",
+    "find the word domain on this page",
+  ],
+  [
+    "DEVICE_BROWSER_TAB_CLOSE",
+    { type: "browser_tab_close", target: "bbc" },
+    "browser.tabs.v1",
+    false,
+    "close the bbc tab",
+  ],
+] as const)(
+  "queues the Browser control through its own tool %s",
+  async (tool, operation, capability, handoff, request) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, { capabilities: [capability] });
+      const result = await f.run(
+        request,
+        tool,
+        true,
+        undefined,
+        "current",
+        operation,
+      );
+      expect(result).toMatchObject(
+        handoff
+          ? {
+              success: true,
+              userFacingText: handoff,
+              data: { directRequest: true, approvalRequired: false },
+            }
+          : {
+              success: true,
+              userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+              data: { awaitingUserInput: true, approvalRequired: true },
+            },
+      );
+      const [proposal] = await f.service.list(f.credential);
+      expect(proposal?.payload.operation).toEqual(operation);
+      // A tool carries only its own operation.
+      const other = await f.run(request, tool, true, undefined, "current", {
+        type: "browser_navigate",
+        url: "https://example.com/",
+      });
+      expect(other).toMatchObject({
+        success: false,
+        data: { code: "DEVICE_OPERATION_SCOPE" },
+      });
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it.each([
+  // A tab word or find text the owner did not type is always reviewed.
+  [
+    "DEVICE_BROWSER_TAB_SWITCH",
+    { type: "browser_tab_switch", target: "bbc" },
+    "browser.tabs.v1",
+    "switch to the example.com tab",
+  ],
+  [
+    "DEVICE_BROWSER_PAGE_SEARCH",
+    { type: "browser_find", text: "password" },
+    "browser.find.v1",
+    "find the word domain on this page",
+  ],
+] as const)(
+  "reviews %s when the model's words are not the owner's",
+  async (tool, operation, capability, request) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, { capabilities: [capability] });
+      const result = await f.run(
+        request,
+        tool,
+        true,
+        undefined,
+        "current",
+        operation,
+      );
+      expect(result).toMatchObject({
+        success: true,
+        userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+        data: { awaitingUserInput: true, approvalRequired: true },
+      });
+      expect(result).not.toMatchObject({ data: { directRequest: true } });
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it("offers a Browser control tool only to a phone that negotiated it", async () => {
+  const f = await fixture();
+  try {
+    const tool = f.runtime.actions.find(
+      (a) => a.name === "DEVICE_BROWSER_TAB_SWITCH",
+    )!;
+    const validate = (capabilities: string[]) => {
+      Object.assign(f.credential, { capabilities });
+      return withOwnerDeviceActionTurn(f.runtime, f.credential, () =>
+        tool.validate!(f.runtime, {} as Memory),
+      );
+    };
+    expect(await validate(["browser.tabs.v1"])).toBe(true);
+    expect(await validate(["browser.history.v1"])).toBe(false);
+  } finally {
+    await f.pg.close();
+  }
+});
 it.each([
   // [request, model operation, capabilities, stored operation, reply]
   // The owner's v610 turn (Pixel): the model still proposed an empty
