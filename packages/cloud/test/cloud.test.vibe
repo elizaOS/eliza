@@ -513,7 +513,10 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
     const caller = try signedCaller(cloud, "speaker")
     try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 1_000_000, requestKey: "speech-funding" }))
     const tts = (body: unknown) => cloud.call("/api/v1/voice/tts", { json: body, headers: caller.headers })
-    const stt = (fields: Readonly<Record<string, string>>, headers = caller.headers) => cloud.call("/api/v1/voice/stt", { form: recordingForm(fields), headers })
+    const stt = effect (fields: Readonly<Record<string, string>>) => {
+      const form = try Effect.try(() => recordingForm(fields))
+      return try cloud.call("/api/v1/voice/stt", { form, headers: caller.headers })
+    }
 
     const plain = try tts({ text: "Hello there", previousText: "Earlier words.", nextText: "Later words.", speed: 1.1 })
     const timed = try tts({ text: "Hi you", previousText: "Before", withTimestamps: true })

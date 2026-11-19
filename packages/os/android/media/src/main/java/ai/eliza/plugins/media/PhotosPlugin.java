@@ -295,6 +295,16 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
     call.resolve();
   }
 
+  // spec/os/android/media/editCopy.md, "A removed recorded video copy settles only by an explicit review"
+  @PluginMethod
+  public void reviewRemovedVideoCopy(PluginCall call) {
+    try {
+      videoCopies().reviewRemovedCopy(call.getString("operationId"), call);
+    } catch (Exception unavailable) {
+      call.reject("Video copy review could not be confirmed");
+    }
+  }
+
   @PluginMethod
   public void list(PluginCall call) {
     submitRead(call, () -> {
