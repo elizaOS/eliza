@@ -4,10 +4,10 @@ import java.util.*;
 
 /** Pure validation shared by the Android adapter and synthetic boundary tests. */
 public class PasswordAutofillPolicy {
-  public static final String VERSION = "ai.alphacompute.autofill.version";
-  public static final String ORIGIN = "ai.alphacompute.autofill.origin";
-  public static final String TOP_ORIGIN = "ai.alphacompute.autofill.topOrigin";
-  public static final String FIELD_ORIGIN = "ai.alphacompute.autofill.fieldOrigin";
+  public static final String VERSION = "ai.eliza.autofill.version";
+  public static final String ORIGIN = "ai.eliza.autofill.origin";
+  public static final String TOP_ORIGIN = "ai.eliza.autofill.topOrigin";
+  public static final String FIELD_ORIGIN = "ai.eliza.autofill.fieldOrigin";
   public record Field(String origin, String scheme, String domain, List<String> hints, boolean visible, boolean focused) {}
   public static String validate(int version, String origin, String topOrigin, List<Field> fields) throws Exception {
     if (version != 1 || fields.size() != 2) throw new IllegalArgumentException("Unsupported form");
