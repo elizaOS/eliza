@@ -479,7 +479,8 @@ export class NotesService extends Service {
       entry.deletedAt === receipt.deletedAt;
     const pending = await this.readTrashRecordingCleanup(signal);
     if (!pending.some(matches)) return false;
-    if (!(await this.recordingCleanupVerifier()?.(receipt, signal)))
+    // Only a literal true proves the erase; a host service is typed loosely at runtime.
+    if ((await this.recordingCleanupVerifier()?.(receipt, signal)) !== true)
       throw new ElizaError("The device has not confirmed recording erase.", {
         code: "NOTES_TRASH_RECORDING_UNAVAILABLE",
         severity: "ephemeral",

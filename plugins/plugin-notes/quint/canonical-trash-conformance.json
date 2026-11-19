@@ -104,6 +104,7 @@
         "canonical Notes Trash retention keeps the durable receipt truthful after cancellation during mismatched readback",
         "host-registered recording cleanup verifier retires a receipt only after the registered host service confirms it",
         "host-registered recording cleanup verifier keeps the receipt when no host verifier is registered or it lacks the method",
+        "host-registered recording cleanup verifier keeps the receipt when a registered host answers with anything but true",
         "host-registered recording cleanup verifier prefers the constructor verifier over a registered host service"
       ]
     },

@@ -878,6 +878,17 @@ describe("host-registered recording cleanup verifier", () => {
     }
   });
 
+  it("keeps the receipt when a registered host answers with anything but true", async () => {
+    for (const answer of ["false", 1, {}]) {
+      const host = { verifyRecordingCleanup: async () => answer };
+      const { service, receipt } = await hostService(() => host);
+      await expect(
+        service.acknowledgeTrashRecordingCleanup(receipt),
+      ).rejects.toMatchObject({ code: "NOTES_TRASH_RECORDING_UNAVAILABLE" });
+      expect(await service.readTrashRecordingCleanup()).toEqual([receipt]);
+    }
+  });
+
   it("prefers the constructor verifier over a registered host service", async () => {
     const host: NotesRecordingCleanupVerifier = {
       verifyRecordingCleanup: async () => true,
