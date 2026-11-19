@@ -51,6 +51,10 @@
  * visible, editable local change, so it may run directly for the owner's own
  * request.
  */
+import { completeSpokenPhoneNumber } from "./spoken-phone-number.ts";
+
+export { spokenPhoneNumbers } from "./spoken-phone-number.ts";
+
 import {
   PHONE_DIAL_NUMBER,
   type PhoneDialTarget,
@@ -933,6 +937,8 @@ export function requestedSmsDraftRecipient(
     )
   )
     return { kind: "unaddressed" };
+  const spoken = completeSpokenPhoneNumber(query);
+  if (spoken) return { kind: "number", number: spoken };
   if (/[,&;]|\b(?:and|or|but|not|them|him|her)\b/iu.test(query))
     return { kind: "ambiguous" };
   const number = query.replace(/[ ().-]/g, "");

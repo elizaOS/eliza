@@ -501,6 +501,10 @@ async function checkDeliveredSenderDraft(threadId?: string) {
         "Draft a text to +14155550124 saying call +14155550199.",
         { kind: "number", number: "+14155550124" },
       ],
+      [
+        "Draft a text to four one five, five five five, oh one double oh saying call +14155550199.",
+        { kind: "number", number: "4155550100" },
+      ],
     ] as const) {
       const selected = await propose(text, proposed);
       expect(selected.request.payload.operation).toEqual({

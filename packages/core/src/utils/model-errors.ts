@@ -199,6 +199,10 @@ const NETWORK_ERROR_CODES = new Set([
 	"UND_ERR_HEADERS_TIMEOUT",
 	"UND_ERR_BODY_TIMEOUT",
 	"UND_ERR_SOCKET",
+	// Bun's fetch reports the same transport failures under its own names.
+	"ConnectionRefused",
+	"ConnectionClosed",
+	"FailedToOpenSocket",
 ]);
 
 // Walk the bounded error graph a provider failure can arrive wrapped in: the
@@ -368,6 +372,21 @@ export function modelProviderErrorDetail(
 		...(responseBodyExcerpt !== undefined ? { responseBodyExcerpt } : {}),
 		...(url !== undefined ? { url } : {}),
 	};
+}
+
+/**
+ * True when a model call never got an HTTP response because the connection to
+ * the provider failed (reset, refused, timed out, unreachable). Structural:
+ * network error codes through cause and retry envelopes, never message text.
+ * A response that did arrive (any HTTP status) is not a connection failure.
+ */
+export function isModelConnectionError(error: unknown): boolean {
+	if (modelProviderErrorStatus(error) !== undefined) return false;
+	for (const node of modelErrorChain(error)) {
+		const code = (node as { code?: unknown }).code;
+		if (typeof code === "string" && NETWORK_ERROR_CODES.has(code)) return true;
+	}
+	return false;
 }
 
 /**
