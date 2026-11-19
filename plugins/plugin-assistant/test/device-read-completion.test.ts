@@ -344,6 +344,62 @@ async function fixture(
     apply,
   };
 }
+type Fixture = Awaited<ReturnType<typeof fixture>>;
+/** A new durable owner message in the fixture's room whose turn proposes `operation`. */
+function proposeFromOwnerText(
+  f: Fixture,
+  credential: Fixture["credential"],
+  text: string,
+  operation: DeviceOperation,
+) {
+  const scope = JSON.stringify([
+    f.runtime.agentId,
+    f.original.roomId,
+    credential.subjectUserId,
+  ]);
+  return withOwnerDeviceActionTurn(f.runtime, credential, async () => {
+    const nonce = randomUUID();
+    const message: Memory = {
+      ...f.original,
+      id: conversationClientUserMemoryId(scope, nonce),
+      createdAt: Date.now(),
+      content: {
+        text,
+        source: "client_chat",
+        channelType: "DM",
+        metadata: { agentActionMode: "direct-request-v1" },
+        chatIdempotency: {
+          version: 1,
+          scope,
+          clientMessageId: nonce,
+          fingerprint: "e".repeat(64),
+        },
+      },
+    };
+    await f.runtime.createMemory(message, "messages");
+    setDeviceReadReplyConversation(
+      f.runtime,
+      f.conversationId,
+      f.original.roomId,
+    );
+    setDeviceReadReplyContext(f.runtime, message, {
+      id: message.id!,
+      events: [
+        {
+          id: "owner",
+          type: "message",
+          message: { id: message.id!, role: "user", content: text },
+        },
+      ],
+    });
+    return f.service.proposeWithOutcome(
+      credential,
+      operation,
+      randomUUID(),
+      "Owner request",
+    );
+  });
+}
 async function checkDeliveredSenderDraft(threadId?: string) {
   const f = await fixture();
   try {
@@ -357,54 +413,8 @@ async function checkDeliveredSenderDraft(threadId?: string) {
         "sms.compose.v2",
       ],
     };
-    const scope = JSON.stringify([
-      f.runtime.agentId,
-      f.original.roomId,
-      credential.subjectUserId,
-    ]);
-    const propose = async (text: string, operation: DeviceOperation) =>
-      withOwnerDeviceActionTurn(f.runtime, credential, async () => {
-        const nonce = randomUUID();
-        const message: Memory = {
-          ...f.original,
-          id: conversationClientUserMemoryId(scope, nonce),
-          createdAt: Date.now(),
-          content: {
-            text,
-            source: "client_chat",
-            channelType: "DM",
-            metadata: { agentActionMode: "direct-request-v1" },
-            chatIdempotency: {
-              version: 1,
-              scope,
-              clientMessageId: nonce,
-              fingerprint: "e".repeat(64),
-            },
-          },
-        };
-        await f.runtime.createMemory(message, "messages");
-        setDeviceReadReplyConversation(
-          f.runtime,
-          f.conversationId,
-          f.original.roomId,
-        );
-        setDeviceReadReplyContext(f.runtime, message, {
-          id: message.id!,
-          events: [
-            {
-              id: "owner",
-              type: "message",
-              message: { id: message.id!, role: "user", content: text },
-            },
-          ],
-        });
-        return f.service.proposeWithOutcome(
-          credential,
-          operation,
-          randomUUID(),
-          "Owner request",
-        );
-      });
+    const propose = (text: string, operation: DeviceOperation) =>
+      proposeFromOwnerText(f, credential, text, operation);
     let preceding: Memory | undefined;
     f.runtime.getMemories = vi.fn(async () => (preceding ? [preceding] : []));
     const suffix = await propose(
@@ -539,6 +549,50 @@ it.each(["thread:42", undefined])(
   "binds a follow-up Messages draft to the preceding delivered SMS sender on this phone and in this room (thread %s)",
   checkDeliveredSenderDraft,
 );
+it("keeps an open-thread reply and names a contact by its search text on a phone without targets", async () => {
+  const f = await fixture();
+  try {
+    const targets = {
+      ...f.credential,
+      capabilities: [
+        ...f.credential.capabilities,
+        "sms.latest-sender.v1",
+        "sms.latest-sender.v2",
+        "sms.compose.v1",
+        "sms.compose.v2",
+      ],
+    };
+    // "them" in a reply into the open thread is that thread, never a lookup.
+    const reply = await proposeFromOwnerText(
+      f,
+      targets,
+      "Reply to them saying I'm on my way",
+      { type: "sms_reply_selected", body: "I'm on my way" },
+    );
+    expect(reply.request.payload.operation).toEqual({
+      type: "sms_reply_selected",
+      body: "I'm on my way",
+    });
+    // A phone without sms.compose.v2 names the contact by search text.
+    const v1 = {
+      ...f.credential,
+      capabilities: [...f.credential.capabilities, "sms.compose.v1"],
+    };
+    const contact = await proposeFromOwnerText(
+      f,
+      v1,
+      "Draft a text to Sam saying hi",
+      { type: "sms_compose", query: "Sam", body: "hi" },
+    );
+    expect(contact.request.payload.operation).toEqual({
+      type: "sms_compose",
+      query: "Sam",
+      body: "hi",
+    });
+  } finally {
+    await f.pg.close();
+  }
+});
 it("additively upgrades existing approvals; fresh original read is bound privately, legacy and replay never rebind", async () => {
   const f = await fixture();
   try {

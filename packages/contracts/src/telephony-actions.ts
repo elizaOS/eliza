@@ -897,6 +897,9 @@ export function isSmsLatestSender(value: {
 
 const DRAFT_COMMAND =
   /^(?:(?:please|can you|could you|would you)\s+)?(?:(?:draft|write|prepare|compose)\s+(?:me\s+)?(?:(?:a|the)\s+)?(?:(?:short|quick|brief)\s+)?(?:sms|text(?: message)?|message|reply)|reply)\b\s*/i;
+/** "this conversation", "the thread", "Sam's text": the thread a reply belongs to, never a recipient's name. */
+const DRAFT_THREAD_OBJECT =
+  /^(?:it|this|that)$|^(?:this|that|the|my)\s+(?:(?:last|latest|newest|most recent|current|open|selected)\s+)?(?:conversation|thread|chat|message|text|sms)\b|['’]s\s+(?:(?:last|latest|newest|most recent)\s+)?(?:conversation|thread|chat|message|text|sms)\b/iu;
 
 /** The recipient belongs to the addressing clause. A phone number in the SMS body never names its destination. */
 export function requestedSmsDraftRecipient(
@@ -931,12 +934,7 @@ export function requestedSmsDraftRecipient(
     1,
   );
   const query = raw.trim().replace(/,$/u, "");
-  if (
-    /^(?:this|the (?:current|selected|open)) (?:conversation|thread|chat)$/iu.test(
-      query,
-    )
-  )
-    return { kind: "unaddressed" };
+  if (DRAFT_THREAD_OBJECT.test(query)) return { kind: "unaddressed" };
   const spoken = completeSpokenPhoneNumber(query);
   if (spoken) return { kind: "number", number: spoken };
   if (/[,&;]|\b(?:and|or|but|not|them|him|her)\b/iu.test(query))
@@ -948,13 +946,21 @@ export function requestedSmsDraftRecipient(
   return { kind: "ambiguous" };
 }
 
+/**
+ * A question about who sent the newest incoming SMS or its number. A named
+ * sender ("the last message from Sam") asks for that message, and another
+ * service ("on Slack", "in Gmail") is not this phone's SMS.
+ */
 export function isSmsSenderLookup(text: string): boolean {
   const request = text.trim();
   return (
     /^(?:(?:please|can you|could you)\s+)?(?:who\b|what(?:['’]s| is| was)\b|show\b|look up\b|find\b|check\b|tell me\b)/i.test(
       request,
     ) &&
-    /\b(?:who|whose|sender|number|from)\b/i.test(request) &&
+    /\b(?:who|whose|sender|number)\b/i.test(request) &&
+    !/\b(?:from|on|in|via|through|using|over)\s+(?!(?:this|my|the)\s+phone\b)[\p{L}\p{N}+(]/iu.test(
+      request,
+    ) &&
     /\b(?:last|latest|newest|most recent)\s+(?:(?:incoming|received|unread)\s+)?(?:sms|text|message)\b|\b(?:who (?:just |last )?(?:texted|messaged) me|(?:texted|messaged) me (?:last|most recently))\b/i.test(
       request,
     )

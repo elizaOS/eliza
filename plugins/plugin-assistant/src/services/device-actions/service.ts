@@ -2524,11 +2524,9 @@ export class DeviceActionService {
     const browserRequest =
       validated.type === "browser_navigate" ||
       validated.type === "browser_search";
-    const selectedTelephony = selectedTelephonyView(validated) !== undefined;
     const smsDraftOrRead = [
       "sms_compose",
       "sms_send",
-      "sms_reply_selected",
       "sms_latest_sender",
     ].includes(validated.type);
     // A model-planned call, dial, text or keypad prefill names its recipient
@@ -2548,7 +2546,7 @@ export class DeviceActionService {
     const requestOrigin = await freshRequestedMessageId(this.runtime, c, {
       allowReviewed:
         browserRequest ||
-        selectedTelephony ||
+        selectedTelephonyView(validated) !== undefined ||
         telephonyTarget ||
         smsDraftOrRead,
       // A tab word and find text are compared with the owner's words too.
@@ -2576,26 +2574,31 @@ export class DeviceActionService {
         ? { type: "sms_latest_sender", includeAddress: true }
         : { type: "sms_latest_sender" };
     }
+    // A reply into the open thread (sms_reply_selected) names no recipient and
+    // stays bound to that thread. Only a new message takes the recipient the
+    // owner addressed; with none named, Alpha asks which person.
     if (
       requestOrigin &&
-      (validated.type === "sms_compose" ||
-        validated.type === "sms_send" ||
-        validated.type === "sms_reply_selected")
+      (validated.type === "sms_compose" || validated.type === "sms_send")
     ) {
       const recipient = requestedSmsDraftRecipient(requestOrigin.requestText);
-      if (
-        recipient?.kind === "ambiguous" ||
-        (recipient?.kind === "unaddressed" &&
-          validated.type !== "sms_reply_selected")
-      )
+      if (recipient?.kind === "ambiguous" || recipient?.kind === "unaddressed")
         throw new DeviceActionError(
           "Which person should receive this draft? Give one recipient.",
         );
-      if (recipient && recipient.kind !== "unaddressed") {
-        if (
-          !c.capabilities?.includes(SMS_COMPOSE_TARGET_CAPABILITY) ||
-          !c.capabilities.includes(SMS_COMPOSE_CAPABILITY)
-        )
+      const targets =
+        c.capabilities?.includes(SMS_COMPOSE_CAPABILITY) === true &&
+        c.capabilities.includes(SMS_COMPOSE_TARGET_CAPABILITY);
+      if (recipient?.kind === "contact" && !targets) {
+        // A phone without targets names the contact by its search text.
+        if (c.capabilities?.includes(SMS_COMPOSE_CAPABILITY))
+          validated = validateDeviceOperation({
+            type: "sms_compose",
+            query: recipient.query,
+            body: validated.body,
+          });
+      } else if (recipient && recipient.kind !== "unaddressed") {
+        if (!targets)
           throw new DeviceActionError(
             "An addressed Messages draft is unavailable on this phone.",
           );
@@ -2606,7 +2609,7 @@ export class DeviceActionService {
           const original = getDeviceActionTurn()?.replyContext?.message;
           if (
             !original ||
-            !c.capabilities.includes(SMS_SENDER_ADDRESS_CAPABILITY)
+            !c.capabilities?.includes(SMS_SENDER_ADDRESS_CAPABILITY)
           )
             throw new DeviceActionError(
               "No current SMS sender. Ask who last texted you or give one recipient.",
@@ -2631,6 +2634,9 @@ export class DeviceActionService {
         }
       }
     }
+    // The final operation decides whether the proposal stays bound to the
+    // owner's open item.
+    const selectedTelephony = selectedTelephonyView(validated) !== undefined;
     // Reviewed Photos and Files proposals retain their foreground owner
     // even without a direct-request message binding.
     const assertCurrent =

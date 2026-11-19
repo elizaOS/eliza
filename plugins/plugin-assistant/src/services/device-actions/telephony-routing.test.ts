@@ -167,6 +167,9 @@ describe("a whole-message call or text reaches the phone's own operation", () =>
     "how do I text Sam saying hi?",
     "don't call mom",
     "who should I call",
+    // A message from a named sender, or another service's, is not a sender lookup.
+    "What was the last message from Sam?",
+    "Check the latest message from Sam on Slack",
   ])("leaves %s to the planner", (request) => {
     expect(authoredTelephonyRequest(request)).toBeUndefined();
   });

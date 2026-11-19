@@ -11,6 +11,7 @@ import {
   contactWriteReceiptOutcome,
   contactWriteResultText,
   directSmsRequest,
+  isSmsSenderLookup,
   isTelephonyAction,
   MESSAGES_READ_CAPABILITY,
   MESSAGES_READ_MAX,
@@ -915,6 +916,34 @@ test("address lookup and a reply draft use the complete negotiated address", () 
     "Who texted me last? Don't show the full number.",
   ]) {
     assert.ok(!directSmsRequest(operation, request));
+  }
+  // The open or named thread a reply belongs to, or a recipient after the
+  // body, is not an addressing clause.
+  for (const request of [
+    "Draft a reply to this conversation",
+    "Reply to Sam's text saying I'm on my way",
+    "Reply to the thread with Ada saying hi",
+    "Draft a text saying I'm late to Sam",
+  ]) {
+    assert.equal(
+      requestedSmsDraftRecipient(request)?.kind,
+      "unaddressed",
+      request,
+    );
+    assert.ok(!directSmsRequest(bound, request));
+  }
+  // Only a question about the sender reads one. A message from a named sender
+  // or another service's inbox is the planner's.
+  assert.ok(isSmsSenderLookup("Who was my latest text from?"));
+  for (const request of [
+    "What was the last message from Sam?",
+    "Show me the latest text from Mom",
+    "Who sent the latest message from Sam?",
+    "Check the latest message from Sam on Slack",
+    "Who sent my latest message in Gmail?",
+  ]) {
+    assert.ok(!isSmsSenderLookup(request), request);
+    assert.equal(smsSenderDisclosure(request), "last-four");
   }
 });
 test("each operation type has one capability and one validator", () => {
