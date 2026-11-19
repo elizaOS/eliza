@@ -1,5 +1,7 @@
 // spec/agent/plugins/bundle.md, "A bundle is built only when every listed plugin and the product plugin ship as packages and the load smoke loaded them"; spec/agent/plugins/bundle.md, "A bundle is built only when its load smoke registered each action once under a non-empty name, each promoted action under a listed top-level umbrella"
 import { spawn } from "node:child_process"
+import { once } from "node:events"
+import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { assert, it } from "@effect/vitest"
 import type { AgentPlugin } from "../src/host/module.vibe"
@@ -22,16 +24,28 @@ effect function smoked(listed: readonly AgentPlugin[], product: AgentPlugin) {
   return try smokeBoot({ bundled, plugins: listed.map(({ name }) => name), productPlugin: product.name, stateDirectory: state.path })
 }
 
-function smokeChild(state: string): Promise<{ code: number | null; stdout: string }> {
+interface SmokeLine {
+  readonly loaded: readonly string[]
+  readonly registered: readonly { readonly name: string; readonly umbrella?: string }[]
+}
+
+async function bundleSmoke(root: string, state: string): Promise<{ code: number | null; stdout: string }> {
+  const fixture = join(agentDir, "test/support/product-plugin/index.ts")
+  for (const [name, exported] of [[umbrellaProductPlugin.name, "umbrellaProductPlugin"], [productPlugin.name, "productPlugin"]]) {
+    const directory = join(root, "node_modules", name)
+    await mkdir(directory, { recursive: true })
+    await writeFile(join(directory, "package.json"), JSON.stringify({ name, version: "0.0.0", type: "module", exports: "./index.mjs" }))
+    await writeFile(join(directory, "index.mjs"), `export { ${exported} as default } from ${JSON.stringify(fixture)}\n`)
+  }
+  const entry = join(root, "entry.mjs")
+  await writeFile(entry, bundleEntrySource({ plugins: [umbrellaProductPlugin.name], productPlugin: productPlugin.name, cli: join(agentDir, "src/cli.vibe") }))
   const child = spawn(process.execPath,
-    ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", join(agentDir, "src/bin.vibe"), "smoke", "--state", state],
-    { cwd: agentDir, env: { ...process.env, HOME: state, TMPDIR: state, VIBELANG_CACHE_DIR: join(agentDir, ".cache", "vibelang") }, stdio: ["ignore", "pipe", "inherit"], timeout: 120_000 })
+    ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", entry, "smoke", "--state", state],
+    { cwd: agentDir, env: { ...process.env, VIBELANG_CACHE_DIR: join(agentDir, ".cache", "vibelang") }, stdio: ["ignore", "pipe", "inherit"], timeout: 150_000 })
   let stdout = ""
   child.stdout.setEncoding("utf8").on("data", (data: string) => { stdout += data })
-  return new Promise((done, fail) => {
-    child.once("error", fail)
-    child.once("close", (code) => done({ code, stdout }))
-  })
+  const [code] = await once(child, "close") as [number | null]
+  return { code, stdout }
 }
 
 it.effect('The load smoke loads the listed and product plugins and lists each action with its umbrella (spec/agent/plugins/bundle.md, "A bundle is built only when its load smoke registered each action once under a non-empty name, each promoted action under a listed top-level umbrella")', effect () => {
@@ -55,32 +69,19 @@ it.effect('A product plugin that fails init fails the load smoke (spec/agent/plu
   try Effect.try(() => assert.deepStrictEqual({ tag: failed._tag, phase: "phase" in failed ? failed.phase : undefined }, { tag: "AgentBootFailed", phase: "Agent" }))
 }, 120_000)
 
-it.effect('The smoke command prints one JSON line of the registry and exits 0 (spec/agent/plugins/bundle.md, "A bundle is built only when its load smoke registered each action once under a non-empty name, each promoted action under a listed top-level umbrella")', effect () => {
+it.effect('The bundle entry runs the smoke command over the plugin packages and prints one JSON line of the registry (spec/agent/plugins/bundle.md, "A bundle is built only when every listed plugin and the product plugin ship as packages and the load smoke loaded them")', effect () => {
+  const root = try scratch("smoke-entry")
   const state = try scratch("smoke-cli")
-  const ran = try host("smoke command", () => smokeChild(state.path))
+  const ran = try host("smoke command", () => bundleSmoke(root.path, state.path))
   const lines = ran.stdout.split("\n").filter((line) => line !== "")
-  const report = try Effect.try(() => JSON.parse(lines[0] ?? "") as { loaded: string[]; registered: { name: string }[] })
+  const report = try Effect.try(() => JSON.parse(lines[0] ?? "") as SmokeLine)
   try Effect.try(() => {
-    assert.strictEqual(ran.code, 0)
-    assert.strictEqual(lines.length, 1)
-    assert.includeMembers(report.registered.map(({ name }) => name), ["REPLY", "IGNORE", "NONE"])
+    assert.deepStrictEqual({ code: ran.code, lines: lines.length }, { code: 0, lines: 1 })
+    assert.includeMembers([...report.loaded], [umbrellaProductPlugin.name, productPlugin.name])
+    assert.includeDeepMembers([...report.registered], [
+      { name: productActionName },
+      { name: umbrellaActionName },
+      { name: umbrellaSubactionName, umbrella: umbrellaActionName },
+    ])
   })
 }, 180_000)
-
-it('The bundle entry imports each plugin package and the product, then runs the agent CLI with them (spec/agent/plugins/bundle.md, "A bundle is built only when every listed plugin and the product plugin ship as packages and the load smoke loaded them")', () => {
-  const source = bundleEntrySource({ plugins: ["@scope/listed"], productPlugin: "product-fixture", cli: "/agent/cli.js" })
-  assert.strictEqual(source, [
-    'import { runAgentCli } from "/agent/cli.js"',
-    'import * as plugin0 from "@scope/listed"',
-    'import * as plugin1 from "product-fixture"',
-    "",
-    "runAgentCli({",
-    "  bundled: [",
-    '    { packageName: "@scope/listed", plugin: plugin0.default ?? plugin0.plugin },',
-    '    { packageName: "product-fixture", plugin: plugin1.default ?? plugin1.plugin },',
-    "  ],",
-    '  productPlugin: "product-fixture",',
-    "})",
-    "",
-  ].join("\n"))
-})

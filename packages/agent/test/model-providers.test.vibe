@@ -64,7 +64,7 @@ it.effect('An outage or a dropped connection is retried once and the answer clea
   const second = try host("drop then answer", () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Two." }))
   const third = try refusalOf(runtime, { prompt: "Three." })
   assert.deepStrictEqual([first, second], ["after outage", "after drop"])
-  assert.strictEqual(third?.status, 503)
+  assert.strictEqual(JSON.stringify([first, second, String(third), cloud.calls.length]), "x")
   assert.strictEqual(completions(cloud), 6)
   const view = try binding.read()
   assert.strictEqual(view.accountState, "provider_issue")

@@ -12,3 +12,7 @@ export type {
   CaptureEvents, CapturePort, ClockPort, EndOfTurnPort, HeardAnswer, HeardPort, RecognizerPort, SpeakerEvents, SpeakerPort, TurnPort,
   VoiceReply, VoiceSessionPorts, VoiceTurn, VoiceUi,
 } from "./ports.vibe"
+export {
+  CLOUD_FIRST_SPEECH_CHARS, CLOUD_SPEECH_REQUEST_CHARS, CloudSpeechFailed, CloudSpeechStopped, CloudSpeechWordTooLong,
+  planCloudSpeechChunks, speakCloudSpeechChunks, type CloudSpeechOptions, type SpeakCloudPiece,
+} from "./speech-pieces.vibe"

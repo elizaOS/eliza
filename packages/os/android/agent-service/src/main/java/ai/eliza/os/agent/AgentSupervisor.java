@@ -4,9 +4,12 @@ package ai.eliza.os.agent;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
@@ -74,7 +77,7 @@ final class AgentSupervisor {
     Process process = builder.start();
     Child child;
     try {
-      child = new Child(epoch, process.pid(), process);
+      child = new Child(epoch, pidOf(command.socket()), process);
       journal.spawned(epoch, child.pid);
       try (OutputStream input = process.getOutputStream()) { input.write(frame); }
     } catch (IOException | RuntimeException failed) {
@@ -110,6 +113,29 @@ final class AgentSupervisor {
       try { TimeUnit.NANOSECONDS.sleep(Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(READY_POLL_MS))); }
       catch (InterruptedException interrupted) { return; }
     }
+  }
+
+  private static long pidOf(Path socket) throws IOException {
+    String parent = Integer.toString(android.os.Process.myPid());
+    String target = socket.toAbsolutePath().toString();
+    try (DirectoryStream<Path> entries = Files.newDirectoryStream(Paths.get("/proc"), entry -> entry.getFileName().toString().matches("[0-9]+"))) {
+      for (Path entry : entries) {
+        String stat, cmdline;
+        try {
+          stat = new String(Files.readAllBytes(entry.resolve("stat")), StandardCharsets.US_ASCII);
+          int end = stat.lastIndexOf(')');
+          String[] fields = end < 0 ? new String[0] : stat.substring(end + 2).split(" ");
+          if (fields.length < 2 || !fields[1].equals(parent)) continue;
+          cmdline = new String(Files.readAllBytes(entry.resolve("cmdline")), StandardCharsets.UTF_8);
+        } catch (IOException gone) {
+          continue;
+        }
+        List<String> argv = List.of(cmdline.split("\0"));
+        int flag = argv.indexOf("--socket");
+        if (flag >= 0 && flag + 1 < argv.size() && argv.get(flag + 1).equals(target)) return Long.parseLong(entry.getFileName().toString());
+      }
+    }
+    throw new IOException("The started agent child was not found among this app's processes");
   }
 
   private static void rotate(Path log) throws IOException {

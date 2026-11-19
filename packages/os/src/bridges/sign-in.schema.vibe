@@ -28,27 +28,27 @@ export const FailureCode = Schema.Literals([
   "storage",
 ])
 
-const CodeSent = Schema.Struct({ step: Schema.Literal("code-sent"), requestId: RequestId, attemptId: AttemptId, expiresAt: Instant, resendAt: Instant })
-const FactorAsked = Schema.Struct({ step: Schema.Literal("second-factor"), requestId: RequestId, attemptId: AttemptId, methods: Schema.NonEmptyArray(Factor), expiresAt: Instant })
-export const SignedIn = Schema.Struct({ step: Schema.Literal("signed-in"), requestId: RequestId, attemptId: AttemptId, credentialId: CredentialId, google: Google })
-export const Failed = Schema.Struct({ step: Schema.Literal("failed"), requestId: RequestId, attemptId: AttemptId, google: Google, failure: FailureCode })
+schema CodeSent { step: "code-sent"; requestId: RequestId; attemptId: AttemptId; expiresAt: Instant; resendAt: Instant }
+schema FactorAsked { step: "second-factor"; requestId: RequestId; attemptId: AttemptId; methods: Factor[]; expiresAt: Instant }
+export schema SignedIn { step: "signed-in"; requestId: RequestId; attemptId: AttemptId; credentialId: CredentialId; google: Google }
+export schema Failed { step: "failed"; requestId: RequestId; attemptId: AttemptId; google: Google; failure: FailureCode }
 
 export const Progress = Schema.Union([CodeSent, FactorAsked, SignedIn])
 export const Settled = Schema.Union([SignedIn, Failed])
 
-export const Kept = Schema.Struct({ kept: Schema.Literal(true), requestId: RequestId, step: OpenStep })
-export const Later = Schema.Struct({ resendAt: Instant })
-export const Rejected = Schema.Struct({ code: FailureCode, data: Schema.optionalKey(Schema.Unknown) })
+export schema Kept { kept: true; requestId: RequestId; step: OpenStep }
+export schema Later { resendAt: Instant }
+export schema Rejected { code: FailureCode; data?: Schema.Unknown }
 
-export const FactorCodeSent = Schema.Struct({ requestId: RequestId })
-export const Cancelled = Schema.Struct({ cancelled: Schema.Boolean })
+export schema FactorCodeSent { requestId: RequestId }
+export schema Cancelled { cancelled: boolean }
 
 export const Account = Schema.Union([
   Schema.Struct({ signedIn: Schema.Literal(false) }),
   Schema.Struct({ signedIn: Schema.Literal(true), userId: Text, organizationId: Text, credentialId: CredentialId, keyExpiresAt: Instant }),
 ])
 
-export const SignedOut = Schema.Struct({ account: Account })
+export schema SignedOut { account: Account }
 
 const ReadinessFields = {
   environment: Text.pipe(Schema.brand("EnvironmentName")),

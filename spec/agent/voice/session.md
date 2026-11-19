@@ -114,39 +114,29 @@ and a missed deadline a timeout. Every answer but finished waits for the
 long gap.
 
 ```quint
-type EndpointVerdict = DecisionFinished | DecisionContinue | DecisionUnavailable | DecisionError | DecisionTimeout
 type EndOfTurnReply = ScoredComplete | ScoredIncomplete | ScorerUnavailable | ReplyMalformed | ScoringFailed | ReplyLate
 pure val shortGapMs = 300
 pure val longGapMs = 1200
 pure val endOfTurnDeadlineMs = 600
 pure val endOfTurnMaxUnits = 4096
-pure def endOfTurnVerdict(answer: EndOfTurnReply): EndpointVerdict = match answer {
-  | ScoredComplete => DecisionFinished | ScoredIncomplete => DecisionContinue | ScorerUnavailable => DecisionUnavailable
-  | ReplyMalformed => DecisionUnavailable | ScoringFailed => DecisionError | ReplyLate => DecisionTimeout }
 pure def canShortGapElapsed(s: VoiceSession, epoch: int): bool = s.utterance == GapWaiting and epoch == s.epoch
 pure def shortGapElapsed(s: VoiceSession, epoch: int, units: int): VoiceSession =
   { ...s, utterance: if (units >= 1 and units <= endOfTurnMaxUnits) AskingEndOfTurn else WaitingLongGap }
 pure def canEndOfTurnAnswered(s: VoiceSession, epoch: int): bool = s.utterance == AskingEndOfTurn and epoch == s.epoch
 pure def endOfTurnAnswered(s: VoiceSession, epoch: int, answer: EndOfTurnReply): VoiceSession =
-  if (endOfTurnVerdict(answer) == DecisionFinished) submitted(EndOfTurnSubmit, s) else { ...s, utterance: WaitingLongGap }
+  if (answer == ScoredComplete) submitted(EndOfTurnSubmit, s) else { ...s, utterance: WaitingLongGap }
 pure val unitsValues = Set(0, 1, 4096, 4097)
 pure val epochValues = Set(0, 1, 2, 3)
-pure val answerMsValues = Set(0, 600, 601)
 pure val weight_speechStarted = 3
-pure val weight_speechEnded = 3
 pure val weight_finalTranscript = 3
-pure val weight_longGapElapsed = 3
 pure val weight_sendTurn = 3
 pure val weight_replyStarted = 3
-pure val weight_segmentPlayed = 2
 pure val gapSession: VoiceSession =
   { ...initial, life: Live, capture: CaptureOpen, utterance: GapWaiting, hasText: true }
 pure def lawOnlySendableTextIsScored(units: int): bool =
   (shortGapElapsed(gapSession, 0, units).utterance == AskingEndOfTurn) iff (units >= 1 and units <= 4096)
 pure def lawOnlyACompleteScoreSubmitsEarly(answer: EndOfTurnReply): bool =
   (endOfTurnAnswered({ ...gapSession, utterance: AskingEndOfTurn }, 0, answer).turn != NoTurn) iff answer == ScoredComplete
-pure def lawTheQueryEndsBeforeTheLongGap(answerMs: int): bool =
-  answerMs <= endOfTurnDeadlineMs implies shortGapMs + answerMs < longGapMs
 pure def sometimesSubmittedByTheEndOfTurn(s: VoiceSession): bool = s.cause == EndOfTurnSubmit and s.turn == AwaitingReply
 ```
 

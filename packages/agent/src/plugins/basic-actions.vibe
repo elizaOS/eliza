@@ -180,7 +180,7 @@ async function evaluate(options: unknown): Promise<ActionResult> {
   return { success: true, text: `${expression} = ${value}${exact ? "" : " (floating point, 15 significant digits)"}`, data: { expression, value, exact } }
 }
 
-export const calculate_action: Action = {
+export const calculateAction: Action = {
   name: calculateDecl.name,
   description: "Exact arithmetic: evaluates a numeric expression (+ - * / % ^, parentheses, decimals, unary minus) deterministically. Use it for any multi-digit arithmetic instead of computing it yourself; integer results are exact.",
   similes: ["MATH", "COMPUTE", "ARITHMETIC", "MULTIPLY", "DIVIDE"],
@@ -199,7 +199,7 @@ export const basicActionsModule: ModuleFactory<never> = effect () => {
     plugin: {
       name: basicActionsModuleName,
       description: "The agent's own basic actions: exact arithmetic with no I/O",
-      actions: [calculate_action],
+      actions: [calculateAction],
     },
   } satisfies AgentModule
 }

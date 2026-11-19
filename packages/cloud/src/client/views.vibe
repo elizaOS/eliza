@@ -1,0 +1,382 @@
+// spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"; spec/cloud/billing/grantCodes.md, "Story: Redeem a membership code once"
+import type { AccountStatus } from "../../gen/cloud__identity__accounts.ts"
+import type { PlanKey } from "../../gen/cloud__billing__plans.ts"
+import type { SubscriptionStatus } from "../../gen/cloud__billing__subscriptions.ts"
+import type { FundingLane } from "../../gen/cloud__shared__metering.ts"
+import type { PlanAdmission, PlanSource, PlanView, SnapshotView } from "../../gen/cloud__client.ts"
+import { accountUsable as usableView, planAdmission, planFromSnapshot as planOfView } from "../../gen/cloud__client.effect.vibe"
+import { millisPerMinute, millisPerSecond, type Micros, type Millis } from "../../gen/cloud__shared__types.effect.vibe"
+import { clockSkewSeconds } from "./entitlement.vibe"
+import { CloudError, type CloudFailure } from "./errors.vibe"
+
+export type { PlanAdmission, PlanView }
+export { planAdmission }
+
+const millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const micros = Schema.Int
+const revision = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128))
+
+const WirePlanKey = Schema.Literals(["free", "plus_monthly", "pro_monthly"])
+const PaidWirePlanKey = Schema.Literals(["plus_monthly", "pro_monthly"])
+const WirePlanSource = Schema.Literals(["subscription", "grant", "free"])
+const WireAccountStatus = Schema.Literals(["active", "deleting", "erased"])
+const WireSubscriptionStatus = Schema.Literals(["pending", "incomplete", "active", "dunning", "past_due", "unpaid", "canceled", "incomplete_expired"])
+const WireControlAction = Schema.Literals(["cancel", "undo", "none"])
+const WireAllowanceState = Schema.Literals(["open", "expired", "closed", "clawed_back"])
+const WireFundingLane = Schema.Literals(["allowanceThenCredits", "creditsOnly", "refused"])
+
+export type WirePlanKey = typeof WirePlanKey.Type
+export type PaidWirePlanKey = typeof PaidWirePlanKey.Type
+export type WirePlanSource = typeof WirePlanSource.Type
+export type WireAccountStatus = typeof WireAccountStatus.Type
+export type WireSubscriptionStatus = typeof WireSubscriptionStatus.Type
+export type WireControlAction = typeof WireControlAction.Type
+export type WireAllowanceState = typeof WireAllowanceState.Type
+export type WireFundingLane = typeof WireFundingLane.Type
+
+const SnapshotPlan = Schema.Struct({ key: WirePlanKey, source: WirePlanSource, effectiveUntil: Schema.NullOr(millis) })
+
+const SnapshotSubscription = Schema.Struct({
+  id,
+  planKey: WirePlanKey,
+  status: WireSubscriptionStatus,
+  periodStart: millis,
+  periodEnd: millis,
+  cancelAtPeriodEnd: Schema.Boolean,
+  pendingPlanKey: Schema.NullOr(WirePlanKey),
+  dunningEndsAt: Schema.NullOr(millis),
+  revision,
+  control: Schema.Struct({ action: WireControlAction, eligible: Schema.Boolean, expectedSubscriptionRevision: revision })
+})
+
+const SnapshotGrant = Schema.Struct({
+  id,
+  planKey: PaidWirePlanKey,
+  family: id,
+  effectiveFrom: millis,
+  effectiveUntil: Schema.NullOr(millis),
+  revoked: Schema.Boolean
+})
+
+const SnapshotAllowance = Schema.Struct({
+  state: WireAllowanceState,
+  granted: micros,
+  adjustment: micros,
+  available: micros,
+  reserved: micros,
+  settled: micros,
+  expired: micros,
+  clawedBack: micros,
+  periodStart: millis,
+  resetsAt: millis
+})
+
+const BillingSnapshot = Schema.Struct({
+  schemaVersion: Schema.Literal(3),
+  observedAt: millis,
+  account: Schema.Struct({ status: WireAccountStatus }),
+  balance: Schema.Struct({ usdMicros: micros, revision }),
+  plan: SnapshotPlan,
+  subscription: Schema.NullOr(SnapshotSubscription),
+  grant: Schema.NullOr(SnapshotGrant),
+  allowance: Schema.NullOr(SnapshotAllowance),
+  funding: Schema.Struct({ inference: WireFundingLane, speech: WireFundingLane, maps: WireFundingLane })
+})
+
+export type SnapshotPlan = typeof SnapshotPlan.Type
+export type SnapshotSubscription = typeof SnapshotSubscription.Type
+export type SnapshotGrant = typeof SnapshotGrant.Type
+export type SnapshotAllowance = typeof SnapshotAllowance.Type
+export type BillingSnapshot = typeof BillingSnapshot.Type
+
+export type PlanChangeKind = "upgrade" | "downgrade"
+export type LifecycleAction = "cancel" | "undo"
+export type CommandKind = PlanChangeKind | LifecycleAction
+
+const SubscriptionCommand = Schema.Struct({
+  commandId: id,
+  kind: Schema.Literals(["cancel", "undo", "upgrade", "downgrade"]),
+  subscriptionId: id,
+  status: Schema.Literals(["dispatched", "unknown", "awaiting_payment", "succeeded", "rejected"]),
+  expectedRevision: revision,
+  resultRevision: Schema.NullOr(revision),
+  createdAt: millis
+})
+
+const CommandsPage = Schema.Struct({ observedAt: millis, items: Schema.Array(SubscriptionCommand), nextCursor: Schema.NullOr(Schema.String) })
+
+const cents = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+
+const PlanChangeReview = Schema.Struct({
+  quoteId: id,
+  review: Schema.Struct({
+    kind: Schema.Literals(["upgrade_estimate", "downgrade_estimate"]),
+    targetPlanKey: PaidWirePlanKey,
+    dueNow: Schema.Struct({ amountDueCents: cents }),
+    recurringEstimate: Schema.Struct({ amountDueCents: cents }),
+    effectiveAt: millis,
+    expiresAt: millis
+  })
+})
+
+const PaymentContinuation = Schema.Struct({ url: Schema.String })
+
+const CheckoutStart = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("open"), commandId: id, checkoutUrl: Schema.String, sessionId: id, expiresAt: millis }),
+  Schema.Struct({
+    status: Schema.Literal("open"),
+    commandId: id,
+    uiMode: Schema.Literal("embedded"),
+    sessionId: id,
+    clientSecret: Schema.String,
+    publishableKey: Schema.String,
+    amountDueCents: cents,
+    currency: Schema.Literal("usd"),
+    interval: Schema.Literal("month"),
+    expiresAt: millis
+  }),
+  Schema.Struct({ status: Schema.Literals(["completed", "expired", "stale_intent"]), commandId: id })
+])
+
+export type SubscriptionCommand = typeof SubscriptionCommand.Type
+export type CommandStatus = SubscriptionCommand["status"]
+export type CommandsPage = typeof CommandsPage.Type
+export type PlanChangeReview = typeof PlanChangeReview.Type
+export type PaymentContinuation = typeof PaymentContinuation.Type
+export type CheckoutPresentation = "mobile" | "embedded" | "shared"
+export type CheckoutStart = typeof CheckoutStart.Type
+
+export interface CheckoutStartRequest {
+  readonly planKey: PaidWirePlanKey
+  readonly idempotencyKey: string
+  readonly presentation: CheckoutPresentation
+}
+
+export interface PlanChangeReviewRequest {
+  readonly subscriptionId: string
+  readonly expectedRevision: number
+  readonly targetPlanKey: PaidWirePlanKey
+}
+
+export interface PlanChangeConfirmRequest {
+  readonly quoteId: string
+  readonly idempotencyKey: string
+}
+
+export interface LifecycleRequest {
+  readonly subscriptionId: string
+  readonly expectedRevision: number
+  readonly idempotencyKey: string
+}
+
+export type Answer = "snapshot" | "redeem" | "command" | "commands" | "review" | "payment" | "checkout"
+
+function unreadable(answer: Answer, issue: unknown): CloudError {
+  return new CloudError({ failure: { tag: "CloudProviderIssue" }, cause: { answer, issue } })
+}
+
+function decoder<S extends Schema.Top>(schema: S, answer: Answer): (body: unknown) => S["Type"] {
+  const decode = Schema.decodeUnknownExit(schema as Schema.Codec<S["Type"], unknown>)
+  return (body) => {
+    const read = decode(body)
+    if (read._tag === "Failure") throw unreadable(answer, read.cause)
+    return read.value
+  }
+}
+
+const readData = decoder(Schema.Struct({ data: BillingSnapshot }), "snapshot")
+
+export function snapshotFromResponse(body: unknown): BillingSnapshot {
+  return readData(body).data
+}
+
+export const commandFromResponse = decoder(SubscriptionCommand, "command")
+export const commandsFromResponse = decoder(CommandsPage, "commands")
+export const reviewFromResponse = decoder(PlanChangeReview, "review")
+export const paymentFromResponse = decoder(PaymentContinuation, "payment")
+export const checkoutFromResponse = decoder(CheckoutStart, "checkout")
+
+const planKeys = { free: "Free", plus_monthly: "PlusMonthly", pro_monthly: "ProMonthly" } as const satisfies Record<WirePlanKey, PlanKey>
+
+const planSources = { subscription: "FromSubscription", grant: "FromGrant", free: "FromFree" } as const satisfies Record<WirePlanSource, PlanSource>
+
+const accountStatuses = { active: "Active", deleting: "Deleting", erased: "Erased" } as const satisfies Record<WireAccountStatus, AccountStatus>
+
+const subscriptionStatuses = {
+  pending: "Pending",
+  incomplete: "Incomplete",
+  active: "Active",
+  dunning: "Dunning",
+  past_due: "PastDue",
+  unpaid: "Unpaid",
+  canceled: "Canceled",
+  incomplete_expired: "IncompleteExpired"
+} as const satisfies Record<WireSubscriptionStatus, SubscriptionStatus>
+
+const fundingLanes = { allowanceThenCredits: "AllowanceThenCredits", creditsOnly: "CreditsOnly", refused: "Refused" } as const satisfies Record<WireFundingLane, FundingLane>
+
+export function planKeyOf(key: WirePlanKey): PlanKey {
+  return planKeys[key]
+}
+
+export function snapshotView(snapshot: BillingSnapshot): SnapshotView {
+  const allowance = snapshot.allowance
+  return {
+    accountStatus: accountStatuses[snapshot.account.status],
+    balance: snapshot.balance.usdMicros,
+    planKey: planKeys[snapshot.plan.key],
+    source: planSources[snapshot.plan.source],
+    subscription: snapshot.subscription === null ? "NoSubscription" : subscriptionStatuses[snapshot.subscription.status],
+    allowanceAvailable: allowance !== null && allowance.state === "open" ? allowance.available : 0,
+    inference: fundingLanes[snapshot.funding.inference],
+    observedAt: snapshot.observedAt
+  }
+}
+
+export function accountUsable(snapshot: BillingSnapshot): boolean {
+  return usableView(snapshotView(snapshot))
+}
+
+export function planFromSnapshot(snapshot: BillingSnapshot): PlanView {
+  return planOfView(snapshotView(snapshot))
+}
+
+export const planChecking: PlanView = { tag: "PlanChecking" }
+export const planUnavailable: PlanView = { tag: "PlanUnavailable" }
+
+export const creditMaxAge: Millis = 5 * millisPerMinute
+
+export type CreditView =
+  | { readonly kind: "funded"; readonly usdMicros: Micros; readonly observedAt: Millis }
+  | { readonly kind: "zero"; readonly observedAt: Millis }
+  | { readonly kind: "unavailable"; readonly observedAt: Millis }
+
+export function creditFromSnapshot(snapshot: BillingSnapshot, now: Millis): CreditView {
+  const observedAt = snapshot.observedAt
+  if (observedAt > now + clockSkewSeconds * millisPerSecond || now - observedAt > creditMaxAge) return { kind: "unavailable", observedAt }
+  const usdMicros = snapshot.balance.usdMicros
+  return usdMicros > 0 ? { kind: "funded", usdMicros, observedAt } : { kind: "zero", observedAt }
+}
+
+export interface ActiveGrant {
+  readonly id: string
+  readonly planKey: PaidWirePlanKey
+  readonly family: string
+  readonly effectiveFrom: Millis
+  readonly effectiveUntil: Millis | null
+}
+
+export type GrantView =
+  | { readonly kind: "none" }
+  | { readonly kind: "ended"; readonly id: string; readonly planKey: PaidWirePlanKey }
+  | { readonly kind: "active"; readonly grant: ActiveGrant; readonly paidPlanTakesPrecedence: boolean }
+
+function activeGrant(grant: SnapshotGrant): ActiveGrant {
+  return { id: grant.id, planKey: grant.planKey, family: grant.family, effectiveFrom: grant.effectiveFrom, effectiveUntil: grant.effectiveUntil }
+}
+
+function grantEnded(grant: SnapshotGrant, at: Millis): boolean {
+  return grant.revoked || (grant.effectiveUntil !== null && grant.effectiveUntil <= at)
+}
+
+export function grantFromSnapshot(snapshot: BillingSnapshot, now: Millis): GrantView {
+  const grant = snapshot.grant
+  if (grant === null) return { kind: "none" }
+  if (grantEnded(grant, Math.max(snapshot.observedAt, now))) return { kind: "ended", id: grant.id, planKey: grant.planKey }
+  return { kind: "active", grant: activeGrant(grant), paidPlanTakesPrecedence: snapshot.plan.source === "subscription" }
+}
+
+export interface SubscriptionView {
+  readonly observedAt: Millis
+  readonly plan: PlanView
+  readonly admission: PlanAdmission
+  readonly usable: boolean
+  readonly planKey: WirePlanKey
+  readonly planSource: WirePlanSource
+  readonly planEffectiveUntil: Millis | null
+  readonly subscription: SnapshotSubscription | null
+  readonly grant: GrantView
+  readonly allowance: SnapshotAllowance | null
+  readonly credit: CreditView
+}
+
+export function subscriptionView(snapshot: BillingSnapshot, now: Millis): SubscriptionView {
+  const view = snapshotView(snapshot)
+  const plan = planOfView(view)
+  return {
+    observedAt: snapshot.observedAt,
+    plan,
+    admission: planAdmission(plan),
+    usable: usableView(view),
+    planKey: snapshot.plan.key,
+    planSource: snapshot.plan.source,
+    planEffectiveUntil: snapshot.plan.effectiveUntil,
+    subscription: snapshot.subscription,
+    grant: grantFromSnapshot(snapshot, now),
+    allowance: snapshot.allowance,
+    credit: creditFromSnapshot(snapshot, now)
+  }
+}
+
+const RedeemAnswer = Schema.Struct({
+  replayed: Schema.Boolean,
+  grant: SnapshotGrant,
+  entitlement: Schema.Struct({ plan: SnapshotPlan })
+})
+
+export type RedeemAnswer = typeof RedeemAnswer.Type
+
+const readRedeem = decoder(RedeemAnswer, "redeem")
+
+export type RedeemResult =
+  | { readonly kind: "redeemed"; readonly replayed: boolean; readonly grant: ActiveGrant; readonly plan: SnapshotPlan; readonly paidPlanTakesPrecedence: boolean }
+  | { readonly kind: "ended"; readonly id: string; readonly planKey: PaidWirePlanKey }
+
+export function redeemResultFromResponse(body: unknown, now: Millis): RedeemResult {
+  const answer = readRedeem(body)
+  const grant = answer.grant
+  if (grantEnded(grant, now)) return { kind: "ended", id: grant.id, planKey: grant.planKey }
+  const plan = answer.entitlement.plan
+  return { kind: "redeemed", replayed: answer.replayed, grant: activeGrant(grant), plan, paidPlanTakesPrecedence: plan.source === "subscription" }
+}
+
+export type RedeemFailure =
+  | { readonly kind: "CodeInvalid" }
+  | { readonly kind: "AlreadyRedeemed" }
+  | { readonly kind: "PaidPlanActive" }
+  | { readonly kind: "AccountRefused" }
+  | { readonly kind: "RateLimited"; readonly retryAt: Millis }
+  | { readonly kind: "Unavailable" }
+
+function refusedRedeem(code: Extract<CloudFailure, { tag: "CloudRefused" }>["code"]): RedeemFailure {
+  switch (code) {
+    case "SubscriptionGrantAlreadyRedeemed": return { kind: "AlreadyRedeemed" }
+    case "SubscriptionGrantPaidPlanActive": return { kind: "PaidPlanActive" }
+    case "AccessDenied":
+    case "ClientDisabled": return { kind: "AccountRefused" }
+    case "GrantCodeInvalid":
+    case "InvalidRequest":
+    case "IdempotencyConflict": return { kind: "CodeInvalid" }
+    default: return { kind: "Unavailable" }
+  }
+}
+
+export function redeemFailureForStatus(error: CloudError): RedeemFailure | undefined {
+  const failure = error.failure
+  switch (failure.tag) {
+    case "CloudCredentialInvalid": return undefined
+    case "CloudRefused": return refusedRedeem(failure.code)
+    case "CloudRateLimited": return { kind: "RateLimited", retryAt: failure.retryAt }
+    case "CloudInsufficientCredits":
+    case "CloudAllowanceExhausted":
+    case "CloudConsentRequired":
+    case "CloudUnavailable":
+    case "CloudProviderIssue":
+    case "CloudNetwork": return { kind: "Unavailable" }
+    default: {
+      const _exhaustive: never = failure
+      return _exhaustive
+    }
+  }
+}

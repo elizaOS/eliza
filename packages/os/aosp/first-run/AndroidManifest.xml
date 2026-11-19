@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="ai.eliza.firstrun">
+    <uses-sdk android:minSdkVersion="37" android:targetSdkVersion="37"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.MANAGE_ROLE_HOLDERS"/>
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
+    <application android:label="@string/first_run_name" android:allowBackup="false" android:hasCode="true">
+        <receiver android:name=".FirstRunReceiver" android:enabled="@bool/first_run_enabled" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

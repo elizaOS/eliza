@@ -1,4 +1,4 @@
-// spec/cloud/operator.md, "Credits go only to an active account"; spec/cloud/operator.md, "The device list shows each key only by its name and dates"; spec/cloud/billing/funds.md, "The operator adds credits once per request"
+// spec/cloud/operator.md, "Credits go only to an active account"; spec/cloud/operator.md, "The device list shows each key only by its name and dates"; spec/cloud/billing/funds.md, "A fresh request id adds credits, a replay with the same amount answers the first entry, and any other replay is refused"
 import type { DeviceRow } from "../../gen/cloud__operator.effect.vibe"
 import { addCreditsIn } from "../billing/funds.vibe"
 import { revokeAllSessions } from "../identity/sessions.vibe"

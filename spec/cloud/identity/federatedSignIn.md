@@ -261,8 +261,7 @@ pure def nativeVerdict(n: NativePhase, now: Millis, p: NativeProof): NativeVerdi
 }
 pure def nativeRefusal(v: NativeVerdict): Refusal =
   if (v == NativeExpired) refuseFor(AuthenticationRequired, CredentialExpired)
-  else if (v == NativeProofWrong) refuse(CredentialProofInvalid)
-  else refuseFor(AuthenticationRequired, CredentialUnknown)
+  else if (v == NativeProofWrong) refuse(CredentialProofInvalid) else refuseFor(AuthenticationRequired, CredentialUnknown)
 pure def nativeYield(purpose: NativePurpose, factorOutcome: F::FirstFactorOutcome): SignInYield =
   match purpose { | NativeLink(l) => GoogleProofYield | NativeSignIn => if (factorOutcome == F::SecondFactorRequired) SecondFactorYield else DeviceKeyYield }
 pure def isOpen(n: NativePhase): bool = match n { | ChallengeOpen(c) => true | _ => false }

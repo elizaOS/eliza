@@ -233,7 +233,7 @@ effect function connect<S, C extends CaptureContext<S>>(c: Capture<S, C>, option
 
 export effect function startCumulativeMicrophoneCapture<Stream, Context extends CaptureContext<Stream>>(
   options: CumulativeCaptureOptions<Stream, Context>,
-): CumulativeCapture!CapturePolicyRefused | SharedContextRateRefused | CaptureUnavailable {
+): CumulativeCapture!(CapturePolicyRefused | SharedContextRateRefused | CaptureUnavailable) {
   const { sampleRate, maxSeconds, minimumNewSamples, previewIntervalMs, speechThreshold, sharedContext } = options
   const capSamples = Math.floor(sampleRate * maxSeconds)
   const buffer: CaptureBuffer = { capSamples, received: 0, stored: 0, heardSpeech: false, lastOffered: 0, offering: false }
@@ -274,7 +274,7 @@ export effect function decodeRecordedClip<Decoded extends DecodedClip>(
   bytes: ArrayBuffer,
   signal: AbortSignal,
   audio: ClipAudioPort<Decoded>,
-): Float32Array!ClipRefused | ClipCancelled | ClipDecodeFailed {
+): Float32Array!(ClipRefused | ClipCancelled | ClipDecodeFailed) {
   try stillWanted(signal)
   if (!recordingDecodable(bytes.byteLength, 1)) throw new ClipRefused({ bytes: bytes.byteLength, durationMs: 0 })
   const size = bytes.byteLength

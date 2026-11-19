@@ -59,10 +59,10 @@ pure def scopesFor(k: GoogleCapability): List[GoogleScope] =
   else if (k == GmailDrafts) List(ScopeGmailCompose) else if (k == GmailManage or k == GmailMailbox) List(ScopeGmailModify) else List(ScopeCalendarEvents)
 pure def requestedScopes(asked: List[GoogleCapability]): List[GoogleScope] = allScopes.select(s => asked.append(BasicIdentity).some(k => scopesFor(k).includes(s)))
 pure def grantsCapability(scopes: List[GoogleScope], k: GoogleCapability): bool = {
-  val any = if (k == BasicIdentity) List(ScopeOpenId, ScopeUserinfoEmail, ScopeUserinfoProfile) else if (k == CalendarRead) List(ScopeCalendarReadonly, ScopeCalendarEvents, ScopeCalendar)
+  val enough = if (k == BasicIdentity) List(ScopeOpenId, ScopeUserinfoEmail, ScopeUserinfoProfile) else if (k == CalendarRead) List(ScopeCalendarReadonly, ScopeCalendarEvents, ScopeCalendar)
     else if (k == CalendarWrite) List(ScopeCalendarEvents, ScopeCalendar) else if (k == GmailTriage) List(ScopeGmailMetadata, ScopeGmailReadonly, ScopeGmailModify, ScopeGmailCompose)
     else if (k == GmailDrafts) List(ScopeGmailCompose, ScopeGmailModify) else if (k == GmailSend) List(ScopeGmailSend) else List(ScopeGmailModify)
-  any.some(s => scopes.includes(s))
+  enough.some(s => scopes.includes(s))
 }
 pure def capabilitiesOf(scopes: List[GoogleScope]): List[GoogleCapability] = allCapabilities.select(k => grantsCapability(scopes, k))
 pure def scopesOf(granted: List[GoogleScope]): List[GoogleScope] = allScopes.select(s => granted.includes(s))
@@ -247,12 +247,12 @@ pure def hasTokens(c: Connection): bool = c.tokens != NoTokens
 pure def canBeginRefresh(c: Connection): bool = c.status == Active and not(c.refreshing) and refreshDue(c)
 pure def beginRefresh(c: Connection): Connection = { ...c, refreshing: true }
 pure def canFinishRefresh(c: Connection, lifetime: Millis): bool = c.refreshing and lifetime > 0
-pure def finishRefresh(c: Connection, outcome: RefreshOutcome, lifetime: Millis): Connection = {
+pure def finishRefresh(c: Connection, answer: RefreshOutcome, lifetime: Millis): Connection = {
   val t = c.tokens
   val renewed = match t { | SealedTokens(x) => SealedTokens({ expiresAt: c.now + lifetime, hasRefreshToken: x.hasRefreshToken }) | NoTokens => NoTokens }
-  if (outcome == Refreshed) { ...c, refreshing: false, tokens: renewed }
-  else if (outcome == GrantRefused) { ...c, refreshing: false, status: Expired }
-  else if (outcome == RotationNotStored) { ...c, refreshing: false, status: Errored }
+  if (answer == Refreshed) { ...c, refreshing: false, tokens: renewed }
+  else if (answer == GrantRefused) { ...c, refreshing: false, status: Expired }
+  else if (answer == RotationNotStored) { ...c, refreshing: false, status: Errored }
   else { ...c, refreshing: false }
 }
 pure val weight_beginRefresh = 3
