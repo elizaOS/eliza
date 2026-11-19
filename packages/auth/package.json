@@ -1,0 +1,14 @@
+{
+  "name": "@elizaos/auth",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Native Android authentication for the shared Eliza Cloud deployment.",
+  "license": "MIT",
+  "files": [
+    "android"
+  ],
+  "exports": {
+    "./android/*": "./android/*"
+  }
+}
