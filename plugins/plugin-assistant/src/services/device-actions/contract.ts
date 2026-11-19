@@ -55,6 +55,7 @@ import {
   isNotesOrganizeType,
   NOTES_ORGANIZE_CAPABILITY,
   type NotesOrganizeOperation,
+  notesRecordCapabilityAvailable,
   validateNotesOrganizeOperation,
 } from "./notes-organize-contract.ts";
 import {
@@ -198,6 +199,8 @@ export function deviceOperationSupportedByCapabilities(
     );
   if (type === "notes_list_filter")
     return capabilities?.includes(NOTES_LIST_FILTER_CAPABILITY) === true;
+  if (type === "notes_record")
+    return notesRecordCapabilityAvailable(capabilities);
   if (isNotesOrganizeType(type))
     return (
       capabilities?.includes(NOTES_ORGANIZE_CAPABILITY) === true &&

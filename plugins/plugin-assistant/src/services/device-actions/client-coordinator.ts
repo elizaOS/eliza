@@ -144,6 +144,7 @@ import {
   NOTES_ORGANIZE_DIRECT_TYPES,
   type NotesOrganizeOperation,
   notesOrganizeContextAllowed,
+  notesRecordCapabilityAvailable,
   validateNotesOrganizeOperation,
 } from "./notes-organize-contract.ts";
 import {
@@ -1433,11 +1434,13 @@ export class DeviceActionCoordinator<
       throw Error("Files access was not negotiated with this agent");
     if (
       isNotesOrganizeOperation(op) &&
-      !this.capability(
-        op.type === "notes_list_filter"
-          ? NOTES_LIST_FILTER_CAPABILITY
-          : NOTES_ORGANIZE_CAPABILITY,
-      )
+      !(op.type === "notes_record"
+        ? notesRecordCapabilityAvailable(this.credential.capabilities)
+        : this.capability(
+            op.type === "notes_list_filter"
+              ? NOTES_LIST_FILTER_CAPABILITY
+              : NOTES_ORGANIZE_CAPABILITY,
+          ))
     )
       throw Error("Notes folders were not negotiated with this agent");
     if (

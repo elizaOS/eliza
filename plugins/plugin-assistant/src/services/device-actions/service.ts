@@ -159,6 +159,7 @@ import {
   isNotesOrganizeOperation,
   NOTES_ORGANIZE_CAPABILITY,
   NOTES_ORGANIZE_TYPES,
+  NOTES_RECORD_CAPABILITY,
 } from "./notes-organize-contract.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import { notesUpdateAfterReadPlan } from "./notes-update-continuation.ts";
@@ -1226,6 +1227,7 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   "notes.local-record.v1",
   NOTES_QUERY_CAPABILITY,
   NOTES_ORGANIZE_CAPABILITY,
+  NOTES_RECORD_CAPABILITY,
   NOTES_LIST_FILTER_CAPABILITY,
   NOTES_SEARCH_CAPABILITY,
   CALENDAR_AVAILABILITY_CAPABILITY,

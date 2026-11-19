@@ -2492,6 +2492,27 @@ describe("notes organize operations", () => {
     return { ...fixture, actions, effects: () => effects };
   }
 
+  it("records a voice note with only the recording capability", async () => {
+    const f = organizeFixture({ type: "notes_record", action: "start" }, [
+      "notes.record.v1",
+    ]);
+    await f.actions.pending(notesContext, signal());
+    expect(
+      await f.actions.performRequested(
+        "message",
+        notesContext,
+        signal(),
+        async () => true,
+      ),
+    ).toMatchObject([{ status: "succeeded", committedChanges: [] }]);
+    expect(f.effects()).toBe(1);
+    const folder = organizeFixture({ type: "notes_folder_create", name: "A" }, [
+      "notes.record.v1",
+    ]);
+    const review = await folder.actions.pendingReview(notesContext, signal());
+    expect(review[0].proposal).toBeNull();
+  });
+
   it("refuses organize proposals the phone did not negotiate", async () => {
     const f = organizeFixture({ type: "notes_filter", kind: "voice" }, [
       "notes.local-record.v1",
