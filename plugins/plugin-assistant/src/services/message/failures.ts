@@ -16,6 +16,7 @@ import {
   INSUFFICIENT_CREDITS_REPLY,
   isAuthError,
   isInsufficientCreditsError,
+  isModelProviderFallbackError,
   isModelProviderRetryBudgetExhaustedError,
   isProviderSchemaRejection,
   isRateLimitError,
@@ -55,6 +56,26 @@ function terminalProviderFailure(
   if (isProviderSchemaRejection(error)) return { kind: "schemaRejected" };
   return undefined;
 }
+
+/**
+ * The turn died because the model provider did not answer: its own retry
+ * budget ran out, or it failed with a server, timeout or network error. An
+ * apology written by another model call only says "something went wrong";
+ * the honest reply names the unavailable service and offers a retry.
+ */
+function providerUnavailableFailure(
+  error: unknown,
+): FailureReplyAttempt | undefined {
+  if (error === undefined) return undefined;
+  return isModelProviderRetryBudgetExhaustedError(error) ||
+    isModelProviderFallbackError(error)
+    ? { kind: "providerUnavailable" }
+    : undefined;
+}
+
+/** Built-in reply for a model provider that did not answer this turn. */
+export const PROVIDER_UNAVAILABLE_REPLY =
+  "The AI service didn't respond just now, so I couldn't finish that. Please try again in a moment.";
 
 export class MessageFailures {
   resolveRecentMessagesForFailureReply(state: State, message: Memory): string {
@@ -263,7 +284,8 @@ export class MessageFailures {
         ? { kind: "text", value: "" }
         : undefined) ??
       (cause === "transient"
-        ? terminalProviderFailure(initialError)
+        ? (terminalProviderFailure(initialError) ??
+          providerUnavailableFailure(initialError))
         : undefined) ??
       (await this.generateFailureReplyText(
         runtime,
@@ -306,6 +328,11 @@ export class MessageFailures {
         replyText =
           (typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
           "The configured AI provider rejected access. Check its API key and account permissions, then try again.";
+      } else if (attempt.kind === "providerUnavailable") {
+        const tmpl = runtime.character.templates?.providerUnavailableReply;
+        replyText =
+          (typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+          PROVIDER_UNAVAILABLE_REPLY;
       } else if (attempt.kind === "schemaRejected") {
         replyText =
           "The AI provider rejected the request format, so I couldn’t finish. This needs a configuration or code fix before retrying.";

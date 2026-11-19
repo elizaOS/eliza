@@ -11,6 +11,8 @@ import {
   bindPromotedMapsSaveHandler,
   mapsAction,
   mapsNavigationAction,
+  NEAR_NOT_A_PLACE,
+  NEAR_NOT_A_PLACE_KIND,
 } from "./action.js";
 import { MAPS_VIEW_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";
@@ -28,7 +30,7 @@ const promotedMapsActions = promoteSubactionsToActions(mapsAction, {
   overrides: {
     place: {
       description:
-        "Find places by name, category or address: a coffee shop, a pharmacy, an address. For near me, nearest or nearby, set useCurrentLocation when the user gave no place to search around.",
+        "Find places by name, category or address: a coffee shop, a pharmacy, an address. For near me, nearest or nearby, set useCurrentLocation when the user gave no place to search around. For a kind of place near a named place (pharmacy near the Ferry Building), put the whole phrase in query and leave useCurrentLocation unset.",
       similes: ["FIND_PLACE", "NEARBY", "NEAREST", "NEAR_ME"],
     },
     route: {
@@ -369,6 +371,60 @@ const PLACE_NEAR_ME_REQUEST = new RegExp(
   "iu",
 );
 
+const NEAR_NAMED = String.raw`\s+(?:near|around|close\s+to|next\s+to)\s+`;
+/**
+ * "Meet John near the Ferry Building", "Text Sarah around Union Square",
+ * "what is near the Ferry Building": a bare phrase that starts with a verb or
+ * a question word is not a kind of place.
+ */
+const NOT_A_BARE_KIND = String.raw`(?!(?:meet|text|call|phone|ring|message|email|e-mail|mail|send|tell|ask|remind|play|take|bring|drop|pick|leave|put|place|stay|sit|stand|wait|park|live|work|walk|drive|ride|run|go|come|be|keep|move|set|schedule|book|save|share|show|find|get|what|what's|what’s|who|whom|whose|where|when|why|how|which|is|are|was|were|do|does|did|can|could|should|would|will|i|i'm|i’m|we|you|it|they|he|she)\b)`;
+/**
+ * "find a pharmacy near the Ferry Building", "is there a coffee shop near
+ * Union Square?", "pharmacy near the Ferry Building": a kind of place around a
+ * named place. A search verb or question allows a lowercase spoken place; the
+ * bare phrase needs a capitalised name ("tacos near Dolores Park").
+ */
+const PLACE_NEAR_NAMED_REQUEST = new RegExp(
+  [
+    String.raw`^\s*${COURTESY}(?:${FIND_VERB}|(?:is|are)\s+there\s+${NOT_A_PLACE_THERE})(?<spokenKind>${PLACE_KIND})${NEAR_NAMED}(?<spoken>[\p{L}\p{N}'’&.-]+(?:\s+[\p{L}\p{N}'’&.-]+){0,5})${END}`,
+    String.raw`^\s*${COURTESY}${NOT_A_BARE_KIND}(?<namedKind>(?:(?:a|an|some|any)\s+)?[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,3})${NEAR_NAMED}(?<named>(?:the\s+)?\p{Lu}[\p{L}\p{N}'’&.-]*(?:\s+[\p{L}\p{N}'’&.-]+){0,5})${END}`,
+  ].join("|"),
+  "u",
+);
+/** "near me", "near here", "near my location": the user's position, not a named place. */
+const NEAR_OWN_POSITION =
+  /^(?:me|here|us|by|my\s+(?:location|position|current\s+location)|where\s+(?:i|we)\s+(?:am|are))$/iu;
+
+/**
+ * A search for a kind of place around a named place ("pharmacy near the
+ * Ferry Building"). It needs no position from the phone.
+ */
+export function isMapsPlaceNearNamedRequest(text: string): boolean {
+  if (text.length > MAX_TRAVEL_REQUEST_LENGTH) return false;
+  // The verbs and the question are lowercase words; the place may be capitalised.
+  const match = PLACE_NEAR_NAMED_REQUEST.exec(
+    text.replace(
+      /^(\s*)(\p{Lu})/u,
+      (_, space: string, first: string) => space + first.toLowerCase(),
+    ),
+  );
+  const place = (match?.groups?.spoken ?? match?.groups?.named)?.trim();
+  const kind = (match?.groups?.spokenKind ?? match?.groups?.namedKind)?.trim();
+  if (
+    !place ||
+    !kind ||
+    NEAR_OWN_POSITION.test(place) ||
+    NEAR_NOT_A_PLACE.test(place) ||
+    NEAR_NOT_A_PLACE_KIND.test(kind)
+  )
+    return false;
+  // "find my keys near the couch", "find the bug near that line": about
+  // someone's things or the conversation, not a kind of place.
+  return ![kind, place.replace(/^the\s+/iu, "")].some((words) =>
+    SPOKEN_NOT_A_PLACE_WORD.test(words.toLowerCase()),
+  );
+}
+
 /** A search for the nearest or a nearby kind of place, from the user's position. */
 export function isMapsNearbyPlaceRequest(text: string): boolean {
   return (
@@ -517,6 +573,17 @@ export const mapsPlugin: Plugin = {
       contexts: ["maps"],
       matches: (text, message) =>
         ownerChatTurn(message) && isMapsNearbyPlaceRequest(text),
+    });
+    // "pharmacy near the Ferry Building": the same search around a named
+    // place, which needs no position from the phone.
+    registerDirectActionRoutingRule(runtime, {
+      id: "maps.place-near-named",
+      actionNames: ["MAPS_PLACE"],
+      replacesActionNames: ["VIEWS", "VIEWS_SHOW"],
+      requiredActionTags: ["domain:maps"],
+      contexts: ["maps"],
+      matches: (text, message) =>
+        ownerChatTurn(message) && isMapsPlaceNearNamedRequest(text),
     });
   },
   services: [MapsService],
