@@ -113,6 +113,13 @@ public final class SelectedDocuments {
       }
     } catch (Exception ignored) { /* Corrupt registry confers no new access. */
     }
+    // A kept PDF copy is valid only while the instance that copied it is alive. A copy left by
+    // an ended process (including one of a selection that was never persisted) is removed.
+    java.io.File[] stale = owner.getCacheDir().listFiles(
+        (dir, name) -> name.startsWith(previewPrefix) && name.endsWith(".pdf")
+            && name.substring(previewPrefix.length(), name.length() - 4).matches("[a-f0-9-]{36}"));
+    if (stale != null)
+      for (java.io.File file : stale) file.delete();
   }
   private void persist() {
     org.json.JSONArray entries = new org.json.JSONArray();
@@ -383,7 +390,8 @@ public final class SelectedDocuments {
    * Renders one page of a selected PDF to a private PNG preview. The page is parsed only by the
    * host's isolated renderer, from a read-only copy. The copy of the selection rendered last is
    * kept for its next pages while the provider reports the same size and modification time; it
-   * is removed when another selection renders, a render fails, or the selection is forgotten.
+   * is removed when another selection renders, a render fails, the selection is forgotten, or
+   * the next instance starts.
    * This process maps the returned pixels after
    * {@link PdfPageLimits#requireReply} accepts the reply. The registry monitor is held only to
    * resolve the selection. Call from a plugin worker thread, never the main thread.
