@@ -30,6 +30,7 @@ import {
   projectBackgroundHistory,
   projectReviewedHistory,
   recallDeferredHistory,
+  requestedHistory,
   withBackgroundHistory,
 } from "./history-discovery.ts";
 import { renderMessageHandlerModelInput } from "./stage1-input.ts";
@@ -697,8 +698,16 @@ it("shows a deferred exchange that shares distinctive words with the request, wi
     "original-1. original-7. hello",
   ])
     expect(await turn(request)).not.toContain("4471#");
-  // An inflected form still counts.
+  // An inflected form still counts; a longer word that merely starts the
+  // same way does not.
   expect(await turn("Which gates take codes?")).toContain("4471#");
+  expect(await turn("Is the gatehouse codebook here?")).not.toContain("4471#");
+  // A pasted document is not matched word by word against the conversation.
+  expect(
+    await turn(
+      `gate code ${Array.from({ length: 60 }, (_, i) => `term${i}x`).join(" ")}`,
+    ),
+  ).not.toContain("4471#");
 });
 
 it("recalls only what is deferred, at most three exchanges, and counts what is left", () => {
@@ -738,4 +747,88 @@ it("recalls only what is deferred, at most three exchanges, and counts what is l
   expect(recallDeferredHistory(context, history, "the original thanks")).toBe(
     history,
   );
+});
+
+// Words every message contains must not decide a search, the messages already
+// in view must not crowd out the deferred one it was for, and finding only
+// what recall supplied must not bring the whole room back.
+const chatter = (index: number) =>
+  ({
+    4: "For future reference, my gate code is 4471#.",
+  })[index] ?? `what did you say about the weather on day ${index}?`;
+
+it("decides a search by its distinctive words and prefers originals not in view", () => {
+  const { context, history } = stage1(60, [], alternate, chatter);
+  if (!history) throw new Error("no deferred history");
+  const bound = (query: string) =>
+    loadHistoryReferences(context, history, [`history:search:${query}`]);
+  const found = bound("what did you say about the gate code").evidence
+    ?.searchResults?.[0];
+  expect(found).toMatchObject({ match: "words" });
+  expect(found?.matchedSourceIds).toHaveLength(1);
+  // A query of nothing but the conversation's common words, in an order no
+  // message uses, ties everywhere: the newest few that are deferred come
+  // back, not the ones on screen.
+  const common = bound("say what you did").evidence;
+  const ids = common?.searchResults?.[0].matchedSourceIds ?? [];
+  expect(ids).toHaveLength(5);
+  const shown = projectBackgroundHistory(
+    withBackgroundHistory(context, history),
+  );
+  const visible = JSON.stringify(shown.context.events);
+  for (const day of [35, 36, 37, 38, 39])
+    expect(visible).not.toContain(`weather on day ${day}?`);
+  const loaded = JSON.stringify(
+    projectBackgroundHistory(
+      withBackgroundHistory(context, { ...history, ...common }),
+    ).context.events,
+  );
+  expect(loaded).toContain("weather on day 39?");
+});
+
+it("keeps the window when a search finds only what recall supplied, and restores the room after two empty searches", () => {
+  const { context, history } = stage1(60, [], alternate, chatter);
+  if (!history) throw new Error("no deferred history");
+  const recalled = recallDeferredHistory(
+    context,
+    history,
+    "What's my gate code again?",
+  );
+  expect(recalled.loadedSourceIds.size).toBeGreaterThan(
+    history.loadedSourceIds.size,
+  );
+  // The model's first read of what the host recalled is a first read, by
+  // search or by reference; its second is the repeat that restores the room.
+  const checked = loadHistoryReferences(context, recalled, [
+    "history:search:gate code",
+  ]);
+  expect(checked.projection).toBeDefined();
+  expect(checked.evidence?.searchResults?.[0].matchedSourceIds).toHaveLength(1);
+  const [gate] = checked.evidence?.searchResults?.[0].matchedSourceIds ?? [];
+  expect(
+    requestedHistory(context, recalled, null, [`history:${gate}`], true),
+  ).toEqual([`history:${gate}`]);
+  expect(
+    loadHistoryReferences(context, checked.projection, [
+      "history:search:gate code",
+    ]).projection,
+  ).toBeUndefined();
+  expect(
+    requestedHistory(
+      context,
+      checked.projection,
+      null,
+      [`history:${gate}`],
+      true,
+    ),
+  ).toContain("history:all");
+  const first = loadHistoryReferences(context, recalled, [
+    "history:search:zebra crossing",
+  ]);
+  expect(first.projection).toBeDefined();
+  expect(
+    loadHistoryReferences(context, first.projection, [
+      "history:search:giraffe parade",
+    ]).projection,
+  ).toBeUndefined();
 });
