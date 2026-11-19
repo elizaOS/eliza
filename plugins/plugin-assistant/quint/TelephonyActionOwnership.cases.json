@@ -105,9 +105,7 @@
         "OnlySentAfterTap",
         "CancelKeepsZero"
       ],
-      "temporal": [
-        "RetiredCannotSubmit"
-      ],
+      "temporal": ["RetiredCannotSubmit"],
       "temporalChecks": [
         {
           "property": "RetiredCannotSubmit",
