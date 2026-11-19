@@ -273,6 +273,58 @@ it.each([
   }
 });
 
+// A voice request reaches grounding as its transcript: the owner's number is
+// words or ASR fragments, never the digit string the model proposes.
+it.each([
+  ["call four one five, five five five, zero one zero zero", "4155550100"],
+  ["call four one five five five five oh one double oh", "+14155550100"],
+  ["call four one five 555 0100", "4155550100"],
+  ["Call for 15. 5550160.", "4155550160"],
+])("reviews the number the owner spoke: %s", async (request, proposed) => {
+  const f = await fixture();
+  try {
+    expect(await f.run(request, call(proposed))).toMatchObject({
+      success: true,
+    });
+    expect((await f.rows())[0].operation).toEqual(
+      call(proposed.replace("+1", "")),
+    );
+  } finally {
+    await f.pg.close();
+  }
+});
+
+it.each([
+  ["call four one five five five five oh one double oh", "6505715862"],
+  ["call me at four", "4444444444"],
+])("refuses digits the owner did not speak: %s", async (request, proposed) => {
+  const f = await fixture();
+  try {
+    await refused(f, await f.run(request, call(proposed)));
+  } finally {
+    await f.pg.close();
+  }
+});
+
+it("never takes an SMS recipient from a spoken body", async () => {
+  const f = await fixture();
+  try {
+    await refused(
+      f,
+      await f.run(
+        "send Sam a text: call me at four one five five five five oh one double oh",
+        {
+          type: "sms_compose",
+          target: { kind: "number", number: "4155550100" },
+          body: "Call me at 415-555-0100.",
+        },
+      ),
+    );
+  } finally {
+    await f.pg.close();
+  }
+});
+
 it("refuses a number that only a document carried", async () => {
   const f = await fixture();
   try {

@@ -11,6 +11,7 @@
  */
 import type { DeviceOperation } from "./contract.ts";
 import { phoneDialNumber } from "./phone-dial-contract.ts";
+import { spokenPhoneNumbers } from "./spoken-phone-number.ts";
 import {
   type AuthoredTelephonyTarget,
   authoredTelephonyTarget,
@@ -142,6 +143,19 @@ export function writtenPhoneNumbers(text: string): string[] {
 }
 
 /**
+ * Every number the owner wrote or spoke in `text`: the written numbers, then
+ * the digits of a spoken one ("four one five, five five five, oh one double
+ * oh" → "4155550100"), which a proposal must equal exactly.
+ */
+export function ownerPhoneNumbers(text: string): string[] {
+  const written = writtenPhoneNumbers(text);
+  return [
+    ...written,
+    ...spokenPhoneNumbers(text).filter((number) => !written.includes(number)),
+  ];
+}
+
+/**
  * The same number with or without a country code: equal digits, or the same
  * last ten digits when both have at least ten ("+14155550100", "4155550100").
  */
@@ -204,7 +218,7 @@ function textWithoutBody(
       bodyNumbers: [],
     };
   // The model reworded the body: no number it carries can be the recipient.
-  return { text, bodyNumbers: writtenPhoneNumbers(body) };
+  return { text, bodyNumbers: ownerPhoneNumbers(body) };
 }
 
 function ownerNumber(
@@ -217,7 +231,7 @@ function ownerNumber(
 
 function recipientNumbers(text: string, body: unknown): string[] {
   const { text: rest, bodyNumbers } = textWithoutBody(text, body);
-  return writtenPhoneNumbers(rest).filter(
+  return ownerPhoneNumbers(rest).filter(
     (number) => !bodyNumbers.some((inBody) => samePhoneNumber(inBody, number)),
   );
 }
@@ -385,7 +399,7 @@ export function groundTelephonyTarget(
         return { operation, handedThrough: false };
       const number = groundedNumber(
         operation.number,
-        writtenPhoneNumbers(text),
+        ownerPhoneNumbers(text),
         references,
       );
       return { operation: { ...operation, number }, handedThrough: false };
