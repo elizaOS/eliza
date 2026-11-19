@@ -99,12 +99,15 @@ public final class StorageBrowser {
   }
   return out;
  }
- /** A listed name: dot entries only when `hidden`, and never the trash folder at the volume root. */
+ /** A listed name: dot entries only when `hidden`, and never the trash folder at the volume root.
+  * The name is compared ignoring case, since shared storage is case-insensitive: there a folder
+  * another app made as ".TRASH-x" is the host's ".Trash-x" and keeps its on-disk spelling. */
  private boolean shown(File file,boolean hidden){
   String name=file.getName();
   if(!name.startsWith("."))return true;
-  if(!hidden||!name.equals(trashFolder))return hidden;
-  try{return !file.getCanonicalFile().equals(new File(root,trashFolder).getCanonicalFile());}catch(IOException e){return false;}
+  if(!hidden||!name.equalsIgnoreCase(trashFolder))return hidden;
+  File parent=file.getParentFile();
+  try{return parent!=null&&!parent.getCanonicalFile().equals(root.getCanonicalFile());}catch(IOException e){return false;}
  }
  private int children(File folder,boolean hidden){
   int count=0;File[] kids=folder.listFiles();if(kids!=null)for(File k:kids)if(shown(k,hidden))count++;return count;

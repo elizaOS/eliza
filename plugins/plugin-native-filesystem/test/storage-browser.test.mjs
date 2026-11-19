@@ -69,6 +69,16 @@ public final class StorageBrowserFixture {
   require(!new File(a,".config").exists()&&Files.readString(new File(b,".config/app.ini").toPath()).equals("k=v"),"a cross-volume move removes the source after the copy");
   try{browser.transfer(List.of("Docs/a.txt"),other,".trash",true,null);throw new AssertionError("the other volume's trash was accepted");}
   catch(IllegalArgumentException expected){}
+  // A copy that fails part way is removed again on the volume it was copied to.
+  file(a,"Tree/ok.txt","ok");Files.createSymbolicLink(new File(a,"Tree/link").toPath(),new File(a,"Docs/a.txt").toPath());
+  List<StorageBrowser.Outcome> partial=browser.transfer(List.of("Tree"),other,"",true,null);
+  require(partial.get(0).status.equals("failed"),"a copy with a linked child fails");
+  require(!new File(b,"Tree").exists(),"the partial copy is removed from the other volume");
+
+  // Shared storage ignores case: a root folder spelled like the trash in another case is the trash.
+  File c=new File(args[2]);file(c,".TRASH/files/old","gone");file(c,".seen","x");
+  Set<String> cased=rows(new StorageBrowser(c,".trash").list("",true)).keySet();
+  require(cased.equals(Set.of(".seen")),"the trash is never listed whatever its case: "+cased);
   System.out.println("storage browser passed");
  }
 }`;
@@ -79,7 +89,8 @@ test("hidden entries are opt-in and transfers can name another volume", (t) => {
   const sources = path.join(work, "src"),
     classes = path.join(work, "classes"),
     a = path.join(work, "volume-a"),
-    b = path.join(work, "volume-b");
+    b = path.join(work, "volume-b"),
+    c = path.join(work, "volume-c");
   for (const [name, text] of Object.entries(stubs)) {
     mkdirSync(path.dirname(path.join(sources, name)), { recursive: true });
     writeFileSync(path.join(sources, name), text);
@@ -87,6 +98,7 @@ test("hidden entries are opt-in and transfers can name another volume", (t) => {
   writeFileSync(path.join(sources, "StorageBrowserFixture.java"), fixture);
   mkdirSync(a);
   mkdirSync(b);
+  mkdirSync(c);
   execFileSync(
     bin("javac"),
     [
@@ -99,7 +111,7 @@ test("hidden entries are opt-in and transfers can name another volume", (t) => {
     { timeout: 60000 },
   );
   assert.match(
-    execFileSync(bin("java"), ["-cp", classes, "StorageBrowserFixture", a, b], {
+    execFileSync(bin("java"), ["-cp", classes, "StorageBrowserFixture", a, b, c], {
       encoding: "utf8",
       timeout: 60000,
     }),
