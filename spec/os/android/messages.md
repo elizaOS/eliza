@@ -13,7 +13,10 @@ default SMS role is [system](./system.md)'s. This spec keeps what Android must
 confirm before a send, what the send journal answers, what a status may
 claim, what a new-message notice action may write and what a deletion may
 report. Carrier delivery is never inferred. Calls and voicemail are
-[phone](./phone.md)'s and [voicemail](./voicemail.md)'s.
+[phone](./phone.md)'s and [voicemail](./voicemail.md)'s. A new-message
+notice is this module's own: it is posted for an incoming message, not for
+an agent result, so the account fence and tap tokens of
+[notice routes](./noticeRoutes.md) do not apply to it.
 
 ## Story: Send only what I reviewed, once
 
@@ -113,7 +116,7 @@ pure def canFinishLookup(s: SmsReview, lookup: JournalLookup, recorded: SendAnsw
 pure def finishLookup(s: SmsReview, lookup: JournalLookup, recorded: SendAnswer): SmsReview =
   if (lookup == NoRecord) { ...s, phase: MainQueued } else { ...s, phase: ReviewSettled, result: lookupAnswer(lookup, recorded) }
 pure val recordedValues = Set(NoAnswer, SendSent, SendUnknown, SendCancelled)
-pure def alwaysOnlyADispatchReportsAPlatformResult(s: SmsReview): bool =
+pure def alwaysRefusedLookupNeverDispatched(s: SmsReview): bool =
   not(s.result == NoAnswer or isJournalStatus(s.result)) implies not(s.dispatched)
 pure def sometimesRepeatAnswersItsRecord(s: SmsReview): bool = s.result == SendSent and not(s.dispatched)
 pure def sometimesRepeatAfterCancelAnswersItsRecord(s: SmsReview): bool = s.result == SendUnknown and s.cancelAcknowledged and not(s.dispatched)

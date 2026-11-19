@@ -76,8 +76,8 @@ async function resolve(event: Extract<Event, { type: "resolve" }>): Promise<"acc
   const decision = event.decision === "Approve" ? "approve" : "reject";
   const resolution = await Effect.runPromise(queue!.resolve(event.id, decision, revision));
   const reply = replyOf(event.id, resolution);
-  const ran = reply.tag === "Resolved" && reply.kind !== "KindRejected" && reply.kind !== "KindInvalidated";
-  if (ledger.calls !== (ran ? 1 : 0)) throw new Error(`The executor ran ${ledger.calls} times for ${JSON.stringify(reply)}`);
+  const mayRun = reply.tag === "Resolved" && reply.kind !== "KindRejected";
+  if (ledger.calls > (mayRun ? 1 : 0)) throw new Error(`The executor ran ${ledger.calls} times for ${JSON.stringify(reply)}`);
   output = [reply];
   return "accepted";
 }

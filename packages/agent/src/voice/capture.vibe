@@ -1,0 +1,315 @@
+// spec/agent/voice/clientAudio.md, "Story: Record and play speech in the screen without losing a segment"; spec/agent/voice/clientAudio.md, "A WAV holds every sample in order as mono PCM16 behind a 44-byte header"; spec/agent/voice/clientAudio.md, "The capture keeps a bounded prefix in arrival order while the meter keeps counting"; spec/agent/voice/clientAudio.md, "A preview offers only new speech and never offers a failed preview again"
+import { Base64 } from "effect/encoding"
+import {
+  blockAccepted, captureWellFormed, closesContextOnRelease, fullScale, offerPreview, pcm16Of, previewDue, recordingDecodable,
+  recordingSampleRate, retainBlock, settlePreview, sharedContextAccepted, wavByteLength, wavHeaderBytes, wavRateAccepted,
+  type CaptureBuffer, type ContextCustody, type SampleValue,
+} from "../../gen/agent__voice__clientAudio.effect.vibe"
+
+export const captureWorkletUrl = new URL("./capture.worklet.mjs", import.meta.url)
+export const captureProcessorName = "eliza-capture-samples"
+export const captureBlockSamples = 2048
+
+export error WavRateRefused { rate: number }
+export error CapturePolicyRefused { field: "sampleRate" | "maxSeconds" | "minimumNewSamples" | "previewIntervalMs" | "speechThreshold"; value: number }
+export error SharedContextRateRefused { contextRate: number; captureRate: number }
+export error CaptureUnavailable { cause: unknown }
+export error AudioReadFailed { cause: unknown }
+export error ClipRefused { bytes: number; durationMs: number }
+export error ClipCancelled
+export error ClipDecodeFailed { cause: unknown }
+
+export interface CaptureNode {
+  connect(destination: unknown): unknown
+  disconnect(): void
+}
+
+export interface CaptureContext<Stream> {
+  readonly sampleRate: number
+  readonly destination: unknown
+  readonly audioWorklet: { addModule(url: string): Promise<void> }
+  createMediaStreamSource(stream: Stream): CaptureNode
+  resume(): Promise<void>
+  close(): Promise<void>
+}
+
+export interface CaptureSamples {
+  readonly node: CaptureNode
+  readonly stop: () => void
+}
+
+export interface CaptureAudioPort<Stream, Context extends CaptureContext<Stream>> {
+  readonly open: (sampleRate: number) => Context
+  readonly samples: (context: Context, receive: (block: unknown) => void) => CaptureSamples
+}
+
+export interface DecodedClip {
+  readonly duration: number
+}
+
+export interface ClipAudioPort<Decoded extends DecodedClip> {
+  readonly decode: (bytes: ArrayBuffer, sampleRate: number) => Promise<Decoded>
+  readonly render: (decoded: Decoded, length: number, sampleRate: number) => Promise<Float32Array>
+}
+
+export interface AudioBlob {
+  arrayBuffer(): Promise<ArrayBuffer>
+}
+
+export type PreviewReceiver = (chunks: readonly Float32Array[], sampleRate: number) => Promise<void>
+export type CaptureMeter = (level: number, endSample: number, sampleRate: number) => void
+
+export interface CumulativeCaptureOptions<Stream, Context extends CaptureContext<Stream>> {
+  readonly audio: CaptureAudioPort<Stream, Context>
+  readonly stream: Stream
+  readonly sampleRate: number
+  readonly maxSeconds: number
+  readonly minimumNewSamples: number
+  readonly previewIntervalMs: number
+  readonly speechThreshold: number
+  readonly sharedContext?: Context
+  readonly onPreview: PreviewReceiver
+  readonly meter?: CaptureMeter
+}
+
+export interface CumulativeCapture {
+  readonly sampleRate: number
+  readonly snapshot: () => Promise<boolean>
+  readonly close: () => void
+}
+
+interface Capture<Stream, Context extends CaptureContext<Stream>> {
+  readonly context: Context
+  readonly custody: ContextCustody
+  readonly sampleRate: number
+  readonly speechThreshold: number
+  readonly onPreview: PreviewReceiver
+  readonly meter: CaptureMeter | undefined
+  buffer: CaptureBuffer
+  chunks: Float32Array[]
+  inflight: Promise<boolean> | undefined
+  closed: boolean
+  source: CaptureNode | undefined
+  samples: CaptureSamples | undefined
+  ticks: Fiber.Fiber<void> | undefined
+}
+
+function sampleValue(sample: number): SampleValue {
+  return Number.isFinite(sample) ? { tag: "FiniteSample", micro: Math.round(sample * fullScale) } : { tag: "NonFiniteSample" }
+}
+
+function writeAscii(view: DataView, offset: number, text: string): void {
+  for (let index = 0; index < text.length; index += 1) view.setUint8(offset + index, text.charCodeAt(index))
+}
+
+function wavOf(chunks: readonly Float32Array[], sampleRate: number): Uint8Array {
+  const samples = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+  const bytes = new Uint8Array(wavByteLength(samples))
+  const view = new DataView(bytes.buffer)
+  const dataBytes = bytes.length - wavHeaderBytes
+  writeAscii(view, 0, "RIFF")
+  view.setUint32(4, bytes.length - 8, true)
+  writeAscii(view, 8, "WAVE")
+  writeAscii(view, 12, "fmt ")
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, 1, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  writeAscii(view, 36, "data")
+  view.setUint32(40, dataBytes, true)
+  let offset = wavHeaderBytes
+  for (const chunk of chunks) {
+    for (const sample of chunk) {
+      view.setInt16(offset, pcm16Of(sampleValue(sample)), true)
+      offset += 2
+    }
+  }
+  return bytes
+}
+
+export effect function encodeMonoPcm16WavChunks(chunks: readonly Float32Array[], sampleRate: number): Uint8Array!WavRateRefused {
+  if (!Number.isInteger(sampleRate) || !wavRateAccepted(sampleRate)) throw new WavRateRefused({ rate: sampleRate })
+  return wavOf(chunks, sampleRate)
+}
+
+export effect function audioBlobBase64(blob: AudioBlob): string!AudioReadFailed {
+  const bytes = try tryPromise({ try: () => blob.arrayBuffer(), catch: (cause) => new AudioReadFailed({ cause }) })
+  return Base64.encode(new Uint8Array(bytes))
+}
+
+function safely(release: () => void): void {
+  try {
+    release()
+  } catch {
+    return
+  }
+}
+
+function levelOf(block: Float32Array): number {
+  let sum = 0
+  for (const sample of block) sum += sample * sample
+  return block.length === 0 ? 0 : Math.sqrt(sum / block.length)
+}
+
+function received<S, C extends CaptureContext<S>>(c: Capture<S, C>, block: unknown): void {
+  if (!(block instanceof Float32Array) || !blockAccepted(!c.closed, block.length)) return
+  const before = c.buffer
+  const keptSamples = retainBlock(before, block.length, false).stored - before.stored
+  const kept = keptSamples === block.length ? block : block.slice(0, keptSamples)
+  const level = levelOf(block)
+  c.buffer = retainBlock(before, block.length, (kept === block ? level : levelOf(kept)) >= c.speechThreshold)
+  if (keptSamples > 0) c.chunks.push(kept)
+  c.meter?.(level, c.buffer.received, c.sampleRate)
+}
+
+function offer<S, C extends CaptureContext<S>>(c: Capture<S, C>, minimumNew: number): Promise<boolean> | undefined {
+  if (c.closed || !previewDue(c.buffer, minimumNew)) return undefined
+  c.buffer = offerPreview(c.buffer)
+  const sending = c.chunks.slice()
+  const { promise, resolve } = Promise.withResolvers<boolean>()
+  c.inflight = promise
+  runFork(effect {
+    const completed = try (map(tryPromise(() => c.onPreview(sending, c.sampleRate)), () => true) catch () => false)
+    c.buffer = settlePreview(c.buffer)
+    c.inflight = undefined
+    resolve(completed)
+  })
+  return promise
+}
+
+async function snapshot<S, C extends CaptureContext<S>>(c: Capture<S, C>): Promise<boolean> {
+  while (c.inflight !== undefined) await c.inflight
+  return (await offer(c, 1)) ?? false
+}
+
+function close<S, C extends CaptureContext<S>>(c: Capture<S, C>): void {
+  if (c.closed) return
+  c.closed = true
+  const { ticks, source, samples } = c
+  c.ticks = undefined
+  c.source = undefined
+  c.samples = undefined
+  c.chunks = []
+  ticks?.interruptUnsafe()
+  if (source !== undefined) safely(() => source.disconnect())
+  if (samples !== undefined) {
+    safely(() => samples.node.disconnect())
+    safely(samples.stop)
+  }
+  if (closesContextOnRelease(c.custody)) safely(() => void c.context.close().catch(() => undefined))
+}
+
+effect function attempt<A>(call: () => Promise<A>): A!CaptureUnavailable {
+  return try tryPromise({ try: () => call(), catch: (cause) => new CaptureUnavailable({ cause }) })
+}
+
+effect function attemptNow<A>(call: () => A): A!CaptureUnavailable {
+  return try Effect.try({ try: call, catch: (cause) => new CaptureUnavailable({ cause }) })
+}
+
+effect function ticks<S, C extends CaptureContext<S>>(c: Capture<S, C>, intervalMs: number, minimumNew: number): void!! {
+  while (!c.closed) {
+    try sleep(Duration.millis(intervalMs))
+    void offer(c, minimumNew)
+  }
+}
+
+effect function connect<S, C extends CaptureContext<S>>(c: Capture<S, C>, options: CumulativeCaptureOptions<S, C>): void!CaptureUnavailable {
+  try attempt(() => c.context.audioWorklet.addModule(captureWorkletUrl.href))
+  const source = try attemptNow(() => c.context.createMediaStreamSource(options.stream))
+  c.source = source
+  const samples = try attemptNow(() => options.audio.samples(c.context, (block) => received(c, block)))
+  c.samples = samples
+  try attemptNow(() => {
+    source.connect(samples.node)
+    samples.node.connect(c.context.destination)
+  })
+  try attempt(() => c.context.resume())
+  c.ticks = fork.detached ticks(c, options.previewIntervalMs, options.minimumNewSamples)
+}
+
+export effect function startCumulativeMicrophoneCapture<Stream, Context extends CaptureContext<Stream>>(
+  options: CumulativeCaptureOptions<Stream, Context>,
+): CumulativeCapture!CapturePolicyRefused | SharedContextRateRefused | CaptureUnavailable {
+  const { sampleRate, maxSeconds, minimumNewSamples, previewIntervalMs, speechThreshold, sharedContext } = options
+  const capSamples = Math.floor(sampleRate * maxSeconds)
+  const buffer: CaptureBuffer = { capSamples, received: 0, stored: 0, heardSpeech: false, lastOffered: 0, offering: false }
+  const refused = [
+    { field: "sampleRate", value: sampleRate, accepted: Number.isInteger(sampleRate) && wavRateAccepted(sampleRate) },
+    { field: "maxSeconds", value: maxSeconds, accepted: Number.isSafeInteger(capSamples) && captureWellFormed(buffer) },
+    { field: "minimumNewSamples", value: minimumNewSamples, accepted: Number.isSafeInteger(minimumNewSamples) && minimumNewSamples >= 0 },
+    { field: "previewIntervalMs", value: previewIntervalMs, accepted: Number.isFinite(previewIntervalMs) && previewIntervalMs > 0 },
+    { field: "speechThreshold", value: speechThreshold, accepted: Number.isFinite(speechThreshold) && speechThreshold >= 0 },
+  ] as const
+  for (const check of refused) {
+    if (!check.accepted) throw new CapturePolicyRefused({ field: check.field, value: check.value })
+  }
+  if (sharedContext !== undefined && !sharedContextAccepted(sharedContext.sampleRate, sampleRate)) {
+    throw new SharedContextRateRefused({ contextRate: sharedContext.sampleRate, captureRate: sampleRate })
+  }
+  const context = sharedContext ?? try attemptNow(() => options.audio.open(sampleRate))
+  const c: Capture<Stream, Context> = {
+    context, custody: sharedContext === undefined ? "OwnedContext" : "SharedContext", sampleRate, speechThreshold,
+    onPreview: options.onPreview, meter: options.meter, buffer, chunks: [], inflight: undefined, closed: false,
+    source: undefined, samples: undefined, ticks: undefined,
+  }
+  try onExit(connect(c, options), (exit) => sync(() => {
+    if (Exit.isFailure(exit)) close(c)
+  }))
+  return { sampleRate, snapshot: () => snapshot(c), close: () => close(c) }
+}
+
+effect function stillWanted(signal: AbortSignal): void!ClipCancelled {
+  if (signal.aborted) throw new ClipCancelled()
+}
+
+effect function decoding<A>(call: () => Promise<A>): A!ClipDecodeFailed {
+  return try tryPromise({ try: () => call(), catch: (cause) => new ClipDecodeFailed({ cause }) })
+}
+
+export effect function decodeRecordedClip<Decoded extends DecodedClip>(
+  bytes: ArrayBuffer,
+  signal: AbortSignal,
+  audio: ClipAudioPort<Decoded>,
+): Float32Array!ClipRefused | ClipCancelled | ClipDecodeFailed {
+  try stillWanted(signal)
+  if (!recordingDecodable(bytes.byteLength, 1)) throw new ClipRefused({ bytes: bytes.byteLength, durationMs: 0 })
+  const size = bytes.byteLength
+  const decoded = try decoding(() => audio.decode(bytes, recordingSampleRate))
+  try stillWanted(signal)
+  const durationMs = Number.isFinite(decoded.duration) ? Math.ceil(decoded.duration * 1000) : 0
+  if (!recordingDecodable(size, durationMs)) throw new ClipRefused({ bytes: size, durationMs })
+  const samples = try decoding(() => audio.render(decoded, Math.ceil(decoded.duration * recordingSampleRate), recordingSampleRate))
+  try stillWanted(signal)
+  return samples
+}
+
+export const browserCaptureAudio: CaptureAudioPort<MediaStream, AudioContext> = {
+  open: (sampleRate) => new AudioContext({ sampleRate }),
+  samples: (context, receive) => {
+    const node = new AudioWorkletNode(context, captureProcessorName, { channelCount: 1, channelCountMode: "explicit" })
+    node.port.onmessage = (event) => receive(event.data)
+    return {
+      node,
+      stop: () => {
+        node.port.onmessage = null
+        node.port.close()
+      },
+    }
+  },
+}
+
+export const browserClipAudio: ClipAudioPort<AudioBuffer> = {
+  decode: (bytes, sampleRate) => new OfflineAudioContext(1, 1, sampleRate).decodeAudioData(bytes),
+  render: async (decoded, length, sampleRate) => {
+    const renderer = new OfflineAudioContext(1, length, sampleRate)
+    const source = renderer.createBufferSource()
+    source.buffer = decoded
+    source.connect(renderer.destination)
+    source.start()
+    return (await renderer.startRendering()).getChannelData(0)
+  },
+}

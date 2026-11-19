@@ -1,0 +1,86 @@
+// spec/agent/plugins/bundle.md, "A bundle is built only when every listed plugin and the product plugin ship as packages and the load smoke loaded them"; spec/agent/plugins/bundle.md, "A bundle is built only when its load smoke registered each action once under a non-empty name, each promoted action under a listed top-level umbrella"
+import { spawn } from "node:child_process"
+import { join } from "node:path"
+import { assert, it } from "@effect/vitest"
+import type { AgentPlugin } from "../src/host/module.vibe"
+import { bundleEntrySource } from "../src/bundle/entry.vibe"
+import { smokeBoot } from "../src/bundle/smoke.vibe"
+import { bundledPluginMap } from "../src/plugins/profile.vibe"
+import { agentDir } from "./support/child.ts"
+import { host, scratch } from "./support/kernel.vibe"
+import { productActionName, productPlugin, umbrellaActionName, umbrellaProductPlugin, umbrellaSubactionName } from "./support/product-plugin/index.ts"
+
+const failingProductPlugin = {
+  name: "failing-product-fixture",
+  description: "A product plugin fixture whose init fails.",
+  init: () => Promise.reject(new Error("The product could not start")),
+} satisfies AgentPlugin
+
+effect function smoked(listed: readonly AgentPlugin[], product: AgentPlugin) {
+  const state = try scratch("smoke-state")
+  const bundled = try bundledPluginMap([...listed, product].map((plugin) => ({ packageName: plugin.name, plugin })))
+  return try smokeBoot({ bundled, plugins: listed.map(({ name }) => name), productPlugin: product.name, stateDirectory: state.path })
+}
+
+function smokeChild(state: string): Promise<{ code: number | null; stdout: string }> {
+  const child = spawn(process.execPath,
+    ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", join(agentDir, "src/bin.vibe"), "smoke", "--state", state],
+    { cwd: agentDir, env: { ...process.env, HOME: state, TMPDIR: state, VIBELANG_CACHE_DIR: join(agentDir, ".cache", "vibelang") }, stdio: ["ignore", "pipe", "inherit"], timeout: 120_000 })
+  let stdout = ""
+  child.stdout.setEncoding("utf8").on("data", (data: string) => { stdout += data })
+  return new Promise((done, fail) => {
+    child.once("error", fail)
+    child.once("close", (code) => done({ code, stdout }))
+  })
+}
+
+it.effect('The load smoke loads the listed and product plugins and lists each action with its umbrella (spec/agent/plugins/bundle.md, "A bundle is built only when its load smoke registered each action once under a non-empty name, each promoted action under a listed top-level umbrella")', effect () => {
+  const report = try smoked([umbrellaProductPlugin], productPlugin)
+  const product = report.registered.filter(({ name }) => [productActionName, umbrellaActionName, umbrellaSubactionName].includes(name))
+  const names = report.registered.map(({ name }) => name)
+  try Effect.try(() => {
+    assert.includeMembers([...report.loaded], [umbrellaProductPlugin.name, productPlugin.name])
+    assert.includeMembers(names, ["REPLY", "IGNORE", "NONE"])
+    assert.strictEqual(new Set(names).size, names.length)
+    assert.sameDeepMembers([...product], [
+      { name: productActionName },
+      { name: umbrellaActionName },
+      { name: umbrellaSubactionName, umbrella: umbrellaActionName },
+    ])
+  })
+}, 120_000)
+
+it.effect('A product plugin that fails init fails the load smoke (spec/agent/plugins/bundle.md, "A bundle is built only when every listed plugin and the product plugin ship as packages and the load smoke loaded them")', effect () => {
+  const failed = try Effect.flip(smoked([], failingProductPlugin))
+  try Effect.try(() => assert.deepStrictEqual({ tag: failed._tag, phase: "phase" in failed ? failed.phase : undefined }, { tag: "AgentBootFailed", phase: "Agent" }))
+}, 120_000)
+
+it.effect('The smoke command prints one JSON line of the registry and exits 0 (spec/agent/plugins/bundle.md, "A bundle is built only when its load smoke registered each action once under a non-empty name, each promoted action under a listed top-level umbrella")', effect () => {
+  const state = try scratch("smoke-cli")
+  const ran = try host("smoke command", () => smokeChild(state.path))
+  const lines = ran.stdout.split("\n").filter((line) => line !== "")
+  const report = try Effect.try(() => JSON.parse(lines[0] ?? "") as { loaded: string[]; registered: { name: string }[] })
+  try Effect.try(() => {
+    assert.strictEqual(ran.code, 0)
+    assert.strictEqual(lines.length, 1)
+    assert.includeMembers(report.registered.map(({ name }) => name), ["REPLY", "IGNORE", "NONE"])
+  })
+}, 180_000)
+
+it('The bundle entry imports each plugin package and the product, then runs the agent CLI with them (spec/agent/plugins/bundle.md, "A bundle is built only when every listed plugin and the product plugin ship as packages and the load smoke loaded them")', () => {
+  const source = bundleEntrySource({ plugins: ["@scope/listed"], productPlugin: "product-fixture", cli: "/agent/cli.js" })
+  assert.strictEqual(source, [
+    'import { runAgentCli } from "/agent/cli.js"',
+    'import * as plugin0 from "@scope/listed"',
+    'import * as plugin1 from "product-fixture"',
+    "",
+    "runAgentCli({",
+    "  bundled: [",
+    '    { packageName: "@scope/listed", plugin: plugin0.default ?? plugin0.plugin },',
+    '    { packageName: "product-fixture", plugin: plugin1.default ?? plugin1.plugin },',
+    "  ],",
+    '  productPlugin: "product-fixture",',
+    "})",
+    "",
+  ].join("\n"))
+})

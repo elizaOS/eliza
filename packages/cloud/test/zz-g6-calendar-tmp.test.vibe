@@ -15,85 +15,6 @@ effect function check(run: () => void) {
 effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
   return try cloud.store.transaction((tx) => tx.query(text, params))
 }
-
-    const otherKind = try operation("", { grantId, requestId, proposal: { ...proposal, kind: "archive" } })
-    const wrongDigest = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest: "0".repeat(64), proposal })
-    switches.dropNextReply = true
-    const lost = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
-    const looked = try operation(`/${requestId}?grantId=${grantId}`)
-    const replayed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
-    const unknown = try operation(`/9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d?grantId=${grantId}`)
-    const trashed = mailbox.messages.get("msg-plan")
-        changed: errorOf(changed),
-        sent: [sent.status, receiptOf(sent), ((sent.body as OperationAnswer).receipt.providerResult as { readonly labelIds: ReadonlyArray<string> }).labelIds],
-        replayed: [replayed.status, receiptOf(replayed), (replayed.body as OperationAnswer).receipt.providerResult === null],
-        looked: [looked.status, receiptOf(looked)],
-        once: [sends, outgoing.length, raw.includes(`Message-ID: <eliza-${requestId}@message.invalid>`), raw.includes(`filename*=UTF-8''agenda.txt`), raw.includes(note)],
-        forwarded: [forwarded.status, receiptOf(forwarded), ((forwarded.body as OperationAnswer).review as { readonly forwardedAttachments: ReadonlyArray<{ readonly name: string }> }).forwardedAttachments.map((file) => file.name)],
-        stale: errorOf(stale)
-      },
-      {
-        prepared: [200, ["send", "prepared", null, false, false], ["ada@example.org"], [{ name: "agenda.txt", mimeType: "text/plain", size: 17, sha256: sha256Hex("Agenda for Monday") }]],
-        changed: [409, "stale_revision"],
-        sent: [200, ["send", "succeeded", null, true, true], ["SENT"]],
-        replayed: [200, ["send", "succeeded", null, true, true], false],
-        looked: [200, ["send", "succeeded", null, true, true]],
-        once: [1, 1, true, true, true],
-        forwarded: [200, ["send", "prepared", null, false, false], ["plan.pdf"]],
-        stale: [409, "stale_revision"]
-      }
-    ))
-  }), 30_000)
-})
-
-type OperationAnswer = {
-  readonly version: number
-  readonly providerExactlyOnce: boolean
-  readonly review?: unknown
-  readonly receipt: { readonly kind: string; readonly state: string; readonly reviewDigest: string; readonly rejectionCode: string | null; readonly providerResult: unknown; readonly createdAt: string; readonly dispatchedAt: string | null; readonly finishedAt: string | null }
-}
-
-function receiptOf(answer: { readonly body: unknown }): ReadonlyArray<unknown> {
-  const receipt = (answer.body as OperationAnswer).receipt
-  return [receipt.kind, receipt.state, receipt.rejectionCode, receipt.dispatchedAt !== null, receipt.finishedAt !== null]
-}
-
-function errorOf(answer: { readonly status: number; readonly body: unknown }): ReadonlyArray<unknown> {
-  return [answer.status, (answer.body as { readonly error?: string }).error]
-}
-
-effect function mailOperationSetup(name: string) {
-  const google = try Effect.try(() => googleFakeState())
-  const now = try Clock.currentTimeMillis
-  const mailbox = try Effect.try(() => readableMailbox([{
-    id: "msg-plan", threadId: "thr-plan", labelIds: ["INBOX", "UNREAD"], internalDate: now - 60_000,
-    headers: { From: "Ada <ada@example.org>", To: `ops-${name}@example.com`, Subject: "Quarterly plan", "Message-ID": "<plan@example.org>" }, snippet: "plan", bodyText: "Please review the plan.",
-    attachments: [{ partId: "1", filename: "plan.pdf", mimeType: "application/pdf", bytes: new TextEncoder().encode("%PDF-plan") }]
-  }]))
-  const switches = gmailChangeSwitches()
-  const cloud = try testCloud({ mount: (fakes) => {
-    fakes.mount("/google/", mountGoogleToken(google))
-    fakes.mount("/google/api/", gmailReads(mailbox))
-    fakes.mount("/google/api/", gmailChanges(mailbox, switches))
-  } })
-  const token = try entitledDevice(cloud, name, now)
-  const owner: Owner = { organizationId: `org-${name}`, userId: `user-${name}` }
-  const grantId = `ops-${name}`
-  const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.manage"), ...scopeFor("google.gmail.send")]
-  const refreshToken = try Effect.try(() => seedGrant(google, { subject: `subject-${grantId}`, email: `${grantId}@example.com`, scopes }))
-  try cloud.inside(linkedGrant(cloud, owner, grantId, refreshToken, scopes, now - 1000))
-  const headers = { authorization: `Bearer ${token}` }
-  const operation = (path: string, json?: unknown) => cloud.call(`/api/v1/eliza/google/gmail/inbox-v1/operations${path}`, json === undefined ? { headers } : { method: "POST", headers, json })
-  return { mailbox, switches, operation, grantId }
-}
-
-effect function grantRefusal<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
-  return match (try exit(program)) {
-    when Exit.Success: "granted";
-    when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => "refusal" in error ? (refusalBody(error.refusal as Parameters<typeof refusalBody>[0]).reason ?? refusalBody(error.refusal as Parameters<typeof refusalBody>[0]).error) : error._tag), Option.getOrElse(() => "defect"));
-  }
-}
-
 effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string, refreshToken: string, scopes: ReadonlyArray<string>, expiresAt: number) {
   const now = try Clock.currentTimeMillis
   const tokens = try sealTokens({ refreshToken, accessToken: `stale-${connectionId}`, expiresAt })
@@ -101,41 +22,118 @@ effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string
     organization_id: owner.organizationId, user_id: owner.userId, subject: `subject-${connectionId}`, email: `${connectionId}@example.com`, linked_at: now
   })))
 }
+effect function calendarSetup(email: string) {
+  const google = try Effect.try(() => googleFakeState())
+  const cloud = try testCloud({ mount: (fakes) => {
+    fakes.mount("/google/", mountGoogleToken(google))
+    fakes.mount("/google/", mountGoogleCalendar(google))
+  } })
+  const signed = try signedIn(cloud, email)
+  const owner: Owner = { organizationId: signed.organizationId, userId: signed.user.id }
+  const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.calendar.write")]
+  const refreshToken = try Effect.try(() => seedGrant(google, { subject: "subject-cal", email: "cal@example.com", scopes }))
+  const now = try Clock.currentTimeMillis
+  try cloud.inside(linkedGrant(cloud, owner, "cal", refreshToken, scopes, now - 1000))
+  try Effect.try(() => {
+    seedCalendar(google, { id: "own@example.com", summary: "Own", accessRole: "owner", primary: true, timeZone: "Europe/Berlin" })
+    seedCalendar(google, { id: "team@example.com", summary: "Team", accessRole: "reader", timeZone: "UTC" })
+    seedEvent(google, "own@example.com", "standup", { summary: "Standup", start: { dateTime: "2026-12-01T09:00:00Z" }, end: { dateTime: "2026-12-01T09:15:00Z" } })
+  })
+  return { google, cloud, headers: { authorization: `Bearer ${signed.accessToken}` } }
+}
 
-describe("WP8 Managed Google: grant access (spec/cloud/services/google/connection.md)", () => {
-  it.live("Refresh a held grant once for concurrent callers and mark it Expired when Google refuses it (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => scoped(effect {
-    const google = try Effect.try(() => googleFakeState())
-    google.tokenDelayMs = 300
-    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", mountGoogleToken(google)) })
-    const profileInput = try Effect.try(() => testProfile(cloud.fakes.url))
-    const profile = try parseProfile(profileInput)
-    const deployment = deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
-    const now = try Clock.currentTimeMillis
-    const held: Owner = { organizationId: "org-google-held", userId: "user-google-held" }
-    const lost: Owner = { organizationId: "org-google-lost", userId: "user-google-lost" }
-    for (const owner of [held, lost]) {
-      try organization(cloud, owner.organizationId)
-      try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [owner.userId, owner.organizationId, `${owner.userId}@example.com`, now])
-    }
-    const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
-    const heldToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-held", email: "conn-held@example.com", scopes }))
-    const lostToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-lost", email: "conn-lost@example.com", scopes }))
-    google.revoked.add(lostToken)
-    provide Store = cloud.store, deployment, FetchHttpClient.layer {
-      try linkedGrant(cloud, held, "conn-held", heldToken, scopes, now - 1000)
-      try linkedGrant(cloud, lost, "conn-lost", lostToken, scopes, now - 1000)
-      const both = try all([useGrant(held, undefined, "google.gmail.triage"), useGrant(held, "conn-held", "google.gmail.triage")], { concurrency: 2 })
-      const again = try useGrant(held, undefined, "google.gmail.triage", "subject-conn-held")
-      const refusals = {
-        missing: try grantRefusal(useGrant(held, undefined, "google.gmail.send")),
-        changed: try grantRefusal(useGrant(held, undefined, "google.gmail.triage", "subject-elsewhere")),
-        foreign: try grantRefusal(useGrant(held, "conn-lost", "google.gmail.triage")),
-        side: try grantRefusal(useGrant(held, "conn-none", "google.gmail.triage")),
-        invalidGrant: try grantRefusal(useGrant(lost, undefined, "google.gmail.triage")),
-        afterwards: try grantRefusal(useGrant(lost, undefined, "google.gmail.triage"))
+function calendarRefusal(body: unknown): ReadonlyArray<unknown> {
+  const answer = body as { readonly error?: string; readonly reason?: string; readonly outcome?: string }
+  return [answer.error, answer.reason, answer.outcome]
+}
+
+describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)", () => {
+  const calendarBase = "/api/v1/eliza/google/calendar"
+
+  it.live("Read my calendars, a window of events and one event, refusing a window that is empty or in no time zone (spec/cloud/services/google/calendar.md, \"Story: Read my calendar for a window\")", () => scoped(effect {
+    const { cloud, headers } = try calendarSetup("calendar-reads@example.com")
+    const window = "timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-02T00:00:00Z"
+    const calendars = try cloud.call(`${calendarBase}/calendars`, { headers })
+    const feed = try cloud.call(`${calendarBase}/feed?${window}&timeZone=Europe/Berlin`, { headers })
+    const reversed = try cloud.call(`${calendarBase}/feed?timeMin=2026-12-02T00:00:00Z&timeMax=2026-12-01T00:00:00Z`, { headers })
+    const empty = try cloud.call(`${calendarBase}/feed?timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-01T00:00:00Z`, { headers })
+    const noZone = try cloud.call(`${calendarBase}/feed?${window}&timeZone=Mars/Olympus`, { headers })
+    const one = try cloud.call(`${calendarBase}/events/standup`, { headers })
+    const missing = try cloud.call(`${calendarBase}/events/nothere`, { headers })
+    const anonymous = try cloud.call(`${calendarBase}/calendars`)
+    const events = (feed.body as { readonly events: ReadonlyArray<{ readonly externalId: string; readonly title: string; readonly etag: string | null }> }).events
+    try check(() => assert.deepStrictEqual(
+      {
+        calendars: [calendars.status, calendars.body],
+        feed: [feed.status, (feed.body as { readonly calendarId: string }).calendarId, events.map((event) => [event.externalId, event.title, event.etag !== null]), typeof (feed.body as { readonly syncedAt: unknown }).syncedAt],
+        refused: [reversed.status, empty.status, noZone.status, calendarRefusal(reversed.body)],
+        one: [one.status, (one.body as { readonly event: { readonly externalId: string } }).event.externalId],
+        missing: [missing.status, calendarRefusal(missing.body)],
+        anonymous: anonymous.status
+      },
+      {
+        calendars: [200, [
+          { calendarId: "own@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Own", accessRole: "owner", read: true, write: true },
+          { calendarId: "team@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Team", accessRole: "reader", read: true, write: false }
+        ]],
+        feed: [200, "primary", [["standup", "Standup", true]], "string"],
+        refused: [400, 400, 400, ["invalid_request", undefined, undefined]],
+        one: [200, "standup"],
+        missing: [404, ["not_found", undefined, undefined]],
+        anonymous: 401
       }
-      const rows = try sql(cloud, "SELECT key, status, tokens IS NULL AS erased, refreshing_until FROM google_connections ORDER BY key", [])
-      try check(() => assert.deepStrictEqual(
-        {
-          singleFlight: [google.tokenCalls, both[0].accessToken === both[1].accessToken, again.accessToken === both[0].accessToken, both[0].connectionId, both[0].email],
-          refusals,
+    ))
+  }), 30_000)
+
+  it.live("Create an event once per key and change or delete it only at the revision I read (spec/cloud/services/google/calendar.md, \"Story: Change an event only at the revision I read\"; spec/cloud/shared/dispatchOnce.md, \"Story: Send a change once and recover its outcome without sending it again\")", () => scoped(effect {
+    const { google, cloud, headers } = try calendarSetup("calendar-writes@example.com")
+    const create = (key: string | undefined, json: unknown) => cloud.call(`${calendarBase}/events`, { method: "POST", headers: key === undefined ? headers : { ...headers, "idempotency-key": key }, json })
+    const lunch = { title: "Lunch", startAt: "2026-12-01T12:00:00Z", endAt: "2026-12-01T13:00:00Z" }
+    const unkeyed = try create(undefined, lunch)
+    const first = try create("lunch-key-0001", lunch)
+    const again = try create("lunch-key-0001", lunch)
+    const other = try create("lunch-key-0001", { ...lunch, title: "Dinner" })
+    const inserts = google.calls.filter((call) => call.method === "POST" && call.path.endsWith("/events")).length
+    google.switches.dropNextReply = true
+    const dropped = try create("coffee-key-0001", { title: "Coffee", startAt: "2026-12-01T15:00:00Z", endAt: "2026-12-01T15:30:00Z" })
+    const changedAccount = try create("tea-key-00000001", { ...lunch, title: "Tea", expectedAccountId: "subject-elsewhere" })
+    const created = (first.body as { readonly event: { readonly externalId: string; readonly etag: string; readonly title: string } }).event
+    const eventPath = `${calendarBase}/events/${created.externalId}`
+    const patch = (etag: string | undefined, json: unknown) => cloud.call(eventPath, { method: "PATCH", headers: etag === undefined ? headers : { ...headers, "if-match": etag }, json })
+    const noRevision = try patch(undefined, { title: "Long lunch" })
+    const changed = try patch(created.etag, { title: "Long lunch" })
+    const stale = try patch(created.etag, { title: "Late lunch" })
+    const current = (changed.body as { readonly event: { readonly etag: string; readonly title: string } }).event
+    const staleDelete = try cloud.call(eventPath, { method: "DELETE", headers: { ...headers, "if-match": created.etag } })
+    const deleted = try cloud.call(eventPath, { method: "DELETE", headers: { ...headers, "if-match": current.etag } })
+    const rows = try sql(cloud, "SELECT kind, phase FROM calendar_writes ORDER BY kind, phase", [])
+    try check(() => assert.deepStrictEqual(
+      {
+        unkeyed: [unkeyed.status, calendarRefusal(unkeyed.body)],
+        once: [first.status, created.title, again.status, (again.body as { readonly event: { readonly externalId: string } }).event.externalId === created.externalId, inserts],
+        other: [other.status, calendarRefusal(other.body)],
+        dropped: [dropped.status, (dropped.body as { readonly event: { readonly title: string } }).event.title],
+        changedAccount: [changedAccount.status, calendarRefusal(changedAccount.body)],
+        noRevision: [noRevision.status, calendarRefusal(noRevision.body)],
+        changed: [changed.status, current.title, current.etag !== created.etag, changed.headers.etag === current.etag],
+        stale: [stale.status, calendarRefusal(stale.body)],
+        staleDelete: [staleDelete.status, calendarRefusal(staleDelete.body)],
+        deleted: [deleted.status, deleted.body, google.events.has(`own@example.com/${created.externalId}`)],
+        rows: rows.map((row) => [row.kind, row.phase])
+      },
+      {
+        unkeyed: [400, ["invalid_request", undefined, "not_accepted"]],
+        once: [201, "Lunch", 201, true, 1],
+        other: [409, ["idempotency_conflict", undefined, "not_accepted"]],
+        dropped: [201, "Coffee"],
+        changedAccount: [403, ["access_denied", "google_account_changed", "not_accepted"]],
+        noRevision: [400, ["invalid_request", undefined, "not_accepted"]],
+        changed: [200, "Long lunch", true, true],
+        stale: [412, ["precondition_failed", undefined, "not_accepted"]],
+        staleDelete: [412, ["precondition_failed", undefined, "not_accepted"]],
+        deleted: [200, { ok: true }, false],
+        rows: [["change", "rejected"], ["change", "succeeded"], ["create", "succeeded"], ["create", "succeeded"], ["delete", "rejected"], ["delete", "succeeded"]]
+      }
+    ))
+  }), 30_000)
+})

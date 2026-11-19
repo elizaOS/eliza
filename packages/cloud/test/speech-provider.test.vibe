@@ -1,10 +1,11 @@
 // spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"; spec/cloud/index.md, "Story: Transcribe a recording"
 import { assert, describe, it } from "@effect/vitest"
 import { openStt, openTts, prepareTranscription, synthesize, synthesizeTimed } from "../src/providers/speech.vibe"
-import { Deployment } from "../src/profile/profile.vibe"
-import { testCloud } from "./support/cloud.vibe"
+import { FetchHttpClient } from "effect/http"
+import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
+import { startFakeServer } from "./support/fakes.ts"
 import { pcmChunkBytes, speechFake, spokenTranscript, synthesizedAudio } from "./support/fake-speech.ts"
-import { secrets } from "./support/profile.ts"
+import { secrets, testProfile } from "./support/profile.ts"
 
 effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
   return match (try exit(program)) {
@@ -16,8 +17,11 @@ effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A
 describe("WP6 Speech provider (spec/cloud/services/speechRelay.md)", () => {
   it.live("Speak, time, transcribe and stream turns through the provider, and type every refusal (spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/index.md, \"Story: Transcribe a recording\")", () => scoped(effect {
     const fake = try sync(() => speechFake())
-    const cloud = try testCloud({ mount: (fakes) => fake.install(fakes) })
-    const result = try cloud.inside(scoped(effect {
+    const fakes = try acquireRelease(promise(() => startFakeServer()), (server) => promise(() => server.close()))
+    try sync(() => fake.install(fakes))
+    const profile = try parseProfile(try Effect.try(() => testProfile(fakes.url)))
+    const layer = Layer.mergeAll(deploymentLayer(profile, "staging"), FetchHttpClient.layer).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+    const result = try Effect.provide(scoped(effect {
       const settings = (try Deployment).settings.speech
       if (settings === undefined) return undefined
       const synthesis = { text: "Hello there", voiceId: "voice-1", modelId: "model-1", format: "mp3" as const, speed: 1, applyTextNormalization: "auto" as const }
@@ -47,7 +51,7 @@ describe("WP6 Speech provider (spec/cloud/services/speechRelay.md)", () => {
         drained,
         spoken: spoken.map((edge) => edge.kind === "audio" ? `audio:${edge.pcm.byteLength}` : edge.kind)
       }
-    }))
+    }), layer)
     try Effect.try(() => assert.deepStrictEqual(
       {
         result,

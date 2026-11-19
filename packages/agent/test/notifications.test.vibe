@@ -37,7 +37,7 @@ effect function notifyAll(service: NotificationService, inputs: readonly Notific
   return made
 }
 
-const listed = (body: unknown): string[] => ((body as { notifications: AgentNotification[] }).notifications).map((notice) => notice.id)
+const listed = (body: unknown): string[] => (body as { notifications?: AgentNotification[] }).notifications?.map((notice) => notice.id) ?? [JSON.stringify(body)]
 const list = (agent: InProcess, query: string) => ask(agent, { method: "GET", path: `/api/notifications${query}` })
 const markRead = (agent: InProcess, id: string) => ask(agent, { method: "POST", path: `/api/notifications/${id}/read` })
 

@@ -1,6 +1,6 @@
 // spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"; spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; spec/os/signIn/readiness.md, "Story: Read the service's own terms"
 import type { PluginListenerHandle } from "@capacitor/core"
-import { BridgeUnavailable, NativeRejection, decoded, nativeCall, settled } from "./bridge.vibe"
+import { BridgeUnavailable, MalformedReply, NativeRejection, nativeCall, settled } from "./bridge.vibe"
 import type {
   ElizaSignInPlugin,
   EnvironmentName,
@@ -12,7 +12,6 @@ import type {
   SignInProgress,
   SignInReadiness,
   SignInRefusal,
-  SignInRequestId,
   SignInSettled,
 } from "./definitions/sign-in.ts"
 import {
@@ -118,9 +117,13 @@ function refused(method: string) {
 
 const PLUGIN = "ElizaSignIn"
 
-effect function answer<A>(method: string, shape: Schema.Codec<A>, run: () => Promise<unknown>) {
+effect function parsed<A, I>(method: string, shape: Schema.Codec<A, I>, raw: unknown) {
+  return try mapError(Schema.decodeUnknownEffect(shape)(raw), (refusal) => new MalformedReply({ plugin: PLUGIN, method, issue: refusal.message }))
+}
+
+effect function answer<A, I>(method: string, shape: Schema.Codec<A, I>, run: () => Promise<unknown>) {
   const raw = try mapError(nativeCall(PLUGIN, method, run), refused(method))
-  return try decoded(PLUGIN, method, shape, raw)
+  return try parsed(method, shape, raw)
 }
 
 effect function progress(method: string, run: () => Promise<unknown>) {
@@ -129,11 +132,11 @@ effect function progress(method: string, run: () => Promise<unknown>) {
 
 effect function heard<Name extends keyof SignInEvents>(name: Name, listener: (event: SignInEvents[Name]) => void, event: unknown) {
   if (name === "signInSettled") {
-    const parsed = try decoded(PLUGIN, name, Settled, event)
-    listener(settledOf(parsed) as SignInEvents[Name])
+    const settledEvent = try parsed(name, Settled, event)
+    listener(settledOf(settledEvent) as SignInEvents[Name])
   } else {
-    const parsed = try decoded(PLUGIN, name, Readiness, event)
-    listener(readinessOf(parsed) as SignInEvents[Name])
+    const changed = try parsed(name, Readiness, event)
+    listener(readinessOf(changed) as SignInEvents[Name])
   }
 }
 
@@ -166,10 +169,6 @@ effect function reauthenticated(plugin: ElizaSignInPlugin, options: SignInOption
 effect function readinessAnswer(plugin: ElizaSignInPlugin, environment: EnvironmentName, retry: boolean | undefined) {
   const status = try answer("status", Status, () => plugin.status(retry === undefined ? { environment } : { environment, retry }))
   return { readiness: readinessOf(status), account: accountOf(status.account) }
-}
-
-export function newRequestId(): SignInRequestId {
-  return crypto.randomUUID() as SignInRequestId
 }
 
 export function signInClient(plugin: ElizaSignInPlugin = signInPlugin()): SignInClient {
