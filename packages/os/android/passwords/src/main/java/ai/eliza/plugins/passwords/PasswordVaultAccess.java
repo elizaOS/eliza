@@ -2,7 +2,12 @@ package ai.eliza.plugins.passwords;
 
 import ai.eliza.plugins.securestore.nativeonly.CredentialAccessSession;
 import ai.eliza.plugins.securestore.nativeonly.PasswordVaultStore;
+import android.app.Activity;
+import android.app.Application;
 import android.content.Context;
+import android.content.SharedPreferences;
+import android.os.Bundle;
+import java.io.File;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
@@ -15,9 +20,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 
 /**
- * Process-wide vault custody. Two independent gates protect every vault operation: an
- * ephemeral UI grant created only by a successful {@link PasswordUnlock} prompt, and the
- * Keystore key's own user-authentication window. Either one expiring locks the vault.
+ * Process-wide native vault custody selected by the trusted Android host.
  */
 public final class PasswordVaultAccess {
   static final class NotAdmitted extends Exception { NotAdmitted() { super("Saved passwords are not available here", null, false, false); } }
@@ -38,9 +41,37 @@ public final class PasswordVaultAccess {
   public static void setAdmission(Admission rule) { admission = rule; }
   static boolean admitted(Context context) { return admission.admit(context); }
 
-  private static PasswordVaultAccess instance;
+  private static final String DEVICE_CUSTODY = "device-unlocked-v1";
+  private static boolean deviceCustodyInstalled;
+  private static volatile Activity foreground;
+  private static volatile PasswordVaultAccess instance;
+
+  public static synchronized void installDeviceUnlockedCustody(Application app) {
+    if (deviceCustodyInstalled) return;
+    if (instance != null) throw new IllegalStateException("Password custody is already in use");
+    deviceCustodyInstalled = true;
+    app.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
+      @Override public void onActivityResumed(Activity activity) {
+        Activity previous = foreground;
+        foreground = activity;
+        PasswordVaultAccess access = instance;
+        if (previous != null && previous != activity && access != null) access.closeForeground();
+      }
+      @Override public void onActivityPaused(Activity activity) {
+        if (foreground != activity) return;
+        foreground = null;
+        PasswordVaultAccess access = instance;
+        if (access != null) access.closeForeground();
+      }
+      @Override public void onActivityCreated(Activity activity, Bundle state) {}
+      @Override public void onActivityStarted(Activity activity) {}
+      @Override public void onActivityStopped(Activity activity) {}
+      @Override public void onActivitySaveInstanceState(Activity activity, Bundle state) {}
+      @Override public void onActivityDestroyed(Activity activity) {}
+    });
+  }
   public static synchronized PasswordVaultAccess get(Context context) throws Exception {
-    if (instance == null) instance = new PasswordVaultAccess(PasswordsConfig.of(context));
+    if (instance == null) instance = new PasswordVaultAccess(context, PasswordsConfig.of(context));
     return instance;
   }
 
@@ -48,20 +79,77 @@ public final class PasswordVaultAccess {
   public final PasswordRequests requests = new PasswordRequests(SystemClock::elapsedRealtime, new SecureRandom());
   private final PasswordVaultStore store;
   private final CredentialAccessSession grant;
+  private final PasswordVaultStore legacyStore;
+  private final SharedPreferences custody;
+  private final Context context;
 
-  private PasswordVaultAccess(PasswordsConfig config) throws Exception {
+  private PasswordVaultAccess(Context context, PasswordsConfig config) throws Exception {
+    this.context = context.getApplicationContext();
     this.config = config;
-    this.store = new PasswordVaultStore(config.directory, config.alias, config.aad, new PasswordVaultStore.KeyPolicy(config.unlockSeconds, config.biometric));
-    // The UI grant ends shortly before the Keystore window so the UI never reports an unlock
-    // that the key itself would refuse.
-    this.grant = new CredentialAccessSession(SystemClock::elapsedRealtime, Math.max(5000L, config.unlockSeconds * 1000L - 2000L));
+    PasswordVaultStore original = new PasswordVaultStore(config.directory, config.alias, config.aad,
+        new PasswordVaultStore.KeyPolicy(config.unlockSeconds, config.biometric));
+    if (deviceCustodyInstalled) {
+      legacyStore = original;
+      store = new PasswordVaultStore(new File(config.directory, DEVICE_CUSTODY), config.alias + "." + DEVICE_CUSTODY,
+          config.aad, PasswordVaultStore.KeyPolicy.deviceUnlocked(this.context));
+      custody = this.context.getSharedPreferences("eliza.passwords.custody", Context.MODE_PRIVATE);
+      grant = CredentialAccessSession.foregroundWindow();
+    } else {
+      legacyStore = null;
+      store = original;
+      custody = null;
+      grant = new CredentialAccessSession(SystemClock::elapsedRealtime, Math.max(5000L, config.unlockSeconds * 1000L - 2000L));
+    }
+  }
+
+  public boolean deviceUnlockedCustody() { return custody != null; }
+  public boolean needsLegacyAuthorization() {
+    return deviceUnlockedCustody() && legacyStore.exists() && !custody.getBoolean(config.alias, false);
+  }
+  boolean activityCurrent(Activity activity) { return activity != null && foreground == activity && !activity.isFinishing() && !activity.isDestroyed(); }
+  boolean ownerForeground() {
+    Activity owner = foreground;
+    return owner != null && activityCurrent(owner) && PasswordVaultStore.deviceUnlockedNow(context) && admitted(context);
+  }
+  String blockedDeviceReason() {
+    if (!admitted(context)) return "not-admitted";
+    if (!ownerForeground()) return "device-locked";
+    if (!needsLegacyAuthorization()) return null;
+    try { return legacyStore.unrecoverable() ? "legacy-key-unavailable" : "legacy-authorization-required"; }
+    catch (Exception unavailable) { return "legacy-authorization-required"; }
+  }
+  public boolean deviceWindowOpen() { return ownerForeground() && !needsLegacyAuthorization(); }
+
+  synchronized long openForeground(Activity activity) {
+    if (!activityCurrent(activity) || !deviceWindowOpen()) return 0;
+    long ticket = grant.begin();
+    return grant.complete(ticket, true) ? ticket : 0;
+  }
+  synchronized boolean finishLegacyAuthorization(Activity activity, long ticket) throws Exception {
+    if (!activityCurrent(activity) || !ownerForeground() || !grant.pending(ticket) || !needsLegacyAuthorization()) return false;
+    legacyStore.migrateToDeviceUnlocked(store);
+    if (!activityCurrent(activity) || !ownerForeground()) return false;
+    if (!custody.edit().putBoolean(config.alias, true).commit()) throw new java.io.IOException("Password custody could not be selected");
+    return grant.complete(ticket, true);
+  }
+  private void closeForeground() {
+    synchronized (this) { grant.stop(); }
+    PasswordEditor.dismiss();
+    SecretSurfaces.dismiss();
   }
 
   public synchronized long begin() { return grant.begin(); }
   public synchronized boolean complete(long ticket, boolean accepted) { return grant.complete(ticket, accepted); }
-  public synchronized boolean unlocked() { return grant.authenticated(); }
-  public synchronized long ticket() { return grant.currentTicket(); }
-  public synchronized boolean unlocked(long ticket) { return grant.authenticated(ticket); }
+  public synchronized boolean unlocked() { return deviceUnlockedCustody() ? deviceWindowOpen() : grant.authenticated(); }
+  public synchronized long ticket() {
+    if (deviceUnlockedCustody()) {
+      Activity owner = foreground;
+      if (owner == null || !deviceWindowOpen()) return 0;
+      if (!grant.authenticated()) return openForeground(owner);
+    }
+    return grant.currentTicket();
+  }
+  public synchronized boolean unlocked(long ticket) { return unlocked() && grant.authenticated(ticket); }
   public synchronized long remainingMillis() { return grant.remainingMillis(); }
   public synchronized boolean pending() { return grant.pending(); }
   public synchronized void lock() { grant.lock(); }
@@ -82,28 +170,32 @@ public final class PasswordVaultAccess {
   }
 
   /** Whether records are stored. Needs no grant and shows no prompt. */
-  public boolean exists() { return store.exists(); }
+  public boolean exists() { return store.exists() || needsLegacyAuthorization(); }
   /** Whether stored records can never be decrypted again (see {@link #resetUnrecoverable}). Needs no grant. */
-  public boolean unrecoverable() throws Exception { return store.unrecoverable(); }
+  public boolean unrecoverable() throws Exception { return !needsLegacyAuthorization() && store.unrecoverable(); }
 
   static void closeSurfaces() {
     new Handler(Looper.getMainLooper()).post(() -> { PasswordEditor.dismiss(); SecretSurfaces.dismiss(); });
   }
 
   synchronized <T> T useForOwner(Context context, long ticket, Operation<T> delivery) throws Exception {
-    if (!grant.authenticated(ticket)) throw new Locked();
+    if (!unlocked(ticket)) throw new Locked();
     if (!admitted(context)) throw new NotAdmitted();
     return use(ticket, delivery);
   }
 
   public synchronized <T> T use(Operation<T> operation) throws Exception {
-    return use(grant.currentTicket(), operation);
+    return use(ticket(), operation);
   }
 
   /** One operation starts under one live grant, serialized with lock and new challenges. */
   public synchronized <T> T use(long ticket, Operation<T> operation) throws Exception {
-    if (!grant.authenticated(ticket)) throw new Locked();
-    try { return operation.run(store); }
+    if (!unlocked(ticket)) throw new Locked();
+    try {
+      T value = operation.run(store);
+      if (deviceUnlockedCustody() && !unlocked(ticket)) throw new Locked();
+      return value;
+    }
     catch (UserNotAuthenticatedException expired) { lock(); throw new Locked(); }
     catch (KeyPermanentlyInvalidatedException | PasswordVaultStore.KeyLost invalidated) { lock(); throw new KeyInvalidated(); }
     catch (Exception failure) {
@@ -119,7 +211,7 @@ public final class PasswordVaultAccess {
    * the user may delete it and start over; a readable vault is never deleted here.
    */
   public synchronized void resetUnrecoverable() throws Exception {
-    if (!unlocked()) throw new Locked();
+    if (!unlocked() || needsLegacyAuthorization()) throw new Locked();
     store.resetUnrecoverable();
     requests.clear();
   }
@@ -138,6 +230,7 @@ public final class PasswordVaultAccess {
         requests.clear();
         SecretSurfaces.retireClipboard();
         store.destroy();
+        if (legacyStore != null) legacyStore.destroy();
       }
     } finally { closeSurfaces(); }
   }

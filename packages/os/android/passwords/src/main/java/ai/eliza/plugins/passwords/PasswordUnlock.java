@@ -27,30 +27,43 @@ public final class PasswordUnlock {
     final Result result;
     final CancellationSignal cancellation = new CancellationSignal();
     final PasswordSurfaces.Hold surface = PasswordSurfaces.open();
-    boolean finished;
+    boolean finished, legacyApproved;
     Pending(Activity activity, PasswordVaultAccess access, long ticket, Result result) {
       this.activity = activity; this.access = access; this.ticket = ticket; this.result = result;
       activity.getApplication().registerActivityLifecycleCallbacks(this);
     }
     void complete(boolean accepted, String code) {
       if (finished) return;
+      if (accepted && access.deviceUnlockedCustody() && !access.activityCurrent(activity)
+          && !activity.isFinishing() && !activity.isDestroyed()) {
+        legacyApproved = true;
+        return;
+      }
       finished = true;
       activity.getApplication().unregisterActivityLifecycleCallbacks(this);
       try {
-        if (accepted && !activity.isFinishing() && !activity.isDestroyed() && access.complete(ticket, true)) {
+        boolean current = accepted && !activity.isFinishing() && !activity.isDestroyed();
+        boolean granted = current && (access.deviceUnlockedCustody()
+          ? access.finishLegacyAuthorization(activity, ticket) : access.complete(ticket, true));
+        if (granted) {
           result.unlocked(ticket);
         } else {
           access.lock(ticket);
           cancellation.cancel();
           result.failed(code);
         }
+      } catch (Exception unavailable) {
+        access.lock(ticket);
+        result.failed("migration-unavailable");
       } finally { surface.close(); }
     }
     @Override public void onActivityDestroyed(Activity owner) { if (owner == activity) complete(false, "cancelled"); }
     @Override public void onActivityStopped(Activity owner) { if (owner == activity && owner.isFinishing()) complete(false, "cancelled"); }
     @Override public void onActivityCreated(Activity owner, Bundle state) {}
     @Override public void onActivityStarted(Activity owner) {}
-    @Override public void onActivityResumed(Activity owner) {}
+    @Override public void onActivityResumed(Activity owner) {
+      if (owner == activity && legacyApproved) complete(true, "cancelled");
+    }
     @Override public void onActivityPaused(Activity owner) {}
     @Override public void onActivitySaveInstanceState(Activity owner, Bundle state) {}
   }
@@ -60,8 +73,16 @@ public final class PasswordUnlock {
     if (activity.isFinishing() || activity.isDestroyed()) { result.failed("cancelled"); return; }
     PasswordVaultAccess access;
     try { access = PasswordVaultAccess.get(activity); } catch (Exception unavailable) { result.failed("unavailable"); return; }
+    if (access.deviceUnlockedCustody() && !access.needsLegacyAuthorization()) {
+      long ticket = access.openForeground(activity);
+      if (ticket == 0) result.failed("unavailable"); else result.unlocked(ticket);
+      return;
+    }
     KeyguardManager keyguard = activity.getSystemService(KeyguardManager.class);
-    if (keyguard == null || !keyguard.isDeviceSecure()) { result.failed("no-screen-lock"); return; }
+    if (keyguard == null || !keyguard.isDeviceSecure()) {
+      result.failed(access.deviceUnlockedCustody() ? "migration-unavailable" : "no-screen-lock");
+      return;
+    }
     long ticket = access.begin();
     if (ticket == 0) { result.failed("busy"); return; }
     Pending pending = new Pending(activity, access, ticket, result);

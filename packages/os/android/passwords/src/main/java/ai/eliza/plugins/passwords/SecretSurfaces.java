@@ -22,10 +22,43 @@ import java.util.UUID;
 public final class SecretSurfaces {
   private SecretSurfaces() {}
   static final long REVEAL_MILLIS = 30_000, CLIPBOARD_MILLIS = 45_000;
-  private static AlertDialog current;
+  private static AlertDialog current, confirmation;
   private static PasswordSurfaces.Hold currentSurface;
   private static final NativeDeadlineTimer REVEAL_TIMER = new NativeDeadlineTimer();
   private static final Handler MAIN = new Handler(Looper.getMainLooper());
+
+  static boolean confirm(Activity activity, int action, Runnable accept, Runnable cancel) {
+    if (confirmation != null) return false;
+    PasswordSurfaces.Hold hold = PasswordSurfaces.open();
+    AlertDialog dialog = new AlertDialog.Builder(activity)
+      .setTitle(action)
+      .setNegativeButton(R.string.eliza_passwords_cancel, null)
+      .setPositiveButton(action, null)
+      .create();
+    boolean[] accepted = { false };
+    dialog.setOnDismissListener(ignored -> {
+      if (confirmation == dialog) confirmation = null;
+      hold.close();
+      if (!accepted[0]) cancel.run();
+    });
+    confirmation = dialog;
+    try {
+      dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+      dialog.show();
+      dialog.getButton(AlertDialog.BUTTON_POSITIVE).setFilterTouchesWhenObscured(true);
+      dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+        if (confirmation != dialog) return;
+        accepted[0] = true;
+        dialog.dismiss();
+        accept.run();
+      });
+      return true;
+    } catch (RuntimeException unavailable) {
+      confirmation = null;
+      hold.close();
+      return false;
+    }
+  }
 
   /** FLAG_SECURE dialog; dismissed after {@link #REVEAL_MILLIS} or when the host stops. */
   static void reveal(Activity activity, String title, String secret) {
@@ -71,6 +104,7 @@ public final class SecretSurfaces {
 
   /** Hide, the timer and every host close end the surface here or in the dismiss listener, whichever is first. */
   static void dismiss() {
+    if (confirmation != null) confirmation.dismiss();
     REVEAL_TIMER.cancel();
     AlertDialog dialog = current; PasswordSurfaces.Hold surface = currentSurface; current = null; currentSurface = null;
     if (dialog != null && dialog.isShowing()) dialog.dismiss();
