@@ -11,9 +11,9 @@ import {
   type ChatTerminalFailure,
   type ChatToolCallEvent,
   type ChatTurnStatus,
+  chatTerminalFailureFromRuntime,
   type LinkedAccountProviderId,
   parseChatFailureKind,
-  parseChatTerminalFailure,
 } from "@elizaos/contracts";
 import {
   type ActionReplyFailure,
@@ -3026,7 +3026,7 @@ async function generateChatResponseWithTiming(
             result?.responseContent?.actions?.includes("PRIVACY_DENIED") ||
               asRecord(result?.responseContent?.data)?.privacyDenied === true,
           );
-          terminalFailure = parseChatTerminalFailure(
+          terminalFailure = chatTerminalFailureFromRuntime(
             !privacyDenied && result?.outcome.status === "failed"
               ? result.outcome.error
               : undefined,
