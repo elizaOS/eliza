@@ -708,6 +708,14 @@ function distanceText(meters: number): string {
   return rounded >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${rounded} m`;
 }
 
+/** Route time in whole minutes, at least one, with hours from 60 min (as guidance shows it). */
+function durationText(seconds: number): string {
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return minutes < 60
+    ? `${minutes} min`
+    : `${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60} min` : ""}`;
+}
+
 /** Plain replies for failures whose provider message is not meant for the user. */
 function userErrorText(error: MapsError, adapterCount: number): string {
   switch (error.code) {
@@ -787,7 +795,7 @@ function deviceResult(
   const place = status.placeName ?? "the destination";
   const route =
     status.state === "awaiting-confirmation" && status.route
-      ? ` The route is about ${Math.round(status.route.durationSeconds / 60)} min, ${distanceText(status.route.distanceMeters)}.`
+      ? ` The route is about ${durationText(status.route.durationSeconds)}, ${distanceText(status.route.distanceMeters)}.`
       : "";
   const userFacingText =
     status.state === "selected"

@@ -662,6 +662,26 @@ describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () 
     expect(started).toEqual([["Port Hercule", "walk"]]);
   });
 
+  it("says a very short route as one minute and a long one in hours", async () => {
+    for (const [durationSeconds, distanceMeters, said] of [
+      [20, 30, "about 1 min, 30 m"],
+      [3600, 5000, "about 1 h, 5.0 km"],
+      [7500, 12_340, "about 2 h 5 min, 12.3 km"],
+    ] as const) {
+      const service = new MapsService(undefined, store([]));
+      const { device } = phone(true);
+      device.start = async () => ({
+        state: "awaiting-confirmation",
+        placeName: "Port Hercule",
+        route: { durationSeconds, distanceMeters, traffic: "none" },
+      });
+      service.registerDeviceNavigation(device);
+      expect(await run(service, destination)).toMatchObject({
+        text: `Confirm on the phone to start navigation to Port Hercule. The route is ${said}.`,
+      });
+    }
+  });
+
   it("returns the directions link when the phone is not ready, refuses or does not say", async () => {
     for (const available of [false, undefined]) {
       const service = new MapsService(undefined, store([]));
