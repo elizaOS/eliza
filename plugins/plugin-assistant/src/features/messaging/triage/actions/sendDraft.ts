@@ -28,14 +28,13 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger, ModelType, parseKeyValueXml } from "@elizaos/core";
+import { currentGmailComposeOrigin } from "../../../../services/device-actions/service.ts";
 import {
   draftConsentDigest,
   pendingSendDraft,
   requireSendConsent,
 } from "../send-consent.ts";
 import { getSendPolicy } from "../send-policy.ts";
-import { deviceEmailDraft } from "./device-email-draft.ts";
-import { currentGmailComposeOrigin } from "../../../../services/device-actions/service.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import type { DraftRecord, DraftRequest } from "../types.ts";
 import {
@@ -45,6 +44,7 @@ import {
   parseSendDraftParams,
   validateMessageAction,
 } from "./_shared.ts";
+import { deviceEmailDraft } from "./device-email-draft.ts";
 
 const OUTBOUND_DRAFT_PARAMETERS: ActionParameter[] = [
   {
