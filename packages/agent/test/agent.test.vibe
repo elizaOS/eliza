@@ -1,0 +1,72 @@
+// spec/agent/host/process.md, "Story: Boot from a launch and serve only when ready"; spec/agent/host/process.md, "Story: Tell the host whether the agent can answer"; spec/agent/host/process.md, "Story: Stop on a signal and exit with an honest code"
+module node {
+  import { chmod } from "node:fs/promises"
+  import { join } from "node:path"
+
+  export function storeOwners(state: string, mode: number): Promise<void> {
+    return chmod(join(state, ".store-v4-owners"), mode)
+  }
+}
+import { storeOwners } from node
+import { assert, it } from "@effect/vitest"
+import { healthReply } from "../gen/agent__host__process.ts"
+import { agentChild, boot, host, ready, scratch, startInProcess } from "./support/kernel.vibe"
+import { launchDocument, launchFrame, writeLaunch } from "./support/scratch.ts"
+import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
+
+const healthOf = (answer: LocalAnswer | Refusal) => "status" in answer ? [answer.status, answer.json] : answer
+
+it.effect('A cloud launch with no plugins reaches Ready, echoes its epoch on health and exits 0 on SIGTERM (spec/agent/host/process.md, "A cloud launch becomes ready with no plugin loaded"; spec/agent/host/process.md, "Health is 200 only when boot is done and no stop began, and it echoes this launch\'s epoch")', effect () => {
+  const booted = try boot({ cloud: true, frame: { epoch: 7 } })
+  try ready(booted)
+  const health = try host("health", () => booted.child.health())
+  try Effect.try(() => booted.child.signal("SIGTERM"))
+  const exited = try host("exit", () => booted.child.exited)
+  try Effect.try(() => assert.deepStrictEqual({ health: healthOf(health), code: exited.code, calls: booted.cloud?.calls.length }, {
+    health: [200, { ready: true, runtime: "ok", agentState: "running", epoch: 7 }], code: 0, calls: 0,
+  }))
+}, 180_000)
+
+it.effect('A repeated SIGTERM joins the stop already running and the process still exits 0 (spec/agent/host/process.md, "The first signal stops the runtime at once, and a repeated signal joins that stop")', effect () => {
+  const booted = try boot()
+  try ready(booted)
+  try Effect.try(() => {
+    booted.child.signal("SIGTERM")
+    booted.child.signal("SIGTERM")
+  })
+  const exited = try host("exit", () => booted.child.exited)
+  try Effect.try(() => assert.deepStrictEqual({ code: exited.code, signal: exited.signal }, { code: 0, signal: null }))
+}, 120_000)
+
+it.effect('After stop the phase reports the exit, health says stopping and a second stop joins with the same code (spec/agent/host/process.md, "A requested stop ends in an exit")', effect () => {
+  const started = try startInProcess()
+  const before = try Effect.try(() => healthReply(started.agent.phase()))
+  const first = try host("stop", () => started.agent.stop())
+  const second = try host("stop again", () => started.agent.stop())
+  const after = try Effect.try(() => started.agent.phase())
+  try Effect.try(() => assert.deepStrictEqual({ before, first, second, outcome: after.outcome, health: healthReply(after) }, {
+    before: { tag: "HealthReady", epoch: 1 }, first: 0, second: 0,
+    outcome: { tag: "ExitedWith", code: 0 }, health: { tag: "HealthUnavailable", phase: "stopping" },
+  }))
+}, 120_000)
+
+it.effect('A store whose release fails on stop exits 1 (spec/agent/host/process.md, "The exit code is the boot failure\'s code, else 0 after a clean release and 1 after a failed one")', effect () => {
+  const booted = try boot({ launch: { persistMemory: true } })
+  try ready(booted)
+  try acquireRelease(host("lock owners", () => storeOwners(booted.state.path, 0o500)), () => orDie(host("unlock owners", () => storeOwners(booted.state.path, 0o700))))
+  try Effect.try(() => booted.child.signal("SIGTERM"))
+  const exited = try host("exit", () => booted.child.exited)
+  try Effect.try(() => assert.strictEqual(exited.code, 1, exited.stderr))
+}, 180_000)
+
+it.effect('A store held by another process exits 74 and an allowed action no plugin registers exits 78 (spec/agent/host/process.md, "The exit code is the boot failure\'s code, else 0 after a clean release and 1 after a failed one")', effect () => {
+  const holder = try boot({ launch: { persistMemory: true } })
+  try ready(holder)
+  const second = try scratch("agent-second")
+  const launchFile = try host("second launch", () => writeLaunch(second, launchDocument({ persistMemory: true })))
+  const locked = try agentChild({ launchFile, stateDir: holder.state.path, frame: launchFrame(), transport: { kind: "socket", path: second.file("agent.sock") } })
+  const lockedExit = try host("locked exit", () => locked.exited)
+  const stale = try boot({ launch: { allowed: ["REPLY", "IGNORE", "NONE", "UNREGISTERED"] } })
+  const staleExit = try host("stale exit", () => stale.child.exited)
+  try Effect.try(() => assert.deepStrictEqual({ locked: lockedExit.code, stale: staleExit.code }, { locked: 74, stale: 78 }))
+}, 240_000)

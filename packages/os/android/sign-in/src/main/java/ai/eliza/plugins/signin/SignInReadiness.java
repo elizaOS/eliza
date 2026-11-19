@@ -206,9 +206,12 @@ public final class SignInReadiness {
   }
 
   private void fold(SignInRegistration.Environment environment, CloudReading reading) {
-    Answer previous = answer(environment.name);
-    Answer next = ReadinessPolicy.measureAnswer(previous, reading, registration.googleMode, clock.getAsLong());
-    synchronized (lock) { answers.put(environment.name, next); }
+    Answer previous, next;
+    synchronized (lock) {
+      previous = answer(environment.name);
+      next = ReadinessPolicy.measureAnswer(previous, reading, registration.googleMode, clock.getAsLong());
+      answers.put(environment.name, next);
+    }
     store.put(key(environment.name), serialize(next));
     if (ReadinessPolicy.announces(previous.readiness, next.readiness)) announcer.changed(environment.name, new Status(next.readiness, device()));
   }

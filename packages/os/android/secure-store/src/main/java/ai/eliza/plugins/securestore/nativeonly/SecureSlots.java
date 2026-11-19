@@ -60,6 +60,8 @@ public final class SecureSlots {
 
   public SecureSlotPolicy policy() { return policy; }
 
+  public void ensureAvailable() throws Exception { slots.ensureKey(); }
+
   private static JSONObject hostConfig(Context context) {
     try (InputStream input = context.getAssets().open(CAPACITOR_CONFIG)) {
       java.io.ByteArrayOutputStream text = new java.io.ByteArrayOutputStream();

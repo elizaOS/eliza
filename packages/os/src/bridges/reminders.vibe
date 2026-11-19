@@ -1,0 +1,183 @@
+// spec/os/android/reminderAlarms.md, "Story: Get my reminder at its time, even after a reboot"; spec/os/android/bridge.md, "Story: Report a device change only as Android confirmed it"
+import type { StoredStatus } from "../../gen/os__android__reminderAlarms.ts"
+import { canArmReminder, canReschedule, canStageDeletion, initial } from "../../gen/os__android__reminderAlarms.effect.vibe"
+import { nativeReply, settled } from "./bridge.vibe"
+import type {
+  AndroidReminderBoundOperation,
+  AndroidReminderCancelInput,
+  AndroidReminderRecord,
+  AndroidReminderScheduleInput,
+  AndroidRemindersPlugin,
+  ReminderAction,
+  ReminderStanding,
+  RemindersClient,
+  RemindersClientOptions,
+} from "./definitions/reminders.ts"
+
+export type * from "./definitions/reminders.ts"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { AndroidRemindersPlugin } from "./definitions/reminders.ts"
+
+  /** @throws {never} */
+  export function remindersPlugin(name = "ElizaReminders"): AndroidRemindersPlugin {
+    return registerPlugin<AndroidRemindersPlugin>(name)
+  }
+}
+import { remindersPlugin } from capacitor
+export { remindersPlugin }
+
+export error ReminderNotAllowed { action: ReminderAction; id: string; standing: ReminderStanding }
+
+const Instant = Schema.Number.check(Schema.makeFilter((value: number) => Number.isSafeInteger(value) && value >= 0))
+const Alert = Schema.NullOr(Schema.Number)
+const Target = Schema.Struct({
+  sourceId: Schema.String,
+  sourceRevision: Schema.String,
+  reminderId: Schema.String,
+  occurrenceId: Schema.String,
+  revision: Schema.String,
+  timingVersion: Schema.optionalKey(Schema.Literal(2)),
+})
+schema Recurrence { rule: "daily" | "weekdays" | "weekly"; zone: string; date: string; time: string; leadMinutes: number }
+const Base = {
+  id: Schema.String,
+  title: Schema.String,
+  body: Schema.String,
+  occurrenceId: Schema.String,
+  target: Target,
+  createdAt: Instant,
+  recurrence: Schema.optionalKey(Recurrence),
+  revision: Schema.optionalKey(Schema.String),
+  postedAt: Schema.optionalKey(Instant),
+  completedAt: Schema.optionalKey(Instant),
+  cancelledAt: Schema.optionalKey(Instant),
+  snoozedAt: Schema.optionalKey(Instant),
+  legacyAlarm: Schema.optionalKey(Schema.Boolean),
+  pendingDeletion: Schema.optionalKey(Schema.String),
+}
+const Row = Schema.Union([
+  Schema.Struct({
+    ...Base,
+    undated: Schema.Literal(true),
+    status: Schema.Literals(["todo", "completed", "cancelled"]),
+    mode: Schema.Literal("none"),
+    history: Schema.mutable(Schema.Array(Schema.Struct({ occurrenceId: Schema.String, completedAt: Instant }))),
+  }),
+  Schema.Struct({
+    ...Base,
+    undated: Schema.optionalKey(Schema.Literal(false)),
+    at: Instant,
+    dueAt: Instant,
+    alertMinutes: Schema.optionalKey(Alert),
+    status: Schema.Literals(["scheduled", "pending", "posted", "permission-denied", "scheduling-failed", "completed", "cancelled"]),
+    mode: Schema.Literals(["inexact", "none"]),
+    history: Schema.mutable(Schema.Array(Schema.Struct({ occurrenceId: Schema.String, dueAt: Instant, completedAt: Instant, skippedDates: Schema.Int }))),
+  }),
+])
+const Listing = Schema.Struct({ reminders: Schema.mutable(Schema.Array(Row)), notificationsEnabled: Schema.Boolean })
+schema Refusal { id: string; status: "failed" | "past" | "permission-denied" | "storage-full"; mode: "inexact"; message: string }
+const Scheduled = Schema.Union([
+  Refusal,
+  Schema.Struct({
+    id: Schema.String,
+    status: Schema.Literals(["scheduled", "pending"]),
+    at: Instant,
+    mode: Schema.Literals(["inexact", "none"]),
+    dueAt: Schema.optionalKey(Instant),
+    alertMinutes: Schema.optionalKey(Alert),
+    message: Schema.String,
+  }),
+])
+const Schedule = Schema.Union([
+  Schema.Struct({ at: Instant, recurrence: Schema.NullOr(Recurrence), dueAt: Instant, alertMinutes: Alert }),
+  Schema.Struct({ at: Instant, recurrence: Schema.NullOr(Recurrence) }),
+])
+const CreationSchedule = Schema.Struct({ at: Instant, dueAt: Instant, alertMinutes: Alert, recurrence: Schema.NullOr(Recurrence) })
+const Outcome = {
+  version: Schema.Literal(1),
+  sourceId: Schema.String,
+  reminderId: Schema.String,
+  occurrenceId: Schema.String,
+  revision: Schema.String,
+  status: Schema.Literals(["scheduled", "pending", "posted", "permission-denied", "scheduling-failed", "completed", "cancelled", "todo"]),
+  at: Instant,
+  dueAt: Schema.optionalKey(Instant),
+  alertMinutes: Schema.optionalKey(Alert),
+}
+const Result = Schema.Union([
+  Schema.Struct({ ...Outcome, kind: Schema.Literal("reminder_create"), fields: Schema.Struct({ title: Schema.String, body: Schema.String, schedule: CreationSchedule }) }),
+  Schema.Struct({ ...Outcome, kind: Schema.Literal("reminder_read_selected"), fields: Schema.Struct({ title: Schema.String, body: Schema.String, schedule: Schedule }) }),
+  Schema.Struct({ ...Outcome, kind: Schema.Literals(["reminder_update", "reminder_complete", "reminder_snooze", "reminder_cancel"]) }),
+])
+const Receipt = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("succeeded"), result: Result }),
+  Schema.Struct({ status: Schema.Literal("unknown"), result: Schema.optionalKey(Result), message: Schema.optionalKey(Schema.String) }),
+])
+schema Cancelled { id: string; status: "cancelled" | "unknown"; mode: "inexact"; message: string }
+const TodoSaved = Schema.Union([
+  Refusal,
+  Schema.Struct({ id: Schema.String, status: Schema.Literal("saved"), mode: Schema.Literal("none"), target: Target, message: Schema.String }),
+])
+schema TodoDecided { id: string; status: "todo" | "completed" | "cancelled"; target: Target }
+const PendingTap = Schema.Union([
+  Schema.Struct({ token: Schema.String, target: Target, retained: Schema.Boolean, question: Schema.optionalKey(Schema.Boolean) }),
+  Schema.Struct({}),
+])
+const Done = Schema.Void
+
+const KEPT: Readonly<Partial<Record<AndroidReminderRecord["status"], StoredStatus>>> = {
+  scheduled: "StoredScheduled",
+  posted: "StoredPosted",
+  "permission-denied": "StoredPermissionDenied",
+}
+
+export function reminderStanding(record: AndroidReminderRecord | undefined): ReminderStanding {
+  if (record === undefined) return "Absent"
+  if (record.pendingDeletion !== undefined) return "StoredDeletionPending"
+  return (record.undated === true ? undefined : KEPT[record.status]) ?? "Untimed"
+}
+
+function admitted(action: ReminderAction, standing: ReminderStanding): boolean {
+  if (standing === "Absent") return action === "schedule" && canArmReminder(initial)
+  if (standing === "Untimed") return action === "cancel"
+  const alarm = { ...initial, keptStatus: standing }
+  return action === "schedule" ? canArmReminder(alarm) || canReschedule(alarm) : canStageDeletion(alarm)
+}
+
+effect function standingOf(plugin: AndroidRemindersPlugin, name: string, id: string) {
+  const listing = try nativeReply(name, "listReminders", Listing, () => plugin.listReminders())
+  return reminderStanding(listing.reminders.find((record) => record.id === id))
+}
+
+effect function guarded<A, E>(plugin: AndroidRemindersPlugin, name: string, action: ReminderAction, id: string, write: A!E) {
+  const standing = try standingOf(plugin, name, id)
+  if (!admitted(action, standing)) throw new ReminderNotAllowed({ action, id, standing })
+  return try write
+}
+
+export function remindersClient(options: RemindersClientOptions = {}): RemindersClient {
+  const { name = "ElizaReminders", plugin = remindersPlugin(name) } = options
+  const bound = (method: "operateReminder" | "reminderOperationReceipt", operation: AndroidReminderBoundOperation) =>
+    settled(nativeReply(name, method, Receipt, () => plugin[method](operation)))
+  const tap = (method: "consumeReminderTap" | "releaseReminderQuestion" | "dismissReminderTap", token: string) =>
+    settled(nativeReply(name, method, Done, () => plugin[method]({ token })))
+  return {
+    schedule: (input: AndroidReminderScheduleInput) =>
+      settled(guarded(plugin, name, "schedule", input.id, nativeReply(name, "scheduleReminder", Scheduled, () => plugin.scheduleReminder(input)))),
+    list: () => settled(nativeReply(name, "listReminders", Listing, () => plugin.listReminders())),
+    selected: (id) => settled(nativeReply(name, "selectedReminder", Target, () => plugin.selectedReminder({ id }))),
+    operate: (operation) => bound("operateReminder", operation),
+    operationReceipt: (operation) => bound("reminderOperationReceipt", operation),
+    cancel: (input: AndroidReminderCancelInput) =>
+      settled(guarded(plugin, name, "cancel", input.id, nativeReply(name, "cancelReminder", Cancelled, () => plugin.cancelReminder(input)))),
+    saveTodo: (input) => settled(nativeReply(name, "saveTodo", TodoSaved, () => plugin.saveTodo(input))),
+    todoDecision: (input) => settled(nativeReply(name, "todoDecision", TodoDecided, () => plugin.todoDecision(input))),
+    pendingTap: () => settled(nativeReply(name, "pendingReminderTap", PendingTap, () => plugin.pendingReminderTap())),
+    consumeTap: (token) => tap("consumeReminderTap", token),
+    releaseQuestion: (token) => tap("releaseReminderQuestion", token),
+    dismissTap: (token) => tap("dismissReminderTap", token),
+  }
+}
+

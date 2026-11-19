@@ -1,0 +1,164 @@
+// spec/agent/models/binding.md, "Story: Answer with the backend the host chose"; spec/agent/models/binding.md, "Story: Keep the account state honest"; spec/agent/models/binding.md, "Story: Give plugins the owner's cloud link"
+import { assert, it } from "@effect/vitest"
+import { ModelType, type AgentRuntime, type GenerateTextParams, type UUID } from "@elizaos/core"
+import { answerJson, echoImages, insufficientCredits, rateLimited, text, unavailable, type CloudFake } from "./support/cloud-fake.ts"
+import { call, cloudFake, deviceKey, host, startInProcess, type InProcess } from "./support/kernel.vibe"
+import { googleProductPlugin, productGoogleActionName } from "./support/product-plugin/index.ts"
+import { account, type LaunchOptions } from "./support/scratch.ts"
+import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
+
+const google = "/api/v1/eliza/google"
+
+function completions(cloud: CloudFake): number {
+  return cloud.calls.filter((made) => made.method === "POST" && made.path.endsWith("/chat/completions")).length
+}
+
+function jsonOf(answer: LocalAnswer | Refusal): [number, unknown] {
+  return "status" in answer ? [answer.status, answer.json] : [0, answer.refused]
+}
+
+effect function cloudAgent(cloud: CloudFake, launch: LaunchOptions = {}) {
+  return try startInProcess({
+    launch: { ...launch, backend: { kind: "cloud", origin: cloud.origin, imageModel: "vision" } },
+    frame: { credential: { version: 1, value: deviceKey } },
+    bundled: new Map([[googleProductPlugin.name, googleProductPlugin]]),
+  })
+}
+
+effect function say(agent: InProcess, params: GenerateTextParams) {
+  return try host("model call", () => agent.agent.runtime.useModel(ModelType.TEXT_SMALL, params).then(
+    (answer) => ({ kind: "answered" as const, answer }),
+    (failure: unknown) => ({ kind: "refused" as const, code: (failure as { code?: unknown }).code, status: (failure as { status?: unknown }).status }),
+  ))
+}
+
+effect function status(agent: InProcess) {
+  const [code, body] = jsonOf(try call(agent, { method: "GET", path: "/api/status" }))
+  const { backend, blocked, canRespond, lastCloudFailure } = body as { backend: string; blocked: boolean; canRespond: boolean; lastCloudFailure?: { kind: string; retryAt?: number } }
+  return { code, backend, blocked, canRespond, failure: lastCloudFailure?.kind, retryAt: lastCloudFailure?.retryAt }
+}
+
+effect function push(agent: InProcess, version: number, credential: string, owner: { userId: string; organizationId: string } = account) {
+  return jsonOf(try call(agent, { method: "PUT", path: "/api/host/cloud-credential", body: { version, credential, expiresAt: Date.now() + 3_600_000, account: owner } }))
+}
+
+effect function warm(agent: InProcess) {
+  return jsonOf(try call(agent, { method: "POST", path: "/api/cloud/warm" }))
+}
+
+effect function tryGoogle(runtime: AgentRuntime) {
+  const action = runtime.actions.find((found) => found.name === productGoogleActionName)
+  if (action === undefined) return try Effect.die(new Error("The product Google action is not registered"))
+  try host("cloud service", () => runtime.getServiceLoadPromise("cloud"))
+  const message = { entityId: runtime.agentId as UUID, roomId: runtime.agentId as UUID, content: { text: "Archive the thread and book the meeting." } }
+  const result = try host("product Google action", () => Promise.resolve(action.handler(runtime, message)))
+  return (result as { data: { attempts: Record<string, { kind: string; status?: number; operation?: string }> } }).data.attempts
+}
+
+it.live('Answer with the backend the host chose: cloud streams and answers whole, describes an image, retries an outage once; own-key answers; none registers nothing (spec/agent/models/binding.md, "Story: Answer with the backend the host chose")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try cloudAgent(cloud)
+  try Effect.sync(() => cloud.script(text("Hel", "lo"), text("Whole."), echoImages(), unavailable(1), text("After the outage.")))
+  const chunks: string[] = []
+  const streamed = try say(agent, { prompt: "Hi.", stream: true, onStreamChunk: (chunk: string) => { chunks.push(chunk) } })
+  const whole = try say(agent, { prompt: "Hi again." })
+  const described = try host("image description", () => agent.agent.runtime.useModel(ModelType.IMAGE_DESCRIPTION, { imageUrl: "https://example.test/cat.png", prompt: "Describe it." }))
+  const before = completions(cloud)
+  const retried = try say(agent, { prompt: "Through an outage." })
+  assert.deepStrictEqual([streamed, chunks, whole], [{ kind: "answered", answer: "Hello" }, ["Hel", "lo"], { kind: "answered", answer: "Whole." }])
+  assert.strictEqual(described.description, "images:https://example.test/cat.png")
+  assert.deepStrictEqual(retried, { kind: "answered", answer: "After the outage." })
+  assert.strictEqual(completions(cloud) - before, 2)
+  assert.deepStrictEqual(cloud.calls.map((made) => [made.path, (made.body as { model: string }).model, made.authorization]).slice(0, 3), [
+    ["/api/v1/chat/completions", "small", `Bearer ${deviceKey}`],
+    ["/api/v1/chat/completions", "small", `Bearer ${deviceKey}`],
+    ["/api/v1/chat/completions", "vision", `Bearer ${deviceKey}`],
+  ])
+  assert.deepInclude(try status(agent), { code: 200, backend: "cloud", blocked: false, canRespond: true, failure: undefined })
+
+  const own = try startInProcess({
+    launch: { backend: { kind: "ownKey", baseUrl: cloud.ownKeyBaseUrl, smallModel: "small", largeModel: "large" } },
+    frame: { credential: { version: 1, value: cloud.ownKey } },
+  })
+  try Effect.sync(() => cloud.script(text("Own answer.")))
+  const owned = try say(own, { prompt: "Own key." })
+  assert.deepStrictEqual(owned, { kind: "answered", answer: "Own answer." })
+  assert.strictEqual(cloud.calls.at(-1)?.path, "/own-key/v1/chat/completions")
+  assert.strictEqual(cloud.calls.at(-1)?.authorization, `Bearer ${cloud.ownKey}`)
+  assert.strictEqual(own.agent.runtime.getModel(ModelType.IMAGE_DESCRIPTION), undefined)
+  assert.strictEqual(own.agent.runtime.getService("cloud"), null)
+  assert.deepInclude(try status(own), { backend: "own-key", canRespond: true })
+
+  const none = try startInProcess({ launch: { backend: { kind: "none" } } })
+  const calls = cloud.calls.length
+  assert.deepStrictEqual([ModelType.TEXT_SMALL, ModelType.TEXT_LARGE, ModelType.IMAGE_DESCRIPTION].map((type) => none.agent.runtime.getModel(type)), [undefined, undefined, undefined])
+  assert.strictEqual(none.agent.runtime.getService("cloud"), null)
+  assert.deepInclude(try status(none), { backend: "none", canRespond: false })
+  assert.deepStrictEqual(try warm(none), [200, { warm: "no_cloud" }])
+  assert.deepStrictEqual(try push(none, 2, "any"), [409, { error: "credential_refused", reason: "not_cloud" }])
+  assert.strictEqual(cloud.calls.length, calls)
+}, 300_000)
+
+it.live('Keep the account state honest: a refused key blocks until a newer push, funding and rate limits block, warm never calls the cloud, and an answer clears the state (spec/agent/models/binding.md, "Story: Keep the account state honest")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try cloudAgent(cloud)
+  try Effect.sync(() => cloud.acceptKey("device-key-2"))
+  const invalid = try say(agent, { prompt: "Old key." })
+  assert.deepStrictEqual(invalid, { kind: "refused", code: undefined, status: 401 })
+  assert.deepInclude(try status(agent), { blocked: true, canRespond: false, failure: "credential_invalid" })
+  const calls = cloud.calls.length
+  assert.deepStrictEqual(try warm(agent), [200, { warm: "blocked" }])
+  assert.strictEqual(cloud.calls.length, calls)
+
+  assert.deepStrictEqual(try push(agent, 2, "device-key-2"), [200, { version: 2, accountState: "usable" }])
+  assert.deepInclude(try status(agent), { blocked: false, canRespond: true })
+  assert.deepStrictEqual(try warm(agent), [200, { warm: "ready" }])
+  try Effect.sync(() => cloud.script(text("New key.")))
+  assert.deepStrictEqual(try say(agent, { prompt: "New key." }), { kind: "answered", answer: "New key." })
+  assert.strictEqual(cloud.calls.at(-1)?.authorization, "Bearer device-key-2")
+  assert.deepStrictEqual(try push(agent, 1, "device-key-1"), [409, { error: "credential_refused", reason: "stale_version" }])
+  assert.deepStrictEqual(try push(agent, 3, "device-key-3", { userId: "someone-else", organizationId: "their-org" }), [409, { error: "credential_refused", reason: "other_account" }])
+
+  try Effect.sync(() => cloud.script(insufficientCredits()))
+  assert.deepStrictEqual(try say(agent, { prompt: "Unfunded." }), { kind: "refused", code: "MODEL_FUNDING_AUTHORITY_FAILED", status: 402 })
+  assert.deepInclude(try status(agent), { blocked: true, failure: "insufficient_credits" })
+
+  const retryAt = Date.now() + 2_000
+  try Effect.sync(() => cloud.script(rateLimited(retryAt)))
+  const limited = try say(agent, { prompt: "Limited." })
+  const spent = completions(cloud)
+  const early = try say(agent, { prompt: "Too early." })
+  assert.deepStrictEqual([limited, early].map((refused) => refused.kind === "refused" ? refused.code : refused.answer), ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED"])
+  assert.strictEqual(completions(cloud), spent)
+  assert.deepInclude(try status(agent), { blocked: true, failure: "limit_reached", retryAt })
+  assert.deepStrictEqual(try warm(agent), [200, { warm: "blocked" }])
+  try Effect.sleep(Math.max(0, retryAt - Date.now()) + 50)
+  try Effect.sync(() => cloud.script(text("Later.")))
+  assert.deepStrictEqual(try say(agent, { prompt: "Later." }), { kind: "answered", answer: "Later." })
+  assert.deepInclude(try status(agent), { blocked: false, canRespond: true })
+  assert.strictEqual(completions(cloud), spent + 1)
+}, 300_000)
+
+it.live('Give plugins the owner\'s cloud link: a managed Gmail change needs the owner\'s consent, a read always reaches the cloud (spec/agent/models/binding.md, "Story: Give plugins the owner\'s cloud link")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  try Effect.sync(() => {
+    cloud.route("POST", `${google}/gmail/inbox-v1/operations`, answerJson({ done: true }))
+    cloud.route("GET", `${google}/gmail/triage`, answerJson({ threads: [] }))
+  })
+  const product = { productPlugin: googleProductPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productGoogleActionName] }
+  const withheld = try cloudAgent(cloud, product)
+  const off = try tryGoogle(withheld.agent.runtime)
+  assert.deepStrictEqual(off, {
+    gmailChange: { kind: "changes-off", operation: "gmail_change" },
+    calendarEdit: { kind: "changes-off", operation: "calendar_edit" },
+    read: { kind: "answered", status: 200, body: { threads: [] } },
+  })
+  assert.deepStrictEqual(cloud.calls.map((made) => [made.method, made.path]), [["GET", `${google}/gmail/triage`]])
+
+  const consented = try cloudAgent(cloud, { ...product, google: { gmailChanges: true, calendarEdits: false } })
+  const on = try tryGoogle(consented.agent.runtime)
+  assert.deepStrictEqual(on.gmailChange, { kind: "answered", status: 200, body: { done: true } })
+  assert.deepStrictEqual(on.calendarEdit, { kind: "changes-off", operation: "calendar_edit" })
+  const gmail = cloud.calls.find((made) => made.method === "POST" && made.path === `${google}/gmail/inbox-v1/operations`)
+  assert.deepStrictEqual([gmail?.authorization, gmail?.body], [`Bearer ${deviceKey}`, { kind: "archive", threadId: "thread-1" }])
+}, 300_000)

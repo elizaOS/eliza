@@ -1,4 +1,4 @@
-// spec/os/signIn/cloudRequests.md, "Story: Reach my account's cloud services without holding my key"
+// spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"
 package ai.eliza.plugins.signin;
 
 import java.io.File;
@@ -20,7 +20,7 @@ public final class LargeBodyGrant {
   public record Grant(String id, long size, String sha256, String contentType) {}
   public record Chunk(byte[] data, boolean done) {}
   public static final class Oversize extends IOException {
-    public Oversize() { super("the body is larger than " + CloudRequestPolicy.BODY_LIMIT + " bytes"); }
+    public Oversize() { super("the body is larger than " + CloudRequestPolicy.REPLY_LIMIT + " bytes"); }
   }
 
   private record Held(Grant grant, File file, long read) {}
@@ -47,7 +47,7 @@ public final class LargeBodyGrant {
       byte[] buffer = new byte[64 << 10];
       for (int n; (n = rest.read(buffer)) > 0;) {
         size += n;
-        if (size > CloudRequestPolicy.BODY_LIMIT) throw new Oversize();
+        if (size > CloudRequestPolicy.REPLY_LIMIT) throw new Oversize();
         out.write(buffer, 0, n);
         digest.update(buffer, 0, n);
       }

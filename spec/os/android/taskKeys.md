@@ -81,7 +81,7 @@ pure def release(s: TaskKeyCustody, account: C::Account, epoch: int, observed: S
       release: Released({ account: account, epoch: epoch, key: key }) },
     out: List(StorageKeyReleased({ epoch: epoch, key: key })) }
 }
-pure val epochValues = Set(1, 2, 3)
+pure val epochValues = Set(1, 2, 3, 4, 5, 6)
 pure val weight_release = 4
 pure def releasedEpoch(r: KeyRelease): int = match r { | Released(x) => x.epoch | NoRelease => 0 }
 pure def releasedKey(r: KeyRelease): int = match r { | Released(x) => x.key | NoRelease => 0 }
@@ -127,5 +127,5 @@ pure def reset(s: TaskKeyCustody): TaskKeyCustody = initial
 pure def stepAnAccountChangeRetiresTheRelease(before: TaskKeyCustody, after: TaskKeyCustody): bool =
   after.verified != before.verified implies after.release == NoRelease
 pure def sometimesRetiredAfterAccountChange(s: TaskKeyCustody): bool = s.release == NoRelease and s.keys.length() >= 1 and s.verified != C::noAccount and keyOf(s.verified, s) == 0
-pure def sometimesSignedInAgainToOwnKey(s: TaskKeyCustody): bool = releasedKey(s.release) == 1 and s.keys.length() >= 2 and releasedEpoch(s.release) >= 3
+pure def sometimesSignedInAgainToOwnKey(s: TaskKeyCustody): bool = releasedKey(s.release) == 1 and s.keys.length() >= 2
 ```

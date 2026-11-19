@@ -6,7 +6,7 @@ cron schedule, or each time a named runtime event happens. The agent's
 (create, list, read, update, delete, run history, run now). Each scheduled
 occurrence runs as a core exclusive scheduled task:
 core scheduling (`spec/core/scheduling.md`) and its task service owners
-(`spec/core/taskServiceOwners.md`) own exclusivity and stop, and the [workflow schedule](../../workflow/schedule.md) owns the
+(`spec/core/taskServiceOwners.md`) own exclusivity and stop, and the core [missed occurrence window](../../core/occurrenceWindow.md) is the
 window after which a late occurrence is missed. Workflow schedules are not
 triggers.
 
@@ -38,7 +38,7 @@ that does not exist is 409; a resolved one that cannot take a turn
 (`roomExists` false) is 503. Only the chosen type's data is kept.
 
 ```quint
-import schedule as WS from "../../workflow/schedule"
+import occurrenceWindow as WS from "../../core/occurrenceWindow"
 type TriggerType = OnceAt | CronSchedule | OnRuntimeEvent
 type Lifecycle = Unsaved | Saved | Removed
 type RunSource = RunNow | Scheduled | FromEvent

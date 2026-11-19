@@ -1,0 +1,119 @@
+// spec/os/android/deepLinks.md, "Story: Open the link I followed exactly once, even across a cold start"; spec/os/android/deepLinks.md, "Story: Keep two links I followed apart, even when they are the same URL"
+import type { PluginListenerHandle } from "@capacitor/core"
+import { Machine, machine, type DeepLinks, type LinkOutcome } from "../../gen/os__android__deepLinks.effect.vibe"
+import { nativeCall, nativeReply, settled } from "./bridge.vibe"
+import type { DeepLinksClient, DeepLinksNativePlugin, FollowedLink, LinkOpener, LinkReceipt } from "./definitions/deep-links.ts"
+
+export type * from "./definitions/deep-links.ts"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { DeepLinksNativePlugin } from "./definitions/deep-links.ts"
+
+  /** @throws {never} */
+  export function deepLinksPlugin(name = "ElizaDeepLinks"): DeepLinksNativePlugin {
+    return registerPlugin<DeepLinksNativePlugin>(name)
+  }
+}
+import { deepLinksPlugin } from capacitor
+export { deepLinksPlugin }
+
+const PLUGIN = "ElizaDeepLinks"
+const Receipt = Schema.Int.check(Schema.isGreaterThan(0)).pipe(Schema.brand("LinkReceipt"))
+const Link = Schema.Struct({ receipt: Receipt, url: Schema.String.check(Schema.isPattern(/^\S(?:[^\r\n]*\S)?$/)) })
+const Pending = Schema.Struct({ link: Schema.NullOr(Link) })
+const Cleared = Schema.Struct({ cleared: Schema.Boolean })
+
+interface Session {
+  readonly links: Machine.Shape
+  readonly urls: Map<LinkReceipt, string>
+  readonly plugin: DeepLinksNativePlugin
+  readonly open: LinkOpener
+  handle: PluginListenerHandle | undefined
+}
+
+effect function held() {
+  provide machine() {
+    return try Machine
+  }
+}
+
+effect function acknowledge(session: Session, id: LinkReceipt) {
+  const url = session.urls.get(id)
+  if (url === undefined) return
+  try nativeReply(PLUGIN, "acknowledge", Cleared, () => session.plugin.acknowledge({ receipt: id, url }))
+  session.urls.delete(id)
+  session.links.send({ type: "acknowledge", id }) catch (gone) => gone.state
+}
+
+effect function settle(session: Session, id: LinkReceipt) {
+  acknowledge(session, id) catch effect (failure) => {
+    try logError("A followed link stays in the native slot until its acknowledgement reaches it", { receipt: id, failure })
+  }
+}
+
+effect function attempt(session: Session, id: LinkReceipt) {
+  const url = session.urls.get(id)
+  const outcome: LinkOutcome = url === undefined ? "LinkFailed" : tryPromise(() => session.open(url)) catch () => "LinkFailed"
+  const finished = try orDie(session.links.send({ type: "finish", id, linkOutcome: outcome }))
+  if (finished.acks.includes(id)) try settle(session, id)
+}
+
+effect function begin(session: Session, before: DeepLinks, after: DeepLinks) {
+  for (const id of after.running) {
+    if (!before.running.includes(id)) fork.detached attempt(session, id as LinkReceipt)
+  }
+}
+
+effect function deliver(session: Session, link: FollowedLink) {
+  session.urls.set(link.receipt, link.url)
+  let before = try session.links.get()
+  while (before.captured < link.receipt) before = try orDie(session.links.send({ type: "capture" }))
+  const after = try orDie(session.links.send({ type: "deliver", id: link.receipt }))
+  try begin(session, before, after)
+  if (!after.running.includes(link.receipt) && after.acks.includes(link.receipt)) try settle(session, link.receipt)
+}
+
+effect function poll(session: Session) {
+  const answer = try nativeReply(PLUGIN, "pending", Pending, () => session.plugin.pending())
+  if (answer.link !== null) try deliver(session, answer.link)
+}
+
+effect function ready(session: Session) {
+  const before = try session.links.get()
+  const after = session.links.send({ type: "rendererReady" }) catch (already) => already.state
+  try begin(session, before, after)
+}
+
+effect function heard(session: Session, event: unknown) {
+  const link = Schema.decodeUnknownEffect(Link)(event) catch effect (refusal) => {
+    try logError("A captured link did not match its shape", { issue: refusal.message })
+    return undefined
+  }
+  if (link !== undefined) try deliver(session, link)
+}
+
+effect function start(session: Session) {
+  if (session.handle === undefined) {
+    session.handle = (try nativeCall(PLUGIN, "addListener", () =>
+      session.plugin.addListener("linkCaptured", (event) => runFork(heard(session, event))))) as PluginListenerHandle
+  }
+  try poll(session)
+}
+
+effect function stop(session: Session) {
+  const handle = session.handle
+  session.handle = undefined
+  if (handle !== undefined) try nativeCall(PLUGIN, "removeListener", () => handle.remove())
+}
+
+export function deepLinksClient(open: LinkOpener, plugin: DeepLinksNativePlugin = deepLinksPlugin()): DeepLinksClient {
+  const session: Session = { links: Effect.runSync(held()), urls: new Map(), plugin, open, handle: undefined }
+  return {
+    start: () => settled(start(session)),
+    ready: () => settled(ready(session)),
+    poll: () => settled(poll(session)),
+    state: () => settled(session.links.get()),
+    stop: () => settled(stop(session)),
+  }
+}

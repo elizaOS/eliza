@@ -165,10 +165,11 @@ pure def sometimesPrivatePageNotSaved(s: BrowserTab): bool = boundPage(s) and is
 ### A pop-up opens only from a tap on the selected settled tab, in its opener's privacy
 
 A `target=_blank` link or `window.open` opens a tab in the opener's profile
-only while the host runs, the opener is selected, committed without an
-error, and the tap is a native gesture; otherwise the opener hears a notice.
-The renderer accepts it, already created, only for its own bound session
-and an unknown tab.
+only when the opener is selected, committed without an error, and the tap
+is a native gesture; otherwise the opener hears a notice. The shell refuses
+it outright while the host is paused or gone, or at the tab limit. The
+renderer accepts it, already created, only for its own bound session and an
+unknown tab.
 
 ```quint
 type PopupRequest = { openerSettled: bool, openerSelected: bool, gesture: bool, openerPrivacy: TabPrivacy }

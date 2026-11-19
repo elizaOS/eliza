@@ -1,7 +1,9 @@
 # Scoped Files operations
 
 This spec owns per-row reviewed mutation of the owner's files and the
-batches they run in. [Requests](./requests.md) cover opening, and
+batches they run in. The row facts, outcomes and write receipts are the os
+package's [file storage](../os/android/files/storage.md) (`St`), and Files
+admits exactly the rows the device admits. [Requests](./requests.md) cover opening, and
 [reviewed file identity](./reviewPin.md) pins the file a review showed.
 
 ## Story: Act only on the file revision I reviewed
@@ -19,33 +21,25 @@ An invalid or missing row, replaced revision, same-folder move, or
 transfer into a selected folder's descendant does not reach a filesystem
 operation. Copy and move accept a collision-free name. The resulting path
 or trash ID comes from the write receipt. An unknown write result cannot
-fabricate an applied outcome or autonomously repeat a mutation.
+fabricate an applied outcome or autonomously repeat a mutation. A row is
+admitted here exactly when the device's file storage admits it.
 
 ```quint
-type FilesOp = Copy | Move | Trash
-type FilesRowCheck = { validPath: bool, pathExists: bool, reviewRequired: bool, reviewMatches: bool, currentOwner: bool, sameFolder: bool, descendant: bool }
-type FileOutcome = Invalid | Missing | Changed | Unchanged | Admitted | Copied | Moved | Trashed | Failed
-pure val rowValues = Set(
-  { validPath: true, pathExists: true, reviewRequired: true, reviewMatches: true, currentOwner: true, sameFolder: false, descendant: false },
-  { validPath: true, pathExists: true, reviewRequired: true, reviewMatches: false, currentOwner: true, sameFolder: false, descendant: false },
-  { validPath: true, pathExists: true, reviewRequired: false, reviewMatches: false, currentOwner: true, sameFolder: true, descendant: false },
-  { validPath: true, pathExists: true, reviewRequired: false, reviewMatches: false, currentOwner: false, sameFolder: false, descendant: true },
-  { validPath: false, pathExists: false, reviewRequired: false, reviewMatches: false, currentOwner: true, sameFolder: false, descendant: false }
-)
-pure def classifyRow(op: FilesOp, row: FilesRowCheck): FileOutcome =
-  if (not(row.validPath) or not(row.currentOwner)) Invalid else if (not(row.pathExists)) Missing
-  else if (row.reviewRequired and not(row.reviewMatches)) Changed
-  else if (op == Move and row.sameFolder) Unchanged
-  else if (op != Trash and row.descendant) Invalid
-  else Admitted
-pure def receiptOutcome(op: FilesOp, admission: FileOutcome, acknowledged: bool, resultingId: str): FileOutcome =
-  if (admission != Admitted) admission else if (not(acknowledged) or resultingId == "") Failed
-  else if (op == Copy) Copied else if (op == Move) Moved else Trashed
-pure def lawStaleReviewedRowIsNotAdmitted(op: FilesOp, row: FilesRowCheck): bool = classifyRow(op, row) == Admitted implies row.currentOwner and (not(row.reviewRequired) or row.reviewMatches)
-pure def lawAppliedRequiresReceipt(op: FilesOp, row: FilesRowCheck, acknowledged: bool, resultingId: str): bool = {
-  val answer = receiptOutcome(op, classifyRow(op, row), acknowledged, resultingId)
-  (answer == Copied or answer == Moved or answer == Trashed) implies classifyRow(op, row) == Admitted and acknowledged and resultingId != ""
+import storage as St from "../os/android/files/storage"
+pure val rowValues = St::rowValues
+pure def classifyRow(op: St::FilesOp, row: St::FilesRowCheck): St::FileOutcome =
+  if (not(row.validPath) or not(row.currentOwner)) St::Invalid else if (not(row.pathExists)) St::Missing
+  else if (row.reviewRequired and not(row.reviewMatches)) St::Changed
+  else if (op == St::Move and row.sameFolder) St::Unchanged
+  else if (op != St::Trash and row.descendant) St::Invalid
+  else St::Admitted
+pure def lawStaleReviewedRowIsNotAdmitted(op: St::FilesOp, row: St::FilesRowCheck): bool = classifyRow(op, row) == St::Admitted implies row.currentOwner and (not(row.reviewRequired) or row.reviewMatches)
+pure def lawAppliedRequiresReceipt(op: St::FilesOp, row: St::FilesRowCheck, acknowledged: bool, resultingId: str): bool = {
+  val answer = St::receiptOutcome(op, classifyRow(op, row), acknowledged, resultingId)
+  (answer == St::Copied or answer == St::Moved or answer == St::Trashed) implies classifyRow(op, row) == St::Admitted and acknowledged and resultingId != ""
 }
+pure def lawFilesAdmitsExactlyWhatTheDeviceAdmits(op: St::FilesOp, row: St::FilesRowCheck): bool =
+  (classifyRow(op, row) == St::Admitted) iff (St::nativeRowAdmission(op, row) == St::Admitted)
 ```
 
 ### Trash owns a journal entry before moving the row
@@ -62,8 +56,8 @@ type TrashPhase = Visible | Journaled | InTrash | MoveFailed | Expiring | Gone
 pure val expiryMillis = 2592000000
 type TrashRow = { phase: TrashPhase, journal: bool, resident: bool, deletedAt: int }
 pure val initial: TrashRow = { phase: Visible, journal: false, resident: false, deletedAt: 0 }
-pure def canJournal(s: TrashRow, op: FilesOp, row: FilesRowCheck, at: int): bool = s.phase == Visible and at >= 0 and op == Trash and classifyRow(op, row) == Admitted
-pure def journal(s: TrashRow, op: FilesOp, row: FilesRowCheck, at: int): TrashRow = { ...s, phase: Journaled, journal: true, deletedAt: at }
+pure def canJournal(s: TrashRow, op: St::FilesOp, row: St::FilesRowCheck, at: int): bool = s.phase == Visible and at >= 0 and op == St::Trash and classifyRow(op, row) == St::Admitted
+pure def journal(s: TrashRow, op: St::FilesOp, row: St::FilesRowCheck, at: int): TrashRow = { ...s, phase: Journaled, journal: true, deletedAt: at }
 pure def canMoveToTrash(s: TrashRow): bool = s.phase == Journaled
 pure def moveToTrash(s: TrashRow, acknowledged: bool): TrashRow = { ...s, phase: if (acknowledged) InTrash else MoveFailed, resident: acknowledged }
 pure def canUndoFailedJournal(s: TrashRow): bool = s.phase == MoveFailed

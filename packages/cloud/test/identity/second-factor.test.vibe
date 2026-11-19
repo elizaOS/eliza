@@ -83,7 +83,12 @@ describe("WP1 Identity: second factor", () => {
         read: [200, true]
       }
     ))
+  }))
 
+  it.live("Five wrong codes lock the login challenge (spec/cloud/identity/secondFactor.md, \"Story: Finish sign-in with my second factor\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const first = try signedIn(cloud, "ada@example.com")
+    const { enrolled, confirmedAt } = try enrollTotp(cloud, first.accessToken)
     const locking = (try signInAgain(cloud, "ada@example.com")) as Challenge
     const wrong: Array<string> = []
     for (let attempt = 0; attempt < 5; attempt += 1) {

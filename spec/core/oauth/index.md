@@ -112,6 +112,28 @@ pure def alwaysProviderOutcomeFollowsTheExchange(s: OAuthFlow): bool =
   (s.phase == SuccessWritePending implies not(s.compensationAttempted))
 ```
 
+### A stored account exists only from the success write onward
+
+An account is stored only while the success write is pending or after the
+flow has returned or thrown: the account write precedes the terminal
+success update, and a failed account write stores nothing.
+
+```quint
+pure def alwaysStoredAccountOnlyAtSuccessWriteOrEnd(s: OAuthFlow): bool =
+  s.accountStored implies (s.phase == SuccessWritePending or s.phase == FlowReturned or s.phase == FlowThrown)
+```
+
+### Compensation is followed only by the failure write and a throw
+
+Once compensation is attempted, the flow is waiting for the failure write
+or has thrown: compensation never leads to the success write or a returned
+result.
+
+```quint
+pure def alwaysCompensationEndsInFailureWrite(s: OAuthFlow): bool =
+  s.compensationAttempted implies (s.phase == FailureWritePending or s.phase == FlowThrown)
+```
+
 ### Terminal persistence and verifier cleanup preserve separate outcomes
 
 A provider exchange failure throws after recording a non-null failed row; a

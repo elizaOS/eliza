@@ -44,7 +44,7 @@ public final class SignInRegistration {
   }
 
   public static final String PRODUCTION = "production";
-  private static final Pattern CLIENT_ID = Pattern.compile("[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+");
+  private static final Pattern CLIENT_ID = Pattern.compile("(?=.{1,200}$)[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+");
   private static final Pattern NAME = Pattern.compile("[a-z][a-z0-9-]{0,31}");
   private static final Pattern HOST = Pattern.compile("[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+");
   private static final Pattern PATH = Pattern.compile("(/[A-Za-z0-9._~-]+)+");

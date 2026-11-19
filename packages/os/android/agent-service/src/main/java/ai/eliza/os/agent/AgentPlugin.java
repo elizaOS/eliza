@@ -1,9 +1,10 @@
-// spec/os/agentService/channel.md, "Story: Ask the agent only on the routes my app allows"; spec/os/agentService/channel.md, "Story: Stream a reply and stop it"; spec/os/agentService/channel.md, "Story: Receive the agent's live events for my screen"; spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"
+// spec/os/agentService/channel.md, "Story: Ask the agent only on the routes my app allows"; spec/os/agentService/channel.md, "Story: Stream a reply and stop it"; spec/os/agentService/channel.md, "Story: Receive the agent's live events for my screen"; spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"
 package ai.eliza.os.agent;
 
 import ai.eliza.os.agent.ChannelPolicy.FailCode;
 import ai.eliza.os.agent.ChannelPolicy.Outcome;
 import ai.eliza.os.agent.ChannelPolicy.Topic;
+import android.app.Activity;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -17,9 +18,6 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 
-/** The renderer's only way to the agent. Every call goes through the channel's renderer route
- * list; the root token and the device key stay in the service, so nothing here carries one. A
- * product subclasses this under its own plugin name. */
 @CapacitorPlugin(name = "ElizaAgent")
 public class AgentPlugin extends Plugin {
   private final String owner = "screen-" + UUID.randomUUID();
@@ -92,7 +90,7 @@ public class AgentPlugin extends Plugin {
   @PluginMethod public void unsubscribeEvents(PluginCall call) { abort(call); }
 
   @PluginMethod public void reviewRecovery(PluginCall call) {
-    AgentService.Review review = AgentService.reviewRecovery(getContext());
+    AgentService.Review review = AgentService.reviewRecovery(getContext(), focused());
     JSObject answer = new JSObject();
     if (review == null) answer.put("kind", "unavailable");
     else answer.put("kind", "reviewable").put("reviewToken", review.token()).put("retainedCount", review.retainedCount());
@@ -113,13 +111,17 @@ public class AgentPlugin extends Plugin {
   }
 
   private JSObject status() {
-    JSONObject status = AgentService.status(getContext());
-    JSObject projected = new JSObject();
-    for (java.util.Iterator<String> keys = status.keys(); keys.hasNext(); ) {
-      String key = keys.next();
-      projected.put(key, status.opt(key));
-    }
-    return projected;
+    AgentPolicy.Status status = AgentService.status(getContext());
+    JSObject projected = new JSObject().put("available", status.available()).put("state", status.state())
+      .put("epoch", status.epoch()).put("requestBodyLimit", status.requestBodyLimit());
+    if (!"failed".equals(status.state())) return projected;
+    projected.put("failure", status.failure());
+    return status.error() == null ? projected : projected.put("error", status.error());
+  }
+
+  private boolean focused() {
+    Activity activity = getActivity();
+    return activity != null && activity.hasWindowFocus();
   }
 
   private void command(PluginCall call, Runnable action) {

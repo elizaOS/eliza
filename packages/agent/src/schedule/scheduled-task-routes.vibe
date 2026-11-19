@@ -3,8 +3,13 @@ import {
   fireReplyCarriesTheRow, wellFormedVerb,
   type FireOutcome, type RefusalReason, type RequestKey, type TaskStatus, type Verb,
 } from "../../gen/agent__schedule__scheduledTasks.effect.vibe"
+import { Service, type IAgentRuntime } from "@elizaos/core"
 import type { LocalRoute } from "../access/routes.vibe"
 import type { AgentModule, AgentPlugin, ModuleContext, ModuleFactory, ModuleRefused } from "../host/module.vibe"
+import {
+  runtimeTaskHost, scheduledTaskPort, scheduledTaskService, startScheduledTaskTicks,
+  type Created, type DeliveryPort, type NewTask, type ScheduledTaskView, type ScheduledTasks,
+} from "./scheduled-tasks.vibe"
 
 export const scheduledTasksModuleName = "@elizaos/agent/scheduled-tasks"
 
@@ -198,6 +203,64 @@ export function scheduledTaskRoutes(tasks: ScheduledTaskPort): LocalRoute[] {
   ]
 }
 
+export const scheduledTasksServiceType = "scheduled-tasks"
+
+export interface ScheduledTasksApi extends Service {
+  create(task: NewTask): Promise<Created>
+  deliverKind(kind: string, port: DeliveryPort): void
+  get(taskId: string): Promise<ScheduledTaskView | undefined>
+  list(filter: { readonly ownerVisibleOnly: boolean }): Promise<readonly ScheduledTaskView[]>
+  applyVerb(taskId: string, request: VerbRequest, key: RequestKey, seenRevision?: number): Promise<VerbResult>
+  fire(taskId: string, seenRevision?: number): Promise<FireResult>
+}
+
+function scheduledTasksApi(tasks: ScheduledTasks) {
+  return class ScheduledTasksModule extends Service implements ScheduledTasksApi {
+    static override serviceType = scheduledTasksServiceType
+    override capabilityDescription = "Create, answer and fire the owner's scheduled tasks against the revision a plugin read"
+    ticks: { readonly stop: () => void!never!never } | undefined
+
+    static override async start(runtime: IAgentRuntime): Promise<Service> {
+      const service = new ScheduledTasksModule(runtime)
+      service.ticks = await runPromise(startScheduledTaskTicks(runtime, tasks))
+      return service
+    }
+
+    create(task: NewTask): Promise<Created> {
+      return runPromise(tasks.create(task))
+    }
+
+    deliverKind(kind: string, port: DeliveryPort): void {
+      tasks.deliverKind(kind, port)
+    }
+
+    get(taskId: string): Promise<ScheduledTaskView | undefined> {
+      return runPromise(tasks.get(taskId))
+    }
+
+    list(filter: { readonly ownerVisibleOnly: boolean }): Promise<readonly ScheduledTaskView[]> {
+      return runPromise(tasks.list(filter))
+    }
+
+    applyVerb(taskId: string, request: VerbRequest, key: RequestKey, seenRevision?: number): Promise<VerbResult> {
+      return runPromise(tasks.applyVerb(taskId, request, key, seenRevision))
+    }
+
+    fire(taskId: string, seenRevision?: number): Promise<FireResult> {
+      return runPromise(tasks.fire(taskId, seenRevision))
+    }
+
+    override stop(): Promise<void> {
+      return this.ticks === undefined ? Promise.resolve() : runPromise(this.ticks.stop())
+    }
+  }
+}
+
+export effect function openScheduledTasks(context: ModuleContext) {
+  const tasks = scheduledTaskService(try runtimeTaskHost(context.runtime))
+  return { port: scheduledTaskPort(tasks), plugin: { services: [scheduledTasksApi(tasks)] } } satisfies ScheduledTaskService
+}
+
 export function scheduledTasksModule<R>(open: (context: ModuleContext) => ScheduledTaskService!ModuleRefused!R): ModuleFactory<R> {
   return effect (context) => {
     const service = try open(context)
@@ -212,3 +275,5 @@ export function scheduledTasksModule<R>(open: (context: ModuleContext) => Schedu
     } satisfies AgentModule
   }
 }
+
+export const scheduledTasksModuleFactory: ModuleFactory<never> = scheduledTasksModule(openScheduledTasks)

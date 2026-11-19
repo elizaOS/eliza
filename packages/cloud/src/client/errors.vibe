@@ -1,16 +1,9 @@
 // spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"; spec/cloud/shared/types.md, "Story: Speak one refusal language"
-import { isCredentialReason, millisPerSecond, type Millis, type RefusalCode, type RefusalReason } from "../../gen/cloud__shared__types.effect.vibe"
+import type { CloudError as CloudFailure } from "../../gen/cloud__client.ts"
+import { cloudErrorOf, defaultCodeOf, namesTheCredential } from "../../gen/cloud__client.effect.vibe"
+import { millisPerSecond, type Millis, type RefusalCode, type RefusalReason } from "../../gen/cloud__shared__types.effect.vibe"
 
-export type CloudFailure =
-  | { readonly tag: "CloudCredentialInvalid"; readonly reason: RefusalReason }
-  | { readonly tag: "CloudInsufficientCredits" }
-  | { readonly tag: "CloudAllowanceExhausted"; readonly resetsAt: Millis }
-  | { readonly tag: "CloudRateLimited"; readonly retryAt: Millis }
-  | { readonly tag: "CloudConsentRequired" }
-  | { readonly tag: "CloudUnavailable"; readonly retryAfter: Millis }
-  | { readonly tag: "CloudProviderIssue" }
-  | { readonly tag: "CloudNetwork" }
-  | { readonly tag: "CloudRefused"; readonly code: RefusalCode; readonly reason: RefusalReason }
+export type { CloudFailure }
 
 export error CloudError { failure: CloudFailure; cause: unknown }
 
@@ -39,32 +32,6 @@ const codeOfWire: ReadonlyMap<string, RefusalCode> = new Map(
 
 const reasonOfWire: ReadonlyMap<string, RefusalReason> = new Map(
   (Object.keys(reasonTable) as RefusalReason[]).map((reason) => [wireName(reason), reason]))
-
-export function credentialReasonOf(reason: RefusalReason): RefusalReason {
-  return isCredentialReason(reason) ? reason : "CredentialUnknown"
-}
-
-export function defaultCodeOf(status: number): RefusalCode {
-  if (status === 401) return "AuthenticationRequired"
-  if (status === 402) return "InsufficientCredits"
-  if (status === 403) return "AccessDenied"
-  if (status === 404) return "NotFound"
-  if (status === 429) return "RateLimited"
-  if (status === 502) return "ProviderInvalidResponse"
-  if (status >= 500) return "ServiceUnavailable"
-  return "InvalidRequest"
-}
-
-export function cloudErrorOf(status: number, code: RefusalCode, reason: RefusalReason, retryAt: Millis, resetsAt: Millis): CloudFailure {
-  if (status === 401) return { tag: "CloudCredentialInvalid", reason: credentialReasonOf(reason) }
-  if (status === 402) return code === "AllowanceExhausted" ? { tag: "CloudAllowanceExhausted", resetsAt } : { tag: "CloudInsufficientCredits" }
-  if (status === 429) return { tag: "CloudRateLimited", retryAt }
-  if (code === "SpeechConsentRequired") return { tag: "CloudConsentRequired" }
-  if (status === 502) return { tag: "CloudProviderIssue" }
-  if (status === 503 && reason === "GoogleNotConfigured") return { tag: "CloudRefused", code, reason }
-  if (status >= 500) return { tag: "CloudUnavailable", retryAfter: retryAt }
-  return { tag: "CloudRefused", code, reason }
-}
 
 export interface CloudResponse {
   readonly status: number
@@ -114,6 +81,10 @@ export function networkError(cause: unknown): CloudError {
   return new CloudError({ failure: { tag: "CloudNetwork" }, cause })
 }
 
+export function isCredentialInvalid(error: CloudError): boolean {
+  return namesTheCredential(error.failure)
+}
+
 export async function readCloudError(response: CloudResponse, now: Millis = Date.now()): Promise<CloudError> {
   let text: string
   try {
@@ -123,5 +94,5 @@ export async function readCloudError(response: CloudResponse, now: Millis = Date
   }
   const read: RefusalRead = refusalOf(text) ?? { code: defaultCodeOf(response.status), reason: "NoReason", retryAt: 0, resetsAt: 0 }
   const retryAt = read.retryAt > 0 ? read.retryAt : retryAfterOf(response.headers.get("retry-after"), now)
-  return new CloudError({ failure: cloudErrorOf(response.status, read.code, read.reason, retryAt, read.resetsAt), cause: undefined })
+  return new CloudError({ failure: cloudErrorOf(response.status, read.code, read.reason, retryAt, read.resetsAt), cause: text })
 }

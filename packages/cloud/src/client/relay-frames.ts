@@ -416,14 +416,15 @@ function idValue(v: JsonValue): number[] {
 }
 
 export function readDevice(b: number[], binary: boolean): DeviceWire {
-  //@ ensures binary ==> \result === { kind: "Uplink", pcm: b }
+  //@ ensures (binary && validUplink(b.length)) ==> (\result.kind === "Uplink" && \result.pcm === b)
+  //@ ensures \result.kind === "Uplink" ==> binary && validUplink(\result.pcm.length)
   //@ ensures (!binary && b.length > maxControlBytes) ==> \result.kind === "DeviceRefused"
   //@ ensures \result.kind === "Hello" ==> validHelloToken(utf16Units(\result.token))
   //@ ensures \result.kind === "Tts" ==> idBytesValid(\result.id) && validTtsText(utf16Units(\result.text), blankText(\result.text))
   //@ ensures \result.kind === "Prepare" ==> idBytesValid(\result.id)
   //@ ensures \result.kind === "Finish" ==> idBytesValid(\result.id)
   //@ ensures \result.kind === "Cancel" ==> idBytesValid(\result.id)
-  if (binary) return { kind: "Uplink", pcm: b }
+  if (binary) return validUplink(b.length) ? { kind: "Uplink", pcm: b } : { kind: "DeviceRefused" }
   if (b.length > maxControlBytes || !utf8Valid(b)) return { kind: "DeviceRefused" }
   const json = readJson(b, 0)
   if (!json.ok) return { kind: "DeviceRefused" }
@@ -464,7 +465,7 @@ export function readAudio(frame: number[]): RelayWire {
 
 //@ pure
 export function lawAudioRoundTrips(id: number[], pcm: number[]): boolean {
-  //@ ensures (idBytesValid(id) && validPcm(pcm.length, maxDownlinkPcmBytes)) ==> readAudio(encodeAudio(id, pcm)) === { kind: "Audio", id: id, pcm: pcm }
+  //@ ensures (idBytesValid(id) && validPcm(pcm.length, maxDownlinkPcmBytes)) ==> (readAudio(encodeAudio(id, pcm)).kind === "Audio" && readAudio(encodeAudio(id, pcm)).id === id && readAudio(encodeAudio(id, pcm)).pcm === pcm)
   return true
 }
 
@@ -474,8 +475,8 @@ export function lawReadAudioIsCanonical(frame: number[]): boolean {
   return true
 }
 
-//@ pure
 function sttKindOf(v: JsonValue): number {
+  //@ ensures -1 <= \result && \result < 6
   if (textIs(v, "connected")) return 0
   if (textIs(v, "start-of-turn")) return 1
   if (textIs(v, "turn-resumed")) return 2
@@ -486,6 +487,7 @@ function sttKindOf(v: JsonValue): number {
 }
 
 function errorCodeOfWire(v: JsonValue): number {
+  //@ ensures -1 <= \result && \result < 4
   if (textIs(v, "unauthorized")) return 0
   if (textIs(v, "protocol")) return 1
   if (textIs(v, "unavailable")) return 2
@@ -615,7 +617,7 @@ function control(bytes: number[]): Written {
 
 export function writeDevice(f: DeviceWire): Written {
   //@ ensures (\result.kind === "Written" && f.kind !== "Uplink") ==> \result.bytes.length <= maxControlBytes
-  //@ ensures (f.kind === "Uplink" && validUplink(f.pcm.length)) ==> \result === { kind: "Written", bytes: f.pcm }
+  //@ ensures (f.kind === "Uplink" && validUplink(f.pcm.length)) ==> (\result.kind === "Written" && \result.bytes === f.pcm)
   if (f.kind === "Uplink") return validUplink(f.pcm.length) ? { kind: "Written", bytes: f.pcm } : { kind: "Unwritable" }
   if (f.kind === "DeviceRefused") return { kind: "Unwritable" }
   if (f.kind === "Stop") return control(typed("stop", []))

@@ -21,7 +21,14 @@ import { s256, signedIn } from "./support/identity.ts"
 import { connectionColumns, connectionRows, scopeFor, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
 import { sealTokens } from "../src/providers/google.vibe"
 import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
+import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/google-calendar.ts"
+import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
+import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
+import { signedCaller } from "./support/caller.vibe"
+import { callDeclaring } from "./support/http.ts"
+import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
+import { recordingBytes, recordingForm } from "./support/recording.ts"
 
 effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
   return match (try exit(program)) {
@@ -437,6 +444,55 @@ describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/regis
     ))
   }))
 
+  it.live('Link Google only from the reviewed account with the registered return and matching verifier (spec/cloud/identity/signInMethods.md, "Story: Review, link and remove my sign-in methods"; spec/cloud/identity/federatedSignIn.md, "An ID token spends a live challenge once, only with the client, verifier, signature, issuer, audience and nonce all right, and a refused one spends nothing")', () => scoped(effect {
+    const google = try tryPromise(() => nativeGoogleFixture())
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", () => ({ status: 200, body: { keys: google.keys } })) })
+    try registered(cloud, undefined, effect (tx: Tx, now: number) => { try registerClient(tx, try decodeRegistration(one), now) })
+    const owner = try signedIn(cloud, "link-owner@example.com")
+    const other = try signedIn(cloud, "link-other@example.com")
+    const ownerHeaders = { authorization: `Bearer ${owner.accessToken}` }
+    const otherHeaders = { authorization: `Bearer ${other.accessToken}` }
+    const methods = "/api/v1/user/methods"
+    const challenge = methods + "/google/challenge"
+    const link = methods + "/google/link"
+    const verifier = "v".repeat(43)
+    const fields = { clientId: one.clientId, environment: "staging", redirectUri: signInOne, codeChallenge: s256(verifier), codeChallengeMethod: "S256" }
+    const wrongReturn = try cloud.call(challenge, { headers: ownerHeaders, json: { ...fields, redirectUri: one.billingReturn } })
+    const wrongEnvironment = try cloud.call(challenge, { headers: ownerHeaders, json: { ...fields, environment: "production" } })
+    const opened = try cloud.call(challenge, { headers: ownerHeaders, json: fields })
+    const { challengeId, nonce } = try Schema.decodeUnknownEffect(Schema.Struct({ challengeId: Schema.String, nonce: Schema.String }))(opened.body)
+    const token = try tryPromise(() => google.issue(nonce))
+    const wrongNonceToken = try tryPromise(() => google.issue("different-challenge-nonce"))
+    const reviewSchema = Schema.Struct({ reviewId: Schema.String })
+    const firstReview = try cloud.call(methods, { headers: ownerHeaders })
+    const otherReview = try cloud.call(methods, { headers: otherHeaders })
+    const firstId = (try Schema.decodeUnknownEffect(reviewSchema)(firstReview.body)).reviewId
+    const otherId = (try Schema.decodeUnknownEffect(reviewSchema)(otherReview.body)).reviewId
+    const wrongOwner = try cloud.call(link, { headers: otherHeaders, json: { reviewId: otherId, challengeId, idToken: token, codeVerifier: verifier } })
+    const wrongVerifier = try cloud.call(link, { headers: ownerHeaders, json: { reviewId: firstId, challengeId, idToken: token, codeVerifier: "w".repeat(43) } })
+    const nonceReview = try cloud.call(methods, { headers: ownerHeaders })
+    const nonceId = (try Schema.decodeUnknownEffect(reviewSchema)(nonceReview.body)).reviewId
+    const wrongNonce = try cloud.call(link, { headers: ownerHeaders, json: { reviewId: nonceId, challengeId, idToken: wrongNonceToken, codeVerifier: verifier } })
+    const validReview = try cloud.call(methods, { headers: ownerHeaders })
+    const validId = (try Schema.decodeUnknownEffect(reviewSchema)(validReview.body)).reviewId
+    const linked = try cloud.call(link, { headers: ownerHeaders, json: { reviewId: validId, challengeId, idToken: token, codeVerifier: verifier } })
+    const after = try cloud.call(methods, { headers: ownerHeaders })
+    const account = try Schema.decodeUnknownEffect(Schema.Struct({ reviewId: Schema.String, methods: Schema.Array(Schema.Struct({ kind: Schema.String })) }))(after.body)
+    const replayed = try cloud.call(link, { headers: ownerHeaders, json: { reviewId: account.reviewId, challengeId, idToken: token, codeVerifier: verifier } })
+    try check(() => assert.deepStrictEqual(
+      {
+        admitted: opened.status, invalidChallenge: [wrongReturn, wrongEnvironment].map((answer) => [answer.status, code(answer.body)]),
+        rejectedProof: [wrongOwner.status, wrongVerifier.status, wrongNonce.status], linked: [linked.status, linked.body],
+        methods: account.methods.map(({ kind }) => kind), replayed: replayed.status,
+      },
+      {
+        admitted: 200, invalidChallenge: [[400, "redirect_mismatch"], [400, "invalid_client"]],
+        rejectedProof: [401, 401, 401], linked: [200, { status: "linked", method: "google" }],
+        methods: ["email", "google"], replayed: 401,
+      }
+    ))
+  }), 60_000)
+
   it.live("Tell an app that Google sign-in is off (spec/cloud/nativeClients/registry.md, \"Story: Tell a client exactly why it was refused\")", () => scoped(effect {
     const googleOff: ProfileEdit = (profile) => {
       const { google, ...staging } = profile.environments.staging
@@ -450,9 +506,170 @@ describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/regis
 })
 
 describe.todo("WP3 Checkout and provider events (spec/cloud/billing/checkout.md, \"Story: Subscribe once, whichever screen or payer finishes it\")")
-describe.todo("WP6 Speech (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\")")
+describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
+  it.live("Speak a reply with context and timings, transcribe a recording, and charge each once (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\"; spec/cloud/services/speech.md, \"Story: Transcribe a recording\")", () => scoped(effect {
+    const speech = try sync(() => speechFake())
+    const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
+    const caller = try signedCaller(cloud, "speaker")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 1_000_000, requestKey: "speech-funding" }))
+    const tts = (body: unknown) => cloud.call("/api/v1/voice/tts", { json: body, headers: caller.headers })
+    const stt = (fields: Readonly<Record<string, string>>, headers = caller.headers) => cloud.call("/api/v1/voice/stt", { form: recordingForm(fields), headers })
+
+    const plain = try tts({ text: "Hello there", previousText: "Earlier words.", nextText: "Later words.", speed: 1.1 })
+    const timed = try tts({ text: "Hi you", previousText: "Before", withTimestamps: true })
+    const lines = try Effect.try(() => String(timed.body).trim().split("\n").map((line) => JSON.parse(line) as { readonly type: string; readonly sequence?: number; readonly alignment?: { readonly characters: ReadonlyArray<string> } }))
+    const anonymous = try cloud.call("/api/v1/voice/tts", { json: { text: "Hello" } })
+    const foreignVoice = try tts({ text: "Hello", voiceId: "voice-elsewhere" })
+    try sync(() => speech.script({ kind: "refuse", status: 422 }, { kind: "refuse", status: 503, retryAfterSeconds: 7 }))
+    const rejected = try tts({ text: "Rejected" })
+    const busy = try tts({ text: "Busy" })
+
+    const heard = try stt({ languageCode: "en-US", provider: "speech" })
+    const otherProvider = try stt({ provider: "elsewhere" })
+    const otherLanguage = try stt({ languageCode: "fr" })
+    const tooLarge = try promise(() => callDeclaring(cloud.url, "/api/v1/voice/stt", 25 * 1024 * 1024 + 1, { "content-type": "multipart/form-data; boundary=x" }))
+
+    const usage = try sql(cloud, "SELECT service, quote, charged, outcome FROM usage_records WHERE organization_id = $1 ORDER BY settled_at, hold_key", [caller.organizationId])
+    try check(() => assert.deepStrictEqual(
+      {
+        plain: [plain.status, plain.headers["content-type"], plain.headers["x-eliza-tts-provider"], plain.headers["x-eliza-tts-speed"], String(plain.body).length > 0],
+        sentPlain: speech.synthesized[0],
+        timed: [timed.status, timed.headers["content-type"], timed.headers["x-eliza-tts-timing"], lines.map((line) => [line.type, line.sequence, line.alignment?.characters.join("")])],
+        sentTimed: [speech.synthesized[1]?.path, speech.synthesized[1]?.body.previous_text, speech.synthesized[1]?.body.transcript],
+        anonymous: anonymous.status,
+        foreignVoice: [foreignVoice.status, (foreignVoice.body as { readonly error: string }).error],
+        rejected: [rejected.status, (rejected.body as { readonly error: string }).error],
+        busy: [busy.status, (busy.body as { readonly error: string }).error, Number(busy.headers["retry-after"]) >= 7],
+        heard: [heard.status, heard.body, heard.headers["x-eliza-stt-provider"]],
+        sentHeard: speech.transcribed.map((each) => [each.mimeType, each.model, each.language, each.audio.length]),
+        otherProvider: [otherProvider.status, (otherProvider.body as { readonly error: string }).error],
+        otherLanguage: [otherLanguage.status, (otherLanguage.body as { readonly error: string }).error],
+        tooLarge: [tooLarge.status, (tooLarge.body as { readonly error: string }).error],
+        usage: usage.map((row) => [row.service, Number(row.quote), Number(row.charged), row.outcome])
+      },
+      {
+        plain: [200, "audio/mpeg", "speech", "1.1", true],
+        sentPlain: {
+          path: "/tts/bytes",
+          body: {
+            model_id: "model-1", transcript: "Hello there", voice: { mode: "id", id: "voice-1" },
+            output_format: { container: "mp3", sample_rate: 44_100, bit_rate: 128_000 },
+            speed: 1.1, apply_text_normalization: "auto", previous_text: "Earlier words.", next_text: "Later words."
+          }
+        },
+        timed: [200, "application/x-ndjson", "character-v1", [["audio", 0, "Hi "], ["audio", 1, "you"], ["done", undefined, undefined]]],
+        sentTimed: ["/tts/timestamps", "Before", "Hi you"],
+        anonymous: 401,
+        foreignVoice: [400, "invalid_request"],
+        rejected: [502, "provider_invalid_response"],
+        busy: [503, "provider_unavailable", true],
+        heard: [200, { transcript: spokenTranscript, duration_ms: 2_500, words: spokenTranscript.split(" ").map((word, index) => ({ text: word, startMs: index * 400, endMs: index * 400 + 300 })) }, "speech"],
+        sentHeard: [["audio/wav", "ink-whisper", "en", recordingBytes]],
+        otherProvider: [400, "invalid_request"],
+        otherLanguage: [400, "invalid_request"],
+        tooLarge: [413, "content_too_large"],
+        usage: [
+          ["speech", 396, 396, "known"],
+          ["speech", 216, 216, "known"],
+          ["speech", 288, 0, "known"],
+          ["speech", 144, 144, "unknown"],
+          ["speech", 100, 250, "known"]
+        ]
+      }
+    ))
+  }), 60_000)
+})
 describe.todo("WP7 Maps (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\")")
-describe.todo("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")")
+describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => {
+  it.live("Triage, search and read my mail at the history Google answered, refusing a stale attachment and an oversized body (spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
+    const google = try Effect.try(() => googleFakeState())
+    const now = try Clock.currentTimeMillis
+    const mailbox = try Effect.try(() => readableMailbox([
+      {
+        id: "msg-direct", threadId: "thr-direct", labelIds: ["INBOX", "UNREAD", "IMPORTANT"], internalDate: now - 60_000,
+        headers: { From: "Ada <ada@example.org>", To: "conn-mail@example.com", Subject: "Quarterly plan" }, snippet: "Can you review", bodyText: "Please review the plan.",
+        attachments: [{ partId: "1", filename: "plan.pdf", mimeType: "application/pdf", bytes: new TextEncoder().encode("%PDF-plan") }]
+      },
+      {
+        id: "msg-digest", threadId: "thr-digest", labelIds: ["INBOX"], internalDate: now - 120_000,
+        headers: { From: "News <noreply@news.example>", To: "conn-mail@example.com", Subject: "Weekly digest", "List-Id": "<digest.news.example>" }, snippet: "digest", bodyText: "x".repeat(300 * 1024)
+      },
+      { id: "msg-trashed", threadId: "thr-trashed", labelIds: ["TRASH"], internalDate: now - 30_000, headers: { From: "ada@example.org", Subject: "Old plan" }, snippet: "plan" }
+    ]))
+    const draftRaw = btoa("To: ada@example.org\r\nSubject: Re: Quarterly plan\r\n\r\nLooks good.").replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")
+    mailbox.drafts.set("draft-1", { id: "draft-1", messageId: "msg-draft-1", raw: draftRaw })
+    const cloud = try testCloud({ mount: (fakes) => {
+      fakes.mount("/google/", mountGoogleToken(google))
+      fakes.mount("/google/api/", gmailReads(mailbox))
+    } })
+    const token = try entitledDevice(cloud, "mail", now)
+    const owner: Owner = { organizationId: "org-mail", userId: "user-mail" }
+    const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage"), ...scopeFor("google.gmail.drafts")]
+    const refreshToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-mail", email: "conn-mail@example.com", scopes }))
+    const profile = try parseProfile(try Effect.try(() => testProfile(cloud.fakes.url)))
+    const deployment = deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+    provide Store = cloud.store, deployment {
+      try linkedGrant(cloud, owner, "conn-mail", refreshToken, scopes, now - 1000)
+    }
+    const gmail = (path: string) => cloud.call(`/api/v1/eliza/google/gmail${path}`, { headers: { authorization: `Bearer ${token}` } })
+    const errorOf = (answer: { readonly status: number; readonly body: unknown }) => [answer.status, (answer.body as { readonly error?: string }).error]
+    const triage = try gmail("/triage")
+    const search = try gmail("/search?query=plan&maxResults=10")
+    const tooMany = try gmail("/search?query=plan&maxResults=101")
+    const read = try gmail("/read?messageId=msg-direct")
+    const oversized = try gmail("/read?messageId=msg-digest")
+    const capabilities = try gmail("/inbox-v1/capabilities")
+    const attachment = try gmail("/inbox-v1/attachment?messageId=msg-direct&partId=1&historyId=1001")
+    const thread = try gmail("/inbox-v1/thread?threadId=thr-direct&historyId=1001")
+    try Effect.try(() => touchMessage(mailbox, "msg-direct"))
+    const staleAttachment = try gmail("/inbox-v1/attachment?messageId=msg-direct&partId=1&historyId=1001")
+    const staleThread = try gmail("/inbox-v1/thread?threadId=thr-direct&historyId=1001")
+    const drafts = try gmail("/inbox-v1/drafts")
+    const draft = try gmail("/inbox-v1/draft?draftId=draft-1")
+    const anonymous = try cloud.call("/api/v1/eliza/google/gmail/triage")
+    const pdf = new TextEncoder().encode("%PDF-plan")
+    type Card = { readonly id: string; readonly triageScore: number; readonly triageReason: string; readonly isImportant: boolean; readonly likelyReplyNeeded: boolean; readonly to: ReadonlyArray<string>; readonly metadata: { readonly historyId: string } }
+    const cards = (answer: { readonly body: unknown }) => (answer.body as { readonly messages: ReadonlyArray<Card> }).messages.map((card) => [card.id, card.triageScore, card.triageReason, card.isImportant, card.likelyReplyNeeded, card.metadata.historyId])
+    const readBody = read.body as { readonly message: Card; readonly bodyText: string; readonly bodyHtml: string | null; readonly bodyHtmlStatus: string; readonly attachments: ReadonlyArray<unknown> }
+    const file = attachment.body as { readonly name: string; readonly mimeType: string; readonly size: number; readonly dataBase64: string; readonly sha256: string; readonly supported: boolean }
+    const threadBody = thread.body as { readonly historyId: string; readonly total: number; readonly messages: ReadonlyArray<{ readonly bodyText: string }> }
+    const draftList = drafts.body as { readonly drafts: ReadonlyArray<{ readonly draftId: string; readonly messageId: string; readonly subject: string; readonly to: ReadonlyArray<string> }>; readonly nextPageToken: string | null }
+    const draftBody = draft.body as { readonly providerDigest: string; readonly content: { readonly to: ReadonlyArray<string>; readonly subject: string; readonly bodyText: string; readonly plainText: boolean } }
+    try check(() => assert.deepStrictEqual(
+      {
+        triage: [triage.status, (triage.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, cards(triage)],
+        search: [search.status, (search.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, (search.body as { readonly nextPageToken: string | null }).nextPageToken, cards(search)],
+        tooMany: errorOf(tooMany),
+        read: [read.status, readBody.message.id, readBody.message.to, readBody.bodyText, readBody.bodyHtml, readBody.bodyHtmlStatus, readBody.attachments],
+        oversized: errorOf(oversized),
+        capabilities: [capabilities.status, capabilities.body],
+        attachment: [attachment.status, file.name, file.mimeType, file.size, file.dataBase64, file.sha256, file.supported],
+        thread: [thread.status, threadBody.historyId, threadBody.total, threadBody.messages.map((message) => message.bodyText)],
+        stale: [errorOf(staleAttachment), errorOf(staleThread)],
+        drafts: [drafts.status, draftList.drafts, draftList.nextPageToken],
+        draft: [draft.status, draftBody.providerDigest, draftBody.content.to, draftBody.content.subject, draftBody.content.bodyText, draftBody.content.plainText],
+        anonymous: errorOf(anonymous)
+      },
+      {
+        triage: [200, "1003", [
+          ["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"],
+          ["msg-digest", 0, "directly addressed, automated sender", false, false, "1002"]
+        ]],
+        search: [200, "1003", null, [["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"]]],
+        tooMany: [400, "invalid_request"],
+        read: [200, "msg-direct", ["conn-mail@example.com"], "Please review the plan.", null, "none", [{ partId: "1", name: "plan.pdf", mimeType: "application/pdf", size: pdf.length, supported: true }]],
+        oversized: [413, "content_too_large"],
+        capabilities: [200, { version: 1, from: "conn-mail@example.com", kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 } }],
+        attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
+        thread: [200, "1001", 1, ["Please review the plan."]],
+        stale: [[409, "stale_revision"], [409, "stale_revision"]],
+        drafts: [200, [{ draftId: "draft-1", messageId: "msg-draft-1", subject: "Re: Quarterly plan", to: ["ada@example.org"], snippet: "", updatedAt: null }], null],
+        draft: [200, sha256Hex(draftRaw), ["ada@example.org"], "Re: Quarterly plan", "Looks good.", true],
+        anonymous: [401, "authentication_required"]
+      }
+    ))
+  }), 30_000)
+})
 
 effect function grantRefusal<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
   return match (try exit(program)) {
@@ -471,10 +688,11 @@ effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string
 
 describe("WP8 Managed Google: grant access (spec/cloud/services/google/connection.md)", () => {
   it.live("Refresh a held grant once for concurrent callers and mark it Expired when Google refuses it (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => scoped(effect {
-    const google = googleFakeState()
+    const google = try Effect.try(() => googleFakeState())
     google.tokenDelayMs = 300
     const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", mountGoogleToken(google)) })
-    const profile = try parseProfile(testProfile(cloud.fakes.url))
+    const profileInput = try Effect.try(() => testProfile(cloud.fakes.url))
+    const profile = try parseProfile(profileInput)
     const deployment = deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
     const now = try Clock.currentTimeMillis
     const held: Owner = { organizationId: "org-google-held", userId: "user-google-held" }
@@ -484,8 +702,8 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
       try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [owner.userId, owner.organizationId, `${owner.userId}@example.com`, now])
     }
     const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
-    const heldToken = seedGrant(google, { subject: "subject-conn-held", email: "conn-held@example.com", scopes })
-    const lostToken = seedGrant(google, { subject: "subject-conn-lost", email: "conn-lost@example.com", scopes })
+    const heldToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-held", email: "conn-held@example.com", scopes }))
+    const lostToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-lost", email: "conn-lost@example.com", scopes }))
     google.revoked.add(lostToken)
     provide Store = cloud.store, deployment, FetchHttpClient.layer {
       try linkedGrant(cloud, held, "conn-held", heldToken, scopes, now - 1000)
@@ -514,6 +732,121 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
         }
       ))
     }
+  }), 30_000)
+})
+effect function calendarSetup(email: string) {
+  const google = try Effect.try(() => googleFakeState())
+  const cloud = try testCloud({ mount: (fakes) => {
+    fakes.mount("/google/", mountGoogleToken(google))
+    fakes.mount("/google/", mountGoogleCalendar(google))
+  } })
+  const signed = try signedIn(cloud, email)
+  const owner: Owner = { organizationId: signed.organizationId, userId: signed.user.id }
+  const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.calendar.write")]
+  const refreshToken = try Effect.try(() => seedGrant(google, { subject: "subject-cal", email: "cal@example.com", scopes }))
+  const now = try Clock.currentTimeMillis
+  try cloud.inside(linkedGrant(cloud, owner, "cal", refreshToken, scopes, now - 1000))
+  try Effect.try(() => {
+    seedCalendar(google, { id: "own@example.com", summary: "Own", accessRole: "owner", primary: true, timeZone: "Europe/Berlin" })
+    seedCalendar(google, { id: "team@example.com", summary: "Team", accessRole: "reader", timeZone: "UTC" })
+    seedEvent(google, "own@example.com", "standup", { summary: "Standup", start: { dateTime: "2026-12-01T09:00:00Z" }, end: { dateTime: "2026-12-01T09:15:00Z" } })
+  })
+  return { google, cloud, headers: { authorization: `Bearer ${signed.accessToken}` } }
+}
+
+function calendarRefusal(body: unknown): ReadonlyArray<unknown> {
+  const answer = body as { readonly error?: string; readonly reason?: string; readonly outcome?: string }
+  return [answer.error, answer.reason, answer.outcome]
+}
+
+describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)", () => {
+  const calendarBase = "/api/v1/eliza/google/calendar"
+
+  it.live("Read my calendars, a window of events and one event, refusing a window that is empty or in no time zone (spec/cloud/services/google/calendar.md, \"Story: Read my calendar for a window\")", () => scoped(effect {
+    const { cloud, headers } = try calendarSetup("calendar-reads@example.com")
+    const window = "timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-02T00:00:00Z"
+    const calendars = try cloud.call(`${calendarBase}/calendars`, { headers })
+    const feed = try cloud.call(`${calendarBase}/feed?${window}&timeZone=Europe/Berlin`, { headers })
+    const reversed = try cloud.call(`${calendarBase}/feed?timeMin=2026-12-02T00:00:00Z&timeMax=2026-12-01T00:00:00Z`, { headers })
+    const empty = try cloud.call(`${calendarBase}/feed?timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-01T00:00:00Z`, { headers })
+    const noZone = try cloud.call(`${calendarBase}/feed?${window}&timeZone=Mars/Olympus`, { headers })
+    const one = try cloud.call(`${calendarBase}/events/standup`, { headers })
+    const missing = try cloud.call(`${calendarBase}/events/nothere`, { headers })
+    const anonymous = try cloud.call(`${calendarBase}/calendars`)
+    const events = (feed.body as { readonly events: ReadonlyArray<{ readonly externalId: string; readonly title: string; readonly etag: string | null }> }).events
+    try check(() => assert.deepStrictEqual(
+      {
+        calendars: [calendars.status, calendars.body],
+        feed: [feed.status, (feed.body as { readonly calendarId: string }).calendarId, events.map((event) => [event.externalId, event.title, event.etag !== null]), typeof (feed.body as { readonly syncedAt: unknown }).syncedAt],
+        refused: [reversed.status, empty.status, noZone.status, calendarRefusal(reversed.body)],
+        one: [one.status, (one.body as { readonly event: { readonly externalId: string } }).event.externalId],
+        missing: [missing.status, calendarRefusal(missing.body)],
+        anonymous: anonymous.status
+      },
+      {
+        calendars: [200, [
+          { calendarId: "own@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Own", accessRole: "owner", read: true, write: true },
+          { calendarId: "team@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Team", accessRole: "reader", read: true, write: false }
+        ]],
+        feed: [200, "primary", [["standup", "Standup", true]], "string"],
+        refused: [400, 400, 400, ["invalid_request", undefined, undefined]],
+        one: [200, "standup"],
+        missing: [404, ["not_found", undefined, undefined]],
+        anonymous: 401
+      }
+    ))
+  }), 30_000)
+
+  it.live("Create an event once per key and change or delete it only at the revision I read (spec/cloud/services/google/calendar.md, \"Story: Change an event only at the revision I read\"; spec/cloud/shared/dispatchOnce.md, \"Story: Send a change once and recover its outcome without sending it again\")", () => scoped(effect {
+    const { google, cloud, headers } = try calendarSetup("calendar-writes@example.com")
+    const create = (key: string | undefined, json: unknown) => cloud.call(`${calendarBase}/events`, { method: "POST", headers: key === undefined ? headers : { ...headers, "idempotency-key": key }, json })
+    const lunch = { title: "Lunch", startAt: "2026-12-01T12:00:00Z", endAt: "2026-12-01T13:00:00Z" }
+    const unkeyed = try create(undefined, lunch)
+    const first = try create("lunch-key-0001", lunch)
+    const again = try create("lunch-key-0001", lunch)
+    const other = try create("lunch-key-0001", { ...lunch, title: "Dinner" })
+    const inserts = google.calls.filter((call) => call.method === "POST" && call.path.endsWith("/events")).length
+    google.switches.dropNextReply = true
+    const dropped = try create("coffee-key-0001", { title: "Coffee", startAt: "2026-12-01T15:00:00Z", endAt: "2026-12-01T15:30:00Z" })
+    const changedAccount = try create("tea-key-00000001", { ...lunch, title: "Tea", expectedAccountId: "subject-elsewhere" })
+    const created = (first.body as { readonly event: { readonly externalId: string; readonly etag: string; readonly title: string } }).event
+    const eventPath = `${calendarBase}/events/${created.externalId}`
+    const patch = (etag: string | undefined, json: unknown) => cloud.call(eventPath, { method: "PATCH", headers: etag === undefined ? headers : { ...headers, "if-match": etag }, json })
+    const noRevision = try patch(undefined, { title: "Long lunch" })
+    const changed = try patch(created.etag, { title: "Long lunch" })
+    const stale = try patch(created.etag, { title: "Late lunch" })
+    const current = (changed.body as { readonly event: { readonly etag: string; readonly title: string } }).event
+    const staleDelete = try cloud.call(eventPath, { method: "DELETE", headers: { ...headers, "if-match": created.etag } })
+    const deleted = try cloud.call(eventPath, { method: "DELETE", headers: { ...headers, "if-match": current.etag } })
+    const rows = try sql(cloud, "SELECT kind, phase FROM calendar_writes ORDER BY kind, phase", [])
+    try check(() => assert.deepStrictEqual(
+      {
+        unkeyed: [unkeyed.status, calendarRefusal(unkeyed.body)],
+        once: [first.status, created.title, again.status, (again.body as { readonly event: { readonly externalId: string } }).event.externalId === created.externalId, inserts],
+        other: [other.status, calendarRefusal(other.body)],
+        dropped: [dropped.status, (dropped.body as { readonly event: { readonly title: string } }).event.title],
+        changedAccount: [changedAccount.status, calendarRefusal(changedAccount.body)],
+        noRevision: [noRevision.status, calendarRefusal(noRevision.body)],
+        changed: [changed.status, current.title, current.etag !== created.etag, changed.headers.etag === current.etag],
+        stale: [stale.status, calendarRefusal(stale.body)],
+        staleDelete: [staleDelete.status, calendarRefusal(staleDelete.body)],
+        deleted: [deleted.status, deleted.body, google.events.has(`own@example.com/${created.externalId}`)],
+        rows: rows.map((row) => [row.kind, row.phase])
+      },
+      {
+        unkeyed: [400, ["invalid_request", undefined, "not_accepted"]],
+        once: [201, "Lunch", 201, true, 1],
+        other: [409, ["idempotency_conflict", undefined, "not_accepted"]],
+        dropped: [201, "Coffee"],
+        changedAccount: [403, ["access_denied", "google_account_changed", "not_accepted"]],
+        noRevision: [400, ["invalid_request", undefined, "not_accepted"]],
+        changed: [200, "Long lunch", true, true],
+        stale: [412, ["precondition_failed", undefined, "not_accepted"]],
+        staleDelete: [412, ["precondition_failed", undefined, "not_accepted"]],
+        deleted: [200, { ok: true }, false],
+        rows: [["change", "rejected"], ["change", "succeeded"], ["create", "succeeded"], ["create", "succeeded"], ["delete", "rejected"], ["delete", "succeeded"]]
+      }
+    ))
   }), 30_000)
 })
 describe.todo("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from the device as configured\")")
@@ -590,10 +923,26 @@ describe("WP4 Subscriptions and entitlements: entitlement", () => {
 module node {
   import { Effect } from "effect"
   import { SecureRandom } from "effect/crypto"
+  import { exportJWK, generateKeyPair, SignJWT } from "jose"
   import { CLEF_DECISIONS_PATH, createClefDecisionsClient, type ClefDecisionRequest } from "../src/clef-decisions.vibe"
   import { signInWithProof } from "../src/identity-store.vibe"
   import { cloudWorker, type CloudBindings } from "../src/worker.vibe"
   import { openBackupDatabase } from "./support/password-backup.ts"
+
+  export async function nativeGoogleFixture() {
+    const { privateKey, publicKey } = await generateKeyPair("RS256", { extractable: true })
+    const key = { ...await exportJWK(publicKey), kid: "google-test", alg: "RS256" }
+    return {
+      keys: [key],
+      issue: (nonce: string) => new SignJWT({ nonce, email: "linked@example.test", email_verified: true })
+        .setProtectedHeader({ alg: "RS256", kid: "google-test" })
+        .setIssuer("https://accounts.google.com")
+        .setAudience("google-server-client")
+        .setSubject("linked-google-subject")
+        .setExpirationTime("5m")
+        .sign(privateKey),
+    }
+  }
 
   export async function decideForSignedInAccount() {
     const fixture = await openBackupDatabase()
@@ -650,7 +999,7 @@ module node {
     } finally { await fixture.close() }
   }
 }
-import { decideForSignedInAccount } from node
+import { decideForSignedInAccount, nativeGoogleFixture } from node
 
 it.live('A reviewed link decision stays within the current account and candidates (spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page")', () => effect {
   const result = try tryPromise(() => decideForSignedInAccount())

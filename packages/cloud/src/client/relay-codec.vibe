@@ -1,0 +1,121 @@
+// spec/cloud/services/speechRelay.md, "The wire is version 1 with 16 kHz mono PCM16 and bounded frames"
+import type { RelayErrorCode, RelayReason, SttEventKind } from "../../gen/cloud__services__speechRelay.ts"
+import { readDevice, readRelay, writeDevice, writeRelay, type DeviceWire, type RelayWire, type Written } from "./relay-frames.ts"
+
+export type ClientFrame =
+  | { readonly kind: "hello"; readonly token: string; readonly errorReasons: boolean; readonly extend: boolean }
+  | { readonly kind: "prepare"; readonly id: string }
+  | { readonly kind: "tts"; readonly id: string; readonly text: string; readonly flush: boolean }
+  | { readonly kind: "finish"; readonly id: string }
+  | { readonly kind: "cancel"; readonly id: string }
+  | { readonly kind: "stop" }
+  | { readonly kind: "audio"; readonly pcm: Uint8Array }
+
+export type WireServerFrame =
+  | { readonly kind: "ready"; readonly expiresAt: string }
+  | { readonly kind: "extended"; readonly expiresAt: string }
+  | { readonly kind: "stt"; readonly event: SttEventKind; readonly transcript: string }
+  | { readonly kind: "prepared" | "flushed" | "complete"; readonly id: string }
+  | { readonly kind: "error"; readonly code: RelayErrorCode; readonly reason: RelayReason }
+  | { readonly kind: "audio"; readonly id: string; readonly pcm: Uint8Array }
+
+export type WireData = string | Uint8Array
+
+const encoder = new TextEncoder()
+const decoder = new TextDecoder()
+
+const bytesOf = (text: string): number[] => Array.from(encoder.encode(text))
+const textOf = (bytes: number[]): string => decoder.decode(Uint8Array.from(bytes))
+const isBinary = (data: WireData): data is Uint8Array => typeof data !== "string"
+const numbersOf = (data: WireData): number[] => Array.from(isBinary(data) ? data : encoder.encode(data))
+
+function sent(written: Written, binary: boolean): WireData | undefined {
+  switch (written.kind) {
+    case "Written": return binary ? Uint8Array.from(written.bytes) : textOf(written.bytes)
+    case "Unwritable": return undefined
+    default: {
+      const _exhaustive: never = written
+      return _exhaustive
+    }
+  }
+}
+
+export function decodeDeviceFrame(data: WireData): ClientFrame | undefined {
+  const wire = readDevice(numbersOf(data), isBinary(data))
+  switch (wire.kind) {
+    case "Hello": return { kind: "hello", token: textOf(wire.token), errorReasons: wire.errorReasons, extend: wire.extend }
+    case "Prepare": return { kind: "prepare", id: textOf(wire.id) }
+    case "Tts": return { kind: "tts", id: textOf(wire.id), text: textOf(wire.text), flush: wire.flush }
+    case "Finish": return { kind: "finish", id: textOf(wire.id) }
+    case "Cancel": return { kind: "cancel", id: textOf(wire.id) }
+    case "Stop": return { kind: "stop" }
+    case "Uplink": return { kind: "audio", pcm: Uint8Array.from(wire.pcm) }
+    case "DeviceRefused": return undefined
+    default: {
+      const _exhaustive: never = wire
+      return _exhaustive
+    }
+  }
+}
+
+function deviceWireOf(frame: ClientFrame): DeviceWire {
+  switch (frame.kind) {
+    case "hello": return { kind: "Hello", token: bytesOf(frame.token), errorReasons: frame.errorReasons, extend: frame.extend }
+    case "prepare": return { kind: "Prepare", id: bytesOf(frame.id) }
+    case "tts": return { kind: "Tts", id: bytesOf(frame.id), text: bytesOf(frame.text), flush: frame.flush }
+    case "finish": return { kind: "Finish", id: bytesOf(frame.id) }
+    case "cancel": return { kind: "Cancel", id: bytesOf(frame.id) }
+    case "stop": return { kind: "Stop" }
+    case "audio": return { kind: "Uplink", pcm: Array.from(frame.pcm) }
+    default: {
+      const _exhaustive: never = frame
+      return _exhaustive
+    }
+  }
+}
+
+export function encodeClientFrame(frame: ClientFrame): WireData | undefined {
+  return sent(writeDevice(deviceWireOf(frame)), frame.kind === "audio")
+}
+
+export function decodeServerFrame(data: WireData): WireServerFrame | undefined {
+  const wire = readRelay(numbersOf(data), isBinary(data))
+  switch (wire.kind) {
+    case "Ready": return { kind: "ready", expiresAt: textOf(wire.expiresAt) }
+    case "Extended": return { kind: "extended", expiresAt: textOf(wire.expiresAt) }
+    case "Stt": return { kind: "stt", event: wire.event, transcript: textOf(wire.transcript) }
+    case "Prepared": return { kind: "prepared", id: textOf(wire.id) }
+    case "Flushed": return { kind: "flushed", id: textOf(wire.id) }
+    case "Completed": return { kind: "complete", id: textOf(wire.id) }
+    case "Failed": return { kind: "error", code: wire.code, reason: wire.reason }
+    case "Audio": return { kind: "audio", id: textOf(wire.id), pcm: Uint8Array.from(wire.pcm) }
+    case "RelayRefused": return undefined
+    default: {
+      const _exhaustive: never = wire
+      return _exhaustive
+    }
+  }
+}
+
+function relayWireOf(frame: WireServerFrame): RelayWire {
+  switch (frame.kind) {
+    case "ready": return { kind: "Ready", expiresAt: bytesOf(frame.expiresAt) }
+    case "extended": return { kind: "Extended", expiresAt: bytesOf(frame.expiresAt) }
+    case "stt": return { kind: "Stt", event: frame.event, transcript: bytesOf(frame.transcript) }
+    case "prepared": return { kind: "Prepared", id: bytesOf(frame.id) }
+    case "flushed": return { kind: "Flushed", id: bytesOf(frame.id) }
+    case "complete": return { kind: "Completed", id: bytesOf(frame.id) }
+    case "error": return { kind: "Failed", code: frame.code, reason: frame.reason }
+    case "audio": return { kind: "Audio", id: bytesOf(frame.id), pcm: Array.from(frame.pcm) }
+    default: {
+      const _exhaustive: never = frame
+      return _exhaustive
+    }
+  }
+}
+
+export function encodeWireFrame(frame: WireServerFrame): WireData | undefined {
+  return sent(writeRelay(relayWireOf(frame)), frame.kind === "audio")
+}
+
+export const relayCodec = { decodeDeviceFrame, encodeWireFrame, encodeClientFrame, decodeServerFrame } as const

@@ -1,4 +1,4 @@
-// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"
+// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/views.md, "Views are declared once at boot with distinct ids, paths and names, and never change after"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"
 const Name = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(50), Schema.isTrimmed())
 const Nonblank = Schema.String.check(Schema.isPattern(/\S/))
 const PositiveInteger = Schema.Int.check(Schema.isGreaterThan(0))
@@ -13,8 +13,13 @@ const Zone = Schema.String.check(Schema.makeFilter((name) => {
   catch { return false }
 }))
 const Secret = Schema.RedactedFromValue(Nonblank)
-const Views = Schema.Array(Schema.Struct({ viewId: Nonblank, viewType: Schema.Literals(["gui", "tui", "xr"]), installationId: Nonblank }))
-  .check(Schema.makeFilter((views) => new Set(views.map((view) => JSON.stringify([view.viewId, view.viewType]))).size === views.length))
+const View = Schema.Struct({
+  id: Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9_-]{0,63}$/)),
+  label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80), Schema.isTrimmed(), Schema.isPattern(/^[^\p{Cc}]*$/u)),
+  path: Schema.String.check(Schema.isMaxLength(256), Schema.isPattern(/^\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+$/)),
+  aliases: Schema.optionalKey(Schema.Array(Schema.String.check(Schema.isPattern(/^[a-z](?:[a-z0-9 _-]{0,30}[a-z0-9])?$/))).check(Schema.isMinLength(1), Schema.isMaxLength(4))),
+})
+const Views = Schema.Array(View).check(Schema.isMaxLength(32), Schema.makeFilter((views) => new TextEncoder().encode(JSON.stringify(views)).byteLength <= 16384))
 
 const Examples = Schema.Array(Schema.Struct({
   name: Nonblank,
@@ -80,6 +85,7 @@ export const LaunchFrame = Schema.Struct({
 
 export type LaunchDocument = typeof LaunchDocument.Type
 export type LaunchFrame = typeof LaunchFrame.Type
+export type ViewDeclaration = typeof View.Type
 
 export error LaunchDocumentRejected
 export error LaunchFrameRejected

@@ -1,7 +1,6 @@
 # Android Files storage and trash custody
 
-The Android half of [reviewed Files operations](../../../files/reviewedOperations.md)
-(`Ro`, used here, not restated): the files bridge (`android/filesystem/`,
+The device half of reviewed file operations: the files bridge (`android/filesystem/`,
 `StorageBrowser`) changes entries of one mounted volume, one call at a time,
 and keeps its Trash in `.Trash-<consumer>` (`files/<id>` data, `info/<id>.json`
 origin record). Admission is [the bridge's](../bridge.md). A symbolic-link
@@ -23,7 +22,6 @@ none. A token names no volume: the call re-reads identity in its own volume.
 
 ```quint
 import bridge.* from "../bridge"
-import reviewedOperations as Ro from "../../../files/reviewedOperations"
 type StorageSelection = { reviewed: bool, paths: int, distinct: bool, tokens: int, tokensWellFormed: bool }
 type StorageAnswer = StorageReady | StorageUnavailable | StorageDenied | InvalidSelection | ReviewNeeded
 pure val batchMax = 500
@@ -54,7 +52,7 @@ pure def lawReviewIsIssuedOnlyWithFocusAndEveryIdentity(presence: PluginPresence
   issuesReview(presence, facts, mounted, selection, identitiesKnown) implies facts.focused and facts.granted and mounted and identitiesKnown
 ```
 
-### A same-folder move is a no-op before its identity is compared, and otherwise a row is admitted exactly when Files admits it
+### A same-folder move is a no-op before its identity is compared, and otherwise a row is admitted only when it is current, owned and as reviewed
 
 Rows keep selection order. A move into the source's own parent answers
 `unchanged` with the same path and checks no token; a folder never transfers
@@ -62,18 +60,29 @@ into itself or a descendant. Every other reviewed row compares the token with
 the identity read at the operation, and a stale one answers `changed`.
 
 ```quint
-pure def nativeRowAdmission(op: Ro::FilesOp, row: Ro::FilesRowCheck): Ro::FileOutcome =
-  if (not(row.validPath) or not(row.currentOwner)) Ro::Invalid
-  else if (not(row.pathExists)) Ro::Missing
-  else if (op == Ro::Move and row.sameFolder) Ro::Unchanged
-  else if (op != Ro::Trash and row.descendant) Ro::Invalid
-  else if (row.reviewRequired and not(row.reviewMatches)) Ro::Changed
-  else Ro::Admitted
-pure val rowValues = Ro::rowValues
-pure def lawNativeAdmitsExactlyWhatFilesAdmits(op: Ro::FilesOp, row: Ro::FilesRowCheck): bool =
-  (nativeRowAdmission(op, row) == Ro::Admitted) iff (Ro::classifyRow(op, row) == Ro::Admitted)
-pure def lawSameFolderMoveIsANoOpBeforeTheIdentityCheck(row: Ro::FilesRowCheck): bool =
-  row.validPath and row.currentOwner and row.pathExists and row.sameFolder implies nativeRowAdmission(Ro::Move, row) == Ro::Unchanged
+type FilesOp = Copy | Move | Trash
+type FilesRowCheck = { validPath: bool, pathExists: bool, reviewRequired: bool, reviewMatches: bool, currentOwner: bool, sameFolder: bool, descendant: bool }
+type FileOutcome = Invalid | Missing | Changed | Unchanged | Admitted | Copied | Moved | Trashed | Failed
+pure val rowValues = Set(
+  { validPath: true, pathExists: true, reviewRequired: true, reviewMatches: true, currentOwner: true, sameFolder: false, descendant: false },
+  { validPath: true, pathExists: true, reviewRequired: true, reviewMatches: false, currentOwner: true, sameFolder: false, descendant: false },
+  { validPath: true, pathExists: true, reviewRequired: false, reviewMatches: false, currentOwner: true, sameFolder: true, descendant: false },
+  { validPath: true, pathExists: true, reviewRequired: false, reviewMatches: false, currentOwner: false, sameFolder: false, descendant: true },
+  { validPath: false, pathExists: false, reviewRequired: false, reviewMatches: false, currentOwner: true, sameFolder: false, descendant: false }
+)
+pure def nativeRowAdmission(op: FilesOp, row: FilesRowCheck): FileOutcome =
+  if (not(row.validPath) or not(row.currentOwner)) Invalid
+  else if (not(row.pathExists)) Missing
+  else if (op == Move and row.sameFolder) Unchanged
+  else if (op != Trash and row.descendant) Invalid
+  else if (row.reviewRequired and not(row.reviewMatches)) Changed
+  else Admitted
+pure def lawNativeAdmitsOnlyACurrentReviewedRow(op: FilesOp, row: FilesRowCheck): bool =
+  nativeRowAdmission(op, row) == Admitted implies
+    row.validPath and row.currentOwner and row.pathExists and (not(row.reviewRequired) or row.reviewMatches) and
+      not(op == Move and row.sameFolder) and (op == Trash or not(row.descendant))
+pure def lawSameFolderMoveIsANoOpBeforeTheIdentityCheck(row: FilesRowCheck): bool =
+  row.validPath and row.currentOwner and row.pathExists and row.sameFolder implies nativeRowAdmission(Move, row) == Unchanged
 ```
 
 ### A rename never replaces a different entry and reports the new path only when it happened
@@ -144,15 +153,22 @@ pure def lawMoveNeverLosesTheFile(path: MovePath, copied: CopyResult, sourceRemo
 
 ### A row answers copied, moved or trashed only for an admitted row whose own write was acknowledged
 
+A row that was not admitted answers its admission. An admitted row answers
+copied, moved or trashed only when its write was acknowledged with a
+resulting path or trash ID, and `failed` otherwise.
+
 ```quint
-pure def nativeAcknowledged(op: Ro::FilesOp, result: WriteResult): bool =
-  if (op == Ro::Copy) result == WriteCopied else result == WriteMoved
-pure def nativeRowOutcome(op: Ro::FilesOp, row: Ro::FilesRowCheck, result: WriteResult, resultingId: str): Ro::FileOutcome =
-  Ro::receiptOutcome(op, nativeRowAdmission(op, row), nativeAcknowledged(op, result), resultingId)
-pure def lawWrittenRowMatchesItsReceipt(op: Ro::FilesOp, row: Ro::FilesRowCheck, result: WriteResult, resultingId: str): bool = {
+pure def nativeAcknowledged(op: FilesOp, result: WriteResult): bool =
+  if (op == Copy) result == WriteCopied else result == WriteMoved
+pure def receiptOutcome(op: FilesOp, admission: FileOutcome, acknowledged: bool, resultingId: str): FileOutcome =
+  if (admission != Admitted) admission else if (not(acknowledged) or resultingId == "") Failed
+  else if (op == Copy) Copied else if (op == Move) Moved else Trashed
+pure def nativeRowOutcome(op: FilesOp, row: FilesRowCheck, result: WriteResult, resultingId: str): FileOutcome =
+  receiptOutcome(op, nativeRowAdmission(op, row), nativeAcknowledged(op, result), resultingId)
+pure def lawWrittenRowMatchesItsReceipt(op: FilesOp, row: FilesRowCheck, result: WriteResult, resultingId: str): bool = {
   val answer = nativeRowOutcome(op, row, result, resultingId)
-  (answer == Ro::Copied implies (result == WriteCopied and nativeRowAdmission(op, row) == Ro::Admitted)) and
-    ((answer == Ro::Moved or answer == Ro::Trashed) implies (result == WriteMoved and nativeRowAdmission(op, row) == Ro::Admitted))
+  (answer == Copied implies (result == WriteCopied and nativeRowAdmission(op, row) == Admitted)) and
+    ((answer == Moved or answer == Trashed) implies (result == WriteMoved and nativeRowAdmission(op, row) == Admitted))
 }
 ```
 
@@ -177,9 +193,9 @@ type TrashAnswer = NoAnswer | MovedToTrash | TrashMoveFailed | RestoredToOrigin 
 type NativeTrashCustody = { stage: TrashStage, record: OriginRecord, source: EntryPresence, payload: EntryPresence, restored: EntryPresence, answer: TrashAnswer }
 pure val initial: NativeTrashCustody =
   { stage: Fresh, record: NoRecord, source: EntryComplete, payload: EntryMissing, restored: EntryMissing, answer: NoAnswer }
-pure def canRecordOrigin(s: NativeTrashCustody, row: Ro::FilesRowCheck, deletedAt: int): bool =
-  s.stage == Fresh and nativeRowAdmission(Ro::Trash, row) == Ro::Admitted and deletedAt >= 0
-pure def recordOrigin(s: NativeTrashCustody, row: Ro::FilesRowCheck, deletedAt: int): NativeTrashCustody =
+pure def canRecordOrigin(s: NativeTrashCustody, row: FilesRowCheck, deletedAt: int): bool =
+  s.stage == Fresh and nativeRowAdmission(Trash, row) == Admitted and deletedAt >= 0
+pure def recordOrigin(s: NativeTrashCustody, row: FilesRowCheck, deletedAt: int): NativeTrashCustody =
   { ...s, stage: Moving, record: Recorded({ deletedAt: deletedAt }) }
 pure def canFinishTrashMove(s: NativeTrashCustody): bool = s.stage == Moving
 pure def finishTrashMove(s: NativeTrashCustody, path: MovePath, copied: CopyResult, sourceRemoved: bool, recordCleaned: bool): NativeTrashCustody = {

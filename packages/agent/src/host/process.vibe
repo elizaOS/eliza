@@ -4,7 +4,7 @@ module node {
   import type { BootFailure, LaunchDocument as LaunchModel, LaunchFrame as FrameModel, UrlShape } from "../../gen/agent__host__launch.ts"
   import type { AgentProcess, Event as ProcessEvent } from "../../gen/agent__host__process.ts"
   import type { Endpoint, LaunchDocument, LaunchFrame } from "./launch.vibe"
-  import type { AgentPlugin, ModuleFactory } from "./module.vibe"
+  import { noPublish, noViewFeeds, type AgentPlugin, type ModuleFactory } from "./module.vibe"
   import { measureWorker, workerHost, type WorkflowWorkerHost } from "./workflow-worker.vibe"
 
   export interface AgentStatus {
@@ -43,8 +43,8 @@ module node {
   import { Effect, Result } from "effect"
   import { AgentRuntime, TaskService, createCharacter, logger, stringToUuid, validateUuid } from "@elizaos/core"
   import { canRequestStop, exitedCode, healthReply, healthStatus } from "../../gen/agent__host__process.ts"
-  import { cloudLinkPlugin, storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
-  import { agentStateOf, backendOf, statusRoutes, usableBinding } from "./status.vibe"
+  import { storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
+  import { backendOf, runStateOf, statusRoutes } from "./status.vibe"
   import { authRoutes } from "../access/auth.vibe"
   import { createRouter } from "../access/router.vibe"
   import { listenOnSocket } from "../access/socket.vibe"
@@ -57,7 +57,8 @@ module node {
   import { logSweeps, scheduleSweeps } from "../storage/retention.vibe"
   import { bootFailureOf, composeAgent } from "./compose.vibe"
   import { reservedHostPrefixes } from "../plugins/product.vibe"
-  import { cloudModel } from "./cloud-model.vibe"
+  import { bindModels } from "../models/binding.vibe"
+  import { modelPlugin } from "../models/plugin.vibe"
 
   function urlShape(url: string): UrlShape {
     const address = URL.parse(url)
@@ -108,10 +109,8 @@ module node {
 
   async function boot(input: StartAgentInput, lifecycle: Lifecycle): Promise<Result.Result<RunningAgent, BootFailure>> {
     const { launch, authority, binding, stateDirectory } = input
-    if (launch.model.backend === "own-key" || launch.embeddings === "local"
-      || launch.privacy?.secretSwap || launch.privacy?.piiSwap
-      || launch.google?.gmailChanges || launch.google?.calendarEdits
-      || (launch.views?.length ?? 0) > 0) return Result.fail("Config")
+    if (launch.embeddings === "local"
+      || launch.privacy?.secretSwap || launch.privacy?.piiSwap) return Result.fail("Config")
     const pinned = launch.workflowWorker === undefined ? undefined : await measureWorker(launch.workflowWorker)
     if (pinned?.kind === "refused") return Result.fail("Config")
     const sweeps = await Effect.runPromise(Effect.result(logSweeps(launch.retention)))
@@ -160,6 +159,7 @@ module node {
     }
 
     if (lifecycle.send({ type: "readLaunch", doc: launchModel(launch), f: frameModel(authority) }).failure.tag !== "NoFailure") return failed()
+    const models = await Effect.runPromise(bindModels(launch, authority))
 
     const opened = await openDeviceStorage({
       stateDirectory, persistMemory: launch.persistMemory ?? false,
@@ -196,19 +196,19 @@ module node {
     const permissions = new Set(launch.policy.actions.allowed)
     const grantAction = (action: { name: string }) => permissions.has(action.name)
       ? undefined : `Action ${action.name} is unavailable`
-    const cloud = launch.model.backend === "cloud" && authority.credential !== undefined
-      ? cloudModel(launch.model, authority.credential.value)
-      : { name: cloudLinkPlugin, description: "This launch has no model connection" }
+    const user = launch.account ? (validateUuid(launch.account.userId) ?? stringToUuid(`account:${launch.account.userId}`)) : stringToUuid(`device-owner:${agentId}`)
+    const ownerId = role === "OWNER" ? user : agentId
     const formed = await Effect.runPromise(Effect.result(composeAgent({
       agentId, character, settings: {}, bundled: input.bundled ?? new Map(), modules: input.modules, hostRoutes: reservedHostPrefixes,
-      context: { launch, stateDirectory, timeZone: launch.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, epoch: authority.epoch, ...(authority.storageKey === undefined ? {} : { storageKey: authority.storageKey }) },
+      context: { launch, stateDirectory, timeZone: launch.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, epoch: authority.epoch, ...(authority.storageKey === undefined ? {} : { storageKey: authority.storageKey }),
+        ownerEntityId: ownerId, publishEvent: noPublish, viewFeeds: noViewFeeds },
       storage: { name: storagePlugin, description: "Own the device database", services: [TaskService], init: async (_config, runtime) => {
         if (!(runtime instanceof AgentRuntime)) throw new Error("The storage plugin requires the device Core runtime")
         runtime.registerDatabaseAdapter(adapter)
         const sweeper = await Effect.runPromise(scheduleSweeps(adapter, sweeps.success))
         if (sweeper !== undefined) runtime.registerTaskWorker(sweeper)
       } },
-      cloudLink: cloud, privacy: { kind: "off" }, worker: pinned === undefined ? { kind: "none" } : { kind: "pinned", expected: pinned.worker.expected, measured: pinned.worker.measured },
+      cloudLink: modelPlugin(launch, models), privacy: { kind: "off" }, worker: pinned === undefined ? { kind: "none" } : { kind: "pinned", expected: pinned.worker.expected, measured: pinned.worker.measured },
       messageService: (runtime) => ownerMessageService(runtime, [role], grantAction),
       policy: {
         actionsAllowed: [...permissions], pluginsLoad: [...launch.policy.plugins.load],
@@ -249,10 +249,7 @@ module node {
       ready: true, actions: [...composed.allowed].sort(),
     }
     const bound = await (async () => {
-      const account = launch.account
       const world = stringToUuid(`device:${agentId}`)
-      const user = account ? (validateUuid(account.userId) ?? stringToUuid(`account:${account.userId}`)) : stringToUuid(`device-owner:${agentId}`)
-      const ownerId = role === "OWNER" ? user : agentId
       await runtime.ensureWorldExists({
         id: world, agentId, name: "Device",
         metadata: { ownership: { ownerId }, roles: { [user]: role === "OWNER" ? "OWNER" : "MEMBER" } },
@@ -261,7 +258,7 @@ module node {
         token: authority.token, epoch: authority.epoch, instanceId: status.serverInstanceId,
         health: () => healthAnswer(lifecycle.get()),
         routes: [
-          ...statusRoutes({ agentId, name: launch.character.name, serverInstanceId: status.serverInstanceId, backend: backendOf(launch.model), embeddings: launch.embeddings, state: () => agentStateOf(runtime.getLifecycleState()), binding: usableBinding, now: Date.now }),
+          ...statusRoutes({ agentId, name: launch.character.name, serverInstanceId: status.serverInstanceId, backend: backendOf(launch.model), embeddings: launch.embeddings, state: () => runStateOf(lifecycle.get()), binding: () => Effect.runSync(models.state()), now: Date.now }),
           ...authRoutes(agentId),
           ...conversationRoutes(runtime, { user, world }),
           ...composed.routes,

@@ -84,10 +84,21 @@ public final class DeviceKeyClient {
     String body = binding(binding).append(",\"grantType\":\"authorization_code\",\"code\":").append(CredentialJson.quote(proof.code()))
       .append(",\"state\":").append(CredentialJson.quote(proof.state())).append(",\"codeVerifier\":").append(CredentialJson.quote(proof.verifier()))
       .append('}').toString();
-    return ask("POST", TOKEN, null, body, 200, answer -> new Token(
-      CredentialJson.text(answer, "credentialId"), CredentialJson.text(answer, "secret"),
+    return ask("POST", TOKEN, null, body, 200, DeviceKeyClient::token);
+  }
+
+  public static Token minted(String answer) {
+    try {
+      return token(CredentialJson.object(CredentialJson.parse(answer), "answer"));
+    } catch (IllegalArgumentException unreadable) {
+      return null;
+    }
+  }
+
+  private static Token token(Map<String, Object> answer) {
+    return new Token(CredentialJson.text(answer, "credentialId"), CredentialJson.text(answer, "secret"),
       new Account(CredentialJson.text(CredentialJson.object(answer.get("user"), "user"), "id"), CredentialJson.text(answer, "organizationId")),
-      instant(answer, "expiresAt")));
+      instant(answer, "expiresAt"));
   }
 
   public Answer<Acknowledgement> ack(String credentialId, String secret) {
@@ -111,7 +122,16 @@ public final class DeviceKeyClient {
   }
 
   public Exchange exchange(int attempt, Binding binding, Proof proof) {
+    return exchange(attempt, binding, proof, null);
+  }
+
+  public Exchange exchange(int attempt, Binding binding, Proof proof, Token minted) {
     Pending pending = store.pending();
+    if (pending == null && minted != null) {
+      Kept kept = store.tokenAnswered(attempt, minted);
+      if (kept == Kept.REFUSED) return end(attempt);
+      if (kept == Kept.KEPT) pending = store.pending();
+    }
     for (int ask = 0; pending == null && ask < ASKS; ask++) {
       if (ask > 0 && !rest(ask)) return Exchange.UNANSWERED;
       Answer<Token> answer = token(binding, proof);

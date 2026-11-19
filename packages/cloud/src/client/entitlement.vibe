@@ -1,0 +1,176 @@
+// spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"; spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"
+import { millisPerSecond, type Micros, type Millis } from "../../gen/cloud__shared__types.effect.vibe"
+import { nextRefreshDelay } from "../../gen/cloud__client.effect.vibe"
+import { EntitlementKey } from "../profile/profile.schema.ts"
+
+module web {
+  /** @throws {never} */
+  export function bytesOf(part: string): Uint8Array<ArrayBuffer> | undefined {
+    if (!/^[A-Za-z0-9_-]+$/.test(part) || part.length % 4 === 1) return undefined
+    const binary = atob(part.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (part.length % 4)) % 4))
+    return Uint8Array.from(binary, (char) => char.charCodeAt(0))
+  }
+
+  /** @throws {never} */
+  export function jsonOf(part: string): unknown {
+    const bytes = bytesOf(part)
+    if (bytes === undefined) return undefined
+    try {
+      return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export async function es256Verifies(key: { readonly x: string; readonly y: string }, signature: Uint8Array<ArrayBuffer>, input: string): Promise<boolean> {
+    try {
+      const imported = await crypto.subtle.importKey("jwk", { kty: "EC", crv: "P-256", x: key.x, y: key.y, ext: true }, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"])
+      return await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, imported, signature, new TextEncoder().encode(input))
+    } catch {
+      return false
+    }
+  }
+}
+import { bytesOf, es256Verifies, jsonOf } from web
+
+export { nextRefreshDelay }
+
+export const entitlementType = "eliza-entitlement+jwt"
+export const entitlementVersion = 3
+export const maxEntitlementLength = 8192
+export const maxEntitlementKeys = 16
+export const maxEntitlementLifetimeSeconds = 60 * 60
+export const clockSkewSeconds = 60
+
+export type EntitlementKey = typeof EntitlementKey.Type
+
+export type EntitlementCheck =
+  | "TooLong"
+  | "Malformed"
+  | "UnsupportedHeader"
+  | "TooManyKeys"
+  | "UnknownKey"
+  | "BadSignature"
+  | "BadClaims"
+  | "WrongVersion"
+  | "WrongIssuer"
+  | "WrongAudience"
+  | "LifetimeTooLong"
+  | "IssuedInFuture"
+  | "Expired"
+
+export error EntitlementInvalid { check: EntitlementCheck }
+
+export interface EntitlementExpectation {
+  readonly keys: ReadonlyArray<EntitlementKey>
+  readonly issuer: string
+  readonly audience: string
+  readonly now: Millis
+}
+
+const numericDate = Schema.Int.check(Schema.isGreaterThan(0))
+const amount = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const label = (maximum: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(maximum), Schema.isPattern(/^[^\p{Cc}]*$/u))
+
+const Header = Schema.Struct({ alg: Schema.String, typ: Schema.String, kid: label(128) })
+
+const Claims = Schema.Struct({
+  iss: Schema.String,
+  aud: Schema.String,
+  sub: label(128),
+  org: label(128),
+  jti: label(128),
+  iat: numericDate,
+  exp: numericDate,
+  ver: Schema.Int,
+  plan: Schema.Struct({ id: label(128), name: label(80), status: Schema.Literals(["active", "past_due", "none"]) }),
+  plan_ends_at: Schema.NullOr(numericDate),
+  services: Schema.Array(Schema.Literals(["inference", "speech", "maps"])).check(Schema.isMaxLength(16)),
+  plan_allowance: Schema.NullOr(Schema.Struct({
+    unit: Schema.Literal("usd_micros"),
+    granted: amount,
+    remaining: amount,
+    periodStart: numericDate,
+    resetsAt: numericDate
+  }))
+})
+
+export type EntitlementClaims = typeof Claims.Type
+
+const readHeader = Schema.decodeUnknownOption(Header)
+const readClaims = Schema.decodeUnknownOption(Claims)
+const readKeys = Schema.decodeUnknownOption(Schema.Struct({ keys: Schema.Array(EntitlementKey).check(Schema.isMaxLength(maxEntitlementKeys)) }))
+
+export function parseEntitlementKeys(body: unknown): ReadonlyArray<EntitlementKey> | undefined {
+  const read = readKeys(body)
+  return read._tag === "Some" ? read.value.keys : undefined
+}
+
+function invalid(check: EntitlementCheck): EntitlementInvalid {
+  return new EntitlementInvalid({ check })
+}
+
+export async function verifyEntitlement(token: string, expected: EntitlementExpectation): Promise<EntitlementClaims> {
+  if (token.length > maxEntitlementLength) throw invalid("TooLong")
+  const parts = token.split(".")
+  if (parts.length !== 3) throw invalid("Malformed")
+  const [head = "", body = "", signed = ""] = parts
+  const header = readHeader(jsonOf(head))
+  const signature = bytesOf(signed)
+  if (header._tag === "None" || signature === undefined) throw invalid("Malformed")
+  if (header.value.alg !== "ES256" || header.value.typ !== entitlementType) throw invalid("UnsupportedHeader")
+  if (expected.keys.length > maxEntitlementKeys) throw invalid("TooManyKeys")
+  const key = expected.keys.find((listed) => listed.kid === header.value.kid)
+  if (key === undefined) throw invalid("UnknownKey")
+  if (signature.length !== 64 || !(await es256Verifies(key, signature, `${head}.${body}`))) throw invalid("BadSignature")
+  const read = readClaims(jsonOf(body))
+  if (read._tag === "None") throw invalid("BadClaims")
+  const claims = read.value
+  if (claims.ver !== entitlementVersion) throw invalid("WrongVersion")
+  if (claims.iss !== expected.issuer) throw invalid("WrongIssuer")
+  if (claims.aud !== expected.audience) throw invalid("WrongAudience")
+  if (claims.exp <= claims.iat || claims.exp - claims.iat > maxEntitlementLifetimeSeconds) throw invalid("LifetimeTooLong")
+  if (claims.iat * millisPerSecond > expected.now + clockSkewSeconds * millisPerSecond) throw invalid("IssuedInFuture")
+  if (claims.exp * millisPerSecond <= expected.now) throw invalid("Expired")
+  return claims
+}
+
+export interface PlanAllowance {
+  readonly granted: Micros
+  readonly remaining: Micros
+  readonly periodStart: Millis
+  readonly resetsAt: Millis
+}
+
+export interface Entitlement {
+  readonly id: string
+  readonly userId: string
+  readonly organizationId: string
+  readonly plan: EntitlementClaims["plan"]
+  readonly planEndsAt: Millis | null
+  readonly services: EntitlementClaims["services"]
+  readonly allowance: PlanAllowance | null
+  readonly issuedAt: Millis
+  readonly expiresAt: Millis
+}
+
+function millisOf(seconds: number): Millis {
+  return seconds * millisPerSecond
+}
+
+export async function checkEntitlement(token: string, expected: EntitlementExpectation): Promise<Entitlement> {
+  const claims = await verifyEntitlement(token, expected)
+  const allowance = claims.plan_allowance
+  return {
+    id: claims.jti,
+    userId: claims.sub,
+    organizationId: claims.org,
+    plan: claims.plan,
+    planEndsAt: claims.plan_ends_at === null ? null : millisOf(claims.plan_ends_at),
+    services: claims.services,
+    allowance: allowance === null ? null : { granted: allowance.granted, remaining: allowance.remaining, periodStart: millisOf(allowance.periodStart), resetsAt: millisOf(allowance.resetsAt) },
+    issuedAt: millisOf(claims.iat),
+    expiresAt: millisOf(claims.exp)
+  }
+}

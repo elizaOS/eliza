@@ -29,8 +29,9 @@ what may replace what a consumer already has.
 
 A debug-only build (`release: false`) assembles no release APK and cannot be
 archived. A release needs every signing variable or none
-(`H::signingNameCount`); some of them set refuses it before Gradle runs. A host without the agent service stages no agent
-payload; one with it names its inventory digest.
+(`H::signingNameCount`); some of them set refuses it before Gradle runs. A
+host without the agent service stages no agent payload; one with it names
+its inventory digest.
 
 ```quint
 import apk as A from "../image/apk"
@@ -103,6 +104,7 @@ pure def stepRequestIsFixedOnceAdmitted(before: AndroidBuild, after: AndroidBuil
 pure def sometimesInputRefused(b: AndroidBuild): bool = b.phase == Failed({ failure: InputRefused })
 pure def sometimesUnsignedReleaseFails(b: AndroidBuild): bool = b.phase == Failed({ failure: ReleaseUnsigned })
 pure def sometimesMissingApkFails(b: AndroidBuild): bool = b.phase == Failed({ failure: OutputsIncomplete })
+pure def sometimesFailedCopyIsCleanedUp(b: AndroidBuild): bool = b.phase == Failed({ failure: CopyFailed }) and b.apks.receipt == P::FailureReceipt
 ```
 
 ### The private set is verified against the pin, the payload and a fresh APK manifest before it can be published
@@ -136,7 +138,8 @@ pure def alwaysStagedSetIsACompletePrivateCopy(b: AndroidBuild): bool =
   (b.phase == Staged or b.phase == Verified) implies (b.apks.phase == P::Renaming and b.apks.temporary == P::CompleteTemporary)
 pure def setWasVerified(phase: BuildPhase): bool = phase == Verified or phase == Published or phase == Archived
   or phase == Failed({ failure: SetNotPublished }) or phase == Failed({ failure: ArchiveFilesChanged }) or phase == Failed({ failure: ArchiveNotPublished })
-pure def alwaysVerifiedSetHasThisRunsManifest(b: AndroidBuild): bool = setWasVerified(b.phase) iff (b.manifest.length() > 0 and H::publishedManifestAdmitted(b.request.variants, b.manifest))
+pure def alwaysVerifiedSetHasThisRunsManifest(b: AndroidBuild): bool =
+  if (setWasVerified(b.phase)) H::publishedManifestAdmitted(b.request.variants, b.manifest) else b.manifest == List()
 pure def sometimesMovedSourceFails(b: AndroidBuild): bool = b.phase == Failed({ failure: SourceMoved })
 pure def sometimesChangedPayloadFails(b: AndroidBuild): bool = b.phase == Failed({ failure: PayloadChanged })
 pure def sometimesUnverifiedSetDiscarded(b: AndroidBuild): bool = b.phase == Failed({ failure: VerificationFailed }) and b.apks.receipt == P::FailureReceipt

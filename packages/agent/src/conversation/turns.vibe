@@ -59,29 +59,28 @@ module node {
     })
     const room = await runtime.getRoom(roomId)
     if (!room) return undefined
-    await runtime.adapter.updateRooms([{ ...room, metadata: {
+    await runtime.updateRooms([{ ...room, metadata: {
       ...room.metadata, deviceConversation: { id, createdAt: time, updatedAt: time },
     } }])
     return created
   }
 
   export async function processTurn(runtime: AgentRuntime, owner: ConversationOwner, room: Room, text: string, signal: AbortSignal, options: TurnOptions = {}) {
-    const adapter = runtime.adapter
     const service = runtime.messageService ?? (() => { throw new Error("A conversation requires the message service") })()
     const storeReply = async (content: Content): Promise<Memory[]> => {
       if (!content.text?.trim()) return []
       const response = { ...memory(runtime, owner, room, content.text, options.metadata), entityId: runtime.agentId, content }
-      await adapter.createMemories([{ memory: response, tableName: "messages" }])
+      await runtime.createMessageMemory(response)
       return [response]
     }
     return runtime.roomHandlerQueue.withLease(room.id, async (lease) => {
       signal.throwIfAborted()
       const input = memory(runtime, owner, room, text, options.metadata)
-      await adapter.createMemories([{ memory: input, tableName: "messages" }])
-      const [current] = await adapter.getRoomsByIds([room.id])
+      await runtime.createMessageMemory(input)
+      const [current] = await runtime.adapter.getRoomsByIds([room.id])
       const metadata = stamp(current?.metadata?.deviceConversation)
       if (metadata._tag === "Some" && current !== undefined) {
-        await adapter.updateRooms([{
+        await runtime.updateRooms([{
           ...current, metadata: {
             ...current.metadata, deviceConversation: { ...metadata.value, updatedAt: Math.max(metadata.value.updatedAt, input.createdAt ?? 0) },
           },

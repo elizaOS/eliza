@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -29,7 +30,7 @@ public final class AgentConfig {
   private static final Pattern SHA256 = Pattern.compile("[a-f0-9]{64}");
   private static final BigDecimal SAFE_INTEGER = BigDecimal.valueOf(9007199254740991L);
   private static final Set<String> HOST_KEYS = Set.of("schema", "service", "notification", "routes", "nativeRoutes", "cloud", "model", "embeddings",
-    "embeddingDimensions", "persistMemory", "callerRole", "views", "privacy", "google", "retention", "environment");
+    "embeddingDimensions", "persistMemory", "callerRole", "views", "timeZone", "privacy", "google", "retention", "environment");
   private static final Set<String> CHARACTER_KEYS = Set.of("name", "system", "bio", "adjectives", "style", "messageExamples");
 
   public static final class Refused extends Exception {
@@ -195,6 +196,11 @@ public final class AgentConfig {
     if (!"owner".equals(role) && !"user".equals(role)) throw new Refused("The agent callerRole is owner or user");
     launch.put("callerRole", role);
     if (host.containsKey("views")) launch.put("views", views(host.get("views")));
+    if (host.containsKey("timeZone")) {
+      if (!(host.get("timeZone") instanceof String zone) || !(zone.equals("UTC") || (zone.contains("/") && ZoneId.getAvailableZoneIds().contains(zone))))
+        throw new Refused("The agent time zone is a named zone");
+      launch.put("timeZone", zone);
+    }
     if (host.containsKey("privacy")) launch.put("privacy", switches(host.get("privacy"), "secretSwap", "piiSwap"));
     if (host.containsKey("google")) launch.put("google", switches(host.get("google"), "gmailChanges", "calendarEdits"));
     if (host.containsKey("retention")) launch.put("retention", retention(host.get("retention")));

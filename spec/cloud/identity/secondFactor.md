@@ -238,9 +238,7 @@ accepted for that observation. Login challenges use their first-factor
 authority separately.
 
 ```quint
-pure def lawInactiveCallerCannotUseFactorRoutes(s: SecondFactor, method: FactorMethod): bool =
-  not(S::isActive(s.caller, s.personEpoch)) implies
-    (not(canEnroll(s, method)) and not(canConfirmEnrollment(s, method)) and
-     not(canRemoveFactor(s, method)) and not(canSendStepUpSms(s)) and
-     not(canVerifyStepUp(s, method)))
+pure def stepFactorRoutesOnlyForAnActiveCaller(before: SecondFactor, via: str, after: SecondFactor): bool =
+  Set("enroll", "confirmEnrollment", "removeFactor", "sendStepUpSms", "verifyStepUp").contains(via) implies S::isActive(before.caller, before.personEpoch)
+pure def sometimesCallerRevokedWithAFactor(s: SecondFactor): bool = hasFactor(s.factors) and s.caller.now < s.caller.accessExpiresAt and not(S::isActive(s.caller, s.personEpoch))
 ```

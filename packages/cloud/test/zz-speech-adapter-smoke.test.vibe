@@ -1,0 +1,50 @@
+// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+import { assert, describe, it } from "@effect/vitest"
+import { openStt, openTts, synthesize, synthesizeTimed, transcribe } from "../src/providers/speech.vibe"
+import { startFakeServer } from "./support/fakes.ts"
+import { secrets, testProfile } from "./support/profile.ts"
+import { FetchHttpClient } from "effect/http"
+import { Deployment, deploymentLayer } from "../src/profile/profile.vibe"
+import { speechFake, spokenTranscript, synthesizedAudio, pcmChunkBytes } from "./support/fake-speech.ts"
+
+effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
+  return match (try exit(program)) {
+    when Exit.Success: "ok";
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => error._tag), Option.getOrElse(() => "defect"));
+  }
+}
+
+describe("speech adapter smoke", () => {
+  it.live("adapter against fake", () => scoped(effect {
+    const fake = try sync(() => speechFake())
+    const fakes = try acquireRelease(promise(() => startFakeServer()), (server) => promise(() => server.close()))
+    try sync(() => fake.install(fakes))
+    const layer = Layer.mergeAll(deploymentLayer(testProfile(fakes.url) as never, "staging"), FetchHttpClient.layer).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+    const result = try Effect.provide(scoped(effect {
+      const deployment = try Deployment
+      const settings = deployment.settings.speech
+      if (settings === undefined) return "no settings"
+      const synthesis = { text: "Hello there", voiceId: "voice-1", modelId: "model-1", format: "mp3" as const, speed: 1, applyTextNormalization: "auto" as const }
+      const audio = try synthesize(settings, synthesis)
+      const timed = try synthesizeTimed(settings, synthesis)
+      const heard = try transcribe(settings, { audio: new Uint8Array([1, 2, 3, 4]), mimeType: "audio/wav", languageCode: "en-US" })
+      try sync(() => fake.script({ kind: "refuse", status: 429, retryAfterSeconds: 3 }, { kind: "refuse", status: 503 }, { kind: "garbled" }))
+      const refused = try failureTag(synthesize(settings, synthesis))
+      const outage = try failureTag(synthesize(settings, synthesis))
+      const garbled = try failureTag(transcribe(settings, { audio: new Uint8Array([1, 2]), mimeType: "audio/wav" }))
+      const stt = try openStt()
+      try stt.send(new Uint8Array(640))
+      const edges = try Stream.runCollect(Stream.take(stt.edges, 4))
+      const drained = try stt.drain()
+      const tts = try openTts()
+      try tts.speak("u1", "Hi", true)
+      try tts.finish("u1")
+      const ttsEdges = try Stream.runCollect(Stream.take(tts.edges, 3))
+      try sync(() => fake.scriptRealtime({ kind: "refuse", status: 401 }))
+      const badOpen = try failureTag(openStt())
+      return { audio: audio.audio.length, timed: timed.length, heard, refused, outage, garbled, edges: Array.from(edges).map((edge) => edge.kind), last: Array.from(edges)[3]?.transcript, drained, ttsEdges: Array.from(ttsEdges).map((edge) => edge.kind === "audio" ? `audio:${edge.pcm.length}` : edge.kind), badOpen }
+    }), layer)
+    try Console.error(JSON.stringify(result), fake.transcribed.map((entry) => [entry.mimeType, entry.model, entry.language, entry.audio.length]), fake.sttPcmBytes, fake.drained, fake.connections.map((c) => c.path))
+    assert.deepStrictEqual(typeof result === "string" ? result : [result.audio, result.heard.transcript, result.edges, result.last, result.drained, result.ttsEdges], [synthesizedAudio.length, spokenTranscript, ["SttConnected", "StartOfTurn", "TranscriptUpdate", "EndOfTurn"], spokenTranscript, true, [`audio:${pcmChunkBytes}`, "flushed", "completed"]])
+  }))
+})
