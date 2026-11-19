@@ -71,7 +71,7 @@ export async function readStripeSubscription(stripe: Stripe, env: StripeCatalog,
   const subscription = current ?? last
   const item = subscription?.items.data.find((item) => item.price.id === env.STRIPE_PRICE_ID && item.quantity === 1)
   if (subscription && (!item || subscription.items.has_more || subscription.items.data.length !== 1)) throw new Error("Unexpected subscription items")
-  let observation: SubscriptionObservation = {customerId:customer, subscriptionId:null, plan:"free", status:"none", startsAt:0, endsAt:0, cancelAtPeriodEnd:false, latestInvoice:"open"}
+  let observation: SubscriptionObservation = {customerId:customer, subscriptionId:null, plan:"free", status:"none", startsAt:0, endsAt:0, cancelAtPeriodEnd:false, latestInvoice:"PeriodInvoiceOpen"}
   if (subscription && item) {
     if (!await catalogMatches(stripe, env, false)) throw new Error("Unexpected subscription catalog terms")
     const states = {active:"active", canceled:"canceled", incomplete:"incomplete", incomplete_expired:"incomplete_expired", past_due:"past_due", unpaid:"unpaid", trialing:"incomplete", paused:"incomplete"} as const
@@ -81,13 +81,15 @@ export async function readStripeSubscription(stripe: Stripe, env: StripeCatalog,
     const invoice = status === "active" && invoiceId ? await stripe.invoices.retrieve(invoiceId) : undefined
     if (invoice && (invoice.id !== invoiceId || invoice.livemode !== subscription.livemode || resourceId(invoice.customer) !== customer ||
         resourceId(invoice.parent?.subscription_details?.subscription) !== subscription.id)) throw new Error("Unexpected subscription invoice")
-    const payment = invoice ? await paidWindow(stripe, env.STRIPE_PRICE_ID, customer, invoice, item) : undefined
+    const reason = invoice?.billing_reason
+    if (invoice && reason !== "subscription_update" && reason !== "subscription_create" && reason !== "subscription_cycle")
+      throw new Error("Unexpected subscription invoice reason")
+    const payment = invoice && reason !== "subscription_update" ? await paidWindow(stripe, env.STRIPE_PRICE_ID, customer, invoice, item) : undefined
     const failed = status === "past_due" || status === "unpaid" || invoice?.status === "uncollectible" ||
       (invoice?.status === "open" && invoice.attempted && invoice.attempt_count > 0)
     observation = { customerId:customer, subscriptionId:subscription.id, plan:env.STRIPE_PLAN, status, startsAt:item.current_period_start * 1000, endsAt:item.current_period_end * 1000,
-      cancelAtPeriodEnd:subscription.cancel_at_period_end, latestInvoice: failed ? "failed" : "open", payment }
+      cancelAtPeriodEnd:subscription.cancel_at_period_end, latestInvoice: reason === "subscription_update" ? "PlanChangeInvoice" : payment?.condition === "paid" ? "PeriodInvoicePaid" : failed ? "PeriodInvoiceFailed" : "PeriodInvoiceOpen", payment }
   }
-  if (observation.payment?.condition === "paid") observation = { ...observation, latestInvoice: "paid" }
   return { observation, ongoing: Boolean(current) }
 }
 

@@ -4,6 +4,7 @@ import {
   apply, decodeState, initial, canClawBack, canRestore, canClose, canExpire,
   type Event, type Period
 } from "../../gen/cloud__billing__allowance.effect.vibe"
+import type { LatestInvoice } from "../../gen/cloud__billing__subscriptions.ts"
 import type { PlanKey } from "../../gen/cloud__billing__plans.ts"
 
 export type Payment = { id: string; startsAt: number; endsAt: number; condition: "paid" | "refunded" | "disputed" }
@@ -15,7 +16,7 @@ export type SubscriptionObservation = {
   startsAt: number
   endsAt: number
   cancelAtPeriodEnd: boolean
-  latestInvoice: "open" | "paid" | "failed"
+  latestInvoice: LatestInvoice
   payment?: Payment
 }
 

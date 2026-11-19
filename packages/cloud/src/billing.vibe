@@ -45,7 +45,22 @@ async function reconcile(stripe: Stripe, env: BillingEnv, db: Client, organizati
     query: (sql, params = []) => foreign("query", async () => (await db.query(sql, [...params])).rows),
     script: (sql) => foreign("script", async () => { await db.query(sql) })
   }
-  const state = await Effect.runPromise(reconcileSubscription(tx, organization, observation, Date.now()))
+  const stored = (await db.query<{ provider_subscription_id: string | null }>("SELECT provider_subscription_id FROM subscriptions WHERE key=$1", [organization])).rows[0]
+  let verifiedCheckout: string | undefined
+  if (observation.subscriptionId && observation.subscriptionId !== stored?.provider_subscription_id) {
+    const local = await customerFor(db, organization)
+    if (local?.checkout_id && local.customer_id === customer) {
+      const checkout = await stripe.checkout.sessions.retrieve(local.checkout_id, { expand: ["line_items"] })
+      if (checkout.id === local.checkout_id && checkout.client_reference_id === organization &&
+          resourceId(checkout.customer) === customer && checkout.livemode === (env.CLOUD_ENVIRONMENT === "production") &&
+          checkout.mode === "subscription" && checkout.status === "complete" && checkout.payment_status === "paid" &&
+          resourceId(checkout.subscription) === observation.subscriptionId &&
+          checkout.line_items?.has_more === false && checkout.line_items.data.length === 1 &&
+          checkout.line_items.data[0]?.price?.id === env.STRIPE_PRICE_ID && checkout.line_items.data[0]?.quantity === 1)
+        verifiedCheckout = checkout.id
+    }
+  }
+  const state = await Effect.runPromise(reconcileSubscription(tx, organization, observation, Date.now(), verifiedCheckout))
   return { active: state.status === "Active", ongoing }
 }
 
