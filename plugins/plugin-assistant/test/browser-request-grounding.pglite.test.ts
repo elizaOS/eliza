@@ -999,13 +999,6 @@ it.each([
     "find the word domain on this page",
   ],
   [
-    "DEVICE_BROWSER_HISTORY",
-    { type: "browser_history", action: "back" },
-    "browser.history.v1",
-    "Doing that in Browser.",
-    "go back",
-  ],
-  [
     "DEVICE_BROWSER_TAB_CLOSE",
     { type: "browser_tab_close", target: "bbc" },
     "browser.tabs.v1",
@@ -1050,6 +1043,45 @@ it.each([
         success: false,
         data: { code: "DEVICE_OPERATION_SCOPE" },
       });
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it.each([
+  // A tab word or find text the owner did not type is always reviewed.
+  [
+    "DEVICE_BROWSER_TAB_SWITCH",
+    { type: "browser_tab_switch", target: "bbc" },
+    "browser.tabs.v1",
+    "switch to the example.com tab",
+  ],
+  [
+    "DEVICE_BROWSER_PAGE_SEARCH",
+    { type: "browser_find", text: "password" },
+    "browser.find.v1",
+    "find the word domain on this page",
+  ],
+] as const)(
+  "reviews %s when the model's words are not the owner's",
+  async (tool, operation, capability, request) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, { capabilities: [capability] });
+      const result = await f.run(
+        request,
+        tool,
+        true,
+        undefined,
+        "current",
+        operation,
+      );
+      expect(result).toMatchObject({
+        success: true,
+        userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+        data: { awaitingUserInput: true, approvalRequired: true },
+      });
+      expect(result).not.toMatchObject({ data: { directRequest: true } });
     } finally {
       await f.pg.close();
     }

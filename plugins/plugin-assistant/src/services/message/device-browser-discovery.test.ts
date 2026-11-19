@@ -72,7 +72,6 @@ describe("phone Browser control discovery", () => {
       ["new private browser tab", "DEVICE_BROWSER_TAB_NEW"],
       ["search the web for cheap flights", "DEVICE_BROWSER_SEARCH"],
       ["find the word domain on this page", "DEVICE_BROWSER_PAGE_SEARCH"],
-      ["go back a page in the browser", "DEVICE_BROWSER_HISTORY"],
     ] as const)
       expect(discover(query, ["browser"]), query).toContain(name);
   });
@@ -83,14 +82,56 @@ describe("phone Browser control discovery", () => {
     ).toContain("DEVICE_BROWSER_OPEN");
   });
 
-  it("offers each Browser control only as its own operation, in the browser and general contexts", () => {
+  it("leaves back, forward and reload to the native BROWSER commands in the browser scope", () => {
+    // v612 answered "go back" honestly through BROWSER; no device tool competes.
+    for (const query of ["go back", "go forward", "reload the page"]) {
+      const found = discover(query, ["browser"]);
+      expect(found[0], query).toBe("BROWSER");
+      expect(
+        deviceActionTools.some(
+          (tool) => tool.name === "DEVICE_BROWSER_HISTORY",
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it("adds no Browser control tool to the general scope", () => {
+    // PROPOSE_DEVICE_ACTION already offers these operations in general; six
+    // more Browser tools there outranked web search for questions and "go back".
+    const general = (list: readonly Action[]) =>
+      list.filter((action) =>
+        actionDiscoveryContexts(action).includes("general"),
+      );
+    const before = general(
+      actions.filter(
+        (action) =>
+          !action.name.startsWith("DEVICE_BROWSER_") ||
+          action.name === "DEVICE_BROWSER_OPEN",
+      ),
+    );
+    expect(general(actions)).toEqual(before);
+    for (const query of [
+      "look up the capital of peru",
+      "what is the weather",
+      "go back",
+      "switch to the example.com tab",
+    ])
+      expect(discover(query, ["general"]), query).toEqual(
+        retrieveContextualPlannerActions({
+          actions: before,
+          query,
+          contexts: ["general"],
+        }).actions.map((action) => action.name),
+      );
+  });
+
+  it("offers each Browser control only as its own operation, in the browser context", () => {
     const controls = deviceActionTools.filter(
       (tool) =>
         tool.name.startsWith("DEVICE_BROWSER_") &&
         tool.name !== "DEVICE_BROWSER_OPEN",
     );
     expect(controls.map((tool) => tool.name).sort()).toEqual([
-      "DEVICE_BROWSER_HISTORY",
       "DEVICE_BROWSER_PAGE_SEARCH",
       "DEVICE_BROWSER_SEARCH",
       "DEVICE_BROWSER_TAB_CLOSE",
@@ -98,9 +139,7 @@ describe("phone Browser control discovery", () => {
       "DEVICE_BROWSER_TAB_SWITCH",
     ]);
     for (const tool of controls) {
-      expect(actionDiscoveryContexts(tool), tool.name).toEqual(
-        expect.arrayContaining(["browser", "general"]),
-      );
+      expect(actionDiscoveryContexts(tool), tool.name).toEqual(["browser"]);
       expect(tool.tags, tool.name).toContain("domain:browser");
       const schema = tool.parameters?.find(
         (parameter) => parameter.name === "operation",

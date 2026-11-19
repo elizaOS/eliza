@@ -126,7 +126,6 @@ const capabilityBoundTypes = new Set([
   "browser_tab_switch",
   "browser_tab_close",
   "browser_find",
-  "browser_history",
 ]);
 const reminderTypes = new Set([
   "reminder_create",
@@ -165,7 +164,12 @@ const declarations = [
   // PROPOSE_DEVICE_ACTION, which is not a browser-context tool, so a turn
   // routed as browser found only the native BROWSER back/forward/reload
   // commands, and "switch to the example.com tab" was answered with "I can
-  // only go back, forward, or reload" (v612).
+  // only go back, forward, or reload" (v612). These tools are browser-context
+  // only: PROPOSE_DEVICE_ACTION still offers the same operations in general,
+  // where five more Browser tools would outrank web search, Notes and the rest.
+  // browser_history has no tool of its own: in the browser context the native
+  // BROWSER back, forward and reload commands answer it directly, and
+  // answered "no previous page" honestly on v612.
   [
     "DEVICE_BROWSER_TAB_SWITCH",
     "browser_tab_switch",
@@ -190,11 +194,6 @@ const declarations = [
     "DEVICE_BROWSER_PAGE_SEARCH",
     "browser_find",
     "Find (search for) text on the page open in this phone's Browser (browser.find.v1) and show the matches. You receive no match count and no page content.",
-  ],
-  [
-    "DEVICE_BROWSER_HISTORY",
-    "browser_history",
-    "Go back, go forward, reload or stop loading the tab showing in this phone's Browser (browser.history.v1). Use it instead of a BROWSER back, forward or reload command when both are offered. The phone reports when there is no previous or next page.",
   ],
   [
     DEVICE_CAMERA_CAPTURE_ACTION,
@@ -398,6 +397,13 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
             'the user asks to open, visit or go to a web address they typed, now, also "in the browser" or "in a new tab" -> DEVICE_BROWSER_OPEN with that address as typed (newTab true for a new tab), not VIEWS_SHOW browser or browser_tab_new; NOT for a deferred ("at 5pm", "in five minutes", "tomorrow"), hypothetical, question-about ("is there a way to open...", "do I need to go to..."), past ("I used to visit") or reported ("my mom wants me to") mention, nor for a site name with no address, or one the user says not to open',
         }
       : {}),
+    ...(type === "browser_find"
+      ? {
+          // "find" is also how owners ask for places, notes and contacts.
+          routingHint:
+            "the user asks to find or highlight words on the page open in the phone Browser -> DEVICE_BROWSER_PAGE_SEARCH with those words; NOT for finding a place, route, note, contact, file, photo or anything else that is not text on the open page, nor for a web search",
+        }
+      : {}),
     selectionIdentity:
       type === "notes_update" || type === "notes_read_selected"
         ? (selection: unknown) => {
@@ -502,7 +508,7 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
               : type === "browser_navigate"
                 ? ["browser", "web", "general"]
                 : isBrowserControlType(type)
-                  ? ["browser", "general"]
+                  ? ["browser"]
                   : type === "camera_capture_photo"
                     ? ["media", "general"]
                     : isPhotosViewType(type)
