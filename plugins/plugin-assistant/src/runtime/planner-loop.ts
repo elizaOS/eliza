@@ -15,6 +15,7 @@ import {
   evaluatePlannedReplyEgress,
 } from "../services/message/egress-policy.ts";
 import { projectBackgroundHistory } from "../services/message/history-discovery.ts";
+import { REQUEST_SOURCE_REFERENCE } from "../services/message/source-selection-binding.ts";
 import {
   replyNamesStructuredEffectDestination,
   structuredEffectFromToolResult,
@@ -4148,6 +4149,9 @@ function renderPlannerModelInput(params: {
   sourceSelectionApplied: boolean;
   restoreContextTool?: ToolDefinition;
   actionSourceSelectionSchema?: JSONSchema & ActionParameterSchema;
+  /** Identity of the originals an offered review covers, captured before
+   * dispatch: the context may change while the model is awaited. */
+  actionSourceSetId?: string;
   /** A review was due but could not defer more than it adds to the request. */
   actionSourceReviewWithheld: boolean;
 } {
@@ -4206,7 +4210,10 @@ function renderPlannerModelInput(params: {
           ...COMPLETION_CONTEXT_SCHEMA.properties,
           sourceSetId: {
             type: "string",
-            enum: [actionSources.sourceSetId],
+            // The real identity is new every turn and would change each
+            // reviewing tool's definition with it. Offer a request-local
+            // alias; the dispatcher binds it to actionSourceSetId.
+            enum: [REQUEST_SOURCE_REFERENCE],
             description:
               "Use this exact identity for the originals supplied with this planner request.",
           },
@@ -4413,6 +4420,9 @@ function renderPlannerModelInput(params: {
     promptSegments,
     cacheKeySegments,
     actionSourceSelectionSchema,
+    actionSourceSetId: actionSourceSelectionSchema
+      ? actionSources?.sourceSetId
+      : undefined,
     actionSourceReviewWithheld,
     restoreContextTool,
     sourceSelectionApplied:
@@ -5703,6 +5713,23 @@ async function dispatchPlannerModelCall(params: {
   const endedAt = Date.now();
 
   const parsed = parsePlannerOutput(raw);
+  // Bind the offered alias to the identity captured when this request was
+  // rendered, before anything reads, compares or stores the selection. With
+  // no review offered the alias stays unbound and is refused like any other
+  // identity that is not this request's.
+  const offeredSourceSetId = renderedInput.actionSourceSetId;
+  if (offeredSourceSetId !== undefined)
+    parsed.toolCalls = parsed.toolCalls.map((call) =>
+      call.completionContext?.sourceSetId === REQUEST_SOURCE_REFERENCE
+        ? {
+            ...call,
+            completionContext: {
+              ...call.completionContext,
+              sourceSetId: offeredSourceSetId,
+            },
+          }
+        : call,
+    );
   const privateContent =
     typeof raw !== "string" && Array.isArray(raw.content)
       ? raw.content.flatMap((part) =>
@@ -5784,9 +5811,7 @@ async function dispatchPlannerModelCall(params: {
         previousApplied: previous.applied,
         unanimous,
         accepted,
-        offeredSourceSetId:
-          renderedInput.actionSourceSelectionSchema?.properties?.sourceSetId
-            ?.enum?.[0],
+        offeredSourceSetId,
       });
     // A review withheld for its size is not a review: an explicit earlier
     // selection stays stored and keeps the background view from taking over.
