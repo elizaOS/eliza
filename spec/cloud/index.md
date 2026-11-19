@@ -62,12 +62,17 @@ pure def cloudSessionAllows(sessionEndsAt: int, nowAt: int, sessionPresent: bool
 ### A registered device grant authorizes device services
 
 The person approves a short-lived grant for the registered Android client
-and its verified return address while signed in. Only the device proving possession of the grant’s verifier can redeem it, once. The device
+and its verified return address while signed in. A browser that names the
+account shown for approval receives a grant only while signed in to that
+account. Only the device proving possession of the grant’s verifier can redeem it, once. The device
 acknowledges receipt before it can use the key. Signing out stops activation
 of an unfinished grant. An active key continues to authorize inference and
 consented speech until its deadline or its own revocation.
 
 ```quint
+pure def mayIssueAccountBoundDeviceGrant(shownAccount: str, signedInAccount: str): bool =
+  shownAccount != "" and shownAccount == signedInAccount
+
 pure def canExchangeCloudDeviceGrant(grantEndsAt: int, nowAt: int, grantUnspent: bool, verifierMatches: bool, browserSessionActive: bool): bool =
   nowAt < grantEndsAt and grantUnspent and verifierMatches and browserSessionActive
 
