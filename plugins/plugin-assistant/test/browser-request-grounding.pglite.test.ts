@@ -427,6 +427,119 @@ it.each([false, true])(
     }
   },
 );
+// v612: "open the phone dialer" in direct-request mode opened the keypad, but
+// the reply was the review text: the bound keypad proposal was not answered
+// as the requested handoff it is. An empty or a typed-number keypad opens
+// with no review text; ask-first keeps the review.
+it.each([
+  [false, "open the phone dialer", { type: "phone_keypad" }],
+  [true, "open the phone dialer", { type: "phone_keypad" }],
+  [
+    true,
+    "open the dialer and type 415 302 4399",
+    { type: "phone_keypad", number: "4153024399" },
+  ],
+] as const)(
+  "answers a requested keypad without review text only in direct request mode=%s (%s)",
+  async (direct, request, operation) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, { capabilities: ["phone.keypad.v1"] });
+      const result = await f.run(
+        request,
+        false,
+        direct,
+        undefined,
+        "current",
+        operation,
+      );
+      const rows = (
+        await f.pg.query<{ payload: Record<string, unknown> }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows).toHaveLength(1);
+      expect(result).toMatchObject(
+        direct
+          ? {
+              success: true,
+              userFacingText:
+                "number" in operation
+                  ? `Opening the keypad with ${operation.number}.`
+                  : "Opening the keypad.",
+              data: {
+                state: "pending",
+                executed: false,
+                awaitingDeviceExecution: true,
+                directRequest: true,
+                approvalRequired: false,
+              },
+            }
+          : {
+              success: true,
+              userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+              data: { awaitingUserInput: true, approvalRequired: true },
+            },
+      );
+      expect(result.userFacingText).not.toBe(
+        direct ? DEVICE_APPROVAL_REVIEW_TEXT : "Opening the keypad.",
+      );
+      if (direct) {
+        expect(rows[0].payload.requestMessageId).toEqual(expect.any(String));
+        expect(rows[0].payload.operation).toEqual(operation);
+      } else expect(rows[0].payload).not.toHaveProperty("requestMessageId");
+      expect(isRequestedDeviceHandoff(result as PlannerToolResult)).toBe(
+        direct,
+      );
+      expect(isPersistedDeviceApprovalPause(result as PlannerToolResult)).toBe(
+        !direct,
+      );
+      expect(f.decide).not.toHaveBeenCalled();
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+// The same v612 dialer request with the chat host's document envelope around
+// the owner's words: it still binds and opens without review text.
+it.each(["augmented", "augmented-other"] as const)(
+  "binds a requested keypad through a host-bound document envelope only to the owner's words (%s)",
+  async (custody) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, { capabilities: ["phone.keypad.v1"] });
+      const result = await f.run(
+        "open the phone dialer",
+        false,
+        true,
+        undefined,
+        custody,
+        { type: "phone_keypad" },
+      );
+      const rows = (
+        await f.pg.query<{ payload: Record<string, unknown> }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows).toHaveLength(1);
+      if (custody === "augmented") {
+        expect(result).toMatchObject({
+          userFacingText: "Opening the keypad.",
+          data: { directRequest: true, approvalRequired: false },
+        });
+        expect(rows[0].payload.requestMessageId).toEqual(expect.any(String));
+      } else {
+        expect(result).toMatchObject({
+          userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+          data: { approvalRequired: true },
+        });
+        expect(rows[0].payload).not.toHaveProperty("requestMessageId");
+      }
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
 // v610: "take a photo" matched a bundled FAQ line, so the planner's copy of
 // the message was the document envelope. The owner's words still bind it.
 it.each(["augmented", "augmented-other"] as const)(

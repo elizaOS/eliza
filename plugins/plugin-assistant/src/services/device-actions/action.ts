@@ -1922,8 +1922,18 @@ export const proposeDeviceAction: Action = {
       isBrowserControl(operation) &&
       BROWSER_CONTROL_DIRECT_TYPES.includes(operation.type) &&
       payload.requestMessageId !== undefined;
+    // An empty or filled-in keypad the owner's current message asked for
+    // comes in front on the phone without a review card: it never dials, and
+    // only the owner's Call tap there places a call.
+    const requestedKeypad =
+      request.state === "pending" &&
+      operation.type === "phone_keypad" &&
+      payload.requestMessageId !== undefined;
     const requestedHandoff =
-      requestedBrowserOpen || requestedCameraCapture || requestedBrowserControl;
+      requestedBrowserOpen ||
+      requestedCameraCapture ||
+      requestedBrowserControl ||
+      requestedKeypad;
     return {
       success: true,
       transcriptVisibility: "internal",
@@ -1946,9 +1956,15 @@ export const proposeDeviceAction: Action = {
                 }
               : requestedBrowserControl
                 ? { userFacingText: "Doing that in Browser." }
-                : request.state === "pending"
-                  ? { userFacingText: DEVICE_APPROVAL_REVIEW_TEXT }
-                  : {}),
+                : requestedKeypad
+                  ? {
+                      userFacingText: operation.number
+                        ? `Opening the keypad with ${operation.number}.`
+                        : "Opening the keypad.",
+                    }
+                  : request.state === "pending"
+                    ? { userFacingText: DEVICE_APPROVAL_REVIEW_TEXT }
+                    : {}),
       text: pendingRingingControl
         ? "Alarm control request recorded and pending for the phone. The phone may request manual review under its native policy. Pending state and approval/pause flags do not prove a visible approval dialog. This tool has performed no device operation. Await an applied native receipt before claiming completion."
         : requestedBrowserOpen
@@ -1957,7 +1973,9 @@ export const proposeDeviceAction: Action = {
             ? "The requesting phone takes this requested photo right after this reply once Camera is showing, with no review. No photo has been taken yet; do not claim that one was taken or saved."
             : requestedBrowserControl
               ? "The requesting phone runs this requested Browser control right after this reply, with no review. It has not run yet; do not claim that it finished, what a search found or what a page shows."
-              : `Durable device proposal state: ${request.state}. This tool has performed no device operation.`,
+              : requestedKeypad
+                ? "The requesting phone brings its Phone keypad in front right after this reply, with no review. It never dials: only the owner's Call tap there places a call. It is not showing yet; never report a call."
+                : `Durable device proposal state: ${request.state}. This tool has performed no device operation.`,
       data: {
         proposalId: request.id,
         state: request.state,
