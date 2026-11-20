@@ -203,6 +203,45 @@ async function verifyWhatsAppSignature(
   return constantTimeHexEqual(computed, expected);
 }
 
+/**
+ * The first hop of an `X-Forwarded-*` value. A proxy chain appends one entry
+ * per hop and joins them with ", ", so the whole header names this worker's
+ * upstream and every hop behind it — never the address the provider called.
+ */
+function firstForwardedHop(value: string | null): string | null {
+  if (!value) return null;
+  const first = value.split(",")[0]?.trim();
+  return first ? first : null;
+}
+
+/**
+ * The URL the provider signed: its public address, not this worker's internal
+ * origin. The `URL` setters ignore a value they cannot parse, so assigning the
+ * raw comma-joined header left the internal origin in place and every genuine
+ * Twilio signature failed. `URL.host` would also keep the internal port, so the
+ * public host is applied as hostname + port.
+ */
+function resolveSignedWebhookUrl(request: Request): URL {
+  const signed = new URL(request.url);
+  const forwardedProto = firstForwardedHop(
+    request.headers.get("x-forwarded-proto"),
+  );
+  if (forwardedProto && /^[a-z][a-z0-9+.-]*$/i.test(forwardedProto)) {
+    signed.protocol = `${forwardedProto}:`;
+  }
+  const forwardedHost = firstForwardedHop(
+    request.headers.get("x-forwarded-host"),
+  );
+  const hostParts = forwardedHost
+    ? /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::(\d{1,5}))?$/i.exec(forwardedHost)
+    : null;
+  if (hostParts?.[1]) {
+    signed.hostname = hostParts[1];
+    signed.port = hostParts[2] ?? "";
+  }
+  return signed;
+}
+
 async function verifyTwilioSignature(
   request: Request,
   rawBody: string,
@@ -211,11 +250,7 @@ async function verifyTwilioSignature(
   const signature = request.headers.get("x-twilio-signature") ?? "";
   if (!signature) return false;
 
-  const url = new URL(request.url);
-  const forwardedProto = request.headers.get("x-forwarded-proto");
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  if (forwardedProto) url.protocol = `${forwardedProto}:`;
-  if (forwardedHost) url.host = forwardedHost;
+  const url = resolveSignedWebhookUrl(request);
 
   const params = new URLSearchParams(rawBody);
   const sorted = Array.from(params.entries())
