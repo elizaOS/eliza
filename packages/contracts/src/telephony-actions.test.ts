@@ -948,6 +948,29 @@ test("address lookup and a reply draft use the complete negotiated address", () 
     );
     assert.ok(!directSmsRequest(bound, request));
   }
+  // A purpose clause after the recipient is the message, not part of the
+  // recipient.
+  for (const request of [
+    "Draft a text to Sam to ask him about dinner tonight",
+    "Write a message to Sam to tell him I'm running late",
+    "Draft a text to Sam to remind him about the tripod",
+    "Draft a text to Sam to see if he's free tonight",
+    "Draft a text to Sam to check if he got home",
+    "Draft a text to Sam to let him know I'm running late",
+    "Draft a text to Sam letting him know I'm running late",
+  ]) {
+    assert.deepEqual(
+      requestedSmsDraftRecipient(request),
+      { kind: "contact", query: "Sam" },
+      request,
+    );
+  }
+  assert.deepEqual(
+    requestedSmsDraftRecipient(
+      "Draft a text to +1 (415) 555-0124 to ask about the tripod",
+    ),
+    { kind: "number", number: "+14155550124" },
+  );
   // Only a question about the sender reads one, wherever the owner says it is
   // on this phone. A message from a named sender or another service's inbox
   // is the planner's.
