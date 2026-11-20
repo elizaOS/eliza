@@ -543,10 +543,12 @@ export interface AnchoredPlaceQuery {
 
 /**
  * Words after "near" that mean the owner's own position, not a named place:
- * "near me", "close to where I am right now", "around midnight near me".
+ * "near me", "near me open now", "near us open now", "near by", "close to
+ * where I am right now", "around midnight near me". After "us", only "now",
+ * "right now" or "open now" may follow: "us bank tower" and "us 101" are places.
  */
 const OWN_POSITION =
-  /^(?:me|here|us|myself|this\s+(?:place|spot|location)|(?:my|the)\s+phone)$|^(?:my\s+(?:location|position|place|current\s+location)|where\s+(?:i|we)\s+(?:am|are)|current\s+location)\b|\b(?:near|around|close\s+to|next\s+to)\s+(?:me|here|us)$/iu;
+  /^(?:me|here)\b|^(?:us(?:,?\s+(?:open\s+)?(?:right\s+)?now)?|by|myself|this\s+(?:place|spot|location)|(?:my|the)\s+phone)$|^(?:my\s+(?:location|position|place|current\s+location)|where\s+(?:i|we)\s+(?:am|are)|current\s+location)\b|\b(?:near|around|close\s+to|next\s+to)\s+(?:me|here|us)$/iu;
 
 /**
  * "around midnight", "near 5pm", "around Christmas", "near the end": a time
@@ -566,7 +568,7 @@ export const NEAR_NOT_A_PLACE_KIND =
   /\b(?:photos?|pictures?|pics?|images?|videos?|clips?|selfies?|screenshots?|e-?mails?|mail|messages?|texts?|chats?|notes?|files?|documents?|docs?|songs?|music|tracks?|albums?|playlists?|podcasts?|events?|meetings?|appointments?|reminders?|alarms?|contacts?|tasks?|to-?dos?|bugs?|issues?|errors?|lines?|comments?|posts?|tweets?|results?|calls?|voicemails?)$/iu;
 
 const ANCHORED_QUERY =
-  /^\s*(?:(?:please|can\s+you|could\s+you)\s+)*(?:(?:i|we)\s+(?:need|want)\s+|(?:i'?m|i’m|we'?re|we’re)\s+looking\s+for\s+)?(?:(?:find|show|search\s+for|look\s+for|look\s+up|locate|get)\s+(?:me\s+)?)?(?:(?:is|are)\s+there\s+)?(?:(?:the|a|an|some|any)\s+)?(?:(?:nearest|closest)\s+)?(.{1,80}?)\s+(?:near|around|close\s+to|next\s+to)\s+(.{1,120}?)[\s?.!]*$/iu;
+  /^\s*(?:(?:please|can\s+you|could\s+you)\s+)*(?:(?:i|we)\s+(?:need|want)\s+|(?:i'?m|i’m|we'?re|we’re)\s+looking\s+for\s+)?(?:(?:find|show|search\s+for|look\s+for|look\s+up|locate|get)\s+(?:me\s+)?)?(?:(?:is|are)\s+there\s+)?(?:(?:the|a|an|some|any)\s+)?(?:(?:nearest|closest)\s+)?(.{1,80}?)\s+(?:near|around|close\s+to|next\s+to)\s+(.{1,120}?)(?:,?\s+(?:please|for\s+me))*[\s?.!]*$/iu;
 
 /**
  * The named place a search is near ("pharmacy near the Ferry Building"), or
