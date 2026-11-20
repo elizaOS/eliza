@@ -348,6 +348,39 @@ export function calendarAvailabilityActions(
           resource: receipt.resource,
           observedAt: receipt.observedAt,
         };
+        const slots =
+          propose && typeof durationMinutes === "number"
+            ? findCalendarFreeSlots({
+                range,
+                timeZone,
+                sources,
+                durationMs: durationMinutes * 60_000,
+              }).map((slot) => ({
+                startAt: slot.start,
+                endAt: slot.end,
+                durationMinutes,
+                timeZone,
+              }))
+            : undefined;
+        let slotReply: string | undefined;
+        if (slots?.length) {
+          const formatter = new Intl.DateTimeFormat("en-US", {
+            timeZone,
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            timeZoneName: "short",
+          });
+          slotReply = new Intl.ListFormat("en-US", {
+            type: "conjunction",
+          }).format(
+            slots.map(({ startAt, endAt }) =>
+              formatter.formatRange(new Date(startAt), new Date(endAt)),
+            ),
+          );
+        }
         const effect = {
           ...snapshot,
           receiptId: stringToUuid(
@@ -384,22 +417,21 @@ export function calendarAvailabilityActions(
             windowStart: range.start,
             windowEnd: range.end,
             timeZone,
-            ...(propose && typeof durationMinutes === "number"
+            ...(slots
               ? {
                   durationMinutes,
                   availabilityEvidence:
                     "Slots are quarter-hour-aligned suggestions from this exact snapshot. An empty list does not rule out an off-grid time.",
-                  slots: findCalendarFreeSlots({
-                    range,
-                    timeZone,
-                    sources,
-                    durationMs: durationMinutes * 60_000,
-                  }).map((slot) => ({
-                    startAt: slot.start,
-                    endAt: slot.end,
-                    durationMinutes,
-                    timeZone,
-                  })),
+                  slots,
+                  ...(slotReply
+                    ? {
+                        replyContext: {
+                          domain: "calendar",
+                          scenario: "propose_times",
+                          userFacingFacts: `I found these ${durationMinutes}-minute openings. ${slotReply}.`,
+                        },
+                      }
+                    : {}),
                 }
               : {
                   isFree: evaluation.conflicts.length === 0,

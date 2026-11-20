@@ -915,9 +915,123 @@ function gateTypedReadOutput(
   return checked;
 }
 
+/** A sole, current built-in slot lookup has complete producer-formatted facts.
+ * Keep the existing receipt and coverage checks without asking the model to
+ * convert the returned instants or repeat their citations. */
+function verifiedCalendarSlots(
+  params: RunEvaluatorParams,
+): EvaluatorOutput | undefined {
+  const { context, trajectory } = params;
+  const original = trajectory.modelBaseContext ?? context;
+  const bindings = original.metadata?.calendarReadBindings;
+  const [raw] = Array.isArray(bindings) ? bindings : [];
+  if (
+    params.typedReadReply ||
+    params.hasUnresolvedToolFailure ||
+    trajectory.codingMode ||
+    trajectory.plannedQueue.length ||
+    !Array.isArray(bindings) ||
+    bindings.length !== 1 ||
+    !isObjectRecord(raw) ||
+    raw.operation !== "propose_times" ||
+    raw.source !== "builtin" ||
+    raw.execution !== "required" ||
+    typeof raw.intentId !== "string" ||
+    evaluatorIntentSources(original, trajectory).length !== 1 ||
+    declaredIntentsFromContext(original).length > 1
+  )
+    return;
+  const work = evaluatorEvidenceSteps(trajectory).filter(
+    ({ step }) =>
+      step.toolCall &&
+      !step.terminalOnly &&
+      !isDiscoveryActionName(step.toolCall.name),
+  );
+  const [evidence] = work;
+  if (
+    work.length !== 1 ||
+    !evidence ||
+    !trajectory.steps.includes(evidence.step)
+  )
+    return;
+  const { step, id } = evidence;
+  const call = step.toolCall,
+    result = step.result;
+  const data = result?.data;
+  const reply = isObjectRecord(data) ? data.replyContext : undefined;
+  const snapshot = isObjectRecord(data) ? data.calendarSnapshot : undefined;
+  const args = call?.params;
+  if (
+    call?.name !== CALENDAR_READ_ACTIONS.propose_times ||
+    result?.success !== true ||
+    result.error != null ||
+    result.failureProvenance ||
+    result.replyFailure ||
+    result.transcriptVisibility !== "internal" ||
+    !isObjectRecord(data) ||
+    !isObjectRecord(snapshot) ||
+    typeof snapshot.observedAt !== "string" ||
+    typeof raw.requestedAt !== "number" ||
+    !(Date.parse(snapshot.observedAt) >= raw.requestedAt) ||
+    !args ||
+    typeof args.windowStart !== "string" ||
+    typeof args.windowEnd !== "string" ||
+    typeof data.windowStart !== "string" ||
+    typeof data.windowEnd !== "string" ||
+    Date.parse(args.windowStart) !== Date.parse(data.windowStart) ||
+    Date.parse(args.windowEnd) !== Date.parse(data.windowEnd) ||
+    args.timeZone !== data.timeZone ||
+    !Array.isArray(data.slots) ||
+    data.slots.length === 0 ||
+    !isObjectRecord(reply) ||
+    reply.domain !== "calendar" ||
+    reply.scenario !== "propose_times" ||
+    typeof reply.userFacingFacts !== "string" ||
+    !reply.userFacingFacts.trim()
+  )
+    return;
+  const answer: EvaluatorOutput = {
+    decision: "FINISH",
+    success: true,
+    requestFullyCovered: true,
+    thought: "The current Calendar preview supplied the verified slot times.",
+    messageToUser: reply.userFacingFacts,
+    replyEffectStatus: "none",
+    outcomeCoverage: [
+      { intentId: raw.intentId, status: "completed", evidenceStepIds: [id] },
+    ],
+  };
+  const checked = finalizeEvaluatorOutput(
+    answer,
+    "",
+    context,
+    trajectory,
+    composeToolDiagnosticRedactor(params.runtime),
+  );
+  return checked.success && checked.decision === "FINISH" ? checked : undefined;
+}
+
 async function runEvaluatorStage(
   params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
+  const startedAt = Date.now();
+  const slots = verifiedCalendarSlots(params);
+  if (slots) {
+    await recordGatedEvaluationStage({
+      runtime: params.runtime,
+      recorder: params.recorder,
+      trajectoryId: params.trajectoryId,
+      parentStageId: params.parentStageId,
+      iteration: params.iteration ?? 1,
+      startedAt,
+      endedAt: Date.now(),
+      output: slots,
+      reason: "verified_calendar_slots",
+      logger: params.runtime.logger,
+    });
+    getStreamingContext()?.abortSignal?.throwIfAborted();
+    return slots;
+  }
   const configuredModel = resolveSetting(
     params.runtime.getSetting
       ? {
