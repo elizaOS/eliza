@@ -200,11 +200,19 @@ function mergeIMessageAccountConfig(
   };
 
   // Merge order: env defaults < base config < account config
+  // Filter undefined values to prevent them from overwriting defined values
   return {
-    ...envConfig,
-    ...baseConfig,
-    ...accountConfig,
+    ...filterDefined(envConfig),
+    ...filterDefined(baseConfig),
+    ...filterDefined(accountConfig),
   };
+}
+
+/**
+ * Removes undefined values from an object to prevent them from overwriting during spread
+ */
+function filterDefined<T extends object>(obj: T): Partial<T> {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
 /**
