@@ -177,11 +177,15 @@ effect function namedParts(root: MailPart | undefined) {
   return found
 }
 
-export effect function googleGmailAttachment<E, R>(api: GoogleReadApi<E, R>, url: URL) {
-  const messageId = url.searchParams.get("messageId")
-  const partId = url.searchParams.get("partId")
-  const historyId = url.searchParams.get("historyId")
-  if (!messageId || !partId || !historyId || !partIdPattern.test(partId) || !revision.test(historyId)) throw new GoogleReadInput()
+export function attachmentSelection(params: URLSearchParams) {
+  const messageId = params.get("messageId")
+  const partId = params.get("partId")
+  const historyId = params.get("historyId")
+  return messageId && partId && historyId && partIdPattern.test(partId) && revision.test(historyId) ? { messageId, partId, historyId } : undefined
+}
+
+export effect function googleGmailAttachment<E, R>(api: GoogleReadApi<E, R>, selection: { messageId: string; partId: string; historyId: string }) {
+  const { messageId, partId, historyId } = selection
   const message = try readMessage(api, messageId, "full")
   if (message.historyId !== historyId) throw new GoogleAttachmentStale()
   const matched = (try namedParts(message.payload)).filter((part) => part.partId === partId)
