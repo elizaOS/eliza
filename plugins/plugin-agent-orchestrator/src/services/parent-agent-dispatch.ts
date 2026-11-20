@@ -207,38 +207,64 @@ export interface ParentAgentDirective {
   endIndex: number;
 }
 
-/** Index of the first directive marker in `text`, or -1. */
-export function parentAgentMarkerIndex(text: string): number {
-  return text.indexOf(PARENT_AGENT_DIRECTIVE_MARKER);
+export interface ParentAgentDirectiveTake {
+  /** The first complete directive in the text, or `null`. */
+  directive: ParentAgentDirective | null;
+  /** The streamed text the caller keeps buffering. */
+  rest: string;
 }
 
 /**
- * Find the FIRST complete `USE_SKILL parent-agent {json}` directive in `text`.
+ * Find the FIRST complete `USE_SKILL parent-agent {json}` directive in
+ * streamed child text and return it with the text to keep buffering.
  *
- * Returns `null` when no marker is present, or when the JSON object after the
- * marker is not yet balanced (the directive is still streaming) — the caller
- * keeps buffering in that case. The scan is string- and escape-aware so braces
- * inside JSON string values do not close the object early. A malformed object
- * (balanced braces that fail `JSON.parse`) resolves to `null` so the caller
- * does not spin on it.
+ * The scan is string- and escape-aware so braces inside JSON string values do
+ * not close the object early. A marker that is not a directive (prose after
+ * it, such as "(USE_SKILL parent-agent)", or a balanced object that fails
+ * `JSON.parse`) is skipped so a later directive in the same stream is still
+ * found, and it is trimmed from `rest` so it is not scanned again. A directive
+ * whose JSON object is still streaming is kept whole from its marker: cutting
+ * its JSON tail can silently turn a valid large request into a different or
+ * permanently unparsable one. With no directive pending, `rest` keeps only the
+ * last `tail` characters, enough to catch a marker split across chunks.
  */
-export function extractParentAgentDirective(
+export function takeParentAgentDirective(
   text: string,
-): ParentAgentDirective | null {
-  const markerAt = text.indexOf(PARENT_AGENT_DIRECTIVE_MARKER);
-  if (markerAt < 0) return null;
+  tail: number,
+): ParentAgentDirectiveTake {
+  let from = 0;
+  for (;;) {
+    const markerAt = text.indexOf(PARENT_AGENT_DIRECTIVE_MARKER, from);
+    if (markerAt < 0) {
+      return { directive: null, rest: text.slice(from).slice(-tail) };
+    }
+    const read = readParentAgentDirective(text, markerAt);
+    if (read === "streaming") {
+      return { directive: null, rest: text.slice(markerAt) };
+    }
+    if (read !== "invalid") {
+      return { directive: read, rest: text.slice(read.endIndex) };
+    }
+    from = markerAt + PARENT_AGENT_DIRECTIVE_MARKER.length;
+  }
+}
 
+/** Read the directive whose marker starts at `markerAt`. */
+function readParentAgentDirective(
+  text: string,
+  markerAt: number,
+): ParentAgentDirective | "streaming" | "invalid" {
   // Skip whitespace / a markdown backtick between the marker and the JSON.
   let i = markerAt + PARENT_AGENT_DIRECTIVE_MARKER.length;
   while (i < text.length && text[i] !== "{") {
     const ch = text[i];
     if (ch !== " " && ch !== "\t" && ch !== "\n" && ch !== "\r" && ch !== "`") {
       // Non-JSON content after the marker → not a directive.
-      return null;
+      return "invalid";
     }
     i++;
   }
-  if (i >= text.length) return null; // brace not streamed yet
+  if (i >= text.length) return "streaming"; // brace not streamed yet
 
   const start = i;
   let depth = 0;
@@ -268,14 +294,14 @@ export function extractParentAgentDirective(
             };
           }
         } catch {
-          // error-policy:J3 untrusted streamed directive; malformed JSON resolves
-          // to null so the caller drops it (trims past the marker).
+          // error-policy:J3 untrusted streamed directive; malformed JSON is not
+          // a directive, so takeParentAgentDirective skips past its marker.
         }
-        return null;
+        return "invalid";
       }
     }
   }
-  return null; // unbalanced — still streaming
+  return "streaming"; // unbalanced — still streaming
 }
 
 export interface DispatchParentAgentParams {

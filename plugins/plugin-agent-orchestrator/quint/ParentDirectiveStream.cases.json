@@ -1,0 +1,47 @@
+{
+  "sources": [
+    "plugins/plugin-agent-orchestrator/src/services/parent-agent-dispatch.ts",
+    "plugins/plugin-agent-orchestrator/src/services/sub-agent-router.ts",
+    "plugins/plugin-agent-orchestrator/src/__tests__/parent-directive-stream-model.test.ts",
+    "plugins/plugin-agent-orchestrator/quint/check-parent-directive-stream.mjs"
+  ],
+  "conformance": "plugins/plugin-agent-orchestrator/quint/check-parent-directive-stream.mjs",
+  "bounds": "One sub-agent session streams up to three `message` chunks. Each chunk is prose without the marker, the marker in prose (as a sub-agent repeats its prompt), the marker with a balanced object that is not JSON (as in the deploy guidance), a complete directive, or the first part of a directive whose JSON is still streaming followed by its rest. The conformance script replays every generated stream through the production SubAgentRouter on a PGlite-backed runtime, where the parent-agent broker answers each dispatched list-cloud-commands directive, and requires all 115 streams (5 with one chunk, 21 with two, 89 with three). Several directives in one chunk, markers split across chunks, a directive split over more than two chunks, other broker modes, the per-session round-trip cap and session pruning are not covered by this model. Under weak fairness of the router step every complete directive is eventually dispatched. Explicit stuttering lets the router leave the latest chunk unhandled, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "parent-directive-stream-dispatch",
+      "main": "ParentDirectiveStream",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "EveryDirectiveDispatchedOnce",
+        "NonDirectiveMarkerSkipped",
+        "NothingDispatchedWithoutDirective",
+        "StreamingDirectiveKept",
+        "TypeOK"
+      ],
+      "temporal": [
+        "DirectivesDispatched",
+        "DirectivesDispatchedWithoutFairness"
+      ],
+      "maxSteps": 8,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "DirectivesDispatched",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled router step eventually runs (weak fairness). This checks that every complete directive is then dispatched, not how long the broker takes."
+          ]
+        },
+        {
+          "property": "DirectivesDispatchedWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The router may leave the latest chunk unhandled forever, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}

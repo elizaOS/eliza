@@ -56,8 +56,7 @@ import {
 } from "./orchestrator-task-types.js";
 import {
   dispatchParentAgentDirective,
-  extractParentAgentDirective,
-  parentAgentMarkerIndex,
+  takeParentAgentDirective,
 } from "./parent-agent-dispatch.js";
 import {
   applyResumePreamble,
@@ -2642,26 +2641,14 @@ Do not report done until every referenced URL in the final page resolves without
     if (!chunk) return;
 
     const TAIL = 64; // ≥ marker length, to catch a marker split across chunks
-    let buf = (this.parentAgentBuffers.get(sessionId) ?? "") + chunk;
+    const buf = (this.parentAgentBuffers.get(sessionId) ?? "") + chunk;
 
-    const markerAt = parentAgentMarkerIndex(buf);
-    if (markerAt < 0) {
-      this.parentAgentBuffers.set(sessionId, buf.slice(-TAIL));
-      return;
-    }
-    buf = buf.slice(markerAt);
-
-    const directive = extractParentAgentDirective(buf);
-    if (!directive) {
-      // Once the marker is present, retain the complete streamed directive.
-      // Cutting its JSON tail can silently turn a valid large parent-agent
-      // request into a different or permanently unparsable request.
-      this.parentAgentBuffers.set(sessionId, buf);
-      return;
-    }
     // Consume the directive BEFORE awaiting so a concurrent chunk cannot
-    // re-dispatch it.
-    this.parentAgentBuffers.set(sessionId, buf.slice(directive.endIndex));
+    // re-dispatch it. The rest keeps a directive that is still streaming and
+    // drops markers that are not directives.
+    const { directive, rest } = takeParentAgentDirective(buf, TAIL);
+    this.parentAgentBuffers.set(sessionId, rest);
+    if (!directive) return;
 
     const nextCount = (this.parentAgentDispatchCounts.get(sessionId) ?? 0) + 1;
     this.parentAgentDispatchCounts.set(sessionId, nextCount);
