@@ -267,10 +267,10 @@ module node {
         })
         return (await stripeWebhook(request, new TextEncoder().encode(payload), env, fixture.db)).status
       }
-      const mappedDispute = () => deliver("charge.dispute.closed", { object: "dispute", charge: "ch_fixture" })
+      const mappedDispute = (stage: "created" | "closed") => deliver("charge.dispute." + stage, { object: "dispute", charge: "ch_fixture" })
       const unknownStatuses = [
         await deliver("refund.created", { object: "refund", charge: "ch_foreign" }),
-        await mappedDispute(),
+        await mappedDispute("created"),
         await deliver("charge.refunded", { object: "charge", id: "ch_foreign", customer: "cus_foreign" })
       ]
       const unknownProviderCalls = providerCalls
@@ -283,17 +283,24 @@ module node {
       const renewal = await read("new")
       const beforeResolution = (await fixture.db.query("SELECT key FROM allowance_periods")).rows
       dispute = "won"
-      const resolved = await mappedDispute()
-      const replay = await mappedDispute()
+      const resolved = await mappedDispute("closed")
+      const replay = await mappedDispute("closed")
       const paidReplay = await read("new")
       const rows = await fixture.db.query("SELECT key,status,provider_subscription_id,state->>'lastRenewalInvoice' AS renewal FROM subscriptions ORDER BY key")
       const allowances = await fixture.db.query("SELECT key FROM allowance_periods")
+      const allowanceStatus = async () => (await fixture.db.query("SELECT status FROM allowance_periods WHERE key = 'invoice/in_new'")).rows
+      dispute = "needs_response"
+      const reopened = await mappedDispute("created")
+      const disputeClawback = await allowanceStatus()
+      dispute = "won"
+      const restored = await mappedDispute("closed")
+      const disputeRestore = await allowanceStatus()
       refunded = true
       const mappedRefund = await deliver("refund.updated", { object: "refund", charge: "ch_fixture" })
       const seen = await fixture.db.query("SELECT charge_id,customer_id FROM cloud_stripe_charge_owners")
-      const clawed = await fixture.db.query("SELECT status FROM allowance_periods WHERE key = 'invoice/in_new'")
+      const refundClawback = await allowanceStatus()
       return { unrelated, paid, legacy, renewal, paidReplay, beforeRenewal: beforeRenewal.rows, rows: rows.rows, allowances: allowances.rows,
-        unknownStatuses, unknownProviderCalls, beforeResolution, deliveries: [resolved, replay, mappedRefund], owners: seen.rows, refunded: clawed.rows }
+        unknownStatuses, unknownProviderCalls, beforeResolution, deliveries: [resolved, replay, reopened, restored, mappedRefund], owners: seen.rows, outcomes: [disputeClawback, disputeRestore, refundClawback] }
     } finally {
       globalThis.fetch = original
       await fixture.close()
@@ -311,6 +318,7 @@ it.live('Follow the verified Checkout and scope shared charge events (spec/cloud
     rows: [{ key: "legacy", status: "active", provider_subscription_id: "sub_legacy", renewal: "" },
       { key: "new", status: "active", provider_subscription_id: "sub_new", renewal: "in_new" }],
     allowances: [{ key: "invoice/in_new" }], unknownStatuses: [204, 204, 204], unknownProviderCalls: 0, beforeResolution: [],
-    deliveries: [204, 204, 204], owners: [{ charge_id: "ch_fixture", customer_id: "cus_new" }], refunded: [{ status: "clawed_back" }],
+    deliveries: [204, 204, 204, 204, 204], owners: [{ charge_id: "ch_fixture", customer_id: "cus_new" }],
+    outcomes: [[{ status: "clawed_back" }], [{ status: "open" }], [{ status: "clawed_back" }]],
   }))
 }, 30_000)
