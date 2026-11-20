@@ -119,7 +119,10 @@ export interface JournaledAttempt {
   readonly machine: Machine.Shape
 }
 
-type Found = { readonly kind: "absent" | "unreadable" } | { readonly kind: "entry"; readonly entry: JournalEntry }
+type Found =
+  | { readonly kind: "absent" }
+  | { readonly kind: "unreadable" }
+  | { readonly kind: "entry"; readonly entry: JournalEntry }
 
 function sameIdentity(entry: JournalEntry, identity: JournalIdentity): boolean {
   return entry.ownerId === identity.ownerId && entry.agentId === identity.agentId && entry.origin === identity.origin
@@ -201,7 +204,7 @@ export effect function sendOr(attempt: JournaledAttempt, event: Event): (Attempt
 
 export effect function reserve(attempt: JournaledAttempt, check: AuthorityCheck): (AttemptStep | undefined)!! {
   const { binding } = attempt.slot
-  const seen = try (readEntry(attempt.journal, binding.proposalId) catch (): Found => ({ kind: "unreadable" }))
+  const seen = readEntry(attempt.journal, binding.proposalId) catch (): Found => ({ kind: "unreadable" })
   const answer = journalAnswer(seen, attempt.identity, binding)
   attempt.slot.base = answer === "UnclaimedReservation" && seen.kind === "entry" ? seen.entry.revision : 0
   return try sendOr(attempt, { type: "reserve", operationId: binding.operationId, check, journal: answer })
@@ -212,7 +215,7 @@ function evidenceOf(fields: { readonly code?: string | undefined; readonly resul
 }
 
 effect function callExecutor<Op>(ports: DeviceExecutionPorts<Op>, operation: Op, call: ExecutorCall): { readonly answer: ExecutorAnswer; readonly evidence: Evidence }!! {
-  const raw = try (tryPromise(() => ports.execute(operation, call)) catch () => undefined)
+  const raw = tryPromise(() => ports.execute(operation, call)) catch () => undefined
   const reply = decodeAnswer(raw)
   if (Option.isNone(reply)) return { answer: "AnswerLost", evidence: {} }
   return { answer: reply.value.kind === "applied" ? "AnswerApplied" : "AnswerRefused", evidence: evidenceOf(reply.value) }
@@ -222,7 +225,7 @@ effect function resolveUnknown<Op>(ports: DeviceExecutionPorts<Op>, attempt: Jou
   const state = try attempt.machine.get()
   if (!canReadBack(state)) return
   const { proposalId, operationId } = attempt.slot.binding
-  const raw = try (tryPromise(() => ports.readBack(operation, { proposalId, operationId, attemptId: state.attemptId })) catch () => undefined)
+  const raw = tryPromise(() => ports.readBack(operation, { proposalId, operationId, attemptId: state.attemptId })) catch () => undefined
   const read = decodeReadback(raw)
   if (Option.isNone(read)) return
   attempt.slot.pending = evidenceOf(read.value)
@@ -257,15 +260,15 @@ function receiptOf(outcome: ReceiptOutcome, result: DeviceResult, operationId: s
 }
 
 effect function agentAnswered(call: () => Promise<unknown>): boolean!! {
-  return try (map(tryPromise(call), () => true) catch () => false)
+  return map(tryPromise(call), () => true) catch () => false
 }
 
 effect function acknowledge(attempt: JournaledAttempt): void!! {
   const { journal, identity, slot } = attempt
-  const seen = try (readEntry(journal, slot.binding.proposalId) catch (): Found => ({ kind: "unreadable" }))
+  const seen = readEntry(journal, slot.binding.proposalId) catch (): Found => ({ kind: "unreadable" })
   if (seen.kind !== "entry" || seen.entry.revision !== slot.base || !owns(seen.entry, identity, slot.binding)) return
   const next = { ...seen.entry, revision: slot.base + 1, acknowledged: true }
-  if (try (tryPromise(() => journal.edit(slot.binding.proposalId, slot.base, next)) catch () => false)) {
+  if (tryPromise(() => journal.edit(slot.binding.proposalId, slot.base, next)) catch () => false) {
     slot.base = next.revision
     slot.acknowledged = true
   }
@@ -285,18 +288,18 @@ export effect function upload<Op>(ports: DeviceExecutionPorts<Op>, attempt: Jour
   return sent
 }
 
-effect function finish<Op>(ports: DeviceExecutionPorts<Op>, attempt: JournaledAttempt): RecoverResult!! {
+effect function finish<Op>(ports: DeviceExecutionPorts<Op>, attempt: JournaledAttempt): ({ readonly kind: "history" } | Settled)!! {
   const state = try attempt.machine.get()
   if (!canSync(state)) return { kind: "history" }
   return { kind: "settled", result: settledResult(state.phase), synced: try upload(ports, attempt) }
 }
 
 effect function encode(operation: unknown): (string | undefined)!! {
-  return try (Effect.try({ try: () => JSON.stringify(operation), catch: () => undefined }) catch () => undefined)
+  return Effect.try({ try: () => JSON.stringify(operation), catch: () => undefined }) catch () => undefined
 }
 
 effect function decodeOperation<Op>(ports: DeviceExecutionPorts<Op>, operation: string): (Op | undefined)!! {
-  const parsed = try (Effect.try({ try: (): unknown => JSON.parse(operation), catch: () => undefined }) catch () => undefined)
+  const parsed = Effect.try({ try: (): unknown => JSON.parse(operation), catch: () => undefined }) catch () => undefined
   return parsed === undefined ? undefined : ports.validate(parsed)
 }
 
@@ -317,7 +320,7 @@ effect function approve<Op>(ports: DeviceExecutionPorts<Op>, live: Map<string, J
     if ((try attempt.machine.get()).retired) return { kind: "retired" }
     const decided = try agentAnswered(() => ports.agent.decide(proposal.id, { digest: proposal.digest, approved: true }))
     const claimed = decided
-      ? decodeClaimed(try (tryPromise(() => ports.agent.claim(proposal.id, { digest: proposal.digest })) catch () => undefined))
+      ? decodeClaimed(tryPromise(() => ports.agent.claim(proposal.id, { digest: proposal.digest })) catch () => undefined)
       : Option.none()
     if (Option.isNone(claimed)) return { kind: "unclaimed" }
     try carryOut(ports, attempt, operation, claimed.value.attemptId)
@@ -326,9 +329,9 @@ effect function approve<Op>(ports: DeviceExecutionPorts<Op>, live: Map<string, J
 }
 
 effect function stored<Op>(ports: DeviceExecutionPorts<Op>, proposalId: string): (JournaledAttempt | undefined)!! {
-  const seen = try (readEntry(ports.journal, proposalId) catch (): Found => ({ kind: "unreadable" }))
+  const seen = readEntry(ports.journal, proposalId) catch (): Found => ({ kind: "unreadable" })
   if (seen.kind !== "entry" || !sameIdentity(seen.entry, ports.identity)) return undefined
-  return try (openAttempt(ports.journal, ports.identity, bindingOf(seen.entry), seen.entry) catch () => undefined)
+  return openAttempt(ports.journal, ports.identity, bindingOf(seen.entry), seen.entry) catch () => undefined
 }
 
 effect function recover<Op>(ports: DeviceExecutionPorts<Op>, live: Map<string, JournaledAttempt>, proposalId: string, attemptId: number): RecoverResult!! {
@@ -343,7 +346,7 @@ effect function recover<Op>(ports: DeviceExecutionPorts<Op>, live: Map<string, J
 }
 
 effect function syncAll<Op>(ports: DeviceExecutionPorts<Op>, live: Map<string, JournaledAttempt>): { readonly sent: number; readonly unsent: number }!! {
-  const listed = try (tryPromise(() => ports.journal.list()) catch (): readonly unknown[] => [])
+  const listed = tryPromise(() => ports.journal.list()) catch (): readonly unknown[] => []
   let sent = 0
   let unsent = 0
   for (const raw of listed) {
@@ -351,7 +354,7 @@ effect function syncAll<Op>(ports: DeviceExecutionPorts<Op>, live: Map<string, J
     if (seen.kind !== "entry" || seen.entry.acknowledged || live.has(seen.entry.proposalId) || !sameIdentity(seen.entry, ports.identity)) continue
     const state = parseState(seen.entry.attempt)
     if (state === undefined || !canSync(state)) continue
-    const attempt = try (openAttempt(ports.journal, ports.identity, bindingOf(seen.entry), seen.entry) catch () => undefined)
+    const attempt = openAttempt(ports.journal, ports.identity, bindingOf(seen.entry), seen.entry) catch () => undefined
     if (attempt !== undefined && (try upload(ports, attempt))) sent += 1
     else unsent += 1
   }
