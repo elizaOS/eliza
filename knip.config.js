@@ -2,13 +2,11 @@
 // Each exception below names something Knip cannot follow:
 //   ignore vibestack/examples/**            standalone projects with their own install, outside the workspace
 //   ignore **/test/fixtures/**              inputs the tools' tests read as text, never imported
-//   ignore **/*.d.vibe.ts                   declarations the VibeLang compiler writes beside each source it builds
 //   ignoreIssues server.vibe exports        AGENTS is used in its own file, in a body ignoreExportsUsedInFile cannot see
 //   root lemmascript                       run as an executable by vibestack/prove.ts
 //   root @vitest/browser                    loaded by Vitest's browser mode, beside @vitest/browser-playwright
 //   root @repo/design-system                read as files by vibestack/design/test/design.test.ts
 //   tailwindcss (ui, design-system, studio, cloud)  resolved by @tailwindcss/vite and the lint plugin from CSS
-//   cloud @antithesishq/bombadil           run by name by the explore stage (vibestack/explore.ts) on src/pages/index.html
 //   core @biomejs/biome                     resolved by path in src/catalog/generate.vibe
 //   os ruby                                 the system Ruby the Android toolchain asks for its gem directory
 //   entry *.meta.tsx, *.css (ui, cloud)     read by the design tool and the page's index.html
@@ -20,8 +18,7 @@ export default {
   compilers: { vibe: vibelang, vibex: vibelang },
   "ignore": [
     "vibestack/examples/**",
-    "**/test/fixtures/**",
-    "**/*.d.vibe.ts"
+    "**/test/fixtures/**"
   ],
   "ignoreExportsUsedInFile": true,
   "ignoreIssues": {
@@ -111,7 +108,6 @@ export default {
       ],
       "ignoreDependencies": [
         "@effect/platform-node-shared",
-        "@antithesishq/bombadil",
         "tailwindcss"
       ]
     },
