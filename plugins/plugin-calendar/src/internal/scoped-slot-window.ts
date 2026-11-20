@@ -89,6 +89,7 @@ export function parseScopedCalendarSlotWindow(
   text: string,
   timeZone: string,
   observedAt: number,
+  expectedTopic?: string,
 ):
   | {
       windowStart: string;
@@ -103,6 +104,8 @@ export function parseScopedCalendarSlotWindow(
   if (
     !input?.duration ||
     !input.window ||
+    (expectedTopic !== undefined &&
+      input.topic !== normalizeText(expectedTopic)) ||
     !Number.isFinite(observedAt) ||
     !isValidTimeZone(timeZone)
   )

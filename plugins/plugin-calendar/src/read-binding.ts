@@ -9,6 +9,7 @@ import {
   getRecentMessagesData,
   getStreamingContext,
   isObjectRecord,
+  type Memory,
   type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEvaluator,
 } from "@elizaos/core";
@@ -72,6 +73,26 @@ function isWholeDayTitleLookup(
       date.match(WEEKDAY_NAME_PATTERN)?.[0] === date) &&
     parseExplicitLocalDate(date, "UTC", new Date(observedAt)) !== null
   );
+}
+
+function scopedBuiltInSlotWindow(
+  message: Memory,
+  observedAt: number | undefined,
+  expectedTopic?: string,
+) {
+  const { metadata, text } = message.content;
+  const observation = readClientTurnObservation(metadata);
+  const timeZone =
+    observation?.timeZone ??
+    (isObjectRecord(metadata) && typeof metadata.uiTimeZone === "string"
+      ? metadata.uiTimeZone
+      : undefined);
+  return !observation?.sensitive &&
+    typeof text === "string" &&
+    typeof timeZone === "string" &&
+    typeof observedAt === "number"
+    ? parseScopedCalendarSlotWindow(text, timeZone, observedAt, expectedTopic)
+    : undefined;
 }
 
 type RequestedRead = Pick<
@@ -300,8 +321,31 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         operation !== "search_events" &&
         item.filterEvidence !== undefined &&
         (!Array.isArray(item.filterEvidence) || item.filterEvidence.length > 0)
-      )
-        return null;
+      ) {
+        // The complete literal request establishes the slot window. A model
+        // can mistake its stated purpose for a filter on existing events.
+        const evidence = item.filterEvidence;
+        if (
+          operation !== "propose_times" ||
+          source !== "builtin" ||
+          read.execution !== "required" ||
+          value.length !== 1 ||
+          ctx.senderRole !== "OWNER" ||
+          !Array.isArray(evidence) ||
+          evidence.length !== 1 ||
+          !isObjectRecord(evidence[0]) ||
+          Object.keys(evidence[0]).length !== 3 ||
+          evidence[0].origin !== "current" ||
+          typeof evidence[0].query !== "string" ||
+          evidence[0].quote !== evidence[0].query ||
+          currentAppRecordSource(ctx.runtime, "calendar", ctx.message) !==
+            "runtime" ||
+          !scopedBuiltInSlotWindow(ctx.message, observedAt, evidence[0].query)
+        ) {
+          return null;
+        }
+        read.filterEvidence = [];
+      }
       reads.push({
         ...read,
         operation,
@@ -528,23 +572,7 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
         read.operation === "propose_times" &&
         currentAppRecordSource(runtime, "calendar", message) === "runtime"
       ) {
-        const metadata = message.content.metadata;
-        const observation = readClientTurnObservation(metadata);
-        const timeZone =
-          observation?.timeZone ??
-          (isObjectRecord(metadata) && typeof metadata.uiTimeZone === "string"
-            ? metadata.uiTimeZone
-            : undefined);
-        const window =
-          !observation?.sensitive &&
-          typeof message.content.text === "string" &&
-          typeof timeZone === "string"
-            ? parseScopedCalendarSlotWindow(
-                message.content.text,
-                timeZone,
-                read.requestedAt,
-              )
-            : undefined;
+        const window = scopedBuiltInSlotWindow(message, read.requestedAt);
         if (window)
           deterministicToolCall = {
             name: CALENDAR_READ_ACTIONS.propose_times,

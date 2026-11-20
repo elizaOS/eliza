@@ -421,6 +421,77 @@ describe("Calendar operation bindings", () => {
       await route(text, { source: "builtin", timeZone: "invalid" }),
     ).toBeUndefined();
   });
+  it("retains a fully specified slot when the model labels its literal purpose as a filter", () => {
+    const runtime = new AgentRuntime({
+      character: { name: "Calendar purpose fixture", bio: [] },
+      logLevel: "fatal",
+    });
+    const request =
+      "Find a 20 minute slot for groceries tomorrow between noon and 5 on my built in Eliza calendar.";
+    const message: Memory = {
+      id: stringToUuid("slot-purpose"),
+      agentId: runtime.agentId,
+      entityId: stringToUuid("owner"),
+      roomId: stringToUuid("slot-room"),
+      createdAt: Date.parse("2026-11-20T19:00:00Z"),
+      content: {
+        text: request,
+        metadata: { uiTimeZone: "America/Los_Angeles" },
+      },
+    };
+    const ctx = {
+      runtime,
+      message,
+      state: { values: {}, data: {}, text: "" },
+      senderRole: "OWNER" as const,
+      turnSignal: new AbortController().signal,
+    };
+    const binding = {
+      intentId: "1",
+      operation: "propose_times",
+      source: "builtin",
+      execution: "required",
+      purpose: "requested_read",
+    };
+    const purpose = {
+      query: "groceries",
+      quote: "groceries",
+      origin: "current",
+    };
+    expect(
+      calendarReadBindingField.parse?.(
+        [{ ...binding, filterEvidence: [purpose] }],
+        ctx,
+      ),
+    ).toEqual([
+      expect.objectContaining({ intentId: "intent:1", filterEvidence: [] }),
+    ]);
+    for (const filterEvidence of [
+      [{ ...purpose, query: "doctor" }],
+      [{ ...purpose, origin: "referent" }],
+      [purpose, purpose],
+    ]) {
+      expect(
+        calendarReadBindingField.parse?.([{ ...binding, filterEvidence }], ctx),
+      ).toBeNull();
+    }
+    expect(
+      calendarReadBindingField.parse?.(
+        [{ ...binding, filterEvidence: [purpose] }],
+        {
+          ...ctx,
+          message: {
+            ...message,
+            content: {
+              ...message.content,
+              text: `${request} Then schedule it.`,
+            },
+          },
+        },
+      ),
+    ).toBeNull();
+  });
+
   it("routes the sole built-in title lookup with a literal local date", async () => {
     const title = "Calendar latency check";
     const text = `What time does ${title} start today?`;
