@@ -221,11 +221,13 @@ module node {
       },
       generateBundle(_options, bundle) {
         const chunks = Object.values(bundle).filter((output) => output.type === "chunk")
-        if (chunks.length !== 1 || chunks[0]?.fileName !== "agent.mjs") throw new Error("The device runtime did not emit one ESM entry")
-        for (const [id, module] of Object.entries(chunks[0].modules)) {
+        const entry = chunks[0]
+        if (chunks.length !== 1 || entry?.fileName !== "agent.mjs") throw new Error("The device runtime did not emit one ESM entry")
+        for (const [id, module] of Object.entries(entry.modules)) {
           if (module.renderedLength > 0 && id !== entryId && !id.startsWith(excludedPrefix)) emitted.set(id, module.renderedLength)
         }
-        for (const id of [...chunks[0].imports, ...chunks[0].dynamicImports]) {
+        const dynamicImports = entry.dynamicImports.filter((id) => id !== entry.fileName || this.getModuleInfo(id) !== null)
+        for (const id of [...entry.imports, ...dynamicImports]) {
           externals.push(isBuiltin(id) ? { tag: "NodeBuiltin" } : { tag: "Unbundled", specifier: id })
         }
       },
