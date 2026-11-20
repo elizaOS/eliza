@@ -474,7 +474,7 @@ effect function nativeGoogle(request: Request, env: IdentityEnv, db: Client, sta
   })
   const { serverAuthCode } = input.value
   if (serverAuthCode === undefined) return json(200, { code: signedIn.code, state: signedIn.state })
-  const connected = try Effect.promise(() => connectSignedInGoogle(env, db, signedIn.accountId, verified.identity.subject, serverAuthCode))
+  const connected = try connectSignedInGoogle(env, db, signedIn.accountId, verified.identity.subject, serverAuthCode)
   return json(200, { code: signedIn.code, state: signedIn.state, google: { connected } })
 }
 

@@ -324,11 +324,8 @@ effect function connectNative(request: Request, env: GoogleEnv, db: Client, acco
   return try status(db, env, account)
 }
 
-export function connectSignedInGoogle(env: GoogleEnv, db: Client, account: string, signedInSubject: string, serverAuthCode: string): Promise<boolean> {
-  return runPromise(Effect.provide(effect {
-    const connected = connectCode(env, db, account, signedInSubject, serverAuthCode) catch () => false
-    return connected
-  }, providerLayer))
+export effect function connectSignedInGoogle(env: GoogleEnv, db: Client, account: string, signedInSubject: string, serverAuthCode: string) {
+  return Exit.isSuccess(try exit(Effect.provide(connectCode(env, db, account, signedInSubject, serverAuthCode), providerLayer)))
 }
 
 effect function disconnect(db: Client, account: string) {
