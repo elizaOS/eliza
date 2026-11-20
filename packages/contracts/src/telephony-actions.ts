@@ -930,7 +930,7 @@ export function requestedSmsDraftRecipient(
   const addressed = /^(?:to|for)\s+(.+)$/is.exec(remainder);
   if (!addressed) return { kind: "unaddressed" };
   const [raw] = addressed[1].split(
-    /\s+(?:(?:and\s+)?(?:say(?:ing)?|ask(?:ing)?|tell(?:ing)?|remind(?:ing)?|about|with|that|to say)\b)|\s*[:“"]|[.!?]$/iu,
+    /\s+(?:(?:and\s+)?(?:say(?:ing)?|ask(?:ing)?|tell(?:ing)?|remind(?:ing)?|let(?:ting)?|about|with|that|to (?:say|ask|tell|remind|let|see|check))\b)|\s*[:“"]|[.!?]$/iu,
     1,
   );
   const query = raw.trim().replace(/,$/u, "");
