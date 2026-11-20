@@ -110,6 +110,19 @@ describe("Calendar operation bindings", () => {
     effect?.mutateResult?.(parsed);
     const bindings = parsed.calendarReadBindings as CalendarReadBinding[];
     expect(bindings.map(({ intentId }) => intentId)).toEqual(["intent:1"]);
+    const literalReference = calendarReadBindingField.parse?.(
+      [{ intentId: text, operation: "propose_times", execution: "required" }],
+      context,
+    );
+    if (!literalReference) throw new Error("Declared intent text rejected");
+    const literalResult = { ...parsed, calendarReadBindings: literalReference };
+    const literalEffect = await calendarReadBindingField.handle?.({
+      ...context,
+      parsed: literalResult,
+      value: literalReference,
+    });
+    literalEffect?.mutateResult?.(literalResult);
+    expect(literalResult.calendarReadBindings).toEqual(bindings);
     const handler: MessageHandlerResult = {
       processMessage: "RESPOND",
       thought: "",

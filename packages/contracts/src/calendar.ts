@@ -883,7 +883,7 @@ export type CalendarReadFilterEvidence = {
 export type CalendarReadBinding = {
   intentId: string;
   operation: keyof typeof CALENDAR_READ_ACTIONS;
-  /** A next-event read restricted to the agent's own built-in calendar. */
+  /** An owner-requested read restricted to the built-in calendar. */
   source?: "builtin";
   filterEvidence?: CalendarReadFilterEvidence[];
   /** Host-bound current-turn canonical selection; never supplied by the model. */

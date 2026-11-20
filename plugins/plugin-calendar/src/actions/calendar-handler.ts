@@ -20,7 +20,7 @@ import {
   WEEKDAY_NAME_PATTERN,
 } from "../internal/request-time.js";
 import {
-  boundNextEventSource,
+  boundCalendarReadSource,
   calendarSearchFiltersAreBound,
 } from "../search-filter-evidence.js";
 import {
@@ -5777,11 +5777,17 @@ export function createCalendarActionRunner(
       );
       // Apply the Stage 1 source constraint before the native/managed guard.
       // An aggregate request still uses the selected feed by default.
-      if (normalizeCalendarSubaction(params.subaction) === "next_event") {
-        const scope = boundNextEventSource(
+      const explicitSubaction = normalizeCalendarSubaction(params.subaction);
+      if (
+        explicitSubaction === "next_event" ||
+        explicitSubaction === "feed" ||
+        explicitSubaction === "search_events"
+      ) {
+        const scope = boundCalendarReadSource(
           getStreamingContext()?.actionConstraints,
           message,
           String(runtime.agentId),
+          explicitSubaction,
         );
         if (scope === "builtin") {
           // This grant contains exactly one calendar. Use the bound calendar
@@ -5800,7 +5806,7 @@ export function createCalendarActionRunner(
         ) {
           throw new CalendarServiceError(
             400,
-            "Supply an exact source for each requested next-event read.",
+            "Supply an exact source for each requested Calendar read.",
             "CALENDAR_SOURCE_REQUIRED",
           );
         }
@@ -5922,7 +5928,6 @@ export function createCalendarActionRunner(
         details,
         clientTimeZone ?? calendarZone.timeZone,
       );
-      const explicitSubaction = normalizeCalendarSubaction(params.subaction);
       // A promoted CALENDAR_* tool call is already the action planner's typed
       // decision. Re-planning the same operation from raw prose inside the tool
       // adds latency and can contradict the selected native action. Preserve the

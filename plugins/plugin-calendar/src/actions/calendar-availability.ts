@@ -16,6 +16,10 @@ import {
   stringToUuid,
   unwrapUserMessageText,
 } from "@elizaos/core";
+import {
+  ELIZA_CALENDAR_GRANT_ID,
+  ELIZA_CALENDAR_ID,
+} from "../internal/eliza-calendar.js";
 import { parseExplicitLocalDate } from "../internal/request-time.js";
 import {
   addDaysToLocalDate,
@@ -23,6 +27,7 @@ import {
   calendarRangeFitsLocalDays,
   getZonedDateParts,
 } from "../internal/time.js";
+import { boundCalendarReadSource } from "../search-filter-evidence.js";
 import { evaluateCalendarAvailability } from "../service/availability.js";
 import {
   feedSourcesForAvailability,
@@ -119,7 +124,7 @@ export function calendarAvailabilityActions(
         {
           name: "grantId",
           description:
-            "Exact connected grant from CALENDAR_SOURCES when the user named a source. Pair with calendarId.",
+            "For built-in Calendar use eliza-calendar and primary. For a connected calendar, use its exact grant and calendar IDs from CALENDAR_SOURCES.",
           schema: { type: "string" },
         },
         {
@@ -169,15 +174,39 @@ export function calendarAvailabilityActions(
           grantId,
           calendarId,
         } = isObjectRecord(params) ? params : {};
-        const selectedSource =
+        const requestedSource =
           typeof grantId === "string" &&
           grantId.trim() &&
           typeof calendarId === "string" &&
           calendarId.trim()
             ? { grantId, calendarId }
             : undefined;
+        const scope = boundCalendarReadSource(
+          getStreamingContext()?.actionConstraints,
+          message,
+          String(runtime.agentId),
+          operation,
+        );
         if (
-          (grantId !== undefined || calendarId !== undefined) &&
+          scope === "builtin" &&
+          grantId !== undefined &&
+          grantId !== ELIZA_CALENDAR_GRANT_ID
+        )
+          return unavailable(
+            "CALENDAR_SOURCE_CONFLICT",
+            "The selected source disagrees with the requested built-in Calendar.",
+          );
+        const selectedSource =
+          scope === "builtin"
+            ? {
+                grantId: ELIZA_CALENDAR_GRANT_ID,
+                calendarId: ELIZA_CALENDAR_ID,
+              }
+            : requestedSource;
+        if (
+          (scope === "explicit" ||
+            grantId !== undefined ||
+            calendarId !== undefined) &&
           !selectedSource
         )
           return unavailable(

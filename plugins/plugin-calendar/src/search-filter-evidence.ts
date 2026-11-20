@@ -177,13 +177,16 @@ function currentReadBindings(
 
 /** An omitted tool selector must never broaden a bound built-in read.
  * A compound request for different sources must pass explicit selectors. */
-export function boundNextEventSource(
+export function boundCalendarReadSource(
   turn: object | undefined,
   current: Message,
   agentId: string,
+  operation: CalendarReadBinding["operation"],
 ): "builtin" | "explicit" | undefined {
   const reads = currentReadBindings(turn, current, agentId)?.filter(
-    (binding) => binding.operation === "next_event",
+    (binding) =>
+      binding.operation === operation &&
+      binding.purpose !== "mutation_prerequisite",
   );
   if (!reads?.some((binding) => binding.source === "builtin")) return;
   return reads.every((binding) => binding.source === "builtin")
