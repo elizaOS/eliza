@@ -1,0 +1,43 @@
+{
+  "sources": [
+    "plugins/plugin-personal-assistant/src/lifeops/schedule-insight.ts",
+    "plugins/plugin-personal-assistant/test/schedule-next-meal-dinner-window.test.ts",
+    "plugins/plugin-personal-assistant/quint/check-next-meal-dinner-window.mjs"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-next-meal-dinner-window.mjs",
+  "bounds": "One agent on 2026-11-16 in UTC: an Oura reading says the owner slept from 23:00 to 07:00, and the evening before left a screen-time window from 18:00 to 22:30. The owner uses the phone all day and puts it down for breakfast (08:00 to 08:35), for lunch (12:15 to 12:50) or not, and for dinner (18:15 to 18:50) or not. The phone use of every hour is stored at its end and the schedule is inspected then, from 09:00 to 23:00. The conformance script replays every generated day (all 4; their prefixes give all 36 shorter days) through the production recordScreenTimeEvent and inspectSchedule on a fresh PGlite-backed runtime per day, and compares the meals found and the next meal label and window after every hour. Days without a breakfast, other meal times and gap lengths, wakes inferred without a health reading, other time zones and DST days, activity events and active signals as window sources, inspections after midnight of the same wake, and the merged schedule state that copies the next meal are not covered by this model. Under weak fairness of the inspect step every stored hour is eventually inspected. Explicit stuttering lets the inspection never run, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "next-meal-dinner-window",
+      "main": "NextMealDinnerWindow",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "DinnerWhileDue",
+        "NeverBackToLunch",
+        "NoLunchFromDinnerWindow",
+        "OnlyMealsNotFound",
+        "TypeOK"
+      ],
+      "temporal": ["Settles", "SettlesWithoutFairness"],
+      "maxSteps": 80,
+      "samples": 10000,
+      "temporalChecks": [
+        {
+          "property": "Settles",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled inspect step eventually runs (weak fairness). This checks that every stored hour is then inspected, not how long the database work takes."
+          ]
+        },
+        {
+          "property": "SettlesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The inspection may never run after an hour is stored, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}

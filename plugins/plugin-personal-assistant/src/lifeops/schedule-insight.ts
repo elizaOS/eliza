@@ -427,8 +427,12 @@ function predictNextMeal(args: {
       0.6,
     );
   }
+  // A lunch that has not happened by 17:00 was skipped. From then on the next
+  // meal is dinner: inferMealCandidates labels any meal eaten from 17:00 to
+  // 22:00 as dinner, never as lunch.
   if (
     !mealSet.has("lunch") &&
+    nowHour < 17 &&
     ((nowHour >= 11 && nowHour < 15) ||
       (minutesSinceMeal !== null && minutesSinceMeal >= 180))
   ) {
