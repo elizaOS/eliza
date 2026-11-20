@@ -109,7 +109,7 @@ public final class CloudDeviceAccount {
  public record NativeGoogleAttempt(String clientId, String environment, String serverClientId, List<String> scopes, String challengeId,
     String nonce, String state, long expiresAt) {
   public AuthorizationRequest authorization(String googleAccount) {
-   return googleAuthorization(serverClientId, googleAccount, scopes);
+   return scopes.isEmpty() ? null : googleAuthorization(serverClientId, googleAccount, scopes);
   }
 
   @Override public String toString() { return "CloudDeviceAccount.NativeGoogleAttempt"; }
@@ -140,8 +140,8 @@ public final class CloudDeviceAccount {
   if (!serverClientId.matches("[A-Za-z0-9-]{1,100}\\.apps\\.googleusercontent\\.com"))
    throw new IOException("Invalid Google client configuration");
   List<String> scopes = new ArrayList<>();
-  JSONArray listed = google.getJSONArray("scopes");
-  for (int index = 0; index < listed.length(); index++) {
+  JSONArray listed = google.optJSONArray("scopes");
+  for (int index = 0; listed != null && index < listed.length(); index++) {
    String scope = listed.getString(index);
    if (!scope.matches("openid|email|https://www\\.googleapis\\.com/auth/[a-z.]{1,64}")) throw new IOException("Invalid Google scope");
    scopes.add(scope);
