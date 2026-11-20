@@ -38,6 +38,7 @@ import {
   providerReviewSources,
   recordInferenceSpan,
   sanitizeUserVisibleModelOutput,
+  sleepWithAbort,
   TurnAbortedError,
   timeInferenceSpan,
   withGuidedDecodeProviderOptions,
@@ -54,6 +55,7 @@ import {
   replyTextFieldEvaluator,
   topicsFieldEvaluator,
 } from "../../runtime/builtin-field-evaluators";
+import { rateLimitRetryWaitMs } from "../../runtime/evaluator.ts";
 import { windowHistoryRetention } from "../../runtime/history-retention.ts";
 import { getMessageHandlerReply } from "../../runtime/message-handler";
 import {
@@ -892,9 +894,10 @@ export async function generateStage1Decision(
     // `replyText` reaches the user's stream, and only when the routing fields
     // generated before it settle a direct answer (stage1-reply-stream.ts);
     // routing JSON, acknowledgements for planned work and source quotations
-    // never stream. Each attempt (retry, repair, context read) is its own
-    // stream revision and the validated final reply stays authoritative. A
-    // decision-only call delivers no reply, so it streams nothing.
+    // never stream. Each attempt (retry, re-send, repair, context read) is
+    // its own stream revision and the validated final reply stays
+    // authoritative. A decision-only call delivers no reply, so it streams
+    // nothing.
     streamStructured: true,
     ...(args.stage1DecisionOnly
       ? {}
@@ -924,7 +927,7 @@ export async function generateStage1Decision(
     providerOptions: stage1ProviderOptions,
   };
   let recordedCallCount = 0;
-  const generateRecordedStage1 = async (params: typeof stage1ModelParams) => {
+  const sendRecordedStage1 = async (params: typeof stage1ModelParams) => {
     // A cancelled turn that never enters useModel has no attempted model stage.
     params.signal.throwIfAborted();
     const startedAt = Date.now();
@@ -993,6 +996,31 @@ export async function generateStage1Decision(
           }),
         );
       }
+    }
+  };
+  // Every Stage 1 request passes through here (first attempt, empty-output
+  // retry, repair, context read), and a refusal of any of them ends the turn.
+  // They share one re-send, so a run that keeps being refused waits only once.
+  let rateLimitResendUsed = false;
+  const generateRecordedStage1 = async (params: typeof stage1ModelParams) => {
+    try {
+      return await sendRecordedStage1(params);
+    } catch (error) {
+      // error-policy:J2 A chat turn waits out a temporary rate limit once and
+      // re-sends the same request; every other failure propagates unchanged.
+      // The refusal is recorded as its own failed attempt and spends none of
+      // the empty-output retry budget: no answer came back to be judged.
+      const waitMs = rateLimitResendUsed
+        ? undefined
+        : rateLimitRetryWaitMs(error);
+      if (waitMs === undefined) throw error;
+      rateLimitResendUsed = true;
+      args.runtime.logger?.warn?.(
+        { src: "service:message", delayMs: waitMs },
+        "[message] Stage 1 inference is rate limited; waiting before one re-send",
+      );
+      await sleepWithAbort(waitMs, params.signal);
+      return await sendRecordedStage1(params);
     }
   };
   // Invalid model-authored source parts must never become trusted quotes or
