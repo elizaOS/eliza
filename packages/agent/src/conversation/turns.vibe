@@ -93,7 +93,7 @@ module node {
     }, { signal })
   }
 
-  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner): LocalRoute[] {
+  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string): LocalRoute[] {
     if (!runtime.messageService) throw new Error("A conversation requires the message service")
     const rooms = () => runtime.getRooms(owner.world)
     const find = async (id: string | undefined): Promise<Room | undefined> =>
@@ -140,7 +140,7 @@ module node {
           return result.didRespond && result.responseContent?.text && reply?.id
             ? {
               type: "done", fullText: result.responseContent.text, messageId: reply.id,
-              userMessageId: result.userMessageId, agentName: runtime.character.name ?? "Agent", actionResults: [],
+              userMessageId: result.userMessageId, agentName, actionResults: [],
             }
             : { type: "error", code: "turn_failed", message: "The turn did not complete" }
         } }
