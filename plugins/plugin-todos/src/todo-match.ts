@@ -123,6 +123,20 @@ function paraphraseScore(query: string, content: string): number {
   return (2 * shared) / (left.size + right.size);
 }
 
+/**
+ * True when each side has a word the other lacks ("Pay water bill" against
+ * "Pay electricity bill"). Such a paraphrase may name a different todo, while
+ * one that only drops or adds words names the same one.
+ */
+export function swapsWords(query: string, content: string): boolean {
+  const left = new Set(contentTokens(query));
+  const right = new Set(contentTokens(content));
+  return (
+    [...left].some((token) => !right.has(token)) &&
+    [...right].some((token) => !left.has(token))
+  );
+}
+
 /** True when two contents name the same todo for duplicate detection. */
 export function sameTodoContent(left: string, right: string): boolean {
   const a = normalizeTodoContent(left);
