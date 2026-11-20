@@ -250,6 +250,24 @@ describe("parseExplicitLocalDate Intl names", () => {
     }
   });
 
+  it("keeps a year named before a slash or dash date in the stated date", () => {
+    for (const [text, year] of [
+      ["2027년 12/25", 2027],
+      ["내년 12/25", 2027],
+      ["明年 12/25", 2027],
+      ["今年 12/25", 2026],
+      ["12027년 12/25", 2026],
+      ["국내년 12/25", 2026],
+      ["내년 12-25", 2027],
+    ] as const) {
+      expect(parseExplicitLocalDate(text, ZONE, NOW), text).toEqual({
+        year,
+        month: 12,
+        day: 25,
+      });
+    }
+  });
+
   it("resolves Korean and Chinese weekday names, including before particles", () => {
     const friday = { year: 2026, month: 10, day: 16 };
     for (const text of [
