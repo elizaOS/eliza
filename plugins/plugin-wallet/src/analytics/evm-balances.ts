@@ -780,52 +780,85 @@ async function fetchEvmChainBalancesViaRpc(
 
 // ── Alchemy NFT fetching ──────────────────────────────────────────────
 
+const ALCHEMY_NFT_PAGE_SIZE = 50;
+/**
+ * Alchemy pages `getNFTsForOwner` with `pageKey`. A bound keeps a provider that
+ * never stops paging from looping forever; hitting it refuses the read instead
+ * of returning a partial collection as the wallet's NFTs.
+ */
+const ALCHEMY_NFT_MAX_PAGES = 200;
+
+type AlchemyOwnedNft = {
+  contract?: {
+    address?: string;
+    name?: string;
+    openSeaMetadata?: { collectionName?: string };
+  };
+  tokenId?: string;
+  name?: string;
+  description?: string;
+  image?: {
+    cachedUrl?: string;
+    thumbnailUrl?: string;
+    originalUrl?: string;
+  };
+  tokenType?: string;
+};
+
 async function fetchAlchemyChainNfts(
   chain: EvmBalanceChainConfig,
   address: string,
   alchemyKey: string,
 ): Promise<{ chain: string; nfts: EvmNft[] }> {
-  const res = await fetch(
-    `https://${chain.subdomain}.g.alchemy.com/nft/v3/${alchemyKey}/getNFTsForOwner?owner=${address}&withMetadata=true&pageSize=50`,
-    { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
-  );
-  const data = await jsonOrThrow<{
-    ownedNfts?: Array<{
-      contract?: {
-        address?: string;
-        name?: string;
-        openSeaMetadata?: { collectionName?: string };
-      };
-      tokenId?: string;
-      name?: string;
-      description?: string;
-      image?: {
-        cachedUrl?: string;
-        thumbnailUrl?: string;
-        originalUrl?: string;
-      };
-      tokenType?: string;
-    }>;
-  }>(res);
-  return {
-    chain: chain.name,
-    nfts: (data.ownedNfts ?? []).map((nft) => ({
-      contractAddress: nft.contract?.address ?? "",
-      tokenId: nft.tokenId ?? "",
-      name: nft.name ?? "Untitled",
-      description: toWellFormedUnicode(nft.description ?? ""),
-      imageUrl:
-        nft.image?.cachedUrl ??
-        nft.image?.thumbnailUrl ??
-        nft.image?.originalUrl ??
-        "",
-      collectionName:
-        nft.contract?.openSeaMetadata?.collectionName ??
-        nft.contract?.name ??
-        "",
-      tokenType: nft.tokenType ?? "ERC721",
-    })),
-  };
+  const nfts: EvmNft[] = [];
+  let pageKey: string | undefined;
+  for (let page = 1; page <= ALCHEMY_NFT_MAX_PAGES; page += 1) {
+    const query = new URLSearchParams({
+      owner: address,
+      withMetadata: "true",
+      pageSize: String(ALCHEMY_NFT_PAGE_SIZE),
+    });
+    if (pageKey) query.set("pageKey", pageKey);
+    const res = await fetch(
+      `https://${chain.subdomain}.g.alchemy.com/nft/v3/${alchemyKey}/getNFTsForOwner?${query.toString()}`,
+      { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
+    );
+    const data = await jsonOrThrow<{
+      ownedNfts?: AlchemyOwnedNft[];
+      pageKey?: string;
+    }>(res);
+    for (const nft of data.ownedNfts ?? []) {
+      nfts.push({
+        contractAddress: nft.contract?.address ?? "",
+        tokenId: nft.tokenId ?? "",
+        name: nft.name ?? "Untitled",
+        description: toWellFormedUnicode(nft.description ?? ""),
+        imageUrl:
+          nft.image?.cachedUrl ??
+          nft.image?.thumbnailUrl ??
+          nft.image?.originalUrl ??
+          "",
+        collectionName:
+          nft.contract?.openSeaMetadata?.collectionName ??
+          nft.contract?.name ??
+          "",
+        tokenType: nft.tokenType ?? "ERC721",
+      });
+    }
+    const nextPageKey = data.pageKey;
+    if (!nextPageKey) return { chain: chain.name, nfts };
+    if (nextPageKey === pageKey) {
+      throw new ElizaError("Alchemy NFT listing repeated its page key", {
+        code: "WALLET_NFT_PAGE_INVALID",
+        context: { chain: chain.name, page },
+      });
+    }
+    pageKey = nextPageKey;
+  }
+  throw new ElizaError("Alchemy NFT listing exceeded its page bound", {
+    code: "WALLET_NFT_PAGE_LIMIT",
+    context: { chain: chain.name, pages: ALCHEMY_NFT_MAX_PAGES },
+  });
 }
 
 // ── Ankr NFT fetching ─────────────────────────────────────────────────
