@@ -193,6 +193,18 @@ describe("GoalsService + GoalsRepository — real PGLite", () => {
     expect((await service.listGoals()).length).toBe(before);
   });
 
+  // Every word of the new title is in the existing title, but the existing
+  // title has a word the new one lacks: a different goal, not a re-issue.
+  it.each([
+    ["Swim a half mile", "Swim a mile"],
+    ["Quit drinking soda", "Quit drinking"],
+  ])("creates %s and then %s as two goals", async (existing, requested) => {
+    const first = await service.createGoal({ title: existing });
+    const second = await service.createGoal({ title: requested });
+    expect(second.goal.title).toBe(requested);
+    expect(second.goal.id).not.toBe(first.goal.id);
+  });
+
   it("rejects a times_per_day cadence that repeats a slot key on create and update", async () => {
     const duplicateSlots = {
       kind: "times_per_day",
