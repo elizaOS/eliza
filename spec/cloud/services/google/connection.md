@@ -22,7 +22,11 @@ connection per (organization, Google subject).
 `google.basic_identity` is always asked for. Calendar read and write ask for
 `calendar.events`, triage `gmail.readonly`, drafts `gmail.compose`, mailbox
 and manage `gmail.modify`, send `gmail.send`. A granted scope outside this
-list is kept as text in `grantedScopes` and grants nothing.
+list is kept as text in `grantedScopes` and grants nothing. Older stored grants
+keep their recorded scopes and encrypted credential. The service uses an old
+active grant only after the credential opens and matches the stored expiry.
+A refreshable grant must contain a refresh token. A grant whose credential
+cannot be verified requires reconnection.
 
 ```quint
 import types.* from "../../shared/types"
