@@ -600,6 +600,20 @@
         return node.getAttribute("placeholder") || node.title || "";
       return readVisibleText(node) || node.title || "";
     };
+    const wordsOf = (node) =>
+      [
+        node.getAttribute("name"),
+        node.id,
+        node.getAttribute("placeholder"),
+        accessibleName(node),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        // "routingNumber" and "card_cvv" become separate words.
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .replace(/[_.-]+/g, " ");
+    const CARD_WORDS =
+      /\b(?:card\s*(?:number|no)|credit\s+card|debit\s+card|cvv2?|cvc|csc|security\s+code|expir(?:y|ation)\s*(?:date)?|cc\s*(?:num|number|exp))\b/i;
     // Marks fields whose value is a secret. The value itself is never read.
     // The field's type and autocomplete tokens decide first. A field that the
     // page does not mark is classified by its name, its id, its placeholder and
@@ -627,17 +641,7 @@
       if (autocomplete.includes("one-time-code")) return "one-time-code";
       if (autocomplete.some((token) => token.startsWith("cc-")))
         return "payment-card";
-      const words = [
-        node.getAttribute("name"),
-        node.id,
-        node.getAttribute("placeholder"),
-        accessibleName(node),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        // "routingNumber" and "card_cvv" become separate words.
-        .replace(/([a-z])([A-Z])/g, "$1 $2")
-        .replace(/[_.-]+/g, " ");
+      const words = wordsOf(node);
       // "PIN code" is also the Indian postal code: a field that names itself a
       // postal code is an address field, not a password.
       const postal =
@@ -648,18 +652,21 @@
         (!postal && /\bpin\b/i.test(words))
       )
         return "password";
+      if (CARD_WORDS.test(words)) return "payment-card";
       if (
         /\b(?:one\s*time\s*(?:pass)?code|verification\s+code|otp|2fa|mfa|passcode|authentication\s+code)\b/i.test(
           words,
         )
       )
-        return "one-time-code";
-      if (
-        /\b(?:card\s*(?:number|no)|credit\s+card|debit\s+card|cvv2?|cvc|csc|security\s+code|expir(?:y|ation)\s*(?:date)?|cc\s*(?:num|number|exp))\b/i.test(
-          words,
+        return ownerControls(node).some(
+          (control) =>
+            control !== node &&
+            control.matches("input,select,textarea") &&
+            (/\bcc-/i.test(control.getAttribute("autocomplete") ?? "") ||
+              CARD_WORDS.test(wordsOf(control))),
         )
-      )
-        return "payment-card";
+          ? "payment-card"
+          : "one-time-code";
       if (
         /\b(?:routing(?:\s+number)?|iban|swift|bic|sort\s+code|bank\s+account|checking\s+account|savings\s+account)\b/i.test(
           words,
@@ -720,6 +727,59 @@
         ) ||
       /(?:\p{Sc}|\b(?:USD|EUR|GBP|MXN|CAD|AUD|JPY|CNY|INR|BRL|CHF)\b)\s?\d|\d\s?(?:\p{Sc}|\b(?:USD|EUR|GBP|MXN|CAD|AUD|JPY|CNY|INR|BRL|CHF)\b)/u.test(
         readVisibleText(document.body ?? document.documentElement),
+      );
+    const CODE_BOX_TYPES = ["text", "tel", "number"];
+    const CODE_WORDS = /\b(?:code|passcode|otp|one[\s-]*time|verification)\b/i;
+    const NOT_A_CODE =
+      /\b(?:zip|postal|post\s*code|area\s+code|promo|coupon|gift|referral|discount|voucher|invit(?:e|ation)|card|cvv2?|cvc2?|csc|cvn|cid|security\s+(?:code|answer)|expir(?:y|ation)|pin|pass\s*(?:word|phrase)|pwd|account\s+(?:number|no)|routing|iban|swift|bic|sort\s+code|bank|checking|savings|ssn|social\s+(?:security|insurance)|tax\s+id|itin|passport|driver'?s?\s+licen[cs]e|national\s+id|medicare)\b/i;
+    const codeBox = (box) =>
+      is(box, "HTMLInputElement") &&
+      CODE_BOX_TYPES.includes(box.type) &&
+      [null, "one-time-code"].includes(sensitivity(box)) &&
+      (box.getAttribute("autocomplete") ?? "")
+        .toLowerCase()
+        .split(/\s+/)
+        .every((token) => ["", "on", "off", "one-time-code"].includes(token)) &&
+      !NOT_A_CODE.test(wordsOf(box));
+    const ownerControls = (box) =>
+      box.form
+        ? [...box.form.elements]
+        : scan.order
+            .map(({ node }) => node)
+            .filter(
+              (control) =>
+                control.matches(
+                  "button,fieldset,input,object,output,select,textarea",
+                ) && control.form === null,
+            );
+    // The last visible line of text before a control, looked for among its
+    // earlier siblings and then its ancestors' earlier siblings. It names a
+    // control that has no label ("Search" beside an empty input) and tells
+    // repeated labels apart (the row text before each "Pay").
+    const nearbyText = (node) => {
+      for (
+        let item = node, depth = 0;
+        item && item !== item.ownerDocument.body && depth < 4;
+        item = item.parentElement, depth++
+      )
+        for (
+          let sibling = item.previousSibling;
+          sibling;
+          sibling = sibling.previousSibling
+        ) {
+          const text =
+            sibling.nodeType === Node.TEXT_NODE
+              ? sibling.textContent.trim()
+              : is(sibling, "Element")
+                ? readVisibleText(sibling)
+                : "";
+          if (text) return text.split("\n").filter(Boolean).at(-1).trim();
+        }
+      return null;
+    };
+    const paysHere = (controls) =>
+      controls.some((control) =>
+        ["payment-card", "bank-account"].includes(sensitivity(control)),
       );
     if (command.subaction === "snapshot") {
       let active = document.activeElement;
@@ -806,6 +866,10 @@
             .filter((value) => typeof value === "string" && value.length >= 4),
         ),
       ].sort((left, right) => right.length - left.length);
+      for (const code of monitor.heldCodes ?? [])
+        if (code.until > Date.now() && !secrets.includes(code.text))
+          secrets.push(code.text);
+      secrets.sort((left, right) => right.length - left.length);
       const withoutSecrets = (value) =>
         typeof value === "string"
           ? secrets.reduce(
@@ -865,31 +929,6 @@
         custom.add(node);
         candidates.push(node);
       }
-      // The last visible line of text before a control, looked for among its
-      // earlier siblings and then its ancestors' earlier siblings. It names a
-      // control that has no label ("Search" beside an empty input) and tells
-      // repeated labels apart (the row text before each "Pay").
-      const nearbyText = (node) => {
-        for (
-          let item = node, depth = 0;
-          item && item !== item.ownerDocument.body && depth < 4;
-          item = item.parentElement, depth++
-        )
-          for (
-            let sibling = item.previousSibling;
-            sibling;
-            sibling = sibling.previousSibling
-          ) {
-            const text =
-              sibling.nodeType === Node.TEXT_NODE
-                ? sibling.textContent.trim()
-                : is(sibling, "Element")
-                  ? readVisibleText(sibling)
-                  : "";
-            if (text) return text.split("\n").filter(Boolean).at(-1).trim();
-          }
-        return null;
-      };
       // The form or field group the control belongs to, by its own name.
       const groupName = (group) =>
         group
@@ -1412,6 +1451,18 @@
       delete monitor.inputReadback;
       const clickReadback = monitor.clickReadback;
       delete monitor.clickReadback;
+      const codeReadback = monitor.codeReadback;
+      delete monitor.codeReadback;
+      const formatted =
+        !!inputReadback &&
+        inputReadback.node.isConnected &&
+        !sensitivity(inputReadback.node) &&
+        is(inputReadback.node, "HTMLInputElement") &&
+        ["text", "tel"].includes(inputReadback.node.type) &&
+        inputReadback.node.value !== inputReadback.text &&
+        /^\d{2,32}$/.test(inputReadback.text) &&
+        /^[\d(][\d ()/-]*$/.test(inputReadback.node.value) &&
+        inputReadback.node.value.replace(/[ ()/-]/g, "") === inputReadback.text;
       return {
         ...(policy &&
         clickReadback &&
@@ -1434,7 +1485,26 @@
                 matches:
                   inputReadback.node.isConnected &&
                   !sensitivity(inputReadback.node) &&
-                  inputReadback.node.value === inputReadback.text,
+                  (inputReadback.node.value === inputReadback.text ||
+                    formatted),
+                ...(formatted ? { formatted: true } : {}),
+              },
+            }
+          : {}),
+        ...(policy &&
+        codeReadback &&
+        codeReadback.scope === policy.guidanceScope &&
+        codeReadback.until > Date.now()
+          ? {
+              codeReadback: {
+                targetRef: codeReadback.targetRef,
+                boxes: codeReadback.nodes.length,
+                matches: codeReadback.nodes.every(
+                  (box, index) =>
+                    box.isConnected &&
+                    [null, "one-time-code"].includes(sensitivity(box)) &&
+                    box.value === codeReadback.parts[index],
+                ),
               },
             }
           : {}),
@@ -1550,22 +1620,103 @@
       )
         return denied();
     }
-    if (policy) {
-      const named = (selector) => {
-        let scope = document;
-        const steps = selector.split(" >>> ");
-        for (let index = 0; ; index++) {
-          const matches = scope.querySelectorAll(steps[index]);
-          if (matches.length !== 1) return null;
-          if (index === steps.length - 1) return matches[0];
-          const inner =
-            matches[0].shadowRoot ??
-            readFrame.get(matches[0])?.document ??
-            null;
-          if (!inner || !partOf.has(inner)) return null;
-          scope = inner;
+    let codeBoxes = null;
+    const named = (selector) => {
+      let scope = document;
+      const steps = selector.split(" >>> ");
+      for (let index = 0; ; index++) {
+        const matches = scope.querySelectorAll(steps[index]);
+        if (matches.length !== 1) return null;
+        if (index === steps.length - 1) return matches[0];
+        const inner =
+          matches[0].shadowRoot ?? readFrame.get(matches[0])?.document ?? null;
+        if (!inner || !partOf.has(inner)) return null;
+        scope = inner;
+      }
+    };
+    const codeGroup = () => {
+      const controls = ownerControls(node);
+      const runs = [];
+      let run = null;
+      for (const control of controls) {
+        if (
+          !(
+            is(control, "HTMLInputElement") &&
+            control.maxLength === 1 &&
+            CODE_BOX_TYPES.includes(control.type) &&
+            control.ownerDocument === node.ownerDocument
+          )
+        ) {
+          run = null;
+          continue;
         }
-      };
+        if (!run) {
+          run = [];
+          runs.push(run);
+        }
+        run.push(control);
+      }
+      const boxes = runs.length === 1 ? runs[0] : [];
+      const seen = new Map(
+        [...state.nodes.values()].map((entry) => [entry.node, entry]),
+      );
+      const group = node.closest("fieldset,[role=group]");
+      const legend = group?.querySelector("legend");
+      const groupWords = group
+        ? [
+            idText(group.getAttribute("aria-labelledby"), group),
+            group.getAttribute("aria-label"),
+            legend ? readVisibleText(legend) : "",
+          ].join(" ")
+        : "";
+      const reviewed = (box) =>
+        policy.targets.some((target) => {
+          if (target.action !== "fill-code") return false;
+          try {
+            return named(target.selector) === box;
+          } catch {
+            return false;
+          }
+        });
+      const near = nearbyText(node) ?? "";
+      return boxes[0] === node &&
+        boxes.length === command.text.length &&
+        !paysHere(controls) &&
+        CODE_WORDS.test([wordsOf(node), groupWords, near].join(" ")) &&
+        !NOT_A_CODE.test([groupWords, near].join(" ")) &&
+        boxes.every(
+          (box, index) =>
+            codeBox(box) &&
+            !box.disabled &&
+            !box.readOnly &&
+            box.value === "" &&
+            seen.get(box)?.value === "" &&
+            JSON.stringify(seen.get(box).bounds) ===
+              JSON.stringify(bounds(box)) &&
+            (box.type !== "number" || /^\d$/.test(command.text[index])) &&
+            (index === 0 || reviewed(box)),
+        )
+        ? boxes
+        : null;
+    };
+    const codeTargets = () => {
+      if (
+        !is(node, "HTMLInputElement") ||
+        !/^[A-Za-z0-9]{4,12}$/.test(command.text)
+      )
+        return null;
+      if (node.maxLength === 1) return grant ? codeGroup() : null;
+      const near = nearbyText(node) ?? "";
+      return (node.autocomplete === "one-time-code" ||
+        (grant && CODE_WORDS.test([wordsOf(node), near].join(" ")))) &&
+        codeBox(node) &&
+        !NOT_A_CODE.test(near) &&
+        (node.type !== "number" || /^\d+$/.test(command.text)) &&
+        !paysHere(ownerControls(node))
+        ? [node]
+        : null;
+    };
+    if (policy) {
       // The native host supplies reviewed target permissions; DOM text cannot
       // grant an action. Re-check the actual node immediately before the effect.
       if (
@@ -1638,6 +1789,11 @@
         return denied();
       if (
         command.subaction === "fill" &&
+        policy.protectedValueKind === "verification-code"
+      )
+        codeBoxes = codeTargets();
+      if (
+        command.subaction === "fill" &&
         (!(
           node instanceof HTMLInputElement ||
           node instanceof HTMLTextAreaElement ||
@@ -1663,9 +1819,7 @@
                 .toISOString()
                 .slice(0, 10) !== command.text)) ||
           (policy.protectedValueKind === "verification-code"
-            ? !(node instanceof HTMLInputElement) ||
-              node.autocomplete !== "one-time-code" ||
-              !/^[A-Za-z0-9]{4,12}$/.test(command.text)
+            ? codeBoxes === null
             : sensitivity(node) !== null))
       )
         return denied();
@@ -2436,19 +2590,46 @@
           : node instanceof HTMLTextAreaElement
             ? HTMLTextAreaElement.prototype
             : HTMLSelectElement.prototype;
-      Object.getOwnPropertyDescriptor(prototype, "value").set.call(
-        node,
-        command.text,
-      );
-      node.dispatchEvent(new Event("input", { bubbles: true }));
-      node.dispatchEvent(new Event("change", { bubbles: true }));
-      if (policy && !sensitivity(node))
-        monitor.inputReadback = {
-          node,
-          text: command.text,
-          targetRef: `${state.snapshotId}:0:${command.nodeId}`,
+      const write = (box, text) => {
+        Object.getOwnPropertyDescriptor(prototype, "value").set.call(box, text);
+        box.dispatchEvent(new Event("input", { bubbles: true }));
+        box.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      const targetRef = `${state.snapshotId}:0:${command.nodeId}`;
+      if (codeBoxes) {
+        const parts = codeBoxes.length > 1 ? [...command.text] : [command.text];
+        for (const [index, box] of codeBoxes.entries()) {
+          if (
+            index > 0 &&
+            !(box.isConnected && codeBox(box) && !box.disabled && !box.readOnly)
+          )
+            break;
+          write(box, parts[index]);
+        }
+        const until = Date.now() + 900000;
+        monitor.heldCodes = [
+          ...(monitor.heldCodes ?? []).filter(
+            (code) => code.until > Date.now(),
+          ),
+          { text: command.text, until },
+        ].slice(-4);
+        monitor.codeReadback = {
+          nodes: codeBoxes,
+          parts,
+          targetRef,
           scope: policy.guidanceScope,
+          until,
         };
+      } else {
+        write(node, command.text);
+        if (policy && !sensitivity(node))
+          monitor.inputReadback = {
+            node,
+            text: command.text,
+            targetRef,
+            scope: policy.guidanceScope,
+          };
+      }
     } else if (command.subaction === "select") {
       Object.getOwnPropertyDescriptor(
         HTMLSelectElement.prototype,
