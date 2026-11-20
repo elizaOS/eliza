@@ -7,6 +7,7 @@ import {
   type Memory,
   type MessageHandlerResult,
   promoteSubactionsToActions,
+  type ResponseHandlerResult,
   runResponseHandlerEvaluators,
   runWithStreamingContext,
   stringToUuid,
@@ -101,7 +102,17 @@ describe("Calendar operation bindings", () => {
       },
     ]);
     if (!value) throw new Error("Bare intent number rejected");
-    const parsed = { intents: [text], calendarReadBindings: value };
+    const parsed: ResponseHandlerResult = {
+      shouldRespond: "RESPOND",
+      contexts: ["calendar"],
+      intents: [text],
+      candidateActionNames: [],
+      calendarReadBindings: value,
+      replyText: "",
+      facts: [],
+      relationships: [],
+      addressedTo: [],
+    };
     const effect = await calendarReadBindingField.handle?.({
       ...context,
       parsed,
