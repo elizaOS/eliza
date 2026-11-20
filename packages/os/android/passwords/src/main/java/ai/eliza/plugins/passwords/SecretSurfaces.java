@@ -22,7 +22,7 @@ import java.util.UUID;
 public final class SecretSurfaces {
   private SecretSurfaces() {}
   static final long REVEAL_MILLIS = 30_000, CLIPBOARD_MILLIS = 45_000;
-  private static AlertDialog current, confirmation;
+  private static volatile AlertDialog current, confirmation;
   private static PasswordSurfaces.Hold currentSurface;
   private static final NativeDeadlineTimer REVEAL_TIMER = new NativeDeadlineTimer();
   private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -78,7 +78,7 @@ public final class SecretSurfaces {
     dialog.setOnDismissListener(closed -> { value.setText(""); surface.close(); if (current == closed) { current = null; currentSurface = null; REVEAL_TIMER.cancel(); } });
     current = dialog; currentSurface = surface;
     dialog.show();
-    REVEAL_TIMER.after(REVEAL_MILLIS, SecretSurfaces::dismiss);
+    REVEAL_TIMER.after(REVEAL_MILLIS, SecretSurfaces::dismissReveal);
   }
 
   /** Native-only reuse for another protected credential; no secret is returned to a renderer.
@@ -95,16 +95,28 @@ public final class SecretSurfaces {
       long elapsed = android.os.SystemClock.elapsedRealtime() - started;
       return ownerCurrent.getAsBoolean() && elapsed >= 0 && elapsed < REVEAL_MILLIS
           ? Math.min(250, REVEAL_MILLIS - elapsed) : 0;
-    }, () -> { if (current == owned) dismiss(); });
+    }, () -> { if (current == owned) dismissReveal(); });
     return () -> {
-      Runnable close = () -> { if (current == owned) dismiss(); };
+      Runnable close = () -> { if (current == owned) dismissReveal(); };
       if (Looper.myLooper() == Looper.getMainLooper()) close.run(); else MAIN.post(close);
+    };
+  }
+
+  static Runnable currentDismissal() {
+    AlertDialog ownedReveal = current, ownedConfirmation = confirmation;
+    return () -> {
+      if (ownedConfirmation != null && confirmation == ownedConfirmation) ownedConfirmation.dismiss();
+      if (ownedReveal != null && current == ownedReveal) dismissReveal();
     };
   }
 
   /** Hide, the timer and every host close end the surface here or in the dismiss listener, whichever is first. */
   static void dismiss() {
     if (confirmation != null) confirmation.dismiss();
+    dismissReveal();
+  }
+
+  private static void dismissReveal() {
     REVEAL_TIMER.cancel();
     AlertDialog dialog = current; PasswordSurfaces.Hold surface = currentSurface; current = null; currentSurface = null;
     if (dialog != null && dialog.isShowing()) dialog.dismiss();

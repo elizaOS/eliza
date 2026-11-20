@@ -103,12 +103,14 @@ class SurfacePauseInstrumentedTest {
     fun aPausedPageStopsDrawingAndKeepsItsStateAndHistory() {
         instrumentation.uiAutomation
             .executeShellCommand("appops set ${context.packageName} SYSTEM_ALERT_WINDOW allow").close()
+        val firstPage = FixtureDocument("https://first.test/")
+        val secondPage = FixtureDocument("https://second.test/")
         val existing = sandboxedPids()
         instrumentation.runOnMainSync {
             root = FrameLayout(context)
             site = WebView(context).apply { settings.javaScriptEnabled = true }
             root.addView(site, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            site.loadDataWithBaseURL("https://first.test/", "<body>first</body>", "text/html", "utf-8", "https://first.test/")
+            firstPage.load(site, "<body>first</body>")
             windows.addView(
                 root,
                 WindowManager.LayoutParams(
@@ -119,19 +121,20 @@ class SurfacePauseInstrumentedTest {
                 ).apply { gravity = Gravity.TOP or Gravity.START },
             )
         }
+        firstPage.awaitLoad()
         waitFor("location.host==='first.test'&&document.readyState==='complete'")
         instrumentation.runOnMainSync {
             // A busy page: a CSS animation, a drawing loop and a 10 ms timer.
-            site.loadDataWithBaseURL(
-                "https://second.test/",
+            secondPage.load(
+                site,
                 "<style>@keyframes s{to{transform:rotate(1turn)}}div{width:200px;height:200px;background:#06c;" +
                     "animation:s 1s linear infinite}</style><body><div></div><canvas id=c width=300 height=300></canvas>" +
                     "<script>window.state='kept';window.frames=0;window.ticks=0;const g=c.getContext('2d');" +
                     "(function f(t){frames++;g.fillStyle='hsl('+(t%360)+',80%,50%)';g.fillRect(0,0,300,300);" +
                     "requestAnimationFrame(f)})(0);setInterval(()=>ticks++,10)</script></body>",
-                "text/html", "utf-8", "https://second.test/",
             )
         }
+        secondPage.awaitLoad()
         waitFor("location.host==='second.test'&&window.frames>10")
         val renderer = (sandboxedPids() - existing).singleOrNull()
 

@@ -6,6 +6,8 @@ import ai.eliza.plugins.securestore.nativeonly.PasswordVaultStore;
 import android.text.InputFilter;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Application;
+import android.os.Bundle;
 import android.text.InputType;
 import android.view.View;
 import android.view.WindowManager;
@@ -28,7 +30,7 @@ import org.json.JSONObject;
  * the result contains only an id and revision. The stored password is never loaded here: an edit
  * with an empty password field keeps it, so a metadata edit cannot replace the secret.
  */
-final class PasswordEditor {
+final class PasswordEditor implements Application.ActivityLifecycleCallbacks {
   interface Result { void saved(String id, long revision); void cancelled(); }
   static final class Busy extends Exception {}
   private static PasswordEditor current;
@@ -64,6 +66,7 @@ final class PasswordEditor {
     PasswordEditor editor = new PasswordEditor(activity, access, ticket, request.entryId, result);
     SecretSurfaces.dismiss();
     current = editor;
+    activity.registerActivityLifecycleCallbacks(editor);
     try {
       if (entry != null) editor.show(entry);
       editor.dialog.show();
@@ -252,12 +255,33 @@ final class PasswordEditor {
   private boolean clear() {
     if (finished) return false;
     finished = true; deadline.cancel();
+    owner.unregisterActivityLifecycleCallbacks(this);
     if (current == this) current = null;
     label.setText(""); website.setText(""); username.setText(""); password.setText("");
-    if (sameLogin != null && sameLogin.isShowing()) sameLogin.dismiss();
-    if (dialog.isShowing()) dialog.dismiss();
+    dismissAttached(sameLogin);
+    dismissAttached(dialog);
     surface.close();
     return true;
+  }
+
+  private static void dismissAttached(AlertDialog shown) {
+    if (shown == null || !shown.isShowing()) return;
+    View decor = shown.getWindow().peekDecorView();
+    if (decor != null && decor.isAttachedToWindow()) shown.dismiss();
+  }
+
+  @Override public void onActivityStopped(Activity activity) { if (activity == owner) cancel(); }
+  @Override public void onActivityPreDestroyed(Activity activity) { if (activity == owner) cancel(); }
+  @Override public void onActivityCreated(Activity activity, Bundle state) {}
+  @Override public void onActivityStarted(Activity activity) {}
+  @Override public void onActivityResumed(Activity activity) {}
+  @Override public void onActivityPaused(Activity activity) {}
+  @Override public void onActivitySaveInstanceState(Activity activity, Bundle state) {}
+  @Override public void onActivityDestroyed(Activity activity) {}
+
+  static void dismissLocked() {
+    PasswordEditor editor = current;
+    if (editor != null && !editor.access.unlocked(editor.ticket)) editor.cancel();
   }
 
   private void finish(String id, long saved) { if (clear()) result.saved(id, saved); }
