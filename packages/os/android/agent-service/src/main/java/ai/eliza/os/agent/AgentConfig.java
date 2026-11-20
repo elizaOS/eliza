@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -28,6 +29,10 @@ public final class AgentConfig {
   private static final Pattern ENVIRONMENT_NAME = Pattern.compile("[A-Z][A-Z0-9_]*");
   private static final Pattern RESERVED_ENVIRONMENT = Pattern.compile("(ELIZA_AGENT_|ELIZA_CLOUD_|ELIZA_OWN_|LD_|NODE_).*|PATH|HOME|TMPDIR");
   private static final Pattern SHA256 = Pattern.compile("[a-f0-9]{64}");
+  private static final Pattern VIEW_ID = Pattern.compile("[a-z][a-z0-9_-]{0,63}");
+  private static final Pattern VIEW_PATH = Pattern.compile("/(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+");
+  private static final Pattern VIEW_ALIAS = Pattern.compile("[a-z](?:[a-z0-9 _-]{0,30}[a-z0-9])?");
+  private static final int MAX_VIEWS = 32, MAX_VIEW_BYTES = 16384;
   private static final BigDecimal SAFE_INTEGER = BigDecimal.valueOf(9007199254740991L);
   private static final Set<String> HOST_KEYS = Set.of("schema", "service", "notification", "routes", "nativeRoutes", "cloud", "model", "embeddings",
     "embeddingDimensions", "persistMemory", "callerRole", "views", "timeZone", "privacy", "google", "retention", "environment");
@@ -255,16 +260,31 @@ public final class AgentConfig {
 
   private static List<Object> views(Object value) throws Refused {
     List<Object> views = list(value);
-    if (views == null) throw new Refused("The agent views are a list");
-    Set<String> seen = new HashSet<>();
+    if (views == null || views.size() > MAX_VIEWS) throw new Refused("The agent views are a list of at most 32");
+    Set<String> names = new HashSet<>(), paths = new HashSet<>();
     List<Object> out = new ArrayList<>();
     for (Object item : views) {
-      Map<String, Object> view = exact(item, Set.of("viewId", "viewType", "installationId"), "view");
-      Object type = view.get("viewType");
-      if (!nonblank(view.get("viewId")) || !nonblank(view.get("installationId")) || !Set.of("gui", "tui", "xr").contains(type) || !seen.add(view.get("viewId") + "\u0000" + type))
-        throw new Refused("Each agent view is named once with its type and installation");
-      out.add(ordered("viewId", view.get("viewId"), "viewType", type, "installationId", view.get("installationId")));
+      Map<String, Object> view = exactOptional(item, Set.of("id", "label", "path", "aliases"), "view");
+      if (!(view.get("id") instanceof String id) || !VIEW_ID.matcher(id).matches()) throw new Refused("An agent view id is a lowercase name");
+      if (!(view.get("label") instanceof String label) || label.isEmpty() || label.length() > 80 || !trimmedLikeJs(label) || label.chars().anyMatch(Character::isISOControl))
+        throw new Refused("An agent view label is 1 to 80 trimmed characters");
+      if (!(view.get("path") instanceof String path) || path.length() > 256 || !VIEW_PATH.matcher(path).matches()) throw new Refused("An agent view path is an absolute path");
+      List<Object> named = new ArrayList<>(List.of(id, label));
+      Map<String, Object> declared = ordered("id", id, "label", label, "path", path);
+      if (view.containsKey("aliases")) {
+        List<Object> aliases = list(view.get("aliases"));
+        if (aliases == null || aliases.isEmpty() || aliases.size() > 4 || !aliases.stream().allMatch(alias -> alias instanceof String text && VIEW_ALIAS.matcher(text).matches()))
+          throw new Refused("An agent view has 1 to 4 lowercase aliases");
+        named.addAll(aliases);
+        declared.put("aliases", aliases);
+      }
+      Set<String> own = new HashSet<>();
+      for (Object name : named) own.add(((String) name).toLowerCase(Locale.ROOT));
+      for (String name : own) if (!names.add(name)) throw new Refused("No name belongs to two agent views");
+      if (!paths.add(path)) throw new Refused("No path belongs to two agent views");
+      out.add(declared);
     }
+    if (json(out).getBytes(StandardCharsets.UTF_8).length > MAX_VIEW_BYTES) throw new Refused("The agent views are at most 16384 bytes");
     return out;
   }
 

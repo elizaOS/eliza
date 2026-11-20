@@ -4,18 +4,19 @@ CREATE TABLE google_connections (
   revision bigint NOT NULL,
   organization_id text NOT NULL REFERENCES organizations (id),
   user_id text NOT NULL REFERENCES accounts (key),
-  subject text NOT NULL,
-  email text NOT NULL,
-  status text NOT NULL CHECK (status IN ('Pending', 'Active', 'Expired', 'Revoked', 'Error')),
+  subject text NOT NULL DEFAULT '',
+  email text NOT NULL DEFAULT '',
+  status text NOT NULL CHECK (status IN ('Pending', 'Active', 'Expired', 'Revoked', 'Errored')),
+  granted_scopes jsonb NOT NULL DEFAULT '[]'::jsonb,
   tokens text,
   expires_at bigint NOT NULL DEFAULT 0,
   refreshing_until bigint NOT NULL DEFAULT 0,
-  linked_at bigint NOT NULL,
+  linked_at bigint,
   last_used_at bigint,
-  UNIQUE (organization_id, subject),
-  CHECK ((status IN ('Expired', 'Revoked')) <= (tokens IS NULL))
+  CHECK ((status IN ('Pending', 'Revoked')) <= (tokens IS NULL))
 );
 
+CREATE UNIQUE INDEX google_connections_by_subject ON google_connections (organization_id, subject) WHERE subject <> '';
 CREATE INDEX google_connections_by_status ON google_connections (organization_id, status);
 
 CREATE TABLE google_connect_states (

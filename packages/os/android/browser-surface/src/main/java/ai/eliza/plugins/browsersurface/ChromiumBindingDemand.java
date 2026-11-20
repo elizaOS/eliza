@@ -192,7 +192,7 @@ public final class ChromiumBindingDemand {
         if (closed || bound || !wanted()) return;
         BindResult result = host.bind();
         if (result == BindResult.ACCEPTED) bound = true;
-        else if (result == BindResult.REFUSED) retry();
+        if (result == BindResult.REFUSED) retry();
         else host.cancel(reconnect);
     }
 

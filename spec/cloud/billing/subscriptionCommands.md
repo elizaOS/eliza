@@ -1,21 +1,17 @@
 # Subscription commands
 
-Cancel, undo a cancellation, upgrade and downgrade: the four changes a
-subscriber makes to a live subscription. One `Command` is one row: its
-review, its one provider change (`spec/cloud/shared/dispatchOnce.md`) and its
-outcome. A command holds the organization's one command slot
-(`spec/cloud/billing/subscriptions.md`) from its confirmation until it ends;
-the shell applies each `ClaimSlot`, `ScheduleDowngrade` and `ReleaseSlot`
-effect to the subscription, and each `AdjustAllowance` to the open renewal
-period (`spec/cloud/billing/allowance.md`), in the same transaction as the
-step. Sources are develop `packages/cloud/shared/src/lib/services/`
-`organization-{upgrade,downgrade}-*`, `subscription-cancellation.ts` and
-`subscription-command-status.ts` (rules only). Downstream readers are the
-products' plan-change and subscription screens.
+Cancel, undo a cancellation, upgrade and downgrade of a live subscription.
+One `Command` is one row: its review, its one provider change
+(`spec/cloud/shared/dispatchOnce.md`) and its outcome. In the step's
+transaction the shell applies `ClaimSlot`, `ScheduleDowngrade` and
+`ReleaseSlot` to the subscription (`spec/cloud/billing/subscriptions.md`) and
+`AdjustAllowance` to the open renewal period
+(`spec/cloud/billing/allowance.md`). Sources are develop
+`organization-{upgrade,downgrade}-*` and `subscription-cancellation.ts`.
 
 Provider calls, the answers' shapes and the person's session stay in the
-shell. Every route is for an owner of the organization with a fresh session
-(sign-in or step-up at most 60 minutes old), otherwise `428
+shell. Every review, confirm and payment route is for an owner with a fresh
+session (sign-in or step-up at most 60 minutes old), otherwise `428
 fresh_session_required`; a guard that refuses because the subscription moved
 is `409 stale_revision`, and one for any other subscription state is `409
 billing_state_conflict`. After a provider reply the shell reconciles the live
@@ -137,8 +133,6 @@ pure def confirm(c: Command, by: S::SessionOwner, sub: Sub::Subscription, kind: 
 pure val byValues = Set({ agentId: "org1", actorId: "user1", connector: "subscription_update" }, { agentId: "org1", actorId: "user1", connector: "subscription_schedule" })
 pure val commandIdValues = Set("cmd1")
 pure val expectedRevisionValues = Set(1, 2, 3)
-pure def stepConfirmedWithinAMinuteOfTheReview(before: Command, via: str, after: Command): bool =
-  (via == "confirm" and after.kind != Sub::CancelCommand) implies (nowOf(before) < after.quote.expiresAt and after.quote.expiresAt <= after.quote.reviewedAt + quoteLifetime)
 ```
 
 ### A started command keeps its kind, subscription, revision and quote, and only a confirmed cancel has no quote
@@ -194,7 +188,7 @@ pure def sometimesOutcomeUnknown(c: Command): bool = c.phase == Running and D::i
 
 A refused or not applied change fails. An upgrade's invoice is paid (the
 command applies now), open (the command awaits payment and keeps the slot)
-or voided (it fails); while it awaits payment, `POST
+or voided (it fails); while it awaits payment, a fresh owner's `POST
 /upgrade/:commandId/payment` answers `{url}`, the open invoice's hosted page
 on the provider's host. An applied upgrade adds the quoted allowance
 difference; an applied downgrade schedules the lower plan for the next paid
@@ -221,6 +215,7 @@ pure def finish(c: Command, invoice: UpgradeInvoice, resultRevision: int): Comma
       .concat(if (ending != AwaitingPayment) List(ReleaseSlot({ commandId: c.commandId })) else List()) }
 }
 pure val resultRevisionValues = Set(0, 1, 2, 3, 4)
+pure def mayContinuePayment(c: Command, freshOwner: bool): bool = freshOwner and c.phase == AwaitingPayment
 pure def alwaysOutcomeFollowsTheReceipt(c: Command): bool =
   ((c.phase == Applied or c.phase == AwaitingPayment) implies c.receipt.settlement == D::Succeeded)
   and (c.phase == Failed implies c.receipt.settlement != D::Unsettled)

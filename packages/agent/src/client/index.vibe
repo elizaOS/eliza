@@ -259,3 +259,4 @@ module node {
 }
 
 export { createRuntimeJsonClient, RuntimeRequestError, type RuntimeClientOptions, type RuntimeJsonBridge, type RuntimeJsonResponse, type RuntimeStatus } from node
+export { DeviceExecution, NOT_DISPATCHED, type ApproveResult, type DeviceAgent, type DeviceExecutionPorts, type DeviceJournal, type DeviceProposal, type DeviceReceipt, type DeviceReview, type ExecutorCall, type JournalEntry, type JournalIdentity, type RecoverResult, type ReviewResult, type ScreenCheck } from "./device-execution.vibe"

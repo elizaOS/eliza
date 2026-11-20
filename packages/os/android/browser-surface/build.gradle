@@ -90,7 +90,7 @@ tasks.withType(Zip).configureEach {
     if (name ==~ /bundle.*Aar/) {
         doLast {
             new java.util.zip.ZipFile(archiveFile.get().asFile).withCloseable { archive ->
-                for (asset in ['read-page.js', 'control-channel.js', 'capture-mask.js']) {
+                for (asset in ['read-page.js', 'control-channel.js']) {
                     def entry = archive.getEntry("assets/${asset}")
                     if (entry == null || entry.size <= 0) {
                         throw new GradleException("Browser surface archive is missing ${asset}")

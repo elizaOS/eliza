@@ -69,31 +69,33 @@ effect function openPeriod(tx: Tx, organizationId: string, now: number): ({ read
   return { key, period: (try loadRow(tx, periodRows, key)).state }
 }
 
-effect function stepPeriod(tx: Tx, key: string, event: PeriodEvent, now: number) {
-  try stepRow(tx, periodRows, key, event, (period) => ({ status: wireName(period.phase.slice("Period".length)), updated_at: now }))
+export effect function stepPeriod(tx: Tx, key: string, event: PeriodEvent, now: number) {
+  return try stepRow(tx, periodRows, key, event, (period) => ({ status: wireName(period.phase.slice("Period".length)), updated_at: now }))
+}
+
+export effect function reserveIn(tx: Tx, owner: HoldOwner, key: HoldKey, quote: number, now: number): HoldTicket!MeteringFailure {
+  const rendered = renderHoldKey(owner, key)
+  try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [owner.organizationId])
+  const existing = try loadRow(tx, holdRows, rendered)
+  if (existing.found) return { key: rendered, hold: existing.state, replayed: true }
+  const lane = try laneFor(tx, owner.organizationId, key.service, now)
+  const funds = try readFunds(tx, owner.organizationId)
+  const open = lane === "AllowanceThenCredits" ? try openPeriod(tx, owner.organizationId, now) : undefined
+  const allowanceAvailable = open?.period.available ?? 0
+  if (!fundable(lane, quote, allowanceAvailable, creditAvailable(funds))) {
+    throw lane === "Refused" ? refused("ServiceUnavailable", "NoReason", now + 5000) : refused("InsufficientCredits")
+  }
+  const row: HoldRow = { organizationId: owner.organizationId, userId: owner.userId, service: serviceName(key.service), period: open?.key, createdAt: now }
+  const { state: hold } = try stepRow(tx, holdRows, rendered, { type: "reserve", key, quote, lane, allowanceAvailable, creditAvailable: creditAvailable(funds), now }, columns(row, now))
+  if (hold.fromAllowance > 0 && open !== undefined) try stepPeriod(tx, open.key, { type: "reserveHold", amount: hold.fromAllowance, now }, now)
+  if (hold.fromCredits > 0) try stepFunds(tx, owner.organizationId, { type: "holdCredits", fromCredits: hold.fromCredits }, now, rendered)
+  return { key: rendered, hold, replayed: false }
 }
 
 export effect function reserve(owner: HoldOwner, key: HoldKey, quote: number): HoldTicket!MeteringFailure!Store {
   const store = try Store
   const now = try Clock.currentTimeMillis
-  const rendered = renderHoldKey(owner, key)
-  return try store.transaction(effect (tx: Tx) => {
-    try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [owner.organizationId])
-    const existing = try loadRow(tx, holdRows, rendered)
-    if (existing.found) return { key: rendered, hold: existing.state, replayed: true }
-    const lane = try laneFor(tx, owner.organizationId, key.service, now)
-    const funds = try readFunds(tx, owner.organizationId)
-    const open = lane === "AllowanceThenCredits" ? try openPeriod(tx, owner.organizationId, now) : undefined
-    const allowanceAvailable = open?.period.available ?? 0
-    if (!fundable(lane, quote, allowanceAvailable, creditAvailable(funds))) {
-      throw lane === "Refused" ? refused("ServiceUnavailable", "NoReason", now + 5000) : refused("InsufficientCredits")
-    }
-    const row: HoldRow = { organizationId: owner.organizationId, userId: owner.userId, service: serviceName(key.service), period: open?.key, createdAt: now }
-    const { state: hold } = try stepRow(tx, holdRows, rendered, { type: "reserve", key, quote, lane, allowanceAvailable, creditAvailable: creditAvailable(funds), now }, columns(row, now))
-    if (hold.fromAllowance > 0 && open !== undefined) try stepPeriod(tx, open.key, { type: "reserveHold", amount: hold.fromAllowance, now }, now)
-    if (hold.fromCredits > 0) try stepFunds(tx, owner.organizationId, { type: "holdCredits", fromCredits: hold.fromCredits }, now, rendered)
-    return { key: rendered, hold, replayed: false }
-  })
+  return try store.transaction((tx) => reserveIn(tx, owner, key, quote, now))
 }
 
 effect function holdRow(tx: Tx, key: string): HoldRow!(StoreFailure | HoldUnknown) {
@@ -170,7 +172,7 @@ export effect function sweepHolds(): number!!Store {
   const now = try Clock.currentTimeMillis
   let swept = 0
   const stale = store.transaction((tx) => tx.query(
-    "SELECT key, phase FROM holds WHERE (phase = 'reserved' AND created_at < $1) OR (phase = 'dispatched' AND dispatched_at < $2) ORDER BY created_at LIMIT $3",
+    "SELECT key, phase FROM holds WHERE (phase = 'reserved' AND created_at <= $1) OR (phase = 'dispatched' AND dispatched_at <= $2) ORDER BY created_at LIMIT $3",
     [now - reservedTimeout, now - dispatchedTimeout, sweepBatch]
   )) catch () => []
   for (const row of stale) {

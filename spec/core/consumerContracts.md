@@ -155,7 +155,8 @@ pure val entryValues = Set(ownedRecord, { ...ownedRecord, disposition: UnmappedI
   { ...ownedRecord, owner: { ...ownedRule, ownerHeading: "A renamed heading" } })
 pure val recordsValues = Set(List(), List(ownedRecord), List(ownedRecord, { ...ownedRecord, disposition: UnmappedImport }),
   List(ownedRecord, { ...ownedRecord, disposition: DroppedImport, dropReason: "removed" }))
-pure val knownRulesValues = Set(List(), List(ownedRule), List(ownedRule, { ...ownedRule, ownerHeading: "A renamed heading" }))
+pure val knownRulesValues = Set(List(), List(ownedRule), List(ownedRule, { ...ownedRule, ownerHeading: "A renamed heading" }),
+  List(ownedRule, { ...ownedRule, ownerSpec: "spec/core/release.md" }))
 pure def lawUnmappedImportKeepsTheMapOpen(records: List[ImportRecord], knownRules: List[RuleRef], entry: ImportRecord): bool =
   (records.includes(entry) and entry.disposition == UnmappedImport) implies not(coverageAdmitted(records, knownRules))
 pure def lawOwnedImportNamesAnExistingRule(records: List[ImportRecord], knownRules: List[RuleRef], entry: ImportRecord): bool =
@@ -163,4 +164,55 @@ pure def lawOwnedImportNamesAnExistingRule(records: List[ImportRecord], knownRul
     (knownRules.includes(entry.owner) and entry.owner.ownerHeading != "")
 pure def lawDropNeedsAReason(knownRules: List[RuleRef], entry: ImportRecord): bool =
   (entry.disposition == DroppedImport and entry.dropReason == "") implies not(recordTraced(entry, knownRules))
+```
+
+### A recorded owner heading resolves to the one current spec that holds it or to a named successor
+
+A source contract map records each owning rule by the spec and heading it
+had at the producer pin. A rule still found there owns the record. A rule
+moved to another spec owns it when exactly one current spec holds the same
+heading. A heading that was rewritten resolves only through a successor
+named here. A heading that no current spec holds, or that more than one
+holds, with no successor, leaves the record unmapped.
+
+Eliza's own workspace packages are consumers too. Their inventory is the
+[consumer import baseline](./baseline/core-consumers.json), and each name it
+records reaches its declaring source through the
+[public surface](./baseline/core-public-surface.json) and its owning rules
+through the [source contract map](./baseline/source-contract-map.json). Its
+recorded rules either stand where it says or moved to exactly one current
+spec, with these exceptions:
+
+- the trace heading "Expired trace progress follows the observed wall
+  clock" in [traces](./traces.md) has the successor "Native expiry
+  observations retire the exact captured key";
+- `TrajectoryChatMessage` is dropped with trajectory export, which v4 no
+  longer provides;
+- the deep path `runtime/prepared-model-request` is dropped as an import
+  path, because no declared leaf serves it, and its guard is reached through
+  the root entry, owned by "A request guard captures its exact admitted
+  serialization" in [prepared requests](./preparedRequests.md).
+
+```quint
+type Successor = { replaced: RuleRef, successor: RuleRef }
+pure def headingSites(recorded: RuleRef, knownRules: List[RuleRef]): List[RuleRef] =
+  knownRules.select(r => r.ownerHeading == recorded.ownerHeading)
+pure def namedSuccessor(recorded: RuleRef, knownRules: List[RuleRef], successors: List[Successor]): bool =
+  successors.some(s => s.replaced == recorded and knownRules.includes(s.successor))
+pure def ownerResolves(recorded: RuleRef, knownRules: List[RuleRef], successors: List[Successor]): bool =
+  recorded.ownerSpec != "" and recorded.ownerHeading != "" and
+    (knownRules.includes(recorded) or headingSites(recorded, knownRules).length() == 1 or namedSuccessor(recorded, knownRules, successors))
+pure val movedRule: RuleRef = { ...ownedRule, ownerSpec: "spec/core/pairing/admission.md" }
+pure val rewrittenRule: RuleRef = { ...ownedRule, ownerHeading: "A rewritten heading" }
+pure val recordedValues = Set(ownedRule, movedRule, rewrittenRule, { ownerSpec: "", ownerHeading: "" })
+pure val successorsValues = Set(List(), List({ replaced: rewrittenRule, successor: ownedRule }),
+  List({ replaced: rewrittenRule, successor: { ...ownedRule, ownerHeading: "A renamed heading" } }))
+pure def lawAStandingRuleResolves(recorded: RuleRef, knownRules: List[RuleRef], successors: List[Successor]): bool =
+  (knownRules.includes(recorded) and recorded.ownerSpec != "" and recorded.ownerHeading != "") implies ownerResolves(recorded, knownRules, successors)
+pure def lawAMissingHeadingNeedsASuccessor(recorded: RuleRef, knownRules: List[RuleRef], successors: List[Successor]): bool =
+  (headingSites(recorded, knownRules).length() == 0 and not(namedSuccessor(recorded, knownRules, successors))) implies
+    not(ownerResolves(recorded, knownRules, successors))
+pure def lawAnAmbiguousMoveNeedsASuccessor(recorded: RuleRef, knownRules: List[RuleRef], successors: List[Successor]): bool =
+  (not(knownRules.includes(recorded)) and headingSites(recorded, knownRules).length() > 1 and not(namedSuccessor(recorded, knownRules, successors))) implies
+    not(ownerResolves(recorded, knownRules, successors))
 ```

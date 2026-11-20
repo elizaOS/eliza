@@ -137,7 +137,7 @@ An account has one organization (`spec/cloud/identity/accounts.md`), so all
 its devices share the 120 minutes. The day starts at midnight UTC and resets
 at the next midnight. A request for more speech is admitted only when it
 fits in what is left of the day, counted before it starts. How a refusal is
-answered at mint and at a window is in `spec/cloud/services/speechSession.md`.
+answered at mint and at a window is in `spec/cloud/services/speechRelay.md`.
 
 ```quint
 pure val realtimeSpeechPerDay: Millis = 120 * millisPerMinute

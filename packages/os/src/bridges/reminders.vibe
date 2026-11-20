@@ -1,6 +1,6 @@
 // spec/os/android/reminderAlarms.md, "Story: Get my reminder at its time, even after a reboot"; spec/os/android/bridge.md, "Story: Report a device change only as Android confirmed it"
 import type { StoredStatus } from "../../gen/os__android__reminderAlarms.ts"
-import { canArmReminder, canReschedule, canStageDeletion, initial } from "../../gen/os__android__reminderAlarms.effect.vibe"
+import { canChangeReminder, initial } from "../../gen/os__android__reminderAlarms.effect.vibe"
 import { nativeReply, settled } from "./bridge.vibe"
 import type {
   AndroidReminderBoundOperation,
@@ -76,7 +76,7 @@ const Row = Schema.Union([
     history: Schema.mutable(Schema.Array(Schema.Struct({ occurrenceId: Schema.String, dueAt: Instant, completedAt: Instant, skippedDates: Schema.Int }))),
   }),
 ])
-const Listing = Schema.Struct({ reminders: Schema.mutable(Schema.Array(Row)), notificationsEnabled: Schema.Boolean })
+schema Listing { reminders: Row[]; notificationsEnabled: boolean }
 schema Refusal { id: string; status: "failed" | "past" | "permission-denied" | "storage-full"; mode: "inexact"; message: string }
 const Scheduled = Schema.Union([
   Refusal,
@@ -127,23 +127,31 @@ const PendingTap = Schema.Union([
 ])
 const Done = Schema.Void
 
-const KEPT: Readonly<Partial<Record<AndroidReminderRecord["status"], StoredStatus>>> = {
+const STORED: Readonly<Partial<Record<AndroidReminderRecord["status"], StoredStatus>>> = {
   scheduled: "StoredScheduled",
+  "scheduling-failed": "StoredScheduled",
   posted: "StoredPosted",
   "permission-denied": "StoredPermissionDenied",
+  completed: "StoredClosed",
+  cancelled: "StoredClosed",
 }
 
 export function reminderStanding(record: AndroidReminderRecord | undefined): ReminderStanding {
-  if (record === undefined) return "Absent"
-  if (record.pendingDeletion !== undefined) return "StoredDeletionPending"
-  return (record.undated === true ? undefined : KEPT[record.status]) ?? "Untimed"
+  if (record === undefined) return { kind: "Absent" }
+  const status = record.undated === true ? undefined : STORED[record.status]
+  if (status === undefined) return { kind: "Untimed" }
+  return { kind: "Stored", status, deletion: record.pendingDeletion === undefined ? "NotDeleting" : "DeletionPending" }
 }
 
 function admitted(action: ReminderAction, standing: ReminderStanding): boolean {
-  if (standing === "Absent") return action === "schedule" && canArmReminder(initial)
-  if (standing === "Untimed") return action === "cancel"
-  const alarm = { ...initial, keptStatus: standing }
-  return action === "schedule" ? canArmReminder(alarm) || canReschedule(alarm) : canStageDeletion(alarm)
+  switch (standing.kind) {
+    case "Absent":
+      return action === "schedule" && canChangeReminder(initial)
+    case "Untimed":
+      return action === "cancel"
+    case "Stored":
+      return canChangeReminder({ ...initial, status: standing.status, deletion: standing.deletion })
+  }
 }
 
 effect function standingOf(plugin: AndroidRemindersPlugin, name: string, id: string) {

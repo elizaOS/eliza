@@ -101,7 +101,7 @@ const snoozeBody = Schema.decodeUnknownOption(Schema.Struct({
 const editBody = Schema.decodeUnknownOption(Schema.Struct({
   ...keyed, promptInstructions: Schema.optionalKey(Text), trigger: Schema.optionalKey(Trigger),
 }), strict)
-const fireBody = Schema.decodeUnknownOption(Schema.Struct({}), strict)
+const fireBody = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Never))
 
 const failure = (status: number, error: string) => ({ status, body: { error } })
 const notFound = failure(404, "not_found")

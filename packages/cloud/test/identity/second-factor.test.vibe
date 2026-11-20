@@ -1,9 +1,11 @@
 // spec/cloud/identity/secondFactor.md, "Story: Finish sign-in with my second factor"; spec/cloud/identity/secondFactor.md, "Story: Set up and change my second factor"; spec/cloud/identity/secondFactor.md, "Story: Confirm it is me before a sensitive change"
 import { assert, describe, it } from "@effect/vitest"
 import { afterFirstFactor } from "../../src/identity/second-factor.vibe"
+import { s256, secretText } from "../../src/shared/credential-crypto.vibe"
 import { authenticatorCode } from "../support/authenticator.ts"
 import { testCloud, type Answer, type TestCloud } from "../support/cloud.vibe"
 import { signedIn } from "../support/identity.ts"
+import { latestCode } from "../support/inbox.ts"
 
 interface Enrolled {
   readonly secret: string
@@ -135,6 +137,70 @@ describe("WP1 Identity: second factor", () => {
         read: { factors: [{ id: "totp", method: "totp", status: "confirmed" }], stepUpAt: marks.stepUpAt, mfaAt: marks.mfaAt },
         removed: [200, []],
         afterRemoval: "signed_in"
+      }
+    ))
+  }))
+
+  it.live("An email code sign-in asks for the second factor and a TOTP finishes it once (spec/cloud/identity/secondFactor.md, \"Story: Finish sign-in with my second factor\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const first = try signedIn(cloud, "lin@example.com")
+    const { enrolled, confirmedAt } = try enrollTotp(cloud, first.accessToken)
+    const verifier = secretText("", 32, "base64url")
+    const sent = try cloud.call("/api/v1/auth/email/code/send", { json: { email: "lin@example.com", clientId: "app.test", codeChallenge: s256(verifier), codeChallengeMethod: "S256" } })
+    const code = try latestCode(cloud, "lin@example.com")
+    const verified = try cloud.call("/api/v1/auth/email/code/verify", { json: { email: "lin@example.com", code, clientId: "app.test", codeVerifier: verifier } })
+    const challenge = verified.body as Challenge
+    const totp = try sync(() => authenticatorCode(enrolled.secret, confirmedAt, 1))
+    const completed = try cloud.call("/api/v1/auth/mfa/complete", { json: { challengeId: challenge.challengeId, method: "totp", code: totp } })
+    const reopened = (try signInAgain(cloud, "lin@example.com")) as Challenge
+    const replayedStep = try cloud.call("/api/v1/auth/mfa/complete", { json: { challengeId: reopened.challengeId, method: "totp", code: totp } })
+    const session = completed.body as { status: string; user: { email: string }; mfaAt: number | null }
+    try check(() => assert.deepStrictEqual(
+      {
+        sent: sent.status,
+        challenge: [verified.status, challenge.status, challenge.methods, challenge.expiresAt > confirmedAt],
+        completed: [completed.status, session.status, session.user.email, typeof session.mfaAt === "number"],
+        replayedStep: refusal(replayedStep)
+      },
+      {
+        sent: 200,
+        challenge: [200, "mfa_required", ["totp"], true],
+        completed: [200, "signed_in", "lin@example.com", true],
+        replayedStep: "401 credential_proof_invalid"
+      }
+    ))
+  }))
+
+  it.live("An SMS step-up on a live session keeps the token and reports stepUpAt (spec/cloud/identity/secondFactor.md, \"Story: Confirm it is me before a sensitive change\"; spec/cloud/identity/sessions.md, \"Story: Confirm it is me before a sensitive change\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const phone = "+15555550123"
+    const first = try signedIn(cloud, "sam@example.com")
+    const token = first.accessToken
+    const enrolled = try asOwner(cloud, token, "/api/v1/auth/mfa/sms/enroll", { phone })
+    const setupCode = try latestCode(cloud, phone)
+    const confirmed = try asOwner(cloud, token, "/api/v1/auth/mfa/sms/confirm", { code: setupCode })
+    const sentStepUp = try asOwner(cloud, token, "/api/v1/auth/mfa/sms/send", {})
+    const stepUpCode = try latestCode(cloud, phone)
+    const stepped = try asOwner(cloud, token, "/api/v1/auth/mfa/step-up", { method: "sms", code: stepUpCode })
+    const reused = try asOwner(cloud, token, "/api/v1/auth/mfa/step-up", { method: "sms", code: stepUpCode })
+    const marks = stepped.body as { stepUpAt: number; mfaAt: number; accessToken?: string }
+    const read = try asOwner(cloud, token, "/api/v1/auth/mfa")
+    try check(() => assert.deepStrictEqual(
+      {
+        enrolled: enrolled.status,
+        confirmed: [confirmed.status, (confirmed.body as { factors: unknown }).factors],
+        sentStepUp: sentStepUp.status,
+        stepped: [stepped.status, typeof marks.stepUpAt === "number", marks.accessToken],
+        reused: refusal(reused),
+        read: [read.status, read.body]
+      },
+      {
+        enrolled: 200,
+        confirmed: [200, [{ id: "sms", method: "sms", status: "confirmed" }]],
+        sentStepUp: 200,
+        stepped: [200, true, undefined],
+        reused: "401 credential_proof_invalid",
+        read: [200, { factors: [{ id: "sms", method: "sms", status: "confirmed" }], stepUpAt: marks.stepUpAt, mfaAt: marks.mfaAt }]
       }
     ))
   }))

@@ -4,7 +4,7 @@
   "revision": "6722dd8833db7482df1a2543ca3fcf67ddf0f7b1",
   "baselineLockSha256": "b7041cce4faf186f5c6e410694b52d8ee4ef2edab8edbef58119e943089d2ce3",
   "patch": "soong-app-native.patch",
-  "patchSha256": "fe0e8ed1e880e3fe49a3e42eb2d45cc89e6e85b3332d0d998a4468cd8402c9c4",
+  "patchSha256": "12762ad6f78a0e42ead1b9c13009d285af3991e18e63c4555d7b466c34f1160a",
   "purpose": "Install hash-admitted APK native payloads beside Soong-imported applications on products that ignore Android.mk. Does not disable ELF copy checks or modify APK bytes.",
   "files": [
     {
@@ -15,7 +15,7 @@
     {
       "path": "etc/prebuilt_etc_test.go",
       "beforeSha256": "c82ed83b6e59bc45a9700772e481ed6fde1eaee948a3c036ae369f490b360a9c",
-      "afterSha256": "7ed2e7134dac61c27d6c4ca7b5354fb2bca8d05a9d9b6317a6f10d407fa2e7e7"
+      "afterSha256": "cb22d282ccac98ecb1dcf394a0496d36a81b8548cc34d1cd95fc58dcfb96bdb5"
     }
   ]
 }

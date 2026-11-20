@@ -6,17 +6,11 @@ import { INVENTORY_ASSET } from "./runtime-payload.vibe"
 
 module node {
   import { createHash } from "node:crypto"
-  import { fileURLToPath } from "node:url"
   import { injectAndroidRuntimeBytePreservation } from "../../android/android-runtime-packaging.ts"
 
   /** @throws {never} */
   export function sha256Hex(bytes: Uint8Array): string {
     return createHash("sha256").update(bytes).digest("hex")
-  }
-
-  /** @throws {never} */
-  export function moduleDirectory(): string {
-    return fileURLToPath(new URL(".", import.meta.url))
   }
 
   /** @throws {never} */
@@ -34,7 +28,7 @@ module node {
     }
   }
 }
-import { moduleDirectory, packageName, preserveRuntimeBytes, sha256Hex } from node
+import { packageName, preserveRuntimeBytes, sha256Hex } from node
 
 export interface GenerateAndroidHost {
   readonly consumerRoot: string
@@ -58,7 +52,7 @@ export error ToolchainWrapperChanged { expected: string; observed: string }
 
 const TEMPLATES = "android/host-templates"
 const MARKER = ".eliza-consumer-host.json"
-const PROFILE_DOCUMENT = ".eliza-consumer-profile.json"
+export const PROFILE_DOCUMENT = ".eliza-consumer-profile.json"
 const IDENTITY_RESOURCES = "eliza-consumer-host/res"
 const HOST_MANIFEST = "app/eliza-host-manifest.xml"
 const RUNTIME_MAIN = "android/app/src/main"
@@ -69,16 +63,8 @@ const META = "ai.eliza.os.agent"
 const QUALIFIED_CLASS = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/
 const GRADLE_PROPERTIES = "org.gradle.jvmargs=-Xmx2048m\nandroid.useAndroidX=true\norg.gradle.parallel=false\norg.gradle.workers.max=2\n"
 
-const Toolchain = Schema.Struct({
-  gradle: Schema.String,
-  gradleSha256: Schema.String,
-  wrapperSha256: Schema.String,
-  androidGradlePlugin: Schema.String,
-  kotlin: Schema.String,
-  java: Schema.Int,
-  versions: Schema.Record(Schema.String, Schema.String),
-})
-const AgentHostFile = Schema.Struct({ service: Schema.String })
+schema Toolchain { gradle: string; gradleSha256: string; wrapperSha256: string; androidGradlePlugin: string; kotlin: string; java: Schema.Int; versions: Record<string, string> }
+schema AgentHostFile { service: string }
 const Marker = Schema.Struct({
   schema: Schema.Literals([1, 2]),
   output: Schema.optionalKey(Schema.String),
@@ -189,10 +175,11 @@ function wrapperProperties(gradle: string, sha256: string): string {
 effect function osPackageRoot() {
   const files = try FileSystem.FileSystem
   const path = try Path.Path
-  let directory = moduleDirectory()
+  const start = try path.fromFileUrl(new URL(".", import.meta.url))
+  let directory = start
   while (!(try files.exists(path.join(directory, TEMPLATES, "toolchain.json")))) {
     const parent = path.dirname(directory)
-    if (parent === directory) throw new HostInputRefused({ place: moduleDirectory(), reason: "The os package's Android host templates are missing" })
+    if (parent === directory) throw new HostInputRefused({ place: start, reason: "The os package's Android host templates are missing" })
     directory = parent
   }
   return try files.realPath(directory)
@@ -370,7 +357,6 @@ export effect function generateAndroidHost(options: GenerateAndroidHost) {
     dependencyRoot: dependencies,
     output,
     toolchainVersions: toolchain.versions,
-    runtimeStaged: runtimeMain !== undefined,
   })
 
   const generated = new Map<string, GeneratedFile>()

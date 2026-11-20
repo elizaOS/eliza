@@ -71,7 +71,7 @@ public final class CloudRequestPolicy {
 
   public Planned plan(Holding holding, Origin origin, String method, String target, Map<String, String> callerHeaders, byte[] body) {
     RouteGate.Request request = gate.request(method, target, false, body);
-    if (request == null) return new Planned(new Refuse(Refusal.NOT_LISTED), NO_DEVICE_ROUTE, Map.of());
+    if (request == null) return new Planned(new Refuse(originAccepted(origin) ? Refusal.NOT_LISTED : Refusal.NO_ORIGIN), NO_DEVICE_ROUTE, Map.of());
     Map<String, String> headers = new LinkedHashMap<>();
     boolean malformed = false;
     for (Map.Entry<String, String> header : callerHeaders.entrySet()) {

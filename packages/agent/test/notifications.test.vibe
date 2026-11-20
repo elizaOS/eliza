@@ -2,15 +2,17 @@
 module node {
   import { existsSync } from "node:fs"
 
-  export function hubWritten(): boolean {
-    return existsSync(new URL("../src/conversation/events.vibe", import.meta.url))
+  export function written(path: string, base: string): boolean {
+    return existsSync(new URL(path, base))
   }
 }
-import { hubWritten } from node
+import { written } from node
 import { assert, it } from "@effect/vitest"
 import { NotificationService, type AgentNotification, type NotificationInput } from "@elizaos/core"
 import { call, events, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
+
+const hubWritten = (): boolean => written("../src/conversation/events.vibe", import.meta.url)
 
 const loaded = { launch: { load: ["@elizaos/agent/notifications"] } }
 const absentId = "0b7c3a52-7e1f-4c55-9a4e-2f0d8b6c1e93"
@@ -110,6 +112,7 @@ it.effect('A stopped inbox answers 503 with Retry-After, never an empty list or 
   const [notice] = try notifyAll(service, [{ title: "Call the dentist", category: "reminder" }])
   try host("inbox stop", () => service.stop())
   const asked = try call(agent, { method: "GET", path: "/api/notifications?nativeTransport=true" })
+  const owner = try list(agent, "?unreadOnly=true")
   const marked = try markRead(agent, notice.id)
   const malformed = try list(agent, "?limit=101")
   try Effect.try(() => {
@@ -117,7 +120,7 @@ it.effect('A stopped inbox answers 503 with Retry-After, never an empty list or 
     if (!("status" in asked)) return
     assert.strictEqual(asked.status, 503)
     assert.match(asked.headers["retry-after"] ?? "", /^[1-9][0-9]*$/)
-    assert.deepStrictEqual([marked.status, malformed.status], [503, 400])
+    assert.deepStrictEqual([owner.status, marked.status, malformed.status], [503, 503, 400])
   })
 }, 120_000)
 

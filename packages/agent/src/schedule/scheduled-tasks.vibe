@@ -1,9 +1,8 @@
 // spec/agent/schedule/scheduledTasks.md, "Story: Keep a recurring task exact through retries, races and restarts"; spec/agent/schedule/scheduledTasks.md, "Every change commits against the revision it read"; spec/agent/schedule/scheduledTasks.md, "An occurrence is delivered at most once"; spec/agent/schedule/scheduledTasks.md, "A delivery that cannot happen now is retried at most three times, then the occurrence fails"; spec/agent/schedule/scheduledTasks.md, "An occurrence of a recurring task that came due before the agent started is recorded once as missed and never runs"; spec/agent/schedule/scheduledTasks.md, "A keyed verb applies once per key"; spec/agent/schedule/scheduledTasks.md, "Each verb does only what it names, and only to a row it applies to"; spec/agent/schedule/scheduledTasks.md, "A verb's reply says whether it was applied, refused, or reached no task"; spec/agent/schedule/scheduledTasks.md, "Fire now reports fired, skipped, deferred, failed or raced"; spec/core/taskServiceOwners.md, "Exclusive tasks observe every active invocation of the same task"; spec/core/taskServiceOwners.md, "Stop joins scheduler drain, current tick, and then its pending-operation snapshot"; spec/core/scheduling.md, "Story: Execute due work within its owning agent"; spec/workflow/schedule.md, "Story: An automation runs at its reviewed local time or records why it skipped"
 import {
-  Service, ServiceType, agentProcessStartedAtMs, computeNextCronRunAtMs, parseCronExpression,
+  ServiceType, agentProcessStartedAtMs, computeNextCronRunAtMs, parseCronExpression,
   type IAgentRuntime, type IDatabaseAdapter, type NotificationService, type TaskWorker,
 } from "@elizaos/core"
-import type { ModuleContext } from "../host/module.vibe"
 import {
   canFire, claimOutcome, dueInstant, fireReply, fireable, initial, isReplay, machineOver, ownerFireEnded, verbReply,
   type Delivery, type Due, type Event, type FireOutcome, type RequestKey, type ScheduledTask, type Verb,
@@ -13,7 +12,7 @@ import {
   type ScheduledTaskDetails, type StoredTask,
 } from "./store.vibe"
 import type {
-  FireResult, ScheduledTaskPort, ScheduledTaskRow, ScheduledTaskService, TaskEdit, TaskTrigger, VerbRequest, VerbResult,
+  FireResult, ScheduledTaskPort, ScheduledTaskRow, TaskEdit, TaskTrigger, VerbRequest, VerbResult,
 } from "./scheduled-task-routes.vibe"
 
 module node {
@@ -365,7 +364,7 @@ export effect function startScheduledTaskTicks(runtime: IAgentRuntime, tasks: Sc
       return undefined
     }),
   }
-  try Effect.try(() => runtime.registerTaskWorker(worker))
+  try sync(() => runtime.registerTaskWorker(worker))
   const boot = fork.detached bootQuietly(runtime)
   return {
     stop: effect function () {
@@ -377,43 +376,4 @@ export effect function startScheduledTaskTicks(runtime: IAgentRuntime, tasks: Sc
 
 export interface Ticking {
   stop(): void!!
-}
-
-export const scheduledTasksServiceType = "agent_scheduled_tasks"
-
-export interface ScheduledTasksService extends Service {
-  readonly tasks: ScheduledTasks
-}
-
-export effect function openScheduledTasks(context: ModuleContext): ScheduledTaskService!! {
-  const { runtime } = context
-  const tasks = scheduledTaskService(try runtimeTaskHost(runtime))
-  let ticks: Ticking | undefined
-  class ScheduledTasksHandle extends Service implements ScheduledTasksService {
-    static override serviceType = scheduledTasksServiceType
-    override capabilityDescription = "Create, answer and fire the owner's scheduled tasks"
-    readonly tasks = tasks
-
-    static override start(host: IAgentRuntime): Promise<Service> {
-      return Promise.resolve(new ScheduledTasksHandle(host))
-    }
-
-    override stop(): Promise<void> {
-      return Promise.resolve()
-    }
-  }
-  return {
-    port: scheduledTaskPort(tasks),
-    plugin: {
-      services: [ScheduledTasksHandle],
-      init: () => runPromise(effect {
-        ticks = try startScheduledTaskTicks(runtime, tasks)
-      }),
-      dispose: () => runPromise(effect {
-        const running = ticks
-        ticks = undefined
-        if (running !== undefined) try running.stop()
-      }),
-    },
-  }
 }

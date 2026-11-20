@@ -1,0 +1,234 @@
+// spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"; spec/agent/conversation/events.md, "Story: Stop hearing when I leave"; spec/agent/conversation/events.md, "Story: Learn when something keeps going wrong"; spec/agent/access/transport.md, "A subscription is confirmed once, carries events in order, and at most two are open"
+module node {
+  import { existsSync } from "node:fs"
+  import { connect } from "node:net"
+  import { Effect } from "effect"
+  import { ElizaError, stringToUuid, type AgentRuntime, type UUID } from "@elizaos/core"
+  import type { ModuleFactory, PublishEvent } from "../src/host/module.vibe"
+  import type { Subscription } from "./support/socket-client.ts"
+
+  export function hubWritten(): boolean {
+    return existsSync(new URL("../src/conversation/events.vibe", import.meta.url))
+  }
+
+  export interface AgentEventFrame {
+    readonly stream: string
+    readonly payload: unknown
+  }
+
+  export function eventOf(frame: unknown): AgentEventFrame | undefined {
+    if (typeof frame !== "object" || frame === null || (frame as { type?: unknown }).type !== "event") return undefined
+    const event = (frame as { event?: { type?: unknown; stream?: unknown; payload?: unknown } }).event
+    return event?.type === "agent_event" && typeof event.stream === "string" ? { stream: event.stream, payload: event.payload } : undefined
+  }
+
+  export const carries = (stream: string, marker: string) => (frame: unknown): boolean => {
+    const event = eventOf(frame)
+    return event !== undefined && event.stream === stream && JSON.stringify(event.payload).includes(marker)
+  }
+
+  export function publishTranscript(runtime: AgentRuntime, payload: unknown): void {
+    const service = runtime.getService("publishEvent") as unknown as { publish(stream: string, payload: unknown): void } | null
+    if (service === null) throw new Error("The agent offers no publishEvent service")
+    service.publish("voice-transcript", payload)
+  }
+
+  export function failRepeatedly(runtime: AgentRuntime, times: number): void {
+    for (let report = 0; report < times; report += 1) {
+      runtime.reportError("EventsJourney.probe", new ElizaError("The probe failed", { code: "PROBE_FAILURE" }), { reason: "probe" })
+    }
+  }
+
+  export async function storedNotices(runtime: AgentRuntime): Promise<number> {
+    const rooms = await runtime.getRooms(stringToUuid(`device:${runtime.agentId}`) as UUID)
+    const memories = await Promise.all(rooms.map((room) => runtime.getMemories({ tableName: "messages", roomId: room.id, count: 1000 })))
+    return memories.flat().filter((memory) => (memory.content as { systemNotice?: unknown }).systemNotice !== undefined).length
+  }
+
+  export async function storedBeyond(runtime: AgentRuntime, before: number): Promise<number> {
+    for (;;) {
+      const now = await storedNotices(runtime)
+      if (now > before) return now
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+  }
+
+  export function stalledFeed(path: string, token: string): { readonly subscribed: Promise<void>; readonly closed: Promise<void> } {
+    const socket = connect(path)
+    const subscribed = Promise.withResolvers<void>()
+    const closed = Promise.withResolvers<void>()
+    socket.once("connect", () => socket.write(`${JSON.stringify({
+      id: "stalled", method: "events_subscribe",
+      payload: { streams: ["voice-transcript"], headers: { authorization: `Bearer ${token}` } },
+    })}\n`))
+    socket.once("data", (data: Buffer) => {
+      if (data.toString("utf8").includes('"subscribed"')) subscribed.resolve()
+      else subscribed.reject(new Error(`expected a subscribed frame, got ${data.toString("utf8")}`))
+      socket.pause()
+    })
+    socket.on("error", () => undefined)
+    socket.once("close", () => { subscribed.reject(new Error("closed before subscribing")); closed.resolve() })
+    return { subscribed: subscribed.promise, closed: closed.promise }
+  }
+
+  export interface ViewProbe {
+    readonly modules: ReadonlyMap<string, ModuleFactory<never>>
+    readonly interact: PublishEvent
+  }
+
+  export function viewProbe(name: string): ViewProbe {
+    let publish: PublishEvent | undefined
+    const factory: ModuleFactory<never> = (context) => Effect.sync(() => {
+      publish = context.publishEvent
+      return { name, plugin: { name, description: "Publishes view interactions for the events journey" } }
+    })
+    return {
+      modules: new Map([[name, factory]]),
+      interact: (stream, payload, clientId) => {
+        if (publish === undefined) throw new Error("The view probe module was not loaded")
+        publish(stream, payload, clientId)
+      },
+    }
+  }
+
+  export function nextEvent(feed: Subscription, stream: string, marker: string): Promise<AgentEventFrame | undefined> {
+    return within(30_000, `${stream} ${marker}`, feed.next(carries(stream, marker))).then(eventOf)
+  }
+
+  export const subscribed = (feed: Subscription): Promise<unknown> => within(30_000, "subscribed frame", feed.next())
+
+  export const heardCount = (feed: Subscription, stream: string, marker: string): number => feed.frames.filter(carries(stream, marker)).length
+
+  export const endsOnStop = (feed: Subscription): Promise<string> =>
+    within(30_000, "feed end on stop", feed.next(() => false).then(() => "frame", () => "ended"))
+
+  export async function loopback(port: number, streams: string, token?: string): Promise<{ readonly status: number; readonly body: string }> {
+    const answer = await fetch(`http://127.0.0.1:${port}/api/events?streams=${streams}`, { headers: token === undefined ? {} : { authorization: `Bearer ${token}` } })
+    return { status: answer.status, body: await answer.text() }
+  }
+
+  export function publishPartials(runtime: AgentRuntime, count: number, bytes: number): void {
+    for (let index = 0; index < count; index += 1) publishTranscript(runtime, { kind: "partial", text: `${index}`.padEnd(bytes, ".") })
+  }
+
+  export function within<A>(ms: number, what: string, waited: Promise<A>): Promise<A> {
+    let timer: NodeJS.Timeout | undefined
+    const late = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error(`${what} did not happen within ${ms} ms`)), ms) })
+    return Promise.race([waited, late]).finally(() => clearTimeout(timer))
+  }
+}
+
+import { endsOnStop, failRepeatedly, heardCount, hubWritten, loopback, nextEvent, publishPartials, publishTranscript, stalledFeed, storedBeyond, subscribed, viewProbe, within } from node
+import { assert, it } from "@effect/vitest"
+import { text } from "./support/cloud-fake.ts"
+import { call, events, host, startInProcess, type InProcess } from "./support/kernel.vibe"
+import { sendRaw, type LocalAnswer, type Refusal } from "./support/socket-client.ts"
+
+const viewsModule = "@elizaos/agent/views"
+const pending = hubWritten() ? "" : ": pending until the event hub is written"
+
+const statusOf = (answer: LocalAnswer | Refusal) => "status" in answer ? answer.status : answer.refused
+
+effect function created(agent: InProcess, title: string) {
+  const made = try call(agent, { method: "POST", path: "/api/conversations", body: { title } })
+  return try Effect.try(() => {
+    assert.strictEqual(statusOf(made), 201)
+    return ((made as LocalAnswer).json as { conversation: { id: string } }).conversation.id
+  })
+}
+
+it.live.skipIf(!hubWritten())(`Hear conversation, view, transcript and notice events over the socket, and close a slow reader (spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"; spec/agent/conversation/events.md, "Story: Stop hearing when I leave"; spec/agent/conversation/events.md, "Story: Learn when something keeps going wrong"; spec/agent/access/transport.md, "A subscription is confirmed once, carries events in order, and at most two are open")${pending}`, effect () => {
+  const probe = try Effect.try(() => viewProbe(viewsModule))
+  const agent = try startInProcess({ cloud: true, launch: { callerRole: "owner", load: [viewsModule] }, modules: probe.modules })
+  const { runtime } = agent.agent
+  const path = agent.transport.kind === "socket" ? agent.transport.path : ""
+  const token = agent.frame.token
+
+  const chat = try events(agent, ["conversation", "conversation"])
+  const screen = try events(agent, ["view-interact"], "screen-a")
+  const confirmed = [try host("chat subscribed", () => subscribed(chat)), try host("screen subscribed", () => subscribed(screen))]
+  const third = try host("third feed", () => sendRaw(path, JSON.stringify({
+    id: "feed-3", method: "events_subscribe", payload: { streams: ["notification"], headers: { authorization: `Bearer ${token}` } },
+  })))
+
+  const conversation = try created(agent, "Events")
+  try Effect.sync(() => agent.cloud?.script(text("Hello from the agent.")))
+  const sent = try call(agent, { method: "POST", path: `/api/conversations/${conversation}/messages`, body: { text: "Hello" } })
+  const updated = try host("conversation-updated", () => nextEvent(chat, "conversation", "conversation-updated"))
+
+  try Effect.try(() => {
+    probe.interact("view-interact", { frame: "for-b" }, "screen-b")
+    probe.interact("view-interact", { frame: "for-a" }, "screen-a")
+  })
+  const interaction = try host("screen-a interaction", () => nextEvent(screen, "view-interact", "for-a"))
+  const strayed = try Effect.try(() => heardCount(screen, "view-interact", "for-b"))
+
+  try Effect.sync(() => screen.close())
+  const voice = try events(agent, ["voice-transcript"])
+  try host("voice subscribed", () => subscribed(voice))
+  try Effect.try(() => publishTranscript(runtime, { kind: "final", text: "remind me at noon" }))
+  const transcript = try host("voice transcript", () => nextEvent(voice, "voice-transcript", "remind me at noon"))
+
+  try Effect.try(() => failRepeatedly(runtime, 3))
+  const notice = try host("system notice", () => nextEvent(chat, "conversation", "system-notice"))
+  const noticesHeard = try Effect.try(() => heardCount(chat, "conversation", "system-notice"))
+
+  try Effect.sync(() => { chat.close(); voice.close() })
+  const storedBefore = try host("stored notices", () => within(30_000, "first stored notice", storedBeyond(runtime, 0)))
+  try Effect.try(() => failRepeatedly(runtime, 3))
+  const storedAfter = try host("stored notices after", () => within(30_000, "stored notice", storedBeyond(runtime, storedBefore)))
+
+  const stalled = try Effect.try(() => stalledFeed(path, token))
+  try host("stalled subscribed", () => within(30_000, "stalled subscription", stalled.subscribed))
+  try Effect.try(() => publishPartials(runtime, 8, 200_000))
+  try host("slow reader closed", () => within(30_000, "slow reader close", stalled.closed))
+
+  const last = try events(agent, ["conversation"])
+  try host("last subscribed", () => subscribed(last))
+  try host("agent stop", () => agent.agent.stop())
+  const ended = try host("feed end on stop", () => endsOnStop(last))
+
+  try Effect.try(() => {
+    assert.deepStrictEqual(confirmed, [{ type: "subscribed" }, { type: "subscribed" }])
+    assert.deepStrictEqual(third, [{ id: "feed-3", ok: false, error: "busy" }])
+    assert.strictEqual(statusOf(sent), 200)
+    assert.strictEqual(updated?.stream, "conversation")
+    assert.strictEqual(interaction?.stream, "view-interact")
+    assert.strictEqual(strayed, 0)
+    assert.strictEqual(transcript?.stream, "voice-transcript")
+    assert.strictEqual(notice?.stream, "conversation")
+    assert.strictEqual(noticesHeard, 1)
+    assert.isAtLeast(storedBefore, 1)
+    assert.strictEqual(storedAfter, storedBefore + 1)
+    assert.strictEqual(ended, "ended")
+  })
+}, 180_000)
+
+it.live.skipIf(!hubWritten())(`Hear a plugin transcript over loopback server-sent events and refuse a third feed (spec/agent/conversation/events.md, "Subscribing answers with one subscribed frame and replays nothing"; spec/agent/conversation/events.md, "Only the voice-transcript stream is open to plugins"; spec/agent/access/transport.md, "A subscription is confirmed once, carries events in order, and at most two are open")${pending}`, effect () => {
+  const agent = try startInProcess({ http: true, launch: { callerRole: "owner" } })
+  const { runtime } = agent.agent
+  const port = agent.transport.kind === "http" ? agent.transport.port : 0
+  try Effect.try(() => publishTranscript(runtime, { kind: "final", text: "before anyone listened" }))
+  const first = try events(agent, ["voice-transcript"])
+  const second = try events(agent, ["conversation"])
+  const confirmed = [try host("first subscribed", () => subscribed(first)), try host("second subscribed", () => subscribed(second))]
+  const third = try host("third feed", () => loopback(port, "notification", agent.frame.token))
+  const anonymous = try host("anonymous feed", () => loopback(port, "conversation"))
+  try Effect.try(() => {
+    publishTranscript(runtime, { kind: "partial", text: "first words" })
+    publishTranscript(runtime, { kind: "final", text: "first words spoken" })
+  })
+  const partial = try host("partial transcript", () => nextEvent(first, "voice-transcript", "first words"))
+  const final = try host("final transcript", () => nextEvent(first, "voice-transcript", "first words spoken"))
+  const replayed = try Effect.try(() => heardCount(first, "voice-transcript", "before anyone listened"))
+  const crossed = try Effect.try(() => heardCount(second, "voice-transcript", "first words"))
+  try Effect.try(() => {
+    assert.deepStrictEqual(confirmed, [{ type: "subscribed" }, { type: "subscribed" }])
+    assert.deepStrictEqual(third, { status: 429, body: JSON.stringify({ error: "busy" }) })
+    assert.strictEqual(anonymous.status, 401)
+    assert.strictEqual(replayed, 0)
+    assert.include(JSON.stringify(partial?.payload), "partial")
+    assert.include(JSON.stringify(final?.payload), "final")
+    assert.strictEqual(crossed, 0)
+  })
+}, 120_000)

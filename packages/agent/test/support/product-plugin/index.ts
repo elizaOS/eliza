@@ -1,5 +1,5 @@
 // spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"; spec/agent/models/binding.md, "Plugins reach the cloud only through the cloud service of a cloud backend, and a managed Google change needs the owner's consent"
-import type { Action, IAgentRuntime } from "@elizaos/core";
+import { promoteSubactionsToActions, type Action, type IAgentRuntime } from "@elizaos/core";
 import type { AgentPlugin } from "../../../src/host/module.vibe";
 import type { CloudLinkReply, CloudLinkService } from "../../../src/models/cloud-link.vibe";
 import { scheduledTasksServiceType, type ScheduledTasksApi, type TaskTrigger } from "../../../src/schedule/scheduled-task-routes.vibe";
@@ -100,6 +100,23 @@ export const scheduledProductPlugin = {
       },
     },
   ],
+} satisfies AgentPlugin;
+
+export const umbrellaActionName = "PRODUCT_MANAGE";
+export const umbrellaSubactionName = "PRODUCT_MANAGE_CREATE";
+
+const umbrellaAction: Action = {
+  name: umbrellaActionName,
+  description: "Manage the product's own records.",
+  parameters: [{ name: "action", description: "The operation to run.", required: true, schema: { type: "string", enum: ["create"] } }],
+  validate: () => Promise.resolve(true),
+  handler: () => Promise.resolve({ success: true, text: "Managed." }),
+};
+
+export const umbrellaProductPlugin = {
+  name: "umbrella-product-fixture",
+  description: "A product plugin fixture: one umbrella action whose subaction core promotes.",
+  actions: [...promoteSubactionsToActions(umbrellaAction)],
 } satisfies AgentPlugin;
 
 export default productPlugin;

@@ -1,5 +1,4 @@
 // spec/agent/tasks/store.md, "Story: Refuse task storage when custody cannot be verified"; spec/agent/tasks/store.md, "Story: Keep records a build cannot read"
-import type { InteractiveTask } from "@elizaos/core"
 import {
   admitsAccount, admitsOpen, authentic, canAcknowledgeUnreadable, canOperate, holdsLock, initial, machineOver, noRecord, readTask,
   slotAdmission, storageStatus as modelStatus,
@@ -39,6 +38,14 @@ module node {
   export interface TaskRecord {
     readonly task: InteractiveTask
     readonly events: readonly TaskEvent[]
+    readonly acknowledgedUnknown?: true
+  }
+
+  export function holdsSlot(record: TaskRecord): boolean {
+    const { status, operations } = record.task
+    if (status !== "completed" && status !== "cancelled") return true
+    return record.acknowledgedUnknown !== true
+      && operations.some((operation) => operation.status === "prepared" || operation.status === "dispatched" || operation.status === "unknown")
   }
 
   export interface TaskStatement {
@@ -248,7 +255,13 @@ module node {
       validateTaskEvent(event)
       if ((event as TaskRecord["events"][number]).taskId !== task.id) throw new ElizaError("A task event names another task", { code: "TASK_INVALID" })
     }
-    return { task, events: value.events as TaskRecord["events"] }
+    const events = value.events as TaskRecord["events"]
+    if (!("acknowledgedUnknown" in value)) return { task, events }
+    const closed = (task.status === "completed" || task.status === "cancelled") && task.operations.some((operation) => operation.status === "unknown")
+    if (value.acknowledgedUnknown !== true || !closed) {
+      throw new ElizaError("An accepted unknown outcome needs an ended task with an unknown operation", { code: "TASK_INVALID" })
+    }
+    return { task, events, acknowledgedUnknown: true }
   }
 
   export function failureReason(error: unknown): string {
@@ -265,11 +278,11 @@ module node {
   }
 }
 export {
-  decodeTaskRecord, openNodeTaskDatabase, storageKeySource,
+  decodeTaskRecord, holdsSlot, openNodeTaskDatabase, storageKeySource,
   type KeyReading, type TaskRecord, type TaskDatabase, type TaskDatabaseOpener, type TaskKeySource, type TaskStatement,
 } from node
 import {
-  decodeTaskRecord as decodeRecord, failureReason, holdRecord, insertRecord, lockIntact, openNodeTaskDatabase as nodeDatabase,
+  decodeTaskRecord as decodeRecord, failureReason, holdRecord, holdsSlot as slotHeld, insertRecord, lockIntact, openNodeTaskDatabase as nodeDatabase,
   openTaskRows, privatePath, readPayload, releaseLock, releaseRecord, retire, takeLock, updateRecord,
   type KeyReading as Reading, type LockIdentity, type TaskDatabase as Database, type TaskDatabaseOpener as Opener, type TaskKeySource as KeySource,
   type TaskRecord as TaskRecordShape, type TaskRow,
@@ -282,6 +295,7 @@ export interface TaskStoreOptions {
   readonly keys: KeySource
   readonly namespace?: string
   readonly database?: Opener
+  /** @throws {unknown} */
   readonly decode?: (text: string) => TaskRecord
   readonly now?: () => number
 }
@@ -311,10 +325,6 @@ interface Writer {
 
 const unauthenticated = "(unauthenticated)"
 const purposes = ["TaskRecord", "TaskEvidence", "OutcomeJournal"] as const
-
-function ended(task: InteractiveTask): boolean {
-  return task.status === "completed" || task.status === "cancelled"
-}
 
 function persistedHold(record: StoredTask): "readable" | "held" | "released" {
   return record.hold === "Readable" ? "readable" : record.hold === "Held" ? "held" : "released"
@@ -419,8 +429,8 @@ export effect function createTaskStore(options: TaskStoreOptions) {
 
   effect function scan(row: TaskRow, text: string, account: string) {
     if (row.hold === "released") {
-      try send({ type: "scan", taskId: row.id, decodes: false })
-      try send({ type: "acknowledgeUnreadable", taskId: row.id })
+      const scanned = (try send({ type: "scan", taskId: row.id, decodes: false })).state
+      if (canAcknowledgeUnreadable(scanned, owner, row.id)) try send({ type: "acknowledgeUnreadable", taskId: row.id })
       aside.set(row.id, { taskId: row.id, reason: row.reason ?? "", heldAt: row.heldAt ?? 0, releasedAt: row.releasedAt })
       return
     }
@@ -517,23 +527,24 @@ export effect function createTaskStore(options: TaskStoreOptions) {
         }
       }
       try statement(taskId, true, (held) => insertRecord(held.db, {
-        id: taskId, revision: record.task.revision, unfinished: !ended(record.task), at: now(),
+        id: taskId, revision: record.task.revision, unfinished: slotHeld(record), at: now(),
         payload: held.sealer.seal(JSON.stringify(record), "TaskRecord"),
       }))
       try send({ type: "createRecord", taskId })
-      if (ended(record.task)) try send({ type: "endRecord", taskId })
+      if (!slotHeld(record)) try send({ type: "endRecord", taskId })
     },
 
     effect save(record: TaskRecord) {
       const taskId = record.task.id
       if (!(try readable(taskId))) throw new NoTask({ taskId })
       const stored = (try machine.get()).records.find((entry) => entry.taskId === taskId)
-      if (stored !== undefined && !stored.unfinished && !ended(record.task)) throw new SlotTaken({ taskId })
+      const unfinished = slotHeld(record)
+      if (stored !== undefined && !stored.unfinished && unfinished) throw new SlotTaken({ taskId })
       try statement(taskId, true, (held) => updateRecord(held.db, {
-        id: taskId, revision: record.task.revision, unfinished: !ended(record.task), at: now(),
+        id: taskId, revision: record.task.revision, unfinished, at: now(),
         payload: held.sealer.seal(JSON.stringify(record), "TaskRecord"),
       }))
-      if (stored?.unfinished === true && ended(record.task)) try send({ type: "endRecord", taskId })
+      if (stored?.unfinished === true && !unfinished) try send({ type: "endRecord", taskId })
     },
 
     effect unreadable() {
