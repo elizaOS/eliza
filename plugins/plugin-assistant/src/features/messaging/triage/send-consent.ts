@@ -43,7 +43,7 @@ interface PendingSend {
 // A qualified answer is not blanket permission. Only an entire affirmative
 // answer consumes consent; questions, edits and refusals require another preview.
 const affirmative =
-  /^(?:yes|yes please|yeah|yep|ok|okay|sure|confirm|confirmed|send|send it|send the draft|go ahead|do it|proceed|approve|approved|sí|si|oui|ja|はい|确认|確認|확인)[.!。！\s]*$/iu;
+  /^(?:yes|yes,? please|yeah|yep|ok|okay|sure|confirm|confirmed|send|send it|send the draft|go ahead|do it|proceed|approve|approved|sí|si|oui|ja|はい|确认|確認|확인)[.!。！\s]*$/iu;
 
 function pendingSend(value: unknown): value is PendingSend {
   if (!value || typeof value !== "object") return false;

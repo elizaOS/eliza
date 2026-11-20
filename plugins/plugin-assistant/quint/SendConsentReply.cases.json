@@ -1,0 +1,45 @@
+{
+  "sources": [
+    "plugins/plugin-assistant/src/features/messaging/triage/send-consent.ts",
+    "plugins/plugin-assistant/src/features/messaging/triage/actions/sendDraft.ts",
+    "plugins/plugin-assistant/src/features/messaging/triage/actions/send-consent-reply-model.test.ts",
+    "plugins/plugin-assistant/src/features/messaging/triage/actions/send-consent.persistence.test.ts",
+    "plugins/plugin-assistant/quint/check-send-consent-reply.mjs"
+  ],
+  "conformance": "plugins/plugin-assistant/quint/check-send-consent-reply.mjs",
+  "bounds": "One drafted Telegram message after its preview, its first answer and at most one later reply in the same conversation. Each reply is \"yes\" followed by nothing, \"please\" or \"later\", written with or without a capital letter, with or without a comma after \"yes\" when another word follows, and ending with nothing, \".\" or \"!\": 30 written forms. The conformance script replays every generated reply sequence through sendDraftAction on a real SQLite-backed runtime with a registered message adapter, checks pendingSendDraft for each reply, counts the adapter's sends and requires all 30 first answers. The other listed affirmatives (ok, sure, send it, go ahead, other languages), questions, refusals, expiry, other actors and rooms, digest changes and one-tap affirmations are covered by send-consent.persistence.test.ts, not by this model. Under weak fairness of an answer the preview is eventually sent or cancelled. Explicit stuttering lets the user never answer, so the same claim without fairness must fail. No answer-time bound is proved.",
+  "cases": [
+    {
+      "name": "first-and-later-replies",
+      "main": "SendConsentReply",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "EntireAffirmativeSends",
+        "QualifiedAnswerCancels",
+        "SentAtMostOnce",
+        "LaterReplySendsNothing",
+        "TypeOK"
+      ],
+      "temporal": ["AnswerSettles", "AnswerSettlesWithoutFairness"],
+      "maxSteps": 3,
+      "samples": 3000,
+      "temporalChecks": [
+        {
+          "property": "AnswerSettles",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled answer eventually arrives (weak fairness). This checks that the first answer sends or cancels the previewed draft, not how long the user takes to answer."
+          ]
+        },
+        {
+          "property": "AnswerSettlesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No answer fairness is assumed. The user may never answer the preview, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}
