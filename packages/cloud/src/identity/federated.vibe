@@ -2,7 +2,7 @@
 import { methodRefusal } from "../../gen/cloud__deployment.effect.vibe"
 import {
   apply, authorizeRefusal, canBegin, canExchange, canExpireCode, canExpireNative, canIssueNative, codeRefusal, decodeState, elapse, initial, isIssued, isOpen, lateCallbackError, nativeRefusal, nativeVerdict,
-  Rejected, type AttemptStep, type AuthorizeRequest, type CodeBinding, type Event, type GoogleAttempt, type GoogleCallback, type NativeProof, type NativePurpose, type NotAState, type PkceMethod, type ReturnError, type SignInEffect
+  Rejected, type AttemptStep, type AuthorizeRequest, type CodeBinding, type Event, type GoogleAttempt, type GoogleCallback, type NativeProof, type NativePurpose, type NativeVerdict, type NotAState, type PkceMethod, type ReturnError
 } from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
 import { clientCheck, nativeGoogleCheck, nativeGoogleRefusal, type ClientRequest } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import type { FirstFactorOutcome } from "../../gen/cloud__identity__secondFactor.effect.vibe"
@@ -26,7 +26,6 @@ export interface NativePresentation {
   readonly challengeId: string
   readonly idToken: string
   readonly presenter: Presenter
-  readonly now: number
 }
 
 export interface VerifiedGoogle {
@@ -35,6 +34,8 @@ export interface VerifiedGoogle {
   readonly identity: Identity
   readonly verifiedEmail: string | undefined
   readonly givenName: string | undefined
+  readonly expiresAt: number
+  readonly verdict: NativeVerdict
 }
 
 export interface NativeChallenge {
@@ -346,33 +347,60 @@ function presenterMatches(row: Row, presenter: Presenter): Pick<NativeProof, "cl
   }
 }
 
+effect function nativeClientMatches(tx: Tx, row: Row) {
+  const redirect = parseReturn(toText(row.redirect_uri) ?? "")
+  if (redirect === undefined) return false
+  try tx.query("LOCK TABLE native_clients IN SHARE MODE")
+  const served = try servedEnvironment()
+  const registry = try readRegistry(tx)
+  const deployment = try Deployment
+  const clientId = toText(row.client_id) ?? ""
+  const registration = registry.find((entry) => entry.clientId === clientId && entry.environment === served)
+  const admitted = clientCheck(registry, served, { clientId, environment: served, redirect: { tag: "ClaimsReturn", purpose: "SignInPurpose", url: redirect } }).tag === "ClientAdmitted"
+  return admitted && registration !== undefined && nativeGoogleCheck(rowOf(deployment.profile.name, deployment.settings).signIn, registration) === "NativeGoogleOpen"
+}
+
 export effect function verifyNativeGoogle(tx: Tx, presented: NativePresentation) {
   const google = (try Deployment).settings.google
   if (google === undefined) throw new Refused({ refusal: nativeGoogleRefusal("GoogleNotOffered") })
   const row = (try tx.query("SELECT client_id, redirect_uri, challenge_digest, nonce_digest, link_user_id FROM oauth_attempts WHERE key = $1 AND route = 'native'", [presented.challengeId]))[0]
   if (row === undefined) throw new Refused({ refusal: nativeRefusal("NativeUnknown") })
-  const before = try current(tx, presented.challengeId, presented.now)
-  const token = try readIdToken(google, presented.idToken, presented.now)
+  const token = try readIdToken(google, { idToken: presented.idToken, audience: "native" })
+  const admitted = try nativeClientMatches(tx, row)
+  const now = try Clock.currentTimeMillis
+  const before = try current(tx, presented.challengeId, now)
+  const presenter = presenterMatches(row, presented.presenter)
   const proof: NativeProof = {
-    ...presenterMatches(row, presented.presenter),
-    signatureOk: token.signatureOk && token.subject !== undefined,
+    ...presenter,
+    clientMatches: presenter.clientMatches && admitted,
+    signatureOk: token.signatureOk && token.expiresAt !== undefined && now < token.expiresAt && token.subject !== undefined,
     issuerOk: token.issuerOk,
     audienceOk: token.audienceOk,
     nonceMatches: token.nonce !== undefined && sameText(tokenDigest(token.nonce), toText(row.nonce_digest) ?? "")
   }
   const verdict = nativeVerdict(before.native, before.now, proof)
-  if (verdict !== "NativeAccepted" || token.subject === undefined) throw new Refused({ refusal: nativeRefusal(verdict) })
+  if (verdict !== "NativeAccepted" || token.subject === undefined || token.expiresAt === undefined) throw new Refused({ refusal: nativeRefusal(verdict) })
   return {
     challengeId: presented.challengeId,
     proof,
     identity: { method: "GoogleSignIn", subject: token.subject },
     verifiedEmail: token.verifiedEmail,
-    givenName: token.givenName
+    givenName: token.givenName,
+    expiresAt: token.expiresAt,
+    verdict
   } satisfies VerifiedGoogle
 }
 
-export effect function spendNativeGoogle(tx: Tx, verified: VerifiedGoogle, factorOutcome: FirstFactorOutcome, now: number) {
-  return (try step(tx, verified.challengeId, { type: "presentIdToken", proof: verified.proof, factorOutcome }, now)).out.out satisfies ReadonlyArray<SignInEffect>
+export effect function spendNativeGoogle(tx: Tx, verified: VerifiedGoogle, factorOutcome: FirstFactorOutcome) {
+  const at = try Clock.currentTimeMillis
+  const before = try current(tx, verified.challengeId, at)
+  const proof = { ...verified.proof, signatureOk: verified.proof.signatureOk && at < verified.expiresAt }
+  const verdict = nativeVerdict(before.native, before.now, proof)
+  if (verdict !== "NativeAccepted") throw new Refused({ refusal: nativeRefusal(verdict) })
+  const stepped = try step(tx, verified.challengeId, { type: "presentIdToken", proof, factorOutcome }, at)
+  const spent = stepped.state.native
+  if (spent.tag !== "ChallengeUsed") throw new Refused({ refusal: nativeRefusal("NativeUnknown") })
+  return { verdict, yielded: spent.usedAs, now: at }
 }
 
 export effect function googleLinkChallenge(userId: string, request: typeof NativeBody.Type, now: number) {
@@ -381,8 +409,8 @@ export effect function googleLinkChallenge(userId: string, request: typeof Nativ
 
 export effect function googleLinkProof(input: { readonly userId: string; readonly challengeId: string; readonly idToken: string; readonly codeVerifier: string; readonly now: number }) {
   return try inTransaction(effect (tx: Tx) => {
-    const verified = try verifyNativeGoogle(tx, { challengeId: input.challengeId, idToken: input.idToken, presenter: { kind: "link", userId: input.userId, codeVerifier: input.codeVerifier }, now: input.now })
-    try spendNativeGoogle(tx, verified, "SessionStarts", input.now)
+    const verified = try verifyNativeGoogle(tx, { challengeId: input.challengeId, idToken: input.idToken, presenter: { kind: "link", userId: input.userId, codeVerifier: input.codeVerifier } })
+    try spendNativeGoogle(tx, verified, "SessionStarts")
     return { subject: verified.identity.subject, provenEmail: verified.verifiedEmail }
   })
 }

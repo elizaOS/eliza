@@ -1,5 +1,7 @@
 // spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
 import { admitRequest, type RequestAccountStatus, type CredentialView, type RouteClass } from "../../gen/cloud__identity__sessions.effect.vibe"
+import { keyRefusal } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
+import { decodeGrant, keyExpiresAt } from "../native-clients/grants.vibe"
 import { refused, Refused } from "./refusal.vibe"
 import { admit, minute } from "../shared/rate-limit.vibe"
 import { tokenDigest } from "../shared/sealing.vibe"
@@ -54,29 +56,34 @@ effect function deviceKeyCaller(token: string, routeClass: RouteClass, now: numb
   try admit({ subject: digest, scope: "device-key", limit: deviceKeyPerMinute, widthMs: minute })
   const store = try Store
   const row = (try store.transaction((tx) => tx.query(
-    "SELECT g.key, g.user_id, g.phase, g.credential_id, g.key_expires_at, g.issued_at, a.organization_id, a.status, a.devices_revoked_before FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.secret_digest = $1",
+    "SELECT g.key, g.state, g.user_id, g.credential_id, g.issued_at, a.organization_id, a.status, a.device_epoch, a.devices_revoked_before FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.secret_digest = $1",
     [digest]
   )))[0]
+  if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const grant = decodeGrant(row.state) catch effect () => { throw refused("ServiceUnavailable") }
+  const at = try Clock.currentTimeMillis
+  const reason = keyRefusal(grant, at, toInt(row.device_epoch))
+  if (reason !== "NoReason") throw refused("AuthenticationRequired", reason)
+  const expiresAt = keyExpiresAt(grant)
   try verdict({
     kind: "RequestDevice",
     found: row !== undefined,
-    live: row?.phase === "active",
-    expiresAt: toInt(row?.key_expires_at ?? 0),
+    live: true,
+    expiresAt,
     issuedAt: toInt(row?.issued_at ?? 0),
     revokedBefore: toInt(row?.devices_revoked_before ?? 0),
     accountStatus: status(row),
     authAt: 0,
     stepUpAt: 0,
     mfaAt: 0
-  }, routeClass, now)
-  if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  }, routeClass, at)
   return {
     kind: "deviceKey",
     userId: toText(row.user_id) ?? "",
     organizationId: toText(row.organization_id) ?? "",
     credentialId: toText(row.credential_id) ?? "",
     grantKey: toText(row.key) ?? "",
-    expiresAt: toInt(row.key_expires_at)
+    expiresAt
   }
 }
 

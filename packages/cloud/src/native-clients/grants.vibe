@@ -1,0 +1,80 @@
+// spec/cloud/nativeClients/deviceKeys.md, "An older active key keeps its recorded expiry, while a pending grant without its original binding must restart"; spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"
+import { ackAnswer, apply, decodeState, initial, legacyBinding, legacyGrant, NotAState, Rejected, type Event, type Grant, type GrantClient, type GrantStep, type LegacyGrantPhase } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
+import { loadRow, outputRows, stepRow, type Columns } from "../store/rows.vibe"
+import { type Tx } from "../store/connection.vibe"
+
+const NonEmpty = Schema.String.check(Schema.isMinLength(1))
+const Return = Schema.Struct({ origin: NonEmpty, path: NonEmpty })
+const Client = Schema.Struct({ clientId: NonEmpty, environment: Schema.Literals(["Production", "Staging"]), signInReturn: Return })
+const BoundClient = Schema.Struct({ tag: Schema.Literal("BoundClient"), ...Client.fields })
+const OldState = Schema.Struct({
+  credentialTtl: Schema.optionalKey(Schema.Unknown),
+  clientId: Schema.optionalKey(Schema.Unknown),
+  environment: Schema.optionalKey(Schema.Unknown),
+  signInReturn: Schema.optionalKey(Schema.Unknown),
+  client: Schema.optionalKey(Schema.Unknown)
+})
+const Legacy = Schema.Struct({ legacyDeviceGrant: Schema.Struct({
+  state: OldState,
+  phase: Schema.Literals(["code_issued", "exchanged", "active", "expired", "ended"]),
+  clientId: Schema.String,
+  credentialId: Schema.String,
+  codeExpiresAt: Schema.Int,
+  keyExpiresAt: Schema.Int,
+  epoch: Schema.Int,
+  observedAt: Schema.Int
+}) })
+const phases: Readonly<Record<(typeof Legacy.Type)["legacyDeviceGrant"]["phase"], LegacyGrantPhase>> = {
+  code_issued: "OldCodeIssued", exchanged: "OldExchanged", active: "OldActive", expired: "OldExpired", ended: "OldEnded"
+}
+
+export effect function decodeGrant(input: unknown): Grant!NotAState {
+  const old = Option.getOrUndefined(Schema.decodeUnknownOption(Legacy)(input))?.legacyDeviceGrant
+  if (old === undefined) return try decodeState(input)
+  const nested = Option.getOrUndefined(Schema.decodeUnknownOption(BoundClient)(old.state.client))
+  const flat = Option.getOrUndefined(Schema.decodeUnknownOption(Client)(old.state))
+  const flatClient: GrantClient = flat === undefined ? { tag: "UnrecordedClient" } : { tag: "BoundClient", ...flat }
+  const nestedClient: GrantClient = nested === undefined ? { tag: "UnrecordedClient" } : nested
+  const client = legacyBinding({ rowClientId: old.clientId, flat: flatClient, nested: nestedClient })
+  const credentialTtl = Option.getOrUndefined(Schema.decodeUnknownOption(Schema.Int)(old.state.credentialTtl)) ?? 0
+  return try decodeState(legacyGrant({
+    phase: phases[old.phase], client, codeExpiresAt: old.codeExpiresAt, credentialTtl,
+    credentialId: old.credentialId, keyExpiresAt: old.keyExpiresAt, epoch: old.epoch, now: old.observedAt
+  }))
+}
+
+export effect function currentGrant(grant: Grant, now: number): Grant!Rejected {
+  return now > grant.now ? (try apply(grant, { type: "elapse", elapsed: now - grant.now })).state : grant
+}
+
+effect function applyAt(grant: Grant, event: Event): GrantStep!Rejected {
+  const now = try Clock.currentTimeMillis
+  return try apply(try currentGrant(grant, now), event)
+}
+
+export const grants = outputRows("device_grants", { initial, decodeState: decodeGrant, apply: applyAt })
+
+export effect function observeGrant(tx: Tx, key: string) {
+  const loaded = try loadRow(tx, grants, key, false)
+  return try currentGrant(loaded.state, try Clock.currentTimeMillis)
+}
+
+export effect function stepGrant(tx: Tx, key: string, event: Event, columns: (grant: Grant) => Columns) {
+  return try stepRow(tx, grants, key, event, columns)
+}
+
+export function phaseColumn(grant: Grant): string {
+  return match (grant.phase.tag) {
+    when "Unissued": "ended";
+    when "CodeIssued": "code_issued";
+    when "Exchanged": "exchanged";
+    when "Active": "active";
+    when "LegacyActive": "active";
+    when "Expired": "expired";
+    when "Ended": "ended";
+  }
+}
+
+export function keyExpiresAt(grant: Grant): number {
+  return ackAnswer(grant).expiresAt
+}

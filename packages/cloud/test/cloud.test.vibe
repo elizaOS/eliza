@@ -5,7 +5,7 @@ import { drainProviderEvents, webhookPath } from "../src/billing/provider-events
 import { createStripeFake } from "./support/fakes/stripe.ts"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
-import { Store, type Tx } from "../src/store/store.vibe"
+import { migrate, Store, type Tx } from "../src/store/store.vibe"
 import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
 import type { FakeRequest } from "./support/fakes.ts"
 import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.ts"
@@ -13,7 +13,7 @@ import { periodRows } from "../src/shared/metering.vibe"
 import { tokenDigest } from "../src/shared/sealing.vibe"
 import { stepRow } from "../src/store/rows.vibe"
 import { verifyEntitlement, type PublishedKey } from "./support/entitlement.ts"
-import { decodeRegistration, disableClient, registerClient, updateClient } from "../src/native-clients/registry.vibe"
+import { decodeRegistration, disableClient, readClient, registerClient, updateClient } from "../src/native-clients/registry.vibe"
 import { seedClients } from "../src/operator/clients.vibe"
 import { deviceKey, openAccount, printed } from "./support/operator.vibe"
 import { operator } from "./support/operator.vibe"
@@ -46,6 +46,9 @@ import { matchRoute, type Route } from "../src/http/routes.vibe"
 import { areas, listening, respond } from "../src/http/server.vibe"
 import { googleIdentityFake, type GooglePerson } from "./support/google-identity-fake.ts"
 import { authenticatorCode } from "./support/authenticator.ts"
+import { manualClock } from "./support/clock.ts"
+import { testDatabaseIdentity } from "./support/profile.ts"
+import { legacyGrant } from "../gen/cloud__nativeClients__deviceKeys.effect.vibe"
 
 effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
   return match (try exit(program)) {
@@ -290,6 +293,9 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
   }
 
   it.live("Sign a device in: connect, token twice, a wrong then the right proof, then use the key (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(1_000_000))
+    provide Clock.Clock = clock.clock {
     const cloud = try testCloud()
     try seeded(cloud)
     const signed = try signedIn(cloud, "devices@example.com")
@@ -301,15 +307,43 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     const wrongState = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...tokenBody, state: "t".repeat(43) } })
     const first = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
     const again = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
-    const credential = first.body as { readonly credentialId: string; readonly secret: string; readonly tokenType: string; readonly acknowledgementRequired: boolean; readonly user: { readonly id: string } }
+    const credential = first.body as { readonly credentialId: string; readonly secret: string; readonly expiresAt: string; readonly expiresIn: number; readonly tokenType: string; readonly acknowledgementRequired: boolean; readonly user: { readonly id: string } }
     const unacknowledged = try cloud.call("/api/v1/user", { headers: bearer(credential.secret) })
+    try sync(() => clock.set(1_001_000))
+    const laterReplay = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
+    const beforeAck = try sql(cloud, "SELECT key_expires_at, sealed_copy FROM device_grants WHERE credential_id = $1", [credential.credentialId])
+    const rejectedClaims: number[] = []
+    for (const claim of [
+      { clientId: "com.example.other" }, { environment: "production" }, { redirectUri: "https://www.staging.example.com/apps/fixture/billing" }, { redirectUri: "not-a-return" },
+      { code: `emac_${"0".repeat(64)}` }, { state: "t".repeat(43) }, { codeVerifier: "w".repeat(43) }
+    ]) {
+      const rejected = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret, ...claim } })
+      rejectedClaims.push(rejected.status)
+    }
     const wrongProof = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: `eliza_mobile_${"0".repeat(64)}` } })
     const acked = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
     const ackedAgain = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
     const tokenAfterAck = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
     const me = try cloud.call("/api/v1/user", { headers: bearer(credential.secret) })
+    const deviceConnect = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(credential.secret), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256" } })
     const stored = try sql(cloud, "SELECT phase, sealed_copy, device_name, key_expires_at FROM device_grants WHERE credential_id = $1", [credential.credentialId])
     const acknowledged = acked.body as { readonly status: string; readonly credentialId: string; readonly expiresAt: string }
+    try sync(() => clock.set(1_301_001))
+    const registration = try cloud.inside(cloud.store.transaction((tx) => readClient(tx, binding.clientId)))
+    if (registration === undefined) throw new Error("the fixture registration disappeared")
+    try cloud.inside(cloud.store.transaction((tx) => disableClient(tx, binding.clientId, 1_301_001)))
+    const disabledAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
+    try cloud.inside(cloud.store.transaction((tx) => updateClient(tx, { ...registration, signInReturn: { ...registration.signInReturn, path: "/apps/fixture/replaced" } }, 1_301_001)))
+    const changedReturnAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
+    try cloud.inside(cloud.store.transaction((tx) => updateClient(tx, registration, 1_301_001)))
+    const lateAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret, ...binding, code: opened.code, state, codeVerifier: verifier } })
+    try check(() => assert.deepStrictEqual({
+      earliestExpiry: Date.parse((laterReplay.body as { readonly expiresAt: string }).expiresAt) - Date.parse(credential.expiresAt),
+      lifetime: (laterReplay.body as { readonly expiresIn: number }).expiresIn,
+      beforeAck: [Number(beforeAck[0]?.key_expires_at), typeof beforeAck[0]?.sealed_copy],
+      rejectedClaims, registryWithdrawal: [disabledAck.status, changedReturnAck.status],
+      finalExpiry: Date.parse(acknowledged.expiresAt) - Date.parse(credential.expiresAt), lateAck: [lateAck.status, lateAck.body]
+    }, { earliestExpiry: 1000, lifetime: credential.expiresIn, beforeAck: [0, "string"], rejectedClaims: [401, 401, 401, 401, 401, 401, 401], registryWithdrawal: [403, 400], finalExpiry: 1000, lateAck: [200, acked.body] }))
     try check(() => assert.deepStrictEqual(
       {
         connect: [connected.status, /^emac_[0-9a-f]{64}$/.test(opened.code), opened.codeType, opened.expiresIn],
@@ -324,6 +358,7 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
         ackedAgain: [ackedAgain.status, ackedAgain.body],
         tokenAfterAck: tokenAfterAck.status >= 400,
         me: me.status,
+        deviceConnect: deviceConnect.status,
         stored: [stored[0]?.phase, stored[0]?.sealed_copy, stored[0]?.device_name, Number(stored[0]?.key_expires_at) === Date.parse(acknowledged.expiresAt)]
       },
       {
@@ -339,20 +374,30 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
         ackedAgain: [200, acked.body],
         tokenAfterAck: true,
         me: 200,
+        deviceConnect: 401,
         stored: ["active", null, "Ada's phone", true]
       }
     ))
+    }
   }))
 
   it.live("Refuse an expired key, end this key on self-revoke, end every key on revokeAll, and sweep only stale grants (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(1_000_000))
+    provide Clock.Clock = clock.clock {
     const cloud = try testCloud()
     try seeded(cloud)
     const signed = try signedIn(cloud, "keys@example.com")
+    const registration = try cloud.inside(cloud.store.transaction((tx) => readClient(tx, binding.clientId)))
+    if (registration === undefined) throw new Error("the fixture registration disappeared")
+    try cloud.inside(cloud.store.transaction((tx) => updateClient(tx, { ...registration, credentialTtl: 86_400_000 }, 1_000_000)))
     const expiring = try device(cloud, signed.accessToken, "Expiring")
+    try cloud.inside(cloud.store.transaction((tx) => updateClient(tx, registration, 1_000_000)))
     const leaving = try device(cloud, signed.accessToken, "Leaving")
     const kept = try device(cloud, signed.accessToken, "Kept")
+    try sync(() => clock.set(87_400_001))
+    const fresh = try signedIn(cloud, "keys@example.com")
     const now = try Clock.currentTimeMillis
-    try sql(cloud, "UPDATE device_grants SET key_expires_at = $2, state = jsonb_set(state, '{keyExpiresAt}', to_jsonb($2::bigint)) WHERE credential_id = $1", [expiring.credential.credentialId, now - 1])
     const expired = try cloud.call("/api/v1/user", { headers: bearer(expiring.credential.secret) })
 
     const revoked = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(leaving.credential.secret) })
@@ -360,9 +405,9 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     const keptAfterSelfRevoke = try cloud.call("/api/v1/user", { headers: bearer(kept.credential.secret) })
     const sessionRevoke = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(signed.accessToken) })
 
-    const stale = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(signed.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256" } })
+    const stale = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(fresh.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256" } })
     const staleCode = (stale.body as { readonly code: string }).code
-    try sql(cloud, "UPDATE device_grants SET code_expires_at = $2, state = jsonb_set(state, '{codeExpiresAt}', to_jsonb($2::bigint)) WHERE code_digest = $1", [tokenDigest(staleCode), now - 1])
+    try sync(() => clock.set(87_700_002))
     provide Store = cloud.store {
       try sweepGrants()
     }
@@ -372,23 +417,86 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
 
     const ended = try cloud.store.transaction((tx) => revokeAll(tx, signed.user.id, now))
     const afterRevokeAll = try cloud.call("/api/v1/user", { headers: bearer(kept.credential.secret) })
-    const session = try cloud.call("/api/v1/user", { headers: bearer(signed.accessToken) })
+    const session = try cloud.call("/api/v1/user", { headers: bearer(fresh.accessToken) })
     try check(() => assert.deepStrictEqual(
       {
         acked: [expiring.acked.status, leaving.acked.status, kept.acked.status],
         expired: [expired.status, ...refusal(expired.body)],
-        revoked: [revoked.status, (revoked.body as { readonly status: string }).status, afterSelfRevoke.status, keptAfterSelfRevoke.status, sessionRevoke.status],
+        revoked: [revoked.status, revoked.body, afterSelfRevoke.status, keptAfterSelfRevoke.status, sessionRevoke.status],
         swept: [swept[0]?.phase === "code_issued", lateToken.status >= 400, keptAfterSweep.status],
         revokeAll: [ended, afterRevokeAll.status, ...refusal(afterRevokeAll.body), session.status]
       },
       {
         acked: [200, 200, 200],
         expired: [401, "authentication_required", "credential_expired"],
-        revoked: [200, "revoked", 401, 200, 401],
+        revoked: [204, "", 401, 200, 401],
         swept: [false, true, 200],
         revokeAll: [1, 401, "authentication_required", "credential_revoked", 200]
       }
     ))
+    const at = try Clock.currentTimeMillis
+    const expiry = at + 86_400_000
+    const legacy = ["active", "revoked", "pending", "bound", "malformed", "truncated", "nullable", "minimal", "missing-ttl", "contradictory", "other-nested", "numeric", "bound-active", "empty"]
+    try cloud.store.transaction(effect (tx: Tx) => {
+      try tx.query("DELETE FROM device_grants")
+      try tx.query("DELETE FROM schema_migrations WHERE name = '0114_device_grant_binding.sql'")
+      try tx.query("ALTER TABLE accounts DROP COLUMN device_epoch")
+      try tx.query("ALTER TABLE device_grants DROP COLUMN device_epoch")
+      try tx.query("ALTER TABLE accounts ALTER COLUMN devices_revoked_before DROP NOT NULL")
+      try tx.query("UPDATE accounts SET devices_revoked_before = $2 WHERE key = $1", [signed.user.id, at - 500])
+      try tx.query("INSERT INTO organizations (id, name, created_at) VALUES ('legacy-null-org', 'Nullable cutoff', $1)", [at])
+      try tx.query("INSERT INTO accounts (key, state, revision, organization_id, status, devices_revoked_before, created_at, updated_at) VALUES ('legacy-null-user', '{}'::jsonb, 1, 'legacy-null-org', 'active', NULL, $1, $1)", [at])
+      for (const name of legacy) {
+        const pending = ["pending", "bound", "malformed", "truncated", "missing-ttl", "contradictory", "other-nested", "numeric", "empty"].includes(name)
+        const witnessed = ["bound", "missing-ttl", "contradictory", "other-nested", "numeric", "bound-active", "empty"].includes(name)
+        const old = { phase: { tag: pending ? "Exchanged" : "Active" }, clientId: binding.clientId, credentialTtl: 86_400_000,
+          ...(witnessed ? { environment: "Staging", signInReturn: registration.signInReturn } : {}) }
+        const stored = name === "malformed" ? { ...old, environment: "Staging", signInReturn: { origin: 1, path: 2 } }
+          : name === "truncated" || name === "minimal" ? {}
+          : name === "missing-ttl" ? { clientId: binding.clientId, environment: "Staging", signInReturn: registration.signInReturn }
+          : name === "contradictory" ? { ...old, client: { tag: "BoundClient", clientId: binding.clientId, environment: "Staging", signInReturn: { ...registration.signInReturn, path: "/another-return" } } }
+          : name === "other-nested" ? { ...old, client: { tag: "BoundClient", clientId: "another.app", environment: "Staging", signInReturn: registration.signInReturn } }
+          : name === "numeric" ? { ...old, clientId: 123 } : name === "empty" ? { ...old, clientId: "" } : old
+        const id = `00000000-0000-4000-8000-${String(legacy.indexOf(name) + 1).padStart(12, "0")}`
+        const secret = `eliza_mobile_${tokenDigest(`legacy-${name}`)}`
+        try tx.query("INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, code_digest, credential_id, secret_digest, sealed_copy, code_challenge, state_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, $2::jsonb, 1, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)", [
+          `legacy-${name}`, JSON.stringify(stored), name === "nullable" ? "legacy-null-user" : signed.user.id, name === "numeric" ? "123" : name === "empty" ? "" : binding.clientId, pending ? "exchanged" : "active",
+          tokenDigest(`emac_${tokenDigest(name)}`), id, tokenDigest(secret), pending ? "old-sealed-copy" : null, s256(verifier), tokenDigest(state), at + 300_000, pending ? 0 : expiry, name === "revoked" ? at - 1000 : at - 100, at
+        ])
+      }
+    })
+    const migrated = try cloud.inside(migrate({ digest: testDatabaseIdentity, environment: "staging", now: at }))
+    const admitted: number[] = []
+    for (const name of legacy) {
+      const answer = try cloud.call("/api/v1/user", { headers: bearer(`eliza_mobile_${tokenDigest(`legacy-${name}`)}`) })
+      admitted.push(answer.status)
+    }
+    try sync(() => clock.set(at + 1000))
+    const unboundActiveAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: "00000000-0000-4000-8000-000000000001", secret: `eliza_mobile_${tokenDigest("legacy-active")}` } })
+    const pendingAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: "00000000-0000-4000-8000-000000000003", secret: `eliza_mobile_${tokenDigest("legacy-pending")}` } })
+    const boundAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: "00000000-0000-4000-8000-000000000004", secret: `eliza_mobile_${tokenDigest("legacy-bound")}` } })
+    const recoveredAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: "00000000-0000-4000-8000-000000000011", secret: `eliza_mobile_${tokenDigest("legacy-other-nested")}` } })
+    const boundActiveAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: "00000000-0000-4000-8000-000000000013", secret: `eliza_mobile_${tokenDigest("legacy-bound-active")}` } })
+    const retained = try sql(cloud, "SELECT key, phase, sealed_copy, key_expires_at, device_epoch FROM device_grants ORDER BY key", [])
+    try check(() => assert.deepStrictEqual({
+      applied: migrated.applied,
+      admitted,
+      pendingAck: pendingAck.status,
+      unboundActiveAck: unboundActiveAck.status,
+      boundAck: [boundAck.status, Date.parse((boundAck.body as { readonly expiresAt: string }).expiresAt)],
+      recoveredAck: recoveredAck.status,
+      boundActiveAck: [boundActiveAck.status, Date.parse((boundActiveAck.body as { readonly expiresAt: string }).expiresAt)],
+      rows: retained.map((row) => [row.key, row.phase, row.sealed_copy, Number(row.key_expires_at), Number(row.device_epoch)])
+    }, {
+      applied: ["0114_device_grant_binding.sql"], admitted: [200, 401, 401, 401, 401, 401, 200, 200, 401, 401, 401, 401, 200, 401], pendingAck: 401, unboundActiveAck: 401, boundAck: [200, expiry + 1000], recoveredAck: 200, boundActiveAck: [200, expiry],
+      rows: [
+        ["legacy-active", "active", null, expiry, 0], ["legacy-bound", "active", null, expiry + 1000, 0], ["legacy-bound-active", "active", null, expiry, 0], ["legacy-contradictory", "ended", null, 0, 0],
+        ["legacy-empty", "ended", null, 0, 0], ["legacy-malformed", "ended", null, 0, 0], ["legacy-minimal", "active", null, expiry, 0], ["legacy-missing-ttl", "ended", null, 0, 0],
+        ["legacy-nullable", "active", null, expiry, 0], ["legacy-numeric", "ended", null, 0, 0], ["legacy-other-nested", "active", null, expiry + 1000, 0],
+        ["legacy-pending", "ended", null, 0, 0], ["legacy-revoked", "active", null, expiry, -1], ["legacy-truncated", "ended", null, 0, 0]
+      ]
+    }))
+    }
   }))
 })
 describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/registry.md)", () => {
@@ -1437,7 +1545,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
   }
 
   function clientOf(baseUrl: string, credential: () => string): CloudClient {
-    return createCloudClient({ baseUrl, credential, fetch: (input, init) => fetch(input, init) })
+    return createCloudClient({ baseUrl, credential })
   }
 
   effect function failureOf(run: () => Promise<unknown>) {
@@ -1471,7 +1579,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
     const live = try entitledDevice(cloud, "custody", now)
     const expiring = try entitledDevice(cloud, "expiring", now)
     const ended = try entitledDevice(cloud, "ended", now)
-    try sql(cloud, "UPDATE device_grants SET key_expires_at = $2, state = jsonb_set(state, '{keyExpiresAt}', to_jsonb($2::bigint)) WHERE credential_id = $1", ["cred-expiring", now - 1])
+    try sql(cloud, "UPDATE device_grants SET key_expires_at = $2, state = jsonb_set(state, '{phase,keyExpiresAt}', to_jsonb($2::bigint)) WHERE credential_id = $1", ["cred-expiring", now - 1])
     try cloud.store.transaction((tx) => revokeAll(tx, "user-ended", now))
     let held = unknownKey
     const read: Array<string> = []
@@ -1519,6 +1627,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
 
   it.live("Send the credential the getter holds now, with the same client (spec/cloud/client.md, \"Every call reads the credential when it is sent\")", () => scoped(effect {
     const cloud = try testCloud()
+    try operator(cloud, ["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--output-per-1k", "600"])
     const now = try Clock.currentTimeMillis
     const first = try entitledDevice(cloud, "first", now)
     const second = try entitledDevice(cloud, "second", now)
@@ -1733,10 +1842,11 @@ describe("WP10 Operator and deletion: prices (spec/cloud/operator.md)", () => {
 
 effect function entitledDevice(cloud: TestCloud, name: string, now: number) {
   const token = `eliza_mobile_${tokenDigest(name)}`
+  const grant = legacyGrant({ phase: "OldActive", client: { tag: "UnrecordedClient" }, codeExpiresAt: now - 1000, credentialTtl: 0, credentialId: `cred-${name}`, keyExpiresAt: now + 24 * 3_600_000, epoch: 0, now })
   try organization(cloud, `org-${name}`)
   try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [`user-${name}`, `org-${name}`, `${name}@example.com`, now])
-  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'test-client', 'active', $3, $4, $5, $6, $5, $5)", [
-    `grant-${name}`, `user-${name}`, `cred-${name}`, tokenDigest(token), now - 1000, now + 24 * 3_600_000
+  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, $7::jsonb, 1, $2, 'test-client', 'active', $3, $4, $5, $6, $5, $5)", [
+    `grant-${name}`, `user-${name}`, `cred-${name}`, tokenDigest(token), now - 1000, now + 24 * 3_600_000, JSON.stringify(grant)
   ])
   return token
 }
