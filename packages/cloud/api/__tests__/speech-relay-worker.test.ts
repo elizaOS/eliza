@@ -135,29 +135,29 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
                 .replace(
                   upgrade,
                   `          "@elizaos/cloud-shared/lib/services/credits"
-        ).then((modules) => testDeliverSpeechImport(modules, "upgrade"));`,
+        ).then((modules) => testDeliverSpeechImport(this, modules, "upgrade"));`,
                 )
                 .replace(
                   closing,
-                  `          "@elizaos/cloud-shared/db/client"\n        ).then((modules) => testDeliverSpeechImport(modules, "closing"));`,
+                  `          "@elizaos/cloud-shared/db/client"\n        ).then((modules) => testDeliverSpeechImport(this, modules, "closing"));`,
                 )
                 .replace(
                   opening,
-                  `      ]).then((modules) => testDeliverSpeechImport(modules, "opening"));
+                  `      ]).then((modules) => testDeliverSpeechImport(this, modules, "opening"));
       this.current();
       await runWithCloudBindingsAsync`,
                 );
               contents += `
-async function testDeliverSpeechImport(modules, kind) {
-              const stats = globalThis.__speechStats ??= {};
-              if (stats[kind + "HoldImport"]) {
-                stats[kind + "HoldImport"] = false;
-                stats[kind + "ImportPending"] = true;
-                try { await new Promise(resolve => stats[kind + "ReleaseImport"] = resolve); }
-                finally { stats[kind + "ImportPending"] = false; }
+async function testDeliverSpeechImport(coordinator, modules, kind) {
+              const control = coordinator.importFixture[kind];
+              if (control.hold) {
+                control.hold = false;
+                control.pending = true;
+                try { await new Promise(resolve => control.release = resolve); }
+                finally { control.pending = false; }
               }
-              if (stats[kind + "RejectImport"]) {
-                delete stats[kind + "RejectImport"];
+              if (control.reject) {
+                delete control.reject;
                 throw Error("Controlled speech dependency delivery failure");
               }
               return modules;
@@ -1875,7 +1875,7 @@ async function deferredImportSession(kind: "upgrade" | "opening" | "closing") {
     string,
     number
   >;
-  await request("/test-hold-import", { kind });
+  const hold = () => request("/test-hold-import", { kind });
   const upgrade = () =>
     worker.dispatchFetch("https://speech-relay.internal/ws", {
       headers: { Upgrade: "websocket", "x-test-session": name },
@@ -1891,11 +1891,10 @@ async function deferredImportSession(kind: "upgrade" | "opening" | "closing") {
     waitUntil(
       async () =>
         (
-          (await (await request("/test-stats")).json()) as Record<
-            string,
-            unknown
-          >
-        )[`${kind}ImportPending`] === true,
+          (await (await request("/test-import-state", { kind })).json()) as {
+            pending: boolean;
+          }
+        ).pending,
     );
   const revoke = () =>
     request("/revoke", {
@@ -1911,6 +1910,7 @@ async function deferredImportSession(kind: "upgrade" | "opening" | "closing") {
     sessionId,
     before,
     upgrade,
+    hold,
     held,
     waitUntil,
     revoke,
@@ -1920,6 +1920,7 @@ async function deferredImportSession(kind: "upgrade" | "opening" | "closing") {
 
 test("revoke during deferred upgrade import refuses late public socket allocation", async () => {
   const f = await deferredImportSession("upgrade");
+  await f.hold();
   const upgrade = f.upgrade();
   try {
     await f.held();
@@ -1947,6 +1948,7 @@ test("revoke during deferred upgrade import refuses late public socket allocatio
 
 test("revoke joins a claimed opening across deferred imports before confirming no dispatch", async () => {
   const f = await deferredImportSession("opening");
+  await f.hold();
   const upgrade = await f.upgrade();
   expect(upgrade.status).toBe(101);
   const socket = upgrade.webSocket;
@@ -2004,11 +2006,16 @@ test("revoke joins a claimed opening across deferred imports before confirming n
 });
 
 test("failed deferred close import preserves an unconfirmed outcome and blocks a late upgrade", async () => {
+  const other = await deferredImportSession("closing");
   const f = await deferredImportSession("closing");
+  await f.hold();
   await f.request("/test-reject-import", { kind: "closing" });
   const revoke = f.revoke();
   try {
     await f.held();
+    const unrelated = await other.revoke();
+    expect(unrelated.status).toBe(200);
+    expect(await unrelated.json()).toMatchObject({ revoked: true });
     expect((await f.upgrade()).status).toBe(410);
     expect(await (await f.request("/test-ledger")).json()).toMatchObject({
       phase: "minted",
