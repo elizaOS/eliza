@@ -5789,20 +5789,20 @@ export function createCalendarActionRunner(
           String(runtime.agentId),
           explicitSubaction,
         );
-        if (scope === "builtin") {
-          // This grant contains exactly one calendar. Use the bound calendar
-          // ID even if planning supplies an alias, while rejecting any
-          // independently identified connected grant that conflicts with it.
+        const grantId = connectorGrantIdDetail(details);
+        if (scope === "builtin" || grantId === ELIZA_CALENDAR_GRANT_ID) {
+          // The built-in grant contains one calendar. Its canonical ID is known
+          // once that grant is selected, even when planning supplied an alias.
           details = {
             ...mergeCalendarSourceSelection(
-              { ...details, grantId: connectorGrantIdDetail(details) },
+              { ...details, grantId },
               { grantId: ELIZA_CALENDAR_GRANT_ID },
             ),
             calendarId: ELIZA_CALENDAR_ID,
           };
         } else if (
           scope === "explicit" &&
-          (!connectorGrantIdDetail(details) || !calendarIdDetail(details))
+          (!grantId || !calendarIdDetail(details))
         ) {
           throw new CalendarServiceError(
             400,

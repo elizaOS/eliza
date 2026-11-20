@@ -173,6 +173,60 @@ describe("Calendar operation bindings", () => {
         ),
       ).toBeNull();
   });
+  it("routes only an unqualified single built-in next-event request directly", async () => {
+    const runtime = new AgentRuntime({
+      character: { name: "Next event fixture", bio: [] },
+      logLevel: "fatal",
+    });
+    const text = "What is the next event on my built-in calendar?";
+    const message: Memory = {
+      id: stringToUuid("plain-next"),
+      agentId: runtime.agentId,
+      entityId: stringToUuid("owner"),
+      roomId: stringToUuid("room"),
+      createdAt: 1000,
+      content: { text },
+    };
+    const state = { values: {}, data: {}, text: "" };
+    const route = async (intents: string[], plainNextEvent?: true) => {
+      const binding: CalendarReadBinding = {
+        intentId: "intent:1",
+        operation: "next_event",
+        execution: "required",
+        source: "builtin",
+        ...(plainNextEvent ? { plainNextEvent } : {}),
+        sourceMessageId: String(message.id),
+        actorId: message.entityId,
+        roomId: message.roomId,
+        requestedAt: 1000,
+      };
+      const handler: MessageHandlerResult = {
+        processMessage: "RESPOND",
+        thought: "",
+        plan: {
+          contexts: ["calendar"],
+          intents,
+          calendarReadBindings: [binding],
+        },
+      };
+      await runResponseHandlerEvaluators({
+        runtime,
+        message,
+        state,
+        messageHandler: handler,
+        availableContexts: [],
+        userRoles: ["OWNER"],
+        evaluators: [calendarReadBindingEvaluator],
+      });
+      return handler.plan.deterministicToolCall;
+    };
+    expect(await route([text], true)).toEqual({
+      name: "CALENDAR_NEXT_EVENT",
+      params: { grantId: "eliza-calendar", calendarId: "primary" },
+    });
+    expect(await route([text])).toBeUndefined();
+    expect(await route([text, "Send it to my coworker"], true)).toBeUndefined();
+  });
   it.each([
     { intentId: "intent:1", execution: "required", bound: true },
     { intentId: "intent:1", execution: "conditional", bound: true },

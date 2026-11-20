@@ -281,6 +281,19 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
       expect(conflict.success).toBe(false);
       expect(googleAccounts).not.toHaveBeenCalled();
     });
+    const singleCalendar = await execute(
+      { grantId: "eliza-calendar", calendarId: "eliza-calendar-primary" },
+      "next_event",
+    );
+    expect(singleCalendar.success).toBe(true);
+    expect(singleCalendar.data?.calendarSources).toEqual([
+      expect.objectContaining({
+        key: expect.objectContaining({
+          grantId: "eliza-calendar",
+          calendarId: "primary",
+        }),
+      }),
+    ]);
     googleAccounts.mockRestore();
     input.content.text = "Read my phone Calendar";
     appleTesting.setNativeCalendarBridgeForTest({

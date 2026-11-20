@@ -197,7 +197,7 @@ export function calendarAvailabilityActions(
             "The selected source disagrees with the requested built-in Calendar.",
           );
         const selectedSource =
-          scope === "builtin"
+          scope === "builtin" || grantId === ELIZA_CALENDAR_GRANT_ID
             ? {
                 grantId: ELIZA_CALENDAR_GRANT_ID,
                 calendarId: ELIZA_CALENDAR_ID,
