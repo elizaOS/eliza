@@ -11,6 +11,8 @@ import {
   directBrowserSearchQuery,
   groundBrowserDestination,
   groundBrowserSearchQuery,
+  spokenBrowserDestination,
+  spokenBrowserOpen,
 } from "./browser-request-grounding.ts";
 import { IANA_TLDS } from "./iana-tlds.ts";
 
@@ -879,7 +881,10 @@ describe("strict open command with where the address opens", () => {
   it("grounds the spoken hostname without substituting a different destination", () => {
     const text = "Open alphacompute dot ai in the browser.";
     const url = "https://alphacompute.ai/";
-    expect(authoredBrowserOpen(text)).toEqual({ href: url, newTab: false });
+    // Only a reviewed proposal: never the strict command or a direct request.
+    expect(authoredBrowserOpen(text)).toBeUndefined();
+    expect(directBrowserOpen(text)).toBeUndefined();
+    expect(spokenBrowserDestination(text)).toBe(url);
     expect(groundBrowserDestination(text, url)).toBe(url);
     expect(
       groundBrowserDestination(text, "https://alphacompute.com/"),
@@ -909,7 +914,11 @@ describe("strict open command with where the address opens", () => {
   ])("keeps %s as one complete destination", (spoken, host) => {
     const text = `Open ${spoken} in a new tab.`;
     const href = `https://${host}/`;
-    expect(authoredBrowserOpen(text)).toEqual({ href, newTab: true });
+    expect(authoredBrowserOpen(text)).toBeUndefined();
+    expect(directBrowserOpen(text)).toBeUndefined();
+    expect(spokenBrowserDestination(text)).toBe(href);
+    // The new-tab placement is read for the reviewed open too.
+    expect(spokenBrowserOpen(text)).toEqual({ href, newTab: true });
     expect(groundBrowserDestination(text, href)).toBe(href);
     expect(
       groundBrowserDestination(text, "https://example.com/"),
@@ -925,10 +934,91 @@ describe("strict open command with where the address opens", () => {
     "Not dot dot com.",
   ])("keeps the opening words outside the spoken hostname in %s", (refusal) => {
     const href = "https://dot.com/";
-    expect(authoredBrowserDestination("Open dot dot com.")).toBe(href);
+    expect(spokenBrowserDestination("Open dot dot com.")).toBe(href);
     expect(
       groundBrowserDestination(`Open dot.com. ${refusal}`, href),
     ).toBeUndefined();
+  });
+  it.each([
+    "Open example dot com",
+    "open example dot com.",
+    "Hey Eliza, open example dot com please",
+    "can you open example dot com?",
+    "pull up example dot com",
+  ])("grounds the spoken %s only as a reviewed proposal", (text) => {
+    const href = "https://example.com/";
+    expect(authoredBrowserDestination(text)).toBeUndefined();
+    expect(directBrowserDestination(text)).toBeUndefined();
+    expect(spokenBrowserDestination(text)).toBe(href);
+    expect(groundBrowserDestination(text, "example.com")).toBe(href);
+    // The phone and the service run only a direct request without a review.
+    expect(
+      browserDestinationMatches(
+        { type: "browser_navigate", url: href },
+        directBrowserDestination(text),
+      ),
+    ).toBe(false);
+  });
+  it.each([
+    // [message, the spoken hostname it may ground, a proposal it never grounds]
+    ["Open the Dot app", undefined, "https://the.app/"],
+    ["open my dot app please", undefined, "https://my.app/"],
+    ["Go to the dot com", undefined, "https://the.com/"],
+    ["Visit the dot site", undefined, "https://the.site/"],
+    ["Open this dot com in the browser", undefined, "https://this.com/"],
+    ["Open main dot py", undefined, "https://main.py/"],
+    ["Open readme dot md", undefined, "https://readme.md/"],
+    ["can you open notes dot app?", undefined, "https://notes.app/"],
+    ["Show me the polka dot shoes", undefined, "https://polka.shoes/"],
+    // A real top-level domain still names a hostname, for a reviewed open.
+    ["Show me polka dot shoes", "https://polka.shoes/", undefined],
+    // An open command placing a file-like name in the browser or a new tab, or
+    // a question saying website right after it, makes it a site.
+    ["Open main dot py in the browser", "https://main.py/", undefined],
+    ["Open readme dot md in a new tab", "https://readme.md/", undefined],
+    ["can you open notes dot app website", "https://notes.app/", undefined],
+    // A question that only names the browser or a new tab does not.
+    [
+      "can you open notes dot app in the browser?",
+      undefined,
+      "https://notes.app/",
+    ],
+    ["can you open main dot py in a new tab?", undefined, "https://main.py/"],
+  ])("never opens the phrase %s without a review", (text, spoken, refused) => {
+    expect(authoredBrowserOpen(text)).toBeUndefined();
+    expect(directBrowserOpen(text)).toBeUndefined();
+    expect(spokenBrowserDestination(text)).toBe(spoken);
+    if (refused)
+      expect(groundBrowserDestination(text, refused)).toBeUndefined();
+  });
+  it.each([
+    // A spoken word after a typed host never hides the refusal of that host.
+    ["Open x.com. Actually, don't open x.com dot dot dot.", "https://x.com/"],
+    [
+      "Open youtube.com. No wait, do not open youtube.com dot ever",
+      "https://youtube.com/",
+    ],
+  ])("keeps the refusal in %s", (text, href) => {
+    expect(groundBrowserDestination(text, href)).toBeUndefined();
+  });
+  it.each([
+    // A spoken word that makes no longer address leaves a typed host typed.
+    ["Open youtube.com dot ever", "https://youtube.com/"],
+    ["Visit example.com, dot your i's", "https://example.com/"],
+  ])("grounds the typed host in %s", (text, href) => {
+    expect(groundBrowserDestination(text, href)).toBe(href);
+    expect(containsWebAddress(text)).toBe(true);
+  });
+  it("reads spoken labels after a typed host as one longer hostname", () => {
+    const text = "open google.com dot au";
+    expect(
+      groundBrowserDestination(text, "https://google.com/"),
+    ).toBeUndefined();
+    expect(groundBrowserDestination(text, "https://google.com.au/")).toBe(
+      "https://google.com.au/",
+    );
+    // The owner still typed an address, for the reply copy.
+    expect(containsWebAddress(text)).toBe(true);
   });
   it.each([
     // A private tab, another app, a time or more work stays the model's call.

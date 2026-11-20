@@ -77,6 +77,7 @@ import {
   directBrowserSearchQuery,
   groundBrowserDestination,
   groundBrowserSearchQuery,
+  spokenBrowserOpen,
 } from "./browser-request-grounding.ts";
 import type { CalendarFields } from "./calendar-contract.ts";
 import {
@@ -2449,12 +2450,16 @@ export class DeviceActionService {
       const turn = getDeviceActionTurn();
       const requested =
         turn?.runtime === this.runtime ? turn.replyContext?.message : undefined;
-      const opened = requested
-        ? directBrowserOpen(
-            extractUserText(unwrapUserMessageText(requested)),
-            this.runtime.character.name,
-          )
+      const text = requested
+        ? extractUserText(unwrapUserMessageText(requested))
         : undefined;
+      // A spoken hostname ("open example dot com in a new tab") is placed the
+      // same way. That open stays reviewed: it is never a direct request.
+      const opened =
+        text === undefined
+          ? undefined
+          : (directBrowserOpen(text, this.runtime.character.name) ??
+            spokenBrowserOpen(text, this.runtime.character.name));
       if (opened?.newTab)
         validated = {
           type: "browser_navigate",
