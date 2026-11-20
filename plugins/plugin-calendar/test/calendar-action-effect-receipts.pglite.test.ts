@@ -10,6 +10,7 @@ import {
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
+  runWithStreamingContext,
 } from "@elizaos/core";
 import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 import { sql } from "drizzle-orm";
@@ -36,6 +37,7 @@ import { createCalendarActionRunner } from "../src/actions/calendar-handler.js";
 import type { CalendarActionDeps } from "../src/actions/deps.js";
 import { __testing as appleTesting } from "../src/apple-calendar.ts";
 import { calendarPlugin } from "../src/plugin.ts";
+import { calendarReadBindingField } from "../src/read-binding.js";
 import {
   type CalendarHostGate,
   CalendarService,
@@ -198,6 +200,65 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
           } as never)
         : services(name),
     );
+    input.content.text =
+      "Check only my built-in Eliza calendar. What is my next event?";
+    input.createdAt = Date.now();
+    const googleAccounts = vi.spyOn(calendar, "discoverCalendars");
+    const signal = new AbortController().signal;
+    await runWithStreamingContext({ abortSignal: signal }, async () => {
+      const context = {
+        runtime,
+        message: input,
+        state: { values: {}, data: {}, text: "" },
+        senderRole: "OWNER" as const,
+        turnSignal: signal,
+      };
+      const bindings = calendarReadBindingField.parse?.(
+        [
+          {
+            intentId: "intent:1",
+            operation: "next_event",
+            execution: "required",
+            purpose: "requested_read",
+            filterEvidence: [],
+            source: "builtin",
+          },
+        ],
+        context,
+      );
+      expect(bindings ?? []).toHaveLength(1);
+      const parsed = { intents: [input.content.text] };
+      const effect = await calendarReadBindingField.handle({
+        ...context,
+        parsed,
+        value: bindings ?? [],
+      });
+      effect?.mutateResult?.(parsed);
+      const result = await execute({}, "next_event");
+      expect(result.success).toBe(true);
+      expect(googleAccounts).toHaveBeenCalledExactlyOnceWith(
+        expect.any(URL),
+        expect.objectContaining({ grantId: "eliza-calendar" }),
+        expect.anything(),
+      );
+      expect(result.data?.calendarSources).toEqual([
+        expect.objectContaining({
+          key: expect.objectContaining({
+            grantId: "eliza-calendar",
+            calendarId: "primary",
+          }),
+        }),
+      ]);
+      googleAccounts.mockClear();
+      const conflict = await execute(
+        { grantId: googleGrant.id, calendarId: "primary" },
+        "next_event",
+      );
+      expect(conflict.success).toBe(false);
+      expect(googleAccounts).not.toHaveBeenCalled();
+    });
+    googleAccounts.mockRestore();
+    input.content.text = "Read my phone Calendar";
     appleTesting.setNativeCalendarBridgeForTest({
       platform: "fixture",
       checkPermissions: async () => ({

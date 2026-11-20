@@ -19,7 +19,10 @@ import {
   STATED_CLOCK_MENTION_SOURCE,
   WEEKDAY_NAME_PATTERN,
 } from "../internal/request-time.js";
-import { calendarSearchFiltersAreBound } from "../search-filter-evidence.js";
+import {
+  boundNextEventSource,
+  calendarSearchFiltersAreBound,
+} from "../search-filter-evidence.js";
 import {
   type CalendarUserSource,
   calendarCreateAuthorityProperties,
@@ -5768,10 +5771,34 @@ export function createCalendarActionRunner(
         params.calendarId === ""
           ? { grantId: undefined, calendarId: undefined }
           : params;
-      const details = mergeCalendarSourceSelection(
+      let details = mergeCalendarSourceSelection(
         normalizedDetails,
         sourceSelection,
       );
+      // Apply the Stage 1 source constraint before the native/managed guard.
+      // An aggregate request still uses the selected feed by default.
+      if (normalizeCalendarSubaction(params.subaction) === "next_event") {
+        const scope = boundNextEventSource(
+          getStreamingContext()?.actionConstraints,
+          message,
+          String(runtime.agentId),
+        );
+        if (scope === "builtin") {
+          details = mergeCalendarSourceSelection(details, {
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+          });
+        } else if (
+          scope === "explicit" &&
+          (!connectorGrantIdDetail(details) || !calendarIdDetail(details))
+        ) {
+          throw new CalendarServiceError(
+            400,
+            "Supply an exact source for each requested next-event read.",
+            "CALENDAR_SOURCE_REQUIRED",
+          );
+        }
+      }
       const nativeGrantId = nativeCalendarFailure
         ? connectorGrantIdDetail(details)
         : undefined;

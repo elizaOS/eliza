@@ -16,6 +16,7 @@ type Message = {
 export type FilterEvidence = CalendarReadFilterEvidence;
 type ReadBinding = {
   operation: string;
+  source?: CalendarReadBinding["source"];
   filterEvidence?: readonly FilterEvidence[];
   intentId?: string;
   execution?: CalendarReadBinding["execution"];
@@ -172,6 +173,22 @@ function currentReadBindings(
   )
     return undefined;
   return owned.bindings;
+}
+
+/** An omitted tool selector must never broaden a bound built-in read.
+ * A compound request for different sources must pass explicit selectors. */
+export function boundNextEventSource(
+  turn: object | undefined,
+  current: Message,
+  agentId: string,
+): "builtin" | "explicit" | undefined {
+  const reads = currentReadBindings(turn, current, agentId)?.filter(
+    (binding) => binding.operation === "next_event",
+  );
+  if (!reads?.some((binding) => binding.source === "builtin")) return;
+  return reads.every((binding) => binding.source === "builtin")
+    ? "builtin"
+    : "explicit";
 }
 
 /** Planning-only prerequisites from this exact live request, never read-completion evidence. */
