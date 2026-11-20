@@ -839,7 +839,11 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  private BelowHostInputRouter tabInputRouter;
  /** Below-host tabs use the same gesture router as BrowserSurfacePlugin. */
  private BelowHostInputRouter ensureTabInputRouter() {
-  if(tabInputRouter==null)tabInputRouter=new BelowHostInputRouter(getActivity(),()->{
+  if(tabInputRouter==null)tabInputRouter=new BelowHostInputRouter(getActivity(),frame->{
+   if(frame==null)return getBridge().getWebView();
+   for(Tab tab:tabs.values())if(tab.frame==frame)return tab.web;
+   return null;
+  },()->{
    ArrayList<OccludingSurfaceLayout> shown=new ArrayList<>();
    if(!paused&&!destroyed)for(Tab tab:tabs.values())
     if(!tab.dead&&Objects.equals(presentedId,tab.id)&&tab.frame.getLayer()==SurfaceLayer.BELOW_HOST&&tab.frame.isShown())shown.add(tab.frame);
