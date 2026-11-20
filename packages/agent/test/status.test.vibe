@@ -57,7 +57,7 @@ it('A blocked account cannot respond and status reports the last cloud failure w
   const limited = { tag: "LimitReached", retryAt: 50 } as const
   const binding: BindingState = { accountState: { tag: "Failing", failure: limited }, lastCloudFailure: { tag: "CloudFailedAt", failure: limited, at: 40 } }
   const read = async (now: number) => {
-    const answer = await view(binding, now).handler({ parameters: new Map(), query: new Map(), body: undefined, signal: new AbortController().signal })
+    const answer = await view(binding, now).handler({ parameters: new Map(), query: new Map(), headers: new Map(), body: undefined, signal: new AbortController().signal })
     const { canRespond, blocked, lastCloudFailure } = (answer as { body: Record<string, unknown> }).body
     return { canRespond, blocked, lastCloudFailure }
   }

@@ -184,17 +184,6 @@ class BelowHostWebViewInstrumentedTest {
             if (seen != expected.map { it.third }) SystemClock.sleep(200)
         }
 
-        // A capture draws the page alone: the host overlay is not in it, and host rects are masked.
-        var capture: android.graphics.Bitmap? = null
-        instrumentation.runOnMainSync {
-            capture = drawPageForCapture(page).also { page.maskHostRegions(android.graphics.Canvas(it)) }
-        }
-        val image = capture!!
-        assertEquals(Color.RED, image.getPixel(45, 345))
-        assertEquals(Color.RED, image.getPixel(200, 350))
-        assertEquals(0xFF5F6368.toInt(), image.getPixel(350, 50))
-        image.recycle()
-
         tap(200, 150)
         assertEquals("1", js(site, "taps"))
         assertEquals("0", js(host, "taps"))

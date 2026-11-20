@@ -35,6 +35,7 @@ module node {
   import { availableParallelism } from "node:os"
   import { join } from "node:path"
   import { fileURLToPath } from "node:url"
+  import { inflateRawSync } from "node:zlib"
 
   export type Listing =
     | { readonly kind: "files"; readonly files: readonly string[] }
@@ -76,6 +77,37 @@ module node {
   }
 
   /** @throws {never} */
+  export function zipEntry(archive: Uint8Array, name: string): Uint8Array | undefined {
+    const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength)
+    let end = archive.length - 22
+    while (end >= 0 && view.getUint32(end, true) !== 0x06054b50) end--
+    if (end < 0) return undefined
+    let entry = view.getUint32(end + 16, true)
+    for (let index = 0; index < view.getUint16(end + 10, true); index++) {
+      if (entry + 46 > archive.length || view.getUint32(entry, true) !== 0x02014b50) return undefined
+      const nameLength = view.getUint16(entry + 28, true)
+      const next = entry + 46 + nameLength + view.getUint16(entry + 30, true) + view.getUint16(entry + 32, true)
+      if (new TextDecoder().decode(archive.subarray(entry + 46, entry + 46 + nameLength)) === name) {
+        const method = view.getUint16(entry + 10, true)
+        const size = view.getUint32(entry + 20, true)
+        const local = view.getUint32(entry + 42, true)
+        if (local + 30 > archive.length || view.getUint32(local, true) !== 0x04034b50) return undefined
+        const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true)
+        if (start + size > archive.length) return undefined
+        const data = archive.subarray(start, start + size)
+        try {
+          const bytes = method === 0 ? data : method === 8 ? new Uint8Array(inflateRawSync(data)) : undefined
+          return bytes !== undefined && bytes.length === view.getUint32(entry + 24, true) ? bytes : undefined
+        } catch {
+          return undefined
+        }
+      }
+      entry = next
+    }
+    return undefined
+  }
+
+  /** @throws {never} */
   export function isElfFor(bytes: Uint8Array, abi: ElfAbi): boolean {
     return header(bytes, abi) !== undefined
   }
@@ -99,7 +131,7 @@ module node {
     return false
   }
 }
-import { cpuCount, filePath, isAndroidExecutable, isElfFor, listRegularFiles, sha256Hex, type Listing } from node
+import { cpuCount, filePath, isAndroidExecutable, isElfFor, listRegularFiles, sha256Hex, zipEntry, type Listing } from node
 
 export type { AndroidAbi }
 
@@ -175,7 +207,7 @@ export const INVENTORY_ASSET = "assets/agent/inventory.json"
 export const WORKER_RUNTIME_DIR = "agent/workflow-worker"
 
 const ANDROID_MAIN = "android/app/src/main"
-const INFERENCE_LIBRARY = /^(?:lib(?:llama|llama-common|ggml|mtmd|eliza-llama|elizainference)[^/]*\.so(?:\.\d[^/]*)?|llama-server|llama-omnivoice-server)$/
+export const INFERENCE_LIBRARY = /^(?:lib(?:llama|llama-common|ggml|mtmd|eliza-llama|elizainference)[^/]*\.so(?:\.\d[^/]*)?|llama-server|llama-omnivoice-server)$/
 const LIBRARY_NAME = /^lib[A-Za-z0-9_.+-]+\.so$/
 const ASSET_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/
 const CONFIGURE_ARCH: Readonly<Record<AndroidAbi, string>> = { "arm64-v8a": "arm64", x86_64: "x86_64" }
@@ -265,7 +297,8 @@ effect function builtRuntime(dir: string) {
 }
 
 effect function fetchedRuntime(lock: NodeLock, abi: AndroidAbi, url: string) {
-  const bytes = try download(url)
+  const bytes = zipEntry(try download(url), nodeLibraryName)
+  if (bytes === undefined) throw new RuntimeFetchFailed({ url, message: `The release archive carries no readable ${nodeLibraryName}` })
   const runtime: Runtime = {
     abi,
     bytes,

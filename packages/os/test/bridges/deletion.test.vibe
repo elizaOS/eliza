@@ -1,0 +1,325 @@
+// spec/os/android/deletionWindow.md, "Story: Undo a reviewed deletion before it is sent"; spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"; spec/os/android/reset.md, "Story: Erase the app's data only after I confirm"
+import { assert, it } from "@effect/vitest"
+import { MalformedReply } from "../../src/bridges/bridge.vibe"
+import {
+  DELETION_NOTICE_TEXT,
+  DeletionClockUnavailable,
+  UNDO_TOO_LATE,
+  claimDeletion,
+  deletionNoticeOf,
+  deletionNoticeSignature,
+  deletionReviewRefusal,
+  deletionWindow,
+  pendingDeletionNotices,
+  reminderDeletionRefusal,
+  reviewDeadline,
+} from "../../src/bridges/deletion-window.vibe"
+import { InvalidJournalRequest, createActionJournalClient, createDeferredDeletions, nextStep } from "../../src/bridges/action-journal.vibe"
+import { DATA_RESET_UNCONFIRMED, reviewDataReset } from "../../src/bridges/reset.vibe"
+import type { DeletionClock } from "../../src/bridges/deletion-window.vibe"
+
+module android {
+  import { claimDeletion, deletionDeadline } from "../../gen/os__android__deletionWindow.effect.vibe"
+  import type { DeletionClock, DeletionPhase, PendingDeletion } from "../../gen/os__android__deletionWindow.ts"
+  import type { ActionJournalPlugin, DeletionRecordKind } from "../../src/bridges/definitions/action-journal.ts"
+
+  const WIRE: Readonly<Record<DeletionPhase, string>> = {
+    Queued: "queued",
+    Paused: "paused",
+    Dispatching: "dispatching",
+    Undone: "undone",
+    Deleted: "deleted",
+    DeletionConflict: "conflict",
+    UnknownOutcome: "unknown",
+  }
+
+  interface Staged {
+    kind: DeletionRecordKind
+    id: string
+    title: string
+    entry: PendingDeletion
+    receiptDismissed: boolean
+  }
+
+  export interface Device {
+    owner: string
+    clock: DeletionClock
+    staged: Staged[]
+    journal: Map<string, Record<string, unknown>>
+    pendingReply: unknown
+    undoRejects: boolean
+    dismissReply: unknown
+    calls: string[]
+  }
+
+  /** @throws {never} */
+  export function device(): Device {
+    return { owner: "owner-1", clock: { continuity: "boot-1", elapsed: 5_000, wall: 1_800_000_000_000 }, staged: [], journal: new Map(), pendingReply: undefined, undoRejects: false, dismissReply: undefined, calls: [] }
+  }
+
+  /** @throws {never} */
+  export function stage(phone: Device, kind: DeletionRecordKind, id: string, title: string): void {
+    phone.staged.push({ kind, id, title, entry: { owner: phone.owner, deadline: deletionDeadline(phone.clock), deletionPhase: "Queued" }, receiptDismissed: false })
+  }
+
+  /** @throws {never} */
+  export function elapse(phone: Device, ms: number): void {
+    phone.clock = { ...phone.clock, elapsed: phone.clock.elapsed + ms, wall: phone.clock.wall + ms }
+    for (const row of phone.staged) {
+      const claim = claimDeletion(row.entry, phone.owner, phone.clock, "ClaimDispatch")
+      if (claim.won) row.entry = { ...claim.claimed, deletionPhase: row.id.startsWith("lost") ? "UnknownOutcome" : "Deleted" }
+    }
+  }
+
+  /** @throws {never} */
+  function windowOf(row: Staged, clock: DeletionClock): string {
+    if (clock.continuity !== row.entry.deadline.deadlineContinuity) return "clock-changed"
+    return clock.elapsed < row.entry.deadline.expiresElapsed ? "open" : "expired"
+  }
+
+  /** @throws {never} */
+  export function androidJournal(phone: Device): ActionJournalPlugin {
+    const find = (kind: string, id: string) => phone.staged.find((row) => row.kind === kind && row.id === id)
+    const keyOf = (input: { scope: string; proposalId: string }) => `${input.scope}/${input.proposalId}`
+    return {
+      reserve: async (input) => {
+        phone.calls.push("reserve")
+        const known = phone.journal.get(keyOf(input))
+        if (known !== undefined) return { created: false, entry: known }
+        const entry = { ...input, phase: "reserved", createdAt: phone.clock.wall }
+        phone.journal.set(keyOf(input), entry)
+        return { created: true, entry }
+      },
+      markApplying: async (input) => {
+        phone.calls.push("markApplying")
+        const entry = { ...phone.journal.get(keyOf(input)), phase: "applying", attemptId: input.attemptId, applyingAt: phone.clock.wall }
+        phone.journal.set(keyOf(input), entry)
+        return { entry }
+      },
+      finish: async (input) => {
+        phone.calls.push("finish")
+        const { scope, proposalId, ...outcome } = input
+        const entry = { ...phone.journal.get(keyOf(input)), ...outcome, phase: "terminal", finishedAt: phone.clock.wall }
+        phone.journal.set(keyOf({ scope, proposalId }), entry)
+        return { entry }
+      },
+      get: async (input) => ({ entry: phone.journal.get(keyOf(input)) ?? null }),
+      list: async ({ scope }) => ({ entries: [...phone.journal.values()].filter((entry) => entry.scope === scope) }),
+      pending: async () => {
+        if (phone.pendingReply !== undefined) return phone.pendingReply
+        return {
+          pending: phone.staged.filter((row) => !row.receiptDismissed).map((row) => ({
+            id: row.id,
+            kind: row.kind,
+            phase: WIRE[row.entry.deletionPhase],
+            window: windowOf(row, phone.clock),
+            expiresAt: row.entry.deadline.expiresAt,
+            target: { row: { title: row.title } },
+          })),
+          deletedNoteOrigins: phone.staged.filter((row) => row.entry.deletionPhase === "Deleted").map((row) => ({ kind: row.kind === "calendar" ? "event" : "reminder", id: row.id })),
+        }
+      },
+      undo: async ({ kind, id }) => {
+        phone.calls.push(`undo ${kind}:${id}`)
+        if (phone.undoRejects) throw new Error("bridge lost")
+        const row = find(kind, id)
+        if (row === undefined) return { phase: "unknown" }
+        const claim = claimDeletion(row.entry, phone.owner, phone.clock, "ClaimUndo")
+        row.entry = claim.claimed
+        return { phase: WIRE[row.entry.deletionPhase] }
+      },
+      dismiss: async ({ kind, id }) => {
+        phone.calls.push(`dismiss ${kind}:${id}`)
+        if (phone.dismissReply !== undefined) return phone.dismissReply
+        const row = find(kind, id)
+        if (row === undefined || row.entry.deletionPhase !== "UnknownOutcome") return { status: "refused" }
+        row.receiptDismissed = true
+        return { status: "acknowledged" }
+      },
+    }
+  }
+}
+import { androidJournal, device, elapse, stage } from android
+
+effect function refusal(call: () => Promise<unknown>) {
+  const { cause } = try flip(tryPromise(() => call()))
+  if (cause instanceof InvalidJournalRequest) return `invalid ${cause.problem}`
+  if (cause instanceof MalformedReply) return `malformed ${cause.method}`
+  if (cause instanceof Error) return `rejected ${cause.message}`
+  return cause
+}
+
+const scope = "a".repeat(64)
+const hash = "b".repeat(64)
+
+it.live("A reviewed deletion keeps Undo for ten seconds on its review clock, and Undo and the provider have one winner (spec/os/android/deletionWindow.md, \"Story: Undo a reviewed deletion before it is sent\"; spec/os/android/deletionWindow.md, \"The notice offers Undo only while Undo can still win, and never for an uncertain outcome\")", () => effect {
+  const clock: DeletionClock = { continuity: "boot-1", elapsed: 1_000, wall: 1_800_000_000_000 }
+  const deadline = try reviewDeadline(clock)
+  const later = (ms: number): DeletionClock => ({ ...clock, elapsed: clock.elapsed + ms, wall: clock.wall - 60_000 })
+  const unusable = try flip(reviewDeadline({ ...clock, continuity: "" }))
+  const fractional = try flip(reviewDeadline({ ...clock, elapsed: 1.5 }))
+  const windows = {
+    open: deletionWindow(deadline, later(9_999)),
+    expired: deletionWindow(deadline, later(10_000)),
+    rebooted: deletionWindow(deadline, { ...clock, continuity: "boot-2" }),
+    backwards: deletionWindow(deadline, later(-1)),
+  }
+  const queued = { owner: "owner-1", deadline, deletionPhase: "Queued" as const }
+  const undone = claimDeletion(queued, "owner-1", later(4_000), "ClaimUndo")
+  const dispatchAfterUndo = claimDeletion(undone.claimed, "owner-1", later(20_000), "ClaimDispatch")
+  const earlyDispatch = claimDeletion(queued, "owner-1", later(4_000), "ClaimDispatch")
+  const dispatched = claimDeletion(queued, "owner-1", later(10_000), "ClaimDispatch")
+  const undoAfterDispatch = claimDeletion(dispatched.claimed, "owner-1", later(10_001), "ClaimUndo")
+  const stranger = claimDeletion(queued, "owner-2", later(1_000), "ClaimUndo")
+  const changedClock = claimDeletion(queued, "owner-1", { ...clock, continuity: "boot-2" }, "ClaimUndo")
+
+  const row = (phase: "Queued" | "Paused" | "Dispatching" | "Undone" | "UnknownOutcome", window: "WindowOpen" | "WindowExpired" | "ClockChanged", id: string) =>
+    ({ kind: "CalendarEvent" as const, id, phase, window, hold: "NotHeld" as const, expiresAt: deadline.expiresAt, title: id === "untitled" ? null : `Event ${id}` })
+  const rows = [row("Queued", "WindowOpen", "a"), row("Queued", "WindowExpired", "b"), row("Queued", "ClockChanged", "c"), row("Paused", "WindowExpired", "d"), row("Dispatching", "WindowExpired", "e"), row("UnknownOutcome", "WindowExpired", "untitled"), row("Undone", "WindowOpen", "g")]
+  const notices = rows.map(deletionNoticeOf)
+  const shown = pendingDeletionNotices(rows).map((one) => one.id)
+
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      deadline, unusable: unusable instanceof DeletionClockUnavailable, fractional: fractional instanceof DeletionClockUnavailable, windows,
+      claims: [undone.won, dispatchAfterUndo.won, earlyDispatch.won, dispatched.won, undoAfterDispatch.won, stranger.won, changedClock.won],
+      phases: [undone.claimed.deletionPhase, dispatched.claimed.deletionPhase],
+      notices, shown, signature: deletionNoticeSignature(rows.slice(0, 2)),
+      refusals: [deletionReviewRefusal("stale"), deletionReviewRefusal("not-staged"), deletionReviewRefusal("staged"), reminderDeletionRefusal("stale"), reminderDeletionRefusal("not-staged")],
+    },
+    {
+      deadline: { deadlineContinuity: "boot-1", createdElapsed: 1_000, expiresElapsed: 11_000, expiresAt: 1_800_000_010_000 },
+      unusable: true,
+      fractional: true,
+      windows: { open: "WindowOpen", expired: "WindowExpired", rebooted: "ClockChanged", backwards: "ClockChanged" },
+      claims: [true, false, false, true, false, false, true],
+      phases: ["Undone", "Dispatching"],
+      notices: [
+        { key: "calendar:a", title: "Event a", notice: "NoticeQueued", message: DELETION_NOTICE_TEXT.queued, canUndo: true, uncertain: false },
+        { key: "calendar:b", title: "Event b", notice: "NoticeVerifying", message: DELETION_NOTICE_TEXT.verifying, canUndo: false, uncertain: false },
+        { key: "calendar:c", title: "Event c", notice: "NoticePaused", message: DELETION_NOTICE_TEXT.paused, canUndo: true, uncertain: false },
+        { key: "calendar:d", title: "Event d", notice: "NoticePaused", message: DELETION_NOTICE_TEXT.paused, canUndo: true, uncertain: false },
+        { key: "calendar:e", title: "Event e", notice: "NoticeUncertain", message: DELETION_NOTICE_TEXT.uncertain, canUndo: false, uncertain: true },
+        { key: "calendar:untitled", title: "Selected calendar", notice: "NoticeUncertain", message: DELETION_NOTICE_TEXT.uncertain, canUndo: false, uncertain: true },
+        null,
+      ],
+      shown: ["a", "b", "c", "d", "e", "untitled"],
+      signature: "calendar,a,Queued|calendar,b,Queued",
+      refusals: [
+        "This item changed. Review it again before deleting.",
+        "Deletion was not queued. Nothing changed; review it again if you still want to delete it.",
+        undefined,
+        "This reminder changed. Review it again before deleting.",
+        "Deletion was not queued. Nothing changed; review it again if you still want to delete it.",
+      ],
+    },
+  ))
+})
+
+it.live("Undo keeps a staged deletion only while it can still win, and an uncertain outcome is dismissed only with its receipt kept (spec/os/android/deferredDeletion.md, \"Story: Keep one winner between Undo and the provider\"; spec/os/android/deferredDeletion.md, \"An uncertain outcome is dismissed only by its owner and stays on record\")", () => effect {
+  const phone = device()
+  const deletions = createDeferredDeletions(androidJournal(phone))
+  stage(phone, "calendar", "standup", "Standup")
+  stage(phone, "reminder", "pills", "Take pills")
+  stage(phone, "calendar", "lost-1", "Dentist")
+  const first = try promise(() => deletions.pending())
+  const kept = try promise(() => deletions.undo({ kind: "CalendarEvent", id: "standup" }))
+  elapse(phone, 10_000)
+  const late = try promise(() => deletions.undo({ kind: "ReminderOccurrence", id: "pills" }))
+  phone.undoRejects = true
+  const unconfirmed = try promise(() => deletions.undo({ kind: "CalendarEvent", id: "lost-1" }))
+  phone.undoRejects = false
+  const after = try promise(() => deletions.pending())
+  const refusedDismiss = try promise(() => deletions.dismiss({ kind: "ReminderOccurrence", id: "pills" }))
+  const dismissed = try promise(() => deletions.dismiss({ kind: "CalendarEvent", id: "lost-1" }))
+  const badKey = try refusal(() => deletions.undo({ kind: "CalendarEvent", id: "../x" }))
+  phone.pendingReply = { pending: [{ id: "x", kind: "calendar", phase: "sent" }] }
+  const malformed = try refusal(() => deletions.pending())
+
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      first, kept, late, unconfirmed, after: after.deletions.map((one) => [one.id, one.phase, one.window]), origins: after.deletedOrigins,
+      refusedDismiss, dismissed, badKey, malformed, calls: phone.calls,
+    },
+    {
+      first: {
+        deletions: [
+          { id: "standup", kind: "CalendarEvent", phase: "Queued", window: "WindowOpen", hold: "NotHeld", expiresAt: 1_800_000_010_000, title: "Standup" },
+          { id: "pills", kind: "ReminderOccurrence", phase: "Queued", window: "WindowOpen", hold: "NotHeld", expiresAt: 1_800_000_010_000, title: "Take pills" },
+          { id: "lost-1", kind: "CalendarEvent", phase: "Queued", window: "WindowOpen", hold: "NotHeld", expiresAt: 1_800_000_010_000, title: "Dentist" },
+        ],
+        deletedOrigins: [],
+      },
+      kept: { kind: "Kept" },
+      late: { kind: "NotKept", message: UNDO_TOO_LATE },
+      unconfirmed: { kind: "NotKept", message: DELETION_NOTICE_TEXT.undoUnconfirmed },
+      after: [["standup", "Undone", "WindowExpired"], ["pills", "Deleted", "WindowExpired"], ["lost-1", "UnknownOutcome", "WindowExpired"]],
+      origins: [{ kind: "reminder", id: "pills" }],
+      refusedDismiss: { kind: "NotDismissed", message: DELETION_NOTICE_TEXT.dismissFailed },
+      dismissed: { kind: "Dismissed", message: DELETION_NOTICE_TEXT.dismissed },
+      badKey: "invalid invalid-deletion",
+      malformed: "malformed pending",
+      calls: ["undo calendar:standup", "undo reminder:pills", "undo calendar:lost-1", "dismiss reminder:pills", "dismiss calendar:lost-1"],
+    },
+  ))
+})
+
+it.live("The action journal reserves an operation once and tells the caller to dispatch, reconcile or rest (spec/os/android/deferredDeletion.md, \"Story: Keep one winner between Undo and the provider\")", () => effect {
+  const phone = device()
+  const journal = createActionJournalClient(androidJournal(phone))
+  const target = { scope, proposalId: "proposal-1" }
+  const reservation = { ...target, operationId: "op-1", operationHash: hash, record: { title: "Standup" } }
+  const reserved = try promise(() => journal.reserve(reservation))
+  const replay = try promise(() => journal.reserve(reservation))
+  const applying = try promise(() => journal.markApplying({ ...target, attemptId: "attempt-1" }))
+  const unknown = try promise(() => journal.finish({ ...target, status: "unknown", summary: "No answer" }))
+  const settled = try promise(() => journal.finish({ ...target, status: "succeeded", summary: "Deleted" }))
+  const found = try promise(() => journal.get(target))
+  const missing = try promise(() => journal.get({ scope, proposalId: "proposal-2" }))
+  const listed = try promise(() => journal.list(scope))
+  const badScope = try refusal(() => journal.list("short"))
+  const badHash = try refusal(() => journal.reserve({ ...reservation, operationHash: "nope" }))
+  phone.journal.set(`${scope}/proposal-3`, { scope, proposalId: "proposal-3", operationId: "op-3", operationHash: hash, record: {}, createdAt: 1, phase: "terminal", status: "succeeded", summary: "?" })
+  const forged = try refusal(() => journal.get({ scope, proposalId: "proposal-3" }))
+
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      steps: [nextStep(reserved.entry).kind, nextStep(applying), nextStep(unknown), nextStep(settled).kind],
+      created: [reserved.created, replay.created], found: found?.phase, missing, listed: listed.length, badScope, badHash, forged,
+      calls: phone.calls,
+    },
+    {
+      steps: ["dispatch", { kind: "reconcile", since: 1_800_000_000_000 }, { kind: "reconcile", since: 1_800_000_000_000 }, "settled"],
+      created: [true, false],
+      found: "terminal",
+      missing: null,
+      listed: 1,
+      badScope: "invalid invalid-scope",
+      badHash: "invalid invalid-hash",
+      forged: "malformed get",
+      calls: ["reserve", "reserve", "markApplying", "finish", "finish"],
+    },
+  ))
+})
+
+it.live("The renderer hears only that nothing was reset (spec/os/android/reset.md, \"Story: Erase the app's data only after I confirm\"; spec/os/android/reset.md, \"The renderer hears only that nothing was reset\")", () => effect {
+  const answer = (reply: () => Promise<{ status?: unknown; message?: unknown }>) => promise(() => reviewDataReset({ review: reply }))
+  const cancelled = try answer(async () => ({ status: "cancelled", message: "Reset cancelled. Nothing was erased." }))
+  const unavailable = try answer(async () => ({ status: "unavailable", message: "Set a screen lock first." }))
+  const blank = try answer(async () => ({ status: "cancelled", message: "   " }))
+  const long = try answer(async () => ({ status: "cancelled", message: "x".repeat(501) }))
+  const claimed = try answer(async () => ({ status: "reset", message: "All data erased." }))
+  const rejected = try answer(async () => { throw new Error("no activity") })
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { cancelled, unavailable, blank, long, claimed, rejected },
+    {
+      cancelled: { notice: "NativeCancelled", message: "Reset cancelled. Nothing was erased." },
+      unavailable: { notice: "NativeUnavailable", message: "Set a screen lock first." },
+      blank: { notice: "ShellUnavailable", message: DATA_RESET_UNCONFIRMED },
+      long: { notice: "ShellUnavailable", message: DATA_RESET_UNCONFIRMED },
+      claimed: { notice: "ShellUnavailable", message: DATA_RESET_UNCONFIRMED },
+      rejected: { notice: "ShellUnavailable", message: DATA_RESET_UNCONFIRMED },
+    },
+  ))
+})

@@ -81,7 +81,11 @@
     "test": "vitest run",
     "jvm:prepare": "node test/drivers/jvm-adapter.ts --compile",
     "driver:os__agentService__channel": "node test/drivers/os__agentService__channel.ts",
-    "driver:os__agentService__lifecycle": "node test/drivers/os__agentService__lifecycle.ts"
+    "driver:os__agentService__lifecycle": "node test/drivers/os__agentService__lifecycle.ts",
+    "driver:os__browser__chromium": "node test/drivers/os__browser__chromium.ts",
+    "driver:os__browser__surface__profiles": "node test/drivers/os__browser__surface__profiles.ts",
+    "driver:os__browser__surface__pageRequests": "node test/drivers/os__browser__surface__pageRequests.ts",
+    "driver:os__image__firstRun": "node test/drivers/os__image__firstRun.ts"
   },
   "dependencies": {
     "@effect/platform-node": "4.1.1",

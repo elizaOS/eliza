@@ -1,5 +1,6 @@
 // spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
-import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import { boundedText, ProviderBodyTooLarge } from "./bounded-body.vibe"
 import type { ProviderReply } from "../../gen/cloud__shared__dispatchOnce.ts"
 import { millisPerSecond } from "../../gen/cloud__shared__types.effect.vibe"
 import type { GoogleSettings } from "../profile/profile.schema.ts"
@@ -91,35 +92,13 @@ export effect function googleProfile(): GoogleProfile!Unavailable!Deployment {
   return google
 }
 
-function joined(chunks: ReadonlyArray<Uint8Array>, size: number): string {
-  const bytes = new Uint8Array(size)
-  let offset = 0
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.length
-  }
-  return new TextDecoder().decode(bytes)
-}
-
-effect function boundedText(response: HttpClientResponse.HttpClientResponse, maxBytes: number): string!(ContentTooLarge | Unavailable) {
-  const declared = Number(response.headers["content-length"] ?? "0")
-  if (declared > maxBytes) throw new ContentTooLarge()
-  const read = try Stream.runFoldEffect(
-    Stream.mapError(response.stream, (): ContentTooLarge | Unavailable => new Unavailable()),
-    () => ({ size: 0, chunks: [] as Uint8Array[] }),
-    (seen, chunk: Uint8Array) => {
-      if (seen.size + chunk.length > maxBytes) return fail(new ContentTooLarge())
-      seen.chunks.push(chunk)
-      return succeed({ size: seen.size + chunk.length, chunks: seen.chunks })
-    }
-  )
-  return joined(read.chunks, read.size)
-}
-
 effect function exchange(request: HttpClientRequest.HttpClientRequest, maxBytes: number): { status: number; body: unknown }!(ContentTooLarge | Unavailable | InvalidResponse)!HttpClient.HttpClient {
   const answered = effect {
     const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect () => { throw new Unavailable() }
-    const text = try boundedText(response, maxBytes)
+    const text = boundedText(response, maxBytes) catch effect (failure) => {
+      if (failure instanceof ProviderBodyTooLarge) throw new ContentTooLarge()
+      throw new Unavailable()
+    }
     const body = parsed(text)
     if (body === undefined && response.status >= 200 && response.status < 300) throw new InvalidResponse()
     return { status: response.status, body }

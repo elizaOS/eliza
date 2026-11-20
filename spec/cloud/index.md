@@ -106,9 +106,20 @@ A read requires an active browser session for the account that consented.
 The service keeps the refresh credential encrypted for that deployment,
 account and approved scopes. Disconnecting removes the local credential and any
 pending consent authorizations. Browser and native inference credentials
-have separate permissions.
+have separate permissions. A Gmail message read returns named attachment
+descriptors without attachment bytes. Fetching a supported part requires the
+same owner and explicit mail grant, with its message, history and part
+identifiers. A changed history or missing part cannot return content.
+A browser that has opened a photo or PDF can hand that original to its owner’s
+registered device. The selection expires after five minutes. Redemption requires
+an active device credential under the same account and organization, the same
+current mail grant, revision, part and content digest. The handoff contains no
+mail bytes or provider credentials. A later handoff can only return that same
+original until it expires.
 
 ```quint
+pure def currentAttachmentTransfer(issuedAt: int, now: int): bool = issuedAt >= 0 and now >= issuedAt and now - issuedAt < 300000
+
 pure def canReadCloudGoogle(ownerSessionActive: bool, connectionPresent: bool, grantOwnerMatches: bool, selected: Set[CloudGoogleReadScope], requested: CloudGoogleReadScope): bool =
   ownerSessionActive and connectionPresent and grantOwnerMatches and selected.contains(requested)
 ```
@@ -201,6 +212,36 @@ settles a confirmed outcome as measured and an uncertain one at its quote.
 ```quint
 pure def cloudSpeechUsageFits(pcmBytes: int, textCharacters: int, outputBytes: int): bool =
   pcmBytes >= 0 and pcmBytes <= 1920000 and textCharacters >= 0 and textCharacters <= 4096 and outputBytes >= 0 and outputBytes <= 8388608
+```
+
+## Story: Transcribe a recording
+
+> As a person sending a recording, I want a failure to prepare it to leave
+> my funding untouched, so that I pay only after a provider call may have
+> started.
+
+### A recording is prepared before reserving funding or dispatching its provider call
+
+The service parses the upload and prepares the provider's multipart body
+before entering the funded-call path. A preparation failure returns a typed
+unavailable answer without reserving funding or contacting a provider. A
+prepared call still needs the current authenticated account, a fresh hold
+and a committed dispatch. The 120-second provider execution budget starts
+after preparation; upload parsing and local preparation precede it.
+
+Discovered during boundary review: building the multipart body after marking
+the hold dispatched would treat a local preparation failure as an unknown
+provider outcome and charge its quote.
+
+```quint
+pure def mayReservePreparedSpeech(recordingPrepared: bool, authenticated: bool): bool =
+  recordingPrepared and authenticated
+pure def mayDispatchPreparedSpeech(recordingPrepared: bool, authenticated: bool, freshHold: bool, dispatchCommitted: bool): bool =
+  recordingPrepared and mayDispatchFundedRequest(authenticated, freshHold, dispatchCommitted)
+pure def lawUnpreparedRecordingReservesAndDispatchesNothing(authenticated: bool, freshHold: bool, dispatchCommitted: bool): bool =
+  not(mayReservePreparedSpeech(false, authenticated)) and not(mayDispatchPreparedSpeech(false, authenticated, freshHold, dispatchCommitted))
+pure def lawPreparedSpeechStillRequiresFunding(authenticated: bool, freshHold: bool, dispatchCommitted: bool): bool =
+  mayDispatchPreparedSpeech(true, authenticated, freshHold, dispatchCommitted) == mayDispatchFundedRequest(authenticated, freshHold, dispatchCommitted)
 ```
 
 ## Story: Back up my passwords for another device

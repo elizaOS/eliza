@@ -1,0 +1,417 @@
+// spec/os/android/system.md, "Story: Hand me to Android's own screens and apps"; spec/os/android/system.md, "Story: Report device facts honestly"; spec/os/android/system.md, "Story: Change volume, mute or brightness and see what Android applied"; spec/os/android/system.md, "Story: Ask for a default role"; spec/os/android/home.md, "Story: Show my apps and open the one I chose"
+import { assert, it } from "@effect/vitest"
+import { receiptOf } from "../../src/bridges/bridge.vibe"
+import { locationClient } from "../../src/bridges/location.vibe"
+import { createLauncher, createSystemLauncherBridge, deviceSetupClient, systemClient } from "../../src/bridges/system.vibe"
+
+module android {
+  import { CapacitorException, registerPlugin } from "@capacitor/core"
+  import type { LocationGrantAccuracy, LocationGrant, LocationPlugin } from "../../src/bridges/definitions/location.ts"
+  import type { AndroidRoleName, DeviceSetup, LauncherApp, LauncherAppsChange, SystemHostPlugin, SystemPlugin } from "../../src/bridges/definitions/system.ts"
+
+  export interface Phone {
+    roles: Record<AndroidRoleName, { available: boolean; held: boolean }>
+    grantsOnAsk: AndroidRoleName[]
+    canWriteSettings: boolean
+    brightness: number
+    volumes: Record<string, { current: number; max: number }>
+    unreadable: string[]
+    apps: LauncherApp[]
+    dial: boolean
+    holdLaunch: boolean
+    held: ((refused: string | undefined) => void)[]
+    listeners: ((change: LauncherAppsChange) => void)[]
+    grant: LocationGrant
+    accuracy: LocationGrantAccuracy
+    fixAgeMs: number | undefined
+    calls: string[]
+  }
+
+  let registered = 0
+
+  /** @throws {never} */
+  export function device(changes: Partial<Phone> = {}): Phone {
+    return {
+      roles: { home: { available: true, held: false }, dialer: { available: true, held: false }, sms: { available: true, held: true }, assistant: { available: false, held: false } },
+      grantsOnAsk: ["home"],
+      canWriteSettings: false,
+      brightness: 0.2,
+      volumes: { music: { current: 4, max: 15 }, ring: { current: 3, max: 7 } },
+      unreadable: [],
+      apps: [
+        { packageName: "org.example.notes", activityName: "org.example.notes.Main", label: "Notes" },
+        { packageName: "org.example.maps", activityName: "org.example.maps.Main", label: "Maps" },
+      ],
+      dial: true,
+      holdLaunch: false,
+      held: [],
+      listeners: [],
+      grant: "granted",
+      accuracy: "approximate",
+      fixAgeMs: undefined,
+      calls: [],
+      ...changes,
+    }
+  }
+
+  /** @throws {never} */
+  function rejection(message: string, code?: string): Error {
+    return Object.assign(new CapacitorException(message), { code })
+  }
+
+  /** @throws {never} */
+  function named(base: string): string {
+    registered += 1
+    return `${base}${registered}`
+  }
+
+  /** @throws {never} */
+  export function changed(phone: Phone, change: LauncherAppsChange): void {
+    for (const listener of [...phone.listeners]) listener(change)
+  }
+
+  /** @throws {never} */
+  export function answerLaunch(phone: Phone, refused: string | undefined): void {
+    for (const answer of phone.held.splice(0)) answer(refused)
+  }
+
+  /** @throws {never} */
+  export function androidSystem(phone: Phone): { name: string; plugin: SystemPlugin & SystemHostPlugin } {
+    const name = named("TestSystem")
+    const status = () => ({
+      packageName: "org.example.os",
+      roles: Object.entries(phone.roles).map(([role, row]) => ({ role, androidRole: `android.app.role.${role.toUpperCase()}`, held: row.held, available: row.available, holders: row.held ? ["org.example.os"] : [] })),
+    })
+    const settings = () => ({
+      brightness: phone.brightness,
+      brightnessMode: "manual",
+      canWriteSettings: phone.canWriteSettings,
+      volumes: Object.entries(phone.volumes).map(([stream, level]) => ({ stream, ...level })),
+    })
+    const web = {
+      listLauncherApps: async () => {
+        phone.calls.push("listLauncherApps")
+        return { apps: phone.apps.map((app) => ({ ...app })) }
+      },
+      launchApp: (target: { packageName: string }) => {
+        phone.calls.push(`launchApp:${target.packageName}`)
+        const installed = phone.apps.some((app) => app.packageName === target.packageName)
+        if (phone.holdLaunch) return new Promise<void>((resolve, reject) => phone.held.push((refused) => (refused === undefined ? resolve() : reject(rejection("Launch refused", refused)))))
+        return installed ? Promise.resolve() : Promise.reject(rejection("Not installed", "not-installed"))
+      },
+      addListener: async (_event: string, listener: (change: LauncherAppsChange) => void) => {
+        phone.listeners.push(listener)
+        return { remove: async () => { phone.listeners = phone.listeners.filter((each) => each !== listener) } }
+      },
+      resolveDefaultApp: async () => (phone.dial ? { role: "dial", available: true, packageName: "org.example.dialer", label: "Phone" } : { role: "dial", available: false }),
+      openDefaultApp: async () => {
+        phone.calls.push("openDefaultApp")
+        throw rejection("No dialer can open", "no-launcher")
+      },
+      getStatus: async () => status(),
+      requestRole: async ({ role }: { role: AndroidRoleName }) => {
+        phone.calls.push(`requestRole:${role}`)
+        if (phone.grantsOnAsk.includes(role)) phone.roles[role].held = true
+        return { role, held: phone.roles[role].held, resultCode: phone.roles[role].held ? -1 : 0 }
+      },
+      openSettingsPage: async ({ page }: { page: string }) => {
+        phone.calls.push(`openSettingsPage:${page}`)
+        if (page === "dnd") throw rejection("No activity", "unavailable")
+        return { status: "opened", page, specific: page !== "mobile" }
+      },
+      openNotificationShade: async () => ({ status: "permission-missing" }),
+      getDeviceSettings: async () => settings(),
+      setScreenBrightness: async ({ brightness }: { brightness: number }) => {
+        phone.calls.push("setScreenBrightness")
+        phone.brightness = brightness
+        return settings()
+      },
+      setVolume: async ({ stream, volume }: { stream: string; volume: number }) => {
+        phone.calls.push(`setVolume:${stream}`)
+        const level = phone.volumes[stream]
+        if (level === undefined) throw rejection("No such stream", "invalid")
+        level.current = Math.min(level.max, Math.max(0, volume))
+        return { stream, current: phone.unreadable.includes(stream) ? -1 : level.current, max: level.max }
+      },
+      getSystemFacts: async () => ({ wifiEnabled: false, bluetoothEnabled: "yes", airplaneMode: false, batteryPercent: 140, interruptionFilter: "priority" }),
+      openAppInfo: async (target: { packageName: string; user?: string }) => {
+        phone.calls.push(`openAppInfo:${target.packageName}`)
+        if (target.user !== undefined) throw rejection("Work profile is gone", "profile-unavailable")
+      },
+      openClock: async (request: { action: string }) => {
+        phone.calls.push(`openClock:${request.action}`)
+        return { action: request.action, status: "opened", message: "Clock opened" }
+      },
+      crashLog: async () => ({ entries: [], exitHistory: true }),
+    }
+    return { name, plugin: registerPlugin<SystemPlugin & SystemHostPlugin>(name, { web }) }
+  }
+
+  /** @throws {never} */
+  export function androidSetup(phone: Phone): { name: string; plugin: DeviceSetup } {
+    const name = named("TestSetup")
+    const web = {
+      readiness: async () => ({ installedBrowsers: [], configuredBrowserPackage: "", browserDispatchStatus: "not-configured", browserObservationAvailable: false, installedPasswordManagers: [], preferredBrowserPackage: null, preferredBrowserIsSupported: false, autofillProviderPackage: null, autofillProviderIsSupported: false, providerVaultReadinessKnown: false, canChangeDefaultsSilently: false }),
+      open: async ({ target }: { target: string }) => {
+        phone.calls.push(`setup:${target}`)
+        return { outcome: target === "BROWSER_APP" ? "UNSUPPORTED_BROWSER" : "OPENED" }
+      },
+    }
+    return { name, plugin: registerPlugin<DeviceSetup>(name, { web }) }
+  }
+
+  /** @throws {never} */
+  export function androidLocation(phone: Phone): { name: string; plugin: LocationPlugin } {
+    const name = named("TestLocation")
+    const web = {
+      checkPermissions: async () => ({ location: phone.grant, accuracy: phone.accuracy }),
+      requestPermissions: async () => ({ location: phone.grant, accuracy: phone.accuracy }),
+      getCurrentPosition: async (options?: { maxAge?: number }) => {
+        phone.calls.push("getCurrentPosition")
+        if (phone.grant !== "granted") throw rejection("Location permission denied")
+        const ageMs = phone.fixAgeMs
+        if (ageMs === undefined) throw rejection("No provider", "POSITION_UNAVAILABLE")
+        const timestamp = Date.now() - ageMs
+        return { coords: { latitude: 52.37, longitude: 4.89, accuracy: 25, timestamp }, cached: (options?.maxAge ?? 0) > 0 }
+      },
+      watchPosition: async () => ({ watchId: "watch-1" }),
+      clearWatch: async () => {},
+      addListener: async () => ({ remove: async () => {} }),
+      removeAllListeners: async () => {},
+    }
+    return { name, plugin: registerPlugin<LocationPlugin>(name, { web }) }
+  }
+}
+import { androidLocation, androidSetup, androidSystem, answerLaunch, changed, device } from android
+
+effect function refusal(call: () => Promise<unknown>) {
+  const { cause } = try flip(tryPromise(() => call()))
+  if (typeof cause !== "object" || cause === null) return cause
+  return "_tag" in cause ? cause._tag : "code" in cause ? cause.code : cause
+}
+
+effect function eventually(check: () => boolean) {
+  for (let round = 0; round < 200 && !check(); round += 1) try sleep("5 millis")
+  return check()
+}
+
+it.live("Hand me to Android's own screens and apps (spec/os/android/system.md, \"Story: Hand me to Android's own screens and apps\"; spec/os/android/system.md, \"A Settings page opens its specific page first and a broader page only where one is listed\"; spec/os/android/system.md, \"The shade opens only from a focused launcher build that holds the status bar permission\"; spec/os/android/system.md, \"A default-app handoff opens one eligible app other than this one, or is refused\"; spec/os/android/system.md, \"App info opens Android's details page for exactly the entry the owner chose\"; spec/os/android/system.md, \"A clock handoff sends one reviewed request and never reports an alarm change\"; spec/os/android/system.md, \"Device setup opens only a listed browser or password manager, or Android's own defaults pages\")", () => effect {
+  const phone = device()
+  const { name, plugin } = androidSystem(phone)
+  const system = systemClient(plugin, name)
+  const setupPlugin = androidSetup(phone)
+  const setup = deviceSetupClient(setupPlugin.plugin, setupPlugin.name)
+
+  const wifi = try promise(() => system.openSettingsPage({ page: "wifi" }))
+  const mobile = try promise(() => system.openSettingsPage({ page: "mobile" }))
+  const dnd = try promise(() => system.openSettingsPage({ page: "dnd" }))
+  const unlisted = try promise(() => system.openSettingsPage({ page: "factory-reset" as never }))
+  const shade = try promise(() => system.openNotificationShade())
+  const dialer = try promise(() => system.openDefaultApp({ role: "dial" }))
+  const work = try promise(() => system.openAppInfo({ packageName: "org.example.notes", user: "10" }))
+  const personal = try promise(() => system.openAppInfo({ packageName: "org.example.notes" }))
+  const malformed = try promise(() => system.openAppInfo({ packageName: " org.example.notes" }))
+  const bell = String.fromCharCode(7)
+  const unreviewed = try promise(() => system.openClock({ action: "set", hour: 7, minute: 30, label: `Wake${bell}` }))
+  const alarm = try promise(() => system.openClock({ action: "set", hour: 7, minute: 30, label: "Wake", days: [2, 4] }))
+  const browser = try promise(() => setup.open({ target: "BROWSER_APP", packageName: "org.example.browser" }))
+  const defaults = try promise(() => setup.open({ target: "BROWSER_DEFAULTS" }))
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { wifi, mobile, dnd, unlisted, shade, dialer, work, personal, malformed, unreviewed, alarm, browser, defaults, receipt: [receiptOf(alarm.outcome).receiptKind, receiptOf(alarm.outcome).providerAccepted], calls: phone.calls },
+    {
+      wifi: { outcome: "Opened", page: "wifi", specific: true },
+      mobile: { outcome: "Opened", page: "mobile", specific: false },
+      dnd: { outcome: "Refused", page: "dnd", specific: false },
+      unlisted: { outcome: "Refused", page: "factory-reset", specific: false },
+      shade: { outcome: "Refused", status: "permission-missing" },
+      dialer: "Refused",
+      work: { outcome: "Refused", refusal: "profile-unavailable" },
+      personal: { outcome: "Opened" },
+      malformed: { outcome: "Refused", refusal: "invalid" },
+      unreviewed: { outcome: "Refused", status: "failed", message: "This Clock request is not one Android can review." },
+      alarm: { outcome: "Opened", status: "opened", message: "Clock opened" },
+      browser: { outcome: "Refused", status: "UNSUPPORTED_BROWSER" },
+      defaults: { outcome: "Opened", status: "OPENED" },
+      receipt: ["Preview", false],
+      calls: [
+        "openSettingsPage:wifi",
+        "openSettingsPage:mobile",
+        "openSettingsPage:dnd",
+        "openDefaultApp",
+        "openAppInfo:org.example.notes",
+        "openAppInfo:org.example.notes",
+        "openClock:set",
+        "setup:BROWSER_APP",
+        "setup:BROWSER_DEFAULTS",
+      ],
+    },
+  ))
+})
+
+it.live("Report device facts honestly (spec/os/android/system.md, \"Story: Report device facts honestly\"; spec/os/android/system.md, \"A fact is reported only as Android answered it, and unknown is never off\"; spec/os/android/system.md, \"A location fix needs a grant at the time of the read, and a cached fix is never older than asked\"; spec/os/android/bridge.md, \"A call is admitted only when the plugin is registered and every fact the operation needs holds\")", () => effect {
+  const phone = device({ fixAgeMs: 30000 })
+  const { name, plugin } = androidSystem(phone)
+  const system = systemClient(plugin, name)
+  const located = androidLocation(phone)
+  const location = locationClient(located.plugin, located.name)
+
+  const facts = try promise(() => system.getSystemFacts())
+  const switches = try promise(() => system.switchStates())
+  const unbuilt = try refusal(() => system.getLaunchInfo())
+
+  const fresh = try promise(() => location.getCurrentPosition({ accuracy: "high" }))
+  const cached = try promise(() => location.getCurrentPosition({ accuracy: "low", maxAge: 60000 }))
+  phone.fixAgeMs = 90000
+  const tooOld = try promise(() => location.getCurrentPosition({ maxAge: 60000 }))
+  phone.accuracy = "precise"
+  phone.fixAgeMs = 1000
+  const precise = try promise(() => location.getCurrentPosition({ accuracy: "best" }))
+  phone.fixAgeMs = undefined
+  const noProvider = try promise(() => location.getCurrentPosition())
+  phone.grant = "denied"
+  phone.accuracy = "none"
+  const denied = try promise(() => location.getCurrentPosition())
+
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      facts,
+      switches: [switches.wifiEnabled, switches.bluetoothEnabled, switches.airplaneMode, switches.locationEnabled],
+      unbuilt,
+      fresh: fresh.kind === "fix" ? [fresh.source, fresh.precise] : fresh.kind,
+      cached: cached.kind === "fix" ? [cached.source, cached.precise] : cached.kind,
+      tooOld: tooOld.kind,
+      precise: precise.kind === "fix" ? [precise.source, precise.precise] : precise.kind,
+      noProvider: noProvider.kind,
+      denied: denied.kind,
+    },
+    {
+      facts: { wifiEnabled: false, airplaneMode: false, interruptionFilter: "priority" },
+      switches: ["off", "unknown", "off", "unknown"],
+      unbuilt: "BridgeUnavailable",
+      fresh: ["fresh", false],
+      cached: ["cached", false],
+      tooOld: "unavailable",
+      precise: ["fresh", true],
+      noProvider: "unavailable",
+      denied: "permission-denied",
+    },
+  ))
+})
+
+it.live("Change volume, mute or brightness and see what Android applied (spec/os/android/system.md, \"Story: Change volume, mute or brightness and see what Android applied\"; spec/os/android/system.md, \"A volume, mute or brightness change reports only the value Android read back\"; spec/os/android/system.md, \"Brightness changes system-wide only with the write-settings grant, and otherwise only this app's focused window\")", () => effect {
+  const phone = device({ unreadable: ["music"] })
+  const { name, plugin } = androidSystem(phone)
+  const system = systemClient(plugin, name)
+
+  const ring = try promise(() => system.setVolume({ stream: "ring", volume: 9 }))
+  const muted = try promise(() => system.mute({ stream: "ring" }))
+  const unreadable = try promise(() => system.setVolume({ stream: "music", volume: 6 }))
+  const failed = try promise(() => system.setVolume({ stream: "alarm", volume: 3 }))
+  const withoutGrant = try promise(() => system.setScreenBrightness({ brightness: 0.5 }))
+  const brightnessBefore = phone.brightness
+  phone.canWriteSettings = true
+  const withGrant = try promise(() => system.setScreenBrightness({ brightness: 0.5 }))
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { ring, muted, unreadable, failed, withoutGrant, brightnessBefore, withGrant },
+    {
+      ring: { stream: "ring", reading: { kind: "reported", level: 7 }, muted: "off" },
+      muted: { stream: "ring", reading: { kind: "reported", level: 0 }, muted: "on" },
+      unreadable: { stream: "music", reading: { kind: "unknown" }, muted: "unknown" },
+      failed: { stream: "alarm", reading: { kind: "failed" }, muted: "unknown" },
+      withoutGrant: { reading: { kind: "not-allowed" } },
+      brightnessBefore: 0.2,
+      withGrant: { reading: { kind: "reported", level: 128 } },
+    },
+  ))
+})
+
+it.live("Ask for a default role (spec/os/android/system.md, \"Story: Ask for a default role\"; spec/os/android/system.md, \"A role is asked through Android's role request and reported held only from Android's readback\")", () => effect {
+  const phone = device()
+  const { name, plugin } = androidSystem(phone)
+  const system = systemClient(plugin, name)
+
+  const home = try promise(() => system.requestRole({ role: "home" }))
+  const dialer = try promise(() => system.requestRole({ role: "dialer" }))
+  const sms = try promise(() => system.requestRole({ role: "sms" }))
+  const assistant = try promise(() => system.requestRole({ role: "assistant" }))
+  const browser = try promise(() => system.requestRole({ role: "browser" as never }))
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { answers: [home, dialer, sms, assistant, browser].map((report) => report.answer), asked: phone.calls },
+    { answers: ["held", "not-held", "held", "unavailable", "not-offered"], asked: ["requestRole:home", "requestRole:dialer"] },
+  ))
+})
+
+it.live("Show my apps and open the one I chose (spec/os/android/home.md, \"Story: Show my apps and open the one I chose\"; spec/os/android/home.md, \"An inventory read publishes only after its list and dial-role replies settle\"; spec/os/android/home.md, \"A launch settles under the ticket it captured, and a late reply cannot set an error on a newer ticket\"; spec/os/android/home.md, \"Package changes and foreground return refresh until Home retires\"; spec/os/android/home.md, \"An admitted built-in view opens in the renderer and never reaches Android\")", () => effect {
+  const phone = device()
+  const { plugin } = androidSystem(phone)
+  const rendered: string[] = []
+  const settingsView = { key: "settings", label: "Settings", admitted: true }
+  const walletView = { key: "wallet", label: "Wallet", admitted: false }
+  const home = createLauncher(createSystemLauncherBridge(plugin), { views: [settingsView, walletView], openView: (key) => rendered.push(key) })
+
+  const beforeShow = try promise(() => home.load())
+  try promise(() => home.show())
+  const loaded = try promise(() => home.load())
+  const notes = loaded.apps.find((app) => app.label === "Notes") ?? loaded.apps[0]
+  const maps = loaded.apps.find((app) => app.label === "Maps") ?? loaded.apps[1]
+  const opened = try promise(() => home.launch(notes))
+
+  phone.apps = phone.apps.filter((app) => app.packageName !== "org.example.maps")
+  const refused = try promise(() => home.launch(maps))
+  const gone = try promise(() => home.launch(maps))
+  const dismissed = try promise(() => home.clearError())
+  const dial = try promise(() => home.openDial())
+
+  phone.apps = [...phone.apps, { packageName: "org.example.camera", activityName: "org.example.camera.Main", label: "Camera" }]
+  changed(phone, { reason: "added", packageName: "org.example.camera" })
+  const refreshed = try eventually(() => home.snapshot().apps.some((app) => app.label === "Camera"))
+
+  phone.holdLaunch = true
+  const pending = fork promise(() => home.launch(notes))
+  try eventually(() => phone.held.length > 0)
+  try promise(() => home.retire())
+  answerLaunch(phone, "failed")
+  const late = join pending
+  const listenersAfterRetire = phone.listeners.length
+
+  const admitted = try promise(() => home.openView(settingsView))
+  const deferred = try promise(() => home.openView(walletView))
+
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      beforeShow: beforeShow.status,
+      loaded: { status: loaded.status, apps: loaded.apps.map((app) => app.label).sort(), views: loaded.views.map((view) => view.key), dial: loaded.dial?.label },
+      opened: { launching: opened.launching, error: opened.launchError },
+      refused: { apps: refused.apps.map((app) => app.label), error: refused.launchError },
+      gone: gone.launchError,
+      dismissed: dismissed.launchError,
+      dial: dial.launchError,
+      refreshed,
+      late: late.launchError,
+      listenersAfterRetire,
+      admitted,
+      deferred,
+      rendered,
+      launched: phone.calls.filter((call) => call.startsWith("launchApp:")),
+    },
+    {
+      beforeShow: "idle",
+      loaded: { status: "ready", apps: ["Maps", "Notes"], views: ["settings", "wallet"], dial: "Phone" },
+      opened: { launching: null, error: null },
+      refused: { apps: ["Notes"], error: { kind: "app-refused", label: "Maps", code: "not-installed" } },
+      gone: { kind: "no-longer-installed", label: "Maps" },
+      dismissed: null,
+      dial: { kind: "dial-refused", label: "Phone" },
+      refreshed: true,
+      late: null,
+      listenersAfterRetire: 0,
+      admitted: true,
+      deferred: false,
+      rendered: ["settings"],
+      launched: ["launchApp:org.example.notes", "launchApp:org.example.maps", "launchApp:org.example.notes"],
+    },
+  ))
+})

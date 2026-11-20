@@ -1,0 +1,547 @@
+// spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"; spec/os/browser/chromium.md, "An owned browser app enters an image only with its pinned digest, signer and provenance"; spec/os/browser/chromium.md, "Story: Replace the image's WebView provider only with the pinned one"; spec/os/browser/chromium.md, "A staged overlay holds exactly the verified APK copies, and appears only through atomic publication"; spec/os/browser/chromium.md, "The framework lists only the pinned provider, another package that overrides the stock WebView and carries its libraries"
+import {
+  admitApp,
+  factsOf,
+  overlayFaults,
+  renderOverlay,
+  stageOverlay,
+  type ApkFacts,
+  type ApkPin,
+  type AppRefusal,
+  type ImageAdmission,
+  type ModuleRole,
+  type OverlayDescriptor,
+  type OverlayRefusal,
+  type SuppliedApk,
+} from "../../gen/os__browser__chromium.effect.vibe"
+import { Machine as Publication, machine as publication } from "../../gen/core__atomicPublication.effect.vibe"
+import { dumpAndroidArtifactBadging, manifestFacts, readApkSigner, resolveAndroidBuildTools, snapshotAndroidArtifact } from "../image/apk.vibe"
+import { EXTENSION_ID, pin as reviewedChromium } from "../../browser/chromium/component/chromium-component.mjs"
+
+export { assetNames } from "../../browser/chromium/component/chromium-component.mjs"
+export { buildChromium, prepareAndroidConsumerInputs, prepareChromium } from "./chromium-build.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+  import { androidNativeHost } from "../../browser/chromium/component/android-host.mjs"
+  import { componentAssetNames, validateAssets } from "../../browser/chromium/component/chromium-component.mjs"
+
+  /** @throws {never} */
+  export function sha256Hex(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function nativeAbis(badging: string): readonly string[] {
+    return [...(/^native-code:\s*(.*)$/m.exec(badging)?.[1] ?? "").matchAll(/'([^']+)'/g)].map((match) => match[1] ?? "")
+  }
+
+  /** @throws {never} */
+  export function parseJson(bytes: Uint8Array): unknown {
+    try {
+      return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function nativeHostOf(certificate: string, application: string): string | undefined {
+    try {
+      return JSON.stringify(androidNativeHost(certificate, application))
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function resourceNames(resources: Readonly<Record<string, unknown>>): readonly string[] {
+    return componentAssetNames(Object.fromEntries(Object.keys(resources).map((name) => [name, Buffer.alloc(0)])))
+  }
+
+  /** @throws {never} */
+  export function assetProblem(assets: Readonly<Record<string, Uint8Array>>, certificate: string, application: string): string | undefined {
+    try {
+      validateAssets(Object.fromEntries(Object.entries(assets).map(([name, bytes]) => [name, Buffer.from(bytes)])), certificate, application)
+      return undefined
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+import { assetProblem, nativeAbis, nativeHostOf, parseJson, resourceNames, sha256Hex } from node
+
+export type Architecture = "x86_64" | "arm64"
+export type BrowserApp = "browser" | "vault"
+
+export interface PinnedApk {
+  readonly packageName: string
+  readonly sha256: string
+  readonly signerSha256: string
+}
+
+export interface ProvenanceReference {
+  readonly path: string
+  readonly sha256: string
+}
+
+export interface OwnedComponent {
+  readonly chromiumRevision: string
+  readonly launcherSignerSha256: string
+  readonly launcherApplication: string
+  readonly provenance: ProvenanceReference
+}
+
+export type BrowserAppPin = PinnedApk & {
+  readonly channel: "stable" | "development"
+} & ({ readonly kind: "upstream"; readonly sourceUrl: string } | { readonly kind: "owned"; readonly component: OwnedComponent })
+
+export interface StageBrowserApps {
+  readonly vendorDir: string
+  readonly browserApk: string
+  readonly vaultApk: string
+  readonly arch: Architecture
+  readonly image: ImageAdmission
+  readonly aapt?: string
+  readonly apksigner?: string
+}
+
+export interface StagedBrowserApps {
+  readonly vendorDir: string
+  readonly arch: Architecture
+  readonly releaseQualified: false
+  readonly applications: readonly (BrowserAppPin & { readonly name: BrowserApp; readonly apk: string })[]
+}
+
+export interface BrowserOverlayDescriptor {
+  readonly vendor: string
+  readonly modulePrefix: string
+  readonly partition: "product" | "system"
+  readonly browser: PinnedApk
+  readonly webview: PinnedApk | null
+}
+
+export interface StageBrowserOverlay {
+  readonly descriptor: unknown
+  readonly browserApk?: string
+  readonly webviewApk?: string
+  readonly output: string
+  readonly aapt?: string
+  readonly apksigner?: string
+}
+
+export interface BrowserOverlayModules {
+  readonly browser: string
+  readonly webview?: string
+}
+
+export interface StagedBrowserOverlay {
+  readonly directory: string
+  readonly partition: "product" | "system"
+  readonly modules: BrowserOverlayModules
+  readonly browser: PinnedApk
+  readonly webview: PinnedApk | null
+  readonly releaseQualified: false
+}
+
+export error BrowserPinsInvalid { reason: string }
+export error BrowserInputInvalid { path: string; reason: string }
+export error BrowserAppRefused { app: BrowserApp; why: AppRefusal; detail: string }
+export error BrowserOverlayRefused { reason: OverlayRefusal; detail: string }
+error ProvenanceProblem { reason: string }
+
+export const OWNED_BROWSER_PACKAGE = "ai.elizaos.chromium"
+export const UPSTREAM_BROWSER_PACKAGE = "org.chromium.chrome"
+export const WEBVIEW_CONFIG = "overlay/frameworks/base/core/res/res/xml/config_webview_packages.xml"
+
+const PINS_FILE = "manifests/browser-apps.json"
+const HEX64 = /^[a-f0-9]{64}$/
+const COMMIT = /^[a-f0-9]{40}$/
+const ANDROID_PACKAGE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/i
+const SAFE_RELATIVE = /^[a-zA-Z0-9_.\-/]+$/
+const MAX_PROVENANCE_BYTES = 16 * 1024 * 1024
+const CHROMIUM_REPOSITORY = "https://chromium.googlesource.com/chromium/src"
+const ARCHITECTURES: readonly Architecture[] = ["x86_64", "arm64"]
+const NATIVE_ABI: Readonly<Record<Architecture, string>> = { x86_64: "x86_64", arm64: "arm64-v8a" }
+const GN_CPU: Readonly<Record<Architecture, string>> = { x86_64: '"x64"', arm64: '"arm64"' }
+const APP_DIRECTORY: Readonly<Record<BrowserApp, string>> = { browser: "Browser", vault: "Vault" }
+const APPS: readonly BrowserApp[] = ["browser", "vault"]
+const MODULE_FILE: Readonly<Record<ModuleRole, { readonly suffix: string; readonly apk: string }>> = {
+  BrowserModule: { suffix: "OwnedChromium", apk: "OwnedChromium.apk" },
+  WebViewProviderModule: { suffix: "WebViewProvider", apk: "WebViewProvider.apk" },
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value : ""
+}
+
+function specPin(apk: PinnedApk): ApkPin {
+  return { packageName: apk.packageName, sha256: apk.sha256, signer: apk.signerSha256 }
+}
+
+function pinnedApk(value: unknown): PinnedApk {
+  const raw = isRecord(value) ? value : {}
+  return { packageName: text(raw.packageName), sha256: text(raw.sha256), signerSha256: text(raw.signerSha256) }
+}
+
+function pinnedApkValid(apk: PinnedApk): boolean {
+  return ANDROID_PACKAGE.test(apk.packageName) && HEX64.test(apk.sha256) && HEX64.test(apk.signerSha256)
+}
+
+function supplied(facts: ApkFacts | undefined): SuppliedApk {
+  return facts === undefined ? { tag: "NoApk" } : { tag: "CopiedApk", facts }
+}
+
+function descriptorOf(input: unknown): { readonly reviewed: BrowserOverlayDescriptor; readonly spec: OverlayDescriptor } {
+  const raw = isRecord(input) ? input : {}
+  const partition = raw.partition === undefined ? "product" : raw.partition
+  const browser = pinnedApk(raw.browser)
+  const webview = raw.webview === undefined || raw.webview === null ? null : pinnedApk(raw.webview)
+  const vendor = text(raw.vendor)
+  const modulePrefix = text(raw.modulePrefix)
+  const namesValid = /^vendor\/[a-z0-9_]+$/.test(vendor) && /^[A-Z][A-Za-z0-9]*$/.test(modulePrefix) && (partition === "product" || partition === "system")
+    && pinnedApkValid(browser) && (webview === null || pinnedApkValid(webview))
+  return {
+    reviewed: { vendor, modulePrefix, partition: partition === "system" ? "system" : "product", browser, webview },
+    spec: {
+      namesValid,
+      partition: partition === "system" ? "SystemPartition" : "ProductPartition",
+      browser: specPin(browser),
+      webview: webview === null ? { tag: "StockWebView" } : { tag: "PinnedWebView", provider: specPin(webview) },
+    },
+  }
+}
+
+function descriptorFault(spec: OverlayDescriptor): OverlayRefusal | undefined {
+  const asPinned = spec.webview.tag === "PinnedWebView" ? supplied(factsOf(spec.webview.provider)) : supplied(undefined)
+  return overlayFaults(spec, factsOf(spec.browser), asPinned)[0]
+}
+
+const OVERLAY_DETAIL: Readonly<Record<OverlayRefusal, string>> = {
+  InvalidDescriptor: "The browser overlay descriptor needs vendor/<name>, a module prefix, product or system, and package, APK SHA-256 and signer SHA-256 pins",
+  ProviderIsTheBrowser: "The WebView provider must be another package than the browser",
+  ProviderApkNotPaired: "Supply a WebView provider APK exactly when the descriptor pins one",
+  BrowserApkMismatch: "The browser APK copy is not the pinned package, digest and single signer",
+  ProviderApkMismatch: "The WebView provider APK copy is not the pinned package, digest and single signer",
+  NotPublished: "The browser overlay was not published",
+}
+
+export effect function validateBrowserOverlayDescriptor(input: unknown) {
+  const { reviewed, spec } = descriptorOf(input)
+  const fault = descriptorFault(spec)
+  if (fault !== undefined) throw new BrowserOverlayRefused({ reason: fault, detail: OVERLAY_DETAIL[fault] })
+  return reviewed
+}
+
+function moduleName(prefix: string, role: ModuleRole): string {
+  return `${prefix}${MODULE_FILE[role].suffix}`
+}
+
+export function browserOverlayModules(descriptor: BrowserOverlayDescriptor): BrowserOverlayModules {
+  return {
+    browser: moduleName(descriptor.modulePrefix, "BrowserModule"),
+    ...(descriptor.webview === null ? {} : { webview: moduleName(descriptor.modulePrefix, "WebViewProviderModule") }),
+  }
+}
+
+export function renderBrowserOverlay(descriptor: BrowserOverlayDescriptor): Readonly<Record<string, string>> {
+  const overlay = renderOverlay(descriptorOf(descriptor).spec)
+  const location = overlay.partition === "SystemPartition" ? "" : "    product_specific: true,\n"
+  const list = (values: readonly string[]) => `[${values.map((value) => JSON.stringify(value)).join(", ")}]`
+  const imports = overlay.modules.map((module) =>
+    `// ${module.packageName}, APK SHA-256 ${module.sha256}, signer SHA-256 ${module.signer}\nandroid_app_import {\n    name: "${moduleName(descriptor.modulePrefix, module.role)}",\n    apk: "${MODULE_FILE[module.role].apk}",\n    presigned: true,\n    preprocessed: true,\n${location}    dex_preopt: { enabled: false },\n${module.overrides.length ? `    overrides: ${list(module.overrides)},\n` : ""}${module.requires.length ? `    required: ${list(module.requires)},\n` : ""}}\n`)
+  const packages = overlay.modules.map((module) => moduleName(descriptor.modulePrefix, module.role))
+  const files: Record<string, string> = {
+    "Android.bp": `// Generated from hash- and signer-checked APK copies.\n${imports.join("\n")}`,
+    "browser.mk": `PRODUCT_PACKAGES += ${packages.join(" ")}\n${overlay.webviewProviders.length ? `PRODUCT_PACKAGE_OVERLAYS += ${descriptor.vendor}/browser/overlay\n` : ""}`,
+  }
+  if (overlay.webviewProviders.length) {
+    files[WEBVIEW_CONFIG] = `<?xml version="1.0" encoding="utf-8"?>\n<webviewproviders>\n${overlay.webviewProviders.map((name) =>
+      `    <webviewprovider description="Pinned WebView provider" packageName="${name}" availableByDefault="true">\n    </webviewprovider>\n`).join("")}</webviewproviders>\n`
+  }
+  return files
+}
+
+effect function regularInput(file: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const resolved = path.resolve(file)
+  const info = (files.lstat(resolved) catch () => undefined)
+  if (info === undefined || info.type !== "File") throw new BrowserInputInvalid({ path: resolved, reason: "A browser APK input must be a regular file, not a link" })
+  return resolved
+}
+
+effect function apkFacts(file: string, packageArchitectures: readonly Architecture[], tools: { readonly aapt: string; readonly apksigner: string }) {
+  const badging = try dumpAndroidArtifactBadging(tools.aapt, file)
+  const signer = try readApkSigner(file, { apksigner: tools.apksigner })
+  const abis = nativeAbis(badging)
+  const facts: ApkFacts = {
+    packageName: manifestFacts("", badging).packageName ?? "",
+    sha256: (try snapshotAndroidArtifact(file)).sha256,
+    signers: signer.tag === "OneSigner" && signer.certificate.tag === "Sha256" ? [signer.certificate.hex] : [],
+    abisCovered: packageArchitectures.every((architecture) => abis.includes(NATIVE_ABI[architecture])),
+  }
+  return facts
+}
+
+effect function toolsFor(options: { readonly aapt?: string; readonly apksigner?: string }) {
+  if (options.aapt !== undefined && options.apksigner !== undefined) return { aapt: options.aapt, apksigner: options.apksigner }
+  const resolved = try resolveAndroidBuildTools()
+  return { aapt: options.aapt ?? resolved.aapt, apksigner: options.apksigner ?? resolved.apksigner }
+}
+
+effect function settle(pending: string | undefined, gathered: Exit.Exit<boolean, unknown>, publish: () => void!unknown) {
+  const files = try FileSystem.FileSystem
+  const tx = try Publication
+  try orDie(tx.send({ type: "create", ok: pending !== undefined }))
+  if (pending !== undefined) {
+    const written = Exit.isSuccess(gathered) && gathered.value
+    try orDie(tx.send({ type: "write", ok: written }))
+    if (written) try orDie(tx.send({ type: "rename", ok: (effect { try publish(); return true } catch () => false) }))
+  }
+  const removed = pending === undefined || (effect { try files.remove(pending, { recursive: true, force: true }); return true } catch () => false)
+  try orDie(tx.send({ type: "cleanup", removed }))
+  return (try tx.get()).receipt
+}
+
+export effect function stageBrowserOverlay(options: StageBrowserOverlay) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const { reviewed, spec } = descriptorOf(options.descriptor)
+  try validateBrowserOverlayDescriptor(options.descriptor)
+  const output = path.resolve(options.output)
+  const outputInfo = (files.lstat(output) catch () => undefined)
+  if (outputInfo?.type !== "Directory") throw new BrowserInputInvalid({ path: output, reason: "The browser overlay output must be a real directory" })
+  const directory = path.join(output, "browser")
+  if ((files.lstat(directory) catch () => undefined) !== undefined) throw new BrowserInputInvalid({ path: directory, reason: "The browser overlay directory already exists" })
+  if (options.browserApk === undefined) throw new BrowserInputInvalid({ path: output, reason: "An explicit browser APK path is required" })
+  const browserInput = try regularInput(options.browserApk)
+  const webviewInput = options.webviewApk === undefined ? undefined : try regularInput(options.webviewApk)
+  const tools = try toolsFor(options)
+  let browserFacts: ApkFacts = { packageName: "", sha256: "", signers: [], abisCovered: false }
+  let webviewFacts: ApkFacts | undefined = undefined
+  provide publication() {
+    const pending = (files.makeTempDirectory({ directory: output, prefix: ".browser-" }) catch () => undefined)
+    const gathered = try exit(effect {
+      if (pending === undefined) return false
+      const copy = effect function (input: string, name: string) {
+        const target = path.join(pending, name)
+        try files.copyFile(input, target)
+        return try apkFacts(target, [], tools)
+      }
+      browserFacts = try copy(browserInput, MODULE_FILE.BrowserModule.apk)
+      webviewFacts = webviewInput === undefined ? undefined : try copy(webviewInput, MODULE_FILE.WebViewProviderModule.apk)
+      if (overlayFaults(spec, browserFacts, supplied(webviewFacts)).length > 0) return false
+      for (const [name, content] of Object.entries(renderBrowserOverlay(reviewed))) {
+        try files.makeDirectory(path.dirname(path.join(pending, name)), { recursive: true })
+        try files.writeFileString(path.join(pending, name), content, { flag: "wx" })
+      }
+      return true
+    })
+    const receipt = try settle(pending, gathered, () => files.rename(pending ?? "", directory))
+    if (Exit.isFailure(gathered)) try Effect.failCause(gathered.cause)
+    const outcome = stageOverlay(spec, browserFacts, supplied(webviewFacts), receipt)
+    if (outcome.tag === "OverlayRefused") throw new BrowserOverlayRefused({ reason: outcome.reason, detail: OVERLAY_DETAIL[outcome.reason] })
+    if (outcome.tag === "OverlayUnknown") throw new BrowserOverlayRefused({ reason: "NotPublished", detail: "The browser overlay publication ended without a receipt" })
+    const staged: StagedBrowserOverlay = {
+      directory,
+      partition: reviewed.partition,
+      modules: browserOverlayModules(reviewed),
+      browser: reviewed.browser,
+      webview: reviewed.webview,
+      releaseQualified: false,
+    }
+    return staged
+  }
+}
+
+function parseReference(value: unknown): ProvenanceReference | undefined {
+  if (!isRecord(value) || Object.keys(value).sort().join(",") !== "path,sha256" || typeof value.path !== "string" || typeof value.sha256 !== "string" || !HEX64.test(value.sha256)) return undefined
+  return { path: value.path, sha256: value.sha256 }
+}
+
+function parseAppPin(value: unknown, app: BrowserApp): BrowserAppPin | undefined {
+  if (!isRecord(value)) return undefined
+  const apk = pinnedApk(value)
+  const channel = value.channel
+  if (!pinnedApkValid(apk) || (channel !== "stable" && channel !== "development")) return undefined
+  if (value.kind === "upstream") {
+    const source = (() => { try { return new URL(text(value.sourceUrl)) } catch { return undefined } })()
+    const expected = app === "browser" ? apk.packageName === UPSTREAM_BROWSER_PACKAGE : apk.packageName !== UPSTREAM_BROWSER_PACKAGE && apk.packageName !== OWNED_BROWSER_PACKAGE
+    if (source === undefined || source.protocol !== "https:" || source.username !== "" || source.password !== "" || !expected) return undefined
+    return { ...apk, channel, kind: "upstream", sourceUrl: source.href }
+  }
+  const component = value.component
+  if (value.kind !== "owned" || app !== "browser" || apk.packageName !== OWNED_BROWSER_PACKAGE || !isRecord(component)) return undefined
+  const provenance = parseReference(component.provenance)
+  if (Object.keys(component).sort().join(",") !== "chromiumRevision,launcherApplication,launcherSignerSha256,provenance" || !COMMIT.test(text(component.chromiumRevision))
+    || !HEX64.test(text(component.launcherSignerSha256)) || nativeHostOf(text(component.launcherSignerSha256), text(component.launcherApplication)) === undefined || provenance === undefined) return undefined
+  return {
+    ...apk,
+    channel,
+    kind: "owned",
+    component: { chromiumRevision: text(component.chromiumRevision), launcherSignerSha256: text(component.launcherSignerSha256), launcherApplication: text(component.launcherApplication), provenance },
+  }
+}
+
+effect function regularVendorFile(root: string, relative: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  if (!SAFE_RELATIVE.test(relative) || path.isAbsolute(relative) || relative.split("/").some((part) => part === "" || part === "." || part === ".."))
+    throw new ProvenanceProblem({ reason: `Unsafe browser vendor path ${relative}` })
+  let current = path.resolve(root)
+  for (const part of ["", ...relative.split("/")]) {
+    current = part === "" ? current : path.join(current, part)
+    const info = (files.lstat(current) catch () => undefined)
+    if (info === undefined || info.type === "SymbolicLink") throw new ProvenanceProblem({ reason: `Browser vendor input ${relative} is missing or passes through a link` })
+  }
+  const info = try orDie(files.lstat(current))
+  if (info.type !== "File" || Option.getOrUndefined(info.nlink) !== 1n) throw new ProvenanceProblem({ reason: `Browser vendor input ${relative} must be a regular unlinked file` })
+  return { file: current, size: Number(info.size) }
+}
+
+effect function readReference(root: string, value: unknown, architecture: Architecture) {
+  const files = try FileSystem.FileSystem
+  const reference = parseReference(value)
+  if (reference === undefined || !reference.path.startsWith(`manifests/browser-provenance/${architecture}/`)) throw new ProvenanceProblem({ reason: "Invalid owned browser provenance reference" })
+  const found = try regularVendorFile(root, reference.path)
+  if (found.size > MAX_PROVENANCE_BYTES) throw new ProvenanceProblem({ reason: `Browser provenance ${reference.path} exceeds 16 MiB; refusing partial evidence` })
+  const bytes = (files.readFile(found.file) catch effect () => { throw new ProvenanceProblem({ reason: `Browser provenance ${reference.path} is unreadable` }) })
+  if (sha256Hex(bytes) !== reference.sha256) throw new ProvenanceProblem({ reason: `Owned browser provenance hash mismatch: ${reference.path}` })
+  return bytes
+}
+
+effect function readJsonReference(root: string, value: unknown, architecture: Architecture) {
+  const parsed = parseJson(try readReference(root, value, architecture))
+  if (!isRecord(parsed)) throw new ProvenanceProblem({ reason: "Owned browser provenance is not a JSON object" })
+  return parsed
+}
+
+function gnAssignment(args: string, name: string): string | undefined {
+  const matches = [...args.matchAll(new RegExp(`^\\s*${name}\\s*=\\s*([^#\\n]+)\\s*(?:#.*)?$`, "gm"))]
+  return matches.length === 1 ? matches[0]?.[1]?.trim() : undefined
+}
+
+effect function verifyOwnedProvenance(root: string, pin: BrowserAppPin & { readonly kind: "owned" }, architecture: Architecture) {
+  const component = pin.component
+  const require = effect (holds: boolean, reason: string) => { if (!holds) throw new ProvenanceProblem({ reason }) }
+  const document = try readJsonReference(root, component.provenance, architecture)
+  try require(document.schemaVersion === 1 && document.repository === CHROMIUM_REPOSITORY && document.chromiumRevision === component.chromiumRevision && document.extensionId === EXTENSION_ID
+    && document.launcherSignerSha256 === component.launcherSignerSha256 && document.launcherApplication === component.launcherApplication, "Owned component source and identity binding mismatch")
+  const apk = isRecord(document.apk) ? document.apk : {}
+  try require(apk.sha256 === pin.sha256 && apk.signerSha256 === pin.signerSha256 && apk.packageName === pin.packageName && apk.architecture === architecture, "Owned APK provenance binding mismatch")
+  const overlay = try readJsonReference(root, document.overlay, architecture)
+  const inputs = isRecord(overlay.inputs) ? overlay.inputs : {}
+  try require(component.chromiumRevision === reviewedChromium.revision && Object.keys(inputs).length === Object.keys(reviewedChromium.sha256).length
+    && Object.entries(reviewedChromium.sha256).every(([name, value]) => inputs[name] === value), "Owned component source hashes do not match the reviewed generator pin")
+  try require(overlay.chromiumRevision === component.chromiumRevision && overlay.extensionId === EXTENSION_ID && overlay.platform === "android" && overlay.unrestrictedAllowlistBypass === false,
+    "Owned component overlay policy mismatch")
+  try require(sha256Hex(try readReference(root, document.patch, architecture)) === overlay.patchSha256, "Owned component patch provenance mismatch")
+  try require(JSON.stringify(overlay.nativeHost) === nativeHostOf(component.launcherSignerSha256, component.launcherApplication), "Owned component overlay launcher identity mismatch")
+  const documentResources = isRecord(document.resources) ? document.resources : {}
+  const overlayResources = isRecord(overlay.resources) ? overlay.resources : {}
+  const names = [...resourceNames(documentResources)].sort()
+  try require(Object.keys(overlayResources).sort().join(",") === names.join(",") && Object.keys(documentResources).sort().join(",") === names.join(","), "Owned component resource inventory mismatch")
+  const assets: Record<string, Uint8Array> = {}
+  for (const name of names) {
+    const bytes = try readReference(root, documentResources[name], architecture)
+    const recorded = isRecord(overlayResources[name]) ? overlayResources[name] : {}
+    try require(recorded.sha256 === sha256Hex(bytes) && recorded.bytes === bytes.byteLength, `Owned component resource mismatch: ${name}`)
+    assets[name] = bytes
+  }
+  const problem = assetProblem(assets, component.launcherSignerSha256, component.launcherApplication)
+  try require(problem === undefined, `Owned component resources: ${problem ?? ""}`)
+  const args = new TextDecoder().decode(try readReference(root, document.gnArgs, architecture))
+  try require(gnAssignment(args, "target_os") === '"android"' && gnAssignment(args, "target_cpu") === GN_CPU[architecture] && gnAssignment(args, "is_desktop_android") === "true",
+    "Owned Chromium Desktop Android GN arguments mismatch")
+  try require(gnAssignment(args, "chrome_public_manifest_package") === JSON.stringify(OWNED_BROWSER_PACKAGE), "Owned Chromium GN package does not match the reviewed APK identity")
+}
+
+effect function provenanceOf(root: string, pin: BrowserAppPin, architecture: Architecture) {
+  if (pin.kind === "upstream") return undefined
+  return (effect { try verifyOwnedProvenance(root, pin, architecture); return undefined } catch (problem) => problem.reason)
+}
+
+effect function readPins(vendorDir: string, arch: Architecture) {
+  const files = try FileSystem.FileSystem
+  const found = (regularVendorFile(vendorDir, PINS_FILE) catch effect (problem) => { throw new BrowserPinsInvalid({ reason: problem.reason }) })
+  const raw = parseJson(try files.readFile(found.file))
+  if (!isRecord(raw) || raw.schemaVersion !== 1) throw new BrowserPinsInvalid({ reason: `${PINS_FILE} is not a schema 1 browser application manifest` })
+  const pins: Partial<Record<BrowserApp, BrowserAppPin>> = {}
+  for (const app of APPS) {
+    const variants = raw[app]
+    if (!isRecord(variants) || Object.keys(variants).some((key) => !ARCHITECTURES.includes(key as Architecture))) throw new BrowserPinsInvalid({ reason: `Invalid pinned ${app} variants` })
+    const pin = parseAppPin(variants[arch], app)
+    if (pin === undefined) throw new BrowserPinsInvalid({ reason: `No valid pinned ${app} APK for ${arch}` })
+    pins[app] = pin
+  }
+  const { browser, vault } = pins
+  if (browser === undefined || vault === undefined) throw new BrowserPinsInvalid({ reason: "The browser and the vault app are pinned together" })
+  return { raw: JSON.stringify(raw), browser, vault }
+}
+
+effect function stagingDestination(vendorDir: string, app: BrowserApp, arch: Architecture) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const relative = ["apps", APP_DIRECTORY[app], arch, `${APP_DIRECTORY[app]}.apk`]
+  let current = path.resolve(vendorDir)
+  for (const part of relative.slice(0, -1)) {
+    current = path.join(current, part)
+    const info = (files.lstat(current) catch () => undefined)
+    if (info !== undefined && info.type !== "Directory") throw new BrowserInputInvalid({ path: current, reason: "The browser staging destination must contain only real directories" })
+  }
+  const destination = path.join(current, relative.at(-1) ?? "")
+  const existing = (files.lstat(destination) catch () => undefined)
+  if (existing !== undefined && (existing.type !== "File" || Option.getOrUndefined(existing.nlink) !== 1n))
+    throw new BrowserInputInvalid({ path: destination, reason: "The browser staging destination must be a regular unlinked file" })
+  return destination
+}
+
+export effect function stageBrowserApps(options: StageBrowserApps) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  if (!ARCHITECTURES.includes(options.arch)) throw new BrowserInputInvalid({ path: options.vendorDir, reason: "An explicit supported APK architecture is required" })
+  const vendorDir = path.resolve(options.vendorDir)
+  const pins = try readPins(vendorDir, options.arch)
+  const inputs: Record<BrowserApp, string> = { browser: try regularInput(options.browserApk), vault: try regularInput(options.vaultApk) }
+  const destinations: Record<BrowserApp, string> = { browser: try stagingDestination(vendorDir, "browser", options.arch), vault: try stagingDestination(vendorDir, "vault", options.arch) }
+  const tools = try toolsFor(options)
+  return try scoped(effect {
+    const temporary = try files.makeTempDirectoryScoped({ directory: vendorDir, prefix: ".browser-apps-" })
+    for (const app of APPS) {
+      const pin = pins[app]
+      const copy = path.join(temporary, `${APP_DIRECTORY[app]}.apk`)
+      try files.copyFile(inputs[app], copy)
+      const provenance = try provenanceOf(vendorDir, pin, options.arch)
+      const verdict = admitApp(
+        { pin: specPin(pin), channel: pin.channel === "stable" ? "Stable" : "Development", kind: pin.kind === "owned" ? "OwnedBuild" : "UpstreamBuild" },
+        { apk: try apkFacts(copy, [options.arch], tools), provenanceMatches: provenance === undefined },
+        options.image,
+      )
+      if (verdict.tag === "AppRefused") throw new BrowserAppRefused({ app, why: verdict.why, detail: verdict.why === "ProvenanceMismatch" ? provenance ?? verdict.why : verdict.why })
+    }
+    if ((try readPins(vendorDir, options.arch)).raw !== pins.raw) throw new BrowserPinsInvalid({ reason: "Browser pins changed during APK verification" })
+    for (const app of APPS) {
+      if ((try provenanceOf(vendorDir, pins[app], options.arch)) !== undefined) throw new BrowserAppRefused({ app, why: "ProvenanceMismatch", detail: "Owned browser provenance changed during APK verification" })
+      if ((try stagingDestination(vendorDir, app, options.arch)) !== destinations[app]) throw new BrowserInputInvalid({ path: destinations[app], reason: "The browser staging destination changed" })
+    }
+    for (const app of APPS) {
+      try files.makeDirectory(path.dirname(destinations[app]), { recursive: true })
+      try files.rename(path.join(temporary, `${APP_DIRECTORY[app]}.apk`), destinations[app])
+    }
+    for (const app of APPS) {
+      if ((try snapshotAndroidArtifact(destinations[app])).sha256 !== pins[app].sha256) throw new BrowserAppRefused({ app, why: "ApkMismatch", detail: "The staged APK is not the pinned digest" })
+    }
+    const staged: StagedBrowserApps = {
+      vendorDir,
+      arch: options.arch,
+      releaseQualified: false,
+      applications: APPS.map((app) => ({ ...pins[app], name: app, apk: destinations[app] })),
+    }
+    return staged
+  })
+}

@@ -1,5 +1,5 @@
-// spec/cloud/services/speechSession.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechSession.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/billing/plans.md, "Story: Share realtime speech fairly"
-import { apply, consentLifetime, decodeState, initial, Rejected, sessionLifetime, windowLength, windowTtsChars, type Event, type Session } from "../../gen/cloud__services__speechSession.effect.vibe"
+// spec/cloud/services/speechRelay.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/billing/plans.md, "Story: Share realtime speech fairly"
+import { apply, consentLifetime, decodeState, firstSessionDeadline, initial, nextWindowDeadline, Rejected, retryWindowAdmitted, windowLength, windowTtsChars, windowRequestAdmitted, type Event, type Session, type NotAState } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import { realtimeSpeechAdmits, realtimeSpeechResetsAt, utcDayStart } from "../../gen/cloud__billing__plans.effect.vibe"
 import { relayChannels, relaySampleRate, type Shortfall } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import type { HoldKey, SpeechDirection } from "../../gen/cloud__shared__types.ts"
@@ -8,14 +8,14 @@ import { signed, type Signed } from "../http/request-auth.vibe"
 import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import type { RelaySession, SessionEnd, WindowAdmission, WindowUsage } from "./speech-relay.vibe"
 import { Deployment } from "../profile/profile.vibe"
-import { holdRows, markDispatched, reserve, settle, type HoldOwner, type MeteringFailure, type Settlement } from "../shared/metering.vibe"
+import { holdRows, markDispatched, reserveIn, settle, type HoldOwner, type MeteringFailure, type Settlement } from "../shared/metering.vibe"
 import { newId, sameText, secretText, tokenDigest } from "../shared/sealing.vibe"
 import { loadRow, machineRows, stepRow, type RowConflict, type RowCorrupt } from "../store/rows.vibe"
 import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 
 export type { Session, SessionEnd, Shortfall, SpeechDirection, WindowAdmission, WindowUsage }
 
-export const sessionRows = machineRows<Session, Event, Rejected, unknown>("speech_sessions", { initial, decodeState, apply })
+export const sessionRows = machineRows<Session, Event, Rejected, NotAState>("speech_sessions", { initial, decodeState, apply })
 
 export type SessionFailure = Refused | StoreFailure | RowCorrupt | RowConflict | Rejected | MeteringFailure
 
@@ -40,6 +40,10 @@ interface Credential {
 interface WindowHolds {
   readonly transcribe: string
   readonly synthesize: string
+}
+
+interface WindowReservation extends WindowHolds {
+  readonly funded: boolean
 }
 
 interface RecordedWindow extends WindowHolds {
@@ -184,14 +188,6 @@ effect function windowHolds(tx: Tx, id: string, window: number): (RecordedWindow
   }
 }
 
-effect function releaseHolds(keys: ReadonlyArray<string>): void!!Store {
-  for (const key of keys) {
-    settle(key, { kind: "release" }) catch effect (failure) => {
-      try annotateLogs(logError("a speech hold could not be released; the hold sweep will release it"), { holdKey: key, failure: failure._tag })
-    }
-  }
-}
-
 effect function announceEnd(id: string, end: SessionEnd): void!! {
   const waiting = endings.get(id)
   if (waiting !== undefined) try Deferred.succeed(waiting, end)
@@ -208,9 +204,9 @@ export effect function sessionEnding(id: string): SessionEnd!! {
 
 export effect function openSocket(id: string): OpenedSession!SessionFailure!Store {
   const store = try Store
-  const now = try Clock.currentTimeMillis
   return try store.transaction(effect (tx: Tx) => {
     const found = try readSession(tx, id, true)
+    const now = try Clock.currentTimeMillis
     const state = stepSession(tx, id, { type: "openSocket", now }, now) catch effect (failure) => match (failure) {
       when Rejected: throw refused("SessionClosed");
       default: throw failure;
@@ -219,40 +215,33 @@ export effect function openSocket(id: string): OpenedSession!SessionFailure!Stor
   })
 }
 
-effect function reserveWindow(owner: HoldOwner, id: string, window: number, rates: Rates): WindowHolds!MeteringFailure!Store {
-  const transcribe = try reserve(owner, holdKey(owner.userId, id, "Transcribe", window), quoteOf("Transcribe", rates))
-  const synthesize = reserve(owner, holdKey(owner.userId, id, "Synthesize", window), quoteOf("Synthesize", rates)) catch effect (failure) => {
-    try releaseHolds([transcribe.key])
-    throw failure
-  }
-  return { transcribe: transcribe.key, synthesize: synthesize.key }
+effect function reserveWindow(tx: Tx, owner: HoldOwner, id: string, window: number, rates: Rates, now: number): WindowReservation!MeteringFailure {
+  const transcribe = try reserveIn(tx, owner, holdKey(owner.userId, id, "Transcribe", window), quoteOf("Transcribe", rates), now)
+  const synthesize = try reserveIn(tx, owner, holdKey(owner.userId, id, "Synthesize", window), quoteOf("Synthesize", rates), now)
+  return { transcribe: transcribe.key, synthesize: synthesize.key, funded: transcribe.hold.phase === "Reserved" && synthesize.hold.phase === "Reserved" }
 }
 
 export effect function admitWindow(id: string, window: number): WindowAdmission!SessionFailure!(Store | Deployment) {
   const store = try Store
-  const now = try Clock.currentTimeMillis
   const rates = try speechRates()
-  const day = utcDayStart(now)
-  const known = try store.transaction(effect (tx: Tx) => {
-    const session = try readSession(tx, id, false)
-    const admitted = try windowHolds(tx, id, window)
-    return { session, admitted, used: try usedToday(tx, session.userId, day, false) }
-  })
-  if (known.admitted !== undefined) return { kind: "admitted", expiresAt: known.admitted.expiresAt }
-  if (!realtimeSpeechAdmits(known.used, windowLength)) return { kind: "short", shortfall: "AllowanceShort" }
-  const owner = { organizationId: known.session.organizationId, userId: known.session.userId }
-  const holds = reserveWindow(owner, id, window, rates) catch effect (failure) => {
-    if (failure instanceof Refused && failure.refusal.code === "InsufficientCredits") return undefined
-    throw failure
-  }
-  if (holds === undefined) return { kind: "short", shortfall: "CreditsShort" }
-  const outcome = store.transaction(effect (tx: Tx) => {
+  return store.transaction(effect (tx: Tx) => {
+    const organization = try tx.query("SELECT o.id FROM organizations o JOIN speech_sessions s ON s.organization_id = o.id WHERE s.key = $1 FOR UPDATE OF o", [id])
+    if (organization.length !== 1) throw refused("NotFound")
     const current = try readSession(tx, id, true)
-    if (!realtimeSpeechAdmits(try usedToday(tx, current.userId, day, true), windowLength)) {
-      return { kind: "short", shortfall: "AllowanceShort" } satisfies WindowAdmission
+    const now = try Clock.currentTimeMillis
+    const day = utcDayStart(now)
+    const known = try windowHolds(tx, id, window)
+    if (known !== undefined) {
+      if (!retryWindowAdmitted(current.state, window, known.settled, now)) throw refused("SessionClosed")
+      return { kind: "admitted", expiresAt: known.expiresAt } satisfies WindowAdmission
     }
-    const expiresAt = window === 1 ? current.state.expiresAt : Math.min(current.state.expiresAt + windowLength, current.credentialExpiresAt)
-    try stepSession(tx, id, { type: "admitWindow", window, expiresAt }, now)
+    const expiresAt = nextWindowDeadline(current.state, window)
+    if (!windowRequestAdmitted(current.state, window, expiresAt, now)) throw refused("SessionClosed")
+    const allowanceAvailable = realtimeSpeechAdmits(try usedToday(tx, current.userId, day, false), windowLength)
+    if (!allowanceAvailable) return { kind: "short", shortfall: "AllowanceShort" } satisfies WindowAdmission
+    const holds = try reserveWindow(tx, { organizationId: current.organizationId, userId: current.userId }, id, window, rates, now)
+    if (!holds.funded) throw refused("ServiceUnavailable", "NoReason", now + 5000)
+    try stepSession(tx, id, { type: "admitWindow", window, expiresAt, now, funded: holds.funded, allowanceAvailable }, now)
     try tx.query(
       "INSERT INTO speech_windows (session_id, number, user_id, usage_day, speech_ms, transcribe_hold, synthesize_hold, expires_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
       [id, window, current.userId, day, windowLength, holds.transcribe, holds.synthesize, expiresAt, now]
@@ -263,11 +252,10 @@ export effect function admitWindow(id: string, window: number): WindowAdmission!
     )
     return { kind: "admitted", expiresAt } satisfies WindowAdmission
   }) catch effect (failure) => {
-    try releaseHolds([holds.transcribe, holds.synthesize])
+    if (failure instanceof Rejected) throw refused("SessionClosed")
+    if (failure instanceof Refused && failure.refusal.code === "InsufficientCredits") return { kind: "short", shortfall: "CreditsShort" } satisfies WindowAdmission
     throw failure
   }
-  if (outcome.kind === "short") try releaseHolds([holds.transcribe, holds.synthesize])
-  return outcome
 }
 
 export effect function dispatchWindow(id: string, window: number, only?: SpeechDirection): void!SessionFailure!Store {
@@ -413,10 +401,11 @@ effect function mint(context: RouteContext) {
   const credential = credentialOf(caller)
   const { consentNonce } = try jsonBody(context, MintRequest)
   const store = try Store
-  const now = context.now
   const sessionId = newId()
   const token = secretText("eliza_speech_", 32, "base64url")
   const minted = try store.transaction(effect (tx: Tx) => {
+    try tx.query("SELECT nonce FROM speech_consents WHERE nonce = $1 FOR UPDATE", [consentNonce])
+    const now = try Clock.currentTimeMillis
     const consumed = try tx.query(
       "UPDATE speech_consents SET consumed_at = $1 WHERE nonce = $2 AND user_id = $3 AND credential_kind = $4 AND credential_ref = $5 AND consumed_at IS NULL AND expires_at > $1 RETURNING nonce",
       [now, consentNonce, caller.userId, credential.kind, credential.ref]
@@ -425,8 +414,8 @@ effect function mint(context: RouteContext) {
     if (!realtimeSpeechAdmits(try usedToday(tx, caller.userId, utcDayStart(now), false), windowLength)) {
       throw refused("AllowanceExhausted", "NoReason", realtimeSpeechResetsAt(now))
     }
-    const expiresAt = Math.min(now + sessionLifetime, credential.expiresAt)
-    return try stepRow(tx, sessionRows, sessionId, { type: "mint", tokenDigest: tokenDigest(token), expiresAt }, (session) => ({
+    const expiresAt = firstSessionDeadline(now, credential.expiresAt)
+    return try stepRow(tx, sessionRows, sessionId, { type: "mint", tokenDigest: tokenDigest(token), expiresAt, credentialExpiresAt: credential.expiresAt, now, consentConsumed: consumed.length === 1 }, (session) => ({
       ...sessionColumns(now)(session),
       consent_nonce: consentNonce,
       user_id: caller.userId,

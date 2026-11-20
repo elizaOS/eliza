@@ -1,7 +1,7 @@
 // spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"
 package ai.eliza.plugins.signin;
 
-import ai.eliza.plugins.signin.SignInCustody.Account;
+import ai.eliza.plugins.signin.CredentialPolicy.Account;
 import ai.eliza.plugins.signin.SignInCustody.Refused;
 import ai.eliza.plugins.signin.SignInCustody.Session;
 import ai.eliza.plugins.signin.SignInPolicy.Failure;

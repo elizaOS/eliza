@@ -1,0 +1,265 @@
+// spec/agent/schedule/scheduledTasks.md, "Story: Answer a scheduled task from my list"; spec/agent/schedule/scheduledTasks.md, "Story: Keep a recurring task exact through retries, races and restarts"
+import { assert, it } from "@effect/vitest"
+import { parseLaunch } from "../src/host/launch.vibe"
+import { startAgent } from "../src/host/process.vibe"
+import { scheduledTasksModuleFactory, scheduledTasksModuleName } from "../src/schedule/scheduled-task-routes.vibe"
+import { host, scratch } from "./support/kernel.vibe"
+import { scheduledProductPlugin } from "./support/product-plugin/index.ts"
+import { launchDocument, launchFrame, type Scratch } from "./support/scratch.ts"
+
+module node {
+  import { setTimeout as sleep } from "node:timers/promises"
+  import type { TaskService } from "@elizaos/core"
+  import { vi } from "vitest"
+  import type { RunningAgent } from "../src/host/process.vibe"
+  import { scheduledTasksTick } from "../src/schedule/scheduled-tasks.vibe"
+  import { scheduledDeliveries } from "./support/product-plugin/index.ts"
+  import { request } from "./support/socket-client.ts"
+
+  export const start = Date.parse("2026-11-18T08:00:00.000Z")
+  const minuteMs = 60_000
+  const hourMs = 60 * minuteMs
+
+  export function setClock(at: number): void {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(at)
+  }
+
+  export function realClock(): void {
+    vi.useRealTimers()
+  }
+
+  interface Reach {
+    readonly socket: string
+    readonly token: string
+  }
+
+  interface Answer {
+    readonly status: number
+    readonly json: Record<string, unknown>
+  }
+
+  type WireState = { readonly status: string; readonly firedAt?: string; readonly lastDecisionLog?: string }
+  type WireTask = { readonly taskId: string; readonly promptInstructions: string; readonly state: WireState }
+
+  async function send(reach: Reach, method: "GET" | "POST", path: string, body?: unknown): Promise<Answer> {
+    const answer = await request(reach.socket, { method, path, token: reach.token, ...(body === undefined ? {} : { body }) })
+    if ("refused" in answer) throw new Error(`${method} ${path} was refused: ${answer.refused}`)
+    return { status: answer.status, json: answer.json as Record<string, unknown> }
+  }
+
+  function stateOf(answer: Answer) {
+    const task = (answer.json.task ?? (answer.json.fire as { task?: WireTask } | undefined)?.task) as WireTask | undefined
+    return task === undefined ? { http: answer.status, ...answer.json } : { http: answer.status, ...task.state }
+  }
+
+  async function verb(reach: Reach, taskId: string, name: string, body: unknown = {}) {
+    return stateOf(await send(reach, "POST", `/api/scheduled-tasks/${taskId}/${name}`, body))
+  }
+
+  async function fire(reach: Reach, taskId: string) {
+    const answer = await send(reach, "POST", `/api/scheduled-tasks/${taskId}/fire`, {})
+    const { task, ...fired } = answer.json.fire as { task?: WireTask; kind: string }
+    return { http: answer.status, ...fired, ...(task === undefined ? {} : { state: task.state }) }
+  }
+
+  async function create(reach: Reach, row: Record<string, unknown>): Promise<{ created: string; taskId: string }> {
+    const answer = await send(reach, "POST", "/api/product/scheduled-tasks", { metadata: {}, ...row })
+    if (answer.status !== 200) throw new Error(`The product could not create a row: ${JSON.stringify(answer.json)}`)
+    return answer.json as { created: string; taskId: string }
+  }
+
+  async function tick(running: RunningAgent): Promise<void> {
+    const service = running.runtime.getService<TaskService>("task")
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const [task] = await running.runtime.getTasksByName(scheduledTasksTick)
+      if (service !== null && task?.id !== undefined) return service.executeTaskById(task.id)
+      await sleep(50)
+    }
+    throw new Error("The scheduled task tick was never scheduled")
+  }
+
+  const attemptsFor = (taskId: string) => scheduledDeliveries.attempts.filter((attempt) => attempt === taskId).length
+
+  export async function answerFromTheList(running: RunningAgent, reach: Reach) {
+    const water = await create(reach, { kind: "reminder", ownerVisible: true, promptInstructions: "Drink water", trigger: { kind: "manual" }, idempotencyKey: "product-water" })
+    const again = await create(reach, { kind: "reminder", ownerVisible: true, promptInstructions: "Drink water", trigger: { kind: "manual" }, idempotencyKey: "product-water" })
+    const hidden = await create(reach, { kind: "check-in", ownerVisible: false, promptInstructions: "Private check-in", trigger: { kind: "manual" } })
+    const stretch = await create(reach, { kind: "reminder", ownerVisible: true, promptInstructions: "Morning stretch", trigger: { kind: "cron", expression: "0 9 * * *", tz: "UTC" } })
+    const clinic = await create(reach, { kind: "follow-up", ownerVisible: true, promptInstructions: "Call the clinic", trigger: { kind: "manual" } })
+
+    const listed = await send(reach, "GET", "/api/scheduled-tasks?ownerVisibleOnly=1")
+    const list = {
+      created: [water.created, again.created, again.taskId === water.taskId],
+      shown: (listed.json.tasks as WireTask[]).map((task) => task.promptInstructions).sort(),
+      unfiltered: (await send(reach, "GET", "/api/scheduled-tasks")).status,
+      allRows: (await send(reach, "GET", "/api/scheduled-tasks?ownerVisibleOnly=0")).status,
+      hiddenById: (await send(reach, "GET", `/api/scheduled-tasks/${hidden.taskId}`)).status,
+      unknown: (await send(reach, "GET", "/api/scheduled-tasks/no-such-task")).status,
+      unknownVerb: await verb(reach, "no-such-task", "skip"),
+    }
+
+    const snoozeThenFire = {
+      bare: await verb(reach, water.taskId, "snooze"),
+      zero: await verb(reach, water.taskId, "snooze", { minutes: 0 }),
+      past: await verb(reach, water.taskId, "snooze", { untilIso: new Date(start - minuteMs).toISOString() }),
+      snoozed: await verb(reach, water.taskId, "snooze", { minutes: 30 }),
+      fired: await fire(reach, water.taskId),
+      firedAgain: await fire(reach, water.taskId),
+      keyedFire: (await send(reach, "POST", `/api/scheduled-tasks/${water.taskId}/fire`, { idempotencyKey: "fire-1" })).status,
+      attempts: attemptsFor(water.taskId),
+    }
+
+    const skipped = await verb(reach, stretch.taskId, "skip")
+    const fireSettled = await fire(reach, stretch.taskId)
+    setClock(start + hourMs + 30 * minuteMs)
+    await tick(running)
+    const skip = { skipped, fireSettled, afterTick: stateOf(await send(reach, "GET", `/api/scheduled-tasks/${stretch.taskId}`)), attempts: attemptsFor(stretch.taskId) }
+
+    const dismissal = {
+      dismissed: await verb(reach, stretch.taskId, "dismiss"),
+      reopen: await verb(reach, stretch.taskId, "reopen"),
+      dismissAgain: await verb(reach, stretch.taskId, "dismiss"),
+      edit: await verb(reach, stretch.taskId, "edit", { promptInstructions: "Evening stretch" }),
+      fired: await fire(reach, stretch.taskId),
+    }
+
+    const keyed = {
+      acknowledged: await verb(reach, water.taskId, "acknowledge", { idempotencyKey: "ack-1" }),
+      replayed: await verb(reach, water.taskId, "acknowledge", { idempotencyKey: "ack-1" }),
+      reused: await verb(reach, water.taskId, "complete", { idempotencyKey: "ack-1" }),
+    }
+
+    const edits = {
+      empty: await verb(reach, water.taskId, "edit", {}),
+      taskId: await verb(reach, water.taskId, "edit", { taskId: "other" }),
+      state: await verb(reach, water.taskId, "edit", { state: { status: "fired" } }),
+      instructions: ((await send(reach, "POST", `/api/scheduled-tasks/${water.taskId}/edit`, { promptInstructions: "Drink two glasses" })).json.task as WireTask).promptInstructions,
+    }
+
+    scheduledDeliveries.script.push(...Array.from({ length: 4 }, () => ({ kind: "retry" as const, afterMs: minuteMs, reason: "offline" })))
+    const retries = [await fire(reach, clinic.taskId), await fire(reach, clinic.taskId), await fire(reach, clinic.taskId), await fire(reach, clinic.taskId)]
+
+    const reopenInside = {
+      completed: await verb(reach, water.taskId, "complete"),
+      reopened: await verb(reach, water.taskId, "reopen"),
+      fired: await fire(reach, water.taskId),
+      completedAgain: await verb(reach, water.taskId, "complete"),
+    }
+    setClock(start + 26 * hourMs + 30 * minuteMs)
+    const reopenOutside = await verb(reach, water.taskId, "reopen")
+
+    const hourly = await create(reach, { kind: "reminder", ownerVisible: true, promptInstructions: "Hourly water", trigger: { kind: "cron", expression: "0 * * * *", tz: "UTC" } })
+    return {
+      hourly: hourly.taskId,
+      observed: { list, snoozeThenFire, skip, dismissal, keyed, edits, retries, reopen: { ...reopenInside, reopenOutside } },
+    }
+  }
+
+  export async function afterRestart(running: RunningAgent, reach: Reach, hourly: string) {
+    await tick(running)
+    const missed = stateOf(await send(reach, "GET", `/api/scheduled-tasks/${hourly}`))
+    await tick(running)
+    return { missed, again: stateOf(await send(reach, "GET", `/api/scheduled-tasks/${hourly}`)), attempts: attemptsFor(hourly) }
+  }
+
+  const at = (offsetMs: number) => new Date(start + offsetMs).toISOString()
+  const fired = { http: 200, kind: "fired" }
+  const refused = (http: number, error: string) => ({ http, error })
+  const deferred = (retryAt: number) => ({
+    http: 200, kind: "dispatch_deferred", reason: "offline", nextAttemptAtIso: at(retryAt),
+    state: { status: "scheduled", firedAt: at(retryAt), lastDecisionLog: "dispatch_deferred: offline" },
+  })
+  const later = hourMs + 30 * minuteMs
+
+  export const expectedAnswers = {
+    list: {
+      created: ["created", "existing", true],
+      shown: ["Call the clinic", "Drink water", "Morning stretch"],
+      unfiltered: 404, allRows: 404, hiddenById: 200, unknown: 404,
+      unknownVerb: refused(404, "not_found"),
+    },
+    snoozeThenFire: {
+      bare: refused(400, "malformed"),
+      zero: refused(400, "malformed"),
+      past: refused(409, "not_applicable"),
+      snoozed: { http: 200, status: "scheduled", firedAt: at(30 * minuteMs), lastDecisionLog: `snoozed until ${at(30 * minuteMs)} (ladder reset)` },
+      fired: { ...fired, state: { status: "fired", firedAt: at(0), lastDecisionLog: "fired" } },
+      firedAgain: { http: 200, kind: "skipped", reason: "not_waiting", state: { status: "fired", firedAt: at(0), lastDecisionLog: "fired" } },
+      keyedFire: 400,
+      attempts: 1,
+    },
+    skip: {
+      skipped: { http: 200, status: "skipped", lastDecisionLog: "skipped" },
+      fireSettled: { http: 200, kind: "raced" },
+      afterTick: { http: 200, status: "skipped", lastDecisionLog: "skipped" },
+      attempts: 0,
+    },
+    dismissal: {
+      dismissed: { http: 200, status: "dismissed", lastDecisionLog: "dismissed" },
+      reopen: refused(409, "not_applicable"),
+      dismissAgain: refused(409, "not_applicable"),
+      edit: refused(409, "not_applicable"),
+      fired: { http: 200, kind: "skipped", reason: "dismissed", state: { status: "dismissed", lastDecisionLog: "dismissed" } },
+    },
+    keyed: {
+      acknowledged: { http: 200, status: "acknowledged", firedAt: at(0), lastDecisionLog: "acknowledged" },
+      replayed: { http: 200, status: "acknowledged", firedAt: at(0), lastDecisionLog: "acknowledged" },
+      reused: refused(409, "key_reused"),
+    },
+    edits: {
+      empty: refused(400, "malformed"),
+      taskId: refused(400, "malformed"),
+      state: refused(400, "malformed"),
+      instructions: "Drink two glasses",
+    },
+    retries: [
+      deferred(later + minuteMs), deferred(later + minuteMs), deferred(later + minuteMs),
+      { http: 200, kind: "dispatch_failed", error: "offline", state: { status: "failed", firedAt: at(later + minuteMs), lastDecisionLog: "dispatch_failed: offline" } },
+    ],
+    reopen: {
+      completed: { http: 200, status: "completed", firedAt: at(0), lastDecisionLog: "completed" },
+      reopened: { http: 200, status: "scheduled", firedAt: at(0), lastDecisionLog: "reopened" },
+      fired: { ...fired, state: { status: "fired", firedAt: at(later), lastDecisionLog: "fired" } },
+      completedAgain: { http: 200, status: "completed", firedAt: at(later), lastDecisionLog: "completed" },
+      reopenOutside: refused(409, "not_applicable"),
+    },
+  }
+
+  export const expectedRestart = {
+    missed: { http: 200, status: "skipped", lastDecisionLog: "missed_occurrence" },
+    again: { http: 200, status: "skipped", lastDecisionLog: "missed_occurrence" },
+    attempts: 0,
+  }
+}
+import { afterRestart, answerFromTheList, expectedAnswers, expectedRestart, realClock, setClock, start } from node
+
+const fixture = scheduledProductPlugin.name
+
+effect function launched(state: Scratch, socketName: string) {
+  const frame = launchFrame()
+  const document = launchDocument({ persistMemory: true, load: [scheduledTasksModuleName], productPlugin: fixture })
+  const parsed = try parseLaunch(JSON.stringify(document), JSON.stringify(frame))
+  const socket = state.file(socketName)
+  const agent = try acquireRelease(
+    startAgent({
+      ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket },
+      bundled: new Map([[fixture, scheduledProductPlugin]]),
+      modules: new Map([[scheduledTasksModuleName, scheduledTasksModuleFactory]]),
+    }),
+    (running) => orDie(host("retire agent", () => running.stop())),
+  )
+  return { agent, reach: { socket, token: frame.token } }
+}
+
+it.live('The owner answers a product\'s scheduled tasks from the list, and a recurring occurrence missed while stopped is recorded once and never runs (spec/agent/schedule/scheduledTasks.md, "Story: Answer a scheduled task from my list"; spec/agent/schedule/scheduledTasks.md, "Story: Keep a recurring task exact through retries, races and restarts")', effect () => {
+  const state = try scratch("scheduled-tasks")
+  try acquireRelease(Effect.sync(() => setClock(start)), () => Effect.sync(() => realClock()))
+  const first = try launched(state, "agent-first.sock")
+  const { hourly, observed } = try host("answer tasks from the list", () => answerFromTheList(first.agent, first.reach))
+  try host("stop the first agent", () => first.agent.stop())
+  try Effect.sync(() => setClock(start + 29 * 3_600_000 + 30 * 60_000))
+  const second = try launched(state, "agent-second.sock")
+  const restarted = try host("tick after the restart", () => afterRestart(second.agent, second.reach, hourly))
+  try Effect.try(() => assert.deepStrictEqual({ observed, restarted }, { observed: expectedAnswers, restarted: expectedRestart }))
+}, 180_000)

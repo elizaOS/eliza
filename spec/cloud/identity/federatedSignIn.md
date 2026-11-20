@@ -1,31 +1,23 @@
 # Google sign-in
 
-Signing in with Google, the server half: in the browser with an
-authorization code, or on the phone with its own Google account and a
-one-time challenge. Sources: develop `packages/auth/src/server/api/routes/auth.ts`
-(`/oauth/*`), `oauth-app-error-return.ts`, the Quint models
-`OAuthAppLinkRedemption.qnt` and `NativeGoogleAdmission.qnt`, and the
-service half of the old `spec/auth/googleSignIn.md`. The device half is
-`spec/os/signIn/flow.md` and `spec/os/signIn/browserReturn.md`.
-
-Routes under `/api/v1/auth/google/`: `GET authorize` (query `response_type,
-client_id, environment, redirect_uri, code_challenge, code_challenge_method,
-state`) redirects to Google; `GET callback` redirects to
+Signing in with Google, the server half: in the browser with a one-time
+code, or on the phone with its own Google account and a one-time challenge
+(develop `packages/auth/src/server/api/routes/auth.ts`; device half
+`spec/os/signIn/flow.md`). Under `/api/v1/auth/google/`: `GET authorize`
+redirects to Google; `GET callback` redirects to
 `<redirect_uri>#code=<code>&state=<state>` or `#error=<error>&state=<state>`;
 `POST exchange` `{code, redirectUri, clientId, codeVerifier}` answers as a
-code sign-in does (`codeChallenges`); `POST native/challenge` `{clientId,
-environment, redirectUri, codeChallenge, codeChallengeMethod}` answers
-`{challengeId, nonce, serverClientId, expiresAt}`. The session route `POST
-/api/v1/user/methods/google/challenge` opens a link challenge. A challenge is
-answered inside `POST /api/v1/app-auth/mobile/google` (`nativeClients/deviceKeys`)
-or `POST /api/v1/user/methods/google/link` (`signInMethods`).
+code sign-in does (`codeChallenges`); `POST native/challenge`, and `POST
+/api/v1/user/methods/google/challenge` for a link, answer `{challengeId,
+nonce, serverClientId, expiresAt}`. A challenge is answered inside `POST
+/api/v1/app-auth/mobile/google` (`nativeClients/deviceKeys`) or `POST
+/api/v1/user/methods/google/link` (`signInMethods`).
 
-One machine instance is one attempt row, a browser attempt or a native
+One machine instance is one attempt row: a browser attempt or a native
 challenge, never both. The shell draws state, code, challenge id and nonce at
-random, stores only digests of the code and of the device's S256 challenge,
-and passes every check in as an observation; Google's `email_verified` goes
-to `accounts`' first sight unchanged. An unknown state, code or challenge id
-is answered before this machine.
+random, stores only digests, and passes every check in as an observation; an
+unknown state, code or challenge id is answered before this machine.
+Google's `email_verified` goes unchanged to `accounts`' first sight.
 
 ## Story: Sign in with Google in the browser
 
@@ -35,10 +27,9 @@ is answered before this machine.
 
 ### Authorize is admitted only with response_type code, S256, a state and the exact sign-in return of an enabled registration of this environment, and the attempt lives five minutes
 
-A refused request is answered at once and stores nothing: a malformed one
-`400 invalid_request`, a client fault as `nativeClients/registry` names it.
-With Google off the attempt ends before it is stored, answered
-`503 provider_unavailable` reason `google_not_configured`.
+A refused request stores nothing and is final: `400 invalid_request`, or the
+client fault of `nativeClients/registry`. With Google off the attempt ends
+unstored, `503 provider_unavailable` reason `google_not_configured`.
 
 ```quint
 import types.* from "../shared/types"
@@ -61,15 +52,16 @@ type SignInEffect = FirstSightOfGoogle | BeginSession | BeginSecondFactor | Mint
 type AttemptStep = { state: GoogleAttempt, out: List[SignInEffect] }
 pure val stateLifetime: Millis = 5 * millisPerMinute
 pure val initial: GoogleAttempt = { flow: O::initial, stateExpiresAt: 0, failure: NoFailure, target: AppReturnUrl, returned: NotReturned, code: NoCode, native: NoChallenge, now: 0 }
-pure def authorizeAdmitted(r: AuthorizeRequest): bool = r.responseType == CodeResponse and r.method == S256 and r.hasState and r.client == N::ClientAdmitted
-pure def clientFault(check: N::ClientCheck): N::ClientFault =
-  if (check == N::ClientRefused({ fault: N::UnknownClient })) N::UnknownClient else if (check == N::ClientRefused({ fault: N::DisabledClient })) N::DisabledClient else N::WrongRedirect
+pure def wellShaped(r: AuthorizeRequest): bool = r.responseType == CodeResponse and r.method == S256 and r.hasState
+pure def authorizeAdmitted(r: AuthorizeRequest): bool = wellShaped(r) and r.client == N::ClientAdmitted
 pure def authorizeRefusal(r: AuthorizeRequest): Refusal =
-  if (r.responseType != CodeResponse or r.method != S256 or not(r.hasState) or r.client == N::ClientAdmitted) refuse(InvalidRequest)
-  else N::faultRefusal(clientFault(r.client))
+  if (not(wellShaped(r))) refuse(InvalidRequest)
+  else if (r.client == N::ClientRefused({ fault: N::UnknownClient })) N::faultRefusal(N::UnknownClient)
+  else if (r.client == N::ClientRefused({ fault: N::DisabledClient })) N::faultRefusal(N::DisabledClient)
+  else N::faultRefusal(N::WrongRedirect)
 pure def canBegin(a: GoogleAttempt, authorize: AuthorizeRequest): bool = a.flow.phase == O::FlowIdle and a.native == NoChallenge and authorizeAdmitted(authorize)
 pure def begin(a: GoogleAttempt, supported: bool, authorize: AuthorizeRequest): GoogleAttempt =
-  { ...initial, now: a.now, flow: O::begin(a.flow, supported), stateExpiresAt: a.now + stateLifetime }
+  { ...a, flow: O::begin(a.flow, supported), stateExpiresAt: a.now + stateLifetime }
 pure def canElapse(a: GoogleAttempt, elapsed: Millis): bool = elapsed > 0
 pure def elapse(a: GoogleAttempt, elapsed: Millis): GoogleAttempt = { ...a, now: a.now + elapsed }
 pure val elapsedValues = Set(1, 60000, 300000)
@@ -77,16 +69,16 @@ pure val authorizeValues: Set[AuthorizeRequest] = {
   val ok: AuthorizeRequest = { responseType: CodeResponse, method: S256, client: N::ClientAdmitted, hasState: true }
   Set(ok, { ...ok, method: PlainMethod }, { ...ok, hasState: false }, { ...ok, client: N::ClientRefused({ fault: N::WrongRedirect }) })
 }
+pure def lawAnAuthorizeRefusalIsFinal(authorize: AuthorizeRequest): bool =
+  not(authorizeAdmitted(authorize)) implies (wellFormed(authorizeRefusal(authorize)) and not(retryableOf(authorizeRefusal(authorize))))
 pure def sometimesAwaitingGoogle(a: GoogleAttempt): bool = a.flow.phase == O::AwaitingCallback and a.now < a.stateExpiresAt
 ```
 
 ### Every step of a browser attempt is a step of core's OAuth flow
 
-So the attempt is stored before the Google URL is built, a callback consumes
-it once and before Google's token exchange, and a failed write after a
-failure keeps both causes (`spec/core/oauth/index.md`). Google's PKCE
-verifier is always required. Nothing is compensated: storing the verified
-identity is one row write.
+So the attempt is stored before the Google URL, a callback consumes it once
+before the token exchange, and a failed write after a failure keeps both
+causes. Google's verifier is always required; nothing is compensated.
 
 ```quint
 pure def refinesO(a: GoogleAttempt): O::OAuthFlow = a.flow
@@ -107,28 +99,27 @@ pure val weight_writeStart = 3
 pure val weight_beginCallback = 3
 ```
 
-### A callback returns a one-minute code only after Google's verified identity is stored, and otherwise one error of the closed list
+### A callback returns a one-minute code only after Google's verified identity and the code are stored, and otherwise one error of the closed list
 
-The callback takes the attempt only while its five minutes last. Google's
-`error` answers `access_denied`, a callback without code or state
-`oauth_callback_incomplete`, a lost Google verifier `oauth_state_invalid`,
-an expired attempt `oauth_state_expired`, Google switched off since
-`oauth_provider_unavailable`, a failed token exchange
-`oauth_token_exchange_failed`, an identity without a subject
-`oauth_identity_incomplete`, and a failed identity or attempt write
-`oauth_authentication_failed`. A later callback for the same state answers
-`lateCallbackError`. The list is closed and shared with os, which adds only
-`app_link_unverified`; a second factor travels in the code, never in the
-return.
-
-A return withdrawn since authorize (the registration was disabled or
-changed) is never visited: `oauth_redirect_invalid` is shown on a page of
-the cloud.
+Google's `error` answers `access_denied`; a callback without code or state
+`oauth_callback_incomplete`; a lost Google verifier `oauth_state_invalid`;
+an expired attempt `oauth_state_expired`; Google switched off since
+`oauth_provider_unavailable`; a failed token exchange or profile read
+`oauth_token_exchange_failed`; an identity without a subject
+`oauth_identity_incomplete`; a failed write `oauth_authentication_failed`; a
+later callback for the same state `lateCallbackError`. The list is closed and
+shared with os, which adds only `app_link_unverified`. A second factor
+travels in the code, so `mfa_required` is never returned. A return withdrawn
+since authorize is never visited: `oauth_redirect_invalid` shows on a cloud page.
 
 ```quint
 type GoogleCallback = GoogleCode | GoogleDenied | GoogleIncomplete | ReturnWithdrawn
 type GoogleAnswer = IdentityVerified | IdentityIncomplete | TokenExchangeFailed
 pure val codeLifetime: Millis = 60 * millisPerSecond
+pure def returnErrorCode(e: ReturnError): str =
+  if (e == ErrAccessDenied) "access_denied" else if (e == ErrAuthenticationFailed) "oauth_authentication_failed" else if (e == ErrCallbackIncomplete) "oauth_callback_incomplete"
+  else if (e == ErrIdentityIncomplete) "oauth_identity_incomplete" else if (e == ErrProviderUnavailable) "oauth_provider_unavailable" else if (e == ErrRedirectInvalid) "oauth_redirect_invalid"
+  else if (e == ErrStateConsumed) "oauth_state_consumed" else if (e == ErrStateExpired) "oauth_state_expired" else if (e == ErrStateInvalid) "oauth_state_invalid" else "oauth_token_exchange_failed"
 pure def callbackError(callback: GoogleCallback): ReturnError = if (callback == GoogleDenied) ErrAccessDenied else if (callback == GoogleIncomplete) ErrCallbackIncomplete else if (callback == ReturnWithdrawn) ErrRedirectInvalid else ErrStateInvalid
 pure def causeOf(f: Failure): ReturnError = match f { | FailedWith(x) => x.cause | NoFailure => ErrAuthenticationFailed }
 pure def canConsume(a: GoogleAttempt, pendingAndUnexpired: bool, inputError: bool, callback: GoogleCallback): bool =
@@ -150,7 +141,7 @@ pure def canWriteFailure(a: GoogleAttempt): bool = O::canWriteFailure(a.flow)
 pure def writeFailure(a: GoogleAttempt, write: O::FlowWrite): GoogleAttempt = { ...a, flow: O::writeFailure(a.flow, write), returned: ReturnsError({ error: causeOf(a.failure) }) }
 pure def canWriteSuccess(a: GoogleAttempt, selectedStatus: O::FlowState): bool = O::canWriteSuccess(a.flow) and selectedStatus == O::CompletedState
 pure def writeSuccess(a: GoogleAttempt, write: O::FlowWrite, selectedStatus: O::FlowState): GoogleAttempt = {
-  val issued = write != O::WriteThrew
+  val issued = write == O::WriteAcknowledged
   { ...a, flow: O::writeSuccess(a.flow, write, selectedStatus), code: if (issued) CodeIssued({ redeemBy: a.now + codeLifetime }) else NoCode,
     returned: if (issued) ReturnsCode else ReturnsError({ error: ErrAuthenticationFailed }) }
 }
@@ -166,6 +157,7 @@ pure def alwaysACodeFollowsAVerifiedIdentity(a: GoogleAttempt): bool =
   and (a.code != NoCode implies (a.flow.phase == O::FlowReturned and a.flow.consumed and a.flow.accountStored and a.target == AppReturnUrl))
   and ((a.flow.phase == O::ProviderPending or a.flow.phase == O::AccountPending or a.flow.phase == O::SuccessWritePending) implies (a.flow.consumed and a.target == AppReturnUrl))
   and (a.flow.phase == O::SuccessWritePending implies a.flow.accountStored)
+pure def lawEveryReturnErrorHasItsOwnCode(e: ReturnError, other: ReturnError): bool = returnErrorCode(e) == returnErrorCode(other) implies e == other
 pure def sometimesCodeReturned(a: GoogleAttempt): bool = a.returned == ReturnsCode
 pure def sometimesDeniedByThePerson(a: GoogleAttempt): bool = a.returned == ReturnsError({ error: ErrAccessDenied })
 pure def sometimesAttemptExpired(a: GoogleAttempt): bool = a.returned == ReturnsError({ error: ErrStateExpired })
@@ -175,30 +167,42 @@ pure def sometimesWithdrawnReturnShownOnTheCloud(a: GoogleAttempt): bool = a.tar
 
 ### A code is redeemed once, while live, only with its own return and verifier, and starts a session or a second-factor challenge, never both
 
-A wrong return or verifier is refused and spends nothing, so a stolen code
-cannot burn the owner's sign-in. The match runs `accounts`' first sight and
-then a session, or `secondFactor`'s challenge when `afterFirstFactor` of the
-person's factors asks for one (a new account has none).
+A wrong return or verifier is refused `401 credential_proof_invalid` and
+spends nothing, so a stolen code cannot burn the owner's sign-in; a missing
+or redeemed code answers `401 authentication_required` reason
+`credential_unknown`, an expired one `credential_expired`, none retryable. A
+match runs `accounts`' first sight, then a session, or `secondFactor`'s
+challenge when `afterFirstFactor` asks for one.
 
 ```quint
 type CodeBinding = BindingMatches | RedirectDiffers | VerifierDiffers
 pure def codeLive(c: CodePhase, now: Millis): bool = match c { | CodeIssued(x) => now < x.redeemBy | _ => false }
 pure def isRedeemed(c: CodePhase): bool = match c { | CodeRedeemed(x) => true | _ => false }
 pure def effectsOf(y: SignInYield): List[SignInEffect] =
-  if (y == SessionYield) List(FirstSightOfGoogle, BeginSession)
-  else if (y == DeviceKeyYield) List(FirstSightOfGoogle, MintDeviceKey)
-  else if (y == SecondFactorYield) List(FirstSightOfGoogle, BeginSecondFactor)
-  else List()
+  if (y == SessionYield) List(FirstSightOfGoogle, BeginSession) else if (y == DeviceKeyYield) List(FirstSightOfGoogle, MintDeviceKey)
+  else if (y == SecondFactorYield) List(FirstSightOfGoogle, BeginSecondFactor) else List()
 pure def canExchange(a: GoogleAttempt): bool = codeLive(a.code, a.now)
 pure def exchange(a: GoogleAttempt, binding: CodeBinding, factorOutcome: F::FirstFactorOutcome): AttemptStep = {
   val y = if (factorOutcome == F::SecondFactorRequired) SecondFactorYield else SessionYield
   if (binding == BindingMatches) { state: { ...a, code: CodeRedeemed({ redeemedAs: y }) }, out: effectsOf(y) } else { state: a, out: List() }
 }
+pure def codeRefusal(c: CodePhase, now: Millis): Refusal = match c {
+  | CodeIssued(x) => if (now >= x.redeemBy) refuseFor(AuthenticationRequired, CredentialExpired) else refuse(CredentialProofInvalid)
+  | CodeExpired => refuseFor(AuthenticationRequired, CredentialExpired)
+  | _ => refuseFor(AuthenticationRequired, CredentialUnknown)
+}
 pure val weight_exchange = 3
+pure val codeValues = Set(NoCode, CodeIssued({ redeemBy: 60000 }), CodeRedeemed({ redeemedAs: SessionYield }), CodeExpired)
+pure val nowValues = Set(0, 60000)
+pure def lawACodeRefusalIsFinal(code: CodePhase, now: Millis): bool = wellFormed(codeRefusal(code, now)) and not(retryableOf(codeRefusal(code, now)))
 pure def stepACodeIsRedeemedOnceWhileLive(before: GoogleAttempt, via: str, after: GoogleAttempt, out: List[SignInEffect]): bool =
   ((not(isRedeemed(before.code)) and isRedeemed(after.code)) implies (via == "exchange" and codeLive(before.code, before.now)))
   and (isRedeemed(before.code) implies after.code == before.code)
   and ((via == "exchange" and out == List()) implies after == before)
+pure def stepSignInStartsExactlyOneThing(before: GoogleAttempt, via: str, after: GoogleAttempt, out: List[SignInEffect]): bool =
+  not(out.includes(BeginSecondFactor) and (out.includes(BeginSession) or out.includes(MintDeviceKey)))
+  and not(out.includes(BeginSession) and out.includes(MintDeviceKey))
+  and ((out.includes(BeginSession) or out.includes(MintDeviceKey) or out.includes(BeginSecondFactor)) iff out.includes(FirstSightOfGoogle))
 pure def sometimesSignedInWithGoogle(a: GoogleAttempt): bool = a.code == CodeRedeemed({ redeemedAs: SessionYield })
 pure def sometimesBrowserSecondFactor(a: GoogleAttempt): bool = a.code == CodeRedeemed({ redeemedAs: SecondFactorYield })
 ```
@@ -209,11 +213,11 @@ pure def sometimesBrowserSecondFactor(a: GoogleAttempt): bool = a.code == CodeRe
 > instead of opening a browser, so that one tap signs me in, while a token
 > taken from my phone or another app cannot.
 
-### A native challenge needs S256, lives five minutes and is bound to a nonce, the client and the device's verifier
+### A native challenge needs S256, opens only on an unused attempt row, and lives five minutes
 
-The route first admits the client with its sign-in return and native Google
-(`nativeClients/registry`). A link challenge names the signed-in user who
-opened it.
+The client is first admitted with its sign-in return and native Google
+(`nativeClients/registry`); the row keeps the nonce, client and verifier
+digest, and a link challenge names the signed-in user who opened it.
 
 ```quint
 pure val nativeLifetime: Millis = 5 * millisPerMinute
@@ -223,26 +227,18 @@ pure def canIssueNative(a: GoogleAttempt, purpose: NativePurpose, method: PkceMe
 pure def issueNative(a: GoogleAttempt, purpose: NativePurpose, method: PkceMethod): GoogleAttempt = { ...a, native: ChallengeOpen({ purpose: purpose, openUntil: a.now + nativeLifetime }) }
 pure val purposeValues = Set(NativeSignIn, NativeLink({ userId: "user1" }))
 pure val methodValues = Set(S256, PlainMethod)
-pure def alwaysEveryProofIsShortLived(a: GoogleAttempt): bool = {
-  val c = a.code
-  val n = a.native
-  a.stateExpiresAt <= a.now + stateLifetime
-  and (match c { | CodeIssued(x) => x.redeemBy <= a.now + codeLifetime | _ => true })
-  and (match n { | ChallengeOpen(x) => x.openUntil <= a.now + nativeLifetime | _ => true })
-}
 pure def alwaysOneRoute(a: GoogleAttempt): bool = a.native != NoChallenge implies (a.flow.phase == O::FlowIdle and a.code == NoCode)
 ```
 
 ### An ID token spends a live challenge once, only with the client, verifier, signature, issuer, audience and nonce all right, and a refused one spends nothing
 
-The token's audience must be the server client id or a native client id of
-this registration, and its nonce the challenge's, so a token never serves
-two challenges. A sign-in mints a device key (`nativeClients/deviceKeys`,
-in the same transaction) or opens a second-factor challenge; a link yields
-only the proof `signInMethods` consumes. A missing or used challenge answers
-`401 authentication_required` reason `credential_unknown`, an expired one
-reason `credential_expired`, and every failed check `401
-credential_proof_invalid` without saying which.
+The audience must be the server client id and the nonce the challenge's, so
+a token never serves two challenges. A sign-in mints a device key
+(`nativeClients/deviceKeys`, same transaction) or opens a second-factor
+challenge; a link yields only the proof `signInMethods` consumes. A missing
+or used challenge answers `401 authentication_required` reason
+`credential_unknown`, an expired one `credential_expired`, any failed check
+`401 credential_proof_invalid` without saying which; none is retryable.
 
 ```quint
 type NativeProof = { clientMatches: bool, verifierMatches: bool, signatureOk: bool, issuerOk: bool, audienceOk: bool, nonceMatches: bool }
@@ -253,6 +249,9 @@ pure def nativeVerdict(n: NativePhase, now: Millis, p: NativeProof): NativeVerdi
   | ChallengeExpired => NativeExpired
   | _ => NativeUnknown
 }
+pure def nativeRefusal(v: NativeVerdict): Refusal =
+  if (v == NativeExpired) refuseFor(AuthenticationRequired, CredentialExpired)
+  else if (v == NativeProofWrong) refuse(CredentialProofInvalid) else refuseFor(AuthenticationRequired, CredentialUnknown)
 pure def nativeYield(purpose: NativePurpose, factorOutcome: F::FirstFactorOutcome): SignInYield =
   match purpose { | NativeLink(l) => GoogleProofYield | NativeSignIn => if (factorOutcome == F::SecondFactorRequired) SecondFactorYield else DeviceKeyYield }
 pure def isOpen(n: NativePhase): bool = match n { | ChallengeOpen(c) => true | _ => false }
@@ -273,52 +272,28 @@ pure val proofValues: Set[NativeProof] = {
   Set(right, { ...right, verifierMatches: false }, { ...right, nonceMatches: false }, { ...right, audienceOk: false })
 }
 pure val weight_presentIdToken = 3
+pure def lawANativeRefusalIsFinal(v: NativeVerdict): bool = v != NativeAccepted implies (wellFormed(nativeRefusal(v)) and not(retryableOf(nativeRefusal(v))))
 pure def stepAChallengeIsSpentOnceWhileLive(before: GoogleAttempt, via: str, after: GoogleAttempt, out: List[SignInEffect]): bool = {
   val spends = isOpen(before.native) and isUsed(after.native)
   (spends implies (via == "presentIdToken" and nativeLive(before.native, before.now)))
   and (isUsed(before.native) implies after.native == before.native)
   and ((via == "presentIdToken" and not(spends)) implies (after == before and out == List()))
 }
-pure def stepSignInStartsExactlyOneThing(before: GoogleAttempt, via: str, after: GoogleAttempt, out: List[SignInEffect]): bool =
-  not(out.includes(BeginSecondFactor) and (out.includes(BeginSession) or out.includes(MintDeviceKey)))
-  and not(out.includes(BeginSession) and out.includes(MintDeviceKey))
-  and ((out.includes(BeginSession) or out.includes(MintDeviceKey) or out.includes(BeginSecondFactor)) iff out.includes(FirstSightOfGoogle))
 pure def sometimesDeviceKeyMinted(a: GoogleAttempt): bool = a.native == ChallengeUsed({ purpose: NativeSignIn, usedAs: DeviceKeyYield })
 pure def sometimesNativeSecondFactor(a: GoogleAttempt): bool = a.native == ChallengeUsed({ purpose: NativeSignIn, usedAs: SecondFactorYield })
 pure def sometimesGoogleProven(a: GoogleAttempt): bool = provesGoogleFor(a, "user1")
 ```
 
-## Story: Tell the app exactly why Google sign-in was refused
-
-> As the developer of an app, I want each refusal to say whether the request,
-> the client, the code or the challenge was wrong, so that the app retries
-> nothing that cannot succeed.
-
-### Every authorize, exchange and challenge refusal is well formed and final
-
-A missing or redeemed code answers `401 authentication_required` reason
-`credential_unknown`, an expired one reason `credential_expired`, and a
-wrong return or verifier `401 credential_proof_invalid`.
+### No attempt, code or challenge outlives its lifetime, and a code or challenge past it is closed as expired
 
 ```quint
-pure def codeRefusal(c: CodePhase, now: Millis): Refusal = match c {
-  | CodeIssued(x) => if (now >= x.redeemBy) refuseFor(AuthenticationRequired, CredentialExpired) else refuse(CredentialProofInvalid)
-  | CodeExpired => refuseFor(AuthenticationRequired, CredentialExpired)
-  | _ => refuseFor(AuthenticationRequired, CredentialUnknown)
+pure def alwaysEveryProofIsShortLived(a: GoogleAttempt): bool = {
+  val c = a.code
+  val n = a.native
+  a.stateExpiresAt <= a.now + stateLifetime
+  and (match c { | CodeIssued(x) => x.redeemBy <= a.now + codeLifetime | _ => true })
+  and (match n { | ChallengeOpen(x) => x.openUntil <= a.now + nativeLifetime | _ => true })
 }
-pure def nativeRefusal(v: NativeVerdict): Refusal =
-  if (v == NativeExpired) refuseFor(AuthenticationRequired, CredentialExpired)
-  else if (v == NativeProofWrong) refuse(CredentialProofInvalid)
-  else refuseFor(AuthenticationRequired, CredentialUnknown)
-pure val codeValues = Set(NoCode, CodeIssued({ redeemBy: 60000 }), CodeRedeemed({ redeemedAs: SessionYield }), CodeExpired)
-pure val nowValues = Set(0, 60000)
-pure def lawEveryRefusalIsFinal(authorize: AuthorizeRequest, code: CodePhase, now: Millis, v: NativeVerdict): bool =
-  List(authorizeRefusal(authorize), codeRefusal(code, now), nativeRefusal(v)).every(x => wellFormed(x) and not(retryableOf(x)))
-```
-
-### A code past its minute or a challenge past its five minutes is closed as expired
-
-```quint
 pure def isIssued(c: CodePhase): bool = match c { | CodeIssued(x) => true | _ => false }
 pure def canExpireCode(a: GoogleAttempt): bool = isIssued(a.code) and not(codeLive(a.code, a.now))
 pure def expireCode(a: GoogleAttempt): GoogleAttempt = { ...a, code: CodeExpired }

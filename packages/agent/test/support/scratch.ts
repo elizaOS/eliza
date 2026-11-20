@@ -36,6 +36,7 @@ export interface LaunchOptions {
   readonly workflowWorker?: { readonly runtimeDir: string; readonly executable: string; readonly sha256: string };
   readonly hostContextRevision?: number;
   readonly environment?: Readonly<Record<string, string>>;
+  readonly views?: readonly { readonly id: string; readonly label: string; readonly path: string; readonly aliases?: readonly string[] }[];
 }
 
 export const account = { userId: "owner-user", organizationId: "owner-org" } as const;
@@ -76,6 +77,7 @@ export function launchDocument(options: LaunchOptions = {}): Record<string, unkn
     ...(options.workflowWorker === undefined ? {} : { workflowWorker: options.workflowWorker }),
     ...(options.hostContextRevision === undefined ? {} : { hostContextRevision: options.hostContextRevision }),
     ...(options.environment === undefined ? {} : { environment: options.environment }),
+    ...(options.views === undefined ? {} : { views: options.views }),
   };
 }
 

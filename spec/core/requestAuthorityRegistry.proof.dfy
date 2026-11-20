@@ -757,8 +757,6 @@ lemma RequestLeafWrapDenialError(c: core__requestCompletions_RequestCompletions,
     (forall d :: d in t.denials ==> (d.id == errorId || exists prior :: prior in c.denials && prior.id == d.id))
 {
   var t := core__requestCompletions_wrapDenialError(c,sourceDenial,errorId);
-  var d := t.denials[|c.denials|];
-  assert d.id == errorId && t.denials == c.denials + [d];
   RequestDenialKeys(c.denials,t.denials,errorId);
 }
 
@@ -768,7 +766,6 @@ lemma RequestWrapDenialErrorAggregate(s: RequestRegistry, sourceDenial: string, 
 {
   RequestDenialLookup(s,sourceDenial);
   var a := denialOwner(s,sourceDenial);
-  assert a in s.owners;
   RequestTargetDenialAvailable(s,a,errorId);
   var owner := refreshedOwner(a,s);
   var c := owner.completions;
@@ -810,22 +807,6 @@ lemma transferDenial_ensures(s: RequestRegistry, sourceDenial: string, targetRes
   ensures (inv(s) ==> canTransferDenial(s, sourceDenial, targetResult, expectedAttempt, targetNotStarted, sourceNotStarted) ==> stepActivePairIdentityNeverChanges(s, "transferDenial", transferDenial(s, sourceDenial, targetResult, expectedAttempt, targetNotStarted, sourceNotStarted)))
 {
   if inv(s) && canTransferDenial(s, sourceDenial, targetResult, expectedAttempt, targetNotStarted, sourceNotStarted) { RequestTransferDenialAggregate(s, sourceDenial, targetResult, expectedAttempt, targetNotStarted, sourceNotStarted); }
-}
-
-lemma RequestKeepsKeyCounts<T,K>(before: seq<T>, after: seq<T>, key: T -> K, ok: T -> bool)
-  requires |before| == |after|
-  requires forall i :: 0 <= i < |before| ==> key(before[i]) == key(after[i]) && ok(before[i]) == ok(after[i])
-  requires forall v :: v in before ==> ok(v) && |ProofLib.Filter((other: T) => key(other) == key(v),before)| == 1
-  ensures forall v :: v in after ==> ok(v) && |ProofLib.Filter((other: T) => key(other) == key(v),after)| == 1
-{
-  forall v | v in after
-    ensures ok(v) && |ProofLib.Filter((w: T) => key(w) == key(v),after)| == 1
-  {
-    var i :| 0 <= i < |after| && after[i] == v;
-    var p := before[i];
-    assert p in before && key(p) == key(v) && ok(p) == ok(v);
-    ProofLib.FilterLengthPointwise((w: T) => key(w) == key(p),(w: T) => key(w) == key(v),before,after);
-  }
 }
 
 lemma RequestViewsKeepData(s: RequestRegistry, t: RequestRegistry)

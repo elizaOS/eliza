@@ -14,7 +14,9 @@ export type GoogleScript =
 export interface GoogleMapsFake {
   readonly handler: FakeHandler;
   readonly calls: ReadonlyArray<{ readonly operation: GoogleOperation; readonly request: FakeRequest }>;
+  /** @throws {never} */
   count(operation: GoogleOperation): number;
+  /** @throws {never} */
   script(...next: ReadonlyArray<GoogleScript>): void;
 }
 
@@ -150,6 +152,7 @@ async function scripted(script: GoogleScript, operation: GoogleOperation, reques
   }
 }
 
+/** @throws {never} */
 export function googleMapsFake(): GoogleMapsFake {
   const calls: Array<{ operation: GoogleOperation; request: FakeRequest }> = [];
   const queue: GoogleScript[] = [];

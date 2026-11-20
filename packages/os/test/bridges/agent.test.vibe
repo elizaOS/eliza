@@ -1,0 +1,173 @@
+// spec/os/agentService/channel.md, "Story: Ask the agent only on the routes my app allows"; spec/os/agentService/channel.md, "Story: Stream a reply and stop it"; spec/os/agentService/channel.md, "Story: Receive the agent's live events for my screen"
+import { assert, it } from "@effect/vitest"
+import { BridgeUnavailable, MalformedReply, rejectionCode } from "../../src/bridges/bridge.vibe"
+import { agentClient } from "../../src/bridges/agent.vibe"
+
+module android {
+  import { CapacitorException } from "@capacitor/core"
+  import type { AgentEvents, AgentRoute, AgentStatus, ElizaAgentPlugin } from "../../src/bridges/definitions/agent.ts"
+
+  export interface Device {
+    installed: boolean
+    status: Record<string, unknown>
+    routes: readonly string[]
+    streams: readonly string[]
+    open: string[]
+    listeners: Map<string, (event: unknown) => void>
+  }
+
+  /** @throws {never} */
+  export function device(changes: Partial<Device> = {}): Device {
+    return {
+      installed: true,
+      status: { available: true, state: "running", epoch: 3, requestBodyLimit: 1048576 },
+      routes: ["GET /api/health", "POST /api/conversations/messages"],
+      streams: ["POST /api/conversations/messages/stream"],
+      open: [],
+      listeners: new Map(),
+      ...changes,
+    }
+  }
+
+  /** @throws {never} */
+  function wire<A>(value: unknown): A {
+    return JSON.parse(JSON.stringify(value))
+  }
+
+  /** @throws {never} */
+  export function emit(phone: Device, name: keyof AgentEvents, event: unknown) {
+    phone.listeners.get(name)?.(wire(event))
+  }
+
+  /** @throws {never} */
+  export function androidAgent(phone: Device): ElizaAgentPlugin {
+    const refuse = (code: string) => Object.assign(new CapacitorException(code), { code })
+    const installed = async () => {
+      if (!phone.installed) throw refuse("UNIMPLEMENTED")
+    }
+    const admit = async (list: readonly string[], { method, path }: AgentRoute) => {
+      await installed()
+      if (!list.includes(`${method} ${path}`)) throw refuse("RouteRefused")
+    }
+    const status = async (): Promise<AgentStatus> => {
+      await installed()
+      return wire(phone.status)
+    }
+    const take = async ({ id }: { id: string }) => {
+      const aborted = phone.open.includes(id)
+      phone.open = phone.open.filter((one) => one !== id)
+      if (aborted) emit(phone, "streamEnd", { id, kind: "aborted" })
+      return { aborted }
+    }
+    return {
+      getStatus: status,
+      start: status,
+      stop: status,
+      restart: status,
+      request: async (route) => {
+        await admit(phone.routes, route)
+        return wire({ status: 200, data: { ready: true, echo: route.body ?? null } })
+      },
+      requestStream: async (route) => {
+        await admit(phone.streams, route)
+        if (phone.open.includes(route.id)) throw refuse("IdInUse")
+        phone.open.push(route.id)
+        return { id: route.id }
+      },
+      abort: take,
+      subscribeEvents: async ({ id, topic }) => {
+        await installed()
+        if (phone.open.includes(topic)) throw refuse("TopicInUse")
+        phone.open.push(topic)
+        return { id }
+      },
+      unsubscribeEvents: take,
+      reviewRecovery: async () => wire({ kind: "unavailable" }),
+      archiveRecovery: async () => wire({ kind: "unavailable" }),
+      addListener: async (eventName, listener) => {
+        phone.listeners.set(eventName, (event: unknown) => listener(wire(event)))
+        return { remove: async () => void phone.listeners.delete(eventName) }
+      },
+    }
+  }
+}
+import { androidAgent, device, emit } from android
+
+effect function refusal(call: () => Promise<unknown>) {
+  const { cause } = try flip(tryPromise(() => call()))
+  if (cause instanceof MalformedReply) return `malformed ${cause.method}`
+  if (cause instanceof BridgeUnavailable) return `unavailable ${cause.method}`
+  return `rejected ${rejectionCode(cause)}`
+}
+
+effect function settle() {
+  try sleep("10 millis")
+}
+
+it.live("Ask the agent only on the routes my app allows, and read its status without the plugin (spec/os/agentService/channel.md, \"Story: Ask the agent only on the routes my app allows\"; spec/os/agentService/channel.md, \"A call is refused before any I/O unless the agent is serving, its id is free and its list admits it\"; spec/os/agentService/channel.md, \"The launch's root token stays inside the service\")", () => effect {
+  const phone = device()
+  const agent = agentClient(androidAgent(phone))
+  const running = try promise(() => agent.getStatus())
+  const health = try promise(() => agent.request({ method: "GET", path: "/api/health" }))
+  const refused = try refusal(() => agent.request({ method: "DELETE", path: "/api/agent/state" }))
+  const streamOnPlain = try refusal(() => agent.request({ method: "POST", path: "/api/conversations/messages/stream" }))
+  phone.status = { available: true, state: "failed", failure: "storage", error: "store opened under another account", epoch: 4, requestBodyLimit: 1048576 }
+  const failed = try promise(() => agent.getStatus())
+  phone.status = { available: true, state: "failed", epoch: 4, requestBodyLimit: 1048576 }
+  const unnamed = try refusal(() => agent.getStatus())
+  const review = try promise(() => agent.reviewRecovery())
+  phone.installed = false
+  const missing = try promise(() => agent.getStatus())
+  const startMissing = try refusal(() => agent.start())
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { running, health, refused, streamOnPlain, failed, unnamed, review, missing, startMissing },
+    {
+      running: { available: true, state: "running", epoch: 3, requestBodyLimit: 1048576 },
+      health: { status: 200, data: { ready: true, echo: null } },
+      refused: "rejected RouteRefused",
+      streamOnPlain: "rejected RouteRefused",
+      failed: { available: true, state: "failed", failure: "storage", error: "store opened under another account", epoch: 4, requestBodyLimit: 1048576 },
+      unnamed: "malformed getStatus",
+      review: { kind: "unavailable" },
+      missing: { available: false, state: "unavailable", epoch: 0, requestBodyLimit: 0 },
+      startMissing: "unavailable start",
+    },
+  ))
+})
+
+it.live("Stream a reply in order, stop it once, and hear my screen's live events (spec/os/agentService/channel.md, \"Story: Stream a reply and stop it\"; spec/os/agentService/channel.md, \"A stream delivers its frames in order and ends once with End, Error or Aborted\"; spec/os/agentService/channel.md, \"Abort settles only the caller's own pending call, once\"; spec/os/agentService/channel.md, \"Story: Receive the agent's live events for my screen\"; spec/os/agentService/channel.md, \"At most one subscription per topic is open, and no more than the agent serves at once\")", () => effect {
+  const phone = device()
+  const agent = agentClient(androidAgent(phone))
+  const heard: string[] = []
+  try promise(() => agent.addListener("streamData", (frame) => heard.push(frame.kind === "head" ? `head ${frame.status}` : `chunk ${frame.index} ${frame.dataBase64}`)))
+  try promise(() => agent.addListener("streamEnd", (end) => heard.push(end.kind === "failed" ? `failed ${end.code}` : `end ${end.kind}`)))
+  try promise(() => agent.addListener("agentEvent", (event) => heard.push(event.kind === "event" ? `event ${event.index} ${String(event.event.type)}` : `event-end ${event.kind}`)))
+  try promise(() => agent.addListener("status", (status) => heard.push(`status ${status.state} ${status.epoch}`)))
+  const opened = try promise(() => agent.requestStream({ id: "reply-0001", method: "POST", path: "/api/conversations/messages/stream", body: { text: "hello" } }))
+  const reused = try refusal(() => agent.requestStream({ id: "reply-0001", method: "POST", path: "/api/conversations/messages/stream" }))
+  emit(phone, "streamData", { id: "reply-0001", kind: "head", index: 0, status: 200, headers: { "content-type": "text/event-stream" } })
+  emit(phone, "streamData", { id: "reply-0001", kind: "chunk", index: 1, dataBase64: "aGk=" })
+  emit(phone, "streamData", { id: "reply-0001", kind: "chunk", index: 2 })
+  const stopped = try promise(() => agent.abort({ id: "reply-0001" }))
+  const again = try promise(() => agent.abort({ id: "reply-0001" }))
+  const voice = try promise(() => agent.subscribeEvents({ id: "voice-0001", topic: "voice" }))
+  const second = try refusal(() => agent.subscribeEvents({ id: "voice-0002", topic: "voice" }))
+  emit(phone, "agentEvent", { id: "voice-0001", kind: "event", index: 0, event: { type: "voice-transcript", text: "lights on" } })
+  emit(phone, "agentEvent", { id: "voice-0001", kind: "failed", code: "Restarted" })
+  emit(phone, "status", { available: true, state: "starting", epoch: 4, requestBodyLimit: 1048576 })
+  try settle()
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { opened, reused, stopped, again, voice, second, heard },
+    {
+      opened: { id: "reply-0001" },
+      reused: "rejected IdInUse",
+      stopped: { aborted: true },
+      again: { aborted: false },
+      voice: { id: "voice-0001" },
+      second: "rejected TopicInUse",
+      heard: ["head 200", "chunk 1 aGk=", "end aborted", "event 0 voice-transcript", "event-end failed", "status starting 4"],
+    },
+  ))
+})

@@ -1,0 +1,18 @@
+// spec/agent/notifications.md, "Story: Read my notices and mark them read from my own client"
+import { NotificationService } from "@elizaos/core"
+import type { AgentModule, ModuleFactory } from "../host/module.vibe"
+import { notificationRoutes } from "./routes.vibe"
+
+export const notificationsModuleName = "@elizaos/agent/notifications"
+
+export const notificationsModule: ModuleFactory<never> = effect (context) => {
+  return {
+    name: notificationsModuleName,
+    plugin: {
+      name: notificationsModuleName,
+      description: "The owner's notice list and read mark over the agent's notification inbox",
+      services: [NotificationService],
+      routes: notificationRoutes(context.runtime),
+    },
+  } satisfies AgentModule
+}

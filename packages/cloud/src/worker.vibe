@@ -9,7 +9,7 @@ import { ownsPasswordBackupPath } from "./password-backup.vibe"
 export { nativeAssetLinks }
 export { SpeechRelayCoordinator } from "./speech-relay.vibe"
 import { speechRequest, speechRoute, speechWebSocket, type SpeechEnv } from "./speech.vibe"
-import { googleRequest, reminderSchedule, type GoogleEnv } from "./google.vibe"
+import { deviceAttachmentPath, googleRequest, reminderSchedule, type GoogleEnv } from "./google.vibe"
 import { billingRequest, refreshPaidAccess, stripeWebhook, stripeWebhookRoute, sweepSubscriptions, type BillingEnv } from "./billing.vibe"
 import { CLEF_DECISIONS_PATH } from "./clef-decisions.vibe"
 import { clefRequest, type ClefEnv } from "./clef-worker.vibe"
@@ -37,6 +37,17 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
     }
     return identityRequest(request, env, db)
   }
+  if (path === deviceAttachmentPath) {
+    if (request.method !== "POST") return WorkerResponse.json({ error: "method_not_allowed" }, { status: 405 })
+    if (!request.headers.has("authorization")) return WorkerResponse.json({ error: "device_required" }, { status: 401 })
+    const owner = await inferenceAccount(request, db, env)
+    if (!owner) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+    const bytes = await limitedBody(request, 8704)
+    if (!bytes) return WorkerResponse.json({ error: "request_too_large" }, { status: 413 })
+    const response = await googleRequest(withRequestBody(request, bytes), env, db, owner)
+    if (response.ok && await inferenceAccount(request, db, env) !== owner) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+    return response
+  }
   const decisions = path === CLEF_DECISIONS_PATH
   const inference = path === "/api/v1/chat/completions" || path === "/api/v1/embeddings"
   if (path === speechRoute + "/ws") return speechWebSocket(request, env, db)
@@ -55,7 +66,12 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
   if (inference || path === speechRoute + "/session") await refreshPaidAccess(env, db, account)
   if (speech) return speechRequest(request, env, db, account)
   if (inference) return inferenceRequest(request, env, db, account, workerFetch)
-  if (google) return googleRequest(request, env, db, account)
+  if (google) {
+    const response = await googleRequest(request, env, db, account)
+    if (response.ok && path === "/api/v1/eliza/google/gmail/attachment" && await sessionAccount(request, db) !== account)
+      return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+    return response
+  }
   if (billing) return billingRequest(request, env, db, account)
   if (extension) return extension(request, env, db, account)
   return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })

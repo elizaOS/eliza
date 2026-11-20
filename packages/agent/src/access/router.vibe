@@ -80,7 +80,7 @@ module node {
         if (piece.startsWith("{")) parameters.set(piece.slice(1, -1), segments[index])
       })
       const body: unknown = request.body === undefined ? undefined : JSON.parse(new TextDecoder().decode(request.body))
-      const result = await binding.handle({ parameters, query, body, signal }, caller)
+      const result = await binding.handle({ parameters, query, headers: request.headers ?? new Map(), body, signal }, caller)
       return result instanceof Response ? result : json(result.status, result.body)
     }
     return Object.assign(route, { delivery })

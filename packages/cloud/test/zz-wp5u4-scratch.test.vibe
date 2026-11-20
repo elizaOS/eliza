@@ -1,0 +1,155 @@
+// spec/cloud/services/inference.md, "Story: Answer a chat completion once and charge it once"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
+import { assert, describe, it } from "@effect/vitest"
+import type { Model } from "../gen/cloud__services__models.ts"
+import { json, type Route } from "../src/http/routes.vibe"
+import { listening, respond } from "../src/http/transport.vibe"
+import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
+import { chatBody, chatIngressPerMinute, hasImage, quote } from "../src/services/chat-request.vibe"
+import { tokenDigest } from "../src/shared/sealing.vibe"
+import { Store } from "../src/store/store.vibe"
+import { startFakeServer } from "./support/fakes.ts"
+import { migrate, storeLayer } from "../src/store/store.vibe"
+import { Deployment } from "../src/profile/profile.vibe"
+import { callCloud, type CallInit } from "./support/http.ts"
+import { testProfile } from "./support/profile.ts"
+
+interface TestCloud { readonly store: Store.Shape; readonly fakes: { readonly url: string } }
+
+effect function testCloud() {
+  const fakes = try acquireRelease(promise(() => startFakeServer()), (f) => promise(() => f.close()))
+  const profile = try parseProfile(try sync(() => testProfile(fakes.url)))
+  const built = try Layer.build(Layer.mergeAll(storeLayer({ kind: "pglite", file: undefined }), deploymentLayer(profile, "staging")))
+  const deployment = Context.get(built, Deployment)
+  const now = try Clock.currentTimeMillis
+  try Effect.provideContext(migrate({ digest: deployment.settings.databaseIdentity, environment: "staging", now }), built)
+  return { store: Context.get(built, Store), fakes } satisfies TestCloud
+}
+
+effect function organization(cloud: TestCloud, id: string) {
+  const now = try Clock.currentTimeMillis
+  try cloud.store.transaction((tx) => tx.query("INSERT INTO organizations (id, name, created_at) VALUES ($1, $2, $3)", [id, id, now]))
+}
+
+const minuteMs = 60_000
+const model: Model = { id: "test-chat", provider: "llm", upstreamModel: "upstream-chat", vision: true, inputPer1K: 1000, outputPer1K: 2000 }
+
+effect function check(run: () => void) {
+  try Effect.try(run)
+}
+
+effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
+  return try cloud.store.transaction((tx) => tx.query(text, params))
+}
+
+effect function deviceKeyFor(cloud: TestCloud, seed: string, now: number) {
+  const key = `eliza_mobile_${seed.repeat(64).slice(0, 64)}`
+  try organization(cloud, "org-owner")
+  try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, sessions_revoked_before, devices_revoked_before, created_at, updated_at) VALUES ('owner', '{}'::jsonb, 1, 'org-owner', 'active', 'owner@example.com', 0, 0, $1, $1)", [now])
+  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ('grant-owner', '{}'::jsonb, 1, 'owner', 'test-client', 'active', 'cred-owner', $1, $2, $3, $4, $4)", [
+    tokenDigest(key), now, now + 60 * minuteMs, now - minuteMs
+  ])
+  return key
+}
+
+function chatProbe(reached: Array<string>): Route {
+  return {
+    method: "POST",
+    path: "/probe/chat",
+    auth: "ServiceAccess",
+    ingressPerMinute: chatIngressPerMinute,
+    handler: (context) => effect {
+      reached.push(context.caller.kind)
+      const body = try chatBody(context)
+      return json({ ...(try quote(body, model)), image: hasImage(body) })
+    }
+  }
+}
+
+effect function probeServer(cloud: TestCloud, routes: ReadonlyArray<Route>) {
+  const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
+  const built = try Layer.build(HttpServer.serve(respond(routes)).pipe(
+    Layer.provideMerge(listening(0, "127.0.0.1")),
+    Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer))
+  ))
+  const { address } = Context.get(built, HttpServer.HttpServer)
+  const url = "port" in address ? `http://127.0.0.1:${address.port}` : ""
+  return (init: CallInit) => promise(() => callCloud(url, "/probe/chat", { method: "POST", ...init }))
+}
+
+function outcome(answer: { readonly status: number; readonly body: unknown }): unknown {
+  const body = answer.body as { readonly error?: string; readonly reason?: string }
+  return answer.status === 200 ? answer.body : `${answer.status} ${body.error}${body.reason === undefined ? "" : ` ${body.reason}`}`
+}
+
+const closedSchema = {
+  type: "object",
+  properties: { title: { type: "string" }, tags: { type: "array", items: { type: "object", properties: { name: { type: "string" } }, required: ["name"], additionalProperties: false } } },
+  required: ["title", "tags"],
+  additionalProperties: false
+}
+
+describe("WP5 Inference: chat admission", () => {
+  it.live("Refuse a chat body the cloud does not accept and quote the one it does (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const reached: Array<string> = []
+    const call = try probeServer(cloud, [chatProbe(reached)])
+    const now = try Clock.currentTimeMillis
+    const key = try deviceKeyFor(cloud, "a", now)
+    const send = (body: unknown) => call({ headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, json: body })
+    const user = { role: "user", content: "Name this picture in one short title ok." }
+    const answers = {
+      unsupportedField: outcome(try send({ model: "test-chat", messages: [user], tools: [] })),
+      emptyMessages: outcome(try send({ model: "test-chat", messages: [] })),
+      tooManyTokens: outcome(try send({ model: "test-chat", messages: [user], max_tokens: 2_000_001 })),
+      nestedExtra: outcome(try send({ model: "test-chat", messages: [{ ...user, cache: true }] })),
+      sourcelessImage: outcome(try send({ model: "test-chat", messages: [{ role: "user", content: [{ type: "image_url", image_url: {} }] }] })),
+      openStrictSchema: outcome(try send({ model: "test-chat", messages: [user], response_format: { type: "json_schema", json_schema: { name: "title", strict: true, schema: { type: "object", properties: { title: { type: "string" } } } } } })),
+      notJson: outcome(try call({ headers: { authorization: `Bearer ${key}`, "content-type": "text/plain" } })),
+      accepted: outcome(try send({
+        model: "test-chat",
+        messages: [{ role: "user", content: [{ type: "text", text: user.content }, { type: "image_url", image_url: { url: "data:image/png;base64,iVBORw0KGgo=" } }] }],
+        stream: true,
+        temperature: 0.2,
+        max_tokens: 900,
+        max_completion_tokens: 64,
+        reasoning_effort: "low",
+        response_format: { type: "json_schema", json_schema: { name: "title", strict: true, schema: closedSchema } }
+      })),
+      defaultOutput: outcome(try send({ model: "test-chat", messages: [user] }))
+    }
+    try check(() => assert.deepStrictEqual(answers, {
+      unsupportedField: "400 invalid_request unsupported_field",
+      emptyMessages: "400 invalid_request",
+      tooManyTokens: "400 invalid_request",
+      nestedExtra: "400 invalid_request",
+      sourcelessImage: "400 invalid_request",
+      openStrictSchema: "400 invalid_request",
+      notJson: "400 invalid_request",
+      accepted: { counts: { inputTokens: 10, outputTokens: 64 }, micros: 166, image: true },
+      defaultOutput: { counts: { inputTokens: 10, outputTokens: 500 }, micros: 1212, image: false }
+    }))
+    try check(() => assert.deepStrictEqual(reached.length, 9))
+  }))
+
+  it.live("Limit chat ingress to 600 requests a minute from one address before authentication (spec/cloud/shared/rateLimit.md, \"Story: Refuse excess requests with a usable retry time\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const reached: Array<string> = []
+    const call = try probeServer(cloud, [chatProbe(reached)])
+    const now = try Clock.currentTimeMillis
+    const windowEnd = Math.floor(now / minuteMs) * minuteMs + minuteMs
+    if (windowEnd - now < 40_000) try Effect.sleep(Duration.millis(windowEnd - now + 50))
+    const start = try Clock.currentTimeMillis
+    const key = try deviceKeyFor(cloud, "b", start)
+    const statuses: Array<number> = []
+    for (let index = 0; index < chatIngressPerMinute; index += 1) {
+      const answer = try call({ json: { model: "test-chat", messages: [] } })
+      statuses.push(answer.status)
+    }
+    const over = try call({ headers: { authorization: `Bearer ${key}` }, json: { model: "test-chat", messages: [{ role: "user", content: "hello" }] } })
+    const overBody = over.body as { readonly error: string; readonly retryAt?: number }
+    try check(() => assert.deepStrictEqual(
+      [statuses.every((status) => status === 401), over.status, overBody.error, overBody.retryAt, over.headers["retry-after"] !== undefined, reached.length],
+      [true, 429, "rate_limited", Math.floor(start / minuteMs) * minuteMs + minuteMs, true, 0]
+    ))
+  }))
+})

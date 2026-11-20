@@ -11,7 +11,9 @@ import {
   createScheduledTask, getScheduledTask, listScheduledTasks, scheduledTaskKeeping,
   type ScheduledTaskDetails, type StoredTask,
 } from "./store.vibe"
-import type { FireResult, ScheduledTaskPort, ScheduledTaskRow, TaskEdit, TaskTrigger, VerbRequest, VerbResult } from "./scheduled-task-routes.vibe"
+import type {
+  FireResult, ScheduledTaskPort, ScheduledTaskRow, TaskEdit, TaskTrigger, VerbRequest, VerbResult,
+} from "./scheduled-task-routes.vibe"
 
 module node {
   import { randomUUID } from "node:crypto"
@@ -353,7 +355,7 @@ effect function bootQuietly(runtime: IAgentRuntime) {
   bootWrite(runtime) catch (failure) => runtime.reportError("ScheduledTasks.boot", failure, { task: scheduledTasksTick })
 }
 
-export effect function startScheduledTaskTicks(runtime: IAgentRuntime, tasks: ScheduledTasks) {
+export effect function startScheduledTaskTicks(runtime: IAgentRuntime, tasks: ScheduledTasks): Ticking!! {
   const worker: TaskWorker = {
     name: scheduledTasksTick,
     execute: () => runPromise(effect {
@@ -362,7 +364,7 @@ export effect function startScheduledTaskTicks(runtime: IAgentRuntime, tasks: Sc
       return undefined
     }),
   }
-  try Effect.try(() => runtime.registerTaskWorker(worker))
+  try sync(() => runtime.registerTaskWorker(worker))
   const boot = fork.detached bootQuietly(runtime)
   return {
     stop: effect function () {
@@ -370,4 +372,8 @@ export effect function startScheduledTaskTicks(runtime: IAgentRuntime, tasks: Sc
       runtime.unregisterTaskWorker(scheduledTasksTick)
     },
   }
+}
+
+export interface Ticking {
+  stop(): void!!
 }

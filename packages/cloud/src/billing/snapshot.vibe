@@ -1,5 +1,5 @@
 // spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"; spec/cloud/billing/subscriptions.md, "Story: Change my plan one command at a time"; spec/cloud/billing/plans.md, "Story: Apply the plan that funds a call"
-import { controlOf, dunningEndsAt, type NotAState, type ControlAction, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+import { controlOf, dunningEndsAt, type ControlAction, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import type { PeriodPhase } from "../../gen/cloud__billing__allowance.effect.vibe"
 import type { FundingLane } from "../../gen/cloud__shared__metering.effect.vibe"
 import { json, owner, type Route } from "../http/routes.vibe"
@@ -8,8 +8,8 @@ import { periodRows } from "../shared/metering.vibe"
 import { loadRow, type RowCorrupt } from "../store/rows.vibe"
 import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 import { fundsRows } from "./funds.vibe"
-import { subscriptionOf } from "./invoices.vibe"
-import { parsePlanKey, wirePlanKey, type WirePlanKey } from "./plans.vibe"
+import { readSubscription } from "./subscriptions.vibe"
+import { parsePlanKey, wirePlanKey, type PaidPlanKey, type WirePlanKey } from "./plans.vibe"
 import { fundingOf, readPolicy, type PolicyUnreadable, type FundingClass, type PlanSource } from "./policy.vibe"
 
 export type AccountStatus = "active" | "deleting" | "erased"
@@ -33,7 +33,7 @@ export interface SnapshotSubscription {
 
 export interface SnapshotGrant {
   readonly id: string
-  readonly planKey: WirePlanKey
+  readonly planKey: PaidPlanKey
   readonly family: string
   readonly effectiveFrom: number
   readonly effectiveUntil: number | null
@@ -117,10 +117,11 @@ effect function grantView(tx: Tx, organizationId: string, now: number): (Snapsho
   const planKey = parsePlanKey(row.plan_key)
   const id = toText(row.id)
   const family = toText(row.family)
-  if (planKey === undefined || id === undefined || family === undefined) throw new SnapshotUnreadable({ organizationId, problem: "grant row" })
+  const paidKey = planKey === undefined ? undefined : wirePlanKey(planKey)
+  if (paidKey === undefined || paidKey === "free" || id === undefined || family === undefined) throw new SnapshotUnreadable({ organizationId, problem: "grant row" })
   return {
     id,
-    planKey: wirePlanKey(planKey),
+    planKey: paidKey,
     family,
     effectiveFrom: toInt(row.effective_from),
     effectiveUntil: row.effective_until === null ? null : toInt(row.effective_until),
@@ -152,7 +153,7 @@ effect function allowanceView(tx: Tx, organizationId: string, now: number): (Sna
   }
 }
 
-export effect function readSnapshot(tx: Tx, caller: { readonly userId: string; readonly organizationId: string }, now: number): BillingSnapshot!(StoreFailure | RowCorrupt | NotAState | PolicyUnreadable | SnapshotUnreadable) {
+export effect function readSnapshot(tx: Tx, caller: { readonly userId: string; readonly organizationId: string }, now: number): BillingSnapshot!(StoreFailure | RowCorrupt | PolicyUnreadable | SnapshotUnreadable) {
   const organizationId = caller.organizationId
   const status = toText((try tx.query("SELECT status FROM accounts WHERE key = $1 AND organization_id = $2", [caller.userId, organizationId]))[0]?.status)
   const account = accountStatuses.find((candidate) => candidate === status)
@@ -166,7 +167,7 @@ export effect function readSnapshot(tx: Tx, caller: { readonly userId: string; r
     account: { status: account },
     balance: { usdMicros: funds.state.creditBalance, revision: funds.revision },
     plan: { key: wirePlanKey(policy.planKey), source: policy.source, effectiveUntil: policy.effectiveUntil },
-    subscription: subscriptionView(try subscriptionOf(tx, organizationId)),
+    subscription: subscriptionView(try readSubscription(tx, organizationId)),
     grant: try grantView(tx, organizationId, now),
     allowance: try allowanceView(tx, organizationId, now),
     funding: { inference: fundingLanes[funding.inference], speech: fundingLanes[funding.speech], maps: fundingLanes[funding.maps] }

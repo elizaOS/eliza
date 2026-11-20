@@ -29,13 +29,13 @@ const statusOfColumn: Readonly<Record<string, AccountStatus>> = { active: "Activ
 const columnOfStatus: Readonly<Record<AccountStatus, string | null>> = { Unopened: null, Active: "active", Deleting: "deleting", Erased: "erased" }
 const unowned: Owner = { tag: "Unowned" }
 
-function plain(identity: Identity): Identity {
-  return { method: identity.method, subject: identity.subject }
-}
-
 function normalEmail(text: string | undefined): string | undefined {
   const email = text?.trim().toLowerCase()
   return email === undefined || email === "" ? undefined : email
+}
+
+function plain(identity: Identity): Identity {
+  return { method: identity.method, subject: identity.method === "EmailSignIn" ? normalEmail(identity.subject) ?? "" : identity.subject }
 }
 
 function ownerOf(row: Row | undefined): Owner {

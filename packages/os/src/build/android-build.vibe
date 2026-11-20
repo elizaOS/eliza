@@ -1,0 +1,678 @@
+// spec/os/build/androidBuild.md, "Story: Replace published APKs only with this run's verified set"; spec/os/build/androidHost.md, "A host without local inference carries no model, inference library, model server or model directory"
+import { ChildProcess } from "effect/process"
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+import {
+  Machine,
+  assemble,
+  canAdmit,
+  canArchiveSet,
+  canAssemble,
+  canCleanArchive,
+  canCleanSet,
+  canPublishSet,
+  canVerify,
+  decodeState,
+  initial,
+  machineOver,
+  requestFinding,
+  type AndroidBuild,
+  type BuildFailure,
+  type BuildRequest,
+  type Event,
+  type RequestRefusal,
+  type StagedPayload,
+} from "../../gen/os__build__androidBuild.effect.vibe"
+import { hostPayloadAdmitted, signingNameCount, type NamedSet, type PayloadEntry, type PublishedApk } from "../../gen/os__build__androidHost.effect.vibe"
+import { modelSuffixes } from "../../gen/os__build__runtimePayload.effect.vibe"
+import { listAndroidArtifactEntries, parseDigest, readApkSignerDigest } from "../image/apk.vibe"
+import { PROFILE_DOCUMENT } from "./android-host.vibe"
+import { INFERENCE_LIBRARY, INVENTORY_ASSET } from "./runtime-payload.vibe"
+import { BundleFacts } from "./runtime-payload.schema.vibe"
+import { verifyCommittedWorkspace, type WorkspaceAllowances } from "./source-integrity.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+
+  /** @throws {never} */
+  export function sha256Hex(bytes: Uint8Array | string): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function processEnvironment(): Readonly<Record<string, string | undefined>> {
+    return process.env
+  }
+
+  /** @throws {never} */
+  export function serialized(value: unknown): string | undefined {
+    try {
+      return JSON.stringify(value, null, 2)
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function parsedJson(text: string): unknown {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return undefined
+    }
+  }
+}
+import { parsedJson, processEnvironment, serialized, sha256Hex } from node
+
+export type Environment = Readonly<Record<string, string | undefined>>
+
+export interface AndroidCommand {
+  readonly command: string
+  readonly args: readonly string[]
+}
+
+export type PrepareStep = AndroidCommand | ((context: { readonly root: string; readonly environment: Environment }) => unknown)
+
+export interface ManifestRow {
+  readonly flavor: string
+  readonly name: string
+  readonly sha256: string
+  readonly signer: string
+}
+
+export interface ArchiveFile {
+  readonly source: string
+  readonly name: string
+  readonly sha256: string
+}
+
+export interface AndroidArchive {
+  readonly output: string
+  readonly metadata: unknown
+  readonly files?: (context: { readonly manifest: readonly ManifestRow[] }) => readonly ArchiveFile[]
+}
+
+export interface BuildRecord {
+  readonly name: string
+  readonly metadata: unknown
+}
+
+export interface BuildAndroid {
+  readonly root?: string
+  readonly environment?: Environment
+  readonly variants: readonly string[]
+  readonly pin: string
+  readonly verify: AndroidCommand
+  readonly prepare?: readonly PrepareStep[]
+  readonly archive?: AndroidArchive | null
+  readonly record?: BuildRecord | null
+  readonly daemon?: boolean
+  readonly lint?: boolean
+  readonly androidTest?: boolean
+  readonly release?: boolean
+  readonly project?: string
+  readonly output?: string
+  readonly gradleArguments?: readonly string[]
+  readonly androidTestOutput?: string | null
+  readonly mappings?: boolean
+  readonly allowances?: WorkspaceAllowances
+}
+
+export interface AndroidBuildRun {
+  readonly options: BuildAndroid
+  readonly root: string
+  readonly environment: Environment
+  readonly project: string
+  readonly output: string
+  readonly work: string
+  readonly archive: string | undefined
+  readonly machine: Machine.Shape
+}
+
+export interface BuildStep {
+  readonly state: AndroidBuild
+  readonly detail: string
+}
+
+export interface BuiltAndroid {
+  readonly output: string
+  readonly files: readonly string[]
+  readonly manifest: readonly ManifestRow[]
+  readonly archive: string | null
+}
+
+export error AndroidBuildRefused { refusal: RequestRefusal; message: string }
+export error AndroidBuildFailed { failure: BuildFailure; message: string }
+export error AndroidBuildStepRefused { step: Event["type"]; state: AndroidBuild }
+
+interface HostDocument {
+  readonly signing: readonly string[] | null
+  readonly runtimeMain: string | null
+}
+
+interface Artifact {
+  readonly source: string
+  readonly name: string
+  readonly kind: "Apk" | "Test"
+  readonly release: boolean
+}
+
+const VARIANT = /^[a-z][A-Za-z0-9]*$/
+const GRADLE_ARGUMENT = /^-P[A-Za-z_][A-Za-z0-9_.]*=[A-Za-z0-9_.,:+-]*$/
+const RECORD_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/
+const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]*$/
+const MODEL_DIRECTORY = /^assets\/(?:[^/]+\/)*models?\//
+const MODEL_SERVER = /^llama(?:-omnivoice)?-server$/
+const APK_MANIFEST = "apk-manifest.json"
+const SERVICE_METADATA = "service-mode.json"
+const BUILD_CHECKS = "build-checks.json"
+const RESERVED_NAMES = [APK_MANIFEST, SERVICE_METADATA, BUILD_CHECKS]
+const SIGNING_KEYS = ["storeFile", "storePassword", "keyAlias", "keyPassword"] as const
+const RUNTIME_MAIN = "android/app/src/main"
+const BUNDLE_MANIFEST = "assets/agent/manifest.json"
+const STATE = "state.json"
+const NEXT = "next"
+const PREVIOUS = "previous"
+const ARCHIVE_NEXT = "archive-next"
+const ARCHIVE_PREVIOUS = "archive-previous"
+
+function safeRelative(value: unknown, allowEmpty = false): boolean {
+  if (typeof value !== "string") return false
+  if (value === "") return allowEmpty
+  return !value.startsWith("/") && !value.includes("\\") && value.split("/").every((part) => part !== "" && part !== "." && part !== "..")
+}
+
+function isCommand(value: unknown): value is AndroidCommand {
+  return typeof value === "object" && value !== null && "command" in value && "args" in value
+    && typeof value.command === "string" && value.command !== "" && Array.isArray(value.args) && value.args.every((arg) => typeof arg === "string")
+}
+
+function overlaps(one: string, other: string): boolean {
+  return one === other || one.startsWith(`${other}/`) || other.startsWith(`${one}/`)
+}
+
+function capitalized(name: string): string {
+  return `${name.slice(0, 1).toUpperCase()}${name.slice(1)}`
+}
+
+function entryKind(entry: string): PayloadEntry {
+  const name = entry.slice(entry.lastIndexOf("/") + 1).toLowerCase()
+  if (modelSuffixes.some((suffix) => name.endsWith(suffix))) return "ModelEntry"
+  if (MODEL_SERVER.test(name)) return "ModelServerEntry"
+  if (INFERENCE_LIBRARY.test(name)) return "InferenceLibraryEntry"
+  return MODEL_DIRECTORY.test(entry) ? "ModelDirectoryEntry" : "OrdinaryEntry"
+}
+
+function optionProblems(options: BuildAndroid): string[] {
+  const problems: string[] = []
+  const check = (holds: boolean, problem: string) => {
+    if (!holds) problems.push(problem)
+  }
+  const switches = [options.lint, options.androidTest, options.release, options.mappings, options.daemon]
+  check(Array.isArray(options.variants) && options.variants.every((name) => typeof name === "string" && VARIANT.test(name)), "Android variants are names like launcher")
+  check(switches.every((value) => value === undefined || typeof value === "boolean"), "Android build switches are booleans")
+  check(typeof options.pin === "string", "The pin is a commit")
+  check(safeRelative(options.project ?? "android") && safeRelative(options.output ?? "artifacts"), "The Android project and output are relative paths")
+  check(options.androidTestOutput === undefined || options.androidTestOutput === null || safeRelative(options.androidTestOutput, true), "The Android test output is a relative path")
+  check((options.gradleArguments ?? []).every((argument) => argument === "--offline" || GRADLE_ARGUMENT.test(argument)), "Gradle arguments are -Pname=value or --offline")
+  check(isCommand(options.verify), "The verify command is an argv")
+  check((options.prepare ?? []).every((step) => typeof step === "function" || isCommand(step)), "Each prepare step is an argv or a synchronous function")
+  const record = options.record ?? null
+  check(record === null || (RECORD_NAME.test(record.name) && !RESERVED_NAMES.includes(record.name) && serialized(record.metadata) !== undefined), "The build record has a plain .json name the build does not write and serializable metadata")
+  const archive = options.archive ?? null
+  check(archive === null || (safeRelative(archive.output) && !overlaps(archive.output, options.output ?? "artifacts") && !overlaps(archive.output, options.project ?? "android")
+    && serialized(archive.metadata) !== undefined && (archive.files === undefined || typeof archive.files === "function")), "The archive is a relative path apart from the project and output, with serializable metadata")
+  return problems
+}
+
+effect function capture(command: string, args: readonly string[], cwd: string) {
+  const spawner = try ChildProcessSpawner
+  return scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make(command, [...args], { cwd, extendEnv: true, env: { GIT_OPTIONAL_LOCKS: "0" }, stdin: "ignore" }))
+    const [stdout] = try.all [Stream.mkString(Stream.decodeText(child.stdout)), Stream.mkString(Stream.decodeText(child.stderr))]
+    const code: number = try child.exitCode
+    return code === 0 ? stdout.trim() : undefined
+  }) catch () => undefined
+}
+
+effect function execute(command: AndroidCommand, cwd: string, environment: Environment) {
+  const spawner = try ChildProcessSpawner
+  return scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make(command.command, [...command.args], { cwd, env: { ...environment }, extendEnv: false, stdin: "ignore", stdout: "inherit", stderr: "inherit" }))
+    const code: number = try child.exitCode
+    return code
+  }) catch () => -1
+}
+
+effect function readJsonFile(file: string) {
+  const files = try FileSystem.FileSystem
+  return parsedJson((files.readFileString(file) catch () => ""))
+}
+
+effect function regularFile(file: string) {
+  const files = try FileSystem.FileSystem
+  return ((files.stat(file) catch () => undefined))?.type === "File"
+}
+
+effect function hostDocument(run: AndroidBuildRun) {
+  const path = try Path.Path
+  const raw = try readJsonFile(path.join(run.project, PROFILE_DOCUMENT))
+  if (typeof raw !== "object" || raw === null || !("signing" in raw) || !("runtimeMain" in raw)) return undefined
+  const { signing, runtimeMain } = raw
+  const names = signing === null ? null : SIGNING_KEYS.map((key) => typeof signing === "object" && key in signing ? Reflect.get(signing, key) : undefined)
+  const named = names === null || (names.every((name) => typeof name === "string" && ENVIRONMENT_NAME.test(name)) && new Set(names).size === signingNameCount)
+  if (!named || !(runtimeMain === null || typeof runtimeMain === "string")) return undefined
+  const document: HostDocument = { signing: names === null ? null : names.map(String), runtimeMain }
+  return document
+}
+
+effect function treeDigest(directory: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const lines: string[] = []
+  for (const entry of (try files.readDirectory(directory, { recursive: true })).sort()) {
+    const file = path.join(directory, entry)
+    if ((try files.stat(file)).type === "File") lines.push(`${entry}\0${sha256Hex(try files.readFile(file))}\n`)
+  }
+  return sha256Hex(lines.join(""))
+}
+
+effect function stagedPayload(document: HostDocument | undefined) {
+  const path = try Path.Path
+  if (document === undefined || document.runtimeMain === null) return { tag: "NoAgentPayload" } satisfies StagedPayload
+  const main = document.runtimeMain
+  const identified = try regularFile(path.join(main, INVENTORY_ASSET))
+  const digest = identified ? (treeDigest(main) catch () => undefined) : undefined
+  const payload: StagedPayload = { tag: "AgentPayload", inventory: digest === undefined ? { tag: "NotADigest" } : { tag: "Sha256", hex: digest } }
+  return payload
+}
+
+effect function localInference(document: HostDocument | undefined) {
+  const path = try Path.Path
+  if (document === undefined || document.runtimeMain === null) return false
+  const facts = (Schema.decodeUnknownEffect(BundleFacts)(try readJsonFile(path.join(document.runtimeMain, BUNDLE_MANIFEST))) catch () => undefined)
+  return facts?.localInference ?? false
+}
+
+effect function checkoutAllowances(run: AndroidBuildRun, top: string, document: HostDocument | undefined) {
+  const path = try Path.Path
+  const payload = document?.runtimeMain?.endsWith(`/${RUNTIME_MAIN}`) ? document.runtimeMain.slice(0, -RUNTIME_MAIN.length - 1) : undefined
+  const generated = [run.project, run.output, run.work, run.archive, payload]
+    .flatMap((place) => place === undefined ? [] : [path.relative(top, place)])
+    .filter((place) => safeRelative(place))
+  const given = run.options.allowances ?? {}
+  const allowances: WorkspaceAllowances = {
+    generatedFiles: (given.generatedFiles ?? []).map((file) => path.relative(top, path.resolve(run.root, file))),
+    generatedDirectories: [...generated, ...(given.generatedDirectories ?? []).map((directory) => path.relative(top, path.resolve(run.root, directory)))],
+  }
+  return allowances
+}
+
+effect function sourceAtPin(run: AndroidBuildRun, document: HostDocument | undefined) {
+  const files = try FileSystem.FileSystem
+  const found = try capture("git", ["rev-parse", "--show-toplevel"], run.root)
+  if (found === undefined || run.options.pin === "") return { held: false, detail: `${run.root} is not inside a Git checkout at the pin` }
+  const top = (files.realPath(found) catch () => found)
+  const allowances = try checkoutAllowances(run, top, document)
+  return (effect {
+    try verifyCommittedWorkspace(top, run.options.pin, allowances)
+    return { held: true, detail: "" }
+  } catch (error) => ({ held: false, detail: "message" in error ? String(error.message) : `${run.options.pin} is not a commit` }))
+}
+
+function refusalDetail(refusal: RequestRefusal, problems: readonly string[], document: HostDocument | undefined, unset: readonly string[], source: string): string {
+  switch (refusal) {
+    case "NoVariants":
+      return "Name at least one Android variant"
+    case "DuplicateVariant":
+      return "Each Android variant is named once"
+    case "MalformedRequest":
+      return [...problems, ...(document === undefined ? ["The Android project has no readable host profile document"] : [])].join("; ")
+    case "DebugOnlyArchive":
+      return "A debug-only Android build cannot be archived"
+    case "SigningPartial":
+      return `Release signing needs all of ${(document?.signing ?? []).join(", ")} or none; ${unset.join(", ")} are not set`
+    case "SourceNotAtPin":
+      return source
+    case "PayloadUnidentified":
+      return `The staged agent payload at ${document?.runtimeMain ?? ""} has no inventory`
+  }
+}
+
+effect function guard(run: AndroidBuildRun, step: Event["type"], allowed: (state: AndroidBuild) => boolean) {
+  const state = try run.machine.get()
+  if (!allowed(state)) throw new AndroidBuildStepRefused({ step, state })
+  return state
+}
+
+effect function send(run: AndroidBuildRun, event: Event, detail: string) {
+  const step: BuildStep = { state: try orDie(run.machine.send(event)), detail }
+  return step
+}
+
+export effect function openAndroidBuild(options: BuildAndroid) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const root = path.resolve(options.root ?? ".")
+  const output = path.join(root, safeRelative(options.output ?? "artifacts") ? options.output ?? "artifacts" : "artifacts")
+  const work = path.join(path.dirname(output), `.${path.basename(output)}.build`)
+  const state = path.join(work, STATE)
+  try files.makeDirectory(work, { recursive: true })
+  effect function load() {
+    if (!(try files.exists(state))) return initial
+    return try decodeState(parsedJson(try files.readFileString(state)))
+  }
+  const run: AndroidBuildRun = {
+    options,
+    root,
+    environment: options.environment ?? processEnvironment(),
+    project: path.join(root, safeRelative(options.project ?? "android") ? options.project ?? "android" : "android"),
+    output,
+    work,
+    archive: options.archive === undefined || options.archive === null || !safeRelative(options.archive.output) ? undefined : path.join(root, options.archive.output),
+    machine: try machineOver(load, (next) => orDie(files.writeFileString(state, JSON.stringify(next)))),
+  }
+  return run
+}
+
+export effect function admitAndroidBuild(run: AndroidBuildRun) {
+  try guard(run, "admit", canAdmit)
+  const options = run.options
+  const problems = optionProblems(options)
+  const document = try hostDocument(run)
+  const names = document?.signing ?? []
+  const unset = names.filter((name) => (run.environment[name] ?? "").trim() === "")
+  const source = try sourceAtPin(run, document)
+  const request: BuildRequest = {
+    variants: Array.isArray(options.variants) ? [...options.variants] : [],
+    wellFormed: problems.length === 0 && document !== undefined,
+    release: options.release ?? true,
+    signing: (document?.signing ?? null) === null ? "NoneNamed" : "AllNamed" satisfies NamedSet,
+    signingVariablesSet: names.length - unset.length,
+    wantsArchive: (options.archive ?? null) !== null,
+    pin: typeof options.pin === "string" ? options.pin : "",
+    sourceAtPin: source.held,
+    payload: try stagedPayload(document),
+  }
+  const finding = requestFinding(request)
+  return try send(run, { type: "admit", request }, finding.tag === "RequestRefused" ? refusalDetail(finding.refusal, problems, document, unset, source.detail) : "")
+}
+
+effect function prepare(run: AndroidBuildRun) {
+  for (const step of run.options.prepare ?? []) {
+    if (typeof step === "function") {
+      const result = (Effect.try(() => step({ root: run.root, environment: run.environment })) catch () => "failed")
+      if (result === "failed" || (typeof result === "object" && result !== null && "then" in result)) return "A prepare function failed or was not synchronous"
+    } else {
+      const code = try execute(step, run.root, run.environment)
+      if (code !== 0) return `Prepare step ${step.command} exited with ${code}`
+    }
+  }
+  return undefined
+}
+
+effect function gradle(run: AndroidBuildRun, request: BuildRequest) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const outputs = path.join(run.project, "app/build/outputs")
+  for (const variant of request.variants) {
+    try files.remove(path.join(outputs, "apk", variant, "release"), { recursive: true, force: true })
+    try files.remove(path.join(outputs, "mapping", `${variant}Release`), { recursive: true, force: true })
+  }
+  const modes = [...(request.release ? ["Debug", "Release"] : ["Debug"]), ...(run.options.androidTest ?? true ? ["DebugAndroidTest"] : [])]
+  const tasks = [...modes.flatMap((mode) => request.variants.map((variant) => `:app:assemble${capitalized(variant)}${mode}`)), ...(run.options.lint ?? true ? [":app:lint"] : [])]
+  const args = [run.options.daemon ?? false ? "--daemon" : "--no-daemon", ...(run.options.gradleArguments ?? []), ...tasks]
+  return try execute({ command: "./gradlew", args }, run.project, run.environment)
+}
+
+effect function artifacts(run: AndroidBuildRun, request: BuildRequest) {
+  const path = try Path.Path
+  const outputs = path.join(run.project, "app/build/outputs/apk")
+  const found: Artifact[] = []
+  for (const variant of request.variants) {
+    found.push({ source: path.join(outputs, variant, "debug", `app-${variant}-debug.apk`), name: `${variant}-debug.apk`, kind: "Apk", release: false })
+    if (request.release) {
+      const signed = try regularFile(path.join(outputs, variant, "release", `app-${variant}-release.apk`))
+      const name = `${variant}-release${signed ? "" : "-unsigned"}.apk`
+      found.push({ source: path.join(outputs, variant, "release", `app-${name}`), name, kind: "Apk", release: signed })
+    }
+    const tests = run.options.androidTestOutput
+    if ((run.options.androidTest ?? true) && tests !== undefined && tests !== null) {
+      found.push({ source: path.join(outputs, "androidTest", variant, "debug", `app-${variant}-debug-androidTest.apk`), name: path.join(tests, `${variant}-androidTest.apk`), kind: "Test", release: false })
+    }
+  }
+  return found
+}
+
+effect function copyOut(run: AndroidBuildRun, request: BuildRequest, set: readonly Artifact[]) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const next = path.join(run.work, NEXT)
+  try files.remove(next, { recursive: true, force: true })
+  try files.makeDirectory(next, { recursive: true })
+  for (const artifact of set) {
+    try files.makeDirectory(path.dirname(path.join(next, artifact.name)), { recursive: true })
+    try files.copyFile(artifact.source, path.join(next, artifact.name))
+  }
+  if (run.options.mappings ?? false) {
+    for (const variant of request.variants) {
+      const mapping = path.join(run.project, "app/build/outputs/mapping", `${variant}Release`, "mapping.txt")
+      if (!(try regularFile(mapping))) continue
+      try files.makeDirectory(path.join(next, "mapping"), { recursive: true })
+      try files.copyFile(mapping, path.join(next, "mapping", `${variant}-release-mapping.txt`))
+    }
+  }
+  const record = run.options.record ?? null
+  if (record !== null) try files.writeFileString(path.join(next, record.name), `${serialized(record.metadata) ?? "null"}\n`)
+  return true
+}
+
+export effect function assembleAndroidBuild(run: AndroidBuildRun) {
+  const state = try guard(run, "assemble", canAssemble)
+  const request = state.request
+  const failed = { succeeded: false, apksPresent: false, releaseSigned: false, copied: false }
+  const unprepared = try prepare(run)
+  if (unprepared !== undefined) return try send(run, { type: "assemble", gradle: failed }, unprepared)
+  const code = try gradle(run, request)
+  if (code !== 0) return try send(run, { type: "assemble", gradle: failed }, `Gradle exited with ${code}`)
+  const set = try artifacts(run, request)
+  const missing: string[] = []
+  for (const artifact of set) {
+    if (!(try regularFile(artifact.source))) missing.push(artifact.source)
+  }
+  const releases = set.filter((artifact) => artifact.name.includes("-release"))
+  const releaseSigned = !request.release || (request.signingVariablesSet === 0 ? releases.some((artifact) => artifact.release) : releases.every((artifact) => artifact.release))
+  const outputs = { succeeded: true, apksPresent: missing.length === 0, releaseSigned, copied: true }
+  const detail = missing.length > 0 ? `Gradle left no ${missing.join(", ")}` : `The release signing is not what ${(state.request.signing === "AllNamed" ? "the signing variables" : "an unsigned host")} configure`
+  if (assemble(state, outputs).phase.tag !== "Staged") return try send(run, { type: "assemble", gradle: outputs }, detail)
+  const copied = (copyOut(run, request, set) catch () => false)
+  return try send(run, { type: "assemble", gradle: { ...outputs, copied } }, copied ? "" : "The APK set could not be copied into the private directory")
+}
+
+effect function manifestRows(file: string) {
+  const raw = try readJsonFile(file)
+  const rows: ManifestRow[] = []
+  if (!Array.isArray(raw)) return rows
+  for (const row of raw) {
+    if (typeof row !== "object" || row === null) continue
+    const [flavor, name, sha256, signer] = ["flavor", "name", "sha256", "signer"].map((key) => Reflect.get(row, key))
+    if (typeof flavor === "string" && typeof name === "string" && typeof sha256 === "string" && typeof signer === "string") rows.push({ flavor, name, sha256, signer })
+  }
+  return rows
+}
+
+effect function publishedRow(run: AndroidBuildRun, row: ManifestRow, apks: readonly string[]) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const file = path.join(run.work, NEXT, row.name)
+  const listed = apks.includes(row.name)
+  const fresh = listed && sha256Hex((files.readFile(file) catch () => new Uint8Array())) === row.sha256
+  const signer = listed ? (readApkSignerDigest(file, { env: run.environment }) catch () => undefined) : undefined
+  const published: PublishedApk = { flavor: row.flavor, apk: parseDigest(row.sha256), signer: signer !== undefined && signer === row.signer ? parseDigest(signer) : { tag: "NotADigest" }, fresh }
+  return published
+}
+
+effect function carriesNoInference(run: AndroidBuildRun, apks: readonly string[], local: boolean) {
+  const path = try Path.Path
+  for (const apk of apks) {
+    const entries = (listAndroidArtifactEntries(path.join(run.work, NEXT, apk)) catch () => ["unreadable.gguf"])
+    if (!hostPayloadAdmitted(local, entries.map(entryKind))) return false
+  }
+  return true
+}
+
+export effect function verifyAndroidBuild(run: AndroidBuildRun) {
+  const state = try guard(run, "verify", canVerify)
+  const path = try Path.Path
+  const next = path.join(run.work, NEXT)
+  const apks = (try artifacts(run, state.request)).filter((artifact) => artifact.kind === "Apk").map((artifact) => artifact.name)
+  const code = try execute({ command: run.options.verify.command, args: [...run.options.verify.args, next] }, run.root, run.environment)
+  const rows = try manifestRows(path.join(next, APK_MANIFEST))
+  const published: PublishedApk[] = []
+  for (const row of rows) published.push(try publishedRow(run, row, apks))
+  const document = try hostDocument(run)
+  const clean = try carriesNoInference(run, apks, try localInference(document))
+  const source = try sourceAtPin(run, document)
+  const payload = try stagedPayload(document)
+  const detail = !source.held ? source.detail
+    : code !== 0 ? `The verify command exited with ${code}`
+    : !clean ? "An APK of a host without local inference carries a model, inference library, model server or model directory"
+    : `${APK_MANIFEST} does not list each variant's fresh APK once with one shared signer, or the staged payload changed`
+  return try send(run, { type: "verify", report: { verifierSucceeded: code === 0 && clean, rows: published, sourceAtPin: source.held, payload } }, detail)
+}
+
+effect function swap(next: string, destination: string, previous: string) {
+  const files = try FileSystem.FileSystem
+  try files.remove(previous, { recursive: true, force: true })
+  const moved = try files.exists(destination)
+  if (moved) try files.rename(destination, previous)
+  return (effect {
+    try files.rename(next, destination)
+    return true
+  } catch effect () => {
+    if (moved) try files.rename(previous, destination)
+    return false
+  })
+}
+
+effect function tidy(places: readonly string[], destination: string | undefined, previous: string) {
+  const files = try FileSystem.FileSystem
+  const kept = destination !== undefined && !((files.exists(destination) catch () => false))
+  return (effect {
+    for (const place of [...places, ...(kept ? [] : [previous])]) try files.remove(place, { recursive: true, force: true })
+    return true
+  } catch () => false)
+}
+
+export effect function publishAndroidBuild(run: AndroidBuildRun) {
+  try guard(run, "publishSet", canPublishSet)
+  const path = try Path.Path
+  const ok = (swap(path.join(run.work, NEXT), run.output, path.join(run.work, PREVIOUS)) catch () => false)
+  return try send(run, { type: "publishSet", ok }, ok ? "" : `The verified set could not replace ${run.output}`)
+}
+
+export effect function cleanAndroidSet(run: AndroidBuildRun) {
+  try guard(run, "cleanSet", canCleanSet)
+  const path = try Path.Path
+  const removed = try tidy([path.join(run.work, NEXT)], run.output, path.join(run.work, PREVIOUS))
+  return try send(run, { type: "cleanSet", removed }, "")
+}
+
+effect function archiveExtras(run: AndroidBuildRun, archive: AndroidArchive, manifest: readonly ManifestRow[], reserved: Set<string>) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const listed = archive.files === undefined ? [] : (Effect.try(() => archive.files?.({ manifest }) ?? []) catch () => undefined)
+  if (listed === undefined || !Array.isArray(listed)) return undefined
+  const extras: { readonly name: string; readonly bytes: Uint8Array }[] = []
+  for (const file of listed) {
+    if (typeof file?.source !== "string" || !safeRelative(file.name) || reserved.has(file.name) || !/^[a-f0-9]{64}$/.test(file.sha256 ?? "")) return undefined
+    reserved.add(file.name)
+    const bytes = (files.readFile(path.resolve(run.root, file.source)) catch () => undefined)
+    if (bytes === undefined || sha256Hex(bytes) !== file.sha256) return undefined
+    extras.push({ name: file.name, bytes })
+  }
+  return extras
+}
+
+effect function stageArchive(run: AndroidBuildRun, archive: AndroidArchive, names: readonly string[], extras: readonly { readonly name: string; readonly bytes: Uint8Array }[]) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const next = path.join(run.work, ARCHIVE_NEXT)
+  try files.remove(next, { recursive: true, force: true })
+  try files.makeDirectory(next, { recursive: true })
+  for (const name of names) {
+    try files.makeDirectory(path.dirname(path.join(next, name)), { recursive: true })
+    try files.copyFile(path.join(run.output, name), path.join(next, name))
+  }
+  try files.writeFileString(path.join(next, SERVICE_METADATA), serialized(archive.metadata) ?? "null")
+  try files.writeFileString(path.join(next, BUILD_CHECKS), JSON.stringify({ lint: run.options.lint ?? true, androidTest: run.options.androidTest ?? true }, null, 2))
+  for (const extra of extras) {
+    try files.makeDirectory(path.dirname(path.join(next, extra.name)), { recursive: true })
+    try files.writeFile(path.join(next, extra.name), extra.bytes)
+  }
+  return next
+}
+
+export effect function archiveAndroidBuild(run: AndroidBuildRun) {
+  const state = try guard(run, "archiveSet", canArchiveSet)
+  const path = try Path.Path
+  const archive = run.options.archive ?? null
+  const destination = run.archive
+  if (archive === null || destination === undefined) return try send(run, { type: "archiveSet", filesMatch: false, ok: false }, "The archive has no destination")
+  const record = run.options.record ?? null
+  const set = (try artifacts(run, state.request)).map((artifact) => artifact.name)
+  const names = [...set, APK_MANIFEST, ...(record === null ? [] : [record.name])]
+  const manifest = try manifestRows(path.join(run.output, APK_MANIFEST))
+  const extras = try archiveExtras(run, archive, manifest, new Set([...names, SERVICE_METADATA, BUILD_CHECKS]))
+  if (extras === undefined) return try send(run, { type: "archiveSet", filesMatch: false, ok: false }, "An archive file is unsafe, named twice, or changed after verification")
+  const ok = (effect {
+    const next = try stageArchive(run, archive, names, extras)
+    return try swap(next, destination, path.join(run.work, ARCHIVE_PREVIOUS))
+  } catch () => false)
+  return try send(run, { type: "archiveSet", filesMatch: true, ok }, ok ? "" : `The archive could not replace ${destination}`)
+}
+
+export effect function cleanAndroidArchive(run: AndroidBuildRun) {
+  try guard(run, "cleanArchive", canCleanArchive)
+  const path = try Path.Path
+  const removed = try tidy([path.join(run.work, ARCHIVE_NEXT)], run.archive, path.join(run.work, ARCHIVE_PREVIOUS))
+  return try send(run, { type: "cleanArchive", removed }, "")
+}
+
+effect function settle(run: AndroidBuildRun, step: BuildStep) {
+  let state = step.state
+  if (canCleanSet(state)) state = (try cleanAndroidSet(run)).state
+  if (canCleanArchive(state)) state = (try cleanAndroidArchive(run)).state
+  if (state.phase.tag === "Failed") throw new AndroidBuildFailed({ failure: state.phase.failure, message: step.detail })
+  return state
+}
+
+effect function recover(output: string, previous: string) {
+  const files = try FileSystem.FileSystem
+  if (!(try files.exists(output)) && (try files.exists(previous))) try files.rename(previous, output)
+}
+
+export effect function buildAndroid(options: BuildAndroid) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const run = try openAndroidBuild(options)
+  try recover(run.output, path.join(run.work, PREVIOUS))
+  if (run.archive !== undefined) try recover(run.archive, path.join(run.work, ARCHIVE_PREVIOUS))
+  try files.remove(path.join(run.work, STATE), { force: true })
+  const admitted = try admitAndroidBuild(run)
+  if (admitted.state.phase.tag === "Failed") {
+    const finding = requestFinding(admitted.state.request)
+    throw new AndroidBuildRefused({ refusal: finding.tag === "RequestRefused" ? finding.refusal : "MalformedRequest", message: admitted.detail })
+  }
+  try settle(run, try assembleAndroidBuild(run))
+  try settle(run, try verifyAndroidBuild(run))
+  const published = try settle(run, try publishAndroidBuild(run))
+  if (published.request.wantsArchive) try settle(run, try archiveAndroidBuild(run))
+  const set = try artifacts(run, published.request)
+  const built: BuiltAndroid = {
+    output: run.output,
+    files: set.filter((artifact) => artifact.kind === "Apk").map((artifact) => path.join(run.output, artifact.name)),
+    manifest: try manifestRows(path.join(run.output, APK_MANIFEST)),
+    archive: published.request.wantsArchive ? run.archive ?? null : null,
+  }
+  return built
+}

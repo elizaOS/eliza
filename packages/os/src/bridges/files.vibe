@@ -1,0 +1,84 @@
+// spec/os/android/files/storage.md, "A row answers copied, moved or trashed only for an admitted row whose own write was acknowledged"; spec/os/android/files/storage.md, "Erasing forever takes the owner's confirmation and is counted only when both data and record are gone"; spec/os/android/files/handoff.md, "A chooser reply reports dispatch only, and a start that comes after the timeout never changes it"; spec/os/android/files/storageWatch.md, "Only the watch of the newest ticket publishes a change"
+import { nativeAcknowledged, receiptOutcome, type FilesOp, type WriteResult } from "../../gen/os__android__files__storage.effect.vibe"
+import { nativeReply, settled } from "./bridge.vibe"
+import type { ElizaFilesPlugin, FileOutcomeRow, FilesResult } from "./definitions/files.ts"
+
+export type * from "./definitions/files.ts"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { ElizaFilesPlugin } from "./definitions/files.ts"
+
+  /** @throws {never} */
+  export function filesPlugin(name = "ElizaFiles"): ElizaFilesPlugin {
+    return registerPlugin<ElizaFilesPlugin>(name)
+  }
+}
+import { filesPlugin } from capacitor
+export { filesPlugin }
+
+export type FilesMethod = keyof ElizaFilesPlugin
+
+const answered = {
+  status: Schema.Literals(["ready", "denied", "unavailable", "invalid", "exists", "missing", "failed", "changed", "confirmation-required", "superseded", "unsupported"]),
+  message: Schema.optionalKey(Schema.String),
+  access: Schema.optionalKey(Schema.Literals(["granted", "denied", "unsupported"])),
+  legacy: Schema.optionalKey(Schema.Boolean),
+}
+schema Volume { id: string; name: string; primary: boolean; free: number; total: number }
+schema Entry { path: string; name: string; directory: boolean; mimeType: string; size: number; modified: number; children?: number }
+schema Folder { folder: string; count: number; latest: Entry }
+schema TrashItem { id: string; name: string; origin: string; directory: boolean; mimeType: string; size: number; deletedAt: number }
+schema Row { path: string; status: "copied" | "moved" | "unchanged" | "trashed" | "restored" | "changed" | "missing" | "invalid" | "failed"; to?: string }
+const Answer = Schema.Struct(answered)
+const Volumes = Schema.Struct({ ...answered, volumes: Schema.optionalKey(Schema.Array(Volume)) })
+const Listing = Schema.Struct({ ...answered, entries: Schema.optionalKey(Schema.Array(Entry)), truncated: Schema.optionalKey(Schema.Boolean) })
+const Category = Schema.Struct({ ...answered, entries: Schema.optionalKey(Schema.Array(Entry)), count: Schema.optionalKey(Schema.Int), truncated: Schema.optionalKey(Schema.Boolean), folders: Schema.optionalKey(Schema.Array(Folder)) })
+const Reviewed = Schema.Struct({ ...answered, reviewed: Schema.optionalKey(Schema.Array(Schema.String)) })
+const Outcomes = Schema.Struct({ ...answered, outcomes: Schema.optionalKey(Schema.Array(Row)) })
+const Placed = Schema.Struct({ ...answered, path: Schema.optionalKey(Schema.String) })
+const Trash = Schema.Struct({ ...answered, items: Schema.optionalKey(Schema.Array(TrashItem)) })
+const Erased = Schema.Struct({ ...answered, count: Schema.optionalKey(Schema.Int) })
+const Handoff = Schema.Union([Schema.Struct({ status: Schema.Literal("opened"), count: Schema.Int }), Answer])
+const Selection = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("selected"), action: Schema.Literal("files"), selectionId: Schema.String, name: Schema.String, mimeType: Schema.String, canRename: Schema.Boolean, uri: Schema.optionalKey(Schema.String) }),
+  Answer,
+])
+
+const WRITTEN: Readonly<Partial<Record<FileOutcomeRow["status"], WriteResult>>> = { copied: "WriteCopied", moved: "WriteMoved", trashed: "WriteMoved" }
+
+const UNCONFIRMED: FilesResult = { status: "confirmation-required", message: "Confirm before deleting permanently." }
+
+function acknowledged(op: FilesOp, row: FileOutcomeRow): FileOutcomeRow {
+  const write = WRITTEN[row.status]
+  if (write === undefined) return row
+  return receiptOutcome(op, "Admitted", nativeAcknowledged(op, write), row.to ?? "") === "Failed" ? { path: row.path, status: "failed" } : row
+}
+
+function receipts<Reply extends { readonly outcomes?: readonly FileOutcomeRow[] }>(op: FilesOp, reply: Reply): Reply {
+  return reply.outcomes === undefined ? reply : { ...reply, outcomes: reply.outcomes.map((row) => acknowledged(op, row)) }
+}
+
+export function filesClient(plugin: ElizaFilesPlugin = filesPlugin(), name = "ElizaFiles"): ElizaFilesPlugin {
+  return {
+    storageState: () => settled(nativeReply(name, "storageState", Volumes, () => plugin.storageState())),
+    storageRequestAccess: (input) => settled(nativeReply(name, "storageRequestAccess", Answer, () => plugin.storageRequestAccess(input))),
+    storageList: (input) => settled(nativeReply(name, "storageList", Listing, () => plugin.storageList(input))),
+    storageCategory: (input) => settled(nativeReply(name, "storageCategory", Category, () => plugin.storageCategory(input))),
+    storageQuery: (input) => settled(nativeReply(name, "storageQuery", Listing, () => plugin.storageQuery(input))),
+    storageReviewedIdentities: (input) => settled(nativeReply(name, "storageReviewedIdentities", Reviewed, () => plugin.storageReviewedIdentities(input))),
+    storageTransfer: async (input) => receipts(input.copy ? "Copy" : "Move", await settled(nativeReply(name, "storageTransfer", Outcomes, () => plugin.storageTransfer(input)))),
+    storageRename: (input) => settled(nativeReply(name, "storageRename", Placed, () => plugin.storageRename(input))),
+    storageCreateFolder: (input) => settled(nativeReply(name, "storageCreateFolder", Placed, () => plugin.storageCreateFolder(input))),
+    storageTrash: async (input) => receipts("Trash", await settled(nativeReply(name, "storageTrash", Outcomes, () => plugin.storageTrash(input)))),
+    storageTrashList: (input) => settled(nativeReply(name, "storageTrashList", Trash, () => plugin.storageTrashList(input))),
+    storageRestore: (input) => settled(nativeReply(name, "storageRestore", Outcomes, () => plugin.storageRestore(input))),
+    storageEmptyTrash: async (input) => input.confirmed ? settled(nativeReply(name, "storageEmptyTrash", Erased, () => plugin.storageEmptyTrash(input))) : UNCONFIRMED,
+    storageShare: (input) => settled(nativeReply(name, "storageShare", Handoff, () => plugin.storageShare(input))),
+    storageOpen: (input) => settled(nativeReply(name, "storageOpen", Handoff, () => plugin.storageOpen(input))),
+    storageSelect: (input) => settled(nativeReply(name, "storageSelect", Selection, () => plugin.storageSelect(input))),
+    storageWatch: (input) => settled(nativeReply(name, "storageWatch", Answer, () => plugin.storageWatch(input))),
+    storageUnwatch: () => settled(nativeReply(name, "storageUnwatch", Answer, () => plugin.storageUnwatch())),
+    addListener: (eventName, listener) => plugin.addListener(eventName, () => listener()),
+  }
+}

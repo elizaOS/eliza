@@ -524,6 +524,7 @@ export { parseJsonModelArray, parseJsonModelOutput, parseJsonModelRecord } from 
 export {
   isPromotedSubactionVirtual,
   listSubactionsFromParameters,
+  promotedSubactionDescription,
   type PromoteSubactionsOptions,
   promoteSubactionsToActions,
   type SubactionPromotionOverrides,

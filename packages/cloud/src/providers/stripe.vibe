@@ -1,0 +1,381 @@
+// spec/cloud/billing/checkout.md, "Story: Subscribe once, whichever screen or payer finishes it"; spec/cloud/billing/providerEvents.md, "Story: Apply each payment event once, whatever the delivery order"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import type { LookupResult } from "../../gen/cloud__shared__dispatchOnce.ts"
+import { Deployment } from "../profile/profile.vibe"
+import { sameText } from "../shared/credential-crypto.vibe"
+import type { ProviderReply } from "../shared/dispatch-once.vibe"
+
+module node {
+  import { createHmac } from "node:crypto"
+
+  /** @throws {never} */
+  export function signatureOf(secret: string, signedPayload: string): string {
+    return createHmac("sha256", secret).update(signedPayload, "utf8").digest("hex")
+  }
+}
+import { signatureOf } from node
+
+export error StripeRefused { path: string; status: number; type: string; code: string | null; declineCode: string | null }
+export error StripeUnavailable { path: string; status: number | null }
+export error StripeInvalidResponse { path: string; status: number }
+export type StripeFailure = StripeRefused | StripeUnavailable | StripeInvalidResponse
+
+export type StripeContext = Deployment | HttpClient.HttpClient
+
+export interface StripeRead {
+  readonly timeout: number
+}
+
+export interface StripeMutation extends StripeRead {
+  readonly idempotencyKey: string
+}
+
+export const webhookTolerance = 300_000
+
+export schema StripeCustomer { readonly id: string; readonly livemode: boolean; readonly metadata: Record<string, string> }
+
+export schema StripeCheckoutSession {
+  readonly id: string
+  readonly mode: string
+  readonly status: "open" | "complete" | "expired" | null
+  readonly payment_status: "paid" | "unpaid" | "no_payment_required"
+  readonly customer: string | null
+  readonly client_reference_id?: string | null
+  readonly subscription: string | null
+  readonly invoice?: string | null
+  readonly metadata: Record<string, string> | null
+  readonly ui_mode?: string | null
+  readonly url: string | null
+  readonly client_secret?: string | null
+  readonly currency: string | null
+  readonly amount_total: number | null
+  readonly expires_at: number
+  readonly created: number
+  readonly livemode: boolean
+}
+
+schema SubscriptionItem {
+  readonly id: string
+  readonly price: { readonly id: string }
+  readonly quantity?: number
+  readonly current_period_start: number
+  readonly current_period_end: number
+}
+
+export schema StripeSubscription {
+  readonly id: string
+  readonly customer: string
+  readonly status: "incomplete" | "incomplete_expired" | "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "paused"
+  readonly livemode: boolean
+  readonly created: number
+  readonly cancel_at_period_end: boolean
+  readonly canceled_at?: number | null
+  readonly ended_at?: number | null
+  readonly latest_invoice: string | null
+  readonly metadata: Record<string, string>
+  readonly items: { readonly data: ReadonlyArray<SubscriptionItem>; readonly has_more: boolean }
+}
+
+schema InvoiceLine {
+  readonly id: string
+  readonly amount: number
+  readonly currency: string
+  readonly quantity?: number | null
+  readonly period: { readonly start: number; readonly end: number }
+  readonly pricing?: { readonly price_details?: { readonly price: string } | null } | null
+  readonly parent?: { readonly subscription_item_details?: { readonly subscription_item: string; readonly proration: boolean } | null } | null
+}
+
+export schema StripeInvoice {
+  readonly id: string
+  readonly customer: string | null
+  readonly status: "draft" | "open" | "paid" | "uncollectible" | "void" | null
+  readonly billing_reason?: string | null
+  readonly amount_due: number
+  readonly amount_paid: number
+  readonly currency: string
+  readonly attempted?: boolean
+  readonly attempt_count?: number
+  readonly livemode: boolean
+  readonly created: number
+  readonly period_start: number
+  readonly period_end: number
+  readonly hosted_invoice_url?: string | null
+  readonly parent?: { readonly subscription_details?: { readonly subscription: string } | null } | null
+  readonly lines: { readonly data: ReadonlyArray<InvoiceLine>; readonly has_more: boolean }
+}
+
+export schema StripeCharge {
+  readonly id: string
+  readonly customer: string | null
+  readonly invoice?: string | null
+  readonly payment_intent?: string | null
+  readonly amount: number
+  readonly amount_refunded: number
+  readonly refunded: boolean
+  readonly disputed: boolean
+  readonly paid: boolean
+  readonly captured: boolean
+  readonly currency: string
+  readonly livemode: boolean
+}
+
+export schema StripeDispute { readonly id: string; readonly charge: string; readonly status: string; readonly livemode: boolean }
+
+export schema StripeEvent {
+  readonly id: string
+  readonly type: string
+  readonly created: number
+  readonly livemode: boolean
+  readonly data: { readonly object: Schema.Unknown }
+}
+
+export schema StripePortalSession { readonly id: string; readonly url: string }
+
+schema ErrorBody { readonly error: { readonly type: string; readonly code?: string | null; readonly decline_code?: string | null } }
+
+type Params = ReadonlyArray<readonly [string, string]>
+
+interface Call {
+  readonly method: "GET" | "POST"
+  readonly path: string
+  readonly params: Params
+  readonly timeout: number
+  readonly idempotencyKey?: string
+}
+
+function parsed(text: string): unknown {
+  try {
+    return text === "" ? undefined : JSON.parse(text) as unknown
+  } catch {
+    return undefined
+  }
+}
+
+function decoded<A>(schema: Schema.Codec<A>, raw: unknown): A | undefined {
+  return Option.getOrUndefined(Schema.decodeUnknownOption(schema)(raw))
+}
+
+function failureOf(path: string, status: number, body: unknown): StripeFailure {
+  const error = decoded(ErrorBody, body)?.error
+  if (status === 409 || status === 429 || status >= 500 || error?.type === "api_error" || error?.type === "rate_limit_error") return new StripeUnavailable({ path, status })
+  if (status < 400 || error === undefined) return new StripeInvalidResponse({ path, status })
+  return new StripeRefused({ path, status, type: error.type, code: error.code ?? null, declineCode: error.decline_code ?? null })
+}
+
+effect function send(call: Call): unknown!StripeFailure!StripeContext {
+  const deployment = try Deployment
+  const billing = deployment.settings.billing
+  if (billing === undefined) throw new StripeUnavailable({ path: call.path, status: null })
+  const key = deployment.secret(billing.secretKeyEnv) catch effect () => { throw new StripeUnavailable({ path: call.path, status: null }) }
+  const form = new URLSearchParams(call.params.map(([name, value]) => [name, value])).toString()
+  const query = call.method === "GET" && form !== "" ? `?${form}` : ""
+  let request = HttpClientRequest.make(call.method)(`${billing.apiUrl}${call.path}${query}`).pipe(HttpClientRequest.bearerToken(key), HttpClientRequest.acceptJson)
+  if (call.idempotencyKey !== undefined) request = HttpClientRequest.setHeader(request, "idempotency-key", call.idempotencyKey)
+  if (call.method === "POST") request = HttpClientRequest.bodyText(request, form, "application/x-www-form-urlencoded")
+  const answered = effect {
+    const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect () => { throw new StripeUnavailable({ path: call.path, status: null }) }
+    const text = response.text catch effect () => { throw new StripeUnavailable({ path: call.path, status: response.status }) }
+    return { status: response.status, body: parsed(text) }
+  }
+  const answer = try timeoutOrElse(answered, { duration: Duration.millis(Math.max(1, call.timeout)), orElse: () => fail(new StripeUnavailable({ path: call.path, status: null })) })
+  if (answer.status >= 200 && answer.status < 300 && answer.body !== undefined) return answer.body
+  throw failureOf(call.path, answer.status, answer.body)
+}
+
+effect function read<A>(schema: Schema.Codec<A>, call: Call): A!StripeFailure!StripeContext {
+  const body = try send(call)
+  const value = decoded(schema, body)
+  if (value === undefined) throw new StripeInvalidResponse({ path: call.path, status: 200 })
+  return value
+}
+
+effect function everyPage<A extends { readonly id: string }>(item: Schema.Codec<A>, path: string, params: Params, timeout: number): ReadonlyArray<A>!StripeFailure!StripeContext {
+  const page: Schema.Codec<{ readonly data: ReadonlyArray<A>; readonly has_more: boolean }> = Schema.Struct({ data: Schema.Array(item), has_more: Schema.Boolean })
+  const all: Array<A> = []
+  let after: string | undefined = undefined
+  let more = true
+  while (more) {
+    const listed: { readonly data: ReadonlyArray<A>; readonly has_more: boolean } = try read(page, { method: "GET", path, timeout, params: [...params, ["limit", "100"], ...(after === undefined ? [] : [["starting_after", after] as const])] })
+    all.push(...listed.data)
+    const last = listed.data.at(-1)
+    more = listed.has_more && last !== undefined
+    after = last?.id
+  }
+  return all
+}
+
+effect function livemode(): boolean!!Deployment {
+  return (try Deployment).environment === "production"
+}
+
+function id(value: string): string {
+  return encodeURIComponent(value)
+}
+
+function seconds(millis: number): string {
+  return String(Math.floor(millis / 1000))
+}
+
+export effect function createCustomer(organizationId: string, mutation: StripeMutation): StripeCustomer!StripeFailure!StripeContext {
+  const path = "/v1/customers"
+  const customer = try read(StripeCustomer, { method: "POST", path, ...mutation, params: [["metadata[organizationId]", organizationId]] })
+  if (customer.metadata.organizationId !== organizationId || customer.livemode !== try livemode()) throw new StripeInvalidResponse({ path, status: 200 })
+  return customer
+}
+
+export type CheckoutReturns =
+  | { readonly kind: "hosted"; readonly successUrl: string; readonly cancelUrl: string }
+  | { readonly kind: "embedded" }
+
+export interface CheckoutTerms {
+  readonly organizationId: string
+  readonly commandId: string
+  readonly customerId: string
+  readonly priceId: string
+  readonly expiresAt: number
+  readonly returns: CheckoutReturns
+}
+
+function returnParams(returns: CheckoutReturns): Params {
+  switch (returns.kind) {
+    case "hosted": return [["success_url", returns.successUrl], ["cancel_url", returns.cancelUrl]]
+    case "embedded": return [["ui_mode", "embedded"], ["redirect_on_completion", "never"]]
+    default: {
+      const _exhaustive: never = returns
+      return _exhaustive
+    }
+  }
+}
+
+export function checkoutParams(terms: CheckoutTerms): Params {
+  const identity: Params = [["organizationId", terms.organizationId], ["commandId", terms.commandId]]
+  return [
+    ["mode", "subscription"],
+    ["customer", terms.customerId],
+    ["client_reference_id", terms.commandId],
+    ["currency", "usd"],
+    ["line_items[0][price]", terms.priceId],
+    ["line_items[0][quantity]", "1"],
+    ["payment_method_types[0]", "card"],
+    ["allow_promotion_codes", "false"],
+    ["automatic_tax[enabled]", "false"],
+    ...identity.map(([name, value]) => [`metadata[${name}]`, value] as const),
+    ...identity.map(([name, value]) => [`subscription_data[metadata][${name}]`, value] as const),
+    ["expires_at", seconds(terms.expiresAt)],
+    ...returnParams(terms.returns)
+  ]
+}
+
+function sessionFits(session: StripeCheckoutSession, terms: CheckoutTerms, live: boolean): boolean {
+  const opened = terms.returns.kind === "hosted" ? session.url !== null : (session.client_secret ?? null) !== null
+  return session.mode === "subscription" && session.customer === terms.customerId && session.livemode === live &&
+    session.metadata?.commandId === terms.commandId && session.metadata.organizationId === terms.organizationId &&
+    session.expires_at === Math.floor(terms.expiresAt / 1000) && (session.status !== "open" || opened)
+}
+
+export effect function createCheckoutSession(terms: CheckoutTerms, mutation: StripeMutation): StripeCheckoutSession!StripeFailure!StripeContext {
+  const path = "/v1/checkout/sessions"
+  const session = try read(StripeCheckoutSession, { method: "POST", path, ...mutation, params: checkoutParams(terms) })
+  if (!sessionFits(session, terms, try livemode())) throw new StripeInvalidResponse({ path, status: 200 })
+  return session
+}
+
+export effect function retrieveCheckoutSession(sessionId: string, call: StripeRead): StripeCheckoutSession!StripeFailure!StripeContext {
+  return try read(StripeCheckoutSession, { method: "GET", path: `/v1/checkout/sessions/${id(sessionId)}`, params: [], timeout: call.timeout })
+}
+
+export effect function listCheckoutSessions(customerId: string, call: StripeRead): ReadonlyArray<StripeCheckoutSession>!StripeFailure!StripeContext {
+  return try everyPage(StripeCheckoutSession, "/v1/checkout/sessions", [["customer", customerId]], call.timeout)
+}
+
+export effect function findCheckoutSession(customerId: string, commandId: string, call: StripeRead): (StripeCheckoutSession | undefined)!StripeFailure!StripeContext {
+  return (try listCheckoutSessions(customerId, call)).find((session) => session.metadata?.commandId === commandId && session.customer === customerId)
+}
+
+export effect function expireCheckoutSession(sessionId: string, mutation: StripeMutation): StripeCheckoutSession!StripeFailure!StripeContext {
+  return try read(StripeCheckoutSession, { method: "POST", path: `/v1/checkout/sessions/${id(sessionId)}/expire`, params: [], ...mutation })
+}
+
+export effect function listSubscriptions(customerId: string, call: StripeRead): ReadonlyArray<StripeSubscription>!StripeFailure!StripeContext {
+  return try everyPage(StripeSubscription, "/v1/subscriptions", [["customer", customerId], ["status", "all"]], call.timeout)
+}
+
+export effect function retrieveSubscription(subscriptionId: string, call: StripeRead): StripeSubscription!StripeFailure!StripeContext {
+  return try read(StripeSubscription, { method: "GET", path: `/v1/subscriptions/${id(subscriptionId)}`, params: [], timeout: call.timeout })
+}
+
+export effect function retrieveInvoice(invoiceId: string, call: StripeRead): StripeInvoice!StripeFailure!StripeContext {
+  return try read(StripeInvoice, { method: "GET", path: `/v1/invoices/${id(invoiceId)}`, params: [], timeout: call.timeout })
+}
+
+export effect function retrieveCharge(chargeId: string, call: StripeRead): StripeCharge!StripeFailure!StripeContext {
+  return try read(StripeCharge, { method: "GET", path: `/v1/charges/${id(chargeId)}`, params: [], timeout: call.timeout })
+}
+
+export interface PortalTerms {
+  readonly customerId: string
+  readonly returnUrl: string
+  readonly configurationId?: string
+}
+
+export effect function createPortalSession(terms: PortalTerms, mutation: StripeMutation): StripePortalSession!StripeFailure!StripeContext {
+  const path = "/v1/billing_portal/sessions"
+  const session = try read(StripePortalSession, {
+    method: "POST",
+    path,
+    ...mutation,
+    params: [["customer", terms.customerId], ["return_url", terms.returnUrl], ...(terms.configurationId === undefined ? [] : [["configuration", terms.configurationId] as const])]
+  })
+  if (!session.url.startsWith("https://")) throw new StripeInvalidResponse({ path, status: 200 })
+  return session
+}
+
+export function verifyWebhookSignature(raw: string, header: string, secret: string, now: number): boolean {
+  const fields = header.split(",").map((field) => {
+    const at = field.indexOf("=")
+    return at === -1 ? ["", ""] as const : [field.slice(0, at).trim(), field.slice(at + 1).trim()] as const
+  })
+  const stamps = fields.filter(([name]) => name === "t").map(([, value]) => value)
+  const stamp = stamps.length === 1 ? stamps[0] : undefined
+  if (stamp === undefined || !/^\d{1,12}$/.test(stamp) || secret === "" || Math.abs(now - Number(stamp) * 1000) > webhookTolerance) return false
+  const expected = signatureOf(secret, `${stamp}.${raw}`)
+  return fields.filter(([name]) => name === "v1").reduce((matched, [, signature]) => sameText(signature, expected) || matched, false)
+}
+
+function refusalCode(failure: StripeRefused): string {
+  if (failure.status === 404 || failure.code === "resource_missing") return "NotFoundAtProvider"
+  if (failure.status === 401 || failure.status === 403) return "AuthorizationLost"
+  return failure.code ?? failure.type
+}
+
+export function failureReply(failure: StripeFailure): ProviderReply<never> {
+  switch (failure._tag) {
+    case "StripeRefused": return { kind: "refused", code: refusalCode(failure) }
+    case "StripeUnavailable": return { kind: "unknown", cause: `the provider did not answer ${failure.path} (${failure.status ?? "no status"})` }
+    case "StripeInvalidResponse": return { kind: "unknown", cause: `the provider's answer to ${failure.path} could not be read (${failure.status})` }
+    default: {
+      const _exhaustive: never = failure
+      return _exhaustive
+    }
+  }
+}
+
+export effect function providerReply<A, R>(call: A!StripeFailure!R): ProviderReply<A>!!R {
+  return try Effect.match(call, {
+    onFailure: (failure): ProviderReply<A> => failureReply(failure),
+    onSuccess: (value): ProviderReply<A> => ({ kind: "applied", value })
+  })
+}
+
+export function lookupOf<A>(reply: ProviderReply<A | undefined>): ProviderReply<LookupResult> {
+  switch (reply.kind) {
+    case "applied": return { kind: "applied", value: reply.value === undefined ? { tag: "NothingSeen" } : { tag: "EffectSeen" } }
+    case "refused": return reply.code === "NotFoundAtProvider" ? { kind: "applied", value: { tag: "RefusalSeen", cause: "NotFoundAtProvider" } } : { kind: "unknown", cause: reply.code }
+    case "unknown": return reply
+    default: {
+      const _exhaustive: never = reply
+      return _exhaustive
+    }
+  }
+}

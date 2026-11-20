@@ -1,9 +1,11 @@
 // spec/cloud/billing/subscriptions.md, "Story: Read my invoices and open the billing portal"
-import { decodeState, initial, invoiceVisible, portalAllowed, customerIdOf, type NotAState, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+import { invoiceVisible, portalAllowed, customerIdOf, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import { json, owner, type Route } from "../http/routes.vibe"
 import { refused, type Refused } from "../http/refusal.vibe"
 import { Deployment } from "../profile/profile.vibe"
-import { Store, type StoreFailure, type Tx } from "../store/connection.vibe"
+import { Store, type StoreFailure } from "../store/connection.vibe"
+import type { RowCorrupt } from "../store/rows.vibe"
+import { readSubscription } from "./subscriptions.vibe"
 
 export error ProviderMissing { path: string }
 export error ProviderFailed { path: string; status: number }
@@ -145,11 +147,6 @@ effect function provider<A>(call: ProviderCall, schema: Schema.Codec<A>): A!(Pro
   }
 }
 
-export effect function subscriptionOf(tx: Tx, organizationId: string): Subscription!(StoreFailure | NotAState) {
-  const row = (try tx.query("SELECT state FROM subscriptions WHERE key = $1", [organizationId]))[0]
-  return row === undefined ? initial : try decodeState(row.state)
-}
-
 function millis(seconds: number): number {
   return seconds * 1000
 }
@@ -179,12 +176,12 @@ function pageLimit(query: URLSearchParams): number | undefined {
   return limit >= 1 && limit <= invoicePageMax ? limit : undefined
 }
 
-effect function pinned(organizationId: string): Subscription!(StoreFailure | NotAState)!Store {
+effect function pinned(organizationId: string): Subscription!(StoreFailure | RowCorrupt)!Store {
   const store = try Store
-  return try store.transaction((tx) => subscriptionOf(tx, organizationId))
+  return try store.transaction((tx) => readSubscription(tx, organizationId))
 }
 
-export effect function listInvoices(organizationId: string, limit: number, cursor: string | undefined): InvoicePage!(StoreFailure | NotAState | ProviderMissing | ProviderFailed)!(Store | Deployment | HttpClient.HttpClient) {
+export effect function listInvoices(organizationId: string, limit: number, cursor: string | undefined): InvoicePage!(StoreFailure | RowCorrupt | ProviderMissing | ProviderFailed)!(Store | Deployment | HttpClient.HttpClient) {
   const subscription = try pinned(organizationId)
   if (!invoiceVisible(subscription, customerIdOf(subscription))) return { invoices: [], nextCursor: null }
   const listed = try provider({
@@ -214,7 +211,7 @@ effect function remainingLines(invoiceId: string, after: string): ReadonlyArray<
   return lines
 }
 
-export effect function readInvoice(organizationId: string, invoiceId: string): InvoiceDetail!(StoreFailure | NotAState | ProviderFailed | Refused)!(Store | Deployment | HttpClient.HttpClient) {
+export effect function readInvoice(organizationId: string, invoiceId: string): InvoiceDetail!(StoreFailure | RowCorrupt | ProviderFailed | Refused)!(Store | Deployment | HttpClient.HttpClient) {
   if (!invoiceIdPattern.test(invoiceId)) throw refused("NotFound")
   const subscription = try pinned(organizationId)
   if (!invoiceVisible(subscription, customerIdOf(subscription))) throw refused("NotFound")
@@ -288,7 +285,7 @@ effect function lockedConfiguration(): string!(ProviderMissing | ProviderFailed)
   return configuration.id
 }
 
-export effect function openPortal(organizationId: string): { readonly url: string }!(StoreFailure | NotAState | ProviderMissing | ProviderFailed | Refused)!(Store | Deployment | HttpClient.HttpClient) {
+export effect function openPortal(organizationId: string): { readonly url: string }!(StoreFailure | RowCorrupt | ProviderMissing | ProviderFailed | Refused)!(Store | Deployment | HttpClient.HttpClient) {
   const subscription = try pinned(organizationId)
   if (!portalAllowed(subscription, true)) throw refused("BillingStateConflict")
   const deployment = try Deployment

@@ -15,10 +15,8 @@ import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import org.json.JSONObject;
 import org.json.JSONTokener;
@@ -36,11 +34,8 @@ public final class NativeSecureStore {
     private static final Object LOCK = new Object();
     private static final String CLOCK_DEVICE_SLOT = SecureSlotPolicy.CLOCK_DEVICE_SLOT;
     private static long generation;
-    private static final Set<String> ALLOWED_KEYS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-        "session.device_auth", "session.steward_token", "session.cloud_mobile_pending",
-        "runtime.active_server", "runtime.agent_profiles")));
     private static final String[] SNAPSHOT_KEYS = {
-        "runtime.active_server", "session.device_auth", "session.steward_token", "runtime.agent_profiles", CLOCK_DEVICE_SLOT
+        "runtime.active_server", "session.device_auth", "session.cloud_token", "runtime.agent_profiles", CLOCK_DEVICE_SLOT
     };
     private final File directory;
     private final SecureSlotPolicy policy;
@@ -138,9 +133,10 @@ public final class NativeSecureStore {
     @FunctionalInterface
     public interface Effect<T> { T run() throws Exception; }
 
-    public static boolean isAllowedKey(String key) { return ALLOWED_KEYS.contains(key); }
-    private static void requireKey(String key) {
-        if (key == null || !isAllowedKey(key)) throw new IllegalArgumentException("Secure-store key is not allowed");
+    private void requireKey(String key, SecureSlotPolicy.SlotRequest request) {
+        SecureSlotPolicy.SlotRule rule = policy.rule(key);
+        if (rule == null || !SecureSlotPolicy.admits(SecureSlotPolicy.Caller.NativeCaller, request, rule))
+            throw new IllegalArgumentException("Secure-store key is not allowed");
     }
     public long getGeneration() { synchronized (LOCK) { return generation; } }
     public Snapshot snapshot() throws Exception {
@@ -166,11 +162,11 @@ public final class NativeSecureStore {
             throw new SecurityException("Native credential owner changed");
     }
     public String get(String key) throws Exception {
-        requireKey(key);
+        requireKey(key, SecureSlotPolicy.SlotRequest.ReadRequest);
         synchronized (LOCK) { return readValue(key); }
     }
     public void set(String key, String value) throws Exception {
-        requireKey(key);
+        requireKey(key, SecureSlotPolicy.SlotRequest.WriteRequest);
         if (value == null || value.isEmpty()) throw new IllegalArgumentException("Secure value is empty");
         byte[] plaintext = value.getBytes(StandardCharsets.UTF_8);
         try {
@@ -182,7 +178,7 @@ public final class NativeSecureStore {
         } finally { Arrays.fill(plaintext, (byte) 0); }
     }
     public boolean remove(String key) throws Exception {
-        requireKey(key);
+        requireKey(key, SecureSlotPolicy.SlotRequest.RemoveRequest);
         synchronized (LOCK) {
             generation++;
             File file = valueFile(key);
@@ -196,10 +192,13 @@ public final class NativeSecureStore {
         }
     }
     public void ensureAvailable() throws Exception { synchronized (LOCK) { getOrCreateKey(); } }
-    private SecretKey getOrCreateKey() throws Exception {
+    private SecretKey existingKey() throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore");
         store.load(null);
-        SecretKey existing = (SecretKey) store.getKey(KEY_ALIAS, null);
+        return (SecretKey) store.getKey(KEY_ALIAS, null);
+    }
+    private SecretKey getOrCreateKey() throws Exception {
+        SecretKey existing = existingKey();
         if (existing != null) return existing;
         KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
         generator.init(new KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
@@ -250,7 +249,9 @@ public final class NativeSecureStore {
         byte[] iv = new byte[ivLength]; buffer.get(iv);
         byte[] ciphertext = new byte[buffer.remaining()]; buffer.get(ciphertext);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), new GCMParameterSpec(128, iv));
+        SecretKey secret = existingKey();
+        if (secret == null) throw new IllegalStateException("Secure value key is missing");
+        cipher.init(Cipher.DECRYPT_MODE, secret, new GCMParameterSpec(128, iv));
         cipher.updateAAD(key.getBytes(StandardCharsets.UTF_8));
         byte[] plaintext = cipher.doFinal(ciphertext);
         try {

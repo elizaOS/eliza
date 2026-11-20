@@ -1,0 +1,151 @@
+// spec/agent/voice/session.md, "Barge-in is confirmed by an accepted transcript or a 700 ms hold"; spec/agent/voice/session.md, "A session owns one microphone capture and reopens it only after the turn"
+import { bargeInHoldMs, type InputMode, type ShownPhase, type VoiceSession as SessionState } from "../../gen/agent__voice__session.effect.vibe"
+import { mayBecomeNonSpeechVoiceTranscript } from "./heuristics.vibe"
+import type { RecognizerPort, VoiceSessionPorts } from "./ports.vibe"
+import { VoiceSession } from "./session.vibe"
+
+export const VOICE_TRANSCRIPT_STREAM = "voice-transcript"
+
+export type AgentEventSubscribe = (listener: (envelope: unknown) => void) => () => void
+
+export interface LiveVoiceSessionOptions extends VoiceSessionPorts {
+  readonly sessionId: string
+  readonly subscribe: AgentEventSubscribe
+}
+
+export interface LiveVoiceSession {
+  start(mode?: InputMode): void
+  stop(): void
+  readonly phase: ShownPhase
+  readonly state: SessionState
+}
+
+export type LiveTranscriptEvent =
+  | { readonly kind: "speechStart"; readonly turnId: string }
+  | { readonly kind: "speechEnd"; readonly turnId: string }
+  | { readonly kind: "partial"; readonly turnId: string; readonly text: string; readonly seq: number }
+  | { readonly kind: "final"; readonly turnId: string; readonly text: string }
+  | { readonly kind: "failed"; readonly turnId: string }
+
+const TurnId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128))
+const Transcript = Schema.String.check(Schema.isMaxLength(16000))
+const about = { type: Schema.Literal(VOICE_TRANSCRIPT_STREAM), sessionId: Schema.String, turnId: TurnId }
+const Payload = Schema.Union([
+  Schema.Struct({ ...about, phase: Schema.Literal("speech-start") }),
+  Schema.Struct({ ...about, phase: Schema.Literal("speech-end") }),
+  Schema.Struct({ ...about, phase: Schema.Literal("partial"), text: Transcript, seq: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)) }),
+  Schema.Struct({ ...about, phase: Schema.Literal("final"), text: Transcript }),
+  Schema.Struct({ ...about, phase: Schema.Literal("error") }),
+])
+const decodeEnvelope = Schema.decodeUnknownOption(Schema.Struct({
+  type: Schema.Literal("event"),
+  event: Schema.Struct({ type: Schema.Literal("agent_event"), stream: Schema.Literal(VOICE_TRANSCRIPT_STREAM), payload: Payload }),
+}))
+
+export function parseVoiceTranscriptEnvelope(envelope: unknown, sessionId: string): LiveTranscriptEvent | undefined {
+  const decoded = Option.getOrUndefined(decodeEnvelope(envelope))
+  if (decoded === undefined || decoded.event.payload.sessionId !== sessionId) return undefined
+  const payload = decoded.event.payload
+  switch (payload.phase) {
+    case "speech-start": return { kind: "speechStart", turnId: payload.turnId }
+    case "speech-end": return { kind: "speechEnd", turnId: payload.turnId }
+    case "partial": return { kind: "partial", turnId: payload.turnId, text: payload.text, seq: payload.seq }
+    case "final": return { kind: "final", turnId: payload.turnId, text: payload.text.trim() }
+    case "error": return { kind: "failed", turnId: payload.turnId }
+  }
+}
+
+interface Turn {
+  readonly id: string
+  readonly startedAtMs: number | undefined
+  ended: boolean
+  lastSeq: number
+  annotation: boolean
+  held: boolean
+}
+
+export function createLiveVoiceSession(options: LiveVoiceSessionOptions): LiveVoiceSession {
+  const { sessionId, subscribe, ...ports } = options
+  const session = new VoiceSession(ports)
+  const recognizer: RecognizerPort = session
+  const clock = ports.clock
+  const finished = new Set<string>()
+  let current: Turn | undefined
+  let unsubscribe: (() => void) | undefined
+
+  const holdIfSpeaking = (turn: Turn) => {
+    if (current !== turn || turn.ended || turn.held || turn.annotation || turn.startedAtMs === undefined) return
+    const heldMs = clock.now() - turn.startedAtMs
+    if (heldMs < bargeInHoldMs) return
+    turn.held = true
+    recognizer.onHold(heldMs)
+  }
+  const begin = (id: string, startedAtMs: number | undefined): Turn => {
+    const turn: Turn = { id, startedAtMs, ended: false, lastSeq: 0, annotation: false, held: false }
+    current = turn
+    recognizer.onSpeechStart()
+    if (startedAtMs !== undefined) clock.after(bargeInHoldMs, () => holdIfSpeaking(turn))
+    return turn
+  }
+  const ongoing = (id: string): Turn | undefined => {
+    if (finished.has(id)) return undefined
+    if (current === undefined) return begin(id, undefined)
+    return current.id === id ? current : undefined
+  }
+  const end = (turn: Turn) => {
+    if (turn.ended) return
+    turn.ended = true
+    recognizer.onSpeechEnd()
+  }
+  const finish = (id: string, text: string) => {
+    const turn = ongoing(id)
+    if (turn === undefined) return
+    finished.add(id)
+    current = undefined
+    end(turn)
+    recognizer.onFinal(text, turn.startedAtMs)
+  }
+  const receive = (envelope: unknown) => {
+    const event = parseVoiceTranscriptEnvelope(envelope, sessionId)
+    if (event === undefined) return
+    switch (event.kind) {
+      case "speechStart": {
+        if (!finished.has(event.turnId) && current?.id !== event.turnId) begin(event.turnId, clock.now())
+        return
+      }
+      case "speechEnd": {
+        const turn = ongoing(event.turnId)
+        if (turn !== undefined) end(turn)
+        return
+      }
+      case "partial": {
+        const turn = ongoing(event.turnId)
+        if (turn === undefined || event.seq <= turn.lastSeq) return
+        turn.lastSeq = event.seq
+        turn.annotation = mayBecomeNonSpeechVoiceTranscript(event.text)
+        recognizer.onPartial(event.text)
+        holdIfSpeaking(turn)
+        return
+      }
+      case "final": return finish(event.turnId, event.text)
+      case "failed": return finish(event.turnId, "")
+    }
+  }
+
+  return {
+    start(mode: InputMode = "ConversationMode") {
+      if (unsubscribe === undefined) unsubscribe = subscribe(receive)
+      current = undefined
+      session.start(mode, "FullDuplex")
+    },
+    stop() {
+      const close = unsubscribe
+      unsubscribe = undefined
+      current = undefined
+      close?.()
+      session.stop()
+    },
+    get phase() { return session.phase },
+    get state() { return session.state },
+  }
+}

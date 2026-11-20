@@ -1,0 +1,305 @@
+// spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment never returns and retires every open offer"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A settled request never changes again"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"
+import type { IDatabaseAdapter } from "@elizaos/core"
+import { apply, initial, machineOver, noOwner, Rejected, step, type DeviceRequest } from "../../gen/agent__deviceActions.effect.vibe"
+import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
+import type { DeviceView, RevisionRead, ViewProfile } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
+import type { StoredRequest } from "./read-completion.vibe"
+
+export error DeviceStoreUnavailable { step: string; cause: unknown }
+export error StaleDeviceRow { table: "device_enrollment" | "device_requests"; id: string; revision: number }
+export error ProposalIdTaken { proposalId: string }
+
+module node {
+  import { randomUUID } from "node:crypto"
+  import { Schema } from "effect"
+  import type { IDatabaseAdapter } from "@elizaos/core"
+  import { parseState, requestSettled, step, type DeviceRequest, type Event } from "../../gen/agent__deviceActions.ts"
+  import type { SessionOwner } from "../../gen/core__sessions.ts"
+  import { allCapabilities, canSetViewProfile, setViewProfile, type DeviceView, type Need, type RevisionRead, type ViewProfile } from "../../gen/agent__deviceActions__capabilities.ts"
+  import type { ReadBinding } from "../../gen/agent__deviceActions__operations.ts"
+
+  export type EnrollmentEvent = Extract<Event, { type: "registerDevice" | "revokeEnrollment" }>
+  export type OfferEvent = Extract<Event, { type: "offer" }>
+
+  export interface RequestTerms {
+    readonly operation: unknown
+    readonly binding: ReadBinding
+    readonly boundProfile: RevisionRead
+    readonly need: Need
+  }
+
+  export interface RequestRow {
+    readonly proposalId: string
+    readonly revision: number
+    readonly state: DeviceRequest
+    readonly terms: RequestTerms
+    readonly result: unknown
+    readonly createdAt: number
+  }
+
+  export interface EnrollmentRow {
+    readonly revision: number
+    readonly state: DeviceRequest
+  }
+
+  export type Written = "written" | "stale"
+  export type Seeded = "seeded" | "taken" | "stale"
+  export type ProfileChange = { readonly kind: "set" | "stale"; readonly profile: ViewProfile }
+  export type Settled = "open" | "settled"
+
+  interface Sql {
+    query<R>(text: string, params?: unknown[]): Promise<{ rows: R[]; affectedRows?: number }>
+  }
+
+  type Row = {
+    proposal_id: string; revision: number; state: unknown; operation: unknown; binding: string
+    bound_profile: unknown; need: unknown; result: unknown; created_at: number | string
+  }
+
+  const views = {
+    HomeView: true, NotesView: true, RemindersView: true, BrowserView: true, CalendarView: true, FilesView: true,
+    PhotosView: true, CameraView: true, MapsView: true, InboxView: true, SettingsView: true, WorkflowsView: true,
+  } satisfies Record<DeviceView, true>
+  const View = Schema.Literals(Object.keys(views) as DeviceView[])
+  const Capabilities = Schema.Array(Schema.Literals(allCapabilities))
+  const Terms = Schema.Struct({
+    binding: Schema.Literals(["NoBinding", "WorkflowBinding", "AgendaBinding"]),
+    boundProfile: Schema.Union([
+      Schema.Struct({ tag: Schema.Literal("NoRevisionRead") }),
+      Schema.Struct({ tag: Schema.Literal("ReadAt"), revision: Schema.String }),
+    ]),
+    need: Schema.Struct({ required: Capabilities, oneOf: Capabilities }),
+  })
+  const Views = Schema.Array(View)
+  const decodeTerms = Schema.decodeUnknownSync(Terms)
+  const decodeViews = Schema.decodeUnknownSync(Views)
+  const columns = "proposal_id, revision, state, operation, binding, bound_profile, need, result, created_at"
+
+  function connection(value: object): Sql {
+    if (!("query" in value) || typeof value.query !== "function") throw new TypeError("The device request store needs a SQL connection")
+    return value as Sql
+  }
+
+  function within<A>(adapter: IDatabaseAdapter, work: (sql: Sql) => Promise<A>): Promise<A> {
+    return adapter.transaction(async (tx) => await work(connection(await tx.getConnection())))
+  }
+
+  function parsed(what: string, raw: unknown): DeviceRequest {
+    const state = parseState(raw)
+    if (state === undefined) throw new TypeError(`The stored ${what} holds no device request state`)
+    return state
+  }
+
+  function request(row: Row): RequestRow {
+    const terms = decodeTerms({ binding: row.binding, boundProfile: row.bound_profile, need: row.need })
+    return {
+      proposalId: row.proposal_id, revision: row.revision, state: parsed(`request ${row.proposal_id}`, row.state),
+      terms: { operation: row.operation, binding: terms.binding, boundProfile: terms.boundProfile, need: { required: [...terms.need.required], oneOf: [...terms.need.oneOf] } },
+      result: row.result, createdAt: Number(row.created_at),
+    }
+  }
+
+  async function enrollmentIn(sql: Sql): Promise<EnrollmentRow | undefined> {
+    const found = await sql.query<{ revision: number; state: unknown }>("SELECT revision, state FROM device_enrollment WHERE singleton")
+    const row = found.rows[0]
+    return row === undefined ? undefined : { revision: row.revision, state: parsed("enrollment", row.state) }
+  }
+
+  export function readEnrollment(adapter: IDatabaseAdapter): Promise<EnrollmentRow | undefined> {
+    return within(adapter, enrollmentIn)
+  }
+
+  export function writeEnrollment(adapter: IDatabaseAdapter, read: number, next: DeviceRequest, event: EnrollmentEvent, by: SessionOwner): Promise<Written> {
+    return within(adapter, async (sql) => {
+      const state = JSON.stringify(next)
+      const kept = read === 0
+        ? await sql.query("INSERT INTO device_enrollment (singleton, revision, state) VALUES (true, 1, $1::jsonb) ON CONFLICT (singleton) DO NOTHING", [state])
+        : await sql.query("UPDATE device_enrollment SET revision = revision + 1, state = $2::jsonb WHERE singleton AND revision = $1", [read, state])
+      if (kept.affectedRows !== 1) return "stale"
+      const found = await sql.query<{ proposal_id: string; state: unknown }>("SELECT proposal_id, state FROM device_requests ORDER BY proposal_id FOR UPDATE")
+      for (const row of found.rows) {
+        const after = step(parsed(`request ${row.proposal_id}`, row.state), event, by)
+        await sql.query(
+          "UPDATE device_requests SET revision = revision + 1, state = $2::jsonb, settled = $3 WHERE proposal_id = $1",
+          [row.proposal_id, JSON.stringify(after), requestSettled(after.phase)],
+        )
+      }
+      return "written"
+    })
+  }
+
+  export function seedRequest(adapter: IDatabaseAdapter, enrollment: number, offered: DeviceRequest, terms: RequestTerms): Promise<Seeded> {
+    return within(adapter, async (sql) => {
+      const current = await enrollmentIn(sql)
+      if ((current?.revision ?? 0) !== enrollment) return "stale"
+      const checked = decodeTerms(terms)
+      const inserted = await sql.query(
+        `INSERT INTO device_requests (${columns}, settled) VALUES ($1, 1, $2::jsonb, $3::jsonb, $4, $5::jsonb, $6::jsonb, NULL, $7, $8)
+           ON CONFLICT (proposal_id) DO NOTHING`,
+        [offered.proposalId, JSON.stringify(offered), JSON.stringify(terms.operation), checked.binding,
+          JSON.stringify(checked.boundProfile), JSON.stringify(checked.need), offered.createdAt, requestSettled(offered.phase)],
+      )
+      return inserted.affectedRows === 1 ? "seeded" : "taken"
+    })
+  }
+
+  export function readRequest(adapter: IDatabaseAdapter, proposalId: string): Promise<RequestRow | undefined> {
+    return within(adapter, async (sql) => {
+      const found = await sql.query<Row>(`SELECT ${columns} FROM device_requests WHERE proposal_id = $1`, [proposalId])
+      const row = found.rows[0]
+      return row === undefined ? undefined : request(row)
+    })
+  }
+
+  export function writeRequest(adapter: IDatabaseAdapter, proposalId: string, read: number, next: DeviceRequest, result: { readonly value: unknown } | undefined): Promise<Written> {
+    return within(adapter, async (sql) => {
+      const params = [proposalId, read, JSON.stringify(next), requestSettled(next.phase)]
+      const written = result === undefined
+        ? await sql.query("UPDATE device_requests SET revision = revision + 1, state = $3::jsonb, settled = $4 WHERE proposal_id = $1 AND revision = $2", params)
+        : await sql.query(
+          "UPDATE device_requests SET revision = revision + 1, state = $3::jsonb, settled = $4, result = $5::jsonb WHERE proposal_id = $1 AND revision = $2",
+          [...params, JSON.stringify(result.value) ?? null],
+        )
+      return written.affectedRows === 1 ? "written" : "stale"
+    })
+  }
+
+  export function requestRows(adapter: IDatabaseAdapter, which: Settled): Promise<RequestRow[]> {
+    return within(adapter, async (sql) => {
+      const found = await sql.query<Row>(`SELECT ${columns} FROM device_requests WHERE settled = $1 ORDER BY created_at, proposal_id`, [which === "settled"])
+      return found.rows.map(request)
+    })
+  }
+
+  async function profileIn(sql: Sql): Promise<ViewProfile> {
+    const found = await sql.query<{ revision: string; views: unknown }>("SELECT revision, views FROM device_view_profile WHERE singleton")
+    const row = found.rows[0]
+    return row === undefined ? { tag: "NoProfile" } : { tag: "Profile", revision: row.revision, views: [...decodeViews(row.views)] }
+  }
+
+  export function readViewProfile(adapter: IDatabaseAdapter): Promise<ViewProfile> {
+    return within(adapter, profileIn)
+  }
+
+  export function writeViewProfile(adapter: IDatabaseAdapter, read: RevisionRead, wanted: readonly DeviceView[]): Promise<ProfileChange> {
+    return within(adapter, async (sql) => {
+      const profile = await profileIn(sql)
+      const fresh = randomUUID()
+      if (!canSetViewProfile(profile, read, fresh)) return { kind: "stale", profile }
+      const next = setViewProfile(profile, [...decodeViews(wanted)], fresh)
+      if (next.tag === "Profile") {
+        await sql.query(
+          `INSERT INTO device_view_profile (singleton, revision, views) VALUES (true, $1, $2::jsonb)
+             ON CONFLICT (singleton) DO UPDATE SET revision = EXCLUDED.revision, views = EXCLUDED.views`,
+          [next.revision, JSON.stringify(next.views)],
+        )
+      }
+      return { kind: "set", profile: next }
+    })
+  }
+}
+import {
+  readEnrollment, readRequest, readViewProfile, requestRows, seedRequest, writeEnrollment, writeRequest, writeViewProfile,
+  type EnrollmentEvent, type EnrollmentRow, type OfferEvent, type ProfileChange, type RequestRow, type RequestTerms, type Settled,
+} from node
+export type { EnrollmentEvent, OfferEvent, ProfileChange, RequestRow, RequestTerms, Settled } from node
+
+export interface DeviceRequestRecord extends StoredRequest {
+  readonly proposalId: string
+  readonly terms: RequestTerms
+  readonly createdAt: number
+}
+
+export interface RequestWrite {
+  readonly result?: unknown
+}
+
+effect function stored<A>(step: string, call: () => Promise<A>) {
+  return try tryPromise({ try: () => call(), catch: (cause) => new DeviceStoreUnavailable({ step, cause }) })
+}
+
+effect function currentFiber() {
+  return try withFiberSucceed((fiber) => fiber.id)
+}
+
+effect function readBy<A>(reads: Map<number, A>) {
+  const fiber = try currentFiber()
+  const read = reads.get(fiber)
+  reads.delete(fiber)
+  return read === undefined ? try die(new Error("A device row was kept without being read first")) : read
+}
+
+effect function caughtUp(state: DeviceRequest) {
+  const now = try Clock.currentTimeMillis
+  return now > state.session.now ? step(state, { type: "elapse", elapsed: now - state.session.now }, noOwner) : state
+}
+
+effect function currentEnrollment(adapter: IDatabaseAdapter): EnrollmentRow!DeviceStoreUnavailable {
+  const row = try stored("read the enrollment", () => readEnrollment(adapter))
+  return { revision: row?.revision ?? 0, state: try caughtUp(row?.state ?? initial) }
+}
+
+export effect function enrollment(adapter: IDatabaseAdapter): DeviceRequest!DeviceStoreUnavailable {
+  return (try currentEnrollment(adapter)).state
+}
+
+export effect function changeEnrollment(adapter: IDatabaseAdapter, event: EnrollmentEvent, by: SessionOwner) {
+  const reads = new Map<number, number>()
+  const load = effect function (): DeviceRequest!DeviceStoreUnavailable {
+    const row = try currentEnrollment(adapter)
+    reads.set(try currentFiber(), row.revision)
+    return row.state
+  }
+  const keep = effect function (next: DeviceRequest): void!! {
+    const read = try readBy(reads)
+    const written = try orDie(stored("keep the enrollment", () => writeEnrollment(adapter, read, next, event, by)))
+    if (written === "stale") try die(new StaleDeviceRow({ table: "device_enrollment", id: "enrollment", revision: read }))
+  }
+  const machine = try machineOver(load, keep)
+  return try machine.send(event, by)
+}
+
+export effect function openRequest(adapter: IDatabaseAdapter, proposalId: string, write: RequestWrite = {}): (DeviceRequestRecord | undefined)!DeviceStoreUnavailable {
+  const row = try stored("read a device request", () => readRequest(adapter, proposalId))
+  if (row === undefined) return undefined
+  const reads = new Map<number, number>()
+  const load = effect function (): DeviceRequest!DeviceStoreUnavailable {
+    const current = try stored("read a device request", () => readRequest(adapter, proposalId))
+    if (current === undefined) return try die(new Error(`The device request ${proposalId} is gone`))
+    reads.set(try currentFiber(), current.revision)
+    return try caughtUp(current.state)
+  }
+  const keep = effect function (next: DeviceRequest): void!! {
+    const read = try readBy(reads)
+    const result = write.result === undefined ? undefined : { value: write.result }
+    const written = try orDie(stored("keep a device request", () => writeRequest(adapter, proposalId, read, next, result)))
+    if (written === "stale") try die(new StaleDeviceRow({ table: "device_requests", id: proposalId, revision: read }))
+  }
+  const machine = try machineOver(load, keep)
+  return { proposalId, machine, result: row.result, terms: row.terms, createdAt: row.createdAt }
+}
+
+export effect function offerRequest(adapter: IDatabaseAdapter, offer: OfferEvent, by: SessionOwner, terms: RequestTerms): DeviceRequestRecord!(DeviceStoreUnavailable | Rejected | ProposalIdTaken) {
+  const enrolled = try currentEnrollment(adapter)
+  const offered = try apply(enrolled.state, offer, by)
+  const seeded = try stored("seed a device request", () => seedRequest(adapter, enrolled.revision, offered, terms))
+  if (seeded === "taken") throw new ProposalIdTaken({ proposalId: offer.proposalId })
+  if (seeded === "stale") return try offerRequest(adapter, offer, by, terms)
+  const record = try openRequest(adapter, offer.proposalId)
+  return record ?? try die(new Error(`The seeded device request ${offer.proposalId} is gone`))
+}
+
+export effect function listRequests(adapter: IDatabaseAdapter, which: Settled): RequestRow[]!DeviceStoreUnavailable {
+  const rows = try stored("list device requests", () => requestRows(adapter, which))
+  const listed: RequestRow[] = []
+  for (const row of rows) listed.push({ ...row, state: try caughtUp(row.state) })
+  return listed
+}
+
+export effect function viewProfile(adapter: IDatabaseAdapter): ViewProfile!DeviceStoreUnavailable {
+  return try stored("read the view profile", () => readViewProfile(adapter))
+}
+
+export effect function changeViewProfile(adapter: IDatabaseAdapter, read: RevisionRead, views: readonly DeviceView[]): ProfileChange!DeviceStoreUnavailable {
+  return try stored("change the view profile", () => writeViewProfile(adapter, read, views))
+}

@@ -22,6 +22,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -206,9 +207,12 @@ public final class SignInReadiness {
   }
 
   private void fold(SignInRegistration.Environment environment, CloudReading reading) {
-    Answer previous = answer(environment.name);
-    Answer next = ReadinessPolicy.measureAnswer(previous, reading, registration.googleMode, clock.getAsLong());
-    synchronized (lock) { answers.put(environment.name, next); }
+    Answer previous, next;
+    synchronized (lock) {
+      previous = answer(environment.name);
+      next = ReadinessPolicy.measureAnswer(previous, reading, registration.googleMode, clock.getAsLong());
+      answers.put(environment.name, next);
+    }
     store.put(key(environment.name), serialize(next));
     if (ReadinessPolicy.announces(previous.readiness, next.readiness)) announcer.changed(environment.name, new Status(next.readiness, device()));
   }
@@ -244,12 +248,25 @@ public final class SignInReadiness {
       google.optBoolean("nativeSignIn", false), !serverClientId.isBlank()));
   }
 
-  /** {success: true, version: 1, service: {name, terms, privacy}} with text in all three. */
+  /** {success: true, version: 1, service: {name, terms, privacy}}, each document {title, revision, sections: [{title, paragraphs[]}]}. */
   static boolean serviceWellFormed(String body) {
     JSONObject document = object(body);
-    if (document == null || !document.optBoolean("success", false) || document.optInt("version", 0) != 1) return false;
+    if (document == null || !Boolean.TRUE.equals(document.opt("success")) || !Integer.valueOf(1).equals(document.opt("version"))) return false;
     JSONObject service = document.optJSONObject("service");
-    return service != null && text(service, "name") && text(service, "terms") && text(service, "privacy");
+    return service != null && text(service, "name") && legal(service.optJSONObject("terms")) && legal(service.optJSONObject("privacy"));
+  }
+
+  private static boolean legal(JSONObject document) {
+    if (document == null || !text(document, "title") || !text(document, "revision")) return false;
+    JSONArray sections = document.optJSONArray("sections");
+    if (sections == null || sections.length() == 0) return false;
+    for (int i = 0; i < sections.length(); i++) {
+      JSONObject section = sections.optJSONObject(i);
+      JSONArray paragraphs = section == null ? null : section.optJSONArray("paragraphs");
+      if (paragraphs == null || paragraphs.length() == 0 || !text(section, "title")) return false;
+      for (int j = 0; j < paragraphs.length(); j++) if (!(paragraphs.opt(j) instanceof String p) || p.isEmpty()) return false;
+    }
+    return true;
   }
 
   private static boolean text(JSONObject source, String key) {

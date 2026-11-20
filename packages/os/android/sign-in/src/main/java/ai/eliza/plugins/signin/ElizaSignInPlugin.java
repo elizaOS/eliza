@@ -88,7 +88,7 @@ public class ElizaSignInPlugin extends Plugin {
   private GoogleSignIn.Browser browser;
 
   protected SignInCustody custody(Context context, SignInRegistration registration) {
-    return DeviceCredentialStore.custody(context, registration);
+    return DeviceCustody.custody(context, registration);
   }
 
   protected GoogleSignIn.Browser browser(SignInRegistration registration, SignInCustody custody) {
@@ -149,7 +149,7 @@ public class ElizaSignInPlugin extends Plugin {
   @PluginMethod public void status(PluginCall call) {
     SignInRegistration.Environment environment = registration.environment(call.getString("environment"));
     if (environment == null || !readiness.status(environment.name, Boolean.TRUE.equals(call.getBoolean("retry", false)),
-        status -> call.resolve(readiness(environment.name, status).put("account", account())))) refuse(call, Failure.INVALID_REQUEST);
+        status -> call.resolve(readiness(environment.name, status).put("account", account(environment))))) refuse(call, Failure.INVALID_REQUEST);
   }
 
   @PluginMethod public void serviceInfo(PluginCall call) {
@@ -244,11 +244,13 @@ public class ElizaSignInPlugin extends Plugin {
   }
 
   @PluginMethod public void signOut(PluginCall call) {
+    SignInRegistration.Environment environment = registration.environment(call.getString("environment"));
+    if (environment == null) { refuse(call, Failure.INVALID_REQUEST); return; }
     Open current;
     synchronized (lock) { current = open; }
     if (current != null) cancelled(current);
     try {
-      worker.execute(() -> { custody.signOut(); call.resolve(new JSObject().put("account", account())); });
+      worker.execute(() -> { custody.signOut(environment); call.resolve(new JSObject().put("account", account(environment))); });
     } catch (RejectedExecutionException closed) {
       refuse(call, Failure.UNAVAILABLE);
     }
@@ -279,7 +281,7 @@ public class ElizaSignInPlugin extends Plugin {
     SignInRegistration.Environment environment = registration.environment(call.getString("environment"));
     if (!SignInPolicy.validUuid(id) || environment == null) { refuse(call, Failure.INVALID_REQUEST); return null; }
     if (!SignInPolicy.admitted(method, purpose, registration.googleMode)) { refuse(call, Failure.REFUSED); return null; }
-    if (purpose == Purpose.REAUTHENTICATE && custody.held() == null) { refuse(call, Failure.REFUSED); return null; }
+    if (purpose == Purpose.REAUTHENTICATE && custody.held(environment) == null) { refuse(call, Failure.REFUSED); return null; }
     synchronized (lock) {
       long allowedAt = method.code() ? sendAllowedAt.getOrDefault(method, 0L) : 0;
       if (System.currentTimeMillis() < allowedAt) { refuse(call, Failure.BUSY, allowedAt); return null; }
@@ -334,13 +336,13 @@ public class ElizaSignInPlugin extends Plugin {
       int attempt = begin(current);
       GoogleSignIn.SignedIn answer = google.signIn(current.environment, current.google, current.idToken, current.serverCode, System.currentTimeMillis());
       if (answer instanceof GoogleSignIn.SignedIn.FactorRequired factor) {
-        custody.signInEnded(attempt);
+        custody.signInEnded(current.environment, attempt);
         factorRequired(current, new Event.FactorRequired(current.requestId), factor.challengeId(), factor.methods(), factor.expiresAt());
         return;
       }
       GoogleSignIn.SignedIn.Minted minted = (GoogleSignIn.SignedIn.Minted) answer;
       if (minted.googleConnected() != null) synchronized (lock) { apply(new Event.GoogleSettled(current.requestId, minted.googleConnected())); }
-      acknowledged(current, custody.redeem(attempt, current.environment, minted.proof(), minted.answer()));
+      acknowledged(current, custody.redeem(attempt, current.environment, minted.proof()));
     });
   }
 
@@ -386,8 +388,8 @@ public class ElizaSignInPlugin extends Plugin {
 
   private void signedIn(Open current, Session session) throws Refused {
     if (current.purpose == Purpose.REAUTHENTICATE) {
-      Held held = custody.held();
-      if (held == null || !custody.grantSession(session)) throw new Refused(Failure.REFUSED);
+      Held held = custody.held(current.environment);
+      if (held == null || !custody.grantSession(current.environment, session)) throw new Refused(Failure.REFUSED);
       acknowledged(current, held.credentialId());
       return;
     }
@@ -395,7 +397,7 @@ public class ElizaSignInPlugin extends Plugin {
     Proof proof;
     try { proof = custody.connect(attempt, current.environment, session.accessToken()); }
     finally { codes.logout(current.environment, session); }
-    acknowledged(current, custody.redeem(attempt, current.environment, proof, null));
+    acknowledged(current, custody.redeem(attempt, current.environment, proof));
   }
 
   private void acknowledged(Open current, String credentialId) {
@@ -405,7 +407,7 @@ public class ElizaSignInPlugin extends Plugin {
       connect = state.google() == Google.HELD;
     }
     if (connect) {
-      Held held = custody.held();
+      Held held = custody.held(current.environment);
       boolean connected = held != null && google.connectNative(current.environment, held.key(), current.serverCode);
       synchronized (lock) { apply(new Event.GoogleSettled(current.requestId, connected)); }
     }
@@ -427,8 +429,8 @@ public class ElizaSignInPlugin extends Plugin {
       .put("step", Step.SECOND_FACTOR.wire).put("methods", new JSArray(methods)).put("expiresAt", expiresAt));
   }
 
-  private int begin(Open current) {
-    int attempt = custody.beginSignIn();
+  private int begin(Open current) throws Refused {
+    int attempt = custody.beginSignIn(current.environment);
     synchronized (lock) { current.custodyAttempt = attempt; }
     return attempt;
   }
@@ -461,7 +463,7 @@ public class ElizaSignInPlugin extends Plugin {
     current.cancellation.cancel();
     if (current.serverCode != null) current.serverCode.drop();
     if (current.method == Method.GOOGLE_BROWSER) browser.cancel(current.requestId);
-    if (current.custodyAttempt > 0 && current.purpose == Purpose.SIGN_IN) custody.signInEnded(current.custodyAttempt);
+    if (current.custodyAttempt > 0 && current.purpose == Purpose.SIGN_IN) custody.signInEnded(current.environment, current.custodyAttempt);
     settle(current);
   }
 
@@ -521,8 +523,8 @@ public class ElizaSignInPlugin extends Plugin {
     return "reauthenticate".equals(call.getString("purpose")) ? Purpose.REAUTHENTICATE : Purpose.SIGN_IN;
   }
 
-  private JSObject account() {
-    Held held = custody.held();
+  private JSObject account(SignInRegistration.Environment environment) {
+    Held held = custody.held(environment);
     if (held == null) return new JSObject().put("signedIn", false);
     return new JSObject().put("signedIn", true).put("userId", held.account().userId()).put("organizationId", held.account().organizationId())
       .put("credentialId", held.credentialId()).put("keyExpiresAt", held.keyExpiresAt());

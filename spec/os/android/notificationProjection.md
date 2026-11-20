@@ -5,14 +5,20 @@ The agent's notifications reach Android through the native projection in
 `NativeNotificationWire`, `NativeNotificationChannels`,
 `NativeNotificationProjector`, `NativeNotificationRoute`). The agent owns the
 inbox and its pages ([notification cursor](../../core/notifications/cursor.md));
-this machine owns the device's durable journal for one account: its cursor,
-its live buffer and the post receipts of the [notice routes](./noticeRoutes.md)
-ledger. The projection reads the inbox page and the notice events through the
-native caller path of the agent service (`AgentService` request and
-subscription on the native route table,
-[agent channel](../agentService/channel.md)), never through the renderer. The
-machine projects one account and one notification through a baseline or
-catch-up fence; journal bounds and compaction stay in the shell.
+this machine owns the device's durable journal for the signed-in account: its
+epoch, the coordinate it has closed through, the fence of an unfinished
+crawl, the live buffer, and the post receipts of the
+[notice routes](./noticeRoutes.md) ledger. The projection reads inbox pages
+and live notice events through the native caller path of the agent service
+(`AgentService` request and subscription on the native route table,
+[agent channel](../agentService/channel.md)), never through the renderer.
+
+The machine follows one notification through a baseline or catch-up crawl.
+A page is abstracted to the cursor it answers, the coordinate it closes
+through (`closes`, the cursor's next `after`) and what it says of that
+notification's row. Inbox epochs are identities; here a positive number
+stands for one and `0` for none yet. Journal bounds and compaction stay in
+the shell.
 
 ## Story: Show the agent's notices once
 
@@ -22,28 +28,30 @@ catch-up fence; journal bounds and compaction stay in the shell.
 
 ### A retained arrival waits for matching evidence inside an exhausted fence
 
-A live notification received before the baseline or from another epoch enters
-the durable buffer. A validated page captures an epoch and a fixed upper
-fence before any projection, and describes the crawl up to that observation,
-including an earlier match in the same fence. A buffered arrival below the
-fence becomes a pending notice only if the crawl observed its exact ID and
-sequence; a completed crawl removes a deleted arrival without posting. An
-arrival above the fence waits for the next authoritative range. Low
-priority, read and expired rows become ignored receipts. Initial-page
-records without a live counterpart become baseline receipts and never post.
+A live notification that arrives before the baseline is ready, or from
+another epoch than the journal's, enters the durable buffer. A page of the
+crawl that shows its exact epoch and sequence records that evidence, which
+holds for the rest of the same fence. Only a complete page of its own epoch
+whose fence covers it settles a buffered arrival: observed evidence projects
+it (or ignores it when the row is read, low priority or expired), and no
+evidence means it was deleted, so it is dropped without posting. An arrival
+above the fence waits for the next fence. A row the first complete crawl
+finds without a live counterpart becomes a baseline receipt and never posts.
 
 ```quint
 import noticeRoutes.* from "./noticeRoutes"
 import cursor as K from "../../core/notifications/cursor"
 type ReceiptPhase = NoneSeen | Buffered | Projected | BaselineOnly | Ignored | Gone
-type PageEvidence = { query: K::Cursor, coordinate: int, present: bool, complete: bool, mutedReadOrExpired: bool }
+type ArrivalEvidence = Unobserved | ObservedLive | ObservedMuted
+type PageRow = RowAbsent | RowLive | RowMuted
+type PageEvidence = { query: K::Cursor, closes: int, coordinate: int, row: PageRow }
 type NoticeProjection = {
-  receipt: ReceiptPhase, notice: NoticeLedger, arrivalEpoch: int, sequence: int, closedThrough: int,
-  journalEpoch: int, initialized: bool, baselineReady: bool, authorityLive: bool
+  receipt: ReceiptPhase, evidence: ArrivalEvidence, notice: NoticeLedger, arrivalEpoch: int, sequence: int,
+  journalEpoch: int, closedThrough: int, openThrough: int, initialized: bool, baselineReady: bool, authorityLive: bool
 }
 pure val initial: NoticeProjection = {
-  receipt: NoneSeen, notice: emptyNotice, arrivalEpoch: 0, sequence: 0, closedThrough: 0,
-  journalEpoch: 0, initialized: false, baselineReady: false, authorityLive: true
+  receipt: NoneSeen, evidence: Unobserved, notice: emptyNotice, arrivalEpoch: 0, sequence: 0,
+  journalEpoch: 0, closedThrough: 0, openThrough: 0, initialized: false, baselineReady: false, authorityLive: true
 }
 pure def projectReceipt(receipt: ReceiptPhase, n: NoticeProjection): NoticeProjection =
   if (receipt == Projected) { ...n, receipt: Projected, notice: pendNotice(n.notice) } else { ...n, receipt: receipt }
@@ -59,66 +67,81 @@ pure val epochValues = Set(1, 2)
 pure val coordinateValues = Set(1, 2, 3)
 pure def alwaysQualifiedReceipt(n: NoticeProjection): bool = n.receipt != NoneSeen implies (n.arrivalEpoch > 0 and n.sequence > 0)
 pure def alwaysOnlyProjectedReceiptsEnterTheLedger(n: NoticeProjection): bool = (n.receipt == Projected) == (n.notice.phase != NoticeNone)
-pure def alwaysValidJournalFence(n: NoticeProjection): bool = n.closedThrough >= 0 and n.journalEpoch >= 0
+pure def alwaysEvidenceBelongsToTheOpenCrawl(n: NoticeProjection): bool =
+  n.evidence != Unobserved implies (n.receipt == Buffered and n.openThrough > 0 and n.arrivalEpoch == n.journalEpoch)
+pure def stepBufferedArrivalSettledOnlyByItsCompleteFence(before: NoticeProjection, after: NoticeProjection): bool =
+  (before.receipt == Buffered and after.receipt != Buffered) implies
+    (after.openThrough == 0 and after.arrivalEpoch == after.journalEpoch and after.sequence <= after.closedThrough)
+pure def stepObservedArrivalIsNeverDropped(before: NoticeProjection, after: NoticeProjection): bool =
+  (before.evidence != Unobserved and after.receipt != Buffered) implies after.receipt != Gone
 pure def sometimesBaselineQuiet(n: NoticeProjection): bool = n.receipt == BaselineOnly
 pure def sometimesDeletedArrivalDropped(n: NoticeProjection): bool = n.receipt == Gone
+pure def sometimesMatchHeldAcrossPages(n: NoticeProjection): bool = n.evidence == ObservedLive and n.closedThrough < n.openThrough
+pure def sometimesArrivalWaitsForTheNextFence(n: NoticeProjection): bool =
+  n.receipt == Buffered and n.initialized and not(n.baselineReady) and n.arrivalEpoch == n.journalEpoch and n.sequence > n.closedThrough
 ```
 
-### A page is reconciled only at the journal's cursor, and only a complete page closes its fence
+### A page continues the journal's own cursor, and only a complete page closes its whole fence
 
-The page answers the journal's own cursor: the inbox epoch, the coordinate
-after which it reads and the fixed fence it reads through. In the journal's
-epoch the fence never runs behind what is already closed. A present row lies
-inside the page's range. An incomplete page closes nothing; a complete page
-closes its whole fence, deleted rows included.
+In the journal's epoch a page starts after the coordinate the journal closed
+through and, while a crawl is open, reads through that crawl's fixed fence;
+a page of a new epoch starts a crawl from zero and resets the journal. An
+incomplete page returns at least one row and closes through its last one,
+short of its fence; a complete page closes its whole fence, deleted rows
+included. A row a page shows lies inside the range it closes.
 
 ```quint
 pure def canReconcilePage(n: NoticeProjection, page: PageEvidence): bool =
-  n.authorityLive and page.query.epoch > 0 and page.query.after >= 0 and page.query.after <= page.query.through and
-  (page.query.epoch != n.journalEpoch or page.query.through >= n.closedThrough) and
-  (not(page.present) or (page.coordinate > page.query.after and page.coordinate <= page.query.through))
-pure def pageReceipt(n: NoticeProjection, page: PageEvidence): ReceiptPhase = {
-  val sameArrival = n.arrivalEpoch == page.query.epoch and n.sequence == page.coordinate
-  val existingFence = if (n.journalEpoch == page.query.epoch) n.closedThrough else 0
-  val baseline = not(n.initialized) or n.journalEpoch != page.query.epoch
-  val observedBelowFence = n.receipt == Buffered and n.arrivalEpoch == page.query.epoch and n.sequence <= page.query.through
-  if (n.receipt == NoneSeen and page.present and page.coordinate > existingFence)
-    (if (baseline) BaselineOnly else if (page.mutedReadOrExpired) Ignored else Projected)
-  else if (observedBelowFence and page.complete)
-    (if (not(page.present) or not(sameArrival)) Gone else if (page.mutedReadOrExpired) Ignored else Projected)
-  else n.receipt
-}
+  n.authorityLive and page.query.epoch > 0 and page.query.after >= 0 and
+  page.query.after <= page.closes and page.closes <= page.query.through and
+  (page.closes == page.query.through or page.closes > page.query.after) and
+  (if (page.query.epoch == n.journalEpoch)
+     page.query.after == n.closedThrough and (n.openThrough == 0 or page.query.through == n.openThrough)
+   else page.query.after == 0) and
+  (page.row == RowAbsent or (page.coordinate > page.query.after and page.coordinate <= page.closes))
 pure def reconcilePage(n: NoticeProjection, page: PageEvidence): NoticeProjection = {
-  val existingFence = if (n.journalEpoch == page.query.epoch) n.closedThrough else 0
-  val baseline = not(n.initialized) or n.journalEpoch != page.query.epoch
-  val aboveFence = n.receipt == Buffered and n.arrivalEpoch == page.query.epoch and n.sequence > page.query.through
-  val adopts = n.receipt == NoneSeen and page.present and page.coordinate > existingFence
-  val located = if (adopts) { ...n, arrivalEpoch: page.query.epoch, sequence: page.coordinate } else n
-  val receipt = pageReceipt(n, page)
+  val epoch = page.query.epoch
+  val sameEpoch = epoch == n.journalEpoch
+  val complete = page.closes == page.query.through
+  val baseline = not(n.initialized) or not(sameEpoch)
+  val present = page.row != RowAbsent
+  val ownArrival = n.receipt == Buffered and n.arrivalEpoch == epoch
+  val evidence =
+    if (ownArrival and present and n.sequence == page.coordinate) (if (page.row == RowMuted) ObservedMuted else ObservedLive)
+    else if (sameEpoch and n.openThrough > 0) n.evidence else Unobserved
+  val adopts = n.receipt == NoneSeen and present
+  val receipt =
+    if (adopts) (if (baseline) BaselineOnly else if (page.row == RowMuted) Ignored else Projected)
+    else if (ownArrival and complete and n.sequence <= page.query.through)
+      (if (evidence == ObservedLive) Projected else if (evidence == ObservedMuted) Ignored else Gone)
+    else n.receipt
+  val located = if (adopts) { ...n, arrivalEpoch: epoch, sequence: page.coordinate } else n
   val projected = if (receipt == n.receipt) located else projectReceipt(receipt, located)
-  { ...projected, journalEpoch: page.query.epoch,
-    initialized: page.complete or not(baseline),
-    baselineReady: page.complete and not(aboveFence),
-    closedThrough: if (page.complete) page.query.through else existingFence }
+  { ...projected, evidence: if (complete) Unobserved else evidence, journalEpoch: epoch,
+    closedThrough: page.closes, openThrough: if (complete) 0 else page.query.through,
+    initialized: complete or not(baseline),
+    baselineReady: if (complete) not(ownArrival and n.sequence > page.query.through) else n.baselineReady }
 }
 pure val pageValues: Set[PageEvidence] = List(
-  { query: { epoch: 1, after: 0, through: 1 }, coordinate: 1, present: true, complete: true, mutedReadOrExpired: false },
-  { query: { epoch: 1, after: 0, through: 1 }, coordinate: 1, present: false, complete: true, mutedReadOrExpired: false },
-  { query: { epoch: 1, after: 0, through: 1 }, coordinate: 1, present: true, complete: false, mutedReadOrExpired: false },
-  { query: { epoch: 1, after: 1, through: 2 }, coordinate: 2, present: true, complete: true, mutedReadOrExpired: true },
-  { query: { epoch: 2, after: 0, through: 1 }, coordinate: 1, present: true, complete: true, mutedReadOrExpired: false },
-  { query: { epoch: 2, after: 0, through: 3 }, coordinate: 3, present: true, complete: true, mutedReadOrExpired: false }
+  { query: { epoch: 1, after: 0, through: 1 }, closes: 1, coordinate: 1, row: RowLive },
+  { query: { epoch: 1, after: 0, through: 1 }, closes: 1, coordinate: 1, row: RowAbsent },
+  { query: { epoch: 1, after: 0, through: 2 }, closes: 1, coordinate: 1, row: RowLive },
+  { query: { epoch: 1, after: 1, through: 2 }, closes: 2, coordinate: 2, row: RowMuted },
+  { query: { epoch: 1, after: 1, through: 2 }, closes: 2, coordinate: 2, row: RowAbsent },
+  { query: { epoch: 2, after: 0, through: 1 }, closes: 1, coordinate: 1, row: RowLive },
+  { query: { epoch: 2, after: 0, through: 3 }, closes: 3, coordinate: 3, row: RowLive }
 ).foldl(Set(), (acc, p) => acc.union(Set(p)))
-pure def stepIncompletePageClosesNothing(before: NoticeProjection, via: str, after: NoticeProjection): bool =
-  (via == "reconcilePage" and after.journalEpoch == before.journalEpoch and after.closedThrough != before.closedThrough) implies after.initialized
+pure def alwaysOpenCrawlStopsShortOfItsFence(n: NoticeProjection): bool = n.openThrough > 0 implies n.closedThrough < n.openThrough
+pure def stepFenceNeverRunsBack(before: NoticeProjection, after: NoticeProjection): bool =
+  after.journalEpoch == before.journalEpoch implies after.closedThrough >= before.closedThrough
 ```
 
 ### A pending notice is dispatched once, and its settlement never posts twice
 
-Dispatch reserves the pending notice under the live authority, as the
-[notice routes](./noticeRoutes.md) ledger says; only a live settlement counts
-a post, and a recovered one reads Android and never posts. A lost process or
-a retired account drops the permit.
+Dispatch reserves the pending notice under the live account authority, as
+the [notice routes](./noticeRoutes.md) ledger says; only a live settlement
+counts a post, and a recovered one reads Android and never posts. A lost
+process or a retired account drops the permit.
 
 ```quint
 pure def canDispatchNotice(n: NoticeProjection): bool = n.authorityLive and n.notice.phase == NoticePending
@@ -133,7 +156,7 @@ pure def alwaysNoticeLedgerValid(n: NoticeProjection): bool = noticeLedgerValid(
 pure def alwaysPermitNeedsAuthority(n: NoticeProjection): bool = n.notice.permit implies n.authorityLive
 pure def stepPostNeedsLivePermit(before: NoticeProjection, after: NoticeProjection): bool =
   after.notice.posts > before.notice.posts implies (before.authorityLive and before.notice.permit)
-pure def sometimesNotificationPosted(n: NoticeProjection): bool = n.notice.phase == NoticePosted
+pure def sometimesNotificationPosted(n: NoticeProjection): bool = n.notice.phase == NoticePosted and n.notice.posts == 1
 pure def sometimesNotificationUncertain(n: NoticeProjection): bool = n.notice.phase == NoticeUnknown
 pure def sometimesRecoveredWithoutPosting(n: NoticeProjection): bool = n.notice.phase == NoticePosted and n.notice.posts == 0
 pure val weight_dispatchNotice = 4
@@ -141,8 +164,9 @@ pure val weight_dispatchNotice = 4
 
 ### A tap opens a projected notice once, and an Ask tap backed out of keeps it
 
-Each tap step checks the live account authority before it captures, consumes
-or releases a token.
+Each tap step checks the live account authority before it captures,
+consumes or releases a token; the token rules are the
+[notice routes](./noticeRoutes.md) ledger's.
 
 ```quint
 pure def canCaptureNoticeTap(n: NoticeProjection, ask: bool): bool = n.authorityLive and tapEligible(n.notice)
@@ -151,15 +175,16 @@ pure def canConsumeNoticeTap(n: NoticeProjection, token: int, write: TapWrite): 
 pure def consumeNoticeTap(n: NoticeProjection, token: int, write: TapWrite): NoticeProjection = { ...n, notice: consumeTap(n.notice, write) }
 pure def canReleaseNoticeTap(n: NoticeProjection, token: int): bool = n.authorityLive and tapMatches(n.notice, token) and n.notice.tapAsk
 pure def releaseNoticeTap(n: NoticeProjection, token: int): NoticeProjection = { ...n, notice: releaseTap(n.notice) }
-pure def stepTokenClearedOnlyBySettlement(before: NoticeProjection, via: str, after: NoticeProjection): bool =
+pure def stepTapTokenClearedOnlyByItsTap(before: NoticeProjection, via: str, after: NoticeProjection): bool =
   after.notice.tapToken < before.notice.tapToken implies (via == "consumeNoticeTap" or via == "releaseNoticeTap")
 pure def sometimesNoticeOpened(n: NoticeProjection): bool = n.notice.phase == NoticeOpened and n.notice.tapToken == 0
 pure def sometimesOpenedWithStaleToken(n: NoticeProjection): bool = n.notice.phase == NoticeOpened and n.notice.tapToken > 0
+pure def sometimesAskTapReleased(n: NoticeProjection): bool = n.notice.phase == NoticePosted and n.notice.tapToken == 0 and n.notice.tokenSerial > 0
 pure val weight_captureNoticeTap = 6
 pure val weight_consumeNoticeTap = 8
 ```
 
-## Story: Clean up an approval notice route only when its publication provably ended
+## Story: Keep an approval notice whose publication failed until it provably ended
 
 > As the owner, I want an approval notice whose posting failed either cleaned
 > up or kept tappable, never silently lost while it might be live.
@@ -169,31 +194,27 @@ pure val weight_consumeNoticeTap = 8
 After an authorized approval call prepares its route, publication can fail
 with storage unchanged, committed, uncertain, malformed or foreign. Cleanup
 reads the receipt. Only a readable receipt that is absent, failed, withdrawn
-or a recorded withdrawal intent for this exact notice gives cleanup
-authority; the route is then forgotten if it can be. A live, uncertain,
-corrupt, foreign or wrong-expiry receipt, or an unreadable one, keeps the
-route. Cleanup that cannot forget suppresses the notice but keeps the route.
-The publication error is what the caller sees, and cleanup never posts.
+or a recorded withdrawal intent for this exact notice ends the publication;
+the route is then forgotten if it can be, and otherwise kept with the notice
+suppressed. An unreadable, corrupt, foreign or wrong-expiry receipt keeps
+the route and suppresses the notice; a live or uncertain one keeps both.
+Cleanup decides only the route: it never posts, and the caller still sees
+the publication error.
 
 ```quint
 type ApprovalReceipt = ReceiptAbsent | ReceiptFailedExact | ReceiptWithdrawnExact | ReceiptWithdrawalIntent | ReceiptLive | ReceiptUncertain | ReceiptCorrupt | ReceiptForeign | ReceiptWrongExpiry
-type ApprovalCleanup = { routeKept: bool, suppressed: bool, cleanupAuthority: bool, posts: int, publicationError: bool }
+type ApprovalCleanup = RouteForgotten | RouteKeptSuppressed | RouteKept
 pure def definiteApprovalEnd(receipt: ApprovalReceipt): bool =
   receipt == ReceiptAbsent or receipt == ReceiptFailedExact or receipt == ReceiptWithdrawnExact or receipt == ReceiptWithdrawalIntent
 pure def validApprovalReceipt(receipt: ApprovalReceipt): bool = not(receipt == ReceiptCorrupt or receipt == ReceiptForeign or receipt == ReceiptWrongExpiry)
-pure def cleanupApprovalRoute(receipt: ApprovalReceipt, readable: bool, canForget: bool, postsAtFailure: int): ApprovalCleanup = {
-  val valid = readable and validApprovalReceipt(receipt)
-  val definite = valid and definiteApprovalEnd(receipt)
-  { routeKept: not(definite and canForget), suppressed: not(valid) or (definite and not(canForget)),
-    cleanupAuthority: definite, posts: postsAtFailure, publicationError: true }
-}
-pure val postsAtFailureValues = Set(0, 1)
-pure def lawRouteForgottenOnlyWithProof(receipt: ApprovalReceipt, readable: bool, canForget: bool, postsAtFailure: int): bool =
-  not(cleanupApprovalRoute(receipt, readable, canForget, postsAtFailure).routeKept) implies (readable and definiteApprovalEnd(receipt))
-pure def lawUncertainRouteRemains(receipt: ApprovalReceipt, readable: bool, canForget: bool, postsAtFailure: int): bool =
-  not(definiteApprovalEnd(receipt)) implies cleanupApprovalRoute(receipt, readable, canForget, postsAtFailure).routeKept
-pure def lawSuppressedNoticeKeepsRoute(receipt: ApprovalReceipt, readable: bool, canForget: bool, postsAtFailure: int): bool =
-  cleanupApprovalRoute(receipt, readable, canForget, postsAtFailure).suppressed implies cleanupApprovalRoute(receipt, readable, canForget, postsAtFailure).routeKept
-pure def lawCleanupNeverPostsAndKeepsError(receipt: ApprovalReceipt, readable: bool, canForget: bool, postsAtFailure: int): bool =
-  cleanupApprovalRoute(receipt, readable, canForget, postsAtFailure).posts == postsAtFailure and cleanupApprovalRoute(receipt, readable, canForget, postsAtFailure).publicationError
+pure def cleanupApprovalRoute(receipt: ApprovalReceipt, readable: bool, canForget: bool): ApprovalCleanup =
+  if (not(readable) or not(validApprovalReceipt(receipt))) RouteKeptSuppressed
+  else if (not(definiteApprovalEnd(receipt))) RouteKept
+  else if (canForget) RouteForgotten else RouteKeptSuppressed
+pure def lawRouteForgottenOnlyWithProof(receipt: ApprovalReceipt, readable: bool, canForget: bool): bool =
+  cleanupApprovalRoute(receipt, readable, canForget) == RouteForgotten implies (readable and definiteApprovalEnd(receipt) and canForget)
+pure def lawUnreadableOrInvalidReceiptSuppresses(receipt: ApprovalReceipt, readable: bool, canForget: bool): bool =
+  not(readable and validApprovalReceipt(receipt)) implies cleanupApprovalRoute(receipt, readable, canForget) == RouteKeptSuppressed
+pure def lawLiveOrUncertainReceiptKeepsTheNotice(receipt: ApprovalReceipt, canForget: bool): bool =
+  (receipt == ReceiptLive or receipt == ReceiptUncertain) implies cleanupApprovalRoute(receipt, true, canForget) == RouteKept
 ```
