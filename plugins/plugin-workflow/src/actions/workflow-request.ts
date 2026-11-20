@@ -23,7 +23,15 @@ const COURTESY = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:
 const END = String.raw`(?:,?\s+(?:please|for\s+me))?[.!?]*$`;
 // A short name, optionally quoted. Clauses after it ("that runs every
 // morning", "and turn it on") are more than a name and keep the planner path.
-const NAME = String.raw`["“'‘]?([\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?)["”'’]?`;
+// The opening quote stays in the match so that name() drops a closing quote
+// only when one was opened: "‘Morning brief’" is quoted, "Parents' Day" is not.
+const NAME = String.raw`(["“'‘]?[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?)["”'’]?`;
+const CLOSING_QUOTE: Readonly<Record<string, RegExp>> = {
+  '"': /["”]$/u,
+  '“': /["”]$/u,
+  "'": /['’]$/u,
+  '‘': /['’]$/u,
+};
 const NOT_A_NAME =
   /\b(?:that|which|who|to|and|then|also|but|or|if|when|whenever|unless|every|each|daily|weekly|at|on|for|with|from|after|before|until|not|don['’]?t|never)\b/iu;
 
@@ -45,9 +53,14 @@ const LIST = new RegExp(
 );
 const WHAT_DO_I_HAVE = new RegExp(`${COURTESY}what\\s+workflows\\s+do\\s+i\\s+have${END}`, 'iu');
 
+function unquoted(value: string): string {
+  const closing = CLOSING_QUOTE[value.charAt(0)];
+  return closing ? value.slice(1).replace(closing, '') : value;
+}
+
 function name(value: string | undefined): string | undefined {
   // The sentence's own full stop is not part of the name ("v1.2" keeps its dot).
-  const trimmed = value?.trim().replace(/[.]+$/u, '');
+  const trimmed = value === undefined ? undefined : unquoted(value.trim().replace(/[.]+$/u, ''));
   if (!trimmed || trimmed.length > 80 || NOT_A_NAME.test(trimmed)) return undefined;
   // "the Alpha check workflow" and "workflow Alpha check" name the same one.
   if (/^(?:the|my|a|an)$/iu.test(trimmed) || /^workflows?$/iu.test(trimmed)) return undefined;
