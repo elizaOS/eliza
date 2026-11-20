@@ -836,6 +836,19 @@ export function truncateText(
   return `${truncateWellFormed(wellFormed, budget)}${boundedEllipsis}`;
 }
 
+const SLACK_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">" };
+
+/**
+ * Slack sends a typed &, < and > as &amp;, &lt; and &gt;. One pass turns them
+ * back, so a typed "&lt;" (sent as "&amp;lt;") stays "&lt;".
+ */
+export function decodeSlackEntities(text: string): string {
+  return text.replace(
+    /&(amp|lt|gt);/g,
+    (entity, name: string) => SLACK_ENTITIES[name] ?? entity,
+  );
+}
+
 /**
  * Strips Slack mrkdwn formatting from text
  */
@@ -852,13 +865,7 @@ export function stripSlackFormatting(text: string): string {
     .replace(/<!(?:here|channel|everyone)(?:\|[^>]*)?>/gi, "") // Special mentions
     .replace(/<((?:https?|slack|mailto|tel):[^|>]+)\|([^>]*)>/g, "$2") // Links with text → label
     .replace(/<((?:https?|slack|mailto|tel):[^>]+)>/g, "$1"); // Plain links → URL
-  const entities: Record<string, string> = { amp: "&", lt: "<", gt: ">" };
-  return withoutMarkup
-    .replace(
-      /&(amp|lt|gt);/g,
-      (entity, name: string) => entities[name] ?? entity,
-    )
-    .trim();
+  return decodeSlackEntities(withoutMarkup).trim();
 }
 
 /**
