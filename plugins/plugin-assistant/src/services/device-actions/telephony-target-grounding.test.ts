@@ -420,6 +420,29 @@ describe("authoredTelephonyTarget", () => {
       ).operation,
     ).toMatchObject({ target: { kind: "contact", query: "mom" } });
   });
+
+  it.each([
+    ["call mom back", "call", "mom"],
+    ["Call mom back please", "call", "mom"],
+    ["call mom again", "call", "mom"],
+    ["ring mum back", "call", "mum"],
+    ["call Maya's cell", "call", "Maya"],
+    ["call Maya's cellphone", "call", "Maya"],
+    ["call my wife's phone", "call", "wife"],
+    ["text mom back saying I'm here", "text", "mom"],
+    ["call Sam Back", "call", "Sam Back"],
+  ])("names the contact in %j", (request, kind, query) => {
+    expect(authoredTelephonyTarget(request)).toEqual({
+      request: kind,
+      target: { kind: "contact", query },
+    });
+  });
+
+  it("hands the phone the contact of a call-back command", () => {
+    expect(
+      groundTelephonyTarget(callContact("Mom"), "call mom back").operation,
+    ).toEqual(callContact("mom"));
+  });
 });
 
 describe("numbers the planner saw only as contact references", () => {

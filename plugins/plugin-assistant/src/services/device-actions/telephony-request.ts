@@ -125,8 +125,17 @@ export function authoredTelephonyTarget(
       return { request };
     }
   }
-  // "call my mom": the address book knows "mom", not "my mom".
-  const query = written.replace(/^(?:my|our)\s+/iu, "").replace(/[.!?]+$/u, "");
+  // "call my mom": the address book knows "mom", not "my mom". Nor "mom back"
+  // or "Maya's cell" ("call mom back", "call Maya's cell"); a capitalized
+  // "Back" can be a surname, so only the lowercase words go.
+  const query = written
+    .replace(/^(?:my|our)\s+/iu, "")
+    .replace(/[.!?]+$/u, "")
+    .replace(/(?:\s+(?:back|again))+$/u, "")
+    .replace(
+      /['’]s\s+(?:cellphone|cell|mobile|phone|number|landline)(?:\s+(?:phone|number))?$/iu,
+      "",
+    );
   return query ? { request, target: { kind: "contact", query } } : { request };
 }
 
