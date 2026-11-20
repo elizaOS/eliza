@@ -189,9 +189,14 @@ observation stale. A closed shadow root, a frame on another origin and a
 frame the page does not show (no size, hidden, or wholly outside the page)
 are never read or watched; such a frame is listed as unread, with the
 reason. A click reaches a control in a frame read by the same rules as one
-in the document; a fill, select or follow inside a frame is refused.
-Dispatching an input consumes the observation, so the next input needs a
-new read.
+in the document; a fill, select or follow inside a frame is refused. A
+control that would send its form says where (`sends`: the http(s) origin,
+the method and whether it opens another window, the page's base target
+included), and a form's field says where Enter would send it, or nothing
+when Enter would not submit it. The hint describes only the browser's own
+form submission, never a request a page script sends; it names no path or
+query, and it is never authority to act. Dispatching an input consumes the
+observation, so the next input needs a new read.
 
 ```quint
 pure def canSettleRead(s: SurfaceReceiver): bool = s.phase == ReceiverReading

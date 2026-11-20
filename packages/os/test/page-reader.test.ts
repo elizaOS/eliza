@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { Schema } from "effect";
-import { chromium, type Browser, type CDPSession, type Locator, type Page } from "playwright";
+import { chromium, type Browser, type CDPSession, type Locator, type Page, type Request } from "playwright";
 import ts from "typescript";
 import { afterAll, describe, expect, it } from "vitest";
 import { createCommandHandler } from "../browser/src/command-handler.mjs";
@@ -42,6 +42,7 @@ const cardForm = (words: string, money = "<p>Total $84.20</p>") =>
   page(`<form action="/paid" method="get"><label>Card number <input id="card" autocomplete="cc-number"></label><label>Security code <input id="cvc"></label><button type="button" id="details">Show details</button><button id="frame-pay">Pay now</button></form>${money}<p>${words}</p>`);
 const codes = "https://codes.example";
 const secure = "https://secure.codes.example";
+const bank = "https://bank.example";
 const field = `<script>customElements.define("bank-field", class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = '<label for="input">' + this.getAttribute("label") + '</label><input id="input" name="' + this.id + '" type="' + (this.getAttribute("type") ?? "text") + '">'; } });</script>`;
 const logon = (frame: string) =>
   page(`<h1>Sign in</h1><iframe name="logonbox" title="logon" src="${frame}?fromOrigin=${secure}" style="position:absolute;left:0;top:0;width:100%;height:100%;border:0"></iframe><iframe title="empty" src="/empty" style="position:absolute;left:0;top:-5000px;width:0;height:0;border:0"></iframe>`);
@@ -86,6 +87,12 @@ const pages: Record<string, string> = {
   [`${codes}/autosubmit`]: `<p>Enter the code we sent.</p><form id="f" action="/account" method="get">${digits("s", 6)}</form><script>document.getElementById('s6').addEventListener('input',e=>e.target.form.requestSubmit())</script>`,
   [`${codes}/clearing`]: `<p>Enter the code we sent.</p><form id="f" action="/account" method="get">${digits("c", 6)}</form><script>document.getElementById('c3').addEventListener('input',()=>{document.getElementById('c1').value=''})</script>`,
   [`${codes}/mask`]: `<label>Phone <input id="phone" type="tel"></label><label>Date <input id="date"></label><label>Amount <input id="amount"></label><label>Note <input id="note"></label><label>Verification code <input id="mcode"></label><label>Mobile <input id="plus" type="tel"></label><label>Home phone <input id="blanks" type="tel"></label><label>Office phone <input id="lose" type="tel"></label><label>Other phone <input id="gain" type="tel"></label><label>Extension <input id="short"></label><label>Member number <input id="long"></label><script>const masks={phone:d=>d.length===10?'('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6):d,date:d=>d.length===8?d.slice(0,2)+'/'+d.slice(2,4)+'/'+d.slice(4):d,amount:d=>d.length>2?d.slice(0,-2)+'.'+d.slice(-2):d,mcode:d=>d.length===6?d.slice(0,3)+'-'+d.slice(3):d,plus:d=>'+'+d.slice(0,1)+' ('+d.slice(1,4)+') '+d.slice(4,7)+'-'+d.slice(7),blanks:d=>'('+d.slice(0,3)+') '+(d.slice(3)+'____').slice(0,3)+'-____',lose:d=>'('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6,9),gain:d=>'1 ('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6),short:d=>'('+d+')',long:d=>d.match(/.{1,4}/g).join(' ')};for(const [id,mask] of Object.entries(masks))document.getElementById(id).addEventListener('input',e=>{e.target.value=mask(e.target.value.replace(/\\D/g,''))});</script>`,
+  [`${bank}/signin`]: page(`<h1>Sign in</h1><form action="https://secure.bank.example/form-path/sign-in?session=form-query" method="post"><label>User ID <input id="user" name="user"></label><button id="next">Next</button><button id="help" formaction="/form-path/help?topic=form-query" formmethod="get" formtarget="_blank">Help signing in</button><button type="button" id="tips">Show tips</button></form>`),
+  [`${bank}/search`]: page(`<form action="form-path/search?form-query=1"><label>Search <input id="query" name="q"></label></form>`),
+  [`${bank}/transfer`]: page(`<form action="/form-path/transfer?form-query=1" method="post"><label>Payee <input id="payee" name="payee"></label><button id="review" formaction="https://review.bank.example/form-path/review?form-query=1">Review</button><button id="send">Send</button></form>`),
+  [`${bank}/base`]: page(`<base target="_blank"><form action="https://pay.bank.example/form-path/receipt?form-query=1" method="post"><label>Note <input id="note" name="note"></label><button id="send-note">Send note</button></form>`),
+  [`${bank}/no-enter`]: page(`<form action="/form-path/two?form-query=1"><label>First name <input id="first" name="first"></label><label>Last name <input id="last" name="last"></label></form><form action="/form-path/off?form-query=1"><label>Account nickname <input id="nickname" name="nickname"></label><button id="off" disabled>Save</button></form><form action="https://pay.bank.example/form-path/one?form-query=1"><label>Search <input id="one" name="q"></label></form>`),
+  [`${bank}/other`]: page(`<form action="javascript:void 0"><button id="script">Run script</button></form><form action="mailto:help@bank.example?subject=form-query" method="post" target="_blank"><input type="submit" id="mail" value="Write to us"></form><form action="https://pay.bank.example/form-path/receipt?form-query=1" method="post" target="receipt"><button id="receipt">Open receipt</button></form><dialog open><form method="dialog"><button id="close">Close</button></form></dialog>`),
   [`${secure}/empty`]: `<title>empty</title><button type="button" id="beacon">Telemetry</button><script>document.body.style.width = "4000px";</script>`,
 };
 
@@ -95,6 +102,14 @@ let tab: Page;
 let cdp: CDPSession;
 let world: { loaderId: string; id: number } | undefined;
 let sequence = 0;
+const sent: Fields[] = [];
+const inTab = (request: Request) => {
+  try {
+    return request.frame().page() === tab;
+  } catch {
+    return false;
+  }
+};
 
 let launched: Promise<void> | undefined;
 const launch = () =>
@@ -103,6 +118,7 @@ const launch = () =>
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     await context.route(/^https:\/\/[a-z.]+\.example\//, (route) => {
       const url = new URL(route.request().url());
+      if (url.pathname.startsWith("/form-path/")) sent.push({ origin: url.origin, method: route.request().method().toLowerCase(), newWindow: !inTab(route.request()) });
       return route.fulfill({ contentType: "text/html; charset=utf-8", body: pages[`${url.origin}${url.pathname}`] ?? page("<p>Received</p>") });
     });
     tab = await context.newPage();
@@ -642,5 +658,76 @@ describe('A masked field reads back what was typed only with the mask\'s own mar
     expect(after.codeReadback).toEqual({ targetRef: filled.targetRef, boxes: 1, matches: false });
     expect(after.inputReadback).toBeUndefined();
     expect(JSON.stringify(after)).not.toContain("123456");
+  });
+});
+
+const sentBy = async (press: () => Promise<unknown>) => {
+  sent.length = 0;
+  await press();
+  await expect.poll(() => sent.length, { timeout: 10_000 }).toBeGreaterThan(0);
+  return sent[0];
+};
+const formRead = async (path: string) => {
+  await launch();
+  for (const other of tab.context().pages()) if (other !== tab) await other.close();
+  await open(`${bank}${path}`);
+  const state = await snapshot();
+  expect(JSON.stringify(state.value)).not.toMatch(/form-path|form-query|help@|void 0/);
+  return state;
+};
+
+describe('A snapshot says where a submit or Enter would send its form (spec/os/browser/pageCommands.md, "An observation belongs to the live binding it was read under, and a read or an input holds none")', () => {
+  const secure = { origin: "https://secure.bank.example", method: "post", newWindow: false };
+
+  it("names another origin's sign-in action, a field's Enter and a button's overrides as Chromium sends them", async () => {
+    let state = await formRead("/signin");
+    expect(find(state, "Next").sends).toEqual(secure);
+    expect(find(state, "User ID")).toMatchObject({ sends: null, form: { sends: secure } });
+    expect(find(state, "Show tips")).toMatchObject({ submits: false, sends: null });
+    expect(find(state, "Help signing in")).toMatchObject({ sends: { origin: bank, method: "get", newWindow: true }, form: { sends: secure } });
+    expect(await sentBy(() => tab.locator("#user").press("Enter"))).toEqual(secure);
+    state = await formRead("/signin");
+    expect(await sentBy(() => tab.click("#help"))).toEqual(find(state, "Help signing in").sends);
+  });
+
+  it("names a relative GET form with no submit button by what Enter sends", async () => {
+    const state = await formRead("/search");
+    expect(state.elements.some((element) => element.submits)).toBe(false);
+    expect(fields(find(state, "Search").form).sends).toEqual({ origin: bank, method: "get", newWindow: false });
+    expect(await sentBy(() => tab.locator("#query").press("Enter"))).toEqual({ origin: bank, method: "get", newWindow: false });
+  });
+
+  it("gives a field its form's default button's request, override included", async () => {
+    const state = await formRead("/transfer");
+    const review = { origin: "https://review.bank.example", method: "post", newWindow: false };
+    expect(fields(find(state, "Payee").form).sends).toEqual(review);
+    expect(find(state, "Review").sends).toEqual(review);
+    expect(find(state, "Send").sends).toEqual({ origin: bank, method: "post", newWindow: false });
+    expect(await sentBy(() => tab.locator("#payee").press("Enter"))).toEqual(review);
+  });
+
+  it("says a form under the page's base target opens a new window, and names no Enter request where Enter sends nothing", async () => {
+    let state = await formRead("/base");
+    const receipt = { origin: "https://pay.bank.example", method: "post", newWindow: true };
+    expect(find(state, "Send note").sends).toEqual(receipt);
+    expect(await sentBy(() => tab.click("#send-note"))).toEqual(receipt);
+    state = await formRead("/no-enter");
+    expect([fields(find(state, "First name").form).sends, fields(find(state, "Account nickname").form).sends, fields(find(state, "Search").form).sends]).toEqual([null, null, { origin: "https://pay.bank.example", method: "get", newWindow: false }]);
+    sent.length = 0;
+    await tab.locator("#first").press("Enter");
+    await tab.locator("#nickname").press("Enter");
+    await tab.locator("#one").press("Enter");
+    await expect.poll(() => sent.length, { timeout: 10_000 }).toBeGreaterThan(0);
+    expect(sent).toEqual([{ origin: "https://pay.bank.example", method: "get", newWindow: false }]);
+  });
+
+  it("names no origin for script, mail or dialog forms, and a named window as a new window", async () => {
+    const state = await formRead("/other");
+    expect(find(state, "Run script").sends).toEqual({ origin: null, method: "get", newWindow: false });
+    expect(find(state, "Write to us").sends).toEqual({ origin: null, method: "post", newWindow: true });
+    expect(find(state, "Close").sends).toEqual({ origin: null, method: "dialog", newWindow: false });
+    const receipt = { origin: "https://pay.bank.example", method: "post", newWindow: true };
+    expect(find(state, "Open receipt").sends).toEqual(receipt);
+    expect(await sentBy(() => tab.click("#receipt"))).toEqual(receipt);
   });
 });
