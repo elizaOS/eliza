@@ -1,0 +1,48 @@
+{
+  "sources": [
+    "plugins/plugin-agent-orchestrator/src/services/interruption-decider.ts",
+    "plugins/plugin-agent-orchestrator/src/services/active-session-forward.ts",
+    "plugins/plugin-agent-orchestrator/src/__tests__/peer-mention-addressing-model.test.ts",
+    "plugins/plugin-agent-orchestrator/quint/check-peer-mention-addressing.mjs"
+  ],
+  "conformance": "plugins/plugin-agent-orchestrator/quint/check-peer-mention-addressing.mjs",
+  "bounds": "One user message posted in a task room with one to three live sub-agents bound to it (labels Ada, Bob and Cy), each either in the middle of a turn or ready. The message is an explicit stop, a course correction or a plain instruction, and it names no sub-agent, names one sub-agent's label, @-mentions one sub-agent's label, carries a connector mention the room cannot map to a sub-agent, or @-mentions a handle that is no sub-agent's label. The classifier model answers in prose, so decideInterruption decides from the text. The conformance script replays every generated message through createActiveSessionForwardHandler on a PGlite-backed runtime and requires all 330 room, turn-state, address and intent combinations (30 with one sub-agent, 84 with two, 216 with three). Classifier verdicts, additive or code-instruction stops, labels outside ASCII, messages that name several sub-agents, shared origin channels and Eliza participants with a shouldRespond verdict are not covered by this model. Under weak fairness of the forward step every bound sub-agent eventually gets its outcome. Explicit stuttering lets the classifier call stay pending, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "peer-mention-addressing-in-task-rooms",
+      "main": "PeerMentionAddressing",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "PeerMentionLeavesOthersAlone",
+        "NamedSubAgentReached",
+        "NamedStopCancelsRunningTurn",
+        "AtMentionMatchesLabel",
+        "UnmappedMentionReachesEveryone",
+        "AmbientChatterIgnored",
+        "SoloSubAgentReached",
+        "OutcomeMatchesTurnState",
+        "TypeOK"
+      ],
+      "temporal": ["MessageHandled", "MessageHandledWithoutFairness"],
+      "maxSteps": 2,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "MessageHandled",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled forward step eventually runs (weak fairness). This checks that every bound sub-agent then gets its outcome, not how long the classifier call takes."
+          ]
+        },
+        {
+          "property": "MessageHandledWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The classifier call may stay pending forever, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}
