@@ -3035,7 +3035,17 @@ function resolvePastStartClarification(args: {
   };
 }
 
-function applyStatedDateToCreateRequest(args: {
+const STATED_CREATE_EVENT_TIME = new RegExp(
+  [
+    String.raw`^(?<day>today|tomorrow|(?:the )?day after tomorrow|\d{4}-\d{2}-\d{2})\s+from\s+`,
+    String.raw`(?<range>(?:${STATED_CLOCK_MENTION_SOURCE})\s+(?:to|until)\s+(?:${STATED_CLOCK_MENTION_SOURCE}))`,
+    String.raw`(?:\s+(?:on|in)\s+(?:my|the)\s+built[ -]in\s+(?:eliza\s+)?calendar)?`,
+    String.raw`(?:\s+with\s+no\s+guests)?[.!?]?$`,
+  ].join(""),
+  "iu",
+);
+
+export function applyStatedTimeToCreateRequest(args: {
   title: string;
   request: CreateLifeOpsCalendarEventRequest;
   currentMessage: string;
@@ -3050,6 +3060,51 @@ function applyStatedDateToCreateRequest(args: {
   const startDate = new Date(startAtIso);
   if (Number.isNaN(startDate.getTime())) {
     return { corrected: false };
+  }
+  // Verify a complete named event and local interval against the owner's words.
+  // This leaves date-only, delegated, multi-event and conditional creates on
+  // their existing resolution path.
+  const title = normalizeText(args.title);
+  if (title && !args.request.allDay) {
+    const original = normalizeText(
+      normalizeSpokenCalendarClocks(args.currentMessage),
+    );
+    const eventPrefix = new RegExp(
+      String.raw`^(?:please\s+)?(?:add|create|schedule)\s+(?:an?\s+)?(?:calendar\s+)?event\s+(?:called|named|titled)\s+["“]?${escapeRegExp(title)}["”]?\s+`,
+      "iu",
+    ).exec(original);
+    const exactRequest =
+      eventPrefix &&
+      STATED_CREATE_EVENT_TIME.exec(original.slice(eventPrefix[0].length))
+        ?.groups;
+    if (exactRequest) {
+      const date = parseExplicitLocalDate(
+        exactRequest.day,
+        args.timeZone,
+        args.now,
+      );
+      const clock = parseStatedClockTimes(exactRequest.range);
+      if (date && clock.kind === "one" && clock.end) {
+        const start = buildUtcDateFromLocalParts(
+          args.timeZone,
+          { ...date, ...clock.start, second: 0 },
+          "reject",
+        );
+        const end = buildUtcDateFromLocalParts(
+          args.timeZone,
+          { ...date, ...clock.end, second: 0 },
+          "reject",
+        );
+        if (end > start) {
+          const corrected =
+            start.toISOString() !== args.request.startAt ||
+            end.toISOString() !== args.request.endAt;
+          args.request.startAt = start.toISOString();
+          args.request.endAt = end.toISOString();
+          return { corrected };
+        }
+      }
+    }
   }
   const stated = resolveStatedCreateDate({
     currentMessage: calendarDateConstraintText(args.currentMessage, [
@@ -6552,7 +6607,7 @@ export function createCalendarActionRunner(
             plannerRequestedTimeZone({ timeZone: request.timeZone }) ??
             calendarContext.calendarTimeZone;
           anchorCreateRequestToTimeZone(request, createTimeZone);
-          applyStatedDateToCreateRequest({
+          applyStatedTimeToCreateRequest({
             title: title ?? "",
             request,
             currentMessage: messageText(message).trim(),
@@ -8874,7 +8929,7 @@ export async function inferNativeCalendarCreate(args: {
     plannerRequestedTimeZone({ timeZone: request.timeZone }) ?? args.timeZone;
   try {
     anchorCreateRequestToTimeZone(request, zone);
-    applyStatedDateToCreateRequest({
+    applyStatedTimeToCreateRequest({
       title: built.title,
       request,
       currentMessage: text,
