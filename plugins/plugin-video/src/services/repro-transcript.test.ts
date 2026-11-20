@@ -428,4 +428,61 @@ describe("VideoService.getTranscript manual subtitle format selection", () => {
       "https://www.youtube.com/api/timedtext?v=abc&lang=en&fmt=vtt",
     );
   });
+
+  // yt-dlp keys a manual YouTube track by its language code, so an uploader's
+  // English track can be `en-US` or `en-GB`; English ASR is listed as `en`.
+  it.each([
+    ["an en-GB track ahead of English ASR", ["en-GB"], true, []],
+    ["an en-US track on a music video", ["en-US"], false, ["Music"]],
+    ["an en-US track instead of audio", ["en-US"], false, []],
+    ["the en track ahead of en-US", ["en-US", "en"], false, []],
+  ])("reads %s", async (_name, langs, asr, categories) => {
+    const { service } = createServiceWithYtDlp({
+      title: "Regional manual subs",
+      categories,
+      subtitles: Object.fromEntries(
+        langs.map((lang) => [
+          lang,
+          [
+            {
+              ext: "srt",
+              url: `https://www.youtube.com/api/timedtext?lang=${lang}&fmt=srt`,
+            },
+          ],
+        ]),
+      ),
+      automatic_captions: asr
+        ? { en: [{ ext: "json3", url: "https://caption.example/asr.json" }] }
+        : {},
+    });
+    const downloadSRT = vi
+      .spyOn(
+        service as unknown as { downloadSRT: (url: string) => Promise<string> },
+        "downloadSRT",
+      )
+      .mockResolvedValue(bodies.srt);
+    const downloadCaption = vi
+      .spyOn(
+        service as unknown as {
+          downloadCaption: (url: string) => Promise<string>;
+        },
+        "downloadCaption",
+      )
+      .mockResolvedValue(json3.replace("hello there", "asr words"));
+    const transcribeAudio = vi
+      .spyOn(service, "transcribeAudio")
+      .mockResolvedValue("audio words");
+
+    const result = await service.processVideo(
+      `https://youtu.be/${langs.join("_")}`,
+      createRuntime(),
+    );
+
+    expect(result.text).toBe("hello there");
+    expect(downloadSRT).toHaveBeenCalledExactlyOnceWith(
+      `https://www.youtube.com/api/timedtext?lang=${langs.at(-1)}&fmt=srt`,
+    );
+    expect(downloadCaption).not.toHaveBeenCalled();
+    expect(transcribeAudio).not.toHaveBeenCalled();
+  });
 });
