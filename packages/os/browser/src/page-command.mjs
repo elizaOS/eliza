@@ -1155,6 +1155,24 @@ export function pageCommand(
         }
       const share = (root) =>
         hits.filter((hit) => within(root, hit)).length / (GRID * GRID);
+      const layered = (node) => {
+        try {
+          if (node.matches(":modal")) return true;
+        } catch {}
+        for (
+          let item = node;
+          item &&
+          item !== item.ownerDocument.body &&
+          item !== item.ownerDocument.documentElement;
+          item = item.parentElement ?? item.parentNode?.host ?? null
+        )
+          if (
+            ["fixed", "absolute", "sticky"].includes(styleOf(item).position) &&
+            !shell(item)
+          )
+            return true;
+        return false;
+      };
       const DIALOG =
         "dialog[open],[role=dialog],[role=alertdialog],[aria-modal=true]";
       const CONSENT =
@@ -1204,7 +1222,7 @@ export function pageCommand(
           )
         ) {
           const layer = layerOf(node);
-          add(layer ?? node, { overlay: !!layer || node.matches(DIALOG) });
+          add(layer ?? node, { overlay: !!layer || layered(node) });
         }
       // A sign-in wall, paywall or person check written into the page itself.
       const texts = [];
@@ -1242,7 +1260,7 @@ export function pageCommand(
             `${DIALOG},form,section,article,aside,main,[role=main]`,
           ) ?? parent;
         add(layerOf(root) ?? root, {
-          overlay: !!layerOf(root),
+          overlay: !!layerOf(root) || layered(root),
           kind,
           text: words.trim(),
         });
@@ -1339,6 +1357,7 @@ export function pageCommand(
           ...(ref !== undefined ? { ref } : {}),
           ...(rejectRef !== undefined ? { rejectRef } : {}),
           covers,
+          overlay: found.overlay,
           ...(summary ? { text: summary } : {}),
         });
       }
