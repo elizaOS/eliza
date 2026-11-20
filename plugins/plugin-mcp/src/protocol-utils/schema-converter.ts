@@ -23,6 +23,10 @@ interface ParameterSchema {
   default?: unknown;
   enum?: Primitive[];
   enumValues?: Primitive[];
+  properties?: Record<string, ParameterSchema>;
+  required?: string[];
+  additionalProperties?: boolean | ParameterSchema;
+  items?: ParameterSchema;
 }
 
 /** MCP → runtime action parameter row (replaces removed @elizaos/core ActionParameter export). */
@@ -281,8 +285,105 @@ function propertyRuntimeTypes(prop: JsonSchemaProperty): RuntimeParameterType[] 
       : branches?.length && branches.every((branch) => branch.type !== undefined)
         ? branches.flatMap((branch) => [branch.type as string | string[]].flat())
         : [];
+  // A schema that names no type accepts a value of any type.
+  if (names.length === 0) return [...ANY_RUNTIME_TYPES];
   const types = new Set(names.filter((name) => name !== "null").map(mapJsonSchemaType));
   return types.size > 0 ? [...types] : ["object"];
+}
+
+const ANY_RUNTIME_TYPES: readonly RuntimeParameterType[] = [
+  "string",
+  "number",
+  "boolean",
+  "object",
+  "array",
+];
+// Levels nested deeper than this are admitted as a scalar or an object; the
+// server still validates them. OpenAI strict mode allows 10 levels of nesting,
+// and its adapter turns an open object into a key/value list three levels
+// deep, so the deepest open object ends at level 9.
+const MAX_SHAPE_DEPTH = 4;
+const OPEN_OBJECT: ParameterSchema = { type: "object", additionalProperties: true };
+
+function isSchemaObject(value: unknown): value is JsonSchemaProperty {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function declaresType(prop: JsonSchemaProperty, type: "object" | "array"): boolean {
+  return prop.type !== undefined && [prop.type].flat().includes(type);
+}
+
+/**
+ * A value of any type. Core has no untyped schema, so list every type; an
+ * array in it holds values of any type, down to the depth limit.
+ */
+function anyValueShape(depth: number): ParameterSchema {
+  return {
+    anyOf: [
+      { type: "string" },
+      { type: "number" },
+      { type: "boolean" },
+      { type: "null" },
+      OPEN_OBJECT,
+      ...(depth < MAX_SHAPE_DEPTH
+        ? [{ type: "array" as const, items: anyValueShape(depth + 1) }]
+        : []),
+    ],
+  };
+}
+
+/** The type-level shape of a nested property, including null where it is allowed. */
+function nestedShape(prop: unknown, depth: number): ParameterSchema {
+  if (!isSchemaObject(prop) || depth > MAX_SHAPE_DEPTH) return anyValueShape(depth);
+  const nullOnly = prop.type !== undefined && [prop.type].flat().every((name) => name === "null");
+  const branches = nullOnly
+    ? []
+    : propertyRuntimeTypes(prop).map((type) => shapeBranch(type, prop, depth));
+  if (isNullable(prop)) branches.push({ type: "null" });
+  return branches.length === 1 ? branches[0] : { anyOf: branches };
+}
+
+/**
+ * One runtime type of a property. Core closes an object schema without
+ * properties and gives an array schema without items string items, so carry
+ * the shape the property declares: child properties, required names,
+ * additionalProperties and array items. As at the top level, value
+ * constraints of nested properties stay in the description and with the server.
+ */
+function shapeBranch(
+  type: RuntimeParameterType,
+  prop: JsonSchemaProperty,
+  depth: number
+): ParameterSchema {
+  if (type === "object") {
+    if (!declaresType(prop, "object")) return OPEN_OBJECT;
+    const properties = isSchemaObject(prop.properties) ? prop.properties : {};
+    const additional = prop.patternProperties
+      ? true
+      : prop.additionalProperties === false
+        ? false
+        : isSchemaObject(prop.additionalProperties)
+          ? nestedShape(prop.additionalProperties, depth + 1)
+          : true;
+    return {
+      type,
+      properties: Object.fromEntries(
+        Object.entries(properties).map(([name, child]) => [name, nestedShape(child, depth + 1)])
+      ),
+      required: (Array.isArray(prop.required) ? prop.required : []).filter((name) =>
+        Object.hasOwn(properties, name)
+      ),
+      additionalProperties: additional,
+    };
+  }
+  if (type === "array") {
+    const items =
+      declaresType(prop, "array") && !prop.prefixItems && isSchemaObject(prop.items)
+        ? prop.items
+        : undefined;
+    return { type, items: items ? nestedShape(items, depth + 1) : anyValueShape(depth + 1) };
+  }
+  return { type };
 }
 
 function formatType(type?: string | string[]): string {
@@ -482,10 +583,10 @@ export function convertJsonSchemaToActionParams(
         pinnedSchema ??
         (types.length === 1
           ? {
-              type: types[0],
+              ...shapeBranch(types[0], prop, 0),
               default: prop.default,
             }
-          : { anyOf: types.map((type) => ({ type })) }),
+          : { anyOf: types.map((type) => shapeBranch(type, prop, 0)) }),
     });
   }
 
