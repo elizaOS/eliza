@@ -17,6 +17,7 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -89,6 +90,8 @@ class BelowHostWebViewInstrumentedTest {
     fun theWebsiteBelowATransparentHostGetsItsOwnTapsAndFocus() {
         instrumentation.uiAutomation
             .executeShellCommand("appops set ${context.packageName} SYSTEM_ALERT_WINDOW allow").close()
+        val sitePage = FixtureDocument("https://site.test/")
+        val hostPage = FixtureDocument("https://host.test/")
         val density = context.resources.displayMetrics.density
         // Host pixels: the page is (100,100)-(500,500); the host owns (400,100)-(500,200) over it.
         instrumentation.runOnMainSync {
@@ -110,7 +113,7 @@ class BelowHostWebViewInstrumentedTest {
                 },
             )
             root.addView(
-                BelowHostInputRouter(context) { listOf(page) },
+                BelowHostInputRouter(context, { if (it == page) site else host }) { listOf(page) },
                 root.indexOfChild(host) + 1,
                 FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
             )
@@ -136,21 +139,19 @@ class BelowHostWebViewInstrumentedTest {
                 },
             )
             val counter = "<script>window.taps=0;window.moves=0;window.drops=0;addEventListener('pointerdown',()=>taps++);" +
-                "addEventListener('pointermove',()=>moves++);addEventListener('dragover',e=>e.preventDefault());" +
-                "addEventListener('drop',()=>drops++)</script>"
-            site.loadDataWithBaseURL(
-                "https://site.test/",
+                "addEventListener('pointermove',()=>moves++);" +
+                "addEventListener('drop',e=>{drops++;window.lastDrop=[e.target.id,e.dataTransfer.getData('text/plain')]})</script>"
+            sitePage.load(
+                site,
                 "<body style='margin:0;background:#f00'><input id='field' style='width:100%;height:50vh'>$counter</body>",
-                "text/html", "utf-8", null,
             )
             val cssPx = { px: Int -> px / density }
-            host.loadDataWithBaseURL(
-                "https://host.test/",
+            hostPage.load(
+                host,
                 "<body style='margin:0;background:transparent'><div style='position:absolute;" +
                     "left:${cssPx(400)}px;top:${cssPx(100)}px;width:${cssPx(100)}px;height:${cssPx(100)}px;background:#00f'></div>" +
                     "<div style='position:absolute;left:${cssPx(120)}px;top:${cssPx(420)}px;width:${cssPx(50)}px;" +
-                    "height:${cssPx(50)}px;background:#0f0'></div>$counter</body>",
-                "text/html", "utf-8", null,
+                "height:${cssPx(50)}px;background:#0f0'></div>$counter<script>addEventListener('dragover',e=>e.preventDefault())</script></body>",
             )
             windows.addView(
                 root,
@@ -162,6 +163,8 @@ class BelowHostWebViewInstrumentedTest {
                 ).apply { gravity = Gravity.TOP or Gravity.START },
             )
         }
+        sitePage.awaitLoad()
+        hostPage.awaitLoad()
         waitFor(site, "document.readyState==='complete'&&window.taps===0")
         waitFor(host, "document.readyState==='complete'&&window.taps===0")
         SystemClock.sleep(500)
@@ -202,7 +205,7 @@ class BelowHostWebViewInstrumentedTest {
 
         // A text drag dropped on the page's input lands in the website, not the host.
         drag(to = 200 to 150)
-        assertEquals("\"dropped\"", js(site, "document.getElementById('field').value"))
+        assertEquals("[\"dropped\",[\"field\",\"dropped\"]]", js(site, "[document.getElementById('field').value,window.lastDrop]"))
         assertEquals("1", js(site, "drops"))
         assertEquals("0", js(host, "drops"))
         // One dropped on a host-owned rect over the page lands in the host.
@@ -269,5 +272,22 @@ class BelowHostWebViewInstrumentedTest {
         event.recycle()
         instrumentation.waitForIdleSync()
         SystemClock.sleep(300)
+    }
+}
+
+internal class FixtureDocument(private val url: String) {
+    private val finished = CountDownLatch(1)
+
+    fun load(view: WebView, html: String) {
+        view.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(source: WebView, loaded: String) {
+                if (source === view && loaded == url && source.url == url) finished.countDown()
+            }
+        }
+        view.loadDataWithBaseURL(url, html, "text/html", "utf-8", url)
+    }
+
+    fun awaitLoad() {
+        assertTrue("WebView did not finish loading $url", finished.await(120, TimeUnit.SECONDS))
     }
 }
