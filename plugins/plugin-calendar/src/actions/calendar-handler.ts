@@ -5603,11 +5603,16 @@ function calendarEventMutationReceipt(args: {
     | "calendar.event.update"
     | "calendar.event.delete";
   deleted?: boolean;
+  /** When the provider confirmed the write. A deleted event's own timestamps
+   * predate its deletion, so a delete passes the time its call returned. */
+  committedAt?: string;
 }): EffectReceipt {
-  const observedAt = latestCalendarTimestamp(
-    [args.event.updatedAt, args.event.syncedAt],
-    new Date().toISOString(),
-  );
+  const observedAt =
+    args.committedAt ??
+    latestCalendarTimestamp(
+      [args.event.updatedAt, args.event.syncedAt],
+      new Date().toISOString(),
+    );
   const providerVersion =
     typeof args.event.metadata.etag === "string"
       ? args.event.metadata.etag
@@ -7822,6 +7827,7 @@ export function createCalendarActionRunner(
               expectedProviderVersion,
               idempotencyKey,
             });
+            const deletedAt = new Date().toISOString();
             if (ownerConfirmed) await runtime.deleteCache(confirmationKey);
             const verifiedReply = verifyAppliedCalendarMutation({
               operation: "delete",
@@ -7846,6 +7852,7 @@ export function createCalendarActionRunner(
                 idempotencyKey,
                 operation: "calendar.event.delete",
                 deleted: true,
+                committedAt: deletedAt,
               }),
               data: {
                 actionName: "CALENDAR",
