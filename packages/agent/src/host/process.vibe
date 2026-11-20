@@ -258,7 +258,7 @@ module node {
         routes: [
           ...statusRoutes({ agentId, name: launch.character.name, serverInstanceId: status.serverInstanceId, backend: backendOf(launch.model), embeddings: launch.embeddings, state: () => runStateOf(lifecycle.get()), binding: () => Effect.runSync(models.state()), now: Date.now }),
           ...authRoutes(agentId),
-          ...conversationRoutes(runtime, { user, world }),
+          ...conversationRoutes(runtime, { user, world }, launch.character.name),
           ...composed.routes,
         ],
       })

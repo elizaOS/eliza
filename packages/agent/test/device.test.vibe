@@ -8,7 +8,11 @@ import { launchDocument, launchFrame } from "./support/scratch.ts"
 import { request, requestStream } from "./support/socket-client.ts"
 
 const Conversation = Schema.Struct({ conversation: Schema.Struct({ id: Schema.String, roomId: Schema.String }) })
-const Reply = Schema.Struct({ type: Schema.String, fullText: Schema.optionalKey(Schema.String) })
+const History = Schema.Struct({ messages: Schema.Array(Schema.Struct({ id: Schema.String, text: Schema.String })) })
+const Reply = Schema.Struct({
+  type: Schema.String, fullText: Schema.optionalKey(Schema.String), agentName: Schema.optionalKey(Schema.String),
+  messageId: Schema.optionalKey(Schema.String), userMessageId: Schema.optionalKey(Schema.String),
+})
 const response = Schema.decodeUnknownOption(Schema.fromJsonString(Reply))
 
 it.effect('An owner starts the agent and receives a complete streamed reply (spec/agent/host/launch.md, "Story: Start the agent from one launch document")', effect () => {
@@ -17,7 +21,8 @@ it.effect('An owner starts the agent and receives a complete streamed reply (spe
   const socket = state.file("agent.sock")
   const frame = launchFrame({ credential: { version: 1, value: deviceKey } })
   const token = frame.token
-  const config = try Effect.try(() => launchDocument({ callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin } }))
+  const name = "Device Stream QA"
+  const config = try Effect.try(() => launchDocument({ name, callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin } }))
   const parsed = try parseLaunch(JSON.stringify(config), JSON.stringify(frame))
   const running = try acquireRelease(
     startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket } }),
@@ -37,6 +42,15 @@ it.effect('An owner starts the agent and receives a complete streamed reply (spe
   }))
   const frames = turn.text.split("\n\n").flatMap((line) =>
     line.startsWith("data: ") ? Option.toArray(response(line.slice(6))) : [])
+  const history = try host("read the persisted turn", () => request(socket, {
+    method: "GET", path: `/api/conversations/${conversation.id}/messages`, token,
+  }))
+  if (!("json" in history)) return try die("The owner conversation history was refused")
+  const { messages } = try Schema.decodeUnknownEffect(History)(history.json)
+  const persistedId = (text: string) => messages.find((message) => message.text === text)?.id
+  const inputId = persistedId("Say hello.")
+  const replyId = persistedId("Hello from the device agent.")
+  if (!inputId || !replyId) return try die("The input and reply were not both stored")
   try host("clean retirement", () => running.stop())
   try Effect.try(() => assert.deepStrictEqual({
     healthy: "status" in started ? started.status : undefined, stale: "status" in stale ? stale.status : undefined, created: opened.status,
@@ -49,7 +63,7 @@ it.effect('An owner starts the agent and receives a complete streamed reply (spe
     healthy: 200, stale: 401, created: 201, stream: 200,
     auth: { authenticated: false, serverInstanceId: running.status.serverInstanceId }, anonymousIdentity: 401,
     owner: { identity: { kind: "owner", id: running.status.agentId }, access: { role: "OWNER", mode: "local" } },
-    terminal: { type: "done", fullText: "Hello from the device agent." }, containsTokens: true,
+    terminal: { type: "done", fullText: "Hello from the device agent.", agentName: name, messageId: replyId, userMessageId: inputId }, containsTokens: true,
     fault: undefined, upstream: [{ path: "/api/v1/chat/completions", authorization: "Bearer " + deviceKey }],
   }))
 }, 180_000)
