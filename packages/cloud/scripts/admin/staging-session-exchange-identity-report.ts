@@ -2,6 +2,8 @@
 import { createHash } from "node:crypto";
 import { appendFile } from "node:fs/promises";
 import type { Client } from "pg";
+import { resolveStagingSessionTenantAuthority } from "../../shared/src/lib/auth/staging-session-tenant-authority";
+import { exactUuidList } from "../validate-staging-session-cutover";
 import { createRuntimePgClient } from "./preflight-database-identity";
 import {
   assertStagingDatabaseIdentity,
@@ -14,10 +16,13 @@ const STAGING_STEWARD_TENANT = "elizacloud-staging";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function includesId(list: string | undefined, id: string): boolean {
-  return (list ?? "")
-    .toLowerCase()
-    .split(/[\s,]+/)
-    .includes(id.toLowerCase());
+  return (
+    exactUuidList(list) &&
+    (list ?? "")
+      .toLowerCase()
+      .split(/[\s,]+/)
+      .includes(id.toLowerCase())
+  );
 }
 
 async function main() {
@@ -62,6 +67,16 @@ async function main() {
 
   type FixtureIdentity = {
     id: string;
+    steward_user_id: string;
+    steward_tenant_id: string | null;
+    user_created: boolean;
+    source_app_id: string | null;
+    role: string;
+    email: string | null;
+    email_verified: boolean | null;
+    wallet_address: string | null;
+    wallet_verified: boolean;
+    wallet_chain_type: string | null;
     app_key: boolean;
     sandbox_key: boolean;
     active_user: boolean;
@@ -87,7 +102,10 @@ async function main() {
     await assertStagingDatabaseIdentity(client);
     const hash = createHash("sha256").update(fixtureKey).digest("hex");
     const { rows } = await client.query<FixtureIdentity>(
-      `SELECT key.id,
+      `SELECT key.id, key.user_created, key.source_app_id, org.steward_tenant_id,
+        btrim(cloud_user.steward_user_id) AS steward_user_id, cloud_user.role,
+        cloud_user.email, cloud_user.email_verified, cloud_user.wallet_address,
+        cloud_user.wallet_verified, cloud_user.wallet_chain_type,
         EXISTS (SELECT 1 FROM apps app WHERE app.api_key_id = key.id) AS app_key,
         key.name LIKE 'agent-sandbox:%' AS sandbox_key,
         COALESCE(cloud_user.is_active AND NOT cloud_user.is_anonymous
@@ -161,6 +179,30 @@ async function main() {
     ["User id", userId, process.env.ALLOWED_USER_IDS],
     ["Organization id", organizationId, process.env.ALLOWED_ORGANIZATION_IDS],
   ] as const;
+  const credentialEligible =
+    rows.every(([, id, allowlist]) => includesId(allowlist, id)) &&
+    fixture.active_user &&
+    fixture.active_organization &&
+    fixture.ordinary_steward_user &&
+    fixture.matching_steward_identity &&
+    !fixture.app_key &&
+    !fixture.sandbox_key;
+  const authority = credentialEligible
+    ? await resolveStagingSessionTenantAuthority({
+        fixtureSubject: process.env.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT,
+        reader: process.env.STAGING_SESSION_EXCHANGE_GRANT_READ_KEY,
+        tenantId: STAGING_STEWARD_TENANT,
+        stewardUserId: fixture.steward_user_id,
+        organizationTenantId: fixture.steward_tenant_id,
+        apiKey: {
+          ...fixture,
+          user_id: userId,
+          organization_id: organizationId,
+        },
+        user: fixture,
+        nowSeconds: Math.floor(Date.now() / 1000),
+      })
+    : null;
   const checks = [
     ["App credential", fixture.app_key],
     ["Sandbox credential", fixture.sandbox_key],
@@ -169,23 +211,39 @@ async function main() {
     ["Ordinary Steward user", fixture.ordinary_steward_user],
     ["Matching Steward identity", fixture.matching_steward_identity],
     ["Assigned Steward tenant", fixture.assigned_tenant],
-    ["Matches staging Steward tenant", fixture.staging_tenant],
+    [
+      "Scoped reader access to the exact tenant membership",
+      authority?.kind === "enrolled"
+        ? "verified"
+        : authority?.kind === "denied"
+          ? authority.reader
+          : "not requested",
+    ],
+    ["Matches delegated staging Steward tenant", fixture.staging_tenant],
+    [
+      "Allowlisted fixture admitted by organization delegation",
+      authority?.kind === "delegated",
+    ],
+    [
+      "Allowlisted fixture admitted by live tenant enrollment",
+      authority?.kind === "enrolled",
+    ],
   ] as const;
   const output = [
     "## Staging API key identity",
     "",
-    "| Field | Value | In allowlist |",
-    "|---|---|---|",
+    "| Field | In allowlist |",
+    "|---|---|",
     ...rows.map(
       ([label, id, allowlist]) =>
-        `| ${label} | ${id} | ${includesId(allowlist, id) ? "allowed" : "NOT-ALLOWED"} |`,
+        `| ${label} | ${includesId(allowlist, id) ? "allowed" : "NOT-ALLOWED"} |`,
     ),
     "",
     "| Subject predicate | Observed |",
     "|---|---|",
     ...checks.map(([label, value]) => `| ${label} | ${value} |`),
     "",
-    "| Staging tenant availability | Count |",
+    "| Delegated staging tenant availability | Count |",
     "|---|---|",
     `| Canonical Cloud organizations | ${availability.organizations} |`,
     `| Active canonical Cloud organizations | ${availability.active_organizations} |`,
