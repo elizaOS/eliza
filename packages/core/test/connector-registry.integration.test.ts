@@ -2,6 +2,8 @@
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import { expect, test } from "vitest";
 import { AgentRuntime } from "../src/runtime";
+import { PseudonymSession } from "../src/security/pii-pseudonymizer.ts";
+import { runWithTrajectoryContext } from "../src/trajectory-context.ts";
 import type { Memory } from "../src/types/memory";
 import {
 	SEND_HANDLER_NOT_FOUND,
@@ -35,6 +37,35 @@ function deferred() {
 	});
 	return { promise, resolve };
 }
+
+test("restores a contact surrogate in an agent-initiated send", async () => {
+	const runtime = newRuntime();
+	const delivered: string[] = [];
+	const pii = new PseudonymSession({ salt: "connector-registry-surrogate" });
+	pii.learnSpans("Call Maria Gonzalez before noon.", [
+		{ kind: "person", value: "Maria Gonzalez", start: 5, end: 19 },
+	]);
+	const surrogateText = pii.substituteText("Call Maria Gonzalez before noon.");
+	expect(surrogateText).not.toContain("Maria Gonzalez");
+	try {
+		runtime.registerSendHandler(
+			"local-chat",
+			async (_owner, _target, content) => {
+				delivered.push(typeof content.text === "string" ? content.text : "");
+			},
+		);
+		await runWithTrajectoryContext({ piiSwapSession: pii }, () =>
+			runtime.sendMessageToTarget(
+				{ source: "local-chat" },
+				{ text: surrogateText, agentVoiced: true },
+			),
+		);
+		expect(delivered).toEqual(["Call Maria Gonzalez before noon."]);
+	} finally {
+		await runtime.stop();
+		await runtime.close();
+	}
+});
 
 test("keeps internal transport and descriptor publication separate", async () => {
 	const runtime = newRuntime();

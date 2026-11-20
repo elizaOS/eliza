@@ -323,22 +323,33 @@ export class RuntimeConnectorRegistry {
 		// secret-swap reply policy (an in-turn MESSAGE send carries values the
 		// execution boundary restored) apply here — after the voice gate, whose
 		// rephrase is itself model text.
-		const secretSession = getTrajectoryContext()?.secretSwapSession;
+		// Reverse ingress order at this egress: restore named-entity PII first, then
+		// credentials, matching the reply-text and tool-call boundaries. A proactive
+		// or re-voiced send can carry a surrogate the model saw in place of the real
+		// contact, so the user must not read a fabricated name. Best-effort: no
+		// session, or no surrogate in the text, is a no-op.
+		const trajectoryContext = getTrajectoryContext();
+		let outboundText =
+			typeof voicedContent.text === "string" ? voicedContent.text : undefined;
+		const piiSession = trajectoryContext?.piiSwapSession;
+		if (outboundText !== undefined && piiSession) {
+			outboundText = piiSession.restoreInValue(outboundText);
+		}
+		const secretSession = trajectoryContext?.secretSwapSession;
+		if (outboundText !== undefined && secretSession) {
+			outboundText = secretSession.redactRestoredSecretValues(outboundText);
+		}
 		const outboundContent =
-			typeof voicedContent.text === "string"
-				? {
+			outboundText === undefined
+				? voicedContent
+				: {
 						...voicedContent,
 						text: guardOutboundEnvelopeText(
 							this.runtime,
-							sanitizeOutboundText(
-								secretSession
-									? secretSession.redactRestoredSecretValues(voicedContent.text)
-									: voicedContent.text,
-							),
+							sanitizeOutboundText(outboundText),
 							"sendMessageToTarget",
 						),
-					}
-				: voicedContent;
+					};
 		return handler(this.runtime, target, outboundContent);
 	}
 
