@@ -172,7 +172,7 @@ effect function read(host: ApprovalsHost): Stored!ApprovalsUnavailable {
   if (raw === undefined) return { queue: initial, details: new Map() }
   const kept = decodeKept(raw)
   if (Option.isNone(kept)) throw new ApprovalsUnavailable({ reason: "the stored approval queue is malformed" })
-  const queue = try decodeState(kept.value.queue) catch effect (cause) => { throw new ApprovalsUnavailable({ reason: "the stored approval queue breaks its rules", cause }) }
+  const queue = decodeState(kept.value.queue) catch effect (cause) => { throw new ApprovalsUnavailable({ reason: "the stored approval queue breaks its rules", cause }) }
   const details = new Map(kept.value.details.map((row) => [row.id, row] as const))
   const matched = details.size === kept.value.details.length && details.size === queue.newestFirst.length && queue.newestFirst.every((id) => details.has(id))
   if (!matched) throw new ApprovalsUnavailable({ reason: "the stored approval details do not match the queue" })
@@ -198,7 +198,7 @@ effect function machineFor(host: ApprovalsHost, adding?: Details) {
 }
 
 effect function execute(host: ApprovalsHost, executor: CalendarApprovalExecutor, record: ApprovalRecord): LedgerOutcome!! {
-  const raw = try tryPromise(() => executor.execute(record)) catch effect (cause) => {
+  const raw = tryPromise(() => executor.execute(record)) catch effect (cause) => {
     try sync(() => host.logger.error({ src: "approvals", requestId: record.id, cause: cause instanceof Error ? cause.message : String(cause) }, "The calendar executor failed"))
     return unconfirmed
   }
@@ -242,7 +242,7 @@ export function approvalQueue(host: ApprovalsHost): ApprovalQueue {
     const at = try stamp(try host.now)
     const details: Details = { ...parsed.value, expiresAt, createdAt: at, updatedAt: at }
     const machine = try machineFor(host, details)
-    try machine.send({ type: "request", id: details.id, kind: kindOfAction(details.action) }) catch effect () => {
+    machine.send({ type: "request", id: details.id, kind: kindOfAction(details.action) }) catch effect () => {
       throw new RequestRefused({ id: details.id, reason: "duplicate" })
     }
     return recordOf(details, "Pending")
@@ -250,7 +250,7 @@ export function approvalQueue(host: ApprovalsHost): ApprovalQueue {
 
   effect function list(query: PageQuery): ApprovalRecord[]!(ApprovalsUnavailable | PageRefused) {
     const machine = try machineFor(host)
-    const step = try machine.send({ type: "list", query }) catch effect () => { throw new PageRefused({ limit: query.limit }) }
+    const step = machine.send({ type: "list", query }) catch effect () => { throw new PageRefused({ limit: query.limit }) }
     const { queue, details } = try read(host)
     return step.out.flatMap((reply) => reply.tag === "Listed" ? reply.ids : []).flatMap((id) => {
       const held = details.get(id)
