@@ -101,6 +101,15 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
     ),
   parse(value, ctx) {
     if (value === undefined || value === null) return [];
+    // Some structured responses serialize the array inside the tool argument.
+    // Decode it before applying the same scope and evidence checks.
+    if (typeof value === "string") {
+      try {
+        value = JSON.parse(value);
+      } catch {
+        return null;
+      }
+    }
     if (!Array.isArray(value)) return null;
     const seen = new Set<string>();
     const reads: RequestedRead[] = [];

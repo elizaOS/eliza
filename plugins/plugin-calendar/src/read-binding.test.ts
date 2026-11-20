@@ -189,24 +189,50 @@ describe("Calendar operation bindings", () => {
     };
     const state = { values: {}, data: {}, text: "" };
     const route = async (intents: string[], plainNextEvent?: true) => {
-      const binding: CalendarReadBinding = {
-        intentId: "intent:1",
-        operation: "next_event",
-        execution: "required",
-        source: "builtin",
-        ...(plainNextEvent ? { plainNextEvent } : {}),
-        sourceMessageId: String(message.id),
-        actorId: message.entityId,
-        roomId: message.roomId,
-        requestedAt: 1000,
+      const context = {
+        runtime,
+        message,
+        state,
+        senderRole: "OWNER" as const,
+        turnSignal: new AbortController().signal,
       };
+      const bindings = calendarReadBindingField.parse?.(
+        JSON.stringify([
+          {
+            intentId: "1",
+            operation: "next_event",
+            execution: "required",
+            source: "builtin",
+            plainNextEvent,
+          },
+        ]),
+        context,
+      );
+      if (!bindings) throw Error("The serialized read binding was rejected.");
+      const parsed: ResponseHandlerResult = {
+        shouldRespond: "RESPOND",
+        contexts: ["calendar"],
+        intents,
+        candidateActionNames: [],
+        replyText: "",
+        facts: [],
+        relationships: [],
+        addressedTo: [],
+      };
+      const effect = await calendarReadBindingField.handle?.({
+        ...context,
+        parsed,
+        value: bindings,
+      });
+      effect?.mutateResult?.(parsed);
       const handler: MessageHandlerResult = {
         processMessage: "RESPOND",
         thought: "",
         plan: {
           contexts: ["calendar"],
           intents,
-          calendarReadBindings: [binding],
+          calendarReadBindings:
+            parsed.calendarReadBindings as CalendarReadBinding[],
         },
       };
       await runResponseHandlerEvaluators({
