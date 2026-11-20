@@ -855,11 +855,21 @@ export const notesAction: Action = {
             });
           // The revision read with the note guards the folder write against a
           // change made in between.
-          return service.updateNoteWithCommit(
-            note.id,
-            { format: withNoteFolder(note.format, folder?.id ?? null) },
-            params.expectedRevision ?? snapshot.revision,
-          );
+          const patch = {
+            format: withNoteFolder(note.format, folder?.id ?? null),
+          };
+          const revision = params.expectedRevision ?? snapshot.revision;
+          // A name selects the one logical note. Like update by name, the move
+          // takes identical stored copies along, so none stays visible
+          // outside the folder.
+          return noteId
+            ? service.updateNoteWithCommit(note.id, patch, revision)
+            : service.updateNoteByLookupWithCommit(
+                "query",
+                target,
+                patch,
+                revision,
+              );
         },
         service,
         { folder: folder?.name ?? null },
