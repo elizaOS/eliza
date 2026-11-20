@@ -18,18 +18,12 @@ import { ElizaError, isElizaError } from "@elizaos/core";
 import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { normalizeWallet } from "../db/crypto/field-crypto";
 import { organizationInvitesRepository } from "../db/repositories/organization-invites";
-import { organizationsRepository } from "../db/repositories/organizations";
 import {
   type CommitPhoneTelegramConvergenceResult,
   usersRepository,
 } from "../db/repositories/users";
 import { type RuntimeDurableObjectNamespace } from "../types/cloud-worker-env";
-import {
-  classifyStagingSessionFixtureSignup,
-  STAGING_SESSION_FIXTURE_TENANT_ID,
-} from "./auth/staging-session-fixture-signup";
-import { isValidStewardTelegramId, type StewardTokenClaims } from "./auth/steward-client";
-import { getCloudAwareEnv } from "./runtime/cloud-bindings";
+import { isValidStewardTelegramId } from "./auth/steward-client";
 import { apiKeysService } from "./services/api-keys";
 import { charactersService } from "./services/characters";
 import { discordService } from "./services/discord";
@@ -296,8 +290,6 @@ function generateSlugFromName(name: string): string {
 export interface StewardSyncParams {
   stewardUserId: string;
   email?: string;
-  /** Original verified claims, when available from the caller's auth boundary. */
-  verifiedSession?: StewardTokenClaims;
   walletAddress?: string;
   walletChainType?: "ethereum" | "solana";
   name?: string;
@@ -552,135 +544,21 @@ async function findUserByStoredWalletAddress(
     ? await usersService.getByWalletAddressWithOrganization(walletAddress)
     : await usersRepository.findBySolanaWalletAddressWithOrganization(walletAddress);
 }
-
-const STAGING_FIXTURE_ORG_SLUG = "staging-session-qa";
-
-function isOwnedStagingFixtureOrganization(
-  organization: UserWithOrganization["organization"] | undefined,
-  stewardUserId: string,
-): organization is NonNullable<UserWithOrganization["organization"]> {
-  return Boolean(
-    organization?.is_active &&
-      organization.slug === STAGING_FIXTURE_ORG_SLUG &&
-      organization.steward_tenant_id === STAGING_SESSION_FIXTURE_TENANT_ID &&
-      organization.settings?.stagingSessionFixtureOwner === stewardUserId,
-  );
-}
-
-async function getOrCreateStagingFixtureOrganization(stewardUserId: string) {
-  const findOwnedFixture = async () => {
-    const organization = await organizationsRepository.findBySlugForWrite(STAGING_FIXTURE_ORG_SLUG);
-    if (organization && !isOwnedStagingFixtureOrganization(organization, stewardUserId)) {
-      throw new Error("The staging session fixture organization is reserved for another subject");
-    }
-    return organization;
-  };
-  const existing = await findOwnedFixture();
-  if (existing) return existing;
-  try {
-    return await organizationsService.create({
-      name: "Staging Session QA",
-      slug: STAGING_FIXTURE_ORG_SLUG,
-      credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
-      steward_tenant_id: STAGING_SESSION_FIXTURE_TENANT_ID,
-      settings: { stagingSessionFixtureOwner: stewardUserId },
-    });
-  } catch (error) {
-    // A concurrent signup for the same verified subject may have reserved it.
-    if (isUniqueViolation(error)) {
-      const concurrent = await findOwnedFixture();
-      if (concurrent) return concurrent;
-    }
-    throw error;
-  }
-}
-
-async function syncVerifiedStagingFixture(
-  params: StewardSyncParams,
-  email: string,
-): Promise<StewardSyncedUser> {
-  const { stewardUserId } = params;
-  let user = await usersService.getByStewardIdForWrite(stewardUserId);
-  if (!user) {
-    const emailMatch = await usersService.getByEmailWithOrganization(email);
-    if (emailMatch) {
-      if (emailMatch.steward_user_id !== stewardUserId) {
-        throw new Error("The staging fixture email is already in use");
-      }
-      user = await usersService.getByStewardIdForWrite(stewardUserId);
-      if (!user) throw new Error("The staging fixture user could not be confirmed");
-    }
-  }
-  if (!user) {
-    const organization = await getOrCreateStagingFixtureOrganization(stewardUserId);
-    try {
-      const created = await usersService.createFreshStewardSignupUser({
-        steward_user_id: stewardUserId,
-        email,
-        email_verified: true,
-        wallet_address: null,
-        wallet_chain_type: null,
-        wallet_verified: false,
-        phone_number: null,
-        phone_verified: false,
-        name: params.name || "Staging Session QA",
-        avatar: getRandomUserAvatar(),
-        organization_id: organization.id,
-        role: "owner",
-        is_active: true,
-      });
-      user = { ...created, organization };
-    } catch (error) {
-      if (!isUniqueViolation(error)) throw error;
-      user = await usersService.getByStewardIdForWrite(stewardUserId);
-      if (!user) throw error;
-    }
-  }
-
-  const organization = user.organization;
-  if (
-    !user.is_active ||
-    user.is_anonymous ||
-    user.deleted_at !== null ||
-    (user.expires_at && user.expires_at <= new Date()) ||
-    user.steward_user_id !== stewardUserId ||
-    user.email?.trim().toLowerCase() !== email ||
-    !user.email_verified ||
-    user.role !== "owner" ||
-    !isOwnedStagingFixtureOrganization(organization, stewardUserId) ||
-    user.organization_id !== organization.id
-  ) {
-    throw new Error("The staging fixture cannot reuse an unrelated Cloud account");
-  }
-  const identity = await usersRepository.findIdentityByUserIdForWrite(user.id);
-  if (identity && identity.steward_user_id !== stewardUserId) {
-    throw new Error("The staging fixture has a conflicting Steward identity");
-  }
-  // The initial key is provisioned only after the durable identity binding
-  // is active. Retry that sequence if either record is missing.
-  if (!identity || !(await apiKeysService.hasUsableDefaultApiKey(user.id, organization.id))) {
-    await usersService.upsertStewardIdentity(user.id, stewardUserId);
-    await apiKeysService.provisionDefaultApiKey(user.id, organization.id);
-  }
-  await params.afterRequiredSignupProvisioning?.(user);
-  return user;
-}
-
-/** Resolves a verified Steward signup or links it through the ordinary account policy. */
+/**
+ * Sync a Steward user to the local database.
+ * Creates user and organization if they don't exist.
+ * Updates user data if it has changed.
+ *
+ * Flow:
+ * 1. Check if user exists by steward_user_id -> return existing (update if needed)
+ * 2. Check for pending invite by email -> accept invite, create user in that org
+ * 3. Check if email already taken -> link steward_user_id to existing account
+ * 4. Check for wallet-only Steward session -> link to existing wallet user if possible
+ * 5. Create new user + organization
+ */
 export async function syncUserFromSteward(params: StewardSyncParams): Promise<StewardSyncedUser> {
   const { stewardUserId, walletChainType } = params;
   const email = params.email?.toLowerCase().trim();
-  const fixtureSignup = classifyStagingSessionFixtureSignup(getCloudAwareEnv(), {
-    email,
-    stewardUserId,
-    verifiedSession: params.verifiedSession,
-  });
-  if (fixtureSignup === "unverified") {
-    throw new Error("The configured staging fixture requires a verified staging email sign-in");
-  }
-  if (fixtureSignup === "fixture" && email) {
-    return syncVerifiedStagingFixture(params, email);
-  }
   const verifiedPhone = params.verifiedPhone
     ? normalizePhoneNumber(params.verifiedPhone)
     : undefined;

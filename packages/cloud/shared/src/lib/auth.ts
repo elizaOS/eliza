@@ -12,7 +12,6 @@ import {
   readVerifiedUserSessionCache,
 } from "./auth/session-user-cache";
 import { loadVerifiedStagingSessionUser } from "./auth/staging-session-binding";
-import { isConfiguredStagingSessionFixtureEmail } from "./auth/staging-session-fixture-signup";
 import {
   invalidateStewardTokenCache,
   isStagingSessionTokenCandidate,
@@ -46,6 +45,8 @@ function getStewardVerifyEnv(): StewardVerifyEnv {
     STEWARD_JWT_SECRET: env.STEWARD_JWT_SECRET,
     ELIZA_SERVICE_JWT_SECRET: env.ELIZA_SERVICE_JWT_SECRET,
     STEWARD_TENANT_ID: env.STEWARD_TENANT_ID,
+    STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT: env.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT,
+    STAGING_SESSION_EXCHANGE_GRANT_READ_KEY: env.STAGING_SESSION_EXCHANGE_GRANT_READ_KEY,
     STAGING_SESSION_EXCHANGE_ENABLED: env.STAGING_SESSION_EXCHANGE_ENABLED,
     STAGING_SESSION_EXCHANGE_VERSION: env.STAGING_SESSION_EXCHANGE_VERSION,
     STAGING_SESSION_EXCHANGE_SIGNING_SECRET: env.STAGING_SESSION_EXCHANGE_SIGNING_SECRET,
@@ -187,17 +188,12 @@ export async function getCurrentUserFromRequest(
     const stewardClaims = await verifyStewardTokenCached(verifyEnv, stewardToken);
     if (!stewardClaims) return null;
 
-    const isStagingFixture = isConfiguredStagingSessionFixtureEmail(
-      getCloudAwareEnv(),
-      stewardClaims.email,
-    );
     let user = await usersService.getByStewardId(stewardClaims.userId);
-    if (!user || isStagingFixture) {
+    if (!user) {
       try {
         user = await syncUserFromSteward({
           stewardUserId: stewardClaims.userId,
           email: stewardClaims.email,
-          verifiedSession: stewardClaims,
           walletAddress: stewardClaims.walletAddress ?? stewardClaims.address,
           walletChainType: stewardClaims.walletChain,
         });
@@ -213,9 +209,7 @@ export async function getCurrentUserFromRequest(
       // Opportunistic self-heal for accounts that predate mint-at-provision
       // (or whose mint failed). Awaited on Workers: an un-awaited promise may
       // be cancelled as soon as the response is returned.
-      if (!isStagingFixture) {
-        await apiKeysService.ensureUserHasApiKey(user.id, user.organization_id);
-      }
+      await apiKeysService.ensureUserHasApiKey(user.id, user.organization_id);
       // Self-heal a missing default Eliza character: its only create site is
       // the one-time new-user signup branch in steward-sync, where a failed
       // create is swallowed so the signup itself survives — without this
@@ -445,15 +439,11 @@ export async function requireAuthOrApiKey(request: Request): Promise<AuthResult>
           });
         } else {
           user = await usersService.getByStewardId(stewardClaims.userId);
-          if (
-            !user ||
-            isConfiguredStagingSessionFixtureEmail(getCloudAwareEnv(), stewardClaims.email)
-          ) {
+          if (!user) {
             try {
               user = await syncUserFromSteward({
                 stewardUserId: stewardClaims.userId,
                 email: stewardClaims.email,
-                verifiedSession: stewardClaims,
                 walletAddress: stewardClaims.walletAddress ?? stewardClaims.address,
                 walletChainType: stewardClaims.walletChain,
               });

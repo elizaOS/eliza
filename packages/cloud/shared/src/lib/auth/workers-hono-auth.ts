@@ -33,7 +33,6 @@ import {
 } from "./playwright-test-session";
 import { isRecentDestructiveAuth } from "./recent-auth";
 import { loadVerifiedStagingSessionUser } from "./staging-session-binding";
-import { isConfiguredStagingSessionFixtureEmail } from "./staging-session-fixture-signup";
 import { isStagingSessionTokenCandidate, verifyStewardTokenCached } from "./steward-client";
 import { readStewardAccessCookieFromHeader } from "./steward-cookies";
 
@@ -299,13 +298,12 @@ export async function getCurrentUserForStewardToken(
       )
     )
       c.set("stewardAccountCreated", true);
-    if (!user || isConfiguredStagingSessionFixtureEmail(c.env, claims.email)) {
+    if (!user) {
       try {
         const { syncUserFromSteward } = await import("../steward-sync");
         const synced = await syncUserFromSteward({
           stewardUserId: claims.userId,
           email: claims.email,
-          verifiedSession: claims,
           walletAddress: claims.walletAddress,
           walletChainType: claims.walletChain,
         });

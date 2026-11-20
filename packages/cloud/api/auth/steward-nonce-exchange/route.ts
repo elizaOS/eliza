@@ -390,7 +390,7 @@ app.post("/", async (c) => {
   let cloudUser: SyncedStewardUser;
   try {
     cloudUser = await syncVerifiedStewardUser(
-      { token, claims, env: c.env },
+      { token, expiration: claims.expiration, env: c.env },
       executionCtx,
       {
         stewardUserId: claims.userId,

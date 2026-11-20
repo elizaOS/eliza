@@ -9,7 +9,7 @@ import crypto from "crypto";
 import { and, count, eq, gt, isNull, notExists, or, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { encryptApiKey } from "../../db/crypto/api-keys";
-import { dbWrite, writeTransaction } from "../../db/helpers";
+import { writeTransaction } from "../../db/helpers";
 import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories/api-keys";
 import {
   type MobileSessionRetirementCause,
@@ -43,18 +43,6 @@ import {
 } from "./organization-quota-policy";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DEFAULT_API_KEY_NAME = "Default API Key";
-
-function usableDefaultApiKeyWhere(userId: string, organizationId: string) {
-  return and(
-    eq(apiKeys.user_id, userId),
-    eq(apiKeys.organization_id, organizationId),
-    eq(apiKeys.name, DEFAULT_API_KEY_NAME),
-    eq(apiKeys.is_active, true),
-    isNull(apiKeys.deleted_at),
-    or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, new Date())),
-  );
-}
 
 export { isMobileApiKeySecret, MOBILE_API_KEY_PREFIX } from "../auth/mobile-api-key";
 
@@ -568,14 +556,6 @@ export class ApiKeysService {
     };
   }
 
-  async hasUsableDefaultApiKey(userId: string, organizationId: string): Promise<boolean> {
-    const key = await dbWrite.query.apiKeys.findFirst({
-      columns: { id: true },
-      where: usableDefaultApiKeyWhere(userId, organizationId),
-    });
-    return key !== undefined;
-  }
-
   /**
    * Required default-key provisioning for flows that must not report success
    * until the user has a usable personal key in the target organization.
@@ -594,7 +574,7 @@ export class ApiKeysService {
     const { apiKey } = await this.buildApiKeyInsert({
       user_id: userId,
       organization_id: organizationId,
-      name: DEFAULT_API_KEY_NAME,
+      name: "Default API Key",
       is_active: true,
     });
 
@@ -609,10 +589,20 @@ export class ApiKeysService {
           sql`SELECT pg_advisory_xact_lock(hashtext(${`default_api_key:${userId}:${organizationId}`}))`,
         );
 
+        const now = new Date();
         const usableDefaultKey = tx
           .select({ id: apiKeys.id })
           .from(apiKeys)
-          .where(usableDefaultApiKeyWhere(userId, organizationId));
+          .where(
+            and(
+              eq(apiKeys.user_id, userId),
+              eq(apiKeys.organization_id, organizationId),
+              eq(apiKeys.name, "Default API Key"),
+              eq(apiKeys.is_active, true),
+              isNull(apiKeys.deleted_at),
+              or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, now)),
+            ),
+          );
 
         // Drizzle's INSERT ... SELECT requires every insertable column in schema
         // order. Supplying the table's defaults explicitly keeps this one

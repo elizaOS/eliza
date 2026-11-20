@@ -17,8 +17,7 @@
 import { usersRepository } from "../../db/repositories/users";
 import { AuthenticationError, ForbiddenError } from "../api/cloud-worker-errors";
 import { loadVerifiedStagingSessionUser } from "../auth/staging-session-binding";
-import { isConfiguredStagingSessionFixtureEmail } from "../auth/staging-session-fixture-signup";
-import { type StewardTokenClaims, verifyStewardTokenCached } from "../auth/steward-client";
+import { verifyStewardTokenCached } from "../auth/steward-client";
 import { readStewardAccessCookieFromHeader } from "../auth/steward-cookies";
 import { cache } from "../cache/client";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
@@ -111,24 +110,18 @@ function rejection(
   };
 }
 
-type SessionHydrationIdentity = {
+async function hydrateAuthoritativeDecision(params: {
   stewardUserId: string;
   email?: string;
   walletAddress?: string;
   walletChain?: "ethereum" | "solana";
-  verifiedSession: StewardTokenClaims;
-};
-
-async function hydrateAuthoritativeDecision(
-  params: SessionHydrationIdentity,
-): Promise<InferenceSessionAuthDecision> {
+}): Promise<InferenceSessionAuthDecision> {
   let user = await usersRepository.findByStewardIdWithOrganizationForWrite(params.stewardUserId);
-  if (!user || isConfiguredStagingSessionFixtureEmail(getCloudAwareEnv(), params.email)) {
+  if (!user) {
     const { syncUserFromSteward } = await import("../steward-sync");
     user = await syncUserFromSteward({
       stewardUserId: params.stewardUserId,
       email: params.email,
-      verifiedSession: params.verifiedSession,
       walletAddress: params.walletAddress,
       walletChainType: params.walletChain,
     });
@@ -210,7 +203,12 @@ async function enforceStrongSessionBoundary(
 }
 
 async function hydrateDecision(
-  params: SessionHydrationIdentity,
+  params: {
+    stewardUserId: string;
+    email?: string;
+    walletAddress?: string;
+    walletChain?: "ethereum" | "solana";
+  },
   persistDecision: boolean,
 ): Promise<InferenceSessionAuthDecision> {
   const authoritative = await hydrateAuthoritativeDecision(params);
@@ -225,7 +223,12 @@ async function hydrateDecision(
 // Coalesced by subject only: `persistDecision` derives from the env flag, which
 // is constant within an isolate, so concurrent hydrations always agree on it.
 function getOrCreateHydration(
-  params: SessionHydrationIdentity,
+  params: {
+    stewardUserId: string;
+    email?: string;
+    walletAddress?: string;
+    walletChain?: "ethereum" | "solana";
+  },
   persistDecision: boolean,
   issuedAt: number,
   executionCtx?: { waitUntil(promise: Promise<unknown>): void },
@@ -306,6 +309,8 @@ export async function resolveInferenceSessionAuthContext(
       STEWARD_JWT_SECRET: env.STEWARD_JWT_SECRET,
       ELIZA_SERVICE_JWT_SECRET: env.ELIZA_SERVICE_JWT_SECRET,
       STEWARD_TENANT_ID: env.STEWARD_TENANT_ID,
+      STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT: env.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT,
+      STAGING_SESSION_EXCHANGE_GRANT_READ_KEY: env.STAGING_SESSION_EXCHANGE_GRANT_READ_KEY,
       STAGING_SESSION_EXCHANGE_ENABLED: env.STAGING_SESSION_EXCHANGE_ENABLED,
       STAGING_SESSION_EXCHANGE_VERSION: env.STAGING_SESSION_EXCHANGE_VERSION,
       STAGING_SESSION_EXCHANGE_SIGNING_SECRET: env.STAGING_SESSION_EXCHANGE_SIGNING_SECRET,
@@ -358,7 +363,6 @@ export async function resolveInferenceSessionAuthContext(
   const hydrationParams = {
     stewardUserId: claims.userId,
     email: claims.email,
-    verifiedSession: claims,
     walletAddress: claims.walletAddress,
     walletChain: claims.walletChain,
   };
