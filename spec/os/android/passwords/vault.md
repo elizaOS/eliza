@@ -157,7 +157,7 @@ pure def alwaysDamagedPageHoldsNothing(s: VaultUi): bool = damaged(s.view) impli
 
 ### Reset needs the owner's review and a fresh Android authentication after it, in the same visit
 
-Reviewing the reset starts a new generation, so an authentication begun
+For timed custody, reviewing the reset starts a new generation, so an authentication begun
 before the review cannot confirm it; a refresh, a lock or leaving withdraws
 the review. `resetConfirmed` is Android's authentication for the reviewed
 reset followed by the native reset, which deletes only a vault that can
