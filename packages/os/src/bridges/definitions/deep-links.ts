@@ -1,10 +1,11 @@
 // spec/os/android/deepLinks.md, "Story: Open the link I followed exactly once, even across a cold start"; spec/os/android/deepLinks.md, "Story: Keep two links I followed apart, even when they are the same URL"
 import type { PluginListenerHandle } from "@capacitor/core";
+import type { Brand } from "effect";
 import type { DeepLinks, LinkOutcome } from "../../../gen/os__android__deepLinks.ts";
 
 export type { DeepLinks, LinkOutcome };
 
-export type LinkReceipt = number & { readonly __brand: "LinkReceipt" };
+export type LinkReceipt = Brand.Branded<number, "LinkReceipt">;
 
 export interface FollowedLink {
   readonly receipt: LinkReceipt;

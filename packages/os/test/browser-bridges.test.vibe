@@ -75,20 +75,20 @@ effect function opened(privateTab = false, id = "t1") {
 
 it.effect("A tab is created once, retried after a failure, and refused past the limit or after close (spec/os/browser/tabHost/document.md, \"A tab reserves an identity only in the session the host bound\"; spec/os/browser/tabHost/document.md, \"A private tab stays private for as long as it is held\")", () => effect {
   const tabs = new BrowserTabSession({ session: S, maxTabs: 2 })
-  let calls = 0
-  const create = async () => {
-    calls += 1
-    if (calls === 1) throw new Error("profile")
+  const calls: string[] = []
+  const create = (id: string) => async () => {
+    calls.push(id)
+    if (calls.length === 1) throw new Error("profile")
   }
-  const firstFailure = try refusal(() => tabs.ensure("t1", false, create))
+  const firstFailure = try refusal(() => tabs.ensure("t1", false, create("t1")))
   const heldAfterFailure = tabs.has("t1")
-  try tryPromise(() => tabs.ensure("t1", false, create))
-  try tryPromise(() => tabs.ensure("t1", false, create))
-  try tryPromise(() => tabs.ensure("t2", true, create))
-  const overLimit = try refusal(() => tabs.ensure("t3", false, create))
-  const badId = try refusal(() => tabs.ensure("../x", false, create))
-  const invalidLimit = try refusal(() => new BrowserTabSession({ maxTabs: 0 }).ensure("t1", false, create))
-  const invalidSession = try refusal(() => new BrowserTabSession({ session: "" }).ensure("t1", false, create))
+  try tryPromise(() => tabs.ensure("t1", false, create("t1")))
+  try tryPromise(() => tabs.ensure("t1", false, create("t1")))
+  try tryPromise(() => tabs.ensure("t2", true, create("t2")))
+  const overLimit = try refusal(() => tabs.ensure("t3", false, create("t3")))
+  const badId = try refusal(() => tabs.ensure("../x", false, create("../x")))
+  const invalidLimit = try refusal(() => new BrowserTabSession({ maxTabs: 0 }).ensure("t1", false, create("invalid-limit")))
+  const invalidSession = try refusal(() => new BrowserTabSession({ session: "" }).ensure("t1", false, create("invalid-session")))
   const closing = try opened()
   try tryPromise(() => closing.ensure("t2", true, async () => undefined))
   closing.applyState(committed())
@@ -102,7 +102,7 @@ it.effect("A tab is created once, retried after a failure, and refused past the 
     {
       firstFailure: "profile",
       heldAfterFailure: false,
-      calls: 2,
+      calls: ["t1", "t1", "t2"],
       privateTab: true,
       ids: ["t1", "t2"],
       overLimit: "TabRefused: Close a tab before opening another.",
