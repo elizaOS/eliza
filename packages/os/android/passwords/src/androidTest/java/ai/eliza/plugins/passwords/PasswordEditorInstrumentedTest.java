@@ -30,6 +30,9 @@ public final class PasswordEditorInstrumentedTest {
         try {
           PasswordVaultAccess access = PasswordVaultAccess.get(activity);
           access.lock();
+          Thread retirement = new Thread(PasswordVaultAccess::closeSurfaces);
+          retirement.start();
+          retirement.join();
           PasswordEditor.Result result = new PasswordEditor.Result() {
             public void saved(String id, long revision) { fail("No save requested"); }
             public void cancelled() { cancellations.incrementAndGet(); }
@@ -66,6 +69,7 @@ public final class PasswordEditorInstrumentedTest {
       });
       androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().waitForIdleSync();
       scenario.onActivity(activity -> assertNotNull("Oversize edit shows an error", drafts.get(3).getError()));
+      assertEquals(0, cancellations.get());
       scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);
       assertEquals(1, cancellations.get());
       for (EditText draft : drafts) assertEquals("", draft.getText().toString());
