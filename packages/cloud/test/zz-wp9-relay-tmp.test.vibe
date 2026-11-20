@@ -1,9 +1,9 @@
 // spec/cloud/services/speechRelay.md, "The wire is version 1 with 16 kHz mono PCM16 and bounded frames"
-import { assert, describe, it } from "vitest"
+import { assert, describe, it } from "@effect/vitest"
 import { decodeDeviceFrame, decodeRelayFrame, decodeServerFrame, encodeClientFrame, encodeRelayAudio, encodeWireFrame, relayCloseCodes } from "../src/client/relay-codec.vibe"
 
 describe("wp9 relay codec scratch", () => {
-  it("relay codec round trips and bounds", () => {
+  it.live("Relay codec round trips and bounds (spec/cloud/services/speechRelay.md, \"The wire is version 1 with 16 kHz mono PCM16 and bounded frames\")", () => Effect.try(() => {
     const pcm = Uint8Array.from([1, 2, 3, 4])
     const frame = encodeRelayAudio({ id: "utt_1-a", pcm })
     assert.deepEqual(Array.from(frame ?? []), [1, 7, 117, 116, 116, 95, 49, 45, 97, 1, 2, 3, 4])
@@ -43,5 +43,5 @@ describe("wp9 relay codec scratch", () => {
     const err = encodeWireFrame({ kind: "error", code: "RelayUnavailable", reason: { tag: "FundingReason", funding: "CreditsShort" } })
     assert.equal(err, JSON.stringify({ t: "error", code: "unavailable", reason: "insufficient_credits" }))
     assert.deepEqual(relayCloseCodes, { normal: 1000, violation: 1008, unauthorized: 4401, funding: 4402, sessionClosed: 4410 })
-  })
+  }))
 })
