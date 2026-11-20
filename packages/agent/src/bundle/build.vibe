@@ -137,8 +137,15 @@ module node {
           (node.type === "ImportDeclaration" || node.type === "ImportExpression" ||
            node.type === "ExportAllDeclaration" || node.type === "ExportNamedDeclaration")) {
         const source = node.source
-        if (typeof source === "object" && source !== null && "value" in source && typeof source.value === "string") {
-          specifiers.push(source.value)
+        if (typeof source === "object" && source !== null) {
+          if ("value" in source && typeof source.value === "string") specifiers.push(source.value)
+          if ("type" in source && source.type === "TemplateLiteral" &&
+              "quasis" in source && Array.isArray(source.quasis) && source.quasis.length === 1) {
+            const quasi: unknown = source.quasis[0]
+            if (typeof quasi === "object" && quasi !== null && "value" in quasi &&
+                typeof quasi.value === "object" && quasi.value !== null &&
+                "cooked" in quasi.value && typeof quasi.value.cooked === "string") specifiers.push(quasi.value.cooked)
+          }
         }
       }
       for (const child of Object.values(node)) if (typeof child === "object" && child !== null) pending.push(child)
