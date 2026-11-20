@@ -2094,19 +2094,34 @@ async function consumeTelegramLoginChallenge(
   const raw = await getNonceBackend().consume(
     telegramLoginChallengeKey(challengeId),
   );
+  // No stored record means the challenge was never issued, already consumed, or
+  // expired — a legitimate "absent" answer the verifier reports as such.
   if (!raw) return null;
+  let parsed: TelegramLoginChallengeRecord;
   try {
-    const parsed = JSON.parse(raw) as TelegramLoginChallengeRecord;
-    return {
-      tenantId:
-        typeof parsed.tenantId === "string" ? parsed.tenantId : undefined,
-      originHost:
-        typeof parsed.originHost === "string" ? parsed.originHost : undefined,
-      issuedAt: typeof parsed.issuedAt === "number" ? parsed.issuedAt : 0,
-    };
-  } catch {
-    return null;
+    const decoded: unknown = JSON.parse(raw);
+    if (typeof decoded !== "object" || decoded === null) {
+      throw new TypeError("Telegram login challenge is not an object");
+    }
+    parsed = decoded as TelegramLoginChallengeRecord;
+  } catch (cause) {
+    // This server writes the record and consumes it exactly once, so a payload
+    // it cannot read is a damaged nonce store, not a missing challenge.
+    // Returning null would surface as "Invalid or expired Telegram login
+    // challenge" (401) and hide the fault behind a retryable-looking error.
+    throw new ElizaError("Stored Telegram login challenge cannot be read.", {
+      code: "TELEGRAM_LOGIN_CHALLENGE_UNREADABLE",
+      cause,
+      context: { challengeKey: telegramLoginChallengeKey(challengeId) },
+      severity: "ephemeral",
+    });
   }
+  return {
+    tenantId: typeof parsed.tenantId === "string" ? parsed.tenantId : undefined,
+    originHost:
+      typeof parsed.originHost === "string" ? parsed.originHost : undefined,
+    issuedAt: typeof parsed.issuedAt === "number" ? parsed.issuedAt : 0,
+  };
 }
 
 function validateConsumedTelegramLoginChallenge(
