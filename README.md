@@ -64,5 +64,20 @@ for these calls. The fixture browser approves a synthetic account through
 the same Worker routes that the production app uses.
 
 [The Vibestack toolchain guide](vibestack/README.md) explains Studio,
-commands, examples and generated files. [Contributing](CONTRIBUTING.md)
-describes the repository checks. The MIT license is in [LICENSE](LICENSE).
+commands, examples and generated files. The MIT license is in [LICENSE](LICENSE).
+
+## Contributing
+
+`vibestack` is the primary branch and the base for every pull request.
+Verify through the application's normal entry points that the top-level
+stories, rules, and Quint models are fully implemented and integrated.
+Every change must follow them exactly. Run the full `pnpm verify` suite
+and confirm that all checks pass, including Quint, Dafny, Bombadil, and
+the rest of the repository tests.
+
+In the PR description, show reproducible before-and-after results for code
+changes and attach before-and-after screenshots for UI changes. Keep the
+diff tidy by removing unnecessary files and dead, redundant, or superseded
+code. Prose comments in code are banned. Every PR must satisfy the
+Vibestack requirements and TypeScript conventions before merge.
+[Contributing guide](CONTRIBUTING.md#pull-requests) · [Agent procedure](AGENTS.md#pull-requests)

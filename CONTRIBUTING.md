@@ -4,6 +4,28 @@ Every contributor, person or agent, reads [AGENTS.md](AGENTS.md) in full before 
 Starting a project from the template is [the toolchain setup guide](vibestack/README.md#set-up-a-new-project).
 Everything is built on [the stack](AGENTS.md#the-stack): Node 26, pnpm, VibeLang on Effect for the shell, React for every interface.
 
+## Pull requests
+
+`vibestack` is the primary branch and the base for every pull request.
+
+- Verify through the application's normal entry points that the top-level
+  stories, rules, and Quint models are fully implemented and integrated.
+  Keep every change in exact agreement with them. Cite the relevant stories
+  and rules and show end-to-end evidence of conformance in the PR. [Top-level spec](spec/index.md)
+- Run the full `pnpm verify` suite for every PR. Before merging, confirm
+  that all checks passed for the latest revision, including Quint model
+  checks, Dafny proofs, Bombadil exploration, and all other repository
+  tests and CI checks. Report the verification results in the PR.
+- For code changes, give reproduction steps and show the actual results
+  before and after the change under comparable conditions. For UI changes,
+  attach screenshots of the same flow and state before and after.
+- Keep the diff tidy and focused. Remove unnecessary files and dead,
+  redundant, or superseded code and legacy paths. Prose comments in code
+  are banned. Keep only required machine-readable directives in comment
+  syntax.
+- Satisfy all Vibestack requirements and TypeScript conventions before
+  merging. [Vibestack spec reference](SPEC.md) · [Required stack](AGENTS.md#the-stack) · [TypeScript conventions](AGENTS.md#typescript-best-practices)
+
 ## The monorepo
 
 | Path | Holds |
@@ -45,9 +67,6 @@ files and the `vibestack/fixtures/` they read, besides the tools every task is k
 `check` rewrites its owners' `gen/` too, so it waits for their tasks: name each owner's in `//#check` of `turbo.json`,
 as `@elizaos/core`'s are. `pnpm lint:js` on its own needs what `gen` and `typecheck` write (`gen/`, `.vibe/declarations`);
 `pnpm lint` runs them first.
-
-Pull requests go to `main`, the only long-lived branch; what CI runs on them is in
-[CI](#ci).
 
 ## Changing the tools
 
@@ -102,7 +121,7 @@ tools owes it, and the sync skill, is in [AGENTS.md, "Definition of done"](AGENT
 
 ## Releasing
 
-Set `version` in the root `package.json`, merge to `main`, and push the tag `v<version>` from it.
+Set `version` in the root `package.json`, merge to `vibestack`, and push the tag `vibestack-v<version>` from it.
 `.github/workflows/release.yml` builds, packs with `pnpm pack`, runs `pnpm selftest --concurrency=1`, which the shared cache answers for a commit CI has verified, and attaches the tarball to a GitHub release of that tag.
 A project installs it as [the Vibestack guide, "Using it from another package"](vibestack/README.md#using-it-from-another-package) says.
 ## Architecture
@@ -304,9 +323,9 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 
 | When | Runs |
 |---|---|
-| Pull request or push to `main` | The tasks of `pnpm verify`, with `--continue`, over four jobs side by side: `verify` runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
-| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into `main`. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
-| A `v*` tag (`release.yml`) | Build, `pnpm pack`, `pnpm selftest --concurrency=1` read from the shared cache, and the tarball attached to a GitHub release |
+| Pull request or push to `vibestack` | The tasks of `pnpm verify`, with `--continue`, over four jobs side by side: `verify` runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
+| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into `vibestack`. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
+| A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, `pnpm selftest --concurrency=1` read from the shared cache, and the tarball attached to a GitHub release |
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/`, where a broken

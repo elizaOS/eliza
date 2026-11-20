@@ -87,7 +87,10 @@ public final class PasswordVaultAccess {
   public boolean unrecoverable() throws Exception { return store.unrecoverable(); }
 
   static void closeSurfaces() {
-    new Handler(Looper.getMainLooper()).post(() -> { PasswordEditor.dismiss(); SecretSurfaces.dismiss(); });
+    Runnable dismissReveal = SecretSurfaces.currentDismissal();
+    Runnable close = () -> { PasswordEditor.dismissLocked(); dismissReveal.run(); };
+    if (Looper.myLooper() == Looper.getMainLooper()) close.run();
+    else new Handler(Looper.getMainLooper()).post(close);
   }
 
   synchronized <T> T useForOwner(Context context, long ticket, Operation<T> delivery) throws Exception {

@@ -9,7 +9,7 @@ module node {
   import { tmpdir } from "node:os"
   import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
   import { Schema } from "effect"
-  import { build, type Plugin } from "vite"
+  import { build, parseAst, type Plugin } from "vite"
   import {
     buildVerdict, excludedPackages, inputDisposition, localInferencePlugin, manifestReadable, packageRows, pluginsWellFormed,
     workflowPlugin, type Build, type BuildVerdict, type BundleInput, type BundleManifest as ManifestFacts, type ExternalImport,
@@ -127,6 +127,32 @@ module node {
     ].join("\n")
   }
 
+  function emittedImports(code: string): string[] {
+    const specifiers: string[] = []
+    const pending: unknown[] = [parseAst(code)]
+    while (pending.length > 0) {
+      const node = pending.pop()
+      if (typeof node !== "object" || node === null) continue
+      if ("type" in node && "source" in node &&
+          (node.type === "ImportDeclaration" || node.type === "ImportExpression" ||
+           node.type === "ExportAllDeclaration" || node.type === "ExportNamedDeclaration")) {
+        const source = node.source
+        if (typeof source === "object" && source !== null) {
+          if ("value" in source && typeof source.value === "string") specifiers.push(source.value)
+          if ("type" in source && source.type === "TemplateLiteral" &&
+              "quasis" in source && Array.isArray(source.quasis) && source.quasis.length === 1) {
+            const quasi: unknown = source.quasis[0]
+            if (typeof quasi === "object" && quasi !== null && "value" in quasi &&
+                typeof quasi.value === "object" && quasi.value !== null &&
+                "cooked" in quasi.value && typeof quasi.value.cooked === "string") specifiers.push(quasi.value.cooked)
+          }
+        }
+      }
+      for (const child of Object.values(node)) if (typeof child === "object" && child !== null) pending.push(child)
+    }
+    return specifiers
+  }
+
   async function workflowWorker(directory: string | undefined): Promise<WorkerDigest> {
     if (directory === undefined) return noWorker
     const output = join(directory, "dist")
@@ -222,10 +248,14 @@ module node {
       generateBundle(_options, bundle) {
         const chunks = Object.values(bundle).filter((output) => output.type === "chunk")
         if (chunks.length !== 1 || chunks[0]?.fileName !== "agent.mjs") throw new Error("The device runtime did not emit one ESM entry")
-        for (const [id, module] of Object.entries(chunks[0].modules)) {
+        const chunk = chunks[0]
+        for (const [id, module] of Object.entries(chunk.modules)) {
           if (module.renderedLength > 0 && id !== entryId && !id.startsWith(excludedPrefix)) emitted.set(id, module.renderedLength)
         }
-        for (const id of [...chunks[0].imports, ...chunks[0].dynamicImports]) {
+        const hasAmbiguousDynamicEdge = chunk.dynamicImports.includes(chunk.fileName)
+        const dynamicImports = chunk.dynamicImports.filter((id) => id !== chunk.fileName)
+        const outputImports = hasAmbiguousDynamicEdge ? emittedImports(chunk.code) : []
+        for (const id of new Set([...chunk.imports, ...dynamicImports, ...outputImports])) {
           externals.push(isBuiltin(id) ? { tag: "NodeBuiltin" } : { tag: "Unbundled", specifier: id })
         }
       },
