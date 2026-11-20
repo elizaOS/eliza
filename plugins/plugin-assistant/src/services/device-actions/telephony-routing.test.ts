@@ -167,8 +167,23 @@ describe("a whole-message call or text reaches the phone's own operation", () =>
     "how do I text Sam saying hi?",
     "don't call mom",
     "who should I call",
+    // A message from a named sender, or another service's, is not a sender lookup.
+    "What was the last message from Sam?",
+    "Check the latest message from Sam on Slack",
   ])("leaves %s to the planner", (request) => {
     expect(authoredTelephonyRequest(request)).toBeUndefined();
+  });
+
+  // A place on this phone ("in my inbox", "in Messages") or a time is not a
+  // named sender or another service.
+  it.each([
+    "What's the number on my latest text?",
+    "Who sent the last text message in my inbox?",
+    "Who sent me the latest text in the last hour?",
+    "Check who sent my latest text in Messages",
+    "Who sent my most recent text, from what number?",
+  ])("routes %s as a sender lookup", (request) => {
+    expect(authoredTelephonyRequest(request)).toBe("sender");
   });
 
   it("claims nothing without the phone's call or SMS capability or off phone chat", async () => {

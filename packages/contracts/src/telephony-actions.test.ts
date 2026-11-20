@@ -11,6 +11,7 @@ import {
   contactWriteReceiptOutcome,
   contactWriteResultText,
   directSmsRequest,
+  isSmsSenderLookup,
   isTelephonyAction,
   MESSAGES_READ_CAPABILITY,
   MESSAGES_READ_MAX,
@@ -910,7 +911,17 @@ test("address lookup and a reply draft use the complete negotiated address", () 
     ),
   );
   for (const request of [
+    "Reply to her saying I mean it",
+    'Reply to them saying "hi, but send it to Mom"',
+  ]) {
+    assert.equal(requestedSmsDraftRecipient(request)?.kind, "previous-sender");
+  }
+  for (const request of [
     "Draft a text to them; actually send it to Ada instead.",
+    "Write a text to them saying hi, but send it to Mom",
+    "Draft a text to them saying hi and send it to Mom",
+    "Reply to them, no wait, to Sam, saying I'm late",
+    "Reply to her. I mean Sam. Say I'm late",
     "Draft a text to +14155550124 or +14155550199 asking about the tripod.",
   ]) {
     assert.equal(requestedSmsDraftRecipient(request)?.kind, "ambiguous");
@@ -921,6 +932,49 @@ test("address lookup and a reply draft use the complete negotiated address", () 
     "Who texted me last? Don't show the full number.",
   ]) {
     assert.ok(!directSmsRequest(operation, request));
+  }
+  // The open or named thread a reply belongs to, or a recipient after the
+  // body, is not an addressing clause.
+  for (const request of [
+    "Draft a reply to this conversation",
+    "Reply to Sam's text saying I'm on my way",
+    "Reply to the thread with Ada saying hi",
+    "Draft a text saying I'm late to Sam",
+  ]) {
+    assert.equal(
+      requestedSmsDraftRecipient(request)?.kind,
+      "unaddressed",
+      request,
+    );
+    assert.ok(!directSmsRequest(bound, request));
+  }
+  // Only a question about the sender reads one, wherever the owner says it is
+  // on this phone. A message from a named sender or another service's inbox
+  // is the planner's.
+  for (const request of [
+    "Who was my latest text from?",
+    "What's the number on my latest text?",
+    "Who sent the last text message in my inbox?",
+    "Who sent me the latest text in the last hour?",
+    "Check who sent my latest text in Messages",
+    "Who sent my most recent text, from what number?",
+    "Who sent my latest text from this morning?",
+  ]) {
+    assert.ok(isSmsSenderLookup(request), request);
+    assert.equal(smsSenderDisclosure(request), "address", request);
+  }
+  for (const request of [
+    "What was the last message from Sam?",
+    "Show me the latest text from Mom",
+    "Who sent the latest message from Sam?",
+    "What's the number of the latest text from Sam?",
+    "Check the latest message from Sam on Slack",
+    "Who sent my latest message in Gmail?",
+    "Who sent my latest message on WhatsApp?",
+    "Who sent my latest text over email?",
+  ]) {
+    assert.ok(!isSmsSenderLookup(request), request);
+    assert.equal(smsSenderDisclosure(request), "last-four");
   }
 });
 test("each operation type has one capability and one validator", () => {

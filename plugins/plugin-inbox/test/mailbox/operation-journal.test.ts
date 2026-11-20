@@ -148,6 +148,9 @@ describe("InboxOperation", () => {
     const fixture = provider();
     const operation = journal(fixture);
     const requestId = crypto.randomUUID();
+    await expect(
+      operation.prepare(send(), { draftId: "", requestId }),
+    ).rejects.toThrow("Invalid source request identity");
     const prepared = await operation.prepare(send(), {
       draftId: "phone-draft",
       requestId,

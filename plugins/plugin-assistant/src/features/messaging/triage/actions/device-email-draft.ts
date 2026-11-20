@@ -1,5 +1,6 @@
 import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
 import { currentGmailComposeOrigin } from "../../../../services/device-actions/service.ts";
+import { trustedConnectorAccountId } from "../../../advanced-capabilities/actions/connectorActionUtils.ts";
 import type { DraftRequest } from "../types.ts";
 
 /** Hand an unsent new email to the requesting phone's own editor. No provider
@@ -31,6 +32,7 @@ export async function deviceEmailDraft(
   // Preserve any richer addressing, attachment, or timing request for Inbox.
   const explicit = (parameters ?? {}) as Record<string, unknown>;
   if (
+    trustedConnectorAccountId(message) ||
     [
       "accountId",
       "connectorAccountId",
@@ -41,6 +43,8 @@ export async function deviceEmailDraft(
       "thread",
       "inReplyToId",
       "sendAt",
+      "sendAtMs",
+      "at",
     ].some((key) => {
       const value = explicit[key];
       return Array.isArray(value) ? value.length > 0 : Boolean(value);

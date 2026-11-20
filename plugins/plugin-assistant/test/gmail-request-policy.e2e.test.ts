@@ -276,6 +276,47 @@ test("the owner phone can request a local Gmail draft without a send broker or a
           },
           data: { actionName: "MESSAGE" },
         });
+        f.runtime.registerMessageConnector({
+          source: "gmail",
+          label: "Gmail",
+          contexts: ["email"],
+          capabilities: ["send_message"],
+          supportedTargetKinds: ["user"],
+          resolveTargets: async () => [
+            {
+              target: { source: "gmail", entityId: f.owner },
+              label: "crew@example.invalid",
+              kind: "user",
+            },
+          ],
+          sendHandler: async () => {
+            throw new Error("The phone editor owns dispatch");
+          },
+        });
+        const inferred = await messageAction.handler(
+          f.runtime,
+          message,
+          undefined,
+          {
+            parameters: {
+              action: "send",
+              target: "crew@example.invalid",
+              targetKind: "user",
+              message: "Please bring the tripod.",
+              subject: "Tomorrow's shoot",
+            },
+          },
+        );
+        expect(inferred).toMatchObject({
+          success: true,
+          values: {
+            mode: "local-compose",
+            emailDraft: {
+              requestMessageId: message.id,
+              to: ["crew@example.invalid"],
+            },
+          },
+        });
         const scoped = await messageAction.handler(
           f.runtime,
           message,
@@ -284,6 +325,16 @@ test("the owner phone can request a local Gmail draft without a send broker or a
         );
         expect(scoped).toMatchObject({ success: false });
         expect(scoped).not.toHaveProperty("values.emailDraft");
+        const scheduled = await messageAction.handler(
+          f.runtime,
+          message,
+          undefined,
+          {
+            parameters: { ...direct.parameters, sendAtMs: Date.now() + 60_000 },
+          },
+        );
+        expect(scheduled).toMatchObject({ success: false });
+        expect(scheduled).not.toHaveProperty("values.emailDraft");
         expect(
           await f.runtime.getCache(
             `message-consent:${message.entityId}:${message.roomId}`,
@@ -308,6 +359,17 @@ test("the owner phone can request a local Gmail draft without a send broker or a
         stored.mockRestore();
       }
     });
+    const gate = Promise.withResolvers<void>();
+    const delayed = await f.turn("Prepare a second email", async (message) => ({
+      result: gate.promise.then(async () => {
+        const { currentGmailComposeOrigin } = await import(
+          "../src/services/device-actions/service.ts"
+        );
+        return currentGmailComposeOrigin(f.runtime, message);
+      }),
+    }));
+    gate.resolve();
+    await expect(delayed.result).rejects.toThrow("Reopen this email request");
   } finally {
     await f.cleanup();
   }
