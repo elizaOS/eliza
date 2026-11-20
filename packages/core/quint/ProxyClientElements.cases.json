@@ -1,0 +1,46 @@
+{
+	"sources": [
+		"packages/core/src/security/loopback-trust.ts",
+		"packages/core/test/proxy-client-elements-model.test.ts",
+		"packages/core/quint/check-proxy-client-elements.mjs"
+	],
+	"conformance": "packages/core/quint/check-proxy-client-elements.mjs",
+	"bounds": "One client whose X-Forwarded-For value holds at most two distinct elements drawn from six kinds (a plain loopback address, for=127.0.0.1, a quoted for=\"[::1]:4000\", unknown, a for= pair naming a remote address, and xfor=127.0.0.1, which only looks like a for= pair), and up to six steps drawn from: the client adds one element, and a request goes through a same-machine proxy that appends the address it saw (127.0.0.1, ::1, 203.0.113.5 or 2001:db8::7) as a plain element. The conformance script replays every generated step sequence as real HTTP requests to a node:http listener on 127.0.0.1 whose handler calls isTrustedLocalRequest with local auth off and no cloud provisioning, sending the composed X-Forwarded-For value and the loopback Host a default nginx upstream forwards, and it requires all 88 combinations of client element set and proxy origin to reach a request. The proxy itself is represented by the appended element; the Forwarded header (RFC 7239), the other proxy header names, Origin/Referer/Sec-Fetch-Site metadata and the ELIZA_REQUIRE_LOCAL_AUTH and cloud gates are not modeled. Under weak fairness of requests, every header change is eventually judged. Explicit stuttering lets the client never send, so the same claim without fairness must fail. No latency bound is proved.",
+	"cases": [
+		{
+			"name": "proxy-appended-client-next-to-for-elements",
+			"main": "ProxyClientElements",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"RemoteClientNeverTrusted",
+				"UnparseableElementRefuses",
+				"LoopbackChainKeepsTrust",
+				"VerdictFollowsElements",
+				"TypeOK"
+			],
+			"temporal": [
+				"HeaderReachesVerdict",
+				"HeaderReachesVerdictWithoutFairness"
+			],
+			"maxSteps": 6,
+			"samples": 4000,
+			"temporalChecks": [
+				{
+					"property": "HeaderReachesVerdict",
+					"expect": "holds",
+					"assumptions": [
+						"Every continuously enabled request eventually goes through the proxy (weak fairness). This checks that a header change is judged by a later request, not how soon the client sends one."
+					]
+				},
+				{
+					"property": "HeaderReachesVerdictWithoutFairness",
+					"expect": "counterexample",
+					"assumptions": [
+						"No request fairness is assumed. The client may never send, so a temporal loop counterexample is required."
+					]
+				}
+			]
+		}
+	]
+}
