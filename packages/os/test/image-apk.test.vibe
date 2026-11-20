@@ -1,6 +1,7 @@
 // spec/os/image/apk.md, "Story: Put only a reviewed release APK into an image"; spec/os/image/apk.md, "Story: Update my installed app without losing its data"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
+import { advancePublisherPolicy, initializePublisherPolicy, parseDescriptorJson, readPublisherPolicy } from "../src/app-update/index.vibe"
 import {
   BUILD_FLAGS_ENTRY,
   QA_EVIDENCE_FORMAT,
@@ -32,6 +33,40 @@ import {
 import { cloudSpeechChecks } from "../gen/os__image__apk.effect.vibe"
 import { androidTools, buildApk, testSigner } from "./support/android-tools.ts"
 import { scratch } from "./support/scratch.vibe"
+
+it.effect("Provision a publication policy once and keep its highest verified versions (spec/os/appUpdate/admission.md, \"Publisher role floors only ratchet\"; spec/os/appUpdate/admission.md, \"Story: Publish an app update only with authorized versions\")", () => scoped(effect {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const folder = try scratch("publisher")
+    const file = folder + "/policy"
+    const initial = { root: 1, timestamp: 1, snapshot: 1, targets: 1, stable: 1, beta: 1 }
+    const newer = { ...initial, timestamp: 3, snapshot: 2 }
+    const time = 1700000000000
+    const missing = try Effect.flip(readPublisherPolicy(file, time))
+    const createdOnRead = try files.exists(file)
+    try initializePublisherPolicy(file, initial)
+    const duplicate = try Effect.flip(initializePublisherPolicy(file, newer))
+    const advanced = try advancePublisherPolicy(file, newer)
+    const lower = try Effect.flip(advancePublisherPolicy(file, { ...newer, beta: 0 }))
+    const rollback = try Effect.flip(advancePublisherPolicy(file, initial))
+    const retry = try advancePublisherPolicy(file, newer)
+    const stored = try readPublisherPolicy(file, time)
+    const invalid = folder + "/corrupt-policy"
+    try files.writeFileString(invalid, "corrupt")
+    const corrupt = try Effect.flip(readPublisherPolicy(invalid, time))
+    const preserved = try files.readFileString(invalid)
+    const descriptor = new TextEncoder()
+    const duplicateKey = try Effect.flip(parseDescriptorJson(descriptor.encode('{"target":1,"tar\\u0067et":2}')))
+    assert.deepStrictEqual({
+      refused: [missing, duplicate, lower, rollback, corrupt].map((failure) => failure._tag),
+      createdOnRead, advanced, retry, stored, preserved, duplicateKey: duplicateKey._tag
+    }, {
+      refused: Array(5).fill("PublisherPolicyFailed"),
+      createdOnRead: false, advanced: newer, retry: newer,
+      stored: { trustedUpperMs: time, minimumVersions: newer }, preserved: "corrupt", duplicateKey: "PublicationFailed"
+    })
+  }
+}))
 
 module node {
   import { execFileSync } from "node:child_process"
