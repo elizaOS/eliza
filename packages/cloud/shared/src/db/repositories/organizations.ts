@@ -39,6 +39,13 @@ export class OrganizationsRepository {
     });
   }
 
+  /** Reads the current organization from the primary before a write. */
+  async findBySlugForWrite(slug: string): Promise<Organization | undefined> {
+    return await dbWrite.query.organizations.findFirst({
+      where: eq(organizations.slug, slug),
+    });
+  }
+
   /**
    * Finds an organization by its canonical Stripe customer ID.
    */

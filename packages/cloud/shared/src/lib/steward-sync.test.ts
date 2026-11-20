@@ -8,6 +8,8 @@ import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 process.env.MOCK_REDIS = "1";
 
 const { organizationInvitesRepository } = await import("../db/repositories/organization-invites");
+const { organizationsRepository } = await import("../db/repositories/organizations");
+const { runWithCloudBindings } = await import("./runtime/cloud-bindings");
 const { usersRepository } = await import("../db/repositories/users");
 const { apiKeysService } = await import("./services/api-keys");
 const { charactersService } = await import("./services/characters");
@@ -262,4 +264,119 @@ test("a failed user insert leaves no orphan organization", async () => {
     syncUserFromSteward({ stewardUserId: "steward-new", email: VICTIM }),
   ).rejects.toThrow("insert failed");
   expect(organizations.size).toBe(0);
+});
+
+const fixtureEmail = "alpha-session-qa@example.invalid";
+const fixtureTenant = "elizacloud-staging";
+const fixtureClaims = {
+  userId: "steward-staging-qa",
+  email: fixtureEmail,
+  tenantId: fixtureTenant,
+  authMethod: "email",
+  issuedAt: 2_000_000_000,
+  expiration: 2_000_003_600,
+};
+const fixtureBindings = {
+  NODE_ENV: "production",
+  ENVIRONMENT: "staging",
+  STEWARD_TENANT_ID: fixtureTenant,
+  STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL: fixtureEmail,
+};
+
+test("staging fixture signup skips unrelated invitations and waits for key readiness on retry", async () => {
+  pendingInvite = { id: "other-invite", organization_id: "other-org", invited_role: "member" };
+  const findFixture = spyOn(organizationsRepository, "findBySlugForWrite").mockResolvedValue(
+    undefined,
+  );
+  const findIdentity = spyOn(usersRepository, "findIdentityByUserIdForWrite")
+    .mockResolvedValueOnce(undefined)
+    .mockResolvedValue({ steward_user_id: fixtureClaims.userId } as never);
+  const hasKey = spyOn(apiKeysService, "hasUsableDefaultApiKey")
+    .mockResolvedValueOnce(false)
+    .mockResolvedValue(true);
+  spies.push(findFixture, findIdentity, hasKey);
+  const createOrg = spyOn(organizationsService, "create").mockImplementation(async (data) => {
+    const organization = { ...data, id: "fixture-org", is_active: true };
+    findFixture.mockResolvedValue(organization as never);
+    return organization as never;
+  });
+  const active = {
+    is_active: true,
+    is_anonymous: false,
+    deleted_at: null,
+    expires_at: null,
+  };
+  const lookupUser = spyOn(usersService, "getByStewardIdForWrite").mockResolvedValue(undefined);
+  const createUser = spyOn(usersService, "createFreshStewardSignupUser").mockImplementation(
+    async (data) => {
+      const row = { ...insert(data), ...active };
+      const organization = await organizationsRepository.findBySlugForWrite("staging-session-qa");
+      lookupUser.mockResolvedValue({ ...row, organization } as never);
+      return row as never;
+    },
+  );
+  const key = spyOn(apiKeysService, "provisionDefaultApiKey")
+    .mockRejectedValueOnce(new Error("fixture key service unavailable"))
+    .mockResolvedValue(undefined);
+  spies.push(createOrg, lookupUser, createUser, key);
+  let ready = 0;
+  const signIn = () =>
+    runWithCloudBindings(fixtureBindings, () =>
+      syncUserFromSteward({
+        stewardUserId: fixtureClaims.userId,
+        email: fixtureEmail,
+        verifiedSession: fixtureClaims,
+        afterRequiredSignupProvisioning: async () => {
+          ready += 1;
+        },
+      }),
+    );
+
+  await expect(signIn()).rejects.toThrow("fixture key service unavailable");
+  expect(ready).toBe(0);
+  const user = await signIn();
+  expect(user.organization_id).toBe("fixture-org");
+  expect(user.organization?.steward_tenant_id).toBe(fixtureTenant);
+  expect(createOrg).toHaveBeenCalledTimes(1);
+  expect(createUser).toHaveBeenCalledTimes(1);
+  expect(key).toHaveBeenCalledTimes(2);
+  expect(usersService.upsertStewardIdentity).toHaveBeenCalledTimes(2);
+  expect(invitesService.findPendingInviteByEmail).not.toHaveBeenCalled();
+  expect(organizationsService.delete).not.toHaveBeenCalled();
+  expect(ready).toBe(1);
+
+  expect((await signIn()).id).toBe(user.id);
+  expect(ready).toBe(2);
+  expect(hasKey).toHaveBeenCalledTimes(2);
+  expect(key).toHaveBeenCalledTimes(2);
+  expect(usersService.upsertStewardIdentity).toHaveBeenCalledTimes(2);
+});
+
+test("staging fixture signup refuses an existing account in another Cloud organization", async () => {
+  const existing = addRow({
+    steward_user_id: fixtureClaims.userId,
+    email: fixtureEmail,
+    email_verified: true,
+  });
+  const lookup = spyOn(usersService, "getByStewardIdForWrite").mockResolvedValue({
+    ...existing,
+    is_active: true,
+    is_anonymous: false,
+    deleted_at: null,
+    expires_at: null,
+    organization: { id: existing.organization_id, is_active: true, slug: "another-org" },
+  } as never);
+  spies.push(lookup);
+  await expect(
+    runWithCloudBindings(fixtureBindings, () =>
+      syncUserFromSteward({
+        stewardUserId: fixtureClaims.userId,
+        email: fixtureEmail,
+        verifiedSession: fixtureClaims,
+      }),
+    ),
+  ).rejects.toThrow("cannot reuse an unrelated Cloud account");
+  expect(organizationsService.create).not.toHaveBeenCalled();
+  expect(usersService.upsertStewardIdentity).not.toHaveBeenCalled();
+  expect(apiKeysService.provisionDefaultApiKey).not.toHaveBeenCalled();
 });

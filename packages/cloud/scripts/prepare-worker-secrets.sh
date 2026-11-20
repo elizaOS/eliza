@@ -380,6 +380,11 @@ STAGING_SESSION_EXCHANGE_ENABLED=""
 export STAGING_SESSION_EXCHANGE_ENABLED
 queue_toggle_secret STAGING_SESSION_EXCHANGE_ENABLED || exit 1
 
+# Fixture sign-in is configured independently of exchange activation.
+if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+  queue_toggle_secret STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL || exit 1
+fi
+
 staging_session_config_names=(
   STAGING_SESSION_EXCHANGE_VERSION
   STAGING_SESSION_EXCHANGE_SIGNING_SECRET

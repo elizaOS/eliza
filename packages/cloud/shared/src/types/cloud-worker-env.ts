@@ -96,6 +96,8 @@ export interface Bindings {
   STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS?: string;
   /** Exact Cloud organization UUIDs eligible for the staging QA session bridge. */
   STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS?: string;
+  /** Verified email reserved for a staging QA fixture at first sign-in. */
+  STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL?: string;
   /**
    * Secondary kill switch for durable auto-top-up claims. Only the exact
    * string "true" permits new claims; recovery and signed reconciliation run

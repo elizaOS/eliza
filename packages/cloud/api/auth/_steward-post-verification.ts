@@ -8,6 +8,7 @@
 
 import { primeVerifiedUserSessionCache } from "@elizaos/cloud-shared/lib/auth/session-user-cache";
 import {
+  type StewardTokenClaims,
   type StewardVerifyEnv,
   stewardSessionKeyFingerprint,
 } from "@elizaos/cloud-shared/lib/auth/steward-client";
@@ -125,12 +126,16 @@ export async function emitStewardLogin(
  * session cache is primed for the first authenticated request.
  */
 export function syncVerifiedStewardUser(
-  session: { token: string; expiration: number; env: StewardVerifyEnv },
+  session: { token: string; claims: StewardTokenClaims; env: StewardVerifyEnv },
   executionCtx: StewardSyncExecutionContext | undefined,
-  input: Omit<SyncInput, "executionCtx" | "afterRequiredSignupProvisioning">,
+  input: Omit<
+    SyncInput,
+    "executionCtx" | "afterRequiredSignupProvisioning" | "verifiedSession"
+  >,
 ): Promise<SyncedStewardUser> {
   return syncUserFromSteward({
     ...input,
+    verifiedSession: session.claims,
     executionCtx,
     afterRequiredSignupProvisioning: async (user) => {
       const signingKeyFingerprint = stewardSessionKeyFingerprint(session.env);
@@ -141,7 +146,7 @@ export function syncVerifiedStewardUser(
         // readiness but before optional onboarding work starts, so that
         // request does not race into the slower durable cache-miss path.
         await primeVerifiedUserSessionCache(session.token, user, {
-          expiration: session.expiration,
+          expiration: session.claims.expiration,
           signingKeyFingerprint,
         });
       } catch (error) {

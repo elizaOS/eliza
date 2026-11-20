@@ -179,6 +179,8 @@ on:
         required: false
       STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
         required: false
+      STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL:
+        required: false
       STAGING_SPEECH_CUTOVER_ATTESTATION:
         description: Human-trusted first-cutover drain evidence supplied by the protected staging Environment
         required: false
@@ -1484,6 +1486,7 @@ jobs:
           # only after exact-commit deploy proof.
           STAGING_SESSION_EXCHANGE_DESIRED_ENABLED: ${{ steps.env.outputs.deploy_environment == 'staging' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.STAGING_SESSION_EXCHANGE_ENABLED) && 'true' || 'false' }}
           STAGING_SESSION_EXCHANGE_VERSION: "v1"
+          STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL || '' }}
           STAGING_SESSION_EXCHANGE_SIGNING_SECRET: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STAGING_SESSION_EXCHANGE_SIGNING_SECRET || '' }}
           # Value is used only for collision validation; this workflow does not
           # publish or mutate the pre-existing service bridge credential.

@@ -10,6 +10,7 @@ import type { ApiKey } from "../../db/repositories/api-keys";
 import { ssoBridgeRepository } from "../../db/repositories/sso-bridge";
 import type { UserWithOrganization } from "../../db/repositories/users";
 import { timingSafeEqualSecret } from "./cron";
+import { isRealStewardUserId } from "./staging-session-fixture-signup";
 
 export const STAGING_SESSION_EXCHANGE_VERSION = "v1" as const;
 export const STAGING_SESSION_TOKEN_TYP = "eliza-staging-session+jwt";
@@ -46,6 +47,7 @@ export interface StagingSessionBindingEnv {
   STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS?: string;
   STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS?: string;
   STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS?: string;
+  STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL?: string;
 }
 
 export interface StagingSessionSigningConfig {
@@ -180,25 +182,6 @@ function readAllowlists(env: StagingSessionBindingEnv): {
       "STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS",
     ),
   };
-}
-
-function isRealStewardUserId(value: string): boolean {
-  const normalized = value.trim();
-  return (
-    normalized.length > 0 &&
-    ![
-      "system:",
-      "anonymous:",
-      "affiliate:",
-      "wallet:",
-      "email:",
-      "telegram:",
-      "discord:",
-      "phone:",
-      "whatsapp:",
-      "svc_",
-    ].some((prefix) => normalized.startsWith(prefix))
-  );
 }
 
 function hex(bytes: ArrayBuffer): string {
