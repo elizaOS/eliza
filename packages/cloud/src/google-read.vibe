@@ -151,7 +151,8 @@ export function attachmentDescriptor(part: MailPart) {
   const mimeType = mimeToken.test(mime) ? mime.toLowerCase() : "application/octet-stream"
   const size = part.body?.size
   const partId = part.partId ?? ""
-  const name = filename.trim() !== "" && filename.length <= 120 && filename !== "." && filename !== ".." && !/[\\/\x00-\x1f\x7f]/.test(filename) ? filename : "attachment"
+  const name = filename.trim() !== "" && filename.length <= 120 && filename !== "." && filename !== ".." &&
+    !filename.includes("/") && !filename.includes("\\") && !hasControlCharacter(filename) ? filename : "attachment"
   const supported = partIdPattern.test(partId) && size !== undefined && Number.isSafeInteger(size) && size >= 0 &&
     size <= attachmentMaxBytes && attachmentMimeTypes.includes(mimeType)
   return { partId, name, mimeType, size: size !== undefined && Number.isSafeInteger(size) && size >= 0 ? size : 0, supported }

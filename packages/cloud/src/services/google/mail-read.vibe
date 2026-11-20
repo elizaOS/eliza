@@ -76,7 +76,6 @@ const providerId = /^[A-Za-z0-9_-]{1,256}$/
 const historyPattern = /^\d{1,20}$/
 const partIdPattern = /^[0-9.]{1,32}$/
 const pageSize = /^[1-9]\d{0,2}$/
-const mimeToken = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i
 const triageMax = 50
 const searchMax = 100
 const threadPage = 25
@@ -287,12 +286,8 @@ export effect function attachmentBytes(grant: ReadGrant, messageId: string, part
   if (!/^[A-Za-z0-9_-]*={0,2}$/.test(data)) throw refused("ProviderInvalidResponse")
   const bytes = partBytes(data)
   if (bytes.size !== declared) throw refused("ProviderInvalidResponse")
-  const name = part.filename ?? ""
-  return {
-    name: name.trim() !== "" && name.length <= 120 && name !== "." && name !== ".." && !/[\\/\x00-\x1f\x7f]/.test(name) ? name : "attachment",
-    mimeType: mimeToken.test(part.mimeType ?? "") ? (part.mimeType ?? "").toLowerCase() : "application/octet-stream",
-    ...bytes
-  } satisfies Attachment
+  const { name, mimeType } = attachmentDescriptor(part)
+  return { name, mimeType, ...bytes } satisfies Attachment
 }
 
 effect function mailboxHistory(grant: ReadGrant) {
