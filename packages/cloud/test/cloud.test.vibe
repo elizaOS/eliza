@@ -1028,6 +1028,8 @@ module node {
       const oversized = { partId: "3", filename: "large.pdf", mimeType: "application/pdf", body: { attachmentId: "never-fetch", size: 8 * 1024 * 1024 + 1 } }
       let attachmentFetches = 0
       let redirect = false
+      let changedBytes = false
+      let revokeDuringDownload = false
       let providerRequestsValid = true
       globalThis.fetch = async (input, init) => {
         const request = new Request(input, init)
@@ -1041,16 +1043,34 @@ module node {
             payload: { headers: [{ name: "Subject", value: "Selected PDF" }], parts: [{ mimeType: "text/plain", body: { data: "aGVsbG8" } }, part, unsupported, oversized] } })
         if (url.hostname === "gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/fixture-message/attachments/fixture-attachment") {
           attachmentFetches += 1
-          return redirect ? Response.redirect("https://unexpected.example.test", 302) : Response.json({ data: bytes.toString("base64url"), size: bytes.length })
+          if (revokeDuringDownload) await fixture.db.query("UPDATE device_grants SET key_expires_at = 0 WHERE user_id = $1", [owner.account.id])
+          const original = changedBytes ? Buffer.alloc(bytes.length, 120) : bytes
+          return redirect ? Response.redirect("https://unexpected.example.test", 302) : Response.json({ data: original.toString("base64url"), size: original.length })
         }
         providerRequestsValid = false
         return Response.json({ error: "unexpected fixture request" }, { status: 500 })
       }
+      const clientId = "com.example.attachment"
+      const redirectUri = web + "/android/auth/callback"
+      const device = async (user: string) => {
+        const token = "eliza_mobile_" + createHash("sha256").update(user).digest("hex")
+        const now = Date.now()
+        await fixture.db.query(`INSERT INTO device_grants (key, state, revision, user_id, client_id, phase,
+          credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at)
+          VALUES ($1, '{}'::jsonb, 1, $1, $2, 'active', $1, $3, $4, $5, $4, $4)`,
+          [user, clientId, createHash("sha256").update(token).digest("hex"), now, now + 86400000])
+        return { authorization: "Bearer " + token }
+      }
+      const ownDevice = await device(owner.account.id)
+      const otherDevice = await device(other.account.id)
       const env = {
         AI: { run: async () => { throw new Error("Unexpected inference in attachment fixture") } }, DATABASE_URL: fixture.databaseUrl, CLOUD_IDENTITY_DIGEST: digest, CLOUD_ENVIRONMENT: "staging",
         PUBLIC_API_ORIGIN: api, WEB_ORIGIN: web, CHAT_MODEL: "unused", EMBEDDING_MODEL: "unused",
         CHAT_INPUT_MICROS_PER_1K: "1", CHAT_OUTPUT_MICROS_PER_1K: "1", EMBEDDING_INPUT_MICROS_PER_1K: "1", MAX_COMPLETION_TOKENS: "1",
         STRIPE_SECRET_KEY: "unused", STRIPE_WEBHOOK_SECRET: "unused", STRIPE_PRICE_ID: "unused", STRIPE_PRODUCT_ID: "unused", STRIPE_PLAN: "plus_monthly",
+        NATIVE_CLIENT_ID: clientId, NATIVE_AUTH_CALLBACK: redirectUri,
+        NATIVE_CLIENT_REGISTRY: JSON.stringify([{ clientId, androidPackage: clientId, environment: "staging", displayName: "Attachment", signInReturn: redirectUri,
+          billingReturn: web + "/billing", certFingerprints: [Array(32).fill("AA").join(":")], enabled: true }]),
         GOOGLE_CLIENT_ID: "fixture-client", GOOGLE_CLIENT_SECRET: "fixture-secret", GOOGLE_CONNECT_TOKEN_KEY: key,
       } satisfies CloudBindings
       const worker = cloudWorker()
@@ -1075,11 +1095,31 @@ module node {
       ]
       const guardedDownloads = attachmentFetches
       const downloaded = await get(selected, owner.access)
-      const file: unknown = await downloaded.json()
+      const raw: unknown = await downloaded.json()
+      const { deviceTransfer } = Schema.decodeUnknownSync(Schema.Struct({ deviceTransfer: Schema.String }))(raw)
+      const file = Object.fromEntries(Object.entries(Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(raw)).filter(([name]) => name !== "deviceTransfer"))
+      const redeem = (ticket: string, headers: Record<string, string>) => worker.fetch(new Request(api + "/api/v1/google-attachments/device", {
+        method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ ticket }),
+      }), env)
+      const refused = [
+        (await redeem(deviceTransfer, { cookie: "__Host-eliza-session=" + owner.access })).status,
+        (await redeem(deviceTransfer, otherDevice)).status,
+        (await redeem((deviceTransfer.startsWith("0") ? "1" : "0") + deviceTransfer.slice(1), ownDevice)).status,
+      ]
+      const beforeDeviceRead = attachmentFetches
+      const onDevice = await redeem(deviceTransfer, ownDevice)
+      const deviceReceipt: unknown = await onDevice.json()
+      changedBytes = true
+      const changed = await redeem(deviceTransfer, ownDevice)
+      changedBytes = false
+      revokeDuringDownload = true
+      const revoked = await redeem(deviceTransfer, ownDevice)
+      revokeDuringDownload = false
       redirect = true
       const rejectedRedirect = await get(selected, owner.access)
       return {
-        manifest, readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
+        refused, beforeDeviceRead, deviceStatus: onDevice.status, deviceReceipt, changed: changed.status, revoked: revoked.status,
+        organization: (await fixture.db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1", [owner.account.id])).rows[0]?.organization_id, grant, manifest, readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
         cache: downloaded.headers.get("cache-control"), owner: owner.account.id, expectedHash: createHash("sha256").update(bytes).digest("hex"),
         expectedData: bytes.toString("base64"), size: bytes.length, rejectedRedirect: rejectedRedirect.status, providerRequestsValid, attachmentFetches,
       }
@@ -1110,6 +1150,7 @@ it.live('Open the selected named attachment (spec/cloud/index.md, "Story: Connec
       refuse: [got.guardStatuses, got.guardedDownloads, got.rejectedRedirect],
       file: [got.fileStatus, got.cache, got.file],
       provider: [got.providerRequestsValid, got.attachmentFetches],
+      device: [got.refused, got.beforeDeviceRead, got.deviceStatus, got.deviceReceipt, got.changed, got.revoked],
     },
     {
       read: [200, "789", "hello", [
@@ -1118,9 +1159,10 @@ it.live('Open the selected named attachment (spec/cloud/index.md, "Story: Connec
         { partId: "3", name: "large.pdf", mimeType: "application/pdf", size: 8 * 1024 * 1024 + 1, supported: false },
       ]],
       refuse: [[401, 409, 409, 404, 415, 415], 0, 502],
-      file: [200, "no-store", { version: 1, accountId: got.owner, messageId: "fixture-message", partId: "1", historyId: "789",
+      file: [200, "no-store", { version: 1, accountId: got.owner, organizationId: got.organization, grantId: got.grant, messageId: "fixture-message", partId: "1", historyId: "789",
         name: "fixture.pdf", mimeType: "application/pdf", size: got.size, dataBase64: got.expectedData, sha256: got.expectedHash, supported: true }],
-      provider: [true, 2],
+      provider: [true, 5],
+      device: [[401, 409, 409], 1, 200, got.file, 409, 401],
     },
   ))
 }, 30_000)
