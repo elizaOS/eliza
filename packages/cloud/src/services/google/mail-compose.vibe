@@ -294,7 +294,7 @@ function mimeText(review: MailReview, requestId: string, binding: ReplyBinding |
   const boundary = `eliza-${requestId.toLowerCase()}`
   return [
     ...headers,
-    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    `Content-Type: multipart/mixed;\r\n boundary="${boundary}"`,
     "",
     `--${boundary}`,
     ...plain,
