@@ -10,6 +10,7 @@ import {
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
+  type ResponseHandlerResult,
   runWithStreamingContext,
 } from "@elizaos/core";
 import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
@@ -200,8 +201,9 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
           } as never)
         : services(name),
     );
-    input.content.text =
+    const prompt =
       "Check only my built-in Eliza calendar. What is my next event?";
+    input.content.text = prompt;
     input.createdAt = Date.now();
     const googleAccounts = vi.spyOn(calendar, "discoverCalendars");
     const signal = new AbortController().signal;
@@ -227,8 +229,17 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
         context,
       );
       expect(bindings ?? []).toHaveLength(1);
-      const parsed = { intents: [input.content.text] };
-      const effect = await calendarReadBindingField.handle({
+      const parsed: ResponseHandlerResult = {
+        shouldRespond: "RESPOND",
+        contexts: [],
+        intents: [prompt],
+        candidateActionNames: ["CALENDAR_NEXT_EVENT"],
+        replyText: "",
+        facts: [],
+        relationships: [],
+        addressedTo: [],
+      };
+      const effect = await calendarReadBindingField.handle?.({
         ...context,
         parsed,
         value: bindings ?? [],
