@@ -1,4 +1,4 @@
-/** Real HTTP/SQLite transport of turn status: one model acknowledgement, then one content-free status per activity. */
+/** Real HTTP/SQLite transport of turn status: one content-free status per activity. */
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -14,7 +14,7 @@ import { expect, it, vi } from "vitest";
 import { createV5ReplyStrategyResult } from "../../../plugins/plugin-assistant/src/services/message/reply-policy.ts";
 import { startApiServer } from "../src/api/server.ts";
 
-it("streams the acknowledgement once and each activity label in order", async () => {
+it("streams each activity without requesting an early acknowledgement", async () => {
   const directory = await mkdtemp(join(tmpdir(), "chat-activity-status-"));
   const token = randomUUID();
   for (const [key, value] of Object.entries({
@@ -42,7 +42,7 @@ it("streams the acknowledgement once and each activity label in order", async ()
     await runtime.init();
     runtime.messageService = {
       handleMessage: async (_runtime, message, _callback, options) => {
-        await options?.onPlanningAcknowledgment?.("Let me have a look.");
+        expect(options?.onPlanningAcknowledgment).toBeUndefined();
         await options?.onActivityStatus?.({
           actionName: "CALENDAR",
           label: "Using Calendar",
@@ -117,7 +117,6 @@ it("streams the acknowledgement once and each activity label in order", async ()
       .map((line) => JSON.parse(line.slice(6)));
     expect(events.filter((event) => event.type === "status")).toEqual([
       { type: "status", kind: "thinking" },
-      { type: "status", kind: "thinking", label: "Let me have a look." },
       {
         type: "status",
         kind: "running_tool",

@@ -2558,22 +2558,14 @@ async function generateChatResponseWithTiming(
     // same phase (an action firing many callbacks should emit one
     // `running_action`, not one per chunk) by tracking the last signature.
     let lastStatusSignature = "";
-    let planningAcknowledgment: string | undefined;
-    // The latest transient label (the model acknowledgement, then each
-    // content-free activity) carries through later unlabeled phases. Hosts
-    // speak a labelled thinking status, so it inherits only the model's own
-    // acknowledgement, never an activity name.
-    let transientStatusLabel: string | undefined;
+    let activityLabel: string | undefined;
     const emitStatus = (status: ChatTurnStatus): void => {
       if (!opts?.onStatus) return;
-      if (status.label) transientStatusLabel = status.label;
-      const inheritedLabel =
-        status.kind === "thinking"
-          ? planningAcknowledgment
-          : transientStatusLabel;
+      if (status.kind === "running_tool" && status.label)
+        activityLabel = status.label;
       const visibleStatus =
-        !status.label && inheritedLabel
-          ? { ...status, label: inheritedLabel }
+        status.kind !== "thinking" && !status.label && activityLabel
+          ? { ...status, label: activityLabel }
           : status;
       const signature = JSON.stringify(visibleStatus);
       if (signature === lastStatusSignature) return;
@@ -2911,20 +2903,6 @@ async function generateChatResponseWithTiming(
                     abortSignal: generationAbortController.signal,
                     roomHandlerLease: opts?.roomHandlerLease,
                     keepExistingResponses: true,
-                    onPlanningAcknowledgment: opts?.onStatus
-                      ? (text) => {
-                          if (
-                            planningAcknowledgment ||
-                            generationAbortController.signal.aborted
-                          )
-                            return false;
-                          // One transient label survives tool phases without entering
-                          // response text or durable terminal persistence.
-                          planningAcknowledgment = text;
-                          emitStatus({ kind: "thinking", label: text });
-                          markInference("chat:planning-acknowledgment");
-                        }
-                      : undefined,
                     // Audience-checked, content-free activity names drive the
                     // working indicator on every turn, owner-private included.
                     onActivityStatus: opts?.onStatus
@@ -3551,9 +3529,6 @@ async function generateChatResponseWithTiming(
       successfulDeliveredActionCallbacks.length > 0 || successfulActionMode;
     return {
       text: finalText,
-      ...(!privacyDenied && planningAcknowledgment
-        ? { planningAcknowledgment }
-        : {}),
       agentName,
       ...(!privacyDenied && result?.outcome ? { outcome: result.outcome } : {}),
       ...(transcriptVisibility ? { transcriptVisibility } : {}),

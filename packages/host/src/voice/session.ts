@@ -2190,13 +2190,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.phrase = phrase;
     let initialReplyBuffer = "";
     let streamingReplyStarted = false;
-    // Set once any reply (not progress) text has been submitted to TTS.
+    // Set once any reply text has been submitted to TTS.
     let replySpeechSubmitted = false;
     // The authoritative reply rewrote text already spoken: stop feeding TTS.
     let replyDiverged = false;
-    // The bridge stops progress once reply text is authorized, so every cue
-    // spoken this turn precedes the first reply delta.
-    const spokenProgressCues: string[] = [];
 
     let tts: RealtimeTtsStream | null = null;
     // Speakable phrases sent to the current context since its last audio.
@@ -2281,8 +2278,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           if (this.currentVoiceTurnId !== traceId) return;
           const replay = frameCount > 0 ? unvoicedPhrases : [];
           if (!ttsReplyFinalized || replay.length > 0) {
-            // Cartesia closes a continuation context that is idle for a few
-            // seconds, e.g. after a progress cue spoken before a slow action.
+            // Cartesia can close a continuation context after a few idle seconds.
             // The reply is not over: speak it, and any phrase that raced the
             // close, in a fresh context on the same socket.
             unvoicedPhrases = [];
@@ -2328,11 +2324,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const sendTtsPhrase = (
       stream: RealtimeTtsStream,
       input: RealtimeTtsPhraseInput,
-      reply = true,
     ): void => {
-      if (reply && input.text) replySpeechSubmitted = true;
-      // Count every submitted phrase once, including progress spoken before
-      // the final reply. Buffered phrases are not submitted until this point.
+      if (input.text) replySpeechSubmitted = true;
+      // Count each phrase when it is submitted to speech synthesis.
       firstTtsPhraseSubmittedAt ??= this.now();
       this.turnTtsChars += input.text.length;
       this.noteSonicRequest(traceId, ttsTransportReadyAt !== null);
@@ -2360,10 +2354,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       ttsReplyFinalized = true;
 
       if (!streamingReplyStarted) {
-        const completeShortReply = withoutRepeatedProgressCue(
-          initialReplyBuffer.trim(),
-          spokenProgressCues,
-        );
+        const completeShortReply = initialReplyBuffer.trim();
         initialReplyBuffer = "";
         if (SPOKEN_TRANSCRIPT_RE.test(completeShortReply)) {
           sendTtsPhrase(ensureTts(), {
@@ -2399,13 +2390,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           continueContext: false,
         });
         pendingPhrase = null;
-      } else if (spokenProgressCues.length > 0) {
-        // Only progress was spoken: the reply repeated it or had no speech.
-        // The context already carries the cue text, so an empty continue:false
-        // request just closes it, like the Sonic adapter's finish(). If the
-        // provider already closed that context, the cue's playback is over.
-        if (tts) sendTtsPhrase(tts, { text: "", continueContext: false });
-        else endPlayback();
       }
     };
 
@@ -2475,32 +2459,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             "[voice-session] Eliza response headers",
           );
         },
-        onProgress: (text: string) => {
-          if (this.currentVoiceTurnId !== traceId || abort.signal.aborted)
-            return;
-          this.send({ t: "progress", text, traceId });
-          // Progress cues are deliberately non-authoritative: they keep a slow
-          // action audible without entering the reply buffer or being persisted
-          // as an assistant answer. The next authoritative delta continues the
-          // same TTS context and normal terminal cleanup closes it.
-          const stream = ensureTts();
-          if (pendingPhrase !== null) {
-            sendTtsPhrase(stream, {
-              text: pendingPhrase,
-              continueContext: true,
-            });
-            pendingPhrase = null;
-          }
-          sendTtsPhrase(stream, { text, continueContext: true }, false);
-          spokenProgressCues.push(text);
-          logger.info(
-            {
-              traceId,
-              elapsedMs: this.now() - responseStartedAt,
-            },
-            "[voice-session] action progress cue",
-          );
-        },
         // Content-free activity names are shown, never spoken or saved.
         onActivity: (label: string) => {
           if (this.currentVoiceTurnId !== traceId || abort.signal.aborted)
@@ -2543,25 +2501,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // runtime's later terminal metadata.
         if (!streamingReplyStarted) {
           initialReplyBuffer += delta;
-          // Hold a cue's length longer so a repeated cue is complete before
-          // its sentence boundary is inspected.
-          if (
-            initialReplyBuffer.length <
-            VOICE_TTS_STREAMING_START_CHARS +
-              spokenProgressCues.reduce(
-                (length, cue) => length + cue.length + 1,
-                0,
-              )
-          ) {
+          if (initialReplyBuffer.length < VOICE_TTS_STREAMING_START_CHARS)
             return;
-          }
           streamingReplyStarted = true;
-          const buffered = withoutRepeatedProgressCue(
-            initialReplyBuffer,
-            spokenProgressCues,
-          );
+          queueStreamingPhrases(phrase.push(initialReplyBuffer));
           initialReplyBuffer = "";
-          queueStreamingPhrases(phrase.push(buffered));
           return;
         }
         queueStreamingPhrases(phrase.push(delta));
@@ -3040,47 +2984,6 @@ function normalizeVoiceWords(value: string): string[] {
     .replace(/[^a-z0-9' ]+/g, " ")
     .split(/\s+/)
     .filter(Boolean);
-}
-
-const SENTENCE_END_RE = /[.!?…]+["'”’)\]]*(?=\s|$)/gu;
-
-/** Compare cue and reply wording, ignoring case, punctuation and a "for you"/"now" tail. */
-function normalizeProgressCueWords(value: string): string {
-  return value
-    .toLocaleLowerCase("en-US")
-    .replace(/['’]/gu, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim()
-    .replace(/(?: (?:for you|now)){1,2}$/u, "");
-}
-
-/**
- * Drop the leading reply sentences that only repeat a progress cue already
- * spoken this turn ("Opening Calendar for you." twice), keeping any new part.
- */
-function withoutRepeatedProgressCue(
-  reply: string,
-  spokenCues: readonly string[],
-): string {
-  if (spokenCues.length === 0) return reply;
-  const cues = new Set(spokenCues.map(normalizeProgressCueWords));
-  let remaining = reply;
-  while (remaining) {
-    let repeatedEnd = 0;
-    for (const end of [
-      ...Array.from(
-        remaining.matchAll(SENTENCE_END_RE),
-        (m) => m.index + m[0].length,
-      ),
-      remaining.length,
-    ]) {
-      const lead = normalizeProgressCueWords(remaining.slice(0, end));
-      if (lead && cues.has(lead)) repeatedEnd = end;
-    }
-    if (repeatedEnd === 0) break;
-    remaining = remaining.slice(repeatedEnd).trimStart();
-  }
-  return remaining;
 }
 
 /** Conservative residual-echo filter: never reject one- or two-word speech. */

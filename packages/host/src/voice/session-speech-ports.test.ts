@@ -5,10 +5,6 @@ import ts from "typescript";
 import { afterEach, expect, test } from "vitest";
 import { listenLoopbackHttp } from "../../../app/test/fixtures/loopback-server.ts";
 import type { CartesiaInkRealtimeEvent } from "./cartesia-ink";
-import {
-  CartesiaSonicTtsAdapter,
-  type CartesiaWebSocketLike,
-} from "./cartesia-sonic-tts";
 import { VOICE_STREAM_PROTOCOL } from "./eliza-sse-bridge";
 import { createLocalRuntimeConversationFetch } from "./local-runtime-conversation-fetch";
 import type { ServerControlFrame } from "./protocol";
@@ -292,46 +288,8 @@ test("injected Ink/Sonic ports retain partial/final/audio/navigation through the
   expect(f.transportClosed).toBe(1);
   expect(f.sttCancelled).toBe(1);
 });
-test("a final reply that repeats the spoken progress cue is not spoken twice; new or different text still is", async () => {
+test("ignores interim cues and reads the full final model reply", async () => {
   const cue = "Opening Calendar for you.";
-  const detail =
-    "Your drink coffee event is at nine on Thursday, and nothing else is on the calendar after it today.";
-  for (const [reply, newSpeech] of [
-    [cue, ""],
-    ["opening calendar now! Your coffee is at 9.", "Your coffee is at 9."],
-    ["Calendar's open.", "Calendar's open."],
-    [`${cue} ${detail}`, detail],
-    [`Not ${cue}`, `Not ${cue}`],
-  ]) {
-    const f = await setup();
-    f.respond(
-      [
-        { type: "status", kind: "thinking", label: cue },
-        { type: "done", text: reply },
-      ]
-        .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
-        .join(""),
-    );
-    f.session.start();
-    f.emit({ type: "connected", raw: {} });
-    f.emit({ type: "start-of-turn", transcript: "", raw: {} });
-    f.emit({ type: "end-of-turn", transcript: "open calendar", raw: {} });
-    // The turn only finishes once a continue:false request closes the context.
-    await until(() => f.control.some((frame) => frame.t === "usage"));
-    expect(f.control).toContainEqual(
-      expect.objectContaining({ t: "progress", text: cue }),
-    );
-    expect(f.control.some((frame) => frame.t === "reply_complete")).toBe(true);
-    expect(f.phrases[0]).toBe(cue);
-    expect(f.phrases.slice(1).join(" ").replace(/\s+/g, " ").trim()).toBe(
-      newSpeech,
-    );
-    f.session.bye();
-  }
-});
-test("one model acknowledgment is removed from the reply while remaining model text is preserved", async () => {
-  const cue = "Opening Calendar for you.";
-  // Ordinary model reply text; no runtime-manufactured cue exists any more.
   const replyPrefix = "Here is your week.";
   for (const detail of ["New content.", "New content. ".repeat(24), ""]) {
     const f = await setup();
@@ -351,17 +309,8 @@ test("one model acknowledgment is removed from the reply while remaining model t
     f.emit({ type: "start-of-turn", transcript: "", raw: {} });
     f.emit({ type: "end-of-turn", transcript: "open calendar", raw: {} });
     await until(() => f.control.some((frame) => frame.t === "usage"));
-    // Only the admitted model label is progress. The provisional "On it."
-    // does not create a second cue or become authoritative reply speech.
-    expect(
-      f.control
-        .filter((frame) => frame.t === "progress")
-        .map((frame) => frame.text),
-    ).toEqual([cue]);
-    expect(f.phrases[0]).toBe(cue);
-    expect(f.phrases.slice(1).join(" ").replace(/\s+/g, " ").trim()).toBe(
-      `${replyPrefix} ${detail}`.trim(),
-    );
+    expect(f.control.some((frame) => frame.t === "progress")).toBe(false);
+    expect(f.phrases.join(" ").replace(/\s+/g, " ").trim()).toBe(reply.trim());
     expect(f.control.some((frame) => frame.t === "reply_complete")).toBe(true);
     expect(f.control.some((frame) => frame.t === "error")).toBe(false);
     f.session.bye();
@@ -433,120 +382,11 @@ test("activity names are shown in order but never spoken", async () => {
         frame.t === "progress" ? frame.text : frame.label,
       ]),
   ).toEqual([
-    ["progress", cue],
     ["activity", "Using Calendar"],
     ["activity", "Using Notes"],
   ]);
-  expect(f.phrases.join(" ").replace(/\s+/g, " ").trim()).toBe(
-    `${cue} ${reply}`,
-  );
+  expect(f.phrases.join(" ").replace(/\s+/g, " ").trim()).toBe(reply);
   f.session.bye();
-});
-test("a reply that arrives after Cartesia closes the idle cue context is still spoken", async () => {
-  const cue = "Let me check your calendar.";
-  const reply = "Nothing on your calendar today. It's clear.";
-  // race: the idle close wins against the reply's own request.
-  // error: the upstream turn fails after the idle close.
-  for (const mode of ["idle", "race", "error"] as const) {
-    const f = await setup();
-    const generated: { contextId: string; transcript: string }[] = [];
-    const closedContexts = new Set<string>();
-    const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
-    const listeners = new Set<(event: { data: unknown }) => void>();
-    const deliver = (message: Record<string, unknown>) =>
-      setTimeout(() => {
-        for (const listener of [...listeners])
-          listener({ data: JSON.stringify(message) });
-      });
-    const closeContext = (contextId: string) => {
-      closedContexts.add(contextId);
-      deliver({ type: "done", done: true, context_id: contextId });
-    };
-    const socket = {
-      readyState: 1,
-      send(data: string) {
-        const request = JSON.parse(data);
-        if (request.cancel) return;
-        const contextId: string = request.context_id;
-        clearTimeout(idleTimers.get(contextId));
-        if (closedContexts.has(contextId)) return;
-        if (
-          mode === "race" &&
-          generated.some((g) => g.contextId === contextId)
-        ) {
-          closeContext(contextId);
-          return;
-        }
-        if (request.transcript) {
-          generated.push({ contextId, transcript: request.transcript });
-          deliver({ type: "chunk", data: "AQIDBA==", context_id: contextId });
-        }
-        if (!request.continue) closeContext(contextId);
-        else if (mode !== "race")
-          idleTimers.set(
-            contextId,
-            setTimeout(() => closeContext(contextId), 30),
-          );
-      },
-      close() {},
-      addEventListener(type: string, listener: (event: never) => void) {
-        if (type === "message") listeners.add(listener);
-      },
-      removeEventListener(type: string, listener: (event: never) => void) {
-        if (type === "message") listeners.delete(listener);
-      },
-    };
-    const session = new VoiceSession({
-      ...f.config,
-      sessionId: crypto.randomUUID(),
-      jti: crypto.randomUUID(),
-      speechPorts: {
-        ...f.ports,
-        tts: new CartesiaSonicTtsAdapter({
-          apiKey: "synthetic-cartesia-key",
-          voiceId: "11111111-1111-4111-8111-111111111111",
-          websocketFactory: () => socket as unknown as CartesiaWebSocketLike,
-        }),
-      },
-    });
-    cleanups.push(() => session.bye());
-    f.respond(
-      [
-        { type: "status", kind: "thinking", label: cue },
-        mode === "error"
-          ? { type: "error", message: "upstream failed" }
-          : { type: "done", text: reply },
-      ]
-        .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
-        .join(""),
-      150,
-    );
-    session.start();
-    f.emit({ type: "connected", raw: {} });
-    f.emit({ type: "start-of-turn", transcript: "", raw: {} });
-    f.emit({ type: "end-of-turn", transcript: "what's on today", raw: {} });
-    await until(() => f.control.some((frame) => frame.t === "usage"));
-    // One speaking phase spans both contexts and always ends before usage.
-    expect(
-      f.control
-        .map((frame) => frame.t)
-        .filter((t) => ["speaking_start", "speaking_end", "usage"].includes(t)),
-    ).toEqual(["speaking_start", "speaking_end", "usage"]);
-    expect(f.control.some((frame) => frame.t === "error")).toBe(
-      mode === "error",
-    );
-    expect(f.control.some((frame) => frame.t === "reply_complete")).toBe(
-      mode !== "error",
-    );
-    expect(generated.map((g) => g.transcript)).toEqual(
-      mode === "error" ? [cue] : [cue, reply],
-    );
-    expect(new Set(generated.map((g) => g.contextId)).size).toBe(
-      generated.length,
-    );
-    expect(f.audio).toHaveLength(generated.length);
-    session.bye();
-  }
 });
 test("actual playback drain reopens uplink immediately, while stale completion cannot release it", async () => {
   const f = await setup();
