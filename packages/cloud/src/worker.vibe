@@ -66,7 +66,12 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
   if (inference || path === speechRoute + "/session") await refreshPaidAccess(env, db, account)
   if (speech) return speechRequest(request, env, db, account)
   if (inference) return inferenceRequest(request, env, db, account, workerFetch)
-  if (google) return googleRequest(request, env, db, account)
+  if (google) {
+    const response = await googleRequest(request, env, db, account)
+    if (response.ok && path === "/api/v1/eliza/google/gmail/attachment" && await sessionAccount(request, db) !== account)
+      return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+    return response
+  }
   if (billing) return billingRequest(request, env, db, account)
   if (extension) return extension(request, env, db, account)
   return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })

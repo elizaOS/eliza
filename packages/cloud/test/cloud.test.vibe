@@ -2274,7 +2274,7 @@ module node {
         method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ ticket }),
       }), env)
       const refused = [
-        (await redeem(deviceTransfer, { cookie: "__Host-eliza-session=" + owner.access })).status,
+        (await redeem(deviceTransfer, { origin: web, cookie: "__Host-eliza-session=" + owner.access })).status,
         (await redeem(deviceTransfer, otherDevice)).status,
         (await redeem((deviceTransfer.startsWith("0") ? "1" : "0") + deviceTransfer.slice(1), ownDevice)).status,
       ]
