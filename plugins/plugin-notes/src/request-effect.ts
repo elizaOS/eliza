@@ -4,8 +4,10 @@ import {
   type NotesRequestInterpretation,
   normalizeNotesRequestInterpretation,
   type RequestOperationClassification,
+  type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEvaluator,
 } from "@elizaos/core";
+import { getNotesService } from "./service.js";
 
 type ParsedNotesEffect = NotesRequestInterpretation & {
   readonly classification: RequestOperationClassification;
@@ -143,3 +145,49 @@ Include both reads and writes without duplicates for compound requests. Classifi
       };
     },
   };
+
+/** Route a single admitted named read through the canonical Notes executor. */
+export const namedNoteReadEvaluator: ResponseHandlerEvaluator = {
+  name: "notes.named-note-read",
+  priority: 80,
+  deterministicActions: ["NOTES_GET"],
+  shouldRun: ({ messageHandler, userRoles, wholeRequestOwner }) => {
+    const { plan } = messageHandler;
+    const interpretation = plan.notesRequestInterpretation;
+    return (
+      userRoles?.includes("OWNER") === true &&
+      messageHandler.processMessage === "RESPOND" &&
+      plan.notesRequestEffect === "read_only" &&
+      interpretation?.status === "explicit" &&
+      interpretation.operations.length === 1 &&
+      interpretation.operations[0] === "get" &&
+      plan.intents?.length === 1 &&
+      plan.contexts?.length === 1 &&
+      plan.contexts[0] === "notes" &&
+      !plan.notesRequestHostRestriction &&
+      !wholeRequestOwner &&
+      !plan.deterministicToolCall &&
+      !plan.candidateActions?.some(
+        (action) => action !== "NOTES" && action !== "NOTES_GET",
+      )
+    );
+  },
+  evaluate({ runtime, message }) {
+    try {
+      const notes = getNotesService(runtime).findNotesNamedInText(
+        message.content.text ?? "",
+      );
+      if (notes.length === 1)
+        return {
+          requiresTool: true,
+          clearReply: true,
+          deterministicToolCall: {
+            name: "NOTES_GET",
+            params: { noteId: notes[0].id },
+          },
+        };
+    } catch (error) {
+      runtime.reportError("notes.named-read-routing", error);
+    }
+  },
+};
