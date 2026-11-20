@@ -31,6 +31,7 @@ async function ownerModelAcknowledgment(
     acknowledgment = "Let me check.",
     toolCategories = [] as string[],
     toolName = "LOOKUP",
+    routeDirectly = false,
     guestInRoom = false,
     contextRead = false,
     contextReference = "CHOICE",
@@ -171,6 +172,8 @@ async function ownerModelAcknowledgment(
     validate: async () => true,
     handler: async () => {
       events.push(event);
+      // This schedule ends at dispatch so it needs no final-reply model stub.
+      if (routeDirectly) controller.abort();
       return { success: true, text: "private result" };
     },
   });
@@ -191,6 +194,18 @@ async function ownerModelAcknowledgment(
       )
     : [lookup(toolName, "tool")];
   for (const tool of tools) runtime.registerAction(tool);
+  if (routeDirectly) {
+    runtime.registerResponseHandlerEvaluator({
+      name: "owner-ack-lookup-route",
+      priority: 65,
+      deterministicActions: [toolName],
+      shouldRun: () => true,
+      evaluate: () => ({
+        clearReply: true,
+        deterministicToolCall: { name: toolName, params: { query: "entry" } },
+      }),
+    });
+  }
   const readParticipants = runtime.getParticipantsForRoom.bind(runtime);
   if (
     changeAudienceBeforeAcknowledgment ||
@@ -400,6 +415,16 @@ describe("awaited owner model acknowledgments", () => {
     expect(result.acknowledgments).toEqual(["Let me check."]);
     expect(result.events).toEqual(["ack-start", "ack-end", "tool"]);
     expect(result.chunks).toEqual([]);
+  });
+
+  it("preserves the validated model cue on a directly routed read", async () => {
+    const result = await ownerModelAcknowledgment(true, {
+      acknowledgment: "Let me check your calendar.",
+      routeDirectly: true,
+    });
+    expect(result.plannerCalls).toBe(0);
+    expect(result.events).toEqual(["ack-start", "ack-end", "tool"]);
+    expect(result.acknowledgments).toEqual(["Let me check your calendar."]);
   });
 
   it("awaits a wait-cue-led model acknowledgment in its own words", async () => {

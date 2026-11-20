@@ -1077,6 +1077,8 @@ export async function runV5MessageRuntimeStage1(
         earlyReplyText = "";
       }
     }
+    // A directly routed read can still wait on I/O. Its validated cue follows
+    // the same playback preemption rules as a cue for a planned read.
     // Progress does not satisfy final delivery, persist an answer, or refresh history.
     getStreamingContext()?.abortSignal?.throwIfAborted();
     if (
@@ -1085,7 +1087,6 @@ export async function runV5MessageRuntimeStage1(
       !addressedToOtherParticipant &&
       messageHandler.processMessage === "RESPOND" &&
       prePatchStageOneReplyEffectStatus === "pending" &&
-      !messageHandler.plan.deterministicToolCall &&
       earlyReplyText.trim().length > 0
     ) {
       await args.onPlanningAcknowledgment(
