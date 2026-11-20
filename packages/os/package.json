@@ -46,7 +46,7 @@
     "@elizaos/plugin-browser": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.6",
+    "@biomejs/biome": "2.6.7",
     "@types/bun": "1.4.2",
     "@types/node": "25.6.2",
     "@typescript/native": "npm:typescript@^7.0.2",

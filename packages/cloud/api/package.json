@@ -88,7 +88,7 @@
   "devDependencies": {
     "@elizaos/plugin-todos": "workspace:*",
     "@elizaos/plugin-web-search": "workspace:*",
-    "@biomejs/biome": "2.6.6",
+    "@biomejs/biome": "2.6.7",
     "@types/pg": "^8.23.1",
     "@types/ws": "^8.18.2",
     "@typescript/native": "npm:typescript@^7.0.2",
