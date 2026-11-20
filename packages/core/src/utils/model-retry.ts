@@ -52,17 +52,13 @@ function* retryEvidenceNodes(error: unknown): Generator<object> {
 }
 
 /**
- * Read the provider's retry delay once for both retry admission and cooldowns.
- * The millisecond header takes precedence over Retry-After seconds/date, matching
- * the SDK transport contract. Invalid values fall through to the other header;
- * missing or invalid hints leave the bounded exponential policy in control.
+ * Read one node's retry delay. The millisecond header takes precedence over
+ * Retry-After seconds/date, matching the SDK transport contract. Invalid
+ * values fall through to the other header. A node with no usable hint returns
+ * undefined so the graph walk can try the wrapped call.
  */
-export function providerRetryAfterMs(
-	error: unknown,
-	now = Date.now(),
-): number | undefined {
-	const headers = (error as { responseHeaders?: unknown } | undefined)
-		?.responseHeaders;
+function retryAfterMsOnNode(node: object, now: number): number | undefined {
+	const headers = (node as { responseHeaders?: unknown }).responseHeaders;
 	if (!headers || typeof headers !== "object") return undefined;
 	let milliseconds: string | undefined;
 	let secondsOrDate: string | undefined;
@@ -89,6 +85,24 @@ export function providerRetryAfterMs(
 			: undefined;
 	const at = Date.parse(secondsOrDate);
 	return Number.isFinite(at) ? Math.max(0, at - now) : undefined;
+}
+
+/**
+ * Read the provider's retry delay once for both retry admission and cooldowns.
+ * The AI SDK `RetryError` envelope carries no headers; the 429 and its
+ * Retry-After live on `lastError`, `cause`, or `errors[]`. The first usable
+ * hint in that order wins. Missing or invalid hints leave the bounded
+ * exponential policy in control.
+ */
+export function providerRetryAfterMs(
+	error: unknown,
+	now = Date.now(),
+): number | undefined {
+	for (const node of retryEvidenceNodes(error)) {
+		const delay = retryAfterMsOnNode(node, now);
+		if (delay !== undefined) return delay;
+	}
+	return undefined;
 }
 
 const PERMANENT_QUOTA_CODES = new Set([
@@ -145,7 +159,7 @@ export function providerRateLimitRetryAt(
 		const delay =
 			typeof explicit === "number" && Number.isFinite(explicit) && explicit >= 0
 				? explicit
-				: providerRetryAfterMs(node, now);
+				: retryAfterMsOnNode(node, now);
 		const deadline = delay === undefined ? Number.NaN : now + delay;
 		if (Number.isFinite(deadline) && deadline > now) return deadline;
 	}
