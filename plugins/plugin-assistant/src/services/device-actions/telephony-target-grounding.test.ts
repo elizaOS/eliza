@@ -241,6 +241,25 @@ describe("other requests ground the model's recipient", () => {
     ).toBe("number");
   });
 
+  it.each([
+    ["text Sophie hi", "Sophie", "hi"],
+    ["send Sophie a text saying hi", "Sophie", "hi"],
+    ["send Phil a text saying hi", "Phil", "hi"],
+    ["send Brooke a text: ok", "Brooke", "ok"],
+  ])(
+    "keeps the name in %j when the body is inside it",
+    (request, query, body) => {
+      const operation = {
+        type: "sms_compose",
+        target: { kind: "contact", query },
+        body,
+      } as DeviceOperation;
+      expect(groundTelephonyTarget(operation, request).operation).toEqual(
+        operation,
+      );
+    },
+  );
+
   it("grounds a keypad prefill and allows an empty keypad", () => {
     expect(
       groundTelephonyTarget(
