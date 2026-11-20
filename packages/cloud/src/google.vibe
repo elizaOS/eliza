@@ -2,8 +2,11 @@
 import type { Client } from "pg"
 import { canReadCloudCalendarReminder } from "../gen/cloud.effect.vibe"
 import { Aead, Digest, SecureRandom } from "effect/crypto"
+import { Base64 } from "effect/encoding"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpServerResponse, HttpServerRequest, HttpIncomingMessage } from "effect/http"
-import { googleCalendarFeed, googleCalendarItem, googleGmailMessage, googleGmailTriage, googleReplyTarget, hasControlCharacter, mailAddress, GoogleReadInput, type GoogleReadApi } from "./google-read.vibe"
+import { googleCalendarFeed, googleCalendarItem, googleGmailAttachment, googleGmailMessage, googleGmailTriage, googleReplyTarget, hasControlCharacter, mailAddress, GoogleAttachmentMissing, GoogleAttachmentStale, GoogleAttachmentUnsupported, GoogleReadInput, type GoogleReadApi } from "./google-read.vibe"
+
+import { boundedText } from "./providers/bounded-body.vibe"
 
 export type GoogleEnv = {
   PUBLIC_API_ORIGIN: string
@@ -303,11 +306,13 @@ effect function accessFor(env: GoogleEnv, db: Client, account: string, capabilit
 }
 
 function googleReadApi(access: string): GoogleReadApi<ProviderUnavailable | GoogleNotFound, HttpClient.HttpClient> {
-  return effect (url: string) => {
+  return effect (url: string, maxBytes?: number) => {
     const response = try http(url, { access })
     if (response.status === 404) throw new GoogleNotFound()
     if (!ok(response.status)) throw new ProviderUnavailable()
-    return timeout(response.json, "10 seconds") catch effect () => { throw new ProviderUnavailable() }
+    if (maxBytes === undefined) return timeout(response.json, "10 seconds") catch effect () => { throw new ProviderUnavailable() }
+    const text = timeout(boundedText(response, maxBytes), "10 seconds") catch effect () => { throw new ProviderUnavailable() }
+    return Effect.try(() => JSON.parse(text) as unknown) catch effect () => { throw new ProviderUnavailable() }
   }
 }
 
@@ -655,6 +660,15 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
     if (path === "/status") return try status(db, env, account)
     const selected = url.searchParams.get("grantId")
     const now = new Date(try Clock.currentTimeMillis).toISOString()
+    if (path === "/gmail/attachment") {
+      if (!selected || !uuid.test(selected)) throw new BadRequest()
+      const api = googleReadApi(try accessFor(env, db, account, "mail", selected))
+      const { bytes, ...file } = try googleGmailAttachment(api, url)
+      const still = try query(db, "SELECT 1 FROM cloud_google_connections WHERE account_id = $1 AND id::text = $2 AND mail", [account, selected])
+      if (!still.rowCount) throw new ConnectionUnavailable()
+      const digest = try (try Digest.Digest).digest(Digest.sha256, bytes)
+      return body(200, { version: 1, accountId: account, ...file, dataBase64: Base64.encode(bytes), sha256: hex(digest), supported: true })
+    }
     if (path === "/gmail/triage" || path === "/gmail/read") {
       const api = googleReadApi(try accessFor(env, db, account, "mail", selected))
       const result = path === "/gmail/triage" ? try googleGmailTriage(api, url, now) : try googleGmailMessage(api, url)
@@ -693,6 +707,9 @@ export function googleRequest(request: Request, env: GoogleEnv, db: Client, acco
     const response = routeGoogle(request, env, db, account) catch (error) => match (error) {
       when BadRequest: body(400, { error: "invalid_request" });
       when GoogleReadInput: body(400, { error: "invalid_request" });
+      when GoogleAttachmentStale: body(409, { error: "google_item_changed" });
+      when GoogleAttachmentMissing: body(404, { error: "google_item_not_found" });
+      when GoogleAttachmentUnsupported: body(415, { error: "google_attachment_unsupported" });
       when ItemChanged: body(409, { error: "google_item_changed" });
       when OperationUncertain: body(409, { error: "google_action_outcome_unknown" });
       when GoogleNotFound: body(404, { error: "google_item_not_found" });

@@ -4,6 +4,7 @@ import { json, owner as ownerOf, type Route, type RouteContext } from "../../htt
 import { sha256Hex } from "../../shared/sealing.vibe"
 import { googleJson, type GoogleFailure } from "../../providers/google.vibe"
 import { holds, useGrant, type GoogleCapability } from "./grant-access.vibe"
+import { attachmentDescriptor, attachmentMaxBytes, attachmentMimeTypes } from "../../google-read.vibe"
 import type { OperationKind } from "./mail-operations.vibe"
 
 module node {
@@ -69,8 +70,7 @@ export interface Attachment {
 type HtmlStatus = "available" | "none"
 type Format = "metadata" | "full"
 
-export const attachmentMaxBytes = 8 * 1024 * 1024
-export const attachmentMimeTypes: ReadonlyArray<string> = ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"]
+export { attachmentMaxBytes, attachmentMimeTypes }
 const gmail = "/gmail/v1/users/me"
 const providerId = /^[A-Za-z0-9_-]{1,256}$/
 const historyPattern = /^\d{1,20}$/
@@ -255,11 +255,7 @@ function htmlText(html: string): string {
 }
 
 function attachmentDescriptors(parts: ReadonlyArray<MailPart>) {
-  return parts.filter((part) => part.filename !== undefined && part.filename !== "").map((part) => {
-    const size = part.body?.size ?? 0
-    const mimeType = mimeToken.test(part.mimeType ?? "") ? (part.mimeType ?? "").toLowerCase() : "application/octet-stream"
-    return { partId: part.partId ?? "", name: part.filename ?? "", mimeType, size, supported: attachmentMimeTypes.includes(mimeType) && size <= attachmentMaxBytes }
-  })
+  return parts.filter((part) => part.filename !== undefined && part.filename !== "").map(attachmentDescriptor)
 }
 
 effect function messageView(grant: ReadGrant, message: MailMessage, selfEmail: string) {
