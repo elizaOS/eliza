@@ -61,11 +61,21 @@ export async function waitForRendererCloudApiOrigin(
   };
 
   while (true) {
-    lastObservation = observeRendererCloudApi(await options.readCloudBase());
-    if (lastObservation.apiOrigin === options.expectedApiOrigin) {
-      return lastObservation;
+    try {
+      lastObservation = observeRendererCloudApi(await options.readCloudBase());
+      if (lastObservation.apiOrigin === options.expectedApiOrigin) {
+        return lastObservation;
+      }
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !/^page\.evaluate: Execution context was destroyed, most likely because of a navigation\.?$/.test(
+          error.message,
+        )
+      ) {
+        throw error;
+      }
     }
-
     const elapsedMs = now() - startedAt;
     if (elapsedMs >= timeoutMs) {
       throw new Error(
