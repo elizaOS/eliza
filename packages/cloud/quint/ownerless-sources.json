@@ -106,7 +106,7 @@
   },
   {
     "source": "packages/cloud/shared/src/types/cloud-worker-env.ts",
-    "sha256": "a1a170da87ded93f7344633d1773dc6f67730e2d79674e93eae8e448cf7a186f",
+    "sha256": "fd67a66df2e1019170e57876fcb5834c791cc23072fb82b32d4cc6e60e3a0e28",
     "reason": "Declares Worker bindings, durable stub interfaces and authenticated request context. Worker services and bound Durable Objects own application state and effects."
   }
 ]
