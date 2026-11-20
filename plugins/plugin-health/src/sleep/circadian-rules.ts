@@ -114,16 +114,22 @@ const RULES: readonly Rule[] = [
       reason: "HealthKit reports isSleeping=true",
     };
   },
-  // hid.idleGt20m — HID idle past the awake-evidence timeout.
+  // hid.idleGt20m — HID idle past the awake-evidence timeout. Only the newest
+  // HID sample counts: a newer sample with recent input ends an older idle.
   function hidIdle(inputs) {
     const hit = findSignal(
       inputs,
       (s) =>
         s.source === "desktop_interaction" &&
-        typeof s.idleTimeSeconds === "number" &&
-        s.idleTimeSeconds >= 20 * 60,
+        typeof s.idleTimeSeconds === "number",
     );
-    if (!hit || hit.ageMs > AWAKE_EVIDENCE_MAX_AGE_MS) return null;
+    if (
+      !hit ||
+      (hit.signal.idleTimeSeconds ?? 0) < 20 * 60 ||
+      hit.ageMs > AWAKE_EVIDENCE_MAX_AGE_MS
+    ) {
+      return null;
+    }
     return {
       name: "hid.idleGt20m",
       contributes: isOvernight(inputs.nowMs, inputs.timezone)
@@ -194,7 +200,8 @@ const RULES: readonly Rule[] = [
       reason: "outbound message within 10 min",
     };
   },
-  // continuity.iphoneDisconnected — paired iPhone absent overnight.
+  // continuity.iphoneDisconnected — paired iPhone absent overnight. Only the
+  // newest continuity report counts: a reconnect ends an older disconnect.
   function continuityIPhone(inputs) {
     if (!isOvernight(inputs.nowMs, inputs.timezone)) return null;
     const hit = findSignal(
@@ -202,10 +209,11 @@ const RULES: readonly Rule[] = [
       (s) =>
         s.source === "mobile_device" &&
         typeof s.platform === "string" &&
-        s.platform.startsWith("macos_continuity") &&
-        s.state !== "active",
+        s.platform.startsWith("macos_continuity"),
     );
-    if (!hit || hit.ageMs > 60 * 60000) return null;
+    if (!hit || hit.signal.state === "active" || hit.ageMs > 60 * 60000) {
+      return null;
+    }
     return {
       name: "continuity.iphoneDisconnected",
       contributes: "sleeping",
