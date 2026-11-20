@@ -1112,6 +1112,8 @@ describe("foreground page history and Maps place requests", () => {
       "navigate to the Ferry Building",
       "how do I get to Coit Tower?",
       "find the nearest pharmacy",
+      "I want to go to Coit Tower",
+      "I'm going to the Ferry Building",
     ]) {
       const result = await judge(f, text, "chat", {
         disposition: "direct",
@@ -1124,7 +1126,14 @@ describe("foreground page history and Maps place requests", () => {
         "MAPS_ROUTE",
       );
     }
-    for (const text of ["open maps", "go to maps", "show me the maps"]) {
+    for (const text of [
+      "open maps",
+      "go to maps",
+      "show me the maps",
+      "I want to open Maps",
+      "I'd like to see the map",
+      "I need to check the map",
+    ]) {
       const result = await judge(f, text, "chat", {
         disposition: "direct",
         viewId: "maps",
