@@ -22,7 +22,7 @@ import java.util.UUID;
 public final class SecretSurfaces {
   private SecretSurfaces() {}
   static final long REVEAL_MILLIS = 30_000, CLIPBOARD_MILLIS = 45_000;
-  private static AlertDialog current;
+  private static volatile AlertDialog current;
   private static PasswordSurfaces.Hold currentSurface;
   private static final NativeDeadlineTimer REVEAL_TIMER = new NativeDeadlineTimer();
   private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -67,6 +67,11 @@ public final class SecretSurfaces {
       Runnable close = () -> { if (current == owned) dismiss(); };
       if (Looper.myLooper() == Looper.getMainLooper()) close.run(); else MAIN.post(close);
     };
+  }
+
+  static Runnable currentDismissal() {
+    AlertDialog owned = current;
+    return () -> { if (owned != null && current == owned) dismiss(); };
   }
 
   /** Hide, the timer and every host close end the surface here or in the dismiss listener, whichever is first. */
