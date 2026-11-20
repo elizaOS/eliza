@@ -294,7 +294,11 @@ effect function link(env: GoogleEnv, config: Config, db: Client, account: string
     )
     INSERT INTO cloud_google_connections (account_id, id, subject, email, mail, calendar, send_mail, trash_mail, write_calendar, refresh_cipher)
     SELECT $1::text, $3::uuid, $4::text, $5::text, $6::boolean, $7::boolean, $8::boolean, $9::boolean, $10::boolean, $11::text
-    WHERE $2::text IS NULL OR EXISTS (SELECT 1 FROM approved)
+    WHERE ($2::text IS NOT NULL AND EXISTS (SELECT 1 FROM approved))
+       OR ($2::text IS NULL AND EXISTS (
+         SELECT 1 FROM cloud_sign_in_identities
+         WHERE account_id = $1 AND provider = 'google' AND provider_subject = $4
+       ))
     ON CONFLICT (account_id) DO UPDATE SET
       id = EXCLUDED.id, subject = EXCLUDED.subject, email = EXCLUDED.email, mail = EXCLUDED.mail,
       calendar = EXCLUDED.calendar, send_mail = EXCLUDED.send_mail, trash_mail = EXCLUDED.trash_mail, write_calendar = EXCLUDED.write_calendar, refresh_cipher = EXCLUDED.refresh_cipher, linked_at = now(), last_used_at = NULL

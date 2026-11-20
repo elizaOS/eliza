@@ -6,6 +6,7 @@ export interface FakeGrant {
   readonly refreshToken: string;
   readonly subject: string;
   readonly email: string;
+  readonly beforeUserinfoResponse?: () => Promise<void>;
   scopes: string[];
 }
 
@@ -203,7 +204,10 @@ function revoke(state: GoogleFakeState, request: FakeRequest): FakeAnswer {
 
 export function mountGoogleToken(state: GoogleFakeState): FakeHandler {
   return async (request) => {
-    if (request.method === "GET" && request.path === "/v1/userinfo") return switched(state, request, () => userinfo(state, request));
+    if (request.method === "GET" && request.path === "/v1/userinfo") {
+      await bearerGrant(state, request)?.beforeUserinfoResponse?.();
+      return switched(state, request, () => userinfo(state, request));
+    }
     if (request.method !== "POST") return undefined;
     if (request.path === "/token" && form(request).get("grant_type") === "authorization_code") return switched(state, request, () => redeemCode(state, request));
     if (request.path === "/token" && form(request).get("grant_type") === "refresh_token") {
