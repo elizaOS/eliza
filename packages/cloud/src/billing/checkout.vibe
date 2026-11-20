@@ -59,6 +59,9 @@ export type CheckoutAnswer =
     }
   | { readonly status: "completed" | "stale_intent" | "expired"; readonly commandId: string }
 
+type CheckoutAnswerFailure = Refused | StoreFailure |
+  Effect.Error<ReturnType<typeof readSubscription>> | Effect.Error<ReturnType<typeof applyCheckoutEvent>>
+
 const wireStatus: Readonly<Record<CheckoutPhase, string>> = { NotStarted: "not_started", Opening: "opening", Open: "open", Completed: "completed", Expired: "expired" }
 const wirePresentation: Readonly<Record<Presentation, "mobile" | "embedded" | "shared">> = { Mobile: "mobile", Embedded: "embedded", Shared: "shared" }
 const noReturn: ReturnUrl = { origin: "", path: "" }
@@ -273,7 +276,7 @@ effect function openAnswer(stored: StoredCheckout, session: StripeCheckoutSessio
   }
 }
 
-export effect function answerCheckout(stored: StoredCheckout, known: StripeCheckoutSession | undefined) {
+export effect function answerCheckout(stored: StoredCheckout, known: StripeCheckoutSession | undefined): CheckoutAnswer!CheckoutAnswerFailure!(Store | StripeContext) {
   const store = try Store
   const now = try Clock.currentTimeMillis
   const subscription = try store.transaction((tx) => readSubscription(tx, stored.organizationId))
@@ -375,7 +378,7 @@ export effect function startCheckout(caller: Signed, request: StartRequest) {
   let state = opened.stored.state
   const deadline = staleAt(state.receipt)
   const terms = { organizationId, commandId, customerId, priceId, expiresAt: state.sessionExpiresAt, returns: providerReturns(state.returns, deployment.settings.api) }
-  const reply = try dispatchOnce<StripeCheckoutSession, StoreFailure | RowCorrupt | NotAState | Rejected | Refused, Store | StripeContext>({
+  const reply = try dispatchOnce<StripeCheckoutSession, StoreFailure | Effect.Error<ReturnType<typeof recordReply>>, Store | StripeContext>({
     claim: Effect.void,
     send: providerReply(createCheckoutSession(terms, { idempotencyKey: renderProviderKey(state.receipt.providerKey), timeout: Math.max(1, Math.min(providerTimeout, deadline - now)) })),
     record: effect (seen: ProviderReply<StripeCheckoutSession>, at: number) => {
