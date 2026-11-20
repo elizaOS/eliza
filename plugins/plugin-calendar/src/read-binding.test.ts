@@ -199,7 +199,7 @@ describe("Calendar operation bindings", () => {
       const bindings = calendarReadBindingField.parse?.(
         JSON.stringify([
           {
-            intentId: "1",
+            intentId: "int:1",
             operation: "next_event",
             execution: "required",
             source: "builtin",

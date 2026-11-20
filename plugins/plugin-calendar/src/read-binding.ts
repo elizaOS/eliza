@@ -135,10 +135,14 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         (item.execution !== "required" && item.execution !== "conditional")
       )
         return null;
-      const index = /^(?:intent:)?([1-9][0-9]*)$/.exec(item.intentId)?.[1];
+      const index = /^(?:(?:intent|int):)?([1-9][0-9]*)$/.exec(
+        item.intentId,
+      )?.[1];
       if (
         !index &&
-        (item.intentId.startsWith("intent:") || !item.intentId.includes(" "))
+        (item.intentId.startsWith("intent:") ||
+          item.intentId.startsWith("int:") ||
+          !item.intentId.includes(" "))
       )
         return null;
       const intentId = index ? `intent:${index}` : item.intentId;
