@@ -35,6 +35,25 @@ The spec format, naming rules and everything the tools accept are in
   judgment, not a validation. Agreement is not the default, candor over
   sycophancy.
 
+## Pull requests
+
+- **Base.** Open every pull request against `vibestack`, the primary branch.
+- **Spec conformance.** Verify through the application's normal entry
+  points that the top-level stories, rules, and Quint models are fully
+  implemented and integrated. Every change must follow them exactly.
+  Cite the relevant stories and rules and show end-to-end evidence of
+  conformance in the PR. [Top-level spec](spec/index.md)
+- **Verification.** Run the full `pnpm verify` suite for every PR. Report
+  the results and merge only once all checks pass on the latest revision,
+  including Quint, Dafny, Bombadil, and every other repository test and CI check.
+- **Evidence.** For every code change, show reproducible before-and-after
+  results under comparable conditions. For every UI change, attach
+  before-and-after screenshots of the same flow and state.
+- **Diff quality.** Keep changes focused and remove unnecessary files
+  and dead, redundant, or superseded code and legacy paths. Follow the
+  code comment ban and satisfy every Vibestack requirement and TypeScript
+  convention before merging. [Contributing guide](CONTRIBUTING.md#pull-requests)
+
 ## Loading skills
 
 The canonical skill files are committed in `.agents/skills/`, including
@@ -157,9 +176,10 @@ Check each point before you write, and again after.
   duplicates or one-offs.
 - **Compact.** Reread for needless branches, `try` blocks, wrappers and
   indirection. Shorter, if it reads as well.
-- **No code comments.** Use clear names and structure to make the code readable.
-  Use comment syntax only for required tool directives that need it, such as
-  `//@` contracts and Vitest environment directives.
+- **No prose comments in code.** Use clear names and structure to make the
+  code readable. Reserve comment syntax for required machine-readable
+  directives, including spec citations, `//@` contracts, and Vitest
+  environment directives.
 - **Scripts and tests.** Extend existing ones before adding; no new scripts.
   Delete code that becomes unused. Tests follow "Tests" below.
 - **Speed.** Keep checks and CI fast: a small change reruns only what it
@@ -377,6 +397,8 @@ How `pnpm check` runs them, in its `tests` stage:
 
 ## Definition of done
 
+- A PR is ready to merge when it satisfies every requirement under
+  [Pull requests](#pull-requests).
 - `pnpm check` is where step 3 of the sync skill's loop stops: what is
   left waits on the user.
 - In the vibestack repository, if you changed `vibestack/`, `pnpm selftest`
