@@ -7,4 +7,4 @@ export {
   readPublisherPolicy,
   verifyPublicationGraph,
 } from "./publication.vibe"
-export { buildAndroidTrust, composeTrustSource } from "./trust-build.vibe"
+export { buildAndroidTrust, composeTrustSource, TrustBuildFailed, type BuildAndroidTrustOptions, type ComposeTrustOptions, type TrustHostPolicy } from "./trust-build.vibe"
