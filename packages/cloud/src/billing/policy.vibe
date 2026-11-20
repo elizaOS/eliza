@@ -3,7 +3,7 @@ import { hasAllowance, isPaid, rankOf, type PlanKey } from "../../gen/cloud__bil
 import { hasPaidLimits, type SubscriptionStatus } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import type { FundingLane } from "../../gen/cloud__shared__metering.effect.vibe"
 import type { MeteredService } from "../../gen/cloud__shared__types.ts"
-import { parsePlanKey } from "./plans.vibe"
+import { parsePlanKey, wirePlanKey } from "./plans.vibe"
 import { type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 
 export type { FundingLane, MeteredService, SubscriptionStatus }
@@ -16,6 +16,10 @@ export interface Policy {
   readonly source: PlanSource
   readonly effectiveUntil: number | null
   readonly status: SubscriptionStatus
+}
+
+export function planSummary(policy: Policy) {
+  return { key: wirePlanKey(policy.planKey), source: policy.source, effectiveUntil: policy.effectiveUntil }
 }
 
 export error PolicyUnreadable { organizationId: string; problem: string }

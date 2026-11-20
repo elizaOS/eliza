@@ -4,7 +4,10 @@ A grant code gives an organization a paid plan for a fixed time, or for
 life, without a payment. The operator mints codes with
 `elizaos-cloud grants mint` (`spec/cloud/operator.md`); a person redeems one
 with `POST /api/v1/subscription/redeem` `{code, idempotencyKey}` and gets
-`{replayed, grant, entitlement}`. One `Code` is one row of `grant_codes`,
+`{replayed, grant, entitlement}`. The grant uses the billing snapshot's
+grant fields. The entitlement contains the effective plan summary as
+`{plan: {key, source, effectiveUntil}}`. The idempotency key has 8 to 128 ASCII
+letters, digits or characters from `._:-`. One `Code` is one row of `grant_codes`,
 found by the keyed digest of the normalized code; text that matches no row
 is redeemed against `initial`, so an unknown code and an unusable code get
 the same answer. The grants a code issued are kept in its row, one per
@@ -17,10 +20,11 @@ Sources are develop `packages/cloud/shared/src/db/repositories/subscription-gran
 one product redeems codes from its plan screen and reads the grant in the
 billing snapshot; another vendors the call and keeps it switched off.
 
-The shell redeems in one store transaction: it locks the organization, then
-the code row, reads `now` from the store's clock, and passes in what other
-rows say (account status, idempotency keys of the organization's other
-grants, the family index, an open or unknown paid subscription). The
+The shell redeems in one store transaction. It locks the organization, the
+account, and the code row in that order. It reads `now` from the store's
+clock once the rows are locked and passes in what the store says about the
+account, idempotency keys and families of its grants, and an open or unknown
+paid subscription. The
 effective plan, where a paid subscription always comes before an unrevoked
 grant whose window holds `now`, is `spec/cloud/billing/entitlements.md`; the
 allowance months a grant opens are `spec/cloud/billing/allowance.md`.
@@ -33,20 +37,71 @@ allowance months a grant opens are `spec/cloud/billing/allowance.md`.
 
 ### A code is 16 Crockford base32 characters, read without case, spaces or hyphens, with I and L read as 1 and O as 0
 
-The spec never sees the code text. Normalization and the format check are
-the `//@` function `normalizeSubscriptionCode` of `src/billing/grant-code.ts`,
-shared with `@elizaos/cloud/client`: its result uses only the alphabet below
-and is accepted exactly when it is 16 characters long. Text that fails it is
-refused as `400 grant_code_invalid` before any row is read. The code is a
-`SecretCode`: only its keyed digest is stored, and the operator sees it once,
-at minting.
+Normalization uses the complete UTF-16 input, kept as `SecretCodeUnits`.
+The string codec in `src/billing/grant-code.vibe` supplies and reconstructs
+those units without applying another normalization policy. The pure rules
+use Unicode 18's locale-insensitive uppercase mappings, including expansions
+such as sharp-s to SS, then remove ECMAScript whitespace and hyphens and read
+O as 0 and I or L as 1. Unpaired surrogates and other non-alphabet input are
+invalid. Once the result exceeds 16 units, it stays invalid. The walk stops
+retaining units at that point so long invalid input cannot grow the result.
+[UnicodeData](https://www.unicode.org/Public/18.0.0/ucd/UnicodeData.txt) and
+[SpecialCasing](https://www.unicode.org/Public/18.0.0/ucd/SpecialCasing.txt)
+define the mappings; `core/streamUnits` supplies the whitespace predicate.
+
+Only `declassifyGrantCodeValid` reveals whether the result is exactly 16
+Crockford characters. The offered and canonical units remain secret; the
+public validity bit supports the `400 grant_code_invalid` refusal before
+any code row is read. Only a keyed digest is stored. The operator sees a
+new code once, after its mint transaction commits.
 
 ```quint
 import types.* from "../shared/types"
 import plans.* from "./plans"
 import rateLimit as R from "../shared/rateLimit"
+import streamUnits as TextUnits from "../../core/streamUnits"
 pure val grantCodeLength: int = 16
-pure val crockfordAlphabet: str = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+pure val crockfordAlphabetUnits: List[int] = List(48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70, 71, 72, 74, 75, 77, 78, 80, 81, 82, 83, 84, 86, 87, 88, 89, 90)
+type SecretCodeUnit = int
+type SecretCodeUnits = List[SecretCodeUnit]
+type SecretCodeWalk = { pendingGrantHigh: SecretCodeUnit, normalizedGrantUnits: SecretCodeUnits }
+pure def grantUnit(code: SecretCodeUnit): List[SecretCodeUnit] = List(code)
+pure def normalizeGrantUnit(code: SecretCodeUnit): List[SecretCodeUnit] =
+  if (TextUnits::whitespace(code) or code == 45) List()
+  else if (code == 79 or code == 111) List(48)
+  else if (code == 73 or code == 76 or code == 105 or code == 108 or code == 305) List(49)
+  else if (code >= 97 and code <= 122) grantUnit(code - 32)
+  else if (code == 223) List(83, 83)
+  else if (code == 383) List(83)
+  else if (code == 64256) List(70, 70)
+  else if (code == 64257 or code == 64258) List(70, 49)
+  else if (code == 64259 or code == 64260) List(70, 70, 49)
+  else if (code == 64261 or code == 64262) List(83, 84)
+  else if (code >= 0 and code <= 127) grantUnit(code)
+  else List(-1)
+pure def normalizeGrantStep(walk: SecretCodeWalk, code: SecretCodeUnit): SecretCodeWalk = {
+  val prefix = if (walk.pendingGrantHigh == 55351) walk.normalizedGrantUnits.append(-1) else walk.normalizedGrantUnits
+  if (walk.normalizedGrantUnits.length() > grantCodeLength) walk
+  else if (walk.pendingGrantHigh == 55351 and code == 57237) { pendingGrantHigh: 0, normalizedGrantUnits: walk.normalizedGrantUnits.concat(List(83, 83)) }
+  else if (code == 55351) { pendingGrantHigh: 55351, normalizedGrantUnits: prefix }
+  else { pendingGrantHigh: 0, normalizedGrantUnits: prefix.concat(normalizeGrantUnit(code)) }
+}
+pure def normalizeGrantCodeUnits(units: SecretCodeUnits): SecretCodeUnits = {
+  val walked = units.foldl({ pendingGrantHigh: 0, normalizedGrantUnits: List() }, (walk, code) => normalizeGrantStep(walk, code))
+  if (walked.pendingGrantHigh == 55351) walked.normalizedGrantUnits.append(-1) else walked.normalizedGrantUnits
+}
+pure def declassifyGrantCodeValid(units: SecretCodeUnits): bool =
+  units.length() == grantCodeLength and units.every(code => crockfordAlphabetUnits.includes(code))
+pure def appendGrantDraw(units: SecretCodeUnits, code: SecretCodeUnit): List[SecretCodeUnit] =
+  units.append(crockfordAlphabetUnits.nthOr(code % 32, -1))
+pure def encodeGrantCodeDraws(draws: SecretCodeUnits): SecretCodeUnits =
+  if (draws.length() == grantCodeLength and draws.every(code => code >= 0 and code <= 255)) draws.foldl(List(), (units, code) => appendGrantDraw(units, code)) else List()
+pure def lawCanonicalCodesSurviveNormalization(units: SecretCodeUnits): bool =
+  declassifyGrantCodeValid(units) implies normalizeGrantCodeUnits(units) == units
+pure def lawByteDrawsMakeCanonicalCodes(draws: SecretCodeUnits): bool =
+  (draws.length() == grantCodeLength and draws.every(code => code >= 0 and code <= 255)) implies declassifyGrantCodeValid(encodeGrantCodeDraws(draws))
+pure val unitsValues: Set[SecretCodeUnits] = Set(List(), List(48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70), List(97, 45, 305, 383, 223, 64259), List(55351, 57237), List(55351, 45, 57237))
+pure val drawsValues: Set[SecretCodeUnits] = Set(List(), List(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 255))
 ```
 
 ### A minted code names a family, a paid plan, a term of whole days or life, a redemption limit and an optional expiry
@@ -243,6 +298,9 @@ code's row, so the organization keeps its place in the family and a replay
 still answers it. The organization's effective plan falls back to another
 grant in force or the free plan (`spec/cloud/billing/entitlements.md`). The
 operator's `grants revoke --code` revokes each grant and disables the code.
+The command locks organizations in id order before locking the code. If a
+redemption added an organization to the code while those locks were being
+taken, the command retries the transaction with the new list.
 
 ```quint
 pure def isInForce(g: Grant): bool = g.standing == InForce

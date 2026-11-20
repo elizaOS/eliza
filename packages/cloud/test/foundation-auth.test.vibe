@@ -12,6 +12,8 @@ import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
 import { tokenDigest } from "../src/shared/sealing.vibe"
 import { Refused } from "../src/http/refusal.vibe"
 import { addCredits } from "../src/billing/funds.vibe"
+import { operate } from "../src/operator/admin.vibe"
+import { redeemResultFromResponse, snapshotFromResponse } from "../src/client/views.vibe"
 import { admitWindow, openSocket, retire, settleWindow, sessionSpeechRoutes } from "../src/services/speech-session.vibe"
 import { manualClock } from "./support/clock.ts"
 import { migrate, Store, storeLayer } from "../src/store/store.vibe"
@@ -114,6 +116,56 @@ function outcome(answer: { readonly status: number; readonly body: unknown }): s
   const body = answer.body as { readonly error?: string; readonly reason?: string; readonly caller?: string }
   return answer.status === 200 ? `200 ${body.caller}` : `${answer.status} ${body.error}${body.reason === undefined ? "" : ` ${body.reason}`}`
 }
+
+describe("Membership codes (spec/cloud/billing/grantCodes.md)", () => {
+  it.live("Mint, redeem and retire a membership code (spec/cloud/billing/grantCodes.md, \"Story: Redeem a membership code once\"; spec/cloud/billing/grantCodes.md, \"Story: Stop a code or a grant\")", () => scoped(effect {
+    const cloud = try testHttp(billing.routes)
+    const now = try Clock.currentTimeMillis
+    const token = sessionToken("m")
+    try account(cloud, "member", "active", { sessions: 0, devices: 0 }, now)
+    try session(cloud, "member", token, { live: true, epoch: 0, authAt: now, accessExpiresAt: now + minuteMs, refreshExpiresAt: now + 10 * minuteMs, stepUpAt: 0, mfaAt: 0 }, now)
+
+    const minted = try cloud.inside(operate(["grants", "mint", "--family", "member-pilot", "--plan", "plus_monthly", "--count", "1", "--lifetime"]))
+    const code = minted.kind === "done" ? minted.lines[0] ?? "" : ""
+    try check(() => assert.match(code, /^[0-9A-HJKMNP-TV-Z]{16}$/))
+    const stored = (try sql(cloud, "SELECT key FROM grant_codes WHERE family = $1", ["member-pilot"]))[0]?.key
+    try check(() => {
+      assert.isString(stored)
+      assert.notStrictEqual(stored, code)
+    })
+
+    const redeem = (offered: string, idempotencyKey: string) => cloud.call("/api/v1/subscription/redeem", token, {
+      headers: { "idempotency-key": idempotencyKey }, json: { code: offered, idempotencyKey }
+    })
+    const formatted = `\u00a0${code.slice(0, 8).toLowerCase()}-${code.slice(8).toLowerCase()}\u00a0`
+    const issued = try redeem(formatted, "member-request")
+    const original = try redeemResultFromResponse(issued.body, now)
+    if (original.kind !== "redeemed") {
+      try check(() => assert.fail("a lifetime grant should be active immediately"))
+      return
+    }
+    const disabled = try cloud.inside(operate(["grants", "disable", "--code", formatted]))
+    const replayed = try redeem(code, "member-again")
+    const replay = try redeemResultFromResponse(replayed.body, now)
+    const revoked = try cloud.inside(operate(["grants", "revoke", "--code", code]))
+    const retired = try redeem(code, "member-retired")
+    const after = try redeemResultFromResponse(retired.body, now)
+    const limits = try cloud.call("/api/v1/billing/limits", token)
+    const snapshot = try snapshotFromResponse(limits.body)
+    const invalid = try redeem("A".repeat(32_768), "member-invalid")
+    const invalidOutcome = try Schema.decodeUnknownEffect(Schema.Struct({ error: Schema.String }))(invalid.body)
+    const periods = try sql(cloud, "SELECT count(*)::int AS count FROM allowance_periods WHERE organization_id = 'org-member' AND starts_with(key, 'grant/') AND status = 'closed'", [])
+    try check(() => assert.deepStrictEqual(
+      [issued.status, original.replayed, original.grant.planKey, original.grant.effectiveUntil, original.plan,
+        disabled, replayed.status, replay, revoked, retired.status, after, limits.status, snapshot.plan, snapshot.grant?.revoked,
+        invalid.status, invalidOutcome.error, periods[0]?.count],
+      [200, false, "plus_monthly", null, { key: "plus_monthly", source: "grant", effectiveUntil: null },
+        { kind: "done", lines: ["1 codes disabled; their grants stand"] }, 200, { ...original, replayed: true },
+        { kind: "done", lines: ["1 grants revoked"] }, 200, { kind: "ended", id: original.grant.id, planKey: "plus_monthly" },
+        200, { key: "free", source: "free", effectiveUntil: null }, true, 400, "grant_code_invalid", 3]
+    ))
+  }), 60_000)
+})
 
 describe("WP0 Foundation: request authentication", () => {
   it.live("Admit a request only for a live credential of an active account (spec/cloud/identity/sessions.md, \"Story: Admit a request only for a live credential of an active account\")", () => scoped(effect {

@@ -1,7 +1,8 @@
 // spec/cloud/operator.md, "A mint runs only for a batch of 1 to 10,000 codes"; spec/cloud/billing/grantCodes.md, "A minted code names a family, a paid plan, a term of whole days or life, a redemption limit and an optional expiry"; spec/cloud/billing/grantCodes.md, "A disabled code stays disabled and issues no new grant, but its grants stand"
 import { defaultTerm, type Term } from "../../gen/cloud__billing__grantCodes.effect.vibe"
 import { paidPlanKeys, type PlanKey } from "../../gen/cloud__billing__plans.effect.vibe"
-import { disableGrantCodes, mintGrantCodes } from "../billing/grant-codes.vibe"
+import { disableGrantCodes, mintGrantCodes, revokeGrantCode } from "../billing/grant-codes.vibe"
+import { isPaid, parsePlanKey, wirePlanKey } from "../billing/plans.vibe"
 import type { Tx } from "../store/store.vibe"
 import { OperatorUsageInvalid, type OperatorCommandHandler, type OperatorFlags } from "./admin.vibe"
 
@@ -15,9 +16,8 @@ effect function wholeFlag(flags: OperatorFlags, name: string): (number | undefin
 }
 
 effect function planOf(flags: OperatorFlags): PlanKey!OperatorUsageInvalid {
-  const named = try flags.required("plan")
-  const plan = paidPlanKeys.find((key) => key === named)
-  if (plan === undefined) throw new OperatorUsageInvalid({ problem: `--plan is one of ${paidPlanKeys.join(", ")}` })
+  const plan = parsePlanKey(try flags.required("plan"))
+  if (plan === undefined || !isPaid(plan)) throw new OperatorUsageInvalid({ problem: `--plan is one of ${paidPlanKeys.map(wirePlanKey).join(", ")}` })
   return plan
 }
 
@@ -57,7 +57,13 @@ effect function disable(tx: Tx, flags: OperatorFlags) {
   return [`${disabled} codes disabled; their grants stand`]
 }
 
+effect function revoke(tx: Tx, flags: OperatorFlags) {
+  const count = try revokeGrantCode(tx, try flags.required("code"))
+  return [`${count} grants revoked`]
+}
+
 export const commands: ReadonlyArray<OperatorCommandHandler> = [
   { words: ["grants", "mint"], operatorCommand: "MintGrantCodes", valued: ["family", "plan", "count", "days", "max-redemptions", "expires-at"], repeated: [], switches: ["lifetime", "requires-no-paid-plan"], run: mint },
-  { words: ["grants", "disable"], operatorCommand: "DisableGrantCodes", valued: ["family"], repeated: ["code"], switches: [], run: disable }
+  { words: ["grants", "disable"], operatorCommand: "DisableGrantCodes", valued: ["family"], repeated: ["code"], switches: [], run: disable },
+  { words: ["grants", "revoke"], operatorCommand: "RevokeGrants", valued: ["code"], repeated: [], switches: [], run: revoke }
 ]
