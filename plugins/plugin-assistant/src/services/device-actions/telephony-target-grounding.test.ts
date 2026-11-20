@@ -61,6 +61,12 @@ describe("owner-written numbers", () => {
       "+14155550100",
     ]);
     expect(writtenPhoneNumbers("+44 20 7946 0958")).toEqual(["+442079460958"]);
+    expect(writtenPhoneNumbers("+44 (0)20 7946 0958")).toEqual([
+      "+442079460958",
+    ]);
+    expect(writtenPhoneNumbers("+39 (0)55 123 4567")).toEqual([
+      "+390551234567",
+    ]);
     expect(writtenPhoneNumbers("415 555 0100 or 415 302 4399")).toEqual([
       "4155550100",
       "4153024399",
@@ -114,6 +120,16 @@ describe("whole-message commands hand through the owner's recipient", () => {
     ).toEqual(call("4155550100"));
   });
 
+  it("dials a number written with a trunk (0) after its country code", () => {
+    expect(
+      groundTelephonyTarget(call("+442079460958"), "call +44 (0)20 7946 0958"),
+    ).toEqual({ operation: call("+442079460958"), handedThrough: true });
+    // In Italy the 0 is part of the number: +39 055, not +39 55.
+    expect(
+      groundTelephonyTarget(call("+39551234567"), "call +39 (0)55 123 4567"),
+    ).toEqual({ operation: call("+390551234567"), handedThrough: true });
+  });
+
   it("hands a written name to the phone's own contact lookup", () => {
     expect(
       groundTelephonyTarget(call("6505715862"), "call my mom please"),
@@ -164,6 +180,9 @@ describe("other requests ground the model's recipient", () => {
     expect(refusal(call("4155550100"), "call the number in that email")).toBe(
       "number",
     );
+    expect(
+      refusal(call("+39551234567"), "please ring +39 (0)55 123 4567 later"),
+    ).toBe("number");
   });
 
   it("keeps a number the owner wrote, in the owner's form", () => {
@@ -177,6 +196,12 @@ describe("other requests ground the model's recipient", () => {
       groundTelephonyTarget(call("911"), "there's a fire, call 911 now")
         .operation,
     ).toEqual(call("911"));
+    expect(
+      groundTelephonyTarget(
+        call("+442079460958"),
+        "could you ring +44 (0)20 7946 0958 after lunch",
+      ).operation,
+    ).toEqual(call("+442079460958"));
   });
 
   it("accepts a contact the owner named and refuses one they did not", () => {

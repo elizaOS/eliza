@@ -35,10 +35,19 @@ const WRITTEN_DIAL_NUMBER =
  * that was asked for. A value that reads as more than one number, a range, a
  * date or an address is rejected too: a line break, a run of separators, a
  * space after a dash or dot, more than 15 digits (the E.164 limit) or a
- * year-month-day date.
+ * year-month-day date. A trunk "(0)" written after the country code, as in
+ * "+44 (0)20 7946 0958", is left out: a call with the country code does not
+ * dial it. Where the 0 is part of the number, it is kept: "+39 (0)55 123 4567"
+ * is +390551234567.
  */
 export function phoneDialNumber(value: unknown): string {
-  const written = typeof value === "string" ? value.trim() : "";
+  const written = (typeof value === "string" ? value.trim() : "").replace(
+    /^\+(\d{1,3})([ .-]?)\(0\)[ .-]?(?=\d)/,
+    // Italy, San Marino and Côte d'Ivoire dial a number's leading 0 after
+    // the country code (+39 055 …), so there it is not a trunk prefix.
+    (_, code: string, separator: string) =>
+      `+${code}${separator}${["39", "378", "225"].includes(code) ? "0" : ""}`,
+  );
   const number = written.replace(/[ ().-]/g, "");
   if (
     !PHONE_DIAL_NUMBER.test(number) ||
