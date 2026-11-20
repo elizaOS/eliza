@@ -16,11 +16,13 @@ import {
   ELIZA_CALENDAR_GRANT_ID,
   ELIZA_CALENDAR_ID,
 } from "./internal/eliza-calendar.js";
+import { parseExplicitLocalDate } from "./internal/request-time.js";
 
 import {
   bindFilterEvidence,
   calendarMutationPrerequisites,
   hasCalendarSearchFilterShape,
+  includesCalendarPhrase,
   rememberCalendarReadBindings,
 } from "./search-filter-evidence.js";
 
@@ -30,6 +32,7 @@ type RequestedRead = Pick<
   | "operation"
   | "source"
   | "plainNextEvent"
+  | "singleDaySearchDate"
   | "execution"
   | "filterEvidence"
   | "purpose"
@@ -44,6 +47,7 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
     "Use operation=read_selected for the canonical Calendar event currently open or selected on the screen; filterEvidence=[] and no content query. The host binds the current selection and revision. Never turn an opaque selection ID into a search query. " +
     'For a requested read of only the built-in Eliza calendar, emit source="builtin". Omit source for read_selected, for mutation prerequisites, and for unscoped or connected-calendar reads. ' +
     "Set plainNextEvent=true only for the sole request to read the next built-in event as of now, with the default time zone and no extra constraints or instructions. Omit it for any qualified or compound request. " +
+    "For the sole unconditional search of one exact event title across one whole local day on the built-in calendar, give singleDaySearchDate as the verbatim requested date phrase outside the title (for example, today). Use the usual zone. Omit it for time-of-day bounds, ranges, explicit zones, other filters and compound requests. Copy only the exact event title into filterEvidence.quote. " +
     "Set purpose=requested_read for a requested Calendar read. Set purpose=mutation_prerequisite only for a lookup needed to carry out the SAME current intent to create, update or delete an event; it does not add or satisfy a read intent. For a date/time/duration reference without an exact source-bound event-content phrase, bind operation=feed with filterEvidence=[] as the bounded prerequisite. Keep the mutation as the intent. Use a freshly read canonical event ID and verify every requested time/duration/source constraint before changing it; ambiguous matches require clarification, not a guessed target. Always emit filterEvidence (empty [] for nonsearch). Use feed for an unfiltered agenda or anything scheduled today; do not invent a content query. search_events requires filterEvidence: one or more {query,quote,origin} objects. query is the exact trimmed quote of an event-content phrase, or the exact quoted event-content phrase inside a longer verbatim quote; prefer the exact event title for both query and quote. A date/source selector is not an event-content filter. origin=current quotes the current user request verbatim; origin=referent quotes an identifiable event phrase in an already supplied same-room owner/assistant message. A referent is only a lookup key, never current event truth. Do not paraphrase or add words to the query. If no content phrase is supplied or resolved, use feed for a bounded agenda. Preserve the user-requested operation as the intent. Bind requested reads as requested_read. Record mutation lookup preparation only as mutation_prerequisite on the existing mutation intent, never as an invented requested read; normal planning still owns the lookup and the mutation. Bind each requested Calendar read to its one-based Stage-1 intent ID (intent:1, etc.): feed is a requested bounded agenda/date range, next_event is the single next ongoing or upcoming event relative to now, search_events is an event-content search. Questions about the current time, date, duration, location, attendees or other details of a named or previously discussed event are search_events reads, even when conversation history contains an answer. Read the authoritative Calendar record before answering; an earlier assistant reply or remembered event detail is not current Calendar evidence. An explicit request to quote what someone said earlier is a conversation-history question instead, unless the user also asks to verify the event now. check_availability checks whether a specified interval is free; propose_times finds concrete free slots for the requested duration and search window without booking. Bind the requested outcome, not the agenda lookup it might require: a slot proposal is propose_times, never feed, and an interval availability check is check_availability. A feed success cannot complete either of those outcomes. Execution is required only for an unconditional read; use conditional when it depends on a prerequisite or user condition, and preserve that condition for normal planning. Provider, account, grant and calendar identity select which calendar to read; they are not event-content filters. A request for one nearest event from a named calendar remains next_event unless it also asks for matching event content. A next-week agenda is feed; opening Calendar is navigation, not a read. Use [] for unrelated or unclear reads; preserve every other intent.",
   // Written before replyText (20), after the intents it binds, so a direct
   // answer can stream once this field has bound no Calendar read.
@@ -69,6 +73,7 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         operation: { type: "string", enum: Object.keys(CALENDAR_READ_ACTIONS) },
         source: { type: "string", enum: ["builtin"] },
         plainNextEvent: { type: "boolean" },
+        singleDaySearchDate: { type: "string", minLength: 1, maxLength: 80 },
         execution: { type: "string", enum: ["required", "conditional"] },
         purpose: {
           type: "string",
@@ -122,6 +127,7 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
             key !== "operation" &&
             key !== "source" &&
             key !== "plainNextEvent" &&
+            key !== "singleDaySearchDate" &&
             key !== "execution" &&
             key !== "filterEvidence" &&
             key !== "purpose",
@@ -142,7 +148,8 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         !index &&
         (item.intentId.startsWith("intent:") ||
           item.intentId.startsWith("int:") ||
-          !item.intentId.includes(" "))
+          (!item.intentId.includes(" ") &&
+            !/^[\p{L}_][\p{L}\p{N}_-]*$/u.test(item.intentId)))
       )
         return null;
       const intentId = index ? `intent:${index}` : item.intentId;
@@ -200,7 +207,32 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         (!Array.isArray(item.filterEvidence) || item.filterEvidence.length > 0)
       )
         return null;
-      const { source, plainNextEvent, ...read } = item as RequestedRead;
+      const { source, plainNextEvent, singleDaySearchDate, ...read } =
+        item as RequestedRead;
+      const [filter] = filterEvidence ?? [];
+      const requestText =
+        filter?.origin === "current" ? ctx.message.content.text : undefined;
+      const observedAt = ctx.message?.createdAt;
+      const boundSearchDate =
+        read.operation === "search_events" &&
+        source === "builtin" &&
+        read.execution === "required" &&
+        read.purpose !== "mutation_prerequisite" &&
+        filterEvidence?.length === 1 &&
+        filter?.origin === "current" &&
+        typeof singleDaySearchDate === "string" &&
+        singleDaySearchDate === singleDaySearchDate.trim() &&
+        singleDaySearchDate.length <= 80 &&
+        typeof requestText === "string" &&
+        includesCalendarPhrase(
+          requestText.replaceAll(filter.quote.trim(), " "),
+          singleDaySearchDate,
+        ) &&
+        typeof observedAt === "number" &&
+        Number.isFinite(observedAt) &&
+        parseExplicitLocalDate(singleDaySearchDate, "UTC", new Date(observedAt))
+          ? singleDaySearchDate
+          : undefined;
       reads.push({
         ...read,
         ...(source &&
@@ -215,6 +247,7 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         read.purpose !== "mutation_prerequisite"
           ? { plainNextEvent }
           : {}),
+        ...(boundSearchDate ? { singleDaySearchDate: boundSearchDate } : {}),
         intentId,
         ...(selectedTarget ? { selectedTarget } : {}),
         ...(item.operation === "search_events"
@@ -269,7 +302,16 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
     );
     const accepted =
       valid && senderRole === "OWNER"
-        ? bound.filter((binding) => !binding.invalidFilterEvidence)
+        ? bound
+            .filter((binding) => !binding.invalidFilterEvidence)
+            .map(({ singleDaySearchDate, ...binding }) => ({
+              ...binding,
+              ...(singleDaySearchDate &&
+              intents.length === 1 &&
+              bound.length === 1
+                ? { singleDaySearchDate }
+                : {}),
+            }))
         : [];
     const withheld =
       rejectedFilter ||
@@ -328,7 +370,10 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
 export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
   name: "calendar.read-bindings",
   priority: 65,
-  deterministicActions: [CALENDAR_READ_ACTIONS.next_event],
+  deterministicActions: [
+    CALENDAR_READ_ACTIONS.next_event,
+    CALENDAR_READ_ACTIONS.search_events,
+  ],
   shouldRun: ({ runtime, message, messageHandler, userRoles }) =>
     messageHandler.processMessage === "RESPOND" &&
     ((Array.isArray(messageHandler.plan.calendarReadBindings) &&
@@ -364,11 +409,9 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
         !Object.values(CALENDAR_READ_ACTIONS).some((read) => read === name),
     );
     const [read] = bindings;
-    const plainNextEvent =
+    const singleBuiltInRead =
       bindings.length === 1 &&
-      read?.operation === "next_event" &&
-      read.source === "builtin" &&
-      read.plainNextEvent === true &&
+      read?.source === "builtin" &&
       read.execution === "required" &&
       !prerequisites.length &&
       !wholeRequestOwner &&
@@ -378,20 +421,33 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
       plan.contexts[0] === "calendar" &&
       !plan.candidateActions?.some(
         (name) =>
-          name !== "CALENDAR" && name !== CALENDAR_READ_ACTIONS.next_event,
+          name !== "CALENDAR" && name !== CALENDAR_READ_ACTIONS[read.operation],
       );
+    const calendar = {
+      grantId: ELIZA_CALENDAR_GRANT_ID,
+      calendarId: ELIZA_CALENDAR_ID,
+    };
+    let deterministicToolCall: typeof plan.deterministicToolCall;
+    if (singleBuiltInRead) {
+      if (read.operation === "next_event" && read.plainNextEvent) {
+        deterministicToolCall = {
+          name: CALENDAR_READ_ACTIONS.next_event,
+          params: calendar,
+        };
+      } else if (
+        read.operation === "search_events" &&
+        read.singleDaySearchDate &&
+        read.filterEvidence?.[0]
+      ) {
+        deterministicToolCall = {
+          name: CALENDAR_READ_ACTIONS.search_events,
+          params: { ...calendar, query: read.filterEvidence[0].query },
+        };
+      }
+    }
     return {
-      ...(plainNextEvent
-        ? {
-            clearReply: true,
-            deterministicToolCall: {
-              name: CALENDAR_READ_ACTIONS.next_event,
-              params: {
-                grantId: ELIZA_CALENDAR_GRANT_ID,
-                calendarId: ELIZA_CALENDAR_ID,
-              },
-            },
-          }
+      ...(deterministicToolCall
+        ? { clearReply: true, deterministicToolCall }
         : {}),
       ...(bindings.some((binding) => binding.execution === "required")
         ? { requiresTool: true }

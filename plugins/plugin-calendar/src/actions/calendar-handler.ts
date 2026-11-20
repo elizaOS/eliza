@@ -21,6 +21,7 @@ import {
 } from "../internal/request-time.js";
 import {
   boundCalendarReadSource,
+  boundCalendarSearchDate,
   calendarSearchFiltersAreBound,
 } from "../search-filter-evidence.js";
 import {
@@ -7951,18 +7952,28 @@ export function createCalendarActionRunner(
         // events" returns "no events today" even when the calendar has
         // dozens of upcoming items. We apply this regardless of whether the
         // chat LLM picked feed or search_events because both subactions go
-        // Typed searches own their date filters. The complete message may also
-        // contain a destination date for a separate move/proposal; borrowing it
-        // here can hide the very event being looked up.
+        // A sole title search can resolve its bound owner date here in the
+        // Calendar zone. Other typed searches retain their own window, since
+        // a compound request can also name a date for a separate operation.
+        const ownerDateText =
+          subaction === "feed"
+            ? messageText(message)
+            : subaction === "search_events"
+              ? boundCalendarSearchDate(
+                  getStreamingContext()?.actionConstraints,
+                  message,
+                  String(runtime.agentId),
+                )
+              : undefined;
         const baseResolved = resolveCalendarReadWindow(
           explicitSubaction === "search_events" ? "" : intent,
           details,
           subaction === "search_events",
           llmPlan,
           planningTimeZone,
-          subaction === "feed"
+          ownerDateText
             ? {
-                text: messageText(message),
+                text: ownerDateText,
                 observedAt: new Date(calendarMessageObservedAt(message)),
               }
             : undefined,

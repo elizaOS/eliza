@@ -26,6 +26,7 @@ import {
 } from "./read-binding.js";
 import {
   bindFilterEvidence,
+  boundCalendarSearchDate,
   calendarMutationPrerequisites,
   calendarSearchFiltersAreBound,
 } from "./search-filter-evidence.js";
@@ -188,7 +189,11 @@ describe("Calendar operation bindings", () => {
       content: { text },
     };
     const state = { values: {}, data: {}, text: "" };
-    const route = async (intents: string[], plainNextEvent?: true) => {
+    const route = async (
+      intents: string[],
+      plainNextEvent?: true,
+      intentId = "int:1",
+    ) => {
       const context = {
         runtime,
         message,
@@ -199,7 +204,7 @@ describe("Calendar operation bindings", () => {
       const bindings = calendarReadBindingField.parse?.(
         JSON.stringify([
           {
-            intentId: "int:1",
+            intentId,
             operation: "next_event",
             execution: "required",
             source: "builtin",
@@ -250,8 +255,114 @@ describe("Calendar operation bindings", () => {
       name: "CALENDAR_NEXT_EVENT",
       params: { grantId: "eliza-calendar", calendarId: "primary" },
     });
+    expect(await route(["next_event"], true, "next_event")).toEqual({
+      name: "CALENDAR_NEXT_EVENT",
+      params: { grantId: "eliza-calendar", calendarId: "primary" },
+    });
+    expect(await route([text], true, "other_event")).toBeUndefined();
     expect(await route([text])).toBeUndefined();
     expect(await route([text, "Send it to my coworker"], true)).toBeUndefined();
+  });
+  it("routes the sole built-in title lookup with a literal local date", async () => {
+    const title = "Calendar latency check";
+    const text = `What time does ${title} start today?`;
+    const runtime = new AgentRuntime({
+      character: { name: "Named Calendar fixture", bio: [] },
+      logLevel: "fatal",
+    });
+    const message: Memory = {
+      id: stringToUuid("dated-calendar-title"),
+      agentId: runtime.agentId,
+      entityId: stringToUuid("owner"),
+      roomId: stringToUuid("room"),
+      createdAt: Date.parse("2026-11-20T09:15:00Z"),
+      content: { text },
+    };
+    const state = { values: {}, data: {}, text: "" };
+    const route = async (day: string, intents = [text], query = title) => {
+      const turnSignal = new AbortController().signal;
+      return runWithStreamingContext({ abortSignal: turnSignal }, async () => {
+        const context = {
+          runtime,
+          message,
+          state,
+          senderRole: "OWNER" as const,
+          turnSignal,
+        };
+        const value = calendarReadBindingField.parse?.(
+          [
+            {
+              intentId: "intent:1",
+              operation: "search_events",
+              source: "builtin",
+              execution: "required",
+              purpose: "requested_read",
+              filterEvidence: [{ query, quote: text, origin: "current" }],
+              singleDaySearchDate: day,
+            },
+          ],
+          context,
+        );
+        if (!value) throw Error("Expected parsed search binding");
+        const parsed: ResponseHandlerResult = {
+          shouldRespond: "RESPOND",
+          contexts: ["calendar"],
+          intents,
+          candidateActionNames: [],
+          replyText: "",
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+        };
+        const effect = await calendarReadBindingField.handle?.({
+          ...context,
+          parsed,
+          value,
+        });
+        effect?.mutateResult?.(parsed);
+        const handler: MessageHandlerResult = {
+          processMessage: "RESPOND",
+          thought: "",
+          plan: {
+            contexts: ["calendar"],
+            intents,
+            calendarReadBindings:
+              parsed.calendarReadBindings as CalendarReadBinding[],
+          },
+        };
+        await runResponseHandlerEvaluators({
+          runtime,
+          message,
+          state,
+          messageHandler: handler,
+          availableContexts: [],
+          userRoles: ["OWNER"],
+          evaluators: [calendarReadBindingEvaluator],
+        });
+        const owned = getStreamingContext()?.actionConstraints;
+        return {
+          call: handler.plan.deterministicToolCall,
+          day: boundCalendarSearchDate(owned, message, String(runtime.agentId)),
+        };
+      });
+    };
+    expect(await route("today")).toEqual({
+      day: "today",
+      call: {
+        name: "CALENDAR_SEARCH_EVENTS",
+        params: {
+          grantId: "eliza-calendar",
+          calendarId: "primary",
+          query: title,
+        },
+      },
+    });
+    for (const result of [
+      await route("tomorrow"),
+      await route("today", [text, "Send it to a coworker"]),
+      await route("today", [text], "Calendar latency chec"),
+    ])
+      expect(result).toEqual({ day: undefined, call: undefined });
   });
   it.each([
     { intentId: "intent:1", execution: "required", bound: true },
