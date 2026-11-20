@@ -3,6 +3,8 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type { ConnectionState, McpServerConfig } from "./types";
 
 let failConnect = true;
+let announceResources = false;
+let resourceListFailure: Error | null = null;
 let connectCalls = 0;
 mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({
   Client: class {
@@ -12,10 +14,14 @@ mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({
     }
     async close() {}
     getServerCapabilities() {
-      return {};
+      return announceResources ? { tools: {}, resources: {} } : {};
     }
     async listTools() {
       return { tools: [] };
+    }
+    async listResources() {
+      if (resourceListFailure) throw resourceListFailure;
+      return { resources: [] };
     }
   },
 }));
@@ -34,6 +40,8 @@ const validConfig: McpServerConfig = { type: "streamable-http", url: "https://mc
 beforeEach(async () => {
   connectCalls = 0;
   failConnect = true;
+  announceResources = false;
+  resourceListFailure = null;
   timers.clear();
   service = await McpService.start({
     getSetting: () => null,
@@ -134,4 +142,14 @@ test("an explicit reconnect starts a fresh retry ladder", async () => {
   await expect(internal.connect("server", validConfig)).rejects.toThrow();
   expect(internal.connectionStates.get("server")?.reconnectAttempts).toBe(0);
   expect(retryTimers().map((timer) => timer.delay)).toEqual([2000]);
+});
+
+test("a failed resource listing disconnects the server instead of publishing an empty catalogue", async () => {
+  failConnect = false;
+  announceResources = true;
+  resourceListFailure = new Error("resources/list failed");
+  await expect(internal.connect("server", validConfig)).rejects.toThrow("resources/list failed");
+  expect(internal.connectionStates.get("server")?.status).toBe("disconnected");
+  expect(internal.connectionStates.get("server")?.lastError?.message).toBe("resources/list failed");
+  expect(service.getServers().map((server) => server.status)).not.toContain("connected");
 });
