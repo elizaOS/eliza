@@ -1,11 +1,8 @@
 package ai.eliza.plugins.securestore.nativeonly;
 
-import android.accounts.Account;
 import android.content.Context;
 import android.net.Uri;
 import android.util.Base64;
-import com.google.android.gms.auth.api.identity.AuthorizationRequest;
-import com.google.android.gms.common.api.Scope;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -108,19 +105,7 @@ public final class CloudDeviceAccount {
 
  public record NativeGoogleAttempt(String clientId, String environment, String serverClientId, List<String> scopes, String challengeId,
     String nonce, String state, long expiresAt) {
-  public AuthorizationRequest authorization(String googleAccount) {
-   return scopes.isEmpty() ? null : googleAuthorization(serverClientId, googleAccount, scopes);
-  }
-
   @Override public String toString() { return "CloudDeviceAccount.NativeGoogleAttempt"; }
- }
-
- public static AuthorizationRequest googleAuthorization(String serverClientId, String googleAccount, List<String> scopes) {
-  if (googleAccount == null || !googleAccount.matches("[^@\\s]{1,64}@[^@\\s]{1,255}")) throw new IllegalArgumentException("Invalid Google account");
-  List<Scope> requested = new ArrayList<>();
-  for (String scope : scopes) requested.add(new Scope(scope));
-  return AuthorizationRequest.builder().setRequestedScopes(requested).setAccount(new Account(googleAccount, "com.google"))
-      .requestOfflineAccess(serverClientId, true).build();
  }
 
  private JSONObject mobileClient(String clientId, String environment) throws Exception {
