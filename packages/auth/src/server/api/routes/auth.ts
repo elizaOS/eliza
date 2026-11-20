@@ -2202,17 +2202,14 @@ function decryptMfaJson<T>(value: string): T {
   return JSON.parse(getOAuthKeyStore().decrypt(encrypted)) as T;
 }
 
-async function readMfaJson<T>(key: string): Promise<T | null> {
-  const raw = await getMfaBackend().get(key);
-  if (!raw) return null;
+function decodeMfaJson<T>(value: string, kind: string): T {
   try {
-    return decryptMfaJson<T>(raw);
+    return decryptMfaJson<T>(value);
   } catch (cause) {
     // An unreadable record is a key-store or payload failure, not proof that
     // the user has no second factor. Deleting it here would erase the
     // enrollment and make every caller read "absent", so a login would skip
     // the MFA challenge. Keep the bytes and fail closed instead.
-    const kind = key.split(":")[0];
     throw new ElizaError(`Stored ${kind} MFA record cannot be read.`, {
       code: "MFA_RECORD_UNREADABLE",
       cause,
@@ -2220,6 +2217,12 @@ async function readMfaJson<T>(key: string): Promise<T | null> {
       severity: "ephemeral",
     });
   }
+}
+
+async function readMfaJson<T>(key: string): Promise<T | null> {
+  const raw = await getMfaBackend().get(key);
+  if (!raw) return null;
+  return decodeMfaJson<T>(raw, key.split(":")[0]);
 }
 
 async function writeMfaJson(
@@ -2783,15 +2786,17 @@ async function consumeDeviceAuthorizationRecord(
 ): Promise<DeviceAuthorizationRecord | null> {
   const raw = await getMfaBackend().consume(deviceCodeKey(deviceCode));
   if (!raw) return null;
-  try {
-    const record = decryptMfaJson<DeviceAuthorizationRecord>(raw);
-    await getMfaBackend().delete(deviceUserCodeKey(record.userCode));
-    await getMfaBackend().delete(devicePollKey(deviceCode));
-    if (record.expiresAt <= Date.now()) return null;
-    return record;
-  } catch {
-    return null;
-  }
+  // A record that no longer decrypts is a key-store or payload failure, not an
+  // expired grant: `catch { return null }` here made /auth/device/token answer
+  // expired_token (400), so the client restarted a flow the server could not
+  // decide and the fault was never reported. Decode through the same
+  // fail-closed path readMfaJson uses; a missing or expired record still
+  // returns null.
+  const record = decodeMfaJson<DeviceAuthorizationRecord>(raw, "device-auth");
+  await getMfaBackend().delete(deviceUserCodeKey(record.userCode));
+  await getMfaBackend().delete(devicePollKey(deviceCode));
+  if (record.expiresAt <= Date.now()) return null;
+  return record;
 }
 
 async function readDeviceAuthorizationRecordByUserCode(
