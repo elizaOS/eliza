@@ -312,26 +312,14 @@ pure def sometimesNativeExpired(a: GoogleAttempt): bool = a.native == ChallengeE
 
 ### A native connect stores tokens only for the signed-in account's own Google identity and only the scopes Google granted
 
-Right after the person picks the account, the device asks Google's
-authorization sheet for mail and calendar, for that account and the cloud's
-server client, with the scopes the mobile config lists, and sends the
-one-use `serverAuthCode` it gets with the ID token in the same native
-sign-in request. The cloud redeems it once the sign-in has opened the
-account and answers `google.connected`; a refused connect never refuses the
-sign-in. A device that already holds its device key sends the code later as
-`POST /api/v1/eliza/google/connect/native` `{serverAuthCode}`; a browser
-session cannot use that route, and an account without a Google sign-in is
-refused before the code reaches Google and connects in the browser instead.
-Either way the cloud redeems the code with its server client, only when
-that is also the client the connection is kept for (a deployment with a
-separate connect client connects only in the browser), and stores the
-connection only when Google returned a refresh token and its verified
-subject is the Google sign-in subject of the account. It stores reading mail
-and reading the calendar as Google granted them, sending or trashing mail
-only with reading mail, and changing the calendar only with reading it. A
-connect that would store nothing is refused (`409
-google_reconnect_required` on the connect route, `google.connected` false at
-sign-in) and leaves any earlier connection as it was.
+The device sends Google's one-use `serverAuthCode` for the account it
+signed in with, and the cloud redeems it. The connection is stored only when
+Google returned a refresh token and Google's verified subject is the Google
+sign-in subject of the account, which an account without a Google sign-in
+lacks. It keeps reading mail and reading the
+calendar as Google granted them, sending or trashing mail only with reading
+mail, and changing the calendar only with reading it. A connect that would
+store nothing stores no scope at all.
 
 ```quint
 type NativeGoogleScopes = { readMail: bool, sendMail: bool, trashMail: bool, readCalendar: bool, writeCalendar: bool }
@@ -341,11 +329,10 @@ pure def nativeConnectStores(signedInSubject: str, grantedSubject: str, refreshI
   else { readMail: granted.readMail, sendMail: granted.readMail and granted.sendMail, trashMail: granted.readMail and granted.trashMail,
          readCalendar: granted.readCalendar, writeCalendar: granted.readCalendar and granted.writeCalendar }
 pure def nativeConnectStoresAny(stored: NativeGoogleScopes): bool = stored.readMail or stored.readCalendar
-pure val grantedValues: Set[NativeGoogleScopes] = {
-  val everything: NativeGoogleScopes = { readMail: true, sendMail: true, trashMail: true, readCalendar: true, writeCalendar: true }
-  Set(everything, noNativeGoogleScopes, { ...noNativeGoogleScopes, sendMail: true, writeCalendar: true }, { ...noNativeGoogleScopes, readCalendar: true, trashMail: true },
-      { ...noNativeGoogleScopes, readMail: true, sendMail: true, writeCalendar: true }, { ...everything, readCalendar: false })
-}
+pure val grantedValues: Set[NativeGoogleScopes] = tuples(Set(true, false), Set(true, false), Set(true, false), Set(true, false), Set(true, false))
+  .map(g => { readMail: g._1, sendMail: g._2, trashMail: g._3, readCalendar: g._4, writeCalendar: g._5 })
+pure val signedInSubjectValues = Set("", "sub1", "sub2")
+pure val grantedSubjectValues = Set("", "sub1", "sub2")
 pure def lawANativeConnectStoresOnlyTheSignedInAccountsGrantedScopes(signedInSubject: str, grantedSubject: str, refreshIssued: bool, granted: NativeGoogleScopes): bool = {
   val stored = nativeConnectStores(signedInSubject, grantedSubject, refreshIssued, granted)
   (nativeConnectStoresAny(stored) implies (signedInSubject != "" and signedInSubject == grantedSubject and refreshIssued))
