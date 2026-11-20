@@ -19,7 +19,11 @@ import {
   STATED_CLOCK_MENTION_SOURCE,
   WEEKDAY_NAME_PATTERN,
 } from "../internal/request-time.js";
-import { calendarSearchFiltersAreBound } from "../search-filter-evidence.js";
+import {
+  boundCalendarReadSource,
+  boundCalendarSearchDate,
+  calendarSearchFiltersAreBound,
+} from "../search-filter-evidence.js";
 import {
   type CalendarUserSource,
   calendarCreateAuthorityProperties,
@@ -87,6 +91,7 @@ import {
   extractUserText,
   normalizeEffectReceipt,
   resolveOptimizedPromptForRuntime,
+  timeInferenceSpan,
   unwrapUserMessageText,
   userReferenceLogView,
 } from "@elizaos/core";
@@ -3180,17 +3185,24 @@ async function loadCreateEventCalendarContext(
   }
 
   const requestTimeZone = fallbackTimeZone;
-  const feed = await service.getCalendarFeed(INTERNAL_URL, {
-    includeHiddenCalendars: true,
-    ...(grantId ? { grantId } : {}),
-    // Ordinary turns review all authorized sources before destination extraction.
-    // Native turns retain their explicit connected-source boundary instead.
-    timeZone: requestTimeZone,
-    forceSync: true,
-    ...buildLocalDayRange(requestTimeZone, 0, 14),
-  });
+  const { feed, calendars } = await service.getCalendarFeedSnapshot(
+    INTERNAL_URL,
+    {
+      includeHiddenCalendars: true,
+      ...(grantId ? { grantId } : {}),
+      // Ordinary turns review all authorized sources before destination extraction.
+      // Native turns retain their explicit connected-source boundary instead.
+      timeZone: requestTimeZone,
+      forceSync: true,
+      ...buildLocalDayRange(requestTimeZone, 0, 14),
+    },
+  );
 
-  if (!feed || !Array.isArray(feed.events)) {
+  if (
+    !feed ||
+    !Array.isArray(feed.events) ||
+    (feed.state === "unavailable" && calendars.length === 0)
+  ) {
     return null;
   }
 
@@ -3201,10 +3213,7 @@ async function loadCreateEventCalendarContext(
       configuredTimeZone,
     ),
     feed,
-    calendars: await service.listCalendars(
-      INTERNAL_URL,
-      grantId ? { grantId } : undefined,
-    ),
+    calendars,
   };
 }
 
@@ -5763,10 +5772,46 @@ export function createCalendarActionRunner(
         params.calendarId === ""
           ? { grantId: undefined, calendarId: undefined }
           : params;
-      const details = mergeCalendarSourceSelection(
+      let details = mergeCalendarSourceSelection(
         normalizedDetails,
         sourceSelection,
       );
+      // Apply the Stage 1 source constraint before the native/managed guard.
+      // An aggregate request still uses the selected feed by default.
+      const explicitSubaction = normalizeCalendarSubaction(params.subaction);
+      if (
+        explicitSubaction === "next_event" ||
+        explicitSubaction === "feed" ||
+        explicitSubaction === "search_events"
+      ) {
+        const scope = boundCalendarReadSource(
+          getStreamingContext()?.actionConstraints,
+          message,
+          String(runtime.agentId),
+          explicitSubaction,
+        );
+        const grantId = connectorGrantIdDetail(details);
+        if (scope === "builtin" || grantId === ELIZA_CALENDAR_GRANT_ID) {
+          // The built-in grant contains one calendar. Its canonical ID is known
+          // once that grant is selected, even when planning supplied an alias.
+          details = {
+            ...mergeCalendarSourceSelection(
+              { ...details, grantId },
+              { grantId: ELIZA_CALENDAR_GRANT_ID },
+            ),
+            calendarId: ELIZA_CALENDAR_ID,
+          };
+        } else if (
+          scope === "explicit" &&
+          (!grantId || !calendarIdDetail(details))
+        ) {
+          throw new CalendarServiceError(
+            400,
+            "Supply an exact source for each requested Calendar read.",
+            "CALENDAR_SOURCE_REQUIRED",
+          );
+        }
+      }
       const nativeGrantId = nativeCalendarFailure
         ? connectorGrantIdDetail(details)
         : undefined;
@@ -5884,7 +5929,6 @@ export function createCalendarActionRunner(
         details,
         clientTimeZone ?? calendarZone.timeZone,
       );
-      const explicitSubaction = normalizeCalendarSubaction(params.subaction);
       // A promoted CALENDAR_* tool call is already the action planner's typed
       // decision. Re-planning the same operation from raw prose inside the tool
       // adds latency and can contradict the selected native action. Preserve the
@@ -6359,12 +6403,16 @@ export function createCalendarActionRunner(
             clientTimeZone || calendarZone.source !== "runtime-default"
               ? creationContextZone
               : null;
-          const calendarContext = await loadCreateEventCalendarContext(
-            service,
-            true,
-            creationContextZone,
-            configuredCreateZone,
-            nativeGrantId,
+          const calendarContext = await timeInferenceSpan(
+            "actions:calendar:create:source-read",
+            () =>
+              loadCreateEventCalendarContext(
+                service,
+                true,
+                creationContextZone,
+                configuredCreateZone,
+                nativeGrantId,
+              ),
           );
           if (!calendarContext) {
             throw new CalendarServiceError(
@@ -6377,15 +6425,19 @@ export function createCalendarActionRunner(
           // its required timing came from the user. Re-derive scheduling fields
           // from the authoritative request/conversation and calendar zone before
           // any mutation. Missing extraction must remain missing (clarification).
-          const extractedDetails = await inferCreateEventDetails(
-            runtime,
-            message,
-            state,
-            intent,
-            calendarContext,
-            creationContextZone,
-            details,
-            hostDeps,
+          const extractedDetails = await timeInferenceSpan(
+            "actions:calendar:create:extract",
+            () =>
+              inferCreateEventDetails(
+                runtime,
+                message,
+                state,
+                intent,
+                calendarContext,
+                creationContextZone,
+                details,
+                hostDeps,
+              ),
           );
           let destination = calendarContext.feed.sources.find(
             (source) =>
@@ -6625,25 +6677,29 @@ export function createCalendarActionRunner(
               },
             });
           }
-          const requestToApprove = await service.prepareCalendarEventCreate(
-            INTERNAL_URL,
-            request,
+          const requestToApprove = await timeInferenceSpan(
+            "actions:calendar:create:prepare",
+            () => service.prepareCalendarEventCreate(INTERNAL_URL, request),
           );
           // An all-day event marks its days and reserves no clock time, so it
           // has no slot to check against timed commitments.
           const availability = requestToApprove.allDay
             ? null
-            : await evaluateCalendarWriteAvailability({
-                runtime,
-                ...scopedAvailabilitySource(
-                  requestToApprove.grantId,
-                  requestToApprove.calendarId,
-                ),
-                destination: requestToApprove,
-                startAt: requestToApprove.startAt,
-                endAt: requestToApprove.endAt,
-                timeZone: requestToApprove.timeZone,
-              });
+            : await timeInferenceSpan(
+                "actions:calendar:create:availability",
+                () =>
+                  evaluateCalendarWriteAvailability({
+                    runtime,
+                    ...scopedAvailabilitySource(
+                      requestToApprove.grantId,
+                      requestToApprove.calendarId,
+                    ),
+                    destination: requestToApprove,
+                    startAt: requestToApprove.startAt,
+                    endAt: requestToApprove.endAt,
+                    timeZone: requestToApprove.timeZone,
+                  }),
+              );
           if (
             availability &&
             (!availability.writable || availability.conflicts.length > 0)
@@ -6718,11 +6774,15 @@ export function createCalendarActionRunner(
               payload: requestToApprove,
             });
             const { startAt, endAt, ...dateOnlyRequest } = requestToApprove;
-            const createdEvent = await service.createCalendarEvent(
-              INTERNAL_URL,
-              requestToApprove.allDay
-                ? { ...dateOnlyRequest, idempotencyKey }
-                : { ...requestToApprove, startAt, endAt, idempotencyKey },
+            const createdEvent = await timeInferenceSpan(
+              "actions:calendar:create:persist",
+              () =>
+                service.createCalendarEvent(
+                  INTERNAL_URL,
+                  requestToApprove.allDay
+                    ? { ...dateOnlyRequest, idempotencyKey }
+                    : { ...requestToApprove, startAt, endAt, idempotencyKey },
+                ),
             );
             if (travelBuffer && travel) {
               await travel.reserveTravelBuffer({
@@ -7892,18 +7952,28 @@ export function createCalendarActionRunner(
         // events" returns "no events today" even when the calendar has
         // dozens of upcoming items. We apply this regardless of whether the
         // chat LLM picked feed or search_events because both subactions go
-        // Typed searches own their date filters. The complete message may also
-        // contain a destination date for a separate move/proposal; borrowing it
-        // here can hide the very event being looked up.
+        // A sole title search can resolve its bound owner date here in the
+        // Calendar zone. Other typed searches retain their own window, since
+        // a compound request can also name a date for a separate operation.
+        const ownerDateText =
+          subaction === "feed"
+            ? messageText(message)
+            : subaction === "search_events"
+              ? boundCalendarSearchDate(
+                  getStreamingContext()?.actionConstraints,
+                  message,
+                  String(runtime.agentId),
+                )
+              : undefined;
         const baseResolved = resolveCalendarReadWindow(
           explicitSubaction === "search_events" ? "" : intent,
           details,
           subaction === "search_events",
           llmPlan,
           planningTimeZone,
-          subaction === "feed"
+          ownerDateText
             ? {
-                text: messageText(message),
+                text: ownerDateText,
                 observedAt: new Date(calendarMessageObservedAt(message)),
               }
             : undefined,
