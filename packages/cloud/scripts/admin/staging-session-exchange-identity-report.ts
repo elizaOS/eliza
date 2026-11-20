@@ -71,7 +71,16 @@ async function main() {
     assigned_tenant: boolean;
     staging_tenant: boolean;
   };
+  type FixtureAvailability = {
+    organizations: number;
+    active_organizations: number;
+    eligible_users: number;
+    previously_allowlisted_eligible_users: number;
+  };
+  const allowlistedIds = (list: string | undefined) =>
+    (list ?? "").split(/[\s,]+/).filter((id) => UUID.test(id));
   let fixture: FixtureIdentity;
+  let availability: FixtureAvailability;
   try {
     await client.connect();
     await client.query("BEGIN READ ONLY");
@@ -107,6 +116,42 @@ async function main() {
       throw new Error("exact_active_fixture_unresolved");
     }
     fixture = rows[0];
+
+    // A count from the exact staging tenant is enough to select a provisioning
+    // path. The report exposes no additional account or credential identifiers.
+    const candidateRows = await client.query<FixtureAvailability>(
+      `WITH canonical_orgs AS (
+        SELECT id, is_active FROM organizations WHERE btrim(steward_tenant_id) = $1
+      ), eligible AS (
+        SELECT cloud_user.id, org.id AS organization_id
+        FROM users cloud_user
+        JOIN canonical_orgs org ON org.id = cloud_user.organization_id
+        WHERE org.is_active AND cloud_user.is_active AND NOT cloud_user.is_anonymous
+          AND cloud_user.deleted_at IS NULL
+          AND (cloud_user.expires_at IS NULL OR cloud_user.expires_at > CURRENT_TIMESTAMP)
+          AND btrim(cloud_user.steward_user_id) <> ''
+          AND btrim(cloud_user.steward_user_id)
+            !~ '^(system:|anonymous:|affiliate:|wallet:|email:|telegram:|discord:|phone:|whatsapp:|svc_)'
+          AND EXISTS (SELECT 1 FROM user_identities identity
+            WHERE identity.user_id = cloud_user.id
+              AND identity.steward_user_id = btrim(cloud_user.steward_user_id))
+      )
+      SELECT
+        (SELECT count(*)::int FROM canonical_orgs) AS organizations,
+        (SELECT count(*)::int FROM canonical_orgs WHERE is_active) AS active_organizations,
+        (SELECT count(*)::int FROM eligible) AS eligible_users,
+        (SELECT count(*)::int FROM eligible WHERE id = ANY($2::uuid[])
+          AND organization_id = ANY($3::uuid[])) AS previously_allowlisted_eligible_users`,
+      [
+        STAGING_STEWARD_TENANT,
+        allowlistedIds(process.env.ALLOWED_USER_IDS),
+        allowlistedIds(process.env.ALLOWED_ORGANIZATION_IDS),
+      ],
+    );
+    if (candidateRows.rows.length !== 1) {
+      throw new Error("staging_fixture_availability_unresolved");
+    }
+    availability = candidateRows.rows[0];
   } finally {
     await client.end();
   }
@@ -139,6 +184,13 @@ async function main() {
     "| Subject predicate | Observed |",
     "|---|---|",
     ...checks.map(([label, value]) => `| ${label} | ${value} |`),
+    "",
+    "| Staging tenant availability | Count |",
+    "|---|---|",
+    `| Canonical Cloud organizations | ${availability.organizations} |`,
+    `| Active canonical Cloud organizations | ${availability.active_organizations} |`,
+    `| Eligible Cloud users | ${availability.eligible_users} |`,
+    `| Eligible users in the existing allowlists | ${availability.previously_allowlisted_eligible_users} |`,
     "",
   ].join("\n");
   if (process.env.GITHUB_STEP_SUMMARY) {
