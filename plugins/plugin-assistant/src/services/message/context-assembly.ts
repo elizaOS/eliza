@@ -244,6 +244,19 @@ export async function createV5MessageContextObject(args: {
     )
       ? "With camera.capture-photo.v1, taking a picture, photo or selfie on this phone is the device operation camera_capture_photo (DEVICE_CAMERA_CAPTURE), reached through the media or general context. It is requested device work with pending effect status, never navigation alone: opening the Camera view takes no photo, and the owner is never told to press the shutter themselves. The phone opens Camera itself before it takes the photo. "
       : "";
+    // "Wake me at 6:30" names no alarm. Without this the first stage reads it
+    // as a task, a context the device tool is not offered in, and a planner
+    // that has the tool proposes a reminder. A phone is offered one of the two
+    // operations: its own alarms replace the handoff.
+    const clockOperation = ["clock_alarm", "clock_handoff"].find((type) =>
+      deviceOperationSupportedByCapabilities(
+        type,
+        authenticatedDeviceTurn.credential.capabilities,
+      ),
+    );
+    const clockRouteGuidance = clockOperation
+      ? `Setting, ${clockOperation === "clock_alarm" ? "changing, deleting, " : ""}dismissing or snoozing an alarm on this phone, including a request to be woken at a time, goes through PROPOSE_DEVICE_ACTION ${clockOperation} in the general context. A reminder, to-do, timer or calendar event is not an alarm. `
+      : "";
     // Which tool owns each phone request. Without this the planner saw only
     // the capability names: a call routed to Twilio VOICE_CALL, a text to
     // connector messaging, "show my contacts" to the assistant's own
@@ -291,6 +304,7 @@ export async function createV5MessageContextObject(args: {
       phoneRouteGuidance +
       addressBookGuidance +
       cameraCaptureGuidance +
+      clockRouteGuidance +
       smsSenderGuidance +
       (authenticatedDeviceTurn.viewProfile
         ? `Enabled phone views: ${JSON.stringify(authenticatedDeviceTurn.viewProfile.views)}. `
@@ -362,6 +376,7 @@ export async function createV5MessageContextObject(args: {
             : "") +
           addressBookGuidance +
           cameraCaptureGuidance +
+          clockRouteGuidance +
           (deviceOperationSupportedByCapabilities(
             "clock_alarm",
             authenticatedDeviceTurn.credential.capabilities,

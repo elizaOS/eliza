@@ -1058,7 +1058,7 @@ describe("the planner's phone capability instruction", () => {
     // A few percent above the present size, so a paragraph for an operation
     // the turn does not offer does not fit.
     expect((await ownerTurn(HOME)).instruction.length).toBeLessThanOrEqual(
-      7_300,
+      7_530,
     );
   });
 });
