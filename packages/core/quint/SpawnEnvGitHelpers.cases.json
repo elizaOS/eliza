@@ -1,0 +1,45 @@
+{
+	"sources": [
+		"packages/core/src/security/spawn-env-policy.ts",
+		"packages/core/test/spawn-env-git-helpers-model.test.ts",
+		"packages/core/quint/check-spawn-env-git-helpers.mjs"
+	],
+	"conformance": "packages/core/quint/check-spawn-env-git-helpers.mjs",
+	"bounds": "One untrusted env overlay drawn from four keys (GIT_PROXY_COMMAND, GIT_EXEC_PATH, the already blocked GIT_SSH_COMMAND, and the ordinary GIT_AUTHOR_NAME), each written at most once, and up to six steps drawn from: one overlay write, a git:// fetch, and an https fetch. The conformance script replays every generated step sequence through sanitizeSpawnEnv and a real `git ls-remote` child process against a closed loopback port, with each overlay key pointing at a planted script or directory that leaves a marker file if git runs it, and it requires every one of the 16 overlay subsets to reach both a git:// and an https fetch. The config-write gate (packages/agent isBlockedEnvKey, which imports the same set), the PATH/HOME baseline each spawn consumer restores, ssh:// transports and other blocked keys are not modeled. Under weak fairness of git fetches, every overlay write is eventually used by a git run that executes nothing planted. Explicit stuttering lets nobody run git, so the same claim without fairness must fail. No latency bound is proved.",
+	"cases": [
+		{
+			"name": "git-helper-variables-in-a-spawn-overlay",
+			"main": "SpawnEnvGitHelpers",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"NoPlantedHelperRuns",
+				"HelperKeysNeverReachGit",
+				"OrdinaryKeysReachGit",
+				"TypeOK"
+			],
+			"temporal": [
+				"OverlayReachesCleanGit",
+				"OverlayReachesCleanGitWithoutFairness"
+			],
+			"maxSteps": 6,
+			"samples": 4000,
+			"temporalChecks": [
+				{
+					"property": "OverlayReachesCleanGit",
+					"expect": "holds",
+					"assumptions": [
+						"Every continuously enabled git fetch eventually runs (weak fairness). This checks that a git run after an overlay write uses the sanitized overlay and executes no planted helper, not how soon git runs."
+					]
+				},
+				{
+					"property": "OverlayReachesCleanGitWithoutFairness",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fetch fairness is assumed. Nobody may ever run git, so a temporal loop counterexample is required."
+					]
+				}
+			]
+		}
+	]
+}
