@@ -353,6 +353,44 @@ describe("Network weekday with next week", () => {
       );
     }
   });
+
+  it("starts a range in the next calendar week when the member says next week", () => {
+    const now = new Date("2026-10-12T15:00:00Z"); // Monday
+    for (const [text, from, until] of [
+      [
+        "I'm away next week from Tuesday until Friday",
+        "2026-10-20",
+        "2026-10-23",
+      ],
+      [
+        "I'm in Lisbon next week from Tuesday to Friday",
+        "2026-10-20",
+        "2026-10-23",
+      ],
+      [
+        "I'm away from Tuesday until Friday next week",
+        "2026-10-20",
+        "2026-10-23",
+      ],
+      // Without "next week" the range starts this week.
+      ["I'm away from Tuesday until Friday", "2026-10-13", "2026-10-16"],
+    ]) {
+      assert.deepEqual(
+        authorizeSetState(
+          { state: "traveling", from, until, evidence: text },
+          text,
+          now,
+        ),
+        {
+          allowed: true,
+          state: "traveling",
+          from: `${from}T00:00:00.000Z`,
+          until: `${until}T00:00:00.000Z`,
+        },
+        text,
+      );
+    }
+  });
 });
 
 describe("Network back the date", () => {
