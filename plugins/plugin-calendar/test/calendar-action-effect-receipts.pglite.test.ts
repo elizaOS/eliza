@@ -261,6 +261,20 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
         }),
       ]);
       googleAccounts.mockClear();
+      const withAlias = await execute(
+        { grantId: "eliza-calendar", calendarId: "eliza" },
+        "next_event",
+      );
+      expect(withAlias.success).toBe(true);
+      expect(googleAccounts).toHaveBeenCalledExactlyOnceWith(
+        expect.any(URL),
+        expect.objectContaining({ grantId: "eliza-calendar" }),
+        expect.anything(),
+      );
+      expect(withAlias.data?.calendarSources).toEqual(
+        result.data?.calendarSources,
+      );
+      googleAccounts.mockClear();
       const conflict = await execute(
         { grantId: googleGrant.id, calendarId: "primary" },
         "next_event",

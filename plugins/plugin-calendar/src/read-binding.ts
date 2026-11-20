@@ -122,11 +122,7 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
       )
         return null;
       const intentId = `intent:${index}`;
-      if (
-        item.source !== undefined &&
-        (item.source !== "builtin" || item.operation !== "next_event")
-      )
-        return null;
+      if (item.source !== undefined && item.source !== "builtin") return null;
       const selectedTarget =
         item.operation === "read_selected"
           ? selectedCalendarTarget(ctx.message)
@@ -180,8 +176,10 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         (!Array.isArray(item.filterEvidence) || item.filterEvidence.length > 0)
       )
         return null;
+      const { source, ...read } = item as RequestedRead;
       reads.push({
-        ...(item as RequestedRead),
+        ...read,
+        ...(read.operation === "next_event" && source ? { source } : {}),
         intentId,
         ...(selectedTarget ? { selectedTarget } : {}),
         ...(item.operation === "search_events"

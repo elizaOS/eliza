@@ -5784,10 +5784,16 @@ export function createCalendarActionRunner(
           String(runtime.agentId),
         );
         if (scope === "builtin") {
-          details = mergeCalendarSourceSelection(details, {
-            grantId: ELIZA_CALENDAR_GRANT_ID,
+          // This grant contains exactly one calendar. Use the bound calendar
+          // ID even if planning supplies an alias, while rejecting any
+          // independently identified connected grant that conflicts with it.
+          details = {
+            ...mergeCalendarSourceSelection(
+              { ...details, grantId: connectorGrantIdDetail(details) },
+              { grantId: ELIZA_CALENDAR_GRANT_ID },
+            ),
             calendarId: ELIZA_CALENDAR_ID,
-          });
+          };
         } else if (
           scope === "explicit" &&
           (!connectorGrantIdDetail(details) || !calendarIdDetail(details))
