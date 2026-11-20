@@ -11,7 +11,7 @@ const UUID_RE =
 const KEY_ID_RE = /^staging-qa-v1-[A-Za-z0-9._-]{1,48}$/;
 const EXPECTED_VERSION = "v1";
 
-function exactUuidList(value) {
+export function exactUuidList(value) {
   const entries = value
     ?.split(/[\s,]+/)
     .map((entry) => entry.trim())

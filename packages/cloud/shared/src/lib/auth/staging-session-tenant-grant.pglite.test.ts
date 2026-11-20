@@ -159,6 +159,8 @@ test("a tenant-authorized owner can mint and revalidate only the exact live gran
     }
     result = profile({ ...grant, grantId: crypto.randomUUID() });
     expect(await revalidate()).toBe(false);
+    result = profile({ ...grant, issuedAt: seconds - 1 });
+    expect(await revalidate()).toBe(false);
     result = profile(grant);
     for (const failure of [302, 401, 403, 404, 503]) {
       status = failure;

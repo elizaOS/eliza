@@ -5,12 +5,12 @@
  * delegated organization or tenant-authorized fixture grant must already exist.
  */
 
-import { z } from "zod";
 import { apiKeysRepository, appsRepository, usersRepository } from "../../db/repositories";
 import type { ApiKey } from "../../db/repositories/api-keys";
 import { ssoBridgeRepository } from "../../db/repositories/sso-bridge";
 import type { UserWithOrganization } from "../../db/repositories/users";
 import { timingSafeEqualSecret } from "./cron";
+import { resolveStagingSessionTenantAuthority } from "./staging-session-tenant-authority";
 
 export const STAGING_SESSION_EXCHANGE_VERSION = "v1" as const;
 export const STAGING_SESSION_TOKEN_TYP = "eliza-staging-session+jwt";
@@ -213,7 +213,7 @@ function hex(bytes: ArrayBuffer): string {
 async function credentialFingerprint(
   secret: string,
   apiKey: Pick<ApiKey, "id" | "key_hash">,
-  grantId?: string,
+  grantGeneration?: string,
 ): Promise<string> {
   if (!HEX_64_RE.test(apiKey.key_hash)) {
     throw new StagingSessionEligibilityError("source_key");
@@ -227,7 +227,7 @@ async function credentialFingerprint(
   );
   const generation = `${CREDENTIAL_FINGERPRINT_DOMAIN}\0${apiKey.id}\0${apiKey.key_hash}`;
   const message = new TextEncoder().encode(
-    grantId ? `${generation}\0grant:${grantId}` : generation,
+    grantGeneration ? `${generation}\0grant:${grantGeneration}` : generation,
   );
   return hex(await crypto.subtle.sign("HMAC", key, message));
 }
@@ -235,86 +235,6 @@ async function credentialFingerprint(
 async function hashPresentedApiKey(apiKey: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(apiKey));
   return hex(digest);
-}
-
-const fixtureProfile = z.object({
-  ok: z.literal(true),
-  data: z.object({
-    tenantId: z.literal("elizacloud-staging"),
-    userId: z.uuid(),
-    tenantCustomMetadata: z.object({
-      elizaStagingSessionExchange: z.strictObject({
-        version: z.literal(1),
-        grantId: z.uuid(),
-        principal: z.discriminatedUnion("method", [
-          z.strictObject({
-            method: z.literal("siwe"),
-            address: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
-          }),
-          z.strictObject({ method: z.literal("email"), email: z.email() }),
-        ]),
-        apiKeyId: z.uuid(),
-        cloudUserId: z.uuid(),
-        organizationId: z.uuid(),
-        issuedAt: z.number().int().nonnegative(),
-        expiresAt: z.number().int().positive(),
-      }),
-    }),
-  }),
-});
-
-async function readTenantFixtureGrant(input: {
-  reader: string | undefined;
-  tenantId: string;
-  stewardUserId: string;
-  apiKey: Pick<ApiKey, "id" | "user_id" | "organization_id">;
-  user: Pick<
-    UserWithOrganization,
-    "email" | "email_verified" | "wallet_address" | "wallet_verified" | "wallet_chain_type"
-  >;
-  nowSeconds: number;
-}) {
-  const reader = input.reader?.trim();
-  if (!reader || input.tenantId !== "elizacloud-staging" || !UUID_RE.test(input.stewardUserId)) {
-    throw new StagingSessionEligibilityError("tenant");
-  }
-  try {
-    const response = await fetch(
-      `https://login-staging.eliza.app/platform/tenants/elizacloud-staging/users/${input.stewardUserId}`,
-      {
-        headers: { "X-Steward-Platform-Key": reader },
-        redirect: "error",
-        cache: "no-store",
-        signal: AbortSignal.timeout(5000),
-      },
-    );
-    if (response.ok) {
-      const profile = fixtureProfile.safeParse(await response.json());
-      if (profile.success && profile.data.data.userId === input.stewardUserId) {
-        const grant = profile.data.data.tenantCustomMetadata.elizaStagingSessionExchange;
-        const principal = grant.principal;
-        const matchesPrincipal =
-          principal.method === "siwe"
-            ? input.user.wallet_verified &&
-              input.user.wallet_chain_type === "ethereum" &&
-              input.user.wallet_address?.toLowerCase() === principal.address.toLowerCase()
-            : input.user.email_verified &&
-              input.user.email?.trim().toLowerCase() === principal.email.toLowerCase();
-        if (
-          matchesPrincipal &&
-          grant.apiKeyId === input.apiKey.id &&
-          grant.cloudUserId === input.apiKey.user_id &&
-          grant.organizationId === input.apiKey.organization_id &&
-          grant.issuedAt <= input.nowSeconds &&
-          grant.expiresAt > input.nowSeconds
-        )
-          return grant;
-      }
-    }
-  } catch {
-    // error-policy:J1 An unreachable issuer cannot establish a live tenant grant.
-  }
-  throw new StagingSessionEligibilityError("tenant");
 }
 
 interface ExistingStagingSessionSubjectInput {
@@ -408,26 +328,18 @@ async function loadExistingStagingSessionSubject(
     throw new StagingSessionEligibilityError("steward_identity");
   }
 
-  const isConfiguredFixture =
-    input.env.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT?.trim() === stewardUserId;
-  const organizationTenantId = user.organization.steward_tenant_id?.trim();
-  if (
-    isConfiguredFixture
-      ? user.role !== "owner" || !apiKey.user_created || apiKey.source_app_id !== null
-      : organizationTenantId !== tenantId
-  ) {
-    throw new StagingSessionEligibilityError("tenant");
-  }
-  const grant = isConfiguredFixture
-    ? await readTenantFixtureGrant({
-        reader: input.env.STAGING_SESSION_EXCHANGE_GRANT_READ_KEY,
-        tenantId,
-        stewardUserId,
-        apiKey,
-        user,
-        nowSeconds,
-      })
-    : undefined;
+  const authority = await resolveStagingSessionTenantAuthority({
+    fixtureSubject: input.env.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT,
+    reader: input.env.STAGING_SESSION_EXCHANGE_GRANT_READ_KEY,
+    tenantId,
+    stewardUserId,
+    organizationTenantId: user.organization.steward_tenant_id,
+    apiKey,
+    user,
+    nowSeconds,
+  });
+  if (authority.kind === "denied") throw new StagingSessionEligibilityError("tenant");
+  const grant = authority.kind === "enrolled" ? authority : undefined;
 
   const apiKeyExpiresAt = apiKey.expires_at
     ? Math.floor(new Date(apiKey.expires_at).getTime() / 1000)
@@ -452,7 +364,11 @@ async function loadExistingStagingSessionSubject(
       apiKeyId: apiKey.id,
       cloudUserId: user.id,
       organizationId: user.organization.id,
-      credentialFingerprint: await credentialFingerprint(signing.secret, apiKey, grant?.grantId),
+      credentialFingerprint: await credentialFingerprint(
+        signing.secret,
+        apiKey,
+        grant?.grantGeneration,
+      ),
       sessionIssuedAt: nowSeconds,
       sessionMaxExpiresAt: expiration,
     },
