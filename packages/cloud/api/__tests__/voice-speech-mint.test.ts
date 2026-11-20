@@ -297,16 +297,16 @@ test("consent warms the same session during its durable write", async () => {
   const hold = Promise.withResolvers<void>();
   consentWrite = hold.promise;
   let issued = false;
-  const responsePending = app
-    .request(
+  const responsePending = Promise.resolve(
+    app.request(
       "/api/v1/voice/speech/consent",
       { method: "POST", headers: { "Content-Type": "application/json" } },
       env(),
-    )
-    .then((response) => {
-      issued = true;
-      return response;
-    });
+    ),
+  ).then((response) => {
+    issued = true;
+    return response;
+  });
   try {
     for (let n = 0; n < 50 && !touched.length; n++)
       await new Promise((resolve) => setTimeout(resolve, 1));
