@@ -23,6 +23,8 @@ _apalache-out/
 generated/
 storybook-static/
 .vibe/
+*.d.vibe.ts
+.vibelang-sidecar-*
 build/
 !spec/**/build/
 !packages/*/src/**/build/
