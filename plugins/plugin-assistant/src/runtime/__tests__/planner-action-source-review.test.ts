@@ -1,16 +1,27 @@
 /**
  * On a short conversation the planner's action source review cost more than
  * the transcript it could defer, and its per-turn source identity made every
- * domain tool definition differ from the previous turn's.
+ * domain tool definition differ from the previous turn's. Where no post-turn
+ * review runs, the review also came and went as the transcript grew, a review
+ * was accepted or the positional window applied, and took the definitions
+ * with it each time.
  */
 import {
+  ChannelType,
   type ContextEvent,
   type ContextObject,
   completionContextSources,
+  type Memory,
   type ToolDefinition,
   type TrajectoryRecorder,
 } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  makeMessage,
+  makeRuntime,
+  makeState,
+} from "../../__tests__/stage1/fixtures.ts";
+import { createV5MessageContextObject } from "../../services/message/context-assembly.ts";
 import {
   projectBackgroundHistory,
   projectReviewedHistory,
@@ -19,8 +30,14 @@ import {
 import {
   applyHistoryRetentionReview,
   prepareHistoryRetention,
+  windowHistoryRetention,
 } from "../history-retention.ts";
 import { ACTION_CONTEXT_ARG, runPlannerLoop } from "../planner-loop.ts";
+
+// A host that reviews after the turn, whatever the machine running the tests
+// is; the phone cases override it.
+beforeEach(() => vi.stubEnv("ELIZA_PLATFORM", ""));
+afterEach(() => vi.unstubAllEnvs());
 
 const CREATE: ToolDefinition = {
   name: "CALENDAR_CREATE_EVENT",
@@ -205,6 +222,100 @@ async function reviewedTurn(
     /** How the first planner call's review was recorded. */
     attribution: attributions[0],
   };
+}
+
+/** A turn whose first planner call creates the event without a review, and
+ * whose second call replies. */
+async function unreviewedTurn(context: ContextObject) {
+  const requests: PlannerRequest[] = [];
+  const result = await runPlannerLoop({
+    runtime: {
+      useModel: async (_type: unknown, params: Record<string, unknown>) => {
+        requests.push(plannerRequest(params));
+        return {
+          text: "",
+          toolCalls:
+            requests.length === 1
+              ? [
+                  {
+                    id: "create",
+                    name: CREATE.name,
+                    arguments: {
+                      title: "Lunch with Sam",
+                      eliza_turn_scope: "more_work_pending",
+                    },
+                  },
+                ]
+              : [
+                  {
+                    id: "reply",
+                    name: "REPLY",
+                    arguments: { text: "Added.", eliza_turn_scope: "final" },
+                  },
+                ],
+        };
+      },
+    },
+    context,
+    tools: [CREATE],
+    executeToolCall: async () => ({ success: true, text: "Created." }),
+    evaluate: async () => ({
+      success: false,
+      decision: "CONTINUE",
+      thought: "The created event still needs a reply.",
+    }),
+  });
+  expect(requests).toHaveLength(2);
+  return {
+    first: requests[0],
+    second: requests[1],
+    stored: result.trajectory.modelBaseContext?.metadata?.completionContext,
+  };
+}
+
+/** A turn as the message service assembles it from a stored message and the
+ * thirty long messages before it. */
+function assembledTurn(channelType: ChannelType): Promise<ContextObject> {
+  const runtime = makeRuntime([]);
+  const message = makeMessage({
+    channelType,
+    text: "Add lunch with Sam on Friday.",
+  });
+  message.createdAt = 1000;
+  const state = makeState();
+  state.data.providers = {
+    RECENT_MESSAGES: {
+      data: {
+        recentMessages: Array.from(
+          { length: 30 },
+          (_, index): Memory => ({
+            ...message,
+            id: `00000000-0000-0000-0000-${String(100 + index).padStart(12, "0")}` as Memory["id"],
+            createdAt: index + 1,
+            entityId: index % 2 ? runtime.agentId : message.entityId,
+            content: { ...message.content, text: LONG(index) },
+          }),
+        ),
+      },
+    },
+  };
+  return createV5MessageContextObject({ runtime, message, state });
+}
+
+/** The turn as Stage 1 hands it over where no post-turn review runs: earlier
+ * originals deferred by position. */
+function windowedTurn(context: ContextObject): ContextObject {
+  const scope = {
+    agentId: "agent",
+    roomId: "room",
+    entityId: "owner",
+    roles: ["OWNER"],
+  };
+  const window = windowHistoryRetention(context, scope, null);
+  const history = projectReviewedHistory(context, scope, window.checkpoint);
+  if (!history || !window.windowed) throw new Error("Missing window");
+  history.windowed = true;
+  return withBackgroundHistory(context, history);
 }
 
 const SHORT = (index: number) => `short exchange ${index}.`;
@@ -488,4 +599,116 @@ describe("planner action source review identity", () => {
     expect(executed.completionContext).toBeNull();
     expect(second.input).toContain("short exchange 3.");
   });
+});
+
+// The transcripts here are long enough that a host which reviews its turns is
+// offered the review on them, as the break-even tests above show.
+describe("planner action source review where no post-turn review runs", () => {
+  it("offers no review on a phone and keeps tool definitions identical across turns", async () => {
+    vi.stubEnv("ELIZA_PLATFORM", "android");
+    const first = await firstPlannerRequest(turn("turn-1", dialogue(30, LONG)));
+    const second = await firstPlannerRequest(
+      turn("turn-2", dialogue(32, LONG)),
+    );
+    for (const request of [first, second]) {
+      expect(JSON.stringify(request.tools)).not.toContain(ACTION_CONTEXT_ARG);
+      expect(request.input).not.toContain("action_source_review");
+      expect(request.input).not.toContain(
+        "Completion-context field instructions",
+      );
+      // Nothing is deferred in the review's place.
+      expect(request.input).toContain("long exchange 0:");
+      expect(request.input).toContain("long exchange 29:");
+    }
+    expect(JSON.stringify(second.tools)).toBe(JSON.stringify(first.tools));
+    expect(second.system).toBe(first.system);
+  });
+
+  it("sends the same tool definitions on both requests of a phone turn", async () => {
+    vi.stubEnv("ELIZA_PLATFORM", "android");
+    const { first, second } = await unreviewedTurn(
+      turn("turn-1", dialogue(30, LONG)),
+    );
+    expect(JSON.stringify(first.tools)).not.toContain(ACTION_CONTEXT_ARG);
+    expect(JSON.stringify(second.tools)).toBe(JSON.stringify(first.tools));
+    for (const request of [first, second]) {
+      expect(request.input).not.toContain("action_source_review");
+      expect(request.input).toContain("long exchange 0:");
+    }
+    // The second request is the first with the tool call and its result
+    // appended, so everything the first one sent can be reused.
+    expect(second.input.startsWith(first.input.slice(0, -1))).toBe(true);
+  });
+
+  it("keeps a domain tool's definition once the positional window applies on a phone", async () => {
+    vi.stubEnv("ELIZA_PLATFORM", "android");
+    const before = await firstPlannerRequest(
+      turn("turn-1", dialogue(30, LONG)),
+    );
+    const windowed = await firstPlannerRequest(
+      windowedTurn(turn("turn-2", dialogue(44, LONG))),
+    );
+    expect(windowed.input).toContain("deferred by position");
+    expect(windowed.input).not.toContain("long exchange 2:");
+    // The history read is the one definition the window adds.
+    expect(
+      JSON.stringify(
+        windowed.tools.filter((tool) => tool.name !== "RESTORE_CONTEXT"),
+      ),
+    ).toBe(JSON.stringify(before.tools));
+  });
+
+  it("keeps an explicit earlier selection in force on a phone", async () => {
+    vi.stubEnv("ELIZA_PLATFORM", "android");
+    const context = turn("turn", dialogue(44, LONG));
+    const windowed = windowedTurn(context);
+    expect(
+      JSON.stringify(projectBackgroundHistory(windowed).context.events),
+    ).not.toContain("long exchange 2:");
+    // The reply handler asked for all prior dialogue, which overrides the
+    // window that would otherwise defer the early originals.
+    const allPriorDialogue = {
+      mode: "full",
+      sourceSetId: completionContextSources(context).sourceSetId,
+      complete: false,
+      relevantSourceIds: [],
+      constraintSourceIds: [],
+      referentSourceIds: [],
+      pendingIntentSourceIds: [],
+    };
+    windowed.metadata = {
+      ...windowed.metadata,
+      completionContext: allPriorDialogue,
+    };
+
+    const { first, second, stored } = await unreviewedTurn(windowed);
+    for (const request of [first, second]) {
+      expect(request.input).not.toContain("action_source_review");
+      expect(request.input).toContain("long exchange 2:");
+      expect(JSON.stringify(request.tools)).not.toContain("RESTORE_CONTEXT");
+    }
+    expect(JSON.stringify(second.tools)).toBe(JSON.stringify(first.tools));
+    expect(stored).toEqual(allPriorDialogue);
+  });
+
+  // Group voice is reviewed on no host. The planner is handed the turn's
+  // context rather than its message, so the channel has to survive the
+  // message service's own assembly.
+  it.each([
+    [ChannelType.DM, true],
+    [ChannelType.VOICE_GROUP, false],
+  ])(
+    "on a host that reviews its turns, offers the review in a %s room: %j",
+    async (channelType, offered) => {
+      const context = await assembledTurn(channelType);
+      // The same originals are reviewable in either room.
+      expect(completionContextSources(context).sources).toHaveLength(30);
+      const request = await firstPlannerRequest(context);
+      expect(JSON.stringify(request.tools).includes(ACTION_CONTEXT_ARG)).toBe(
+        offered,
+      );
+      expect(request.input.includes("action_source_review")).toBe(offered);
+      expect(request.input).toContain("long exchange 29:");
+    },
+  );
 });
