@@ -32,6 +32,11 @@ if (profile.signing) {
    keyAlias: hostEnvironment(profile.signing.keyAlias), keyPassword: hostEnvironment(profile.signing.keyPassword)]
  }
 }
+def hostTestMocks = false
+if (profile.testMocks) {
+ def raw = project.findProperty(profile.testMocks.property) ?: System.getenv(profile.testMocks.property)
+ hostTestMocks = raw != null && raw.toString() == '1'
+}
 android {
  namespace identity.appId
  compileSdk rootProject.ext.compileSdkVersion
@@ -44,6 +49,7 @@ android {
   manifestPlaceholders = profile.manifestPlaceholders
   testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
   profile.buildConfigFields.each { field -> buildConfigField field.type, field.name, field.value }
+  if (profile.testMocks?.buildConfigField) buildConfigField 'boolean', profile.testMocks.buildConfigField, 'false'
  }
  buildFeatures { buildConfig true }
  androidResources { noCompress.addAll(profile.noCompress) }
@@ -65,6 +71,12 @@ android {
  profile.generatedSources.each { entry ->
   sourceSets.getByName(entry.sourceSet).getProperty(entry.kind).srcDir(layout.buildDirectory.dir(entry.path))
  }
+ if (hostTestMocks) {
+  profile.testMocks.debug.java.each { directory -> sourceSets.debug.java.srcDir directory }
+  profile.testMocks.debug.res.each { directory -> sourceSets.debug.res.srcDir directory }
+  if (profile.testMocks.debug.manifest) sourceSets.debug.manifest.srcFile profile.testMocks.debug.manifest
+  profile.testMocks.androidTest.java.each { directory -> sourceSets.androidTest.java.srcDir directory }
+ }
  signingConfigs {
   if (hostSigning) {
    release {
@@ -79,6 +91,7 @@ android {
   debug {
    debuggable true
    profile.buildTypes.debug.buildConfigFields.each { field -> buildConfigField field.type, field.name, field.value }
+   if (profile.testMocks?.buildConfigField) buildConfigField 'boolean', profile.testMocks.buildConfigField, hostTestMocks ? 'true' : 'false'
    if (profile.buildTypes.debug.abiFilters) ndk { abiFilters(*profile.buildTypes.debug.abiFilters) }
   }
   release {
@@ -95,15 +108,21 @@ android {
   targetCompatibility JavaVersion.toVersion(profile.toolchain.java)
  }
  if (profile.kotlin) kotlinOptions { jvmTarget = String.valueOf(profile.toolchain.java) }
- if (profile.runtimeMain || profile.nativeLibraries == 'extract-16k') packaging.jniLibs.useLegacyPackaging = true
+ if (profile.preserveRuntimeBytes || profile.nativeLibraries == 'extract-16k') packaging.jniLibs.useLegacyPackaging = true
  if (profile.nativeLibraries == 'extract-16k') androidResources.noCompress += 'so'
  if (profile.runtimeMain) {
-  sourceSets.main.assets.srcDir(new File(profile.runtimeMain, 'assets'))
+  def runtimeAssets = tasks.register('stageElizaConsumerRuntimeAssets', Sync) {
+   from new File(profile.runtimeMain, 'assets')
+   exclude 'agent/arm64-v8a/**', 'agent/x86_64/**', 'agent/riscv64/**'
+   into layout.buildDirectory.dir('generated/eliza-consumer-runtime-assets')
+  }
+  sourceSets.main.assets.srcDir(runtimeAssets.map { it.destinationDir })
+  tasks.named('preBuild').configure { dependsOn runtimeAssets }
   sourceSets.main.jniLibs.srcDir(new File(profile.runtimeMain, 'jniLibs'))
  }
 }
-if (profile.hostManifest) androidComponents.onVariants(androidComponents.selector().all()) { variant ->
- variant.sources.manifests.addStaticManifestFile(profile.hostManifest)
+if (profile.embeddedServiceManifest) androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+ variant.sources.manifests.addStaticManifestFile(profile.embeddedServiceManifest)
 }
 dependencies {
  androidTestImplementation "androidx.test:runner:${rootProject.ext.androidxTestRunnerVersion}"
@@ -121,18 +140,14 @@ profile.admission.each { step ->
  tasks.named('preBuild').configure { dependsOn admission }
  admissionBefore = admission
 }
-def stagedAssets = [
- [task: 'stageElizaConsumerAssetFiles', directory: 'generated/eliza-consumer-assets', into: '', files: profile.assetFiles],
- [task: 'stageElizaAgentData', directory: 'generated/eliza-agent-data', into: 'agent', files: profile.agentFiles],
-]
-stagedAssets.findAll { !it.files.isEmpty() }.each { staged ->
- def directory = layout.buildDirectory.dir(staged.directory)
- def stage = tasks.register(staged.task, Sync) {
-  into directory
-  staged.files.each { asset -> from(asset.source) { if (staged.into) into staged.into; rename { asset.name } } }
+if (!profile.assetFiles.isEmpty()) {
+ def assetDirectory = layout.buildDirectory.dir('generated/eliza-consumer-assets')
+ def assetFiles = tasks.register('stageElizaConsumerAssetFiles', Sync) {
+  profile.assetFiles.each { asset -> from(asset.source) { rename { asset.name } } }
+  into assetDirectory
  }
- android.sourceSets.main.assets.srcDir(directory)
- tasks.named('preBuild').configure { dependsOn stage }
+ android.sourceSets.main.assets.srcDir(assetDirectory)
+ tasks.named('preBuild').configure { dependsOn assetFiles }
 }
 if (profile.nativeLibraries == 'extract-16k') androidComponents.onVariants(androidComponents.selector().all()) { variant ->
  def buildTools = new File(androidComponents.sdkComponents.sdkDirectory.get().asFile, "build-tools/${android.buildToolsVersion}")
