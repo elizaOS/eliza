@@ -87,7 +87,11 @@ const MOVE = "move v613 check to 4pm";
 const REMOVE = "delete the calendar event v613 check";
 
 /** The phone's actions and routes as v613 registers them. */
-async function phoneFixture(text: string, view: View) {
+async function phoneFixture(
+  text: string,
+  view: View,
+  extraMetadata: Record<string, unknown> = {},
+) {
   const runtime = new AgentRuntime({
     character: {
       name: "Eliza",
@@ -146,6 +150,7 @@ async function phoneFixture(text: string, view: View) {
           primaryContext: shape.primaryContext,
           secondaryContexts: [],
         },
+        ...extraMetadata,
       },
     },
   } as Memory;
@@ -162,8 +167,9 @@ async function replay(
   view: View,
   plan: Record<string, unknown>,
   processMessage = "RESPOND",
+  extraMetadata: Record<string, unknown> = {},
 ) {
-  const { runtime, message } = await phoneFixture(text, view);
+  const { runtime, message } = await phoneFixture(text, view, extraMetadata);
   const state = { text: "", values: {}, data: {} } as never;
   const availableContexts = await listAvailableContextsForTurn(
     runtime,
@@ -355,6 +361,40 @@ describe("a calendar event request loads the calendar context from any view", ()
         "CALENDAR_DELETE_EVENT",
       ]),
     );
+  });
+
+  // v617 (2026-11-20): the phone's direct-request turn from Contacts. The
+  // create, move and delete reach the canonical Calendar operations, whose
+  // store is the Agent Calendar that Alpha's Calendar view renders; the route
+  // never substitutes the native device operation.
+  it.each(
+    REQUESTS.map(([text, action]) => [text.replace("v613", "v617"), action]),
+  )("v617 direct request from Contacts: %s -> %s", async (text, action) => {
+    const result = await replay(
+      text,
+      "contacts",
+      STAGE1_SHAPES.viewContext,
+      "RESPOND",
+      {
+        uiTimeZone: "America/New_York",
+        agentActionMode: "direct-request-v1",
+        userTextFormat: "plain-v1",
+        viewDelivery: "completed-action",
+        clientDevice: {
+          context: {
+            view: "contacts",
+            revision: 3,
+            timeZone: "America/New_York",
+            sensitive: false,
+          },
+        },
+      },
+    );
+    expect(result.plan.contexts).toContain("calendar");
+    expect(result.plan.candidateActions).toContain(action);
+    expect(result.plan.candidateActions).not.toContain("PROPOSE_DEVICE_ACTION");
+    expect(result.plan.reply ?? "").toBe("");
+    expect(result.surface).toContain(action);
   });
 
   it("only the request's own route matches", async () => {
