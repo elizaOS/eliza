@@ -225,6 +225,11 @@ export async function createV5MessageContextObject(args: {
     )
       ? "When the owner asks who sent the latest incoming SMS, keep the pending phone lookup in the messaging context for PROPOSE_DEVICE_ACTION sms_latest_sender. The phone reviews the read and shares only the approved sender suffix. Do not infer the sender or look in the cloud inbox. "
       : "";
+    const gmailComposeGuidance = phoneCapabilities.includes(
+      "gmail.local-compose.v1",
+    )
+      ? "Compose a new Gmail draft with MESSAGE_DRAFT_FOLLOWUP (source gmail, to, subject, body). A retry like “let’s do it again” immediately following a new email draft is the same compose request. Recover its recipient, subject and body from this chat, and use the same local compose tool. Ask for any missing details. MESSAGE_DRAFT_REPLY needs an actual incoming email to answer. Do not search or triage the mailbox to recreate an unsent chat draft. The local draft is never sent by this action. "
+      : "";
     const compactCapabilityGuidance =
       `Authenticated phone capabilities: ${JSON.stringify(phoneCapabilities)}. ` +
       telephonyGuidance +
@@ -232,6 +237,7 @@ export async function createV5MessageContextObject(args: {
       addressBookGuidance +
       cameraCaptureGuidance +
       smsSenderGuidance +
+      gmailComposeGuidance +
       (authenticatedDeviceTurn.viewProfile
         ? `Enabled phone views: ${JSON.stringify(authenticatedDeviceTurn.viewProfile.views)}. `
         : "") +
@@ -283,6 +289,7 @@ export async function createV5MessageContextObject(args: {
             : "") +
           addressBookGuidance +
           cameraCaptureGuidance +
+          gmailComposeGuidance +
           (deviceOperationSupportedByCapabilities(
             "clock_alarm",
             authenticatedDeviceTurn.credential.capabilities,
