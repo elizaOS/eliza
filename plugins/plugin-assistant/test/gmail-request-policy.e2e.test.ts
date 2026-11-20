@@ -33,7 +33,7 @@ function withOwnerDeviceActionTurn<T>(
   });
 }
 
-async function setup() {
+async function setup(localCompose = false) {
   const fixture = await createRealTestRuntime({
     characterName: "GmailEffectAuthority",
     withLLM: false,
@@ -45,7 +45,10 @@ async function setup() {
     subjectUserId: `gateway:${owner}`,
     installationId: randomUUID(),
     deviceKey: "a".repeat(64),
-    capabilities: ["gmail.request-policy.v1"],
+    capabilities: [
+      "gmail.request-policy.v1",
+      ...(localCompose ? ["gmail.local-compose.v1"] : []),
+    ],
   };
   await device.register(credential, "Effect authority fixture");
   const turn = async <T>(
@@ -99,6 +102,177 @@ async function setup() {
   };
   return { ...fixture, runtime, owner, device, credential, turn };
 }
+test("the owner phone can request a local Gmail draft without a send broker or an armed confirmation", async () => {
+  const f = await setup(true);
+  try {
+    await f.turn("Draft a new email for tomorrow's shoot", async (message) => {
+      const stored = vi
+        .spyOn(f.runtime, "getMemoryById")
+        .mockResolvedValue(message);
+      try {
+        const { sendDraftAction } = await import(
+          "../src/features/messaging/triage/actions/sendDraft.ts"
+        );
+        const result = await sendDraftAction.handler(
+          f.runtime,
+          message,
+          undefined,
+          {
+            parameters: {
+              source: "gmail",
+              to: ["crew@example.invalid"],
+              subject: "Tomorrow's shoot",
+              body: "Please bring the tripod.",
+            },
+          },
+        );
+        expect(result).toMatchObject({
+          success: true,
+          turnComplete: true,
+          values: {
+            mode: "local-compose",
+            targetId: "inbox",
+            emailDraft: {
+              requestMessageId: message.id,
+              to: ["crew@example.invalid"],
+              subject: "Tomorrow's shoot",
+              body: "Please bring the tripod.",
+            },
+          },
+        });
+        const { messageAction } = await import(
+          "../src/features/advanced-capabilities/actions/message.ts"
+        );
+        const direct = {
+          parameters: {
+            action: "send",
+            platform: "email",
+            recipient: "crew@example.invalid",
+            subject: "Tomorrow's shoot",
+            message: "Please bring the tripod.",
+          },
+        };
+        expect(
+          await messageAction.validate(f.runtime, message, undefined, direct),
+        ).toBe(true);
+        const routed = await messageAction.handler(
+          f.runtime,
+          message,
+          undefined,
+          direct,
+        );
+        expect(routed).toMatchObject({
+          success: true,
+          values: {
+            mode: "local-compose",
+            emailDraft: {
+              requestMessageId: message.id,
+              to: ["crew@example.invalid"],
+              subject: "Tomorrow's shoot",
+              body: "Please bring the tripod.",
+            },
+          },
+          data: { actionName: "MESSAGE" },
+        });
+        f.runtime.registerMessageConnector({
+          source: "gmail",
+          label: "Gmail",
+          contexts: ["email"],
+          capabilities: ["send_message"],
+          supportedTargetKinds: ["user"],
+          resolveTargets: async () => [
+            {
+              target: { source: "gmail", entityId: f.owner },
+              label: "crew@example.invalid",
+              kind: "user",
+            },
+          ],
+          sendHandler: async () => {
+            throw new Error("The phone editor owns dispatch");
+          },
+        });
+        const inferred = await messageAction.handler(
+          f.runtime,
+          message,
+          undefined,
+          {
+            parameters: {
+              action: "send",
+              target: "crew@example.invalid",
+              targetKind: "user",
+              message: "Please bring the tripod.",
+              subject: "Tomorrow's shoot",
+            },
+          },
+        );
+        expect(inferred).toMatchObject({
+          success: true,
+          values: {
+            mode: "local-compose",
+            emailDraft: {
+              requestMessageId: message.id,
+              to: ["crew@example.invalid"],
+            },
+          },
+        });
+        const scoped = await messageAction.handler(
+          f.runtime,
+          message,
+          undefined,
+          { parameters: { ...direct.parameters, accountId: "other-account" } },
+        );
+        expect(scoped).toMatchObject({ success: false });
+        expect(scoped).not.toHaveProperty("values.emailDraft");
+        const scheduled = await messageAction.handler(
+          f.runtime,
+          message,
+          undefined,
+          {
+            parameters: { ...direct.parameters, sendAtMs: Date.now() + 60_000 },
+          },
+        );
+        expect(scheduled).toMatchObject({ success: false });
+        expect(scheduled).not.toHaveProperty("values.emailDraft");
+        expect(
+          await f.runtime.getCache(
+            `message-consent:${message.entityId}:${message.roomId}`,
+          ),
+        ).toBeFalsy();
+        await expect(
+          sendDraftAction.handler(
+            f.runtime,
+            { ...message, entityId: randomUUID() },
+            undefined,
+            {
+              parameters: {
+                source: "gmail",
+                to: ["crew@example.invalid"],
+                subject: "Tomorrow's shoot",
+                body: "Please bring the tripod.",
+              },
+            },
+          ),
+        ).rejects.toThrow("Reopen this email request");
+      } finally {
+        stored.mockRestore();
+      }
+    });
+    const gate = Promise.withResolvers<void>();
+    const delayed = await f.turn("Prepare a second email", async (message) => ({
+      result: gate.promise.then(async () => {
+        const { currentGmailComposeOrigin } = await import(
+          "../src/services/device-actions/service.ts"
+        );
+        return currentGmailComposeOrigin(f.runtime, message);
+      }),
+    }));
+    gate.resolve();
+    await expect(delayed.result).rejects.toThrow("Reopen this email request");
+  } finally {
+    await f.cleanup();
+  }
+});
+
 const digest = sendConsentDigest({
   source: "gmail",
   to: "qa@example.invalid",
