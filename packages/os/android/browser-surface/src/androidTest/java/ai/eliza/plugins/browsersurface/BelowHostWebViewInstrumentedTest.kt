@@ -113,7 +113,7 @@ class BelowHostWebViewInstrumentedTest {
                 },
             )
             root.addView(
-                BelowHostInputRouter(context) { listOf(page) },
+                BelowHostInputRouter(context, { if (it == page) site else host }) { listOf(page) },
                 root.indexOfChild(host) + 1,
                 FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
             )
