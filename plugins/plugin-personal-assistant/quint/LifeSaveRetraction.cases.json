@@ -1,0 +1,44 @@
+{
+  "sources": [
+    "plugins/plugin-personal-assistant/src/actions/lib/lifeops-deferred-draft.ts",
+    "plugins/plugin-personal-assistant/src/actions/life-save-retraction.pglite.integration.test.ts",
+    "plugins/plugin-personal-assistant/quint/check-life-save-retraction.mjs"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-life-save-retraction.mjs",
+  "bounds": "One owner reminder that was just saved without a preview, so it is active and the recent-save cache names it, followed by one owner message to which the action planner answers OWNER_REMINDERS action=delete, with no target or the target \"that one\". The message is \"don't save that one\", \"don't keep it\" or \"don't forget to set it for 9\", with no prefix, \"actually \" or \"no, \" in front, and the apostrophe of \"don't\" is left out, typed as U+0027 or typed as U+2019 by smart punctuation. The conformance script replays every generated message through the production executePlannedToolCall path on a PGlite-backed runtime with a canonical owner room and requires all 54 messages. Other retraction phrasings (\"never mind\", \"cancel that\", \"do not ...\"), named targets, other planner operations, a pending deferred draft, a save made by the same message and the reply wording are not covered by this model. Under weak fairness of the handler step every message is eventually handled. Explicit stuttering lets the handler never run, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "life-save-retraction-apostrophe",
+      "main": "LifeSaveRetraction",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ApostropheDoesNotDecide",
+        "CacheFollowsSave",
+        "EditKeepsSave",
+        "ReplyMatchesStore",
+        "SaveStandsUntilHandled",
+        "TypeOK"
+      ],
+      "temporal": ["Settles", "SettlesWithoutFairness"],
+      "maxSteps": 4,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "Settles",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled handler step eventually runs (weak fairness). This checks that every message is then handled, not how long the handler takes."
+          ]
+        },
+        {
+          "property": "SettlesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The handler may never run after a message, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}
