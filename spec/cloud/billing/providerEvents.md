@@ -105,6 +105,15 @@ refund or a dispute of a subscription invoice to that invoice's allowance
 period. A charge outside a subscription invoice, and every other type, has
 no owner: credit purchase does not exist.
 
+The Worker reconciles shared Stripe deliveries only for a locally bound
+customer. When a refund or dispute names a charge, the Worker looks up
+that charge's recorded local customer before making any provider request.
+An owned subscription's verified invoice payments establish the charge
+ownership. A later observation cannot move a charge to a different customer.
+The Worker acknowledges an event for an unknown charge without reconciling.
+Ordinary customer-scoped invoice reconciliation observes the current payment
+state once the charge appears on a verified invoice.
+
 ```quint
 import allowance as A from "./allowance"
 type AllowanceChange = ClawBack({ cause: A::ClawbackCause }) | RestoreAllowance
