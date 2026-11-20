@@ -252,14 +252,15 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
         expect.objectContaining({ grantId: "eliza-calendar" }),
         expect.anything(),
       );
-      expect(result.data?.calendarSources).toEqual([
+      const builtInSources = [
         expect.objectContaining({
           key: expect.objectContaining({
             grantId: "eliza-calendar",
             calendarId: "primary",
           }),
         }),
-      ]);
+      ];
+      expect(result.data?.calendarSources).toEqual(builtInSources);
       googleAccounts.mockClear();
       const withAlias = await execute(
         { grantId: "eliza-calendar", calendarId: "eliza" },
@@ -271,9 +272,7 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
         expect.objectContaining({ grantId: "eliza-calendar" }),
         expect.anything(),
       );
-      expect(withAlias.data?.calendarSources).toEqual(
-        result.data?.calendarSources,
-      );
+      expect(withAlias.data?.calendarSources).toEqual(builtInSources);
       googleAccounts.mockClear();
       const conflict = await execute(
         { grantId: googleGrant.id, calendarId: "primary" },
