@@ -49,7 +49,9 @@ const SPACED_WORD_CHAR = String.raw`(?![\p{Script=Han}\p{Script=Hiragana}\p{Scri
 
 const SPACED_WORD_CHAR_PATTERN = new RegExp(`^${SPACED_WORD_CHAR}$`, "u");
 
-function wholeWordSource(name: string): string {
+/** A pattern for `name` as a whole word; an edge in a script written
+ * without spaces between words needs no boundary. */
+export function wholeWordSource(name: string): string {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const open = SPACED_WORD_CHAR_PATTERN.test(name.at(0) ?? "")
     ? `(?<!${SPACED_WORD_CHAR})`
