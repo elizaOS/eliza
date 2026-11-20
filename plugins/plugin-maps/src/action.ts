@@ -543,17 +543,12 @@ export interface AnchoredPlaceQuery {
 
 /**
  * Words after "near" that mean the owner's own position, not a named place:
- * "near me", "near me open now", "near by", "close to where I am right now",
- * "around midnight near me".
+ * "near me", "near me open now", "near us open now", "near by", "close to
+ * where I am right now", "around midnight near me". After "us", only "now",
+ * "right now" or "open now" may follow: "us bank tower" and "us 101" are places.
  */
 const OWN_POSITION =
-  /^(?:me|here)\b|^(?:us|by|myself|this\s+(?:place|spot|location)|(?:my|the)\s+phone)$|^(?:my\s+(?:location|position|place|current\s+location)|where\s+(?:i|we)\s+(?:am|are)|current\s+location)\b|\b(?:near|around|close\s+to|next\s+to)\s+(?:me|here|us)$/iu;
-
-/**
- * "near us open now": a lowercase "us" also takes words after it. "US Bank
- * Tower" and "us 101" stay named places.
- */
-const OWN_POSITION_US = /^us\b(?![\s-]*\d)/u;
+  /^(?:me|here)\b|^(?:us(?:,?\s+(?:open\s+)?(?:right\s+)?now)?|by|myself|this\s+(?:place|spot|location)|(?:my|the)\s+phone)$|^(?:my\s+(?:location|position|place|current\s+location)|where\s+(?:i|we)\s+(?:am|are)|current\s+location)\b|\b(?:near|around|close\s+to|next\s+to)\s+(?:me|here|us)$/iu;
 
 /**
  * "around midnight", "near 5pm", "around Christmas", "near the end": a time
@@ -590,7 +585,6 @@ export function anchoredPlaceQuery(
     !kind ||
     !anchor ||
     OWN_POSITION.test(anchor) ||
-    OWN_POSITION_US.test(anchor) ||
     NEAR_NOT_A_PLACE.test(anchor) ||
     NEAR_NOT_A_PLACE_KIND.test(kind)
   )

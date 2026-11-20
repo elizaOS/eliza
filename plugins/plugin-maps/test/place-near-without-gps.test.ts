@@ -313,6 +313,13 @@ describe("a kind of place near a named place", () => {
     expect(anchoredPlaceQuery("find a coffee shop near US Bank Tower")).toEqual(
       { kind: "coffee shop", anchor: "US Bank Tower" },
     );
+    expect(anchoredPlaceQuery("find a coffee shop near us bank tower")).toEqual(
+      { kind: "coffee shop", anchor: "us bank tower" },
+    );
+    expect(anchoredPlaceQuery("find a pharmacy near us post office")).toEqual({
+      kind: "pharmacy",
+      anchor: "us post office",
+    });
   });
 
   it.each([
@@ -320,6 +327,7 @@ describe("a kind of place near a named place", () => {
     "find a pharmacy near me please",
     "is there a pharmacy near me open now?",
     "find a pharmacy near us open now",
+    "find a pharmacy near us right now",
     "find a pharmacy near by",
   ])("hands %s to the phone", async (text) => {
     const searched: Search[] = [];
