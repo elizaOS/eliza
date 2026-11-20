@@ -3,6 +3,7 @@
 import {
   CALENDAR_READ_ACTIONS,
   type CalendarReadBinding,
+  readClientTurnObservation,
 } from "@elizaos/contracts";
 import {
   getRecentMessagesData,
@@ -11,6 +12,7 @@ import {
   type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEvaluator,
 } from "@elizaos/core";
+import { currentAppRecordSource } from "@elizaos/plugin-assistant";
 import { selectedCalendarTarget } from "./actions/calendar-read-selected.js";
 import {
   ELIZA_CALENDAR_GRANT_ID,
@@ -22,6 +24,7 @@ import {
   parseExplicitLocalDate,
   WEEKDAY_NAME_PATTERN,
 } from "./internal/request-time.js";
+import { parseScopedCalendarSlotWindow } from "./internal/scoped-slot-window.js";
 
 import {
   bindFilterEvidence,
@@ -430,6 +433,7 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
   deterministicActions: [
     CALENDAR_READ_ACTIONS.next_event,
     CALENDAR_READ_ACTIONS.search_events,
+    CALENDAR_READ_ACTIONS.propose_times,
   ],
   shouldRun: ({ runtime, message, messageHandler, userRoles }) =>
     messageHandler.processMessage === "RESPOND" &&
@@ -500,6 +504,32 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
           name: CALENDAR_READ_ACTIONS.search_events,
           params: { ...calendar, query: read.filterEvidence[0].query },
         };
+      } else if (
+        read.operation === "propose_times" &&
+        currentAppRecordSource(runtime, "calendar", message) === "runtime"
+      ) {
+        const metadata = message.content.metadata;
+        const observation = readClientTurnObservation(metadata);
+        const timeZone =
+          observation?.timeZone ??
+          (isObjectRecord(metadata) && typeof metadata.uiTimeZone === "string"
+            ? metadata.uiTimeZone
+            : undefined);
+        const window =
+          !observation?.sensitive &&
+          typeof message.content.text === "string" &&
+          typeof timeZone === "string"
+            ? parseScopedCalendarSlotWindow(
+                message.content.text,
+                timeZone,
+                read.requestedAt,
+              )
+            : undefined;
+        if (window)
+          deterministicToolCall = {
+            name: CALENDAR_READ_ACTIONS.propose_times,
+            params: { ...calendar, ...window },
+          };
       }
     }
     return {

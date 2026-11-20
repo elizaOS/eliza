@@ -1011,27 +1011,36 @@ function verifiedCalendarSlots(
   return checked.success && checked.decision === "FINISH" ? checked : undefined;
 }
 
+/** Try the current Calendar slot evidence without invoking a model. */
+export function runVerifiedCalendarSlotStage(
+  params: RunEvaluatorParams,
+): Promise<EvaluatorOutput> | undefined {
+  const startedAt = Date.now();
+  const slots = verifiedCalendarSlots(params);
+  if (!slots) return;
+  return recordGatedEvaluationStage({
+    runtime: params.runtime,
+    recorder: params.recorder,
+    trajectoryId: params.trajectoryId,
+    parentStageId: params.parentStageId,
+    iteration: params.iteration ?? 1,
+    startedAt,
+    endedAt: Date.now(),
+    output: slots,
+    reason: "verified_calendar_slots",
+    logger: params.runtime.logger,
+  }).then(() => {
+    getStreamingContext()?.abortSignal?.throwIfAborted();
+    return slots;
+  });
+}
+
 async function runEvaluatorStage(
   params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
   const startedAt = Date.now();
-  const slots = verifiedCalendarSlots(params);
-  if (slots) {
-    await recordGatedEvaluationStage({
-      runtime: params.runtime,
-      recorder: params.recorder,
-      trajectoryId: params.trajectoryId,
-      parentStageId: params.parentStageId,
-      iteration: params.iteration ?? 1,
-      startedAt,
-      endedAt: Date.now(),
-      output: slots,
-      reason: "verified_calendar_slots",
-      logger: params.runtime.logger,
-    });
-    getStreamingContext()?.abortSignal?.throwIfAborted();
-    return slots;
-  }
+  const slots = runVerifiedCalendarSlotStage(params);
+  if (slots) return slots;
   const configuredModel = resolveSetting(
     params.runtime.getSetting
       ? {

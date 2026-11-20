@@ -264,6 +264,114 @@ describe("Calendar operation bindings", () => {
     expect(await route([text])).toBeUndefined();
     expect(await route([text, "Send it to my coworker"], true)).toBeUndefined();
   });
+  it("routes one literal built-in slot request without asking the planner for the same window", async () => {
+    const runtime = new AgentRuntime({
+      character: { name: "Calendar slot fixture", bio: [] },
+      logLevel: "fatal",
+    });
+    const route = async (
+      text: string,
+      options: {
+        source?: "builtin";
+        execution?: "required" | "conditional";
+        userRoles?: ["OWNER"] | [];
+        extraIntent?: string;
+        timeZone?: string;
+      } = { source: "builtin" },
+    ) => {
+      const message: Memory = {
+        id: stringToUuid("scoped-slot"),
+        agentId: runtime.agentId,
+        entityId: stringToUuid("owner"),
+        roomId: stringToUuid("slot-room"),
+        createdAt: Date.parse("2026-11-20T19:00:00Z"),
+        content: {
+          text,
+          metadata: {
+            uiTimeZone: options.timeZone ?? "America/Los_Angeles",
+          },
+        },
+      };
+      const handler: MessageHandlerResult = {
+        processMessage: "RESPOND",
+        thought: "",
+        plan: {
+          contexts: ["calendar"],
+          intents: [
+            text,
+            ...(options.extraIntent ? [options.extraIntent] : []),
+          ],
+          calendarReadBindings: [
+            {
+              intentId: "intent:1",
+              operation: "propose_times",
+              execution: options.execution ?? "required",
+              ...(options.source ? { source: options.source } : {}),
+              sourceMessageId: message.id as NonNullable<Memory["id"]>,
+              roomId: message.roomId,
+              actorId: message.entityId,
+              requestedAt: message.createdAt as number,
+            },
+          ],
+        },
+      };
+      await runResponseHandlerEvaluators({
+        runtime,
+        message,
+        state: { values: {}, data: {}, text: "" },
+        messageHandler: handler,
+        availableContexts: [],
+        userRoles: options.userRoles ?? ["OWNER"],
+        evaluators: [calendarReadBindingEvaluator],
+      });
+      return handler.plan.deterministicToolCall;
+    };
+    const text =
+      "Find a twenty-minute slot for groceries tomorrow between noon and five on my built-in Eliza calendar.";
+    const expected = {
+      name: "CALENDAR_PROPOSE_TIMES",
+      params: {
+        grantId: "eliza-calendar",
+        calendarId: "primary",
+        windowStart: "2026-11-21T20:00:00.000Z",
+        windowEnd: "2026-11-22T01:00:00.000Z",
+        durationMinutes: 20,
+        timeZone: "America/Los_Angeles",
+      },
+    };
+    expect(await route(text)).toEqual(expected);
+    expect(
+      await route(
+        "Find me a 20 minute slot between noon and 5 tomorrow on my built in Eliza calendar.",
+      ),
+    ).toEqual(expected);
+    for (const unsafe of [
+      "Find a 20-minute slot tomorrow between one and four on my built-in calendar.",
+      "Find a 20-minute slot tomorrow from 5 pm to noon on my built-in calendar.",
+      "Find a 20-minute slot today from 8 am to noon on my built-in calendar.",
+      "Find a 20-minute slot tomorrow between noon and 12:10 pm on my built-in calendar.",
+      "Find a 20-minute slot 2027-03-14 from 2 am to 4 am on my built-in calendar.",
+      "Find a 20-minute slot 2027-11-07 from 1 am to 4 am on my built-in calendar.",
+      "Find a 20-minute slot 2026-11-31 between noon and five on my built-in calendar.",
+      "Find a 20-minute slot tomorrow between noon and five on my Google calendar.",
+      "Find a 20-minute slot for groceries tomorrow between noon and five on my built-in calendar, then book it.",
+      "Find a 20-minute slot for after work tomorrow between noon and five on my built-in calendar.",
+    ])
+      expect(await route(unsafe)).toBeUndefined();
+    expect(await route(text, {})).toBeUndefined();
+    expect(
+      await route(text, { source: "builtin", execution: "conditional" }),
+    ).toBeUndefined();
+    expect(
+      await route(text, { source: "builtin", userRoles: [] }),
+    ).toBeUndefined();
+    expect(
+      await route(text, { source: "builtin", extraIntent: "Send it" }),
+    ).toBeUndefined();
+    expect(
+      await route(text, { source: "builtin", timeZone: "invalid" }),
+    ).toBeUndefined();
+  });
   it("routes the sole built-in title lookup with a literal local date", async () => {
     const title = "Calendar latency check";
     const text = `What time does ${title} start today?`;

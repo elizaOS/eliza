@@ -201,6 +201,7 @@ import {
   declaredIntentsFromContext,
   repairFinishWithProgressPromise,
   runEvaluator,
+  runVerifiedCalendarSlotStage,
   validatedOutcomeCoverage,
 } from "./evaluator";
 import { computeCallCostUsd } from "./model-pricing";
@@ -1735,6 +1736,27 @@ async function runPlannerLoopIterations(
       trajectory,
     ),
   });
+  if (
+    postToolReplySeed &&
+    !suppliedSourceReply &&
+    !params.resolveTypedReadReply
+  ) {
+    // The verified Calendar preview can finish the same request immediately.
+    // Incomplete evidence still uses the ordinary seeded reply synthesis.
+    const slotReply = runVerifiedCalendarSlotStage({
+      runtime: params.runtime,
+      context: trajectory.context,
+      trajectory,
+      recorder: params.recorder,
+      trajectoryId: params.trajectoryId,
+      parentStageId: params.parentStageId,
+    });
+    if (slotReply) {
+      const evaluator = await slotReply;
+      trajectory.evaluatorOutputs.push(evaluator);
+      return finishWithEvaluator(evaluator);
+    }
+  }
   const selectRecommendedTool = (evaluator: EvaluatorOutput): void => {
     if (preferRecommendedToolCall(trajectory, evaluator)) return;
     params.runtime.logger?.warn?.(
