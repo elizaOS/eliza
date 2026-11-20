@@ -1,0 +1,30 @@
+// spec/cloud/index.md, "Story: Connect Google mail and calendar"
+import type { HttpClientResponse } from "effect/http"
+
+export error ProviderBodyTooLarge
+export error ProviderBodyUnavailable
+
+function joined(chunks: ReadonlyArray<Uint8Array>, size: number): string {
+  const bytes = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.length
+  }
+  return new TextDecoder().decode(bytes)
+}
+
+export effect function boundedText(response: HttpClientResponse.HttpClientResponse, maxBytes: number): string!(ProviderBodyTooLarge | ProviderBodyUnavailable) {
+  const declared = Number(response.headers["content-length"] ?? "0")
+  if (declared > maxBytes) throw new ProviderBodyTooLarge()
+  const read = try Stream.runFoldEffect(
+    Stream.mapError(response.stream, (): ProviderBodyTooLarge | ProviderBodyUnavailable => new ProviderBodyUnavailable()),
+    () => ({ size: 0, chunks: [] as Uint8Array[] }),
+    (seen, chunk: Uint8Array) => {
+      if (seen.size + chunk.length > maxBytes) return fail(new ProviderBodyTooLarge())
+      seen.chunks.push(chunk)
+      return succeed({ size: seen.size + chunk.length, chunks: seen.chunks })
+    }
+  )
+  return joined(read.chunks, read.size)
+}
