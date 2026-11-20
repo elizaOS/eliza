@@ -259,7 +259,7 @@
     "chalk": "^6.0.1",
     "commander": "^15.0.0",
     "cookie": "^1.1.1",
-    "cron-parser": "^5.10.0",
+    "cron-parser": "^5.10.6",
     "debug": "^4.4.3",
     "decimal.js-light": "^2.5.1",
     "dotenv": "^17.2.3",
