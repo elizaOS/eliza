@@ -77,7 +77,6 @@ export function computeAwakeProbability(args: {
     const observedAt = parseIsoMs(signal.observedAt);
     if (observedAt === null) return false;
     if (args.nowMs - observedAt > 5 * 60000) return false;
-    if (signal.source === "desktop_interaction") return true;
     if (signal.source === "mobile_device" && signal.state === "active") {
       return true;
     }
