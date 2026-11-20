@@ -211,7 +211,7 @@
         },
         {
           "classname": "",
-          "name": "consent warms the session object that the mint then initializes"
+          "name": "consent warms the same session during its durable write"
         },
         {
           "classname": "",
