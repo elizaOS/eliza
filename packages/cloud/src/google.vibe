@@ -56,7 +56,6 @@ const scopeByCapability = {
   write_calendar: "https://www.googleapis.com/auth/calendar.events.owned",
   calendar: "https://www.googleapis.com/auth/calendar.events.readonly"
 } as const
-export const nativeGoogleScopes = ["openid", "email", ...Object.values(scopeByCapability)]
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
@@ -73,6 +72,14 @@ function client(env: GoogleEnv) {
 
 function enabled(env: GoogleEnv) {
   return client(env) !== null && /^[a-f0-9A-F]{64}$/.test(env.GOOGLE_CONNECT_TOKEN_KEY ?? "")
+}
+
+function nativeConnectReady(env: GoogleEnv) {
+  return enabled(env) && client(env)?.id === env.GOOGLE_CLIENT_ID
+}
+
+export function nativeGoogleScopes(env: GoogleEnv) {
+  return nativeConnectReady(env) ? ["openid", "email", ...Object.values(scopeByCapability)] : []
 }
 
 effect function googleConfig(env: GoogleEnv) {
@@ -296,8 +303,8 @@ effect function link(env: GoogleEnv, config: Config, db: Client, account: string
 }
 
 effect function connectCode(env: GoogleEnv, db: Client, account: string, signedInSubject: string, serverAuthCode: string) {
+  if (!nativeConnectReady(env)) throw new ConnectionUnavailable()
   const config = try googleConfig(env)
-  if (config.clientId !== env.GOOGLE_CLIENT_ID) throw new ConnectionUnavailable()
   if (!/^[A-Za-z0-9/_.~-]{10,2048}$/.test(serverAuthCode)) throw new BadRequest()
   if (signedInSubject === "") throw new AuthorizationFailed()
   const credentials = try oauthToken(config, new URLSearchParams({ grant_type: "authorization_code", code: serverAuthCode, redirect_uri: "" }))
@@ -325,7 +332,9 @@ effect function connectNative(request: Request, env: GoogleEnv, db: Client, acco
 }
 
 export effect function connectSignedInGoogle(env: GoogleEnv, db: Client, account: string, signedInSubject: string, serverAuthCode: string) {
-  return Exit.isSuccess(try exit(Effect.provide(connectCode(env, db, account, signedInSubject, serverAuthCode), providerLayer)))
+  const result = try exit(Effect.provide(connectCode(env, db, account, signedInSubject, serverAuthCode), providerLayer))
+  if (Exit.isFailure(result)) try annotateLogs(logWarning("native google connection not linked"), { cause: String(Cause.squash(result.cause)) })
+  return Exit.isSuccess(result)
 }
 
 effect function disconnect(db: Client, account: string) {
