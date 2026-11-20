@@ -150,17 +150,17 @@ export class SpeechRelayCoordinator {
   }
   private async update(
     change: (record: Ledger | undefined) => Ledger,
-    bootstrapExpiry?: number,
+    expiryAlarmAt?: number,
   ): Promise<Ledger> {
     const ledger = await this.state.storage.transaction(async (storage) => {
       const current = await storage.get<Ledger>("session");
       const next = change(current);
       if (next !== current) {
         await storage.put("session", next);
-        // SQLite storage includes this alarm in the same transaction. A
-        // prepared session and its expiry must become durable together.
-        if (bootstrapExpiry !== undefined)
-          await this.state.storage.setAlarm(bootstrapExpiry);
+        // Keep the published lease and its expiry alarm in one commit,
+        // including when a renewal moves the deadline.
+        if (expiryAlarmAt !== undefined)
+          await this.state.storage.setAlarm(expiryAlarmAt);
       }
       return next;
     });
@@ -355,7 +355,22 @@ export class SpeechRelayCoordinator {
     return attempt;
   }
   async alarm() {
-    await this.close(true, true);
+    const due = await this.state.storage.transaction(async (storage) => {
+      const ledger = await storage.get<Ledger>("session");
+      if (!ledger) return false;
+      // A callback queued for the previous deadline can race a renewal.
+      // Recheck the durable expiry before retirement can stop either socket.
+      if (
+        ledger.phase !== "retiring" &&
+        ledger.phase !== "closed" &&
+        Date.now() < ledger.expiresAt
+      ) {
+        await this.state.storage.setAlarm(ledger.expiresAt);
+        return false;
+      }
+      return true;
+    });
+    if (due) await this.close(true, true);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -714,7 +729,7 @@ export class SpeechRelayCoordinator {
         )
           return record;
         return { ...record, expiresAt };
-      });
+      }, expiresAt);
     } catch (error) {
       unsubscribe();
       throw error;
@@ -726,7 +741,6 @@ export class SpeechRelayCoordinator {
     const previous = this.unsubscribeRevocation;
     this.unsubscribeRevocation = unsubscribe;
     previous?.();
-    await this.state.storage.setAlarm(expiresAt);
     this.windows++;
     return expiresAt;
   }

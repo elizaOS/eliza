@@ -1161,7 +1161,7 @@ test("socket Stop settles with the DO bindings and a fresh DB context before a l
   expect(repeated.settlements).toBe(settled);
 });
 
-test("an extending client keeps one live session past its minted end with a fresh fence and reservation", async () => {
+test("a renewed proof-required session survives the original deadline and its stale alarm", async () => {
   const token = "extend-capability";
   const session = { "x-test-session": "native-extend" };
   await worker.dispatchFetch(
@@ -1182,6 +1182,7 @@ test("an extending client keeps one live session past its minted end with a fres
       sessionId: "88888888-8888-4888-8888-888888888888",
       tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
       expiresAt: mintedEnd,
+      proofVersion: 1,
       caller: {
         user: account,
         apiKeyId: null,
@@ -1220,6 +1221,17 @@ test("an extending client keeps one live session past its minted end with a fres
   // Exercise audio after the original expiry, which can otherwise race a
   // renewal that already returned an acknowledgement.
   await Bun.sleep(Math.max(0, mintedEnd + 100 - Date.now()));
+  await worker.dispatchFetch("https://speech-relay.internal/test-force-alarm", {
+    headers: session,
+  });
+  const ledger = await worker.dispatchFetch(
+    "https://speech-relay.internal/test-ledger",
+    { headers: session },
+  );
+  expect(await ledger.json()).toMatchObject({
+    phase: "active",
+    expiresAt: Date.parse(renewal.expiresAt),
+  });
   const audio = next(
     socket as any,
     (value) =>
@@ -1242,6 +1254,7 @@ test("an extending client keeps one live session past its minted end with a fres
     body: JSON.stringify({
       userId: account.id,
       organizationId: account.organization_id,
+      proofVersion: 1,
     }),
   });
   const closed = (await (
