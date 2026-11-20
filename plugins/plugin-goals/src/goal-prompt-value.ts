@@ -53,11 +53,13 @@ function formatPromptValueAt(
   const childIndent = "  ".repeat(depth + 1);
   if (value === null) return "null";
   if (value === undefined) return "";
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
+  if (typeof value === "string") {
+    // Text with a line break is printed below its key, so every line goes at
+    // the value's depth. A line printed in the key column would read as
+    // another field of the record ("...\nstatus: satisfied").
+    return value.includes("\n") ? indentLines(value, indent) : value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
     return String(value);
   }
   if (typeof value === "object") {
@@ -123,4 +125,12 @@ function formatPromptValueAt(
     }
   }
   failUnbounded("reflection", { kind: typeof value });
+}
+
+/** Prefixes every non-empty line with `indent`; empty lines stay empty. */
+function indentLines(text: string, indent: string): string {
+  return text
+    .split("\n")
+    .map((line) => (line.length > 0 ? `${indent}${line}` : line))
+    .join("\n");
 }
