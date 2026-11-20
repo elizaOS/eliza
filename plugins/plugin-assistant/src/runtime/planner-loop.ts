@@ -10,6 +10,7 @@ import {
   readNotesMutationCompletion,
 } from "@elizaos/core";
 import { findViewActionHandoff } from "@elizaos/core/protocol";
+import { postTurnReviewRuns } from "../services/evaluator-progress.ts";
 import {
   completedSideEffectClaimIsUngrounded,
   evaluatePlannedReplyEgress,
@@ -4152,7 +4153,8 @@ function renderPlannerModelInput(params: {
   /** Identity of the originals an offered review covers, captured before
    * dispatch: the context may change while the model is awaited. */
   actionSourceSetId?: string;
-  /** A review was due but could not defer more than it adds to the request. */
+  /** A review was due but not offered: nothing reviews this turn once it
+   * ends, or it could not defer more than it adds to the request. */
   actionSourceReviewWithheld: boolean;
 } {
   const original = params.trajectory.modelBaseContext ?? params.context;
@@ -4226,21 +4228,27 @@ function renderPlannerModelInput(params: {
     stable: false,
     content: `${COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS.replaceAll("completionContext", ACTION_CONTEXT_ARG)}\nUse ${ACTION_CONTEXT_ARG} to review originals for the WHOLE remaining user request, including every pending intent, not only this tool. Return the same review on every eligible domain call in this batch; discovery, reply and restoration protocol calls do not carry this review. Include all applicable standing constraints, corrections, guest identities and referents needed by any remaining operation or final answer. If uncertain, select all_prior_dialogue with complete=false. Current requests, provider facts, tool receipts and complete restorable originals remain available. This never changes the reply handler input.`,
   };
-  // A review that cannot defer more than offering it adds is withheld. This
-  // compares complete encodings; it never caps or selects away any source.
+  // A due review is withheld in two cases. Where nothing reviews the turn once
+  // it ends, offering it would add its argument to every reviewing tool on a
+  // long transcript and drop it again when a review is accepted or the
+  // positional window applies; a prompt cache reads tool definitions first,
+  // so each change costs the rest of the request. Elsewhere it is withheld
+  // when it cannot defer more than offering it adds: that compares complete
+  // encodings and never caps or selects away any source.
   const actionSourceReviewWithheld =
     reviewableSourceSchema !== undefined &&
     actionSources !== undefined &&
-    deferrableHistoryChars(
-      original,
-      actionSources.sources,
-      renderedContext.promptSegments,
-    ) <=
-      actionSourceReviewChars(
-        actionSourceReview,
-        reviewableSourceSchema,
-        params.tools ?? [],
-      );
+    (!postTurnReviewRunsFor(original) ||
+      deferrableHistoryChars(
+        original,
+        actionSources.sources,
+        renderedContext.promptSegments,
+      ) <=
+        actionSourceReviewChars(
+          actionSourceReview,
+          reviewableSourceSchema,
+          params.tools ?? [],
+        ));
   const actionSourceSelectionSchema = actionSourceReviewWithheld
     ? undefined
     : reviewableSourceSchema;
@@ -4431,6 +4439,20 @@ function renderPlannerModelInput(params: {
       diagnosticProjection.applied ||
       deferred.available.length > 0,
   };
+}
+
+/** Whether the host reviews this turn once it ends, by the gate Stage 1 uses.
+ * The planner is handed the turn's context, not its message: the current
+ * request in it holds the stored content, channel included. Without one the
+ * platform alone decides. */
+function postTurnReviewRunsFor(context: ContextObject): boolean {
+  const messageId = context.metadata?.messageId;
+  const request = context.events.find(
+    (event): event is Extract<ContextEvent, { type: "message" }> =>
+      event.type === "message" && "message" in event && event.id === messageId,
+  );
+  const content = request?.message.content;
+  return postTurnReviewRuns({ content: isPlainObject(content) ? content : {} });
 }
 
 /** Wire characters a complete review could defer at most: every reviewable
@@ -5813,8 +5835,8 @@ async function dispatchPlannerModelCall(params: {
         accepted,
         offeredSourceSetId,
       });
-    // A review withheld for its size is not a review: an explicit earlier
-    // selection stays stored and keeps the background view from taking over.
+    // A withheld review is not a review: an explicit earlier selection stays
+    // stored and keeps the background view from taking over.
     const storedSelection =
       submitted || !renderedInput.actionSourceReviewWithheld
         ? { completionContext: accepted ?? (submitted ? null : undefined) }
