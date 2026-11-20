@@ -132,6 +132,11 @@ describe("standalone Calendar availability", () => {
     expect(result).toMatchObject({
       success: true,
       data: {
+        replyContext: {
+          userFacingFacts: expect.stringMatching(
+            /Friday, November 6, from 9:30 to 10:00\s*AM/,
+          ),
+        },
         slots: [
           {
             startAt: firstEnd,

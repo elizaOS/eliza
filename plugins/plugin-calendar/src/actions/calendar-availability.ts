@@ -366,19 +366,31 @@ export function calendarAvailabilityActions(
         if (slots?.length) {
           const formatter = new Intl.DateTimeFormat("en-US", {
             timeZone,
-            weekday: "short",
-            month: "short",
+            weekday: "long",
+            month: "long",
             day: "numeric",
             hour: "numeric",
             minute: "2-digit",
-            timeZoneName: "short",
+            timeZoneName: "long",
           });
           slotReply = new Intl.ListFormat("en-US", {
-            type: "conjunction",
+            type: "disjunction",
           }).format(
-            slots.map(({ startAt, endAt }) =>
-              formatter.formatRange(new Date(startAt), new Date(endAt)),
-            ),
+            slots.map(({ startAt, endAt }) => {
+              const parts = formatter.formatRangeToParts(
+                new Date(startAt),
+                new Date(endAt),
+              );
+              const firstHour = parts.findIndex(({ type }) => type === "hour");
+              return parts
+                .map((part, index) => {
+                  if (index === firstHour) return `from ${part.value}`;
+                  if (part.type === "literal" && part.value.trim() === "–")
+                    return " to ";
+                  return part.value;
+                })
+                .join("");
+            }),
           );
         }
         const effect = {
