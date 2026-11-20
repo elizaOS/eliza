@@ -1458,7 +1458,10 @@ export const proposeDeviceAction: Action = {
   // offered and the phone contact is never proposed. Calls and texts on the
   // phone are routed as phone and messaging tasks, so those contexts carry it
   // too; otherwise only Twilio VOICE_CALL or connector messaging is offered.
-  contexts: ["general", "contacts", "phone", "messaging"],
+  // The phone's Files are browsed only through this tool as well: "show my
+  // PDFs in Files" is routed as a files task and was left with attachment
+  // and knowledge tools.
+  contexts: ["general", "contacts", "phone", "messaging", "files"],
   parameters: [
     {
       name: "operation",
