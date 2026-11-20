@@ -1,5 +1,6 @@
 // spec/cloud/index.md, "Story: Sign in to the Cloud"
 import type { Client } from "pg"
+import { mayIssueAccountBoundDeviceGrant } from "../gen/cloud.effect.vibe"
 import type { JWTVerifyGetKey } from "jose"
 import { Digest, Mac, SecureRandom } from "effect/crypto"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpIncomingMessage, HttpServerRequest, HttpServerResponse } from "effect/http"
@@ -39,7 +40,7 @@ schema EmailInput { email: string; code?: string }
 schema SmsInput { phone: string; code?: string }
 schema GoogleToken { access_token: string }
 schema GoogleProfile { sub: string; email?: string; email_verified?: boolean }
-schema DeviceAuthorization { challenge: string; state: string }
+schema DeviceAuthorization { challenge: string; state: string; expectedAccountId?: string }
 schema NativeGoogleChallenge { clientId: string; environment: string; redirectUri: string; challenge: string; state: string }
 schema NativeGoogleCompletion { clientId: string; environment: string; redirectUri: string; challengeId: string; idToken: string }
 schema DeviceExchange { code: string; verifier: string }
@@ -482,6 +483,8 @@ effect function authorizeDevice(request: Request, env: IdentityEnv, db: Client) 
   const raw = try readJson(request)
   const parsed = Schema.decodeUnknownOption(DeviceAuthorization, { onExcessProperty: "error" })(raw)
   if (Option.isNone(parsed) || !s256.test(parsed.value.challenge) || !pkceText.test(parsed.value.state)) throw new InvalidRequest()
+  const shown = parsed.value.expectedAccountId
+  if (shown !== undefined && !mayIssueAccountBoundDeviceGrant(shown, browser.id)) return json(409, { error: "sign_in_changed" })
   try rateLimit(db, "device:authorize", browser.sessionKey, 6, 600)
   const code = try issueDeviceCode(db, {
     accountId: browser.id, sessionKey: browser.sessionKey, clientId: registration.clientId, challenge: parsed.value.challenge
