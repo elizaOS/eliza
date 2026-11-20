@@ -1217,6 +1217,9 @@ test("an extending client keeps one live session past its minted end with a fres
   ).json()) as Record<string, number>;
   // Two admissions (STT + TTS) per window: bootstrap and one renewal.
   expect(after.admissions - (before.admissions ?? 0)).toBe(4);
+  // Exercise audio after the original expiry, which can otherwise race a
+  // renewal that already returned an acknowledgement.
+  await Bun.sleep(Math.max(0, mintedEnd + 100 - Date.now()));
   const audio = next(
     socket as any,
     (value) =>
@@ -1253,7 +1256,7 @@ test("an extending client keeps one live session past its minted end with a fres
       (before.settlements ?? 0) -
       (before.unknown ?? 0),
   ).toBe(4);
-});
+}, 18_000);
 
 test("a declined renewal keeps the minted end and holds no lease for it", async () => {
   const token = "declined-extend-capability";
