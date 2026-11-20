@@ -43,7 +43,7 @@ class BelowHostLayerInstrumentedTest {
     private val website = Recorder(context)
     private val page = OccludingSurfaceLayout(context, SurfaceLayer.BELOW_HOST)
     private val live = mutableListOf(page)
-    private val router = BelowHostInputRouter(context) { live.toList() }
+    private val router = BelowHostInputRouter(context, { if (it == page) website else hostWebView }) { live.toList() }
 
     init {
         host.addView(hostWebView, FrameLayout.LayoutParams(300, 300))
@@ -283,7 +283,7 @@ class BelowHostLayerInstrumentedTest {
     fun mixedLayersKeepTheRouterDirectlyAboveTheHostAndAboveHostPagesOnTop() {
         val root = FrameLayout(context)
         val branch = View(context)
-        val other = BelowHostInputRouter(context) { emptyList() }
+        val other = BelowHostInputRouter(context, { hostWebView }) { emptyList() }
         root.addView(branch)
         fun order() = (0 until root.childCount).map(root::getChildAt)
 

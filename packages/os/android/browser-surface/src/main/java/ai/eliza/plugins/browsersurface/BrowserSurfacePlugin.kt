@@ -2915,7 +2915,9 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             topRightRadius >= 0.0 && bottomRightRadius >= 0.0 && bottomLeftRadius >= 0.0
 
     /** The below-host input router, made on first use. */
-    private fun ensureInputRouter(): BelowHostInputRouter = inputRouter ?: BelowHostInputRouter(activity) {
+    private fun ensureInputRouter(): BelowHostInputRouter = inputRouter ?: BelowHostInputRouter(activity, { page ->
+        if (page == null) bridge.webView else surfaces.values.firstOrNull { it.container === page }?.webView
+    }) {
         surfaces.values.filter { takesPageInput(it.layer, it.foregrounded, it.paused, it.disposed) }.map { it.container }
     }.also { inputRouter = it }
 

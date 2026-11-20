@@ -139,8 +139,18 @@ internal fun movedDragEvent(event: DragEvent, action: Int, x: Float, y: Float): 
  */
 internal class BelowHostInputRouter(
     context: Context,
+    private val dragView: (OccludingSurfaceLayout?) -> View?,
     private val pages: () -> List<OccludingSurfaceLayout>,
 ) : View(context) {
+    private class Drag(val entered: DragEvent, val exited: DragEvent, var target: View? = null) {
+        fun select(next: View?) {
+            if (target === next) return
+            target?.takeIf { it.isAttachedToWindow }?.onDragEvent(exited)
+            target = next
+            next?.onDragEvent(entered)
+        }
+    }
+    private var drag: Drag? = null
     private var touchTarget: OccludingSurfaceLayout? = null
 
     /** True from a routed DOWN to its UP or CANCEL, even after the page was hidden. */
@@ -241,35 +251,30 @@ internal class BelowHostInputRouter(
         return true
     }
 
-    /**
-     * Drags. The parent sends a drag's moves and drop to the frontmost child that took its
-     * start, and this view lies over the host WebView, so it takes every drag while a page
-     * shows and passes each move or drop to the page under the point, or to the host WebView
-     * just below. Views below get the drag's start and end and their own enter and exit.
-     */
-    override fun dispatchDragEvent(event: DragEvent): Boolean =
+    override fun onDragEvent(event: DragEvent): Boolean {
         when (event.action) {
-            DragEvent.ACTION_DRAG_STARTED -> pages().isNotEmpty()
-            DragEvent.ACTION_DRAG_LOCATION, DragEvent.ACTION_DROP -> {
-                val target: View? = pageAt(event.x, event.y) ?: hostBelow()
-                target != null && forwardDrag(target, event)
+            DragEvent.ACTION_DRAG_STARTED -> {
+                drag = null
+                if (pages().isEmpty()) return false
+                val entered = movedDragEvent(event, DragEvent.ACTION_DRAG_ENTERED, 0f, 0f) ?: return false
+                val exited = movedDragEvent(event, DragEvent.ACTION_DRAG_EXITED, 0f, 0f) ?: return false
+                drag = Drag(entered, exited)
             }
-            else -> true
+            DragEvent.ACTION_DRAG_LOCATION, DragEvent.ACTION_DROP -> {
+                val active = drag ?: return false
+                val target = dragView(pageAt(event.x, event.y))?.takeIf { it.isShown }
+                active.select(target)
+                if (target == null) return false
+                val here = IntArray(2).also(::getLocationInWindow)
+                val there = IntArray(2).also(target::getLocationInWindow)
+                val x = event.x + here[0] - there[0]
+                val y = event.y + here[1] - there[1]
+                val local = if (x == event.x && y == event.y) event else movedDragEvent(event, event.action, x, y) ?: return false
+                return target.onDragEvent(local)
+            }
+            DragEvent.ACTION_DRAG_EXITED -> drag?.select(null)
+            DragEvent.ACTION_DRAG_ENDED -> drag = null
         }
-
-    /** The host WebView's branch, which the plugin keeps directly below this view. */
-    private fun hostBelow(): View? {
-        val parent = parent as? ViewGroup ?: return null
-        val index = parent.indexOfChild(this)
-        return if (index > 0) parent.getChildAt(index - 1) else null
-    }
-
-    private fun forwardDrag(target: View, event: DragEvent): Boolean {
-        val dx = left - target.left - target.translationX
-        val dy = top - target.top - target.translationY
-        if (dx == 0f && dy == 0f) return target.dispatchDragEvent(event)
-        // Without a moved copy the event is dropped, never delivered at the wrong point.
-        val copy = movedDragEvent(event, event.action, event.x + dx, event.y + dy) ?: return false
-        return target.dispatchDragEvent(copy)
+        return true
     }
 }
