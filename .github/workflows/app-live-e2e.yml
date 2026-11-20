@@ -835,7 +835,7 @@ jobs:
     env:
       ELIZA_NATIVE_STAGING_ACCEPTANCE: "1"
       ELIZAOS_CLOUD_BASE_URL: https://api-staging.eliza.app
-      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_API_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
