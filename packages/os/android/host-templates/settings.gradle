@@ -1,6 +1,16 @@
 pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
 include ':app'
 def profile = new groovy.json.JsonSlurper().parse(file('.eliza-consumer-profile.json'))
+profile.generationInputs?.each { input ->
+ def source = new File(input.file)
+ def digest = source.isFile() ? java.security.MessageDigest.getInstance('SHA-256').digest(source.bytes).encodeHex().toString() : null
+ if (digest != input.sha256) throw new GradleException("Generated Android host is stale: ${input.file} changed. Regenerate the host.")
+}
+profile.settingsAdmission?.each { step ->
+ def process = new ProcessBuilder(step.command).directory(new File(step.directory)).redirectError(ProcessBuilder.Redirect.INHERIT).start()
+ process.inputStream.getText('UTF-8')
+ if (process.waitFor() != 0) throw new GradleException("Android host admission failed: ${step.command.join(' ')}")
+}
 profile.modules.each { module ->
  include ":${module.name}"
  project(":${module.name}").projectDir = new File(module.directory)
