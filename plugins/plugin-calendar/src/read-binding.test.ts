@@ -276,6 +276,7 @@ describe("Calendar operation bindings", () => {
         execution?: "required" | "conditional";
         userRoles?: ["OWNER"] | [];
         extraIntent?: string;
+        extraContext?: string;
         timeZone?: string;
       } = { source: "builtin" },
     ) => {
@@ -296,7 +297,10 @@ describe("Calendar operation bindings", () => {
         processMessage: "RESPOND",
         thought: "",
         plan: {
-          contexts: ["calendar"],
+          contexts: [
+            "calendar",
+            ...(options.extraContext ? [options.extraContext] : []),
+          ],
           intents: [
             text,
             ...(options.extraIntent ? [options.extraIntent] : []),
@@ -340,6 +344,15 @@ describe("Calendar operation bindings", () => {
       },
     };
     expect(await route(text)).toEqual(expected);
+    expect(
+      await route(
+        "Find a 20 minute slot for groceries tomorrow between noon and 5 on my built in Eliza calendar.",
+        { source: "builtin", extraContext: "simple" },
+      ),
+    ).toEqual(expected);
+    expect(
+      await route(text, { source: "builtin", extraContext: "notes" }),
+    ).toBeUndefined();
     expect(
       await route(
         "Find me a 20 minute slot between noon and 5 tomorrow on my built in Eliza calendar.",

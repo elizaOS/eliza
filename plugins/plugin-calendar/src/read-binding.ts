@@ -470,6 +470,8 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
         !Object.values(CALENDAR_READ_ACTIONS).some((read) => read === name),
     );
     const [read] = bindings;
+    // The routing marker carries no domain work.
+    const domains = plan.contexts?.filter((context) => context !== "simple");
     const singleBuiltInRead =
       bindings.length === 1 &&
       read?.source === "builtin" &&
@@ -478,8 +480,8 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
       !wholeRequestOwner &&
       !plan.deterministicToolCall &&
       plan.intents?.length === 1 &&
-      plan.contexts?.length === 1 &&
-      plan.contexts[0] === "calendar" &&
+      domains?.length === 1 &&
+      domains[0] === "calendar" &&
       !plan.candidateActions?.some(
         (name) =>
           name !== "CALENDAR" && name !== CALENDAR_READ_ACTIONS[read.operation],
