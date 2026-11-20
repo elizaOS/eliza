@@ -1,4 +1,5 @@
 // spec/cloud/billing/checkout.md, "Story: Subscribe once, whichever screen or payer finishes it"
 import type { Area } from "../routes.vibe"
+import { routes } from "../../billing/checkout.vibe"
 
-export const area: Area = { routes: [], sweeps: [] }
+export const area: Area = { routes, sweeps: [] }
