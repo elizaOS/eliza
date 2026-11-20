@@ -22,6 +22,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { evaluateCalendarWriteAvailability } from "../src/actions/conflict-detect.js";
 import {
   DefaultMicrosoftGraphCalendarPort,
   type MicrosoftCalendarAccount,
@@ -579,6 +580,47 @@ describe("Microsoft Calendar service (Graph HTTP + real PGlite)", {
       expect.anything(),
     );
   });
+
+  it.each([
+    ["workingElsewhere", false, []],
+    ["workingElsewhere", true, []],
+    ["free", false, []],
+    ["busy", false, ["Working from home"]],
+  ] as const)(
+    "checks a new event against an Outlook event shown as %s (all day: %s)",
+    async (showAs, isAllDay, conflicts) => {
+      extraFullSnapshotEvents = [
+        {
+          ...graphEvent({
+            id: "working-from-home",
+            subject: "Working from home",
+            revision: "2026-07-26T11:00:00Z",
+            changeKey: "wfh-1",
+            start: isAllDay
+              ? "2026-08-01T00:00:00.0000000"
+              : "2026-08-01T18:00:00.0000000",
+            end: isAllDay
+              ? "2026-08-02T00:00:00.0000000"
+              : "2026-08-01T21:00:00.0000000",
+          }),
+          showAs,
+          isAllDay,
+        },
+      ];
+      const availability = await evaluateCalendarWriteAvailability({
+        runtime,
+        grantId: GRANT_ID,
+        calendarId: "primary-calendar",
+        startAt: "2026-08-01T19:00:00.000Z",
+        endAt: "2026-08-01T20:00:00.000Z",
+        timeZone: "UTC",
+      });
+      expect(availability.definitive).toBe(true);
+      expect(availability.conflicts.map(({ eventB }) => eventB.title)).toEqual(
+        conflicts,
+      );
+    },
+  );
 
   it("quarantines malformed Graph events without aborting the batch or blocking the delta cursor", async () => {
     extraFullSnapshotEvents = [
