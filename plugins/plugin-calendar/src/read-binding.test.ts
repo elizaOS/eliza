@@ -303,7 +303,9 @@ describe("Calendar operation bindings", () => {
               source: "builtin",
               execution: "required",
               purpose: "requested_read",
-              filterEvidence: [{ query, quote: text, origin: "current" }],
+              filterEvidence: [
+                { query, quote: message.content.text, origin: "current" },
+              ],
               singleDaySearchDate: day,
             },
           ],
@@ -352,7 +354,8 @@ describe("Calendar operation bindings", () => {
         };
       });
     };
-    expect(await route("today")).toEqual({
+    const wholeDay = await route("today");
+    expect(wholeDay).toEqual({
       day: "today",
       call: {
         name: "CALENDAR_SEARCH_EVENTS",
@@ -363,15 +366,26 @@ describe("Calendar operation bindings", () => {
         },
       },
     });
-    expect(await route("today", [text], title, "next_event")).toEqual(
-      await route("today"),
-    );
+    expect(await route("today", [text], title, "next_event")).toEqual(wholeDay);
     for (const result of [
       await route("tomorrow"),
       await route("today", [text, "Send it to a coworker"]),
       await route("today", [text], "Calendar latency chec"),
     ])
       expect(result).toEqual({ day: undefined, call: undefined });
+    for (const [suffix, proposedDay] of [
+      ["today after 4 PM", "today"],
+      ["today or tomorrow", "today"],
+      ["today or tomorrow", "today or tomorrow"],
+      ["tomorrow morning", "tomorrow"],
+    ]) {
+      const request = `Find ${title} ${suffix}`;
+      message.content.text = request;
+      expect(await route(proposedDay, [request])).toEqual({
+        day: undefined,
+        call: undefined,
+      });
+    }
   });
   it.each([
     { intentId: "intent:1", execution: "required", bound: true },

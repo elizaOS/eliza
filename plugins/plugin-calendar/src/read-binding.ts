@@ -16,7 +16,12 @@ import {
   ELIZA_CALENDAR_GRANT_ID,
   ELIZA_CALENDAR_ID,
 } from "./internal/eliza-calendar.js";
-import { parseExplicitLocalDate } from "./internal/request-time.js";
+import {
+  MONTH_NAME_PATTERN,
+  normalizeText,
+  parseExplicitLocalDate,
+  WEEKDAY_NAME_PATTERN,
+} from "./internal/request-time.js";
 
 import {
   bindFilterEvidence,
@@ -25,6 +30,43 @@ import {
   includesCalendarPhrase,
   rememberCalendarReadBindings,
 } from "./search-filter-evidence.js";
+
+function isWholeDayTitleLookup(
+  request: string,
+  title: string,
+  day: string,
+  observedAt: number,
+): boolean {
+  const date = normalizeText(day);
+  const text = normalizeText(request)
+    .replace(/[?!.]$/u, "")
+    .trimEnd();
+  if (!text.endsWith(` ${date}`)) return false;
+  const lookup = text.slice(0, -date.length - 1);
+  const name = normalizeText(title);
+  const frames = [
+    `when is ${name}`,
+    `what time is ${name}`,
+    `when does ${name} start`,
+    `what time does ${name} start`,
+    `find ${name}`,
+    `show me ${name}`,
+  ];
+  if (!frames.some((frame) => lookup === frame || lookup === `${frame} on`))
+    return false;
+  if (
+    /^(?:today|tomorrow|yesterday|(?:the )?day (?:after tomorrow|before yesterday))$/u.test(
+      date,
+    )
+  )
+    return true;
+  return (
+    (/^\d{4}-\d{1,2}-\d{1,2}$/u.test(date) ||
+      date.match(MONTH_NAME_PATTERN)?.[0] === date ||
+      date.match(WEEKDAY_NAME_PATTERN)?.[0] === date) &&
+    parseExplicitLocalDate(date, "UTC", new Date(observedAt)) !== null
+  );
+}
 
 type RequestedRead = Pick<
   CalendarReadBinding,
@@ -206,7 +248,12 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         ) &&
         typeof observedAt === "number" &&
         Number.isFinite(observedAt) &&
-        parseExplicitLocalDate(singleDaySearchDate, "UTC", new Date(observedAt))
+        isWholeDayTitleLookup(
+          requestText,
+          filter.quote,
+          singleDaySearchDate,
+          observedAt,
+        )
           ? singleDaySearchDate
           : undefined;
       // A verified title and date bind a named search even when a provider
