@@ -167,6 +167,25 @@ describe("verifyAppliedCalendarMutation create with a place", () => {
   });
 });
 
+describe("verifyAppliedCalendarMutation with a spoken range", () => {
+  it("matches the actual spoken range and refuses a different saved start", () => {
+    const request =
+      "Add an event called Taco Night tomorrow from one ten PM to one thirty PM with no guests.";
+    const event = {
+      ...seoulEvent("Taco Night", ""),
+      startAt: "2026-10-16T04:10:00.000Z",
+      endAt: "2026-10-16T04:30:00.000Z",
+    };
+    expect(createReceipt(request, event)).toContain("at 1:10pm");
+    expect(
+      createReceipt(request, {
+        ...event,
+        startAt: "2026-10-16T13:10:00.000Z",
+      }),
+    ).toBeNull();
+  });
+});
+
 describe("normalizeCalendarDetails eventId screen", () => {
   it("drops a non-Latin title slugged into eventId", () => {
     expect(

@@ -19,6 +19,7 @@ import {
   STATED_CLOCK_MENTION_SOURCE,
   WEEKDAY_NAME_PATTERN,
 } from "../internal/request-time.js";
+import { normalizeSpokenCalendarClocks } from "../internal/scoped-slot-window.js";
 import {
   boundCalendarReadSource,
   boundCalendarSearchDate,
@@ -2780,7 +2781,7 @@ function verifyAppliedCalendarMutationOrThrow(
       ? statedUpdateDestinationText(requestText)
       : requestText;
 
-  const stated = parseStatedClockTimes(scope);
+  const stated = parseStatedClockTimes(normalizeSpokenCalendarClocks(scope));
   if (stated.kind === "several") return null;
   if (stated.kind === "none" && args.operation !== "delete") return null;
   const applied = getZonedDateParts(start, timeZone);
@@ -6791,12 +6792,14 @@ export function createCalendarActionRunner(
                 travelBuffer,
               });
             }
+            const requestText = messageText(message);
+            const now = new Date(calendarMessageObservedAt(message));
             const verifiedReply = verifyAppliedCalendarMutation({
               operation: "create",
-              requestText: messageText(message),
+              requestText,
               event: createdEvent,
               fallbackTimeZone: createTimeZone,
-              now: new Date(calendarMessageObservedAt(message)),
+              now,
               // A travel buffer, guests, a recurrence rule, a place or a note
               // are asked-for details the receipt sentence cannot show; the
               // evaluator keeps those turns.
@@ -6825,9 +6828,32 @@ export function createCalendarActionRunner(
                       new Date(calendarMessageObservedAt(message)),
                     )}.`
               }${uncheckedOverlapNote(availability)}`;
+            const requestedClock = parseStatedClockTimes(
+              normalizeSpokenCalendarClocks(requestText),
+            );
+            const exactRange =
+              verifiedReply &&
+              requestedClock.kind === "one" &&
+              requestedClock.end &&
+              normalizeLookupKey(requestText).includes(
+                normalizeLookupKey(createdEvent.title),
+              )
+                ? `Created “${createdEvent.title}” for ${formatCalendarEventTimeRange(
+                    createdEvent,
+                    {
+                      asOf: now,
+                      timeZone: createdEvent.timezone || createTimeZone,
+                    },
+                  )}.`
+                : undefined;
             return respond({
               success: true,
-              text: await renderReply("create_event_completed", fallback),
+              text: renderReply(
+                "create_event_completed",
+                exactRange ?? fallback,
+                undefined,
+                exactRange,
+              ),
               effectReceipt: calendarEventMutationReceipt({
                 event: createdEvent,
                 idempotencyKey,

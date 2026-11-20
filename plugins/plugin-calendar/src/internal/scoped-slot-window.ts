@@ -51,6 +51,10 @@ const trailingDay = new RegExp(`^(.+?) (${day})$`, "u");
 const betweenTimes = /^between (.+) and (.+)$/u;
 const fromTimes = /^from (.+) (?:to|until) (.+)$/u;
 const explicitClock = new RegExp(`^(?:${STATED_CLOCK_MENTION_SOURCE})$`, "iu");
+const spokenClock = new RegExp(
+  String.raw`\b(${unitWords.slice(1, 13).join("|")})(?:\s+(?:oh\s+)?([a-z]+(?:[ -][a-z]+)?))?\s+([ap]\.?m\.?)(?![a-z])`,
+  "giu",
+);
 
 function quantity(text: string): number {
   if (/^\d{1,3}$/.test(text)) return Number(text);
@@ -64,6 +68,15 @@ function quantity(text: string): number {
   return tensIndex >= 2 && unitIndex >= 0 && unitIndex < 10
     ? tensIndex * 10 + unitIndex
     : 0;
+}
+
+/** Converts explicitly disambiguated spoken clock phrases to the shared grammar. */
+export function normalizeSpokenCalendarClocks(text: string): string {
+  return text.replace(spokenClock, (phrase, hour, minutes, period) => {
+    const minute = minutes ? quantity(minutes.toLowerCase()) : 0;
+    if ((minutes && minute === 0) || minute > 59) return phrase;
+    return `${quantity(hour.toLowerCase())}:${String(minute).padStart(2, "0")}${period}`;
+  });
 }
 
 function slotClockOptions(text: string): StatedClockTime[] {
@@ -132,8 +145,8 @@ export function parseScopedCalendarSlotWindow(
   const range = betweenTimes.exec(window) ?? fromTimes.exec(window);
   if (!range?.[1] || !range[2]) return;
   const minuteOfDay = (time: StatedClockTime) => time.hour * 60 + time.minute;
-  const starts = slotClockOptions(range[1]);
-  const ends = slotClockOptions(range[2]);
+  const starts = slotClockOptions(normalizeSpokenCalendarClocks(range[1]));
+  const ends = slotClockOptions(normalizeSpokenCalendarClocks(range[2]));
   const pairs = starts.flatMap((start) =>
     ends
       .filter((end) => minuteOfDay(end) > minuteOfDay(start))

@@ -46,6 +46,7 @@ import {
   calendarReadCoverage,
   parseEvaluatorOutput,
   runEvaluator,
+  runVerifiedCalendarStage,
 } from "./evaluator.ts";
 
 const requestedAt = Date.parse("2026-10-04T01:19:35Z");
@@ -135,6 +136,66 @@ function fixture() {
   };
   return { context, trajectory, output };
 }
+
+describe("verified Calendar creation confirmation", () => {
+  it("uses the saved time range and declines an incomplete or unrelated receipt", async () => {
+    const { trajectory } = fixture();
+    const context: ContextObject = { id: "calendar-create" };
+    const message = "Created “Taco Night” for Nov 21, 1:10 PM–1:30 PM.";
+    trajectory.context = context;
+    trajectory.outcomeIntents = ["Add Taco Night to Calendar"];
+    trajectory.steps = [
+      {
+        iteration: 1,
+        toolCall: { id: "create", name: "CALENDAR_CREATE_EVENT", params: {} },
+        result: {
+          success: true,
+          transcriptVisibility: "internal",
+          effectReceipts: [
+            {
+              receiptId: "create-current",
+              operation: "calendar.event.create",
+              resource: {
+                kind: "calendar.event",
+                id: "new-event",
+                version: "v1",
+              },
+              artifacts: [],
+              idempotency: { key: "create-once", replayed: false },
+              observedAt: "2026-11-20T20:50:58Z",
+              outcome: "applied",
+              commit: {
+                kind: "durable",
+                id: "new-event",
+                committedAt: "2026-11-20T20:50:58Z",
+              },
+            },
+          ],
+          data: {
+            event: { id: "new-event" },
+            replyContext: {
+              domain: "calendar",
+              scenario: "create_event_completed",
+              userFacingFacts: message,
+            },
+          },
+        },
+      },
+    ];
+    const useModel = vi.fn();
+    const args = { context, trajectory, runtime: { useModel } };
+    expect(await runVerifiedCalendarStage(args)).toMatchObject({
+      decision: "FINISH",
+      replyEffectStatus: "applied",
+      messageToUser: message,
+      effectReceiptIds: ["create-current"],
+    });
+    expect(useModel).not.toHaveBeenCalled();
+    const result = requiredFixtureValue(trajectory.steps[0].result);
+    result.data = { ...result.data, event: { id: "other-event" } };
+    expect(runVerifiedCalendarStage(args)).toBeUndefined();
+  });
+});
 
 describe("selected Calendar record coverage", () => {
   function selectedFixture() {

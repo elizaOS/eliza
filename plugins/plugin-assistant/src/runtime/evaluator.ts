@@ -1011,13 +1011,97 @@ function verifiedCalendarSlots(
   return checked.success && checked.decision === "FINISH" ? checked : undefined;
 }
 
-/** Try the current Calendar slot evidence without invoking a model. */
-export function runVerifiedCalendarSlotStage(
+/** An exact, single Calendar creation has a receipt and its saved time range. */
+function verifiedCalendarCreation(
+  params: RunEvaluatorParams,
+): EvaluatorOutput | undefined {
+  const { context, trajectory } = params;
+  if (trajectory.steps.at(-1)?.toolCall?.name !== "CALENDAR_CREATE_EVENT")
+    return;
+  const original = trajectory.modelBaseContext ?? context;
+  const intents = evaluatorIntentSources(original, trajectory);
+  if (
+    params.typedReadReply ||
+    params.hasUnresolvedToolFailure ||
+    trajectory.codingMode ||
+    trajectory.plannedQueue.length ||
+    intents.length !== 1 ||
+    declaredIntentsFromContext(original).length > 1
+  )
+    return;
+  const work = evaluatorEvidenceSteps(trajectory).filter(
+    ({ step }) =>
+      step.toolCall &&
+      !step.terminalOnly &&
+      !isDiscoveryActionName(step.toolCall.name),
+  );
+  const [evidence] = work;
+  if (
+    work.length !== 1 ||
+    !evidence ||
+    !trajectory.steps.includes(evidence.step)
+  )
+    return;
+  const { toolCall, result } = evidence.step;
+  const data = result?.data;
+  const reply = isObjectRecord(data) ? data.replyContext : undefined;
+  const event = isObjectRecord(data) ? data.event : undefined;
+  const [receipt] = result?.effectReceipts ?? [];
+  if (
+    toolCall?.name !== "CALENDAR_CREATE_EVENT" ||
+    result?.success !== true ||
+    result.error != null ||
+    result.failureProvenance ||
+    result.replyFailure ||
+    result.transcriptVisibility !== "internal" ||
+    result.effectReceipts?.length !== 1 ||
+    !receipt ||
+    receipt.operation !== "calendar.event.create" ||
+    receipt.outcome !== "applied" ||
+    receipt.resource?.kind !== "calendar.event" ||
+    !isObjectRecord(event) ||
+    event.id !== receipt.resource.id ||
+    !isObjectRecord(reply) ||
+    reply.domain !== "calendar" ||
+    reply.scenario !== "create_event_completed" ||
+    typeof reply.userFacingFacts !== "string" ||
+    !reply.userFacingFacts.trim()
+  )
+    return;
+  const checked = finalizeEvaluatorOutput(
+    {
+      decision: "FINISH",
+      success: true,
+      requestFullyCovered: true,
+      thought:
+        "The applied Calendar receipt confirms the requested event range.",
+      messageToUser: reply.userFacingFacts,
+      replyEffectStatus: "applied",
+      effectReceiptIds: [receipt.receiptId],
+      outcomeCoverage: [
+        {
+          intentId: intents[0].id,
+          status: "completed",
+          evidenceStepIds: [evidence.id],
+        },
+      ],
+    },
+    "",
+    context,
+    trajectory,
+    composeToolDiagnosticRedactor(params.runtime),
+  );
+  return checked.success && checked.decision === "FINISH" ? checked : undefined;
+}
+
+/** Deliver a complete Calendar result from verified evidence. */
+export function runVerifiedCalendarStage(
   params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> | undefined {
   const startedAt = Date.now();
   const slots = verifiedCalendarSlots(params);
-  if (!slots) return;
+  const result = slots ?? verifiedCalendarCreation(params);
+  if (!result) return;
   return recordGatedEvaluationStage({
     runtime: params.runtime,
     recorder: params.recorder,
@@ -1026,21 +1110,20 @@ export function runVerifiedCalendarSlotStage(
     iteration: params.iteration ?? 1,
     startedAt,
     endedAt: Date.now(),
-    output: slots,
-    reason: "verified_calendar_slots",
+    output: result,
+    reason: slots ? "verified_calendar_slots" : "verified_calendar_creation",
     logger: params.runtime.logger,
   }).then(() => {
     getStreamingContext()?.abortSignal?.throwIfAborted();
-    return slots;
+    return result;
   });
 }
 
 async function runEvaluatorStage(
   params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
-  const startedAt = Date.now();
-  const slots = runVerifiedCalendarSlotStage(params);
-  if (slots) return slots;
+  const verifiedCalendar = runVerifiedCalendarStage(params);
+  if (verifiedCalendar) return verifiedCalendar;
   const configuredModel = resolveSetting(
     params.runtime.getSetting
       ? {

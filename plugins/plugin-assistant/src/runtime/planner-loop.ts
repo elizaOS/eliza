@@ -201,7 +201,7 @@ import {
   declaredIntentsFromContext,
   repairFinishWithProgressPromise,
   runEvaluator,
-  runVerifiedCalendarSlotStage,
+  runVerifiedCalendarStage,
   validatedOutcomeCoverage,
 } from "./evaluator";
 import { computeCallCostUsd } from "./model-pricing";
@@ -1741,9 +1741,9 @@ async function runPlannerLoopIterations(
     !suppliedSourceReply &&
     !params.resolveTypedReadReply
   ) {
-    // The verified Calendar preview can finish the same request immediately.
+    // A verified Calendar result can finish the same request immediately.
     // Incomplete evidence still uses the ordinary seeded reply synthesis.
-    const slotReply = runVerifiedCalendarSlotStage({
+    const calendarReply = runVerifiedCalendarStage({
       runtime: params.runtime,
       context: trajectory.context,
       trajectory,
@@ -1751,8 +1751,8 @@ async function runPlannerLoopIterations(
       trajectoryId: params.trajectoryId,
       parentStageId: params.parentStageId,
     });
-    if (slotReply) {
-      const evaluator = await slotReply;
+    if (calendarReply) {
+      const evaluator = await calendarReply;
       trajectory.evaluatorOutputs.push(evaluator);
       return finishWithEvaluator(evaluator);
     }
