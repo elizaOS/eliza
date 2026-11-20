@@ -137,11 +137,19 @@ const MAX_TRAVEL_REQUEST_LENGTH = 160;
 /** Trailing courtesy and punctuation: "..., please?", "... for me." */
 const END = String.raw`(?:,?\s+(?:please|for\s+me))*\s*[.!?]*\s*$`;
 /**
+ * "how do I get to talk to someone", "can I get to see my results": "get to"
+ * and a verb is a chance to do it, not a trip. The verb ends in a space, so a
+ * place such as "See's Candies" still travels. See, hear and try can still
+ * be a trip ("get to see the Eiffel Tower"), so they stop it only before a
+ * possessive or a person ("see my results", "hear him play").
+ */
+const GET_TO_VERB = String.raw`(?:be|become|meet|talk|speak|chat|have)\s|(?:see|hear|try)\s+(?:my|your|our|his|her|their|its|me|him|them|it|you|us|someone|somebody|anyone|anybody|everyone|everybody|people)\b`;
+/**
  * "take me to X", "navigate to X", "how do I get to X". X may still be a view
  * ("take me to settings"), which the caller checks against the view registry.
  */
 const TRAVEL_TO_REQUEST = new RegExp(
-  String.raw`^\s*${COURTESY}(?:(?:take|bring|get)\s+me|navigate(?:\s+me)?|how\s+(?:do|can|would|should)\s+(?:i|we)\s+get|how\s+to\s+get|what(?:'s|’s|\s+is)\s+the\s+(?:best|fastest|quickest)\s+way\s+to\s+get)\s+to\s+${NOT_A_PLACE}(?!(?:the\s+)?(?:next|previous|last|first|top|bottom|end|beginning|start|middle|same|other|point|know|sleep)\b)(\S.{0,79}?)${END}`,
+  String.raw`^\s*${COURTESY}(?:(?:take|bring|get)\s+me|navigate(?:\s+me)?|how\s+(?:do|can|would|should)\s+(?:i|we)\s+get|how\s+to\s+get|what(?:'s|’s|\s+is)\s+the\s+(?:best|fastest|quickest)\s+way\s+to\s+get)\s+to\s+${NOT_A_PLACE}(?!(?:the\s+)?(?:next|previous|last|first|top|bottom|end|beginning|start|middle|same|other|point|know|sleep)\b|${GET_TO_VERB})(\S.{0,79}?)${END}`,
   "iu",
 );
 /** A destination that is part of an app, a document or a conversation. */
