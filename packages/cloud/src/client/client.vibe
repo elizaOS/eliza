@@ -1,0 +1,150 @@
+// spec/cloud/client.md, "Story: Use the cloud from the device as configured"; spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"
+import { callOf, originAccepted } from "../../gen/cloud__client.effect.vibe"
+import { answerOf, bodyOf, type CallOptions, type CloudAnswer } from "./answer.vibe"
+import { CloudError, networkError, readCloudError } from "./errors.vibe"
+import { googleCalls } from "./google.vibe"
+import { mapsCalls } from "./maps.vibe"
+import { admitsHeader, httpVerb, idempotencyKey, listedRoute, lookupPath, renderPath, routesByName, type DeviceRoute } from "./routes.vibe"
+import { redeemResultFromResponse, snapshotFromResponse, type BillingSnapshot, type RedeemResult } from "./views.vibe"
+
+export interface CloudClientOptions {
+  readonly baseUrl: string
+  readonly credential: () => string | undefined
+  readonly fetch?: typeof globalThis.fetch
+}
+
+interface CloudRequest extends CallOptions {
+  readonly params?: Readonly<Record<string, string>>
+  readonly query?: Readonly<Record<string, string>>
+  readonly headers?: Readonly<Record<string, string>>
+  readonly json?: unknown
+}
+
+export interface CloudTransport {
+  call(route: DeviceRoute, request?: CloudRequest): Promise<CloudAnswer>
+}
+
+const Account = Schema.Struct({
+  id: Schema.String,
+  email: Schema.NullOr(Schema.String),
+  phone: Schema.NullOr(Schema.String),
+  name: Schema.NullOr(Schema.String),
+  organization_id: Schema.String,
+  organization: Schema.Struct({ id: Schema.String, name: Schema.String })
+})
+const AccountAnswer = Schema.Struct({ success: Schema.Literal(true), data: Account })
+const Model = Schema.Struct({ object: Schema.Literal("model"), id: Schema.String, owned_by: Schema.String })
+const Models = Schema.Struct({ object: Schema.Literal("list"), data: Schema.Array(Model) })
+const ipv4Loopback = /^127(?:\.\d{1,3}){3}$/
+const originText = /^https?:\/\/[^\s/?#\\]+\/?$/i
+
+function invalidRequest(problem: string): CloudError {
+  return new CloudError({ failure: { tag: "CloudRefused", code: "InvalidRequest", reason: "NoReason" }, cause: problem })
+}
+
+effect function originOf(base: string): string!CloudError {
+  if (!originText.test(base)) throw invalidRequest("The cloud base must be an origin")
+  const url = try Effect.try({ try: () => new URL(base), catch: () => invalidRequest("The cloud base must be an origin") })
+  const scheme = url.protocol === "https:" ? "Https" : url.protocol === "http:" ? "Http" : "OtherScheme"
+  const loopback = url.hostname === "localhost" || url.hostname === "[::1]" || ipv4Loopback.test(url.hostname)
+  if (url.href !== `${url.origin}/` || !originAccepted({ scheme, loopback, hasPath: url.pathname !== "/", hasQueryOrFragment: url.search !== "" || url.hash !== "" })) {
+    throw invalidRequest("The cloud base must be an HTTPS origin or an HTTP loopback origin")
+  }
+  return url.origin
+}
+
+effect function destination(origin: string, route: DeviceRoute, request: CloudRequest): URL!CloudError {
+  const params = request.params ?? {}
+  for (const part of route.path) {
+    if (part.tag !== "Param") continue
+    const value = params[part.name]
+    if (value === undefined || value === "" || value === "." || value === "..") throw invalidRequest("The route requires a path parameter")
+  }
+  const path = try Effect.try({ try: () => renderPath(route, params), catch: () => invalidRequest("A route parameter is not a valid URL segment") })
+  const url = new URL(path, origin)
+  const matched = lookupPath(route.method, url.pathname)
+  if (url.origin !== origin || url.pathname !== path || matched.tag !== "Listed" || matched.route !== route) {
+    throw invalidRequest("The requested cloud route is not listed")
+  }
+  url.search = new URLSearchParams(request.query).toString()
+  return url
+}
+
+effect function requestHeaders(route: DeviceRoute, request: CloudRequest): Record<string, string>!CloudError {
+  const headers: Record<string, string> = {}
+  for (const [name, value] of Object.entries(request.headers ?? {})) {
+    const normalized = name.toLowerCase()
+    if (normalized === "authorization" || !admitsHeader(route, name)) throw invalidRequest("The cloud route does not admit a request header")
+    headers[normalized] = value
+  }
+  return headers
+}
+
+effect function dispatch(origin: string, credential: CloudClientOptions["credential"], route: DeviceRoute, request: CloudRequest) {
+  const selected = listedRoute(route)
+  if (selected === undefined) throw invalidRequest("The requested cloud route is not listed")
+  const url = try destination(origin, selected, request)
+  const headers = try requestHeaders(selected, request)
+  const init = HttpClientRequest.make(httpVerb(selected.method))(url, { headers })
+  const outgoing = request.json === undefined ? init : try Effect.mapError(
+    HttpClientRequest.bodyJson(init, request.json), () => invalidRequest("The cloud request body is not JSON")
+  )
+  const client = try HttpClient.HttpClient
+  const { bearer } = callOf(selected, credential() ?? "")
+  return try client.execute(bearer === "" ? outgoing : HttpClientRequest.setHeader(outgoing, "authorization", `Bearer ${bearer}`))
+}
+
+function transportOf(options: CloudClientOptions): CloudTransport {
+  const origin = Effect.runSync(originOf(options.baseUrl))
+  const layer = Layer.mergeAll(
+    FetchHttpClient.layer,
+    Layer.succeed(FetchHttpClient.RequestInit, { credentials: "omit", redirect: "error" }),
+    Layer.succeed(HttpClient.TracerPropagationEnabled, false)
+  )
+  const runtime = options.fetch === undefined ? layer : Layer.merge(layer, Layer.succeed(FetchHttpClient.Fetch, options.fetch))
+  return {
+    async call(route, request = {}) {
+      const arrival = Effect.provide(dispatch(origin, options.credential, route, request), runtime)
+      let response: HttpClientResponse.HttpClientResponse
+      try {
+        response = await Effect.runPromise(arrival, { signal: request.signal })
+      } catch (cause) {
+        throw cause instanceof CloudError ? cause : networkError(cause)
+      }
+      const answer = {
+        status: response.status,
+        headers: { get: (name: string) => response.headers[name.toLowerCase()] ?? null },
+        text: () => Effect.runPromise(response.text),
+        arrayBuffer: () => Effect.runPromise(response.arrayBuffer)
+      }
+      if (answer.status < 200 || answer.status >= 300) throw await readCloudError(answer)
+      return answer
+    }
+  }
+}
+
+export function createCloudClient(options: CloudClientOptions) {
+  const transport = transportOf(options)
+  return {
+    ...googleCalls(transport),
+    ...mapsCalls(transport),
+    async account(options: CallOptions = {}) {
+      return (await answerOf(await transport.call(routesByName.user, options), AccountAnswer)).data
+    },
+    async models(options: CallOptions = {}) {
+      return answerOf(await transport.call(routesByName.models, options), Models)
+    },
+    async snapshot(options: CallOptions = {}): Promise<BillingSnapshot> {
+      const body = await bodyOf(await transport.call(routesByName.billingLimits, options))
+      return Effect.runPromise(snapshotFromResponse(body))
+    },
+    async redeem(request: { readonly code: string; readonly idempotencyKey: string }, options: CallOptions = {}): Promise<RedeemResult> {
+      const body = await bodyOf(await transport.call(routesByName.redeem, {
+        json: request, headers: { [idempotencyKey]: request.idempotencyKey }, signal: options.signal
+      }))
+      return Effect.runPromise(redeemResultFromResponse(body, Date.now()))
+    }
+  }
+}
+
+export type CloudClient = ReturnType<typeof createCloudClient>
