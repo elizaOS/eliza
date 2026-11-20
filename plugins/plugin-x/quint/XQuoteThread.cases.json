@@ -1,0 +1,49 @@
+{
+  "sources": [
+    "plugins/plugin-x/src/utils.ts",
+    "plugins/plugin-x/src/client/tweets.ts",
+    "plugins/plugin-x/src/timeline.ts",
+    "plugins/plugin-x/src/interactions.ts",
+    "plugins/plugin-x/src/discovery.ts",
+    "plugins/plugin-x/src/services/x.service.ts",
+    "plugins/plugin-x/src/quote-thread-link.test.ts",
+    "plugins/plugin-x/quint/check-x-quote-thread.mjs"
+  ],
+  "conformance": "plugins/plugin-x/quint/check-x-quote-thread.mjs",
+  "bounds": "One quote of one of ten weighted lengths (1, 200, 256, 257, 269, 280, 281, 536, 537 and 600) without whitespace or URLs, so each post of the thread is cut at its limit; word cuts are covered by utils.test.ts. The status URL that createQuoteTweetRequest appends costs 24 weighted characters (X counts every URL as 23, plus its space), and X refuses a post over 280. The conformance script replays all ten generated quotes through TwitterTimelineClient.handleQuoteAction on a SQLite runtime, with env (OAuth 1.0a) login and the real twitter-api-v2 client over HTTPS to a loopback api.x.com that weighs each post with twitter-text, and compares the weighted length of every post that X received and whether X refused one. The interactions, discovery and connector quote paths pass the same first-post limit to sendTextAsTweetThread and are not replayed. Media, X Premium long posts and X's own rate limits are not covered. Under weak fairness of the post step the thread finishes. Explicit stuttering lets it stop before that, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "x-quote-thread",
+      "main": "XQuoteThread",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "EveryPostFits",
+        "FewestPosts",
+        "NoEmptyPost",
+        "NoRefusal",
+        "TextKept",
+        "TypeOK"
+      ],
+      "temporal": ["ReplayEnds", "ReplayEndsWithoutFairness"],
+      "maxSteps": 6,
+      "samples": 4000,
+      "temporalChecks": [
+        {
+          "property": "ReplayEnds",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled post step eventually runs (weak fairness). This checks that the thread is then sent in full, not how long X takes to answer."
+          ]
+        },
+        {
+          "property": "ReplayEndsWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The replay may stop before the thread is sent, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}

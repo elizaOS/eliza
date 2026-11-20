@@ -50,6 +50,7 @@ import { TwitterTimelineClient } from "../timeline";
 import type { ITwitterClient, TwitterClientState } from "../types";
 import {
   fetchMediaData,
+  quoteThreadFirstChunkMaxLength,
   sendTextAsTweetThread,
   splitXDirectMessageContent,
 } from "../utils";
@@ -999,6 +1000,9 @@ export class XService extends Service {
           return { id: post.id };
         },
         X_MAX_POST_LENGTH,
+        quotedPostId
+          ? quoteThreadFirstChunkMaxLength(quotedPostId, X_MAX_POST_LENGTH)
+          : undefined,
       );
       const memories = posts.map((post) =>
         this.buildXPostMemory(runtime, {
