@@ -228,3 +228,36 @@ describe("owner.profile_extraction travel dates", () => {
     },
   );
 });
+
+describe("owner.profile_extraction travel return on the reporting day", () => {
+  it("keeps a return named for today instead of the 30-day cap", async () => {
+    const fresh = await createLifeOpsTestRuntime();
+    const now = new Date(2026, 10, 14, 15);
+    const horizon = new Date(
+      now.getTime() + 30 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
+    try {
+      await ownerSays("I'm traveling until November 14th.", fresh.runtime);
+      const todayFacts = await resolveOwnerFactStore(fresh.runtime).read();
+      expect(todayFacts.activeTravel?.value).toEqual({
+        startIso: now.toISOString(),
+        endIso: new Date(2026, 10, 14).toISOString(),
+      });
+      expect(todayFacts.activeTravel?.value.endIso).not.toBe(horizon);
+      expect(ownerFactsToView(todayFacts, now).travelActive).toBe(false);
+
+      await ownerSays("I'm traveling until November 10.", fresh.runtime);
+      const pastFacts = await resolveOwnerFactStore(fresh.runtime).read();
+      expect(pastFacts.activeTravel?.value).toEqual({
+        startIso: now.toISOString(),
+        endIso: horizon,
+      });
+      expect(ownerFactsToView(pastFacts, now).travelActive).toBe(true);
+    } finally {
+      vi.useRealTimers();
+      await fresh.cleanup();
+    }
+  }, 180_000);
+});
