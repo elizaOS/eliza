@@ -2783,15 +2783,26 @@ async function consumeDeviceAuthorizationRecord(
 ): Promise<DeviceAuthorizationRecord | null> {
   const raw = await getMfaBackend().consume(deviceCodeKey(deviceCode));
   if (!raw) return null;
+  let record: DeviceAuthorizationRecord;
   try {
-    const record = decryptMfaJson<DeviceAuthorizationRecord>(raw);
-    await getMfaBackend().delete(deviceUserCodeKey(record.userCode));
-    await getMfaBackend().delete(devicePollKey(deviceCode));
-    if (record.expiresAt <= Date.now()) return null;
-    return record;
-  } catch {
-    return null;
+    record = decryptMfaJson<DeviceAuthorizationRecord>(raw);
+  } catch (cause) {
+    // Same policy as readMfaJson: bytes that do not decrypt are a key-store or
+    // payload failure, not proof that the device code was never issued.
+    throw new ElizaError("Stored device MFA record cannot be read.", {
+      code: "MFA_RECORD_UNREADABLE",
+      cause,
+      context: { kind: "device-auth" },
+      severity: "ephemeral",
+    });
   }
+  // No catch around the deletes: the record was already consumed above, so a
+  // failing delete is a store fault. Returning null here made /device/token
+  // answer `expired_token` to a client whose code a user had just approved.
+  await getMfaBackend().delete(deviceUserCodeKey(record.userCode));
+  await getMfaBackend().delete(devicePollKey(deviceCode));
+  if (record.expiresAt <= Date.now()) return null;
+  return record;
 }
 
 async function readDeviceAuthorizationRecordByUserCode(
