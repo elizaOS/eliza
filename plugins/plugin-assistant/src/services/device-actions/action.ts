@@ -1361,6 +1361,12 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
     types: ["reminder_named"],
     text: "To change or cancel a reminder from Home by its name, use reminder_named with action, the spoken name and, for an update, its declared fields.",
   },
+  // "Wake me at 6:30" names no alarm: offered a reminder form beside the
+  // Clock operation, a planner proposes the reminder.
+  {
+    types: ["clock_alarm", "clock_handoff"],
+    text: "A request to be woken at a time is an alarm set, not a reminder.",
+  },
   { types: ["clock_alarm"], text: CLOCK_ALARM_GUIDANCE },
   {
     types: ["clock_handoff"],
