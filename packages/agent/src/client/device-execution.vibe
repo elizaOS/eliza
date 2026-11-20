@@ -194,12 +194,12 @@ export effect function openAttempt(journal: DeviceJournal, identity: JournalIden
   return { journal, identity, slot, machine }
 }
 
-export effect function sendOr(attempt: JournaledAttempt, event: Event): AttemptStep | undefined!! {
+export effect function sendOr(attempt: JournaledAttempt, event: Event): (AttemptStep | undefined)!! {
   const done = try exit(attempt.machine.send(event))
   return Exit.isSuccess(done) ? done.value : undefined
 }
 
-export effect function reserve(attempt: JournaledAttempt, check: AuthorityCheck): AttemptStep | undefined!! {
+export effect function reserve(attempt: JournaledAttempt, check: AuthorityCheck): (AttemptStep | undefined)!! {
   const { binding } = attempt.slot
   const seen = try (readEntry(attempt.journal, binding.proposalId) catch (): Found => ({ kind: "unreadable" }))
   const answer = journalAnswer(seen, attempt.identity, binding)
@@ -291,11 +291,11 @@ effect function finish<Op>(ports: DeviceExecutionPorts<Op>, attempt: JournaledAt
   return { kind: "settled", result: settledResult(state.phase), synced: try upload(ports, attempt) }
 }
 
-effect function encode(operation: unknown): string | undefined!! {
+effect function encode(operation: unknown): (string | undefined)!! {
   return try (Effect.try({ try: () => JSON.stringify(operation), catch: () => undefined }) catch () => undefined)
 }
 
-effect function decodeOperation<Op>(ports: DeviceExecutionPorts<Op>, operation: string): Op | undefined!! {
+effect function decodeOperation<Op>(ports: DeviceExecutionPorts<Op>, operation: string): (Op | undefined)!! {
   const parsed = try (Effect.try({ try: (): unknown => JSON.parse(operation), catch: () => undefined }) catch () => undefined)
   return parsed === undefined ? undefined : ports.validate(parsed)
 }
@@ -325,7 +325,7 @@ effect function approve<Op>(ports: DeviceExecutionPorts<Op>, live: Map<string, J
   }, sync(() => live.delete(proposal.id)))
 }
 
-effect function stored<Op>(ports: DeviceExecutionPorts<Op>, proposalId: string): JournaledAttempt | undefined!! {
+effect function stored<Op>(ports: DeviceExecutionPorts<Op>, proposalId: string): (JournaledAttempt | undefined)!! {
   const seen = try (readEntry(ports.journal, proposalId) catch (): Found => ({ kind: "unreadable" }))
   if (seen.kind !== "entry" || !sameIdentity(seen.entry, ports.identity)) return undefined
   return try (openAttempt(ports.journal, ports.identity, bindingOf(seen.entry), seen.entry) catch () => undefined)
