@@ -344,7 +344,63 @@ async function fixture(
     apply,
   };
 }
-it("binds a follow-up Messages draft to the preceding delivered SMS sender on this phone and in this room", async () => {
+type Fixture = Awaited<ReturnType<typeof fixture>>;
+/** A new durable owner message in the fixture's room whose turn proposes `operation`. */
+function proposeFromOwnerText(
+  f: Fixture,
+  credential: Fixture["credential"],
+  text: string,
+  operation: DeviceOperation,
+) {
+  const scope = JSON.stringify([
+    f.runtime.agentId,
+    f.original.roomId,
+    credential.subjectUserId,
+  ]);
+  return withOwnerDeviceActionTurn(f.runtime, credential, async () => {
+    const nonce = randomUUID();
+    const message: Memory = {
+      ...f.original,
+      id: conversationClientUserMemoryId(scope, nonce),
+      createdAt: Date.now(),
+      content: {
+        text,
+        source: "client_chat",
+        channelType: "DM",
+        metadata: { agentActionMode: "direct-request-v1" },
+        chatIdempotency: {
+          version: 1,
+          scope,
+          clientMessageId: nonce,
+          fingerprint: "e".repeat(64),
+        },
+      },
+    };
+    await f.runtime.createMemory(message, "messages");
+    setDeviceReadReplyConversation(
+      f.runtime,
+      f.conversationId,
+      f.original.roomId,
+    );
+    setDeviceReadReplyContext(f.runtime, message, {
+      id: message.id!,
+      events: [
+        {
+          id: "owner",
+          type: "message",
+          message: { id: message.id!, role: "user", content: text },
+        },
+      ],
+    });
+    return f.service.proposeWithOutcome(
+      credential,
+      operation,
+      randomUUID(),
+      "Owner request",
+    );
+  });
+}
+async function checkDeliveredSenderDraft(threadId?: string) {
   const f = await fixture();
   try {
     const credential = {
@@ -357,54 +413,8 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
         "sms.compose.v2",
       ],
     };
-    const scope = JSON.stringify([
-      f.runtime.agentId,
-      f.original.roomId,
-      credential.subjectUserId,
-    ]);
-    const propose = async (text: string, operation: DeviceOperation) =>
-      withOwnerDeviceActionTurn(f.runtime, credential, async () => {
-        const nonce = randomUUID();
-        const message: Memory = {
-          ...f.original,
-          id: conversationClientUserMemoryId(scope, nonce),
-          createdAt: Date.now(),
-          content: {
-            text,
-            source: "client_chat",
-            channelType: "DM",
-            metadata: { agentActionMode: "direct-request-v1" },
-            chatIdempotency: {
-              version: 1,
-              scope,
-              clientMessageId: nonce,
-              fingerprint: "e".repeat(64),
-            },
-          },
-        };
-        await f.runtime.createMemory(message, "messages");
-        setDeviceReadReplyConversation(
-          f.runtime,
-          f.conversationId,
-          f.original.roomId,
-        );
-        setDeviceReadReplyContext(f.runtime, message, {
-          id: message.id!,
-          events: [
-            {
-              id: "owner",
-              type: "message",
-              message: { id: message.id!, role: "user", content: text },
-            },
-          ],
-        });
-        return f.service.proposeWithOutcome(
-          credential,
-          operation,
-          randomUUID(),
-          "Owner request",
-        );
-      });
+    const propose = (text: string, operation: DeviceOperation) =>
+      proposeFromOwnerText(f, credential, text, operation);
     let preceding: Memory | undefined;
     f.runtime.getMemories = vi.fn(async () => (preceding ? [preceding] : []));
     const suffix = await propose(
@@ -440,7 +450,7 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
         kind: "sms-latest-sender",
         status: "found",
         address: "+14155550123",
-        threadId: "thread:42",
+        ...(threadId ? { threadId } : {}),
       },
     });
     const hint = (await f.service.readCompletionHint(
@@ -489,7 +499,7 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
       ...proposed,
       target: { kind: "number", number: "+14155550123" },
       draft: true,
-      replyThreadId: "thread:42",
+      ...(threadId ? { replyThreadId: threadId } : {}),
     });
     expect(draft.request.state).toBe("pending");
     await expect(
@@ -506,6 +516,10 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
         "Draft a text to +14155550124 saying call +14155550199.",
         { kind: "number", number: "+14155550124" },
       ],
+      [
+        "Draft a text to four one five, five five five, oh one double oh saying call +14155550199.",
+        { kind: "number", number: "4155550100" },
+      ],
     ] as const) {
       const selected = await propose(text, proposed);
       expect(selected.request.payload.operation).toEqual({
@@ -518,6 +532,8 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
       "Draft a text asking them to bring the tripod. Actually send it to Ada instead.",
       "Draft a text to +14155550124 or +14155550199 about the tripod.",
       "Draft a text saying to call +14155550199.",
+      "Draft a quick text.",
+      "Draft a reply to this conversation.",
     ]) {
       await expect(propose(text, proposed)).rejects.toThrow("Which person");
     }
@@ -530,6 +546,60 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
     await expect(propose(words, proposed)).rejects.toThrow(
       "No current SMS sender",
     );
+  } finally {
+    await f.pg.close();
+  }
+}
+it.each(["thread:42", undefined])(
+  "binds a follow-up Messages draft to the preceding delivered SMS sender on this phone and in this room (thread %s)",
+  checkDeliveredSenderDraft,
+);
+it("keeps an open-thread reply and refuses to turn an addressed draft into a send on a phone without targets", async () => {
+  const f = await fixture();
+  try {
+    const targets = {
+      ...f.credential,
+      capabilities: [
+        ...f.credential.capabilities,
+        "sms.latest-sender.v1",
+        "sms.latest-sender.v2",
+        "sms.compose.v1",
+        "sms.compose.v2",
+      ],
+    };
+    // "them" in a reply into the open thread is that thread, never a lookup.
+    const reply = await proposeFromOwnerText(
+      f,
+      targets,
+      "Reply to them saying I'm on my way",
+      { type: "sms_reply_selected", body: "I'm on my way" },
+    );
+    expect(reply.request.payload.operation).toEqual({
+      type: "sms_reply_selected",
+      body: "I'm on my way",
+    });
+    const v1 = {
+      ...f.credential,
+      capabilities: [
+        ...f.credential.capabilities,
+        "sms.compose.v1",
+        "sms.send.v1",
+      ],
+    };
+    const proposals: DeviceOperation[] = [
+      { type: "sms_compose", query: "Samuel", body: "hi" },
+      {
+        type: "sms_send",
+        recipients: ["+14155550199"],
+        body: "hi",
+        subscriptionId: 3,
+      },
+    ];
+    for (const proposed of proposals) {
+      await expect(
+        proposeFromOwnerText(f, v1, "Draft a text to Sam saying hi", proposed),
+      ).rejects.toThrow("An addressed Messages draft is unavailable");
+    }
   } finally {
     await f.pg.close();
   }

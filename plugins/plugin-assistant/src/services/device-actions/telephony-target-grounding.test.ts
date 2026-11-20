@@ -1,6 +1,6 @@
+import { spokenPhoneNumbers } from "@elizaos/contracts/telephony-actions";
 import { describe, expect, it } from "vitest";
 import type { DeviceOperation } from "./contract.ts";
-import { spokenPhoneNumbers } from "./spoken-phone-number.ts";
 import { authoredTelephonyTarget } from "./telephony-request.ts";
 import {
   DeviceTelephonyTargetNotRequestedError,
@@ -297,6 +297,18 @@ describe("numbers the owner spoke", () => {
       spokenPhoneNumbers("call four fifteen, triple five, oh one double oh"),
     ).toContain("4155550100");
     expect(spokenPhoneNumbers("nine one one")).toEqual(["911"]);
+    const draft = {
+      type: "sms_compose",
+      target: { kind: "number", number: "4155550100" },
+      body: "Hello",
+      draft: true,
+    } as const;
+    expect(
+      groundTelephonyTarget(
+        draft,
+        "Draft a text to four one five, five five five, oh one double oh saying hello.",
+      ).operation,
+    ).toEqual(draft);
   });
 
   it("reads a homophone only beside other digits", () => {
@@ -305,6 +317,9 @@ describe("numbers the owner spoke", () => {
     expect(spokenPhoneNumbers("call me at four")).toEqual([]);
     expect(spokenPhoneNumbers("call Maya at 5 or 6:30")).toEqual([]);
     expect(spokenPhoneNumbers("order A4155550100")).toEqual([]);
+    expect(
+      spokenPhoneNumbers("five five five constructor seven eight nine"),
+    ).toEqual(["555", "789"]);
     // A written number is still read as written.
     expect(ownerPhoneNumbers("call 415-555-0100")).toContain("4155550100");
   });

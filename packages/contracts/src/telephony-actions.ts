@@ -51,6 +51,10 @@
  * visible, editable local change, so it may run directly for the owner's own
  * request.
  */
+import { completeSpokenPhoneNumber } from "./spoken-phone-number.ts";
+
+export { spokenPhoneNumbers } from "./spoken-phone-number.ts";
+
 import {
   PHONE_DIAL_NUMBER,
   type PhoneDialTarget,
@@ -892,7 +896,10 @@ export function isSmsLatestSender(value: {
 }
 
 const DRAFT_COMMAND =
-  /^(?:(?:please|can you|could you|would you)\s+)?(?:(?:draft|write|prepare|compose)\s+(?:me\s+)?(?:(?:a|the)\s+)?(?:(?:short|quick|brief)\s+)?(?:sms|text(?: message)?|message|reply)\s+|reply\s+)/i;
+  /^(?:(?:please|can you|could you|would you)\s+)?(?:(?:draft|write|prepare|compose)\s+(?:me\s+)?(?:(?:a|the)\s+)?(?:(?:short|quick|brief)\s+)?(?:sms|text(?: message)?|message|reply)|reply)\b\s*/i;
+/** "this conversation", "the thread", "Sam's text": the thread a reply belongs to, never a recipient's name. */
+const DRAFT_THREAD_OBJECT =
+  /^(?:it|this|that)$|^(?:this|that|the|my)\s+(?:(?:last|latest|newest|most recent|current|open|selected)\s+)?(?:conversation|thread|chat|message|text|sms)\b|['’]s\s+(?:(?:last|latest|newest|most recent)\s+)?(?:conversation|thread|chat|message|text|sms)\b/iu;
 
 /** The recipient belongs to the addressing clause. A phone number in the SMS body never names its destination. */
 export function requestedSmsDraftRecipient(
@@ -909,7 +916,7 @@ export function requestedSmsDraftRecipient(
   const remainder = request.slice(command[0].length);
   const instructions = remainder.replace(/“[^”]*”|"(?:\\.|[^"\\])*"/gu, "");
   if (
-    /\b(?:actually|instead|rather)\s*[:,]?\s*(?:to|for|use|(?:send|address|forward|write|make) (?:it|that|the (?:draft|message|reply|text)) (?:to|for))\b|\b(?:scratch that|change the recipient|correct the number|(?:to|for) [^.!?;,]{1,64} instead)\b|(?:^|[,;.!?])\s*(?:(?:actually|instead)[, ]*)?(?:send|address|forward) (?:it|that|the (?:draft|message|reply|text)) (?:to|for)\b/iu.test(
+    /\b(?:actually|instead|rather)\s*[:,]?\s*(?:to|for|use|(?:send|address|forward|write|make) (?:it|that|the (?:draft|message|reply|text)) (?:to|for))\b|\b(?:scratch that|change the recipient|correct the number|(?:to|for) [^.!?;,]{1,64} instead)\b|[,;.!?]\s*(?:no[, ]+wait[, ]+(?:to|for)\b|I mean\s+(?!(?:it|that|what|to)\b)[\p{L}\p{N}+])|(?:^|[,;.!?]|\b(?:and|but)\b)\s*(?:(?:actually|instead)[, ]*)?(?:send|address|forward) (?:it|that|the (?:draft|message|reply|text)) (?:to|for)\b/iu.test(
       instructions,
     )
   )
@@ -927,12 +934,9 @@ export function requestedSmsDraftRecipient(
     1,
   );
   const query = raw.trim().replace(/,$/u, "");
-  if (
-    /^(?:this|the (?:open|current|selected))\s+(?:conversation|thread)$/iu.test(
-      query,
-    )
-  )
-    return { kind: "unaddressed" };
+  if (DRAFT_THREAD_OBJECT.test(query)) return { kind: "unaddressed" };
+  const spoken = completeSpokenPhoneNumber(query);
+  if (spoken) return { kind: "number", number: spoken };
   if (/[,&;]|\b(?:and|or|but|not|them|him|her)\b/iu.test(query))
     return { kind: "ambiguous" };
   const number = query.replace(/[ ().-]/g, "");
@@ -942,13 +946,27 @@ export function requestedSmsDraftRecipient(
   return { kind: "ambiguous" };
 }
 
+/** "from Sam", "from the bank": a named sender, never "from what number" or "from this morning". */
+const SMS_NAMED_SENDER =
+  /\bfrom\s+(?!(?:what|which|who|whom|where)\b|(?:this|my|the)\s+phone\b|(?:today|tonight|yesterday|earlier)\b|(?:this|last)\s+(?:morning|afternoon|evening|night|hour|week)\b)[\p{L}\p{N}+(]/iu;
+/** Another service's inbox ("on Slack", "in my Gmail", "over email"). Messages is this phone's own SMS app. */
+const SMS_OTHER_SERVICE =
+  /\b(?:on|in|via|through|using|over|from)\s+(?:(?:my|the)\s+)?(?:slack|discord|whats\s?app|telegram|signal|i-?message|messenger|facebook|instagram|wechat|google\s+chat|teams|bluesky|nostr|twitter|x|linkedin|gmail|outlook|e-?mail|mail)\b/iu;
+
+/**
+ * A question about who sent the newest incoming SMS or its number. A named
+ * sender ("the latest message from Sam") asks for that message, and another
+ * service ("on Slack", "in Gmail") is not this phone's SMS.
+ */
 export function isSmsSenderLookup(text: string): boolean {
   const request = text.trim();
   return (
     /^(?:(?:please|can you|could you)\s+)?(?:who\b|what(?:['’]s| is| was)\b|show\b|look up\b|find\b|check\b|tell me\b)/i.test(
       request,
     ) &&
-    /\b(?:who|whose|sender|number|from)\b/i.test(request) &&
+    /\b(?:who|whose|sender|number)\b/i.test(request) &&
+    !SMS_NAMED_SENDER.test(request) &&
+    !SMS_OTHER_SERVICE.test(request) &&
     /\b(?:last|latest|newest|most recent)\s+(?:(?:incoming|received|unread)\s+)?(?:sms|text|message)\b|\b(?:who (?:just |last )?(?:texted|messaged) me|(?:texted|messaged) me (?:last|most recently))\b/i.test(
       request,
     )

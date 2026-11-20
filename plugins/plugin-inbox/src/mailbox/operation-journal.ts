@@ -487,6 +487,8 @@ export class InboxOperation {
       if (
         source?.requestId !== undefined &&
         (proposal.kind !== "send" ||
+          !draftId ||
+          typeof source.requestId !== "string" ||
           !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(
             source.requestId,
           ))

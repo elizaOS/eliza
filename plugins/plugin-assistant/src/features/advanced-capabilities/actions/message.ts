@@ -66,6 +66,7 @@ import {
   resolveMutedWorldFlags,
 } from "../../../services/message/mute-state.ts";
 import { boundGmailContinuationRevision } from "../../../services/message/navigation-history.ts";
+import { deviceEmailDraft } from "../../messaging/triage/actions/device-email-draft.ts";
 import { draftFollowupAction } from "../../messaging/triage/actions/draftFollowup.ts";
 import { draftReplyAction } from "../../messaging/triage/actions/draftReply.ts";
 import { listInboxAction } from "../../messaging/triage/actions/listInbox.ts";
@@ -3227,6 +3228,23 @@ async function handleSend(
   const target: TargetInfo = normalized.thread
     ? { ...selected.target, threadId: normalized.thread }
     : selected.target;
+
+  if (selected.connector.source === "gmail") {
+    const local = await deviceEmailDraft(
+      runtime,
+      message,
+      {
+        source: "gmail",
+        to: [{ identifier: normalized.target ?? selected.label }],
+        body: normalized.message,
+        subject: normalized.subject,
+        threadId: target.threadId,
+        channelId: target.channelId,
+      },
+      { ...params, accountId: target.accountId ?? normalized.accountId },
+    );
+    if (local) return local;
+  }
 
   // Block "act as the user" until the owner account is verified; agent-owned
   // accounts (open gate) and source-only routes pass through untouched.
