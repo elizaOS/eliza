@@ -3218,6 +3218,49 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     expect(await augustEvents()).toHaveLength(0);
   });
 
+  it.each([
+    ["BYMONTHDAY=-1", "monthly on the last day"],
+    ["BYMONTHDAY=-2", "monthly on the 2nd-to-last day"],
+    ["BYMONTHDAY=15,-1", "monthly on day 15 and the last day"],
+    ["BYMONTHDAY=1,15", "monthly on day 1, 15"],
+  ])(
+    "names the days of a Google %s series when a delete asks for the scope",
+    async (days, label) => {
+      // A negative BYMONTHDAY counts from the month end (RFC 5545).
+      await linkGoogle(async () => ({
+        events: [
+          {
+            id: "rent-series",
+            calendarId: "primary",
+            title: "Pay rent",
+            status: "confirmed",
+            start: "2026-08-31T16:00:00.000Z",
+            end: "2026-08-31T16:30:00.000Z",
+            isAllDay: false,
+            timeZone: "UTC",
+            recurrence: [`RRULE:FREQ=MONTHLY;${days}`],
+            attendees: [],
+            metadata: {},
+          },
+        ],
+        nextPageToken: null,
+        nextSyncToken: "rent-sync",
+      }));
+      const asked = await runChat("43", "Delete pay rent", {
+        subaction: "delete_event",
+        query: "Pay rent",
+        details: { timeZone: "UTC", ...WINDOW },
+      });
+      expect(asked?.data).toMatchObject({
+        missing: ["recurrenceScope"],
+        replyContext: {
+          facts: `"Pay rent" repeats ${label}. should i delete just this occurrence, this and every following occurrence, or the whole series?`,
+          context: { recurrenceDescription: label },
+        },
+      });
+    },
+  );
+
   it("asks instead of dropping an end that is not after the new start", async () => {
     await service.createCalendarEventMutation(INTERNAL_URL, originalEvent);
     const unchanged = await runUpdate(

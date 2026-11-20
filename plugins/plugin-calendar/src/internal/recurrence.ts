@@ -1161,6 +1161,15 @@ function formatUntilLabel(untilMs: number, timeZone: string): string {
   }).format(new Date(untilMs));
 }
 
+/** English ordinal of a positive day count: 2 -> "2nd", 11 -> "11th". */
+function dayOrdinal(n: number): string {
+  const suffix =
+    n % 100 >= 11 && n % 100 <= 13
+      ? "th"
+      : (["th", "st", "nd", "rd"][n % 10] ?? "th");
+  return `${n}${suffix}`;
+}
+
 /**
  * Human-readable summary of a recurrence line set for action replies, e.g.
  * "weekly on Monday", "every 2 weeks on Monday and Wednesday, 10 times".
@@ -1214,7 +1223,19 @@ export function describeRecurrence(
     case "MONTHLY": {
       base = every("monthly");
       if (rule.byMonthDay && rule.byMonthDay.length > 0) {
-        base += ` on day ${rule.byMonthDay.join(", ")}`;
+        // A negative day counts from the month end: -1 is the last day.
+        const dates = rule.byMonthDay.filter((day) => day > 0);
+        const labels = [
+          ...(dates.length > 0 ? [`day ${dates.join(", ")}`] : []),
+          ...rule.byMonthDay
+            .filter((day) => day < 0)
+            .map((day) =>
+              day === -1
+                ? "the last day"
+                : `the ${dayOrdinal(-day)}-to-last day`,
+            ),
+        ];
+        base += ` on ${labels.join(" and ")}`;
       }
       break;
     }
