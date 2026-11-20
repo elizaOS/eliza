@@ -871,6 +871,12 @@ test("address lookup and a reply draft use the complete negotiated address", () 
   const followUp =
     "Draft a quick text asking them to bring the tripod tomorrow. Show me the draft here.";
   assert.equal(requestedSmsDraftRecipient(followUp)?.kind, "previous-sender");
+  for (const request of [
+    "Draft a reply to this conversation",
+    "Write a reply for the current thread saying I’m on my way.",
+  ]) {
+    assert.equal(requestedSmsDraftRecipient(request)?.kind, "unaddressed");
+  }
   assert.ok(
     requestedSmsDraftRecipient(
       "Draft a text to Ada asking them to bring the tripod.",

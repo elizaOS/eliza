@@ -1072,6 +1072,46 @@ export function hasDeviceGmailComposer(): boolean {
   );
 }
 
+/** Recover an explicit new draft when the first model call skips tools. */
+export function registerDeviceGmailDraftRouting(runtime: IAgentRuntime): void {
+  registerDirectActionRoutingRule(runtime, {
+    id: "device.gmail-draft",
+    actionNames: ["MESSAGE_DRAFT_FOLLOWUP"],
+    requiredActionTags: ["domain:messages", "capability:write"],
+    contexts: ["messaging", "email"],
+    matches: (text, message) => {
+      const current = getDeviceActionTurn();
+      if (
+        !message ||
+        current?.runtime !== runtime ||
+        !current.active ||
+        !current.isCurrent() ||
+        current.requestMessage?.message !== message ||
+        !isRequestOwner(current, message) ||
+        !hasDeviceGmailComposer() ||
+        message.content.source !== "client_chat" ||
+        !["DM", "VOICE_DM"].includes(String(message.content.channelType))
+      )
+        return false;
+
+      // Recognize the requested operation only. The planner owns arguments
+      // and ambiguous, conditional or combined delivery requests.
+      const request = text.trim();
+      return (
+        /^(?:(?:please|(?:can|could|would) you)\s+)*(?:(?:draft|compose)\s+(?:(?:me|us)\s+)?(?:(?:a|an|new)\s+)*(?:e-?mail|gmail(?:\s+message)?)(?!\s+(?:reply|response)\b)|(?:create|prepare|write)\s+(?:(?:a|an|new)\s+)*(?:e-?mail|gmail)\s+draft)\b/iu.test(
+          request,
+        ) &&
+        !/\b(?:if|unless|when|after|before|once|provided that|assuming that)\b/iu.test(
+          request,
+        ) &&
+        !/(?:[,;.!]\s*|\b(?:and|then|but)\s+)(?:please\s+)?(?:also\s+)?(?:send\b|(?:do not|don['’]t|never)\s+(?:draft|compose|create|prepare|write)\b)/iu.test(
+          request,
+        )
+      );
+    },
+  });
+}
+
 /** A compose handoff only fills a local editor, so it is valid with either owner action setting. */
 export async function currentGmailComposeOrigin(
   runtime: IAgentRuntime,
@@ -2562,6 +2602,7 @@ export class DeviceActionService {
       validated.type === "browser_navigate" ||
       validated.type === "browser_search";
     const smsDraftOrRead = [
+      "sms_reply_selected",
       "sms_compose",
       "sms_send",
       "sms_latest_sender",
@@ -2616,14 +2657,19 @@ export class DeviceActionService {
         ? { type: "sms_latest_sender", includeAddress: true }
         : { type: "sms_latest_sender" };
     }
-    // A reply into the open thread (sms_reply_selected) names no recipient and
-    // stays bound to that thread. Only a new message takes the recipient the
-    // owner addressed; with none named, Alpha asks which person.
     if (
       requestOrigin &&
-      (validated.type === "sms_compose" || validated.type === "sms_send")
+      (validated.type === "sms_compose" ||
+        validated.type === "sms_send" ||
+        validated.type === "sms_reply_selected")
     ) {
-      const recipient = requestedSmsDraftRecipient(requestOrigin.requestText);
+      const requested = requestedSmsDraftRecipient(requestOrigin.requestText);
+      const recipient =
+        validated.type === "sms_reply_selected" &&
+        (requested?.kind === "previous-sender" ||
+          requested?.kind === "unaddressed")
+          ? undefined
+          : requested;
       if (recipient?.kind === "ambiguous" || recipient?.kind === "unaddressed")
         throw new DeviceActionError(
           "Which person should receive this draft? Give one recipient.",
@@ -2699,7 +2745,12 @@ export class DeviceActionService {
     // record only retrieves it (a historical receipt, the same review) and
     // never creates a new one. Anything else is refused before enqueue.
     let telephonyRefusal: DeviceTelephonyTargetNotRequestedError | undefined;
-    if (telephonyTarget) {
+    // A reply thread is assigned only by the verified sender receipt above.
+    // All other model-chosen targets must be grounded in the owner's words.
+    if (
+      telephonyTarget &&
+      !(validated.type === "sms_compose" && "replyThreadId" in validated)
+    ) {
       const proposed = validated;
       try {
         // No durable original request means no words to ground a recipient in.

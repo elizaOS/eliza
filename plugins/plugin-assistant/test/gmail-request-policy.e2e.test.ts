@@ -4,6 +4,8 @@ import {
   type ContextObject,
   conversationClientUserMemoryId,
   type Memory,
+  type MessageHandlerResult,
+  runResponseHandlerEvaluators,
   runWithStreamingContext,
   setTurnActionConstraint,
   type UUID,
@@ -14,12 +16,14 @@ import {
   requireSendConsent,
   sendConsentDigest,
 } from "../src/features/messaging/triage/send-consent.ts";
+import { routeMessageHandlerOutput } from "../src/runtime/message-handler.ts";
 import {
   bindDeviceRequestedActionPolicy,
   DeviceActionService,
   setDeviceReadReplyContext,
   setDeviceReadReplyConversation,
 } from "../src/services/device-actions/service.ts";
+import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../src/services/message/stage1-evaluators.ts";
 import { withOwnerDeviceActionTurn as ownerTurn } from "./device-owner-turn.ts";
 
 /** Production subjects are auth identities (`gateway:<principal>`), distinct
@@ -76,6 +80,8 @@ async function setup(localCompose = false) {
           createdAt: Math.max(options.createdAt ?? 0, Date.now()),
           content: {
             text,
+            source: "client_chat",
+            channelType: "DM",
             chatIdempotency: {
               version: 1,
               scope,
@@ -102,6 +108,102 @@ async function setup(localCompose = false) {
   };
   return { ...fixture, runtime, owner, device, credential, turn };
 }
+
+test("an explicit owner email draft survives a terminal Stage 1 misclassification", async () => {
+  const f = await setup(true);
+  const drafts = [
+    "Draft an email to myself with subject Alpha draft lifecycle review and body I have the tripod plate for tomorrow. Do not send it.",
+    "Could you prepare an email draft to the crew saying hello?",
+  ];
+  const otherRequests = [
+    "Show me the latest email draft.",
+    "Don't draft an email to me.",
+    'Explain the sentence "Draft an email to me."',
+    "Draft an email to me if the meeting moves.",
+    "If the meeting moves, draft an email to me.",
+    "Draft an email to me and send it.",
+    "Draft an email reply to the latest message.",
+  ];
+  try {
+    for (const text of [...drafts, ...otherRequests]) {
+      await f.turn(text, async (message) => {
+        const stageOne: MessageHandlerResult = {
+          processMessage: "RESPOND",
+          thought: "",
+          plan: {
+            contexts: ["simple"],
+            intents: [],
+            replyEffectStatus: "non_applied",
+            reply: "Let me set that up.",
+          },
+        };
+        await runResponseHandlerEvaluators({
+          runtime: f.runtime,
+          message,
+          state: { text: "", values: {}, data: {} },
+          messageHandler: stageOne,
+          availableContexts: f.runtime.contexts.list(),
+          userRoles: ["OWNER"],
+          evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS.filter(
+            ({ name }) => name === "core.direct_registered_capability_request",
+          ),
+        });
+        if (!drafts.includes(text)) {
+          expect(stageOne.plan.candidateActions).toBeUndefined();
+          expect(stageOne.plan.reply).toBe("Let me set that up.");
+          return;
+        }
+        expect(routeMessageHandlerOutput(stageOne).type).toBe(
+          "planning_needed",
+        );
+        expect(stageOne.plan.candidateActions).toEqual([
+          "MESSAGE_DRAFT_FOLLOWUP",
+        ]);
+        expect(stageOne.plan.reply).toBeUndefined();
+        if (text !== drafts[0]) return;
+
+        const action = f.runtime.actions.find(
+          ({ name }) => name === stageOne.plan.candidateActions?.[0],
+        );
+        const stored = vi
+          .spyOn(f.runtime, "getMemoryById")
+          .mockResolvedValue(message);
+        try {
+          const result = await action?.handler(f.runtime, message, undefined, {
+            parameters: {
+              source: "gmail",
+              to: ["self"],
+              subject: "Alpha draft lifecycle review",
+              body: "I have the tripod plate for tomorrow.",
+            },
+          });
+          expect(result).toMatchObject({
+            success: true,
+            values: {
+              mode: "local-compose",
+              emailDraft: {
+                requestMessageId: message.id,
+                to: ["self"],
+                subject: "Alpha draft lifecycle review",
+                body: "I have the tripod plate for tomorrow.",
+              },
+            },
+          });
+          expect(
+            await f.runtime.getCache(
+              `message-consent:${message.entityId}:${message.roomId}`,
+            ),
+          ).toBeFalsy();
+        } finally {
+          stored.mockRestore();
+        }
+      });
+    }
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test("the owner phone can request a local Gmail draft without a send broker or an armed confirmation", async () => {
   const f = await setup(true);
   try {

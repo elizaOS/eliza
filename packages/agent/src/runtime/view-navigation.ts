@@ -3,6 +3,7 @@ import {
   checkSenderRole,
   containsResourceAddress,
   getStreamingContext,
+  getTurnActionConstraint,
   getUserMessageText,
   type IAgentRuntime,
   isObjectRecord,
@@ -25,6 +26,7 @@ import {
   isExplicitBackViewRequest,
   isForegroundPageHistoryRequest,
   namesRegisteredView,
+  resolveCompoundRegisteredViewRequest,
   resolveExplicitRegisteredViewRequest,
   resolveViewNavigationTargets,
   viewEnabledByProfile,
@@ -172,6 +174,7 @@ type Navigation = {
     | "unresolved";
   viewId: string;
   reason: string;
+  unconditional?: boolean;
 };
 const decisions = new WeakMap<
   Memory,
@@ -193,7 +196,7 @@ function parseNavigation(value: unknown): Navigation | null {
   const v = value as Record<string, unknown>;
   if (
     Object.keys(v).some(
-      (k) => !["disposition", "viewId", "reason"].includes(k),
+      (k) => !["disposition", "viewId", "reason", "unconditional"].includes(k),
     ) ||
     typeof v.disposition !== "string" ||
     ![
@@ -205,7 +208,8 @@ function parseNavigation(value: unknown): Navigation | null {
       "unresolved",
     ].includes(v.disposition) ||
     typeof v.viewId !== "string" ||
-    typeof v.reason !== "string"
+    typeof v.reason !== "string" ||
+    (v.unconditional !== undefined && typeof v.unconditional !== "boolean")
   )
     return null;
   return v as Navigation;
@@ -232,8 +236,13 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
       },
       viewId: { type: "string" },
       reason: { type: "string" },
+      unconditional: {
+        type: "boolean",
+        description:
+          "True when the current user explicitly requests opening this app view itself without a condition. False for conditional, unresolved, optional or prohibited view changes and when a read, write or resource operation merely uses the view.",
+      },
     },
-    required: ["disposition", "viewId", "reason"],
+    required: ["disposition", "viewId", "reason", "unconditional"],
   },
   // Written before replyText (20), after the other plugin routing fields: the
   // disposition decides how replyText is written, and a turn that requests
@@ -338,6 +347,7 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
     userRoles,
     messageHandler,
     invalidatedScopeFields,
+    wholeRequestOwner,
   }) {
     const staged = decisions.get(message);
     decisions.delete(message);
@@ -377,7 +387,13 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
           )?.id ?? null,
       },
     };
-    const value = staged.value;
+    const navigationAction = {
+      messageId: message.id ?? "",
+      roomId: message.roomId,
+      actorId: message.entityId,
+      action: "VIEWS",
+    };
+    const modelNavigation = staged.value;
     // A bare Back, Forward or reload while a view with its own page history is
     // showing (Browser) acts on that tab's page, never the app view, whatever
     // the model judged: hold view navigation and hand the turn to that view's
@@ -392,21 +408,18 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
       : undefined;
     if (pageHistory) {
       setTurnActionConstraint({
-        messageId: message.id ?? "",
-        roomId: message.roomId,
-        actorId: message.entityId,
-        action: "VIEWS",
+        ...navigationAction,
         operations: ["show"],
         disposition: "deny",
         reason: `Page history while ${pageHistory.label} is showing acts on its tab`,
       });
-      if (value.disposition === "forbidden") return;
+      if (modelNavigation.disposition === "forbidden") return;
       const pageContext =
         pageHistory.responseContext?.primaryContext ?? "general";
       const pageSlice = `This request (${JSON.stringify(staged.text.trim())}) is Back, Forward or reload while ${pageHistory.label} is showing: it acts on the page in the tab that is showing there (for Back, the previous page in the tab), not on the app view. Use the ${pageHistory.label} page history operation; do not change the app view. No navigation has executed.`;
       // Stage 1 judged no view navigation: still make the page's own
       // operations available rather than leaving the turn to a bare reply.
-      if (value.disposition === "none")
+      if (modelNavigation.disposition === "none")
         return {
           addContexts: [pageContext],
           addContextSlices: [pageSlice],
@@ -420,47 +433,86 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
         addContextSlices: [pageSlice],
       };
     }
-    if (value.disposition === "forbidden" || value.disposition === "none") {
-      setTurnActionConstraint({
-        messageId: message.id ?? "",
-        roomId: message.roomId,
-        actorId: message.entityId,
-        action: "VIEWS",
-        operations: ["show"],
-        disposition: "deny",
-        reason: value.reason,
-      });
-      return;
-    }
-    // The earlier admitted whole-request route may invalidate a staged model
-    // navigation interpretation. Preserve none/forbidden constraints above.
-    if (invalidatedScopeFields?.has("visualContinuation")) return;
     const plan = messageHandler.plan;
-    if (
-      (value.disposition !== "direct" &&
-        value.disposition !== "planning" &&
-        value.disposition !== "unresolved") ||
-      !message.id ||
-      message.content.source !== "client_chat" ||
-      !["DM", "VOICE_DM"].includes(String(message.content.channelType)) ||
-      !readViewInteractionClientId(message)
-    )
-      return;
-    const caller = await checkSenderRole(runtime, message);
-    getStreamingContext()?.abortSignal?.throwIfAborted();
-    if (!caller?.isOwner || caller.role !== staged.senderRole) return;
-    const target = value.viewId.trim().toLowerCase();
-    const enabled = enabledDeviceViews(runtime);
-    const availableViews = listViews(runtime, { viewType: "gui" }).filter(
-      (view) =>
-        viewNavigationAvailable(view, completedAction) &&
-        satisfiesRoleGate([caller.role], view.roleGate) &&
-        viewEnabledByProfile(view, enabled),
+    const canRoute =
+      !invalidatedScopeFields?.has("visualContinuation") &&
+      message.id &&
+      message.content.source === "client_chat" &&
+      ["DM", "VOICE_DM"].includes(String(message.content.channelType)) &&
+      staged.clientId;
+    const enabled = canRoute ? enabledDeviceViews(runtime) : undefined;
+    const senderRoles = userRoles.filter((role) => role === staged.senderRole);
+    const availableViews = canRoute
+      ? views.filter(
+          (view) =>
+            viewNavigationAvailable(view, completedAction) &&
+            satisfiesRoleGate(senderRoles, view.roleGate) &&
+            viewEnabledByProfile(view, enabled),
+        )
+      : [];
+    const modelMatches = resolveViewNavigationTargets(
+      availableViews,
+      modelNavigation.viewId,
     );
-    const matches = resolveViewNavigationTargets(availableViews, target);
     const viewAction = runtime.actions.find(
       (action) => action.name === "VIEWS",
     );
+    const omittedNavigation = modelNavigation.disposition === "none";
+    const collapsedNavigation = modelNavigation.disposition === "direct";
+    const compound =
+      canRoute &&
+      !wholeRequestOwner &&
+      viewAction &&
+      plan.replyEffectStatus === "pending" &&
+      (omittedNavigation ||
+        collapsedNavigation ||
+        (modelNavigation.disposition === "planning" &&
+          !modelNavigation.unconditional)) &&
+      getTurnActionConstraint(navigationAction, "show")?.disposition !== "deny"
+        ? resolveCompoundRegisteredViewRequest(availableViews, staged.text)
+        : undefined;
+    const agreedCompound =
+      compound &&
+      ((modelMatches.length === 1 &&
+        compound.view.id === modelMatches[0].view.id) ||
+        (omittedNavigation && !modelNavigation.viewId.trim()))
+        ? compound
+        : undefined;
+    const caller =
+      canRoute &&
+      (agreedCompound ||
+        collapsedNavigation ||
+        modelNavigation.disposition === "planning" ||
+        modelNavigation.disposition === "unresolved")
+        ? await checkSenderRole(runtime, message)
+        : undefined;
+    getStreamingContext()?.abortSignal?.throwIfAborted();
+    const owner = caller?.isOwner && caller.role === staged.senderRole;
+    const compoundNavigation = owner ? agreedCompound : undefined;
+    if (
+      modelNavigation.disposition === "forbidden" ||
+      (omittedNavigation && !compoundNavigation)
+    ) {
+      setTurnActionConstraint({
+        ...navigationAction,
+        operations: ["show"],
+        disposition: "deny",
+        reason: modelNavigation.reason,
+      });
+      return;
+    }
+    if (!owner) return;
+    const value: Navigation = compoundNavigation
+      ? {
+          disposition: "planning",
+          viewId: compoundNavigation.view.id,
+          reason: "The current request names a view and a separate read",
+          unconditional: true,
+        }
+      : modelNavigation;
+    const matches = compoundNavigation
+      ? [{ view: compoundNavigation.view }]
+      : modelMatches;
     const knownShow =
       matches.length === 1 && viewAction
         ? pinnedDiscriminatorForPromotedChild(
@@ -501,6 +553,7 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
     // "take me to Coit Tower", "nearest pharmacy": Stage 1 may judge a place or
     // route request direct navigation to Maps, which opens Maps with no route.
     const mapsPlace =
+      !compoundNavigation &&
       matches.length === 1 &&
       isMapsPlaceRequest(matches[0].view.id, staged.text, availableViews);
     const direct =
@@ -526,14 +579,52 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
       (plan.parentActionHints ?? []).every(
         (name) => name === "VIEWS" || name === "VIEWS_SHOW",
       );
-    if (!direct)
+    if (!direct) {
+      const priorIntents = plan.intents ?? [];
+      const destination = matches.length === 1 ? matches[0].view : undefined;
+      const requiredViewNavigation =
+        destination?.installationId &&
+        staged.clientId &&
+        viewAction &&
+        value.disposition === "planning" &&
+        value.unconditional === true
+          ? {
+              viewId: destination.id,
+              clientId: staged.clientId,
+              installationId: destination.installationId,
+            }
+          : undefined;
       return {
         requiresTool: true,
         clearReply: true,
-        addContexts:
-          mapsPlace && runtime.contexts?.get("maps")
-            ? ["general", "maps"]
-            : ["general"],
+        ...(requiredViewNavigation ? { requiredViewNavigation } : {}),
+        ...(compoundNavigation && (omittedNavigation || collapsedNavigation)
+          ? {
+              replaceIntentScope: {
+                intents: omittedNavigation
+                  ? [
+                      ...priorIntents,
+                      `Open the ${compoundNavigation.view.label} view`,
+                      ...(!priorIntents.length
+                        ? [compoundNavigation.followUp]
+                        : []),
+                    ]
+                  : [...priorIntents, compoundNavigation.followUp],
+                invalidateFields: [],
+              },
+            }
+          : {}),
+        addContexts: [
+          "general",
+          ...(mapsPlace && runtime.contexts?.get("maps") ? ["maps"] : []),
+          ...(compoundNavigation?.view.responseContext
+            ? [
+                compoundNavigation.view.responseContext.primaryContext,
+                ...(compoundNavigation.view.responseContext.secondaryContexts ??
+                  []),
+              ]
+            : []),
+        ],
         addCandidateActions: [showCandidate ?? "VIEWS"],
         addContextSlices: [
           `Current-request navigation judgment: ${JSON.stringify(value)}. No navigation has executed.`,
@@ -545,6 +636,7 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
           "Preserve every requested read/write and navigation intent. Use VIEWS action=show for an exact registered destination; use action=list for unknown targets. A domain read/write receipt does not satisfy navigation, and navigation does not satisfy domain work. VIEWS only selects an app view; loading a requested URL requires the authorized Browser operation and cannot be reported complete from a view-selection receipt. Preserve ordering, conditions and restrictions: evaluate prerequisite reads before conditional navigation; do not navigate when the condition is false. Do not report the complete request finished while required navigation remains undelivered or unexplained.",
         ],
       };
+    }
     const requested = resolveExplicitRegisteredViewRequest(
       availableViews,
       staged.text,

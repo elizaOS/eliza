@@ -6978,6 +6978,11 @@ export const messageAction: Action = {
       )
     )
       return false;
+    if (
+      explicitOp === "list_channels" &&
+      connectorsWithHook(runtime, "listRooms").length === 0
+    )
+      return false;
     if (explicitOp === "list_worlds" || explicitOp === "list_rooms") {
       // Scenario and API callers may invoke an explicit topology read without
       // a model-composed routing state. The handlers still revalidate the
