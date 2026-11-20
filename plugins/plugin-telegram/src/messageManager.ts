@@ -224,6 +224,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+/**
+ * Telegram refuses an edit whose text and markup already match the message
+ * with "400: Bad Request: message is not modified".
+ */
+function isMessageNotModifiedError(error: unknown): boolean {
+  const response = isRecord(error) ? error.response : undefined;
+  return (
+    isRecord(response) &&
+    response.error_code === 400 &&
+    typeof response.description === "string" &&
+    /message is not modified/i.test(response.description)
+  );
+}
+
 function isCompactProgressContent(
   content: Content,
 ): content is Content & { text: string } {
@@ -2801,26 +2815,43 @@ export class MessageManager {
     // migrate_to_chat_id, and without the mutable chat object the retry
     // branch can never fire.
     const chat = { id: this.currentChatId(chatId) };
-    await this.sendWithRetry(
-      () =>
-        this.bot.telegram.editMessageText(
-          chat.id,
+    try {
+      await this.sendWithRetry(
+        () =>
+          this.bot.telegram.editMessageText(
+            chat.id,
+            messageId,
+            undefined,
+            formatted,
+            { parse_mode: "MarkdownV2" },
+          ),
+        // Fallback: Telegram rejected the MarkdownV2 — edit with the raw text so
+        // the user sees the content unformatted rather than a stale message.
+        () =>
+          this.bot.telegram.editMessageText(
+            chat.id,
+            messageId,
+            undefined,
+            cleanText(text),
+          ),
+        chat,
+      );
+    } catch (error) {
+      if (!isMessageNotModifiedError(error)) throw error;
+      // The message already shows this text, so there is nothing to edit.
+      // Callers treat a failed edit as a missing message and post a new one.
+      logger.debug(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          chatId,
           messageId,
-          undefined,
-          formatted,
-          { parse_mode: "MarkdownV2" },
-        ),
-      // Fallback: Telegram rejected the MarkdownV2 — edit with the raw text so
-      // the user sees the content unformatted rather than a stale message.
-      () =>
-        this.bot.telegram.editMessageText(
-          chat.id,
-          messageId,
-          undefined,
-          cleanText(text),
-        ),
-      chat,
-    );
+          messageThreadId,
+        },
+        "Message already shows the edited text",
+      );
+      return;
+    }
     logger.info(
       {
         src: "plugin:telegram",
