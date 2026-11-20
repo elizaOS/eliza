@@ -606,23 +606,43 @@ function readPersistedStewardCredentials(): {
   agentToken: string | null;
 } | null {
   const credentialsPath = resolveStewardCredentialsPath();
+  let raw: string;
   try {
-    if (!fs.existsSync(credentialsPath)) {
+    raw = fs.readFileSync(credentialsPath, "utf8");
+  } catch (err) {
+    // Absent credentials are the normal "no persisted Steward wallet" state.
+    // Anything else (EACCES, EIO, EMFILE, a directory in place of the file) is
+    // a real fault and must not read back as "not configured".
+    if ((err as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
       return null;
     }
-    const parsed = JSON.parse(
-      fs.readFileSync(credentialsPath, "utf8"),
-    ) as PersistedStewardCredentials;
-    return {
-      apiUrl: normalizeOptionalString(parsed.apiUrl),
-      tenantId: normalizeOptionalString(parsed.tenantId),
-      agentId: normalizeOptionalString(parsed.agentId),
-      apiKey: normalizeOptionalString(parsed.apiKey),
-      agentToken: normalizeOptionalString(parsed.agentToken),
-    };
-  } catch {
+    logger.error(
+      `[wallet] persisted Steward credentials are unreadable at ${credentialsPath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return null;
   }
+  let parsed: PersistedStewardCredentials;
+  try {
+    parsed = JSON.parse(raw) as PersistedStewardCredentials;
+  } catch (err) {
+    logger.error(
+      `[wallet] persisted Steward credentials are corrupt at ${credentialsPath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") {
+    logger.error(
+      `[wallet] persisted Steward credentials are corrupt at ${credentialsPath}: expected a JSON object`,
+    );
+    return null;
+  }
+  return {
+    apiUrl: normalizeOptionalString(parsed.apiUrl),
+    tenantId: normalizeOptionalString(parsed.tenantId),
+    agentId: normalizeOptionalString(parsed.agentId),
+    apiKey: normalizeOptionalString(parsed.apiKey),
+    agentToken: normalizeOptionalString(parsed.agentToken),
+  };
 }
 
 function resolveOperationalStewardConnection(
