@@ -1,4 +1,7 @@
-import { notesRequestEffectField } from "./request-effect.js";
+import {
+  namedNoteReadEvaluator,
+  notesRequestEffectField,
+} from "./request-effect.js";
 import { assertNotesAgentViewOperation } from "./request-effect-gate.js";
 /**
  * Runtime declaration for the managed Cloud Notes view: one agent-drivable
@@ -139,6 +142,7 @@ export const notesPlugin: Plugin = {
     }),
   ],
   responseHandlerFieldEvaluators: [notesRequestEffectField],
+  responseHandlerEvaluators: [namedNoteReadEvaluator],
   providers: [notesProvider, namedNotesProvider, namedNotesRoutingProvider],
   services: [NotesService],
   routes: notesRoutes,

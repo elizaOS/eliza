@@ -17,6 +17,7 @@ import {
   containsWebAddress,
   DeviceBrowserNotRequestedError,
   directBrowserOpen,
+  spokenBrowserOpen,
 } from "./browser-request-grounding.ts";
 import {
   isCalendarOperation,
@@ -119,7 +120,14 @@ import {
   telephonyActionResultText,
   validateTelephonyActionResult,
 } from "./telephony-actions-contract.ts";
-import { authoredKeypadRequest } from "./telephony-request.ts";
+import {
+  authoredKeypadRequest,
+  writesDialNumber,
+} from "./telephony-request.ts";
+import {
+  DeviceTelephonyTargetNotRequestedError,
+  telephonyTargetRefusalReply,
+} from "./telephony-target-grounding.ts";
 
 const reminderSchemas: ActionParameterSchema[] = [
   "reminder_read_selected",
@@ -762,10 +770,13 @@ export const FOREGROUND_REVIEW_GUIDANCE = FOREGROUND_PROPOSAL_GUIDANCE.map(
   (fragment) => fragment.text,
 ).join(" ");
 
+// The owner's number usually reaches the planner as a contact reference. A
+// digits-only instruction made a model write digits it did not have (v612:
+// "call 415-555-0100" became a call to 6505715862), so the reference comes first.
 const phoneNumberSchema = {
   type: "string",
   description:
-    "2 to 20 digits with an optional leading +, for example +14155550100 or 5550100. Leave out spaces, dashes, dots and brackets.",
+    "A number the owner wrote in this message. When it appears as a __ELIZA_CONTACT_ reference, copy that whole reference exactly; never write digits you were not given. Otherwise 2 to 20 digits with an optional leading +, for example +14155550100 or 5550100.",
 };
 /** A recipient the phone resolves: an exact number, or a contact named by text. */
 const phoneTargetSchema: ActionParameterSchema = {
@@ -1108,6 +1119,18 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
     text: "Phone-native Notes and Calendar data uses these device reviews. A lookup, named record or new event the phone resolves itself works from Home or the Notes or Calendar view; an operation on an exact record or source needs it selected on the phone. Other Notes and Calendar requests, and any turn with a canonical Notes or Calendar selection, use the canonical NOTES or CALENDAR service; a phone capability never redirects a canonical record.",
   },
   {
+    // v613: "call 415-555-0100" reached the planner as a contact reference and
+    // the model wrote ten digits of its own; the phone then dialed them.
+    types: [
+      "phone_call",
+      "phone_dial",
+      "phone_keypad",
+      "sms_compose",
+      "sms_send",
+    ],
+    text: "Phone numbers in the owner's message appear to you as contact references (__ELIZA_CONTACT_…__), never as digits. To call, dial or text that number, copy its whole reference verbatim as the number, every character and underscore; a country code such as +1 before it is allowed. Never write digits for a number you only saw as a reference: they are invented, and the proposal is refused.",
+  },
+  {
     types: ["sms_send"],
     text: "Reviewed SIM SMS requires sms.send.v1, exact canonical recipients, body and the active subscriptionId shown by the phone. Never invent a SIM ID or substitute an external compose intent. The owner reviews the exact content on the unlocked phone. submitted proves submission only; sent proves all sent callbacks; delivered requires all matching delivery reports. Unknown or partial failure must never be automatically retried.",
   },
@@ -1165,6 +1188,12 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   },
   {
     types: ["sms_latest_sender"],
+    capability: "sms.latest-sender.v2",
+    text: "Use sms_latest_sender with no fields for an owner asking who sent the latest SMS. The binding returns one real sender address. If the owner then asks you to draft a text to them, propose sms_compose with that exact number, draft:true and the requested body. Put the draft into Messages for editing and Send; never give only hypothetical copy.",
+  },
+  {
+    types: ["sms_latest_sender"],
+    unlessCapability: "sms.latest-sender.v2",
     text: "Use sms_latest_sender with no fields for an explicit question about who sent the newest incoming SMS on the owner's phone. It proposes a reviewed read of one sender number suffix only. It cannot search historical messages, query MMS, or read any message body. Do not use a cloud inbox or the open-thread read for this request.",
   },
   {
@@ -1621,6 +1650,19 @@ export const proposeDeviceAction: Action = {
         p.afterRead,
       );
     } catch (error) {
+      if (error instanceof DeviceTelephonyTargetNotRequestedError)
+        return {
+          success: false,
+          text: error.message,
+          userFacingText: telephonyTargetRefusalReply(error.refusal),
+          verifiedUserFacing: true,
+          data: {
+            code: error.code,
+            proposalCreated: false,
+            executed: false,
+            retryable: false,
+          },
+        };
       if (!(error instanceof DeviceBrowserNotRequestedError)) throw error;
       // Plain copy that is true either way: with no address in the user's
       // words, say how to ask; with one, only that it was not opened.
@@ -1922,8 +1964,26 @@ export const proposeDeviceAction: Action = {
       isBrowserControl(operation) &&
       BROWSER_CONTROL_DIRECT_TYPES.includes(operation.type) &&
       payload.requestMessageId !== undefined;
+    // An empty or filled-in keypad the owner's current message asked for
+    // comes in front on the phone without a review card: it never dials, and
+    // only the owner's Call tap there places a call.
+    // A number the owner did not write in this message (one the model took
+    // from an email, a page or an earlier read) keeps the phone's review
+    // card, so it keeps the review text too.
+    const requestedKeypad =
+      request.state === "pending" &&
+      operation.type === "phone_keypad" &&
+      payload.requestMessageId !== undefined &&
+      (!operation.number ||
+        writesDialNumber(
+          extractUserText(unwrapUserMessageText(_message)),
+          operation.number,
+        ));
     const requestedHandoff =
-      requestedBrowserOpen || requestedCameraCapture || requestedBrowserControl;
+      requestedBrowserOpen ||
+      requestedCameraCapture ||
+      requestedBrowserControl ||
+      requestedKeypad;
     return {
       success: true,
       transcriptVisibility: "internal",
@@ -1946,9 +2006,15 @@ export const proposeDeviceAction: Action = {
                 }
               : requestedBrowserControl
                 ? { userFacingText: "Doing that in Browser." }
-                : request.state === "pending"
-                  ? { userFacingText: DEVICE_APPROVAL_REVIEW_TEXT }
-                  : {}),
+                : requestedKeypad
+                  ? {
+                      userFacingText: operation.number
+                        ? `Opening the keypad with ${operation.number}.`
+                        : "Opening the keypad.",
+                    }
+                  : request.state === "pending"
+                    ? { userFacingText: DEVICE_APPROVAL_REVIEW_TEXT }
+                    : {}),
       text: pendingRingingControl
         ? "Alarm control request recorded and pending for the phone. The phone may request manual review under its native policy. Pending state and approval/pause flags do not prove a visible approval dialog. This tool has performed no device operation. Await an applied native receipt before claiming completion."
         : requestedBrowserOpen
@@ -1957,7 +2023,9 @@ export const proposeDeviceAction: Action = {
             ? "The requesting phone takes this requested photo right after this reply once Camera is showing, with no review. No photo has been taken yet; do not claim that one was taken or saved."
             : requestedBrowserControl
               ? "The requesting phone runs this requested Browser control right after this reply, with no review. It has not run yet; do not claim that it finished, what a search found or what a page shows."
-              : `Durable device proposal state: ${request.state}. This tool has performed no device operation.`,
+              : requestedKeypad
+                ? "The requesting phone brings its Phone keypad in front right after this reply, with no review. It never dials: only the owner's Call tap there places a call. It is not showing yet; never report a call."
+                : `Durable device proposal state: ${request.state}. This tool has performed no device operation.`,
       data: {
         proposalId: request.id,
         state: request.state,
@@ -2030,11 +2098,16 @@ export function deviceActionForCapabilities(
   // "Open x.com in a new tab" is an open of x.com: an empty tab is never
   // offered for it (the service also turns one into that open).
   const request = binding?.message ?? current?.replyContext?.message;
+  const requestText =
+    request === undefined
+      ? undefined
+      : extractUserText(unwrapUserMessageText(request));
+  const requestName = (binding?.runtime ?? current?.runtime)?.character.name;
   const addressInNewTab =
-    request !== undefined &&
-    directBrowserOpen(
-      extractUserText(unwrapUserMessageText(request)),
-      (binding?.runtime ?? current?.runtime)?.character.name,
+    requestText !== undefined &&
+    (
+      directBrowserOpen(requestText, requestName) ??
+      spokenBrowserOpen(requestText, requestName)
     )?.newTab === true;
   const offered = (branch: ActionParameterSchema): boolean => {
     if (

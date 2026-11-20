@@ -205,6 +205,39 @@ describe("phone telephony routing on the Alpha image", () => {
 });
 
 describe("selected phone capability guidance", () => {
+  it("keeps an explicit self-addressed Gmail draft actionable when sending is prohibited", async () => {
+    const routing = async () =>
+      (await guidance({ providerPhase: "response" })).text;
+    const self =
+      '“To me” or “to myself” already names the recipient. Pass to:["self"] and let the phone resolve the selected Gmail mailbox.';
+    const pending =
+      "If the user explicitly requests a draft and says not to send it, composing is still pending work. Prepare the draft without sending it.";
+    expect(await routing()).not.toContain(self);
+    capabilities.push("gmail.local-compose.v1");
+    try {
+      const text = await routing();
+      expect(text).toContain(self);
+      expect(text).toContain(pending);
+    } finally {
+      capabilities.pop();
+    }
+  });
+
+  it("routes a retry of an unsent Gmail draft through the negotiated composer", async () => {
+    const routing = async () =>
+      (await guidance({ providerPhase: "response" })).text;
+    expect(await routing()).not.toContain("MESSAGE_DRAFT_FOLLOWUP");
+    capabilities.push("gmail.local-compose.v1");
+    try {
+      const text = await routing();
+      expect(text).toContain("MESSAGE_DRAFT_FOLLOWUP");
+      expect(text).toContain("Do not search or triage the mailbox");
+      expect(text).toContain("never sent by this action");
+    } finally {
+      capabilities.pop();
+    }
+  });
+
   it("keeps compact authenticated availability and permission boundaries during routing", async () => {
     const { text } = await guidance({ providerPhase: "response" });
     expect(text).toContain("notes.local-record.v1");
@@ -261,6 +294,21 @@ describe("selected phone capability guidance", () => {
       );
     } finally {
       capabilities.pop();
+    }
+  });
+  it("grounds a requested reply draft in the negotiated latest sender address", async () => {
+    capabilities.push(
+      "sms.latest-sender.v1",
+      "sms.latest-sender.v2",
+      "sms.compose.v1",
+      "sms.compose.v2",
+    );
+    try {
+      const routing = await guidance({ providerPhase: "response" });
+      expect(routing.text).toContain("returned recipient, draft:true");
+      expect(routing.text).not.toContain("approved sender suffix");
+    } finally {
+      capabilities.splice(-4);
     }
   });
   it("names the phone's own calendar create only on a turn that offers it", async () => {

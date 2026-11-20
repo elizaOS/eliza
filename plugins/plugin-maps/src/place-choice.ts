@@ -8,7 +8,9 @@
  * same-named branch stands nearby (a chain: "Starbucks"), and the candidates
  * around it outnumber far-away namesakes. The places Google returns for "Ferry
  * Building" are the building, its marketplace, its farmers market and other
- * parts of the same landmark; they are not a question for the owner.
+ * parts of the same landmark; they are not a question for the owner. Nor
+ * are the park and the neighbourhood Google also names "Golden Gate Park":
+ * two same-named areas, neither at a street address, are one landmark.
  */
 
 import type { PlaceRef, TravelMode } from "./types.js";
@@ -33,6 +35,8 @@ const SAME_SITE_METERS = 300;
 const SAME_COMPLEX_METERS = 1_000;
 /** Same-named results this close are branches of one chain in one area. */
 const BRANCH_AREA_METERS = 50_000;
+/** Same-named areas this close, neither at a street address, are one landmark. */
+const LANDMARK_AREA_METERS = 5_000;
 /** The top result's own area. */
 const AREA_METERS = 25_000;
 /** Around a known other route endpoint, only these candidates are local. */
@@ -58,6 +62,17 @@ function queryKeys(query: string): string[] {
   const named = /^(.+?)\s+(?:in|near|at|by)\s+\S/iu.exec(head)?.[1];
   if (named) keys.push(placeNameKey(named));
   return keys.filter((key) => key.length > 0);
+}
+
+/**
+ * True when the provider gives a place as an area, not a street address: "San
+ * Francisco, CA, USA" (the park) or "Golden Gate Park, San Francisco, CA, USA"
+ * (the neighbourhood), never "1 Market St, ..." (a Starbucks). A place with no
+ * address is not known to be an area.
+ */
+function isArea(place: PlaceRef): boolean {
+  const address = place.formattedAddress?.trim();
+  return !!address && !/(?:^|,)\s*\d+[\p{L}]?(?:[-/]\d+)?\s+\S/u.test(address);
 }
 
 function contains(name: string, key: string): boolean {
@@ -126,13 +141,19 @@ export function dominantPlace(
   if (!matches(first)) return undefined;
   if (rest.every((place) => away(place) <= SAME_SITE_METERS)) return first;
   const firstName = placeNameKey(first.name);
-  // Another branch of the same name in the same area: "Starbucks".
+  // Another branch of the same name in the same area: "Starbucks". A
+  // same-named area beside an area top result is the same landmark.
   if (
     rest.some(
       (place) =>
         placeNameKey(place.name) === firstName &&
         away(place) > SAME_SITE_METERS &&
-        away(place) <= BRANCH_AREA_METERS,
+        away(place) <= BRANCH_AREA_METERS &&
+        !(
+          isArea(first) &&
+          isArea(place) &&
+          away(place) <= LANDMARK_AREA_METERS
+        ),
     )
   )
     return undefined;

@@ -38,7 +38,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   for (const runtime of runtimes.splice(0)) closeRuntimeViewRegistry(runtime);
 });
-async function fixture(request = "Open example.com.") {
+async function fixture(request = "Open example.com.", channelType = "DM") {
   const runtime = new AgentRuntime({
     character: {
       name: "Eliza",
@@ -75,7 +75,7 @@ async function fixture(request = "Open example.com.") {
     content: {
       text: request,
       source: "client_chat",
-      channelType: "DM",
+      channelType,
       metadata: {
         clientDevice: {
           context: { view: "notes", revision: 1, sensitive: false },
@@ -110,17 +110,18 @@ async function fixture(request = "Open example.com.") {
   };
 }
 it.each([
-  "Open example.com.",
-  "Please visit https://example.com/path?q=1",
-  "Go to www.example.com",
+  ["Open example.com.", "DM"],
+  ["Please visit https://example.com/path?q=1", "DM"],
+  ["Go to www.example.com", "DM"],
   // The owner's v609 turns: Stage 1 named only VIEWS_SHOW, the Browser view
   // opened and the address never loaded.
-  "open example.com in the browser",
-  "open wikipedia.org in a new tab",
+  ["open example.com in the browser", "DM"],
+  ["open wikipedia.org in a new tab", "DM"],
+  ["Open alphacompute.ai in the browser.", "VOICE_DM"],
 ])(
   "routes a complete native URL request to the existing reviewed operation: %s",
-  async (request) => {
-    const f = await fixture(request);
+  async (request, channelType) => {
+    const f = await fixture(request, channelType);
     await withDeviceActionTurn(
       f.runtime,
       f.credential,
@@ -305,6 +306,34 @@ it.each([
     );
   },
 );
+it.each([
+  // A spoken hostname goes to the planner, whose open the owner reviews.
+  "Open alphacompute dot ai in the browser.",
+  "Open example dot com",
+  "Open the Dot app",
+  "open my dot app please",
+  "Go to the dot com",
+  "Visit the dot site",
+  "Open main dot py",
+  "Open readme dot md",
+])("does not claim the spoken %s", async (request) => {
+  const f = await fixture(request, "VOICE_DM");
+  await withDeviceActionTurn(
+    f.runtime,
+    f.credential,
+    async () => {
+      setDeviceActionRequestMessage(f.runtime, f.message);
+      expect(f.rule.matches(request, f.message)).toBe(false);
+    },
+    {
+      requestCaller: {
+        subjectUserId: f.credential.subjectUserId,
+        entityId: owner,
+        role: "OWNER",
+      },
+    },
+  );
+});
 it("requires the bound current caller and the operation capability, not a native metadata hint", async () => {
   const f = await fixture();
   expect(f.rule.matches(String(f.message.content.text), f.message)).toBe(false);
@@ -441,6 +470,8 @@ it.each([
   // "open wikipedia.org in a new tab" and the phone opened a blank tab.
   ["open wikipedia.org in a new tab", false],
   ["can you open wikipedia.org in a new tab?", false],
+  // A spoken hostname placed in a new tab is an open too, never an empty tab.
+  ["open alphacompute dot ai in a new tab", false],
   ["open a new tab", true],
   ["open wikipedia.org in a private tab", true],
   ["open example.com in the browser", true],

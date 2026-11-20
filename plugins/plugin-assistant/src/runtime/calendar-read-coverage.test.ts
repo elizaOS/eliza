@@ -382,6 +382,72 @@ describe("request-bound Calendar read coverage", () => {
       calendarReadCoverage(f.output, f.context, f.trajectory).verified,
     ).toBe(true);
   });
+  it.each([true, false])(
+    "preserves the verified Calendar date with explicit model coverage %s",
+    async (explicitCoverage) => {
+      const f = fixture();
+      const step = requiredFixtureValue(f.trajectory.steps[0]);
+      const result = requiredFixtureValue(step.result);
+      const canonical = "Next event: Design review on October 5 at 10 AM UTC.";
+      step.result = {
+        ...result,
+        transcriptVisibility: "internal",
+        modelReplyRequired: true,
+        data: {
+          ...result.data,
+          replyContext: {
+            domain: "calendar",
+            scenario: "next_event",
+            userFacingFacts: canonical,
+          },
+        },
+      };
+      f.output.messageToUser = "Your next event is tomorrow at 10 AM.";
+      if (!explicitCoverage) {
+        delete f.output.requestFullyCovered;
+        delete f.output.outcomeCoverage;
+      }
+      const reply = await runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(f.output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(reply.success).toBe(true);
+      expect(reply.messageToUser).toBe(canonical);
+    },
+  );
+  it("uses the sole current next-event read when the evaluator omits its citation", async () => {
+    const f = fixture();
+    delete f.output.outcomeCoverage;
+    delete f.output.requestFullyCovered;
+    f.output.messageToUser = "Your next event is tomorrow at 10 AM.";
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+    const reply = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(f.output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(reply.success).toBe(true);
+    expect(reply.messageToUser).toBe(f.output.messageToUser);
+    const step = requiredFixtureValue(f.trajectory.steps[0]);
+    f.trajectory.steps.push({
+      ...step,
+      toolCall: {
+        ...requiredFixtureValue(step.toolCall),
+        id: "another-next-event",
+      },
+    });
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+    f.trajectory.steps.pop();
+    requiredFixtureValue(step.result).effectReceipts = [];
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+  });
   it("accepts the canonical dispatcher only for its explicit next_event discriminator", () => {
     const f = fixture();
     f.trajectory.steps[0].toolCall = {
@@ -2463,6 +2529,43 @@ describe("Calendar proposal and availability outcome evidence", () => {
       throw new Error("Incomplete scheduling evidence fixture");
     return { ...f, step, result, data, receipt, call, binding };
   }
+  it("answers a sole current built-in slot preview from the producer instead of converting it with a model", async () => {
+    const f = proposalFixture();
+    f.binding.source = "builtin";
+    f.result.transcriptVisibility = "internal";
+    f.result.modelReplyRequired = true;
+    const answer =
+      "I found a 30-minute opening. Mon, Oct 5, 12:00–12:30 PM UTC.";
+    f.data.replyContext = {
+      domain: "calendar",
+      scenario: "propose_times",
+      userFacingFacts: answer,
+    };
+    const useModel = vi.fn(async () =>
+      JSON.stringify({
+        ...f.output,
+        outcomeCoverage: undefined,
+        messageToUser: "It is free at 1 PM.",
+      }),
+    );
+    const evaluate = () =>
+      runEvaluator({
+        runtime: { useModel },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+    expect(await evaluate()).toMatchObject({
+      success: true,
+      decision: "FINISH",
+      messageToUser: answer,
+      outcomeCoverage: [{ status: "completed", evidenceStepIds: ["step:1"] }],
+    });
+    expect(useModel).not.toHaveBeenCalled();
+    // The early reply cannot count a stale preview for the current request.
+    f.binding.requestedAt = Date.parse(f.receipt.observedAt) + 1000;
+    await evaluate();
+    expect(useModel).toHaveBeenCalledOnce();
+  });
   it.each([
     ["binding", "CALENDAR_READ_BINDING_IDENTITY_INVALID"],
     ["coverage", "CALENDAR_READ_COVERAGE_MISSING"],

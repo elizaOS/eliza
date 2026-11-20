@@ -120,6 +120,35 @@ function keys(value: Record<string, unknown>, allowed: string[]) {
   if (Object.keys(value).some((key) => !allowed.includes(key)))
     throw new DeviceActionError("Invalid navigation fields");
 }
+/**
+ * The phone's own account of a refusal, such as "Open Maps on the phone to continue", is
+ * shown when it is one bounded line; otherwise a reply names what the code means.
+ */
+const FAILURE_TEXT: Partial<Record<MapsErrorCode, string>> = {
+  MAPS_DEVICE_UNAVAILABLE:
+    "Maps could not be shown on the phone right now. Nothing was changed on the map.",
+  MAPS_INVALID_INPUT: "The phone could not use that place or travel mode.",
+  MAPS_NOT_FOUND: "Cloud Maps on the phone found no such place or route.",
+  MAPS_UNSUPPORTED_REGION:
+    "Cloud Maps on the phone does not plan that route here.",
+  MAPS_PROVIDER_CHANGED:
+    "The Maps account on the phone changed. Nothing was changed on the map.",
+};
+function failureMessage(code: MapsErrorCode, message: unknown): string {
+  if (
+    typeof message === "string" &&
+    message.trim() &&
+    message.length <= 300 &&
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: a phone line is plain text
+    !/[\u0000-\u001f\u007f]/.test(message)
+  )
+    return message.trim();
+  return (
+    FAILURE_TEXT[code] ??
+    "The phone could not complete this Maps request. Check Maps on the phone."
+  );
+}
+
 function status(
   value: unknown,
   operation: Operation,
@@ -272,7 +301,7 @@ export async function handleMapsNavigationRelay(
   offer.seenAt = Date.now();
   if (body.failed !== undefined && body.status === undefined) {
     const failure = object(body.failed);
-    keys(failure, ["code"]);
+    keys(failure, ["code", "message"]);
     const codes: MapsErrorCode[] = [
       "MAPS_DEVICE_UNAVAILABLE",
       "MAPS_INVALID_INPUT",
@@ -289,11 +318,9 @@ export async function handleMapsNavigationRelay(
     ];
     if (!codes.includes(failure.code as MapsErrorCode))
       throw new DeviceActionError("Invalid navigation failure");
+    const code = failure.code as MapsErrorCode;
     pending.finish(
-      new MapsError(
-        "The phone could not complete this Maps request. Check Maps on the phone.",
-        { code: failure.code as MapsErrorCode },
-      ),
+      new MapsError(failureMessage(code, failure.message), { code }),
     );
   } else if (body.failed === undefined)
     pending.finish(status(body.status, pending.operation));
