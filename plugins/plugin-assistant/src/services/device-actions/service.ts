@@ -2631,17 +2631,7 @@ export class DeviceActionService {
       const targets =
         c.capabilities?.includes(SMS_COMPOSE_CAPABILITY) === true &&
         c.capabilities.includes(SMS_COMPOSE_TARGET_CAPABILITY);
-      if (recipient?.kind === "contact" && !targets) {
-        // A phone without targets names the contact by its search text.
-        if (c.capabilities?.includes(SMS_COMPOSE_CAPABILITY)) {
-          addressedSmsDraft = validateDeviceOperation({
-            type: "sms_compose",
-            query: recipient.query,
-            body: validated.body,
-          });
-          validated = addressedSmsDraft;
-        }
-      } else if (recipient) {
+      if (recipient) {
         if (!targets)
           throw new DeviceActionError(
             "An addressed Messages draft is unavailable on this phone.",

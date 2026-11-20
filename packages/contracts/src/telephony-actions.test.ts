@@ -905,7 +905,17 @@ test("address lookup and a reply draft use the complete negotiated address", () 
     ),
   );
   for (const request of [
+    "Reply to her saying I mean it",
+    'Reply to them saying "hi, but send it to Mom"',
+  ]) {
+    assert.equal(requestedSmsDraftRecipient(request)?.kind, "previous-sender");
+  }
+  for (const request of [
     "Draft a text to them; actually send it to Ada instead.",
+    "Write a text to them saying hi, but send it to Mom",
+    "Draft a text to them saying hi and send it to Mom",
+    "Reply to them, no wait, to Sam, saying I'm late",
+    "Reply to her. I mean Sam. Say I'm late",
     "Draft a text to +14155550124 or +14155550199 asking about the tripod.",
   ]) {
     assert.equal(requestedSmsDraftRecipient(request)?.kind, "ambiguous");

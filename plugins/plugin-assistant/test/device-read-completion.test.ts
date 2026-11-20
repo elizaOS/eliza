@@ -549,7 +549,7 @@ it.each(["thread:42", undefined])(
   "binds a follow-up Messages draft to the preceding delivered SMS sender on this phone and in this room (thread %s)",
   checkDeliveredSenderDraft,
 );
-it("keeps an open-thread reply and names a contact by its search text on a phone without targets", async () => {
+it("keeps an open-thread reply and refuses to turn an addressed draft into a send on a phone without targets", async () => {
   const f = await fixture();
   try {
     const targets = {
@@ -573,8 +573,6 @@ it("keeps an open-thread reply and names a contact by its search text on a phone
       type: "sms_reply_selected",
       body: "I'm on my way",
     });
-    // A phone without sms.compose.v2 names the owner's contact by its search
-    // text, whatever recipient the planner proposed.
     const v1 = {
       ...f.credential,
       capabilities: [
@@ -593,17 +591,9 @@ it("keeps an open-thread reply and names a contact by its search text on a phone
       },
     ];
     for (const proposed of proposals) {
-      const contact = await proposeFromOwnerText(
-        f,
-        v1,
-        "Draft a text to Sam saying hi",
-        proposed,
-      );
-      expect(contact.request.payload.operation).toEqual({
-        type: "sms_compose",
-        query: "Sam",
-        body: "hi",
-      });
+      await expect(
+        proposeFromOwnerText(f, v1, "Draft a text to Sam saying hi", proposed),
+      ).rejects.toThrow("An addressed Messages draft is unavailable");
     }
   } finally {
     await f.pg.close();

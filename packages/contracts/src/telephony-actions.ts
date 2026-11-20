@@ -916,7 +916,7 @@ export function requestedSmsDraftRecipient(
   const remainder = request.slice(command[0].length);
   const instructions = remainder.replace(/“[^”]*”|"(?:\\.|[^"\\])*"/gu, "");
   if (
-    /\b(?:actually|instead|rather)\s*[:,]?\s*(?:to|for|use|(?:send|address|forward|write|make) (?:it|that|the (?:draft|message|reply|text)) (?:to|for))\b|\b(?:scratch that|change the recipient|correct the number|(?:to|for) [^.!?;,]{1,64} instead)\b|(?:^|[,;.!?])\s*(?:(?:actually|instead)[, ]*)?(?:send|address|forward) (?:it|that|the (?:draft|message|reply|text)) (?:to|for)\b/iu.test(
+    /\b(?:actually|instead|rather)\s*[:,]?\s*(?:to|for|use|(?:send|address|forward|write|make) (?:it|that|the (?:draft|message|reply|text)) (?:to|for))\b|\b(?:scratch that|change the recipient|correct the number|(?:to|for) [^.!?;,]{1,64} instead)\b|[,;.!?]\s*(?:no[, ]+wait[, ]+(?:to|for)\b|I mean\s+(?!(?:it|that|what|to)\b)[\p{L}\p{N}+])|(?:^|[,;.!?]|\b(?:and|but)\b)\s*(?:(?:actually|instead)[, ]*)?(?:send|address|forward) (?:it|that|the (?:draft|message|reply|text)) (?:to|for)\b/iu.test(
       instructions,
     )
   )
