@@ -26,6 +26,27 @@ describe("cron month and day names", () => {
 		expect(next("0 9 * * SUN")).toBe(next("0 9 * * 7"));
 	});
 
+	it("steps a weekday through Saturday and keeps the Sunday alias on Sunday", () => {
+		// 2026-03-01 is a Sunday. `N/step` runs from N through the field max
+		// (Saturday). It must not walk on to the Sunday alias 7, or Monday's
+		// every-other-day schedule also fires today.
+		expect(next("0 9 * * 1/2")).toBe("2026-03-02T09:00:00.000Z");
+		expect(next("0 9 * * 1/2")).toBe(next("0 9 * * 1-6/2"));
+		expect(next("0 9 * * MON/2")).toBe(next("0 9 * * 1-6/2"));
+		expect(next("0 9 * * 3/2")).toBe("2026-03-04T09:00:00.000Z");
+		expect(next("0 9 * * 5/2")).toBe("2026-03-06T09:00:00.000Z");
+		expect(next("0 9 * * 1/1")).toBe("2026-03-02T09:00:00.000Z");
+		expect(next("0 9 * * 1/1")).toBe(next("0 9 * * 1-6/1"));
+		expect(next("0 9 * * 6/1")).toBe("2026-03-07T09:00:00.000Z");
+		expect(next("15 0 * * 5/15")).toBe(next("15 0 * * 5-6/15"));
+		// 7, 7/step and an explicit range that ends on 7 remain Sunday.
+		expect(next("0 9 * * 7")).toBe("2026-03-01T09:00:00.000Z");
+		expect(next("0 9 * * 7/1")).toBe("2026-03-01T09:00:00.000Z");
+		expect(next("0 9 * * 7/2")).toBe("2026-03-01T09:00:00.000Z");
+		expect(next("0 9 * * 5-7")).toBe("2026-03-01T09:00:00.000Z");
+		expect(next("0 9 * * 5-7/2")).toBe("2026-03-01T09:00:00.000Z");
+	});
+
 	it("fires a named month at the same time as its number", () => {
 		expect(next("0 0 1 JAN *")).toBe("2027-01-01T00:00:00.000Z");
 		expect(next("0 0 1 jan *")).toBe(next("0 0 1 1 *"));

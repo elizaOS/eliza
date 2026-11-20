@@ -153,9 +153,17 @@ function parseCronPart(part: string, range: CronRange): Set<number> | null {
 			const single = resolveCronToken(rangeParts[0], range);
 			if (single === null) return null;
 			if (single < range.min || single > upperBound) return null;
-			// `N/step` (e.g. `5/15`) means "from N to the range max, stepping by
-			// step" — standard cron. Without a step it is just the single value.
-			const upper = stepParts.length === 2 ? upperBound : single;
+			// `7` and `7/step` name Sunday. They are not a walk that starts
+			// past Saturday, so the step does not continue into the next week.
+			if (range.sundayIsSeven && single === range.max + 1) {
+				output.add(range.min);
+				continue;
+			}
+			// `N/step` (e.g. `5/15`, `1/2`) means "from N to the field max,
+			// stepping by step" — standard cron. The Sunday alias is outside
+			// that max: `1/2` is `1-6/2` (Monday, Wednesday, Friday), not
+			// Sunday as well. Without a step the value is just itself.
+			const upper = stepParts.length === 2 ? range.max : single;
 			for (let value = single; value <= upper; value += step) {
 				output.add(foldValue(value));
 			}
