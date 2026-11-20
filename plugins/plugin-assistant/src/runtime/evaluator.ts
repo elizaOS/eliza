@@ -3075,13 +3075,12 @@ export function calendarReadCoverage(
     // The schema lets the model omit coverage it has not checked, and step
     // citations are free text. Live 2026-10-30, correct agenda reads became
     // failure copy when coverage was omitted (tj-605ca329c8a78d) or cited
-    // "1:success=true" (tj-8dfdee5735fb18). Such a required feed binding takes
-    // the one read proven to answer this request (requestBoundFeedRead), which
-    // must still pass every evidence check below. A stated status or a valid
-    // citation governs; other operations still need a valid citation.
-    const fallback =
+    // "1:success=true" (tj-8dfdee5735fb18). A sole required feed or next-event
+    // read can supply the missing citation. The same evidence checks below
+    // still govern whether it answers the owner's current request.
+    let fallback: string | undefined;
+    if (
       binding.execution === "required" &&
-      binding.operation === "feed" &&
       (output.outcomeCoverage === undefined ||
         (covered?.length === 1 &&
           !covered[0].evidenceStepIds.some((id) => evidence.has(id)))) &&
@@ -3089,8 +3088,20 @@ export function calendarReadCoverage(
         (other) =>
           isObjectRecord(other) && other.operation === binding.operation,
       ).length === 1
-        ? requestBoundFeedRead(binding, evidence, phoneOnlyAccepted)
-        : undefined;
+    ) {
+      if (binding.operation === "feed")
+        fallback = requestBoundFeedRead(binding, evidence, phoneOnlyAccepted);
+      else if (binding.operation === "next_event") {
+        const calls = [...evidence].filter(
+          ([, step]) =>
+            trajectory.steps.includes(step) &&
+            step.toolCall &&
+            !step.terminalOnly &&
+            isCalendarReadCall(step.toolCall, "next_event"),
+        );
+        if (calls.length === 1) fallback = calls[0][0];
+      }
+    }
     const coverage = fallback
       ? {
           status: covered?.[0]?.status ?? "completed",

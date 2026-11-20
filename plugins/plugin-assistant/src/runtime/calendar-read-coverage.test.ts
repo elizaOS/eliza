@@ -382,6 +382,38 @@ describe("request-bound Calendar read coverage", () => {
       calendarReadCoverage(f.output, f.context, f.trajectory).verified,
     ).toBe(true);
   });
+  it("uses the sole current next-event read when the evaluator omits its citation", async () => {
+    const f = fixture();
+    delete f.output.outcomeCoverage;
+    delete f.output.requestFullyCovered;
+    f.output.messageToUser = "Your next event is tomorrow at 10 AM.";
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+    const reply = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(f.output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(reply.success).toBe(true);
+    expect(reply.messageToUser).toBe(f.output.messageToUser);
+    const step = requiredFixtureValue(f.trajectory.steps[0]);
+    f.trajectory.steps.push({
+      ...step,
+      toolCall: {
+        ...requiredFixtureValue(step.toolCall),
+        id: "another-next-event",
+      },
+    });
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+    f.trajectory.steps.pop();
+    requiredFixtureValue(step.result).effectReceipts = [];
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+  });
   it("accepts the canonical dispatcher only for its explicit next_event discriminator", () => {
     const f = fixture();
     f.trajectory.steps[0].toolCall = {
