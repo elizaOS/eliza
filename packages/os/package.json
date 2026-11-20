@@ -93,6 +93,7 @@
     "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
     "esbuild": "catalog:",
+    "jsonc-parser": "3.3.1",
     "punycode": "catalog:",
     "tldts": "catalog:",
     "vibelang-runtime": "0.0.13"

@@ -501,6 +501,9 @@ importers:
       esbuild:
         specifier: 'catalog:'
         version: 0.28.2
+      jsonc-parser:
+        specifier: 3.3.1
+        version: 3.3.1
       punycode:
         specifier: 'catalog:'
         version: 2.3.1

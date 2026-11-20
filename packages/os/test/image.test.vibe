@@ -3,9 +3,68 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { NATIVE_TARGETS, createDevelopmentLauncherDescriptor, finalizeNative, readNativeLibraries, renderOverlay, stageLauncher, validateDescriptor, type LauncherDescriptor } from "../src/image/stage-launcher.vibe"
 import { androidTools, buildApk, testSigner, type NativeAbi } from "./support/android-tools.ts"
-import { readTree, scratch } from "./support/scratch.vibe"
+import { commitTree, git, readTree, scratch, writeTree } from "./support/scratch.vibe"
+import { loadProfile, verifySource, verifyDeviceSource, admitPatchEnvelope } from "../src/image/source-lock.vibe"
 
 module node {
+  import { createHash } from "node:crypto"
+  import { chmod, mkdir, readFile, stat, utimes, writeFile } from "node:fs/promises"
+  import { join } from "node:path"
+  import type { Tree } from "./support/scratch.vibe"
+  const sourceDigest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
+  const sourceText = (value: string) => new TextEncoder().encode(value)
+  export async function changeMode(file: string, mode: number): Promise<void> { await chmod(file, mode) }
+  export function platformProjectTree(): Tree {
+    return { ".gitignore": "ignored/**\n", "input.txt": "reviewed source\n", "board.mk": "RELEASE_BOARD_API_LEVEL := 202604\n" }
+  }
+  export async function fixedSourceStat(file: string): Promise<void> { await utimes(file, 1700000000, 1700000000) }
+  export async function rewriteWithSameStat(file: string, value: string): Promise<void> {
+    const before = await stat(file)
+    if ((await readFile(file)).byteLength !== sourceText(value).byteLength) throw new Error("The stat-cache fixture must preserve the actual byte length")
+    await writeFile(file, value)
+    await fixedSourceStat(file)
+    const after = await stat(file)
+    if (before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs) throw new Error("The stat-cache fixture did not preserve inode, size and modification time")
+  }
+  export async function sourceLockFixture(root: string, manifestCommit: string, projectCommit: string) {
+    const manifest = "<manifest/>\n"
+    const projectList = "project-a\n"
+    const ignored = "locally generated but explicitly inventoried\n"
+    const vendor = "<manifest><sepolicy><version>202604</version></sepolicy></manifest>\n"
+    const factory = "bounded resettable factory fixture, never flashed\n"
+    await mkdir(join(root, ".repo"), { recursive: true })
+    await mkdir(join(root, "project-a/ignored"), { recursive: true })
+    await mkdir(join(root, "vendor/generated"), { recursive: true })
+    await writeFile(join(root, ".repo/manifest.xml"), manifest)
+    await writeFile(join(root, ".repo/project.list"), projectList)
+    await writeFile(join(root, "project-a/ignored/input.bin"), ignored)
+    await writeFile(join(root, "vendor/generated/manifest.xml"), vendor)
+    await writeFile(join(root, "factory.img"), factory)
+    const files = (path: string, value: string) => ({ path, sizeBytes: sourceText(value).byteLength, sha256: sourceDigest(sourceText(value)) })
+    const manifestIdentity = { commit: manifestCommit, tag: "fixture", tagObject: manifestCommit }
+    const ignoredRow = files("project-a/ignored/input.bin", ignored)
+    const inventory = { schema: 1, target: "fixture", device: { codename: "fixture", androidRelease: "17" }, developmentOnly: true, releaseQualified: false,
+      manifest: { ...manifestIdentity, configuration: [files(".repo/manifest.xml", manifest), files(".repo/project.list", projectList)] },
+      factory: { filename: "factory.img", sizeBytes: sourceText(factory).byteLength, sha256: sourceDigest(sourceText(factory)) }, projects: [{ path: "project-a", commit: projectCommit }],
+      overrides: [], generated: { root: "vendor/generated", files: [files("vendor/generated/manifest.xml", vendor)] },
+      ignoredInputs: [{ project: "project-a", files: 1, sha256: sourceDigest(sourceText(JSON.stringify(ignoredRow) + "\n")) }] }
+    const sourceBytes = sourceText(JSON.stringify(inventory) + "\n")
+    await writeFile(join(root, "source-inventory.json"), sourceBytes)
+    const profile = { kind: "physical", targets: ["fixture"], manifest: manifestIdentity, sourceInventory: { path: "source-inventory.json", sha256: sourceDigest(sourceBytes) },
+      device: { sourceTarget: "fixture", codename: "fixture", androidRelease: "17", vendorApiLevel: "202604" } }
+    const lockFile = join(root, "aosp.lock.json")
+    await writeFile(lockFile, JSON.stringify({ schemaVersion: 1, profiles: { fixture: profile, partial: { kind: "virtual", targets: ["fixture"], manifest: manifestIdentity, projects: [{ path: "project-a", commit: projectCommit }] } } }))
+    return { lockFile, factory: join(root, "factory.img"), manifest, projectList, ignored, vendor }
+  }
+  export async function patchFixture(root: string, baseline: string, revision: string) {
+    const patch = "resettable source patch fixture\n"
+    const patchFile = join(root, "reviewed.patch")
+    const manifestFile = join(root, "patch-manifest.json")
+    await writeFile(patchFile, patch)
+    const manifest = JSON.stringify({ baselineLockSha256: baseline, project: "project-a", revision, patchSha256: sourceDigest(sourceText(patch)), files: [{ path: "input.txt", beforeSha256: sourceDigest(sourceText("reviewed source\n")), afterSha256: sourceDigest(sourceText("reviewed patched source\n")) }] })
+    await writeFile(manifestFile, manifest)
+    return { name: "fixture-patch", patchFile, manifestFile, manifestSha256: sourceDigest(sourceText(manifest)) }
+  }
   import { standInElf, type NativeAbi } from "./support/android-tools.ts"
 
   export interface StagedJson {
@@ -70,6 +129,8 @@ module node {
   }
 }
 import { ARM_ELF, X86_ELF, companionManifest, launcherManifest, parsed, runtimeNatives } from node
+
+import { changeMode, fixedSourceStat, patchFixture, platformProjectTree, rewriteWithSameStat, sourceLockFixture } from node
 
 const tools = androidTools()
 const skipped = tools.kind === "missing" ? tools.reason : null
@@ -303,3 +364,100 @@ it.effect.skipIf(skipped !== null)(`Refuse to stage over an existing output and 
     assert.deepStrictEqual((try files.readDirectory(k.checkout)).sort(), ["checked", "existing"])
   }
 }, 240_000)
+
+it.live('Verify every pinned platform input before admitting a reviewed source patch (spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"; spec/os/image/sourceLock.md, "Every observed platform project and manifest input is bound by the lock")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const files = try FileSystem.FileSystem
+      const root = try scratch("platform-source")
+      const retainedProfile = try loadProfile({ name: "pixel10a" })
+      const manifests = `${root}/.repo/manifests`
+      const project = `${root}/project-a`
+      for (const directory of [manifests, project]) {
+        try files.makeDirectory(directory, { recursive: true })
+        try git(directory, ["init", "--quiet", "--initial-branch=main"])
+      }
+      const manifestPin = try commitTree(manifests, { "default.xml": "<manifest/>\n" }, "Pin the resettable manifest")
+      const treePin = try commitTree(project, try Effect.try(platformProjectTree), "Pin the resettable project")
+      try git(project, ["update-index", "--add", "--cacheinfo", `160000,${treePin},opaque-child`])
+      try git(project, ["-c", "commit.gpgsign=false", "commit", "--quiet", "--no-verify", "--message", "Pin an opaque child repository"])
+      const projectPin = try git(project, ["rev-parse", "HEAD"])
+      try files.makeDirectory(`${project}/opaque-child`)
+      try tryPromise(() => fixedSourceStat(`${project}/input.txt`))
+      try git(project, ["config", "core.trustctime", "false"])
+      try git(project, ["update-index", "--refresh"])
+      const fixture = try tryPromise(() => sourceLockFixture(root, manifestPin, projectPin))
+      const profile = try loadProfile({ name: "fixture", lockFile: fixture.lockFile })
+      const options = { profile, sourceRoot: root, factory: fixture.factory, boardConfiguration: "project-a/board.mk", vendorManifest: "vendor/generated/manifest.xml" }
+      const baseline = try verifyDeviceSource(options)
+      const partial = try loadProfile({ name: "partial", lockFile: fixture.lockFile })
+      const incomplete = try exit(verifySource({ ...options, profile: partial }))
+      const observations: { input: string; problems: readonly string[] }[] = []
+      try tryPromise(() => rewriteWithSameStat(`${project}/input.txt`, "tampered source\n"))
+      observations.push({ input: "stat-cache", problems: (try verifySource(options)).problems })
+      try tryPromise(() => rewriteWithSameStat(`${project}/input.txt`, "reviewed source\n"))
+      try git(project, ["rm", "--quiet", "input.txt"])
+      observations.push({ input: "deleted-tracked", problems: (try verifySource(options)).problems })
+      try git(project, ["restore", "--source", "HEAD", "--staged", "--worktree", "input.txt"])
+      try tryPromise(() => changeMode(`${project}/input.txt`, 0o755))
+      observations.push({ input: "execute-bits", problems: (try verifySource(options)).problems })
+      try tryPromise(() => changeMode(`${project}/input.txt`, 0o644))
+      try writeTree(project, { "input.txt": { kind: "symlink", target: "reviewed source\n" } })
+      observations.push({ input: "same-digest-link", problems: (try verifySource(options)).problems })
+      try writeTree(project, { "input.txt": "reviewed source\n" })
+      try writeTree(root, { "project-a/ignored/input.bin": fixture.ignored + "changed\n" })
+      observations.push({ input: "ignored", problems: (try verifySource(options)).problems })
+      try writeTree(root, { "project-a/ignored/input.bin": fixture.ignored })
+      try writeTree(root, { "vendor/generated/manifest.xml": fixture.vendor.replace("202604", "202504") })
+      observations.push({ input: "vendor", problems: (try verifySource(options)).problems })
+      try writeTree(root, { "vendor/generated/manifest.xml": fixture.vendor })
+      try writeTree(root, { "project-a/board.mk": "RELEASE_BOARD_API_LEVEL := 202504\n" })
+      observations.push({ input: "board", problems: (try verifySource(options)).problems })
+      try writeTree(root, { "project-a/board.mk": "RELEASE_BOARD_API_LEVEL := 202604\n" })
+      try writeTree(root, { ".repo/manifest.xml": fixture.manifest + "<!-- unreviewed -->\n" })
+      observations.push({ input: "manifest", problems: (try verifySource(options)).problems })
+      try writeTree(root, { ".repo/manifest.xml": fixture.manifest })
+      try files.writeFileString(`${manifests}/.git/info/exclude`, "unreviewed.xml\n")
+      try writeTree(manifests, { "unreviewed.xml": "<manifest/>\n" })
+      observations.push({ input: "ignored-manifest-file", problems: (try verifySource(options)).problems })
+      try files.remove(`${manifests}/unreviewed.xml`)
+      try git(project, ["update-index", "--assume-unchanged", "input.txt"])
+      observations.push({ input: "hidden-index", problems: (try verifySource(options)).problems })
+      try git(project, ["update-index", "--no-assume-unchanged", "input.txt"])
+      try git(project, ["update-index", "--cacheinfo", `160000,${projectPin},opaque-child`])
+      observations.push({ input: "changed-gitlink", problems: (try verifySource(options)).problems })
+      try git(project, ["restore", "--source", "HEAD", "--staged", "opaque-child"])
+      const extraProject = `${root}/project-b`
+      try files.makeDirectory(extraProject)
+      try git(extraProject, ["init", "--quiet", "--initial-branch=main"])
+      try commitTree(extraProject, { "input.txt": "unbound project\n" }, "Create an observed but unpinned project")
+      try writeTree(root, { ".repo/project.list": fixture.projectList + "project-b\n" })
+      observations.push({ input: "project-coverage", problems: (try verifySource(options)).problems })
+      try writeTree(root, { ".repo/project.list": fixture.projectList })
+      const patch = try tryPromise(() => patchFixture(root, baseline.state.lock.digest, projectPin))
+      try writeTree(project, { "input.txt": "reviewed patched source\n" })
+      const admitted = try admitPatchEnvelope(options, patch)
+      try git(project, ["add", "input.txt"])
+      const stagedAdmitted = try admitPatchEnvelope(options, patch)
+      try writeTree(project, { "input.txt": "reviewed source\n" })
+      const indexOnly = try verifySource({ ...options, patches: [patch] })
+      try git(project, ["restore", "--staged", "input.txt"])
+      try writeTree(project, { "input.txt": "changed after earlier admission\n" })
+      const drift = try verifySource({ ...options, patches: [patch] })
+      const changedPatch = try exit(admitPatchEnvelope(options, patch))
+      try writeTree(project, { "input.txt": "reviewed source\n" })
+      try writeTree(root, { "factory.img": "wrong factory of equal intent but different actual bytes\n" })
+      const changedFactory = try verifyDeviceSource(options)
+      try Effect.try(() => assert.deepStrictEqual({ baseline: { verdict: baseline.state.verdict, problems: baseline.problems, projects: baseline.projectsChecked, releaseQualified: baseline.releaseQualified },
+        retainedProfile: retainedProfile.name, partialRefused: Exit.isFailure(incomplete), observations, patched: { verdict: admitted.source.state.verdict, problems: admitted.source.problems },
+        stagedPatch: stagedAdmitted.source.state.verdict, indexOnly: indexOnly.problems,
+        drift: drift.problems, changedPatchRefused: Exit.isFailure(changedPatch), changedFactory: changedFactory.problems }, {
+        baseline: { verdict: "Match", problems: [], projects: 1, releaseQualified: false }, retainedProfile: "pixel10a", partialRefused: true,
+        observations: [{ input: "stat-cache", problems: ["SourceChangeDiffers"] }, { input: "deleted-tracked", problems: ["SourceChangeDiffers"] }, { input: "execute-bits", problems: ["SourceChangeDiffers"] }, { input: "same-digest-link", problems: ["SourceChangeDiffers"] }, { input: "ignored", problems: ["SourceChangeDiffers"] }, { input: "vendor", problems: ["GeneratedDiffers", "VintfApiDiffers"] },
+          { input: "board", problems: ["SourceChangeDiffers", "BoardApiDiffers"] }, { input: "manifest", problems: ["ManifestConfigurationDiffers"] }, { input: "ignored-manifest-file", problems: ["ManifestDiffers"] },
+          { input: "hidden-index", problems: ["HiddenIndexEntries"] }, { input: "changed-gitlink", problems: ["SourceChangeDiffers"] }, { input: "project-coverage", problems: ["ManifestConfigurationDiffers", "RevisionDiffers"] }],
+        patched: { verdict: "Match", problems: [] }, stagedPatch: "Match", indexOnly: ["PatchRefused"], drift: ["SourceChangeDiffers", "PatchRefused"], changedPatchRefused: true, changedFactory: ["ArchiveDiffers"],
+      }))
+    })
+  }
+}, { timeout: 180_000 })
