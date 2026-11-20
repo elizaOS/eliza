@@ -13,6 +13,7 @@ import type {
 import { logger } from "@elizaos/core";
 import {
   buildResolvedClient,
+  readParameters,
   resolveAccountSelection,
 } from "../action-helpers.js";
 import {
@@ -228,7 +229,8 @@ export const notificationTriageAction: Action = {
       totalUnreadIsLowerBound: boolean;
     }>
   > => {
-    const selection = resolveAccountSelection(options, "user");
+    const params = readParameters(options);
+    const selection = resolveAccountSelection(params, "user");
     const resolved = await buildResolvedClient(runtime, selection);
     if ("error" in resolved) {
       await callback?.({ text: resolved.error });

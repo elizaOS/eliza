@@ -15,6 +15,7 @@ import type {
   State,
 } from "@elizaos/core";
 
+import { readParameters } from "../action-helpers.js";
 import { issueOpAction } from "./issue-op.js";
 import { notificationTriageAction } from "./notification-triage.js";
 import { prOpAction } from "./pr-op.js";
@@ -41,15 +42,6 @@ const ISSUE_OP_BY_ACTION: Partial<Record<GitHubActionName, string>> = {
   issue_comment: "comment",
   issue_label: "label",
 };
-
-function readParameters(options: unknown): Record<string, unknown> {
-  if (!options || typeof options !== "object") return {};
-  const record = options as Record<string, unknown>;
-  const params = record.parameters;
-  return params && typeof params === "object" && !Array.isArray(params)
-    ? { ...(params as Record<string, unknown>) }
-    : { ...record };
-}
 
 function readAction(options: unknown): GitHubActionName | undefined {
   const params = readParameters(options);
