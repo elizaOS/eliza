@@ -1,0 +1,71 @@
+// spec/agent/plugins/bundle.md, "A bundle is built only when every listed plugin and the product plugin ship as packages and the load smoke loaded them"; spec/agent/plugins/bundle.md, "A bundle is built only when its load smoke registered each action once under a non-empty name, each promoted action under a listed top-level umbrella"
+import { promotedSubactionDescription } from "@elizaos/core"
+import { parseLaunch } from "../host/launch.vibe"
+import type { AgentPlugin } from "../host/module.vibe"
+import { startAgent } from "../host/process.vibe"
+import { builtinModuleFactories } from "../plugins/profile.vibe"
+import type { BundleManifest } from "./manifest.schema.vibe"
+
+export interface SmokeInput {
+  readonly bundled: ReadonlyMap<string, AgentPlugin>
+  readonly plugins: readonly string[]
+  readonly productPlugin?: string | undefined
+  readonly stateDirectory: string
+}
+
+export interface SmokeReport {
+  readonly loaded: readonly string[]
+  readonly registered: BundleManifest["actions"]
+}
+
+module node {
+  import { randomBytes } from "node:crypto"
+
+  export function smokeToken(): string {
+    return randomBytes(32).toString("base64url")
+  }
+}
+import { smokeToken } from node
+
+export error SmokeNotReleased { code: number }
+
+function smokeLaunch(input: SmokeInput): string {
+  return JSON.stringify({
+    schema: 1,
+    character: { name: "Bundle Smoke", system: "Answer the load smoke." },
+    policy: {
+      actions: { allowed: ["REPLY", "IGNORE", "NONE"] },
+      plugins: {
+        load: [...input.plugins, ...builtinModuleFactories.keys()],
+        ...(input.productPlugin === undefined ? {} : { product: input.productPlugin }),
+      },
+    },
+    model: { backend: "none" },
+    embeddings: "none",
+    persistMemory: false,
+    callerRole: "owner",
+  })
+}
+
+export effect function smokeBoot(input: SmokeInput) {
+  const token = try sync(smokeToken)
+  const frame = JSON.stringify({ version: 1, token, epoch: 1 })
+  const parsed = try parseLaunch(smokeLaunch(input), frame)
+  const agent = try startAgent({
+    ...parsed,
+    stateDirectory: input.stateDirectory,
+    binding: { kind: "socket", path: `${input.stateDirectory}/smoke.sock` },
+    bundled: input.bundled,
+    modules: builtinModuleFactories,
+  })
+  const report: SmokeReport = {
+    loaded: agent.runtime.plugins.map(({ name }) => name),
+    registered: agent.runtime.actions.map((action) => {
+      const umbrella = promotedSubactionDescription(action)?.parent
+      return umbrella === undefined ? { name: action.name } : { name: action.name, umbrella }
+    }),
+  }
+  const code = try promise(() => agent.stop())
+  if (code !== 0) throw new SmokeNotReleased({ code })
+  return report
+}

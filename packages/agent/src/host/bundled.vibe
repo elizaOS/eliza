@@ -1,4 +1,0 @@
-// spec/agent/plugins/profile.md, "The product plugin must be in the bundle"
-import type { AgentPlugin } from "./module.vibe"
-
-export const bundledPlugins: ReadonlyMap<string, AgentPlugin> = new Map<string, AgentPlugin>()

@@ -1,6 +1,6 @@
 // spec/os/android/reminderAlarms.md, "Story: Get my reminder at its time, even after a reboot"
 import type { PluginListenerHandle } from "@capacitor/core";
-import type { StoredStatus } from "../../../gen/os__android__reminderAlarms.ts";
+import type { DeletionMark, StoredStatus } from "../../../gen/os__android__reminderAlarms.ts";
 
 export interface AndroidReminderTarget {
   sourceId: string;
@@ -201,7 +201,10 @@ export interface AndroidRemindersPlugin {
 
 export type ReminderAction = "schedule" | "cancel";
 
-export type ReminderStanding = StoredStatus | "Absent" | "Untimed";
+export type ReminderStanding =
+  | { kind: "Absent" }
+  | { kind: "Untimed" }
+  | { kind: "Stored"; status: StoredStatus; deletion: DeletionMark };
 
 export interface RemindersClient {
   schedule(input: AndroidReminderScheduleInput): Promise<AndroidReminderScheduleResult>;

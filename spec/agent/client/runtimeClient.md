@@ -2,9 +2,10 @@
 
 The request client a screen uses to call the agent of the account signed in
 now (`createRuntimeJsonClient`, with `refreshNativeAccount()`,
-`request(path, body?)` and the refusal error `RuntimeRequestError {message,
-status, code?, retryAfter?}`). The host gives it a bridge `RuntimeJsonBridge
-{status(), start(), restart(), request({path, method, body?})}`, whose
+`request(path, body?)`, `stream(path, body, signal?)` and the refusal error
+`RuntimeRequestError {message, status, code?, retryAfter?}`). The host gives it
+a bridge `RuntimeJsonBridge {status(), start(), restart(), request({path,
+method, body?}), requestStream?({path, method, body?}, signal)}`, whose
 status `RuntimeStatus {available, state: stopped|starting|running, error?,
 requestBodyLimit?}` the shell reads as `Unavailable` or `Available({ phase })`;
 with no bridge object (a browser page) it reports `Unavailable` without a
@@ -39,10 +40,11 @@ type Fallback = NoFallback | HttpFallback
 type RuntimePhase = Stopped | Starting | Running
 type StatusReport = Unavailable | Available({ phase: RuntimePhase })
 type PathShape = Rooted | Unrooted
-type Failure = AccountChanged | RefreshFailed | StartupFailed | TransportFailed | NoRoute
+type Failure = AccountChanged | RefreshFailed | StartupFailed | TransportFailed | NoRoute | Cancelled
+type Delivery = Plain | Stream
 type RetryAdvice = NoAdvice | RetryAfter({ seconds: int })
-type Stage = AwaitRefresh | Probing | AwaitStartup | Sent({ route: Route }) | Replied({ servedBy: Route }) | Refused({ httpStatus: int, retry: RetryAdvice }) | Failed({ why: Failure })
-type Request = { id: int, gen: int, stage: Stage }
+type Stage = AwaitRefresh | Probing | AwaitStartup | Sent({ route: Route }) | Streaming({ route: Route }) | Replied({ servedBy: Route }) | Refused({ httpStatus: int, retry: RetryAdvice }) | Failed({ why: Failure })
+type Request = { id: int, gen: int, delivery: Delivery, stage: Stage }
 type Refresh = Current | ProbingAccount | Restarting | AwaitRestart | RefreshBroken
 type Startup = NoStartup | StartingUp
 type RuntimeClient = { gen: int, nextId: int, refresh: Refresh, startup: Startup, requests: List[Request] }
@@ -78,15 +80,17 @@ pure def sometimesRefreshWaitsForStartup(c: RuntimeClient): bool = c.gen >= 1 an
 ### A request path starts with one slash and not two
 
 Any other path is refused before it is numbered or sent, so a
-protocol-relative path never reaches another host.
+protocol-relative path never reaches another host. `request` submits a
+`Plain` request and `stream` a `Stream` one.
 
 ```quint
-pure def canSubmit(c: RuntimeClient, path: PathShape): bool = path == Rooted
-pure def submit(c: RuntimeClient, path: PathShape): RuntimeClient = {
+pure def canSubmit(c: RuntimeClient, path: PathShape, delivery: Delivery): bool = path == Rooted
+pure def submit(c: RuntimeClient, path: PathShape, delivery: Delivery): RuntimeClient = {
   val first = if (refreshing(c.refresh)) AwaitRefresh else if (c.refresh == RefreshBroken) Failed({ why: RefreshFailed }) else Probing
-  { ...c, nextId: c.nextId + 1, requests: c.requests.append({ id: c.nextId, gen: c.gen, stage: first }) }
+  { ...c, nextId: c.nextId + 1, requests: c.requests.append({ id: c.nextId, gen: c.gen, delivery: delivery, stage: first }) }
 }
 pure val pathValues = Set(Rooted, Unrooted)
+pure val deliveryValues = Set(Plain, Stream)
 ```
 
 ### Each request has a number no other request has
@@ -109,6 +113,7 @@ pure def isWaiting(s: Stage): bool = match s {
   | Probing => true
   | AwaitStartup => true
   | Sent(x) => true
+  | Streaming(x) => true
   | _ => false
 }
 pure def isSent(s: Stage): bool = match s {
@@ -143,6 +148,7 @@ pure def abandon(c: RuntimeClient): RuntimeClient =
 pure def isAnswered(s: Stage): bool = match s {
   | Replied(x) => true
   | Refused(x) => true
+  | Streaming(x) => true
   | _ => false
 }
 pure def sentIn(after: RuntimeClient, call: BridgeCall): bool = match call {
@@ -157,6 +163,45 @@ pure def stepPublishOnlyInOwnGeneration(before: RuntimeClient, after: RuntimeCli
 pure def sometimesChangedAccountFailsRequest(c: RuntimeClient): bool = c.requests.some(r => r.stage == Failed({ why: AccountChanged }))
 pure def sometimesReplyAfterRefresh(c: RuntimeClient): bool =
   c.gen >= 1 and c.requests.some(r => r.gen == c.gen and r.stage == Replied({ servedBy: Bridge }))
+```
+
+### A stream is sent at most once and only in its generation
+
+A stream goes through the same probe, startup and route as a request, and a
+2xx head opens it as `Streaming`: the screen then reads its body as bytes.
+Its body ending makes it `Replied`; a broken body fails it as
+`TransportFailed`, and the caller's signal as `Cancelled`. A refresh fails a
+stream of an older generation as `AccountChanged`, and the shell aborts its
+body through the bridge or the HTTP call, so no byte of it reaches the
+screen after the refresh.
+
+```quint
+pure def isStreaming(s: Stage): bool = match s {
+  | Streaming(x) => true
+  | _ => false
+}
+pure def streamingNow(c: RuntimeClient, id: int): bool = c.requests.some(r => r.id == id and isStreaming(r.stage))
+pure def bodyEnded(s: Stage): Stage = match s {
+  | Streaming(x) => Replied({ servedBy: x.route })
+  | _ => s
+}
+pure def canStreamEnded(c: RuntimeClient, id: int): bool = own(c, id) and streamingNow(c, id)
+pure def streamEnded(c: RuntimeClient, id: int): RuntimeClient =
+  { ...c, requests: c.requests.listMap(r => if (r.id == id) { ...r, stage: bodyEnded(r.stage) } else r) }
+pure def canCancel(c: RuntimeClient, id: int): bool = own(c, id) and c.requests.some(r => r.id == id and r.delivery == Stream and isWaiting(r.stage))
+pure def cancel(c: RuntimeClient, id: int): RuntimeClient = { ...c, requests: setStage(c, id, Failed({ why: Cancelled })) }
+pure def streamSentOnce(before: RuntimeClient, after: RuntimeClient, call: BridgeCall): bool = match call {
+  | Send(x) => after.requests.some(r => r.id == x.request and r.delivery == Stream) implies
+      (own(after, x.request) and before.requests.some(q => q.id == x.request and not(isSent(q.stage)) and not(isStreaming(q.stage))))
+  | _ => true
+}
+pure def stepStreamSentOnceInItsGeneration(before: RuntimeClient, after: RuntimeClient, out: List[BridgeCall]): bool =
+  out.every(o => streamSentOnce(before, after, o))
+pure def stepStreamEndsOnlyInItsGeneration(before: RuntimeClient, after: RuntimeClient): bool =
+  after.requests.every(r => (not(isWaiting(r.stage)) and before.requests.some(q => q.id == r.id and isStreaming(q.stage))) implies (r.gen == before.gen or r.stage == Failed({ why: AccountChanged })))
+pure def sometimesStreamReplied(c: RuntimeClient): bool = c.requests.some(r => r.delivery == Stream and r.stage == Replied({ servedBy: Bridge }))
+pure def sometimesStreamAbandoned(c: RuntimeClient): bool =
+  c.gen >= 1 and c.requests.some(r => r.delivery == Stream and r.gen == 0 and r.stage == Failed({ why: AccountChanged }))
 ```
 
 ### Only a settled request can be released
@@ -233,13 +278,13 @@ pure def sometimesRefreshServedAfterStartup(c: RuntimeClient): bool =
 HTTP serves a request only when its probe found no bridge and the host
 configured an HTTP base; with no base the request fails as `NoRoute`. A
 request that waited for a startup goes over the bridge or fails. A sent
-request only settles. A bridge probe or call settles by the bridge's own
+request only settles, or opens as a stream. A bridge probe or call settles by the bridge's own
 contract (one answer or one failure, `Restarted` included); an HTTP call
 fails after `requestTimeoutMs`, and an answer whose body is not JSON fails as
 `TransportFailed` and is not published.
 
 ```quint
-pure def canTransportFailed(c: RuntimeClient, id: int): bool = own(c, id) and (stageIs(c, id, Probing) or sentNow(c, id))
+pure def canTransportFailed(c: RuntimeClient, id: int): bool = own(c, id) and (stageIs(c, id, Probing) or sentNow(c, id) or streamingNow(c, id))
 pure def transportFailed(c: RuntimeClient, id: int): RuntimeClient = { ...c, requests: setStage(c, id, Failed({ why: TransportFailed })) }
 pure def lawHttpOnlyWithoutBridge(report: StatusReport, fallback: Fallback): bool =
   probeOutcome(report, fallback) == ViaHttp implies (report == Unavailable and fallback == HttpFallback)
@@ -254,7 +299,7 @@ pure def firstSend(before: RuntimeClient, call: BridgeCall): bool = match call {
 pure def stepHttpOnlyWithoutBridge(before: RuntimeClient, after: RuntimeClient, out: List[BridgeCall]): bool =
   out.every(o => httpAfterProbe(before, o))
 pure def stepSentIsNeverResent(before: RuntimeClient, after: RuntimeClient, out: List[BridgeCall]): bool =
-  out.every(o => firstSend(before, o)) and before.requests.every(r => isSent(r.stage) implies after.requests.every(q => q.id == r.id implies (q.stage == r.stage or not(isWaiting(q.stage)))))
+  out.every(o => firstSend(before, o)) and before.requests.every(r => isSent(r.stage) implies after.requests.every(q => q.id == r.id implies (q.stage == r.stage or isStreaming(q.stage) or not(isWaiting(q.stage)))))
 pure def sometimesHttpServed(c: RuntimeClient): bool = c.requests.some(r => r.stage == Replied({ servedBy: Http }))
 pure def sometimesNoRoute(c: RuntimeClient): bool = c.requests.some(r => r.stage == Failed({ why: NoRoute }))
 ```
@@ -281,7 +326,7 @@ pure def leadsToRequestSettles(c: RuntimeClient, later: RuntimeClient): bool =
 
 ### A refusal is a non-2xx status, and keeps retry advice only from a 429 with a safe whole number of seconds
 
-A 2xx answer is the reply. The refusal error also carries the body's `error`
+A 2xx answer is the reply, or for a stream its head. The refusal error also carries the body's `error`
 and `code` strings, which the shell keeps and the machine does not see; a
 `retryAfter` that is not a whole number is dropped by the shell.
 
@@ -290,13 +335,13 @@ pure def admitAdvice(httpStatus: int, retry: RetryAdvice): RetryAdvice = match r
   | RetryAfter(r) => if (httpStatus == 429 and r.seconds >= 0 and r.seconds <= maxSafeInteger) RetryAfter({ seconds: r.seconds }) else NoAdvice
   | NoAdvice => NoAdvice
 }
-pure def answerOf(s: Stage, httpStatus: int, retry: RetryAdvice): Stage = match s {
-  | Sent(x) => if (httpStatus >= 200 and httpStatus < 300) Replied({ servedBy: x.route }) else Refused({ httpStatus: httpStatus, retry: admitAdvice(httpStatus, retry) })
+pure def answerOf(s: Stage, delivery: Delivery, httpStatus: int, retry: RetryAdvice): Stage = match s {
+  | Sent(x) => if (httpStatus >= 200 and httpStatus < 300) (if (delivery == Stream) Streaming({ route: x.route }) else Replied({ servedBy: x.route })) else Refused({ httpStatus: httpStatus, retry: admitAdvice(httpStatus, retry) })
   | _ => s
 }
 pure def canReply(c: RuntimeClient, id: int): bool = own(c, id) and sentNow(c, id)
 pure def reply(c: RuntimeClient, id: int, httpStatus: int, retry: RetryAdvice): RuntimeClient =
-  { ...c, requests: c.requests.listMap(r => if (r.id == id) { ...r, stage: answerOf(r.stage, httpStatus, retry) } else r) }
+  { ...c, requests: c.requests.listMap(r => if (r.id == id) { ...r, stage: answerOf(r.stage, r.delivery, httpStatus, retry) } else r) }
 pure val httpStatusValues = Set(200, 409, 429, 503)
 pure val retryValues = Set(NoAdvice, RetryAfter({ seconds: -1 }), RetryAfter({ seconds: 0 }), RetryAfter({ seconds: 30 }), RetryAfter({ seconds: 9007199254740992 }))
 pure def adviceAllowed(httpStatus: int, advice: RetryAdvice): bool = match advice {

@@ -14,16 +14,11 @@ view interactions of this turn to one client; `task` goes to the tasks
 module. A conversation is its room ([conversations](./conversations.md)).
 
 The shell runs each turn in core's room queue
-([concurrency](../../core/concurrency.md)) configured with
-`maxPerRoom = 1`, and stops it through core's
-[turn controllers](../../core/turnControllers.md) `abortRoom`; this machine
-holds the decisions on top of them: which message starts a turn, which
-repeat replays which reply, what a Stop reports, and what of a reply was
-heard. The fingerprint is the shell's digest of the request body, a
-positive number. Model calls, storage and HTTP stay in
-`conversation/turns.vibe` and `idempotency.vibe`. Source: develop
-`services/chat-idempotency-service.ts`, `api/conversation-routes.ts`
-(durable recovery) and `api/chat-routes.ts`.
+([concurrency](../../core/concurrency.md), `maxPerRoom = 1`) and stops it
+with core's [turn controllers](../../core/turnControllers.md) `abortRoom`;
+this machine holds the decisions above them: which message starts a turn,
+which repeat replays which reply, what a Stop reports, and what of a reply
+was heard. The fingerprint is the shell's positive digest of the body.
 
 ## Story: Send one message and get one reply even when the request repeats
 
@@ -121,9 +116,10 @@ pure def send(s: Turns, room: int, key: str, fingerprint: int, now: int, inferen
   match a {
     | Unkeyed(_) => { state: started, out: answer }
     | Owner(_) => { state: { ...started, records: s.records.append({ room: room, key: key, fingerprint: fingerprint, userMessage: s.nextId, phase: KeyRunning({ turn: s.nextId }) }) }, out: answer }
-    | Settled(x) => if (x.reply != s.nextId) { state: s, out: answer } else
-        { state: { ...s, replies: s.replies.append(cut), nextId: s.nextId + 1, clock: t,
+    | Settled(_) => match view {
+        | HeldUnanswered(_) => { state: { ...s, replies: s.replies.append(cut), nextId: s.nextId + 1, clock: t,
             records: s.records.listMap(q => if (q.room == room and q.key == key) { ...q, phase: KeyAnswered({ reply: s.nextId, settledAt: t, boot: s.boot }) } else q) }, out: answer }
+        | _ => { state: s, out: answer } }
     | _ => { state: s, out: answer }
   }
 }
@@ -144,7 +140,7 @@ pure def stepRefusalsAndRepeatsStoreNothing(before: Turns, via: str, after: Turn
   (via == "send" and out.some(a => isRefusalOrReplay(a))) implies after == before
 pure def stepARecordedKeyNeverRunsAgain(before: Turns, after: Turns): bool =
   after.turns.every(t => before.turns.some(b => b.id == t.id) or t.key == "" or not(before.records.some(q => q.room == t.room and q.key == t.key)))
-pure def sometimesReceiptReplayedWhileTheRoomIsBusy(s: Turns): bool =
+pure def sometimesAnsweredKeyWhileTheRoomIsBusy(s: Turns): bool =
   s.records.some(q => answeredReply(q.phase) > 0 and roomBusy(s, q.room))
 ```
 

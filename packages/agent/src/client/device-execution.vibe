@@ -1,0 +1,406 @@
+// spec/agent/deviceActions/execution.md, "An effect needs review unless the current request may act directly"; spec/agent/deviceActions/execution.md, "Dispatch needs an exact reservation and the agent's claim"; spec/agent/deviceActions/execution.md, "The executor is called at most once, for a live claim"; spec/agent/deviceActions/execution.md, "No effect needs a trusted refusal or no call"; spec/agent/deviceActions/execution.md, "An abandoned entry closes without running again"; spec/agent/deviceActions/execution.md, "An unknown result is resolved only by exact readback"; spec/agent/deviceActions/execution.md, "A settled result is durable before upload and upload never repeats the call"; spec/agent/deviceActions/execution.md, "A review the owner confirms matches the saved evidence"
+import {
+  Machine, authorityOf, canCloseAbandoned, canReadBack, canSync, initial, machineOver, parseState, settledResult,
+  type AttemptStep, type AuthorityCheck, type DeviceAttempt, type DeviceResult, type Event, type ExecutorAnswer, type JournalAnswer,
+} from "../../gen/agent__deviceActions__execution.effect.vibe"
+import type { ReceiptOutcome, ReviewOutcome } from "../../gen/agent__deviceActions.effect.vibe"
+
+export interface JournalIdentity {
+  readonly ownerId: string
+  readonly agentId: string
+  readonly origin: string
+  readonly installationId: string
+  readonly enrollmentId: string
+}
+
+const Evidence = Schema.Struct({ code: Schema.optionalKey(Schema.String), result: Schema.optionalKey(Schema.Unknown) })
+export type Evidence = typeof Evidence.Type
+
+const Entry = Schema.Struct({
+  proposalId: Schema.String, revision: Schema.Int, ownerId: Schema.String, agentId: Schema.String, origin: Schema.String,
+  installationId: Schema.String, enrollmentId: Schema.String, digest: Schema.String, operationId: Schema.String,
+  operation: Schema.String, attempt: Schema.Unknown, evidence: Evidence, acknowledged: Schema.Boolean,
+})
+export type JournalEntry = typeof Entry.Type
+
+export interface DeviceJournal {
+  get(proposalId: string): Promise<unknown>
+  edit(proposalId: string, expectedRevision: number, next: JournalEntry): Promise<boolean>
+  list(): Promise<readonly unknown[]>
+}
+
+export interface ExecutorCall {
+  readonly proposalId: string
+  readonly operationId: string
+  readonly attemptId: number
+}
+
+export interface DeviceReceipt {
+  readonly reported: "applied" | "failed" | "unknown"
+  readonly operationId: string
+  readonly code?: string
+  readonly result?: unknown
+}
+
+export type DeviceReview = "applied" | "not_applied" | "unresolved"
+
+export interface DeviceAgent {
+  decide(proposalId: string, body: { readonly digest: string; readonly approved: boolean }): Promise<unknown>
+  claim(proposalId: string, body: { readonly digest: string }): Promise<unknown>
+  receipt(proposalId: string, body: { readonly digest: string; readonly attemptId: number; readonly receipt: DeviceReceipt }): Promise<unknown>
+  reconcile(proposalId: string, body: { readonly digest: string; readonly attemptId: number; readonly review: DeviceReview }): Promise<unknown>
+}
+
+export interface DeviceExecutionPorts<Op> {
+  readonly identity: JournalIdentity
+  readonly journal: DeviceJournal
+  readonly agent: DeviceAgent
+  readonly validate: (operation: unknown) => Op | undefined
+  readonly execute: (operation: Op, call: ExecutorCall) => Promise<unknown>
+  readonly readBack: (operation: Op, call: ExecutorCall) => Promise<unknown>
+}
+
+export interface DeviceProposal {
+  readonly id: string
+  readonly digest: string
+  readonly expiresAt: number
+  readonly operation: unknown
+}
+
+export type ScreenCheck = Omit<AuthorityCheck, "unexpired">
+
+export type Settled = { readonly kind: "settled"; readonly result: DeviceResult; readonly synced: boolean }
+export type ApproveResult =
+  | { readonly kind: "invalid" | "busy" | "noAuthority" | "history" | "retired" | "unclaimed" }
+  | Settled
+export type RecoverResult = { readonly kind: "live" | "history" } | Settled
+export type ReviewResult = "sent" | "unsent" | "refused"
+
+export const NOT_DISPATCHED = "not_dispatched"
+
+const reviewWire = {
+  ReviewedApplied: "applied", ReviewedNotApplied: "not_applied", ReviewedUnresolved: "unresolved",
+} as const satisfies Record<ReviewOutcome, DeviceReview>
+
+const decodeEntry = Schema.decodeUnknownOption(Entry)
+const decodeClaimed = Schema.decodeUnknownOption(Schema.Struct({ attemptId: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)) }))
+const decodeAnswer = Schema.decodeUnknownOption(Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("applied"), result: Schema.optionalKey(Schema.Unknown) }),
+  Schema.Struct({ kind: Schema.Literal("refused"), code: Schema.String, result: Schema.optionalKey(Schema.Unknown) }),
+]))
+const decodeReadback = Schema.decodeUnknownOption(Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("found"), result: Schema.optionalKey(Schema.Unknown) }),
+  Schema.Struct({ kind: Schema.Literal("refused"), code: Schema.optionalKey(Schema.String), result: Schema.optionalKey(Schema.Unknown) }),
+]))
+
+export error JournalLost { proposalId: string }
+
+export interface AttemptBinding {
+  readonly proposalId: string
+  readonly digest: string
+  readonly operationId: string
+  readonly operation: string
+}
+
+interface Slot {
+  readonly binding: AttemptBinding
+  base: number
+  written: boolean
+  memo: DeviceAttempt
+  evidence: Evidence
+  pending: Evidence | undefined
+  acknowledged: boolean
+}
+
+export interface JournaledAttempt {
+  readonly journal: DeviceJournal
+  readonly identity: JournalIdentity
+  readonly slot: Slot
+  readonly machine: Machine.Shape
+}
+
+type Found = { readonly kind: "absent" | "unreadable" } | { readonly kind: "entry"; readonly entry: JournalEntry }
+
+function sameIdentity(entry: JournalEntry, identity: JournalIdentity): boolean {
+  return entry.ownerId === identity.ownerId && entry.agentId === identity.agentId && entry.origin === identity.origin
+    && entry.installationId === identity.installationId && entry.enrollmentId === identity.enrollmentId
+}
+
+function owns(entry: JournalEntry, identity: JournalIdentity, binding: AttemptBinding): boolean {
+  return sameIdentity(entry, identity) && entry.proposalId === binding.proposalId && entry.digest === binding.digest
+    && entry.operationId === binding.operationId && entry.operation === binding.operation
+}
+
+function bindingOf(entry: JournalEntry): AttemptBinding {
+  return { proposalId: entry.proposalId, digest: entry.digest, operationId: entry.operationId, operation: entry.operation }
+}
+
+function found(raw: unknown): Found {
+  if (raw === undefined || raw === null) return { kind: "absent" }
+  const entry = decodeEntry(raw)
+  return Option.isSome(entry) ? { kind: "entry", entry: entry.value } : { kind: "unreadable" }
+}
+
+function journalAnswer(seen: Found, identity: JournalIdentity, binding: AttemptBinding): JournalAnswer {
+  if (seen.kind === "absent") return "NewEntry"
+  if (seen.kind === "unreadable" || !owns(seen.entry, identity, binding)) return "OtherEntry"
+  const earlier = parseState(seen.entry.attempt)
+  return earlier?.phase.tag === "Reserved" && earlier.attemptId === 0 ? "UnclaimedReservation" : "OtherEntry"
+}
+
+effect function readEntry(journal: DeviceJournal, proposalId: string): Found!JournalLost {
+  return found(try mapError(tryPromise(() => journal.get(proposalId)), () => new JournalLost({ proposalId })))
+}
+
+effect function load(journal: DeviceJournal, identity: JournalIdentity, slot: Slot): DeviceAttempt!JournalLost {
+  if (!slot.written) return slot.memo
+  const proposalId = slot.binding.proposalId
+  const seen = try readEntry(journal, proposalId)
+  if (seen.kind !== "entry" || !owns(seen.entry, identity, slot.binding)) throw new JournalLost({ proposalId })
+  const attempt = parseState(seen.entry.attempt)
+  if (attempt === undefined) throw new JournalLost({ proposalId })
+  slot.base = seen.entry.revision
+  slot.evidence = seen.entry.evidence
+  slot.acknowledged = seen.entry.acknowledged
+  return attempt
+}
+
+effect function keep(journal: DeviceJournal, identity: JournalIdentity, slot: Slot, next: DeviceAttempt): void!! {
+  if (!slot.written && next.phase.tag !== "Reserved") {
+    slot.memo = next
+    return
+  }
+  const { binding } = slot
+  const evidence = slot.pending ?? slot.evidence
+  const entry: JournalEntry = {
+    proposalId: binding.proposalId, revision: slot.base + 1, ownerId: identity.ownerId, agentId: identity.agentId, origin: identity.origin,
+    installationId: identity.installationId, enrollmentId: identity.enrollmentId, digest: binding.digest, operationId: binding.operationId,
+    operation: binding.operation, attempt: next, evidence, acknowledged: slot.acknowledged,
+  }
+  const kept = try orDie(tryPromise(() => journal.edit(binding.proposalId, slot.base, entry)))
+  if (!kept) return try die(new JournalLost({ proposalId: binding.proposalId }))
+  slot.base = entry.revision
+  slot.written = true
+  slot.evidence = evidence
+  slot.pending = undefined
+}
+
+export effect function openAttempt(journal: DeviceJournal, identity: JournalIdentity, binding: AttemptBinding, entry?: JournalEntry): JournaledAttempt!JournalLost {
+  const slot: Slot = {
+    binding, base: entry?.revision ?? 0, written: entry !== undefined, memo: initial,
+    evidence: entry?.evidence ?? {}, pending: undefined, acknowledged: entry?.acknowledged ?? false,
+  }
+  const machine = try machineOver(() => load(journal, identity, slot), (next) => keep(journal, identity, slot, next))
+  return { journal, identity, slot, machine }
+}
+
+export effect function sendOr(attempt: JournaledAttempt, event: Event): AttemptStep | undefined!! {
+  const done = try exit(attempt.machine.send(event))
+  return Exit.isSuccess(done) ? done.value : undefined
+}
+
+export effect function reserve(attempt: JournaledAttempt, check: AuthorityCheck): AttemptStep | undefined!! {
+  const { binding } = attempt.slot
+  const seen = try (readEntry(attempt.journal, binding.proposalId) catch (): Found => ({ kind: "unreadable" }))
+  const answer = journalAnswer(seen, attempt.identity, binding)
+  attempt.slot.base = answer === "UnclaimedReservation" && seen.kind === "entry" ? seen.entry.revision : 0
+  return try sendOr(attempt, { type: "reserve", operationId: binding.operationId, check, journal: answer })
+}
+
+function evidenceOf(fields: { readonly code?: string | undefined; readonly result?: unknown }): Evidence {
+  return { ...(fields.code === undefined ? {} : { code: fields.code }), ...(fields.result === undefined ? {} : { result: fields.result }) }
+}
+
+effect function callExecutor<Op>(ports: DeviceExecutionPorts<Op>, operation: Op, call: ExecutorCall): { readonly answer: ExecutorAnswer; readonly evidence: Evidence }!! {
+  const raw = try (tryPromise(() => ports.execute(operation, call)) catch () => undefined)
+  const reply = decodeAnswer(raw)
+  if (Option.isNone(reply)) return { answer: "AnswerLost", evidence: {} }
+  return { answer: reply.value.kind === "applied" ? "AnswerApplied" : "AnswerRefused", evidence: evidenceOf(reply.value) }
+}
+
+effect function resolveUnknown<Op>(ports: DeviceExecutionPorts<Op>, attempt: JournaledAttempt, operation: Op): void!! {
+  const state = try attempt.machine.get()
+  if (!canReadBack(state)) return
+  const { proposalId, operationId } = attempt.slot.binding
+  const raw = try (tryPromise(() => ports.readBack(operation, { proposalId, operationId, attemptId: state.attemptId })) catch () => undefined)
+  const read = decodeReadback(raw)
+  if (Option.isNone(read)) return
+  attempt.slot.pending = evidenceOf(read.value)
+  try sendOr(attempt, { type: "readBack", readback: read.value.kind === "found" ? "RowFound" : "DefiniteRefusal" })
+  attempt.slot.pending = undefined
+}
+
+effect function carryOut<Op>(ports: DeviceExecutionPorts<Op>, attempt: JournaledAttempt, operation: Op, attemptId: number): void!! {
+  if ((try attempt.machine.get()).phase.tag === "Reserved" && (try sendOr(attempt, { type: "acceptClaim", attemptId })) === undefined) {
+    try sendOr(attempt, { type: "closeAbandoned", attemptId })
+  }
+  const invoked = try sendOr(attempt, { type: "invokeExecutor" })
+  for (const emitted of invoked?.out ?? []) {
+    if (emitted.tag !== "CallExecutor") continue
+    const done = try callExecutor(ports, operation, { proposalId: attempt.slot.binding.proposalId, operationId: emitted.operationId, attemptId: emitted.attemptId })
+    attempt.slot.pending = done.evidence
+    try sendOr(attempt, { type: "settleCall", answer: done.answer })
+    attempt.slot.pending = undefined
+  }
+  try resolveUnknown(ports, attempt, operation)
+}
+
+function receiptOf(outcome: ReceiptOutcome, result: DeviceResult, operationId: string, evidence: Evidence): DeviceReceipt {
+  switch (outcome) {
+    case "ReportedApplied": return { reported: "applied", operationId, ...evidenceOf({ result: evidence.result }) }
+    case "ReportedUnknown": return { reported: "unknown", operationId, ...evidenceOf({ result: evidence.result }) }
+    case "ReportedNothingRan":
+      return result.tag === "NoEffect" && result.proof === "NeverCalled"
+        ? { reported: "failed", operationId, code: NOT_DISPATCHED }
+        : { reported: "failed", operationId, ...evidence }
+  }
+}
+
+effect function agentAnswered(call: () => Promise<unknown>): boolean!! {
+  return try (map(tryPromise(call), () => true) catch () => false)
+}
+
+effect function acknowledge(attempt: JournaledAttempt): void!! {
+  const { journal, identity, slot } = attempt
+  const seen = try (readEntry(journal, slot.binding.proposalId) catch (): Found => ({ kind: "unreadable" }))
+  if (seen.kind !== "entry" || seen.entry.revision !== slot.base || !owns(seen.entry, identity, slot.binding)) return
+  const next = { ...seen.entry, revision: slot.base + 1, acknowledged: true }
+  if (try (tryPromise(() => journal.edit(slot.binding.proposalId, slot.base, next)) catch () => false)) {
+    slot.base = next.revision
+    slot.acknowledged = true
+  }
+}
+
+export effect function upload<Op>(ports: DeviceExecutionPorts<Op>, attempt: JournaledAttempt): boolean!! {
+  const step = try sendOr(attempt, { type: "sync" })
+  if (step === undefined) return false
+  const { proposalId, digest, operationId } = attempt.slot.binding
+  let sent = false
+  for (const emitted of step.out) {
+    if (emitted.tag !== "SendReceipt") continue
+    const receipt = receiptOf(emitted.outcome, settledResult(step.state.phase), operationId, attempt.slot.evidence)
+    sent = try agentAnswered(() => ports.agent.receipt(proposalId, { digest, attemptId: emitted.attemptId, receipt }))
+  }
+  if (sent) try acknowledge(attempt)
+  return sent
+}
+
+effect function finish<Op>(ports: DeviceExecutionPorts<Op>, attempt: JournaledAttempt): RecoverResult!! {
+  const state = try attempt.machine.get()
+  if (!canSync(state)) return { kind: "history" }
+  return { kind: "settled", result: settledResult(state.phase), synced: try upload(ports, attempt) }
+}
+
+effect function encode(operation: unknown): string | undefined!! {
+  return try (Effect.try({ try: () => JSON.stringify(operation), catch: () => undefined }) catch () => undefined)
+}
+
+effect function decodeOperation<Op>(ports: DeviceExecutionPorts<Op>, operation: string): Op | undefined!! {
+  const parsed = try (Effect.try({ try: (): unknown => JSON.parse(operation), catch: () => undefined }) catch () => undefined)
+  return parsed === undefined ? undefined : ports.validate(parsed)
+}
+
+effect function approve<Op>(ports: DeviceExecutionPorts<Op>, live: Map<string, JournaledAttempt>, proposal: DeviceProposal, screen: ScreenCheck): ApproveResult!! {
+  const operation = ports.validate(proposal.operation)
+  const encoded = operation === undefined ? undefined : try encode(operation)
+  if (operation === undefined || encoded === undefined || proposal.id === "" || proposal.digest === "") return { kind: "invalid" }
+  if (live.has(proposal.id)) return { kind: "busy" }
+  const now = try Clock.currentTimeMillis
+  const check: AuthorityCheck = { ...screen, unexpired: now < proposal.expiresAt }
+  if (authorityOf(check) === "NoAuthority") return { kind: "noAuthority" }
+  const binding: AttemptBinding = { proposalId: proposal.id, digest: proposal.digest, operationId: proposal.id, operation: encoded }
+  const attempt = try orDie(openAttempt(ports.journal, ports.identity, binding))
+  live.set(proposal.id, attempt)
+  return try ensuring(effect {
+    const reserved = try reserve(attempt, check)
+    if (reserved === undefined || reserved.state.phase.tag !== "Reserved") return { kind: "history" }
+    if ((try attempt.machine.get()).retired) return { kind: "retired" }
+    const decided = try agentAnswered(() => ports.agent.decide(proposal.id, { digest: proposal.digest, approved: true }))
+    const claimed = decided
+      ? decodeClaimed(try (tryPromise(() => ports.agent.claim(proposal.id, { digest: proposal.digest })) catch () => undefined))
+      : Option.none()
+    if (Option.isNone(claimed)) return { kind: "unclaimed" }
+    try carryOut(ports, attempt, operation, claimed.value.attemptId)
+    return try finish(ports, attempt)
+  }, sync(() => live.delete(proposal.id)))
+}
+
+effect function stored<Op>(ports: DeviceExecutionPorts<Op>, proposalId: string): JournaledAttempt | undefined!! {
+  const seen = try (readEntry(ports.journal, proposalId) catch (): Found => ({ kind: "unreadable" }))
+  if (seen.kind !== "entry" || !sameIdentity(seen.entry, ports.identity)) return undefined
+  return try (openAttempt(ports.journal, ports.identity, bindingOf(seen.entry), seen.entry) catch () => undefined)
+}
+
+effect function recover<Op>(ports: DeviceExecutionPorts<Op>, live: Map<string, JournaledAttempt>, proposalId: string, attemptId: number): RecoverResult!! {
+  if (live.has(proposalId)) return { kind: "live" }
+  const attempt = try stored(ports, proposalId)
+  if (attempt === undefined) return { kind: "history" }
+  if (!(try attempt.machine.get()).retired) try sendOr(attempt, { type: "retire" })
+  if (canCloseAbandoned(try attempt.machine.get(), attemptId)) try sendOr(attempt, { type: "closeAbandoned", attemptId })
+  const operation = try decodeOperation(ports, attempt.slot.binding.operation)
+  if (operation !== undefined) try resolveUnknown(ports, attempt, operation)
+  return try finish(ports, attempt)
+}
+
+effect function syncAll<Op>(ports: DeviceExecutionPorts<Op>, live: Map<string, JournaledAttempt>): { readonly sent: number; readonly unsent: number }!! {
+  const listed = try (tryPromise(() => ports.journal.list()) catch (): readonly unknown[] => [])
+  let sent = 0
+  let unsent = 0
+  for (const raw of listed) {
+    const seen = found(raw)
+    if (seen.kind !== "entry" || seen.entry.acknowledged || live.has(seen.entry.proposalId) || !sameIdentity(seen.entry, ports.identity)) continue
+    const state = parseState(seen.entry.attempt)
+    if (state === undefined || !canSync(state)) continue
+    const attempt = try (openAttempt(ports.journal, ports.identity, bindingOf(seen.entry), seen.entry) catch () => undefined)
+    if (attempt !== undefined && (try upload(ports, attempt))) sent += 1
+    else unsent += 1
+  }
+  return { sent, unsent }
+}
+
+effect function confirmReview<Op>(ports: DeviceExecutionPorts<Op>, live: Map<string, JournaledAttempt>, proposalId: string, review: ReviewOutcome): ReviewResult!! {
+  const attempt = live.get(proposalId) ?? try stored(ports, proposalId)
+  const step = attempt === undefined ? undefined : try sendOr(attempt, { type: "confirmReview", review })
+  if (attempt === undefined || step === undefined) return "refused"
+  let result: ReviewResult = "unsent"
+  for (const emitted of step.out) {
+    if (emitted.tag !== "SendReview") continue
+    const body = { digest: attempt.slot.binding.digest, attemptId: emitted.attemptId, review: reviewWire[emitted.review] }
+    if (try agentAnswered(() => ports.agent.reconcile(proposalId, body))) result = "sent"
+  }
+  return result
+}
+
+export class DeviceExecution<Op> {
+  readonly #ports: DeviceExecutionPorts<Op>
+  readonly #live = new Map<string, JournaledAttempt>()
+
+  constructor(ports: DeviceExecutionPorts<Op>) {
+    this.#ports = ports
+  }
+
+  validate(operation: unknown): Op | undefined {
+    return this.#ports.validate(operation)
+  }
+
+  approve(proposal: DeviceProposal, screen: ScreenCheck): Promise<ApproveResult> {
+    return runPromise(approve(this.#ports, this.#live, proposal, screen))
+  }
+
+  retire(proposalId: string): Promise<void> {
+    const attempt = this.#live.get(proposalId)
+    return attempt === undefined ? Promise.resolve() : runPromise(map(sendOr(attempt, { type: "retire" }), () => undefined))
+  }
+
+  recover(proposalId: string, attemptId: number): Promise<RecoverResult> {
+    return runPromise(recover(this.#ports, this.#live, proposalId, attemptId))
+  }
+
+  sync(): Promise<{ readonly sent: number; readonly unsent: number }> {
+    return runPromise(syncAll(this.#ports, this.#live))
+  }
+
+  confirmReview(proposalId: string, review: ReviewOutcome): Promise<ReviewResult> {
+    return runPromise(confirmReview(this.#ports, this.#live, proposalId, review))
+  }
+}

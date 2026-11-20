@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="first_run_name">First run</string>
+    <!-- Product composition supplies every value; the generic build assigns no role. -->
+    <bool name="first_run_enabled">false</bool>
+    <string-array name="first_run_roles" translatable="false"></string-array>
+</resources>

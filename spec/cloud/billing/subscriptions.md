@@ -213,7 +213,9 @@ Commands confirm against the revision. `PolicyChanged` advances the
 organization's policy generation in the same transaction.
 
 ```quint
-pure def viewOf(s: Subscription): Subscription = { ...s, customer: NoCustomer, liveCommand: NoLiveCommand, revision: 0 }
+type ProviderView = { status: SubscriptionStatus, subscriptionId: str, planKey: PlanKey, periodStart: Millis, periodEnd: Millis, cancelAtPeriodEnd: bool, planned: PlannedChange, dunning: DunningWindow, lastRenewalInvoice: str }
+pure def viewOf(s: Subscription): ProviderView = { status: s.status, subscriptionId: s.subscriptionId, planKey: s.planKey, periodStart: s.periodStart, periodEnd: s.periodEnd,
+  cancelAtPeriodEnd: s.cancelAtPeriodEnd, planned: s.planned, dunning: s.dunning, lastRenewalInvoice: s.lastRenewalInvoice }
 pure def stepRevisionCountsChanges(before: Subscription, after: Subscription): bool =
   after.revision == (if (viewOf(after) != viewOf(before)) before.revision + 1 else before.revision)
 pure def stepPolicyFollowsTheSubscription(before: Subscription, after: Subscription, out: List[SubscriptionEffect]): bool =

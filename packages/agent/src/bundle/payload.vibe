@@ -1,0 +1,39 @@
+// spec/agent/plugins/bundle.md, "No bundle carries a model weight file or a Node addon"; spec/agent/plugins/bundle.md, "A bundle without the local inference plugin carries only its required files and manifest, all at its root"; spec/agent/plugins/bundle.md, "An excluded package never ships"
+module node {
+  import { readdir } from "node:fs/promises"
+  import { relative, sep } from "node:path"
+  import { fileAdmitted, sharedLibraryExtension, type PayloadFile } from "../../gen/agent__plugins__bundle.ts"
+
+  export interface PayloadAdmission {
+    readonly files: readonly PayloadFile[]
+    readonly refused: readonly PayloadFile[]
+  }
+
+  export function fileExtension(name: string): string {
+    const suffixes = name.toLowerCase().split(".").slice(1)
+    const library = suffixes.lastIndexOf(sharedLibraryExtension)
+    if (library >= 0 && suffixes.slice(library + 1).every((suffix) => /^\d+$/.test(suffix))) return sharedLibraryExtension
+    return suffixes.at(-1) ?? ""
+  }
+
+  export function payloadFile(path: string): PayloadFile {
+    const segments = path.split(/[\\/]/).filter((segment) => segment !== "")
+    const name = segments.at(-1) ?? ""
+    return { name, extension: fileExtension(name), directories: segments.slice(0, -1) }
+  }
+
+  export async function admitPayload(dir: string, localInference: boolean): Promise<PayloadAdmission> {
+    const entries = await readdir(dir, { recursive: true, withFileTypes: true })
+    const files = entries
+      .filter((entry) => !entry.isDirectory())
+      .map((entry) => payloadFile(relative(dir, `${entry.parentPath}${sep}${entry.name}`)))
+      .sort((a, b) => [...a.directories, a.name].join("/").localeCompare([...b.directories, b.name].join("/")))
+    return { files, refused: files.filter((file) => !fileAdmitted(localInference, file)) }
+  }
+}
+import type { BuildVerdict } from "../../gen/agent__plugins__bundle.ts"
+export { admitPayload, fileExtension, payloadFile, type PayloadAdmission } from node
+export { excludedPackages, fileAdmitted, modelWeightExtensions, type BuildVerdict, type PayloadFile } from "../../gen/agent__plugins__bundle.ts"
+
+export error BundleRefused { verdict: Exclude<BuildVerdict, "Built">; detail: string }
+export error BundleManifestUnreadable { directory: string }

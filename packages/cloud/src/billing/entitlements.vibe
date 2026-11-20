@@ -1,4 +1,4 @@
-// spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"; spec/cloud/billing/plans.md, "Story: Apply the plan that funds a call"
+// spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"
 import { hasAllowance, termsOf } from "../../gen/cloud__billing__plans.effect.vibe"
 import { spendableAt } from "../../gen/cloud__billing__allowance.effect.vibe"
 import { json, owner, type Route } from "../http/routes.vibe"

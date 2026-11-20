@@ -1,0 +1,181 @@
+// spec/agent/views.md, "Story: Switch to the view the agent named"; spec/agent/views.md, "Story: Answer what the agent asks a view"; spec/agent/views.md, "Story: Stop waiting when my agent stops"
+import { assert, it } from "@effect/vitest"
+import { findViewActionHandoff, type Action, type ActionResult, type Memory, type UUID } from "@elizaos/core"
+import { navigationWaitMs } from "../gen/agent__views.effect.vibe"
+import { builtinModuleFactories } from "../src/plugins/profile.vibe"
+import type { ModuleFactory } from "../src/host/module.vibe"
+import type { ViewBinding, ViewHost } from "../src/views/host.vibe"
+import { viewHostServiceType, viewsModule, viewsModuleName } from "../src/views/module.vibe"
+import { call, host, startInProcess, type InProcess } from "./support/kernel.vibe"
+import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
+
+const loaded = {
+  launch: {
+    load: [viewsModuleName],
+    views: [
+      { id: "notes", label: "Notes", path: "/notes", aliases: ["jottings"] },
+      { id: "chat", label: "Chat", path: "/chat" },
+    ],
+  },
+  modules: new Map<string, ModuleFactory<never>>([...builtinModuleFactories, [viewsModuleName, viewsModule]]),
+}
+
+const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
+
+effect function ask(agent: InProcess, asked: LocalRequest) {
+  return answerOf(try call(agent, asked))
+}
+
+effect function viewHost(agent: InProcess) {
+  try host("view host start", () => agent.agent.runtime.getServiceLoadPromise(viewHostServiceType))
+  const found = agent.agent.runtime.getService(viewHostServiceType)
+  return try Effect.try(() => {
+    assert.isDefined(found)
+    return found as unknown as { readonly views: ViewHost.Shape; stop(): Promise<void> }
+  })
+}
+
+const prepare = (agent: InProcess, viewId: string, requestId: string, clientId: string, extra: Record<string, unknown> = {}) => ask(agent, {
+  method: "POST", path: `/api/views/${viewId}/navigate`, headers: { "x-elizaos-client-id": clientId },
+  body: { delivery: "completed-action", prepareOnly: true, viewType: "gui", completedActionHandoffId: requestId, source: "agent", ...extra },
+})
+const claim = (agent: InProcess, binding: unknown) => ask(agent, { method: "POST", path: "/api/views/interact-claim", body: binding })
+const result = (agent: InProcess, binding: unknown, claimId: string, switched: boolean) =>
+  ask(agent, { method: "POST", path: "/api/views/interact-result", body: { ...(binding as object), claimId, success: true, result: { switched } } })
+const bindingOf = (body: unknown): ViewBinding => (body as { navigationBinding: ViewBinding }).navigationBinding
+const claimIdOf = (body: unknown): string => (body as { claimId: string }).claimId
+
+it.effect('Prepare, claim and confirm a switch through the routes; only a confirmed switch is shown (spec/agent/views.md, "A navigation is prepared only for a declared view and a request id not seen before"; spec/agent/views.md, "A claim names its request\'s exact binding and succeeds once"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched"; spec/agent/views.md, "Only a confirmed switch sets the shown view, and a navigation lost after its claim makes it unknown")', effect () => {
+  const agent = try startInProcess(loaded)
+  const { views } = try viewHost(agent)
+
+  const prepared = try prepare(agent, "notes", "r1", "c1")
+  const binding = bindingOf(prepared.body)
+  const replayed = try prepare(agent, "chat", "r1", "c1")
+  const undeclared = try prepare(agent, "nowhere", "r9", "c1")
+  const wrongType = try prepare(agent, "notes", "r8", "c1", { viewType: "tui" })
+  const extraKey = try prepare(agent, "notes", "r8", "c1", { surprise: true })
+  const noClient = try ask(agent, { method: "POST", path: "/api/views/notes/navigate", body: { delivery: "completed-action", prepareOnly: true, viewType: "gui", completedActionHandoffId: "r8" } })
+  const missingField = try claim(agent, { requestId: binding.requestId, clientId: "c1", viewId: "notes", viewType: "gui" })
+  const wrongBinding = try claim(agent, { ...binding, installationId: "another-installation" })
+  const claimed = try claim(agent, binding)
+  const claimedAgain = try claim(agent, binding)
+  const wrongClaim = try result(agent, binding, "not-the-claim", true)
+  const switched = try result(agent, binding, claimIdOf(claimed.body), true)
+  const twice = try result(agent, binding, claimIdOf(claimed.body), true)
+  const shownAfterSwitch = try views.shownViewOf("c1")
+  try Effect.try(() => {
+    assert.deepStrictEqual(prepared, {
+      status: 200,
+      body: { ok: true, status: "prepared", viewId: "notes", completedActionHandoffId: "r1", navigationBinding: { requestId: "r1", clientId: "c1", viewId: "notes", viewType: "gui", installationId: binding.installationId } },
+    })
+    assert.deepStrictEqual([replayed.status, undeclared.status], [409, 409])
+    assert.deepStrictEqual([wrongType.status, extraKey.status, noClient.status, missingField.status], [400, 400, 400, 400])
+    assert.strictEqual(wrongBinding.status, 409)
+    assert.strictEqual(claimed.status, 200)
+    assert.isString(claimIdOf(claimed.body))
+    assert.strictEqual(claimedAgain.status, 409)
+    assert.deepStrictEqual(wrongClaim, { status: 200, body: { ok: true, accepted: false } })
+    assert.deepStrictEqual(switched, { status: 200, body: { ok: true, accepted: true } })
+    assert.deepStrictEqual(twice, { status: 200, body: { ok: true, accepted: false } })
+    assert.strictEqual(shownAfterSwitch, "notes")
+  })
+
+  const chat = try prepare(agent, "chat", "r2", "c1")
+  const chatClaim = try claim(agent, bindingOf(chat.body))
+  const notSwitched = try result(agent, bindingOf(chat.body), claimIdOf(chatClaim.body), false)
+  const shownAfterRefusal = try views.shownViewOf("c1")
+  try Effect.try(() => {
+    assert.deepStrictEqual(notSwitched.body, { ok: true, accepted: true })
+    assert.strictEqual(shownAfterRefusal, "notes")
+  })
+}, 120_000)
+
+it.effect('A second prepare supersedes an unclaimed navigation, is refused while one is claimed, and a lost wait is unknown (spec/agent/views.md, "Preparing again supersedes the client\'s unclaimed navigation and is refused while one is claimed"; spec/agent/views.md, "A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again")', effect () => {
+  const agent = try startInProcess(loaded)
+  const { views } = try viewHost(agent)
+
+  const first = try views.prepare("r1", "c1", "notes")
+  const second = try views.prepare("r2", "c1", "chat")
+  const superseded = try first!.wait
+  const claimed = try claim(agent, second!.binding)
+  const whileClaimed = try prepare(agent, "notes", "r3", "c1")
+  try TestClock.adjust(Duration.millis(navigationWaitMs))
+  const lost = try second!.wait
+  const shown = try views.shownViewOf("c1")
+  const late = try result(agent, second!.binding, claimIdOf(claimed.body), true)
+  try Effect.try(() => {
+    assert.deepStrictEqual(superseded, { kind: "Superseded" })
+    assert.strictEqual(claimed.status, 200)
+    assert.strictEqual(whileClaimed.status, 409)
+    assert.deepStrictEqual(lost, { kind: "Unknown" })
+    assert.isUndefined(shown)
+    assert.deepStrictEqual(late.body, { ok: true, accepted: false })
+  })
+}, 120_000)
+
+it.effect('An ask with no view-interact feed is unavailable, and stopping ends every wait with Stopped (spec/agent/views.md, "The agent asks only a declared view, for a capability the view grants the agent, on a live feed"; spec/agent/views.md, "Closing ends every pending request with the outcome Stopped, and nothing changes after")', effect () => {
+  const agent = try startInProcess(loaded)
+  const service = try viewHost(agent)
+  const views = service.views
+  const grant = { roleAllowed: true, standard: true, declared: false, manifestAllows: true, agentAuthority: true }
+
+  const asked = try views.ask({ clientId: "c1", viewId: "notes", capability: "get-state", params: {}, grant })
+  const pending = try views.prepare("r1", "c1", "notes")
+  try host("view host stop", () => service.stop())
+  const stopped = try pending!.wait
+  const afterStop = try claim(agent, pending!.binding)
+  const prepareAfterStop = try prepare(agent, "chat", "r2", "c1")
+  try Effect.try(() => {
+    assert.deepStrictEqual(asked, { kind: "unavailable" })
+    assert.deepStrictEqual(stopped, { kind: "Stopped" })
+    assert.deepStrictEqual([afterStop.status, prepareAfterStop.status], [409, 409])
+  })
+}, 120_000)
+
+const turn = (metadata: Record<string, unknown>): Memory => ({
+  entityId: "00000000-0000-4000-8000-000000000001" as UUID,
+  roomId: "00000000-0000-4000-8000-000000000002" as UUID,
+  content: { text: "show my notes", metadata },
+} as Memory)
+
+effect function show(agent: InProcess, message: Memory, view: string) {
+  const action = agent.agent.runtime.actions.find((candidate: Action) => candidate.name === "VIEWS")
+  return try host(`VIEWS show ${view}`, async () => {
+    assert.isDefined(action)
+    return (await action!.handler(agent.agent.runtime, message, undefined, { parameters: { action: "show", view } })) as ActionResult
+  })
+}
+
+it.effect('The VIEWS show action prepares a navigation for the turn\'s renderer by alias, and the renderer confirms it (spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/views.md, "Only a confirmed switch sets the shown view, and a navigation lost after its claim makes it unknown")', effect () => {
+  const agent = try startInProcess(loaded)
+  const { views } = try viewHost(agent)
+  const renderer = turn({ viewClientId: "c2", viewDelivery: "completed-action" })
+
+  const shown = try show(agent, renderer, "Jottings")
+  const unknown = try show(agent, renderer, "nowhere")
+  const noRenderer = try show(agent, turn({ viewClientId: "c2" }), "notes")
+  const values = shown.values as Record<string, unknown>
+  const binding = values.navigationBinding as ViewBinding
+  const handoff = try Effect.try(() => findViewActionHandoff([{ ...shown, actionName: "VIEWS" }]))
+  const claimed = try claim(agent, binding)
+  const switched = try result(agent, binding, claimIdOf(claimed.body), true)
+  const now = try views.shownViewOf("c2")
+  try Effect.try(() => {
+    assert.isTrue(shown.success)
+    assert.deepStrictEqual(Object.keys(values).sort(), [
+      "completedActionDelivered", "completedActionHandoffId", "label", "mode", "navigationBinding", "navigationPrepared", "viewId", "viewPath", "viewType",
+    ])
+    assert.deepStrictEqual({ ...values, completedActionHandoffId: "", navigationBinding: { ...binding, requestId: "", installationId: "" } }, {
+      mode: "show", viewId: "notes", viewPath: "/notes", viewType: "gui", label: "Notes", completedActionDelivered: false,
+      completedActionHandoffId: "", navigationPrepared: true,
+      navigationBinding: { requestId: "", clientId: "c2", viewId: "notes", viewType: "gui", installationId: "" },
+    })
+    assert.match(binding.requestId, /^[0-9a-f-]{36}$/)
+    assert.strictEqual(values.completedActionHandoffId, binding.requestId)
+    assert.deepStrictEqual(handoff?.navigationBinding, binding)
+    assert.deepStrictEqual([unknown.success, noRenderer.success], [false, false])
+    assert.deepStrictEqual(switched.body, { ok: true, accepted: true })
+    assert.strictEqual(now, "notes")
+  })
+}, 120_000)
