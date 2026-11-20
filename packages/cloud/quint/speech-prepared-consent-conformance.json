@@ -268,7 +268,7 @@
         },
         {
           "classname": "",
-          "name": "an extending client keeps one live session past its minted end with a fresh fence and reservation"
+          "name": "a renewed proof-required session survives the original deadline and its stale alarm"
         },
         {
           "classname": "",
