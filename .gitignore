@@ -30,6 +30,6 @@ build/
 !packages/*/src/**/build/
 test-results/
 # A failed exploration's trace, replayed by the next check (SPEC.md, "Exploring the page").
-**/test/__traces__/bombadil/
+**/test/__traces__/
 test/__traces__/
 .DS_Store
