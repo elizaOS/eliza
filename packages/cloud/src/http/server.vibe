@@ -5,6 +5,7 @@ import { area as foundation } from "./routes/foundation.vibe"
 import { area as identity } from "./routes/identity.vibe"
 import { area as nativeClients } from "./routes/native-clients.vibe"
 import { area as checkout } from "./routes/checkout.vibe"
+import { area as providerEvents } from "./routes/provider-events.vibe"
 import { area as billing } from "./routes/billing.vibe"
 import { area as inference } from "./routes/inference.vibe"
 import { area as speech } from "./routes/speech.vibe"
@@ -15,7 +16,7 @@ import { returnPageRoute } from "../native-clients/return-routes.vibe"
 
 export { listening }
 
-export const areas: ReadonlyArray<Area> = [foundation, identity, nativeClients, checkout, billing, inference, speech, maps, google, operator]
+export const areas: ReadonlyArray<Area> = [foundation, identity, nativeClients, checkout, providerEvents, billing, inference, speech, maps, google, operator]
 
 export function respond(routes: ReadonlyArray<Route>) {
   return respondWithFallback(routes, returnPageRoute)

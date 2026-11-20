@@ -49,4 +49,27 @@ export const migrations: readonly Migration[] = [
     data jsonb NOT NULL
   );
   CREATE INDEX schedule_tasks_visible ON schedule_tasks (owner_visible, task_id);` },
+  { kind: "Additive", sql: `CREATE TABLE device_enrollment (
+    singleton boolean PRIMARY KEY CHECK (singleton),
+    revision integer NOT NULL CHECK (revision > 0),
+    state jsonb NOT NULL
+  );
+  CREATE TABLE device_requests (
+    proposal_id text PRIMARY KEY CHECK (length(proposal_id) > 0),
+    revision integer NOT NULL CHECK (revision > 0),
+    state jsonb NOT NULL,
+    settled boolean NOT NULL,
+    operation jsonb NOT NULL,
+    binding text NOT NULL CHECK (binding IN ('NoBinding', 'WorkflowBinding', 'AgendaBinding')),
+    bound_profile jsonb NOT NULL,
+    need jsonb NOT NULL,
+    result jsonb,
+    created_at bigint NOT NULL
+  );
+  CREATE INDEX device_requests_settled ON device_requests (settled, created_at, proposal_id);
+  CREATE TABLE device_view_profile (
+    singleton boolean PRIMARY KEY CHECK (singleton),
+    revision text NOT NULL CHECK (length(revision) > 0),
+    views jsonb NOT NULL
+  );` },
 ]

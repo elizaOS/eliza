@@ -1,0 +1,98 @@
+// spec/agent/voice/clientAudio.md, "Cloud speech goes in pieces, a short first one and none larger than one request"
+import { assert, it } from "@effect/vitest"
+import { speechPieceAccepted } from "../gen/agent__voice__clientAudio.effect.vibe"
+import {
+  CLOUD_FIRST_SPEECH_CHARS, CLOUD_SPEECH_REQUEST_CHARS, CloudSpeechFailed, CloudSpeechStopped, CloudSpeechWordTooLong,
+  planCloudSpeechChunks, speakCloudSpeechChunks,
+} from "../src/voice/speech-pieces.vibe"
+
+const lead = "I booked the visit for tomorrow with Dr. Chen at the clinic on Main St. near the park, e.g. the one by the river."
+const sentence = "The forecast says rain in the morning, so bring a coat and leave a little early to find parking."
+const longReply = `${lead}\n\n  ${Array.from({ length: 160 }, (_, i) => `${sentence} Item ${i}:`).join("\t ")}`
+const collapsed = (text: string) => text.replace(/\s+/g, " ").trim()
+const accepted = (pieces: readonly string[]) =>
+  pieces.every((piece, i) => speechPieceAccepted(i === 0, piece.length, piece.split(" ").length))
+const pause = () => runPromise(sleep("2 millis"))
+
+it.effect("Cloud speech goes in pieces: abbreviations never end a piece and every word is kept", () => effect {
+  const pieces = try planCloudSpeechChunks(longReply)
+  const unpunctuated = Array.from({ length: 1500 }, (_, i) => `word${i}`).join(" ")
+  const plain = try planCloudSpeechChunks(unpunctuated)
+  const oneWordFirst = try planCloudSpeechChunks(`${"x".repeat(300)} and then some more words.`)
+  const short = try planCloudSpeechChunks("  Hello   there.\n")
+  const empty = try planCloudSpeechChunks(" \n\t ")
+  try Effect.try(() => {
+    assert.deepStrictEqual([CLOUD_FIRST_SPEECH_CHARS, CLOUD_SPEECH_REQUEST_CHARS], [220, 5000])
+    assert.strictEqual(pieces[0], lead)
+    assert.isAbove(pieces.length, 3)
+    assert.strictEqual(pieces.join(" "), collapsed(longReply))
+    assert.isTrue(accepted(pieces))
+    assert.isTrue(pieces.slice(1, -1).every((piece) => /[.:]$/.test(piece)))
+    assert.strictEqual(plain.join(" "), unpunctuated)
+    assert.isTrue(accepted(plain))
+    assert.isAtMost(plain[0]?.length ?? 0, CLOUD_FIRST_SPEECH_CHARS)
+    assert.deepStrictEqual(oneWordFirst, ["x".repeat(300), "and then some more words."])
+    assert.deepStrictEqual(short, ["Hello there."])
+    assert.deepStrictEqual(empty, [])
+  })
+})
+
+it.effect("Cloud speech goes in pieces: a word longer than one request refuses the whole reply", () => effect {
+  const refused = try Effect.flip(planCloudSpeechChunks(`Here it is: ${"a".repeat(5001)} done.`))
+  const fits = try planCloudSpeechChunks(`Here it is: ${"a".repeat(5000)}`)
+  try Effect.try(() => {
+    assert.instanceOf(refused, CloudSpeechWordTooLong)
+    assert.strictEqual(refused.units, 5001)
+    assert.deepStrictEqual(fits, ["Here it is:", "a".repeat(5000)])
+  })
+})
+
+it.live("Cloud speech goes in pieces: one piece in flight at a time and first audio once per reply", () => effect {
+  const pieces = try planCloudSpeechChunks(longReply)
+  const spoken: string[] = []
+  const retired: Array<() => void> = []
+  let inFlight = 0
+  let most = 0
+  let firstAudio = 0
+  try speakCloudSpeechChunks(pieces, async (piece, _signal, started) => {
+    inFlight += 1
+    most = Math.max(most, inFlight)
+    await pause()
+    started()
+    started()
+    spoken.push(piece)
+    await pause()
+    inFlight -= 1
+    retired.push(started)
+  }, { onFirstAudio: () => { firstAudio += 1 } })
+  for (const late of retired) late()
+  try Effect.try(() => {
+    assert.deepStrictEqual(spoken, pieces)
+    assert.deepStrictEqual([most, firstAudio], [1, 1])
+  })
+})
+
+it.live("Cloud speech goes in pieces: Stop ends the reply and a failed piece names itself", () => effect {
+  const pieces = try planCloudSpeechChunks(longReply)
+  const stop = new AbortController()
+  const spoken: string[] = []
+  let firstAudio = 0
+  const stopped = try Effect.flip(speakCloudSpeechChunks(pieces, (piece, signal, started) => new Promise<void>((resolve, reject) => {
+    spoken.push(piece)
+    if (spoken.length === 2) {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true })
+      stop.abort()
+      started()
+      return
+    }
+    resolve()
+  }), { signal: stop.signal, onFirstAudio: () => { firstAudio += 1 } }))
+  const failed = try Effect.flip(speakCloudSpeechChunks(pieces, (piece) =>
+    piece === pieces[1] ? Promise.reject(new Error("speech service unavailable")) : Promise.resolve()))
+  try Effect.try(() => {
+    assert.instanceOf(stopped, CloudSpeechStopped)
+    assert.deepStrictEqual([spoken.length, firstAudio], [2, 0])
+    assert.instanceOf(failed, CloudSpeechFailed)
+    assert.strictEqual(failed instanceof CloudSpeechFailed ? failed.piece : -1, 1)
+  })
+})

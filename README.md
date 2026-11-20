@@ -52,9 +52,14 @@ PASSWORD_ANDROID_FIXTURE=emulator-5554 pnpm --filter @elizaos/cloud exec \
   vitest run test/password-backup.test.vibe -t 'Android cold start'
 ```
 
-The fixture runs a save and a restore in separate Android process launches.
-It installs a temporary HTTPS reverse mapping on the selected emulator and
-removes it after the run. The test process trusts only its disposable cert
+For a restore into a second Android Keystore, prepare two independently created
+emulators using the steps above. Set `PASSWORD_ANDROID_FIXTURE=emulator-5554,emulator-5556`
+in the same command. The first device saves the vault and the second enrolls a
+fresh device grant and restores into its empty vault. A single serial exercises
+both phases in separate processes on that emulator.
+
+Each phase uses a temporary HTTPS reverse mapping on its selected emulator
+and removes it when the phase ends. The test process trusts only its disposable cert
 for these calls. The fixture browser approves a synthetic account through
 the same Worker routes that the production app uses.
 

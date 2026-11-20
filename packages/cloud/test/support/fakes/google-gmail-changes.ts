@@ -39,6 +39,10 @@ export function gmailChangeSwitches(): GmailChangeSwitches {
   return { dropNextReply: false, calls: [] };
 }
 
+export function sentTexts(mailbox: GmailMailbox): string[] {
+  return [...mailbox.messages.values()].filter((message) => message.labelIds.includes("SENT")).map((message) => Buffer.from(message.raw ?? "", "base64url").toString("utf8"));
+}
+
 function touch(mailbox: GmailMailbox, message: MailboxMessage): MailboxMessage {
   message.historyId = String(++mailbox.history);
   return message;

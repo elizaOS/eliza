@@ -1,0 +1,409 @@
+// spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"; spec/os/browser/chromium.md, "Story: Replace the image's WebView provider only with the pinned one"
+import { ChildProcess } from "effect/process"
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+import type { Buffer } from "node:buffer"
+import { readApkSignerDigest } from "../image/apk.vibe"
+import { assetNames, pin, type ComponentReport } from "../../browser/chromium/component/chromium-component.mjs"
+
+module node {
+  import { Buffer } from "node:buffer"
+  import { createHash } from "node:crypto"
+  import { build } from "esbuild"
+  import { androidNativeHost } from "../../browser/chromium/component/android-host.mjs"
+  import { createComponentPatch, generateComponentOverlay, readReviewedChromiumSources, validateAssets } from "../../browser/chromium/component/chromium-component.mjs"
+  import type { ComponentReport } from "../../browser/chromium/component/chromium-component.mjs"
+
+  /** @throws {never} */
+  export function sha256Hex(bytes: Uint8Array | string): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function hostPlatform(): string {
+    return process.platform
+  }
+
+  /** @throws {never} */
+  export function nativeHostConfig(certificate: string, application: string): string | undefined {
+    try {
+      return JSON.stringify(androidNativeHost(certificate, application))
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function buffers(assets: Readonly<Record<string, Uint8Array>>): Record<string, Buffer> {
+    return Object.fromEntries(Object.entries(assets).map(([name, bytes]) => [name, Buffer.from(bytes)]))
+  }
+
+  /** @throws {never} */
+  export function assetsProblem(assets: Readonly<Record<string, Uint8Array>>, certificate: string, application: string): string | undefined {
+    try {
+      validateAssets(buffers(assets), certificate, application)
+      return undefined
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  export async function reviewedSources(sourceRoot: string): Promise<{ readonly sources: Record<string, Uint8Array>; readonly revision: string }> {
+    return readReviewedChromiumSources(sourceRoot)
+  }
+
+  export async function componentOverlay(options: {
+    readonly sources: Readonly<Record<string, Uint8Array | string>>
+    readonly assets: Readonly<Record<string, Uint8Array>>
+    readonly certificate: string
+    readonly application: string
+    readonly embedHost: boolean
+    readonly revision: string
+  }): Promise<{ readonly files: Record<string, string | Uint8Array>; readonly report: ComponentReport; readonly patch: string }> {
+    const overlay = await generateComponentOverlay({ ...options, assets: buffers(options.assets) })
+    return { ...overlay, patch: await createComponentPatch(options.sources, overlay.files) }
+  }
+
+  export async function moduleClosureProblem(directory: string): Promise<string | undefined> {
+    try {
+      await build({ entryPoints: [`${directory}/background.mjs`], bundle: true, format: "esm", platform: "browser", write: false, logLevel: "silent" })
+      return undefined
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+import { assetsProblem, buffers, componentOverlay, hostPlatform, moduleClosureProblem, nativeHostConfig, reviewedSources, sha256Hex } from node
+
+export type ChromiumTarget = "chrome_public_apk" | "system_webview_apk"
+
+export interface PrepareChromium {
+  readonly source: string
+  readonly extension: string
+  readonly out: string
+  readonly certificate: string
+  readonly application?: string | undefined
+  readonly revision?: string | undefined
+  readonly embedHost?: boolean | undefined
+}
+
+export interface BuildChromium extends PrepareChromium {
+  readonly build: string
+  readonly argsFile: string
+  readonly target?: string | undefined
+  readonly jobs?: number | undefined
+}
+
+export type PreparedChromium = ComponentReport & {
+  readonly patchSha256: string
+  readonly launcherSignerSha256: string
+  readonly releaseQualified: false
+}
+
+export interface ChromiumBuildReport {
+  readonly schemaVersion: 1
+  readonly component: PreparedChromium | null
+  readonly target: ChromiumTarget
+  readonly gnArgsSha256: string
+  readonly apk: { readonly path: string; readonly bytes: number; readonly sha256: string }
+  readonly browserBuilt: true
+  readonly releaseQualified: false
+  readonly installedNativeMessagingVerified: false
+}
+
+export interface BrowserExtensionBuild {
+  readonly browser: string
+  readonly out: string
+  readonly certificate: string
+  readonly application?: string | undefined
+}
+
+export interface ComposedAssets {
+  readonly assets: Readonly<Record<string, Uint8Array>>
+  readonly provenance?: unknown
+}
+
+export interface AndroidConsumerInputs {
+  readonly source: string
+  readonly expectedCommit: string
+  readonly apk: string
+  readonly output: string
+  readonly application: string
+  readonly apksigner: string
+  readonly environment?: Readonly<Record<string, string | undefined>>
+  readonly composeAssets?: (input: { readonly assets: Record<string, Buffer>; readonly output: string }) => Promise<ComposedAssets>
+}
+
+export interface PreparedConsumerInputs {
+  readonly sourceCommit: string
+  readonly certificateSha256: string
+  readonly apkSha256: string
+  readonly chromiumRevision: string
+  readonly resources: Readonly<Record<string, string>>
+  readonly composition: unknown
+}
+
+export error ChromiumInputInvalid { reason: string }
+export error ChromiumSourceRefused { reason: string }
+export error ChromiumBuildFailed { reason: string }
+export error BrowserExtensionInvalid { reason: string }
+
+const DEFAULT_APPLICATION = "ai.elizaos.app"
+const HEX64 = /^[a-fA-F0-9]{64}$/
+const COMMIT = /^[a-f0-9]{40}$/
+const APPLICATION_ID = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/
+const QUOTED_ANDROID_PACKAGE = /^"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+"$/
+const GENERATED_ASSETS = ["manifest.json", "runtime-config.mjs"]
+const BROWSER_INPUTS = ["packages/os/browser", "packages/os/src/browser"]
+const OVERLAY_REPORT = "eliza-component-overlay.json"
+const OVERLAY_PATCH = "eliza-component.patch"
+
+const TARGETS: Readonly<Record<ChromiumTarget, { readonly reviewed: (assignment: (name: string) => string | undefined) => boolean; readonly refusal: string; readonly apks: readonly string[] }>> = {
+  chrome_public_apk: {
+    reviewed: (assignment) => assignment("is_desktop_android") === "true" && assignment("chrome_public_manifest_package") === '"ai.elizaos.chromium"',
+    refusal: "GN arguments must select the reviewed owned Desktop Android browser",
+    apks: ["apks/ChromePublic.apk"],
+  },
+  system_webview_apk: {
+    reviewed: (assignment) => QUOTED_ANDROID_PACKAGE.test(assignment("system_webview_package_name") ?? ""),
+    refusal: "GN arguments must name the reviewed Android WebView provider",
+    apks: ["apks/SystemWebView.apk", "apks/SystemWebView64.apk"],
+  },
+}
+
+function isTarget(value: string): value is ChromiumTarget {
+  return Object.hasOwn(TARGETS, value)
+}
+
+effect function run(tool: string, args: readonly string[], cwd: string, options: { readonly env?: Readonly<Record<string, string | undefined>>; readonly inherit?: boolean } = {}) {
+  const spawner = try ChildProcessSpawner
+  return try mapError(scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make(tool, [...args], {
+      cwd,
+      ...(options.env === undefined ? { extendEnv: true } : { env: { ...options.env } }),
+      stdin: "ignore",
+      ...(options.inherit === true ? { stdout: "inherit", stderr: "inherit" } : {}),
+    }))
+    const [stdout, stderr] = options.inherit === true ? ["", ""] : try.all [Stream.mkString(Stream.decodeText(child.stdout)), Stream.mkString(Stream.decodeText(child.stderr))]
+    const code: number = try child.exitCode
+    return { code, stdout, stderr }
+  }), (cause) => new ChromiumBuildFailed({ reason: `${tool} ${args.join(" ")} could not run: ${cause.message}` }))
+}
+
+effect function succeed(tool: string, args: readonly string[], cwd: string, options: { readonly env?: Readonly<Record<string, string | undefined>>; readonly inherit?: boolean } = {}) {
+  const result = try run(tool, args, cwd, options)
+  if (result.code !== 0) throw new ChromiumBuildFailed({ reason: `${tool} ${args.join(" ")} exited with ${result.code}: ${(result.stderr || result.stdout).trim()}` })
+  return result.stdout.trim()
+}
+
+effect function absent(file: string, reason: string) {
+  const files = try FileSystem.FileSystem
+  if (files.exists(file) catch () => true) throw new ChromiumInputInvalid({ reason })
+}
+
+effect function readFlatDirectory(directory: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const unreadable = () => new BrowserExtensionInvalid({ reason: `${directory} is not a readable extension directory` })
+  const assets: Record<string, Uint8Array> = {}
+  for (const name of (try mapError(files.readDirectory(directory), unreadable)).sort()) {
+    const info = try mapError(files.stat(path.join(directory, name)), unreadable)
+    if (info.type !== "File") throw new BrowserExtensionInvalid({ reason: `${name} in ${directory} is not a regular file` })
+    assets[name] = try mapError(files.readFile(path.join(directory, name)), unreadable)
+  }
+  return assets
+}
+
+effect function requireValidAssets(assets: Readonly<Record<string, Uint8Array>>, certificate: string, application: string) {
+  const problem = assetsProblem(assets, certificate, application)
+  if (problem !== undefined) throw new BrowserExtensionInvalid({ reason: problem })
+}
+
+export effect function buildBrowserExtension(options: BrowserExtensionBuild) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const application = options.application ?? DEFAULT_APPLICATION
+  if (!HEX64.test(options.certificate)) throw new BrowserExtensionInvalid({ reason: "The Android app signing certificate SHA-256 is required" })
+  const nativeHost = nativeHostConfig(options.certificate, application)
+  if (nativeHost === undefined) throw new BrowserExtensionInvalid({ reason: "The Android native host must be a valid application ID of at most 80 characters" })
+  const browser = path.resolve(options.browser)
+  const out = path.resolve(options.out)
+  const unreadableIdentity = () => new BrowserExtensionInvalid({ reason: `${browser}/identity.json is not readable JSON` })
+  const identityText = try mapError(files.readFileString(path.join(browser, "identity.json")), unreadableIdentity)
+  const identity: unknown = try mapError(Effect.try(() => JSON.parse(identityText)), unreadableIdentity)
+  const key = typeof identity === "object" && identity !== null && "chromeDevManifestKey" in identity ? identity.chromeDevManifestKey : undefined
+  if (typeof key !== "string") throw new BrowserExtensionInvalid({ reason: "identity.json has no chromeDevManifestKey" })
+  try mapError(files.makeDirectory(out), () => new BrowserExtensionInvalid({ reason: `${out} must be a new directory` }))
+  const manifest = {
+    manifest_version: 3,
+    name: "Eliza Browser Control",
+    version: "2.0.34",
+    key,
+    description: "Native, authenticated control of this Chromium profile for your Eliza agent.",
+    permissions: ["tabs", "scripting", "webNavigation", "webRequest", "storage", "nativeMessaging", "alarms"],
+    host_permissions: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"],
+    background: { service_worker: "background.mjs", type: "module" },
+  }
+  try files.writeFileString(path.join(out, "manifest.json"), JSON.stringify(manifest, null, 2), { flag: "wx" })
+  try files.writeFileString(path.join(out, "runtime-config.mjs"), `export const nativeHost = ${nativeHost};\n`, { flag: "wx" })
+  for (const name of assetNames.filter((name) => !GENERATED_ASSETS.includes(name))) {
+    try mapError(files.copyFile(path.join(browser, "src", name), path.join(out, name)), () => new BrowserExtensionInvalid({ reason: `${browser}/src/${name} is missing` }))
+  }
+  const closure = try promise(() => moduleClosureProblem(out))
+  if (closure !== undefined) throw new BrowserExtensionInvalid({ reason: `The staged extension module graph is invalid: ${closure}` })
+  const assets = try readFlatDirectory(out)
+  try requireValidAssets(assets, options.certificate, application)
+  return assets
+}
+
+export effect function prepareChromium(options: PrepareChromium) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const application = options.application ?? DEFAULT_APPLICATION
+  const embedHost = options.embedHost ?? false
+  if (!HEX64.test(options.certificate)) throw new ChromiumInputInvalid({ reason: "The final launcher certificate SHA-256 is required" })
+  const nativeHost = nativeHostConfig(options.certificate, application)
+  if (nativeHost === undefined) throw new ChromiumInputInvalid({ reason: "The Android native host must be a valid application ID of at most 80 characters" })
+  if (options.revision !== undefined && options.revision !== pin.revision) throw new ChromiumInputInvalid({ reason: "Chromium revision must match the reviewed component pin" })
+  const source = try mapError(files.realPath(path.resolve(options.source)), () => new ChromiumInputInvalid({ reason: `${options.source} is not a Chromium checkout` }))
+  const out = path.resolve(options.out)
+  if (out === source || out.startsWith(`${source}${path.sep}`)) throw new ChromiumInputInvalid({ reason: "Component output must be outside the Chromium checkout" })
+  try absent(out, "Component output directory must be new")
+  const refused = (cause: unknown) => new ChromiumSourceRefused({ reason: cause instanceof Error ? cause.message : String(cause) })
+  const reviewed = try tryPromise({ try: () => reviewedSources(source), catch: refused })
+  const assets = try readFlatDirectory(path.resolve(options.extension))
+  const overlay = try tryPromise({
+    try: () => componentOverlay({ sources: reviewed.sources, assets, certificate: options.certificate, application, embedHost, revision: reviewed.revision }),
+    catch: refused,
+  })
+  if (JSON.stringify(overlay.report.nativeHost) !== nativeHost) throw new ChromiumSourceRefused({ reason: "Generated component native host does not match the requested application and certificate" })
+  const patchSha256 = sha256Hex(overlay.patch)
+  try mapError(files.makeDirectory(out), () => new ChromiumInputInvalid({ reason: "Component output directory must be new" }))
+  for (const [name, bytes] of Object.entries(overlay.files)) {
+    try files.makeDirectory(path.dirname(path.join(out, name)), { recursive: true })
+    try (typeof bytes === "string" ? files.writeFileString(path.join(out, name), bytes, { flag: "wx" }) : files.writeFile(path.join(out, name), bytes, { flag: "wx" }))
+  }
+  const patch = path.join(out, OVERLAY_PATCH)
+  try files.writeFileString(patch, overlay.patch, { flag: "wx" })
+  try files.writeFileString(path.join(out, OVERLAY_REPORT), `${JSON.stringify({ ...overlay.report, patchSha256 }, null, 2)}\n`, { flag: "wx" })
+  try tryPromise({ try: () => reviewedSources(source), catch: refused })
+  try succeed("git", ["-C", source, "apply", "--check", patch], source)
+  try succeed("git", ["-C", source, "apply", patch], source)
+  for (const [relative, expected] of Object.entries(overlay.report.outputs)) {
+    if (sha256Hex(try files.readFile(path.join(source, relative))) !== expected) throw new ChromiumSourceRefused({ reason: `Applied component output mismatch: ${relative}` })
+  }
+  const prepared: PreparedChromium = { ...overlay.report, patchSha256, launcherSignerSha256: options.certificate.toLowerCase(), releaseQualified: false }
+  return prepared
+}
+
+function gnAssignment(gnArgs: string, name: string): string | undefined {
+  const matches = [...gnArgs.matchAll(new RegExp(`^\\s*${name}\\s*=\\s*([^#\\n]+)\\s*(?:#.*)?$`, "gm"))]
+  return matches.length === 1 ? matches[0]?.[1]?.trim() : undefined
+}
+
+export effect function chromiumBuildPlan(options: { readonly source: string; readonly build: string; readonly gnArgs: string; readonly jobs?: number | undefined; readonly target?: string | undefined }) {
+  const path = try Path.Path
+  const jobs = options.jobs ?? 8
+  const target = options.target ?? "chrome_public_apk"
+  const relative = path.relative(options.source, options.build)
+  if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) throw new ChromiumInputInvalid({ reason: "build must be a new directory inside the Chromium checkout" })
+  if (!Number.isSafeInteger(jobs) || jobs < 1 || jobs > 256) throw new ChromiumInputInvalid({ reason: "jobs must be an integer between 1 and 256" })
+  if (!isTarget(target)) throw new ChromiumInputInvalid({ reason: `target must be one of ${Object.keys(TARGETS).join(", ")}` })
+  const reviewed = TARGETS[target]
+  const assignment = (name: string) => gnAssignment(options.gnArgs, name)
+  if (assignment("target_os") !== '"android"' || !['"arm64"', '"x64"'].includes(assignment("target_cpu") ?? "") || !reviewed.reviewed(assignment))
+    throw new ChromiumInputInvalid({ reason: reviewed.refusal })
+  return {
+    target,
+    apks: reviewed.apks.map((apk) => path.join(options.build, apk)),
+    commands: [["gn", ["gen", relative]], ["autoninja", ["-C", relative, "-j", String(jobs), target]]] satisfies readonly (readonly [string, readonly string[]])[],
+  }
+}
+
+export effect function buildChromium(options: BuildChromium) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const source = path.resolve(options.source)
+  const build = path.resolve(options.build)
+  const out = path.resolve(options.out)
+  const gnArgs = try mapError(files.readFileString(path.resolve(options.argsFile)), () => new ChromiumInputInvalid({ reason: `${options.argsFile} is not readable` }))
+  const plan = try chromiumBuildPlan({ source, build, gnArgs, jobs: options.jobs, target: options.target })
+  if (hostPlatform() !== "linux") throw new ChromiumInputInvalid({ reason: "Android Chromium compilation requires a Linux build host" })
+  try absent(build, "Chromium build directory must be new")
+  let component: PreparedChromium | null = null
+  if (plan.target === "chrome_public_apk") {
+    component = try prepareChromium({ ...options, source, out })
+  } else {
+    try mapError(files.makeDirectory(out), () => new ChromiumInputInvalid({ reason: "out must be a new directory" }))
+  }
+  try files.makeDirectory(build, { recursive: true })
+  try files.writeFileString(path.join(build, "args.gn"), gnArgs, { flag: "wx" })
+  for (const [command, args] of plan.commands) try succeed(command, args, source, { inherit: true })
+  const produced: string[] = []
+  for (const apk of plan.apks) if (files.exists(apk) catch () => false) produced.push(apk)
+  const [apk] = produced
+  if (produced.length !== 1 || apk === undefined) throw new ChromiumBuildFailed({ reason: `Chromium compilation must produce exactly one ${plan.target} APK` })
+  const bytes = try files.readFile(apk)
+  if (bytes.length === 0) throw new ChromiumBuildFailed({ reason: "Chromium compilation produced an empty APK" })
+  const report: ChromiumBuildReport = {
+    schemaVersion: 1,
+    component,
+    target: plan.target,
+    gnArgsSha256: sha256Hex(gnArgs),
+    apk: { path: apk, bytes: bytes.length, sha256: sha256Hex(bytes) },
+    browserBuilt: true,
+    releaseQualified: false,
+    installedNativeMessagingVerified: false,
+  }
+  try files.writeFileString(path.join(out, "chromium-build.json"), `${JSON.stringify(report, null, 2)}\n`, { flag: "wx" })
+  return report
+}
+
+export effect function prepareAndroidConsumerInputs(options: AndroidConsumerInputs) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  for (const value of [options.source, options.apk, options.output]) {
+    if (!path.isAbsolute(value)) throw new ChromiumInputInvalid({ reason: "Source, APK and output require absolute paths" })
+  }
+  if (!COMMIT.test(options.expectedCommit)) throw new ChromiumInputInvalid({ reason: "A reviewed source commit is required" })
+  if (!APPLICATION_ID.test(options.application)) throw new ChromiumInputInvalid({ reason: "An Android application ID is required" })
+  try absent(options.output, "Output directory must be new")
+  const source = options.source
+  const top = try succeed("git", ["-C", source, "rev-parse", "--show-toplevel"], source)
+  if ((try files.realPath(top)) !== (try files.realPath(source))) throw new ChromiumInputInvalid({ reason: "Source must be the checkout root" })
+  const checkSource = effect () => {
+    if ((try succeed("git", ["-C", source, "rev-parse", "HEAD"], source)) !== options.expectedCommit) throw new ChromiumInputInvalid({ reason: "Source differs from the reviewed commit" })
+    if ((try succeed("git", ["-C", source, "status", "--porcelain", "--untracked-files=normal", "--", ...BROWSER_INPUTS], source)) !== "")
+      throw new ChromiumInputInvalid({ reason: "Browser build inputs must be clean" })
+  }
+  try checkSource()
+  const apkSha256 = sha256Hex(try files.readFile(options.apk))
+  const certificateSha256 = try readApkSignerDigest(options.apk, { apksigner: options.apksigner, ...(options.environment === undefined ? {} : { env: options.environment }) })
+  const built = try scoped(effect {
+    const work = try files.makeTempDirectoryScoped({ prefix: "eliza-extension-" })
+    return try buildBrowserExtension({ browser: path.join(source, "packages/os/browser"), out: path.join(work, "extension"), certificate: certificateSha256, application: options.application })
+  })
+  try mapError(files.makeDirectory(options.output), () => new ChromiumInputInvalid({ reason: "Output directory must be new" }))
+  const compose = options.composeAssets
+  const composed: ComposedAssets = compose === undefined ? { assets: built } : try tryPromise({
+    try: () => compose({ assets: buffers(built), output: options.output }),
+    catch: (cause) => new BrowserExtensionInvalid({ reason: `Asset composition failed: ${cause instanceof Error ? cause.message : String(cause)}` }),
+  })
+  try requireValidAssets(composed.assets, certificateSha256, options.application)
+  try checkSource()
+  if (sha256Hex(try files.readFile(options.apk)) !== apkSha256) throw new ChromiumInputInvalid({ reason: "APK changed while preparing browser inputs" })
+  const extension = path.join(options.output, "extension")
+  try files.makeDirectory(extension)
+  for (const [name, bytes] of Object.entries(composed.assets)) {
+    if (name === "" || path.basename(name) !== name || name.includes("\\") || name === "." || name === "..") throw new BrowserExtensionInvalid({ reason: "Invalid component asset name" })
+    try files.writeFile(path.join(extension, name), bytes, { flag: "wx" })
+  }
+  const prepared: PreparedConsumerInputs = {
+    sourceCommit: options.expectedCommit,
+    certificateSha256,
+    apkSha256,
+    chromiumRevision: pin.revision,
+    resources: Object.fromEntries(Object.entries(composed.assets).map(([name, bytes]) => [name, sha256Hex(bytes)])),
+    composition: composed.provenance,
+  }
+  return prepared
+}

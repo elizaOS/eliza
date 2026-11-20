@@ -1,0 +1,113 @@
+// spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "Only a reversible local operation bound to the owner's current message may run without a review"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "Only an applied receipt settles applied, and only a trusted refusal settles that nothing ran"
+import {
+  mayRunDirectly as runsDirectly, operationNeed, receiptOutcome as admission, validate as admitted,
+  type DeviceReceipt as ReceiptFacts, type FailureCode, type OperationType, type ReadBinding, type ReportedOutcome, type ResultEvidence, type Settlement,
+} from "../../gen/agent__deviceActions__operations.effect.vibe"
+import type { Need, Negotiation } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
+import type { ReceiptOutcome } from "../../gen/agent__deviceActions.effect.vibe"
+import type { FamilySchemas, OperationOf, OperationSchema } from "./operation-schemas/family.vibe"
+import { personalOperations } from "./operation-schemas/personal.schema.vibe"
+import { deviceOperations } from "./operation-schemas/device.schema.vibe"
+
+export type { Classification, Evidence, FamilySchemas, OperationSchema } from "./operation-schemas/family.vibe"
+
+const families = { ...personalOperations, ...deviceOperations } satisfies FamilySchemas
+
+export type DeviceOperation = OperationOf<typeof families>
+export type DeviceOperationType = DeviceOperation["type"]
+
+const strict = { onExcessProperty: "error" } as const
+
+interface Reader {
+  readonly schema: OperationSchema
+  readonly operation: (input: unknown) => Option.Option<DeviceOperation>
+  readonly result: ((input: unknown) => Option.Option<unknown>) | undefined
+}
+
+const readers: ReadonlyMap<string, Reader> = new Map(Object.entries(families).map(([type, schema]: [string, OperationSchema]) => [type, {
+  schema,
+  operation: Schema.decodeUnknownOption(schema.operation as Schema.Decoder<DeviceOperation>, strict),
+  result: schema.result === undefined ? undefined : Schema.decodeUnknownOption(schema.result, strict),
+}]))
+
+export const deviceOperationTypes: readonly DeviceOperationType[] = [...readers.keys()] as DeviceOperationType[]
+
+export interface CheckedOperation {
+  readonly operation: DeviceOperation
+  readonly opType: OperationType
+  readonly versionTwo: boolean
+  readonly need: Need
+}
+
+export function readOperation(input: unknown): CheckedOperation | undefined {
+  const type = typeof input === "object" && input !== null && "type" in input ? input.type : undefined
+  const reader = typeof type === "string" ? readers.get(type) : undefined
+  const operation = reader === undefined ? Option.none() : reader.operation(input)
+  if (reader === undefined || Option.isNone(operation)) return undefined
+  const { opType, versionTwo } = reader.schema.classify(operation.value)
+  return { operation: operation.value, opType, versionTwo, need: operationNeed(opType, versionTwo) }
+}
+
+export function validate(input: unknown, negotiation: Negotiation, binding: ReadBinding): CheckedOperation | undefined {
+  const checked = readOperation(input)
+  return checked !== undefined && admitted({ opType: checked.opType, versionTwo: checked.versionTwo, binding, shapeValid: true }, negotiation)
+    ? checked
+    : undefined
+}
+
+export function mayRunDirectly(checked: CheckedOperation, binding: ReadBinding, boundToCurrentMessage: boolean): boolean {
+  return runsDirectly({ opType: checked.opType, versionTwo: checked.versionTwo, binding, shapeValid: true }, boundToCurrentMessage)
+}
+
+const Identifier = Schema.String.check(Schema.isMaxLength(128), Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]*$/))
+
+export const DeviceReceipt = Schema.Struct({
+  outcome: Schema.Literals(["applied", "failed", "unknown"]),
+  operationId: Schema.optionalKey(Identifier),
+  code: Schema.optionalKey(Identifier),
+  result: Schema.optionalKey(Schema.Unknown),
+})
+export type DeviceReceipt = typeof DeviceReceipt.Type
+
+const decodeReceipt = Schema.decodeUnknownOption(DeviceReceipt, strict)
+
+export const notDispatchedCode = "DEVICE_NOT_DISPATCHED"
+
+const reportedOf = { applied: "ReportsApplied", failed: "ReportsFailed", unknown: "ReportsUnknown" } as const satisfies Record<DeviceReceipt["outcome"], ReportedOutcome>
+
+const receiptOutcomeOf = {
+  SettlesApplied: "ReportedApplied", SettlesNothingRan: "ReportedNothingRan", StaysUncertain: "ReportedUnknown",
+} as const satisfies Record<Settlement, ReceiptOutcome>
+
+export type ReceiptVerdict =
+  | { readonly kind: "refused" }
+  | { readonly kind: "admitted"; readonly reported: ReceiptOutcome; readonly receipt: DeviceReceipt; readonly result: unknown }
+
+function codeOf(code: string | undefined): FailureCode {
+  return code === undefined ? "NoCode" : code === notDispatchedCode ? "NotDispatched" : "OtherCode"
+}
+
+function evidenceOf(checked: CheckedOperation, receipt: DeviceReceipt): { readonly evidence: ResultEvidence; readonly result: unknown } {
+  if (!("result" in receipt)) return { evidence: { tag: "NoResult" }, result: undefined }
+  const reader = readers.get(checked.operation.type)
+  const decoded = reader?.result === undefined ? Option.none() : reader.result(receipt.result)
+  const shown = reader === undefined || reader.schema.result === undefined || Option.isNone(decoded)
+    ? undefined
+    : reader.schema.evidence(decoded.value, checked.operation)
+  return shown === undefined
+    ? { evidence: { tag: "InvalidResult" }, result: undefined }
+    : { evidence: { tag: "ValidResult", shows: shown.shows, nothingSubmitted: shown.nothingSubmitted }, result: Option.getOrUndefined(decoded) }
+}
+
+export function receiptOutcome(checked: CheckedOperation, input: unknown, claimKey: string): ReceiptVerdict {
+  const decoded = decodeReceipt(input)
+  if (Option.isNone(decoded)) return { kind: "refused" }
+  const receipt = decoded.value
+  const { evidence, result } = evidenceOf(checked, receipt)
+  const facts: ReceiptFacts = { reported: reportedOf[receipt.outcome], operationId: receipt.operationId ?? "", code: codeOf(receipt.code), result: evidence }
+  const verdict = admission(checked.opType, facts, claimKey)
+  switch (verdict.tag) {
+    case "ReceiptRefused": return { kind: "refused" }
+    case "ReceiptAdmitted": return { kind: "admitted", reported: receiptOutcomeOf[verdict.settles], receipt, result }
+  }
+}

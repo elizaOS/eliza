@@ -1,20 +1,15 @@
 # Subscriptions
 
 The organization's subscription as the payment provider holds it, and the one
-billing command that may run for the organization at a time; one row per
-organization. Checkout (`spec/cloud/billing/checkout.md`), the commands
+billing command that may run for it at a time; one row per organization.
+Checkout (`spec/cloud/billing/checkout.md`), the commands
 (`spec/cloud/billing/subscriptionCommands.md`) and the event drain
 (`spec/cloud/billing/providerEvents.md`) all end in `reconcile`, which applies
 the provider's live subscription and latest invoice in one transaction.
-Sources are develop `packages/cloud/shared/src/lib/services/`
-`subscription-reconciliation.ts`, `subscription-payment-grace.ts`,
+Sources are develop `packages/cloud/shared/src/lib/services/subscription-*.ts`,
 `stripe-paid-renewal.ts`, `stripe-customer-authority.ts` and the Quint model
-`SubscriptionTerminalReceipt`. Downstream readers show the status, period
-end, cancel control and pending plan, list invoices and open the portal.
-
-Provider calls, identity checks against the provider (customer, price,
-environment) and answer shapes stay in the shell. Develop's upgrade, schedule
-and evidence recovery files are not ported: a lost reply is recovered by
+`SubscriptionTerminalReceipt`. Provider calls, identity checks against the
+provider and answer shapes stay in the shell; a lost reply is recovered by
 reading the live subscription again. Wire statuses are `pending`,
 `incomplete`, `active`, `dunning`, `past_due`, `unpaid`, `canceled` and
 `incomplete_expired`; no subscription is `null`.
@@ -218,7 +213,9 @@ Commands confirm against the revision. `PolicyChanged` advances the
 organization's policy generation in the same transaction.
 
 ```quint
-pure def viewOf(s: Subscription): Subscription = { ...s, customer: NoCustomer, liveCommand: NoLiveCommand, revision: 0 }
+type ProviderView = { status: SubscriptionStatus, subscriptionId: str, planKey: PlanKey, periodStart: Millis, periodEnd: Millis, cancelAtPeriodEnd: bool, planned: PlannedChange, dunning: DunningWindow, lastRenewalInvoice: str }
+pure def viewOf(s: Subscription): ProviderView = { status: s.status, subscriptionId: s.subscriptionId, planKey: s.planKey, periodStart: s.periodStart, periodEnd: s.periodEnd,
+  cancelAtPeriodEnd: s.cancelAtPeriodEnd, planned: s.planned, dunning: s.dunning, lastRenewalInvoice: s.lastRenewalInvoice }
 pure def stepRevisionCountsChanges(before: Subscription, after: Subscription): bool =
   after.revision == (if (viewOf(after) != viewOf(before)) before.revision + 1 else before.revision)
 pure def stepPolicyFollowsTheSubscription(before: Subscription, after: Subscription, out: List[SubscriptionEffect]): bool =

@@ -1,0 +1,522 @@
+// spec/agent/voice/clientAudio.md, "A segment is played only once its input has ended and its audio has played"; spec/agent/voice/clientAudio.md, "Segments play in order once each, and Stop silences the reply at once"; spec/agent/voice/clientAudio.md, "The progressive attachment is ready at its first appended frame, or at the end without streaming"
+import {
+  attachmentReady, cancelsUpstream, mediaWaitMs, replyAfter, replyIdle, segmentAfter, segmentStart,
+  type ReplyRun, type SegmentSignal,
+} from "../../gen/agent__voice__clientAudio.effect.vibe"
+import type { SpeakerPort } from "./ports.vibe"
+
+export interface MediaEvents<Name extends string> {
+  addEventListener(type: Name, listener: () => void): void
+  removeEventListener(type: Name, listener: () => void): void
+}
+
+export type PlayerEvent = "ended" | "error" | "playing" | "waiting" | "pause"
+
+export interface SpeechPlayer extends MediaEvents<PlayerEvent> {
+  src: string
+  playbackRate: number
+  defaultPlaybackRate: number
+  preservesPitch: boolean
+  play(): Promise<void>
+  pause(): void
+  load(): void
+  removeAttribute(name: "src"): void
+}
+
+export interface SpeechSourceBuffer extends MediaEvents<"updateend" | "error"> {
+  appendBuffer(data: ArrayBuffer): void
+}
+
+export interface SpeechMediaSource extends MediaEvents<"sourceopen" | "error"> {
+  addSourceBuffer(type: "audio/mpeg"): SpeechSourceBuffer
+  endOfStream(): void
+}
+
+export interface SpeechMedia {
+  readonly stream: (() => { readonly source: SpeechMediaSource; readonly url: string }) | undefined
+  clipUrl(clip: Blob): string
+  revokeUrl(url: string): void
+}
+
+export interface SpeechAudioFrame {
+  readonly type: "audio"
+  readonly audio: Uint8Array
+}
+
+export interface SpeechEndFrame {
+  readonly type: "done"
+}
+
+export interface ProgressiveSpeechSource<Frame extends SpeechAudioFrame> {
+  open(): Promise<void>
+  pull(): Promise<Frame | SpeechEndFrame>
+  cancel(): Promise<void>
+  readonly renderedSpeed: number | null
+}
+
+export interface CompletedSpeechAudio<Frame extends SpeechAudioFrame = SpeechAudioFrame> {
+  readonly audio: Blob
+  readonly renderedSpeed: number | null
+  readonly frames: readonly Frame[]
+}
+
+export interface ProgressiveSpeechOptions<Frame extends SpeechAudioFrame> {
+  readonly onReady: (renderedSpeed: number | null) => void
+  readonly onFrame?: (frame: Frame) => void
+  readonly signal?: AbortSignal
+  readonly media?: SpeechMedia
+}
+
+export interface SpeechAttachment<Result> {
+  readonly loaded: Promise<Result>
+  dispose(): void
+}
+
+export interface ProgressiveSpeechAttachment<Frame extends SpeechAudioFrame> extends SpeechAttachment<CompletedSpeechAudio<Frame>> {
+  readonly progressive: boolean
+}
+
+export type SegmentAttach = (
+  player: SpeechPlayer,
+  text: string,
+  callbacks: { readonly onReady: (renderedSpeed: number | null) => void },
+) => SpeechAttachment<unknown>
+
+export interface SegmentedSpeechState {
+  readonly phase: "idle" | "preparing" | "playing" | "waiting"
+  readonly caption: string
+}
+
+export interface SegmentedSpeechOptions {
+  readonly attach: SegmentAttach
+  readonly player: () => SpeechPlayer
+  readonly changed: (state: SegmentedSpeechState) => void
+}
+
+export interface SpeakOptions {
+  readonly keepWhole?: boolean
+}
+
+export type SpeechPlaybackCode = "invalid-audio" | "playback"
+export error SpeechPlaybackError { code: SpeechPlaybackCode; cause: unknown }
+export error SpeechRateRefused { rate: number }
+export error SpeechStopped
+export error SpeechMediaFailed { reason: "timeout" | "error"; cause: unknown }
+export error SpeechSourceFailed { cause: unknown }
+
+export type ProgressiveSpeechFailure = SpeechStopped | SpeechMediaFailed | SpeechSourceFailed
+
+module browser {
+  import type { SpeechMedia } from "./playback.vibe"
+
+  /** @throws {never} */
+  export function audioClip(parts: Uint8Array<ArrayBuffer>[]): Blob {
+    return new Blob(parts, { type: "audio/mpeg" })
+  }
+
+  /** @throws {never} */
+  export function browserSpeechMedia(): SpeechMedia {
+    const streams = typeof MediaSource !== "undefined" && MediaSource.isTypeSupported("audio/mpeg")
+    return {
+      stream: streams
+        ? () => {
+          const source = new MediaSource()
+          return { source, url: URL.createObjectURL(source) }
+        }
+        : undefined,
+      clipUrl: (clip) => URL.createObjectURL(clip),
+      revokeUrl: (url) => URL.revokeObjectURL(url),
+    }
+  }
+}
+import { audioClip, browserSpeechMedia } from browser
+export { browserSpeechMedia }
+
+const abbreviation = /(?:Mr|Mrs|Ms|Dr|Jr|Sr|St|vs|etc|approx|Prof|Rev|Gen|Sgt|Lt|Col|Maj|Capt|Corp|Pvt|Ave|Blvd|dept|est|govt|assn)$/
+const boundary = /([.!?;:,]+(?:["')\]]+)?)(?:\s|$)/g
+const longSegmentUnits = 180
+const shortestCutUnits = 100
+
+function collapseWhitespace(text: string): string {
+  return text.replace(/\s+/g, " ").trim()
+}
+
+function sentenceEnd(text: string, at: number): boolean {
+  const before = text[at - 1]
+  const after = text[at + 1]
+  if (before !== undefined && /\d/.test(before) && (after === undefined || /\d/.test(after))) return false
+  return !abbreviation.test(text.slice(0, at))
+}
+
+function firstSegment(value: string): readonly [string, string] {
+  const urls: string[] = []
+  const sheltered = value.replace(/https?:\/\/\S+/g, (url) => `__URL${urls.push(url) - 1}__`)
+  const restore = (text: string) => text.replace(/__URL(\d+)__/g, (whole, index: string) => urls[Number(index)] ?? whole)
+  for (const match of sheltered.matchAll(boundary)) {
+    const punctuation = match[1] ?? ""
+    if (punctuation.startsWith(".") && (punctuation.length >= 3 || !sentenceEnd(sheltered, match.index))) continue
+    const end = match.index + match[0].length
+    const first = restore(sheltered.slice(0, end).trim())
+    if (first !== "") return [first, restore(sheltered.slice(end).trim())]
+  }
+  const cut = value.length >= longSegmentUnits ? value.slice(0, longSegmentUnits).lastIndexOf(" ") : -1
+  return cut > shortestCutUnits ? [value.slice(0, cut).trim(), value.slice(cut).trim()] : [value, ""]
+}
+
+export function splitSpeechSegments(text: string): string[] {
+  const segments: string[] = []
+  let rest = collapseWhitespace(text)
+  while (rest !== "") {
+    const [first, remainder] = firstSegment(rest)
+    segments.push(first)
+    rest = remainder
+  }
+  return segments
+}
+
+function safely(close: () => void): void {
+  try {
+    close()
+  } catch {
+    return
+  }
+}
+
+interface Attached<Frame extends SpeechAudioFrame> {
+  readonly player: SpeechPlayer
+  readonly source: ProgressiveSpeechSource<Frame>
+  readonly options: ProgressiveSpeechOptions<Frame>
+  readonly media: SpeechMedia
+  readonly halt: AbortController
+  readonly streaming: boolean
+  url: string | undefined
+  appended: boolean
+  ready: boolean
+  completed: boolean
+  disposed: boolean
+}
+
+function announce<Frame extends SpeechAudioFrame>(a: Attached<Frame>, reachedEnd: boolean): void {
+  if (a.ready || !attachmentReady(a.streaming, a.appended, reachedEnd, !a.disposed)) return
+  a.ready = true
+  a.options.onReady(a.source.renderedSpeed)
+}
+
+function disposeAttached<Frame extends SpeechAudioFrame>(a: Attached<Frame>): void {
+  const cancel = cancelsUpstream(a.disposed, a.completed)
+  a.disposed = true
+  a.halt.abort()
+  if (cancel) a.source.cancel().then(undefined, () => undefined)
+  const url = a.url
+  a.url = undefined
+  if (url === undefined) return
+  if (a.player.src === url) {
+    safely(() => a.player.pause())
+    safely(() => a.player.removeAttribute("src"))
+    safely(() => a.player.load())
+  }
+  safely(() => a.media.revokeUrl(url))
+}
+
+effect function sourceCall<A>(call: () => Promise<A>): A!SpeechSourceFailed {
+  return try tryPromise({ try: () => call(), catch: (cause) => new SpeechSourceFailed({ cause }) })
+}
+
+effect function mediaCall<A>(call: () => A): A!SpeechMediaFailed {
+  return try Effect.try({ try: call, catch: (cause) => new SpeechMediaFailed({ reason: "error", cause }) })
+}
+
+effect function mediaEvent<Name extends string>(target: MediaEvents<Name | "error">, success: Name, begin: () => void): void!SpeechMediaFailed {
+  const settled = callback<void, SpeechMediaFailed>((resume) => {
+    let done = false
+    const settle = (outcome: void!SpeechMediaFailed) => {
+      if (done) return
+      done = true
+      target.removeEventListener(success, succeeded)
+      target.removeEventListener("error", failed)
+      resume(outcome)
+    }
+    const succeeded = () => settle(Effect.void)
+    const failed = () => settle(fail(new SpeechMediaFailed({ reason: "error", cause: undefined })))
+    target.addEventListener(success, succeeded)
+    target.addEventListener("error", failed)
+    try {
+      begin()
+    } catch (cause) {
+      settle(fail(new SpeechMediaFailed({ reason: "error", cause })))
+    }
+    return sync(() => settle(Effect.void))
+  })
+  const late = effect {
+    try sleep(mediaWaitMs)
+    throw new SpeechMediaFailed({ reason: "timeout", cause: undefined })
+  }
+  try raceFirst(settled, late)
+}
+
+function haltedBy(signal: AbortSignal) {
+  return callback<never, SpeechStopped>((resume) => {
+    const stopped = () => resume(fail(new SpeechStopped()))
+    if (signal.aborted) return stopped()
+    signal.addEventListener("abort", stopped, { once: true })
+    return sync(() => signal.removeEventListener("abort", stopped))
+  })
+}
+
+effect function loadAttached<Frame extends SpeechAudioFrame>(a: Attached<Frame>): CompletedSpeechAudio<Frame>!(SpeechMediaFailed | SpeechSourceFailed) {
+  const stream = a.streaming && a.media.stream !== undefined ? try mediaCall(a.media.stream) : undefined
+  let buffer: SpeechSourceBuffer | undefined
+  if (stream !== undefined) {
+    a.url = stream.url
+    try mediaEvent(stream.source, "sourceopen", () => {
+      a.player.src = stream.url
+    })
+    buffer = try mediaCall(() => stream.source.addSourceBuffer("audio/mpeg"))
+  }
+  try sourceCall(() => a.source.open())
+  const frames: Frame[] = []
+  const parts: Uint8Array<ArrayBuffer>[] = []
+  while (true) {
+    const frame = try sourceCall(() => a.source.pull())
+    if (frame.type === "done") break
+    const bytes = new Uint8Array(frame.audio)
+    parts.push(bytes)
+    frames.push(frame)
+    const target = buffer
+    if (target !== undefined && bytes.byteLength > 0) {
+      try mediaEvent(target, "updateend", () => target.appendBuffer(bytes.buffer))
+      a.appended = true
+    }
+    a.options.onFrame?.(frame)
+    announce(a, false)
+  }
+  const audio = audioClip(parts)
+  if (stream !== undefined) try mediaCall(() => stream.source.endOfStream())
+  else {
+    const url = try mediaCall(() => a.media.clipUrl(audio))
+    a.url = url
+    a.player.src = url
+  }
+  a.completed = true
+  announce(a, true)
+  return { audio, renderedSpeed: a.source.renderedSpeed, frames }
+}
+
+export function attachProgressiveSpeech<Frame extends SpeechAudioFrame>(
+  player: SpeechPlayer,
+  source: ProgressiveSpeechSource<Frame>,
+  options: ProgressiveSpeechOptions<Frame>,
+): ProgressiveSpeechAttachment<Frame> {
+  const media = options.media ?? browserSpeechMedia()
+  const a: Attached<Frame> = {
+    player, source, options, media, halt: new AbortController(), streaming: media.stream !== undefined,
+    url: undefined, appended: false, ready: false, completed: false, disposed: false,
+  }
+  const dispose = () => {
+    options.signal?.removeEventListener("abort", dispose)
+    disposeAttached(a)
+  }
+  options.signal?.addEventListener("abort", dispose, { once: true })
+  if (options.signal?.aborted === true) dispose()
+  const program: CompletedSpeechAudio<Frame>!ProgressiveSpeechFailure =
+    onError(raceFirst(loadAttached(a), haltedBy(a.halt.signal)), () => sync(dispose))
+  return { loaded: runPromise(program), dispose, progressive: a.streaming }
+}
+
+interface Reply {
+  readonly segments: readonly string[]
+  readonly segmentPlayed: () => void
+  run: ReplyRun
+  player: SpeechPlayer | undefined
+  attachment: SpeechAttachment<unknown> | undefined
+  halt: (() => void) | undefined
+}
+
+interface Core {
+  readonly options: SegmentedSpeechOptions
+  current: Reply | undefined
+  rate: number
+  renderedSpeed: number
+}
+
+type SegmentEnd = "played" | "stopped"
+
+const idle: SegmentedSpeechState = { phase: "idle", caption: "" }
+
+function applyRate(core: Core, player: SpeechPlayer | undefined): void {
+  if (player === undefined) return
+  const rate = core.rate / core.renderedSpeed
+  player.defaultPlaybackRate = rate
+  player.playbackRate = rate
+}
+
+function release(core: Core, reply: Reply): void {
+  const { player, attachment } = reply
+  reply.player = undefined
+  reply.attachment = undefined
+  core.renderedSpeed = 1
+  if (player !== undefined) safely(() => player.pause())
+  if (attachment !== undefined) safely(() => attachment.dispose())
+}
+
+function readySignal(renderedSpeed: number | null): SegmentSignal {
+  return renderedSpeed === null || (Number.isFinite(renderedSpeed) && renderedSpeed > 0) ? "AudioReady" : "AudioReadyBadSpeed"
+}
+
+function playSegment(core: Core, reply: Reply, segment: string) {
+  return callback<SegmentEnd, SpeechPlaybackError>((resume) => {
+    const player = core.options.player()
+    reply.player = player
+    player.preservesPitch = true
+    applyRate(core, player)
+    let progress = segmentStart
+    let settled = false
+    const live = () => !settled && core.current === reply && reply.run.running
+    const shown = (state: SegmentedSpeechState) => {
+      if (live()) core.options.changed(state)
+    }
+    const listeners: Array<readonly [PlayerEvent, () => void]> = []
+    const settle = (end: SegmentEnd!SpeechPlaybackError) => {
+      if (settled) return
+      settled = true
+      reply.halt = undefined
+      for (const [type, listener] of listeners) player.removeEventListener(type, listener)
+      resume(end)
+    }
+    const start = (renderedSpeed: number | null) => {
+      core.renderedSpeed = renderedSpeed ?? 1
+      applyRate(core, player)
+      try {
+        player.play().then(
+          () => {
+            if (live()) shown({ phase: "playing", caption: segment })
+            else if (core.current !== reply || !reply.run.running) safely(() => player.pause())
+          },
+          (cause: unknown) => signal("AudioBroke", cause),
+        )
+      } catch (cause) {
+        signal("AudioBroke", cause)
+      }
+    }
+    const signal = (sig: SegmentSignal, cause?: unknown, renderedSpeed: number | null = null) => {
+      if (!live()) return
+      const before = progress
+      progress = segmentAfter(progress, sig)
+      switch (progress.outcome) {
+        case "SegmentPlayed":
+          return settle(succeed("played"))
+        case "SegmentInvalid":
+          return settle(fail(new SpeechPlaybackError({ code: "invalid-audio", cause })))
+        case "SegmentFailed":
+          return settle(fail(new SpeechPlaybackError({ code: "playback", cause })))
+        case "SegmentPending":
+          if (progress.ready && !before.ready) return start(renderedSpeed)
+          if (progress.ended && !before.ended) return shown({ phase: "waiting", caption: segment })
+      }
+    }
+    const waiting = () => shown({ phase: "waiting", caption: segment })
+    listeners.push(
+      ["ended", () => signal("AudioEnded")],
+      ["error", () => signal("AudioBroke")],
+      ["playing", () => shown({ phase: "playing", caption: segment })],
+      ["waiting", waiting],
+      ["pause", waiting],
+    )
+    for (const [type, listener] of listeners) player.addEventListener(type, listener)
+    reply.halt = () => settle(succeed("stopped"))
+    try {
+      const attachment = core.options.attach(player, segment, {
+        onReady: (renderedSpeed) => signal(readySignal(renderedSpeed), undefined, renderedSpeed),
+      })
+      attachment.loaded.then(() => signal("InputLoaded"), (cause: unknown) => signal("AudioBroke", cause))
+      if (live()) reply.attachment = attachment
+      else safely(() => attachment.dispose())
+    } catch (cause) {
+      signal("AudioBroke", cause)
+    }
+    return sync(() => settle(succeed("stopped")))
+  })
+}
+
+effect function playReply(core: Core, reply: Reply): void!SpeechPlaybackError {
+  while (core.current === reply && reply.run.running) {
+    core.options.changed({ phase: "preparing", caption: "" })
+    const segment = reply.segments[reply.run.played] ?? ""
+    const end = playSegment(core, reply, segment) catch effect (failure) => {
+      if (core.current === reply) {
+        reply.run = replyAfter(reply.run, reply.segments.length, "SegmentBroke")
+        release(core, reply)
+        core.options.changed(idle)
+      }
+      throw failure
+    }
+    if (end === "stopped" || core.current !== reply) return
+    release(core, reply)
+    reply.run = replyAfter(reply.run, reply.segments.length, "NextSegmentPlayed")
+    reply.segmentPlayed()
+  }
+  if (core.current === reply && !reply.run.stopped) core.options.changed(idle)
+}
+
+function startReply(core: Core, segments: readonly string[], segmentPlayed: () => void): Promise<void> {
+  const previous = core.current?.run ?? replyIdle
+  const run = replyAfter(previous, segments.length, "SpeakReply")
+  if (run === previous || !run.running) return Promise.resolve()
+  const reply: Reply = { segments, segmentPlayed, run, player: undefined, attachment: undefined, halt: undefined }
+  core.current = reply
+  return runPromise(playReply(core, reply))
+}
+
+effect function acceptRate(core: Core, rate: number): void!SpeechRateRefused {
+  if (!Number.isFinite(rate) || rate <= 0) throw new SpeechRateRefused({ rate })
+  core.rate = rate
+  applyRate(core, core.current?.player)
+}
+
+const nothing = () => undefined
+
+export class SegmentedSpeechPlayback {
+  #core: Core
+
+  constructor(options: SegmentedSpeechOptions) {
+    this.#core = { options: { ...options }, current: undefined, rate: 1, renderedSpeed: 1 }
+  }
+
+  get pending(): boolean {
+    return this.#core.current?.run.running ?? false
+  }
+
+  setRate(rate: number): void {
+    Effect.runSync(acceptRate(this.#core, rate))
+  }
+
+  speak(text: string, options: SpeakOptions = {}): Promise<void> {
+    const whole = collapseWhitespace(text)
+    return startReply(this.#core, options.keepWhole === true ? (whole === "" ? [] : [whole]) : splitSpeechSegments(text), nothing)
+  }
+
+  speakSegments(segments: readonly string[], segmentPlayed: () => void = nothing): Promise<void> {
+    return startReply(this.#core, segments, segmentPlayed)
+  }
+
+  stop(): void {
+    const core = this.#core
+    const reply = core.current
+    if (reply !== undefined) {
+      reply.run = replyAfter(reply.run, reply.segments.length, "StopReply")
+      const halt = reply.halt
+      release(core, reply)
+      halt?.()
+    }
+    core.options.changed(idle)
+  }
+}
+
+export function speakerPortOf(playback: SegmentedSpeechPlayback): SpeakerPort {
+  return {
+    speak: (segments, events) => {
+      playback.speakSegments(segments, () => events.segmentPlayed()).then(undefined, (cause: unknown) => events.broke(cause))
+    },
+    stop: () => playback.stop(),
+  }
+}

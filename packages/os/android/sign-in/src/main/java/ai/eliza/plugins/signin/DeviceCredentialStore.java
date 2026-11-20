@@ -88,10 +88,6 @@ public final class DeviceCredentialStore implements CredentialReader {
     }
   }
 
-  public static SignInCustody custody(android.content.Context context, SignInRegistration registration) {
-    return DeviceCustody.open(context, registration);
-  }
-
   public static String authorityDigest(String apiOrigin) {
     try {
       byte[] hash = MessageDigest.getInstance("SHA-256").digest(apiOrigin.getBytes(StandardCharsets.UTF_8));

@@ -1,0 +1,64 @@
+// spec/os/signIn/cloudRequests.md, "Story: Reach my account's cloud services without holding my key"
+import { execFileSync } from "node:child_process";
+import { describe, expect, it } from "vitest";
+import * as client from "../gen/cloud__client.ts";
+import * as spec from "../gen/os__signIn__cloudRequests.ts";
+import { compileAdapter } from "./drivers/jvm-adapter.ts";
+
+interface Case { readonly fn: string; readonly args: readonly unknown[]; readonly result: unknown }
+interface Origins { readonly fn: "originOf"; readonly accepted: Readonly<Record<string, boolean>> }
+
+const javaTool = (name: string) => process.env.JAVA_HOME ? `${process.env.JAVA_HOME}/bin/${name}` : name;
+
+function javaLines(): { readonly cases: Case[]; readonly origins: Origins } {
+  const main = "ai.eliza.plugins.signin.CloudRequestLawCheck";
+  const out = execFileSync(javaTool("java"), ["-cp", compileAdapter(main), main], { encoding: "utf8", maxBuffer: 1 << 29 });
+  const lines = out.split("\n").filter(Boolean).map((line) => JSON.parse(line) as Case | Origins);
+  const origins = lines.find((line): line is Origins => line.fn === "originOf");
+  if (origins === undefined) throw new Error("the law check printed no originOf line");
+  return { cases: lines.filter((line): line is Case => line.fn !== "originOf"), origins };
+}
+
+const functions = { ...client, ...spec } as unknown as Record<string, unknown>;
+
+function expected(c: Case): unknown {
+  const value = functions[c.fn];
+  return typeof value === "function" ? (value as (...args: readonly unknown[]) => unknown)(...c.args) : value;
+}
+
+describe("Reach my account's cloud services without holding my key", () => {
+  const { cases, origins } = javaLines();
+
+  it("admits, attaches, reports and hands off as the generated spec does over every value the spec names", () => {
+    const names = new Set(cases.map((c) => c.fn));
+    expect(cases.length).toBeGreaterThan(5000);
+    expect([...names].filter((name) => functions[name] === undefined)).toEqual([]);
+    const differing = cases.filter((c) => JSON.stringify(expected(c)) !== JSON.stringify(c.result));
+    expect(differing.slice(0, 5)).toEqual([]);
+    for (const law of [...names].filter((name) => name.startsWith("law"))) {
+      expect(cases.filter((c) => c.fn === law && c.result !== true)).toEqual([]);
+    }
+  });
+
+  it("refuses a table with a sign-in, streamed or unlisted route whole and admits only listed calls from the wire", () => {
+    const accepted = cases.filter((c) => c.fn === "cloudTableAccepted").map((c) => c.result);
+    expect(accepted.slice(-5)).toEqual([true, false, false, false, false]);
+    const sent = cases.filter((c) => c.fn === "planRequest" && (c.result as { tag: string }).tag === "Send");
+    expect(sent.length).toBeGreaterThan(0);
+    for (const c of sent) expect(c.args[4]).not.toContain("Authorization");
+  });
+
+  it("sends only to an https origin, or http on loopback, with no path, user, query or fragment", () => {
+    expect(origins.accepted).toEqual({
+      "https://api.cloud.test": true,
+      "https://api.cloud.test/": false,
+      "https://api.cloud.test/v1": false,
+      "http://127.0.0.1:8080": true,
+      "http://api.cloud.test": false,
+      "https://user@api.cloud.test": false,
+      "https://api.cloud.test?x=1": false,
+      "ftp://api.cloud.test": false,
+      "not a url": false,
+    });
+  });
+});

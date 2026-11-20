@@ -63,7 +63,7 @@ public final class ColdPasswordBackupInstrumentedTest {
       CloudPasswordBackup backup = new CloudPasswordBackup(account, CLIENT, "staging");
       assertTrue("The disposable authenticated Worker must be ready", backup.available());
       boolean save = "save".equals(phase);
-      var purpose = save ? CloudPasswordBackup.Purpose.SAVE : CloudPasswordBackup.Purpose.READ;
+      var purpose = save ? PasswordBackupApproval.Purpose.SAVE : PasswordBackupApproval.Purpose.READ;
       var approval = backup.exchange(browserReturn("approve", backup.begin(purpose)), purpose, () -> true);
       if (save) {
         assertFalse(approval.present());

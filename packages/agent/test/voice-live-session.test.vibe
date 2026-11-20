@@ -1,0 +1,187 @@
+// spec/agent/voice/session.md, "Barge-in is confirmed by an accepted transcript or a 700 ms hold"; spec/agent/voice/session.md, "A session owns one microphone capture and reopens it only after the turn"; spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"
+import { assert, it } from "@effect/vitest"
+import { createLiveVoiceSession, parseVoiceTranscriptEnvelope } from "../src/voice/live-session.vibe"
+import type { CaptureEvents, HeardBody, SpeakerEvents, VoiceTurn } from "../src/voice/ports.vibe"
+
+const sessionId = "live-session-1"
+const reply = "Your dentist appointment is at three this afternoon."
+
+interface Spoken {
+  readonly segments: readonly string[]
+  readonly events: SpeakerEvents
+}
+
+function harness() {
+  const timers: Array<{ at: number; run: () => void }> = []
+  const listeners = new Set<(envelope: unknown) => void>()
+  const captures: CaptureEvents[] = []
+  const sent: VoiceTurn[] = []
+  const aborted: string[] = []
+  const heard: HeardBody[] = []
+  const spoken: Spoken[] = []
+  const counts = { closes: 0, stops: 0 }
+  let now = 1000
+  const live = createLiveVoiceSession({
+    sessionId,
+    subscribe: (listener) => {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+    conversationId: "conversation-1",
+    capture: { open: (_request, events) => { captures.push(events) }, close: () => { counts.closes += 1 } },
+    endOfTurn: async () => "ScoredComplete",
+    turns: {
+      send: async (turn) => {
+        sent.push(turn)
+        return { messageId: `reply-${sent.length}`, text: reply }
+      },
+      abort: async (roomId) => { aborted.push(roomId) },
+    },
+    heard: async (_conversationId, messageId, body) => {
+      heard.push(body)
+      return { status: 200, body: { ok: true, messageId, changed: true } }
+    },
+    speaker: { speak: (segments, events) => { spoken.push({ segments, events }) }, stop: () => { counts.stops += 1 } },
+    clock: { now: () => now, after: (ms, run) => { timers.push({ at: now + ms, run }) } },
+    clientMessageId: () => `client-${sent.length + 1}`,
+  })
+  const settle = async () => {
+    for (let round = 0; round < 50; round += 1) await Promise.resolve()
+  }
+  const advance = async (ms: number) => {
+    const until = now + ms
+    for (;;) {
+      const due = timers.filter((timer) => timer.at <= until).sort((a, b) => a.at - b.at)[0]
+      if (due === undefined) break
+      timers.splice(timers.indexOf(due), 1)
+      now = due.at
+      due.run()
+      await settle()
+    }
+    now = until
+    await settle()
+  }
+  const emit = (payload: Record<string, unknown>) => {
+    const envelope = { type: "event", event: { type: "agent_event", stream: "voice-transcript", runId: "run-1", seq: 1,
+      payload: { type: "voice-transcript", sessionId, ...payload } } }
+    for (const listener of [...listeners]) listener(envelope)
+  }
+  const say = async (turnId: string, text: string) => {
+    emit({ turnId, phase: "speech-start" })
+    await advance(200)
+    emit({ turnId, phase: "partial", text, seq: 1 })
+    await advance(200)
+    emit({ turnId, phase: "speech-end" })
+    emit({ turnId, phase: "final", text })
+    await settle()
+  }
+  const open = async (echoCancelled: boolean) => {
+    live.start()
+    captures[0]?.opened({ echoCancelled })
+    await settle()
+  }
+  const replyPlaying = async (echoCancelled: boolean) => {
+    await open(echoCancelled)
+    await say("turn-1", "What is on my calendar today?")
+    await advance(300)
+  }
+  return { live, listeners, captures, sent, aborted, heard, spoken, counts, advance, emit, say, settle, open, replyPlaying }
+}
+
+it.effect("Barge-in is confirmed by an accepted transcript or a 700 ms hold: held speech cuts the playing reply and reserves its heard report", () => effect {
+  const h = harness()
+  try promise(() => h.replyPlaying(true))
+  const playing = { sent: h.sent.map((turn) => [turn.text, turn.channelType]), spoken: h.spoken.length, turn: h.live.state.turn, phase: h.live.phase }
+  h.emit({ turnId: "turn-2", phase: "speech-start" })
+  try promise(() => h.advance(300))
+  h.emit({ turnId: "turn-2", phase: "partial", text: "wait, make it", seq: 1 })
+  try promise(() => h.advance(300))
+  const candidate = { stops: h.counts.stops, turn: h.live.state.turn, phase: h.live.phase }
+  try promise(() => h.advance(100))
+  const cut = { stops: h.counts.stops, lastEnd: h.live.state.lastEnd, receipts: h.live.state.receipts.map((r) => [r.reply, r.nothingHeard]) }
+  h.emit({ turnId: "turn-2", phase: "speech-end" })
+  h.emit({ turnId: "turn-2", phase: "final", text: "Wait, make it tomorrow instead." })
+  try promise(() => h.advance(300))
+  try Effect.try(() => {
+    assert.deepStrictEqual(playing, { sent: [["What is on my calendar today?", "VOICE_DM"]], spoken: 1, turn: "Playing", phase: "PhaseSpeaking" })
+    assert.deepStrictEqual(candidate, { stops: 0, turn: "Playing", phase: "PhaseSpeaking" })
+    assert.deepStrictEqual(cut, { stops: 1, lastEnd: "ReplyCut", receipts: [[1, true]] })
+    assert.deepStrictEqual(h.sent.map((turn) => turn.text), ["What is on my calendar today?", "Wait, make it tomorrow instead."])
+    assert.strictEqual(h.captures.length, 1)
+    assert.strictEqual(h.counts.closes, 0)
+  })
+})
+
+it.effect("Filler, sound annotations and the assistant's own echo are never a turn: an echo transcript in the tail is dropped", () => effect {
+  const h = harness()
+  try promise(() => h.replyPlaying(false))
+  const playback = h.spoken[0]
+  for (const _segment of playback?.segments ?? []) playback?.events.segmentPlayed()
+  try promise(() => h.settle())
+  const played = { lastEnd: h.live.state.lastEnd, turn: h.live.state.turn }
+  try promise(() => h.advance(400))
+  try promise(() => h.say("turn-2", "dentist appointment is at three this afternoon"))
+  try promise(() => h.advance(1300))
+  try Effect.try(() => {
+    assert.deepStrictEqual(played, { lastEnd: "ReplyPlayed", turn: "NoTurn" })
+    assert.strictEqual(h.sent.length, 1)
+    assert.deepStrictEqual([h.live.state.utterance, h.live.state.hasText, h.live.phase], ["NoUtterance", false, "PhaseListening"])
+  })
+})
+
+it.effect("Barge-in is confirmed by an accepted transcript or a 700 ms hold: a sound annotation still arriving as partials cuts nothing", () => effect {
+  const h = harness()
+  try promise(() => h.replyPlaying(true))
+  h.emit({ turnId: "turn-2", phase: "speech-start" })
+  try promise(() => h.advance(200))
+  h.emit({ turnId: "turn-2", phase: "partial", text: "*dramatic", seq: 1 })
+  try promise(() => h.advance(600))
+  h.emit({ turnId: "turn-2", phase: "partial", text: "*dramatic mus", seq: 2 })
+  try promise(() => h.advance(400))
+  const held = { stops: h.counts.stops, turn: h.live.state.turn, phase: h.live.phase }
+  h.emit({ turnId: "turn-2", phase: "speech-end" })
+  h.emit({ turnId: "turn-2", phase: "final", text: "*dramatic music*" })
+  try promise(() => h.advance(1300))
+  try Effect.try(() => {
+    assert.deepStrictEqual(held, { stops: 0, turn: "Playing", phase: "PhaseSpeaking" })
+    assert.deepStrictEqual([h.counts.stops, h.live.state.turn, h.live.state.bargeIn, h.live.state.receipts.length], [0, "Playing", false, 0])
+    assert.strictEqual(h.sent.length, 1)
+  })
+})
+
+it.effect("A session owns one microphone capture and reopens it only after the turn: malformed envelopes are refused and Stop ends the feed", () => effect {
+  const h = harness()
+  try promise(() => h.open(true))
+  const before = h.live.state
+  const frame = (payload: unknown, stream = "voice-transcript") => ({ type: "event", event: { type: "agent_event", stream, payload } })
+  const valid = { type: "voice-transcript", sessionId, turnId: "turn-1", phase: "speech-start" }
+  const junk: unknown[] = [
+    null, "speech-start", { type: "agent_event", stream: "voice-transcript", payload: valid },
+    frame(valid, "conversation"), frame({ ...valid, sessionId: "another-session" }), frame({ ...valid, turnId: "" }),
+    frame({ ...valid, turnId: "t".repeat(129) }), frame({ ...valid, phase: "partial", text: "hello", seq: 0 }),
+    frame({ ...valid, phase: "partial", text: "hello", seq: 1.5 }), frame({ ...valid, phase: "final" }),
+    frame({ ...valid, phase: "final", text: "x".repeat(16001) }), frame({ ...valid, phase: "thinking" }), frame({ ...valid, type: "voice" }),
+  ]
+  for (const envelope of junk) for (const listener of [...h.listeners]) listener(envelope)
+  try promise(() => h.settle())
+  const after = h.live.state
+  const parsed = [
+    parseVoiceTranscriptEnvelope(frame({ ...valid, phase: "final", text: "  call Sam  " }), sessionId),
+    parseVoiceTranscriptEnvelope(frame({ ...valid, phase: "partial", text: "call", seq: 2 }), sessionId),
+    parseVoiceTranscriptEnvelope(frame({ ...valid, phase: "error" }), sessionId),
+    ...junk.map((envelope) => parseVoiceTranscriptEnvelope(envelope, sessionId)),
+  ]
+  h.live.stop()
+  try promise(() => h.settle())
+  h.emit({ turnId: "turn-9", phase: "speech-start" })
+  try Effect.try(() => {
+    assert.deepStrictEqual(after, before)
+    assert.deepStrictEqual(parsed, [
+      { kind: "final", turnId: "turn-1", text: "call Sam" },
+      { kind: "partial", turnId: "turn-1", text: "call", seq: 2 },
+      { kind: "failed", turnId: "turn-1" },
+      ...junk.map(() => undefined),
+    ])
+    assert.deepStrictEqual([h.listeners.size, h.live.state.running, h.counts.closes, h.live.phase], [0, false, 1, "PhaseIdle"])
+  })
+})

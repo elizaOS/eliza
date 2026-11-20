@@ -83,7 +83,7 @@ export async function startFakeServer(): Promise<FakeServer> {
     socket.once("close", () => upgraded.delete(socket));
     const path = new URL(request.url ?? "/", "http://fake.invalid").pathname;
     const found = upgrades.find(({ prefix }) => path.startsWith(prefix));
-    if (found === undefined) socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n");
+    if (found === undefined) socket.end("HTTP/1.1 404 Not Found\r\ncontent-length: 9\r\n\r\nnot found");
     else found.handler(request, socket, head);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

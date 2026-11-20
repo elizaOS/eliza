@@ -288,6 +288,7 @@ function readCount(b: number[], start: number): ReadValue {
 
 function readWord(b: number[], start: number, word: number[]): boolean {
   //@ requires 0 <= start && start <= b.length
+  //@ ensures \result ==> start + word.length <= b.length
   if (start + word.length > b.length) return false
   return sameBytes(b.slice(start, start + word.length), word)
 }
@@ -496,6 +497,8 @@ function errorCodeOfWire(v: JsonValue): number {
 }
 
 function readStt(f: JsonField[]): RelayWire {
+  //@ ensures \result.kind === "Stt" || \result.kind === "RelayRefused"
+  //@ ensures \result.kind === "Stt" ==> utf16Units(\result.transcript) <= maxTranscriptChars
   const event = fieldOf(f, "event")
   if (f.length !== 2 || event.kind !== "JsonObject") return { kind: "RelayRefused" }
   const kind = sttKindOf(fieldOf(event.fields, "type"))
@@ -507,6 +510,7 @@ function readStt(f: JsonField[]): RelayWire {
 }
 
 function readFailure(f: JsonField[]): RelayWire {
+  //@ ensures \result.kind === "Failed" || \result.kind === "RelayRefused"
   const code = errorCodeOfWire(fieldOf(f, "code"))
   const reason = fieldOf(f, "reason")
   if (code < 0 || !onlyKeys(f, ["t", "code", "reason"])) return { kind: "RelayRefused" }

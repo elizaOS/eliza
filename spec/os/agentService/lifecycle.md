@@ -1,24 +1,16 @@
 # Agent service lifecycle
 
-The Android foreground service that runs the one agent Node child on the
-device. Each start is a launch with a new epoch: the service checks the
-payload, reaps a child an earlier launch left behind, runs the consumer's
-launch hook, spawns the agent with the launch frame of
-`spec/agent/host/launch.md` (the per-launch root token, the epoch, the
-device key and the account's task key), and serves once the agent answers
-ready for that epoch. It restarts a crashed or unhealthy agent within the
-budget of [health](./health.md), follows the device key of
-[credential](../signIn/credential.md), keeps the records of a failed store
-until the owner archives them, and holds the agent for an app update. The
-agent's state directory is chosen per account (for example
-`filesDir/agent/<account digest>`). Process spawning, the socket, the
-journal of the child's pid and epoch, the notification and the files stay
-in the Java shell, which reports what it saw as events; the shell reports
-only exits and answers of the child of the current launch. Sources: the
-pinned embedded lifecycle model `EmbeddedAgentLifecycle.qnt`, develop's
-`ElizaAgentWatchdogPolicy.java`, `RuntimeUpdatePause.java` and
-`IpcStartupRecovery.java`, and an embedding app's `reviewRecovery` and
-`archiveRecovery`.
+The Android foreground service that runs the one agent Node child. Each
+start is a launch with a new epoch: the service checks the payload, reaps a
+child an earlier launch left behind, runs the consumer's launch hook,
+spawns the agent with the launch frame of `spec/agent/host/launch.md`, and
+serves once the agent answers ready for that epoch. It restarts a crashed or
+unhealthy agent within the budget of [health](./health.md), follows the
+device key of [credential](../signIn/credential.md), keeps a failed store's
+records until the owner moves them aside, and holds the agent for an app
+update. Spawning, the socket, the pid and epoch journal, the notification
+and the files stay in the Java shell, which reports only what the child of
+the current launch did.
 
 ## Story: Start the agent after checking its payload
 
@@ -28,9 +20,9 @@ pinned embedded lifecycle model `EmbeddedAgentLifecycle.qnt`, develop's
 
 ### A start begins a new launch only from Stopped or Failed, and a start asked during a stop runs after the exit
 
-No start is taken while an update holds the agent. A launch begins with
-the check (`BeginCheck`), which the shell runs after the delay it names; an
-explicit start renews the restart budget.
+No start is taken while an update holds the agent. The shell runs the
+check (`BeginCheck`) after the delay it names; an explicit start (also on
+boot or package replacement) renews the restart budget.
 
 ```quint
 import health as H from "./health"
@@ -74,15 +66,14 @@ pure def sometimesRunning(s: AgentService): bool = s.phase == Running
 
 ### A child is spawned only after the stale child is reaped, a key is held and every check passed
 
-The check first kills a child that an earlier launch journaled and left
-behind. A check refuses with the cause it found and spawns nothing: the
-payload does not match its inventory (`Payload`), the consumer's launch
-hook refused or the configuration is invalid (`Config`), the state
-directory cannot be prepared (`Storage`), no key is held (`Credential`),
-or anything the shell cannot classify (`Runtime`). The launch hook runs
-once per launch and returns only non-secret variables. A spawn that fails
-is `Failed(Agent)`. The spawned child gets the held key, and its state
-directory is the key's account's.
+A child an earlier launch journaled is killed before any spawn. A check
+refuses with the cause it found and spawns nothing: payload digests differ
+from the inventory (`Payload`), the launch hook (run once per launch,
+returning only non-secret variables) or the configuration refused
+(`Config`), the state directory cannot be prepared (`Storage`), no key is
+held (`Credential`), anything else (`Runtime`). A failed spawn is
+`Failed(Agent)`. The child gets the held key and the state directory of the
+key's account (for example `filesDir/agent/<account digest>`).
 
 ```quint
 pure def childOwned(c: Child): bool = match c { | Owned(_) => true | _ => false }
@@ -99,7 +90,7 @@ pure def spawn(s: AgentService, ok: bool): AgentService =
   if (ok) { ...s, phase: Starting({ step: Spawned }), child: Owned({ ownedEpoch: s.epoch }), delivered: keyVersion(s.key), launched: keyAccount(s.key) }
   else enter(Failed({ cause: Agent }), s)
 pure def childOfThisLaunch(s: AgentService): bool = { val c = s.child
-  match c { | Owned(o) => o.ownedEpoch == s.epoch | Stale(x) => x.staleEpoch >= 1 and x.staleEpoch <= s.epoch | NoChild => true } }
+  match c { | Owned(o) => o.ownedEpoch == s.epoch and s.epoch >= 1 | Stale(x) => x.staleEpoch >= 1 and x.staleEpoch <= s.epoch | NoChild => true } }
 pure def alwaysChildOnlyWhileLaunched(s: AgentService): bool =
   (childOwned(s.child) iff childPhase(s.phase)) and childOfThisLaunch(s) and s.epoch >= 0 and s.readyEpoch >= 0 and s.readyEpoch <= s.epoch
 pure def sometimesPayloadRefused(s: AgentService): bool = s.phase == Failed({ cause: Payload })
@@ -108,12 +99,10 @@ pure def sometimesStaleChildLeft(s: AgentService): bool = s.phase == Starting({ 
 
 ### The agent runs only once it answers ready for this launch, and a launch that never does fails as Agent
 
-Readiness is `H::classify` of the agent's health answer for this epoch: a
-ready answer of an older launch does not count. The readiness wait ends
-after 60 s: the shell kills the child, which stays journaled until the
-next check reaps it. An exit before readiness is `Config` or `Storage`
-when the agent's exit code says so (`L::exitClass`) and `Agent`
-otherwise, and is never retried.
+Readiness is `H::classify` of the health answer for this epoch. After
+60 s the shell kills the child, which stays journaled until it is reaped.
+An exit before readiness is `Config` or `Storage` when `L::exitClass` says
+so and `Agent` otherwise, and is never retried.
 
 ```quint
 pure val readinessTimeoutMs = 60000
@@ -130,6 +119,7 @@ pure def readinessTimedOut(s: AgentService): ServiceStep = {
   val failed = enter(Failed({ cause: Agent }), s)
   emit(List(KillChild), { ...failed, child: Stale({ staleEpoch: s.epoch }) })
 }
+pure val codeValues = Set(0, 1, 70, 74, 77, 78, 137)
 pure def startupCause(code: int): FailureCause =
   if (L::exitClass(code) == L::BootFailed({ cause: L::Config })) Config
   else if (L::exitClass(code) == L::BootFailed({ cause: L::Storage })) Storage else Agent
@@ -148,10 +138,8 @@ pure def leadsToReadinessWaitSettles(s: AgentService, later: AgentService): bool
 
 ### A stop before the spawn spawns nothing, and a stop of a live child waits for its exit
 
-A stop in the check ends the launch at once. A stop with a child asks the
-shell to kill it and stays `Stopping` until the exit is seen; a later start
-or stop only changes what follows the exit. A stop of a failed service
-clears the failure.
+A later start or stop only changes what follows the exit. A stop of a
+failed service clears the failure.
 
 ```quint
 pure def canStop(s: AgentService): bool = s.phase != Stopped
@@ -182,10 +170,9 @@ pure val weight_observeExit = 10
 
 ### The service restarted by Android keeps the epoch, the key and the hold, and leaves its old child to be reaped
 
-When Android kills and restarts the service process, the journal keeps the
-epoch and the child's pid, the hold is durable, and the key is read back
-from the credential. The service comes back `Stopped`; the old child is
-stale until the next check reaps it.
+The journal keeps the epoch and the child's pid, the hold is durable and
+the key is read back from the credential; the service comes back
+`Stopped` and the old child is stale until reaped.
 
 ```quint
 pure def processRestarted(s: AgentService): AgentService = {
@@ -200,13 +187,11 @@ pure val weight_processRestarted = 1
 
 ### The status names a failure exactly when the service failed, and the notification is up in every state but Stopped
 
-The bridge (`ElizaAgent.getStatus`, `AgentService.status`) reports
-`{available, state, failure, error, epoch, requestBodyLimit}`; a starting
-launch is `starting` and a stopping one `stopped`, `available` is false
-and `state` is `unavailable` when the app has no agent service, and
-`requestBodyLimit` comes from the agent's status. The notification uses
-the consumer's channel and words, with a stop action when the consumer
-asks for one.
+The bridge reports `{available, state, failure, error, epoch,
+requestBodyLimit}`: `Starting` is `starting`, `Stopping` is `stopped`, an
+app with no agent service is `unavailable`, and `requestBodyLimit` comes
+from the agent's status. The notification uses the consumer's channel and
+words, with a stop action when the consumer asks for one.
 
 ```quint
 type AgentStatus = { bridgeState: str, failure: str, epoch: int, notice: bool }
@@ -235,8 +220,7 @@ pure def alwaysStatusTellsTheTruth(s: AgentService): bool = ((statusOf(s).failur
 ### Any exit after readiness is a crash, restarted after the health delay while fewer than five restarts were made
 
 The agent never exits on its own once ready, so any code is a crash. The
-restart is a new launch that waits `H::restartDelay(attempt)`; the sixth
-crash in a row is `Failed(Crashed)`, which an explicit start clears.
+sixth crash in a row is `Failed(Crashed)`, which an explicit start clears.
 
 ```quint
 pure def restartOrFail(attempt: int, s: AgentService): ServiceStep =
@@ -250,9 +234,9 @@ pure def sometimesCrashed(s: AgentService): bool = s.phase == Failed({ cause: Cr
 
 ### An unhealthy verdict kills the child and counts as a crash
 
-The service folds each health observation of the running launch into its
-watch; a `Restart` verdict kills the child, and its exit is handled as a
-crash under the same budget.
+Each health observation of the running launch is folded into the watch;
+after a `Restart` verdict the child's exit is a crash under the same
+budget.
 
 ```quint
 pure def canObserveHealth(s: AgentService, observed: H::Observation): bool = s.phase == Running and H::verdict(s.watch, observed, s.epoch) == H::KeepRunning
@@ -290,11 +274,10 @@ pure def stepBudgetRenewedOnlyByStartOrStableRun(before: AgentService, via: str,
 
 ### Sign-out or an expired key fails the agent as Credential, and a key that arrives then starts it
 
-The credential's `SignedOutNotice` and `ExpiredNotice` withdraw the key: a
-live child is killed first, then the service is `Failed(Credential)`. A
-stopped service stays stopped. The first key after that (`Announce` with
-no key held) starts the agent with no use of the budget, unless an update
-holds it.
+The credential's `SignedOutNotice` and `ExpiredNotice` withdraw the key;
+a live child is killed first, and a stopped service stays stopped. The
+next `Announce` starts the agent without using the budget, unless an
+update holds it.
 
 ```quint
 pure val versionValues = Set(1, 2, 3)
@@ -328,9 +311,9 @@ pure val weight_credentialArrived = 4
 
 ### Another account's key restarts the agent on that account's directory
 
-The agent refuses a store opened under another account, so a live child is
-killed and a new launch follows its exit on the new account's directory;
-an account change costs no restart budget.
+The agent refuses a store opened under another account, so a live child
+is killed and a new launch follows its exit; this costs no restart
+budget.
 
 ```quint
 pure def canAccountChanged(s: AgentService, version: int, account: C::Account): bool =
@@ -352,9 +335,8 @@ pure def sometimesRestartingForAnotherAccount(s: AgentService): bool = s.phase =
 
 ### A newer key of the same account is pushed to a running agent and never changes the phase
 
-A launch that is not running yet gets the newest key when it becomes
-ready; a launch still to spawn reads it from the launch frame. The
-delivered version never goes back.
+A launch not yet ready gets the newest key when it becomes ready, or in
+its launch frame. The delivered version never goes back.
 
 ```quint
 pure def canCredentialReplaced(s: AgentService, version: int): bool = s.key != NoKey and version > s.newestVersion
@@ -379,11 +361,10 @@ pure def sometimesKeyPushedWithoutRestart(s: AgentService): bool = s.phase == Ru
 
 ### Only the exact review token of this failure moves the data aside, and then the agent may start
 
-A review needs `Failed(Storage)` with no child left and a focused
-foreground screen of the app; its token is bound to the launch's epoch and
-replaces any earlier one. Archiving with that exact token moves the
-account's state directory aside (never deletes it) and leaves the service
-`Stopped`. Any change of phase drops the token.
+A review needs `Failed(Storage)`, no child left and a focused foreground
+screen; its token is bound to the epoch and replaces any earlier one, and
+any change of phase drops it. Archiving moves the account's state
+directory aside, never deletes it, and leaves the service `Stopped`.
 
 ```quint
 pure def canReviewRecovery(s: AgentService, focused: bool): bool = focused and s.phase == Failed({ cause: Storage }) and s.child == NoChild
@@ -410,12 +391,10 @@ pure val weight_archiveRecovery = 3
 
 ### A hold is taken only with no child, blocks every start and is released only for its target or an ended attempt
 
-The install journal (`appUpdate/install.md`) asks for the hold with its
-target after the shell stopped the agent, and gives it back with what was
-installed. A release counts only when the installed code and digest equal
-the target, or the shell proved the attempt ended (the baseline still
-installed and no session pending). The hold is durable and survives a
-restart of the service.
+The install journal (`appUpdate/install.md`) takes the hold after the
+agent stopped. A release counts only when the installed code and digest
+equal the target, or the attempt is proven ended (baseline installed, no
+session pending). The hold survives a restart of the service.
 
 ```quint
 type UpdateOutcome = Installed({ artifact: int }) | AttemptEnded

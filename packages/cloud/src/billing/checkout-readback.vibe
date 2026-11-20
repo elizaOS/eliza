@@ -1,0 +1,95 @@
+// spec/cloud/billing/checkout.md, "Story: Subscribe once, whichever screen or payer finishes it"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
+import { canReadBackOpen, canResolve, type Checkout } from "../../gen/cloud__billing__checkout.effect.vibe"
+import { isUnknown } from "../../gen/cloud__shared__dispatchOnce.effect.vibe"
+import type { CloudContext, Sweep } from "../http/routes.vibe"
+import { expireCheckoutSession, findCheckoutSession, providerReply, retrieveCheckoutSession } from "../providers/stripe.vibe"
+import { Store, toText, type Tx } from "../store/connection.vibe"
+import { applyCheckoutEvent, checkoutAt, loadCheckout, pinnedCustomer, providerTimeout, stepCheckout } from "./checkout.vibe"
+
+export const readBackEveryMs = 60_000
+export const readBackBatch = 100
+
+effect function settleLookup(tx: Tx, organizationId: string, commandId: string, now: number) {
+  const stored = try loadCheckout(tx, commandId)
+  if (stored === undefined) return
+  if (canResolve(checkoutAt(stored.state, now), { tag: "NothingSeen" }, "")) {
+    try stepCheckout(tx, organizationId, commandId, { event: { type: "resolve", lookup: { tag: "NothingSeen" }, sessionId: "" }, by: stored.state.receipt.session.owner, now })
+  }
+}
+
+effect function resolveOpening(organizationId: string, commandId: string, state: Checkout, now: number) {
+  const store = try Store
+  if (!isUnknown(state.receipt)) return
+  if (state.receipt.session.effects === 0) return try store.transaction((tx) => settleLookup(tx, organizationId, commandId, now))
+  const customerId = try store.transaction((tx) => pinnedCustomer(tx, organizationId))
+  if (customerId === undefined) return
+  const lookup = try providerReply(findCheckoutSession(customerId, commandId, { timeout: providerTimeout }))
+  if (lookup.kind !== "applied") return
+  const found = lookup.value
+  try store.transaction(effect (tx: Tx) => {
+    if (found === undefined) try settleLookup(tx, organizationId, commandId, now)
+    else try applyCheckoutEvent(tx, found, now)
+  })
+}
+
+effect function readBackOpen(organizationId: string, commandId: string, state: Checkout, now: number) {
+  const store = try Store
+  const account = try store.transaction((tx) => tx.query("SELECT status FROM accounts WHERE organization_id = $1", [organizationId]))
+  if (account[0]?.status !== "active") {
+    try providerReply(expireCheckoutSession(state.sessionId, { idempotencyKey: `expire_${state.sessionId}`, timeout: providerTimeout }))
+  }
+  const seen = try providerReply(retrieveCheckoutSession(state.sessionId, { timeout: providerTimeout }))
+  if (seen.kind !== "applied") return
+  try store.transaction(effect (tx: Tx) => {
+    const after = try applyCheckoutEvent(tx, seen.value, now)
+    if (after !== undefined && canReadBackOpen(checkoutAt(after, now))) {
+      try stepCheckout(tx, organizationId, commandId, { event: { type: "readBackOpen" }, by: after.receipt.session.owner, now })
+    }
+  })
+}
+
+effect function readBackOne(organizationId: string, commandId: string, now: number) {
+  const store = try Store
+  const stored = try store.transaction((tx) => loadCheckout(tx, commandId, false))
+  if (stored === undefined) return
+  const state = checkoutAt(stored.state, now)
+  switch (state.phase) {
+    case "Opening": return try resolveOpening(organizationId, commandId, state, now)
+    case "Open": return try readBackOpen(organizationId, commandId, state, now)
+    case "NotStarted":
+    case "Completed":
+    case "Expired":
+      return
+    default: {
+      const _exhaustive: never = state.phase
+      return _exhaustive
+    }
+  }
+}
+
+export effect function readBackCheckouts(now: number): number!!CloudContext {
+  const store = try Store
+  const due = store.transaction((tx) => tx.query(
+    "SELECT key, organization_id FROM checkouts WHERE status IN ('opening', 'open') AND next_readback_at <= $1 ORDER BY next_readback_at, key LIMIT $2",
+    [now, readBackBatch]
+  )) catch () => []
+  let visited = 0
+  for (const row of due) {
+    const commandId = toText(row.key) ?? ""
+    const done = readBackOne(toText(row.organization_id) ?? "", commandId, now) catch effect (failure) => {
+      try annotateLogs(logWarning("a checkout could not be read back yet"), { commandId, failure: failure._tag })
+      return false
+    }
+    if (done !== false) visited += 1
+  }
+  return visited
+}
+
+export const sweeps: ReadonlyArray<Sweep> = [{
+  name: "checkout read-back",
+  everyMs: readBackEveryMs,
+  run: effect {
+    const now = try Clock.currentTimeMillis
+    return try readBackCheckouts(now)
+  }
+}]

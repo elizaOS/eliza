@@ -1,0 +1,331 @@
+// spec/os/browser/tabHost/document.md, "Only a later event from this live tab replaces its document"; spec/os/browser/tabHost/document.md, "A tab reserves an identity only in the session the host bound"; spec/os/browser/tabHost/document.md, "A private tab stays private for as long as it is held"; spec/os/browser/tabHost/document.md, "Every new address moves the document revision forward, and it never moves back"; spec/os/browser/tabHost/document.md, "A captured page is current only for the selected foreground tab, its navigation and its revision"; spec/os/browser/tabHost/document.md, "Only a bound normal tab whose address storage admits contributes to the saved session"; spec/os/browser/tabHost/document.md, "A pop-up opens only from a tap on the selected settled tab, in its opener's privacy"
+import { boundPage, enabled, held, initial, isCurrentPage, isPrivate, mayOpenInAnotherBrowser, mayPersist, step, type BrowserTab, type Event, type PageIdentity } from "../../gen/os__browser__tabHost__document.effect.vibe"
+import { isSecureWebAddress, type WebAddress } from "../../gen/os__browser__address.effect.vibe"
+import type { BrowserFindOutcome, BrowserPageBinding, BrowserPageGuard, BrowserTabInfo, BrowserTabSelection, BrowserTabSessionOptions, BrowserTabStateChange } from "./definitions/tab-host.ts"
+
+export type * from "./definitions/tab-host.ts"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { BrowserTabHostPlugin } from "./definitions/tab-host.ts"
+
+  /** @throws {never} */
+  export function tabHostPlugin(name: string): BrowserTabHostPlugin {
+    return registerPlugin<BrowserTabHostPlugin>(name)
+  }
+}
+import { tabHostPlugin } from capacitor
+export { tabHostPlugin }
+
+export type TabRefusal = "browser-closed" | "invalid-tab" | "tab-limit" | "invalid-session" | "invalid-tab-limit"
+
+export error TabRefused { reason: TabRefusal; message: string }
+
+export const DEFAULT_MAX_TABS = 8
+
+const REFUSAL_TEXT: Readonly<Record<TabRefusal, string>> = {
+  "browser-closed": "Browser closed",
+  "invalid-tab": "Invalid tab",
+  "tab-limit": "Close a tab before opening another.",
+  "invalid-session": "Invalid browser session",
+  "invalid-tab-limit": "Invalid browser tab limit",
+}
+
+const BOUND = 1
+const FOREIGN = 2
+const TAB_ID = /^[A-Za-z0-9_-]{1,80}$/
+const NAVIGATION_ID = /^[1-9][0-9]{0,15}$/
+const UNCLEAN_TEXT = /[\s\u0000-\u001f\u007f\\]/
+
+schema TabState {
+  session: string
+  id: string
+  sequence: number
+  navigation?: string
+  url?: string
+  title?: string
+  loading?: boolean
+  committed?: boolean
+  httpStatus?: number
+  progress?: number
+  canBack?: boolean
+  canForward?: boolean
+  error?: string
+  private?: boolean
+  surfaceResumed?: boolean
+  externalOnly?: boolean
+}
+schema TabOpened { session: string; id: string; opener?: string; private?: boolean }
+schema TabEvent { session: string; id: string }
+schema TabNotice { session: string; id: string; message: string }
+schema FindResult { session: string; id: string; navigation?: string; cleared?: boolean; index?: number; count?: number; done?: boolean }
+
+export function validBrowserTabId(id: unknown): id is string {
+  return typeof id === "string" && TAB_ID.test(id)
+}
+
+export function newBrowserTabId(): string {
+  return `b${globalThis.crypto.randomUUID().replace(/-/g, "")}`
+}
+
+function webAddressOf(href: string): WebAddress {
+  const parsed = URL.parse(href)
+  return {
+    href,
+    units: href.length,
+    cleanText: !UNCLEAN_TEXT.test(href),
+    scheme: parsed?.protocol === "https:" ? "HttpsScheme" : parsed?.protocol === "http:" ? "HttpScheme" : "OtherScheme",
+    validHost: parsed !== null && parsed.hostname !== "",
+    userInfo: parsed !== null && (parsed.username !== "" || parsed.password !== ""),
+  }
+}
+
+function navigationId(navigation: string | undefined): number {
+  return navigation !== undefined && NAVIGATION_ID.test(navigation) && Number.isSafeInteger(Number(navigation)) ? Number(navigation) : 0
+}
+
+function decoded<A>(shape: Schema.Codec<A>, raw: unknown): A | undefined {
+  return Option.getOrUndefined(Schema.decodeUnknownOption(shape)(raw))
+}
+
+function refused(reason: TabRefusal): Promise<never> {
+  return Promise.reject(new TabRefused({ reason, message: REFUSAL_TEXT[reason] }))
+}
+
+export class BrowserTabSession {
+  private readonly states = new Map<string, BrowserTab>()
+  private readonly numbers = new Map<string, number>()
+  private readonly infos = new Map<string, BrowserTabInfo>()
+  private readonly creations = new Map<string, Promise<unknown>>()
+  private issued = 0
+  private disposed = false
+  readonly session: string
+  readonly maxTabs: number
+  private readonly invalid: TabRefusal | undefined
+
+  constructor(options: BrowserTabSessionOptions = {}) {
+    this.session = options.session ?? globalThis.crypto.randomUUID()
+    this.maxTabs = options.maxTabs ?? DEFAULT_MAX_TABS
+    this.invalid = this.session === "" || this.session.length > 100 ? "invalid-session" : !Number.isInteger(this.maxTabs) || this.maxTabs < 1 ? "invalid-tab-limit" : undefined
+  }
+
+  get closed(): boolean {
+    return this.disposed
+  }
+
+  owns(event: { session?: unknown } | null | undefined): boolean {
+    return !this.disposed && event?.session === this.session
+  }
+
+  ensure(id: string, privateTab: boolean, create: () => Promise<unknown>): Promise<unknown> {
+    if (this.invalid !== undefined) return refused(this.invalid)
+    if (this.disposed) return refused("browser-closed")
+    if (!validBrowserTabId(id)) return refused("invalid-tab")
+    const existing = this.creations.get(id)
+    if (existing !== undefined) return existing
+    if (this.creations.size >= this.maxTabs) return refused("tab-limit")
+    if (this.claim(id, { type: "ensureTab", session: BOUND, tabId: this.issued + 1, privacy: privateTab ? "PrivateTab" : "NormalTab" }) === undefined) return refused("invalid-tab")
+    const creation: Promise<unknown> = create().then(
+      (created) => {
+        if (this.creations.get(id) === creation) this.advance(id, { type: "finishCreation", success: true })
+        return created
+      },
+      (failure: unknown) => {
+        if (this.creations.get(id) === creation) {
+          this.advance(id, { type: "finishCreation", success: false })
+          this.forget([id])
+        }
+        return Promise.reject(failure)
+      },
+    )
+    this.creations.set(id, creation)
+    return creation
+  }
+
+  creation(id: string): Promise<unknown> | undefined {
+    return this.creations.get(id)
+  }
+
+  has(id: string | undefined | null): boolean {
+    const state = id ? this.states.get(id) : undefined
+    return state !== undefined && held(state)
+  }
+
+  ids(): string[] {
+    return [...this.states.keys()].filter((id) => this.has(id))
+  }
+
+  isPrivate(id: string): boolean {
+    const state = this.states.get(id)
+    return state !== undefined && isPrivate(state)
+  }
+
+  info(id: string | undefined | null): BrowserTabInfo | undefined {
+    return id ? this.infos.get(id) : undefined
+  }
+
+  revision(id: string | undefined | null): number {
+    return (id ? this.states.get(id)?.revision : undefined) ?? 0
+  }
+
+  annotate(id: string, fields: BrowserTabInfo): void {
+    if (this.has(id)) this.infos.set(id, { ...this.infos.get(id), ...fields })
+  }
+
+  beginNavigation(id: string, url: string): number | undefined {
+    const next = this.advance(id, { type: "beginNavigation", url: webAddressOf(url) })
+    if (next === undefined) return undefined
+    this.annotate(id, { url, loading: true, committed: false, error: "" })
+    return next.revision
+  }
+
+  applyState(raw: unknown): BrowserTabStateChange | undefined {
+    const event = decoded(TabState, raw)
+    const tab = event === undefined ? undefined : this.numbers.get(event.id)
+    const before = event === undefined ? undefined : this.states.get(event.id)
+    if (event === undefined || tab === undefined || before === undefined || !Number.isSafeInteger(event.sequence)) return undefined
+    const after = this.advance(event.id, {
+      type: "observeTab",
+      observation: {
+        session: this.owns(event) ? BOUND : FOREIGN,
+        tab,
+        seq: event.sequence,
+        navId: navigationId(event.navigation),
+        url: webAddressOf(event.url ?? ""),
+        loading: event.loading === true,
+        failed: (event.error ?? "") !== "",
+        externalOnly: event.externalOnly === true,
+        committed: event.committed === true,
+        privateTab: event.private === true,
+      },
+    })
+    if (after === undefined) return undefined
+    const previous = this.infos.get(event.id)
+    const info: BrowserTabInfo = {
+      ...previous,
+      ...event,
+      ...(event.externalOnly === true ? { committed: false } : {}),
+      ...(boundPage(after) ? { savedUrl: event.url } : {}),
+    }
+    this.infos.set(event.id, info)
+    return {
+      id: event.id,
+      previous,
+      info,
+      revisionChanged: after.revision !== before.revision,
+      documentChanged: after.status === "PageLoading" || after.status === "PageFailed" || after.navId !== before.navId || after.url.href !== before.url.href,
+      committedPage: mayPersist(after),
+      surfaceResumed: event.surfaceResumed === true,
+    }
+  }
+
+  applyOpened(raw: unknown): { id: string; private: boolean } | undefined {
+    const event = decoded(TabOpened, raw)
+    if (event === undefined || this.disposed || !validBrowserTabId(event.id) || this.states.has(event.id)) return undefined
+    const opener = event.opener === undefined ? undefined : this.states.get(event.opener)
+    const openerPrivacy = event.private === true || (opener !== undefined && isPrivate(opener)) ? "PrivateTab" : "NormalTab"
+    const opened = this.claim(event.id, {
+      type: "openPopup",
+      session: this.owns(event) ? BOUND : FOREIGN,
+      tabId: this.issued + 1,
+      request: { openerSettled: true, openerSelected: true, gesture: true, openerPrivacy },
+    })
+    if (opened === undefined) return undefined
+    this.creations.set(event.id, Promise.resolve())
+    return { id: event.id, private: isPrivate(opened) }
+  }
+
+  applyClosed(raw: unknown): string | undefined {
+    const event = decoded(TabEvent, raw)
+    if (event === undefined || !this.owns(event) || this.advance(event.id, { type: "closeTab" }) === undefined) return undefined
+    this.forget([event.id])
+    return event.id
+  }
+
+  notice(raw: unknown): string | undefined {
+    const event = decoded(TabNotice, raw)
+    return event !== undefined && this.owns(event) ? event.message : undefined
+  }
+
+  findResult(raw: unknown, findTab: string | undefined | null): BrowserFindOutcome | undefined {
+    const event = decoded(FindResult, raw)
+    if (event === undefined || !this.owns(event) || !findTab || event.id !== findTab) return undefined
+    if (event.cleared === true) return { cleared: true }
+    if (event.count === undefined || event.index === undefined || !Number.isFinite(event.count) || !Number.isFinite(event.index)) return undefined
+    const count = Math.max(0, event.count)
+    return { cleared: false, count, index: Math.max(0, Math.min(event.index, count)), done: event.done === true }
+  }
+
+  forget(ids: Iterable<string>): void {
+    for (const id of ids) {
+      this.states.delete(id)
+      this.numbers.delete(id)
+      this.infos.delete(id)
+      this.creations.delete(id)
+    }
+  }
+
+  pageBinding(id: string | undefined | null, options: { https?: boolean } = {}): BrowserPageBinding | undefined {
+    const state = id ? this.states.get(id) : undefined
+    const navigation = this.info(id)?.navigation
+    if (!id || this.disposed || state === undefined || navigation === undefined || !boundPage(state)) return undefined
+    if (options.https === true && !isSecureWebAddress(state.url)) return undefined
+    return { id, url: state.url.href, navigation, revision: state.revision, private: isPrivate(state) }
+  }
+
+  current(binding: BrowserPageBinding | undefined, selected: string | undefined | null, foreground = true): boolean {
+    const state = binding === undefined ? undefined : this.states.get(binding.id)
+    return binding !== undefined && state !== undefined && isCurrentPage(state, this.identity(binding), this.numberOf(selected), foreground)
+  }
+
+  mayOpenElsewhere(binding: BrowserPageBinding | undefined, selected: string | undefined | null, privateConfirmed: boolean, foreground = true): boolean {
+    const state = binding === undefined ? undefined : this.states.get(binding.id)
+    return binding !== undefined && state !== undefined && mayOpenInAnotherBrowser(state, this.identity(binding), this.numberOf(selected), foreground, privateConfirmed)
+  }
+
+  guard(binding: BrowserPageBinding): BrowserPageGuard {
+    return { session: this.session, id: binding.id, url: binding.url, navigation: binding.navigation }
+  }
+
+  selection(id: string | undefined | null): BrowserTabSelection | undefined {
+    const state = id ? this.states.get(id) : undefined
+    if (!id || state === undefined || state.url.href === "" || state.status === "PageFailed") return undefined
+    return { kind: "browser-tab", id: `${this.session}:${id}`, revision: String(state.revision) }
+  }
+
+  dispose(): string[] {
+    const ids = this.ids()
+    for (const id of ids) this.advance(id, { type: "dispose" })
+    this.disposed = true
+    this.forget([...this.states.keys()])
+    return ids
+  }
+
+  private claim(id: string, event: Event): BrowserTab | undefined {
+    this.states.set(id, { ...initial, session: BOUND })
+    const claimed = this.advance(id, event)
+    if (claimed === undefined) {
+      this.states.delete(id)
+      return undefined
+    }
+    this.issued = claimed.tab
+    this.numbers.set(id, claimed.tab)
+    return claimed
+  }
+
+  private advance(id: string, event: Event): BrowserTab | undefined {
+    const current = this.states.get(id)
+    if (current === undefined || !enabled(current, event)) return undefined
+    const next = step(current, event)
+    this.states.set(id, next)
+    return next
+  }
+
+  private identity(binding: BrowserPageBinding): PageIdentity {
+    return { session: BOUND, tab: this.numbers.get(binding.id) ?? 0, navId: navigationId(binding.navigation), href: binding.url, revision: binding.revision }
+  }
+
+  private numberOf(selected: string | undefined | null): number {
+    return (selected ? this.numbers.get(selected) : undefined) ?? 0
+  }
+}

@@ -1,4 +1,4 @@
-// spec/cloud/billing/plans.md, "Story: Apply the plan that funds a call"; spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"
+// spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"; spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"
 import { hasAllowance, isPaid, rankOf, type PlanKey } from "../../gen/cloud__billing__plans.effect.vibe"
 import { hasPaidLimits, type SubscriptionStatus } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import type { FundingLane } from "../../gen/cloud__shared__metering.effect.vibe"

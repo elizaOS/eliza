@@ -113,7 +113,7 @@ const strict = { onExcessProperty: "error" } as const
 const createBody = Schema.decodeUnknownOption(CreateDraft, strict)
 const editBody = Schema.decodeUnknownOption(EditDraft, strict)
 const enableBody = Schema.decodeUnknownOption(Schema.Struct({ enabled: Schema.Boolean, ...expectedField }), strict)
-const removeBody = Schema.decodeUnknownOption(Schema.Struct(expectedField), strict)
+const removeRevision = Schema.decodeUnknownOption(Revision)
 const executeBody = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Never))
 
 type SentDraft = typeof CreateDraft.Type | typeof EditDraft.Type
@@ -223,10 +223,12 @@ export function triggerRoutes(port: TriggerPort): LocalRoute[] {
     },
     {
       method: "DELETE", path: "/api/triggers/{id}",
-      handler: ({ parameters, body }) => {
-        const sent = Option.getOrUndefined(removeBody(body ?? {}))
-        return sent === undefined ? malformed
-          : runPromise(effect { return removeAnswer(try port.remove(id(parameters), expectedOf(sent.expectedRevision))) })
+      query: [{ key: "expectedRevision", accepts: { kind: "any" } }],
+      handler: ({ parameters, query }) => {
+        const sent = query.get("expectedRevision")
+        const revision = sent === undefined ? Option.some(undefined) : removeRevision(Number(sent))
+        return Option.isNone(revision) ? malformed
+          : runPromise(effect { return removeAnswer(try port.remove(id(parameters), expectedOf(revision.value))) })
       },
     },
     {

@@ -1,22 +1,34 @@
 # On-device agent
 
-The Node process that runs one owner's agent on the device, its local API,
-and the libraries that screens use. The package ships the host,
-the local route definitions, the runtime JSON client and the device
-bundle builder.
+The agent package runs one owner's agent on the owner's device: one Node
+process, started by the device host from a [launch](./host/launch.md), with
+one PGlite store, one bound model backend and a local API reached over a
+private Unix socket or loopback HTTP. It also ships the libraries a screen
+uses to talk to that agent (`@elizaos/agent/client`, `@elizaos/agent/voice`),
+the route gate (`@elizaos/agent/routes`) and the bundle builder
+(`@elizaos/agent/bundle`). Optional modules (approvals, notifications, views,
+device actions, reply draft, triggers, scheduled tasks, interactive tasks and
+the page command channel) load only when the launch's
+[plugin plan](./plugins/profile.md) names them.
 
-### Pending host modules
+The package does not own the kernel: identity, model dispatch,
+authorization, sessions, scheduling and receipts are [core](../core/index.md)'s.
+The device side (agent service, native bridge, keystore, native audio,
+executors and review screens) is os's, and os imports agent specs; no agent
+spec imports an os spec. Accounts, billing, metered inference, speech and
+managed Google are cloud's, which the agent reaches through its cloud link.
+The cloud runs no agent. No spec here names a product.
 
-The [interactive task host](tasks/index.md) still needs an agent-owned
-durable store, actuator and wire implementation before the package can
-provide `@elizaos/agent/tasks`. The [voice client](voice/clientAudio.md)
-still needs the session, capture, transcription and playback modules before
-the package can provide `@elizaos/agent/voice`. The host's conversation
-routes serve a consumer's device turn, and a consumer reaches the Cloud
-speech relay through its own interface. Those launch paths use neither pending module.
-
-The agent host binds its Cloud inference model during launch. The pending
-[event publisher](conversation/events.md) and
-[device-action operation schemas](deviceActions/operations.md) still
-need their respective agent implementations before consumers can import
-them from the package root.
+| Area | Specifications |
+| --- | --- |
+| Host | [Launch contract](./host/launch.md): launch document, frame and exit codes; [agent process](./host/process.md): boot, health, status and stop; [resources](./host/resources.md): each resource released once, in reverse order |
+| Access | [Local access](./access/auth.md): only the supervising host's token grants anything; [route gate](./access/routes.md): the product's route list and admission; [local request exchange](./access/transport.md): socket and loopback framing |
+| Storage and models | [Device database](./storage/database.md): open, lock, migrate, retention; [model binding](./models/binding.md): backend, account state and cloud link |
+| Plugins and bundle | [Plugin plan](./plugins/profile.md): load list, order and product plugin; [agent bundle](./plugins/bundle.md): `agent.mjs`, snapshot and manifest |
+| Conversation | [Conversations](./conversation/conversations.md): create, list and read; [turns](./conversation/turns.md): one message in, one reply out; [reply stream](./conversation/replyStream.md): streamed reply frames; [turn context](./conversation/turnContext.md): screen observation and voice UI metadata; [event feeds](./conversation/events.md): live event subscriptions |
+| Device actions | [Device requests](./deviceActions/index.md): offer to settled outcome and enrollment; [capabilities](./deviceActions/capabilities.md): negotiated capability vocabulary; [operations](./deviceActions/operations.md): the closed operation set; [device execution](./deviceActions/execution.md): the device's journal and executor; [reply draft](./deviceActions/replyDraft.md): draft a message reply |
+| Owner modules | [Approvals](./approvals.md): the approval queue; [notifications](./notifications.md): notice list and read mark; [views](./views.md): view navigation and interaction; [page command channel](./surfaceChannel.md): commands to the browser surface |
+| Schedule | [Scheduled tasks](./schedule/scheduledTasks.md): reminders, check-ins and their verbs; [prompt triggers](./schedule/triggers.md): saved prompts on a schedule or event |
+| Interactive tasks | [Task host](./tasks/index.md): custody around core's interactive task; [task store](./tasks/store.md): sealed records on the device; [task wire](./tasks/wire.md): routes, codes and presentation |
+| Client | [Runtime client](./client/runtimeClient.md): a screen's request client; [client turns](./client/turns.md): the chat turn controller |
+| Voice | [Voice session](./voice/session.md): listen, endpoint, reply and barge-in; [client audio](./voice/clientAudio.md): capture, encoding and playback helpers |

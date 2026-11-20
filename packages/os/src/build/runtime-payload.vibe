@@ -207,7 +207,7 @@ export const INVENTORY_ASSET = "assets/agent/inventory.json"
 export const WORKER_RUNTIME_DIR = "agent/workflow-worker"
 
 const ANDROID_MAIN = "android/app/src/main"
-const INFERENCE_LIBRARY = /^(?:lib(?:llama|llama-common|ggml|mtmd|eliza-llama|elizainference)[^/]*\.so(?:\.\d[^/]*)?|llama-server|llama-omnivoice-server)$/
+export const INFERENCE_LIBRARY = /^(?:lib(?:llama|llama-common|ggml|mtmd|eliza-llama|elizainference)[^/]*\.so(?:\.\d[^/]*)?|llama-server|llama-omnivoice-server)$/
 const LIBRARY_NAME = /^lib[A-Za-z0-9_.+-]+\.so$/
 const ASSET_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/
 const CONFIGURE_ARCH: Readonly<Record<AndroidAbi, string>> = { "arm64-v8a": "arm64", x86_64: "x86_64" }

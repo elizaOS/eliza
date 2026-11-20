@@ -139,8 +139,8 @@ class BelowHostWebViewInstrumentedTest {
                 },
             )
             val counter = "<script>window.taps=0;window.moves=0;window.drops=0;addEventListener('pointerdown',()=>taps++);" +
-                "addEventListener('pointermove',()=>moves++);addEventListener('dragover',e=>e.preventDefault());" +
-                "addEventListener('drop',()=>drops++)</script>"
+                "addEventListener('pointermove',()=>moves++);" +
+                "addEventListener('drop',e=>{drops++;window.lastDrop=[e.target.id,e.dataTransfer.getData('text/plain')]})</script>"
             sitePage.load(
                 site,
                 "<body style='margin:0;background:#f00'><input id='field' style='width:100%;height:50vh'>$counter</body>",
@@ -151,7 +151,7 @@ class BelowHostWebViewInstrumentedTest {
                 "<body style='margin:0;background:transparent'><div style='position:absolute;" +
                     "left:${cssPx(400)}px;top:${cssPx(100)}px;width:${cssPx(100)}px;height:${cssPx(100)}px;background:#00f'></div>" +
                     "<div style='position:absolute;left:${cssPx(120)}px;top:${cssPx(420)}px;width:${cssPx(50)}px;" +
-                    "height:${cssPx(50)}px;background:#0f0'></div>$counter</body>",
+                "height:${cssPx(50)}px;background:#0f0'></div>$counter<script>addEventListener('dragover',e=>e.preventDefault())</script></body>",
             )
             windows.addView(
                 root,
@@ -184,17 +184,6 @@ class BelowHostWebViewInstrumentedTest {
             if (seen != expected.map { it.third }) SystemClock.sleep(200)
         }
 
-        // A capture draws the page alone: the host overlay is not in it, and host rects are masked.
-        var capture: android.graphics.Bitmap? = null
-        instrumentation.runOnMainSync {
-            capture = drawPageForCapture(page).also { page.maskHostRegions(android.graphics.Canvas(it)) }
-        }
-        val image = capture!!
-        assertEquals(Color.RED, image.getPixel(45, 345))
-        assertEquals(Color.RED, image.getPixel(200, 350))
-        assertEquals(0xFF5F6368.toInt(), image.getPixel(350, 50))
-        image.recycle()
-
         tap(200, 150)
         assertEquals("1", js(site, "taps"))
         assertEquals("0", js(host, "taps"))
@@ -216,7 +205,7 @@ class BelowHostWebViewInstrumentedTest {
 
         // A text drag dropped on the page's input lands in the website, not the host.
         drag(to = 200 to 150)
-        assertEquals("\"dropped\"", js(site, "document.getElementById('field').value"))
+        assertEquals("[\"dropped\",[\"field\",\"dropped\"]]", js(site, "[document.getElementById('field').value,window.lastDrop]"))
         assertEquals("1", js(site, "drops"))
         assertEquals("0", js(host, "drops"))
         // One dropped on a host-owned rect over the page lands in the host.

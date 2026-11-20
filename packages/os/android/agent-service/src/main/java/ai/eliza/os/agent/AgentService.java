@@ -13,6 +13,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -32,6 +33,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -67,6 +69,7 @@ import org.json.JSONObject;
 public class AgentService extends Service {
   public static final String ACTION_START = "ai.eliza.os.agent.action.START";
   public static final String ACTION_RESTART = "ai.eliza.os.agent.action.RESTART";
+  public static final String ACTION_STOP = "ai.eliza.os.agent.action.STOP";
   public static final long REQUEST_BODY_LIMIT = 16L * 1024 * 1024;
   private static final String TAG = "ElizaAgent";
   private static final String NOTIFICATION_CHANNEL = "eliza-agent";
@@ -131,6 +134,11 @@ public class AgentService extends Service {
     return builder.build();
   }
 
+  protected final Notification.Action stopAction(CharSequence label) {
+    PendingIntent stop = PendingIntent.getService(this, 1, new Intent(this, getClass()).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE);
+    return new Notification.Action.Builder(null, label, stop).build();
+  }
+
   public static AgentChannel channel() { return CHANNEL; }
 
   public static CompletableFuture<AgentChannel.Response> request(String method, String path, byte[] body) {
@@ -157,6 +165,10 @@ public class AgentService extends Service {
 
   public static JSONObject status(Context context) {
     AgentService service = live;
+    if (service == null && !declared(context)) {
+      try { return new JSONObject().put("available", false).put("state", "unavailable").put("epoch", 0).put("requestBodyLimit", 0); }
+      catch (JSONException impossible) { throw new IllegalStateException(impossible); }
+    }
     AgentPolicy.Status status = service == null ? new AgentPolicy(null, null).status(REQUEST_BODY_LIMIT) : service.policy.status(REQUEST_BODY_LIMIT);
     try {
       JSONObject out = new JSONObject().put("available", status.available()).put("state", status.state())
@@ -184,8 +196,15 @@ public class AgentService extends Service {
       service.later(() -> service.settled(service::syncCredential));
       return;
     }
-    try { if (registered.current() != null) start(context); }
-    catch (Exception unreadable) { Log.w(TAG, "The device credential could not be read", unreadable); }
+    if (signedIn()) start(context);
+  }
+
+  static boolean signedIn() {
+    try { return registered == AgentCredentials.NONE || registered.current() != null; }
+    catch (Exception unreadable) {
+      Log.w(TAG, "The device credential could not be read", unreadable);
+      return false;
+    }
   }
 
   public static Review reviewRecovery(Context context) {
@@ -301,6 +320,10 @@ public class AgentService extends Service {
 
   @Override public int onStartCommand(Intent intent, int flags, int startId) {
     lastStartId = startId;
+    if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+      post(new AgentPolicy.Stop());
+      return START_NOT_STICKY;
+    }
     if (!foreground && !showForeground()) {
       stopSelfResult(startId);
       return START_NOT_STICKY;
@@ -327,6 +350,15 @@ public class AgentService extends Service {
   }
 
   @Override public IBinder onBind(Intent intent) { return null; }
+
+  private static boolean declared(Context context) {
+    try {
+      context.getPackageManager().getServiceInfo(new ComponentName(context, config(context).service), 0);
+      return true;
+    } catch (AgentConfig.Refused | IOException | PackageManager.NameNotFoundException absent) {
+      return false;
+    }
+  }
 
   private static void command(Context context, String action) {
     Class<? extends AgentService> type;
@@ -459,7 +491,7 @@ public class AgentService extends Service {
     PayloadCheck.Check payload;
     try {
       payload = PayloadCheck.prepare(name -> getAssets().open(name), versionCode(), List.of(Build.SUPPORTED_ABIS),
-        Path.of(getApplicationInfo().nativeLibraryDir), directories.runtime(), directories.sync());
+        Paths.get(getApplicationInfo().nativeLibraryDir), directories.runtime(), directories.sync());
     } catch (IOException | PackageManager.NameNotFoundException failed) {
       step(new AgentPolicy.Refuse(AgentPolicy.Cause.PAYLOAD, "The agent runtime could not be verified: " + failed.getMessage()));
       return;

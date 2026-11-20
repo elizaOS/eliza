@@ -1,0 +1,60 @@
+// spec/os/android/secureStore.md, "Story: Persist a value without losing a newer edit"
+import { assert, it } from "@effect/vitest"
+import { MalformedReply } from "../../src/bridges/bridge.vibe"
+import { secureStoreClient } from "../../src/bridges/secure-store.vibe"
+
+module android {
+  import type { ElizaSecureStorePlugin, ElizaSecureStoreResult } from "../../src/bridges/definitions/secure-store.ts"
+
+  /** @throws {never} */
+  export function androidSlots(slots: Map<string, string>, malformed: { reply: boolean }): ElizaSecureStorePlugin {
+    const refused = (key: string): ElizaSecureStoreResult | undefined =>
+      key.startsWith("sign-in") || key.startsWith("cloud-delegation:") ? { ok: false, error: "denied", outcome: "Refused" } : undefined
+    return {
+      get: async ({ key }) => {
+        const value = slots.get(key)
+        return value === undefined ? { ok: false, error: "not_found" } : { ok: true, value }
+      },
+      set: async ({ key, value }) => {
+        if (malformed.reply) return { ok: true, outcome: "Saved" } as unknown as ElizaSecureStoreResult
+        const refusal = refused(key)
+        if (refusal) return refusal
+        slots.set(key, value)
+        return { ok: true, outcome: "Written" }
+      },
+      remove: async ({ key }) => {
+        slots.delete(key)
+        return { ok: true, outcome: "Removed" }
+      },
+      compareAndExchange: async ({ key, expected, value }) => {
+        if ((slots.get(key) ?? null) !== expected) return { ok: false, error: "conflict", outcome: "Conflict" }
+        if (value === null) slots.delete(key)
+        else slots.set(key, value)
+        return { ok: true, outcome: value === null ? "Removed" : "Written" }
+      },
+      status: async () => ({ ok: true, available: true, backend: "android_keystore", accessibility: "credential_encrypted_device_only", synchronized: false, accessGroup: "app_only" }),
+    }
+  }
+}
+import { androidSlots } from android
+
+effect function failure(call: () => Promise<unknown>) {
+  const { cause } = try flip(tryPromise(() => call()))
+  return cause instanceof MalformedReply ? `malformed ${cause.method}` : cause
+}
+
+it.live("Persist a value without losing a newer edit (spec/os/android/secureStore.md, \"Story: Persist a value without losing a newer edit\"; spec/os/android/secureStore.md, \"A compare-and-exchange changes a slot only when it holds exactly the expected value\"; spec/os/android/secureStore.md, \"The app view names only slots its consumer policy opens to it, and never a delegation slot\")", () => effect {
+  const slots = new Map<string, string>()
+  const malformed = { reply: false }
+  const store = secureStoreClient(androidSlots(slots, malformed), "TestSecureStore")
+  assert.deepStrictEqual(try promise(() => store.set({ key: "draft", value: "{\"n\":1}" })), { ok: true, outcome: "Written" })
+  assert.deepStrictEqual(try promise(() => store.compareAndExchange({ key: "draft", expected: "{\"n\": 1}", value: "{\"n\":2}" })), { ok: false, error: "conflict", outcome: "Conflict" })
+  assert.deepStrictEqual(try promise(() => store.get({ key: "draft" })), { ok: true, value: "{\"n\":1}" })
+  assert.deepStrictEqual(try promise(() => store.compareAndExchange({ key: "draft", expected: "{\"n\":1}", value: null })), { ok: true, outcome: "Removed" })
+  assert.deepStrictEqual(try promise(() => store.get({ key: "draft" })), { ok: false, error: "not_found" })
+  assert.deepStrictEqual(try promise(() => store.set({ key: "cloud-delegation:grant", value: "{}" })), { ok: false, error: "denied", outcome: "Refused" })
+  assert.strictEqual((try promise(() => store.status())).backend, "android_keystore")
+  malformed.reply = true
+  assert.strictEqual(try failure(() => store.set({ key: "draft", value: "{}" })), "malformed set")
+  assert.isFalse(slots.has("draft"))
+})

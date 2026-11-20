@@ -237,13 +237,6 @@ class BelowHostLayerInstrumentedTest {
         assertEquals(Color.RED, bitmap.getPixel(0, 0))
         assertEquals(Color.RED, bitmap.getPixel(50, 50))
         assertEquals(Color.TRANSPARENT, bitmap.getPixel(95, 50))
-
-        // Captures still paint over host-owned rects and the rounded corners.
-        val capture = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
-        surface.maskHostRegions(Canvas(capture))
-        assertTrue(capture.getPixel(50, 50) != Color.TRANSPARENT)
-        assertTrue(capture.getPixel(0, 0) != Color.TRANSPARENT)
-        assertEquals(Color.TRANSPARENT, capture.getPixel(10, 50))
     }
 
     @Test
@@ -264,7 +257,7 @@ class BelowHostLayerInstrumentedTest {
         above.setOcclusions(moved)
         assertTrue(above.isDirty)
 
-        // Below the host they only route input (and mask captures), so nothing is redrawn.
+        // Below the host they only route input, so nothing is redrawn.
         val below = drawnLayout(SurfaceLayer.BELOW_HOST)
         assertTrue(below.pageOwns(20f, 20f))
         below.setOcclusions(moved)

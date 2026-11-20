@@ -1,0 +1,235 @@
+// spec/os/build/androidHost.md, "Story: Generate my app's Android host from data"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { ANDROID_RUNTIME_PACKAGING_DIRECTIVE } from "../android/android-runtime-packaging.ts"
+import { generateAndroidHost } from "../src/build/android-host.vibe"
+import { scratch, writeTree, type Tree } from "./support/scratch.vibe"
+
+const IDENTITY = { appId: "example.fixture.host", appName: "Fixture \"Host\"", version: "1.0.0", versionCode: 7 }
+const consumer = (path: string) => ({ root: "consumer", path })
+const upstream = (path: string) => ({ root: "upstream", path })
+const MAIN = "android/AndroidManifest.xml"
+const manifest = (permissions: readonly string[], application = "") =>
+  `<manifest xmlns:android="http://schemas.android.com/apk/res/android">${permissions.map((name) => `<uses-permission android:name="android.permission.${name}"/>`).join("")}<application>${application}</application></manifest>\n`
+const AGENT_FILES: Tree = {
+  "agent/host.json": JSON.stringify({ schema: 1, service: "example.fixture.host.FixtureAgentService" }),
+  "agent/character.json": JSON.stringify({ name: "Fixture" }),
+  "agent/policy.json": JSON.stringify({ schema: 1 }),
+}
+
+const AGENT_HOST = {
+  tree: { ...AGENT_FILES, [MAIN]: manifest(["INTERNET", "POST_NOTIFICATIONS"]), "android/java/example/fixture/host/MainActivity.java": "package example.fixture.host;\n" },
+  profile: {
+    schema: 2,
+    sdk: { min: 29, target: 36, compile: 36 },
+    releaseMinify: false,
+    nativeLibraries: "extract-16k",
+    agent: { host: consumer("agent/host.json"), character: consumer("agent/character.json"), policy: consumer("agent/policy.json") },
+    agentService: {
+      notification: { smallIcon: "ic_agent", color: "0xff336699", channel: "Agent", strings: { title: "agent_title" }, stopAction: true },
+      launchHook: { class: "example.fixture.host.Launch", method: "configure" },
+    },
+    osModules: [{ module: "agent-service" }, { module: "runtime-files" }],
+    signing: { storeFile: "FIXTURE_STORE", storePassword: "FIXTURE_STORE_PASSWORD", keyAlias: "FIXTURE_KEY_ALIAS", keyPassword: "FIXTURE_KEY_PASSWORD" },
+    manifest: consumer(MAIN),
+    flavors: [{ name: "store", buildConfigFields: [{ name: "IS_STORE", type: "boolean", value: true }] }, { name: "sideload" }],
+    sourceSets: { main: { java: [consumer("android/java")] } },
+    dependencies: [{ configuration: "implementation", module: "androidx.appcompat:appcompat", toolchainVersion: "androidxAppCompatVersion" }],
+  },
+}
+
+const RESIDENT_HOST = {
+  tree: {
+    [MAIN]: manifest(["INTERNET", "ACCESS_WIFI_STATE", "CAMERA"]),
+    "check.mjs": "",
+    "node_modules/@capacitor/android/package.json": JSON.stringify({ name: "@capacitor/android" }),
+    "node_modules/@capacitor/android/capacitor/build.gradle": "",
+  },
+  profile: {
+    schema: 1,
+    sdk: { min: 31, target: 36, compile: 36 },
+    releaseMinify: false,
+    nativeLibraries: "extract-16k",
+    manifest: consumer(MAIN),
+    flavors: [{ name: "device" }],
+    modules: [
+      { name: "capacitor-android", source: { root: "dependencies", path: "@capacitor/android/capacitor" } },
+      { name: "eliza-wifi", source: upstream("plugins/plugin-native-wifi/android") },
+      { name: "eliza-sign-in", source: upstream("packages/auth/android") },
+    ],
+    settingsAdmission: [{ command: ["node", "check.mjs"], directory: consumer(".") }],
+    residentHost: {
+      notification: { smallIcon: "ic_resident", primaryAction: "none", color: "0xff000000", channelLabel: "Resident", strings: {} },
+      environmentHook: { className: "example.fixture.host.Environment", method: "prepare" },
+    },
+  },
+}
+
+const CALENDAR_SOURCES = ["src/main/java/ai/eliza/plugins/calendar/CalendarConfiguration.java", "src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java"]
+const UPDATER_HOST = {
+  tree: {
+    [MAIN]: manifest(["INTERNET", "CAMERA", "READ_CALENDAR"], '<activity android:name=".MainActivity" android:exported="true"/>'),
+    "android/proguard-rules.pro": "-keep class example.** { *; }\n",
+    "android/packaging.gradle": "",
+    "artifacts/routes.json": "{}",
+    "check.mjs": "",
+  },
+  profile: {
+    schema: 2,
+    sdk: { min: 29, target: 35, compile: 36 },
+    releaseMinify: true,
+    kotlin: false,
+    osModules: [{ module: "app-update" }, { module: "runtime-files" }, { module: "calendar", sources: CALENDAR_SOURCES }, { module: "system", sources: ["src/androidTest/java/ai/eliza/plugins/system"] }],
+    manifest: consumer(MAIN),
+    flavors: [{ name: "updater" }],
+    buildTypes: { release: { abiFilters: ["arm64-v8a"], shrinkResources: true, proguardFiles: [consumer("android/proguard-rules.pro")] } },
+    versionOverride: { versionCode: "UPDATER_VERSION_CODE", versionName: "UPDATER_VERSION_NAME" },
+    generatedSources: [{ sourceSet: "main", kind: "java", path: "generated/routes/java" }],
+    assetFiles: [{ source: consumer("artifacts/routes.json"), name: "routes.json" }],
+    appScripts: [consumer("android/packaging.gradle")],
+    admission: [{ name: "verifyRoutes", command: ["node", "check.mjs"], directory: consumer(".") }],
+  },
+}
+
+const TOOLCHAIN_FILES = ["gradle/wrapper/gradle-wrapper.jar", "gradle/wrapper/gradle-wrapper.properties", "gradlew", "gradlew.bat"]
+const BASE_FILES = [".eliza-consumer-profile.json", "app/build.gradle", "app/src/main/AndroidManifest.xml", "build.gradle", "eliza-consumer-host/res/values/eliza_consumer_identity.xml", "gradle.properties", "settings.gradle", ...TOOLCHAIN_FILES]
+
+interface HostDocument {
+  readonly modules: readonly { readonly name: string; readonly directory: string; readonly appDependency: boolean; readonly relocateBuild: boolean }[]
+  readonly admission: readonly { readonly name: string; readonly command: readonly string[] }[]
+  readonly agentFiles: readonly { readonly source: string; readonly name: string }[]
+  readonly dependencies: readonly { readonly configuration: string; readonly coordinate: string }[]
+  readonly nativeLibraries: string | null
+  readonly hostManifest: string | null
+  readonly runtimeMain: string | null
+  readonly signing: unknown
+  readonly versionOverride: unknown
+}
+
+effect function readHost(host: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const text = (relative: string) => files.readFileString(path.join(host, relative))
+  const documentText = try text(".eliza-consumer-profile.json")
+  const markerText = try text(".eliza-consumer-host.json")
+  const document: HostDocument = try Effect.try(() => JSON.parse(documentText))
+  const marker: { readonly schema: number; readonly output: string; readonly appId: string; readonly files: readonly string[] } = try Effect.try(() => JSON.parse(markerText))
+  const overlay = (try files.exists(path.join(host, "app/eliza-host-manifest.xml"))) ? try text("app/eliza-host-manifest.xml") : ""
+  return { document, marker, overlay, gradle: try text("app/build.gradle"), text }
+}
+
+effect function consumerWith(prefix: string, tree: Tree) {
+  const root = try scratch(prefix)
+  try writeTree(root, tree)
+  return root
+}
+
+const tagOf = (error: unknown) => (error as { readonly _tag?: string })._tag ?? String(error)
+
+it.effect('Generate my app\'s Android host from data: an agent host gets the agent service project, its data files and a specialUse service (spec/os/build/androidHost.md, "Story: Generate my app\'s Android host from data"; spec/os/build/androidHost.md, "The agent entry, its notification and its launch hook need the agent service module and extracted 16 KiB aligned native libraries"; spec/os/build/androidHost.md, "The generated project uses the pinned Gradle, Android Gradle plugin, Kotlin and Java, with the wrapper the record names")', effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const root = try consumerWith("agent-host", AGENT_HOST.tree)
+    try writeTree(root, { "runtime/android/app/src/main/assets/agent/inventory.json": "{}" })
+    const output = path.join(root, "android/host")
+    const generated = try generateAndroidHost({ consumerRoot: root, output, identity: IDENTITY, profile: AGENT_HOST.profile, runtime: path.join(root, "runtime") })
+    assert.deepStrictEqual([...generated.files].sort(), [...BASE_FILES, "app/eliza-host-manifest.xml"].sort())
+    assert.strictEqual(generated.toolchain, "8.13")
+
+    const { document, marker, overlay, gradle, text } = try readHost(output)
+    assert.deepStrictEqual(marker, { schema: 2, output: "android/host", appId: IDENTITY.appId, files: generated.files })
+    const os = path.dirname(path.dirname(document.modules[0]?.directory ?? ""))
+    assert.deepStrictEqual(document.modules, [
+      { name: "eliza-agent-service", directory: path.join(os, "android/agent-service"), appDependency: true, relocateBuild: true },
+      { name: "eliza-runtime-files", directory: path.join(os, "android/runtime-files"), appDependency: true, relocateBuild: true },
+    ])
+    assert.deepStrictEqual(document.agentFiles, ["host", "character", "policy"].map((name) => ({ source: path.join(root, `agent/${name}.json`), name: `${name}.json` })))
+    assert.deepStrictEqual(document.dependencies, [{ configuration: "implementation", coordinate: "androidx.appcompat:appcompat:1.7.1" }])
+    assert.strictEqual(document.nativeLibraries, "extract-16k")
+    assert.strictEqual(document.runtimeMain, path.join(root, "runtime/android/app/src/main"))
+    assert.deepStrictEqual(document.signing, AGENT_HOST.profile.signing)
+    assert.isTrue(gradle.trimEnd().endsWith(ANDROID_RUNTIME_PACKAGING_DIRECTIVE), "packaging keeps the runtime bytes")
+    assert.include(gradle, "into: 'agent'")
+    assert.include(try text("eliza-consumer-host/res/values/eliza_consumer_identity.xml"), "&quot;Fixture \\&quot;Host\\&quot;&quot;")
+
+    assert.include(overlay, ' <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />')
+    assert.include(overlay, '  <service android:name="example.fixture.host.FixtureAgentService" android:exported="false" android:foregroundServiceType="specialUse">')
+    assert.include(overlay, '  <meta-data android:name="ai.eliza.os.agent.notification.color" android:value="#ff336699" />')
+    assert.include(overlay, '  <meta-data android:name="ai.eliza.os.agent.notification.string.title" android:resource="@string/agent_title" />')
+    assert.include(overlay, '  <meta-data android:name="ai.eliza.os.agent.launchHook.method" android:value="configure" />')
+
+    const templates = path.join(os, "android/host-templates")
+    for (const file of ["gradle/wrapper/gradle-wrapper.jar", "gradlew", "gradlew.bat", "settings.gradle", "build.gradle"]) {
+      assert.deepStrictEqual(try files.readFile(path.join(output, file)), try files.readFile(path.join(templates, file)), `${file} is the pinned template`)
+    }
+    assert.strictEqual(((try files.stat(path.join(output, "gradlew"))).mode & 0o777), 0o755)
+    assert.include(try text("gradle/wrapper/gradle-wrapper.properties"), "distributionSha256Sum=20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78\n")
+  }
+})
+
+it.effect('Generate my app\'s Android host from data: a schema-1 resident host maps to os modules and drops what no module was asked for (spec/os/build/androidHost.md, "Story: Generate my app\'s Android host from data"; spec/os/build/androidHost.md, "An os module adds no permission or exported component the profile did not request"; spec/os/build/androidHost.md, "A schema-1 field without a successor is refused when it is set, and an upstream source becomes the os module its path lies in")', effect () => {
+  provide NodeServices.layer {
+    const path = try Path.Path
+    const root = try consumerWith("resident-host", RESIDENT_HOST.tree)
+    const output = path.join(root, "android/host")
+    try generateAndroidHost({ consumerRoot: root, dependencyRoot: path.join(root, "node_modules"), output, identity: IDENTITY, profile: RESIDENT_HOST.profile })
+    const { document, overlay, gradle } = try readHost(output)
+    assert.deepStrictEqual(document.modules.map((module) => module.name).sort(), ["capacitor-android", "eliza-agent-service", "eliza-runtime-files", "eliza-sign-in", "eliza-wifi"])
+    assert.deepStrictEqual(document.modules.find((module) => module.name === "capacitor-android"), {
+      name: "capacitor-android", directory: path.join(root, "node_modules/@capacitor/android/capacitor"), appDependency: true, relocateBuild: true,
+    })
+    assert.deepStrictEqual(document.admission.map((step) => [step.name, step.command]), [["settingsAdmission1", ["node", "check.mjs"]]])
+    assert.deepStrictEqual(document.agentFiles, [])
+    assert.notInclude(gradle, ANDROID_RUNTIME_PACKAGING_DIRECTIVE, "no staged runtime, no packaging directive")
+
+    assert.include(overlay, ' <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" tools:node="remove" />')
+    assert.include(overlay, ' <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />')
+    assert.notInclude(overlay, "android.permission.ACCESS_WIFI_STATE")
+    assert.notInclude(overlay, "android.permission.INTERNET")
+    assert.notInclude(overlay, "<service ", "with no agent entry the consumer declares its own service")
+    assert.include(overlay, '  <meta-data android:name="ai.eliza.os.agent.notification.stopAction" android:value="false" />')
+    assert.include(overlay, '  <meta-data android:name="ai.eliza.os.agent.launchHook.class" android:value="example.fixture.host.Environment" />')
+  }
+})
+
+it.effect('Generate my app\'s Android host from data: an updater copies file subsets, joins instrumentation tests and regenerates only what it owns (spec/os/build/androidHost.md, "Story: Generate my app\'s Android host from data"; spec/os/build/androidHost.md, "An os module comes from the closed list once, whole or as a subset of its main or androidTest sources, with the os modules it needs"; spec/os/build/androidHost.md, "The output is a directory strictly inside the consumer and outside the os package")', effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const root = try consumerWith("updater-host", UPDATER_HOST.tree)
+    const output = path.join(root, "android/host")
+    const generated = try generateAndroidHost({ consumerRoot: root, output, identity: IDENTITY, profile: UPDATER_HOST.profile })
+    const copied = generated.files.filter((file) => file.startsWith("app/src/") && file !== "app/src/main/AndroidManifest.xml")
+    assert.includeMembers(copied, CALENDAR_SOURCES.map((source) => `app/${source}`))
+    assert.include(copied, "app/src/androidTest/java/ai/eliza/plugins/system/SystemLauncherAppsInstrumentedTest.java")
+    assert.isTrue(copied.every((file) => file.startsWith("app/src/main/java/ai/eliza/plugins/calendar/") || file.startsWith("app/src/androidTest/java/ai/eliza/plugins/system/")))
+
+    const { document, overlay, gradle } = try readHost(output)
+    assert.deepStrictEqual(document.modules.map((module) => module.name), ["eliza-app-update", "eliza-runtime-files", "eliza-system"])
+    assert.deepStrictEqual(document.versionOverride, UPDATER_HOST.profile.versionOverride)
+    assert.isNull(document.signing)
+    assert.isNull(document.nativeLibraries)
+    assert.deepStrictEqual(document.admission.map((step) => step.name), ["verifyRoutes"])
+    assert.notInclude(gradle, "settingsAdmission")
+    assert.notInclude(gradle, "generationInputs")
+    assert.include(overlay, ' <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:node="remove" />')
+    assert.notInclude(overlay, "android.permission.CAMERA")
+    assert.notInclude(overlay, "READ_CALENDAR", "a file subset merges no module manifest")
+
+    const narrowed = { ...UPDATER_HOST.profile, osModules: UPDATER_HOST.profile.osModules.filter((entry) => entry.module !== "calendar") }
+    const again = try generateAndroidHost({ consumerRoot: root, output, identity: IDENTITY, profile: narrowed })
+    for (const source of CALENDAR_SOURCES) assert.isFalse(try files.exists(path.join(output, "app", source)), `${source} left with its subset`)
+    const { marker } = try readHost(output)
+    assert.deepStrictEqual(marker.files, again.files)
+
+    const otherApp = (effect { try generateAndroidHost({ consumerRoot: root, output, identity: { ...IDENTITY, appId: "example.other.host" }, profile: narrowed }); return "generated" } catch (error) => tagOf(error))
+    assert.strictEqual(otherApp, "HostOwnershipRefused")
+    try writeTree(root, { "foreign/notes.txt": "mine" })
+    const foreign = (effect { try generateAndroidHost({ consumerRoot: root, output: path.join(root, "foreign"), identity: IDENTITY, profile: narrowed }); return "generated" } catch (error) => tagOf(error))
+    assert.strictEqual(foreign, "HostOwnershipRefused")
+    assert.strictEqual(try files.readFileString(path.join(root, "foreign/notes.txt")), "mine")
+    const outside = (effect { try generateAndroidHost({ consumerRoot: root, output: path.join(try scratch("elsewhere"), "android"), identity: IDENTITY, profile: narrowed }); return "generated" } catch (error) => tagOf(error))
+    assert.strictEqual(outside, "HostProfileRefused")
+  }
+})

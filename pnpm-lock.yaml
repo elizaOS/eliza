@@ -304,8 +304,6 @@ importers:
 
   packages/assistant: {}
 
-  packages/auth: {}
-
   packages/browser: {}
 
   packages/calendar: {}

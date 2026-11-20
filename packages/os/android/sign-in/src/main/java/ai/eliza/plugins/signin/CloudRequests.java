@@ -57,27 +57,25 @@ public final class CloudRequests {
   public Outcome send(String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body) {
     DeviceCredentialStore store = custody.credentials();
     CredentialReader.Credential key = store.current();
-    DeviceCredentialStore.SessionRead session = store.readSession();
-    Holding holding = new Holding(key == null ? 0 : key.version(), session != DeviceCredentialStore.SessionRead.NONE, session == DeviceCredentialStore.SessionRead.USABLE);
-    Planned planned = policy.plan(holding, CloudRequestPolicy.originOf(apiOrigin), method, target, headers, body);
+    int version = key == null ? 0 : key.version();
+    CloudRequestPolicy.Origin origin = CloudRequestPolicy.originOf(apiOrigin);
+    Planned planned = policy.plan(new Holding(version, false, false), origin, method, target, headers, body);
+    String session = null;
+    if (planned.plan() instanceof Refuse refuse && refuse.why() == Refusal.REAUTH_REQUIRED) {
+      session = custody.session().accessToken();
+      planned = policy.plan(new Holding(version, session != null, session != null), origin, method, target, headers, body);
+    }
     Attach attach;
-    String bearer;
     switch (planned.plan()) {
       case Refuse refuse -> { return new Failed(Failure.of(refuse.why())); }
-      case RefreshSessionFirst refresh -> {
-        bearer = custody.session().accessToken();
-        attach = new WithSession(holding.key());
-      }
-      case Send send -> {
-        attach = send.attach();
-        bearer = switch (attach) {
-          case WithKey k -> key.value();
-          case WithSession s -> custody.session().accessToken();
-          case CloudRequestPolicy.Bare b -> null;
-        };
-      }
+      case RefreshSessionFirst refresh -> { return new Failed(Failure.REAUTH_REQUIRED); }
+      case Send send -> attach = send.attach();
     }
-    if (attach instanceof WithSession && bearer == null) return new Failed(Failure.REAUTH_REQUIRED);
+    String bearer = switch (attach) {
+      case WithKey k -> key.value();
+      case WithSession s -> session;
+      case CloudRequestPolicy.Bare b -> null;
+    };
     HttpURLConnection connection = null;
     try {
       connection = (HttpURLConnection) URI.create(apiOrigin + target).toURL().openConnection();

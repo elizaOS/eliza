@@ -35,7 +35,7 @@ public final class NativeSecureStore {
     private static final String CLOCK_DEVICE_SLOT = SecureSlotPolicy.CLOCK_DEVICE_SLOT;
     private static long generation;
     private static final String[] SNAPSHOT_KEYS = {
-        "runtime.active_server", "session.device_auth", "session.steward_token", "runtime.agent_profiles", CLOCK_DEVICE_SLOT
+        "runtime.active_server", "session.device_auth", "session.cloud_token", "runtime.agent_profiles", CLOCK_DEVICE_SLOT
     };
     private final File directory;
     private final SecureSlotPolicy policy;
@@ -192,10 +192,13 @@ public final class NativeSecureStore {
         }
     }
     public void ensureAvailable() throws Exception { synchronized (LOCK) { getOrCreateKey(); } }
-    private SecretKey getOrCreateKey() throws Exception {
+    private SecretKey existingKey() throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore");
         store.load(null);
-        SecretKey existing = (SecretKey) store.getKey(KEY_ALIAS, null);
+        return (SecretKey) store.getKey(KEY_ALIAS, null);
+    }
+    private SecretKey getOrCreateKey() throws Exception {
+        SecretKey existing = existingKey();
         if (existing != null) return existing;
         KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
         generator.init(new KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
@@ -246,7 +249,9 @@ public final class NativeSecureStore {
         byte[] iv = new byte[ivLength]; buffer.get(iv);
         byte[] ciphertext = new byte[buffer.remaining()]; buffer.get(ciphertext);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), new GCMParameterSpec(128, iv));
+        SecretKey secret = existingKey();
+        if (secret == null) throw new IllegalStateException("Secure value key is missing");
+        cipher.init(Cipher.DECRYPT_MODE, secret, new GCMParameterSpec(128, iv));
         cipher.updateAAD(key.getBytes(StandardCharsets.UTF_8));
         byte[] plaintext = cipher.doFinal(ciphertext);
         try {
