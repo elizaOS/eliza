@@ -48,8 +48,9 @@ const telegramPlugin: Plugin = {
       worldIdMetadataKeys: ["telegramChatId"],
     },
   ],
-  // TelegramService must come before TelegramOwnerPairingServiceImpl so the
-  // bot instance exists when the pairing service registers its command.
+  // TelegramService registers the owner-pairing command `/eliza_pair` with
+  // its other commands; TelegramOwnerPairingServiceImpl owns the pairing
+  // rate limit and the owner login DM link.
   // TelegramStandaloneService is the opt-in standalone long-poll mode: it
   // self-gates on ELIZA_TELEGRAM_STANDALONE_BOT (with LifeOps passive
   // connectors disabled) and stays dormant otherwise, so the full connector
