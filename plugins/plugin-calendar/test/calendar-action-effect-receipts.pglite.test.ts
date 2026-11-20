@@ -252,6 +252,7 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
       expect(feed.mock.lastCall?.[1]).toMatchObject({ grantId });
       expect(JSON.stringify(next)).not.toContain('"grantId":"eliza-calendar"');
       const list = vi.spyOn(calendar, "listCalendars");
+      const snapshot = vi.spyOn(calendar, "getCalendarFeedSnapshot");
       const extraction = vi.spyOn(runtime, "useModel").mockResolvedValue(
         JSON.stringify({
           requiresInput: true,
@@ -261,8 +262,11 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
       await withDeviceActionTurn(runtime, credentials, () =>
         execute({ grantId }, "create_event"),
       );
-      expect(list).toHaveBeenLastCalledWith(expect.any(URL), { grantId });
-      expect(feed.mock.lastCall?.[1]).toMatchObject({ grantId });
+      expect(list).not.toHaveBeenCalled();
+      expect(snapshot).toHaveBeenCalledExactlyOnceWith(
+        expect.any(URL),
+        expect.objectContaining({ grantId, forceSync: true }),
+      );
       expect(extraction).toHaveBeenCalledExactlyOnceWith(
         expect.anything(),
         expect.objectContaining({
@@ -271,6 +275,7 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
       );
       extraction.mockRestore();
       list.mockRestore();
+      snapshot.mockRestore();
     }
     expect(googlePages).toHaveBeenCalled();
     // A connected grant must not turn a built-in event identifier into a
@@ -485,6 +490,7 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
         );
       feed.mockClear();
       googlePages.mockClear();
+      const snapshot = vi.spyOn(calendar, "getCalendarFeedSnapshot");
       const run = () =>
         execute(
           {
@@ -500,7 +506,7 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
         ? await withDeviceActionTurn(runtime, credentials, run)
         : await run();
       expect(result.data).toHaveProperty("availability");
-      expect(feed.mock.calls.length).toBeGreaterThanOrEqual(
+      expect(snapshot.mock.calls.length).toBeGreaterThanOrEqual(
         subaction === "create_event" ? 3 : 2,
       );
       expect(JSON.stringify(result)).toContain("Selected conflict");
@@ -509,7 +515,7 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
           /FORBIDDEN_(ELIZA|OTHER)_AVAILABILITY/,
         );
         expect(
-          feed.mock.calls.every(
+          snapshot.mock.calls.every(
             ([, request]) => request?.grantId === googleGrant.id,
           ),
         ).toBe(true);
@@ -542,6 +548,7 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
         );
       }
       extraction.mockRestore();
+      snapshot.mockRestore();
     }
     const unknown = await withDeviceActionTurn(runtime, credentials, () =>
       execute({ grantId: "connector-account:unavailable" }),
@@ -549,6 +556,16 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
     // The established feed contract records unavailable separately from empty.
     expect(unknown.data).toMatchObject({ state: "unavailable" });
     expect(JSON.stringify(unknown)).not.toContain('"grantId":"eliza-calendar"');
+    const unavailableExtraction = vi.spyOn(runtime, "useModel");
+    const unavailableCreate = await withDeviceActionTurn(
+      runtime,
+      credentials,
+      () =>
+        execute({ grantId: "connector-account:unavailable" }, "create_event"),
+    );
+    expect(unavailableCreate.success).toBe(false);
+    expect(unavailableExtraction).not.toHaveBeenCalled();
+    unavailableExtraction.mockRestore();
   } finally {
     appleTesting.setNativeCalendarBridgeForTest(null);
     await fixture.cleanup();

@@ -87,6 +87,7 @@ import {
   extractUserText,
   normalizeEffectReceipt,
   resolveOptimizedPromptForRuntime,
+  timeInferenceSpan,
   unwrapUserMessageText,
   userReferenceLogView,
 } from "@elizaos/core";
@@ -3180,17 +3181,24 @@ async function loadCreateEventCalendarContext(
   }
 
   const requestTimeZone = fallbackTimeZone;
-  const feed = await service.getCalendarFeed(INTERNAL_URL, {
-    includeHiddenCalendars: true,
-    ...(grantId ? { grantId } : {}),
-    // Ordinary turns review all authorized sources before destination extraction.
-    // Native turns retain their explicit connected-source boundary instead.
-    timeZone: requestTimeZone,
-    forceSync: true,
-    ...buildLocalDayRange(requestTimeZone, 0, 14),
-  });
+  const { feed, calendars } = await service.getCalendarFeedSnapshot(
+    INTERNAL_URL,
+    {
+      includeHiddenCalendars: true,
+      ...(grantId ? { grantId } : {}),
+      // Ordinary turns review all authorized sources before destination extraction.
+      // Native turns retain their explicit connected-source boundary instead.
+      timeZone: requestTimeZone,
+      forceSync: true,
+      ...buildLocalDayRange(requestTimeZone, 0, 14),
+    },
+  );
 
-  if (!feed || !Array.isArray(feed.events)) {
+  if (
+    !feed ||
+    !Array.isArray(feed.events) ||
+    (feed.state === "unavailable" && calendars.length === 0)
+  ) {
     return null;
   }
 
@@ -3201,10 +3209,7 @@ async function loadCreateEventCalendarContext(
       configuredTimeZone,
     ),
     feed,
-    calendars: await service.listCalendars(
-      INTERNAL_URL,
-      grantId ? { grantId } : undefined,
-    ),
+    calendars,
   };
 }
 
@@ -6359,12 +6364,16 @@ export function createCalendarActionRunner(
             clientTimeZone || calendarZone.source !== "runtime-default"
               ? creationContextZone
               : null;
-          const calendarContext = await loadCreateEventCalendarContext(
-            service,
-            true,
-            creationContextZone,
-            configuredCreateZone,
-            nativeGrantId,
+          const calendarContext = await timeInferenceSpan(
+            "actions:calendar:create:source-read",
+            () =>
+              loadCreateEventCalendarContext(
+                service,
+                true,
+                creationContextZone,
+                configuredCreateZone,
+                nativeGrantId,
+              ),
           );
           if (!calendarContext) {
             throw new CalendarServiceError(
@@ -6377,15 +6386,19 @@ export function createCalendarActionRunner(
           // its required timing came from the user. Re-derive scheduling fields
           // from the authoritative request/conversation and calendar zone before
           // any mutation. Missing extraction must remain missing (clarification).
-          const extractedDetails = await inferCreateEventDetails(
-            runtime,
-            message,
-            state,
-            intent,
-            calendarContext,
-            creationContextZone,
-            details,
-            hostDeps,
+          const extractedDetails = await timeInferenceSpan(
+            "actions:calendar:create:extract",
+            () =>
+              inferCreateEventDetails(
+                runtime,
+                message,
+                state,
+                intent,
+                calendarContext,
+                creationContextZone,
+                details,
+                hostDeps,
+              ),
           );
           let destination = calendarContext.feed.sources.find(
             (source) =>
@@ -6625,25 +6638,29 @@ export function createCalendarActionRunner(
               },
             });
           }
-          const requestToApprove = await service.prepareCalendarEventCreate(
-            INTERNAL_URL,
-            request,
+          const requestToApprove = await timeInferenceSpan(
+            "actions:calendar:create:prepare",
+            () => service.prepareCalendarEventCreate(INTERNAL_URL, request),
           );
           // An all-day event marks its days and reserves no clock time, so it
           // has no slot to check against timed commitments.
           const availability = requestToApprove.allDay
             ? null
-            : await evaluateCalendarWriteAvailability({
-                runtime,
-                ...scopedAvailabilitySource(
-                  requestToApprove.grantId,
-                  requestToApprove.calendarId,
-                ),
-                destination: requestToApprove,
-                startAt: requestToApprove.startAt,
-                endAt: requestToApprove.endAt,
-                timeZone: requestToApprove.timeZone,
-              });
+            : await timeInferenceSpan(
+                "actions:calendar:create:availability",
+                () =>
+                  evaluateCalendarWriteAvailability({
+                    runtime,
+                    ...scopedAvailabilitySource(
+                      requestToApprove.grantId,
+                      requestToApprove.calendarId,
+                    ),
+                    destination: requestToApprove,
+                    startAt: requestToApprove.startAt,
+                    endAt: requestToApprove.endAt,
+                    timeZone: requestToApprove.timeZone,
+                  }),
+              );
           if (
             availability &&
             (!availability.writable || availability.conflicts.length > 0)
@@ -6718,11 +6735,15 @@ export function createCalendarActionRunner(
               payload: requestToApprove,
             });
             const { startAt, endAt, ...dateOnlyRequest } = requestToApprove;
-            const createdEvent = await service.createCalendarEvent(
-              INTERNAL_URL,
-              requestToApprove.allDay
-                ? { ...dateOnlyRequest, idempotencyKey }
-                : { ...requestToApprove, startAt, endAt, idempotencyKey },
+            const createdEvent = await timeInferenceSpan(
+              "actions:calendar:create:persist",
+              () =>
+                service.createCalendarEvent(
+                  INTERNAL_URL,
+                  requestToApprove.allDay
+                    ? { ...dateOnlyRequest, idempotencyKey }
+                    : { ...requestToApprove, startAt, endAt, idempotencyKey },
+                ),
             );
             if (travelBuffer && travel) {
               await travel.reserveTravelBuffer({
