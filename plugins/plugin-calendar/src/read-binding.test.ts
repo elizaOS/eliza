@@ -44,6 +44,7 @@ describe("Calendar operation bindings", () => {
       "execution",
       "purpose",
       "filterEvidence",
+      "singleDaySearchDate",
     ]);
     const context = {} as Parameters<
       NonNullable<typeof calendarReadBindingField.parse>
