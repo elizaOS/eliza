@@ -1,6 +1,6 @@
 // spec/cloud/services/speechRelay.md, "The wire is version 1 with 16 kHz mono PCM16 and bounded frames"
-import type { RelayErrorCode, RelayReason, SttEventKind } from "../../gen/cloud__services__speechRelay.ts"
-import { readDevice, readRelay, writeDevice, writeRelay, type DeviceWire, type RelayWire, type Written } from "./relay-frames.ts"
+import { fundingClose, normalClose, sessionClosedClose, unauthorizedClose, violationClose, type RelayErrorCode, type RelayReason, type SttEventKind } from "../../gen/cloud__services__speechRelay.ts"
+import { readAudio, readDevice, readRelay, writeDevice, writeRelay, type DeviceWire, type RelayWire, type Written } from "./relay-frames.ts"
 
 export type ClientFrame =
   | { readonly kind: "hello"; readonly token: string; readonly errorReasons: boolean; readonly extend: boolean }
@@ -118,4 +118,18 @@ export function encodeWireFrame(frame: WireServerFrame): WireData | undefined {
   return sent(writeRelay(relayWireOf(frame)), frame.kind === "audio")
 }
 
-export const relayCodec = { decodeDeviceFrame, encodeWireFrame, encodeClientFrame, decodeServerFrame } as const
+export const relayCloseCodes = { normal: normalClose, violation: violationClose, unauthorized: unauthorizedClose, funding: fundingClose, sessionClosed: sessionClosedClose } as const
+
+export type RelayAudio = { readonly id: string; readonly pcm: Uint8Array }
+
+export function decodeRelayFrame(frame: Uint8Array): RelayAudio | undefined {
+  const wire = readAudio(Array.from(frame))
+  return wire.kind === "Audio" ? { id: textOf(wire.id), pcm: Uint8Array.from(wire.pcm) } : undefined
+}
+
+export function encodeRelayAudio(audio: RelayAudio): Uint8Array | undefined {
+  const written = writeRelay({ kind: "Audio", id: bytesOf(audio.id), pcm: Array.from(audio.pcm) })
+  return written.kind === "Written" ? Uint8Array.from(written.bytes) : undefined
+}
+
+export const relayCodec = { decodeDeviceFrame, encodeWireFrame, encodeClientFrame, decodeServerFrame, encodeRelayAudio, decodeRelayFrame } as const

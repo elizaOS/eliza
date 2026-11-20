@@ -1,10 +1,13 @@
 // spec/cloud/index.md, "Story: Connect Google mail and calendar"; spec/cloud/identity/federatedSignIn.md, "Story: Connect mail and calendar from the same Google sheet"
 import type { Client } from "pg"
-import { canReadCloudCalendarReminder } from "../gen/cloud.effect.vibe"
+import { canReadCloudCalendarReminder, currentAttachmentTransfer } from "../gen/cloud.effect.vibe"
 import { nativeConnectStores, nativeConnectStoresAny } from "../gen/cloud__identity__federatedSignIn.effect.vibe"
 import { Aead, Digest, SecureRandom } from "effect/crypto"
+import { Base64 } from "effect/encoding"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpServerResponse, HttpServerRequest, HttpIncomingMessage } from "effect/http"
-import { googleCalendarFeed, googleCalendarItem, googleGmailMessage, googleGmailTriage, googleReplyTarget, hasControlCharacter, mailAddress, GoogleReadInput, type GoogleReadApi } from "./google-read.vibe"
+import { attachmentSelection, googleCalendarFeed, googleCalendarItem, googleGmailAttachment, googleGmailMessage, googleGmailTriage, googleReplyTarget, hasControlCharacter, mailAddress, GoogleAttachmentMissing, GoogleAttachmentStale, GoogleAttachmentUnsupported, GoogleReadInput, type GoogleReadApi } from "./google-read.vibe"
+
+import { boundedText } from "./providers/bounded-body.vibe"
 
 export type GoogleEnv = {
   PUBLIC_API_ORIGIN: string
@@ -41,6 +44,7 @@ error ItemChanged
 error DatabaseUnavailable
 
 const route = "/api/v1/eliza/google"
+export const deviceAttachmentPath = "/api/v1/google-attachments/device"
 const callbackPath = route + "/connect/callback"
 const oauthCookie = "__Host-eliza-google-connect"
 const oauthSeconds = 300
@@ -170,12 +174,10 @@ effect function seal(config: Config, token: string, aad: Uint8Array) {
   return hex(nonce) + hex(cipher)
 }
 
-effect function unseal(env: GoogleEnv, config: Config, connected: Connection) {
-  const encoded = connected.refresh_cipher
+effect function unseal(config: Config, encoded: string, aad: Uint8Array) {
   if (!/^[a-f0-9]+$/.test(encoded) || encoded.length < 58 || encoded.length % 2 !== 0) throw new ConnectionUnavailable()
   const nonce = fromHex(encoded.slice(0, 24))
   const cipher = fromHex(encoded.slice(24))
-  const aad = credentialContext(env, connected.account_id, connected.subject, connected)
   const vault = try Aead.Aead
   const plain = vault.decrypt(config.key, cipher, { nonce, aad }) catch effect () => { throw new ConnectionUnavailable() }
   return decoder.decode(plain)
@@ -342,7 +344,7 @@ effect function accessFor(env: GoogleEnv, db: Client, account: string, capabilit
   const { rows } = try query<Connection>(db, "SELECT * FROM cloud_google_connections WHERE account_id = $1 AND ($2::text IS NULL OR id::text = $2)", [account, selected])
   const connection = rows[0]
   if (!connection?.[capability]) throw new ConnectionUnavailable()
-  const refresh = try unseal(env, config, connection)
+  const refresh = try unseal(config, connection.refresh_cipher, credentialContext(env, connection.account_id, connection.subject, connection))
   const credentials = try oauthToken(config, new URLSearchParams({ grant_type: "refresh_token", refresh_token: refresh }))
   if (credentials.scope && !credentials.scope.split(/\s+/).includes(scopeByCapability[capability])) throw new AuthorizationFailed()
   const used = try query(db, "UPDATE cloud_google_connections SET last_used_at = now() WHERE account_id = $1 AND id = $2", [account, connection.id])
@@ -351,11 +353,13 @@ effect function accessFor(env: GoogleEnv, db: Client, account: string, capabilit
 }
 
 function googleReadApi(access: string): GoogleReadApi<ProviderUnavailable | GoogleNotFound, HttpClient.HttpClient> {
-  return effect (url: string) => {
+  return effect (url: string, maxBytes?: number) => {
     const response = try http(url, { access })
     if (response.status === 404) throw new GoogleNotFound()
     if (!ok(response.status)) throw new ProviderUnavailable()
-    return timeout(response.json, "10 seconds") catch effect () => { throw new ProviderUnavailable() }
+    if (maxBytes === undefined) return timeout(response.json, "10 seconds") catch effect () => { throw new ProviderUnavailable() }
+    const text = timeout(boundedText(response, maxBytes), "10 seconds") catch effect () => { throw new ProviderUnavailable() }
+    return Effect.try(() => JSON.parse(text) as unknown) catch effect () => { throw new ProviderUnavailable() }
   }
 }
 
@@ -676,8 +680,44 @@ export function reminderSchedule(request: Request, env: GoogleEnv, db: Client, a
   }, providerLayer)).catch(() => HttpServerResponse.toWeb(body(503, { error: "reminder_unavailable" })))
 }
 
+schema TransferRequest { ticket: string }
+schema TransferSelection { messageId: string; partId: string; historyId: string; grantId: string; sha256: string; issuedAt: number }
+
+function transferContext(env: GoogleEnv, account: string, organization: string) {
+  return encoder.encode(JSON.stringify(["cloud-google-attachment-v1", env.PUBLIC_API_ORIGIN, account, organization]))
+}
+
+effect function selectedAttachment(env: GoogleEnv, db: Client, account: string, grant: string, selection: { messageId: string; partId: string; historyId: string }) {
+  const api = googleReadApi(try accessFor(env, db, account, "mail", grant))
+  const { bytes, ...file } = try googleGmailAttachment(api, selection)
+  const { rows } = try query<{ organization_id: string }>(db, `SELECT a.organization_id FROM accounts a JOIN cloud_google_connections c ON c.account_id = a.key
+    WHERE a.key = $1 AND a.status = 'active' AND c.id::text = $2 AND c.mail`, [account, grant])
+  const organizationId = rows[0]?.organization_id
+  if (!organizationId) throw new ConnectionUnavailable()
+  const digest = try (try Digest.Digest).digest(Digest.sha256, bytes)
+  return { version: 1, accountId: account, organizationId, grantId: grant, ...file, dataBase64: Base64.encode(bytes), sha256: hex(digest), supported: true }
+}
+
+effect function redeemAttachment(request: Request, env: GoogleEnv, db: Client, account: string) {
+  const { ticket } = try readAction(request, TransferRequest)
+  if (ticket.length > 8192) throw new BadRequest()
+  const { rows } = try query<{ organization_id: string }>(db, "SELECT organization_id FROM accounts WHERE key = $1 AND status = 'active'", [account])
+  const organization = rows[0]?.organization_id
+  if (!organization) throw new ConnectionUnavailable()
+  const value = try unseal(try googleConfig(env), ticket, transferContext(env, account, organization))
+  const raw: unknown = try Effect.try({ try: () => JSON.parse(value), catch: () => new BadRequest() })
+  const claims = Schema.decodeUnknownOption(TransferSelection)(raw)
+  if (Option.isNone(claims)) throw new BadRequest()
+  const selected = claims.value
+  if (!currentAttachmentTransfer(selected.issuedAt, try Clock.currentTimeMillis)) throw new ItemChanged()
+  const file = try selectedAttachment(env, db, account, selected.grantId, selected)
+  if (file.organizationId !== organization || file.sha256 !== selected.sha256 || !currentAttachmentTransfer(selected.issuedAt, try Clock.currentTimeMillis)) throw new ItemChanged()
+  return body(200, file)
+}
+
 effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, account: string) {
   const url = try Effect.try({ try: () => new URL(request.url), catch: () => new BadRequest() })
+  if (url.pathname === deviceAttachmentPath && request.method === "POST") return try redeemAttachment(request, env, db, account)
   const path = url.pathname.slice(route.length)
   if (request.method === "POST" && path === "/connect/native") return try connectNative(request, env, db, account)
   if (request.method === "POST") {
@@ -704,6 +744,15 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
     if (path === "/status") return try status(db, env, account)
     const selected = url.searchParams.get("grantId")
     const now = new Date(try Clock.currentTimeMillis).toISOString()
+    if (path === "/gmail/attachment") {
+      const selection = attachmentSelection(url.searchParams)
+      if (!selected || !uuid.test(selected) || !selection) throw new BadRequest()
+      const file = try selectedAttachment(env, db, account, selected, selection)
+      if (file.mimeType === "text/plain") return body(200, file)
+      const claims = { ...selection, grantId: selected, sha256: file.sha256, issuedAt: try Clock.currentTimeMillis }
+      const deviceTransfer = try seal(try googleConfig(env), JSON.stringify(claims), transferContext(env, account, file.organizationId))
+      return body(200, { ...file, deviceTransfer })
+    }
     if (path === "/gmail/triage" || path === "/gmail/read") {
       const api = googleReadApi(try accessFor(env, db, account, "mail", selected))
       const result = path === "/gmail/triage" ? try googleGmailTriage(api, url, now) : try googleGmailMessage(api, url)
@@ -742,6 +791,9 @@ export function googleRequest(request: Request, env: GoogleEnv, db: Client, acco
     const response = routeGoogle(request, env, db, account) catch (error) => match (error) {
       when BadRequest: body(400, { error: "invalid_request" });
       when GoogleReadInput: body(400, { error: "invalid_request" });
+      when GoogleAttachmentStale: body(409, { error: "google_item_changed" });
+      when GoogleAttachmentMissing: body(404, { error: "google_item_not_found" });
+      when GoogleAttachmentUnsupported: body(415, { error: "google_attachment_unsupported" });
       when ItemChanged: body(409, { error: "google_item_changed" });
       when OperationUncertain: body(409, { error: "google_action_outcome_unknown" });
       when GoogleNotFound: body(404, { error: "google_item_not_found" });

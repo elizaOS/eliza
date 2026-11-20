@@ -62,12 +62,17 @@ pure def cloudSessionAllows(sessionEndsAt: int, nowAt: int, sessionPresent: bool
 ### A registered device grant authorizes device services
 
 The person approves a short-lived grant for the registered Android client
-and its verified return address while signed in. Only the device proving possession of the grant’s verifier can redeem it, once. The device
+and its verified return address while signed in. A browser that names the
+account shown for approval receives a grant only while signed in to that
+account. Only the device proving possession of the grant’s verifier can redeem it, once. The device
 acknowledges receipt before it can use the key. Signing out stops activation
 of an unfinished grant. An active key continues to authorize inference and
 consented speech until its deadline or its own revocation.
 
 ```quint
+pure def mayIssueAccountBoundDeviceGrant(shownAccount: str, signedInAccount: str): bool =
+  shownAccount != "" and shownAccount == signedInAccount
+
 pure def canExchangeCloudDeviceGrant(grantEndsAt: int, nowAt: int, grantUnspent: bool, verifierMatches: bool, browserSessionActive: bool): bool =
   nowAt < grantEndsAt and grantUnspent and verifierMatches and browserSessionActive
 
@@ -101,9 +106,20 @@ A read requires an active browser session for the account that consented.
 The service keeps the refresh credential encrypted for that deployment,
 account and approved scopes. Disconnecting removes the local credential and any
 pending consent authorizations. Browser and native inference credentials
-have separate permissions.
+have separate permissions. A Gmail message read returns named attachment
+descriptors without attachment bytes. Fetching a supported part requires the
+same owner and explicit mail grant, with its message, history and part
+identifiers. A changed history or missing part cannot return content.
+A browser that has opened a photo or PDF can hand that original to its owner’s
+registered device. The selection expires after five minutes. Redemption requires
+an active device credential under the same account and organization, the same
+current mail grant, revision, part and content digest. The handoff contains no
+mail bytes or provider credentials. A later handoff can only return that same
+original until it expires.
 
 ```quint
+pure def currentAttachmentTransfer(issuedAt: int, now: int): bool = issuedAt >= 0 and now >= issuedAt and now - issuedAt < 300000
+
 pure def canReadCloudGoogle(ownerSessionActive: bool, connectionPresent: bool, grantOwnerMatches: bool, selected: Set[CloudGoogleReadScope], requested: CloudGoogleReadScope): bool =
   ownerSessionActive and connectionPresent and grantOwnerMatches and selected.contains(requested)
 ```

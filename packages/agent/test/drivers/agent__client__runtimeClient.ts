@@ -1,4 +1,4 @@
-// spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account"; spec/agent/client/runtimeClient.md, "Story: Reach a runtime that is not running yet"; spec/agent/client/runtimeClient.md, "Story: Understand why the runtime refused"
+// spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account"; spec/agent/client/runtimeClient.md, "Story: Reach a runtime that is not running yet"; spec/agent/client/runtimeClient.md, "Story: Understand why the runtime refused"; spec/agent/client/runtimeClient.md, "A stream is sent at most once and only in its generation"
 import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/agent__client__runtimeClient.conformance.ts";
 import type { BridgeCall, RuntimeClient, Stage } from "../../gen/agent__client__runtimeClient.ts";
@@ -13,7 +13,7 @@ interface Held {
 }
 
 const waiting = (stage: Stage): boolean =>
-  stage.tag === "AwaitRefresh" || stage.tag === "Probing" || stage.tag === "AwaitStartup" || stage.tag === "Sent";
+  stage.tag === "AwaitRefresh" || stage.tag === "Probing" || stage.tag === "AwaitStartup" || stage.tag === "Sent" || stage.tag === "Streaming";
 
 const unsettled = (state: RuntimeClient): RuntimeClient => ({ ...state, requests: state.requests.filter(({ stage }) => waiting(stage)) });
 
@@ -37,7 +37,7 @@ export const driver: Driver<RuntimeClient> = {
     if (!update) return "refused";
     for (const command of update.commands) {
       if (command.tag === "Finish") client.settled.add(command.id);
-      else if (command.tag !== "Probe") client.out.push(command);
+      else if (command.tag !== "Probe" && command.tag !== "Open") client.out.push(command);
     }
     return "accepted";
   },

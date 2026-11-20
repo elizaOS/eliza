@@ -81,7 +81,7 @@ it.effect('Report what of an interrupted reply I heard: one retry after 1,500 ms
     ["missing then conflict", [status(404), status(409)], "HeardConflict", 2],
     ["busy then lost", [status(500), "lost"], "HeardUnavailable", 2],
   ]
-  const walked = try all(cases.map(([name, answers]) => host(name, () => walk([...answers], spoken))))
+  const walked = try forEach(cases, ([name, answers]) => host(name, () => walk([...answers], spoken)))
   const silent = try host("nothing heard", () => walk([recorded], { ...spoken, heardText: "", nothingHeard: true }))
   const blank = try host("blank heard text", () => walk([recorded], { ...spoken, heardText: "   " }))
   try Effect.try(() => {
@@ -99,7 +99,7 @@ it.effect('Report what of an interrupted reply I heard: one retry after 1,500 ms
   })
 })
 
-const Opened = Schema.Struct({ conversation: Schema.Struct({ id: Schema.String, roomId: Schema.String }) })
+schema Opened { conversation: { id: string; roomId: string } }
 
 it.effect('Report what of an interrupted reply I heard: a voice turn, its stop and its heard report reach the agent host (spec/agent/voice/session.md, "A turn is sent once, and a held session sends it only after the capture confirmed its close")', () => effect {
   const reachable = try startInProcess({ cloud: true, launch: { callerRole: "owner" } })
@@ -109,7 +109,7 @@ it.effect('Report what of an interrupted reply I heard: a voice turn, its stop a
   try Effect.sync(() => reachable.cloud?.script(text("Call Alex.", " Or call Sam.")))
   const request: JsonRequest = (method, path, sent) => Effect.runPromise(call(reachable, { method, path, body: sent }))
     .then((answer) => ("status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: null }))
-  const ports = voiceNetworkPorts(conversation.id, request)
+  const ports = try Effect.try(() => voiceNetworkPorts(conversation.id, request))
   const reply = try host("voice turn", () => ports.turns.send({
     text: "Who should I call?", channelType: voiceChannelType, metadata: { voiceUi: { surface: "voice" } }, clientMessageId: "voice-turn-1",
   }, new AbortController().signal))

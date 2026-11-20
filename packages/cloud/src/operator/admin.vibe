@@ -8,7 +8,6 @@ import { RowCorrupt } from "../store/rows.vibe"
 import { identityDigest, parseStoreLocation, Store, storeLayer, type StoreFailure, toText, type Tx } from "../store/store.vibe"
 import { commands as accounts } from "./accounts.vibe"
 import { commands as clients, seedClients } from "./clients.vibe"
-import { commands as grants } from "./grants.vibe"
 import { commands as prices, seedPrices } from "./prices.vibe"
 
 export type OperatorContext = Deployment | HttpClient.HttpClient
@@ -50,7 +49,7 @@ export interface SeedHandler {
 }
 
 export function commandTable(): ReadonlyArray<OperatorCommandHandler> {
-  return [...accounts, ...clients, ...grants, ...prices]
+  return [...accounts, ...clients, ...prices]
 }
 
 export function seedTable(): ReadonlyArray<SeedHandler> {

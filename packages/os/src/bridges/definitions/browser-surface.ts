@@ -5,8 +5,7 @@
  * this package directly — `@elizaos/ui`'s
  * `capacitor-native-surface-shell.ts` models the same method set structurally
  * and calls it through the Capacitor `Plugins` registry — but the shapes here
- * are the source of truth for both native implementations (iOS `WKWebView` on a
- * dedicated `WKProcessPool` + `WKWebsiteDataStore`; Android platform-managed
+ * are the source of truth for the Android implementation (platform-managed
  * out-of-app `WebView` renderer + androidx.webkit `Profile`).
  *
  * The load-bearing invariant every method upholds: an independent surface always
@@ -19,10 +18,9 @@
 type PluginListenerHandle = { remove(): Promise<void> };
 
 /**
- * Native renderer policy. `isolated` means a dedicated pool on iOS and a
- * verified out-of-app sandboxed renderer on Android, which the OS may reuse
- * across sibling WebViews. `shared` selects the plugin pool on iOS and leaves
- * Android renderer placement to the platform.
+ * Native renderer policy. `isolated` means a verified out-of-app sandboxed
+ * renderer, which Android may reuse across sibling WebViews. `shared` leaves
+ * renderer placement to the platform.
  */
 export type SurfaceProcessSharing = "isolated" | "shared";
 
@@ -69,7 +67,7 @@ export type NativePageGuidance =
  *
  * - `above-host` (default): the page is drawn over the host. Host chrome over the
  *   page shows through holes cut with `setOcclusionRects`.
- * - `below-host` (Android only; iOS rejects it with `UNSUPPORTED`): the page is drawn
+ * - `below-host`: the page is drawn
  *   under the host, so the host draws its own chrome, corners and shadows over it with
  *   no holes. This is a drawing-quality change, not a memory or CPU saving: both
  *   WebViews stay live, and the transparent host is blended over the page every frame
@@ -89,8 +87,6 @@ export type NativePageGuidance =
  *   the page, or a tap there can reach the website. A gesture on a page that is hidden
  *   mid-gesture is cancelled. A drag carried to the page has no local state.
  *
- *   Captures draw the page alone, so host pixels over it never appear; host-owned
- *   rects and everything outside the outer clip are masked as in the default layer.
  *   Put host nodes over the page in `aria-hidden` so TalkBack reaches the website's
  *   own nodes there.
  */
@@ -118,8 +114,7 @@ interface SurfaceCreateBase extends SurfaceOwnerOptions {
    * blocked host never receives the request. A server redirect of an address the host
    * loaded goes on without asking again only within the approved origin or its upgrade. A tapped new window is
    * reported with `newWindow: true`. Subframes are not intercepted. Default false: the
-   * page navigates by itself, and a tapped new window opens in place. `setTaskOrigins`
-   * lets the page move between the origins of a task the host extended.
+   * page navigates by itself, and a tapped new window opens in place.
    */
   interceptNavigation?: boolean;
   /**
@@ -352,8 +347,7 @@ export interface SurfaceCrashedEvent extends SurfaceIdOptions {
  * fields only when `exists` is true and `owner`, `session` and `epoch` match your own
  * identity (`getSurfaceState` checks that for you). They are a snapshot: one taken before
  * a command the host has not seen settle can be older than that command, and a title
- * or progress that changes later sends no event. iOS sends only the surface id and
- * owner; read `getSurfaceState` when the fields are absent.
+ * or progress that changes later sends no event.
  */
 export interface NavigationChangedEvent
   extends SurfaceIdOptions,
@@ -362,38 +356,6 @@ export interface NavigationChangedEvent
 /** A surface closed by the plugin, for example when its keyed profile was purged. */
 export interface SurfaceClosedEvent extends SurfaceIdOptions {
   reason: "profile-purged";
-}
-
-/** Options for a masked page screenshot. */
-export interface CaptureSurfaceOptions extends SurfaceIdOptions {
-  /** Long edge in pixels, 256 to 2048. Default 1024. Never scaled up. */
-  maxEdge?: number;
-  /** JPEG quality, 30 to 90. Default 70. */
-  quality?: number;
-  /**
-   * Up to 32 more CSS selectors to cover, for values the host knows are secret.
-   * Password, `cc-*`, `one-time-code`, `current-password` and `new-password`
-   * fields are always covered.
-   */
-  maskSelectors?: string[];
-  /** Cover every frame the page cannot read (payment fields often live there). Default true. */
-  maskFrames?: boolean;
-}
-
-/**
- * A masked JPEG of the visible page. Covers are placed before the copy and removed
- * right after; host chrome is painted over. Send it only where the host's retention
- * rules allow, and never store it in a thread or task journal.
- */
-export interface SurfaceCapture {
-  mimeType: "image/jpeg";
-  /** Base64 JPEG bytes. */
-  data: string;
-  width: number;
-  height: number;
-  maskedFields: number;
-  maskedFrames: number;
-  url: string | null;
 }
 
 /** The on-screen keyboard opened or closed. `height` is in host CSS pixels. */
@@ -486,8 +448,6 @@ export interface SurfaceState {
    * an error page in its place. Show a security block over it.
    */
   securityBlocked?: boolean;
-  /** Android: text zoom in percent. */
-  textZoom?: number | null;
   /**
    * Android: pinch zoom in density-independent pixels per CSS pixel: 1 is the page's own
    * mobile size, below 1 a wide page shown whole, above 1 zoomed in.
@@ -572,7 +532,7 @@ export interface ElizaSurfaceManagerPlugin {
    * Punch rounded regions out of the native layer so host-rendered overlays can
    * paint and receive input without hiding or resizing the underlying page.
    * For a `below-host` surface nothing is cut out: the rects are where the host
-   * receives input and where captures are masked, and the page takes no input until
+   * receives input, and the page takes no input until
    * the first call.
    */
   setOcclusionRects(options: SetOcclusionRectsOptions): Promise<void>;
@@ -655,24 +615,6 @@ export interface ElizaSurfaceManagerPlugin {
     options: SurfaceIdOptions & { url: string },
   ): Promise<{ status: "dispatched" }>;
   /**
-   * Android, intercepting surfaces only: the exact HTTPS origins of the host's running
-   * task after it extended the task (for example `https://www.ssa.gov` and
-   * `https://secure.login.gov`) once its own safety check passed. A page on one of them
-   * may then move to another, a POST included, without a `navigationRequested` hold;
-   * any other origin is still held. At most 16. `[]` ends the extension. Nothing is
-   * ever added without this call, and it does not survive the surface.
-   */
-  setTaskOrigins(
-    options: SurfaceIdOptions & { origins: string[] },
-  ): Promise<void>;
-  /** Android: page text size in percent, 50 to 300 (100 is the page's own size). */
-  setTextZoom(options: SurfaceIdOptions & { percent: number }): Promise<void>;
-  /**
-   * Android: sign this isolated surface out of every website (cookies, storage,
-   * cache). Rejects `SHARED_STORAGE` for a surface on the host's own store.
-   */
-  clearSurfaceStorage(options: SurfaceIdOptions): Promise<void>;
-  /**
    * Android: delete keyed profiles. `profileKey` purges that key now and closes its
    * surfaces (`surfaceClosed`); use it on account sign-out. `idleMs` (at least one
    * hour) purges every keyed profile unused for that long that no surface has open.
@@ -690,12 +632,6 @@ export interface ElizaSurfaceManagerPlugin {
         | { all: true; profileKey?: never; idleMs?: never }
       ),
   ): Promise<{ purged: number; clean?: boolean }>;
-  /**
-   * Android 8+: masked screenshot of the visible foreground page for a vision
-   * fallback. Rejects (`CAPTURE_MASK_FAILED`, `CAPTURE_STALE`, `CAPTURE_UNAVAILABLE`,
-   * `UNSUPPORTED`) rather than return an image it could not mask.
-   */
-  captureSurface(options: CaptureSurfaceOptions): Promise<SurfaceCapture>;
   /** Android host-only observation of adjacent same-origin history entries. */
   observeHistory(options: SurfaceIdOptions): Promise<{
     destinations: Array<{
@@ -867,19 +803,18 @@ export interface ElizaSurfaceManagerPlugin {
    * for a page that stays shown but is covered, for example a `below-host` page under
    * an opaque host screen. It frees no memory. The surface keeps its visibility, and
    * `presentSurface` does not resume it; call `resumeSurface` before the person sees it
-   * again. While it is paused, `captureSurface`, `controlPage`, `observeHistory` and
+   * again. While it is paused, `controlPage`, `observeHistory` and
    * `navigateHistory` reject; `goBack`, `goForward`, `navigate` and `reloadSurface` still
    * run, and `readPage` still reads. Pausing also cancels held page dialogs and ends
    * fullscreen, refuses new dialogs, file inputs and site permission requests, takes focus
    * and the keyboard from the page, and stops sending it touches. Held file inputs and
    * site permission requests stay open, since the system picker or the host's Android
    * permission prompt may be what covers the page.
-   * Repeating the call does nothing. iOS rejects with `UNSUPPORTED`, so a cross-platform
-   * caller must catch it; web rejects as unavailable. The process-wide
+   * Repeating the call does nothing; web rejects as unavailable. The process-wide
    * `WebView.pauseTimers()` is never called, as it would also stop the host WebView.
    */
   pauseSurface(options: SurfaceIdOptions): Promise<void>;
-  /** Android: call `WebView.onResume()` on a paused surface. iOS rejects with `UNSUPPORTED`. */
+  /** Android: call `WebView.onResume()` on a paused surface. */
   resumeSurface(options: SurfaceIdOptions): Promise<void>;
   /** Tear a surface down and release its native renderer and storage resources. */
   destroySurface(options: SurfaceIdOptions): Promise<void>;

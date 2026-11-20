@@ -106,6 +106,10 @@ pure def observeStop(c: TurnClient, turn: int, receipt: StopReceipt): TurnClient
 pure val receiptValues = Set(NoReceipt, Receipt({ room: 1, reason: "client-stop", outcome: T::StopConfirmed }), Receipt({ room: 1, reason: "client-stop", outcome: T::NothingRunning }),
   Receipt({ room: 1, reason: "client-stop", outcome: T::StopUncertain }), Receipt({ room: 2, reason: "client-stop", outcome: T::StopConfirmed }),
   Receipt({ room: 1, reason: "other", outcome: T::StopConfirmed }))
+pure def alwaysAStopNamesItsRoom(c: TurnClient): bool = {
+  val p = c.stop
+  match p { | StopWaiting(x) => x.turn >= 1 and x.conversation >= 1 and x.room >= 1 | StopUncertainHeld(x) => x.conversation >= 1 | NoStop => true }
+}
 pure def stepStopIsPostedOnceForTheSentTurn(before: TurnClient, via: str, after: TurnClient, out: List[ClientCall]): bool =
   out.every(call => match call { | PostStop(x) => isSent(before.turn) and turnId(before.turn) == x.turn and turnId(after.turn) != x.turn | _ => true })
 pure def sometimesSendWaitsForAStop(c: TurnClient): bool = c.turn != Idle and not(isSent(c.turn)) and stopTurn(c.stop) > 0

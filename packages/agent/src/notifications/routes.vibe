@@ -32,7 +32,7 @@ effect function inboxOf(runtime: AgentRuntime) {
   switch (NotificationService.getAvailability(runtime)) {
     case "registered": {
       if (service === undefined) return absent("InboxStarting")
-      return try durableInbox(service) catch (failure) => {
+      return durableInbox(service) catch effect (failure) => {
         if (!notDurable(failure.cause)) throw failure
         return absent("InboxClosed")
       }

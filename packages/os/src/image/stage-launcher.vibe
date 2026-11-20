@@ -1,0 +1,720 @@
+// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/image/staging.md, "A call is admitted only when every check above holds, and a refusal names the first that failed"; spec/os/image/staging.md, "The overlay grants only declared permissions, and places the launcher in priv-app with its allow-list and the agent socket policy only when it names privileged permissions"; spec/os/image/staging.md, "Only an admitted, rendered overlay is published, once, and never over an existing output"; spec/os/image/staging.md, "A deferred Soong conversion runs once, only on a published overlay, and only over its unchanged admitted bytes"
+import {
+  Machine,
+  decodeState,
+  descriptorValid,
+  evidenceOf,
+  machine,
+  noApk,
+  noCall,
+  renderOverlay as overlayPlan,
+  type ApkObservation,
+  type ImageTarget,
+  type LauncherDescriptor as DescriptorFacts,
+  type LauncherStaging,
+  type NativeEntryCheck,
+  type NativeLibrary,
+  type NativeRequest,
+  type Partition,
+  type RenderedOverlay,
+  type StagingCall,
+  type StagingEvidence,
+  type StagingRefusal,
+  type SuppliedCompanion,
+} from "../../gen/os__image__staging.effect.vibe"
+import type { Abi } from "../../gen/os__build__runtimePayload.effect.vibe"
+import { hexOf, type ApkBuildType, type SignerObservation } from "../../gen/os__image__apk.effect.vibe"
+import type { ProvisioningRequest } from "../../gen/os__image__provisioning.effect.vibe"
+import { aaptManifestTree, manifestFacts, parseDigest, parseXmlTree, readApkSigner, readApkSignerDigest, type Environment, type ManifestNode } from "./apk.vibe"
+import { provisioningComponents, writeProvisioningOverlay, type ProvisioningAdmitted } from "./provisioning.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+  import { crc32 } from "node:zlib"
+
+  export interface ZipNative {
+    readonly entry: string
+    readonly method: number
+    readonly encrypted: boolean
+    readonly declaredSize: number
+    readonly storedSize: number
+    readonly data: Uint8Array
+    readonly crcMatches: boolean
+  }
+
+  export type ZipNatives = { readonly kind: "natives"; readonly natives: readonly ZipNative[] } | { readonly kind: "invalid"; readonly message: string }
+
+  /** @throws {never} */
+  export function sha256Hex(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  function walk(bytes: Uint8Array): ZipNatives {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    let end = -1
+    for (let at = bytes.byteLength - 22; at >= Math.max(0, bytes.byteLength - 22 - 0xffff); at--)
+      if (view.getUint32(at, true) === 0x06054b50) {
+        end = at
+        break
+      }
+    if (end < 0) return { kind: "invalid", message: "the APK has no end-of-central-directory record" }
+    const count = view.getUint16(end + 10, true)
+    const size = view.getUint32(end + 12, true)
+    const offset = view.getUint32(end + 16, true)
+    if (count === 0xffff || size === 0xffffffff || offset === 0xffffffff) return { kind: "invalid", message: "ZIP64 APKs are not admitted" }
+    if (offset + size > end) return { kind: "invalid", message: "the central directory is outside the APK" }
+    const names = new TextDecoder("utf-8", { fatal: true })
+    const seen = new Set<string>()
+    const natives: ZipNative[] = []
+    let at = offset
+    for (let index = 0; index < count; index++) {
+      if (at + 46 > offset + size || view.getUint32(at, true) !== 0x02014b50) return { kind: "invalid", message: "the central directory is malformed" }
+      const flags = view.getUint16(at + 8, true)
+      const method = view.getUint16(at + 10, true)
+      const crc = view.getUint32(at + 16, true)
+      const storedSize = view.getUint32(at + 20, true)
+      const declaredSize = view.getUint32(at + 24, true)
+      const nameLength = view.getUint16(at + 28, true)
+      const local = view.getUint32(at + 42, true)
+      const entry = names.decode(bytes.subarray(at + 46, at + 46 + nameLength))
+      at += 46 + nameLength + view.getUint16(at + 30, true) + view.getUint16(at + 32, true)
+      if (seen.has(entry)) return { kind: "invalid", message: `the APK repeats ${entry}` }
+      seen.add(entry)
+      if (!entry.startsWith("lib/") || entry.endsWith("/")) continue
+      if (local + 30 > bytes.byteLength || view.getUint32(local, true) !== 0x04034b50) return { kind: "invalid", message: `${entry} has no local header` }
+      const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true)
+      if (start + storedSize > offset) return { kind: "invalid", message: `${entry} runs into the central directory` }
+      const data = bytes.subarray(start, start + storedSize)
+      const encrypted = (flags & 1) !== 0
+      natives.push({ entry, method, encrypted, declaredSize, storedSize, data, crcMatches: method === 0 && !encrypted && crc32(data) >>> 0 === crc })
+    }
+    return { kind: "natives", natives }
+  }
+
+  /** @throws {never} */
+  export function zipNatives(bytes: Uint8Array): ZipNatives {
+    try {
+      return walk(bytes)
+    } catch (cause) {
+      return { kind: "invalid", message: cause instanceof RangeError ? "the APK is truncated" : cause instanceof TypeError ? "an entry name is not UTF-8" : String(cause) }
+    }
+  }
+
+  /** @throws {never} */
+  export function parseJson(text: string): unknown {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return undefined
+    }
+  }
+}
+import { parseJson, sha256Hex, zipNatives } from node
+
+export const NATIVE_TARGETS = {
+  "arm64-v8a": { abi: "Arm64", arch: "arm64", machine: 0xb7 },
+  x86_64: { abi: "X86_64", arch: "x86_64", machine: 0x3e },
+} as const satisfies Readonly<Record<string, { readonly abi: Abi; readonly arch: string; readonly machine: number }>>
+export type NativeAbi = keyof typeof NATIVE_TARGETS
+export const NATIVE_INSTALLS = ["make", "soong"] as const
+export type NativeInstall = (typeof NATIVE_INSTALLS)[number]
+
+export interface CompanionDescriptor {
+  readonly moduleName: string
+  readonly packageName: string
+  readonly apkSha256: string
+}
+
+export interface LauncherDescriptor {
+  readonly schemaVersion: 1
+  readonly brand: string
+  readonly moduleName: string
+  readonly packageName: string
+  readonly apkSha256: string
+  readonly certificateSha256: string
+  readonly defaultPermissions?: readonly string[]
+  readonly privilegedPermissions?: readonly string[]
+  readonly partition?: "product" | "system"
+  readonly companions?: readonly CompanionDescriptor[]
+}
+
+export interface NativeEntry {
+  readonly library: NativeLibrary
+  readonly entry: string
+  readonly data: Uint8Array
+  readonly sha256: string
+}
+
+export interface NativeOverlay {
+  readonly abi: NativeAbi
+  readonly rule: NativeInstall
+  readonly libraries: readonly { readonly name: string; readonly sha256: string }[]
+}
+
+export interface NativeRecord {
+  readonly apkEntry: string
+  readonly path: string
+  readonly installPath: string
+  readonly mode: "0755" | "0644"
+  readonly sha256: string
+}
+
+export interface SoongPatchReceipt {
+  readonly name: "soong-app-native"
+  readonly project: string
+  readonly revision: string
+  readonly patchSha256: string
+  readonly manifestSha256: string
+  readonly files: readonly unknown[]
+}
+
+export interface StageOptions {
+  readonly descriptor: string
+  readonly apk: string
+  readonly companions?: Readonly<Record<string, string>>
+  readonly output: string
+  readonly aapt: string
+  readonly apksigner: string
+  readonly development: boolean
+  readonly nativeAbi?: NativeAbi
+  readonly nativeInstall?: NativeInstall
+  readonly deferSoong?: boolean
+  readonly admissionOnly?: boolean
+  readonly soongOnly?: boolean
+  readonly provisioning?: ProvisioningRequest
+  readonly env?: Environment
+}
+
+export interface StagedLauncher {
+  readonly output: string
+  readonly provisioning: ProvisioningAdmitted | null
+  readonly evidence: StagingEvidence
+}
+
+export interface LauncherRecord {
+  readonly descriptor: LauncherDescriptor
+  readonly development: boolean
+  readonly evidence: StagingEvidence
+  readonly state: LauncherStaging
+}
+
+export error StagingOptionsInvalid { message: string }
+export error StagingInputUnreadable { file: string; message: string }
+export error DescriptorRefused { message: string }
+export error DevelopmentRequired { message: string }
+export error NativeArchiveInvalid { apk: string; message: string }
+export error StagingRefused { reason: StagingRefusal; message: string }
+export error OverlayWriteFailed { output: string; message: string }
+export error OutputNotPublished { output: string; message: string }
+export error NativeFinalizeRefused { output: string; message: string }
+
+const MODULE = /^[A-Z][A-Za-z0-9]*$/
+const PACKAGE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/
+const BRAND = /^[a-z][a-z0-9_]*$/
+const PERMISSION = /^android\.permission\.[A-Z][A-Z0-9_]{0,63}$/
+const JNI_NAME = /^lib[A-Za-z0-9_.+-]+\.so$/
+const AAPT_TRUE = "0xffffffff"
+const LAUNCHER_APK = "Launcher.apk"
+const RECORD = "launcher.json"
+const REPORT = "native-libraries.json"
+const SOCKET_POLICY = "eliza_agent_socket.te"
+const SOCKET_RULE = "allow priv_app_all privapp_data_file:sock_file { create unlink getattr setattr write rename };\n"
+const PATCH_DIRECTORY = "aosp/patches/soong-app-native"
+const PATCH_BASELINE = "aosp/sources/pixel10a-stallion.json"
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value : ""
+}
+
+function namedList(value: unknown, pattern: RegExp): { readonly names: string[]; readonly valid: boolean } {
+  if (value === undefined) return { names: [], valid: true }
+  if (!Array.isArray(value) || value.length === 0) return { names: [], valid: false }
+  const names = value.filter((name): name is string => typeof name === "string")
+  return { names, valid: names.length === value.length && names.every((name) => pattern.test(name)) }
+}
+
+function companionsOf(value: unknown): { readonly companions: CompanionDescriptor[]; readonly valid: boolean } {
+  if (value === undefined) return { companions: [], valid: true }
+  if (!Array.isArray(value) || value.length === 0) return { companions: [], valid: false }
+  const companions = value.filter(isRecord).map((row): CompanionDescriptor => ({ moduleName: text(row.moduleName), packageName: text(row.packageName), apkSha256: text(row.apkSha256) }))
+  const shaped = value.every((row) => isRecord(row) && Object.keys(row).sort().join() === "apkSha256,moduleName,packageName")
+  return { companions, valid: shaped && companions.length === value.length && companions.every((row) => MODULE.test(row.moduleName) && PACKAGE.test(row.packageName)) }
+}
+
+function generatedModules(moduleName: string): string[] {
+  return ["Launcher", `${moduleName}DefaultPermissions`, `${moduleName}PrivappPermissions`]
+}
+
+function partitionOf(value: "product" | "system" | undefined): Partition {
+  return value === "system" ? "SystemPartition" : "ProductPartition"
+}
+
+function factsOf(value: unknown): { readonly facts: DescriptorFacts; readonly descriptor: LauncherDescriptor } {
+  const raw = isRecord(value) ? value : {}
+  const grants = namedList(raw.defaultPermissions, PERMISSION)
+  const privileged = namedList(raw.privilegedPermissions, PERMISSION)
+  const { companions, valid: companionsValid } = companionsOf(raw.companions)
+  const partition = raw.partition === "system" || raw.partition === "product" ? raw.partition : undefined
+  const moduleName = text(raw.moduleName)
+  const descriptor: LauncherDescriptor = {
+    schemaVersion: 1,
+    brand: text(raw.brand),
+    moduleName,
+    packageName: text(raw.packageName),
+    apkSha256: text(raw.apkSha256),
+    certificateSha256: text(raw.certificateSha256),
+    ...(raw.defaultPermissions === undefined ? {} : { defaultPermissions: grants.names }),
+    ...(raw.privilegedPermissions === undefined ? {} : { privilegedPermissions: privileged.names }),
+    ...(partition === undefined ? {} : { partition }),
+    ...(raw.companions === undefined ? {} : { companions }),
+  }
+  const moduleNameValid = isRecord(value) && MODULE.test(moduleName) && PACKAGE.test(descriptor.packageName)
+    && grants.valid && privileged.valid && companionsValid && (raw.partition === undefined || partition !== undefined)
+    && companions.every((row) => !generatedModules(moduleName).includes(row.moduleName))
+  const facts: DescriptorFacts = {
+    schemaVersion: typeof raw.schemaVersion === "number" ? raw.schemaVersion : 0,
+    brandValid: BRAND.test(descriptor.brand),
+    moduleNameValid,
+    moduleName,
+    packageName: descriptor.packageName,
+    apkSha256: parseDigest(descriptor.apkSha256),
+    certificate: parseDigest(descriptor.certificateSha256),
+    defaultPermissions: grants.names,
+    privilegedPermissions: privileged.names,
+    partition: partitionOf(partition),
+    companions: companions.map((row) => ({ moduleName: row.moduleName, packageName: row.packageName, apkSha256: parseDigest(row.apkSha256) })),
+  }
+  return { facts, descriptor }
+}
+
+export effect function validateDescriptor(value: unknown) {
+  const { facts, descriptor } = factsOf(value)
+  if (!descriptorValid(facts)) throw new DescriptorRefused({ message: "The launcher descriptor is not a valid schema 1 descriptor: check its brand, names, digests, permissions, partition and companions" })
+  return descriptor
+}
+
+effect function readJson(file: string) {
+  const files = try FileSystem.FileSystem
+  const content = try mapError(files.readFileString(file), (cause) => new StagingInputUnreadable({ file, message: `Could not read ${file}: ${cause.message}` }))
+  return parseJson(content)
+}
+
+effect function privateCopy(source: string, target: string) {
+  const files = try FileSystem.FileSystem
+  try mapError(files.copyFile(source, target), (cause) => new StagingInputUnreadable({ file: source, message: `Could not copy ${source}: ${cause.message}` }))
+  const bytes = try mapError(files.readFile(target), (cause) => new StagingInputUnreadable({ file: source, message: `Could not read the copy of ${source}: ${cause.message}` }))
+  return { file: target, bytes, sha256: sha256Hex(bytes) }
+}
+
+export effect function createDevelopmentLauncherDescriptor(options: {
+  readonly identity: Pick<LauncherDescriptor, "brand" | "moduleName" | "packageName">
+  readonly apk: string
+  readonly apksigner: string
+  readonly development: boolean
+  readonly env?: Environment
+}) {
+  if (options.development !== true) throw new DevelopmentRequired({ message: "Descriptor generation from the APK's own signer is for development staging only" })
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  return try scoped(effect {
+    const directory = try files.makeTempDirectoryScoped({ prefix: "launcher-descriptor-" })
+    const copy = try privateCopy(options.apk, path.join(directory, LAUNCHER_APK))
+    const certificateSha256 = try readApkSignerDigest(copy.file, { apksigner: options.apksigner, ...(options.env === undefined ? {} : { env: options.env }) })
+    return try validateDescriptor({ schemaVersion: 1, ...options.identity, apkSha256: copy.sha256, certificateSha256 })
+  })
+}
+
+function elfFor(data: Uint8Array, machine: number): boolean {
+  if (data.byteLength < 64) return false
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
+  return view.getUint32(0, false) === 0x7f454c46 && data[4] === 2 && data[5] === 1 && view.getUint16(18, true) === machine
+}
+
+export effect function readNativeLibraries(bytes: Uint8Array, apk = "APK") {
+  const read = zipNatives(bytes)
+  if (read.kind === "invalid") throw new NativeArchiveInvalid({ apk, message: `Could not read the native libraries of ${apk}: ${read.message}` })
+  return read.natives.flatMap((native): NativeEntry[] => {
+    const [, directory = "", ...rest] = native.entry.split("/")
+    if (!Object.hasOwn(NATIVE_TARGETS, directory)) return []
+    const target = NATIVE_TARGETS[directory as NativeAbi]
+    const name = rest.join("/")
+    const check: NativeEntryCheck = rest.length !== 1 || !JNI_NAME.test(name) ? "EntryNotFlat"
+      : native.encrypted || native.method !== 0 || native.declaredSize !== native.storedSize ? "EntryCompressed"
+      : !native.crcMatches ? "EntryCrcMismatch"
+      : !elfFor(native.data, target.machine) ? "EntryNotElfForAbi"
+      : "EntryValid"
+    return [{ library: { abi: target.abi, name, check }, entry: native.entry, data: native.data, sha256: sha256Hex(native.data) }]
+  }).sort((left, right) => (left.entry < right.entry ? -1 : left.entry > right.entry ? 1 : 0))
+}
+
+function homeFilter(filter: ManifestNode): boolean {
+  const named = (tag: string, name: string) => filter.children.some((child) => child.name === tag && child.attrs.name === name)
+  return named("action", "android.intent.action.MAIN") && named("category", "android.intent.category.HOME") && named("category", "android.intent.category.DEFAULT")
+}
+
+function declaresHome(filter: ManifestNode): boolean {
+  return filter.children.some((child) => child.name === "category" && child.attrs.name === "android.intent.category.HOME")
+}
+
+function homeOf(tree: string, launcher: boolean): boolean {
+  const manifest = parseXmlTree(tree).children.find((node) => node.name === "manifest")
+  const application = manifest?.children.find((node) => node.name === "application")
+  if (application === undefined) return false
+  const filters = (node: ManifestNode) => node.children.filter((child) => child.name === "intent-filter")
+  if (!launcher) return application.children.some((node) => (node.name === "activity" || node.name === "activity-alias") && filters(node).some(declaresHome))
+  if (application.attrs.enabled === "0x0") return false
+  return application.children.some((node) => node.name === "activity" && node.attrs.exported === AAPT_TRUE && node.attrs.enabled !== "0x0" && filters(node).some(homeFilter))
+}
+
+function buildTypeOf(tree: string): ApkBuildType {
+  const { application } = manifestFacts(tree)
+  return !application.declared ? "BuildTypeUnread" : application.debuggable === AAPT_TRUE ? "DebuggableBuild" : "ReleaseBuild"
+}
+
+effect function observe(copy: { readonly file: string; readonly bytes: Uint8Array; readonly sha256: string }, options: StageOptions, launcher: boolean) {
+  const env = options.env === undefined ? {} : { env: options.env }
+  const tree = (aaptManifestTree(copy.file, { aapt: options.aapt, ...env }) catch () => "")
+  const facts = manifestFacts(tree)
+  const natives = launcher ? try readNativeLibraries(copy.bytes, options.apk) : []
+  const observation: ApkObservation = {
+    sha256: parseDigest(copy.sha256),
+    packageName: facts.packageName ?? "",
+    home: homeOf(tree, launcher),
+    buildType: buildTypeOf(tree),
+    signer: (readApkSigner(copy.file, { apksigner: options.apksigner, ...env }) catch (): SignerObservation => ({ tag: "SignerRefused" })),
+    declaredPermissions: [...facts.permissions],
+    natives: natives.map((native) => native.library),
+  }
+  return { observation, tree, natives }
+}
+
+function nativeRequestOf(options: StageOptions): NativeRequest {
+  if (options.nativeAbi === undefined) return { tag: "NoNatives" }
+  const install = options.deferSoong === true ? "SoongDeferred" : options.nativeInstall === "soong" ? "SoongRules" : "MakeRules"
+  return { tag: "NativeFor", abi: NATIVE_TARGETS[options.nativeAbi].abi, install }
+}
+
+effect function checkOptions(options: StageOptions) {
+  const problem = options.nativeAbi !== undefined && !Object.hasOwn(NATIVE_TARGETS, options.nativeAbi) ? `nativeAbi must be one of ${Object.keys(NATIVE_TARGETS).join(", ")}`
+    : options.nativeInstall !== undefined && !NATIVE_INSTALLS.includes(options.nativeInstall) ? `nativeInstall must be one of ${NATIVE_INSTALLS.join(", ")}`
+    : options.nativeInstall !== undefined && options.nativeAbi === undefined ? "A native install rule needs a native ABI"
+    : options.deferSoong === true && (options.nativeAbi === undefined || options.nativeInstall === "make") ? "Deferring Soong needs a native ABI and Soong installation"
+    : options.deferSoong === true && options.admissionOnly === true ? "Choose one of deferSoong and admissionOnly"
+    : Object.keys(options.companions ?? {}).find((name) => !MODULE.test(name)) !== undefined ? "Each companion is keyed by its module name"
+    : undefined
+  if (problem !== undefined) throw new StagingOptionsInvalid({ message: problem })
+}
+
+effect function packageRoot() {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  let directory = try path.fromFileUrl(new URL(".", import.meta.url))
+  while (!(try files.exists(path.join(directory, PATCH_DIRECTORY, "manifest.json")))) {
+    const parent = path.dirname(directory)
+    if (parent === directory) return undefined
+    directory = parent
+  }
+  return directory
+}
+
+export effect function soongPatchReceipt() {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const root = try packageRoot()
+  if (root === undefined) return undefined
+  const directory = path.join(root, PATCH_DIRECTORY)
+  const manifestBytes = (files.readFile(path.join(directory, "manifest.json")) catch () => new Uint8Array())
+  const manifest = parseJson(new TextDecoder().decode(manifestBytes))
+  if (!isRecord(manifest) || typeof manifest.patch !== "string" || manifest.patch.includes("/") || typeof manifest.patchSha256 !== "string") return undefined
+  const patch = (files.readFile(path.join(directory, manifest.patch)) catch () => undefined)
+  if (patch === undefined || sha256Hex(patch) !== manifest.patchSha256) return undefined
+  const baseline = (files.readFile(path.join(root, PATCH_BASELINE)) catch () => undefined)
+  if (baseline === undefined || sha256Hex(baseline) !== manifest.baselineLockSha256) return undefined
+  const receipt: SoongPatchReceipt = {
+    name: "soong-app-native",
+    project: text(manifest.project),
+    revision: text(manifest.revision),
+    patchSha256: manifest.patchSha256,
+    manifestSha256: sha256Hex(manifestBytes),
+    files: Array.isArray(manifest.files) ? manifest.files : [],
+  }
+  return receipt
+}
+
+function xml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+}
+
+function directoryLine(variable: string, directory: string): string {
+  return `${variable} := $(patsubst %/,%,$(dir $(lastword $(filter %/product.mk,$(MAKEFILE_LIST)))))${directory === "" ? "" : `/${directory}`}`
+}
+
+function overlayFiles(d: DescriptorFacts, plan: RenderedOverlay, native: NativeOverlay | undefined) {
+  const privileged = plan.directory === "PrivApp"
+  const partition = plan.partition === "SystemPartition" ? "system" : "product"
+  const partitionProperty = partition === "product" ? "    product_specific: true,\n" : ""
+  const quoted = (names: readonly string[]) => names.map((name) => `"${name}"`).join(", ")
+  const app = (name: string, apk: string, isPrivileged: boolean, required: readonly string[]) =>
+    `android_app_import {\n    name: "${name}",\n    apk: "${apk}",\n    presigned: true,\n    preprocessed: true,\n${isPrivileged ? "    privileged: true,\n" : ""}${partitionProperty}${required.length === 0 ? "" : `    required: [${quoted(required)}],\n`}    dex_preopt: { enabled: false },\n}\n`
+  const etc = (name: string, src: string, subDir: string, filename: string) =>
+    `\nprebuilt_etc {\n    name: "${name}",\n    src: "${src}",\n    sub_dir: "${subDir}",\n    filename: "${filename}",\n${partitionProperty}}\n`
+  const grantsModule = `${d.moduleName}DefaultPermissions`
+  const privappModule = `${d.moduleName}PrivappPermissions`
+  const files: Record<string, string> = {}
+  if (plan.revocableGrants.length > 0)
+    files["default-permissions.xml"] = `<?xml version="1.0" encoding="utf-8"?>\n<exceptions>\n    <exception package="${xml(d.packageName)}">\n${plan.revocableGrants.map((name) => `        <permission name="${xml(name)}" fixed="false"/>\n`).join("")}    </exception>\n</exceptions>\n`
+  if (plan.privappAllowList.length > 0)
+    files["privapp-permissions.xml"] = `<?xml version="1.0" encoding="utf-8"?>\n<permissions>\n    <privapp-permissions package="${xml(d.packageName)}">\n${plan.privappAllowList.map((name) => `        <permission name="${xml(name)}"/>\n`).join("")}    </privapp-permissions>\n</permissions>\n`
+  if (plan.agentSocketPolicy) files[`sepolicy/${SOCKET_POLICY}`] = SOCKET_RULE
+  const rest = [
+    plan.revocableGrants.length > 0 ? etc(grantsModule, "default-permissions.xml", "default-permissions", `default-permissions-${d.packageName}.xml`) : "",
+    plan.privappAllowList.length > 0 ? etc(privappModule, "privapp-permissions.xml", "permissions", `privapp-permissions-${d.packageName}.xml`) : "",
+    ...d.companions.map((companion) => `\n${app(companion.moduleName, `${companion.moduleName}.apk`, false, [])}`),
+  ].join("")
+  const target = native === undefined ? undefined : NATIVE_TARGETS[native.abi]
+  const records = target === undefined || native === undefined ? [] : plan.natives.map((staged): NativeRecord => ({
+    apkEntry: `lib/${native.abi}/${staged.name}`,
+    path: `native-${target.arch}/${staged.name}`,
+    installPath: `/${partition}/${privileged ? "priv-app" : "app"}/${d.moduleName}/lib/${target.arch}/${staged.name}`,
+    mode: staged.mode === "Executable" ? "0755" : "0644",
+    sha256: native.libraries.find((library) => library.name === staged.name)?.sha256 ?? "",
+  }))
+  const nativeModules = records.map((_, index) => `${d.moduleName}_native_${index}`)
+  if (target === undefined || native === undefined) {
+    files["Android.bp"] = `${app(d.moduleName, LAUNCHER_APK, privileged, [])}${rest}`
+  } else if (native.rule === "soong") {
+    const rule = privileged ? "prebuilt_priv_app_native" : "prebuilt_app_native"
+    files["Android.bp"] = `${app(d.moduleName, LAUNCHER_APK, privileged, nativeModules)}${records
+      .map((record, index) => `\n${rule} {\n    name: "${nativeModules[index] ?? ""}",\n    src: "${record.path}",\n    filename: "${record.path.slice(record.path.indexOf("/") + 1)}",\n    relative_install_path: "${d.moduleName}/lib/${target.arch}",\n${partitionProperty}}\n`)
+      .join("")}${rest}`
+  } else {
+    files["Android.bp"] = `// ${d.moduleName} is in Android.mk, which installs its native libraries.\n${rest}`
+    files["Android.mk"] = `LOCAL_PATH := $(call my-dir)\ninclude $(CLEAR_VARS)\nLOCAL_MODULE := ${d.moduleName}\nLOCAL_MODULE_CLASS := APPS\nLOCAL_MODULE_SUFFIX := .apk\nLOCAL_SRC_FILES := ${LAUNCHER_APK}\nLOCAL_CERTIFICATE := PRESIGNED\nLOCAL_SDK_VERSION := 36\n${partition === "product" ? "LOCAL_PRODUCT_MODULE := true\n" : ""}${privileged ? "LOCAL_PRIVILEGED_MODULE := true\n" : ""}LOCAL_MULTILIB := 64\nLOCAL_MODULE_TARGET_ARCH := ${target.arch}\nLOCAL_DEX_PREOPT := false\nLOCAL_PREBUILT_JNI_LIBS := ${records.map((record) => record.path).join(" ")}\ninclude $(BUILD_PREBUILT)\n`
+  }
+  if (records.length > 0)
+    files["config.fs"] = records.map((record) => `[${record.installPath.slice(1)}]\nmode: ${record.mode}\nuser: AID_ROOT\ngroup: AID_ROOT\ncaps: 0\n\n`).join("")
+  const packages = [d.moduleName, ...(plan.revocableGrants.length > 0 ? [grantsModule] : []), ...(plan.privappAllowList.length > 0 ? [privappModule] : []), ...d.companions.map((companion) => companion.moduleName)]
+  files["product.mk"] = [
+    `PRODUCT_PACKAGES += ${packages.join(" ")}\n`,
+    records.length > 0 ? `${directoryLine("launcher_native_dir", "")}\nTARGET_FS_CONFIG_GEN += $(launcher_native_dir)/config.fs\n` : "",
+    plan.agentSocketPolicy ? `${directoryLine("launcher_policy_dir", "sepolicy")}\nSYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += $(launcher_policy_dir)\n` : "",
+  ].join("")
+  return { files, records }
+}
+
+function syntheticCall(facts: DescriptorFacts, native: NativeOverlay | undefined): StagingCall {
+  const abi = native === undefined ? undefined : NATIVE_TARGETS[native.abi].abi
+  return {
+    ...noCall,
+    descriptor: facts,
+    apk: { ...noApk, natives: abi === undefined || native === undefined ? [] : native.libraries.map((library): NativeLibrary => ({ abi, name: library.name, check: "EntryValid" })) },
+    companions: facts.companions.map((companion): SuppliedCompanion => ({ moduleName: companion.moduleName, apk: noApk })),
+    nativeRequest: abi === undefined || native === undefined ? { tag: "NoNatives" } : { tag: "NativeFor", abi, install: native.rule === "soong" ? "SoongRules" : "MakeRules" },
+    mode: "StageOverlay",
+  }
+}
+
+export function renderOverlay(descriptor: LauncherDescriptor, native?: NativeOverlay): Record<string, string> {
+  const { facts } = factsOf(descriptor)
+  return overlayFiles(facts, overlayPlan(syntheticCall(facts, native)), native).files
+}
+
+effect function writeFiles(directory: string, written: Readonly<Record<string, string | Uint8Array>>) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  for (const [name, content] of Object.entries(written)) {
+    const file = path.join(directory, name)
+    try files.makeDirectory(path.dirname(file), { recursive: true })
+    try (typeof content === "string" ? files.writeFileString(file, content, { flag: "wx" }) : files.writeFile(file, content, { flag: "wx" }))
+  }
+}
+
+interface Rendering {
+  readonly overlay: string
+  readonly call: StagingCall
+  readonly natives: readonly NativeEntry[]
+  readonly copies: Readonly<Record<string, string>>
+  readonly tree: string
+  readonly receipt: SoongPatchReceipt | undefined
+  readonly provisioning: ProvisioningRequest | undefined
+}
+
+effect function renderInto(rendering: Rendering) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const { call, overlay } = rendering
+  const request = call.nativeRequest
+  const plan = overlayPlan(call)
+  const abi = request.tag === "NativeFor" ? (Object.keys(NATIVE_TARGETS) as NativeAbi[]).find((key) => NATIVE_TARGETS[key].abi === request.abi) : undefined
+  const staged = rendering.natives.filter((native) => request.tag === "NativeFor" && native.library.abi === request.abi)
+  const native: NativeOverlay | undefined = abi === undefined ? undefined : { abi, rule: request.tag === "NativeFor" && request.install === "SoongRules" ? "soong" : "make", libraries: staged.map((entry) => ({ name: entry.library.name, sha256: entry.sha256 })) }
+  const { files: written, records } = overlayFiles(call.descriptor, plan, native)
+  try files.makeDirectory(overlay)
+  for (const [name, source] of Object.entries(rendering.copies)) try files.copyFile(source, path.join(overlay, name))
+  try writeFiles(overlay, written)
+  if (abi !== undefined && request.tag === "NativeFor")
+    try writeFiles(overlay, {
+      ...Object.fromEntries(staged.map((entry) => [`native-${NATIVE_TARGETS[abi].arch}/${entry.library.name}`, entry.data])),
+      [REPORT]: `${JSON.stringify({
+        schemaVersion: 1,
+        apkSha256: hexOf(call.apk.sha256),
+        abi,
+        moduleName: call.descriptor.moduleName,
+        installRule: request.install === "MakeRules" ? "android-mk" : "soong-app-native",
+        deferred: request.install === "SoongDeferred",
+        ...(request.install === "MakeRules" || rendering.receipt === undefined ? {} : { soongPatch: rendering.receipt }),
+        libraries: records,
+      }, null, 2)}\n`,
+    })
+  if (rendering.provisioning === undefined) return null
+  const admitted = try provisioningComponents(rendering.tree, call.descriptor.packageName, rendering.provisioning)
+  try writeProvisioningOverlay(overlay, call.descriptor.packageName, admitted)
+  return admitted
+}
+
+function refusalMessage(reason: StagingRefusal): string {
+  switch (reason) {
+    case "DescriptorInvalid": return "the descriptor is not a valid schema 1 launcher descriptor"
+    case "SelfSelectedOutsideDevelopment": return "a descriptor taken from the APK's own signer is for development staging only"
+    case "LauncherDigestMismatch": return "the APK is not the one the descriptor pins"
+    case "NotTheLauncherPackage": return "the APK is not the descriptor's package with one exported, enabled MAIN/HOME/DEFAULT activity"
+    case "BuildNotAllowed": return "a debuggable or unreadable build is staged only in development"
+    case "SignerNotTheDescriptors": return "the APK does not have exactly the descriptor's signer"
+    case "PermissionUndeclared": return "the APK does not declare every permission the descriptor grants"
+    case "CompanionRefused": return "a companion is missing, supplied twice, not pinned, a home launcher, a disallowed build or another signer's"
+    case "RuntimeNativesNotStaged": return "the APK carries the Node runtime, so its natives must be staged for the image ABI"
+    case "NoNativesForAbi": return "the APK has no native libraries for the image ABI"
+    case "RuntimeMissingForAbi": return "the APK carries the Node runtime but not for the image ABI"
+    case "NativeEntryInvalid": return "a native library for the image ABI is compressed, not flat, not an ELF64 for the ABI, or fails its CRC"
+    case "MakeRulesOnSoongOnlyTarget": return "a Soong-only target cannot install natives through Android.mk"
+    case "SoongPatchNotAdmitted": return "Soong installation needs the reviewed soong-app-native patch, whose receipt does not match"
+  }
+}
+
+effect function record(output: string, entry: LauncherRecord) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  try mapError(files.writeFileString(path.join(output, RECORD), `${JSON.stringify(entry, null, 2)}\n`), (cause) => new OverlayWriteFailed({ output, message: `Could not record ${RECORD}: ${cause.message}` }))
+}
+
+export effect function stageLauncher(options: StageOptions) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  try checkOptions(options)
+  const output = path.resolve(options.output)
+  const { facts, descriptor } = factsOf(try readJson(options.descriptor))
+  const parent = path.dirname(output)
+  try mapError(files.makeDirectory(parent, { recursive: true }), (cause) => new OverlayWriteFailed({ output, message: `Could not create ${parent}: ${cause.message}` }))
+  const receipt = try soongPatchReceipt()
+  return try scoped(effect {
+    const work = try acquireRelease(
+      mapError(files.makeTempDirectory({ directory: parent, prefix: ".launcher-stage-" }), (cause) => new OverlayWriteFailed({ output, message: `Could not create a private directory beside ${output}: ${cause.message}` })),
+      (directory) => orElseSucceed(files.remove(directory, { recursive: true, force: true }), () => undefined),
+    )
+    const inspect = path.join(work, "inspect")
+    try mapError(files.makeDirectory(inspect), (cause) => new OverlayWriteFailed({ output, message: cause.message }))
+    const launcher = try privateCopy(options.apk, path.join(inspect, LAUNCHER_APK))
+    const seen = try observe(launcher, options, true)
+    const companionCopies: Record<string, string> = {}
+    const supplied: SuppliedCompanion[] = []
+    for (const [moduleName, file] of Object.entries(options.companions ?? {})) {
+      const copy = try privateCopy(file, path.join(inspect, `${moduleName}.apk`))
+      companionCopies[`${moduleName}.apk`] = copy.file
+      supplied.push({ moduleName, apk: (try observe(copy, options, false)).observation })
+    }
+    const target: ImageTarget = { soongOnly: options.soongOnly === true, soongPatchAdmitted: receipt !== undefined }
+    const call: StagingCall = {
+      descriptor: facts,
+      source: "ReviewedDescriptor",
+      stagingMode: options.development ? "StageDevelopment" : "StageProduction",
+      apk: seen.observation,
+      companions: supplied,
+      nativeRequest: nativeRequestOf(options),
+      target,
+      mode: options.admissionOnly === true ? "AdmissionOnly" : "StageOverlay",
+      outputExists: try files.exists(output),
+    }
+    provide machine() {
+      const staging = try Machine
+      const admitted = try orDie(staging.send({ type: "admit", call }))
+      if (admitted.phase.tag === "Refused")
+        throw new StagingRefused({ reason: admitted.phase.reason, message: `Refusing to stage ${options.apk}: ${refusalMessage(admitted.phase.reason)}` })
+      if (call.mode === "AdmissionOnly") {
+        const checked: StagedLauncher = { output, provisioning: null, evidence: evidenceOf(admitted) }
+        return checked
+      }
+      const overlay = path.join(work, "overlay")
+      const rendering: Rendering = { overlay, call, natives: seen.natives, copies: { [LAUNCHER_APK]: launcher.file, ...companionCopies }, tree: seen.tree, receipt, provisioning: options.provisioning }
+      const rendered = (renderInto(rendering) |> map(%, (provisioning) => ({ kind: "rendered" as const, provisioning }))) catch (cause) => ({ kind: "failed" as const, message: `${cause._tag}: ${"message" in cause ? cause.message : ""}` })
+      try orDie(staging.send({ type: "render", ok: rendered.kind === "rendered" }))
+      if (rendered.kind === "failed") {
+        const removed = (files.remove(overlay, { recursive: true, force: true }) |> map(%, () => true)) catch () => false
+        try orDie(staging.send({ type: "cleanStaging", removed }))
+        throw new OverlayWriteFailed({ output, message: `Could not write the overlay for ${output}: ${rendered.message}` })
+      }
+      let renamed = false
+      if (!(try files.exists(output))) renamed = (files.rename(overlay, output) |> map(%, () => true)) catch () => false
+      const published = try orDie(staging.send({ type: "publish", ok: renamed }))
+      let removed = renamed
+      if (!renamed) removed = (files.remove(overlay, { recursive: true, force: true }) |> map(%, () => true)) catch () => false
+      const settled = try orDie(staging.send({ type: "cleanStaging", removed }))
+      if (published.phase.tag !== "Published") throw new OutputNotPublished({ output, message: `${output} exists or could not be published; choose a new staging directory` })
+      const evidence = evidenceOf(settled)
+      try record(output, { descriptor, development: options.development, evidence, state: settled })
+      const result: StagedLauncher = { output, provisioning: rendered.provisioning, evidence }
+      return result
+    }
+  })
+}
+
+effect function stagedIntact(output: string, state: LauncherStaging, abi: NativeAbi) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const apk = (files.readFile(path.join(output, LAUNCHER_APK)) catch () => undefined)
+  if (apk === undefined || sha256Hex(apk) !== hexOf(state.call.apk.sha256)) return { intact: false, libraries: [] }
+  const directory = `native-${NATIVE_TARGETS[abi].arch}`
+  const expected = (try readNativeLibraries(apk, LAUNCHER_APK)).filter((entry) => entry.library.abi === NATIVE_TARGETS[abi].abi)
+  const present = ((files.readDirectory(path.join(output, directory)) catch (): string[] => [])).sort()
+  const libraries = expected.map((entry) => ({ name: entry.library.name, sha256: entry.sha256 }))
+  if (present.join("/") !== libraries.map((library) => library.name).sort().join("/")) return { intact: false, libraries }
+  for (const library of libraries) {
+    const staged = (files.readFile(path.join(output, directory, library.name)) catch () => undefined)
+    if (staged === undefined || sha256Hex(staged) !== library.sha256) return { intact: false, libraries }
+  }
+  const deferred = overlayFiles(state.call.descriptor, overlayPlan(state.call), { abi, rule: "make", libraries })
+  for (const name of ["Android.bp", "Android.mk"]) {
+    const current = (files.readFileString(path.join(output, name)) catch () => undefined)
+    if (current !== deferred.files[name]) return { intact: false, libraries }
+  }
+  return { intact: true, libraries }
+}
+
+export effect function finalizeNative(output: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const directory = path.resolve(output)
+  const recorded = try readJson(path.join(directory, RECORD))
+  if (!isRecord(recorded)) throw new NativeFinalizeRefused({ output: directory, message: `${RECORD} is not a staging record` })
+  const descriptor = try validateDescriptor(recorded.descriptor)
+  const start = try mapError(decodeState(recorded.state), () => new NativeFinalizeRefused({ output: directory, message: `${RECORD} does not hold a staging state` }))
+  const request = start.call.nativeRequest
+  const abi = request.tag === "NativeFor" ? (Object.keys(NATIVE_TARGETS) as NativeAbi[]).find((key) => NATIVE_TARGETS[key].abi === request.abi) : undefined
+  if (abi === undefined) throw new NativeFinalizeRefused({ output: directory, message: `${directory} staged no native libraries` })
+  const checked = try stagedIntact(directory, start, abi)
+  provide machine(start) {
+    const staging = try Machine
+    const finalized = try mapError(staging.send({ type: "finalizeNative", intact: checked.intact }), () => new NativeFinalizeRefused({ output: directory, message: `${directory} is not a published overlay waiting for its deferred Soong conversion` }))
+    try record(directory, { descriptor, development: recorded.development === true, evidence: evidenceOf(finalized), state: finalized })
+    if (finalized.conversion !== "Converted") throw new NativeFinalizeRefused({ output: directory, message: `The admitted launcher or native bytes in ${directory} changed; this output must not be built` })
+    const converted = overlayFiles(finalized.call.descriptor, overlayPlan(finalized.call), { abi, rule: "soong", libraries: checked.libraries })
+    const report = parseJson(try files.readFileString(path.join(directory, REPORT)))
+    try files.writeFileString(path.join(directory, "Android.bp"), converted.files["Android.bp"] ?? "")
+    try files.remove(path.join(directory, "Android.mk"))
+    try files.writeFileString(path.join(directory, REPORT), `${JSON.stringify({ ...(isRecord(report) ? report : {}), installRule: "soong-app-native", deferred: false, libraries: converted.records }, null, 2)}\n`)
+    return { output: directory, evidence: evidenceOf(finalized) }
+  }
+}

@@ -44,8 +44,6 @@ import android.net.Uri
 import android.net.http.SslError
 import android.os.Handler
 import android.os.Looper
-import android.util.Base64
-import android.view.PixelCopy
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Region
@@ -524,9 +522,6 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     }
     private val pageControl by lazy {
         context.assets.open("control-channel.js").bufferedReader().use { it.readText() }
-    }
-    private val captureMask by lazy {
-        context.assets.open("capture-mask.js").bufferedReader().use { it.readText() }
     }
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
     /** Last use of each keyed profile ("used:<name>") and purges still to finish ("purge:<name>"). */
@@ -1190,7 +1185,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     if (!surface.interceptNavigation) return false
                     val redirect = request.isRedirect && request.isForMainFrame
                     if (redirect && surface.gate.redirect(target)) return false
-                    return when (BrowserNavigationPolicy.decide(view.url, target, request.isForMainFrame, surface.gate.taskOrigins())) {
+                    return when (BrowserNavigationPolicy.decide(view.url, target, request.isForMainFrame)) {
                         BrowserNavigationPolicy.Decision.ALLOW -> false
                         BrowserNavigationPolicy.Decision.BLOCK -> {
                             if (redirect) surface.gate.settle(null)
@@ -2263,59 +2258,6 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         }
     }
 
-    /**
-     * The host extended (or narrowed) its running task to these exact HTTPS origins after its own
-     * safety check. An intercepting page may then move between them without a held navigation.
-     * An empty list ends the extension; nothing is ever added without this call.
-     */
-    @PluginMethod
-    fun setTaskOrigins(call: PluginCall) {
-        val id = call.getString("id")
-        val list = call.getArray("origins")
-        val origins = ArrayList<String>()
-        for (index in 0 until (list?.length() ?: 0)) {
-            val origin = list?.opt(index) as? String
-            if (origin == null || index >= 16) {
-                call.reject("setTaskOrigins requires at most 16 HTTPS origins", "INVALID_REQUEST")
-                return
-            }
-            origins.add(origin)
-        }
-        if (id == null || list == null) {
-            call.reject("setTaskOrigins requires an id and origins", "INVALID_REQUEST")
-            return
-        }
-        activity.runOnUiThread {
-            val identity = requireActiveIdentity(call, "setTaskOrigins") ?: return@runOnUiThread
-            val surface = controlledSurface(call, id, identity, "setTaskOrigins") ?: return@runOnUiThread
-            if (!surface.interceptNavigation) {
-                call.reject("setTaskOrigins requires a surface created with interceptNavigation", "UNSUPPORTED")
-                return@runOnUiThread
-            }
-            if (!surface.gate.setTaskOrigins(origins)) {
-                call.reject("setTaskOrigins accepts exact HTTPS origins only", "INVALID_REQUEST")
-                return@runOnUiThread
-            }
-            call.resolve()
-        }
-    }
-
-    @PluginMethod
-    fun setTextZoom(call: PluginCall) {
-        val id = call.getString("id")
-        val percent = call.getInt("percent")
-        if (id == null || percent == null || !BrowserPageHandoffs.validTextZoom(percent)) {
-            call.reject("setTextZoom requires an id and a percent from 50 to 300", "INVALID_REQUEST")
-            return
-        }
-        activity.runOnUiThread {
-            val identity = requireActiveIdentity(call, "setTextZoom") ?: return@runOnUiThread
-            val surface = ownedSurface(call, id, identity, "setTextZoom") ?: return@runOnUiThread
-            surface.webView.settings.textZoom = percent
-            call.resolve()
-        }
-    }
-
     @PluginMethod
     fun goForward(call: PluginCall) {
         val id = call.getString("id") ?: run {
@@ -2339,25 +2281,6 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     private fun approveHistoryStep(surface: Surface, step: Int) {
         val history = surface.webView.copyBackForwardList()
         history.getItemAtIndex(history.currentIndex + step)?.url?.let(surface.gate::approve)
-    }
-
-    @PluginMethod
-    fun clearSurfaceStorage(call: PluginCall) {
-        val id = call.getString("id") ?: run {
-            call.reject("clearSurfaceStorage requires an id")
-            return
-        }
-        activity.runOnUiThread {
-            val identity = requireActiveIdentity(call, "clearSurfaceStorage") ?: return@runOnUiThread
-            val surface = ownedSurface(call, id, identity, "clearSurfaceStorage") ?: return@runOnUiThread
-            val name = surface.profileName ?: run {
-                // Shared storage is the host's own store; clearing it here would sign the host out.
-                call.reject("Only isolated storage can be cleared here", "SHARED_STORAGE")
-                return@runOnUiThread
-            }
-            surface.webView.clearCache(true)
-            clearProfileData(name) { call.resolve() }
-        }
     }
 
     /**
@@ -2415,160 +2338,6 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 purged += 1
             }
             call.resolve(JSObject().apply { put("purged", purged) })
-        }
-    }
-
-    /**
-     * A masked JPEG of the visible page for a vision fallback. Secret fields and unreadable
-     * frames are covered before the pixels are copied and uncovered right after; host chrome
-     * showing through the page is painted over. Any doubt rejects; nothing unmasked is returned.
-     */
-    @PluginMethod
-    fun captureSurface(call: PluginCall) {
-        val id = call.getString("id") ?: run {
-            call.reject("captureSurface requires an id")
-            return
-        }
-        val maxEdge = call.getInt("maxEdge", BrowserCapturePolicy.DEFAULT_MAX_EDGE) ?: BrowserCapturePolicy.DEFAULT_MAX_EDGE
-        val quality = call.getInt("quality", BrowserCapturePolicy.DEFAULT_QUALITY) ?: BrowserCapturePolicy.DEFAULT_QUALITY
-        val rawSelectors = call.getArray("maskSelectors")
-        val selectors = org.json.JSONArray()
-        for (index in 0 until (rawSelectors?.length() ?: 0)) {
-            val selector = rawSelectors?.opt(index) as? String
-            if (selector.isNullOrBlank() || selector.length > 512 || index >= 32) {
-                call.reject("captureSurface maskSelectors must be up to 32 CSS selectors", "INVALID_REQUEST")
-                return
-            }
-            selectors.put(selector)
-        }
-        if (!BrowserCapturePolicy.validMaxEdge(maxEdge) || !BrowserCapturePolicy.validQuality(quality)) {
-            call.reject("captureSurface maxEdge must be 256 to 2048 and quality 30 to 90", "INVALID_REQUEST")
-            return
-        }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
-            !WebViewFeature.isFeatureSupported(WebViewFeature.VISUAL_STATE_CALLBACK)) {
-            call.reject("This device cannot capture a masked page", "UNSUPPORTED")
-            return
-        }
-        val maskFrames = call.getBoolean("maskFrames", true) ?: true
-        activity.runOnUiThread {
-            val identity = requireActiveIdentity(call, "captureSurface") ?: return@runOnUiThread
-            val surface = ownedSurface(call, id, identity, "captureSurface") ?: return@runOnUiThread
-            if (hasProtectedSurface()) {
-                call.reject("Capture is unavailable during protected sign-in", "PROTECTED_SURFACE")
-                return@runOnUiThread
-            }
-            val generation = protectedSurfaceGeneration
-            if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) || !surface.foregrounded ||
-                surface.paused || surface.webView.progress < 100 || pageFailure(surface) != null ||
-                surface.container.width <= 0 || surface.container.height <= 0) {
-                call.reject(pageFailure(surface) ?: "The native page is hidden or still loading", "CAPTURE_UNAVAILABLE")
-                return@runOnUiThread
-            }
-            val webView = surface.webView
-            val revision = surface.pageRevision
-            val url = webView.url
-            val token = UUID.randomUUID().toString()
-            val unchanged = {
-                isLive(surface) && surfaces[id] === surface && surface.foregrounded && !surface.paused &&
-                    surface.pageRevision == revision && webView.url == url && protectedSurfaceGeneration == generation
-            }
-            var settled = false
-            var masked: JSONObject? = null
-            val restore = {
-                val command = JSONObject().put("action", "restore").put("token", token)
-                if (!surface.disposed) webView.evaluateJavascript("($captureMask)($command)", null)
-            }
-            lateinit var timeout: Runnable
-            val fail = { message: String, code: String ->
-                if (!settled) {
-                    settled = true
-                    webView.removeCallbacks(timeout)
-                    restore()
-                    call.reject(message, code)
-                }
-            }
-            timeout = Runnable { fail("The page capture timed out", "CAPTURE_TIMEOUT") }
-            webView.postDelayed(timeout, 5000)
-            /** Masks, scales and returns a copied page; [bitmap] is the container's size. */
-            val finish = finish@{ bitmap: Bitmap ->
-                if (!unchanged()) {
-                    bitmap.recycle()
-                    return@finish fail("The page changed while capturing; capture again", "CAPTURE_STALE")
-                }
-                val width = bitmap.width
-                val height = bitmap.height
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) surface.container.maskHostRegions(Canvas(bitmap))
-                val (scaledWidth, scaledHeight) = BrowserCapturePolicy.scaled(width, height, maxEdge).let { it[0] to it[1] }
-                val image = if (scaledWidth == width) bitmap else Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, true)
-                val bytes = java.io.ByteArrayOutputStream()
-                image.compress(Bitmap.CompressFormat.JPEG, quality, bytes)
-                if (image !== bitmap) image.recycle()
-                bitmap.recycle()
-                settled = true
-                webView.removeCallbacks(timeout)
-                call.resolve(JSObject().apply {
-                    put("mimeType", "image/jpeg")
-                    put("data", Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP))
-                    put("width", scaledWidth)
-                    put("height", scaledHeight)
-                    put("maskedFields", masked?.optInt("fields") ?: 0)
-                    put("maskedFrames", masked?.optInt("frames") ?: 0)
-                    put("url", url ?: JSObject.NULL)
-                })
-            }
-            val copy = copy@{
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return@copy
-                if (surface.layer == SurfaceLayer.BELOW_HOST) {
-                    // The host draws over a below-host page, so a window copy would include
-                    // host pixels (a shadow, a toast, a fading tab); draw the page alone.
-                    val page = try {
-                        drawPageForCapture(surface.container)
-                    } catch (error: RuntimeException) {
-                        restore()
-                        return@copy fail("The page could not be captured", "CAPTURE_FAILED")
-                    }
-                    restore()
-                    return@copy finish(page)
-                }
-                val origin = IntArray(2)
-                surface.container.getLocationInWindow(origin)
-                val width = surface.container.width
-                val height = surface.container.height
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                PixelCopy.request(activity.window, Rect(origin[0], origin[1], origin[0] + width, origin[1] + height), bitmap, { status ->
-                    // Uncover the page as soon as its pixels are copied.
-                    restore()
-                    if (settled) return@request
-                    if (status != PixelCopy.SUCCESS) return@request fail("The page could not be captured", "CAPTURE_FAILED")
-                    finish(bitmap)
-                }, mainHandler)
-            }
-            val command = JSONObject().put("action", "mask").put("token", token)
-                .put("selectors", selectors).put("frames", maskFrames)
-            try {
-                webView.evaluateJavascript("($captureMask)($command)") { raw ->
-                    if (settled) return@evaluateJavascript
-                    val result = try {
-                        JSONObject(raw)
-                    } catch (error: org.json.JSONException) {
-                        // error-policy:J1 No mask report means no capture.
-                        return@evaluateJavascript fail("The page could not be masked", "CAPTURE_MASK_FAILED")
-                    }
-                    if (result.has("error")) return@evaluateJavascript fail(result.optString("error"), "CAPTURE_MASK_FAILED")
-                    if (!unchanged()) return@evaluateJavascript fail("The page changed while capturing; capture again", "CAPTURE_STALE")
-                    masked = result
-                    // Copy only once the covers are on screen: the visual state callback fires
-                    // when this DOM state is ready to draw, and the copy waits one more frame.
-                    WebViewCompat.postVisualStateCallback(webView, revision) {
-                        if (settled) return@postVisualStateCallback
-                        if (!unchanged()) return@postVisualStateCallback fail("The page changed while capturing; capture again", "CAPTURE_STALE")
-                        webView.postOnAnimation { if (!settled) copy() }
-                    }
-                }
-            } catch (error: RuntimeException) {
-                fail("The page could not be masked", "CAPTURE_MASK_FAILED")
-            }
         }
     }
 
@@ -2799,7 +2568,6 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 result.put("progress", 0)
                 result.put("pageError", JSObject.NULL)
                 result.put("securityBlocked", false)
-                result.put("textZoom", JSObject.NULL)
                 result.put("pageScale", JSObject.NULL)
                 call.resolve(result)
             } else {
@@ -2903,7 +2671,6 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         put("progress", surface.webView.progress)
         put("pageError", pageFailure(surface)?.let { if (surface.signIn == null) it else "The sign-in page failed to load" } ?: JSObject.NULL)
         put("securityBlocked", surface.securityBlocked != null)
-        put("textZoom", surface.webView.settings.textZoom)
         put("pageScale", surface.pageScale)
     }
 
@@ -3141,28 +2908,6 @@ internal class OccludingSurfaceLayout(
         }
         super.dispatchDraw(canvas)
         canvas.restoreToCount(saveCount)
-    }
-
-    /**
-     * Paints over everything a capture of this layout's window rectangle shows that is not the
-     * page: the area outside the rounded outer clip and every occlusion, where host chrome shows.
-     */
-    @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
-    fun maskHostRegions(canvas: Canvas) {
-        val paint = Paint().apply { color = 0xFF5F6368.toInt() }
-        outerClip?.let { clip ->
-            val saveCount = canvas.save()
-            clipPath.reset()
-            clipPath.addRoundRect(RectF(clip.left, clip.top, clip.right, clip.bottom), clip.pathRadii(), Path.Direction.CW)
-            canvas.clipOutPath(clipPath)
-            canvas.drawPaint(paint)
-            canvas.restoreToCount(saveCount)
-        }
-        for (rect in occlusions) {
-            clipPath.reset()
-            clipPath.addRoundRect(RectF(rect.left, rect.top, rect.right, rect.bottom), rect.cornerRadius, rect.cornerRadius, Path.Direction.CW)
-            canvas.drawPath(clipPath, paint)
-        }
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {

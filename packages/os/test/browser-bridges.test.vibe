@@ -1,0 +1,312 @@
+// spec/os/browser/tabHost/document.md, "Story: Keep my tab's page and privacy stable"; spec/os/browser/tabHost/document.md, "Story: Open new tabs and other apps only when I tap"; spec/os/browser/surface/lifecycle.md, "Story: Keep each web surface owned by the current screen"; spec/os/browser/surface/lifecycle.md, "Story: Hear once when a page closed by itself, and what it shows"; spec/os/browser/surface/lifecycle.md, "Story: Make room for the keyboard"; spec/os/browser/surface/dock.md, "Story: Hide the app behind a return badge and come back"
+import { assert, it } from "@effect/vitest"
+import { BrowserTabSession, newBrowserTabId, validBrowserTabId, type BrowserTabState } from "../src/bridges/tab-host.vibe"
+import { dockState, helperEntryState, onDockNotice, onSurfaceNotice, surfacePlugin, surfaceState, surfaceStates, type DockNotice, type SurfaceNotice } from "../src/bridges/surface.vibe"
+
+module android {
+  import { CapacitorException, registerPlugin, WebPlugin } from "@capacitor/core"
+  import type { ElizaSurfaceManagerPlugin, SurfaceState } from "../src/bridges/definitions/surface.ts"
+
+  class NativeSurfaces extends WebPlugin {
+    send(event: string, payload: unknown): void {
+      this.notifyListeners(event, payload)
+    }
+  }
+
+  export interface SurfaceDevice {
+    readonly plugin: ElizaSurfaceManagerPlugin
+    readonly native: NativeSurfaces
+  }
+
+  let registered = 0
+
+  /** @throws {never} */
+  export function emit(device: SurfaceDevice, event: string, payload: unknown): void {
+    device.native.send(event, payload)
+  }
+
+  /** @throws {never} */
+  export function surfaceDevice(surfaces: Record<string, SurfaceState | "garbled">, realm: { owner: string; session: string; epoch: number }): SurfaceDevice {
+    registered += 1
+    const name = `TestSurfaceManager${registered}`
+    const web = new NativeSurfaces()
+    const current = (options: { owner: string; session: string; epoch: number }) => options.owner === realm.owner && options.session === realm.session && options.epoch === realm.epoch
+    const implementation = Object.assign(web, {
+      getSurfaceState: async (options: { owner: string; session: string; epoch: number; id: string }) => {
+        if (!current(options)) throw Object.assign(new CapacitorException("Surface owner is stale"), { code: "stale-owner" })
+        const state = surfaces[options.id]
+        if (state === undefined) throw Object.assign(new CapacitorException("No such surface"), { code: "not-found" })
+        return state === "garbled" ? { exists: "yes" } : state
+      },
+      listSurfaceStates: async () => ({ surfaces: Object.entries(surfaces).flatMap(([id, state]) => (state === "garbled" ? [] : [{ ...state, id }])) }),
+      getBrowserDockState: async () => ({ supported: true, embedded: false, bounds: { x: 0, y: 0, width: 540, height: 1200 } }),
+      getBrowserHelperEntryState: async () => ({ permissionGranted: true, visible: false, fullScreen: false }),
+    })
+    return { plugin: registerPlugin<ElizaSurfaceManagerPlugin>(name, { web: implementation }), native: web }
+  }
+}
+import { emit, surfaceDevice } from android
+
+const S = "session-1"
+let sequence = 0
+
+function state(fields: Partial<BrowserTabState>): BrowserTabState {
+  sequence += 1
+  return { session: S, id: "t1", sequence, ...fields }
+}
+
+function committed(fields: Partial<BrowserTabState> = {}): BrowserTabState {
+  return state({ url: "https://example.test/a", navigation: "2", committed: true, loading: false, error: "", ...fields })
+}
+
+effect function refusal(call: () => Promise<unknown>) {
+  const { cause } = try flip(tryPromise(() => call()))
+  if (typeof cause !== "object" || cause === null) return String(cause)
+  const tag = "_tag" in cause && typeof cause._tag === "string" ? `${cause._tag}: ` : ""
+  const code = "code" in cause && typeof cause.code === "string" ? `${cause.code}: ` : ""
+  return `${tag}${code}${"message" in cause ? String(cause.message) : ""}`
+}
+
+effect function opened(privateTab = false, id = "t1") {
+  const tabs = new BrowserTabSession({ session: S })
+  try tryPromise(() => tabs.ensure(id, privateTab, async () => undefined))
+  return tabs
+}
+
+it.effect("A tab is created once, retried after a failure, and refused past the limit or after close (spec/os/browser/tabHost/document.md, \"A tab reserves an identity only in the session the host bound\"; spec/os/browser/tabHost/document.md, \"A private tab stays private for as long as it is held\")", () => effect {
+  const tabs = new BrowserTabSession({ session: S, maxTabs: 2 })
+  let calls = 0
+  const create = async () => {
+    calls += 1
+    if (calls === 1) throw new Error("profile")
+  }
+  const firstFailure = try refusal(() => tabs.ensure("t1", false, create))
+  const heldAfterFailure = tabs.has("t1")
+  try tryPromise(() => tabs.ensure("t1", false, create))
+  try tryPromise(() => tabs.ensure("t1", false, create))
+  try tryPromise(() => tabs.ensure("t2", true, create))
+  const overLimit = try refusal(() => tabs.ensure("t3", false, create))
+  const badId = try refusal(() => tabs.ensure("../x", false, create))
+  const invalidLimit = try refusal(() => new BrowserTabSession({ maxTabs: 0 }).ensure("t1", false, create))
+  const invalidSession = try refusal(() => new BrowserTabSession({ session: "" }).ensure("t1", false, create))
+  const closing = try opened()
+  try tryPromise(() => closing.ensure("t2", true, async () => undefined))
+  closing.applyState(committed())
+  const foreignClose = closing.applyClosed({ session: "x", id: "t1" })
+  const nativeClose = closing.applyClosed({ session: S, id: "t1" })
+  const afterClose = { held: closing.has("t1"), info: closing.info("t1"), state: closing.applyState(committed()) }
+  const disposed = closing.dispose()
+  const afterDispose = { closed: closing.closed, opened: closing.applyOpened({ session: S, id: "p9" }), ensure: try refusal(() => closing.ensure("t3", false, async () => 1)) }
+  try Effect.try(() => assert.deepStrictEqual(
+    { firstFailure, heldAfterFailure, calls, privateTab: tabs.isPrivate("t2"), ids: tabs.ids(), overLimit, badId, invalidLimit, invalidSession, foreignClose, nativeClose, afterClose, disposed, afterDispose, generated: validBrowserTabId(newBrowserTabId()), long: validBrowserTabId("a".repeat(81)), spaced: validBrowserTabId("a b") },
+    {
+      firstFailure: "profile",
+      heldAfterFailure: false,
+      calls: 2,
+      privateTab: true,
+      ids: ["t1", "t2"],
+      overLimit: "TabRefused: Close a tab before opening another.",
+      badId: "TabRefused: Invalid tab",
+      invalidLimit: "TabRefused: Invalid browser tab limit",
+      invalidSession: "TabRefused: Invalid browser session",
+      foreignClose: undefined,
+      nativeClose: "t1",
+      afterClose: { held: false, info: undefined, state: undefined },
+      disposed: ["t2"],
+      afterDispose: { closed: true, opened: undefined, ensure: "TabRefused: Browser closed" },
+      generated: true,
+      long: false,
+      spaced: false,
+    },
+  ))
+})
+
+it.effect("Only this session's later events replace a tab's document, and every new address or load moves its revision forward (spec/os/browser/tabHost/document.md, \"Only a later event from this live tab replaces its document\"; spec/os/browser/tabHost/document.md, \"Every new address moves the document revision forward, and it never moves back\")", () => effect {
+  const tabs = try opened()
+  const foreign = tabs.applyState({ ...committed(), session: "other" })
+  const unknown = tabs.applyState(committed({ id: "unknown" }))
+  const first = committed()
+  const accepted = tabs.applyState(first)?.committedPage
+  const replayed = tabs.applyState({ ...first, url: "https://late.test/" })
+  const malformed = [Number.NaN, Number.POSITIVE_INFINITY, 1e300, 2.5].map((bad) => tabs.applyState({ ...committed(), sequence: bad }))
+  const kept = { url: tabs.info("t1")?.url, savedUrl: tabs.info("t1")?.savedUrl }
+  const revision = tabs.revision("t1")
+  const retitled = tabs.applyState(committed({ title: "T" }))?.revisionChanged
+  const loading = tabs.applyState(committed({ loading: true }))
+  const reloaded = { revisionChanged: loading?.revisionChanged, documentChanged: loading?.documentChanged, committedPage: loading?.committedPage, revision: tabs.revision("t1") - revision }
+  tabs.applyState(committed({ url: "https://example.test/b" }))
+  const moved = tabs.revision("t1") - revision
+  const begun = (tabs.beginNavigation("t1", "https://example.test/c") ?? 0) - revision
+  const pending = { loading: tabs.info("t1")?.loading, committed: tabs.info("t1")?.committed }
+  try Effect.try(() => assert.deepStrictEqual(
+    { foreign, unknown, accepted, replayed, malformed, kept, retitled, reloaded, moved, begun, pending },
+    {
+      foreign: undefined,
+      unknown: undefined,
+      accepted: true,
+      replayed: undefined,
+      malformed: [undefined, undefined, undefined, undefined],
+      kept: { url: "https://example.test/a", savedUrl: "https://example.test/a" },
+      retitled: false,
+      reloaded: { revisionChanged: true, documentChanged: true, committedPage: false, revision: 1 },
+      moved: 2,
+      begun: 3,
+      pending: { loading: true, committed: false },
+    },
+  ))
+})
+
+it.effect("A page binding holds only while the same settled document is selected, and never for a page only another browser shows (spec/os/browser/tabHost/document.md, \"A captured page is current only for the selected foreground tab, its navigation and its revision\"; spec/os/browser/tabHost/document.md, \"Only a bound normal tab whose address storage admits contributes to the saved session\")", () => effect {
+  const tabs = try opened()
+  const beforeCommit = tabs.pageBinding("t1")
+  const unselected = tabs.selection("t1")
+  tabs.applyState(committed())
+  const boundRevision = tabs.revision("t1")
+  const binding = tabs.pageBinding("t1", { https: true })
+  const selection = tabs.selection("t1")
+  const bound = { binding, selected: tabs.current(binding, "t1"), otherSelected: tabs.current(binding, "t2"), background: tabs.current(binding, "t1", false), guard: binding === undefined ? undefined : tabs.guard(binding) }
+  tabs.applyState(committed({ loading: true }))
+  tabs.applyState(committed({ navigation: "3" }))
+  const sameAddressNewLoad = tabs.current(binding, "t1")
+  tabs.applyState(committed({ url: "http://plain.test/", navigation: "4" }))
+  const plain = { https: tabs.pageBinding("t1", { https: true }), any: tabs.pageBinding("t1")?.url }
+  tabs.applyState(committed({ error: "Page could not load." }))
+  const failed = tabs.pageBinding("t1")
+  const external = try opened()
+  const externalChange = external.applyState(committed({ externalOnly: true }))
+  try Effect.try(() => assert.deepStrictEqual(
+    { beforeCommit, unselected, bound, selection, leaksAddress: JSON.stringify(selection).includes("example.test"), sameAddressNewLoad, plain, failed, external: { committedPage: externalChange?.committedPage, committed: external.info("t1")?.committed, binding: external.pageBinding("t1") } },
+    {
+      beforeCommit: undefined,
+      unselected: undefined,
+      bound: {
+        binding: { id: "t1", url: "https://example.test/a", navigation: "2", revision: boundRevision, private: false },
+        selected: true,
+        otherSelected: false,
+        background: false,
+        guard: { session: S, id: "t1", url: "https://example.test/a", navigation: "2" },
+      },
+      selection: { kind: "browser-tab", id: `${S}:t1`, revision: String(boundRevision) },
+      leaksAddress: false,
+      sameAddressNewLoad: false,
+      plain: { https: undefined, any: "http://plain.test/" },
+      failed: undefined,
+      external: { committedPage: false, committed: false, binding: undefined },
+    },
+  ))
+})
+
+it.effect("A private tab's pages stay out of history and its pop-ups open in its privacy; find results reach only the open find bar's tab (spec/os/browser/tabHost/document.md, \"A pop-up opens only from a tap on the selected settled tab, in its opener's privacy\"; spec/os/browser/tabHost/document.md, \"A private tab stays private for as long as it is held\")", () => effect {
+  const tabs = try opened(true)
+  const privatePage = tabs.applyState(committed())?.committedPage
+  const privateBinding = tabs.pageBinding("t1")?.private
+  const popup = tabs.applyOpened({ session: S, id: "p1", opener: "t1" })
+  const popupRevision = tabs.revision("p1")
+  const reopened = tabs.applyOpened({ session: S, id: "p1" })
+  const foreign = tabs.applyOpened({ session: "x", id: "p2" })
+  const normal = try opened(false)
+  const normalPopup = normal.applyOpened({ session: S, id: "p2", opener: "t1" })
+  const askedPrivate = normal.applyOpened({ session: S, id: "p3", private: true })?.private
+  const find = [
+    normal.findResult({ session: S, id: "t1", index: 9, count: 3, done: true }, "t1"),
+    normal.findResult({ session: S, id: "t1", index: 1, count: 1 }, "t2"),
+    normal.findResult({ session: S, id: "t1", cleared: true }, "t1"),
+    normal.findResult({ session: S, id: "t1", index: -4, count: 1e9 }, "t1"),
+    normal.findResult({ session: "x", id: "t1", index: 0, count: 1 }, "t1"),
+  ]
+  const notice = normal.notice({ session: S, id: "t1", message: "x".repeat(500) })?.length
+  try Effect.try(() => assert.deepStrictEqual(
+    { privatePage, privateBinding, popup, popupRevision, reopened, foreign, normalPopup, askedPrivate, find, notice, foreignNotice: normal.notice({ session: "x", id: "t1", message: "m" }) },
+    {
+      privatePage: false,
+      privateBinding: true,
+      popup: { id: "p1", private: true },
+      popupRevision: 1,
+      reopened: undefined,
+      foreign: undefined,
+      normalPopup: { id: "p2", private: false },
+      askedPrivate: true,
+      find: [{ cleared: false, index: 3, count: 3, done: true }, undefined, { cleared: true }, { cleared: false, index: 0, count: 1e9, done: false }, undefined],
+      notice: 500,
+      foreignNotice: undefined,
+    },
+  ))
+})
+
+const realm = { owner: "browser", session: "realm-1", epoch: 2 }
+const shown = { exists: true, foregrounded: true, currentUrl: "https://example.test/", process: "isolated" as const, storage: "isolated" as const, owner: realm.owner, session: realm.session, epoch: realm.epoch, title: "Example", canGoBack: false, canGoForward: false, progress: 100, pageError: null, securityBlocked: false }
+
+it.live("A surface answers only its owner's current realm, and its notices reach only that realm, once each (spec/os/browser/surface/lifecycle.md, \"A command applies only with the owner's current session and epoch, and reconciling an owner destroys every surface it does not list\"; spec/os/browser/surface/lifecycle.md, \"A surface that crashed or lost its profile is closed before it is reported, once, to its owner's live realm\"; spec/os/browser/surface/lifecycle.md, \"A page's load state is reported as it was when sent, and a refused certificate is a security block that only a new address ends\"; spec/os/browser/surface/lifecycle.md, \"Each time the keyboard opens or closes it is reported once, with its height in host pixels\")", () => effect {
+  const device = surfaceDevice({ "browser-tab:a": shown, "browser-tab:b": "garbled" }, realm)
+  const read = try tryPromise(() => surfaceState(realm, "browser-tab:a", device.plugin))
+  const listed = try tryPromise(() => surfaceStates(realm, device.plugin))
+  const stale = try refusal(() => surfaceState({ ...realm, epoch: 1 }, "browser-tab:a", device.plugin))
+  const garbled = try refusal(() => surfaceState(realm, "browser-tab:b", device.plugin))
+  const heard: SurfaceNotice[] = []
+  const listening = try tryPromise(() => onSurfaceNotice(realm, (notice) => heard.push(notice), device.plugin))
+  const identity = { ...realm, id: "browser-tab:a" }
+  emit(device, "navigationChanged", { ...identity, currentUrl: "https://example.test/next", securityBlocked: true, progress: 40 })
+  emit(device, "navigationChanged", identity)
+  emit(device, "navigationChanged", { ...identity, epoch: 1, currentUrl: "https://old.test/" })
+  emit(device, "navigationChanged", { ...identity, exists: false })
+  emit(device, "navigationChanged", { id: "browser-tab:a" })
+  emit(device, "surfaceCrashed", { ...identity, didCrash: true, url: "https://example.test/next" })
+  emit(device, "surfaceCrashed", { ...identity, session: "realm-0", didCrash: false, url: null })
+  emit(device, "surfaceClosed", { ...identity, reason: "profile-purged" })
+  emit(device, "keyboardChanged", { visible: true, height: 812 })
+  emit(device, "keyboardChanged", { visible: false, height: 812 })
+  emit(device, "keyboardChanged", { visible: true, height: -1 })
+  try tryPromise(() => listening.remove())
+  emit(device, "keyboardChanged", { visible: true, height: 400 })
+  try Effect.try(() => assert.deepStrictEqual(
+    { read, listed, stale, garbled: garbled.startsWith("MalformedReply"), heard },
+    {
+      read: shown,
+      listed: { surfaces: [{ ...shown, id: "browser-tab:a" }] },
+      stale: "stale-owner: Surface owner is stale",
+      garbled: true,
+      heard: [
+        { kind: "navigation-changed", event: { ...identity, currentUrl: "https://example.test/next", securityBlocked: true, progress: 40 } },
+        { kind: "navigation-changed", event: identity },
+        { kind: "surface-crashed", event: { ...identity, didCrash: true, url: "https://example.test/next" } },
+        { kind: "surface-closed", event: { ...identity, reason: "profile-purged" } },
+        { kind: "keyboard-changed", event: { visible: true, height: 812 } },
+        { kind: "keyboard-changed", event: { visible: false, height: 0 } },
+      ],
+    },
+  ))
+})
+
+it.live("The dock reports its state and each helper event once, and a web host refuses every surface call (spec/os/browser/surface/dock.md, \"Each helper event fires once for the change it reports\"; spec/os/browser/surface/dock.md, \"The return badge and the full-screen helper are shown only while the app holds the draw-over permission\")", () => effect {
+  const device = surfaceDevice({}, realm)
+  const dock = try tryPromise(() => dockState(device.plugin))
+  const entry = try tryPromise(() => helperEntryState(device.plugin))
+  const heard: DockNotice[] = []
+  const listening = try tryPromise(() => onDockNotice((notice) => heard.push(notice), device.plugin))
+  emit(device, "browserHelperReturned", { presentation: "full-screen" })
+  emit(device, "browserHelperReturnFailed", { code: "permission-missing" })
+  emit(device, "browserHelperWindowClosed", { reason: "website-opened" })
+  emit(device, "browserHelperWindowClosed", { reason: "unknown" })
+  try tryPromise(() => listening.remove())
+  emit(device, "browserHelperReturned", { presentation: "full-screen" })
+  const web = surfacePlugin()
+  const refused = [
+    try refusal(() => web.listSurfaceStates(realm)),
+    try refusal(() => web.getBrowserDockState()),
+    try refusal(() => surfaceState(realm, "browser-tab:a")),
+  ]
+  try Effect.try(() => assert.deepStrictEqual(
+    { dock, entry, heard, refused, sameRegistration: surfacePlugin() === web },
+    {
+      dock: { supported: true, embedded: false, bounds: { x: 0, y: 0, width: 540, height: 1200 } },
+      entry: { permissionGranted: true, visible: false, fullScreen: false },
+      heard: [
+        { kind: "helper-returned", presentation: "full-screen" },
+        { kind: "helper-return-failed", code: "permission-missing" },
+        { kind: "helper-window-closed", reason: "website-opened" },
+      ],
+      refused: Array(3).fill("UNAVAILABLE: ElizaSurfaceManager is a native-only plugin: a web host has no native child web surface."),
+      sameRegistration: true,
+    },
+  ))
+})

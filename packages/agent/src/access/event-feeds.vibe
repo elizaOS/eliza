@@ -1,12 +1,7 @@
 // spec/agent/conversation/events.md, "A feed whose next frame passes 256 KiB, or whose unread bytes would pass 1 MiB, is closed"; spec/agent/conversation/events.md, "Every ended feed is announced with its reason"; spec/agent/access/transport.md, "A subscription is confirmed once, carries events in order, and at most two are open"
 module node {
-  import { once } from "node:events"
-  import type { IncomingMessage, ServerResponse } from "node:http"
-  import { admit } from "../../gen/agent__access__transport.ts"
   import { maxFrameBytes } from "../../gen/agent__conversation__events.ts"
-  import { callerOf } from "./auth.vibe"
-  import { isRefused, type AgentEvent, type EventSubscriptions, type FeedRequest, type Refused } from "./events-port.vibe"
-  import { parseFrame, type FeedAccess } from "./socket.vibe"
+  import type { AgentEvent, EventSubscriptions, FeedRequest, Refused } from "./events-port.vibe"
 
   export interface FeedSink {
     readonly deliver: (event: AgentEvent) => void
@@ -77,41 +72,6 @@ module node {
       },
     }
   }
-
-  const sse = (frame: object): string => `data: ${JSON.stringify(frame)}\n\n`
-
-  export function eventsOverHttp(feeds: FeedAccess) {
-    const open = new Set<ServerResponse>()
-    return async (request: IncomingMessage, output: ServerResponse, query: URLSearchParams): Promise<void> => {
-      const refuse = (status: number, error: string) => {
-        output.writeHead(status, { "content-type": "application/json; charset=utf-8" })
-        output.end(JSON.stringify({ error }))
-      }
-      if (callerOf(feeds.token, request.headers.authorization) !== "Root") return refuse(401, "unauthorized")
-      const asked = new Set(query.keys()).size !== query.size ? undefined : parseFrame(Buffer.from(JSON.stringify({
-        id: "events", method: "events_subscribe",
-        payload: { ...Object.fromEntries(query), streams: query.get("streams")?.split(",") ?? [] },
-      })))
-      if (asked?.kind !== "subscribe") return refuse(400, "unreadable")
-      if (admit(0, { tag: "EventsSubscribe" }, open.size).stage.tag !== "Feeding") return refuse(429, "busy")
-      const peer = new AbortController()
-      output.once("close", () => {
-        open.delete(output)
-        peer.abort()
-      })
-      const feed = feeds.events.subscribe({ streams: asked.streams, clientId: asked.clientId }, peer.signal, () => output.destroy())
-      if (isRefused(feed)) return refuse(400, feed.reason)
-      open.add(output)
-      output.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store" })
-      output.write(sse({ type: "subscribed" }))
-      try {
-        for await (const event of feed) {
-          if (!output.write(sse(eventFrame(event)))) await once(output, "drain", { signal: peer.signal })
-        }
-      } catch {}
-      output.destroy()
-    }
-  }
 }
 
-export { eventFrame, eventsOverHttp, feedsOver, type FeedHub, type FeedSink, type LiveFeed } from node
+export { eventFrame, feedsOver, type FeedHub, type FeedSink, type LiveFeed } from node

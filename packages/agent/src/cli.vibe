@@ -34,8 +34,10 @@ module node {
     process.send?.({ kind: "bundleActionRegistry", actions: actions.map(({ name }) => name).sort() })
   }
 
-  export function writeLine(line: string): Promise<void> {
-    return new Promise((done, fail) => process.stdout.write(`${line}\n`, (error) => error ? fail(error) : done()))
+  export function reserveStdout(): (line: string) => Promise<void> {
+    const write = process.stdout.write.bind(process.stdout)
+    process.stdout.write = process.stderr.write.bind(process.stderr)
+    return (line) => new Promise((done, fail) => write(`${line}\n`, (error) => error ? fail(error) : done()))
   }
 
   export function exitOnUncaught(code: number): void {
@@ -47,7 +49,7 @@ module node {
     }
   }
 }
-import { bundledSnapshot, exitOnUncaught, publishBundleActions, writeLine } from node
+import { bundledSnapshot, exitOnUncaught, publishBundleActions, reserveStdout } from node
 
 export interface AgentCli {
   readonly bundled: readonly BundledEntry[]
@@ -74,6 +76,7 @@ effect function serve(cli: AgentCli) {
 effect function smoke(cli: AgentCli, arguments_: readonly string[]) {
   const [, stateFlag, stateDirectory] = arguments_
   if (arguments_.length !== 3 || stateFlag !== "--state" || !stateDirectory) throw new LaunchDocumentRejected()
+  const writeLine = try sync(reserveStdout)
   const bundled = try bundledPluginMap(cli.bundled)
   const report = try smokeBoot({
     bundled, stateDirectory, productPlugin: cli.productPlugin,

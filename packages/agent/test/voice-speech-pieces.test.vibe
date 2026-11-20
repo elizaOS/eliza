@@ -42,7 +42,7 @@ it.effect("Cloud speech goes in pieces: a word longer than one request refuses t
   const fits = try planCloudSpeechChunks(`Here it is: ${"a".repeat(5000)}`)
   try Effect.try(() => {
     assert.instanceOf(refused, CloudSpeechWordTooLong)
-    assert.strictEqual(refused instanceof CloudSpeechWordTooLong ? refused.units : 0, 5001)
+    assert.strictEqual(refused.units, 5001)
     assert.deepStrictEqual(fits, ["Here it is:", "a".repeat(5000)])
   })
 })

@@ -1,6 +1,6 @@
 // spec/agent/voice/clientAudio.md, "Story: Dictate into my draft without losing my own words"; spec/agent/voice/clientAudio.md, "A recording becomes review text through the host's result or the recording, never a send"; spec/agent/voice/clientAudio.md, "A stale transcription never replaces a newer draft"
 import { assert, it } from "@effect/vitest"
-import { DraftTranscriptGuard } from "../src/voice/index.vibe"
+import { DraftTranscriptGuard, type RecordingPhase } from "../src/voice/index.vibe"
 
 module node {
   import { Effect } from "effect"
@@ -207,7 +207,7 @@ module node {
 }
 import { cancelled, hostResult, previews, refusedBounds, secondStart, stoppedBy } from node
 
-const recorded = ["RecordingConnecting", "RecordingActive", "RecordingTranscribing", "RecordingIdle"]
+const recorded: RecordingPhase[] = ["RecordingConnecting", "RecordingActive", "RecordingTranscribing", "RecordingIdle"]
 
 it.effect("Dictate into my draft: open refuses a bound of 0, over 2,147,483,647 or not a whole number", () => effect {
   const got = try tryPromise(() => refusedBounds())
@@ -228,7 +228,7 @@ it.effect("Dictate into my draft: a second Start while one is pending does nothi
 
 it.effect("Dictate into my draft: finish, the pause observer, the time limit and the byte limit stop the same recorder and release the tracks", () => effect {
   const runs = try tryPromise(() => Promise.all((["finish", "pause", "time", "bytes"] as const).map((trigger) => stoppedBy(trigger))))
-  const kept = { atLimit: ["recording", 0], transcripts: [["Two chunks.", true]], errors: [], encoded: [["a+b", "audio/webm;codecs=opus"]] }
+  const kept: unknown = { atLimit: ["recording", 0], transcripts: [["Two chunks.", true]], errors: [], encoded: [["a+b", "audio/webm;codecs=opus"]] }
   try Effect.try(() => {
     for (const run of runs) {
       assert.deepStrictEqual([run.before, run.after, run.recorders, run.phases, run.unobserved], [[0, 0], [1, 1], 1, recorded, 1])
@@ -243,7 +243,7 @@ it.effect("Dictate into my draft: a host result other than undefined wins, only 
     hostResult("words", false), hostResult("blank", true), hostResult("rejected", true), hostResult("undefined", true),
     hostResult("none", true), hostResult("undefined", false), hostResult("none", true, {}),
   ]))
-  const upload = [["a", "audio/webm;codecs=opus"]]
+  const upload: Array<[string, string]> = [["a", "audio/webm;codecs=opus"]]
   try Effect.try(() => assert.deepStrictEqual(runs.map(({ transcripts, errors, encoded, transcribed, phase }) => [transcripts, errors, encoded, transcribed, phase]), [
     [[["From the host.", true]], [], [], [], "RecordingIdle"],
     [[], ["empty-transcript"], [], [], "RecordingIdle"],

@@ -56,16 +56,13 @@ pure def canCaptureOpened(s: VoiceSession): bool = s.capture == CaptureOpening
 pure def captureOpened(s: VoiceSession): VoiceSession =
   if (isRunning(s.life)) { ...s, capture: CaptureOpen, life: Live } else { ...s, capture: CaptureClosing }
 pure def canCaptureClosed(s: VoiceSession): bool = s.capture == CaptureClosing
-pure def captureClosed(s: VoiceSession): VoiceSession =
-  { ...s, capture: CaptureClosed, turn: if (s.turn == AwaitingClose) ReadyToSend else s.turn }
+pure def captureClosed(s: VoiceSession): VoiceSession = { ...s, capture: CaptureClosed, turn: if (s.turn == AwaitingClose) ReadyToSend else s.turn }
 pure def canCaptureFailed(s: VoiceSession): bool = s.capture == CaptureOpening or s.capture == CaptureClosing
-pure def captureFailed(s: VoiceSession): VoiceSession =
-  { ...halted(if (isRunning(s.life)) Failed else s.life, s), capture: CaptureClosed }
+pure def captureFailed(s: VoiceSession): VoiceSession = { ...halted(if (isRunning(s.life)) Failed else s.life, s), capture: CaptureClosed }
 pure def canReopenCapture(s: VoiceSession): bool = isRunning(s.life) and s.turn == NoTurn and s.capture == CaptureClosed
 pure def reopenCapture(s: VoiceSession): VoiceSession = { ...s, capture: CaptureOpening }
 pure def canStop(s: VoiceSession): bool = isRunning(s.life)
-pure def stop(s: VoiceSession): VoiceSession =
-  { ...halted(Idle, s), capture: if (s.capture == CaptureOpen) CaptureClosing else s.capture }
+pure def stop(s: VoiceSession): VoiceSession = { ...halted(Idle, s), capture: if (s.capture == CaptureOpen) CaptureClosing else s.capture }
 pure val weight_captureOpened = 4
 pure val weight_captureClosed = 4
 pure def alwaysTheSessionOwnsItsCapture(s: VoiceSession): bool =
@@ -89,8 +86,7 @@ advances the epoch too.
 pure def canSpeechStarted(s: VoiceSession): bool =
   s.capture == CaptureOpen and s.utterance != Hearing and s.utterance != AwaitingFinal and
   (s.turn == NoTurn or s.turn == AwaitingReply or s.turn == Playing)
-pure def speechStarted(s: VoiceSession): VoiceSession =
-  { ...s, utterance: Hearing, epoch: s.epoch + 1, bargeIn: s.bargeIn or s.turn != NoTurn }
+pure def speechStarted(s: VoiceSession): VoiceSession = { ...s, utterance: Hearing, epoch: s.epoch + 1, bargeIn: s.bargeIn or s.turn != NoTurn }
 pure def canSpeechEnded(s: VoiceSession): bool = s.utterance == Hearing
 pure def speechEnded(s: VoiceSession): VoiceSession = { ...s, utterance: AwaitingFinal }
 pure def gapPending(u: Utterance): bool = u == GapWaiting or u == AskingEndOfTurn or u == WaitingLongGap
@@ -102,61 +98,42 @@ pure def stepTheEpochOnlyAdvances(before: VoiceSession, via: str, after: VoiceSe
   after.epoch >= before.epoch and (via == "speechStarted" implies after.epoch == before.epoch + 1)
 ```
 
-### After a 300 ms gap one end-of-turn query of 1 to 4,096 units is asked, and only a complete score submits early
+### Only a complete end-of-turn score submits before the 1,200 ms long gap, which always submits
 
-Once the final transcript is accepted, the short gap starts one query for
-the utterance's text with whitespace collapsed, never audio, through the
-local inference route. Text of no units or over 4,096 is not sent, never
-truncated. The query's 600 ms deadline ends before the long gap. Complete
-is finished; incomplete is continue; a scorer that says it is unavailable,
-or a reply of another shape, is unavailable; a failed request is an error
-and a missed deadline a timeout. Every answer but finished waits for the
-long gap.
+Once the final transcript is accepted, a 300 ms short gap starts one query
+for the utterance's text with whitespace collapsed, never audio, through
+the local inference route; text of no units or over 4,096 is not sent,
+never truncated. The query's 600 ms deadline ends before the long gap.
+Complete submits at once; incomplete, unavailable, a reply of another
+shape, a failed request and a missed deadline wait. Silence for the long
+gap, counted from the speech end, submits whatever the query said, and a
+later answer is refused. A half-duplex submission starts closing the
+microphone; a full-duplex one is ready to send at once.
 
 ```quint
-type EndpointVerdict = DecisionFinished | DecisionContinue | DecisionUnavailable | DecisionError | DecisionTimeout
 type EndOfTurnReply = ScoredComplete | ScoredIncomplete | ScorerUnavailable | ReplyMalformed | ScoringFailed | ReplyLate
 pure val shortGapMs = 300
 pure val longGapMs = 1200
 pure val endOfTurnDeadlineMs = 600
 pure val endOfTurnMaxUnits = 4096
-pure def endOfTurnVerdict(answer: EndOfTurnReply): EndpointVerdict = match answer {
-  | ScoredComplete => DecisionFinished | ScoredIncomplete => DecisionContinue | ScorerUnavailable => DecisionUnavailable
-  | ReplyMalformed => DecisionUnavailable | ScoringFailed => DecisionError | ReplyLate => DecisionTimeout }
 pure def canShortGapElapsed(s: VoiceSession, epoch: int): bool = s.utterance == GapWaiting and epoch == s.epoch
 pure def shortGapElapsed(s: VoiceSession, epoch: int, units: int): VoiceSession =
   { ...s, utterance: if (units >= 1 and units <= endOfTurnMaxUnits) AskingEndOfTurn else WaitingLongGap }
 pure def canEndOfTurnAnswered(s: VoiceSession, epoch: int): bool = s.utterance == AskingEndOfTurn and epoch == s.epoch
 pure def endOfTurnAnswered(s: VoiceSession, epoch: int, answer: EndOfTurnReply): VoiceSession =
-  if (endOfTurnVerdict(answer) == DecisionFinished) submitted(EndOfTurnSubmit, s) else { ...s, utterance: WaitingLongGap }
+  if (answer == ScoredComplete) submitted(EndOfTurnSubmit, s) else { ...s, utterance: WaitingLongGap }
 pure val unitsValues = Set(0, 1, 4096, 4097)
 pure val epochValues = Set(0, 1, 2, 3)
-pure val answerMsValues = Set(0, 600, 601)
 pure val weight_speechStarted = 3
-pure val weight_speechEnded = 3
 pure val weight_finalTranscript = 3
-pure val weight_longGapElapsed = 3
 pure val weight_sendTurn = 3
 pure val weight_replyStarted = 3
-pure val weight_segmentPlayed = 2
-pure val gapSession: VoiceSession =
-  { ...initial, life: Live, capture: CaptureOpen, utterance: GapWaiting, hasText: true }
+pure val gapSession: VoiceSession = { ...initial, life: Live, capture: CaptureOpen, utterance: GapWaiting, hasText: true }
 pure def lawOnlySendableTextIsScored(units: int): bool =
   (shortGapElapsed(gapSession, 0, units).utterance == AskingEndOfTurn) iff (units >= 1 and units <= 4096)
 pure def lawOnlyACompleteScoreSubmitsEarly(answer: EndOfTurnReply): bool =
   (endOfTurnAnswered({ ...gapSession, utterance: AskingEndOfTurn }, 0, answer).turn != NoTurn) iff answer == ScoredComplete
-pure def lawTheQueryEndsBeforeTheLongGap(answerMs: int): bool =
-  answerMs <= endOfTurnDeadlineMs implies shortGapMs + answerMs < longGapMs
 pure def sometimesSubmittedByTheEndOfTurn(s: VoiceSession): bool = s.cause == EndOfTurnSubmit and s.turn == AwaitingReply
-```
-
-### The 1,200 ms long gap always submits, and a later end-of-turn answer is refused
-
-Silence for the long gap, counted from the speech end, submits whatever
-the query said or whether it answered. A half-duplex submission starts
-closing the microphone; a full-duplex one is ready to send at once.
-
-```quint
 pure def submitted(cause: SubmitCause, s: VoiceSession): VoiceSession =
   { ...s, utterance: NoUtterance, hasText: false, cause: cause,
     turn: if (s.duplex == HalfDuplex) AwaitingClose else ReadyToSend,

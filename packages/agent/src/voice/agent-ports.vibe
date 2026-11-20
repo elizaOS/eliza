@@ -1,74 +1,83 @@
 // spec/agent/voice/session.md, "A turn is sent once, and a held session sends it only after the capture confirmed its close"; spec/agent/voice/session.md, "The end-of-turn query scores 1 to 4,096 units and only a finished answer submits early"; spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or busy answer, and its outcomes stay distinct"
-import { RuntimeRequestError } from "../client/index.vibe"
-import { decodeEndOfTurnReply, END_OF_TURN_PATH, heardPath } from "./heuristics.vibe"
-import type { EndOfTurnPort, HeardPort, TurnPort, VoiceReply, VoiceSessionPorts } from "./ports.vibe"
+module node {
+  import { Option, Schema } from "effect"
+  import { RuntimeRequestError } from "../client/index.vibe"
+  import { decodeEndOfTurnReply, END_OF_TURN_PATH, heardPath } from "./heuristics.vibe"
+  import type { EndOfTurnPort, HeardPort, TurnPort, VoiceSessionPorts } from "./ports.vibe"
 
-export interface JsonAnswer {
-  readonly status: number
-  readonly body: unknown
-}
-
-export type JsonRequest = (method: "GET" | "POST", path: string, body: unknown, signal: AbortSignal) => Promise<JsonAnswer>
-
-export interface RuntimeJsonRequester {
-  request(path: string, body?: unknown): Promise<unknown>
-}
-
-export error VoiceRouteRefused { path: string; status: number }
-
-export type VoiceNetworkPorts = Pick<VoiceSessionPorts, "endOfTurn" | "turns" | "heard">
-
-const decodeReply = Schema.decodeUnknownOption(Schema.Struct({ messageId: Schema.String, text: Schema.String }))
-
-function untilAborted<A>(signal: AbortSignal, work: () => Promise<A>): Promise<A> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) return reject(signal.reason)
-    const stop = () => reject(signal.reason)
-    signal.addEventListener("abort", stop, { once: true })
-    work().then(resolve, reject).finally(() => signal.removeEventListener("abort", stop))
-  })
-}
-
-export function jsonRequestOf(client: RuntimeJsonRequester): JsonRequest {
-  return (method, path, body) => client.request(path, method === "GET" ? undefined : body).then(
-    (data): JsonAnswer => ({ status: 200, body: data }),
-    (error: unknown): JsonAnswer => {
-      if (error instanceof RuntimeRequestError) return { status: error.status, body: null }
-      throw error
-    },
-  )
-}
-
-export function voiceNetworkPorts(conversationId: string, request: JsonRequest): VoiceNetworkPorts {
-  const post = (path: string, body: unknown, signal: AbortSignal) => untilAborted(signal, () => request("POST", path, body, signal))
-  const accepted = (path: string, answer: JsonAnswer): JsonAnswer => {
-    if (answer.status < 200 || answer.status > 299) throw new VoiceRouteRefused({ path, status: answer.status })
-    return answer
+  export interface JsonAnswer {
+    readonly status: number
+    readonly body: unknown
   }
 
-  const endOfTurn: EndOfTurnPort = (text, signal) => post(END_OF_TURN_PATH, { text }, signal).then(
-    (answer) => decodeEndOfTurnReply(answer.status, answer.body),
-    () => (signal.aborted ? "ReplyLate" : decodeEndOfTurnReply(0, undefined)),
-  )
+  export type JsonRequest = (method: "GET" | "POST", path: string, body: unknown, signal: AbortSignal) => Promise<JsonAnswer>
 
-  const turns: TurnPort = {
-    async send(turn, signal): Promise<VoiceReply> {
-      const path = `/api/conversations/${encodeURIComponent(conversationId)}/messages`
-      const answer = accepted(path, await post(path, {
-        text: turn.text, channelType: turn.channelType, metadata: turn.metadata, clientMessageId: turn.clientMessageId,
-      }, signal))
-      const reply = decodeReply(answer.body)
-      if (Option.isNone(reply)) throw new VoiceRouteRefused({ path, status: answer.status })
-      return reply.value
-    },
-    async abort(roomId, reason) {
-      const path = `/api/turns/${encodeURIComponent(roomId)}/abort`
-      accepted(path, await post(path, { reason }, new AbortController().signal))
-    },
+  export interface RuntimeJsonRequester {
+    request(path: string, body?: unknown): Promise<unknown>
   }
 
-  const heard: HeardPort = (conversation, messageId, body) =>
-    post(heardPath(conversation, messageId), body, new AbortController().signal)
+  export class VoiceRouteRefused extends Error {
+    constructor(readonly path: string, readonly status: number) {
+      super(`The agent refused ${path} with status ${status}`)
+      this.name = "VoiceRouteRefused"
+    }
+  }
 
-  return { endOfTurn, turns, heard }
+  const decodeReply = Schema.decodeUnknownOption(Schema.Struct({ messageId: Schema.String, text: Schema.String }))
+
+  export type VoiceNetworkPorts = Pick<VoiceSessionPorts, "endOfTurn" | "turns" | "heard">
+
+  function untilAborted<A>(signal: AbortSignal, work: () => Promise<A>): Promise<A> {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) return reject(signal.reason)
+      const stop = () => reject(signal.reason)
+      signal.addEventListener("abort", stop, { once: true })
+      work().then(resolve, reject).finally(() => signal.removeEventListener("abort", stop))
+    })
+  }
+
+  export function jsonRequestOf(client: RuntimeJsonRequester): JsonRequest {
+    return (method, path, body) => client.request(path, method === "GET" ? undefined : body).then(
+      (data): JsonAnswer => ({ status: 200, body: data }),
+      (error: unknown): JsonAnswer => {
+        if (error instanceof RuntimeRequestError) return { status: error.status, body: null }
+        throw error
+      },
+    )
+  }
+
+  export function voiceNetworkPorts(conversationId: string, request: JsonRequest): VoiceNetworkPorts {
+    const post = (path: string, body: unknown, signal: AbortSignal) => untilAborted(signal, () => request("POST", path, body, signal))
+    const accepted = (path: string, answer: JsonAnswer): JsonAnswer => {
+      if (answer.status < 200 || answer.status > 299) throw new VoiceRouteRefused(path, answer.status)
+      return answer
+    }
+
+    const endOfTurn: EndOfTurnPort = (text, signal) => post(END_OF_TURN_PATH, { text }, signal).then(
+      (answer) => decodeEndOfTurnReply(answer.status, answer.body),
+      () => (signal.aborted ? "ReplyLate" : decodeEndOfTurnReply(0, undefined)),
+    )
+
+    const turns: TurnPort = {
+      async send(turn, signal) {
+        const path = `/api/conversations/${encodeURIComponent(conversationId)}/messages`
+        const answer = accepted(path, await post(path, {
+          text: turn.text, channelType: turn.channelType, metadata: turn.metadata, clientMessageId: turn.clientMessageId,
+        }, signal))
+        const reply = decodeReply(answer.body)
+        if (Option.isNone(reply)) throw new VoiceRouteRefused(path, answer.status)
+        return reply.value
+      },
+      async abort(roomId, reason) {
+        const path = `/api/turns/${encodeURIComponent(roomId)}/abort`
+        accepted(path, await post(path, { reason }, new AbortController().signal))
+      },
+    }
+
+    const heard: HeardPort = (conversation, messageId, body) =>
+      post(heardPath(conversation, messageId), body, new AbortController().signal)
+
+    return { endOfTurn, turns, heard }
+  }
 }
+export { jsonRequestOf, VoiceRouteRefused, voiceNetworkPorts, type JsonAnswer, type JsonRequest, type RuntimeJsonRequester, type VoiceNetworkPorts } from node

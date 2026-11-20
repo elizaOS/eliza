@@ -1,23 +1,17 @@
 # Google sign-in
 
 Signing in with Google, the server half: in the browser with a one-time
-code, or on the phone with its own Google account and a one-time challenge.
-Sources: develop `packages/auth/src/server/api/routes/auth.ts`, the Quint
-models `OAuthAppLinkRedemption` and `NativeGoogleAdmission`, and the service
-half of the old `spec/auth/googleSignIn.md`; the device half is
-`spec/os/signIn/flow.md`.
-
-Routes under `/api/v1/auth/google/`: `GET authorize` (`response_type,
-client_id, environment, redirect_uri, code_challenge, code_challenge_method,
-state`) redirects to Google; `GET callback` redirects to
+code, or on the phone with its own Google account and a one-time challenge
+(develop `packages/auth/src/server/api/routes/auth.ts`; device half
+`spec/os/signIn/flow.md`). Under `/api/v1/auth/google/`: `GET authorize`
+redirects to Google; `GET callback` redirects to
 `<redirect_uri>#code=<code>&state=<state>` or `#error=<error>&state=<state>`;
 `POST exchange` `{code, redirectUri, clientId, codeVerifier}` answers as a
-code sign-in does (`codeChallenges`); `POST native/challenge` answers
-`{challengeId, nonce, serverClientId, expiresAt}`, and the session route
-`POST /api/v1/user/methods/google/challenge` opens a link challenge. A
-challenge is answered inside `POST /api/v1/app-auth/mobile/google`
-(`nativeClients/deviceKeys`) or `POST /api/v1/user/methods/google/link`
-(`signInMethods`).
+code sign-in does (`codeChallenges`); `POST native/challenge`, and `POST
+/api/v1/user/methods/google/challenge` for a link, answer `{challengeId,
+nonce, serverClientId, expiresAt}`. A challenge is answered inside `POST
+/api/v1/app-auth/mobile/google` (`nativeClients/deviceKeys`) or `POST
+/api/v1/user/methods/google/link` (`signInMethods`).
 
 One machine instance is one attempt row: a browser attempt or a native
 challenge, never both. The shell draws state, code, challenge id and nonce at
@@ -33,10 +27,9 @@ Google's `email_verified` goes unchanged to `accounts`' first sight.
 
 ### Authorize is admitted only with response_type code, S256, a state and the exact sign-in return of an enabled registration of this environment, and the attempt lives five minutes
 
-A refused request is answered at once, stores nothing and is final: a
-malformed one `400 invalid_request`, a client fault as `nativeClients/registry`
-names it. With Google off the attempt ends before it is stored, answered
-`503 provider_unavailable` reason `google_not_configured`.
+A refused request stores nothing and is final: `400 invalid_request`, or the
+client fault of `nativeClients/registry`. With Google off the attempt ends
+unstored, `503 provider_unavailable` reason `google_not_configured`.
 
 ```quint
 import types.* from "../shared/types"
@@ -83,11 +76,9 @@ pure def sometimesAwaitingGoogle(a: GoogleAttempt): bool = a.flow.phase == O::Aw
 
 ### Every step of a browser attempt is a step of core's OAuth flow
 
-So the attempt is stored before the Google URL is built, a callback consumes
-it once and before Google's token exchange, and a failed write after a
-failure keeps both causes (`spec/core/oauth/index.md`). Google's PKCE
-verifier is always required. Nothing is compensated: storing the verified
-identity is one row write.
+So the attempt is stored before the Google URL, a callback consumes it once
+before the token exchange, and a failed write after a failure keeps both
+causes. Google's verifier is always required; nothing is compensated.
 
 ```quint
 pure def refinesO(a: GoogleAttempt): O::OAuthFlow = a.flow
@@ -224,10 +215,9 @@ pure def sometimesBrowserSecondFactor(a: GoogleAttempt): bool = a.code == CodeRe
 
 ### A native challenge needs S256, opens only on an unused attempt row, and lives five minutes
 
-The route first admits the client with its sign-in return and native Google
-(`nativeClients/registry`). The row keeps the nonce, the client and the
-digest of the device's verifier; a link challenge names the signed-in user
-who opened it.
+The client is first admitted with its sign-in return and native Google
+(`nativeClients/registry`); the row keeps the nonce, client and verifier
+digest, and a link challenge names the signed-in user who opened it.
 
 ```quint
 pure val nativeLifetime: Millis = 5 * millisPerMinute
@@ -261,8 +251,7 @@ pure def nativeVerdict(n: NativePhase, now: Millis, p: NativeProof): NativeVerdi
 }
 pure def nativeRefusal(v: NativeVerdict): Refusal =
   if (v == NativeExpired) refuseFor(AuthenticationRequired, CredentialExpired)
-  else if (v == NativeProofWrong) refuse(CredentialProofInvalid)
-  else refuseFor(AuthenticationRequired, CredentialUnknown)
+  else if (v == NativeProofWrong) refuse(CredentialProofInvalid) else refuseFor(AuthenticationRequired, CredentialUnknown)
 pure def nativeYield(purpose: NativePurpose, factorOutcome: F::FirstFactorOutcome): SignInYield =
   match purpose { | NativeLink(l) => GoogleProofYield | NativeSignIn => if (factorOutcome == F::SecondFactorRequired) SecondFactorYield else DeviceKeyYield }
 pure def isOpen(n: NativePhase): bool = match n { | ChallengeOpen(c) => true | _ => false }

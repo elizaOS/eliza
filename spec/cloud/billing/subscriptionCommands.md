@@ -1,15 +1,13 @@
 # Subscription commands
 
-Cancel, undo a cancellation, upgrade and downgrade: the four changes a
-subscriber makes to a live subscription. One `Command` is one row: its
-review, its one provider change (`spec/cloud/shared/dispatchOnce.md`) and its
-outcome. A command holds the organization's one command slot
-(`spec/cloud/billing/subscriptions.md`) from its confirmation until it ends;
-the shell applies each `ClaimSlot`, `ScheduleDowngrade` and `ReleaseSlot`
-effect to the subscription, and each `AdjustAllowance` to the open renewal
-period (`spec/cloud/billing/allowance.md`), in the same transaction as the
-step. Sources are develop `organization-{upgrade,downgrade}-*` and
-`subscription-cancellation.ts` (rules only).
+Cancel, undo a cancellation, upgrade and downgrade of a live subscription.
+One `Command` is one row: its review, its one provider change
+(`spec/cloud/shared/dispatchOnce.md`) and its outcome. In the step's
+transaction the shell applies `ClaimSlot`, `ScheduleDowngrade` and
+`ReleaseSlot` to the subscription (`spec/cloud/billing/subscriptions.md`) and
+`AdjustAllowance` to the open renewal period
+(`spec/cloud/billing/allowance.md`). Sources are develop
+`organization-{upgrade,downgrade}-*` and `subscription-cancellation.ts`.
 
 Provider calls, the answers' shapes and the person's session stay in the
 shell. Every review, confirm and payment route is for an owner with a fresh
@@ -135,8 +133,6 @@ pure def confirm(c: Command, by: S::SessionOwner, sub: Sub::Subscription, kind: 
 pure val byValues = Set({ agentId: "org1", actorId: "user1", connector: "subscription_update" }, { agentId: "org1", actorId: "user1", connector: "subscription_schedule" })
 pure val commandIdValues = Set("cmd1")
 pure val expectedRevisionValues = Set(1, 2, 3)
-pure def stepConfirmedWithinAMinuteOfTheReview(before: Command, via: str, after: Command): bool =
-  (via == "confirm" and after.kind != Sub::CancelCommand) implies (nowOf(before) < after.quote.expiresAt and after.quote.expiresAt <= after.quote.reviewedAt + quoteLifetime)
 ```
 
 ### A started command keeps its kind, subscription, revision and quote, and only a confirmed cancel has no quote
@@ -192,7 +188,9 @@ pure def sometimesOutcomeUnknown(c: Command): bool = c.phase == Running and D::i
 
 A refused or not applied change fails. An upgrade's invoice is paid (the
 command applies now), open (the command awaits payment and keeps the slot)
-or voided (it fails). An applied upgrade adds the quoted allowance
+or voided (it fails); while it awaits payment, a fresh owner's `POST
+/upgrade/:commandId/payment` answers `{url}`, the open invoice's hosted page
+on the provider's host. An applied upgrade adds the quoted allowance
 difference; an applied downgrade schedules the lower plan for the next paid
 renewal while the command still holds the slot. The shell finishes a settled
 command in the transaction that settles it.
@@ -217,6 +215,7 @@ pure def finish(c: Command, invoice: UpgradeInvoice, resultRevision: int): Comma
       .concat(if (ending != AwaitingPayment) List(ReleaseSlot({ commandId: c.commandId })) else List()) }
 }
 pure val resultRevisionValues = Set(0, 1, 2, 3, 4)
+pure def mayContinuePayment(c: Command, freshOwner: bool): bool = freshOwner and c.phase == AwaitingPayment
 pure def alwaysOutcomeFollowsTheReceipt(c: Command): bool =
   ((c.phase == Applied or c.phase == AwaitingPayment) implies c.receipt.settlement == D::Succeeded)
   and (c.phase == Failed implies c.receipt.settlement != D::Unsettled)
@@ -272,15 +271,6 @@ pure def stepDowngradeScheduledOnApply(before: Command, after: Command, out: Lis
   (out.some(e => isSchedule(e)) iff (after.kind == Sub::DowngradeCommand and before.phase != Applied and after.phase == Applied))
   and out.every(e => schedulesAsQuoted(after, e))
   and (out.some(e => isSchedule(e)) implies isSchedule(out.nthOr(0, ReleaseSlot({ commandId: "" }))))
-```
-
-### An upgrade awaiting payment offers the provider's hosted invoice, to a fresh owner only
-
-`POST /upgrade/:commandId/payment` answers `{url}`, the open invoice's
-hosted page on the provider's host.
-
-```quint
-pure def mayContinuePayment(c: Command, freshOwner: bool): bool = freshOwner and c.phase == AwaitingPayment
 ```
 
 ## Story: See my commands

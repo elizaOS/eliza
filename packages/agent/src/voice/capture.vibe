@@ -7,7 +7,6 @@ import {
 } from "../../gen/agent__voice__clientAudio.effect.vibe"
 
 export const captureWorkletUrl = new URL("./capture.worklet.mjs", import.meta.url)
-export const captureProcessorName = "eliza-capture-samples"
 export const captureBlockSamples = 2048
 
 export error WavRateRefused { rate: number }
@@ -172,12 +171,16 @@ function offer<S, C extends CaptureContext<S>>(c: Capture<S, C>, minimumNew: num
   const { promise, resolve } = Promise.withResolvers<boolean>()
   c.inflight = promise
   runFork(effect {
-    const completed = try (map(tryPromise(() => c.onPreview(sending, c.sampleRate)), () => true) catch () => false)
+    const completed = map(tryPromise(() => c.onPreview(sending, c.sampleRate)), () => true) catch () => false
     c.buffer = settlePreview(c.buffer)
     c.inflight = undefined
     resolve(completed)
   })
   return promise
+}
+
+function tick<S, C extends CaptureContext<S>>(c: Capture<S, C>, minimumNew: number): void {
+  void offer(c, minimumNew)
 }
 
 async function snapshot<S, C extends CaptureContext<S>>(c: Capture<S, C>): Promise<boolean> {
@@ -213,7 +216,7 @@ effect function attemptNow<A>(call: () => A): A!CaptureUnavailable {
 effect function ticks<S, C extends CaptureContext<S>>(c: Capture<S, C>, intervalMs: number, minimumNew: number): void!! {
   while (!c.closed) {
     try sleep(Duration.millis(intervalMs))
-    void offer(c, minimumNew)
+    tick(c, minimumNew)
   }
 }
 
@@ -233,7 +236,7 @@ effect function connect<S, C extends CaptureContext<S>>(c: Capture<S, C>, option
 
 export effect function startCumulativeMicrophoneCapture<Stream, Context extends CaptureContext<Stream>>(
   options: CumulativeCaptureOptions<Stream, Context>,
-): CumulativeCapture!CapturePolicyRefused | SharedContextRateRefused | CaptureUnavailable {
+): CumulativeCapture!(CapturePolicyRefused | SharedContextRateRefused | CaptureUnavailable) {
   const { sampleRate, maxSeconds, minimumNewSamples, previewIntervalMs, speechThreshold, sharedContext } = options
   const capSamples = Math.floor(sampleRate * maxSeconds)
   const buffer: CaptureBuffer = { capSamples, received: 0, stored: 0, heardSpeech: false, lastOffered: 0, offering: false }
@@ -274,7 +277,7 @@ export effect function decodeRecordedClip<Decoded extends DecodedClip>(
   bytes: ArrayBuffer,
   signal: AbortSignal,
   audio: ClipAudioPort<Decoded>,
-): Float32Array!ClipRefused | ClipCancelled | ClipDecodeFailed {
+): Float32Array!(ClipRefused | ClipCancelled | ClipDecodeFailed) {
   try stillWanted(signal)
   if (!recordingDecodable(bytes.byteLength, 1)) throw new ClipRefused({ bytes: bytes.byteLength, durationMs: 0 })
   const size = bytes.byteLength
@@ -285,31 +288,4 @@ export effect function decodeRecordedClip<Decoded extends DecodedClip>(
   const samples = try decoding(() => audio.render(decoded, Math.ceil(decoded.duration * recordingSampleRate), recordingSampleRate))
   try stillWanted(signal)
   return samples
-}
-
-export const browserCaptureAudio: CaptureAudioPort<MediaStream, AudioContext> = {
-  open: (sampleRate) => new AudioContext({ sampleRate }),
-  samples: (context, receive) => {
-    const node = new AudioWorkletNode(context, captureProcessorName, { channelCount: 1, channelCountMode: "explicit" })
-    node.port.onmessage = (event) => receive(event.data)
-    return {
-      node,
-      stop: () => {
-        node.port.onmessage = null
-        node.port.close()
-      },
-    }
-  },
-}
-
-export const browserClipAudio: ClipAudioPort<AudioBuffer> = {
-  decode: (bytes, sampleRate) => new OfflineAudioContext(1, 1, sampleRate).decodeAudioData(bytes),
-  render: async (decoded, length, sampleRate) => {
-    const renderer = new OfflineAudioContext(1, length, sampleRate)
-    const source = renderer.createBufferSource()
-    source.buffer = decoded
-    source.connect(renderer.destination)
-    source.start()
-    return (await renderer.startRendering()).getChannelData(0)
-  },
 }

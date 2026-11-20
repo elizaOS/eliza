@@ -31,5 +31,9 @@ module node {
     return { files, refused: files.filter((file) => !fileAdmitted(localInference, file)) }
   }
 }
+import type { BuildVerdict } from "../../gen/agent__plugins__bundle.ts"
 export { admitPayload, fileExtension, payloadFile, type PayloadAdmission } from node
-export { excludedPackages, fileAdmitted, modelWeightExtensions, type PayloadFile } from "../../gen/agent__plugins__bundle.ts"
+export { excludedPackages, fileAdmitted, modelWeightExtensions, type BuildVerdict, type PayloadFile } from "../../gen/agent__plugins__bundle.ts"
+
+export error BundleRefused { verdict: Exclude<BuildVerdict, "Built">; detail: string }
+export error BundleManifestUnreadable { directory: string }

@@ -5,7 +5,7 @@ module node {
   import { ChannelType, type AgentRuntime, type Content, type Memory, type MemoryMetadata, type Room, type UUID } from "@elizaos/core"
   import { canCreate, defaultTitle, initial } from "../../gen/agent__conversation__conversations.ts"
   import type { LocalRoute } from "../access/routes.vibe"
-  import { writeReplyStream } from "./stream.vibe"
+  import { streamRoutes } from "./stream.vibe"
 
   export interface TurnReply {
     readonly fullText: string
@@ -76,7 +76,7 @@ module node {
     return runtime.roomHandlerQueue.withLease(room.id, async (lease) => {
       signal.throwIfAborted()
       const input = memory(runtime, owner, room, text, options.metadata)
-      await runtime.createMessageMemory(input)
+      const userMessageId = await runtime.createMessageMemory(input)
       const [current] = await runtime.adapter.getRoomsByIds([room.id])
       const metadata = stamp(current?.metadata?.deviceConversation)
       if (metadata._tag === "Some" && current !== undefined) {
@@ -86,13 +86,14 @@ module node {
           },
         }])
       }
-      return service.handleMessage(runtime, input, storeReply, {
+      const result = await service.handleMessage(runtime, input, storeReply, {
         roomHandlerLease: lease, abortSignal: signal, ...(options.onStreamChunk === undefined ? {} : { onStreamChunk: options.onStreamChunk }),
       })
+      return { ...result, userMessageId }
     }, { signal })
   }
 
-  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner): LocalRoute[] {
+  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string): LocalRoute[] {
     if (!runtime.messageService) throw new Error("A conversation requires the message service")
     const rooms = () => runtime.getRooms(owner.world)
     const find = async (id: string | undefined): Promise<Room | undefined> =>
@@ -128,27 +129,22 @@ module node {
             : failure(502, "turn_failed")
         },
       },
-      {
-        method: "POST", path: "/api/conversations/{id}/messages/stream", stream: true,
-        handler: async ({ parameters, body, signal }) => {
-          const room = await find(parameters.get("id"))
-          if (!room) return failure(404, "unknown_conversation")
-          const payload = messageBody(body)
-          if (payload._tag !== "Some") return failure(400, "invalid_message")
-          return writeReplyStream(async (emit, signal) => {
-            let fullText = ""
-            const result = await processTurn(runtime, owner, room, payload.value.text, signal, { onStreamChunk: (text) => {
-              fullText += text
-              emit({ type: "token", text, fullText })
-            } })
-            if (!result.didRespond || !result.responseContent?.text) {
-              emit({ type: "error", message: "The turn did not complete" })
-              return
+      ...streamRoutes(async (id, body) => {
+        const room = await find(id)
+        if (!room) return { kind: "refused", status: 404, error: "unknown_conversation" }
+        const payload = messageBody(body)
+        if (payload._tag !== "Some") return { kind: "refused", status: 400, error: "invalid_message" }
+        return { kind: "admitted", role: "streams", run: async (writer, signal) => {
+          const result = await processTurn(runtime, owner, room, payload.value.text, signal, { onStreamChunk: (text) => writer.append(text) })
+          const [reply] = result.responseMessages
+          return result.didRespond && result.responseContent?.text && reply?.id
+            ? {
+              type: "done", fullText: result.responseContent.text, messageId: reply.id,
+              userMessageId: result.userMessageId, agentName, actionResults: [],
             }
-            emit({ type: "done", fullText: result.responseContent.text })
-          }, signal)
-        },
-      },
+            : { type: "error", code: "turn_failed", message: "The turn did not complete" }
+        } }
+      }),
       {
         method: "POST", path: "/api/turns/{room}/abort",
         handler: async ({ parameters }) => {

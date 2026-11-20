@@ -1,4 +1,4 @@
-// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/billing/providerEvents.md, "Each event type has one owner, and an event of any other type is done at its first handling"
 import { WorkerResponse } from "./worker-platform.ts"
 import type { Client } from "pg"
 import Stripe from "stripe"
@@ -39,28 +39,34 @@ function provider(env: BillingEnv) {
 }
 
 async function reconcile(stripe: Stripe, env: BillingEnv, db: Client, organization: string, customer: string) {
-  await db.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [organization])
-  const { observation, ongoing } = await readStripeSubscription(stripe, env, customer)
+  const linked = (await db.query<{ checkout_id: string | null }>(`SELECT c.checkout_id FROM cloud_checkout_customers c
+    JOIN organizations o ON o.id=c.organization_id WHERE c.organization_id=$1 AND c.customer_id=$2 FOR UPDATE OF o,c`, [organization, customer])).rows[0]
+  if (!linked) return { active: false, ongoing: false }
+  const { observation, chargeIds, ongoing } = await readStripeSubscription(stripe, env, customer)
   const tx: Tx = {
     query: (sql, params = []) => foreign("query", async () => (await db.query(sql, [...params])).rows),
     script: (sql) => foreign("script", async () => { await db.query(sql) })
   }
   const stored = (await db.query<{ provider_subscription_id: string | null }>("SELECT provider_subscription_id FROM subscriptions WHERE key=$1", [organization])).rows[0]
   let verifiedCheckout: string | undefined
-  if (observation.subscriptionId && observation.subscriptionId !== stored?.provider_subscription_id) {
-    const local = await customerFor(db, organization)
-    if (local?.checkout_id && local.customer_id === customer) {
-      const checkout = await stripe.checkout.sessions.retrieve(local.checkout_id, { expand: ["line_items"] })
-      if (checkout.id === local.checkout_id && checkout.client_reference_id === organization &&
-          resourceId(checkout.customer) === customer && checkout.livemode === (env.CLOUD_ENVIRONMENT === "production") &&
-          checkout.mode === "subscription" && checkout.status === "complete" && checkout.payment_status === "paid" &&
-          resourceId(checkout.subscription) === observation.subscriptionId &&
-          checkout.line_items?.has_more === false && checkout.line_items.data.length === 1 &&
-          checkout.line_items.data[0]?.price?.id === env.STRIPE_PRICE_ID && checkout.line_items.data[0]?.quantity === 1)
-        verifiedCheckout = checkout.id
-    }
+  if (linked.checkout_id && observation.subscriptionId && observation.subscriptionId !== stored?.provider_subscription_id) {
+    const checkout = await stripe.checkout.sessions.retrieve(linked.checkout_id, { expand: ["line_items"] })
+    if (checkout.id === linked.checkout_id && checkout.client_reference_id === organization &&
+        resourceId(checkout.customer) === customer && checkout.livemode === (env.CLOUD_ENVIRONMENT === "production") &&
+        checkout.mode === "subscription" && checkout.status === "complete" && checkout.payment_status === "paid" &&
+        resourceId(checkout.subscription) === observation.subscriptionId &&
+        checkout.line_items?.has_more === false && checkout.line_items.data.length === 1 &&
+        checkout.line_items.data[0]?.price?.id === env.STRIPE_PRICE_ID && checkout.line_items.data[0]?.quantity === 1)
+      verifiedCheckout = checkout.id
   }
   const state = await Effect.runPromise(reconcileSubscription(tx, organization, observation, Date.now(), verifiedCheckout))
+  if (chargeIds.length && observation.subscriptionId === state.subscriptionId) {
+    await db.query(`INSERT INTO cloud_stripe_charge_owners (charge_id, customer_id)
+      SELECT unnest($1::text[]), $2 ON CONFLICT (charge_id) DO NOTHING`, [chargeIds, customer])
+    const confirmed = await db.query(
+      "SELECT charge_id FROM cloud_stripe_charge_owners WHERE charge_id = ANY($1::text[]) AND customer_id = $2", [chargeIds, customer])
+    if (confirmed.rowCount !== chargeIds.length) throw new Error("Stripe charge already has a different owner")
+  }
   return { active: state.status === "Active", ongoing }
 }
 
@@ -109,16 +115,18 @@ export async function stripeWebhook(request: Request, raw: Uint8Array, env: Bill
   } catch { return WorkerResponse.json({error:"invalid_signature"},{status:400}) }
   if (event.livemode !== (env.CLOUD_ENVIRONMENT === "production")) return WorkerResponse.json({error:"invalid_environment"},{status:400})
   const obj = event.data.object
-  let customerId: string | undefined
-  if (obj.object === "subscription" || obj.object === "invoice" || obj.object === "checkout.session" || obj.object === "charge") customerId = resourceId(obj.customer)
+  let binding: BillingOwner | undefined
   if (obj.object === "dispute" || obj.object === "refund") {
-    const chargeId = resourceId(obj.charge)
-    if (chargeId) customerId = resourceId((await stripe.charges.retrieve(chargeId)).customer)
+    const charge = resourceId(obj.charge)
+    if (charge) binding = (await db.query<BillingOwner>(`SELECT c.organization_id,c.customer_id FROM cloud_stripe_charge_owners q
+      JOIN cloud_checkout_customers c ON c.customer_id=q.customer_id WHERE q.charge_id=$1`, [charge])).rows[0]
+  } else if (obj.object === "subscription" || obj.object === "invoice" || obj.object === "checkout.session" || obj.object === "charge") {
+    const customer = resourceId(obj.customer)
+    if (customer) binding = (await db.query<BillingOwner>(
+      "SELECT organization_id,customer_id FROM cloud_checkout_customers WHERE customer_id=$1", [customer])).rows[0]
   }
-  if (customerId) {
-    const binding = (await db.query<{organization_id:string;customer_id:string}>("SELECT organization_id,customer_id FROM cloud_checkout_customers WHERE customer_id=$1",[customerId])).rows[0]
-    if (binding) await billingTransaction(db,binding.organization_id,() => reconcile(stripe,env,db,binding.organization_id,binding.customer_id))
-  }
+  const owner = binding
+  if (owner) await billingTransaction(db, owner.organization_id, () => reconcile(stripe, env, db, owner.organization_id, owner.customer_id))
   return new WorkerResponse(null,{status:204})
 }
 

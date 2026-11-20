@@ -13,8 +13,8 @@ export type AlbumRevision = string & Brand.Brand<"AlbumRevision">;
 export type SelectionId = string & Brand.Brand<"SelectionId">;
 
 export type MediaKind = "image" | "video";
-export type KindAccess = "full" | "selected" | "denied";
-export type LibraryScopeKind = "full" | "partial" | "selected" | "denied";
+export type KindAccess = "full" | "selected" | "owned" | "denied";
+export type LibraryScopeKind = "full" | "partial" | "selected" | "owned" | "denied";
 export type LibraryFilter = "all" | "favorites" | "trash";
 export type FlagChange = "favorite" | "unfavorite" | "trash" | "restore";
 export type LibraryChange = Exclude<FlagChange, "restore">;

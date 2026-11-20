@@ -1,39 +1,37 @@
 // spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"; spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; spec/os/signIn/readiness.md, "Story: Read the service's own terms"
 import type { PluginListenerHandle } from "@capacitor/core"
-import { BridgeUnavailable, MalformedReply, NativeRejection, nativeCall, settled } from "./bridge.vibe"
+import { MalformedReply, NativeRejection, nativeCall, settled } from "./bridge.vibe"
 import type {
   ElizaSignInPlugin,
   EnvironmentName,
+  FailureCode,
+  GoogleReport,
   ServiceDocument,
   SignInAccount,
   SignInClient,
   SignInEvents,
   SignInOptions,
-  SignInProgress,
   SignInReadiness,
-  SignInRefusal,
-  SignInSettled,
+  SignInReceipt,
+  SignInVerdict,
 } from "./definitions/sign-in.ts"
 import {
   Account,
   Cancelled,
-  Failed,
   FactorCodeSent,
-  Kept,
-  Later,
-  Progress,
+  FailureWire,
+  GoogleWire,
   Readiness,
+  Receipt,
   Rejected,
   Service,
-  Settled,
   SignedOut,
   Status,
-  requestIdOf,
   signInCode,
 } from "./sign-in.schema.vibe"
 
 export type * from "./definitions/sign-in.ts"
-export { requestIdOf, signInCode }
+export { signInCode }
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
@@ -47,32 +45,50 @@ module capacitor {
 import { signInPlugin } from capacitor
 export { signInPlugin }
 
-export error SignInRefused { method: string; refusal: SignInRefusal }
+export error SignInRefused { method: string; code: FailureCode }
 
 type Wire<S extends { readonly Type: unknown }> = S["Type"]
 
-function failedOf(failed: Wire<typeof Failed>): Extract<SignInSettled, { kind: "failed" }> {
-  return { kind: "failed", requestId: failed.requestId, attemptId: failed.attemptId, google: failed.google, code: failed.failure }
+const PLUGIN = "ElizaSignIn"
+
+const FAILURES: Record<Wire<typeof FailureWire>, FailureCode> = {
+  cancelled: "Cancelled",
+  busy: "Busy",
+  "invalid-input": "InvalidInput",
+  "wrong-code": "WrongCode",
+  expired: "Expired",
+  "too-many-attempts": "TooManyAttempts",
+  unavailable: "Unavailable",
+  "google-unavailable": "GoogleUnavailable",
+  "wrong-account": "WrongAccount",
+  rejected: "Rejected",
 }
 
-function settledOf(settled: Wire<typeof Settled>): SignInSettled {
-  switch (settled.step) {
-    case "signed-in":
-      return { kind: "signedIn", receipt: { requestId: settled.requestId, attemptId: settled.attemptId, credentialId: settled.credentialId, google: settled.google } }
-    case "failed":
-      return failedOf(settled)
+const GOOGLE: Record<Wire<typeof GoogleWire>, GoogleReport> = {
+  "not-requested": "GoogleNotRequested",
+  connected: "GoogleConnected",
+  refused: "GoogleRefused",
+}
+
+function verdictOf(receipt: Wire<typeof Receipt>): SignInVerdict {
+  switch (receipt.verdict) {
+    case "code-on-its-way":
+      return { kind: "CodeOnItsWay", expiresAt: receipt.expiresAt, resendAt: receipt.resendAt }
+    case "factor-asked":
+      return { kind: "FactorAsked", factors: receipt.factors, expiresAt: receipt.expiresAt }
+    case "signed-in-as":
+      return { kind: "SignedInAs", credentialId: receipt.credentialId, google: GOOGLE[receipt.google] }
+    case "account-confirmed":
+      return { kind: "AccountConfirmed" }
+    case "try-again":
+      return { kind: "TryAgain", retry: FAILURES[receipt.retry] }
+    case "ended":
+      return { kind: "Ended", problem: FAILURES[receipt.problem] }
   }
 }
 
-function progressOf(progress: Wire<typeof Progress>): SignInProgress {
-  switch (progress.step) {
-    case "code-sent":
-      return { kind: "codeSent", requestId: progress.requestId, attemptId: progress.attemptId, expiresAt: progress.expiresAt, resendAt: progress.resendAt }
-    case "second-factor":
-      return { kind: "secondFactor", requestId: progress.requestId, attemptId: progress.attemptId, factors: progress.methods, expiresAt: progress.expiresAt }
-    case "signed-in":
-      return { kind: "signedIn", receipt: { requestId: progress.requestId, attemptId: progress.attemptId, credentialId: progress.credentialId, google: progress.google } }
-  }
+function receiptOf(receipt: Wire<typeof Receipt>): SignInReceipt {
+  return { request: receipt.request, attempt: receipt.attempt, verdict: verdictOf(receipt) }
 }
 
 function accountOf(account: Wire<typeof Account>): SignInAccount {
@@ -97,25 +113,13 @@ function serviceOf(environment: EnvironmentName, service: Wire<typeof Service>):
   }
 }
 
-function refusalOf(data: unknown, code: Wire<typeof Rejected>["code"]): SignInRefusal {
-  const failed = Schema.decodeUnknownOption(Failed)(data)
-  if (Option.isSome(failed)) return { kind: "settled", settled: failedOf(failed.value) }
-  const kept = Schema.decodeUnknownOption(Kept)(data)
-  if (Option.isSome(kept)) return { kind: "kept", code, requestId: kept.value.requestId, step: kept.value.step }
-  const later = Schema.decodeUnknownOption(Later)(data)
-  if (Option.isSome(later)) return { kind: "resendLater", code, resendAt: later.value.resendAt }
-  return { kind: "refused", code }
-}
-
 function refused(method: string) {
-  return (failure: BridgeUnavailable | NativeRejection): BridgeUnavailable | NativeRejection | SignInRefused => {
+  return <F>(failure: F): F | SignInRefused => {
     if (!(failure instanceof NativeRejection)) return failure
     const rejected = Schema.decodeUnknownOption(Rejected)(failure.cause)
-    return Option.isSome(rejected) ? new SignInRefused({ method, refusal: refusalOf(rejected.value.data, rejected.value.code) }) : failure
+    return Option.isSome(rejected) ? new SignInRefused({ method, code: FAILURES[rejected.value.code] }) : failure
   }
 }
-
-const PLUGIN = "ElizaSignIn"
 
 effect function parsed<A, I>(method: string, shape: Schema.Codec<A, I>, raw: unknown) {
   return try mapError(Schema.decodeUnknownEffect(shape)(raw), (refusal) => new MalformedReply({ plugin: PLUGIN, method, issue: refusal.message }))
@@ -126,14 +130,14 @@ effect function answer<A, I>(method: string, shape: Schema.Codec<A, I>, run: () 
   return try parsed(method, shape, raw)
 }
 
-effect function progress(method: string, run: () => Promise<unknown>) {
-  return progressOf(try answer(method, Progress, run))
+effect function receipt(method: string, run: () => Promise<unknown>) {
+  return receiptOf(try answer(method, Receipt, run))
 }
 
 effect function heard<Name extends keyof SignInEvents>(name: Name, listener: (event: SignInEvents[Name]) => void, event: unknown) {
   if (name === "signInSettled") {
-    const settledEvent = try parsed(name, Settled, event)
-    listener(settledOf(settledEvent) as SignInEvents[Name])
+    const settledEvent = try parsed(name, Receipt, event)
+    listener(receiptOf(settledEvent) as SignInEvents[Name])
   } else {
     const changed = try parsed(name, Readiness, event)
     listener(readinessOf(changed) as SignInEvents[Name])
@@ -147,23 +151,23 @@ effect function listened<Name extends keyof SignInEvents>(name: Name, listener: 
 }
 
 effect function started(plugin: ElizaSignInPlugin, options: SignInOptions) {
-  const { requestId, environment } = options
+  const { environment } = options
   switch (options.method) {
     case "email":
-      return try progress("startEmail", () => plugin.startEmail({ requestId, environment, email: options.email }))
+      return try receipt("startEmail", () => plugin.startEmail({ environment, email: options.email }))
     case "sms":
-      return try progress("startPhone", () => plugin.startPhone({ requestId, environment, phone: options.phone }))
+      return try receipt("startPhone", () => plugin.startPhone({ environment, phone: options.phone }))
     case "google":
-      return try progress("startGoogle", () => plugin.startGoogle({ requestId, environment }))
+      return try receipt("startGoogle", () => plugin.startGoogle({ environment }))
   }
 }
 
 effect function reauthenticated(plugin: ElizaSignInPlugin, options: SignInOptions) {
-  const { requestId, environment } = options
-  const start: SignInOptions = options.method === "email" ? { method: "email", requestId, environment, email: options.email }
-    : options.method === "sms" ? { method: "sms", requestId, environment, phone: options.phone }
-    : { method: "google", requestId, environment }
-  return try progress("reauthenticate", () => plugin.reauthenticate(start))
+  const { environment } = options
+  const start: SignInOptions = options.method === "email" ? { method: "email", environment, email: options.email }
+    : options.method === "sms" ? { method: "sms", environment, phone: options.phone }
+    : { method: "google", environment }
+  return try receipt("reauthenticate", () => plugin.reauthenticate(start))
 }
 
 effect function readinessAnswer(plugin: ElizaSignInPlugin, environment: EnvironmentName, retry: boolean | undefined) {
@@ -175,11 +179,11 @@ export function signInClient(plugin: ElizaSignInPlugin = signInPlugin()): SignIn
   return {
     start: (options) => settled(started(plugin, options)),
     reauthenticate: (options) => settled(reauthenticated(plugin, options)),
-    resend: ({ requestId }) => settled(progress("resend", () => plugin.resend({ requestId }))),
-    verify: ({ requestId, code, factor }) =>
-      settled(progress("verify", () => plugin.verify(factor === undefined ? { requestId, code } : { requestId, code, method: factor }))),
-    sendFactorCode: ({ requestId }) => settled(answer("sendFactorCode", FactorCodeSent, () => plugin.sendFactorCode({ requestId }))),
-    cancel: ({ requestId }) => settled(map(answer("cancel", Cancelled, () => plugin.cancel({ requestId })), (reply) => reply.cancelled)),
+    resend: ({ attempt }) => settled(receipt("resend", () => plugin.resend({ attempt }))),
+    verify: ({ attempt, code, factor }) =>
+      settled(receipt("verify", () => plugin.verify(factor === undefined ? { attempt, code } : { attempt, code, method: factor }))),
+    sendFactorCode: ({ attempt }) => settled(map(answer("sendFactorCode", FactorCodeSent, () => plugin.sendFactorCode({ attempt })), (reply) => reply.attempt)),
+    cancel: ({ attempt }) => settled(map(answer("cancel", Cancelled, () => plugin.cancel({ attempt })), (reply) => reply.cancelled)),
     signOut: ({ environment }) => settled(map(answer("signOut", SignedOut, () => plugin.signOut({ environment })), (reply) => accountOf(reply.account))),
     status: ({ environment, retry }) => settled(readinessAnswer(plugin, environment, retry)),
     readiness: ({ environment, retry }) => settled(map(readinessAnswer(plugin, environment, retry), (status) => status.readiness)),

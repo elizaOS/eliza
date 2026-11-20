@@ -1,0 +1,66 @@
+// spec/agent/deviceActions/capabilities.md, "A request negotiates exactly the capabilities its header names, and only on a live enrollment"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/deviceActions/capabilities.md, "An open-view proposal runs only on the profile revision it bound and a view the profile enables"
+import { negotiate, openViewAdmitted, type DeviceView, type Negotiation, type RevisionRead, type ViewProfile } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
+
+export const capabilitiesHeader = "x-eliza-device-capabilities"
+
+export function negotiation(liveEnrollment: boolean, header: string | undefined): Negotiation {
+  if (header === undefined) return negotiate(liveEnrollment, [])
+  if (/[\r\n]/.test(header)) return { tag: "Refused" }
+  return negotiate(liveEnrollment, header.split(",").map((name) => name.trim()))
+}
+
+const viewNames = {
+  HomeView: "home", NotesView: "notes", RemindersView: "reminders", BrowserView: "browser", CalendarView: "calendar", FilesView: "files",
+  PhotosView: "photos", CameraView: "camera", MapsView: "maps", InboxView: "inbox", SettingsView: "settings", WorkflowsView: "workflows",
+} as const satisfies Record<DeviceView, string>
+
+type ViewName = (typeof viewNames)[DeviceView]
+
+const viewsByName = new Map(Object.entries(viewNames).map(([view, name]) => [name, view as DeviceView]))
+
+export const supportedViews: readonly ViewName[] = Object.values(viewNames)
+
+export function viewName(view: DeviceView): ViewName {
+  return viewNames[view]
+}
+
+export function deviceView(name: string): DeviceView | undefined {
+  return viewsByName.get(name)
+}
+
+const ViewProfileChange = Schema.Struct({
+  version: Schema.Literal(1),
+  expectedRevision: Schema.NullOr(Schema.String),
+  views: Schema.Array(Schema.Literals(supportedViews)).check(Schema.makeFilter((views) => new Set(views).size === views.length)),
+})
+const decodeChange = Schema.decodeUnknownOption(ViewProfileChange, { onExcessProperty: "error" })
+
+export interface ViewProfileChange {
+  readonly read: RevisionRead
+  readonly views: readonly DeviceView[]
+}
+
+export function readViewProfileChange(body: unknown): ViewProfileChange | undefined {
+  const found = decodeChange(body)
+  if (found._tag === "None") return undefined
+  const { expectedRevision, views } = found.value
+  return {
+    read: expectedRevision === null ? { tag: "NoRevisionRead" } : { tag: "ReadAt", revision: expectedRevision },
+    views: views.flatMap((name) => deviceView(name) ?? []),
+  }
+}
+
+export interface ViewProfileWire {
+  readonly version: 1
+  readonly revision: string
+  readonly views: readonly ViewName[]
+}
+
+export function viewProfileWire(profile: ViewProfile): ViewProfileWire | null {
+  return profile.tag === "NoProfile" ? null : { version: 1, revision: profile.revision, views: profile.views.map(viewName).toSorted() }
+}
+
+export function openViewAllowed(profile: ViewProfile, bound: RevisionRead, name: string): boolean {
+  const view = deviceView(name)
+  return view !== undefined && openViewAdmitted(profile, bound, view)
+}

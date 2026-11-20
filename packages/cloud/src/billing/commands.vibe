@@ -78,7 +78,7 @@ const wireKinds: Readonly<Record<CommandSpec["kind"], WireCommandKind>> = { Canc
 
 const commandIdPattern = /^cmd_[0-9a-f]{32}$/
 const cursorPattern = /^(\d{1,16})\.(cmd_[0-9a-f]{32})$/
-const idempotencyKeyPattern = /^[\x21-\x7e]{1,200}$/
+export const idempotencyKeyPattern = /^[\x21-\x7e]{1,200}$/
 
 export const providerTimeout = 30_000
 export const commandLifetime = 24 * 60 * 60_000

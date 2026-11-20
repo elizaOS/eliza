@@ -1,5 +1,5 @@
 //@ backend dafny
-// spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"
+// spec/agent/conversation/replyStream.md, "Appended text carries the whole text again once the units appended since the last whole text reach the larger of 2048 and that text's length"
 
 export interface Cadence { appended: number; lastLength: number }
 
@@ -32,7 +32,8 @@ export function append(c: Cadence, units: number): Appended {
   //@ ensures steady(\result.cadence)
   //@ ensures fullLength(\result.cadence) === fullLength(c) + units
   //@ ensures \result.snapshot === (c.appended + units >= due(c.lastLength))
-  //@ ensures \result.snapshot ==> \result.cadence.appended === 0 && \result.cadence.lastLength <= 2 * (c.appended + units)
+  //@ ensures \result.snapshot ==> \result.cadence.appended === 0
+  //@ ensures \result.snapshot ==> fullLength(\result.cadence) >= 2 * c.lastLength && fullLength(\result.cadence) >= c.lastLength + 2048
   //@ ensures !\result.snapshot ==> \result.cadence.lastLength === c.lastLength
   const pending = c.appended + units;
   if (pending >= due(c.lastLength)) {

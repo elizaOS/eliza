@@ -44,7 +44,7 @@ function pluginViews(plugin: Plugin, installationId: string, launched: readonly 
 
 export effect function declareViews(plugins: readonly Plugin[], launched: readonly ViewDeclaration[]) {
   const refuse = (reason: string) => new ModuleRefused({ module: viewsModuleName, reason })
-  const builtins = plugins.flatMap((plugin) => plugin.views ?? [])
+  const builtins = plugins.flatMap((plugin) => plugin.views ?? []).filter((view) => getViewModalities(view).includes("gui"))
   const clash = launched.find((own) => builtins.some((view) => (view.id === own.id || view.path === own.path) && !replaces(own, view)))
   if (clash !== undefined) throw refuse(`Launch view ${clash.id} replaces a built-in view`)
   const launchInstallation = newInstallationId()

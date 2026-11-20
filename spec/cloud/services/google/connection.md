@@ -1,29 +1,15 @@
 # Managed Google connection
 
-The owner's Google grant, held by the cloud: connecting it with the access
-the owner chose, keeping its access token fresh, showing it as the cloud
-holds it, and disconnecting it. Sources: develop
-`packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts`
-(capabilities, scopes, status), `lib/services/oauth/oauth2.ts` and
-`connection-adapters/generic-adapter.ts` (state, refresh, revoke),
-`api/v1/oauth/app-oauth-return.ts` (the app return), and the old
-`spec/cloud/connections.md` and `managedGoogle/connection.md`. Readers are
-the products' Google connect, status and disconnect flows.
-
-Routes under `/api/v1/eliza/google/`: `POST connect/initiate {side,
-capabilities, redirectUrl?}` answers `{authUrl, appReturn: 2}` (`appReturn`
-only with a `redirectUrl`); `GET /api/v1/oauth/google/callback` is Google's;
-`POST connect/native {serverAuthCode}` links with a one-time code from the
-device's Google sign-in; `GET status`, `GET accounts` and `POST disconnect
-{connectionId}`. Every route needs a device key or a session of the owner.
-
-One machine instance is one connection row of an organization. Initiate
-creates a row whose only use is its own attempt; when Google names a subject
-the organization already holds, the grant lands on that subject's row
-(`receiveGrant`), so an organization holds one connection per Google subject
-(a unique index). Token values are sealed with purpose `GoogleTokens` and
-never leave the shell; the shell also keeps the identity, `linkedAt` and
-`lastUsedAt` shown in the status, and deletes rows left `Pending`.
+The owner's Google grant, held by the cloud. Sources: develop
+`agent-google-connector/shared.ts`, `oauth/{oauth2.ts,token-cache.ts}`,
+`api/v1/oauth/app-oauth-return.ts`. Routes under `/api/v1/eliza/google/` (device
+key or session): `POST connect/initiate {side, capabilities, redirectUrl?}`,
+`POST connect/native {serverAuthCode}`, `GET status`, `GET accounts` (every
+connection's status), `POST disconnect {side, connectionId?}`; Google calls
+`GET /api/v1/oauth/google/callback`. One instance is one connection row; the
+shell seals tokens (purpose `GoogleTokens`), keeps identity, `linkedAt` and
+`lastUsedAt`, and deletes rows left `Pending`. A unique index keeps one
+connection per (organization, Google subject).
 
 ## Story: Connect my Google account with the access I chose
 
@@ -33,8 +19,14 @@ never leave the shell; the shell also keeps the identity, `linkedAt` and
 
 ### Each capability asks for its scopes from one table, and a grant's capabilities come from its granted scopes alone
 
-`google.basic_identity` is always asked for. A scope outside this list is
-kept as text in `grantedScopes` and grants nothing.
+`google.basic_identity` is always asked for. Calendar read and write ask for
+`calendar.events`, triage `gmail.readonly`, drafts `gmail.compose`, mailbox
+and manage `gmail.modify`, send `gmail.send`. A granted scope outside this
+list is kept as text in `grantedScopes` and grants nothing. Older stored grants
+keep their recorded scopes and encrypted credential. The service uses an old
+active grant only after the credential opens and matches the stored expiry.
+A refreshable grant must contain a refresh token. A grant whose credential
+cannot be verified requires reconnection.
 
 ```quint
 import types.* from "../../shared/types"
@@ -44,25 +36,15 @@ type GoogleCapability = BasicIdentity | GmailTriage | GmailSend | GmailManage | 
 type GoogleScope = ScopeOpenId | ScopeUserinfoEmail | ScopeUserinfoProfile | ScopeCalendarReadonly | ScopeCalendarEvents | ScopeCalendar | ScopeGmailMetadata | ScopeGmailReadonly | ScopeGmailCompose | ScopeGmailModify | ScopeGmailSend
 pure val allCapabilities: List[GoogleCapability] = List(BasicIdentity, GmailTriage, GmailSend, GmailManage, GmailDrafts, GmailMailbox, CalendarRead, CalendarWrite)
 pure val allScopes: List[GoogleScope] = List(ScopeOpenId, ScopeUserinfoEmail, ScopeUserinfoProfile, ScopeCalendarReadonly, ScopeCalendarEvents, ScopeCalendar, ScopeGmailMetadata, ScopeGmailReadonly, ScopeGmailCompose, ScopeGmailModify, ScopeGmailSend)
-pure def capabilityName(k: GoogleCapability): str =
-  if (k == BasicIdentity) "google.basic_identity" else if (k == GmailTriage) "google.gmail.triage" else if (k == GmailSend) "google.gmail.send"
-  else if (k == GmailManage) "google.gmail.manage" else if (k == GmailDrafts) "google.gmail.drafts" else if (k == GmailMailbox) "google.gmail.mailbox"
-  else if (k == CalendarRead) "google.calendar.read" else "google.calendar.write"
-pure def scopeName(s: GoogleScope): str =
-  if (s == ScopeOpenId) "openid" else if (s == ScopeUserinfoEmail) "https://www.googleapis.com/auth/userinfo.email" else if (s == ScopeUserinfoProfile) "https://www.googleapis.com/auth/userinfo.profile"
-  else if (s == ScopeCalendarReadonly) "https://www.googleapis.com/auth/calendar.readonly" else if (s == ScopeCalendarEvents) "https://www.googleapis.com/auth/calendar.events"
-  else if (s == ScopeCalendar) "https://www.googleapis.com/auth/calendar" else if (s == ScopeGmailMetadata) "https://www.googleapis.com/auth/gmail.metadata"
-  else if (s == ScopeGmailReadonly) "https://www.googleapis.com/auth/gmail.readonly" else if (s == ScopeGmailCompose) "https://www.googleapis.com/auth/gmail.compose"
-  else if (s == ScopeGmailModify) "https://www.googleapis.com/auth/gmail.modify" else "https://www.googleapis.com/auth/gmail.send"
 pure def scopesFor(k: GoogleCapability): List[GoogleScope] =
   if (k == BasicIdentity) List(ScopeUserinfoEmail, ScopeUserinfoProfile) else if (k == GmailTriage) List(ScopeGmailReadonly) else if (k == GmailSend) List(ScopeGmailSend)
   else if (k == GmailDrafts) List(ScopeGmailCompose) else if (k == GmailManage or k == GmailMailbox) List(ScopeGmailModify) else List(ScopeCalendarEvents)
 pure def requestedScopes(asked: List[GoogleCapability]): List[GoogleScope] = allScopes.select(s => asked.append(BasicIdentity).some(k => scopesFor(k).includes(s)))
 pure def grantsCapability(scopes: List[GoogleScope], k: GoogleCapability): bool = {
-  val any = if (k == BasicIdentity) List(ScopeOpenId, ScopeUserinfoEmail, ScopeUserinfoProfile) else if (k == CalendarRead) List(ScopeCalendarReadonly, ScopeCalendarEvents, ScopeCalendar)
+  val enough = if (k == BasicIdentity) List(ScopeOpenId, ScopeUserinfoEmail, ScopeUserinfoProfile) else if (k == CalendarRead) List(ScopeCalendarReadonly, ScopeCalendarEvents, ScopeCalendar)
     else if (k == CalendarWrite) List(ScopeCalendarEvents, ScopeCalendar) else if (k == GmailTriage) List(ScopeGmailMetadata, ScopeGmailReadonly, ScopeGmailModify, ScopeGmailCompose)
     else if (k == GmailDrafts) List(ScopeGmailCompose, ScopeGmailModify) else if (k == GmailSend) List(ScopeGmailSend) else List(ScopeGmailModify)
-  any.some(s => scopes.includes(s))
+  enough.some(s => scopes.includes(s))
 }
 pure def capabilitiesOf(scopes: List[GoogleScope]): List[GoogleCapability] = allCapabilities.select(k => grantsCapability(scopes, k))
 pure def scopesOf(granted: List[GoogleScope]): List[GoogleScope] = allScopes.select(s => granted.includes(s))
@@ -77,27 +59,25 @@ pure def lawStrongerAccessImpliesWeaker(scopes: List[GoogleScope]): bool = {
 
 ### Initiate is admitted only for the owner side, at least one capability, Google configured, and either no return or the exact connect return of one enabled registration with one state parameter
 
-`redirectUrl` is the registration's `connectReturn` with exactly one query
-parameter, `state`, matching `[A-Za-z0-9_-]{43}`; the shell strips it and
-looks the rest up with `N::returnsAt`. A refused initiate stores nothing.
+The shell strips the one `state` query parameter (`[A-Za-z0-9_-]{43}`) from
+`redirectUrl` and passes what `N::returnsAt` finds for the rest. An admitted
+initiate answers `{authUrl}`, with `appReturn: 2` when it has a
+`redirectUrl`; a refused one stores nothing.
 
 ```quint
 type Side = OwnerSide | OtherSide
-type AppReturnClaim = NoAppReturn | AppReturnAt({ entries: List[N::ReturnEntry], stateWellFormed: bool })
-type ConnectRequest = { side: Side, capabilities: List[GoogleCapability], appReturn: AppReturnClaim }
-pure def returnRegistered(claim: AppReturnClaim): bool = match claim {
-  | AppReturnAt(r) => r.stateWellFormed and r.entries.length() == 1 and r.entries.every(e => e.purpose == N::ConnectPurpose)
-  | NoAppReturn => true
-}
-pure def stateWellFormedOf(claim: AppReturnClaim): bool = match claim { | AppReturnAt(r) => r.stateWellFormed | NoAppReturn => true }
-pure def initiateAdmitted(configured: bool, request: ConnectRequest): bool = request.side == OwnerSide and request.capabilities.length() > 0 and configured and returnRegistered(request.appReturn)
+type AppReturnFit = NoAppReturn | RegisteredConnectReturn | UnregisteredReturn | MalformedReturnState
+type ConnectRequest = { side: Side, capabilities: List[GoogleCapability], appReturn: AppReturnFit }
+pure def appReturnFit(entries: List[N::ReturnEntry], stateWellFormed: bool): AppReturnFit =
+  if (not(stateWellFormed)) MalformedReturnState else if (entries.length() == 1 and entries.every(e => e.purpose == N::ConnectPurpose)) RegisteredConnectReturn else UnregisteredReturn
+pure def initiateAdmitted(configured: bool, request: ConnectRequest): bool =
+  request.side == OwnerSide and request.capabilities.length() > 0 and configured and (request.appReturn == NoAppReturn or request.appReturn == RegisteredConnectReturn)
 pure def initiateRefusal(configured: bool, request: ConnectRequest): Refusal =
-  if (request.side != OwnerSide or request.capabilities.length() == 0 or not(stateWellFormedOf(request.appReturn))) refuse(InvalidRequest)
-  else if (not(configured)) refuseFor(ProviderUnavailable, GoogleNotConfigured)
-  else N::faultRefusal(N::WrongRedirect)
+  if (request.side != OwnerSide or request.capabilities.length() == 0 or request.appReturn == MalformedReturnState) refuse(InvalidRequest)
+  else if (not(configured)) refuseFor(ProviderUnavailable, GoogleNotConfigured) else N::faultRefusal(N::WrongRedirect)
 pure val requestValues: Set[ConnectRequest] = {
   val ok: ConnectRequest = { side: OwnerSide, capabilities: List(GmailTriage, CalendarRead), appReturn: NoAppReturn }
-  Set(ok, { ...ok, side: OtherSide }, { ...ok, capabilities: List() }, { ...ok, appReturn: AppReturnAt({ entries: List(), stateWellFormed: true }) }, { ...ok, appReturn: AppReturnAt({ entries: List(), stateWellFormed: false }) })
+  Set(ok, { ...ok, appReturn: RegisteredConnectReturn }, { ...ok, side: OtherSide }, { ...ok, capabilities: List() }, { ...ok, appReturn: UnregisteredReturn }, { ...ok, appReturn: MalformedReturnState })
 }
 pure def lawAnInitiateRefusalIsFinal(configured: bool, request: ConnectRequest): bool =
   not(initiateAdmitted(configured, request)) implies (wellFormed(initiateRefusal(configured, request)) and not(retryableOf(initiateRefusal(configured, request))))
@@ -108,7 +88,8 @@ pure def lawAnInitiateRefusalIsFinal(configured: bool, request: ConnectRequest):
 So the attempt is stored before the Google URL is built, the callback
 consumes it once before the token exchange, and a failed write after a
 failure keeps both causes (`spec/core/oauth/index.md`). Google's PKCE
-verifier is always required, and nothing is compensated.
+verifier is always required and nothing is compensated. A row has no attempt
+fields before its attempt begins.
 
 ```quint
 type ConnectionStatus = Pending | Active | Expired | Revoked | Errored
@@ -141,8 +122,6 @@ pure def canWriteFailure(c: Connection): bool = O::canWriteFailure(c.flow)
 pure def writeFailure(c: Connection, write: O::FlowWrite): Connection = { ...c, flow: O::writeFailure(c.flow, write) }
 pure def canWriteSuccess(c: Connection, selectedStatus: O::FlowState): bool = O::canWriteSuccess(c.flow) and selectedStatus == O::CompletedState
 pure def writeSuccess(c: Connection, write: O::FlowWrite, selectedStatus: O::FlowState): Connection = { ...c, flow: O::writeSuccess(c.flow, write, selectedStatus) }
-pure val supportedValues = Set(true)
-pure val configuredValues = Set(true, false)
 pure val providerInstalledValues = Set(true)
 pure val verifierRequiredValues = Set(true)
 pure val callbackValues = Set(CodeCallback, DeniedCallback, IncompleteCallback)
@@ -155,6 +134,8 @@ pure val weight_writeStart = 3
 pure val weight_beginCallback = 3
 pure val weight_consume = 4
 pure val weight_writeSuccess = 3
+pure def alwaysAnIdleRowHasNoAttempt(c: Connection): bool =
+  c.flow.phase == O::FlowIdle implies (c.callback == NoCallback and c.exchange == NotExchanged and not(c.landedOnHeld) and not(c.flow.accountStored))
 pure def sometimesAwaitingGoogle(c: Connection): bool = c.flow.phase == O::AwaitingCallback and c.now < c.stateExpiresAt
 ```
 
@@ -163,8 +144,8 @@ pure def sometimesAwaitingGoogle(c: Connection): bool = c.flow.phase == O::Await
 Google's answer names the subject, the granted scopes, the access token's
 lifetime and whether a refresh token came. When the organization already
 holds that subject (`subjectHeld`), the grant goes to that row by
-`receiveGrant` and this row stays an attempt; otherwise this row becomes
-that subject's connection.
+`receiveGrant` and this attempt row stays `Pending`; otherwise this row
+becomes the subject's connection. A row's subject, once set, never changes.
 
 ```quint
 pure def canProviderResult(c: Connection, hasAccount: bool, subject: str, lifetime: Millis): bool = O::canProviderResult(c.flow) and hasAccount and subject != "" and lifetime > 0
@@ -175,7 +156,7 @@ pure def accountResult(c: Connection, success: bool, subjectHeld: bool): Connect
   val x = c.exchange
   val flow = O::accountResult(c.flow, success)
   match x {
-    | Exchanged(e) => if (success and not(subjectHeld)) { ...c, flow: flow, status: Active, subject: e.subject, scopes: c.offered, tokens: SealedTokens({ expiresAt: e.accessUntil, hasRefreshToken: e.refreshable }) }
+    | Exchanged(e) => if (success and not(subjectHeld)) { ...c, flow: flow, status: Active, subject: e.subject, scopes: c.offered, tokens: SealedTokens({ expiresAt: e.accessUntil, hasRefreshToken: e.refreshable }), landedOnHeld: false }
         else { ...c, flow: flow, landedOnHeld: success }
     | NotExchanged => { ...c, flow: flow }
   }
@@ -188,24 +169,25 @@ pure val weight_providerResult = 4
 pure val weight_accountResult = 4
 pure def alwaysAnExchangeNamesASubject(c: Connection): bool = { val x = c.exchange
   match x { | Exchanged(e) => e.subject != "" | NotExchanged => true } }
-pure def alwaysASubjectExactlyOnceGranted(c: Connection): bool = (c.status == Pending) iff (c.subject == "")
+pure def beforeTheGrant(c: Connection): bool = Set(O::CreatePending, O::StartProviderPending, O::StartFailureWrite, O::StartSuccessWrite, O::AwaitingCallback, O::ConsumePending, O::ProviderPending, O::AccountPending).contains(c.flow.phase)
+pure def alwaysAnAttemptRowStaysPendingUntilItsGrant(c: Connection): bool = beforeTheGrant(c) implies c.status == Pending
+pure def alwaysOnlyAPendingRowLacksASubject(c: Connection): bool = (c.status == Pending) iff (c.subject == "")
 pure def alwaysAStoredGrantHasItsConnection(c: Connection): bool = (c.flow.accountStored implies (c.status != Pending or c.landedOnHeld)) and (c.landedOnHeld implies (c.flow.accountStored and c.status == Pending))
 pure def stepSubjectNeverChanges(before: Connection, after: Connection): bool = before.subject != "" implies after.subject == before.subject
 pure def sometimesConnectedInTheBrowser(c: Connection): bool = c.status == Active and c.flow.accountStored and c.flow.phase == O::FlowReturned
 pure def sometimesJoinedTheSubjectsConnection(c: Connection): bool = c.landedOnHeld and c.flow.phase == O::FlowReturned
 ```
 
-### The callback returns connected only with the grant stored, denied when the owner refused at Google, and failed otherwise, and an unknown or expired attempt never returns to the app
+### The callback returns connected only with the grant stored, denied when the owner refused at Google, and failed otherwise, and an unconsumed attempt never returns to the app
 
 With a `redirectUrl` the answer redirects to it with the fragment `state`,
 `result` and, when connected, `connectionId` (the row the grant landed on);
 without one it shows ReturnToApp purpose `connected` (`spec/cloud/returnPages.md`).
-An attempt that was not consumed is shown failed on a page of the cloud.
+An unknown or expired attempt is shown failed on a page of the cloud.
 
 ```quint
 type ConnectResult = Connected | Denied | Failed
 type CallbackAnswer = AwaitingResult | ReturnResult({ result: ConnectResult }) | ShowFailedPage
-pure def resultName(r: ConnectResult): str = if (r == Connected) "connected" else if (r == Denied) "denied" else "failed"
 pure def callbackAnswerOf(c: Connection): CallbackAnswer =
   if (c.callback == NoCallback or not(c.flow.phase == O::FlowReturned or c.flow.phase == O::FlowThrown)) AwaitingResult
   else if (not(c.flow.consumed)) ShowFailedPage
@@ -217,9 +199,9 @@ pure def sometimesExpiredAttemptShownOnTheCloud(c: Connection): bool = callbackA
 
 ### A later grant for the same Google subject, or a native code for a new one, replaces the connection's tokens and scopes and makes it active
 
-`connect/native` exchanges the device's one-time server code; Google refuses
-a used code. It lands like a callback: on the row of its subject when held,
-else on a fresh row with no attempt.
+`connect/native` exchanges the device's one-time server auth code (Google
+refuses a used one) and lands like a callback: on the row of its subject
+when held, else on a fresh row with no attempt.
 
 ```quint
 pure def canReceiveGrant(c: Connection, subject: str, lifetime: Millis): bool =
@@ -235,32 +217,32 @@ pure def sometimesLinkedNatively(c: Connection): bool = c.status == Active and c
 
 A refused grant, or a token that no longer decrypts, is `Expired`; a
 rotated refresh token that could not be stored is `Errored`; an outage
-leaves the connection active. A result that arrives after a disconnect or a
-new grant is dropped.
+leaves the connection active. A result arriving after a disconnect or a new
+grant is dropped.
 
 ```quint
 type RefreshOutcome = Refreshed | GrantRefused | RotationNotStored | RefreshUnavailable
 pure val refreshLead: Millis = 5 * millisPerMinute
 pure def refreshDue(c: Connection): bool = { val t = c.tokens
-  match t { | SealedTokens(x) => x.hasRefreshToken and c.now >= x.expiresAt - refreshLead | NoTokens => false } }
+  match t { | SealedTokens(x) => x.hasRefreshToken and c.now + refreshLead >= x.expiresAt | NoTokens => false } }
 pure def hasTokens(c: Connection): bool = c.tokens != NoTokens
 pure def canBeginRefresh(c: Connection): bool = c.status == Active and not(c.refreshing) and refreshDue(c)
 pure def beginRefresh(c: Connection): Connection = { ...c, refreshing: true }
 pure def canFinishRefresh(c: Connection, lifetime: Millis): bool = c.refreshing and lifetime > 0
-pure def finishRefresh(c: Connection, outcome: RefreshOutcome, lifetime: Millis): Connection = {
+pure def finishRefresh(c: Connection, answer: RefreshOutcome, lifetime: Millis): Connection = {
   val t = c.tokens
   val renewed = match t { | SealedTokens(x) => SealedTokens({ expiresAt: c.now + lifetime, hasRefreshToken: x.hasRefreshToken }) | NoTokens => NoTokens }
-  if (outcome == Refreshed) { ...c, refreshing: false, tokens: renewed }
-  else if (outcome == GrantRefused) { ...c, refreshing: false, status: Expired }
-  else if (outcome == RotationNotStored) { ...c, refreshing: false, status: Errored }
+  if (answer == Refreshed) { ...c, refreshing: false, tokens: renewed }
+  else if (answer == GrantRefused) { ...c, refreshing: false, status: Expired }
+  else if (answer == RotationNotStored) { ...c, refreshing: false, status: Errored }
   else { ...c, refreshing: false }
 }
 pure val weight_beginRefresh = 3
 pure val weight_finishRefresh = 3
 pure def alwaysTokensExactlyWhileGranted(c: Connection): bool = hasTokens(c) iff (c.status == Active or c.status == Expired or c.status == Errored)
-pure def alwaysOneRefreshOnlyWhileActive(c: Connection): bool = c.refreshing implies (c.status == Active and holdsRefreshToken(c))
 pure def holdsRefreshToken(c: Connection): bool = { val t = c.tokens
   match t { | SealedTokens(x) => x.hasRefreshToken | NoTokens => false } }
+pure def alwaysOneRefreshOnlyWhileActive(c: Connection): bool = c.refreshing implies (c.status == Active and holdsRefreshToken(c))
 pure def sometimesRefreshing(c: Connection): bool = c.refreshing
 pure def sometimesExpiredByGoogle(c: Connection): bool = c.status == Expired
 pure def sometimesRotationLost(c: Connection): bool = c.status == Errored
@@ -274,11 +256,11 @@ pure def sometimesRotationLost(c: Connection): bool = c.status == Errored
 
 ### A request names a grant or uses the only active connection, never another organization's, and only the owner side
 
-Rows are listed newest first. A named grant must be a connection of the
-caller's organization (else `404 not_found`); with none named, the only
-active connection is used, several are `400 invalid_request` reason
-`grant_required`, and with none active the newest connection is shown. A
-`side` other than `owner` is `400 invalid_request`.
+Every Google route, disconnect included, selects this way over the caller's
+organization's rows, newest first. A named grant that is not one of them is
+`404 not_found`; with none named, several active are `400 invalid_request`
+reason `grant_required`, and with none active the newest is used. A `side`
+other than `owner` is `400 invalid_request`.
 
 ```quint
 type GrantChoice = AnyGrant | NamedGrant({ grantId: str })
@@ -311,11 +293,11 @@ pure def lawASelectionRefusalIsFinal(fault: SelectionFault): bool = wellFormed(s
 
 ### Use needs an active connection whose access is live and which holds the capability
 
-A connection that is not active, or whose access expired with no refresh
-token, is `409 google_reauth_required`; one whose refresh is due but Google
-was unreachable is `503 provider_unavailable`, retryable; a missing
-capability is `403 access_denied` reason `capability_missing`. Every Google
-route checks this after refreshing when due.
+Every Google route checks this after refreshing when due. A connection that
+is not active, or whose access expired with no refresh token, is `409
+google_reauth_required`; one whose refresh is due while Google is
+unreachable is `503 provider_unavailable`, retryable; a missing capability
+is `403 access_denied` reason `capability_missing`.
 
 ```quint
 type AccessState = AccessLive | AccessRefreshable | AccessLost
@@ -334,20 +316,22 @@ pure def lawOnlyAnOutageIsRetryable(status: ConnectionStatus, access: AccessStat
 `GET status` answers `{provider: "google", side: "owner", mode:
 "cloud_managed", configured, connected, reason, identity,
 grantedCapabilities, grantedScopes, expiresAt, hasRefreshToken,
-connectionId, linkedAt, lastUsedAt}`. With Google off it is `config_missing`
-and names nothing; with no connection `disconnected`. An expired, errored or
-lost grant is `needs_reauth`; a revoked one `disconnected`.
+connectionId, linkedAt, lastUsedAt}` for the selected connection, with
+`grantedCapabilities` = `capabilitiesOf` the scopes. Google off is
+`config_missing` and names nothing; no connection or a revoked one is
+`disconnected`; an active one whose access is lost is `token_missing`; an
+expired or errored one is `needs_reauth`.
 
 ```quint
-type StatusReason = ReasonConnected | ReasonDisconnected | ReasonConfigMissing | ReasonNeedsReauth
+type StatusReason = ReasonConnected | ReasonDisconnected | ReasonConfigMissing | ReasonTokenMissing | ReasonNeedsReauth
 pure def reasonOf(configured: bool, status: ConnectionStatus, access: AccessState): StatusReason =
   if (not(configured)) ReasonConfigMissing
   else if (status == Active and access != AccessLost) ReasonConnected
-  else if (status == Active or status == Expired or status == Errored) ReasonNeedsReauth
+  else if (status == Active) ReasonTokenMissing
+  else if (status == Expired or status == Errored) ReasonNeedsReauth
   else ReasonDisconnected
-pure def reasonName(r: StatusReason): str = if (r == ReasonConnected) "connected" else if (r == ReasonConfigMissing) "config_missing" else if (r == ReasonNeedsReauth) "needs_reauth" else "disconnected"
 pure def statusReason(configured: bool, c: Connection): StatusReason = reasonOf(configured, c.status, accessOf(c))
-pure def shownCapabilities(configured: bool, c: Connection): List[GoogleCapability] = if (configured) capabilitiesOf(c.scopes) else List()
+pure def sometimesAccessLapsedWithoutRefresh(c: Connection): bool = statusReason(true, c) == ReasonTokenMissing
 pure def lawConnectedExactlyWhenUseCanSucceed(status: ConnectionStatus, access: AccessState): bool =
   (reasonOf(true, status, access) == ReasonConnected) iff (useAllowed(status, access, true) or (status == Active and useRefusal(status, access, true).code == ProviderUnavailable))
 ```
@@ -361,8 +345,8 @@ pure def lawConnectedExactlyWhenUseCanSucceed(status: ConnectionStatus, access: 
 
 The shell calls Google's revoke endpoint with the refresh token (else the
 access token) first; a Google failure is logged and does not keep the
-tokens. Disconnecting a connection without tokens is `404 not_found`. Only a
-new grant for the same subject makes it active again.
+tokens. Disconnecting a connection already revoked answers `{ok: true}` and
+changes nothing; only a new grant for the same subject makes it active again.
 
 ```quint
 pure def canDisconnect(c: Connection): bool = hasTokens(c)

@@ -8,8 +8,6 @@
 package ai.eliza.plugins.browsersurface
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.os.Parcel
 import android.view.DragEvent
 import android.view.MotionEvent
@@ -95,16 +93,6 @@ internal fun raiseSurface(host: ViewGroup, container: OccludingSurfaceLayout, br
     } else if (branch != null) {
         placeRouter(host, branch, router())
     }
-}
-
-/**
- * The page's own pixels, drawn in software, so no host pixel drawn over it (a shadow,
- * a toast, a fading tab) is in the image.
- */
-internal fun drawPageForCapture(page: View): Bitmap {
-    val bitmap = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
-    page.draw(Canvas(bitmap))
-    return bitmap
 }
 
 /**

@@ -1,5 +1,5 @@
 // spec/cloud/services/speechRelay.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/billing/plans.md, "Story: Share realtime speech fairly"
-import { apply, consentLifetime, decodeState, initial, nextWindowDeadline, Rejected, retryWindowAdmitted, sessionLifetime, windowLength, windowTtsChars, windowRequestAdmitted, type Event, type Session, type NotAState } from "../../gen/cloud__services__speechRelay.effect.vibe"
+import { apply, consentLifetime, decodeState, firstSessionDeadline, initial, nextWindowDeadline, Rejected, retryWindowAdmitted, windowLength, windowTtsChars, windowRequestAdmitted, type Event, type Session, type NotAState } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import { realtimeSpeechAdmits, realtimeSpeechResetsAt, utcDayStart } from "../../gen/cloud__billing__plans.effect.vibe"
 import { relayChannels, relaySampleRate, type Shortfall } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import type { HoldKey, SpeechDirection } from "../../gen/cloud__shared__types.ts"
@@ -414,7 +414,7 @@ effect function mint(context: RouteContext) {
     if (!realtimeSpeechAdmits(try usedToday(tx, caller.userId, utcDayStart(now), false), windowLength)) {
       throw refused("AllowanceExhausted", "NoReason", realtimeSpeechResetsAt(now))
     }
-    const expiresAt = Math.min(now + sessionLifetime, credential.expiresAt)
+    const expiresAt = firstSessionDeadline(now, credential.expiresAt)
     return try stepRow(tx, sessionRows, sessionId, { type: "mint", tokenDigest: tokenDigest(token), expiresAt, credentialExpiresAt: credential.expiresAt, now, consentConsumed: consumed.length === 1 }, (session) => ({
       ...sessionColumns(now)(session),
       consent_nonce: consentNonce,

@@ -1,0 +1,31 @@
+// spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"
+import type { OperationType, ReportedOutcome } from "../../../gen/agent__deviceActions__operations.effect.vibe"
+
+export interface Classification {
+  readonly opType: OperationType
+  readonly versionTwo: boolean
+}
+
+export interface Evidence {
+  readonly shows: ReportedOutcome
+  readonly nothingSubmitted: boolean
+}
+
+export type WireOperation = { readonly type: string }
+
+export type OperationSchema<Op extends WireOperation = WireOperation, R = unknown> =
+  | {
+    readonly operation: Schema.Decoder<Op>
+    readonly result: undefined
+    classify(op: Op): Classification
+  }
+  | {
+    readonly operation: Schema.Decoder<Op>
+    readonly result: Schema.Decoder<R>
+    classify(op: Op): Classification
+    evidence(result: R, op: Op): Evidence | undefined
+  }
+
+export type FamilySchemas = { readonly [wireType: string]: OperationSchema }
+
+export type OperationOf<F extends FamilySchemas> = { [K in keyof F]: F[K]["operation"] extends Schema.Decoder<infer Op> ? Op : never }[keyof F]

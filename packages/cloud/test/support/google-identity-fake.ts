@@ -30,6 +30,7 @@ export interface GoogleIdentityFake {
   signInAs(person: GooglePerson): void;
   denyNext(): void;
   idToken(person: GooglePerson, claims: IdTokenClaims): Promise<string>;
+  serverAuthCode(person: GooglePerson, scopes: ReadonlyArray<string>): string;
 }
 
 const keyId = "google-identity-test";
@@ -47,6 +48,7 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
   const jwk = exportJWK(publicKey).then((key) => ({ ...key, kid: keyId, alg: "RS256", use: "sig" }));
   const grants = new Map<string, Grant>();
   const tokenRequests: URLSearchParams[] = [];
+  const serverCodes = new Map<string, { readonly person: GooglePerson; readonly scopes: ReadonlyArray<string> }>();
   let person: GooglePerson = { subject: "google-subject-1", email: "Person@Example.com", emailVerified: true, givenName: "Person" };
   let deny = false;
 
@@ -79,6 +81,18 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
     const grant = grants.get(form.get("code") ?? "");
     grants.delete(form.get("code") ?? "");
     if (form.get("client_secret") !== clientSecret) return { status: 401, body: { error: "invalid_client" } };
+    const server = serverCodes.get(form.get("code") ?? "");
+    serverCodes.delete(form.get("code") ?? "");
+    if (server !== undefined) {
+      if (form.get("redirect_uri") !== "" || form.has("code_verifier")) return { status: 400, body: { error: "invalid_grant" } };
+      return {
+        status: 200,
+        body: {
+          access_token: `access-${server.person.subject}`, token_type: "Bearer", expires_in: 3600, refresh_token: `refresh-${server.person.subject}`,
+          scope: server.scopes.join(" "), id_token: await idToken(server.person, { audience: form.get("client_id") ?? "" }),
+        },
+      };
+    }
     if (grant === undefined || grant.clientId !== form.get("client_id") || grant.redirectUri !== form.get("redirect_uri") || grant.challenge !== s256(form.get("code_verifier") ?? "")) {
       return { status: 400, body: { error: "invalid_grant" } };
     }
@@ -98,6 +112,11 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
     signInAs: (next) => { person = next; },
     denyNext: () => { deny = true; },
     idToken,
+    serverAuthCode: (who, scopes) => {
+      const code = `4/${randomBytes(16).toString("base64url")}`;
+      serverCodes.set(code, { person: who, scopes });
+      return code;
+    },
   };
 }
 

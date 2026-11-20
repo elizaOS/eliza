@@ -3,6 +3,7 @@ import { assert, it } from "@effect/vitest"
 import { MalformedReply, rejectionCode } from "../../src/bridges/bridge.vibe"
 import {
   InvalidMessageRequest,
+  SmsJournalRefused,
   SmsReviewPending,
   SmsSendNotAttempted,
   SmsSendRefused,
@@ -29,7 +30,7 @@ module android {
   export interface Phone {
     unlocked: boolean
     sendGrant: boolean
-    sendMode: "direct" | "handoff"
+    smsCapable: boolean
     roleHeld: boolean
     subscriptions: number[]
     dialog: "approve" | "reject" | "ask"
@@ -41,6 +42,7 @@ module android {
     asks: Map<string, (choice: Choice) => void>
     inFlight: Set<string>
     journal: Map<string, Record<string, unknown>>
+    dropped: Set<string>
     dispatched: string[]
     rows: Stored[]
     deleteReply: unknown
@@ -53,7 +55,7 @@ module android {
     return {
       unlocked: true,
       sendGrant: true,
-      sendMode: "direct",
+      smsCapable: true,
       roleHeld: true,
       subscriptions: [1],
       dialog: "approve",
@@ -65,6 +67,7 @@ module android {
       asks: new Map(),
       inFlight: new Set(),
       journal: new Map(),
+      dropped: new Set(),
       dispatched: [],
       rows: [
         { id: 11, kind: "sms", thread: 1, date: 1000, box: "inbox", read: false, body: "Are you coming?" },
@@ -97,19 +100,22 @@ module android {
     }
     const decide = (operationId: string): Promise<Choice> | Choice =>
       phone.dialog === "ask" ? new Promise((resolve) => phone.asks.set(operationId, resolve)) : phone.dialog
-    const status = () => ({
+    const status = () => {
+      const direct = phone.smsCapable && phone.sendGrant
+      return {
       version: 2,
       voiceCapable: true,
-      smsCapable: true,
+      smsCapable: phone.smsCapable,
       permissions: { contacts: "granted", phoneState: "granted", sms: "granted", sendSms: phone.sendGrant ? "granted" : "denied" },
-      sendMode: phone.sendMode,
-      mmsSend: true,
+      sendMode: direct ? "direct" : "handoff",
+      mmsSend: direct && (phone.roleHeld || phone.lie),
       roles: { dialer: { available: true, held: false, eligible: true }, sms: { available: true, held: phone.roleHeld, eligible: true } },
       defaultDialer: "com.android.dialer",
       defaultSms: phone.roleHeld ? "ai.eliza.app" : "com.android.messaging",
       subscriptions: phone.subscriptions.map((id, slot) => ({ id, slot, displayName: `Line ${slot + 1}`, carrierName: "Carrier", defaultSms: slot === 0, defaultVoice: slot === 0 })),
       defaultSmsSubscriptionId: phone.subscriptions[0] ?? null,
-    })
+      }
+    }
     const partsOf = (recipients: number, perRecipient: number) => {
       const out: Record<string, unknown>[] = []
       for (let recipientIndex = 0; recipientIndex < recipients; recipientIndex++)
@@ -148,8 +154,12 @@ module android {
         if (phone.busy) return { kind: "sms-send-not-attempted", operationId, reason: "busy" }
         const bindingHash = sha256(smsBindingText({ recipients: recipients as PhoneNumber[], body, subscriptionId }))
         const record = (status: string, parts: Record<string, unknown>[]) => ({ kind: "sms-send", operationId, subscriptionId, bindingHash, status, parts, createdAt: 1700000000000 })
+        if (phone.dropped.has(operationId)) throw rejection("This request is too old to read back. Nothing was sent again.", "expired")
         const existing = phone.journal.get(operationId)
-        if (existing !== undefined) return existing.bindingHash === bindingHash ? existing : record("denied", [])
+        if (existing !== undefined) {
+          if (existing.bindingHash !== bindingHash) throw rejection("This request was already used for a different message. Nothing was sent.", "invalid")
+          return existing
+        }
         const choice = await decide(operationId)
         phone.asks.delete(operationId)
         if (choice !== "approve") return keep(record("cancelled", []))
@@ -177,9 +187,8 @@ module android {
       },
       cancelSmsReview: async ({ operationId }) => {
         const ask = phone.asks.get(operationId)
-        if (ask === undefined || phone.inFlight.has(operationId)) return { cancelled: false }
-        ask("cancel")
-        return { cancelled: true }
+        if (ask !== undefined && !phone.inFlight.has(operationId)) ask("cancel")
+        return undefined
       },
       smsSendHistory: async () => ({ receipts: [...phone.journal.values()].filter((one) => one.kind === "sms-send") }),
       smsSendResult: async ({ operationId }) => phone.journal.get(operationId) ?? Promise.reject(rejection("No send with this operation", "not-found")),
@@ -225,11 +234,18 @@ module android {
   }
 
   /** @throws {never} */
+  export function holdDispatch(phone: Phone): () => void {
+    const held = Promise.withResolvers<void>()
+    phone.hold = held.promise
+    return () => held.resolve()
+  }
+
+  /** @throws {never} */
   export async function until(condition: () => boolean): Promise<void> {
     while (!condition()) await new Promise((resolve) => setTimeout(resolve, 1))
   }
 }
-import { androidTelephony, device, until } from android
+import { androidTelephony, device, holdDispatch, until } from android
 
 effect function refusal(call: () => Promise<unknown>) {
   const { cause } = try flip(tryPromise(() => call()))
@@ -237,6 +253,7 @@ effect function refusal(call: () => Promise<unknown>) {
   if (cause instanceof SmsSendRefused) return `send refused ${cause.admission}`
   if (cause instanceof SmsReviewPending) return "review pending"
   if (cause instanceof SmsSendNotAttempted) return `not attempted ${cause.reason}`
+  if (cause instanceof SmsJournalRefused) return `journal refused ${cause.answer}`
   if (cause instanceof MalformedReply) return `malformed ${cause.method}`
   return `rejected ${rejectionCode(cause)}`
 }
@@ -263,7 +280,9 @@ it.live("Send only what I reviewed, once: a repeated operation answers its recor
 
   const sent = try promise(() => client.sendSms(review, op("op-1")))
   const again = try promise(() => client.sendSms(review, op("op-1")))
-  const reused = try promise(() => client.sendSms({ ...review, body: "Something else" }, op("op-1")))
+  const reused = try refusal(() => client.sendSms({ ...review, body: "Something else" }, op("op-1")))
+  phone.dropped.add("op-old")
+  const expired = try refusal(() => client.sendSms(review, op("op-old")))
   const tooManyParts = try promise(() => client.sendSms({ ...review, body: "y".repeat(1600) }, op("op-long")))
 
   phone.dialog = "ask"
@@ -277,8 +296,7 @@ it.live("Send only what I reviewed, once: a repeated operation answers its recor
 
   phone.receipts = "none"
   const [refusedCancel, submitted] = try promise(async () => {
-    let release = () => {}
-    phone.hold = new Promise((resolve) => { release = resolve })
+    const release = holdDispatch(phone)
     const dispatching = client.sendSms(review, op("op-3"))
     await until(() => phone.asks.has("op-3"))
     phone.asks.get("op-3")?.("approve")
@@ -308,9 +326,9 @@ it.live("Send only what I reviewed, once: a repeated operation answers its recor
   phone.sendGrant = false
   const ungranted = try refusal(() => client.sendSms(review, op("op-10")))
   phone.sendGrant = true
-  phone.sendMode = "handoff"
-  const handoffOnly = try refusal(() => client.sendSms(review, op("op-11")))
-  phone.sendMode = "direct"
+  phone.smsCapable = false
+  const noSms = try refusal(() => client.sendSms(review, op("op-11")))
+  phone.smsCapable = true
   phone.unlocked = false
   const locked = try refusal(() => client.sendSms(review, op("op-12")))
   phone.unlocked = true
@@ -318,7 +336,7 @@ it.live("Send only what I reviewed, once: a repeated operation answers its recor
 
   const picture = { recipients: review.recipients, body: "Here it is", attachments: [{ contentType: "image/png" as const, name: "map.png", bytes: new Uint8Array([1, 2, 3]) }], subscriptionId: 1 }
   phone.roleHeld = false
-  const mmsDenied = try promise(() => client.sendMms(picture, op("mms-1")))
+  const mmsDenied = try refusal(() => client.sendMms(picture, op("mms-1")))
   phone.lie = true
   const mmsWithoutRole = try refusal(() => client.sendMms(picture, op("mms-2")))
   phone.lie = false
@@ -332,10 +350,10 @@ it.live("Send only what I reviewed, once: a repeated operation answers its recor
 
   try Effect.try(() => assert.deepStrictEqual(
     {
-      review, checks, sent: brief(sent), again: again.createdAt === sent.createdAt && brief(again) === brief(sent), reused: brief(reused), tooManyParts: brief(tooManyParts),
+      review, checks, sent: brief(sent), again: again.createdAt === sent.createdAt && brief(again) === brief(sent), reused, expired, tooManyParts: brief(tooManyParts),
       pending, cancel, cancelled: brief(cancelled), refusedCancel, submitted: brief(submitted), otherCancel,
-      interrupted: brief(interrupted), failedPart: brief(failedPart), delivered: brief(delivered), overclaimed, busy, ungranted, handoffOnly, locked, badId,
-      mmsDenied: mmsDenied.status, mmsWithoutRole, mms: mms.status, mmsAgain: mmsAgain.status, recorded: brief(recorded),
+      interrupted: brief(interrupted), failedPart: brief(failedPart), delivered: brief(delivered), overclaimed, busy, ungranted, noSms, locked, badId,
+      mmsDenied, mmsWithoutRole, mms: mms.status, mmsAgain: mmsAgain.status, recorded: brief(recorded),
       history: history.map((one) => `${one.operationId} ${one.status}`), handed: { outcome: handed.outcome, receipt: handed.receipt.receiptKind },
       dispatched: phone.dispatched, composed: phone.composed,
     },
@@ -351,7 +369,8 @@ it.live("Send only what I reviewed, once: a repeated operation answers its recor
       },
       sent: "sent success/unknown,success/unknown",
       again: true,
-      reused: "denied ",
+      reused: "rejected invalid",
+      expired: "journal refused RecordExpired",
       tooManyParts: "denied ",
       pending: "review pending",
       cancel: "cancelled",
@@ -365,10 +384,10 @@ it.live("Send only what I reviewed, once: a repeated operation answers its recor
       overclaimed: "malformed sendSms",
       busy: "not attempted busy",
       ungranted: "send refused PermissionRequired",
-      handoffOnly: "send refused DeviceUnsupported",
+      noSms: "send refused DeviceUnsupported",
       locked: "rejected unavailable",
       badId: "request refused invalid-operation",
-      mmsDenied: "denied",
+      mmsDenied: "send refused DeviceUnsupported",
       mmsWithoutRole: "malformed sendMms",
       mms: "submitted",
       mmsAgain: "submitted",

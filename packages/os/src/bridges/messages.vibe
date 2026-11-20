@@ -1,4 +1,4 @@
-// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "Native confirmation and current ownership precede dispatch, and a cancel is refused once Android has the message"; spec/os/android/messages.md, "A repeated operation ID reads its journal record and never sends again"; spec/os/android/messages.md, "A message's reported status is supported by the evidence of every part"; spec/os/android/messages.md, "Only the owner's reviewed sends and incoming messages are written to the Android providers"; spec/os/android/messages.md, "Story: Delete one message I chose"; spec/os/android/bridge.md, "Story: Admit a bridge call only with current evidence"; spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"
+// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "Native confirmation and current ownership precede dispatch, and a cancel is refused once Android has the message"; spec/os/android/messages.md, "A repeated operation ID answers its journal record and never sends again"; spec/os/android/messages.md, "A send is denied before any platform call unless Android allows it at review and again at dispatch"; spec/os/android/messages.md, "A send's provider row is written only by an approved dispatch, and an MMS only while the app holds the SMS role"; spec/os/android/messages.md, "A message's status is supported by the evidence of every part, and an interrupted send reads unknown"; spec/os/android/messages.md, "Story: Mark a conversation read from its notice without sending anything"; spec/os/android/messages.md, "Story: Delete one message I chose"; spec/os/android/bridge.md, "Story: Admit a bridge call only with current evidence"; spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"
 import type { Admission, HandoffOutcome, HostFacts } from "../../gen/os__android__bridge.ts"
 import { admitCall } from "../../gen/os__android__bridge.effect.vibe"
 import {
@@ -8,16 +8,15 @@ import {
   sendCall,
   type Event as ReviewEvent,
   type MessageKind,
-  type SendRecord,
+  type SendAnswer,
 } from "../../gen/os__android__messages.effect.vibe"
-import { MalformedReply, nativeCall, receiptOf, settled } from "./bridge.vibe"
+import { MalformedReply, NativeRejection, nativeCall, receiptOf, settled } from "./bridge.vibe"
 import { parseTelephonyStatus, type TelephonyHandoffResult, type TelephonyStatus } from "./definitions/phone.ts"
 import {
   SMS_DIRECT_MAX_BODY,
   SMS_DIRECT_MAX_RECIPIENTS,
   SMS_MAX_MESSAGES,
   SMS_MAX_THREADS,
-  SEND_RECORD,
   messageCursorOf,
   operationIdOf,
   parseMessageDeleteReference,
@@ -108,6 +107,7 @@ export error InvalidMessageRequest { problem: MessageRequestProblem }
 export error SmsSendRefused { operationId: OperationId; admission: Admission }
 export error SmsReviewPending { operationId: OperationId }
 export error SmsSendNotAttempted { operationId: OperationId; reason: SendNotAttemptedReason }
+export error SmsJournalRefused { operationId: OperationId; answer: SendAnswer }
 
 interface Pending {
   readonly book: Machine.Shape
@@ -118,10 +118,6 @@ interface Pending {
 }
 
 type Reviews = Ref.Ref<ReadonlyMap<OperationId, Pending>>
-
-const LOOKUP: ReviewEvent = { type: "finishLookup", existing: "NotSent", sameContent: true }
-const SHOWN: ReviewEvent[] = [LOOKUP, { type: "showReview" }]
-const APPROVED: ReviewEvent[] = [...SHOWN, { type: "approveReview" }]
 
 effect function malformed(method: string, issue: string): never!MalformedReply {
   throw new MalformedReply({ plugin: PLUGIN, method, issue })
@@ -151,24 +147,30 @@ effect function readStatus(plugin: MessagesNativePlugin) {
 }
 
 function sendFacts(status: TelephonyStatus, kind: MessageKind): HostFacts {
-  const direct = status.sendMode === "direct" && status.smsCapable
   return {
     foreground: true,
     unlocked: true,
     focused: true,
     granted: status.permissions.sendSms === "granted" && status.permissions.phoneState === "granted",
-    featurePresent: direct && (kind === "TextMessage" || status.mmsSend),
+    featurePresent: status.smsCapable && (kind === "TextMessage" || status.mmsSend),
   }
 }
 
-function dispatched(entry: Pending, parts: number, receipt: SendRecord): ReviewEvent[] {
-  return [...APPROVED, { type: "dispatchApproved", permitted: true, parts, smsRoleHeld: entry.smsRoleHeld }, { type: "reportDispatch", receipt }]
+
+const LOOKUP: ReviewEvent = { type: "finishLookup", lookup: "NoRecord", recorded: "NoAnswer" }
+
+function shown(parts: number): ReviewEvent[] {
+  return [LOOKUP, { type: "presentReview", blocked: false, parts }]
+}
+
+function dispatched(entry: Pending, parts: number, receipt: SendAnswer): ReviewEvent[] {
+  return [...shown(parts), { type: "approveReview" }, { type: "dispatchApproved", blocked: false, smsRoleHeld: entry.smsRoleHeld, rowsPrepared: true }, { type: "reportDispatch", receipt }]
 }
 
 function replay(entry: Pending, operationId: OperationId, status: SmsSendStatus, parts: number, asked: boolean): ReviewEvent[] {
   return match (status) {
-    when "cancelled": asked ? [{ type: "cancelReview", operationId }, LOOKUP] : [...SHOWN, { type: "rejectReview" }];
-    when "denied": [...APPROVED, { type: "dispatchApproved", permitted: false, parts, smsRoleHeld: entry.smsRoleHeld }];
+    when "cancelled": asked ? [...shown(parts), { type: "cancelReview", operationId }, { type: "settleRetiredReview" }] : [...shown(parts), { type: "declineReview" }];
+    when "denied": [LOOKUP, { type: "presentReview", blocked: true, parts }];
     when "failed": dispatched(entry, parts, "SendFailed");
     when "unknown": dispatched(entry, parts, "SendUnknown");
     when "submitted": dispatched(entry, parts, "SendSubmitted");
@@ -177,8 +179,16 @@ function replay(entry: Pending, operationId: OperationId, status: SmsSendStatus,
   }
 }
 
-function journalRecord(status: SmsSendStatus): SendRecord {
-  return status === "sent" || status === "delivered" ? "SendSubmitted" : SEND_RECORD[status]
+function reviewAnswer(status: SmsSendStatus): SendAnswer {
+  return match (status) {
+    when "cancelled": "SendCancelled";
+    when "denied": "SendDenied";
+    when "failed": "SendFailed";
+    when "unknown": "SendUnknown";
+    when "submitted": "SendSubmitted";
+    when "sent": "SendSubmitted";
+    when "delivered": "SendSubmitted";
+  }
 }
 
 effect function opened(): Machine.Shape!! {
@@ -215,8 +225,20 @@ effect function settle(entry: Pending, operationId: OperationId, status: SmsSend
     }
   }
   const review = try entry.book.get()
-  if (review.result !== journalRecord(status)) try malformed(method, "The send result does not follow a reviewed send")
+  if (review.result !== reviewAnswer(status)) try malformed(method, "The send result does not follow a reviewed send")
   try Deferred.succeed(entry.cancel, review.cancelAcknowledged ? "cancelled" : "refused")
+}
+
+effect function sendCallOf(entry: Pending, operationId: OperationId, method: "sendSms" | "sendMms", call: () => Promise<unknown>) {
+  return nativeCall(PLUGIN, method, call) catch effect (failure) => {
+    if (failure instanceof NativeRejection && failure.code === "expired") {
+      const review = entry.book.send({ type: "finishLookup", lookup: "DroppedRecord", recorded: "NoAnswer" }) catch effect () => {
+        return try malformed(method, "The journal answer does not follow the lookup")
+      }
+      throw new SmsJournalRefused({ operationId, answer: review.result })
+    }
+    throw failure
+  }
 }
 
 effect function notAttempted(operationId: OperationId, raw: unknown) {
@@ -233,7 +255,7 @@ effect function sendSms(reviews: Reviews, plugin: MessagesNativePlugin, review: 
   const hash = try promise(() => smsBindingHash(review))
   const entry = try begin(reviews, id, try readStatus(plugin), "TextMessage")
   return try ensuring(effect {
-    const raw = try nativeCall(PLUGIN, "sendSms", () => plugin.sendSms({ operationId: id, recipients: review.recipients, body: review.body, subscriptionId: review.subscriptionId }))
+    const raw = try sendCallOf(entry, id, "sendSms", () => plugin.sendSms({ operationId: id, recipients: review.recipients, body: review.body, subscriptionId: review.subscriptionId }))
     try notAttempted(id, raw)
     const result = try checked("sendSms", (value) => parseSmsSendResult(value, review, id, hash), raw)
     try settle(entry, id, result.status, partsPerRecipient(result.parts), "sendSms")
@@ -247,7 +269,7 @@ effect function sendMms(reviews: Reviews, plugin: MessagesNativePlugin, review: 
   const entry = try begin(reviews, id, try readStatus(plugin), "MultimediaMessage")
   return try ensuring(effect {
     const attachments = binding.attachments.map((one, at) => ({ ...one, data: base64(review.attachments[at]?.bytes ?? new Uint8Array()) }))
-    const raw = try nativeCall(PLUGIN, "sendMms", () => plugin.sendMms({ operationId: id, recipients: binding.recipients, body: binding.body, attachments, subscriptionId: binding.subscriptionId }))
+    const raw = try sendCallOf(entry, id, "sendMms", () => plugin.sendMms({ operationId: id, recipients: binding.recipients, body: binding.body, attachments, subscriptionId: binding.subscriptionId }))
     const result = try checked("sendMms", (value) => parseMmsSendResult(value, binding, id, hash), raw)
     try settle(entry, id, result.status, 1, "sendMms")
     return result

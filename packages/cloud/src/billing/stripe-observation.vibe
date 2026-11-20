@@ -24,7 +24,9 @@ export function resourceId(value: string | { id: string } | null | undefined) {
   return typeof value === "string" ? value : value?.id
 }
 
-async function paidWindow(stripe: Stripe, priceId: string, customer: string, invoice: Stripe.Invoice, item: Stripe.SubscriptionItem): Promise<Payment | undefined> {
+type VerifiedPayment = { payment: Payment; chargeIds: string[] }
+
+async function paidWindow(stripe: Stripe, priceId: string, customer: string, invoice: Stripe.Invoice, item: Stripe.SubscriptionItem): Promise<VerifiedPayment | undefined> {
   const invoiceId = invoice.id
   if (!invoiceId || invoice.status !== "paid" || invoice.amount_paid <= 0 || invoice.currency !== "usd" ||
       (invoice.billing_reason !== "subscription_create" && invoice.billing_reason !== "subscription_cycle")) return undefined
@@ -33,6 +35,7 @@ async function paidWindow(stripe: Stripe, priceId: string, customer: string, inv
   if (!line || line.period.end !== item.current_period_end || line.period.start !== item.current_period_start) return undefined
   let condition: Payment["condition"] = "paid"
   let received = 0
+  const charges = new Set<string>()
   for await (const payment of stripe.invoicePayments.list({invoice: invoiceId, status:"paid", limit:100})) {
     if (!payment.amount_paid || payment.amount_paid < 1) continue
     const detail = payment.payment
@@ -45,7 +48,9 @@ async function paidWindow(stripe: Stripe, priceId: string, customer: string, inv
     }
     if (!chargeId) continue
     const charge = await stripe.charges.retrieve(chargeId)
-    if (resourceId(charge.customer) !== customer || !charge.paid || !charge.captured || charge.currency !== "usd") continue
+    if (charge.id !== chargeId || charge.livemode !== invoice.livemode || resourceId(charge.customer) !== customer ||
+        !charge.paid || !charge.captured || charge.currency !== "usd") continue
+    charges.add(charge.id)
     received += payment.amount_paid
     if (charge.amount_refunded > 0) condition = "refunded"
     else if (charge.disputed && condition !== "refunded") {
@@ -55,7 +60,7 @@ async function paidWindow(stripe: Stripe, priceId: string, customer: string, inv
     }
   }
   if (received < invoice.amount_paid) return undefined
-  return {id: invoice.id, startsAt: line.period.start * 1000, endsAt:line.period.end * 1000, condition}
+  return { payment: { id: invoice.id, startsAt: line.period.start * 1000, endsAt: line.period.end * 1000, condition }, chargeIds: [...charges].sort() }
 }
 
 export async function readStripeSubscription(stripe: Stripe, env: StripeCatalog, customer: string) {
@@ -71,6 +76,7 @@ export async function readStripeSubscription(stripe: Stripe, env: StripeCatalog,
   const subscription = current ?? last
   const item = subscription?.items.data.find((item) => item.price.id === env.STRIPE_PRICE_ID && item.quantity === 1)
   if (subscription && (!item || subscription.items.has_more || subscription.items.data.length !== 1)) throw new Error("Unexpected subscription items")
+  let chargeIds: string[] = []
   let observation: SubscriptionObservation = {customerId:customer, subscriptionId:null, plan:"free", status:"none", startsAt:0, endsAt:0, cancelAtPeriodEnd:false, latestInvoice:"PeriodInvoiceOpen"}
   if (subscription && item) {
     if (!await catalogMatches(stripe, env, false)) throw new Error("Unexpected subscription catalog terms")
@@ -84,13 +90,15 @@ export async function readStripeSubscription(stripe: Stripe, env: StripeCatalog,
     const reason = invoice?.billing_reason
     if (invoice && reason !== "subscription_update" && reason !== "subscription_create" && reason !== "subscription_cycle")
       throw new Error("Unexpected subscription invoice reason")
-    const payment = invoice && reason !== "subscription_update" ? await paidWindow(stripe, env.STRIPE_PRICE_ID, customer, invoice, item) : undefined
+    const verified = invoice && reason !== "subscription_update" ? await paidWindow(stripe, env.STRIPE_PRICE_ID, customer, invoice, item) : undefined
+    const payment = verified?.payment
+    chargeIds = verified?.chargeIds ?? []
     const failed = status === "past_due" || status === "unpaid" || invoice?.status === "uncollectible" ||
       (invoice?.status === "open" && invoice.attempted && invoice.attempt_count > 0)
     observation = { customerId:customer, subscriptionId:subscription.id, plan:env.STRIPE_PLAN, status, startsAt:item.current_period_start * 1000, endsAt:item.current_period_end * 1000,
       cancelAtPeriodEnd:subscription.cancel_at_period_end, latestInvoice: reason === "subscription_update" ? "PlanChangeInvoice" : payment?.condition === "paid" ? "PeriodInvoicePaid" : failed ? "PeriodInvoiceFailed" : "PeriodInvoiceOpen", payment }
   }
-  return { observation, ongoing: Boolean(current) }
+  return { observation, chargeIds, ongoing: Boolean(current) }
 }
 
 export async function catalogMatches(stripe: Stripe, env: StripeCatalog, forSale: boolean) {

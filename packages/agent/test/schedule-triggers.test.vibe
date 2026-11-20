@@ -50,6 +50,7 @@ module node {
     readonly any: { readonly error?: string; readonly ok?: boolean }
   }
 
+  /** @throws {never} */
   export function ownerOf(agentId: UUID) {
     return { user: validateUuid(account.userId) ?? stringToUuid(`account:${account.userId}`), world: stringToUuid(`device:${agentId}`) }
   }

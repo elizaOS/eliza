@@ -1,21 +1,26 @@
 // spec/cloud/returnPages.md, "A return URL on the web origin shows ReturnToApp only for the one enabled registration of the served environment that holds it"; spec/cloud/returnPages.md, "The page's one action opens the registered return in the package of the registration that holds it"; spec/cloud/returnPages.md, "The pinned script forwards into the app link only the purpose's well-formed results, where the app reads them"; spec/cloud/returnPages.md, "Every page is private, unframed and unindexed, has no form, and runs at most the pinned script"; spec/cloud/returnPages.md, "The payer page shows the paid copy only for outcome=paid, the closed copy for anything else, reads nothing else and offers no action"; spec/cloud/nativeClients/registry.md, "A return URL names at most one enabled registration and purpose, and the cloud serves it only on the environment's web origin"
 import { always } from "@antithesishq/bombadil";
-import { extract, type State } from "@antithesishq/bombadil/browser";
-import { forwardScript } from "../src/pages/forward-script.ts";
+import { actions, extract, type State } from "@antithesishq/bombadil/browser";
+import { forwardScript } from "../src/pages/pinned-script.ts";
 import seed from "./fixtures/seed.json" with { type: "json" };
 export * from "@antithesishq/bombadil/browser/defaults";
 
 const [fixture] = seed.clients;
-const webHost = new URL(fixture.signInReturn).host;
+const webOrigin = /^https:\/\/[^/]+/.exec(fixture.signInReturn)?.[0] ?? "";
+const webHost = webOrigin.slice("https://".length);
+const returnPaths = [fixture.signInReturn, fixture.billingReturn, fixture.connectReturn].map((address) => address.slice(webOrigin.length));
 const payerPath = "/api/v1/subscriptions/checkout/payer";
 
 const isPage = (state: State) => state.document.contentType === "text/html";
 const isPayerPage = (state: State) => isPage(state) && state.window.location.pathname === payerPath;
-const isReturnToApp = (state: State) => isPage(state) && state.window.location.host === webHost;
+const isReturnToApp = (state: State) => isPage(state) && returnPaths.includes(state.window.location.pathname);
 
 const valuesOf = (address: string): string[] => {
-  const url = new URL(address, "http://page.invalid");
-  return [url.search.slice(1), url.hash.slice(1)].flatMap((part) =>
+  const hashAt = address.indexOf("#");
+  const beforeHash = hashAt === -1 ? address : address.slice(0, hashAt);
+  const queryAt = beforeHash.indexOf("?");
+  const parts = [queryAt === -1 ? "" : beforeHash.slice(queryAt + 1), hashAt === -1 ? "" : address.slice(hashAt + 1)];
+  return parts.flatMap((part) =>
     part.split("&").flatMap((pair) => {
       const raw = pair.slice(pair.indexOf("=") + 1);
       if (!pair.includes("=") || raw === "") return [];
@@ -84,3 +89,5 @@ export const onlyThePinnedScriptRuns = always(() => {
 export const checkoutOutcomeOffersNoAction = always(() => payerActions.current === 0);
 
 export const returnToAppScrubsTheAddress = always(() => addressScrubbed.current);
+
+export const revisit = actions(() => ["Reload", "Wait"]);
