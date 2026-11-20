@@ -172,50 +172,25 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         item.operation !== "feed"
       )
         return null;
-      const filterEvidence =
-        item.operation === "search_events"
-          ? bindFilterEvidence(
-              item.filterEvidence,
-              ctx.message,
-              String(ctx.runtime.agentId),
-              getRecentMessagesData(ctx.state),
-            )
-          : undefined;
-      const fallbackFeed =
-        item.purpose === "mutation_prerequisite" &&
-        item.operation === "search_events" &&
-        !filterEvidence &&
-        hasCalendarSearchFilterShape(item.filterEvidence);
-      const key = `${intentId}:${fallbackFeed ? "feed" : item.operation}:${item.purpose ?? "requested_read"}`;
-      if (seen.has(key)) return null;
-      seen.add(key);
-      // A failed proposed search cannot mint filter authority. For an existing
-      // mutation intent, normal planning may instead obtain a bounded agenda
-      // and match fresh canonical records; it is never a completed read intent.
-      if (fallbackFeed) {
-        reads.push({
-          intentId,
-          operation: "feed",
-          execution: item.execution,
-          purpose: "mutation_prerequisite",
-          filterEvidence: [],
-        });
-        continue;
-      }
-      if (
-        item.operation !== "search_events" &&
-        item.filterEvidence !== undefined &&
-        (!Array.isArray(item.filterEvidence) || item.filterEvidence.length > 0)
-      )
-        return null;
       const { source, plainNextEvent, singleDaySearchDate, ...read } =
         item as RequestedRead;
+      const datedTitle =
+        read.operation === "search_events" ||
+        (read.operation === "next_event" && !!singleDaySearchDate);
+      const filterEvidence = datedTitle
+        ? bindFilterEvidence(
+            item.filterEvidence,
+            ctx.message,
+            String(ctx.runtime.agentId),
+            getRecentMessagesData(ctx.state),
+          )
+        : undefined;
       const [filter] = filterEvidence ?? [];
       const requestText =
         filter?.origin === "current" ? ctx.message.content.text : undefined;
       const observedAt = ctx.message?.createdAt;
       const boundSearchDate =
-        read.operation === "search_events" &&
+        datedTitle &&
         source === "builtin" &&
         read.execution === "required" &&
         read.purpose !== "mutation_prerequisite" &&
@@ -234,15 +209,49 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         parseExplicitLocalDate(singleDaySearchDate, "UTC", new Date(observedAt))
           ? singleDaySearchDate
           : undefined;
+      // A verified title and date bind a named search even when a provider
+      // labels that read next_event. A filter without this proof still fails.
+      const operation =
+        read.operation === "next_event" && boundSearchDate
+          ? "search_events"
+          : read.operation;
+      const fallbackFeed =
+        item.purpose === "mutation_prerequisite" &&
+        item.operation === "search_events" &&
+        !filterEvidence &&
+        hasCalendarSearchFilterShape(item.filterEvidence);
+      const key = `${intentId}:${fallbackFeed ? "feed" : operation}:${item.purpose ?? "requested_read"}`;
+      if (seen.has(key)) return null;
+      seen.add(key);
+      // A failed proposed search cannot mint filter authority. For an existing
+      // mutation intent, normal planning may instead obtain a bounded agenda
+      // and match fresh canonical records; it is never a completed read intent.
+      if (fallbackFeed) {
+        reads.push({
+          intentId,
+          operation: "feed",
+          execution: item.execution,
+          purpose: "mutation_prerequisite",
+          filterEvidence: [],
+        });
+        continue;
+      }
+      if (
+        operation !== "search_events" &&
+        item.filterEvidence !== undefined &&
+        (!Array.isArray(item.filterEvidence) || item.filterEvidence.length > 0)
+      )
+        return null;
       reads.push({
         ...read,
+        operation,
         ...(source &&
-        read.operation !== "read_selected" &&
+        operation !== "read_selected" &&
         read.purpose !== "mutation_prerequisite"
           ? { source }
           : {}),
         ...(plainNextEvent === true &&
-        read.operation === "next_event" &&
+        operation === "next_event" &&
         source === "builtin" &&
         read.execution === "required" &&
         read.purpose !== "mutation_prerequisite"
@@ -251,7 +260,7 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         ...(boundSearchDate ? { singleDaySearchDate: boundSearchDate } : {}),
         intentId,
         ...(selectedTarget ? { selectedTarget } : {}),
-        ...(item.operation === "search_events"
+        ...(operation === "search_events"
           ? filterEvidence
             ? { filterEvidence }
             : { filterEvidence: [], invalidFilterEvidence: true as const }

@@ -280,7 +280,12 @@ describe("Calendar operation bindings", () => {
       content: { text },
     };
     const state = { values: {}, data: {}, text: "" };
-    const route = async (day: string, intents = [text], query = title) => {
+    const route = async (
+      day: string,
+      intents = [text],
+      query = title,
+      operation: "search_events" | "next_event" = "search_events",
+    ) => {
       const turnSignal = new AbortController().signal;
       return runWithStreamingContext({ abortSignal: turnSignal }, async () => {
         const context = {
@@ -294,7 +299,7 @@ describe("Calendar operation bindings", () => {
           [
             {
               intentId: "intent:1",
-              operation: "search_events",
+              operation,
               source: "builtin",
               execution: "required",
               purpose: "requested_read",
@@ -358,6 +363,9 @@ describe("Calendar operation bindings", () => {
         },
       },
     });
+    expect(await route("today", [text], title, "next_event")).toEqual(
+      await route("today"),
+    );
     for (const result of [
       await route("tomorrow"),
       await route("today", [text, "Send it to a coworker"]),
