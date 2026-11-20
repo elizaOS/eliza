@@ -62,6 +62,7 @@ import {
   validateSmsResult,
   validateSmsSend,
 } from "@elizaos/contracts/sms-send";
+import { directSmsRequest } from "@elizaos/contracts/telephony-actions";
 import {
   BROWSER_CONTROL_DIRECT_TYPES,
   BROWSER_OPEN_NEW_TAB_CAPABILITY,
@@ -1922,7 +1923,11 @@ export class DeviceActionCoordinator<
     for (const [proposalId, entry] of [...this.proposals]) {
       if (
         results.length >= 4 ||
-        !directTypes.includes(entry.proposal.operation.type) ||
+        (!directTypes.includes(entry.proposal.operation.type) &&
+          !(
+            proof?.messageId === messageId &&
+            directSmsRequest(entry.proposal.operation, proof.text)
+          )) ||
         entry.proposal.workflow ||
         entry.proposal.requestMessageId !== messageId ||
         (operationType !== undefined &&
@@ -1960,6 +1965,11 @@ export class DeviceActionCoordinator<
         continue;
       if (!(await allowed())) break;
       signal.throwIfAborted();
+      if (
+        entry.proposal.operation.type === "sms_latest_sender" ||
+        entry.proposal.operation.type === "sms_compose"
+      )
+        proof?.current();
       if (browser) {
         if (
           this.proposals.get(proposalId) !== entry ||
@@ -3828,8 +3838,9 @@ function describeTelephonyAction(operation: TelephonyActionOperation): {
     case "sms_latest_sender":
       return {
         title: "Read latest text sender",
-        description:
-          "Read the last four digits of the newest incoming SMS sender. The phone does not read the message body.",
+        description: operation.includeAddress
+          ? "Read the phone number of your latest incoming text."
+          : "Read the last four digits of the newest incoming SMS sender. The phone does not read the message body.",
       };
     case "voicemail_read_selected":
       return {

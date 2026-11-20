@@ -220,7 +220,9 @@ export function deviceOperationSupportedByCapabilities(
     );
   // Transport policy negotiation never widens a clock-only executor.
   const operationCapabilities = capabilities?.filter(
-    (capability) => capability !== "gmail.request-policy.v1",
+    (capability) =>
+      capability !== "gmail.request-policy.v1" &&
+      capability !== "gmail.local-compose.v1",
   );
   const clockOnly =
     operationCapabilities?.length &&

@@ -48,7 +48,6 @@ import {
 import {
   CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
   type CalendarActionDeps,
   CalendarService,
   CalendarServiceError,
@@ -1890,16 +1889,7 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
       ]),
     ),
     next_event: {
-      parameters: calendarAction.parameters?.map((parameter) =>
-        parameter.name === "details"
-          ? {
-              ...parameter,
-              description:
-                "Optional exact calendar selection and IANA timezone for the next-event read. Omit unknown values; the configured timezone and selected calendar feed are the defaults.",
-              schema: CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
-            }
-          : parameter,
-      ),
+      parameters: calendarReadParameters(calendarAction, "next_event"),
     },
   },
 };

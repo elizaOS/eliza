@@ -449,7 +449,7 @@
         "barge-in settles only the submitted TTS characters across contexts, not the full reserved monthly allowance",
         "the Cloud client's prepare-first frames speak, finish silently and cancel with one tts_prepared per context",
         "socket Stop settles with the DO bindings and a fresh DB context before a later revoke",
-        "an extending client keeps one live session past its minted end with a fresh fence and reservation",
+        "a renewed proof-required session survives the original deadline and its stale alarm",
         "a declined renewal keeps the minted end and holds no lease for it",
         "pre-hello revoke closes the public socket and late hello cannot open providers",
         "real coordinator forwards STT-only selection and bounds unknown TTS money without confirming proof",

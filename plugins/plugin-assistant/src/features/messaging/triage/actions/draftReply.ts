@@ -46,7 +46,7 @@ export const draftReplyAction: Action = {
   contexts: ["messaging", "email", "contacts"],
   roleGate: { minRole: "ADMIN" },
   description:
-    "Compose a draft reply to an existing message. Use this when the user asks to draft a reply, including natural-language targets like latest email from Sarah; pass messageId when known, otherwise pass sender/content hints. Never sends — produces a preview that must be confirmed via MESSAGE.",
+    "Compose a draft reply to an existing message, such as the latest email from Sarah. Pass messageId when known, otherwise pass sender or content hints. To recreate a draft written in this chat, use MESSAGE_DRAFT_FOLLOWUP. This action never sends.",
   descriptionCompressed:
     "draft reply only; target by messageId or sender/content hint; never sends",
   similes: ["COMPOSE_REPLY", "DRAFT_MESSAGE_REPLY"],

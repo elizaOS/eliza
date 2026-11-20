@@ -11,7 +11,7 @@ describe("deployed Cloud smoke target", () => {
       "https://cloud.eliza.app",
     );
     expect(cloudLiveDeployedRendererOrigin("staging")).toBe(
-      "https://staging.eliza-app.pages.dev",
+      "https://cloud-staging.eliza.app",
     );
     expect(() =>
       cloudLiveDeployedRendererOrigin("https://untrusted.example"),

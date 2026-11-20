@@ -70,7 +70,11 @@ export const uiContextProvider: Provider = {
       uiViewActionNames.length > 0
         ? `view_actions: ${uiViewActionNames.join(", ")}`
         : null,
-      `active_contexts: ${activeContexts.join(", ") || "general"}`,
+      // v613: with Contacts in front this read "active_contexts: contacts,
+      // general", and the planner refused a calendar event as outside "the
+      // registered context on this turn". The open view only hints relevance.
+      `view_contexts: ${activeContexts.join(", ") || "general"}`,
+      "view_contexts are the open view's routing hints, not a limit on this turn: a request for another domain (a calendar event, a note, a call) uses that domain's registered tools from any view, discovering them when they are not loaded.",
       "view_capabilities is context, not an invocation request.",
       "Current-turn view identity can answer which view is open now; historical navigation receipts establish earlier delivery. Only view identity/capabilities are supplied, not displayed content or current record values. View/subview IDs are routing identifiers, not necessarily titles. For displayed text, balances, selections or current settings, use an available registered scoped action that reads the needed view state or a relevant domain read action. Capability names and element IDs are not standalone tools; invoke only operations exposed by registered actions. Never infer displayed values from routes or configuration diagnostics.",
       "Discover views with VIEWS_LIST or VIEWS list; open with VIEWS_SHOW or VIEWS show when registered. Opening is not a record operation. Use note/event actions only for requested record reads/writes, preferring available child actions over umbrellas. Use registered scoped actions for supported view controls; do not infer additional VIEWS operations from view capabilities. Claim effects only from successful results.",

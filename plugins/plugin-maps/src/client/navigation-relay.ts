@@ -15,6 +15,8 @@ export interface MapsRelayHost<Owner extends object> {
     signal: AbortSignal,
   ): Promise<unknown>;
   failure(error: unknown): string;
+  /** The phone's own one-line account of a refusal, such as "Open Maps on the phone to continue." */
+  failureMessage?(error: unknown): string | undefined;
   connected(value: boolean, offerId: string): void;
 }
 function anySignal<Owner extends object>(
@@ -106,7 +108,15 @@ export async function withMapsNavigationRelay<T, Owner extends object>(
             throw Error("Maps account changed");
           result = { status };
         } catch (error) {
-          result = { failed: { code: host.failure(error) } };
+          const message = host.failureMessage?.(error);
+          result = {
+            failed: {
+              code: host.failure(error),
+              ...(typeof message === "string" && message.trim()
+                ? { message: message.trim().slice(0, 300) }
+                : {}),
+            },
+          };
         }
         current.throwIfAborted();
         // A failed or lost acknowledgement is never retried: the phone may have acted.

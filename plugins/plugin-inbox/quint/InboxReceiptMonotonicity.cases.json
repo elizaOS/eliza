@@ -10,7 +10,7 @@
     "packages/scripts/lib/vitest-conformance.ts",
     "packages/scripts/lib/test-output.ts"
   ],
-  "bounds": "One verified owner and grant, one exact request and review digest, one durable dispatch reservation and at most one terminal provider response. Journal writes and provider callbacks are atomic steps. After restart the active owner may read the same record but has no send lease. Retiring the owner disables reads and sends. Actual journal tests cover storage conflicts, lost replies and review equality. This case excludes multi-request clearing, malformed receipt identity and changes between non-prepared replies after a terminal response. The complete proposal, including attachment bytes and serialization-sensitive legacy shapes, is projected to two content identities; object identity and string length never stand in for content. A rendered button may remain stale after in-place editing or owner retirement, but confirmation compares the live complete content again before reservation. Dispatch uses the immutable reviewed content captured at approval, even if the composer changes afterward. The host must preserve the internal journal and share view snapshots without mutating them. The model does not prove JavaScript serialization injectivity, arbitrary proxy/getter behavior, unbounded attachments, UI scheduling or provider availability; the complete real controller/journal component suites check canonical and legacy shape handling, five-MiB last-byte mutation, stale activation and actual effect arguments with controlled CAS/provider ports.",
+  "bounds": "One verified owner and grant, one exact request and review digest. Two distinct owner-supplied request identifiers or one generated identifier are modeled within a single journal. Replay across cleared records depends on provider idempotency. One durable dispatch reservation and at most one terminal provider response. Journal writes and provider callbacks are atomic steps. After restart the active owner may read the same record but has no send lease. Retiring the owner disables reads and sends. Actual journal tests cover storage conflicts, lost replies and review equality. This case excludes multi-request clearing, malformed receipt identity and changes between non-prepared replies after a terminal response. The complete proposal, including attachment bytes and serialization-sensitive legacy shapes, is projected to two content identities; object identity and string length never stand in for content. A rendered button may remain stale after in-place editing or owner retirement, but confirmation compares the live complete content again before reservation. Dispatch uses the immutable reviewed content captured at approval, even if the composer changes afterward. The host must preserve the internal journal and share view snapshots without mutating them. The model does not prove JavaScript serialization injectivity, arbitrary proxy/getter behavior, unbounded attachments, UI scheduling or provider availability; the complete real controller/journal component suites check canonical and legacy shape handling, five-MiB last-byte mutation, stale activation and actual effect arguments with controlled CAS/provider ports.",
   "conformance": "plugins/plugin-inbox/quint/check-inbox-receipt.mjs",
   "cases": [
     {
@@ -19,6 +19,7 @@
       "init": "init",
       "step": "step",
       "invariants": [
+        "ExactSourceRequestId",
         "AtMostOneDispatch",
         "PersistBeforeDispatch",
         "NoReviewAfterReservation",
@@ -45,6 +46,7 @@
       "init": "init",
       "step": "step",
       "invariants": [
+        "ExactSourceRequestId",
         "AtMostOneDispatch",
         "PersistBeforeDispatch",
         "NoReviewAfterReservation",

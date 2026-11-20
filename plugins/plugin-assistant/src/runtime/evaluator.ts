@@ -4,7 +4,10 @@ import {
   describeEvaluatorContext,
   type EvaluatorContextAttribution,
 } from "./evaluator-context-attribution.ts";
-import { isDeliveredNavigationOnlyTurn } from "./nav-evaluator-eligibility";
+import {
+  isDeliveredNavigationOnlyTurn,
+  requiredViewNavigationStatus,
+} from "./nav-evaluator-eligibility";
 import { recordGatedEvaluationStage } from "./record-gated-evaluation";
 import {
   applyTypedReadReply,
@@ -912,9 +915,123 @@ function gateTypedReadOutput(
   return checked;
 }
 
+/** A sole, current built-in slot lookup has complete producer-formatted facts.
+ * Keep the existing receipt and coverage checks without asking the model to
+ * convert the returned instants or repeat their citations. */
+function verifiedCalendarSlots(
+  params: RunEvaluatorParams,
+): EvaluatorOutput | undefined {
+  const { context, trajectory } = params;
+  const original = trajectory.modelBaseContext ?? context;
+  const bindings = original.metadata?.calendarReadBindings;
+  const [raw] = Array.isArray(bindings) ? bindings : [];
+  if (
+    params.typedReadReply ||
+    params.hasUnresolvedToolFailure ||
+    trajectory.codingMode ||
+    trajectory.plannedQueue.length ||
+    !Array.isArray(bindings) ||
+    bindings.length !== 1 ||
+    !isObjectRecord(raw) ||
+    raw.operation !== "propose_times" ||
+    raw.source !== "builtin" ||
+    raw.execution !== "required" ||
+    typeof raw.intentId !== "string" ||
+    evaluatorIntentSources(original, trajectory).length !== 1 ||
+    declaredIntentsFromContext(original).length > 1
+  )
+    return;
+  const work = evaluatorEvidenceSteps(trajectory).filter(
+    ({ step }) =>
+      step.toolCall &&
+      !step.terminalOnly &&
+      !isDiscoveryActionName(step.toolCall.name),
+  );
+  const [evidence] = work;
+  if (
+    work.length !== 1 ||
+    !evidence ||
+    !trajectory.steps.includes(evidence.step)
+  )
+    return;
+  const { step, id } = evidence;
+  const call = step.toolCall,
+    result = step.result;
+  const data = result?.data;
+  const reply = isObjectRecord(data) ? data.replyContext : undefined;
+  const snapshot = isObjectRecord(data) ? data.calendarSnapshot : undefined;
+  const args = call?.params;
+  if (
+    call?.name !== CALENDAR_READ_ACTIONS.propose_times ||
+    result?.success !== true ||
+    result.error != null ||
+    result.failureProvenance ||
+    result.replyFailure ||
+    result.transcriptVisibility !== "internal" ||
+    !isObjectRecord(data) ||
+    !isObjectRecord(snapshot) ||
+    typeof snapshot.observedAt !== "string" ||
+    typeof raw.requestedAt !== "number" ||
+    !(Date.parse(snapshot.observedAt) >= raw.requestedAt) ||
+    !args ||
+    typeof args.windowStart !== "string" ||
+    typeof args.windowEnd !== "string" ||
+    typeof data.windowStart !== "string" ||
+    typeof data.windowEnd !== "string" ||
+    Date.parse(args.windowStart) !== Date.parse(data.windowStart) ||
+    Date.parse(args.windowEnd) !== Date.parse(data.windowEnd) ||
+    args.timeZone !== data.timeZone ||
+    !Array.isArray(data.slots) ||
+    data.slots.length === 0 ||
+    !isObjectRecord(reply) ||
+    reply.domain !== "calendar" ||
+    reply.scenario !== "propose_times" ||
+    typeof reply.userFacingFacts !== "string" ||
+    !reply.userFacingFacts.trim()
+  )
+    return;
+  const answer: EvaluatorOutput = {
+    decision: "FINISH",
+    success: true,
+    requestFullyCovered: true,
+    thought: "The current Calendar preview supplied the verified slot times.",
+    messageToUser: reply.userFacingFacts,
+    replyEffectStatus: "none",
+    outcomeCoverage: [
+      { intentId: raw.intentId, status: "completed", evidenceStepIds: [id] },
+    ],
+  };
+  const checked = finalizeEvaluatorOutput(
+    answer,
+    "",
+    context,
+    trajectory,
+    composeToolDiagnosticRedactor(params.runtime),
+  );
+  return checked.success && checked.decision === "FINISH" ? checked : undefined;
+}
+
 async function runEvaluatorStage(
   params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
+  const startedAt = Date.now();
+  const slots = verifiedCalendarSlots(params);
+  if (slots) {
+    await recordGatedEvaluationStage({
+      runtime: params.runtime,
+      recorder: params.recorder,
+      trajectoryId: params.trajectoryId,
+      parentStageId: params.parentStageId,
+      iteration: params.iteration ?? 1,
+      startedAt,
+      endedAt: Date.now(),
+      output: slots,
+      reason: "verified_calendar_slots",
+      logger: params.runtime.logger,
+    });
+    getStreamingContext()?.abortSignal?.throwIfAborted();
+    return slots;
+  }
   const configuredModel = resolveSetting(
     params.runtime.getSetting
       ? {
@@ -2458,6 +2575,8 @@ export function validatedOutcomeCoverage(params: {
   hasUnresolvedToolFailure?: boolean;
 }): boolean {
   const { output, trajectory } = params;
+  const navigation = requiredViewNavigationStatus(trajectory);
+  if (navigation === "missing" || navigation === "prepared") return false;
   if (!calendarReadCoverage(output, params.context, trajectory).verified)
     return false;
   if (
@@ -3070,13 +3189,12 @@ export function calendarReadCoverage(
     // The schema lets the model omit coverage it has not checked, and step
     // citations are free text. Live 2026-10-30, correct agenda reads became
     // failure copy when coverage was omitted (tj-605ca329c8a78d) or cited
-    // "1:success=true" (tj-8dfdee5735fb18). Such a required feed binding takes
-    // the one read proven to answer this request (requestBoundFeedRead), which
-    // must still pass every evidence check below. A stated status or a valid
-    // citation governs; other operations still need a valid citation.
-    const fallback =
+    // "1:success=true" (tj-8dfdee5735fb18). A sole required feed or next-event
+    // read can supply the missing citation. The same evidence checks below
+    // still govern whether it answers the owner's current request.
+    let fallback: string | undefined;
+    if (
       binding.execution === "required" &&
-      binding.operation === "feed" &&
       (output.outcomeCoverage === undefined ||
         (covered?.length === 1 &&
           !covered[0].evidenceStepIds.some((id) => evidence.has(id)))) &&
@@ -3084,8 +3202,20 @@ export function calendarReadCoverage(
         (other) =>
           isObjectRecord(other) && other.operation === binding.operation,
       ).length === 1
-        ? requestBoundFeedRead(binding, evidence, phoneOnlyAccepted)
-        : undefined;
+    ) {
+      if (binding.operation === "feed")
+        fallback = requestBoundFeedRead(binding, evidence, phoneOnlyAccepted);
+      else if (binding.operation === "next_event") {
+        const calls = [...evidence].filter(
+          ([, step]) =>
+            trajectory.steps.includes(step) &&
+            step.toolCall &&
+            !step.terminalOnly &&
+            isCalendarReadCall(step.toolCall, "next_event"),
+        );
+        if (calls.length === 1) fallback = calls[0][0];
+      }
+    }
     const coverage = fallback
       ? {
           status: covered?.[0]?.status ?? "completed",
@@ -3371,7 +3501,8 @@ function verifiedSingleCalendarReadReply(
     !coverage.verified ||
     output.decision !== "FINISH" ||
     output.success !== true ||
-    output.requestFullyCovered !== true
+    output.requestFullyCovered === false ||
+    output.replyEffectStatus === "applied"
   )
     return;
   const original = trajectory.modelBaseContext ?? context,
@@ -3403,8 +3534,8 @@ function verifiedSingleCalendarReadReply(
     result = step.result;
   if (
     result?.success !== true ||
-    result.verifiedUserFacing !== true ||
-    typeof result.userFacingText !== "string"
+    (result.transcriptVisibility !== "internal" &&
+      result.verifiedUserFacing !== true)
   )
     return;
   if (
@@ -3422,10 +3553,14 @@ function verifiedSingleCalendarReadReply(
     !isObjectRecord(reply) ||
     reply.domain !== "calendar" ||
     reply.scenario !== "next_event" ||
-    reply.userFacingFacts !== result.userFacingText
+    typeof reply.userFacingFacts !== "string" ||
+    (result.verifiedUserFacing === true &&
+      reply.userFacingFacts !== result.userFacingText)
   )
     return;
-  return result.userFacingText.trim() || undefined;
+  // The read's canonical text is internal evidence during planning. Only
+  // this verified, single-intent terminal answer can use it verbatim.
+  return reply.userFacingFacts.trim() || undefined;
 }
 
 /** Scoped failure copy from current producer facts, never unsupported evaluator prose. */

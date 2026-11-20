@@ -42,6 +42,7 @@
       "shared phone and reminder-read parity negotiates the dial handoff and journals/replays the exact result without dialing twice",
       "shared phone and reminder-read parity refuses unnegotiated contact lookup and hides dialing on a locked screen",
       "shared phone and reminder-read parity uses short review copy for dial and SMS",
+      "shared phone and reminder-read parity opens the keypad without a review only for the requesting message and never calls",
       "shared phone and reminder-read parity leaves an SMS with unknown evidence unresolved without calling it sent or not",
       "shared phone and reminder-read parity does not leave a note write unresolved",
       "shared phone and reminder-read parity does not reconcile an unknown dial handoff from the owner's guess",
@@ -102,7 +103,10 @@
       "a voicemail read carries a transcript and its engine only when ready",
       "a voicemail delete targets only the open voicemail",
       "each operation type has one capability and one validator",
-      "capabilities follow the native profile and its parts"
+      "capabilities follow the native profile and its parts",
+      "latest SMS sender exposes only the reviewed suffix",
+      "address lookup and a reply draft use the complete negotiated address",
+      "phone_keypad opens the keypad, filled in at most, and never calls"
     ]
   }
 }

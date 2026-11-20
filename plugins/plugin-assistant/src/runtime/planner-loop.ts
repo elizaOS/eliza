@@ -24,6 +24,10 @@ import {
   describePlannerSourceReview,
   type PlannerSourceReviewAttribution,
 } from "./evaluator-context-attribution.ts";
+import {
+  readViewNavigationReceipt,
+  requiredViewNavigationStatus,
+} from "./nav-evaluator-eligibility";
 
 import {
   applyTypedReadReply,
@@ -733,6 +737,30 @@ export async function runPlannerLoop(
     // not re-enter the pre-tool acknowledgement heuristic and be replaced by
     // another synthesis that lacks the recorded failure context.
     let final = await ensureFailedTurnFinalMessage(trackedParams, withReply);
+    const navigation = requiredViewNavigationStatus(final.trajectory);
+    if (
+      final.status === "finished" &&
+      final.evaluator?.success === true &&
+      (navigation === "missing" || navigation === "prepared")
+    ) {
+      const message =
+        navigation === "prepared"
+          ? final.finalMessage
+          : "I couldn’t confirm that the requested screen opened.";
+      final = {
+        ...final,
+        finalMessage: message,
+        ...(navigation === "missing" ? { finalContent: undefined } : {}),
+        evaluator: {
+          ...final.evaluator,
+          success: false,
+          requestFullyCovered: false,
+          replyEffectStatus: "non_applied",
+          outcomeCoverage: undefined,
+          messageToUser: message,
+        },
+      };
+    }
     if (
       final.status === "finished" &&
       final.evaluator?.success === true &&
@@ -1294,6 +1322,7 @@ async function runPlannerLoopIterations(
   // pending. A later explicit final declaration releases this authority.
   let lastPlannerExplicitCompleted: boolean | undefined;
   let pendingUnverifiedTerminalReply = false;
+  let navigationCompletionDeferrals = 0;
   let consecutiveScopeProtocolRejections = 0;
   // The successful FINISH most recently rejected by the pending-scope rule. If
   // the planner repeats settled operations, do not replay them. Repetition
@@ -1339,6 +1368,46 @@ async function runPlannerLoopIterations(
         replyEffectStatus: "non_applied",
         messageToUser:
           partialReply ?? getNonEmptyString(latestResult?.userFacingText),
+      };
+    }
+    if (
+      evaluator.decision === "FINISH" &&
+      evaluator.success === true &&
+      requiredViewNavigationStatus(trajectory) === "missing"
+    ) {
+      if (
+        hasExecutionPrerequisite(latestResult) ||
+        latestUnresolvedFailedNonTerminalToolStep(trajectory) ||
+        navigationCompletionDeferrals >= config.maxTerminalOnlyContinuations
+      ) {
+        return {
+          ...evaluator,
+          success: false,
+          requestFullyCovered: false,
+          replyEffectStatus: "non_applied",
+          outcomeCoverage: undefined,
+          messageToUser:
+            getNonEmptyString(latestResult?.userFacingText) ??
+            "I couldn’t confirm that the requested screen opened.",
+        };
+      }
+      navigationCompletionDeferrals++;
+      appendPlannerModelFeedbackEvent(trajectory, {
+        id: `required-view-navigation:${iteration}`,
+        type: "instruction",
+        source: "planner-loop",
+        createdAt: Date.now(),
+        metadata: { code: "REQUIRED_VIEW_NAVIGATION_MISSING" },
+        content:
+          "The requested view is still pending. Continue the open-view operation without repeating the completed work, or report the blocker.",
+      });
+      return {
+        ...evaluator,
+        success: false,
+        decision: "CONTINUE",
+        requestFullyCovered: false,
+        outcomeCoverage: undefined,
+        messageToUser: undefined,
       };
     }
     if (evaluator.decision === "FINISH" && evaluator.success === true) {
@@ -2690,12 +2759,14 @@ async function runPlannerLoopIterations(
             )))
       ) {
         // A native/text terminal is a proposed answer, not evidence of a completed read.
-        const evaluator = await evaluateTrajectory(
+        const evaluated = await evaluateTrajectory(
           params,
           trajectory,
           iteration,
           typedReadDeclined,
         );
+        const evaluator =
+          correctPendingSuccessfulFinish(evaluated, iteration) ?? evaluated;
         trajectory.evaluatorOutputs.push(evaluator);
         appendEvaluatorContextEvent(
           trajectory,
@@ -9772,10 +9843,7 @@ function preparedNavigationSynthesisStep(
   const result = step?.result;
   if (
     !step?.toolCall ||
-    result?.success !== true ||
-    result.transcriptVisibility !== "internal" ||
-    !result.modelReplyRequired ||
-    !hasAwaitingDeviceExecutionMarker(result) ||
+    !result ||
     hasAwaitingUserInputMarker(result) ||
     hasRequiresConfirmationMarker(result) ||
     result.error != null ||
@@ -9784,34 +9852,15 @@ function preparedNavigationSynthesisStep(
     result.userFacingEffectReceiptIds?.length
   )
     return;
-  const handoff = findViewActionHandoff([
-    {
-      success: true,
-      actionName: step.toolCall.name,
-      values: result.data?.values,
-    },
-  ]);
+  const receipt = readViewNavigationReceipt(step);
   const effect = structuredEffectFromToolResult(result);
-  const navigation = result.data?.navigation;
   if (
-    !handoff?.navigationPrepared ||
+    receipt?.status !== "prepared" ||
     effect?.effect !== "view_navigation" ||
     effect.status !== "prepared" ||
-    !effect.label ||
-    !isObjectRecord(navigation) ||
-    navigation.viewId !== handoff.viewId ||
-    effect.viewId !== handoff.viewId ||
-    navigation.handoffId !== handoff.completedActionHandoffId ||
-    navigation.label !== effect.label ||
-    navigation.status !== "prepared" ||
-    effect.resolvedAlias !== navigation.resolvedAlias
-  )
-    return;
-  const view = result.data?.view;
-  if (
-    !isObjectRecord(view) ||
-    view.id !== handoff.viewId ||
-    view.installationId !== handoff.navigationBinding?.installationId
+    effect.viewId !== receipt.handoff.viewId ||
+    effect.label !== receipt.label ||
+    effect.resolvedAlias !== receipt.navigation.resolvedAlias
   )
     return;
   const wanted = step.toolCall.params?.view;
