@@ -392,5 +392,3 @@ export const FILES_OPERATION_SCHEMAS: ActionParameterSchema[] = [
     },
   },
 ];
-export const FILES_GUIDANCE =
-  "Phone Files (requires files.browser.v1): to find files, use files_filter with name words, a kind, a folder or a modified date range; it only narrows what Files shows and returns a count, never file names or contents. files_open shows one file: give its path, or shown (1 is the first) for an item in the filter results on screen, for example shown 1 when the filter found one file. files_share, files_move, files_trash and files_folder_create are reviewed with Files on screen; a move never replaces a file with the same name, and Trash is restorable for 30 days. Use only paths the owner named or Files showed; never invent paths.";
