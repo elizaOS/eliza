@@ -2602,6 +2602,7 @@ export class DeviceActionService {
       validated.type === "browser_navigate" ||
       validated.type === "browser_search";
     const smsDraftOrRead = [
+      "sms_reply_selected",
       "sms_compose",
       "sms_send",
       "sms_latest_sender",
@@ -2656,14 +2657,19 @@ export class DeviceActionService {
         ? { type: "sms_latest_sender", includeAddress: true }
         : { type: "sms_latest_sender" };
     }
-    // A reply into the open thread (sms_reply_selected) names no recipient and
-    // stays bound to that thread. Only a new message takes the recipient the
-    // owner addressed; with none named, Alpha asks which person.
     if (
       requestOrigin &&
-      (validated.type === "sms_compose" || validated.type === "sms_send")
+      (validated.type === "sms_compose" ||
+        validated.type === "sms_send" ||
+        validated.type === "sms_reply_selected")
     ) {
-      const recipient = requestedSmsDraftRecipient(requestOrigin.requestText);
+      const requested = requestedSmsDraftRecipient(requestOrigin.requestText);
+      const recipient =
+        validated.type === "sms_reply_selected" &&
+        (requested?.kind === "previous-sender" ||
+          requested?.kind === "unaddressed")
+          ? undefined
+          : requested;
       if (recipient?.kind === "ambiguous" || recipient?.kind === "unaddressed")
         throw new DeviceActionError(
           "Which person should receive this draft? Give one recipient.",

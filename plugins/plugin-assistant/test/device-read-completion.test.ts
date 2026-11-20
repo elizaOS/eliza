@@ -578,6 +578,27 @@ it("keeps an open-thread reply and refuses to turn an addressed draft into a sen
       type: "sms_reply_selected",
       body: "I'm on my way",
     });
+    const selected = { type: "sms_reply_selected", body: "hi" } as const;
+    const addressed = await proposeFromOwnerText(
+      f,
+      targets,
+      "Draft a text to Sam saying hi",
+      selected,
+    );
+    expect(addressed.request.payload.operation).toEqual({
+      type: "sms_compose",
+      target: { kind: "contact", query: "Sam" },
+      body: "hi",
+      draft: true,
+    });
+    await expect(
+      proposeFromOwnerText(
+        f,
+        targets,
+        "Reply to them, no wait, to Sam, saying hi",
+        selected,
+      ),
+    ).rejects.toThrow("Which person");
     const v1 = {
       ...f.credential,
       capabilities: [
@@ -587,6 +608,7 @@ it("keeps an open-thread reply and refuses to turn an addressed draft into a sen
       ],
     };
     const proposals: DeviceOperation[] = [
+      selected,
       { type: "sms_compose", query: "Samuel", body: "hi" },
       {
         type: "sms_send",
