@@ -31,7 +31,7 @@ export type ResolvedMessageOptions = {
   continueAfterActions: boolean;
   keepExistingResponses: boolean;
   onStreamChunk?: StreamChunkCallback;
-  onPlanningAcknowledgment?: (text: string) => void | Promise<void>;
+  onPlanningAcknowledgment?: MessageProcessingOptions["onPlanningAcknowledgment"];
   onResponseDecision?: () => void;
   shouldRespondModel: ShouldRespondModelType;
   /**

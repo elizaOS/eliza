@@ -484,7 +484,7 @@ export class MessageTurnLifetime {
                   !text.trim() ||
                   !isCurrent()
                 )
-                  return;
+                  return false;
                 if (
                   guardOutboundEnvelopeText(
                     runtime,
@@ -492,18 +492,20 @@ export class MessageTurnLifetime {
                     "planning-acknowledgment",
                   ) !== text
                 )
-                  return;
+                  return false;
                 planningAcknowledgmentAttempted = true;
                 if (ownerExclusiveDisclosureWasUsed(message)) {
                   const audience = await revalidateOwnerExclusiveDisclosure(
                     runtime,
                     message,
                   );
-                  if (!audience.allowed) return;
+                  if (!audience.allowed) return false;
                 }
                 // Recheck after the asynchronous audience read, including preemption.
-                if (!isCurrent()) return;
-                await options.onPlanningAcknowledgment?.(text);
+                if (!isCurrent()) return false;
+                return (
+                  (await options.onPlanningAcknowledgment?.(text)) !== false
+                );
               }
             : undefined,
           onResponseDecision: options?.onResponseDecision,

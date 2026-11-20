@@ -37,7 +37,6 @@ import {
   isObjectRecord as isRecord,
   isTrajectoryRecordingEnabled,
   looksLikeRawFieldTranscript,
-  ModelType,
   promotedSubactionParent,
   type RecordedStage,
   readEnv,
@@ -51,6 +50,7 @@ import {
 import { findViewActionHandoff } from "@elizaos/core/protocol";
 import { createTrajectoryRecorder } from "../../features/trajectories/recorded-trajectories.ts";
 import { runShouldRespondInjectionGate } from "../../features/trust/should-respond-risk-gate";
+import { deliveredAcknowledgmentInstruction } from "../../prompts/acknowledgment.ts";
 import { parentAliasesForCandidateAction } from "../../runtime/action-retrieval.ts";
 import {
   applyAddressedTo,
@@ -395,7 +395,7 @@ export async function runV5MessageRuntimeStage1(
       backgroundHistory,
       sourceReplyRendering,
       contextCatalogRead,
-      contextReadAcknowledgmentSent,
+      contextReadAcknowledgment,
     } = await generateStage1Decision(
       args,
       {
@@ -1081,17 +1081,19 @@ export async function runV5MessageRuntimeStage1(
     // the same playback preemption rules as a cue for a planned read.
     // Progress does not satisfy final delivery, persist an answer, or refresh history.
     getStreamingContext()?.abortSignal?.throwIfAborted();
+    let planningAcknowledgment = contextReadAcknowledgment;
     if (
       args.onPlanningAcknowledgment &&
-      !contextReadAcknowledgmentSent &&
+      !planningAcknowledgment &&
       !addressedToOtherParticipant &&
       messageHandler.processMessage === "RESPOND" &&
       prePatchStageOneReplyEffectStatus === "pending" &&
       earlyReplyText.trim().length > 0
     ) {
-      await args.onPlanningAcknowledgment(
+      const delivered = await args.onPlanningAcknowledgment(
         restorePiiInUserReplyText(earlyReplyText),
       );
+      if (delivered !== false) planningAcknowledgment = earlyReplyText;
     }
     // The addressing gate above already terminal-routes addressed-to-other
     // turns to ignored, so a gated turn cannot normally reach this planning
@@ -1100,7 +1102,6 @@ export async function runV5MessageRuntimeStage1(
     // gated turn regardless of how routing evolves upstream.
     const earlyReplyEligible =
       !args.onPlanningAcknowledgment &&
-      !contextReadAcknowledgmentSent &&
       !addressedToOtherParticipant &&
       messageHandler.processMessage === "RESPOND" &&
       earlyReplyText.length > 0 &&
@@ -1869,16 +1870,24 @@ export async function runV5MessageRuntimeStage1(
                 "Call at least one exposed non-terminal tool that can attempt the current request.",
         })
       : budgetedPlannerContextWithDecision;
-    const plannerContextAfterEarlyReply = earlyReplySent
+    let earlyReplyInstruction: string | undefined;
+    if (planningAcknowledgment) {
+      earlyReplyInstruction = deliveredAcknowledgmentInstruction(
+        planningAcknowledgment,
+      );
+    } else if (earlyReplySent) {
+      earlyReplyInstruction =
+        "The Stage 1 router already sent this visible reply to the user before planning: " +
+        JSON.stringify(earlyReplyText) +
+        ". Do not repeat it. Send only additional follow-up text if the planner or tool work adds something new.";
+    }
+    const plannerContextAfterEarlyReply = earlyReplyInstruction
       ? appendContextEvent(effectivePlannerContext, {
           id: `early-reply:${messageHandlerEndedAt}`,
           type: "instruction",
           source: "message-service",
           createdAt: Date.now(),
-          content:
-            "The Stage 1 router already sent this visible reply to the user before planning: " +
-            JSON.stringify(earlyReplyText) +
-            ". Do not repeat it. Send only additional follow-up text if the planner or tool work adds something new.",
+          content: earlyReplyInstruction,
         })
       : effectivePlannerContext;
     if (senderRole === "OWNER")

@@ -864,8 +864,10 @@ export class MessageProcessor {
                         getLatestResponseId(runtime.agentId, message.roomId) !==
                           responseId)
                     )
-                      return;
-                    await opts.onPlanningAcknowledgment?.(text);
+                      return false;
+                    return (
+                      (await opts.onPlanningAcknowledgment?.(text)) !== false
+                    );
                   }
                 : undefined,
               onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,

@@ -2917,7 +2917,7 @@ async function generateChatResponseWithTiming(
                             planningAcknowledgment ||
                             generationAbortController.signal.aborted
                           )
-                            return;
+                            return false;
                           // One transient label survives tool phases without entering
                           // response text or durable terminal persistence.
                           planningAcknowledgment = text;

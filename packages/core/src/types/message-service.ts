@@ -66,8 +66,10 @@ export interface MessageProcessingOptions {
 	codingActionProfile?: CodingActionProfile;
 	shouldRespondModel?: ShouldRespondModelType;
 	onStreamChunk?: StreamChunkCallback;
-	/** Transient progress from existing inference; never a persisted or final reply. */
-	onPlanningAcknowledgment?: (text: string) => void | Promise<void>;
+	/** Transient progress; never a final reply. Return false if the host did not publish it. */
+	onPlanningAcknowledgment?: (
+		text: string,
+	) => boolean | void | Promise<boolean | undefined> | Promise<void>;
 	/**
 	 * Transient, content-free status for each activity the turn starts, in
 	 * order. The label comes from the action's registered category, never its
