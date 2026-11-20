@@ -157,9 +157,9 @@ effect function restoreLegacyConnection(tx: Tx, owner: Owner, connectionId: stri
       const opened = openTokens(sealed) catch () => undefined
       const expiry = Number(row.expires_at)
       const verified = opened !== undefined && opened.accessToken !== "" && opened.expiresAt === expiry &&
-        Number.isSafeInteger(expiry) && expiry > 0 && legacy?.expiresAt === expiry && legacy.tokens === sealed
+        Number.isSafeInteger(expiry) && expiry > 0 && legacy?.expiresAt === expiry && legacy?.tokens === sealed
       const status = legacy?.status === "Error" ? "Errored" : legacy?.status
-      const refreshable = verified && opened.refreshToken !== ""
+      const refreshable = verified && Boolean(opened?.refreshToken)
       const active = verified && status === "Active" && row.status === status
       const heldLease = Number(row.refreshing_until)
       if (active && refreshable && Number.isSafeInteger(heldLease) && heldLease > 0 && heldLease === legacy?.refreshingUntil) lease = heldLease
@@ -172,7 +172,7 @@ effect function restoreLegacyConnection(tx: Tx, owner: Owner, connectionId: stri
   }
   const state = try decodeState(restored)
   try tx.query(
-    "UPDATE google_connections SET state = $2::jsonb, revision = revision + 1, status = $3, refreshing_until = $4 WHERE key = $1",
+    "UPDATE google_connections SET state = $2::jsonb, revision = revision + 1, status = $3, refreshing_until = $4, tokens = NULLIF(tokens, '') WHERE key = $1",
     [connectionId, JSON.stringify(state), state.status, lease]
   )
 }
