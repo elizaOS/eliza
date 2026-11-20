@@ -1,10 +1,11 @@
-// spec/os/android/passwords/vault.md, "One native proof authorizes one backup action"
+// spec/os/android/passwords/vault.md, "One native proof authorizes one backup action"; spec/os/android/passwords/vault.md, "Shared backup is offered only when its exact native app is ready"
 package ai.eliza.auth.cloud;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.function.BooleanSupplier;
 import javax.net.ssl.HttpsURLConnection;
@@ -152,9 +153,22 @@ public final class CloudPasswordBackup {
       URI url = URI.create(environment.api() + PATH + "/readiness?clientId=" + config.clientId);
       HttpsURLConnection request = connect(url, "GET", null);
       try {
-        return request.getResponseCode() == 204 && "2".equals(request.getHeaderField("X-Password-Backup-Version"));
+        if (request.getResponseCode() != 204 || !"2".equals(request.getHeaderField("X-Password-Backup-Version"))) return false;
       } finally {
         request.disconnect();
+      }
+      String tenant = URLEncoder.encode(environment.tenant, StandardCharsets.UTF_8);
+      String client = URLEncoder.encode(config.googleClientId, StandardCharsets.UTF_8);
+      URI providers = URI.create(environment.api() + "/steward/auth/providers?tenantId=" + tenant + "&clientId=" + client);
+      HttpsURLConnection discovery = connect(providers, "GET", null);
+      try {
+        if (discovery.getResponseCode() != 200) return false;
+        JSONObject response = new JSONObject(new String(body(discovery, 16384), StandardCharsets.UTF_8));
+        JSONObject nativeGoogle = response.optJSONObject("nativeGoogleApp");
+        return nativeGoogle != null && config.googleClientId.equals(nativeGoogle.optString("clientId"))
+          && Boolean.TRUE.equals(nativeGoogle.opt("ready"));
+      } finally {
+        discovery.disconnect();
       }
     } catch (Exception unavailable) {
       return false;

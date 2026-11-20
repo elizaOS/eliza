@@ -252,6 +252,19 @@ pure def lawMissingRecordRefusesRowAction(selection: RowSelection): bool =
 > each backup action at the cloud this device signed in to, and keep all
 > recovery material in the native vault.
 
+### Shared backup is offered only when its exact native app is ready
+
+Grace checks that the selected deployment serves version 2 of the backup
+contract and that Steward reports native Google eligibility for the exact
+registered app client. Checking eligibility does not open a challenge.
+
+```quint
+pure def sharedBackupServiceReady(version2Available: bool, exactNativeAppReady: bool): bool =
+  version2Available and exactNativeAppReady
+pure def lawSharedBackupNeedsItsOwnNativeApp(version2Available: bool): bool =
+  not(sharedBackupServiceReady(version2Available, false))
+```
+
 ### Shared approval requires the registered cloud and the current owner
 
 The device asks for an approval with its registered client and environment
