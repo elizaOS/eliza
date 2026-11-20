@@ -319,7 +319,10 @@ export function deviceReadResult(request: ApprovalRequest): JsonValue {
                     : op.type === "messages_read_selected"
                       ? validateMessagesReadResult(receipt.result)
                       : op.type === "sms_latest_sender"
-                        ? validateSmsLatestSenderResult(receipt.result)
+                        ? validateSmsLatestSenderResult(
+                            receipt.result,
+                            op.includeAddress,
+                          )
                         : op.type === "voicemail_read_selected"
                           ? validateVoicemailReadResult(receipt.result)
                           : op.type === "contact_read_selected"
@@ -620,7 +623,12 @@ export async function synthesizeDeviceReadReply(
       signal,
       assertHostCurrent,
     );
-    return smsLatestSenderReply(validateSmsLatestSenderResult(result));
+    const operation = validateDevicePayload(request.payload).operation;
+    if (operation.type !== "sms_latest_sender")
+      throw new DeviceActionError("Latest SMS sender operation required");
+    return smsLatestSenderReply(
+      validateSmsLatestSenderResult(result, operation.includeAddress),
+    );
   }
   if (
     binding.purpose === "original_calendar_availability_reply" &&

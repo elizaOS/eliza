@@ -1187,6 +1187,12 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   },
   {
     types: ["sms_latest_sender"],
+    capability: "sms.latest-sender.v2",
+    text: "Use sms_latest_sender with no fields for an owner asking who sent the latest SMS. The binding returns one real sender address. If the owner then asks you to draft a text to them, propose sms_compose with that exact number, draft:true and the requested body. Put the draft into Messages for editing and Send; never give only hypothetical copy.",
+  },
+  {
+    types: ["sms_latest_sender"],
+    unlessCapability: "sms.latest-sender.v2",
     text: "Use sms_latest_sender with no fields for an explicit question about who sent the newest incoming SMS on the owner's phone. It proposes a reviewed read of one sender number suffix only. It cannot search historical messages, query MMS, or read any message body. Do not use a cloud inbox or the open-thread read for this request.",
   },
   {

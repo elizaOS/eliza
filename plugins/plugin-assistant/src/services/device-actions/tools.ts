@@ -1,3 +1,8 @@
+import {
+  requestedSmsDraftRecipient,
+  SMS_COMPOSE_TARGET_CAPABILITY,
+  SMS_SENDER_ADDRESS_CAPABILITY,
+} from "@elizaos/contracts/telephony-actions";
 /** Narrow owner-device operations over the canonical proposal/approval/receipt path. */
 import type {
   Action,
@@ -898,8 +903,22 @@ export function registerDeviceTelephonyRouting(
     const capabilities = ownerPhoneChatCapabilities(runtime, message);
     if (!capabilities) return false;
     const request = authoredTelephonyRequest(text);
+    if (request === "sender")
+      return deviceOperationSupportedByCapabilities(
+        "sms_latest_sender",
+        capabilities,
+      );
     if (request === "call")
       return deviceOperationSupportedByCapabilities("phone_call", capabilities);
+    if (
+      request === "text" &&
+      requestedSmsDraftRecipient(text)?.kind === "previous-sender"
+    )
+      return (
+        capabilities.includes(SMS_SENDER_ADDRESS_CAPABILITY) &&
+        capabilities.includes(SMS_COMPOSE_TARGET_CAPABILITY) &&
+        deviceOperationSupportedByCapabilities("sms_compose", capabilities)
+      );
     if (request === "text")
       return (
         deviceOperationSupportedByCapabilities("sms_compose", capabilities) ||

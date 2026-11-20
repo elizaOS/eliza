@@ -3,9 +3,13 @@
  * Phone and Messages apps owns. Matching only routes the turn to the planner
  * and its device operation; it never places a call or sends a text.
  */
+import {
+  isSmsSenderLookup,
+  requestedSmsDraftRecipient,
+} from "@elizaos/contracts/telephony-actions";
 import { phoneDialNumber } from "./phone-dial-contract.ts";
 
-export type AuthoredTelephonyRequest = "call" | "text";
+export type AuthoredTelephonyRequest = "call" | "text" | "sender";
 
 // A dialable number as typed, or a short name ("mom", "Sam Lee").
 const target = (names: "{0,2}" | "{0,2}?") =>
@@ -38,6 +42,9 @@ export function authoredTelephonyRequest(
   if (request.length > 400) return;
   const call = CALL.exec(request);
   if (call && !NOT_A_PHONE_TARGET.test(call[1] ?? "")) return "call";
+  if (requestedSmsDraftRecipient(request)?.kind === "previous-sender")
+    return "text";
+  if (isSmsSenderLookup(request)) return "sender";
   const sms = TEXT.exec(request);
   if (sms && !NOT_A_PHONE_TARGET.test(sms[1] ?? "")) return "text";
   return;
