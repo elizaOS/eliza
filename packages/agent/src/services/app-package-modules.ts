@@ -116,15 +116,29 @@ function resolveInstalledPluginDir(packageName: string): string | null {
     : null;
 }
 async function readPackageName(packageDir: string): Promise<string | null> {
+  const manifestPath = path.join(packageDir, "package.json");
   try {
     const packageJson = JSON.parse(
-      await fs.promises.readFile(path.join(packageDir, "package.json"), "utf8"),
+      await fs.promises.readFile(manifestPath, "utf8"),
     ) as {
       name?: unknown;
     };
     return typeof packageJson.name === "string" ? packageJson.name : null;
-  } catch {
-    return null;
+  } catch (cause) {
+    // The caller already found package.json. Only a concurrent removal means
+    // "not installed"; unreadable or malformed metadata is a real failure.
+    if (
+      typeof cause === "object" &&
+      cause !== null &&
+      "code" in cause &&
+      ["ENOENT", "ENOTDIR"].includes(String(cause.code))
+    )
+      return null;
+    throw new ElizaError("Failed to inspect app package metadata", {
+      code: "APP_MODULE_RESOLUTION_FAILED",
+      context: { manifestPath },
+      cause,
+    });
   }
 }
 async function resolveWorkspacePackageDirs(
