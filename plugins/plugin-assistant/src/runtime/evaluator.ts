@@ -3387,7 +3387,8 @@ function verifiedSingleCalendarReadReply(
     !coverage.verified ||
     output.decision !== "FINISH" ||
     output.success !== true ||
-    output.requestFullyCovered !== true
+    output.requestFullyCovered === false ||
+    output.replyEffectStatus === "applied"
   )
     return;
   const original = trajectory.modelBaseContext ?? context,
@@ -3419,8 +3420,8 @@ function verifiedSingleCalendarReadReply(
     result = step.result;
   if (
     result?.success !== true ||
-    result.verifiedUserFacing !== true ||
-    typeof result.userFacingText !== "string"
+    (result.transcriptVisibility !== "internal" &&
+      result.verifiedUserFacing !== true)
   )
     return;
   if (
@@ -3438,10 +3439,14 @@ function verifiedSingleCalendarReadReply(
     !isObjectRecord(reply) ||
     reply.domain !== "calendar" ||
     reply.scenario !== "next_event" ||
-    reply.userFacingFacts !== result.userFacingText
+    typeof reply.userFacingFacts !== "string" ||
+    (result.verifiedUserFacing === true &&
+      reply.userFacingFacts !== result.userFacingText)
   )
     return;
-  return result.userFacingText.trim() || undefined;
+  // The read's canonical text is internal evidence during planning. Only
+  // this verified, single-intent terminal answer can use it verbatim.
+  return reply.userFacingFacts.trim() || undefined;
 }
 
 /** Scoped failure copy from current producer facts, never unsupported evaluator prose. */

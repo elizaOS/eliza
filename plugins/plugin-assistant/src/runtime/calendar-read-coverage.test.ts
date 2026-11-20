@@ -382,6 +382,40 @@ describe("request-bound Calendar read coverage", () => {
       calendarReadCoverage(f.output, f.context, f.trajectory).verified,
     ).toBe(true);
   });
+  it.each([true, false])(
+    "preserves the verified Calendar date with explicit model coverage %s",
+    async (explicitCoverage) => {
+      const f = fixture();
+      const step = requiredFixtureValue(f.trajectory.steps[0]);
+      const result = requiredFixtureValue(step.result);
+      const canonical = "Next event: Design review on October 5 at 10 AM UTC.";
+      step.result = {
+        ...result,
+        transcriptVisibility: "internal",
+        modelReplyRequired: true,
+        data: {
+          ...result.data,
+          replyContext: {
+            domain: "calendar",
+            scenario: "next_event",
+            userFacingFacts: canonical,
+          },
+        },
+      };
+      f.output.messageToUser = "Your next event is tomorrow at 10 AM.";
+      if (!explicitCoverage) {
+        delete f.output.requestFullyCovered;
+        delete f.output.outcomeCoverage;
+      }
+      const reply = await runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(f.output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(reply.success).toBe(true);
+      expect(reply.messageToUser).toBe(canonical);
+    },
+  );
   it("uses the sole current next-event read when the evaluator omits its citation", async () => {
     const f = fixture();
     delete f.output.outcomeCoverage;
