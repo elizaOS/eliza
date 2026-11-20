@@ -12,7 +12,10 @@ import {
   type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEvaluator,
 } from "@elizaos/core";
-import { currentAppRecordSource } from "@elizaos/plugin-assistant";
+import {
+  currentAppRecordSource,
+  SIMPLE_CONTEXT_ID,
+} from "@elizaos/plugin-assistant";
 import { selectedCalendarTarget } from "./actions/calendar-read-selected.js";
 import {
   ELIZA_CALENDAR_GRANT_ID,
@@ -190,8 +193,15 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
       const index = /^(?:(?:intent|int):)?([1-9][0-9]*)$/.exec(
         item.intentId,
       )?.[1];
+      const zeroBasedSlot =
+        item.intentId === "0" &&
+        value.length === 1 &&
+        item.operation === "propose_times" &&
+        item.source === "builtin" &&
+        item.execution === "required";
       if (
         !index &&
+        !zeroBasedSlot &&
         (item.intentId.startsWith("intent:") ||
           item.intentId.startsWith("int:") ||
           (!item.intentId.includes(" ") &&
@@ -331,6 +341,10 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
       declared.length === 0 && value.length > 0 && text ? [text] : declared;
     const bound = value.map((binding) => {
       if (/^intent:[1-9][0-9]*$/.test(binding.intentId)) return binding;
+      // A provider may use a zero-based index for the sole built-in slot request.
+      // Several intents give that index no safe interpretation.
+      if (binding.intentId === "0" && declared.length === 1)
+        return { ...binding, intentId: "intent:1" };
       // Some structured responses copy the exact wording of their own intent
       // instead of its index. Resolve that reference only if it is unique.
       const index = intents.indexOf(binding.intentId);
@@ -378,14 +392,16 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
       (!valid && value.some((binding) => binding.execution === "required")) ||
       accepted.some((binding) => binding.purpose === "mutation_prerequisite");
     const owned = getStreamingContext();
-    if (owned)
+    if (owned) {
+      owned.actionConstraints ??= new Map();
       rememberCalendarReadBindings(
-        (owned.actionConstraints ??= new Map()),
+        owned.actionConstraints,
         message,
         String(runtime.agentId),
         accepted,
         owned.abortSignal ?? turnSignal,
       );
+    }
     return {
       mutateResult(result) {
         if (valid && intents !== declared) result.intents = intents;
@@ -471,7 +487,9 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
     );
     const [read] = bindings;
     // The routing marker carries no domain work.
-    const domains = plan.contexts?.filter((context) => context !== "simple");
+    const domains = plan.contexts?.filter(
+      (context) => context !== SIMPLE_CONTEXT_ID,
+    );
     const singleBuiltInRead =
       bindings.length === 1 &&
       read?.source === "builtin" &&

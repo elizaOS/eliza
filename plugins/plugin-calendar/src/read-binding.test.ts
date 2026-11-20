@@ -136,6 +136,42 @@ describe("Calendar operation bindings", () => {
     });
     literalEffect?.mutateResult?.(literalResult);
     expect(literalResult.calendarReadBindings).toEqual(bindings);
+
+    const slot = {
+      intentId: "0",
+      source: "builtin",
+      operation: "propose_times",
+      execution: "required",
+      purpose: "requested_read",
+      filterEvidence: [],
+    };
+    const zeroBasedSlot = calendarReadBindingField.parse?.([slot], context);
+    if (!zeroBasedSlot) throw new Error("Singleton slot reference was dropped");
+    for (const intents of [[text], [text, "Read my note"]]) {
+      const result = {
+        ...parsed,
+        intents,
+        calendarReadBindings: zeroBasedSlot,
+      };
+      const effect = await calendarReadBindingField.handle?.({
+        ...context,
+        parsed: result,
+        value: zeroBasedSlot,
+      });
+      effect?.mutateResult?.(result);
+      expect(result.calendarReadBindings).toEqual(
+        intents.length === 1
+          ? [
+              expect.objectContaining({
+                intentId: "intent:1",
+                source: "builtin",
+              }),
+            ]
+          : [],
+      );
+    }
+    expect(calendarReadBindingField.parse?.([slot, slot], context)).toBeNull();
+
     const handler: MessageHandlerResult = {
       processMessage: "RESPOND",
       thought: "",
