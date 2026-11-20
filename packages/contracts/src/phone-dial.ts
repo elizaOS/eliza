@@ -35,10 +35,15 @@ const WRITTEN_DIAL_NUMBER =
  * that was asked for. A value that reads as more than one number, a range, a
  * date or an address is rejected too: a line break, a run of separators, a
  * space after a dash or dot, more than 15 digits (the E.164 limit) or a
- * year-month-day date.
+ * year-month-day date. A trunk "(0)" written after the country code, as in
+ * "+44 (0)20 7946 0958", is left out: a call with the country code does not
+ * dial it.
  */
 export function phoneDialNumber(value: unknown): string {
-  const written = typeof value === "string" ? value.trim() : "";
+  const written = (typeof value === "string" ? value.trim() : "").replace(
+    /^(\+\d{1,3}[ .-]?)\(0\)[ .-]?(?=\d)/,
+    "$1",
+  );
   const number = written.replace(/[ ().-]/g, "");
   if (
     !PHONE_DIAL_NUMBER.test(number) ||

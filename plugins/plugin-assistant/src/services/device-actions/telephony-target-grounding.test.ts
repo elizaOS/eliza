@@ -61,6 +61,9 @@ describe("owner-written numbers", () => {
       "+14155550100",
     ]);
     expect(writtenPhoneNumbers("+44 20 7946 0958")).toEqual(["+442079460958"]);
+    expect(writtenPhoneNumbers("+44 (0)20 7946 0958")).toEqual([
+      "+442079460958",
+    ]);
     expect(writtenPhoneNumbers("415 555 0100 or 415 302 4399")).toEqual([
       "4155550100",
       "4153024399",
@@ -112,6 +115,12 @@ describe("whole-message commands hand through the owner's recipient", () => {
       groundTelephonyTarget(call("+14155550100"), "call 415-555-0100")
         .operation,
     ).toEqual(call("4155550100"));
+  });
+
+  it("dials a number written with a trunk (0) after its country code", () => {
+    expect(
+      groundTelephonyTarget(call("+442079460958"), "call +44 (0)20 7946 0958"),
+    ).toEqual({ operation: call("+442079460958"), handedThrough: true });
   });
 
   it("hands a written name to the phone's own contact lookup", () => {
@@ -177,6 +186,12 @@ describe("other requests ground the model's recipient", () => {
       groundTelephonyTarget(call("911"), "there's a fire, call 911 now")
         .operation,
     ).toEqual(call("911"));
+    expect(
+      groundTelephonyTarget(
+        call("+442079460958"),
+        "could you ring +44 (0)20 7946 0958 after lunch",
+      ).operation,
+    ).toEqual(call("+442079460958"));
   });
 
   it("accepts a contact the owner named and refuses one they did not", () => {
