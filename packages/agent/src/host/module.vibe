@@ -19,9 +19,6 @@ export interface ViewFeeds {
 
 export type PublishEvent = (stream: string, payload: unknown, clientId?: string) => void
 
-export const noViewFeeds: ViewFeeds = { receivers: () => 0, onRendererClosed: () => () => {} }
-export const noPublish: PublishEvent = () => {}
-
 export interface ModuleContext {
   readonly runtime: AgentRuntime
   readonly launch: LaunchDocument
@@ -30,8 +27,8 @@ export interface ModuleContext {
   readonly timeZone: string
   readonly epoch: number
   readonly ownerEntityId: UUID
-  readonly publishEvent: PublishEvent
-  readonly viewFeeds: ViewFeeds
+  readonly publishEvent?: PublishEvent | undefined
+  readonly viewFeeds?: ViewFeeds | undefined
 }
 
 export type ModuleFactory<R> = (context: ModuleContext) => AgentModule!ModuleRefused!R

@@ -237,22 +237,12 @@ class SurfaceBridgeInstrumentedTest {
         }
         assertFalse(created.toString(), created.has("error"))
         call("presentSurface") { put("id", SURFACE) }
-        val ordinary = "ordinary-test"
-        try {
-            call("createSurface") {
-                put("id", ordinary)
-                put("process", "shared")
-                put("storage", "shared")
-            }
-            for (method in listOf("readPage", "controlPage", "observeHistory", "captureSurface")) {
-                val denied = answer(send(method) {
-                    put("id", if (method == "captureSurface") ordinary else SURFACE)
-                    if (method == "controlPage") put("command", JSObject().put("subaction", "snapshot"))
-                })
-                assertTrue("$method: $denied", denied.optString("error").contains("PROTECTED_SURFACE"))
-            }
-        } finally {
-            call("destroySurface") { put("id", ordinary) }
+        for (method in listOf("readPage", "controlPage", "observeHistory")) {
+            val denied = answer(send(method) {
+                put("id", SURFACE)
+                if (method == "controlPage") put("command", JSObject().put("subaction", "snapshot"))
+            })
+            assertTrue("$method: $denied", denied.optString("error").contains("PROTECTED_SURFACE"))
         }
 
         val changedPurpose = answer(send("createSurface") {

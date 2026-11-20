@@ -1,0 +1,285 @@
+// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all"
+import {
+  filesAdmitted,
+  filesFit,
+  launchSettingsAdmitted,
+  needsAccount,
+  notificationAdmitted,
+  routesAdmitted,
+  serviceNamed,
+  type AgentData,
+  type HostLaunch,
+} from "../../gen/os__agentService__config.effect.vibe"
+import { characterAdmitted, policyAdmitted, type Backend, type EnvEntry, type UrlShape } from "../../gen/agent__host__launch.effect.vibe"
+import { flatParam, validList, type Accept, type Group, type Piece, type Route as ModelRoute, type RouteList as ModelRouteList } from "../../gen/agent__access__routes.effect.vibe"
+
+export const AGENT_ASSETS = { host: "agent/host.json", character: "agent/character.json", policy: "agent/policy.json" } as const
+export type AgentFile = keyof typeof AGENT_ASSETS
+
+export error AgentConfigRefused { detail: string }
+
+const Nonblank = Schema.String.check(Schema.isPattern(/\S/))
+const UniqueNames = Schema.Array(Nonblank).check(Schema.makeFilter((names) => new Set(names).size === names.length))
+const PositiveInteger = Schema.Int.check(Schema.isGreaterThan(0))
+const ORIGIN = /^https:\/\/([a-zA-Z0-9-]+\.)*[a-zA-Z0-9-]+(:[0-9]{1,5})?$/
+const HTTPS_URL = /^https:\/\/[^\s?#@]+$/
+const CLASS_NAME = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/
+const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]*$/
+const RESERVED_ENVIRONMENT = /^(?:(?:ELIZA_AGENT_|ELIZA_CLOUD_|ELIZA_OWN_|LD_|NODE_).*|PATH|HOME|TMPDIR)$/
+const LITERAL = /^[A-Za-z0-9._-]+$/
+const PLACEHOLDER = /^\{[a-z][A-Za-z]*\}$/
+const isLiteral = (text: string) => LITERAL.test(text) && !/^\.+$/.test(text)
+
+function compiles(pattern: string): boolean {
+  try { new RegExp(`^(?:${pattern})$`, "u"); return pattern !== "" }
+  catch { return false }
+}
+
+function namedZone(zone: string): boolean {
+  try { new Intl.DateTimeFormat("en", { timeZone: zone }); return zone === "UTC" || zone.includes("/") }
+  catch { return false }
+}
+
+const Pattern = Schema.String.check(Schema.makeFilter(compiles))
+const Path = Schema.String.check(Schema.makeFilter((path) => path.startsWith("/") && path.slice(1).split("/").every((piece) => isLiteral(piece) || PLACEHOLDER.test(piece))))
+const Prefix = Schema.String.check(Schema.makeFilter((path) => path === "" || (path.startsWith("/") && path.slice(1).split("/").every(isLiteral))))
+const Query = Schema.Struct({
+  key: Schema.String,
+  accepts: Schema.Union([
+    Schema.Struct({ kind: Schema.Literal("any") }),
+    Schema.Struct({ kind: Schema.Literal("pattern"), pattern: Pattern }),
+    Schema.Struct({ kind: Schema.Literal("pinned"), value: Schema.String }),
+  ]),
+})
+const Route = Schema.Struct({
+  method: Schema.Literals(["GET", "POST", "PUT", "PATCH", "DELETE"]),
+  path: Path,
+  stream: Schema.optionalKey(Schema.Boolean),
+  query: Schema.optionalKey(Schema.Array(Query)),
+  maxBodyBytes: Schema.optionalKey(PositiveInteger),
+})
+const RouteGroup = Schema.Struct({ prefixes: Schema.Array(Prefix), id: Schema.optionalKey(Pattern), routes: Schema.Array(Route) })
+const RouteList = Schema.Union([Schema.Array(Route), Schema.Array(RouteGroup)])
+
+const Model = Schema.Union([
+  Schema.Struct({ backend: Schema.Literal("cloud"), cloudBaseUrl: Schema.String, smallModel: Schema.String, largeModel: Schema.String, imageModel: Schema.String }),
+  Schema.Struct({ backend: Schema.Literal("own-key"), ownKeyBaseUrl: Schema.String, ownKeySmall: Nonblank, ownKeyLarge: Nonblank }),
+  Schema.Struct({ backend: Schema.Literal("none") }),
+])
+const View = Schema.Struct({
+  id: Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9_-]{0,63}$/)),
+  label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80), Schema.isTrimmed(), Schema.isPattern(/^[^\p{Cc}]*$/u)),
+  path: Schema.String.check(Schema.isMaxLength(256), Schema.isPattern(/^\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+$/)),
+  aliases: Schema.optionalKey(Schema.Array(Schema.String.check(Schema.isPattern(/^[a-z](?:[a-z0-9 _-]{0,30}[a-z0-9])?$/))).check(Schema.isMinLength(1), Schema.isMaxLength(4))),
+})
+const viewNames = (view: typeof View.Type) => new Set([view.id, view.label, ...(view.aliases ?? [])].map((name) => name.toLowerCase()))
+const Views = Schema.Array(View).check(
+  Schema.isMaxLength(32),
+  Schema.makeFilter((views) => new TextEncoder().encode(JSON.stringify(views)).byteLength <= 16384),
+  Schema.makeFilter((views) => {
+    const names = views.flatMap((view) => [...viewNames(view)])
+    return new Set(names).size === names.length && new Set(views.map((view) => view.path)).size === views.length
+  }),
+)
+const Switches =<A extends string, B extends string>(first: A, second: B) => Schema.Struct({ [first]: Schema.Boolean, [second]: Schema.Boolean } as { [K in A | B]: typeof Schema.Boolean })
+
+const HostFile = Schema.Struct({
+  schema: Schema.Number,
+  service: Schema.String,
+  notification: Schema.Struct({ channel: Schema.String, title: Schema.String, text: Schema.String }),
+  routes: RouteList,
+  nativeRoutes: Schema.optionalKey(RouteList),
+  model: Schema.optionalKey(Model),
+  cloud: Schema.optionalKey(Schema.Struct({ baseUrl: Schema.String, smallModel: Schema.optionalKey(Schema.String), largeModel: Schema.optionalKey(Schema.String) })),
+  embeddings: Schema.optionalKey(Schema.Literals(["local", "none"])),
+  embeddingDimensions: Schema.optionalKey(Schema.Int),
+  persistMemory: Schema.optionalKey(Schema.Boolean),
+  callerRole: Schema.optionalKey(Schema.Literals(["owner", "user"])),
+  views: Schema.optionalKey(Views),
+  timeZone: Schema.optionalKey(Schema.String.check(Schema.makeFilter(namedZone))),
+  privacy: Schema.optionalKey(Switches("secretSwap", "piiSwap")),
+  google: Schema.optionalKey(Switches("gmailChanges", "calendarEdits")),
+  retention: Schema.optionalKey(Schema.Struct({ days: Schema.Number, maxRowsPerRoom: Schema.Int, intervalMinutes: Schema.Int })),
+  environment: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+}).check(Schema.makeFilter((host) => (host.model === undefined) !== (host.cloud === undefined)))
+
+const Examples = Schema.Array(Schema.Struct({
+  name: Nonblank,
+  content: Schema.Struct({ text: Schema.optionalKey(Schema.String), actions: Schema.optionalKey(Schema.Array(Nonblank)) }),
+}))
+const CharacterFile = Schema.Struct({
+  name: Schema.String.check(Schema.isTrimmed()),
+  system: Schema.String,
+  bio: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])),
+  adjectives: Schema.optionalKey(Schema.Array(Schema.String)),
+  style: Schema.optionalKey(Schema.Struct({
+    all: Schema.optionalKey(Schema.Array(Schema.String)),
+    chat: Schema.optionalKey(Schema.Array(Schema.String)),
+    post: Schema.optionalKey(Schema.Array(Schema.String)),
+  })),
+  messageExamples: Schema.optionalKey(Schema.Array(Schema.Union([Schema.Struct({ examples: Examples }), Examples]))),
+})
+
+const PolicyFile = Schema.Struct({
+  schema: Schema.Number,
+  actions: Schema.Struct({
+    allowed: Schema.Union([UniqueNames, Schema.Record(Nonblank, Schema.Unknown)]),
+    refused: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+  }),
+  plugins: Schema.Struct({ load: UniqueNames, product: Schema.optionalKey(Nonblank) }),
+})
+
+type HostFile = typeof HostFile.Type
+type PolicyFile = typeof PolicyFile.Type
+
+export interface AdmittedAgentData {
+  readonly service: string
+  readonly notification: { readonly channel: string; readonly title: string; readonly text: string }
+  readonly needsAccount: boolean
+}
+
+const trimmed = (text: string) => text.replace(/^[\u0000- ]+|[\u0000- ]+$/g, "")
+const words = (text: string) => ({ words: trimmed(text), units: trimmed(text).length })
+
+function urlShape(url: string): UrlShape {
+  if (ORIGIN.test(url) && URL.canParse(url)) return "HttpsOrigin"
+  return HTTPS_URL.test(url) && URL.canParse(url) ? "HttpsWithPath" : "NotHttps"
+}
+
+function backend(host: HostFile): Backend {
+  if (host.model === undefined) {
+    const cloud = host.cloud ?? { baseUrl: "" }
+    return { tag: "CloudBackend", baseUrl: cloud.baseUrl, baseUrlShape: urlShape(cloud.baseUrl), smallModel: cloud.smallModel ?? "", largeModel: cloud.largeModel ?? "", imageModel: "" }
+  }
+  const model = host.model
+  switch (model.backend) {
+    case "cloud": return { tag: "CloudBackend", baseUrl: model.cloudBaseUrl, baseUrlShape: urlShape(model.cloudBaseUrl), smallModel: model.smallModel, largeModel: model.largeModel, imageModel: model.imageModel }
+    case "own-key": {
+      const shape = urlShape(model.ownKeyBaseUrl)
+      return { tag: "OwnKeyBackend", baseUrl: model.ownKeyBaseUrl, baseUrlShape: shape, smallModel: model.ownKeySmall, largeModel: model.ownKeyLarge }
+    }
+    case "none": return { tag: "NoBackend" }
+  }
+}
+
+const environment = (settings: Readonly<Record<string, string>>): EnvEntry[] => Object.entries(settings).map(([key, value]) => ({
+  key,
+  keyKind: !ENVIRONMENT_NAME.test(key) ? "MalformedKey" : RESERVED_ENVIRONMENT.test(key) ? "ReservedKey" : "PluginSetting",
+  singleLine: !/[\u0000\r\n]/.test(value),
+}))
+
+function hostLaunch(host: HostFile): HostLaunch {
+  const embeddings = host.embeddings ?? "none"
+  return {
+    backend: backend(host),
+    embeddings: embeddings === "local" ? { tag: "LocalEmbeddings", dimensions: host.embeddingDimensions ?? 0 } : { tag: "NoEmbeddings" },
+    persistMemory: host.persistMemory ?? false,
+    callerRole: (host.callerRole ?? "owner") === "owner" ? "ChatAsOwner" : "ChatAsUser",
+    google: host.google ?? { gmailChanges: false, calendarEdits: false },
+    retention: host.retention === undefined ? { tag: "KeepLogs" }
+      : { tag: "PruneLogs", dayThousandths: Math.ceil(host.retention.days * 1000), maxRowsPerRoom: host.retention.maxRowsPerRoom, intervalMinutes: host.retention.intervalMinutes },
+    environment: environment(host.environment ?? {}),
+  }
+}
+
+function pieces(path: string): Piece[] {
+  return path.slice(1).split("/").map((text) => PLACEHOLDER.test(text) ? { tag: "Param" } : { tag: "Literal", text })
+}
+
+function accept(accepts: typeof Query.Type["accepts"]): Accept {
+  switch (accepts.kind) {
+    case "any": return { tag: "AnyValue" }
+    case "pattern": return { tag: "Matching", pattern: accepts.pattern }
+    case "pinned": return { tag: "Pinned", value: accepts.value }
+  }
+}
+
+const modelRoute = (route: typeof Route.Type): ModelRoute => ({
+  method: ({ GET: "Get", POST: "Post", PUT: "Put", PATCH: "Patch", DELETE: "Delete" } as const)[route.method],
+  delivery: route.stream ? "Streamed" : "Buffered",
+  path: pieces(route.path),
+  query: (route.query ?? []).map((rule) => ({ key: rule.key, accepts: accept(rule.accepts) })),
+  limit: route.maxBodyBytes === undefined ? { tag: "AnySize" } : { tag: "AtMost", bytes: route.maxBodyBytes },
+})
+
+const modelGroup = (group: typeof RouteGroup.Type): Group => ({
+  prefixes: group.prefixes.map((prefix) => prefix === "" ? [] : prefix.slice(1).split("/")),
+  id: group.id ?? "",
+  routes: group.routes.map(modelRoute),
+})
+
+function routeList(routes: typeof RouteList.Type): ModelRouteList {
+  const flat = routes.flatMap((entry) => "method" in entry ? [entry] : [])
+  if (flat.length > 0) return [modelGroup({ prefixes: [""], id: flatParam, routes: flat })]
+  return routes.flatMap((entry) => "routes" in entry ? [modelGroup(entry)] : [])
+}
+
+function allowed(policy: PolicyFile): string[] {
+  const names = policy.actions.allowed
+  return Array.isArray(names) ? [...names] : Object.keys(names).sort()
+}
+
+function agentData(bytes: Readonly<Record<AgentFile, number>>, host: HostFile, character: typeof CharacterFile.Type, policy: PolicyFile): AgentData {
+  return {
+    hostBytes: bytes.host,
+    characterBytes: bytes.character,
+    policyBytes: bytes.policy,
+    host: {
+      schema: host.schema,
+      service: CLASS_NAME.test(host.service) ? { tag: "QualifiedClass", className: host.service } : { tag: "MalformedClass" },
+      notification: { channel: words(host.notification.channel), title: words(host.notification.title), text: words(host.notification.text) },
+      routes: routeList(host.routes),
+      launch: hostLaunch(host),
+    },
+    character: { name: character.name, nameUnits: character.name.length, systemBlank: !/\S/.test(character.system) },
+    policy: {
+      schema: policy.schema,
+      policy: { actionsAllowed: allowed(policy), pluginsLoad: [...policy.plugins.load], productPlugin: policy.plugins.product === undefined ? { tag: "NoProductPlugin" } : { tag: "NamedProductPlugin", name: policy.plugins.product } },
+    },
+  }
+}
+
+function broken(d: AgentData, native: ModelRouteList | undefined): string | undefined {
+  if (!filesFit(d)) return "Each agent data file is at most 256 KiB, and the host and policy files are schema 1"
+  if (!serviceNamed(d.host.service)) return "The agent service is not a qualified class name"
+  if (!notificationAdmitted(d.host.notification)) return "The agent notification channel, title and text are each 1 to 200 characters"
+  if (!routesAdmitted(d)) return "The renderer's route list is not one the route gate admits"
+  if (native !== undefined && !validList(native)) return "The native route list is not one the route gate admits"
+  if (!characterAdmitted(d.character)) return "The agent character needs a name of 1 to 50 characters and a system prompt"
+  if (!policyAdmitted(d.policy.policy)) return "The agent policy allows a nonempty set of named actions and loads unique plugins"
+  if (!launchSettingsAdmitted(d.host.launch)) return "The agent model, embeddings, retention or environment are not ones the agent admits"
+  return filesAdmitted(d) ? undefined : "The agent data files are not admitted"
+}
+
+const decodeHost = Schema.decodeUnknownEffect(Schema.fromJsonString(HostFile), { onExcessProperty: "error" })
+const decodeCharacter = Schema.decodeUnknownEffect(Schema.fromJsonString(CharacterFile), { onExcessProperty: "error" })
+const decodePolicy = Schema.decodeUnknownEffect(Schema.fromJsonString(PolicyFile), { onExcessProperty: "error" })
+
+effect function text(name: AgentFile, bytes: Uint8Array) {
+  return try Effect.try({ try: () => new TextDecoder("utf-8", { fatal: true }).decode(bytes), catch: () => new AgentConfigRefused({ detail: `The agent ${name} file is not UTF-8` }) })
+}
+
+export effect function admitAgentBytes(files: Readonly<Record<AgentFile, Uint8Array>>) {
+  const refused = (name: AgentFile) => () => new AgentConfigRefused({ detail: `The agent ${name} file does not decode under its schema` })
+  const host = try decodeHost(try text("host", files.host)).pipe(Effect.mapError(refused("host")))
+  const character = try decodeCharacter(try text("character", files.character)).pipe(Effect.mapError(refused("character")))
+  const policy = try decodePolicy(try text("policy", files.policy)).pipe(Effect.mapError(refused("policy")))
+  for (const name of Object.keys(policy.actions.refused ?? {}))
+    if (allowed(policy).includes(name)) throw new AgentConfigRefused({ detail: `Action ${name} is both allowed and refused` })
+  if (host.embeddingDimensions !== undefined && host.embeddingDimensions <= 0) throw new AgentConfigRefused({ detail: "The agent embeddingDimensions is a positive whole number" })
+  const data = agentData({ host: files.host.byteLength, character: files.character.byteLength, policy: files.policy.byteLength }, host, character, policy)
+  const detail = broken(data, host.nativeRoutes === undefined ? undefined : routeList(host.nativeRoutes))
+  if (detail !== undefined) throw new AgentConfigRefused({ detail })
+  const notification = data.host.notification
+  return {
+    service: host.service,
+    notification: { channel: notification.channel.words, title: notification.title.words, text: notification.text.words },
+    needsAccount: needsAccount(data.host.launch.backend),
+  } satisfies AdmittedAgentData
+}
+
+export effect function admitAgentData(paths: Readonly<Record<AgentFile, string>>) {
+  const files = try FileSystem.FileSystem
+  const read = (name: AgentFile) => files.readFile(paths[name]).pipe(Effect.mapError(() => new AgentConfigRefused({ detail: `The agent ${name} file is missing` })))
+  return try admitAgentBytes({ host: try read("host"), character: try read("character"), policy: try read("policy") })
+}

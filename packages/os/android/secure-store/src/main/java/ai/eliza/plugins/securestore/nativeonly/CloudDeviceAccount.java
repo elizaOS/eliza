@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.regex.Pattern;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 public final class CloudDeviceAccount {
@@ -205,12 +206,17 @@ public final class CloudDeviceAccount {
    if (snapshot == null) return null;
    JSONObject pending = new JSONObject(snapshot);
    return method.equals(pending.optString("method", "browser")) && state.equals(pending.getString("state"))
-       && pending.getLong("expiresAt") > System.currentTimeMillis() ? snapshot : null;
+       && pendingActive(pending) ? snapshot : null;
   }
  }
 
+ private static boolean pendingActive(JSONObject pending) throws JSONException {
+  return pending.getLong("expiresAt") > System.currentTimeMillis();
+ }
+
  private boolean exchangeCode(String code, String snapshot) throws Exception {
-  String verifier = new JSONObject(snapshot).getString("verifier");
+  JSONObject pending = new JSONObject(snapshot);
+  String verifier = pending.getString("verifier");
   JSONObject request = new JSONObject().put("code", code).put("verifier", verifier);
   JSONObject response = new JSONObject(post("/api/auth/device/exchange", request, null, 200).body());
   String token = response.getString("token");
@@ -218,7 +224,7 @@ public final class CloudDeviceAccount {
   String accountId = identifier(response, "accountId"), organizationId = identifier(response, "organizationId");
   if (!opaque(token) || seconds < 1 || seconds > MAX_CREDENTIAL_SECONDS) throw new IOException("Invalid device credential response");
   synchronized (LOCK) {
-   if (snapshot.equals(slots.read(PENDING))) {
+   if (snapshot.equals(slots.read(PENDING)) && pendingActive(pending)) {
     slots.write(ACK, new JSONObject().put("token", token).put("accountId", accountId).put("organizationId", organizationId).put("expiresAt", System.currentTimeMillis() + seconds * 1000).toString());
     slots.remove(PENDING);
    } else {
@@ -227,6 +233,14 @@ public final class CloudDeviceAccount {
    }
   }
   return finishAcknowledgment();
+ }
+
+ public boolean isDeviceOnly() throws Exception {
+  synchronized (LOCK) {
+   if (slots.read(CREDENTIAL) != null || slots.read(ACK) != null) return false;
+   String pending = slots.read(PENDING);
+   return pending == null || !pendingActive(new JSONObject(pending));
+  }
  }
 
  public boolean awaitingAcknowledgment() throws Exception {

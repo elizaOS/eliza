@@ -235,8 +235,9 @@ type Handler = Parameters<IAgentRuntime["registerModel"]>[1]
 
 export function registerTwice(runtime: IAgentRuntime, provider: string, handlers: Readonly<Record<string, unknown>>, metadata: ModelRegistrationMetadata): void {
   for (const [modelType, handler] of Object.entries(handlers)) {
+    const serve = handler as Handler
     for (let registration = 0; registration < 2; registration++) {
-      runtime.registerModel(modelType, handler as Handler, provider, undefined, metadata)
+      runtime.registerModel(modelType, (agent, params) => serve(agent, params), provider, undefined, metadata)
     }
   }
 }

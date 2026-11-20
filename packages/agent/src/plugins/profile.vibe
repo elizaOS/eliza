@@ -1,8 +1,16 @@
 // spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/plugins/profile.md, "The product plugin must be in the bundle"
 import type { AgentPlugin, ModuleFactory } from "../host/module.vibe"
 import { isAgentPlugin } from "./product.vibe"
+import { approvalsModule, approvalsModuleName } from "../approvals/module.vibe"
+import { notificationsModule, notificationsModuleName } from "../notifications/module.vibe"
+import { basicActionsModule, basicActionsModuleName } from "./basic-actions.vibe"
+import { replyDraftModule, replyDraftModuleName } from "../device-actions/reply-draft.vibe"
 
 export const builtinModuleFactories: ReadonlyMap<string, ModuleFactory<never>> = new Map<string, ModuleFactory<never>>([
+  [basicActionsModuleName, basicActionsModule],
+  [approvalsModuleName, approvalsModule],
+  [notificationsModuleName, notificationsModule],
+  [replyDraftModuleName, replyDraftModule],
 ])
 
 export interface BundledEntry {

@@ -1,37 +1,25 @@
-// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent within a budget"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent within a budget"
 package ai.eliza.os.agent;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 final class AgentSupervisor {
-  static final long READY_TIMEOUT_MS = 60_000L;
   static final long READY_POLL_MS = 1_000L;
   static final long STOP_GRACE_MS = 5_000L;
   static final long LOG_BYTES = 1024 * 1024;
   static final String AGENT_SCRIPT = "agent.mjs";
-
-  enum ExitClass { CLEAN, RELEASE_FAILED, CONFIG, CREDENTIAL, STORAGE, AGENT, CRASH }
-
-  static ExitClass exitClass(int code) {
-    return switch (code) {
-      case 0 -> ExitClass.CLEAN;
-      case 1 -> ExitClass.RELEASE_FAILED;
-      case 78 -> ExitClass.CONFIG;
-      case 77 -> ExitClass.CREDENTIAL;
-      case 74 -> ExitClass.STORAGE;
-      case 70 -> ExitClass.AGENT;
-      default -> ExitClass.CRASH;
-    };
-  }
 
   record Command(Path node, Path bundleDir, Path launchDocument, Path stateDir, Path socket, Path log) {
     ProcessBuilder builder() throws IOException {
@@ -89,7 +77,7 @@ final class AgentSupervisor {
     Process process = builder.start();
     Child child;
     try {
-      child = new Child(epoch, process.pid(), process);
+      child = new Child(epoch, pidOf(command.socket()), process);
       journal.spawned(epoch, child.pid);
       try (OutputStream input = process.getOutputStream()) { input.write(frame); }
     } catch (IOException | RuntimeException failed) {
@@ -113,7 +101,7 @@ final class AgentSupervisor {
   }
 
   private static void awaitReady(Child child, Readiness readiness, Listener listener) {
-    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(READY_TIMEOUT_MS);
+    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(AgentPolicy.READY_TIMEOUT_MS);
     while (child.alive() && !child.stopping()) {
       boolean ready = false;
       try { ready = readiness.ready(child.epoch); }
@@ -125,6 +113,29 @@ final class AgentSupervisor {
       try { TimeUnit.NANOSECONDS.sleep(Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(READY_POLL_MS))); }
       catch (InterruptedException interrupted) { return; }
     }
+  }
+
+  private static long pidOf(Path socket) throws IOException {
+    String parent = Integer.toString(android.os.Process.myPid());
+    String target = socket.toAbsolutePath().toString();
+    try (DirectoryStream<Path> entries = Files.newDirectoryStream(Paths.get("/proc"), entry -> entry.getFileName().toString().matches("[0-9]+"))) {
+      for (Path entry : entries) {
+        String stat, cmdline;
+        try {
+          stat = new String(Files.readAllBytes(entry.resolve("stat")), StandardCharsets.US_ASCII);
+          int end = stat.lastIndexOf(')');
+          String[] fields = end < 0 ? new String[0] : stat.substring(end + 2).split(" ");
+          if (fields.length < 2 || !fields[1].equals(parent)) continue;
+          cmdline = new String(Files.readAllBytes(entry.resolve("cmdline")), StandardCharsets.UTF_8);
+        } catch (IOException gone) {
+          continue;
+        }
+        List<String> argv = List.of(cmdline.split("\0"));
+        int flag = argv.indexOf("--socket");
+        if (flag >= 0 && flag + 1 < argv.size() && argv.get(flag + 1).equals(target)) return Long.parseLong(entry.getFileName().toString());
+      }
+    }
+    throw new IOException("The started agent child was not found among this app's processes");
   }
 
   private static void rotate(Path log) throws IOException {

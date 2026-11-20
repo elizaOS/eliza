@@ -3,9 +3,8 @@ import { AgentRuntime, logger, type Character, type IMessageService, type Runtim
 import type { BootFailure, LaunchPolicy } from "../../gen/agent__host__launch.ts"
 import { Machine, cloudLinkPlugin, machine, overlaps, privacyPlugin, storagePlugin, type PlanFailure, type PlanPhase, type ProcessValue, type WorkerLaunch } from "../../gen/agent__plugins__profile.effect.vibe"
 import type { LocalRoute } from "../access/routes.vibe"
-import { bundledPlugins } from "./bundled.vibe"
+import { builtinModuleFactories } from "../plugins/profile.vibe"
 import { ModuleRefused, actionNames, routePrefixes, type AgentPlugin, type ModuleContext, type ModuleFactory } from "./module.vibe"
-import { builtinModuleFactories } from "./modules.vibe"
 
 export type WorkerPin =
   | { readonly kind: "none" }
@@ -20,22 +19,23 @@ export interface ComposeInput {
   readonly character: Character
   readonly settings: RuntimeSettings
   readonly policy: LaunchPolicy
-  readonly bundled?: ReadonlyMap<string, AgentPlugin> | undefined
+  readonly bundled: ReadonlyMap<string, AgentPlugin>
   readonly modules?: ReadonlyMap<string, ModuleFactory<never>> | undefined
   readonly context: Omit<ModuleContext, "runtime">
   readonly hostRoutes?: readonly string[] | undefined
   readonly storage: AgentPlugin
   readonly cloudLink: AgentPlugin
   readonly privacy: Privacy
-  readonly messageService: (runtime: AgentRuntime) => IMessageService
+  readonly messageService: (runtime: AgentRuntime, actionGate: ActionGate) => IMessageService
   readonly worker: WorkerPin
 }
+
+export type ActionGate = (action: { readonly name: string }) => string | undefined
 
 export interface ComposedAgent {
   readonly runtime: AgentRuntime
   readonly routes: readonly LocalRoute[]
   readonly allowed: ReadonlySet<string>
-  actionGate(action: { readonly name: string }): string | undefined
   workerEnvironment(offered: readonly ProcessValue[]): ProcessValue[]!WorkerNotVerified
 }
 
@@ -104,7 +104,7 @@ function workerLaunch(worker: WorkerPin): WorkerLaunch {
 
 effect function loadPlan(runtime: AgentRuntime, input: ComposeInput) {
   const sources: Sources = {
-    bundled: input.bundled ?? bundledPlugins,
+    bundled: input.bundled,
     modules: input.modules ?? builtinModuleFactories,
     context: { ...input.context, runtime },
   }
@@ -145,14 +145,13 @@ effect function loadPlan(runtime: AgentRuntime, input: ComposeInput) {
   }
   try orDie(plan.send({ type: "finishPlan" }))
   state = try settled(plan, "allowlist")
-  runtime.messageService = input.messageService(runtime)
   const allowed: ReadonlySet<string> = new Set(state.allowed)
+  runtime.messageService = input.messageService(runtime, (action) =>
+    allowed.has(action.name) ? undefined : `Action ${action.name} is not available in this product`)
   return {
     runtime,
     routes,
     allowed,
-    actionGate: (action: { readonly name: string }) =>
-      allowed.has(action.name) ? undefined : `Action ${action.name} is not available in this product`,
     workerEnvironment: effect (offered: readonly ProcessValue[]) => {
       const next = plan.send({ type: "spawnWorker", offered: [...offered] }) catch effect (rejected) => {
         throw new WorkerNotVerified({ phase: rejected.state.phase })

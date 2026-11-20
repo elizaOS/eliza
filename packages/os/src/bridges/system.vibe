@@ -156,7 +156,7 @@ schema Shade { status: "opened" | "standalone" | "permission-missing" | "unsuppo
 schema Volume { stream: "music" | "ring" | "alarm" | "notification" | "system" | "voiceCall"; current: number; max: number }
 schema DeviceSettings { brightness: number; brightnessMode: "manual" | "automatic" | "unknown"; canWriteSettings: boolean; volumes: Volume[] }
 schema Flashlight { available: boolean; enabled: boolean }
-const Status = Schema.Struct({ packageName: Schema.String, roles: Schema.Array(Schema.Unknown) })
+schema Status { packageName: string; roles: Schema.Unknown[] }
 const RoleRow = Schema.Struct({ role: Schema.Literals(["home", "dialer", "sms", "assistant"]), androidRole: Schema.optionalKey(Schema.Unknown), held: Schema.Boolean, available: Schema.Boolean, holders: Schema.optionalKey(Schema.Unknown) })
 schema BuildInfo { launcher: boolean; version: string }
 schema LaunchInfo { assistant: boolean }
@@ -178,7 +178,7 @@ schema Readiness {
   canChangeDefaultsSilently: false
 }
 const CrashLogReply = Schema.Struct({ entries: Schema.optionalKey(Schema.Unknown), exitHistory: Schema.optionalKey(Schema.Unknown) })
-const Listed = Schema.Struct({ apps: Schema.Array(Schema.Unknown) })
+schema Listed { apps: Schema.Unknown[] }
 
 export function launcherRefusalCode(error: unknown): LauncherRefusalCode | undefined {
   const code = rejectionCode(error)

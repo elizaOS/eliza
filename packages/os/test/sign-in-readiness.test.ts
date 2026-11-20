@@ -1,5 +1,8 @@
 // spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; spec/os/signIn/readiness.md, "Story: Read the service's own terms"
 import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import * as spec from "../gen/os__signIn__readiness.ts";
 import { compileAdapter } from "./drivers/jvm-adapter.ts";
@@ -7,16 +10,31 @@ import { compileAdapter } from "./drivers/jvm-adapter.ts";
 interface Case { readonly fn: string; readonly args: readonly unknown[]; readonly result: unknown }
 
 const javaTool = (name: string) => process.env.JAVA_HOME ? `${process.env.JAVA_HOME}/bin/${name}` : name;
+const ORG_JSON = path.join(homedir(), ".gradle", "caches", "modules-2", "files-2.1", "org.json", "json", "20250517");
 
-function javaCases(): Case[] {
-  const main = "ai.eliza.plugins.signin.ReadinessLawCheck";
-  const out = execFileSync(javaTool("java"), ["-cp", compileAdapter(main), main], { encoding: "utf8", maxBuffer: 1 << 28 });
-  return out.split("\n").filter(Boolean).map((line) => JSON.parse(line) as Case);
+function orgJson(): string {
+  const jar = existsSync(ORG_JSON)
+    ? readdirSync(ORG_JSON).map((hash) => path.join(ORG_JSON, hash, "json-20250517.jar")).find((candidate) => existsSync(candidate))
+    : undefined;
+  if (jar === undefined) throw new Error(`org.json 20250517 is required at runtime: resolve it once with Gradle into ${ORG_JSON}`);
+  return jar;
 }
+
+function javaLines(main: string, classpath: readonly string[] = []): unknown[] {
+  const out = execFileSync(javaTool("java"), ["-cp", [compileAdapter(main), ...classpath].join(path.delimiter), main], { encoding: "utf8", maxBuffer: 1 << 28, timeout: 120_000 });
+  return out.split("\n").filter(Boolean).map((line) => JSON.parse(line) as unknown);
+}
+
+function journey(): ReadonlyMap<string, unknown> {
+  const lines = javaLines("ai.eliza.plugins.signin.ReadinessJourney", [orgJson()]) as { step: string; value: unknown }[];
+  return new Map(lines.map((line) => [line.step, line.value]));
+}
+
+const seen = (methods: { email: boolean; sms: boolean; google: boolean }) => ({ methodsKnown: true, ...methods });
 
 describe("Show only the methods the cloud is ready for", () => {
   it("answers as the generated spec does over every value the spec names", () => {
-    const cases = javaCases();
+    const cases = javaLines("ai.eliza.plugins.signin.ReadinessLawCheck") as Case[];
     const functions = spec as unknown as Record<string, (...args: unknown[]) => unknown>;
     const names = new Set(cases.map((c) => c.fn));
     expect(cases.length).toBeGreaterThan(1000);
@@ -27,12 +45,38 @@ describe("Show only the methods the cloud is ready for", () => {
       expect(cases.filter((c) => c.fn === law && c.result !== true)).toEqual([]);
     }
   });
+
+  it("serves a fresh answer at once, measures behind it, keeps it through no reading and announces only a change", () => {
+    const steps = journey();
+    expect(["registration-no-client", "registration-test-environment-not-enabled", "registration-plain-http", "registration-no-production",
+      "registration-shared-origin", "registration-hosted-mode"].map((step) => steps.get(step))).toEqual(Array(6).fill("refused"));
+    expect(steps.get("registration-valid")).toBe("accepted");
+    expect(steps.get("load-probes")).toEqual([1, 1]);
+    expect(steps.get("load-query")).toBe("/api/v1/app-auth/mobile/config?clientId=ai.example.phone&environment=production&redirectUri=https%3A%2F%2Fapp.cloud.test%2Fauth%2Fproduction");
+    expect(steps.get("first-answer-announced")).toBe(0);
+    expect(steps.get("fresh-served")).toEqual(seen({ email: true, sms: false, google: true }));
+    expect(steps.get("fresh-probes")).toBe(0);
+    expect([steps.get("recheck-served-count"), steps.get("recheck-probes"), steps.get("unchanged-announced")]).toEqual([2, 1, 0]);
+    expect(steps.get("no-reading-probes")).toBe(2);
+    expect(steps.get("no-reading-keeps-after")).toEqual(seen({ email: true, sms: false, google: true }));
+    expect(steps.get("no-reading-announced")).toBe(0);
+    expect(steps.get("changed-announced")).toEqual({ environment: "production", ...seen({ email: true, sms: true, google: true }) });
+    expect(steps.get("changed-announced-count")).toBe(1);
+    expect([steps.get("complete-probes"), steps.get("expired-probes")]).toEqual([0, 1]);
+    expect(steps.get("refused-client")).toEqual(seen({ email: false, sms: false, google: false }));
+    expect(steps.get("refused-client-announced")).toEqual({ environment: "production", ...seen({ email: false, sms: false, google: false }) });
+    expect(steps.get("unknown-environment")).toBe(false);
+    expect([steps.get("resume-without-screen-probes"), steps.get("resume-after-screen-probes")]).toEqual([0, 1]);
+    expect(steps.get("browser-unverified")).toEqual(seen({ email: true, sms: true, google: false }));
+    expect(steps.get("browser-verified")).toEqual(seen({ email: true, sms: true, google: true }));
+  });
 });
 
 describe("Read the service's own terms", () => {
-  it("is shown only for a registered environment and a well-formed 200 answer", () => {
-    expect(spec.serviceOutcome(true, 200, true)).toBe("ServiceShown");
-    expect(spec.serviceOutcome(true, 200, false)).toBe("ServiceUnavailable");
-    expect(spec.serviceOutcome(false, 200, true)).toBe("ServiceUnknownEnvironment");
+  it("is read only from the registered environment's API origin and shown as received, or reported unavailable", () => {
+    const steps = journey();
+    expect(steps.get("service-origins")).toEqual(["https://staging-api.cloud.test"]);
+    expect(steps.get("service-body")).toEqual(steps.get("service-expected-document"));
+    expect(steps.get("service-outcomes")).toEqual(["SERVICE_SHOWN", "SERVICE_UNAVAILABLE", "SERVICE_UNAVAILABLE", "SERVICE_UNKNOWN_ENVIRONMENT"]);
   });
 });

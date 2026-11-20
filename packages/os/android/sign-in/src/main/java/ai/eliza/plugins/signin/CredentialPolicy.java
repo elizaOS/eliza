@@ -89,6 +89,7 @@ public final class CredentialPolicy {
     record SignedOutNotice() implements Notice {}
     record ExpiredNotice() implements Notice {}
     record VerifyAccount() implements Notice {}
+    record RefreshAccountSession() implements Notice {}
   }
 
   public record Step(State state, List<Notice> out) {
@@ -244,11 +245,10 @@ public final class CredentialPolicy {
 
   public static boolean canReadSession(State s) { return canDropSession(s) && !sessionUsable(s); }
 
-  public static State readSession(State s) {
-    if (!(s.session() instanceof Session.Held t)) return s;
-    return s.with(t.refreshing()
-      ? new Session.Held(t.version(), t.until(), t.accessExpiresAt(), true, t.waiters() + 1)
-      : new Session.Held(t.version(), t.until(), t.accessExpiresAt(), true, t.waiters()));
+  public static Step readSession(State s) {
+    if (!(s.session() instanceof Session.Held t)) return Step.of(s);
+    if (t.refreshing()) return Step.of(s.with(new Session.Held(t.version(), t.until(), t.accessExpiresAt(), true, t.waiters() + 1)));
+    return new Step(s.with(new Session.Held(t.version(), t.until(), t.accessExpiresAt(), true, 0)), List.of(new Notice.RefreshAccountSession()));
   }
 
   public static boolean canRefreshAnswered(State s) { return s.session() instanceof Session.Held t && t.refreshing(); }
@@ -280,7 +280,7 @@ public final class CredentialPolicy {
     }
     String session = s.session() instanceof Session.Held t
       ? "{\"tag\":\"Session\",\"version\":" + t.version() + ",\"until\":" + t.until() + ",\"accessExpiresAt\":" + t.accessExpiresAt()
-        + ",\"refreshing\":" + t.refreshing() + ",\"waiters\":" + t.waiters() + "}"
+        + ",\"refresh\":" + (t.refreshing() ? "{\"tag\":\"Refreshing\",\"waiters\":" + t.waiters() + "}" : "{\"tag\":\"NotRefreshing\"}") + "}"
       : "{\"tag\":\"NoSession\"}";
     return "{\"now\":" + s.now() + ",\"generation\":" + s.generation() + ",\"lastVersion\":" + s.lastVersion() + ",\"custody\":" + custody
       + ",\"attempt\":" + attempt + ",\"duties\":" + duties.append(']') + ",\"session\":" + session + "}";
@@ -290,6 +290,7 @@ public final class CredentialPolicy {
     if (n instanceof Notice.Announce a) return "{\"tag\":\"Announce\",\"version\":" + a.version() + ",\"account\":" + json(a.account()) + "}";
     if (n instanceof Notice.SignedOutNotice) return "{\"tag\":\"SignedOutNotice\"}";
     if (n instanceof Notice.ExpiredNotice) return "{\"tag\":\"ExpiredNotice\"}";
+    if (n instanceof Notice.RefreshAccountSession) return "{\"tag\":\"RefreshAccountSession\"}";
     return "{\"tag\":\"VerifyAccount\"}";
   }
 
@@ -323,8 +324,16 @@ public final class CredentialPolicy {
     Map<String, Object> x = CredentialJson.object(s.get("session"), "session");
     Session session = switch (CredentialJson.text(x, "tag")) {
       case "NoSession" -> NO_SESSION;
-      case "Session" -> new Session.Held(CredentialJson.small(x, "version"), CredentialJson.whole(x, "until"), CredentialJson.whole(x, "accessExpiresAt"),
-        CredentialJson.flag(x, "refreshing"), CredentialJson.small(x, "waiters"));
+      case "Session" -> {
+        Map<String, Object> r = CredentialJson.object(x.get("refresh"), "refresh");
+        boolean refreshing = switch (CredentialJson.text(r, "tag")) {
+          case "NotRefreshing" -> false;
+          case "Refreshing" -> true;
+          default -> throw new CredentialJson.Malformed("refresh");
+        };
+        yield new Session.Held(CredentialJson.small(x, "version"), CredentialJson.whole(x, "until"), CredentialJson.whole(x, "accessExpiresAt"),
+          refreshing, refreshing ? CredentialJson.small(r, "waiters") : 0);
+      }
       default -> throw new CredentialJson.Malformed("session");
     };
     State parsed = new State(CredentialJson.whole(s, "now"), CredentialJson.small(s, "generation"), CredentialJson.small(s, "lastVersion"), custody, attempt, duties, session);

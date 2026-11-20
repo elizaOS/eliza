@@ -4,17 +4,19 @@ The messages module (`packages/os/android/messages/`, from
 `plugins/plugin-native-messages/android`). A host that declares telephony
 subclasses the abstract `TelephonyPlugin` under its own plugin name and
 registers it only on a verified system image; calls are admitted as
-[the bridge](./bridge.md) says. The operations `sms-send` and `mms-send`,
+[the bridge](./bridge.md) says. The operations `sms_send` and `mms_send`,
 their shape checks and the capabilities `sms.send.v1`, `mms.send.v1` and
 `messages.read.v1` are the agent's
 ([operations](../../agent/deviceActions/operations.md),
-[capabilities](../../agent/deviceActions/capabilities.md)); this spec keeps
-what Android must confirm before a send, what the send journal answers, what
-a receipt may claim, what is written to Android's providers, what a
-new-message notice action may do and what a deletion may report. Carrier
-delivery is never inferred. Calls and voicemail are [phone](./phone.md)'s
-and [voicemail](./voicemail.md)'s; the agent's own notices are
-[notice routes](./noticeRoutes.md)'.
+[capabilities](../../agent/deviceActions/capabilities.md)); a request for the
+default SMS role is [system](./system.md)'s. This spec keeps what Android must
+confirm before a send, what the send journal answers, what a status may
+claim, what a new-message notice action may write and what a deletion may
+report. Carrier delivery is never inferred. Calls and voicemail are
+[phone](./phone.md)'s and [voicemail](./voicemail.md)'s. A new-message
+notice is this module's own: it is posted for an incoming message, not for
+an agent result, so the account fence and tap tokens of
+[notice routes](./noticeRoutes.md) do not apply to it.
 
 ## Story: Send only what I reviewed, once
 
@@ -27,48 +29,41 @@ and [voicemail](./voicemail.md)'s; the agent's own notices are
 ### Native confirmation and current ownership precede dispatch, and a cancel is refused once Android has the message
 
 A send is admitted only from the unlocked phone in front, with the send
-grant and a phone that can send texts. The send captures its operation ID
-before its journal lookup. A usable journal answer queues the native review
-dialog, which the visible owner approves once; a send the owner composed
-and tapped Send on in the host's own composer is its own review. A cancel
-for the exact operation retires it until it is acknowledged; a background or
-destroyed owner also retires it; a cancel for another ID changes nothing.
-Retirement before dispatch settles as cancelled, and a provider row the
-default SMS app could not prepare settles as refused, both with no platform
-call. Once Android has accepted the dispatch, a cancel is refused, and the
-real or unknown result stays reportable even if the owner goes away.
+grant and a phone that can send texts, and names its operation ID before the
+journal lookup. With no record for that ID, the native review dialog is
+queued and the visible owner approves it once; a send the owner composed and
+tapped Send on in the host's own composer is its own review. Declining the
+dialog settles the send as cancelled. A cancel for the exact operation
+retires it and is acknowledged; a background or destroyed owner also retires
+it; a cancel for another ID changes nothing. A retired send settles as
+cancelled with no platform call. Once Android has the dispatch, a cancel is
+refused, and the real or unknown result is still reported if the owner goes
+away.
 
 ```quint
 import bridge.* from "./bridge"
 type ReviewSource = NativeDialog | OwnerComposer
+type MessageKind = TextMessage | MultimediaMessage
 type ReviewPhase = NoReview | ReadingJournal | MainQueued | Reviewing | ApprovedForDispatch | NativeDispatched | ReviewSettled
-type ReviewResult = NoReviewResult | ReviewCancelled | ReviewRefused | ReviewSubmitted | ReviewFailed | ReviewUnknown
+type SendAnswer = NoAnswer | SendDenied | SendCancelled | SendSubmitted | SendSent | SendDelivered | SendFailed | SendUnknown
+  | ReuseRefused | RecordExpired | JournalUnreadable
 type SmsReview = {
-  phase: ReviewPhase, source: ReviewSource, operationId: str, retired: bool, cancelAcknowledged: bool,
-  dispatched: bool, result: ReviewResult
+  phase: ReviewPhase, source: ReviewSource, kind: MessageKind, operationId: str, retired: bool,
+  cancelAcknowledged: bool, dispatched: bool, outgoingRow: bool, result: SendAnswer
 }
 pure val initial: SmsReview = {
-  phase: NoReview, source: NativeDialog, operationId: "", retired: false, cancelAcknowledged: false,
-  dispatched: false, result: NoReviewResult
+  phase: NoReview, source: NativeDialog, kind: TextMessage, operationId: "", retired: false,
+  cancelAcknowledged: false, dispatched: false, outgoingRow: false, result: NoAnswer
 }
 pure val sendCall: BridgeCall = { need: WhileUnlocked, needsGrant: true, needsFeature: true }
-pure def canBeginReview(s: SmsReview, operationId: str, source: ReviewSource, admission: Admission): bool =
-  s.phase == NoReview and operationId != "" and admission == CallAdmitted
-pure def beginReview(s: SmsReview, operationId: str, source: ReviewSource, admission: Admission): SmsReview =
-  { ...s, phase: ReadingJournal, source: source, operationId: operationId }
-pure def canFinishLookup(s: SmsReview): bool = s.phase == ReadingJournal
-pure def finishLookup(s: SmsReview, journalAllowsReview: bool): SmsReview =
-  if (s.retired) { ...s, phase: ReviewSettled, result: ReviewCancelled }
-  else if (journalAllowsReview) { ...s, phase: MainQueued }
-  else { ...s, phase: ReviewSettled, result: ReviewRefused }
-pure def canShowReview(s: SmsReview): bool = s.phase == MainQueued and s.source == NativeDialog and not(s.retired)
-pure def showReview(s: SmsReview): SmsReview = { ...s, phase: Reviewing }
+pure def canBeginReview(s: SmsReview, operationId: str, presence: PluginPresence, facts: HostFacts): bool =
+  s.phase == NoReview and operationId != "" and admitCall(presence, sendCall, facts) == CallAdmitted
+pure def beginReview(s: SmsReview, operationId: str, source: ReviewSource, kind: MessageKind, presence: PluginPresence, facts: HostFacts): SmsReview =
+  { ...s, phase: ReadingJournal, source: source, kind: kind, operationId: operationId }
 pure def canApproveReview(s: SmsReview): bool = s.phase == Reviewing and not(s.retired)
 pure def approveReview(s: SmsReview): SmsReview = { ...s, phase: ApprovedForDispatch }
-pure def canAcceptComposerSend(s: SmsReview): bool = s.phase == MainQueued and s.source == OwnerComposer and not(s.retired)
-pure def acceptComposerSend(s: SmsReview): SmsReview = { ...s, phase: ApprovedForDispatch }
-pure def canRejectReview(s: SmsReview): bool = s.phase == Reviewing and not(s.retired)
-pure def rejectReview(s: SmsReview): SmsReview = { ...s, phase: ReviewSettled, result: ReviewCancelled }
+pure def canDeclineReview(s: SmsReview): bool = s.phase == Reviewing and not(s.retired)
+pure def declineReview(s: SmsReview): SmsReview = { ...s, phase: ReviewSettled, result: SendCancelled }
 pure def pendingReview(s: SmsReview): bool = s.phase != NoReview and s.phase != ReviewSettled
 pure def canCancelReview(s: SmsReview, operationId: str): bool =
   pendingReview(s) and operationId == s.operationId and not(s.cancelAcknowledged) and not(s.dispatched)
@@ -77,158 +72,150 @@ pure def canRetireReview(s: SmsReview): bool = pendingReview(s) and not(s.retire
 pure def retireReview(s: SmsReview): SmsReview = { ...s, retired: true }
 pure def canSettleRetiredReview(s: SmsReview): bool =
   s.retired and (s.phase == MainQueued or s.phase == Reviewing or s.phase == ApprovedForDispatch)
-pure def settleRetiredReview(s: SmsReview): SmsReview = { ...s, phase: ReviewSettled, result: ReviewCancelled }
-pure def canRefuseOutbox(s: SmsReview): bool = s.phase == ApprovedForDispatch and not(s.retired)
-pure def refuseOutbox(s: SmsReview): SmsReview = { ...s, phase: ReviewSettled, result: ReviewRefused }
-pure def canDispatchApproved(s: SmsReview): bool = s.phase == ApprovedForDispatch and not(s.retired) and not(s.dispatched)
-pure def dispatchApproved(s: SmsReview): SmsReview = { ...s, phase: NativeDispatched, dispatched: true }
-pure def canReportDispatch(s: SmsReview, receipt: ReviewResult): bool =
-  s.phase == NativeDispatched and (receipt == ReviewSubmitted or receipt == ReviewFailed or receipt == ReviewUnknown)
-pure def reportDispatch(s: SmsReview, receipt: ReviewResult): SmsReview = { ...s, phase: ReviewSettled, result: receipt }
+pure def settleRetiredReview(s: SmsReview): SmsReview = { ...s, phase: ReviewSettled, result: SendCancelled }
+pure def canReportDispatch(s: SmsReview, receipt: SendAnswer): bool =
+  s.phase == NativeDispatched and (receipt == SendSubmitted or receipt == SendFailed or receipt == SendUnknown)
+pure def reportDispatch(s: SmsReview, receipt: SendAnswer): SmsReview = { ...s, phase: ReviewSettled, result: receipt }
 pure val operationIdValues = Set("", "op1", "op2")
-pure val admissionValues = Set(CallAdmitted, HostNotReady, PermissionRequired)
-pure def alwaysCancellationOwnsRetirement(s: SmsReview): bool = s.cancelAcknowledged implies s.retired
+pure val receiptValues = Set(SendSubmitted, SendFailed, SendUnknown, SendSent)
+pure def alwaysCancellationRetires(s: SmsReview): bool = s.cancelAcknowledged implies s.retired
 pure def alwaysAcknowledgedCancelNeverDispatches(s: SmsReview): bool = s.cancelAcknowledged implies not(s.dispatched)
-pure def alwaysDispatchHasOwnedPhase(s: SmsReview): bool =
-  s.dispatched == (s.phase == NativeDispatched or s.result == ReviewSubmitted or s.result == ReviewFailed or s.result == ReviewUnknown)
-pure def alwaysTerminalResultIsExplicit(s: SmsReview): bool = (s.phase == ReviewSettled) == (s.result != NoReviewResult)
+pure def alwaysDispatchIsLastOrSettled(s: SmsReview): bool =
+  (s.dispatched implies (s.phase == NativeDispatched or s.phase == ReviewSettled)) and (s.phase == NativeDispatched implies s.dispatched)
+pure def alwaysSettledHasAResult(s: SmsReview): bool = (s.phase == ReviewSettled) == (s.result != NoAnswer)
 pure def alwaysReviewNamesItsOperation(s: SmsReview): bool = (s.phase == NoReview) == (s.operationId == "")
-pure def stepKnownResultPersists(before: SmsReview, after: SmsReview): bool =
-  before.result != NoReviewResult implies after.result == before.result
-pure def stepOperationNeverChanges(before: SmsReview, after: SmsReview): bool =
-  before.operationId != "" implies after.operationId == before.operationId
+pure def stepResultIsFinal(before: SmsReview, after: SmsReview): bool = before.result != NoAnswer implies after == before
 pure def stepDispatchNeedsApproval(before: SmsReview, after: SmsReview): bool =
-  (after.dispatched and not(before.dispatched)) implies before.phase == ApprovedForDispatch
-pure def sometimesCancelledBeforeInvoke(s: SmsReview): bool = s.result == ReviewCancelled and s.cancelAcknowledged
-pure def sometimesResultSurvivesRetirement(s: SmsReview): bool = s.result == ReviewSubmitted and s.retired
+  (after.dispatched and not(before.dispatched)) implies (before.phase == ApprovedForDispatch and not(before.retired))
+pure def sometimesCancelledBeforeDispatch(s: SmsReview): bool = s.result == SendCancelled and s.cancelAcknowledged
+pure def sometimesDeclinedInTheDialog(s: SmsReview): bool = s.result == SendCancelled and not(s.retired)
+pure def sometimesResultSurvivesRetirement(s: SmsReview): bool = s.result == SendSubmitted and s.retired
 pure def sometimesComposerSendDispatched(s: SmsReview): bool = s.source == OwnerComposer and s.phase == NativeDispatched
-pure def sometimesSendRefusedWithoutDispatch(s: SmsReview): bool = s.result == ReviewRefused and not(s.dispatched)
 ```
 
-### A repeated operation ID reads its journal record and never sends again
+### A repeated operation ID answers its journal record and never sends again
 
-Each reviewed send carries an operation ID, the idempotency key of the
-send, and the journal records it before any platform call. The record holds
-a hash of the recipients, the text and the subscription (and, for an MMS,
-each attachment's type, name, hash and size), never the text or bytes. A
-repeated ID with the same content answers its record and sends nothing; a
-repeated ID with other content is refused. A new ID is denied without a
-platform call when sending is not permitted or the text cannot be divided
-into one to `maxPartsPerRecipient` parts for each recipient; otherwise its
-dispatch is recorded and then started. A dropped record leaves a tombstone,
-so a repeated dropped ID answers unknown and is never sent. SMS and MMS
-share the journal and its ID space.
+The operation ID is the send's idempotency key, shared by SMS and MMS. The
+journal keeps a hash of the recipients, the text and the subscription (and,
+for an MMS, each attachment's type, name, hash and size), never the text or
+bytes. A repeated ID with the same content answers its record, even if its
+caller has since been cancelled; with other content it is refused. A record
+dropped to bound the journal leaves its ID behind, so a repeat is refused as
+too old to read back. An unreadable journal refuses too. None of these sends
+or records anything; only an ID with no record goes on to review.
 
 ```quint
-type JournalRecord = JournalNone | JournalDenied | JournalCancelled | JournalDispatching | JournalSubmitted | JournalSent | JournalDelivered | JournalFailed | JournalUnknown | JournalDropped
-type SendPlan = { planned: JournalRecord, dispatch: bool, reuseRefused: bool }
+type JournalLookup = NoRecord | SameContent | OtherContent | DroppedRecord | Unreadable
+pure def isJournalStatus(a: SendAnswer): bool =
+  a == SendDenied or a == SendCancelled or a == SendSubmitted or a == SendSent or a == SendDelivered or a == SendFailed or a == SendUnknown
+pure def lookupAnswer(lookup: JournalLookup, recorded: SendAnswer): SendAnswer =
+  if (lookup == SameContent) recorded else if (lookup == OtherContent) ReuseRefused
+  else if (lookup == DroppedRecord) RecordExpired else if (lookup == Unreadable) JournalUnreadable else NoAnswer
+pure def canFinishLookup(s: SmsReview, lookup: JournalLookup, recorded: SendAnswer): bool =
+  s.phase == ReadingJournal and (lookup == SameContent implies isJournalStatus(recorded))
+pure def finishLookup(s: SmsReview, lookup: JournalLookup, recorded: SendAnswer): SmsReview =
+  if (lookup == NoRecord) { ...s, phase: MainQueued } else { ...s, phase: ReviewSettled, result: lookupAnswer(lookup, recorded) }
+pure val recordedValues = Set(NoAnswer, SendSent, SendUnknown, SendCancelled)
+pure def alwaysRefusedLookupNeverDispatched(s: SmsReview): bool =
+  not(s.result == NoAnswer or isJournalStatus(s.result)) implies not(s.dispatched)
+pure def sometimesRepeatAnswersItsRecord(s: SmsReview): bool = s.result == SendSent and not(s.dispatched)
+pure def sometimesRepeatAfterCancelAnswersItsRecord(s: SmsReview): bool = s.result == SendUnknown and s.cancelAcknowledged and not(s.dispatched)
+pure def sometimesReuseRefused(s: SmsReview): bool = s.result == ReuseRefused
+pure def sometimesDroppedRecordRefused(s: SmsReview): bool = s.result == RecordExpired
+```
+
+### A send is denied before any platform call unless Android allows it at review and again at dispatch
+
+Before the review, a send is denied and recorded when the phone cannot send
+it now (no SMS capability, a missing send or phone-state grant, an inactive
+SIM, and for an MMS no file authority, no default SMS role or a carrier that
+refuses MMS), or when its text cannot be divided into one to
+`maxPartsPerRecipient` parts for each recipient. At dispatch the same checks
+run again, an MMS needs the default SMS role, and the default SMS app must
+first prepare its own outbox rows; any failure is denied with no platform
+call.
+
+```quint
 pure val maxPartsPerRecipient = 10
-pure def divisible(parts: int): bool = parts >= 1 and parts <= maxPartsPerRecipient
-pure def planSend(existing: JournalRecord, sameContent: bool, permitted: bool, parts: int): SendPlan =
-  if (existing == JournalNone)
-    (if (permitted and divisible(parts)) { planned: JournalDispatching, dispatch: true, reuseRefused: false }
-     else { planned: JournalDenied, dispatch: false, reuseRefused: false })
-  else if (not(sameContent)) { planned: existing, dispatch: false, reuseRefused: true }
-  else { planned: existing, dispatch: false, reuseRefused: false }
-pure def sendAnswer(plan: SendPlan): JournalRecord = if (plan.planned == JournalDropped) JournalUnknown else plan.planned
+pure def sendable(kind: MessageKind, blocked: bool, parts: int): bool =
+  not(blocked) and (kind == MultimediaMessage or (parts >= 1 and parts <= maxPartsPerRecipient))
+pure def canPresentReview(s: SmsReview): bool = s.phase == MainQueued and not(s.retired)
+pure def presentReview(s: SmsReview, blocked: bool, parts: int): SmsReview =
+  if (not(sendable(s.kind, blocked, parts))) { ...s, phase: ReviewSettled, result: SendDenied }
+  else if (s.source == NativeDialog) { ...s, phase: Reviewing }
+  else { ...s, phase: ApprovedForDispatch }
+pure def canDispatchApproved(s: SmsReview): bool = s.phase == ApprovedForDispatch and not(s.retired) and not(s.dispatched)
+pure def dispatchApproved(s: SmsReview, blocked: bool, smsRoleHeld: bool, rowsPrepared: bool): SmsReview =
+  if (blocked or (s.kind == MultimediaMessage and not(smsRoleHeld)) or (smsRoleHeld and not(rowsPrepared)))
+    { ...s, phase: ReviewSettled, result: SendDenied }
+  else { ...s, phase: NativeDispatched, dispatched: true, outgoingRow: smsRoleHeld }
 pure val partsValues = Set(0, 1, 10, 11)
-pure def lawRepeatedOperationNeverSends(existing: JournalRecord, sameContent: bool, permitted: bool, parts: int): bool =
-  existing != JournalNone implies (not(planSend(existing, sameContent, permitted, parts).dispatch) and planSend(existing, sameContent, permitted, parts).planned == existing)
-pure def lawDroppedOperationAnswersUnknown(permitted: bool, parts: int): bool =
-  sendAnswer(planSend(JournalDropped, true, permitted, parts)) == JournalUnknown
-pure def lawReusedOperationForOtherContentIsRefused(existing: JournalRecord, permitted: bool, parts: int): bool =
-  existing != JournalNone implies planSend(existing, false, permitted, parts).reuseRefused
-pure def lawNewSendDispatchesOnlyWhenPermittedAndDivisible(permitted: bool, parts: int): bool =
-  planSend(JournalNone, true, permitted, parts).dispatch iff (permitted and divisible(parts))
+pure def alwaysRefusedSendNeverDispatched(s: SmsReview): bool =
+  (s.result == SendCancelled or s.result == SendDenied) implies not(s.dispatched)
+pure def sometimesSendDenied(s: SmsReview): bool = s.result == SendDenied and s.phase == ReviewSettled
 ```
 
-### An interrupted send reads unknown, and only receipts advance a record
+### A send's provider row is written only by an approved dispatch, and an MMS only while the app holds the SMS role
 
-A record still dispatching when the process dies, or submitted when a
-restart means its sent receipts can no longer arrive, becomes unknown, and an
-unknown record is never sent again. Submitted means every platform call
-returned; sent needs a successful sent receipt for every part; delivered
-needs a complete delivery report for every part. An MMS is sent on the
-carrier's confirmation and is never reported delivered. After seven days no
-more evidence is awaited for a record.
+While the app is the default SMS app it writes the outgoing row itself, as
+part of the dispatch the owner approved; otherwise Android records the send.
+The assistant's own text, briefings and proposals have no review, so they
+never reach the providers or a thread; only these rows and incoming
+messages do.
 
 ```quint
-pure val evidenceWindowDays = 7
-pure def recoverAfterRestart(r: JournalRecord): JournalRecord =
-  if (r == JournalDispatching or r == JournalSubmitted) JournalUnknown else r
-pure def settleEvidence(r: JournalRecord, mms: bool, allSent: bool, allDelivered: bool): JournalRecord =
-  if (r == JournalSubmitted and allSent) JournalSent
-  else if (r == JournalSent and allDelivered and not(mms)) JournalDelivered
-  else r
-pure def lawInterruptedDispatchIsUnknownAndNotResent(sameContent: bool, permitted: bool, parts: int): bool =
-  recoverAfterRestart(JournalDispatching) == JournalUnknown and
-    not(planSend(recoverAfterRestart(JournalDispatching), sameContent, permitted, parts).dispatch)
-pure def lawMmsIsNeverDelivered(r: JournalRecord, allSent: bool, allDelivered: bool): bool =
-  settleEvidence(r, true, allSent, allDelivered) == JournalDelivered implies r == JournalDelivered
-pure def lawSentNeedsEveryReceipt(r: JournalRecord, mms: bool, allDelivered: bool): bool =
-  settleEvidence(r, mms, false, allDelivered) != JournalSent or r == JournalSent
+pure def alwaysOutgoingRowOnlyForDispatch(s: SmsReview): bool = s.outgoingRow implies s.dispatched
+pure def alwaysMultimediaDispatchHoldsTheRole(s: SmsReview): bool =
+  (s.kind == MultimediaMessage and s.dispatched) implies s.outgoingRow
+pure def sometimesMultimediaRowWritten(s: SmsReview): bool = s.kind == MultimediaMessage and s.outgoingRow
 ```
 
-### A message's reported status is supported by the evidence of every part
+### A message's status is supported by the evidence of every part, and an interrupted send reads unknown
 
 A text is divided into parts for each recipient, each with its own sent and
-delivery evidence; a part is delivered only after it was sent. A cancelled
-or denied send has no evidence. Submitted, sent and delivered need at least one
-part for every recipient and nothing else; submitted needs no part to have
-failed; sent needs every part sent; delivered needs every part delivered.
+delivery evidence. Any failed part makes the message failed; sent needs a
+sent receipt for every part; delivered also needs a complete delivery
+report for every part and is never claimed for an MMS, which is sent on the
+carrier's confirmation. Otherwise the message is submitted only when every
+platform call returned and its receipts can still arrive. A dispatch the
+process did not finish, and receipts a restart or a timeout lost, read
+unknown; an unknown record is never sent again (above).
 
 ```quint
-type PartState = PartUnknown | PartSucceeded | PartFailed
-type PartEvidence = { recipientIndex: int, sentState: PartState, deliveryState: PartState }
-type SendStatus = StatusCancelled | StatusDenied | StatusFailed | StatusUnknown | StatusSubmitted | StatusSent | StatusDelivered
-pure def partConsistent(p: PartEvidence): bool = p.deliveryState == PartSucceeded implies p.sentState == PartSucceeded
-pure def recipientsCovered(evidence: List[PartEvidence], recipients: int): bool = {
-  val seen = evidence.foldl(Set(), (acc, p) => acc.union(Set(p.recipientIndex)))
-  recipients >= 1 and evidence.length() > 0 and seen.size() == recipients and seen.forall(i => i >= 0 and i < recipients)
+type PartState = PartWaiting | PartSucceeded | PartFailed
+type PartEvidence = { sentState: PartState, deliveryState: PartState }
+type CallEvidence = StillDispatching | AllCallsReturned | ReceiptsLost
+type SendEvidence = { parts: List[PartEvidence], mms: bool, calls: CallEvidence }
+pure def evidenceStatus(e: SendEvidence): SendAnswer = {
+  val allSent = e.parts.length() > 0 and e.parts.every(p => p.sentState == PartSucceeded)
+  if (e.parts.some(p => p.sentState == PartFailed)) SendFailed
+  else if (allSent) (if (not(e.mms) and e.parts.every(p => p.deliveryState == PartSucceeded)) SendDelivered else SendSent)
+  else if (e.calls == AllCallsReturned) SendSubmitted
+  else SendUnknown
 }
-pure def statusSupported(status: SendStatus, evidence: List[PartEvidence], recipients: int): bool =
-  evidence.every(p => partConsistent(p)) and
-  (if (status == StatusCancelled or status == StatusDenied) evidence.length() == 0
-   else if (status == StatusSubmitted) recipientsCovered(evidence, recipients) and evidence.every(p => p.sentState != PartFailed and p.deliveryState != PartFailed)
-   else if (status == StatusSent) recipientsCovered(evidence, recipients) and evidence.every(p => p.sentState == PartSucceeded)
-   else if (status == StatusDelivered) recipientsCovered(evidence, recipients) and evidence.every(p => p.deliveryState == PartSucceeded)
-   else true)
-pure val evidenceValues = Set(
-  List(),
-  List({ recipientIndex: 0, sentState: PartSucceeded, deliveryState: PartSucceeded }),
-  List({ recipientIndex: 0, sentState: PartSucceeded, deliveryState: PartUnknown }, { recipientIndex: 1, sentState: PartFailed, deliveryState: PartUnknown }),
-  List({ recipientIndex: 0, sentState: PartUnknown, deliveryState: PartSucceeded })
-)
-pure val recipientsValues = Set(0, 1, 2)
-pure def lawDeliveredNeedsEveryPartDelivered(evidence: List[PartEvidence], recipients: int): bool =
-  statusSupported(StatusDelivered, evidence, recipients) implies
-    (evidence.length() > 0 and evidence.every(p => p.sentState == PartSucceeded and p.deliveryState == PartSucceeded))
-pure def lawSentNeedsEveryPartSent(evidence: List[PartEvidence], recipients: int): bool =
-  statusSupported(StatusSent, evidence, recipients) implies (evidence.length() > 0 and evidence.every(p => p.sentState == PartSucceeded))
-pure def lawRefusedSendHasNoParts(evidence: List[PartEvidence], recipients: int): bool =
-  (statusSupported(StatusCancelled, evidence, recipients) or statusSupported(StatusDenied, evidence, recipients)) implies evidence.length() == 0
-```
-
-### Only the owner's reviewed sends and incoming messages are written to the Android providers
-
-The bridge writes a row into Android's SMS or MMS providers only for an
-incoming message or a send the owner reviewed, and only while the app holds
-the default SMS role. The assistant's own text, briefings and proposals are
-never written there or into a thread. The SMS role is requested only through
-Android's role dialog, offered only when the host declares every component
-Android requires for it; the person decides and the bridge reads the result
-back. A group message or attachment send needs direct sending, the host's
-message file provider and the default SMS role.
-
-```quint
-type ProviderWriteSource = OwnerReviewedSend | IncomingMessage | AssistantText
-pure def providerWriteAdmitted(source: ProviderWriteSource, smsRoleHeld: bool): bool = smsRoleHeld and source != AssistantText
-pure def roleRequestOffered(roleAvailable: bool, roleHeld: bool, hostEligible: bool): bool = roleAvailable and not(roleHeld) and hostEligible
-pure def groupSendAvailable(directSend: bool, fileProvider: bool, smsRoleHeld: bool): bool = directSend and fileProvider and smsRoleHeld
-pure def lawAssistantTextNeverReachesProviders(smsRoleHeld: bool): bool = not(providerWriteAdmitted(AssistantText, smsRoleHeld))
-pure def lawNoProviderWriteWithoutRole(source: ProviderWriteSource): bool = not(providerWriteAdmitted(source, false))
-pure def lawIneligibleHostIsNeverOfferedARole(roleAvailable: bool, roleHeld: bool): bool = not(roleRequestOffered(roleAvailable, roleHeld, false))
-pure def lawGroupSendNeedsSmsRole(directSend: bool, fileProvider: bool): bool = not(groupSendAvailable(directSend, fileProvider, false))
+pure def afterRestart(e: SendEvidence): SendEvidence = { ...e, calls: ReceiptsLost }
+pure val eValues: Set[SendEvidence] = {
+  val sent = { sentState: PartSucceeded, deliveryState: PartWaiting }
+  val delivered = { sentState: PartSucceeded, deliveryState: PartSucceeded }
+  val waiting = { sentState: PartWaiting, deliveryState: PartWaiting }
+  val failed = { sentState: PartFailed, deliveryState: PartWaiting }
+  List(
+    { parts: List(), mms: false, calls: StillDispatching },
+    { parts: List(waiting, sent), mms: false, calls: AllCallsReturned },
+    { parts: List(delivered, delivered), mms: false, calls: AllCallsReturned },
+    { parts: List(delivered), mms: true, calls: AllCallsReturned },
+    { parts: List(sent, failed), mms: false, calls: ReceiptsLost },
+    { parts: List(waiting), mms: true, calls: ReceiptsLost }
+  ).foldl(Set(), (acc, e) => acc.union(Set(e)))
+}
+pure def lawSentNeedsEveryPartSent(e: SendEvidence): bool =
+  (evidenceStatus(e) == SendSent or evidenceStatus(e) == SendDelivered) implies
+    (e.parts.length() > 0 and e.parts.every(p => p.sentState == PartSucceeded))
+pure def lawDeliveredNeedsEveryReportAndNeverMms(e: SendEvidence): bool =
+  evidenceStatus(e) == SendDelivered implies (not(e.mms) and e.parts.every(p => p.deliveryState == PartSucceeded))
+pure def lawFailedPartIsNeverHidden(e: SendEvidence): bool =
+  e.parts.some(p => p.sentState == PartFailed) implies evidenceStatus(e) == SendFailed
+pure def lawRestartNeverReadsSubmitted(e: SendEvidence): bool = evidenceStatus(afterRestart(e)) != SendSubmitted
 ```
 
 ## Story: Mark a conversation read from its notice without sending anything
@@ -247,23 +234,19 @@ the default SMS role is held and the captured ticket is both the current
 and the visible one; it marks SMS read first and MMS read second, and
 dismisses the notice only after both providers acknowledge. Without the role
 it dismisses the notice and writes nothing. A partial provider failure keeps
-the notice for a retry. Each conversation keeps its own full identity, so
-colliding hashed IDs never redirect a write. Reply opens the compose screen.
-A notice action's only effects are marking read and opening compose, so none
-can send, and every worker run releases the held receiver.
+the notice for a retry. The ticket belongs to the conversation's full
+identity, so colliding hashed IDs never redirect a write. The notice offers
+no send: Reply opens the compose screen, where a send is reviewed as above.
 
 ```quint
 type NoticeTicket = { captured: int, current: int, visible: int, roleHeld: bool }
 type NoticeWork = SkipStaleNotice | DismissWithoutWrite | MarkConversationRead
-type NoticeAction = NoticeMarkRead | NoticeReply
-type NoticeEffect = ProviderReadWrite | OpenCompose
 pure def noticeWork(ticket: NoticeTicket): NoticeWork =
   if (ticket.captured == 0 or ticket.captured != ticket.current or ticket.captured != ticket.visible) SkipStaleNotice
   else if (not(ticket.roleHeld)) DismissWithoutWrite
   else MarkConversationRead
 pure def noticeDismissed(work: NoticeWork, smsAcknowledged: bool, mmsAcknowledged: bool): bool =
   work == DismissWithoutWrite or (work == MarkConversationRead and smsAcknowledged and mmsAcknowledged)
-pure def noticeEffect(noticeAction: NoticeAction): NoticeEffect = if (noticeAction == NoticeReply) OpenCompose else ProviderReadWrite
 pure val ticketValues = Set(
   { captured: 1, current: 1, visible: 1, roleHeld: true },
   { captured: 1, current: 1, visible: 1, roleHeld: false },
@@ -271,7 +254,6 @@ pure val ticketValues = Set(
   { captured: 1, current: 0, visible: 2, roleHeld: true },
   { captured: 2, current: 2, visible: 1, roleHeld: true }
 )
-pure val workValues = Set(SkipStaleNotice, DismissWithoutWrite, MarkConversationRead)
 pure def lawStaleNoticeNeverWrites(ticket: NoticeTicket): bool =
   (ticket.captured != ticket.current or ticket.captured != ticket.visible) implies noticeWork(ticket) == SkipStaleNotice
 pure def lawLostRoleNeverWrites(ticket: NoticeTicket): bool = not(ticket.roleHeld) implies noticeWork(ticket) != MarkConversationRead
@@ -291,8 +273,8 @@ authority again before one conditional delete in the row's own table. A row
 that is gone answers not-found, one whose identity changed answers stale,
 and a draft, queued, outbox or failed row belongs to a send and answers
 not-settled; none of these is deleted. Only a removal Android reported is
-`Deleted`; a delete that removed nothing is explained by a second read, and
-a lost reply or an unexplained count is unknown, never deleted.
+`MessageDeleted`; a delete that removed nothing is explained by a second
+read, and a lost reply or an unexplained count is unknown, never deleted.
 
 ```quint
 type RowSeen = RowMissing | RowMoved | RowInSend | RowSettled

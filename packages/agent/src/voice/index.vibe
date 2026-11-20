@@ -1,0 +1,22 @@
+// spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"; spec/agent/voice/clientAudio.md, "Story: Dictate into my draft without losing my own words"
+export {
+  buildVoiceTurnSignal, isNonSpeechVoiceTranscript, mayBecomeNonSpeechVoiceTranscript, scoreEndOfTurnHeuristic, shouldRespondToVoiceTurn,
+  type BuildVoiceTurnSignalContext, type HeardBody, type ReplyWindow, type ShouldRespondContext, type VoiceTurnSignal, type VoiceTurnSpeakerAttribution,
+} from "./heuristics.vibe"
+export {
+  DraftTranscriptGuard, RecordedTranscriptionController, RecordedTranscriptionError, RecordingBoundRefused,
+  type DraftTranscriptResult, type PauseObserver, type RecordedTranscriptionCode, type RecordedTranscriptionOptions, type RecordedTranscriptionState,
+  type RecorderEvents, type RecorderPort, type RecordingChunk, type RecordingPhase, type RecordingStream, type TranscriptReceiver,
+} from "./recorded-transcription.vibe"
+export type {
+  CaptureEvents, CapturePort, ClockPort, EndOfTurnPort, HeardAnswer, HeardPort, RecognizerPort, SpeakerEvents, SpeakerPort, TurnPort,
+  VoiceReply, VoiceSessionPorts, VoiceTurn, VoiceUi,
+} from "./ports.vibe"
+export {
+  CLOUD_FIRST_SPEECH_CHARS, CLOUD_SPEECH_REQUEST_CHARS, CloudSpeechFailed, CloudSpeechStopped, CloudSpeechWordTooLong,
+  planCloudSpeechChunks, speakCloudSpeechChunks, type CloudSpeechOptions, type SpeakCloudPiece,
+} from "./speech-pieces.vibe"
+export {
+  createLiveVoiceSession, parseVoiceTranscriptEnvelope, VOICE_TRANSCRIPT_STREAM,
+  type AgentEventSubscribe, type LiveTranscriptEvent, type LiveVoiceSession, type LiveVoiceSessionOptions,
+} from "./live-session.vibe"

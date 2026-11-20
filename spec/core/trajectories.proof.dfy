@@ -168,3 +168,28 @@ lemma exportTrajectory_ensures(s: Trajectories, id: int)
     }
   }
 }
+
+lemma SemanticStagesBridge(semanticStages: seq<SemanticStageInput>)
+  ensures acceptsSemanticStages(semanticStages) <==> ((forall entry :: entry in semanticStages ==> acceptsSemanticStage(entry)) && (forall entry :: entry in semanticStages ==> |ProofLib.Filter((other: SemanticStageInput) => (other.stageId == entry.stageId), semanticStages)| == 1))
+{}
+
+lemma lawRepeatedStageIdentityIsRefused_ensures(semanticStages: seq<SemanticStageInput>, semanticStage: SemanticStageInput, otherStage: SemanticStageInput)
+  ensures (lawRepeatedStageIdentityIsRefused(semanticStages, semanticStage, otherStage) == true)
+{
+  // When the two appended stages share an identity, both pass the filter of
+  // that identity, so it holds at least two entries and the uniqueness
+  // conjunct fails with the first appended stage as witness.
+  if otherStage.stageId == semanticStage.stageId {
+    var p := (other: SemanticStageInput) => (other.stageId == semanticStage.stageId);
+    var once := semanticStages + [semanticStage];
+    var twice := once + [otherStage];
+    ProofLib.FilterAppend(p, semanticStages, semanticStage);
+    ProofLib.FilterAppend(p, once, otherStage);
+    assert |ProofLib.Filter(p, twice)| >= 2;
+    assert twice == semanticStages + [semanticStage, otherStage];
+    SemanticStagesBridge(twice);
+    assert semanticStage in twice;
+    assert |ProofLib.Filter((other: SemanticStageInput) => (other.stageId == semanticStage.stageId), twice)| != 1;
+    assert !acceptsSemanticStages(twice);
+  }
+}

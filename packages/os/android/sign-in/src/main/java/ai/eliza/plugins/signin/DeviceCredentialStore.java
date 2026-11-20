@@ -75,9 +75,7 @@ public final class DeviceCredentialStore implements CredentialReader {
       State loaded = CredentialPolicy.INITIAL;
       if (saved != null) {
         Map<String, Object> record = CredentialJson.object(CredentialJson.parse(saved), "record");
-        State restarted = CredentialPolicy.restart(CredentialPolicy.state(record.get("state")));
-        loaded = new State(Math.max(restarted.now(), clock.getAsLong()), restarted.generation(), restarted.lastVersion(), restarted.custody(),
-          restarted.attempt(), restarted.duties(), restarted.session());
+        loaded = CredentialPolicy.restart(CredentialPolicy.state(record.get("state")));
         for (Object version : CredentialJson.list(record.get("sweep"), "sweep")) {
           if (!(version instanceof Long v) || v < 1 || v > Integer.MAX_VALUE) throw new CredentialJson.Malformed("sweep");
           sweep.add(v.intValue());
@@ -86,6 +84,7 @@ public final class DeviceCredentialStore implements CredentialReader {
       state = loaded;
       persist(loaded, Set.of());
       sweepKeys();
+      advance();
     }
   }
 
@@ -128,7 +127,12 @@ public final class DeviceCredentialStore implements CredentialReader {
   }
 
   @Override public void report401(int version, String reason) {
-    rejected(version, Reason.ofWire(reason), RejectedOn.OTHER_REQUEST);
+    rejected(version, reasonOf(reason), RejectedOn.OTHER_REQUEST);
+  }
+
+  static Reason reasonOf(String reason) {
+    for (Reason known : Reason.values()) if (known.tag.equals(reason)) return known;
+    return Reason.ofWire(reason);
   }
 
   public int beginSignIn() {
@@ -251,9 +255,8 @@ public final class DeviceCredentialStore implements CredentialReader {
       advance();
       if (CredentialPolicy.sessionUsable(state)) return SessionRead.USABLE;
       if (!CredentialPolicy.canReadSession(state)) return SessionRead.NONE;
-      boolean waiting = state.session() instanceof Session.Held t && t.refreshing();
-      commit(new Step(CredentialPolicy.readSession(state), List.of()));
-      return waiting ? SessionRead.AWAIT_REFRESH : SessionRead.START_REFRESH;
+      boolean start = commit(CredentialPolicy.readSession(state)).stream().anyMatch(n -> n instanceof Notice.RefreshAccountSession);
+      return start ? SessionRead.START_REFRESH : SessionRead.AWAIT_REFRESH;
     }
   }
 
@@ -365,7 +368,7 @@ public final class DeviceCredentialStore implements CredentialReader {
   private void deliver(List<Notice> out) {
     for (Notice notice : out) {
       if (notice instanceof Notice.VerifyAccount) verifyAccount.run();
-      else for (Listener listener : listeners) listener.notice(notice);
+      else if (!(notice instanceof Notice.RefreshAccountSession)) for (Listener listener : listeners) listener.notice(notice);
     }
   }
 }

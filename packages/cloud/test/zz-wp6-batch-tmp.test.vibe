@@ -1,0 +1,92 @@
+import { assert, describe, it } from "@effect/vitest"
+import { addCredits } from "../src/billing/funds.vibe"
+import { testCloud, type TestCloud } from "./support/cloud.vibe"
+import { signedCaller } from "./support/caller.vibe"
+import { callDeclaring } from "./support/http.ts"
+import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
+import { recordingBytes, recordingForm } from "./support/recording.ts"
+
+effect function check(run: () => void) {
+  try Effect.try(run)
+}
+
+effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
+  return try cloud.store.transaction((tx) => tx.query(text, params))
+}
+
+describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
+  it.live("Speak a reply with context and timings, transcribe a recording, and charge each once (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\"; spec/cloud/services/speech.md, \"Story: Transcribe a recording\")", () => scoped(effect {
+    const speech = try sync(() => speechFake())
+    const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
+    const caller = try signedCaller(cloud, "speaker")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 1_000_000, requestKey: "speech-funding" }))
+    const tts = (body: unknown) => cloud.call("/api/v1/voice/tts", { json: body, headers: caller.headers })
+    const stt = effect (fields: Readonly<Record<string, string>>) => {
+      const form = try Effect.try(() => recordingForm(fields))
+      return try cloud.call("/api/v1/voice/stt", { form, headers: caller.headers })
+    }
+
+    const plain = try tts({ text: "Hello there", previousText: "Earlier words.", nextText: "Later words.", speed: 1.1 })
+    const timed = try tts({ text: "Hi you", previousText: "Before", withTimestamps: true })
+    const lines = try Effect.try(() => String(timed.body).trim().split("\n").map((line) => JSON.parse(line) as { readonly type: string; readonly sequence?: number; readonly alignment?: { readonly characters: ReadonlyArray<string> } }))
+    const anonymous = try cloud.call("/api/v1/voice/tts", { json: { text: "Hello" } })
+    const foreignVoice = try tts({ text: "Hello", voiceId: "voice-elsewhere" })
+    try sync(() => speech.script({ kind: "refuse", status: 422 }, { kind: "refuse", status: 503, retryAfterSeconds: 7 }))
+    const rejected = try tts({ text: "Rejected" })
+    const busy = try tts({ text: "Busy" })
+
+    const heard = try stt({ languageCode: "en-US", provider: "speech" })
+    const otherProvider = try stt({ provider: "elsewhere" })
+    const otherLanguage = try stt({ languageCode: "fr" })
+    const tooLarge = try promise(() => callDeclaring(cloud.url, "/api/v1/voice/stt", 25 * 1024 * 1024 + 1, { "content-type": "multipart/form-data; boundary=x" }))
+
+    const usage = try sql(cloud, "SELECT service, quote, charged, outcome FROM usage_records WHERE organization_id = $1 ORDER BY settled_at, hold_key", [caller.organizationId])
+    try check(() => assert.deepStrictEqual(
+      {
+        plain: [plain.status, plain.headers["content-type"], plain.headers["x-eliza-tts-provider"], plain.headers["x-eliza-tts-speed"], String(plain.body).length > 0],
+        sentPlain: speech.synthesized[0],
+        timed: [timed.status, timed.headers["content-type"], timed.headers["x-eliza-tts-timing"], lines.map((line) => [line.type, line.sequence, line.alignment?.characters.join("")])],
+        sentTimed: [speech.synthesized[1]?.path, speech.synthesized[1]?.body.previous_text, speech.synthesized[1]?.body.transcript],
+        anonymous: anonymous.status,
+        foreignVoice: [foreignVoice.status, (foreignVoice.body as { readonly error: string }).error],
+        rejected: [rejected.status, (rejected.body as { readonly error: string }).error],
+        busy: [busy.status, (busy.body as { readonly error: string }).error, Number(busy.headers["retry-after"]) >= 7],
+        heard: [heard.status, heard.body, heard.headers["x-eliza-stt-provider"]],
+        sentHeard: speech.transcribed.map((each) => [each.mimeType, each.model, each.language, each.audio.length]),
+        otherProvider: [otherProvider.status, (otherProvider.body as { readonly error: string }).error],
+        otherLanguage: [otherLanguage.status, (otherLanguage.body as { readonly error: string }).error],
+        tooLarge: [tooLarge.status, (tooLarge.body as { readonly error: string }).error],
+        usage: usage.map((row) => [row.service, Number(row.quote), Number(row.charged), row.outcome])
+      },
+      {
+        plain: [200, "audio/mpeg", "speech", "1.1", true],
+        sentPlain: {
+          path: "/tts/bytes",
+          body: {
+            model_id: "model-1", transcript: "Hello there", voice: { mode: "id", id: "voice-1" },
+            output_format: { container: "mp3", sample_rate: 44_100, bit_rate: 128_000 },
+            speed: 1.1, apply_text_normalization: "auto", previous_text: "Earlier words.", next_text: "Later words."
+          }
+        },
+        timed: [200, "application/x-ndjson", "character-v1", [["audio", 0, "Hi "], ["audio", 1, "you"], ["done", undefined, undefined]]],
+        sentTimed: ["/tts/timestamps", "Before", "Hi you"],
+        anonymous: 401,
+        foreignVoice: [400, "invalid_request"],
+        rejected: [502, "provider_invalid_response"],
+        busy: [503, "provider_unavailable", true],
+        heard: [200, { transcript: spokenTranscript, duration_ms: 2_500, words: spokenTranscript.split(" ").map((word, index) => ({ text: word, startMs: index * 400, endMs: index * 400 + 300 })) }, "speech"],
+        sentHeard: [["audio/wav", "ink-whisper", "en", recordingBytes]],
+        otherProvider: [400, "invalid_request"],
+        otherLanguage: [400, "invalid_request"],
+        tooLarge: [413, "content_too_large"],
+        usage: [
+          ["speech", 396, 396, "known"],
+          ["speech", 216, 216, "known"],
+          ["speech", 288, 0, "known"],
+          ["speech", 144, 144, "unknown"],
+          ["speech", 100, 250, "known"]
+        ]
+      }
+    ))
+  }), 60_000)
+})

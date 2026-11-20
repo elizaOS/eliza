@@ -819,6 +819,9 @@ export function createStripeFake(options: StripeFakeOptions = {}): StripeFake {
     },
     completeSession,
     expireSession,
+    refundCharge,
+    disputeCharge,
+    resolveDispute,
     signedEvent(type, object, eventOptions = {}) {
       const id = eventOptions.id ?? nextId("event");
       const timestamp = eventOptions.timestamp ?? now();

@@ -1,0 +1,12 @@
+apply plugin: 'com.android.library'
+android {
+ namespace 'ai.eliza.voice.io'
+ compileSdk rootProject.ext.compileSdkVersion
+ defaultConfig { minSdk 29; targetSdk rootProject.ext.targetSdkVersion }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+ testOptions { unitTests.returnDefaultValues = true }
+}
+dependencies {
+ testImplementation 'junit:junit:4.13.2'
+ testImplementation 'org.json:json:20250517'
+}

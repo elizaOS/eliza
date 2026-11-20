@@ -1,4 +1,4 @@
-// spec/cloud/identity/federatedSignIn.md, "A callback returns a one-minute code only after Google's verified identity is stored, and otherwise one error of the closed list"; spec/cloud/identity/federatedSignIn.md, "An ID token spends a live challenge once, only with the client, verifier, signature, issuer, audience and nonce all right, and a refused one spends nothing"
+// spec/cloud/identity/federatedSignIn.md, "A callback returns a one-minute code only after Google's verified identity and the code are stored, and otherwise one error of the closed list"; spec/cloud/identity/federatedSignIn.md, "An ID token spends a live challenge once, only with the client, verifier, signature, issuer, audience and nonce all right, and a refused one spends nothing"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import type { GoogleAnswer } from "../../gen/cloud__identity__federatedSignIn.ts"
 import type { GoogleSettings } from "../profile/profile.schema.ts"
@@ -57,7 +57,7 @@ const Claims = Schema.Struct({
   given_name: Schema.optionalKey(Schema.String),
   name: Schema.optionalKey(Schema.String)
 })
-const TokenReply = Schema.Struct({ id_token: Schema.String })
+schema TokenReply { id_token: string }
 
 function parsedJson(text: string): unknown {
   try {

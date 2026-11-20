@@ -9,7 +9,7 @@ package ai.eliza.plugins.browsersurface;
  */
 public final class BrowserAutofillExtras {
   public static final BrowserAutofillExtras ELIZA_PASSWORDS = new BrowserAutofillExtras(
-      "ai.alphacompute.autofill.fieldOrigin", "ai.eliza.passwords.topOrigin");
+      "ai.eliza.autofill.fieldOrigin", "ai.eliza.passwords.topOrigin");
 
   public final String fieldOrigin;
   public final String topOrigin;

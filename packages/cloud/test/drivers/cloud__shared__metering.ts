@@ -37,12 +37,13 @@ async function fundOrganization(key: string, lane: FundingLane, allowanceAvailab
   if (lane === "CreditsOnly") return;
   await cloud.sql(
     "INSERT INTO grants (id, organization_id, family, plan_key, effective_from, effective_until, created_at) VALUES ($1, $2, 'conformance', $3, 0, $4, 0)",
-    [`grant-${organizationId}`, organizationId, lane === "Refused" ? "unknown_plan" : "plus_monthly", periodEnd]
+    [`grant-${organizationId}`, organizationId, lane === "Refused" ? "unknown_plan" : "pro_monthly", periodEnd]
   );
   if (lane === "Refused") return;
   const period = `period-${organizationId}`;
   const columns = (status: string) => () => ({ organization_id: organizationId, status, period_start: 0, period_end: periodEnd, updated_at: 0 });
-  const opened = must("opening the allowance period", await cloud.run(within((tx) => stepRow(tx, periodRows, period, { type: "openRenewal", invoiceId: "conformance", planKey: "PlusMonthly", startsAt: 0, endsAt: periodEnd }, columns("open")))));
+  const opened = must("opening the allowance period", await cloud.run(within((tx) => stepRow(tx, periodRows, period, { type: "openRenewal", invoiceId: "conformance", planKey: "ProMonthly", startsAt: 0, endsAt: periodEnd }, columns("open")))));
+  if (opened.state.available < allowanceAvailable) throw new Error(`no plan includes an allowance of ${allowanceAvailable}`);
   const spent = opened.state.available - allowanceAvailable;
   if (spent > 0) {
     must("spending the allowance", await cloud.run(within((tx) => Effect.flatMap(

@@ -44,6 +44,7 @@ export const osmPath = {
 export interface OsmFake {
   readonly handler: FakeHandler;
   readonly calls: ReadonlyArray<FakeRequest>;
+  /** @throws {never} */
   script(...next: ReadonlyArray<OsmScript>): void;
 }
 
@@ -81,6 +82,7 @@ function scripted(script: OsmScript, request: FakeRequest): FakeAnswer | undefin
   }
 }
 
+/** @throws {never} */
 export function osmFake(): OsmFake {
   const calls: FakeRequest[] = [];
   const queue: OsmScript[] = [];

@@ -1,0 +1,486 @@
+// spec/os/build/androidHost.md, "Story: Generate my app's Android host from data"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"
+import { mergedNodes } from "../../gen/os__build__androidHost.effect.vibe"
+import { maxFileBytes, serviceNamed } from "../../gen/os__agentService__config.effect.vibe"
+import { admitHostProfile, type AndroidHostProfile, type ConfigField, type HostOsModule, type HostSource } from "./android-host-profile.vibe"
+import { INVENTORY_ASSET } from "./runtime-payload.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+  import { injectAndroidRuntimeBytePreservation } from "../../android/android-runtime-packaging.ts"
+
+  /** @throws {never} */
+  export function sha256Hex(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function preserveRuntimeBytes(gradle: string): string {
+    return injectAndroidRuntimeBytePreservation(gradle)
+  }
+
+  /** @throws {never} */
+  export function packageName(text: string): string | undefined {
+    try {
+      const parsed: unknown = JSON.parse(text)
+      return typeof parsed === "object" && parsed !== null && "name" in parsed && typeof parsed.name === "string" ? parsed.name : undefined
+    } catch {
+      return undefined
+    }
+  }
+}
+import { packageName, preserveRuntimeBytes, sha256Hex } from node
+
+export interface GenerateAndroidHost {
+  readonly consumerRoot: string
+  readonly dependencyRoot?: string
+  readonly output: string
+  readonly identity: unknown
+  readonly profile: unknown
+  readonly runtime?: string
+}
+
+export interface GeneratedAndroidHost {
+  readonly directory: string
+  readonly appId: string
+  readonly files: readonly string[]
+  readonly toolchain: string
+}
+
+export error HostInputRefused { place: string; reason: string }
+export error HostOwnershipRefused { output: string; reason: string }
+export error ToolchainWrapperChanged { expected: string; observed: string }
+
+const TEMPLATES = "android/host-templates"
+const MARKER = ".eliza-consumer-host.json"
+export const PROFILE_DOCUMENT = ".eliza-consumer-profile.json"
+const IDENTITY_RESOURCES = "eliza-consumer-host/res"
+const HOST_MANIFEST = "app/eliza-host-manifest.xml"
+const RUNTIME_MAIN = "android/app/src/main"
+const AGENT_PERMISSIONS = ["android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_SPECIAL_USE"]
+const AGENT_ASSETS = { host: "host.json", character: "character.json", policy: "policy.json" } as const
+const SPECIAL_USE_SUBTYPE = "on-device-agent"
+const META = "ai.eliza.os.agent"
+const QUALIFIED_CLASS = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/
+const GRADLE_PROPERTIES = "org.gradle.jvmargs=-Xmx2048m\nandroid.useAndroidX=true\norg.gradle.parallel=false\norg.gradle.workers.max=2\n"
+
+schema Toolchain { gradle: string; gradleSha256: string; wrapperSha256: string; androidGradlePlugin: string; kotlin: string; java: Schema.Int; versions: Record<string, string> }
+schema AgentHostFile { service: string }
+const Marker = Schema.Struct({
+  schema: Schema.Literals([1, 2]),
+  output: Schema.optionalKey(Schema.String),
+  consumerRoot: Schema.optionalKey(Schema.String),
+  appId: Schema.String,
+  files: Schema.Array(Schema.String),
+})
+
+type ComponentTag = "activity" | "activity-alias" | "service" | "receiver" | "provider"
+type Wanted = "File" | "Directory"
+
+interface GeneratedFile {
+  readonly content: string | Uint8Array
+  readonly mode: number
+}
+
+interface Roots {
+  readonly consumer: string
+  readonly os: string
+  readonly dependencies: string | undefined
+  readonly packages: readonly string[]
+}
+
+interface ManifestNodes {
+  readonly permissions: readonly string[]
+  readonly components: readonly string[]
+  readonly exported: readonly { readonly tag: ComponentTag; readonly name: string }[]
+}
+
+interface Removals {
+  readonly permissions: readonly string[]
+  readonly components: readonly { readonly tag: ComponentTag; readonly name: string }[]
+}
+
+const inside = (root: string, place: string) => place === root || place.startsWith(`${root}/`)
+
+const xml = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;")
+
+const androidString = (value: string) => `"${value.replace(/[\\"@?]/g, (character) => `\\${character}`)}"`
+
+function qualified(name: string, namespace: string | undefined): string {
+  if (namespace === undefined) return name
+  if (name.startsWith(".")) return `${namespace}${name}`
+  return name.includes(".") ? name : `${namespace}.${name}`
+}
+
+function manifestNodes(text: string, namespace: string | undefined): ManifestNodes {
+  const plain = text.replace(/<!--[\s\S]*?-->/g, "")
+  const permissions = [...plain.matchAll(/<uses-permission(?:-sdk-23)?\b[^>]*?android:name\s*=\s*"([^"]+)"/g)].map((found) => found[1] ?? "")
+  const components = [...plain.matchAll(/<(activity-alias|activity|service|receiver|provider)\b([^>]*)>/g)].flatMap((found) => {
+    const name = /android:name\s*=\s*"([^"]+)"/.exec(found[2] ?? "")?.[1]
+    return name === undefined ? [] : [{ tag: found[1] as ComponentTag, name: qualified(name, namespace), exported: /android:exported\s*=\s*"true"/.test(found[2] ?? "") }]
+  })
+  return {
+    permissions,
+    components: components.map((component) => component.name),
+    exported: components.filter((component) => component.exported).map(({ tag, name }) => ({ tag, name })),
+  }
+}
+
+function gradleField(field: ConfigField) {
+  return { type: field.kind, name: field.name, value: JSON.stringify(field.value) }
+}
+
+function hostManifest(profile: AndroidHostProfile, service: string | undefined, removals: Removals): string | undefined {
+  const notification = profile.agentService.notification
+  const hook = profile.agentService.launchHook
+  const meta = [
+    ...(notification === undefined ? [] : [
+      `  <meta-data android:name="${META}.notification.smallIcon" android:resource="@drawable/${notification.smallIcon}" />`,
+      `  <meta-data android:name="${META}.notification.color" android:value="#${notification.color.slice(2)}" />`,
+      `  <meta-data android:name="${META}.notification.channel" android:value="${xml(androidString(notification.channel))}" />`,
+      `  <meta-data android:name="${META}.notification.stopAction" android:value="${notification.stopAction}" />`,
+      ...Object.entries(notification.strings).sort(([a], [b]) => a.localeCompare(b)).map(([key, resource]) => `  <meta-data android:name="${META}.notification.string.${key}" android:resource="@string/${resource}" />`),
+    ]),
+    ...(hook === undefined ? [] : [
+      `  <meta-data android:name="${META}.launchHook.class" android:value="${hook.class}" />`,
+      `  <meta-data android:name="${META}.launchHook.method" android:value="${hook.method}" />`,
+    ]),
+  ]
+  const application = [
+    ...(service === undefined ? [] : [
+      `  <service android:name="${service}" android:exported="false" android:foregroundServiceType="specialUse">`,
+      `   <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="${SPECIAL_USE_SUBTYPE}" />`,
+      "  </service>",
+    ]),
+    ...meta,
+    ...removals.components.map((component) => `  <${component.tag} android:name="${component.name}" tools:node="remove" />`),
+  ]
+  const permissions = [
+    ...(service === undefined ? [] : AGENT_PERMISSIONS.map((permission) => ` <uses-permission android:name="${permission}" />`)),
+    ...removals.permissions.map((permission) => ` <uses-permission android:name="${permission}" tools:node="remove" />`),
+  ]
+  if (application.length === 0 && permissions.length === 0) return undefined
+  return [
+    "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\" xmlns:tools=\"http://schemas.android.com/tools\">",
+    ...permissions,
+    ...(application.length === 0 ? [] : [" <application>", ...application, " </application>"]),
+    "</manifest>",
+    "",
+  ].join("\n")
+}
+
+function wrapperProperties(gradle: string, sha256: string): string {
+  return `distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\ndistributionUrl=https\\://services.gradle.org/distributions/gradle-${gradle}-bin.zip\nnetworkTimeout=10000\nvalidateDistributionUrl=true\nzipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\ndistributionSha256Sum=${sha256}\n`
+}
+
+effect function osPackageRoot() {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const start = try path.fromFileUrl(new URL(".", import.meta.url))
+  let directory = start
+  while (!(try files.exists(path.join(directory, TEMPLATES, "toolchain.json")))) {
+    const parent = path.dirname(directory)
+    if (parent === directory) throw new HostInputRefused({ place: start, reason: "The os package's Android host templates are missing" })
+    directory = parent
+  }
+  return try files.realPath(directory)
+}
+
+effect function realDirectory(place: string) {
+  const files = try FileSystem.FileSystem
+  return try mapError(files.realPath(place), () => new HostInputRefused({ place, reason: "The root is unavailable" }))
+}
+
+effect function workspaceOf(directory: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  for (let cursor = directory; ; cursor = path.dirname(cursor)) {
+    if (try files.exists(path.join(cursor, "pnpm-workspace.yaml"))) return cursor
+    if (cursor === path.dirname(cursor)) return undefined
+  }
+}
+
+effect function containerOf(roots: Roots, source: HostSource) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const root = source.root === "dependencies" && roots.dependencies !== undefined ? roots.dependencies : roots.consumer
+  if (source.root !== "dependencies" || path.basename(root) !== "node_modules" || source.segments.length === 0) return root
+  const [first = "", second] = source.segments
+  if (first === ".pnpm") throw new HostInputRefused({ place: source.place, reason: "A dependency input names a package, not the pnpm store" })
+  const name = first.startsWith("@") && second !== undefined ? `${first}/${second}` : first
+  const directory = try realDirectory(path.join(root, name))
+  if (!roots.packages.some((allowed) => inside(allowed, directory))) throw new HostInputRefused({ place: source.place, reason: "The dependency link escapes the consumer, os and workspace roots" })
+  const manifest = (files.readFileString(path.join(directory, "package.json")) catch () => "")
+  if (packageName(manifest) !== name) throw new HostInputRefused({ place: source.place, reason: `The dependency link ${name} is not that package` })
+  return directory
+}
+
+effect function readInput(roots: Roots, source: HostSource, wanted: Wanted) {
+  const files = try FileSystem.FileSystem
+  const real = try mapError(files.realPath(source.place), () => new HostInputRefused({ place: source.place, reason: "The input is unavailable" }))
+  if (!inside(try containerOf(roots, source), real)) throw new HostInputRefused({ place: source.place, reason: "The input escapes its declared root" })
+  if ((try files.stat(real)).type !== wanted) throw new HostInputRefused({ place: source.place, reason: `The input must be a ${wanted === "File" ? "file" : "directory"}` })
+  return real
+}
+
+effect function moduleSources(module: HostOsModule) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const directory = try realDirectory(module.directory)
+  const copies: { readonly from: string; readonly to: string }[] = []
+  for (const source of module.sources) {
+    const [, sourceSet = "", ...rest] = source.split("/")
+    const real = try mapError(files.realPath(path.join(directory, source)), () => new HostInputRefused({ place: path.join(directory, source), reason: "The os module source is unavailable" }))
+    if (!inside(directory, real)) throw new HostInputRefused({ place: real, reason: `The source escapes the os module ${module.module}` })
+    const target = `app/src/${sourceSet}/${rest.join("/")}`
+    if ((try files.stat(real)).type === "File") {
+      copies.push({ from: real, to: target })
+      continue
+    }
+    for (const entry of (try files.readDirectory(real, { recursive: true })).sort()) {
+      const file = try files.realPath(path.join(real, entry))
+      if (!inside(directory, file)) throw new HostInputRefused({ place: file, reason: `The source escapes the os module ${module.module}` })
+      if ((try files.stat(file)).type === "File") copies.push({ from: file, to: `${target}/${entry.split(path.sep).join("/")}` })
+    }
+  }
+  return copies
+}
+
+effect function moduleManifest(directory: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const manifest = path.join(directory, "src", "main", "AndroidManifest.xml")
+  if (!(try files.exists(manifest))) return manifestNodes("", undefined)
+  const gradle = (files.readFileString(path.join(directory, "build.gradle")) catch () => "")
+  return manifestNodes(try files.readFileString(manifest), /namespace\s*=?\s*["']([^"']+)["']/.exec(gradle)?.[1])
+}
+
+effect function agentService(roots: Roots, profile: AndroidHostProfile) {
+  const files = try FileSystem.FileSystem
+  const agent = profile.agent
+  if (agent === undefined) return undefined
+  const entries = []
+  for (const key of ["host", "character", "policy"] as const) {
+    const source = try readInput(roots, agent[key], "File")
+    const bytes = try files.readFile(source)
+    if (bytes.length > maxFileBytes) throw new HostInputRefused({ place: source, reason: `The agent ${key} file is larger than ${maxFileBytes} bytes` })
+    entries.push({ source, name: AGENT_ASSETS[key], bytes })
+  }
+  const hostText = new TextDecoder().decode(entries[0]?.bytes)
+  const host = try mapError(
+    Schema.decodeUnknownEffect(Schema.fromJsonString(AgentHostFile))(hostText),
+    () => new HostInputRefused({ place: agent.host.place, reason: "The agent host file names no service class" }),
+  )
+  if (!serviceNamed(QUALIFIED_CLASS.test(host.service) ? { tag: "QualifiedClass", className: host.service } : { tag: "MalformedClass" })) {
+    throw new HostInputRefused({ place: agent.host.place, reason: `The agent service ${host.service} is not a qualified class name` })
+  }
+  return { service: host.service, files: entries.map(({ source, name }) => ({ source, name })) }
+}
+
+effect function claimOutput(consumer: string, output: string, appId: string, files: ReadonlyMap<string, GeneratedFile>) {
+  const fileSystem = try FileSystem.FileSystem
+  const path = try Path.Path
+  for (let cursor = output; cursor !== consumer; cursor = path.dirname(cursor)) {
+    const info = (fileSystem.lstat(cursor) catch () => undefined)
+    if (info?.type === "SymbolicLink") throw new HostOwnershipRefused({ output, reason: `${cursor} is a symbolic link` })
+    if (info !== undefined && cursor === output && info.type !== "Directory") throw new HostOwnershipRefused({ output, reason: "The output is not a directory" })
+  }
+  const owned = path.relative(consumer, output).split(path.sep).join("/")
+  const markerPath = path.join(output, MARKER)
+  const markerInfo = (fileSystem.lstat(markerPath) catch () => undefined)
+  let previous: readonly string[] = []
+  if (markerInfo !== undefined) {
+    if (markerInfo.type !== "File") throw new HostOwnershipRefused({ output, reason: "The ownership marker is not a file" })
+    const marker = try mapError(
+      Schema.decodeUnknownEffect(Schema.fromJsonString(Marker))(try fileSystem.readFileString(markerPath)),
+      () => new HostOwnershipRefused({ output, reason: "The ownership marker is unreadable" }),
+    )
+    const place = marker.output === undefined ? marker.consumerRoot === consumer : marker.output === owned
+    if (!place || marker.appId !== appId) throw new HostOwnershipRefused({ output, reason: "The generated host belongs to another place or application" })
+    previous = marker.files
+  } else if ((try fileSystem.exists(output)) && (try fileSystem.readDirectory(output)).length > 0) {
+    throw new HostOwnershipRefused({ output, reason: "The output holds files this generator does not own" })
+  }
+  for (const relative of new Set([...previous, ...files.keys()])) {
+    if (relative.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) throw new HostOwnershipRefused({ output, reason: `${relative} is not a plain relative path` })
+    const target = path.join(output, relative)
+    for (let cursor = target; cursor !== output; cursor = path.dirname(cursor)) {
+      if ((fileSystem.lstat(cursor) catch () => undefined)?.type === "SymbolicLink") throw new HostOwnershipRefused({ output, reason: `${relative} passes through a symbolic link` })
+    }
+    const info = (fileSystem.stat(target) catch () => undefined)
+    if (info !== undefined && !(previous.includes(relative) && info.type === "File")) throw new HostOwnershipRefused({ output, reason: `${relative} is not a file this generator wrote` })
+  }
+  return { markerPath, owned, previous }
+}
+
+effect function writeHost(consumer: string, output: string, appId: string, files: ReadonlyMap<string, GeneratedFile>) {
+  const fileSystem = try FileSystem.FileSystem
+  const path = try Path.Path
+  const { markerPath, owned, previous } = try claimOutput(consumer, output, appId, files)
+  const marker = (listed: readonly string[]) => `${JSON.stringify({ schema: 2, output: owned, appId, files: listed }, null, 2)}\n`
+  try fileSystem.makeDirectory(output, { recursive: true })
+  try fileSystem.writeFileString(markerPath, marker([...new Set([...previous, ...files.keys()])]))
+  for (const [relative, file] of files) {
+    const target = path.join(output, relative)
+    try fileSystem.makeDirectory(path.dirname(target), { recursive: true })
+    try (typeof file.content === "string" ? fileSystem.writeFileString(target, file.content) : fileSystem.writeFile(target, file.content))
+    try fileSystem.chmod(target, file.mode)
+  }
+  for (const relative of previous) {
+    if (!files.has(relative)) try fileSystem.remove(path.join(output, relative), { force: true })
+  }
+  try fileSystem.writeFileString(markerPath, marker([...files.keys()]))
+}
+
+export effect function generateAndroidHost(options: GenerateAndroidHost) {
+  const fileSystem = try FileSystem.FileSystem
+  const path = try Path.Path
+  const os = try osPackageRoot()
+  const templates = path.join(os, TEMPLATES)
+  const consumer = try realDirectory(options.consumerRoot)
+  const dependencies = options.dependencyRoot === undefined ? undefined : try realDirectory(options.dependencyRoot)
+  const requested = path.resolve(options.output)
+  const output = inside(path.resolve(options.consumerRoot), requested) ? path.join(consumer, path.relative(path.resolve(options.consumerRoot), requested)) : requested
+  const workspace = dependencies === undefined ? undefined : try workspaceOf(path.dirname(dependencies))
+  const roots: Roots = { consumer, os, dependencies, packages: [consumer, os, ...(dependencies === undefined ? [] : [dependencies]), ...(workspace === undefined ? [] : [workspace])] }
+  const toolchain = try mapError(
+    Schema.decodeUnknownEffect(Schema.fromJsonString(Toolchain))(try fileSystem.readFileString(path.join(templates, "toolchain.json"))),
+    () => new HostInputRefused({ place: path.join(templates, "toolchain.json"), reason: "The pinned toolchain record is malformed" }),
+  )
+  const runtimeMain = options.runtime === undefined ? undefined : try realDirectory(path.join(options.runtime, RUNTIME_MAIN))
+  if (runtimeMain !== undefined && !(try fileSystem.exists(path.join(runtimeMain, INVENTORY_ASSET)))) {
+    throw new HostInputRefused({ place: runtimeMain, reason: "The staged runtime payload has no inventory" })
+  }
+  const profile = try admitHostProfile(options.profile, {
+    identity: options.identity,
+    consumerRoot: consumer,
+    osRoot: os,
+    dependencyRoot: dependencies,
+    output,
+    toolchainVersions: toolchain.versions,
+  })
+
+  const generated = new Map<string, GeneratedFile>()
+  const add = effect (relative: string, content: string | Uint8Array, mode = 0o644) => {
+    if (generated.has(relative)) throw new HostInputRefused({ place: path.join(output, relative), reason: "Two inputs generate the same host file" })
+    generated.set(relative, { content, mode })
+  }
+  const copy = effect (source: string, relative: string) => {
+    try add(relative, try fileSystem.readFile(source))
+    return path.join(output, relative)
+  }
+
+  const label = xml(androidString(profile.identity.appName))
+  try add(`${IDENTITY_RESOURCES}/values/eliza_consumer_identity.xml`, `<resources><string name="app_name" formatted="false" translatable="false">${label}</string></resources>\n`)
+
+  const consumerManifests: string[] = []
+  const mainManifest = try readInput(roots, profile.manifest, "File")
+  consumerManifests.push(try fileSystem.readFileString(mainManifest))
+  const manifest = try copy(mainManifest, "app/src/main/AndroidManifest.xml")
+  const flavors = []
+  for (const flavor of profile.flavors) {
+    const source = flavor.manifest === undefined ? undefined : try readInput(roots, flavor.manifest, "File")
+    if (source !== undefined) consumerManifests.push(try fileSystem.readFileString(source))
+    flavors.push({
+      name: flavor.name,
+      buildConfigFields: flavor.buildConfigFields.map(gradleField),
+      manifest: source === undefined ? null : try copy(source, `app/src/${flavor.name}/AndroidManifest.xml`),
+    })
+  }
+
+  const sourceSets: Record<string, Record<string, string[]>> = {}
+  for (const entry of profile.sourceSets) {
+    const kinds = (sourceSets[entry.sourceSet] ??= {})
+    ;(kinds[entry.kind] ??= []).push(try readInput(roots, entry.source, "Directory"))
+  }
+
+  const modules = []
+  for (const module of profile.modules) {
+    modules.push({ name: module.name, directory: try readInput(roots, module.source, "Directory"), appDependency: module.appDependency, relocateBuild: module.relocateBuild })
+  }
+  const contributed: ManifestNodes[] = []
+  for (const module of profile.osModules) {
+    for (const source of try moduleSources(module)) try copy(source.from, source.to)
+    if (module.project === undefined) continue
+    const directory = try realDirectory(module.directory)
+    if (!inside(os, directory)) throw new HostInputRefused({ place: directory, reason: `The os module ${module.module} lies outside the os package` })
+    modules.push({ name: module.project, directory, appDependency: true, relocateBuild: true })
+    contributed.push(try moduleManifest(directory))
+  }
+
+  const agent = try agentService(roots, profile)
+  const consumerNodes = consumerManifests.map((text) => manifestNodes(text, profile.identity.appId))
+  const requestedPermissions = [...consumerNodes.flatMap((nodes) => nodes.permissions), ...(agent === undefined ? [] : AGENT_PERMISSIONS)]
+  const requestedComponents = [...consumerNodes.flatMap((nodes) => nodes.components), ...(agent === undefined ? [] : [agent.service])]
+  const permissions = [...new Set(contributed.flatMap((nodes) => nodes.permissions))].sort()
+  const exported = contributed.flatMap((nodes) => nodes.exported).filter((component, index, all) => all.findIndex((other) => other.name === component.name) === index)
+  const keptPermissions = mergedNodes(requestedPermissions, permissions)
+  const keptComponents = mergedNodes(requestedComponents, exported.map((component) => component.name))
+  const removals: Removals = {
+    permissions: permissions.filter((permission) => !keptPermissions.includes(permission)),
+    components: exported.filter((component) => !keptComponents.includes(component.name)).sort((a, b) => a.name.localeCompare(b.name)),
+  }
+  const overlay = hostManifest(profile, agent?.service, removals)
+  if (overlay !== undefined) try add(HOST_MANIFEST, overlay)
+
+  const proguardFiles = []
+  for (const source of profile.buildTypes.release.proguardFiles) proguardFiles.push(try readInput(roots, source, "File"))
+  const assetFiles = []
+  for (const asset of profile.assetFiles) assetFiles.push({ source: try readInput(roots, asset.source, "File"), name: asset.name })
+  const appScripts = []
+  for (const script of profile.appScripts) appScripts.push(try readInput(roots, script, "File"))
+  const admission = []
+  for (const step of profile.admission) admission.push({ name: step.task, command: step.argv, directory: try readInput(roots, step.directory, "Directory") })
+
+  const document = {
+    schema: 2,
+    identity: profile.identity,
+    toolchain,
+    sdk: profile.sdk,
+    releaseMinify: profile.releaseMinify,
+    kotlin: profile.kotlin,
+    nativeLibraries: profile.nativeLibraries === "extract-16k" ? "extract-16k" : null,
+    manifest,
+    hostManifest: overlay === undefined ? null : path.join(output, HOST_MANIFEST),
+    identityResources: path.join(output, IDENTITY_RESOURCES),
+    flavors,
+    sourceSets,
+    generatedSources: profile.generatedSources,
+    dependencies: profile.dependencies,
+    manifestPlaceholders: profile.manifestPlaceholders,
+    noCompress: profile.noCompress,
+    buildConfigFields: profile.buildConfigFields.map(gradleField),
+    buildTypes: {
+      debug: { abiFilters: profile.buildTypes.debug.abiFilters, buildConfigFields: profile.buildTypes.debug.buildConfigFields.map(gradleField) },
+      release: {
+        abiFilters: profile.buildTypes.release.abiFilters,
+        buildConfigFields: profile.buildTypes.release.buildConfigFields.map(gradleField),
+        shrinkResources: profile.buildTypes.release.shrinkResources,
+        proguardFiles,
+      },
+    },
+    signing: profile.signing ?? null,
+    versionOverride: profile.versionOverride ?? null,
+    admission,
+    assetFiles,
+    agentFiles: agent?.files ?? [],
+    appScripts,
+    modules,
+    runtimeMain: runtimeMain ?? null,
+  }
+  try add(PROFILE_DOCUMENT, `${JSON.stringify(document, null, 2)}\n`)
+  for (const name of ["build.gradle", "settings.gradle"]) try add(name, try fileSystem.readFileString(path.join(templates, name)))
+  const appGradle = try fileSystem.readFileString(path.join(templates, "app.gradle"))
+  try add("app/build.gradle", runtimeMain === undefined ? appGradle : preserveRuntimeBytes(appGradle))
+  try add("gradle.properties", GRADLE_PROPERTIES)
+  const wrapper = try fileSystem.readFile(path.join(templates, "gradle", "wrapper", "gradle-wrapper.jar"))
+  const observed = sha256Hex(wrapper)
+  if (observed !== toolchain.wrapperSha256) throw new ToolchainWrapperChanged({ expected: toolchain.wrapperSha256, observed })
+  try add("gradle/wrapper/gradle-wrapper.jar", wrapper)
+  try add("gradle/wrapper/gradle-wrapper.properties", wrapperProperties(toolchain.gradle, toolchain.gradleSha256))
+  try add("gradlew", try fileSystem.readFile(path.join(templates, "gradlew")), 0o755)
+  try add("gradlew.bat", try fileSystem.readFile(path.join(templates, "gradlew.bat")))
+
+  try writeHost(consumer, output, profile.identity.appId, generated)
+  const result: GeneratedAndroidHost = { directory: output, appId: profile.identity.appId, files: [...generated.keys()], toolchain: toolchain.gradle }
+  return result
+}

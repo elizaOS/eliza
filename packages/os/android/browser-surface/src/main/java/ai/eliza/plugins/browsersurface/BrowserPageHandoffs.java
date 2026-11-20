@@ -173,9 +173,4 @@ public final class BrowserPageHandoffs {
           || this.fileName.toLowerCase(Locale.ROOT).endsWith(".pdf");
     }
   }
-
-  /** Text zoom accepted by {@code setTextZoom}, in percent. */
-  public static boolean validTextZoom(int percent) {
-    return percent >= 50 && percent <= 300;
-  }
 }

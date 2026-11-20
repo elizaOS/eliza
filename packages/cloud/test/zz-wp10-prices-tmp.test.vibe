@@ -1,0 +1,61 @@
+// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+import { assert, describe, it } from "@effect/vitest"
+import { refusalBody } from "../src/http/refusal.vibe"
+import { testCloud } from "./support/cloud.vibe"
+import { testProfile } from "./support/profile.ts"
+import { operator } from "./support/operator.vibe"
+import { chooseFor } from "../src/services/models.vibe"
+import { parseProfile } from "../src/profile/profile.vibe"
+import { signedCaller } from "./support/caller.vibe"
+effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
+  return match (try exit(program)) {
+    when Exit.Success(let value): `succeeded with ${JSON.stringify(value)}`;
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => error._tag), Option.getOrElse(() => "defect"));
+  }
+}
+effect function check(run: () => void) {
+  try Effect.try(run)
+}
+describe("WP10 Operator and deletion: prices (spec/cloud/operator.md)", () => {
+  it.live("Price an offered model from the operator command line so its calls are admitted, and check prices and catalog (spec/cloud/operator.md, \"Story: Operate the deployment without reading secrets\"; spec/cloud/services/models.md, \"Story: Price a model call before it runs\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
+    const settings = profile.environments.staging.inference
+    if (settings === undefined) return try fail(new Error("the test profile offers no inference"))
+    const caller = try signedCaller(cloud, "pricer")
+    const run = (args: ReadonlyArray<string>) => failureTag(operator(cloud, args))
+    const admission = cloud.store.transaction((tx) => chooseFor(tx, settings, "test-chat", false)).pipe(
+      Effect.map((chosen) => `admitted ${chosen.model.id} at ${chosen.model.inputPer1K}/${chosen.model.outputPer1K} via ${chosen.provider.id}`),
+      Effect.catchTag("Refused", (error) => Effect.succeed(refusalBody(error.refusal).error))
+    )
+    const listed = effect () => {
+      const answer = try cloud.call("/api/v1/models", { headers: caller.headers })
+      return [answer.status, (answer.body as { readonly data: ReadonlyArray<{ readonly id: string }> }).data.map((model) => model.id)]
+    }
+    const checkBefore = try run(["prices", "check"])
+    const admittedBefore = try admission
+    const listedBefore = try listed()
+    const refusedSets = [
+      try run(["prices", "set", "--model", "unoffered", "--input-per-1k", "100", "--output-per-1k", "200"]),
+      try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "1.5", "--output-per-1k", "200"]),
+      try run(["prices", "set", "--model", "test-chat", "--output-per-1k", "200"])
+    ]
+    const set = try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--output-per-1k", "600"])
+    const admittedAfter = try admission
+    const listedAfter = try listed()
+    const checkAfter = try run(["prices", "check"])
+    try check(() => assert.deepStrictEqual(
+      { checkBefore, admittedBefore, listedBefore, refusedSets, set, admittedAfter, listedAfter, checkAfter },
+      {
+        checkBefore: "PricesMismatched",
+        admittedBefore: "model_unavailable",
+        listedBefore: [200, []],
+        refusedSets: ["Refused", "PriceFlagsInvalid", "PriceFlagsInvalid"],
+        set: 'succeeded with {"kind":"done","lines":["priced test-chat: input 150, output 600 µUSD per 1,000 tokens"]}',
+        admittedAfter: "admitted test-chat at 150/600 via llm",
+        listedAfter: [200, ["test-chat"]],
+        checkAfter: 'succeeded with {"kind":"done","lines":["0 price mismatches; usable models: test-chat","payment catalog verified"]}'
+      }
+    ))
+  }))
+})

@@ -50,10 +50,13 @@ export interface TriggerDeps {
 }
 
 export type Fired = "started" | "missed" | "busy" | "refused" | "gone"
+export type RunRequest = Extract<Event, { readonly type: "runNow" | "receiveEvent" }>
 
 export interface PromptTriggers extends TriggerService {
   readonly target: TriggerEventTarget
   fire(id: string): Fired!!
+  startRun(id: string, request: RunRequest): Fired!!
+  idle(): void!!
   start(): void!!
   stop(): void!!
 }
@@ -235,6 +238,14 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
     return (try begin(id, { type: "fire", nextInstant, processStartedAt: facts.processStartedAt })).kind
   }
 
+  effect function startRun(id: string, request: RunRequest): Fired!! {
+    return (try begin(id, request)).kind
+  }
+
+  effect function idle() {
+    for (const run of [...running.values()]) try Fiber.await(run.fiber)
+  }
+
   function atOf(timing: TriggerTiming, timezone: string, now: number): number {
     switch (timing.kind) {
       case "once": return timing.at
@@ -394,6 +405,8 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
     port,
     target,
     fire,
+    startRun,
+    idle,
     start,
     stop,
     plugin: {

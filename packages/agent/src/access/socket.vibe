@@ -74,7 +74,8 @@ module node {
     if (payload.bodyBase64 !== undefined && body?.toString("base64") !== payload.bodyBase64) return unreadable
     return {
       kind: "request", id: value.id,
-      call: { target: payload.path, method: payload.method, streamed: value.method === "http_request_stream", authorization: authorization.value, body },
+      call: { target: payload.path, method: payload.method, streamed: value.method === "http_request_stream", authorization: authorization.value, body,
+        headers: new Map(Object.entries(payload.headers).map(([key, header]) => [key.toLowerCase(), header])) },
     }
   }
 
