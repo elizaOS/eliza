@@ -14,6 +14,7 @@ import {
 	resolveDiscordMessageAuthorProfile,
 	resolveDiscordRoomProfile,
 	resolveDiscordUserProfile,
+	resolveStoredDiscordEntityProfile,
 } from "../discord-profiles.ts";
 
 type Outcome = unknown | Error;
@@ -241,6 +242,49 @@ describe("discord profile lookups keep manager receivers", () => {
 				title: "Alice",
 				avatarUrl: "https://cdn.discordapp.com/avatars/u1.png",
 			});
+		});
+	});
+
+	describe("resolveStoredDiscordEntityProfile", () => {
+		function runtimeWithEntityOwnership(entity: unknown | Error) {
+			return {
+				getEntityById: async () => {
+					if (entity instanceof Error) throw entity;
+					return entity;
+				},
+			} as unknown as AgentRuntime;
+		}
+
+		it("returns the stored profile for a resolved entity", async () => {
+			const runtime = runtimeWithEntityOwnership({
+				id: "e1",
+				metadata: {
+					displayName: "Alice",
+					discord: { userId: "u1", username: "alice" },
+				},
+			});
+
+			expect(await resolveStoredDiscordEntityProfile(runtime, "e1")).toEqual({
+				displayName: "Alice",
+				username: "alice",
+				rawUserId: "u1",
+			});
+		});
+
+		it("reports an absent entity as no stored profile", async () => {
+			const runtime = runtimeWithEntityOwnership(null);
+
+			expect(await resolveStoredDiscordEntityProfile(runtime, "e1")).toBeNull();
+		});
+
+		it("propagates a failed entity read instead of reporting no stored profile", async () => {
+			const runtime = runtimeWithEntityOwnership(
+				new Error("PGLite: database is locked"),
+			);
+
+			await expect(
+				resolveStoredDiscordEntityProfile(runtime, "e1"),
+			).rejects.toThrow("database is locked");
 		});
 	});
 });
