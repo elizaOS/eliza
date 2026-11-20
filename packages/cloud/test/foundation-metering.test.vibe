@@ -187,7 +187,8 @@ describe("WP0 Foundation: metering and funds", () => {
 })
 
 module node {
-  import { billingRequest } from "../src/billing.vibe"
+  import Stripe from "stripe"
+  import { billingRequest, stripeWebhook } from "../src/billing.vibe"
   import { openBackupDatabase } from "./support/password-backup.ts"
 
   export async function reconcileManagedCheckout() {
@@ -205,6 +206,9 @@ module node {
         [JSON.stringify({ customerId: "cus_legacy", subscriptionId: "sub_legacy", planKey: "plus_monthly", status: "active", periodEnd: last * 1000 }), last * 1000])
       let matched = false
       let periodPaid = false
+      let refunded = false
+      let dispute: "needs_response" | "won" = "needs_response"
+      let providerCalls = 0
       const price = {
         id: "price_fixture", product: { id: "product_fixture", active: true, livemode: false }, livemode: false,
         active: true, type: "recurring", currency: "usd", unit_amount: 3000, billing_scheme: "per_unit", transform_quantity: null,
@@ -213,6 +217,7 @@ module node {
       globalThis.fetch = async (input, init) => {
         const request = new Request(input, init)
         const url = new URL(request.url)
+        providerCalls += 1
         if (url.hostname !== "api.stripe.com") throw new Error("Unrecognized fixture provider")
         if (url.pathname === "/v1/subscriptions") {
           const customer = url.searchParams.get("customer")
@@ -236,7 +241,9 @@ module node {
         if (url.pathname === "/v1/invoice_payments")
           return Response.json({ data: [{ amount_paid: 3000, payment: { type: "charge", charge: "ch_fixture" } }], has_more: false })
         if (url.pathname === "/v1/charges/ch_fixture")
-          return Response.json({ customer: "cus_new", paid: true, captured: true, currency: "usd", amount_refunded: 0, disputed: false })
+          return Response.json({ id: "ch_fixture", customer: "cus_new", livemode: false, paid: true, captured: true, currency: "usd", amount_refunded: refunded ? 3000 : 0, disputed: true })
+        if (url.pathname === "/v1/disputes")
+          return Response.json({ data: [{ status: dispute }], has_more: false })
         if (url.pathname === "/v1/checkout/sessions/cs_new")
           return Response.json({ id: "cs_new", client_reference_id: "new", customer: "cus_new", livemode: false, mode: "subscription",
             status: "complete", payment_status: "paid", subscription: matched ? "sub_new" : "sub_foreign",
@@ -251,6 +258,22 @@ module node {
         const response = await billingRequest(new Request("https://fixture.test/api/v1/billing/subscription"), env, fixture.db, owner)
         return { status: response.status, body: await response.json() }
       }
+      const signing = new Stripe(env.STRIPE_SECRET_KEY)
+      const deliver = async (eventType: string, object: object) => {
+        const payload = JSON.stringify({ id: "evt_" + eventType, type: eventType, livemode: false, data: { object } })
+        const signature = signing.webhooks.generateTestHeaderString({ payload, secret: env.STRIPE_WEBHOOK_SECRET })
+        const request = new Request("https://fixture.test/api/v1/billing/webhook", {
+          method: "POST", headers: { "stripe-signature": signature }, body: payload
+        })
+        return (await stripeWebhook(request, new TextEncoder().encode(payload), env, fixture.db)).status
+      }
+      const mappedDispute = (stage: "created" | "closed") => deliver("charge.dispute." + stage, { object: "dispute", charge: "ch_fixture" })
+      const unknownStatuses = [
+        await deliver("refund.created", { object: "refund", charge: "ch_foreign" }),
+        await mappedDispute("created"),
+        await deliver("charge.refunded", { object: "charge", id: "ch_foreign", customer: "cus_foreign" })
+      ]
+      const unknownProviderCalls = providerCalls
       const unrelated = await read("new")
       matched = true
       const paid = await read("new")
@@ -258,10 +281,26 @@ module node {
       const beforeRenewal = await fixture.db.query("SELECT key FROM allowance_periods")
       periodPaid = true
       const renewal = await read("new")
+      const beforeResolution = (await fixture.db.query("SELECT key FROM allowance_periods")).rows
+      dispute = "won"
+      const resolved = await mappedDispute("closed")
+      const replay = await mappedDispute("closed")
       const paidReplay = await read("new")
       const rows = await fixture.db.query("SELECT key,status,provider_subscription_id,state->>'lastRenewalInvoice' AS renewal FROM subscriptions ORDER BY key")
       const allowances = await fixture.db.query("SELECT key FROM allowance_periods")
-      return { unrelated, paid, legacy, renewal, paidReplay, beforeRenewal: beforeRenewal.rows, rows: rows.rows, allowances: allowances.rows }
+      const allowanceStatus = async () => (await fixture.db.query("SELECT status FROM allowance_periods WHERE key = 'invoice/in_new'")).rows
+      dispute = "needs_response"
+      const reopened = await mappedDispute("created")
+      const disputeClawback = await allowanceStatus()
+      dispute = "won"
+      const restored = await mappedDispute("closed")
+      const disputeRestore = await allowanceStatus()
+      refunded = true
+      const mappedRefund = await deliver("refund.updated", { object: "refund", charge: "ch_fixture" })
+      const seen = await fixture.db.query("SELECT charge_id,customer_id FROM cloud_stripe_charge_owners")
+      const refundClawback = await allowanceStatus()
+      return { unrelated, paid, legacy, renewal, paidReplay, beforeRenewal: beforeRenewal.rows, rows: rows.rows, allowances: allowances.rows,
+        unknownStatuses, unknownProviderCalls, beforeResolution, deliveries: [resolved, replay, reopened, restored, mappedRefund], owners: seen.rows, outcomes: [disputeClawback, disputeRestore, refundClawback] }
     } finally {
       globalThis.fetch = original
       await fixture.close()
@@ -270,7 +309,7 @@ module node {
 }
 import { reconcileManagedCheckout } from node
 
-it.live('Follow the verified Checkout and distinguish a plan invoice (spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is")', () => effect {
+it.live('Follow the verified Checkout and scope shared charge events (spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"; spec/cloud/billing/providerEvents.md, "Each event type has one owner, and an event of any other type is done at its first handling")', () => effect {
   const result = try tryPromise(() => reconcileManagedCheckout())
   const entitled = { status: 200, body: { status: "active", canManage: true, canCheckout: false } }
   try check(() => assert.deepStrictEqual(result, {
@@ -278,6 +317,8 @@ it.live('Follow the verified Checkout and distinguish a plan invoice (spec/cloud
     paid: entitled, legacy: entitled, renewal: entitled, paidReplay: entitled, beforeRenewal: [],
     rows: [{ key: "legacy", status: "active", provider_subscription_id: "sub_legacy", renewal: "" },
       { key: "new", status: "active", provider_subscription_id: "sub_new", renewal: "in_new" }],
-    allowances: [{ key: "invoice/in_new" }],
+    allowances: [{ key: "invoice/in_new" }], unknownStatuses: [204, 204, 204], unknownProviderCalls: 0, beforeResolution: [],
+    deliveries: [204, 204, 204, 204, 204], owners: [{ charge_id: "ch_fixture", customer_id: "cus_new" }],
+    outcomes: [[{ status: "clawed_back" }], [{ status: "open" }], [{ status: "clawed_back" }]],
   }))
 }, 30_000)

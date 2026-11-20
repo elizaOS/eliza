@@ -76,7 +76,7 @@ module node {
     return runtime.roomHandlerQueue.withLease(room.id, async (lease) => {
       signal.throwIfAborted()
       const input = memory(runtime, owner, room, text, options.metadata)
-      await runtime.createMessageMemory(input)
+      const userMessageId = await runtime.createMessageMemory(input)
       const [current] = await runtime.adapter.getRoomsByIds([room.id])
       const metadata = stamp(current?.metadata?.deviceConversation)
       if (metadata._tag === "Some" && current !== undefined) {
@@ -86,13 +86,14 @@ module node {
           },
         }])
       }
-      return service.handleMessage(runtime, input, storeReply, {
+      const result = await service.handleMessage(runtime, input, storeReply, {
         roomHandlerLease: lease, abortSignal: signal, ...(options.onStreamChunk === undefined ? {} : { onStreamChunk: options.onStreamChunk }),
       })
+      return { ...result, userMessageId }
     }, { signal })
   }
 
-  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner): LocalRoute[] {
+  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string): LocalRoute[] {
     if (!runtime.messageService) throw new Error("A conversation requires the message service")
     const rooms = () => runtime.getRooms(owner.world)
     const find = async (id: string | undefined): Promise<Room | undefined> =>
@@ -137,7 +138,10 @@ module node {
           const result = await processTurn(runtime, owner, room, payload.value.text, signal, { onStreamChunk: (text) => writer.append(text) })
           const [reply] = result.responseMessages
           return result.didRespond && result.responseContent?.text && reply?.id
-            ? { type: "done", fullText: result.responseContent.text, messageId: reply.id, actionResults: [] }
+            ? {
+              type: "done", fullText: result.responseContent.text, messageId: reply.id,
+              userMessageId: result.userMessageId, agentName, actionResults: [],
+            }
             : { type: "error", code: "turn_failed", message: "The turn did not complete" }
         } }
       }),

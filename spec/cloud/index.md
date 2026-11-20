@@ -110,8 +110,16 @@ have separate permissions. A Gmail message read returns named attachment
 descriptors without attachment bytes. Fetching a supported part requires the
 same owner and explicit mail grant, with its message, history and part
 identifiers. A changed history or missing part cannot return content.
+A browser that has opened a photo or PDF can hand that original to its owner’s
+registered device. The selection expires after five minutes. Redemption requires
+an active device credential under the same account and organization, the same
+current mail grant, revision, part and content digest. The handoff contains no
+mail bytes or provider credentials. A later handoff can only return that same
+original until it expires.
 
 ```quint
+pure def currentAttachmentTransfer(issuedAt: int, now: int): bool = issuedAt >= 0 and now >= issuedAt and now - issuedAt < 300000
+
 pure def canReadCloudGoogle(ownerSessionActive: bool, connectionPresent: bool, grantOwnerMatches: bool, selected: Set[CloudGoogleReadScope], requested: CloudGoogleReadScope): bool =
   ownerSessionActive and connectionPresent and grantOwnerMatches and selected.contains(requested)
 ```
