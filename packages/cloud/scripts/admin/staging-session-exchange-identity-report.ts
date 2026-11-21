@@ -179,31 +179,62 @@ async function main() {
     ["User id", userId, process.env.ALLOWED_USER_IDS],
     ["Organization id", organizationId, process.env.ALLOWED_ORGANIZATION_IDS],
   ] as const;
-  const credentialEligible =
-    rows.every(([, id, allowlist]) => includesId(allowlist, id)) &&
+  const activeOrdinaryCredential =
     fixture.active_user &&
     fixture.active_organization &&
     fixture.ordinary_steward_user &&
     fixture.matching_steward_identity &&
     !fixture.app_key &&
     !fixture.sandbox_key;
+  const tenantAuthorityInput = {
+    tenantId: STAGING_STEWARD_TENANT,
+    stewardUserId: fixture.steward_user_id,
+    organizationTenantId: fixture.steward_tenant_id,
+    apiKey: { ...fixture, user_id: userId, organization_id: organizationId },
+    user: fixture,
+    nowSeconds: Math.floor(Date.now() / 1000),
+  };
+  const credentialEligible =
+    activeOrdinaryCredential &&
+    rows.every(([, id, allowlist]) => includesId(allowlist, id));
   const authority = credentialEligible
     ? await resolveStagingSessionTenantAuthority({
+        ...tenantAuthorityInput,
         fixtureSubject: process.env.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT,
         reader: process.env.STAGING_SESSION_EXCHANGE_GRANT_READ_KEY,
-        tenantId: STAGING_STEWARD_TENANT,
-        stewardUserId: fixture.steward_user_id,
-        organizationTenantId: fixture.steward_tenant_id,
-        apiKey: {
-          ...fixture,
-          user_id: userId,
-          organization_id: organizationId,
-        },
-        user: fixture,
-        nowSeconds: Math.floor(Date.now() / 1000),
+      })
+    : null;
+  const fixtureEmail =
+    process.env.STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL?.trim().toLowerCase();
+  const exactFixtureOwner = Boolean(
+    activeOrdinaryCredential &&
+      fixtureEmail &&
+      fixture.email_verified &&
+      fixture.email?.trim().toLowerCase() === fixtureEmail &&
+      UUID.test(fixture.steward_user_id) &&
+      fixture.role === "owner" &&
+      fixture.user_created &&
+      fixture.source_app_id === null,
+  );
+  // Probe operator access for the verified QA identity even if the Cloud
+  // allowlists are stale. Keep the operator key in the protected runner.
+  const operatorAuthority = exactFixtureOwner
+    ? await resolveStagingSessionTenantAuthority({
+        ...tenantAuthorityInput,
+        fixtureSubject: fixture.steward_user_id,
+        reader: process.env.STEWARD_PLATFORM_KEYS?.split(",", 1)[0],
       })
     : null;
   const checks = [
+    ["Exact verified fixture owner", exactFixtureOwner],
+    [
+      "Existing operator can read the exact staging membership",
+      operatorAuthority?.kind === "enrolled"
+        ? "verified"
+        : operatorAuthority?.kind === "denied"
+          ? operatorAuthority.reader
+          : "not requested",
+    ],
     ["App credential", fixture.app_key],
     ["Sandbox credential", fixture.sandbox_key],
     ["Active registered Cloud user", fixture.active_user],
