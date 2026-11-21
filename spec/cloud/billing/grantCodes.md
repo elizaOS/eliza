@@ -45,6 +45,7 @@ such as sharp-s to SS, then remove ECMAScript whitespace and hyphens and read
 O as 0 and I or L as 1. Unpaired surrogates and other non-alphabet input are
 invalid. Once the result exceeds 16 units, it stays invalid. The walk stops
 retaining units at that point so long invalid input cannot grow the result.
+The device client exposes the same normalizer. Invalid input returns `null`.
 [UnicodeData](https://www.unicode.org/Public/18.0.0/ucd/UnicodeData.txt) and
 [SpecialCasing](https://www.unicode.org/Public/18.0.0/ucd/SpecialCasing.txt)
 define the mappings; `core/streamUnits` supplies the whitespace predicate.

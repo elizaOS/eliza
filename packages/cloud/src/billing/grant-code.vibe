@@ -17,7 +17,8 @@ module node {
 import { readUnits, writeGrantCodeUnits } from node
 export { writeGrantCodeUnits } from node
 
-export function normalizeSubscriptionCode(text: string): string | undefined {
+export function normalizeSubscriptionCode(text: unknown): string | null {
+  if (typeof text !== "string") return null
   const normalized = normalizeGrantCodeUnits(readUnits(text))
-  return declassifyGrantCodeValid(normalized) ? writeGrantCodeUnits(normalized) : undefined
+  return declassifyGrantCodeValid(normalized) ? writeGrantCodeUnits(normalized) : null
 }

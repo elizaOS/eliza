@@ -50,7 +50,7 @@ effect function codeKey(canonical: string) {
 
 effect function operatorCodeKey(text: string) {
   const canonical = normalizeSubscriptionCode(text)
-  if (canonical === undefined) throw new InvalidGrantCodeRequest({ problem: "invalid grant code" })
+  if (canonical === null) throw new InvalidGrantCodeRequest({ problem: "invalid grant code" })
   return try codeKey(canonical)
 }
 
@@ -208,7 +208,7 @@ export const routes: ReadonlyArray<Route> = [{
     const body = try jsonBody(context, RedeemBody)
     if (!redeemKeyPattern.test(body.idempotencyKey)) throw refused("InvalidRequest")
     const canonical = normalizeSubscriptionCode(body.code)
-    if (canonical === undefined) throw refused("GrantCodeInvalid")
+    if (canonical === null) throw refused("GrantCodeInvalid")
     const key = try codeKey(canonical)
     const store = try Store
     return json(try store.transaction((tx) => redeemIn(tx, caller, key, body.idempotencyKey)))
