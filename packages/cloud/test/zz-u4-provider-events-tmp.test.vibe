@@ -51,30 +51,36 @@ describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Ap
     ))
   }), 60_000)
 
-  it.live("Retry a failing event on its own schedule without holding back the next, dead-letter it after eight attempts and revive it on a resend (spec/cloud/billing/providerEvents.md, \"Story: Apply each payment event once, whatever the delivery order\")", () => scoped(effect {
+  it.live("Retry a failing event on its own schedule without holding back the next, dead-letter it after eight attempts or when unreadable, and revive it on a resend (spec/cloud/billing/providerEvents.md, \"Story: Apply each payment event once, whatever the delivery order\"; spec/cloud/billing/providerEvents.md, \"Story: Keep an event that cannot be applied until the provider sends it again\")", () => scoped(effect {
     const stripe = try sync(() => createStripeFake())
     const cloud = try testCloud({ stripe })
     const failing = try sync(() => stripe.signedEvent("charge.dispute.funds_withdrawn", { id: "dp_lost", object: "dispute", charge: "ch_missing", status: "needs_response", livemode: false }))
     const following = try sync(() => stripe.signedEvent("customer.created", { id: "cus_after", object: "customer" }))
+    const unreadable = try sync(() => stripe.signedEvent("invoice.paid", { id: "in_unreadable", object: "invoice" }))
     try deliver(cloud, failing)
     try deliver(cloud, following)
+    try deliver(cloud, unreadable)
     const started = try Clock.currentTimeMillis
     try cloud.inside(drainProviderEvents(started + 60_000))
-    const afterFirst = { failing: try eventRow(cloud, failing.id), following: try eventRow(cloud, following.id) }
+    const afterFirst = { failing: try eventRow(cloud, failing.id), following: try eventRow(cloud, following.id), unreadable: try eventRow(cloud, unreadable.id) }
+    const revived = try deliver(cloud, unreadable)
+    const pending = try eventRow(cloud, unreadable.id)
     for (let hour = 2; hour <= 26; hour += 2) {
       try cloud.inside(drainProviderEvents(started + hour * 3_600_000))
     }
     const deadLettered = try eventRow(cloud, failing.id)
-    const revived = try deliver(cloud, failing)
-    const pending = try eventRow(cloud, failing.id)
     try check(() => assert.deepStrictEqual(
-      { afterFirst, deadLettered, revived: statusOf(revived), pending },
+      { afterFirst, revived: statusOf(revived), pending, deadLettered },
       {
-        afterFirst: { failing: { state: "Pending", attempts: 1, dropped: false, error: "StripeRefused" }, following: { state: "Done", attempts: 1, dropped: true, error: null } },
-        deadLettered: { state: "DeadLettered", attempts: 8, dropped: false, error: "StripeRefused" },
+        afterFirst: {
+          failing: { state: "Pending", attempts: 1, dropped: false, error: "StripeRefused" },
+          following: { state: "Done", attempts: 1, dropped: true, error: null },
+          unreadable: { state: "DeadLettered", attempts: 1, dropped: false, error: "ProviderEventMalformed" }
+        },
         revived: [200, "queued"],
-        pending: { state: "Pending", attempts: 0, dropped: false, error: null }
+        pending: { state: "Pending", attempts: 0, dropped: false, error: null },
+        deadLettered: { state: "DeadLettered", attempts: 8, dropped: false, error: "StripeRefused" }
       }
     ))
-  }), 60_000)
+  }), 120_000)
 })

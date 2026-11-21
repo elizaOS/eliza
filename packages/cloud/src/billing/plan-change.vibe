@@ -1,6 +1,6 @@
 // spec/cloud/billing/subscriptionCommands.md, "Story: Review a plan change before I confirm it"; spec/cloud/billing/subscriptionCommands.md, "Story: Change or cancel my plan without paying twice"; spec/cloud/billing/subscriptionCommands.md, "Story: Get the plan I paid for"; spec/cloud/billing/subscriptionCommands.md, "Story: See my commands"; spec/cloud/billing/allowance.md, "Story: Get more allowance when I upgrade mid-period"
-import { NotAState, Rejected, apply, awaitsInvoice, commandStatus, decodeState, elapse, initial, isFinished, mayContinuePayment, nowOf, outcomeOf, type Command, type CommandEffect, type CommandStatus, type CommandStep, type Event, type UpgradeInvoice } from "../../gen/cloud__billing__subscriptionCommands.effect.vibe"
-import { apply as applySubscription, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+import { NotAState, Rejected, apply, awaitsInvoice, commandStatus, decodeState, elapse, initial, isFinished, mayContinuePayment, nowOf, outcomeOf, reviewFits, type Command, type CommandEffect, type CommandStatus, type CommandStep, type Event, type UpgradeInvoice } from "../../gen/cloud__billing__subscriptionCommands.effect.vibe"
+import type { Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import { refused } from "../http/refusal.vibe"
 import { json, jsonBody, owner, type CloudContext, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import { Deployment } from "../profile/profile.vibe"
@@ -12,7 +12,7 @@ import { loadRow, stepRow, type MachineRows } from "../store/rows.vibe"
 import { adjustForUpgrade } from "./allowance.vibe"
 import { commandIdOf, idempotencyKeyPattern, providerTimeout } from "./commands.vibe"
 import { parsePlanKey, wirePlanKey, type PlanKey, type WirePlanKey } from "./plans.vibe"
-import { claimLiveCommand, observeSubscription, readSubscription, reconcileSubscription, releaseLiveCommand } from "./subscriptions.vibe"
+import { claimLiveCommand, observeSubscription, readSubscription, reconcileSubscription, releaseLiveCommand, scheduleDowngrade } from "./subscriptions.vibe"
 
 export type PlanChangeKind = "upgrade" | "downgrade"
 export type PlanChangeStatus = "dispatched" | "unknown" | "awaiting_payment" | "succeeded" | "rejected"
@@ -103,22 +103,17 @@ effect function lockOrganization(tx: Tx, organizationId: string) {
   try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId])
 }
 
-effect function scheduleLowerPlan(tx: Tx, organizationId: string, commandId: string, planKey: PlanKey) {
-  const state = (try applySubscription(try readSubscription(tx, organizationId), { type: "scheduleDowngrade", commandId, planKey })).state
-  try tx.query("UPDATE subscriptions SET state = $2, revision = revision + 1, pending_plan_key = $3 WHERE key = $1", [organizationId, JSON.stringify(state), wirePlanKey(planKey)])
-}
-
 effect function perform(tx: Tx, organizationId: string, effects: ReadonlyArray<CommandEffect>, now: number) {
   for (const item of effects) {
     switch (item.tag) {
       case "ClaimSlot":
-        try claimLiveCommand(tx, organizationId, item.kind, item.commandId, item.expectedRevision)
+        try claimLiveCommand(tx, organizationId, item.kind, item.commandId, item.expectedRevision, now)
         break
       case "ReleaseSlot":
-        try releaseLiveCommand(tx, organizationId, item.commandId)
+        try releaseLiveCommand(tx, organizationId, item.commandId, now)
         break
       case "ScheduleDowngrade":
-        try scheduleLowerPlan(tx, organizationId, item.commandId, item.planKey)
+        try scheduleDowngrade(tx, organizationId, item.commandId, item.planKey, now)
         break
       case "AdjustAllowance":
         try adjustForUpgrade(tx, organizationId, item.planKey, item.effectiveAt, item.reviewed, now)
@@ -309,6 +304,7 @@ effect function reviewPlanChange(change: Change, context: RouteContext) {
   const now = try Clock.currentTimeMillis
   const subscription = try store.transaction((tx) => readSubscription(tx, signed.organizationId))
   try current(subscription, body.subscriptionId, body.expectedSubscriptionRevision)
+  if (!reviewFits(subscription, change.kind, target, 0)) throw refused("BillingStateConflict")
   const dueNowCents = change.kind === "UpgradeCommand" ? try upgradeDue(subscription, target, now) : 0
   const quoteId = `quo_${newId().replaceAll("-", "")}`
   const by = receiptOwner(signed.organizationId, signed.userId, change.providerKind)

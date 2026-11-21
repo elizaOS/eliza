@@ -75,7 +75,7 @@ public final class SystemUpdateAdapter {
                     conditions(e.get("conditions")), offer(e.get("offer")));
             case "withdrawApplyIntent" -> journal.withdrawApplyIntent(text(e.get("boot")), conditions(e.get("conditions")));
             case "applyAccepted" -> journal.applying(text(e.get("boot")));
-            case "completedApply" -> journal.completedApply(text(e.get("boot")), Math.toIntExact(number(e.get("errorCode"))));
+            case "completedApply" -> journal.completedApply(text(e.get("boot")), small(number(e.get("errorCode"))));
             case "rebootIntent" -> {
                 Offer offer = offer(e.get("offer"));
                 Engine engine = engine(e.get("engine"));
@@ -115,13 +115,13 @@ public final class SystemUpdateAdapter {
     private static ManifestFacts manifest(Object value) {
         Map<String, Object> m = object(value);
         return new ManifestFacts(number(m.get("manifestBytes")), flag(m.get("https")), flag(m.get("enrolledHost")),
-                flag(m.get("userInfo")), Math.toIntExact(number(m.get("redirects"))), number(m.get("packageBytes")));
+                flag(m.get("userInfo")), small(number(m.get("redirects"))), number(m.get("packageBytes")));
     }
 
     private static Conditions conditions(Object value) {
         Map<String, Object> c = object(value);
         return new Conditions(flag(c.get("systemUser")), flag(c.get("unlocked")), flag(c.get("managedProfile")),
-                flag(c.get("charging")), Math.toIntExact(number(c.get("batteryPercent"))), flag(c.get("unmeteredNetwork")),
+                flag(c.get("charging")), small(number(c.get("batteryPercent"))), flag(c.get("unmeteredNetwork")),
                 flag(c.get("updatePolicySet")), flag(c.get("screenOn")), flag(c.get("phoneStateGranted")), flag(c.get("inCall")));
     }
 
@@ -166,8 +166,14 @@ public final class SystemUpdateAdapter {
     }
 
     private static long number(Object value) {
-        if (!(value instanceof Long n)) throw new IllegalArgumentException("not a whole number: " + value);
+        if (!(value instanceof Long n) || Math.abs(n) > 9_007_199_254_740_991L) {
+            throw new IllegalArgumentException("not a safe whole number: " + value);
+        }
         return n;
+    }
+
+    private static int small(long value) {
+        return (int) Math.max(Integer.MIN_VALUE, Math.min(Integer.MAX_VALUE, value));
     }
 
     private static String quote(String text) {

@@ -22,7 +22,10 @@ module node {
   import { userMessageIdOf, type ClientMessageId } from "../src/conversation/idempotency.vibe"
   import { turnInput } from "../src/conversation/turns.vibe"
 
-  export const completions = (cloud: CloudFake) => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).length
+  /** @throws {never} */
+  export function completions(cloud: CloudFake): number {
+    return cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).length
+  }
 
   export async function overlapping(socket: string, token: string, cloud: CloudFake, id: string, release: () => void) {
     const ask = (body: object): Promise<LocalAnswer | Refusal> =>
@@ -133,3 +136,33 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
     assert.strictEqual(stored.filter((memory: Memory) => memory.content.inReplyTo === replyOf(cut).userMessageId).length, 1)
   })
 }, 240_000)
+
+it.live('The boundary refuses a malformed body, client id or voice view context, and a launch without a text backend answers 503 and stores nothing (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity")', effect () => {
+  const agent = try startInProcess()
+  const { id, roomId } = try conversation(agent)
+  const refusals = [
+    try send(agent, id, { text: "Hi" }, { "x-elizaos-client-id": "not a client id" }),
+    try send(agent, id, { text: "Hi", channelType: "GROUP" }),
+    try send(agent, id, { text: "Hi", clientMessageId: "k".repeat(129) }),
+    try send(agent, id, { text: "Hi", metadata: { note: "x".repeat(65536) } }),
+    try send(agent, id, { text: "   " }),
+    try send(agent, id, { text: "Hi", images: [{ data: "aGk=", mimeType: "image/tiff", name: "scan.tiff" }] }),
+    try send(agent, id, { text: "Hi", metadata: { voiceUi: { uiViewPath: "//elsewhere" } } }),
+  ]
+  const unknown = try send(agent, "no-such-conversation", { text: "Hi" })
+  const unavailable = try send(agent, id, { text: "Hi", channelType: "VOICE_DM", metadata: { observation: { view: "home", revision: 1, sensitive: false } } }, { "x-elizaos-client-id": "screen-1" })
+  const stored = try host("messages", () => roomMessages(agent.agent.runtime, roomId))
+  try Effect.try(() => assert.deepStrictEqual(
+    { refusals, unknown, unavailable, stored: stored.length },
+    {
+      refusals: [
+        { status: 400, body: { error: "invalid_client_id" } }, { status: 400, body: { error: "invalid_message" } },
+        { status: 400, body: { error: "invalid_message" } }, { status: 400, body: { error: "invalid_message" } },
+        { status: 400, body: { error: "invalid_message" } }, { status: 400, body: { error: "invalid_message" } },
+        { status: 400, body: { error: "VOICE_UI_CONTEXT_INVALID" } },
+      ],
+      unknown: { status: 404, body: { error: "unknown_conversation" } },
+      unavailable: { status: 503, body: { error: "INFERENCE_UNAVAILABLE" } },
+      stored: 0,
+    }))
+}, 120_000)

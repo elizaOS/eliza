@@ -1,0 +1,223 @@
+// spec/os/image/verification.md, "Story: Know whether a booted image is what I staged"; spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/image/qualification.md, "Story: Read the verdict against my requirements"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { READ_ONLY_COMMANDS, evaluate, main, qualifyDevice, validateRequirements, verifyImage } from "../src/image/verify-device.vibe"
+import { device, fakeAdb, type Scripted } from "./support/fake-adb.ts"
+import { scratch } from "./support/scratch.vibe"
+
+error StepFailed { step: string; cause: unknown }
+
+const failed = (step: string) => (cause: unknown) => new StepFailed({ step, cause })
+const journey = <A, E>(body: A!E!(NodeServices.NodeServices | Scope.Scope)) => Effect.provide(Effect.scoped(body), NodeServices.layer)
+
+const SERIAL = "FAKE0001"
+const PACKAGE = "example.launcher"
+const LISTENER = `${PACKAGE}.sense`
+const APK = "/product/app/Launcher/Launcher.apk"
+const APK_SHA256 = "a".repeat(64)
+const FINGERPRINT = "vendor/product:16/BP1A/1:user/release-keys"
+const DESCRIPTOR = {
+  schemaVersion: 1,
+  brand: "example",
+  moduleName: "Launcher",
+  packageName: PACKAGE,
+  apkSha256: APK_SHA256,
+  certificateSha256: "b".repeat(64),
+  defaultPermissions: ["android.permission.RECORD_AUDIO"],
+}
+const SECURE_CAMERA = "com.android.camera2/com.android.camera.SecureCameraActivity"
+const HOME = ["--user", "0", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME"]
+const DEFAULT = ["-c", "android.intent.category.DEFAULT"]
+
+const shell = (command: readonly string[], stdout: string): Scripted => ({ tool: "adb", args: ["-s", SERIAL, "shell", ...command], answer: { stdout, status: 0 } })
+const query = (action: string, ...scope: readonly string[]) => ["cmd", "package", "query-activities", "--brief", "--components", "--user", "0", "-a", action, ...DEFAULT, ...scope]
+
+const launcherDump = `Packages:
+  Package [${PACKAGE}] (4f2a):
+    userId=10123
+    pkgFlags=[ SYSTEM HAS_CODE ]
+    privateFlags=[ PRODUCT ]
+    install permissions:
+      android.permission.INTERNET: granted=true
+    User 0: ceDataInode=1 installed=true hidden=false
+      runtime permissions:
+        android.permission.RECORD_AUDIO: granted=true, flags=[ USER_SENSITIVE_WHEN_GRANTED|GRANTED_BY_DEFAULT ]
+    User 10: ceDataInode=2 installed=true
+      runtime permissions:
+
+Queries:
+  system apps queryable: false
+`
+
+const listenerDump = `Packages:
+  Package [${LISTENER}] (9c1d):
+    userId=1000
+    flags=[ SYSTEM PERSISTENT ]
+    privateFlags=[ PRIVILEGED PRODUCT ]
+    install permissions:
+      android.permission.CAPTURE_AUDIO_HOTWORD: granted=true
+      android.permission.START_ACTIVITIES_FROM_BACKGROUND: granted=true
+      android.permission.FOREGROUND_SERVICE: granted=true
+    User 0: ceDataInode=3 installed=true
+      runtime permissions:
+        android.permission.RECORD_AUDIO: granted=true, flags=[ GRANTED_BY_DEFAULT ]
+`
+
+const clockActions = ["SET_ALARM", "SHOW_ALARMS", "SNOOZE_ALARM", "DISMISS_ALARM"]
+const cameraActions = ["STILL_IMAGE_CAMERA_SECURE", "IMAGE_CAPTURE_SECURE"]
+
+function asStaged(): Scripted[] {
+  return [
+    shell(["cat", "/proc/sys/kernel/random/boot_id"], "0f0e0d0c-1111-2222-3333-444455556666\n"),
+    shell(["am", "get-current-user"], "0\n"),
+    shell(["am", "get-started-user-state", "0"], "RUNNING_UNLOCKED\n"),
+    shell(["pm", "path", "--user", "0", PACKAGE], `package:${APK}\n`),
+    shell(["sha256sum", APK], `${APK_SHA256}  ${APK}\n`),
+    shell(["cmd", "package", "resolve-activity", "--brief", ...HOME], `priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true\n${PACKAGE}/.MainActivity\n`),
+    shell(["cmd", "package", "query-activities", "--brief", "--components", ...HOME], `${PACKAGE}/.MainActivity\ncom.android.launcher3/.uioverrides.QuickstepLauncher\ncom.android.settings/.FallbackHome\n`),
+    shell(["pm", "list", "packages", "--user", "0", "-s", "-e", "com.android.launcher3"], "package:com.android.launcher3\n"),
+    shell(["pm", "list", "packages", "--user", "0", "-s", "-e", "com.android.deskclock"], "package:com.android.deskclock\n"),
+    ...clockActions.map((action) => shell(query(`android.intent.action.${action}`, "-p", "com.android.deskclock"), "com.android.deskclock/com.android.deskclock.HandleApiCalls\n")),
+    shell(["dumpsys", "webviewupdate"], "Current WebView package (name, version): (com.android.webview, 126.0.6478.71)\n"),
+    shell(["dumpsys", "package", PACKAGE], launcherDump),
+    shell(["pm", "list", "packages", "--user", "0", "-s", "-e", "com.android.camera2"], "package:com.android.camera2\n"),
+    ...cameraActions.map((action) => shell(query(`android.media.action.${action}`, "-p", "com.android.camera2"), `${SECURE_CAMERA}\n`)),
+    ...cameraActions.map((action) => shell(query(`android.media.action.${action}`), `${SECURE_CAMERA}\n`)),
+    shell(["cmd", "overlay", "lookup", "--user", "0", "android", "android:bool/config_cameraDoubleTapPowerGestureEnabled"], "true\n"),
+    shell(["cmd", "overlay", "lookup", "--user", "0", "com.android.systemui", "com.android.systemui:string/config_cameraGesturePackage"], "com.android.camera2\n"),
+    shell(["pm", "list", "packages", "-s", "--user", "0", LISTENER], `package:${LISTENER}\n`),
+    shell(["dumpsys", "package", LISTENER], listenerDump),
+    shell(["ps", "-A", "-Z"], `LABEL USER PID PPID VSZ RSS WCHAN ADDR S NAME\nu:r:eliza_sense_app:s0:c512,c768 u0_a91 2312 611 1 1 0 0 S ${LISTENER}\n`),
+    shell(["cmd", "device_config", "get", "privacy", "camera_mic_icons_enabled"], "null\n"),
+    shell(["cmd", "role", "get-role-holders", "--user", "0"], ""),
+  ]
+}
+
+const IMAGE = { props: { "sys.boot_completed": "1", "ro.build.fingerprint": FINGERPRINT, "ro.boot.verifiedbootstate": "yellow" }, selinux: "Enforcing" as const }
+const READ_VERBS = ["getprop", "getenforce", "pm", "cmd", "dumpsys", "ps", "sha256sum", "cat", "am"]
+const WRITES = ["install", "uninstall", "grant", "revoke", "set-home-activity", "settings", "setprop", "reboot", "put", "enable", "disable", "start", "force-stop"]
+
+it.live("Know whether a booted image is what I staged (spec/os/image/verification.md, \"Story: Know whether a booted image is what I staged\")", () => journey(effect {
+  const root = try scratch("image-verify")
+  const phone = try Effect.try({ try: () => fakeAdb(root, device(SERIAL, { image: IMAGE, scripted: asStaged() })), catch: failed("start the fake adb") })
+  const verify = (change: Partial<Parameters<typeof verifyImage>[0]> = {}) =>
+    verifyImage({ serial: SERIAL, adb: phone.adb, user: 0, descriptor: DESCRIPTOR, fingerprint: FINGERPRINT, listener: true, verifiedBoot: "yellow", ...change })
+  const outcomes = (report: { readonly checks: readonly { readonly check: string; readonly outcome: string }[] }) => Object.fromEntries(report.checks.map((row) => [row.check, row.outcome]))
+
+  const staged = try verify()
+  assert.strictEqual(staged.verdict, "Pass", JSON.stringify(staged.checks))
+  assert.strictEqual(staged.apkPath, APK)
+  assert.deepStrictEqual(staged.checks.map((row) => row.check), ["Fingerprint", "LauncherBytes", "LauncherHome", "StockLauncher", "ClockHandlers", "WebViewProvider", "FirstBootGrants", "SecureCamera", "SameBootThroughout", "SelinuxEnforcing", "VerifiedBoot", "ListenerGrants", "ListenerDomain"])
+  assert.isTrue(staged.checks.every((row) => row.outcome === "Pass"))
+  const calls = try Effect.try({ try: () => phone.calls(), catch: failed("read the adb calls") })
+  assert.isTrue(calls.every((call) => call.tool === "adb" && call.args[2] === "shell" && READ_VERBS.includes(call.args[3] ?? "")), JSON.stringify(calls))
+  assert.isFalse(calls.some((call) => call.args.slice(3).some((arg) => WRITES.includes(arg))))
+
+  const plain = try verify({ listener: false, verifiedBoot: "unchecked" })
+  assert.strictEqual(plain.verdict, "Pass")
+  assert.deepStrictEqual(plain.checks.length, 10)
+
+  try Effect.try({ try: () => phone.set({ scripted: [shell(query("android.media.action.IMAGE_CAPTURE_SECURE"), `${SECURE_CAMERA}\n${PACKAGE}/.CaptureActivity\n`), ...asStaged()] }), catch: failed("let the launcher take secure capture") })
+  const capturing = try verify()
+  assert.strictEqual(capturing.verdict, "Fail")
+  assert.strictEqual(outcomes(capturing).SecureCamera, "Fail")
+
+  try Effect.try({ try: () => phone.set({ scripted: asStaged().filter((entry) => entry.args[3] !== "dumpsys" || entry.args[4] !== "webviewupdate") }), catch: failed("drop the WebView answer") })
+  const unread = try verify()
+  assert.strictEqual(unread.verdict, "Unknown")
+  assert.strictEqual(outcomes(unread).WebViewProvider, "Unknown")
+
+  try Effect.try({ try: () => phone.set({ scripted: asStaged(), image: { props: { ...IMAGE.props, "ro.boot.verifiedbootstate": "orange" }, selinux: "Permissive" } }), catch: failed("unlock and relax the image") })
+  const weakened = try verify({ listener: false })
+  assert.strictEqual(weakened.verdict, "Fail")
+  assert.deepStrictEqual([outcomes(weakened).SelinuxEnforcing, outcomes(weakened).VerifiedBoot, outcomes(weakened).SameBootThroughout], ["Fail", "Fail", "Pass"])
+
+  try Effect.try({ try: () => phone.set({ image: IMAGE, scripted: asStaged().map((entry) => (entry.args[3] === "sha256sum" ? shell(["sha256sum", APK], `${"c".repeat(64)}  ${APK}\n`) : entry)) }), catch: failed("replace the launcher bytes") })
+  const replaced = try verify()
+  assert.strictEqual(outcomes(replaced).LauncherBytes, "Fail")
+
+  const invalid = try Effect.flip(verify({ descriptor: { ...DESCRIPTOR, apkSha256: "nope" } }))
+  assert.strictEqual(invalid._tag, "DescriptorRefused")
+  const noUser = try Effect.flip(verify({ user: -1 }))
+  assert.strictEqual(noUser._tag, "ImageVerificationRefused")
+}))
+
+effect function fixtureAnswers() {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const directory = try path.fromFileUrl(new URL("./fixtures/device-qualify/android15-emulator", import.meta.url))
+  const scripted: Scripted[] = []
+  for (const name of try files.readDirectory(directory)) {
+    const command = READ_ONLY_COMMANDS[name.replace(/\.txt$/, "")]
+    if (command !== undefined) scripted.push({ tool: "adb", args: ["-s", SERIAL, "shell", command], answer: { stdout: try files.readFileString(path.join(directory, name)), status: 0 } })
+  }
+  return scripted
+}
+
+it.live("Qualify a device read-only (spec/os/image/qualification.md, \"Story: Qualify a device read-only\"; spec/os/image/qualification.md, \"Story: Read the verdict against my requirements\")", () => journey(effect {
+  const root = try scratch("image-qualify")
+  const files = try FileSystem.FileSystem
+  const phone = try Effect.try({ try: () => fakeAdb(root, device(SERIAL, { scripted: [] })), catch: failed("start the fake adb") })
+  try Effect.try({ try: () => phone.set({ scripted: [] }), catch: failed("reset the fake adb") })
+  const answers = try fixtureAnswers()
+  try Effect.try({ try: () => phone.set({ scripted: answers }), catch: failed("answer with the emulator capture") })
+
+  const record = try main(["--serial", SERIAL, "--adb", phone.adb, "--out", `${root}/generic`])
+  assert.deepStrictEqual([record.evaluation.verdict, record.evaluation.evidenceLevel, record.evaluation.warnings], ["pass", "emulator-observation", ["ab-updates"]])
+  assert.deepStrictEqual([record.facts.vendorApiLevel, record.facts.treble, record.facts.abi, record.facts.selinux], [35, true, "arm64-v8a", "Enforcing"])
+  assert.match(record.evaluation.disclaimer, /Not a GSI or image boot/)
+  assert.strictEqual(try files.readFileString(`${root}/generic/raw/uname.txt`), "6.6.30-android15-8-gdd9c02ccfe27-ab11987101-4k\n")
+  const written = try files.readFileString(`${root}/generic/record.json`)
+  assert.strictEqual((try Effect.try({ try: () => JSON.parse(written) as { evaluation: { verdict: string } }, catch: failed("read the record") })).evaluation.verdict, "pass")
+  const issued = try Effect.try({ try: () => phone.calls(), catch: failed("read the adb calls") })
+  assert.isTrue(issued.every((call) => call.args[2] === "get-state" || (call.args[2] === "shell" && call.args.length === 4 && Object.values(READ_ONLY_COMMANDS).includes(call.args[3] ?? ""))), JSON.stringify(issued))
+
+  const product = {
+    schemaVersion: 1,
+    requirements: [
+      { id: "abi", level: "required", check: "abi", equals: "arm64-v8a" },
+      { id: "ram-min", level: "required", check: "ramGiB", min: 5.5 },
+      { id: "rear-autofocus", level: "required", check: "cameraAutofocus", facing: "back" },
+      { id: "front-camera", level: "required", check: "camera", facing: "front" },
+      { id: "wifi-5ghz", level: "required", check: "wifi5GHz" },
+      { id: "charge-control", level: "preferred", check: "chargeControl" },
+    ],
+  }
+  try files.writeFileString(`${root}/product.json`, JSON.stringify(product))
+  const gaps = try qualifyDevice({ serial: SERIAL, adb: phone.adb, requirements: `${root}/product.json`, out: `${root}/product` })
+  assert.strictEqual(gaps.evaluation.verdict, "fail")
+  assert.deepStrictEqual(Object.fromEntries(gaps.evaluation.results.map((row) => [row.id, row.result])), { abi: "pass", "ram-min": "fail", "rear-autofocus": "pass", "front-camera": "fail", "wifi-5ghz": "fail", "charge-control": "unknown" })
+  assert.deepStrictEqual(gaps.evaluation.warnings, ["charge-control"])
+
+  const checked = try validateRequirements(product)
+  const identity = { ...checked, requirements: [{ id: "model", level: "required" as const, check: "identity" as const, field: "model" as const, equals: "TB336FU" }] }
+  assert.deepStrictEqual([evaluate({ model: "TB336FU" }, identity).verdict, evaluate({ model: "TB336ZU" }, identity).verdict, evaluate({ model: null }, identity).verdict], ["pass", "fail", "incomplete"])
+  assert.strictEqual(evaluate({ ramGiB: 3.7 }, { ...checked, requirements: checked.requirements.filter((row) => row.id === "ram-min") }).verdict, "fail")
+
+  const duplicate = try Effect.flip(validateRequirements({ ...product, requirements: [...product.requirements, product.requirements[0]] }))
+  assert.match(duplicate.reason, /duplicate id abi/)
+  const unknown = try Effect.flip(validateRequirements({ schemaVersion: 1, requirements: [{ id: "x", level: "required", check: "toString" }] }))
+  assert.strictEqual(unknown._tag, "RequirementsInvalid")
+  const noSerial = try Effect.flip(main(["--adb", phone.adb]))
+  assert.strictEqual(noSerial._tag, "QualificationUsage")
+  const otherDevice = try Effect.flip(qualifyDevice({ serial: "two devices", adb: phone.adb, out: `${root}/refused` }))
+  assert.deepStrictEqual(otherDevice._tag === "QualificationRefused" ? otherDevice.admission : otherDevice._tag, "RefusedSerial")
+  const noFastboot = try Effect.flip(qualifyDevice({ serial: SERIAL, fastboot: true, requirements: `${root}/product.json`, out: `${root}/refused` }))
+  assert.deepStrictEqual(noFastboot._tag === "QualificationRefused" ? noFastboot.admission : noFastboot._tag, "RefusedNoFastbootRequirements")
+  assert.isFalse(try files.exists(`${root}/refused`))
+
+  try Effect.try({
+    try: () => phone.set({
+      mode: "bootloader",
+      scripted: [
+        { tool: "fastboot", args: ["-s", SERIAL, "getvar", "all"], answer: { stderr: "(bootloader) product:example\n(bootloader) unlocked:no\n(bootloader) unlock_ability:1\nall: Done!!\n", status: 0 } },
+        { tool: "fastboot", args: ["-s", SERIAL, "getvar", "partition-type:avb_custom_key"], answer: { stderr: "partition-type:avb_custom_key: raw\nFinished. Total time: 0.001s\n", status: 0 } },
+      ],
+    }),
+    catch: failed("put the fake device in its bootloader"),
+  })
+  const bootloader = try main(["--serial", SERIAL, "--fastboot", "--fastboot-bin", phone.fastboot, "--out", `${root}/fastboot`])
+  assert.deepStrictEqual([bootloader.evaluation.verdict, bootloader.evaluation.evidenceLevel, bootloader.evaluation.warnings], ["pass", "bootloader-observation", []])
+  const getvars = (try Effect.try({ try: () => phone.calls(), catch: failed("read the fastboot calls") })).filter((call) => call.tool === "fastboot")
+  assert.deepStrictEqual(getvars.map((call) => call.args.slice(2)), [["getvar", "all"], ["getvar", "partition-type:avb_custom_key"]])
+}))

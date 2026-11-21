@@ -457,3 +457,16 @@ export effect function schedulePrice(terms: ScheduledPrice, mutation: StripeMuta
 export effect function retrieveSubscriptionSchedule(scheduleId: string, call: StripeRead): StripeSubscriptionSchedule!StripeFailure!StripeContext {
   return try read(StripeSubscriptionSchedule, { method: "GET", path: `/v1/subscription_schedules/${id(scheduleId)}`, params: [], timeout: call.timeout })
 }
+
+export effect function setCancelAtPeriodEnd(subscriptionId: string, cancel: boolean, mutation: StripeMutation): StripeSubscription!StripeFailure!StripeContext {
+  return try read(StripeSubscription, { method: "POST", path: `/v1/subscriptions/${id(subscriptionId)}`, ...mutation, params: [["cancel_at_period_end", String(cancel)]] })
+}
+
+export effect function previewRenewal(customerId: string, subscriptionId: string, call: StripeRead): StripeInvoicePreview!StripeFailure!StripeContext {
+  return try read(StripeInvoicePreview, {
+    method: "POST",
+    path: "/v1/invoices/create_preview",
+    timeout: call.timeout,
+    params: [["customer", customerId], ["subscription", subscriptionId], ["subscription_details[cancel_at_period_end]", "false"]]
+  })
+}
