@@ -46,8 +46,12 @@ it('Observe field edits and form membership before guiding a person (spec/os/bro
       "Newsletter email": [true, false, false, "html"], "Other email": [false, false, false, "html"],
       "External field": [false, false, false, "html"], "HTML link": [null, null, false, "html"],
       "Semantic link": [null, null, false, "semantic"], "Owned link": [null, null, false, "semantic"],
-      "Public link": [null, null, false, "outside"],
+      "Public link": [null, null, false, "outside"], "Frame field": [null, false, false, "outside"],
     })
+    await page.frameLocator("iframe").getByLabel("Frame field").fill("sample")
+    await page.getByRole("button", { name: "Next" }).click()
+    const framed = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Array(Schema.Unknown)))(await inWorld(session, snapshot))
+    assert.deepStrictEqual(framed["Frame field"], [true, true, false, "outside"])
     await page.evaluate('document.querySelector("form").insertAdjacentHTML("beforeend", "<label>Dynamic field<input></label>")')
     await page.getByLabel("Dynamic field").fill("sample")
     await page.getByLabel("External field").focus()
