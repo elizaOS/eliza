@@ -6911,17 +6911,8 @@ async function executeQueuedToolCall(params: {
   // same way at the same cost. The planner would re-call it until the
   // repeated-failure limit (a 2026-11-20 eval turn: three identical reminder
   // extractor cut-offs), so this failure ends the turn the first time. A
-  // cut-off under a cap that was sent keeps the ordinary budget. The settled
-  // handler error rides on `data.error`; `error` is its message.
-  const stoppedAtModelOutputLimit =
-    (!result.success || result.error != null) &&
-    [result.error, result.data?.error].some((candidate) => {
-      const evidence = modelOutputIncompleteEvidence(candidate);
-      return (
-        evidence?.maxTokens === null &&
-        isModelOutputLimitFinishReason(evidence.finishReason)
-      );
-    });
+  // cut-off under a cap that was sent keeps the ordinary budget.
+  const stoppedAtModelOutputLimit = modelOutputLimitStop(result) !== undefined;
   const failureError = stoppedAtModelOutputLimit
     ? "model_output_limit"
     : isParameterValidationFailure
@@ -9411,6 +9402,26 @@ function isRepeatableObservation(result: PlannerToolResult): boolean {
           receipt.outcome === "preview",
       )
     : result.data?.readOnlyOperation === true;
+}
+
+/**
+ * The model error of a failed tool whose own model call sent no output cap and
+ * still stopped at an output limit, or undefined. A settled handler error
+ * rides on `data.error` (`error` is its message); a tool that threw has it on
+ * `error`, directly or as a cause. A cut-off under a cap that was sent, or one
+ * that does not report its cap, is not such a stop.
+ */
+export function modelOutputLimitStop(
+  result: Pick<PlannerToolResult, "success" | "error" | "data">,
+): unknown {
+  if (result.success && result.error == null) return undefined;
+  return [result.error, result.data?.error].find((candidate) => {
+    const evidence = modelOutputIncompleteEvidence(candidate);
+    return (
+      evidence?.maxTokens === null &&
+      isModelOutputLimitFinishReason(evidence.finishReason)
+    );
+  });
 }
 
 /** Canonical failed receipts carry retry policy even without legacy data markers. */
