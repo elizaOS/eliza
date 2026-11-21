@@ -337,16 +337,18 @@ effect function pump<A>(reader: Socket.Reader, edges: Edges<A>, closed: Deferred
 effect function connected<A>(url: string, version: string, decode: (chunk: string | Uint8Array) => Decoded<A>) {
   const settings = try speechSettings()
   const key = try orDie((try Deployment).secret(settings.apiKeyEnv))
-  const socket = try Effect.provide(Socket.makeWebSocket(url, { headers: { "x-api-key": key, "cartesia-version": version }, openTimeout: realtimeOpenBudget }), NodeSocket.layerWebSocketConstructor)
-  const reader = socket.reader catch effect () => { throw new ProviderUnreachable() }
-  const writer = try socket.writer
-  const edges = try Queue.unbounded<A, SpeechFailure | Cause.Done>()
-  const closed = try Deferred.make<boolean>()
-  fork.scoped pump(reader, edges, closed, decode)
-  const write = effect (chunk: string | Uint8Array) => {
-    writer.write(chunk) catch effect () => { throw new ProviderUnreachable() }
+  provide NodeSocket.layerWebSocketConstructor {
+    const socket = try Socket.makeWebSocket(url, { headers: { "x-api-key": key, "cartesia-version": version }, openTimeout: realtimeOpenBudget })
+    const reader = socket.reader catch effect () => { throw new ProviderUnreachable() }
+    const writer = try socket.writer
+    const edges = try Queue.unbounded<A, SpeechFailure | Cause.Done>()
+    const closed = try Deferred.make<boolean>()
+    fork.scoped pump(reader, edges, closed, decode)
+    const write = effect (chunk: string | Uint8Array) => {
+      writer.write(chunk) catch effect () => { throw new ProviderUnreachable() }
+    }
+    return { settings, write, closed, edges: Stream.fromQueue(edges) }
   }
-  return { settings, write, closed, edges: Stream.fromQueue(edges) }
 }
 
 export effect function openStt(): SttLink!SpeechFailure!(Deployment | Scope.Scope) {
