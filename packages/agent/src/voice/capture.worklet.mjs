@@ -9,6 +9,7 @@ class CaptureSamples extends AudioWorkletProcessor {
     this.filled = 0
   }
 
+  /** @param {AudioWorkletInputs} inputs */
   process(inputs) {
     const channel = inputs[0]?.[0]
     if (channel === undefined) return true
