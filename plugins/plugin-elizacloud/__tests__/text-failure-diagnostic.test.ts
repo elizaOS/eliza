@@ -223,7 +223,12 @@ test("actual central text error boundary emits only projected metadata while pre
       responseBudget: 8192,
     },
   });
-  expect(source.match(/cloudTextRequestError\(response, [^\n]+requestBody\)/g)).toHaveLength(4);
+  // Every call site passes the request for the diagnostic, and the runtime
+  // that decides whether a 429 is typed for the sibling registrations.
+  expect(
+    source.match(/cloudTextRequestError\(response, [^\n]+requestBody, runtime\)/g)
+  ).toHaveLength(4);
+  expect(source.match(/cloudTextRequestError\(/g)).toHaveLength(5);
   const authBody = {
     error: {
       message: "private auth failure",
