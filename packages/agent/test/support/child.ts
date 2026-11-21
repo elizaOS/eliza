@@ -81,6 +81,7 @@ async function healthOver(transport: Transport): Promise<LocalAnswer | Refusal> 
 }
 
 export function startAgentChild(run: AgentRun): AgentChild {
+  const lifetimeMs = run.timeoutMs ?? 120_000;
   const child = spawn(
     process.execPath,
     ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", join(agentDir, "src/bin.vibe"), "serve", "--launch", run.launchFile, "--state", run.stateDir, ...transportArgs(run.transport)],
@@ -88,7 +89,7 @@ export function startAgentChild(run: AgentRun): AgentChild {
       cwd: agentDir,
       env: { HOME: run.stateDir, TMPDIR: run.stateDir, TZ: "UTC", VIBELANG_CACHE_DIR: compileCache, ...run.env },
       stdio: ["pipe", "pipe", "pipe"],
-      timeout: run.timeoutMs ?? 120_000,
+      timeout: lifetimeMs,
       killSignal: "SIGKILL",
     },
   );
@@ -114,7 +115,7 @@ export function startAgentChild(run: AgentRun): AgentChild {
     exited,
     output: () => ({ stdout, stderr }),
     health: () => healthOver(run.transport),
-    ready: async (timeoutMs = 60_000) => {
+    ready: async (timeoutMs = lifetimeMs) => {
       const deadline = Date.now() + timeoutMs;
       while (running && Date.now() < deadline) {
         const answer = await healthOver(run.transport).catch(() => undefined);
