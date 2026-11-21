@@ -94,8 +94,8 @@ pure def lawNoCapabilityNeedsManagedGoogle(setup: CloudSetup, wanted: CloudCapab
 `deviceRoutes` is every route a device may call. Every route admits
 `Authorization`, `Content-Type`, `X-Request-ID`, `Traceparent` and
 `Tracestate`; a route's `headers` names the others it admits:
-`Idempotency-Key` on subscription checkout, redeem, every metered maps
-operation and calendar create, `If-Match` on calendar change and delete. The
+`Idempotency-Key` on subscription checkout, redeem, chat completions,
+every metered maps operation and calendar create, `If-Match` on calendar change and delete. The
 auth classes are those of the cloud's request authentication. Enrollment
 and confirmation use a signed session. Their handlers apply the
 [second-factor policy](./identity/secondFactor.md) for a fresh first setup
@@ -179,7 +179,7 @@ pure val billingRoutes: List[DeviceRoute] = List(
   route(Get, apiWith(List("billing", "invoices"), List(Param({ name: "invoiceId" }))), KeyOrSession))
 pure val serviceRoutes: List[DeviceRoute] = List(
   route(Get, api(List("models")), KeyOrSession),
-  route(Post, api(List("chat", "completions")), KeyOrSession),
+  keyed(Post, api(List("chat", "completions")), Set(idempotencyKey)),
   route(Post, api(List("voice", "tts")), KeyOrSession),
   route(Post, api(List("voice", "stt")), KeyOrSession),
   route(Post, api(List("voice", "speech", "consent")), KeyOrSession),

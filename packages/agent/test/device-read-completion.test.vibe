@@ -12,10 +12,13 @@ module node {
   import { Effect, Schema } from "effect"
   import type { Memory, UUID } from "@elizaos/core"
   import type { SessionOwner } from "../gen/core__sessions.effect.vibe"
+  import { DeviceExecution, type DeviceAgent, type JournalIdentity } from "../src/client/index.vibe"
+  import { readOperation } from "../src/device-actions/operations.schema.vibe"
   import { offerRequest, openRequest, recordRequestReceipt, type RequestTerms } from "../src/device-actions/store.vibe"
   import type { RunningAgent } from "../src/host/process.vibe"
   import { held, text, type CloudFake } from "./support/cloud-fake.ts"
   import { request, requestStream } from "./support/socket-client.ts"
+  import { fileJournal } from "./support/device-journal.ts"
 
   const capability = "calendar.agenda-read.v1"
   const event = {
@@ -231,27 +234,32 @@ module node {
     }
   }
 
-  const Proposal = Schema.Struct({
-    id: Schema.String, digest: Schema.String, state: Schema.String,
+  const ProposalBody = Schema.Struct({
+    id: Schema.String, state: Schema.String, agentId: Schema.String, subjectUserId: Schema.String, expiresAt: Schema.String,
     payload: Schema.Struct({
-      action: Schema.String, version: Schema.Int, requestMessageId: Schema.String,
+      action: Schema.String, version: Schema.Int, requestMessageId: Schema.String, installationId: Schema.String, enrollmentId: Schema.String,
       operation: Schema.Unknown, calendarAgendaSource: Schema.Unknown,
     }),
     execution: Schema.optionalKey(Schema.Struct({
-      attemptId: Schema.String, providerReceipt: Schema.optionalKey(Schema.Unknown),
+      attemptId: Schema.String, providerIdempotencyKey: Schema.String, providerReceipt: Schema.optionalKey(Schema.Unknown),
     })),
     readReplyOrigin: Schema.optionalKey(Schema.Struct({
       version: Schema.Literal(1), requestId: Schema.String, conversationId: Schema.String, inReplyTo: Schema.String,
     })),
   })
+  const Proposal = Schema.Struct({ ...ProposalBody.fields, digest: Schema.String })
   const listOf = Schema.decodeUnknownSync(Schema.Struct({ proposals: Schema.Array(Proposal) }))
+  const proposalReply = Schema.decodeUnknownSync(Schema.Struct({ digest: Schema.String, proposal: ProposalBody }))
+  const contextOf = Schema.decodeUnknownSync(Schema.Struct({
+    agentId: Schema.String, subjectUserId: Schema.String, installationId: Schema.String, enrollmentId: Schema.String,
+  }))
   const roomOf = Schema.decodeUnknownSync(Schema.Struct({ conversation: Schema.Struct({ id: Schema.String }) }))
   const turnOf = Schema.decodeUnknownSync(Schema.Struct({ userMessageId: Schema.String }))
   const Reply = Schema.decodeUnknownSync(Schema.Struct({
     reply: Schema.Struct({ version: Schema.Literal(1), requestId: Schema.String, inReplyTo: Schema.String, text: Schema.String }),
   }))
 
-  export async function agendaFromOrdinaryTurn(running: RunningAgent, socket: string, token: string, cloud: CloudFake) {
+  export async function agendaFromOrdinaryTurn(running: RunningAgent, socket: string, token: string, cloud: CloudFake, journalDirectory: string) {
     const headers = {
       "x-eliza-device-id": running.status.agentId, "x-eliza-device-key": "a".repeat(64), "x-eliza-device-capabilities": capability,
     }
@@ -261,6 +269,14 @@ module node {
       return answer.json
     }
     const list = async () => listOf(await send("/api/client-devices/proposals")).proposals
+    const context = contextOf(await send("/api/client-devices/context"))
+    const identity: JournalIdentity = { ...context, ownerId: context.subjectUserId, origin: socket }
+    function checkedReply(raw: unknown, proposalId: string, digest: string) {
+      const { digest: actualDigest, proposal } = proposalReply(raw)
+      if (actualDigest !== digest || proposal.id !== proposalId || proposal.agentId !== identity.agentId || proposal.subjectUserId !== identity.ownerId ||
+        proposal.payload.installationId !== identity.installationId || proposal.payload.enrollmentId !== identity.enrollmentId) throw new Error("The Agenda reply belongs to a different request")
+      return { ...proposal, digest }
+    }
     const { conversation: { id } } = roomOf(await send("/api/conversations", { title: "Read the displayed calendar" }))
     const path = `/api/conversations/${id}/messages`
     const source = { sourceId: "calendar-1", sourceRevision: "c".repeat(64) }
@@ -272,7 +288,40 @@ module node {
     const pending = send(path, { text: "Please read the agenda for the day I have open.", clientMessageId: "ordinary-agenda", metadata })
     pending.catch(() => undefined)
     let offered: typeof Proposal.Type | undefined
-    let executing: typeof Proposal.Type | undefined
+    const observed: { executing?: typeof Proposal.Type | undefined } = {}
+    let calls = 0
+    const uploadedAttempts: string[] = []
+    const device: DeviceAgent = {
+      decide: async (proposalId, { digest, approved }) => {
+        const reply = checkedReply(await send(`/api/client-devices/proposals/${proposalId}/decision`, { digest, decision: approved ? "approve" : "reject" }), proposalId, digest)
+        if (reply.state !== (approved ? "approved" : "rejected")) throw new Error("The Agenda decision was refused")
+      },
+      claim: async (proposalId, { digest }) => {
+        const reply = checkedReply(await send(`/api/client-devices/proposals/${proposalId}/claim`, { digest }), proposalId, digest)
+        if (reply.state !== "executing" || reply.execution?.providerIdempotencyKey !== proposalId) throw new Error("The Agenda claim was refused")
+        observed.executing = (await list()).find(({ id }) => id === proposalId)
+        return { attemptId: 1, agentAttemptId: reply.execution.attemptId }
+      },
+      receipt: async (proposalId, { digest, agentAttemptId, receipt }) => {
+        if (agentAttemptId === undefined) throw new Error("The Agent claim token must survive the journal")
+        const { reported, ...evidence } = receipt
+        const wireReceipt = { ...evidence, outcome: reported }
+        const reply = checkedReply(await send(`/api/client-devices/proposals/${proposalId}/receipt`, { digest, attemptId: agentAttemptId, receipt: wireReceipt }), proposalId, digest)
+        if (reply.state !== "done" || reply.execution?.attemptId !== agentAttemptId || !isDeepStrictEqual(reply.execution.providerReceipt, wireReceipt)) {
+          throw new Error("The Agent did not acknowledge the exact Agenda receipt")
+        }
+        uploadedAttempts.push(agentAttemptId)
+        if (uploadedAttempts.length === 1) throw new Error("The first Agent acknowledgement was lost")
+      },
+      reconcile: () => Promise.reject(new Error("This Agent does not mount device reconciliation")),
+    }
+    const openedClient = async () => new DeviceExecution({
+      identity, agent: device, journal: await fileJournal(journalDirectory),
+      validate: (raw) => readOperation(raw)?.operation,
+      execute: async () => { calls++; return { kind: "applied", result } },
+      readBack: async () => undefined,
+    })
+    let firstSync = true
     try {
       const deadline = Date.now() + 25_000
       while (offered === undefined) {
@@ -280,21 +329,27 @@ module node {
         if (offered === undefined && Date.now() >= deadline) throw new Error("The owner turn never produced an Agenda proposal")
         if (offered === undefined) await wait(30)
       }
-      const pathOf = `/api/client-devices/proposals/${offered.id}`
-      await send(`${pathOf}/decision`, { digest: offered.digest, decision: "approve" })
-      await send(`${pathOf}/claim`, { digest: offered.digest })
-      executing = (await list()).find((candidate) => candidate.id === offered?.id)
+      const client = await openedClient()
+      const approved = await client.approve({ id: offered.id, digest: offered.digest, expiresAt: Date.parse(offered.expiresAt), operation: offered.payload.operation }, {
+        live: true, nonsensitive: true, exact: true, forceReview: true, requestEligible: false, reviewed: true,
+      })
+      if (approved.kind !== "settled" || approved.result.tag !== "Applied") throw new Error("The device did not save the approved read")
+      firstSync = approved.synced
     } finally {
       heldAnswer.resolve()
     }
     const { userMessageId } = turnOf(await pending)
-    if (offered === undefined || executing?.execution === undefined || offered.readReplyOrigin === undefined) {
+    const claimed = observed.executing
+    if (offered === undefined || claimed?.execution === undefined || offered.readReplyOrigin === undefined) {
       throw new Error("The ordinary turn did not yield a recoverable claim")
     }
     const pathOf = `/api/client-devices/proposals/${offered.id}`
-    const { attemptId } = executing.execution
+    const { attemptId } = claimed.execution
     const evidence = { outcome: "applied", operationId: offered.id, result }
-    await send(`${pathOf}/receipt`, { digest: offered.digest, attemptId, receipt: evidence })
+    const restartedClient = await openedClient()
+    const wrongClaim = await restartedClient.recover(offered.id, { attemptId: 1, agentAttemptId: "a-different-agent-claim" })
+    const afterRestart = await restartedClient.sync()
+    const secondReplay = await restartedClient.sync()
     const recovered = (await list()).find((candidate) => candidate.id === offered?.id)
     cloud.script(text("You have the dentist at 9."))
     const { reply } = Reply(await send(`${pathOf}/read-completion`, {
@@ -322,7 +377,8 @@ module node {
       offered: offered.state, owned: offered.readReplyOrigin.conversationId === id && offered.readReplyOrigin.inReplyTo === userMessageId,
       sourceCorrect: isDeepStrictEqual(offered.payload.calendarAgendaSource, source),
       scopeCorrect: isDeepStrictEqual(offered.payload.operation, { ...calendarRange, maximumEvents: 200 }),
-      executing: executing.state, executingHasOrigin: executing.readReplyOrigin !== undefined,
+      executing: claimed.state, executingHasOrigin: claimed.readReplyOrigin !== undefined,
+      clientRecovery: { firstSync, wrongClaim, afterRestart, secondReplay, calls, exactAttempt: isDeepStrictEqual(uploadedAttempts, [attemptId, attemptId]) },
       recovered: recovered?.state, sameEvidence: isDeepStrictEqual(recovered?.execution?.providerReceipt, evidence),
       sameAttempt: recovered?.execution?.attemptId === attemptId, replyToOwner: reply.inReplyTo === userMessageId,
       reply: reply.text, retired: retired?.state, retiredHasOrigin: retired?.readReplyOrigin !== undefined, leaked,
@@ -352,7 +408,7 @@ module node {
 
 import { agendaAfterRestart, agendaFromOrdinaryTurn, completeOriginalRead } from node
 
-it.effect('A shared device read answers the original request once, in its conversation (spec/agent/deviceActions/index.md, "Story: Complete the original request with the result I shared"; spec/agent/deviceActions/index.md, "Story: Approve a device request once and learn exactly what happened")', effect () => {
+it.effect('A shared device read answers the original request once, in its conversation (spec/agent/deviceActions/index.md, "Story: Complete the original request with the result I shared"; spec/agent/deviceActions/index.md, "Story: Approve a device request once and learn exactly what happened"; spec/agent/deviceActions/execution.md, "Story: Preserve a device result when the screen retires")', effect () => {
   const state = try scratch("read-completion")
   const cloud = try cloudFake(deviceKey)
   const socket = state.file("agent.sock")
@@ -366,9 +422,10 @@ it.effect('A shared device read answers the original request once, in its conver
     (agent) => orDie(host("retire agent", () => agent.stop())),
   )
   const observed = try host("read completion journey", () => completeOriginalRead(running, socket, frame.token, cloud))
-  const { recovery, ...ordinary } = try host("read the agenda from an ordinary owner turn", () => agendaFromOrdinaryTurn(running, socket, frame.token, cloud))
+  const { recovery, ...ordinary } = try host("read the agenda from an ordinary owner turn", () => agendaFromOrdinaryTurn(running, socket, frame.token, cloud, state.file("device-journal")))
   assert.deepStrictEqual(ordinary, {
     offered: "pending", owned: true, sourceCorrect: true, scopeCorrect: true, executing: "executing", executingHasOrigin: false,
+    clientRecovery: { firstSync: false, wrongClaim: { kind: "history" }, afterRestart: { sent: 1, unsent: 0 }, secondReplay: { sent: 0, unsent: 0 }, calls: 1, exactAttempt: true },
     recovered: "done", sameEvidence: true, sameAttempt: true, replyToOwner: true, reply: "You have the dentist at 9.",
     retired: "expired", retiredHasOrigin: false, leaked: false,
   })

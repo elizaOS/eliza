@@ -1,4 +1,5 @@
 // spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/shared/metering.md, "A call reaches its provider only after its hold is durably marked dispatched"
+import { hangUpCounts } from "../../gen/cloud__services__inference.effect.vibe"
 import { laneFor } from "../billing/policy.vibe"
 import { refusalBody, refused } from "../http/refusal.vibe"
 import { recheckServiceAccess, signed } from "../http/request-auth.vibe"
@@ -7,8 +8,8 @@ import { Deployment } from "../profile/profile.vibe"
 import { complete, maxReplyBytes, ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable, readLlmObject, stream, type LlmFailure } from "../providers/llm.vibe"
 import { markDispatched, reserve, settle, type Settlement } from "../shared/metering.vibe"
 import { Store } from "../store/connection.vibe"
-import { chatBody, chatIngressPerMinute, hasImage, quote, type ChatRequest } from "./chat-request.vibe"
-import { billedFromUsage, callCostFor, chooseFor, type Model } from "./models.vibe"
+import { chatBody, chatIngressPerMinute, hasImage, quote, type ChatRequest, type Quote } from "./chat-request.vibe"
+import { billedFromUsage, callCostFor, chooseFor, type Model, type TokenCounts } from "./models.vibe"
 import { chunkFrame, doneFrame, errorFrame, feed, finish, isDone, segmenter } from "./sse.ts"
 
 const requestIdPattern = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i
@@ -18,6 +19,8 @@ const providerPause = 5_000
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const headers = { "cache-control": "no-store" }
+const DeltaText = Schema.Struct({ delta: Schema.optionalKey(Schema.Struct({ content: Schema.optionalKey(Schema.NullOr(Schema.String)) })) })
+const readDeltaText = Schema.decodeUnknownOption(DeltaText)
 
 function providerBody({ max_tokens, max_completion_tokens, ...body }: ChatRequest, model: string, max: number) {
   return { ...body, model, ...(max_completion_tokens === undefined ? { max_tokens: max } : { max_completion_tokens: max }) }
@@ -50,18 +53,21 @@ effect function settleAfterClose(holdKey: string, settlement: Settlement): void!
   }
 }
 
-function meteredStream({ upstream, model, holdKey, store, includeUsage }: {
+function meteredStream({ upstream, model, priced, holdKey, store, includeUsage }: {
   readonly upstream: Stream.Stream<Uint8Array, LlmFailure>
   readonly model: Model
+  readonly priced: Quote
   readonly holdKey: string
   readonly store: typeof Store.Service
   readonly includeUsage: boolean
 }) {
   let pending = segmenter()
   let total = 0
-  let actual: number | undefined
+  let reported: TokenCounts | undefined
+  let deliveredChars = 0
   let usageFrame = ""
   let settled = false
+  let failed = false
 
   const delivered = Stream.flatMap(upstream, (chunk) => {
     const length = Math.min(chunk.byteLength, maxReplyBytes - total)
@@ -82,6 +88,7 @@ function meteredStream({ upstream, model, holdKey, store, includeUsage }: {
   const replies = Stream.flatMap(Stream.takeUntil(frames, isDone), (frame) => Stream.fromEffect(effect {
     if (frame.length > frameBytes) throw new ProviderInvalidResponse()
     if (isDone(frame)) {
+      const actual = reported === undefined ? undefined : try callCostFor(model, reported)
       try settle(holdKey, outcome(actual))
       settled = true
       return encoder.encode(usageFrame + doneFrame)
@@ -89,25 +96,35 @@ function meteredStream({ upstream, model, holdKey, store, includeUsage }: {
     const payload = readLlmObject(decoder.decode(Uint8Array.from(frame)))
     if (payload === undefined || !Array.isArray(payload.choices)) throw new ProviderInvalidResponse()
     const { usage, ...delta } = payload
-    if (usage != null) {
-      const billed = try priceUsage(model, usage)
-      if (billed !== undefined) {
-        actual = billed
-        if (includeUsage) usageFrame = chunkFrame(JSON.stringify({ ...delta, choices: [], usage }))
+    const served = { ...delta, model: model.id }
+    if (usage != null && reported === undefined) {
+      const billed = try billedFromUsage(usage)
+      if (billed.tag === "Reported") {
+        reported = billed.counts
+        if (includeUsage) usageFrame = chunkFrame(JSON.stringify({ ...served, choices: [], usage }))
       }
     }
-    return payload.choices.length === 0 ? undefined : encoder.encode(chunkFrame(JSON.stringify(delta)))
+    if (payload.choices.length === 0) return undefined
+    for (const choice of payload.choices) {
+      const read = readDeltaText(choice)
+      if (read._tag === "Some") deliveredChars += read.value.delta?.content?.length ?? 0
+    }
+    return encoder.encode(chunkFrame(JSON.stringify(served)))
   })).pipe(Stream.filter((bytes) => bytes !== undefined))
   const terminal = Stream.suspend(() => settled ? Stream.empty : Stream.fail(new ProviderInvalidResponse()))
 
   return Stream.concat(replies, terminal).pipe(
     Stream.catch((failure) => Stream.fromEffect(effect {
+      failed = true
       const refusal = failure instanceof ProviderInvalidResponse || failure instanceof ProviderUnreachable || failure instanceof ProviderTimedOut || failure instanceof ProviderRefused
         ? providerRefusal(failure, try Clock.currentTimeMillis) : refused("ServiceUnavailable")
       return encoder.encode(errorFrame(JSON.stringify(refusalBody(refusal.refusal))) + doneFrame)
     })),
     Stream.ensuring(effect {
-      if (!settled) try settleAfterClose(holdKey, outcome(actual))
+      if (settled) return
+      const counts = failed ? reported : hangUpCounts(priced.counts, reported?.inputTokens ?? 0, deliveredChars)
+      const actual = counts === undefined ? undefined : try callCostFor(model, counts)
+      try settleAfterClose(holdKey, outcome(actual))
     }),
     Stream.provideService(Store, store)
   )
@@ -149,7 +166,7 @@ effect function chat(context: RouteContext): HttpServerResponse.HttpServerRespon
         try settle(ticket.key, failureSettlement(failure))
         throw providerRefusal(failure, try Clock.currentTimeMillis)
       }
-      const bodyStream = meteredStream({ upstream, model, holdKey: ticket.key, store, includeUsage: body.stream_options?.include_usage === true })
+      const bodyStream = meteredStream({ upstream, model, priced, holdKey: ticket.key, store, includeUsage: body.stream_options?.include_usage === true })
       return HttpServerResponse.stream(bodyStream, { contentType: "text/event-stream", headers })
     }
     const answer = complete(provider, payload) catch effect (failure) => {
@@ -157,9 +174,12 @@ effect function chat(context: RouteContext): HttpServerResponse.HttpServerRespon
       throw providerRefusal(failure, try Clock.currentTimeMillis)
     }
     try settle(ticket.key, outcome(try priceUsage(model, answer.usage)))
-    return json(answer.json, { headers })
+    return json({ ...answer.json, model: model.id }, { headers })
   }
-  return try Effect.onInterrupt(work, () => settleAfterClose(ticket.key, dispatched ? { kind: "unknown" } : { kind: "release" }))
+  return try Effect.onInterrupt(work, () => effect {
+    const actual = dispatched ? try callCostFor(model, hangUpCounts(priced.counts, 0, 0)) : undefined
+    try settleAfterClose(ticket.key, actual === undefined ? { kind: "release" } : { kind: "known", actual })
+  })
 }
 
 export const chatRoute: Route = {

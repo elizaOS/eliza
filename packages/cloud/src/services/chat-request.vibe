@@ -1,4 +1,5 @@
 // spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/services/models.md, "A side has at most 2,000,000 tokens, so every side's price arithmetic stays a safe integer"
+import { defaultOutputTokens, tokensOf } from "../../gen/cloud__services__inference.effect.vibe"
 import { callCost, countsInBound, type Model, type TokenCounts } from "../../gen/cloud__services__models.effect.vibe"
 import { refused, type Refused } from "../http/refusal.vibe"
 import type { RouteContext } from "../http/routes.vibe"
@@ -12,7 +13,7 @@ export interface Quote {
 }
 
 export const chatIngressPerMinute = 600
-export const defaultOutputTokens = 500
+export { defaultOutputTokens }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -66,7 +67,7 @@ function textChars(message: ChatMessage): number {
 
 export function quoteCounts(body: ChatRequest): TokenCounts {
   const chars = body.messages.reduce((sum, message) => sum + textChars(message), 0)
-  return { inputTokens: Math.floor(chars / 4), outputTokens: body.max_completion_tokens ?? body.max_tokens ?? defaultOutputTokens }
+  return { inputTokens: tokensOf(chars), outputTokens: body.max_completion_tokens ?? body.max_tokens ?? defaultOutputTokens }
 }
 
 export effect function quote(body: ChatRequest, model: Model): Quote!Refused {

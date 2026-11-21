@@ -1,5 +1,5 @@
 // spec/cloud/shared/types.md, "Story: Speak one refusal language"
-import { refuse, refuseFor, refuseUntil, refuseAllowance, statusOf, retryableOf, type Refusal, type RefusalCode, type RefusalReason } from "../../gen/cloud__shared__types.effect.vibe"
+import { refuse, refuseFor, refuseUntil, refuseAllowance, retryAfterSeconds, statusOf, retryableOf, type Refusal, type RefusalCode, type RefusalReason } from "../../gen/cloud__shared__types.effect.vibe"
 
 export type { Refusal, RefusalCode, RefusalReason }
 
@@ -41,13 +41,13 @@ export function refusalBody(value: Refusal): RefusalBody {
 
 export function refusalResponse(value: Refusal, now: number): HttpServerResponse.HttpServerResponse {
   const status = statusOf(value.code)
-  const retryAt = value.wait.tag === "RetryAt" ? value.wait.retryAtMs : 0
-  const waitSeconds = Math.max(1, Math.ceil((retryAt - now) / 1000))
+  const retryAfter = value.wait.tag === "RetryAt" && (status === 429 || status === 503)
+    ? String(retryAfterSeconds(value.wait.retryAtMs, now)) : undefined
   return HttpServerResponse.jsonUnsafe(refusalBody(value), {
     status,
     headers: {
       "cache-control": "no-store",
-      ...(retryAt > now && (status === 429 || status === 503) ? { "retry-after": String(waitSeconds) } : {})
+      ...(retryAfter === undefined ? {} : { "retry-after": retryAfter })
     }
   })
 }

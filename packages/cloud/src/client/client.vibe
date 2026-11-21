@@ -1,11 +1,19 @@
-// spec/cloud/client.md, "Story: Use the cloud from the device as configured"; spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"
+// spec/cloud/client.md, "Story: Use the cloud from the device as configured"; spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"; spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"
 import { callOf, originAccepted } from "../../gen/cloud__client.effect.vibe"
-import { answerOf, bodyOf, type CallOptions, type CloudAnswer } from "./answer.vibe"
+import { answerOf, bodyOf, bytesOf, queryOf, unreadable, type CallOptions, type CloudAnswer } from "./answer.vibe"
+import type { ChatRequest } from "../services/chat-request.schema.ts"
+import type { SynthesisBody } from "../services/speech-batch.schema.ts"
+import { isDone, pushByte, segmenter } from "../services/sse.ts"
+import { parseEntitlementKeys, type EntitlementKey } from "./entitlement.vibe"
 import { CloudError, networkError, readCloudError } from "./errors.vibe"
 import { googleCalls } from "./google.vibe"
 import { mapsCalls } from "./maps.vibe"
 import { admitsHeader, httpVerb, idempotencyKey, listedRoute, lookupPath, renderPath, routesByName, type DeviceRoute } from "./routes.vibe"
-import { redeemResultFromResponse, snapshotFromResponse, type BillingSnapshot, type RedeemResult } from "./views.vibe"
+import {
+  checkoutFromResponse, commandFromResponse, commandsFromResponse, paymentFromResponse, redeemResultFromResponse, reviewFromResponse, snapshotFromResponse,
+  type BillingSnapshot, type CheckoutStart, type CheckoutStartRequest, type CommandKind, type CommandsPage, type LifecycleRequest, type PaymentContinuation,
+  type PlanChangeConfirmRequest, type PlanChangeKind, type PlanChangeReview, type PlanChangeReviewRequest, type RedeemResult, type SubscriptionCommand
+} from "./views.vibe"
 
 export interface CloudClientOptions {
   readonly baseUrl: string
@@ -13,28 +21,197 @@ export interface CloudClientOptions {
   readonly fetch?: typeof globalThis.fetch
 }
 
-interface CloudRequest extends CallOptions {
+type CloudRequest = CallOptions & {
   readonly params?: Readonly<Record<string, string>>
   readonly query?: Readonly<Record<string, string>>
   readonly headers?: Readonly<Record<string, string>>
-  readonly json?: unknown
+} & ({ readonly json?: unknown; readonly form?: never } | { readonly json?: never; readonly form: FormData })
+
+interface TransportAnswer extends CloudAnswer {
+  stream(): ReadableStream<Uint8Array>
 }
 
 export interface CloudTransport {
-  call(route: DeviceRoute, request?: CloudRequest): Promise<CloudAnswer>
+  call(route: DeviceRoute, request?: CloudRequest): Promise<TransportAnswer>
 }
 
+const millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const cents = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const optionalText = Schema.NullOr(Schema.String)
+const paidPlanKey = Schema.Literals(["plus_monthly", "pro_monthly"])
+
 const Account = Schema.Struct({
-  id: Schema.String,
-  email: Schema.NullOr(Schema.String),
-  phone: Schema.NullOr(Schema.String),
-  name: Schema.NullOr(Schema.String),
-  organization_id: Schema.String,
-  organization: Schema.Struct({ id: Schema.String, name: Schema.String })
+  success: Schema.Literal(true),
+  data: Schema.Struct({
+    id: Schema.String,
+    email: optionalText,
+    phone: optionalText,
+    name: optionalText,
+    organization_id: Schema.String,
+    organization: Schema.Struct({ id: Schema.String, name: Schema.String })
+  })
 })
-const AccountAnswer = Schema.Struct({ success: Schema.Literal(true), data: Account })
-const Model = Schema.Struct({ object: Schema.Literal("model"), id: Schema.String, owned_by: Schema.String })
-const Models = Schema.Struct({ object: Schema.Literal("list"), data: Schema.Array(Model) })
+export type Account = typeof Account.Type["data"]
+
+const Referral = Schema.Struct({ code: Schema.String, total_referrals: Schema.Int, is_active: Schema.Boolean })
+export type Referral = typeof Referral.Type
+
+schema Applied { success: true }
+
+const Plans = Schema.Struct({
+  plans: Schema.Array(Schema.Struct({
+    key: paidPlanKey,
+    name: Schema.String,
+    amountCents: cents,
+    currency: Schema.Literal("usd"),
+    interval: Schema.Literal("month"),
+    allowance: Schema.Struct({ amountUsd: Schema.String })
+  }))
+})
+export type PlanOffer = typeof Plans.Type["plans"][number]
+
+schema EntitlementToken { entitlement: string }
+
+const UndoReview = Schema.Struct({
+  kind: Schema.Literal("renewal_estimate"),
+  quoteId: Schema.String,
+  subscriptionId: Schema.String,
+  expectedSubscriptionRevision: Schema.Int,
+  planKey: paidPlanKey,
+  renewalAt: millis,
+  amountDueCents: cents,
+  currency: Schema.Literal("usd"),
+  observedAt: millis,
+  expiresAt: millis
+})
+export type UndoReview = typeof UndoReview.Type
+
+schema Portal { url: string }
+
+const invoiceFields = {
+  id: Schema.String,
+  number: optionalText,
+  date: millis,
+  status: Schema.Literals(["open", "paid", "uncollectible", "void"]),
+  amountDueCents: cents,
+  amountPaidCents: cents,
+  currency: Schema.String,
+  hostedInvoiceUrl: optionalText
+}
+
+const InvoicePage = Schema.Struct({ invoices: Schema.Array(Schema.Struct(invoiceFields)), nextCursor: optionalText })
+export type InvoicePage = typeof InvoicePage.Type
+
+const InvoiceDetail = Schema.Struct({
+  ...invoiceFields,
+  lines: Schema.Array(Schema.Struct({
+    id: Schema.String,
+    description: optionalText,
+    amountCents: Schema.Int,
+    currency: Schema.String,
+    quantity: Schema.NullOr(Schema.Int),
+    periodStart: millis,
+    periodEnd: millis
+  })),
+  periodStart: millis,
+  periodEnd: millis,
+  pdfUrl: optionalText
+})
+export type InvoiceDetail = typeof InvoiceDetail.Type
+
+const Models = Schema.Struct({
+  object: Schema.Literal("list"),
+  data: Schema.Array(Schema.Struct({ id: Schema.String, object: Schema.Literal("model"), owned_by: Schema.String }))
+})
+export type ModelList = typeof Models.Type
+export type CloudModel = ModelList["data"][number]
+
+schema Usage { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+
+const ToolCalls = Schema.optionalKey(Schema.Array(Schema.Unknown))
+
+const ChatCompletion = Schema.Struct({
+  id: Schema.String,
+  object: Schema.Literal("chat.completion"),
+  created: Schema.Int,
+  model: Schema.String,
+  choices: Schema.Array(Schema.Struct({
+    index: Schema.Int,
+    message: Schema.Struct({ role: Schema.Literal("assistant"), content: optionalText, tool_calls: ToolCalls }),
+    finish_reason: optionalText
+  })),
+  usage: Schema.optionalKey(Usage)
+})
+export type ChatCompletion = typeof ChatCompletion.Type
+
+const ChatChunk = Schema.Struct({
+  id: Schema.String,
+  object: Schema.Literal("chat.completion.chunk"),
+  created: Schema.Int,
+  model: Schema.String,
+  choices: Schema.Array(Schema.Struct({
+    index: Schema.Int,
+    delta: Schema.Struct({ role: Schema.optionalKey(Schema.String), content: Schema.optionalKey(optionalText), tool_calls: ToolCalls }),
+    finish_reason: Schema.optionalKey(optionalText)
+  })),
+  usage: Schema.optionalKey(Schema.NullOr(Usage))
+})
+export type ChatChunk = typeof ChatChunk.Type
+
+const TimedSpan = Schema.Struct({ text: Schema.String, startMs: Schema.Number, endMs: Schema.Number })
+export type TimedSpan = typeof TimedSpan.Type
+
+const Transcript = Schema.Struct({
+  transcript: Schema.String,
+  duration_ms: Schema.Number,
+  segments: Schema.optionalKey(Schema.Array(TimedSpan)),
+  words: Schema.optionalKey(Schema.Array(TimedSpan))
+})
+
+export interface Transcription {
+  readonly transcript: string
+  readonly durationMs: number
+  readonly segments?: ReadonlyArray<TimedSpan>
+  readonly words?: ReadonlyArray<TimedSpan>
+}
+
+export interface SpeechUpload {
+  readonly audio: Uint8Array<ArrayBuffer>
+  readonly mimeType: string
+  readonly languageCode?: string
+}
+
+export interface SpeechAudio {
+  readonly contentType: string
+  readonly bytes: Uint8Array
+}
+
+const SpeechConsent = Schema.Struct({ consentNonce: Schema.String, expiresAt: Schema.String })
+export type SpeechConsent = typeof SpeechConsent.Type
+
+const SpeechSession = Schema.Struct({ version: Schema.Literal(1), sessionId: Schema.String, token: Schema.String, expiresAt: Schema.String, wsUrl: Schema.String })
+export type SpeechSession = typeof SpeechSession.Type
+
+schema SpeechRevoked { revoked: true }
+
+export interface PageRequest {
+  readonly limit?: number
+  readonly cursor?: string
+}
+
+export interface RedeemRequest {
+  readonly code: string
+  readonly idempotencyKey: string
+}
+
+export interface UndoRequest extends LifecycleRequest {
+  readonly quoteId: string
+}
+
+export interface ChatOptions extends CallOptions {
+  readonly idempotencyKey?: string
+}
+
 const ipv4Loopback = /^127(?:\.\d{1,3}){3}$/
 const originText = /^https?:\/\/[^\s/?#\\]+\/?$/i
 
@@ -86,9 +263,10 @@ effect function dispatch(origin: string, credential: CloudClientOptions["credent
   const url = try destination(origin, selected, request)
   const headers = try requestHeaders(selected, request)
   const init = HttpClientRequest.make(httpVerb(selected.method))(url, { headers })
-  const outgoing = request.json === undefined ? init : try Effect.mapError(
-    HttpClientRequest.bodyJson(init, request.json), () => invalidRequest("The cloud request body is not JSON")
-  )
+  const outgoing = request.form !== undefined ? HttpClientRequest.bodyFormData(init, request.form)
+    : request.json === undefined ? init : try Effect.mapError(
+      HttpClientRequest.bodyJson(init, request.json), () => invalidRequest("The cloud request body is not JSON")
+    )
   const client = try HttpClient.HttpClient
   const { bearer } = callOf(selected, credential() ?? "")
   return try client.execute(bearer === "" ? outgoing : HttpClientRequest.setHeader(outgoing, "authorization", `Bearer ${bearer}`))
@@ -109,13 +287,15 @@ function transportOf(options: CloudClientOptions): CloudTransport {
       try {
         response = await Effect.runPromise(arrival, { signal: request.signal })
       } catch (cause) {
+        request.signal?.throwIfAborted()
         throw cause instanceof CloudError ? cause : networkError(cause)
       }
       const answer = {
         status: response.status,
         headers: { get: (name: string) => response.headers[name.toLowerCase()] ?? null },
-        text: () => Effect.runPromise(response.text),
-        arrayBuffer: () => Effect.runPromise(response.arrayBuffer)
+        text: () => Effect.runPromise(response.text, { signal: request.signal }),
+        arrayBuffer: () => Effect.runPromise(response.arrayBuffer, { signal: request.signal }),
+        stream: () => Stream.toReadableStream(response.stream)
       }
       if (answer.status < 200 || answer.status >= 300) throw await readCloudError(answer)
       return answer
@@ -123,26 +303,202 @@ function transportOf(options: CloudClientOptions): CloudTransport {
   }
 }
 
+module web {
+  /** @throws {never} */
+  export function audioForm(audio: Uint8Array<ArrayBuffer>, mimeType: string, languageCode: string | undefined): FormData {
+    const form = new FormData()
+    form.append("audio", new Blob([audio], { type: mimeType }), "audio")
+    if (languageCode !== undefined) form.append("languageCode", languageCode)
+    return form
+  }
+}
+import { audioForm } from web
+
+function keyed(key: string): Readonly<Record<string, string>> {
+  return { [idempotencyKey]: key }
+}
+
+const statusRoutes = {
+  cancel: routesByName.cancelStatus,
+  undo: routesByName.cancelUndoStatus,
+  upgrade: routesByName.upgradeStatus,
+  downgrade: routesByName.downgradeStatus
+} as const satisfies Record<CommandKind, DeviceRoute>
+
+const changeRoutes = {
+  upgrade: { review: routesByName.upgradeReview, confirm: routesByName.upgradeConfirm },
+  downgrade: { review: routesByName.downgradeReview, confirm: routesByName.downgradeConfirm }
+} as const satisfies Record<PlanChangeKind, { readonly review: DeviceRoute; readonly confirm: DeviceRoute }>
+
+async function chunkOf(data: Array<number>): Promise<ChatChunk> {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(Uint8Array.from(data)))
+  } catch (cause) {
+    throw unreadable(cause)
+  }
+  if (typeof parsed === "object" && parsed !== null && "error" in parsed) throw unreadable(parsed)
+  const read = Schema.decodeUnknownExit(ChatChunk)(parsed)
+  if (read._tag === "Failure") throw unreadable(read.cause)
+  return read.value
+}
+
+async function* chunksOf(call: () => Promise<TransportAnswer>, signal: AbortSignal | undefined): AsyncGenerator<ChatChunk, void, undefined> {
+  signal?.throwIfAborted()
+  const answer = await call()
+  const reader = answer.stream().getReader()
+  const aborted = () => { void reader.cancel(signal?.reason).catch(() => undefined) }
+  signal?.addEventListener("abort", aborted, { once: true })
+  let state = segmenter()
+  try {
+    const contentType = answer.headers.get("content-type")
+    if (contentType?.split(";", 1)[0]?.trim().toLowerCase() !== "text/event-stream") throw unreadable("expected an event stream")
+    signal?.throwIfAborted()
+    while (true) {
+      let read: ReadableStreamReadResult<Uint8Array>
+      try {
+        read = await reader.read()
+      } catch (cause) {
+        throw networkError(cause)
+      }
+      signal?.throwIfAborted()
+      if (read.done) throw networkError("stream ended before [DONE]")
+      for (const byte of read.value) {
+        const fed = pushByte(state, byte)
+        state = fed.segmenter
+        for (const event of fed.events) {
+          if (isDone(event)) return
+          yield await chunkOf(event)
+        }
+      }
+    }
+  } finally {
+    signal?.removeEventListener("abort", aborted)
+    await reader.cancel().catch(() => undefined)
+    reader.releaseLock()
+  }
+}
+
 export function createCloudClient(options: CloudClientOptions) {
   const transport = transportOf(options)
+  const call = transport.call
   return {
-    ...googleCalls(transport),
     ...mapsCalls(transport),
-    async account(options: CallOptions = {}) {
-      return (await answerOf(await transport.call(routesByName.user, options), AccountAnswer)).data
+    ...googleCalls(transport),
+    async account(options: CallOptions = {}): Promise<Account> {
+      return (await answerOf(await call(routesByName.user, { signal: options.signal }), Account)).data
     },
-    async models(options: CallOptions = {}) {
-      return answerOf(await transport.call(routesByName.models, options), Models)
+    async revokeSelf(options: CallOptions = {}): Promise<void> {
+      await call(routesByName.currentKeyRevoke, options)
+    },
+    async referral(options: CallOptions = {}): Promise<Referral> {
+      return answerOf(await call(routesByName.referrals, { signal: options.signal }), Referral)
+    },
+    async applyReferral(code: string, options: CallOptions = {}): Promise<void> {
+      await answerOf(await call(routesByName.referralApply, { json: { code }, signal: options.signal }), Applied)
     },
     async snapshot(options: CallOptions = {}): Promise<BillingSnapshot> {
-      const body = await bodyOf(await transport.call(routesByName.billingLimits, options))
-      return Effect.runPromise(snapshotFromResponse(body))
+      return Effect.runPromise(snapshotFromResponse(await bodyOf(await call(routesByName.billingLimits, { signal: options.signal }))))
     },
-    async redeem(request: { readonly code: string; readonly idempotencyKey: string }, options: CallOptions = {}): Promise<RedeemResult> {
-      const body = await bodyOf(await transport.call(routesByName.redeem, {
-        json: request, headers: { [idempotencyKey]: request.idempotencyKey }, signal: options.signal
-      }))
-      return Effect.runPromise(redeemResultFromResponse(body, Date.now()))
+    async plans(options: CallOptions = {}): Promise<ReadonlyArray<PlanOffer>> {
+      return (await answerOf(await call(routesByName.plans, { signal: options.signal }), Plans)).plans
+    },
+    async entitlement(options: CallOptions = {}): Promise<string> {
+      return (await answerOf(await call(routesByName.entitlement, { signal: options.signal }), EntitlementToken)).entitlement
+    },
+    async entitlementKeys(options: CallOptions = {}): Promise<ReadonlyArray<EntitlementKey>> {
+      const keys = parseEntitlementKeys(await bodyOf(await call(routesByName.entitlementKeys, { signal: options.signal })))
+      if (keys === undefined) throw unreadable("entitlement keys")
+      return keys
+    },
+    async redeem(request: RedeemRequest, options: CallOptions = {}): Promise<RedeemResult> {
+      const json = { code: request.code, idempotencyKey: request.idempotencyKey }
+      const answer = await call(routesByName.redeem, { json, headers: keyed(request.idempotencyKey), signal: options.signal })
+      return Effect.runPromise(redeemResultFromResponse(await bodyOf(answer), Date.now()))
+    },
+    async startCheckout(request: CheckoutStartRequest, options: CallOptions = {}): Promise<CheckoutStart> {
+      const json = { planKey: request.planKey, idempotencyKey: request.idempotencyKey, presentation: request.presentation }
+      return Effect.runPromise(checkoutFromResponse(await bodyOf(await call(routesByName.checkout, { json, headers: keyed(request.idempotencyKey), signal: options.signal }))))
+    },
+    async confirmCheckout(sessionId: string, options: CallOptions = {}): Promise<CheckoutStart> {
+      return Effect.runPromise(checkoutFromResponse(await bodyOf(await call(routesByName.checkoutConfirm, { json: { sessionId }, signal: options.signal }))))
+    },
+    async cancelSubscription(request: LifecycleRequest, options: CallOptions = {}): Promise<SubscriptionCommand> {
+      const json = { subscriptionId: request.subscriptionId, expectedSubscriptionRevision: request.expectedRevision, idempotencyKey: request.idempotencyKey }
+      return Effect.runPromise(commandFromResponse(await bodyOf(await call(routesByName.cancel, { json, signal: options.signal }))))
+    },
+    async undoCancel(request: UndoRequest, options: CallOptions = {}): Promise<SubscriptionCommand> {
+      const json = { subscriptionId: request.subscriptionId, expectedSubscriptionRevision: request.expectedRevision, idempotencyKey: request.idempotencyKey, quoteId: request.quoteId }
+      return Effect.runPromise(commandFromResponse(await bodyOf(await call(routesByName.cancelUndo, { json, signal: options.signal }))))
+    },
+    async undoReview(options: CallOptions = {}): Promise<UndoReview> {
+      return answerOf(await call(routesByName.cancelUndoReview, { signal: options.signal }), UndoReview)
+    },
+    async reviewPlanChange(kind: PlanChangeKind, request: PlanChangeReviewRequest, options: CallOptions = {}): Promise<PlanChangeReview> {
+      const json = { subscriptionId: request.subscriptionId, expectedSubscriptionRevision: request.expectedRevision, targetPlanKey: request.targetPlanKey }
+      return Effect.runPromise(reviewFromResponse(await bodyOf(await call(changeRoutes[kind].review, { json, signal: options.signal }))))
+    },
+    async confirmPlanChange(kind: PlanChangeKind, request: PlanChangeConfirmRequest, options: CallOptions = {}): Promise<SubscriptionCommand> {
+      const json = { quoteId: request.quoteId, idempotencyKey: request.idempotencyKey }
+      return Effect.runPromise(commandFromResponse(await bodyOf(await call(changeRoutes[kind].confirm, { json, signal: options.signal }))))
+    },
+    async planChangeStatus(kind: CommandKind, commandId: string, options: CallOptions = {}): Promise<SubscriptionCommand> {
+      return Effect.runPromise(commandFromResponse(await bodyOf(await call(statusRoutes[kind], { params: { commandId }, signal: options.signal }))))
+    },
+    async continuePayment(commandId: string, options: CallOptions = {}): Promise<PaymentContinuation> {
+      return Effect.runPromise(paymentFromResponse(await bodyOf(await call(routesByName.upgradePayment, { params: { commandId }, signal: options.signal }))))
+    },
+    async subscriptionCommands(page: PageRequest = {}, options: CallOptions = {}): Promise<CommandsPage> {
+      return Effect.runPromise(commandsFromResponse(await bodyOf(await call(routesByName.commands, { query: queryOf({ ...page }), signal: options.signal }))))
+    },
+    async billingPortal(options: CallOptions = {}): Promise<string> {
+      return (await answerOf(await call(routesByName.portal, { signal: options.signal }), Portal)).url
+    },
+    async invoices(page: PageRequest = {}, options: CallOptions = {}): Promise<InvoicePage> {
+      return answerOf(await call(routesByName.invoices, { query: queryOf({ ...page }), signal: options.signal }), InvoicePage)
+    },
+    async invoice(invoiceId: string, options: CallOptions = {}): Promise<InvoiceDetail> {
+      return answerOf(await call(routesByName.invoice, { params: { invoiceId }, signal: options.signal }), InvoiceDetail)
+    },
+    async models(options: CallOptions = {}): Promise<ModelList> {
+      return answerOf(await call(routesByName.models, { signal: options.signal }), Models)
+    },
+    async chatCompletion(request: ChatRequest, options: ChatOptions = {}): Promise<ChatCompletion> {
+      return answerOf(await call(routesByName.chatCompletions, {
+        json: { ...request, stream: false },
+        headers: options.idempotencyKey === undefined ? undefined : keyed(options.idempotencyKey),
+        signal: options.signal
+      }), ChatCompletion)
+    },
+    async chatCompletionStream(request: ChatRequest, options: ChatOptions = {}): Promise<AsyncGenerator<ChatChunk, void, undefined>> {
+      return chunksOf(() => call(routesByName.chatCompletions, {
+        json: { ...request, stream: true },
+        headers: options.idempotencyKey === undefined ? undefined : keyed(options.idempotencyKey),
+        signal: options.signal
+      }), options.signal)
+    },
+    async tts(request: SynthesisBody, options: CallOptions = {}): Promise<SpeechAudio> {
+      const answer = await call(routesByName.textToSpeech, { json: request, signal: options.signal })
+      return { contentType: answer.headers.get("content-type") ?? "application/octet-stream", bytes: await bytesOf(answer) }
+    },
+    async stt(upload: SpeechUpload, options: CallOptions = {}): Promise<Transcription> {
+      const body = audioForm(upload.audio, upload.mimeType, upload.languageCode)
+      const heard = await answerOf(await call(routesByName.speechToText, { form: body, signal: options.signal }), Transcript)
+      return {
+        transcript: heard.transcript,
+        durationMs: heard.duration_ms,
+        ...(heard.segments === undefined ? {} : { segments: heard.segments }),
+        ...(heard.words === undefined ? {} : { words: heard.words })
+      }
+    },
+    async speechConsent(options: CallOptions = {}): Promise<SpeechConsent> {
+      return answerOf(await call(routesByName.speechConsent, { signal: options.signal }), SpeechConsent)
+    },
+    async speechSession(consentNonce: string, options: CallOptions = {}): Promise<SpeechSession> {
+      return answerOf(await call(routesByName.speechSession, { json: { consentNonce }, signal: options.signal }), SpeechSession)
+    },
+    async revokeSpeech(sessionId: string, options: CallOptions = {}): Promise<void> {
+      await answerOf(await call(routesByName.speechSessionRevoke, { params: { sessionId }, signal: options.signal }), SpeechRevoked)
     }
   }
 }

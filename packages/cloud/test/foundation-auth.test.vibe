@@ -178,10 +178,19 @@ describe("Membership codes (spec/cloud/billing/grantCodes.md)", () => {
       const { error } = try Schema.decodeUnknownEffect(refusedCode)(answer.body)
       refusals.push([answer.status, error])
     }
+    const missingReason = cloud.inside(operate(["grants", "revoke", "--grant-id", peer.grant.id])) catch (failure) => failure._tag
+    const mixedSelection = cloud.inside(operate(["grants", "revoke", "--grant-id", peer.grant.id, "--code", code, "--reason", "mixed"])) catch (failure) => failure._tag
+    const individualRequest = ["grants", "revoke", "--grant-id", peer.grant.id, "--grant-id", peer.grant.id, "--reason", "Issued to the wrong member"]
+    const individual = try cloud.inside(operate(individualRequest))
+    const individualAgain = try cloud.inside(operate(individualRequest))
+    const peerLimits = try cloud.call("/api/v1/billing/limits", peerToken)
+    const peerAfterIndividual = try snapshotFromResponse(peerLimits.body)
+    const memberLimits = try cloud.call("/api/v1/billing/limits", token)
+    const memberAfterIndividual = try snapshotFromResponse(memberLimits.body)
     const disabled = try cloud.inside(operate(["grants", "disable", "--code", formatted]))
     const replayed = try redeem(code, "member-again")
     const replay = try redeemResultFromResponse(replayed.body, now)
-    const revoked = try cloud.inside(operate(["grants", "revoke", "--code", code]))
+    const revoked = try cloud.inside(operate(["grants", "revoke", "--code", code, "--reason", "Retire the pilot code"]))
     const retired = try redeem(code, "member-retired")
     const after = try redeemResultFromResponse(retired.body, now)
     const peerRetired = try redeem(code, "peer-retired", peerToken)
@@ -198,13 +207,17 @@ describe("Membership codes (spec/cloud/billing/grantCodes.md)", () => {
     try check(() => assert.deepStrictEqual(
       [issued.status, original.replayed, original.grant.planKey, original.grant.effectiveUntil, original.plan,
         peerIssued.status, peer.replayed, peer.grant.id !== original.grant.id, peer.plan,
+        missingReason, mixedSelection, individual, individualAgain, peerLimits.status, peerAfterIndividual.plan.key,
+        memberLimits.status, memberAfterIndividual.plan.key,
         disabled, replayed.status, replay, revoked, retired.status, after, limits.status, snapshot.plan, snapshot.grant?.revoked,
         peerRetired.status, afterPeer, invalid.status, invalidOutcome.error, unknown.status, unknownOutcome.error,
         throttled.status, throttledOutcome.error, periods.map(({ organization_id, count }) => [organization_id, count]), refusals],
       [200, false, "plus_monthly", null, { key: "plus_monthly", source: "grant", effectiveUntil: null },
         200, false, true, original.plan,
+        "OperatorUsageInvalid", "OperatorUsageInvalid", { kind: "done", lines: ["1 grants revoked"] }, { kind: "done", lines: ["0 grants revoked"] },
+        200, "free", 200, "plus_monthly",
         { kind: "done", lines: ["1 codes disabled; their grants stand"] }, 200, { ...original, replayed: true },
-        { kind: "done", lines: ["2 grants revoked"] }, 200, { kind: "ended", id: original.grant.id, planKey: "plus_monthly" },
+        { kind: "done", lines: ["1 grants revoked"] }, 200, { kind: "ended", id: original.grant.id, planKey: "plus_monthly" },
         200, { key: "free", source: "free", effectiveUntil: null }, true,
         200, { kind: "ended", id: peer.grant.id, planKey: "plus_monthly" }, 400, "grant_code_invalid", 400, "grant_code_invalid", 429, "rate_limited",
         [["org-member", 3], ["org-member-peer", 3]],

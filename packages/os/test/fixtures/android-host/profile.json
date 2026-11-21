@@ -9,7 +9,7 @@
     "character": { "root": "consumer", "path": "agent/character.json" },
     "policy": { "root": "consumer", "path": "agent/policy.json" }
   },
-  "osModules": [{ "module": "agent-service" }, { "module": "runtime-files" }],
+  "osModules": [{ "module": "agent-service" }, { "module": "runtime-files" }, { "module": "app-update" }],
   "modules": [],
   "signing": { "storeFile": "FIXTURE_STORE", "storePassword": "FIXTURE_STORE_PASSWORD", "keyAlias": "FIXTURE_KEY_ALIAS", "keyPassword": "FIXTURE_KEY_PASSWORD" },
   "manifest": { "root": "consumer", "path": "android/AndroidManifest.xml" },

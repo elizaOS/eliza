@@ -18,7 +18,7 @@ public final class AndroidPreparationContract {
   Path root=Files.createTempDirectory(context.getNoBackupFilesDir().toPath(),"preparation-contract-");
   try {
    Context isolated=new ContextWrapper(context){@Override public File getNoBackupFilesDir(){return root.toFile();}};
-   UpdateJournal journal=new UpdateJournal(root.resolve("journal"),AndroidRuntimeDirectories::syncRuntimeDirectory);int[] reads={0};
+   UpdateJournal journal=new UpdateJournal(root.resolve("journal"),AndroidRuntimeDirectories::syncRuntimeDirectory,PreparedRecoveryTest.fixtureHolds());int[] reads={0};
    Trust trust=new Trust(){
     public Enrollment readEnrollment(String directory){reads[0]++;check(directory.equals(root.resolve("ota-enrollment").toString()));return new Enrollment("{}".getBytes(StandardCharsets.UTF_8),new byte[]{1},"test-cohort");}
     public void prune(String directory,String retained){throw new AssertionError("Unexpected authority call");}

@@ -28,6 +28,16 @@ export type CodeSelection =
   | { readonly kind: "codes"; readonly codes: ReadonlyArray<string> }
   | { readonly kind: "family"; readonly family: string }
 
+export type GrantSelection =
+  | { readonly kind: "grants"; readonly grantIds: ReadonlyArray<string> }
+  | { readonly kind: "codes"; readonly codes: ReadonlyArray<string> }
+
+interface SelectedGrant {
+  readonly grantId: string
+  readonly organizationId: string
+  readonly codeKey: string
+}
+
 export error InvalidGrantCodeRequest { problem: string }
 export error GrantRevocationMoved {}
 
@@ -112,32 +122,66 @@ export effect function disableGrantCodes(tx: Tx, selection: CodeSelection) {
   return disabled
 }
 
-export effect function revokeGrantCode(tx: Tx, offered: string) {
-  const key = try operatorCodeKey(offered)
-  const offeredState = (try loadRow(tx, codes, key, false)).state
-  const owners = new Set(offeredState.grants.filter(Codes.isInForce).map((grant) => grant.organizationId).sort())
-  for (const owner of owners) try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [owner])
-  const loaded = try loadRow(tx, codes, key)
-  const live = loaded.state.grants.filter(Codes.isInForce)
-  if (live.some((grant) => !owners.has(grant.organizationId))) throw new GrantRevocationMoved()
-  const now = try Clock.currentTimeMillis
-  for (const grant of live) {
-    if (!Codes.canRevokeGrant(loaded.state, grant.organizationId, now)) {
-      throw new InvalidGrantCodeRequest({ problem: "the store clock is earlier than the grant start" })
-    }
-    const stepped = try stepRow(tx, codes, key, { type: "revokeGrant", organizationId: grant.organizationId, now }, columnsAt(now))
-    for (const emitted of stepped.out.out) {
-      if (emitted.tag !== "RetireGrantMonths") throw new RowCorrupt({ table: codes.table, key: "", cause: "revocation emitted an opening" })
-      const rows = try tx.query(
-        "UPDATE grants SET revoked = true, revoked_at = $1 WHERE id = $2 AND organization_id = $3 AND code_key = $4 AND NOT revoked RETURNING id",
-        [now, emitted.grantId, grant.organizationId, key]
-      )
-      if (rows.length !== 1) throw new RowCorrupt({ table: "grants", key: "", cause: "revocation has no matching grant projection" })
-      try closePeriods(tx, grant.organizationId, { kind: "GrantRevoked", grantId: emitted.grantId }, now)
+effect function selectedGrants(tx: Tx, grantIds: ReadonlyArray<string>) {
+  const found = try tx.query("SELECT id, organization_id, code_key FROM grants WHERE id = ANY($1::text[]) AND NOT revoked", [grantIds])
+  const grants: SelectedGrant[] = []
+  for (const row of found) {
+    const grantId = toText(row.id), organizationId = toText(row.organization_id), codeKey = toText(row.code_key)
+    if (grantId === undefined || organizationId === undefined || codeKey === undefined)
+      throw new InvalidGrantCodeRequest({ problem: "the grant has no issued code binding" })
+    grants.push({ grantId, organizationId, codeKey })
+  }
+  return grants
+}
+
+effect function retireGrant(tx: Tx, key: string, grant: Codes.Grant, now: number) {
+  const stepped = try stepRow(tx, codes, key, { type: "revokeGrant", organizationId: grant.organizationId, now }, columnsAt(now))
+  for (const emitted of stepped.out.out) {
+    if (emitted.tag !== "RetireGrantMonths" || emitted.grantId !== grant.grantId)
+      throw new RowCorrupt({ table: codes.table, key: "", cause: "revocation emitted another grant" })
+    const rows = try tx.query(
+      "UPDATE grants SET revoked = true, revoked_at = $1 WHERE id = $2 AND organization_id = $3 AND code_key = $4 AND NOT revoked RETURNING id",
+      [now, emitted.grantId, grant.organizationId, key]
+    )
+    if (rows.length !== 1) throw new RowCorrupt({ table: "grants", key: "", cause: "revocation has no matching grant projection" })
+    try closePeriods(tx, grant.organizationId, { kind: "GrantRevoked", grantId: emitted.grantId }, now)
+  }
+}
+
+export effect function revokeGrants(tx: Tx, selection: GrantSelection, reason: string) {
+  const note = reason.trim()
+  if (note === "") throw new InvalidGrantCodeRequest({ problem: "a revocation reason is required" })
+  const selected = selection.kind === "grants" ? try selectedGrants(tx, selection.grantIds) : undefined
+  const keys = selection.kind === "codes" ? try selectedKeys(tx, selection) : [...new Set(selected?.map((grant) => grant.codeKey) ?? [])].sort()
+  const owners = new Set(selected?.map((grant) => grant.organizationId) ?? [])
+  if (selected === undefined) {
+    for (const key of keys) {
+      const state = (try loadRow(tx, codes, key, false)).state
+      for (const grant of state.grants.filter(Codes.isInForce)) owners.add(grant.organizationId)
     }
   }
-  if (Codes.canDisable(loaded.state)) try stepRow(tx, codes, key, { type: "disable" }, columnsAt(now))
-  return live.length
+  for (const owner of [...owners].sort()) try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [owner])
+  const now = try Clock.currentTimeMillis
+  let revoked = 0
+  for (const key of keys) {
+    const loaded = try loadRow(tx, codes, key)
+    const live = loaded.state.grants.filter(Codes.isInForce)
+    const targets = selected?.filter((grant) => grant.codeKey === key)
+    const grants = targets === undefined ? live : live.filter((grant) => targets.some((wanted) => wanted.grantId === grant.grantId && wanted.organizationId === grant.organizationId))
+    if (targets !== undefined && targets.some((wanted) => !loaded.state.grants.some((grant) =>
+      wanted.grantId === grant.grantId && wanted.organizationId === grant.organizationId)))
+      throw new RowCorrupt({ table: codes.table, key: "", cause: "a selected grant differs from the issued code state" })
+    if (grants.some((grant) => !owners.has(grant.organizationId))) throw new GrantRevocationMoved()
+    for (const grant of grants) {
+      if (!Codes.canRevokeGrant(loaded.state, grant.organizationId, now))
+        throw new InvalidGrantCodeRequest({ problem: "the store clock is earlier than the grant start" })
+      try retireGrant(tx, key, grant, now)
+      revoked += 1
+    }
+    if (targets === undefined && Codes.canDisable(loaded.state)) try stepRow(tx, codes, key, { type: "disable" }, columnsAt(now))
+  }
+  try annotateLogs(logInfo("grant revocation recorded"), { revoked, reason: note })
+  return revoked
 }
 
 effect function paidPlanOpen(tx: Tx, organizationId: string) {

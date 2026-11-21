@@ -98,7 +98,7 @@ export effect function respond(routes: ReadonlyArray<Route>, fallback?: Route): 
   const response = request.method === "OPTIONS" && request.headers["access-control-request-method"] !== undefined
     ? HttpServerResponse.empty({ status: 204, headers: preflightHeaders(origin, deployment.settings) })
     : HttpServerResponse.setHeaders(
-        dispatch(routes, fallback, requestId, now) catch (failure) => refusalResponse(failure.refusal, now),
+        dispatch(routes, fallback, requestId, now) catch effect (failure) => refusalResponse(failure.refusal, try Clock.currentTimeMillis),
         corsHeaders(origin, deployment.settings)
       )
   return HttpServerResponse.setHeader(response, "x-request-id", requestId)

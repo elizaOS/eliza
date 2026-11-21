@@ -4,7 +4,9 @@ package ai.eliza.plugins.agent.health;
 import ai.eliza.plugins.agent.health.HealthWork.Agent;
 import ai.eliza.plugins.agent.health.HealthWork.Probe;
 import ai.eliza.plugins.agent.health.HealthWork.Storage;
+import android.os.SystemClock;
 import java.io.IOException;
+import java.util.function.IntSupplier;
 import java.util.Objects;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -56,10 +58,22 @@ public final class LocalRuntimeHealth {
   }
 
   public Reading read() {
+    return read(() -> timeoutMillis);
+  }
+
+  Reading readBefore(long deadline) {
+    return read(() -> (int) Math.min(timeoutMillis, Math.max(0, deadline - SystemClock.elapsedRealtime())));
+  }
+
+  private Reading read(IntSupplier remaining) {
     Launch launch = agent.launch();
     if (launch == null) return new Reading(0, Agent.WAITING, Storage.UNAVAILABLE);
-    Agent half = HealthWork.agentHalf(probe(launch), launch.strikes, launch.busyTicks);
-    return new Reading(launch.epoch, half, HealthWork.storage(half, half == Agent.HEALTHY ? tasks(launch) : Storage.UNAVAILABLE));
+    int probeBudget = remaining.getAsInt();
+    if (probeBudget <= 0) return new Reading(launch.epoch, Agent.WAITING, Storage.UNAVAILABLE);
+    Agent half = HealthWork.agentHalf(probe(launch, probeBudget), launch.strikes, launch.busyTicks);
+    int storageBudget = remaining.getAsInt();
+    Storage storage = half == Agent.HEALTHY && storageBudget > 0 ? tasks(launch, storageBudget) : Storage.UNAVAILABLE;
+    return new Reading(launch.epoch, half, HealthWork.storage(half, storage));
   }
 
   public boolean sameLaunch(Reading reading) {
@@ -67,9 +81,9 @@ public final class LocalRuntimeHealth {
     return (now == null ? 0 : now.epoch) == reading.epoch;
   }
 
-  private Probe probe(Launch launch) {
+  private Probe probe(Launch launch, int budget) {
     try {
-      Reply reply = agent.get(launch.epoch, HEALTH_ROUTE, timeoutMillis);
+      Reply reply = agent.get(launch.epoch, HEALTH_ROUTE, budget);
       return reply.status >= 200 && reply.status < 300 && ready(reply.body, launch.epoch) ? Probe.OK : Probe.DEAD;
     } catch (IOException unanswered) {
       return agent.childAlive(launch.epoch) || agent.socketAccepts(launch.epoch) ? Probe.BUSY : Probe.DEAD;
@@ -87,10 +101,10 @@ public final class LocalRuntimeHealth {
     }
   }
 
-  private Storage tasks(Launch launch) {
+  private Storage tasks(Launch launch, int budget) {
     if (!launch.tasksLoaded) return Storage.NOT_LOADED;
     try {
-      Reply reply = agent.get(launch.epoch, STORAGE_ROUTE, timeoutMillis);
+      Reply reply = agent.get(launch.epoch, STORAGE_ROUTE, budget);
       JSONObject value = new JSONObject(reply.body);
       if (reply.status != 200 || !Integer.valueOf(1).equals(value.opt("schemaVersion"))) return Storage.UNAVAILABLE;
       Object observed = value.opt("taskStorage");

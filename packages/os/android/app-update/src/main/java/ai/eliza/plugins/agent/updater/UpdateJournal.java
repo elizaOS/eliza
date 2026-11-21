@@ -190,22 +190,32 @@ public class UpdateJournal {
   }
   /** Validate retained authorization under the same lock used by cleanup. */
   public Snapshot beginValidated(Plan plan,Identity installed,long channelGeneration,CommitAction validate)throws IOException {
-    return admitPrepared(plan,installed,channelGeneration,validate,Phase.VERIFIED);
+    return admitPrepared(plan,installed,channelGeneration,validate,Preparation.DIRECT);
   }
   public Snapshot stageValidated(Plan plan,Identity installed,long channelGeneration,CommitAction validate)throws IOException {
-    return admitPrepared(plan,installed,channelGeneration,validate,Phase.STAGING);
+    return admitPrepared(plan,installed,channelGeneration,validate,Preparation.STAGE);
   }
-  private Snapshot admitPrepared(Plan plan,Identity installed,long channelGeneration,CommitAction validate,Phase phase)throws IOException {
+  public Snapshot verifyStaged(Plan plan,Identity installed,long channelGeneration,CommitAction validate)throws IOException {
+    return admitPrepared(plan,installed,channelGeneration,validate,Preparation.VERIFY_STAGED);
+  }
+  private enum Preparation { DIRECT, STAGE, VERIFY_STAGED }
+  private Snapshot admitPrepared(Plan plan,Identity installed,long channelGeneration,CommitAction validate,Preparation preparation)throws IOException {
     Objects.requireNonNull(validate);
     return transact(s->{
-      require(!active(s.phase)||(phase==Phase.VERIFIED&&s.phase==Phase.STAGING&&samePlan(s.plan,plan)),"An update transaction is active");
+      boolean sameStaging = s.phase==Phase.STAGING && samePlan(s.plan,plan);
+      boolean admissible = switch (preparation) {
+        case DIRECT -> !active(s.phase) || sameStaging;
+        case STAGE -> !active(s.phase);
+        case VERIFY_STAGED -> sameStaging;
+      };
+      require(admissible,preparation==Preparation.VERIFY_STAGED?"No exact staged plan to verify":"An update transaction is active");
       require(s.generation==channelGeneration,"Channel decision is stale");
       require(plan.baseline.matches(installed),"Installed baseline changed");
       require(s.channel.equals(plan.channel),"Update plan channel does not match requested channel");
       require(!s.quarantine.contains(plan.candidate.digest),"Candidate is quarantined");
       require(!s.quarantine.contains(plan.recovery.digest),"Recovery is quarantined");
       validate.commit();
-      resetPending(s); s.probation=null; s.plan=plan; s.phase=phase; s.session=-1; s.attempts=0; s.reason=""; s.reported=null;
+      resetPending(s); s.probation=null; s.plan=plan; s.phase=preparation==Preparation.STAGE?Phase.STAGING:Phase.VERIFIED; s.session=-1; s.attempts=0; s.reason=""; s.reported=null;
     });
   }
   private static boolean samePlan(Plan a,Plan b){return a!=null&&b!=null&&a.id.equals(b.id)&&a.channel.equals(b.channel)&&a.distribution.equals(b.distribution)&&a.baseline.matches(b.baseline)&&a.candidate.matches(b.candidate)&&a.recovery.matches(b.recovery);}

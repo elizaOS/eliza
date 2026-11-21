@@ -21,7 +21,7 @@ const bounded = (minimum: number, maximum: number) => Schema.Int.check(Schema.is
 const operationId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/))
 const applied: Evidence = { shows: "ReportsApplied", nothingSubmitted: false }
 
-function withoutResult<Op extends WireOperation>(operation: Schema.Decoder<Op>, opType: OperationType): OperationSchema<Op> {
+function withoutResult<S extends Schema.Decoder<WireOperation>>(operation: S, opType: OperationType) {
   return { operation, result: undefined, classify: () => ({ opType, versionTwo: false }) }
 }
 
@@ -108,8 +108,9 @@ function browserAddress(value: string): string | undefined {
   return parsed.protocol === "https:" ? parsed.href : undefined
 }
 
+const HttpsDestination = Schema.String.check(Schema.makeFilter((value: string) => value !== "" && browserAddress(value) === value))
 const Address = filled(4096).pipe(Schema.decodeTo(
-  Schema.String.check(Schema.makeFilter((value: string) => value !== "" && browserAddress(value) === value)),
+  HttpsDestination,
   SchemaTransformation.transform({ decode: (value) => browserAddress(value) ?? "", encode: (value) => value })
 ))
 const CreateNote = Schema.Struct({ type: Schema.Literal("create_note"), title: filled(256), body: blank(32_000) })
@@ -118,7 +119,7 @@ const OpenView = Schema.Struct({ type: Schema.Literal("open_view"), view: Schema
 const BrowserNavigate = Schema.Struct({
   type: Schema.Literal("browser_navigate"), url: Address, newTab: Schema.optionalKey(Schema.Boolean)
 }).pipe(Schema.decodeTo(
-  Schema.Struct({ type: Schema.Literal("browser_navigate"), url: Schema.String, newTab: Schema.optionalKey(Schema.Literal(true)) }),
+  Schema.Struct({ type: Schema.Literal("browser_navigate"), url: HttpsDestination, newTab: Schema.optionalKey(Schema.Literal(true)) }),
   SchemaTransformation.transform({
     decode: ({ type, url, newTab }) => newTab === true ? { type, url, newTab: true as const } : { type, url },
     encode: (value) => value

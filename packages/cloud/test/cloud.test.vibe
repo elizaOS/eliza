@@ -1,4 +1,5 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+import { acquire, create, elapse, initial as noClaim } from "../gen/core__sessions.ts"
 import { readBackCheckouts } from "../src/billing/checkout-readback.vibe"
 import { assert, describe, it } from "@effect/vitest"
 import { addCredits } from "../src/billing/funds.vibe"
@@ -1034,8 +1035,10 @@ describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Ap
     return row === undefined ? undefined : { state: row.state, attempts: row.attempts, dropped: row.dropped, error: row.last_error_code }
   }
 
-  const statusOf = (answer: { readonly status: number; readonly body: unknown }) =>
-    [answer.status, (answer.body as { readonly error?: string; readonly duplicate?: boolean }).error ?? (answer.body as { readonly duplicate?: boolean }).duplicate]
+  const statusOf = (answer: { readonly status: number; readonly body: unknown }) => {
+    const body = answer.body as { readonly error?: string; readonly received?: boolean; readonly duplicate?: boolean; readonly queued?: boolean }
+    return [answer.status, body.error ?? (body.received === true && (body.duplicate === true ? "duplicate" : body.queued === true && "queued"))]
+  }
 
   it.live("Store a payment event once, refuse a forged, stale, foreign or rewritten one, and apply it once (spec/cloud/billing/providerEvents.md, \"Story: Apply each payment event once, whatever the delivery order\")", () => scoped(effect {
     const stripe = try sync(() => createStripeFake())
@@ -1056,7 +1059,28 @@ describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Ap
     const row = try eventRow(cloud, first.id)
     try check(() => assert.deepStrictEqual(
       { stored: statusOf(stored), repeated: statusOf(repeated), tampered: statusOf(tampered), stale: statusOf(stale), foreign: statusOf(foreign), rewritten: statusOf(rewritten), replayed: statusOf(replayed), rows: rows[0]?.n, row },
-      { stored: [200, false], repeated: [200, true], tampered: [400, "invalid_request"], stale: [400, "invalid_request"], foreign: [400, "invalid_request"], rewritten: [409, "idempotency_conflict"], replayed: [200, true], rows: 1, row: { state: "Done", attempts: 1, dropped: true, error: null } }
+      { stored: [200, "queued"], repeated: [200, "duplicate"], tampered: [400, "invalid_request"], stale: [400, "invalid_request"], foreign: [400, "invalid_request"], rewritten: [409, "idempotency_conflict"], replayed: [200, "duplicate"], rows: 1, row: { state: "Done", attempts: 1, dropped: true, error: null } }
+    ))
+    const retained = try sync(() => stripe.signedEvent("customer.created", { id: "cus_legacy", object: "customer" }))
+    try deliver(cloud, retained)
+    const legacy = (try sql(cloud, "SELECT payload_digest,next_attempt_at FROM provider_events WHERE id=$1", [retained.id]))[0]
+    const leaseStart = Number(legacy?.next_attempt_at)
+    const digest = String(legacy?.payload_digest)
+    const oldOwner = { agentId: "cloud", actorId: "payment-provider", connector: "provider-events" }
+    const oldTime = 85_000
+    const previousClaim = try sync(() => acquire(create(elapse(noClaim, leaseStart), oldOwner, leaseStart + 30 * 86_400_000), oldOwner, digest, oldTime))
+    try sql(cloud, "UPDATE provider_events SET state='Leased',attempts=1,lease_until=$2,claim=$3::jsonb WHERE id=$1",
+      [retained.id, previousClaim.leaseUntil, JSON.stringify(previousClaim)])
+    const beforeEnd = try cloud.inside(drainProviderEvents(previousClaim.leaseUntil - 1))
+    const leased = (try sql(cloud, "SELECT state,claim,lease_until,revivals FROM provider_events WHERE id=$1", [retained.id]))[0]
+    const afterEnd = try cloud.inside(drainProviderEvents(previousClaim.leaseUntil + 1))
+    const later = try cloud.inside(drainProviderEvents(previousClaim.leaseUntil + 200_000))
+    const claimed = (try sql(cloud, "SELECT state,attempts,payload IS NULL AS dropped,(claim->>'currentClaim')::int AS token,revivals FROM provider_events WHERE id=$1", [retained.id]))[0]
+    const repeatRetained = try deliver(cloud, retained)
+    try check(() => assert.deepStrictEqual(
+      [beforeEnd, leased?.state, leased?.claim, Number(leased?.lease_until), leased?.revivals, afterEnd.done, later.done, claimed, statusOf(repeatRetained)],
+      [{ done: 0, retried: 0, deadLettered: 0, released: 0 }, "Leased", previousClaim, previousClaim.leaseUntil, 0, 1, 0,
+        { state: "Done", attempts: 2, dropped: true, token: previousClaim.currentClaim + 1, revivals: 0 }, [200, "duplicate"]]
     ))
   }), 60_000)
 
@@ -1064,25 +1088,35 @@ describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Ap
     const stripe = try sync(() => createStripeFake())
     const cloud = try testCloud({ stripe })
     const failing = try sync(() => stripe.signedEvent("charge.dispute.funds_withdrawn", { id: "dp_lost", object: "dispute", charge: "ch_missing", status: "needs_response", livemode: false }))
+    const unreadable = try sync(() => stripe.signedEvent("invoice.paid", { id: "in_unreadable", object: "invoice" }))
     const following = try sync(() => stripe.signedEvent("customer.created", { id: "cus_after", object: "customer" }))
     try deliver(cloud, failing)
+    try deliver(cloud, unreadable)
     try deliver(cloud, following)
     const started = try Clock.currentTimeMillis
     try cloud.inside(drainProviderEvents(started + 60_000))
-    const afterFirst = { failing: try eventRow(cloud, failing.id), following: try eventRow(cloud, following.id) }
+    const afterFirst = { failing: try eventRow(cloud, failing.id), unreadable: try eventRow(cloud, unreadable.id), following: try eventRow(cloud, following.id) }
     for (let hour = 2; hour <= 26; hour += 2) {
       try cloud.inside(drainProviderEvents(started + hour * 3_600_000))
     }
     const deadLettered = try eventRow(cloud, failing.id)
     const revived = try deliver(cloud, failing)
     const pending = try eventRow(cloud, failing.id)
+    const ready = (try sql(cloud, "SELECT revivals,next_attempt_at,(claim->>'currentClaim')::int AS token FROM provider_events WHERE id=$1", [failing.id]))[0]
+    const onceMore = try cloud.inside(drainProviderEvents(Number(ready?.next_attempt_at) + 1))
+    const nextToken = (try sql(cloud, "SELECT revivals,(claim->>'currentClaim')::int AS token FROM provider_events WHERE id=$1", [failing.id]))[0]
     try check(() => assert.deepStrictEqual(
-      { afterFirst, deadLettered, revived: statusOf(revived), pending },
+      { afterFirst, deadLettered, revived: statusOf(revived), pending, restart: [ready?.revivals, ready?.token, onceMore.retried, nextToken] },
       {
-        afterFirst: { failing: { state: "Pending", attempts: 1, dropped: false, error: "StripeRefused" }, following: { state: "Done", attempts: 1, dropped: true, error: null } },
+        afterFirst: {
+          failing: { state: "Pending", attempts: 1, dropped: false, error: "StripeRefused" },
+          unreadable: { state: "DeadLettered", attempts: 1, dropped: false, error: "ProviderEventMalformed" },
+          following: { state: "Done", attempts: 1, dropped: true, error: null }
+        },
         deadLettered: { state: "DeadLettered", attempts: 8, dropped: false, error: "StripeRefused" },
-        revived: [200, false],
-        pending: { state: "Pending", attempts: 0, dropped: false, error: null }
+        revived: [200, "queued"],
+        pending: { state: "Pending", attempts: 0, dropped: false, error: null },
+        restart: [1, 8, 1, { revivals: 1, token: 9 }]
       }
     ))
   }), 60_000)

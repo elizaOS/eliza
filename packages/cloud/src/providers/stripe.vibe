@@ -730,16 +730,17 @@ export effect function createPortalSession(terms: PortalTerms, mutation: StripeM
   return session
 }
 
-export function verifyWebhookSignature(raw: string, header: string, secret: string, now: number): boolean {
+export function verifiedWebhookTime(raw: string, header: string, secret: string, now: number): number | undefined {
   const fields = header.split(",").map((field) => {
     const at = field.indexOf("=")
     return at === -1 ? ["", ""] as const : [field.slice(0, at).trim(), field.slice(at + 1).trim()] as const
   })
   const stamps = fields.filter(([name]) => name === "t").map(([, value]) => value)
   const stamp = stamps.length === 1 ? stamps[0] : undefined
-  if (stamp === undefined || !/^\d{1,12}$/.test(stamp) || secret === "" || Math.abs(now - Number(stamp) * 1000) > webhookTolerance) return false
+  if (stamp === undefined || !/^\d{1,12}$/.test(stamp) || secret === "" || Math.abs(now - Number(stamp) * 1000) > webhookTolerance) return undefined
   const expected = signatureOf(secret, `${stamp}.${raw}`)
   return fields.filter(([name]) => name === "v1").reduce((matched, [, signature]) => sameText(signature, expected) || matched, false)
+    ? Number(stamp) * 1000 : undefined
 }
 
 function refusalCode(failure: StripeRefused): string {

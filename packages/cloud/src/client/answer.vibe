@@ -11,7 +11,7 @@ export interface CallOptions {
   readonly signal?: AbortSignal
 }
 
-function unreadable(issue: unknown): CloudError {
+export function unreadable(issue: unknown): CloudError {
   return new CloudError({ failure: { tag: "CloudProviderIssue" }, cause: issue })
 }
 

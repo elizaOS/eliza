@@ -1,7 +1,7 @@
 // spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open", "Story: Stop hearing when I leave", "Story: Learn when something keeps going wrong"
 module node {
   import { Effect } from "effect"
-  import { AgentEventService, Service, type CommittedNotification, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
+  import { AgentEventService, Service, type IAgentRuntime, type NotificationService, type ServiceClass } from "@elizaos/core"
   import { Machine, machine, rendererOf, type Event, type FeedEvent, type Frame, type NoticeKind, type Source, type StreamName } from "../../gen/agent__conversation__events.effect.vibe"
   import type { FeedHub, FeedSink, LiveFeed } from "../access/event-feeds.vibe"
   import type { AgentEvent, FeedRequest, Refused } from "../access/events-port.vibe"
@@ -27,6 +27,8 @@ module node {
   interface StrikeClock { readonly at: number; readonly timer: AbortController }
   const noticeName = (kind: NoticeKind) => kind === "ModelUnavailable" ? "model-unavailable" : "runtime-error"
 
+  type ObserveInbox = Parameters<typeof NotificationService.observeCommitted>[1]
+
   interface AgentEventHub {
     readonly hub: FeedHub
     readonly viewFeeds: ViewFeeds
@@ -36,7 +38,7 @@ module node {
     readonly report: (code: string, cause: string, quiet: boolean, store: (kind: ReturnType<typeof noticeName>) => Promise<void>) => Promise<void>
     readonly stop: () => Promise<void>
     readonly conversationUpdated: (payload: unknown) => void
-    readonly inboxChanged: (notice: CommittedNotification) => void
+    readonly inboxChanged: ObserveInbox
   }
 
   export function createEventHub(): AgentEventHub {
@@ -162,7 +164,7 @@ module node {
       })
     }
 
-    function inboxChanged({ id, runId, seq }: CommittedNotification): void {
+    function inboxChanged({ id, runId, seq }: Parameters<ObserveInbox>[0]): void {
       for (const frame of send({ type: "publish", source: "AgentSource", news: { tag: "InboxChanged" } })) {
         if (frame.tag !== "Delivered") continue
         const event: AgentEvent = { stream: "notification", runId, seq, payload: { id } }

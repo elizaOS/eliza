@@ -1,9 +1,19 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
-import { Schema } from "effect";
+import { Schema, SchemaGetter } from "effect";
 
 const pattern = (regex: RegExp) => Schema.String.check(Schema.isPattern(regex));
 const bounded = (minimum: number, maximum: number) => Schema.Int.check(Schema.isBetween({ minimum, maximum }));
-const text = (maximum: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(maximum), Schema.isPattern(/^[^\p{Cc}\p{Cf}]*\S[^\p{Cc}\p{Cf}]*$/u));
+function text(maximum: number) {
+  const wire = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(maximum), Schema.isPattern(/^[^\p{Cc}\p{Cf}]*\S[^\p{Cc}\p{Cf}]*$/u));
+  const words = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{1,32}(?: [A-Za-z0-9_-]{1,16})?$/), Schema.isMaxLength(maximum));
+  const domain = Schema.declare(Schema.is(wire), {
+    toCodecArbitrary: () => Schema.link<string>()(words, {
+      decode: SchemaGetter.transform((value) => value),
+      encode: SchemaGetter.forbiddenEncoding,
+    }),
+  });
+  return Schema.decodeTo(domain)(wire);
+}
 
 export const HttpsOrigin = pattern(/^https:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/);
 export const FirstPartyOrigin = pattern(/^(?:https:\/\/[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::[1-9]\d{0,4})?|http:\/\/(?:localhost|127\.0\.0\.1)(?::[1-9]\d{0,4})?)$/);

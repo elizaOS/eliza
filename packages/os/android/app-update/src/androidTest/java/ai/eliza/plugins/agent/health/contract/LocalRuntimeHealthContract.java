@@ -1,42 +1,107 @@
+// spec/os/appUpdate/health.md, "The agent half is the agent service's verdict for the current launch, and storage counts only from a ready agent"; spec/os/agentService/health.md, "A probe is Ok only for a ready answer of the current launch"
 package ai.eliza.plugins.agent.health.contract;
+
+import ai.eliza.plugins.agent.health.HealthWork.Agent;
+import ai.eliza.plugins.agent.health.HealthWork.Storage;
 import ai.eliza.plugins.agent.health.LocalRuntimeHealth;
+import ai.eliza.plugins.agent.health.LocalRuntimeHealth.Launch;
+import ai.eliza.plugins.agent.health.LocalRuntimeHealth.Reading;
+import ai.eliza.plugins.agent.health.LocalRuntimeHealth.Reply;
 import java.io.IOException;
-import java.util.concurrent.atomic.*;
-import org.json.JSONObject;
-/** Controlled local protocol and lifecycle cases; no real runtime or credentials. */
+import java.util.ArrayList;
+import java.util.List;
+
 public final class LocalRuntimeHealthContract {
- private static void check(boolean ok){if(!ok)throw new AssertionError();}
- private static final Object OWNER=new Object(),AGENT=new Object(),GATEWAY=new Object();
- private static LocalRuntimeHealth.Snapshot snapshot(String instance,String state,long epoch,boolean stopping,boolean alive){return new LocalRuntimeHealth.Snapshot(OWNER,instance,state,epoch,stopping,AGENT,()->alive,GATEWAY,()->alive);}
- public static void run()throws Exception{
-  AtomicReference<LocalRuntimeHealth.Snapshot> state=new AtomicReference<>();AtomicInteger calls=new AtomicInteger();AtomicInteger schema=new AtomicInteger(1);AtomicBoolean fail=new AtomicBoolean(),change=new AtomicBoolean();AtomicReference<String> storage=new AtomicReference<>("ok");
-  LocalRuntimeHealth observer=new LocalRuntimeHealth("process",state::get,(snapshot,gateway,route,budget)->{
-   check(budget==321);calls.incrementAndGet();if(fail.get())throw new IOException("transport unavailable");
-   if(change.get())state.set(snapshot("replacement","running",2,false,true));
-   if(!gateway){check(route.equals("/api/status"));return new JSONObject().put("status",200);}
-   check(route.equals("/local-health")||route.equals("/local-storage"));
-   return new JSONObject().put("status",200).put("data",new JSONObject().put("schemaVersion",schema.get()).put("gatewayResponsive",true).put("ownershipLoaded",true).put("taskStorage",storage.get()));
-  },321);
-  JSONObject absent=observer.read();check(calls.get()==0&&observer.unchanged(absent)&&absent.getString("runtimeInstance").equals("none"));
-  state.set(snapshot("one","stopped",1,false,true));check(!observer.read().getBoolean("agentResponsive")&&calls.get()==0&&!observer.unchanged(absent));
-  state.set(snapshot("one","running",1,true,true));check(!observer.read().getBoolean("gatewayResponsive")&&calls.get()==0);
-  state.set(snapshot("one","running",1,false,true));JSONObject healthy=observer.read();check(calls.get()==3&&healthy.getBoolean("agentResponsive")&&healthy.getBoolean("gatewayResponsive")&&healthy.getString("taskStorage").equals("ok")&&observer.unchanged(healthy));
-  storage.set("deferred");check(observer.read().getString("taskStorage").equals("deferred"));storage.set("invented");check(observer.read().getString("taskStorage").equals("unavailable"));
-  schema.set(2);int before=calls.get();JSONObject invalid=observer.read();check(!invalid.getBoolean("gatewayResponsive")&&calls.get()==before+2&&invalid.getString("taskStorage").equals("unavailable"));schema.set(1);
-  fail.set(true);JSONObject failed=observer.read();check(!failed.getBoolean("agentResponsive")&&!failed.getBoolean("gatewayResponsive"));fail.set(false);
-  change.set(true);try{observer.read();throw new AssertionError("Stale runtime accepted");}catch(IOException expected){}change.set(false);check(!observer.unchanged(healthy));
-  state.set(snapshot("one","running",1,false,false));before=calls.get();check(!observer.read().getBoolean("agentResponsive")&&calls.get()==before&&!observer.unchanged(healthy));
-  healthy.put("processInstance","other");check(!observer.unchanged(healthy));
-  // A gateway can exit after answering storage but before the final liveness read.
-  for(String observed:new String[]{"ok","deferred"}){
-   AtomicBoolean live=new AtomicBoolean(true);
-   LocalRuntimeHealth.Snapshot crashing=new LocalRuntimeHealth.Snapshot(OWNER,"crash","running",1,false,AGENT,()->true,GATEWAY,live::get);
-   LocalRuntimeHealth crashObserver=new LocalRuntimeHealth("process",()->crashing,(snapshot,gateway,route,budget)->{
-    if(!gateway)return new JSONObject().put("status",200);
-    if(route.equals("/local-storage"))live.set(false);
-    return new JSONObject().put("status",200).put("data",new JSONObject().put("schemaVersion",1).put("gatewayResponsive",true).put("ownershipLoaded",true).put("taskStorage",observed));
-   },321);
-   JSONObject crashed=crashObserver.read();check(!crashed.getBoolean("gatewayResponsive")&&crashed.getString("taskStorage").equals("unavailable"));
+  private LocalRuntimeHealthContract() {}
+
+  private static final class Agent0 implements LocalRuntimeHealth.AgentPort {
+    Launch launch;
+    Reply health = ready(1), storage = new Reply(200, "{\"schemaVersion\":1,\"taskStorage\":\"ok\"}");
+    boolean silent, alive, accepts;
+    final List<String> routes = new ArrayList<>();
+    @Override public Launch launch() { return launch; }
+    @Override public Reply get(long epoch, String route, int timeoutMillis) throws IOException {
+      check(timeoutMillis == 321, "Probe budget not passed through");
+      check(launch != null && launch.epoch == epoch, "Request sent for another launch");
+      routes.add(route);
+      if (silent) throw new IOException("no answer");
+      if (route.equals(LocalRuntimeHealth.HEALTH_ROUTE)) return health;
+      check(route.equals(LocalRuntimeHealth.STORAGE_ROUTE), "Unexpected route " + route);
+      return storage;
+    }
+    @Override public boolean childAlive(long epoch) { return alive; }
+    @Override public boolean socketAccepts(long epoch) { return accepts; }
   }
- }
+
+  private static Reply ready(long epoch) {
+    return new Reply(200, "{\"ready\":true,\"runtime\":\"ok\",\"agentState\":\"running\",\"epoch\":" + epoch + "}");
+  }
+
+  private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
+
+  private static void expect(Reading reading, Agent agent, Storage storage, String message) {
+    check(reading.agent == agent && reading.storage == storage, message + ": " + reading.agent + "/" + reading.storage);
+  }
+
+  public static void run() {
+    Agent0 port = new Agent0();
+    LocalRuntimeHealth health = new LocalRuntimeHealth(port, 321);
+    expect(health.read(), Agent.WAITING, Storage.UNAVAILABLE, "No launch must wait");
+    check(port.routes.isEmpty(), "No launch must send nothing");
+
+    port.launch = new Launch(1, 0, 0, true);
+    Reading healthy = health.read();
+    expect(healthy, Agent.HEALTHY, Storage.OK, "Ready agent with ok storage");
+    check(port.routes.equals(List.of(LocalRuntimeHealth.HEALTH_ROUTE, LocalRuntimeHealth.STORAGE_ROUTE)), "Health then storage");
+    check(health.sameLaunch(healthy), "Same launch");
+
+    port.storage = new Reply(200, "{\"schemaVersion\":1,\"taskStorage\":\"deferred\"}");
+    expect(health.read(), Agent.HEALTHY, Storage.DEFERRED, "Deferred storage");
+    port.storage = new Reply(200, "{\"schemaVersion\":2,\"taskStorage\":\"ok\"}");
+    expect(health.read(), Agent.HEALTHY, Storage.UNAVAILABLE, "Unknown storage schema");
+    port.storage = new Reply(503, "{\"schemaVersion\":1,\"taskStorage\":\"ok\"}");
+    expect(health.read(), Agent.HEALTHY, Storage.UNAVAILABLE, "Refused storage probe");
+    port.storage = new Reply(200, "{\"schemaVersion\":1,\"taskStorage\":\"invented\"}");
+    expect(health.read(), Agent.HEALTHY, Storage.UNAVAILABLE, "Unknown storage value");
+
+    port.launch = new Launch(1, 0, 0, false);
+    port.routes.clear();
+    expect(health.read(), Agent.HEALTHY, Storage.NOT_LOADED, "Tasks not loaded");
+    check(port.routes.equals(List.of(LocalRuntimeHealth.HEALTH_ROUTE)), "No storage probe without tasks");
+
+    port.launch = new Launch(2, 0, 0, true);
+    port.routes.clear();
+    expect(health.read(), Agent.WAITING, Storage.UNAVAILABLE, "A ready answer of another epoch is one dead probe");
+    check(port.routes.equals(List.of(LocalRuntimeHealth.HEALTH_ROUTE)), "No storage probe from an unready agent");
+    port.launch = new Launch(2, 2, 0, true);
+    expect(health.read(), Agent.FAILING, Storage.UNAVAILABLE, "Third dead probe fails");
+    port.health = new Reply(200, "not json");
+    port.launch = new Launch(2, 1, 0, true);
+    expect(health.read(), Agent.WAITING, Storage.UNAVAILABLE, "Unparsed body is one dead probe");
+    port.health = new Reply(200, "{\"ready\":true,\"runtime\":\"ok\",\"agentState\":\"running\",\"epoch\":\"2\"}");
+    expect(health.read(), Agent.WAITING, Storage.UNAVAILABLE, "A string epoch is not ready");
+
+    port.silent = true;
+    port.alive = true;
+    port.launch = new Launch(2, 2, 1, true);
+    expect(health.read(), Agent.WAITING, Storage.UNAVAILABLE, "Silent live child is busy and adds no strike");
+    port.launch = new Launch(2, 0, 2, true);
+    expect(health.read(), Agent.FAILING, Storage.UNAVAILABLE, "Third busy probe fails");
+    port.alive = false;
+    port.accepts = true;
+    port.launch = new Launch(2, 0, 0, true);
+    expect(health.read(), Agent.WAITING, Storage.UNAVAILABLE, "Accepting socket is busy");
+    port.accepts = false;
+    expect(health.read(), Agent.WAITING, Storage.UNAVAILABLE, "One dead probe never fails");
+
+    port.silent = false;
+    port.health = ready(2);
+    Reading second = health.read();
+    expect(second, Agent.HEALTHY, Storage.UNAVAILABLE, "Ready agent with unknown storage");
+    port.launch = new Launch(3, 0, 0, true);
+    check(!health.sameLaunch(second), "A new launch is not the same launch");
+    port.launch = null;
+    check(!health.sameLaunch(second), "A stopped agent is not the same launch");
+    try { new LocalRuntimeHealth(port, 0); throw new AssertionError("Zero budget accepted"); } catch (IllegalArgumentException expected) {}
+  }
 }
