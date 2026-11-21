@@ -1,0 +1,52 @@
+// spec/cloud/returnPages.md, "A return URL on the web origin shows ReturnToApp only for the one enabled registration of the served environment that holds it"; spec/cloud/nativeClients/registry.md, "A return URL names at most one enabled registration and purpose, and the cloud serves it only on the environment's web origin"
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import seed from "../fixtures/seed.json" with { type: "json" }
+
+module node {
+  import { createServer, request } from "node:http"
+  import type { AddressInfo } from "node:net"
+
+  async function answers(upstream: URL, deadline: number): Promise<void> {
+    for (;;) {
+      const up = await fetch(new URL("/.well-known/assetlinks.json", upstream)).then(() => true, () => false)
+      if (up) return
+      if (Date.now() > deadline) throw new Error(`${upstream.href} did not answer`)
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+  }
+
+  /** @throws {unknown} */
+  export async function frontDoor(upstream: URL, webHost: string, waitMs: number): Promise<number> {
+    await answers(upstream, Date.now() + waitMs)
+    const front = createServer((incoming, outgoing) => {
+      const forwarded = request(new URL(incoming.url ?? "/", upstream), {
+        method: incoming.method,
+        headers: { ...incoming.headers, host: upstream.host, "x-forwarded-host": webHost, "x-forwarded-proto": "https" }
+      }, (answer) => {
+        outgoing.writeHead(answer.statusCode ?? 502, answer.headers)
+        answer.pipe(outgoing)
+      })
+      forwarded.on("error", () => outgoing.writeHead(502).end())
+      incoming.pipe(forwarded)
+    })
+    await new Promise<void>((resolve, reject) => front.once("error", reject).listen(0, "127.0.0.1", resolve))
+    return (front.address() as AddressInfo).port
+  }
+}
+import { frontDoor } from node
+
+export error FrontDoorFailed { upstream: string }
+
+const upstream = new URL("http://127.0.0.1:8080")
+const fixtureReturn = new URL(seed.clients[0]?.signInReturn ?? "")
+const fixtureState = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde"
+
+effect function main() {
+  const port = try tryPromise({ try: () => frontDoor(upstream, fixtureReturn.host, 300_000), catch: () => new FrontDoorFailed({ upstream: upstream.href }) })
+  const local = `http://127.0.0.1:${port}${fixtureReturn.pathname}?state=${fixtureState}`
+  try annotateLogs(logInfo("serving the web origin"), { url: local, returnUrl: fixtureReturn.href })
+  try never
+}
+
+NodeRuntime.runMain(Effect.provide(main(), NodeServices.layer))
