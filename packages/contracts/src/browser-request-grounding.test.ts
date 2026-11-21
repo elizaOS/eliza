@@ -1245,7 +1245,10 @@ describe("a path ending the message with closing punctuation", () => {
     ]) {
       expect(directBrowserOpen(text)).toBeUndefined();
       expect(
-        groundBrowserDestination(text, `https://${text.replace(/^https:\/\/|[.!]$/g, "")}`),
+        groundBrowserDestination(
+          text,
+          `https://${text.replace(/^https:\/\/|[.!]$/g, "")}`,
+        ),
       ).toBeDefined();
     }
     expect(directBrowserDestination("nytimes.com/section/world")).toBe(
