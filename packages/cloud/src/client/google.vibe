@@ -1,4 +1,6 @@
-// spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"; spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once, as I reviewed it"; spec/cloud/services/google/calendar.md, "Story: Change an event only at the revision I read"
+// spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"; spec/cloud/services/google/connection.md, "Story: See my Google connection as the cloud holds it"; spec/cloud/services/google/connection.md, "Story: Disconnect it"; spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; spec/cloud/services/google/calendar.md, "Story: Read my calendar for a window"; spec/cloud/services/google/calendar.md, "Story: Change an event only at the revision I read"
+import { SecureRandom } from "effect/crypto"
+import { Base64Url } from "effect/encoding"
 import type { IdempotencyKey } from "../services/maps.schema.ts"
 import { answerOf, queryOf, type CallOptions } from "./answer.vibe"
 import type { CloudTransport } from "./client.vibe"
@@ -40,8 +42,7 @@ export function isConnectState(value: string): value is ConnectState {
 }
 
 export function newConnectState(): ConnectState {
-  const bytes = crypto.getRandomValues(new Uint8Array(32))
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") as ConnectState
+  return Base64Url.encode(SecureRandom.randomBytesUnsafe(32)) as ConnectState
 }
 
 export interface ConnectRequest {
@@ -141,7 +142,7 @@ export type MailProposal =
   | { readonly kind: LabelKind; readonly messageId: string; readonly expectedHistoryId: string }
   | { readonly kind: "draft-delete"; readonly draftId: string; readonly expectedDigest: string; readonly confirmPermanentDelete: true }
 
-const AttachmentReview = Schema.Struct({ name: Schema.String, mimeType: Schema.String, size: Schema.Number, sha256: Schema.String })
+schema AttachmentReview { name: string; mimeType: string; size: number; sha256: string }
 
 const MailReview = Schema.Union([
   Schema.Struct({
@@ -218,7 +219,7 @@ export type CalendarEvent = typeof CalendarEvent.Type
 const CalendarFeed = Schema.Struct({ calendarId: Schema.String, events: Schema.Array(CalendarEvent), syncedAt: Schema.String })
 export type CalendarFeed = typeof CalendarFeed.Type
 
-const EventAnswer = Schema.Struct({ event: CalendarEvent })
+schema EventAnswer { event: CalendarEvent }
 
 export interface EventFields {
   readonly title: string

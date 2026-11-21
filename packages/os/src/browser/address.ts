@@ -1,75 +1,65 @@
-export type BrowserAddressInput =
-  | { kind: "url"; href: string }
-  | { kind: "search"; query: string }
-  | {
-      kind: "rejected";
-      reason:
-        | "empty"
-        | "invalid-input"
-        | "invalid-url"
-        | "credentials"
-        | "unsupported-protocol";
-    };
+// spec/os/browser/address.md, "Typed text is an address to open, words to search for, or a refusal with its reason"; spec/os/browser/address.md, "A web address is HTTP or HTTPS with a valid host, no credentials, clean text and at most 8,192 units"
+import { isSecureWebAddress as secureWebAddress, isWebAddress as plainWebAddress, type AddressFacts, type DefaultProtocol, type WebAddress, type WebScheme } from "../../gen/os__browser__address.ts";
+import { browserAddressInput, type BrowserAddressInput } from "./address-input.ts";
 
-/** Local address-bar classification, not navigation authorization or an SSRF check.
- * Hosts own aliases, search providers, HTTPS upgrades and user-facing errors.
- */
-export function parseBrowserAddressInput(
-  input: string,
-  options: { defaultProtocol: "http:" | "https:" },
-): BrowserAddressInput {
-  const value = input.trim();
-  if (!value) return { kind: "rejected", reason: "empty" };
-  if ([...value].some((char) => char <= "\u001f" || char === "\u007f" || char === "\\"))
-    return { kind: "rejected", reason: "invalid-input" };
-  // Search operators name query text even when their operand looks like a
-  // host or port. Keep the explicit // scheme form on the protocol path.
-  if (/^(?:site|define|filetype|before|after):(?!\/\/)\S/i.test(value)) {
-    if (value.includes("@")) return { kind: "rejected", reason: "credentials" };
-    return { kind: "search", query: value };
-  }
-  // A host with a numeric port is a URL, not a scheme — including
-  // single-label hosts (localhost:3000, nas:8080). Requiring a dot in
-  // the host let those fall into the scheme test below, where the host
-  // name was misread as a protocol and the input was rejected.
-  // Bracketed IPv6 literals ([::1]:8080) are the same shape: without the
-  // bracket form they fall through to the search fallback even though the
-  // user typed a complete address. The port is optional — a bare literal
-  // ([::1]) is a complete loopback address, not a search query. The bracket
-  // contents must be IPv6-shaped (at least one colon): a colon-less token
-  // like [1] or [abc] is a search query, and routing it to new URL() would
-  // turn valid searches into invalid-url rejections.
-  const hostPort =
-    /^[^\s/:]+:\d+(?:[/?#]|$)/.test(value) ||
-    /^\[[0-9a-fA-F.%]*:[0-9a-fA-F:.%]*\](?::\d+)?(?:[/?#]|$)/.test(value);
-  // A scheme is its name, the colon and then its body. Prose such as
-  // `re: dinner` or `time: 1:30 pm` only looks scheme-shaped; reading the
-  // first word as a protocol rejected a search the user typed.
-  const explicit = !hostPort && /^[a-z][a-z\d+.-]*:(?:\S|$)/i.test(value);
-  const domain = /^[^\s/?#]+\.[^\s/?#]+(?:[/?#].*)?$/.test(value);
-  if (!explicit && !domain && !hostPort && !value.startsWith("//")) {
-    if (value.includes("@")) return { kind: "rejected", reason: "credentials" };
-    return { kind: "search", query: value };
-  }
-  let url: URL;
-  try {
-    url = new URL(
-      value.startsWith("//")
-        ? `${options.defaultProtocol}${value}`
-        : explicit
-          ? value
-          : `${options.defaultProtocol}//${value}`,
-    );
-  } catch {
-    // A bracketed token that only looked IPv6-shaped ([1:30], [a:b]) was
-    // typed as a search, not an address.
-    if (value.startsWith("[") && !explicit && !domain)
-      return { kind: "search", query: value };
-    return { kind: "rejected", reason: "invalid-url" };
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:")
-    return { kind: "rejected", reason: "unsupported-protocol" };
-  if (url.username || url.password)
-    return { kind: "rejected", reason: "credentials" };
-  return { kind: "url", href: url.href };
+export type { AddressRefusalReason, BrowserAddressInput } from "./address-input.ts";
+export type { AddressFacts, DefaultProtocol, WebAddress, WebScheme } from "../../gen/os__browser__address.ts";
+
+const UNREADABLE = /[\u0000-\u001f\u007f\\]/;
+const UNCLEAN = /[\s\u0000-\u001f\u007f\\]/;
+const SEARCH_OPERATOR = /^(?:site|define|filetype|before|after):(?!\/\/)\S/i;
+const HOST_PORT = /^[^\s/:]+:\d+(?:[/?#]|$)/;
+const BRACKETED_HOST = /^\[[0-9a-fA-F.%]*:[0-9a-fA-F:.%]*\](?::\d+)?(?:[/?#]|$)/;
+const SCHEME = /^[a-z][a-z\d+.-]*:(?:\S|$)/i;
+const DOTTED_DOMAIN = /^[^\s/?#]+\.[^\s/?#]+(?:[/?#].*)?$/;
+const PROTOCOL: Readonly<Record<DefaultProtocol, "http:" | "https:">> = { DefaultHttp: "http:", DefaultHttps: "https:" };
+
+function schemeOf(url: URL | null): WebScheme {
+  return url?.protocol === "https:" ? "HttpsScheme" : url?.protocol === "http:" ? "HttpScheme" : "OtherScheme";
+}
+
+function hasUserInfo(url: URL | null): boolean {
+  return url !== null && (url.username !== "" || url.password !== "");
+}
+
+export function addressFacts(input: string, fallback: DefaultProtocol): AddressFacts {
+  const text = input.trim();
+  const hostPort = HOST_PORT.test(text) || BRACKETED_HOST.test(text);
+  const schemeShaped = SCHEME.test(text);
+  const protocolRelative = text.startsWith("//");
+  const url = URL.parse(protocolRelative ? `${PROTOCOL[fallback]}${text}` : !hostPort && schemeShaped ? text : `${PROTOCOL[fallback]}//${text}`);
+  return {
+    text,
+    blank: text === "",
+    hasControl: UNREADABLE.test(text),
+    searchOperator: SEARCH_OPERATOR.test(text),
+    hasAt: text.includes("@"),
+    hostPort,
+    schemeShaped,
+    typedScheme: schemeOf(url),
+    dottedDomain: DOTTED_DOMAIN.test(text),
+    protocolRelative,
+    bracketed: text.startsWith("["),
+    parses: url !== null,
+    userInfo: hasUserInfo(url),
+    href: url?.href ?? "",
+  };
+}
+
+export function parseBrowserAddressInput(input: string, options: { defaultProtocol: "http:" | "https:" }): BrowserAddressInput {
+  const fallback: DefaultProtocol = options.defaultProtocol === "http:" ? "DefaultHttp" : "DefaultHttps";
+  return browserAddressInput(addressFacts(input, fallback), fallback);
+}
+
+export function webAddress(href: string): WebAddress {
+  const url = URL.parse(href);
+  return { href, units: href.length, cleanText: !UNCLEAN.test(href), scheme: schemeOf(url), validHost: url !== null && url.hostname !== "", userInfo: hasUserInfo(url) };
+}
+
+export function isWebAddress(value: unknown): value is string {
+  return typeof value === "string" && plainWebAddress(webAddress(value));
+}
+
+export function isSecureWebAddress(value: unknown): value is string {
+  return typeof value === "string" && secureWebAddress(webAddress(value));
 }

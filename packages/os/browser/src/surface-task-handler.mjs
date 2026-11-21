@@ -298,7 +298,7 @@ export function createSurfaceTaskHandler({
     } catch (error) {
       fault = {
         error:
-          inputDispatched && error?.code !== "UNCERTAIN_OUTCOME"
+          inputDispatched
             ? failure(
                 "UNCERTAIN_OUTCOME",
                 "The page effect needs fresh readback; do not replay it.",
