@@ -36,7 +36,7 @@ schema ResolveBody { readonly decision: "approve" | "reject"; readonly revision:
 const resolveBody = Schema.decodeUnknownOption(ResolveBody, { onExcessProperty: "error" })
 const failure = (status: number, error: string) => ({ status, body: { error } })
 
-export function wireApproval(record: ApprovalRecord) {
+function wireApproval(record: ApprovalRecord) {
   return {
     id: record.id, state: record.state, subjectUserId: record.subjectUserId, action: record.action, payload: record.payload,
     reason: record.reason, expiresAt: record.expiresAt, createdAt: record.createdAt, updatedAt: record.updatedAt, revision: record.revision,

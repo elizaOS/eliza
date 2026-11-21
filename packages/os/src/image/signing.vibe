@@ -17,7 +17,7 @@ import { verifySource, type VerifySourceOptions } from "./source-lock.vibe"
 
 export { generate, decrypt, type GenerateOptions, type DecryptOptions } from "./key-ceremony.vibe"
 export { encodeAvbPublicKey, loadKeyManifest } from "./signing-keys.vibe"
-export { channelDistributionProblems, compatibilityRecord, releaseDescriptorProblems, releaseRecordProblems, type ReleaseRecord } from "./signing-record.vibe"
+export { channelDistributionProblems, compatibilityRecord, releaseDescriptorProblems, releaseRecordProblems } from "./signing-record.vibe"
 
 module node {
   import { Buffer } from "node:buffer"

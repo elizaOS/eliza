@@ -13,7 +13,7 @@ import {
   removeGoogle, revokeGoogle, type BillingSource, type BillingTarget
 } from "./deletion-providers.vibe"
 
-export type ProviderStep = Exclude<SagaStep, "EraseData">
+type ProviderStep = Exclude<SagaStep, "EraseData">
 
 interface ProviderCall {
   readonly providerKey: string

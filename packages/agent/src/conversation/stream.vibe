@@ -59,7 +59,6 @@ module node {
     readonly abortTurn: () => void
   }
 
-  export const responseUnavailable: ErrorFrame = { type: "error", code: "ASSISTANT_RESPONSE_UNAVAILABLE", message: "The turn left no reply" }
   const serverFailure: ErrorFrame = { type: "error", code: "SERVER_ERROR", message: "The turn failed" }
 
   const unitsOf = (text: string): number[] => Array.from({ length: text.length }, (_, at) => text.charCodeAt(at))
@@ -217,7 +216,7 @@ module node {
   }
 }
 export {
-  ReplyWire, responseUnavailable, streamRoutes, writeReplyStream,
+  ReplyWire, streamRoutes, writeReplyStream,
   type Activity, type ActionResultFrame, type AdmittedStream, type DoneFrame, type ErrorFrame, type ReplyFrame, type ReplySink, type ReplyWriter,
   type StartStream, type StreamStart, type TurnEnd,
 } from node

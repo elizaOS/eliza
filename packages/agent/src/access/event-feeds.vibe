@@ -18,7 +18,7 @@ module node {
     readonly subscribe: (request: FeedRequest, sink: FeedSink) => LiveFeed | Refused
   }
 
-  export const eventFrame = ({ stream, runId, seq, payload }: AgentEvent) =>
+  const eventFrame = ({ stream, runId, seq, payload }: AgentEvent) =>
     ({ type: "event", event: { type: "agent_event", stream, runId, seq, payload } })
 
   function frameBytes(event: AgentEvent): number {
@@ -96,4 +96,4 @@ module node {
   }
 }
 
-export { eventFrame, feedsOver, type FeedHub, type FeedSink, type LiveFeed } from node
+export { feedsOver, type FeedHub, type FeedSink, type LiveFeed } from node

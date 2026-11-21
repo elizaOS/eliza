@@ -4,7 +4,7 @@ import { Refused } from "../http/refusal.vibe"
 import { loadRow, machineRows, stepRow } from "../store/rows.vibe"
 import { Store, type Tx } from "../store/connection.vibe"
 
-export { perMinute, perWindow, windowEndOf, windowStartOf } from "../../gen/cloud__shared__rateLimit.effect.vibe"
+export { perWindow, windowEndOf, windowStartOf } from "../../gen/cloud__shared__rateLimit.effect.vibe"
 export type { RateLimit, Window }
 
 const windows = machineRows<Window, Event, Rejected, unknown>("rate_windows", { initial, decodeState, apply })
@@ -23,7 +23,7 @@ export interface LimitCheck {
 
 export const minute = 60_000
 
-export function windowKey(check: LimitCheck): string {
+function windowKey(check: LimitCheck): string {
   return `${check.rule.name}|${check.subject}`
 }
 
