@@ -360,6 +360,8 @@ export function groundTelephonyTarget(
       // A SIM send takes numbers only; a name is resolved on the phone.
       if (target.kind !== "number")
         throw new DeviceTelephonyTargetNotRequestedError("form");
+      if (operation.recipients.length !== 1)
+        throw new DeviceTelephonyTargetNotRequestedError("number");
       return {
         operation: { ...operation, recipients: [target.number] },
         handedThrough: true,

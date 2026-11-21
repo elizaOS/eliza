@@ -22,10 +22,9 @@ const CALL = new RegExp(
 );
 const textCommand = (recipient: string) =>
   new RegExp(
-    `${COURTESY}(?:text|sms|send\\s+(?:a\\s+)?(?:text|sms)(?:\\s+message)?\\s+to)\\s+(${recipient})\\s*,?\\s+(?:saying|that|to\\s+say)\\s+\\S[\\s\\S]*$`,
+    `${COURTESY}(?:(?:thanks|thank you)[,.!]\\s+(?:(?:can|could|would|will)\\s+you\\s+(?:please\\s+)?)?)?(?:text|sms|send\\s+(?:a\\s+)?(?:text|sms)(?:\\s+message)?\\s+to)\\s+(${recipient})\\s*,?\\s+(?:saying|that|to\\s+say|and\\s+say|and\\s+tell\\s+(?:him|her|them)\\s+(?:to|that))\\s+\\S[\\s\\S]*$`,
     "iu",
   );
-const TEXT = textCommand(TARGET);
 // The same messages, with the name ending at the first "saying", "that" or
 // "to say": "text mom saying that I'm late" is to "mom", not "mom saying".
 const TEXT_RECIPIENT = textCommand(target("{0,2}?"));
@@ -45,8 +44,13 @@ export function authoredTelephonyRequest(
   if (requestedSmsDraftRecipient(request)?.kind === "previous-sender")
     return "text";
   if (isSmsSenderLookup(request)) return "sender";
-  const sms = TEXT.exec(request);
-  if (sms && !NOT_A_PHONE_TARGET.test(sms[1] ?? "")) return "text";
+  const sms = TEXT_RECIPIENT.exec(request);
+  if (
+    sms &&
+    !NOT_A_PHONE_TARGET.test(sms[1]) &&
+    !/\b(?:and|or)\b/iu.test(sms[1])
+  )
+    return "text";
   return;
 }
 
