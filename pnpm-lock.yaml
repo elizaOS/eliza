@@ -319,9 +319,6 @@ importers:
       '@electric-sql/pglite':
         specifier: 'catalog:'
         version: 0.4.6
-      '@elizaos/core':
-        specifier: workspace:*
-        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -521,9 +518,6 @@ importers:
       '@effect/platform-node-shared':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)
-      '@elizaos/core':
-        specifier: workspace:*
-        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1

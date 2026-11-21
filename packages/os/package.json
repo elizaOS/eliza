@@ -94,7 +94,6 @@
   "dependencies": {
     "@effect/platform-node": "4.1.1",
     "@effect/platform-node-shared": "4.1.1",
-    "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
     "esbuild": "catalog:",
     "jsonc-parser": "3.3.1",
