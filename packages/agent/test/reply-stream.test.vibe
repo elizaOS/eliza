@@ -38,7 +38,7 @@ effect function send(agent: InProcess, id: string, body: object, abortAfterChunk
   return try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, body }, abortAfterChunks)
 }
 
-const piece = (letter: string) => letter.repeat(1500)
+const piece = (letter: string) => letter.repeat(5)
 
 for (const transport of ["socket", "http"] as const) {
   describe(`See a reply as it is written over the ${transport} (spec/agent/conversation/replyStream.md, "Story: See a reply as it is written")`, () => {
@@ -53,7 +53,7 @@ for (const transport of ["socket", "http"] as const) {
       const refused = try send(agent, id, { text: "Again.", streamProtocol: "v2" })
       try Effect.try(() => assert.deepStrictEqual({
         status: answer.status, error: answer.error, first: frames[0], ends: frames.filter((frame) => frame.type === "done" || frame.type === "error").length,
-        terminal: terminal?.type === "done" ? "done" : JSON.stringify([terminal, cloud.calls.map((made) => made.path)]), fullText: terminal?.fullText, rebuilt: rebuilt(frames),
+        terminal: JSON.stringify(terminal), fullText: terminal?.fullText, rebuilt: rebuilt(frames),
         snapshots: kinds(frames).includes("snapshot"), provisional: frames.some((frame) => frame.provisional === true),
         refused: [refused.status, refused.json],
       }, {

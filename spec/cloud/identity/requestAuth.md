@@ -50,7 +50,7 @@ pure def lawOnlyPublicAndSignedRoutesAuthenticateNoOne(route: RouteClass, presen
   isAnonymous(admit(route, presented, standing, now)) iff not(isProtected(route))
 ```
 
-### A missing, unreadable or unknown credential is refused 401 with credential_unknown
+### Every refusal is well formed, and a missing or unknown credential is refused 401 with credential_unknown
 
 A device takes the reason as the custody owner's input: `credential_expired`
 for a credential past its end, `credential_revoked` for one signed out,
@@ -71,6 +71,11 @@ pure def lawEveryRefusalIsWellFormed(route: RouteClass, presented: Presented, st
   val a = admit(route, presented, standing, now)
   match a { | Denied(x) => wellFormed(x.refusal) | _ => true }
 }
+pure def lawAMissingOrUnknownCredentialIsUnknown(route: RouteClass, window: R::Window, standing: Standing, now: Millis): bool =
+  (isProtected(route) and R::admitsAll(keyIngress(window), now)) implies (
+    admit(route, NoCredential, standing, now) == deniedFor(CredentialUnknown)
+    and admit(route, SessionBearer({ lookup: NoFamily }), standing, now) == deniedFor(CredentialUnknown)
+    and admit(route, KeyBearer({ window: window, lookup: NoGrant }), standing, now) == deniedFor(CredentialUnknown))
 ```
 
 ### A device key is limited to 120 requests a minute before it is looked up
@@ -105,8 +110,8 @@ device key.
 
 ```quint
 pure def isActiveAccount(standing: Standing): bool = standing.status == A::Active
-pure def sessionAdmission(route: RouteClass, lookup: SessionLookup, standing: Standing, now: Millis): Admission =
-  match lookup {
+pure def sessionAdmission(route: RouteClass, familyLookup: SessionLookup, standing: Standing, now: Millis): Admission =
+  match familyLookup {
     | NoFamily => deniedFor(CredentialUnknown)
     | FamilyRow(x) => familyAdmission(route, x.family, x.generation, standing, now)
   }
@@ -121,8 +126,8 @@ pure def liveFamily(family: S::Family, generation: int, standing: Standing, now:
   S::accepts({ ...family, now: now }, generation, standing.personEpoch)
 pure def liveGrant(grant: Dk::Grant, standing: Standing, now: Millis): bool =
   Dk::isLive({ ...grant, now: now }) and not(Dk::revokedSince(grant, standing.deviceEpoch))
-pure def liveLookup(lookup: SessionLookup, standing: Standing, now: Millis): bool =
-  match lookup { | FamilyRow(x) => liveFamily(x.family, x.generation, standing, now) | NoFamily => false }
+pure def liveLookup(familyLookup: SessionLookup, standing: Standing, now: Millis): bool =
+  match familyLookup { | FamilyRow(x) => liveFamily(x.family, x.generation, standing, now) | NoFamily => false }
 pure def liveKeyLookup(lookup: KeyLookup, standing: Standing, now: Millis): bool =
   match lookup { | GrantRow(x) => liveGrant(x.grant, standing, now) | NoGrant => false }
 pure def isLiveCredential(presented: Presented, standing: Standing, now: Millis): bool =

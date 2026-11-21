@@ -11,7 +11,7 @@ const webHost = webOrigin.slice("https://".length);
 const returnPaths = [fixture.signInReturn, fixture.billingReturn, fixture.connectReturn].map((address) => address.slice(webOrigin.length));
 const payerPath = "/api/v1/subscriptions/checkout/payer";
 
-const isPage = (state: State) => state.document.contentType === "text/html";
+const isPage = (state: State) => state.document.contentType === "text/html" && /^https?:$/.test(state.window.location.protocol);
 const isPayerPage = (state: State) => isPage(state) && state.window.location.pathname === payerPath;
 const isReturnToApp = (state: State) => isPage(state) && returnPaths.includes(state.window.location.pathname);
 

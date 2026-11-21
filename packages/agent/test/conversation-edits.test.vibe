@@ -1,0 +1,192 @@
+// spec/agent/conversation/conversations.md, "Story: Fork a conversation at a message without changing the original"; spec/agent/conversation/conversations.md, "Story: Remove private text I sent by mistake"
+module node {
+  import { randomUUID } from "node:crypto"
+  import type { AgentRuntime, Log, Memory, UUID } from "@elizaos/core"
+  import { conversationStore } from "../src/conversation/conversations.vibe"
+  import { forkService, type ForkRequest } from "../src/conversation/fork.vibe"
+
+  export const fresh = () => fresh() as UUID
+
+  export async function seedMessages(runtime: AgentRuntime, roomId: UUID, rows: readonly { readonly text: string; readonly agent: boolean }[], from: number) {
+    const memories = rows.map(({ text, agent }, index): Memory => ({
+      id: fresh(), roomId, agentId: runtime.agentId, createdAt: from + index,
+      entityId: agent ? runtime.agentId : fresh(), content: { text, source: "device" },
+    }))
+    await runtime.adapter.createMemories(memories.map((memory) => ({ memory, tableName: "messages" })))
+    return memories.map((memory) => String(memory.id))
+  }
+
+  export async function seedLogs(runtime: AgentRuntime, rows: readonly { readonly roomId: UUID; readonly type: string; readonly prompt: string }[]) {
+    await runtime.adapter.createLogs(rows.map(({ roomId, type, prompt }) => ({ entityId: runtime.agentId, roomId, type, body: { prompt, response: "noted" } })))
+  }
+
+  export async function promptsOf(runtime: AgentRuntime, roomId: UUID) {
+    return (await runtime.adapter.getLogs({ roomId })).map(({ body }: Log) => (body as { prompt?: string }).prompt ?? "").sort()
+  }
+
+  export async function forkRecordText(runtime: AgentRuntime, id: string) {
+    const key = `conversation-forks:${id}`
+    return JSON.stringify((await runtime.adapter.getCaches<unknown>([key])).get(key)) ?? ""
+  }
+
+  export async function interruptedFork(runtime: AgentRuntime, id: string, request: ForkRequest) {
+    const store = conversationStore(runtime, { user: fresh(), world: fresh() })
+    const source = await store.find(id)
+    if (source === undefined) throw new Error("The source conversation is not listed")
+    const begun = await forkService(runtime, store).begin(source, request)
+    if (begun.kind !== "forked") throw new Error(`The fork was refused: ${begun.kind}`)
+    return begun.fork.id
+  }
+}
+
+import { fresh, forkRecordText, interruptedFork, promptsOf, seedLogs, seedMessages } from node
+import { assert, it } from "@effect/vitest"
+import type { UUID } from "@elizaos/core"
+import { privateNotice } from "../gen/agent__conversation__conversations.ts"
+import { textDigest } from "../src/conversation/fork.vibe"
+import { call, host, startInProcess, type InProcess } from "./support/kernel.vibe"
+import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
+
+interface Conversation { readonly id: string; readonly roomId: UUID; readonly title: string }
+interface Message { readonly id: string; readonly role: string; readonly text: string; readonly timestamp: number }
+
+const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
+const base = 1_700_000_000_000
+
+effect function ask(agent: InProcess, asked: LocalRequest) {
+  return answerOf(try call(agent, asked))
+}
+
+effect function open(agent: InProcess, title: string) {
+  const answer = try ask(agent, { method: "POST", path: "/api/conversations", body: { title } })
+  return (answer.body as { conversation: Conversation }).conversation
+}
+
+effect function seed(agent: InProcess, roomId: UUID, rows: readonly { readonly text: string; readonly agent: boolean }[], from: number) {
+  return try host("seed messages", () => seedMessages(agent.agent.runtime, roomId, rows, from))
+}
+
+effect function history(agent: InProcess, id: string) {
+  const answer = try ask(agent, { method: "GET", path: `/api/conversations/${id}/messages` })
+  return { status: answer.status, messages: (answer.body as { messages?: readonly Message[] }).messages ?? [] }
+}
+
+effect function forkAt(agent: InProcess, id: string, body: object) {
+  const answer = try ask(agent, { method: "POST", path: `/api/conversations/${id}/fork`, body })
+  return { status: answer.status, conversation: (answer.body as { conversation?: Conversation }).conversation }
+}
+
+effect function redactOf(agent: InProcess, id: string, messageId: string, body: object) {
+  const answer = try ask(agent, { method: "POST", path: `/api/conversations/${id}/messages/${messageId}/redact`, body })
+  return { status: answer.status, body: answer.body as { result?: string } }
+}
+
+effect function listed(agent: InProcess) {
+  const answer = try ask(agent, { method: "GET", path: "/api/conversations" })
+  return (answer.body as { conversations: readonly Conversation[] }).conversations
+}
+
+const texts = (messages: readonly Message[]) => messages.map(({ text }) => text)
+
+it.effect('Fork at my own message: the copy is whole before it is listed, a retry answers the same fork, and the original stays (spec/agent/conversation/conversations.md, "A fork starts only at my own message whose stored text is what I saw"; spec/agent/conversation/conversations.md, "A fork copies every message before the chosen one, and only those, before it is listed"; spec/agent/conversation/conversations.md, "No message is ever removed, and only redaction changes one")', effect () => {
+  const agent = try startInProcess()
+  const runtime = agent.agent.runtime
+  const plans = try open(agent, "Plans")
+  const [hello, greeting, trip, sure] = try seed(agent, plans.roomId, [
+    { text: "hello", agent: false }, { text: "hi there", agent: true }, { text: "plan a trip", agent: false }, { text: "sure", agent: true },
+  ], base)
+  const before = try history(agent, plans.id)
+
+  const made = try forkAt(agent, plans.id, { messageId: trip, requestId: "r1", expectedText: "plan a trip" })
+  const again = try forkAt(agent, plans.id, { messageId: trip, requestId: "r1", expectedText: "plan a trip" })
+  const otherMessage = try forkAt(agent, plans.id, { messageId: hello, requestId: "r1", expectedText: "hello" })
+  const otherText = try forkAt(agent, plans.id, { messageId: trip, requestId: "r1", expectedText: "plan a walk" })
+  const changed = try forkAt(agent, plans.id, { messageId: trip, requestId: "r2", expectedText: "plan a walk" })
+  const agentMessage = try forkAt(agent, plans.id, { messageId: greeting, requestId: "r2", expectedText: "hi there" })
+  const unknownMessage = try forkAt(agent, plans.id, { messageId: fresh(), requestId: "r2", expectedText: "hello" })
+  const unknownConversation = try forkAt(agent, fresh(), { messageId: trip, requestId: "r2", expectedText: "plan a trip" })
+  const malformed = try forkAt(agent, plans.id, { messageId: trip, expectedText: "plan a trip" })
+  const copied = try history(agent, made.conversation?.id ?? "")
+  const after = try history(agent, plans.id)
+  const record = try host("fork records", () => forkRecordText(runtime, plans.id))
+  const pendingId = try host("interrupted fork", () => interruptedFork(runtime, plans.id, { messageId: sure, requestId: "r3", expectedText: "sure" }))
+  const whilePending = try listed(agent)
+  const pendingHistory = try history(agent, pendingId)
+  const retried = try forkAt(agent, plans.id, { messageId: sure, requestId: "r3", expectedText: "sure" })
+  const published = try history(agent, pendingId)
+  const finally_ = try listed(agent)
+
+  try Effect.try(() => {
+    assert.deepStrictEqual({
+      made: [made.status, made.conversation?.title, again.status, again.conversation?.id === made.conversation?.id],
+      refused: [otherMessage.status, otherText.status, changed.status, agentMessage.status, unknownMessage.status, unknownConversation.status, malformed.status],
+      copied: copied.messages.map(({ text, timestamp }) => [text, timestamp]),
+      copiedIds: copied.messages.some(({ id }) => id === hello || id === greeting),
+      original: after.messages, digest: [record.includes("plan a trip"), record.includes(textDigest("plan a trip"))],
+    }, {
+      made: [200, "Plans · edit", 200, true],
+      refused: [409, 409, 409, 404, 404, 404, 400],
+      copied: [["hello", base], ["hi there", base + 1]], copiedIds: false,
+      original: before.messages, digest: [false, true],
+    })
+    assert.deepStrictEqual({
+      pendingListed: whilePending.some(({ id }) => id === pendingId), pendingHistory: pendingHistory.status,
+      retried: [retried.status, retried.conversation?.id === pendingId], published: texts(published.messages),
+      listed: finally_.filter(({ title }) => title === "Plans · edit").length,
+    }, {
+      pendingListed: false, pendingHistory: 404,
+      retried: [200, true], published: ["hello", "hi there", "plan a trip"], listed: 2,
+    })
+  })
+}, 180_000)
+
+it.effect('Redact a secret: the message, its exact copies and the model-call logs of that conversation show the notice, and nothing else changes (spec/agent/conversation/conversations.md, "Redacting replaces the message and every exact copy of its text in its conversation with a fixed notice"; spec/agent/conversation/conversations.md, "No message is ever removed, and only redaction changes one")', effect () => {
+  const agent = try startInProcess()
+  const runtime = agent.agent.runtime
+  const secret = "my pin is 4321"
+  const private_ = try open(agent, "Private")
+  const other = try open(agent, "Other")
+  const [said, echoed, fine] = try seed(agent, private_.roomId, [
+    { text: secret, agent: false }, { text: secret, agent: true }, { text: "ok, noted", agent: false },
+  ], base)
+  const [elsewhere] = try seed(agent, other.roomId, [{ text: secret, agent: false }], base + 10)
+  try host("model-call logs", () => seedLogs(runtime, [
+    { roomId: private_.roomId, type: "useModel:TEXT_LARGE", prompt: `The owner said: ${secret}` },
+    { roomId: private_.roomId, type: "useModel:TEXT_SMALL", prompt: "unrelated" },
+    { roomId: other.roomId, type: "useModel:TEXT_LARGE", prompt: secret },
+  ]))
+  const forked = try forkAt(agent, private_.id, { messageId: fine, requestId: "keep", expectedText: "ok, noted" })
+
+  const wrongText = try redactOf(agent, private_.id, said, { expectedText: "my pin is 1234" })
+  const wrongConversation = try redactOf(agent, private_.id, elsewhere, { expectedText: secret })
+  const unknown = try redactOf(agent, private_.id, fresh(), { expectedText: secret })
+  const malformed = try redactOf(agent, private_.id, said, {})
+  const redacted = try redactOf(agent, private_.id, said, { expectedText: secret })
+  const repeated = try redactOf(agent, private_.id, said, { expectedText: secret })
+  const echoAfter = try redactOf(agent, private_.id, echoed, { expectedText: secret })
+
+  const shown = try history(agent, private_.id)
+  const untouched = try history(agent, other.id)
+  const copy = try history(agent, forked.conversation?.id ?? "")
+  const search = try ask(agent, { method: "GET", path: "/api/conversations/messages/search?q=4321" })
+  const prompts = try host("logs", () => promptsOf(runtime, private_.roomId))
+  const otherPrompts = try host("other logs", () => promptsOf(runtime, other.roomId))
+
+  try Effect.try(() => {
+    assert.deepStrictEqual({
+      statuses: [wrongText.status, wrongConversation.status, unknown.status, malformed.status, redacted.status, repeated.status, echoAfter.status],
+      results: [redacted.body.result, repeated.body.result, echoAfter.body.result],
+      shown: shown.messages.map(({ id, text }) => [id, text]),
+      untouched: texts(untouched.messages), copy: texts(copy.messages),
+      found: (search.body as { results: readonly { messageId: string }[] }).results.map(({ messageId }) => messageId).sort(),
+      prompts, otherPrompts,
+    }, {
+      statuses: [409, 404, 404, 400, 200, 200, 200],
+      results: ["redacted", "unchanged", "unchanged"],
+      shown: [[said, privateNotice], [echoed, privateNotice], [fine, "ok, noted"]],
+      untouched: [secret], copy: [secret, secret],
+      found: [elsewhere, ...copy.messages.map(({ id }) => id)].sort(),
+      prompts: [`The owner said: ${privateNotice}`, "unrelated"], otherPrompts: [secret],
+    })
+  })
+}, 180_000)

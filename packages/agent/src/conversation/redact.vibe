@@ -34,7 +34,7 @@ module node {
   async function scrubLogs(runtime: AgentRuntime, record: ConversationRecord, text: string): Promise<number> {
     const held = (await runtime.adapter.getLogs({ roomId: record.roomId })).filter((row): row is Log & { id: UUID } => row.id !== undefined && holds(row.body, text))
     if (held.length === 0) return 0
-    await runtime.adapter.createLogs(held.map(({ id: _id, body, ...row }) => ({ ...row, body: scrubbed(body, text) as LogBody })))
+    await runtime.adapter.createLogs(held.map(({ type, entityId, createdAt, body }) => ({ type, entityId, roomId: record.roomId, createdAt, body: scrubbed(body, text) as LogBody })))
     await runtime.adapter.deleteLogs(held.map(({ id }) => id))
     return held.length
   }
