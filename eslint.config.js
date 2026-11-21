@@ -102,6 +102,15 @@ export default defineConfig(
   },
   // VibeLang's parser gives .vibe files typescript-eslint's tree without a program, so the rules that need types stay off: `vibelang --noEmit` checks them.
   { files: ["**/*.{vibe,vibex}"], extends: [tseslint.configs.disableTypeChecked], languageOptions: { parser: vibelang, parserOptions: { projectService: false } }, rules: { "no-undef": "off" } },
+  {
+    files: ["packages/os/src/browser/**/*.vibe"],
+    settings: {
+      "import/resolver": {
+        typescript: { project: "packages/os/tsconfig.json", alwaysTryTypes: false },
+        node: {},
+      },
+    },
+  },
   { files: ["packages/core/**/*.{ts,tsx,vibe,vibex}"], rules: { "no-redeclare": "off", "@typescript-eslint/no-unused-vars": ["error", coreUnused] } },
   { files: ["packages/core/**/*.{vibe,vibex}"], rules: { "no-empty": ["error", { allowEmptyCatch: true }] } },
   { files: ["packages/agent/**/*.{vibe,vibex}"], rules: { "no-redeclare": "off", "no-empty": ["error", { allowEmptyCatch: true }] } },

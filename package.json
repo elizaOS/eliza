@@ -85,6 +85,7 @@
     "@vitest/browser": "catalog:",
     "@vitest/browser-playwright": "catalog:",
     "eslint": "catalog:",
+    "eslint-import-resolver-typescript": "catalog:",
     "eslint-plugin-better-tailwindcss": "catalog:",
     "eslint-plugin-boundaries": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
