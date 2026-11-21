@@ -319,10 +319,7 @@ sign-in subject of the account, which an account without a Google sign-in
 lacks. It keeps reading mail and reading the
 calendar as Google granted them, sending or trashing mail only with reading
 mail, and changing the calendar only with reading it. A connect that would
-store nothing stores no scope at all. Before writing the connection, the
-shell checks that the account still holds the same Google sign-in identity
-under the lock used for identity changes. If the identity changed during
-the exchange, the stored connection stays unchanged.
+store nothing stores no scope at all.
 
 ```quint
 type NativeGoogleScopes = { readMail: bool, sendMail: bool, trashMail: bool, readCalendar: bool, writeCalendar: bool }

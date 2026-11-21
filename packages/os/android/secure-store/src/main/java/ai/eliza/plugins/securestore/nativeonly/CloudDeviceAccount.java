@@ -155,10 +155,7 @@ public final class CloudDeviceAccount {
   if (snapshot == null || attempt.expiresAt() <= System.currentTimeMillis()) return false;
   JSONObject request = mobileClient(attempt.clientId(), attempt.environment())
       .put("challengeId", attempt.challengeId()).put("idToken", idToken);
-  if (serverAuthCode != null) {
-   if (!serverAuthCode.matches("[A-Za-z0-9/_.~-]{10,2048}")) throw new IOException("Invalid Google authorization");
-   request.put("serverAuthCode", serverAuthCode);
-  }
+  if (serverAuthCode != null && serverAuthCode.matches("[A-Za-z0-9/_.~-]{10,2048}")) request.put("serverAuthCode", serverAuthCode);
   JSONObject response = new JSONObject(post("/api/v1/app-auth/mobile/google", request, null, 200).body());
   String code = response.getString("code");
   return opaque(code) && attempt.state().equals(response.getString("state")) && exchangeCode(code, snapshot);
