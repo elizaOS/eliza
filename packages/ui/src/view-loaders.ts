@@ -11,8 +11,6 @@ export const loadLiveMeetingPage = () =>
   import("./components/transcripts/LiveMeetingPage.js");
 export const loadCameraPageView = () =>
   import("./components/pages/CameraPageView.js");
-export const loadDesktopWorkspaceSection = () =>
-  import("./components/settings/DesktopWorkspaceSection.js");
 export const loadSettingsView = () =>
   import("./components/pages/SettingsView.js");
 export const loadVaultPageView = () =>
@@ -42,17 +40,15 @@ export const loadSecretsManagerSection = () =>
 export const loadRemoteControlCloudDefault = () =>
   import("./api/remote-control-cloud-default.js");
 export async function loadVoiceBootstrap() {
-  const [aec, diarization, jni, desktopWake] = await Promise.all([
+  const [aec, diarization, jni] = await Promise.all([
     import("./voice/aec-loop-harness.js"),
     import("./voice/audio-frame-diarization-harness.js"),
     import("./voice/jni-voice-harness.js"),
-    import("./voice/fused-wake-desktop-bridge.js"),
   ]);
   return {
     installAecLoopHarness: aec.installAecLoopHarness,
     installDiarizationPumpHarness: diarization.installDiarizationPumpHarness,
     installJniVoiceHarness: jni.installJniVoiceHarness,
-    registerDesktopFusedWake: desktopWake.registerDesktopFusedWake,
   };
 }
 export const loadWebAppsStudio = () =>

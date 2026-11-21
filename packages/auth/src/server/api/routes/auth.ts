@@ -4149,6 +4149,28 @@ auth.get("/providers", async (c) => {
   const enabledOauth = oauth.filter(
     (provider) => loginMethods.oauth?.[provider] !== false,
   );
+  const clientId = normalizePublicClientId(c.req.query("clientId"));
+  if (clientId) c.header("Cache-Control", "no-store");
+  const clients =
+    tenantId && (enabledOauth.includes("google") || clientId)
+      ? await authAppClientSubjects(tenantId)
+      : [];
+  const requestedClient = clients.find((client) => client.id === clientId);
+  const nativeGoogleApp = clientId
+    ? {
+        clientId,
+        ready: Boolean(
+          requestedClient &&
+            oauth.includes("google") &&
+            googleNativeClientIds(clientId).length > 0 &&
+            !loginMethodRefusal(
+              requestedClient.login_methods ?? loginMethods,
+              "oauth",
+              "google",
+            ),
+        ),
+      }
+    : undefined;
   const oidc = tenantId
     ? (await getTenantOidcProviders(tenantId))
         .filter((provider) => provider.enabled !== false)
@@ -4182,12 +4204,13 @@ auth.get("/providers", async (c) => {
       enabledOauth.includes("google") &&
       Boolean(
         tenantId &&
-          (await authAppClientSubjects(tenantId)).some(
+          clients.some(
             (client) =>
               googleNativeClientIds(client.id).length > 0 &&
               client.login_methods?.oauth?.google !== false,
           ),
       ),
+    ...(nativeGoogleApp ? { nativeGoogleApp } : {}),
     discord: enabledOauth.includes("discord"),
     github: enabledOauth.includes("github"),
     twitter: enabledOauth.includes("twitter"),

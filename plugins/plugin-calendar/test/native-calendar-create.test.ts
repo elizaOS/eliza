@@ -129,7 +129,22 @@ describe("native phone Calendar create", () => {
       expect.objectContaining({ code: "CALENDAR_CREATE_EXTRACTION_INVALID" }),
       { diagnosticOnly: true, code: "CALENDAR_CREATE_EXTRACTION_INVALID" },
     );
-    expect(runJsonModel).toHaveBeenCalledTimes(1);
+    expect(runJsonModel).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers a complete reviewed draft after the first extraction returns no fields", async () => {
+    const fields = plan({});
+    const { runtime, reportError, runJsonModel } = runtimeWith(fields);
+    runJsonModel.mockResolvedValueOnce({ rawResponse: "{}", parsed: {} });
+    const draft = await infer(runtime);
+    expect(draft.fields).toMatchObject({ title: "Lunch with Sam" });
+    expect(draft.text).toContain("No event has been created yet");
+    expect(runJsonModel).toHaveBeenCalledTimes(2);
+    expect(runJsonModel).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ prompt: expect.stringContaining(REQUEST) }),
+    );
+    expect(reportError).not.toHaveBeenCalled();
   });
 
   it("asks for the address of a named guest given an address the owner never wrote", async () => {

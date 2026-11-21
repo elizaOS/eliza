@@ -226,6 +226,9 @@ const MESSAGE_BY_CODE: Partial<Record<MapsErrorCode, string>> = {
     "Eliza Cloud Maps is temporarily unavailable. Try again later.",
   MAPS_RATE_LIMITED: "Maps request limit reached. Try again later.",
   MAPS_PROVIDER_TIMEOUT: "Eliza Cloud Maps did not answer in time. Try again.",
+  // The planner reads this text; the raw SDK message named internal transport.
+  MAPS_PROVIDER_NETWORK:
+    "Eliza Cloud Maps could not be reached from this device. Try again.",
 };
 
 const SDK_CODE: Record<ManagedProviderErrorCode, MapsErrorCode> = {

@@ -36,6 +36,7 @@ import {
   readNoteFolders,
   withNoteFolder,
 } from "./note-folders.js";
+import { ownerRequestText } from "./owner-text.js";
 import {
   getNotesService,
   type NotesService,
@@ -258,7 +259,7 @@ function updateNoteFromChatReference(
   patch: unknown,
   expectedRevision?: unknown,
 ): ReturnType<NotesService["updateNoteWithCommit"]> {
-  const text = message.content.text ?? "";
+  const text = ownerRequestText(message);
   if (!text.includes(noteId)) {
     const named = service
       .findNotesNamedInText(text)
@@ -276,6 +277,31 @@ function updateNoteFromChatReference(
     }
   }
   return service.updateNoteWithCommit(noteId, patch, expectedRevision);
+}
+
+/**
+ * Delete counterpart of {@link updateNoteFromChatReference}. An index ID the
+ * planner substituted for a title the owner named is not a choice between
+ * distinct same-title notes, so it resolves again by that title under the
+ * write barrier and an ambiguity asks the owner. An ID the owner's message
+ * carries, or one chosen without naming the title (a follow-up selection),
+ * deletes that record directly.
+ */
+function deleteNoteFromChatReference(
+  service: NotesService,
+  ownerText: string,
+  noteId: string,
+): ReturnType<NotesService["deleteNoteWithCommit"]> {
+  if (!ownerText.includes(noteId)) {
+    const named = service
+      .findNotesNamedInText(ownerText)
+      .find((note) => note.id === noteId);
+    if (named)
+      return service.deleteNoteByLookupWithCommit("title", named.title, {
+        requireTitleInText: ownerText,
+      });
+  }
+  return service.deleteNoteWithCommit(noteId);
 }
 
 /**
@@ -758,10 +784,11 @@ export const notesAction: Action = {
         // A text lookup can match body text. Deleting needs the note's title
         // in the owner's own words; an exact ID comes from a current record.
         // A message with no text names no title, so it deletes nothing.
+        const ownerText = ownerRequestText(message);
         const removed = noteId
-          ? await service.deleteNoteWithCommit(noteId)
+          ? await deleteNoteFromChatReference(service, ownerText, noteId)
           : await service.deleteNoteByLookupWithCommit("query", target, {
-              requireTitleInText: message.content.text ?? "",
+              requireTitleInText: ownerText,
             });
         return committed({
           op,
@@ -1135,7 +1162,7 @@ export const notesAction: Action = {
     {
       name: "expectedRevision",
       description:
-        "Required for every PATCH, including textEdit, and for UPDATE append, authoredEdit or replacementContent: copy notesRevision from the same complete note commit/read/provider content used to prepare the edit. CREATE returns its exact transaction revision with the complete created note. Never guess or refresh only the token. Any later mutation or conflict requires re-reading and reconciling. Only UPDATE literal textEdit may omit it.",
+        "Required for every PATCH, including textEdit, and for UPDATE append, authoredEdit or replacementContent: copy notesRevision from the same complete note commit/read/provider content used to prepare the edit. CREATE returns its exact transaction revision with the complete created note. Never guess or refresh only the token. Any later mutation or conflict requires re-reading and reconciling. Only UPDATE literal textEdit substitution (oldText/newText) may omit it; a textEdit append always needs it.",
       subactions: ["update", "patch", "restore", "move"],
       required: false,
       requiredForSubactions: ["patch"],

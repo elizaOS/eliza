@@ -9,7 +9,7 @@
  * with a short timeout; custom entries never override a name already present
  * in the map.
  */
-import { lookup as dnsLookup } from "node:dns/promises";
+import dns from "node:dns";
 import net from "node:net";
 import {
   fetchWithSsrfGuard,
@@ -159,7 +159,7 @@ async function resolveRegistryEndpointUrlRejection(rawUrl: string): Promise<{
 
   let addresses: Array<{ address: string }>;
   try {
-    const resolved = await dnsLookup(hostname, { all: true });
+    const resolved = await dns.promises.lookup(hostname, { all: true });
     addresses = Array.isArray(resolved) ? resolved : [resolved];
   } catch {
     return {

@@ -32,6 +32,23 @@ export function resolveViewNavigationTargets<
   });
 }
 
+/**
+ * The view a free-text destination names, if any: "the settings page", "my
+ * calendar" and "Notes" name the Settings, Calendar and Notes views. Matching
+ * ignores availability and role: a view name is never a place to travel to.
+ */
+export function namesRegisteredView<T extends { id: string; label: string }>(
+  views: readonly T[],
+  target: string,
+): boolean {
+  const name = target
+    .trim()
+    .replace(/[\s.!?]+$/u, "")
+    .replace(/^(?:the|my|your)\s+/iu, "")
+    .replace(/\s+(?:page|screen|view|tab|app)$/iu, "");
+  return resolveViewNavigationTargets(views, name).length > 0;
+}
+
 /** Authoritative destination vocabulary for Stage 1 and egress; never caller-supplied aliases. */
 export function viewNavigationDestination(view: { id: string; label: string }) {
   const aliases = viewNavigationAliases(view);
@@ -102,6 +119,12 @@ function explicitCommandText(text: string): string {
     .trim();
 }
 
+function explicitViewTarget(command: string): string | undefined {
+  return /^(?:please\s+)?(?:open|show(?:\s+me)?|go(?:\s+to)?)\s+(?:(?:the|my)\s+)?(.+)$/iu.exec(
+    command,
+  )?.[1];
+}
+
 /** Conservative complete navigation commands; matching grants no execution authority. */
 export function resolveExplicitRegisteredViewRequest<
   T extends { id: string; label: string },
@@ -109,19 +132,71 @@ export function resolveExplicitRegisteredViewRequest<
   views: readonly T[],
   text: string,
 ): { view: T; resolvedAlias?: string } | undefined {
-  // "Open my calendar, please." names the Calendar view as plainly as "open
-  // calendar"; without the possessive and trailing please it took the
-  // planner path (two extra model calls, live 2026-10-30 tj-f923be42254f79).
-  const command =
-    /^(?:please\s+)?(?:open|show(?:\s+me)?|go(?:\s+to)?)\s+(?:(?:the|my)\s+)?(.+)$/iu.exec(
-      explicitCommandText(text),
-    );
-  if (!command) return;
-  const matches = resolveViewNavigationTargets(views, command[1]);
+  const target = explicitViewTarget(explicitCommandText(text));
+  if (!target) return;
+  const matches = resolveViewNavigationTargets(views, target);
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+/** Recognize an independent leading view command and a separate affirmative read. */
+export function resolveCompoundRegisteredViewRequest<
+  T extends { id: string; label: string },
+>(
+  views: readonly T[],
+  text: string,
+): { view: T; followUp: string } | undefined {
+  // Use only a plain conjunction. Conditions, ordering, quoted instructions
+  // and multiple follow-ups need the ordinary interpretation path.
+  const [opening, followUp, anotherClause] =
+    explicitCommandText(text).split(/,?\s+and\s+/iu);
+  if (
+    !followUp ||
+    anotherClause !== undefined ||
+    /[.!?;:"“”‘]|(?:^|\s)'|'(?:\s|$)/u.test(`${opening} ${followUp}`) ||
+    /\b(?:if|unless|until|before|after|once|when|only|not|never|no|without|instead|otherwise|rather|whether|except|avoid|first|then|but|or)\b|n['’]t/iu.test(
+      followUp,
+    )
+  )
+    return;
+  const read =
+    /^(?:show(?:\s+me)?|read|find|search|look\s+up|list|check|tell\s+me)\s+(.+)$/iu.exec(
+      followUp,
+    );
+  if (!read || namesRegisteredView(views, read[1])) return;
+  const target = explicitViewTarget(opening);
+  if (!target) return;
+  const matches = resolveViewNavigationTargets(views, target);
+  if (matches.length === 1) return { view: matches[0].view, followUp };
+  if (matches.length > 1) return;
+
+  // A spoken name may combine a registered alias with its own canonical
+  // label, as in "mail inbox". Both words must agree on one destination.
+  const pair = /^(.+)\s+(\S+)$/u.exec(target);
+  if (!pair) return;
+  const aliases = resolveViewNavigationTargets(views, pair[1]);
+  const labels = resolveViewNavigationTargets(views, pair[2]);
+  if (
+    aliases.length === 1 &&
+    aliases[0].resolvedAlias &&
+    labels.length === 1 &&
+    !labels[0].resolvedAlias &&
+    aliases[0].view.id === labels[0].view.id
+  )
+    return { view: labels[0].view, followUp };
 }
 
 /** A complete relative navigation command; the caller must supply trusted history. */
 export function isExplicitBackViewRequest(text: string): boolean {
   return /^(?:please\s+)?(?:go\s+)?back$/iu.test(explicitCommandText(text));
+}
+
+/**
+ * A complete request for the foreground page's own history or load state:
+ * Back, Forward, reload or stop. Where the foreground view keeps page history
+ * (Browser), these act on its tab, never on app view navigation.
+ */
+export function isForegroundPageHistoryRequest(text: string): boolean {
+  return /^(?:please\s+)?(?:(?:go\s+)?(?:back|forward)|(?:reload|refresh)(?:\s+(?:the|this)\s+page)?|stop\s+loading(?:\s+(?:the|this)\s+page)?)$/iu.test(
+    explicitCommandText(text),
+  );
 }

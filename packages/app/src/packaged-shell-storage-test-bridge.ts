@@ -35,7 +35,6 @@ export interface PackagedShellStorageTestBridge {
   seedResettableState(): Promise<ResettableStateSeedResult>;
   seedReturningInstallState(
     apiBase: string,
-    chatOverlayHotkey?: string,
   ): Promise<ReturningInstallSeedResult>;
 }
 
@@ -71,19 +70,12 @@ function labelForApiBase(apiBase: string): string {
 
 export async function seedReturningInstallStateForPackagedTests(
   apiBase: string,
-  chatOverlayHotkey?: string,
   win = window,
 ): Promise<ReturningInstallSeedResult> {
   shellLocalStorage.removeItem("elizaos:first-run:force-fresh");
   shellLocalStorage.setItem("eliza:first-run-complete", "1");
   shellLocalStorage.setItem("eliza:setup:step", "activate");
   shellLocalStorage.setItem("eliza:ui-shell-mode", "native");
-  if (chatOverlayHotkey) {
-    shellLocalStorage.setItem(
-      "eliza:chatOverlayHotkey",
-      JSON.stringify({ accelerator: chatOverlayHotkey, enabled: true }),
-    );
-  }
   await setStorageValue(
     "elizaos:active-server",
     JSON.stringify({
@@ -125,12 +117,8 @@ export function installPackagedShellStorageTestBridge(win = window): boolean {
     readReturningInstallState: () =>
       readReturningInstallStateForPackagedTests(win),
     seedResettableState: () => seedResettableStateForPackagedTests(win),
-    seedReturningInstallState: (apiBase, chatOverlayHotkey) =>
-      seedReturningInstallStateForPackagedTests(
-        apiBase,
-        chatOverlayHotkey,
-        win,
-      ),
+    seedReturningInstallState: (apiBase) =>
+      seedReturningInstallStateForPackagedTests(apiBase, win),
   };
   Object.defineProperty(win, PACKAGED_SHELL_STORAGE_TEST_GLOBAL, {
     configurable: true,

@@ -168,7 +168,7 @@ function e2eFamily() {
     runInvocationTemplate:
       "ELIZA_TRAJECTORY_LOGGING=1 ELIZA_TRAJECTORY_DIR=<dir> bun --conditions eliza-source vitest run <testFile>",
     trajectoryWiring:
-      "These vitest lanes drive a real AgentRuntime via createScenarioRuntime/real-runtime helpers. The runtime's JsonFileTrajectoryRecorder writes RecordedTrajectory JSON when ELIZA_TRAJECTORY_LOGGING=1 + ELIZA_TRAJECTORY_DIR are set. Convert with scenario-runner native-export. Verdict = vitest pass/fail per file (coarser than per-scenario).",
+      "These vitest lanes drive a real AgentRuntime via createScenarioRuntime/real-runtime helpers. The runtime's trajectory recorder exports RecordedTrajectory JSON when ELIZA_TRAJECTORY_LOGGING=1 + ELIZA_TRAJECTORY_DIR are set. Convert with scenario-runner native-export. Verdict = vitest pass/fail per file (coarser than per-scenario).",
     providerSeam:
       "API-backed provider selected by packages/app/test/helpers/live-provider.ts.",
     liveLaneCount: live.length,

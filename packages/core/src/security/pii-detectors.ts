@@ -28,6 +28,15 @@
 import { createHash } from "../utils/crypto-compat";
 import { findBasicEmailSpans } from "./basic-email";
 import { findAllMnemonicPhrases } from "./bip39-wordlist";
+import { coordinateSpanTest } from "./phone-span-context";
+
+// E.164 / North-American phone numbers. The NANP branch requires a separator
+// (space/dot/dash) or parenthesised area code so a bare 10-digit run (an id,
+// timestamp, etc.) is NOT mistaken for a phone number; the intl branch needs
+// the leading `+`. entity-recognizer.ts keeps a copy so the browser-safe
+// protocol entry does not load this module's node:crypto dependency.
+const PHONE_PATTERN =
+	/(?<!\d)(?:\+?1[ .-]?)?(?:\(\d{3}\)[ .-]?|\d{3}[ .-])\d{3}[ .-]?\d{4}(?!\d)|\+[1-9]\d{7,14}(?!\d)/g;
 
 /** A single PII / token class detector. */
 export interface PiiDetector {
@@ -407,15 +416,23 @@ export const PII_DETECTORS: readonly PiiDetector[] = [
 		pattern: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g,
 		validate: (match) => ipv4Valid(match),
 	},
-	// E.164 / North-American phone numbers. The NANP branch requires a separator
-	// (space/dot/dash) or parenthesised area code so a bare 10-digit run (an id,
-	// timestamp, etc.) is NOT mistaken for a phone number; the intl branch needs
-	// the leading `+`. entity-recognizer.ts keeps a copy so the browser-safe
-	// protocol entry does not load this module's node:crypto dependency.
+	// Phone numbers (PHONE_PATTERN above). A map coordinate is never a phone number: "-122.4194093" fits the NANP
+	// branch, so coordinates (Maps cards, lat/lng values) are skipped.
 	{
 		kind: "phone",
-		pattern:
-			/(?<!\d)(?:\+?1[ .-]?)?(?:\(\d{3}\)[ .-]?|\d{3}[ .-])\d{3}[ .-]?\d{4}(?!\d)|\+[1-9]\d{7,14}(?!\d)/g,
+		pattern: PHONE_PATTERN,
+		findSpans: (text) => {
+			const isCoordinate = coordinateSpanTest(text);
+			const spans: { value: string; start: number; end: number }[] = [];
+			PHONE_PATTERN.lastIndex = 0;
+			for (const match of text.matchAll(PHONE_PATTERN)) {
+				const start = match.index ?? 0;
+				const end = start + match[0].length;
+				if (!isCoordinate(start, end))
+					spans.push({ value: match[0], start, end });
+			}
+			return spans;
+		},
 	},
 ];
 

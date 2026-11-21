@@ -8,7 +8,13 @@ import {
 } from "./runtime/assistant-reasoning.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators.ts";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts.ts";
-import { registerDeviceBrowserOpenRouting } from "./services/device-actions/tools.ts";
+import { registerDeviceGmailDraftRouting } from "./services/device-actions/service.ts";
+import {
+  registerDeviceBrowserOpenRouting,
+  registerDeviceCameraCaptureRouting,
+  registerDeviceKeypadRouting,
+  registerDeviceTelephonyRouting,
+} from "./services/device-actions/tools.ts";
 import {
   PLANNER_CONTINUATION_TASK,
   registerPlannerContinuationWorker,
@@ -33,6 +39,10 @@ export function createAssistantPlugin(): Plugin {
       runtime.messageService = new DefaultMessageService();
       registerCoreShouldRespondRiskHook(runtime);
       registerDeviceBrowserOpenRouting(runtime);
+      registerDeviceCameraCaptureRouting(runtime);
+      registerDeviceGmailDraftRouting(runtime);
+      registerDeviceTelephonyRouting(runtime);
+      registerDeviceKeypadRouting(runtime);
       // Registered once per runtime, after storage is ready: recovery reads the
       // persisted continuation tasks left by a previous process.
       void runtime.initPromise
@@ -253,6 +263,15 @@ export {
   secretsManagerPlugin,
 } from "./features/secrets/index.ts";
 export * from "./features/sub-agent-credentials/index.ts";
+export {
+  type CreateTrajectoryRecorderOptions,
+  createTrajectoryRecorder,
+} from "./features/trajectories/recorded-trajectories.ts";
+export { annotateStageCost } from "./features/trajectories/store/recorded-trajectory.ts";
+export {
+  isTrajectoryMarkdownReviewEnabled,
+  resolveTrajectoryDir,
+} from "./features/trajectories/store/recorded-trajectory-files.ts";
 export * from "./plugins/native-features.ts";
 export { plannerTemplate } from "./prompts/planner.ts";
 export * from "./runtime/action-catalog.js";
@@ -282,7 +301,6 @@ export {
   renderProviderOriginalMessages,
 } from "./runtime/provider-originals.ts";
 export * from "./runtime/sub-planner.ts";
-export * from "./runtime/trajectory-recorder";
 export { verifyTypedReadEgressReceipt } from "./runtime/typed-read-reply";
 export * from "./services/approval/index.ts";
 export { proposeDeviceAction } from "./services/device-actions/action.ts";

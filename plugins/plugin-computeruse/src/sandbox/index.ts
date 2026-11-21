@@ -115,8 +115,8 @@ export function getCurrentDriver(runtime: IAgentRuntime): Driver | null {
   if (config.mode === "yolo") return null;
   if (!config.sandbox) {
     throw new SandboxBackendUnavailableError(
-      "ELIZA_COMPUTERUSE_MODE=sandbox but no sandbox config resolved. " +
-        "Set ELIZA_COMPUTERUSE_SANDBOX_BACKEND and ELIZA_COMPUTERUSE_SANDBOX_IMAGE.",
+      "COMPUTER_USE_MODE=sandbox but no sandbox config resolved. " +
+        "Set COMPUTER_USE_SANDBOX_BACKEND and COMPUTER_USE_SANDBOX_IMAGE.",
       "unknown",
     );
   }

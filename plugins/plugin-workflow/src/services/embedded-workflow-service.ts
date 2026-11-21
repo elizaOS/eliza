@@ -53,7 +53,11 @@ import type {
   WorkflowSchedule,
   WorkflowTag,
 } from '../types/index';
-import { WORKFLOW_RUN_EVENT, WorkflowApiError } from '../types/index';
+import {
+  WORKFLOW_DEFINITION_NOT_APPLIED,
+  WORKFLOW_RUN_EVENT,
+  WorkflowApiError,
+} from '../types/index';
 import {
   type DigestSource,
   type DigestSpec,
@@ -282,7 +286,47 @@ function approvalKey(approval: WorkflowApproval): string {
   return `${approval.nodeId}\u0000${approval.iteration}`;
 }
 
+/** Why an enabled schedule cannot be armed, or undefined when it can (or is off). */
+export function workflowScheduleProblem(
+  schedule: WorkflowSchedule | undefined
+): string | undefined {
+  if (!schedule?.enabled) return undefined;
+  try {
+    scheduleNextRunAtMs(schedule, Date.now());
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+/**
+ * Every refusal here happens before the caller writes the row, so a 400 says
+ * so: the chat action may then report "nothing was saved" instead of an
+ * outcome it has to reconcile.
+ */
 function normalizeWorkflow(
+  workflow: WorkflowDefinition,
+  id: string | undefined,
+  fallbackActive: boolean
+): WorkflowDefinition {
+  try {
+    return checkedWorkflow(workflow, id, fallbackActive);
+  } catch (error) {
+    if (!(error instanceof WorkflowApiError) || error.statusCode !== 400) throw error;
+    const response =
+      error.response !== null &&
+      typeof error.response === 'object' &&
+      !Array.isArray(error.response)
+        ? (error.response as Record<string, unknown>)
+        : {};
+    throw new WorkflowApiError(error.message, 400, {
+      ...response,
+      code: WORKFLOW_DEFINITION_NOT_APPLIED,
+    });
+  }
+}
+
+function checkedWorkflow(
   workflow: WorkflowDefinition,
   id: string | undefined,
   fallbackActive: boolean

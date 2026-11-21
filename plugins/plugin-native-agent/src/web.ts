@@ -1,5 +1,5 @@
 /**
- * Web/Electrobun bridge surface for the `Agent` Capacitor plugin: implements
+ * Web bridge surface for the `Agent` Capacitor plugin: implements
  * `AgentPlugin` over HTTP against the API server, used whenever no native
  * iOS/Android implementation is registered (see `index.ts`).
  */
@@ -18,9 +18,8 @@ import type {
 interface ElizaWindow {
   /**
    * The renderer's boot-config mirror — the single source of truth for the API
-   * base (see packages/ui/src/config/boot-config-store.ts). The host UI, the
-   * agent static-file server, and the Electrobun renderer all write the API base
-   * here; this web shim reads it rather than a bespoke API-base window global so
+   * base (see packages/ui/src/config/boot-config-store.ts). The host UI and the
+   * agent static-file server write the API base here; this web shim reads it rather than a bespoke API-base window global so
    * there is one base value across the app and its native plugins.
    */
   __ELIZAOS_APP_BOOT_CONFIG__?: { apiBase?: string };
@@ -141,11 +140,9 @@ function assertRequestMethod(method: unknown): string {
  * On non-desktop platforms (iOS, Android, web), the agent runtime runs
  * on a server. This implementation delegates to the HTTP API.
  *
- * In Electrobun the desktop bridge calls the native main-process
- * implementation via RPC instead — this web fallback is only used when
- * no native plugin is available. If the page is served from a non-HTTP
- * origin (e.g. electrobun://), relative fetches would hit the
- * app shell HTML, so we bail early.
+ * This web fallback is only used when no native plugin is available. If the
+ * page is served from a non-HTTP origin, relative fetches would hit the app
+ * shell HTML, so we bail early.
  *
  * Local-agent-on-Android (Phase E): when the host UI selects the
  * "Local Agent" tile, it sets `apiBase` to `http://127.0.0.1:31337`,

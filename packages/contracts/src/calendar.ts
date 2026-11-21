@@ -883,6 +883,12 @@ export type CalendarReadFilterEvidence = {
 export type CalendarReadBinding = {
   intentId: string;
   operation: keyof typeof CALENDAR_READ_ACTIONS;
+  /** An owner-requested read restricted to the built-in calendar. */
+  source?: "builtin";
+  /** The only request is the next event as of now in the owner's usual time zone. */
+  plainNextEvent?: true;
+  /** Literal owner-stated date for a sole built-in title search, in the usual time zone. */
+  singleDaySearchDate?: string;
   filterEvidence?: CalendarReadFilterEvidence[];
   /** Host-bound current-turn canonical selection; never supplied by the model. */
   selectedTarget?: {

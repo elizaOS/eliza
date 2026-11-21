@@ -252,7 +252,8 @@ export function parseProviderResetAt(value: unknown): string | undefined {
 /**
  * Read the typed rate limit a provider attached to its 429 (`rateLimit` on the
  * error node), through SDK and failover wrappers. Prose is never parsed. It is
- * a report for the client, not a retry signal: no caller waits on it.
+ * a report for the client. The only caller that waits on it is a chat turn's
+ * single re-send, which treats `retryAfterMs` as a hint capped at a few seconds.
  *
  * A used-up period allowance (`scope: "period"`) is reported from any status,
  * including a permanent-quota 402, so the client can show when the allowance

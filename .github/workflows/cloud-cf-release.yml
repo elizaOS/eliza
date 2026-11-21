@@ -97,7 +97,7 @@ on:
         required: false
       ELIZACLOUD_API_KEY:
         required: false
-      ELIZAOS_CLOUD_API_KEY:
+      STAGING_SESSION_EXCHANGE_FIXTURE_API_KEY:
         required: false
       ELIZA_APNS_KEY:
         required: false
@@ -176,6 +176,8 @@ on:
       SECRETS_MASTER_KEY:
         required: false
       NETWORK_SITE_AUTH_SERVER_TOKEN:
+        required: false
+      STAGING_SESSION_EXCHANGE_GRANT_READ_KEY:
         required: false
       STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
         required: false
@@ -1484,6 +1486,8 @@ jobs:
           # only after exact-commit deploy proof.
           STAGING_SESSION_EXCHANGE_DESIRED_ENABLED: ${{ steps.env.outputs.deploy_environment == 'staging' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.STAGING_SESSION_EXCHANGE_ENABLED) && 'true' || 'false' }}
           STAGING_SESSION_EXCHANGE_VERSION: "v1"
+          STAGING_SESSION_EXCHANGE_GRANT_READ_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STAGING_SESSION_EXCHANGE_GRANT_READ_KEY || '' }}
+          STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT: ${{ steps.env.outputs.deploy_environment == 'staging' && vars.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT || '' }}
           STAGING_SESSION_EXCHANGE_SIGNING_SECRET: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STAGING_SESSION_EXCHANGE_SIGNING_SECRET || '' }}
           # Value is used only for collision validation; this workflow does not
           # publish or mutate the pre-existing service bridge credential.
@@ -3070,14 +3074,14 @@ jobs:
           ELIZAOS_CLOUD_BASE_URL: https://api-staging.eliza.app
           ELIZA_UI_SMOKE_DEPLOYED_RENDERER: "1"
           ELIZA_UI_SMOKE_DEPLOYED_SOURCE_SHA: ${{ github.sha }}
-          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_API_KEY }}
           PLAYWRIGHT_NO_COPY_PROMPT: "1"
         run: |
           set -euo pipefail
           key_without_whitespace="${ELIZAOS_CLOUD_API_KEY:-}"
           key_without_whitespace="${key_without_whitespace//[[:space:]]/}"
           if [ -z "$key_without_whitespace" ]; then
-            echo "::error::The deployed staging browser lane requires the staging Environment's ELIZAOS_CLOUD_API_KEY; refusing a green-by-skip run."
+            echo "::error::The deployed staging browser lane requires the staging Environment's STAGING_SESSION_EXCHANGE_FIXTURE_API_KEY; refusing a green-by-skip run."
             exit 1
           fi
           unset key_without_whitespace

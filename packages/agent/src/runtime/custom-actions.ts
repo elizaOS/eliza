@@ -7,7 +7,13 @@
  * @module runtime/custom-actions
  */
 
-import { lookup as dnsLookup } from "node:dns/promises";
+import dns from "node:dns";
+
+// Late-bound: the mobile agent replaces dns.promises.lookup at boot, and Bun
+// snapshots named builtin imports before that runs.
+const dnsLookup = ((hostname: string, options: { all: true }) =>
+  dns.promises.lookup(hostname, options)) as unknown;
+
 import {
   type RequestOptions as HttpRequestOptions,
   type IncomingMessage,

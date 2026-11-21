@@ -137,3 +137,33 @@ it("boots the agent with the vault profile the user switched to", async () => {
 
   expect(runtime.getSetting("OPENAI_API_KEY")).toBe(WORK_KEY);
 }, 300_000);
+
+it("rejects a retired restriction supplied by the active vault profile", async () => {
+  const key = "ELIZA_CODEX_SANDBOX_MODE";
+  vi.stubEnv(key, undefined);
+  await testVault.vault.set(key, "read-only", { sensitive: true });
+  expect(
+    await callRoute("POST", "/api/secrets/inventory/migrate-to-profiles", {
+      key,
+    }),
+  ).toBe(200);
+  expect(
+    await callRoute("POST", `/api/secrets/inventory/${key}/profiles`, {
+      id: "restricted",
+      label: "Restricted",
+      value: "read-only",
+    }),
+  ).toBe(200);
+  expect(
+    await callRoute("PUT", `/api/secrets/inventory/${key}/active-profile`, {
+      profileId: "restricted",
+    }),
+  ).toBe(200);
+
+  await expect(bootRuntimeSettings()).rejects.toMatchObject({
+    code: "CONFIG_RETIRED_SETTING_NAME",
+    message: expect.stringContaining(
+      `${key} (rename to ELIZA_CODEX_ACP_SANDBOX_MODE)`,
+    ),
+  });
+}, 300_000);

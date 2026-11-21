@@ -126,6 +126,48 @@ Product-only methods (for example credential-bound network speech) use the prote
 admission, cancellation drain and playback with the on-device methods. The renderer side is
 `@elizaos/voice/native-live` (packages/voice).
 
+### Cloud speech bridge
+
+`speech-bridge/src/main/java/ai/eliza/voice/SpeechStreamBridgePlugin.java` is the abstract
+Capacitor bridge to the Eliza Cloud speech-only relay (Cartesia recognition and speech). A host
+that speaks only through the cloud adds the `cloud-speech-bridge` directory as its own Gradle
+module, next to `:capacitor-android`. It compiles this bridge with the playback, audio focus and
+output classes only: no inference session, JNI bridge, native library or model asset.
+
+- `startCloudSpeech` with `muted: true` asks for no microphone permission and opens no
+  microphone. The session resolves when recognition is connected, so replies can be spoken.
+  `setCloudSpeechMuted` with `muted: false` then opens the microphone. Without the permission it
+  rejects with `permission-required` and the session stays open and muted; the host asks for the
+  permission (which pauses the activity and ends the session) and starts a new session. An
+  unmute before recognition is connected resolves at once and opens the microphone on connect.
+  A muted start resolves with `echoCancelled: false`; the `ready` event, which also carries
+  `muted`, gives the real value once the microphone opens. Once the microphone has opened,
+  every mute, a repeated one too, sends a short silence tail that closes the recognizer's turn;
+  a session that never opened the microphone sends none.
+- `speakCloudSpeech` takes `pace` (0.5 to 2, default 1). The speech plays at that speed with the
+  same pitch on the device, in a buffer scaled up for a faster pace; an output that refuses the
+  pace plays at the normal pace. The relay is unchanged.
+- While speech plays, `progress` events give `playedMs` (audio heard so far, at the synthesized
+  pace) and `receivedMs` (audio received so far). `audio-end` and the `cancelCloudSpeech` result
+  give `playedMs` too, so the host can find the word that was reached. `playedMs` never passes
+  `receivedMs`. A last `progress` event can arrive just after `audio-end`; the `audio-end` value
+  is final.
+- The session holds transient, duckable audio focus while it speaks or its microphone is open,
+  and releases it when it does neither. A transient focus loss pauses the session instead of
+  ending it: the utterance stops and its `audio-end` carries `interrupted: "audio-focus-lost"`,
+  the microphone closes after a silence tail, a `focus-paused` event is sent, and
+  `speakCloudSpeech` rejects with `audio-focus-paused` until the regain. The regain sends
+  `focus-resumed` and reopens the microphone unless the host muted meanwhile; a mute while
+  paused gives focus up. Only a permanent loss, or a call, ends the session (`audio-focus-lost`,
+  `call-active`). A ducking loss lowers the speech for as long as the session holds focus, so a
+  listening session's next utterance starts lowered; a session that only speaks releases focus
+  after each utterance and asks again for the next. Speech plays with the assistant usage,
+  which AOSP maps to the media volume by default (not yet checked on a device); an OEM build can
+  give the assistant stream its own volume.
+- The host declares `RECORD_AUDIO` and `INTERNET`, registers its `@CapacitorPlugin` subclass
+  with a `microphone` permission alias for `RECORD_AUDIO`, and implements `cloudOrigin`,
+  `readCredential` and `authorityEpoch` there.
+
 `node --test packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs`
 runs the host-JVM contracts and compiles the library against Android 36. Its pinned
 compile dependencies download from Maven Central into ignored test output, with byte-size

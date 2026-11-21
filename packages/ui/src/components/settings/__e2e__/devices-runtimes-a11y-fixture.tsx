@@ -76,12 +76,9 @@ function Fixture() {
         }}
         onRefresh={noOp}
         onSelect={noOp}
-        onRetry={noOp}
         onPair={noOp}
         onRevoke={noOp}
         onRemove={noOp}
-        onInspectSsh={noOp}
-        onConnectSsh={noOp}
         onEnrollLinuxTarget={noOp}
         onCreateTargetPairing={noOp}
         onConfirmTargetPairing={noOp}

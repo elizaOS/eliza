@@ -11,6 +11,7 @@ vi.mock("../src/services/device-actions/service.ts", () => ({
 import {
   deviceActionForCapabilities,
   proposeDeviceAction,
+  withDialNumber,
 } from "../src/services/device-actions/action";
 import {
   deviceOperationFormSupported,
@@ -156,8 +157,12 @@ it("offers a camera lens and an SMS target only to a phone that negotiated them"
   ).not.toHaveProperty("lens");
   expect(branches(base, "sms_compose")).toHaveLength(1);
   expect(branches(base, "sms_compose")[0].properties).toHaveProperty("query");
+  // Opening Camera is not the capture, and the phone opens Camera itself.
   expect(older.description).toContain(
-    "first show the camera view with VIEWS in this same turn",
+    "Opening the Camera view with VIEWS never takes a photo",
+  );
+  expect(older.description).toContain(
+    "the requesting phone opens Camera itself",
   );
   expect(older.description).not.toContain("camera.capture-lens.v1");
   expect(older.description).not.toContain("sms.compose.v2");
@@ -170,9 +175,16 @@ it("offers a camera lens and an SMS target only to a phone that negotiated them"
   expect(branches(next, "sms_compose")).toHaveLength(1);
   expect(branches(next, "sms_compose")[0].properties).toHaveProperty("target");
   expect(branches(next, "sms_compose")[0].properties).toHaveProperty("draft");
-  expect(newer.description).toContain("front for a selfie");
-  expect(newer.description).toContain("sms_compose {target, body}");
-  expect(newer.description).not.toContain("sms_compose {query, body}");
+  // The lens field says which lens; the prose does not say it again.
+  expect(
+    branches(next, "camera_capture_photo")[0].properties?.lens.description,
+  ).toContain("front for a selfie");
+  expect(newer.description).toContain(
+    "sms_compose is a reviewed SMS to one recipient",
+  );
+  expect(newer.description).not.toContain(
+    "sms_compose is a reviewed SMS to one contact named by text",
+  );
   const payload = (operation: unknown) =>
     validateDevicePayload({
       action: "device_action",
@@ -291,7 +303,9 @@ it("describes only the operations this connection's schema offers", () => {
     "notes.local-record.v1",
     "sms.send.v1",
   ]).description;
-  expect(withSms).toContain("Reviewed SIM SMS requires sms.send.v1");
+  expect(withSms).toContain(
+    "Reviewed SIM SMS (sms_send) requires exact canonical recipients",
+  );
 });
 
 it("offers each telephony action only with its own capability and states its limits", () => {
@@ -302,8 +316,10 @@ it("offers each telephony action only with its own capability and states its lim
     "contacts.read.v1": ["contact_read_selected"],
     "sms.compose.v1": ["sms_compose", "sms_reply_selected"],
     "messages.read.v1": ["messages_read_selected"],
+    "sms.latest-sender.v1": ["sms_latest_sender"],
     "voicemail.read.v1": ["voicemail_read_selected"],
     "voicemail.delete.v1": ["voicemail_delete_selected"],
+    "phone.keypad.v1": ["phone_keypad"],
   };
   const all = Object.values(telephony).flat();
   for (const capabilities of [
@@ -330,19 +346,30 @@ it("offers each telephony action only with its own capability and states its lim
     for (const type of all)
       expect(offered.includes(type)).toBe(own.includes(type));
   }
-  const text = deviceActionForCapabilities(proposeDeviceAction, [
+  const everyTelephony = deviceActionForCapabilities(proposeDeviceAction, [
     "notes.local-record.v1",
     ...Object.keys(telephony),
-  ]).description;
+  ]);
+  const text = everyTelephony.description;
+  const fieldsOf = (type: string) =>
+    everyTelephony.parameters
+      ?.find((parameter) => parameter.name === "operation")
+      ?.schema.anyOf?.find((branch) =>
+        branch.properties?.type?.enum?.includes(type),
+      )?.properties ?? {};
+  // What a field is and which fields a reply takes are stated by the schema.
+  expect(fieldsOf("contact_update").query?.description).toContain(
+    "The contact's name as search text, exactly as the owner said it",
+  );
+  expect(Object.keys(fieldsOf("sms_reply_selected"))).toEqual(["type", "body"]);
   for (const required of [
     "phone_call places a call only after the owner approves",
     "never report a connected, answered or completed call",
     "hands it to the system dialer",
-    "query names the contact by search text",
     "never the address book",
     "Use sms_send instead when the exact number is known",
-    "An unknown outcome must never be automatically retried",
-    "sms_reply_selected {body} takes only body",
+    "Never retry or repeat an operation automatically after an unknown, uncertain or partial outcome",
+    "sms_reply_selected puts body into the text field of the conversation the owner has open in Messages",
     "prefer it over sms_compose whenever the owner is talking about the open conversation",
     "Typically call messages_read_selected first",
     "never a sent message",
@@ -351,6 +378,9 @@ it("offers each telephony action only with its own capability and states its lim
     "you receive only shown or not-found, never a name, number or count",
     "returns only the one contact the owner has open in Contacts",
     "This phone cannot add one number or email address to a contact",
+    "phone_keypad opens the Phone keypad on the phone, with number filled in when the owner gave one",
+    "It never dials or calls: the owner taps Call there.",
+    "It proposes a reviewed read of one sender number suffix only.",
   ])
     expect(text).toContain(required);
   expect(text).not.toContain("contacts.write.v2");
@@ -364,6 +394,8 @@ it("offers each telephony action only with its own capability and states its lim
     { type: "messages_read_selected" },
     { type: "voicemail_read_selected" },
     { type: "voicemail_delete_selected" },
+    { type: "phone_keypad" },
+    { type: "phone_keypad", number: "+14155550100" },
   ])
     expect(
       validateDevicePayload({
@@ -387,6 +419,10 @@ it("offers each telephony action only with its own capability and states its lim
     { type: "contact_update", query: "Ada", add: { phoneNumbers: [] } },
     { type: "contact_show", query: "Ada", limit: 5 },
     { type: "contact_read_selected", query: "Ada" },
+    { type: "phone_keypad", number: "415-555-0100" },
+    { type: "phone_keypad", number: "" },
+    { type: "phone_keypad", number: "4155550100", call: true },
+    { type: "phone_keypad", target: { kind: "number", number: "4155550100" } },
   ])
     expect(() =>
       validateDevicePayload({
@@ -426,9 +462,12 @@ it("offers each Browser control only with its own capability and validates its e
       "notes.local-record.v1",
       capability,
     ]);
-    for (const type of all)
+    for (const type of all) {
       expect(types(offered).includes(type)).toBe(own.includes(type));
-    expect(offered.description).toContain(capability);
+      // The prose names an operation the schema offers, never its capability.
+      expect(offered.description.includes(type)).toBe(own.includes(type));
+    }
+    expect(offered.description).not.toContain(capability);
   }
   const text = deviceActionForCapabilities(proposeDeviceAction, [
     "notes.local-record.v1",
@@ -480,4 +519,96 @@ it("offers each Browser control only with its own capability and validates its e
   expect(() =>
     operation({ type: "browser_navigate", url: "http://example.com:8080/a" }),
   ).toThrow("Only HTTPS browser destinations are supported");
+});
+
+it("offers PROPOSE_DEVICE_ACTION to phone and messaging turns and summarizes it for discovery", () => {
+  // v609: a text routed as messaging and a call routed as phone never saw the
+  // device tool, and its discovery index row had an empty summary.
+  for (const context of ["general", "contacts", "phone", "messaging"])
+    expect(proposeDeviceAction.contexts).toContain(context);
+  const summary = proposeDeviceAction.descriptionCompressed ?? "";
+  for (const word of ["call", "SMS", "keypad", "contacts"])
+    expect(summary).toContain(word);
+  expect(
+    deviceActionForCapabilities(proposeDeviceAction, ["phone.call.v1"])
+      .descriptionCompressed,
+  ).toBe(summary);
+});
+
+it("reviews a number the owner wrote with separators in its exact dial form", () => {
+  // The owner's "415-555-0100" reaches the tool through a contact reference
+  // that restores it exactly as typed; contact numbers were refused before.
+  expect(
+    withDialNumber({
+      type: "contact_create",
+      contact: {
+        displayName: "Alpha Device Test",
+        phoneNumbers: ["415-555-0100"],
+        emailAddresses: [],
+      },
+    }),
+  ).toEqual({
+    type: "contact_create",
+    contact: {
+      displayName: "Alpha Device Test",
+      phoneNumbers: ["4155550100"],
+      emailAddresses: [],
+    },
+  });
+  expect(
+    withDialNumber({
+      type: "contact_update",
+      query: "Ada",
+      add: { phoneNumbers: ["(415) 555-0100"] },
+      remove: { phoneNumbers: ["+1 415.555.0199"] },
+    }),
+  ).toEqual({
+    type: "contact_update",
+    query: "Ada",
+    add: { phoneNumbers: ["4155550100"] },
+    remove: { phoneNumbers: ["+14155550199"] },
+  });
+  expect(
+    withDialNumber({ type: "phone_keypad", number: "415-555-0100" }),
+  ).toEqual({
+    type: "phone_keypad",
+    number: "4155550100",
+  });
+  expect(withDialNumber({ type: "phone_keypad" })).toEqual({
+    type: "phone_keypad",
+  });
+  expect(
+    withDialNumber({
+      type: "phone_call",
+      target: { kind: "number", number: "415 555 0100" },
+    }),
+  ).toEqual({
+    type: "phone_call",
+    target: { kind: "number", number: "4155550100" },
+  });
+  // Text that is not one number is left for validation to refuse.
+  const refused = withDialNumber({
+    type: "contact_create",
+    contact: {
+      displayName: "A",
+      phoneNumbers: ["call me"],
+      emailAddresses: [],
+    },
+  }) as { contact: { phoneNumbers: string[] } };
+  expect(refused.contact.phoneNumbers).toEqual(["call me"]);
+  const created = validateDevicePayload({
+    action: "device_action",
+    version: 1,
+    installationId: "device",
+    enrollmentId: "enrollment",
+    operation: withDialNumber({
+      type: "contact_create",
+      contact: {
+        displayName: "Alpha Device Test",
+        phoneNumbers: ["415-555-0100"],
+        emailAddresses: [],
+      },
+    }),
+  }).operation;
+  expect(created).toMatchObject({ contact: { phoneNumbers: ["4155550100"] } });
 });

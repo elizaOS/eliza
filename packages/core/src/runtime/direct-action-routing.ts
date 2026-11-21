@@ -90,3 +90,38 @@ export function __resetDirectActionRoutingRulesForTests(
 ): void {
 	rules.delete(runtime);
 }
+
+/**
+ * True when a phrase names a registered view by id, label or navigation alias
+ * ("settings", "the calendar"). The host that owns the view registry registers
+ * it, so a plugin route for a place ("take me to Coit Tower") can leave a view
+ * name ("take me to settings") to view navigation without that registry.
+ */
+export type ViewNavigationTargetResolver = (
+	target: string,
+	message?: Memory,
+) => boolean;
+
+const viewTargetResolvers = new WeakMap<
+	IAgentRuntime,
+	ViewNavigationTargetResolver
+>();
+
+export function registerViewNavigationTargetResolver(
+	runtime: IAgentRuntime,
+	resolver: ViewNavigationTargetResolver,
+): void {
+	viewTargetResolvers.set(runtime, resolver);
+}
+
+/**
+ * Whether the phrase names a registered view; undefined when no host has
+ * registered a view registry, so a caller cannot tell a view from a place.
+ */
+export function namesViewNavigationTarget(
+	runtime: IAgentRuntime,
+	target: string,
+	message?: Memory,
+): boolean | undefined {
+	return viewTargetResolvers.get(runtime)?.(target, message);
+}

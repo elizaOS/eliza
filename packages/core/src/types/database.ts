@@ -494,6 +494,17 @@ export interface ModelLogBody extends BaseLogBody {
 	timestamp?: number | bigint;
 	executionTime?: number | bigint;
 	response?: JsonValue;
+	/** Tool schemas sent with the call, in order, by size and content digest. `prompt` holds the messages only. */
+	tools?: { name: string; chars: number; hash?: string }[];
+	/** Output cap sent with the call; absent when the call sent none. */
+	maxTokens?: number;
+	/** Provider-reported counts. A count the provider did not report is absent. */
+	usage?: {
+		promptTokens: number;
+		completionTokens?: number;
+		cacheReadInputTokens?: number;
+		reasoningTokens?: number;
+	};
 }
 
 /**

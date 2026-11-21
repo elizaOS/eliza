@@ -247,8 +247,6 @@ export async function injectFullCapabilityHost(page: Page): Promise<void> {
     win.__ELIZA_ELECTROBUN_RPC__ = {
       request: {
         desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
-        desktopRegisterShortcut: async () => ({ success: true }),
-        desktopSetTrayMenu: async () => undefined,
         secureStoreGet: async ({ kind }: { kind: string }) =>
           secureStore.has(kind)
             ? { ok: true, value: secureStore.get(kind) }

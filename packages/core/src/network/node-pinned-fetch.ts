@@ -9,8 +9,7 @@
  * `node:dns` resolver the guard pins against.
  */
 import { Buffer } from "node:buffer";
-import { lookup as dnsLookupCallback } from "node:dns";
-import { lookup as dnsLookup } from "node:dns/promises";
+import dns from "node:dns";
 import {
 	type RequestOptions as HttpRequestOptions,
 	type IncomingMessage,
@@ -22,8 +21,18 @@ import { Readable } from "node:stream";
 import type { PinnedLookupFetchLike } from "./fetch-guard.js";
 import type { LookupFn } from "./ssrf.js";
 
+/**
+ * Reads `dns.promises.lookup` at call time, never through a named import. Bun
+ * snapshots a builtin's named ESM bindings when the module namespace is first
+ * linked, and a bundled agent links `node:dns/promises` before any module body
+ * runs. The mobile agent replaces `dns.lookup`/`dns.promises.lookup` at boot
+ * (`configureMobileDnsIfNeeded`, because a musl process on Android has no
+ * /etc/resolv.conf); a named import kept the original resolver, so every
+ * guarded fetch on the phone waited out musl's 5 s DNS timeout and failed as a
+ * network error (Maps routes, 2026-11-18).
+ */
 export const nodeLookupFn: LookupFn = (hostname, options) =>
-	dnsLookup(hostname, options);
+	dns.promises.lookup(hostname, options);
 
 function toRequestHeaders(headers: Headers): Record<string, string> {
 	const normalized: Record<string, string> = {};
@@ -192,10 +201,12 @@ export const nodePinnedFetch: PinnedLookupFetchLike = async ({
 /** Validate every DNS candidate, including Node's Happy Eyeballs lookup form. */
 export function createValidatedLookup(
 	validate: (address: string, family: number) => void,
-	resolve: LookupFunction = dnsLookupCallback,
+	resolve?: LookupFunction,
 ): LookupFunction {
 	return (hostname, options, callback) => {
-		resolve(hostname, { ...options, all: true }, (error, result, family) => {
+		// Late-bound for the same reason as nodeLookupFn.
+		const lookup = resolve ?? (dns.lookup as LookupFunction);
+		lookup(hostname, { ...options, all: true }, (error, result, family) => {
 			if (error) {
 				callback(error, []);
 				return;

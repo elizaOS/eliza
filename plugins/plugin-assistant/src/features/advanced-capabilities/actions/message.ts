@@ -57,12 +57,16 @@ import {
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { findEntityByName } from "../../../entities.ts";
-import { deviceGmailRequestConsent } from "../../../services/device-actions/service.ts";
+import {
+  deviceGmailRequestConsent,
+  hasDeviceGmailComposer,
+} from "../../../services/device-actions/service.ts";
 import {
   resolveMutedTargetFlags,
   resolveMutedWorldFlags,
 } from "../../../services/message/mute-state.ts";
 import { boundGmailContinuationRevision } from "../../../services/message/navigation-history.ts";
+import { deviceEmailDraft } from "../../messaging/triage/actions/device-email-draft.ts";
 import { draftFollowupAction } from "../../messaging/triage/actions/draftFollowup.ts";
 import { draftReplyAction } from "../../messaging/triage/actions/draftReply.ts";
 import { listInboxAction } from "../../messaging/triage/actions/listInbox.ts";
@@ -70,7 +74,10 @@ import { manageMessageAction } from "../../messaging/triage/actions/manageMessag
 import { respondToMessageAction } from "../../messaging/triage/actions/respondToMessage.ts";
 import { scheduleDraftSendAction } from "../../messaging/triage/actions/scheduleDraftSend.ts";
 import { searchMessagesAction as searchInboxMessagesAction } from "../../messaging/triage/actions/searchMessages.ts";
-import { sendDraftAction } from "../../messaging/triage/actions/sendDraft.ts";
+import {
+  normalizeOutboundDraftSource,
+  sendDraftAction,
+} from "../../messaging/triage/actions/sendDraft.ts";
 import { triageMessagesAction } from "../../messaging/triage/actions/triageMessages.ts";
 import {
   requireSendConsent,
@@ -1238,6 +1245,15 @@ function sourceFromParams(
   _message: Memory,
 ): string | undefined {
   return textParam(raw.source) ?? textParam(raw.platform);
+}
+
+function phoneGmailComposeOp(params: ParamRecord): boolean {
+  return (
+    hasDeviceGmailComposer() &&
+    normalizeOutboundDraftSource(
+      params.source ?? params.platform ?? params.connector ?? params.service,
+    ) === "gmail"
+  );
 }
 
 function normalizeSendParams(
@@ -3212,6 +3228,23 @@ async function handleSend(
   const target: TargetInfo = normalized.thread
     ? { ...selected.target, threadId: normalized.thread }
     : selected.target;
+
+  if (selected.connector.source === "gmail") {
+    const local = await deviceEmailDraft(
+      runtime,
+      message,
+      {
+        source: "gmail",
+        to: [{ identifier: normalized.target ?? selected.label }],
+        body: normalized.message,
+        subject: normalized.subject,
+        threadId: target.threadId,
+        channelId: target.channelId,
+      },
+      { ...params, accountId: target.accountId ?? normalized.accountId },
+    );
+    if (local) return local;
+  }
 
   // Block "act as the user" until the owner account is verified; agent-owned
   // accounts (open gate) and source-only routes pass through untouched.
@@ -6661,7 +6694,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   },
   {
     name: "worldIds",
-    description: "Account/server scopes for inbox ops.",
+    description:
+      "Account/server scopes for inbox ops on connectors that support them. Omit for managed Gmail, which uses the active owner mailbox.",
     required: false,
     subactions: ["triage", "list_inbox", "search_inbox"],
     schema: { type: "array", items: { type: "string" } },
@@ -6669,7 +6703,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   {
     name: "channelIds",
     description:
-      "Channel, conversation, label or folder ids that scope inbox ops.",
+      "Channel or conversation IDs for connectors that support them. For managed Gmail use the native query (for example in:sent or label:work) and omit channelIds.",
     required: false,
     subactions: ["triage", "list_inbox", "search_inbox"],
     schema: { type: "array", items: { type: "string" } },
@@ -6904,7 +6938,7 @@ export const messageAction: Action = {
   description: MESSAGE_DESCRIPTION,
   descriptionCompressed: MESSAGE_COMPRESSED,
   routingHint:
-    "send/read/search/triage messages on a connector or channel, discover authorized worlds/rooms, or manage the inbox/drafts -> MESSAGE; do NOT use to reply in the CURRENT chat/thread -> REPLY, to join/mute/follow a channel -> ROOM, or to publish to a public feed/timeline -> POST",
+    'send/read/search/triage messages on a connector or channel, discover authorized worlds/rooms, or manage the inbox/drafts -> MESSAGE; do NOT use to reply in the CURRENT chat/thread -> REPLY, to join/mute/follow a channel -> ROOM, or to publish to a public feed/timeline -> POST. The list_inbox operation lists unread incoming mail. For mail the owner already sent, use MESSAGE_SEARCH_INBOX with sources=["gmail"] and query="in:sent"; limit=1 for the latest sent email.',
   contexts: MESSAGE_CONTEXTS,
   roleGate: { minRole: "ADMIN" },
   parameters: MESSAGE_PARAMETERS,
@@ -6929,12 +6963,24 @@ export const messageAction: Action = {
     refreshDescriptions(messageAction, runtime);
     const parameters = paramsFromOptions(options);
     const explicitOp = inferOp(parameters);
+    // A device can compose mail from any active view. The draft handler revalidates
+    // the original owner turn, and only the owner can dispatch from the phone.
+    if (
+      ["send", "send_draft", "draft_followup"].includes(explicitOp) &&
+      phoneGmailComposeOp(parameters)
+    )
+      return true;
     // One local registration read; no connector handshake or provider request.
     if (
       normalizeOp(parameters.action) === "send" &&
       !listMessageConnectors(runtime).some((connector) =>
         connector.capabilities.includes("send_message"),
       )
+    )
+      return false;
+    if (
+      explicitOp === "list_channels" &&
+      connectorsWithHook(runtime, "listRooms").length === 0
     )
       return false;
     if (explicitOp === "list_worlds" || explicitOp === "list_rooms") {
@@ -6953,6 +6999,16 @@ export const messageAction: Action = {
     const op = inferOp(params);
     switch (op) {
       case "send":
+        if (phoneGmailComposeOp(params))
+          return delegateToTriage(
+            "send_draft",
+            runtime,
+            message,
+            state,
+            options,
+            callback,
+            responses,
+          );
         return handleSend(runtime, message, state, params);
       case "read_channel":
         return handleReadChannel(runtime, message, state, params);
@@ -7021,9 +7077,9 @@ export function promoteMessageActions(): readonly Action[] {
     overrides: {
       search_inbox: {
         description:
-          "Search using exactly the user's requested filters and result limit. For Gmail, use sources=['gmail'] and one complete native Gmail query: combine requested sender/from and subject constraints in that same query, preserving an explicit user-supplied query verbatim. Keep subject text in subject: operators; never drop it or replace the requested limit after an error. Structured sender/date filters are additional constraints, never replacements for query terms. Tags are only explicitly requested labels, never sender/company names. Check returned appliedFilters before answering. If a search fails, correct the original filters or report the error; never broaden the search silently.",
+          "Search using exactly the user's requested filters and result limit. For sent Gmail, put in:sent in query and request limit=1 when asked for the latest single email. Omit channelIds and worldIds for managed Gmail. For Gmail, use sources=['gmail'] and one complete native Gmail query: combine requested sender/from and subject constraints in that same query, preserving an explicit user-supplied query verbatim. Keep subject text in subject: operators; never drop it or replace the requested limit after an error. Structured sender/date filters are additional constraints, never replacements for query terms. Tags are only explicitly requested labels, never sender/company names. Check returned appliedFilters before answering. If a search fails, correct the original filters or report the error; never broaden the search silently.",
         descriptionCompressed:
-          "Gmail: sources=['gmail']; complete native query with ALL requested from: AND subject: constraints; preserve explicit query and exact limit. Omit unrequested tags. Check appliedFilters. Never drop subject/sender/limit or broaden on error. Other sources keep their connector filters.",
+          "Gmail: sources=['gmail']; query=in:sent for sent mail (limit=1 for the latest); complete native query with ALL requested from: AND subject: constraints; preserve explicit query and exact limit. Omit unrequested tags. Check appliedFilters. Never drop subject/sender/limit or broaden on error. Other sources keep their connector filters.",
       },
       read_message: {
         description:

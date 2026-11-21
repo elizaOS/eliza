@@ -19,7 +19,7 @@ import {
 } from "./native-export.ts";
 
 // Synthetic `RecordedTrajectory` shaped like what
-// `JsonFileTrajectoryRecorder` writes under <runDir>/trajectories/<agentId>/.
+// the trajectory recorder exports under <runDir>/trajectories/<agentId>/.
 function syntheticTrajectory() {
   return {
     trajectoryId: "tj-test-1",

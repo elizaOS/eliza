@@ -36,6 +36,41 @@ public final class SmsProviderReader {
  static int intAt(Cursor c, String column, int otherwise) { int i = c.getColumnIndex(column); return i < 0 || c.isNull(i) ? otherwise : c.getInt(i); }
  static String textAt(Cursor c, String column) { int i = c.getColumnIndex(column); return i < 0 || c.isNull(i) ? null : c.getString(i); }
 
+ /** A sender hint for the newest incoming SMS. This projection never requests a message body. */
+ public static JSObject latestIncomingSender(Context context, CancellationSignal cancel, boolean includeAddress) {
+  try (Cursor row = query(context.getContentResolver(), Telephony.Sms.Inbox.CONTENT_URI,
+    includeAddress ? new String[] { Telephony.Sms.ADDRESS, Telephony.Sms.THREAD_ID } : new String[] { Telephony.Sms.ADDRESS }, null, null, "date DESC, _id DESC", cancel)) {
+   if (row == null) throw new IllegalStateException("Messages provider unavailable");
+   cancel.throwIfCanceled();
+   JSObject result = new JSObject();
+   if (!row.moveToFirst()) {
+    result.put("status", "empty");
+    return result;
+   }
+   cancel.throwIfCanceled();
+   String address = textAt(row, Telephony.Sms.ADDRESS);
+   if (address != null && address.matches("[0-9+(). -]+")) {
+    String digits = address.replaceAll("[^0-9]", "");
+    if (includeAddress) {
+     String number = address.replaceAll("[(). -]", "");
+     if (number.matches("\\+?[0-9]{2,20}")) {
+      result.put("status", "found");
+      result.put("address", number);
+      long threadId = longAt(row, Telephony.Sms.THREAD_ID);
+      if (threadId > 0) result.put("threadId", SmsRecords.threadId(threadId));
+      return result;
+     }
+    } else if (digits.length() >= 4) {
+     result.put("status", "found");
+     result.put("numberEnding", digits.substring(digits.length() - 4));
+     return result;
+    }
+   }
+   result.put("status", "sender-unavailable");
+   return result;
+  }
+ }
+
  /** A row that cannot be read completely; it holds no content and the owner opens it in the system messaging app. */
  static final class Incomplete extends Exception {
   final String reason;

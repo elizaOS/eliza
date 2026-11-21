@@ -770,13 +770,6 @@ jobs:
               -e 'cloud/.env.*' \
               -e node_modules
 
-            # Build artifacts (*.d.ts / *.d.ts.map) sometimes land next to
-            # sources from a prior deploy; if the new HEAD tracks the same
-            # paths, `git checkout -B` aborts with "untracked working tree
-            # files would be overwritten". Sweep them before checkout.
-            find packages -type f \( -name '*.d.ts' -o -name '*.d.ts.map' \) \
-              ! -path '*/node_modules/*' -delete
-
             # bun.lock became tracked at 4ae092dcda; the host's previous deploy
             # may have left an untracked copy from `bun install` that pre-dates
             # the tracking change. `git clean -fdx` *should* remove it but

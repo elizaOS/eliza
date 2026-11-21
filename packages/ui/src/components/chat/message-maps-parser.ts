@@ -27,6 +27,8 @@ export type MapsCardSpec =
       places: MapsCardPlace[];
       nextCursor: string | null;
       attribution: string | null;
+      /** The named place the search was made around, when it named one. */
+      near?: MapsCardPlace;
     }
   | {
       kind: "route";
@@ -168,7 +170,16 @@ export function parseMapsCardBody(body: string): MapsCardSpec | null {
       if (places.length === 0) return null;
       const nextCursor = boundedString(record.nextCursor, 2_048);
       const attribution = boundedString(record.attribution, 500);
-      return { kind: "places", query, places, nextCursor, attribution };
+      // An unreadable search point only loses the bias, not the card.
+      const near = parsePlace(record.near);
+      return {
+        kind: "places",
+        query,
+        places,
+        nextCursor,
+        attribution,
+        ...(near ? { near } : {}),
+      };
     }
     case "route": {
       const origin = parsePlace(record.origin);

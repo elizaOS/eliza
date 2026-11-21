@@ -9,19 +9,34 @@
  * (`./log-redaction`) and validated PII/token classes from `./pii-detectors`; explicit credential context admits short values; detected PII uses its own floor.
  *
  * The per-session nonce makes placeholders unforgeable: restore and assertion
- * scope only to THIS session's nonce, so a placeholder-shaped token from user
- * input or model output can never resolve to a real secret. A this-session
- * placeholder that should resolve but does not (e.g. a model that fabricated
- * `…_999__`) can fail loud via SecretSwapUnresolvedPlaceholderError rather than
- * silently leak.
+ * scope only to THIS session's nonce, and only to references this session has
+ * itself written into text. A placeholder-shaped token from user input or model
+ * output therefore never resolves to a value the model was not shown, whether
+ * it was guessed, counted from a visible reference or kept from an earlier
+ * session. A this-session placeholder that does not resolve (e.g. a model that
+ * fabricated `…_999__`) can fail loud via SecretSwapUnresolvedPlaceholderError
+ * rather than silently leak.
  */
 import { ElizaError } from "../errors";
 import { BufferUtils } from "../utils/buffer";
+import { createHash } from "../utils/crypto-compat";
 import { SENSITIVE_TEXT_REGEXPS } from "./log-redaction";
 import { detectPii } from "./pii-detectors";
 import { isRuntimeAbortSignal } from "./runtime-abort-signal";
 
 export const SECRET_SWAP_ENABLED_SETTING = "ELIZA_SECRET_SWAP_ENABLED";
+/**
+ * Keeps a value's reference the same in every turn of one conversation, so text
+ * an earlier turn sent stays byte-identical and a provider can reuse the prompt
+ * prefix. A request with a user message then carries the same reference
+ * guidance in its system prompt every time, and the kinds of its contact
+ * references follow its newest user message. With PII swap on, a value's
+ * pseudonym is kept for the conversation too. A host turns this on; the
+ * default draws a fresh nonce and pseudonym salt per session and lists the
+ * kinds in the system prompt.
+ */
+export const SECRET_SWAP_STABLE_REFERENCES_SETTING =
+	"ELIZA_SECRET_SWAP_STABLE_REFERENCES";
 export const SECRET_SWAP_EXEMPT_VALUES_SETTING =
 	"ELIZA_SECRET_SWAP_EXEMPT_VALUES";
 
@@ -88,6 +103,14 @@ export type SecretSwapSessionOptions = {
 	 * e.g. `["phone", "ipv4"]`). Complements `exemptValues` (opt-out by value).
 	 */
 	disabledKinds?: Iterable<string>;
+	/**
+	 * A secret the host holds for one conversation and never shows to anyone.
+	 * Sessions that share it mint the same reference for the same value. A
+	 * reference seen in an earlier session is then no longer dead text, so it
+	 * matters that restore resolves only what this session wrote: replaying one
+	 * yields nothing the current request does not already show the model.
+	 */
+	stableKey?: string;
 };
 
 const SHORT_SWAP_VALUE_LENGTH = 8;
@@ -108,11 +131,49 @@ const PLACEHOLDER_PATTERN =
  * mapping, hijacking restore to leak the secret into an unintended position —
  * the nonce makes placeholders unforgeable and unguessable per turn.
  */
+/** A fresh key for stable references. The host keeps it in memory only. */
+export function createSecretSwapStableKey(): string {
+	return BufferUtils.toHex(BufferUtils.randomBytes(32));
+}
+
+function keyedDigest(key: string, value: string): string {
+	return createHash("sha256")
+		.update(`${key.length}:${key}${value}`)
+		.digest("hex");
+}
+
+/**
+ * The salt for the pseudonyms of the conversation a stable key belongs to, so
+ * a name or address keeps one surrogate across its turns. A digest under its
+ * own label: it reveals neither the key nor a reference minted from it.
+ */
+export function pseudonymSaltFromStableKey(stableKey: string): string {
+	return keyedDigest(stableKey, "pseudonym-salt:");
+}
+
 function generateSessionNonce(): string {
 	// Fail closed through BufferUtils.randomBytes (the W1-066 policy): a nonce
 	// from a predictable Math.random() fallback could be recovered from observed
 	// outputs, making placeholders forgeable and re-enabling restore-hijack.
 	return BufferUtils.toHex(BufferUtils.randomBytes(8));
+}
+
+const RESERVED_EXAMPLE_PHONE = /^(?:(?:\+?1)?\d{3})?55501\d{2}$/;
+const RESERVED_EXAMPLE_DOMAIN =
+	/(?:^|\.)(?:example\.(?:com|org|net)|example|test|invalid|localhost)$/i;
+
+/**
+ * True for a phone number or email address that is reserved for documentation
+ * and so belongs to nobody: a North American number whose line is in the
+ * fictional range 555-0100 to 555-0199, with or without an area code and the
+ * country code 1, or an address at example.com, example.org or example.net, or
+ * under .example, .test, .invalid or .localhost (RFC 2606, RFC 6761).
+ */
+export function isReservedExampleContact(value: string): boolean {
+	const at = value.lastIndexOf("@");
+	return at >= 0
+		? RESERVED_EXAMPLE_DOMAIN.test(value.slice(at + 1))
+		: RESERVED_EXAMPLE_PHONE.test(value.replace(/[^\d+]/g, ""));
 }
 
 /** PII kinds the local user may read back in a reply; every other kind stays redacted. */
@@ -426,11 +487,13 @@ function walkSecretSwapValue(
 	value: unknown,
 	depth: number,
 	ctx: SecretSwapWalkContext,
-	mapString: (text: string, key?: string) => string,
+	mapString: (text: string, key?: string, field?: string) => string,
 	key?: string,
+	/** The root object's property this value sits under. */
+	field?: string,
 ): unknown {
 	if (typeof value === "string") {
-		return mapString(value, key);
+		return mapString(value, key, field);
 	}
 	if (value === null || typeof value !== "object") {
 		return value;
@@ -465,6 +528,8 @@ function walkSecretSwapValue(
 					depth + 1,
 					ctx,
 					mapString,
+					undefined,
+					field,
 				);
 			}
 			return next;
@@ -494,7 +559,14 @@ function walkSecretSwapValue(
 			defineSecretSwapValue(
 				next,
 				key,
-				walkSecretSwapValue(descriptor.value, depth + 1, ctx, mapString, key),
+				walkSecretSwapValue(
+					descriptor.value,
+					depth + 1,
+					ctx,
+					mapString,
+					key,
+					depth === 0 ? key : field,
+				),
 			);
 		}
 		return next;
@@ -507,6 +579,10 @@ export class SecretSwapSession {
 	private readonly replyProtectedValues = new Set<string>();
 	private readonly valueToEntry = new Map<string, SecretSwapEntry>();
 	private readonly placeholderToEntry = new Map<string, SecretSwapEntry>();
+	/** Numbers already minted, across both prefixes. */
+	private readonly numbers = new Set<number>();
+	/** References this session has written into text. Only these restore. */
+	private readonly shown = new Map<string, SecretSwapEntry>();
 	private readonly exemptValues: ReadonlySet<string>;
 	private readonly disabledKinds: ReadonlySet<string>;
 	/**
@@ -517,18 +593,24 @@ export class SecretSwapSession {
 	 * never emits a chunk shorter than the longest value it might straddle.
 	 */
 	private maxToken = 0;
-	/** Per-session nonce woven into every placeholder so it is unforgeable. */
-	private readonly nonce = generateSessionNonce();
+	private readonly stableKey: string | undefined;
+	/** Nonce woven into every placeholder so it is unforgeable: fresh per session, or derived from the conversation's stable key. */
+	private readonly nonce: string;
 	/** Restores only placeholders minted for this session. Other or absent nonces remain text; unresolved current-session placeholders fail explicitly. */
-	private readonly placeholderPattern = new RegExp(
-		`__ELIZA_(?:SECRET|CONTACT)_${this.nonce}_\\d+__`,
-		"g",
-	);
+	private readonly placeholderPattern: RegExp;
 	/** Per-value compiled patterns, scoped to the session so secret values never outlive it. */
 	private readonly replacePatterns = new Map<string, RegExp>();
 	private readonly containsPatterns = new Map<string, RegExp>();
 
 	constructor(options: SecretSwapSessionOptions = {}) {
+		this.stableKey = options.stableKey || undefined;
+		this.nonce = this.stableKey
+			? keyedDigest(this.stableKey, "nonce:").slice(0, 16)
+			: generateSessionNonce();
+		this.placeholderPattern = new RegExp(
+			`__ELIZA_(?:SECRET|CONTACT)_${this.nonce}_\\d+__`,
+			"g",
+		);
 		this.exemptValues = new Set(
 			[...(options.exemptValues ?? [])]
 				.map((value) => value.trim())
@@ -554,6 +636,11 @@ export class SecretSwapSession {
 		return [...this.valueToEntry.values()];
 	}
 
+	/** True when a value keeps one reference across the conversation's turns. */
+	get stable(): boolean {
+		return this.stableKey !== undefined;
+	}
+
 	/** Hide only this session's protocol references from local NER, preserving offsets.
 	 * The model input is unchanged. Unknown current-session references stay opaque
 	 * too, so strict execution restoration can reject them rather than a PII alias.
@@ -576,6 +663,8 @@ export class SecretSwapSession {
 	 */
 	private learnText(
 		text: string,
+		/** Leave a reserved example contact as written: see `substituteInValue`. */
+		keepExamples = false,
 	): { value: string; start: number; end: number }[] {
 		// 1) Assignment-style secrets (KEY=…, "token":"…", Bearer …, PEM blocks)
 		// from the shared redact pattern set — value-extracted, including short values.
@@ -596,6 +685,13 @@ export class SecretSwapSession {
 			disabledKinds: this.disabledKinds,
 		})) {
 			const trimmed = match.value.trim();
+			// Outside the conversation a reserved example documents a format.
+			if (
+				keepExamples &&
+				(match.kind === "email" || match.kind === "phone") &&
+				isReservedExampleContact(trimmed)
+			)
+				continue;
 			if (
 				trimmed.length >= MIN_PII_VALUE_LENGTH &&
 				!this.exemptValues.has(trimmed) &&
@@ -610,8 +706,12 @@ export class SecretSwapSession {
 	}
 
 	substituteText(text: string): string {
+		return this.substitute(text, false);
+	}
+
+	private substitute(text: string, keepExamples: boolean): string {
 		let result = text;
-		const assignments = this.learnText(text);
+		const assignments = this.learnText(text, keepExamples);
 		// Replace credential capture spans before general known-value matching. This
 		// covers short punctuation-only assignments without rewriting JSON syntax.
 		let cursor = 0;
@@ -620,32 +720,40 @@ export class SecretSwapSession {
 			(a, b) => a.start - b.start || b.end - a.end,
 		)) {
 			if (span.start < cursor) continue;
-			parts.push(
-				result.slice(cursor, span.start),
-				this.entryForValue(span.value, "secret").placeholder,
-			);
+			const entry = this.entryForValue(span.value, "secret");
+			this.shown.set(entry.placeholder, entry);
+			parts.push(result.slice(cursor, span.start), entry.placeholder);
 			cursor = span.end;
 		}
 		parts.push(result.slice(cursor));
 		result = parts.join("");
-		return this.replaceKnownValues(result);
+		return this.replaceKnownValues(result, keepExamples);
 	}
 
 	/**
 	 * Replace every known value with its placeholder, longest first so a value
 	 * that is a substring of another does not corrupt the longer placeholder.
+	 * `keepExamples` leaves a reserved example the session holds as a contact.
 	 */
-	private replaceKnownValues(text: string): string {
+	private replaceKnownValues(text: string, keepExamples = false): string {
 		let result = text;
 		for (const entry of this.entries.sort(
 			(a, b) => b.value.length - a.value.length,
 		)) {
+			if (
+				keepExamples &&
+				entry.placeholder.startsWith(CONTACT_PLACEHOLDER_PREFIX) &&
+				isReservedExampleContact(entry.value)
+			)
+				continue;
 			let pattern = this.replacePatterns.get(entry.value);
 			if (!pattern) {
 				pattern = compileReplacePattern(entry.value);
 				this.replacePatterns.set(entry.value, pattern);
 			}
-			result = replaceValue(result, pattern, entry.placeholder);
+			const replaced = replaceValue(result, pattern, entry.placeholder);
+			if (replaced !== result) this.shown.set(entry.placeholder, entry);
+			result = replaced;
 		}
 		return result;
 	}
@@ -659,14 +767,41 @@ export class SecretSwapSession {
 		return pattern.test(text);
 	}
 
-	substituteInValue<T>(value: T): T {
+	/**
+	 * `authoredFields` names properties of the root object that hold authored
+	 * interface text, such as a request's tool definitions. A schema description
+	 * documents a format with an example ("for example +14155550100"). Read as a
+	 * contact, the example would become a reference, and the definition's bytes
+	 * would change with the nonce and with what the conversation mentions. So a
+	 * reserved example ({@link isReservedExampleContact}) is never learned from
+	 * an authored field or replaced in one. A request also carries copies of its
+	 * definitions in other fields: when `conversationFields` names the fields
+	 * that hold the conversation, every other field treats a reserved example
+	 * the same way, so the request lists a contact only when the conversation
+	 * carries it. Every other value, a real number or address in a definition
+	 * included, is learned and replaced wherever it is written.
+	 */
+	substituteInValue<T>(
+		value: T,
+		options: {
+			authoredFields?: readonly string[];
+			conversationFields?: readonly string[];
+		} = {},
+	): T {
+		const authored = new Set(options.authoredFields ?? []);
+		const conversation =
+			options.conversationFields && new Set(options.conversationFields);
+		const keepExamples = (field?: string): boolean =>
+			field !== undefined &&
+			(authored.has(field) ||
+				(conversation !== undefined && !conversation.has(field)));
 		// Snapshot descriptors and learn the entire graph before replacement, so
 		// a credential discovered in a later field protects earlier references too.
 		const snapshot = walkSecretSwapValue(
 			value,
 			0,
 			createSecretSwapWalkContext(),
-			(text, key) => {
+			(text, key, field) => {
 				if (
 					key &&
 					isCredentialField(key) &&
@@ -675,7 +810,7 @@ export class SecretSwapSession {
 					this.replyProtectedValues.add(text);
 					this.entryForValue(text, "secret");
 				}
-				this.learnText(text);
+				this.learnText(text, keepExamples(field));
 				return text;
 			},
 		);
@@ -683,7 +818,7 @@ export class SecretSwapSession {
 			snapshot,
 			0,
 			createSecretSwapWalkContext(),
-			(text) => this.substituteText(text),
+			(text, _key, field) => this.substitute(text, keepExamples(field)),
 		) as T;
 	}
 
@@ -691,7 +826,7 @@ export class SecretSwapSession {
 	restoreUserReplyText(text: string): string {
 		this.placeholderPattern.lastIndex = 0;
 		return text.replace(this.placeholderPattern, (placeholder) => {
-			const entry = this.placeholderToEntry.get(placeholder);
+			const entry = this.shown.get(placeholder);
 			if (
 				!entry ||
 				!USER_READABLE_KINDS.has(entry.kind) ||
@@ -731,7 +866,7 @@ export class SecretSwapSession {
 		const unresolved = new Set<string>();
 		this.placeholderPattern.lastIndex = 0;
 		const restored = text.replace(this.placeholderPattern, (placeholder) => {
-			const entry = this.placeholderToEntry.get(placeholder);
+			const entry = this.shown.get(placeholder);
 			if (!entry) {
 				unresolved.add(placeholder);
 				return placeholder;
@@ -760,7 +895,7 @@ export class SecretSwapSession {
 		const placeholders = [
 			...new Set(serialized.match(this.placeholderPattern) ?? []),
 		]
-			.filter((placeholder) => !this.placeholderToEntry.has(placeholder))
+			.filter((placeholder) => !this.shown.has(placeholder))
 			.sort();
 		if (placeholders.length > 0) {
 			throw new SecretSwapUnresolvedPlaceholderError(placeholders);
@@ -770,11 +905,20 @@ export class SecretSwapSession {
 	private entryForValue(value: string, kind: string): SecretSwapEntry {
 		const existing = this.valueToEntry.get(value);
 		if (existing) return existing;
-		const entry = {
-			placeholder: `${(kind === "email" || kind === "phone") && !this.replyProtectedValues.has(value) ? CONTACT_PLACEHOLDER_PREFIX : PLACEHOLDER_PREFIX}${this.nonce}_${this.valueToEntry.size + 1}__`,
-			value,
-			kind,
-		};
+		const prefix = `${(kind === "email" || kind === "phone") && !this.replyProtectedValues.has(value) ? CONTACT_PLACEHOLDER_PREFIX : PLACEHOLDER_PREFIX}${this.nonce}_`;
+		// A stable reference is numbered from its value, not from the order the
+		// session met it: a growing conversation must not renumber earlier text.
+		// Twelve digits keep two values of one conversation from sharing a number,
+		// so a reference means the same value in every session or nothing.
+		let index = this.stableKey
+			? Number.parseInt(
+					keyedDigest(this.stableKey, `value:${value}`).slice(0, 12),
+					16,
+				) % 1_000_000_000_000
+			: this.valueToEntry.size + 1;
+		while (this.numbers.has(index)) index++;
+		this.numbers.add(index);
+		const entry = { placeholder: `${prefix}${index}__`, value, kind };
 		this.valueToEntry.set(value, entry);
 		this.placeholderToEntry.set(entry.placeholder, entry);
 		this.maxToken = Math.max(

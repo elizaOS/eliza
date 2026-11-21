@@ -81,7 +81,7 @@
     "runtime": "both",
     "platformDetails": {
       "browser": "Full support via Geolocation API (current position, watch position, permissions)",
-      "node": "Full support via Electrobun with native geolocation services",
+      "node": "Not supported; there is no Node or desktop implementation.",
       "ios": true,
       "android": true
     }

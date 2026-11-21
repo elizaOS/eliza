@@ -14,16 +14,16 @@ import { asRecord } from "../state/config-readers";
 import type { DefaultVoiceProviderResult } from "./voice-provider-defaults";
 
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_flash_v2_5";
-const DEFAULT_ELEVENLABS_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
-const LEGACY_CHARACTER_VOICE_PRESET_IDS: Record<string, string> = {
-  jin: "adam",
-  kei: "josh",
-  momo: "alice",
-  rin: "matilda",
-  ryu: "daniel",
-  satoshi: "brian",
-  yuki: "lily",
-};
+const LEGACY_DEFAULT_ELEVENLABS_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
+const LEGACY_CHARACTER_VOICE_IDS: ReadonlyMap<string, string> = new Map([
+  ["jin", "pNInz6obpgDQGcFmaJgB"],
+  ["kei", "TxGEqnHWrfWFTfGW9XjX"],
+  ["momo", "Xb7hH8MSUJpSbSDYk0k2"],
+  ["rin", "XrExE9yKIg1WjnnlVkGX"],
+  ["ryu", "onwK4e9ZLuTAKqWW03F9"],
+  ["satoshi", "nPczCjzI2devNBz1zQrb"],
+  ["yuki", "pFZP5JQG7iQjIQuC4Bku"],
+]);
 function readString(
   record: Record<string, unknown> | null,
   key: string,
@@ -67,14 +67,6 @@ function resolveSelectedCharacterVoiceId(
     return null;
   }
   return { characterId: preset.id, voiceId: voice.voiceId };
-}
-function resolveLegacyVoiceId(characterId: string): string | null {
-  const legacyPresetId = LEGACY_CHARACTER_VOICE_PRESET_IDS[characterId];
-  if (!legacyPresetId) {
-    return null;
-  }
-  const voice = PREMADE_VOICES.find((entry) => entry.id === legacyPresetId);
-  return voice?.voiceId ?? null;
 }
 function isExplicitElevenLabsChoice(config: VoiceConfig | null): boolean {
   const apiKey = config?.elevenlabs?.apiKey?.trim() ?? "";
@@ -127,14 +119,13 @@ export function resolveCharacterVoiceConfigFromAppConfig(args: {
     typeof storedVoiceConfig?.elevenlabs?.voiceId === "string"
       ? storedVoiceConfig.elevenlabs.voiceId.trim()
       : "";
-  const legacyVoiceId = resolveLegacyVoiceId(
-    selectedCharacterVoice.characterId,
-  );
+  const legacyVoiceId =
+    LEGACY_CHARACTER_VOICE_IDS.get(selectedCharacterVoice.characterId) ?? null;
   const shouldUpdatePresetVoice =
     selectedCharacterVoice.voiceId !== currentVoiceId &&
     (!currentVoiceId ||
       (!isExplicitElevenLabsChoice(storedVoiceConfig) &&
-        (currentVoiceId === DEFAULT_ELEVENLABS_VOICE_ID ||
+        (currentVoiceId === LEGACY_DEFAULT_ELEVENLABS_VOICE_ID ||
           currentVoiceId === legacyVoiceId)));
   if (!releaseLegacyProvider && !shouldUpdatePresetVoice) {
     return storedVoiceConfig;

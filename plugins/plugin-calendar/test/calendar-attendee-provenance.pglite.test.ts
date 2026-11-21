@@ -76,6 +76,7 @@ const action = createCalendarActionRunner({
     rawResponse: "{}",
     parsed: {
       title: "Lunch",
+      reviewBeforeCreate: false,
       requiresInput: false,
       clarification: null,
       description: null,

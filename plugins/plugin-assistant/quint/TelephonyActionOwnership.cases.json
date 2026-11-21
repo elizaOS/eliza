@@ -13,7 +13,10 @@
     "plugins/plugin-assistant/vitest.config.ts",
     "packages/scripts/lib/vitest-conformance.ts",
     "packages/scripts/lib/junit-summary.ts",
-    "packages/scripts/lib/test-output.ts"
+    "packages/scripts/lib/test-output.ts",
+    "plugins/plugin-assistant/src/services/device-actions/read-completion.ts",
+    "plugins/plugin-assistant/src/services/device-actions/service.ts",
+    "plugins/plugin-assistant/test/device-read-completion.test.ts"
   ],
   "conformance": "plugins/plugin-assistant/quint/check-telephony-action-ownership.ts",
   "bounds": {
@@ -91,6 +94,30 @@
       "maxSteps": 20,
       "samples": 500,
       "deadlock": false
+    },
+    {
+      "name": "delivered-sender-addressed-reply",
+      "main": "SmsSenderReplyDraft",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "DraftNamesDeliveredSender",
+        "OnlySentAfterTap",
+        "CancelKeepsZero"
+      ],
+      "temporal": ["RetiredCannotSubmit"],
+      "temporalChecks": [
+        {
+          "property": "RetiredCannotSubmit",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Once the origin retires no further owner tap can submit this draft."
+          ]
+        }
+      ],
+      "deadlock": false,
+      "maxSteps": 12,
+      "samples": 40
     }
   ]
 }

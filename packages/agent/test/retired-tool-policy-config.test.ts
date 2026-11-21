@@ -204,3 +204,44 @@ it("refuses retired character settings on save without changing previous bytes",
   ).toThrow("not enforced");
   expect(fs.readFileSync(file, "utf8")).toBe(previous);
 });
+
+it("refuses a retired env name before starting the agent", async () => {
+  vi.stubEnv("COMPUTERUSE_MODE", "sandbox");
+  const { startEliza } = await import("../src/runtime/eliza.ts");
+  await expect(startEliza({ headless: true })).rejects.toMatchObject({
+    code: "CONFIG_RETIRED_SETTING_NAME",
+    message: expect.stringContaining(
+      "COMPUTERUSE_MODE (rename to COMPUTER_USE_MODE)",
+    ),
+  });
+});
+
+it("refuses retired names in config env and character settings", async () => {
+  const file = configFile();
+  vi.stubEnv("ELIZA_CODEX_SANDBOX_MODE", "");
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      env: { vars: { ELIZA_CODEX_SANDBOX_MODE: "read-only" } },
+    }),
+  );
+  expect(() => loadElizaConfig()).toThrow(
+    "ELIZA_CODEX_SANDBOX_MODE (rename to ELIZA_CODEX_ACP_SANDBOX_MODE)",
+  );
+  expect(process.env.ELIZA_CODEX_SANDBOX_MODE).toBe("");
+  const { buildCharacterFromConfig } = await import(
+    "../src/runtime/build-character-config.ts"
+  );
+  expect(() =>
+    buildCharacterFromConfig({
+      agents: {
+        list: [
+          {
+            id: "review",
+            settings: { secrets: { ELIZA_ACP_NO_TERMINAL: "true" } },
+          },
+        ],
+      },
+    }),
+  ).toThrow("ELIZA_ACP_NO_TERMINAL (rename to ACPX_NO_TERMINAL)");
+});

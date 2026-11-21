@@ -2985,25 +2985,15 @@ export class ComputerUseService extends Service {
         browserHeadless === "true" || browserHeadless === "1";
     }
 
-    const mode =
-      getSetting("COMPUTERUSE_MODE") ?? getSetting("COMPUTER_USE_MODE");
+    const mode = getSetting("COMPUTER_USE_MODE");
     this.cuConfig.mode = mode === "sandbox" ? "sandbox" : "yolo";
     if (this.cuConfig.mode === "sandbox") {
-      const backend =
-        getSetting("COMPUTERUSE_SANDBOX_BACKEND") ??
-        getSetting("COMPUTER_USE_SANDBOX_BACKEND");
-      const image =
-        getSetting("COMPUTERUSE_SANDBOX_IMAGE") ??
-        getSetting("COMPUTER_USE_SANDBOX_IMAGE");
+      const backend = getSetting("COMPUTER_USE_SANDBOX_BACKEND");
+      const image = getSetting("COMPUTER_USE_SANDBOX_IMAGE");
       const trimmedImage = image?.trim();
       // Remote-guest RPC options for the VM providers (#9170 M13).
-      const rpcUrl = (
-        getSetting("COMPUTERUSE_SANDBOX_RPC_URL") ??
-        getSetting("COMPUTER_USE_SANDBOX_RPC_URL")
-      )?.trim();
-      const rpcPortRaw =
-        getSetting("COMPUTERUSE_SANDBOX_RPC_PORT") ??
-        getSetting("COMPUTER_USE_SANDBOX_RPC_PORT");
+      const rpcUrl = getSetting("COMPUTER_USE_SANDBOX_RPC_URL")?.trim();
+      const rpcPortRaw = getSetting("COMPUTER_USE_SANDBOX_RPC_PORT");
       // Reject invalid explicit settings before selecting a sandbox endpoint.
       const rpcPort = parseSandboxRpcPort(rpcPortRaw);
       const options =

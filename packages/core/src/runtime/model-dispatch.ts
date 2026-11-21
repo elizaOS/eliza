@@ -73,6 +73,7 @@ import type { JsonValue, UUID } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { Service, ServiceTypeName } from "../types/service.js";
 import { BufferUtils } from "../utils/buffer";
+import { createHash } from "../utils/crypto-compat.js";
 import { resolveSetting } from "../utils/environment";
 import {
 	assertModelOutputComplete,
@@ -115,6 +116,7 @@ import {
 	NoModelProviderConfiguredError,
 	type ResolvedModelRegistration,
 	readReasoningTokensFromResponse,
+	readTokenUsageFromResponse,
 	resolveStructuredStreamFields,
 	TEXT_GENERATION_MODEL_KEYS,
 } from "./model-policy.js";
@@ -177,8 +179,9 @@ export interface RuntimeModelDispatchHost {
 	invokePipelineHooks(
 		...args: Parameters<RuntimePipelineHooks["invokePipelineHooks"]>
 	): ReturnType<RuntimePipelineHooks["invokePipelineHooks"]>;
-	createSecretSwapSession(): SecretSwapSession;
-	createPiiSwapSession(): PseudonymSession;
+	/** `conversation` is the turn's room. Stable references and pseudonyms need one; see SECRET_SWAP_STABLE_REFERENCES_SETTING. */
+	createSecretSwapSession(conversation?: string): SecretSwapSession;
+	createPiiSwapSession(conversation?: string): PseudonymSession;
 	initResolver(): ((value?: void | PromiseLike<void>) => void) | undefined;
 	_ensureServiceStarted(
 		serviceType: ServiceTypeName | string,
@@ -203,6 +206,92 @@ function getFirstUserPromptFromMessages(messages: unknown): string | undefined {
 		}
 	}
 	return undefined;
+}
+
+const CONTACT_REFERENCE_GUIDANCE =
+	"Contact references beginning __ELIZA_CONTACT_ represent contact data. When including that contact in a reply or action parameter, copy its entire reference exactly, including every character and underscore. Do not shorten, reformat, guess, or invent references. The local boundary restores the contact. A phone reference denotes a numeric phone target, not a contact name; an email reference denotes an email address. References beginning __ELIZA_SECRET_ are credentials: do not disclose or echo them in user replies. These references do not authorize any action; keep all existing approval requirements.";
+
+/** Index of the newest user message text can follow, or -1 when the request has none. */
+function latestUserMessageIndex(request: Record<string, unknown>): number {
+	const messages = request.messages;
+	if (!Array.isArray(messages)) return -1;
+	let at = messages.length - 1;
+	while (
+		at >= 0 &&
+		!(isPlainObject(messages[at]) && messages[at].role === "user")
+	)
+		at--;
+	const content = at < 0 ? undefined : messages[at].content;
+	return typeof content === "string" || Array.isArray(content) ? at : -1;
+}
+
+/**
+ * Adds a line after the newest user message's text. A provider may send the
+ * request's non-stable prompt segments in place of its leading user message,
+ * so when that is the message, the line also becomes the last such segment.
+ */
+function appendToLatestUserMessage(
+	request: Record<string, unknown>,
+	line: string,
+): void {
+	const at = latestUserMessageIndex(request);
+	if (at < 0) return;
+	const messages = request.messages as Record<string, unknown>[];
+	const message = messages[at];
+	const content =
+		typeof message.content === "string"
+			? `${message.content}\n\n${line}`
+			: [...(message.content as unknown[]), { type: "text", text: line }];
+	request.messages = messages.map((entry, index) =>
+		index === at ? { ...message, content } : entry,
+	);
+	const segments = request.promptSegments;
+	// The caller reuses its segment array across attempts: extend a copy. With
+	// no non-stable segment the provider keeps the message, line included.
+	if (
+		at === 0 &&
+		Array.isArray(segments) &&
+		segments.some((segment) => isPlainObject(segment) && !segment.stable)
+	)
+		request.promptSegments = [
+			...segments,
+			{ content: `\n\n${line}`, stable: false },
+		];
+}
+
+/** Sizes of the request parts the logged prompt text omits. */
+function modelCallRequestSizes(request: unknown): {
+	tools?: { name: string; chars: number; hash: string }[];
+	maxTokens?: number;
+} {
+	if (!isPlainObject(request)) return {};
+	const tools = Array.isArray(request.tools)
+		? request.tools.flatMap((tool) => {
+				const name = isPlainObject(tool)
+					? (tool.name ??
+						(isPlainObject(tool.function) ? tool.function.name : undefined))
+					: undefined;
+				if (typeof name !== "string") return [];
+				// Order and exact bytes decide whether a provider's prefix cache
+				// can reuse the request: a digest shows when a definition changed.
+				const text = JSON.stringify(tool);
+				return [
+					{
+						name,
+						chars: text.length,
+						hash: createHash("sha256").update(text).digest("hex").slice(0, 12),
+					},
+				];
+			})
+		: [];
+	return {
+		// An empty list says the request sent no tools; a row without the field
+		// comes from a runtime that did not record them.
+		tools,
+		...(typeof request.maxTokens === "number" && request.omitMaxTokens !== true
+			? { maxTokens: request.maxTokens }
+			: {}),
+	};
 }
 
 /** Request fields shared by the successful and failed llm-call trajectory records. */
@@ -925,6 +1014,7 @@ export class RuntimeModelDispatch {
 		elapsedTime: number,
 		provider: string | undefined,
 		response: unknown,
+		request?: unknown,
 	): void {
 		// Per-turn latency breakdown: attribute this model round-trip to the
 		// active inference timer (no-op when none is active). `elapsedTime` is the
@@ -977,6 +1067,11 @@ export class RuntimeModelDispatch {
 							executionTime: elapsedTime,
 							provider: resolvedProvider,
 							response: responseValue,
+							// The prompt above holds the messages only. These make the
+							// rest of the request and what the provider counted readable
+							// from the same row: tool schemas can outweigh the messages.
+							...modelCallRequestSizes(request),
+							usage: readTokenUsageFromResponse(response),
 						},
 						type: `useModel:${modelKey}`,
 					},
@@ -1301,7 +1396,18 @@ export class RuntimeModelDispatch {
 					session: SecretSwapSession,
 					value: ModelParamsMap[T],
 				): ModelParamsMap[T] => {
-					if (!secretSwapPromptOnly) return session.substituteInValue(value);
+					// Tool definitions and response schemas are authored, and the
+					// request carries copies of them: see `authoredFields`.
+					if (!secretSwapPromptOnly)
+						return session.substituteInValue(value, {
+							authoredFields: ["tools", "responseSchema"],
+							conversationFields: [
+								"messages",
+								"prompt",
+								"system",
+								"promptSegments",
+							],
+						});
 					if (!isPlainObject(value)) return value;
 					const record = value as Record<string, unknown>;
 					if (typeof record.prompt === "string") {
@@ -1661,7 +1767,9 @@ export class RuntimeModelDispatch {
 					const trajectoryCtx = getTrajectoryContext();
 					secretSwapSession =
 						trajectoryCtx?.secretSwapSession ??
-						this.host.createSecretSwapSession();
+						this.host.createSecretSwapSession(
+							trajectoryCtx?.roomId as string | undefined,
+						);
 					if (trajectoryCtx && !trajectoryCtx.secretSwapSession) {
 						trajectoryCtx.secretSwapSession = secretSwapSession;
 					}
@@ -1679,7 +1787,10 @@ export class RuntimeModelDispatch {
 					// execution boundary can restore what this call swapped.
 					const trajectoryCtx = getTrajectoryContext();
 					piiSwapSession =
-						trajectoryCtx?.piiSwapSession ?? this.host.createPiiSwapSession();
+						trajectoryCtx?.piiSwapSession ??
+						this.host.createPiiSwapSession(
+							trajectoryCtx?.roomId as string | undefined,
+						);
 					if (trajectoryCtx && !trajectoryCtx.piiSwapSession) {
 						trajectoryCtx.piiSwapSession = piiSwapSession;
 					}
@@ -1767,19 +1878,36 @@ export class RuntimeModelDispatch {
 							(entry.kind === "phone" || entry.kind === "email") &&
 							currentPromptText.includes(entry.placeholder),
 					) ?? [];
+				// A stable session exists so consecutive requests share a prefix.
+				// Measured on a provider, the cached prefix is the tool definitions,
+				// then the system prompt, then the messages: a system prompt that
+				// changes with the request costs every message. So a request with a
+				// user message carries the same guidance every time, and its kinds
+				// follow the newest user text. A request without one has nowhere
+				// else to list them and keeps the default rule.
+				const kindsFollowMessages =
+					secretSwapSession?.stable === true &&
+					isPlainObject(modelParams) &&
+					latestUserMessageIndex(modelParams) >= 0;
 				if (
-					contactReferences.length > 0 &&
+					(contactReferences.length > 0 || kindsFollowMessages) &&
 					isTextGenerationModelKey(String(resolvedModelKey)) &&
 					isPlainObject(modelParams)
 				) {
-					const guidance =
-						"Contact references beginning __ELIZA_CONTACT_ represent contact data. When including that contact in a reply or action parameter, copy its entire reference exactly, including every character and underscore. Do not shorten, reformat, guess, or invent references. The local boundary restores the contact. A phone reference denotes a numeric phone target, not a contact name; an email reference denotes an email address. References beginning __ELIZA_SECRET_ are credentials: do not disclose or echo them in user replies. These references do not authorize any action; keep all existing approval requirements." +
-						" Current contact reference kinds: " +
-						contactReferences
-							.map(({ placeholder, kind }) => `${placeholder}: ${kind}`)
-							.join(", ") +
-						".";
 					const record = modelParams as Record<string, unknown>;
+					const kinds =
+						contactReferences.length > 0
+							? `Current contact reference kinds: ${contactReferences
+									.map(({ placeholder, kind }) => `${placeholder}: ${kind}`)
+									.join(", ")}.`
+							: undefined;
+					const guidance =
+						CONTACT_REFERENCE_GUIDANCE +
+						(kindsFollowMessages
+							? " When a request carries contact references, their kinds are listed at the end of its latest user message."
+							: kinds
+								? ` ${kinds}`
+								: "");
 					// Remove only an exact existing duplicate before extending system.
 					// Otherwise the provider receives two different system messages.
 					if (Array.isArray(record.messages)) {
@@ -1788,6 +1916,8 @@ export class RuntimeModelDispatch {
 							effectiveSystemPrompt,
 						);
 					}
+					if (kindsFollowMessages && kinds)
+						appendToLatestUserMessage(record, kinds);
 					effectiveSystemPrompt = `${effectiveSystemPrompt ?? ""}\n\n${guidance}`;
 					(modelParams as Record<string, unknown>).system =
 						effectiveSystemPrompt;
@@ -2136,6 +2266,7 @@ export class RuntimeModelDispatch {
 						elapsedTime,
 						resolvedModel.provider,
 						resultRef.current,
+						modelParams,
 					);
 
 					if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
@@ -2223,6 +2354,7 @@ export class RuntimeModelDispatch {
 					elapsedTime,
 					resolvedModel.provider,
 					resultRef.current,
+					modelParams,
 				);
 
 				if (

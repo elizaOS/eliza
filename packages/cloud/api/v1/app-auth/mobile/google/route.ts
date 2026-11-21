@@ -461,10 +461,17 @@ export function createMobileGoogleSignInRoute(
           NO_STORE,
         );
       if (verified.kind === "mfa")
-        // The second factor completes through Steward's MFA routes, then the
-        // usual `/app-auth/connect`; the Google code is not used.
+        // The native attempt retains this account constraint across the second factor.
+        // The Google code is exchanged only after the new owner key is acknowledged.
         return c.json(
-          { success: true, status: "mfa_required", mfa: verified.mfa },
+          {
+            success: true,
+            status: "mfa_required",
+            mfa: verified.mfa,
+            ...(input.serverAuthCode
+              ? { googleSubject: idTokenSubject(input.steward.idToken) }
+              : {}),
+          },
           200,
           NO_STORE,
         );

@@ -570,7 +570,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     androidCloudOnly: true,
     Component: AndroidAccountLifecycleSection,
   },
-  // Devices & Runtimes — local / Cloud / relay / verified SSH management.
+  // Devices & Runtimes — local / Cloud / relay management.
   {
     ...nonCatalogMeta("my-runtimes"),
     catalog: false,

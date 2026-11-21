@@ -97,3 +97,25 @@ module TelephonyActionOwnership {
     .then(approve).then(claim).then(dispatch).then(nativeReply("unknown"))
     .then(publishReceipt).then(reconcileUnknown).expect(UnknownIsNotSuccess)
 }
+
+// A delivered address names the sender of one authenticated conversation read. A changed
+// inbox head cannot retarget that read. Losing the origin or changing the conversation
+// blocks a follow-up; cancel is local. Carrier outcomes remain in NativeSmsReviewOwnership.
+module SmsSenderReplyDraft {
+  type State = { phase: str, newest: str, delivered: str, draftTo: str, sameOrigin: bool, sends: int }
+  var s: State
+  action init = s' = {phase:"read", newest:"A", delivered:"none",draftTo:"none",sameOrigin:true,sends:0}
+  action arrive = s' = s.with("newest",if (s.newest=="A") "B" else "A")
+  action deliver = all { s.phase=="read",s.sameOrigin,s'=s.with("delivered",s.newest).with("phase","answered") }
+  action changeOrigin = s'=s.with("sameOrigin",false)
+  action draft = all { s.phase=="answered",s.sameOrigin,s'=s.with("draftTo",s.delivered).with("phase","draft") }
+  action cancel = all { s.phase=="draft",s'=s.with("phase","cancelled") }
+  action tapSend = all { s.phase=="draft",s.sameOrigin,s'=s.with("sends",1).with("phase","sent") }
+  action step = any { arrive, deliver, changeOrigin, draft, cancel, tapSend, s'=s }
+  val DraftNamesDeliveredSender = s.draftTo=="none" or s.draftTo==s.delivered
+  val OnlySentAfterTap = (s.sends==1) == (s.phase=="sent")
+  val CancelKeepsZero = s.phase=="cancelled" implies s.sends==0
+  temporal RetiredCannotSubmit = always((not(s.sameOrigin) implies next(s.sends)==s.sends).orKeep(s))
+  run laterIncomingCannotRetargetTest = init.then(deliver).then(arrive).then(draft).expect(s.draftTo=="A" and s.newest=="B" and s.sends==0)
+  run declineDoesNotSendTest = init.then(deliver).then(draft).then(cancel).expect(CancelKeepsZero)
+}

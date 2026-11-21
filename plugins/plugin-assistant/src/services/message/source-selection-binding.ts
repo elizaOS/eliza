@@ -15,7 +15,7 @@ import {
 import { nativeSourceOrdinalSchema } from "./native-context-read.ts";
 import { parseToolArguments } from "./tool-arguments.ts";
 
-const REQUEST_SOURCE_REFERENCE = "current_request";
+export const REQUEST_SOURCE_REFERENCE = "current_request";
 
 /** Capture before dispatch, never from context that may change while awaiting a model. */
 export function createSourceSelectionBinding(

@@ -36,6 +36,7 @@ COPY --parents package.json bun.lock \
   packages/scripts/lib/repository-file-integrity.ts \
   packages/*/package.json \
   packages/cloud/*/package.json \
+  packages/cloud/services/*/package.json \
   plugins/*/package.json \
   ${APP_CORE_DIR}/scripts/collect-docker-runtime-deps.ts \
   ./

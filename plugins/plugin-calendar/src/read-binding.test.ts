@@ -7,6 +7,7 @@ import {
   type Memory,
   type MessageHandlerResult,
   promoteSubactionsToActions,
+  type ResponseHandlerResult,
   runResponseHandlerEvaluators,
   runWithStreamingContext,
   stringToUuid,
@@ -25,6 +26,7 @@ import {
 } from "./read-binding.js";
 import {
   bindFilterEvidence,
+  boundCalendarSearchDate,
   calendarMutationPrerequisites,
   calendarSearchFiltersAreBound,
 } from "./search-filter-evidence.js";
@@ -42,6 +44,7 @@ describe("Calendar operation bindings", () => {
       "execution",
       "purpose",
       "filterEvidence",
+      "singleDaySearchDate",
     ]);
     const context = {} as Parameters<
       NonNullable<typeof calendarReadBindingField.parse>
@@ -101,7 +104,17 @@ describe("Calendar operation bindings", () => {
       },
     ]);
     if (!value) throw new Error("Bare intent number rejected");
-    const parsed = { intents: [text], calendarReadBindings: value };
+    const parsed: ResponseHandlerResult = {
+      shouldRespond: "RESPOND",
+      contexts: ["calendar"],
+      intents: [text],
+      candidateActionNames: [],
+      calendarReadBindings: value,
+      replyText: "",
+      facts: [],
+      relationships: [],
+      addressedTo: [],
+    };
     const effect = await calendarReadBindingField.handle?.({
       ...context,
       parsed,
@@ -110,6 +123,19 @@ describe("Calendar operation bindings", () => {
     effect?.mutateResult?.(parsed);
     const bindings = parsed.calendarReadBindings as CalendarReadBinding[];
     expect(bindings.map(({ intentId }) => intentId)).toEqual(["intent:1"]);
+    const literalReference = calendarReadBindingField.parse?.(
+      [{ intentId: text, operation: "propose_times", execution: "required" }],
+      context,
+    );
+    if (!literalReference) throw new Error("Declared intent text rejected");
+    const literalResult = { ...parsed, calendarReadBindings: literalReference };
+    const literalEffect = await calendarReadBindingField.handle?.({
+      ...context,
+      parsed: literalResult,
+      value: literalReference,
+    });
+    literalEffect?.mutateResult?.(literalResult);
+    expect(literalResult.calendarReadBindings).toEqual(bindings);
     const handler: MessageHandlerResult = {
       processMessage: "RESPOND",
       thought: "",
@@ -148,6 +174,218 @@ describe("Calendar operation bindings", () => {
           context,
         ),
       ).toBeNull();
+  });
+  it("routes only an unqualified single built-in next-event request directly", async () => {
+    const runtime = new AgentRuntime({
+      character: { name: "Next event fixture", bio: [] },
+      logLevel: "fatal",
+    });
+    const text = "What is the next event on my built-in calendar?";
+    const message: Memory = {
+      id: stringToUuid("plain-next"),
+      agentId: runtime.agentId,
+      entityId: stringToUuid("owner"),
+      roomId: stringToUuid("room"),
+      createdAt: 1000,
+      content: { text },
+    };
+    const state = { values: {}, data: {}, text: "" };
+    const route = async (
+      intents: string[],
+      plainNextEvent?: true,
+      intentId = "int:1",
+    ) => {
+      const context = {
+        runtime,
+        message,
+        state,
+        senderRole: "OWNER" as const,
+        turnSignal: new AbortController().signal,
+      };
+      const bindings = calendarReadBindingField.parse?.(
+        JSON.stringify([
+          {
+            intentId,
+            operation: "next_event",
+            execution: "required",
+            source: "builtin",
+            plainNextEvent,
+          },
+        ]),
+        context,
+      );
+      if (!bindings) throw Error("The serialized read binding was rejected.");
+      const parsed: ResponseHandlerResult = {
+        shouldRespond: "RESPOND",
+        contexts: ["calendar"],
+        intents,
+        candidateActionNames: [],
+        replyText: "",
+        facts: [],
+        relationships: [],
+        addressedTo: [],
+      };
+      const effect = await calendarReadBindingField.handle?.({
+        ...context,
+        parsed,
+        value: bindings,
+      });
+      effect?.mutateResult?.(parsed);
+      const handler: MessageHandlerResult = {
+        processMessage: "RESPOND",
+        thought: "",
+        plan: {
+          contexts: ["calendar"],
+          intents,
+          calendarReadBindings:
+            parsed.calendarReadBindings as CalendarReadBinding[],
+        },
+      };
+      await runResponseHandlerEvaluators({
+        runtime,
+        message,
+        state,
+        messageHandler: handler,
+        availableContexts: [],
+        userRoles: ["OWNER"],
+        evaluators: [calendarReadBindingEvaluator],
+      });
+      return handler.plan.deterministicToolCall;
+    };
+    expect(await route([text], true)).toEqual({
+      name: "CALENDAR_NEXT_EVENT",
+      params: { grantId: "eliza-calendar", calendarId: "primary" },
+    });
+    expect(await route(["next_event"], true, "next_event")).toEqual({
+      name: "CALENDAR_NEXT_EVENT",
+      params: { grantId: "eliza-calendar", calendarId: "primary" },
+    });
+    expect(await route([text], true, "other_event")).toBeUndefined();
+    expect(await route([text])).toBeUndefined();
+    expect(await route([text, "Send it to my coworker"], true)).toBeUndefined();
+  });
+  it("routes the sole built-in title lookup with a literal local date", async () => {
+    const title = "Calendar latency check";
+    const text = `What time does ${title} start today?`;
+    const runtime = new AgentRuntime({
+      character: { name: "Named Calendar fixture", bio: [] },
+      logLevel: "fatal",
+    });
+    const message: Memory = {
+      id: stringToUuid("dated-calendar-title"),
+      agentId: runtime.agentId,
+      entityId: stringToUuid("owner"),
+      roomId: stringToUuid("room"),
+      createdAt: Date.parse("2026-11-20T09:15:00Z"),
+      content: { text },
+    };
+    const state = { values: {}, data: {}, text: "" };
+    const route = async (
+      day: string,
+      intents = [text],
+      query = title,
+      operation: "search_events" | "next_event" = "search_events",
+    ) => {
+      const turnSignal = new AbortController().signal;
+      return runWithStreamingContext({ abortSignal: turnSignal }, async () => {
+        const context = {
+          runtime,
+          message,
+          state,
+          senderRole: "OWNER" as const,
+          turnSignal,
+        };
+        const value = calendarReadBindingField.parse?.(
+          [
+            {
+              intentId: "intent:1",
+              operation,
+              source: "builtin",
+              execution: "required",
+              purpose: "requested_read",
+              filterEvidence: [
+                { query, quote: message.content.text, origin: "current" },
+              ],
+              singleDaySearchDate: day,
+            },
+          ],
+          context,
+        );
+        if (!value) throw Error("Expected parsed search binding");
+        const parsed: ResponseHandlerResult = {
+          shouldRespond: "RESPOND",
+          contexts: ["calendar"],
+          intents,
+          candidateActionNames: [],
+          replyText: "",
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+        };
+        const effect = await calendarReadBindingField.handle?.({
+          ...context,
+          parsed,
+          value,
+        });
+        effect?.mutateResult?.(parsed);
+        const handler: MessageHandlerResult = {
+          processMessage: "RESPOND",
+          thought: "",
+          plan: {
+            contexts: ["calendar"],
+            intents,
+            calendarReadBindings:
+              parsed.calendarReadBindings as CalendarReadBinding[],
+          },
+        };
+        await runResponseHandlerEvaluators({
+          runtime,
+          message,
+          state,
+          messageHandler: handler,
+          availableContexts: [],
+          userRoles: ["OWNER"],
+          evaluators: [calendarReadBindingEvaluator],
+        });
+        const owned = getStreamingContext()?.actionConstraints;
+        return {
+          call: handler.plan.deterministicToolCall,
+          day: boundCalendarSearchDate(owned, message, String(runtime.agentId)),
+        };
+      });
+    };
+    const wholeDay = await route("today");
+    expect(wholeDay).toEqual({
+      day: "today",
+      call: {
+        name: "CALENDAR_SEARCH_EVENTS",
+        params: {
+          grantId: "eliza-calendar",
+          calendarId: "primary",
+          query: title,
+        },
+      },
+    });
+    expect(await route("today", [text], title, "next_event")).toEqual(wholeDay);
+    for (const result of [
+      await route("tomorrow"),
+      await route("today", [text, "Send it to a coworker"]),
+      await route("today", [text], "Calendar latency chec"),
+    ])
+      expect(result).toEqual({ day: undefined, call: undefined });
+    for (const [suffix, proposedDay] of [
+      ["today after 4 PM", "today"],
+      ["today or tomorrow", "today"],
+      ["today or tomorrow", "today or tomorrow"],
+      ["tomorrow morning", "tomorrow"],
+    ]) {
+      const request = `Find ${title} ${suffix}`;
+      message.content.text = request;
+      expect(await route(proposedDay, [request])).toEqual({
+        day: undefined,
+        call: undefined,
+      });
+    }
   });
   it.each([
     { intentId: "intent:1", execution: "required", bound: true },

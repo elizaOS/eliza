@@ -181,9 +181,8 @@ export interface CalendarMutationCancelRequest {
 }
 
 /**
- * Approval boundary for consequential connected-provider writes. The built-in
- * Eliza calendar is local and reversible, so its conversational CRUD executes
- * directly against CalendarService with optimistic concurrency.
+ * Approval boundary for connected-provider writes and explicit owner reviews.
+ * Otherwise the built-in Eliza calendar writes directly with optimistic concurrency.
  */
 export interface CalendarMutationGatewayDep {
   schedule(args: {

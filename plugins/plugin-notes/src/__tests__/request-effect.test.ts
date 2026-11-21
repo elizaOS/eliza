@@ -857,7 +857,7 @@ describe("request-bound Notes negative constraints", () => {
     }
   });
 
-  it("does not classify an ordinary update as requested by a patch-only interpretation", async () => {
+  it("classifies an existing-note update as fulfilling a patch interpretation, but not a create", async () => {
     const f = await fixture(
       { classification: "mutation_requested", operations: ["patch"] },
       "Append a line to the ideas note.",
@@ -872,13 +872,256 @@ describe("request-bound Notes negative constraints", () => {
         },
       });
       expect(changed.success).toBe(true);
+      // Stage 1 names an append or partial edit "patch"; the registered update
+      // child accepts the same textEdit, so its applied edit is the request.
       expect(readNotesMutationCompletion(changed, f.issuer)).toMatchObject({
-        requested: false,
+        requested: true,
         rejected: false,
         outsideRequestRejection: false,
         status: "current",
         dispatch: { child: "NOTES_UPDATE", value: "update" },
       });
+      const created = await f.execute("NOTES_CREATE", {
+        content: "unrequested\nnew note",
+      });
+      expect(readNotesMutationCompletion(created, f.issuer)).toMatchObject({
+        requested: false,
+        status: "current",
+        dispatch: { child: "NOTES_CREATE", value: "create" },
+      });
+    } finally {
+      await f.service.stop();
+    }
+  });
+
+  // Device replay (Alpha v609, "add the line second check to my Alpha device
+  // test note"): Stage 1 interpreted the append as patch, the planner chose
+  // NOTES_UPDATE textEdit append, the first call omitted expectedRevision
+  // (coaching rejection) and the retry applied with a durable receipt. The
+  // evaluator's verified FINISH was then replaced by "I couldn't confirm that
+  // Notes change was completed." because the applied update was classified as
+  // an unrequested effect.
+  it("confirms a patch-interpreted append applied by NOTES_UPDATE after a revision coaching retry", async () => {
+    const f = await fixture(
+      { classification: "mutation_requested", operations: ["patch"] },
+      "add the line second check to my ideas note",
+    );
+    const noteId = f.historical.value.id;
+    const textEdit = JSON.stringify({
+      action: "append",
+      field: "body",
+      text: "\nsecond check",
+    });
+    let requests = 0;
+    let evaluations = 0;
+    let receiptId: string | undefined;
+    const executed: string[] = [];
+    try {
+      const result = await diagnosedPlanner(f, {
+        context: f.context,
+        tools: [
+          {
+            name: "NOTES_UPDATE",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+        runtime: {
+          useModel: async () => {
+            requests++;
+            if (requests === 1)
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    name: "NOTES_UPDATE",
+                    id: "append-without-revision",
+                    arguments: {
+                      textEdit,
+                      noteId,
+                      eliza_turn_scope: "more_work_pending",
+                    },
+                  },
+                ],
+              };
+            if (requests === 2)
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    name: "NOTES_UPDATE",
+                    id: "append-with-revision",
+                    arguments: {
+                      noteId,
+                      textEdit,
+                      expectedRevision: f.service.snapshot().revision,
+                      eliza_turn_scope: "final",
+                    },
+                  },
+                ],
+              };
+            throw new Error("The applied append must not be replayed");
+          },
+        },
+        executeToolCall: async (call) => {
+          executed.push(call.name);
+          const actual = await f.execute(call.name, call.params ?? {});
+          receiptId ??= actual.effectReceipts?.[0]?.receiptId;
+          return actionResultToPlannerToolResult(actual, {
+            requestOperationIssuer: f.issuer,
+          });
+        },
+        evaluate: async () =>
+          ++evaluations === 1
+            ? {
+                success: false,
+                decision: "CONTINUE" as const,
+                thought: "Retry the update with expectedRevision.",
+              }
+            : {
+                success: true,
+                decision: "FINISH" as const,
+                thought: "The append applied with a durable receipt.",
+                messageToUser: "Added second check to the ideas note.",
+                replyEffectStatus: "applied" as const,
+                effectReceiptIds: receiptId ? [receiptId] : [],
+                raw: {
+                  messageToUser: "Added second check to the ideas note.",
+                },
+              },
+      });
+      expect(executed).toEqual(["NOTES_UPDATE", "NOTES_UPDATE"]);
+      expect(f.writes).toHaveBeenCalledTimes(1);
+      expect(f.service.getNote(noteId).body).toBe(
+        "\nlaunch on a Tuesday\nsecond check",
+      );
+      const [rejected, applied] = result.trajectory.steps.map(
+        (step) => step.result,
+      );
+      if (!rejected || !applied) throw new Error("Expected both attempts");
+      expect(rejected.data?.error).toBe("NOTES_EDIT_REVISION_REQUIRED");
+      // The superseded coaching rejection stays current and requested; it is
+      // not an outside-request effect and cannot void the later receipt.
+      expect(readNotesMutationCompletion(rejected, f.issuer)).toMatchObject({
+        requested: true,
+        outsideRequestRejection: false,
+        status: "current",
+      });
+      expect(readNotesMutationCompletion(applied, f.issuer)).toMatchObject({
+        requested: true,
+        rejected: false,
+        outsideRequestRejection: false,
+        status: "current",
+        dispatch: { child: "NOTES_UPDATE", value: "update" },
+      });
+      expect(applied.effectReceipts?.[0]).toMatchObject({
+        operation: "notes.note.update",
+        outcome: "applied",
+        resource: { id: noteId },
+      });
+      expect(receiptId).toBe(applied.effectReceipts?.[0]?.receiptId);
+      expect(result.terminalFailure).toBeUndefined();
+      expect(result.evaluator?.success).toBe(true);
+      expect(result.finalMessage).toBe("Added second check to the ideas note.");
+    } finally {
+      await f.service.stop();
+    }
+  });
+
+  it("does not make a rejected alternate NOTES_UPDATE a pending obligation for a patch request", async () => {
+    const f = await fixture(
+      { classification: "mutation_requested", operations: ["patch"] },
+      "add the line second check to my ideas note",
+    );
+    const noteId = f.historical.value.id;
+    let requests = 0;
+    let receiptId: string | undefined;
+    const executed: string[] = [];
+    try {
+      const result = await diagnosedPlanner(f, {
+        context: f.context,
+        tools: [
+          {
+            name: "NOTES_UPDATE",
+            parameters: { type: "object", properties: {} },
+          },
+          {
+            name: "NOTES_PATCH",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+        runtime: {
+          useModel: async () => {
+            requests++;
+            if (requests === 1)
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    name: "NOTES_UPDATE",
+                    id: "update-missing-edit",
+                    arguments: {
+                      noteId,
+                      eliza_turn_scope: "more_work_pending",
+                    },
+                  },
+                ],
+              };
+            if (requests === 2)
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    name: "NOTES_PATCH",
+                    id: "patch-append",
+                    arguments: {
+                      target: { kind: "id", value: noteId },
+                      changes: [],
+                      textEdit: {
+                        action: "append",
+                        field: "body",
+                        text: "\nsecond check",
+                      },
+                      expectedRevision: f.service.snapshot().revision,
+                      eliza_turn_scope: "final",
+                    },
+                  },
+                ],
+              };
+            throw new Error("The applied patch must not be replayed");
+          },
+        },
+        executeToolCall: async (call) => {
+          executed.push(call.name);
+          const actual = await f.execute(call.name, call.params ?? {});
+          receiptId ??= actual.effectReceipts?.[0]?.receiptId;
+          return actionResultToPlannerToolResult(actual, {
+            requestOperationIssuer: f.issuer,
+          });
+        },
+        evaluate: async () => ({
+          success: true,
+          decision: "FINISH" as const,
+          thought: "The append applied with a durable receipt.",
+          messageToUser: "Added second check to the ideas note.",
+          replyEffectStatus: "applied" as const,
+          effectReceiptIds: receiptId ? [receiptId] : [],
+          raw: { messageToUser: "Added second check to the ideas note." },
+        }),
+      });
+      expect(executed).toEqual(["NOTES_UPDATE", "NOTES_PATCH"]);
+      expect(f.writes).toHaveBeenCalledTimes(1);
+      const refused = result.trajectory.steps[0].result;
+      expect(
+        readNotesMutationCompletion(refused ?? {}, f.issuer),
+      ).toMatchObject({
+        requested: true,
+        rejected: false,
+        outsideRequestRejection: true,
+        status: "current",
+      });
+      expect(result.terminalFailure).toBeUndefined();
+      expect(result.evaluator?.success).toBe(true);
+      expect(result.finalMessage).toBe("Added second check to the ideas note.");
     } finally {
       await f.service.stop();
     }
@@ -2134,6 +2377,29 @@ describe("request-bound Notes negative constraints", () => {
         content: "Not requested",
       });
       expect(result.success, JSON.stringify(f.diagnostics())).toBe(false);
+      expect(result.data).toMatchObject({
+        code: "REQUEST_OPERATION_UNRESOLVED",
+        executionStatus: "not_started",
+      });
+      expect(f.writes).not.toHaveBeenCalled();
+      expect(f.service.snapshot()).toEqual(f.before);
+    } finally {
+      await f.service.stop();
+    }
+  });
+
+  it("preserves the checklist when an unresolved voice fragment reaches a planned append", async () => {
+    const f = await fixture(
+      { classification: "unresolved", operations: [] },
+      "Once in my filming checklist.",
+    );
+    try {
+      const result = await f.execute("NOTES_PATCH", {
+        target: { kind: "id", value: f.historical.value.id },
+        changes: [],
+        textEdit: { action: "append", field: "item", text: "once" },
+        expectedRevision: f.before.revision,
+      });
       expect(result.data).toMatchObject({
         code: "REQUEST_OPERATION_UNRESOLVED",
         executionStatus: "not_started",

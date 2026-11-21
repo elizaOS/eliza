@@ -10,11 +10,13 @@ import {
   readNotesMutationCompletion,
 } from "@elizaos/core";
 import { findViewActionHandoff } from "@elizaos/core/protocol";
+import { postTurnReviewRuns } from "../services/evaluator-progress.ts";
 import {
   completedSideEffectClaimIsUngrounded,
   evaluatePlannedReplyEgress,
 } from "../services/message/egress-policy.ts";
 import { projectBackgroundHistory } from "../services/message/history-discovery.ts";
+import { REQUEST_SOURCE_REFERENCE } from "../services/message/source-selection-binding.ts";
 import {
   replyNamesStructuredEffectDestination,
   structuredEffectFromToolResult,
@@ -24,6 +26,10 @@ import {
   describePlannerSourceReview,
   type PlannerSourceReviewAttribution,
 } from "./evaluator-context-attribution.ts";
+import {
+  readViewNavigationReceipt,
+  requiredViewNavigationStatus,
+} from "./nav-evaluator-eligibility";
 
 import {
   applyTypedReadReply,
@@ -46,6 +52,7 @@ import type {
   ActionResult,
   ContextEvent,
   ContextObject,
+  ContextObjectPromptSegment,
   ContextObjectTool,
   ContextProviderEvent,
   EffectReceipt,
@@ -145,6 +152,8 @@ import {
   sanitizeUserVisibleModelOutput,
   segmentBlock,
   selectCompletionContext,
+  selectHistoricalNavigation,
+  sleepWithAbort,
   stableJsonStringify,
   stringifyForModel,
   stripJsonStructuralJunkReply,
@@ -195,6 +204,7 @@ import {
 import {
   applyEvaluatorEffects,
   declaredIntentsFromContext,
+  rateLimitRetryWaitMs,
   repairFinishWithProgressPromise,
   runEvaluator,
   validatedOutcomeCoverage,
@@ -733,6 +743,30 @@ export async function runPlannerLoop(
     // not re-enter the pre-tool acknowledgement heuristic and be replaced by
     // another synthesis that lacks the recorded failure context.
     let final = await ensureFailedTurnFinalMessage(trackedParams, withReply);
+    const navigation = requiredViewNavigationStatus(final.trajectory);
+    if (
+      final.status === "finished" &&
+      final.evaluator?.success === true &&
+      (navigation === "missing" || navigation === "prepared")
+    ) {
+      const message =
+        navigation === "prepared"
+          ? final.finalMessage
+          : "I couldn’t confirm that the requested screen opened.";
+      final = {
+        ...final,
+        finalMessage: message,
+        ...(navigation === "missing" ? { finalContent: undefined } : {}),
+        evaluator: {
+          ...final.evaluator,
+          success: false,
+          requestFullyCovered: false,
+          replyEffectStatus: "non_applied",
+          outcomeCoverage: undefined,
+          messageToUser: message,
+        },
+      };
+    }
     if (
       final.status === "finished" &&
       final.evaluator?.success === true &&
@@ -1294,6 +1328,7 @@ async function runPlannerLoopIterations(
   // pending. A later explicit final declaration releases this authority.
   let lastPlannerExplicitCompleted: boolean | undefined;
   let pendingUnverifiedTerminalReply = false;
+  let navigationCompletionDeferrals = 0;
   let consecutiveScopeProtocolRejections = 0;
   // The successful FINISH most recently rejected by the pending-scope rule. If
   // the planner repeats settled operations, do not replay them. Repetition
@@ -1339,6 +1374,46 @@ async function runPlannerLoopIterations(
         replyEffectStatus: "non_applied",
         messageToUser:
           partialReply ?? getNonEmptyString(latestResult?.userFacingText),
+      };
+    }
+    if (
+      evaluator.decision === "FINISH" &&
+      evaluator.success === true &&
+      requiredViewNavigationStatus(trajectory) === "missing"
+    ) {
+      if (
+        hasExecutionPrerequisite(latestResult) ||
+        latestUnresolvedFailedNonTerminalToolStep(trajectory) ||
+        navigationCompletionDeferrals >= config.maxTerminalOnlyContinuations
+      ) {
+        return {
+          ...evaluator,
+          success: false,
+          requestFullyCovered: false,
+          replyEffectStatus: "non_applied",
+          outcomeCoverage: undefined,
+          messageToUser:
+            getNonEmptyString(latestResult?.userFacingText) ??
+            "I couldn’t confirm that the requested screen opened.",
+        };
+      }
+      navigationCompletionDeferrals++;
+      appendPlannerModelFeedbackEvent(trajectory, {
+        id: `required-view-navigation:${iteration}`,
+        type: "instruction",
+        source: "planner-loop",
+        createdAt: Date.now(),
+        metadata: { code: "REQUIRED_VIEW_NAVIGATION_MISSING" },
+        content:
+          "The requested view is still pending. Continue the open-view operation without repeating the completed work, or report the blocker.",
+      });
+      return {
+        ...evaluator,
+        success: false,
+        decision: "CONTINUE",
+        requestFullyCovered: false,
+        outcomeCoverage: undefined,
+        messageToUser: undefined,
       };
     }
     if (evaluator.decision === "FINISH" && evaluator.success === true) {
@@ -2690,12 +2765,14 @@ async function runPlannerLoopIterations(
             )))
       ) {
         // A native/text terminal is a proposed answer, not evidence of a completed read.
-        const evaluator = await evaluateTrajectory(
+        const evaluated = await evaluateTrajectory(
           params,
           trajectory,
           iteration,
           typedReadDeclined,
         );
+        const evaluator =
+          correctPendingSuccessfulFinish(evaluated, iteration) ?? evaluated;
         trajectory.evaluatorOutputs.push(evaluator);
         appendEvaluatorContextEvent(
           trajectory,
@@ -4144,6 +4221,12 @@ function renderPlannerModelInput(params: {
   sourceSelectionApplied: boolean;
   restoreContextTool?: ToolDefinition;
   actionSourceSelectionSchema?: JSONSchema & ActionParameterSchema;
+  /** Identity of the originals an offered review covers, captured before
+   * dispatch: the context may change while the model is awaited. */
+  actionSourceSetId?: string;
+  /** A review was due but not offered: nothing reviews this turn once it
+   * ends, or it could not defer more than it adds to the request. */
+  actionSourceReviewWithheld: boolean;
 } {
   const original = params.trajectory.modelBaseContext ?? params.context;
   const selected =
@@ -4191,7 +4274,7 @@ function renderPlannerModelInput(params: {
     )
       ? completionContextSources(original)
       : undefined;
-  const actionSourceSelectionSchema:
+  const reviewableSourceSchema:
     | (JSONSchema & ActionParameterSchema)
     | undefined = actionSources?.sources.length
     ? {
@@ -4200,24 +4283,52 @@ function renderPlannerModelInput(params: {
           ...COMPLETION_CONTEXT_SCHEMA.properties,
           sourceSetId: {
             type: "string",
-            enum: [actionSources.sourceSetId],
+            // The real identity is new every turn and would change each
+            // reviewing tool's definition with it. Offer a request-local
+            // alias; the dispatcher binds it to actionSourceSetId.
+            enum: [REQUEST_SOURCE_REFERENCE],
             description:
               "Use this exact identity for the originals supplied with this planner request.",
           },
         },
       }
     : undefined;
+  const actionSourceReview: ContextObjectPromptSegment = {
+    id: "action-source-review",
+    label: "action_source_review",
+    stable: false,
+    content: `${COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS.replaceAll("completionContext", ACTION_CONTEXT_ARG)}\nUse ${ACTION_CONTEXT_ARG} to review originals for the WHOLE remaining user request, including every pending intent, not only this tool. Return the same review on every eligible domain call in this batch; discovery, reply and restoration protocol calls do not carry this review. Include all applicable standing constraints, corrections, guest identities and referents needed by any remaining operation or final answer. If uncertain, select all_prior_dialogue with complete=false. Current requests, provider facts, tool receipts and complete restorable originals remain available. This never changes the reply handler input.`,
+  };
+  // A due review is withheld in two cases. Where nothing reviews the turn once
+  // it ends, offering it would add its argument to every reviewing tool on a
+  // long transcript and drop it again when a review is accepted or the
+  // positional window applies; a prompt cache reads tool definitions first,
+  // so each change costs the rest of the request. Elsewhere it is withheld
+  // when it cannot defer more than offering it adds: that compares complete
+  // encodings and never caps or selects away any source.
+  const actionSourceReviewWithheld =
+    reviewableSourceSchema !== undefined &&
+    actionSources !== undefined &&
+    (!postTurnReviewRunsFor(original) ||
+      deferrableHistoryChars(
+        original,
+        actionSources.sources,
+        renderedContext.promptSegments,
+      ) <=
+        actionSourceReviewChars(
+          actionSourceReview,
+          reviewableSourceSchema,
+          params.tools ?? [],
+        ));
+  const actionSourceSelectionSchema = actionSourceReviewWithheld
+    ? undefined
+    : reviewableSourceSchema;
   if (actionSourceSelectionSchema && actionSources) {
     renderedContext.promptSegments = labelHistorySources(
       renderedContext.promptSegments,
       new Map(actionSources.sources.map(({ id, event }) => [event.id, id])),
     );
-    renderedContext.promptSegments.push({
-      id: "action-source-review",
-      label: "action_source_review",
-      stable: false,
-      content: `${COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS.replaceAll("completionContext", ACTION_CONTEXT_ARG)}\nUse ${ACTION_CONTEXT_ARG} to review originals for the WHOLE remaining user request, including every pending intent, not only this tool. Return the same review on every eligible domain call in this batch; discovery, reply and restoration protocol calls do not carry this review. Include all applicable standing constraints, corrections, guest identities and referents needed by any remaining operation or final answer. If uncertain, select all_prior_dialogue with complete=false. Current requests, provider facts, tool receipts and complete restorable originals remain available. This never changes the reply handler input.`,
-    });
+    renderedContext.promptSegments.push(actionSourceReview);
   }
   if (
     params.allowSourceSelection &&
@@ -4248,7 +4359,12 @@ function renderPlannerModelInput(params: {
     renderedContext.promptSegments.push({
       id: "planner-background-history",
       stable: false,
-      content: `A complete background review deferred ${background.omittedSourceCount} earlier originals. This is not a current-request source review. Retained constraints, recent continuity and loaded originals are shown; all canonical originals remain available. For missing or uncertain historical dependencies call RESTORE_CONTEXT alone with scope=history before effects; never infer or count omitted history.`,
+      // Nothing reviewed what a positional window defers, so "uncertain" would
+      // hold on every turn; only a named gap justifies restoring the room.
+      content:
+        "windowed" in background && background.windowed
+          ? `${background.omittedSourceCount} earlier messages are not shown; they were deferred by position, not reviewed. The most recent messages and originals loaded during routing are shown. Omitted dialogue is not itself a missing dependency: call RESTORE_CONTEXT alone with scope=history before effects only for a specific referent, constraint or fact this request names that is not shown. Never infer or count omitted history.`
+          : `A complete background review deferred ${background.omittedSourceCount} earlier originals. This is not a current-request source review. Retained constraints, recent continuity and loaded originals are shown; all canonical originals remain available. For missing or uncertain historical dependencies call RESTORE_CONTEXT alone with scope=history before effects; never infer or count omitted history.`,
     });
   if (selected.applied)
     renderedContext.promptSegments.push({
@@ -4383,6 +4499,10 @@ function renderPlannerModelInput(params: {
     promptSegments,
     cacheKeySegments,
     actionSourceSelectionSchema,
+    actionSourceSetId: actionSourceSelectionSchema
+      ? actionSources?.sourceSetId
+      : undefined,
+    actionSourceReviewWithheld,
     restoreContextTool,
     sourceSelectionApplied:
       selected.applied ||
@@ -4390,6 +4510,75 @@ function renderPlannerModelInput(params: {
       diagnosticProjection.applied ||
       deferred.available.length > 0,
   };
+}
+
+/** Whether the host reviews this turn once it ends, by the gate Stage 1 uses.
+ * The planner is handed the turn's context, not its message: the current
+ * request in it holds the stored content, channel included. Without one the
+ * platform alone decides. */
+function postTurnReviewRunsFor(context: ContextObject): boolean {
+  const messageId = context.metadata?.messageId;
+  const request = context.events.find(
+    (event): event is Extract<ContextEvent, { type: "message" }> =>
+      event.type === "message" && "message" in event && event.id === messageId,
+  );
+  const content = request?.message.content;
+  return postTurnReviewRuns({ content: isPlainObject(content) ? content : {} });
+}
+
+/** Wire characters a complete review could defer at most: every reviewable
+ * original and each historical receipt that follows its request out. */
+function deferrableHistoryChars(
+  original: ContextObject,
+  sources: ReturnType<typeof completionContextSources>["sources"],
+  segments: ContextObjectPromptSegment[],
+): number {
+  const kept = new Set(
+    selectHistoricalNavigation(original, new Set(), {
+      historicalEffects: true,
+    }).events,
+  );
+  const deferrable = new Set(sources.map(({ event }) => event.id));
+  for (const event of original.events)
+    if (!kept.has(event)) deferrable.add(event.id);
+  return segments.reduce(
+    (chars, segment) =>
+      segment.id !== undefined && deferrable.has(segment.id)
+        ? chars + segmentBlock(segment).length + 2
+        : chars,
+    0,
+  );
+}
+
+/** Wire characters a review adds to one request: its instruction segment, the
+ * shared field instructions and the argument schema on each reviewing tool. */
+function actionSourceReviewChars(
+  review: ContextObjectPromptSegment,
+  schema: JSONSchema,
+  tools: ToolDefinition[],
+): number {
+  const fieldInstructions = completionContextFieldInstructions(schema);
+  const perTool =
+    JSON.stringify({
+      [ACTION_CONTEXT_ARG]: withSharedCompletionContextDescriptions(
+        schema,
+        fieldInstructions,
+      ),
+    }).length + JSON.stringify(ACTION_CONTEXT_ARG).length;
+  const reviewingTools = tools.filter(
+    (tool) =>
+      !isTerminalToolCall({ name: tool.name }) &&
+      !isDiscoveryActionName(tool.name) &&
+      tool.name !== "RESTORE_CONTEXT" &&
+      tool.parameters?.type === "object",
+  ).length;
+  return (
+    segmentBlock(review).length +
+    2 +
+    fieldInstructions.length +
+    2 +
+    reviewingTools * perTool
+  );
 }
 
 /**
@@ -4710,20 +4899,7 @@ async function dispatchWithCodingCallTimeout<T>(args: {
             },
             "[planner-loop] coding inference is rate limited; waiting for the provider window",
           );
-          await new Promise<void>((resolve, reject) => {
-            const onAbort = (): void => {
-              clearTimeout(retryTimer);
-              reject(controller.signal.reason);
-            };
-            const retryTimer = setTimeout(() => {
-              controller.signal.removeEventListener("abort", onAbort);
-              resolve();
-            }, delayMs);
-            controller.signal.addEventListener("abort", onAbort, {
-              once: true,
-            });
-            if (controller.signal.aborted) onAbort();
-          });
+          await sleepWithAbort(delayMs, controller.signal);
         }
       }
     };
@@ -5589,24 +5765,40 @@ async function dispatchPlannerModelCall(params: {
       // A non-coding generation that reached its output cap is usually
       // degenerate, not long. Sample the identical request once more; a
       // second cap or any other failure keeps the existing failure path.
+      // A temporary rate limit gets the same single re-send after a short
+      // wait, so a turn does not fail after its earlier calls were paid for.
+      if (retryIdx !== undefined || params.trajectory.codingMode === true)
+        throw error;
+      const rateLimitWaitMs = rateLimitRetryWaitMs(error);
       if (
-        retryIdx !== undefined ||
-        params.trajectory.codingMode === true ||
-        attemptMaxTokens === undefined ||
-        !isModelOutputLimitFinishReason(
-          modelOutputIncompleteEvidence(error)?.finishReason,
-        )
+        rateLimitWaitMs === undefined &&
+        (attemptMaxTokens === undefined ||
+          !isModelOutputLimitFinishReason(
+            modelOutputIncompleteEvidence(error)?.finishReason,
+          ))
       )
         throw error;
       streamingContext?.abortSignal?.throwIfAborted();
-      params.runtime.logger?.warn?.(
-        {
-          src: "planner-loop",
-          iteration: params.iteration,
-          maxTokens: attemptMaxTokens,
-        },
-        "[planner-loop] planner output reached its token cap; retrying the generation once",
-      );
+      if (rateLimitWaitMs === undefined) {
+        params.runtime.logger?.warn?.(
+          {
+            src: "planner-loop",
+            iteration: params.iteration,
+            maxTokens: attemptMaxTokens,
+          },
+          "[planner-loop] planner output reached its token cap; retrying the generation once",
+        );
+      } else {
+        params.runtime.logger?.warn?.(
+          {
+            src: "planner-loop",
+            iteration: params.iteration,
+            delayMs: rateLimitWaitMs,
+          },
+          "[planner-loop] planner inference is rate limited; waiting before one re-send",
+        );
+        await sleepWithAbort(rateLimitWaitMs, streamingContext?.abortSignal);
+      }
       retryIdx = 1;
       startedAt = Date.now();
     }
@@ -5614,6 +5806,23 @@ async function dispatchPlannerModelCall(params: {
   const endedAt = Date.now();
 
   const parsed = parsePlannerOutput(raw);
+  // Bind the offered alias to the identity captured when this request was
+  // rendered, before anything reads, compares or stores the selection. With
+  // no review offered the alias stays unbound and is refused like any other
+  // identity that is not this request's.
+  const offeredSourceSetId = renderedInput.actionSourceSetId;
+  if (offeredSourceSetId !== undefined)
+    parsed.toolCalls = parsed.toolCalls.map((call) =>
+      call.completionContext?.sourceSetId === REQUEST_SOURCE_REFERENCE
+        ? {
+            ...call,
+            completionContext: {
+              ...call.completionContext,
+              sourceSetId: offeredSourceSetId,
+            },
+          }
+        : call,
+    );
   const privateContent =
     typeof raw !== "string" && Array.isArray(raw.content)
       ? raw.content.flatMap((part) =>
@@ -5695,15 +5904,19 @@ async function dispatchPlannerModelCall(params: {
         previousApplied: previous.applied,
         unanimous,
         accepted,
-        offeredSourceSetId:
-          renderedInput.actionSourceSelectionSchema?.properties?.sourceSetId
-            ?.enum?.[0],
+        offeredSourceSetId,
       });
+    // A withheld review is not a review: an explicit earlier selection stays
+    // stored and keeps the background view from taking over.
+    const storedSelection =
+      submitted || !renderedInput.actionSourceReviewWithheld
+        ? { completionContext: accepted ?? (submitted ? null : undefined) }
+        : {};
     params.trajectory.modelBaseContext = {
       ...original,
       metadata: {
         ...original.metadata,
-        completionContext: accepted ?? (submitted ? null : undefined),
+        ...storedSelection,
         ...(submitted ? { backgroundHistory: undefined } : {}),
       },
     };
@@ -5711,7 +5924,7 @@ async function dispatchPlannerModelCall(params: {
       ...params.trajectory.context,
       metadata: {
         ...params.trajectory.context.metadata,
-        completionContext: accepted ?? (submitted ? null : undefined),
+        ...storedSelection,
         ...(submitted ? { backgroundHistory: undefined } : {}),
       },
     };
@@ -9772,10 +9985,7 @@ function preparedNavigationSynthesisStep(
   const result = step?.result;
   if (
     !step?.toolCall ||
-    result?.success !== true ||
-    result.transcriptVisibility !== "internal" ||
-    !result.modelReplyRequired ||
-    !hasAwaitingDeviceExecutionMarker(result) ||
+    !result ||
     hasAwaitingUserInputMarker(result) ||
     hasRequiresConfirmationMarker(result) ||
     result.error != null ||
@@ -9784,34 +9994,15 @@ function preparedNavigationSynthesisStep(
     result.userFacingEffectReceiptIds?.length
   )
     return;
-  const handoff = findViewActionHandoff([
-    {
-      success: true,
-      actionName: step.toolCall.name,
-      values: result.data?.values,
-    },
-  ]);
+  const receipt = readViewNavigationReceipt(step);
   const effect = structuredEffectFromToolResult(result);
-  const navigation = result.data?.navigation;
   if (
-    !handoff?.navigationPrepared ||
+    receipt?.status !== "prepared" ||
     effect?.effect !== "view_navigation" ||
     effect.status !== "prepared" ||
-    !effect.label ||
-    !isObjectRecord(navigation) ||
-    navigation.viewId !== handoff.viewId ||
-    effect.viewId !== handoff.viewId ||
-    navigation.handoffId !== handoff.completedActionHandoffId ||
-    navigation.label !== effect.label ||
-    navigation.status !== "prepared" ||
-    effect.resolvedAlias !== navigation.resolvedAlias
-  )
-    return;
-  const view = result.data?.view;
-  if (
-    !isObjectRecord(view) ||
-    view.id !== handoff.viewId ||
-    view.installationId !== handoff.navigationBinding?.installationId
+    effect.viewId !== receipt.handoff.viewId ||
+    effect.label !== receipt.label ||
+    effect.resolvedAlias !== receipt.navigation.resolvedAlias
   )
     return;
   const wanted = step.toolCall.params?.view;

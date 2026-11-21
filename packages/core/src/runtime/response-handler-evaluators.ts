@@ -23,6 +23,13 @@ import type { ContextProviderEvent } from "./context-object";
 import type { DirectActionRoutingRule } from "./direct-action-routing";
 import { TurnAbortedError } from "./turn-aborted-error";
 
+/** A known app view explicitly requested by this turn. Grants no execution authority. */
+export interface RequiredViewNavigation {
+	viewId: string;
+	clientId: string;
+	installationId: string;
+}
+
 export interface ResponseHandlerPatch {
 	processMessage?: MessageHandlerAction;
 	requiresTool?: boolean;
@@ -38,6 +45,7 @@ export interface ResponseHandlerPatch {
 	};
 	/** Complete canonical sources authored by trusted evaluators, outside model plans. */
 	contextSources?: readonly ContextProviderEvent[];
+	requiredViewNavigation?: RequiredViewNavigation;
 	addContexts?: readonly AgentContext[];
 	addCandidateActions?: readonly string[];
 	addParentActionHints?: readonly string[];
@@ -87,6 +95,7 @@ export interface ResponseHandlerPatchTrace {
 
 export interface ResponseHandlerEvaluationRunResult {
 	contextSources?: ContextProviderEvent[];
+	requiredViewNavigation?: RequiredViewNavigation;
 	activeEvaluators: string[];
 	appliedPatches: ResponseHandlerPatchTrace[];
 	candidateActionsAddedByEvaluators: string[];
@@ -425,6 +434,8 @@ export async function runResponseHandlerEvaluators(args: {
 					wholeRequestOwner = patch.replaceIntentScope.owner;
 					for (const field of patch.replaceIntentScope.invalidateFields)
 						invalidatedScopeFields.add(field);
+					if (invalidatedScopeFields.has("visualContinuation"))
+						delete result.requiredViewNavigation;
 				}
 				if (patch.clearCandidateActions) {
 					result.candidateActionsClearedByEvaluators = true;
@@ -438,6 +449,12 @@ export async function runResponseHandlerEvaluators(args: {
 			if (patch.contextSources?.length) {
 				result.contextSources ??= [];
 				result.contextSources.push(...patch.contextSources);
+			}
+			if (
+				patch.requiredViewNavigation &&
+				!invalidatedScopeFields.has("visualContinuation")
+			) {
+				result.requiredViewNavigation = patch.requiredViewNavigation;
 			}
 		} catch (error) {
 			// A cancelled turn is not an evaluator failure: stop here and let the

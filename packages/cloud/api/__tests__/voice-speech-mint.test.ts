@@ -17,6 +17,7 @@ const USER = "11111111-1111-4111-8111-111111111111";
 const ORG = "22222222-2222-4222-8222-222222222222";
 const NONCE = "33333333-3333-4333-8333-333333333333";
 let consented = true;
+let consentWrite: Promise<void> | undefined;
 let order: string[] = [];
 let releaseConsume: () => void = () => {};
 let releaseInitialize: () => void = () => {};
@@ -36,10 +37,17 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
 }));
 mock.module("@elizaos/cloud-shared/lib/voice-session/consent-nonce", () => ({
   CONSENT_NONCE_TTL_SECONDS: 300,
-  issueConsentNonce: async () => ({
-    nonce: NONCE,
-    expiresAt: new Date(Date.now() + 300_000).toISOString(),
-  }),
+  issueConsentNonce: async (
+    _userId: string,
+    warm?: (nonce: string) => void,
+  ) => {
+    warm?.(NONCE);
+    await consentWrite;
+    return {
+      nonce: NONCE,
+      expiresAt: new Date(Date.now() + 300_000).toISOString(),
+    };
+  },
   consumeConsentNonce: async (userId: string, nonce: string) => {
     expect([userId, nonce]).toEqual([USER, NONCE]);
     order.push("consume-start");
@@ -285,18 +293,31 @@ test("the window bound is an integer 1-120 and defaults to 10", async () => {
     expect(() => resolveSpeechRelayMaxWindows(bound)).toThrow();
 });
 
-test("consent warms the session object that the mint then initializes", async () => {
-  const consent = await app.request(
-    "/api/v1/voice/speech/consent",
-    { method: "POST", headers: { "Content-Type": "application/json" } },
-    env(),
-  );
-  expect(consent.status).toBe(200);
-  // The warm is not awaited by the route; let it dispatch.
-  for (let n = 0; n < 50 && touched.length < 1; n++)
-    await new Promise((resolve) => setTimeout(resolve, 1));
-  expect(touched).toHaveLength(1);
-  expect(touched[0]!.path).toBe("/warm");
+test("consent warms the same session during its durable write", async () => {
+  const hold = Promise.withResolvers<void>();
+  consentWrite = hold.promise;
+  let issued = false;
+  const responsePending = Promise.resolve(
+    app.request(
+      "/api/v1/voice/speech/consent",
+      { method: "POST", headers: { "Content-Type": "application/json" } },
+      env(),
+    ),
+  ).then((response) => {
+    issued = true;
+    return response;
+  });
+  try {
+    for (let n = 0; n < 50 && !touched.length; n++)
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    expect(touched.map((row) => row.path)).toEqual(["/warm"]);
+    expect(issued).toBe(false);
+  } finally {
+    consentWrite = undefined;
+    hold.resolve();
+    await responsePending;
+  }
+  expect((await responsePending).status).toBe(200);
   const response = await settle(mint());
   expect(response.status).toBe(200);
   const body = (await response.json()) as { sessionId: string; wsUrl: string };

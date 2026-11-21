@@ -26,6 +26,7 @@ import {
   requestLocalCalendarUpdate,
 } from "@elizaos/plugin-assistant";
 import { calendarAction } from "./actions/calendar.js";
+import { registerCalendarEventRequestRouting } from "./actions/calendar-event-request.js";
 import {
   inferNativeCalendarCreate,
   inferSelectedCalendarUpdate,
@@ -99,6 +100,8 @@ export const calendarPlugin: Plugin = {
       requestLocalAvailability: requestLocalCalendarAvailability,
     });
     registerLocalCalendarTimeUpdateRouting(runtime);
+    // Event create/move/delete requests reach Calendar from any open view.
+    registerCalendarEventRequestRouting(runtime);
     registerLocalCalendarUpdatePlanner(runtime, (args) =>
       inferSelectedCalendarUpdate({ runtime, ...args }),
     );
@@ -156,7 +159,6 @@ export const calendarPlugin: Plugin = {
         },
       ],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
 };

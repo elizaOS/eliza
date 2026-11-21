@@ -4,6 +4,7 @@ import {
   synthesizeCloudflareAudio,
 } from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { DEFAULT_ELEVENLABS_VOICE_ID } from "@elizaos/host/protocol";
 
 /** Handles authenticated cloud text-to-speech generation, safety checks, and billing. */
 
@@ -64,6 +65,7 @@ import {
   isKokoroFirstLineCacheEnabled,
 } from "./kokoro-first-line-cache";
 import {
+  LEGACY_DEFAULT_ELEVENLABS_VOICE_ID,
   resolveCartesiaVoiceId,
   selectTtsProvider,
   type TtsProvider,
@@ -523,10 +525,16 @@ async function __hono_POST(c: AppContext) {
     // still populate the cache in the background — concat-with-remainder is
     // a follow-up.
     // ---------------------------------------------------------------------
+    const operatorElevenLabsVoiceId =
+      providerSelection.provider === "elevenlabs" && !isCustomVoice
+        ? (env.ELEVENLABS_VOICE_ID ?? process.env.ELEVENLABS_VOICE_ID)
+        : undefined;
     const resolvedVoiceId =
       providerSelection.provider === "cartesia"
         ? cartesiaVoiceId
-        : voiceId || "EXAVITQu4vr4xnSDxMaL";
+        : (isCustomVoice && voiceId) ||
+          operatorElevenLabsVoiceId ||
+          DEFAULT_ELEVENLABS_VOICE_ID;
     const resolvedModelId = modelId || "eleven_flash_v2_5";
     const snipResult = firstSentenceSnip(text);
     // Context and rendering controls change audio. Never read or populate a
@@ -683,13 +691,19 @@ async function __hono_POST(c: AppContext) {
     // instead of charging the utterance twice. Org-scoped inside reserve().
     // The key is bound to the utterance it names: the same key with another
     // text, voice, model or format is a new paid request, never a replay.
-    // Hash resolved defaults because the proxy fallback fills the legacy
-    // default voice and model that the direct request is allowed to omit.
+    // Keep the historical billing identity for the ElevenLabs default. Older
+    // proxies send this marker explicitly, and a retry may cross a rollout
+    // that changed the voice used to synthesize the default.
     const clientIdempotencyKey = request.headers.get("Idempotency-Key");
     const ttsIdempotencyKey = clientIdempotencyKey
       ? `${clientIdempotencyKey}:${settlementDigest({
           text,
-          voiceId: resolvedVoiceId,
+          voiceId:
+            providerSelection.provider === "elevenlabs" &&
+            !isCustomVoice &&
+            !operatorElevenLabsVoiceId
+              ? LEGACY_DEFAULT_ELEVENLABS_VOICE_ID
+              : resolvedVoiceId,
           modelId: resolvedModelId,
           format: body.format ?? "mp3",
           withTimestamps: body.withTimestamps === true,
@@ -824,7 +838,7 @@ async function __hono_POST(c: AppContext) {
         const synthesis = {
           ...TtsSynthesisOptions.parse(body),
           text,
-          voiceId,
+          voiceId: resolvedVoiceId,
           modelId,
         };
         audioStream = body.withTimestamps

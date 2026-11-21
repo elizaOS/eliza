@@ -7,6 +7,8 @@ import {
   type ContextObject,
   createCharacter,
   type Memory,
+  type MessageHandlerResult,
+  runResponseHandlerEvaluators,
   stringToUuid,
 } from "@elizaos/core";
 import { initializeTestRuntime } from "@elizaos/testing/runtime";
@@ -79,6 +81,55 @@ async function fixture() {
   });
   return { runtime, service, note, read, model, message };
 }
+
+describe("one current named-note read", () => {
+  it("selects the exact Notes read and leaves compound or ambiguous requests to planning", async () => {
+    const f = await fixture();
+    const get = notesPlugin.actions?.find(({ name }) => name === "NOTES_GET");
+    if (!get) throw Error("Missing canonical Notes read");
+    f.runtime.registerAction(get);
+    const route = async (
+      intents: string[],
+      userRoles: readonly ("OWNER" | "USER")[] = ["OWNER"],
+    ) => {
+      const handler: MessageHandlerResult = {
+        processMessage: "RESPOND",
+        thought: "",
+        plan: {
+          contexts: ["notes"],
+          intents,
+          notesRequestEffect: "read_only",
+          notesRequestInterpretation: {
+            status: "explicit",
+            operations: ["get"],
+          },
+        },
+      };
+      await runResponseHandlerEvaluators({
+        runtime: f.runtime,
+        message: f.message(),
+        messageHandler: handler,
+        state: { values: {}, data: {}, text: "" },
+        availableContexts: [],
+        userRoles,
+        evaluators: notesPlugin.responseHandlerEvaluators,
+      });
+      return handler.plan.deterministicToolCall;
+    };
+    const readIntent = "Read the Weekend bag note";
+    expect(await route([readIntent], ["USER"])).toBeUndefined();
+    expect(f.read).not.toHaveBeenCalled();
+    expect(await route([readIntent, "Check the calendar"])).toBeUndefined();
+    expect(await route([readIntent])).toEqual({
+      name: "NOTES_GET",
+      params: { noteId: f.note.id },
+    });
+    await f.service.createNote({ content: "Weekend bag\nA different note." });
+    expect(await route([readIntent])).toBeUndefined();
+    expect(f.model).not.toHaveBeenCalled();
+  });
+});
+
 describe("body-free canonical named-note Stage1 routing", () => {
   it("is registered while full named and saved note bodies stay outside the lean allowlist", async () => {
     const f = await fixture();

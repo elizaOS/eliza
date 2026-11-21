@@ -118,6 +118,7 @@ function calendarAction(text: string, extracted: Record<string, unknown>) {
         ? {
             rawResponse: "{}",
             parsed: {
+              reviewBeforeCreate: false,
               requiresInput: false,
               clarification: null,
               grantId: ELIZA_CALENDAR_GRANT_ID,

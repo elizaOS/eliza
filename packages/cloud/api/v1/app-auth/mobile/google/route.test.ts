@@ -301,6 +301,7 @@ test("a refused or second-factor identity issues no key; the Steward session alw
     success: true,
     status: "mfa_required",
     mfa: { type: "totp", challengeId: "m1" },
+    googleSubject: "109876543210",
   });
   expect(events).not.toContain("issue:43");
   expect(logoutCalls).toHaveLength(0);

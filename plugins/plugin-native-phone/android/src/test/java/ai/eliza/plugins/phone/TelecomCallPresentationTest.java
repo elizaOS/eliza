@@ -48,9 +48,9 @@ public class TelecomCallPresentationTest {
         assertEquals("I", TelecomCallPresentation.initials("411 Info", true));
     }
 
-    @Test public void aNumberWithNoNameIsAHashAndAWithheldCallerIsBlank() {
-        assertEquals("#", TelecomCallPresentation.initials(null, true));
-        assertEquals("#", TelecomCallPresentation.initials("+1 555 0123", true));
+    @Test public void numberWithoutNameAndWithheldCallerHaveNoInitials() {
+        assertEquals("", TelecomCallPresentation.initials(null, true));
+        assertEquals("", TelecomCallPresentation.initials("+1 555 0123", true));
         assertEquals("", TelecomCallPresentation.initials(null, false));
         assertEquals("", TelecomCallPresentation.initials("   ", false));
     }
@@ -193,7 +193,8 @@ public class TelecomCallPresentationTest {
             try { if (!release.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("Contact fixture was not released"); }
             catch (InterruptedException stopped) { Thread.currentThread().interrupt(); return null; }
             android.database.MatrixCursor rows = new android.database.MatrixCursor(columns);
-            rows.addRow(new Object[] {"Private contact name"}); return rows;
+            Object[] values = new Object[columns.length]; values[0] = "Private contact name";
+            rows.addRow(values); return rows;
         }
         @Override public String getType(android.net.Uri uri) { return null; }
         @Override public android.net.Uri insert(android.net.Uri uri, android.content.ContentValues values) { throw new UnsupportedOperationException(); }
@@ -225,6 +226,44 @@ public class TelecomCallPresentationTest {
     @Test public void removedCallFencesAnAlreadyRunningNameLookup() throws Exception { contactLookup("removed"); }
     @Test public void destroyedServiceFencesAnAlreadyRunningNameLookup() throws Exception { contactLookup("destroyed"); }
     @Test public void cachedContactNameIsNotReusedAfterPermissionWithdrawal() throws Exception { contactLookup("cached"); }
+    @Test public void currentScreenReceivesContactNameWithoutAnExternalPhotoRequest() throws Exception { screenLookup("current"); }
+    @Test public void stoppedScreenRejectsAlreadyRunningContactRead() throws Exception { screenLookup("stopped"); }
+    @Test public void screenRejectsContactReadAfterPermissionWithdrawal() throws Exception { screenLookup("revoked"); }
+    public static final class CallScreen extends TelecomCallActivity {
+        @Override protected String title() { return "Test call"; }
+        @Override protected boolean showHoldControl() { return false; }
+    }
+    private static void screenLookup(String retirement) throws Exception {
+        android.app.Application app = org.robolectric.RuntimeEnvironment.getApplication();
+        Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.READ_CONTACTS);
+        HeldContacts.entered = new java.util.concurrent.CountDownLatch(1);
+        HeldContacts.release = new java.util.concurrent.CountDownLatch(1);
+        android.content.pm.ProviderInfo info = new android.content.pm.ProviderInfo(); info.authority = "com.android.contacts";
+        Robolectric.buildContentProvider(HeldContacts.class).create(info);
+        CallOwner owner = Robolectric.buildService(CallOwner.class).create().get();
+        org.robolectric.android.controller.ActivityController<CallScreen> screen = null;
+        boolean stopped = false;
+        try {
+            Call call = contactCall(); owner.onCallAdded(call);
+            screen = Robolectric.buildActivity(CallScreen.class).create().start().resume();
+            org.junit.Assert.assertTrue(HeldContacts.entered.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            if ("stopped".equals(retirement)) { screen.pause().stop(); stopped = true; }
+            if ("revoked".equals(retirement)) Shadows.shadowOf(app).denyPermissions(android.Manifest.permission.READ_CONTACTS);
+            HeldContacts.release.countDown();
+            java.util.concurrent.ExecutorService worker = ReflectionHelpers.getField(screen.get(), "lookups");
+            worker.submit(() -> {}).get(10, java.util.concurrent.TimeUnit.SECONDS);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            java.util.Map<String, String> names = ReflectionHelpers.getField(screen.get(), "names");
+            org.junit.Assert.assertEquals("current".equals(retirement), names.containsValue("Private contact name"));
+            java.util.Map<?, ?> photos = ReflectionHelpers.getField(screen.get(), "photos");
+            org.junit.Assert.assertTrue(photos.isEmpty());
+        } finally {
+            HeldContacts.release.countDown();
+            if (screen != null) { if (!stopped) screen.pause().stop(); screen.destroy(); }
+            owner.onDestroy();
+        }
+    }
+
     private static void contactLookup(String retirement) throws Exception {
         android.app.Application app = org.robolectric.RuntimeEnvironment.getApplication();
         Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.READ_CONTACTS);

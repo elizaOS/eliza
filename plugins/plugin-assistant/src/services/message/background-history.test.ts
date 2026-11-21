@@ -310,19 +310,21 @@ it.each([
     const prompts: string[] = [];
     let writes = 0;
     const service = {
-      getCalendarFeed: async () => ({
-        state: "complete",
-        events: [],
-        sources: [
-          {
-            status: "fresh",
-            key: { grantId: "eliza-calendar", calendarId: "primary" },
-          },
-        ],
-        timeMin: "2026-09-25T00:00:00Z",
-        timeMax: "2026-10-09T00:00:00Z",
+      getCalendarFeedSnapshot: async () => ({
+        feed: {
+          state: "complete",
+          events: [],
+          sources: [
+            {
+              status: "fresh",
+              key: { grantId: "eliza-calendar", calendarId: "primary" },
+            },
+          ],
+          timeMin: "2026-09-25T00:00:00Z",
+          timeMax: "2026-10-09T00:00:00Z",
+        },
+        calendars: [],
       }),
-      listCalendars: async () => [],
       createCalendarEvent: async () => {
         writes++;
         throw new Error("Forbidden test write");

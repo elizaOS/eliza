@@ -113,5 +113,5 @@ writeFileSync(
   `${JSON.stringify({ model, status: "passed", sources, observations }, null, 2)}\n`,
 );
 console.log(
-  `Native call registry: 23 Android JVM tests passed. Evidence ${receipt}`,
+  `Native call registry: ${suites.reduce((total, suite) => total + suite.required.length, 0)} Android JVM tests passed. Evidence ${receipt}`,
 );

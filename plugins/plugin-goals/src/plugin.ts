@@ -57,7 +57,6 @@ export const goalsPlugin: Plugin = {
         "OWNER_ROUTINES",
       ],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
   async dispose(runtime) {

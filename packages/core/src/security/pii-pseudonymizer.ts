@@ -42,7 +42,9 @@ export interface PseudonymSessionOptions {
 	/**
 	 * Deterministic seed for surrogate selection. Omit for a cryptographically
 	 * random per-session salt (the production default — makes surrogates
-	 * unlinkable across sessions). Tests pass a fixed salt for reproducibility.
+	 * unlinkable across sessions). Tests pass a fixed salt for reproducibility,
+	 * and a host that keeps references stable passes one per conversation, so
+	 * a value keeps its surrogate in every turn.
 	 */
 	salt?: string;
 	/**

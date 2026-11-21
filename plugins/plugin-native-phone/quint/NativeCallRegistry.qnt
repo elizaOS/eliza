@@ -92,3 +92,47 @@ module NativeCallContactLookup {
   run cachedRefreshRechecksGrantTest = init.then(lookup).then(ioReturns).then(publish).then(withdraw)
     .then(cachedRefresh).expect(not(s.published))
 }
+
+// A screen contact read owns a visit, call identity, number and Contacts grant.
+// Stopping/reopening the screen retires its read even if Android returns it later.
+module NativeCallScreenContact {
+  var visit: int
+  var call: int
+  var number: int
+  var grant: bool
+  var live: bool
+  var phase: str
+  var owner: { visit: int, call: int, number: int }
+  var visible: bool
+  action init = all { visit' = 1, call' = 1, number' = 1, grant' = true,
+    live' = true, phase' = "idle", owner' = {visit: 1, call: 1, number: 1}, visible' = false }
+  action request = all { phase == "idle", live, grant,
+    phase' = "io", owner' = {visit: visit, call: call, number: number},
+    visit' = visit, call' = call, number' = number, grant' = grant, live' = live, visible' = visible }
+  action returnRead = all { phase == "io", phase' = "done",
+    visible' = (live and grant and owner == {visit: visit, call: call, number: number}),
+    visit' = visit, call' = call, number' = number, grant' = grant, live' = live, owner' = owner }
+  action stop = all { live, live' = false, visible' = false,
+    visit' = visit, call' = call, number' = number, grant' = grant, phase' = phase, owner' = owner }
+  action reopen = all { not(live), visit == 1, live' = true, visit' = 2, visible' = false,
+    call' = call, number' = number, grant' = grant, phase' = phase, owner' = owner }
+  action replace = all { call == 1, call' = 2, visible' = false,
+    visit' = visit, number' = number, grant' = grant, live' = live, phase' = phase, owner' = owner }
+  action changeNumber = all { number == 1, number' = 2, visible' = false,
+    visit' = visit, call' = call, grant' = grant, live' = live, phase' = phase, owner' = owner }
+  // Permission withdrawal is observed before the next render; cached data is cleared.
+  action revoke = all { grant, grant' = false, visible' = false,
+    visit' = visit, call' = call, number' = number, live' = live, phase' = phase, owner' = owner }
+  action unchanged = all { visit' = visit, call' = call, number' = number, grant' = grant,
+    live' = live, phase' = phase, owner' = owner, visible' = visible }
+  action step = any { request, returnRead, stop, reopen, replace, changeNumber, revoke, unchanged }
+  val TypeOK = Set(1, 2).contains(visit) and Set(1, 2).contains(call) and Set(1, 2).contains(number)
+    and Set("idle", "io", "done").contains(phase)
+  val VisibleContactHasCurrentOwner = visible implies
+    (live and grant and owner == {visit: visit, call: call, number: number})
+  temporal ReadSettles = (phase == "io").leadsTo(phase == "done")
+  temporal FairReadSettles = returnRead.weakFair((visit, call, number, grant, live, phase, owner, visible)) implies ReadSettles
+  run screenReopenRejectsOldReadTest = init.then(request).then(stop).then(reopen).then(returnRead).expect(not(visible))
+  run changedNumberRejectsOldReadTest = init.then(request).then(changeNumber).then(returnRead).expect(not(visible))
+  run currentScreenAcceptsReadTest = init.then(request).then(returnRead).expect(visible)
+}

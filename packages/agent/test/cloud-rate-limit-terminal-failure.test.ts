@@ -1,7 +1,8 @@
 /**
  * A real conversation turn that fails on an Eliza Cloud 429 must deliver the
  * typed wait to the client as `terminalFailure.rateLimit`, on both the JSON
- * and the SSE route, without retrying any Cloud call.
+ * and the SSE route. A temporary limit is waited out once and the same request
+ * re-sent before the turn fails; a used-up allowance or spent credit is not.
  */
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -106,7 +107,7 @@ it.each([
   "delivers the Cloud refusal and its reset on %s (%s)",
   async (
     route,
-    _case,
+    refusal,
     { status, kind, transient, body: cloudBody, expected: EXPECTED_RATE_LIMIT },
   ) => {
     const directory = await mkdtemp(path.join(tmpdir(), "cloud-rate-limit-"));
@@ -213,11 +214,14 @@ it.each([
       expect(
         parseChatTerminalFailure(payload.terminalFailure)?.rateLimit,
       ).toEqual(EXPECTED_RATE_LIMIT);
-      // Fail fast: the runtime's existing model-class failover may try each
-      // registered Cloud model once, but no call is retried and the 429 adds
-      // no apology call.
+      // The runtime's existing model-class failover may try each registered
+      // Cloud model once. A temporary limit gets that once more after the
+      // typed wait; nothing else is retried and the 429 adds no apology call.
       expect(cloudRequests.length).toBeGreaterThan(0);
-      expect(new Set(cloudRequests).size).toBe(cloudRequests.length);
+      const tried = [...new Set(cloudRequests)];
+      expect(cloudRequests).toEqual(
+        refusal === "plan bucket" ? [...tried, ...tried] : tried,
+      );
       // Only bounded fields reach the client, never other body fields.
       expect(JSON.stringify(payload)).not.toContain("capacity");
       // An idempotent replay keeps the typed failure but not the stale wait.

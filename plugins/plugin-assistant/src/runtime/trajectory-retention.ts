@@ -10,7 +10,7 @@ import {
   stringToUuid,
   type TaskWorker,
 } from "@elizaos/core";
-import { resolveTrajectoryDir } from "./trajectory-recorder.ts";
+import { resolveTrajectoryDir } from "../features/trajectories/store/recorded-trajectory-files.ts";
 
 const DAY = 86_400_000;
 const WORKER = "TRAJECTORY_FILE_RETENTION";

@@ -178,7 +178,6 @@ export const computerUsePlugin: Plugin = {
       componentExport: "ComputerUseSessionsView",
       tags: ["computer-use", "browser", "sessions", "monitor"],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
   autoEnable: {

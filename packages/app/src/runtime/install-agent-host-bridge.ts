@@ -22,7 +22,6 @@ import {
 import { subscribeSessionRevocations } from "../api/auth/sessions";
 import { handleCloudPairRoute } from "../api/cloud-pair-route";
 import { resolveCloudRuntimeOwner } from "../api/cloud-runtime-owner";
-import { handleDesktopAuthBootstrapRoute } from "../api/desktop-auth-bootstrap-routes";
 import {
   captureWalletEnvBootBaseline,
   hydrateWalletKeysFromNodePlatformSecureStore,
@@ -121,12 +120,6 @@ export function installAgentHostBridge(): void {
     getBuildVariant,
     isStoreBuild,
     handleCloudPairRoute,
-    handleDesktopAuthBootstrapRoute: (req, res, runtime) =>
-      handleDesktopAuthBootstrapRoute(req, res, {
-        current: runtime,
-        pendingAgentName: null,
-        pendingRestartReasons: [],
-      }),
     resolveHttpRequestAuthorization,
     resolveSessionTokenAuthorization,
     subscribeSessionRevocations,

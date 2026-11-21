@@ -3,7 +3,7 @@
 module InboxReceiptMonotonicity {
   type Journal = {
     current: bool, phase: str, receipt: str, reserved: bool, sendLease: bool,
-    dispatches: int, reviewedContent: int, composerContent: int,
+    sourceId: int, requestId: int, dispatches: int, reviewedContent: int, composerContent: int,
     renderedBound: bool, approvedContent: int, dispatchedContent: int,
   }
   var s: Journal
@@ -12,14 +12,18 @@ module InboxReceiptMonotonicity {
   val terminal = Set("succeeded", "rejected")
   val pending = s.current and s.phase.in(attempted) and s.dispatches > 0 and not(s.receipt.in(terminal))
 
-  action init = s' = {
-    current: true, phase: "empty", receipt: "none", reserved: false,
+  action start(sourceId: int): bool = s' = {
+    sourceId: sourceId, requestId: -1, current: true, phase: "empty", receipt: "none", reserved: false,
     sendLease: false, dispatches: 0, reviewedContent: 0, composerContent: 0,
     renderedBound: false, approvedContent: -1, dispatchedContent: -1,
   }
+  // -1 means manual compose. 0 and 1 are distinct owner turn origins. A fresh
+  // manual request id is represented by 2 in this single-operation model.
+  action init = { nondet origin = Set(-1, 0, 1).oneOf() start(origin) }
   action prepare = all {
     s.current, s.phase == "empty",
     s' = s.with("phase", "review").with("receipt", "prepared")
+      .with("requestId", if (s.sourceId >= 0) s.sourceId else 2)
       .with("reviewedContent", s.composerContent),
   }
   val fullBinding = s.composerContent == s.reviewedContent
@@ -56,6 +60,8 @@ module InboxReceiptMonotonicity {
     observe("dispatched"), observe("outcome-unknown"),
   }
 
+  val ExactSourceRequestId = s.phase != "empty" implies
+    s.requestId == (if (s.sourceId >= 0) s.sourceId else 2)
   val AtMostOneDispatch = s.dispatches <= 1
   val OnlyExactLiveContentCanReserve = s.reserved implies s.approvedContent == s.reviewedContent
   val ReviewedBytesStayAuthoritative = s.dispatches > 0 implies
@@ -73,6 +79,9 @@ module InboxReceiptMonotonicity {
     .expect(s.phase == "observed" and s.receipt == "outcome-unknown")
     .then(observe("succeeded")).then(preparedRead)
     .expect(s.receipt == "succeeded" and s.dispatches == 1)
+  run localComposeRetainsSourceIdAcrossRestartTest = start(1).then(prepare).then(confirm)
+    .then(dispatch).then(observe("outcome-unknown")).then(restart)
+    .expect(s.requestId == 1 and s.dispatches == 1 and not(s.sendLease))
   run restartAfterReserveDoesNotResendTest = init.then(prepare).then(reserve)
     .then(restart).then(preparedRead)
     .expect(s.phase == "dispatching" and s.dispatches == 0 and not(s.sendLease))

@@ -210,3 +210,31 @@ module SelectedCalendarCivilDate {
   run timedLateEventUsesViewerNextDayTest = initialize(1439, 0, 840, false)
     .then(project).expect(s.displayDay == 4 and CanonicalEventRetained)
 }
+
+// Provider read admission for a bound owner availability request. The parser
+// and wall-clock conversion are exercised by the implementation conformance.
+module CalendarMorningAvailability {
+  var s: { morningOnly: bool, startsEarly: bool, endsLate: bool, decision: str }
+  action initialize(morning, early, late) =
+    s' = { morningOnly: morning, startsEarly: early, endsLate: late, decision: "pending" }
+  action init = {
+    nondet morning = Bool.oneOf()
+    nondet early = Bool.oneOf()
+    nondet late = Bool.oneOf()
+    initialize(morning, early, late)
+  }
+  action decide = all {
+    s.decision == "pending",
+    s' = s.with("decision", if (s.morningOnly and (s.startsEarly or s.endsLate)) "refuse" else "read")
+  }
+  action step = any { decide, all { s.decision != "pending", s' = s } }
+  val ReadWithinRequestedMorning = (s.morningOnly and s.decision == "read") implies
+    (not(s.startsEarly) and not(s.endsLate))
+  val RefuseOnlyOutsideMorning = (s.decision == "refuse") implies
+    (s.morningOnly and (s.startsEarly or s.endsLate))
+  temporal AdmissionSettles = decide.weakFair(s) implies (s.decision == "pending").leadsTo(s.decision != "pending")
+  run exactNoonIsAdmittedTest = initialize(true, false, false)
+    .then(decide).expect(s.decision == "read")
+  run wideMorningStopsBeforeReadTest = initialize(true, false, true)
+    .then(decide).expect(s.decision == "refuse")
+}

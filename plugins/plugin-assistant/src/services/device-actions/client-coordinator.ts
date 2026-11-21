@@ -47,6 +47,7 @@ import {
   type PhoneDialOperation,
   type PhoneDialResult,
   phoneDialCapabilityAvailable,
+  phoneDialNumber,
   phoneDialReceiptOutcome,
   validatePhoneDial,
   validatePhoneDialResult,
@@ -61,8 +62,10 @@ import {
   validateSmsResult,
   validateSmsSend,
 } from "@elizaos/contracts/sms-send";
+import { directSmsRequest } from "@elizaos/contracts/telephony-actions";
 import {
   BROWSER_CONTROL_DIRECT_TYPES,
+  BROWSER_OPEN_NEW_TAB_CAPABILITY,
   type BrowserControlOperation,
   browserControlCapabilityAvailable,
   describeBrowserControl,
@@ -88,6 +91,7 @@ import {
   validateCameraCapture,
   validateCameraCaptureResult,
 } from "./camera-contract.ts";
+import { requestedCameraCapture } from "./camera-request.ts";
 import type {
   ClockHandoffOperation,
   ClockHandoffResult,
@@ -270,7 +274,7 @@ export type LegacyDeviceOperation =
   | { type: "create_note"; title: string; body: string }
   | { type: "create_reminder"; title: string; dueAt: string }
   | { type: "open_view"; view: string }
-  | { type: "browser_navigate"; url: string };
+  | { type: "browser_navigate"; url: string; newTab?: true };
 export type DeviceOperation =
   | CameraCaptureOperation
   | SmsSendOperation
@@ -640,10 +644,19 @@ export function validateDeviceOperation(
   )
     return { type: p.type, view: p.view };
   if (p.type === "browser_navigate") {
+    if (
+      Object.keys(p).some((k) => !["type", "url", "newTab"].includes(k)) ||
+      (p.newTab !== undefined && typeof p.newTab !== "boolean")
+    )
+      throw new Error("Invalid browser destination fields");
     const url = new URL(text(p.url, 4096));
     if (url.protocol !== "https:" || url.username || url.password)
       throw new Error("Invalid browser destination");
-    return { type: p.type, url: url.href };
+    return {
+      type: p.type,
+      url: url.href,
+      ...(p.newTab ? { newTab: true } : {}),
+    };
   }
   throw new Error("Unsupported device operation");
 }
@@ -1209,6 +1222,8 @@ export class DeviceActionCoordinator<
   private executing: string | undefined;
   private readonly ports: DeviceActionCoordinatorPorts<C, R>;
   private browserAttempts = new Map<string, CurrentDeviceActionRequest>();
+  /** Request keys whose one direct photo has been started. */
+  private cameraAttempts = new Set<string>();
   private browserPolicy = new Map<string, { key: string; allowed: boolean }>();
   private selectedTelephonyRequests = new Map<
     string,
@@ -1288,6 +1303,31 @@ export class DeviceActionCoordinator<
       return false;
     proof.current();
     this.browserAttempts.set(key, proof);
+    return true;
+  }
+  /** A photo runs without its card only when this very message, as the owner
+   * typed it, asks for one now; a capture the model proposed for any other
+   * words ("summarize this page", "don't take a photo") keeps its card. */
+  private cameraAllowed(
+    messageId: string,
+    proof?: CurrentDeviceActionRequest,
+  ): boolean {
+    if (!proof || proof.messageId !== messageId) return false;
+    proof.current();
+    return (
+      requestedCameraCapture(proof.text, this.profile.assistantName) !==
+      undefined
+    );
+  }
+  /** One requested photo is one shot, however many captures were proposed. */
+  private consumeCameraRequest(messageId: string): boolean {
+    const key = this.requestKey(messageId);
+    if (this.cameraAttempts.has(key)) return false;
+    if (this.cameraAttempts.size >= 128) {
+      const oldest = this.cameraAttempts.values().next().value;
+      if (oldest !== undefined) this.cameraAttempts.delete(oldest);
+    }
+    this.cameraAttempts.add(key);
     return true;
   }
   get supportsCalendarAgenda(): boolean {
@@ -1380,6 +1420,14 @@ export class DeviceActionCoordinator<
       !cameraCaptureCapabilityAvailable(op, this.credential.capabilities)
     )
       throw Error("Camera capture was not negotiated with this agent");
+    if (
+      op.type === "browser_navigate" &&
+      op.newTab &&
+      !this.credential.capabilities?.includes(BROWSER_OPEN_NEW_TAB_CAPABILITY)
+    )
+      throw Error(
+        "Opening an address in a new tab was not negotiated with this agent",
+      );
     if (
       isPhoneDial(op) &&
       !phoneDialCapabilityAvailable(op, this.credential.capabilities)
@@ -1651,7 +1699,7 @@ export class DeviceActionCoordinator<
               : op.type === "open_view"
                 ? `Open ${op.view} on this phone`
                 : op.type === "browser_navigate"
-                  ? `Open browser destination ${op.url}`
+                  ? `Open browser destination ${op.url}${op.newTab ? " in a new tab" : ""}`
                   : "Workflow phone read"));
     return {
       ...base,
@@ -1892,6 +1940,8 @@ export class DeviceActionCoordinator<
       "camera_capture_photo",
       "photo_library_select",
       "sms_reply_selected",
+      // The keypad in front, at most filled in: only the owner's Call tap calls.
+      "phone_keypad",
       ...NOTES_ORGANIZE_DIRECT_TYPES,
       ...FILES_DIRECT_TYPES,
       ...PHOTOS_VIEW_DIRECT_TYPES,
@@ -1901,7 +1951,11 @@ export class DeviceActionCoordinator<
     for (const [proposalId, entry] of [...this.proposals]) {
       if (
         results.length >= 4 ||
-        !directTypes.includes(entry.proposal.operation.type) ||
+        (!directTypes.includes(entry.proposal.operation.type) &&
+          !(
+            proof?.messageId === messageId &&
+            directSmsRequest(entry.proposal.operation, proof.text)
+          )) ||
         entry.proposal.workflow ||
         entry.proposal.requestMessageId !== messageId ||
         (operationType !== undefined &&
@@ -1929,8 +1983,23 @@ export class DeviceActionCoordinator<
           !this.browserAllowed(entry.proposal, proof))
       )
         continue;
+      // A filled-in keypad runs without review only for a number the owner
+      // typed in this very message; one the model took from an email, a page
+      // or an earlier read stays on its "Open keypad" card.
+      if (
+        entry.proposal.operation.type === "phone_keypad" &&
+        !keypadGrounded(entry.proposal.operation, messageId, proof)
+      )
+        continue;
+      const camera = entry.proposal.operation.type === "camera_capture_photo";
+      if (camera && !this.cameraAllowed(messageId, proof)) continue;
       if (!(await allowed())) break;
       signal.throwIfAborted();
+      if (
+        entry.proposal.operation.type === "sms_latest_sender" ||
+        entry.proposal.operation.type === "sms_compose"
+      )
+        proof?.current();
       if (browser) {
         if (
           this.proposals.get(proposalId) !== entry ||
@@ -1942,6 +2011,13 @@ export class DeviceActionCoordinator<
           continue;
         entry.currentRequest = proof;
       }
+      if (
+        camera &&
+        (this.proposals.get(proposalId) !== entry ||
+          !this.cameraAllowed(messageId, proof) ||
+          !this.consumeCameraRequest(messageId))
+      )
+        continue;
       const result = await this.approve(proposalId, context, signal);
       results.push(result);
       if (result.status !== "succeeded" || signal.aborted) break;
@@ -3672,6 +3748,30 @@ function handoffOperation(operation: ReviewableDeviceOperation): boolean {
   );
 }
 /** Review-card copy. The phone's own review shows the resolved name, number and before/after. */
+/** An empty keypad, or a number written in the owner's own current message. */
+function keypadGrounded(
+  operation: { number?: string },
+  messageId: string,
+  proof?: CurrentDeviceActionRequest,
+): boolean {
+  if (!operation.number) return true;
+  if (!proof || proof.messageId !== messageId) return false;
+  proof.current();
+  let wanted: string;
+  try {
+    wanted = phoneDialNumber(operation.number);
+  } catch {
+    return false;
+  }
+  for (const [written] of proof.text.matchAll(/\+?[\d(][\d ().-]*\d/g)) {
+    try {
+      if (phoneDialNumber(written) === wanted) return true;
+    } catch {
+      // Not a dial number as written; keep looking.
+    }
+  }
+  return false;
+}
 function describeTelephonyAction(operation: TelephonyActionOperation): {
   title: string;
   description: string;
@@ -3756,6 +3856,11 @@ function describeTelephonyAction(operation: TelephonyActionOperation): {
             description: `${to}\n\n${operation.body}\n\nConfirm the recipient again in Android.`,
           };
     }
+    case "phone_keypad":
+      return {
+        title: "Open keypad",
+        description: `${operation.number ? `Number: ${operation.number}\n\n` : ""}Opens the Phone keypad${operation.number ? " with this number filled in" : ""}. Nothing is dialed until you tap Call.`,
+      };
     case "sms_reply_selected":
       return {
         title: "Draft reply",
@@ -3766,6 +3871,13 @@ function describeTelephonyAction(operation: TelephonyActionOperation): {
         title: "Share open messages",
         description:
           "Share the messages showing in the open thread with the agent. Other threads and phone numbers stay private.",
+      };
+    case "sms_latest_sender":
+      return {
+        title: "Read latest text sender",
+        description: operation.includeAddress
+          ? "Read the phone number of your latest incoming text."
+          : "Read the last four digits of the newest incoming SMS sender. The phone does not read the message body.",
       };
     case "voicemail_read_selected":
       return {

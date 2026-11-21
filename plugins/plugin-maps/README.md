@@ -109,6 +109,23 @@ agent: the card carries the query. A search around a point asks Cloud for
 `rank: "distance"` when `capabilities.distanceRank` is true. The Google provider then
 reads its largest page (20 places) and returns the closest first.
 
+A typed place name resolves to one place without a question when the provider's
+answer leaves no real choice. Cloud places carry only a name, an address and a
+coordinate in the provider's relevance order, so the top result is taken when it is
+named what was asked, no same-named branch stands within 50 km (a chain:
+"Starbucks" still asks), and the results around it outnumber far-away namesakes.
+"Ferry Building" and "Golden Gate Park" resolve; the other results are parts of the
+same landmark. A route settles its origin first and searches the destination around
+it. Otherwise the action asks one numbered question about one field ("Which
+“Starbucks” did you mean as the starting place?") and `MapsService.placeChoices`
+keeps it open per room and owner for the owner's next turn only (at most ten
+minutes): once the owner moves on, a later "the first one" is left to whatever asked
+since. The owner's reply ("the first
+one", "2") binds to that question, also when the planner restates no query or copies
+the reply into another endpoint, and the route continues with the endpoints already
+settled. A `maps.place-choice.*` routing rule sends such a reply in phone chat to the
+action that asked, so Stage 1 does not answer it in prose.
+
 The Cloud adapter waits up to 20 seconds for an answer (Cloud's own provider
 timeout is 10 seconds), accepts route bodies up to 5 MiB, and asks for at most 20
 places per search. Breaking change: the unused `google`, `transport` and

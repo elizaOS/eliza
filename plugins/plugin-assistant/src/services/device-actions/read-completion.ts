@@ -33,7 +33,6 @@ import {
   runWithTrajectoryContext,
   stringToUuid,
   validateUuid,
-  withSemanticStageFanOut,
 } from "@elizaos/core";
 import { renderContextObject } from "@elizaos/core/protocol";
 import {
@@ -41,8 +40,8 @@ import {
   type ReviewedAvailabilityRequest,
   validateReviewedAvailabilityRequest,
 } from "../../../../plugin-calendar/src/internal/reviewed-availability.ts";
+import { createTrajectoryRecorder } from "../../features/trajectories/recorded-trajectories.ts";
 import { runPlannerLoop } from "../../runtime/planner-loop.ts";
-import { createJsonFileTrajectoryRecorder } from "../../runtime/trajectory-recorder.ts";
 import {
   executeRawSqlTx,
   sqlJson,
@@ -52,6 +51,7 @@ import {
 import type { ApprovalRequest } from "../approval/types.ts";
 import { evaluatePlannedReplyEgress } from "../message/egress-policy.ts";
 import { getSourceReplyBinding } from "../message/source-reply.ts";
+import { hostAuthoredText } from "./authored-text.ts";
 import { validateCalendarResult } from "./calendar-contract.ts";
 import { DeviceActionError, validateDevicePayload } from "./contract.ts";
 import { formatDeviceRecordDateTime } from "./device-record-presentation.ts";
@@ -62,8 +62,10 @@ import { validateNotesResult } from "./notes-contract.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import { validateReminderResult } from "./reminder-contract.ts";
 import {
+  smsLatestSenderReply,
   validateContactReadResult,
   validateMessagesReadResult,
+  validateSmsLatestSenderResult,
   validateVoicemailReadResult,
 } from "./telephony-actions-contract.ts";
 import { validateWorkflowReadResult } from "./workflow-contract.ts";
@@ -187,8 +189,11 @@ export function captureDeviceReadReplyOrigin(
   // A host without a stable protected account/provider revision retains ordinary
   // typed receipts, but cannot bind a model continuation across restart.
   if (hostContextRevision === null) return undefined;
+  // The owner's stored words, not a prompt-only document envelope around
+  // them: the completion is later matched against the stored message.
+  const text = hostAuthoredText(message) ?? message.content.text;
   const content = {
-    text: runtime.redactSecrets(message.content.text),
+    text: runtime.redactSecrets(text),
     ...(message.content.inReplyTo
       ? { inReplyTo: message.content.inReplyTo }
       : {}),
@@ -313,11 +318,16 @@ export function deviceReadResult(request: ApprovalRequest): JsonValue {
                     ? validateMapsResult(op, receipt.result)
                     : op.type === "messages_read_selected"
                       ? validateMessagesReadResult(receipt.result)
-                      : op.type === "voicemail_read_selected"
-                        ? validateVoicemailReadResult(receipt.result)
-                        : op.type === "contact_read_selected"
-                          ? validateContactReadResult(receipt.result)
-                          : fail();
+                      : op.type === "sms_latest_sender"
+                        ? validateSmsLatestSenderResult(
+                            receipt.result,
+                            op.includeAddress,
+                          )
+                        : op.type === "voicemail_read_selected"
+                          ? validateVoicemailReadResult(receipt.result)
+                          : op.type === "contact_read_selected"
+                            ? validateContactReadResult(receipt.result)
+                            : fail();
   // An applied open-item read always carries the item; an empty selection is a failed receipt.
   if (
     (op.type === "messages_read_selected" ||
@@ -605,6 +615,21 @@ export async function synthesizeDeviceReadReply(
 ): Promise<string> {
   signal.throwIfAborted();
   const result = deviceReadResult(request);
+  if (isObjectRecord(result) && result.kind === "sms-latest-sender") {
+    await recheck?.();
+    assertDeviceReadCompletionCurrent(
+      runtime,
+      binding,
+      signal,
+      assertHostCurrent,
+    );
+    const operation = validateDevicePayload(request.payload).operation;
+    if (operation.type !== "sms_latest_sender")
+      throw new DeviceActionError("Latest SMS sender operation required");
+    return smsLatestSenderReply(
+      validateSmsLatestSenderResult(result, operation.includeAddress),
+    );
+  }
   if (
     binding.purpose === "original_calendar_availability_reply" &&
     binding.origin.afterRead?.kind === "calendar_availability"
@@ -771,13 +796,7 @@ export async function synthesizeDeviceReadReply(
     data: { proposalId: request.id, executed: false, result },
   };
   const recorder = isTrajectoryRecordingEnabled()
-    ? withSemanticStageFanOut(
-        createJsonFileTrajectoryRecorder({
-          reportError: runtime.reportError.bind(runtime),
-          redactSecrets: runtime.redactSecrets.bind(runtime),
-        }),
-        runtime,
-      )
+    ? createTrajectoryRecorder({ runtime })
     : undefined;
   const trajectoryId = recorder?.startTrajectory({
     agentId: binding.agentId,

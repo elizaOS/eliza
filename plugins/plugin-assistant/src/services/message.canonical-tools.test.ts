@@ -84,9 +84,12 @@ describe("canonical promoted-family planner surface", () => {
     const tools = collectPlannerTools(context, undefined, {
       canonicalFamilies: true,
     });
-    expect(tools.map((tool) => tool.name)).toEqual(
-      ["RECORDS", "REPLY", "IGNORE", "STOP"].sort(),
-    );
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "IGNORE",
+      "STOP",
+      "RECORDS",
+      "REPLY",
+    ]);
     const wire = JSON.parse(
       JSON.stringify(tools.find((tool) => tool.name === "RECORDS")),
     );
@@ -129,9 +132,12 @@ describe("canonical promoted-family planner surface", () => {
     const tools = collectPlannerTools(context, undefined, {
       canonicalFamilies: true,
     });
-    expect(tools.map((tool) => tool.name)).toEqual(
-      ["RECORDS", "REPLY", "IGNORE", "STOP"].sort(),
-    );
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "IGNORE",
+      "STOP",
+      "RECORDS",
+      "REPLY",
+    ]);
     expect(
       tools.find((tool) => tool.name === "RECORDS")?.description,
     ).toContain('"name":"RECORDS_CREATE"');

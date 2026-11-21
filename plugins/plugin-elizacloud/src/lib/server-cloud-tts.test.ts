@@ -8,6 +8,10 @@
  * logger when the flag is set, silent otherwise), and the proxy fetch abort
  * so a stalled upstream cannot hang the warming `for (;;)` loop.
  */
+import { z } from "zod";
+import { selectTtsProvider } from "../../../../packages/cloud/api/v1/voice/tts/provider-selection.ts";
+import { ElevenLabsService } from "../../../../packages/cloud/shared/src/lib/services/elevenlabs.ts";
+import { resolveEffectiveVoiceConfig } from "../../../../packages/ui/src/voice/voice-chat-types.ts";
 import { _resetCloudSecretsForTesting } from "../cloud-config/cloud-secrets.js";
 import { addLogListener, logger } from "@elizaos/core";
 import { afterAll } from "vitest";
@@ -547,7 +551,7 @@ describe("Cloud speech evidence and client lifecycle", () => {
         expect(state.headers["x-eliza-speech-route"]).toBe("cloud");
         expect(state.headers["x-eliza-speech-provider"]).toBeUndefined();
     });
-    async function proxy(kind:"tts"|"stt") {
+    async function proxy(kind:"tts"|"stt", body: Record<string, unknown> = {text:"synthetic speech"}) {
         let finish!:()=>void, fail!:(error:unknown)=>void, requestClosed!:()=>void, responseClosed!:()=>void;
         const finished=new Promise<void>((resolve,reject)=>{finish=resolve;fail=reject});
         const requestComplete=new Promise<void>(resolve=>{requestClosed=resolve});
@@ -562,21 +566,45 @@ describe("Cloud speech evidence and client lifecycle", () => {
         const received=new Promise<{status:number;body:Buffer}>(resolve=>{receive=resolve});
         const client=http.request({host:"127.0.0.1",port:address.port,method:"POST",headers:{"Content-Type":kind === "tts" ? "application/json" : "audio/wav"}},res=>{const chunks:Buffer[]=[];res.on("data",chunk=>chunks.push(chunk));res.on("end",()=>receive({status:res.statusCode??0,body:Buffer.concat(chunks)}));});
         client.on("error",()=>{});
-        client.end(kind === "tts" ? JSON.stringify({text:"synthetic speech"}) : "synthetic audio");
+        client.end(kind === "tts" ? JSON.stringify(body) : "synthetic audio");
         return {client,received,finished,requestComplete,disconnected,close:async()=>{client.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));}};
     }
-    test("a real empty upstream response is rejected before audio headers are sent", async () => {
+    test("a real upstream rejects empty audio and preserves default and explicit voice choices", async () => {
+        const requestBody = z.object({text:z.string(), voiceId:z.string().optional(), modelId:z.string().optional()});
+        const requests: Array<ReturnType<typeof requestBody.parse>> = [];
+        const providerUrls: string[] = [];
+        let cloudflareConfigured = true;
         let audioBytes = Buffer.alloc(0);
-        const server = http.createServer((_req, res) => {
-            res.writeHead(200, { "Content-Type": "audio/mpeg" });
-            res.end(audioBytes);
+        const server = http.createServer(async (req, res) => {
+            const chunks: Buffer[] = [];
+            for await (const chunk of req) chunks.push(Buffer.from(chunk));
+            const body = requestBody.parse(JSON.parse(Buffer.concat(chunks).toString()));
+            requests.push(body);
+            const selection = selectTtsProvider({voiceId:body.voiceId, cloudflareConfigured, kokoroConfigured:false});
+            if (!selection.ok) throw Error(selection.error);
+            res.writeHead(200, {"Content-Type":"audio/mpeg", "X-Eliza-TTS-Provider":selection.provider});
+            if (selection.provider === "elevenlabs") {
+                const service = ElevenLabsService.fromEnv({ELEVENLABS_API_KEY:"provider-boundary-fixture", ELEVENLABS_VOICE_ID:""});
+                const stream = await service.textToSpeech(body);
+                res.end(Buffer.from(await new Response(stream).arrayBuffer()));
+            } else {
+                res.end(audioBytes);
+            }
         });
         server.listen(0, "127.0.0.1");
         await once(server, "listening");
         const address = server.address();
         if (!address || typeof address === "string") throw Error("Fixture port missing");
         vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", `http://127.0.0.1:${address.port}/api/v1`);
-        globalThis.fetch = realFetch;
+        const providerFetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+            const url = new URL(input instanceof Request ? input.url : input);
+            if (url.origin === "https://api.elevenlabs.io") {
+                providerUrls.push(url.toString());
+                return new Response(audioBytes, {headers:{"Content-Type":"audio/mpeg"}});
+            }
+            if (url.origin !== `http://127.0.0.1:${address.port}`) throw Error("Unexpected external provider request");
+            return realFetch(input, init);
+        });
         try {
             const empty = await proxy("tts");
             try {
@@ -590,16 +618,42 @@ describe("Cloud speech evidence and client lifecycle", () => {
                 await empty.close();
             }
             audioBytes = Buffer.from([73, 68, 51]);
-            const playable = await proxy("tts");
+            const implicit = resolveEffectiveVoiceConfig({provider:"elevenlabs", mode:"cloud"});
+            const cases = [
+                {voiceId:implicit?.elevenlabs?.voiceId, free:true},
+                {voiceId:"alloy", free:true},
+                {voiceId:"en-US-AriaNeural", free:true},
+                {voiceId:"OZ0L6eISlOejga3XjDFt", free:false},
+                {voiceId:"owner-selected-voice", free:false},
+                {voiceId:"nPczCjzI2devNBz1zQrb", free:false},
+            ];
+            for (const choice of cases) {
+                const previousCalls = providerUrls.length;
+                const playable = await proxy("tts", {text:"synthetic speech", voiceId:choice.voiceId});
+                try {
+                    const result = await playable.received;
+                    await playable.finished;
+                    expect(result).toEqual({status:200, body:audioBytes});
+                    expect(requests.at(-1)).toEqual({text:"synthetic speech", modelId:"eleven_flash_v2_5", ...(choice.free ? {} : {voiceId:choice.voiceId})});
+                    expect(providerUrls.length - previousCalls).toBe(choice.free ? 0 : 1);
+                    if (!choice.free) expect(new URL(providerUrls.at(-1) ?? "").pathname).toBe(`/v1/text-to-speech/${choice.voiceId}/stream`);
+                } finally {
+                    await playable.close();
+                }
+            }
+            cloudflareConfigured = false;
+            const fallback = await proxy("tts");
             try {
-                const result = await playable.received;
-                await playable.finished;
-                expect(result.status).toBe(200);
-                expect(result.body).toEqual(audioBytes);
+                const result = await fallback.received;
+                await fallback.finished;
+                expect(result).toEqual({status:200, body:audioBytes});
+                expect(requests.at(-1)).toEqual({text:"synthetic speech", modelId:"eleven_flash_v2_5"});
+                expect(new URL(providerUrls.at(-1) ?? "").pathname).toBe("/v1/text-to-speech/OZ0L6eISlOejga3XjDFt/stream");
             } finally {
-                await playable.close();
+                await fallback.close();
             }
         } finally {
+            providerFetch.mockRestore();
             await new Promise<void>((resolve) => server.close(() => resolve()));
         }
     });

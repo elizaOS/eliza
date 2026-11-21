@@ -116,6 +116,16 @@ public final class PasswordVaultEntriesInstrumentedTest {
       try { vault.commitEntry("missing", 0, "Lost", "revision-user", Arrays.asList("https://revision.test"), "must-not-recreate"); fail("Missing record recreated"); }
       catch (PasswordVaultStore.RevisionConflict expected) {}
       assertArrayEquals(current, Files.readAllBytes(new File(root, "vault.enc").toPath()));
+      try { vault.removeExisting(revised, 2L); fail("Stale remove deleted the replacement"); }
+      catch (PasswordVaultStore.RevisionConflict expected) {}
+      try { vault.useRecord(revised, 2L, value -> { fail("Stale action received a secret"); return null; }); fail("Stale action accepted"); }
+      catch (PasswordVaultStore.RevisionConflict expected) {}
+      assertArrayEquals(current, Files.readAllBytes(new File(root, "vault.enc").toPath()));
+      assertEquals(secret, vault.useRecord(revised, 3L, value -> value.getString("password")));
+      assertEquals(secret, vault.useRecord(revised, null, value -> value.getString("password")));
+      vault.removeExisting(revised, 3L);
+      try { vault.useRecord(revised, 3L, value -> null); fail("Removed record accepted"); }
+      catch (PasswordVaultStore.RevisionConflict expected) {}
       // A record from before revisions is at revision 0, and the legacy writer moves it too.
       String older = vault.save(null, "https://older.test", "older-user", "synthetic-older");
       assertEquals(1, vault.get(older).getLong("revision"));

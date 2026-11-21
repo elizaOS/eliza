@@ -7,12 +7,45 @@ import {
   type DeviceCredential,
   getDeviceActionTurn,
 } from "@elizaos/plugin-assistant";
+import type { DeviceNavigationMapsCode } from "@elizaos/plugin-maps/client/device-navigation";
 import { MapsError, type MapsErrorCode } from "@elizaos/plugin-maps/errors";
 import type {
   MapsDeviceNavigation,
   MapsDeviceNavigationStatus,
 } from "@elizaos/plugin-maps/navigation";
 import { MapsService } from "@elizaos/plugin-maps/service";
+
+/**
+ * Every code a phone reports for a refused navigation request
+ * (`deviceNavigationFailure`). A code missing here turns a phone's accurate
+ * refusal ("allowance used up") into an invalid result.
+ */
+export const MAPS_NAVIGATION_FAILURE_CODES = [
+  "MAPS_DEVICE_UNAVAILABLE",
+  "MAPS_INVALID_INPUT",
+  "MAPS_NOT_FOUND",
+  "MAPS_UNSUPPORTED_REGION",
+  "MAPS_AUTH_EXPIRED",
+  "MAPS_NOT_ENTITLED",
+  "MAPS_PROVIDER_CHANGED",
+  "MAPS_PROVIDER_REJECTED",
+  "MAPS_RATE_LIMITED",
+  "MAPS_BUDGET_EXHAUSTED",
+  "MAPS_PROVIDER_UNAVAILABLE",
+  "MAPS_PROVIDER_NETWORK",
+  "MAPS_PROVIDER_TIMEOUT",
+  "MAPS_MALFORMED_RESPONSE",
+] as const satisfies readonly DeviceNavigationMapsCode[];
+// Compile-time: the list names every code the phone reports.
+const everyPhoneCode: [
+  Exclude<
+    DeviceNavigationMapsCode,
+    (typeof MAPS_NAVIGATION_FAILURE_CODES)[number]
+  >,
+] extends [never]
+  ? true
+  : never = true;
+void everyPhoneCode;
 
 type Operation =
   | { kind: "select"; place: Parameters<MapsDeviceNavigation["select"]>[0] }
@@ -120,6 +153,39 @@ function keys(value: Record<string, unknown>, allowed: string[]) {
   if (Object.keys(value).some((key) => !allowed.includes(key)))
     throw new DeviceActionError("Invalid navigation fields");
 }
+/**
+ * The phone's own account of a refusal, such as "Open Maps on the phone to continue", is
+ * shown when it is one bounded line; otherwise a reply names what the code means.
+ */
+const FAILURE_TEXT: Partial<Record<MapsErrorCode, string>> = {
+  MAPS_DEVICE_UNAVAILABLE:
+    "Maps could not be shown on the phone right now. Nothing was changed on the map.",
+  MAPS_INVALID_INPUT: "The phone could not use that place or travel mode.",
+  MAPS_NOT_FOUND: "Cloud Maps on the phone found no such place or route.",
+  MAPS_UNSUPPORTED_REGION:
+    "Cloud Maps on the phone does not plan that route here.",
+  MAPS_PROVIDER_CHANGED:
+    "The Maps account on the phone changed. Nothing was changed on the map.",
+  MAPS_BUDGET_EXHAUSTED:
+    "The Maps allowance for this period is used up. Nothing was changed on the map.",
+  MAPS_PROVIDER_REJECTED:
+    "Cloud refused this Maps request. Nothing was changed on the map.",
+};
+function failureMessage(code: MapsErrorCode, message: unknown): string {
+  if (
+    typeof message === "string" &&
+    message.trim() &&
+    message.length <= 300 &&
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: a phone line is plain text
+    !/[\u0000-\u001f\u007f]/.test(message)
+  )
+    return message.trim();
+  return (
+    FAILURE_TEXT[code] ??
+    "The phone could not complete this Maps request. Check Maps on the phone."
+  );
+}
+
 function status(
   value: unknown,
   operation: Operation,
@@ -272,28 +338,16 @@ export async function handleMapsNavigationRelay(
   offer.seenAt = Date.now();
   if (body.failed !== undefined && body.status === undefined) {
     const failure = object(body.failed);
-    keys(failure, ["code"]);
-    const codes: MapsErrorCode[] = [
-      "MAPS_DEVICE_UNAVAILABLE",
-      "MAPS_INVALID_INPUT",
-      "MAPS_NOT_FOUND",
-      "MAPS_UNSUPPORTED_REGION",
-      "MAPS_AUTH_EXPIRED",
-      "MAPS_NOT_ENTITLED",
-      "MAPS_PROVIDER_CHANGED",
-      "MAPS_RATE_LIMITED",
-      "MAPS_PROVIDER_UNAVAILABLE",
-      "MAPS_PROVIDER_NETWORK",
-      "MAPS_PROVIDER_TIMEOUT",
-      "MAPS_MALFORMED_RESPONSE",
-    ];
-    if (!codes.includes(failure.code as MapsErrorCode))
+    keys(failure, ["code", "message"]);
+    if (
+      !(MAPS_NAVIGATION_FAILURE_CODES as readonly string[]).includes(
+        failure.code as string,
+      )
+    )
       throw new DeviceActionError("Invalid navigation failure");
+    const code = failure.code as MapsErrorCode;
     pending.finish(
-      new MapsError(
-        "The phone could not complete this Maps request. Check Maps on the phone.",
-        { code: failure.code as MapsErrorCode },
-      ),
+      new MapsError(failureMessage(code, failure.message), { code }),
     );
   } else if (body.failed === undefined)
     pending.finish(status(body.status, pending.operation));

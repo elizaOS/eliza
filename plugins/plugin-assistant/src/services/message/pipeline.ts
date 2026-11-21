@@ -47,9 +47,9 @@ import {
   type TrajectoryRecorder,
   TurnAbortedError,
   timeInferenceSpan,
-  withSemanticStageFanOut,
 } from "@elizaos/core";
 import { findViewActionHandoff } from "@elizaos/core/protocol";
+import { createTrajectoryRecorder } from "../../features/trajectories/recorded-trajectories.ts";
 import { runShouldRespondInjectionGate } from "../../features/trust/should-respond-risk-gate";
 import { parentAliasesForCandidateAction } from "../../runtime/action-retrieval.ts";
 import {
@@ -81,7 +81,6 @@ import {
   PROGRESS_ONLY_ANSWER_REJECT,
   runPlannerLoop,
 } from "../../runtime/planner-loop";
-import { createJsonFileTrajectoryRecorder } from "../../runtime/trajectory-recorder";
 import { deviceActionForCapabilities } from "../device-actions/action.ts";
 import { deviceOperationSupportedByCapabilities } from "../device-actions/contract.ts";
 import {
@@ -329,25 +328,13 @@ export async function runV5MessageRuntimeStage1(
   // ELIZA_TRAJECTORY_LOGGING=0. Failures inside the recorder must NEVER
   // propagate up — the recorder is observability, not load-bearing.
   const recordingEnabled = isTrajectoryRecordingEnabled();
-  // Every stage emitted below also mirrors into the turn's database
-  // trajectory step (#17030) so the app viewer carries the same
-  // Stage-1/planner/tool/evaluation semantics as the file trajectory.
+  // The recorder stores the turn's stages in the trajectory store: on the
+  // turn's database trajectory step (#17030) so the app viewer carries the
+  // Stage-1/planner/tool/evaluation semantics, and in the per-file export.
+  // The runtime supplies the logger, reportError and (when implemented) the
+  // character-configured secret masking for the tool-diagnostic projection.
   const recorder: TrajectoryRecorder | undefined = recordingEnabled
-    ? withSemanticStageFanOut(
-        createJsonFileTrajectoryRecorder({
-          logger: args.runtime.logger as {
-            warn?: (context: unknown, message?: string) => void;
-          },
-          reportError: args.runtime.reportError.bind(args.runtime),
-          // Final-persistence tool-diagnostic projection: the recorder always
-          // runs the shared tool-shape pattern pass; this adds the runtime's
-          // character-configured secret masking on top. Optional-bound because
-          // lightweight/test runtimes may not implement redactSecrets — the
-          // pattern pass must keep running for them.
-          redactSecrets: args.runtime.redactSecrets?.bind(args.runtime),
-        }),
-        args.runtime,
-      )
+    ? createTrajectoryRecorder({ runtime: args.runtime })
     : undefined;
   const trajectoryId = recorder
     ? recorder.startTrajectory({
@@ -700,8 +687,11 @@ export async function runV5MessageRuntimeStage1(
           ...(responseHandlerEvaluation.contextSources ?? []),
         ],
       };
-      const { contextSources: _contextSources, ...evaluationTrace } =
-        responseHandlerEvaluation;
+      const {
+        contextSources: _contextSources,
+        requiredViewNavigation: _requiredViewNavigation,
+        ...evaluationTrace
+      } = responseHandlerEvaluation;
       return captureMessageReplyRecovery(
         args.runtime,
         args.message,
@@ -1624,6 +1614,13 @@ export async function runV5MessageRuntimeStage1(
       providerReview,
       historyReferenceEncoding: providerDiscoveryEnabled,
       loadedContextProviders,
+      ...(responseHandlerEvaluation.requiredViewNavigation
+        ? {
+            requiredViewNavigation: {
+              ...responseHandlerEvaluation.requiredViewNavigation,
+            },
+          }
+        : {}),
     };
     if (messageHandler.plan.completionContext) {
       plannerContext.metadata = {
@@ -2309,11 +2306,11 @@ export async function runV5MessageRuntimeStage1(
               }
             : {}),
           deferInternalReplyRecoveryToCaller: true,
-          // Stage 1 judged requested navigation part of a larger request, so the
-          // loop may replan an uncovered follow-up after a prepared view
-          // (tj-a2dfaa98a8bc03).
-          ...(isRecord(fieldRunResult?.parsed.visualContinuation) &&
-          fieldRunResult?.parsed.visualContinuation.disposition === "planning"
+          // Continue independent work after a view is prepared. The host may
+          // have recovered compound navigation from a collapsed Stage 1 plan.
+          ...(responseHandlerEvaluation.requiredViewNavigation ||
+          (isRecord(fieldRunResult?.parsed.visualContinuation) &&
+            fieldRunResult.parsed.visualContinuation.disposition === "planning")
             ? { navigationWithFollowUp: true }
             : {}),
           runtime: plannerRuntime,
@@ -2893,6 +2890,7 @@ export async function runV5MessageRuntimeStage1(
             : (plannerResult.finalMessage ?? ""),
         actionResults: egressActionResults,
         evaluator: plannerResult.evaluator,
+        trajectory: plannerResult.trajectory,
         recovery: capturePlannerReplyRecovery(
           args.runtime,
           args.message,

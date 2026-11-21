@@ -2,7 +2,7 @@
  * Authorizes the staging-only API-key-to-browser-session bridge against
  * primary Cloud identity state. It never creates or repairs identities: a
  * source key, active user and organization, matching Steward projection, and
- * pre-existing tenant mapping must all already exist.
+ * delegated organization or tenant-authorized fixture grant must already exist.
  */
 
 import { apiKeysRepository, appsRepository, usersRepository } from "../../db/repositories";
@@ -10,6 +10,7 @@ import type { ApiKey } from "../../db/repositories/api-keys";
 import { ssoBridgeRepository } from "../../db/repositories/sso-bridge";
 import type { UserWithOrganization } from "../../db/repositories/users";
 import { timingSafeEqualSecret } from "./cron";
+import { resolveStagingSessionTenantAuthority } from "./staging-session-tenant-authority";
 
 export const STAGING_SESSION_EXCHANGE_VERSION = "v1" as const;
 export const STAGING_SESSION_TOKEN_TYP = "eliza-staging-session+jwt";
@@ -46,6 +47,8 @@ export interface StagingSessionBindingEnv {
   STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS?: string;
   STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS?: string;
   STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS?: string;
+  STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT?: string;
+  STAGING_SESSION_EXCHANGE_GRANT_READ_KEY?: string;
 }
 
 export interface StagingSessionSigningConfig {
@@ -210,6 +213,7 @@ function hex(bytes: ArrayBuffer): string {
 async function credentialFingerprint(
   secret: string,
   apiKey: Pick<ApiKey, "id" | "key_hash">,
+  grantGeneration?: string,
 ): Promise<string> {
   if (!HEX_64_RE.test(apiKey.key_hash)) {
     throw new StagingSessionEligibilityError("source_key");
@@ -221,8 +225,9 @@ async function credentialFingerprint(
     false,
     ["sign"],
   );
+  const generation = `${CREDENTIAL_FINGERPRINT_DOMAIN}\0${apiKey.id}\0${apiKey.key_hash}`;
   const message = new TextEncoder().encode(
-    `${CREDENTIAL_FINGERPRINT_DOMAIN}\0${apiKey.id}\0${apiKey.key_hash}`,
+    grantGeneration ? `${generation}\0grant:${grantGeneration}` : generation,
   );
   return hex(await crypto.subtle.sign("HMAC", key, message));
 }
@@ -323,15 +328,27 @@ async function loadExistingStagingSessionSubject(
     throw new StagingSessionEligibilityError("steward_identity");
   }
 
-  const organizationTenantId = user.organization.steward_tenant_id?.trim();
-  if (!organizationTenantId || organizationTenantId !== tenantId) {
-    throw new StagingSessionEligibilityError("tenant");
-  }
+  const authority = await resolveStagingSessionTenantAuthority({
+    fixtureSubject: input.env.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT,
+    reader: input.env.STAGING_SESSION_EXCHANGE_GRANT_READ_KEY,
+    tenantId,
+    stewardUserId,
+    organizationTenantId: user.organization.steward_tenant_id,
+    apiKey,
+    user,
+    nowSeconds,
+  });
+  if (authority.kind === "denied") throw new StagingSessionEligibilityError("tenant");
+  const grant = authority.kind === "enrolled" ? authority : undefined;
 
   const apiKeyExpiresAt = apiKey.expires_at
     ? Math.floor(new Date(apiKey.expires_at).getTime() / 1000)
     : Number.POSITIVE_INFINITY;
-  const expiration = Math.min(nowSeconds + STAGING_SESSION_MAX_TTL_SECONDS, apiKeyExpiresAt);
+  const expiration = Math.min(
+    nowSeconds + STAGING_SESSION_MAX_TTL_SECONDS,
+    apiKeyExpiresAt,
+    grant?.expiresAt ?? Number.POSITIVE_INFINITY,
+  );
   if (expiration <= nowSeconds) {
     throw new StagingSessionEligibilityError("source_key");
   }
@@ -347,7 +364,11 @@ async function loadExistingStagingSessionSubject(
       apiKeyId: apiKey.id,
       cloudUserId: user.id,
       organizationId: user.organization.id,
-      credentialFingerprint: await credentialFingerprint(signing.secret, apiKey),
+      credentialFingerprint: await credentialFingerprint(
+        signing.secret,
+        apiKey,
+        grant?.grantGeneration,
+      ),
       sessionIssuedAt: nowSeconds,
       sessionMaxExpiresAt: expiration,
     },

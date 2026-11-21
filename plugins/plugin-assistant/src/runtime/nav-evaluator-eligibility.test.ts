@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { isDeliveredNavigationOnlyTurn } from "./nav-evaluator-eligibility";
+import {
+  isDeliveredNavigationOnlyTurn,
+  requiredViewNavigationStatus,
+} from "./nav-evaluator-eligibility";
 import fixture from "./navigation-replay.fixture.json";
 
 const replay = () => structuredClone(fixture.trajectory);
@@ -62,6 +65,46 @@ test("historical same-view delivery, mixed work and pending effects preserve unr
     change(t);
     expect(eligible(t)).toBe(false);
   }
+});
+
+test("requires a matching view and installation, and treats active preparation as pending", () => {
+  const t = replay();
+  const result = t.steps[0].result;
+  const required = {
+    viewId: "notes",
+    clientId: "client-1",
+    installationId: "install-1",
+  };
+  Object.assign(t.context, { metadata: { requiredViewNavigation: required } });
+  Object.assign(result.data.view, { installationId: "install-1" });
+  const status = () =>
+    Reflect.apply(requiredViewNavigationStatus, undefined, [t]);
+  expect(status()).toBe("delivered");
+  required.viewId = "inbox";
+  expect(status()).toBe("missing");
+  required.viewId = "notes";
+  required.installationId = "install-2";
+  expect(status()).toBe("missing");
+  required.installationId = "install-1";
+  result.data.navigation.status = "prepared";
+  Object.assign(result.data, { awaitingDeviceExecution: true });
+  Object.assign(result.data.values, {
+    completedActionDelivered: false,
+    navigationPrepared: true,
+    navigationBinding: {
+      requestId: result.data.navigation.handoffId,
+      viewId: "notes",
+      viewType: "gui",
+      clientId: "client-1",
+      installationId: "install-1",
+    },
+  });
+  expect(status()).toBe("prepared");
+  required.clientId = "client-2";
+  expect(status()).toBe("missing");
+  required.clientId = "client-1";
+  Object.assign(t, { archivedSteps: t.steps, steps: [] });
+  expect(status()).toBe("missing");
 });
 test("actual evaluator changes only cloned eligibility enum; raw applied verdict is never silently repaired", () => {
   const source = readFileSync(

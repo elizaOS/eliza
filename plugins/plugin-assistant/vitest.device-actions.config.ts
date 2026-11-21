@@ -15,6 +15,7 @@ export default defineConfig({
       "test/photos-filter.e2e.test.ts",
       "test/files-negotiation.e2e.test.ts",
       "test/browser-request-grounding.pglite.test.ts",
+      "test/telephony-target-grounding.pglite.test.ts",
       "test/gmail-request-policy.e2e.test.ts",
       "test/maps-navigation.integration.test.ts",
       "test/device-read-completion.test.ts",

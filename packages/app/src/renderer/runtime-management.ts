@@ -11,61 +11,23 @@ import {
   confirmRemoteTargetPairing,
   createDefaultRemoteControlCloudClient,
   createRemoteTargetPairingChallenge,
-  deleteRuntimeCredentialRecord,
   enrollRemoteTarget,
   finalizeRemoteTargetHostRevoke,
   getDefaultRemoteControlCloudConnection,
   getOrCreateRemoteControllerIdentity,
   getRemoteTargetIdentity,
   getRemoteTargetStatus,
-  inspectSshHost,
   isTrustedRestoreApiBaseUrl,
   loadAgentProfileRegistry,
-  removeSshRuntime,
-  resumePendingSshRuntimeCleanups,
-  retrySshRuntimeCleanup,
-  type SshRuntimeCleanupResult,
-  type SshRuntimeLifecycleDependencies,
-  setupSshRuntime,
   startRemoteTarget,
-  startSshRuntime,
   stopRemoteTarget,
-  stopSshRuntime,
-  storeRuntimeCredential,
   supportsNativeRemoteTarget,
 } from "@elizaos/ui";
 
-const SSH_DEPENDENCIES: SshRuntimeLifecycleDependencies = {
-  startTunnel: startSshRuntime,
-  stopTunnel: stopSshRuntime,
-  storeCredential: storeRuntimeCredential,
-  deleteCredentialRecord: deleteRuntimeCredentialRecord,
-  addProfile: addAgentProfile,
-  removeProfile: removeProfileWithoutStaleSelection,
-  loadRegistry: loadAgentProfileRegistry,
-};
 function requiredString(value: string | undefined, field: string): string {
   const normalized = value?.trim() ?? "";
   if (!normalized) throw new Error(`${field} is required.`);
   return normalized;
-}
-function requiredPort(value: number | undefined, field: string): number {
-  if (
-    !Number.isSafeInteger(value) ||
-    value === undefined ||
-    value < 1 ||
-    value > 65535
-  ) {
-    throw new Error(`${field} must be a valid TCP port.`);
-  }
-  return value;
-}
-function requireCompleteCleanup(results: SshRuntimeCleanupResult[]): void {
-  if (results.some((result) => !result.complete)) {
-    throw new Error(
-      "SSH cleanup is incomplete. Retry cleanup before continuing.",
-    );
-  }
 }
 function publicRuntimeList(): Record<string, unknown>[] {
   const registry = loadAgentProfileRegistry();
@@ -75,9 +37,6 @@ function publicRuntimeList(): Record<string, unknown>[] {
     kind: profile.kind,
     connectionMode: profile.connectionMode ?? "direct",
     active: profile.id === registry.activeProfileId,
-    ...(profile.connectionMode === "ssh"
-      ? { target: profile.ssh?.target ?? null }
-      : {}),
     ...(profile.connectionMode === "relay"
       ? { targetRuntimeId: profile.remoteRelay?.targetRuntimeId ?? null }
       : {}),
@@ -96,10 +55,6 @@ async function removeRuntime(profileId: string): Promise<void> {
       controllerDeviceId: profile.remoteRelay.controllerDeviceId,
       sessionId: profile.remoteRelay.sessionId,
     });
-  }
-  if (profile.connectionMode === "ssh") {
-    await removeSshRuntime(profile, SSH_DEPENDENCIES);
-    return;
   }
   removeProfileWithoutStaleSelection(profile.id);
 }
@@ -222,61 +177,6 @@ async function execute(
   if (request.op === "remove") {
     await removeRuntime(requiredString(request.runtimeId, "runtimeId"));
     return {};
-  }
-  if (request.op === "retry") {
-    const runtimeId = requiredString(request.runtimeId, "runtimeId");
-    const profile = loadAgentProfileRegistry().profiles.find(
-      (candidate) => candidate.id === runtimeId,
-    );
-    if (!profile?.ssh) throw new Error("That SSH runtime was not found.");
-    if (await retrySshRuntimeCleanup(runtimeId, SSH_DEPENDENCIES)) return {};
-    await startSshRuntime({
-      runtimeId,
-      target: profile.ssh.target,
-      sshPort: profile.ssh.sshPort,
-      remoteApiPort: profile.ssh.remoteApiPort,
-      expectedFingerprint: profile.ssh.hostFingerprint,
-      identityFile: profile.ssh.identityFile,
-      credentialRef: profile.credentialRef ?? profile.id,
-    });
-    return {};
-  }
-  if (request.op === "inspect_ssh") {
-    return {
-      inspection: await inspectSshHost({
-        runtimeId: requiredString(request.runtimeId, "runtimeId"),
-        target: requiredString(request.target, "target"),
-        sshPort: requiredPort(request.sshPort, "sshPort"),
-      }),
-    };
-  }
-  if (request.op === "connect_ssh") {
-    const runtimeId = requiredString(request.runtimeId, "runtimeId");
-    requireCompleteCleanup(
-      await resumePendingSshRuntimeCleanups(SSH_DEPENDENCIES),
-    );
-    const profile = await setupSshRuntime(
-      {
-        runtimeId,
-        label: requiredString(request.label, "label"),
-        target: requiredString(request.target, "target"),
-        sshPort: requiredPort(request.sshPort, "sshPort"),
-        remoteApiPort: requiredPort(request.remoteApiPort, "remoteApiPort"),
-        expectedFingerprint: requiredString(
-          request.expectedFingerprint,
-          "expectedFingerprint",
-        ),
-        ...(request.identityFile?.trim()
-          ? { identityFile: request.identityFile.trim() }
-          : {}),
-        credentialRef: runtimeId,
-        ...(request.accessToken?.trim()
-          ? { accessToken: request.accessToken.trim() }
-          : {}),
-      },
-      SSH_DEPENDENCIES,
-    );
-    return { runtimeId: profile.id, label: profile.label };
   }
   if (request.op === "add_direct") {
     const apiBase = requiredString(request.apiBase, "apiBase");

@@ -1525,7 +1525,11 @@ describe("long progressive planner trajectories", () => {
     }
   });
   it.each([
-    { codingMode: false, error: { statusCode: 429, retryAfterMs: 10 } },
+    { codingMode: false, error: { statusCode: 500, retryAfterMs: 10 } },
+    {
+      codingMode: false,
+      error: { statusCode: 429, retryAfterMs: 10, code: "insufficient_quota" },
+    },
     { codingMode: true, error: { statusCode: 429 } },
     {
       codingMode: true,
@@ -1537,7 +1541,7 @@ describe("long progressive planner trajectories", () => {
     },
     { codingMode: true, error: { statusCode: 500, retryAfterMs: 10 } },
   ])(
-    "does not add retries outside a temporary coding rate-limit window: %j",
+    "does not add retries outside a temporary rate-limit window: %j",
     async ({ codingMode, error }) => {
       const useModel = vi
         .fn()

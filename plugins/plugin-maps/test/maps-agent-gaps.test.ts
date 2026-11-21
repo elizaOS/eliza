@@ -708,6 +708,26 @@ describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () 
       data: { awaitingUserInput: true, reason: "device_location" },
     });
   });
+
+  it("names a missing phone location and asks for a starting place instead of failing", async () => {
+    const service = new MapsService(undefined, store([]));
+    const { device } = phone(true);
+    device.start = async ({ destination: place, travelMode }) => ({
+      state: "awaiting-location",
+      placeName: place.name,
+      travelMode,
+    });
+    service.registerDeviceNavigation(device);
+    const result = await run(service, destination);
+    expect(result).toMatchObject({
+      success: false,
+      data: { awaitingUserInput: true, reason: "device_location" },
+    });
+    expect(result?.userFacingText).toBe(
+      "The phone's location isn't available, so the route to Port Hercule isn't planned yet. Where are you starting from? You can also enter a starting point in Maps on the phone.",
+    );
+    expect(result?.userFacingText).not.toMatch(/could not complete/i);
+  });
 });
 
 describe("forms ask for names, not ids", () => {
@@ -918,10 +938,12 @@ describe("forms ask for names, not ids", () => {
   });
 
   it("asks which one when several places match", async () => {
-    const result = await run(
-      searching([hit(1, "Casino"), hit(2, "Casino Cafe")]),
-      { action: "share", placeQuery: "Casino" },
-    );
+    // Two places of the same name in one area are a real choice; a top
+    // "Casino" beside a "Casino Cafe" is not (route-disambiguation.test.ts).
+    const result = await run(searching([hit(1, "Casino"), hit(2, "Casino")]), {
+      action: "share",
+      placeQuery: "Casino",
+    });
     expect(result).toMatchObject({
       success: false,
       data: {
@@ -931,7 +953,7 @@ describe("forms ask for names, not ids", () => {
       },
     });
     expect(result?.text).toContain("Which one did you mean?");
-    expect(result?.userFacingText).toContain("Casino Cafe");
+    expect(result?.userFacingText).toContain("2. Casino — 2 Quai, Monaco");
     expect(
       (result?.data as { places?: unknown[] } | undefined)?.places,
     ).toHaveLength(2);

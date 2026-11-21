@@ -182,6 +182,21 @@ public final class StreamingSpeechTest {
   check(focus.changed(SpeechAudioFocusPolicy.Event.LOSS)==SpeechAudioFocusPolicy.Action.STOP,"permanent loss stops");
   check(focus.released(),"a permanently lost request is abandoned too");
   focus.granted(true);check(focus.released()&&!focus.held(),"released after speech");
+  // An owner that also listens pauses on a transient loss and resumes on the regain.
+  SpeechAudioFocusPolicy listening=new SpeechAudioFocusPolicy(true);
+  check(listening.changed(SpeechAudioFocusPolicy.Event.LOSS_TRANSIENT)==SpeechAudioFocusPolicy.Action.NONE,"pausing owner: nothing held, nothing to do");
+  listening.granted(true);
+  check(listening.changed(SpeechAudioFocusPolicy.Event.LOSS_TRANSIENT)==SpeechAudioFocusPolicy.Action.PAUSE&&listening.paused()&&listening.held(),"transient loss pauses and keeps the request");
+  check(listening.changed(SpeechAudioFocusPolicy.Event.LOSS_TRANSIENT)==SpeechAudioFocusPolicy.Action.NONE,"pause once");
+  check(listening.changed(SpeechAudioFocusPolicy.Event.GAIN)==SpeechAudioFocusPolicy.Action.RESUME&&!listening.paused()&&!listening.ducked(),"regain resumes");
+  check(listening.changed(SpeechAudioFocusPolicy.Event.LOSS_TRANSIENT)==SpeechAudioFocusPolicy.Action.PAUSE,"paused again");
+  check(listening.changed(SpeechAudioFocusPolicy.Event.LOSS_TRANSIENT_CAN_DUCK)==SpeechAudioFocusPolicy.Action.RESUME&&listening.ducked(),"a ducking change after a pause resumes lowered");
+  check(listening.changed(SpeechAudioFocusPolicy.Event.GAIN)==SpeechAudioFocusPolicy.Action.RESTORE,"then the regain restores");
+  check(listening.changed(SpeechAudioFocusPolicy.Event.LOSS_TRANSIENT)==SpeechAudioFocusPolicy.Action.PAUSE,"paused before a permanent loss");
+  check(listening.changed(SpeechAudioFocusPolicy.Event.LOSS)==SpeechAudioFocusPolicy.Action.STOP&&!listening.held(),"permanent loss stops a paused owner");
+  check(listening.released(),"a stopped pausing owner abandons its request");
+  listening.granted(true);listening.changed(SpeechAudioFocusPolicy.Event.LOSS_TRANSIENT);
+  check(listening.released()&&!listening.paused()&&listening.changed(SpeechAudioFocusPolicy.Event.GAIN)==SpeechAudioFocusPolicy.Action.NONE,"a released pause never resumes");
   for(SpeechAudioFocusPolicy.Mode mode:SpeechAudioFocusPolicy.Mode.values()){
    boolean call=mode!=SpeechAudioFocusPolicy.Mode.NORMAL&&mode!=SpeechAudioFocusPolicy.Mode.OTHER;
    check(SpeechAudioFocusPolicy.callActive(mode)==call,"call mode "+mode);

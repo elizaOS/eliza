@@ -59,14 +59,23 @@ export interface IssuedConsentNonce {
  * action (a UI affordance), NOT by the mint. Returns null when no durable store
  * is configured (consent cannot be tracked, so it cannot be honestly granted).
  */
-export async function issueConsentNonce(userId: string): Promise<IssuedConsentNonce | null> {
+export async function issueConsentNonce(
+  userId: string,
+  onWriteStarted?: (nonce: string) => void,
+): Promise<IssuedConsentNonce | null> {
   if (typeof userId !== "string" || userId.trim() === "") {
     throw new Error("issueConsentNonce requires a userId");
   }
   const redis = getRedis();
   if (!redis) return null;
   const nonce = crypto.randomUUID();
-  await redis.set(consentKey(userId, nonce), "1", { ex: CONSENT_NONCE_TTL_SECONDS });
+  const stored = redis.set(consentKey(userId, nonce), "1", { ex: CONSENT_NONCE_TTL_SECONDS });
+  try {
+    onWriteStarted?.(nonce);
+  } catch {
+    // Optional relay warm-up cannot affect the durable consent decision.
+  }
+  await stored;
   return {
     nonce,
     expiresAt: new Date(Date.now() + CONSENT_NONCE_TTL_SECONDS * 1000).toISOString(),

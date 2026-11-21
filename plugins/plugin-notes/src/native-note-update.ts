@@ -1,16 +1,15 @@
 /** Native adaptation of the canonical Notes patch contract. No store is opened. */
 import {
   assertActiveTrajectoryForLlmCall,
-  extractUserText,
   type GenerateTextParams,
   type IAgentRuntime,
   type Memory,
   ModelType,
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
-  unwrapUserMessageText,
 } from "@elizaos/core";
 import { applyNotePatch } from "./note-patch.js";
+import { ownerRequestText } from "./owner-text.js";
 import {
   noteTextEditSchema,
   projectNoteForModel,
@@ -53,7 +52,7 @@ export async function inferSelectedNotesUpdate(args: {
   noChange?: true;
 }> {
   args.signal.throwIfAborted();
-  const request = extractUserText(unwrapUserMessageText(args.message));
+  const request = ownerRequestText(args.message);
   const prompt = [
     "Extract only the originally requested edit to this freshly approved existing Notes snapshot. The user may speak in any language.",
     "Return the canonical Notes patch schema as JSON only. If the original request is read-only, changes=[] and textEdit=null with requiresInput=false. The lookup itself does not imply an edit. If it names a different note from the approved snapshot, requiresInput=true; never transfer an edit to another title. Use changes for explicitly requested title/body replacements, or textEdit for one exact unique literal substitution, with changes=[]; never both. requiresInput:true and a short clarification when the edit is not fully specified.",

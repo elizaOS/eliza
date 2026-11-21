@@ -128,12 +128,6 @@ test("desktop configured path retains precedence over env", async () => {
     "/owned/config",
   );
 });
-test("desktop legacy env override remains supported", async () => {
-  const { api } = fixture("desktop", true, {
-    SELFCONTROL_HOSTS_FILE_PATH: "/owned/legacy",
-  });
-  assert.equal(await api.resolveSelfControlHostsFilePath({}), "/owned/legacy");
-});
 test("missing desktop hosts retains its original unavailable status", async () => {
   const { api, calls } = fixture("desktop", false);
   const status = await api.reconcileSelfControlBlockState({});

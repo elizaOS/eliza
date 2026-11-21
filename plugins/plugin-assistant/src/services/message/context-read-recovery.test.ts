@@ -137,6 +137,7 @@ function fixture(responses: unknown[]) {
     providers: [{ name: "CHOICE", get: vi.fn() }],
     evaluators: [],
     getService: vi.fn(() => null),
+    getServicesByType: vi.fn(() => []),
     getRoom: vi.fn(async () => null),
     getModelRegistrations: vi.fn(() => []),
     getSetting: vi.fn(),
@@ -803,17 +804,8 @@ describe("typed native context read contract", () => {
     const query = " \n café:会議\t ";
     const reads = [
       { kind: "provider", references: ["VISIBLE", "h3"] },
-      {
-        kind: "history-source",
-        sourceSetId: requiredFixtureValue(contract.history).sourceSetId,
-        sourceOrdinals: [551, 3],
-      },
-      {
-        kind: "history-search",
-        sourceSetId: requiredFixtureValue(contract.history).sourceSetId,
-        speaker: "assistant",
-        query,
-      },
+      { kind: "history-source", sourceOrdinals: [551, 3] },
+      { kind: "history-search", speaker: "assistant", query },
     ];
     const errors: string[] = [];
     validateSchema(
@@ -831,23 +823,30 @@ describe("typed native context read contract", () => {
       "history:search-assistant:" + query,
     ]);
     assertNativeContextReadToolBudget([tool]);
-    const holeErrors: string[] = [];
-    validateSchema(
-      tool.parameters as JsonSchema,
-      {
-        reads: [
-          {
-            kind: "history-source",
-            sourceSetId: requiredFixtureValue(contract.history).sourceSetId,
-            sourceOrdinals: [2],
-          },
-        ],
-        acknowledgment: "",
-      },
-      "",
-      holeErrors,
+    // The schema carries no per-turn value, so the tool is the same bytes on
+    // every turn of a room; source-set currentness and the offered ordinals
+    // are enforced on decode. A per-turn const in the schema made every later
+    // byte of the request a prompt-cache miss.
+    const history = requiredFixtureValue(contract.history);
+    expect(JSON.stringify(tool)).not.toContain("sourceSetId");
+    expect(
+      createContextReadTool(baseSchema, true, {
+        ...contract,
+        history: {
+          ...history,
+          sourceSetId: "b".repeat(64),
+          sources: new Map([...history.sources, [552, "history:h552"]]),
+        },
+      }),
+    ).toEqual(tool);
+    expect(() =>
+      decodeNativeContextReads(
+        [{ kind: "history-source", sourceOrdinals: [2] }],
+        contract,
+      ),
+    ).toThrowError(
+      expect.objectContaining({ code: "CONTEXT_DISCOVERY_INVALID_READ" }),
     );
-    expect(holeErrors.length).toBeGreaterThan(0);
   });
   it.each(
     [

@@ -96,7 +96,7 @@ export type NativePageGuidance =
  */
 export type SurfaceLayer = "above-host" | "below-host";
 
-export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
+interface SurfaceCreateBase extends SurfaceOwnerOptions {
   /** Stable per-surface id (the Browser tab's surface id). */
   id: string;
   /** Initial URL to load, when known. */
@@ -144,6 +144,19 @@ export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
   /** Default `above-host`. Fixed for the life of the surface. */
   layer?: SurfaceLayer;
 }
+
+export type CreateSurfaceOptions = SurfaceCreateBase &
+  (
+    | { purpose?: undefined }
+    | {
+        purpose: "manual-sign-in";
+        process: "isolated";
+        storage: "isolated";
+        profileKey?: never;
+        interceptNavigation?: false;
+        answersRequests?: false;
+      }
+  );
 
 /** A cross-origin main-frame navigation an intercepting surface held for the host. */
 export interface NavigationRequestedEvent extends SurfaceIdOptions {
@@ -453,6 +466,7 @@ export interface SurfaceState {
   foregrounded: boolean;
   /** Android: `pauseSurface` paused the page and `resumeSurface` has not run since. */
   paused?: boolean;
+  /** A protected sign-in surface only reports its HTTPS origin. */
   currentUrl: string | null;
   process: SurfaceProcessSharing | null;
   storage: SurfaceStorageSharing | null;

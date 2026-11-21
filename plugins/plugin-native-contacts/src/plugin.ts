@@ -36,7 +36,6 @@ export const appContactsPlugin: Plugin = {
       tags: ["contacts", "android", "address-book"],
       responseContext: { primaryContext: "contacts" },
       visibleInManager: true,
-      desktopTabEnabled: true,
       nativeOs: true,
     },
   ],

@@ -73,7 +73,7 @@ const PROFILE_FILTER = new Set(
     .filter(Boolean),
 );
 
-const EXPECTED_SARAH_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
+const EXPECTED_SARAH_VOICE_ID = "OZ0L6eISlOejga3XjDFt";
 const KNOWLEDGE_CODEWORD = "VELVET-MOON-4821";
 const QA_ARTIFACT_DIR = path.join(os.tmpdir(), "eliza-live-qa");
 const REPO_ROOT = path.resolve(
@@ -1164,19 +1164,6 @@ async function smokeTabs(page: Page, profile: Profile) {
       name: "database",
       waitForReady: () =>
         waitForAnyText(page, ["Tables", "Table Editor", "SQL Editor"], 30_000),
-    },
-    {
-      path: "/desktop",
-      name: "desktop",
-      waitForReady: () =>
-        waitForAnyText(
-          page,
-          [
-            "Refresh Diagnostics",
-            "Desktop workspace tools are only available inside the Electrobun desktop runtime.",
-          ],
-          30_000,
-        ),
     },
     {
       path: "/logs",

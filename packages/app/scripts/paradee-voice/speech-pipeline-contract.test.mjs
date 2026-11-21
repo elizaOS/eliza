@@ -724,6 +724,76 @@ test("live capture uses the shared session's VAD and never a platform recognizer
   );
 });
 
+// The cloud-only module stages a subset of the library and the bridge. Compile exactly the file
+// list its build.gradle stages, so a new import in a shared class cannot silently break it.
+test("the cloud-only speech bridge compiles from exactly cloud-speech-bridge/build.gradle's file list against Android 36", async () => {
+  const sdk = path.join(
+    process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),
+    "platforms/android-36/android.jar",
+  );
+  assert.ok(fs.existsSync(sdk), "Android 36 platform required");
+  const cloudModule = path.resolve(
+    here,
+    "../../../../plugins/plugin-local-inference/native/android/cloud-speech-bridge",
+  );
+  const gradle = fs.readFileSync(
+    path.join(cloudModule, "build.gradle"),
+    "utf8",
+  );
+  const staged = [];
+  for (const [, from, body] of gradle.matchAll(
+    /from\(file\('([^']+)'\)\)\s*\{([^}]*)\}/g,
+  )) {
+    const includes = [...body.matchAll(/'([^']+\.java)'/g)].map(
+      ([, file]) => file,
+    );
+    assert.ok(includes.length > 0, `includes for ${from}`);
+    for (const file of includes)
+      staged.push(path.resolve(cloudModule, from, file));
+  }
+  const names = staged.map((file) => path.basename(file, ".java")).sort();
+  assert.deepEqual(names, [
+    "AudioTrackSpeechOutput",
+    "CloudSpeechWire",
+    "SpeechAudioFocus",
+    "SpeechAudioFocusPolicy",
+    "SpeechPcmQueue",
+    "SpeechStreamBridgePlugin",
+    "StreamingSpeechPlayback",
+    "VoiceLatencyTrials",
+  ]);
+  for (const file of staged) assert.ok(fs.existsSync(file), file);
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "cloud-speech-bridge-"));
+  try {
+    const okhttp = path.join(temp, "okhttp.jar");
+    fs.writeFileSync(
+      okhttp,
+      execFileSync("unzip", ["-p", await dependency("okhttp"), "classes.jar"]),
+    );
+    execFileSync(
+      java("javac"),
+      [
+        "--release",
+        "21",
+        "-cp",
+        [
+          sdk,
+          okhttp,
+          await dependency("okio"),
+          await dependency("kotlin"),
+        ].join(path.delimiter),
+        "-d",
+        temp,
+        ...staged,
+        ...javaFiles(path.join(fixtures, "capacitor-api")),
+      ],
+      { stdio: "pipe", timeout: 120000 },
+    );
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
 test("the product-subclassable speech bridge compiles with the library against Android 36", async () => {
   const sdk = path.join(
     process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),

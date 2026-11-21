@@ -10,6 +10,7 @@
 import { type IAgentRuntime, logger } from '@elizaos/core';
 import type { HttpPlugin as Plugin } from '@elizaos/host/protocol';
 import { workflowAction } from './actions/index';
+import { registerWorkflowRequestRouting } from './actions/workflow-request';
 import * as dbSchema from './db/index';
 import { activeWorkflowsProvider, workflowStatusProvider } from './providers/index';
 import { workflowRouteRegistration } from './register-routes';
@@ -49,6 +50,10 @@ export const workflowPlugin: Plugin = {
     // Register WORKFLOW_DISPATCH so trigger-kind=workflow tasks can call
     // runtime.getService("WORKFLOW_DISPATCH").execute(workflowId).
     registerWorkflowDispatchService(runtime);
+    // "create a workflow called X", "rename the workflow X to Y", "delete the
+    // X workflow" and "list my workflows" belong to WORKFLOW whatever Stage 1
+    // declared about them.
+    registerWorkflowRequestRouting(runtime);
     logger.info(
       { src: 'plugin:workflow:plugin:init' },
       'Native Smithers workflow plugin initialized successfully'

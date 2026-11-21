@@ -7,7 +7,10 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { calendarAvailabilityActions } from "./calendar-availability.js";
+import {
+  asksOnlyAboutTomorrowMorning,
+  calendarAvailabilityActions,
+} from "./calendar-availability.js";
 
 const timeZone = "America/Los_Angeles";
 const start = "2026-11-06T17:00:00.000Z";
@@ -86,12 +89,26 @@ function fixture(source: "runtime" | "device" = "runtime") {
     { name: "CALENDAR", similes: [], description: "Read Calendar", handler },
     () => source,
   );
-  const call = (name: string, extra: Record<string, unknown> = {}) =>
+  const call = (
+    name: string,
+    extra: Record<string, unknown> = {},
+    text?: string,
+  ) =>
     actions
       .find((action: Action) => action.name === name)
-      ?.handler?.(runtime, message, undefined, {
-        parameters: { windowStart: start, windowEnd: end, timeZone, ...extra },
-      });
+      ?.handler?.(
+        runtime,
+        text === undefined ? message : { ...message, content: { text } },
+        undefined,
+        {
+          parameters: {
+            windowStart: start,
+            windowEnd: end,
+            timeZone,
+            ...extra,
+          },
+        },
+      );
   return { feed, handler, call };
 }
 
@@ -150,6 +167,114 @@ describe("standalone Calendar availability", () => {
         { outcome: "noop", operation: "calendar.check_availability.read" },
       ],
     });
+  });
+
+  it("rejects an evening end for a morning-only request before reading Calendar", async () => {
+    const { call, handler } = fixture();
+    expect(
+      await call("CALENDAR_CHECK_AVAILABILITY", {
+        windowStart: "2026-11-06T16:00:00.000Z",
+        windowEnd: "2026-11-07T04:00:00.000Z",
+      }),
+    ).toMatchObject({
+      success: false,
+      data: {
+        definitive: false,
+        code: "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD",
+      },
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "Am I free tomorrow morning?",
+    "Do I have 20 minutes tomorrow morning",
+    "Find me time for a call tomorrow morning.",
+    "Am I free tomorrow morning until noon?",
+    "Am I free tomorrow morning through 12:00 PM?",
+  ])("rejects an over-long window for %j", async (text) => {
+    const { call, handler } = fixture();
+    expect(
+      await call(
+        "CALENDAR_CHECK_AVAILABILITY",
+        { windowEnd: "2026-11-07T04:00:00.000Z" },
+        text,
+      ),
+    ).toMatchObject({
+      success: false,
+      data: { code: "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD" },
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("rejects a morning window that starts before tomorrow", async () => {
+    const { call, handler } = fixture();
+    expect(
+      await call("CALENDAR_CHECK_AVAILABILITY", {
+        // 23:00 Pacific on the day of the request.
+        windowStart: "2026-11-06T07:00:00.000Z",
+      }),
+    ).toMatchObject({
+      success: false,
+      data: { code: "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD" },
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("accepts a morning window from tomorrow's midnight through noon", async () => {
+    const { call, handler, feed } = fixture();
+    const midnight = "2026-11-06T08:00:00.000Z";
+    const noon = "2026-11-06T20:00:00.000Z";
+    feed.data.timeMin = midnight;
+    feed.data.timeMax = noon;
+    feed.data.requestWindow.timeMin = midnight;
+    feed.data.requestWindow.timeMax = noon;
+    expect(
+      await call("CALENDAR_CHECK_AVAILABILITY", {
+        windowStart: midnight,
+        windowEnd: noon,
+      }),
+    ).toMatchObject({ success: true, data: { isFree: false } });
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    "Am I free tomorrow morning or afternoon?",
+    "Check today or tomorrow morning.",
+    "Do I have time after tomorrow morning?",
+    "Is Friday or tomorrow morning free?",
+  ])("reads the window for a wider request: %s", async (text) => {
+    const { call, handler, feed } = fixture();
+    const wideEnd = "2026-11-07T04:00:00.000Z";
+    feed.data.timeMax = wideEnd;
+    feed.data.requestWindow.timeMax = wideEnd;
+    expect(
+      await call("CALENDAR_CHECK_AVAILABILITY", { windowEnd: wideEnd }, text),
+    ).toMatchObject({ success: true, data: { isFree: false } });
+    expect(handler).toHaveBeenCalledExactlyOnceWith(
+      runtime,
+      { ...message, content: { text } },
+      undefined,
+      {
+        parameters: {
+          subaction: "feed",
+          details: { timeMin: start, timeMax: wideEnd, timeZone },
+        },
+      },
+    );
+  });
+
+  it("recognises only a tomorrow-morning-only request", () => {
+    expect(asksOnlyAboutTomorrowMorning("am i free tomorrow morning")).toBe(
+      true,
+    );
+    expect(
+      asksOnlyAboutTomorrowMorning("Am I free tomorrow morning until 2 pm?"),
+    ).toBe(false);
+    expect(asksOnlyAboutTomorrowMorning("Am I free tomorrow evening?")).toBe(
+      false,
+    );
+    expect(asksOnlyAboutTomorrowMorning("Am I free this morning?")).toBe(false);
   });
 
   it("does not substitute the runtime calendar for a selected device source", async () => {

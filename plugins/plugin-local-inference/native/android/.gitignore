@@ -2,3 +2,5 @@
 /native/
 /build/
 /.cxx/
+# Output of a host that includes the cloud-speech-bridge module.
+/cloud-speech-bridge/build/

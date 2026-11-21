@@ -527,6 +527,8 @@
       "plugins/plugin-assistant/src/features/trajectories/TrajectoriesService.ts",
       "plugins/plugin-assistant/src/features/trajectories/store/trajectory-storage.ts",
       "plugins/plugin-assistant/src/features/trajectories/store/trajectory-internals.ts",
+      "plugins/plugin-assistant/src/features/trajectories/store/recorded-trajectory.ts",
+      "plugins/plugin-assistant/src/features/trajectories/recorded-trajectories.ts",
       "packages/agent/src/runtime/dev-trajectory-recovery.ts",
       "packages/agent/src/runtime/dev-trajectory-recovery-protocol.ts"
     ],
@@ -534,6 +536,7 @@
     "status": "partial",
     "limitations": [
       "Two captures and two execution identities.",
+      "A recorded trajectory's start, stages and terminal header are the same start, capture and finish transitions on its own row or on the open turn row. A header write after the turn row closes is a rejected late capture; the per-file export is a projection outside the model.",
       "Database transactions, CAS, supervisor exit proof and arbitrary capture payloads are external.",
       "Safety projection only. No implementation trace-refinement or unbounded progress proof."
     ]

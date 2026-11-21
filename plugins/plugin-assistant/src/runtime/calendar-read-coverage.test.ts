@@ -382,6 +382,72 @@ describe("request-bound Calendar read coverage", () => {
       calendarReadCoverage(f.output, f.context, f.trajectory).verified,
     ).toBe(true);
   });
+  it.each([true, false])(
+    "preserves the verified Calendar date with explicit model coverage %s",
+    async (explicitCoverage) => {
+      const f = fixture();
+      const step = requiredFixtureValue(f.trajectory.steps[0]);
+      const result = requiredFixtureValue(step.result);
+      const canonical = "Next event: Design review on October 5 at 10 AM UTC.";
+      step.result = {
+        ...result,
+        transcriptVisibility: "internal",
+        modelReplyRequired: true,
+        data: {
+          ...result.data,
+          replyContext: {
+            domain: "calendar",
+            scenario: "next_event",
+            userFacingFacts: canonical,
+          },
+        },
+      };
+      f.output.messageToUser = "Your next event is tomorrow at 10 AM.";
+      if (!explicitCoverage) {
+        delete f.output.requestFullyCovered;
+        delete f.output.outcomeCoverage;
+      }
+      const reply = await runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(f.output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(reply.success).toBe(true);
+      expect(reply.messageToUser).toBe(canonical);
+    },
+  );
+  it("uses the sole current next-event read when the evaluator omits its citation", async () => {
+    const f = fixture();
+    delete f.output.outcomeCoverage;
+    delete f.output.requestFullyCovered;
+    f.output.messageToUser = "Your next event is tomorrow at 10 AM.";
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+    const reply = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(f.output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(reply.success).toBe(true);
+    expect(reply.messageToUser).toBe(f.output.messageToUser);
+    const step = requiredFixtureValue(f.trajectory.steps[0]);
+    f.trajectory.steps.push({
+      ...step,
+      toolCall: {
+        ...requiredFixtureValue(step.toolCall),
+        id: "another-next-event",
+      },
+    });
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+    f.trajectory.steps.pop();
+    requiredFixtureValue(step.result).effectReceipts = [];
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+  });
   it("accepts the canonical dispatcher only for its explicit next_event discriminator", () => {
     const f = fixture();
     f.trajectory.steps[0].toolCall = {
@@ -2463,6 +2529,43 @@ describe("Calendar proposal and availability outcome evidence", () => {
       throw new Error("Incomplete scheduling evidence fixture");
     return { ...f, step, result, data, receipt, call, binding };
   }
+  it("answers a sole current built-in slot preview from the producer instead of converting it with a model", async () => {
+    const f = proposalFixture();
+    f.binding.source = "builtin";
+    f.result.transcriptVisibility = "internal";
+    f.result.modelReplyRequired = true;
+    const answer =
+      "I found a 30-minute opening. Mon, Oct 5, 12:00–12:30 PM UTC.";
+    f.data.replyContext = {
+      domain: "calendar",
+      scenario: "propose_times",
+      userFacingFacts: answer,
+    };
+    const useModel = vi.fn(async () =>
+      JSON.stringify({
+        ...f.output,
+        outcomeCoverage: undefined,
+        messageToUser: "It is free at 1 PM.",
+      }),
+    );
+    const evaluate = () =>
+      runEvaluator({
+        runtime: { useModel },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+    expect(await evaluate()).toMatchObject({
+      success: true,
+      decision: "FINISH",
+      messageToUser: answer,
+      outcomeCoverage: [{ status: "completed", evidenceStepIds: ["step:1"] }],
+    });
+    expect(useModel).not.toHaveBeenCalled();
+    // The early reply cannot count a stale preview for the current request.
+    f.binding.requestedAt = Date.parse(f.receipt.observedAt) + 1000;
+    await evaluate();
+    expect(useModel).toHaveBeenCalledOnce();
+  });
   it.each([
     ["binding", "CALENDAR_READ_BINDING_IDENTITY_INVALID"],
     ["coverage", "CALENDAR_READ_COVERAGE_MISSING"],
@@ -3335,7 +3438,7 @@ it.each(["partial", "owner", "stale", "window"])(
 
 /** Live step-1793620054396-442pij: typed feed, no details, one complete owner day. */
 describe("owner-bound producer-resolved Calendar window", () => {
-  async function actualImplicitFeed() {
+  async function actualImplicitFeed(details?: Record<string, string>) {
     const f = fixture();
     const time = Date.parse("2026-11-02T11:47:40.000Z");
     const asOf = "2026-11-02T11:47:44.157Z";
@@ -3410,7 +3513,7 @@ describe("owner-bound producer-resolved Calendar window", () => {
         runJsonModel: noModel,
         recentConversationTexts: async () => [],
       }).handler(runtime, message, undefined, {
-        parameters: { subaction: "feed" },
+        parameters: { subaction: "feed", ...(details && { details }) },
       });
       expect(read).toHaveBeenCalledOnce();
       expect(read.mock.calls[0][1]).toMatchObject({
@@ -3426,7 +3529,7 @@ describe("owner-bound producer-resolved Calendar window", () => {
           toolCall: {
             id: "implicit-owner-day",
             name: "CALENDAR_FEED",
-            params: { subaction: "feed" },
+            params: { subaction: "feed", ...(details && { details }) },
           },
           result: structuredClone(result),
         },
@@ -3443,17 +3546,24 @@ describe("owner-bound producer-resolved Calendar window", () => {
       vi.restoreAllMocks();
     }
   }
-  it("accepts the real producer's current owner-bound day without model-supplied details", async () => {
-    const f = await actualImplicitFeed();
-    const coverage = calendarReadCoverage(f.output, f.context, f.trajectory);
-    expect(coverage.verified).toBe(true);
-    expect(coverage).toEqual({ verified: true, unverifiedIntentIds: [] });
-    expect(f.trajectory.steps[0].result?.data?.requestWindow).toMatchObject({
-      kind: "calendar.request-window.v1",
-      timeMin: "2026-11-02T08:00:00.000Z",
-      timeMax: "2026-11-03T08:00:00.000Z",
-    });
-  });
+  it.each([
+    ["absent details", undefined],
+    ["empty details", {}],
+    ["the producer's timezone alone", { timeZone: "America/Los_Angeles" }],
+  ] as const)(
+    "accepts the real producer's current owner-bound day with %s",
+    async (_, details) => {
+      const f = await actualImplicitFeed(details);
+      const coverage = calendarReadCoverage(f.output, f.context, f.trajectory);
+      expect(coverage.verified).toBe(true);
+      expect(coverage).toEqual({ verified: true, unverifiedIntentIds: [] });
+      expect(f.trajectory.steps[0].result?.data?.requestWindow).toMatchObject({
+        kind: "calendar.request-window.v1",
+        timeMin: "2026-11-02T08:00:00.000Z",
+        timeMax: "2026-11-03T08:00:00.000Z",
+      });
+    },
+  );
   it.each([
     "missing",
     "other-request",
@@ -3467,6 +3577,8 @@ describe("owner-bound producer-resolved Calendar window", () => {
     "partial",
     "short-window",
     "explicit-window",
+    "unmatched-argument-zone",
+    "unsupported-argument",
     "multiple-bindings",
   ])("does not bypass %s evidence", async (fault) => {
     const f = await actualImplicitFeed();
@@ -3494,6 +3606,10 @@ describe("owner-bound producer-resolved Calendar window", () => {
         date: "2026-11-04",
         timeZone: "America/Los_Angeles",
       };
+    if (fault === "unmatched-argument-zone")
+      requiredFixtureValue(step.toolCall).params.details = { timeZone: "UTC" };
+    if (fault === "unsupported-argument")
+      requiredFixtureValue(step.toolCall).params.details = { windowDays: 7 };
     if (fault === "multiple-bindings") {
       const bindings = requiredFixtureValue(f.context.metadata)
         .calendarReadBindings as CalendarReadBinding[];

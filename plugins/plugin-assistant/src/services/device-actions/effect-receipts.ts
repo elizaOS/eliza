@@ -290,6 +290,7 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "read_calendar_range":
     case "read_selected_reminders":
     case "messages_read_selected":
+    case "sms_latest_sender":
     case "voicemail_read_selected":
     case "contact_read_selected":
       return true;
@@ -301,6 +302,8 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "files_filter":
     case "files_open":
     case "contact_show":
+    // The keypad in front, filled in at most: nothing is dialed or called.
+    case "phone_keypad":
       return true;
     // A data change and an outward share, each opened as an owner review.
     case "photos_album_create":

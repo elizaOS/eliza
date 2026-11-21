@@ -19,10 +19,9 @@ import {
 } from "./ios-local-agent-transport";
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 import { remoteRelayTransportForUrl } from "./remote-relay-transport";
-import { sshRuntimeTransportForUrl } from "./ssh-runtime-transport";
 
 // Keep local, selected remote runtime, desktop Cloud, and native Cloud precedence.
-// CSRF requests deliberately do not use relay/SSH selection; Cloud requests use
+// CSRF requests deliberately do not use relay selection; Cloud requests use
 // only the desktop bridge before their own Capacitor/browser fallback.
 configureHostTransport(async (url, purpose, init) => {
   if (purpose === "cloud") return desktopHttpTransportForUrl(url);
@@ -33,8 +32,7 @@ configureHostTransport(async (url, purpose, init) => {
   const local = await desktopLocalAgentTransportForUrl(url);
   if (local) return local;
   if (purpose === "agent") {
-    const remote =
-      remoteRelayTransportForUrl(url) ?? sshRuntimeTransportForUrl(url);
+    const remote = remoteRelayTransportForUrl(url);
     if (remote) return remote;
   }
   return (

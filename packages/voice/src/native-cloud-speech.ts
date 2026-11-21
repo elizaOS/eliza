@@ -17,35 +17,53 @@ export interface CloudStreamEvent {
   utteranceId?: unknown;
   code?: unknown;
   data?: unknown;
+  /** `ready` and the start result: whether the microphone is closed. */
+  muted?: unknown;
+  /** `audio-start`: milliseconds from the speak request to the first frame. */
+  elapsedMs?: unknown;
+  /** `progress`, `audio-end`: milliseconds of this utterance's audio played so far (final on `audio-end`). */
+  playedMs?: unknown;
+  /** `progress`: milliseconds of this utterance's audio received; `playedMs` never passes it. */
+  receivedMs?: unknown;
+  /** `audio-end`: the utterance produced no audible sample. */
+  silent?: unknown;
+  /** `audio-end`: set (to the reason, `audio-focus-lost`) when a transient focus loss stopped the utterance. */
+  interrupted?: unknown;
 }
 export interface CloudStreamPort {
+  /** `muted: true` starts with the microphone closed and asks for no microphone permission. */
   startCloudSpeech(input: {
     sessionId: string;
     environment: string;
     credentialId: string;
+    muted?: boolean;
   }): Promise<{
     sessionId: string;
     sampleRate: number;
     echoCancelled: boolean;
+    muted?: boolean;
   }>;
   stopCloudSpeech(input: { sessionId: string }): Promise<unknown>;
   setCloudSpeechOutputMuted?(input: {
     sessionId: string;
     muted: boolean;
   }): Promise<unknown>;
+  /** An unmute without the microphone permission rejects with code `permission-required`. */
   setCloudSpeechMuted(input: {
     sessionId: string;
     muted: boolean;
   }): Promise<unknown>;
+  /** `pace` from 0.5 to 2 (default 1) is applied on the device at the same pitch. */
   speakCloudSpeech(input: {
     sessionId: string;
     utteranceId: string;
     text: string;
+    pace?: number;
   }): Promise<unknown>;
   cancelCloudSpeech(input: {
     sessionId: string;
     utteranceId: string;
-  }): Promise<unknown>;
+  }): Promise<{ playedMs?: number } | undefined>;
   addListener(
     event: "cloudSpeechEvent",
     callback: (event: CloudStreamEvent) => void,
@@ -153,9 +171,14 @@ export function createCloudStreamingSpeech(
           }
         } else {
           utterances.delete(event.utteranceId);
-          pending.started
-            ? pending.resolve()
-            : pending.reject(Error("Cloud speech ended without audio."));
+          if (typeof event.interrupted === "string")
+            pending.reject(
+              Object.assign(Error("Cloud speech was interrupted."), {
+                code: event.interrupted,
+              }),
+            );
+          else if (pending.started) pending.resolve();
+          else pending.reject(Error("Cloud speech ended without audio."));
         }
         return;
       }

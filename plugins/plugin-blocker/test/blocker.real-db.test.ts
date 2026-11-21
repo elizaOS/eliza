@@ -23,8 +23,7 @@
  * engine, not a mocked adapter.
  *
  * The hosts-file engine is kept away from `/etc/hosts` by the temp-hosts env
- * the real-runtime helper sets (SELFCONTROL_HOSTS_FILE_PATH /
- * WEBSITE_BLOCKER_HOSTS_FILE_PATH).
+ * the real-runtime helper sets (WEBSITE_BLOCKER_HOSTS_FILE_PATH).
  *
  * Hermetic: no network, no native OS APIs, no /etc/hosts writes.
  */

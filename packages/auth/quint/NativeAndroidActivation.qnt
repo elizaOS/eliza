@@ -1,5 +1,5 @@
 // In-process acknowledgement of a key that a sign-in stored before Cloud
-// confirmed it (CloudSignInPlugin.complete, retryAcknowledgement, activated,
+// confirmed it (CloudSignInPlugin.commit, retryAcknowledgement, activated,
 // expireActivation). The sign-in step ends as activation-pending; Cloud is
 // asked again until its deadline, with one request just after it. A confirmed
 // key is announced once. A refused or unconfirmed key is removed and reported,

@@ -18,7 +18,38 @@
     "limitations": [
       "One scope and two children; replacement is permanent retirement of that scope. No arbitrary interleaving or whole-session refinement claim.",
       "Readiness, timeout observation and logical cleanup progress require the explicit fairness assumptions. Child-destruction requests do not acknowledge exit; physical quiescence requires independent termination observations and has its own conditional progress property and no-fairness counterexample.",
-      "OS scheduling, real deadline bounds, Android instrumentation, durable private-file publication, secret redaction and physical-device performance are outside the finite proof. Existing JVM and loopback contracts exercise those relevant implementation boundaries within controlled conditions."
+      "OS scheduling, real deadline bounds, Android instrumentation, durable private-file publication, secret redaction and physical-device performance are outside the finite proof. Existing JVM and loopback contracts exercise those relevant implementation boundaries within controlled conditions.",
+      "The agent-alone launch (EmbeddedRuntimeGroup.launchAgent) has no gateway, broker or publications; its startup and restart lifecycle is the EmbeddedAgentLifecycle entry."
+    ]
+  },
+  {
+    "id": "EmbeddedAgentLifecycle",
+    "model": "plugins/plugin-native-agent/quint/EmbeddedAgentLifecycle.qnt",
+    "sources": [
+      "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/embedded/EmbeddedAgentService.java",
+      "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/embedded/EmbeddedAgentPlugin.java",
+      "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/EmbeddedRuntimeGroup.java",
+      "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/EmbeddedRuntimeService.java",
+      "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProcessSupervisor.java",
+      "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/RuntimeStartFailure.java",
+      "plugins/plugin-native-agent/native-host/embedded-agent.mjs",
+      "plugins/plugin-native-agent/src/embedded.ts",
+      "plugins/plugin-native-agent/src/embedded-web.ts"
+    ],
+    "invariants": [
+      "FailureNamesCause",
+      "RunningWasReady",
+      "ChildOnlyWhileLaunched",
+      "ChecksBeforeChild",
+      "CrashedOnlyAfterReadiness",
+      "StartupFailureIsNotACrash",
+      "BoundedRestarts"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One supervisor and one agent child. Elapsed time and the back-off delay are abstracted; destruction is modeled as immediate.",
+      "The route allowlist, the stream bridge and the Android foreground-service rules are outside the model.",
+      "EmbeddedAgentService and EmbeddedAgentPlugin have not run on a device or emulator; the JVM supervisor and group contracts and the development launch journey are the conformance evidence."
     ]
   }
 ]

@@ -80,6 +80,7 @@ function createEvidence(
 ) {
   const evidence = [{ sourceId: `current:${id}`, quote: text }];
   return {
+    reviewBeforeCreate: false,
     guestIntent: {
       state: guests.length ? "requested" : "none",
       evidence,
@@ -1212,6 +1213,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
                   ? null
                   : paraphrase,
             location: null,
+            reviewBeforeCreate: false,
             guestIntent: { state: "none", evidence, guests: [] },
             noteIntent: {
               state: solo || mode === "native-inline" ? "none" : "requested",
@@ -3332,6 +3334,162 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
     expect(named?.success, JSON.stringify(named)).toBe(true);
     expect(await augustEvents()).toHaveLength(0);
+  });
+
+  // v617 on the owner's Pixel (2026-11-20, America/New_York): with Contacts in
+  // front in direct-request mode, "add an event called v617 check tomorrow at
+  // 3pm" ran CALENDAR_CREATE_EVENT and replied with an applied receipt for
+  // eliza-calendar/primary, the Agent Calendar source Alpha's Calendar view
+  // reads through this feed. Twelve minutes later "delete the calendar event
+  // v617 check" deleted it (applied receipt) but its reply was lost to a 429,
+  // so the retry found nothing and Saturday showed "Free all day". That delete
+  // receipt carried the event's creation time as its commit time.
+  it("replays the v617 create and delete against the calendar the Agent Calendar view reads", async () => {
+    const zone = "America/New_York";
+    const window = {
+      timeMin: "2026-11-21T05:00:00.000Z",
+      timeMax: "2026-11-22T05:00:00.000Z",
+    };
+    // The turn metadata the phone sent for each v617 message.
+    const metadata = {
+      uiView: "contacts",
+      uiViewPath: "/contacts",
+      uiTimeZone: zone,
+      clientDevice: {
+        context: {
+          view: "contacts",
+          revision: 3,
+          timeZone: zone,
+          sensitive: false,
+        },
+      },
+      notesFolders: [],
+      viewDelivery: "completed-action",
+      userTextFormat: "plain-v1",
+      agentActionMode: "direct-request-v1",
+      uiViewActionNames: [],
+      uiViewCapabilities: [],
+    };
+    const send = (
+      id: string,
+      text: string,
+      at: string,
+      parameters: Record<string, unknown>,
+    ) => {
+      const messageId = `00000000-0000-0000-0000-0000000617${id}`;
+      return createCalendarActionRunner({
+        runTextModel: vi.fn(async () => null),
+        runJsonModel: vi.fn(async ({ actionType }) =>
+          actionType === "lifeops.calendar.extract_create_event"
+            ? {
+                rawResponse: "{}",
+                parsed: {
+                  ...createEvidence(messageId, text),
+                  title: "v617 check",
+                  grantId: ELIZA_CALENDAR_GRANT_ID,
+                  calendarId: ELIZA_CALENDAR_ID,
+                  startAt: "2026-11-21T15:00:00",
+                  endAt: "2026-11-21T16:00:00",
+                  timeZone: null,
+                },
+              }
+            : null,
+        ),
+        recentConversationTexts: vi.fn(async () => []),
+      }).handler(
+        runtime,
+        {
+          id: messageId,
+          entityId: "00000000-0000-0000-0000-000000000102",
+          roomId: "00000000-0000-0000-0000-000000000103",
+          createdAt: Date.parse(at),
+          content: { text, source: "client_chat", metadata },
+        } as Memory,
+        undefined,
+        { parameters },
+      );
+    };
+    const agentCalendar = async () =>
+      (await service.getCalendarFeed(INTERNAL_URL, window)).events;
+
+    const created = await send(
+      "01",
+      "add an event called v617 check tomorrow at 3pm",
+      "2026-11-20T22:23:52.000Z",
+      { subaction: "create_event", title: "v617 check", details: {} },
+    );
+    expect(created?.success, JSON.stringify(created)).toBe(true);
+    const [createReceipt] = created?.effectReceipts ?? [];
+    expect(createReceipt).toMatchObject({
+      operation: "calendar.event.create",
+      outcome: "applied",
+      commit: { kind: "durable" },
+    });
+    // The receipt names the event the Agent Calendar view now lists.
+    const [shown] = await agentCalendar();
+    expect(shown).toMatchObject({
+      id: createReceipt?.resource.id,
+      provider: "eliza",
+      grantId: ELIZA_CALENDAR_GRANT_ID,
+      calendarId: ELIZA_CALENDAR_ID,
+      title: "v617 check",
+      startAt: "2026-11-21T20:00:00.000Z",
+      endAt: "2026-11-21T21:00:00.000Z",
+      timezone: zone,
+    });
+    expect(await agentCalendar()).toHaveLength(1);
+    // The phone's event was written at 22:24:19Z, twelve minutes before the delete.
+    await pg.query(
+      "UPDATE app_calendar.life_calendar_events SET updated_at = $1, synced_at = $1 WHERE id = $2",
+      ["2026-11-20T22:24:19.045Z", shown?.id],
+    );
+
+    const removeParameters = {
+      subaction: "delete_event",
+      query: "v617 check",
+      details: { timeZone: zone, ...window },
+    };
+    const deleteStarted = Date.now();
+    const removed = await send(
+      "02",
+      "delete the calendar event v617 check",
+      "2026-11-20T22:35:50.000Z",
+      removeParameters,
+    );
+    expect(removed?.success, JSON.stringify(removed)).toBe(true);
+    const [deleteReceipt] = removed?.effectReceipts ?? [];
+    expect(deleteReceipt).toMatchObject({
+      operation: "calendar.event.delete",
+      outcome: "applied",
+      resource: { id: shown?.id, version: `deleted:${'"eliza-1"'}` },
+      commit: { kind: "durable", id: shown?.id },
+    });
+    // The delete committed when it ran, not when the event was created.
+    const committedAt = Date.parse(
+      (deleteReceipt as { commit?: { committedAt?: string } }).commit
+        ?.committedAt ?? "",
+    );
+    expect(committedAt).toBeGreaterThanOrEqual(deleteStarted);
+    expect(deleteReceipt?.observedAt).toBe(
+      (deleteReceipt as { commit?: { committedAt?: string } }).commit
+        ?.committedAt,
+    );
+    expect(await agentCalendar()).toEqual([]);
+
+    // The retry finds nothing and claims no deletion.
+    const retried = await send(
+      "03",
+      "delete the calendar event v617 check",
+      "2026-11-20T22:38:43.000Z",
+      removeParameters,
+    );
+    expect(retried?.success).not.toBe(true);
+    expect(
+      (retried?.effectReceipts ?? []).filter(
+        (receipt) => receipt.outcome === "applied",
+      ),
+    ).toEqual([]);
+    expect(await agentCalendar()).toEqual([]);
   });
 });
 

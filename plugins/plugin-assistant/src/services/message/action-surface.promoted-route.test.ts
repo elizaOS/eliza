@@ -133,11 +133,11 @@ describe("promoted direct-route family coverage", () => {
       ),
     );
     expect(tools.map((tool) => tool.name)).toEqual([
-      "BRIEF",
-      "DISCOVER_ACTIONS",
       "IGNORE",
-      "REPLY",
       "STOP",
+      "DISCOVER_ACTIONS",
+      "BRIEF",
+      "REPLY",
     ]);
   });
 

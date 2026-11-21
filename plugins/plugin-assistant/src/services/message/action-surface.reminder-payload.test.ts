@@ -25,6 +25,19 @@ import {
 } from "./planned-tool.ts";
 import { createPlannerToolDiscoveryAction } from "./tool-discovery.ts";
 
+// VOICE_CALL is offered only where Twilio can place a call. This contract is
+// about independent phone work next to a reminder, so Twilio is configured.
+vi.mock("@elizaos/plugin-native-phone/twilio", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@elizaos/plugin-native-phone/twilio")
+  >()),
+  readTwilioCredentialsFromEnv: () => ({
+    accountSid: "AC00000000000000000000000000000000",
+    authToken: "test-token",
+    fromPhoneNumber: "+15550000001",
+  }),
+}));
+
 const request = "Remind me here in one minute to finish the final phone check.";
 const intent =
   "Set a reminder to ping the user in one minute to finish the final phone check";
@@ -128,11 +141,11 @@ describe("registered owner distinguishes reminder payload from phone work", () =
       "OWNER_REMINDERS_CREATE",
     ]);
     expect(result.tools.map((tool) => tool.name)).toEqual([
-      "DISCOVER_ACTIONS",
       "IGNORE",
+      "STOP",
+      "DISCOVER_ACTIONS",
       "OWNER_REMINDERS_CREATE",
       "REPLY",
-      "STOP",
     ]);
     expect(
       result.tools.find((tool) => tool.name === "OWNER_REMINDERS_CREATE"),

@@ -1,3 +1,4 @@
+import { DEFAULT_ELEVENLABS_VOICE_ID } from "@elizaos/host/protocol";
 /**
  * elizaOS Cloud Configuration
  * Determines API URL based on environment
@@ -128,7 +129,7 @@ export function buildElevenLabsSettings(
   const settings: ElevenLabsSettings = {
     // TTS
     ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY || "",
-    ELEVENLABS_VOICE_ID: getSetting("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL"),
+    ELEVENLABS_VOICE_ID: getSetting("ELEVENLABS_VOICE_ID", DEFAULT_ELEVENLABS_VOICE_ID),
     ELEVENLABS_MODEL_ID: getSetting("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"),
     ELEVENLABS_VOICE_STABILITY: getSetting("ELEVENLABS_VOICE_STABILITY", "0.5"),
     ELEVENLABS_VOICE_SIMILARITY_BOOST: getSetting("ELEVENLABS_VOICE_SIMILARITY_BOOST", "0.75"),

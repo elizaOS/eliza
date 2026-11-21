@@ -11,8 +11,7 @@ function hasNonWhitespaceValue(value: string | undefined): value is string {
 }
 
 function ensureSelfControlTestHostsPath(env: NodeJS.ProcessEnv): string | null {
-  const configuredPath =
-    env.WEBSITE_BLOCKER_HOSTS_FILE_PATH ?? env.SELFCONTROL_HOSTS_FILE_PATH;
+  const configuredPath = env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
   if (hasNonWhitespaceValue(configuredPath)) {
     return configuredPath;
   }
@@ -95,7 +94,6 @@ export function createLiveRuntimeChildEnv(
   const selfControlHostsPath = ensureSelfControlTestHostsPath(env);
   if (selfControlHostsPath) {
     env.WEBSITE_BLOCKER_HOSTS_FILE_PATH = selfControlHostsPath;
-    env.SELFCONTROL_HOSTS_FILE_PATH = selfControlHostsPath;
   }
 
   return env;

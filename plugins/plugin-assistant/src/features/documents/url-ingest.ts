@@ -11,7 +11,7 @@
  * sockets.
  */
 import { Buffer } from "node:buffer";
-import { lookup as dnsLookup } from "node:dns/promises";
+import dns from "node:dns";
 import {
   type RequestOptions as HttpRequestOptions,
   type IncomingMessage,
@@ -301,7 +301,7 @@ async function resolveSafeUrlTarget(url: string): Promise<{
 
   let addresses: Array<{ address: string }>;
   try {
-    const resolved = await dnsLookup(hostname, { all: true });
+    const resolved = await dns.promises.lookup(hostname, { all: true });
     addresses = Array.isArray(resolved) ? resolved : [resolved];
   } catch {
     // error-policy:J1 DNS resolution is the URL-safety boundary and returns

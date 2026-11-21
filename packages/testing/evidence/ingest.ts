@@ -494,16 +494,6 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
       { label: "repo", dir: "reports/group-chat-timing", namespace: false },
     ],
   },
-  {
-    silo: "content-context",
-    source: "content-context",
-    producedBy: "progressive content corpus, scenario, and benchmark lanes",
-    lane: "content-context",
-    roots: [
-      { label: "current", dir: "test-results/content-context" },
-      { label: "repo", dir: "reports/content-context", namespace: false },
-    ],
-  },
 ];
 
 function physicalPath(filePath: string): string {

@@ -13,7 +13,7 @@ import {
   CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
 } from "./test/cloud-live-trajectory-diagnostic";
 
-const DEPLOYED_RENDERER_ALIAS = cloudLiveDeployedRendererOrigin(
+const DEPLOYED_APP_ORIGIN = cloudLiveDeployedRendererOrigin(
   process.env.ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV,
 );
 
@@ -30,7 +30,7 @@ export default defineConfig({
   timeout: CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
   expect: { timeout: 30_000 },
   use: {
-    baseURL: DEPLOYED_RENDERER_ALIAS,
+    baseURL: DEPLOYED_APP_ORIGIN,
     navigationTimeout: CLOUD_LIVE_NAVIGATION_TIMEOUT_MS,
     serviceWorkers: "block",
     trace: "off",
@@ -42,7 +42,7 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        baseURL: DEPLOYED_RENDERER_ALIAS,
+        baseURL: DEPLOYED_APP_ORIGIN,
         navigationTimeout: CLOUD_LIVE_NAVIGATION_TIMEOUT_MS,
         serviceWorkers: "block",
         trace: "off",

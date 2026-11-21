@@ -24,11 +24,7 @@ import {
 import { execFileSync } from "./spawn-sync-captured.ts";
 
 export const SCRIPT_TEST_RUNNER =
-  "bun packages/scripts/run-script-tests.ts --report test-results/script-tests/inventory.json --junit test-results/script-tests/junit.xml && bun run test:scripts:node";
-export const SCRIPT_TEST_LANE_COMMANDS = {
-  "test:scripts:node":
-    "node --conditions=eliza-source --import tsx node_modules/vitest/vitest.mjs run --config packages/scripts/vitest.node.config.ts",
-};
+  "bun packages/scripts/run-script-tests.ts --report test-results/script-tests/inventory.json --junit test-results/script-tests/junit.xml";
 export const SCRIPT_TEST_EXTENSIONS = [
   "ts",
   "tsx",
@@ -55,14 +51,6 @@ const SCRIPT_TEST_LOOKALIKE_PATTERN = new RegExp(
 
 /** Exact exclusions only. Each entry must remain eligible and carry a reason. */
 export const SCRIPT_TEST_EXCLUSIONS = new Map([
-  [
-    "packages/scripts/__tests__/run-content-context-soak.test.ts",
-    "root test:scripts:node runs the production node:sqlite lifecycle contract under Node",
-  ],
-  [
-    "packages/scripts/__tests__/produce-content-context-live-trajectories.test.ts",
-    "root test:scripts:node runs the production node:sqlite trajectory contract under Node",
-  ],
   [
     "packages/scripts/plugins/plugin-meetings/headless-capture-e2e.test.ts",
     "plugin-meetings test:e2e owns this Node browser/audio capture suite",
@@ -159,15 +147,6 @@ function assertLaneContracts({ packageScripts }) {
     throw new Error(
       `[script-test-inventory] package.json test:scripts must be exactly: ${SCRIPT_TEST_RUNNER}`,
     );
-  }
-  for (const [rootScript, expectedCommand] of Object.entries(
-    SCRIPT_TEST_LANE_COMMANDS,
-  )) {
-    if (packageScripts[rootScript] !== expectedCommand) {
-      throw new Error(
-        `[script-test-inventory] package.json ${rootScript} must be exactly: ${expectedCommand}`,
-      );
-    }
   }
 }
 

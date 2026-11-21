@@ -1244,8 +1244,10 @@ it.each([12, 551] as const)(
     vi.stubEnv("ELIZA_PROVIDER", "cerebras");
     const { contract, tools } = actualBuiltinReadTools(count);
     assertNativeContextReadToolBudget(tools);
-    const sourceSetId = contract.history.sourceSetId;
-    const selector = { kind: "history-all", sourceSetId };
+    // The tool definition is the same on every turn: it carries no source-set
+    // id, and the host binds a read to the set it prepared for the turn.
+    expect(contract.history.sourceSetId).toMatch(/^[0-9a-f]{64}$/);
+    const selector = { kind: "history-all" };
     const argumentsValue = { reads: [selector], acknowledgment: "" };
     replyToolCall = {
       id: "paired-native-read",

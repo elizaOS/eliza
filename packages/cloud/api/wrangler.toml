@@ -36,7 +36,6 @@ __filename = '"/worker.js"'
 "@elizaos/cloud-shared" = "../shared/src/index.ts"
 "@elizaos/core/contracts/cloud-coding-containers" = "../../core/src/contracts/cloud-coding-containers.ts"
 "@elizaos/plugin-native-inference/model-catalog/voice-models" = "../../../plugins/plugin-native-inference/src/model-catalog/voice-models.ts"
-"@brighter/storage-adapter-s3" = "./src/stubs/brighter-storage-adapter-s3.ts"
 # ssh2 is Node-only (.node native binding). Docker node SSH lives on the
 # sidecar (packages/cloud/shared/src/lib/services/docker-ssh.ts). Stub at
 # bundle time so the Worker compiles; any accidental runtime instantiation
@@ -429,6 +428,10 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #                                      Exact allowlisted Cloud user UUIDs
 #   STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS
 #                                      Exact allowlisted Cloud organization UUIDs
+#   STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT
+#                                      Optional exact Steward subject with an approved, expiring QA grant
+#   STAGING_SESSION_EXCHANGE_GRANT_READ_KEY
+#                                      Dedicated Steward platform:read and platform:tenant-user:read credential
 #   STRIPE_SECRET_KEY                  Stripe billing
 #   STRIPE_PUBLISHABLE_KEY             Same-account pk_live_ (production) / pk_test_ key for in-app subscription checkout
 #   STRIPE_TEST_SECRET_KEY             Optional test-mode app billing in production

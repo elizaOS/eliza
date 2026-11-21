@@ -2,6 +2,8 @@
 export const CAMERA_CAPTURE_CAPABILITY = "camera.capture-photo.v1";
 /** `camera_capture_photo` with a requested `lens`. */
 export const CAMERA_LENS_CAPABILITY = "camera.capture-lens.v1";
+/** The single-operation tool for `camera_capture_photo` (tools.ts). */
+export const DEVICE_CAMERA_CAPTURE_ACTION = "DEVICE_CAMERA_CAPTURE";
 /** Without `lens` the phone uses the camera that is showing. */
 export type CameraCaptureOperation = {
   type: "camera_capture_photo";

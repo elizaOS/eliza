@@ -53,18 +53,12 @@ for (const [index, [file, names]] of Object.entries(required).entries()) {
   );
   outcomes.push({ file, cases });
 }
-assert.equal(
-  outcomes.reduce((n, row) => n + row.cases.length, 0),
-  26,
-);
+const tests = outcomes.reduce((total, row) => total + row.cases.length, 0);
+assert.equal(tests, 27);
 writeFileSync(
   path.join(output, "conformance.json"),
-  JSON.stringify(
-    { status: "passed", skipped: 0, tests: 26, outcomes },
-    null,
-    2,
-  ),
+  JSON.stringify({ status: "passed", skipped: 0, tests, outcomes }, null, 2),
 );
 console.log(
-  `26 exact Inbox journal/controller cases passed without skips. Results ${output}`,
+  `${tests} exact Inbox journal/controller cases passed without skips. Results ${output}`,
 );

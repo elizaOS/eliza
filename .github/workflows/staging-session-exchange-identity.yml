@@ -1,9 +1,7 @@
 name: Staging session exchange identity
 
-# Prints the non-secret identity of the protected staging ELIZAOS_CLOUD_API_KEY
-# (API key id, user id, organization id) so the operator can align the
-# STAGING_SESSION_EXCHANGE_ALLOWED_* allowlists after a key rotation. Read-only;
-# never prints the key or any other credential.
+# Resolves the non-secret fixture identity to compare with the three staging allowlists.
+# The protected runner keeps the API key and database connection private.
 
 on:
   workflow_dispatch:
@@ -18,58 +16,102 @@ concurrency:
 jobs:
   identity:
     name: Resolve staging API key identity
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    if: github.repository == 'elizaOS/eliza' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     environment: staging
+    outputs:
+      fixture_digest: ${{ steps.fixture.outputs.fixture_digest }}
     steps:
-      - name: Require staging source
-        env:
-          SOURCE_REF: ${{ github.ref }}
-        run: |
-          set -euo pipefail
-          [ "$SOURCE_REF" = "refs/heads/staging" ] || {
-            echo "::error::Run from refs/heads/staging"
-            exit 1
-          }
+      - name: Check out exact staging source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
 
-      - name: Read identity
+      - name: Set up pinned Bun and workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: 1.4.2
+          setup-python: "false"
+          install-protoc: "false"
+          install-native-deps: "false"
+          run-postinstall: "false"
+          install-command: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Build required linked runtime
+        run: bun run build:core
+
+      - name: Compare the exact active staging fixture with the allowlists
+        id: fixture
         env:
-          API_URL: https://api-staging.eliza.app
-          API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+          ELIZA_OPERATOR_ENVIRONMENT: staging
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_API_KEY }}
+          STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT: ${{ vars.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT }}
+          STAGING_SESSION_EXCHANGE_GRANT_READ_KEY: ${{ secrets.STAGING_SESSION_EXCHANGE_GRANT_READ_KEY }}
+          STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL }}
+          STAGING_SESSION_EXCHANGE_FIXTURE_WALLET_ADDRESS: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_WALLET_ADDRESS }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ALLOWED_API_KEY_IDS: ${{ vars.STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS }}
           ALLOWED_USER_IDS: ${{ vars.STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS }}
           ALLOWED_ORGANIZATION_IDS: ${{ vars.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS }}
+        run: bun run packages/cloud/scripts/admin/staging-session-exchange-identity-report.ts
+
+  operator:
+    name: Check product operator read access
+    needs: identity
+    if: github.repository == 'elizaOS/eliza' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-24.04
+    environment: staging
+    permissions: {}
+    timeout-minutes: 2
+    steps:
+      - name: Read only the independently verified staging membership
+        env:
+          EXPECTED_DIGEST: ${{ needs.identity.outputs.fixture_digest }}
+          FIXTURE_KEY: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_API_KEY }}
+          FIXTURE_EMAIL: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL }}
+          FIXTURE_WALLET: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_WALLET_ADDRESS }}
+          FIXTURE_SUBJECT: ${{ vars.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT }}
+          STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
         run: |
-          set -euo pipefail
-          [ -n "$API_KEY" ] || { echo "::error::ELIZAOS_CLOUD_API_KEY is not set"; exit 1; }
-          get() {
-            curl -fsS --max-time 20 -H "Authorization: Bearer $API_KEY" "$API_URL$1"
+          node --input-type=module <<'JS'
+          import { createHash } from 'node:crypto';
+          import { appendFileSync } from 'node:fs';
+          const { EXPECTED_DIGEST, FIXTURE_EMAIL, FIXTURE_KEY, FIXTURE_SUBJECT, FIXTURE_WALLET, STEWARD_PLATFORM_KEYS } = process.env;
+          async function readMembership() {
+            const email = FIXTURE_EMAIL?.trim().toLowerCase();
+            const wallet = FIXTURE_WALLET?.trim().toLowerCase();
+            const operator = STEWARD_PLATFORM_KEYS?.split(',', 1)[0]?.trim();
+            if (!EXPECTED_DIGEST || (!email && !wallet) || !FIXTURE_KEY || !operator) return 'not requested';
+            const get = (url, headers) => fetch(url, { headers, redirect: 'error', signal: AbortSignal.timeout(15000) });
+            const cloud = await get('https://api-staging.eliza.app/api/v1/user', { Authorization: `Bearer ${FIXTURE_KEY}` });
+            if (!cloud.ok) return 'fixture unavailable';
+            const { data: user } = await cloud.json();
+            const subject = user?.steward_user_id;
+            const matchesPrincipal = wallet
+              ? /^0x[0-9a-f]{40}$/.test(wallet) && user?.wallet_verified === true &&
+                user.wallet_chain_type === 'ethereum' && user.wallet_address?.toLowerCase() === wallet
+              : user?.email_verified === true && user.email?.trim().toLowerCase() === email;
+            if (!matchesPrincipal || user.role !== 'owner' || user.is_active !== true || user.is_anonymous !== false ||
+                user.organization?.is_active !== true || typeof subject !== 'string' ||
+                !/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(subject) ||
+                (FIXTURE_SUBJECT?.trim() && FIXTURE_SUBJECT.trim() !== subject)) return 'fixture mismatch';
+            const digest = createHash('sha256').update(JSON.stringify([user.id, user.organization.id, subject])).digest('hex');
+            if (digest !== EXPECTED_DIGEST) return 'fixture mismatch';
+            const tenant = 'elizacloud-staging';
+            const response = await get(`https://login-staging.eliza.app/platform/tenants/${tenant}/users/${subject}`,
+              { 'X-Steward-Platform-Key': operator });
+            if (response.status === 401 || response.status === 403) return 'denied';
+            if (!response.ok) return 'unavailable';
+            const profile = await response.json();
+            return profile.ok === true && profile.data?.userId === subject && profile.data.tenantId === tenant
+              ? 'verified' : 'unavailable';
           }
-          user=$(get /api/v1/user) || { echo "::error::/api/v1/user rejected the key"; exit 1; }
-          user_id=$(jq -r '.data.id // .id // empty' <<<"$user")
-          org_id=$(jq -r '.data.organization_id // .organization_id // empty' <<<"$user")
-          key_id=""
-          if keys=$(get /api/v1/api-keys); then
-            key_id=$(jq -r --arg key "$API_KEY" \
-              '[.keys[] | select(.key_prefix != null and ($key | startswith(.key_prefix)))] | if length == 1 then .[0].id else empty end' \
-              <<<"$keys")
-          else
-            echo "::warning::/api/v1/api-keys is not available to API-key auth"
-          fi
-          uuid='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-          for value in "$user_id" "$org_id"; do
-            [[ "$value" =~ $uuid ]] || { echo "::error::Unexpected identity shape"; exit 1; }
-          done
-          [ -z "$key_id" ] || [[ "$key_id" =~ $uuid ]] || { echo "::error::Unexpected key id shape"; exit 1; }
-          check() {
-            if [[ ",$2," == *",$1,"* ]]; then echo allowed; else echo NOT-ALLOWED; fi
-          }
-          {
-            echo "## Staging API key identity"
-            echo
-            echo "| Field | Value | In allowlist |"
-            echo "|---|---|---|"
-            echo "| API key id | ${key_id:-unresolved} | $( [ -n "$key_id" ] && check "$key_id" "$ALLOWED_API_KEY_IDS" || echo n/a ) |"
-            echo "| User id | $user_id | $(check "$user_id" "$ALLOWED_USER_IDS") |"
-            echo "| Organization id | $org_id | $(check "$org_id" "$ALLOWED_ORGANIZATION_IDS") |"
-          } | tee -a "$GITHUB_STEP_SUMMARY"
+          const verdict = await readMembership().catch(() => 'unavailable');
+          const summary = `Existing product operator read access to the exact staging membership: ${verdict}\n`;
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+          process.stdout.write(summary);
+          JS

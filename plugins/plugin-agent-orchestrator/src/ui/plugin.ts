@@ -260,7 +260,6 @@ export const taskCoordinatorPlugin: Plugin = {
         "tasks",
       ],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
     // The shipped view is GUI-only; the retained view contract can carry future
     // adapters without changing the component export.
@@ -287,7 +286,6 @@ export const taskCoordinatorPlugin: Plugin = {
       capabilities: ORCHESTRATOR_CAPABILITIES,
       tags: ["developer", "coding-agent", "orchestrator"],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
     // The coding cockpit: shaw's live task-room deck + a per-session mode
     // picker, composed into one mobile-first GUI view. Dev-gated (normies never
@@ -321,7 +319,6 @@ export const taskCoordinatorPlugin: Plugin = {
       capabilities: ORCHESTRATOR_CAPABILITIES,
       tags: ["developer", "coding-agent", "cockpit"],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
 };

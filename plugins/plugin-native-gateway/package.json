@@ -89,7 +89,7 @@
     "runtime": "both",
     "platformDetails": {
       "browser": "Full WebSocket connectivity, RPC request/response, event streaming. No Bonjour/mDNS discovery on web.",
-      "node": "Full support via Electrobun with native Bonjour/mDNS discovery and WebSocket connectivity",
+      "node": "Not supported; there is no Node or desktop implementation.",
       "ios": true,
       "android": true
     }

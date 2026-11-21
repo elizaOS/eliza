@@ -20,6 +20,7 @@ import java.security.SecureRandom;
  * Keystore key's own user-authentication window. Either one expiring locks the vault.
  */
 public final class PasswordVaultAccess {
+  static final class NotAdmitted extends Exception { NotAdmitted() { super("Saved passwords are not available here", null, false, false); } }
   public static final class Locked extends Exception { Locked() { super("Saved passwords are locked", null, false, false); } }
   public static final class KeyInvalidated extends Exception { KeyInvalidated() { super("Saved passwords can no longer be decrypted on this device", null, false, false); } }
   public interface Operation<T> { T run(PasswordVaultStore store) throws Exception; }
@@ -68,11 +69,15 @@ public final class PasswordVaultAccess {
 
   /**
    * For the host's native lifecycle (for example a sign-out): locks, drops pending fill and save
-   * requests and closes the editor and a revealed password. Open fill and save screens and a
-   * pending unlock fail on their next step. Needs no grant and shows no prompt. Not bridged.
+   * requests, closes the editor and a revealed password, and expires the retiring owner's clipboard
+   * lease. Open fill and save screens and a pending unlock fail on their next step.
    */
   public void lockAndClose() {
-    synchronized (this) { grant.lock(); requests.clear(); }
+    synchronized (this) {
+      grant.lock();
+      requests.clear();
+      SecretSurfaces.retireClipboard();
+    }
     closeSurfaces();
   }
 
@@ -83,6 +88,12 @@ public final class PasswordVaultAccess {
 
   static void closeSurfaces() {
     new Handler(Looper.getMainLooper()).post(() -> { PasswordEditor.dismiss(); SecretSurfaces.dismiss(); });
+  }
+
+  synchronized <T> T useForOwner(Context context, long ticket, Operation<T> delivery) throws Exception {
+    if (!grant.authenticated(ticket)) throw new Locked();
+    if (!admitted(context)) throw new NotAdmitted();
+    return use(ticket, delivery);
   }
 
   public synchronized <T> T use(Operation<T> operation) throws Exception {
@@ -117,12 +128,17 @@ public final class PasswordVaultAccess {
    * Destroys the vault, readable or not, with no prompt and no grant: revokes the grant and
    * pending requests, deletes the key and the records, then closes open native surfaces. For the
    * host's native lifecycle after it has verified its own authority (for example an owner revoke).
-   * This is deliberately not a {@code PluginMethod}: page script must not reach it. A clip already
-   * copied keeps its normal expiry. Throws if deletion failed; call it again to finish.
+   * This is deliberately not a {@code PluginMethod}: page script must not reach it. A clip from
+   * this vault expires immediately. Throws if deletion failed; call it again to finish.
    */
   public void destroyVault() throws Exception {
     try {
-      synchronized (this) { grant.lock(); requests.clear(); store.destroy(); }
+      synchronized (this) {
+        grant.lock();
+        requests.clear();
+        SecretSurfaces.retireClipboard();
+        store.destroy();
+      }
     } finally { closeSurfaces(); }
   }
 

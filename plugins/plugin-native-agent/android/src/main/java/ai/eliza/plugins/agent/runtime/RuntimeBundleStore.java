@@ -23,6 +23,7 @@ public class RuntimeBundleStore {
   public interface Faults { void boundary(String name) throws IOException; }
   private static final Faults NONE = name -> {};
   private static final LinkOption NOFOLLOW = LinkOption.NOFOLLOW_LINKS;
+  private enum Preparation { STRICT, SEALED, INSTALLED_APK }
   // Only prepareSealed reads seals. A seal records file metadata after a full hash so a
   // launch can defer the hash. ctime and inode cannot be set back by an app, so a plain
   // write or replacement shows. The seal is not keyed: a same-uid writer can forge it,
@@ -48,6 +49,11 @@ public class RuntimeBundleStore {
         if (!source.matches("lib[A-Za-z0-9_.-]+\\.so") || !"-".equals(destination)) throw new IOException("Invalid native inventory entry");
       } else throw new IOException("Unknown runtime inventory kind");
     }
+  }
+
+  /** The device has too little free space to unpack a complete runtime. */
+  public static final class InsufficientSpace extends IOException {
+    InsufficientSpace() { super("Insufficient space for a complete runtime"); }
   }
 
   /** A prepared bundle. When the launch used a seal, verify() still owes the full hash. */
@@ -98,7 +104,7 @@ public class RuntimeBundleStore {
 
   // Fault injection shares the real extraction/verification path with Android.
   public static Path prepare(Path root, byte[] manifest, Source source, Path nativeLibraries, Durability durability, Faults faults, String format) throws IOException {
-    return prepare(root, manifest, source, nativeLibraries, durability, faults, format, false).bundle;
+    return prepare(root, manifest, source, nativeLibraries, durability, faults, format, Preparation.STRICT).bundle;
   }
 
   /** Like prepareFromAsset, but an unchanged sealed release defers its hash to Prepared.verify(). */
@@ -107,11 +113,17 @@ public class RuntimeBundleStore {
     return prepareSealed(root, RuntimeAssets.read(source, inventory, MAX_MANIFEST), source, nativeLibraries, durability, NONE, format);
   }
 
-  public static Prepared prepareSealed(Path root, byte[] manifest, Source source, Path nativeLibraries, Durability durability, Faults faults, String format) throws IOException {
-    return prepare(root, manifest, source, nativeLibraries, durability, faults, format, true);
+  /** Prepares the current APK in a private root with no older runtime still using it. */
+  public static Prepared prepareInstalledApkFromAsset(Path root, String inventory, Source source, Path nativeLibraries,
+      Durability durability, String format) throws IOException {
+    return prepare(root, RuntimeAssets.read(source, inventory, MAX_MANIFEST), source, nativeLibraries, durability, NONE, format, Preparation.INSTALLED_APK);
   }
 
-  private static Prepared prepare(Path root, byte[] manifest, Source source, Path nativeLibraries, Durability durability, Faults faults, String format, boolean useSeal) throws IOException {
+  public static Prepared prepareSealed(Path root, byte[] manifest, Source source, Path nativeLibraries, Durability durability, Faults faults, String format) throws IOException {
+    return prepare(root, manifest, source, nativeLibraries, durability, faults, format, Preparation.SEALED);
+  }
+
+  private static Prepared prepare(Path root, byte[] manifest, Source source, Path nativeLibraries, Durability durability, Faults faults, String format, Preparation preparation) throws IOException {
     List<Entry> entries = parse(manifest, format);
     String identity = digest(manifest);
     Path requested = root.toAbsolutePath().normalize();
@@ -121,19 +133,25 @@ public class RuntimeBundleStore {
     Path real = parent == null ? requested : parent.toRealPath().resolve(requested.getFileName());
     synchronized (ROOT_LOCKS.computeIfAbsent(real, key -> new Object())) {
       privateDirectory(real);
-      return prepareLocked(real, entries, identity, source, nativeLibraries, durability, faults, useSeal);
+      return prepareLocked(real, entries, identity, source, nativeLibraries, durability, faults, preparation);
     }
   }
 
   private static final java.util.concurrent.ConcurrentMap<Path, Object> ROOT_LOCKS =
     new java.util.concurrent.ConcurrentHashMap<>();
 
-  private static Prepared prepareLocked(Path root, List<Entry> entries, String identity, Source source, Path nativeLibraries, Durability durability, Faults faults, boolean useSeal) throws IOException {
+  private static Prepared prepareLocked(Path root, List<Entry> entries, String identity, Source source, Path nativeLibraries, Durability durability, Faults faults, Preparation preparation) throws IOException {
     Path lockPath = root.resolve(".lock");
     try (FileChannel channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE, NOFOLLOW);
          FileLock lock = channel.lock()) {
       if (!lock.isValid()) throw new IOException("Runtime extraction lock unavailable");
       Path release = root.resolve(identity);
+      boolean installedApk = preparation == Preparation.INSTALLED_APK;
+      boolean useSeal = preparation != Preparation.STRICT;
+      if (installedApk) {
+        try { removeAbandoned(root, identity, durability); }
+        catch (IOException kept) { /* error-policy:J4 retry cleanup next launch and check available space below. */ }
+      }
       if (Files.exists(release, NOFOLLOW)) {
         // Stamp before hashing: a write during the hash then fails the next seal check.
         String stamps = useSeal ? stamps(release, entries, nativeLibraries) : null;
@@ -150,13 +168,10 @@ public class RuntimeBundleStore {
         return new Prepared(release.resolve("bundle"), false, sealed, root, entries, identity, nativeLibraries, durability, faults);
       }
       verifyNatives(entries, nativeLibraries, true);
-      // A process killed mid-extraction leaves only these private, unreferenced trees.
-      try (DirectoryStream<Path> children = Files.newDirectoryStream(root, ".staging-*")) {
-        for (Path child : children) if (child.getFileName().toString().matches("\\.staging-[a-f0-9-]{36}")) removeTree(child);
-      }
+      if (!installedApk) removeAbandoned(root, null, durability);
       long bytes = 0;
       for (Entry entry : entries) if ("asset".equals(entry.kind)) bytes = Math.addExact(bytes, entry.size);
-      if (durability.usableSpace(root) < bytes + 64L * 1024 * 1024) throw new IOException("Insufficient space for a complete runtime");
+      if (durability.usableSpace(root) < bytes + 64L * 1024 * 1024) throw new InsufficientSpace();
       Path staging = root.resolve(".staging-" + UUID.randomUUID());
       privateDirectory(staging);
       faults.boundary("staging-created");
@@ -201,6 +216,31 @@ public class RuntimeBundleStore {
     }
   }
 
+  private static void removeAbandoned(Path root, String installedIdentity, Durability durability) throws IOException {
+    List<Path> abandoned = new ArrayList<>();
+    try (DirectoryStream<Path> children = Files.newDirectoryStream(root)) {
+      for (Path child : children) {
+        String name = child.getFileName().toString();
+        if (name.matches("\\.staging-[a-f0-9-]{36}") ||
+            (installedIdentity != null && !name.equals(installedIdentity) && name.matches("[a-f0-9]{64}")
+              && Files.isDirectory(child, NOFOLLOW))) abandoned.add(child);
+      }
+    }
+    for (Path child : abandoned) {
+      String name = child.getFileName().toString();
+      Path doomed = child;
+      if (!name.startsWith(".staging-")) {
+        // Retire the old release atomically so interrupted cleanup can resume on launch.
+        doomed = root.resolve(".staging-" + UUID.randomUUID());
+        Files.move(child, doomed, StandardCopyOption.ATOMIC_MOVE);
+        durability.syncDirectory(root);
+        if (Files.isDirectory(root.resolve(SEALS), NOFOLLOW)) dropSeal(root, name);
+      }
+      removeTree(doomed);
+    }
+    if (!abandoned.isEmpty()) durability.syncDirectory(root);
+  }
+
   private static List<Entry> parse(byte[] bytes, String format) throws IOException {
     if (bytes.length == 0 || bytes.length > MAX_MANIFEST) throw new IOException("Invalid runtime inventory size");
     for (byte b : bytes) if (b < 0 || (b < 32 && b != '\n' && b != '\t')) throw new IOException("Invalid runtime inventory encoding");
@@ -214,7 +254,7 @@ public class RuntimeBundleStore {
       total += entry.size; if (total > MAX_TOTAL) throw new IOException("Runtime inventory exceeds limit");
       entries.add(entry);
     }
-    for (String required : new String[]{"bundle/agent-bundle.js", "bundle/gateway/bootstrap.mjs", "bundle/gateway/local-agent-gateway.mjs"}) if (!destinations.contains(required)) throw new IOException("Incomplete runtime inventory");
+    if (!destinations.contains("bundle/agent-bundle.js")) throw new IOException("Incomplete runtime inventory");
     if (!libraries.contains("libeliza_bun.so") ||
         libraries.contains("libeliza_ld_musl_aarch64.so") == libraries.contains("libeliza_ld_musl_x86_64.so"))
       throw new IOException("Native inventory requires Bun and exactly one supported loader");

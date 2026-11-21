@@ -115,7 +115,22 @@ app.post("/consent", async (c) => {
         ).toISOString(),
       }
     : await timer.time("speech_consent_write", () =>
-        issueConsentNonce(caller.user.id),
+        issueConsentNonce(caller.user.id, (nonce) => {
+          // Overlap cold object initialization with the consent-store write.
+          // /warm loads code only, and mint still consumes the persisted nonce.
+          const warm = c.env
+            .SPEECH_RELAY_SESSIONS!.getByName(
+              speechSessionIdForConsent(caller.user.id, nonce),
+            )
+            .fetch("https://speech-relay.internal/warm", { method: "POST" })
+            .then((response) => response.body?.cancel())
+            .catch(() => {});
+          try {
+            c.executionCtx.waitUntil(warm);
+          } catch {
+            // No execution context outside Workers; the promise still settles.
+          }
+        }),
       );
   if (!consent) return c.json({ error: "speech_consent_unavailable" }, 503);
   let recoverySessionId: string | undefined;
@@ -143,21 +158,6 @@ app.post("/consent", async (c) => {
     if (!prepared.ok)
       return c.json({ error: "speech_recovery_unavailable" }, 503);
     c.header("Cache-Control", "no-store");
-  } else {
-    // Start the new session object's first-touch wait now; /session reuses it.
-    // Never awaited: consent latency and its result do not depend on it.
-    const warm = c.env
-      .SPEECH_RELAY_SESSIONS!.getByName(
-        speechSessionIdForConsent(caller.user.id, consent.nonce),
-      )
-      .fetch("https://speech-relay.internal/warm", { method: "POST" })
-      .then((warmed) => warmed.body?.cancel())
-      .catch(() => {});
-    try {
-      c.executionCtx.waitUntil(warm);
-    } catch {
-      // No execution context outside Workers; the promise still settles.
-    }
   }
   return timer.apply(
     c.json({

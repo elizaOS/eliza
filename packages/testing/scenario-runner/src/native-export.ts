@@ -2,7 +2,7 @@
  * Scenario-trajectory → `eliza_native_v1` corpus bridge.
  *
  * `eliza-scenarios run <dir> --run-dir <runDir>` makes the runtime's
- * `JsonFileTrajectoryRecorder` write one `RecordedTrajectory` JSON file per
+ * trajectory recorder export one `RecordedTrajectory` JSON file per
  * agent turn under `<runDir>/trajectories/<agentId>/<trajectoryId>.json`. That
  * shape (`stages[].model`) is a per-stage trace, not the canonical training
  * corpus record. The eliza-1 training prep script

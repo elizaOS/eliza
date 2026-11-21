@@ -2151,6 +2151,84 @@ describe("shared phone and reminder-read parity", () => {
       expect(server.state).toBe("pending");
     }
   });
+  it("opens the keypad without a review only for the requesting message and never calls", async () => {
+    for (const keypad of [
+      { type: "phone_keypad" },
+      { type: "phone_keypad", number: "4155550100" },
+    ]) {
+      const fixture = fixtureServer(keypad);
+      const request = async (path: string, body: unknown, s: AbortSignal) => {
+        const response = await fixture.request(path, body, s);
+        for (const item of response.proposals ?? [response.proposal])
+          if (item)
+            Object.assign(item.payload, { requestMessageId: "message" });
+        return response;
+      };
+      const ran: unknown[] = [];
+      const telephonyResult = { kind: "phone-keypad", status: "opened" };
+      const actions = make(
+        request,
+        memoryJournal().journal,
+        async (operation: unknown) => {
+          ran.push(operation);
+          return { status: "succeeded", summary: "Opened", telephonyResult };
+        },
+        ["phone.keypad.v1"],
+      );
+      await actions.pending(home, signal());
+      expect(
+        await actions.performRequested(
+          "other-message",
+          home,
+          signal(),
+          async () => true,
+        ),
+      ).toEqual([]);
+      expect(ran).toEqual([]);
+      const proof = (text: string): CurrentDeviceActionRequest => ({
+        messageId: "message",
+        text,
+        current() {},
+      });
+      if (keypad.number) {
+        // A number the owner did not type in this message (one read from an
+        // email or a page earlier in the turn) keeps its review card.
+        for (const current of [
+          undefined,
+          proof("open the keypad with the number from that email"),
+          proof("open the keypad with 415-555-0199"),
+        ])
+          expect(
+            await actions.performRequested(
+              "message",
+              home,
+              signal(),
+              async () => true,
+              undefined,
+              current,
+            ),
+          ).toEqual([]);
+        expect(ran).toEqual([]);
+      }
+      expect(
+        await actions.performRequested(
+          "message",
+          home,
+          signal(),
+          async () => true,
+          undefined,
+          keypad.number
+            ? proof("open the keypad with (415) 555-0100")
+            : undefined,
+        ),
+      ).toMatchObject([{ status: "succeeded" }]);
+      expect(ran).toEqual([keypad]);
+      expect(fixture.server.receipts[0].receipt).toMatchObject({
+        outcome: "applied",
+        result: telephonyResult,
+      });
+    }
+  });
   it("leaves a contact SMS with an unknown outcome unresolved and never sends it again", async () => {
     const { server, request } = fixtureServer({
       type: "sms_compose",
@@ -2787,6 +2865,23 @@ describe("browser control operations", () => {
     }
   });
 
+  // Review finding: the new-tab card told the owner about browser_navigate and
+  // newTab. Tool guidance belongs in the model's tool text, never on a card.
+  it("describes a new tab to the owner without tool names", async () => {
+    for (const [operation, description] of [
+      [{ type: "browser_tab_new" }, "Opens an empty tab in Browser."],
+      [
+        { type: "browser_tab_new", private: true },
+        "Opens an empty private tab in Browser.",
+      ],
+    ] as const) {
+      const f = browserControlFixture(operation);
+      const [card] = await f.actions.pending(homeContext, signal());
+      expect(card).toMatchObject({ description });
+      expect(JSON.stringify(card)).not.toMatch(/browser_navigate|newTab/);
+    }
+  });
+
   it("always reviews closing a tab", async () => {
     for (const operation of [
       { type: "browser_tab_close" },
@@ -2921,4 +3016,135 @@ describe("opt-in current telephony request policy", () => {
       expect(entries.size).toBe(0);
     });
   }
+});
+
+// Fable review (camera 1 and 3): the phone ran any bound camera capture with
+// no check of the owner's words, and two bound captures were two photos.
+describe("a requested photo on the phone", () => {
+  const camera: DeviceContextEnvelope = {
+    view: "camera",
+    revision: 1,
+    sensitive: false,
+  };
+  function cameraFixture(ids: string[]) {
+    const servers = ids.map((id) => ({
+      id,
+      ...fixtureServer({ type: "camera_capture_photo" }, id),
+    }));
+    const bind = (proposal: Record<string, unknown>) =>
+      Object.assign(proposal.payload as object, {
+        requestMessageId: "message",
+      });
+    const request = async (path: string, body: unknown, s: AbortSignal) => {
+      if (body === undefined) {
+        const lists = await Promise.all(
+          servers.map((f) => f.request(path, body, s)),
+        );
+        const proposals = lists.flatMap(
+          (r) => (r as { proposals: Record<string, unknown>[] }).proposals,
+        );
+        for (const p of proposals) bind(p);
+        return { proposals };
+      }
+      const target = servers.find((f) => path.includes(`/${f.id}/`));
+      if (!target) throw Error(`Unknown proposal path ${path}`);
+      const response = (await target.request(path, body, s)) as {
+        proposal: Record<string, unknown>;
+      };
+      bind(response.proposal);
+      return response;
+    };
+    const calls: string[] = [];
+    const actions = new DeviceActionCoordinator({
+      session,
+      credential: { ...credential, capabilities: ["camera.capture-photo.v1"] },
+      scope,
+      request,
+      journal: memoryJournal().journal,
+      execute: async (_operation, operationId) => {
+        calls.push(operationId);
+        return {
+          status: "succeeded",
+          summary: "Saved the photo.",
+          cameraResult: {
+            version: 1,
+            kind: "camera_capture_photo",
+            operationId,
+            mediaId: String(calls.length),
+            width: 640,
+            height: 480,
+            mime: "image/jpeg",
+          },
+        };
+      },
+      profile,
+    });
+    return { actions, calls, servers };
+  }
+  const proof = (text: string): CurrentDeviceActionRequest => ({
+    messageId: "message",
+    text,
+    current() {},
+  });
+  it.each([
+    "don't take a photo",
+    "summarize the page I have open",
+    "did you take a photo?",
+  ])("keeps the card for a capture %j never asked for", async (text) => {
+    const f = cameraFixture(["cam"]);
+    await f.actions.pendingReview(camera, signal(), proof(text));
+    expect(
+      await f.actions.performRequested(
+        "message",
+        camera,
+        signal(),
+        async () => true,
+        undefined,
+        proof(text),
+      ),
+    ).toEqual([]);
+    expect(f.calls).toEqual([]);
+    expect(f.servers[0].server.state).toBe("pending");
+  });
+  it("keeps the card when the host passes no proof of the owner's words", async () => {
+    const f = cameraFixture(["cam"]);
+    await f.actions.pendingReview(camera, signal());
+    await f.actions.performRequested(
+      "message",
+      camera,
+      signal(),
+      async () => true,
+      "camera_capture_photo",
+    );
+    expect(f.calls).toEqual([]);
+  });
+  it.each(["take a photo", "can you take a selfie?"])(
+    "takes one photo for %j however many captures were bound",
+    async (text) => {
+      const f = cameraFixture(["cam1", "cam2"]);
+      await f.actions.pendingReview(camera, signal(), proof(text));
+      const results = await f.actions.performRequested(
+        "message",
+        camera,
+        signal(),
+        async () => true,
+        undefined,
+        proof(text),
+      );
+      expect(results.map((r) => r.status)).toEqual(["succeeded"]);
+      expect(f.calls).toHaveLength(1);
+      expect(f.servers.map((f) => f.server.state)).toEqual(["done", "pending"]);
+      // A later pass for the same message takes no second photo either.
+      await f.actions.performRequested(
+        "message",
+        camera,
+        signal(),
+        async () => true,
+        undefined,
+        proof(text),
+      );
+      expect(f.calls).toHaveLength(1);
+      expect(f.servers[1].server.state).toBe("pending");
+    },
+  );
 });

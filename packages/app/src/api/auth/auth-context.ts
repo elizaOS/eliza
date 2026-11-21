@@ -57,7 +57,11 @@ export interface EnsureSessionOptions {
    */
   storeFailureMode?: "deny" | "throw";
 }
-export const DESKTOP_LOOPBACK_SESSION_SCOPE = "desktop:loopback";
+/**
+ * Scope on sessions that the removed desktop app created. No code creates it
+ * now, but stored sessions with it stay limited to loopback until they expire.
+ */
+const DESKTOP_LOOPBACK_SESSION_SCOPE = "desktop:loopback";
 function firstHeaderValue(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) return value[0]?.trim() || null;
   return value?.trim() || null;

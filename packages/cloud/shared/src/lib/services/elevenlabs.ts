@@ -1,3 +1,4 @@
+import { DEFAULT_ELEVENLABS_VOICE_ID } from "@elizaos/host/protocol";
 /**
  * ElevenLabs Service
  *
@@ -147,7 +148,7 @@ export class ElevenLabsService {
 
     const config: ElevenLabsConfig = {
       apiKey,
-      voiceId: envValue(env, "ELEVENLABS_VOICE_ID") || "EXAVITQu4vr4xnSDxMaL",
+      voiceId: envValue(env, "ELEVENLABS_VOICE_ID") || DEFAULT_ELEVENLABS_VOICE_ID,
       modelId: envValue(env, "ELEVENLABS_MODEL_ID") || "eleven_flash_v2_5",
       voiceStability: Number.parseFloat(envValue(env, "ELEVENLABS_VOICE_STABILITY") || "0.5"),
       voiceSimilarityBoost: Number.parseFloat(
@@ -192,7 +193,7 @@ export class ElevenLabsService {
   }
 
   async textToSpeech(options: TTSOptions): Promise<ReadableStream<Uint8Array>> {
-    const voiceId = options.voiceId || this.config.voiceId || "EXAVITQu4vr4xnSDxMaL";
+    const voiceId = options.voiceId || this.config.voiceId || DEFAULT_ELEVENLABS_VOICE_ID;
     return this.client.textToSpeech.stream(voiceId, this.speechRequest(options));
   }
 
@@ -201,7 +202,7 @@ export class ElevenLabsService {
     options: Omit<TTSOptions, "outputFormat">,
     signal?: AbortSignal,
   ): Promise<ReadableStream<Uint8Array>> {
-    const voiceId = options.voiceId || this.config.voiceId || "EXAVITQu4vr4xnSDxMaL";
+    const voiceId = options.voiceId || this.config.voiceId || DEFAULT_ELEVENLABS_VOICE_ID;
     const controller = new AbortController();
     const source = await this.client.textToSpeech.streamWithTimestamps(
       voiceId,

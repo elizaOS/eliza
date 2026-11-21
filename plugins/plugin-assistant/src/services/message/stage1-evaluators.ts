@@ -19,6 +19,7 @@ import {
   getDirectActionRoutingRules,
   getUserMessageText,
   normalizeContextId,
+  withActiveRoutingContexts,
 } from "@elizaos/core";
 import { preferredOperationNames } from "../../runtime/action-retrieval.ts";
 import { SIMPLE_CONTEXT_ID } from "../../runtime/message-handler";
@@ -139,11 +140,12 @@ export async function resolveEligibleDirectActionRoutes(args: {
       );
       if (![...requiredTags].every((tag) => actionTags.has(tag))) continue;
       const key = normalizeActionIdentifier(action.name);
+      const activeContexts = mergeAgentContexts(rule.contexts, action.contexts);
       if (
         seen.has(key) ||
         !canActionRun(action, {
           message: args.message,
-          activeContexts: mergeAgentContexts(rule.contexts, action.contexts),
+          activeContexts,
           userRoles: args.userRoles,
         })
       ) {
@@ -157,7 +159,11 @@ export async function resolveEligibleDirectActionRoutes(args: {
         );
         if (
           !accountPolicy.allowed ||
-          !(await action.validate(args.runtime, args.message, args.state))
+          !(await action.validate(
+            args.runtime,
+            args.message,
+            withActiveRoutingContexts(args.state, args.message, activeContexts),
+          ))
         ) {
           continue;
         }

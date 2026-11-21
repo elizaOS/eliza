@@ -133,10 +133,8 @@ export interface ForcedCloudTtsRoute {
  * (#15395). With no cloud auth/config, the on-device proxy path is preserved.
  *
  * Voice/model parity with the proxy: in the default (unpinned) setup the direct
- * `{ text }` body and the proxy produce the SAME voice — the proxy injects
- * `LEGACY_DEFAULT_ELEVENLABS_VOICE_ID`, which the worker's provider selection
- * (`packages/cloud/api/v1/voice/tts/provider-selection.ts`) explicitly treats
- * as "caller did not pin a voice", identical to an omitted `voiceId`. The
+ * `{ text }` body and the proxy both omit an unpinned `voiceId`, so the worker's
+ * provider selection keeps the configured cloud default. The
  * residual gap is a server-side `ELIZAOS_CLOUD_TTS_VOICE` / `_MODEL` env pin:
  * those env vars live only in the agent-server process and are exposed through
  * no renderer channel (not boot config, not `VoiceConfig`, not `getConfig()`),

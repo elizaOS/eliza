@@ -214,13 +214,29 @@ export interface PasswordsClient {
   list(): Promise<PasswordEntrySummary[]>;
   save(input: PasswordSaveInput): Promise<PasswordSaveResult>;
   openEditor(input?: PasswordEditorInput): Promise<PasswordEditorResult>;
-  remove(id: string): Promise<void>;
+  remove(id: string, expectedRevision?: number): Promise<void>;
   reset(): Promise<void>;
-  reveal(id: string): Promise<{ hidesAfterMs: number }>;
-  copy(id: string): Promise<{ clearsAfterMs: number }>;
+  reveal(
+    id: string,
+    expectedRevision?: number,
+  ): Promise<{ hidesAfterMs: number }>;
+  copy(
+    id: string,
+    expectedRevision?: number,
+  ): Promise<{ clearsAfterMs: number }>;
   openAutofillSettings(): Promise<{
     destination: "autofill-picker" | "system-settings";
   }>;
+}
+
+function selectedEntry(
+  id: string,
+  expectedRevision?: number,
+): { id: string; expectedRevision?: number } {
+  if (expectedRevision === undefined) return { id };
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0)
+    throw new PasswordsClientError("invalid", "Invalid revision.");
+  return { id, expectedRevision };
 }
 
 export function createPasswordsClient(
@@ -306,9 +322,9 @@ export function createPasswordsClient(
         },
       );
     },
-    remove: (id) =>
+    remove: (id, expectedRevision) =>
       call(
-        () => plugin.remove({ id }),
+        () => plugin.remove(selectedEntry(id, expectedRevision)),
         (value) => void ack("removed")(value),
       ),
     reset: () =>
@@ -316,9 +332,9 @@ export function createPasswordsClient(
         () => plugin.reset(),
         (value) => void ack("reset")(value),
       ),
-    reveal: (id) =>
+    reveal: (id, expectedRevision) =>
       call(
-        () => plugin.reveal({ id }),
+        () => plugin.reveal(selectedEntry(id, expectedRevision)),
         (value) => ({
           hidesAfterMs: count(
             ack("shown")(value) &&
@@ -326,9 +342,9 @@ export function createPasswordsClient(
           ),
         }),
       ),
-    copy: (id) =>
+    copy: (id, expectedRevision) =>
       call(
-        () => plugin.copy({ id }),
+        () => plugin.copy(selectedEntry(id, expectedRevision)),
         (value) => ({
           clearsAfterMs: count(
             ack("copied")(value) &&

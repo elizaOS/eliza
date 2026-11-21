@@ -94,6 +94,76 @@ using the same bounded, non-redirecting, non-retrying loopback transport. Pendin
 operations address only the separate enrollment journal; the host retains token,
 encrypted-store identity and revocation policy.
 
+## Embedded cloud agent
+
+`EmbeddedAgentService` runs the embedded agent with Eliza Cloud inference only, and
+`EmbeddedAgentPlugin` (`EmbeddedAgent` in `src/embedded.ts`) is the page's bridge to
+it. Both are Java. Text and embeddings are routed to Eliza Cloud, and the agent is
+launched with `ELIZA_DEPLOYMENT_RUNTIME=cloud` and `ELIZA_DISABLE_LOCAL_EMBEDDINGS=1`,
+so it registers no local model handler and fetches no model. A consumer may not
+override these settings. A consumer supplies three data files, each at most 256 KB,
+packaged as assets by the consumer host's `embeddedAgent` profile entry:
+
+- `host`: `schema` 1, the `service` class, `notification` words (`channel`,
+  `title`, `text`), `cloud` (`baseUrl`, an https origin, and optional
+  `smallModel` and `largeModel`), the `routes` the page may call (`method`, a
+  `path` whose `{name}` segments match one id, and `stream` for server-sent
+  events), extra agent `environment`, and `persistMemory` (default false: the
+  agent's database is in memory).
+- `character`: the agent's character, with `name` and `system`.
+- `policy`: `schema` 1, `actions.allowed` and `actions.refused` (name to reason),
+  and `plugins.denied`.
+
+A host binds the signed-in Cloud credential by overriding `cloudCredential()` in a
+subclass named as `service`, and registers `EmbeddedAgentPlugin` with its Capacitor
+bridge; the generator writes no plugin registration.
+
+The service runs the agent alone; the bridge is its only client. The bridge
+refuses a route that is not listed, or a body that is not an object, before any
+I/O. It talks to the agent over its loopback socket, so the page needs no
+cleartext access and never holds a token.
+
+`requestStream` sends each event's data as `streamData` and ends with `streamEnd`.
+`abort` closes the request, which ends the agent's turn and sets `aborted`. A
+stream cut any other way, such as by an agent crash, ends with an `error`.
+
+`status` events follow each lifecycle change. A failed status names its
+`failure`: `payload`, `storage`, `config`, `credential`, `agent`, `crashed` or
+`runtime`. An `unavailable` status (no runtime payload in the build, or data the
+bridge cannot read) names `payload` or `config`. An agent that exits before it is
+ready, or cannot be spawned, fails with `agent`; a running agent that exits is
+restarted twice, 3 and 6 seconds apart, then fails with `crashed`
+(`quint/EmbeddedAgentLifecycle.qnt`). Private files that cannot be prepared fail
+with `runtime`.
+
+A start fails only on what it can check, the payload and the credential among
+them; it does not ask Eliza Cloud whether it accepts the key. A turn's stream
+answers HTTP 200 once the agent has validated the request. A refused key or an
+unfunded account then ends the turn with a `done` event whose `failureKind` is
+`provider_issue` or `insufficient_credits`, and any other failure with an `error`
+event (`type`, `message`, optional `code`).
+
+Each start uses `RuntimeBundleStore.prepareInstalledApkFromAsset` to prepare the
+installed APK's payload. It first removes obsolete releases, their seals and
+abandoned staging trees from the private release root. The Android update stops
+the process using the old release, so the new version can reclaim that space
+before it checks whether the new payload fits.
+
+The service returns `START_STICKY` so that Android may restart it after its
+process is killed; that has not been observed on a device, and a restart Android
+refuses to bring to the foreground stops the service.
+
+`native-host/embedded-agent.mjs` exports `embeddedAgentDevelopment`, a Vite plugin
+that starts the agent from the Eliza checkout at `source` with the same data files,
+that checkout's `private-runtime-launch.mjs` and the same lifecycle, and serves the
+bridge's web fallback under `/__eliza-embedded-agent`. The agent's home is the
+given `stateDirectory`, and it is stopped when the dev server closes or the
+process exits. It answers only a
+loopback, IP-literal or Vite-allowed host, and takes a command only as JSON from
+the dev server's own origin, so another site in the browser cannot reach the
+agent. Both readers of the data
+files refuse the cases in `test/embedded/embedded-agent-data.json`.
+
 `LocalRuntimeHttp` supplies bounded JSON HTTP exchange with an absolute socket
 deadline and injected monotonic clock. It only connects to loopback; the host
 must authorize its route and provide its private token and response-size limit.
@@ -106,7 +176,8 @@ The transport's own headers (`Host`, `Authorization`, `Content-Type`,
 rejected header fails before any connection. The instrumented contract
 also covers this client with real fixed-length, chunked, close-delimited,
 oversized, truncated and delayed responses, and with accepted and rejected
-request headers.
+request headers. `stream` reads a server-sent event response over a socket the caller
+owns, so closing that socket aborts the request.
 
 `AndroidRuntimeDirectories` supplies the Android durability adapter for runtime
 bundle publication and secures an app-owned parent directory to mode 0700.
@@ -119,7 +190,10 @@ inventory from an explicit agent asset directory and native library directory.
 Archive blobs preserve gzip bytes through aapt and install beside the immutable
 bundle for PGlite. Hosts supply exact directory exclusions and an optional
 inventory `format` (default `eliza-runtime-v1`), and package the returned
-`assets/agent-runtime.inventory` plus assets. Hosts using ota-trust declare the same
+`assets/agent-runtime.inventory` plus assets. The agent bundle is always
+required; the gateway entrypoints are required unless the host passes
+`gateway: false`, as a host of `EmbeddedAgentService` does, since it runs the
+agent alone. Hosts using ota-trust declare the same
 format and exclusions in their host policy. This does not sign or authorize a release.
 The native host suite consumes a Node-produced inventory with the actual Java
 extractor and checks restart reuse, archive bytes and tamper rejection.

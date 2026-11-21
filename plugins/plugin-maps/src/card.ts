@@ -37,6 +37,12 @@ export interface MapsPlacesCard {
   places: MapsCardPlace[];
   nextCursor: string | null;
   attribution: string | null;
+  /**
+   * The named place the search was made around ("pharmacy near the Ferry
+   * Building"). A surface that searches again searches around it, not around
+   * its viewport or the phone, so it shows the places the reply listed.
+   */
+  near?: MapsCardPlace;
 }
 
 export interface MapsRouteCard {

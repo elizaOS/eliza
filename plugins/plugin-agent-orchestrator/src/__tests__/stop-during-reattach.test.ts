@@ -31,7 +31,7 @@ function makeRuntime(slowInitialize = false): IAgentRuntime {
     getSetting: (k: string) => {
       if (k === "ELIZA_ACP_TRANSPORT") return "native";
       if (k === "ELIZA_ACP_DEFAULT_AGENT") return "elizaos";
-      if (k === "ELIZA_ACP_NO_TERMINAL") return "true";
+      if (k === "ACPX_NO_TERMINAL") return "true";
       if (k === "ELIZA_ACP_SESSION_STORE_BACKEND") return "memory";
       if (k === "ELIZA_ELIZAOS_ACP_COMMAND")
         return `node ${FAKE_AGENT}${slowInitialize ? " --slow-initialize" : ""}`;

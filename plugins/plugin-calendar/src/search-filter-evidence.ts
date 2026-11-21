@@ -16,8 +16,10 @@ type Message = {
 export type FilterEvidence = CalendarReadFilterEvidence;
 type ReadBinding = {
   operation: string;
+  source?: CalendarReadBinding["source"];
   filterEvidence?: readonly FilterEvidence[];
   intentId?: string;
+  singleDaySearchDate?: string;
   execution?: CalendarReadBinding["execution"];
   purpose?: CalendarReadBinding["purpose"];
 };
@@ -64,6 +66,14 @@ export function hasCalendarSearchFilterShape(
   );
 }
 
+/** Match a literal phrase without cutting through a word in the owner's text. */
+export function includesCalendarPhrase(text: string, phrase: string): boolean {
+  if (!phrase) return false;
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const word = String.raw`[\p{L}\p{M}\p{N}_]`;
+  return new RegExp(`(?<!${word})${escaped}(?!${word})`, "u").test(text);
+}
+
 /** Referents come ONLY from the already authorized recent-message provider. */
 export function bindFilterEvidence(
   value: unknown,
@@ -88,7 +98,16 @@ export function bindFilterEvidence(
     const quotedTitle = [`"${query}"`, `“${query}”`, `'${query}'`].some(
       (title) => raw.quote.includes(title),
     );
-    if (query !== raw.quote.trim() && !quotedTitle) return null;
+    // A structured reply can quote the entire unquoted current request.
+    // Verify the literal phrase before narrowing it. A quoted title and
+    // same-room referent still require their exact supplied spans.
+    const literalCurrentPhrase =
+      raw.origin === "current" &&
+      raw.quote.trim() === current.content.text?.trim() &&
+      !/["'“”‘’]/u.test(raw.quote) &&
+      includesCalendarPhrase(raw.quote, query);
+    if (query !== raw.quote.trim() && !quotedTitle && !literalCurrentPhrase)
+      return null;
     const candidates =
       raw.origin === "current"
         ? [current]
@@ -172,6 +191,44 @@ function currentReadBindings(
   )
     return undefined;
   return owned.bindings;
+}
+
+/** An omitted tool selector must never broaden a bound built-in read.
+ * A compound request for different sources must pass explicit selectors. */
+export function boundCalendarReadSource(
+  turn: object | undefined,
+  current: Message,
+  agentId: string,
+  operation: CalendarReadBinding["operation"],
+): "builtin" | "explicit" | undefined {
+  const reads = currentReadBindings(turn, current, agentId)?.filter(
+    (binding) =>
+      binding.operation === operation &&
+      binding.purpose !== "mutation_prerequisite",
+  );
+  if (!reads?.some((binding) => binding.source === "builtin")) return;
+  return reads.every((binding) => binding.source === "builtin")
+    ? "builtin"
+    : "explicit";
+}
+
+/** A bounded whole-day search can use the owner's date in the actual Calendar zone. */
+export function boundCalendarSearchDate(
+  turn: object | undefined,
+  current: Message,
+  agentId: string,
+): string | undefined {
+  const bindings = currentReadBindings(turn, current, agentId);
+  const binding = bindings?.[0];
+  if (
+    bindings?.length === 1 &&
+    binding?.operation === "search_events" &&
+    binding.source === "builtin" &&
+    binding.execution === "required" &&
+    binding.purpose !== "mutation_prerequisite"
+  )
+    return binding.singleDaySearchDate;
+  return undefined;
 }
 
 /** Planning-only prerequisites from this exact live request, never read-completion evidence. */

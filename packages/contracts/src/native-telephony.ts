@@ -31,6 +31,10 @@ import {
   type SmsSendResult,
   validateSmsResult,
 } from "./sms-send.ts";
+import {
+  parseSmsLatestSenderMetadata,
+  SMS_THREAD_ID as THREAD_ID,
+} from "./telephony-actions.ts";
 
 export type { MmsSendResult } from "./mms-send.ts";
 export type { SmsSendResult } from "./sms-send.ts";
@@ -314,6 +318,7 @@ export interface TelephonyNativePlugin {
     before?: number;
     cursor?: string;
   }): Promise<unknown>;
+  latestIncomingSender?(options?: { includeAddress: true }): Promise<unknown>;
   observeMessages(options: { enabled: boolean }): Promise<unknown>;
   /** One owner-confirmed local deletion, not cancellation of a send. Older hosts omit it. */
   deleteMessage?(options: MessageDeleteReference): Promise<unknown>;
@@ -1281,7 +1286,6 @@ const incompleteReason = (value: unknown) => {
 };
 export const SMS_MAX_THREADS = 50;
 export const SMS_MAX_MESSAGES = 50;
-const THREAD_ID = /^thread:[1-9]\d{0,17}$/;
 const MESSAGE_ID = /^(sms|mms):[1-9]\d{0,17}$/;
 const THREAD_CURSOR = /^\d{1,16}:thread:[1-9]\d{0,17}$/;
 const MESSAGE_CURSOR = /^\d{1,16}:(sms|mms):[1-9]\d{0,17}$/;
@@ -1744,6 +1748,17 @@ export function createTelephonyClient(
           body: review.body,
         }),
         "sms",
+      );
+    },
+    async latestIncomingSender(includeAddress = false) {
+      const bridge = native();
+      if (!bridge.latestIncomingSender)
+        throw new TelephonyUnavailable(options.unavailableMessage);
+      return parseSmsLatestSenderMetadata(
+        await bridge.latestIncomingSender(
+          includeAddress ? { includeAddress: true } : undefined,
+        ),
+        includeAddress,
       );
     },
     async listThreads(limit = 20, before?: number) {

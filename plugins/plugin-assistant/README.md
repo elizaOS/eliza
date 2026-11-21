@@ -271,6 +271,14 @@ the operation in their tool schema. A device that also negotiates
 `camera.capture-lens.v1` can receive `lens: "front"` or `lens: "back"`; without
 it the phone uses the camera that is showing.
 
+The agent reaches the capture through `DEVICE_CAMERA_CAPTURE`, a
+single-operation tool over the same proposal path. Opening the Camera view does
+not take a photo, so a request to take a picture is device work, not navigation:
+the capability guidance says so on every turn, and a whole-message command
+such as "take a picture" or "take a selfie with the front camera" is routed to
+the tool in place of a view-only plan. For such a command the owner's words set
+the lens; the model's lens choice does not override them.
+
 ## Current-request Gmail policy
 
 A device that negotiates `gmail.request-policy.v1` may send the top-level

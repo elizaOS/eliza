@@ -245,6 +245,12 @@ export interface WorkflowRunEventPayload extends EventPayload {
   event: WorkflowRunEvent;
 }
 
+/**
+ * A definition the service refused while checking it, before any row was
+ * written (a bad schedule, source or name). The caller may correct it and retry.
+ */
+export const WORKFLOW_DEFINITION_NOT_APPLIED = 'WORKFLOW_DEFINITION_NOT_APPLIED';
+
 export class WorkflowApiError extends Error {
   constructor(
     message: string,

@@ -1,7 +1,7 @@
-/** Generic event callback used across Capacitor/Electrobun plugin bridges. */
+/** Generic event callback used across Capacitor plugin bridges. */
 export type EventCallback<T = unknown> = (event: T) => void;
 
-/** Generic listener entry used by Electrobun plugin bridges. */
+/** Generic listener entry used by plugin bridges. */
 export interface ListenerEntry<
   TEventName extends string = string,
   TEventData = unknown,

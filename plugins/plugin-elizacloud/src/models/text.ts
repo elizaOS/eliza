@@ -1306,7 +1306,8 @@ function resolvePromptCacheKey(providerOptions: Record<string, unknown>, modelNa
   const cerebras = recordAt(providerOptions, "cerebras");
   // Match the direct Cerebras route's provider-scoped workflow key. Generic
   // fallback and every other vendor keep their existing ordering and scope.
-  if (modelName === "qwen-3.8-27b") {
+  // Cloud ids carry a provider prefix (`cerebras/qwen-3.8-27b`).
+  if (modelName && normalizeCerebrasModelId(modelName) === "qwen-3.8-27b") {
     const selected = firstString(cerebras.promptCacheKey, cerebras.prompt_cache_key);
     if (selected) return selected;
   }

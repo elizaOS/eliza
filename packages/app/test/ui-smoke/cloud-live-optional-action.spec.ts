@@ -1,8 +1,13 @@
 /** Real-browser regression coverage for bounded optional Cloud actions. */
 
+import { createHash } from "node:crypto";
 import { expect, type Locator, test } from "@playwright/test";
 import type { CloudLiveRuntimeBinding } from "../cloud-live-continuity-contract";
 import { installDedicatedAdoptionConsentProof } from "../cloud-live-dedicated-adoption-consent";
+import {
+  openAuthenticatedStagingJoin,
+  requireStagingJoinBytes,
+} from "../cloud-live-deployed-target";
 import {
   CloudLiveDedicatedConfirmationRequiredError,
   CloudLiveOptionalActionDeadlineError,
@@ -14,6 +19,7 @@ import {
   prepareCloudLivePersonalIdentity,
   waitForCloudLivePersonalIdentity,
 } from "../cloud-live-optional-action";
+import { waitForRendererCloudApiOrigin } from "../cloud-live-renderer-api-readiness";
 
 test.describe("Cloud live optional action boundary", () => {
   test.use({ serviceWorkers: "block" });
@@ -1178,5 +1184,166 @@ test.describe("Cloud live optional action boundary", () => {
     });
     expect(String(result.error)).not.toMatch(/data-testid|Retry|locator/);
     expect(Date.now() - startedAt).toBeLessThan(2_000);
+  });
+});
+
+test("the renderer waits for its exact origin across a document navigation", async ({
+  page,
+}) => {
+  const expectedApiOrigin = "https://renderer.test";
+  await page.route(`${expectedApiOrigin}/**`, (route) =>
+    route.fulfill({ contentType: "text/html", body: "<main></main>" }),
+  );
+  await page.goto(`${expectedApiOrigin}/boot`);
+  const readCloudBase = () =>
+    page.evaluate(() => {
+      if (location.pathname === "/boot") {
+        return new Promise<string>(() => location.replace("/ready"));
+      }
+      return location.origin;
+    });
+  expect(
+    await waitForRendererCloudApiOrigin({ readCloudBase, expectedApiOrigin }),
+  ).toEqual({
+    cloudBase: expectedApiOrigin,
+    apiOrigin: expectedApiOrigin,
+  });
+  await expect(
+    waitForRendererCloudApiOrigin({
+      readCloudBase,
+      expectedApiOrigin: "https://other.test",
+      timeoutMs: 0,
+    }),
+  ).rejects.toThrow("expected https://other.test");
+  await page.goto(`${expectedApiOrigin}/boot`);
+  await expect(
+    waitForRendererCloudApiOrigin({
+      readCloudBase,
+      expectedApiOrigin,
+      timeoutMs: 0,
+    }),
+  ).rejects.toThrow("did not become ready within 0ms");
+  await page.close();
+  await expect(
+    waitForRendererCloudApiOrigin({
+      readCloudBase,
+      expectedApiOrigin,
+      timeoutMs: 0,
+    }),
+  ).rejects.toThrow(/page, context or browser has been closed/i);
+});
+
+test("the staging browser opens join with an issued same-origin session", async ({
+  page,
+  context,
+}) => {
+  const app = "https://cloud-staging.eliza.app";
+  const api = "https://api-staging.eliza.app";
+  const renderer = {
+    commit: "1".repeat(40),
+    buildId: "a".repeat(64),
+    indexHtmlSha256: "b".repeat(64),
+    assetCount: 5,
+  };
+  const seed = {
+    storageKey: "steward_session_token",
+    token: "fixture-api-key",
+  };
+  let eligible = false;
+  let manifest = { ...renderer, playwrightTestAuth: false };
+  let verifierChallenge = "";
+  let mintCount = 0;
+  let exchangeCount = 0;
+  const joined: string[] = [];
+  await context.route("**/*", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin === app && url.pathname === "/eliza-renderer-build.json") {
+      return route.fulfill({ json: manifest });
+    }
+    if (url.origin === app && url.pathname === "/join") {
+      joined.push(url.origin);
+      return route.fulfill({
+        contentType: "text/html",
+        body: "<main>Join</main>",
+      });
+    }
+    if (url.origin !== api) return route.abort();
+    const headers = { "access-control-allow-origin": app };
+    if (request.method() === "OPTIONS") {
+      return route.fulfill({
+        status: 204,
+        headers: {
+          ...headers,
+          "access-control-allow-methods": "GET, POST",
+          "access-control-allow-headers": "authorization,content-type",
+        },
+      });
+    }
+    if (url.pathname === "/api/health") {
+      return route.fulfill({
+        headers,
+        json: { status: "ok", environment: "staging", commit: renderer.commit },
+      });
+    }
+    expect(request.headers().origin).toBe(app);
+    if (url.pathname === "/api/auth/staging-session-exchange/mint") {
+      mintCount++;
+      expect(request.headers().authorization).toBe("Bearer fixture-api-key");
+      verifierChallenge = request.postDataJSON().codeChallenge;
+      return route.fulfill(
+        eligible
+          ? { headers, json: { ok: true, code: "one-time-fixture" } }
+          : { status: 403, headers, json: { code: "subject_not_eligible" } },
+      );
+    }
+    if (url.pathname === "/api/auth/staging-session-exchange/exchange") {
+      exchangeCount++;
+      expect(request.headers().authorization).toBeUndefined();
+      const { code, codeVerifier } = request.postDataJSON();
+      expect(code).toBe("one-time-fixture");
+      expect(createHash("sha256").update(codeVerifier).digest("hex")).toBe(
+        verifierChallenge,
+      );
+      return route.fulfill({
+        headers,
+        json: { ok: true, token: "issued-fixture-session" },
+      });
+    }
+    return route.abort();
+  });
+
+  await page.goto(`${app}/eliza-renderer-build.json`);
+  const actualHash = createHash("sha256")
+    .update("<main>Join</main>")
+    .digest("hex");
+  await expect(
+    requireStagingJoinBytes(page, app, "f".repeat(64)),
+  ).rejects.toThrow("does not match");
+  await requireStagingJoinBytes(page, app, actualHash);
+  joined.length = 0;
+  manifest = { ...manifest, buildId: "c".repeat(64) };
+  await expect(
+    openAuthenticatedStagingJoin(page, renderer, seed),
+  ).rejects.toThrow("same attested renderer");
+  expect(mintCount).toBe(0);
+  manifest = { ...manifest, buildId: renderer.buildId };
+  await expect(
+    openAuthenticatedStagingJoin(page, renderer, seed),
+  ).rejects.toThrow("403 (subject_not_eligible)");
+  expect(exchangeCount).toBe(0);
+  expect(await page.evaluate(() => localStorage.length)).toBe(0);
+  eligible = true;
+  await openAuthenticatedStagingJoin(page, renderer, seed);
+  expect(joined).toEqual([app]);
+  expect(await context.storageState()).toMatchObject({
+    origins: [
+      {
+        origin: app,
+        localStorage: [
+          { name: seed.storageKey, value: "issued-fixture-session" },
+        ],
+      },
+    ],
   });
 });

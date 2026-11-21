@@ -1,0 +1,40 @@
+apply plugin: 'com.android.library'
+
+def cloudSource = layout.buildDirectory.dir('generated/source/cloudSpeech')
+def stageCloudSpeech = tasks.register('stageCloudSpeechBridge', Sync) {
+    from(file('../speech-bridge/src/main/java')) { include 'ai/eliza/voice/SpeechStreamBridgePlugin.java', 'ai/eliza/voice/CloudSpeechWire.java' }
+    from(file('../src/main/java')) {
+        include 'ai/eliza/voice/AudioTrackSpeechOutput.java', 'ai/eliza/voice/SpeechAudioFocus.java', 'ai/eliza/voice/SpeechAudioFocusPolicy.java',
+            'ai/eliza/voice/SpeechPcmQueue.java', 'ai/eliza/voice/StreamingSpeechPlayback.java', 'ai/eliza/voice/VoiceLatencyTrials.java'
+    }
+    into(cloudSource)
+}
+
+android {
+    namespace 'ai.eliza.voice.cloud'
+    compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
+    defaultConfig {
+        minSdk project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 26
+    }
+    sourceSets.main {
+        java.srcDirs = [cloudSource]
+        manifest.srcFile file('../src/main/AndroidManifest.xml')
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+}
+
+preBuild.dependsOn(stageCloudSpeech)
+
+repositories {
+    google()
+    maven { url = uri(rootProject.ext.has('mavenCentralMirrorUrl') ? rootProject.ext.mavenCentralMirrorUrl : 'https://repo.maven.apache.org/maven2') }
+    mavenCentral()
+}
+
+dependencies {
+    implementation project(':capacitor-android')
+    implementation 'com.squareup.okhttp3:okhttp:5.3.2'
+}

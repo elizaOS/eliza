@@ -24,6 +24,15 @@ const RECEIPT_LABELS = new Set([
   "runtime:interrupted_turn",
 ]);
 
+/** A runtime-authored record of what an earlier request did or read. */
+export function isHistoryReceiptSegment(segment: { label?: string }): boolean {
+  return (
+    segment.label !== undefined &&
+    (RECEIPT_LABELS.has(segment.label) ||
+      segment.label === "runtime:historical_read_continuations")
+  );
+}
+
 /** Keep append-only originals ahead of changing live state on the model wire.
  * Cost: linear passes, no I/O or new cache. Every segment and its contents remain
  * intact; canonical context/source order and restoration hashes never change.

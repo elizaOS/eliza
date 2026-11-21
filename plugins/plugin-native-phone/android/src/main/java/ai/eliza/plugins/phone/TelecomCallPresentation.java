@@ -36,7 +36,7 @@ public final class TelecomCallPresentation {
 
     /**
      * Up to two letters for the avatar: the first letter of the first and of the last word of the
-     * name. A number with no name is {@code #}; a withheld caller has no initials.
+     * name. A number without a name and a withheld caller have no initials; the view uses a person icon.
      */
     public static String initials(String name, boolean hasNumber) {
         int first = -1, last = -1;
@@ -48,7 +48,7 @@ public final class TelecomCallPresentation {
                 else last = letter;
             }
         }
-        if (first < 0) return hasNumber ? "#" : "";
+        if (first < 0) return "";
         StringBuilder letters = new StringBuilder().appendCodePoint(Character.toUpperCase(first));
         if (last >= 0) letters.appendCodePoint(Character.toUpperCase(last));
         return letters.toString();

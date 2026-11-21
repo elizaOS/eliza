@@ -11,6 +11,7 @@ import {
   FIRST_RUN_PROVIDER_CATALOG,
   getDefaultStylePreset,
   getStylePresets,
+  PREMADE_VOICES,
 } from "@elizaos/host/protocol";
 import {
   isSensitiveConfigKey,
@@ -261,31 +262,9 @@ export function validateSkillId(
 // First-run helpers
 // ---------------------------------------------------------------------------
 const DEFAULT_ELEVENLABS_TTS_MODEL = "eleven_flash_v2_5";
-const ELEVENLABS_VOICE_ID_BY_PRESET: Record<string, string> = {
-  rachel: "21m00Tcm4TlvDq8ikWAM",
-  sarah: "EXAVITQu4vr4xnSDxMaL",
-  matilda: "XrExE9yKIg1WjnnlVkGX",
-  lily: "pFZP5JQG7iQjIQuC4Bku",
-  alice: "Xb7hH8MSUJpSbSDYk0k2",
-  brian: "nPczCjzI2devNBz1zQrb",
-  adam: "pNInz6obpgDQGcFmaJgB",
-  josh: "TxGEqnHWrfWFTfGW9XjX",
-  daniel: "onwK4e9ZLuTAKqWW03F9",
-  liam: "TX3LPaxmHKxFdv7VOQHJ",
-  gigi: "jBpfuIE2acCO8z3wKNLl",
-  mimi: "zrHiDhphv9ZnVXBqCLjz",
-  dorothy: "ThT5KcBeYPX3keUQqHPh",
-  glinda: "z9fAnlkpzviPz146aGWa",
-  charlotte: "XB0fDUnXU5powFXDhCwa",
-  callum: "N2lVS1w4EtoT3dr4eOWO",
-  momo: "n7Wi4g1bhpw4Bs8HK5ph",
-  yuki: "4tRn1lSkEn13EVTuqb0g",
-  rin: "cNYrMw9glwJZXR8RwbuR",
-  kei: "eadgjmk4R4uojdsheG9t",
-  jin: "6IwYbsNENZgAB1dtBZDp",
-  satoshi: "7cOBG34AiHrAzs842Rdi",
-  ryu: "QzTKubutNn9TjrB7Xb2Q",
-};
+const ELEVENLABS_VOICE_ID_BY_PRESET = new Map(
+  PREMADE_VOICES.map((voice) => [voice.id, voice.voiceId]),
+);
 export function readUiLanguageHeader(
   req: http.IncomingMessage | undefined,
 ): string | undefined {
@@ -357,7 +336,7 @@ export function applyFirstRunVoicePreset(
   if (!voicePresetId) {
     return;
   }
-  const voiceId = ELEVENLABS_VOICE_ID_BY_PRESET[voicePresetId];
+  const voiceId = ELEVENLABS_VOICE_ID_BY_PRESET.get(voicePresetId);
   if (!voiceId) {
     return;
   }

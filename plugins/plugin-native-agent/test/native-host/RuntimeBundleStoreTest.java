@@ -1,5 +1,6 @@
 package ai.eliza.plugins.agent.runtime.test;
 
+import ai.eliza.plugins.agent.runtime.RuntimeBundleStore;
 import java.io.*;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
@@ -53,12 +54,12 @@ public final class RuntimeBundleStoreTest {
   }
   private static Path prepare(Path root, Map<String, byte[]> assets) throws Exception {
     byte[] inventory = manifest(assets);
-    return ai.eliza.plugins.agent.runtime.RuntimeBundleStore.prepareFromAsset(root.resolve("versions"), "inventory",
+    return RuntimeBundleStore.prepareFromAsset(root.resolve("versions"), "inventory",
       name -> "inventory".equals(name) ? new ByteArrayInputStream(inventory) : source(assets).open(name),
       root.resolve("native"), SYNC, "eliza-runtime-v1");
   }
   private static final List<String> seen = new ArrayList<>();
-  private static ai.eliza.plugins.agent.runtime.RuntimeBundleStore.Prepared last;
+  private static RuntimeBundleStore.Prepared last;
   private static List<String> launch(Path root, Map<String, byte[]> assets, long now) throws Exception {
     seen.clear();
     last = RuntimeBundleStore.prepareSealed(root.resolve("versions"), manifest(assets), source(assets), root.resolve("native"), new RuntimeBundleStore.Durability() {
@@ -130,7 +131,7 @@ public final class RuntimeBundleStoreTest {
     Thread.sleep(5); Files.write(file, forged);
     forgeSeal(root, next, t + 14);
     check(launch(root, next, t + 15).equals(List.of("release-sealed")), "A forged seal defers the hash");
-    ai.eliza.plugins.agent.runtime.RuntimeBundleStore.Prepared forgedLaunch = last;
+    RuntimeBundleStore.Prepared forgedLaunch = last;
     rejects(forgedLaunch::verify);
     check(!Files.exists(seal), "A failed deferred hash drops the seal");
     rejects(() -> launch(root, next, t + 16));
@@ -148,6 +149,35 @@ public final class RuntimeBundleStoreTest {
     String stale = "0".repeat(64); Files.writeString(versions.resolve(".seals").resolve(stale), "stale");
     Files.delete(seal); launch(root, next, t + 20);
     check(!Files.exists(versions.resolve(".seals").resolve(stale)), "Seals of removed releases are dropped");
+  }
+  /** Preparing the installed APK removes older releases, their seals and abandoned staging trees before its space check, and keeps the current release usable. */
+  private static void retainedRelease(Path suite, Map<String, byte[]> old, Map<String, byte[]> next) throws Exception {
+    Path root = Files.createDirectory(suite.resolve("retained")); libraries(root);
+    Path versions = root.resolve("versions");
+    launch(root, old, 1_000_000_000L);
+    String oldIdentity = hash(manifest(old)), identity = hash(manifest(next));
+    check(Files.isRegularFile(versions.resolve(".seals").resolve(oldIdentity)), "The old release is sealed");
+    Path abandoned = versions.resolve(".staging-" + UUID.randomUUID());
+    Files.createDirectories(abandoned.resolve("bundle")); Files.writeString(abandoned.resolve("bundle/partial.js"), "partial");
+    Files.writeString(versions.resolve("unrelated"), "kept");
+    byte[] inventory = manifest(next);
+    RuntimeBundleStore.Source apk = name -> "inventory".equals(name)
+      ? new ByteArrayInputStream(inventory) : source(next).open(name);
+    RuntimeBundleStore.Durability enoughForOneRelease = new RuntimeBundleStore.Durability() {
+      public void syncDirectory(Path directory) throws IOException { SYNC.syncDirectory(directory); }
+      public long usableSpace(Path directory) { return Files.exists(versions.resolve(oldIdentity)) ? 0 : Long.MAX_VALUE; }
+    };
+    RuntimeBundleStore.prepareInstalledApkFromAsset(versions, "inventory", apk, root.resolve("native"), enoughForOneRelease, "eliza-runtime-v1");
+    check(!Files.exists(versions.resolve(oldIdentity), LinkOption.NOFOLLOW_LINKS), "The old release is removed");
+    check(!Files.exists(versions.resolve(".seals").resolve(oldIdentity)), "The old release's seal is removed");
+    check(!Files.exists(abandoned, LinkOption.NOFOLLOW_LINKS), "An abandoned staging tree is removed");
+    check(Files.readString(versions.resolve("unrelated")).equals("kept"), "Names that are not releases are left alone");
+    check(Files.isRegularFile(versions.resolve(".seals").resolve(identity)), "The current release keeps its seal");
+    RuntimeBundleStore.Prepared restarted = RuntimeBundleStore.prepareInstalledApkFromAsset(
+      versions, "inventory", apk, root.resolve("native"), SYNC, "eliza-runtime-v1");
+    check(restarted.deferred, "The current release still launches sealed");
+    restarted.verify();
+    check(Files.readString(restarted.bundle.resolve("agent-bundle.js")).startsWith("new"), "Retaining twice keeps the current release");
   }
   /** Writes a seal the way any same-uid process could, from public metadata. */
   private static void forgeSeal(Path root, Map<String, byte[]> assets, long now) throws Exception {
@@ -169,7 +199,7 @@ public final class RuntimeBundleStoreTest {
     if (args.length == 3 && args[0].equals("crash")) {
       Path root = Path.of(args[1]); Map<String, byte[]> next = assets("new", false);
       RuntimeBundleStore.prepare(root.resolve("versions"), manifest(next), source(next), root.resolve("native"), SYNC,
-        name -> { if (name.equals(args[2])) Runtime.getRuntime().halt(23); });
+        name -> { if (name.equals(args[2])) Runtime.getRuntime().halt(23); }, "eliza-runtime-v1");
       throw new AssertionError("Crash boundary not reached");
     }
     Path suite = Path.of(args[0]); Files.createDirectories(suite);
@@ -180,7 +210,7 @@ public final class RuntimeBundleStoreTest {
     rejects(() -> RuntimeBundleStore.prepare(low.resolve("versions"), manifest(next), source(next), low.resolve("native"), new RuntimeBundleStore.Durability() {
       public void syncDirectory(Path path) throws IOException { SYNC.syncDirectory(path); }
       public long usableSpace(Path path) { return 0; }
-    }));
+    }, "eliza-runtime-v1"));
     check(Files.readString(retained.resolve("agent-bundle.js")).startsWith("old"), "Low space must preserve current bundle");
     check(!oldBundle.equals(newBundle), "Different payloads require different directories");
     check(Files.exists(oldBundle.resolve("obsolete-plugin.js")), "Old complete version must remain intact");
@@ -193,6 +223,7 @@ public final class RuntimeBundleStoreTest {
 
     check(!Files.exists(normal.resolve("versions/.seals")), "Strict prepare never writes seals");
     sealedRelease(suite, next);
+    retainedRelease(suite, old, next);
 
     for (String boundary : new String[]{"staging-created", "file-chunk", "file-synced", "before-marker", "before-publish", "published"}) {
       Path root = Files.createDirectory(suite.resolve(boundary)); libraries(root); Path prior = prepare(root, old);
@@ -211,18 +242,18 @@ public final class RuntimeBundleStoreTest {
       new String(correct, StandardCharsets.UTF_8).replace("eliza-runtime-v1", "unknown"),
       new String(correct, StandardCharsets.UTF_8).replace("asset\t", "asset\t-"),
       new String(correct, StandardCharsets.UTF_8) + new String(correct, StandardCharsets.UTF_8).split("\n")[1] + "\n"}) {
-      rejects(() -> RuntimeBundleStore.prepare(hostile.resolve("versions"), text.getBytes(StandardCharsets.UTF_8), source(next), hostile.resolve("native"), SYNC));
+      rejects(() -> RuntimeBundleStore.prepare(hostile.resolve("versions"), text.getBytes(StandardCharsets.UTF_8), source(next), hostile.resolve("native"), SYNC, "eliza-runtime-v1"));
     }
     String mixedName = "libeliza_ld_musl_x86_64.so";
     byte[] mixedBytes = mixedName.getBytes(StandardCharsets.UTF_8);
     Files.write(hostile.resolve("native").resolve(mixedName), mixedBytes);
     String mixedInventory = new String(correct, StandardCharsets.UTF_8) + "native\t" + mixedBytes.length + "\t" + hash(mixedBytes) + "\t" + mixedName + "\t-\n";
-    rejects(() -> RuntimeBundleStore.prepare(hostile.resolve("versions"), mixedInventory.getBytes(StandardCharsets.UTF_8), source(next), hostile.resolve("native"), SYNC));
+    rejects(() -> RuntimeBundleStore.prepare(hostile.resolve("versions"), mixedInventory.getBytes(StandardCharsets.UTF_8), source(next), hostile.resolve("native"), SYNC, "eliza-runtime-v1"));
     Files.delete(hostile.resolve("native").resolve(mixedName));
     Map<String, byte[]> missing = new TreeMap<>(next); missing.remove("gateway/bootstrap.mjs");
-    rejects(() -> RuntimeBundleStore.prepare(hostile.resolve("versions"), correct, source(missing), hostile.resolve("native"), SYNC));
+    rejects(() -> RuntimeBundleStore.prepare(hostile.resolve("versions"), correct, source(missing), hostile.resolve("native"), SYNC, "eliza-runtime-v1"));
     Map<String, byte[]> bad = new TreeMap<>(next); bad.put("agent-bundle.js", "wrong bytes".getBytes(StandardCharsets.UTF_8));
-    rejects(() -> RuntimeBundleStore.prepare(hostile.resolve("versions"), correct, source(bad), hostile.resolve("native"), SYNC));
+    rejects(() -> RuntimeBundleStore.prepare(hostile.resolve("versions"), correct, source(bad), hostile.resolve("native"), SYNC, "eliza-runtime-v1"));
     Path bundle = prepare(hostile, next);
     Files.delete(bundle.resolve("gateway/bootstrap.mjs"));
     Path outside = suite.resolve("outside"); Files.writeString(outside, "untouched");
@@ -254,7 +285,7 @@ public final class RuntimeBundleStoreTest {
           if (!name.equals("staging-created")) return;
           inside.countDown();
           try { resume.await(); } catch (InterruptedException interrupted) { throw new InterruptedIOException(); }
-        }));
+        }, "eliza-runtime-v1"));
         check(inside.await(10, java.util.concurrent.TimeUnit.SECONDS), "First preparer must hold the root");
         java.util.concurrent.Future<Path> second = pool.submit(() -> prepare(secondRoot, next));
         Thread.sleep(200); // the second preparer reaches the lock while the first holds it

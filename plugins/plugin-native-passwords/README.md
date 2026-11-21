@@ -115,13 +115,20 @@ No `ElizaPasswords` method resolves with a secret. `save` accepts a password typ
 `eliza_passwords_bridge_accepts_secrets` to `false` keeps passwords out of the bridge: `save` then
 rejects `password`, `generate` and a missing `id` with `invalid`, so a password reaches the vault
 only through `openEditor` or Android's save confirmation. `reveal` shows a FLAG_SECURE native dialog
-that hides after 30 s or when the host stops; `copy` marks the clip sensitive and schedules
-clearing after 45 s. If Android hides clipboard ownership, clearing waits until the host
-resumes. A replaced or unidentifiable clip is never deleted. Hosts must describe this as
-best-effort expiry, not guaranteed background deletion. `createPasswordsClient` rebuilds every response from
+that hides after 30 s or when the host stops. Both reveal and copy check the current owner's
+admission and the original unlock again at native delivery. Copy marks the clip sensitive
+and schedules clearing after 45 seconds. Ordinary backgrounding preserves that time for
+pasting. A host call to `lockAndClose` expires the owner's current clipboard lease immediately.
+Cleanup checks the observed clipboard label and waits for input focus when Android hides it.
+Android exposes separate read and clear calls, so cleanup is best effort.
+`createPasswordsClient` rebuilds every response from
 allowlisted fields and rejects any response containing a secret-like key, and errors never echo
 inputs. Hosts must keep agent-facing context free of vault data; at most labels and origins.
 Queued work is bound to the grant that admitted it; a later unlock cannot revive it.
+A row-based caller supplies the row's revision to remove, reveal or copy. The native vault checks
+that revision at delivery, under the same lock as the record read or removal, and returns
+`conflict` if the row changed or disappeared. Callers that omit the revision still act on the
+current entry by ID.
 Destroyed Activities cancel their pending prompts, and old owners cannot revoke a newer grant.
 Opening the fill picker preserves the original request deadline. Framework cancellation or a
 replacement request revokes the picker before it can publish a result.

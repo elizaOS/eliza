@@ -1190,12 +1190,14 @@ export class PgApprovalQueue implements ApprovalQueue {
           : "FALSE",
       );
     }
+    const listedRows = where.join(" AND ");
     const limitClause =
       typeof filter.limit === "number"
         ? `LIMIT ${sqlInteger(filter.limit)}`
         : "";
+    await this.expireLapsedListed(filter, listedRows, new Date());
     const sql = `SELECT ${SELECT_COLUMNS} FROM approval_requests
-      WHERE ${where.join(" AND ")}
+      WHERE ${listedRows}
       ORDER BY created_at DESC, id DESC
       ${limitClause}`;
     const rows = await executeRawSql(this.runtime, sql);
@@ -1511,6 +1513,29 @@ export class PgApprovalQueue implements ApprovalQueue {
       return this.throwExecutionMutationConflict(reconciliation, target);
     }
     return rowToRequest(rows[0]);
+  }
+
+  /** Expire lapsed, unclaimed reviews within the same filters as the listing. */
+  private async expireLapsedListed(
+    filter: ApprovalListFilter,
+    listedRows: string,
+    now: Date,
+  ): Promise<void> {
+    const listed = (state: ApprovalRequestState) =>
+      (filter.state === null || filter.state === state) &&
+      (!filter.states || filter.states.includes(state));
+    if (!listed("pending") && !listed("approved")) return;
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE approval_requests
+        SET state = ${sqlText("expired")}, updated_at = ${timestampLiteral(now)}
+        WHERE ${listedRows}
+          AND (state = 'pending' OR (state = 'approved' AND execution_attempt_id IS NULL))
+          AND expires_at <= ${timestampLiteral(now)}
+        RETURNING id`,
+    );
+    for (const row of rows)
+      markApprovalNotificationRead(this.runtime, toText(row.id));
   }
 
   /** Expires lapsed pending rows and approvals whose execution was never claimed. */

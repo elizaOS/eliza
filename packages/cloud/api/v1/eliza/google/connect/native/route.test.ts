@@ -102,6 +102,29 @@ test("binds the authenticated owner, stores the connection and invalidates cache
   ]);
 });
 
+test("a deferred sign-in constrains the exchange to its pre-MFA account", async () => {
+  exchange = async () => {
+    throw new Error("GOOGLE_SERVER_AUTH_CODE_ACCOUNT_MISMATCH");
+  };
+  const response = await post({
+    serverAuthCode: "4/0AeaYSHnative",
+    expectedGoogleSubject: "109876543210",
+  });
+  expect(response.status).toBe(400);
+  expect((await response.json()) as { code: string }).toMatchObject({
+    code: "google_account_mismatch",
+  });
+  expect(calls).toEqual([
+    {
+      organizationId: "org-1",
+      userId: "owner-1",
+      serverAuthCode: "4/0AeaYSHnative",
+      expectedPlatformUserId: "109876543210",
+    },
+  ]);
+  expect(invalidations).toHaveLength(0);
+});
+
 test("rejects malformed bodies and tenant overrides before any exchange", async () => {
   for (const body of [
     "not json",

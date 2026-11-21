@@ -884,7 +884,7 @@ export async function runCli(
   // is hoisted out of the `effectiveRunDir` branch so a bare run under
   // NODE_ENV=test|production still captures the per-turn traces it aggregates.
   // The recorder falls back to `${stateDir}/trajectories` when
-  // ELIZA_TRAJECTORY_DIR is unset (resolveTrajectoryDir, trajectory-recorder.ts).
+  // ELIZA_TRAJECTORY_DIR is unset (resolveTrajectoryDir, recorded-trajectory-files.ts).
   if (shouldOptInScenarioTrajectoryLogging()) {
     process.env.ELIZA_TRAJECTORY_LOGGING = "1";
   }

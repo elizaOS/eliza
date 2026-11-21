@@ -204,6 +204,30 @@ export function parseChatTerminalFailure(
   };
 }
 
+/**
+ * The message runtime's own failure of a turn as the chat transport carries it.
+ * Every runtime kind is public except `transient_failure`, the runtime's
+ * generic transient infrastructure failure (a model or Cloud call that threw
+ * without a typed rate-limit, credits or auth cause). Clients know it as
+ * `provider_issue`, the public kind for a provider or infrastructure failure
+ * that a later send may get past. Dropping it would deliver the runtime's
+ * failure apology as an ordinary answer.
+ */
+export function chatTerminalFailureFromRuntime(
+  value: unknown,
+): ChatTerminalFailure | undefined {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    (value as Record<string, unknown>).kind === "transient_failure" &&
+    (value as Record<string, unknown>).transient === true
+  ) {
+    return parseChatTerminalFailure({ ...value, kind: "provider_issue" });
+  }
+  return parseChatTerminalFailure(value);
+}
+
 /** Whether UI surfaces should offer Retry for this structured failure. */
 export function isRetryableChatFailureKind(kind: ChatFailureKind): boolean {
   return RETRYABLE_CHAT_FAILURE_KIND_SET.has(kind);

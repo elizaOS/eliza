@@ -101,7 +101,10 @@ export interface ViewRegistryEntry {
    * rather than a dynamically loaded plugin view.
    */
   builtin?: boolean;
-  /** When true, the view can be pinned as a native desktop tab in the Electrobun shell. */
+  /**
+   * @deprecated Ignored. Accepted so agents that still send it keep decoding;
+   * removed with `ViewDeclaration.desktopTabEnabled` in v2.0.7.
+   */
   desktopTabEnabled?: boolean;
   /**
    * True when this view is a native device-OS surface that only exists on the
@@ -328,7 +331,7 @@ async function fetchViews(): Promise<ViewRegistryEntry[]> {
 
 const VIEWS_CACHE_KEY = "views:available";
 
-// App mounts this hook in both the router and the desktop-tab catalog. A plugin
+// App mounts this hook in both the router and the shell view catalog. A plugin
 // reload reaches both subscribers synchronously, but the registry must issue
 // one forced refresh: two forced reads can race and make the older response win
 // the user's first navigation after a create/edit operation.
@@ -408,7 +411,6 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   memories: "BrainCircuit",
   runtime: "Terminal",
   database: "Database",
-  desktop: "Monitor",
   settings: "Settings",
   vault: "KeyRound",
   logs: "ScrollText",
@@ -458,7 +460,6 @@ const BUILTIN_SHELL_VIEW_ENTRIES: ViewRegistryEntry[] = Object.entries(
   order: BUILTIN_TAB_ORDER[id as BuiltinTab],
   builtin: true,
   visibleInManager: false,
-  desktopTabEnabled: true,
 }));
 
 /**
@@ -617,7 +618,7 @@ export function useAvailableViews(
   const defaultNetworkEnabled = useDefaultViewsNetworkEnabled();
   const networkEnabled = options.networkEnabled ?? defaultNetworkEnabled;
   const cacheKey = `${VIEWS_CACHE_KEY}:${authority}`;
-  // All mounts share one cache slot, so the router and the desktop-tab consumer
+  // All mounts share one cache slot, so the router and the shell view catalog
   // (which both mount this hook) issue a single request. The active authority
   // is part of the key so a repoint can never paint the prior agent's registry.
   const resource = useCachedResource<ViewRegistryEntry[]>(
@@ -639,7 +640,7 @@ export function useAvailableViews(
 
   // Runtime plugin install/uninstall changes the registry; keep a background
   // poll so the list stays live. The poll is ref-counted in the cache layer
-  // keyed by authority, so the router and desktop-tab consumer (which
+  // keyed by authority, so the router and shell view catalog (which
   // both mount this hook) share a single timer instead of each running one.
   const { refetch } = resource;
   useEffect(() => {

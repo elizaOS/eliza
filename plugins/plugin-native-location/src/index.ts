@@ -1,7 +1,7 @@
 /**
  * TS host entry point for the location Capacitor plugin: registers "ElizaLocation"
  * with the Capacitor bridge and re-exports the shared type surface. The `web`
- * factory lazy-loads `LocationWeb` (web.ts) only on browser/Electrobun targets;
+ * factory lazy-loads `LocationWeb` (web.ts) only on browser targets;
  * iOS/Android resolve their native implementations through the bridge itself.
  */
 import { registerPlugin } from "@capacitor/core";

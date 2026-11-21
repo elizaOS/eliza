@@ -371,7 +371,7 @@ const ROUTES: DevRouteEntry[] = [
   },
   {
     // Owner-only vault workspace — reachable directly at /vault; not
-    // in any ALL_TAB_GROUPS launcher group, like desktop/background.
+    // in any ALL_TAB_GROUPS launcher group, like background.
     tabId: "vault",
     path: "/vault",
     label: "Vault",
@@ -380,16 +380,6 @@ const ROUTES: DevRouteEntry[] = [
     featureFlag: null,
     requiresAuth: true,
     platformGate: null,
-  },
-  {
-    tabId: "desktop",
-    path: "/desktop",
-    label: "Desktop",
-    group: "Hidden",
-    visibility: "desktop",
-    featureFlag: null,
-    requiresAuth: true,
-    platformGate: "desktop",
   },
   {
     tabId: "background",

@@ -80,7 +80,9 @@ export type FailureReplyAttempt =
   | { kind: "creditsExhausted"; rateLimit?: ProviderRateLimit }
   | { kind: "rateLimited"; rateLimit?: ProviderRateLimit }
   | { kind: "authFailed" }
-  | { kind: "schemaRejected" };
+  | { kind: "connectionFailed" }
+  | { kind: "schemaRejected" }
+  | { kind: "providerUnavailable" };
 
 export type V5MessageRuntimeStage1Result =
   | {

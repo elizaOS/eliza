@@ -67,7 +67,9 @@ export type DeviceNavigationMapsCode =
   | "MAPS_AUTH_EXPIRED"
   | "MAPS_NOT_ENTITLED"
   | "MAPS_PROVIDER_CHANGED"
+  | "MAPS_PROVIDER_REJECTED"
   | "MAPS_RATE_LIMITED"
+  | "MAPS_BUDGET_EXHAUSTED"
   | "MAPS_PROVIDER_UNAVAILABLE"
   | "MAPS_PROVIDER_NETWORK"
   | "MAPS_PROVIDER_TIMEOUT"
@@ -159,17 +161,27 @@ export function deviceNavigationFailure(
   switch (error.code) {
     case "cancelled":
       return unavailable("The Maps request was cancelled on the phone.");
+    // Cloud's 402 (balance or plan) and 403 (subscription, refusal) are not
+    // an expired sign-in: signing in again would not help.
     case "unauthorized":
       return new DeviceNavigationFailure(
-        /subscription/i.test(error.message)
+        /subscription|balance|choose a plan/i.test(error.message)
           ? "MAPS_NOT_ENTITLED"
           : /account changed/i.test(error.message)
             ? "MAPS_PROVIDER_CHANGED"
-            : "MAPS_AUTH_EXPIRED",
+            : /refused/i.test(error.message)
+              ? "MAPS_PROVIDER_REJECTED"
+              : "MAPS_AUTH_EXPIRED",
         error.message,
       );
+    // A used-up allowance resets with the period; retrying soon does not help.
     case "rate-limited":
-      return new DeviceNavigationFailure("MAPS_RATE_LIMITED", error.message);
+      return new DeviceNavigationFailure(
+        /allowance/i.test(error.message)
+          ? "MAPS_BUDGET_EXHAUSTED"
+          : "MAPS_RATE_LIMITED",
+        error.message,
+      );
     case "unsupported":
       return new DeviceNavigationFailure(
         /no route/i.test(error.message)

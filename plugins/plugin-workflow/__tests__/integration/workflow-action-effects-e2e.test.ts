@@ -14,6 +14,7 @@ import type {
   PlannerTrajectory,
 } from '@elizaos/core';
 import {
+  bindIncomingMessagePersistence,
   effectDeliveryBindingProvesApplication,
   settleActionHandler,
   validateToolArgs,
@@ -137,8 +138,15 @@ export default smithers(()=><Workflow name="receipt-proof"><Task id="calculate" 
       createdAt: 0,
     } as Memory;
     const delivered: Content[] = [];
-    const invoke = async (parameters: Record<string, unknown>) => {
+    const invoke = async (
+      parameters: Record<string, unknown>,
+      request = message.content.text,
+      rendered = request
+    ) => {
       delivered.length = 0;
+      const original = { ...message, content: { ...message.content, text: request } };
+      const routed = { ...original, content: { ...original.content, text: rendered } };
+      if (rendered !== request) bindIncomingMessagePersistence(routed, original);
       return settleActionHandler({
         runtime,
         action: workflowAction,
@@ -147,10 +155,13 @@ export default smithers(()=><Workflow name="receipt-proof"><Task id="calculate" 
           return [];
         },
         invoke: (callback) =>
-          workflowAction.handler(runtime, message, undefined, { parameters }, callback),
+          workflowAction.handler(runtime, routed, undefined, { parameters }, callback),
       });
     };
-    const created = await invoke({ action: 'create', seedPrompt: 'Synthetic fixture' });
+    const created = await invoke(
+      { action: 'create', name: 'Planner suggestion', seedPrompt: 'Synthetic fixture' },
+      'Create a workflow called Synthetic reviewed definition'
+    );
     expect(created.success).toBe(true);
     // The owner's device zone reaches generation, and the reply carries no engine name or raw id.
     expect(generationTimeZone).toBe('America/Denver');
@@ -330,7 +341,21 @@ export default smithers(()=><Workflow name="receipt-proof"><Task id="calculate" 
       await invoke({ action: 'remove', workflowId: row.id, workflowName: 'spare' })
     ).toMatchObject({ success: false, failureProvenance: { code: 'WORKFLOW_REF_MISMATCH' } });
     expect((await facade.getWorkflow(spare.id, owner)).active).toBe(false);
-    const renamed = await invoke({ action: 'rename', workflowId: spare.id, name: 'Spare' });
+    const unexpected = await invoke(
+      { action: 'rename', workflowId: row.id, name: 'Planner suggestion' },
+      'List my workflows'
+    );
+    expect(unexpected).toMatchObject({
+      success: false,
+      effectReceipts: [],
+      failureProvenance: { code: 'WORKFLOW_REQUEST_CONFLICT' },
+    });
+    const renamed = await invoke(
+      { action: 'rename', workflowId: row.id, workflowName: row.name, name: 'Planner suggestion' },
+      'Rename the workflow Synthetic spare definition to Spare',
+      'Conversation context was added while preparing this request.'
+    );
+    expect((await facade.getWorkflow(row.id, owner)).name).toEqual(row.name);
     expect(renamed.text).toBe('Renamed “Synthetic spare definition” to “Spare”.');
     expect(renamed.effectReceipts![0]).toMatchObject({
       operation: 'workflow.rename',

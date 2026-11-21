@@ -21,8 +21,8 @@
 	},
 	{
 		"source": "packages/core/src/types/database.ts",
-		"sha256": "b2a5fb374667e17d10677155ec1e29620d8f0d3be0cab26262d3a7e72d7ef2b7",
-		"reason": "Declares storage adapter operations, selectors and result shapes. Adapter and runtime implementations own transactions, persistence and request lifetimes."
+		"sha256": "42be1349892a97334437fc19bda6004962ea74cf9b395b6e4962dac7dd2b102f",
+		"reason": "Declares storage operations, selectors, results and model-call log fields. Model dispatch records tool summaries, output limits and provider usage. Adapters and the runtime own transactions, persistence and request lifetimes."
 	},
 	{
 		"source": "packages/core/src/types/evaluator.ts",

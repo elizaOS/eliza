@@ -162,6 +162,23 @@ describe("projectMapsChatText", () => {
     expect(parseMapsCardBody(JSON.stringify(locate))).toEqual(locate);
   });
 
+  it("keeps the place a search was made around, and drops an unreadable one", () => {
+    const places = {
+      kind: "places",
+      query: "pharmacy",
+      places: [{ ...place, name: "Pharmacy 1", providerPlaceId: "rx1" }],
+      nextCursor: null,
+      attribution,
+    };
+    expect(
+      parseMapsCardBody(JSON.stringify({ ...places, near: place })),
+    ).toEqual({ ...places, near: place });
+    expect(
+      parseMapsCardBody(JSON.stringify({ ...places, near: { name: "x" } })),
+    ).toEqual(places);
+    expect(parseMapsCardBody(JSON.stringify(places))).toEqual(places);
+  });
+
   it("keeps the share question as prose and offers its two exact answers", () => {
     expect(projectMapsChatText(share())).toEqual({
       displayText: "Share the location of Ferry Building?",

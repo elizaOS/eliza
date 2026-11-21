@@ -133,8 +133,13 @@ try {
   });
   const page = await browser.newPage();
   const origin = `https://127.0.0.1:${server.address().port}`;
-  await page.goto(origin);
   const cdp = await page.createCDPSession();
+  await cdp.send("Page.enable");
+  await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
+    worldName: "eliza-native-control-test",
+    source: `globalThis.messages=[]; globalThis.elizaSurfaceControl={postMessage:value=>messages.push(JSON.parse(value))}; ${source}`,
+  });
+  await page.goto(origin);
   const { frameTree } = await cdp.send("Page.getFrameTree");
   const { executionContextId } = await cdp.send("Page.createIsolatedWorld", {
     frameId: frameTree.frame.id,
@@ -153,9 +158,7 @@ try {
     );
     return result.result.value;
   };
-  const ready = await evaluate(
-    `globalThis.messages=[]; globalThis.elizaSurfaceControl={postMessage:value=>messages.push(JSON.parse(value))}; ${source}; messages.pop()`,
-  );
+  const ready = await evaluate("messages.pop()");
   assert.equal(ready.ready, true);
   let sequence = 0;
   const nativeDispatch = (command, extra = {}) =>
@@ -215,6 +218,39 @@ try {
       { selector: "#language", action: "select" },
     ],
   };
+  await page.evaluate(() => {
+    const form = document.createElement("section");
+    form.id = "observation-fixture";
+    form.innerHTML =
+      '<label>First email<input id="first-email" type="email"></label><label>Second email<input type="email"></label><section role="form" aria-owns="owned"><a href="/one">Inside form</a></section><div id="owned"><a href="/two">Owned link</a></div><a href="/three">Public link</a>';
+    document.body.append(form);
+  });
+  await page.type("#first-email", "x");
+  await page.keyboard.press("Backspace");
+  const fieldEvidence = (await snapshot()).elements;
+  assert.equal(
+    fieldEvidence.find((node) => node.label === "First email").edited,
+    true,
+  );
+  assert.equal(
+    fieldEvidence.find((node) => node.label === "Second email").edited,
+    false,
+  );
+  assert.equal(
+    fieldEvidence.find((node) => node.label === "Inside form").form.index,
+    -1,
+  );
+  assert.equal(
+    fieldEvidence.find((node) => node.label === "Owned link").form.index,
+    -1,
+  );
+  assert.equal(
+    fieldEvidence.find((node) => node.label === "Public link").form,
+    null,
+  );
+  await page.evaluate(() =>
+    document.querySelector("#observation-fixture").remove(),
+  );
   let state = await snapshot();
   assert.equal(state.complete, true);
   assert.ok(!JSON.stringify(state).includes("private-value"));

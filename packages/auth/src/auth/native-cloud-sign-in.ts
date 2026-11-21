@@ -70,6 +70,14 @@ export const NATIVE_CLOUD_SIGN_IN_FAILURE_CODES: ReadonlySet<NativeCloudSignInFa
     "google-account-unavailable",
   ]);
 
+export type NativeCloudSignInGoogleConnection =
+  | { connected: true; email: string | null; scopes: string[] }
+  | { connected: false; reason: string };
+export interface NativeCloudSignInSignedOut<E extends string = string> {
+  environment: E;
+  status: "signed-out";
+  revocation?: "revoked" | "unconfirmed";
+}
 export interface NativeCloudSignInAuthenticated<E extends string = string> {
   status: "authenticated";
   environment: E;
@@ -83,6 +91,7 @@ export interface NativeCloudSignInAuthenticated<E extends string = string> {
   credentialId?: string;
   /** Echo of the caller's immutable interactive request, never a credential. */
   requestId?: string;
+  google?: NativeCloudSignInGoogleConnection;
 }
 export interface NativeCloudSignInCodeStarted {
   attemptId: string;
@@ -186,6 +195,7 @@ export interface NativeCloudSignInPort<E extends string = string> {
   cancel(input?: { requestId: string }): Promise<void>;
   /** Clears only the native credential picker session after explicit sign-out. */
   clearCredentialState?(): Promise<void>;
+  signOut?(input: { environment: E }): Promise<unknown>;
   /**
    * Which methods the host offers and whether Cloud is ready for in-app sign-in (`inApp`).
    * `activationPending: true` means a key is saved but Cloud has not confirmed it yet.
@@ -406,6 +416,7 @@ export function nativeSignInAuthenticated<E extends string>(
         "attemptId",
         "credentialId",
         "requestId",
+        "google",
       ].includes(key)
     )
       throw new NativeCloudSignInError("unavailable");
@@ -447,6 +458,67 @@ export function nativeSignInAuthenticated<E extends string>(
     ...(row.previousSignIn === undefined
       ? {}
       : { previousSignIn: row.previousSignIn }),
+    ...(row.google === undefined
+      ? {}
+      : { google: nativeSignInGoogleConnection(row.google) }),
+  };
+}
+
+const GOOGLE_SCOPE =
+  /^(openid|email|profile|https:\/\/www\.googleapis\.com\/auth\/[a-z][a-z0-9._]{0,63})$/;
+
+function nativeSignInGoogleConnection(
+  value: unknown,
+): NativeCloudSignInGoogleConnection {
+  const row = object(value);
+  const keys = Object.keys(row);
+  if (
+    row.connected === false &&
+    keys.length === 2 &&
+    typeof row.reason === "string" &&
+    /^[a-z][a-z_]{1,63}$/.test(row.reason)
+  )
+    return { connected: false, reason: row.reason };
+  if (
+    row.connected === true &&
+    keys.every((key) => ["connected", "email", "scopes"].includes(key)) &&
+    (row.email === null ||
+      (typeof row.email === "string" && validNativeSignInEmail(row.email))) &&
+    Array.isArray(row.scopes) &&
+    row.scopes.every(
+      (scope) => typeof scope === "string" && GOOGLE_SCOPE.test(scope),
+    )
+  )
+    return {
+      connected: true,
+      email: row.email as string | null,
+      scopes: [...(row.scopes as string[])],
+    };
+  throw new NativeCloudSignInError("unavailable");
+}
+
+export function nativeSignOut<E extends string>(
+  value: unknown,
+  environment: E,
+): NativeCloudSignInSignedOut<E> {
+  const row = object(value);
+  if (
+    row.environment !== environment ||
+    row.status !== "signed-out" ||
+    (row.revocation !== undefined &&
+      row.revocation !== "revoked" &&
+      row.revocation !== "unconfirmed") ||
+    Object.keys(row).some(
+      (key) => !["environment", "status", "revocation"].includes(key),
+    )
+  )
+    throw new NativeCloudSignInError("unavailable");
+  return {
+    environment,
+    status: "signed-out",
+    ...(row.revocation === undefined
+      ? {}
+      : { revocation: row.revocation as "revoked" | "unconfirmed" }),
   };
 }
 
@@ -576,6 +648,26 @@ export function nativeSignInActivationPending(value: unknown): boolean {
     !Array.isArray(value) &&
     (value as Record<string, unknown>).activationPending === true
   );
+}
+
+/**
+ * `status().googleScopes`: the Google scopes the host's registration asks for, the one list a
+ * sign-in disclosure shows. A plugin that predates the list reports none and asks Google for none
+ * (empty); a malformed status or list is a fault, not an empty disclosure.
+ */
+export function nativeSignInGoogleScopes(value: unknown): string[] {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new NativeCloudSignInError("unavailable");
+  const scopes = (value as Record<string, unknown>).googleScopes;
+  if (scopes === undefined) return [];
+  if (
+    !Array.isArray(scopes) ||
+    !scopes.every(
+      (scope) => typeof scope === "string" && GOOGLE_SCOPE.test(scope),
+    )
+  )
+    throw new NativeCloudSignInError("unavailable");
+  return [...(scopes as string[])];
 }
 
 /**
