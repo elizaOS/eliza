@@ -27,6 +27,7 @@ import {
   type StartFacts,
 } from "../../gen/os__update__operator.effect.vibe"
 import { candidateAdmitted } from "../../gen/os__update__updater.effect.vibe"
+import { FallbackUnconfirmed, RecoveryInputUnreadable, RetentionWriteFailed, fallbackToOriginalSlot, retainKnownGood, stockRecoveryPlan, verifyStockRecovery, type RecoveryProblem } from "./ota-recovery.vibe"
 import type { Digest } from "../../gen/os__image__apk.ts"
 import type { ReleaseChannel } from "../../gen/os__image__signing.ts"
 import type { BootState } from "../../gen/os__image__verification.ts"
@@ -761,7 +762,7 @@ export effect function applyUpdate(request: ApplyRequest) {
     }
   }
 
-  return try withInstallLock(journal, device.serial, "ota-update", request.lockDirectory ?? defaultLockDirectory(), effect (lock) => {
+  try withInstallLock(journal, device.serial, "ota-update", request.lockDirectory ?? defaultLockDirectory(), effect (lock) => {
     if ((try journal.get()).phase === "Unstarted")
       try journal.send({ type: "begin", channel: request.channel, fromRelease: installed.release, toRelease: candidate.release, observed: seen.observation })
     const step = nextStep((try journal.get()).start, seen.observation)
@@ -772,9 +773,9 @@ export effect function applyUpdate(request: ApplyRequest) {
     try journal.send({ type: "verifyBoot", observed: booted })
     const verdict = try journal.get()
     if (verdict.phase !== "Verified") throw new VerificationFailed({ observed: booted, start: verdict.start })
-    const result: ApplyResult = { executed: true, plan, problems: [], journal: verdict }
-    return result
   })
+  const result: ApplyResult = { executed: true, plan, problems: [], journal: try journal.get() }
+  return result
 }
 
 export effect function updateStatus(device: DeviceRunner, journalFile: string) {
@@ -857,12 +858,41 @@ export effect function optionDevice(options: OtaOptions) {
   return try deviceRunner({ serial: options.values.serial ?? "", adb: options.values.adb, fastboot: options.values.fastboot })
 }
 
-effect function refusedWhen<A extends { readonly problems: readonly string[] }>(result: A) {
-  if (result.problems.length > 0) throw new UpdateRefused({ problems: result.problems })
+effect function refusedWhen<A extends { readonly problems: readonly (string | RecoveryProblem)[] }>(result: A) {
+  if (result.problems.length > 0) throw new UpdateRefused({ problems: result.problems.map((problem) => (typeof problem === "string" ? problem : `${problem.kind}: ${problem.detail}`)) })
   return result
 }
 
-export effect function otaMain(argv: readonly string[]) {
+effect function fallback(options: OtaOptions) {
+  const file = options.values.journal ?? ""
+  const device = try optionDevice(options)
+  const read = try readJournal(file)
+  if (read.binding.serial !== device.serial) throw new JournalUnreadable({ file, reason: "the journal belongs to another device" })
+  const journal = try journalMachine(file, read.binding)
+  if (!options.execute) return try Effect.provideService(fallbackToOriginalSlot({ device, execute: false, confirm: false }), Machine, journal)
+  if (!options.confirmFallback) throw new ConfirmationRequired({ flag: "--confirm-fallback" })
+  return try withInstallLock(journal, device.serial, "ota-fallback", defaultLockDirectory(), (lock) =>
+    Effect.provideService(fallbackToOriginalSlot({ device, execute: true, confirm: true, lock }), Machine, journal))
+}
+
+export type OtaFailure =
+  | ConfirmationRequired
+  | DeviceLocked
+  | JournalUnreadable
+  | LockFailed
+  | OtaUsageError
+  | RecordUnreadable
+  | Rejected
+  | ToolFailed
+  | TransferFailed
+  | UpdateRefused
+  | UpdateStopped
+  | VerificationFailed
+  | FallbackUnconfirmed
+  | RecoveryInputUnreadable
+  | RetentionWriteFailed
+
+export effect function otaMain(argv: readonly string[]): unknown!OtaFailure!(ChildProcessSpawner | FileSystem.FileSystem | Path.Path) {
   const options = try parseOtaArgs(argv)
   const value = (name: string) => options.values[name] ?? ""
   switch (options.command) {
@@ -882,9 +912,23 @@ export effect function otaMain(argv: readonly string[]) {
     case "status":
       return try updateStatus(try optionDevice(options), value("journal"))
     case "fallback":
+      return try refusedWhen(try fallback(options))
     case "stock-archive":
+      return try refusedWhen(try stockRecoveryPlan({
+        channel: (try readChannel(value("channel"))).channel,
+        sourceLock: value("sourceLock"),
+        archive: value("archive"),
+        ...(options.values.knownGood === undefined ? {} : { knownGood: options.values.knownGood }),
+      }))
     case "verify-stock":
+      return try refusedWhen(try verifyStockRecovery({ device: try optionDevice(options), sourceLock: value("sourceLock") }))
     case "retain-known-good":
-      throw new OtaUsageError({ message: `ota ${options.command} needs the recovery commands of src/image/ota-recovery.vibe` })
+      return try refusedWhen(try retainKnownGood({
+        channel: (try readChannel(value("channel"))).channel,
+        recordFile: value("record"),
+        signedTargetFiles: value("signedTargetFiles"),
+        signedImage: value("signedImage"),
+        archiveDir: value("archiveDir"),
+      }))
   }
 }

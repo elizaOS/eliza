@@ -1,5 +1,4 @@
-// verify-runtime is a release-side APK inventory check. It grants no device
-// authorization and does not replace APK signature or TUF verification.
+// spec/os/build/runtimePayload.md, "The APK carries exactly one Node runtime for each targeted ABI and none for another"; spec/os/build/runtimePayload.md, "The inventory lists every staged payload file once, by digest and size, and nothing else"
 package main
 
 import (

@@ -1776,7 +1776,7 @@ describe("WP10 Operator and deletion: prices (spec/cloud/operator.md)", () => {
     const cloud = try testCloud()
     const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
     const settings = profile.environments.staging.inference
-    if (settings === undefined) return try fail(new Error("the test profile offers no inference"))
+    if (settings === undefined) throw new Error("the test profile offers no inference")
     const caller = try signedCaller(cloud, "pricer")
     const run = (args: ReadonlyArray<string>) => failureTag(operator(cloud, args))
     const admission = cloud.store.transaction((tx) => chooseFor(tx, settings, "test-chat", false)).pipe(
