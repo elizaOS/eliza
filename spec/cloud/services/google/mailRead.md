@@ -136,10 +136,19 @@ pure def lawASearchPageNeverLoops(asked: Continuation, answered: Continuation, m
 
 `read(messageId)` answers the triage row of the message, `bodyText` (the
 plain part, else the HTML part as text, else the snippet), `bodyHtml` and
-`bodyHtmlStatus` (`available`, `none`, `too_large`), its links and its
-attachment descriptors. The HTML is served as text and never fetched or run
-by the cloud; over 512 KiB, or past 200 MIME parts, it is left out with
-`too_large` while the text stays whole. Text over the 8 MiB mail cap is
+`bodyHtmlStatus` (`available`, `none`, `too_large`), its links, its
+attachment descriptors and `authenticationResults`: the Authentication-Results
+header Google's receiving server wrote, or null when the read cannot tell it
+from one a sender wrote. That header is the first one, it names
+`mx.google.com`, and it sits below the topmost Received header that says
+where the message came from, which says `mx.google.com` took the message by
+SMTP, with no other Received header between them. Mail that Gmail fetched by
+POP carries a receipt of another kind on top and answers null; mail the
+owner imported keeps the trace it came with. The cloud vouches for nothing
+in the header; it only says which one Google wrote.
+The HTML is served as text and never fetched or run by the cloud; over
+512 KiB, or past 200 MIME parts, it is left out with `too_large` while the
+text stays whole. Text over the 8 MiB mail cap is
 `413 content_too_large`, never cut. Google answering another message is
 `502`; a connection that changed during the read is `409 stale_revision`.
 

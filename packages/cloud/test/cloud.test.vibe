@@ -1332,14 +1332,28 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const mailbox = try Effect.try(() => readableMailbox([
       {
         id: "msg-direct", threadId: "thr-direct", labelIds: ["INBOX", "UNREAD", "IMPORTANT"], internalDate: now - 60_000,
-        headers: { From: "Ada <ada@example.org>", To: "conn-mail@example.com", Subject: "Quarterly plan" }, snippet: "Can you review", bodyText: "Please review the plan.",
+        received: [
+          { name: "Received", value: "by 2002:a05:6400:1::1 with SMTP id a1; Tue, 1 Dec 2026 10:00:01 -0800" },
+          { name: "Received", value: "from mail.example.org (mail.example.org. [192.0.2.10]) by mx.google.com with ESMTPS id b2 for <conn-mail@example.com>; Tue, 1 Dec 2026 10:00:00 -0800" },
+          { name: "Received-SPF", value: "pass (google.com: domain of ada@example.org designates 192.0.2.10 as permitted sender)" },
+          { name: "Authentication-Results", value: "mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org" }
+        ],
+        headers: { From: "Ada <ada@example.org>", To: "conn-mail@example.com", Subject: "Quarterly plan", "Authentication-Results": "mx.google.com; dkim=pass header.d=bank.example" }, snippet: "Can you review", bodyText: "Please review the plan.",
         attachments: [{ partId: "1", filename: "plan.pdf", mimeType: "application/pdf", bytes: new TextEncoder().encode("%PDF-plan") }]
       },
       {
         id: "msg-digest", threadId: "thr-digest", labelIds: ["INBOX"], internalDate: now - 120_000,
         headers: { From: "News <noreply@news.example>", To: "conn-mail@example.com", Subject: "Weekly digest", "List-Id": "<digest.news.example>" }, snippet: "digest", bodyText: "x".repeat(300 * 1024)
       },
-      { id: "msg-trashed", threadId: "thr-trashed", labelIds: ["TRASH"], internalDate: now - 30_000, headers: { From: "ada@example.org", Subject: "Old plan" }, snippet: "plan" }
+      {
+        id: "msg-trashed", threadId: "thr-trashed", labelIds: ["TRASH"], internalDate: now - 30_000,
+        received: [
+          { name: "Received", value: "from pop.example.net [192.0.2.20] by mx.google.com with POP3 id c3 for <conn-mail@example.com>; Tue, 1 Dec 2026 09:00:00 -0800" },
+          { name: "Received", value: "from mail.bank.example (mail.bank.example. [192.0.2.30]) by mx.google.com with ESMTPS id forged for <conn-mail@example.com>; Tue, 1 Dec 2026 08:59:00 -0800" },
+          { name: "Authentication-Results", value: "mx.google.com; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example" }
+        ],
+        headers: { From: "ada@example.org", Subject: "Old plan" }, snippet: "plan"
+      }
     ]))
     const draftRaw = btoa("To: ada@example.org\r\nSubject: Re: Quarterly plan\r\n\r\nLooks good.").replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")
     mailbox.drafts.set("draft-1", { id: "draft-1", messageId: "msg-draft-1", raw: draftRaw })
@@ -1362,6 +1376,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const search = try gmail("/search?query=plan&maxResults=10")
     const tooMany = try gmail("/search?query=plan&maxResults=101")
     const read = try gmail("/read?messageId=msg-direct")
+    const fetched = try gmail("/read?messageId=msg-trashed")
+    const decoded = try promise(() => readMailThroughClient(cloud.url, token, "msg-direct"))
     const oversized = try gmail("/read?messageId=msg-digest")
     const capabilities = try gmail("/inbox-v1/capabilities")
     const attachment = try gmail("/inbox-v1/attachment?messageId=msg-direct&partId=1&historyId=1001")
@@ -1375,7 +1391,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const pdf = new TextEncoder().encode("%PDF-plan")
     type Card = { readonly id: string; readonly triageScore: number; readonly triageReason: string; readonly isImportant: boolean; readonly likelyReplyNeeded: boolean; readonly to: ReadonlyArray<string>; readonly metadata: { readonly historyId: string } }
     const cards = (answer: { readonly body: unknown }) => (answer.body as { readonly messages: ReadonlyArray<Card> }).messages.map((card) => [card.id, card.triageScore, card.triageReason, card.isImportant, card.likelyReplyNeeded, card.metadata.historyId])
-    const readBody = read.body as { readonly message: Card; readonly bodyText: string; readonly bodyHtml: string | null; readonly bodyHtmlStatus: string; readonly attachments: ReadonlyArray<unknown> }
+    const readBody = read.body as { readonly message: Card; readonly bodyText: string; readonly bodyHtml: string | null; readonly bodyHtmlStatus: string; readonly attachments: ReadonlyArray<unknown>; readonly authenticationResults: string | null }
     const file = attachment.body as { readonly name: string; readonly mimeType: string; readonly size: number; readonly dataBase64: string; readonly sha256: string; readonly supported: boolean }
     const threadBody = thread.body as { readonly historyId: string; readonly total: number; readonly messages: ReadonlyArray<{ readonly bodyText: string }> }
     const draftList = drafts.body as { readonly drafts: ReadonlyArray<{ readonly draftId: string; readonly messageId: string; readonly subject: string; readonly to: ReadonlyArray<string> }>; readonly nextPageToken: string | null }
@@ -1385,7 +1401,9 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         triage: [triage.status, (triage.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, cards(triage)],
         search: [search.status, (search.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, (search.body as { readonly nextPageToken: string | null }).nextPageToken, cards(search)],
         tooMany: errorOf(tooMany),
-        read: [read.status, readBody.message.id, readBody.message.to, readBody.bodyText, readBody.bodyHtml, readBody.bodyHtmlStatus, readBody.attachments],
+        read: [read.status, readBody.message.id, readBody.message.to, readBody.bodyText, readBody.bodyHtml, readBody.bodyHtmlStatus, readBody.attachments, readBody.authenticationResults],
+        fetched: [fetched.status, (fetched.body as { readonly authenticationResults: string | null }).authenticationResults],
+        client: decoded,
         oversized: errorOf(oversized),
         capabilities: [capabilities.status, capabilities.body],
         attachment: [attachment.status, file.name, file.mimeType, file.size, file.dataBase64, file.sha256, file.supported],
@@ -1402,7 +1420,10 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         ]],
         search: [200, "1003", null, [["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"]]],
         tooMany: [400, "invalid_request"],
-        read: [200, "msg-direct", ["conn-mail@example.com"], "Please review the plan.", null, "none", [{ partId: "1", name: "plan.pdf", mimeType: "application/pdf", size: pdf.length, supported: true }]],
+        read: [200, "msg-direct", ["conn-mail@example.com"], "Please review the plan.", null, "none", [{ partId: "1", name: "plan.pdf", mimeType: "application/pdf", size: pdf.length, supported: true }],
+          "mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org"],
+        fetched: [200, null],
+        client: ["mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org", undefined],
         oversized: [413, "content_too_large"],
         capabilities: [200, { version: 1, from: "conn-mail@example.com", kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 } }],
         attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
@@ -2535,7 +2556,18 @@ module node {
   import { CLEF_DECISIONS_PATH, createClefDecisionsClient, type ClefDecisionRequest } from "../src/clef-decisions.vibe"
   import { signInWithProof } from "../src/identity-store.vibe"
   import { cloudWorker, type CloudBindings } from "../src/worker.vibe"
+  import { createCloudClient } from "../src/client/index.vibe"
   import { openBackupDatabase } from "./support/password-backup.ts"
+
+  export async function readMailThroughClient(baseUrl: string, token: string, messageId: string) {
+    const client = (beforeTheField: boolean) => createCloudClient({ baseUrl, credential: () => token, fetch: async (input, init) => {
+      const answer = await fetch(input, init)
+      if (!beforeTheField) return answer
+      const { authenticationResults: _, ...older } = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(await answer.json())
+      return Response.json(older, { status: answer.status, headers: answer.headers })
+    } })
+    return [(await client(false).gmailRead({ messageId })).authenticationResults, (await client(true).gmailRead({ messageId })).authenticationResults]
+  }
 
   export async function nativeGoogleFixture() {
     const { privateKey, publicKey } = await generateKeyPair("RS256", { extractable: true })
@@ -2663,7 +2695,11 @@ module node {
         }
         if (url.hostname === "gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/fixture-message")
           return Response.json({ id: "fixture-message", threadId: "fixture-thread", internalDate: "1760000000000", historyId: "789", labelIds: ["INBOX"],
-            payload: { headers: [{ name: "Subject", value: "Selected PDF" }], parts: [{ mimeType: "text/plain", body: { data: "aGVsbG8" } }, part, unsupported, oversized] } })
+            payload: { headers: [{ name: "Received", value: "by 2002:a05:6400:1::1 with SMTP id a1; Tue, 1 Dec 2026 10:00:01 -0800" },
+              { name: "Received", value: "from mail.example.test (mail.example.test. [192.0.2.10]) by mx.google.com with ESMTPS id b2 for <owner@example.com>; Tue, 1 Dec 2026 10:00:00 -0800" },
+              { name: "Received-SPF", value: "pass (google.com: domain of sender@example.test designates 192.0.2.10 as permitted sender)" },
+              { name: "Authentication-Results", value: "mx.google.com; dkim=pass header.i=@example.test; spf=pass smtp.mailfrom=example.test" }, { name: "Subject", value: "Selected PDF" },
+              { name: "authentication-results", value: "mx.google.com; dkim=pass header.d=bank.example" }], parts: [{ mimeType: "text/plain", body: { data: "aGVsbG8" } }, part, unsupported, oversized] } })
         if (url.hostname === "gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/fixture-message/attachments/fixture-attachment") {
           attachmentFetches += 1
           if (revokeDuringDownload) await fixture.db.query("UPDATE device_grants SET key_expires_at = 0 WHERE user_id = $1", [owner.account.id])
@@ -2716,6 +2752,7 @@ module node {
       const manifest = Schema.decodeUnknownSync(Schema.Struct({
         historyId: Schema.NullOr(Schema.String), bodyText: Schema.String,
         attachments: Schema.Array(Schema.Struct({ partId: Schema.String, name: Schema.String, mimeType: Schema.String, size: Schema.Number, supported: Schema.Boolean })),
+        authenticationResults: Schema.NullOr(Schema.String),
       }))(await read.json())
       const guardStatuses = [
         (await get(selected)).status,
@@ -2768,7 +2805,7 @@ module node {
   }
 
 }
-import { decideForSignedInAccount, nativeGoogleFixture, readSelectedAttachment } from node
+import { decideForSignedInAccount, nativeGoogleFixture, readMailThroughClient, readSelectedAttachment } from node
 
 it.live('A reviewed link decision stays within the current account and candidates (spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page")', () => effect {
   const result = try tryPromise(() => decideForSignedInAccount())
@@ -2784,7 +2821,7 @@ it.live('Open the selected named attachment (spec/cloud/index.md, "Story: Connec
   const got = try tryPromise(() => readSelectedAttachment())
   try check(() => assert.deepStrictEqual(
     {
-      read: [got.readStatus, got.manifest.historyId, got.manifest.bodyText, got.manifest.attachments],
+      read: [got.readStatus, got.manifest.historyId, got.manifest.bodyText, got.manifest.attachments, got.manifest.authenticationResults],
       refuse: [got.guardStatuses, got.guardedDownloads, got.rejectedRedirect],
       file: [got.fileStatus, got.cache, got.file],
       provider: [got.providerRequestsValid, got.attachmentFetches],
@@ -2796,7 +2833,7 @@ it.live('Open the selected named attachment (spec/cloud/index.md, "Story: Connec
         { partId: "1", name: "fixture.pdf", mimeType: "application/pdf", size: got.size, supported: true },
         { partId: "2", name: "fixture.html", mimeType: "text/html", size: 10, supported: false },
         { partId: "3", name: "large.pdf", mimeType: "application/pdf", size: 8 * 1024 * 1024 + 1, supported: false },
-      ]],
+      ], "mx.google.com; dkim=pass header.i=@example.test; spf=pass smtp.mailfrom=example.test"],
       refuse: [[401, 409, 409, 404, 415, 415], 0, 502],
       file: [200, "no-store", { version: 1, accountId: got.owner, organizationId: got.organization, grantId: got.grant, messageId: "fixture-message", partId: "1", historyId: "789",
         name: "fixture.pdf", mimeType: "application/pdf", size: got.size, dataBase64: got.expectedData, sha256: got.expectedHash, supported: true }],
