@@ -28,6 +28,8 @@ Preparing creates the session. A second prepare with the same request key
 finds this receipt: with the same owner and digest it answers the receipt as
 it stands, in whatever state it has reached; another owner, kind or digest is
 `409 idempotency_conflict` and leaves it unchanged.
+A receipt names its provider key `ReceiptKey`, the shared `ProviderKey` under
+this module's own name.
 
 ```quint
 import types.* from "./types"
@@ -179,7 +181,7 @@ time.
 pure def alwaysOutcomeFollowsTheSession(r: Receipt): bool =
   (r.settlement == Unsettled implies r.session.phase != S::Completed)
   and ((r.settlement == Succeeded or r.settlement == Refused) implies (r.session.phase == S::Completed and r.session.effects == 1))
-  and (r.settlement == NotApplied implies ((r.session.effects == 0 and r.session.phase != S::Completed) or (r.session.phase == S::Completed and r.session.effects == 1 and r.session.now >= staleAt(r) + r.staleAfter)))
+  and (r.settlement == NotApplied implies ((r.session.effects == 0 and (r.session.phase == S::Pending or r.session.phase == S::Committed)) or (r.session.phase == S::Completed and r.session.effects == 1 and r.session.now >= staleAt(r) + r.staleAfter)))
   and ((r.settlement == Refused) iff (r.refusal != NoRefusal))
 pure def stepSettledIsFinal(before: Receipt, after: Receipt): bool =
   before.settlement != Unsettled implies (after.settlement == before.settlement and after.refusal == before.refusal and after.settledAt == before.settledAt and after.session.phase == before.session.phase and after.session.effects == before.session.effects)

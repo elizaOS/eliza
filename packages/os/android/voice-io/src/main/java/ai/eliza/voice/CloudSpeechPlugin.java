@@ -125,16 +125,17 @@ public class CloudSpeechPlugin extends Plugin {
     final Runnable consentDeadline = this::consentExpired;
     final Runnable startupDeadline = this::startupExpired;
     final Runnable windowEnd = this::windowEnded;
-    boolean resolved, revoked, extendOffered, outputMuted;
+    boolean resolved, extendOffered, outputMuted;
+    volatile boolean revoked;
     String key, heard = "";
     CloudSpeechWire.Minted minted;
-    Call pending;
-    WebSocket socket;
+    volatile Call pending;
+    volatile WebSocket socket;
     AlertDialog dialog;
     PluginCall unmuting;
     LiveCaptureResource capture;
     LiveCaptureResource.Source source;
-    AudioRecord recorder;
+    volatile AudioRecord recorder;
     AcousticEchoCanceler echo;
     Thread reader;
     Utterance spoken;
@@ -339,7 +340,7 @@ public class CloudSpeechPlugin extends Plugin {
   }
 
   private void askConsent(Session own) {
-    if (CloudSpeechPolicy.CONSENT_DEADLINE_MS > waited(own.binding) && own.dialog == null) main.postDelayed(own.consentDeadline, CloudSpeechPolicy.CONSENT_DEADLINE_MS);
+    if (own.binding.machine.state().phase() instanceof Phase.AwaitingConsent a && a.asks() == 1) main.postDelayed(own.consentDeadline, CloudSpeechPolicy.CONSENT_DEADLINE_MS);
     Activity activity = getActivity();
     if (activity == null || activity.isFinishing()) {
       main.post(() -> { if (session == own) dispatch(own.binding, new Event.Stop()); });
@@ -506,9 +507,10 @@ public class CloudSpeechPlugin extends Plugin {
         }
       }
       if (c.frame() instanceof Frame.Stt) own.heard = c.transcript();
-      if (dispatch(own.binding, new Event.FrameArrived(c.frame())) == null) return;
+      Utterance spoken = own.spoken;
+      if (dispatch(own.binding, new Event.FrameArrived(c.frame())) == null || session != own) return;
       if (c.frame() instanceof Frame.Extended && own.minted != null) armWindow(own, own.minted.expiresAt());
-      if (c.frame() instanceof Frame.Complete done && own.spoken != null && own.spoken.id.equals(done.id())) feed(own, own.spoken, null);
+      if (c.frame() instanceof Frame.Complete done && spoken != null && spoken.id.equals(done.id())) feed(own, spoken, null);
     }
 
     @Override public void onMessage(WebSocket socket, ByteString bytes) {

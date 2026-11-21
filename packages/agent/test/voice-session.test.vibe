@@ -9,16 +9,22 @@ import { text } from "./support/cloud-fake.ts"
 import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
 
 module node {
+  import { randomBytes } from "node:crypto"
   import type { UUID } from "@elizaos/core"
   import type { RunningAgent } from "../src/host/process.vibe"
   import { heardView } from "../src/conversation/heard.vibe"
+
+  /** @throws {never} */
+  export function storageKey(): string {
+    return randomBytes(32).toString("base64")
+  }
 
   export async function storedHeard(agent: RunningAgent, id: string) {
     const [memory] = await agent.runtime.adapter.getMemoriesByIds([id as UUID], "messages")
     return memory === undefined ? undefined : heardView(memory)
   }
 }
-import { storedHeard } from node
+import { storageKey, storedHeard } from node
 
 interface Sent {
   readonly turn: VoiceTurn
@@ -80,6 +86,7 @@ function harness(network: Partial<Pick<VoiceSessionPorts, "endOfTurn" | "turns" 
   }
   const advance = async (ms: number) => {
     const until = now + ms
+    await settle()
     for (;;) {
       const due = timers.filter((timer) => timer.at <= until).sort((a, b) => a.at - b.at)[0]
       if (due === undefined) break
@@ -124,7 +131,7 @@ it.effect('Send my words once I finish speaking: half duplex, the long gap submi
   const closing = { turn: h.session.state.turn, closes: h.counts.closes, sent: h.sent.length, phase: h.session.phase }
   h.captures[0]?.closed()
   try promise(() => h.advance(0))
-  try promise(() => h.reply(0, "reply-1", "Done, a table for two at seven is booked. I added it to your calendar."))
+  try promise(() => h.reply(0, "reply-1", "A table for two at seven is booked. I added it to your calendar."))
   const playing = { turn: h.session.state.turn, spoken: h.spoken.map((s) => s.segments.length) }
   for (const _segment of h.spoken[0]?.segments ?? []) h.spoken[0]?.events.segmentPlayed()
   try promise(() => h.advance(0))
@@ -231,7 +238,10 @@ effect function until(check: () => boolean) {
 
 it.live('Report what of an interrupted reply I heard: a voice turn through the real agent, cut after its first segment, records what was heard (spec/agent/voice/session.md, "A reply plays segment by segment, and a cut or broken one reserves one report"; spec/agent/voice/session.md, "Only a complete end-of-turn score submits before the 1,200 ms long gap, which always submits")', effect () => {
   const cloud = try cloudFake(deviceKey)
-  const agent: InProcess = try startInProcess({ launch: { backend: { kind: "cloud", origin: cloud.origin } }, frame: { credential: { version: 1, value: deviceKey } } })
+  const agent: InProcess = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, persistMemory: true },
+    frame: { credential: { version: 1, value: deviceKey }, storageKey: storageKey() },
+  })
   const opened = answerOf(try call(agent, { method: "POST", path: "/api/conversations", body: {} }))
   const chat = (opened.body as { conversation: { id: string; roomId: string } }).conversation
   const request = (method: "GET" | "POST", path: string, body: unknown) =>
