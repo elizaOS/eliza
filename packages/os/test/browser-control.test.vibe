@@ -1,0 +1,71 @@
+// spec/os/browser/pageCommands.md, "Story: Run a website task step only on the page it was planned for"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { chromium, type CDPSession } from "playwright"
+
+it('Observe field edits and form membership before guiding a person (spec/os/browser/pageCommands.md, "Story: Run a website task step only on the page it was planned for")', async () => {
+  const nativeControl = await runPromise(effect {
+    provide NodeServices.layer {
+      const path = try Path.Path
+      return try (try FileSystem.FileSystem).readFileString(path.join(import.meta.dirname, "../android/browser-surface/resources/control-channel.js"))
+    }
+  })
+  const bridge = `globalThis.elizaSurfaceControl = { sequence: 0, postMessage(text) {
+    const message = JSON.parse(text)
+    if (message.ready) this.documentId = message.documentId
+    else this.reply = message.result
+  } };`
+  const worldName = "native-control-test"
+  const snapshot = `(() => {
+    const channel = globalThis.elizaSurfaceControl
+    channel.onmessage({ data: JSON.stringify({ documentId: channel.documentId, sequence: ++channel.sequence, command: { subaction: "snapshot" } }) })
+    const labels = ["Newsletter email", "Other email", "Dynamic field", "Public link", "HTML link", "External field", "Semantic link", "Owned link", "Frame field"]
+    return Object.fromEntries(channel.reply.elements.filter(item => labels.includes(item.label)).map(item =>
+      [item.label, [item.edited ?? null, item.hasInput ?? null, item.focused, item.form === null ? "outside" : item.form.index < 0 ? "semantic" : "html"]]))
+  })()`
+  async function inWorld(session: CDPSession, expression: string) {
+    const { frameTree } = await session.send("Page.getFrameTree")
+    const { executionContextId } = await session.send("Page.createIsolatedWorld", { frameId: frameTree.frame.id, worldName })
+    const { result, exceptionDetails } = await session.send("Runtime.evaluate", { contextId: executionContextId, expression, returnByValue: true })
+    if (exceptionDetails) throw new Error(exceptionDetails.exception?.description ?? exceptionDetails.text)
+    return result.value
+  }
+  const browser = await chromium.launch()
+  try {
+    const context = await browser.newContext()
+    await context.route("https://native.test/**", route => route.fulfill({ contentType: "text/html", body: `<!doctype html><main>
+      <form id="native"><label>Newsletter email<input type="email"></label><label>Other email<input type="email"></label><a href="/help">HTML link</a></form>
+      <label>External field<input form="native"></label><section role="form" aria-owns="owned"><a href="/terms">Semantic link</a></section>
+      <div id="owned"><a href="/detail">Owned link</a></div><a href="/public">Public link</a><button>Next</button>
+      <iframe srcdoc="<label>Frame field<input></label>"></iframe></main>` }))
+    const page = await context.newPage()
+    const session = await context.newCDPSession(page)
+    await session.send("Page.enable")
+    await session.send("Page.addScriptToEvaluateOnNewDocument", { worldName, source: bridge + nativeControl })
+    await page.goto("https://native.test/")
+    await page.getByLabel("Newsletter email").fill("sample@example.test")
+    await page.getByLabel("Newsletter email").press("ControlOrMeta+a")
+    await page.getByLabel("Newsletter email").press("Backspace")
+    await page.getByRole("button", { name: "Next" }).click()
+    assert.deepStrictEqual(await inWorld(session, snapshot), {
+      "Newsletter email": [true, false, false, "html"], "Other email": [false, false, false, "html"],
+      "External field": [false, false, false, "html"], "HTML link": [null, null, false, "html"],
+      "Semantic link": [null, null, false, "semantic"], "Owned link": [null, null, false, "semantic"],
+      "Public link": [null, null, false, "outside"],
+    })
+    await page.evaluate('document.querySelector("form").insertAdjacentHTML("beforeend", "<label>Dynamic field<input></label>")')
+    await page.getByLabel("Dynamic field").fill("sample")
+    await page.getByLabel("External field").focus()
+    const dynamic = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Array(Schema.Unknown)))(await inWorld(session, snapshot))
+    assert.deepStrictEqual(dynamic["Dynamic field"], [true, true, false, "html"])
+    assert.deepStrictEqual(dynamic["External field"], [false, false, true, "html"])
+    const late = await context.newPage()
+    await late.goto("https://native.test/")
+    const lateSession = await context.newCDPSession(late)
+    await inWorld(lateSession, bridge + nativeControl)
+    const unknown = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Array(Schema.Unknown)))(await inWorld(lateSession, snapshot))
+    assert.deepStrictEqual(unknown["Other email"], [null, false, false, "html"])
+  } finally {
+    await browser.close()
+  }
+}, 90_000)
