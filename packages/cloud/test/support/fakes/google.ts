@@ -1,10 +1,12 @@
 // spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"
+import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, type JWTVerifyGetKey } from "jose";
 import type { FakeAnswer, FakeHandler, FakeRequest } from "../fakes.ts";
 
 export interface FakeGrant {
   readonly refreshToken: string;
   readonly subject: string;
   readonly email: string;
+  readonly beforeUserinfoResponse?: () => Promise<void>;
   scopes: string[];
 }
 
@@ -70,6 +72,7 @@ export interface GoogleFakeState {
   readonly grants: Map<string, FakeGrant>;
   readonly access: Map<string, FakeAccess>;
   readonly revoked: Set<string>;
+  readonly codes: Map<string, string>;
   readonly messages: Map<string, FakeMessage>;
   readonly labels: Map<string, FakeLabel>;
   readonly drafts: Map<string, FakeDraft>;
@@ -91,6 +94,7 @@ export function googleFakeState(): GoogleFakeState {
     grants: new Map(),
     access: new Map(),
     revoked: new Set(),
+    codes: new Map(),
     messages: new Map(),
     labels: new Map(systemLabels.map((id) => [id, { id, name: id, type: "system" }])),
     drafts: new Map(),
@@ -116,6 +120,13 @@ export function seedGrant(state: GoogleFakeState, grant: Omit<FakeGrant, "refres
   const refreshToken = `refresh-${state.issued}-${grant.subject}`;
   state.grants.set(refreshToken, { ...grant, refreshToken, scopes: [...grant.scopes] });
   return refreshToken;
+}
+
+export function seedCode(state: GoogleFakeState, grant: Parameters<typeof seedGrant>[1]): string {
+  const refreshToken = seedGrant(state, grant);
+  const code = `4/0Afake-server-code-${state.issued}`;
+  state.codes.set(code, refreshToken);
+  return code;
 }
 
 export function issueAccess(state: GoogleFakeState, refreshToken: string): string {
@@ -165,6 +176,24 @@ function refreshGrant(state: GoogleFakeState, request: FakeRequest): FakeAnswer 
   };
 }
 
+function redeemCode(state: GoogleFakeState, request: FakeRequest): FakeAnswer {
+  const body = form(request);
+  const refreshToken = state.codes.get(body.get("code") ?? "");
+  if (!body.get("client_id") || !body.get("client_secret")) return { status: 401, body: { error: "invalid_client" } };
+  if (refreshToken === undefined || body.get("redirect_uri") !== "") return { status: 400, body: { error: "invalid_grant" } };
+  state.codes.delete(body.get("code") ?? "");
+  const grant = state.grants.get(refreshToken);
+  return {
+    status: 200,
+    body: { access_token: issueAccess(state, refreshToken), refresh_token: refreshToken, expires_in: state.expiresInSeconds, scope: grant?.scopes.join(" "), token_type: "Bearer" },
+  };
+}
+
+function userinfo(state: GoogleFakeState, request: FakeRequest): FakeAnswer {
+  const grant = bearerGrant(state, request);
+  return grant === undefined ? unauthenticated : { status: 200, body: { sub: grant.subject, email: grant.email, email_verified: true } };
+}
+
 function revoke(state: GoogleFakeState, request: FakeRequest): FakeAnswer {
   const token = form(request).get("token") ?? "";
   const refreshToken = state.grants.has(token) ? token : state.access.get(token)?.refreshToken;
@@ -175,7 +204,12 @@ function revoke(state: GoogleFakeState, request: FakeRequest): FakeAnswer {
 
 export function mountGoogleToken(state: GoogleFakeState): FakeHandler {
   return async (request) => {
+    if (request.method === "GET" && request.path === "/v1/userinfo") {
+      await bearerGrant(state, request)?.beforeUserinfoResponse?.();
+      return switched(state, request, () => userinfo(state, request));
+    }
     if (request.method !== "POST") return undefined;
+    if (request.path === "/token" && form(request).get("grant_type") === "authorization_code") return switched(state, request, () => redeemCode(state, request));
     if (request.path === "/token" && form(request).get("grant_type") === "refresh_token") {
       state.tokenCalls += 1;
       if (state.tokenDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, state.tokenDelayMs));
@@ -183,5 +217,39 @@ export function mountGoogleToken(state: GoogleFakeState): FakeHandler {
     }
     if (request.path === "/revoke") return switched(state, request, () => revoke(state, request));
     return undefined;
+  };
+}
+
+const googleHosts = new Set(["oauth2.googleapis.com", "openidconnect.googleapis.com"]);
+
+export function interceptGoogle(state: GoogleFakeState): () => void {
+  const handler = mountGoogleToken(state);
+  const network = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (!googleHosts.has(url.hostname)) return network(input, init);
+    const request = new Request(input, init);
+    const raw = new Uint8Array(await request.arrayBuffer());
+    const answer = await handler({
+      method: request.method, path: url.pathname, query: url.searchParams, headers: Object.fromEntries(request.headers), body: new TextDecoder().decode(raw), raw,
+    });
+    return answer === undefined ? new Response(null, { status: 404 }) : Response.json(answer.body ?? {}, { status: answer.status });
+  };
+  return () => { globalThis.fetch = network; };
+}
+
+export interface NativeIdTokens {
+  readonly keys: JWTVerifyGetKey;
+  issue(subject: string, nonce: string): Promise<string>;
+}
+
+export async function nativeIdTokens(audience: string): Promise<NativeIdTokens> {
+  const { privateKey, publicKey } = await generateKeyPair("RS256", { extractable: true });
+  const keys = createLocalJWKSet({ keys: [{ ...await exportJWK(publicKey), kid: "native-google", alg: "RS256" }] });
+  return {
+    keys,
+    issue: (subject, nonce) => new SignJWT({ nonce, email: subject + "@gmail.com", email_verified: true })
+      .setProtectedHeader({ alg: "RS256", kid: "native-google" }).setIssuer("https://accounts.google.com").setAudience(audience)
+      .setSubject(subject).setIssuedAt().setExpirationTime("5m").sign(privateKey),
   };
 }
