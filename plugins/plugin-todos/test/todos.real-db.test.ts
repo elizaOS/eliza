@@ -692,6 +692,273 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
     expect(after[0]?.completedAt).toEqual(firstCompletedAt);
   });
 
+  it("re-completing an already-completed todo is a replayed noop", async () => {
+    const entityId = "e9e9e9e9-e9e9-4e9e-8e9e-e9e9e9e9e9e9" as UUID;
+    const roomId = "c9c9c9c9-c9c9-4c9c-8c9c-c9c9c9c9c9c9" as UUID;
+    const created = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      content: "Buy milk",
+    });
+    const first = await invokeTodoAction(
+      {
+        id: crypto.randomUUID() as UUID,
+        entityId,
+        roomId,
+        content: { text: "done with buy milk" },
+      } as Memory,
+      { action: "complete", target: "Buy milk" },
+    );
+    expect(first.success).toBe(true);
+    expect(first.text).toBe('Marked "Buy milk" done.');
+    expect(first.effectReceipts?.[0]?.outcome).toBe("applied");
+    const afterFirst = await service.get(scope(entityId), created.id);
+    expect(afterFirst?.status).toBe("completed");
+    const firstUpdatedAt = afterFirst?.updatedAt.toISOString();
+    const firstCompletedAt = afterFirst?.completedAt?.toISOString();
+
+    // A new message (new idempotency key) completing the same todo again:
+    // nothing changed, so the receipt reuses the earlier committed complete
+    // — but under this request's own key, so a later retry of THIS request
+    // returns the stored noop instead of looking like a new request.
+    const k2Message = {
+      id: crypto.randomUUID() as UUID,
+      entityId,
+      roomId,
+      content: { text: "buy milk is done" },
+    } as Memory;
+    const second = await invokeTodoAction(k2Message, {
+      action: "complete",
+      target: "Buy milk",
+    });
+    expect(second.success).toBe(true);
+    expect(second.effectReceipts?.[0]?.outcome).toBe("noop");
+    expect(second.effectReceipts?.[0]?.idempotency.replayed).toBe(true);
+    expect(second.effectReceipts?.[0]?.idempotency.key).toBe(
+      `todos:v1:${k2Message.id}:0`,
+    );
+    expect(second.effectReceipts?.[0]?.receiptId).not.toBe(
+      first.effectReceipts?.[0]?.receiptId,
+    );
+    const afterSecond = await service.get(scope(entityId), created.id);
+    expect(afterSecond?.status).toBe("completed");
+    expect(afterSecond?.completedAt?.toISOString()).toBe(firstCompletedAt);
+    expect(afterSecond?.updatedAt.toISOString()).toBe(firstUpdatedAt);
+    const records = await service.listMutationRecords(scope(entityId));
+    const completeRecords = records.filter((r) => r.operation === "complete");
+    // Two request records (K1 applied + K2 noop), only one applied.
+    expect(completeRecords).toHaveLength(2);
+    expect(completeRecords.filter((r) => r.applied)).toHaveLength(1);
+    expect(completeRecords.map((r) => r.idempotencyKey).sort()).toEqual(
+      [
+        first.effectReceipts?.[0]?.idempotency.key,
+        second.effectReceipts?.[0]?.idempotency.key,
+      ].sort(),
+    );
+  });
+
+  it("a re-complete retried after the todo goes back to pending stays pending", async () => {
+    const entityId = "e9e9e9e9-e9e9-4e9e-8e9e-e9e9e9e9e9f1" as UUID;
+    const roomId = "c9c9c9c9-c9c9-4c9c-8c9c-c9c9c9c9c9f1" as UUID;
+    const created = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      content: "Buy milk",
+    });
+    const first = await invokeTodoAction(
+      {
+        id: crypto.randomUUID() as UUID,
+        entityId,
+        roomId,
+        content: { text: "done with buy milk" },
+      } as Memory,
+      { action: "complete", target: "Buy milk" },
+    );
+    expect(first.effectReceipts?.[0]?.outcome).toBe("applied");
+
+    const k2Message = {
+      id: crypto.randomUUID() as UUID,
+      entityId,
+      roomId,
+      content: { text: "buy milk is done" },
+    } as Memory;
+    const second = await invokeTodoAction(k2Message, {
+      action: "complete",
+      target: "Buy milk",
+    });
+    expect(second.effectReceipts?.[0]?.outcome).toBe("noop");
+    expect(second.effectReceipts?.[0]?.idempotency.replayed).toBe(true);
+
+    const third = await invokeTodoAction(
+      {
+        id: crypto.randomUUID() as UUID,
+        entityId,
+        roomId,
+        content: { text: "actually not done yet" },
+      } as Memory,
+      { action: "update", target: "Buy milk", status: "pending" },
+    );
+    expect(third.success).toBe(true);
+    expect((await service.get(scope(entityId), created.id))?.status).toBe(
+      "pending",
+    );
+
+    // Same message (same key) as the re-complete: the stored noop comes
+    // back, and the todo is not written again.
+    const retry = await invokeTodoAction(k2Message, {
+      action: "complete",
+      target: "Buy milk",
+    });
+    expect(retry.effectReceipts?.[0]?.outcome).toBe("noop");
+    expect(retry.effectReceipts?.[0]?.idempotency.replayed).toBe(true);
+    expect(retry.effectReceipts?.[0]?.idempotency.key).toBe(
+      `todos:v1:${k2Message.id}:0`,
+    );
+    expect((await service.get(scope(entityId), created.id))?.status).toBe(
+      "pending",
+    );
+    const records = await service.listMutationRecords(scope(entityId));
+    expect(records.filter((r) => r.operation === "complete")).toHaveLength(2);
+  });
+
+  it("a different request under a processed noop key still conflicts", async () => {
+    const entityId = "e9e9e9e9-e9e9-4e9e-8e9e-e9e9e9e9e9f4" as UUID;
+    const created = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      content: "Buy milk",
+    });
+    const first = await service.applyMutation({
+      scope: scope(entityId),
+      idempotencyKey: "e9-noop-conflict-k1",
+      mutation: { action: "complete", id: created.id },
+    });
+    expect(first.applied).toBe(true);
+    expect(first.replayed).toBe(false);
+    const second = await service.applyMutation({
+      scope: scope(entityId),
+      idempotencyKey: "e9-noop-conflict-k2",
+      mutation: { action: "complete", id: created.id },
+    });
+    expect(second.replayed).toBe(true);
+    expect(second.applied).toBe(false);
+    expect(second.idempotencyKey).toBe("e9-noop-conflict-k2");
+    await expect(
+      service.applyMutation({
+        scope: scope(entityId),
+        idempotencyKey: "e9-noop-conflict-k2",
+        mutation: { action: "cancel", id: created.id },
+      }),
+    ).rejects.toMatchObject({ code: TODO_IDEMPOTENCY_CONFLICT_ERROR_CODE });
+  });
+
+  it("an identical re-update retried after the todo moves on stays a noop", async () => {
+    const entityId = "e9e9e9e9-e9e9-4e9e-8e9e-e9e9e9e9e9f2" as UUID;
+    const roomId = "c9c9c9c9-c9c9-4c9c-8c9c-c9c9c9c9c9f2" as UUID;
+    const created = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      content: "Ship the feature",
+    });
+    const first = await invokeTodoAction(
+      {
+        id: crypto.randomUUID() as UUID,
+        entityId,
+        roomId,
+        content: { text: "start it" },
+      } as Memory,
+      { action: "update", target: "Ship the feature", status: "in_progress" },
+    );
+    expect(first.effectReceipts?.[0]?.outcome).toBe("applied");
+    const k2Message = {
+      id: crypto.randomUUID() as UUID,
+      entityId,
+      roomId,
+      content: { text: "start it again" },
+    } as Memory;
+    const second = await invokeTodoAction(k2Message, {
+      action: "update",
+      target: "Ship the feature",
+      status: "in_progress",
+    });
+    expect(second.effectReceipts?.[0]?.outcome).toBe("noop");
+    const third = await invokeTodoAction(
+      {
+        id: crypto.randomUUID() as UUID,
+        entityId,
+        roomId,
+        content: { text: "back to pending" },
+      } as Memory,
+      { action: "update", target: "Ship the feature", status: "pending" },
+    );
+    expect(third.success).toBe(true);
+    const retry = await invokeTodoAction(k2Message, {
+      action: "update",
+      target: "Ship the feature",
+      status: "in_progress",
+    });
+    expect(retry.effectReceipts?.[0]?.outcome).toBe("noop");
+    const todo = await service.get(scope(entityId), created.id);
+    expect(todo?.status).toBe("pending");
+    const records = await service.listMutationRecords(scope(entityId));
+    const updateRecords = records.filter((r) => r.operation === "update");
+    expect(updateRecords).toHaveLength(3);
+    expect(updateRecords.filter((r) => r.applied)).toHaveLength(2);
+  });
+
+  it("a re-cancel retried after the todo moves on stays a noop", async () => {
+    const entityId = "e9e9e9e9-e9e9-4e9e-8e9e-e9e9e9e9e9f3" as UUID;
+    const roomId = "c9c9c9c9-c9c9-4c9c-8c9c-c9c9c9c9c9f3" as UUID;
+    const created = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      content: "Old task",
+    });
+    const first = await invokeTodoAction(
+      {
+        id: crypto.randomUUID() as UUID,
+        entityId,
+        roomId,
+        content: { text: "drop it" },
+      } as Memory,
+      { action: "cancel", target: "Old task" },
+    );
+    expect(first.effectReceipts?.[0]?.outcome).toBe("applied");
+    const k2Message = {
+      id: crypto.randomUUID() as UUID,
+      entityId,
+      roomId,
+      content: { text: "drop it again" },
+    } as Memory;
+    const second = await invokeTodoAction(k2Message, {
+      action: "cancel",
+      target: "Old task",
+    });
+    expect(second.effectReceipts?.[0]?.outcome).toBe("noop");
+    const third = await invokeTodoAction(
+      {
+        id: crypto.randomUUID() as UUID,
+        entityId,
+        roomId,
+        content: { text: "bring it back" },
+      } as Memory,
+      { action: "update", target: "Old task", status: "pending" },
+    );
+    expect(third.success).toBe(true);
+    const retry = await invokeTodoAction(k2Message, {
+      action: "cancel",
+      target: "Old task",
+    });
+    expect(retry.effectReceipts?.[0]?.outcome).toBe("noop");
+    const todo = await service.get(scope(entityId), created.id);
+    expect(todo?.status).toBe("pending");
+    const records = await service.listMutationRecords(scope(entityId));
+    expect(records.filter((r) => r.operation === "cancel")).toHaveLength(2);
+    expect(
+      records.filter((r) => r.operation === "cancel" && r.applied),
+    ).toHaveLength(1);
+  });
+
   it("detaches cross-room children when room-scoped clear removes their parent", async () => {
     const entityId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as UUID;
     const parent = await service.create({
