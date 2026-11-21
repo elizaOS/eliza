@@ -480,6 +480,7 @@ const CHANNEL_NAME = /^[a-z][a-z0-9-]*$/
 const KEY_FILE_NAME = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/
 const KEY_INPUT = "<private-key-input>"
 const TEST_KEY_BITS = 2048
+const TEST_KEYS_LABEL = "OU=TEST ONLY"
 const PRESIGNED = new Set(["PRESIGNED", "EXTERNAL"])
 const DEFAULT_KEY_MAP: Readonly<Record<string, string>> = { testkey: "releasekey", devkey: "releasekey", platform: "platform", shared: "shared", media: "media", networkstack: "networkstack", sdk_sandbox: "sdk_sandbox" }
 const EXPLICIT_KEYS: readonly string[] = ["bluetooth", "nfc"]
@@ -829,7 +830,7 @@ effect function generateKey(key: KeyManifestEntry, directory: string, options: G
       const bits = options.testKeys ? TEST_KEY_BITS : key.kind.bits
       const made: KeyPair = try keyPair("rsa", bits, key.name)
       const label = options.testKeys ? `TEST-ONLY ${key.name}` : key.name
-      const subject = `/C=US/O=${options.organization}/OU=${options.testKeys ? "TEST ONLY" : "Release"}/CN=${label}`
+      const subject = `/C=US/O=${options.organization}/${options.testKeys ? TEST_KEYS_LABEL : "OU=Release"}/CN=${label}`
       const certificate = try openssl(["req", "-new", "-x509", "-sha256", "-key", KEY_INPUT, "-days", "10950", "-subj", subject], made.privatePem)
       const facts = opened(certificateFacts(certificate), key.name)
       if (typeof facts === "string") throw new KeyToolFailed({ tool: "openssl", message: facts })
@@ -925,9 +926,6 @@ export effect function decrypt(options: DecryptOptions) {
     if (selected !== null && !selected.has(entry.name)) continue
     try decryptKey(entry, options.input, resolved, passphrase)
     written.push(entry.name)
-  }
-  for (const name of ["fingerprints.json", TEST_KEYS_MARKER]) {
-    if (try present(path.join(options.input, name))) try writeKeyFile(path.join(resolved, name), try mapError(readBytes(path.join(options.input, name)), (cause) => new KeyOutputRefused({ output: resolved, message: cause.message })), 0o600)
   }
   return { target: resolved, written, testKeys: field(raw, "testKeys") === true }
 }
@@ -1189,6 +1187,18 @@ effect function certificateDigests(keysDir: string, names: readonly string[]) {
   return digests
 }
 
+effect function testKeysIn(keysDir: string, names: readonly string[]) {
+  const path = try Path.Path
+  if (try present(path.join(keysDir, TEST_KEYS_MARKER))) return true
+  for (const name of names) {
+    const file = path.join(keysDir, `${name}.x509.pem`)
+    const bytes = (try present(file)) ? (readBytes(file) catch () => undefined) : undefined
+    const facts = bytes === undefined ? undefined : certificateFacts(bytes)
+    if (facts !== undefined && facts.kind === "opened" && facts.value.subject.includes(TEST_KEYS_LABEL)) return true
+  }
+  return false
+}
+
 effect function fileDigest(file: string) {
   return (try present(file)) ? sha256Hex(try readBytes(file)) : null
 }
@@ -1209,6 +1219,7 @@ effect function managedProblems(options: ManagedSigning) {
   }
   if (options.payloadSignerSignatureSize !== undefined && !/^[1-9][0-9]*$/.test(options.payloadSignerSignatureSize))
     problems.push({ kind: "Input", detail: `${MANAGED_FLAGS.payloadSignerSignatureSize} must be the signer's maximum signature size in bytes (512 for RSA-4096)` })
+  if (options.payloadSigner === undefined && (options.payloadSignerArgs ?? []).length) problems.push({ kind: "Input", detail: "--payload-signer-arg needs --payload-signer" })
   for (const argument of options.payloadSignerArgs ?? [])
     if (!SHLEX_WORD.test(argument)) problems.push({ kind: "Input", detail: `--payload-signer-arg ${argument} must be a plain word without spaces, quotes or shell characters` })
   return problems
@@ -1622,8 +1633,7 @@ export effect function signRelease(options: SignReleaseOptions) {
   try mapError(files.writeFileString(recordFile, serialized(record), { flag: "wx" }), (cause) => new ReleaseInputUnreadable({ place: recordFile, message: cause.message }))
   const inconsistent = [...record.problems.map((detail): SigningProblem => ({ kind: "Record", field: "Reading", detail })), ...releaseRecordProblems(record, observed)]
   if (inconsistent.length) throw new ReleaseRecordInconsistent({ record: recordFile, problems: inconsistent, message: `Signed outputs are inconsistent; see ${recordFile}:\n${describeProblems(inconsistent)}` })
-  const fingerprints = (readJson(path.join(keysDir, "fingerprints.json")) catch () => undefined)
-  const testKeys = (try present(path.join(keysDir, TEST_KEYS_MARKER))) || field(fingerprints, "testKeys") === true
+  const testKeys = try testKeysIn(keysDir, x509)
   const signedResult: SigningResult = { kind: "Signed", record: recordFile, commands: plan.commands, signingMode, distributionProblems: channelDistributionProblems(inputs.channel, testKeys) }
   return signedResult
 }

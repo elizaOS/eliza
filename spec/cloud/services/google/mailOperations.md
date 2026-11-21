@@ -1,48 +1,43 @@
 # Reviewed Gmail changes
 
-Every change the cloud makes to the owner's mailbox: sending, the three draft
-changes, archive, Trash, read state and star. Each is reviewed before it is
-made and sent to Google at most once, on a receipt of
-[the dispatch ledger](../../shared/dispatchOnce.md). Sources: develop
-`agent-google-connector/{inbox-receipts,inbox-provider,inbox-operation-routes}.ts`.
-Routes under `/api/v1/eliza/google/gmail/inbox-v1/` (device key or session),
-grant chosen by [the connection](./connection.md)'s selection rule:
-`POST operations {grantId, requestId, proposal}` (prepare),
-`POST operations/:requestId/dispatch {grantId, reviewDigest, proposal}` and
-`GET operations/:requestId?grantId`. `grantId` and `requestId` are UUIDs.
-There is no other Gmail write route.
+Every change the cloud makes to the owner's mailbox, reviewed first and sent
+to Google at most once on a receipt of [the dispatch ledger](../../shared/dispatchOnce.md)
+(develop `agent-google-connector/inbox-{receipts,provider,operation-routes}.ts`).
+Routes under `/api/v1/eliza/google/gmail/inbox-v1/` (device key or session,
+grant chosen by [the connection](./connection.md)): `POST operations
+{grantId, requestId, proposal}`, `POST operations/:requestId/dispatch
+{grantId, reviewDigest, proposal}`, `GET operations/:requestId?grantId`; ids
+are UUIDs. There is no other Gmail write route.
 
-One instance is one row of `mail_operations`, keyed by organization, user,
-grant and request id; its provider key is `grantId:requestId`. The shell
-builds the review from the proposal and what it reads from Google, computes
-the review digest (SHA-256 hex of the canonical review, kind included), builds
-the MIME message, calls Google with a 30 s deadline and renders the wire.
+One instance is one `mail_operations` row, keyed by organization, user,
+grant and request id (provider key `grantId:requestId`). The shell reads
+Google for the review, computes its digest (SHA-256 hex of the canonical
+review, kind included), builds the MIME message, calls Google with a 30 s
+deadline and renders the wire.
 
 ## Story: Change or send from my mailbox once, as I reviewed it
 
-> As an owner, I want each send, draft change, archive, Trash, read-state or
-> star change my assistant proposes made only after I reviewed it, only to
-> the message or draft as I saw it, and at most once, with its outcome
-> readable afterwards even if the connection dropped, so that nothing is
-> sent twice or changed behind my back.
+> As an owner, I want each mail change my assistant proposes made only as I
+> reviewed it, to the message or draft as I saw it, at most once, with its
+> outcome readable even after a lost connection, so that nothing is sent
+> twice or changed behind my back.
 
 ### A proposal passes review only whole: its shape, then the mail cap, then every message or draft it names at the revision read
 
 A label change (`archive`, `unarchive`, `trash`, `untrash`, `mark-read`,
-`mark-unread`, `star`, `unstar`) names `{messageId, expectedHistoryId}`.
-`draft-delete` names `{draftId, expectedDigest}` and `confirmPermanentDelete:
+`mark-unread`, `star`, `unstar`) names `{messageId, expectedHistoryId}`;
+`draft-delete` names `{draftId, expectedDigest}` with `confirmPermanentDelete:
 true`. `send`, `draft-create` and `draft-replace` carry `mode ∈ {compose,
-reply, reply-all, forward}`, `to`, `cc`, `bcc` (bare addresses, together at
-most 50; a send at least one), `subject`, `bodyText`, `replyMessageId` exactly
-for the reply modes (the reply's subject must be the parent's with `Re:`, and
-the parent must carry safe `Message-ID` and `References` headers), at most 10
-attachments (`attachments` of the types of `mailRead`, base64 whose bytes match
-the type, with SHA-256; `forwardAttachments {messageId, historyId, partIds}`
-only in a forward), unique file names, and for `draft-replace` `{draftId,
+reply, reply-all, forward}`; `to`, `cc`, `bcc` (bare addresses, at most 50 in
+all, a send at least one); `subject`; `bodyText`; `replyMessageId` exactly in
+the reply modes (subject `Re:` the parent's, parent with safe `Message-ID` and
+`References`); at most 10 uniquely named files, `attachments` of `mailRead`'s
+types whose bytes match the type, and `forwardAttachments {messageId,
+historyId, partIds}` only in a forward; `draft-replace` also `{draftId,
 expectedDigest}` with `acceptNonAtomicReplacement: true`. A shape fault is
-`400 invalid_request`; attachments over the 8 MiB mail cap `413`; a message,
-draft or forwarded part that is gone `404 not_found`; one at another history
-id or digest `409 stale_revision`.
+`400 invalid_request`, files over the 8 MiB mail cap `413`, a message, draft
+or part that is gone `404 not_found`, one at another history id or digest
+`409 stale_revision`.
 
 ```quint
 import types.* from "../../shared/types"
@@ -62,16 +57,8 @@ type ReviewOutcome = ReviewPasses | ReviewRefused({ refusal: Refusal })
 pure val maxRecipients: int = 50
 pure val maxAttachments: int = 10
 pure def isLabelKind(kind: MailOperationKind): bool = kind != SendKind and not(isDraftKind(kind))
-pure def kindOfProposal(proposal: Proposal): MailOperationKind = match proposal {
-  | LabelChangeProposal(x) => x.kind
-  | DraftDeleteProposal(x) => DraftDeleteKind
-  | MessageProposal(x) => x.kind
-}
-pure def targetOf(proposal: Proposal): TargetFit = match proposal {
-  | LabelChangeProposal(x) => x.target
-  | DraftDeleteProposal(x) => x.target
-  | MessageProposal(x) => x.target
-}
+pure def kindOfProposal(proposal: Proposal): MailOperationKind = match proposal { | LabelChangeProposal(x) => x.kind | DraftDeleteProposal(x) => DraftDeleteKind | MessageProposal(x) => x.kind }
+pure def targetOf(proposal: Proposal): TargetFit = match proposal { | LabelChangeProposal(x) => x.target | DraftDeleteProposal(x) => x.target | MessageProposal(x) => x.target }
 pure def attachedBytes(proposal: Proposal): int = match proposal { | MessageProposal(x) => x.files.bytes | _ => 0 }
 pure def shapeFits(proposal: Proposal): bool = match proposal {
   | LabelChangeProposal(x) => isLabelKind(x.kind)
@@ -113,10 +100,9 @@ pure def lawAPassingReviewSawEverythingAtItsRevisionAndARefusalIsFinal(proposal:
 
 ### A change needs a usable connection holding the capability its kind needs, and a reply or forwarded part also message reads
 
-`send` needs `google.gmail.send`, the draft kinds `google.gmail.drafts`, the
-label kinds `google.gmail.manage`; a reply or a forward of source parts reads
-the message, so it also needs the scope of a message read. A refusal is the
-connection's use refusal, after its refresh.
+`send` needs `google.gmail.send`, drafts `google.gmail.drafts`, label kinds
+`google.gmail.manage`; a reply or forwarded part also needs message reads. A
+refusal is the connection's use refusal, after its refresh.
 
 ```quint
 type MailAuthority = { status: C::ConnectionStatus, access: C::AccessState, scopes: List[C::GoogleScope] }
@@ -135,13 +121,11 @@ pure def lawAnAdmittedChangeIsOneTheCapabilitiesOffer(proposal: Proposal, author
 
 ### Preparing binds the request id to its kind and reviewed digest once, and a repeat with the same digest answers the receipt as it stands
 
-A receipt already held for the request id is answered first: the same
-digest answers it in whatever state it has reached, another digest is `409
-idempotency_conflict` and leaves it unchanged. Otherwise the grant's
-authority and the review must pass; the prepared answer is `{version: 1,
-receipt, review: {from, to, cc, subject, attachments, forwardedAttachments},
-providerExactlyOnce: false}`. The receipt is found stale 90 s after its
-claim, three times Google's call deadline.
+A receipt already held is answered first: as it stands for the same digest,
+`409 idempotency_conflict` (unchanged) for another. Otherwise authority and
+review must pass, and the answer adds `review: {from, to, cc, subject,
+attachments, forwardedAttachments}`. A claim is stale after 90 s, three
+times Google's call deadline.
 
 ```quint
 type KindSlot = NoKind | KindOf({ kind: MailOperationKind })
@@ -153,11 +137,9 @@ pure val mailStaleAfter: Millis = 90 * millisPerSecond
 pure val preparedLifetime: Millis = millisPerDay
 pure def nowOf(o: Operation): Millis = o.receipt.session.now
 pure def keyOf(providerId: str): ProviderKey = { providerKind: GmailOperation, providerId: providerId }
-pure def slotKind(o: Operation): MailOperationKind = { val slot = o.slot
-  match slot { | KindOf(x) => x.kind | NoKind => SendKind } }
+pure def slotKind(o: Operation): MailOperationKind = { val slot = o.slot match slot { | KindOf(x) => x.kind | NoKind => SendKind } }
 pure def canPrepare(o: Operation, by: S::SessionOwner, proposal: Proposal, providerId: str, digest: str, authority: MailAuthority): bool =
-  o.slot == NoKind and authorityAllows(proposal, authority) and reviewOf(proposal) == ReviewPasses
-  and D::canPrepare(o.receipt, by, digest, keyOf(providerId), mailStaleAfter, nowOf(o) + preparedLifetime)
+  o.slot == NoKind and authorityAllows(proposal, authority) and reviewOf(proposal) == ReviewPasses and D::canPrepare(o.receipt, by, digest, keyOf(providerId), mailStaleAfter, nowOf(o) + preparedLifetime)
 pure def prepare(o: Operation, by: S::SessionOwner, proposal: Proposal, providerId: str, digest: str, authority: MailAuthority): Operation =
   { ...o, slot: KindOf({ kind: kindOfProposal(proposal) }), receipt: D::prepare(o.receipt, by, digest, keyOf(providerId), mailStaleAfter, nowOf(o) + preparedLifetime) }
 pure def prepareAnswer(o: Operation, by: S::SessionOwner, proposal: Proposal, digest: str, authority: MailAuthority): OperationAnswer = {
@@ -178,11 +160,10 @@ pure def sometimesPreparedAwaitingDispatch(o: Operation): bool = o.slot != NoKin
 
 ### A prepared change is claimed only by a dispatch naming its digest, reviewed again against Google at that moment
 
-No receipt is `404 not_found`; a `reviewDigest` or kind other than the
-receipt's is `409 stale_revision`. A receipt no longer prepared is answered
-as it stands, without new credentials or a call to Google. A prepared one is
-reviewed again, with the grant's authority, and must digest to the same
-value; the claim then commits it before Google is asked.
+No receipt is `404 not_found`, another `reviewDigest` or kind `409
+stale_revision`; a receipt no longer prepared is answered as it stands,
+without credentials or Google. A prepared one is reviewed again under the
+grant's authority and claimed (committed) before Google is asked.
 
 ```quint
 pure def canDispatch(o: Operation, by: S::SessionOwner, proposal: Proposal, digest: str, authority: MailAuthority): bool =
@@ -203,8 +184,7 @@ pure def sometimesClaimedBeforeGoogleIsAsked(o: Operation): bool = o.receipt.ses
 
 ### A change not dispatched within a day of its preparation is settled not applied
 
-Nothing was sent; its dispatch answers it `rejected` with code
-`not_applied`, and a new request id may propose it again.
+Nothing was sent: it answers `rejected`, code `not_applied`; a new request id may propose it again.
 
 ```quint
 pure def canExpire(o: Operation, by: S::SessionOwner): bool = o.slot != NoKind and nowOf(o) >= o.receipt.session.expiresAt and D::canAbandon(o.receipt, by)
@@ -214,9 +194,9 @@ pure def sometimesExpiredBeforeDispatch(o: Operation): bool = o.slot != NoKind a
 
 ### Google is asked once, by the claim holder, with exactly the reviewed message, before the stale time
 
-The send is the reviewed MIME bytes (with `threadId` for a reply), the draft
-call carries the same bytes, and a label change adds or removes only its one
-label (`trash` and `untrash` use Gmail's Trash calls). Nothing is retried.
+A send or draft save carries the reviewed MIME bytes (with `threadId` for a
+reply); a label change adds or removes only its one label (`trash` and
+`untrash` use Gmail's Trash calls). Nothing is retried.
 
 ```quint
 pure def canSend(o: Operation, by: S::SessionOwner, claimToken: int): bool = o.slot != NoKind and D::canSend(o.receipt, by, claimToken)
@@ -236,42 +216,30 @@ pure def stepReceiptKeepsItsRules(before: Operation, via: str, after: Operation)
 
 ### A change succeeds only when Google's reply shows the requested state, and any other reply that is not a refusal leaves it unknown
 
-A label change succeeds when the returned labels show it (`TRASH` present
-after `trash`, absent after `untrash`; `UNREAD` absent after `mark-read`,
-present after `mark-unread`; `INBOX` absent after `archive`, present after
-`unarchive`; `STARRED` present after `star`, absent after `unstar`); a send
-when Google returns its message and thread ids; a draft save when the draft
-read back holds exactly the reviewed bytes; a draft delete when Google
-confirms it. Google's 404 rejects with `not_found`, 401 or 403 with
-`reauth_required`, 400, 409, 412 or 422 with `provider_rejected`. Only a
-succeeded receipt carries `providerResult {messageId, labelIds, historyId,
-unread?}` (a draft's `{draftId, messageId, providerDigest}`).
+A label change succeeds when the returned labels show its label (`TRASH`,
+`UNREAD`, `INBOX`, `STARRED`) added or removed, a send when Google returns
+its ids, a draft save when the draft read back holds exactly the reviewed
+bytes, a draft delete when Google confirms it. Google's 404 rejects as
+`not_found`, 401 or 403 as `reauth_required`, 400, 409, 412 or 422 as
+`provider_rejected`. Only a succeeded receipt carries `providerResult`.
 
 ```quint
 type MailLabel = LabelInbox | LabelTrash | LabelUnread | LabelStarred
 type LabelChange = AddLabel({ label: MailLabel }) | RemoveLabel({ label: MailLabel }) | NoLabelChange
 type MailReply = LabelsReturned({ labels: List[MailLabel] }) | MessageSent | DraftStored({ sameBytes: bool }) | DraftDeleted | GoogleNotFound | GoogleRefusedAccess | GoogleRefusedOther | NoClearReply
 pure def labelChangeOf(kind: MailOperationKind): LabelChange =
-  if (kind == ArchiveKind) RemoveLabel({ label: LabelInbox }) else if (kind == UnarchiveKind) AddLabel({ label: LabelInbox })
-  else if (kind == TrashKind) AddLabel({ label: LabelTrash }) else if (kind == UntrashKind) RemoveLabel({ label: LabelTrash })
-  else if (kind == MarkReadKind) RemoveLabel({ label: LabelUnread }) else if (kind == MarkUnreadKind) AddLabel({ label: LabelUnread })
+  if (kind == ArchiveKind) RemoveLabel({ label: LabelInbox }) else if (kind == UnarchiveKind) AddLabel({ label: LabelInbox }) else if (kind == TrashKind) AddLabel({ label: LabelTrash })
+  else if (kind == UntrashKind) RemoveLabel({ label: LabelTrash }) else if (kind == MarkReadKind) RemoveLabel({ label: LabelUnread }) else if (kind == MarkUnreadKind) AddLabel({ label: LabelUnread })
   else if (kind == StarKind) AddLabel({ label: LabelStarred }) else if (kind == UnstarKind) RemoveLabel({ label: LabelStarred }) else NoLabelChange
 pure def showsRequested(kind: MailOperationKind, labels: List[MailLabel]): bool = { val change = labelChangeOf(kind)
   match change { | AddLabel(x) => labels.includes(x.label) | RemoveLabel(x) => not(labels.includes(x.label)) | NoLabelChange => true } }
 pure def replyFits(kind: MailOperationKind, reply: MailReply): bool = match reply {
-  | LabelsReturned(x) => isLabelKind(kind)
-  | MessageSent => kind == SendKind
-  | DraftStored(x) => kind == DraftCreateKind or kind == DraftReplaceKind
-  | DraftDeleted => kind == DraftDeleteKind
-  | _ => true
-}
+  | LabelsReturned(x) => isLabelKind(kind) | MessageSent => kind == SendKind | DraftDeleted => kind == DraftDeleteKind
+  | DraftStored(x) => kind == DraftCreateKind or kind == DraftReplaceKind | _ => true }
 pure def resultOf(kind: MailOperationKind, reply: MailReply): MailResult = match reply {
   | LabelsReturned(x) => if (showsRequested(kind, x.labels)) Shown({ shownLabels: x.labels }) else NoResult
-  | MessageSent => Shown({ shownLabels: List() })
   | DraftStored(x) => if (x.sameBytes) Shown({ shownLabels: List() }) else NoResult
-  | DraftDeleted => Shown({ shownLabels: List() })
-  | _ => NoResult
-}
+  | MessageSent => Shown({ shownLabels: List() }) | DraftDeleted => Shown({ shownLabels: List() }) | _ => NoResult }
 pure def providerReplyOf(kind: MailOperationKind, reply: MailReply): D::ProviderReply =
   if (resultOf(kind, reply) != NoResult) D::ShowsEffect
   else if (reply == GoogleNotFound) D::DefiniteRefusal({ cause: D::NotFoundAtProvider })
@@ -298,9 +266,9 @@ pure def sometimesRejectedByGoogle(o: Operation): bool = o.receipt.settlement ==
 
 ### An unknown outcome stays unknown unless Google was never asked
 
-Gmail cannot be asked whether a change was made by its key, so a sent
-change whose reply was lost or unclear is never settled by a guess. A claim
-whose sender was lost before Google was asked settles `not applied`.
+Gmail cannot be asked by key whether a change was made, so a sent change
+whose reply was lost or unclear is never settled by a guess; a claim whose
+sender was lost before asking settles `not applied`.
 
 ```quint
 pure def canResolve(o: Operation): bool = o.slot != NoKind and D::canResolve(o.receipt, D::NothingSeen)
@@ -311,13 +279,12 @@ pure def sometimesClaimedButNeverSentSettled(o: Operation): bool = o.receipt.set
 
 ### Every answer carries the receipt as it stands, and says Google does not apply a change exactly once
 
-Prepare, dispatch and `GET` answer `{version: 1, receipt, providerExactlyOnce:
-false}`; `GET` only reads (a lapsed grant still reads its own receipt) and
-never dispatches. The receipt is `{requestId, kind, reviewDigest, state,
-providerResult, rejectionCode, createdAt, dispatchedAt, finishedAt}` with
-`state` one of `prepared`, `dispatched`, `succeeded`, `rejected`,
-`outcome-unknown` (a dispatched receipt past its stale time or with its
-sender lost), and `rejectionCode` exactly when rejected.
+Prepare, dispatch and `GET` (which only reads, even on a lapsed grant)
+answer `{version: 1, receipt, providerExactlyOnce: false}`, the receipt
+`{requestId, kind, reviewDigest, state, providerResult, rejectionCode,
+createdAt, dispatchedAt, finishedAt}`; `state` is `prepared`, `dispatched`,
+`succeeded`, `rejected` (with `rejectionCode`) or `outcome-unknown` (claimed,
+then stale or its sender lost).
 
 ```quint
 type WireState = WirePrepared | WireDispatched | WireSucceeded | WireRejected | WireOutcomeUnknown

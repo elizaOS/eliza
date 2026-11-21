@@ -1,5 +1,5 @@
 //@ backend dafny
-// spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"
+// spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"; spec/cloud/services/inference.md, "Reading the provider's stream yields the same events however its bytes were split"
 
 export interface Segmenter {
   line: number[]

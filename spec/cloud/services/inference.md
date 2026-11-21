@@ -124,10 +124,14 @@ pure val catalogValues: Set[Catalog] = {
 pure val fundingValues: Set[Funding] = Set({ allowanceAvailable: 0, creditAvailable: 0 }, { allowanceAvailable: 0, creditAvailable: 20 }, { allowanceAvailable: 5, creditAvailable: 5 }, { allowanceAvailable: 0, creditAvailable: -1 })
 ```
 
-### A quote counts a token for every four input characters, rounded up, and the output the request allows, 500 tokens when it names no limit
+### A request is admitted only for a live caller under its plan limit, held under the policy's lane at its quote, and otherwise refused well formed
 
-`max_completion_tokens` wins over `max_tokens`. A side that is negative or
-over `Mo::maxTokensPerSide` is refused `400 invalid_request`.
+The quote counts a token per four input characters, rounded up, and the
+output the request allows: `max_completion_tokens`, else `max_tokens`, else
+500. A side that is negative or over `Mo::maxTokensPerSide` is refused
+`400 invalid_request`. A fresh server request id names no hold, so
+`M::admission` is asked about `M::initial` and never replays. Refusals of the
+rate limiter, `requestAuth` and metering pass through unchanged.
 
 ```quint
 pure val defaultOutputTokens: int = 500
@@ -137,15 +141,6 @@ pure def quoteCounts(b: ChatBody): Mo::TokenCounts =
   { inputTokens: tokensOf(b.inputChars), outputTokens: askOr(b.maxCompletionTokens, askOr(b.maxTokens, defaultOutputTokens)) }
 pure val charsValues = Set(-1, 0, 1, 4, 5, 8000000, 8000001)
 pure def lawEveryInputCharacterIsQuoted(chars: CharCount): bool = chars >= 0 implies (tokensOf(chars) * 4 >= chars and tokensOf(chars) * 4 < chars + 4)
-```
-
-### A request is admitted only for a live caller under its plan limit, with a hold reserved at its quote under the policy's lane, and is otherwise refused well formed
-
-A fresh server request id names no hold, so `M::admission` is asked about
-`M::initial` and never replays. Every refusal is well formed: those of the
-rate limiter, `requestAuth` and metering pass through unchanged.
-
-```quint
 pure def lawAnAdmittedCallIsHeldAtItsQuote(ingress: R::Window, auth: RA::Admission, policy: E::PolicyAnswer, planWindow: R::Window, body: ChatBody, catalog: Catalog, funding: Funding): bool = {
   val a = arrivalOf(ingress, auth, policy, planWindow, body)
   val result = admitCompletion(a, catalog, funding)
