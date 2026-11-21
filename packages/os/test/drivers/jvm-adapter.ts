@@ -1,7 +1,8 @@
 // spec/os/appUpdate/install.md, "Story: Install an app update without running the agent mid-install"; spec/os/android/secureStore.md, "Story: Persist a value without losing a newer edit"; spec/os/browser/surface/profiles.md, "Story: Keep two sites' storage apart unless I share a profile"
 import { type ChildProcessWithoutNullStreams, execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, globSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import type { Driver, Outcome } from "../../gen/_conformance.ts";
@@ -17,14 +18,30 @@ const CACHE = path.join(PACKAGE, ".cache", "jvm");
 const JSON_JAVA_SHA256 = "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796";
 const JSON_JAVA_URL = "https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar";
 
-async function resolveJsonJava(): Promise<string> {
-  const artifact = path.join(CACHE, "json-20250517.jar");
-  const valid = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex") === JSON_JAVA_SHA256;
-  if (existsSync(artifact) && valid(readFileSync(artifact))) return artifact;
+const verifiedJsonJava = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex") === JSON_JAVA_SHA256;
+
+function gradleJsonJava(filename: string): Uint8Array | undefined {
+  const home = process.env.GRADLE_USER_HOME || path.join(homedir(), ".gradle");
+  const directory = path.join(home, "caches/modules-2/files-2.1/org.json/json/20250517");
+  for (const candidate of globSync(`*/${filename}`, { cwd: directory })) {
+    const bytes = readFileSync(path.join(directory, candidate));
+    if (verifiedJsonJava(bytes)) return bytes;
+  }
+  return undefined;
+}
+
+async function downloadJsonJava(): Promise<Uint8Array> {
   const response = await fetch(JSON_JAVA_URL, { redirect: "error", signal: AbortSignal.timeout(30_000) });
   if (!response.ok) throw new Error(`JSON-java download failed (HTTP ${response.status})`);
   const bytes = new Uint8Array(await response.arrayBuffer());
-  if (!valid(bytes)) throw new Error("JSON-java 20250517 did not match its pinned SHA-256");
+  if (!verifiedJsonJava(bytes)) throw new Error("JSON-java 20250517 did not match its pinned SHA-256");
+  return bytes;
+}
+
+async function resolveJsonJava(): Promise<string> {
+  const artifact = path.join(CACHE, "json-20250517.jar");
+  if (existsSync(artifact) && verifiedJsonJava(readFileSync(artifact))) return artifact;
+  const bytes = gradleJsonJava(path.basename(artifact)) ?? await downloadJsonJava();
   mkdirSync(CACHE, { recursive: true });
   const staging = mkdtempSync(path.join(CACHE, ".json-java-"));
   try {
@@ -38,7 +55,7 @@ async function resolveJsonJava(): Promise<string> {
 }
 
 let jsonJava: Promise<string> | undefined;
-const jsonJavaArtifact = () => jsonJava ??= resolveJsonJava();
+const jsonJavaArtifact = () => jsonJava ??= resolveJsonJava().finally(() => { jsonJava = undefined; });
 
 type Request =
   | { readonly kind: "reset" }
