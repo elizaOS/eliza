@@ -44,6 +44,7 @@ import rateLimit as R from "../shared/rateLimit"
 import accounts as A from "./accounts"
 import sessions as S from "./sessions"
 import deviceKeys as Dk from "../nativeClients/deviceKeys"
+import deployment as D from "../deployment"
 type RouteClass = PublicRoute | SignatureRoute | KeyOrSessionRoute | SessionRoute | FreshRoute | StepUpRoute
 type SessionLookup = NoFamily | FamilyRow({ family: S::Family, generation: int })
 type KeyLookup = NoGrant | GrantRow({ grant: Dk::Grant })
@@ -182,7 +183,8 @@ pure val familyValues: Set[S::Family] = Set(signedIn, { ...signedIn, mfaAt: S::A
   { ...signedIn, generation: 2, issuedAt: 3600000, accessExpiresAt: 4500000 })
 pure val generationValues = Set(1, 2)
 pure val nowValues = Set(1000, 4000000)
-pure val keyed: Dk::Grant = { phase: Dk::Active({ ackedAt: 0, keyExpiresAt: 86400000 }), origin: Dk::Connected, codeExpiresAt: 300000,
+pure val keyed: Dk::Grant = { phase: Dk::Active({ ackedAt: 0, keyExpiresAt: 86400000 }), origin: Dk::Connected,
+  client: Dk::BoundClient({ clientId: "app.one", environment: D::Staging, signInReturn: { origin: "https://www.staging.example.com", path: "/apps/conformance-1/sign-in" } }), codeExpiresAt: 300000,
   credentialTtl: 86400000, credentialId: "k1", epoch: 0, now: 0 }
 pure val lookupValues: Set[KeyLookup] = Set(NoGrant, GrantRow({ grant: keyed }), GrantRow({ grant: { ...keyed, phase: Dk::Expired } }))
 pure val otherLookupValues: Set[KeyLookup] = Set(NoGrant, GrantRow({ grant: keyed }))
