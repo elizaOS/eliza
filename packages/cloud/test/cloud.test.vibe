@@ -2365,9 +2365,9 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
     const again = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(openRenewal(tx, "org-refund", invoice, now))))
     const ticket = try cloud.inside(reserve({ organizationId: "org-refund", userId: "user-refund" }, { service: "MeteredInference", caller: "user-refund", requestId: "refund-1", part: { tag: "WholeRequest" } }, 1_000_000))
     const clawed = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(clawBackInvoice(tx, "in_refund", "RefundClawback", now))))
-    try sql(cloud, `UPDATE allowance_periods
-      SET state = state || '{"phase":"PeriodClawedBack","clawbackCause":"RefundClawback"}'::jsonb
-      WHERE key = 'renewal/staging/in_refund'`)
+    try sql(cloud, "UPDATE allowance_periods SET state = state || $1::jsonb WHERE key = $2", [
+      JSON.stringify({ phase: "PeriodClawedBack", clawbackCause: "RefundClawback" }), "renewal/staging/in_refund"
+    ])
     try cloud.inside(markDispatched(ticket.key))
     try cloud.inside(settle(ticket.key, { kind: "known", actual: 400_000 }))
     const restored = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(restoreInvoice(tx, "in_refund", now))))
@@ -2408,9 +2408,9 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
     }
     const opened = [try open("in_won", now - 1000, now + allowanceMonth), try open("in_late", now - allowanceMonth, now - 1000)]
     const clawed = [try disputed("in_won"), try disputed("in_late")]
-    try sql(cloud, `UPDATE allowance_periods
-      SET state = state || '{"phase":"PeriodClawedBack","clawbackCause":"DisputeClawback"}'::jsonb
-      WHERE key = 'renewal/staging/in_won'`)
+    try sql(cloud, "UPDATE allowance_periods SET state = state || $1::jsonb WHERE key = $2", [
+      JSON.stringify({ phase: "PeriodClawedBack", clawbackCause: "DisputeClawback" }), "renewal/staging/in_won"
+    ])
     const during = try cloud.store.transaction((tx) => allowanceView(tx, "org-dispute", now))
     const restored = [try won("in_won"), try won("in_late")]
     const after = try cloud.store.transaction((tx) => allowanceView(tx, "org-dispute", now))
