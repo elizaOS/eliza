@@ -1,17 +1,38 @@
 // spec/agent/conversation/conversations.md, "Story: Create and find my conversations", "Messages and model-call log rows arrive only in a published conversation"; spec/core/turnControllers.md, "Story: Cancel room work without cancelling the cancel request"
+// spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend", "A room runs one turn at a time, and only an admitted or recovered message changes anything", "A heard report only moves the heard boundary of an agent reply back, and never changes the reply"
+// spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"
 module node {
   import { randomUUID } from "node:crypto"
   import { Schema } from "effect"
-  import { ChannelType, type AgentRuntime, type Content, type Memory, type MemoryMetadata, type Room, type UUID } from "@elizaos/core"
+  import {
+    ChannelType, ModelType, conversationClientUserMemoryId, hashStableJson,
+    normalizeChatIdempotencyKey, readDurableConversationChatMarker, stringToUuid,
+    type AgentRuntime, type Content, type DurableConversationChatMarker, type JsonObject, type Memory, type MemoryMetadata, type Room, type UUID,
+  } from "@elizaos/core"
   import { canCreate, defaultTitle, initial } from "../../gen/agent__conversation__conversations.ts"
+  import { decide, receiptRetentionMs, type KeyView } from "../../gen/agent__conversation__turns.ts"
   import type { LocalRoute } from "../access/routes.vibe"
+  import { recordHeard } from "./heard.vibe"
   import { streamRoutes } from "./stream.vibe"
 
   export interface TurnReply {
     readonly fullText: string
+    readonly text: string
+    readonly agentName: string
+    readonly messageId: UUID
+    readonly userMessageId: UUID
+    readonly actionResults: readonly { readonly action: string; readonly data: unknown }[]
+    readonly failureKind?: "aborted"
   }
 
   const Body = Schema.Struct({ text: Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(32768)) })
+  const TurnBody = Schema.Struct({
+    ...Body.fields,
+    channelType: Schema.optionalKey(Schema.Literals([ChannelType.DM, ChannelType.VOICE_DM])),
+    metadata: Schema.optionalKey(Schema.JsonObject),
+    clientMessageId: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(128))),
+  })
+  type TurnBody = typeof TurnBody.Type
   const Create = Schema.Struct({ title: Schema.optionalKey(Schema.String) })
   const Stamp = Schema.Struct({
     id: Schema.String,
@@ -20,6 +41,7 @@ module node {
   })
   const createBody = Schema.decodeUnknownOption(Create, { onExcessProperty: "error" })
   const messageBody = Schema.decodeUnknownOption(Body, { onExcessProperty: "error" })
+  const turnBody = Schema.decodeUnknownOption(TurnBody, { onExcessProperty: "error" })
   const stamp = Schema.decodeUnknownOption(Stamp)
   const failure = (status: number, error: string) => ({ status, body: { error } })
   const okay = (body: object) => ({ status: 200, body })
@@ -38,6 +60,15 @@ module node {
   export interface TurnOptions {
     readonly onStreamChunk?: (chunk: string) => void
     readonly metadata?: MemoryMetadata
+    readonly input?: Pick<TurnBody, "channelType" | "metadata">
+    readonly key?: KeyedTurn
+  }
+
+  interface KeyedTurn {
+    readonly inputId: UUID
+    readonly replyId: UUID
+    readonly boot: UUID
+    readonly marker: DurableConversationChatMarker
   }
 
   function memory(runtime: AgentRuntime, owner: ConversationOwner, room: Room, text: string, metadata?: MemoryMetadata): Memory {
@@ -67,16 +98,27 @@ module node {
 
   export async function processTurn(runtime: AgentRuntime, owner: ConversationOwner, room: Room, text: string, signal: AbortSignal, options: TurnOptions = {}) {
     const service = runtime.messageService ?? (() => { throw new Error("A conversation requires the message service") })()
-    const storeReply = async (content: Content): Promise<Memory[]> => {
-      if (!content.text?.trim()) return []
-      const response = { ...memory(runtime, owner, room, content.text, options.metadata), entityId: runtime.agentId, content }
-      await runtime.createMessageMemory(response)
-      return [response]
-    }
     return runtime.roomHandlerQueue.withLease(room.id, async (lease) => {
       signal.throwIfAborted()
       const input = memory(runtime, owner, room, text, options.metadata)
+      const { key } = options
+      if (options.input?.channelType !== undefined) input.content.channelType = options.input.channelType
+      if (options.input?.metadata !== undefined) input.content.metadata = options.input.metadata as JsonObject
+      if (key !== undefined) {
+        input.id = key.inputId
+        input.content.chatIdempotency = { ...key.marker }
+      }
       const userMessageId = await runtime.createMessageMemory(input)
+      const storeReply = async (content: Content): Promise<Memory[]> => {
+        if (!content.text?.trim()) return []
+        const response = {
+          ...memory(runtime, owner, room, content.text, options.metadata),
+          ...(key === undefined ? {} : { id: key.replyId }),
+          entityId: runtime.agentId, content: { ...content, inReplyTo: userMessageId, ...(key === undefined ? {} : { turnBoot: key.boot }) },
+        }
+        await runtime.createMessageMemory(response)
+        return [response]
+      }
       const [current] = await runtime.adapter.getRoomsByIds([room.id])
       const metadata = stamp(current?.metadata?.deviceConversation)
       if (metadata._tag === "Some" && current !== undefined) {
@@ -93,11 +135,85 @@ module node {
     }, { signal })
   }
 
-  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string): LocalRoute[] {
+  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string, publish: (payload: unknown) => void): LocalRoute[] {
     if (!runtime.messageService) throw new Error("A conversation requires the message service")
     const rooms = () => runtime.getRooms(owner.world)
     const find = async (id: string | undefined): Promise<Room | undefined> =>
       (await rooms()).find((room) => conversation(room)?.id === id)
+    const updated = (room: Room) => publish({ type: "conversation-updated", conversationId: conversation(room)?.id, roomId: room.id })
+    const live = new Map<UUID, { readonly key: KeyedTurn | undefined; readonly result: Promise<ReturnType<typeof okay>> }>()
+    const boot = randomUUID()
+    const answer = (text: string, messageId: UUID, userMessageId: UUID, failureKind?: "aborted") =>
+      okay({ fullText: text, text, agentName, messageId, userMessageId, actionResults: [],
+        ...(failureKind === undefined ? {} : { failureKind }) } satisfies TurnReply)
+
+    async function send(room: Room, input: TurnBody, signal: AbortSignal) {
+      const id = normalizeChatIdempotencyKey(input.clientMessageId)
+      if (input.clientMessageId !== undefined && id === null) return failure(400, "invalid_message")
+      const { text, channelType, metadata } = input
+      if (metadata !== undefined && Buffer.byteLength(JSON.stringify(metadata)) > 64 * 1024) return failure(400, "invalid_message")
+      const scope = JSON.stringify([runtime.agentId, owner.user, room.id])
+      const inputId = id === null ? undefined : conversationClientUserMemoryId(scope, id)
+      const key: KeyedTurn | undefined = inputId === undefined || id === null ? undefined : {
+        inputId, replyId: stringToUuid(`conversation-reply:${inputId}`), boot,
+        marker: { version: 1, scope, clientMessageId: id, fingerprint: hashStableJson({ text, channelType: channelType ?? ChannelType.DM, metadata }) },
+      }
+      if (runtime.getModel(ModelType.TEXT_LARGE) === undefined) return failure(503, "INFERENCE_UNAVAILABLE")
+      const current = live.get(room.id)
+      if (current !== undefined && key !== undefined && current.key?.inputId === key.inputId) {
+        const admission = decide(true, { tag: "HeldRunning", fingerprint: 1 }, true, true,
+          current.key.marker.fingerprint === key.marker.fingerprint ? 1 : 2, 1)
+        return admission.tag === "Duplicate" ? current.result : failure(409, "CHAT_IDEMPOTENCY_CONFLICT")
+      }
+
+      async function sendOwned() {
+        if (key !== undefined) {
+          const saved = await runtime.getMemoryById(key.inputId)
+          if (saved !== null) {
+            const expected = readDurableConversationChatMarker(saved.content.chatIdempotency)
+            if (saved.roomId !== room.id || saved.entityId !== owner.user || expected?.scope !== scope || expected.clientMessageId !== id) {
+              return failure(409, "CHAT_IDEMPOTENCY_CONFLICT")
+            }
+            const reply = await runtime.getMemoryById(key.replyId)
+            const now = Date.now()
+            const answered = reply?.roomId === room.id && reply.entityId === runtime.agentId && reply.content.inReplyTo === key.inputId
+            const view: KeyView = answered
+              ? { tag: "HeldAnswered", fingerprint: 1, reply: 1,
+                live: reply.content.turnBoot === boot && reply.createdAt !== undefined && now - reply.createdAt <= receiptRetentionMs }
+              : { tag: "HeldUnanswered", fingerprint: 1 }
+            const admission = decide(true, view, true, current !== undefined, expected.fingerprint === key.marker.fingerprint ? 1 : 2, 1)
+            if (admission.tag === "Conflict") return failure(409, "CHAT_IDEMPOTENCY_CONFLICT")
+            if (admission.tag !== "Settled") return failure(429, "conversation_busy")
+            if (answered) {
+              return answer(reply.content.text ?? "", key.replyId, key.inputId,
+                reply.content.failureKind === "aborted" ? "aborted" : undefined)
+            }
+            const recovered = memory(runtime, owner, room, "")
+            await runtime.createMessageMemory({
+              ...recovered, id: key.replyId, entityId: runtime.agentId,
+              content: { ...recovered.content, inReplyTo: key.inputId, failureKind: "aborted", turnBoot: boot },
+            })
+            return answer("", key.replyId, key.inputId, "aborted")
+          }
+        }
+        const admission = decide(true, { tag: "NoKey" }, key !== undefined, current !== undefined, 1, 1)
+        if (admission.tag === "Busy") return failure(429, "conversation_busy")
+        const result = await processTurn(runtime, owner, room, text, signal, { input, ...(key === undefined ? {} : { key }) })
+        updated(room)
+        const [reply] = result.responseMessages
+        if (!result.didRespond || !result.responseContent?.text || reply?.id === undefined) return failure(502, "turn_failed")
+        return answer(result.responseContent.text, reply.id, result.userMessageId)
+      }
+
+      if (current !== undefined) return sendOwned()
+      const result = sendOwned()
+      live.set(room.id, { key, result })
+      try {
+        return await result
+      } finally {
+        live.delete(room.id)
+      }
+    }
 
     return [
       {
@@ -121,12 +237,17 @@ module node {
         handler: async ({ parameters, body, signal }) => {
           const room = await find(parameters.get("id"))
           if (!room) return failure(404, "unknown_conversation")
-          const payload = messageBody(body)
+          const payload = turnBody(body)
           if (payload._tag !== "Some") return failure(400, "invalid_message")
-          const result = await processTurn(runtime, owner, room, payload.value.text, signal)
-          return result.didRespond && result.responseContent?.text
-            ? okay({ fullText: result.responseContent.text } satisfies TurnReply)
-            : failure(502, "turn_failed")
+          return send(room, payload.value, signal)
+        },
+      },
+      {
+        method: "POST", path: "/api/conversations/{id}/messages/{messageId}/heard",
+        handler: async ({ parameters, body }) => {
+          const room = await find(parameters.get("id"))
+          if (!room) return failure(404, "unknown_conversation")
+          return recordHeard(runtime, room.id, parameters.get("messageId"), body)
         },
       },
       ...streamRoutes(async (id, body) => {
@@ -136,6 +257,7 @@ module node {
         if (payload._tag !== "Some") return { kind: "refused", status: 400, error: "invalid_message" }
         return { kind: "admitted", role: "streams", run: async (writer, signal) => {
           const result = await processTurn(runtime, owner, room, payload.value.text, signal, { onStreamChunk: (text) => writer.append(text) })
+          updated(room)
           const [reply] = result.responseMessages
           return result.didRespond && result.responseContent?.text && reply?.id
             ? {

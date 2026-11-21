@@ -116,9 +116,10 @@ pure val shortGapMs = 300
 pure val longGapMs = 1200
 pure val endOfTurnDeadlineMs = 600
 pure val endOfTurnMaxUnits = 4096
+pure def endOfTurnSendable(units: int): bool = units >= 1 and units <= endOfTurnMaxUnits
 pure def canShortGapElapsed(s: VoiceSession, epoch: int): bool = s.utterance == GapWaiting and epoch == s.epoch
 pure def shortGapElapsed(s: VoiceSession, epoch: int, units: int): VoiceSession =
-  { ...s, utterance: if (units >= 1 and units <= endOfTurnMaxUnits) AskingEndOfTurn else WaitingLongGap }
+  { ...s, utterance: if (endOfTurnSendable(units)) AskingEndOfTurn else WaitingLongGap }
 pure def canEndOfTurnAnswered(s: VoiceSession, epoch: int): bool = s.utterance == AskingEndOfTurn and epoch == s.epoch
 pure def endOfTurnAnswered(s: VoiceSession, epoch: int, answer: EndOfTurnReply): VoiceSession =
   if (answer == ScoredComplete) submitted(EndOfTurnSubmit, s) else { ...s, utterance: WaitingLongGap }
@@ -185,9 +186,11 @@ type HeardTurn = { words: int, onlyFiller: bool, overlapPercent: int, agentSpeak
 pure val echoOverlapPercent = 70
 pure val echoTailMs = 1500
 pure val echoReplyAgeMs = 3000
+pure def echoWindowOpen(heard: HeardTurn): bool =
+  heard.agentSpeaking or (not(heard.echoCancelled) and
+    (if (heard.startKnown) heard.startedAfterReplyEndMs <= echoTailMs else heard.replyAgeMs <= echoReplyAgeMs))
 pure def isEcho(heard: HeardTurn): bool =
-  heard.words >= 2 and heard.overlapPercent >= echoOverlapPercent and (heard.agentSpeaking or (not(heard.echoCancelled) and
-    (if (heard.startKnown) heard.startedAfterReplyEndMs <= echoTailMs else heard.replyAgeMs <= echoReplyAgeMs)))
+  heard.words >= 2 and heard.overlapPercent >= echoOverlapPercent and echoWindowOpen(heard)
 pure def turnAccepted(heard: HeardTurn): bool = heard.words > 0 and not(heard.onlyFiller) and not(isEcho(heard))
 pure def canFinalTranscript(s: VoiceSession): bool = s.utterance == AwaitingFinal
 pure def finalTranscript(s: VoiceSession, heard: HeardTurn): VoiceSession = {

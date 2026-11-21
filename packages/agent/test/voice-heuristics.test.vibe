@@ -1,4 +1,4 @@
-// spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"; spec/agent/voice/session.md, "The end-of-turn query scores 1 to 4,096 units and only a finished answer submits early"; spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or busy answer, and its outcomes stay distinct"
+// spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"; spec/agent/voice/session.md, "Only a complete end-of-turn score submits before the 1,200 ms long gap, which always submits"; spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or missing answer, and its outcomes stay distinct"
 import { assert, it } from "@effect/vitest"
 import { turnAccepted } from "../gen/agent__voice__session.effect.vibe"
 import {
@@ -102,7 +102,7 @@ it.effect("Send my words once I finish speaking: the query scores 1 to 4,096 uni
       ["ScoredComplete", "ScoredIncomplete", "ScorerUnavailable", "ReplyMalformed", "ReplyMalformed", "ScoringFailed", "ScoringFailed"])
     assert.deepStrictEqual([endOfTurnAnswer(4096, 200, complete), endOfTurnAnswer(4097, 200, complete),
       endOfTurnAnswer(5, 200, incomplete), endOfTurnAnswer(5, 502, null), endOfTurnAnswer(0, 200, complete)],
-      ["DecisionFinished", "DecisionUnavailable", "DecisionContinue", "DecisionError", "DecisionUnavailable"])
+      ["ScoredComplete", undefined, "ScoredIncomplete", "ScoringFailed", undefined])
   })
 })
 
@@ -116,10 +116,11 @@ it.effect("Report what of an interrupted reply I heard: the route, the body and 
   try Effect.try(() => {
     assert.strictEqual(heardPath("room/1", id), `/api/conversations/room%2F1/messages/${id}/heard`)
     assert.deepStrictEqual([heardBody(" The first \n sentence. "), heardBody("  ")],
-      [{ heardText: "The first sentence." }, { nothingHeard: true }])
-    assert.deepStrictEqual(statuses.map(([status, body]) => decodeHeardReply(status, id, body)), [
-      "WireRecorded", "WireUnchanged", "WireRejected", "WireRejected", "WireConflict", "WireMissing",
-      "WireTransient", "WireTransient", "WireTransient", "WireTransient", "WireRejected", "WireRejected",
+      [{ heardText: " The first \n sentence. " }, { nothingHeard: true }])
+    const outcomes = statuses.map(([status, body]) => decodeHeardReply(status, id, body))
+    assert.deepStrictEqual(outcomes.map((outcome) => outcome.tag === "ReportAnswered" ? outcome.verdict : outcome.tag), [
+      "HeardRecorded", "HeardUnchanged", "ReportRejected", "ReportRejected", "HeardConflict", "HeardNotAgentReply",
+      "ReportUnavailable", "ReportUnavailable", "ReportUnavailable", "ReportUnavailable", "ReportRejected", "ReportRejected",
     ])
   })
 })

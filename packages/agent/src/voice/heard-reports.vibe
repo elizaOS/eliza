@@ -1,98 +1,90 @@
-// spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or busy answer, and its outcomes stay distinct"
+// spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or missing answer, and its outcomes stay distinct"
 module node {
   import {
-    dispatchHeard, dueToPost, heardRetryMs, initial, settleHeard,
-    type HeardOutcome, type HeardReceipt, type HeardWire,
+    heardRetryMs, type Event, type HeardReceipt, type ReportOutcome, type VoiceSession,
   } from "../../gen/agent__voice__session.effect.vibe"
-  import { decodeHeardReply, heardBody, type HeardBody } from "./heuristics.vibe"
-  import type { ClockPort, HeardPort } from "./ports.vibe"
+  import { decodeHeardResult, heardBody } from "./heuristics.vibe"
+  import type { ClockPort, HeardBody, HeardPort } from "./ports.vibe"
 
   export interface HeardReport {
+    readonly reply: number
     readonly conversationId: string
     readonly messageId: string
     readonly heardText: string
     readonly nothingHeard: boolean
   }
 
-  export type SettledHeard = Exclude<HeardOutcome, "HeardPending">
+  export type SettledHeard = ReportOutcome
 
   export interface HeardReportsOptions {
     readonly heard: HeardPort
     readonly clock: ClockPort
-    posted?(report: HeardReport, receipt: HeardReceipt, waitedMs: number): void
-    answered?(report: HeardReport, receipt: HeardReceipt, wire: HeardWire): void
+    readonly machine: { read(): VoiceSession; send(event: Event): boolean }
     onOutcome?(report: HeardReport, outcome: SettledHeard): void
   }
 
   export interface HeardReports {
     report(report: HeardReport): Promise<SettledHeard>
-    receipt(conversationId: string, messageId: string): HeardReceipt | undefined
+    receipt(reply: number): HeardReceipt | undefined
   }
-
-  interface Entry {
-    readonly report: HeardReport
-    readonly body: HeardBody
-    receipt: HeardReceipt
-    settle(outcome: SettledHeard): void
-  }
-
-  const keyOf = (conversationId: string, messageId: string) => `${conversationId}\n${messageId}`
 
   export function createHeardReports(options: HeardReportsOptions): HeardReports {
-    const { clock } = options
-    const entries = new Map<string, { entry: Entry; settled: Promise<SettledHeard> }>()
+    const { clock, machine } = options
+    const pending = new Map<number, Promise<SettledHeard>>()
+    const receipt = (reply: number) => machine.read().receipts.find((item) => item.reply === reply)
 
-    function post(entry: Entry, waitedMs: number): void {
-      const before = entry.receipt
-      const [posted = before] = dispatchHeard({ ...initial, reply: before.reply, receipts: [before] }, before.reply, waitedMs).receipts
-      entry.receipt = posted
-      options.posted?.(entry.report, posted, waitedMs)
-      const { conversationId, messageId } = entry.report
-      options.heard(conversationId, messageId, entry.body).then(
-        (answer) => decodeHeardReply(answer.status, messageId, answer.body),
-        () => decodeHeardReply(0, messageId, undefined),
-      ).then((wire) => answered(entry, wire))
-    }
-
-    function retry(entry: Entry, since: number): void {
-      const waitedMs = clock.now() - since
-      if (dueToPost(entry.receipt, entry.receipt.reply, waitedMs)) post(entry, waitedMs)
-      else clock.after(heardRetryMs - waitedMs, () => retry(entry, since))
-    }
-
-    function answered(entry: Entry, wire: HeardWire): void {
-      const since = clock.now()
-      entry.receipt = settleHeard(entry.receipt, wire)
-      options.answered?.(entry.report, entry.receipt, wire)
-      const { outcome } = entry.receipt
-      if (entry.receipt.phase === "HeardRetry" || outcome === "HeardPending") {
-        clock.after(heardRetryMs, () => retry(entry, since))
-        return
+    function report(asked: HeardReport): Promise<SettledHeard> {
+      const { conversationId, messageId, reply } = asked
+      const repeated = pending.get(reply)
+      if (repeated !== undefined) return repeated
+      const reserved = receipt(reply)
+      if (reserved?.phase.tag === "ReportSettled") return Promise.resolve(reserved.phase.outcome)
+      const payload: HeardBody = asked.nothingHeard ? { nothingHeard: true } : heardBody(asked.heardText)
+      if (reserved?.phase.tag !== "ReportDue" || reserved.attempts !== 0 ||
+          reserved.nothingHeard !== ("nothingHeard" in payload)) {
+        return Promise.reject(new Error("The report does not match a reserved reply"))
       }
-      options.onOutcome?.(entry.report, outcome)
-      entry.settle(outcome)
+      const complete = Promise.withResolvers<SettledHeard>()
+      pending.set(reply, complete.promise)
+      void complete.promise.then(() => pending.delete(reply), () => pending.delete(reply))
+
+      function wait(since: number): void {
+        const waitedMs = clock.now() - since
+        if (waitedMs >= heardRetryMs) post(waitedMs)
+        else clock.after(heardRetryMs - waitedMs, () => wait(since))
+      }
+
+      function post(waitedMs: number): void {
+        if (!machine.send({ type: "dispatchHeard", reply, waitedMs })) {
+          complete.reject(new Error("The reserved report could not be dispatched"))
+          return
+        }
+        Promise.resolve().then(() => options.heard(conversationId, messageId, payload)).then(
+          (answer) => ({ status: answer.status, body: decodeHeardResult(messageId, answer.body) }),
+          () => ({ status: 0, body: "BodyOther" as const }),
+        ).then((answer) => {
+          if (!machine.send({ type: "heardAnswered", reply, ...answer })) {
+            complete.reject(new Error("The reserved report could not accept its answer"))
+            return
+          }
+          const phase = receipt(reply)?.phase
+          if (phase?.tag === "ReportDue") {
+            const since = clock.now()
+            clock.after(heardRetryMs, () => wait(since))
+          } else if (phase?.tag === "ReportSettled") {
+            complete.resolve(phase.outcome)
+            options.onOutcome?.(asked, phase.outcome)
+          } else {
+            complete.reject(new Error("The heard report did not settle or schedule its retry"))
+          }
+        }).catch(complete.reject)
+      }
+
+      void Promise.resolve().then(() => post(0)).catch(complete.reject)
+      return complete.promise
     }
 
-    return {
-      report(report) {
-        const key = keyOf(report.conversationId, report.messageId)
-        const known = entries.get(key)
-        if (known !== undefined) return known.settled
-        const body: HeardBody = report.nothingHeard ? { nothingHeard: true } : heardBody(report.heardText)
-        let settle: (outcome: SettledHeard) => void = () => undefined
-        const settled = new Promise<SettledHeard>((resolve) => { settle = resolve })
-        const receipt: HeardReceipt = {
-          reply: entries.size + 1, phase: "HeardReady", attempts: 0, outcome: "HeardPending", nothingHeard: "nothingHeard" in body,
-        }
-        const entry: Entry = { report, body, receipt, settle }
-        entries.set(key, { entry, settled })
-        post(entry, 0)
-        return settled
-      },
-      receipt(conversationId, messageId) {
-        return entries.get(keyOf(conversationId, messageId))?.entry.receipt
-      },
-    }
+    return { report, receipt }
   }
 }
 export { createHeardReports, type HeardReport, type HeardReports, type HeardReportsOptions, type SettledHeard } from node

@@ -1,9 +1,11 @@
 // spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"
+// spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"
 import {
   type Action, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService,
   type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole,
   executePlannedToolCall, ModelType, RunTerminalOwner, withActionGatePolicy, withRoomDeliverySettlement,
 } from "@elizaos/core"
+import { textForTurn } from "./heard.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 
@@ -64,7 +66,7 @@ async function respond(
         signal.throwIfAborted()
         const recent = await runtime.getMemories({ tableName: "messages", roomId: message.roomId, count: 24, orderBy: "createdAt", orderDirection: "desc" })
         const history: ChatMessage[] = recent.slice().reverse().flatMap((previous): ChatMessage[] => {
-          const content = previous.content.text
+          const content = previous.entityId === runtime.agentId ? textForTurn(previous) : previous.content.text
           if (!content || previous.id === message.id) return []
           return [{ role: previous.entityId === runtime.agentId ? "assistant" : "user", content }]
         })
