@@ -1,13 +1,13 @@
-// spec/cloud/services/google/connection.md, "Each capability asks for its scopes from one table, and a grant's capabilities come from its granted scopes alone"; spec/cloud/services/google/connection.md, "Access is refreshed within five minutes of expiry, one refresh at a time, and Google's invalid_grant expires the connection"; spec/cloud/services/google/connection.md, "A request names a grant or uses the only active connection, never another organization's, and only the owner side"; spec/cloud/services/google/connection.md, "Use needs an active connection whose access is live and which holds the capability"; spec/cloud/services/google/connection.md, "Story: See my Google connection as the cloud holds it"
+// spec/cloud/services/google/connection.md, "Each capability asks for its scopes from one table, and a grant's capabilities come from its granted scopes alone"; spec/cloud/services/google/connection.md, "Access is refreshed within five minutes of expiry, one refresh at a time, and Google's invalid_grant expires the connection"; spec/cloud/services/google/connection.md, "A request names a grant or uses the only active connection, never another organization's, and only the owner side"; spec/cloud/services/google/connection.md, "Use needs an active connection whose access is live and which holds the capability"; spec/cloud/services/google/connection.md, "Story: See my Google connection as the cloud holds it"; spec/cloud/services/google/connection.md, "Story: Disconnect it"
 import {
-  accessOf, allScopes, apply, canBeginRefresh, decodeState, elapse, grantsCapability, holdsRefreshToken, initial, reasonOf, receiveGrant, scopesFor, statusReason,
+  accessOf, allScopes, apply, canBeginRefresh, canDisconnect, decodeState, elapse, grantsCapability, holdsRefreshToken, initial, reasonOf, receiveGrant, scopesFor, statusReason,
   selectGrant as choose, selectionRefusal, useAllowed, useRefusal,
   type Connection, type Event, type GoogleCapability as CapabilityKind, type GoogleScope, type NotAState, type Rejected as ConnectionRejected, type RefreshOutcome, type Side, type StatusReason
 } from "../../../gen/cloud__services__google__connection.effect.vibe"
 import { millisPerSecond } from "../../../gen/cloud__shared__types.effect.vibe"
 import { refused, Refused } from "../../http/refusal.vibe"
 import { capabilityEnabled, Deployment } from "../../profile/profile.vibe"
-import { openTokens, refreshAccess, sealTokens, type GoogleFailure, type GoogleTokens } from "../../providers/google.vibe"
+import { openTokens, refreshAccess, revokeToken, sealTokens, type GoogleFailure, type GoogleTokens } from "../../providers/google.vibe"
 import { Store, toInt, toText, type Row, type Tx } from "../../store/connection.vibe"
 import { loadRow, machineRows, stepRow, type Columns } from "../../store/rows.vibe"
 
@@ -153,7 +153,7 @@ effect function legacyConnection(row: Row) {
   let lease = 0
   if (subject !== "") {
     const scopes = knownScopes(legacy?.scopes ?? [])
-    if (sealed === "") restored = { ...initial, subject, scopes, status: "Revoked" }
+    if (sealed === "") restored = { ...initial, subject, status: "Revoked" }
     else {
       const expiry = toInt(row.expires_at)
       const opened = try verifiedTokens(row)
@@ -182,7 +182,8 @@ effect function restoreLegacyConnection(tx: Tx, owner: Owner, connectionId: stri
   if (row.organization_id !== owner.organizationId || row.user_id !== owner.userId) throw refused("NotFound")
   const { state, lease } = try legacyConnection(row)
   try tx.query(
-    "UPDATE google_connections SET state = $2::jsonb, revision = revision + 1, status = $3, refreshing_until = $4, tokens = NULLIF(tokens, '') WHERE key = $1",
+    `UPDATE google_connections SET state = $2::jsonb, revision = revision + 1, status = $3, refreshing_until = $4, tokens = NULLIF(tokens, ''),
+       granted_scopes = CASE WHEN $3 = 'Revoked' THEN '[]'::jsonb ELSE granted_scopes END WHERE key = $1`,
     [connectionId, JSON.stringify(state), state.status, lease]
   )
 }
@@ -299,16 +300,20 @@ effect function googleConfigured(side: string | null) {
   return settings.google !== undefined && capabilityEnabled(settings, "managedGoogle")
 }
 
-effect function ownedGrants(owner: Owner, grantId?: string) {
-  const store = try Store
-  return try store.transaction((tx) => tx.query(
+effect function ownedGrantRows(tx: Tx, owner: Owner, grantId?: string) {
+  return try tx.query(
     `SELECT key, organization_id, status, state, subject, email, granted_scopes, tokens, expires_at, linked_at, last_used_at,
             jsonb_typeof(state->'tokens') = 'string' AS legacy, refreshing_until
      FROM google_connections
      WHERE organization_id = $1 AND user_id = $2 AND status <> 'Pending' AND ($3::text IS NULL OR key = $3)
      ORDER BY linked_at DESC NULLS LAST, key`,
     [owner.organizationId, owner.userId, grantId ?? null]
-  ))
+  )
+}
+
+effect function ownedGrants(owner: Owner, grantId?: string) {
+  const store = try Store
+  return try store.transaction((tx) => ownedGrantRows(tx, owner, grantId))
 }
 
 export effect function readGrantStatus(owner: Owner, grantId: string | undefined, side: string | null, now: number) {
@@ -323,6 +328,35 @@ export effect function readGrantAccounts(owner: Owner, side: string | null, now:
   if (!(try googleConfigured(side))) return []
   const rows = try ownedGrants(owner)
   return try Effect.forEach(rows, (row) => grantStatus(row, now))
+}
+
+export effect function disconnectGrant(owner: Owner, grantId: string | undefined, side: string | null) {
+  const store = try Store
+  try Effect.uninterruptible(store.transaction(effect (tx: Tx) => {
+    const rows = try ownedGrantRows(tx, owner, grantId)
+    const selected = try chosenGrant(rows, owner.organizationId, grantId, side)
+    if (selected === undefined) return
+    const locked = (try tx.query(
+      "SELECT status, tokens FROM google_connections WHERE key = $1 AND organization_id = $2 AND user_id = $3 FOR UPDATE",
+      [selected, owner.organizationId, owner.userId]
+    ))[0]
+    if (locked === undefined) throw refused("NotFound")
+    if (locked.status === "Revoked") return
+    try restoreLegacyConnection(tx, owner, selected)
+    const { state } = try loadRow(tx, connectionRows, selected)
+    if (!canDisconnect(state)) return
+    const opened = openTokens(toText(locked.tokens) ?? "") catch () => undefined
+    const token = opened?.refreshToken || opened?.accessToken
+    if (token) {
+      revokeToken(token) catch effect (failure) => {
+        try annotateLogs(logWarning("Google could not revoke the grant"), { connectionId: selected, failure: failure._tag })
+      }
+    } else {
+      try annotateLogs(logWarning("The Google revocation token was unavailable"), { connectionId: selected })
+    }
+    const at = try Clock.currentTimeMillis
+    try stepRow(tx, connectionRows, selected, { at, event: { type: "disconnect" } }, connectionColumns({ granted_scopes: "[]" }))
+  }))
 }
 
 type Claimed =

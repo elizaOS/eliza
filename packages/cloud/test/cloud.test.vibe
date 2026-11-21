@@ -1516,6 +1516,69 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
     }
   }), 120_000)
 
+  it.live("Disconnect only my chosen Google grant and discard a refresh that arrives afterwards (spec/cloud/services/google/connection.md, \"Story: Disconnect it\")", () => scoped(effect {
+    const google = try sync(() => googleFakeState())
+    const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
+    const refreshToken = try sync(() => seedGrant(google, { subject: "subject-racing", email: "racing@example.com", scopes }))
+    const refreshAnswered = try Deferred.make<void>()
+    const releaseRefresh = try acquireRelease(Deferred.make<void>(), (gate) => Deferred.succeed(gate, undefined))
+    const provider = try Effect.try(() => mountGoogleToken(google))
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", async (request) => {
+      const answer = await provider(request)
+      if (request.path === "/token" && new URLSearchParams(request.body).get("refresh_token") === refreshToken) {
+        await Effect.runPromise(Deferred.succeed(refreshAnswered, undefined))
+        await Effect.runPromise(Deferred.await(releaseRefresh))
+      }
+      return answer
+    }) })
+    const caller = try signedCaller(cloud, "disconnect-owner")
+    const other = try signedCaller(cloud, "disconnect-other")
+    const now = try Clock.currentTimeMillis
+    const session = try cloud.store.transaction((tx) => issueSession(tx, { ...caller, assurance: "SingleFactor", accountCreated: false, now }))
+    const client = try sync(() => createCloudClient({ baseUrl: cloud.url, credential: () => session.accessToken }))
+    try cloud.inside(linkedGrant(cloud, caller, "racing", refreshToken, scopes, now - 1_000))
+    try cloud.inside(linkedGrant(cloud, { organizationId: caller.organizationId, userId: other.userId }, "another-owner", "", scopes, now + 600_000))
+    const accessToken = "legacy-access-only"
+    const expiresAt = now + 600_000
+    const legacy = try cloud.inside(sealTokens({ accessToken, refreshToken: "", expiresAt }))
+    const state = { status: "Active", scopes, tokens: legacy, expiresAt, refreshingUntil: 0 }
+    try sql(cloud, `INSERT INTO google_connections (key, state, revision, organization_id, user_id, subject, email, status, tokens, granted_scopes, expires_at, linked_at) VALUES ('legacy', $1::jsonb, 1, $2, $3, 'legacy-subject', 'legacy@example.com', 'Active', $4, $5::jsonb, $6, $7)`, [JSON.stringify(state), caller.organizationId, caller.userId, legacy, JSON.stringify(scopes), expiresAt, now])
+
+    const root = "/api/v1/eliza/google"
+    const disconnect = (json?: unknown) => cloud.call(`${root}/disconnect`, { method: "POST", headers: caller.headers, json })
+    const revokes = () => cloud.fakes.seen.filter(({ path }) => path === "/google/revoke").map(({ body }) => new URLSearchParams(body).get("token"))
+    const unauthenticated = try cloud.call(`${root}/disconnect`, { method: "POST" })
+    const [ambiguous, foreign, wrongSide, conflict] = try all([
+      disconnect(), disconnect({ connectionId: "another-owner" }), disconnect({ side: "agent", connectionId: "racing" }),
+      disconnect({ connectionId: "legacy", grantId: "racing" })
+    ], { concurrency: "unbounded" })
+    const refusedCalls = try sync(revokes)
+    const reading = try forkChild(cloud.call(`${root}/gmail/triage?grantId=racing`, { headers: caller.headers }))
+    try Deferred.await(refreshAnswered)
+    try promise(() => client.googleDisconnect({ grantId: "racing" }))
+    try Deferred.succeed(releaseRefresh, undefined)
+    const dropped = try Fiber.join(reading)
+    const repeated = try disconnect({ side: "owner", connectionId: "racing" })
+    try sync(() => { google.switches.failNext = { status: 503, body: {} } })
+    const failedRevoke = try disconnect({ connectionId: null })
+    const clean = try sql(cloud, "SELECT key, status, tokens IS NULL AS erased, expires_at, refreshing_until, granted_scopes, revision FROM google_connections ORDER BY key", [])
+    const ended = try promise(() => client.googleStatus({ grantId: "legacy" }))
+    try check(() => assert.deepStrictEqual({
+      denied: [unauthenticated.status, errorOf(ambiguous), errorOf(foreign), errorOf(wrongSide), errorOf(conflict)],
+      ambiguousReason: (ambiguous.body as { readonly reason: string }).reason, refusedCalls,
+      dropped: errorOf(dropped), repeated: [repeated.status, repeated.body], failedRevoke: [failedRevoke.status, failedRevoke.body],
+      revokes: revokes(), providerRevoked: [...google.revoked], refreshes: google.tokenCalls,
+      clean: clean.map((row) => [row.key, row.status, row.erased, Number(row.expires_at), Number(row.refreshing_until), row.granted_scopes, Number(row.revision)]),
+      ended: [ended.connected, ended.reason, ended.expiresAt, ended.hasRefreshToken, ended.grantedScopes, ended.grantedCapabilities]
+    }, {
+      denied: [401, [400, "invalid_request"], [404, "not_found"], [400, "invalid_request"], [400, "invalid_request"]],
+      ambiguousReason: "grant_required", refusedCalls: [], dropped: [409, "google_reauth_required"],
+      repeated: [200, { ok: true }], failedRevoke: [200, { ok: true }], revokes: [refreshToken, accessToken], providerRevoked: [refreshToken], refreshes: 1,
+      clean: [["another-owner", "Active", false, expiresAt, 0, scopes, 1], ["legacy", "Revoked", true, 0, 0, [], 3], ["racing", "Revoked", true, 0, 0, [], 3]],
+      ended: [false, "disconnected", null, false, [], []]
+    }))
+  }), 120_000)
+
   it.live("Refresh a held grant once for concurrent callers and mark it Expired when Google refuses it (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => scoped(effect {
     const google = try Effect.try(() => googleFakeState())
     google.tokenDelayMs = 300
