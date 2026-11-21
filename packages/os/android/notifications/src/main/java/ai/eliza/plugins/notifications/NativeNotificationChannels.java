@@ -1,4 +1,4 @@
-package ai.elizaos.app;
+package ai.eliza.plugins.notifications;
 
 import android.app.NotificationChannel;
 import android.app.NotificationManager;

@@ -76,31 +76,24 @@ module android {
 
   export interface Owner {
     cancelled: string[]
-    watching(): number
-    change(next: string): void
-    select(): void
+    selected: string
+    current: string
+    listeners: Set<() => void>
     binding: NativeSpeechRequestBinding
   }
 
   /** @throws {never} */
   export function owner(): Owner {
-    let selected = "a"
-    let current = "a"
     const listeners = new Set<() => void>()
     const cancelled: string[] = []
-    return {
+    const held: Owner = {
       cancelled,
-      watching: () => listeners.size,
-      change(next) {
-        current = next
-        for (const listener of [...listeners]) listener()
-      },
-      select() {
-        selected = current
-      },
+      selected: "a",
+      current: "a",
+      listeners,
       binding: {
         check() {
-          if (selected !== current) throw new DOMException("Voice selection changed", "AbortError")
+          if (held.selected !== held.current) throw new DOMException("Voice selection changed", "AbortError")
         },
         watch(onChange) {
           listeners.add(onChange)
@@ -113,6 +106,41 @@ module android {
         newRequestId: () => "req-1" as NativeSpeechRequestId,
       },
     }
+    return held
+  }
+
+  /** @throws {never} */
+  export function changeOwner(held: Owner, next: string): void {
+    held.current = next
+    for (const listener of [...held.listeners]) listener()
+  }
+
+  /** @throws {never} */
+  export function selectOwner(held: Owner): void {
+    held.selected = held.current
+  }
+
+  /** @throws {never} */
+  export function credentialChanged(): Error {
+    return new DOMException("Credential changed", "AbortError")
+  }
+
+  /** @throws {never} */
+  export function keyedTo(current: () => boolean, changed: Error): () => void {
+    return () => {
+      if (!current()) throw changed
+    }
+  }
+
+  export interface Pending<T> {
+    readonly settled: Promise<T>
+  }
+
+  /** @throws {never} */
+  export function begin<T>(run: () => Promise<T>): Pending<T> {
+    const settled = run()
+    void settled.catch(() => undefined)
+    return { settled }
   }
 
   /** @throws {never} */
@@ -120,7 +148,7 @@ module android {
     return new Promise<T>(() => {})
   }
 }
-import { cloudSpeech, device, emit, heard, never, owner } from android
+import { begin, changeOwner, cloudSpeech, credentialChanged, device, emit, heard, keyedTo, never, owner, selectOwner } from android
 
 const KEY = { environment: "production" as EnvironmentName, credentialId: "key-1" as CredentialId }
 
@@ -150,11 +178,11 @@ it.live("Talk to the agent through the cloud speech relay (spec/os/voice/cloudSp
   try promise(() => capture.close())
   try promise(() => speech.setOutputMuted(true))
   let started = 0
-  const reply = speech.speak("  Hi there  ", new AbortController().signal, () => { started += 1 })
+  const reply = begin(() => speech.speak("  Hi there  ", new AbortController().signal, () => { started += 1 }))
   try sleep("5 millis")
   emit(phone, { type: "audio-start", utteranceId: phone.utterances[0] })
   emit(phone, { type: "audio-end", utteranceId: phone.utterances[0] })
-  try promise(() => reply)
+  try promise(() => reply.settled)
   assert.strictEqual(started, 1)
   assert.deepStrictEqual(person.ends, [])
   try promise(() => speech.stop())
@@ -167,37 +195,37 @@ it.live("A reply completes when its audio played and otherwise settles cancelled
   try promise(() => speech.listen(heard(new AbortController().signal).handlers))
 
   let started = 0
-  const played = speech.speak("One", new AbortController().signal, () => { started += 1 })
+  const played = begin(() => speech.speak("One", new AbortController().signal, () => { started += 1 }))
   try sleep("5 millis")
   emit(phone, { type: "audio-start", utteranceId: phone.utterances[0] })
   emit(phone, { type: "audio-start", utteranceId: phone.utterances[0] })
   emit(phone, { type: "audio-end", utteranceId: "someone-else" })
   emit(phone, { type: "audio-end", utteranceId: phone.utterances[0] })
-  try promise(() => played)
+  try promise(() => played.settled)
   assert.strictEqual(started, 1)
 
-  const silent = speech.speak("Two", new AbortController().signal, () => {})
+  const silent = begin(() => speech.speak("Two", new AbortController().signal, () => {}))
   try sleep("5 millis")
   emit(phone, { type: "audio-end", utteranceId: phone.utterances[1] })
-  const empty = try failure(() => silent)
+  const empty = try failure(() => silent.settled)
   assert.instanceOf(empty, CloudSpeechRefused)
   assert.strictEqual((empty as CloudSpeechRefused).reason, "ended-without-audio")
 
   const controller = new AbortController()
-  const cancelled = speech.speak("Three", controller.signal, () => {})
+  const cancelled = begin(() => speech.speak("Three", controller.signal, () => {}))
   try sleep("5 millis")
   controller.abort()
   controller.abort()
-  const aborted = try failure(() => cancelled)
+  const aborted = try failure(() => cancelled.settled)
   assert.strictEqual((aborted as Error).name, "AbortError")
   assert.strictEqual(phone.calls.filter((call) => call === "cancel").length, 1)
 
   phone.cancelFails = true
   const stuck = new AbortController()
-  const unconfirmed = speech.speak("Four", stuck.signal, () => {})
+  const unconfirmed = begin(() => speech.speak("Four", stuck.signal, () => {}))
   try sleep("5 millis")
   stuck.abort()
-  const cleanup = try failure(() => unconfirmed)
+  const cleanup = try failure(() => unconfirmed.settled)
   assert.instanceOf(cleanup, CloudSpeechCleanupUnconfirmed)
   assert.strictEqual((cleanup as CloudSpeechCleanupUnconfirmed).code, "speech-cleanup-unconfirmed")
 
@@ -217,10 +245,10 @@ it.live("A turn heard while muted never becomes the next capture's turn (spec/os
   emit(phone, { type: "transcript", text: "old" })
 
   const second = heard(signal)
-  const reopening = speech.listen(second.handlers)
+  const reopening = begin(() => speech.listen(second.handlers))
   try sleep("5 millis")
   emit(phone, { type: "speech-end", text: "old turn" })
-  try promise(() => reopening)
+  try promise(() => reopening.settled)
   assert.deepStrictEqual(first.events, [])
   assert.deepStrictEqual(second.events, [])
 
@@ -237,7 +265,7 @@ it.live("A failure ends the session once and an owner's abort stops it (spec/os/
   const speech = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(phone))
   const person = heard(new AbortController().signal)
   try promise(() => speech.listen(person.handlers))
-  const reply = speech.speak("Hello", new AbortController().signal, () => {})
+  const reply = begin(() => speech.speak("Hello", new AbortController().signal, () => {}))
   try sleep("5 millis")
   emit(phone, { type: "error", code: "relay-closed", data: { status: 1011 } })
   emit(phone, { type: "error", code: "again" })
@@ -247,7 +275,7 @@ it.live("A failure ends the session once and an owner's abort stops it (spec/os/
   const ended = person.ends[0] as CloudSpeechUnavailable
   assert.instanceOf(ended, CloudSpeechUnavailable)
   assert.deepStrictEqual({ code: ended.code, data: ended.data }, { code: "relay-closed", data: { status: 1011 } })
-  const settled = try failure(() => reply)
+  const settled = try failure(() => reply.settled)
   assert.instanceOf(settled, CloudSpeechUnavailable)
   assert.deepStrictEqual(person.events, [])
   assert.deepStrictEqual(phone.calls.slice(-2), ["stop", "removed"])
@@ -266,8 +294,8 @@ it.live("A failure ends the session once and an owner's abort stops it (spec/os/
 it.live("A key change ends the open session (spec/os/voice/cloudSpeech.md, \"An open session and every waiting batch request run under the current key, and a key change ends them\")", () => effect {
   const phone = device()
   let current = true
-  const changed = new DOMException("Credential changed", "AbortError")
-  const speech = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => { if (!current) throw changed } }, cloudSpeech(phone))
+  const changed = credentialChanged()
+  const speech = createCloudStreamingSpeech({ ...KEY, assertCurrent: keyedTo(() => current, changed) }, cloudSpeech(phone))
   const person = heard(new AbortController().signal)
   try promise(() => speech.listen(person.handlers))
   current = false
@@ -278,7 +306,7 @@ it.live("A key change ends the open session (spec/os/voice/cloudSpeech.md, \"An 
   assert.deepStrictEqual(phone.calls.slice(-2), ["stop", "removed"])
 
   const stale = device()
-  const refusing = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => { throw changed } }, cloudSpeech(stale))
+  const refusing = createCloudStreamingSpeech({ ...KEY, assertCurrent: keyedTo(() => false, changed) }, cloudSpeech(stale))
   const refused = try failure(() => refusing.listen(heard(new AbortController().signal).handlers))
   assert.strictEqual(refused, changed)
   assert.isFalse(stale.calls.includes("start production key-1"))
@@ -289,46 +317,46 @@ it.live("A native speech request returns only under its binding (spec/os/voice/c
   const run = createNativeSpeechRequests(unchanged.binding)
   const result = try promise(() => run(new AbortController().signal, async (id) => id))
   assert.strictEqual(result, "req-1")
-  assert.strictEqual(unchanged.watching(), 0)
+  assert.strictEqual(unchanged.listeners.size, 0)
   assert.deepStrictEqual(unchanged.cancelled, [])
 
   const switching = owner()
   let ownedSignal: AbortSignal | undefined
-  const pending = createNativeSpeechRequests(switching.binding)(new AbortController().signal, async (_id, interrupted, owned) => {
+  const pending = begin(() => createNativeSpeechRequests(switching.binding)(new AbortController().signal, async (_id, interrupted, owned) => {
     ownedSignal = owned
     return Promise.race([never<string>(), interrupted])
-  })
+  }))
   try sleep("1 millis")
-  switching.change("b")
-  const switched = try failure(() => pending)
+  changeOwner(switching, "b")
+  const switched = try failure(() => pending.settled)
   assert.strictEqual((switched as Error).name, "AbortError")
   assert.deepStrictEqual(switching.cancelled, ["req-1"])
   assert.isTrue(ownedSignal?.aborted)
-  assert.strictEqual(switching.watching(), 0)
+  assert.strictEqual(switching.listeners.size, 0)
 
   const caller = owner()
   const controller = new AbortController()
-  const playing = createNativeSpeechRequests({ ...caller.binding, cancelledMessage: "Playback cancelled" })(controller.signal, async (_id, interrupted) => Promise.race([never<never>(), interrupted]))
+  const playing = begin(() => createNativeSpeechRequests({ ...caller.binding, cancelledMessage: "Playback cancelled" })(controller.signal, async (_id, interrupted) => Promise.race([never<never>(), interrupted])))
   controller.abort()
   controller.abort()
-  const stopped = try failure(() => playing)
+  const stopped = try failure(() => playing.settled)
   assert.strictEqual((stopped as Error).message, "Playback cancelled")
   assert.deepStrictEqual(caller.cancelled, ["req-1"])
 
   const late = owner()
   const lateRun = createNativeSpeechRequests({ ...late.binding, watch: () => () => {} })
   const lateFailure = try failure(() => lateRun(new AbortController().signal, async () => {
-    late.change("b")
+    changeOwner(late, "b")
     return "late"
   }))
   assert.strictEqual((lateFailure as Error).name, "AbortError")
 
   const stale = owner()
   const staleRun = createNativeSpeechRequests(stale.binding)
-  stale.change("b")
+  changeOwner(stale, "b")
   const staleFailure = try failure(() => staleRun(new AbortController().signal, async () => "never"))
   assert.strictEqual((staleFailure as Error).name, "AbortError")
-  stale.select()
+  selectOwner(stale)
   const aborted = new AbortController()
   aborted.abort()
   const abortedFailure = try failure(() => staleRun(aborted.signal, async () => "never"))

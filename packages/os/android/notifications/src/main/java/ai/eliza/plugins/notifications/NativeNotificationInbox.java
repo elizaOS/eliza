@@ -1,4 +1,4 @@
-package ai.elizaos.app;
+package ai.eliza.plugins.notifications;
 
 import java.io.IOException;
 import java.nio.channels.FileChannel;
@@ -23,7 +23,7 @@ final class NativeNotificationInbox {
     interface Projector { boolean post(JSONObject notification) throws Exception; }
     interface DirectorySync { void sync(Path directory) throws IOException; }
     interface AuthorityCheck { void current() throws Exception; }
-    /** Installed no-backup directory name; {@link ElizaDataResetStores} lists it. */
+    /** Installed no-backup directory name; a host data reset removes it with the other no-backup stores. */
     static final String DIRECTORY_NAME = "native-notification-inbox";
     private static final int MAX_SEEN = 10000, MAX_BUFFERED = 128, MAX_BYTES = 4 * 1024 * 1024;
     private static final ConcurrentHashMap<Path, Object> LOCKS = new ConcurrentHashMap<>();

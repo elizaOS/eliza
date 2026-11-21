@@ -186,47 +186,23 @@ export function revalidateWorkflowApprovalNotice<Run, Review>(notice: SuspendedA
   return settled(revalidateApprovalNotice(notice, reads, valid, signal, now))
 }
 
-const Status = Schema.Struct({ status: Schema.String })
-const Route = Schema.Struct({ scope: Schema.String, origin: Schema.String, ownerId: Schema.String, agentId: Schema.String, workflowId: Schema.String, runId: Schema.String, versionId: Schema.String })
-const Suspended = Schema.Struct({ id: Schema.String, bindingHash: Schema.String, expiresAt: Schema.Number, route: Route })
-const OwnerFence = Schema.Struct({ withdrawn: Schema.Number, suspended: Schema.mutable(Schema.Array(Suspended)) })
+schema Status { status: string }
+schema Route { scope: string; origin: string; ownerId: string; agentId: string; workflowId: string; runId: string; versionId: string }
+schema Suspended { id: string; bindingHash: string; expiresAt: number; route: Route }
+schema OwnerFence { withdrawn: number; suspended: Suspended[] }
 const Tap = Schema.Record(Schema.String, Schema.Unknown)
-const Channel = Schema.Struct({ id: Schema.String, name: Schema.String, importance: Schema.Number, blocked: Schema.Boolean, groupBlocked: Schema.Boolean })
-const Delivery = Schema.Struct({
-  appEnabled: Schema.Boolean,
-  permissionGranted: Schema.Boolean,
-  interruption: Schema.Literals(["all", "priority", "alarms", "none", "unknown"]),
-  channels: Schema.mutable(Schema.Array(Channel)),
-  scope: Schema.String,
-})
-const MirrorApp = Schema.Struct({ packageName: Schema.String, label: Schema.String, preview: Schema.Boolean, available: Schema.Boolean })
-const Mirror = Schema.Struct({
-  revision: Schema.String,
-  enabled: Schema.Boolean,
-  accessGranted: Schema.Boolean,
-  connected: Schema.Boolean,
-  paused: Schema.Boolean,
-  history: Schema.Boolean,
-  historyUnavailable: Schema.Boolean,
-  apps: Schema.mutable(Schema.Array(MirrorApp)),
-})
-const Choices = Schema.Struct({ apps: Schema.mutable(Schema.Array(Schema.Struct({ packageName: Schema.String, label: Schema.String }))) })
-const History = Schema.Struct({ items: Schema.mutable(Schema.Array(Schema.Struct({ id: Schema.String, appLabel: Schema.String, at: Schema.Number, state: Schema.String }))) })
-const Row = Schema.Struct({
-  id: Schema.String,
-  revision: Schema.String,
-  source: Schema.Literals(["own", "external"]),
-  kind: Schema.optionalKey(Schema.String),
-  appLabel: Schema.String,
-  title: Schema.String,
-  text: Schema.String,
-  at: Schema.Number,
-  clearable: Schema.Boolean,
-  canOpen: Schema.Boolean,
-  redacted: Schema.optionalKey(Schema.Boolean),
-})
-const Rows = Schema.Struct({ items: Schema.mutable(Schema.Array(Row)), scope: Schema.String })
-const Outcomes = Schema.Struct({ outcomes: Schema.mutable(Schema.Array(Schema.Struct({ id: Schema.String, status: Schema.Literals(["requested", "unavailable"]) }))) })
+schema Channel { id: string; name: string; importance: number; blocked: boolean; groupBlocked: boolean }
+schema Delivery { appEnabled: boolean; permissionGranted: boolean; interruption: "all" | "priority" | "alarms" | "none" | "unknown"; channels: Channel[]; scope: string }
+schema MirrorApp { packageName: string; label: string; preview: boolean; available: boolean }
+schema Mirror { revision: string; enabled: boolean; accessGranted: boolean; connected: boolean; paused: boolean; history: boolean; historyUnavailable: boolean; apps: MirrorApp[] }
+schema Choice { packageName: string; label: string }
+schema Choices { apps: Choice[] }
+schema HistoryRow { id: string; appLabel: string; at: number; state: string }
+schema History { items: HistoryRow[] }
+schema Row { id: string; revision: string; source: "own" | "external"; kind?: string; appLabel: string; title: string; text: string; at: number; clearable: boolean; canOpen: boolean; redacted?: boolean }
+schema Rows { items: Row[]; scope: string }
+schema Outcome { id: string; status: "requested" | "unavailable" }
+schema Outcomes { outcomes: Outcome[] }
 const Done = Schema.Unknown
 
 export function noticesClient(options: NoticesClientOptions = {}): NoticesClient {

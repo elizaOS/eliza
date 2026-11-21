@@ -15,6 +15,7 @@ module node {
   import { fingerprintOf, replyIdOf, turnLedger, type ClientMessageId, type KeyRecord, type Ticket, type Turn } from "./idempotency.vibe"
   import type { ReplyWriter, StartStream, TurnEnd } from "./stream.vibe"
   import { decodeObservation, decodeVoiceUiContext } from "./turn-context.schema.vibe"
+  import { beginChatTask } from "../tasks/chat-task.vibe"
 
   export type TurnFailureKind = FailureKind | "timeout" | "aborted"
 
@@ -221,6 +222,27 @@ module node {
     return converse(runtime, owner, input, signal, options)
   }
 
+  interface ChatTurn {
+    readonly kind: "Ready"
+    readonly input: TurnInput
+    settle(result: TurnResult): Promise<TurnResult | TurnRefusal>
+  }
+
+  async function chatTurn(runtime: AgentRuntime, input: TurnInput, actorId: UUID): Promise<ChatTurn | TurnRefusal> {
+    if (input.task === undefined) return { kind: "Ready", input, settle: (result) => Promise.resolve(result) }
+    const task = await beginChatTask(runtime, input.task, actorId)
+    if (task.kind === "Refused") return task
+    return {
+      kind: "Ready",
+      input: { ...input, text: `${input.text}${task.context}` },
+      settle: async (result) => {
+        const ending = await task.end()
+        if (ending.kind === "Refused") return ending
+        return result.kind === "Replied" ? { kind: "Replied", reply: { ...result.reply, taskChoices: ending.taskChoices } } : result
+      },
+    }
+  }
+
   export const deviceConversation = (room: Room) => {
     const record = recordOf(room)
     return record === undefined ? undefined : conversationView(record)
@@ -309,8 +331,10 @@ module node {
     }
 
     async function runTurn(record: ConversationRecord, input: TurnInput, options: TurnOptions = {}): Promise<TurnResult | TurnRefusal> {
-      const admitted = await admit(record, input)
-      return admitted.kind === "Refused" ? admitted : admitted.run(options)
+      const chat = await chatTurn(runtime, input, owner.user)
+      if (chat.kind === "Refused") return chat
+      const admitted = await admit(record, chat.input)
+      return admitted.kind === "Refused" ? admitted : chat.settle(await admitted.run(options))
     }
 
     return { admit, runTurn }
@@ -350,11 +374,16 @@ module node {
       if (record === undefined) return { kind: "refused", status: 404, error: "unknown_conversation" }
       const parsed = turnInput(body, headers)
       if (parsed.kind === "Refused") return { kind: "refused", status: parsed.status, error: parsed.error }
-      const admitted = await runner.admit(record, parsed.input)
+      const chat = await chatTurn(runtime, parsed.input, owner.user)
+      if (chat.kind === "Refused") return { kind: "refused", status: chat.status, error: chat.error }
+      const admitted = await runner.admit(record, chat.input)
       if (admitted.kind === "Refused") return { kind: "refused", status: admitted.status, error: admitted.error }
       return {
         kind: "admitted", verdict: admitted.verdict,
-        run: async (writer, left) => terminalOf(await admitted.run({ signal: left, onFrame: writer, ...(parsed.clientId === undefined ? {} : { clientId: parsed.clientId }) })),
+        run: async (writer, left) => {
+          const ended = await chat.settle(await admitted.run({ signal: left, onFrame: writer, ...(parsed.clientId === undefined ? {} : { clientId: parsed.clientId }) }))
+          return ended.kind === "Refused" ? { type: "error", code: ended.error, message: "The task changed during the turn" } : terminalOf(ended)
+        },
       }
     }
   }

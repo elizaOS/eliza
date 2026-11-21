@@ -2,15 +2,19 @@
 module node {
   import { createHash, randomUUID } from "node:crypto"
 
-  export const freshId = (): string => randomUUID()
+  /** @throws {never} */
+  export function freshId(): string {
+    return randomUUID()
+  }
 
+  /** @throws {never} */
   export function digestOf(value: unknown): string {
     return createHash("sha256").update(JSON.stringify(value)).digest("hex")
   }
 }
 
 import { Service, type IAgentRuntime, type Memory, type RunEventPayload, type ServiceClass, type UUID } from "@elizaos/core"
-import { Rejected, canEndTurn, canExpire, openOffer, showsReadReplyOrigin, type DeviceRequest, type Event, type ReviewOutcome } from "../../gen/agent__deviceActions.effect.vibe"
+import { canEndTurn, canExpire, openOffer, showsReadReplyOrigin, type DeviceRequest, type Event, type ReviewOutcome } from "../../gen/agent__deviceActions.effect.vibe"
 import { capabilityName, negotiatedHas, revisionOf, type Need, type Negotiation, type RevisionRead } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
 import type { OperationType, ReadBinding } from "../../gen/agent__deviceActions__operations.effect.vibe"
 import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
@@ -20,7 +24,7 @@ import type { ModuleContext } from "../host/module.vibe"
 import { capabilitiesHeader, negotiation, openViewAllowed } from "./capabilities.vibe"
 import { readOperation, receiptOutcome, validate, type CheckedOperation } from "./operations.schema.vibe"
 import type { StoredRequest } from "./read-completion.vibe"
-import { DeviceStoreUnavailable, ProposalIdTaken, listRequests, offerRequest, openRequest, viewProfile, type DeviceRequestRecord, type RequestRow, type RequestTerms } from "./store.vibe"
+import { DeviceStoreUnavailable, listRequests, offerRequest, openRequest, viewProfile, type DeviceRequestRecord, type RequestRow, type RequestTerms } from "./store.vibe"
 import { digestOf, freshId } from node
 
 export const proposeDeviceActionServiceType = "proposeDeviceAction"
@@ -115,10 +119,8 @@ export function deviceRequests(context: Pick<ModuleContext, "runtime" | "launch"
   const negotiated = (input: RouteInput) => negotiation(true, input.headers.get(capabilitiesHeader))
 
   effect function sent(record: DeviceRequestRecord, event: Event, by: SessionOwner): (DeviceRequest | undefined)!DeviceStoreUnavailable {
-    return try lock.withPermits(1)(record.machine.send(event, by) catch effect (error) => match (error) {
-      when Rejected: undefined;
-      default: throw error;
-    })
+    const done = try lock.withPermits(1)(Effect.result(record.machine.send(event, by)))
+    return Result.isSuccess(done) ? done.success : undefined
   }
 
   effect function moved(row: RequestRow, event: Event, by: SessionOwner): (DeviceRequest | undefined)!DeviceStoreUnavailable {
@@ -137,7 +139,7 @@ export function deviceRequests(context: Pick<ModuleContext, "runtime" | "launch"
 
   effect function conversationOf(roomId: UUID): (string | undefined)!DeviceStoreUnavailable {
     const room = try tryPromise({ try: () => runtime.getRoom(roomId), catch: (cause) => new DeviceStoreUnavailable({ step: "read the conversation", cause }) })
-    return room === null ? undefined : deviceConversation(room)?.id
+    return room === null ? undefined : try sync(() => deviceConversation(room)?.id)
   }
 
   effect function beginTurn(message: Pick<Memory, "id" | "roomId">, headers: ReadonlyMap<string, string>): void!DeviceStoreUnavailable {
@@ -174,10 +176,10 @@ export function deviceRequests(context: Pick<ModuleContext, "runtime" | "launch"
     const digest = digestOf([proposalId, by, checked.operation, expiresAt])
     const origin = { requestId: turn.requestId, conversationId, inReplyTo: asking }
     const terms: RequestTerms = { operation: checked.operation, binding, boundProfile, need: checked.need }
-    try lock.withPermits(1)(offerRequest(adapter, { type: "offer", proposalId, digest, capability, expiresAt, readBack, origin }, by, terms)) catch effect (error) => match (error) {
-      when Rejected: throw new DeviceActionRefused({ reason: "offer_refused" });
-      when ProposalIdTaken: throw new DeviceActionRefused({ reason: "offer_refused" });
-      default: throw error;
+    const offered = try lock.withPermits(1)(Effect.result(offerRequest(adapter, { type: "offer", proposalId, digest, capability, expiresAt, readBack, origin }, by, terms)))
+    if (Result.isFailure(offered)) {
+      if (offered.failure instanceof DeviceStoreUnavailable) throw offered.failure
+      throw new DeviceActionRefused({ reason: "offer_refused" })
     }
     return { proposalId, digest, expiresAt, capability, readBack }
   }

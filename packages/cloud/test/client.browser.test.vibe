@@ -7,8 +7,8 @@ effect function check(run: () => void) {
   try Effect.try(run)
 }
 
-describe("The client bundle in a browser (spec/cloud/client.md, \"Story: Use the cloud from the device as configured\")", () => {
-  it.live("Loads with no Node, core or server import and sends the credential the getter holds at each call (spec/cloud/client.md, \"Every call reads the credential when it is sent\")", () => effect {
+describe("Client bundle (spec/cloud/client.md)", () => {
+  it.live("Loads without Node or core and reads the getter per call (\"Every call reads the credential when it is sent\")", () => effect {
     const graph = try sync(() => clientBundleGraph())
     const wire = try sync(() => recordingFetch({ object: "list", data: [{ id: "test-chat", object: "model", owned_by: "llm" }] }))
     let held = "eliza_mobile_first"

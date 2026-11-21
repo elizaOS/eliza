@@ -40,6 +40,12 @@
       "import": "./dist/src/bundle/build.js",
       "default": "./dist/src/bundle/build.js"
     },
+    "./tasks": {
+      "eliza-source": "./src/tasks/index.vibe",
+      "types": "./dist/src/tasks/index.d.ts",
+      "import": "./dist/src/tasks/index.js",
+      "default": "./dist/src/tasks/index.js"
+    },
     "./voice": {
       "eliza-source": "./src/voice/index.vibe",
       "types": "./dist/src/voice/index.d.ts",

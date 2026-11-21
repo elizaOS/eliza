@@ -229,7 +229,7 @@ function createRecord(held: Device, taskId: string): Promise<Outcome> | Outcome 
   return attempt(held.store.create(record));
 }
 
-export const driver: Driver<Observed> = {
+export const driver: Driver<Observed> & AsyncDisposable = {
   async reset() {
     await device?.scratch.remove();
     device = undefined;

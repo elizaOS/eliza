@@ -1,5 +1,19 @@
 // spec/cloud/client.md, "Story: Use the cloud from the device as configured"; spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"; spec/cloud/services/speechRelay.md, "The wire is version 1 with 16 kHz mono PCM16 and bounded frames"
-export { createCloudClient, type CloudClient } from "./client.vibe"
+export {
+  acceptedOrigin, createCloudClient, type Account, type CallInput, type ChatChunk, type ChatCompletion, type CloudClient, type CloudClientOptions, type CloudFetch, type CloudModel,
+  type CloudTransport, type InvoiceDetail, type InvoicePage, type ModelList, type PageRequest, type PlanOffer, type RedeemRequest, type Referral, type SelfRevoked, type SpeechAudio,
+  type SpeechConsent, type SpeechSession, type SpeechUpload, type TimedSpan, type Transcription, type UndoRequest, type UndoReview
+} from "./client.vibe"
+export type { CallOptions } from "./answer.vibe"
+export {
+  mapsRefusalOf, type IdempotencyKey, type MapsCallOptions, type MapsCalls, type MapsCapabilities, type MapsPlaceResponse, type MapsPlacesResponse, type MapsRefusal,
+  type MapsRoutesResponse, type MapsTile, type MapsViewportResponse, type PlaceDetailsRequest, type ReverseRequest, type RoutesRequest, type TextSearchRequest, type TileAddress, type ViewportRequest
+} from "./maps.vibe"
+export {
+  connectReturnOf, isConnectState, newConnectState, type CalendarEvent, type CalendarFeed, type CalendarRow, type ConnectRequest, type ConnectReturn, type ConnectStart, type ConnectState,
+  type EventFields, type GoogleCalls, type GoogleCapability, type GoogleStatus, type LabelKind, type MailCapabilities, type MailCard, type MailKind, type MailMessage, type MailOperation,
+  type MailProposal, type MailReceipt, type MailReview, type MailSearch, type MailTriage
+} from "./google.vibe"
 export { CloudError, isCredentialInvalid, networkError, readCloudError, type CloudFailure, type CloudResponse } from "./errors.vibe"
 export { checkEntitlement, EntitlementInvalid, nextRefreshDelay, parseEntitlementKeys, verifyEntitlement, type Entitlement, type EntitlementCheck, type EntitlementClaims, type EntitlementExpectation, type EntitlementKey, type PlanAllowance } from "./entitlement.vibe"
 export {
