@@ -44,7 +44,7 @@ export {
   writeProvisioningOverlay,
   writeRoleOverrides,
 } from "./provisioning.vibe"
-export { listenerPermissions, prepareListenerSystemui, stageListener, verifyListenerQualification, verifyListenerSystemui } from "./listener.vibe"
+export { listenerPermissions, prepareListenerSystemui, prepareListenerSystemuiSet, stageListener, verifyListenerQualification, verifyListenerSystemui } from "./listener.vibe"
 export { composeProduct, enrollUpdater } from "./compose-product.vibe"
 export {
   channelDistributionProblems,

@@ -1,9 +1,9 @@
-// spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed"; spec/os/image/listener.md, "A listener is staged only from a matched source that carries the chip and ops SystemUI patches"
+// spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed"; spec/os/image/listener.md, "A listener is staged only from a matched source that carries the chip and ops SystemUI patches"; spec/os/image/provisioning.md, "Listener activation enables exactly the launcher's disabled plain assist activity and, for power voice, its protected power child, given the power bundle without the assist bundle and the long-press overlay"
 import { captureCommand } from "./device.vibe"
 import { hashArtifact, observeCommittedEntry, readArtifact } from "./artifact.vibe"
 import type { PatchReference } from "./source-lock.vibe"
 
-type Bundle = "ops" | "chip" | "assist"
+export type SystemuiBundle = "ops" | "chip" | "assist" | "power"
 type State = "before" | "after"
 
 const Digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
@@ -24,6 +24,7 @@ const Manifest = Schema.Struct({
     afterSha256: Digest,
   })).check(Schema.isMinLength(1)),
   indicatorHealthLeaseImplemented: Schema.optionalKey(Schema.Boolean),
+  exclusiveWith: Schema.optionalKey(Schema.Array(Schema.Literals(["ops", "chip", "assist", "power"]))),
 })
 const decodeManifest = Schema.decodeUnknownEffect(Schema.fromJsonString(Manifest))
 const sourceBudget = 16 * 1024 * 1024
@@ -46,8 +47,8 @@ effect function bytes(file: string) {
   return try tryPromise({ try: () => readArtifact(file, sourceBudget), catch: (cause) => new ListenerSourceRefused({ reason: String(cause) }) })
 }
 
-effect function envelope(bundle: Bundle) {
-  if (bundle !== "ops" && bundle !== "chip" && bundle !== "assist") throw new ListenerSourceRefused({ reason: "Unknown SystemUI bundle" })
+effect function envelope(bundle: SystemuiBundle) {
+  if (bundle !== "ops" && bundle !== "chip" && bundle !== "assist" && bundle !== "power") throw new ListenerSourceRefused({ reason: "Unknown SystemUI bundle" })
   const path = try Path.Path
   const root = try senseRoot()
   const directory = bundle === "ops" ? root : path.join(root, bundle)
@@ -66,7 +67,7 @@ effect function envelope(bundle: Bundle) {
   return { manifest, reference, patch: patch.bytes }
 }
 
-export effect function listenerPatchReference(bundle: Bundle) {
+export effect function listenerPatchReference(bundle: SystemuiBundle) {
   return (try envelope(bundle)).reference
 }
 
@@ -76,7 +77,9 @@ interface BundleEvidence {
   readonly patch: Uint8Array
 }
 
-effect function verify(source: string, state: State, bundle: Bundle, envelope: BundleEvidence) {
+type SystemuiReceipt = Effect.Success<ReturnType<typeof verify>>
+
+effect function verify(source: string, state: State, bundle: SystemuiBundle, envelope: BundleEvidence) {
   const path = try Path.Path
   const files = try FileSystem.FileSystem
   if (state !== "before" && state !== "after") throw new ListenerSourceRefused({ reason: "Expected before or after state" })
@@ -119,11 +122,19 @@ effect function verify(source: string, state: State, bundle: Bundle, envelope: B
   }
 }
 
-export effect function verifyListenerSystemui(source: string, state: State = "before", bundle: Bundle = "chip") {
+export effect function verifyListenerSystemui(source: string, state: State = "before", bundle: SystemuiBundle = "chip") {
   return try verify(source, state, bundle, try envelope(bundle))
 }
 
-export effect function prepareListenerSystemui(source: string, output: string, bundle: Bundle = "chip") {
+export effect function prepareListenerSystemui(source: string, output: string, bundle: SystemuiBundle = "chip") {
+  const [receipt] = try prepareListenerSystemuiSet(source, output, [bundle])
+  return receipt
+}
+
+export effect function prepareListenerSystemuiSet(source: string, output: string, bundles: readonly SystemuiBundle[]) {
+  if (bundles.length === 0 || new Set(bundles).size !== bundles.length) {
+    throw new ListenerSourceRefused({ reason: "Choose one or more distinct reviewed SystemUI bundles" })
+  }
   const path = try Path.Path
   const files = try FileSystem.FileSystem
   const sourceRoot = try files.realPath(source)
@@ -133,34 +144,50 @@ export effect function prepareListenerSystemui(source: string, output: string, b
   if (relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`))) {
     throw new ListenerSourceRefused({ reason: "Derived SystemUI output must be outside the supplied source" })
   }
-  const selected = try envelope(bundle)
-  const before = try verify(sourceRoot, "before", bundle, selected)
+  if (try files.exists(target)) throw new ListenerSourceRefused({ reason: "Derived SystemUI output already exists" })
+
+  const entries: { bundle: SystemuiBundle; selected: BundleEvidence }[] = []
+  const allocated = new Set<string>()
+  for (const bundle of bundles) {
+    const selected = try envelope(bundle)
+    if (selected.manifest.exclusiveWith?.some((conflict) => bundles.includes(conflict))) {
+      throw new ListenerSourceRefused({ reason: `The ${bundle} bundle cannot be applied with the other selected bundles` })
+    }
+    for (const entry of selected.manifest.files) {
+      const name = path.join(selected.manifest.project, entry.path)
+      if (allocated.has(name)) throw new ListenerSourceRefused({ reason: `SystemUI bundles overlap at ${name}` })
+      allocated.add(name)
+    }
+    entries.push({ bundle, selected })
+  }
+
   return try scoped(effect {
-    const temp = try files.makeTempDirectoryScoped()
-    const project = path.join(temp, selected.manifest.project)
-    const patch = path.join(temp, "reviewed.patch")
-    try files.makeDirectory(project, { recursive: true })
-    try files.writeFile(patch, selected.patch, { flag: "wx" })
-    for (const entry of before.files) {
-      if (entry.sha256 === null) continue
-      const input = try bytes(path.join(sourceRoot, selected.manifest.project, entry.path))
-      if (input.sha256 !== entry.sha256) throw new ListenerSourceRefused({ reason: `SystemUI preimage changed while staging ${entry.path}` })
-      const file = path.join(project, entry.path)
-      try files.makeDirectory(path.dirname(file), { recursive: true })
-      try files.writeFile(file, input.bytes, { flag: "wx" })
+    const work = try files.makeTempDirectoryScoped({ directory: parent, prefix: ".listener-systemui-" })
+    const derived = path.join(work, "tree")
+    const receipts: SystemuiReceipt[] = []
+    for (const { bundle, selected } of entries) {
+      const before = try verify(sourceRoot, "before", bundle, selected)
+      const project = path.join(derived, selected.manifest.project)
+      const patch = path.join(work, `${bundle}.patch`)
+      try files.makeDirectory(project, { recursive: true })
+      try files.writeFile(patch, selected.patch, { flag: "wx" })
+      for (const entry of before.files) {
+        if (entry.sha256 === null) continue
+        const input = try bytes(path.join(sourceRoot, selected.manifest.project, entry.path))
+        if (input.sha256 !== entry.sha256) throw new ListenerSourceRefused({ reason: `SystemUI preimage changed while staging ${entry.path}` })
+        const file = path.join(project, entry.path)
+        try files.makeDirectory(path.dirname(file), { recursive: true })
+        try files.writeFile(file, input.bytes, { flag: "wx" })
+      }
+      const applied = try captureCommand("git", ["-C", project, "apply", "--whitespace=error", patch], 60_000)
+      if (applied.code !== 0) throw new ListenerSourceRefused({ reason: applied.stderr.trim() || "SystemUI patch refused" })
+      receipts.push(try verify(derived, "after", bundle, selected))
     }
-    const applied = try captureCommand("git", ["-C", project, "apply", "--whitespace=error", patch], 60_000)
-    if (applied.code !== 0) throw new ListenerSourceRefused({ reason: applied.stderr.trim() || "SystemUI patch refused" })
-    const after = try verify(temp, "after", bundle, selected)
-    try files.makeDirectory(target)
-    for (const entry of after.files) {
-      const input = try bytes(path.join(project, entry.path))
-      if (input.sha256 !== entry.sha256) throw new ListenerSourceRefused({ reason: `Derived SystemUI file changed while staging ${entry.path}` })
-      const file = path.join(target, selected.manifest.project, entry.path)
-      try files.makeDirectory(path.dirname(file), { recursive: true })
-      try files.writeFile(file, input.bytes, { flag: "wx" })
-    }
-    try files.writeFileString(path.join(target, "derived-source.json"), `${JSON.stringify(after, null, 2)}\n`, { flag: "wx" })
-    return after
+    const evidence = receipts.length === 1 ? receipts[0] : { schema: 1, receipts, systemUiCompiled: false, imageBuilt: false }
+    try files.writeFileString(path.join(derived, "derived-source.json"), `${JSON.stringify(evidence, null, 2)}
+`, { flag: "wx" })
+    if (try files.exists(target)) throw new ListenerSourceRefused({ reason: "Derived SystemUI output already exists" })
+    try files.rename(derived, target)
+    return receipts
   })
 }

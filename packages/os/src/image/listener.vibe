@@ -22,7 +22,7 @@ import { verifySource, type VerifySourceOptions } from "./source-lock.vibe"
 import { validateDescriptor } from "./stage-launcher.vibe"
 
 export { listenerPermissions, verifyListenerQualification } from "./listener-admission.vibe"
-export { prepareListenerSystemui, verifyListenerSystemui } from "./listener-systemui.vibe"
+export { prepareListenerSystemui, prepareListenerSystemuiSet, verifyListenerSystemui, type SystemuiBundle } from "./listener-systemui.vibe"
 
 module node {
   import { createHash, X509Certificate } from "node:crypto"

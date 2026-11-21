@@ -6,7 +6,7 @@ module node {
   import { createHash } from "node:crypto"
   import { lstat, readlink, readdir, realpath } from "node:fs/promises"
   import { createRequire } from "node:module"
-  import { dirname, isAbsolute, join, relative } from "node:path"
+  import { basename, dirname, isAbsolute, join, relative } from "node:path"
   import { promisify } from "node:util"
   import { Schema } from "effect"
   import { artifactJson, hashArtifact, observeCommittedEntry, readArtifact, type CommittedEntry } from "./artifact.vibe"
@@ -45,7 +45,8 @@ module node {
     generated: Schema.Struct({ root: ExplicitPath, files: Schema.Array(WireFile).check(Schema.isMinLength(1)) }),
     ignoredInputs: Schema.Array(Schema.Struct({ project: ExplicitPath, files: Count, sha256: Digest })),
   })
-  const PatchManifest = Schema.Struct({ baselineLockSha256: Digest, project: ExplicitPath, revision: Commit,
+  const PatchName = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_@.+-]+\.patch$/))
+  const PatchManifest = Schema.Struct({ schema: Schema.optional(Schema.Literal(1)), patch: Schema.optional(PatchName), baselineLockSha256: Digest, project: ExplicitPath, revision: Commit,
     files: Schema.Array(Schema.Struct({ path: ExplicitPath, beforeSha256: Schema.Union([Digest, Schema.Null]), afterSha256: Digest })).check(Schema.isMinLength(1)), patchSha256: Digest })
   const Ref = Schema.Struct({ name: NonBlank, file: NonBlank, sha256: Digest })
   const Load = Schema.Struct({ name: NonBlank, lockFile: Schema.optional(NonBlank) })
@@ -247,6 +248,7 @@ module node {
     const manifest = await readArtifact(reference.manifestFile, 2 * 1024 * 1024)
     if (manifest.sha256 !== reference.manifestSha256) throw new Error("The patch manifest differs from its reviewed pin")
     const parsed = decodePatch(artifactJson(manifest.bytes))
+    if (parsed.patch !== undefined && basename(reference.patchFile) !== parsed.patch) throw new Error("The supplied patch name differs from its reviewed manifest")
     if ((await hashArtifact(reference.patchFile, 32 * 1024 * 1024)).sha256 !== parsed.patchSha256) throw new Error("The patch bytes differ from their manifest")
     unique(parsed.files.map((file) => file.path), "patch path")
     return { name: reference.name, project: parsed.project, revision: parsed.revision, baseline: parsed.baselineLockSha256,
@@ -258,6 +260,13 @@ module node {
   function apiFrom(text: string, pattern: RegExp): number {
     const values = [...text.matchAll(pattern)].map((match) => Number(match[1]))
     return values.length === 1 && Number.isSafeInteger(values[0]) ? values[0] ?? 0 : 0
+  }
+  function boardApiFrom(file: string, text: string): number {
+    if (basename(file) === "RELEASE_BOARD_API_LEVEL.textproto") {
+      const flag = /^\s*name\s*:\s*"RELEASE_BOARD_API_LEVEL"\s*value\s*:?\s*\{\s*string_value\s*:\s*"([0-9]{6})"\s*\}\s*$/g
+      return apiFrom(text.replace(/^\s*#.*$/gm, ""), flag)
+    }
+    return apiFrom(text, /^\s*RELEASE_BOARD_API_LEVEL\s*:?=\s*([0-9]{6})\s*$/gm)
   }
   export async function observeSource(input: VerifySourceOptions, signal: AbortSignal): Promise<SourceObservation> {
     const selected = await expected(input.profile)
@@ -327,7 +336,7 @@ module node {
       inside(root, await realpath(vendorPath))
       const board = utf8.decode((await readArtifact(boardPath, 2 * 1024 * 1024)).bytes)
       const vendor = utf8.decode((await readArtifact(vendorPath, 4 * 1024 * 1024)).bytes)
-      facts.boardApi = apiFrom(board, /^\s*RELEASE_BOARD_API_LEVEL\s*:?=\s*([0-9]{6})\s*$/gm)
+      facts.boardApi = boardApiFrom(boardPath, board)
       facts.vintfApi = apiFrom(vendor, /<sepolicy>\s*<version>([0-9]{6})<\/version>\s*<\/sepolicy>/g)
     }
     facts.ignored.sort((a, b) => a.project < b.project ? -1 : a.project > b.project ? 1 : 0)
