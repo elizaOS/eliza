@@ -2,7 +2,7 @@
 import { assert, describe, it } from "@effect/vitest"
 import { area as billing } from "../src/http/routes/billing.vibe"
 import { sweeps as downgradeSweeps } from "../src/billing/downgrade-commands.vibe"
-import { claimLiveCommand, observeSubscription, readSubscription, reconcileSubscription } from "../src/billing/subscriptions.vibe"
+import { claimLiveCommand, observeSubscription, readSubscription, reconcileSubscription, sweepSubscriptions } from "../src/billing/subscriptions.vibe"
 import { readReviewedPlanQuote, reviewPlanChange, type ReviewPlanChange } from "../src/billing/plan-quotes.vibe"
 import { readStripeSubscription, stripeClient } from "../src/billing/stripe-observation.vibe"
 import type { BillingSnapshot } from "../src/billing/snapshot.vibe"
@@ -511,22 +511,31 @@ describe("Node subscriptions", () => {
       const renewalAt = direct.periodEnd + 1_000
       try sync(() => {
         clock.set(renewalAt)
-        provider.renew(direct.subscriptionId, false)
+        provider.renew(direct.subscriptionId, "open")
       })
       const renewalToken = sessionToken("h")
       try session(cloud, "direct-schedule", renewalToken, { ...live, authAt: renewalAt,
         accessExpiresAt: renewalAt + 15 * minuteMs, refreshExpiresAt: renewalAt + 60 * minuteMs }, renewalAt)
-      const refresh = cloud.inside(cloud.store.transaction(effect (tx) => {
+      const refresh = (at: number) => cloud.inside(cloud.store.transaction(effect (tx) => {
         const observed = try observeSubscription(tx, "org-direct-schedule")
-        return try reconcileSubscription(tx, "org-direct-schedule", observed, renewalAt)
+        return try reconcileSubscription(tx, "org-direct-schedule", observed, at)
       }))
-      try refresh
+      try refresh(renewalAt)
       const unpaid = try cloud.call("/api/v1/billing/limits", renewalToken)
-      try sync(() => provider.renew(direct.subscriptionId, true))
-      try refresh
+      try sync(() => provider.renew(direct.subscriptionId, "failed"))
+      const grace = try refresh(renewalAt)
+      const afterGrace = direct.periodEnd + 3 * 24 * 60 * minuteMs + 1_000
+      try sync(() => clock.set(afterGrace))
+      const swept = try cloud.inside(sweepSubscriptions())
+      const lapsed = try cloud.store.transaction((tx) => readSubscription(tx, "org-direct-schedule"))
+      try sync(() => provider.renew(direct.subscriptionId, "paid"))
+      const latePaid = try refresh(afterGrace)
       const paidObservation = try cloud.inside(cloud.store.transaction((tx) => observeSubscription(tx, "org-direct-schedule")))
-      try cloud.store.transaction((tx) => reconcileSubscription(tx, "org-direct-schedule", paidObservation, renewalAt))
-      const paid = try cloud.call("/api/v1/billing/limits", renewalToken)
+      try cloud.store.transaction((tx) => reconcileSubscription(tx, "org-direct-schedule", paidObservation, afterGrace))
+      const lateToken = sessionToken("j")
+      try session(cloud, "direct-schedule", lateToken, { ...live, authAt: afterGrace,
+        accessExpiresAt: afterGrace + 15 * minuteMs, refreshExpiresAt: afterGrace + 60 * minuteMs }, afterGrace)
+      const paid = try cloud.call("/api/v1/billing/limits", lateToken)
       const unpaidSnapshot = (unpaid.body as { data: BillingSnapshot }).data
       const paidSnapshot = (paid.body as { data: BillingSnapshot }).data
       const renewedAllowances = try sql(cloud, "SELECT key FROM allowance_periods WHERE organization_id=$1 AND status='open'", ["org-direct-schedule"])
@@ -541,6 +550,9 @@ describe("Node subscriptions", () => {
         assert.deepStrictEqual(saved.map((row) => [row.plan_key, row.pending_plan_key, row.held]),
           [["pro_monthly", "plus_monthly", "NoLiveCommand"], ["pro_monthly", "plus_monthly", "NoLiveCommand"]])
         assert.deepStrictEqual(origins.map((row) => [row.status, row.attached, row.configured]), [["succeeded", "req_schedule2", "req_schedule3"]])
+        assert.deepStrictEqual([grace.status, grace.dunning.tag === "DunningSince" ? grace.dunning.endsAt : null,
+          swept.expired, lapsed.status, latePaid.status],
+          ["Dunning", afterGrace - 1_000, 1, "PastDue", "Active"])
         assert.deepStrictEqual([unpaid.status, unpaidSnapshot.plan.key, unpaidSnapshot.subscription?.pendingPlanKey,
           paid.status, paidSnapshot.plan.key, paidSnapshot.subscription?.pendingPlanKey, paidSnapshot.allowance?.granted, renewedAllowances.map((row) => row.key)],
           [200, "pro_monthly", "plus_monthly", 200, "plus_monthly", null, 25_000_000, ["renewal/staging/" + paidObservation.payment?.id]])
@@ -650,6 +662,45 @@ describe("Node subscriptions", () => {
           { stripe_invoice_id: "in_upgrade2", stripe_request_id: "req_upgrade2" }
         ])
       })
+    }
+  }))
+
+  it.live("A voided invoice ends the reviewed upgrade without changing the plan or allowance (spec/cloud/billing/subscriptionCommands.md, \"Story: Get the plan I paid for\")", () => scoped(effect {
+    const now = 1_800_000_000_987
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(now))
+    provide Clock.Clock = clock.clock {
+      const stripe = try sync(() => createStripeFake({ now: () => now }))
+      const provider = try sync(() => stripePlanUpgrade(stripe, () => now))
+      const cloud = try testHttp(billing.routes, provider.handler)
+      const token = sessionToken("n")
+      const path = "/api/v1/subscriptions/upgrade"
+      const organizationId = "org-void-upgrade"
+      try account(cloud, "void-upgrade", "active", { sessions: 0, devices: 0 }, now)
+      try session(cloud, "void-upgrade", token, { live: true, epoch: 0, authAt: now,
+        accessExpiresAt: now + 15 * minuteMs, refreshExpiresAt: now + 60 * minuteMs, stepUpAt: 0, mfaAt: 0 }, now)
+      const original = try paidReviewSubscription(cloud, stripe, organizationId, "plus_monthly", now)
+      const paid = try sql(cloud, "SELECT key,state FROM allowance_periods WHERE organization_id=$1 ORDER BY key", [organizationId])
+      const reviewed = try cloud.call(path + "/review", token, { json: { targetPlanKey: "pro_monthly" } })
+      const quote = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(reviewed.body)
+      const input = { json: { quoteId: quote.quoteId, idempotencyKey: "voided-upgrade-review" } }
+      const confirmed = try cloud.call(path + "/confirm", token, input)
+      const view = Schema.Struct({ commandId: Schema.String, status: Schema.String, resultRevision: Schema.NullOr(Schema.Number) })
+      const command = try Schema.decodeUnknownEffect(view)(confirmed.body)
+      try sync(() => provider.settle(original.subscriptionId, "void"))
+      const rejected = try cloud.call(path + "/" + command.commandId, token)
+      const result = try Schema.decodeUnknownEffect(view)(rejected.body)
+      const replay = try cloud.call(path + "/confirm", token, input)
+      const blockedPayment = try cloud.call(path + "/" + command.commandId + "/payment", token, { method: "POST" })
+      const current = try cloud.store.transaction((tx) => readSubscription(tx, organizationId))
+      const after = try sql(cloud, "SELECT key,state FROM allowance_periods WHERE organization_id=$1 ORDER BY key", [organizationId])
+      const writes = try sync(() => cloud.fakes.seen.filter((request) => request.method === "POST" &&
+        request.path.endsWith("/v1/subscriptions/" + original.subscriptionId)).length)
+      try check(() => assert.deepStrictEqual(
+        [confirmed.status, command.status, rejected.status, result.status, result.resultRevision, replay.body, blockedPayment.status,
+          current.planKey, current.liveCommand.tag, after, writes],
+        [200, "awaiting_payment", 200, "rejected", null, rejected.body, 409, "PlusMonthly", "NoLiveCommand", paid, 1]
+      ))
     }
   }))
 

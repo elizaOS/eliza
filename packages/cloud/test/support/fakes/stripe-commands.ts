@@ -257,7 +257,8 @@ export function stripePlanDowngrade(stripe: StripeFake, now: () => number) {
       form.get(`${prefix}[1][items][0][quantity]`) === "1" && form.get(`${prefix}[1][proration_behavior]`) === "none";
   }
 
-  function renewalOf(subscription: Subscription, phase: Phase, paid: boolean) {
+  function renewalOf(subscription: Subscription, phase: Phase, payment: "paid" | "open" | "failed") {
+    const paid = payment === "paid";
     const item = subscription.items.data[0];
     const price = stripe.object(target.priceId);
     if (price.object !== "price") throw new Error("Missing the reviewed renewal price");
@@ -266,6 +267,7 @@ export function stripePlanDowngrade(stripe: StripeFake, now: () => number) {
     const chargeId = `ch_renewal${subscription.id}`;
     const amount = target.unitAmount;
     const observed: Subscription = { ...subscription, latest_invoice: invoiceId,
+      status: payment === "failed" ? "past_due" : "active",
       current_period_start: start, current_period_end: end, items: { ...subscription.items, data: [
         { ...item, price, current_period_start: start, current_period_end: end }
       ] } };
@@ -360,13 +362,13 @@ export function stripePlanDowngrade(stripe: StripeFake, now: () => number) {
       if (!isSubscription(subscription)) throw new Error("Missing fixture subscription");
       return remember(subscription).id;
     },
-    renew: (id: string, paid: boolean) => {
+    renew: (id: string, payment: "paid" | "open" | "failed") => {
       const subscription = stripe.object(id);
       const schedule = entries.get(attached.get(id) ?? "");
       const effective = schedule?.phases[1];
       if (!isSubscription(subscription) || schedule === undefined || effective === undefined) throw new Error("Missing configured fixture renewal");
       schedule.current_phase = { start_date: effective.start_date, end_date: effective.end_date };
-      renewals.set(id, renewalOf(subscription, effective, paid));
+      renewals.set(id, renewalOf(subscription, effective, payment));
     },
     lose: (stage: Stage) => { failures.add(stage); },
     reveal: (stage: Stage) => { revealed.add(stage); },
