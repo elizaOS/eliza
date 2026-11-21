@@ -5,10 +5,14 @@ import ai.eliza.plugins.signin.BrowserReturnPolicy.Callback;
 import ai.eliza.plugins.signin.BrowserReturnPolicy.Owner;
 import ai.eliza.plugins.signin.BrowserReturns.Ended;
 import ai.eliza.plugins.signin.BrowserReturns.Handoff;
-import ai.eliza.plugins.signin.CodeSignIn.Verified;
+import ai.eliza.plugins.signin.CodeSignIn.Checked;
+import ai.eliza.plugins.signin.CredentialPolicy.Reason;
 import ai.eliza.plugins.signin.SignInCustody.Proof;
 import ai.eliza.plugins.signin.SignInCustody.Refused;
+import ai.eliza.plugins.signin.SignInCustody.Session;
+import ai.eliza.plugins.signin.SignInPolicy.CloudReply;
 import ai.eliza.plugins.signin.SignInPolicy.Failure;
+import ai.eliza.plugins.signin.SignInPolicy.RefusalCode;
 import ai.eliza.plugins.signin.SignInRegistration.Environment;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
@@ -31,7 +35,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Supplier;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 public final class BrowserSignIn implements GoogleSignIn.Browser, BrowserReturns.Port {
@@ -41,7 +44,12 @@ public final class BrowserSignIn implements GoogleSignIn.Browser, BrowserReturns
     void signedIn(String environment, String credentialId);
   }
 
-  private record Live(String requestId, GoogleSignIn.Returned returned) {}
+  private record Live(int attempt, boolean reauthenticate, GoogleSignIn.Returned returned) {}
+
+  private static final CloudReply EXPIRED = new CloudReply.Refused(RefusalCode.AUTHENTICATION_REQUIRED, Reason.CREDENTIAL_EXPIRED);
+  private static final CloudReply GOOGLE_UNAVAILABLE = new CloudReply.Refused(RefusalCode.PROVIDER_UNAVAILABLE, Reason.NO_REASON);
+  private static final CloudReply REJECTED = new CloudReply.Refused(RefusalCode.ACCESS_DENIED, Reason.NO_REASON);
+  private static final CloudReply UNANSWERED = new CloudReply.Unanswered();
 
   private static final String TAG = "ElizaSignIn";
   private static final long RETIRE_AFTER_MS = 5_000L;
@@ -64,16 +72,16 @@ public final class BrowserSignIn implements GoogleSignIn.Browser, BrowserReturns
   private final Map<String, BrowserReturns> engines = new HashMap<>();
   private final Map<String, Live> live = new HashMap<>();
 
-  private BrowserSignIn(Context context, Supplier<Activity> activity, SignInRegistration registration) {
+  private BrowserSignIn(Context context, Supplier<Activity> activity, SignInRegistration registration, SignInCustody custody) {
     this.context = context.getApplicationContext();
     this.activity = activity;
     this.registration = registration;
-    this.custody = DeviceCustody.custody(this.context, registration);
+    this.custody = custody;
     this.codes = new CodeSignIn(CodeSignIn.CONNECTION, registration.clientId);
   }
 
-  public static GoogleSignIn.Browser browser(Plugin plugin, SignInRegistration registration) {
-    BrowserSignIn created = new BrowserSignIn(plugin.getContext(), plugin::getActivity, registration);
+  public static GoogleSignIn.Browser browser(Plugin plugin, SignInRegistration registration, SignInCustody custody) {
+    BrowserSignIn created = new BrowserSignIn(plugin.getContext(), plugin::getActivity, registration, custody);
     List<String> waiting;
     synchronized (PROCESS) {
       current = created;
@@ -143,42 +151,42 @@ public final class BrowserSignIn implements GoogleSignIn.Browser, BrowserReturns
     worker.execute(() -> engine(registration.environment(name)).returned(callback));
   }
 
-  @Override public void open(String requestId, Environment environment, SignInPolicy.Purpose purpose, GoogleSignIn.Returned returned) {
+  @Override public void open(int attempt, Environment environment, boolean reauthenticate, GoogleSignIn.Returned returned) {
     worker.execute(() -> {
       String state = SignInPolicy.newState(), verifier = SignInPolicy.newVerifier();
       BrowserReturnPolicy.StartChecks checks = BrowserReturnPolicy.checks(registration, environment, state, verifier, appLinkVerified(environment));
-      synchronized (live) { live.put(environment.name, new Live(requestId, returned)); }
+      synchronized (live) { live.put(environment.name, new Live(attempt, reauthenticate, returned)); }
       boolean started;
       try {
         started = engine(environment).start(environment.name, state, verifier, checks);
       } catch (BrowserReturns.StorageFailure unstored) {
         Log.e(TAG, "A browser sign-in could not keep its return record", unstored);
-        ended(environment.name, Ended.STORAGE);
+        fail(environment.name, attempt, UNANSWERED);
         return;
       }
-      if (!started) { fail(environment.name, requestId, Failure.GOOGLE_UNAVAILABLE); return; }
+      if (!started) { fail(environment.name, attempt, GOOGLE_UNAVAILABLE); return; }
       main.postDelayed(() -> worker.execute(() -> engine(environment).elapsed()), BrowserReturnPolicy.PENDING_LIFETIME_MS + 1);
       String url = BrowserReturnPolicy.authorizeUrl(registration.clientId, environment, state, verifier);
-      main.post(() -> launch(environment, requestId, url));
+      main.post(() -> launch(environment, attempt, url));
     });
   }
 
-  private void launch(Environment environment, String requestId, String url) {
+  private void launch(Environment environment, int attempt, String url) {
     Activity host = activity.get();
     Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE);
     try {
       if (host == null || host.isFinishing()) context.startActivity(view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
       else host.startActivity(view);
     } catch (ActivityNotFoundException | SecurityException unavailable) {
-      worker.execute(() -> { engine(environment).cancel(environment.name); fail(environment.name, requestId, Failure.GOOGLE_UNAVAILABLE); });
+      worker.execute(() -> { fail(environment.name, attempt, GOOGLE_UNAVAILABLE); engine(environment).cancel(environment.name); });
     }
   }
 
-  @Override public void cancel(String requestId) {
+  @Override public void cancel(int attempt) {
     worker.execute(() -> {
       String name = null;
       synchronized (live) {
-        for (Map.Entry<String, Live> entry : live.entrySet()) if (entry.getValue().requestId().equals(requestId)) name = entry.getKey();
+        for (Map.Entry<String, Live> entry : live.entrySet()) if (entry.getValue().attempt() == attempt) name = entry.getKey();
         if (name != null) live.remove(name);
       }
       if (name != null) engine(registration.environment(name)).cancel(name);
@@ -204,25 +212,33 @@ public final class BrowserSignIn implements GoogleSignIn.Browser, BrowserReturns
     synchronized (live) { return live.remove(client); }
   }
 
-  private void fail(String client, String requestId, Failure failure) {
+  private static void refuse(Live held, CloudReply reply) {
+    held.returned().exchanged(0, new Checked.NotChecked(reply));
+  }
+
+  private static String wire(CloudReply reply) {
+    return reply instanceof CloudReply.Refused refused ? SignInPolicy.failureOf(false, refused.code(), refused.reason()).wire : Failure.UNAVAILABLE.wire;
+  }
+
+  private void fail(String client, int attempt, CloudReply reply) {
     Live held;
     synchronized (live) {
       held = live.get(client);
-      if (held == null || !held.requestId().equals(requestId)) return;
+      if (held == null || held.attempt() != attempt) return;
       live.remove(client);
     }
-    held.returned().failed(failure);
+    refuse(held, reply);
   }
 
   @Override public void ended(String client, Ended why) {
     Live held = take(client);
-    Failure failure = switch (why) {
-      case EXPIRED -> Failure.EXPIRED;
-      case STORAGE -> Failure.UNAVAILABLE;
-      case SUPERSEDED, CANCELLED -> Failure.CANCELLED;
+    CloudReply reply = switch (why) {
+      case EXPIRED -> EXPIRED;
+      case STORAGE -> UNANSWERED;
+      case SUPERSEDED, CANCELLED -> REJECTED;
     };
-    if (held != null) held.returned().failed(failure);
-    else if (why == Ended.STORAGE) notices().incomplete(client, failure.wire);
+    if (held != null) refuse(held, reply);
+    else if (why == Ended.STORAGE) notices().incomplete(client, wire(reply));
     if (why == Ended.STORAGE) retire(client, RETIRE_TRIES);
   }
 
@@ -242,77 +258,51 @@ public final class BrowserSignIn implements GoogleSignIn.Browser, BrowserReturns
     worker.execute(() -> exchange(handoff));
   }
 
-  private static Failure returnFailure(String error) {
+  private static CloudReply returnReply(String error) {
     return switch (error) {
-      case "access_denied" -> Failure.CANCELLED;
-      case "oauth_state_expired", "oauth_state_consumed" -> Failure.EXPIRED;
-      case "oauth_provider_unavailable", "app_link_unverified" -> Failure.GOOGLE_UNAVAILABLE;
-      default -> Failure.REJECTED;
+      case "oauth_state_expired", "oauth_state_consumed" -> EXPIRED;
+      case "oauth_provider_unavailable", "app_link_unverified" -> GOOGLE_UNAVAILABLE;
+      default -> REJECTED;
     };
   }
 
-  private Verified exchanged(Environment environment, Handoff handoff, String code) {
-    JSONObject body = new JSONObject();
+  private Checked exchanged(Environment environment, Handoff handoff) {
+    if (handoff.callback() instanceof Callback.Error error) return new Checked.NotChecked(returnReply(error.error()));
+    String code = ((Callback.Code) handoff.callback()).code();
+    JSONObject body = CodeSignIn.json("code", code, "redirectUri", environment.redirectUri, "clientId", registration.clientId, "codeVerifier", handoff.verifier());
     try {
-      body.put("code", code).put("redirectUri", environment.redirectUri).put("clientId", registration.clientId).put("codeVerifier", handoff.verifier());
-    } catch (JSONException invalid) {
-      throw new IllegalArgumentException(invalid);
-    }
-    try {
-      return CodeSignIn.verified(CodeSignIn.CONNECTION.post(environment.apiOrigin + BrowserReturnPolicy.EXCHANGE, body, null), System.currentTimeMillis());
+      return CodeSignIn.checked(CodeSignIn.CONNECTION.post(environment.apiOrigin + BrowserReturnPolicy.EXCHANGE, body, null), System.currentTimeMillis());
     } catch (IOException | RuntimeException unanswered) {
-      return null;
+      return new Checked.NotChecked(UNANSWERED);
     }
   }
 
   private void exchange(Handoff handoff) {
     Environment environment = registration.environment(handoff.client());
     BrowserReturns engine = engine(environment);
+    int generation = handoff.generation();
     Live held = handoff.owner() == Owner.LIVE ? take(handoff.client()) : null;
-    if (handoff.callback() instanceof Callback.Error error) {
-      engine.exchangeEnded(handoff.generation());
-      finish(environment, held, returnFailure(error.error()));
+    if (handoff.owner() == Owner.LIVE && held == null) { engine.exchangeEnded(generation); return; }
+    Checked checked = exchanged(environment, handoff);
+    if (held != null) {
+      boolean keepsReservation = !held.reauthenticate() && checked instanceof Checked.SessionIssued;
+      if (!keepsReservation) engine.exchangeEnded(generation);
+      held.returned().exchanged(keepsReservation ? generation : 0, checked);
       return;
     }
-    Verified verified = exchanged(environment, handoff, ((Callback.Code) handoff.callback()).code());
-    boolean current = engine.state().credential().generation() == handoff.generation();
-    engine.exchangeEnded(handoff.generation());
-    if (verified == null) {
-      finish(environment, held, Failure.UNAVAILABLE);
-      return;
-    }
-    if (!current) {
-      if (verified instanceof Verified.SignedIn signedIn) codes.logout(environment, signedIn.session());
-      finish(environment, held, Failure.CANCELLED);
-      return;
-    }
-    if (held != null) { held.returned().answered(verified); return; }
-    if (verified instanceof Verified.SignedIn signedIn) adopt(environment, handoff.generation(), signedIn);
-    else notices().incomplete(environment.name, Failure.REJECTED.wire);
+    if (checked instanceof Checked.SessionIssued issued) { adopt(environment, engine, generation, issued.session()); return; }
+    engine.exchangeEnded(generation);
+    notices().incomplete(environment.name, checked instanceof Checked.NotChecked refused ? wire(refused.reply()) : Failure.REJECTED.wire);
   }
 
-  private void finish(Environment environment, Live held, Failure failure) {
-    if (held == null) notices().incomplete(environment.name, failure.wire);
-    else held.returned().failed(failure);
-  }
-
-  private void adopt(Environment environment, int generation, Verified.SignedIn signedIn) {
-    int attempt = 0;
-    Proof proof;
+  private void adopt(Environment environment, BrowserReturns engine, int generation, Session session) {
     try {
-      attempt = custody.beginSignIn(environment);
-      if (attempt != generation + 1) throw new Refused(Failure.CANCELLED);
-      proof = custody.connect(attempt, environment, signedIn.session().accessToken());
+      Proof proof;
+      try { proof = custody.connect(generation, environment, session.accessToken()); }
+      finally { codes.logout(environment, session); }
+      notices().signedIn(environment.name, custody.redeem(generation, environment, proof));
     } catch (Refused refused) {
-      if (attempt > 0) custody.signInEnded(environment, attempt);
-      notices().incomplete(environment.name, refused.failure.wire);
-      return;
-    } finally {
-      codes.logout(environment, signedIn.session());
-    }
-    try {
-      notices().signedIn(environment.name, custody.redeem(attempt, environment, proof));
-    } catch (Refused refused) {
+      engine.exchangeEnded(generation);
       notices().incomplete(environment.name, refused.failure.wire);
     }
   }

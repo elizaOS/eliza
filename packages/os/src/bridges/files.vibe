@@ -1,7 +1,8 @@
-// spec/os/android/files/storage.md, "A row answers copied, moved or trashed only for an admitted row whose own write was acknowledged"; spec/os/android/files/storage.md, "Erasing forever takes the owner's confirmation and is counted only when both data and record are gone"; spec/os/android/files/handoff.md, "A chooser reply reports dispatch only, and a start that comes after the timeout never changes it"; spec/os/android/files/storageWatch.md, "Only the watch of the newest ticket publishes a change"
+// spec/os/android/files/storage.md, "A row answers copied, moved or trashed only for an admitted row whose own write was acknowledged"; spec/os/android/files/storage.md, "Erasing forever takes the owner's confirmation and is counted only when both data and record are gone"; spec/os/android/files/handoff.md, "A chooser reply reports dispatch only, and a start that comes after the timeout never changes it"; spec/os/android/files/handoff.md, "A selection is shown only in the visit that requested it, and a late one is forgotten"; spec/os/android/files/storageWatch.md, "Only the watch of the newest ticket publishes a change"
 import { nativeAcknowledged, receiptOutcome, type FilesOp, type WriteResult } from "../../gen/os__android__files__storage.effect.vibe"
+import { Machine, machine, shownSelection, type FilesPreview } from "../../gen/os__android__files__handoff.effect.vibe"
 import { nativeReply, settled } from "./bridge.vibe"
-import type { ElizaFilesPlugin, FileOutcomeRow, FilesResult } from "./definitions/files.ts"
+import type { ElizaFilesPlugin, FileOutcomeRow, FilesPreviewAnswer, FilesPreviewClient, OnVolume } from "./definitions/files.ts"
 
 export type * from "./definitions/files.ts"
 
@@ -41,13 +42,11 @@ const Trash = Schema.Struct({ ...answered, items: Schema.optionalKey(Schema.Arra
 const Erased = Schema.Struct({ ...answered, count: Schema.optionalKey(Schema.Int) })
 const Handoff = Schema.Union([Schema.Struct({ status: Schema.Literal("opened"), count: Schema.Int }), Answer])
 const Selection = Schema.Union([
-  Schema.Struct({ status: Schema.Literal("selected"), action: Schema.Literal("files"), selectionId: Schema.String, name: Schema.String, mimeType: Schema.String, canRename: Schema.Boolean, uri: Schema.optionalKey(Schema.String) }),
+  Schema.Struct({ status: Schema.Literal("selected"), action: Schema.Literal("files"), selectionId: Schema.String.check(Schema.isMinLength(1)), name: Schema.String, mimeType: Schema.String, canRename: Schema.Boolean, uri: Schema.optionalKey(Schema.String) }),
   Answer,
 ])
 
 const WRITTEN: Readonly<Partial<Record<FileOutcomeRow["status"], WriteResult>>> = { copied: "WriteCopied", moved: "WriteMoved", trashed: "WriteMoved" }
-
-const UNCONFIRMED: FilesResult = { status: "confirmation-required", message: "Confirm before deleting permanently." }
 
 function acknowledged(op: FilesOp, row: FileOutcomeRow): FileOutcomeRow {
   const write = WRITTEN[row.status]
@@ -73,12 +72,40 @@ export function filesClient(plugin: ElizaFilesPlugin = filesPlugin(), name = "El
     storageTrash: async (input) => receipts("Trash", await settled(nativeReply(name, "storageTrash", Outcomes, () => plugin.storageTrash(input)))),
     storageTrashList: (input) => settled(nativeReply(name, "storageTrashList", Trash, () => plugin.storageTrashList(input))),
     storageRestore: (input) => settled(nativeReply(name, "storageRestore", Outcomes, () => plugin.storageRestore(input))),
-    storageEmptyTrash: async (input) => input.confirmed ? settled(nativeReply(name, "storageEmptyTrash", Erased, () => plugin.storageEmptyTrash(input))) : UNCONFIRMED,
+    storageEmptyTrash: (input) => settled(nativeReply(name, "storageEmptyTrash", Erased, () => plugin.storageEmptyTrash(input))),
     storageShare: (input) => settled(nativeReply(name, "storageShare", Handoff, () => plugin.storageShare(input))),
     storageOpen: (input) => settled(nativeReply(name, "storageOpen", Handoff, () => plugin.storageOpen(input))),
     storageSelect: (input) => settled(nativeReply(name, "storageSelect", Selection, () => plugin.storageSelect(input))),
     storageWatch: (input) => settled(nativeReply(name, "storageWatch", Answer, () => plugin.storageWatch(input))),
     storageUnwatch: () => settled(nativeReply(name, "storageUnwatch", Answer, () => plugin.storageUnwatch())),
     addListener: (eventName, listener) => plugin.addListener(eventName, () => listener()),
+  }
+}
+
+effect function previewMachine() {
+  provide machine() {
+    return try Machine
+  }
+}
+
+effect function previewed(preview: Machine.Shape, plugin: ElizaFilesPlugin, name: string, input: OnVolume & { path: string }): FilesPreviewAnswer {
+  try preview.send({ type: "requestPreview" })
+  const reply = (nativeReply(name, "storageSelect", Selection, () => plugin.storageSelect(input)) catch effect (failure) => {
+    try orDie(preview.send({ type: "settlePreview", selectionId: "" }))
+    throw failure
+  })
+  const selectionId = reply.status === "selected" ? reply.selectionId : ""
+  const step = try orDie(preview.send({ type: "settlePreview", selectionId }))
+  if (reply.status === "selected" && shownSelection(step.state.shown) === selectionId) return { kind: "shown", selection: reply }
+  if (reply.status !== "selected" && step.out.some((out) => out.tag === "ShowCouldNotOpen")) return { kind: "couldNotOpen", reply }
+  return { kind: "forgotten" }
+}
+
+export function filesPreview(plugin: ElizaFilesPlugin = filesPlugin(), name = "ElizaFiles"): FilesPreviewClient {
+  const preview: Machine.Shape = Effect.runSync(previewMachine())
+  return {
+    leave: async (): Promise<FilesPreview> => (await settled(preview.send({ type: "leaveFiles" }))).state,
+    select: (input) => settled(previewed(preview, plugin, name, input)),
+    state: () => settled(preview.get()),
   }
 }
