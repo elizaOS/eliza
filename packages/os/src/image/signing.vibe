@@ -24,8 +24,10 @@ module node {
   import { X509Certificate, createHash, createPublicKey } from "node:crypto"
   import { encodeAvbPublicKey } from "./signing-keys.vibe"
 
-  export function certificate(bytes: Uint8Array): string {
-    return new X509Certificate(Buffer.from(bytes)).fingerprint256.replaceAll(":", "").toLowerCase()
+  export function certificate(bytes: Uint8Array): { sha256: string; testOnly: boolean } {
+    const got = new X509Certificate(Buffer.from(bytes))
+    return { sha256: got.fingerprint256.replaceAll(":", "").toLowerCase(),
+      testOnly: /(?:^|\n)(?:OU=TEST ONLY|CN=Android Debug)(?:$|\n)/i.test(got.subject) }
   }
 
   export function avbKey(bytes: Uint8Array): Uint8Array {
@@ -243,7 +245,7 @@ export effect function signRelease(options: SignReleaseOptions) {
   if (try files.exists(output)) throw new SigningRefused({ reason: "Release output already exists" })
   const fingerprints = path.join(dir, "fingerprints.json")
   const identity = (try files.exists(fingerprints)) ? (try readSigningJson(fingerprints)).value : undefined
-  const marker = (try files.exists(path.join(dir, "TEST-KEYS-DO-NOT-SHIP"))) ||
+  let marker = (try files.exists(path.join(dir, "TEST-KEYS-DO-NOT-SHIP"))) ||
     (identity !== null && typeof identity === "object" && "testKeys" in identity && identity.testKeys === true)
   const enrollment = try loadKeyManifest(options.keyManifest)
   const keys = new Map(enrollment.keys.map((key) => [key.name, key]))
@@ -294,9 +296,10 @@ export effect function signRelease(options: SignReleaseOptions) {
     const row = keys.get(key)
     if (row?.kind !== "x509-pk8") throw new SigningRefused({ reason: `Missing enrolled certificate for ${key}` })
     const observed = try publicFile(path.join(dir, `${key}.x509.pem`))
-    const hex = try Effect.try({ try: () => certificate(observed), catch: refused })
+    const { sha256: hex, testOnly } = try Effect.try({ try: () => certificate(observed), catch: refused })
     if (row.certificateSha256 !== undefined && row.certificateSha256 !== hex) throw new SigningRefused({ reason: `Certificate bytes differ from enrollment for ${key}` })
     if (managed === undefined) try ownerKey(path.join(dir, `${key}.pk8`))
+    marker = marker || testOnly
     certificates.set(key, hex)
   }
   if (!isDigest(channel.otaCertificate) || channel.otaCertificate.tag !== "Sha256" || review.descriptor.platformCertificate.tag !== "Sha256" ||

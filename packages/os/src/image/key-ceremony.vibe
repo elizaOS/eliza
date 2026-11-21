@@ -291,8 +291,10 @@ export effect function decrypt(options: DecryptOptions) {
     if (!keyDecryptionAdmitted(true, matches, fingerprint)) throw new SigningRefused({ reason: `Private or public identity differs from the ceremony for ${row.name}` })
     products.push({ name: identityName, bytes: identity }, { name: `${row.name}.${x509 ? "pk8" : "pem"}`, bytes: privateKey.plain })
   }
-  products.push({ name: "fingerprints.json", bytes: text.encode(`${JSON.stringify(envelope.value, null, 2)}\n`) })
-  if (fingerprints.testKeys) products.push({ name: "TEST-KEYS-DO-NOT-SHIP", bytes: text.encode("Generated with --test-keys.\n") })
+  if (options.only === undefined) {
+    products.push({ name: "fingerprints.json", bytes: text.encode(`${JSON.stringify(envelope.value, null, 2)}\n`) })
+    if (fingerprints.testKeys) products.push({ name: "TEST-KEYS-DO-NOT-SHIP", bytes: text.encode("Generated with --test-keys.\n") })
+  }
   try publish(output, products)
   return { target: output, written: [...names], testKeys: fingerprints.testKeys }
 }
