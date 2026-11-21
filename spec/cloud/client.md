@@ -217,7 +217,8 @@ pure val googleRoutes: List[DeviceRoute] = List(
   keyed(Post, google(List("calendar", "events")), Set("Idempotency-Key")),
   keyed(Patch, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Set("If-Match")),
   keyed(Delete, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Set("If-Match")))
-pure val deviceRoutes: List[DeviceRoute] = signInRoutes.concat(billingRoutes).concat(serviceRoutes).concat(googleRoutes)
+pure def joinRouteGroups(earlier: List[DeviceRoute], later: List[DeviceRoute]): List[DeviceRoute] = earlier.concat(later)
+pure val deviceRoutes: List[DeviceRoute] = joinRouteGroups(joinRouteGroups(signInRoutes, billingRoutes), joinRouteGroups(serviceRoutes, googleRoutes))
 pure def admitsHeader(r: DeviceRoute, header: str): bool = baseHeaders.contains(header) or r.headers.contains(header)
 pure def routesOf(method: HttpMethod): List[DeviceRoute] = deviceRoutes.select(d => d.method == method)
 pure def lawEveryRouteIsUnderApi(method: HttpMethod): bool =
