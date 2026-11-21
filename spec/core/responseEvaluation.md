@@ -24,9 +24,9 @@ the exact match.
 
 ```quint
 type RegisteredEvaluator = { name: str, reference: int, priority: int, localeOrder: int, declaredTools: List[str] }
-pure val firstEvaluator: RegisteredEvaluator = {name: "context", reference: 1, priority: 10, localeOrder: 1, declaredTools: List("read")}
-pure val secondEvaluator: RegisteredEvaluator = {name: "scope", reference: 2, priority: 20, localeOrder: 2, declaredTools: List("write")}
-pure val registrationValues: Set[RegisteredEvaluator] = Set({ ...firstEvaluator, name: "first" }, { ...secondEvaluator, name: "First" }, { ...firstEvaluator, name: " first ", localeOrder: 3 })
+pure val firstEvaluator: RegisteredEvaluator = {name: "context", reference: 1, priority: 10, localeOrder: 2, declaredTools: List("read")}
+pure val secondEvaluator: RegisteredEvaluator = {name: "scope", reference: 2, priority: 20, localeOrder: 5, declaredTools: List("write")}
+pure val registrationValues: Set[RegisteredEvaluator] = Set({ ...firstEvaluator, name: "first", localeOrder: 3 }, { ...secondEvaluator, name: "First", localeOrder: 4 }, { ...firstEvaluator, name: " first ", localeOrder: 1 })
 pure val normalizedNameValues = Set("", "first", "First")
 pure def canRegister(s: ResponseEvaluation, registration: RegisteredEvaluator): bool = registration.reference > 0
 pure def register(s: ResponseEvaluation, registration: RegisteredEvaluator): ResponseEvaluation = if (s.registered.some(e => e.name == registration.name)) s else { ...s, registered: s.registered.append(registration) }
