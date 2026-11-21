@@ -148,7 +148,7 @@ export effect function revokeAllSessions(tx: Tx, userId: string, now: number): v
   try moveEpochs(tx, userId, [revokeAll(epoch)], now)
 }
 
-effect function presentedAfterLock(tx: Tx, key: string, digest: string, family: Family): { readonly generation: number; readonly accessDigest: string } | undefined!StoreFailure {
+effect function presentedAfterLock(tx: Tx, key: string, digest: string, family: Family): ({ readonly generation: number; readonly accessDigest: string } | undefined)!StoreFailure {
   const row = (try tx.query("SELECT refresh_digest, access_digest FROM sessions WHERE key = $1", [key]))[0]
   if (toText(row?.refresh_digest) === digest) return { generation: family.generation, accessDigest: toText(row?.access_digest) ?? "" }
   const spent = (try tx.query("SELECT generation FROM cloud_spent_refresh WHERE digest = $1 AND session_key = $2", [digest, key]))[0]
