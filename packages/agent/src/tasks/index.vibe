@@ -1,5 +1,5 @@
 // spec/agent/tasks/index.md, "Every task request comes from the launch account of a started host"; spec/agent/tasks/index.md, "A start pauses the work a previous process left unfinished"; spec/agent/tasks/wire.md, "A chat turn names a task only while the host presents it at that epoch"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"
-import { InMemoryMessageInteractionSessionStore, Service, logger, type IAgentRuntime, type TaskChoiceWidget, type TaskOwner } from "@elizaos/core"
+import { InMemoryMessageInteractionSessionStore, Service, logger, stringToUuid, validateUuid, type IAgentRuntime, type TaskChoiceWidget, type TaskOwner } from "@elizaos/core"
 import { ModuleRefused, type AgentModule, type ModuleContext, type ModuleFactory } from "../host/module.vibe"
 import {
   InteractiveTaskChoices, taskPresentations, tasksServiceType,
@@ -77,7 +77,8 @@ effect function launchOwner(context: ModuleContext) {
   const accountId = context.launch.account?.userId
   if (accountId === undefined) throw new ModuleRefused({ module: tasksModuleName, reason: "The task module needs the launch account" })
   if (context.storageKey === undefined) throw new ModuleRefused({ module: tasksModuleName, reason: "The task module needs the launch frame's storage key" })
-  const owner: TaskOwner = { agentId: context.runtime.agentId, actorId: context.ownerEntityId, connector: { source: "device", accountId } }
+  const actorId = try orDie(Effect.try(() => validateUuid(accountId) ?? stringToUuid(`account:${accountId}`)))
+  const owner: TaskOwner = { agentId: context.runtime.agentId, actorId, connector: { source: "device", accountId } }
   return { owner, storageKey: context.storageKey }
 }
 

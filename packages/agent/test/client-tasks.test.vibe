@@ -4,22 +4,23 @@ import { host, startInProcess, type InProcess } from "./support/kernel.vibe"
 
 module node {
   import { randomBytes } from "node:crypto"
-  import { mkdir } from "node:fs/promises"
-  import { Effect, Redacted } from "effect"
-  import type { TaskOwner } from "@elizaos/core"
-  import type { ModuleFactory } from "../src/host/module.vibe"
-  import { createTaskHost, type TaskActuator, type TaskGoalAuthorizer } from "../src/tasks/host.vibe"
-  import { taskRoutes } from "../src/tasks/routes.vibe"
-  import { createTaskStore, storageKeySource } from "../src/tasks/store.vibe"
+  import type { IAgentRuntime } from "@elizaos/core"
+  import type { TaskActuator, TaskGoalAuthorizer } from "../src/tasks/host.vibe"
+  import { tasksModuleName as tasksModule, tasksServiceType, type TasksApi } from "../src/tasks/index.vibe"
   import { createSurfaceClient, TaskLifecycle, type SurfaceRequest, type TaskLifecycleRequest, type TaskLifecycleState } from "../src/client/index.vibe"
 
-  export const tasksModuleName = "@elizaos/agent/tasks"
+  export const tasksModuleName = tasksModule
+  export const storageKey = randomBytes(32).toString("base64")
   export const surfaceModuleName = "@elizaos/agent/surface"
   const messages = { start: "Could not start", pause: "Could not pause", resume: "Could not resume", cancel: "Could not cancel" }
 
+  let observed = 0
   const actuator: TaskActuator = {
     capabilities: ["read"],
-    observe: () => Promise.resolve({ id: `observation-${Date.now()}`, pageId: "page-1", origin: "https://example.com", version: 1, inputRevision: 1, observedAt: Date.now() }),
+    observe: () => {
+      observed += 1
+      return Promise.resolve({ id: `observation-${observed}`, pageId: "page-1", origin: "https://example.com", version: observed, inputRevision: 1, observedAt: Date.now() })
+    },
     execute: () => Promise.reject(new Error("No operation runs in these journeys")),
     quiesce: () => Promise.resolve(),
   }
@@ -36,17 +37,11 @@ module node {
     },
   }
 
-  const tasksModule: ModuleFactory<never> = (context) => Effect.orDie(Effect.gen(function* () {
-    const directory = `${context.stateDirectory}/tasks`
-    yield* Effect.promise(() => mkdir(directory, { recursive: true, mode: 0o700 }))
-    const store = yield* createTaskStore({ directory, keys: storageKeySource(Redacted.make(randomBytes(32).toString("base64"))) })
-    const tasks = yield* createTaskHost({ store, actuator, authorizer })
-    const owner: TaskOwner = { agentId: context.runtime.agentId, actorId: "owner-1", connector: { source: "device", accountId: "owner-account" } }
-    yield* tasks.start(owner)
-    return { name: tasksModuleName, plugin: { name: tasksModuleName, description: "Task host and routes", routes: taskRoutes(tasks) } }
-  }))
-
-  export const modules: ReadonlyMap<string, ModuleFactory<never>> = new Map([[tasksModuleName, tasksModule]])
+  export async function registerHelpers(runtime: IAgentRuntime): Promise<void> {
+    const tasks = await runtime.getServiceLoadPromise(tasksServiceType) as unknown as TasksApi
+    await tasks.registerActuator(actuator)
+    await tasks.registerAuthorizer(authorizer)
+  }
 
   interface Wire {
     readonly port: number
@@ -143,10 +138,14 @@ module node {
   export async function cancelNeedsANewEpoch(wire: Wire) {
     let sameEpoch = false
     let pausedEpoch = -1
+    let pausedId = ""
     const { life } = lifecycle(async (path, body, signal) => {
       const reply = (await send(wire, path, body, signal)).json
       const view = viewOf(reply)
-      if (path === "/api/tasks/current/pause" && view !== null && view !== undefined) pausedEpoch = view.epoch
+      if (path === "/api/tasks/current/pause" && view !== null && view !== undefined) {
+        pausedEpoch = view.epoch
+        pausedId = view.id
+      }
       if (sameEpoch && path.endsWith("/cancel") && view !== null && view !== undefined) return { task: { ...view, epoch: pausedEpoch } }
       return reply
     })
@@ -159,7 +158,7 @@ module node {
     const repeated = await life.control("cancel")
     return {
       cancelled, shown, firstPausedEpoch, repeated, afterRepeated: life.snapshot(),
-      held: viewOf(await json(wire, "/api/tasks/current"))?.status,
+      held: viewOf(await json(wire, "/api/tasks/current")), stored: viewOf(await json(wire, `/api/tasks/${pausedId}`))?.status,
     }
   }
 
@@ -205,11 +204,13 @@ module node {
 }
 
 import {
-  cancelNeedsANewEpoch, malformedViewIsNotNoTask, modules, pauseBeforeCreationReply, staleResumeAndChangedIdentity, surfaceConnections, surfaceModuleName, tasksModuleName,
+  cancelNeedsANewEpoch, malformedViewIsNotNoTask, pauseBeforeCreationReply, registerHelpers, storageKey, staleResumeAndChangedIdentity, surfaceConnections, surfaceModuleName, tasksModuleName,
 } from node
 
 effect function boot() {
-  return try startInProcess({ http: true, launch: { load: [tasksModuleName] }, modules })
+  const agent = try startInProcess({ http: true, cloud: true, launch: { load: [tasksModuleName] }, frame: { storageKey } })
+  try host("task helpers", () => registerHelpers(agent.agent.runtime))
+  return agent
 }
 
 const wireOf = (agent: InProcess) => ({ port: agent.transport.kind === "http" ? agent.transport.port : 0, token: agent.frame.token })
@@ -245,7 +246,7 @@ it.effect('Cancel succeeds only with a cancelled reply at a later epoch than the
   try Effect.try(() => {
     assert.deepStrictEqual([observed.cancelled, observed.shown.task?.status, observed.shown.error], [true, "cancelled", ""])
     assert.isTrue((observed.shown.task?.epoch ?? -1) > observed.firstPausedEpoch)
-    assert.deepStrictEqual([observed.repeated, observed.afterRepeated.error, observed.held], [false, "Could not cancel", "cancelled"])
+    assert.deepStrictEqual([observed.repeated, observed.afterRepeated.error, observed.held, observed.stored], [false, "Could not cancel", null, "cancelled"])
   })
 }, 120_000)
 

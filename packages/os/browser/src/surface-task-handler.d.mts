@@ -28,6 +28,7 @@ export interface SurfaceTaskHandler {
   close(): Promise<void>;
 }
 
+/** @throws {never} */
 export function createSurfaceTaskHandler(ports: SurfaceTaskPorts): SurfaceTaskHandler;
 
 export * from "./native-wire.mjs";

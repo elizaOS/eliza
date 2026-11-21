@@ -12,6 +12,11 @@ module node {
   import type { CloudFake } from "./support/cloud-fake.ts"
 
   /** @throws {never} */
+  export function say(text: string): void {
+    process.stderr.write(text)
+  }
+
+  /** @throws {never} */
   export function storageKey(): string {
     return randomBytes(32).toString("base64")
   }
@@ -26,7 +31,7 @@ module node {
     return cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).length
   }
 }
-import { completions, contextKeyOf, storageKey } from node
+import { completions, contextKeyOf, say, storageKey } from node
 
 const productServiceType = "task-product-fixture"
 const taskId = "task-1"
@@ -120,35 +125,59 @@ const replyOf = (answer: { readonly body: unknown }) => answer.body as Reply
 
 it.live('A chat turn naming the running task at its epoch shows the host\'s offered choice; a malformed, stale or unpresented task is refused and stores nothing; a task paused during the reply is 409 (spec/agent/tasks/wire.md, "A chat turn names a task only while the host presents it at that epoch"; spec/agent/tasks/wire.md, "A choice batch is shown only when every choice is valid for the task and epoch"; spec/agent/tasks/index.md, "A chat turn is shown a task only while it is active at the epoch it named")', effect () => {
   const cloud = try cloudFake(deviceKey)
+  try Effect.sync(() => say("STEP 1\n"))
   const agent = try taskAgent(cloud, ["@elizaos/agent/tasks", taskProduct.name])
+  try Effect.sync(() => say("STEP 2\n"))
   try host("product start", () => agent.agent.runtime.getServiceLoadPromise(productServiceType))
+  try Effect.sync(() => say("STEP 3\n"))
   const tasks = agent.agent.runtime.getService(tasksServiceType) as unknown as TasksApi
   const created = try ask(agent, { method: "POST", path: "/api/tasks", body: { goalRef: "pay-bill" } })
+  try Effect.sync(() => say("STEP 4\n"))
   const task = (created.body as { task: WireTask }).task
   const offered = try host("publish choice", () => tasks.publishChoice(taskId, contextKeyOf("review"), block))
+  try Effect.sync(() => say("STEP 5\n"))
   const { id, roomId } = try conversation(agent)
+  try Effect.sync(() => say("STEP 6\n"))
 
   try Effect.sync(() => cloud.script(text("Review the displayed option.")))
+  try Effect.sync(() => say("STEP 7\n"))
   const shown = try send(agent, id, { text: "What should I do?", task: { taskId, expectedEpoch: task.epoch } })
+  try Effect.sync(() => say("STEP 8\n"))
   const asked = try host("user message", () => agent.agent.runtime.getMemoryById(replyOf(shown).userMessageId as UUID))
+  try Effect.sync(() => say("STEP 9\n"))
 
   const storedBefore = try roomMessages(agent, roomId)
+  try Effect.sync(() => say("STEP 10\n"))
   const callsBefore = completions(cloud)
   const malformed = try send(agent, id, { text: "Again?", task: { taskId, expectedEpoch: -1 } })
+  try Effect.sync(() => say("STEP 11\n"))
   const stale = try send(agent, id, { text: "Again?", task: { taskId, expectedEpoch: task.epoch + 1 } })
+  try Effect.sync(() => say("STEP 12\n"))
   const foreign = try send(agent, id, { text: "Again?", task: { taskId: "task-2", expectedEpoch: task.epoch } })
+  try Effect.sync(() => say("STEP 13\n"))
   const storedAfterRefusals = try roomMessages(agent, roomId)
+  try Effect.sync(() => say("STEP 14\n"))
   const callsAfterRefusals = completions(cloud)
 
   const gate = Promise.withResolvers<void>()
   try Effect.sync(() => cloud.script(held(gate.promise, text("Still thinking."))))
+  try Effect.sync(() => say("STEP 15\n"))
   const pending = fork send(agent, id, { text: "And now?", task: { taskId, expectedEpoch: task.epoch } })
-  while (completions(cloud) === callsAfterRefusals) try Effect.sleep("20 millis")
+  try Effect.sync(() => say("STEP 16\n"))
+  let waited = 0
+  while (completions(cloud) === callsAfterRefusals && waited < 100) { waited += 1; try Effect.sleep("20 millis") }
+  try Effect.sync(() => say(`WAITED ${waited} calls ${JSON.stringify(cloud.calls.map((c) => c.path))}\n`))
+  try Effect.sync(() => say("STEP 17\n"))
   const paused = try ask(agent, { method: "POST", path: `/api/tasks/${taskId}/pause`, body: { expectedRevision: task.revision } })
+  try Effect.sync(() => say("STEP 18\n"))
   try Effect.sync(() => gate.resolve())
+  try Effect.sync(() => say("STEP 19\n"))
   const changed = join pending
+  try Effect.sync(() => say("STEP 20\n"))
   const afterPause = try send(agent, id, { text: "Once more?", task: { taskId, expectedEpoch: task.epoch } })
+  try Effect.sync(() => say("STEP 21\n"))
 
+  try Effect.sync(() => say(`RESULT ${JSON.stringify({ created, shown, malformed, stale, foreign, paused, changed, afterPause })}\n`))
   try Effect.try(() => {
     assert.deepStrictEqual({ status: created.status, task: task.id, status_: task.status }, { status: 201, task: taskId, status_: "active" })
     assert.strictEqual(shown.status, 200)
@@ -163,7 +192,7 @@ it.live('A chat turn naming the running task at its epoch shows the host\'s offe
     assert.deepStrictEqual(changed, { status: 409, body: { error: "TASK_CONFLICT" } })
     assert.deepStrictEqual(afterPause, { status: 409, body: { error: "TASK_CONFLICT" } })
   })
-}, 240_000)
+}, 60_000)
 
 it.live('Without the tasks module a chat turn that names a task is 503 and stores nothing (spec/agent/tasks/wire.md, "A chat turn names a task only while the host presents it at that epoch")', effect () => {
   const cloud = try cloudFake(deviceKey)

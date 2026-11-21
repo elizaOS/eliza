@@ -81,6 +81,7 @@ export interface NoticeFenceOperations<T> {
 }
 
 export interface NoticeFenceUpdater {
+  /** @throws {never} */
   update(credential: DeviceCredential, credentialRead: boolean): void;
 }
 
