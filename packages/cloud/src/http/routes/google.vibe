@@ -3,7 +3,8 @@ import { refuse, refuseFor, statusOf, type Refusal } from "../../../gen/cloud__s
 import { json, jsonBody, owner, type Area, type RouteContext } from "../routes.vibe"
 import { refusalBody, refused } from "../refusal.vibe"
 import { disconnectGrant, readGrantAccounts, readGrantStatus } from "../../services/google/grant-access.vibe"
-import { GoogleSubject, linkNativeGoogle, ServerAuthCode, type GoogleLinkFault } from "../../services/google/managed-native.vibe"
+import { GoogleSubject, linkNativeGoogle, ServerAuthCode, type GoogleLinkFault } from "../../services/google/managed-grants.vibe"
+import { browserConnectRoutes, browserConnectSweep } from "../../services/google/managed-browser.vibe"
 import { mailReadRoutes } from "../../services/google/mail-read.vibe"
 import { calendarRoutes, calendarSweeps } from "../../services/google/calendar.vibe"
 import { mailOperationRoutes, mailOperationSweeps } from "../../services/google/mail-operations.vibe"
@@ -67,11 +68,13 @@ export const area: Area = {
     { method: "GET", path: `${googlePath}/accounts`, auth: "ServiceAccess", handler: accounts },
     { method: "POST", path: `${googlePath}/disconnect`, auth: "ServiceAccess", handler: disconnect },
     { method: "POST", path: `${googlePath}/connect/native`, auth: "ServiceAccess", maxBodyBytes: 16 * 1024, handler: connectNative },
+    ...browserConnectRoutes,
     ...mailReadRoutes,
     ...calendarRoutes,
     ...mailOperationRoutes
   ],
   sweeps: [
+    browserConnectSweep,
     ...calendarSweeps,
     ...mailOperationSweeps
   ]

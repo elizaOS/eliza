@@ -142,13 +142,14 @@ pure def sometimesAwaitingGoogle(c: Connection): bool = c.flow.phase == O::Await
 ### The callback stores the sealed grant only on the one connection of its Google subject
 
 Google's answer names the subject, the granted scopes, the access token's
-lifetime and whether a refresh token came. When the organization already
+lifetime and whether a refresh token came. A failed exchange supplies no
+subject or access lifetime. When the organization already
 holds that subject (`subjectHeld`), the grant goes to that row by
 `receiveGrant` and this attempt row stays `Pending`; otherwise this row
 becomes the subject's connection. A row's subject, once set, never changes.
 
 ```quint
-pure def canProviderResult(c: Connection, hasAccount: bool, subject: str, lifetime: Millis): bool = O::canProviderResult(c.flow) and hasAccount and subject != "" and lifetime > 0
+pure def canProviderResult(c: Connection, success: bool, hasAccount: bool, subject: str, lifetime: Millis): bool = O::canProviderResult(c.flow) and hasAccount and (not(success) or (subject != "" and lifetime > 0))
 pure def providerResult(c: Connection, success: bool, hasAccount: bool, subject: str, granted: List[GoogleScope], lifetime: Millis, refreshable: bool): Connection =
   { ...c, flow: O::providerResult(c.flow, success, hasAccount), exchange: if (success) Exchanged({ subject: subject, accessUntil: c.now + lifetime, refreshable: refreshable }) else NotExchanged, offered: if (success) scopesOf(granted) else List() }
 pure def canAccountResult(c: Connection): bool = O::canAccountResult(c.flow) and c.exchange != NotExchanged
@@ -162,9 +163,9 @@ pure def accountResult(c: Connection, success: bool, subjectHeld: bool): Connect
   }
 }
 pure val hasAccountValues = Set(true)
-pure val subjectValues = Set("sub1", "sub2")
+pure val subjectValues = Set("", "sub1", "sub2")
 pure val grantedValues = Set(List(ScopeUserinfoEmail, ScopeGmailReadonly), List(ScopeUserinfoEmail, ScopeGmailModify, ScopeCalendarEvents, ScopeGmailSend))
-pure val lifetimeValues = Set(120000, 3600000)
+pure val lifetimeValues = Set(0, 120000, 3600000)
 pure val weight_providerResult = 4
 pure val weight_accountResult = 4
 pure def alwaysAnExchangeNamesASubject(c: Connection): bool = { val x = c.exchange

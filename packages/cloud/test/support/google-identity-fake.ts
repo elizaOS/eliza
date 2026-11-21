@@ -22,6 +22,7 @@ interface Grant {
   readonly clientId: string;
   readonly redirectUri: string;
   readonly challenge: string;
+  readonly scopes: ReadonlyArray<string>;
 }
 
 interface NativeCodeOptions {
@@ -34,6 +35,7 @@ export interface GoogleIdentityFake {
   readonly tokenRequests: URLSearchParams[];
   signInAs(person: GooglePerson): void;
   denyNext(): void;
+  managedScopes(scopes: ReadonlyArray<string>): void;
   idToken(person: GooglePerson, claims: IdTokenClaims): Promise<string>;
   serverAuthCode(person: GooglePerson, scopes: ReadonlyArray<string>, options?: NativeCodeOptions): string;
 }
@@ -57,6 +59,7 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
   const nativeAccess = new Map<string, GooglePerson>();
   let person: GooglePerson = { subject: "google-subject-1", email: "Person@Example.com", emailVerified: true, givenName: "Person" };
   let deny = false;
+  let managedScopes: ReadonlyArray<string> | undefined;
 
   const idToken = (who: GooglePerson, claims: IdTokenClaims) =>
     new SignJWT({ email: who.email, email_verified: who.emailVerified, ...(who.givenName === undefined ? {} : { given_name: who.givenName }), ...(claims.nonce === undefined ? {} : { nonce: claims.nonce }) })
@@ -77,7 +80,8 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
       return back(redirectUri, { error: "access_denied", state });
     }
     const code = randomBytes(16).toString("base64url");
-    grants.set(code, { person, clientId: query.get("client_id") ?? "", redirectUri, challenge: query.get("code_challenge") ?? "" });
+    const scopes = managedScopes ?? (query.get("scope") ?? "").split(/\s+/).filter(Boolean);
+    grants.set(code, { person, clientId: query.get("client_id") ?? "", redirectUri, challenge: query.get("code_challenge") ?? "", scopes });
     return back(redirectUri, { code, state });
   };
 
@@ -107,7 +111,11 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
     if (grant === undefined || grant.clientId !== form.get("client_id") || grant.redirectUri !== form.get("redirect_uri") || grant.challenge !== s256(form.get("code_verifier") ?? "")) {
       return { status: 400, body: { error: "invalid_grant" } };
     }
-    return { status: 200, body: { access_token: "unused", token_type: "Bearer", expires_in: 3600, id_token: await idToken(grant.person, { audience: grant.clientId }) } };
+    const access = grant.redirectUri.endsWith("/api/v1/oauth/google/callback") ? `access-${grant.person.subject}` : "unused";
+    return { status: 200, body: {
+      access_token: access, token_type: "Bearer", expires_in: 3600, id_token: await idToken(grant.person, { audience: grant.clientId }),
+      ...(access === "unused" ? {} : { refresh_token: `refresh-${grant.person.subject}`, scope: grant.scopes.join(" ") }),
+    } };
   };
 
   const handler: FakeHandler = async (request) => {
@@ -128,6 +136,7 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
     tokenRequests,
     signInAs: (next) => { person = next; },
     denyNext: () => { deny = true; },
+    managedScopes: (scopes) => { managedScopes = [...scopes]; },
     idToken,
     serverAuthCode: (who, scopes, options = {}) => {
       const code = `4/${randomBytes(16).toString("base64url")}`;

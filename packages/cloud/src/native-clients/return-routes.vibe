@@ -1,5 +1,5 @@
 // spec/cloud/returnPages.md, "Story: Bring me back to the app when its link did not open"; spec/cloud/returnPages.md, "Story: Tell a payer the checkout ended"
-import { answerAt, connectedAnswer, pageHeaders, payerPath, readOf, type Page, type PageAnswer, type PagePurpose } from "../../gen/cloud__returnPages.effect.vibe"
+import { answerAt, connectedAnswer, connectedOnCloud, pageHeaders, payerPath, readOf, type Page, type PageAnswer, type PagePurpose } from "../../gen/cloud__returnPages.effect.vibe"
 import type { Registration, ReturnPurpose } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import { Refused } from "../http/refusal.vibe"
 import type { Route, RouteContext } from "../http/routes.vibe"
@@ -128,6 +128,11 @@ effect function servePage(context: RouteContext) {
 export effect function connectedReturnPage(registration: Registration) {
   const deployment = try Deployment
   return try pageResponse(connectedAnswer(rowOf(deployment.settings.name, deployment.settings), registration))
+}
+
+export effect function connectedBrowserPage() {
+  const deployment = try Deployment
+  return try pageResponse(connectedOnCloud(rowOf(deployment.settings.name, deployment.settings)))
 }
 
 export const returnPageRoute: Route = { method: "GET", path: "/*", auth: "Public", handler: servePage }

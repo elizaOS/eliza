@@ -788,6 +788,99 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
     }))
   }), 120_000)
 
+  it.live("Connect Google in the browser and return once to the registered app (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    const start = Date.now()
+    try sync(() => clock.set(start))
+    provide Clock.Clock = clock.clock {
+      const registration = { ...native, connectReturn: `${web}/apps/native/google` }
+      const { cloud, google } = try nativeCloud(undefined, registration)
+      const caller = try signedCaller(cloud, "google-browser")
+      const callback = "/api/v1/oauth/google/callback"
+      const initialize = (body: unknown, headers = caller.headers) => cloud.call("/api/v1/eliza/google/connect/initiate", { json: body, headers })
+      const appState = "s".repeat(43)
+      const redirectUrl = `${registration.connectReturn}?state=${appState}`
+      const requested = { side: "owner", capabilities: ["google.gmail.triage", "google.calendar.read"], redirectUrl }
+      const offered = [...scopeFor("google.basic_identity"), ...scopeFor("google.calendar.read"), ...scopeFor("google.gmail.triage")]
+      const granted = [offered[0] ?? "", offered[3] ?? ""]
+      const issued = (answer: { readonly body: unknown }) => answer.body as { readonly authUrl: string; readonly appReturn?: number }
+      const visitLocal = (url: string) => tryPromise(() => visit(url))
+      const returnToCloud = (location: string) => {
+        const page = new URL(location)
+        return `${cloud.url}${page.pathname}${page.search}`
+      }
+      const fragment = (location: string) => Object.fromEntries(new URLSearchParams(location.split("#")[1] ?? ""))
+      const [anonymous, side, empty, stale, duplicate] = try all([
+        initialize(requested, {}), initialize({ ...requested, side: "agent" }), initialize({ ...requested, capabilities: [] }),
+        initialize({ ...requested, redirectUrl: `${web}/apps/missing?state=${appState}` }), initialize({ ...requested, redirectUrl: `${redirectUrl}&state=${appState}` })
+      ], { concurrency: "unbounded" })
+      const none = try sql(cloud, "SELECT state_digest FROM google_connect_states", [])
+      try sync(() => { google.signInAs(person); google.managedScopes(granted) })
+      const begun = try initialize(requested)
+      const auth = try sync(() => new URL(issued(begun).authUrl))
+      const signed = auth.searchParams.get("state") ?? ""
+      const pending = (try sql(cloud, "SELECT c.key, c.status, c.state #>> '{flow,phase}' AS phase, s.organization_id, s.user_id, s.state_digest, s.verifier, s.consumed_at FROM google_connections c CROSS JOIN google_connect_states s", []))[0]
+      const provider = try visitLocal(auth.toString())
+      const next = try sync(() => returnToCloud(provider.location))
+      const forged = try sync(() => {
+        const url = new URL(next)
+        url.searchParams.set("state", `${signed.slice(0, -1)}${signed.endsWith("0") ? "1" : "0"}`)
+        return url.toString()
+      })
+      const tampered = try visitLocal(forged)
+      const [one, two] = try all([visitLocal(next), visitLocal(next)], { concurrency: 2 })
+      const accepted = one.status === 302 ? one : two
+      const replay = one.status === 302 ? two : one
+      const grantId = fragment(accepted.location).connectionId ?? ""
+      const live = try cloud.call(`/api/v1/eliza/google/status?grantId=${grantId}`, { headers: caller.headers })
+      const status = live.body as { readonly connected: boolean; readonly grantedCapabilities: ReadonlyArray<string>; readonly grantedScopes: ReadonlyArray<string> }
+
+      const noReturn = try initialize({ capabilities: requested.capabilities })
+      const returned = try visitLocal(issued(noReturn).authUrl)
+      const webPage = try visitLocal(try sync(() => returnToCloud(returned.location)))
+      try sync(() => google.denyNext())
+      const deniedStart = try initialize(requested)
+      const deniedReturn = try visitLocal(issued(deniedStart).authUrl)
+      const denied = try visitLocal(try sync(() => returnToCloud(deniedReturn.location)))
+      const failStart = try initialize(requested)
+      const failedState = try sync(() => new URL(issued(failStart).authUrl).searchParams.get("state") ?? "")
+      const failedUrl = `${cloud.url}${callback}?${new URLSearchParams({ state: failedState, code: "rejected-provider-code" })}`
+      const failed = try visitLocal(failedUrl)
+      const refusedReplay = try visitLocal(failedUrl)
+      const expiring = try initialize(requested)
+      const expiredState = try sync(() => new URL(issued(expiring).authUrl).searchParams.get("state") ?? "")
+      try sync(() => clock.set(start + 600_000))
+      const expired = try visitLocal(`${cloud.url}${callback}?${new URLSearchParams({ state: expiredState, code: "unreachable-provider-code" })}`)
+      const withdrawing = try initialize(requested)
+      const withdrawnAtGoogle = try visitLocal(issued(withdrawing).authUrl)
+      try cloud.inside(cloud.store.transaction((tx) => disableClient(tx, native.clientId, start + 600_000)))
+      const withdrawn = try visitLocal(try sync(() => returnToCloud(withdrawnAtGoogle.location)))
+      const rows = try sql(cloud, "SELECT key, status, user_id, organization_id, subject, granted_scopes, tokens LIKE 'v1.%' AS sealed FROM google_connections", [])
+      const states = (try sql(cloud, "SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE consumed_at IS NOT NULL AND verifier = '') AS retired FROM google_connect_states", []))[0]
+      const forms = google.tokenRequests.map((form) => [form.get("client_id"), form.get("redirect_uri"), form.has("code_verifier")])
+      try check(() => assert.deepStrictEqual({
+        rejected: [refusal(anonymous), refusal(side), refusal(empty), refusal(stale), refusal(duplicate)], none,
+        opened: [begun.status, issued(begun).appReturn, auth.searchParams.get("scope")?.split(" "), auth.searchParams.get("code_challenge_method"), auth.searchParams.get("include_granted_scopes")],
+        pending: [pending?.status, pending?.phase, pending?.organization_id, pending?.user_id, pending?.state_digest !== signed, String(pending?.verifier).startsWith("v1."), pending?.consumed_at],
+        tampered: [tampered.status, tampered.location], accepted: [accepted.status, accepted.location.split("#")[0], fragment(accepted.location), grantId === pending?.key],
+        replay: [replay.status, replay.location], live: [live.status, status.connected, status.grantedCapabilities, status.grantedScopes],
+        web: [issued(noReturn).appReturn, webPage.status, webPage.location], denied: [denied.status, fragment(denied.location)],
+        failed: [failed.status, fragment(failed.location), refusedReplay.status], expired: [expired.status, expired.location], withdrawn: [withdrawn.status, withdrawn.location],
+        rows: rows.map((row) => [row.key, row.status, row.user_id, row.organization_id, row.subject, row.granted_scopes, row.sealed]),
+        closed: [Number(states?.total), Number(states?.retired)], forms, pkce: s256(google.tokenRequests[0]?.get("code_verifier") ?? "") === auth.searchParams.get("code_challenge")
+      }, {
+        rejected: ["401 authentication_required credential_unknown", "400 invalid_request", "400 invalid_request", "400 redirect_mismatch", "400 invalid_request"], none: [],
+        opened: [200, 2, offered, "S256", "false"], pending: ["Pending", "AwaitingCallback", caller.organizationId, caller.userId, true, true, null],
+        tampered: [400, ""], accepted: [302, registration.connectReturn, { state: appState, result: "connected", connectionId: grantId }, true],
+        replay: [400, ""], live: [200, true, ["google.basic_identity", "google.gmail.triage"], granted],
+        web: [undefined, 200, ""], denied: [302, { state: appState, result: "denied" }],
+        failed: [302, { state: appState, result: "failed" }, 400], expired: [400, ""], withdrawn: [400, ""],
+        rows: [[grantId, "Active", caller.userId, caller.organizationId, person.subject, granted, true]],
+        closed: [6, 6], forms: Array.from({ length: 3 }, () => ["google-web-client", `https://api.staging.example.com${callback}`, true]), pkce: true
+      }))
+    }
+  }), 120_000)
+
   it.live("Refuse native Google when Google is off or the registration does not enable it (spec/cloud/nativeClients/registry.md, \"Story: Tell a client exactly why it was refused\")", () => scoped(effect {
     const off = try nativeCloud(googleOff, native)
     const offAnswer = try off.cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody("missing-challenge", "x".repeat(40)) })

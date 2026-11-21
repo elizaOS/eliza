@@ -7,7 +7,7 @@ import { landAccount, type Landed } from "../identity/accounts.vibe"
 import { spendNativeGoogle, verifyNativeGoogle, type VerifiedGoogle } from "../identity/federated.vibe"
 import { factorChallenge } from "../identity/second-factor.vibe"
 import { Deployment, rowOf } from "../profile/profile.vibe"
-import { linkNativeGoogle, ServerAuthCode, unlinked, type GoogleLink } from "../services/google/managed-native.vibe"
+import { linkNativeGoogle, ServerAuthCode, unlinked, type GoogleLink } from "../services/google/managed-grants.vibe"
 import { s256 } from "../shared/credential-crypto.vibe"
 import { newId } from "../shared/sealing.vibe"
 import { Store, type Tx } from "../store/connection.vibe"
@@ -30,7 +30,7 @@ const SignInBody = Schema.Struct({
   serverAuthCode: Schema.optionalKey(ServerAuthCode)
 })
 
-export type { GoogleLink } from "../services/google/managed-native.vibe"
+export type { GoogleLink } from "../services/google/managed-grants.vibe"
 
 type SignedIn =
   | { readonly kind: "mfa"; readonly answer: { readonly status: "mfa_required"; readonly challengeId: string; readonly methods: ReadonlyArray<string>; readonly expiresAt: number } }
