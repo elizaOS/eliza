@@ -334,6 +334,8 @@ export class MapsScreenController {
   private recenterPosition?: Coordinate;
   private locationTimeout?: ReturnType<typeof setTimeout>;
   private viewport?: Coordinate;
+  /** A hand-off's own search point ("pharmacy near the Ferry Building"), used by its one search. */
+  private handoffNear?: Coordinate;
   private readonly releaseListeners = new Set<() => void>();
   private readonly lifecycle = {
     releases: 0,
@@ -563,12 +565,22 @@ export class MapsScreenController {
 
   // ---- search ---------------------------------------------------------------
 
-  /** Another app opened Maps with a one-use search (e.g. an event's location). */
-  handoff(text: string, fromEvent: boolean): void {
+  /**
+   * Another app opened Maps with a one-use search (e.g. an event's location).
+   * `near` is the place the search was made around (a chat card for "pharmacy
+   * near the Ferry Building"): the search is ranked around it, not around the
+   * viewport or the phone, so Maps shows the places the chat listed.
+   */
+  handoff(text: string, fromEvent: boolean, near?: Coordinate): void {
     if (!text.trim()) return;
     this.release();
     this.query = text.trim();
     this.eventQuery = fromEvent ? this.query : "";
+    try {
+      this.handoffNear = near ? coordinate(near) : undefined;
+    } catch {
+      this.handoffNear = undefined;
+    }
     this.submit();
     this.invalidate();
   }
@@ -624,6 +636,9 @@ export class MapsScreenController {
 
   /** Enter in the search field: coordinates drop a pin; other text searches the provider. */
   submit(): void {
+    // Only the hand-off's own search is ranked around its point.
+    const handoffNear = this.handoffNear;
+    this.handoffNear = undefined;
     if (this.choosingOrigin()) {
       this.planOrigin();
       return;
@@ -689,7 +704,7 @@ export class MapsScreenController {
       this.message = "";
       if (this.host.connection().config.status === "configured")
         this.waitingSearch = undefined;
-      void this.ensure().search(requested, this.viewport);
+      void this.ensure().search(requested, handoffNear ?? this.viewport);
     })().catch((error) => {
       if (this.disposed || intent !== this.searchIntent || !this.host.active())
         return;
