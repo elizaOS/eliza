@@ -901,6 +901,27 @@ const DRAFT_COMMAND =
 const DRAFT_THREAD_OBJECT =
   /^(?:it|this|that)$|^(?:this|that|the|my)\s+(?:(?:last|latest|newest|most recent|current|open|selected)\s+)?(?:conversation|thread|chat|message|text|sms)\b|['’]s\s+(?:(?:last|latest|newest|most recent)\s+)?(?:conversation|thread|chat|message|text|sms)\b/iu;
 
+/** A recipient corrected or replaced after it was named ("actually to Ada", "and send it to Mom"). */
+const CORRECTED_RECIPIENT =
+  /\b(?:actually|instead|rather)\s*[:,]?\s*(?:to|for|use|(?:send|address|forward|write|make) (?:it|that|the (?:draft|message|reply|text)) (?:to|for))\b|\b(?:scratch that|change the recipient|correct the number|(?:to|for) [^.!?;,]{1,64} instead)\b|[,;.!?]\s*(?:no[, ]+wait[, ]+(?:to|for)\b|I mean\s+(?!(?:it|that|what|to)\b)[\p{L}\p{N}+])|(?:^|[,;.!?]|\b(?:and|but)\b)\s*(?:(?:actually|instead)[, ]*)?(?:send|address|forward) (?:it|that|the (?:draft|message|reply|text)) (?:to|for)\b/iu;
+/** "and send it to Sam": the recipient of a draft whose body came first. */
+const SEND_IT_TO =
+  /(?:^|[,;]|\b(?:and|then|but)\b)\s*(?:then\s+)?(?:send|address|forward) (?:it|that|the (?:draft|message|reply|text)) (?:to|for)\s+/iu;
+
+/**
+ * The owner asks for the draft to be sent as well ("... and send it", "then
+ * send it to Sam"): a draft-only operation would not do what they asked.
+ */
+export function smsDraftRequestAlsoSends(text: string): boolean {
+  const instructions = text.trim().replace(/“[^”]*”|"(?:\\.|[^"\\])*"/gu, "");
+  return (
+    DRAFT_COMMAND.test(instructions) &&
+    /(?:[,;]|\b(?:and|then)\b)\s*(?:then\s+)?send(?: (?:it|that|the (?:draft|message|reply|text)))?(?: (?:to|for)\b[^.!?;]*)?\s*(?:(?:now|right away|immediately|please)\s*)?[.!]?$/iu.test(
+      instructions,
+    )
+  );
+}
+
 /** The recipient belongs to the addressing clause. A phone number in the SMS body never names its destination. */
 export function requestedSmsDraftRecipient(
   text: string,
@@ -913,14 +934,21 @@ export function requestedSmsDraftRecipient(
   const request = text.trim();
   const command = DRAFT_COMMAND.exec(request);
   if (!command) return;
-  const remainder = request.slice(command[0].length);
-  const instructions = remainder.replace(/“[^”]*”|"(?:\\.|[^"\\])*"/gu, "");
-  if (
-    /\b(?:actually|instead|rather)\s*[:,]?\s*(?:to|for|use|(?:send|address|forward|write|make) (?:it|that|the (?:draft|message|reply|text)) (?:to|for))\b|\b(?:scratch that|change the recipient|correct the number|(?:to|for) [^.!?;,]{1,64} instead)\b|[,;.!?]\s*(?:no[, ]+wait[, ]+(?:to|for)\b|I mean\s+(?!(?:it|that|what|to)\b)[\p{L}\p{N}+])|(?:^|[,;.!?]|\b(?:and|but)\b)\s*(?:(?:actually|instead)[, ]*)?(?:send|address|forward) (?:it|that|the (?:draft|message|reply|text)) (?:to|for)\b/iu.test(
-      instructions,
-    )
-  )
-    return { kind: "ambiguous" };
+  let remainder = request.slice(command[0].length);
+  let instructions = remainder.replace(/“[^”]*”|"(?:\\.|[^"\\])*"/gu, "");
+  // "Compose a message saying I'm late and send it to Sam" names its one
+  // recipient after the body. Only a message that already named one ("to
+  // them ... and send it to Mom") is correcting it.
+  const sendTo = /^(?:to|for)\b/i.test(remainder)
+    ? null
+    : SEND_IT_TO.exec(instructions);
+  if (sendTo) {
+    const head = instructions.slice(0, sendTo.index);
+    if (CORRECTED_RECIPIENT.test(head)) return { kind: "ambiguous" };
+    instructions = instructions.slice(sendTo.index + sendTo[0].length);
+    remainder = `to ${instructions}`;
+  }
+  if (CORRECTED_RECIPIENT.test(instructions)) return { kind: "ambiguous" };
   if (
     /^(?:to|for|asking|telling|reminding)\s+(?:them|him|her|that sender|the (?:last|latest|newest) sender)\b(?!\s+(?:and|or|&|instead)\b)/i.test(
       remainder,

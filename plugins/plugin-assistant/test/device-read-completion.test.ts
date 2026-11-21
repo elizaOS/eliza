@@ -599,6 +599,29 @@ it("keeps an open-thread reply and refuses to turn an addressed draft into a sen
         selected,
       ),
     ).rejects.toThrow("Which person");
+    // A request that also asks to send keeps the model's reviewed send, with
+    // its one recipient grounded; it is neither refused nor made a draft.
+    for (const [request, query, body] of [
+      [
+        "Compose a message saying I'm late and send it to Sam",
+        "Sam",
+        "I'm late",
+      ],
+      [
+        "Write a text to Mom saying happy birthday and send it",
+        "Mom",
+        "happy birthday",
+      ],
+    ] as const) {
+      const send = {
+        type: "sms_compose",
+        target: { kind: "contact", query },
+        body,
+      } as const;
+      const sent = await proposeFromOwnerText(f, targets, request, send);
+      expect(sent.request.payload.operation).toEqual(send);
+      expect(sent.request.state).toBe("pending");
+    }
     const v1 = {
       ...f.credential,
       capabilities: [

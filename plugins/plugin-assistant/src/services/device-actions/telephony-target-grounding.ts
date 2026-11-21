@@ -149,12 +149,25 @@ export function writtenPhoneNumbers(text: string): string[] {
  * oh" → "4155550100"), which a proposal must equal exactly.
  */
 export function ownerPhoneNumbers(text: string): string[] {
+  return ownerPhoneNumberTiers(text).flat();
+}
+
+/** The owner's written numbers, then the spoken ones that are not also written. */
+function ownerPhoneNumberTiers(text: string): OwnedNumbers {
   const written = writtenPhoneNumbers(text);
   return [
-    ...written,
-    ...spokenPhoneNumbers(text).filter((number) => !written.includes(number)),
+    written,
+    spokenPhoneNumbers(text).filter((number) => !written.includes(number)),
   ];
 }
+
+/**
+ * The owner's numbers in the order a proposal is matched against them: the
+ * numbers they wrote, then the ones only read as spoken. "to 415-555-0100"
+ * also reads as a spoken "24155550100", which must not make the written
+ * number ambiguous to a proposal with a country code.
+ */
+type OwnedNumbers = readonly [written: string[], spoken: string[]];
 
 /**
  * The same number with or without a country code: equal digits, or the same
@@ -202,43 +215,104 @@ export function writesContactName(text: string, name: string): boolean {
   return ` ${normalizedWords(text)} `.includes(` ${query} `);
 }
 
+const WORD_CHARACTER = /[\p{L}\p{N}]/u;
+
+/**
+ * Where `body` occurs in `text` as whole words: a body that starts or ends
+ * with a letter or digit never matches inside a longer word or number, so the
+ * body "hi" is not the "hi" in "Phil" and "55" is not the "55" in "555".
+ */
+function bodyOccurrences(text: string, body: string): number[] {
+  const haystack = text.toLowerCase(),
+    needle = body.toLowerCase();
+  const bounded = (at: number) =>
+    !(
+      WORD_CHARACTER.test(needle[0] ?? "") &&
+      WORD_CHARACTER.test(haystack[at - 1] ?? "")
+    ) &&
+    !(
+      WORD_CHARACTER.test(needle.at(-1) ?? "") &&
+      WORD_CHARACTER.test(haystack[at + needle.length] ?? "")
+    );
+  const found: number[] = [];
+  for (
+    let at = haystack.indexOf(needle);
+    at >= 0;
+    at = haystack.indexOf(needle, at + 1)
+  )
+    if (bounded(at)) found.push(at);
+  return found;
+}
+
 /**
  * The owner's text without the message body they asked to send, so that "text
  * Sam saying call me at 415-555-0100" never makes that number the recipient.
+ *
+ * The body is cut where it occurs as whole words, preferring the last such
+ * occurrence (a body follows its recipient) and never one whose cut would
+ * take away the proposed recipient (`keeps`), so "text Phil hi" still names
+ * Phil. When every occurrence would, the last is cut and the recipient is
+ * refused.
  */
 function textWithoutBody(
   text: string,
   body: unknown,
+  keeps: (rest: string) => boolean = () => true,
 ): { text: string; bodyNumbers: string[] } {
   if (typeof body !== "string" || !body.trim())
     return { text, bodyNumbers: [] };
-  const at = text.toLowerCase().indexOf(body.trim().toLowerCase());
-  if (at >= 0)
+  const trimmed = body.trim();
+  const cut = (at: number) =>
+    text.slice(0, at) + " " + text.slice(at + trimmed.length);
+  const occurrences = bodyOccurrences(text, trimmed);
+  if (occurrences.length > 0) {
+    const cuts = occurrences.map(cut).reverse();
     return {
-      text: text.slice(0, at) + " " + text.slice(at + body.trim().length),
+      text: cuts.find((rest) => keeps(rest)) ?? cuts[0],
       bodyNumbers: [],
     };
+  }
   // The model reworded the body: no number it carries can be the recipient.
   return { text, bodyNumbers: ownerPhoneNumbers(body) };
 }
 
 function ownerNumber(
   proposed: string,
-  owned: readonly string[],
+  owned: OwnedNumbers,
 ): string | undefined {
-  // The owner's own dial form, never the model's spelling of it.
+  // The owner's own dial form, never the model's spelling of it. A number the
+  // owner wrote is matched before one only read as spoken.
   const digits = proposed.replace("+", "");
-  const exact = owned.find((number) => number.replace("+", "") === digits);
-  if (exact) return exact;
-  const matches = owned.filter((number) => samePhoneNumber(number, proposed));
-  return matches.length === 1 ? matches[0] : undefined;
+  for (const tier of owned) {
+    const exact = tier.find((number) => number.replace("+", "") === digits);
+    if (exact) return exact;
+    const matches = tier.filter((number) => samePhoneNumber(number, proposed));
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) return undefined;
+  }
+  return undefined;
 }
 
-function recipientNumbers(text: string, body: unknown): string[] {
-  const { text: rest, bodyNumbers } = textWithoutBody(text, body);
-  return ownerPhoneNumbers(rest).filter(
-    (number) => !bodyNumbers.some((inBody) => samePhoneNumber(inBody, number)),
+function recipientNumbers(
+  text: string,
+  body: unknown,
+  proposed?: string,
+): OwnedNumbers {
+  const numbersIn = (rest: string, bodyNumbers: readonly string[]) =>
+    ownerPhoneNumberTiers(rest).map((tier) =>
+      tier.filter(
+        (number) =>
+          !bodyNumbers.some((inBody) => samePhoneNumber(inBody, number)),
+      ),
+    ) as unknown as OwnedNumbers;
+  const { text: rest, bodyNumbers } = textWithoutBody(
+    text,
+    body,
+    (candidate) =>
+      proposed === undefined ||
+      ownerNumber(proposed, numbersIn(candidate, [])) !== undefined,
   );
+  return numbersIn(rest, bodyNumbers);
 }
 
 /** A refused number: with swapped numbers, the references to copy instead. */
@@ -260,7 +334,7 @@ function numberRefusal(
  */
 function groundedNumber(
   proposed: string,
-  owned: readonly string[],
+  owned: OwnedNumbers,
   references: readonly SwappedPhoneReference[],
 ): string {
   const number = ownerNumber(proposed, owned);
@@ -268,7 +342,7 @@ function groundedNumber(
   if (!number)
     throw numberRefusal(
       references.filter((reference) =>
-        owned.some((owner) => samePhoneNumber(owner, reference.number)),
+        owned.flat().some((owner) => samePhoneNumber(owner, reference.number)),
       ),
     );
   return number;
@@ -287,11 +361,12 @@ function groundTarget(
       kind: "number",
       number: groundedNumber(
         target.number,
-        recipientNumbers(text, body),
+        recipientNumbers(text, body, target.number),
         references,
       ),
     };
-  if (!writesContactName(textWithoutBody(text, body).text, target.query))
+  const named = (rest: string) => writesContactName(rest, target.query);
+  if (!named(textWithoutBody(text, body, named).text))
     throw new DeviceTelephonyTargetNotRequestedError("contact");
   return target;
 }
@@ -393,9 +468,12 @@ export function groundTelephonyTarget(
       );
       return { operation, handedThrough: false };
     case "sms_send": {
-      const owned = recipientNumbers(text, operation.body);
       const recipients = operation.recipients.map((recipient) =>
-        groundedNumber(recipient, owned, references),
+        groundedNumber(
+          recipient,
+          recipientNumbers(text, operation.body, recipient),
+          references,
+        ),
       );
       return { operation: { ...operation, recipients }, handedThrough: false };
     }
@@ -404,7 +482,7 @@ export function groundTelephonyTarget(
         return { operation, handedThrough: false };
       const number = groundedNumber(
         operation.number,
-        ownerPhoneNumbers(text),
+        ownerPhoneNumberTiers(text),
         references,
       );
       return { operation: { ...operation, number }, handedThrough: false };

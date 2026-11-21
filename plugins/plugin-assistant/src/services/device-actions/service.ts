@@ -237,6 +237,7 @@ import {
   SMS_SENDER_ADDRESS_CAPABILITY,
   selectedTelephonyView,
   smsComposeNotSubmitted,
+  smsDraftRequestAlsoSends,
   smsReplyNotDrafted,
   smsSenderDisclosure,
   TELEPHONY_ACTION_OPERATION_TYPES,
@@ -2669,10 +2670,17 @@ export class DeviceActionService {
         validated.type === "sms_reply_selected")
     ) {
       const requested = requestedSmsDraftRecipient(requestOrigin.requestText);
+      // "Write a text to Mom ... and send it" asks for a send: the model's
+      // reviewed operation stays, and its recipient is grounded as usual.
+      const sends =
+        (requested?.kind === "contact" || requested?.kind === "number") &&
+        validated.type !== "sms_reply_selected" &&
+        smsDraftRequestAlsoSends(requestOrigin.requestText);
       const recipient =
-        validated.type === "sms_reply_selected" &&
-        (requested?.kind === "previous-sender" ||
-          requested?.kind === "unaddressed")
+        sends ||
+        (validated.type === "sms_reply_selected" &&
+          (requested?.kind === "previous-sender" ||
+            requested?.kind === "unaddressed"))
           ? undefined
           : requested;
       if (recipient?.kind === "ambiguous" || recipient?.kind === "unaddressed")
