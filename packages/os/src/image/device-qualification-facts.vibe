@@ -101,7 +101,7 @@ interface CameraFact {
   readonly facing: string
   readonly afModes: readonly string[]
   readonly minimumFocusDistance: number | null
-  readonly autofocus: boolean
+  readonly autofocus: boolean | null
   readonly megapixels: number | null
 }
 
@@ -128,12 +128,11 @@ function parseCameras(text = "") {
       /android\.lens\.info\.minimumFocusDistance \([0-9a-f]+\): float\[1\]\s*\[\s*([0-9.]+)\s*\]/i.exec(
         block,
       )?.[1]
-    const minimumFocusDistance =
-      minFocus === undefined ? null : Number(minFocus)
-    const autofocus =
-      afModes.some((m) =>
-        ["AUTO", "CONTINUOUS_PICTURE", "CONTINUOUS_VIDEO", "MACRO"].includes(m),
-      ) && minimumFocusDistance !== 0
+    const parsedFocus = Number(minFocus)
+    const minimumFocusDistance = Number.isFinite(parsedFocus) ? parsedFocus : null
+    const autofocus = minimumFocusDistance === 0 ? false
+      : minimumFocusDistance === null || afModes.length === 0 ? null
+        : afModes.some((mode) => ["AUTO", "CONTINUOUS_PICTURE", "CONTINUOUS_VIDEO", "MACRO"].includes(mode))
     const pixelArray =
       /android\.sensor\.info\.pixelArraySize \([0-9a-f]+\): int32\[2\]\s*\[\s*(\d+)\s+(\d+)\s*\]/i.exec(
         block,
@@ -265,6 +264,7 @@ export function deriveFacts(raw: RawAdbCaptures) {
     props.get("ro.hardware") ||
     ""
   ).toLowerCase()
+  const selinux = raw.getenforce?.trim()
   return {
     emulator: props.get("ro.kernel.qemu") === "1" || props.get("ro.boot.qemu") === "1",
     manufacturer: props.get("ro.product.manufacturer") ?? null,
@@ -314,7 +314,7 @@ export function deriveFacts(raw: RawAdbCaptures) {
     verifiedBootState: props.get("ro.boot.verifiedbootstate") ?? null,
     vbmetaDeviceState: props.get("ro.boot.vbmeta.device_state") ?? null,
     flashLocked: props.get("ro.boot.flash.locked") ?? null,
-    selinux: (raw.getenforce ?? "").trim() || null,
+    selinux: selinux === "Enforcing" || selinux === "Permissive" || selinux === "Disabled" ? selinux : null,
     chargeControlNodes: chargeNodes,
     wlanCountryProcMode: parseLsMode(raw.wlanCountryProc ?? ""),
     regulatoryFirmwareFiles: (raw.vendorFirmware ?? "")

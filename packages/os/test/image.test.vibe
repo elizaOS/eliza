@@ -502,7 +502,7 @@ it.live('Qualify a device through the read-only command set and keep the capture
         observations: [qualified.facts.vendorApiLevel, qualified.facts.abi, qualified.facts.kernel?.gkiBranch, qualified.facts.cameras?.length],
         retained,
         calls,
-        unavailable: [incomplete.evaluation.verdict, incomplete.evaluation.results.find((item) => item.id === "treble")?.result, incomplete.collectionErrors["getprop"]],
+        unavailable: [incomplete.evaluation.verdict, incomplete.evaluation.evidenceLevel, incomplete.evaluation.results.find((item) => item.id === "treble")?.result, incomplete.collectionErrors["getprop"]],
         retainedFailedCapture: incomplete.raw["getprop"],
       }, {
         qualification: ["pass", "emulator-observation", ["ab-updates"]],
@@ -512,7 +512,7 @@ it.live('Qualify a device through the read-only command set and keep the capture
           JSON.stringify(["-s", "emulator-4242", "get-state"]),
           ...Object.values(readOnlyCommands).map((command) => JSON.stringify(["-s", "emulator-4242", "shell", command])),
         ],
-        unavailable: ["incomplete", "unknown", "Capture unavailable"],
+        unavailable: ["incomplete", "emulator-observation", "unknown", "Capture unavailable"],
         retainedFailedCapture: input,
       }))
     })

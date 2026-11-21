@@ -135,7 +135,9 @@ function check(facts: DeviceFacts, rule: Requirement): Check {
     }
     case "cameraAutofocus": {
       const cameras = (facts.cameras ?? []).filter((camera) => camera.facing === rule.facing)
-      return observed(cameras.length === 0 ? null : cameras.some(({ autofocus }) => autofocus), cameras.map(({ id, afModes, minimumFocusDistance }) => ({ id, afModes, minimumFocusDistance })))
+      const readable = cameras.length > 0 && cameras.every(({ autofocus }) => autofocus !== null)
+      const autofocus = cameras.some((camera) => camera.autofocus === true) ? true : readable ? false : null
+      return observed(autofocus, cameras.map(({ id, afModes, minimumFocusDistance }) => ({ id, afModes, minimumFocusDistance })))
     }
     case "codec": return facts.codecs?.decoders.length ? observed(facts.codecs.decoders.includes(rule.mime), rule.mime) : observed(null)
     case "treble": return observed(facts.treble)
@@ -285,15 +287,16 @@ export effect function qualifyDevice(options: QualificationOptions) {
   const collected: { readonly facts: DeviceFacts; readonly captures: Capture[] } = fastboot
     ? try gatherFastboot(options.binary ?? "fastboot", serial)
     : try gatherAdb(options.binary ?? "adb", serial)
+  const facts = !fastboot && /^emulator-\d+$/.test(serial) ? { ...collected.facts, emulator: true } : collected.facts
   return {
     serial,
     mode: fastboot ? "fastboot" as const : "adb" as const,
     requirementsReviewedAt: requirements.reviewedAt ?? null,
-    facts: collected.facts,
+    facts,
     capture: collected.captures,
     raw: Object.fromEntries(collected.captures.map((found) => [rawKey(found.command), rawText(mode, found)])),
     collectionErrors: captureErrors(collected.captures),
-    evaluation: evaluate(collected.facts, requirements, { fastboot }),
+    evaluation: evaluate(facts, requirements, { fastboot }),
   }
 }
 
