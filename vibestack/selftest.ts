@@ -461,6 +461,17 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.match(error?.detail ?? "", /message: "error: Invariant violated"[\s\S]*Division by zero/, runtime.text);
   });
 
+  test("a guardless event that breaks a rule and that other transitions call is named as a helper taken for an event", async () => {
+    const helper = await run(oneRule("index", "The counter stays zero", [
+      "pure val initial: int = 0",
+      "pure def bump(n: int): int = n + 1",
+      "pure def canIncrement(n: int): bool = false",
+      "pure def increment(n: int): int = bump(n)",
+      "pure def alwaysZero(n: int): bool = n == 0",
+    ].join("\n")));
+    assert.match(helper.said("always", /a reachable state breaks/)?.detail ?? "", /bump\s+-> state = 1[^]*; it has no guard\n\s+increment calls it, so it may be a helper taken for an event/, helper.text);
+  });
+
   test("a rule set that holds in simulation but is not inductive is caught by the proof, and the deleted rule awaits review", async () => {
     const { failed, said, text } = await run(copyOfProject("spec/index.md", notInductive));
     assert.deepEqual(failed, ["proof", "review"], text);
