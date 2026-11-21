@@ -251,6 +251,8 @@ describe("emergency and short-number calls reach the phone", () => {
     "she said she'd call the police",
     "call 5 people",
     "call mom and dad",
+    "Send the police department an email",
+    "Get the police report from my email",
   ])("leaves %s to the planner", async (request) => {
     const f = await fixture(request);
     await inTurn(f, TELEPHONY, async () => {

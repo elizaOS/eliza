@@ -36,11 +36,17 @@ const TEXT_RECIPIENT = textCommand(target("{0,2}?"));
 // Emergency services named in words, or a short emergency number. "my
 // emergency contact" names a contact, not a service.
 const EMERGENCY_SERVICE = String.raw`(?:(?:an?|the|my\s+local|local)\s+)?(?:ambulances?|paramedics?|police|cops|fire\s+(?:department|brigade|service|truck)s?|fire\s*fighters?|emergency(?:\s+(?:services?|number|line))?(?!\s+contacts?)|9-?1-?1|1-?1-?2|9-?9-?9)(?![\p{L}\p{N}])`;
+// The service ends its clause, or only says when, for whom or where: "call
+// the police now", "send an ambulance to 12 Main St". "Get the police report",
+// "get the emergency number for Spain" and "call for help with my homework"
+// ask for something else and stay with the planner.
+const EMERGENCY_END = String.raw`(?:\s+(?:now|right\s+now|right\s+away|immediately|please|asap|quick(?:ly)?|here|over\s+here|for\s+(?:me|us|him|her|them)|(?:to|at)\s+[^.!?;]+))*\s*(?:[,.!?;:]|$)`;
 const EMERGENCY_REQUEST = new RegExp(
   // A call at the start of a clause ("call an ambulance", "I need help, call
   // emergency services now", "please get the police"), never a report of one
-  // ("she said she'd call the police"); or a plain need ("I need an ambulance").
-  String.raw`(?:^|[,.!?;:]\s*|\b(?:please|quick|quickly|someone|somebody|and)\s+)(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:(?:call|ring|phone|dial|get|send|contact)(?:\s+(?:me|us))?(?:\s+for)?\s+${EMERGENCY_SERVICE}|call\s+for\s+help(?![\p{L}\p{N}]))|\bneed\s+(?:an?\s+|the\s+)?(?:ambulance|paramedics|police|fire\s+department)(?![\p{L}\p{N}])`,
+  // ("she said she'd call the police"); or a plain need ("I need an ambulance"),
+  // never its denial ("I don't need an ambulance").
+  String.raw`(?:(?:^|[,.!?;:]\s*|\b(?:please|quick|quickly|someone|somebody|and)\s+)(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:(?:call|ring|phone|dial|get|send|contact)(?:\s+(?:me|us))?(?:\s+for)?\s+${EMERGENCY_SERVICE}|call\s+for\s+help(?![\p{L}\p{N}]))|(?<!\b(?:don['’]?t|do\s+not|doesn['’]?t|does\s+not|didn['’]?t|did\s+not|won['’]?t|no|never)\s+)\bneed\s+(?:an?\s+|the\s+)?(?:ambulance|paramedics|police|fire\s+department)(?![\p{L}\p{N}]))${EMERGENCY_END}`,
   "iu",
 );
 

@@ -601,6 +601,9 @@ describe("an emergency request reaches the phone's keypad", () => {
     "I need help, call emergency services now",
     "please get the fire department",
     "I need an ambulance",
+    "send an ambulance to 12 Main St",
+    "Help! Call the police",
+    "call for an ambulance for me",
   ])("%s opens the empty keypad for any proposed number", (request) => {
     expect(emergencyServicesRequest(request)).toBe(true);
     for (const operation of [
@@ -652,6 +655,18 @@ describe("an emergency request reaches the phone's keypad", () => {
     "she said she'd call the police",
     "call my emergency contact",
     "the police station number please",
+    // Adversarial review (2026-11-20): these promoted the turn to the phone's
+    // call route, replacing MESSAGE_SEND and VIEWS, though they ask for
+    // something else or deny a need.
+    "Get the police report from my email",
+    "get the emergency number for Spain",
+    "Send the police department an email",
+    "contact the police department about my stolen bike tomorrow",
+    "get the fire truck toy on amazon",
+    "Call the fire department's non-emergency line",
+    "call for help with my homework",
+    "Read my email and get the police report",
+    "I don't need an ambulance, just call mom",
   ])("does not read %s as an emergency request", (request) => {
     expect(emergencyServicesRequest(request)).toBe(false);
   });
