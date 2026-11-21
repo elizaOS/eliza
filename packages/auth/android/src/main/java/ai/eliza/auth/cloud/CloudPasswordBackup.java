@@ -157,8 +157,8 @@ public final class CloudPasswordBackup {
       } finally {
         request.disconnect();
       }
-      String tenant = URLEncoder.encode(environment.tenant, StandardCharsets.UTF_8);
-      String client = URLEncoder.encode(config.googleClientId, StandardCharsets.UTF_8);
+      String tenant = URLEncoder.encode(environment.tenant, StandardCharsets.UTF_8.name());
+      String client = URLEncoder.encode(config.googleClientId, StandardCharsets.UTF_8.name());
       URI providers = URI.create(environment.api() + "/steward/auth/providers?tenantId=" + tenant + "&clientId=" + client);
       HttpsURLConnection discovery = connect(providers, "GET", null);
       try {
