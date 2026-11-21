@@ -1034,6 +1034,7 @@ export { HookService } from "./services/hook.vibe"
 export {
   NotificationNativeError,
   NotificationService,
+  type CommittedNotification,
   type NotificationServiceAvailability,
   type NotificationServiceLifecycleRuntime,
   type NotificationServiceRecovery,

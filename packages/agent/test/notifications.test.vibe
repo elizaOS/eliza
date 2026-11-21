@@ -1,18 +1,8 @@
 // spec/agent/notifications.md, "Story: Read my notices and mark them read from my own client"
-module node {
-  import { existsSync } from "node:fs"
-
-  export function written(path: string, base: string): boolean {
-    return existsSync(new URL(path, base))
-  }
-}
-import { written } from node
 import { assert, it } from "@effect/vitest"
-import { NotificationService, type AgentNotification, type NotificationInput } from "@elizaos/core"
+import { AgentEventService, NotificationService, type AgentNotification, type NotificationInput } from "@elizaos/core"
 import { call, events, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
-
-const hubWritten = (): boolean => written("../src/conversation/events.vibe", import.meta.url)
 
 const loaded = { launch: { load: ["@elizaos/agent/notifications"] } }
 const absentId = "0b7c3a52-7e1f-4c55-9a4e-2f0d8b6c1e93"
@@ -124,11 +114,32 @@ it.effect('A stopped inbox answers 503 with Retry-After, never an empty list or 
   })
 }, 120_000)
 
-it.effect.skipIf(!hubWritten())(`A new notice arrives on the notification stream (spec/agent/notifications.md, "Story: Read my notices and mark them read from my own client")${hubWritten() ? "" : ": pending until the event hub bridges the notification stream"}`, effect () => {
+schema NoticeFrame {
+  readonly type: "event"
+  readonly event: {
+    readonly type: "agent_event"
+    readonly stream: "notification"
+    readonly runId: string
+    readonly seq: Schema.Int
+    readonly payload: { readonly id: string }
+  }
+}
+
+it.effect('A committed notice and its read mark arrive on the notification stream (spec/agent/notifications.md, "Story: Read my notices and mark them read from my own client")', effect () => {
   const agent = try startInProcess(loaded)
   const service = try inbox(agent)
   const feed = try events(agent, ["notification"])
+  const subscribed = try host("notification subscription", () => feed.next())
+  assert.include(JSON.stringify(subscribed), '"subscribed"')
+  const runtime = agent.agent.runtime
+  const bus = runtime.getService<AgentEventService>(AgentEventService.serviceType)
+  if (bus === null) return try die("The Agent event service was not started")
+  bus.emit({ runId: absentId, stream: "notification", data: { type: "notification", notification: { id: absentId } }, agentId: runtime.agentId })
   const [notice] = try notifyAll(service, [{ title: "Parcel delivered", category: "system" }])
-  const frame = try host("notification frame", () => feed.next((sent) => JSON.stringify(sent).includes(notice.id)))
-  try Effect.try(() => assert.include(JSON.stringify(frame), '"notification"'))
+  const decodeFrame = Schema.decodeUnknownEffect(NoticeFrame, { onExcessProperty: "error" })
+  const created = try decodeFrame(try host("committed notification frame", () => feed.next()))
+  assert.deepStrictEqual(created.event, { type: "agent_event", stream: "notification", runId: notice.id, seq: 1, payload: { id: notice.id } })
+  const marked = try markRead(agent, notice.id)
+  const updated = try decodeFrame(try host("committed notification read frame", () => feed.next()))
+  assert.deepStrictEqual([marked, updated.event], [{ status: 200, body: { ok: true } }, { ...created.event, seq: 2 }])
 }, 120_000)

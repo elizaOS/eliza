@@ -24,6 +24,7 @@ import {
   SILENT_TIER_DEFAULT_EXPIRY_MS,
   tierForPriority,
 } from "../types/notification.vibe"
+import type { AgentEventObserver } from "./agent-event.vibe"
 import { asUUID, type UUID } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { Service, ServiceType } from "../types/service.vibe"
@@ -122,13 +123,22 @@ const NATIVE_DEEP_LINKS: ReadonlySet<string> = new Set([
   "/apps/tasks",
 ])
 
+export interface CommittedNotification {
+  readonly id: UUID
+  readonly runId: string
+  readonly seq: number
+}
+
+type NotificationObserver = (notice: CommittedNotification) => void
+const committedObservers = new WeakMap<IAgentRuntime, Set<NotificationObserver>>()
+
 interface EventBusLike {
   emit: (event: {
     runId: string
     stream: string
     data: Record<string, unknown>
     agentId?: string
-  }) => void
+  }, observed?: AgentEventObserver) => void
 }
 
 function retryAfterSeconds(delay: number): number {
@@ -571,11 +581,20 @@ function broadcast(
         runtime.reportError("NotificationService.nativeProjection", error, { notificationId: notification.id })
       }
     }
+    const observers = committedObservers.get(runtime)
     bus.emit({
       runId: notification.id,
       stream: NOTIFICATION_STREAM,
       data,
       agentId: notification.agentId,
+    }, observers === undefined ? undefined : ({ runId, seq }) => {
+      for (const observe of observers) {
+        try {
+          observe({ id: notification.id, runId, seq })
+        } catch (error) {
+          logger.warn({ src: "service:notification", error, notificationId: notification.id }, "A committed notification observer failed")
+        }
+      }
     })
   } catch (error) {
     try {
@@ -793,6 +812,16 @@ export class NotificationService extends Service {
   capabilityDescription = "Creates, persists, and fans out user-facing notifications across every client surface"
 
   private readonly inbox: Inbox = newInbox(() => this.runtime)
+
+  static observeCommitted(runtime: IAgentRuntime, observer: NotificationObserver): () => void {
+    const observers = committedObservers.get(runtime) ?? new Set<NotificationObserver>()
+    observers.add(observer)
+    committedObservers.set(runtime, observers)
+    return () => {
+      observers.delete(observer)
+      if (observers.size === 0 && committedObservers.get(runtime) === observers) committedObservers.delete(runtime)
+    }
+  }
 
   static getAvailability(runtime: NotificationServiceLifecycleRuntime): NotificationServiceAvailability {
     return availabilityOf(runtime)

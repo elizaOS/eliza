@@ -1,7 +1,7 @@
 // spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open", "Story: Stop hearing when I leave", "Story: Learn when something keeps going wrong"
 module node {
   import { Effect } from "effect"
-  import { AgentEventService, Service, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
+  import { AgentEventService, Service, type CommittedNotification, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
   import { Machine, machine, rendererOf, type Event, type FeedEvent, type Frame, type NoticeKind, type Source, type StreamName } from "../../gen/agent__conversation__events.effect.vibe"
   import type { FeedHub, FeedSink, LiveFeed } from "../access/event-feeds.vibe"
   import type { AgentEvent, FeedRequest, Refused } from "../access/events-port.vibe"
@@ -36,6 +36,7 @@ module node {
     readonly report: (code: string, cause: string, quiet: boolean, store: (kind: ReturnType<typeof noticeName>) => Promise<void>) => Promise<void>
     readonly stop: () => Promise<void>
     readonly conversationUpdated: (payload: unknown) => void
+    readonly inboxChanged: (notice: CommittedNotification) => void
   }
 
   export function createEventHub(): AgentEventHub {
@@ -161,6 +162,14 @@ module node {
       })
     }
 
+    function inboxChanged({ id, runId, seq }: CommittedNotification): void {
+      for (const frame of send({ type: "publish", source: "AgentSource", news: { tag: "InboxChanged" } })) {
+        if (frame.tag !== "Delivered") continue
+        const event: AgentEvent = { stream: "notification", runId, seq, payload: { id } }
+        for (const feed of frame.feeds) connections.get(feed)?.sink.deliver(event)
+      }
+    }
+
     function expireDue(code: string, now: number): void {
       const current = clocks.get(code)
       if (current === undefined) return
@@ -210,7 +219,7 @@ module node {
     }
 
     return {
-      hub, viewFeeds, publishFromModule, PublishEventService: TranscriptPublisher, attach, report, stop,
+      hub, viewFeeds, publishFromModule, PublishEventService: TranscriptPublisher, attach, report, stop, inboxChanged,
       conversationUpdated: (payload: unknown) => publish("AgentSource", { tag: "ConversationUpdated" }, "conversation", payload),
     }
   }

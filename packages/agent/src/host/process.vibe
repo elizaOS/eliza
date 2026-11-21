@@ -42,7 +42,7 @@ module node {
 
   import { randomUUID } from "node:crypto"
   import { Effect, Result } from "effect"
-  import { AgentEventService, AgentRuntime, EventType, QUIET_ERROR_CODES, TaskService, createCharacter, logger, stringToUuid, systemNoticeText, validateUuid, type ErrorReportedPayload } from "@elizaos/core"
+  import { AgentEventService, AgentRuntime, EventType, NotificationService, QUIET_ERROR_CODES, TaskService, createCharacter, logger, stringToUuid, systemNoticeText, validateUuid, type ErrorReportedPayload } from "@elizaos/core"
   import { canRequestStop, exitedCode, healthReply, healthStatus } from "../../gen/agent__host__process.ts"
   import { storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
   import { backendOf, runStateOf, statusRoutes } from "./status.vibe"
@@ -207,6 +207,7 @@ module node {
     const conversationOwner = { user, world: stringToUuid(`device:${agentId}`) }
     const events = createEventHub()
     let detachReports = () => {}
+    let detachInbox = () => {}
     const formed = await Effect.runPromise(Effect.result(composeAgent({
       agentId, character, settings: {}, bundled: input.bundled ?? new Map(), modules: input.modules, hostRoutes: reservedHostPrefixes,
       context: { launch, stateDirectory, timeZone: launch.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, epoch: authority.epoch, ...(authority.storageKey === undefined ? {} : { storageKey: authority.storageKey }),
@@ -244,6 +245,7 @@ module node {
     closeStore = () => runtime.close()
     startCoreStop = () => {
       detachReports()
+      detachInbox()
       coreStop ??= events.stop().then(() => runtime.stop({ fast: true }))
     }
     releases.set("runtime", () => coreStop ?? Promise.resolve())
@@ -269,6 +271,7 @@ module node {
       const eventSource = runtime.getService<AgentEventService>(AgentEventService.serviceType)
       if (eventSource === null) throw new Error("The Agent event service did not start")
       events.attach(eventSource, status.serverInstanceId)
+      detachInbox = NotificationService.observeCommitted(runtime, events.inboxChanged)
       const conversations = conversationStore(runtime, conversationOwner)
       const onError = async (reported: ErrorReportedPayload) => {
         const { code, context } = reported
