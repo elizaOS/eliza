@@ -150,6 +150,8 @@ const parameters = {
 test('WORKFLOW create saves the name the owner gave, so chat can find it again', async () => {
   let saved: { name?: string } | undefined;
   const service = {
+    // Create checks the owner's existing names first.
+    listWorkflows: async () => [],
     generateWorkflowDraft: async () => JSON.parse(reply(manifestOnly)),
     deployWorkflowDefinition: async (draft: { name: string }) => {
       saved = draft;
@@ -176,6 +178,8 @@ test('WORKFLOW create saves the name the owner gave, so chat can find it again',
 
 test('WORKFLOW create adds no notification caveat to a request that asks for none', async () => {
   const service = {
+    // Create checks the owner's existing names first.
+    listWorkflows: async () => [],
     generateWorkflowDraft: async () => JSON.parse(reply(manifestOnly)),
     deployWorkflowDefinition: async (draft: { name: string }) => ({
       ...draft,
@@ -212,6 +216,8 @@ test('the WORKFLOW description says a chat-created workflow cannot remind the ow
 
 test('a rejected draft is reported as not applied, so the planner may author again', async () => {
   const service = {
+    // Create checks the owner's existing names first.
+    listWorkflows: async () => [],
     generateWorkflowDraft: async () => {
       throw new WorkflowApiError('Generated workflow failed semantic validation: TS2322', 502, {
         code: WORKFLOW_DRAFT_NOT_APPLIED,
