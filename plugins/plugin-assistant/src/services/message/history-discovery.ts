@@ -22,6 +22,7 @@ import {
   includeLinkedSources,
   validateHistoryRetention,
   visibleHistoryEventIds,
+  windowHistoryRetention,
 } from "../../runtime/history-retention.ts";
 import { readContextRequests } from "./context-discovery.ts";
 import { labelHistorySources } from "./history-wire.ts";
@@ -221,26 +222,71 @@ export function projectReviewedHistory(
   return projection;
 }
 
+/**
+ * A positional window taken on an earlier context of this turn, bound to a
+ * context assembled after it. The source-set identity covers every original
+ * and every recorded outcome, so one message landing or one proposal ending
+ * while Stage 1 runs changes it; reading that as "no window" puts the whole
+ * room in every remaining model call of the turn. The window's checkpoint
+ * binds only the deferred prefix, which neither of those touches.
+ */
+function rebindWindowedHistory(
+  context: ContextObject,
+  history: HistoryDiscovery,
+): HistoryDiscovery | undefined {
+  const { scope } = history;
+  const kept = validateHistoryRetention(context, scope, history.checkpoint);
+  let checkpoint = kept;
+  if (!checkpoint) {
+    // The deferred prefix itself changed. What this request loaded is known
+    // by position in the old sources only, so a fresh window is taken when
+    // nothing was loaded and every original is shown otherwise.
+    if (history.loadedSourceIds.size > 0) return undefined;
+    const window = windowHistoryRetention(context, scope, null);
+    if (!window.windowed) return undefined;
+    checkpoint = window.checkpoint;
+  }
+  const projection = projectReviewedHistory(context, scope, checkpoint);
+  if (!projection) return undefined;
+  // hN is a position. Inside the validated prefix it still names the original
+  // this request loaded; past the prefix every original is inline already.
+  const loaded = kept
+    ? collectCompletionContextSources(context)
+        .slice(0, kept.reviewedCount)
+        .map((source) => source.id)
+        .filter((id) => history.loadedSourceIds.has(id))
+    : [];
+  return {
+    ...projection,
+    windowed: true,
+    loadedSourceIds: new Set([...projection.loadedSourceIds, ...loaded]),
+  };
+}
+
 /** Keep canonical events intact; metadata carries only a validated rendering view. */
 export function withBackgroundHistory(
   context: ContextObject,
   history?: HistoryDiscovery,
 ): ContextObject {
-  if (
-    !history?.checkpoint ||
-    history.sourceSetId !== completionContextSources(context).sourceSetId
-  )
-    return context;
+  if (!history?.checkpoint) return context;
+  // A reviewer's view stays bound to the exact sources it was projected on.
+  const view =
+    history.sourceSetId === completionContextSources(context).sourceSetId
+      ? history
+      : history.windowed
+        ? rebindWindowedHistory(context, history)
+        : undefined;
+  if (!view?.checkpoint) return context;
   return {
     ...context,
     metadata: {
       ...context.metadata,
       backgroundHistory: {
-        sourceSetId: history.sourceSetId,
-        scope: history.scope,
-        checkpoint: history.checkpoint,
-        loadedSourceIds: [...history.loadedSourceIds],
-        ...(history.windowed ? { windowed: true } : {}),
+        sourceSetId: view.sourceSetId,
+        scope: view.scope,
+        checkpoint: view.checkpoint,
+        loadedSourceIds: [...view.loadedSourceIds],
+        ...(view.windowed ? { windowed: true } : {}),
       } as unknown as JsonValue,
     },
   };
