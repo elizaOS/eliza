@@ -4828,17 +4828,25 @@ public class ElizaAgentService extends Service {
         // update must not repost an ongoing notification with no service behind it.
         if (terminalNoticePosted) return;
         String status = currentStatus;
+        String channelId = RUNTIME_ALERT_CHANNEL_ID;
         String title;
         String text;
         switch (status) {
             case "running":
+                channelId = CHANNEL_ID;
                 title = "Eliza agent · Running";
                 text = "On-device agent ready";
                 break;
             case "starting":
             case "restarting":
+                channelId = CHANNEL_ID;
                 title = "Eliza agent · Starting";
                 text = "Preparing on-device runtime…";
+                break;
+            case "stopping":
+                channelId = CHANNEL_ID;
+                title = "Eliza agent · Stopping";
+                text = "Stopping on-device runtime…";
                 break;
             case "extract-failed":
                 title = "Eliza agent · Asset error";
@@ -4864,8 +4872,6 @@ public class ElizaAgentService extends Service {
                 break;
         }
 
-        String channelId = "running".equals(status) || "starting".equals(status) || "restarting".equals(status)
-            ? CHANNEL_ID : RUNTIME_ALERT_CHANNEL_ID;
         Notification notification = buildNotification(channelId, title, text, true);
         NotificationManager mgr = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (mgr != null) {
