@@ -11,7 +11,7 @@ import { retrieveCharge, retrieveInvoice, StripeCharge, StripeCheckoutSession, S
 import { sha256Hex } from "../shared/sealing.vibe"
 import { Store, StoreFailure, toInt, toText, type Row, type Tx } from "../store/connection.vibe"
 import { RowCorrupt } from "../store/rows.vibe"
-import { clawBackInvoice, restoreInvoice } from "./allowance.vibe"
+import { changeInvoiceAllowance, type InvoiceAllowanceChange } from "./allowance.vibe"
 import { applyCheckoutEvent } from "./checkout.vibe"
 import { observeSubscription, reconcileSubscription } from "./subscriptions.vibe"
 
@@ -223,39 +223,29 @@ const nothing: HandlerResult = { tag: "NothingToApply" }
 
 effect function reconcileCustomer(tx: Tx, customerId: string | null, now: number) {
   const organizationId = customerId === null ? undefined : try organizationOf(tx, customerId)
-  if (organizationId === undefined) return nothing
+  return organizationId === undefined ? nothing : try reconcileOrganization(tx, organizationId, now)
+}
+
+effect function reconcileOrganization(tx: Tx, organizationId: string, now: number) {
   try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId])
   try reconcileSubscription(tx, organizationId, try observeSubscription(tx, organizationId), now)
   return applied
 }
 
-effect function subscriptionInvoiceOf(charge: StripeCharge, deadline: number, now: number) {
-  const invoiceId = charge.invoice ?? null
-  if (invoiceId === null || charge.customer === null) return undefined
-  const invoice = try retrieveInvoice(invoiceId, { timeout: Math.max(1, deadline - now) })
-  return (invoice.parent?.subscription_details?.subscription ?? null) === null ? undefined : invoice.id
-}
-
 effect function settleInvoiceCharge(tx: Tx, charge: StripeCharge, funds: "refunded" | "withdrawn" | "reinstated", deadline: number, now: number) {
-  const invoiceId = try subscriptionInvoiceOf(charge, deadline, now)
-  if (invoiceId === undefined || (funds === "refunded" && charge.amount_refunded <= 0)) return nothing
-  switch (funds) {
-    case "refunded":
-      try clawBackInvoice(tx, invoiceId, "RefundClawback", now)
-      break
-    case "withdrawn":
-      try clawBackInvoice(tx, invoiceId, "DisputeClawback", now)
-      break
-    case "reinstated":
-      try restoreInvoice(tx, invoiceId, now)
-      break
-    default: {
-      const _exhaustive: never = funds
-      return _exhaustive
-    }
-  }
-  try reconcileCustomer(tx, charge.customer, now)
-  return applied
+  const live = (try Deployment).environment === "production"
+  const invoiceId = charge.invoice ?? null
+  const customerId = charge.customer
+  if (invoiceId === null || customerId === null || charge.livemode !== live || (funds === "refunded" && charge.amount_refunded <= 0)) return nothing
+  const invoice = try retrieveInvoice(invoiceId, { timeout: Math.max(1, deadline - now) })
+  if (invoice.id !== invoiceId || invoice.customer !== customerId || invoice.livemode !== live || !invoice.parent?.subscription_details?.subscription) return nothing
+  const organizationId = try organizationOf(tx, customerId)
+  if (organizationId === undefined) return nothing
+  const change: InvoiceAllowanceChange = funds === "reinstated"
+    ? { type: "restore", now }
+    : { type: "clawBack", cause: funds === "refunded" ? "RefundClawback" : "DisputeClawback" }
+  try changeInvoiceAllowance(tx, { organizationId, invoiceId }, change, now)
+  return try reconcileOrganization(tx, organizationId, now)
 }
 
 effect function applySink(tx: Tx, sink: Sink, deadline: number, now: number) {
@@ -263,7 +253,11 @@ effect function applySink(tx: Tx, sink: Sink, deadline: number, now: number) {
     case "checkout": return (try applyCheckoutEvent(tx, sink.session, now)) === undefined ? nothing : applied
     case "subscription": return try reconcileCustomer(tx, sink.customerId, now)
     case "refund": return try settleInvoiceCharge(tx, sink.charge, "refunded", deadline, now)
-    case "dispute": return try settleInvoiceCharge(tx, try retrieveCharge(sink.dispute.charge, { timeout: Math.max(1, deadline - now) }), sink.funds, deadline, now)
+    case "dispute": {
+      if (sink.dispute.livemode !== ((try Deployment).environment === "production")) return nothing
+      const charge = try retrieveCharge(sink.dispute.charge, { timeout: Math.max(1, deadline - now) })
+      return charge.id === sink.dispute.charge ? try settleInvoiceCharge(tx, charge, sink.funds, deadline, now) : nothing
+    }
     default: {
       const _exhaustive: never = sink
       return _exhaustive

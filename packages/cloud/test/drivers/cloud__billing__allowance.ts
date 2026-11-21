@@ -2,8 +2,8 @@
 import { ConfigProvider, Effect, Layer } from "effect";
 import type { Driver, Options } from "../../gen/cloud__billing__allowance.conformance.ts";
 import type { Event, Period } from "../../gen/cloud__billing__allowance.ts";
-import { adjustForUpgrade, clawBackInvoice, closePeriods, grantMonthKey, openGrantMonth, openRenewal, renewalKey, restoreInvoice, sweepAllowance, type Closing, type PeriodStep } from "../../src/billing/allowance.vibe";
-import { InvalidAllowancePeriod } from "../../src/billing/stripe-ledger.vibe";
+import { adjustForUpgrade, changeInvoiceAllowance, closePeriods, grantMonthKey, openGrantMonth, openRenewal, sweepAllowance, type Closing, type PeriodStep } from "../../src/billing/allowance.vibe";
+import { InvalidAllowancePeriod, renewalKey } from "../../src/billing/stripe-ledger.vibe";
 import { Deployment, deploymentLayer, parseProfile } from "../../src/profile/profile.vibe";
 import { periodRows, stepPeriod } from "../../src/shared/metering.vibe";
 import { loadRow } from "../../src/store/rows.vibe";
@@ -101,13 +101,10 @@ async function dispatch(key: string, event: Event): Promise<"accepted" | "refuse
       return moved("closing", await run(within((tx) => closePeriods(tx, organizationId, closingOf(period, event), 0))));
     case "adjustForUpgrade":
       return moved("adjusting for an upgrade", await run(within((tx) => adjustForUpgrade(tx, organizationId, event.target, event.effectiveAt, event.reviewed, event.now))));
-    case "clawBack": {
-      if (event.cause === "NoClawback") return "refused";
-      const cause = event.cause;
-      return moved("clawing back", await run(deployed((tx) => clawBackInvoice(tx, invoiceOf(period), cause, 0))));
-    }
+    case "clawBack":
     case "restore":
-      return moved("restoring", await run(deployed((tx) => restoreInvoice(tx, invoiceOf(period), event.now))));
+      return moved(event.type, await run(deployed((tx) => changeInvoiceAllowance(tx, { organizationId, invoiceId: invoiceOf(period) }, event,
+        event.type === "restore" ? event.now : 0))));
     default: {
       const unknown: never = event;
       throw new Error(`not an allowance event: ${JSON.stringify(unknown)}`);

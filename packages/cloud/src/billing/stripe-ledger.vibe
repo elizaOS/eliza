@@ -1,4 +1,5 @@
 // spec/cloud/billing/allowance.md, "Story: Spend my plan's allowance before my credits, and never carry it over"
+import type { CloudEnvironment } from "../profile/profile.vibe"
 import { allowanceStatus, decodeAllowancePeriod, encodeAllowancePeriod } from "../shared/metering.vibe"
 import { toText, type Tx } from "../store/connection.vibe"
 import {
@@ -23,6 +24,10 @@ export type SubscriptionObservation = {
 
 export error InvalidAllowancePeriod { key: string }
 
+export function renewalKey(environment: CloudEnvironment, invoiceId: string): string {
+  return `renewal/${environment}/${invoiceId}`
+}
+
 effect function savePeriod(tx: Tx, org: string, key: string, period: Period, event: Event, now: number) {
   const next = try apply(period, event)
   const status = allowanceStatus(next.phase)
@@ -32,13 +37,13 @@ effect function savePeriod(tx: Tx, org: string, key: string, period: Period, eve
     [key, JSON.stringify(encodeAllowancePeriod(next)), org, status, next.startsAt, next.endsAt, now])
 }
 
-export effect function existingRenewalPeriod(tx: Tx, organizationId: string, invoiceId: string) {
+export effect function existingRenewalPeriod(tx: Tx, organizationId: string, invoiceId: string, environment?: CloudEnvironment) {
   const legacyKey = "invoice/" + invoiceId
   const rows = try tx.query(
     `SELECT key,state FROM allowance_periods WHERE organization_id=$1
-      AND (key=$2 OR (starts_with(key,'renewal/') AND split_part(key,'/',3)=$3 AND split_part(key,'/',4)=''))
+      AND (key=$2 OR key=$4 OR ($4::text IS NULL AND starts_with(key,'renewal/') AND split_part(key,'/',3)=$3 AND split_part(key,'/',4)=''))
       ORDER BY key FOR UPDATE`,
-    [organizationId, legacyKey, invoiceId]
+    [organizationId, legacyKey, invoiceId, environment === undefined ? null : renewalKey(environment, invoiceId)]
   )
   if (rows.length === 0) return undefined
   const key = toText(rows[0]?.key)
@@ -48,11 +53,11 @@ export effect function existingRenewalPeriod(tx: Tx, organizationId: string, inv
   return { key, period }
 }
 
-export effect function settleSubscriptionAllowance(tx: Tx, org: string, subscription: SubscriptionObservation, ended: boolean, now: number, openLegacy: boolean) {
+export effect function settleSubscriptionAllowance(tx: Tx, org: string, subscription: SubscriptionObservation, ended: boolean, now: number, environment?: CloudEnvironment) {
   const retiring = try tx.query(
     `SELECT key,state FROM allowance_periods WHERE organization_id=$1 AND status='open' AND (period_end <= $2 OR $3)
-      AND (starts_with(key,'invoice/') OR starts_with(key,'renewal/')) FOR UPDATE`,
-    [org, now, ended])
+      AND (starts_with(key,'invoice/') OR starts_with(key,$4)) FOR UPDATE`,
+    [org, now, ended, environment === undefined ? "renewal/" : renewalKey(environment, "")])
   for (const row of retiring) {
     const key = toText(row.key)
     if (key === undefined) throw new InvalidAllowancePeriod({ key: org })
@@ -64,9 +69,9 @@ export effect function settleSubscriptionAllowance(tx: Tx, org: string, subscrip
   const payment = subscription.payment
   const key = "invoice/" + payment.id
   const plan: PlanKey = subscription.plan === "plus_monthly" ? "PlusMonthly" : "ProMonthly"
-  const existing = try existingRenewalPeriod(tx, org, payment.id)
+  const existing = try existingRenewalPeriod(tx, org, payment.id, environment)
   if (existing === undefined) {
-    if (openLegacy && payment.condition === "paid" && subscription.status === "active" && payment.startsAt <= now && now < payment.endsAt) {
+    if (environment === undefined && payment.condition === "paid" && subscription.status === "active" && payment.startsAt <= now && now < payment.endsAt) {
       try savePeriod(tx,org,key,initial,{type:"openRenewal",invoiceId:payment.id,planKey:plan,startsAt:payment.startsAt,endsAt:payment.endsAt},now)
     }
     return

@@ -79,14 +79,14 @@ effect function keep(tx: Tx, organizationId: string, held: Held, state: Subscrip
 
 effect function applyPeriods(tx: Tx, organizationId: string, out: ReadonlyArray<SubscriptionEffect>, now: number) {
   const deployment = try Effect.serviceOption(Deployment)
-  if (Option.isNone(deployment)) return false
+  if (Option.isNone(deployment)) return undefined
   for (const each of out) {
     switch (each.tag) {
       case "OpenRenewalPeriod":
         try Effect.provideService(openRenewal(tx, organizationId, each, now), Deployment, deployment.value)
         break
       case "CloseRenewalPeriods":
-        try closePeriods(tx, organizationId, { kind: "SubscriptionEnded" }, now)
+        try closePeriods(tx, organizationId, { kind: "SubscriptionEnded", environment: deployment.value.environment }, now)
         break
       case "PolicyChanged":
         break
@@ -96,7 +96,7 @@ effect function applyPeriods(tx: Tx, organizationId: string, out: ReadonlyArray<
       }
     }
   }
-  return true
+  return deployment.value.environment
 }
 
 type SubscriptionStateEvent = Extract<Event, { readonly type: "claimCommand" | "releaseCommand" | "scheduleDowngrade" | "expireDunning" }>
@@ -199,9 +199,9 @@ export effect function reconcileSubscription(tx: Tx, organizationId: string, obs
     throw invalid(organizationId, "provider subscription disappeared")
   }
   try keep(tx, organizationId, held, state, out, now)
-  const canonical = try applyPeriods(tx, organizationId, out, now)
+  const environment = try applyPeriods(tx, organizationId, out, now)
   const ended = out.some((each) => each.tag === "CloseRenewalPeriods")
-  try settleSubscriptionAllowance(tx, organizationId, state.status === "Active" ? observed : { ...observed, payment: undefined }, ended, now, !canonical)
+  try settleSubscriptionAllowance(tx, organizationId, state.status === "Active" ? observed : { ...observed, payment: undefined }, ended, now, environment)
   return state
 }
 

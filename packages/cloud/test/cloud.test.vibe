@@ -1087,7 +1087,78 @@ describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Ap
       [{ done: 0, retried: 0, deadLettered: 0, released: 0 }, "Leased", previousClaim, previousClaim.leaseUntil, 0, 1, 0,
         { state: "Done", attempts: 2, dropped: true, token: previousClaim.currentClaim + 1, revivals: 0 }, [200, "duplicate"]]
     ))
-  }), 60_000)
+
+    const owner = try signedCaller(cloud, "legacy-invoice-owner")
+    const other = try signedCaller(cloud, "legacy-invoice-other")
+    const checkout = try cloud.call("/api/v1/subscriptions/checkout", {
+      headers: { ...owner.headers, "idempotency-key": "legacy-invoice-payment" },
+      json: { planKey: "plus_monthly", idempotencyKey: "legacy-invoice-payment", presentation: "shared" }
+    })
+    try check(() => assert.equal(checkout.status, 200, JSON.stringify(checkout.body)))
+    const sessionId = Schema.decodeUnknownSync(Schema.Struct({ sessionId: Schema.String }))(checkout.body).sessionId
+    const paid = try sync(() => stripe.completeSession(sessionId))
+    if (paid.kind !== "paid") throw new Error("the provider fixture did not pay")
+    const invoiceId = paid.invoice.id
+    const startsAt = paid.subscription.current_period_start * 1000
+    const endsAt = paid.subscription.current_period_end * 1000
+    const now = try Clock.currentTimeMillis
+    const legacyKey = "invoice/" + invoiceId
+    const wrongOwnerKey = "renewal/staging/" + invoiceId
+    const wrongModeKey = "renewal/production/" + invoiceId
+    const subscription: SubscriptionObservation = {
+      customerId: paid.subscription.customer, subscriptionId: paid.subscription.id,
+      plan: "plus_monthly", status: "active", startsAt, endsAt, cancelAtPeriodEnd: false,
+      latestInvoice: "PeriodInvoicePaid", payment: { id: invoiceId, startsAt, endsAt, condition: "paid" }
+    }
+    try cloud.store.transaction((tx) => settleSubscriptionAllowance(tx, owner.organizationId, subscription, false, now))
+    const confirmed = try cloud.call("/api/v1/subscriptions/checkout/confirm", { json: { sessionId }, headers: owner.headers })
+    try check(() => assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body)))
+    try cloud.inside(cloud.store.transaction((tx) => cloud.inside(openRenewal(tx, other.organizationId, { invoiceId, planKey: "PlusMonthly", startsAt, endsAt }, now))))
+    try sql(cloud,
+      `INSERT INTO allowance_periods (key,state,revision,organization_id,status,period_start,period_end,updated_at)
+        SELECT $2,state,revision,organization_id,status,period_start,period_end,updated_at FROM allowance_periods WHERE key=$1`,
+      [legacyKey, wrongModeKey])
+    const before = try storedAllowance(cloud, legacyKey)
+    const dispute = try sync(() => stripe.disputeCharge(paid.charge.id))
+    const withdrawn = try sync(() => stripe.signedEvent("charge.dispute.funds_withdrawn", dispute))
+    const reported = try deliver(cloud, withdrawn)
+    try cloud.inside(drainProviderEvents(now + 120_000))
+    const whileDisputed = try storedAllowance(cloud, legacyKey)
+    const won = try sync(() => stripe.resolveDispute(dispute.id, "won"))
+    const reinstated = try sync(() => stripe.signedEvent("charge.dispute.funds_reinstated", won))
+    const returned = try deliver(cloud, reinstated)
+    try cloud.inside(drainProviderEvents(now + 180_000))
+    const afterDispute = try storedAllowance(cloud, legacyKey)
+    const refund = try sync(() => stripe.refundCharge(paid.charge.id))
+    const wrongCharge = try sync(() => stripe.signedEvent("charge.refunded", { ...refund, livemode: true }, { livemode: false }))
+    const wrongCustomer = try sync(() => stripe.signedEvent("charge.refunded", { ...refund, customer: "cus_other" }))
+    const refunded = try sync(() => stripe.signedEvent("charge.refunded", refund))
+    const foreignCharge = try deliver(cloud, wrongCharge)
+    const foreignCustomer = try deliver(cloud, wrongCustomer)
+    try cloud.inside(drainProviderEvents(now + 240_000))
+    const afterForeign = try storedAllowance(cloud, legacyKey)
+    const afterRefund = try deliver(cloud, refunded)
+    try cloud.inside(drainProviderEvents(now + 300_000))
+    const final = try storedAllowance(cloud, legacyKey)
+    const replay = try deliver(cloud, refunded)
+    try cloud.inside(drainProviderEvents(now + 301_000))
+    const same = try storedAllowance(cloud, legacyKey)
+    const otherPeriod = try storedAllowance(cloud, wrongOwnerKey)
+    const foreignPeriod = try storedAllowance(cloud, wrongModeKey)
+    const finished = (try sql(cloud, "SELECT count(*)::int AS total FROM provider_events WHERE id = ANY($1::text[]) AND state='Done' AND attempts=1",
+      [[withdrawn.id, reinstated.id, wrongCharge.id, wrongCustomer.id, refunded.id]]))[0]?.total
+    const open = { status: "open", phase: "PeriodOpen", cause: "NoClawback", revision: 1 }
+    const clawedBack = { status: "clawed_back", phase: "PeriodClawedBack" }
+    try check(() => assert.deepStrictEqual(
+      { delivery: [reported, returned, foreignCharge, foreignCustomer, afterRefund, replay].map(statusOf), finished,
+        before, whileDisputed, afterDispute, afterForeign, final, same, otherPeriod, foreignPeriod },
+      { delivery: [[200, "queued"], [200, "queued"], [200, "queued"], [200, "queued"], [200, "queued"], [200, "duplicate"]], finished: 5,
+        before: open, whileDisputed: { ...clawedBack, cause: "DisputeClawback", revision: 2 },
+        afterDispute: { ...open, revision: 3 }, afterForeign: { ...open, revision: 3 },
+        final: { ...clawedBack, cause: "RefundClawback", revision: 4 }, same: { ...clawedBack, cause: "RefundClawback", revision: 4 },
+        otherPeriod: open, foreignPeriod: open }
+    ))
+  }), 90_000)
 
   it.live("Retry a failing event on its own schedule without holding back the next, dead-letter it after eight attempts and revive it on a resend (spec/cloud/billing/providerEvents.md, \"Story: Apply each payment event once, whatever the delivery order\")", () => scoped(effect {
     const stripe = try sync(() => createStripeFake())
@@ -2784,7 +2855,7 @@ describe("WP4 Subscriptions and entitlements: snapshot and invoices", () => {
   }))
 })
 
-import { addUtcMonths, adjustForUpgrade, allowanceView, clawBackInvoice, closePeriods, openGrantMonths, openRenewal, restoreInvoice, sweepAllowance } from "../src/billing/allowance.vibe"
+import { addUtcMonths, adjustForUpgrade, allowanceView, changeInvoiceAllowance, closePeriods, openGrantMonths, openRenewal, sweepAllowance } from "../src/billing/allowance.vibe"
 import { settleSubscriptionAllowance, type Payment, type SubscriptionObservation } from "../src/billing/stripe-ledger.vibe"
 import { loadRow as loadPeriodRow } from "../src/store/rows.vibe"
 
@@ -2809,10 +2880,10 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
     const opened = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(openRenewal(tx, "org-refund", invoice, now))))
     const again = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(openRenewal(tx, "org-refund", invoice, now))))
     const ticket = try cloud.inside(reserve({ organizationId: "org-refund", userId: "user-refund" }, { service: "MeteredInference", caller: "user-refund", requestId: "refund-1", part: { tag: "WholeRequest" } }, 1_000_000))
-    const clawed = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(clawBackInvoice(tx, "in_refund", "RefundClawback", now))))
+    const clawed = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(changeInvoiceAllowance(tx, { organizationId: "org-refund", invoiceId: "in_refund" }, { type: "clawBack", cause: "RefundClawback" }, now))))
     try cloud.inside(markDispatched(ticket.key))
     try cloud.inside(settle(ticket.key, { kind: "known", actual: 400_000 }))
-    const restored = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(restoreInvoice(tx, "in_refund", now))))
+    const restored = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(changeInvoiceAllowance(tx, { organizationId: "org-refund", invoiceId: "in_refund" }, { type: "restore", now }, now))))
     const view = try cloud.store.transaction((tx) => allowanceView(tx, "org-refund", now))
     const usage = try sql(cloud, "SELECT from_allowance, from_credits FROM usage_records WHERE hold_key = $1", [ticket.key])
     const stored = try storedAllowance(cloud, opened.key)
@@ -2836,6 +2907,16 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
         usage: [[400_000, 0]]
       }
     ))
+    const legacyKey = "invoice/in_refund"
+    try sql(cloud,
+      `INSERT INTO allowance_periods (key,state,revision,organization_id,status,period_start,period_end,updated_at)
+        SELECT $2,state,revision,organization_id,status,period_start,period_end,updated_at FROM allowance_periods WHERE key=$1`,
+      [opened.key, legacyKey])
+    const refused = try Effect.flip(cloud.inside(cloud.store.transaction((tx) => cloud.inside(
+      changeInvoiceAllowance(tx, { organizationId: "org-refund", invoiceId: "in_refund" }, { type: "restore", now }, now)
+    ))))
+    const afterConflict = [try storedAllowance(cloud, opened.key), try storedAllowance(cloud, legacyKey)]
+    try check(() => assert.deepStrictEqual([refused._tag, afterConflict], ["InvalidAllowancePeriod", [stored, stored]]))
   }))
 
   it.live("A won dispute restores the allowance while the period is open, and leaves an ended one clawed back (spec/cloud/billing/allowance.md, \"Story: Lose the allowance of a refunded invoice, and get it back if I win the dispute\")", () => scoped(effect {
@@ -2846,10 +2927,10 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
       return (try cloud.inside(cloud.store.transaction((tx) => cloud.inside(openRenewal(tx, "org-dispute", { invoiceId, planKey: "PlusMonthly", startsAt, endsAt }, now))))).moved
     }
     const disputed = effect (invoiceId: string) => {
-      return (try cloud.inside(cloud.store.transaction((tx) => cloud.inside(clawBackInvoice(tx, invoiceId, "DisputeClawback", now))))).moved
+      return (try cloud.inside(cloud.store.transaction((tx) => cloud.inside(changeInvoiceAllowance(tx, { organizationId: "org-dispute", invoiceId }, { type: "clawBack", cause: "DisputeClawback" }, now))))).moved
     }
     const won = effect (invoiceId: string) => {
-      return (try cloud.inside(cloud.store.transaction((tx) => cloud.inside(restoreInvoice(tx, invoiceId, now))))).moved
+      return (try cloud.inside(cloud.store.transaction((tx) => cloud.inside(changeInvoiceAllowance(tx, { organizationId: "org-dispute", invoiceId }, { type: "restore", now }, now))))).moved
     }
     const opened = [try open("in_won", now - 1000, now + allowanceMonth), try open("in_late", now - allowanceMonth, now - 1000)]
     const clawed = [try disputed("in_won"), try disputed("in_late")]
@@ -2858,7 +2939,7 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
     const during = try cloud.store.transaction((tx) => allowanceView(tx, "org-dispute", now))
     const restored = [try won("in_won"), try won("in_late")]
     const after = try cloud.store.transaction((tx) => allowanceView(tx, "org-dispute", now))
-    const refundedLate = (try cloud.inside(cloud.store.transaction((tx) => cloud.inside(clawBackInvoice(tx, "in_late", "RefundClawback", now))))).moved
+    const refundedLate = (try cloud.inside(cloud.store.transaction((tx) => cloud.inside(changeInvoiceAllowance(tx, { organizationId: "org-dispute", invoiceId: "in_late" }, { type: "clawBack", cause: "RefundClawback" }, now))))).moved
     const late = (try cloud.store.transaction((tx) => loadPeriodRow(tx, periodRows, "renewal/staging/in_late", false))).state
     const statuses = try periodStatuses(cloud, "org-dispute")
     try check(() => assert.deepStrictEqual(
@@ -2896,7 +2977,7 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
         cancelAtPeriodEnd: false, latestInvoice: "PeriodInvoicePaid",
         payment: { id: "in_worker_rollout", startsAt, endsAt, condition }
       }
-      return cloud.store.transaction((tx) => settleSubscriptionAllowance(tx, "org-worker-rollout", subscription, false, now, true))
+      return cloud.store.transaction((tx) => settleSubscriptionAllowance(tx, "org-worker-rollout", subscription, false, now))
     }
     try observeWorker("paid")
     try observeWorker("disputed")
