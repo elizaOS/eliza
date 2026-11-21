@@ -141,7 +141,7 @@ it.effect.skipIf(skipped !== null)(`Generate the fixture host, refuse a partial 
     const signing = environments(tools.sdk, javaHome, signer)
     const PASSES = passes(consumer)
     const build = (environment: NodeJS.ProcessEnv, verify: Command) =>
-      buildAndroid({ root: consumer, project: "host", output: "artifacts", variants: [...FLAVORS], environment, verify, pin, runtime, lint: false, androidTest: false })
+      buildAndroid({ root: consumer, project: "host", output: "artifacts", variants: [...FLAVORS], environment, verify, pin, lint: false, androidTest: false })
 
     const partial = (effect { try build(signing.partial, PASSES); return "built" } catch (error) => message(error))
     assert.match(partial, /FIXTURE_STORE_PASSWORD/)
