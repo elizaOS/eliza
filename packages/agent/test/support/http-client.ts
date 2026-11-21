@@ -30,9 +30,10 @@ export async function httpRequest(port: number, call: LocalRequest): Promise<Loc
   return { status: response.status, headers: headersOf(response), text, json: parseJson(text) };
 }
 
-export async function httpRequestStream(port: number, call: LocalRequest, leave?: import("./socket-client.ts").StreamCut): Promise<StreamedAnswer> {
+export async function httpRequestStream(port: number, call: LocalRequest, leave?: import("./socket-client.ts").StreamCut, opened?: (status: number) => void): Promise<StreamedAnswer> {
   const cut = new AbortController();
   const response = await fetch(`${origin(port)}${call.path}`, init(call, cut.signal));
+  opened?.(response.status);
   const chunks: string[] = [];
   const decoder = new TextDecoder();
   let error: string | undefined;

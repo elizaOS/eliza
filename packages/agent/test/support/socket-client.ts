@@ -122,7 +122,7 @@ export interface StreamCut {
   readonly ready: Promise<unknown>;
 }
 
-export async function requestStream(socketPath: string, call: LocalRequest, cut?: StreamCut): Promise<StreamedAnswer> {
+export async function requestStream(socketPath: string, call: LocalRequest, cut?: StreamCut, opened?: (status: number) => void): Promise<StreamedAnswer> {
   const id = randomUUID();
   const chunks: string[] = [];
   let head: Frame | undefined;
@@ -132,7 +132,10 @@ export async function requestStream(socketPath: string, call: LocalRequest, cut?
   await frames(socket, (frame) => {
     if (frame.id !== id) throw new TypeError(`frame for another request ${JSON.stringify(frame)}`);
     if (terminal !== undefined) throw new TypeError(`frame after the terminal frame ${JSON.stringify(frame)}`);
-    if (frame.stream === "response") head = frame;
+    if (frame.stream === "response") {
+      head = frame;
+      opened?.(Number(frame.status));
+    }
     else if (frame.stream === "chunk") {
       chunks.push(typeof frame.dataBase64 === "string" ? Buffer.from(frame.dataBase64, "base64").toString("utf8") : (typeof frame.data === "string" ? frame.data : ""));
       if (!cutting && cut !== undefined && chunks.length >= cut.afterChunks) {

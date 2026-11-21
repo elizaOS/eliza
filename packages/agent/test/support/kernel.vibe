@@ -121,11 +121,11 @@ export effect function call(reachable: Reachable, asked: LocalRequest) {
     transport.kind === "socket" ? request(transport.path, signed) : httpRequest(transport.port, signed))
 }
 
-export effect function stream(reachable: Reachable, asked: LocalRequest, cut?: StreamCut) {
+export effect function stream(reachable: Reachable, asked: LocalRequest, cut?: StreamCut, opened?: (status: number) => void) {
   const transport = reachable.transport
   const signed = authorized(reachable, asked)
   return try host(`${asked.method} ${asked.path} stream`, (): Promise<StreamedAnswer> =>
-    transport.kind === "socket" ? requestStream(transport.path, signed, cut) : httpRequestStream(transport.port, signed, cut))
+    transport.kind === "socket" ? requestStream(transport.path, signed, cut, opened) : httpRequestStream(transport.port, signed, cut, opened))
 }
 
 export effect function events(reachable: Reachable, streams: readonly string[], clientId?: string) {
