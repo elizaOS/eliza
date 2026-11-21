@@ -41,12 +41,13 @@ module node {
 
   import { randomUUID } from "node:crypto"
   import { Effect, Result } from "effect"
-  import { AgentRuntime, TaskService, createCharacter, logger, stringToUuid, validateUuid } from "@elizaos/core"
+  import { AgentRuntime, TaskService, createCharacter, logger, stringToUuid, validateUuid, type RoleName } from "@elizaos/core"
   import { canRequestStop, exitedCode, healthReply, healthStatus } from "../../gen/agent__host__process.ts"
+  import { chatRole } from "../../gen/agent__host__launch.ts"
   import { storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
   import { backendOf, runStateOf, statusRoutes } from "./status.vibe"
   import { authRoutes } from "../access/auth.vibe"
-  import { createRouter } from "../access/router.vibe"
+  import { createRouter, refusedRoutes } from "../access/router.vibe"
   import { listenOnSocket } from "../access/socket.vibe"
   import { feedsOver } from "../access/event-feeds.vibe"
   import { createEventHub } from "../conversation/events.vibe"
@@ -162,7 +163,7 @@ module node {
       style: { all: [...(persona.style?.all ?? [])], chat: [...(persona.style?.chat ?? [])], post: [...(persona.style?.post ?? [])] },
       messageExamples: examples,
     })
-    const role = launch.callerRole === "owner" ? "OWNER" : "USER"
+    const role: RoleName = chatRole(launchModel(launch).callerRole) === "Owner" ? "OWNER" : "USER"
     const permissions = new Set(launch.policy.actions.allowed)
     const user = launch.account ? (validateUuid(launch.account.userId) ?? stringToUuid(`account:${launch.account.userId}`)) : stringToUuid(`device-owner:${agentId}`)
     const ownerId = role === "OWNER" ? user : agentId
@@ -195,6 +196,12 @@ module node {
       lifecycle.send({ type: "loadPlugins", ok: true })
       lifecycle.send({ type: "beginInitialization" })
       lifecycle.send({ type: "completeInitialization", ok: false })
+      return failed()
+    }
+    const refused = refusedRoutes(formed.success.routes)
+    if (refused.length > 0) {
+      logger.error({ src: "agent", agentId, phase: "LoadPlugins", refused }, "The plugin route list was refused whole")
+      lifecycle.send({ type: "loadPlugins", ok: false })
       return failed()
     }
     lifecycle.send({ type: "loadPlugins", ok: true })

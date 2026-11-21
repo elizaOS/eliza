@@ -83,10 +83,13 @@ public class FilesPlugin extends Plugin {
 
     private ContentResolver resolver() { return getContext().getContentResolver(); }
 
-    private void submit(PluginCall call, Runnable work) {
+    private void submit(PluginCall call, Runnable work) { submit(call, work, () -> {}); }
+
+    private void submit(PluginCall call, Runnable work, Runnable refused) {
         try {
             worker.execute(work);
         } catch (RejectedExecutionException closed) {
+            refused.run();
             call.resolve(result("unavailable", "Files closed."));
         }
     }
@@ -144,7 +147,7 @@ public class FilesPlugin extends Plugin {
             if (!out.has("status")) out.put("status", "ready");
             if (!"ready".equals(out.getString("status"))) refused.run();
             call.resolve(out);
-        });
+        }, refused);
     }
 
     private JSObject admitted(PluginCall call, String key, Review review, Work work) throws Exception {

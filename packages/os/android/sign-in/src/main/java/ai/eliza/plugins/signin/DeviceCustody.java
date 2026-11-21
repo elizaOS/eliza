@@ -2,6 +2,7 @@
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.securestore.nativeonly.NativeSecureStore;
+import ai.eliza.plugins.securestore.nativeonly.TaskKeyCustody;
 import ai.eliza.plugins.signin.DeviceKeyClient.Answer;
 import ai.eliza.plugins.signin.DeviceKeyClient.Binding;
 import ai.eliza.plugins.signin.DeviceKeyClient.Exchange;
@@ -9,15 +10,27 @@ import ai.eliza.plugins.signin.DeviceKeyClient.Grant;
 import ai.eliza.plugins.signin.SignInPolicy.Failure;
 import ai.eliza.plugins.signin.SignInPolicy.CloudReply;
 import ai.eliza.plugins.signin.SignInRegistration.Environment;
+import ai.eliza.plugins.signin.BrowserReturnPolicy.CredentialAction;
+import ai.eliza.plugins.signin.CredentialPolicy.Notice;
 import android.content.Context;
+import android.util.Log;
+import java.io.File;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public final class DeviceCustody implements SignInCustody {
-  private record Authority(DeviceCredentialStore store, DeviceKeyClient client, AccountSession session) {}
+  private record Authority(DeviceCredentialStore store, DeviceKeyClient client, AccountSession session, TaskKeyCustody taskKeys) {}
+
+  private static final String TAG = "ElizaSignIn";
 
   private static final Map<String, Authority> AUTHORITIES = new HashMap<>();
   private static final ExecutorService DUTIES = Executors.newSingleThreadExecutor();
@@ -43,13 +56,31 @@ public final class DeviceCustody implements SignInCustody {
     return new CloudRequests.Custody(authority.store(), authority.session());
   }
 
-  public static void reset(Context context, SignInRegistration registration) {
+  public static TaskKeyCustody taskKeys(Context context, String apiOrigin) {
+    return authority(context, apiOrigin).taskKeys();
+  }
+
+  public static boolean reset(Context context, SignInRegistration registration, long timeoutMs) {
+    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0, timeoutMs));
+    List<Authority> ended = new ArrayList<>();
+    List<Future<?>> asked = new ArrayList<>();
     for (Environment environment : registration.environments()) {
       Authority authority = authority(context, environment.apiOrigin);
       authority.session().drop();
       authority.store().reset();
-      DUTIES.execute(authority.client()::settleDuties);
+      try { authority.taskKeys().reset(); }
+      catch (Exception kept) { Log.e(TAG, "Task keys outlived a reset of the device credential", kept); }
+      ended.add(authority);
+      asked.add(DUTIES.submit(authority.client()::settleDuties));
     }
+    BrowserSignIn.signedOut(context, registration, CredentialAction.RESET);
+    for (Future<?> duty : asked) {
+      try { duty.get(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS); }
+      catch (TimeoutException late) { return false; }
+      catch (InterruptedException stopped) { Thread.currentThread().interrupt(); return false; }
+      catch (ExecutionException failed) { Log.w(TAG, "Revoking a device key before a reset failed", failed.getCause()); return false; }
+    }
+    return ended.stream().allMatch(authority -> authority.store().state().duties().isEmpty());
   }
 
   private static synchronized Authority authority(Context context, String apiOrigin) {
@@ -63,10 +94,22 @@ public final class DeviceCustody implements SignInCustody {
     }, DeviceCredentialStore.authorityDigest(apiOrigin), System::currentTimeMillis);
     DeviceKeyClient client = new DeviceKeyClient(URI.create(apiOrigin), store, Thread::sleep);
     store.onVerifyAccount(() -> DUTIES.execute(client::verifyAccount));
-    Authority created = new Authority(store, client, new AccountSession(store, client));
+    String digest = DeviceCredentialStore.authorityDigest(apiOrigin);
+    TaskKeyCustody taskKeys = new TaskKeyCustody(new File(new File(context.getNoBackupFilesDir(), "task-keys"), digest), "eliza.task-key." + digest + ".", apiOrigin);
+    CredentialReader.Credential held = store.current();
+    if (held != null) taskKeys.accountVerified(taskAccount(held.account()));
+    store.listen(notice -> {
+      if (notice instanceof Notice.Announce announced) taskKeys.accountVerified(taskAccount(announced.account()));
+      else if (notice instanceof Notice.SignedOutNotice) taskKeys.signedOut();
+    });
+    Authority created = new Authority(store, client, new AccountSession(store, client), taskKeys);
     AUTHORITIES.put(apiOrigin, created);
     DUTIES.execute(client::settleDuties);
     return created;
+  }
+
+  private static TaskKeyCustody.Account taskAccount(CredentialPolicy.Account account) {
+    return new TaskKeyCustody.Account(account.userId(), account.organizationId());
   }
 
   private Authority authority(Environment environment) { return authority(context, environment.apiOrigin); }
@@ -134,6 +177,7 @@ public final class DeviceCustody implements SignInCustody {
     Authority authority = authority(environment);
     authority.session().drop();
     authority.store().signOut();
+    BrowserSignIn.signedOut(context, registration, CredentialAction.SIGN_OUT);
     DUTIES.execute(authority.client()::settleDuties);
   }
 }

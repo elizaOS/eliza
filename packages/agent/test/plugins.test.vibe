@@ -76,7 +76,8 @@ for (const [title, rule, test] of refusals) {
 effect function composeFailures() {
   const failures: string[] = []
   const listen = (entry: LogEntry) => {
-    if (entry.msg === "The agent could not be composed" && typeof entry.failure === "string") failures.push(entry.failure)
+    const failure = entry.msg.includes("The agent could not be composed") ? /failure\W+(\w+)/.exec(entry.msg)?.[1] : undefined
+    if (failure !== undefined) failures.push(failure)
   }
   try acquireRelease(Effect.sync(() => addLogListener(listen)), (remove) => Effect.sync(() => { remove() }))
   return failures

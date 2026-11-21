@@ -1,8 +1,9 @@
 // spec/agent/access/auth.md, "Story: Admit only the supervising host"
 import { assert, it } from "@effect/vitest"
 import { authRoutes } from "../src/access/auth.vibe"
-import { createRouter } from "../src/access/router.vibe"
+import { createRouter, refusedRoutes } from "../src/access/router.vibe"
 import type { LocalRoute } from "../src/access/routes.vibe"
+import type { ModuleFactory } from "../src/host/module.vibe"
 import { boot, call as reach, host, ready, startInProcess } from "./support/kernel.vibe"
 import { request, type LocalAnswer, type Refusal } from "./support/socket-client.ts"
 
@@ -17,7 +18,8 @@ const pluginRoutes: LocalRoute[] = [
   { method: "GET", path: "/api/events/stream", stream: true, handler: reached("events") },
 ]
 
-const router = createRouter({ token: Redacted.make(launchToken), epoch: 1, instanceId: "instance-1", routes: [...authRoutes(agentId), ...pluginRoutes] })
+const health = () => ({ status: 200, body: { ready: true, epoch: 1 } })
+const router = createRouter({ token: Redacted.make(launchToken), epoch: 1, instanceId: "instance-1", health, routes: [...authRoutes(agentId), ...pluginRoutes] })
 
 effect function call(method: string, target: string, authorization?: string) {
   const response = try host(`${method} ${target}`, () => router({ method, target, streamed: target.endsWith("/stream"), body: undefined, authorization }, new AbortController().signal))
@@ -26,13 +28,13 @@ effect function call(method: string, target: string, authorization?: string) {
 }
 
 const callers = { none: undefined, wrong: "Bearer not-the-token", earlier: "Bearer launch-token-epoch-0", bare: launchToken }
-const everyRoute = [["GET", "/api/health"], ["GET", "/api/auth/status"], ["GET", "/api/auth/me"], ["GET", "/api/plugin/x"], ["POST", "/api/conversations"], ["GET", "/api/events/stream"]] as const
+const everyRoute = [["GET", "/api/health"], ["GET", "/api/auth/status"], ["GET", "/api/auth/me"], ["GET", "/api/plugin/x"], ["POST", "/api/conversations"], ["GET", "/api/events/stream"], ["GET", "/api/unknown"]] as const
 
 it.effect('No token, a wrong token or an earlier launch token is Anonymous and reaches only health and auth status (spec/agent/access/auth.md, "Only the token of this launch makes a caller Root")', effect () => {
   for (const authorization of Object.values(callers)) {
     const answers = try Effect.forEach(everyRoute, ([method, target]) => call(method, target, authorization))
-    try Effect.try(() => assert.deepStrictEqual(answers.map(({ status }) => status), [200, 200, 401, 401, 401, 401], String(authorization)))
-    try Effect.try(() => assert.deepStrictEqual(answers.slice(2).map(({ body }) => body), [0, 1, 2, 3].map(() => ({ error: "unauthorized" }))))
+    try Effect.try(() => assert.deepStrictEqual(answers.map(({ status }) => status), [200, 200, 401, 401, 401, 401, 401], String(authorization)))
+    try Effect.try(() => assert.deepStrictEqual(answers.slice(2).map(({ body }) => body), [0, 1, 2, 3, 4].map(() => ({ error: "unauthorized" }))))
     try Effect.try(() => assert.deepStrictEqual(answers[1].body, { authenticated: false, serverInstanceId: "instance-1" }))
   }
 })
@@ -44,12 +46,12 @@ it.effect('A plugin route declared public stays Root-only and no plugin takes th
   const postStatus = try call("POST", "/api/auth/status", `Bearer ${launchToken}`)
   try Effect.try(() => assert.deepStrictEqual(
     [anonymous.status, health.body, status.body, postStatus.status],
-    [401, { ready: true, runtime: "ok", agentState: "running", epoch: 1 }, { authenticated: false, serverInstanceId: "instance-1" }, 404]))
+    [401, { ready: true, epoch: 1 }, { authenticated: false, serverInstanceId: "instance-1" }, 404]))
 })
 
 it.effect('The Root caller reaches every route and is the local owner (spec/agent/access/auth.md, "The Root caller is the local owner of this agent")', effect () => {
   const answers = try Effect.forEach(everyRoute, ([method, target]) => call(method, target, `Bearer ${launchToken}`))
-  try Effect.try(() => assert.deepStrictEqual(answers.map(({ status }) => status), everyRoute.map(() => 200)))
+  try Effect.try(() => assert.deepStrictEqual(answers.map(({ status }) => status), [200, 200, 200, 200, 200, 200, 404]))
   try Effect.try(() => assert.deepStrictEqual([answers[1].body, answers[2].body], [
     { authenticated: true, serverInstanceId: "instance-1" },
     { identity: { kind: "owner", id: agentId }, access: { role: "OWNER", mode: "local" } },
@@ -102,4 +104,17 @@ it.effect('The chat principal of a User launch is a member, not the owner, altho
     { owner: "agent", roles: ["MEMBER"], access: { role: "OWNER", mode: "local" } },
     { owner: "speaker", roles: ["OWNER"], access: { role: "OWNER", mode: "local" } },
   ]))
+}, 300_000)
+
+const badRoute = { method: "GET", path: "/api/notes/:id", handler: reached("notes") } as LocalRoute
+
+it('One malformed plugin route refuses the whole list and the router is never built over it (spec/agent/access/routes.md, "A list is loaded whole or not at all")', () => {
+  assert.deepStrictEqual([refusedRoutes(pluginRoutes), refusedRoutes([...pluginRoutes, badRoute])], [[], ["GET /api/notes/:id"]])
+  assert.throws(() => createRouter({ token: Redacted.make(launchToken), epoch: 1, instanceId: "instance-1", health, routes: [...pluginRoutes, badRoute] }), /refused whole/)
+})
+
+it.effect('A module with a malformed route stops the boot as a configuration failure (spec/agent/access/routes.md, "A list is loaded whole or not at all")', effect () => {
+  const factory: ModuleFactory<never> = () => Effect.succeed({ name: "notes", plugin: { name: "notes", description: "Notes", routes: [badRoute] } })
+  const started = try Effect.result(startInProcess({ launch: { load: ["notes"] }, modules: new Map([["notes", factory]]) }))
+  try Effect.try(() => assert.deepStrictEqual(Result.isFailure(started) ? [started.failure._tag, "phase" in started.failure ? started.failure.phase : undefined] : "started", ["AgentBootFailed", "Config"]))
 }, 300_000)

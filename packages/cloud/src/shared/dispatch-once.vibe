@@ -1,5 +1,5 @@
 // spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
-import { NotAState, Rejected, apply, initial, canReceiveReply, canResolve, conflictRefusal, connectorOf, decodeState, elapse, isConflict, isUnknown, mayFollowWith, receiptStatus, staleAt, type Event, type LookupResult, type ProviderReply as Reply, type Receipt, type ReceiptStatus, type RefusalCause } from "../../gen/cloud__shared__dispatchOnce.effect.vibe"
+import { NotAState, Rejected, apply, initial, canAbandon, canReceiveReply, canResolve, conflictRefusal, connectorOf, decodeState, elapse, isConflict, isUnknown, mayFollowWith, receiptStatus, staleAt, type Event, type LookupResult, type ProviderReply as Reply, type Receipt, type ReceiptStatus, type RefusalCause } from "../../gen/cloud__shared__dispatchOnce.effect.vibe"
 import type { ProviderKey, ProviderKind } from "../../gen/cloud__shared__types.ts"
 import type { SessionOwner } from "../../gen/core__sessions.ts"
 import { Refused, wireName } from "../http/refusal.vibe"
@@ -152,6 +152,15 @@ export effect function prepareReceipt<S, Corrupt>(tx: Tx, rows: ReceiptRows<S, C
   return { state, replayed: false } satisfies Prepared<S>
 }
 
+export effect function abandonReceipt<S, Corrupt>(tx: Tx, rows: ReceiptRows<S, Corrupt>, key: string, by: SessionOwner, now: number) {
+  const loaded = try loadReceipt(tx, rows, key)
+  if (!canAbandon(receiptAt(rows.receiptOf(loaded.state), now), by)) {
+    try annotateLogs(logWarning("a receipt that was claimed or settled cannot be abandoned"), { table: rows.table, key })
+    return loaded.state
+  }
+  return try receiptStep(tx, rows, key, { event: { type: "abandon" }, by, now })
+}
+
 export effect function claimReceipt<S, Corrupt>(tx: Tx, rows: ReceiptRows<S, Corrupt>, key: string, by: SessionOwner, now: number) {
   const claimed = try receiptStep(tx, rows, key, { event: { type: "claim" }, by, now })
   return try receiptStep(tx, rows, key, { event: { type: "send", claimToken: rows.receiptOf(claimed).session.currentClaim }, by, now })
@@ -160,14 +169,20 @@ export effect function claimReceipt<S, Corrupt>(tx: Tx, rows: ReceiptRows<S, Cor
 export effect function recordReply<S, Corrupt, A>(tx: Tx, rows: ReceiptRows<S, Corrupt>, key: string, by: SessionOwner, reply: ProviderReply<A>, now: number) {
   const loaded = try loadReceipt(tx, rows, key)
   const verdict = replyOf(reply)
-  if (!canReceiveReply(receiptAt(rows.receiptOf(loaded.state), now), verdict)) return loaded.state
+  if (!canReceiveReply(receiptAt(rows.receiptOf(loaded.state), now), verdict)) {
+    try annotateLogs(logWarning("a provider reply arrived for a receipt that no longer takes one"), { table: rows.table, key, reply: verdict.tag })
+    return loaded.state
+  }
   return try receiptStep(tx, rows, key, { event: { type: "receiveReply", reply: verdict }, by, now })
 }
 
 export effect function recordLookup<S, Corrupt>(tx: Tx, rows: ReceiptRows<S, Corrupt>, key: string, lookup: LookupResult, now: number) {
   const loaded = try loadReceipt(tx, rows, key)
   const receipt = rows.receiptOf(loaded.state)
-  if (!canResolve(receiptAt(receipt, now), lookup)) return loaded.state
+  if (!canResolve(receiptAt(receipt, now), lookup)) {
+    try annotateLogs(logWarning("a provider lookup arrived for a receipt that no longer takes one"), { table: rows.table, key, lookup: lookup.tag })
+    return loaded.state
+  }
   return try receiptStep(tx, rows, key, { event: { type: "resolve", lookup }, by: receipt.session.owner, now })
 }
 
