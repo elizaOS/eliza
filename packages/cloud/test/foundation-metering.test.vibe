@@ -1,8 +1,8 @@
 // spec/cloud/shared/metering.md, "Story: Never overdraw an account"; spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/billing/funds.md, "Story: Spend only money the account has"; spec/cloud/billing/plans.md, "Story: Apply the plan that funds a call"
 import { assert, describe, it } from "@effect/vitest"
-import { addCredits } from "../src/billing/funds.vibe"
+import { addCredits, stepFunds } from "../src/billing/funds.vibe"
 import { refusalBody } from "../src/http/refusal.vibe"
-import { markDispatched, periodRows, reserve, settle, sweepHolds } from "../src/shared/metering.vibe"
+import { holdRows, markDispatched, periodRows, renderHoldKey, reserve, settle, sweepHolds, type HoldOwner, type HoldKey } from "../src/shared/metering.vibe"
 import { stepRow } from "../src/store/rows.vibe"
 import { Store } from "../src/store/store.vibe"
 import { manualClock, shiftedClock } from "./support/clock.ts"
@@ -52,6 +52,19 @@ function holdKey(caller: string, requestId: string) {
   return { service: "MeteredInference", caller, requestId, part: { tag: "WholeRequest" } } as const
 }
 
+effect function retainLegacyInference(cloud: TestCloud, owner: HoldOwner, requestId: string) {
+  const now = try Clock.currentTimeMillis
+  const key = holdKey(owner.userId, requestId)
+  const storedKey = renderHoldKey(owner, key)
+  try cloud.store.transaction(effect (tx) => {
+    try stepRow(tx, holdRows, storedKey, { type: "reserve", key, quote: 100_000, lane: "CreditsOnly", allowanceAvailable: 0, creditAvailable: 10_000_000, now }, () => ({
+      organization_id: owner.organizationId, user_id: owner.userId, service: "inference", phase: "reserved", allowance_period: null, created_at: now, updated_at: now
+    }))
+    try stepFunds(tx, owner.organizationId, { type: "holdCredits", fromCredits: 150_000 }, now, storedKey)
+  })
+  return storedKey
+}
+
 describe("WP0 Foundation: metering and funds", () => {
   it.live("Spend the plan's allowance before credits, from the plan the policy funds (spec/cloud/shared/metering.md, \"Story: Never overdraw an account\"; spec/cloud/billing/plans.md, \"Story: Apply the plan that funds a call\")", () => scoped(effect {
     const cloud = try testCloud()
@@ -96,6 +109,59 @@ describe("WP0 Foundation: metering and funds", () => {
           granted: [1_500_000, 0],
           broken: { error: "service_unavailable", errorDescription: "Service unavailable.", retryable: true, retryAt: failedAt + 5000 }
         }))
+    }
+  }))
+
+  it.live("Share an organization hold across inference ingress and retain earlier physical keys (spec/cloud/shared/metering.md, \"Story: Never overdraw an account\"; spec/cloud/shared/metering.md, \"Story: Settle every call once\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const owner = { organizationId: "org-shared-meter", userId: "current-owner" }
+    const previousOwner = { ...owner, userId: "previous-owner" }
+    const another = { organizationId: "org-other-meter", userId: "other-owner" }
+    try organization(cloud, owner.organizationId)
+    try organization(cloud, another.organizationId)
+    provide Store = cloud.store {
+      try addCredits({ organizationId: owner.organizationId, amount: 10_000_000, requestKey: "shared-meter-funds" })
+      try addCredits({ organizationId: another.organizationId, amount: 10_000_000, requestKey: "other-meter-funds" })
+      const legacy = try retainLegacyInference(cloud, previousOwner, "earlier-request")
+      try markDispatched(legacy)
+      try settle(legacy, { kind: "known", actual: 100_000 })
+      const replayedLegacy = try reserve(owner, holdKey(owner.organizationId, "earlier-request"), 100_000)
+      const attempts = try Effect.all([
+        reserve(owner, holdKey(owner.userId, "both-ingress"), 100_000),
+        reserve(owner, holdKey(owner.organizationId, "both-ingress"), 100_000)
+      ], { concurrency: 2 })
+      const current = attempts[0].key
+      try markDispatched(current)
+      try settle(current, { kind: "known", actual: 100_000 })
+      const otherOrganization = try reserve(another, holdKey(another.userId, "both-ingress"), 100_000)
+      const speech: HoldKey = { service: "MeteredSpeech", caller: owner.userId, requestId: "both-ingress", part: { tag: "SpeechWindow", direction: "Transcribe", window: 1 } }
+      const transcribe = try reserve(owner, speech, 100_000)
+      const replayedSpeech = try reserve(owner, { ...speech, caller: owner.organizationId }, 100_000)
+      const synthesize = try reserve(owner, { ...speech, part: { tag: "SpeechWindow", direction: "Synthesize", window: 1 } }, 100_000)
+      const nextWindow = try reserve(owner, { ...speech, part: { tag: "SpeechWindow", direction: "Transcribe", window: 2 } }, 100_000)
+      const firstMap = try reserve(owner, { service: "MeteredMaps", caller: "device-a", requestId: "both-ingress", part: { tag: "WholeRequest" } }, 100_000)
+      const secondMap = try reserve(owner, { service: "MeteredMaps", caller: "device-b", requestId: "both-ingress", part: { tag: "WholeRequest" } }, 100_000)
+      try reserve(owner, holdKey(owner.organizationId, "duplicate-history"), 100_000)
+      try retainLegacyInference(cloud, previousOwner, "duplicate-history")
+      const ambiguous = try failureOf(reserve(owner, holdKey(owner.organizationId, "duplicate-history"), 100_000))
+      const refusal = try Schema.decodeUnknownEffect(Schema.Struct({ error: Schema.String, retryable: Schema.Boolean }))(ambiguous)
+      const rows = try sql(cloud, "SELECT hold_key, charged::int AS charged FROM usage_records WHERE organization_id = $1 ORDER BY hold_key", [owner.organizationId])
+      try check(() => assert.deepStrictEqual({
+        legacy: [replayedLegacy.replayed, replayedLegacy.key, replayedLegacy.hold.key.caller],
+        current: [attempts.map((ticket) => ticket.replayed).sort(), attempts[0].key === attempts[1].key, attempts[0].hold.key.caller],
+        isolated: [otherOrganization.replayed, otherOrganization.key !== current],
+        speech: [transcribe.replayed, replayedSpeech.replayed, replayedSpeech.key === transcribe.key, synthesize.replayed, nextWindow.replayed, new Set([transcribe.key, synthesize.key, nextWindow.key]).size],
+        maps: [firstMap.replayed, secondMap.replayed, firstMap.key !== secondMap.key],
+        refusal, charged: rows.map((row) => [row.hold_key, row.charged])
+      }, {
+        legacy: [true, legacy, previousOwner.userId],
+        current: [[false, true], true, owner.organizationId],
+        isolated: [false, true],
+        speech: [false, true, true, false, false, 3],
+        maps: [false, false, true],
+        refusal: { error: "service_unavailable", retryable: true },
+        charged: [current, legacy].sort().map((key) => [key, 100_000])
+      }))
     }
   }))
 

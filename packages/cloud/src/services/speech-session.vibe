@@ -217,8 +217,8 @@ export effect function openSocket(id: string): OpenedSession!SessionFailure!Stor
 }
 
 effect function reserveWindow(tx: Tx, owner: HoldOwner, id: string, window: number, rates: Rates, now: number): WindowReservation!MeteringFailure {
-  const transcribe = try reserveIn(tx, owner, holdKey(owner.userId, id, "Transcribe", window), quoteOf("Transcribe", rates), now)
-  const synthesize = try reserveIn(tx, owner, holdKey(owner.userId, id, "Synthesize", window), quoteOf("Synthesize", rates), now)
+  const transcribe = try reserveIn(tx, owner, holdKey(owner.organizationId, id, "Transcribe", window), quoteOf("Transcribe", rates), now)
+  const synthesize = try reserveIn(tx, owner, holdKey(owner.organizationId, id, "Synthesize", window), quoteOf("Synthesize", rates), now)
   return { transcribe: transcribe.key, synthesize: synthesize.key, funded: transcribe.hold.phase === "Reserved" && synthesize.hold.phase === "Reserved" }
 }
 

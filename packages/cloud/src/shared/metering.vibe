@@ -5,7 +5,7 @@ import type { HoldKey } from "../../gen/cloud__shared__types.ts"
 import { creditAvailable, readFunds, stepFunds, type FundsFailure } from "../billing/funds.vibe"
 import { laneFor, type FundingLane } from "../billing/policy.vibe"
 import { refused, type Refused, wireName } from "../http/refusal.vibe"
-import { loadRow, machineRows, type RowConflict, type RowCorrupt, stepRow } from "../store/rows.vibe"
+import { loadRow, machineRows, type RowConflict, RowCorrupt, stepRow } from "../store/rows.vibe"
 import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 
 export type { Hold, HoldKey }
@@ -75,11 +75,41 @@ export effect function stepPeriod(tx: Tx, key: string, event: PeriodEvent, now: 
   return try stepRow(tx, periodRows, key, event, (period) => ({ status: wireName(period.phase.slice("Period".length)), updated_at: now }))
 }
 
-export effect function reserveIn(tx: Tx, owner: HoldOwner, key: HoldKey, quote: number, now: number): HoldTicket!MeteringFailure {
+effect function priorHold(tx: Tx, owner: HoldOwner, key: HoldKey, rendered: string, now: number): (HoldTicket | undefined)!MeteringFailure {
+  const canonical = try loadRow(tx, holdRows, rendered)
+  if (canonical.found && renderHoldKey(owner, canonical.state.key) !== rendered) {
+    throw new RowCorrupt({ table: holdRows.table, key: rendered, cause: "key" })
+  }
+  if (key.service === "MeteredMaps") return canonical.found ? { key: rendered, hold: canonical.state, replayed: true } : undefined
+
+  const previous = renderHoldKey(owner, { ...key, caller: owner.userId })
+  const retained = try tx.query(
+    `SELECT key FROM holds
+     WHERE organization_id = $1 AND service IN ('inference', 'speech') AND service = $2 AND key <> $5
+       AND (key = $6 OR (state->'key'->>'requestId' = $3 AND state->'key'->'part' = $4::jsonb AND state->'key'->>'caller' = user_id))
+     ORDER BY key LIMIT 2`,
+    [owner.organizationId, serviceName(key.service), key.requestId, JSON.stringify(key.part), rendered, previous]
+  )
+  if (retained.length + Number(canonical.found) > 1) {
+    try annotateLogs(logError("multiple metered holds match one organization request"), { organizationId: owner.organizationId, service: key.service })
+    throw refused("ServiceUnavailable", "NoReason", now + 5000)
+  }
+  if (canonical.found) return { key: rendered, hold: canonical.state, replayed: true }
+  const legacyKey = toText(retained[0]?.key)
+  if (legacyKey === undefined) return undefined
+  const legacy = try loadRow(tx, holdRows, legacyKey)
+  if (!legacy.found || renderHoldKey(owner, legacy.state.key) !== legacyKey) {
+    throw new RowCorrupt({ table: holdRows.table, key: legacyKey, cause: "key" })
+  }
+  return { key: legacyKey, hold: legacy.state, replayed: true }
+}
+
+export effect function reserveIn(tx: Tx, owner: HoldOwner, requested: HoldKey, quote: number, now: number): HoldTicket!MeteringFailure {
+  const key = requested.service === "MeteredMaps" ? requested : { ...requested, caller: owner.organizationId }
   const rendered = renderHoldKey(owner, key)
   try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [owner.organizationId])
-  const existing = try loadRow(tx, holdRows, rendered)
-  if (existing.found) return { key: rendered, hold: existing.state, replayed: true }
+  const existing = try priorHold(tx, owner, key, rendered, now)
+  if (existing !== undefined) return existing
   const lane = try laneFor(tx, owner.organizationId, key.service, now)
   const funds = try readFunds(tx, owner.organizationId)
   const open = lane === "AllowanceThenCredits" ? try openPeriod(tx, owner.organizationId, now) : undefined
