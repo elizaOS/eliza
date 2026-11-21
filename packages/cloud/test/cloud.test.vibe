@@ -1210,7 +1210,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
     const session = minted.body as { readonly sessionId: string; readonly token: string; readonly expiresAt: string; readonly wsUrl: string }
     const mintedAt = Date.parse(session.expiresAt) - 60_000
-    const socket = try promise(() => openRelay(cloud.url, session.sessionId))
+    const socket = try acquireRelease(promise(() => openRelay(cloud.url, session.sessionId)), (relay) => sync(() => relay.close()))
     const second = try promise(() => upgradeStatus(cloud.url, session.sessionId))
     try sync(() => socket.send({ t: "hello", token: session.token, errorReasons: true, extend: true }))
     const opened = try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "stt"))

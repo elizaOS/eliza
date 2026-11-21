@@ -25,11 +25,12 @@ export function openCloud(base: string, path: string, init: CallInit = {}): Prom
 export async function callCloud(base: string, path: string, init: CallInit = {}): Promise<Answer> {
   const response = await openCloud(base, path, init);
   const text = await response.text();
-  const type = response.headers.get("content-type") ?? "";
+  const type = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  const singleDocument = type === "application/json" || type.endsWith("+json");
   return {
     status: response.status,
     headers: Object.fromEntries(response.headers.entries()),
-    body: type.includes("json") && text !== "" ? (JSON.parse(text) as unknown) : text,
+    body: singleDocument && text !== "" ? (JSON.parse(text) as unknown) : text,
   };
 }
 

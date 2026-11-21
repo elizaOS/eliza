@@ -152,7 +152,7 @@ effect function carryOut(handler: OperatorCommandHandler, flags: OperatorFlags) 
   }
 }
 
-effect function report(outcome: OperatorOutcome): void!OperatorRefused {
+export effect function report(outcome: OperatorOutcome): void!OperatorRefused {
   if (outcome.kind === "refused") {
     try Console.error(JSON.stringify(refusalBody(outcome.refusal)))
     throw new OperatorRefused({ refusal: outcome.refusal })

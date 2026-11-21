@@ -2,7 +2,7 @@
 import { apply, initial } from "../../gen/cloud__identity__accounts.effect.vibe"
 import type { DeviceRow } from "../../gen/cloud__operator.effect.vibe"
 import { legacyGrant } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
-import { operate, type OperatorCommandHandler } from "../../src/operator/admin.vibe"
+import { operate, report, type OperatorCommandHandler, type OperatorOutcome } from "../../src/operator/admin.vibe"
 import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
 import { newId, secretText, tokenDigest } from "../../src/shared/credential-crypto.vibe"
 import { Store, type Tx } from "../../src/store/store.vibe"
@@ -23,7 +23,7 @@ export effect function operator(cloud: TestCloud, args: ReadonlyArray<string>, o
   }
 }
 
-export effect function printed<A, E, R>(program: A!E!R) {
+export effect function printed<E, R>(program: OperatorOutcome!E!R) {
   const host = try Console.Console
   const out: string[] = []
   const err: string[] = []
@@ -32,7 +32,8 @@ export effect function printed<A, E, R>(program: A!E!R) {
     log: (...args) => { out.push(args.join(" ")) },
     error: (...args) => { err.push(args.join(" ")) }
   }
-  return { exit: try exit(provideService(program, Console.Console, capturing)), out, err }
+  const printed = effect { try report(try program) }
+  return { exit: try exit(provideService(printed, Console.Console, capturing)), out, err }
 }
 
 export effect function openAccount(cloud: TestCloud, account: { readonly userId: string; readonly organizationId: string }) {
