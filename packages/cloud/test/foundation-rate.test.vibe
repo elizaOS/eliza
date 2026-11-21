@@ -75,8 +75,20 @@ describe("WP0 Foundation: rate limits", () => {
       const ipAfterRefusal = try readWindow(perIp)
       const other = admitAll([perIp, otherAddress]) catch (failure) => failure.refusal
       const counts = [(try readWindow(perIp)).count, (try readWindow(perAddress)).count, (try readWindow(otherAddress)).count]
+
+      const sharedRule = perWindow("journeySharedScope", 3, minute)
+      const jane = { subject: "jane", rule: sharedRule }
+      const joe = { subject: "joe", rule: sharedRule }
+      const sharedScope = admitAll([jane, joe, { ...jane, rule: { ...sharedRule } }]) catch (failure) => failure.refusal
+      const conflicting = admitAll([jane, { ...joe, rule: { ...sharedRule, limit: 1 } }, joe]) catch (failure) => failure.refusal
+      const sharedCounts = [(try readWindow(jane)).count, (try readWindow(joe)).count]
       try check(() => assert.deepStrictEqual(
-        { answers: [answered(both, groupAt), answered(full, groupAt), answered(other, groupAt)], ipAfterRefusal: [ipAfterRefusal.count, ipAfterRefusal.last.tag], counts },
+        {
+          answers: [answered(both, groupAt), answered(full, groupAt), answered(other, groupAt)],
+          ipAfterRefusal: [ipAfterRefusal.count, ipAfterRefusal.last.tag],
+          counts,
+          sharedScope: [answered(sharedScope, groupAt), answered(conflicting, groupAt), sharedCounts]
+        },
         {
           answers: ["admitted", {
             status: 429,
@@ -84,7 +96,12 @@ describe("WP0 Foundation: rate limits", () => {
             body: { error: "rate_limited", errorDescription: "Rate limited.", retryable: true, retryAt: windowEndOf(groupAt, 2 * hour) }
           }, "admitted"],
           ipAfterRefusal: [1, "Admitted"],
-          counts: [2, 1, 1]
+          counts: [2, 1, 1],
+          sharedScope: ["admitted", {
+            status: 503,
+            retryAfter: "1",
+            body: { error: "rate_limit_unavailable", errorDescription: "Rate limit unavailable.", retryable: true, retryAt: groupAt + 1000 }
+          }, [1, 1]]
         }
       ))
     }

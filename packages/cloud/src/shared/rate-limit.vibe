@@ -27,6 +27,10 @@ export function windowKey(check: LimitCheck): string {
   return `${check.rule.name}|${check.subject}`
 }
 
+effect function lockWindow(tx: Tx, key: string) {
+  try tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`rate-window:${key}`])
+}
+
 effect function countIn(tx: Tx, check: LimitCheck, now: number) {
   return (try stepRow(tx, windows, windowKey(check), { type: "request", rule: check.rule, now }, (window) => ({ window_end: window.end }))).state
 }
@@ -39,7 +43,10 @@ export effect function readWindow(check: LimitCheck) {
 export effect function admitCheck(check: LimitCheck): void!Refused!Store {
   const now = try Clock.currentTimeMillis
   const store = try Store
-  const window = store.transaction((tx) => countIn(tx, check, now)) catch effect (failure) => {
+  const window = store.transaction(effect (tx: Tx) => {
+    try lockWindow(tx, windowKey(check))
+    return try countIn(tx, check, now)
+  }) catch effect (failure) => {
     try annotateLogs(logWarning("rate limiter could not count"), { limit: check.rule.name, cause: failure._tag })
     throw new Refused({ refusal: unavailableRefusal(now) })
   }
@@ -52,12 +59,22 @@ export effect function admit(limit: Limit): void!Refused!Store {
 
 export effect function admitAll(checks: ReadonlyArray<LimitCheck>): void!Refused!Store {
   const now = try Clock.currentTimeMillis
+  const byKey = new Map<string, LimitCheck>()
+  for (const check of checks) {
+    const key = windowKey(check)
+    const prior = byKey.get(key)
+    if (prior !== undefined && (prior.rule.name !== check.rule.name || prior.rule.limit !== check.rule.limit || prior.rule.windowMs !== check.rule.windowMs)) {
+      throw new Refused({ refusal: unavailableRefusal(now) })
+    }
+    byKey.set(key, check)
+  }
   const store = try Store
   const refusal = store.transaction(effect (tx: Tx) => {
+    for (const key of [...byKey.keys()].sort()) try lockWindow(tx, key)
     const group: Array<Check> = []
-    for (const check of checks) group.push({ window: (try loadRow(tx, windows, windowKey(check))).state, rule: check.rule })
+    for (const [key, check] of byKey) group.push({ window: (try loadRow(tx, windows, key)).state, rule: check.rule })
     if (!admitsAll(group, now)) return groupRefusal(group, now)
-    for (const check of checks) try countIn(tx, check, now)
+    for (const check of byKey.values()) try countIn(tx, check, now)
     return undefined
   }) catch effect (failure) => {
     try annotateLogs(logWarning("rate limiter could not count"), { limits: checks.map((check) => check.rule.name).join(","), cause: failure._tag })
