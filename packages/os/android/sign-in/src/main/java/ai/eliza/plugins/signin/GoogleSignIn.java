@@ -74,6 +74,8 @@ public final class GoogleSignIn {
 
   public interface Returned {
     void exchanged(int credentialAttempt, Checked answer);
+
+    void failed(SignInPolicy.Failure failure);
   }
 
   private final CodeSignIn.Http http;

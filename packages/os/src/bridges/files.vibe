@@ -1,7 +1,7 @@
 // spec/os/android/files/storage.md, "A row answers copied, moved or trashed only for an admitted row whose own write was acknowledged"; spec/os/android/files/storage.md, "Erasing forever takes the owner's confirmation and is counted only when both data and record are gone"; spec/os/android/files/handoff.md, "A chooser reply reports dispatch only, and a start that comes after the timeout never changes it"; spec/os/android/files/handoff.md, "A selection is shown only in the visit that requested it, and a late one is forgotten"; spec/os/android/files/storageWatch.md, "Only the watch of the newest ticket publishes a change"
 import { nativeAcknowledged, receiptOutcome, type FilesOp, type WriteResult } from "../../gen/os__android__files__storage.effect.vibe"
-import { Machine, machine, shownSelection, type FilesPreview } from "../../gen/os__android__files__handoff.effect.vibe"
-import { nativeReply, settled } from "./bridge.vibe"
+import { Machine, machine, shownSelection, type FilesPreview, type Rejected } from "../../gen/os__android__files__handoff.effect.vibe"
+import { nativeReply, settled, type BridgeFailure } from "./bridge.vibe"
 import type { ElizaFilesPlugin, FileOutcomeRow, FilesPreviewAnswer, FilesPreviewClient, OnVolume } from "./definitions/files.ts"
 
 export type * from "./definitions/files.ts"
@@ -88,7 +88,7 @@ effect function previewMachine() {
   }
 }
 
-effect function previewed(preview: Machine.Shape, plugin: ElizaFilesPlugin, name: string, input: OnVolume & { path: string }): FilesPreviewAnswer {
+effect function previewed(preview: Machine.Shape, plugin: ElizaFilesPlugin, name: string, input: OnVolume & { path: string }): FilesPreviewAnswer!(BridgeFailure | Rejected) {
   try preview.send({ type: "requestPreview" })
   const reply = (nativeReply(name, "storageSelect", Selection, () => plugin.storageSelect(input)) catch effect (failure) => {
     try orDie(preview.send({ type: "settlePreview", selectionId: "" }))

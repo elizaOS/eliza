@@ -65,7 +65,7 @@ effect function connectivity(plugin: string, read: () => Promise<unknown>) {
   const seen = Result.isSuccess(answer) ? answer.success : undefined
   const report = connectivityReport({ answered: seen !== undefined, offersInternet: seen?.online ?? false, androidValidated: seen?.validated ?? false, androidCaptive: seen?.captivePortal ?? false, onWifi: seen?.ssid != null, nameDisclosed: seen?.ssid != null, activeName: seen?.ssid ?? "" })
   if (report.tag === "ConnectivityKnown") return { online: report.online, validated: report.validated, captivePortal: report.captivePortal, ssid: report.wifiName === "" ? null : report.wifiName } satisfies ConnectivityResult
-  return try answer
+  return try fromResult(answer)
 }
 
 function refusalCode(failure: BridgeFailure): string | undefined {

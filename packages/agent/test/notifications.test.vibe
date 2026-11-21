@@ -1,18 +1,8 @@
 // spec/agent/notifications.md, "Story: Read my notices and mark them read from my own client"
-module node {
-  import { existsSync } from "node:fs"
-
-  export function written(path: string, base: string): boolean {
-    return existsSync(new URL(path, base))
-  }
-}
-import { written } from node
 import { assert, it } from "@effect/vitest"
 import { NotificationService, type AgentNotification, type NotificationInput } from "@elizaos/core"
 import { call, events, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
-
-const hubWritten = (): boolean => written("../src/conversation/events.vibe", import.meta.url)
 
 const loaded = { launch: { load: ["@elizaos/agent/notifications"] } }
 const absentId = "0b7c3a52-7e1f-4c55-9a4e-2f0d8b6c1e93"
@@ -51,7 +41,7 @@ interface NativePage {
   readonly complete: boolean
 }
 
-it.effect('Notify, list with each filter, page natively and mark read twice (spec/agent/notifications.md, "An owner list holds only visible notices that match its filter, newest first"; spec/agent/notifications.md, "A list query is refused unless each parameter is given once and well formed"; spec/agent/notifications.md, "A native page takes no filter and names its epoch to continue"; spec/agent/notifications.md, "Marking a notice read answers ok only when this call durably marked an unread notice")', effect () => {
+it.effect('Notify, list with each filter, page natively and mark read twice (spec/agent/notifications.md, "An owner list holds only visible notices that match its filter, newest first"; spec/agent/notifications.md, "A list query is refused unless each parameter is given once and well formed"; spec/agent/notifications.md, "A native page takes no filter and names its epoch to continue"; spec/agent/notifications.md, "Marking a notice read answers ok only when this call durably marked an unread notice"; spec/agent/access/routes.md, "A flawed request is refused before any route is tried")', effect () => {
   const agent = try startInProcess(loaded)
   const service = try inbox(agent)
   const [first, second, quiet] = try notifyAll(service, [
@@ -99,7 +89,7 @@ it.effect('Notify, list with each filter, page natively and mark read twice (spe
     assert.deepStrictEqual([marked, again, absent], [
       { status: 200, body: { ok: true } }, { status: 200, body: { ok: false } }, { status: 200, body: { ok: false } },
     ])
-    assert.include([400, 404], malformed.status)
+    assert.strictEqual(malformed.status, 400)
     assert.deepStrictEqual(listed(unread.body), [quiet.id, second.id])
     assert.deepInclude(unread.body as object, { unreadCount: 1 })
     assert.deepStrictEqual(service.listIncludingExpired().filter((notice) => notice.readAt != null).map(({ id }) => id), [first.id])
@@ -124,7 +114,7 @@ it.effect('A stopped inbox answers 503 with Retry-After, never an empty list or 
   })
 }, 120_000)
 
-it.effect.skipIf(!hubWritten())(`A new notice arrives on the notification stream (spec/agent/notifications.md, "Story: Read my notices and mark them read from my own client")${hubWritten() ? "" : ": pending until the event hub bridges the notification stream"}`, effect () => {
+it.effect('A new notice arrives on the notification stream (spec/agent/notifications.md, "Story: Read my notices and mark them read from my own client")', effect () => {
   const agent = try startInProcess(loaded)
   const service = try inbox(agent)
   const feed = try events(agent, ["notification"])

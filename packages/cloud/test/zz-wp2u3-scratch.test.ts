@@ -41,16 +41,20 @@ const traces: Record<string, oracle.Event[]> = {
     { type: "token", client: { tag: "ClientAdmitted" }, binding: "BindingMatches", credentialId: "k1", deviceEpoch: 1 },
   ],
   native: [
+    { type: "elapse", elapsed: 300000 },
     { type: "signInNatively", codeRequest: ok, nativeGoogle: "GoogleNotOffered", verdict: "NativeAccepted", yielded: "DeviceKeyYield", serverCode: "NoServerCode", credentialTtl: day, credentialId: "k1", deviceEpoch: 0 },
     { type: "signInNatively", codeRequest: ok, nativeGoogle: "NativeGoogleOpen", verdict: "NativeProofWrong", yielded: "DeviceKeyYield", serverCode: "NoServerCode", credentialTtl: day, credentialId: "k1", deviceEpoch: 0 },
     { type: "signInNatively", codeRequest: ok, nativeGoogle: "NativeGoogleOpen", verdict: "NativeAccepted", yielded: "SecondFactorYield", serverCode: "NoServerCode", credentialTtl: day, credentialId: "k1", deviceEpoch: 0 },
     { type: "signInNatively", codeRequest: ok, nativeGoogle: "NativeGoogleOpen", verdict: "NativeAccepted", yielded: "DeviceKeyYield", serverCode: "WithServerCode", credentialTtl: day, credentialId: "k1", deviceEpoch: 0 },
+    { type: "token", client: { tag: "ClientAdmitted" }, binding: "BindingMatches", credentialId: "k2", deviceEpoch: 0 },
+    { type: "ack", client: { tag: "ClientAdmitted" }, proofMatches: true, deviceEpoch: 1 },
     { type: "ack", client: { tag: "ClientAdmitted" }, proofMatches: true, deviceEpoch: 0 },
+    { type: "selfRevoke", deviceEpoch: 0 },
   ],
 };
 
 describe("wp2u3 scratch", () => {
-  for (const [name, trace] of Object.entries(traces)) {
+  for (const [name, trace] of Object.entries(traces).filter(([n]) => n === "native")) {
     it(name, async () => {
       const lines: string[] = [];
       try {
