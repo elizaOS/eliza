@@ -317,6 +317,7 @@ public class PasswordsPlugin extends Plugin {
   }
 
   @Override protected void handleOnStop() {
+    Activity activity = getActivity();
     super.handleOnStop();
     stopWatchingClipboardFocus();
     try {
@@ -325,8 +326,8 @@ public class PasswordsPlugin extends Plugin {
       if (access.deviceUnlockedCustody()) return;
       if (!access.pending()) access.lock(unlockTicket);
     } catch (Exception ignored) { /* Nothing to lock. */ }
-    PasswordEditor.dismiss(getActivity());
-    SecretSurfaces.dismiss();
+    PasswordEditor.dismiss(activity);
+    SecretSurfaces.dismiss(activity);
   }
 
   @Override protected void handleOnResume() {
@@ -347,14 +348,15 @@ public class PasswordsPlugin extends Plugin {
   }
 
   @Override protected void handleOnDestroy() {
+    Activity activity = getActivity();
     stopWatchingClipboardFocus();
     try {
       PasswordVaultAccess access = PasswordVaultAccess.get(getContext());
       if (!access.deviceUnlockedCustody()) access.lock(unlockTicket);
     }
     catch (Exception ignored) { /* Nothing to lock. */ }
-    PasswordEditor.dismiss(getActivity());
-    SecretSurfaces.dismiss();
+    PasswordEditor.dismiss(activity);
+    SecretSurfaces.dismiss(activity);
     super.handleOnDestroy();
   }
 }

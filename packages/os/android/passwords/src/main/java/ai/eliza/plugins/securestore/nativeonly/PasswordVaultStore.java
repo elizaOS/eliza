@@ -63,7 +63,6 @@ public class PasswordVaultStore {
     this.devicePolicyFile = policy != null && policy.requiresDeviceUnlockOnly() ? new AtomicFile(new File(directory, "vault.device-unlocked-v1")) : null;
     this.file = new AtomicFile(new File(directory, "vault.enc")); this.alias = alias; this.policy = policy; this.authenticationRequired = policy != null && !policy.requiresDeviceUnlockOnly();
   }
-  /** A locked Android user cannot reach device-unlocked custody. */
   public static final class DeviceLocked extends IOException { DeviceLocked() { super("Unlock the device to use saved passwords"); } }
   private void checkDevice() throws DeviceLocked { if (policy != null) policy.checkDevice(); }
   private SecretKey key(boolean existing) throws Exception {
@@ -111,7 +110,6 @@ public class PasswordVaultStore {
   private byte[] devicePolicyValue(boolean platformDeviceLock) {
     return ((platformDeviceLock ? "device-unlocked-v1:" : "host-device-unlocked-v2:") + alias).getBytes(StandardCharsets.UTF_8);
   }
-  /** KeyInfo cannot report unlockedDeviceRequired. Both authenticated markers describe trusted key creation paths. */
   private void verifyDeviceKeyProvenance(SecretKey key) throws Exception {
     File base = devicePolicyFile.getBaseFile(), backup = new File(base.getPath() + ".bak");
     if (!base.exists() && !backup.exists()) throw new IOException("Device-unlocked key provenance is missing");
