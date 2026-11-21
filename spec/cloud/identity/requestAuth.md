@@ -48,7 +48,7 @@ import deployment as D from "../deployment"
 type RouteClass = PublicRoute | SignatureRoute | KeyOrSessionRoute | SessionRoute | FreshRoute | StepUpRoute
 type SessionLookup = NoFamily | FamilyRow({ family: S::Family, generation: int })
 type KeyLookup = NoGrant | GrantRow({ grant: Dk::Grant })
-type Presented = NoCredential | SessionBearer({ lookup: SessionLookup }) | KeyBearer({ window: R::Window, lookup: KeyLookup })
+type Presented = NoCredential | SessionBearer({ familyLookup: SessionLookup }) | KeyBearer({ window: R::Window, grantLookup: KeyLookup })
 type Standing = { status: A::AccountStatus, personEpoch: int, deviceEpoch: int }
 type Admission = Anonymous | Caller({ kind: CredentialKind, expiresAt: Millis }) | Denied({ refusal: Refusal })
 pure def isProtected(route: RouteClass): bool = route != PublicRoute and route != SignatureRoute
@@ -71,8 +71,8 @@ pure def admit(route: RouteClass, presented: Presented, standing: Standing, now:
   if (not(isProtected(route))) Anonymous
   else match presented {
     | NoCredential => deniedFor(CredentialUnknown)
-    | SessionBearer(x) => sessionAdmission(route, x.lookup, standing, now)
-    | KeyBearer(y) => keyAdmission(route, y.window, y.lookup, standing, now)
+    | SessionBearer(x) => sessionAdmission(route, x.familyLookup, standing, now)
+    | KeyBearer(y) => keyAdmission(route, y.window, y.grantLookup, standing, now)
   }
 pure def lawEveryRefusalIsWellFormed(route: RouteClass, presented: Presented, standing: Standing, now: Millis): bool = {
   val a = admit(route, presented, standing, now)
@@ -81,8 +81,8 @@ pure def lawEveryRefusalIsWellFormed(route: RouteClass, presented: Presented, st
 pure def lawAMissingOrUnknownCredentialIsUnknown(route: RouteClass, window: R::Window, standing: Standing, now: Millis): bool =
   (isProtected(route) and R::admitsAll(keyIngress(window), now)) implies (
     admit(route, NoCredential, standing, now) == deniedFor(CredentialUnknown)
-    and admit(route, SessionBearer({ lookup: NoFamily }), standing, now) == deniedFor(CredentialUnknown)
-    and admit(route, KeyBearer({ window: window, lookup: NoGrant }), standing, now) == deniedFor(CredentialUnknown))
+    and admit(route, SessionBearer({ familyLookup: NoFamily }), standing, now) == deniedFor(CredentialUnknown)
+    and admit(route, KeyBearer({ window: window, grantLookup: NoGrant }), standing, now) == deniedFor(CredentialUnknown))
 ```
 
 ### A device key is limited to 120 requests a minute before it is looked up
@@ -102,8 +102,8 @@ pure def keyAdmission(route: RouteClass, window: R::Window, lookup: KeyLookup, s
   }
 pure def lawAKeyOverItsLimitIsRefusedWhateverItsRow(route: RouteClass, window: R::Window, lookup: KeyLookup, otherLookup: KeyLookup, standing: Standing, now: Millis): bool =
   (isProtected(route) and not(R::admitsAll(keyIngress(window), now))) implies (
-    admit(route, KeyBearer({ window: window, lookup: lookup }), standing, now) == admit(route, KeyBearer({ window: window, lookup: otherLookup }), standing, now)
-    and admit(route, KeyBearer({ window: window, lookup: lookup }), standing, now) == Denied({ refusal: R::groupRefusal(keyIngress(window), now) }))
+    admit(route, KeyBearer({ window: window, grantLookup: lookup }), standing, now) == admit(route, KeyBearer({ window: window, grantLookup: otherLookup }), standing, now)
+    and admit(route, KeyBearer({ window: window, grantLookup: lookup }), standing, now) == Denied({ refusal: R::groupRefusal(keyIngress(window), now) }))
 ```
 
 ### A refused credential never yields a caller
@@ -139,8 +139,8 @@ pure def liveKeyLookup(lookup: KeyLookup, standing: Standing, now: Millis): bool
   match lookup { | GrantRow(x) => liveGrant(x.grant, standing, now) | NoGrant => false }
 pure def isLiveCredential(presented: Presented, standing: Standing, now: Millis): bool =
   isActiveAccount(standing) and match presented {
-    | SessionBearer(x) => liveLookup(x.lookup, standing, now)
-    | KeyBearer(y) => R::admitsAll(keyIngress(y.window), now) and liveKeyLookup(y.lookup, standing, now)
+    | SessionBearer(x) => liveLookup(x.familyLookup, standing, now)
+    | KeyBearer(y) => R::admitsAll(keyIngress(y.window), now) and liveKeyLookup(y.grantLookup, standing, now)
     | NoCredential => false
   }
 pure def lawARefusedCredentialNeverYieldsACaller(route: RouteClass, presented: Presented, standing: Standing, now: Millis): bool = {
@@ -173,7 +173,7 @@ pure def familyAdmission(route: RouteClass, family: S::Family, generation: int, 
   else Caller({ kind: SessionCredential, expiresAt: f.accessExpiresAt })
 }
 pure def lawSessionRoutesAdmitOnlyAssuredSessions(route: RouteClass, family: S::Family, generation: int, standing: Standing, now: Millis): bool = {
-  val a = admit(route, SessionBearer({ lookup: FamilyRow({ family: family, generation: generation }) }), standing, now)
+  val a = admit(route, SessionBearer({ familyLookup: FamilyRow({ family: family, generation: generation }) }), standing, now)
   val live = liveFamily(family, generation, standing, now) and isActiveAccount(standing)
   val assured = hasAssurance(route, { ...family, now: now })
   (needsSession(route) and live) implies (a == (if (assured) Caller({ kind: SessionCredential, expiresAt: family.accessExpiresAt }) else Denied({ refusal: refuse(FreshSessionRequired) })))
@@ -198,9 +198,9 @@ pure val windowValues: Set[R::Window] = Set(R::initial, fullWindow)
 pure val standingValues: Set[Standing] = Set({ status: A::Active, personEpoch: 0, deviceEpoch: 0 },
   { status: A::Active, personEpoch: 1, deviceEpoch: 1 }, { status: A::Deleting, personEpoch: 0, deviceEpoch: 0 })
 pure val presentedValues: Set[Presented] = Set(NoCredential,
-  SessionBearer({ lookup: NoFamily }), SessionBearer({ lookup: FamilyRow({ family: signedIn, generation: 1 }) }),
-  SessionBearer({ lookup: FamilyRow({ family: { ...signedIn, mfaAt: S::At({ ms: 0 }) }, generation: 1 }) }),
-  SessionBearer({ lookup: FamilyRow({ family: { ...signedIn, generation: 2, issuedAt: 3600000, accessExpiresAt: 4500000 }, generation: 2 }) }),
-  KeyBearer({ window: R::initial, lookup: GrantRow({ grant: keyed }) }), KeyBearer({ window: fullWindow, lookup: GrantRow({ grant: keyed }) }),
-  KeyBearer({ window: R::initial, lookup: NoGrant }))
+  SessionBearer({ familyLookup: NoFamily }), SessionBearer({ familyLookup: FamilyRow({ family: signedIn, generation: 1 }) }),
+  SessionBearer({ familyLookup: FamilyRow({ family: { ...signedIn, mfaAt: S::At({ ms: 0 }) }, generation: 1 }) }),
+  SessionBearer({ familyLookup: FamilyRow({ family: { ...signedIn, generation: 2, issuedAt: 3600000, accessExpiresAt: 4500000 }, generation: 2 }) }),
+  KeyBearer({ window: R::initial, grantLookup: GrantRow({ grant: keyed }) }), KeyBearer({ window: fullWindow, grantLookup: GrantRow({ grant: keyed }) }),
+  KeyBearer({ window: R::initial, grantLookup: NoGrant }))
 ```
