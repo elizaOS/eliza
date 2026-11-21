@@ -15,6 +15,13 @@ public final class CredentialAccessSession {
     this.duration = durationMillis;
   }
 
+  private CredentialAccessSession() {
+    this.clock = () -> 0;
+    this.duration = 0;
+  }
+
+  public static CredentialAccessSession foregroundWindow() { return new CredentialAccessSession(); }
+
   /** Zero means a challenge is already pending, or this session is closed. */
   public long begin() {
     if (closed || pending != 0) return 0;
@@ -37,16 +44,17 @@ public final class CredentialAccessSession {
   }
 
   public boolean pending() { return !closed && pending != 0; }
+  public boolean pending(long ticket) { return pending() && pending == ticket; }
 
   /** Absolute elapsed time, independent of timer delivery and user interaction. */
   public long remainingMillis() {
-    if (closed || grantedAt < 0) return 0;
+    if (duration == 0 || closed || grantedAt < 0) return 0;
     long now = clock.getAsLong();
     if (now < grantedAt || now - grantedAt >= duration) { grantedAt = -1; return 0; }
     return duration - (now - grantedAt);
   }
 
-  public boolean authenticated() { return remainingMillis() > 0; }
+  public boolean authenticated() { return duration == 0 ? !closed && grantedAt >= 0 : remainingMillis() > 0; }
 
   /** Bind queued work to this grant; a later unlock cannot revive it. */
   public long currentTicket() { return authenticated() ? generation : 0; }

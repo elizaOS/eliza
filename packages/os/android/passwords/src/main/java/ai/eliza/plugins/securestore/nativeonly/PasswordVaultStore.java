@@ -29,7 +29,6 @@ public class PasswordVaultStore {
       this.validitySeconds = validitySeconds; this.biometric = biometric; this.deviceContext = null;
     }
     private KeyPolicy(android.content.Context context) {
-      if (android.os.Build.VERSION.SDK_INT < 35) throw new IllegalArgumentException("Device-unlocked password custody requires Android 15");
       this.deviceContext = Objects.requireNonNull(context).getApplicationContext();
       this.validitySeconds = 0; this.biometric = false;
     }
@@ -38,11 +37,14 @@ public class PasswordVaultStore {
     public boolean requiresDeviceUnlockOnly() { return deviceContext != null; }
     private void checkDevice() throws DeviceLocked {
       if (deviceContext == null) return;
-      android.app.KeyguardManager guard = deviceContext.getSystemService(android.app.KeyguardManager.class);
-      android.os.UserManager user = deviceContext.getSystemService(android.os.UserManager.class);
-      if (guard == null || user == null || !user.isUserUnlocked() || !guard.isDeviceSecure() || guard.isDeviceLocked()) throw new DeviceLocked();
+      if (!deviceUnlockedNow(deviceContext)) throw new DeviceLocked();
     }
     int authenticators() { return biometric ? KeyProperties.AUTH_BIOMETRIC_STRONG | KeyProperties.AUTH_DEVICE_CREDENTIAL : KeyProperties.AUTH_DEVICE_CREDENTIAL; }
+  }
+  public static boolean deviceUnlockedNow(android.content.Context context) {
+    android.app.KeyguardManager guard = context.getSystemService(android.app.KeyguardManager.class);
+    android.os.UserManager user = context.getSystemService(android.os.UserManager.class);
+    return guard != null && user != null && user.isUserUnlocked() && !guard.isDeviceLocked();
   }
   public static final int MAX_ENTRIES = 1000, MAX_BINDINGS = 20, MAX_LABEL = 200, MAX_USERNAME = 1024, MAX_PASSWORD = 16384;
   private final AtomicFile file;
@@ -61,7 +63,7 @@ public class PasswordVaultStore {
     this.devicePolicyFile = policy != null && policy.requiresDeviceUnlockOnly() ? new AtomicFile(new File(directory, "vault.device-unlocked-v1")) : null;
     this.file = new AtomicFile(new File(directory, "vault.enc")); this.alias = alias; this.policy = policy; this.authenticationRequired = policy != null && !policy.requiresDeviceUnlockOnly();
   }
-  /** Device lock and screen-lock removal deny access without starting an app authentication prompt. */
+  /** A locked Android user cannot reach device-unlocked custody. */
   public static final class DeviceLocked extends IOException { DeviceLocked() { super("Unlock the device to use saved passwords"); } }
   private void checkDevice() throws DeviceLocked { if (policy != null) policy.checkDevice(); }
   private SecretKey key(boolean existing) throws Exception {
@@ -88,11 +90,12 @@ public class PasswordVaultStore {
       if (android.os.Build.VERSION.SDK_INT>=30) spec.setUserAuthenticationParameters(policy.validitySeconds,policy.authenticators());
       else spec.setUserAuthenticationValidityDurationSeconds(policy.validitySeconds);
     }
-    if (android.os.Build.VERSION.SDK_INT >= 28) spec.setUnlockedDeviceRequired(true);
+    boolean platformDeviceLock = android.os.Build.VERSION.SDK_INT >= 35;
+    if (authenticationRequired || devicePolicyFile == null || platformDeviceLock) spec.setUnlockedDeviceRequired(true);
     generator.init(spec.build());
     SecretKey generated = generator.generateKey();
     if (devicePolicyFile != null) {
-      byte[] marker = PasswordVaultFrame.seal(generated, devicePolicyAad(), devicePolicyValue());
+      byte[] marker = PasswordVaultFrame.seal(generated, devicePolicyAad(), devicePolicyValue(platformDeviceLock));
       FileOutputStream output = null;
       try { output = devicePolicyFile.startWrite(); output.write(marker); devicePolicyFile.finishWrite(output); }
       catch (Exception failure) { if (output != null) devicePolicyFile.failWrite(output); throw failure; }
@@ -105,8 +108,10 @@ public class PasswordVaultStore {
     byte[] combined = Arrays.copyOf(aad, aad.length + tag.length);
     System.arraycopy(tag, 0, combined, aad.length, tag.length); return combined;
   }
-  private byte[] devicePolicyValue() { return ("device-unlocked-v1:" + alias).getBytes(StandardCharsets.UTF_8); }
-  /** KeyInfo cannot report unlockedDeviceRequired. Admit only keys created by this versioned path. */
+  private byte[] devicePolicyValue(boolean platformDeviceLock) {
+    return ((platformDeviceLock ? "device-unlocked-v1:" : "host-device-unlocked-v2:") + alias).getBytes(StandardCharsets.UTF_8);
+  }
+  /** KeyInfo cannot report unlockedDeviceRequired. Both authenticated markers describe trusted key creation paths. */
   private void verifyDeviceKeyProvenance(SecretKey key) throws Exception {
     File base = devicePolicyFile.getBaseFile(), backup = new File(base.getPath() + ".bak");
     if (!base.exists() && !backup.exists()) throw new IOException("Device-unlocked key provenance is missing");
@@ -114,7 +119,10 @@ public class PasswordVaultStore {
       if (java.nio.file.Files.isSymbolicLink(candidate.toPath()) || (candidate.exists() && (!candidate.isFile() || candidate.length() > 4096)))
         throw new IOException("Invalid device-unlocked key provenance");
     byte[] value = PasswordVaultFrame.open(key, devicePolicyAad(), devicePolicyFile.readFully());
-    try { if (!Arrays.equals(value, devicePolicyValue())) throw new IOException("Invalid device-unlocked key provenance"); }
+    try {
+      if (!Arrays.equals(value, devicePolicyValue(false)) && !Arrays.equals(value, devicePolicyValue(true)))
+        throw new IOException("Invalid device-unlocked key provenance");
+    }
     finally { Arrays.fill(value, (byte)0); }
   }
 
