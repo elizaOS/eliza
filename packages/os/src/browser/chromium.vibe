@@ -150,8 +150,8 @@ export error BrowserAppRefused { app: BrowserApp; why: AppRefusal; detail: strin
 export error BrowserOverlayRefused { reason: OverlayRefusal; detail: string }
 error ProvenanceProblem { reason: string }
 
-export const OWNED_BROWSER_PACKAGE = "ai.elizaos.chromium"
-export const UPSTREAM_BROWSER_PACKAGE = "org.chromium.chrome"
+const OWNED_BROWSER_PACKAGE = "ai.elizaos.chromium"
+const UPSTREAM_BROWSER_PACKAGE = "org.chromium.chrome"
 export const WEBVIEW_CONFIG = "overlay/frameworks/base/core/res/res/xml/config_webview_packages.xml"
 
 const PINS_FILE = "manifests/browser-apps.json"
@@ -241,7 +241,7 @@ function moduleName(prefix: string, role: ModuleRole): string {
   return `${prefix}${MODULE_FILE[role].suffix}`
 }
 
-export function browserOverlayModules(descriptor: BrowserOverlayDescriptor): BrowserOverlayModules {
+function browserOverlayModules(descriptor: BrowserOverlayDescriptor): BrowserOverlayModules {
   return {
     browser: moduleName(descriptor.modulePrefix, "BrowserModule"),
     ...(descriptor.webview === null ? {} : { webview: moduleName(descriptor.modulePrefix, "WebViewProviderModule") }),
