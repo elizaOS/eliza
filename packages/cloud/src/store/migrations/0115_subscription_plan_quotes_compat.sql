@@ -43,7 +43,8 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM subscription_commands c
     WHERE c.status = 'quoted' AND (
-      c.kind = 'undo' AND c.key ~ '^rev_[0-9a-f]{32}$' AND c.result_revision IS NULL
+      c.kind = 'undo' AND c.result_revision IS NULL
+      AND c.key = 'rev_' || left(encode(sha256(convert_to(c.organization_id || chr(10) || 'UndoCommand', 'UTF8')), 'hex'), 32)
       AND c.expected_revision > 0 AND c.state->>'expectedRevision' = c.expected_revision::text
       AND c.state->>'phase' = 'Quoted' AND c.state->>'kind' = 'UndoCommand' AND c.state->>'commandId' = ''
       AND c.state #>> '{quote,quoteId}' ~ '^quo_[0-9a-f]{32}$'
