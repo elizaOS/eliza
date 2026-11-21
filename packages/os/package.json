@@ -24,7 +24,8 @@
     "browser",
     "native",
     "android/browser-surface/resources/control-channel.js",
-    "!android/browser-surface/native-control-channel.mjs"
+    "!android/browser-surface/native-control-channel.mjs",
+    "!android/**/build/**"
   ],
   "exports": {
     ".": {
@@ -111,6 +112,7 @@
     "@effect/vitest": "4.1.1",
     "@elizaos/agent": "workspace:*",
     "@types/node": "catalog:",
+    "playwright": "catalog:",
     "typescript": "catalog:",
     "vibelang": "0.0.13",
     "vibelang-vite": "0.0.13",

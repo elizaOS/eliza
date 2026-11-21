@@ -144,7 +144,10 @@ export async function executeCommand(
           ? { tabId, frameIds: [0] }
           : { tabId, allFrames: true },
         func: pageCommand,
-        args: [command, snapshotId],
+        args: [
+          command.taskPolicy ? command : { ...command, childFrames: false },
+          snapshotId,
+        ],
         world: "ISOLATED",
       }),
     );

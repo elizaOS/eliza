@@ -555,6 +555,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
+      playwright:
+        specifier: 'catalog:'
+        version: 1.65.0
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
