@@ -123,6 +123,13 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
         description:
           "When true, always create a new note id even if another note already has the same text and color. The Notes editor sets this for new drafts. Agent creates omit it so identical creates stay one logical note.",
       },
+      creationId: {
+        type: "string",
+        required: false,
+        maxLength: 200,
+        description:
+          "A client's own id for this one creation, such as a workflow step's operation id. A repeat with the same id returns the note it created instead of adding another. Omit it unless a client supplied one.",
+      },
     },
   },
   {

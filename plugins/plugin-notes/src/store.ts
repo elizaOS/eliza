@@ -302,6 +302,23 @@ export class NotesStore {
           ),
         );
       }
+      // A creation id retires with its note's permanent erase.
+      const previousCreations = current.noteCreations;
+      if (draft.noteCreations !== undefined) {
+        const remaining = new Set([
+          ...draft.notes.map((note) => note.id),
+          ...(draft.trash ?? []).map((entry) => entry.note.id),
+        ]);
+        draft.noteCreations = Object.fromEntries(
+          Object.entries(draft.noteCreations).filter(
+            ([creationId, noteId]) =>
+              remaining.has(noteId) ||
+              !Object.hasOwn(previousCreations ?? {}, creationId),
+          ),
+        );
+        if (Object.keys(draft.noteCreations).length === 0)
+          delete draft.noteCreations;
+      }
       // Compare inside the write barrier: a replay must neither rewrite the
       // file nor invalidate a confirmation bound to unchanged Notes state.
       if (isDeepStrictEqual(draft, current)) {

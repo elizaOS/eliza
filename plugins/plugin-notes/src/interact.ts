@@ -299,13 +299,22 @@ async function dispatchCapability(
     });
   }
   if (capability === "create-note") {
-    assertOnlyParams(params, ["content", "color", "format", "forceNew"]);
+    assertOnlyParams(params, [
+      "content",
+      "color",
+      "format",
+      "forceNew",
+      "creationId",
+    ]);
     const input = {
       content: params.content,
       ...(Object.hasOwn(params, "color") ? { color: params.color } : {}),
       ...(Object.hasOwn(params, "format") ? { format: params.format } : {}),
       ...(Object.hasOwn(params, "forceNew")
         ? { forceNew: params.forceNew }
+        : {}),
+      ...(Object.hasOwn(params, "creationId")
+        ? { creationId: params.creationId }
         : {}),
       ...(Object.hasOwn(params, "authoredEdit")
         ? { authoredEdit: params.authoredEdit }

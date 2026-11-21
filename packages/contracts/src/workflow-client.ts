@@ -220,6 +220,14 @@ export class WorkflowActivationRejected extends Error {
   }
 }
 
+export class WorkflowPauseRejected extends Error {
+  constructor() {
+    super(
+      "This workflow changed before it was paused. Nothing was changed. Review the current version, then pause it again.",
+    );
+  }
+}
+
 type Bag = Record<string, unknown>;
 const UUID_V4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -1066,14 +1074,40 @@ export class WorkflowClient {
     if (workflow.id !== id) throw new Error("Workflow identity changed");
     return workflow;
   }
-  async pause(id: string, signal: AbortSignal): Promise<RemoteWorkflow> {
-    const workflow = parseRemoteWorkflow(
-      await this.request(
+  /**
+   * Pauses a workflow. With `version`, the pause applies only to that reviewed
+   * version: an agent with exact activation refuses a changed workflow atomically.
+   */
+  async pause(
+    id: string,
+    signal: AbortSignal,
+    version?: string,
+  ): Promise<RemoteWorkflow> {
+    let exact = false;
+    if (version !== undefined) {
+      const current = await this.detail(id, signal);
+      if (current.versionId !== version) throw new WorkflowPauseRejected();
+      exact = await this.typedSchedulesSupported(signal);
+    }
+    let response: unknown;
+    try {
+      response = await this.request(
         `/api/workflow/workflows/${encodeURIComponent(str(id))}/deactivate`,
-        {},
+        exact ? { expectedVersionId: version } : {},
         signal,
-      ),
-    );
+      );
+    } catch (error) {
+      if (
+        exact &&
+        refused(error, "WORKFLOW_ACTIVATION_NOT_APPLIED", {
+          workflowId: id,
+          expectedVersionId: version,
+        })
+      )
+        throw new WorkflowPauseRejected();
+      throw error;
+    }
+    const workflow = parseRemoteWorkflow(response);
     if (workflow.id !== id || workflow.active)
       throw new Error("Pause was not confirmed");
     return workflow;

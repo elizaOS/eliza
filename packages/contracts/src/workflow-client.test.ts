@@ -12,6 +12,7 @@ import {
   WorkflowHttpError,
   WorkflowLifecycleRejected,
   WorkflowMetadataRejected,
+  WorkflowPauseRejected,
   WorkflowTypedRejected,
   workflowOccurrenceNotRun,
   workflowSpecDigest,
@@ -385,6 +386,60 @@ test("activation sends the reviewed version and maps the exact refusal", async (
   );
   assert.deepEqual(
     legacy.calls.find((c) => c.path.endsWith("/activate"))?.body,
+    {},
+  );
+});
+
+test("pause binds an optional reviewed version and maps the exact refusal", async () => {
+  const unversioned = agent({
+    "/api/workflow/workflows/flow/deactivate": () => workflow(),
+  });
+  assert.equal((await unversioned.client.pause("flow", signal)).active, false);
+  assert.deepEqual(
+    unversioned.calls.find((c) => c.path.endsWith("/deactivate"))?.body,
+    {},
+  );
+  const refusing = agent({
+    "/api/workflow/workflows/flow": () => workflow({ active: true }),
+    "/api/workflow/workflows/flow/deactivate": () => {
+      throw new WorkflowHttpError(409, {
+        code: "WORKFLOW_ACTIVATION_NOT_APPLIED",
+        workflowId: "flow",
+        expectedVersionId: "v1",
+      });
+    },
+  });
+  assert.ok(
+    (await message(() =>
+      refusing.client.pause("flow", signal, "v1"),
+    )) instanceof WorkflowPauseRejected,
+  );
+  assert.deepEqual(
+    refusing.calls.find((c) => c.path.endsWith("/deactivate"))?.body,
+    { expectedVersionId: "v1" },
+  );
+  const changed = agent({
+    "/api/workflow/workflows/flow": () =>
+      workflow({ active: true, versionId: "v2" }),
+  });
+  assert.ok(
+    (await message(() => changed.client.pause("flow", signal, "v1"))) instanceof
+      WorkflowPauseRejected,
+  );
+  assert.equal(
+    changed.calls.some((c) => c.path.endsWith("/deactivate")),
+    false,
+  );
+  const legacy = agent(
+    {
+      "/api/workflow/workflows/flow": () => workflow({ active: true }),
+      "/api/workflow/workflows/flow/deactivate": () => workflow(),
+    },
+    { engine: "smthrs", status: "ready" },
+  );
+  assert.equal((await legacy.client.pause("flow", signal, "v1")).active, false);
+  assert.deepEqual(
+    legacy.calls.find((c) => c.path.endsWith("/deactivate"))?.body,
     {},
   );
 });

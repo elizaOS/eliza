@@ -62,6 +62,8 @@ public final class SelectedDocuments {
   private final Handler main = new Handler(Looper.getMainLooper());
   // One PDF preview at a time; never the registry monitor, so other calls proceed during a render.
   private final Object rendering = new Object();
+  // Guarded by rendering: the one selection whose read-only copy serves its next pages.
+  private final PdfSourceCopy copied = new PdfSourceCopy();
   // Guards the renderer binding; held only briefly, from the plugin thread and the main thread.
   private final Object binding = new Object();
   private RendererBinding bound;
@@ -111,6 +113,13 @@ public final class SelectedDocuments {
       }
     } catch (Exception ignored) { /* Corrupt registry confers no new access. */
     }
+    // A kept PDF copy is valid only while the instance that copied it is alive. A copy left by
+    // an ended process (including one of a selection that was never persisted) is removed.
+    java.io.File[] stale = owner.getCacheDir().listFiles(
+        (dir, name) -> name.startsWith(previewPrefix) && name.endsWith(".pdf")
+            && name.substring(previewPrefix.length(), name.length() - 4).matches("[a-f0-9-]{36}"));
+    if (stale != null)
+      for (java.io.File file : stale) file.delete();
   }
   private void persist() {
     org.json.JSONArray entries = new org.json.JSONArray();
@@ -379,7 +388,11 @@ public final class SelectedDocuments {
   }
   /**
    * Renders one page of a selected PDF to a private PNG preview. The page is parsed only by the
-   * host's isolated renderer, from a read-only copy; this process maps the returned pixels after
+   * host's isolated renderer, from a read-only copy. The copy of the selection rendered last is
+   * kept for its next pages while the provider reports the same size and modification time; it
+   * is removed when another selection renders, a render fails, the selection is forgotten, or
+   * the next instance starts.
+   * This process maps the returned pixels after
    * {@link PdfPageLimits#requireReply} accepts the reply. The registry monitor is held only to
    * resolve the selection. Call from a plugin worker thread, never the main thread.
    */
@@ -396,23 +409,15 @@ public final class SelectedDocuments {
     synchronized (rendering) {
       java.io.File copy = new java.io.File(context.getCacheDir(), previewPrefix + id + ".pdf"),
                    image = new java.io.File(context.getCacheDir(), previewPrefix + id + ".png");
+      boolean keep = false;
       try {
         if (!"application/pdf".equals(context.getContentResolver().getType(uri)))
           return result("unsupported", "This selection is not a PDF.");
-        try (InputStream in = context.getContentResolver().openInputStream(uri);
-            java.io.FileOutputStream out = new java.io.FileOutputStream(copy)) {
-          if (in == null)
-            throw new IOException();
-          byte[] buffer = new byte[8192];
-          long total = 0;
-          int count;
-          while ((count = in.read(buffer)) != -1) {
-            if (count > PdfPageLimits.MAX_SELECTED_SOURCE_BYTES - total)
-              throw new IOException();
-            out.write(buffer, 0, count);
-            total += count;
-          }
-          PdfPageLimits.requireSource(total, PdfPageLimits.MAX_SELECTED_SOURCE_BYTES);
+        long[] stamp = sourceStamp(context, uri);
+        if (!copied.reusable(id, stamp[0], stamp[1], copy.length())) {
+          dropCopy(context);
+          copySource(context, uri, copy);
+          copied.kept(id, stamp[0], stamp[1]);
         }
         Bundle reply;
         try (ParcelFileDescriptor descriptor =
@@ -422,6 +427,7 @@ public final class SelectedDocuments {
         if (reply == null)
           return result("failed", "PDF preview timed out. Try again.");
         int pages = writePreview(reply, pageIndex, image);
+        keep = id.equals(copied.id());
         JSObject value = result("rendered", "PDF rendered on this device. Nothing was uploaded.");
         value.put("page", pageIndex);
         value.put("pageCount", pages);
@@ -435,8 +441,47 @@ public final class SelectedDocuments {
         return result("failed",
             "PDF preview is unavailable. It may be malformed, encrypted, or larger than 20 MiB.");
       } finally {
-        copy.delete();
+        if (!keep) {
+          dropCopy(context);
+          copy.delete();
+        }
       }
+    }
+  }
+  /** Provider size and last-modified time; {-1, -1} when either is unknown. */
+  private static long[] sourceStamp(Context context, Uri uri) {
+    try (android.database.Cursor cursor = context.getContentResolver().query(uri,
+             new String[] {android.provider.OpenableColumns.SIZE,
+                 android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED},
+             null, null, null)) {
+      if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0) && !cursor.isNull(1))
+        return new long[] {cursor.getLong(0), cursor.getLong(1)};
+    } catch (RuntimeException unknown) { /* Providers may omit either column: copy each page. */
+    }
+    return new long[] {-1, -1};
+  }
+  /** Removes the kept copy of another selection. Caller holds {@code rendering}. */
+  private void dropCopy(Context context) {
+    String previous = copied.id();
+    copied.clear();
+    if (previous != null)
+      new java.io.File(context.getCacheDir(), previewPrefix + previous + ".pdf").delete();
+  }
+  private static void copySource(Context context, Uri uri, java.io.File copy) throws IOException {
+    try (InputStream in = context.getContentResolver().openInputStream(uri);
+        java.io.FileOutputStream out = new java.io.FileOutputStream(copy)) {
+      if (in == null)
+        throw new IOException();
+      byte[] buffer = new byte[8192];
+      long total = 0;
+      int count;
+      while ((count = in.read(buffer)) != -1) {
+        if (count > PdfPageLimits.MAX_SELECTED_SOURCE_BYTES - total)
+          throw new IOException();
+        out.write(buffer, 0, count);
+        total += count;
+      }
+      PdfPageLimits.requireSource(total, PdfPageLimits.MAX_SELECTED_SOURCE_BYTES);
     }
   }
   /** Checks the renderer's reply, then writes its pixels to {@code image}; returns the pages. */

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { RouteHandlerContext } from "@elizaos/host/protocol";
 import { afterEach, describe, expect, it } from "vitest";
+import { createNotesClient } from "../client/notes-api.js";
 import { notesRoutes } from "../routes.js";
 import { NotesService } from "../service.js";
 import { NotesStore } from "../store.js";
@@ -287,6 +288,44 @@ describe("canonical Notes Trash retention", () => {
       false,
     );
     expect(await restarted.readTrashRecordingCleanup()).toEqual([]);
+  });
+
+  it("lets the Notes client erase Trash and finish recording cleanup through the owner routes", async () => {
+    const f = await fixture();
+    const client = createNotesClient({
+      async fetch<T>(path: string, init?: RequestInit): Promise<T> {
+        const method = init?.method === "POST" ? "POST" : "GET";
+        const body =
+          typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+        const response = (await request(
+          f.service,
+          method,
+          path,
+          body,
+          true,
+        )) as { status: number; body: unknown };
+        if (response.status !== 200)
+          throw Object.assign(new Error("refused"), response);
+        return response.body as T;
+      },
+    });
+    const kept = await trashNote(f.service, "Kept in Trash");
+    const entry = await trashNote(f.service, "Voice to erase", "recording-c");
+    const erased = await client.eraseTrash(entry);
+    expect(erased.erased).toBe(1);
+    expect(erased.state.trash?.map((item) => item.note.id)).toEqual([kept.id]);
+    const [receipt] = erased.recordingCleanup;
+    if (!receipt) throw new Error("Missing recording cleanup receipt");
+    expect(receipt).toMatchObject({ noteId: entry.id, audioId: "recording-c" });
+    expect(await client.readTrashRecordingCleanup()).toEqual([receipt]);
+    f.verify(receipt);
+    expect(await client.completeTrashRecordingCleanup(receipt)).toBe(true);
+    expect(await client.readTrashRecordingCleanup()).toEqual([]);
+    const all = await client.eraseTrash({
+      scope: "all",
+      expectedRevision: f.service.snapshot().revision,
+    });
+    expect(all).toMatchObject({ erased: 1, state: { trash: [] } });
   });
 
   it("refuses an audio claim shared by a retained note", async () => {
