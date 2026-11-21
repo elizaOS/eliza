@@ -1,0 +1,142 @@
+// spec/os/update/operator.md, "A candidate is admitted only from a signed record of the channel, with the same OTA certificate and AVB key, its build date as post-timestamp and no lower rollback index"; spec/os/update/operator.md, "An incremental package starts from exactly the installed build and its signed target files"; spec/os/update/operator.md, "Stock recovery prints its plan only for the channel's locked factory archive and never flashes"
+import { recordAdmitted, rollbackNotLower, startsFromInstalled, stockPlanAdmitted, updateAdmitted, type OperatorRelease } from "../../gen/os__update__operator.effect.vibe"
+import type { ReleaseChannel } from "../../gen/os__image__signing.effect.vibe"
+import { parseDigest } from "./apk.vibe"
+import { archiveEntries } from "./signing-archive.vibe"
+import { readSigningJson } from "./signing-keys.vibe"
+import { loadReleaseRecord, releaseArtifact, releaseChannel, type ReleaseRecord } from "./signing-record.vibe"
+
+export error OtaRefused { reason: string }
+
+const slug = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.-]+$/))
+const digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const positive = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER))
+const factorySchema = Schema.Struct({
+  schema: Schema.Literal(1),
+  device: Schema.Struct({ codename: slug, androidRelease: slug }),
+  factory: Schema.Struct({ filename: slug, sha256: digest, sizeBytes: positive, buildId: slug }),
+})
+const decodeFactory = Schema.decodeUnknownEffect(factorySchema)
+export type FactoryLock = typeof factorySchema.Type
+
+function exactNumber(value: string): number {
+  const number = Number(value)
+  return Number.isSafeInteger(number) && number >= 0 && String(number) === value ? number : -1
+}
+
+export function patchLevel(value: string | null | undefined): number {
+  if (value === undefined || value === null || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return 0
+  const [yearText, monthText, dayText] = value.split("-")
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const day = Number(dayText)
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  if (year === 0 || month < 1 || month > 12 || day < 1 || day > (days[month - 1] ?? 0)) return 0
+  return year * 10_000 + month * 100 + day
+}
+
+export effect function projectRelease(record: ReleaseRecord) {
+  const rollbackIndexes = record.verifiedBoot.rollbackIndexes.map((row) => ({ location: row.location, index: exactNumber(row.index) }))
+  const postTimestamp = exactNumber(record.payload.metadata["post-timestamp"] ?? "")
+  const buildDate = exactNumber(record.build.dateUtc)
+  const securityPatch = patchLevel(record.build.securityPatch)
+  const vendorPatch = patchLevel(record.build.vendorSecurityPatch)
+  if (buildDate <= 0 || postTimestamp <= 0 || securityPatch === 0 ||
+      (record.build.vendorSecurityPatch != null && vendorPatch === 0) || rollbackIndexes.some(({ index }) => index < 0)) {
+    throw new OtaRefused({ reason: "Release timestamps, patch levels, or rollback indexes are not safely representable" })
+  }
+  const incremental = record.artifacts.ota.incrementalFrom
+  const observed: OperatorRelease = {
+    release: { fingerprint: record.build.fingerprint, product: record.product, device: record.device, buildDate, securityPatch, vendorPatch },
+    channel: record.channel,
+    problems: record.problems.length,
+    otaCertificate: parseDigest(record.certificates.releasekey),
+    avbKey: parseDigest(record.verifiedBoot.publicKeySha256),
+    postTimestamp,
+    rollbackIndexes,
+    ota: incremental === null ? { tag: "FullOta" } : {
+      tag: "IncrementalOta", preBuild: record.payload.metadata["pre-build"] ?? "", fromTargetFiles: parseDigest(incremental.sha256),
+    },
+    otaPackage: parseDigest(record.artifacts.ota.sha256),
+    signedTargetFiles: parseDigest(record.artifacts.signedTargetFiles.sha256),
+  }
+  return observed
+}
+
+export effect function loadUpdate(channelFile: string, installed: string, candidate: string) {
+  const channelDocument = try readSigningJson(channelFile)
+  const { model: channel } = try releaseChannel(channelDocument.value)
+  const from = try loadReleaseRecord(installed, channel)
+  const to = try loadReleaseRecord(candidate, channel)
+  const fromRelease = try projectRelease(from.record)
+  const toRelease = try projectRelease(to.record)
+  if (!updateAdmitted(channel, fromRelease, toRelease)) {
+    const reason = !recordAdmitted(channel, fromRelease) || !recordAdmitted(channel, toRelease) ? "The release records do not belong to the enrolled channel" :
+      !rollbackNotLower(fromRelease, toRelease) ? "A rollback index decreased or disappeared" :
+      !startsFromInstalled(fromRelease, toRelease) ? "The incremental OTA starts from different signed target files or a different build" :
+      "The candidate is not a newer compatible release of the channel"
+    throw new OtaRefused({ reason })
+  }
+  return { channel, channelSha256: channelDocument.sha256, from, to, fromRelease, toRelease }
+}
+
+export effect function verifyCandidateOta(file: string, candidate: ReleaseRecord) {
+  const artifact = try releaseArtifact(file)
+  if (artifact.sha256 !== candidate.artifacts.ota.sha256 ||
+      (candidate.artifacts.ota.sizeBytes !== undefined && artifact.sizeBytes !== candidate.artifacts.ota.sizeBytes)) {
+    throw new OtaRefused({ reason: "Selected OTA bytes differ from the signed release record" })
+  }
+  return artifact
+}
+
+export effect function loadFactoryLock(file: string) {
+  return try decodeFactory((try readSigningJson(file, 4 * 1024 * 1024)).value)
+}
+
+function matchingImage(entries: readonly string[], prefix: string, suffix: string): string | undefined {
+  const found = entries.filter((entry) => entry.startsWith(prefix) && entry.endsWith(suffix) && entry.split("/").length === 2)
+  return found.length === 1 ? found[0] : undefined
+}
+
+export effect function stockRecoveryPlan(channelFile: string, sourceLockFile: string, archiveFile: string) {
+  const { channel: wire, model: channel } = try releaseChannel((try readSigningJson(channelFile)).value)
+  const lock = try loadFactoryLock(sourceLockFile)
+  const archive = try releaseArtifact(archiveFile)
+  const factory = lock.factory
+  const names = try archiveEntries(archiveFile)
+  const roots = new Set(names.map((entry) => entry.split("/")[0]))
+  const root = roots.size === 1 ? [...roots][0] : undefined
+  const device = lock.device.codename
+  const bootloader = root === undefined ? undefined : matchingImage(names, `${root}/bootloader-${device}-`, ".img")
+  const radio = root === undefined ? undefined : matchingImage(names, `${root}/radio-${device}-`, ".img")
+  const image = root === undefined ? undefined : matchingImage(names, `${root}/image-${device}-`, ".zip")
+  const observed: Parameters<typeof stockPlanAdmitted>[1] = {
+    sha256: parseDigest(archive.sha256),
+    lockedFactory: parseDigest(factory.sha256),
+    sizeMatches: archive.sizeBytes === factory.sizeBytes,
+    layoutMatches: bootloader !== undefined && radio !== undefined && image !== undefined && image.toLowerCase().includes(factory.buildId.toLowerCase()),
+  }
+  if (channel.device !== device || wire.recovery.stockFactoryImage.filename !== factory.filename || archive.file !== factory.filename ||
+      bootloader === undefined || radio === undefined || image === undefined || !stockPlanAdmitted(channel, observed)) {
+    throw new OtaRefused({ reason: "Stock archive identity, digest, size, or layout differs from the channel and source lock" })
+  }
+  if ((try releaseArtifact(archiveFile)).sha256 !== archive.sha256) throw new OtaRefused({ reason: "Stock archive changed while it was inspected" })
+  return {
+    archive,
+    device,
+    buildId: factory.buildId,
+    steps: [
+      ["adb", "-s", "SERIAL", "reboot", "bootloader"],
+      ["fastboot", "-s", "SERIAL", "flashing", "unlock"],
+      ["fastboot", "-s", "SERIAL", "erase", "avb_custom_key"],
+      ["fastboot", "-s", "SERIAL", "flash", "bootloader", bootloader],
+      ["fastboot", "-s", "SERIAL", "reboot-bootloader"],
+      ["fastboot", "-s", "SERIAL", "flash", "radio", radio],
+      ["fastboot", "-s", "SERIAL", "reboot-bootloader"],
+      ["fastboot", "-s", "SERIAL", "-w", "update", image],
+    ],
+    notes: ["Use a new directory to extract the verified archive.", "Unlocking and the update erase user data.", "Run verify-stock after boot before relocking."],
+    executed: false,
+  }
+}
