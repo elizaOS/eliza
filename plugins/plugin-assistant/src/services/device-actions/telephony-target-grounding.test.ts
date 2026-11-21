@@ -5,6 +5,7 @@ import { authoredTelephonyTarget } from "./telephony-request.ts";
 import {
   DeviceTelephonyTargetNotRequestedError,
   groundTelephonyTarget,
+  namesTelephonyTarget,
   ownerPhoneNumbers,
   samePhoneNumber,
   swappedPhoneReferences,
@@ -531,5 +532,99 @@ describe("numbers the planner saw only as contact references", () => {
     })();
     expect(plain?.references).toEqual([]);
     expect(plain?.message).not.toContain("__ELIZA_");
+  });
+});
+
+describe("a contact change's numbers are the owner's", () => {
+  const P = "__ELIZA_CONTACT_bef24c4f7d8ef444_6__";
+  const owner = "add a contact Bob Lee 415-555-0100";
+  const references = swappedPhoneReferences(
+    [{ placeholder: P, value: "415-555-0100", kind: "phone" }],
+    owner,
+  );
+  const create = (phoneNumbers: string[]) =>
+    ({
+      type: "contact_create",
+      contact: { displayName: "Bob Lee", phoneNumbers, emailAddresses: [] },
+    }) as DeviceOperation;
+  const update = (part: "set" | "add" | "remove", phoneNumbers: string[]) =>
+    ({
+      type: "contact_update",
+      query: "Bob Lee",
+      [part]: { phoneNumbers },
+    }) as DeviceOperation;
+  function refused(operation: DeviceOperation, text = owner) {
+    try {
+      groundTelephonyTarget(operation, text, references);
+    } catch (error) {
+      if (error instanceof DeviceTelephonyTargetNotRequestedError) return error;
+      throw error;
+    }
+    throw new Error("not refused");
+  }
+
+  it("is grounded only when it writes a number", () => {
+    expect(namesTelephonyTarget(create(["4155550100"]))).toBe(true);
+    expect(namesTelephonyTarget(update("add", ["4155550100"]))).toBe(true);
+    expect(namesTelephonyTarget(create([]))).toBe(false);
+    expect(
+      namesTelephonyTarget({
+        type: "contact_update",
+        query: "Bob",
+        add: { emailAddresses: ["bob@example.com"] },
+      }),
+    ).toBe(false);
+    expect(namesTelephonyTarget({ type: "contact_delete", query: "Bob" })).toBe(
+      false,
+    );
+  });
+
+  it("refuses an invented number in a new contact or a change (v612)", () => {
+    for (const operation of [
+      create(["6505715862"]),
+      create(["4155550100", "6505715862"]),
+      update("set", ["6505715862"]),
+      update("add", ["6505715862"]),
+      update("remove", ["6505715862"]),
+    ]) {
+      const error = refused(operation);
+      expect(error.refusal).toBe("number");
+      expect(error.references).toEqual([P]);
+    }
+  });
+
+  it("keeps the owner's number, in the owner's dial form", () => {
+    expect(
+      groundTelephonyTarget(create(["+14155550100"]), owner, references)
+        .operation,
+    ).toEqual(create(["4155550100"]));
+    expect(
+      groundTelephonyTarget(
+        update("remove", ["4155550100", "+14155550100"]),
+        "remove 415-555-0100 from Bob Lee",
+      ).operation,
+    ).toEqual(update("remove", ["4155550100"]));
+  });
+
+  it("leaves a message that writes no number to the owner's review", () => {
+    const operation = create(["6505715862"]);
+    expect(
+      groundTelephonyTarget(operation, "save the pizza place as a contact")
+        .operation,
+    ).toBe(operation);
+  });
+
+  it("reads a number typed with mixed separators as the one number it is", () => {
+    for (const written of ["415-555 0100", "415.555 0100", "+1 415-555 0100"]) {
+      const said = `add Bob ${written} to my contacts`;
+      const dialed = written.startsWith("+1") ? "+14155550100" : "4155550100";
+      expect(writtenPhoneNumbers(said)).toEqual([dialed]);
+      expect(
+        groundTelephonyTarget(create(["4155550100"]), said).operation,
+      ).toEqual(create([dialed]));
+      expect(() => groundTelephonyTarget(create(["6505715862"]), said)).toThrow(
+        DeviceTelephonyTargetNotRequestedError,
+      );
+    }
   });
 });

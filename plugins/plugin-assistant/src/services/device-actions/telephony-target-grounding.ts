@@ -101,14 +101,43 @@ export function telephonyTargetRefusalReply(
   return "I didn't set that up, because that number isn't one you wrote in your message. Nothing was called or sent. Tell me the number to use.";
 }
 
-/** Operations whose recipient or prefill is a phone number or contact. */
+const CONTACT_NUMBER_PARTS = ["set", "add", "remove"] as const;
+
+/**
+ * The phone numbers a contact change writes, adds or removes. A number saved
+ * under a contact's name becomes the recipient of every later "call Bob" and
+ * "text Bob", so it is grounded like a call's recipient.
+ */
+function contactNumbers(value: { type?: unknown }): string[] {
+  const operation = value as { type?: unknown; [key: string]: unknown };
+  const lists: unknown[] = [];
+  if (operation.type === "contact_create")
+    lists.push((operation.contact as { phoneNumbers?: unknown })?.phoneNumbers);
+  if (operation.type === "contact_update")
+    for (const part of CONTACT_NUMBER_PARTS)
+      lists.push(
+        (operation[part] as { phoneNumbers?: unknown } | undefined)
+          ?.phoneNumbers,
+      );
+  return lists.flatMap((list) =>
+    Array.isArray(list)
+      ? list.filter((item): item is string => typeof item === "string")
+      : [],
+  );
+}
+
+/**
+ * Operations whose recipient or prefill is a phone number or contact, and
+ * contact changes that write a phone number.
+ */
 export function namesTelephonyTarget(operation: { type?: unknown }): boolean {
   return (
     operation.type === "phone_call" ||
     operation.type === "phone_dial" ||
     operation.type === "sms_compose" ||
     operation.type === "sms_send" ||
-    operation.type === "phone_keypad"
+    operation.type === "phone_keypad" ||
+    contactNumbers(operation).length > 0
   );
 }
 
@@ -152,7 +181,11 @@ export function ownerPhoneNumbers(text: string): string[] {
   const written = writtenPhoneNumbers(text);
   return [
     ...written,
-    ...spokenPhoneNumbers(text).filter((number) => !written.includes(number)),
+    // "+1 415-555 0100" also reads as the spoken digits 14155550100: the
+    // same number, which must not make a proposal of it ambiguous.
+    ...spokenPhoneNumbers(text).filter(
+      (number) => !written.some((owned) => samePhoneNumber(owned, number)),
+    ),
   ];
 }
 
@@ -409,7 +442,53 @@ export function groundTelephonyTarget(
       );
       return { operation: { ...operation, number }, handedThrough: false };
     }
+    case "contact_create":
+    case "contact_update":
+      return {
+        operation: groundContactNumbers(operation, text, references),
+        handedThrough: false,
+      };
     default:
       return { operation, handedThrough: false };
   }
+}
+
+type ContactNumberOperation = Extract<
+  DeviceOperation,
+  { type: "contact_create" | "contact_update" }
+>;
+
+/**
+ * A contact change's numbers, each one the owner wrote in this message (in
+ * the owner's dial form), when the message writes any number. A message that
+ * writes no number has nothing to ground a number in and is left unchanged,
+ * for the owner's review of the exact digits.
+ */
+function groundContactNumbers(
+  operation: ContactNumberOperation,
+  text: string,
+  references: readonly SwappedPhoneReference[],
+): ContactNumberOperation {
+  const owned = ownerPhoneNumbers(text);
+  if (!owned.length || !contactNumbers(operation).length) return operation;
+  const grounded = (numbers: string[]) => [
+    ...new Set(
+      numbers.map((number) => groundedNumber(number, owned, references)),
+    ),
+  ];
+  if (operation.type === "contact_create")
+    return {
+      ...operation,
+      contact: {
+        ...operation.contact,
+        phoneNumbers: grounded(operation.contact.phoneNumbers),
+      },
+    };
+  const update: ContactNumberOperation = { ...operation };
+  for (const part of CONTACT_NUMBER_PARTS) {
+    const values = operation[part];
+    if (values?.phoneNumbers)
+      update[part] = { ...values, phoneNumbers: grounded(values.phoneNumbers) };
+  }
+  return update;
 }
