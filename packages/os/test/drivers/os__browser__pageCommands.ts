@@ -1,13 +1,20 @@
 // spec/os/browser/pageCommands.md, "Story: Run a website task step only on the page it was planned for"
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
 import { createSurfaceTaskHandler, type SurfaceControlReply, type SurfacePage, type SurfaceTaskHandler } from "@elizaos/os/browser/runtime/surface-task-handler.mjs";
 import { COMMIT_GRANT_MAX_MS } from "@elizaos/os/browser/runtime/task-bindings.mjs";
 import type { Driver, Options } from "../../gen/os__browser__pageCommands.conformance.ts";
 import type { BindingOffer, CommandScope, Event, PageRequest, ReceiverPhase, Reply, RequestedAction, SurfaceReceiver } from "../../gen/os__browser__pageCommands.ts";
 
-export const { nativeControlProgram }: typeof import("../../native-control-channel.mjs") =
-  createRequire(import.meta.url)("../../native-control-channel.mjs");
+export function nativeControlProgram(): string {
+  const source = new URL("../../android/browser-surface/native-control-channel.mjs", import.meta.url);
+  return execFileSync(process.execPath, [
+    "--input-type=module",
+    "--eval",
+    "const { nativeControlProgram } = await import(process.argv[1]); process.stdout.write(nativeControlProgram());",
+    source.href,
+  ], { encoding: "utf8" });
+}
 
 export interface PeerView {
   readonly retired: boolean;
@@ -87,8 +94,11 @@ function track(promise: Promise<unknown>): () => Settlement {
       settlement = { kind: "resolved", value };
     },
     (error: unknown) => {
-      const coded = error as { code?: unknown; kind?: unknown } | undefined;
-      settlement = { kind: "rejected", code: String(coded?.code ?? coded?.kind ?? "UNKNOWN"), error };
+      const fields = typeof error === "object" && error !== null ? error : {};
+      const code = "code" in fields ? fields.code : undefined;
+      const kind = "kind" in fields ? fields.kind : undefined;
+      const tag = typeof code === "string" ? code : typeof kind === "string" ? kind : "UNKNOWN";
+      settlement = { kind: "rejected", code: tag, error };
     },
   );
   return () => settlement;
@@ -120,10 +130,10 @@ class Peer {
   constructor() {
     Date.now = () => this.clock;
     this.handler = createSurfaceTaskHandler({
-      getPage: async () => this.admissionPage ?? this.page,
-      listPages: async () => [{ id: PAGE }],
+      getPage: () => Promise.resolve(this.admissionPage ?? this.page),
+      listPages: () => Promise.resolve([{ id: PAGE }]),
       isCurrent: () => true,
-      cleanup: async () => this.cleanup(),
+      cleanup: () => Promise.resolve(this.cleanup()),
       control: async (_page, request) => this.control(request),
     });
   }
@@ -154,7 +164,7 @@ class Peer {
     return native;
   }
 
-  cleanup(): Promise<unknown> | unknown {
+  cleanup(): unknown {
     const bindGate = this.bindGate;
     if (bindGate?.armed === true) {
       bindGate.armed = false;

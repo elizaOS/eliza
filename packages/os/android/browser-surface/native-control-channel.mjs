@@ -1,5 +1,5 @@
-import { pageCommand } from "./browser/src/page-command.mjs";
-import { pageGuidance } from "./browser/src/page-guidance.mjs";
+import { pageCommand } from "../../browser/src/page-command.mjs";
+import { pageGuidance } from "../../browser/src/page-guidance.mjs";
 
 function installControlChannel(pageCommand, pageGuidance) {
   if (window !== window.top || !/^https?:$/.test(location.protocol)) return;

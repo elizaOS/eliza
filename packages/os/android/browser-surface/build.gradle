@@ -57,7 +57,7 @@ abstract class GenerateBrowserControlAssets extends DefaultTask {
     }
 }
 
-def controlModule = layout.projectDirectory.file('../../native-control-channel.mjs')
+def controlModule = layout.projectDirectory.file('native-control-channel.mjs')
 def hasControlSource = controlModule.asFile.isFile()
 
 android {
