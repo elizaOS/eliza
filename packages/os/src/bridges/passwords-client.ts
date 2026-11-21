@@ -125,11 +125,13 @@ export function parseStatus(value: unknown): PasswordsStatus {
     : "unknown";
   return {
     available: item.available === true,
-    ...(item.reason === "no-screen-lock" || item.reason === "unsupported"
+    ...(item.custody === "device-unlocked" ? { custody: item.custody } : {}),
+    ...(item.reason === "no-screen-lock" || item.reason === "unsupported" || item.reason === "not-admitted" ||
+      item.reason === "device-locked" || item.reason === "legacy-authorization-required" || item.reason === "legacy-key-unavailable"
       ? { reason: item.reason }
       : {}),
     locked: item.locked !== false,
-    unlockRemainingMs: count(item.unlockRemainingMs),
+    unlockRemainingMs: item.custody === "device-unlocked" && item.unlockRemainingMs === null ? null : count(item.unlockRemainingMs),
     unlockSeconds: count(item.unlockSeconds),
     biometric: item.biometric === true,
     autofill: {
@@ -209,7 +211,7 @@ const ack =
 
 export interface PasswordsClient {
   status(): Promise<PasswordsStatus>;
-  unlock(): Promise<{ unlockRemainingMs: number }>;
+  unlock(): Promise<{ unlockRemainingMs: number | null }>;
   lock(): Promise<void>;
   list(): Promise<PasswordEntrySummary[]>;
   save(input: PasswordSaveInput): Promise<PasswordSaveResult>;
@@ -238,12 +240,11 @@ export function createPasswordsClient(
     unlock: () =>
       call(
         () => plugin.unlock(),
-        (value) => ({
-          unlockRemainingMs: count(
-            ack("unlocked")(value) &&
-              (value as Record<string, unknown>).unlockRemainingMs,
-          ),
-        }),
+        (value) => {
+          ack("unlocked")(value);
+          const remaining = (value as Record<string, unknown>).unlockRemainingMs;
+          return { unlockRemainingMs: remaining === null ? null : count(remaining) };
+        },
       ),
     lock: () =>
       call(
