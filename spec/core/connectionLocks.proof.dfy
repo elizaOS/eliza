@@ -250,23 +250,10 @@ lemma LockTimersPointwise(s: Reconciliations, t: Reconciliations)
   requires forall j :: 0 <= j < |s.timers| ==> (s.timers[j].ticket == t.timers[j].ticket && s.timers[j].callId == t.timers[j].callId && s.timers[j].adapter == t.timers[j].adapter && s.timers[j].recordKey == t.timers[j].recordKey && s.timers[j].cleared == t.timers[j].cleared)
   ensures alwaysOneTimerPerAcquiredTicket(t) && alwaysEachHeldTicketOwnsTimer(t) && alwaysTimersOwnTheirQueueTicket(t)
 {
-  LockTimerCountsPointwise(s, t);
-  LockTimerIds(s);
-  forall timer | timer in t.timers && !timer.cleared
-    ensures exists call :: call in t.calls && call.id == timer.callId && call.adapter == timer.adapter && timer.ticket in call.held
-  {
-    var j :| 0 <= j < |t.timers| && t.timers[j] == timer;
-    assert s.timers[j] in s.timers;
-  }
-  LockTimerJoin(t);
+  LockTimersPointwiseOne(s, t);
   LockLiveTimersKept(s.timers, t.timers);
   LockHeldTimers(s, t);
-  forall timer | timer in t.timers
-    ensures exists entry :: entry in t.queue.entries && entry.ticket == timer.ticket && entry.scope.owner == timer.adapter && entry.scope.provider == timer.recordKey && entry.running == !timer.cleared && entry.complete == timer.cleared
-  {
-    var j :| 0 <= j < |t.timers| && t.timers[j] == timer;
-    assert s.timers[j] in s.timers;
-  }
+  LockTimersPointwiseQueue(s, t);
 }
 
 lemma LockLiveTimersKept(before: seq<WarningTimer>, after: seq<WarningTimer>)
@@ -484,15 +471,8 @@ lemma LockAcquireCalls(s: Reconciliations, t: Reconciliations, i: int, d: Reconc
   LockCallIdsPointwise(s, t);
   LockReplaced(s.calls, i, d);
   LockLocal(s, c);
-  forall x | x in d.held
-    ensures x > 0 && x != d.waiting && |ProofLib.Filter((other: int) => (other == x), d.held)| == 1
-  {
-    var q := (other: int) => (other == x);
-    ProofLib.FilterAppend(q, c.held, w);
-    if x == w {
-      ProofLib.FilterNone(q, c.held);
-    }
-  }
+  LockHeldAppend(c.held, w);
+  assert d.held == c.held + [w] && d.waiting == 0;
   forall j | 0 <= j < |s.calls| && j != i && s.calls[j].id != d.id
     ensures ((d.waiting == 0 || (s.calls[j].waiting != d.waiting && !(d.waiting in s.calls[j].held))) && (forall x :: x in d.held ==> (s.calls[j].waiting != x && !(x in s.calls[j].held)))) &&
       ((s.calls[j].waiting == 0 || (d.waiting != s.calls[j].waiting && !(s.calls[j].waiting in d.held))) && (forall x :: x in s.calls[j].held ==> (d.waiting != x && !(x in d.held))))
@@ -995,5 +975,54 @@ lemma releaseKey_ensures(s: Reconciliations, id: int)
     LockReleaseTimers(s, after, i, d, r);
     LockReleaseQueue(s, after, i, d, r, er);
     LockWaitingJoin(after);
+  }
+}
+
+lemma LockHeldAppend(held: seq<int>, w: int)
+  requires w > 0 && !(w in held)
+  requires forall x :: x in held ==> x > 0 && |ProofLib.Filter((other: int) => (other == x), held)| == 1
+  ensures forall x :: x in held + [w] ==> x > 0 && |ProofLib.Filter((other: int) => (other == x), held + [w])| == 1
+{
+  forall x | x in held + [w]
+    ensures x > 0 && |ProofLib.Filter((other: int) => (other == x), held + [w])| == 1
+  {
+    var q := (other: int) => (other == x);
+    ProofLib.FilterAppend(q, held, w);
+    if x == w {
+      ProofLib.FilterNone(q, held);
+    } else {
+      assert x in held;
+    }
+  }
+}
+
+lemma LockTimersPointwiseOne(s: Reconciliations, t: Reconciliations)
+  requires alwaysOneTimerPerAcquiredTicket(s)
+  requires s.calls == t.calls && |s.timers| == |t.timers|
+  requires forall j :: 0 <= j < |s.timers| ==> (s.timers[j].ticket == t.timers[j].ticket && s.timers[j].callId == t.timers[j].callId && s.timers[j].adapter == t.timers[j].adapter && s.timers[j].cleared == t.timers[j].cleared)
+  ensures alwaysOneTimerPerAcquiredTicket(t)
+{
+  LockTimerCountsPointwise(s, t);
+  LockTimerIds(s);
+  forall timer | timer in t.timers && !timer.cleared
+    ensures exists call :: call in t.calls && call.id == timer.callId && call.adapter == timer.adapter && timer.ticket in call.held
+  {
+    var j :| 0 <= j < |t.timers| && t.timers[j] == timer;
+    assert s.timers[j] in s.timers;
+  }
+  LockTimerJoin(t);
+}
+
+lemma LockTimersPointwiseQueue(s: Reconciliations, t: Reconciliations)
+  requires alwaysTimersOwnTheirQueueTicket(s)
+  requires s.queue == t.queue && |s.timers| == |t.timers|
+  requires forall j :: 0 <= j < |s.timers| ==> (s.timers[j].ticket == t.timers[j].ticket && s.timers[j].adapter == t.timers[j].adapter && s.timers[j].recordKey == t.timers[j].recordKey && s.timers[j].cleared == t.timers[j].cleared)
+  ensures alwaysTimersOwnTheirQueueTicket(t)
+{
+  forall timer | timer in t.timers
+    ensures exists entry :: entry in t.queue.entries && entry.ticket == timer.ticket && entry.scope.owner == timer.adapter && entry.scope.provider == timer.recordKey && entry.running == !timer.cleared && entry.complete == timer.cleared
+  {
+    var j :| 0 <= j < |t.timers| && t.timers[j] == timer;
+    assert s.timers[j] in s.timers;
   }
 }
