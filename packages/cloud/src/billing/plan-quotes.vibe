@@ -6,7 +6,7 @@ import { refused } from "../http/refusal.vibe"
 import { Deployment } from "../profile/profile.vibe"
 import { bindPlanChange, previewPlanChange, StripePlanBinding } from "../providers/stripe.vibe"
 import { newId } from "../shared/sealing.vibe"
-import { Store, type Tx } from "../store/connection.vibe"
+import { Store, type Row, type Tx } from "../store/connection.vibe"
 import { RowCorrupt } from "../store/rows.vibe"
 import { parsePlanKey, wirePlanKey, type PaidPlanKey } from "./plans.vibe"
 import { readSubscription } from "./subscriptions.vibe"
@@ -17,6 +17,8 @@ type ChangeKind = "UpgradeCommand" | "DowngradeCommand"
 export interface ReviewPlanChange {
   readonly kind: ChangeKind
   readonly targetPlanKey: PaidPlanKey
+  readonly subscriptionId?: string
+  readonly expectedSubscriptionRevision?: number
 }
 
 export interface ReviewedPlanQuote {
@@ -26,17 +28,29 @@ export interface ReviewedPlanQuote {
 
 const stripeTimeout = { timeout: 8_000 }
 
-export effect function readReviewedPlanQuote(tx: Tx, owner: ReviewOwner, quoteId: string) {
-  const row = (try tx.query(
-    "SELECT reviewed_command, stripe_plan_binding FROM quotes WHERE id=$1 AND organization_id=$2 AND reviewer_user_id=$3",
-    [quoteId, owner.organizationId, owner.userId]
-  ))[0]
+effect function reviewedQuote(row: Row | undefined, quoteId: string) {
   if (row === undefined) throw refused("NotFound")
   const command = parseState(row.reviewed_command)
   const binding = Schema.decodeUnknownOption(StripePlanBinding)(row.stripe_plan_binding)
   if (command === undefined || command.phase !== "Quoted" || command.quote.quoteId !== quoteId || Option.isNone(binding))
     throw new RowCorrupt({ table: "quotes", key: quoteId, cause: "reviewed plan quote" })
   return { command, binding: binding.value } satisfies ReviewedPlanQuote
+}
+
+export effect function readReviewedPlanQuote(tx: Tx, owner: ReviewOwner, quoteId: string) {
+  const row = (try tx.query(
+    "SELECT reviewed_command, stripe_plan_binding FROM quotes WHERE id=$1 AND organization_id=$2 AND reviewer_user_id=$3",
+    [quoteId, owner.organizationId, owner.userId]
+  ))[0]
+  return try reviewedQuote(row, quoteId)
+}
+
+export effect function consumeReviewedPlanQuote(tx: Tx, owner: ReviewOwner, quoteId: string) {
+  const row = (try tx.query(
+    "DELETE FROM quotes WHERE id=$1 AND organization_id=$2 AND reviewer_user_id=$3 RETURNING reviewed_command, stripe_plan_binding",
+    [quoteId, owner.organizationId, owner.userId]
+  ))[0]
+  return try reviewedQuote(row, quoteId)
 }
 
 export effect function reviewPlanChange(authorization: string | undefined, request: ReviewPlanChange) {
@@ -48,7 +62,11 @@ export effect function reviewPlanChange(authorization: string | undefined, reque
   const source = wirePlanKey(subscription.planKey)
   const billing = (try Deployment).settings.billing
   if (billing === undefined) throw refused("CapabilityUnavailable")
-  if (target === undefined || target === "Free") throw refused("InvalidRequest")
+  if (target === undefined || target === "Free" ||
+    (request.expectedSubscriptionRevision !== undefined &&
+      (!Number.isSafeInteger(request.expectedSubscriptionRevision) || request.expectedSubscriptionRevision < 1))) throw refused("InvalidRequest")
+  if (request.subscriptionId !== undefined && request.subscriptionId !== subscription.subscriptionId) throw refused("BillingStateConflict")
+  if (request.expectedSubscriptionRevision !== undefined && request.expectedSubscriptionRevision !== subscription.revision) throw refused("StaleRevision")
   if (source === "free" || subscription.customer.tag !== "PinnedCustomer") throw refused("BillingStateConflict")
   const reviewedAt = Math.floor((try Clock.currentTimeMillis) / 1000) * 1000
   const clocked = elapse(initial, reviewedAt)

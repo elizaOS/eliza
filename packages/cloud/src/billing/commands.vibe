@@ -11,10 +11,11 @@ import { sha256Hex } from "../shared/sealing.vibe"
 import { loadRow, stepRow, type RowConflict, RowCorrupt, type MachineRows } from "../store/rows.vibe"
 import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 import { wirePlanKey } from "./plans.vibe"
+import { planCommandView, readPlanCommand } from "./plan-command-state.vibe"
 import { claimLiveCommand, observeSubscription, readSubscription, reconcileSubscription, releaseLiveCommand } from "./subscriptions.vibe"
 
 export type WireCommandKind = "cancel" | "undo" | "upgrade" | "downgrade"
-export type WireCommandStatus = "prepared" | "dispatched" | "unknown" | "succeeded" | "rejected"
+export type WireCommandStatus = "prepared" | "dispatched" | "unknown" | "awaiting_payment" | "succeeded" | "rejected"
 
 export interface CommandView {
   readonly commandId: string
@@ -182,6 +183,7 @@ effect function admit(spec: CommandSpec, request: CommandRequest, commandId: str
   const prepare: Event = { type: "prepare", digest, providerKey, staleAfter: spec.staleAfter, expiresAt: now + commandLifetime }
   try store.transaction(effect (tx: Tx) => {
     try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [request.organizationId])
+    if ((try readPlanCommand(tx, commandId, true)) !== undefined) throw refused("IdempotencyConflict")
     const existing = try commandRow(tx, commandId, true)
     if (existing !== undefined) {
       applyAt(existing.receipt, { event: prepare, by, now }) catch effect () => { throw refused("IdempotencyConflict") }
@@ -262,12 +264,19 @@ export effect function runCommand(spec: CommandSpec, request: CommandRequest) {
   return try readCommand(request.organizationId, commandId, wireKinds[spec.kind])
 }
 
+effect function commandViewRow(tx: Tx, commandId: string, now: number) {
+  const planned = try readPlanCommand(tx, commandId, false)
+  if (planned !== undefined) return { organizationId: planned.organizationId, view: planCommandView(planned, now) }
+  const legacy = try commandRow(tx, commandId, false)
+  return legacy === undefined ? undefined : { organizationId: legacy.organizationId, view: viewOf(legacy, now) }
+}
+
 export effect function readCommand(organizationId: string, commandId: string, kind: WireCommandKind) {
   const store = try Store
   const now = try Clock.currentTimeMillis
-  const row = commandIdPattern.test(commandId) ? try store.transaction((tx) => commandRow(tx, commandId, false)) : undefined
-  if (row === undefined || row.organizationId !== organizationId || row.kind !== kind) throw refused("NotFound")
-  return viewOf(row, now)
+  const row = commandIdPattern.test(commandId) ? try store.transaction((tx) => commandViewRow(tx, commandId, now)) : undefined
+  if (row === undefined || row.organizationId !== organizationId || row.view.kind !== kind) throw refused("NotFound")
+  return row.view
 }
 
 export effect function commandsPage(organizationId: string, limit: number, cursor: string | undefined): CommandsPage!(StoreFailure | RowCorrupt | Refused)!Store {
@@ -283,8 +292,8 @@ export effect function commandsPage(organizationId: string, limit: number, curso
   ))
   const items: CommandView[] = []
   for (const found of keys.slice(0, limit)) {
-    const row = try store.transaction((tx) => commandRow(tx, toText(found.key) ?? "", false))
-    if (row !== undefined) items.push(viewOf(row, now))
+    const row = try store.transaction((tx) => commandViewRow(tx, toText(found.key) ?? "", now))
+    if (row !== undefined) items.push(row.view)
   }
   const last = items[items.length - 1]
   return { observedAt: now, items, nextCursor: keys.length > limit && last !== undefined ? `${last.createdAt}.${last.commandId}` : null }

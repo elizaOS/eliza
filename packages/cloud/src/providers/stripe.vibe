@@ -1,4 +1,4 @@
-// spec/cloud/billing/checkout.md, "Story: Subscribe once, whichever screen or payer finishes it"; spec/cloud/billing/providerEvents.md, "Story: Apply each payment event once, whatever the delivery order"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
+// spec/cloud/billing/checkout.md, "Story: Subscribe once, whichever screen or payer finishes it"; spec/cloud/billing/providerEvents.md, "Story: Apply each payment event once, whatever the delivery order"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"; spec/cloud/billing/subscriptionCommands.md, "Story: Change or cancel my plan without paying twice"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import type { LookupResult } from "../../gen/cloud__shared__dispatchOnce.ts"
 import { Deployment } from "../profile/profile.vibe"
@@ -163,7 +163,7 @@ function failureOf(path: string, status: number, body: unknown): StripeFailure {
   return new StripeRefused({ path, status, type: error.type, code: error.code ?? null, declineCode: error.decline_code ?? null })
 }
 
-effect function send(call: Call): unknown!StripeFailure!StripeContext {
+effect function send(call: Call) {
   const deployment = try Deployment
   const billing = deployment.settings.billing
   if (billing === undefined) throw new StripeUnavailable({ path: call.path, status: null })
@@ -176,16 +176,16 @@ effect function send(call: Call): unknown!StripeFailure!StripeContext {
   const answered = effect {
     const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect () => { throw new StripeUnavailable({ path: call.path, status: null }) }
     const text = response.text catch effect () => { throw new StripeUnavailable({ path: call.path, status: response.status }) }
-    return { status: response.status, body: parsed(text) }
+    return { status: response.status, body: parsed(text), requestId: response.headers["request-id"], idempotencyKey: response.headers["idempotency-key"] }
   }
   const answer = try timeoutOrElse(answered, { duration: Duration.millis(Math.max(1, call.timeout)), orElse: () => fail(new StripeUnavailable({ path: call.path, status: null })) })
-  if (answer.status >= 200 && answer.status < 300 && answer.body !== undefined) return answer.body
+  if (answer.status >= 200 && answer.status < 300 && answer.body !== undefined) return answer
   throw failureOf(call.path, answer.status, answer.body)
 }
 
 effect function read<A>(schema: Schema.Codec<A>, call: Call): A!StripeFailure!StripeContext {
   const body = try send(call)
-  const value = decoded(schema, body)
+  const value = decoded(schema, body.body)
   if (value === undefined) throw new StripeInvalidResponse({ path: call.path, status: 200 })
   return value
 }
@@ -337,6 +337,15 @@ export type StripePlanPreview =
   | { readonly kind: "recurring"; readonly expectedCents: number }
   | { readonly kind: "proration"; readonly date: number; readonly periodEnd: number }
 
+function proratedLinesFit(lines: ReadonlyArray<typeof InvoiceLine.Type>, binding: StripePlanBinding, date: number, periodEnd: number): boolean {
+  return lines.length === 2 && lines.every((line) => line.currency === "usd" && line.quantity === 1 &&
+    line.parent?.subscription_item_details?.subscription_item === binding.subscriptionItemId &&
+    line.parent?.subscription_item_details?.proration === true && Number.isSafeInteger(line.amount) &&
+    line.period.start * 1000 === date && line.period.end * 1000 === periodEnd) &&
+    lines.some((line) => line.pricing?.price_details?.price === binding.sourcePriceId && line.amount <= 0) &&
+    lines.some((line) => line.pricing?.price_details?.price === binding.targetPriceId && line.amount >= 0)
+}
+
 export effect function previewPlanChange(subscriptionId: string, binding: StripePlanBinding, preview: StripePlanPreview, call: StripeRead): number!StripeFailure!StripeContext {
   const path = "/v1/invoices/create_preview"
   const params: Params = [
@@ -364,12 +373,103 @@ export effect function previewPlanChange(subscriptionId: string, binding: Stripe
     ? lines.length === 1 && first !== undefined && first.parent?.subscription_item_details?.proration === false &&
       first.pricing?.price_details?.price === binding.targetPriceId && first.period.start < first.period.end &&
       first.amount === preview.expectedCents && invoice.amount_due === preview.expectedCents
-    : lines.length === 2 && lines.every((line) => line.parent?.subscription_item_details?.proration === true &&
-      line.period.start * 1000 === preview.date && line.period.end * 1000 === preview.periodEnd) &&
-      lines.some((line) => line.pricing?.price_details?.price === binding.sourcePriceId && line.amount <= 0) &&
-      lines.some((line) => line.pricing?.price_details?.price === binding.targetPriceId && line.amount >= 0)
+    : proratedLinesFit(lines, binding, preview.date, preview.periodEnd)
   if (!fits) throw new StripeInvalidResponse({ path, status: 200 })
   return invoice.amount_due
+}
+
+export interface StripeUpgradeTerms {
+  readonly subscriptionId: string
+  readonly binding: StripePlanBinding
+  readonly effectiveAt: number
+  readonly periodStart: number
+  readonly periodEnd: number
+  readonly dueNowCents: number
+  readonly sentAt: number
+}
+
+export interface StripeUpgradeOrigin {
+  readonly invoiceId: string
+  readonly requestId: string
+}
+
+const providerRequestId = /^req_[A-Za-z0-9]+$/
+const providerInvoiceId = /^in_[A-Za-z0-9]+$/
+
+function ownsUpgradeInvoice(invoice: typeof StripeInvoice.Type, terms: StripeUpgradeTerms, live: boolean, now: number): boolean {
+  return providerInvoiceId.test(invoice.id) && invoice.customer === terms.binding.customerId &&
+    invoice.parent?.subscription_details?.subscription === terms.subscriptionId && invoice.livemode === live &&
+    invoice.billing_reason === "subscription_update" && invoice.currency === "usd" &&
+    Number.isSafeInteger(invoice.created) && invoice.created >= Math.floor(terms.sentAt / 1000) && invoice.created <= Math.floor(now / 1000)
+}
+
+export effect function dispatchPlanUpgrade(terms: StripeUpgradeTerms, mutation: StripeMutation): StripeUpgradeOrigin!StripeFailure!StripeContext {
+  const path = `/v1/subscriptions/${id(terms.subscriptionId)}`
+  const response = try send({
+    method: "POST", path, ...mutation, params: [
+      ["items[0][id]", terms.binding.subscriptionItemId], ["items[0][price]", terms.binding.targetPriceId],
+      ["items[0][quantity]", "1"], ["payment_behavior", "pending_if_incomplete"], ["proration_behavior", "always_invoice"],
+      ["proration_date", seconds(terms.effectiveAt)], ["expand[]", "latest_invoice"]
+    ]
+  })
+  const shape = Schema.Struct({ id: Schema.String, customer: Schema.String, livemode: Schema.Boolean, latest_invoice: StripeInvoice })
+  const subscription = decoded(shape, response.body)
+  const live = try livemode()
+  const now = try Clock.currentTimeMillis
+  if (response.status !== 200 || response.requestId === undefined || !providerRequestId.test(response.requestId) ||
+    response.idempotencyKey !== mutation.idempotencyKey || subscription === undefined ||
+    subscription.id !== terms.subscriptionId || subscription.customer !== terms.binding.customerId ||
+    subscription.livemode !== live || !ownsUpgradeInvoice(subscription.latest_invoice, terms, live, now))
+    throw new StripeInvalidResponse({ path, status: response.status })
+  return { invoiceId: subscription.latest_invoice.id, requestId: response.requestId }
+}
+
+export effect function findUpgradeOrigin(terms: StripeUpgradeTerms, operationKey: string, call: StripeRead): (StripeUpgradeOrigin | undefined)!StripeFailure!StripeContext {
+  const events = Schema.Struct({
+    data: Schema.Array(Schema.Struct({
+      id: Schema.String, type: Schema.String, created: Schema.Number, livemode: Schema.Boolean,
+      account: Schema.optionalKey(Schema.NullOr(Schema.String)), context: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      request: Schema.NullOr(Schema.Struct({ id: Schema.NullOr(Schema.String), idempotency_key: Schema.NullOr(Schema.String) })),
+      data: Schema.Struct({ object: Schema.Unknown })
+    }))
+  })
+  const now = try Clock.currentTimeMillis
+  const live = try livemode()
+  const reply = try read(events, { method: "GET", path: "/v1/events", timeout: call.timeout,
+    params: [["type", "invoice.created"], ["created[gte]", seconds(terms.sentAt)], ["limit", "100"]] })
+  const seen = reply.data.filter((event) => event.type === "invoice.created" && event.livemode === live &&
+    event.account == null && event.context == null && /^evt_[A-Za-z0-9]+$/.test(event.id) &&
+    event.request?.idempotency_key === operationKey)
+  const [event] = seen
+  if (seen.length !== 1 || event === undefined || event.request?.id == null || !providerRequestId.test(event.request.id)) return undefined
+  const invoice = decoded(StripeInvoice, event.data.object)
+  if (invoice === undefined || !ownsUpgradeInvoice(invoice, terms, live, now) ||
+    event.created < invoice.created || event.created > Math.floor(now / 1000)) return undefined
+  return { invoiceId: invoice.id, requestId: event.request.id }
+}
+
+export effect function upgradeInvoice(terms: StripeUpgradeTerms, origin: StripeUpgradeOrigin, call: StripeRead) {
+  const invoice = try retrieveInvoice(origin.invoiceId, call)
+  const live = try livemode()
+  const now = try Clock.currentTimeMillis
+  if (invoice.id !== origin.invoiceId || !ownsUpgradeInvoice(invoice, terms, live, now) ||
+    invoice.lines.has_more || invoice.amount_due !== terms.dueNowCents ||
+    !Number.isSafeInteger(invoice.amount_paid) || invoice.amount_paid < 0 ||
+    (invoice.status === "paid" && invoice.amount_paid < invoice.amount_due) ||
+    !proratedLinesFit(invoice.lines.data, terms.binding, terms.effectiveAt, terms.periodEnd))
+    throw new StripeInvalidResponse({ path: "/v1/invoices", status: 200 })
+  return invoice
+}
+
+export effect function upgradedSubscription(terms: StripeUpgradeTerms, call: StripeRead) {
+  const subscription = try retrieveSubscription(terms.subscriptionId, call)
+  const [item] = subscription.items.data
+  if (subscription.id !== terms.subscriptionId || subscription.customer !== terms.binding.customerId ||
+    subscription.livemode !== try livemode() || subscription.status !== "active" || subscription.cancel_at_period_end ||
+    subscription.items.has_more || subscription.items.data.length !== 1 || item === undefined ||
+    item.id !== terms.binding.subscriptionItemId || item.price.id !== terms.binding.targetPriceId || item.quantity !== 1 ||
+    item.current_period_start * 1000 !== terms.periodStart || item.current_period_end * 1000 !== terms.periodEnd) return undefined
+  return subscription
 }
 
 export effect function retrieveInvoice(invoiceId: string, call: StripeRead): StripeInvoice!StripeFailure!StripeContext {

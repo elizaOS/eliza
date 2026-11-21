@@ -175,12 +175,23 @@ export effect function closePeriods(tx: Tx, organizationId: string, closing: Clo
   return closed
 }
 
-export effect function adjustForUpgrade(tx: Tx, organizationId: string, target: PlanKey, effectiveAt: number, reviewed: number, now: number): PeriodStep!AllowanceFailure {
+interface UpgradePeriod {
+  readonly periodStart: number
+  readonly periodEnd: number
+  readonly sourcePlanKey: PlanKey
+}
+
+export effect function adjustForUpgrade(tx: Tx, organizationId: string, target: PlanKey, effectiveAt: number, reviewed: number, now: number, period?: UpgradePeriod): PeriodStep!AllowanceFailure {
   try lockOrganization(tx, organizationId)
-  const key = toText((try tx.query(
-    "SELECT key FROM allowance_periods WHERE organization_id = $1 AND starts_with(key, 'renewal/') AND status IN ('open', 'expired') AND period_start <= $2 AND $2 < period_end ORDER BY period_end DESC, key LIMIT 1 FOR UPDATE",
-    [organizationId, effectiveAt]
-  ))[0]?.key)
+  const rows = try tx.query(
+    `SELECT key FROM allowance_periods WHERE organization_id = $1 AND status IN ('open', 'expired')
+      AND period_start <= $2 AND $2 < period_end
+      AND (starts_with(key, 'renewal/') OR ($3::bigint IS NOT NULL AND starts_with(key, 'invoice/')))
+      AND ($3::bigint IS NULL OR (period_start = $3 AND period_end = $4 AND state->>'planKey' = $5))
+      ORDER BY period_end DESC, key LIMIT 2 FOR UPDATE`,
+    [organizationId, effectiveAt, period?.periodStart ?? null, period?.periodEnd ?? null, period?.sourcePlanKey ?? null]
+  )
+  const key = toText((period !== undefined && rows.length !== 1 ? undefined : rows[0])?.key)
   const step = key === undefined
     ? { key: "", period: periodRows.initial, moved: false }
     : try stepWhenEnabled(tx, key, { type: "adjustForUpgrade", target, effectiveAt, reviewed, now }, now)

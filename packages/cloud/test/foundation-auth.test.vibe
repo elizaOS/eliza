@@ -21,7 +21,8 @@ import { migrate, Store, storeLayer } from "../src/store/store.vibe"
 import { startFakeServer, type FakeServer, type FakeHandler, type FakeAnswer } from "./support/fakes.ts"
 import { callCloud, type CallInit } from "./support/http.ts"
 import { createStripeFake, fakeSecretKey, type StripeFake } from "./support/fakes/stripe.ts"
-import { stripePlanPreview } from "./support/fakes/stripe-commands.ts"
+import { stripePlanPreview, stripePlanUpgrade } from "./support/fakes/stripe-commands.ts"
+import { openRenewal } from "../src/billing/allowance.vibe"
 import { catalogPrices, secrets, testProfile } from "./support/profile.ts"
 
 const minuteMs = 60_000
@@ -395,6 +396,77 @@ describe("Node subscriptions", () => {
           ["next", String(providerAt / 1000)], ["recurring", null], ["recurring", null], ["next", String(providerAt / 1000)], ["recurring", null]])
         assert.deepStrictEqual(rows.map((row) => [row.id, row.reviewer_user_id, Number(row.proration_date), row.revision]).sort(),
           [[secondId, "buyer", providerAt / 1000, String(plus.revision)], [downId, "other", pro.periodEnd / 1000, String(pro.revision)], ["legacy", null, 0, null]].sort())
+      })
+    }
+  }))
+
+  it.live("An exact paid upgrade applies once through both allowance row formats (spec/cloud/billing/subscriptionCommands.md, \"A settled command applies only what the provider did, and an upgrade applies only once its invoice is paid\")", () => scoped(effect {
+    const now = 1_800_000_000_987
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(now))
+    provide Clock.Clock = clock.clock {
+      const stripe = try sync(() => createStripeFake({ now: () => now }))
+      const upgrade = try sync(() => stripePlanUpgrade(stripe, () => now))
+      const cloud = try testHttp(billing.routes, upgrade.handler)
+      const buyer = sessionToken("u"), recovering = sessionToken("r")
+      const root = "/api/v1/subscriptions/upgrade"
+      const live = { live: true, epoch: 0, authAt: now, accessExpiresAt: now + minuteMs * 15, refreshExpiresAt: now + minuteMs * 60, stepUpAt: 0, mfaAt: 0 }
+      try account(cloud, "upgrader", "active", { sessions: 0, devices: 0 }, now)
+      try account(cloud, "recovering", "active", { sessions: 0, devices: 0 }, now)
+      try session(cloud, "upgrader", buyer, live, now)
+      try session(cloud, "recovering", recovering, live, now)
+      const historical = try cloud.inside(cloud.store.transaction((tx) => openRenewal(tx, "org-upgrader", {
+        invoiceId: "in_historical", planKey: "PlusMonthly", startsAt: now - 3 * minuteMs, endsAt: now - 2 * minuteMs
+      }, now - 3 * minuteMs)))
+      const original = try paidReviewSubscription(cloud, stripe, "org-upgrader", "plus_monthly", now)
+      const lostSource = try paidReviewSubscription(cloud, stripe, "org-recovering", "plus_monthly", now)
+      try sql(cloud, "UPDATE allowance_periods SET key='renewal/staging/' || substring(key,9) WHERE organization_id='org-recovering' AND starts_with(key,'invoice/')", [])
+      const initial = try sql(cloud, "SELECT organization_id,key,state FROM allowance_periods ORDER BY organization_id,key", [])
+      const quote = try cloud.call(root + "/review", buyer, { json: { targetPlanKey: "pro_monthly", subscriptionId: original.subscriptionId, expectedSubscriptionRevision: original.revision } })
+      const { quoteId } = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(quote.body)
+      const foreignConfirm = try cloud.call(root + "/confirm", recovering, { json: { quoteId, idempotencyKey: "foreign" } })
+      const input = { json: { quoteId, idempotencyKey: "exact-upgrade" } }
+      const confirmed = try cloud.call(root + "/confirm", buyer, input)
+      const { commandId } = try Schema.decodeUnknownEffect(Schema.Struct({ commandId: Schema.String }))(confirmed.body)
+      const replay = try cloud.call(root + "/confirm", buyer, input)
+      const payment = try cloud.call(root + "/" + commandId + "/payment", buyer, { method: "POST" })
+      const foreignStatus = try cloud.call(root + "/" + commandId, recovering)
+      const unpaid = try sql(cloud, "SELECT organization_id,key,state FROM allowance_periods ORDER BY organization_id,key", [])
+      const held = try sql(cloud, "SELECT state->>'planKey' AS plan,state->'liveCommand'->>'commandId' AS command FROM subscriptions WHERE key='org-upgrader'", [])
+      try sync(() => upgrade.settle(original.subscriptionId, "paid"))
+      const applied = try cloud.call(root + "/" + commandId, buyer)
+      const appliedAgain = try cloud.call(root + "/confirm", buyer, input)
+      const afterPayment = try cloud.call(root + "/" + commandId + "/payment", buyer, { method: "POST" })
+      const history = try cloud.call("/api/v1/subscriptions/commands", buyer)
+      const older = try cloud.call(root + "/review", recovering, { json: { targetPlanKey: "pro_monthly" } })
+      const { quoteId: recoveryId } = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(older.body)
+      try sync(() => upgrade.loseNextReply())
+      const ambiguous = try cloud.call(root + "/confirm", recovering, { json: { quoteId: recoveryId, idempotencyKey: "lost-upgrade" } })
+      const originCommand = try Schema.decodeUnknownEffect(Schema.Struct({ commandId: Schema.String }))(ambiguous.body)
+      const noOrigin = try cloud.call(root + "/" + originCommand.commandId, recovering)
+      try sync(() => upgrade.showInvoiceOrigins())
+      const recovered = try cloud.call(root + "/" + originCommand.commandId, recovering)
+      try sync(() => upgrade.settle(lostSource.subscriptionId, "paid"))
+      const recoveredPaid = try cloud.call(root + "/" + originCommand.commandId, recovering)
+      const final = try sql(cloud, "SELECT organization_id,key,state,state->>'adjustment' AS adjustment FROM allowance_periods ORDER BY organization_id,key", [])
+      const receipts = try sql(cloud, "SELECT stripe_invoice_id,stripe_request_id FROM subscription_commands ORDER BY stripe_invoice_id", [])
+      const providerWrites = try sync(() => cloud.fakes.seen.filter((request) => request.method === "POST" && /\/v1\/subscriptions\//.test(request.path)).length)
+      try check(() => {
+        const status = (reply: { readonly body: unknown }) => typeof reply.body === "object" && reply.body !== null && "status" in reply.body ? reply.body.status : undefined
+        assert.deepStrictEqual([quote.status, foreignConfirm.status, confirmed.status, foreignStatus.status, afterPayment.status], [200, 404, 200, 404, 409])
+        assert.deepStrictEqual([status(confirmed), status(ambiguous), status(noOrigin), status(recovered), status(recoveredPaid)],
+          ["awaiting_payment", "unknown", "unknown", "awaiting_payment", "succeeded"])
+        assert.deepStrictEqual([replay.body, appliedAgain.body, payment.body, unpaid, held], [
+          confirmed.body, applied.body, { url: "https://invoice.stripe.com/i/test-upgrade-1" }, initial, [{ plan: "PlusMonthly", command: commandId }]
+        ])
+        assert.deepStrictEqual([status(applied), history.status, providerWrites], ["succeeded", 200, 2])
+        assert.deepStrictEqual(final.find((row) => row.key === historical.key)?.state, initial.find((row) => row.key === historical.key)?.state)
+        assert.deepStrictEqual(final.filter((row) => row.key !== historical.key).map((row) => [row.organization_id, Number(row.adjustment)]),
+          [["org-recovering", 65_000_000], ["org-upgrader", 65_000_000]])
+        assert.deepStrictEqual(receipts, [
+          { stripe_invoice_id: "in_upgrade1", stripe_request_id: "req_upgrade1" },
+          { stripe_invoice_id: "in_upgrade2", stripe_request_id: "req_upgrade2" }
+        ])
       })
     }
   }))

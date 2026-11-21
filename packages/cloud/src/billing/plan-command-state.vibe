@@ -1,0 +1,75 @@
+// spec/cloud/billing/subscriptionCommands.md, "Story: Change or cancel my plan without paying twice"; spec/cloud/billing/subscriptionCommands.md, "Story: See my commands"
+import { commandStatus, elapse, parseState, type Command } from "../../gen/cloud__billing__subscriptionCommands.effect.vibe"
+import { StripePlanBinding, type StripeUpgradeOrigin, type StripeUpgradeTerms } from "../providers/stripe.vibe"
+import { toText, type Tx } from "../store/connection.vibe"
+import { RowCorrupt } from "../store/rows.vibe"
+
+export interface PlanCommandRecord {
+  readonly organizationId: string
+  readonly command: Command
+  readonly binding: StripePlanBinding
+  readonly origin?: StripeUpgradeOrigin
+}
+
+export function commandAt(command: Command, now: number): Command {
+  return now > command.receipt.session.now ? elapse(command, now - command.receipt.session.now) : command
+}
+
+export function planCommandView(row: PlanCommandRecord, now: number) {
+  const command = row.command
+  const status = commandStatus(commandAt(command, now))
+  const wire = {
+    NotListed: "prepared", ShowDispatched: "dispatched", ShowUnknown: "unknown",
+    ShowAwaitingPayment: "awaiting_payment", ShowSucceeded: "succeeded", ShowRejected: "rejected"
+  } as const
+  return {
+    commandId: command.commandId, kind: "upgrade" as const, subscriptionId: command.subscriptionId,
+    status: wire[status], expectedRevision: command.expectedRevision, resultRevision: command.resultRevision === 0 ? null : command.resultRevision,
+    createdAt: command.createdAt
+  }
+}
+
+export function upgradeTerms(row: PlanCommandRecord): StripeUpgradeTerms {
+  return {
+    subscriptionId: row.command.subscriptionId, binding: row.binding, effectiveAt: row.command.quote.effectiveAt,
+    periodStart: row.command.quote.periodStart, periodEnd: row.command.quote.periodEnd,
+    dueNowCents: row.command.quote.dueNowCents, sentAt: row.command.receipt.sentAt
+  }
+}
+
+export effect function readPlanCommand(tx: Tx, commandId: string, lock: boolean) {
+  const row = (try tx.query(
+    `SELECT organization_id, state, stripe_plan_binding, stripe_invoice_id, stripe_request_id FROM subscription_commands
+      WHERE key=$1 AND stripe_plan_binding IS NOT NULL${lock ? " FOR UPDATE" : ""}`, [commandId]
+  ))[0]
+  if (row === undefined) return undefined
+  const command = parseState(row.state)
+  const organizationId = toText(row.organization_id)
+  const invoiceId = toText(row.stripe_invoice_id)
+  const requestId = toText(row.stripe_request_id)
+  const binding = Schema.decodeUnknownOption(StripePlanBinding)(row.stripe_plan_binding)
+  if (command === undefined || command.kind !== "UpgradeCommand" || command.commandId !== commandId ||
+      command.receipt.session.owner.agentId !== organizationId || organizationId === undefined || Option.isNone(binding) ||
+      (invoiceId === undefined) !== (requestId === undefined))
+    throw new RowCorrupt({ table: "subscription_commands", key: commandId, cause: "reviewed upgrade" })
+  return {
+    organizationId, command, binding: binding.value,
+    ...(invoiceId !== undefined && requestId !== undefined ? { origin: { invoiceId, requestId } } : {})
+  } satisfies PlanCommandRecord
+}
+
+export effect function insertPlanCommand(tx: Tx, row: PlanCommandRecord, now: number) {
+  const view = planCommandView(row, now)
+  try tx.query(
+    "INSERT INTO subscription_commands (key, state, revision, organization_id, kind, status, expected_revision, created_at, updated_at, stripe_plan_binding) VALUES ($1,$2,1,$3,'upgrade',$4,$5,$6,$7,$8)",
+    [view.commandId, JSON.stringify(row.command), row.organizationId, view.status, view.expectedRevision, view.createdAt, now, JSON.stringify(row.binding)]
+  )
+}
+
+export effect function savePlanCommand(tx: Tx, row: PlanCommandRecord, now: number) {
+  const view = planCommandView(row, now)
+  try tx.query(
+    "UPDATE subscription_commands SET state=$2, revision=revision+1, status=$3, result_revision=$4, updated_at=$5, stripe_invoice_id=$6, stripe_request_id=$7 WHERE key=$1",
+    [view.commandId, JSON.stringify(row.command), view.status, view.resultRevision, now, row.origin?.invoiceId ?? null, row.origin?.requestId ?? null]
+  )
+}
