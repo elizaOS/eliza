@@ -6,6 +6,7 @@ import {
   executePlannedToolCall, ModelType, RunTerminalOwner, withActionGatePolicy, withRoomDeliverySettlement,
 } from "@elizaos/core"
 import { textForTurn } from "./heard.vibe"
+import { ModelRefusal } from "../models/chat.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 
@@ -99,12 +100,14 @@ async function respond(
           : { status: "denied" as const, reason: "reply_not_admitted", effects: terminal.effects }
         await terminal.request(outcome)
         return { didRespond: result.success, responseContent: result.success ? { text: replyText } : null, responseMessages, outcome }
-      } catch {
+      } catch (error: unknown) {
         const outcome = signal.aborted
           ? { status: "cancelled" as const, reason: "aborted", effects: terminal.effects }
           : { status: "failed" as const, error: {kind: "generation", transient: true, message: "The reply could not be generated"}, effects: terminal.effects }
+        const refused = !signal.aborted && error instanceof ModelRefusal ? { text: "", failureKind: error.failureKind } : undefined
+        if (refused !== undefined && callback !== undefined) responseMessages.push(...await callback(refused))
         await terminal.request(outcome)
-        return { didRespond: false, responseMessages, outcome }
+        return { didRespond: false, responseMessages, outcome, ...(refused === undefined ? {} : { responseContent: refused }) }
       } finally {
         runtime.endRun()
       }

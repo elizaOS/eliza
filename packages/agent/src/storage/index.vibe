@@ -6,7 +6,7 @@ module node {
   import { vector } from "@electric-sql/pglite/vector"
   import {
     DatabaseAdapter, filterMemoryReadByAccessContext, rerankMemories,
-    type Agent, type Entity, type IDatabaseAdapter, type Log, type Memory, type MemoryEmbeddingUpdate, type Room, type Task,
+    type Agent, type Entity, type IDatabaseAdapter, type Log, type Memory, type MemoryEmbeddingUpdate, type Relationship, type Room, type Task,
     type UUID, type World,
   } from "@elizaos/core"
   import { seedable } from "../../gen/agent__storage__database.ts"
@@ -24,7 +24,7 @@ module node {
   }
 
   type DB = PGlite | Transaction
-  type Collection = "agents" | "entities" | "worlds" | "rooms" | "participants" | "memories" | "logs" | "cache" | "tasks"
+  type Collection = "agents" | "entities" | "worlds" | "rooms" | "participants" | "memories" | "logs" | "cache" | "relationships" | "tasks"
   type StoredParticipant = { id: UUID; entityId: UUID; roomId: UUID; userState: "FOLLOWED" | "MUTED" | null }
   type Write = { key: string; data: unknown; createdAt: number; tableName: string | null }
 
@@ -534,6 +534,16 @@ module node {
 
     async deleteTasks(keys: UUID[]): Promise<void> { await this.remove("tasks", keys) }
 
+    async getRelationships(input: Parameters<IDatabaseAdapter["getRelationships"]>[0]): Promise<Relationship[]> {
+      const entities = new Set(input.entityIds)
+      const rows = await this.values<Relationship>("relationships")
+      const matching = rows.filter((row) => row.agentId === this.agentId
+        && (entities.size === 0 || entities.has(row.sourceEntityId) || entities.has(row.targetEntityId))
+        && (input.tags?.every((tag) => row.tags.includes(tag)) ?? true))
+      const offset = input.offset ?? 0
+      return matching.slice(offset, input.limit === undefined ? undefined : offset + input.limit)
+    }
+
     readonly readMessageContentRange = unsupported("readMessageContentRange")
     readonly queryDocuments = unsupported("queryDocuments")
     readonly getDocument = unsupported("getDocument")
@@ -561,7 +571,6 @@ module node {
     readonly getParticipantsForEntities = unsupported("getParticipantsForEntities")
     readonly updateParticipantUserStates = unsupported("updateParticipantUserStates")
     readonly getRelationshipsByPairs = unsupported("getRelationshipsByPairs")
-    readonly getRelationships = unsupported("getRelationships")
     readonly createRelationships = unsupported("createRelationships")
     readonly getRelationshipsByIds = unsupported("getRelationshipsByIds")
     readonly updateRelationships = unsupported("updateRelationships")

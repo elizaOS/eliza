@@ -2,7 +2,7 @@
 import { assert, describe, it } from "@effect/vitest"
 import { insufficientCredits, text, type CloudFake } from "./support/cloud-fake.ts"
 import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
-import type { StreamedAnswer } from "./support/socket-client.ts"
+import type { StreamCut, StreamedAnswer } from "./support/socket-client.ts"
 
 type Frame = { readonly type: string; readonly text?: string; readonly fullText?: string; readonly failureKind?: string; readonly provisional?: boolean }
 
@@ -33,8 +33,8 @@ effect function conversation(agent: InProcess) {
   return decoded.value.conversation.id
 }
 
-effect function send(agent: InProcess, id: string, body: object, abortAfterChunks?: number) {
-  return try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, body }, abortAfterChunks)
+effect function send(agent: InProcess, id: string, body: object, cut?: StreamCut) {
+  return try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, body }, cut)
 }
 
 const piece = (letter: string) => letter.repeat(1500)
@@ -68,9 +68,9 @@ for (const transport of ["socket", "http"] as const) {
       const agent = try cloudAgent(cloud, transport === "http")
       const id = try conversation(agent)
       try Effect.sync(() => cloud.script({ kind: "hang" }))
-      const answer = try send(agent, id, { text: "Think forever." }, 1)
-      const completion = cloud.calls.find((made) => made.path.endsWith("/chat/completions"))
-      if (completion === undefined) return try Effect.die(new Error("The turn never called the model"))
+      const started = try Effect.sync(() => cloud.nextCompletion())
+      const answer = try send(agent, id, { text: "Think forever." }, { afterChunks: 1, ready: started })
+      const completion = try host("model call started", () => started)
       try host("model call cancelled", () => completion.aborted)
       try Effect.try(() => assert.deepStrictEqual({ status: answer.status, frames: framesOf(answer), error: answer.error },
         { status: 200, frames: [{ type: "status", activity: "thinking" }], error: "closed before complete" }))

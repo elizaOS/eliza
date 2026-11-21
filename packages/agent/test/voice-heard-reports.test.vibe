@@ -161,15 +161,12 @@ it.live('Report what of an interrupted reply I heard: a voice turn, its stop and
     ["Call  Alex. Or call Sam.", reply, 409, "HeardRecorded", "HeardUnchanged", 409, reply.text]))
   const cloud = reachable.cloud
   if (cloud === undefined) return try die("The Cloud fixture is missing")
-  const receivedBefore = cloud.calls.length
   try Effect.sync(() => cloud.script({ kind: "hang" }))
+  const started = try Effect.sync(() => cloud.nextCompletion())
   const held = try Effect.sync(() => request(
     "POST", `/api/conversations/${conversation.id}/messages`,
     { ...offered, text: "Keep thinking.", clientMessageId: "voice-turn-stop" }, signal))
-  try Effect.timeout(effect {
-    while (cloud.calls.length === receivedBefore) try Effect.sleep(10)
-  }, 60_000)
-  const inference = cloud.calls[receivedBefore]
+  const inference = try host("model call started", () => started)
   const stopPath = `/api/turns/${conversation.roomId}/abort`
   const stopped = try host("confirm the active turn ended", () => request("POST", stopPath, { reason: "barge-in" }, signal))
   try host("inference stopped", () => inference.aborted)

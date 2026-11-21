@@ -30,7 +30,7 @@ export async function httpRequest(port: number, call: LocalRequest): Promise<Loc
   return { status: response.status, headers: headersOf(response), text, json: parseJson(text) };
 }
 
-export async function httpRequestStream(port: number, call: LocalRequest, abortAfterChunks?: number): Promise<StreamedAnswer> {
+export async function httpRequestStream(port: number, call: LocalRequest, leave?: import("./socket-client.ts").StreamCut): Promise<StreamedAnswer> {
   const cut = new AbortController();
   const response = await fetch(`${origin(port)}${call.path}`, init(call, cut.signal));
   const chunks: string[] = [];
@@ -43,7 +43,8 @@ export async function httpRequestStream(port: number, call: LocalRequest, abortA
         const { done, value } = await reader.read();
         if (done) break;
         chunks.push(decoder.decode(value, { stream: true }));
-        if (abortAfterChunks !== undefined && chunks.length >= abortAfterChunks) {
+        if (leave !== undefined && chunks.length >= leave.afterChunks) {
+          await leave.ready;
           cut.abort();
           error = "closed before complete";
           break;

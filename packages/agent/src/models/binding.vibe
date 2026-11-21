@@ -99,10 +99,10 @@ function lastFailureOf(state: ModelBinding): LastCloudFailure | undefined {
   const last = state.lastCloudFailure
   if (last.tag === "NoCloudFailure") return undefined
   const retryAt = retryAtOf(last.failure)
-  return { kind: kindOf(last.failure), at: last.at, ...(retryAt < 0 ? {} : { retryAt }) }
+  return { kind: failureKindName(last.failure), at: last.at, ...(retryAt < 0 ? {} : { retryAt }) }
 }
 
-function kindOf(failure: AccountFailure): FailureKind {
+export function failureKindName(failure: AccountFailure): FailureKind {
   return failureName(failure) as FailureKind
 }
 

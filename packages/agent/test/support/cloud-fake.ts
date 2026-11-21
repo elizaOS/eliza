@@ -38,6 +38,7 @@ export interface CloudFake {
   readonly ownKeyBaseUrl: string;
   readonly ownKey: string;
   acceptKey(key: string): void;
+  nextCompletion(): Promise<CloudCall>;
   script(...replies: CloudReply[]): void;
   route(method: string, path: string, reply: RouteReply): void;
   close(): Promise<void>;
@@ -189,6 +190,7 @@ export async function startCloudFake(options: { deviceKey: string; ownKey?: stri
   const directory = await mkdtemp(join(tmpdir(), "agent-cloud-fake-"));
   const { key, cert, caFile } = await selfSigned(directory);
   const calls: CloudCall[] = [];
+  const completions: ((call: CloudCall) => void)[] = [];
   const queue: CloudReply[] = [];
   const keys = new Set([options.deviceKey]);
   const ownKey = options.ownKey ?? "own-key-1";
@@ -199,8 +201,10 @@ export async function startCloudFake(options: { deviceKey: string; ownKey?: stri
     const body = await readBody(request);
     const aborted = new Promise<void>((resolve) => response.once("close", () => resolve()));
     const authorization = request.headers.authorization;
-    calls.push({ method: request.method ?? "", path: request.url ?? "", authorization, body, aborted });
+    const call = { method: request.method ?? "", path: request.url ?? "", authorization, body, aborted };
+    calls.push(call);
     const pathname = new URL(request.url ?? "/", "https://localhost").pathname;
+    if (call.method === "POST" && pathname.endsWith("/chat/completions")) completions.shift()?.(call);
     if (pathname.startsWith(`${ownKeyPrefix}/`)) {
       if (authorization !== `Bearer ${ownKey}`) {
         return json(response, 401, { error: { message: "Incorrect API key provided", type: "invalid_request_error", code: "invalid_api_key" } });
@@ -236,6 +240,7 @@ export async function startCloudFake(options: { deviceKey: string; ownKey?: stri
     origin: `https://localhost:${port}`,
     caFile,
     calls,
+    nextCompletion: () => new Promise<CloudCall>((resolve) => { completions.push(resolve); }),
     ownKeyBaseUrl: `https://localhost:${port}${ownKeyPrefix}`,
     ownKey,
     route: (method, path, reply) => {

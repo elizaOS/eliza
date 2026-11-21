@@ -23,7 +23,7 @@ module node {
     readonly messageId: UUID
     readonly userMessageId: UUID
     readonly actionResults: readonly { readonly action: string; readonly data: unknown }[]
-    readonly failureKind?: "aborted"
+    readonly failureKind?: string
   }
 
   const Body = Schema.Struct({ text: Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(32768)) })
@@ -47,6 +47,8 @@ module node {
   const stamp = Schema.decodeUnknownOption(Stamp)
   const failure = (status: number, error: string) => ({ status, body: { error } })
   const okay = (body: object) => ({ status: 200, body })
+  const storedFailure = (content: Content | undefined) =>
+    typeof content?.failureKind === "string" ? content.failureKind : undefined
 
   export function conversation(room: Room) {
     const metadata = stamp(room.metadata?.deviceConversation)
@@ -118,9 +120,9 @@ module node {
       }
       const userMessageId = await runtime.createMessageMemory(input)
       const storeReply = async (content: Content): Promise<Memory[]> => {
-        if (!content.text?.trim()) return []
+        if (!content.text?.trim() && storedFailure(content) === undefined) return []
         const response = {
-          ...memory(runtime, owner, room, content.text, options.metadata),
+          ...memory(runtime, owner, room, content.text ?? "", options.metadata),
           ...(key === undefined ? {} : { id: key.replyId }),
           entityId: runtime.agentId, content: { ...content, inReplyTo: userMessageId, ...(key === undefined ? {} : { turnBoot: key.boot }) },
         }
@@ -152,7 +154,7 @@ module node {
     const live = new Map<UUID, RunningSend>()
     const stopping = new Map<UUID, Promise<ReturnType<typeof okay>>>()
     const boot = randomUUID()
-    const answer = (text: string, messageId: UUID, userMessageId: UUID, failureKind?: "aborted") =>
+    const answer = (text: string, messageId: UUID, userMessageId: UUID, failureKind?: string) =>
       okay({ fullText: text, text, agentName, messageId, userMessageId, actionResults: [],
         ...(failureKind === undefined ? {} : { failureKind }) } satisfies TurnReply)
 
@@ -195,8 +197,7 @@ module node {
             if (admission.tag === "Conflict") return failure(409, "CHAT_IDEMPOTENCY_CONFLICT")
             if (admission.tag !== "Settled") return failure(429, "conversation_busy")
             if (answered) {
-              return answer(reply.content.text ?? "", key.replyId, key.inputId,
-                reply.content.failureKind === "aborted" ? "aborted" : undefined)
+              return answer(reply.content.text ?? "", key.replyId, key.inputId, storedFailure(reply.content))
             }
             const recovered = memory(runtime, owner, room, "")
             await runtime.createMessageMemory({
@@ -211,6 +212,8 @@ module node {
         const result = await processTurn(runtime, owner, room, text, interrupt, { input, ...(key === undefined ? {} : { key }) })
         updated(room)
         const [reply] = result.responseMessages
+        const failureKind = storedFailure(reply?.content)
+        if (failureKind !== undefined && reply?.id !== undefined) return answer("", reply.id, result.userMessageId, failureKind)
         if (!result.didRespond || !result.responseContent?.text || reply?.id === undefined) return failure(502, "turn_failed")
         return answer(result.responseContent.text, reply.id, result.userMessageId)
       }
@@ -293,6 +296,10 @@ module node {
           const result = await processTurn(runtime, owner, room, payload.value.text, signal, { onStreamChunk: (text) => writer.append(text) })
           updated(room)
           const [reply] = result.responseMessages
+          const failureKind = storedFailure(reply?.content)
+          if (failureKind !== undefined && reply?.id !== undefined) {
+            return { type: "done", fullText: "", messageId: reply.id, userMessageId: result.userMessageId, agentName, actionResults: [], failureKind }
+          }
           return result.didRespond && result.responseContent?.text && reply?.id
             ? {
               type: "done", fullText: result.responseContent.text, messageId: reply.id,
