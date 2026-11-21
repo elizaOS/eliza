@@ -5,12 +5,17 @@ import {
   beginRequestOperationIssuer,
   bindRequestOperationProjection,
   bindTaskExtractionContext,
+  ChannelType,
+  type ContextEvent,
   type ContextObject,
   ContextRegistry,
   commitNotesRequestRestriction,
+  compactHistoricalReceiptSegments,
+  conversationClientUserMemoryId,
   copyRequestOperationResult,
   executePlannedToolCall,
   getRequestOperationIssuer,
+  historicalRequestSourceIds,
   type IAgentRuntime,
   isMatchingNotesMutationCompletion,
   isObjectRecord,
@@ -19,8 +24,10 @@ import {
   type RequestOperationIssuer,
   ResponseHandlerFieldRegistry,
   readNotesMutationCompletion,
+  renderContextObject,
   runWithActionRoutingContext,
   type State,
+  segmentBlock,
   stringToUuid,
   type TypedReadReplyBinding,
 } from "@elizaos/core";
@@ -51,6 +58,7 @@ import {
   actionResultToPlannerToolResult,
   runPlannerLoop,
 } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
+import { appendPriorDialogueEvents } from "../../../plugin-assistant/src/services/message/dialogue-context.ts";
 import {
   projectBackgroundHistory,
   projectReviewedHistory,
@@ -156,12 +164,14 @@ async function fixture(
   modelNotesField: unknown,
   text: string,
   sameMessage?: Memory,
+  /** The encrypted store an earlier request left, to continue from it. */
+  store: string | null = null,
 ) {
   const agentId = stringToUuid("request-effects-agent"),
     actor = stringToUuid("owner");
   const roomId = stringToUuid("room"),
     worldId = stringToUuid("world");
-  let raw: string | null = null;
+  let raw: string | null = store;
   const writes = vi.fn(async (expected: string | null, next: string) => {
     if (raw !== expected) return false;
     raw = next;
@@ -391,6 +401,7 @@ async function fixture(
     diagnostics,
     hostRestriction,
     rawNotesEffect: fieldRun.parsed.notesRequestEffect,
+    store: () => raw,
   };
 }
 
@@ -3565,4 +3576,144 @@ describe("request-bound Notes negative constraints", () => {
       }
     },
   );
+});
+
+describe("a later request acting on an earlier request's printed outcome", () => {
+  it("renames and then deletes the note an earlier create recorded, by the id its printed record gives", async () => {
+    const created = await fixture(
+      { classification: "mutation_requested", operations: ["create"] },
+      "Make a note called groceries with milk.",
+    );
+    let store: string | null;
+    let made: Awaited<ReturnType<typeof created.execute>>;
+    try {
+      made = await created.execute("NOTES_CREATE", {
+        content: "groceries\nmilk",
+      });
+      expect(actionDiagnostic(made)).toMatchObject({
+        success: true,
+        receipts: 1,
+      });
+      store = created.store();
+    } finally {
+      await created.service.stop();
+    }
+    // The request as the conversation stores it, with the outcome this turn
+    // recorded; the next request's planner reads its record from the wire.
+    const { agentId, roomId, entityId } = created.message;
+    const scope = `${agentId}:${roomId}:${entityId}`;
+    const requestId = conversationClientUserMemoryId(scope, "make-groceries");
+    const request = {
+      id: requestId,
+      agentId,
+      roomId,
+      entityId,
+      createdAt: Date.now() - 60_000,
+      content: {
+        text: "Make a note called groceries with milk.",
+        source: "client_chat",
+        channelType: ChannelType.DM,
+        chatIdempotency: {
+          version: 1,
+          scope,
+          clientMessageId: "make-groceries",
+          fingerprint: "a".repeat(64),
+          outcomeJson: JSON.stringify({
+            userMessageId: requestId,
+            actionResults: [
+              {
+                actionName: "NOTES_CREATE",
+                success: true,
+                effectReceipts: made.effectReceipts,
+              },
+            ],
+          }),
+        },
+      },
+    } as Memory;
+    const events: ContextEvent[] = [];
+    appendPriorDialogueEvents(
+      events,
+      created.runtime,
+      {
+        data: {
+          providers: {
+            RECENT_MESSAGES: { data: { recentMessages: [request] } },
+          },
+        },
+      } as never,
+      {
+        id: "later",
+        agentId,
+        roomId,
+        entityId,
+        content: { text: "Rename that note to shopping." },
+      } as Memory,
+    );
+    const context: ContextObject = { id: "later", events };
+    const printed = compactHistoricalReceiptSegments(
+      renderContextObject(context).promptSegments,
+      { sourceIds: historicalRequestSourceIds(context) },
+    )
+      .map(segmentBlock)
+      .join("\n\n");
+    // Read the row with nothing but the legend printed above it.
+    const block = (label: string) =>
+      JSON.parse(printed.split(`${label}:\n`)[1].split("\n\n")[0]);
+    const legend = block("runtime:historical_receipt_encoding");
+    const row = block("runtime:historical_effects");
+    expect(row[0]).toBe(legend.id);
+    const [key, [[actionName, success, [shape, values]]]] = row[1];
+    expect(key).toBe("history:h1");
+    expect(legend.receiptShapes[shape]).toEqual([
+      "operation",
+      ["resource", ["kind", "id"]],
+      "outcome",
+      ["commit", ["kind"]],
+    ]);
+    const [operation, [kind, noteId], outcome] = values;
+    expect({ actionName, success, operation, kind, outcome }).toEqual({
+      actionName: "NOTES_CREATE",
+      success: true,
+      operation: "notes.note.create",
+      kind: "notes.note",
+      outcome: "applied",
+    });
+    expect(printed).not.toContain(String(made.effectReceipts?.[0]?.receiptId));
+    const renamed = await fixture(
+      { classification: "mutation_requested", operations: ["patch"] },
+      "Rename that note to shopping.",
+      undefined,
+      store,
+    );
+    try {
+      const changed = await renamed.execute("NOTES_UPDATE", {
+        noteId,
+        textEdit: { field: "title", oldText: "groceries", newText: "shopping" },
+      });
+      expect(actionDiagnostic(changed)).toMatchObject({ success: true });
+      expect(
+        renamed.service.snapshot().notes.find((note) => note.id === noteId)
+          ?.title,
+      ).toBe("shopping");
+      store = renamed.store();
+    } finally {
+      await renamed.service.stop();
+    }
+    const removed = await fixture(
+      { classification: "mutation_requested", operations: ["delete"] },
+      "Delete that note.",
+      undefined,
+      store,
+    );
+    try {
+      const deleted = await removed.execute("NOTES_DELETE", { noteId });
+      expect(actionDiagnostic(deleted)).toMatchObject({ success: true });
+      expect(
+        removed.service.snapshot().notes.some((note) => note.id === noteId),
+      ).toBe(false);
+    } finally {
+      await removed.service.stop();
+    }
+  });
 });
