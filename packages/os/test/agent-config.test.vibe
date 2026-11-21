@@ -1,7 +1,7 @@
 // spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/agent/host/launch.md, "Story: Keep the credential out of every file and reply"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { decodeLaunchDocument, decodeLaunchFrame } from "../../agent/src/host/launch.schema.vibe"
+import { decodeLaunchDocument, decodeLaunchFrame } from "@elizaos/agent/launch"
 import { AGENT_ASSETS, AgentConfigRefused, admitAgentBytes, admitAgentData, type AgentFile } from "../src/build/agent-config.vibe"
 import { scratch, writeTree } from "./support/scratch.vibe"
 

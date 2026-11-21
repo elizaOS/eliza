@@ -520,6 +520,9 @@ importers:
       '@effect/vitest':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
+      '@elizaos/agent':
+        specifier: workspace:*
+        version: link:../agent
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
