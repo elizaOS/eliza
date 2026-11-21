@@ -10,7 +10,7 @@ module node {
   import { Effect } from "effect"
   import type { Memory, UUID } from "@elizaos/core"
   import type { SessionOwner } from "../gen/core__sessions.effect.vibe"
-  import { offerRequest, openRequest, type RequestTerms } from "../src/device-actions/store.vibe"
+  import { offerRequest, openRequest, recordRequestReceipt, type RequestTerms } from "../src/device-actions/store.vibe"
   import type { RunningAgent } from "../src/host/process.vibe"
   import { text, type CloudFake } from "./support/cloud-fake.ts"
   import { request } from "./support/socket-client.ts"
@@ -54,9 +54,11 @@ module node {
       }, by, terms))
       await Effect.runPromise(record.machine.send({ type: "decide", digest: hint.digest, approved: true }, by))
       await Effect.runPromise(record.machine.send({ type: "claim", digest: hint.digest }, by))
-      const receipt = await Effect.runPromise(openRequest(adapter, proposalId, { result }))
-      if (receipt === undefined) throw new Error("The claimed read is gone")
-      await Effect.runPromise(receipt.machine.send({ type: "receipt", digest: hint.digest, attemptId: 1, reportedOutcome: "ReportedApplied" }, by))
+      const receipt = await Effect.runPromise(recordRequestReceipt(adapter, {
+        proposalId, by, result,
+        event: { type: "receipt", digest: hint.digest, attemptId: 1, reportedOutcome: "ReportedApplied" },
+      }))
+      if (receipt.kind !== "recorded") throw new Error("The claimed read was not settled")
       return hint
     }
     const hint = await appliedRead("p1")

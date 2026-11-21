@@ -2,11 +2,11 @@
 module node {
   import { Effect, Result, Schema } from "effect"
   import { ElizaError, ModelType, stringToUuid, validateUuid, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"
-  import { canClaimCompletion, completionDeadline, type DeviceRequest, type Event, type Machine } from "../../gen/agent__deviceActions.effect.vibe"
+  import { canClaimCompletion, completionDeadline, type DeviceRequest } from "../../gen/agent__deviceActions.effect.vibe"
   import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
   import type { LocalRoute, RouteInput } from "../access/routes.vibe"
   import { recordOf, type ConversationOwner } from "../conversation/conversations.vibe"
-  import { openRequest, StaleDeviceRow, withReadCompletionPublication, type DeviceRequestRecord, type DeviceStoreUnavailable } from "./store.vibe"
+  import { openRequest, StaleDeviceRow, withReadCompletionPublication, type DeviceRequestRecord, type DeviceStoreUnavailable, type RequestEvent } from "./store.vibe"
 
   interface ReadCompletionContext {
     readonly runtime: AgentRuntime
@@ -29,7 +29,7 @@ module node {
   class CompletionFailed extends Error {}
   class CompletionClosed extends Error {}
 
-  async function send(machine: Machine.Shape, event: Event, by: SessionOwner): Promise<DeviceRequest | undefined> {
+  async function send(machine: DeviceRequestRecord["machine"], event: RequestEvent, by: SessionOwner): Promise<DeviceRequest | undefined> {
     const sent = await Effect.runPromise(Effect.result(machine.send(event, by)))
     return Result.isSuccess(sent) ? sent.success : undefined
   }
