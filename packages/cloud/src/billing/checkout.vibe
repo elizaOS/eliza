@@ -276,30 +276,39 @@ effect function openAnswer(stored: StoredCheckout, session: StripeCheckoutSessio
   }
 }
 
-export effect function answerCheckout(stored: StoredCheckout, known: StripeCheckoutSession | undefined): CheckoutAnswer!CheckoutAnswerFailure!(Store | StripeContext) {
+effect function verdictOf(stored: StoredCheckout) {
   const store = try Store
-  const now = try Clock.currentTimeMillis
   const subscription = try store.transaction((tx) => readSubscription(tx, stored.organizationId))
-  const answer = answerOf(stored.state, isLive(subscription.status) && subscription.subscriptionId === stored.state.subscriptionId)
+  return answerOf(stored.state, isLive(subscription.status) && subscription.subscriptionId === stored.state.subscriptionId)
+}
+
+effect function settledAnswer(stored: StoredCheckout, answer: ReturnType<typeof answerOf>, now: number) {
   switch (answer) {
-    case "AnswerOpen": {
-      const fresh = known?.id === stored.state.sessionId && known.status === "open" ? known : undefined
-      const seen = fresh === undefined ? try readSession(stored.state.sessionId, now) : { kind: "applied", value: fresh } as const
-      if (seen.kind !== "applied") throw providerRefusal(seen, now)
-      if (seen.value.status === "open") return try openAnswer(stored, seen.value, now)
-      const after = try store.transaction((tx) => applyCheckoutEvent(tx, seen.value, now))
-      if (after === undefined || after.phase === "Open") throw unavailable(now)
-      return try answerCheckout({ ...stored, state: after }, seen.value)
-    }
     case "AnswerCompleted": return { status: "completed", commandId: stored.commandId } satisfies CheckoutAnswer
     case "AnswerStaleIntent": return { status: "stale_intent", commandId: stored.commandId } satisfies CheckoutAnswer
     case "AnswerExpired": return { status: "expired", commandId: stored.commandId } satisfies CheckoutAnswer
+    case "AnswerOpen":
     case "AnswerUnavailable": throw unavailable(now)
     default: {
       const _exhaustive: never = answer
       return _exhaustive
     }
   }
+}
+
+export effect function answerCheckout(stored: StoredCheckout, known: StripeCheckoutSession | undefined): CheckoutAnswer!CheckoutAnswerFailure!(Store | StripeContext) {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const answer = try verdictOf(stored)
+  if (answer !== "AnswerOpen") return try settledAnswer(stored, answer, now)
+  const fresh = known?.id === stored.state.sessionId && known.status === "open" ? known : undefined
+  const seen = fresh === undefined ? try readSession(stored.state.sessionId, now) : { kind: "applied", value: fresh } as const
+  if (seen.kind !== "applied") throw providerRefusal(seen, now)
+  if (seen.value.status === "open") return try openAnswer(stored, seen.value, now)
+  const after = try store.transaction((tx) => applyCheckoutEvent(tx, seen.value, now))
+  if (after === undefined || after.phase === "Open") throw unavailable(now)
+  const current = { ...stored, state: after }
+  return try settledAnswer(current, try verdictOf(current), now)
 }
 
 effect function replaceLive(live: StoredCheckout) {
