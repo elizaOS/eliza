@@ -1200,7 +1200,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     ))
   }), 30_000)
 
-  it.live("Trash a message as reviewed, lose Google's reply, and learn by lookup that it succeeded once (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\"; spec/cloud/shared/dispatchOnce.md, \"Story: Send a change once and recover its outcome without sending it again\")", () => scoped(effect {
+  it.live("Trash a message as reviewed, lose Google's reply, and keep its outcome unknown without asking Google again (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\"; spec/cloud/shared/dispatchOnce.md, \"Story: Send a change once and recover its outcome without sending it again\")", () => scoped(effect {
     const { mailbox, switches, operation, grantId } = try mailOperationSetup("ops-trash")
     const requestId = "6f1c2a3b-4d5e-4f60-8a7b-1c2d3e4f5a6b"
     const proposal = { kind: "trash", messageId: "msg-plan", expectedHistoryId: "1001" }
@@ -1225,7 +1225,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         looked: [looked.status, receiptOf(looked), (looked.body as OperationAnswer).receipt.providerResult],
         replayed: [replayed.status, receiptOf(replayed)],
         unknown: errorOf(unknown),
-        mailbox: [trashed?.labelIds, switches.calls.filter((call) => call.path === "/messages/msg-plan/trash").length]
+        mailbox: [trashed?.labelIds, switches.calls.filter((call) => call.path === "/messages/msg-plan/trash").length, switches.calls.length]
       },
       {
         prepared: [200, ["trash", "prepared", null, false, false], { kind: "trash", messageId: "msg-plan", expectedHistoryId: "1001", from: "ops-ops-trash@example.com" }, false, 1],
@@ -1233,10 +1233,10 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         otherKind: [409, "idempotency_conflict"],
         wrongDigest: [409, "stale_revision"],
         lost: [200, ["trash", "outcome-unknown", null, true, false]],
-        looked: [200, ["trash", "succeeded", null, true, true], { messageId: "msg-plan", threadId: "thr-plan", labelIds: ["UNREAD", "TRASH"], historyId: "1002" }],
-        replayed: [200, ["trash", "succeeded", null, true, true]],
+        looked: [200, ["trash", "outcome-unknown", null, true, false], null],
+        replayed: [200, ["trash", "outcome-unknown", null, true, false]],
         unknown: [404, "not_found"],
-        mailbox: [["UNREAD", "TRASH"], 1]
+        mailbox: [["UNREAD", "TRASH"], 1, 1]
       }
     ))
   }), 30_000)
