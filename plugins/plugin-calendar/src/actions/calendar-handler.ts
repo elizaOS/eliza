@@ -88,7 +88,6 @@ import type {
 import {
   describeUserReference,
   ElizaError,
-  extractUserText,
   normalizeEffectReceipt,
   resolveOptimizedPromptForRuntime,
   timeInferenceSpan,
@@ -2519,6 +2518,11 @@ type PendingDeleteConfirmation = {
   askedAt: number;
 };
 
+type DeclinedDeleteConfirmation = {
+  eventId: string;
+  declinedInMessageId: string | null;
+};
+
 /** The built-in delete question this action asked the owner in this room. */
 function pendingDeleteConfirmationKey(message: Memory): string {
   return `calendar-delete-confirmation:${message.roomId}:${message.entityId}`;
@@ -2558,6 +2562,13 @@ async function deleteConfirmationAnswer(args: {
 }): Promise<DeleteConfirmationAnswer> {
   const { pending, event, message } = args;
   if (!pending || typeof pending !== "object") return "unanswered";
+  if ("declinedInMessageId" in pending)
+    return "eventId" in pending &&
+      pending.eventId === event.externalId &&
+      message.id !== undefined &&
+      pending.declinedInMessageId === message.id
+      ? "declined"
+      : "unanswered";
   const record = pending as Partial<PendingDeleteConfirmation>;
   if (
     record.eventId !== event.externalId ||
@@ -2566,7 +2577,7 @@ async function deleteConfirmationAnswer(args: {
     Date.now() - record.askedAt >= 30 * 60_000
   )
     return "unanswered";
-  const answer = extractUserText(unwrapUserMessageText(message)).trim();
+  const answer = messageText(message);
   if (DELETE_ANSWER_DECLINE_PATTERN.test(answer)) return "declined";
   // A question back ("ok, what's on tomorrow?") is not a yes.
   if (answer.includes("?")) return "unanswered";
@@ -7035,7 +7046,7 @@ export function createCalendarActionRunner(
           let targetEvent: LifeOpsCalendarEvent | null = null;
           if (!resolvedEventId) {
             const titleHint = isRedundantObservedClockQuery({
-              original: extractUserText(unwrapUserMessageText(message)),
+              original: messageText(message),
               queries: searchQueries,
               window: observedWindow,
               detailsDate: detailString(details, "date"),
@@ -7909,21 +7920,19 @@ export function createCalendarActionRunner(
               ? undefined
               : observation?.selectedObject;
             const confirmationKey = pendingDeleteConfirmationKey(message);
-            const confirmationAnswer =
-              detailBoolean(details, "confirmed") === true &&
-              explicitEventId !== undefined &&
-              [targetEvent.externalId, targetEvent.id].includes(explicitEventId)
-                ? await deleteConfirmationAnswer({
-                    runtime,
-                    pending: await runtime.getCache<unknown>(confirmationKey),
-                    event: targetEvent,
-                    message,
-                  })
-                : "unanswered";
+            const confirmationAnswer = await deleteConfirmationAnswer({
+              runtime,
+              pending: await runtime.getCache<unknown>(confirmationKey),
+              event: targetEvent,
+              message,
+            });
             if (confirmationAnswer === "declined") {
               // The owner's no spends the question; a later planner
               // `confirmed` needs a new question and a new yes.
-              await runtime.deleteCache(confirmationKey);
+              await runtime.setCache(confirmationKey, {
+                eventId: targetEvent.externalId,
+                declinedInMessageId: message.id ?? null,
+              } satisfies DeclinedDeleteConfirmation);
               return respond({
                 success: false,
                 text: await renderReply(
@@ -7945,7 +7954,13 @@ export function createCalendarActionRunner(
                 },
               });
             }
-            const ownerConfirmed = confirmationAnswer === "confirmed";
+            const ownerConfirmed =
+              confirmationAnswer === "confirmed" &&
+              detailBoolean(details, "confirmed") === true &&
+              explicitEventId !== undefined &&
+              [targetEvent.externalId, targetEvent.id].includes(
+                explicitEventId,
+              );
             const ownerChoseTarget =
               ownerConfirmed ||
               (lookupSawEveryCalendar &&
