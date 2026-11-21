@@ -108,6 +108,7 @@ import {
   hasAppliedUserFacingEffectProof,
   hashString,
   hasReasoningResidue,
+  historicalRequestSourceIds,
   inflectionTermKeys,
   isDiscoveryActionName,
   isLocalProvider,
@@ -4480,6 +4481,7 @@ function renderPlannerModelInput(params: {
     extraSegments.length > 0
       ? [...renderedContext.promptSegments, ...extraSegments]
       : renderedContext.promptSegments,
+    { sourceIds: historicalRequestSourceIds(original) },
   );
   // The planner stage instructions are template-derived (`plannerTemplate`)
   // and use stable authored variants for the exposed tools, so they belong in

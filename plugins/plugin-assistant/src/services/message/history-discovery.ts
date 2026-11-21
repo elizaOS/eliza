@@ -444,7 +444,8 @@ export function nativeHistoryReadBinding(
 
 /** Admit literal queries, bare bound source IDs (hN, the form history labels
  * print) and exact bound source event IDs (history:<message id>, the
- * requestSourceEventId historical receipts print) only while the optional
+ * requestSourceEventId older historical receipts printed; they now print the
+ * canonical history:hN) only while the optional
  * source-bound history index is active. Each alias resolves to its canonical
  * history:hN read, and only when that read is offered; an advertised provider
  * of the same name keeps its own reference. Execution still follows fresh

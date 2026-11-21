@@ -65,6 +65,7 @@ import {
   getModelFallbackChain,
   getStreamingContext,
   hashStableJson,
+  historicalRequestSourceIds,
   isDiscoveryActionName,
   isInsufficientCreditsError,
   isObjectRecord,
@@ -2060,6 +2061,11 @@ function renderEvaluatorModelInput(params: {
   // the segment `stable: true` makes them cacheable on Anthropic's wire path.
   renderedContext.promptSegments = compactHistoricalReceiptSegments(
     renderedContext.promptSegments,
+    {
+      sourceIds: historicalRequestSourceIds(
+        params.trajectory.modelBaseContext ?? params.context,
+      ),
+    },
   );
   const stableContextSegments = renderedContext.promptSegments.filter(
     (segment) => segment.stable,
