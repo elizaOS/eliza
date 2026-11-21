@@ -86,6 +86,36 @@ interface BridgeExecutionStatus {
   readonly transactionHashes: readonly string[];
   readonly currentStep: number;
   readonly totalSteps: number;
+  /** Polling ended without a final DONE or FAILED from Li.Fi. */
+  readonly statusUnknown?: boolean;
+}
+
+/**
+ * The transaction Li.Fi's status API tracks, with the tool of its step: a
+ * CROSS_CHAIN process in any step, then a SWAP process in any step. A route
+ * can swap in step 0 and bridge in step 1, so the first step with a hash is
+ * not always the bridge. The ERC-20 approval (TOKEN_ALLOWANCE) is never the
+ * bridge: the status API does not know it, and it moves no funds. `anyHash`
+ * falls back to another non-approval hash for a route that completed.
+ */
+function bridgeTransaction(
+  route: RouteExtended,
+  anyHash: boolean,
+): { hash: string; tool: string } | undefined {
+  const find = (match: (type: string) => boolean) => {
+    for (const step of route.steps) {
+      const process = step.execution?.process?.find(
+        (p) => p.txHash && match(p.type),
+      );
+      if (process?.txHash) return { hash: process.txHash, tool: step.tool };
+    }
+    return undefined;
+  };
+  return (
+    find((type) => type === "CROSS_CHAIN") ??
+    find((type) => type === "SWAP") ??
+    (anyHash ? find((type) => type !== "TOKEN_ALLOWANCE") : undefined)
+  );
 }
 
 export class BridgeAction {
@@ -346,6 +376,7 @@ export class BridgeAction {
     if (routeStatus) {
       const timeoutStatus: BridgeExecutionStatus = {
         ...routeStatus,
+        statusUnknown: true,
         error: `Bridge status polling timed out after ${
           (MAX_BRIDGE_POLL_ATTEMPTS * BRIDGE_POLL_INTERVAL_MS) / 1000
         }s`,
@@ -459,57 +490,79 @@ export class BridgeAction {
         routeId,
         params.slippageBps,
       );
-      const executedRoute = await executeRoute(selectedRoute, executionOptions);
-
-      const sourceSteps = executedRoute.steps.filter((step) =>
-        step.execution?.process?.some((p) => p.txHash),
-      );
-
-      if (!sourceSteps.length) {
-        throw new EVMError(
-          EVMErrorCode.NETWORK_ERROR,
-          "No transaction hashes found",
-        );
-      }
-
-      // The first process with a hash can be the ERC-20 approval
-      // (TOKEN_ALLOWANCE): Li.Fi's status API does not know that transaction,
-      // so polling it would time out after a bridge that completed.
-      const sourceProcesses = sourceSteps[0]?.execution?.process ?? [];
-      const mainTxHash = (
-        sourceProcesses.find((p) => p.type === "CROSS_CHAIN" && p.txHash) ??
-        sourceProcesses.find((p) => p.type === "SWAP" && p.txHash) ??
-        sourceProcesses.find((p) => p.txHash)
-      )?.txHash;
-
-      if (!mainTxHash) {
-        throw new EVMError(
-          EVMErrorCode.NETWORK_ERROR,
-          "No transaction hash found",
-        );
-      }
-
-      const bridgeTool = selectedRoute.steps[0].tool;
-      const finalStatus = await this.pollBridgeStatus(
-        mainTxHash,
-        quote.fromChainId,
-        quote.toChainId,
-        bridgeTool,
-        routeId,
-      );
-
-      if (finalStatus.error) {
-        throw new EVMError(EVMErrorCode.CONTRACT_REVERT, finalStatus.error);
-      }
-
-      return {
+      const sent = (mainTxHash: string) => ({
         hash: mainTxHash as `0x${string}`,
         from: quote.fromAddress,
         to: (params.toAddress ?? quote.fromAddress) as `0x${string}`,
         value: quote.fromAmountParsed,
         chainId: quote.toChainId,
         route: selectedRoute,
-      };
+      });
+      // Once the bridge transaction is sent, its funds may move. An error
+      // after that point is not a failure: a retry could bridge twice.
+      const unconfirmed = (mainTxHash: string) => ({
+        ...sent(mainTxHash),
+        confirmationStatus: "unconfirmed" as const,
+      });
+
+      let executedRoute: RouteExtended;
+      try {
+        executedRoute = await executeRoute(selectedRoute, executionOptions);
+      } catch (error) {
+        const tracked = this.activeRoutes.get(routeId)?.route;
+        const bridgeHash = tracked && bridgeTransaction(tracked, false)?.hash;
+        if (!bridgeHash) throw error;
+        logger.warn(
+          { routeId, hash: bridgeHash, error: String(error) },
+          "[plugin-wallet] Bridge sent, then route execution threw; outcome unconfirmed",
+        );
+        return unconfirmed(bridgeHash);
+      }
+
+      if (
+        !executedRoute.steps.some((step) =>
+          step.execution?.process?.some((p) => p.txHash),
+        )
+      ) {
+        throw new EVMError(
+          EVMErrorCode.NETWORK_ERROR,
+          "No transaction hashes found",
+        );
+      }
+
+      const main = bridgeTransaction(executedRoute, true);
+      if (!main) {
+        throw new EVMError(
+          EVMErrorCode.NETWORK_ERROR,
+          "No transaction hash found",
+        );
+      }
+
+      const mainTxHash = main.hash;
+      const bridgeTool = main.tool;
+      let finalStatus: BridgeExecutionStatus;
+      try {
+        finalStatus = await this.pollBridgeStatus(
+          mainTxHash,
+          quote.fromChainId,
+          quote.toChainId,
+          bridgeTool,
+          routeId,
+        );
+      } catch (error) {
+        logger.warn(
+          { routeId, hash: mainTxHash, error: String(error) },
+          "[plugin-wallet] Bridge status read failed; outcome unconfirmed",
+        );
+        return unconfirmed(mainTxHash);
+      }
+
+      if (finalStatus.statusUnknown) return unconfirmed(mainTxHash);
+      if (finalStatus.error) {
+        throw new EVMError(EVMErrorCode.CONTRACT_REVERT, finalStatus.error);
+      }
+
+      return sent(mainTxHash);
     } finally {
       this.activeRoutes.delete(routeId);
     }
@@ -700,6 +753,8 @@ export async function routeEvmBridge(
       toChain: toChainKey,
       toChainId: toChain.id,
       tool: tx.route.steps[0]?.tool,
+      confirmationStatus:
+        "confirmationStatus" in tx ? tx.confirmationStatus : "confirmed",
     },
   };
 }
