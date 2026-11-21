@@ -104,7 +104,7 @@ type PortalConfigurationRead = typeof PortalConfiguration.Type
 
 const PortalConfigurations = Schema.Struct({ data: Schema.Array(PortalConfiguration), has_more: Schema.Boolean })
 
-const PortalSession = Schema.Struct({ url: Schema.String })
+schema PortalSession { url: string }
 
 const lockedPortal: ReadonlyArray<readonly [string, string]> = [
   ["features[customer_update][enabled]", "false"],

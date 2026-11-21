@@ -134,13 +134,13 @@ module node {
         if (!room) return { kind: "refused", status: 404, error: "unknown_conversation" }
         const payload = messageBody(body)
         if (payload._tag !== "Some") return { kind: "refused", status: 400, error: "invalid_message" }
-        return { kind: "admitted", role: "streams", run: async (writer, signal) => {
+        return { kind: "admitted", verdict: { tag: "Unkeyed", turn: 1 }, run: async (writer, signal) => {
           const result = await processTurn(runtime, owner, room, payload.value.text, signal, { onStreamChunk: (text) => writer.append(text) })
           const [reply] = result.responseMessages
           return result.didRespond && result.responseContent?.text && reply?.id
             ? {
               type: "done", fullText: result.responseContent.text, messageId: reply.id,
-              userMessageId: result.userMessageId, agentName, actionResults: [],
+              userMessageId: result.userMessageId, agentName, actionResults: [], kind: { tag: "Answered" },
             }
             : { type: "error", code: "turn_failed", message: "The turn did not complete" }
         } }

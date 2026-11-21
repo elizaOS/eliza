@@ -30,7 +30,7 @@ import {
 } from "../../gen/os__image__product.effect.vibe"
 import type { DefaultRole, ProvisioningRequest } from "../../gen/os__image__provisioning.effect.vibe"
 import { admitProduct, canAdmitProduct, type BuildPurpose, type ProductName, type SourceVerdict } from "../../gen/os__image__sourceLock.effect.vibe"
-import type { LauncherDescriptor } from "../../gen/os__image__staging.effect.vibe"
+import { decodeState } from "../../gen/os__image__staging.effect.vibe"
 
 module node {
   import { X509Certificate, createHash } from "node:crypto"
@@ -196,12 +196,10 @@ export type BootAnimationInput =
 export interface ComposeRequest {
   readonly output: string
   readonly descriptor: string
-  readonly launcher: LauncherDescriptor
   readonly source: SourceVerdict
   readonly purpose: BuildPurpose
   readonly provisioning: ProvisioningRequest
   readonly bootAnimation?: BootAnimationInput
-  readonly deferredSoong?: boolean
   readonly aosp?: string
 }
 
@@ -617,6 +615,15 @@ effect function readBootAnimation(input: BootAnimationInput) {
   return read
 }
 
+effect function stagedLauncher(output: string) {
+  const path = try Path.Path
+  const place = path.join(output, "launcher.json")
+  const recorded = parseJson(textOf(try readBytes(place)))
+  const state = try mapError(decodeState(isRecord(recorded) ? recorded.state : undefined), () => new ProductInputUnreadable({ place, message: "The launcher record holds no launcher staging state" }))
+  if (state.phase.tag !== "Published") throw new ProductInputUnreadable({ place, message: "The launcher in this overlay was not published by launcher staging" })
+  return state
+}
+
 effect function consumerMakefiles(output: string, d: ProductDescriptor) {
   const files = try FileSystem.FileSystem
   const path = try Path.Path
@@ -664,6 +671,8 @@ export effect function composeProduct(request: ComposeRequest) {
   for (const output of ALL_OUTPUTS) {
     if (try files.exists(path.join(request.output, outputName(d, output)))) existing.push(output)
   }
+  const staged = try stagedLauncher(request.output)
+  const launcher = staged.call.descriptor
   const consumer = try consumerMakefiles(request.output, d)
   const boot = try readBootAnimation(request.bootAnimation ?? { kind: "stock" })
   const updater = d.systemUpdater ? try readSourceTree(path.join(aosp, "system-updater")) : []
@@ -690,7 +699,7 @@ export effect function composeProduct(request: ComposeRequest) {
     purpose: request.purpose,
     brandToken,
     source,
-    launcher: request.launcher,
+    launcher,
     existing,
     settings: buildSettings([...consumer, ...composed]),
     bootArchive: boot.archive,
@@ -715,7 +724,7 @@ export effect function composeProduct(request: ComposeRequest) {
     lunchChoices: lunchChoices(d).map(lunchName),
     descriptorSha256,
     sourceLock: source.lock.digest,
-    launcher: { moduleName: request.launcher.moduleName, packageName: request.launcher.packageName, apkSha256: hexOf(request.launcher.apkSha256) },
+    launcher: { moduleName: launcher.moduleName, packageName: launcher.packageName, apkSha256: hexOf(launcher.apkSha256) },
     bootAnimation: archive.tag === "BootArchiveRead" ? { sha256: hexOf(archive.sha256), parts: boot.parts } : null,
     systemUpdater: d.systemUpdater ? { enabled: false } : null,
     firstRun: d.firstRun ? { roles } : null,
@@ -723,7 +732,7 @@ export effect function composeProduct(request: ComposeRequest) {
     claims,
   }
   try mapError(files.writeFileString(path.join(request.output, "physical-product.json"), `${JSON.stringify(record, null, 2)}\n`, { flag: "wx" }), (cause) => new ProductInputUnreadable({ place: request.output, message: cause.message }))
-  if (request.deferredSoong === true) try finalizeNative(request.output)
+  if (staged.conversion === "ConversionPending") try finalizeNative(request.output)
   return record
 }
 

@@ -72,7 +72,10 @@ export effect function readBackCheckouts(now: number): number!!CloudContext {
   const due = store.transaction((tx) => tx.query(
     "SELECT key, organization_id FROM checkouts WHERE status IN ('opening', 'open') AND next_readback_at <= $1 ORDER BY next_readback_at, key LIMIT $2",
     [now, readBackBatch]
-  )) catch () => []
+  )) catch effect (failure) => {
+    try annotateLogs(logWarning("the checkouts due for read-back could not be listed"), { failure: failure._tag })
+    return []
+  }
   let visited = 0
   for (const row of due) {
     const commandId = toText(row.key) ?? ""

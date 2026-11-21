@@ -1,0 +1,36 @@
+type eliza_sense_app, domain, coredomain;
+app_domain(eliza_sense_app)
+
+type eliza_sense_app_data_file, file_type, data_file_type, core_data_file_type, app_data_file_type;
+allow eliza_sense_app eliza_sense_app_data_file:dir create_dir_perms;
+allow eliza_sense_app eliza_sense_app_data_file:file create_file_perms;
+
+allow eliza_sense_app {
+    accessibility_service
+    activity_service
+    activity_task_service
+    content_service
+    display_service
+    input_method_service
+    input_service
+    notification_service
+    package_service
+    permissionmgr_service
+    power_service
+    surfaceflinger_service
+    user_service
+    window_service
+}:service_manager find;
+
+allow eliza_sense_app {
+    appops_service
+    audio_service
+    audioserver_service
+    mediametrics_service
+    permission_service
+    permission_checker_service
+}:service_manager find;
+
+neverallow eliza_sense_app self:{ tcp_socket udp_socket rawip_socket icmp_socket packet_socket } {
+    create connect bind listen accept
+};
