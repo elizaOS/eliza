@@ -75,9 +75,10 @@ function isWholeDayTitleLookup(
   );
 }
 
-function scopedBuiltInSlotWindow(
+function literalSlotWindow(
   message: Memory,
   observedAt: number | undefined,
+  source: "builtin" | undefined,
   expectedTopic?: string,
 ) {
   const { metadata, text } = message.content;
@@ -91,7 +92,13 @@ function scopedBuiltInSlotWindow(
     typeof text === "string" &&
     typeof timeZone === "string" &&
     typeof observedAt === "number"
-    ? parseScopedCalendarSlotWindow(text, timeZone, observedAt, expectedTopic)
+    ? parseScopedCalendarSlotWindow(
+        text,
+        timeZone,
+        observedAt,
+        source,
+        expectedTopic,
+      )
     : undefined;
 }
 
@@ -242,6 +249,32 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         item.purpose !== "mutation_prerequisite"
       )
         return null;
+      // An exact slot request can prove that the interval is the search window.
+      // A plain availability check of that whole interval would answer a different question.
+      if (
+        value.length === 1 &&
+        ctx.senderRole === "OWNER" &&
+        item.operation === "check_availability" &&
+        item.execution === "required" &&
+        (item.purpose === undefined ||
+          item.purpose === "requested_read" ||
+          item.purpose === "mutation_prerequisite") &&
+        Array.isArray(item.filterEvidence) &&
+        item.filterEvidence.length === 0 &&
+        !item.singleDaySearchDate &&
+        currentAppRecordSource(ctx.runtime, "calendar", ctx.message) ===
+          "runtime" &&
+        literalSlotWindow(ctx.message, ctx.message.createdAt, undefined)
+      ) {
+        reads.push({
+          intentId,
+          operation: "propose_times",
+          execution: "required",
+          purpose: "requested_read",
+          filterEvidence: [],
+        });
+        continue;
+      }
       if (
         item.purpose === "mutation_prerequisite" &&
         item.operation !== "search_events" &&
@@ -327,7 +360,7 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         const evidence = item.filterEvidence;
         if (
           operation !== "propose_times" ||
-          source !== "builtin" ||
+          read.purpose === "mutation_prerequisite" ||
           read.execution !== "required" ||
           value.length !== 1 ||
           ctx.senderRole !== "OWNER" ||
@@ -340,7 +373,7 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
           evidence[0].quote !== evidence[0].query ||
           currentAppRecordSource(ctx.runtime, "calendar", ctx.message) !==
             "runtime" ||
-          !scopedBuiltInSlotWindow(ctx.message, observedAt, evidence[0].query)
+          !literalSlotWindow(ctx.message, observedAt, source, evidence[0].query)
         ) {
           return null;
         }
@@ -534,9 +567,10 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
     const domains = plan.contexts?.filter(
       (context) => context !== SIMPLE_CONTEXT_ID,
     );
-    const singleBuiltInRead =
+    const singleCalendarRead =
       bindings.length === 1 &&
-      read?.source === "builtin" &&
+      read &&
+      read.purpose !== "mutation_prerequisite" &&
       read.execution === "required" &&
       !prerequisites.length &&
       !wholeRequestOwner &&
@@ -553,7 +587,7 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
       calendarId: ELIZA_CALENDAR_ID,
     };
     let deterministicToolCall: typeof plan.deterministicToolCall;
-    if (singleBuiltInRead) {
+    if (singleCalendarRead && read.source === "builtin") {
       if (read.operation === "next_event" && read.plainNextEvent) {
         deterministicToolCall = {
           name: CALENDAR_READ_ACTIONS.next_event,
@@ -568,17 +602,20 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
           name: CALENDAR_READ_ACTIONS.search_events,
           params: { ...calendar, query: read.filterEvidence[0].query },
         };
-      } else if (
-        read.operation === "propose_times" &&
-        currentAppRecordSource(runtime, "calendar", message) === "runtime"
-      ) {
-        const window = scopedBuiltInSlotWindow(message, read.requestedAt);
-        if (window)
-          deterministicToolCall = {
-            name: CALENDAR_READ_ACTIONS.propose_times,
-            params: { ...calendar, ...window },
-          };
       }
+    }
+    if (
+      singleCalendarRead &&
+      read.operation === "propose_times" &&
+      currentAppRecordSource(runtime, "calendar", message) === "runtime"
+    ) {
+      const window = literalSlotWindow(message, read.requestedAt, read.source);
+      if (window)
+        deterministicToolCall = {
+          name: CALENDAR_READ_ACTIONS.propose_times,
+          params:
+            read.source === "builtin" ? { ...calendar, ...window } : window,
+        };
     }
     return {
       ...(deterministicToolCall

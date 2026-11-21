@@ -380,6 +380,26 @@ describe("Calendar operation bindings", () => {
       },
     };
     expect(await route(text)).toEqual(expected);
+    const unscoped =
+      "Find a thirty-minute opening tomorrow between noon and five p.m. for a grocery run.";
+    expect(await route(unscoped, {})).toEqual({
+      name: "CALENDAR_PROPOSE_TIMES",
+      params: {
+        windowStart: "2026-11-21T20:00:00.000Z",
+        windowEnd: "2026-11-22T01:00:00.000Z",
+        durationMinutes: 30,
+        timeZone: "America/Los_Angeles",
+      },
+    });
+    expect(await route(unscoped)).toBeUndefined();
+    for (const nonliteral of [
+      "Find a 30-minute opening tomorrow between noon and five p.m. on my Google calendar.",
+      "Find a 30-minute opening tomorrow between noon and five p.m. for a grocery run, then book it.",
+      "Find a 30-minute opening tomorrow between noon and five p.m. for when Maya is free.",
+      "Find a 30-minute opening tomorrow between noon and five p.m. for a run after work.",
+    ]) {
+      expect(await route(nonliteral, {})).toBeUndefined();
+    }
     expect(
       await route(
         "Find a 20 minute slot for groceries tomorrow between noon and 5 on my built in Eliza calendar.",
@@ -466,6 +486,42 @@ describe("Calendar operation bindings", () => {
     ).toEqual([
       expect.objectContaining({ intentId: "intent:1", filterEvidence: [] }),
     ]);
+    const capture = {
+      ...binding,
+      operation: "check_availability",
+      purpose: "mutation_prerequisite",
+      filterEvidence: [],
+    };
+    const unscoped =
+      "Find a thirty-minute opening tomorrow between noon and five p.m. for a grocery run.";
+    const exactContext = {
+      ...ctx,
+      message: {
+        ...message,
+        content: { ...message.content, text: unscoped },
+      },
+    };
+    expect(calendarReadBindingField.parse?.([capture], exactContext)).toEqual([
+      {
+        intentId: "intent:1",
+        operation: "propose_times",
+        execution: "required",
+        purpose: "requested_read",
+        filterEvidence: [],
+      },
+    ]);
+    expect(
+      calendarReadBindingField.parse?.([capture], {
+        ...exactContext,
+        message: {
+          ...exactContext.message,
+          content: {
+            ...exactContext.message.content,
+            text: `${unscoped} Then book it.`,
+          },
+        },
+      }),
+    ).toBeNull();
     for (const filterEvidence of [
       [{ ...purpose, query: "doctor" }],
       [{ ...purpose, origin: "referent" }],

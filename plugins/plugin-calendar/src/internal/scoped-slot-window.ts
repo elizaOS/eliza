@@ -44,7 +44,9 @@ const tensWords = [
   "ninety",
 ];
 const slotRequest =
-  /^(?:find(?: me)?|show me|suggest) (?:a )?(?<duration>\d{1,3}|[a-z]+(?:[ -][a-z]+)?)[ -]minutes? (?:slot|gap|opening)(?: for (?<topic>[\p{L}\p{M}]+))? (?<window>.+) (?:on|in) (?:my|the) built[ -]in (?:eliza )?calendar$/u;
+  /^(?:find(?: me)?|show me|suggest) (?:a )?(?<duration>\d{1,3}|[a-z]+(?:[ -][a-z]+)?)[ -]minutes? (?:slot|gap|opening)(?: for (?<topic>[\p{L}\p{M}]+))? (?<window>.+?)(?: for (?<purpose>(?:(?:a|an) )?[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)?))?(?<builtin> (?:on|in) (?:my|the) built[ -]in (?:eliza )?calendar)?$/u;
+const purposeConstraint =
+  /\b(?:today|tomorrow|yesterday|next|last|before|after|during|until|between|unless|if|when|while|then|and|or|with|without|except|on|in|at|past|not|only|calendar|noon|midnight)\b/u;
 const day = String.raw`(?:today|tomorrow|(?:the )?day after tomorrow|\d{4}-\d{2}-\d{2})`;
 const leadingDay = new RegExp(`^(${day}) (.+)$`, "u");
 const trailingDay = new RegExp(`^(.+?) (${day})$`, "u");
@@ -97,11 +99,12 @@ function slotClockOptions(text: string): StatedClockTime[] {
     : [{ hour, minute }];
 }
 
-/** Only a complete, explicit built-in slot request can skip the normal planner. */
+/** Parses a complete availability request for the already bound Calendar source. */
 export function parseScopedCalendarSlotWindow(
   text: string,
   timeZone: string,
   observedAt: number,
+  source: "builtin" | undefined,
   expectedTopic?: string,
 ):
   | {
@@ -114,18 +117,27 @@ export function parseScopedCalendarSlotWindow(
   const input = slotRequest.exec(
     normalizeText(text).replace(/[.!?]$/u, ""),
   )?.groups;
+  const topic = input?.topic ?? input?.purpose;
   if (
     !input?.duration ||
     !input.window ||
+    Boolean(input.builtin) !== (source === "builtin") ||
+    (input.topic && (!input.builtin || input.purpose)) ||
     (expectedTopic !== undefined &&
-      input.topic !== normalizeText(expectedTopic)) ||
+      topic?.replace(/^(?:a|an) /u, "") !==
+        normalizeText(expectedTopic).replace(/^(?:a|an) /u, "")) ||
     !Number.isFinite(observedAt) ||
     !isValidTimeZone(timeZone)
   )
     return;
   const now = new Date(observedAt);
   // A date in the label is another constraint, not a topic for the slot.
-  if (input.topic && parseExplicitLocalDate(input.topic, timeZone, now)) return;
+  if (
+    topic &&
+    (purposeConstraint.test(topic) ||
+      parseExplicitLocalDate(topic, timeZone, now))
+  )
+    return;
   const durationMinutes = quantity(input.duration);
   if (
     durationMinutes < CALENDAR_NEW_SLOT_DURATION_MINUTES.min ||
