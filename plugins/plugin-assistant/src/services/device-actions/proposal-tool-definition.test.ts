@@ -771,16 +771,17 @@ describe("PROPOSE_DEVICE_ACTION as it is sent to a model", () => {
 
   it("stays within its size on a Home owner turn and for the capabilities alone", async () => {
     // A few percent above the present size, so a rule restated per operation
-    // or a branch per form does not fit.
+    // or a branch per form does not fit. The Home turn includes the four
+    // photo library operations photos.library.v1 offers, as do both bounds.
     const home = (await ownerTurn(HOME)).sent;
-    expect(home && sentSize(home)).toBeLessThanOrEqual(24_400);
+    expect(home && sentSize(home)).toBeLessThanOrEqual(26_900);
     expect(
       sentSize(
         asSent(
           deviceActionForCapabilities(proposeDeviceAction, PHONE_CAPABILITIES),
         ),
       ),
-    ).toBeLessThanOrEqual(34_000);
+    ).toBeLessThanOrEqual(36_500);
   });
 
   it("names no capability the phone negotiated", async () => {

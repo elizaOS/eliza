@@ -12,6 +12,19 @@ import { canonicalNotesListContextAllowed } from "@elizaos/contracts";
 import { type NotesTarget, notesTarget } from "./notes-contract.ts";
 
 export const NOTES_ORGANIZE_CAPABILITY = "notes.organize.v1";
+/** Voice recording alone. It needs no folders and no local Notes record, so a phone whose
+ * Notes are the agent's own can still start and stop a voice note. */
+export const NOTES_RECORD_CAPABILITY = "notes.record.v1";
+/** `notes_record` is offered with its own capability, or with the full organise set as before. */
+export function notesRecordCapabilityAvailable(
+  capabilities: readonly string[] | undefined,
+): boolean {
+  return (
+    capabilities?.includes(NOTES_RECORD_CAPABILITY) === true ||
+    (capabilities?.includes(NOTES_ORGANIZE_CAPABILITY) === true &&
+      capabilities.includes("notes.local-record.v1"))
+  );
+}
 export const NOTES_KINDS = ["text", "list", "voice", "link"] as const;
 export type NotesKind = (typeof NOTES_KINDS)[number];
 export const NOTES_FOLDER_NAME_MAX = 40;

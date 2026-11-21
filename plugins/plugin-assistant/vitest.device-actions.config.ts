@@ -13,6 +13,7 @@ export default defineConfig({
       "test/completed-navigation-schema.test.ts",
       "test/device-actions.e2e.test.ts",
       "test/photos-filter.e2e.test.ts",
+      "test/photo-library-proposal.e2e.test.ts",
       "test/files-negotiation.e2e.test.ts",
       "test/browser-request-grounding.pglite.test.ts",
       "test/telephony-target-grounding.pglite.test.ts",

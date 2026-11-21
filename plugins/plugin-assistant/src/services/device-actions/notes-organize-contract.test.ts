@@ -11,6 +11,7 @@ import {
   NOTES_ORGANIZE_CAPABILITY,
   NOTES_ORGANIZE_DIRECT_TYPES,
   NOTES_ORGANIZE_TYPES,
+  NOTES_RECORD_CAPABILITY,
   notesFolderName,
   notesOrganizeContextAllowed,
   validateNotesOrganizeOperation,
@@ -251,6 +252,15 @@ describe("notes organize contract", () => {
     expect(deviceOperationSupportedByCapabilities("notes_query", full)).toBe(
       false,
     );
+  });
+
+  it("offers voice recording alone with notes.record.v1", () => {
+    expect(NOTES_RECORD_CAPABILITY).toBe("notes.record.v1");
+    // A phone whose Notes are the agent's own has no local record and no folders.
+    for (const type of NOTES_ORGANIZE_TYPES)
+      expect(
+        deviceOperationSupportedByCapabilities(type, [NOTES_RECORD_CAPABILITY]),
+      ).toBe(type === "notes_record");
   });
 
   it("describes each change for the review card", () => {

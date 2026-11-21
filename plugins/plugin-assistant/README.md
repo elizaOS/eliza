@@ -269,7 +269,11 @@ still match. A prior or uncertain request is not replayed. Camera permissions
 remain controlled by the device. Clients without this capability do not receive
 the operation in their tool schema. A device that also negotiates
 `camera.capture-lens.v1` can receive `lens: "front"` or `lens: "back"`; without
-it the phone uses the camera that is showing.
+it the phone uses the camera that is showing. A device that negotiates
+`camera.capture-library-id.v1` may add `libraryId`, the saved photo's Photos
+library id, to the receipt so the agent can open or share that photo with the
+Photos operations. The shared client coordinator removes the id for an agent
+that did not negotiate the capability.
 
 The agent reaches the capture through `DEVICE_CAMERA_CAPTURE`, a
 single-operation tool over the same proposal path. Opening the Camera view does
