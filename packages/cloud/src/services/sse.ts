@@ -238,12 +238,16 @@ export function lawDecodingDoesNotDependOnChunking(d: Utf8, a: number[], b: numb
 
 export function decode(d: Utf8, chunk: number[]): Decoded {
   //@ ensures \result === decoded(d, chunk)
+  //@ ensures utf8Ok(d) ==> utf8Ok(\result.decoder)
+  //@ ensures utf8Ok(d) ==> forall(k, 0 <= k && k < \result.codePoints.length ==> isScalar(\result.codePoints[k]))
   let current = d
   let out: number[] = []
   let i = 0
   while (i < chunk.length) {
     //@ invariant 0 <= i && i <= chunk.length
     //@ invariant decoded(d, chunk.slice(0, i)) === { decoder: current, codePoints: out }
+    //@ invariant utf8Ok(d) ==> utf8Ok(current)
+    //@ invariant utf8Ok(d) ==> forall(k, 0 <= k && k < out.length ==> isScalar(out[k]))
     //@ assert chunk.slice(0, i + 1).slice(0, i) === chunk.slice(0, i)
     const r = pushUtf8(current, chunk[i])
     if (r.codePoints.length > 0) out.push(r.codePoints[0])

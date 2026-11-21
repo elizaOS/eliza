@@ -4,6 +4,7 @@ import { FetchHttpClient } from "effect/http"
 import { addCredits } from "../../src/billing/funds.vibe"
 import { issueSession } from "../../src/identity/sessions.vibe"
 import { setModelPrice } from "../../src/services/models.vibe"
+import { abort, chunkFrame, feed, finish, isDone, segmenter, utf8Text, type Fed, type Segmenter } from "../../src/services/sse.ts"
 import { Store } from "../../src/store/connection.vibe"
 import { Deployment, deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
 import { complete, stream, type LlmFailure, type LlmProvider } from "../../src/providers/llm.vibe"
@@ -42,10 +43,20 @@ effect function adapter() {
 
 const request = { model: upstreamModel, messages: [{ role: "user", content: "Say hello" }], max_tokens: 16 }
 
-effect function text(bytes: Stream.Stream<Uint8Array, LlmFailure>): string!LlmFailure {
-  const decoder = new TextDecoder()
-  const chunks = try Stream.runCollect(bytes)
-  return Array.from(chunks, (chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode()
+function segmented(chunks: ReadonlyArray<ReadonlyArray<number>>, end: (state: Segmenter) => Fed): ReadonlyArray<string> {
+  let state = segmenter()
+  const events: number[][] = []
+  for (const chunk of chunks) {
+    const next = feed(state, [...chunk])
+    state = next.segmenter
+    events.push(...next.events)
+  }
+  events.push(...end(state).events)
+  return events.map((event) => isDone(event) ? "[DONE]" : String.fromCodePoint(...utf8Text(event)))
+}
+
+function bytesOf(text: string): number[] {
+  return [...new TextEncoder().encode(text)]
 }
 
 describe("WP5 Inference: provider adapter", () => {
@@ -82,7 +93,10 @@ describe("WP5 Inference: provider adapter", () => {
     const { llm, provider, layer } = try adapter()
     provide layer {
       try sync(() => llm.script({ kind: "stream" }, { kind: "hang", after: 2 }))
-      const whole = try text(try stream(provider, { ...request, stream_options: { include_usage: false } }))
+      const chunks = Array.from(try Stream.runCollect(try stream(provider, { ...request, stream_options: { include_usage: false } })), (chunk) => [...chunk])
+      const whole = new TextDecoder().decode(Uint8Array.from(chunks.flat()))
+      const events = segmented(chunks, finish)
+      const cut = bytesOf("data: {\"a\":1}\n\ndata: {\"b\"")
       const hanging = try stream(provider, request)
       const firstBytes = try Deferred.make<void>()
       const decoder = new TextDecoder()
@@ -96,8 +110,21 @@ describe("WP5 Inference: provider adapter", () => {
       const ended = try outcome(Fiber.join(reading))
       try promise(() => llm.untilAborted(1))
       try check(() => assert.deepStrictEqual(
-        { whole, ended, aborted: llm.aborted, forced: llm.bodies.map((body) => body.stream_options) },
-        { whole: streamText, ended: "interrupted", aborted: 1, forced: [{ include_usage: true }, { include_usage: true }] }
+        {
+          whole, ended, aborted: llm.aborted, forced: llm.bodies.map((body) => body.stream_options),
+          bytewise: events,
+          framed: events.map((event) => event === "[DONE]" ? doneFrame : chunkFrame(event)).join(""),
+          splitLines: segmented([bytesOf("data: {\"a\":\r\ndata: 1}\r"), bytesOf("\n\r\n: keep-alive\n\ndata:[DONE]\n\n")], finish),
+          invalidUtf8: segmented([[...bytesOf("data: "), 0xc3], [0x28, 0xed, 0xa0, 0x80, 0xf0, 0x9f], [0x98, 0x80, 0xe2, 10, 10]], finish),
+          atEnd: segmented([cut], finish),
+          atAbort: segmented([cut], () => feed(abort(), [10, 10]))
+        },
+        {
+          whole: streamText, ended: "interrupted", aborted: 1, forced: [{ include_usage: true }, { include_usage: true }],
+          bytewise: segmented(bytesOf(streamText).map((byte) => [byte]), finish), framed: streamText,
+          splitLines: ["{\"a\":\n1}", "[DONE]"], invalidUtf8: ["�(���\u{1F600}�"],
+          atEnd: ["{\"a\":1}", "{\"b\""], atAbort: ["{\"a\":1}"]
+        }
       ))
     }
   }))
