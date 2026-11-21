@@ -10,7 +10,11 @@
  *    next 30 minutes.
  */
 import { PGlite } from "@electric-sql/pglite";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  bindIncomingMessagePersistence,
+  type IAgentRuntime,
+  type Memory,
+} from "@elizaos/core";
 import { RuntimeMigrator } from "@elizaos/plugin-sql";
 import { drizzle } from "drizzle-orm/pglite";
 import {
@@ -127,11 +131,15 @@ async function send(
   text: string,
   parameters: Record<string, unknown>,
   extracted: Record<string, unknown> = {},
+  delivery?: { renderedText: string; id?: string },
 ) {
   sequence += 1;
-  const id = `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`;
+  const id =
+    delivery?.id ??
+    `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`;
   const message = {
     id,
+    agentId: runtime.agentId,
     entityId: OWNER,
     roomId: ROOM,
     createdAt: Date.now(),
@@ -146,6 +154,14 @@ async function send(
     },
   } as Memory;
   roomMessages.push(message);
+  const routed =
+    delivery === undefined
+      ? message
+      : {
+          ...message,
+          content: { ...message.content, text: delivery.renderedText },
+        };
+  if (routed !== message) bindIncomingMessagePersistence(routed, message);
   const result = await createCalendarActionRunner({
     runTextModel: vi.fn(async () => null),
     runJsonModel: vi.fn(async ({ actionType }: { actionType: string }) =>
@@ -154,7 +170,7 @@ async function send(
         : null,
     ),
     recentConversationTexts: vi.fn(async () => []),
-  } as never).handler(runtime, message, undefined, { parameters });
+  } as never).handler(runtime, routed, undefined, { parameters });
   vi.setSystemTime(new Date(Date.now() + 60_000));
   return result;
 }
@@ -349,6 +365,28 @@ describe("a declined delete question stays declined", {
     expect(await events()).toHaveLength(1);
   });
 
+  it("uses the bound owner answer when a delete is planned again by title", async () => {
+    await ask();
+    const delivery = {
+      renderedText: "The current view is Calendar.",
+      id: crypto.randomUUID(),
+    };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const declined = await send(
+        "No, keep v613 check review.",
+        {
+          subaction: "delete_event",
+          query: "v613 check review",
+          details: { timeZone: ZONE },
+        },
+        {},
+        delivery,
+      );
+      expect(declined?.data).toMatchObject({ declined: true });
+      expect(await events()).toHaveLength(1);
+    }
+  });
+
   it("a yes that is not about the question deletes nothing", async () => {
     const event = await ask();
     const unrelated = await send(
@@ -368,6 +406,18 @@ describe("a declined delete question stays declined", {
     const event = await ask();
     const confirmed = await send(answer, confirm(event.externalId));
     expect(confirmed?.success, JSON.stringify(confirmed?.text)).toBe(true);
+    expect(await events()).toHaveLength(0);
+  });
+
+  it("uses the bound affirmative answer when Calendar renders context around the turn", async () => {
+    const event = await ask();
+    const confirmed = await send(
+      "Yes.",
+      confirm(event.externalId),
+      {},
+      { renderedText: "The current view is Calendar." },
+    );
+    expect(confirmed?.success).toBe(true);
     expect(await events()).toHaveLength(0);
   });
 });

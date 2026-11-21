@@ -1,6 +1,7 @@
 /** The owner's own words for a Notes turn. */
 import {
   extractUserText,
+  incomingMessagePersistenceSnapshot,
   type Memory,
   unwrapUserMessageText,
 } from "@elizaos/core";
@@ -14,5 +15,8 @@ import {
  * envelope. Both are removed here; armor debris yields "", which names nothing.
  */
 export function ownerRequestText(message: Memory): string {
-  return extractUserText(unwrapUserMessageText(message));
+  const original = incomingMessagePersistenceSnapshot(message);
+  return original
+    ? unwrapUserMessageText(original)
+    : extractUserText(unwrapUserMessageText(message));
 }

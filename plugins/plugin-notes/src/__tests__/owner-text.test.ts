@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   type ActionResult,
+  bindIncomingMessagePersistence,
   type IAgentRuntime,
   promoteSubactionsToActions,
   stringToUuid,
@@ -167,13 +168,25 @@ test("a note the owner names inside the envelope still routes to that note", asy
       await f.service.createNoteWithCommit({ content: "Settings\nbody" })
     ).value;
     const routed = await f.augment(owner);
-    for (const text of [owner, routed]) {
+    const request = await boundNotesRequest(f.runtime, {
+      text: "The current view is Notes.",
+      operations: ["get"],
+    });
+    bindIncomingMessagePersistence(request.message, {
+      ...request.message,
+      content: { ...request.message.content, text: owner },
+    });
+    for (const message of [
+      { content: { text: owner } },
+      { content: { text: routed } },
+      request.message,
+    ]) {
       expect(
         (
           namedNoteReadEvaluator as unknown as {
             evaluate: (input: unknown) => unknown;
           }
-        ).evaluate({ runtime: f.runtime, message: { content: { text } } }),
+        ).evaluate({ runtime: f.runtime, message }),
       ).toMatchObject({
         deterministicToolCall: {
           name: "NOTES_GET",
