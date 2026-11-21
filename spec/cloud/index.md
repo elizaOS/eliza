@@ -34,9 +34,11 @@ pure def lawDuplicateCannotSpendAgain(authenticated: bool, dispatched: bool): bo
 
 The caller can see each complete data frame while the provider is still
 working. Frames remain whole across upstream chunks, including split UTF-8
-characters. The cloud bounds frame and response size and ends a complete
-answer with `[DONE]`. A definite provider rejection before the stream starts
-is an HTTP refusal. A truncated or unreadable stream ends with an error frame.
+characters. The cloud bounds frame and response size. A finished answer ends
+with one `[DONE]`, preceded by one reported usage chunk if the caller asked
+for it. A definite provider rejection before the stream starts is an HTTP
+refusal. A truncated or unreadable stream sends one error frame and then
+`[DONE]`.
 The same hold settles at the billed cost when usable counts were reported,
 or at the quote when the usage is unknown. A caller disconnect releases the
 provider connection and settles the hold using the counts already observed.

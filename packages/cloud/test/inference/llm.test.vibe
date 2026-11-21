@@ -180,28 +180,32 @@ it.live("Fund chat once and stream live complete frames, even when delivery ends
   const unsupported = try call(3, { ...chatRequest, model: "unpriced" })
   const insufficient = try call(4, chatRequest, empty.headers)
   const noHolds = try usageRows(cloud)
-  try sync(() => llm.script({ kind: "whole" }, { kind: "stream" }, { kind: "streamWithoutUsage" }, { kind: "truncated" }, { kind: "malformedFrame" }, { kind: "oversizedFrame" }, { kind: "refuse", retryAfterSeconds: 7 }, { kind: "hang", after: 2 }))
+  try sync(() => llm.script({ kind: "whole" }, { kind: "stream", duplicateUsage: true }, { kind: "streamWithoutUsage" },
+    { kind: "truncated" }, { kind: "malformedFrame" }, { kind: "oversizedFrame" }, { kind: "refuse", retryAfterSeconds: 7 },
+    { kind: "stream" }, { kind: "truncated", reportUsage: true }, { kind: "hang", after: 2 }))
   const worked = try Effect.all([call(5), call(5)], { concurrency: "unbounded" })
   const first = worked.find((answer) => answer.status === 200)
   if (first === undefined) throw new Error("Neither request admitted the funded chat")
   const duplicate = try call(5, { ...chatRequest, messages: [{ role: "user", content: "Do not spend twice" }] }, { authorization: `Bearer ${session.accessToken}` })
-  const textStream = (n: number) => call(n, { ...chatRequest, stream: true })
-  const streamed = try textStream(6)
-  const noUsage = try textStream(7)
+  const textStream = (n: number, includeUsage = false) => call(n, { ...chatRequest, stream: true, ...(includeUsage ? { stream_options: { include_usage: true } } : {}) })
+  const streamed = try textStream(6, true)
+  const noUsage = try textStream(7, true)
   const truncated = try textStream(8)
   const malformedFrame = try textStream(9)
   const oversizedFrame = try textStream(10)
   const refused = try textStream(11)
-  const live = try promise(() => openChat(cloud.url, caller.headers, chatKey(12)))
+  const usageNotAsked = try textStream(12)
+  const reportedBeforeFailure = try textStream(13, true)
+  const live = try promise(() => openChat(cloud.url, caller.headers, chatKey(14)))
   const partial = try promise(async () => {
     const chunk = await live.reader.read()
     return new TextDecoder().decode(chunk.value)
   })
-  const beforeCancel = (try usageRows(cloud)).find((row) => row.request === chatKey(12))
+  const beforeCancel = (try usageRows(cloud)).find((row) => row.request === chatKey(14))
   try promise(() => live.reader.cancel())
   try timeout(promise(() => llm.untilAborted(1)), "10 seconds")
   let settled = try usageRows(cloud)
-  for (let attempt = 0; settled.find((row) => row.request === chatKey(12))?.phase !== "settled" && attempt < 80; attempt += 1) {
+  for (let attempt = 0; settled.find((row) => row.request === chatKey(14))?.phase !== "settled" && attempt < 80; attempt += 1) {
     try sleep("25 millis")
     settled = try usageRows(cloud)
   }
@@ -211,8 +215,10 @@ it.live("Fund chat once and stream live complete frames, even when delivery ends
       [[401, "authentication_required"], [400, "invalid_request"], [413, "content_too_large"], [400, "model_unavailable"], [402, "insufficient_credits"], []])
     assert.deepStrictEqual({ answer: first.body, results: worked.map((result) => result.status).sort(), duplicate: code(duplicate) },
       { answer: wholeAnswer, results: [200, 409], duplicate: [409, "already_dispatched"] })
-    assert.deepStrictEqual([streamed.headers["content-type"], streamed.body, noUsage.body, truncated.body, malformedFrame.body, oversizedFrame.body, code(refused)],
-      ["text/event-stream", streamText, contentFrames.join("") + doneFrame, contentFrames.join("") + streamError, contentFrames[0] + streamError, streamError, [503, "provider_unavailable"]])
+    const errorEnd = streamError + doneFrame
+    assert.deepStrictEqual([streamed.headers["content-type"], streamed.body, noUsage.body, truncated.body, malformedFrame.body, oversizedFrame.body, code(refused), usageNotAsked.body, reportedBeforeFailure.body],
+      ["text/event-stream", streamText, contentFrames.join("") + doneFrame, contentFrames.join("") + errorEnd, contentFrames[0] + errorEnd, errorEnd,
+        [503, "provider_unavailable"], contentFrames.join("") + doneFrame, contentFrames.join("") + errorEnd])
     assert.isAbove(Number(refused.headers["retry-after"]), 0)
     assert.deepStrictEqual([live.status, live.type, partial.startsWith(contentFrames[0] ?? ""), beforeCancel?.phase, llm.aborted],
       [200, "text/event-stream", true, "dispatched", 1])
@@ -220,11 +226,12 @@ it.live("Fund chat once and stream live complete frames, even when delivery ends
       [chatKey(5), "settled", "known", 40, 31], [chatKey(6), "settled", "known", 40, 31],
       [chatKey(7), "settled", "unknown", 40, 40], [chatKey(8), "settled", "unknown", 40, 40],
       [chatKey(9), "settled", "unknown", 40, 40], [chatKey(10), "settled", "unknown", 40, 40],
-      [chatKey(11), "settled", "known", 40, 0], [chatKey(12), "settled", "unknown", 40, 40],
+      [chatKey(11), "settled", "known", 40, 0], [chatKey(12), "settled", "known", 40, 31],
+      [chatKey(13), "settled", "known", 40, 31], [chatKey(14), "settled", "unknown", 40, 40],
     ])
     assert.deepStrictEqual(llm.bodies, [
       request,
-      ...Array.from({ length: 7 }, () => ({ ...request, stream: true, stream_options: { include_usage: true } })),
+      ...Array.from({ length: 9 }, () => ({ ...request, stream: true, stream_options: { include_usage: true } })),
     ])
   })
 }), 45_000)

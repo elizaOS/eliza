@@ -6,9 +6,9 @@ export const upstreamModel = "upstream-chat";
 
 export type LlmScript =
   | { readonly kind: "whole" }
-  | { readonly kind: "stream" }
+  | { readonly kind: "stream"; readonly duplicateUsage?: boolean }
   | { readonly kind: "streamWithoutUsage" }
-  | { readonly kind: "truncated" }
+  | { readonly kind: "truncated"; readonly reportUsage?: boolean }
   | { readonly kind: "malformedFrame" }
   | { readonly kind: "oversizedFrame" }
   | { readonly kind: "refuse"; readonly retryAfterSeconds?: number }
@@ -79,11 +79,11 @@ function answerFor(script: LlmScript, cut: () => void): FakeAnswer {
     case "whole":
       return { status: 200, body: wholeAnswer };
     case "stream":
-      return { status: 200, chunks: streamChunks };
+      return { status: 200, chunks: script.duplicateUsage ? splitMidCodePoint([...contentFrames, usageFrame, usageFrame, doneFrame, doneFrame].join("")) : streamChunks };
     case "streamWithoutUsage":
       return { status: 200, chunks: [...contentFrames, doneFrame] };
     case "truncated":
-      return { status: 200, chunks: contentFrames };
+      return { status: 200, chunks: script.reportUsage ? [...contentFrames, usageFrame] : contentFrames };
     case "malformedFrame":
       return { status: 200, chunks: [contentFrames[0] + frame("not JSON"), doneFrame] };
     case "oversizedFrame":

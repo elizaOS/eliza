@@ -50,10 +50,17 @@ effect function settleAfterClose(holdKey: string, settlement: Settlement): void!
   }
 }
 
-function meteredStream(upstream: Stream.Stream<Uint8Array, LlmFailure>, model: Model, holdKey: string, store: typeof Store.Service) {
+function meteredStream({ upstream, model, holdKey, store, includeUsage }: {
+  readonly upstream: Stream.Stream<Uint8Array, LlmFailure>
+  readonly model: Model
+  readonly holdKey: string
+  readonly store: typeof Store.Service
+  readonly includeUsage: boolean
+}) {
   let pending = segmenter()
   let total = 0
   let actual: number | undefined
+  let usageFrame = ""
   let settled = false
 
   const delivered = Stream.flatMap(upstream, (chunk) => {
@@ -77,20 +84,27 @@ function meteredStream(upstream: Stream.Stream<Uint8Array, LlmFailure>, model: M
     if (isDone(frame)) {
       try settle(holdKey, outcome(actual))
       settled = true
-      return encoder.encode(doneFrame)
+      return encoder.encode(usageFrame + doneFrame)
     }
     const payload = readLlmObject(decoder.decode(Uint8Array.from(frame)))
     if (payload === undefined || !Array.isArray(payload.choices)) throw new ProviderInvalidResponse()
-    if (payload.usage != null) actual = (try priceUsage(model, payload.usage)) ?? actual
-    return encoder.encode(chunkFrame(JSON.stringify(payload)))
-  }))
+    const { usage, ...delta } = payload
+    if (usage != null) {
+      const billed = try priceUsage(model, usage)
+      if (billed !== undefined) {
+        actual = billed
+        if (includeUsage) usageFrame = chunkFrame(JSON.stringify({ ...delta, choices: [], usage }))
+      }
+    }
+    return payload.choices.length === 0 ? undefined : encoder.encode(chunkFrame(JSON.stringify(delta)))
+  })).pipe(Stream.filter((bytes) => bytes !== undefined))
   const terminal = Stream.suspend(() => settled ? Stream.empty : Stream.fail(new ProviderInvalidResponse()))
 
   return Stream.concat(replies, terminal).pipe(
     Stream.catch((failure) => Stream.fromEffect(effect {
       const refusal = failure instanceof ProviderInvalidResponse || failure instanceof ProviderUnreachable || failure instanceof ProviderTimedOut || failure instanceof ProviderRefused
         ? providerRefusal(failure, try Clock.currentTimeMillis) : refused("ServiceUnavailable")
-      return encoder.encode(errorFrame(JSON.stringify(refusalBody(refusal.refusal))))
+      return encoder.encode(errorFrame(JSON.stringify(refusalBody(refusal.refusal))) + doneFrame)
     })),
     Stream.ensuring(effect {
       if (!settled) try settleAfterClose(holdKey, outcome(actual))
@@ -135,7 +149,8 @@ effect function chat(context: RouteContext): HttpServerResponse.HttpServerRespon
         try settle(ticket.key, failureSettlement(failure))
         throw providerRefusal(failure, try Clock.currentTimeMillis)
       }
-      return HttpServerResponse.stream(meteredStream(upstream, model, ticket.key, store), { contentType: "text/event-stream", headers })
+      const bodyStream = meteredStream({ upstream, model, holdKey: ticket.key, store, includeUsage: body.stream_options?.include_usage === true })
+      return HttpServerResponse.stream(bodyStream, { contentType: "text/event-stream", headers })
     }
     const answer = complete(provider, payload) catch effect (failure) => {
       try settle(ticket.key, failureSettlement(failure))
