@@ -27,6 +27,9 @@ test.each([
   ],
   ['delete the Alpha check workflow', { op: 'remove', workflowName: 'Alpha check' }],
   ['remove workflow Alpha check', { op: 'remove', workflowName: 'Alpha check' }],
+  ['start a new workflow called Morning brief', { op: 'create', name: 'Morning brief' }],
+  // A name that merely starts with a descriptive word is still a name.
+  ['delete the New hires workflow', { op: 'remove', workflowName: 'New hires' }],
   ['list my workflows', { op: 'list', viewWording: false }],
   ['what workflows do I have?', { op: 'list', viewWording: false }],
   ['show my workflows', { op: 'list', viewWording: true }],
@@ -50,6 +53,16 @@ test.each([
   'create a note called Alpha device test',
   'call Alpha device test',
   'go to Alpha check',
+  // "start workflow named X" asks to run X.
+  'start workflow named Morning brief',
+  'start a workflow called Morning brief',
+  // These describe a workflow; the planner knows which one.
+  'delete the new workflow',
+  'remove this workflow',
+  'delete the last workflow',
+  'delete the workflow I just created',
+  'delete the other workflow',
+  'rename the old workflow to Archive',
 ])('leaves the rest to the planner: %s', (text) => {
   expect(authoredWorkflowRequest(text)).toBeUndefined();
 });
