@@ -1,6 +1,4 @@
 apply plugin: 'com.android.library'
-// Native Eliza Cloud sign-in client (ai.eliza.auth.cloud). Hosts subclass CloudSignInPlugin with
-// their registration and protected credential store; see packages/auth/README.md.
 android {
  namespace 'ai.eliza.auth.cloud'
  compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
