@@ -315,20 +315,43 @@ export function resolvePositivePlannerInt(
 }
 
 /**
+ * Host value for a planner output ceiling meaning "the model's own maximum":
+ * the planner sends no cap, so the provider's output limit applies.
+ */
+const PLANNER_MAX_TOKENS_MODEL = "model";
+
+/**
  * Resolve an explicitly configured planner output ceiling. A set override is
  * sent to every provider; a set-but-malformed one throws rather than silently
  * defaulting. Unset returns undefined: non-coding planning rounds then take
  * the per-attempt default from {@link plannerDefaultMaxTokens}, and coding
  * planners and reply-only synthesis rounds stay uncapped (the provider owns
- * its real output boundary).
+ * its real output boundary). The exact value `model` opts a host out of that
+ * default: no planner round sends a cap, so a round that stops at the model's
+ * own limit is not re-sent (a rate-limit re-send still is).
  */
-function resolvePlannerMaxTokens(codingMode: boolean): number | undefined {
+function resolvePlannerMaxTokens(
+  codingMode: boolean,
+): number | typeof PLANNER_MAX_TOKENS_MODEL | undefined {
   const envVarName = codingMode
     ? "ELIZA_CODING_PLANNER_MAX_TOKENS"
     : "ELIZA_PLANNER_MAX_TOKENS";
   const rawValue = process.env[envVarName];
   if (rawValue === undefined || rawValue === "") return undefined;
-  return resolvePositivePlannerInt(envVarName, rawValue, 1);
+  if (rawValue === PLANNER_MAX_TOKENS_MODEL) return PLANNER_MAX_TOKENS_MODEL;
+  if (!CANONICAL_POSITIVE_INTEGER.test(rawValue)) {
+    throw new ElizaError(
+      `${envVarName} must be a positive decimal integer (e.g. "8192") or "${PLANNER_MAX_TOKENS_MODEL}", got: ${JSON.stringify(
+        rawValue,
+      )}`,
+      {
+        code: "PLANNER_BUDGET_ENV_INVALID",
+        severity: "fatal",
+        context: { setting: envVarName, received: rawValue },
+      },
+    );
+  }
+  return Number(rawValue);
 }
 
 const PLANNER_DEFAULT_MAX_TOKENS = 8192;
@@ -357,6 +380,10 @@ const PLANNER_DEFAULT_MAX_TOKENS = 8192;
  *   thinking, and the model id is resolved inside plugin-anthropic. An
  *   `ANTHROPIC_MAX_OUTPUT_TOKENS` below 8192 would also make the plugin reject
  *   the explicit cap before dispatch.
+ *
+ * A host opts out with `ELIZA_PLANNER_MAX_TOKENS=model`: no attempt gets the
+ * default, and a runaway then runs to the model's own output limit with no
+ * re-send.
  */
 function plannerDefaultMaxTokens(
   attempt: ModelAttemptContext,
@@ -5385,9 +5412,11 @@ async function dispatchPlannerModelCall(params: {
         : params.trajectoryId,
     }),
   };
-  const configuredMaxTokens = resolvePlannerMaxTokens(
+  const plannerCap = resolvePlannerMaxTokens(
     params.trajectory.codingMode === true,
   );
+  const configuredMaxTokens =
+    typeof plannerCap === "number" ? plannerCap : undefined;
   if (configuredMaxTokens !== undefined) {
     modelParams.maxTokens = configuredMaxTokens;
   }
@@ -5395,7 +5424,7 @@ async function dispatchPlannerModelCall(params: {
   // generation stopped at this cap is retried.
   let attemptMaxTokens = configuredMaxTokens;
   if (
-    configuredMaxTokens === undefined &&
+    plannerCap === undefined &&
     params.trajectory.codingMode !== true &&
     params.allowReplyContextProjection !== true
   ) {
@@ -6877,17 +6906,37 @@ async function executeQueuedToolCall(params: {
   const isParameterValidationFailure = Array.isArray(
     (result.data as { parameterErrors?: unknown } | undefined)?.parameterErrors,
   );
-  const failureError = isParameterValidationFailure
-    ? "parameter_validation_failed"
-    : (result.error ?? diagnosticFailureReason(result));
+  // An action whose own model call sent no cap and still stopped at an output
+  // limit ran to the model's own maximum, and a re-call is likely to stop the
+  // same way at the same cost. The planner would re-call it until the
+  // repeated-failure limit (a 2026-11-20 eval turn: three identical reminder
+  // extractor cut-offs), so this failure ends the turn the first time. A
+  // cut-off under a cap that was sent keeps the ordinary budget. The settled
+  // handler error rides on `data.error`; `error` is its message.
+  const stoppedAtModelOutputLimit =
+    (!result.success || result.error != null) &&
+    [result.error, result.data?.error].some((candidate) => {
+      const evidence = modelOutputIncompleteEvidence(candidate);
+      return (
+        evidence?.maxTokens === null &&
+        isModelOutputLimitFinishReason(evidence.finishReason)
+      );
+    });
+  const failureError = stoppedAtModelOutputLimit
+    ? "model_output_limit"
+    : isParameterValidationFailure
+      ? "parameter_validation_failed"
+      : (result.error ?? diagnosticFailureReason(result));
   const failure = {
     toolName: params.toolCall.name,
     success: result.success,
     error: projectToolDiagnosticValue(failureError, redactDiagnosticText),
     failureProvenance: result.failureProvenance,
-    repeatKey: isParameterValidationFailure
-      ? "parameter_validation"
-      : toolFailureRepeatKey(params.toolCall),
+    repeatKey: stoppedAtModelOutputLimit
+      ? "model_output_limit"
+      : isParameterValidationFailure
+        ? "parameter_validation"
+        : toolFailureRepeatKey(params.toolCall),
   };
   if (!result.success || result.error != null) {
     params.failures.push(failure);
@@ -6985,7 +7034,9 @@ async function executeQueuedToolCall(params: {
     assertRepeatedFailureLimit({
       failures: params.failures,
       latestFailure: failure,
-      maxRepeatedFailures: params.config.maxRepeatedFailures,
+      maxRepeatedFailures: stoppedAtModelOutputLimit
+        ? 0
+        : params.config.maxRepeatedFailures,
     });
   }
 }
