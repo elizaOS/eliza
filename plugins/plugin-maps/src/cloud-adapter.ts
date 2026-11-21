@@ -52,6 +52,23 @@ const coordinate = z
   })
   .strip();
 
+// Category labels are informational, like coverage facts: an unusable label is
+// dropped and a malformed list reads as none, so neither refuses the place.
+const PLACE_CATEGORY_LIMIT = 32;
+const cloudCategories = z
+  .array(z.unknown())
+  .optional()
+  .catch(undefined)
+  .transform((value) => {
+    const kept: string[] = [];
+    for (const item of value ?? []) {
+      if (kept.length >= PLACE_CATEGORY_LIMIT) break;
+      const label = z.string().trim().min(1).max(80).safeParse(item);
+      if (label.success && !kept.includes(label.data)) kept.push(label.data);
+    }
+    return kept;
+  });
+
 const cloudPlace = z
   .object({
     providerId: z.string().min(1).max(80),
@@ -59,6 +76,7 @@ const cloudPlace = z
     name: z.string().trim().min(1).max(300),
     coordinate,
     address: z.string().trim().min(1).max(1_000).optional(),
+    categories: cloudCategories,
     attribution: z.string().min(1).max(2_000),
   })
   .strip();
@@ -542,7 +560,7 @@ export class ElizaCloudMapsAdapter implements MapsProviderAdapter {
       name: place.name,
       coordinates: { ...place.coordinate },
       ...(place.address ? { formattedAddress: place.address } : {}),
-      categories: [],
+      categories: [...place.categories],
     };
   }
 

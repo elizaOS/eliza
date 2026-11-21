@@ -84,9 +84,39 @@ export type Place = Readonly<{
   phone?: string;
   /** Source opening-hours text (for example OSM `opening_hours`), shown verbatim. */
   openingHours?: string;
+  /**
+   * Provider category labels, most specific first (for example "Pharmacy").
+   * Optional: providers and older Cloud releases that send none omit it.
+   */
+  categories?: readonly string[];
   attribution: string;
   fetchedAt: number;
 }>;
+/** At most this many category labels are kept from one place. */
+export const PLACE_CATEGORY_LIMIT = 32;
+/**
+ * Category labels are informational: a non-array is refused as a malformed
+ * place, while an unusable label inside the list is dropped, duplicates are
+ * removed and the list is cut to `PLACE_CATEGORY_LIMIT`.
+ */
+function placeCategories(value: unknown): string[] {
+  if (!Array.isArray(value))
+    throw new MapsFailure(
+      "invalid-response",
+      "The place categories are invalid.",
+    );
+  const kept: string[] = [];
+  for (const item of value) {
+    if (kept.length >= PLACE_CATEGORY_LIMIT) break;
+    // Trim before bounding, as the agent-side PlaceRef schema does, so both
+    // sides keep the same labels.
+    if (typeof item !== "string") continue;
+    const label = item.trim();
+    if (!boundedText(label, 80)) continue;
+    if (!kept.includes(label)) kept.push(label);
+  }
+  return kept;
+}
 /** One public-transport ride, from the provider's published timetables. */
 export type TransitDetails = Readonly<{
   /** Line name riders see, e.g. "M1". */
@@ -250,6 +280,8 @@ export function place(value: unknown, expectedProvider?: string): Place {
       "invalid-response",
       "The place opening hours are invalid.",
     );
+  const categories =
+    p.categories === undefined ? [] : placeCategories(p.categories);
   if (p.website !== undefined) {
     let url: URL;
     try {
@@ -280,6 +312,7 @@ export function place(value: unknown, expectedProvider?: string): Place {
     ...(p.phone ? { phone: p.phone } : {}),
     ...(p.website ? { website: p.website } : {}),
     ...(p.openingHours ? { openingHours: p.openingHours } : {}),
+    ...(categories.length ? { categories } : {}),
     attribution: p.attribution,
     fetchedAt: p.fetchedAt,
   };

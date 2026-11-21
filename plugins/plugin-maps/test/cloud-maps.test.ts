@@ -603,6 +603,32 @@ describe("Cloud provider binding", () => {
     expect(capabilityReads).toHaveLength(2);
   });
 
+  it("keeps Cloud's place categories, dropping unusable labels, and reads none as empty", async () => {
+    const answers = [
+      ["Casino", "Landmark", "Casino", "", 7, "x".repeat(81)],
+      "Casino",
+      undefined,
+    ];
+    const { adapter } = cloud((request) =>
+      Response.json({
+        providerId: "eliza-cloud-osm",
+        attribution: ELIZA_CLOUD_MAPS_ATTRIBUTION,
+        ...(request.path.endsWith("/search")
+          ? { places: [{ ...PLACE, categories: answers[0] }] }
+          : { place: { ...PLACE, categories: answers.shift() } }),
+      }),
+    );
+    const page = await adapter.searchPlaces({ query: "Casino", limit: 5 });
+    expect(page.places[0]?.categories).toEqual(["Casino", "Landmark"]);
+    expect((await adapter.getPlace("N1234"))?.categories).toEqual([
+      "Casino",
+      "Landmark",
+    ]);
+    // A malformed list does not refuse the place; an absent one reads as none.
+    expect((await adapter.getPlace("N1234"))?.categories).toEqual([]);
+    expect((await adapter.getPlace("N1234"))?.categories).toEqual([]);
+  });
+
   it("accepts the opaque place ids of Cloud's configured geocoder", async () => {
     const { adapter, requests } = cloud((request) =>
       Response.json({

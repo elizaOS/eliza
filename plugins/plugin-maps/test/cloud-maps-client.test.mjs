@@ -11,6 +11,8 @@ import {
 import {
   MapsFailure,
   mapsUnavailableMessage,
+  PLACE_CATEGORY_LIMIT,
+  place as validPlace,
 } from "../src/client/contracts.ts";
 import { SavedPlaces } from "../src/client/saved-places.ts";
 import { MapsController } from "../src/client/state.ts";
@@ -848,4 +850,73 @@ assert.equal(
   console.log(
     "PASS Cloud Maps device provider: sources and location disclosure",
   );
+}
+
+// Place categories: kept from search and detail, cleaned, and optional.
+{
+  const categorised = {
+    ...place,
+    categories: [" Marina ", "Harbour", "Marina", "", 42, "x".repeat(81)],
+  };
+  let provider;
+  const maps = createCloudMaps(
+    () => async (path) => {
+      if (path === "capabilities") return structuredClone(coverage);
+      if (path === "places/search")
+        return {
+          providerId: coverage.providerId,
+          attribution: ATTRIBUTION,
+          places: [categorised, place],
+        };
+      if (path === "places/details")
+        return {
+          providerId: coverage.providerId,
+          attribution: ATTRIBUTION,
+          place: categorised,
+        };
+      throw new Error(`unexpected ${path}`);
+    },
+    (_config, nextProvider) => {
+      provider = nextProvider;
+    },
+  );
+  await maps.initializeCloudMaps();
+  const signal = new AbortController().signal;
+  const [found, plain] = await provider.search("Port", signal);
+  assert.deepEqual(found.categories, ["Marina", "Harbour"]);
+  assert.equal(
+    "categories" in plain,
+    false,
+    "a place without categories keeps the field absent",
+  );
+  assert.deepEqual((await provider.detail("N1234", signal)).categories, [
+    "Marina",
+    "Harbour",
+  ]);
+  assert.equal(
+    validPlace({ ...categorised, categories: [] }).categories,
+    undefined,
+    "an empty list is omitted",
+  );
+  assert.equal(
+    validPlace({
+      ...categorised,
+      categories: Array.from({ length: 40 }, (_, index) => `c${index}`),
+    }).categories.length,
+    PLACE_CATEGORY_LIMIT,
+  );
+  assert.deepEqual(
+    validPlace({
+      ...categorised,
+      categories: [`  ${"y".repeat(80)}  `, "Bad\u0007label"],
+    }).categories,
+    ["y".repeat(80)],
+    "labels are bounded after trimming, and control characters are dropped",
+  );
+  assert.throws(
+    () => validPlace({ ...categorised, categories: "Marina" }),
+    (failure) =>
+      failure instanceof MapsFailure && failure.code === "invalid-response",
+  );
+  console.log("PASS Cloud Maps device provider: place categories");
 }
