@@ -58,24 +58,19 @@ function decode(row: unknown): InteractiveTask | null {
   return value;
 }
 /** Why a record is valid JSON but not a task this build can read, such as one
- * written by an older or newer build. A torn row is not quarantined: it stays
- * corrupt and fails where it is read. */
+ * written by an older or newer build. Only that version difference comes back as
+ * a reason: a torn document is not a task at all, so `parse` throws
+ * `TASK_STORAGE_CORRUPT` and this rethrows it. Callers can therefore read a null
+ * return as "this build can read the record", never as "something went wrong". */
 function unreadableReason(document: unknown): string | null {
   try {
     validateInteractiveTask(parse(document));
   } catch (error) {
     if (error instanceof ElizaError && error.code === "TASK_INVALID")
       return error.message;
+    throw error;
   }
   return null;
-}
-function readable(document: unknown): boolean {
-  try {
-    validateInteractiveTask(parse(document));
-    return true;
-  } catch {
-    return false;
-  }
 }
 const UNRESOLVED = ["prepared", "dispatched", "unknown"];
 
@@ -371,11 +366,13 @@ export class SqliteInteractiveTaskStore {
         "SELECT json_group_array(json_object('id', id, 'document', document)) AS rows FROM interactive_task_journal_v1 WHERE owner_key = ? AND id IN (SELECT task_id FROM interactive_task_quarantine_v1 WHERE owner_key = ? AND acknowledged_at IS NULL)",
       )
       .get(key, key) as { rows: string };
+    // A torn document throws here, before its marker is dropped, so corruption
+    // can never be read as "this build understands the record again".
     for (const row of JSON.parse(held.rows) as {
       id: string;
       document: unknown;
     }[])
-      if (readable(row.document))
+      if (unreadableReason(row.document) === null)
         this.db
           .prepare(
             "DELETE FROM interactive_task_quarantine_v1 WHERE task_id = ? AND owner_key = ?",
