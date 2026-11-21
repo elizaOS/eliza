@@ -438,6 +438,44 @@ describe("durable interactive task journal", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+  it("fails on a set-aside record whose bytes are corrupt", () => {
+    const root = mkdtempSync(join(tmpdir(), "eliza-task-set-aside-corrupt-"));
+    const connections: DatabaseSync[] = [];
+    const open = () => {
+      const connection = new DatabaseSync(join(root, "host.sqlite"));
+      connections.push(connection);
+      connection.exec("PRAGMA synchronous = FULL");
+      return new SqliteInteractiveTaskStore(connection);
+    };
+    try {
+      let store = open();
+      const written = store.create(input);
+      // A newer build wrote the record, so this build sets it aside.
+      connections[0]
+        .prepare(
+          "UPDATE interactive_task_journal_v1 SET document = ? WHERE id = ?",
+        )
+        .run(JSON.stringify({ ...written, laterField: true }), input.id);
+      store = open();
+      expect(store.recoverOwner(owner, 2000)).toBeNull();
+      expect(store.unreadable(owner)).toHaveLength(1);
+      // The bytes are damaged while the record is set aside. That is
+      // corruption, not a version difference, so recovery reports it instead
+      // of passing over the record as one this build merely cannot read.
+      connections[0]
+        .prepare(
+          "UPDATE interactive_task_journal_v1 SET document = '{' WHERE id = ?",
+        )
+        .run(input.id);
+      const recovering = open();
+      expect(() => recovering.recoverOwner(owner, 3000)).toThrow(
+        expect.objectContaining({ code: "TASK_STORAGE_CORRUPT" }),
+      );
+    } finally {
+      for (const connection of connections) connection.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   it("recovers a stored dispatched operation whose plan no longer matches the task", () => {
     const root = mkdtempSync(join(tmpdir(), "eliza-task-stale-dispatch-"));
     const connections: DatabaseSync[] = [];
