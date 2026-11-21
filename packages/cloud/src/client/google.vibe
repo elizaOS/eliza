@@ -39,9 +39,31 @@ export function isConnectState(value: string): value is ConnectState {
   return /^[A-Za-z0-9_-]{43}$/.test(value)
 }
 
+export function newConnectState(): ConnectState {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") as ConnectState
+}
+
 export interface ConnectRequest {
   readonly capabilities: ReadonlyArray<GoogleCapability>
   readonly redirect?: { readonly connectReturn: string; readonly state: ConnectState }
+}
+
+export type ConnectReturn =
+  | { readonly kind: "connected"; readonly connectionId: string }
+  | { readonly kind: "denied" }
+  | { readonly kind: "failed" }
+  | { readonly kind: "foreign" }
+
+export function connectReturnOf(returned: string, expected: ConnectState): ConnectReturn {
+  const fragment = new URLSearchParams(new URL(returned).hash.slice(1))
+  if (fragment.get("state") !== expected) return { kind: "foreign" }
+  const connectionId = fragment.get("connectionId") ?? ""
+  switch (fragment.get("result")) {
+    case "connected": return /^[A-Za-z0-9_-]{1,128}$/.test(connectionId) ? { kind: "connected", connectionId } : { kind: "failed" }
+    case "denied": return { kind: "denied" }
+    default: return { kind: "failed" }
+  }
 }
 
 const MailCard = Schema.Struct({
@@ -222,13 +244,14 @@ export function googleCalls(transport: CloudTransport) {
     async googleConnect(request: ConnectRequest, options: CallOptions = {}): Promise<ConnectStart> {
       const redirect = request.redirect
       const json = {
+        side: "owner",
         capabilities: request.capabilities,
         ...(redirect === undefined ? {} : { redirectUrl: `${redirect.connectReturn}?${new URLSearchParams({ state: redirect.state })}` })
       }
       return answerOf(await transport.call(routesByName.googleConnect, { json, signal: options.signal }), ConnectStart)
     },
-    async googleDisconnect(choice: GrantChoice = {}, options: CallOptions = {}): Promise<void> {
-      await transport.call(routesByName.googleDisconnect, { json: choice, signal: options.signal })
+    async googleDisconnect(choice: { readonly connectionId?: string } = {}, options: CallOptions = {}): Promise<void> {
+      await transport.call(routesByName.googleDisconnect, { json: { side: "owner", ...choice }, signal: options.signal })
     },
     async gmailTriage(request: GrantChoice & { readonly maxResults?: number } = {}, options: CallOptions = {}): Promise<MailTriage> {
       return answerOf(await transport.call(routesByName.gmailTriage, { query: queryOf(request), signal: options.signal }), MailTriage)

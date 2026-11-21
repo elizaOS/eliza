@@ -304,7 +304,7 @@ effect function exchangeAttempt(attempt: Attempt, code: string) {
     return try step(tx, attempt.key, { type: "writeFailure", write: "WriteAcknowledged" }, now)
   })
   if (granted === undefined) {
-    try annotateLogs(logWarning("google connect exchange failed"), { outcome: exchanged.kind })
+    try annotateLogs(logWarning("google connect exchange failed"), { outcome: exchanged.kind === "granted" ? "scopesMissing" : exchanged.kind })
     return { state: provided, connectionId: undefined } satisfies Landed
   }
   const landed = landAttempt(attempt, granted, now) catch effect (failure) => {
