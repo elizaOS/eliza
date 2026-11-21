@@ -143,6 +143,9 @@ export default {
       ],
       "ignoreBinaries": [
         "ruby"
+      ],
+      "ignoreUnresolved": [
+        "./runtime-config.mjs"
       ]
     }
   }
