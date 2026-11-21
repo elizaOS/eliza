@@ -305,7 +305,9 @@ effect function labelOperation(grant: Grant, raw: unknown, fresh: boolean) {
     digest: requestDigest(review),
     review,
     target: { kind: "message", id: proposal.messageId },
-    perform: Effect.map(google(grant, "POST", `/messages/${proposal.messageId}/${change.path}`, body), judged) catch (failure) => failedReply(failure)
+    perform: effect {
+      return Effect.map(google(grant, "POST", `/messages/${proposal.messageId}/${change.path}`, body), judged) catch (failure) => failedReply(failure)
+    }
   } satisfies Reviewed
 }
 
@@ -366,9 +368,12 @@ effect function composeOperation(grant: Grant, kind: ComposeKind, raw: unknown, 
     if (stored === undefined || stored !== composed.raw) return unclear
     return { reply: { tag: "ShowsEffect" }, result: { draftId: draft.id, messageId: draft.message?.id ?? null, providerDigest: sha256Hex(stored) } } satisfies Outcome
   }
-  const perform: Outcome!!CloudContext = kind === "send"
-    ? Effect.map(google(grant, "POST", "/messages/send", mime), sentJudged) catch (failure) => failedReply(failure)
-    : Effect.flatMap(kind === "draft-create" ? google(grant, "POST", "/drafts", { message: mime }) : google(grant, "PUT", `/drafts/${replacing}`, { id: replacing, message: mime }), draftJudged) catch (failure) => failedReply(failure)
+  const perform = effect {
+    const delivery = kind === "send"
+      ? Effect.map(google(grant, "POST", "/messages/send", mime), sentJudged)
+      : Effect.flatMap(kind === "draft-create" ? google(grant, "POST", "/drafts", { message: mime }) : google(grant, "PUT", `/drafts/${replacing}`, { id: replacing, message: mime }), draftJudged)
+    return delivery catch (failure) => failedReply(failure)
+  }
   return {
     kind,
     digest: requestDigest(composed.digestInput),
