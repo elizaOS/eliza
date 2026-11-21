@@ -33,13 +33,14 @@ const RESOURCE_LIMIT = 30_000_000;
  * How Dafny is run. No error limit: no failure hides another. A resource limit,
  * not a time limit: the same answer on any machine; it applies to a definition
  * whole, and to each assertion when a definition is verified again isolated
- * (`verifyAgain`). The time limit only stops a run that would never end.
+ * (`verifyAgain`). No time limit: the resource limit ends each solver call, and
+ * run.ts stops a run by the processor time it used, which a busy machine does not
+ * change.
  * Source lines are not echoed: a proof file's text must never be read back as
  * one of Dafny's own messages.
  */
 // run.ts shares the machine's slots between units; each verifier consumes one.
 const DAFNY_FLAGS = ["--cores", "1", "--error-limit", "0", "--resource-limit", String(RESOURCE_LIMIT), "--show-snippets:false"];
-const TIME_LIMIT = 600;
 /** Flags for every Dafny command on a unit's file. */
 const dafnyFlags = (dfy: string) => [...(dfy.includes("Std.") ? ["--standard-libraries"] : []), "--unicode-char:true"];
 /** How an obligation is named: its definition, without `_ensures`, and its clause. */
@@ -499,8 +500,6 @@ export function readVerdict(out: string, dfy: string, file: string, regions: Reg
       const related = block.find((r) => r.what.includes("postcondition") && regions[r.line - 1] && regions[r.line - 1] === regions[m.line - 1]);
       if (related) fail(related.line, clause(related.line), false);
       else v.errors.add(`${defAt(m.line)}: ${m.what}, and Dafny named no postcondition of it: ${clause(m.line)}`);
-    } else if (m.kind === "Error" && /timed out/.test(m.what)) {
-      v.errors.add(`${defAt(m.line)}: Dafny stopped after ${TIME_LIMIT} s of wall-clock time (machine load), not a verdict`);
     } else if (m.kind === "Error" && /out of resource/.test(m.what) && ensured(source[m.line - 1] ?? "") !== undefined) {
       fail(m.line, clause(m.line), true);
     } else if (m.kind === "Error" && verified) failBody(m.line, `${m.what}: ${clause(m.line)}`, /out of resource/.test(m.what));
@@ -512,7 +511,7 @@ export function readVerdict(out: string, dfy: string, file: string, regions: Reg
   return v;
 }
 
-const verifyArgs = (dfy: string, solverPath: string) => ["verify", ...dafnyFlags(dfy), ...DAFNY_FLAGS, "--verification-time-limit", String(TIME_LIMIT), "--solver-path", solverPath];
+const verifyArgs = (dfy: string, solverPath: string) => ["verify", ...dafnyFlags(dfy), ...DAFNY_FLAGS, "--verification-time-limit", "0", "--solver-path", solverPath];
 
 /** A generated definition's lines (0-based), the `{` that opens its body, and the `ensures` before it. */
 function definitionLines(lines: string[], regions: Region[], def: string) {
