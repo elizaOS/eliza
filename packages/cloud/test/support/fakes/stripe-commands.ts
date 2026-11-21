@@ -210,16 +210,16 @@ export function stripePlanDowngrade(stripe: StripeFake, now: () => number) {
   const prefix = "/v1/subscription_schedules";
   const target = catalogPrices[0];
 
-  function scheduleOf(subscription: Subscription) {
+  function scheduleOf(id: string, subscription: Subscription) {
     const item = subscription.items.data[0];
     const current = { start_date: item.current_period_start, end_date: item.current_period_end };
     const phases: Phase[] = [{ ...current, items: [{ price: item.price.id, quantity: 1 }], proration_behavior: "create_prorations" }];
-    return { id: `sub_sched_test${entries.size + 1}`, subscription: subscription.id, customer: subscription.customer,
+    return { id, subscription: subscription.id, customer: subscription.customer,
       livemode: false, status: "active", current_phase: current, phases, end_behavior: "release" };
   }
 
   function remember(subscription: Subscription) {
-    const schedule = scheduleOf(subscription);
+    const schedule = scheduleOf(`sub_sched_test${entries.size + 1}`, subscription);
     entries.set(schedule.id, schedule);
     attached.set(subscription.id, schedule.id);
     return schedule;
