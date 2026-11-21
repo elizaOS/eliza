@@ -1,0 +1,131 @@
+// spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"
+import { assert, describe, it } from "@effect/vitest"
+import { Store, type Tx } from "../src/store/store.vibe"
+import { testCloud, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
+import { testProfile, secrets } from "./support/profile.ts"
+import { decodeRegistration, registerClient } from "../src/native-clients/registry.vibe"
+import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
+import { s256, signedIn } from "./support/identity.ts"
+import { googleIdentityFake, type GooglePerson } from "./support/google-identity-fake.ts"
+import { authenticatorCode } from "./support/authenticator.ts"
+
+effect function check(run: () => void) {
+  try Effect.try(run)
+}
+
+effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
+  return try cloud.store.transaction((tx) => tx.query(text, params))
+}
+
+describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/deviceKeys.md)", () => {
+  const web = "https://www.staging.example.com"
+  const signInReturn = `${web}/apps/native/sign-in`
+  const native = {
+    clientId: "com.example.native", environment: "staging", displayName: "Native", androidPackage: "com.example.native",
+    certFingerprints: ["E3:DC:37:EF:3F:94:F0:CB:F5:06:F2:6E:CD:F7:99:99:29:C2:B2:D0:53:D1:63:83:56:91:F7:C9:67:F6:7E:A5"],
+    signInReturn, billingReturn: `${web}/apps/native/billing`, credentialTtlMs: 30 * 86_400_000, nativeGoogle: true, enabled: true
+  }
+  const challengeVerifier = "c".repeat(43)
+  const deviceVerifier = "d".repeat(43)
+  const person: GooglePerson = { subject: "google-native-1", email: "native@example.com", emailVerified: true, givenName: "Native" }
+  const scopes = ["openid", "email", "https://www.googleapis.com/auth/gmail.readonly"]
+  const googleOff: ProfileEdit = (profile) => {
+    const { google, ...staging } = profile.environments.staging
+    return { ...profile, environments: { ...profile.environments, staging: { ...staging, capabilities: staging.capabilities.filter((capability) => capability !== "managedGoogle") } } }
+  }
+
+  function refusal(answer: { readonly status: number; readonly body: unknown }): string {
+    const body = answer.body as { readonly error?: string; readonly reason?: string }
+    return `${answer.status} ${body.error}${body.reason === undefined ? "" : ` ${body.reason}`}`
+  }
+
+  effect function nativeCloud(edit: ProfileEdit | undefined, registration: typeof native) {
+    const google = try Effect.try(() => googleIdentityFake(secrets.GOOGLE_CLIENT_SECRET ?? ""))
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", google.handler), ...(edit === undefined ? {} : { edit }) })
+    const profile = try parseProfile(try sync(() => { const base = testProfile(cloud.fakes.url); return edit === undefined ? base : edit(base) }))
+    const now = try Clock.currentTimeMillis
+    provide Store = cloud.store, deploymentLayer(profile, "staging") {
+      try cloud.store.transaction(effect (tx: Tx) => { try registerClient(tx, try decodeRegistration(registration), now) })
+    }
+    return { cloud, google }
+  }
+
+  effect function challenge(cloud: TestCloud) {
+    const opened = try cloud.call("/api/v1/auth/google/native/challenge", { json: { clientId: native.clientId, environment: "staging", redirectUri: signInReturn, codeChallenge: s256(challengeVerifier), codeChallengeMethod: "S256" } })
+    return opened.body as { readonly challengeId: string; readonly nonce: string }
+  }
+
+  function signInBody(challengeId: string, idToken: string, extra: Readonly<Record<string, unknown>> = {}) {
+    return {
+      clientId: native.clientId, environment: "staging", redirectUri: signInReturn, state: "s".repeat(43), codeVerifier: deviceVerifier, deviceName: "Ada's phone",
+      identity: { challengeId, idToken, codeVerifier: challengeVerifier }, ...extra
+    }
+  }
+
+  it.live("Sign a device in with its Google account in one call and link the managed Google connection (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\"; spec/cloud/identity/federatedSignIn.md, \"Story: Sign in with the device's Google account\")", () => scoped(effect {
+    const { cloud, google } = try nativeCloud(undefined, native)
+    const opened = try challenge(cloud)
+    const idToken = try promise(() => google.idToken(person, { audience: "google-server-client", nonce: opened.nonce }))
+    const serverAuthCode = try sync(() => google.serverAuthCode(person, scopes))
+    const malformed = try cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody(opened.challengeId, "x".repeat(40)) })
+    const badName = try cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody(opened.challengeId, idToken, { deviceName: "n".repeat(81) }) })
+    const signed = try cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody(opened.challengeId, idToken, { serverAuthCode }) })
+    const replayed = try cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody(opened.challengeId, idToken) })
+    const body = signed.body as {
+      readonly status: string; readonly credentialId: string; readonly secret: string; readonly tokenType: string; readonly expiresIn: number; readonly scopes: ReadonlyArray<string>
+      readonly acknowledgementRequired: boolean; readonly code: string; readonly accountCreated: boolean; readonly identity: unknown
+      readonly google: { readonly connected: boolean; readonly connectionId: string; readonly email: string; readonly scopes: ReadonlyArray<string>; readonly refreshTokenIssued: boolean }
+    }
+    const acked = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: body.credentialId, secret: body.secret } })
+    const grants = try sql(cloud, "SELECT state->>'phase' AS phase FROM device_grants", [])
+    const connections = try sql(cloud, "SELECT key, subject, email FROM google_connections", [])
+    try check(() => assert.deepStrictEqual(
+      {
+        refused: [malformed.status, badName.status, refusal(replayed).startsWith("401")],
+        signed: [signed.status, signed.headers["cache-control"], body.status, body.tokenType, body.scopes, body.acknowledgementRequired, /^emac_[0-9a-f]{64}$/.test(body.code), body.accountCreated, body.identity],
+        google: [body.google.connected, body.google.email, body.google.scopes, body.google.refreshTokenIssued],
+        acked: [acked.status, (acked.body as { readonly status?: string }).status],
+        stored: [grants.length, connections.map((row) => [row.key, row.subject, row.email])],
+        googleCalls: google.tokenRequests.map((form) => [form.get("client_id"), form.get("redirect_uri"), form.has("code_verifier")])
+      },
+      {
+        refused: [401, 400, true],
+        signed: [200, "no-store", "signed_in", "Bearer", ["cloud:user"], true, true, true, { provider: "google", subject: person.subject, email: person.email }],
+        google: [true, person.email, scopes, true],
+        acked: [200, "acknowledged"],
+        stored: [1, [[body.google.connectionId, person.subject, person.email]]],
+        googleCalls: [["google-server-client", "", false]]
+      }
+    ))
+  }), 60_000)
+
+  it.live("Refuse native Google when Google is off or the registration does not enable it (spec/cloud/nativeClients/registry.md, \"Story: Tell a client exactly why it was refused\")", () => scoped(effect {
+    const off = try nativeCloud(googleOff, native)
+    const offAnswer = try off.cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody("missing-challenge", "x".repeat(40)) })
+    const plain = try nativeCloud(undefined, { ...native, nativeGoogle: false })
+    const plainAnswer = try plain.cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody("missing-challenge", "x".repeat(40)) })
+    const unknownClient = try plain.cloud.call("/api/v1/app-auth/mobile/google", { json: { ...signInBody("missing-challenge", "x".repeat(40)), clientId: "com.example.unknown" } })
+    try check(() => assert.deepStrictEqual(
+      [refusal(offAnswer), refusal(plainAnswer), (unknownClient.body as { readonly error?: string }).error],
+      ["503 provider_unavailable google_not_configured", "400 invalid_client", "invalid_client"]
+    ))
+  }), 60_000)
+
+  it.live("A person with a second factor gets mfa_required and no device key (spec/cloud/identity/secondFactor.md, \"Story: Finish sign-in with my second factor\")", () => scoped(effect {
+    const { cloud, google } = try nativeCloud(undefined, native)
+    const first = try signedIn(cloud, person.email)
+    const owner = { authorization: `Bearer ${first.accessToken}` }
+    const enrolled = (try cloud.call("/api/v1/auth/mfa/totp/enroll", { headers: owner, json: {} })).body as { readonly secret: string }
+    const now = try Clock.currentTimeMillis
+    const confirmed = try cloud.call("/api/v1/auth/mfa/totp/confirm", { headers: owner, json: { code: try sync(() => authenticatorCode(enrolled.secret, now)) } })
+    const opened = try challenge(cloud)
+    const idToken = try promise(() => google.idToken(person, { audience: "google-server-client", nonce: opened.nonce }))
+    const answer = try cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody(opened.challengeId, idToken, { serverAuthCode: try sync(() => google.serverAuthCode(person, scopes)) }) })
+    const body = answer.body as { readonly status: string; readonly challengeId: string; readonly methods: ReadonlyArray<string>; readonly expiresAt: number }
+    const grants = try sql(cloud, "SELECT key FROM device_grants", [])
+    try check(() => assert.deepStrictEqual(
+      [confirmed.status, answer.status, body.status, typeof body.challengeId, body.methods, body.expiresAt > now, grants.length, google.tokenRequests.length],
+      [200, 200, "mfa_required", "string", ["totp"], true, 0, 0]
+    ))
+  }), 60_000)
+})
