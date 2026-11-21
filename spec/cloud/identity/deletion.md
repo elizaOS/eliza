@@ -128,7 +128,7 @@ pure val expiresAtValues = Set(100)
 pure def alwaysReceiptBelongsToItsStep(d: Deletion): bool =
   D::alwaysPreparedIsBound(d.receipt) and D::alwaysSessionIsSound(d.receipt) and D::alwaysSentBeforeStale(d.receipt) and D::alwaysOutcomeFollowsTheSession(d.receipt)
   and (noCall(d.receipt) or (
-    onProviderStep(d.phase) and D::kindOf(d.receipt) == kindFor(currentStep(d.phase)) and d.usedKeys.includes(d.receipt.providerKey)
+    onProviderStep(d.phase) and D::kindOf(d.receipt) == kindFor(currentStep(d.phase)) and d.usedKeys.some(key => D::usesProviderKey(d.receipt, key))
     and d.receipt.session.owner.agentId == d.organizationId and d.receipt.session.owner.actorId == d.userId))
 pure def alwaysNoProviderKeyIsUsedTwice(d: Deletion): bool = d.usedKeys.every(k => d.usedKeys.select(j => j == k).length() == 1)
 ```
