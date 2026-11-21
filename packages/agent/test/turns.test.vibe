@@ -110,7 +110,7 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
   const before = completions(cloud)
   const afterRestart = try send(second, id, { text: "Once only.", clientMessageId: "m-1" })
   const asked = try host("keyed message", () => second.agent.runtime.getMemoryById(replyOf(keyed).userMessageId as UUID))
-  if (asked === null) return try Effect.die(new Error("The keyed message was not kept across the restart"))
+  if (asked === null) return try Effect.die(new Error(`The keyed message was not kept across the restart: ${JSON.stringify({ plain, keyed, replayed, conflict, unfunded, afterRestart, overlap })}`))
   try host("cut turn", () => cutTurn(second.agent.runtime, roomId, world, asked.entityId, { text: "Cut short.", clientMessageId: "m-cut" }))
   const cut = try send(second, id, { text: "Cut short.", clientMessageId: "m-cut" })
   const cutAgain = try send(second, id, { text: "Cut short.", clientMessageId: "m-cut" })

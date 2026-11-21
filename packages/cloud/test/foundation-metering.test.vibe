@@ -53,35 +53,41 @@ function holdKey(caller: string, requestId: string) {
 }
 
 describe("WP0 Foundation: metering and funds", () => {
-  it.live("Spend the plan's allowance before credits, from the plan the policy funds (spec/cloud/shared/metering.md, \"Story: Never overdraw an account\"; spec/cloud/billing/plans.md, \"Story: Apply the plan that funds a call\")", () => scoped(effect {
+  it.live("Spend the plan's allowance before credits, from the plan the policy funds (spec/cloud/shared/metering.md, \"Story: Never overdraw an account\"; spec/cloud/billing/plans.md, \"Story: Apply the plan that funds a call\"; spec/cloud/billing/entitlements.md, \"Story: Read my plan without substituting another account or source\")", () => scoped(effect {
     const cloud = try testCloud()
-    for (const id of ["org-past-due", "org-granted", "org-broken"]) try organization(cloud, id)
+    for (const id of ["org-active", "org-past-due", "org-granted", "org-broken"]) try organization(cloud, id)
+    try subscribe(cloud, "org-active", "active", "plus_monthly")
     try subscribe(cloud, "org-past-due", "past_due", "plus_monthly")
     try subscribe(cloud, "org-granted", "canceled", "plus_monthly")
     try grant(cloud, "org-granted", "pro_monthly")
     try subscribe(cloud, "org-broken", "active", "gold_monthly")
-    const period = try openPeriod(cloud, "org-past-due", "PlusMonthly")
+    const period = try openPeriod(cloud, "org-active", "PlusMonthly")
+    const lapsedPeriod = try openPeriod(cloud, "org-past-due", "PlusMonthly")
     try openPeriod(cloud, "org-granted", "ProMonthly")
     provide Store = cloud.store {
-      try addCredits({ organizationId: "org-past-due", amount: 10_000_000, requestKey: "operator-1" })
-      const owner = { organizationId: "org-past-due", userId: "user-1" }
+      try addCredits({ organizationId: "org-active", amount: 10_000_000, requestKey: "operator-1" })
+      const owner = { organizationId: "org-active", userId: "user-1" }
       const ticket = try reserve(owner, holdKey("user-1", "request-1"), 20_000_000)
       const reserved = {
         hold: [ticket.hold.reserved, ticket.hold.fromAllowance, ticket.hold.fromCredits],
         period: try numbers(cloud, "SELECT state->'available', state->'reserved' FROM allowance_periods WHERE key = $1", [period]),
-        funds: try numbers(cloud, "SELECT f.state->'creditHeld', o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-past-due"])
+        funds: try numbers(cloud, "SELECT f.state->'creditHeld', o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-active"])
       }
       try markDispatched(ticket.key)
       const settled = try settle(ticket.key, { kind: "known", actual: 26_000_000 })
+      try addCredits({ organizationId: "org-past-due", amount: 2_000_000, requestKey: "operator-2" })
+      const lapsed = try reserve({ organizationId: "org-past-due", userId: "user-4" }, holdKey("user-4", "request-4"), 1_000_000)
       const granted = try reserve({ organizationId: "org-granted", userId: "user-2" }, holdKey("user-2", "request-2"), 1_000_000)
       const broken = try failureOf(reserve({ organizationId: "org-broken", userId: "user-3" }, holdKey("user-3", "request-3"), 1))
       const observed = {
           reserved,
           settled: [settled.charged, settled.uncollected],
           period: try numbers(cloud, "SELECT state->'available', state->'reserved', state->'settled', status FROM allowance_periods WHERE key = $1", [period]),
-          funds: try numbers(cloud, "SELECT f.state->'creditBalance', f.state->'creditHeld', o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-past-due"]),
+          funds: try numbers(cloud, "SELECT f.state->'creditBalance', f.state->'creditHeld', o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-active"]),
           usage: try numbers(cloud, "SELECT charged, from_allowance, from_credits, uncollected, outcome FROM usage_records WHERE hold_key = $1", [ticket.key]),
           granted: [granted.hold.fromAllowance, granted.hold.fromCredits],
+          lapsed: [lapsed.hold.fromAllowance, lapsed.hold.fromCredits],
+          lapsedPeriod: try numbers(cloud, "SELECT state->'reserved' FROM allowance_periods WHERE key = $1", [lapsedPeriod]),
           broken
         }
       try check(() => assert.deepStrictEqual(observed, {
@@ -91,6 +97,8 @@ describe("WP0 Foundation: metering and funds", () => {
           funds: [[9_000_000, 0, 9_000_000]],
           usage: [[26_000_000, 25_000_000, 1_000_000, 0, "known"]],
           granted: [1_500_000, 0],
+          lapsed: [0, 1_500_000],
+          lapsedPeriod: [[0]],
           broken: { error: "service_unavailable", errorDescription: "Service unavailable.", retryable: true }
         }))
     }

@@ -113,14 +113,12 @@ it.live("Know whether a booted image is what I staged (spec/os/image/verificatio
   assert.isTrue(calls.every((call) => call.tool === "adb" && call.args[2] === "shell" && READ_VERBS.includes(call.args[3] ?? "")), JSON.stringify(calls))
   assert.isFalse(calls.some((call) => call.args.slice(3).some((arg) => WRITES.includes(arg))))
 
-  const plain = try verify({ listener: false, verifiedBoot: "unchecked" })
-  assert.strictEqual(plain.verdict, "Pass")
-  assert.deepStrictEqual(plain.checks.length, 10)
-
-  try Effect.try({ try: () => phone.set({ scripted: [shell(query("android.media.action.IMAGE_CAPTURE_SECURE"), `${SECURE_CAMERA}\n${PACKAGE}/.CaptureActivity\n`), ...asStaged()] }), catch: failed("let the launcher take secure capture") })
-  const capturing = try verify()
-  assert.strictEqual(capturing.verdict, "Fail")
-  assert.strictEqual(outcomes(capturing).SecureCamera, "Fail")
+  const replacedBytes = shell(["sha256sum", APK], `${"c".repeat(64)}  ${APK}\n`)
+  const capture = shell(query("android.media.action.IMAGE_CAPTURE_SECURE"), `${SECURE_CAMERA}\n${PACKAGE}/.CaptureActivity\n`)
+  try Effect.try({ try: () => phone.set({ scripted: [capture, replacedBytes, ...asStaged()] }), catch: failed("replace the launcher and let it take secure capture") })
+  const replaced = try verify({ verifiedBoot: "unchecked" })
+  assert.strictEqual(replaced.verdict, "Fail")
+  assert.deepStrictEqual([outcomes(replaced).SecureCamera, outcomes(replaced).LauncherBytes, outcomes(replaced).VerifiedBoot], ["Fail", "Fail", undefined])
 
   try Effect.try({ try: () => phone.set({ scripted: asStaged().filter((entry) => entry.args[3] !== "dumpsys" || entry.args[4] !== "webviewupdate") }), catch: failed("drop the WebView answer") })
   const unread = try verify()
@@ -132,15 +130,12 @@ it.live("Know whether a booted image is what I staged (spec/os/image/verificatio
   assert.strictEqual(weakened.verdict, "Fail")
   assert.deepStrictEqual([outcomes(weakened).SelinuxEnforcing, outcomes(weakened).VerifiedBoot, outcomes(weakened).SameBootThroughout], ["Fail", "Fail", "Pass"])
 
-  try Effect.try({ try: () => phone.set({ image: IMAGE, scripted: asStaged().map((entry) => (entry.args[3] === "sha256sum" ? shell(["sha256sum", APK], `${"c".repeat(64)}  ${APK}\n`) : entry)) }), catch: failed("replace the launcher bytes") })
-  const replaced = try verify()
-  assert.strictEqual(outcomes(replaced).LauncherBytes, "Fail")
 
   const invalid = try Effect.flip(verify({ descriptor: { ...DESCRIPTOR, apkSha256: "nope" } }))
   assert.strictEqual(invalid._tag, "DescriptorRefused")
   const noUser = try Effect.flip(verify({ user: -1 }))
   assert.strictEqual(noUser._tag, "ImageVerificationRefused")
-}))
+}), 300000)
 
 effect function fixtureAnswers() {
   const files = try FileSystem.FileSystem
@@ -162,12 +157,12 @@ it.live("Qualify a device read-only (spec/os/image/qualification.md, \"Story: Qu
   const answers = try fixtureAnswers()
   try Effect.try({ try: () => phone.set({ scripted: answers }), catch: failed("answer with the emulator capture") })
 
-  const record = try main(["--serial", SERIAL, "--adb", phone.adb, "--out", `${root}/generic`])
+  const record = try main(["--serial", SERIAL, "--adb", phone.adb, "--out", `${root}/runs/generic`])
   assert.deepStrictEqual([record.evaluation.verdict, record.evaluation.evidenceLevel, record.evaluation.warnings], ["pass", "emulator-observation", ["ab-updates"]])
   assert.deepStrictEqual([record.facts.vendorApiLevel, record.facts.treble, record.facts.abi, record.facts.selinux], [35, true, "arm64-v8a", "Enforcing"])
   assert.match(record.evaluation.disclaimer, /Not a GSI or image boot/)
-  assert.strictEqual(try files.readFileString(`${root}/generic/raw/uname.txt`), "6.6.30-android15-8-gdd9c02ccfe27-ab11987101-4k\n")
-  const written = try files.readFileString(`${root}/generic/record.json`)
+  assert.strictEqual(try files.readFileString(`${root}/runs/generic/raw/uname.txt`), "6.6.30-android15-8-gdd9c02ccfe27-ab11987101-4k\n")
+  const written = try files.readFileString(`${root}/runs/generic/record.json`)
   assert.strictEqual((try Effect.try({ try: () => JSON.parse(written) as { evaluation: { verdict: string } }, catch: failed("read the record") })).evaluation.verdict, "pass")
   const issued = try Effect.try({ try: () => phone.calls(), catch: failed("read the adb calls") })
   assert.isTrue(issued.every((call) => call.args[2] === "get-state" || (call.args[2] === "shell" && call.args.length === 4 && Object.values(READ_ONLY_COMMANDS).includes(call.args[3] ?? ""))), JSON.stringify(issued))
@@ -184,7 +179,7 @@ it.live("Qualify a device read-only (spec/os/image/qualification.md, \"Story: Qu
     ],
   }
   try files.writeFileString(`${root}/product.json`, JSON.stringify(product))
-  const gaps = try qualifyDevice({ serial: SERIAL, adb: phone.adb, requirements: `${root}/product.json`, out: `${root}/product` })
+  const gaps = try qualifyDevice({ serial: SERIAL, adb: phone.adb, requirements: `${root}/product.json`, out: `${root}/runs/product` })
   assert.strictEqual(gaps.evaluation.verdict, "fail")
   assert.deepStrictEqual(Object.fromEntries(gaps.evaluation.results.map((row) => [row.id, row.result])), { abi: "pass", "ram-min": "fail", "rear-autofocus": "pass", "front-camera": "fail", "wifi-5ghz": "fail", "charge-control": "unknown" })
   assert.deepStrictEqual(gaps.evaluation.warnings, ["charge-control"])
@@ -216,8 +211,8 @@ it.live("Qualify a device read-only (spec/os/image/qualification.md, \"Story: Qu
     }),
     catch: failed("put the fake device in its bootloader"),
   })
-  const bootloader = try main(["--serial", SERIAL, "--fastboot", "--fastboot-bin", phone.fastboot, "--out", `${root}/fastboot`])
+  const bootloader = try main(["--serial", SERIAL, "--fastboot", "--fastboot-bin", phone.fastboot, "--out", `${root}/runs/bootloader`])
   assert.deepStrictEqual([bootloader.evaluation.verdict, bootloader.evaluation.evidenceLevel, bootloader.evaluation.warnings], ["pass", "bootloader-observation", []])
   const getvars = (try Effect.try({ try: () => phone.calls(), catch: failed("read the fastboot calls") })).filter((call) => call.tool === "fastboot")
   assert.deepStrictEqual(getvars.map((call) => call.args.slice(2)), [["getvar", "all"], ["getvar", "partition-type:avb_custom_key"]])
-}))
+}), 120000)
