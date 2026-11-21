@@ -93,7 +93,8 @@ export function createManagedCalendarMutationPort(
         p.notifyAttendees === true ||
         (p.action === "schedule_event" && (p.sourceNote || p.travelBuffer)) ||
         (p.action === "cancel_event" &&
-          p.cancellationMode === "decline_invitation")
+          p.cancellationMode === "decline_invitation") ||
+        (p.action === "modify_event" && p.invitationResponse)
       )
         throw new CalendarMutationPreflightError(
           "CALENDAR_MANAGED_EDITOR_REQUIRED",

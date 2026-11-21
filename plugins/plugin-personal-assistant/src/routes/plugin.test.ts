@@ -267,6 +267,7 @@ describe("LifeOps raw route owner/admin gate", () => {
       ["POST", "/api/lifeops/calendar/events"],
       ["PATCH", "/api/lifeops/calendar/events/:eventId"],
       ["DELETE", "/api/lifeops/calendar/events/:eventId"],
+      ["POST", "/api/lifeops/calendar/events/:eventId/response"],
       ["GET", "/api/lifeops/calendar/links"],
       ["POST", "/api/lifeops/calendar/links"],
       ["GET", "/api/lifeops/calendar/links/:id"],

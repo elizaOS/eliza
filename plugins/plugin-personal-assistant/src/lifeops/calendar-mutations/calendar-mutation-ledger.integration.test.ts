@@ -228,11 +228,11 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
         ...(typeof body.title === "string" ? { title: body.title } : {}),
         ...(typeof body.startAt === "string" ? { startAt: body.startAt } : {}),
         ...(typeof body.endAt === "string" ? { endAt: body.endAt } : {}),
-        ...(body.responseStatus === "declined"
+        ...(typeof body.responseStatus === "string"
           ? {
               attendees: current.attendees.map((attendee) =>
                 attendee.self
-                  ? { ...attendee, responseStatus: "declined" }
+                  ? { ...attendee, responseStatus: String(body.responseStatus) }
                   : attendee,
               ),
             }
@@ -1565,6 +1565,97 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
       notifyAttendees: true,
       expectedProviderVersion: '"event-version-1"',
     });
+  }, 60_000);
+
+  it("accepts an invitation with a conditional RSVP and no event patch", async () => {
+    const invitation = calendarEvent({
+      organizer: { email: "teacher@example.com", self: false },
+      attendees: [
+        {
+          email: "owner@example.com",
+          displayName: "Owner",
+          responseStatus: "needsAction",
+          self: true,
+          organizer: false,
+          optional: false,
+        },
+      ],
+    });
+    events.set(invitation.externalId, invitation);
+    const request = await approved({
+      ...modifyPayload(invitation),
+      invitationResponse: "accepted",
+      patch: {
+        title: null,
+        startsAtMs: null,
+        endsAtMs: null,
+        attendees: null,
+        location: null,
+        description: null,
+      },
+    });
+    const result = await executeCalendarMutationApproval({
+      runtime,
+      request,
+      port: port(),
+    });
+    expect(result).toMatchObject({
+      kind: "succeeded",
+      receipt: { operation: "modify_event", cancellationMode: null },
+    });
+    const stored = events.get(invitation.externalId);
+    expect(stored?.title).toBe(invitation.title);
+    expect(
+      stored?.attendees.find((attendee) => attendee.self)?.responseStatus,
+    ).toBe("accepted");
+    expect(mutationRequests).toHaveLength(1);
+    expect(mutationRequests.at(-1)?.body).toMatchObject({
+      responseStatus: "accepted",
+      notifyAttendees: false,
+      expectedProviderVersion: '"event-version-1"',
+    });
+    expect(mutationRequests.at(-1)?.body).not.toHaveProperty("title");
+  }, 60_000);
+
+  it("forbids an organizer RSVP and a response that also edits the event", async () => {
+    const owned = events.get("provider-event-1");
+    if (!owned) throw new Error("organizer fixture missing");
+    const response = {
+      ...modifyPayload(owned),
+      invitationResponse: "tentative" as const,
+      patch: {
+        title: null,
+        startsAtMs: null,
+        endsAtMs: null,
+        attendees: null,
+        location: null,
+        description: null,
+      },
+    };
+    await expect(
+      executeCalendarMutationApproval({
+        runtime,
+        request: await approved(response),
+        port: port(),
+      }),
+    ).resolves.toMatchObject({
+      kind: "invalidated",
+      failure: { code: "CALENDAR_INVITATION_RESPONSE_AUTHORITY_MISMATCH" },
+    });
+    await expect(
+      executeCalendarMutationApproval({
+        runtime,
+        request: await approved({
+          ...response,
+          patch: { ...response.patch, title: "Renamed" },
+        }),
+        port: port(),
+      }),
+    ).resolves.toMatchObject({
+      kind: "invalidated",
+      failure: { code: "CALENDAR_MUTATION_INVALID_PAYLOAD" },
+    });
+    expect(mutationRequests).toHaveLength(0);
   }, 60_000);
 
   it("invalidates a provider ETag race after claim without changing the event", async () => {

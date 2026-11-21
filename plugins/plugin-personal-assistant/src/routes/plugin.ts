@@ -493,6 +493,7 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   // /api/lifeops/calendar/events/:eventId
   { type: "PATCH", path: "/api/lifeops/calendar/events/:eventId" },
   { type: "DELETE", path: "/api/lifeops/calendar/events/:eventId" },
+  { type: "POST", path: "/api/lifeops/calendar/events/:eventId/response" },
   // /api/lifeops/calendar/links/:id
   { type: "GET", path: "/api/lifeops/calendar/links/:id" },
   { type: "POST", path: "/api/lifeops/calendar/links/:id/reconcile" },

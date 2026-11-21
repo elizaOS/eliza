@@ -226,7 +226,37 @@ function validateDeterministicPayload(payload: CalendarMutationPayload): void {
     }
     if (payload.action === "modify_event") {
       const values = Object.values(payload.patch);
-      if (values.every((value) => value === null || value === undefined)) {
+      const emptyPatch = values.every(
+        (value) => value === null || value === undefined,
+      );
+      if (
+        payload.invitationResponse !== null &&
+        payload.invitationResponse !== undefined
+      ) {
+        if (
+          payload.invitationResponse !== "accepted" &&
+          payload.invitationResponse !== "tentative"
+        ) {
+          throw new CalendarMutationPreflightError(
+            "CALENDAR_MUTATION_INVALID_PAYLOAD",
+            "invitationResponse must be accepted or tentative.",
+          );
+        }
+        if (!emptyPatch) {
+          throw new CalendarMutationPreflightError(
+            "CALENDAR_MUTATION_INVALID_PAYLOAD",
+            "An invitation response cannot also change the event.",
+          );
+        }
+        if (payload.recurrenceScope === "this_and_following") {
+          throw new CalendarMutationPreflightError(
+            "CALENDAR_RECURRENCE_RESPONSE_SCOPE_UNSUPPORTED",
+            "This-and-following is not a valid invitation response scope.",
+          );
+        }
+        return;
+      }
+      if (emptyPatch) {
         throw new CalendarMutationPreflightError(
           "CALENDAR_MUTATION_EMPTY_PATCH",
           "The approved event patch contains no changes.",
@@ -745,6 +775,18 @@ function requireAuthorizedEventMutation(
 ): void {
   const disposition = eventOrganizerDisposition(event, calendar.accountEmail);
   if (payload.action === "modify_event") {
+    if (payload.invitationResponse) {
+      if (disposition !== "invitee") {
+        throw new CalendarMutationPreflightError(
+          disposition === "unknown"
+            ? "CALENDAR_ORGANIZER_IDENTITY_UNKNOWN"
+            : "CALENDAR_INVITATION_RESPONSE_AUTHORITY_MISMATCH",
+          "Only an invitee may respond to this invitation.",
+          { details: { disposition } },
+        );
+      }
+      return;
+    }
     if (disposition !== "organizer") {
       throw new CalendarMutationPreflightError(
         disposition === "invitee"
@@ -1234,6 +1276,24 @@ export function createCalendarMutationPort(
               "CALENDAR_MUTATION_PROVIDER_BINDING_MISSING",
               "The conditional update reached execution without a provider target and version.",
             );
+          }
+          if (payload.invitationResponse) {
+            const event = await service.respondToCalendarEvent(INTERNAL_URL, {
+              side: payload.side ?? "owner",
+              grantId: preflight.sourceId,
+              calendarId: payload.calendarId,
+              eventId: providerEventId,
+              responseStatus: payload.invitationResponse,
+              recurrenceScope: payload.recurrenceScope ?? null,
+              notifyAttendees: payload.notifyAttendees === true,
+              expectedProviderVersion,
+            });
+            return receiptFromEvent({
+              operation: payload.action,
+              event,
+              sourceId: preflight.sourceId,
+              recurrenceScope: payload.recurrenceScope ?? null,
+            });
           }
           const event = await service.updateCalendarEvent(INTERNAL_URL, {
             side: payload.side ?? "owner",

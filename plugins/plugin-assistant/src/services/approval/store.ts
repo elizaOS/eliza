@@ -598,6 +598,12 @@ function assertApprovalPayload(
         new Set(["owner", "agent"]),
       );
       requireOptionalNullableStringField(record, "editorRequestSha256", label);
+      requireOptionalEnumField(
+        record,
+        "invitationResponse",
+        label,
+        new Set(["accepted", "tentative"]),
+      );
       const patch = requireRecord(record.patch, `${label}.patch`);
       requireNullableStringField(patch, "title", `${label}.patch`);
       requireNullableFiniteNumberField(patch, "startsAtMs", `${label}.patch`);

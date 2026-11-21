@@ -1210,6 +1210,16 @@ export async function handleLifeOpsRoutes(
           mutationGateway().update(requestUrl, request),
         cancel: (requestUrl, request) =>
           mutationGateway().cancel(requestUrl, request),
+        respond: (requestUrl, request) => {
+          const gateway = mutationGateway();
+          if (!gateway.respond) {
+            throw new LifeOpsServiceError(
+              501,
+              "The calendar gateway does not support invitation responses.",
+            );
+          }
+          return gateway.respond(requestUrl, request);
+        },
         linkCalendar: (requestUrl, request) =>
           mutationGateway().linkCalendar(requestUrl, request),
         updateLinkedCalendarControl: (requestUrl, request) =>
