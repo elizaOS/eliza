@@ -6,8 +6,9 @@ and `device-qualify-lib.ts` on develop, and the default requirements
 `android/device-requirements/treble-gsi.json` (Treble vendor interface,
 vendor API 33 or newer, kernel 5.10 or newer, `arm64-v8a`, dynamic
 partitions, enforcing SELinux; an unlockable bootloader in fastboot mode).
-A consumer passes its own product file with `--requirements` and imports
-`evaluate` and `validateRequirements` in its tests.
+Run `eliza-os qualify-device --serial SERIAL` with `--fastboot` for a
+bootloader observation. A consumer passes its own product file with
+`--requirements` and imports `evaluate` and `validateRequirements` in its tests.
 
 The shell runs the fixed commands, keeps every raw capture in the record,
 parses each capture into facts, and maps each fact to an observation. This

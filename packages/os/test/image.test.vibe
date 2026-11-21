@@ -35,10 +35,10 @@ module node {
     await writeFile(binary, script, { mode: 0o700 })
     return { binary, log, fixture }
   }
-  export async function verificationBinary(directory: string, name: string, responses: Readonly<Record<string, string | string[]>>) {
+  export async function verificationBinary(directory: string, name: string, responses: Readonly<Record<string, string | string[]>>, serial = "127.0.0.1:6520") {
     const binary = join(directory, `${name}.mjs`)
     const log = join(directory, `${name}.jsonl`)
-    const script = `#!/usr/bin/env node\nimport { appendFileSync, readFileSync, existsSync } from "node:fs";\nconst args = process.argv.slice(2);\nif (args[0] !== "-s" || args[1] !== "127.0.0.1:6520" || args[2] !== "shell") process.exit(80);\nconst key = args.slice(3).join(" ");\nconst log = ${JSON.stringify(log)};\nconst past = existsSync(log) ? readFileSync(log, "utf8").trim().split("\\n").filter(Boolean).map((row) => JSON.parse(row)) : [];\nappendFileSync(log, JSON.stringify(key) + "\\n");\nconst answers = ${JSON.stringify(responses)};\nif (!Object.hasOwn(answers, key)) process.exit(81);\nconst row = answers[key];\nprocess.stdout.write(Array.isArray(row) ? row[past.filter((value) => value === key).length] ?? "" : row);\n`
+    const script = `#!/usr/bin/env node\nimport { appendFileSync, readFileSync, existsSync } from "node:fs";\nconst args = process.argv.slice(2);\nif (args[0] !== "-s" || args[1] !== ${JSON.stringify(serial)} || args[2] !== "shell") process.exit(80);\nconst key = args.slice(3).join(" ");\nconst log = ${JSON.stringify(log)};\nconst past = existsSync(log) ? readFileSync(log, "utf8").trim().split("\\n").filter(Boolean).map((row) => JSON.parse(row)) : [];\nappendFileSync(log, JSON.stringify(key) + "\\n");\nconst answers = ${JSON.stringify(responses)};\nif (!Object.hasOwn(answers, key)) process.exit(81);\nconst row = answers[key];\nprocess.stdout.write(Array.isArray(row) ? row[past.filter((value) => value === key).length] ?? "" : row);\n`
     await writeFile(binary, script, { mode: 0o700 })
     return { binary, log }
   }
@@ -707,17 +707,32 @@ it.live('Check the exact booted image and report a change during readback (spec/
       const healthy = try tryPromise(() => verificationBinary(work, "healthy", responses))
       const changed = try tryPromise(() => verificationBinary(work, "changed", { ...responses, [sum]: [`${apkSha256}  ${apkPath}`, `${"b".repeat(64)}  ${apkPath}`], [provider]: "Unrecognized provider status" }))
       const options = { serial: "127.0.0.1:6520", user: "0", target: "cuttlefish" as const, expected }
-      const stable = try verifyImage({ ...options, adb: healthy.binary })
-      const raced = try verifyImage({ ...options, adb: changed.binary })
+      const serial = "FAKEPIXEL01"
+      const badBoot = try tryPromise(() => verificationBinary(work, "pixel-weak-boot", {
+        ...responses, "getprop ro.hardware": "google", "getprop ro.product.device": "stallion",
+        "getprop ro.boot.verifiedbootstate": "orange", "getprop ro.boot.slot_suffix": "_b", "getenforce": "Permissive",
+        [sum]: `${"c".repeat(64)}  ${apkPath}`,
+      }, serial))
+      const wrongTarget = try exit(verifyImage({ ...options, target: "pixel10a", adb: badBoot.binary }))
+      const [stable, raced, pixel] = try.all [
+        verifyImage({ ...options, adb: healthy.binary }),
+        verifyImage({ ...options, adb: changed.binary }),
+        verifyImage({ ...options, serial, target: "pixel10a", adb: badBoot.binary }),
+      ]
       try Effect.try(() => assert.deepStrictEqual({
         staged: stable.passed,
         checks: stable.checks.every(({ outcome }) => outcome === "pass"),
         capture: stable.captures.every(({ status }) => status === 0),
         measuredTwice: stable.captures.filter(({ args }) => args[0] === "sha256sum").length,
         actual: raced.verdict,
+        wrongTarget: wrongTarget._tag,
+        boot: pixel.verifiedBoot,
+        weakened: pixel.checks.filter(({ outcome }) => outcome !== "pass"),
         changed: raced.checks.filter(({ outcome }) => outcome !== "pass"),
       }, {
-        staged: true, checks: true, capture: true, measuredTwice: 2, actual: "fail",
+        staged: true, checks: true, capture: true, measuredTwice: 2, actual: "fail", wrongTarget: "Failure",
+        boot: { state: "orange", slotSuffix: "_b" },
+        weakened: [{ check: "LauncherBytes", outcome: "fail" }, { check: "SelinuxEnforcing", outcome: "fail" }, { check: "VerifiedBoot", outcome: "fail" }],
         changed: [{ check: "WebViewProvider", outcome: "unknown" }, { check: "SameBootThroughout", outcome: "fail" }],
       }))
     })

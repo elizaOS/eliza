@@ -232,7 +232,7 @@ function rawKey(command: DeviceCommand): string {
 }
 
 function rawText(probeMode: ProbeMode, capture: Capture): string {
-  return probeMode === "AdbProbe" ? capture.stdout : `${capture.stderr}\n${capture.stdout}`
+  return probeMode === "AdbProbe" ? capture.stdout : [capture.stderr, capture.stdout].filter(Boolean).join("\n")
 }
 
 function captureErrors(captures: readonly Capture[]) {
@@ -337,6 +337,8 @@ effect function parseArguments(argv: readonly string[]) {
     values.set(argument, value)
     index += 1
   }
+  const inactive = fastboot ? "--adb" : "--fastboot-bin"
+  if (values.has(inactive)) throw new QualificationUsage({ reason: `${inactive} does not belong to the chosen probe mode` })
   const serial = values.get("--serial")
   if (serial === undefined) throw new QualificationUsage({ reason: "An explicit --serial is required" })
   return { serial, fastboot, requirements: values.get("--requirements"), out: values.get("--out"), binary: values.get(fastboot ? "--fastboot-bin" : "--adb") }

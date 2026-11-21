@@ -221,6 +221,41 @@ it.live.skipIf(TOOLS.kind === "missing")(`Check a launcher for admission without
   if (TOOLS.kind === "present") try admission(TOOLS)
 }))
 
+it.live('Read only the two authorized fastboot values from the CLI and keep their original capture (spec/os/image/qualification.md, "Story: Qualify a device read-only")', () => journey(effect {
+  const root = try scratch("cli-qualification")
+  const files = try FileSystem.FileSystem
+  const serial = "FAKE0001"
+  const bootloader = "(bootloader) product:example\n(bootloader) unlocked:no\n(bootloader) unlock_ability:1\n"
+  const partition = "partition-type:avb_custom_key: raw\n"
+  const bulkArgs = ["-s", serial, "getvar", "all"]
+  const keyArgs = ["-s", serial, "getvar", "partition-type:avb_custom_key"]
+  const phone = try Effect.try({ try: () => fakeAdb(root, device(serial, { mode: "bootloader", scripted: [
+    { tool: "fastboot", args: bulkArgs, answer: { stderr: bootloader, status: 0 } },
+    { tool: "fastboot", args: keyArgs, answer: { stderr: partition, status: 0 } },
+  ] })), catch: failed("start fake fastboot") })
+  const out = `${root}/qualification`
+  const args = ["qualify-device", "--serial", serial, "--fastboot", "--fastboot-bin", phone.fastboot, "--out", out]
+  const misplaced = try run(...args, "--adb", phone.adb)
+  assert.strictEqual(misplaced.status, 2)
+  assert.include(misplaced.stderr, "chosen probe mode")
+  assert.isFalse(try files.exists(out))
+
+  const result = try run(...args)
+  assert.strictEqual(result.status, 0, result.stderr)
+  const report = try parsed("qualify-device", result)
+  const summary = try Schema.decodeUnknownEffect(Schema.Struct({ mode: Schema.String,
+    evaluation: Schema.Struct({ verdict: Schema.String, evidenceLevel: Schema.String }) }))(report)
+  const calls = try Effect.try({ try: () => phone.calls(), catch: failed("read the fastboot calls") })
+  assert.deepStrictEqual({
+    summary, calls, captured: try files.readFileString(`${out}/raw/getvarAll.txt`),
+    record: try readJson(`${out}/record.json`),
+  }, {
+    summary: { mode: "fastboot", evaluation: { verdict: "pass", evidenceLevel: "bootloader-observation" } },
+    calls: [{ tool: "fastboot", args: bulkArgs }, { tool: "fastboot", args: keyArgs }],
+    captured: bootloader, record: report,
+  })
+}))
+
 it.live("Read an update's status from the device by cable (spec/os/update/operator.md, \"Story: Update a device by cable\")", () => journey(effect {
   const root = try scratch("cli-ota")
   const files = try FileSystem.FileSystem
