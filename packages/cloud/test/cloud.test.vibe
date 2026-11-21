@@ -176,15 +176,21 @@ describe("WP0 Foundation", () => {
       ))
     }
   }))
-  it.live("Refuse a start in the spec's order: a seed outside staging, loopback on Postgres, an unreadable or other database before the catalog, then a catalog the provider does not sell (spec/cloud/deployment.md, \"Story: Configure a deployment from one reviewed profile\")", () => scoped(effect {
+  it.live("Refuse a seed outside staging and loopback on Postgres (spec/cloud/deployment.md, \"Story: Configure a deployment from one reviewed profile\")", () => scoped(effect {
+    const seedInProduction = try failureTag(scoped(testCloud({ environment: "production", seed: fixtureSeedFile })))
+    const loopbackOnPostgres = try failureTag(scoped(testCloud({ store: { kind: "pg" } })))
+    try check(() => assert.deepStrictEqual([seedInProduction, loopbackOnPostgres],
+      ["SeedOutsideStaging", "LoopbackOutsidePglite"]))
+  }))
+
+  const withoutLoopback: ProfileEdit = (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, mail: profile.environments.production.mail, sms: { kind: "none" } } } })
+  const wrongPrices = [{ ...catalogPrices[0], unitAmount: 2_999 }, catalogPrices[1]]
+
+  it.live("Refuse an unreadable or different deployment database before reading the catalog (spec/cloud/deployment.md, \"Story: Configure a deployment from one reviewed profile\")", () => scoped(effect {
     const productionDigest = "b".repeat(64)
-    const withoutLoopback: ProfileEdit = (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, mail: profile.environments.production.mail, sms: { kind: "none" } } } })
-    const wrongPrices = [{ ...catalogPrices[0], unitAmount: 2_999 }, catalogPrices[1]]
     const catalogReads: Record<string, ReadonlyArray<FakeRequest>> = {}
     const watch = (name: string) => (fakes: FakeServer) => { catalogReads[name] = fakes.seen }
 
-    const seedInProduction = try failureTag(scoped(testCloud({ environment: "production", seed: fixtureSeedFile })))
-    const loopbackOnPostgres = try failureTag(scoped(testCloud({ store: { kind: "pg" } })))
     const unreadable = try failureTag(scoped(testCloud({
       edit: withoutLoopback, prices: wrongPrices, mount: watch("unreadable"),
       store: { kind: "pg", setup: (db) => db.exec("CREATE TABLE leftover (id integer)") }
@@ -193,22 +199,22 @@ describe("WP0 Foundation", () => {
       edit: withoutLoopback, prices: wrongPrices, mount: watch("other"),
       store: { kind: "pg", setup: (db) => db.exec(`CREATE TABLE cloud_identity (singleton boolean PRIMARY KEY DEFAULT true, digest text NOT NULL, environment text NOT NULL, created_at bigint NOT NULL); INSERT INTO cloud_identity (digest, environment, created_at) VALUES ('${productionDigest}', 'production', 0)`) }
     })))
+    const stripeReads = (name: string) => (catalogReads[name] ?? []).filter((request) => request.path.startsWith("/stripe/")).length
+    try check(() => assert.deepStrictEqual([unreadable, otherDatabase, stripeReads("unreadable"), stripeReads("other")],
+      ["DatabaseUnreadable", "DatabaseIdentityMismatch", 0, 0]))
+  }))
+
+  it.live("Refuse the wrong provider catalog and serve on the deployment's own database (spec/cloud/deployment.md, \"Story: Configure a deployment from one reviewed profile\")", () => scoped(effect {
+    const catalogReads: Record<string, ReadonlyArray<FakeRequest>> = {}
+    const watch = (name: string) => (fakes: FakeServer) => { catalogReads[name] = fakes.seen }
     const catalog = try failureTag(scoped(testCloud({ edit: withoutLoopback, prices: wrongPrices, mount: watch("catalog"), store: { kind: "pg" } })))
     const served = try testCloud({ edit: withoutLoopback, store: { kind: "pg" } })
     const health = try served.call("/api/health")
     const identity = try served.store.transaction((tx) => tx.query("SELECT digest, environment FROM cloud_identity"))
     const stripeReads = (name: string) => (catalogReads[name] ?? []).filter((request) => request.path.startsWith("/stripe/")).length
     try check(() => assert.deepStrictEqual(
-      {
-        refused: [seedInProduction, loopbackOnPostgres, unreadable, otherDatabase, catalog],
-        catalogReads: [stripeReads("unreadable"), stripeReads("other"), stripeReads("catalog") > 0],
-        served: [served.store.location.kind, health.status, identity.map((row) => [row.digest, row.environment])]
-      },
-      {
-        refused: ["SeedOutsideStaging", "LoopbackOutsidePglite", "DatabaseUnreadable", "DatabaseIdentityMismatch", "CatalogMismatch"],
-        catalogReads: [0, 0, true],
-        served: ["pg", 200, [["a".repeat(64), "staging"]]]
-      }
+      [catalog, stripeReads("catalog") > 0, served.store.location.kind, health.status, identity.map((row) => [row.digest, row.environment])],
+      ["CatalogMismatch", true, "pg", 200, [["a".repeat(64), "staging"]]]
     ))
   }))
 })
