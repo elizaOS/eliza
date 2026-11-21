@@ -212,7 +212,7 @@ it.effect("Keep my schema-1 profile readable through one fixed map: profiles sha
     modules: [
       { name: "capacitor-android", source: { root: "dependencies", path: "@capacitor/android/capacitor" } },
       { name: "eliza-system", source: upstream("plugins/plugin-native-system/android"), relocateBuild: true },
-      { name: "eliza-cloud-auth", source: upstream("packages/auth/android"), relocateBuild: true },
+      { name: "eliza-cloud-auth", source: upstream("packages/os/android/cloud-auth"), relocateBuild: true },
       { name: "eliza-owned-media", source: upstream("plugins/plugin-native-media/android"), relocateBuild: true },
       { name: "secure-store-nativeonly", source: upstream("plugins/plugin-native-secure-store/android-nativeonly"), appDependency: false },
       { name: "sense", source: consumer("android/sense"), appDependency: false },
