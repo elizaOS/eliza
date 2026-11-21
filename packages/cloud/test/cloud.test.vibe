@@ -7,6 +7,7 @@ import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
 import { Store, type Tx } from "../src/store/store.vibe"
 import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
+import { grantState } from "./support/credential-rows.ts"
 import type { FakeRequest } from "./support/fakes.ts"
 import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.ts"
 import { periodRows } from "../src/shared/metering.vibe"
@@ -2129,10 +2130,12 @@ describe("WP10 Operator and deletion: prices (spec/cloud/operator.md)", () => {
 
 effect function entitledDevice(cloud: TestCloud, name: string, now: number) {
   const token = `eliza_mobile_${tokenDigest(name)}`
+  const grant = { credentialId: `cred-${name}`, issuedAt: now - 1000, keyExpiresAt: now + 24 * 3_600_000 }
+  const state = try Effect.try(() => grantState(grant))
   try organization(cloud, `org-${name}`)
   try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [`user-${name}`, `org-${name}`, `${name}@example.com`, now])
-  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'test-client', 'active', $3, $4, $5, $6, $5, $5)", [
-    `grant-${name}`, `user-${name}`, `cred-${name}`, tokenDigest(token), now - 1000, now + 24 * 3_600_000
+  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, $7::jsonb, 1, $2, 'test-client', 'active', $3, $4, $5, $6, $5, $5)", [
+    `grant-${name}`, `user-${name}`, grant.credentialId, tokenDigest(token), grant.issuedAt, grant.keyExpiresAt, state
   ])
   return token
 }
