@@ -436,6 +436,25 @@ async function requireRendererCloudApiOrigin(
   return observation.apiOrigin;
 }
 
+async function observePublicStagingJoinApiOrigin(
+  context: BrowserContext,
+  expectedApiOrigin: string,
+  renderer: DeployedRendererIdentity,
+): Promise<string> {
+  const publicPage = await context.newPage();
+  try {
+    await seedProtectedCloudBlankStart(publicPage);
+    await openStagingJoin(publicPage, renderer.origin);
+    return await requireRendererCloudApiOrigin(
+      publicPage,
+      expectedApiOrigin,
+      renderer,
+    );
+  } finally {
+    await publicPage.close();
+  }
+}
+
 async function openProtectedCloudBlankStart(
   browser: Browser,
   page: Page,
@@ -452,13 +471,17 @@ async function openProtectedCloudBlankStart(
     );
   }
   let publicIdentity: DeployedRendererIdentity | null;
+  let publicApiOrigin: string;
   if (staging) {
     const aliasIdentity = await readStagingRendererIdentity(
       browser,
       STAGING_PAGES_ALIAS,
     );
-    await openStagingJoin(page, STAGING_PAGES_ALIAS);
-    await requireRendererCloudApiOrigin(page, expectedApiOrigin, aliasIdentity);
+    await observePublicStagingJoinApiOrigin(
+      page.context(),
+      expectedApiOrigin,
+      aliasIdentity,
+    );
     publicIdentity = await readStagingRendererIdentity(
       browser,
       DEPLOYED_APP_ORIGIN,
@@ -467,18 +490,22 @@ async function openProtectedCloudBlankStart(
       ...aliasIdentity,
       origin: DEPLOYED_APP_ORIGIN,
     });
-    await openStagingJoin(page, DEPLOYED_APP_ORIGIN);
+    publicApiOrigin = await observePublicStagingJoinApiOrigin(
+      page.context(),
+      expectedApiOrigin,
+      publicIdentity,
+    );
   } else {
     await page.goto(DEPLOYED_RENDERER_ENABLED ? "/join" : "/", {
       waitUntil: "domcontentloaded",
     });
     publicIdentity = await requireDeployedRendererIdentity(page);
+    publicApiOrigin = await requireRendererCloudApiOrigin(
+      page,
+      expectedApiOrigin,
+      publicIdentity,
+    );
   }
-  const publicApiOrigin = await requireRendererCloudApiOrigin(
-    page,
-    expectedApiOrigin,
-    publicIdentity,
-  );
   if (!DEPLOYED_RENDERER_ENABLED) {
     return {
       deployedRenderer: publicIdentity,
