@@ -1,11 +1,18 @@
-// spec/cloud/services/inference.md, "Story: Answer a chat completion once and charge it once"; spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"
 import { assert, describe, it } from "@effect/vitest"
 import { FetchHttpClient } from "effect/http"
-import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
+import { addCredits } from "../../src/billing/funds.vibe"
+import { issueSession } from "../../src/identity/sessions.vibe"
+import { setModelPrice } from "../../src/services/models.vibe"
+import { Store } from "../../src/store/connection.vibe"
+import { Deployment, deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
 import { complete, stream, type LlmFailure, type LlmProvider } from "../../src/providers/llm.vibe"
 import { startFakeServer } from "../support/fakes.ts"
-import { llmFake, replyText, streamText, upstreamModel, usage, wholeAnswer } from "../support/llm-fake.ts"
+import { contentFrames, doneFrame, llmFake, replyText, streamText, upstreamModel, usage, wholeAnswer } from "../support/llm-fake.ts"
 import { secrets, testProfile } from "../support/profile.ts"
+import { testCloud, type TestCloud } from "../support/cloud.vibe"
+import { signedCaller } from "../support/caller.vibe"
+import { callDeclaring, openCloud, type Answer } from "../support/http.ts"
 
 effect function check(run: () => void) {
   try Effect.try(run)
@@ -42,7 +49,7 @@ effect function text(bytes: Stream.Stream<Uint8Array, LlmFailure>): string!LlmFa
 }
 
 describe("WP5 Inference: provider adapter", () => {
-  it.live("Send one call per request to the provider and pass its answer through (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\")", () => scoped(effect {
+  it.live("Send one call per request to the provider and pass its answer through (spec/cloud/index.md, \"Story: Use inference on my subscription or funded pilot account\")", () => scoped(effect {
     const { llm, provider, layer } = try adapter()
     provide layer {
       try sync(() => llm.script({ kind: "whole" }, { kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "refuse" }))
@@ -71,7 +78,7 @@ describe("WP5 Inference: provider adapter", () => {
     }
   }))
 
-  it.live("Pass the provider's stream through and cancel it when the caller goes away (spec/cloud/services/inference.md, \"Story: Stream a reply in the shape clients read\")", () => scoped(effect {
+  it.live("Pass the provider's stream through and cancel it when the caller goes away (spec/cloud/index.md, \"A streamed answer sends complete OpenAI frames and settles the same hold\")", () => scoped(effect {
     const { llm, provider, layer } = try adapter()
     provide layer {
       try sync(() => llm.script({ kind: "stream" }, { kind: "hang", after: 2 }))
@@ -95,3 +102,102 @@ describe("WP5 Inference: provider adapter", () => {
     }
   }))
 })
+
+
+const chatPath = "/api/v1/chat/completions"
+const chatRequest = { ...request, model: "test-chat" }
+const chatKey = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`
+const code = (answer: Answer) => [answer.status, (answer.body as { readonly error?: string }).error]
+
+effect function fundedPrices(cloud: TestCloud, organizationId: string) {
+  try cloud.inside(effect {
+    const settings = (try Deployment).settings.inference
+    if (settings === undefined) throw new Error("The test profile offers no inference model")
+    const store = try Store
+    try store.transaction((tx) => setModelPrice(tx, settings, { modelId: "test-chat", inputPer1K: 1000, outputPer1K: 2000 }))
+    try addCredits({ organizationId, amount: 1_000_000, requestKey: "fund-chat" })
+  })
+}
+
+effect function usageRows(cloud: TestCloud) {
+  return try cloud.store.transaction((tx) => tx.query(
+    "SELECT split_part(h.key, '/', 4) AS request, h.phase, u.outcome, u.quote::int AS quote, u.charged::int AS charged FROM holds h LEFT JOIN usage_records u ON h.key = u.hold_key WHERE h.service = 'inference' ORDER BY h.key", []
+  ))
+}
+
+async function openChat(base: string, headers: Readonly<Record<string, string>>, id: string) {
+  const response = await openCloud(base, chatPath, {
+    headers: { ...headers, "idempotency-key": id },
+    json: { ...chatRequest, stream: true },
+  })
+  const reader = response.body?.getReader()
+  if (reader === undefined) throw new Error("The test chat returned no stream")
+  return { status: response.status, type: response.headers.get("content-type"), reader }
+}
+
+const streamError = 'data: {"error":"provider_invalid_response","errorDescription":"Provider invalid response.","retryable":false}\n\n'
+
+it.live("Fund chat once and stream live complete frames, even when delivery ends early (spec/cloud/index.md, \"Story: Use inference on my subscription or funded pilot account\"; spec/cloud/index.md, \"A streamed answer sends complete OpenAI frames and settles the same hold\")", () => scoped(effect {
+  const llm = try sync(() => llmFake())
+  const cloud = try testCloud({ mount: (fakes) => fakes.mount("/llm/", llm.handler) })
+  const caller = try signedCaller(cloud, "inference-funded")
+  const empty = try signedCaller(cloud, "inference-empty")
+  const now = try Clock.currentTimeMillis
+  const session = try cloud.store.transaction((tx) => issueSession(tx, { ...caller, assurance: "SingleFactor", accountCreated: false, now }))
+  try fundedPrices(cloud, caller.organizationId)
+  const call = (n: number, body: object = chatRequest, headers = caller.headers) =>
+    cloud.call(chatPath, { headers: { ...headers, "idempotency-key": chatKey(n) }, json: body })
+  const unauthenticated = try call(1, chatRequest, {})
+  const invalid = try call(2, { ...chatRequest, unsupported: true })
+  const greaterThanLimit = try promise(() => callDeclaring(cloud.url, chatPath, 256 * 1024 + 1, caller.headers))
+  const unsupported = try call(3, { ...chatRequest, model: "unpriced" })
+  const insufficient = try call(4, chatRequest, empty.headers)
+  const noHolds = try usageRows(cloud)
+  try sync(() => llm.script({ kind: "whole" }, { kind: "stream" }, { kind: "streamWithoutUsage" }, { kind: "truncated" }, { kind: "malformedFrame" }, { kind: "oversizedFrame" }, { kind: "refuse", retryAfterSeconds: 7 }, { kind: "hang", after: 2 }))
+  const worked = try Effect.all([call(5), call(5)], { concurrency: "unbounded" })
+  const first = worked.find((answer) => answer.status === 200)
+  if (first === undefined) throw new Error("Neither request admitted the funded chat")
+  const duplicate = try call(5, { ...chatRequest, messages: [{ role: "user", content: "Do not spend twice" }] }, { authorization: `Bearer ${session.accessToken}` })
+  const textStream = (n: number) => call(n, { ...chatRequest, stream: true })
+  const streamed = try textStream(6)
+  const noUsage = try textStream(7)
+  const truncated = try textStream(8)
+  const malformedFrame = try textStream(9)
+  const oversizedFrame = try textStream(10)
+  const refused = try textStream(11)
+  const live = try promise(() => openChat(cloud.url, caller.headers, chatKey(12)))
+  const partial = try promise(async () => {
+    const chunk = await live.reader.read()
+    return new TextDecoder().decode(chunk.value)
+  })
+  const beforeCancel = (try usageRows(cloud)).find((row) => row.request === chatKey(12))
+  try promise(() => live.reader.cancel())
+  try timeout(promise(() => llm.untilAborted(1)), "10 seconds")
+  let settled = try usageRows(cloud)
+  for (let attempt = 0; settled.find((row) => row.request === chatKey(12))?.phase !== "settled" && attempt < 80; attempt += 1) {
+    try sleep("25 millis")
+    settled = try usageRows(cloud)
+  }
+
+  try check(() => {
+    assert.deepStrictEqual([code(unauthenticated), code(invalid), code(greaterThanLimit), code(unsupported), code(insufficient), noHolds],
+      [[401, "authentication_required"], [400, "invalid_request"], [413, "content_too_large"], [400, "model_unavailable"], [402, "insufficient_credits"], []])
+    assert.deepStrictEqual({ answer: first.body, results: worked.map((result) => result.status).sort(), duplicate: code(duplicate) },
+      { answer: wholeAnswer, results: [200, 409], duplicate: [409, "already_dispatched"] })
+    assert.deepStrictEqual([streamed.headers["content-type"], streamed.body, noUsage.body, truncated.body, malformedFrame.body, oversizedFrame.body, code(refused)],
+      ["text/event-stream", streamText, contentFrames.join("") + doneFrame, contentFrames.join("") + streamError, contentFrames[0] + streamError, streamError, [503, "provider_unavailable"]])
+    assert.isAbove(Number(refused.headers["retry-after"]), 0)
+    assert.deepStrictEqual([live.status, live.type, partial.startsWith(contentFrames[0] ?? ""), beforeCancel?.phase, llm.aborted],
+      [200, "text/event-stream", true, "dispatched", 1])
+    assert.deepStrictEqual(settled.map((row) => [row.request, row.phase, row.outcome, row.quote, row.charged]), [
+      [chatKey(5), "settled", "known", 40, 31], [chatKey(6), "settled", "known", 40, 31],
+      [chatKey(7), "settled", "unknown", 40, 40], [chatKey(8), "settled", "unknown", 40, 40],
+      [chatKey(9), "settled", "unknown", 40, 40], [chatKey(10), "settled", "unknown", 40, 40],
+      [chatKey(11), "settled", "known", 40, 0], [chatKey(12), "settled", "unknown", 40, 40],
+    ])
+    assert.deepStrictEqual(llm.bodies, [
+      request,
+      ...Array.from({ length: 7 }, () => ({ ...request, stream: true, stream_options: { include_usage: true } })),
+    ])
+  })
+}), 45_000)

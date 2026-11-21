@@ -3,7 +3,7 @@ import { type Rejected, apply, decodeState, initial, fundable, allowanceCharge, 
 import { type Rejected as PeriodRejected, apply as applyPeriod, decodeState as decodePeriod, initial as initialPeriod, type Event as PeriodEvent, type Period } from "../../gen/cloud__billing__allowance.effect.vibe"
 import type { HoldKey } from "../../gen/cloud__shared__types.ts"
 import { creditAvailable, readFunds, stepFunds, type FundsFailure } from "../billing/funds.vibe"
-import { laneFor } from "../billing/policy.vibe"
+import { laneFor, type FundingLane } from "../billing/policy.vibe"
 import { refused, type Refused, wireName } from "../http/refusal.vibe"
 import { loadRow, machineRows, type RowConflict, type RowCorrupt, stepRow } from "../store/rows.vibe"
 import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
@@ -22,11 +22,13 @@ export interface HoldOwner {
   readonly userId: string
 }
 
-export interface HoldTicket {
+export type HoldTicket = {
   readonly key: string
   readonly hold: Hold
-  readonly replayed: boolean
-}
+} & (
+  | { readonly replayed: true }
+  | { readonly replayed: false; readonly lane: FundingLane }
+)
 
 export function renderHoldKey(owner: HoldOwner, key: HoldKey): string {
   const part = key.part.tag === "WholeRequest" ? "request" : [key.part.direction, key.part.window].join("-")
@@ -89,7 +91,7 @@ export effect function reserveIn(tx: Tx, owner: HoldOwner, key: HoldKey, quote: 
   const { state: hold } = try stepRow(tx, holdRows, rendered, { type: "reserve", key, quote, lane, allowanceAvailable, creditAvailable: creditAvailable(funds), now }, columns(row, now))
   if (hold.fromAllowance > 0 && open !== undefined) try stepPeriod(tx, open.key, { type: "reserveHold", amount: hold.fromAllowance, now }, now)
   if (hold.fromCredits > 0) try stepFunds(tx, owner.organizationId, { type: "holdCredits", fromCredits: hold.fromCredits }, now, rendered)
-  return { key: rendered, hold, replayed: false }
+  return { key: rendered, hold, replayed: false, lane }
 }
 
 export effect function reserve(owner: HoldOwner, key: HoldKey, quote: number): HoldTicket!MeteringFailure!Store {

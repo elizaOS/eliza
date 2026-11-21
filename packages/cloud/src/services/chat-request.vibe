@@ -1,4 +1,4 @@
-// spec/cloud/services/inference.md, "Story: Answer a chat completion once and charge it once"; spec/cloud/services/models.md, "A side has at most 2,000,000 tokens, so every side's price arithmetic stays a safe integer"
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/services/models.md, "A side has at most 2,000,000 tokens, so every side's price arithmetic stays a safe integer"
 import { callCost, countsInBound, type Model, type TokenCounts } from "../../gen/cloud__services__models.effect.vibe"
 import { refused, type Refused } from "../http/refusal.vibe"
 import type { RouteContext } from "../http/routes.vibe"
@@ -27,7 +27,9 @@ export effect function parseChat(raw: unknown): ChatRequest!Refused {
 
 export effect function chatBody(context: RouteContext): ChatRequest!Refused {
   if (!(context.request.headers["content-type"] ?? "").startsWith("application/json")) throw refused("InvalidRequest")
-  const raw = context.request.json catch effect () => { throw refused("InvalidRequest") }
+  const raw = context.request.json catch effect (failure) => {
+    throw refused(failure.reason._tag === "RequestParseError" && failure.reason.reason === "BodyTooLarge" ? "ContentTooLarge" : "InvalidRequest")
+  }
   return try parseChat(raw)
 }
 

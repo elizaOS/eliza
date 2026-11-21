@@ -1,4 +1,4 @@
-// spec/cloud/services/inference.md, "Story: Answer a chat completion once and charge it once"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
 import { assert, describe, it } from "@effect/vitest"
 import type { Model } from "../../gen/cloud__services__models.ts"
 import { json, type Route } from "../../src/http/routes.vibe"
@@ -70,7 +70,7 @@ const closedSchema = {
 }
 
 describe("WP5 Inference: chat admission", () => {
-  it.live("Refuse a chat body the cloud does not accept and quote the one it does (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\")", () => scoped(effect {
+  it.live("Refuse a chat body the cloud does not accept and quote the one it does (spec/cloud/index.md, \"Story: Use inference on my subscription or funded pilot account\")", () => scoped(effect {
     const cloud = try testCloud()
     const reached: Array<string> = []
     const call = try probeServer(cloud, [chatProbe(reached)])

@@ -14,12 +14,16 @@ export interface CallInit {
   readonly form?: FormData;
 }
 
-export async function callCloud(base: string, path: string, init: CallInit = {}): Promise<Answer> {
-  const response = await fetch(new URL(path, base), {
+export function openCloud(base: string, path: string, init: CallInit = {}): Promise<Response> {
+  return fetch(new URL(path, base), {
     method: init.method ?? (init.json === undefined && init.form === undefined ? "GET" : "POST"),
     headers: { ...(init.json === undefined ? {} : { "content-type": "application/json" }), ...init.headers },
     body: init.form ?? (init.json === undefined ? undefined : JSON.stringify(init.json)),
   });
+}
+
+export async function callCloud(base: string, path: string, init: CallInit = {}): Promise<Answer> {
+  const response = await openCloud(base, path, init);
   const text = await response.text();
   const type = response.headers.get("content-type") ?? "";
   return {

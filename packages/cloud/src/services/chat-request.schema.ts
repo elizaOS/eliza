@@ -1,4 +1,4 @@
-// spec/cloud/services/inference.md, "Story: Answer a chat completion once and charge it once"
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"
 import { Schema } from "effect";
 
 const tokens = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1));

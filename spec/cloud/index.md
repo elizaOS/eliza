@@ -14,8 +14,11 @@ cloud hosts no agent. Its specifications are being written.
 The deployment uses the [shared hold](./shared/metering.md) to reserve the
 quote before contacting a provider. A paid period supplies its remaining
 [allowance](./billing/allowance.md) first. Other readable plans use the
-account's [funded credits](./billing/funds.md). A repeated hold key reuses
-the existing outcome. Model prices and reported token counts follow the
+account's [funded credits](./billing/funds.md). An `Idempotency-Key` UUID
+or the request ID identifies the chat within its organization. A repeated key
+returns `409 already_dispatched` without sending or charging another call. The chat
+request is bounded to 256 KiB and a listed model and prompt are priced before
+the hold is reserved. Model prices and reported token counts follow the
 [model catalog](./services/models.md).
 
 ```quint
@@ -26,6 +29,17 @@ pure def lawPaidAccessRequiresIdentity(freshHold: bool, dispatched: bool): bool 
 pure def lawDuplicateCannotSpendAgain(authenticated: bool, dispatched: bool): bool =
   not(mayDispatchFundedRequest(authenticated, false, dispatched))
 ```
+
+### A streamed answer sends complete OpenAI frames and settles the same hold
+
+The caller can see each complete data frame while the provider is still
+working. Frames remain whole across upstream chunks, including split UTF-8
+characters. The cloud bounds frame and response size and ends a complete
+answer with `[DONE]`. A definite provider rejection before the stream starts
+is an HTTP refusal. A truncated or unreadable stream ends with an error frame.
+The same hold settles at the billed cost when usable counts were reported,
+or at the quote when the usage is unknown. A caller disconnect releases the
+provider connection and settles the hold using the counts already observed.
 
 ## Story: Sign in to the Cloud
 

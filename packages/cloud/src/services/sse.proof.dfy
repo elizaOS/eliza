@@ -1,4 +1,4 @@
-// spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"
+// spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"
 lemma lawEventsDoNotDependOnChunking_ensures(s: Segmenter, a: seq<int>, b: seq<int>)
   ensures (fed(s, (a + b)).segmenter == fed(fed(s, a).segmenter, b).segmenter)
   ensures (fed(s, (a + b)).events == (fed(s, a).events + fed(fed(s, a).segmenter, b).events))

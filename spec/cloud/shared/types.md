@@ -126,7 +126,7 @@ type RefusalCode =
   | InsufficientCredits | AllowanceExhausted
   | AccessDenied | ClientDisabled | SpeechConsentRequired
   | NotFound | CapabilityUnavailable
-  | IdempotencyConflict | StaleRevision | BillingStateConflict | IdentityInUse | LastMethod | GoogleReauthRequired | SubscriptionGrantAlreadyRedeemed | SubscriptionGrantPaidPlanActive | ReferralAlreadyApplied
+  | IdempotencyConflict | AlreadyDispatched | StaleRevision | BillingStateConflict | IdentityInUse | LastMethod | GoogleReauthRequired | SubscriptionGrantAlreadyRedeemed | SubscriptionGrantPaidPlanActive | ReferralAlreadyApplied
   | SessionClosed | PreconditionFailed | ContentTooLarge
   | NoRoute | UnsupportedMode | UnsupportedRegion
   | FreshSessionRequired | RateLimited | ProviderInvalidResponse
@@ -137,7 +137,7 @@ pure def statusOf(code: RefusalCode): int =
   else if (Set(InsufficientCredits, AllowanceExhausted).contains(code)) 402
   else if (Set(AccessDenied, ClientDisabled, SpeechConsentRequired).contains(code)) 403
   else if (Set(NotFound, CapabilityUnavailable).contains(code)) 404
-  else if (Set(IdempotencyConflict, StaleRevision, BillingStateConflict, IdentityInUse, LastMethod, GoogleReauthRequired, SubscriptionGrantAlreadyRedeemed, SubscriptionGrantPaidPlanActive, ReferralAlreadyApplied).contains(code)) 409
+  else if (Set(IdempotencyConflict, AlreadyDispatched, StaleRevision, BillingStateConflict, IdentityInUse, LastMethod, GoogleReauthRequired, SubscriptionGrantAlreadyRedeemed, SubscriptionGrantPaidPlanActive, ReferralAlreadyApplied).contains(code)) 409
   else if (code == SessionClosed) 410
   else if (code == PreconditionFailed) 412
   else if (code == ContentTooLarge) 413

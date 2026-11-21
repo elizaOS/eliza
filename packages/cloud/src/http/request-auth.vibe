@@ -51,9 +51,9 @@ function status(row: Row | undefined): RequestAccountStatus {
   return row?.status === "active" ? "RequestAccountActive" : "RequestAccountInactive"
 }
 
-effect function deviceKeyCaller(token: string, routeClass: RouteClass): Caller!(Refused | StoreFailure)!Store {
+effect function deviceKeyCaller(token: string, routeClass: RouteClass, countRequest: boolean): Caller!(Refused | StoreFailure)!Store {
   const digest = tokenDigest(token)
-  try admit({ subject: digest, scope: "device-key", limit: deviceKeyPerMinute, widthMs: minute })
+  if (countRequest) try admit({ subject: digest, scope: "device-key", limit: deviceKeyPerMinute, widthMs: minute })
   const store = try Store
   const row = (try store.transaction((tx) => tx.query(
     "SELECT g.key, g.state, g.phase, g.key_expires_at, g.device_epoch AS grant_epoch, g.user_id, g.credential_id, a.organization_id, a.status, a.device_epoch AS account_epoch FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.secret_digest = $1",
@@ -107,14 +107,30 @@ effect function sessionCaller(token: string, routeClass: RouteClass, now: number
   }
 }
 
-export effect function authenticate(authorization: string | undefined, routeClass: RouteAuth): Caller!(Refused | StoreFailure)!Store {
-  if (routeClass === "Public" || routeClass === "ProviderSignature" || routeClass === "SessionFamily") return { kind: "anonymous" }
+effect function readCaller(authorization: string | undefined, routeClass: RouteClass, countRequest: boolean): Caller!(Refused | StoreFailure)!Store {
+  if (routeClass === "Public" || routeClass === "ProviderSignature") return { kind: "anonymous" }
   const now = try Clock.currentTimeMillis
   const token = bearerToken(authorization)
   if (token === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
-  if (deviceKeyPattern.test(token)) return try deviceKeyCaller(token, routeClass)
+  if (deviceKeyPattern.test(token)) return try deviceKeyCaller(token, routeClass, countRequest)
   if (sessionTokenPattern.test(token)) return try sessionCaller(token, routeClass, now)
   throw refused("AuthenticationRequired", "CredentialUnknown")
+}
+
+export effect function authenticate(authorization: string | undefined, routeClass: RouteAuth): Caller!(Refused | StoreFailure)!Store {
+  if (routeClass === "SessionFamily") return { kind: "anonymous" }
+  return try readCaller(authorization, routeClass, true)
+}
+
+export effect function recheckServiceAccess(authorization: string | undefined, caller: Signed): void!(Refused | StoreFailure)!Store {
+  const current = try readCaller(authorization, "ServiceAccess", false)
+  if (current.kind === "anonymous" || current.userId !== caller.userId || current.organizationId !== caller.organizationId) {
+    throw refused("AuthenticationRequired", "CredentialUnknown")
+  }
+  const sameCredential = current.kind === "session"
+    ? caller.kind === "session" && current.sessionKey === caller.sessionKey
+    : caller.kind === "deviceKey" && current.grantKey === caller.grantKey
+  if (!sameCredential) throw refused("AuthenticationRequired", "CredentialUnknown")
 }
 
 export function signed(caller: Caller): Signed | undefined {
