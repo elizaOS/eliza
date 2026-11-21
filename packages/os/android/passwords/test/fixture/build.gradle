@@ -1,12 +1,10 @@
 buildscript {
- def toolchain = new groovy.json.JsonSlurper().parse(rootProject.file('../../../host-templates/toolchain.json'))
  repositories {
   google()
   mavenCentral()
  }
  dependencies {
-  classpath "com.android.tools.build:gradle:${toolchain.androidGradlePlugin}"
-  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${toolchain.kotlin}"
+  classpath 'com.android.tools.build:gradle:8.13.0'
  }
 }
 

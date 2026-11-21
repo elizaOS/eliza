@@ -7,9 +7,8 @@ pluginManagement {
 }
 
 rootProject.name = 'passwords-android-fixture'
-include ':capacitor-android', ':elizaos-capacitor-passwords', ':secure-store'
+include ':capacitor-android', ':elizaos-capacitor-passwords'
 def capacitor = providers.gradleProperty('capacitorAndroidDir').orNull
 if (capacitor == null) throw new GradleException('Set capacitorAndroidDir to the installed @capacitor/android package directory')
 project(':capacitor-android').projectDir = file(new File(capacitor, 'capacitor'))
 project(':elizaos-capacitor-passwords').projectDir = file('../..')
-project(':secure-store').projectDir = file('../../../secure-store')
