@@ -954,10 +954,10 @@ export async function generateStage1Decision(
     } catch (error) {
       outcome = { error };
       // The runtime rejects a generation that stopped at its output limit
-      // instead of returning it. Under a host cap that is a cut-off envelope,
-      // so it takes the completion-limit handling rather than failing the turn.
+      // instead of returning it. Under a host cap, or at the model's own
+      // maximum when no cap is sent, that is a cut-off envelope: it takes the
+      // completion-limit handling rather than failing the turn.
       if (
-        stage1ModelParams.maxTokens !== undefined &&
         isModelOutputLimitFinishReason(
           modelOutputIncompleteEvidence(error)?.finishReason,
         )
