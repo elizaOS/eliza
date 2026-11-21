@@ -9,12 +9,7 @@ import type {
   ActionParameterSchema,
   HandlerOptions,
 } from "@elizaos/core";
-import {
-  ElizaError,
-  extractUserText,
-  registerDirectActionRoutingRule,
-  unwrapUserMessageText,
-} from "@elizaos/core";
+import { ElizaError, registerDirectActionRoutingRule } from "@elizaos/core";
 import { proposeDeviceAction } from "./action.ts";
 import { isBrowserControlType } from "./browser-contract.ts";
 import { authoredBrowserDestination } from "./browser-request-grounding.ts";
@@ -25,7 +20,6 @@ import {
 } from "./calendar-contract.ts";
 import {
   CAMERA_CAPTURE_CAPABILITY,
-  CAMERA_LENS_CAPABILITY,
   DEVICE_CAMERA_CAPTURE_ACTION,
 } from "./camera-contract.ts";
 import { authoredCameraCapture } from "./camera-request.ts";
@@ -715,34 +709,8 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
         throw new ElizaError("Device action handler is unavailable", {
           code: "DEVICE_ACTION_HANDLER_UNAVAILABLE",
         });
-      if (type === "camera_capture_photo") {
-        // A whole-message photo command owns its lens: the camera the owner
-        // named, or the one showing. The model's lens choice never overrides it.
-        // The owner's words, not a prompt-only document envelope around them.
-        const authored = authoredCameraCapture(
-          args[1] ? extractUserText(unwrapUserMessageText(args[1])) : "",
-          args[0].character?.name,
-        );
-        if (
-          authored &&
-          getDeviceActionTurn()?.credential.capabilities?.includes(
-            CAMERA_LENS_CAPABILITY,
-          )
-        ) {
-          const next = [...args] as Parameters<NonNullable<Action["handler"]>>;
-          next[3] = {
-            ...(args[3] as HandlerOptions | undefined),
-            parameters: {
-              ...(raw as Record<string, unknown>),
-              operation: {
-                type,
-                ...(authored.lens ? { lens: authored.lens } : {}),
-              },
-            } as HandlerOptions["parameters"],
-          };
-          return proposeDeviceAction.handler(...next);
-        }
-      }
+      // A camera capture's lens is the one the owner named; the service
+      // applies that for every tool that proposes one (proposeWithOutcome).
       return proposeDeviceAction.handler(...args);
     },
   })),
