@@ -9,7 +9,7 @@ import { readAndroidArtifactEntryBuffers, readApkSigner, type Environment } from
 import { readArtifact } from "./artifact.vibe"
 import { productDescriptor } from "./compose-product.vibe"
 import { captureCommand } from "./device.vibe"
-import { outsideGit, ownerDirectory } from "./key-ceremony.vibe"
+import { outsideGit, ownerDirectory, type GenerateOptions } from "./key-ceremony.vibe"
 import { archiveDigest, archiveEntries, archiveEntry, chainedPartitions, packageRows, properties, verifiedBoot } from "./signing-archive.vibe"
 import { keyName, loadKeyManifest, readSigningJson, SigningRefused, type KeyManifestRow } from "./signing-keys.vibe"
 import { channelDistributionProblems, compatibilityRecord, releaseArtifact, releaseChannel, releaseDescriptorProblems } from "./signing-record.vibe"
@@ -84,52 +84,37 @@ const required = Schema.decodeUnknownEffect(Schema.Struct({
   avb: Schema.Struct({ algorithm: Schema.String, chainedPartitions: Schema.Array(label), vbmetaKey: label, publicKeyMetadata: label, publicKeySha256: digest }),
   sourceLock: Schema.Struct({ sha256: digest }),
 }))
-const usages = "Supply --target-files ZIP --target-files-sha256 SHA --keys-dir DIR --releasetools DIR --out NEW_DIRECTORY"
+const keyUsage = "Supply --output NEW_DIRECTORY, --passphrase-file FILE, and --manifest FILE"
 const secretLimit = 1024 * 1024
 const toolTimeout = 2 * 60 * 60_000
 const rowText = new TextEncoder()
 const shlex = /^[A-Za-z0-9_@%+=:,./-]+$/
 const safeSource = /^(?:[a-zA-Z0-9_.-]+\/)*[a-zA-Z0-9_.-]+$/
 const presigned = new Set(["PRESIGNED", "EXTERNAL"])
-const optionsWithValues: Readonly<Record<string, string>> = {
-  "--target-files": "targetFiles", "--target-files-sha256": "targetFilesSha256", "--keys-dir": "keysDir", "--releasetools": "releasetools",
-  "--out": "out", "--apksigner": "apksigner", "--incremental-from": "incrementalFrom", "--apk-manifest": "apkManifest", "--pkcs11-config": "pkcs11Config",
-  "--avb-signing-helper": "avbSigningHelper", "--payload-signer": "payloadSigner", "--payload-signer-signature-size": "payloadSignerSignatureSize",
-  "--descriptor": "descriptor", "--product": "product", "--channel": "channel", "--key-manifest": "keyManifest",
-}
+const keyOptions = new Set(["--output", "--passphrase-file", "--organization", "--manifest", "--only"])
 
 export effect function parseArgs(argv: readonly string[]) {
   const values = new Map<string, string>()
-  const mappings = new Map<string, string>()
-  const payloadSignerArgs: string[] = []
-  let dryRun = false
+  let testKeys = false
   for (let cursor = 0; cursor < argv.length; cursor++) {
     const arg = argv[cursor] ?? ""
-    if (arg === "--dry-run" && !dryRun) { dryRun = true; continue }
+    if (arg === "--test-keys" && !testKeys) { testKeys = true; continue }
     const value = argv[cursor + 1]
-    if (value === undefined || value === "" || (arg !== "--payload-signer-arg" && value.startsWith("--"))) throw new SigningRefused({ reason: usages })
-    cursor++
-    if (arg === "--map-key") {
-      const source = value.slice(0, value.indexOf("="))
-      const target = value.slice(value.indexOf("=") + 1)
-      if (value.indexOf("=") < 1 || !safeSource.test(source) || !keyName.test(target) || mappings.has(source)) throw new SigningRefused({ reason: "Each --map-key needs a distinct AOSP source=key name" })
-      mappings.set(source, target)
-    } else if (arg === "--payload-signer-arg") {
-      if (!shlex.test(value)) throw new SigningRefused({ reason: "Use a single safe argument for the payload signer" })
-      payloadSignerArgs.push(value)
-    } else {
-      const name = Object.hasOwn(optionsWithValues, arg) ? optionsWithValues[arg] : undefined
-      if (name === undefined || values.has(name)) throw new SigningRefused({ reason: usages })
-      values.set(name, value)
+    if (!keyOptions.has(arg) || values.has(arg) || value === undefined || value === "" || value.startsWith("--")) {
+      throw new SigningRefused({ reason: `Invalid or repeated generation option ${arg}` })
     }
+    cursor++
+    values.set(arg, value)
   }
-  const paths = ["targetFiles", "targetFilesSha256", "keysDir", "releasetools", "out"]
-  if (paths.some((name) => !values.has(name)) || !/^[a-f0-9]{64}$/.test(values.get("targetFilesSha256") ?? "")) throw new SigningRefused({ reason: usages })
-  const managed = ["pkcs11Config", "avbSigningHelper", "payloadSigner", "payloadSignerSignatureSize"].filter((name) => values.has(name)).length
-  if (!keyStoreAdmitted({ insideWorkTree: false, existed: true, ownerOnly: true }, managed) || (managed === 0 && payloadSignerArgs.length !== 0)) {
-    throw new SigningRefused({ reason: "Supply the four managed signing options together" })
-  }
-  return { ...Object.fromEntries(values), dryRun, keyMap: Object.fromEntries(mappings), payloadSignerArgs }
+  const output = values.get("--output")
+  const passphraseFile = values.get("--passphrase-file")
+  const manifest = values.get("--manifest")
+  const organization = values.get("--organization") ?? (testKeys ? "Test Keys" : undefined)
+  const only = values.get("--only")
+  if (output === undefined || passphraseFile === undefined || manifest === undefined) throw new SigningRefused({ reason: keyUsage })
+  if (organization === undefined || !/^[\w .,&'-]{1,64}$/.test(organization)) throw new SigningRefused({ reason: "Supply a plain organization name for release keys" })
+  const parsed: GenerateOptions = { output, passphraseFile, manifest, organization, testKeys, ...(only === undefined ? {} : { only }) }
+  return parsed
 }
 
 function refused(cause: unknown): SigningRefused {
