@@ -52,6 +52,7 @@ module node {
   import { listenOnHttp } from "../access/http.vibe"
   import { conversationRoutes } from "../conversation/routes.vibe"
   import { ownerMessageService } from "../conversation/message-service.vibe"
+  import { deviceEnrollment } from "../device-actions/enrollment.vibe"
   import { openDeviceStorage, type DeviceStorageSnapshot } from "../storage/index.vibe"
   import { StoreFailed } from "../storage/fault.vibe"
   import { logSweeps, scheduleSweeps } from "../storage/retention.vibe"
@@ -252,6 +253,7 @@ module node {
         id: world, agentId, name: "Device",
         metadata: { ownership: { ownerId }, roles: { [user]: role === "OWNER" ? "OWNER" : "MEMBER" } },
       })
+      const enrollment = deviceEnrollment({ runtime, launch, ownerEntityId: ownerId })
       const router = createRouter({
         token: authority.token, epoch: authority.epoch, instanceId: status.serverInstanceId,
         health: () => healthAnswer(lifecycle.get()),
@@ -259,6 +261,7 @@ module node {
           ...statusRoutes({ agentId, name: launch.character.name, serverInstanceId: status.serverInstanceId, backend: backendOf(launch.model), embeddings: launch.embeddings, state: () => runStateOf(lifecycle.get()), binding: () => Effect.runSync(models.state()), now: Date.now }),
           ...authRoutes(agentId),
           ...conversationRoutes(runtime, { user, world }, launch.character.name),
+          ...enrollment.routes,
           ...composed.routes,
         ],
       })

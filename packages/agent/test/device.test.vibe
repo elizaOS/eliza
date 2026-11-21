@@ -9,13 +9,18 @@ import { request, requestStream } from "./support/socket-client.ts"
 
 const Conversation = Schema.Struct({ conversation: Schema.Struct({ id: Schema.String, roomId: Schema.String }) })
 const History = Schema.Struct({ messages: Schema.Array(Schema.Struct({ id: Schema.String, text: Schema.String })) })
+const Enrollment = Schema.Struct({ installationId: Schema.String, enrollmentId: Schema.String })
+const DeviceContext = Schema.Struct({
+  ...Enrollment.fields, agentId: Schema.String, subjectUserId: Schema.String,
+  scope: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
+})
 const Reply = Schema.Struct({
   type: Schema.String, fullText: Schema.optionalKey(Schema.String), agentName: Schema.optionalKey(Schema.String),
   messageId: Schema.optionalKey(Schema.String), userMessageId: Schema.optionalKey(Schema.String),
 })
 const response = Schema.decodeUnknownOption(Schema.fromJsonString(Reply))
 
-it.effect('An owner starts the agent and receives a complete streamed reply (spec/agent/host/launch.md, "Story: Start the agent from one launch document")', effect () => {
+it.effect('An owner starts the agent and receives a complete streamed reply (spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it")', effect () => {
   const state = try scratch("ez-test")
   const cloud = try cloudFake(deviceKey)
   const socket = state.file("agent.sock")
@@ -34,6 +39,25 @@ it.effect('An owner starts the agent and receives a complete streamed reply (spe
   const publicAuth = try host("anonymous authorization status", () => request(socket, { method: "GET", path: "/api/auth/status" }))
   const noIdentity = try host("anonymous identity refused", () => request(socket, { method: "GET", path: "/api/auth/me" }))
   const owner = try host("authenticated owner identity", () => request(socket, { method: "GET", path: "/api/auth/me", token }))
+  const deviceHeaders = { "x-eliza-device-id": running.status.agentId, "x-eliza-device-key": "a".repeat(64) }
+  const contextPath = "/api/client-devices/context"
+  const unrootedDevice = try host("device credential without the launch token", () => request(socket, { method: "GET", path: contextPath, headers: deviceHeaders }))
+  const unregisteredDevice = try host("device context before enrollment", () => request(socket, { method: "GET", path: contextPath, token, headers: deviceHeaders }))
+  const registeredDevice = try host("register the device through the running agent", () => request(socket, {
+    method: "POST", path: "/api/client-devices/register", token, headers: deviceHeaders,
+    body: { capabilities: ["calendar.create.v1"], workflowProtocol: 1 },
+  }))
+  const contextOfDevice = try host("read enrolled device context", () => request(socket, { method: "GET", path: contextPath, token, headers: deviceHeaders }))
+  if (!("json" in registeredDevice) || !("json" in contextOfDevice)) return try die("The device enrollment socket did not answer")
+  const enrollment = try Schema.decodeUnknownEffect(Enrollment)(registeredDevice.json)
+  const deviceContext = try Schema.decodeUnknownEffect(DeviceContext)(contextOfDevice.json)
+  const anotherKey = try host("reject another key", () => request(socket, {
+    method: "GET", path: contextPath, token, headers: { ...deviceHeaders, "x-eliza-device-key": "b".repeat(64) },
+  }))
+  const revokedDevice = try host("revoke the device over the socket", () => request(socket, {
+    method: "POST", path: "/api/client-devices/revoke", token, headers: deviceHeaders,
+  }))
+  const revokedContext = try host("refuse context from a revoked device", () => request(socket, { method: "GET", path: contextPath, token, headers: deviceHeaders }))
   const opened = try host("create conversation", () => request(socket, { method: "POST", path: "/api/conversations", token, body: {} }))
   if (!("json" in opened)) return try die("The owner conversation was refused")
   const { conversation } = try Schema.decodeUnknownEffect(Conversation)(opened.json)
@@ -57,12 +81,21 @@ it.effect('An owner starts the agent and receives a complete streamed reply (spe
     auth: "json" in publicAuth ? publicAuth.json : undefined,
     anonymousIdentity: "status" in noIdentity ? noIdentity.status : undefined,
     owner: "json" in owner ? owner.json : undefined,
+    device: {
+      statuses: [unrootedDevice, unregisteredDevice, registeredDevice, contextOfDevice, anotherKey, revokedDevice, revokedContext]
+        .map((answer) => "status" in answer ? answer.status : undefined),
+      bound: [deviceContext.agentId, deviceContext.installationId, deviceContext.enrollmentId],
+    },
     stream: turn.status, terminal: frames.at(-1), containsTokens: frames.some(({type}) => type === "token"),
     fault: turn.error, upstream: cloud.calls.map(({path,authorization}) => ({path,authorization})),
   }, {
     healthy: 200, stale: 401, created: 201, stream: 200,
     auth: { authenticated: false, serverInstanceId: running.status.serverInstanceId }, anonymousIdentity: 401,
     owner: { identity: { kind: "owner", id: running.status.agentId }, access: { role: "OWNER", mode: "local" } },
+    device: {
+      statuses: [401, 401, 200, 200, 401, 200, 401],
+      bound: [running.status.agentId, enrollment.installationId, enrollment.enrollmentId],
+    },
     terminal: { type: "done", fullText: "Hello from the device agent.", agentName: name, messageId: replyId, userMessageId: inputId }, containsTokens: true,
     fault: undefined, upstream: [{ path: "/api/v1/chat/completions", authorization: "Bearer " + deviceKey }],
   }))
@@ -87,8 +120,8 @@ module node {
           first.resolve()
           return oldReply.promise
         }
-        return Promise.resolve(path === "/busy"
-          ? { status: 429, data: { error: "Try again", code: "busy", retryAfter: 5 } }
+        return Promise.resolve(path === "/busy" || path === "/busy-unsafe"
+          ? { status: 429, data: { error: "Try again", code: "busy", retryAfter: path === "/busy" ? 5 : Number.MAX_SAFE_INTEGER + 1 } }
           : { status: 200, data: { account } })
       },
     }
@@ -102,9 +135,11 @@ module node {
     const current = client.request("/account")
     await changed
     oldReply.resolve({ status: 200, data: { account: "previous" } })
-    const busy = await client.request("/busy").catch((error: unknown) => error instanceof RuntimeRequestError
+    const refused = (path: string) => client.request(path).catch((error: unknown) => error instanceof RuntimeRequestError
       ? { status: error.status, code: error.code, retryAfter: error.retryAfter } : error)
-    return { previous: await previous, current: await current, busy, requests, limit: client.requestBodyLimit }
+    const busy = await refused("/busy")
+    const unsafeRetry = await refused("/busy-unsafe")
+    return { previous: await previous, current: await current, busy, unsafeRetry, requests, limit: client.requestBodyLimit }
   }
 
   export async function supersedeRestart() {
@@ -150,7 +185,8 @@ it.effect('A pending request cannot publish the previous account and the current
   const observed = try tryPromise(() => changeRuntimeAccount())
   try Effect.try(() => assert.deepStrictEqual(observed, {
     previous: "AccountChanged", current: { account: "current" },
-    busy: { status: 429, code: "busy", retryAfter: 5 }, requests: 3, limit: 8192,
+    busy: { status: 429, code: "busy", retryAfter: 5 },
+    unsafeRetry: { status: 429, code: "busy", retryAfter: undefined }, requests: 4, limit: 8192,
   }))
 })
 

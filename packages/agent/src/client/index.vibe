@@ -250,7 +250,7 @@ module node {
         if (!path.startsWith("/") || path.startsWith("//") || /[\\\u0000-\u0020]/.test(path)) throw new Error("InvalidPath")
         const id = current().nextId
         pending.set(id, { path, body, resolve, reject })
-        send({ type: "submit", path: "Rooted" })
+        send({ type: "submit", path: "Rooted", delivery: "Plain" })
       })
     }
 

@@ -3,7 +3,7 @@ import type { AgentPlugin } from "../host/module.vibe"
 
 export const reservedHostPrefixes: readonly string[] = [
   "/api/status", "/api/health", "/api/auth", "/api/agents", "/api/host",
-  "/api/cloud", "/api/events", "/api/conversations", "/api/turns",
+  "/api/cloud", "/api/events", "/api/conversations", "/api/turns", "/api/client-devices",
 ]
 
 const Name = Schema.String.check(Schema.makeFilter((name) => name.trim() !== "" && name.trim() === name))

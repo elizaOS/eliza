@@ -53,8 +53,8 @@ type ClientStep = { state: RuntimeClient, out: List[BridgeCall] }
 pure val initial: RuntimeClient = { gen: 0, nextId: 0, refresh: Current, startup: NoStartup, requests: List() }
 pure val reportValues = Set(Unavailable, Available({ phase: Stopped }), Available({ phase: Starting }), Available({ phase: Running }))
 pure val fallbackValues = Set(NoFallback, HttpFallback)
-pure val ofGenValues = Set(0, 1, 2)
-pure val idValues = Set(0, 1, 2)
+pure val ofGenValues = 0.to(20)
+pure val idValues = 0.to(20)
 pure def emit(out: List[BridgeCall], c: RuntimeClient): ClientStep = { state: c, out: out }
 pure def ensureCalls(phase: RuntimePhase, c: RuntimeClient): List[BridgeCall] = if (c.startup == NoStartup and phase == Stopped) List(CallStart) else List()
 pure def refreshing(r: Refresh): bool = r == ProbingAccount or r == Restarting or r == AwaitRestart
@@ -327,8 +327,9 @@ pure def leadsToRequestSettles(c: RuntimeClient, later: RuntimeClient): bool =
 ### A refusal is a non-2xx status, and keeps retry advice only from a 429 with a safe whole number of seconds
 
 A 2xx answer is the reply, or for a stream its head. The refusal error also carries the body's `error`
-and `code` strings, which the shell keeps and the machine does not see; a
-`retryAfter` that is not a whole number is dropped by the shell.
+and `code` strings, which the shell keeps and the machine does not see. The
+shell drops a `retryAfter` outside the safely representable whole numbers
+before passing retry advice to the machine.
 
 ```quint
 pure def admitAdvice(httpStatus: int, retry: RetryAdvice): RetryAdvice = match retry {
@@ -343,7 +344,7 @@ pure def canReply(c: RuntimeClient, id: int): bool = own(c, id) and sentNow(c, i
 pure def reply(c: RuntimeClient, id: int, httpStatus: int, retry: RetryAdvice): RuntimeClient =
   { ...c, requests: c.requests.listMap(r => if (r.id == id) { ...r, stage: answerOf(r.stage, r.delivery, httpStatus, retry) } else r) }
 pure val httpStatusValues = Set(200, 409, 429, 503)
-pure val retryValues = Set(NoAdvice, RetryAfter({ seconds: -1 }), RetryAfter({ seconds: 0 }), RetryAfter({ seconds: 30 }), RetryAfter({ seconds: 9007199254740992 }))
+pure val retryValues = Set(NoAdvice, RetryAfter({ seconds: -1 }), RetryAfter({ seconds: 0 }), RetryAfter({ seconds: 30 }), RetryAfter({ seconds: maxSafeInteger }))
 pure def adviceAllowed(httpStatus: int, advice: RetryAdvice): bool = match advice {
   | RetryAfter(a) => httpStatus == 429 and a.seconds >= 0 and a.seconds <= maxSafeInteger
   | NoAdvice => true
