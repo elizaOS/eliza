@@ -1,0 +1,212 @@
+// spec/agent/surfaceChannel.md, "Story: Retire delivered page commands without repeating a possible effect"
+import { assert, it } from "@effect/vitest"
+import { commandTimeoutMs, connectionTtlMs, maxPending } from "../gen/agent__surfaceChannel.effect.vibe"
+import type { ModuleFactory } from "../src/host/module.vibe"
+import { builtinModuleFactories } from "../src/plugins/profile.vibe"
+import {
+  SurfaceRefused, openSurfaceChannel, pullHoldMs, surfaceChannelServiceType, surfaceModule, surfaceModuleName,
+  type SurfaceAnswer, type SurfaceChannel, type SurfaceChannelService,
+} from "../src/tasks/surface-channel.vibe"
+import { call, host, startInProcess, type InProcess } from "./support/kernel.vibe"
+import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
+
+const loaded = {
+  http: true,
+  launch: { load: [surfaceModuleName] },
+  modules: new Map<string, ModuleFactory<never>>([...builtinModuleFactories, [surfaceModuleName, surfaceModule]]),
+}
+
+interface Reply { readonly status: number; readonly body: unknown }
+
+const answerOf = (answer: LocalAnswer | Refusal): Reply => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
+const codeOf = (reply: Reply) => [reply.status, (reply.body as { code?: string } | null)?.code]
+const commandOf = (reply: Reply) => (reply.body as { command: { id: string; sequence: number; effect: boolean; expiresAt: number; input: unknown } | null }).command
+const idOf = (reply: Reply) => (reply.body as { connectionId: string }).connectionId
+
+effect function surface(agent: InProcess, path: string, body: unknown) {
+  return answerOf(try call(agent, { method: "POST", path: `/api/surface/${path}`, body }))
+}
+
+effect function channelService(agent: InProcess) {
+  try host("surface channel start", () => agent.agent.runtime.getServiceLoadPromise(surfaceChannelServiceType))
+  const found = agent.agent.runtime.getService(surfaceChannelServiceType)
+  return try Effect.try(() => {
+    assert.isDefined(found)
+    return found as unknown as SurfaceChannelService
+  })
+}
+
+effect function routeCall(channel: SurfaceChannel, path: string, body: unknown, signal: AbortSignal = new AbortController().signal) {
+  const route = channel.routes.find((candidate) => candidate.path === `/api/surface/${path}`)
+  if (route === undefined) return try Effect.die(`no route ${path}`)
+  const answer = try promise(async () => await route.handler({ parameters: new Map(), query: new Map(), headers: new Map(), body, signal }))
+  return answer as Reply
+}
+
+effect function settle() {
+  for (let round = 0; round < 20; round += 1) try Effect.yieldNow
+}
+
+it.live('A browser task sends a command over the real transport, the page pulls and answers it once, and closing retires what is left (spec/agent/surfaceChannel.md, "A connection opens only with an epoch higher than any seen before"; spec/agent/surfaceChannel.md, "A pull hands over only the oldest command not yet handed over, and only one pull waits at a time"; spec/agent/surfaceChannel.md, "A reply settles only a handed-over command of the same connection before its deadline"; spec/agent/surfaceChannel.md, "Opening, closing, lapsing or stopping retires every pending command with one settlement each")', effect () => {
+  const agent = try startInProcess(loaded)
+  const service = try channelService(agent)
+  const before = try host("no connection", () => service.currentConnection())
+  const opened = try surface(agent, "connect", { clientId: "page-1", epoch: 1 })
+  const connectionId = idOf(opened)
+  const observed = try host("current connection", () => service.currentConnection())
+  const sent = try fork host("send", () => service.send({ connectionId, effect: true, input: { click: "#save" } }))
+  const pulled = try surface(agent, "pull", { connectionId })
+  const command = commandOf(pulled)
+  const replied = try surface(agent, "reply", { connectionId, id: command?.id ?? "", result: { saved: true } })
+  const again = try surface(agent, "reply", { connectionId, id: command?.id ?? "", result: { saved: true } })
+  const answered = try join sent
+
+  const repeatedEpoch = try surface(agent, "connect", { clientId: "page-1", epoch: 1 })
+  const malformed = try surface(agent, "connect", { clientId: "page 1", epoch: 2 })
+  const extraKey = try surface(agent, "pull", { connectionId, extra: true })
+  const oversized = try surface(agent, "pull", { connectionId: "x".repeat(5000) })
+  const bothAnswers = try surface(agent, "reply", { connectionId, id: "c1", result: 1, error: { code: "PAGE_GONE", message: "gone" } })
+  const badCode = try surface(agent, "reply", { connectionId, id: "c1", error: { code: "page-gone", message: "gone" } })
+
+  const handedEffect = try fork host("effect send", () => service.send({ connectionId, effect: true, input: { type: "text" } }))
+  const handed = commandOf(try surface(agent, "pull", { connectionId }))
+  const waitingRead = try fork host("read send", () => service.send({ connectionId, effect: false, input: { read: "title" } }))
+  const handedRead = commandOf(try surface(agent, "pull", { connectionId }))
+  const closed = try surface(agent, "close", { connectionId })
+  const uncertain = try join handedEffect
+  const staleRead = try join waitingRead
+  const lateReply = try surface(agent, "reply", { connectionId, id: handed?.id ?? "", result: {} })
+  const afterClose = try host("no connection after close", () => service.currentConnection())
+
+  const renewed = idOf(try surface(agent, "connect", { clientId: "page-1", epoch: 2 }))
+  const oldPull = try surface(agent, "pull", { connectionId })
+  try host("surface stop", () => service.stop())
+  const stopped = try surface(agent, "pull", { connectionId: renewed })
+  const reconnect = try surface(agent, "connect", { clientId: "page-1", epoch: 3 })
+  try Effect.try(() => {
+    assert.isNull(before)
+    assert.strictEqual(opened.status, 200)
+    assert.match(connectionId, /^[A-Za-z0-9_.:-]{1,128}$/)
+    assert.strictEqual(observed, connectionId)
+    assert.strictEqual(pulled.status, 200)
+    assert.deepStrictEqual({ sequence: command?.sequence, effect: command?.effect, input: command?.input }, { sequence: 1, effect: true, input: { click: "#save" } })
+    assert.match(command?.id ?? "", /^[A-Za-z0-9_.:-]{1,128}$/)
+    assert.isAtMost((command?.expiresAt ?? 0) - Date.now(), commandTimeoutMs)
+    assert.deepStrictEqual((pulled.body as { cancellations: unknown }).cancellations, [])
+    assert.deepStrictEqual(replied, { status: 200, body: { accepted: true } })
+    assert.deepStrictEqual(codeOf(again), [409, "STALE_REF"])
+    assert.deepStrictEqual(answered, { kind: "answered", result: { saved: true } })
+    assert.deepStrictEqual(codeOf(repeatedEpoch), [409, "STALE_REF"])
+    assert.deepStrictEqual([codeOf(malformed), codeOf(extraKey), codeOf(bothAnswers), codeOf(badCode)], [[400, "INVALID_REQUEST"], [400, "INVALID_REQUEST"], [400, "INVALID_REQUEST"], [400, "INVALID_REQUEST"]])
+    assert.deepStrictEqual(codeOf(oversized), [413, "INVALID_REQUEST"])
+    assert.deepStrictEqual([handed?.sequence, handedRead?.sequence], [2, 3])
+    assert.deepStrictEqual(closed, { status: 200, body: { closed: true } })
+    assert.deepStrictEqual([uncertain.kind, (uncertain as { code?: string }).code], ["refused", "UNCERTAIN_OUTCOME"])
+    assert.deepStrictEqual([staleRead.kind, (staleRead as { code?: string }).code], ["refused", "STALE_REF"])
+    assert.deepStrictEqual(codeOf(lateReply), [409, "STALE_REF"])
+    assert.isNull(afterClose)
+    assert.notStrictEqual(renewed, connectionId)
+    assert.deepStrictEqual(codeOf(oldPull), [409, "STALE_REF"])
+    assert.deepStrictEqual([codeOf(stopped), codeOf(reconnect)], [[503, "UNAVAILABLE"], [503, "UNAVAILABLE"]])
+  })
+}, 120_000)
+
+it.effect('A pull waits for work, only one waits at a time, and a page refusal reaches the browser task unchanged (spec/agent/surfaceChannel.md, "A pull hands over only the oldest command not yet handed over, and only one pull waits at a time"; spec/agent/surfaceChannel.md, "A reply settles only a handed-over command of the same connection before its deadline")', effect () => {
+  const channel = try openSurfaceChannel()
+  const connectionId = idOf(try routeCall(channel, "connect", { clientId: "page-1", epoch: 0 }))
+  const idle = try fork routeCall(channel, "pull", { connectionId })
+  try settle()
+  const second = try routeCall(channel, "pull", { connectionId })
+  try TestClock.adjust(Duration.millis(pullHoldMs))
+  const empty = try join idle
+
+  const woken = try fork routeCall(channel, "pull", { connectionId })
+  try settle()
+  const refusedLater = try fork channel.send({ connectionId, effect: false, input: { read: "url" } })
+  const delivered = commandOf(try join woken)
+  const refusal = try routeCall(channel, "reply", { connectionId, id: delivered?.id ?? "", error: { code: "PAGE_CHANGED", message: "The page moved" } })
+  const pageAnswer = try join refusedLater
+  try Effect.try(() => {
+    assert.deepStrictEqual(codeOf(second), [409, "BUSY"])
+    assert.deepStrictEqual(empty, { status: 200, body: { command: null, cancellations: [] } })
+    assert.deepStrictEqual([delivered?.sequence, delivered?.input], [1, { read: "url" }])
+    assert.deepStrictEqual(refusal, { status: 200, body: { accepted: true } })
+    assert.deepStrictEqual(pageAnswer, { kind: "refused", code: "PAGE_CHANGED", message: "The page moved" })
+  })
+})
+
+it.effect('A seventeenth command is refused, a given-up command is reported once, and a lapsed connection retires what it held (spec/agent/surfaceChannel.md, "The agent queues a command only on the current connection while fewer than sixteen are pending"; spec/agent/surfaceChannel.md, "A command given up on is uncertain only if it was handed over and can have an effect"; spec/agent/surfaceChannel.md, "Opening, closing, lapsing or stopping retires every pending command with one settlement each")', effect () => {
+  const channel = try openSurfaceChannel()
+  const connectionId = idOf(try routeCall(channel, "connect", { clientId: "page-1", epoch: 0 }))
+  const givenUp = try fork channel.send({ connectionId, effect: true, input: { click: "#pay" } })
+  try settle()
+  const handed = commandOf(try routeCall(channel, "pull", { connectionId }))
+  try Fiber.interrupt(givenUp)
+  const abortedOutcome = Exit.hasInterrupts(try Fiber.await(givenUp)) ? "interrupted" : "settled"
+  const reported = try routeCall(channel, "pull", { connectionId })
+
+  const queued = []
+  for (let index = 0; index < maxPending; index += 1) queued.push(try fork channel.send({ connectionId, effect: index === 0, input: { index } }))
+  try settle()
+  const seventeenth = try exit(channel.send({ connectionId, effect: false, input: { index: maxPending } }))
+  const first = commandOf(try routeCall(channel, "pull", { connectionId }))
+  try TestClock.adjust(Duration.millis(connectionTtlMs))
+  const settlements: SurfaceAnswer[] = []
+  for (const fiber of queued) settlements.push(try join fiber)
+  const lapsed = try channel.currentConnection()
+  const afterLapse = try routeCall(channel, "pull", { connectionId })
+  try Effect.try(() => {
+    assert.strictEqual(handed?.sequence, 1)
+    assert.strictEqual(abortedOutcome, "interrupted")
+    assert.deepStrictEqual(reported, { status: 200, body: { command: null, cancellations: [handed?.id] } })
+    assert.isTrue(Exit.isFailure(seventeenth))
+    if (Exit.isFailure(seventeenth)) {
+      const failure = Cause.squash(seventeenth.cause)
+      assert.instanceOf(failure, SurfaceRefused)
+      assert.deepStrictEqual((failure as SurfaceRefused).refusal, { code: "BUSY", status: 409 })
+    }
+    assert.strictEqual(first?.sequence, 2)
+    assert.deepStrictEqual(settlements.map((answer) => answer.kind === "refused" ? answer.code : "answered"), ["UNCERTAIN_OUTCOME", ...Array.from({ length: maxPending - 1 }, () => "STALE_REF")])
+    assert.isNull(lapsed)
+    assert.deepStrictEqual(codeOf(afterLapse), [409, "STALE_REF"])
+  })
+})
+
+it.effect('Handed-over commands are given up at their deadline, and the next pull reports them once for the page to abort (spec/agent/surfaceChannel.md, "A command given up on is uncertain only if it was handed over and can have an effect"; spec/agent/surfaceChannel.md, "A reply settles only a handed-over command of the same connection before its deadline")', effect () => {
+  const channel = try openSurfaceChannel()
+  const connectionId = idOf(try routeCall(channel, "connect", { clientId: "page-1", epoch: 0 }))
+  const effectful = try fork channel.send({ connectionId, effect: true, input: { click: "#send" } })
+  const read = try fork channel.send({ connectionId, effect: false, input: { read: "title" } })
+  try settle()
+  const handed = commandOf(try routeCall(channel, "pull", { connectionId }))
+  const handedRead = commandOf(try routeCall(channel, "pull", { connectionId }))
+  const answers: Reply[] = []
+  for (let hold = 0; hold < 4; hold += 1) {
+    const keepAlive = try fork routeCall(channel, "pull", { connectionId })
+    try settle()
+    try TestClock.adjust(Duration.millis(pullHoldMs))
+    answers.push(try join keepAlive)
+  }
+  const effectOutcome = try join effectful
+  const readOutcome = try join read
+  const resting = try fork routeCall(channel, "pull", { connectionId })
+  try settle()
+  try TestClock.adjust(Duration.millis(pullHoldMs))
+  const rest = try join resting
+  const again = try fork routeCall(channel, "pull", { connectionId })
+  try settle()
+  try TestClock.adjust(Duration.millis(pullHoldMs))
+  const once = try join again
+  const reported = [answers[3], rest].flatMap((answer) => (answer.body as { cancellations: string[] }).cancellations)
+  const late = try routeCall(channel, "reply", { connectionId, id: handed?.id ?? "", result: { sent: true } })
+  try Effect.try(() => {
+    assert.deepStrictEqual([handed?.sequence, handedRead?.sequence], [1, 2])
+    assert.isTrue(4 * pullHoldMs > commandTimeoutMs)
+    assert.deepStrictEqual(answers.slice(0, 3).map((answer) => answer.body), Array.from({ length: 3 }, () => ({ command: null, cancellations: [] })))
+    assert.deepStrictEqual(reported.toSorted(), [handed?.id ?? "", handedRead?.id ?? ""].toSorted())
+    assert.deepStrictEqual(once.body, { command: null, cancellations: [] })
+    assert.deepStrictEqual([effectOutcome.kind, (effectOutcome as { code?: string }).code], ["refused", "UNCERTAIN_OUTCOME"])
+    assert.deepStrictEqual([readOutcome.kind, (readOutcome as { code?: string }).code], ["refused", "STALE_REF"])
+    assert.deepStrictEqual(codeOf(late), [409, "STALE_REF"])
+  })
+})

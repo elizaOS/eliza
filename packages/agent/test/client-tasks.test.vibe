@@ -7,11 +7,14 @@ module node {
   import type { IAgentRuntime } from "@elizaos/core"
   import type { TaskActuator, TaskGoalAuthorizer } from "../src/tasks/host.vibe"
   import { tasksModuleName as tasksModule, tasksServiceType, type TasksApi } from "../src/tasks/index.vibe"
+  import type { ModuleFactory } from "../src/host/module.vibe"
+  import { surfaceChannelServiceType, surfaceModule, surfaceModuleName as surfaceName, type SurfaceChannelService } from "../src/tasks/surface-channel.vibe"
   import { createSurfaceClient, TaskLifecycle, type SurfaceRequest, type TaskLifecycleRequest, type TaskLifecycleState } from "../src/client/index.vibe"
 
   export const tasksModuleName = tasksModule
   export const storageKey = randomBytes(32).toString("base64")
-  export const surfaceModuleName = "@elizaos/agent/surface"
+  export const surfaceModuleName = surfaceName
+  export const surfaceModules: ReadonlyMap<string, ModuleFactory<never>> = new Map([[surfaceName, surfaceModule]])
   const messages = { start: "Could not start", pause: "Could not pause", resume: "Could not resume", cancel: "Could not cancel" }
 
   let observed = 0
@@ -178,7 +181,8 @@ module node {
     return { before, seen, currentTaskId: life.currentTaskId() }
   }
 
-  export async function surfaceConnections(wire: Wire) {
+  export async function surfaceConnections(wire: Wire, runtime: IAgentRuntime) {
+    const channel = await runtime.getServiceLoadPromise(surfaceChannelServiceType) as unknown as SurfaceChannelService
     const request: SurfaceRequest = async (path, body, signal) => {
       const answer = await send(wire, path, body, signal)
       if (answer.status >= 200 && answer.status < 300) return answer.json
@@ -188,10 +192,14 @@ module node {
     const handled: unknown[] = []
     const handleCommand = (input: unknown) => {
       handled.push(input)
-      return Promise.resolve({ done: true })
+      return (input as { fail?: boolean }).fail === true ? Promise.reject(new Error("The page could not act")) : Promise.resolve({ done: true })
     }
     const first = await createSurfaceClient({ request, clientId: "page-1", epoch: 1, handleCommand })
+    const current = await channel.currentConnection()
+    const answered = await channel.send({ connectionId: first.connectionId, effect: false, input: { go: 1 } })
+    const failed = await channel.send({ connectionId: first.connectionId, effect: true, input: { fail: true } })
     await first.close()
+    const afterClose = await channel.currentConnection()
     const stale = await createSurfaceClient({ request, clientId: "page-1", epoch: 1, handleCommand }).then(
       (client) => client.close().then(() => "connected"),
       (error: unknown) => (error as { cause?: { code?: string } }).cause?.code ?? "unknown",
@@ -199,12 +207,12 @@ module node {
     const second = await createSurfaceClient({ request, clientId: "page-1", epoch: 2, handleCommand })
     const secondId = second.connectionId
     await second.close()
-    return { firstId: first.connectionId, stale, renewed: secondId !== "" && secondId !== first.connectionId, handled }
+    return { firstId: first.connectionId, current, answered, failed, afterClose, stale, renewed: secondId !== "" && secondId !== first.connectionId, handled }
   }
 }
 
 import {
-  cancelNeedsANewEpoch, malformedViewIsNotNoTask, pauseBeforeCreationReply, registerHelpers, storageKey, staleResumeAndChangedIdentity, surfaceConnections, surfaceModuleName, tasksModuleName,
+  cancelNeedsANewEpoch, malformedViewIsNotNoTask, pauseBeforeCreationReply, registerHelpers, storageKey, surfaceModules, staleResumeAndChangedIdentity, surfaceConnections, surfaceModuleName, tasksModuleName,
 } from node
 
 effect function boot() {
@@ -260,11 +268,15 @@ it.effect('A reply with no task member or a malformed view is never read as no t
   })
 }, 120_000)
 
-it.effect('The page connects with a rising epoch, a repeated epoch is refused, and closing ends the client (spec/agent/surfaceChannel.md, "A connection opens only with an epoch higher than any seen before"; spec/agent/surfaceChannel.md, "Opening, closing, lapsing or stopping retires every pending command with one settlement each")', effect () => {
-  const agent = try startInProcess({ http: true, launch: { load: [surfaceModuleName] } })
-  const observed = try host("surface connections", () => surfaceConnections(wireOf(agent)))
+it.effect('The page runs each delivered command once, a failed effectful command is uncertain, a repeated epoch is refused and closing ends the connection (spec/agent/surfaceChannel.md, "A connection opens only with an epoch higher than any seen before"; spec/agent/surfaceChannel.md, "A pull hands over only the oldest command not yet handed over, and only one pull waits at a time"; spec/agent/surfaceChannel.md, "A reply settles only a handed-over command of the same connection before its deadline"; spec/agent/surfaceChannel.md, "Opening, closing, lapsing or stopping retires every pending command with one settlement each")', effect () => {
+  const agent = try startInProcess({ http: true, launch: { load: [surfaceModuleName] }, modules: surfaceModules })
+  const observed = try host("surface connections", () => surfaceConnections(wireOf(agent), agent.agent.runtime))
   try Effect.try(() => {
     assert.notStrictEqual(observed.firstId, "")
-    assert.deepStrictEqual([observed.stale, observed.renewed, observed.handled], ["STALE_REF", true, []])
+    assert.strictEqual(observed.current, observed.firstId)
+    assert.deepStrictEqual(observed.answered, { kind: "answered", result: { done: true } })
+    assert.deepStrictEqual(observed.failed, { kind: "refused", code: "UNCERTAIN_OUTCOME", message: "The page could not act" })
+    assert.deepStrictEqual([observed.afterClose, observed.stale, observed.renewed], [null, "STALE_REF", true])
+    assert.deepStrictEqual(observed.handled, [{ go: 1 }, { fail: true }])
   })
 }, 120_000)

@@ -7,6 +7,7 @@ import { basicActionsModule, basicActionsModuleName } from "./basic-actions.vibe
 import { replyDraftModule, replyDraftModuleName } from "../device-actions/reply-draft.vibe"
 import { deviceActionsModule, deviceActionsModuleName } from "../device-actions/module.vibe"
 import { tasksModule, tasksModuleName } from "../tasks/index.vibe"
+import { surfaceModule, surfaceModuleName } from "../tasks/surface-channel.vibe"
 
 export const builtinModuleFactories: ReadonlyMap<string, ModuleFactory<never>> = new Map<string, ModuleFactory<never>>([
   [basicActionsModuleName, basicActionsModule],
@@ -15,6 +16,7 @@ export const builtinModuleFactories: ReadonlyMap<string, ModuleFactory<never>> =
   [replyDraftModuleName, replyDraftModule],
   [deviceActionsModuleName, deviceActionsModule],
   [tasksModuleName, tasksModule],
+  [surfaceModuleName, surfaceModule],
 ])
 
 export interface BundledEntry {

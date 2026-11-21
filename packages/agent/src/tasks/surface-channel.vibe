@@ -273,13 +273,14 @@ export effect function openSurfaceChannel() {
     return try onInterrupt(settled(id, answer), () => serial(giveUp(id, () => true)))
   }
 
+  effect function answered(handle: (body: unknown) => object!SurfaceRefused, body: unknown) {
+    return { status: 200, body: try handle(body) }
+  }
+
   const route = (path: string, handle: (body: unknown) => object!SurfaceRefused): LocalRoute => ({
     method: "POST", path,
     handler: (input: RouteInput) => run(effect {
-      const body = try handle(input.body) catch (refused) => refused
-      return body instanceof SurfaceRefused
-        ? { status: body.refusal.status, body: { code: body.refusal.code, message: body.message } }
-        : { status: 200, body }
+      return answered(handle, input.body) catch (refused) => ({ status: refused.refusal.status, body: { code: refused.refusal.code, message: refused.message } })
     }, { signal: input.signal }),
   })
 

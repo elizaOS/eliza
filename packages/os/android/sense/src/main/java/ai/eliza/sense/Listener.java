@@ -74,14 +74,10 @@ final class Listener {
   boolean held=microphoneHeld;
   long since=unsilencedSince;
   IndicatorLease.Loss loss=lease.verdict(now,leaseBoot(context),IndicatorLease.requiresAttribution(held&&since>=0,since,now),screenInteractive);
-  boolean valid=loss==IndicatorLease.Loss.NONE;
-  // An unexplained loss while capturing, or during an explained pause, latches; an explained one pauses.
-  boolean paused=indicatorPause!=ListenerPolicy.IndicatorPause.NONE;
-  // A lease lapsing while the phone sleeps through a display-off pause is not a loss (see sleepLapse).
-  boolean asleep=IndicatorLease.sleepLapse(held,indicatorPause,loss);
-  if(!asleep&&ListenerPolicy.latchesIndicatorLoss(held||paused,valid,loss.pause()))indicatorLost=true;
-  indicatorPause=asleep&&!screenInteractive?ListenerPolicy.IndicatorPause.DISPLAY_OFF:IndicatorLease.pauseFor(loss);
-  return valid;
+  IndicatorLease.Observation seen=IndicatorLease.observe(held,indicatorPause,loss);
+  if(seen.latches())indicatorLost=true;
+  indicatorPause=seen.pause();
+  return loss==IndicatorLease.Loss.NONE;
  }}
 
  /** The listener's user (the primary user) is the one using the phone. Unknown counts as not. */
