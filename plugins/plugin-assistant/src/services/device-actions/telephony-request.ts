@@ -34,6 +34,17 @@ const TEXT_RECIPIENT = textCommand(target("{0,2}?"));
 const NOT_A_PHONE_TARGET =
   /^(?:me|myself|us|it|this|that|them|him|her|back|off|out|up|in|a|an|the|someone|somebody|anyone)\b|\b(?:on|via|in|through|using|with|over|from|at|tomorrow|later|tonight|today)\b|^(?:dialer|dial\s?-?\s?pad|key\s?-?\s?pad|pad|number\s+pad|app)[.!?]*$/iu;
 
+/** An alternative in the addressing clause is a choice, never a lookup. */
+export function offersAlternativeSmsRecipients(text: string): boolean {
+  if (text.length > 400) return false;
+  const recipient = TEXT_RECIPIENT.exec(text.trim())?.[1];
+  return (
+    !!recipient &&
+    /\bor\b/iu.test(recipient) &&
+    !NOT_A_PHONE_TARGET.test(recipient)
+  );
+}
+
 export function authoredTelephonyRequest(
   text: string,
 ): AuthoredTelephonyRequest | undefined {

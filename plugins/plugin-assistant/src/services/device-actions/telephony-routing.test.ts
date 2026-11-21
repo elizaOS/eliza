@@ -261,7 +261,7 @@ describe("Stage 1 hands an authored SMS to the phone's proposal tool", () => {
         expect(value).toEqual({ mode, recipientQuote: "Carson", bodyQuote });
         const effect = await phoneMessageIntentField.handle?.({
           ...ctx,
-          value: value ?? null,
+          value: value ?? false,
           parsed,
         });
         effect?.mutateResult?.(parsed);
@@ -283,11 +283,6 @@ describe("Stage 1 hands an authored SMS to the phone's proposal tool", () => {
     ],
     [
       "If I say yes, text Carson that dinner is covered.",
-      "Carson",
-      "dinner is covered",
-    ],
-    [
-      "Text Carson or Maya that dinner is covered.",
       "Carson",
       "dinner is covered",
     ],
@@ -322,6 +317,46 @@ describe("Stage 1 hands an authored SMS to the phone's proposal tool", () => {
       ).toBeNull();
     },
   );
+});
+
+it("asks which SMS recipient to use before searching either name", async () => {
+  const f = await fixture(
+    "Can you text Carson or Maya that dinner is covered?",
+  );
+  await inTurn(f, TELEPHONY, async () => {
+    const ctx = {
+      runtime: f.runtime,
+      message: f.message,
+      senderRole: "OWNER" as const,
+      state: { text: "", values: {}, data: {} },
+      turnSignal: new AbortController().signal,
+    };
+    const value = phoneMessageIntentField.parse?.([], ctx);
+    expect(value).toBe("choose-recipient");
+    const parsed = {
+      shouldRespond: "RESPOND" as const,
+      contexts: ["contacts"],
+      intents: ["Look up Carson", "Look up Maya"],
+      candidateActionNames: ["CONTACT"],
+      replyText: "",
+      facts: [],
+      relationships: [],
+      addressedTo: [],
+    };
+    const effect = await phoneMessageIntentField.handle?.({
+      ...ctx,
+      value: value ?? false,
+      parsed,
+    });
+    effect?.mutateResult?.(parsed);
+    expect(parsed).toMatchObject({
+      contexts: ["simple"],
+      intents: [],
+      candidateActionNames: [],
+      replyEffectStatus: "non_applied",
+      replyText: "Which person should get the text?",
+    });
+  });
 });
 
 describe("contact changes and deletions name a contact the agent cannot see", () => {

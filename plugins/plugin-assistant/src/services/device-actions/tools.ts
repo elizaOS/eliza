@@ -56,6 +56,7 @@ import {
 import {
   authoredKeypadRequest,
   authoredTelephonyRequest,
+  offersAlternativeSmsRecipients,
 } from "./telephony-request.ts";
 import { turnObservation } from "./turn-observation.ts";
 
@@ -898,107 +899,118 @@ type PhoneMessageIntent = {
  * this owner turn. The result only selects the phone tool; recipient
  * grounding and send authorization still run at their own boundaries.
  */
-export const phoneMessageIntentField: ResponseHandlerFieldEvaluator<PhoneMessageIntent | null> =
-  {
-    name: "phoneMessageIntent",
-    description:
-      "For a current unconditional request to send or draft one text through this phone's Messages app, return one {mode,recipientQuote,bodyQuote}. Copy the recipient and words that convey the requested message verbatim from this turn, even when phrased as an instruction to tell the person something. An explicit draft stays a draft. For a missing recipient or body ask only for that detail and return []; for a follow-up to a pending send let the existing review handle it. Return [] for historical, quoted, conditional, cancelled, ambiguous, non-SMS or compound work.",
-    priority: 19.15,
-    directReplyValue: (raw) => Array.isArray(raw) && raw.length === 0,
-    schema: {
-      type: "array",
-      maxItems: 1,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["mode", "recipientQuote", "bodyQuote"],
-        properties: {
-          mode: { type: "string", enum: ["send", "draft"] },
-          recipientQuote: { type: "string", minLength: 1, maxLength: 128 },
-          bodyQuote: { type: "string", minLength: 1, maxLength: 1600 },
-        },
+export const phoneMessageIntentField: ResponseHandlerFieldEvaluator<
+  PhoneMessageIntent | "choose-recipient" | false
+> = {
+  name: "phoneMessageIntent",
+  description:
+    "For a current unconditional request to send or draft one text through this phone's Messages app, return one {mode,recipientQuote,bodyQuote}. Copy the recipient and words that convey the requested message verbatim from this turn, even when phrased as an instruction to tell the person something. An explicit draft stays a draft. For a missing recipient or body ask only for that detail and return []; for a follow-up to a pending send let the existing review handle it. Return [] for historical, quoted, conditional, cancelled, ambiguous, non-SMS or compound work.",
+  priority: 19.15,
+  schema: {
+    type: "array",
+    maxItems: 1,
+    items: {
+      type: "object",
+      additionalProperties: false,
+      required: ["mode", "recipientQuote", "bodyQuote"],
+      properties: {
+        mode: { type: "string", enum: ["send", "draft"] },
+        recipientQuote: { type: "string", minLength: 1, maxLength: 128 },
+        bodyQuote: { type: "string", minLength: 1, maxLength: 1600 },
       },
     },
-    shouldRun({ runtime, message, senderRole }) {
-      return (
-        senderRole === "OWNER" &&
-        deviceOperationSupportedByCapabilities(
-          "sms_compose",
-          ownerPhoneChatCapabilities(runtime, message),
-        ) &&
-        /\b(?:text|sms|messages)\b/iu.test(message.content.text ?? "")
-      );
-    },
-    parse(raw, { message }) {
-      if (typeof raw === "string") {
-        try {
-          raw = JSON.parse(raw);
-        } catch {
-          return null;
-        }
+  },
+  shouldRun({ runtime, message, senderRole }) {
+    return (
+      senderRole === "OWNER" &&
+      deviceOperationSupportedByCapabilities(
+        "sms_compose",
+        ownerPhoneChatCapabilities(runtime, message),
+      ) &&
+      /\b(?:text|sms|messages)\b/iu.test(message.content.text ?? "")
+    );
+  },
+  parse(raw, { message }) {
+    if (offersAlternativeSmsRecipients(message.content.text ?? ""))
+      return "choose-recipient";
+    if (typeof raw === "string") {
+      try {
+        raw = JSON.parse(raw);
+      } catch {
+        return null;
       }
-      if (!Array.isArray(raw) || raw.length !== 1 || !isObjectRecord(raw[0]))
-        return null;
-      const { mode, recipientQuote, bodyQuote } = raw[0];
-      const text = message.content.text?.trim();
-      if (
-        !text ||
-        (mode !== "send" && mode !== "draft") ||
-        typeof recipientQuote !== "string" ||
-        recipientQuote !== recipientQuote.trim() ||
-        !recipientQuote ||
-        recipientQuote.length > 128 ||
-        /^(?:it|them|him|her|anyone|someone|the sender)$/iu.test(
-          recipientQuote,
-        ) ||
-        typeof bodyQuote !== "string" ||
-        bodyQuote !== bodyQuote.trim() ||
-        !bodyQuote ||
-        bodyQuote.length > 1600
+    }
+    if (raw === undefined || (Array.isArray(raw) && raw.length === 0))
+      return false;
+    if (!Array.isArray(raw) || raw.length !== 1 || !isObjectRecord(raw[0]))
+      return null;
+    const { mode, recipientQuote, bodyQuote } = raw[0];
+    const text = message.content.text?.trim();
+    if (
+      !text ||
+      (mode !== "send" && mode !== "draft") ||
+      typeof recipientQuote !== "string" ||
+      recipientQuote !== recipientQuote.trim() ||
+      !recipientQuote ||
+      recipientQuote.length > 128 ||
+      /^(?:it|them|him|her|anyone|someone|the sender)$/iu.test(
+        recipientQuote,
+      ) ||
+      typeof bodyQuote !== "string" ||
+      bodyQuote !== bodyQuote.trim() ||
+      !bodyQuote ||
+      bodyQuote.length > 1600
+    )
+      return null;
+    const bodyAt = text.indexOf(bodyQuote);
+    if (bodyAt < 0 || text.lastIndexOf(bodyQuote) !== bodyAt) return null;
+    const instruction =
+      text.slice(0, bodyAt) + text.slice(bodyAt + bodyQuote.length);
+    const recipientAt = instruction.indexOf(recipientQuote);
+    const word = /[\p{L}\p{M}\p{N}]/u;
+    if (
+      recipientAt < 0 ||
+      word.test(instruction[recipientAt - 1] ?? "") ||
+      word.test(instruction[recipientAt + recipientQuote.length] ?? "") ||
+      !/\b(?:text|sms|messages)\b/iu.test(instruction) ||
+      (mode === "send" &&
+        /\b(?:draft|compose|prepare)\b/iu.test(instruction)) ||
+      /\b(?:if|unless|don't|do not|never|cancel|instead|or|whatsapp|signal|slack|telegram|email)\b/iu.test(
+        instruction,
       )
-        return null;
-      const bodyAt = text.indexOf(bodyQuote);
-      if (bodyAt < 0 || text.lastIndexOf(bodyQuote) !== bodyAt) return null;
-      const instruction =
-        text.slice(0, bodyAt) + text.slice(bodyAt + bodyQuote.length);
-      const recipientAt = instruction.indexOf(recipientQuote);
-      const word = /[\p{L}\p{M}\p{N}]/u;
-      if (
-        recipientAt < 0 ||
-        word.test(instruction[recipientAt - 1] ?? "") ||
-        word.test(instruction[recipientAt + recipientQuote.length] ?? "") ||
-        !/\b(?:text|sms|messages)\b/iu.test(instruction) ||
-        (mode === "send" &&
-          /\b(?:draft|compose|prepare)\b/iu.test(instruction)) ||
-        /\b(?:if|unless|don't|do not|never|cancel|instead|or|whatsapp|signal|slack|telegram|email)\b/iu.test(
-          instruction,
-        )
-      )
-        return null;
-      return { mode, recipientQuote, bodyQuote };
-    },
-    handle({ value, parsed, message, turnSignal }) {
-      turnSignal.throwIfAborted();
-      if (
-        !value ||
-        parsed.shouldRespond !== "RESPOND" ||
-        parsed.intents.length > 1
-      )
-        return;
+    )
+      return null;
+    return { mode, recipientQuote, bodyQuote };
+  },
+  handle({ value, parsed, message, turnSignal }) {
+    turnSignal.throwIfAborted();
+    if (!value || parsed.shouldRespond !== "RESPOND") return;
+    if (value === "choose-recipient")
       return {
         mutateResult(result) {
-          result.contexts = ["phone", "messaging", "general"];
-          result.intents = [message.content.text ?? ""];
-          result.candidateActionNames = ["PROPOSE_DEVICE_ACTION"];
-          result.replyEffectStatus = "pending";
-          result.replyText = "";
+          result.contexts = ["simple"];
+          result.intents = [];
+          result.candidateActionNames = [];
+          result.replyEffectStatus = "non_applied";
+          result.replyText = "Which person should get the text?";
         },
-        debug: [
-          "Routed a current owner SMS with a verbatim recipient and message",
-        ],
+        debug: ["The owner named alternative recipients"],
       };
-    },
-  };
+    if (parsed.intents.length > 1) return;
+    return {
+      mutateResult(result) {
+        result.contexts = ["phone", "messaging", "general"];
+        result.intents = [message.content.text ?? ""];
+        result.candidateActionNames = ["PROPOSE_DEVICE_ACTION"];
+        result.replyEffectStatus = "pending";
+        result.replyText = "";
+      },
+      debug: [
+        "Routed a current owner SMS with a verbatim recipient and message",
+      ],
+    };
+  },
+};
 
 /**
  * Availability for a whole-message call or text command ("call 415-555-0100",
