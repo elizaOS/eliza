@@ -89,13 +89,13 @@ const startOfDay = (now: Date) =>
 const addDays = (d: Date, n: number) => new Date(d.getTime() + n * 86_400_000);
 const monthIndex = (s: string) => MONTHS.indexOf(s.slice(0, 3).toLowerCase());
 
-/** Next calendar day (today excluded) with this day-of-month. */
+/** Next calendar day (today included) with this day-of-month. A named day that is today is today, like statedDay: "until the 14th" said on the 14th ends today. */
 function nextDayOfMonth(n: number, today: Date): Date | null {
   if (n < 1 || n > 31) return null;
   for (let k = 0; k < 13; k++) {
     const m = today.getUTCMonth() + k;
     const d = day(today.getUTCFullYear(), m, n);
-    if (d.getUTCDate() === n && d > today) return d;
+    if (d.getUTCDate() === n && d >= today) return d;
   }
   return null;
 }
@@ -213,10 +213,24 @@ export function parseDateExpr(expr: string, now: Date): Date | null {
         (dated[10] && dated[11]))
     )
       return parseDateExpr(after, now);
+    // "next week Friday" names the Friday of the next calendar week too. The
+    // "next week" prefix sits before the weekday match, so the regex only sees
+    // a bare weekday and resolved it to this week's Friday. Same six-days-early
+    // error as the "Friday next week" suffix form fixed in #36789.
+    // Case-insensitive: members write "Next week Friday" at a sentence start.
+    // Accept an optional "on" after "next week", with or without a comma:
+    // "next week on Friday" and "next week, on Friday" name the same Friday.
+    if (/(?:^|[\s,])next\s+week(?:'s)?,?\s*(?:on\s+)?$/i.test(expr.slice(0, m.index)))
+      return nextWeekday(
+        WEEKDAYS.indexOf(m[8].slice(0, 3).toLowerCase()),
+        today,
+        true,
+      );
     // "Friday next week" names the Friday of the next calendar week. The bare
     // weekday branch resolved it to this week's Friday, ending the window six
     // days early; "next Friday" already resolved to that date.
-    if (/^,?\s+(?:of\s+)?next\s+week\b/.test(rest))
+    // Case-insensitive, same as the prefix form above ("Friday Next Week").
+    if (/^,?\s+(?:of\s+)?next\s+week\b/i.test(rest))
       return nextWeekday(
         WEEKDAYS.indexOf(m[8].slice(0, 3).toLowerCase()),
         today,

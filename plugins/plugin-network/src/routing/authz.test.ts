@@ -334,6 +334,8 @@ describe("Network weekday with next week", () => {
       ["I'm in Lisbon until Friday next week", "2026-10-23"],
       ["I'm in Lisbon until Friday of next week", "2026-10-23"],
       ["I'm away until Monday next week", "2026-10-19"],
+      // Members write "Next Week" at a sentence start; the match is case-insensitive.
+      ["I'm in Lisbon until Friday Next Week", "2026-10-23"],
       // A bare weekday still means its next occurrence, this week.
       ["I'm in Lisbon until Friday", "2026-10-16"],
     ]) {
@@ -352,6 +354,61 @@ describe("Network weekday with next week", () => {
         text,
       );
     }
+  });
+
+  it("ends on the weekday of the next calendar week when next week comes first", () => {
+    const now = new Date("2026-10-14T15:00:00Z"); // Wednesday
+    for (const [text, until] of [
+      ["I'm in Lisbon until next week Friday", "2026-10-23"],
+      ["I'm in Lisbon until next week's Friday", "2026-10-23"],
+      // The review case: "Next week Friday" with a capital N (ss251, PR #39816).
+      ["I'm in Lisbon until Next week Friday", "2026-10-23"],
+      // The review case: "on" between "next week" and the weekday (LazyCheeseispower, PR #39816).
+      ["I'm in Lisbon until next week on Friday", "2026-10-23"],
+      ["I'm in Lisbon until next week, on Friday", "2026-10-23"],
+      // "next week Monday" already ended on next Monday.
+      ["I'm away until next week Monday", "2026-10-19"],
+      // A bare weekday still means its next occurrence, this week.
+      ["I'm in Lisbon until Friday", "2026-10-16"],
+    ]) {
+      assert.deepEqual(
+        authorizeSetState(
+          { state: "traveling", until, evidence: text },
+          text,
+          now,
+        ),
+        {
+          allowed: true,
+          state: "traveling",
+          from: null,
+          until: `${until}T00:00:00.000Z`,
+        },
+        text,
+      );
+    }
+  });
+
+  it("starts a range in the next calendar week when next week comes before the start weekday", () => {
+    const now = new Date("2026-10-12T15:00:00Z"); // Monday
+    const text = "I'm away from next week Tuesday until Friday";
+    assert.deepEqual(
+      authorizeSetState(
+        {
+          state: "traveling",
+          from: "2026-10-20",
+          until: "2026-10-23",
+          evidence: text,
+        },
+        text,
+        now,
+      ),
+      {
+        allowed: true,
+        state: "traveling",
+        from: "2026-10-20T00:00:00.000Z",
+        until: "2026-10-23T00:00:00.000Z",
+      },
+    );
   });
 });
 
@@ -456,5 +513,30 @@ describe("Network date stated on the current day", () => {
         until: "2027-10-13T00:00:00.000Z",
       },
     );
+  });
+
+  it("keeps a bare day-of-month that is today in this year", () => {
+    const now = new Date("2026-10-14T15:00:00Z");
+    for (const [text, until] of [
+      ["I'm in Lisbon until the 14th", "2026-10-14"],
+      ["I'm in Lisbon until 14th", "2026-10-14"],
+      // A range that starts today starts today.
+      ["I'm in Lisbon from the 14th until the 20th", "2026-10-20"],
+    ]) {
+      assert.deepEqual(
+        authorizeSetState(
+          { state: "traveling", until, evidence: text },
+          text,
+          now,
+        ),
+        {
+          allowed: true,
+          state: "traveling",
+          from: null,
+          until: `${until}T00:00:00.000Z`,
+        },
+        text,
+      );
+    }
   });
 });
