@@ -1,0 +1,418 @@
+// spec/os/image/verification.md, "Story: Know whether a booted image is what I staged"; spec/os/image/qualification.md, "Story: Qualify a device read-only"
+import {
+  clockAlarmActions,
+  imageReport,
+  imageVerdict,
+  secureCaptureActions,
+  type BootReading,
+  type CameraReading,
+  type ClockReading,
+  type GrantsReading,
+  type ImageExpectation,
+  type ImageObservation,
+  type LauncherInstall,
+  type ListenerReading,
+  type PrivilegeReading,
+  type Reading,
+  type RuntimeGrant,
+  type SelinuxReading,
+} from "../../gen/os__image__verification.effect.vibe"
+import { secureCameraPackage } from "../../gen/os__image__provisioning.effect.vibe"
+import { isDigest } from "../../gen/os__image__apk.effect.vibe"
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+import { AdbTimedOut, adbSerial, androidPackage, captureCommand, type AdbSerial } from "./device.vibe"
+import { parseDigest } from "./apk.vibe"
+
+export { evaluate, main, qualifyDevice, validateRequirements } from "./device-qualification.vibe"
+
+const Activity = /^[A-Za-z][\w.$]*$/
+const Package = /^[A-Za-z][\w]*(?:\.[A-Za-z][\w]*)+$/
+const Permission = Schema.String.check(Schema.makeFilter((name) => Package.test(name)))
+const Sha256 = Schema.String.check(Schema.makeFilter((value) => isDigest(parseDigest(value))))
+const SystemApk = /^\/(?:product|system|system_ext)\/(app|priv-app)\/[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+\.apk$/
+const StagedImage = Schema.Struct({
+  packageName: Schema.String,
+  apkSha256: Sha256,
+  certificateSha256: Sha256,
+  apkPath: Schema.String.check(Schema.makeFilter((name) => SystemApk.test(name))),
+  fingerprint: Schema.String.check(Schema.makeFilter((value) => value.trim() === value && value.length > 0 && value.length <= 512 && !/[\r\n\0]/.test(value))),
+  homeActivity: Schema.optionalKey(Schema.String.check(Schema.makeFilter((name) => Activity.test(name)))),
+  defaultPermissions: Schema.optionalKey(Schema.Array(Permission)),
+  privilegedPermissions: Schema.optionalKey(Schema.Array(Permission)),
+  listener: Schema.optionalKey(Schema.Boolean),
+})
+const decodeImage = Schema.decodeUnknownOption(StagedImage)
+type StagedImage = typeof StagedImage.Type
+
+export type VerifyImageTarget = "cuttlefish" | "pixel10a"
+export interface VerifyImageOptions {
+  readonly serial: string
+  readonly user: string
+  readonly expected: unknown
+  readonly target: VerifyImageTarget
+  readonly adb?: string
+}
+
+export error ImageExpectationRefused { reason: string }
+
+const fingerprints = { green: "Green", yellow: "Yellow", orange: "Orange", red: "Red" } as const
+const healthName = { Pass: "pass", Fail: "fail", Unknown: "unknown" } as const
+const CLASSES = /^[A-Za-z][\w.]+\/[.A-Za-z][\w.$]*$/
+const BOOT_ID = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/
+const CLOCK = "com.android.deskclock"
+const secureCameraActivity = `${secureCameraPackage}/com.android.camera.SecureCameraActivity`
+const fallbackHome = "com.android.settings/com.android.settings.FallbackHome"
+const privacyRoles = ["AMBIENT_AUDIO", "UI", "AUDIO", "NOTIFICATION", "TEXT", "VISUAL"].map((kind) => `android.app.role.SYSTEM_${kind}_INTELLIGENCE`)
+
+interface Capture {
+  readonly args: readonly string[]
+  readonly status: number | null
+  readonly stdout: string
+  readonly stderr: string
+}
+type Read = (...args: readonly string[]) => (string | undefined)!!
+
+interface Snapshot {
+  readonly completed: string | undefined
+  readonly id: string | undefined
+  readonly user: string | undefined
+  readonly running: string | undefined
+  readonly fingerprint: string | undefined
+  readonly paths: readonly string[] | undefined
+  readonly digest: string | undefined
+  readonly home: readonly string[] | undefined
+  readonly selinux: string | undefined
+}
+
+function line(text: string | undefined): string | undefined {
+  const value = text?.trim()
+  return value && !/[\r\n]/.test(value) ? value : undefined
+}
+
+function rows(text: string): string[] {
+  return text.split(/\r?\n/).map((row) => row.trim()).filter(Boolean)
+}
+
+function componentName(value: string): string {
+  const [owner = "", cls = ""] = value.split("/")
+  return cls.startsWith(".") ? `${owner}/${owner}${cls}` : value
+}
+
+function activities(output: string | undefined): string[] | undefined {
+  if (output === undefined) return undefined
+  const found = rows(output).filter((row) => CLASSES.test(row))
+  if (found.length === 0 && !/^\s*(?:No activities? found[.]?)?\s*$/i.test(output)) return undefined
+  return found.map(componentName)
+}
+
+function pathsOf(raw: string | undefined): string[] | undefined {
+  if (raw === undefined) return undefined
+  const paths = rows(raw)
+  return paths.every((row) => /^package:\/[^\r\n]+$/.test(row)) ? paths : undefined
+}
+
+function measuredDigest(raw: string | undefined, path: string): string | undefined {
+  const found = /^([a-f0-9]{64})\s+(\S+)$/.exec(raw?.trim() ?? "")
+  return found?.[2] === path ? found[1] : undefined
+}
+
+function selinuxOf(raw: string | undefined): SelinuxReading {
+  if (raw === "Enforcing") return "Enforcing"
+  if (raw === "Permissive" || raw === "Disabled") return "Permissive"
+  return "SelinuxUnread"
+}
+
+function bootOf(raw: string | undefined): BootReading {
+  switch (raw) {
+    case "green": case "yellow": case "orange": case "red": return { tag: "BootRead", booted: fingerprints[raw] }
+    default: return { tag: "BootUnread" }
+  }
+}
+
+function reading(value: boolean | undefined): Reading {
+  return value === undefined ? { tag: "Unread" } : { tag: "Read", holds: value }
+}
+
+function launcherOf(snapshot: Snapshot, expected: StagedImage): LauncherInstall {
+  if (snapshot.paths === undefined) return { tag: "LauncherUnread" }
+  if (snapshot.paths.length !== 1 || snapshot.paths[0] !== `package:${expected.apkPath}`) return { tag: "NotTheSystemApk" }
+  return snapshot.digest === undefined ? { tag: "LauncherUnread" } : { tag: "SystemApk", sha256: parseDigest(snapshot.digest) }
+}
+
+function homeArgs(user: string): readonly string[] {
+  return ["--user", user, "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME"]
+}
+
+function queryArgs(user: string, action: string, owner?: string): readonly string[] {
+  return ["cmd", "package", "query-activities", "--brief", "--components", "--user", user, "-a", action, "-c", "android.intent.category.DEFAULT", ...(owner === undefined ? [] : ["-p", owner])]
+}
+
+effect function sample(read: Read, user: string, expected: StagedImage) {
+  const completed = line(try read("getprop", "sys.boot_completed"))
+  const id = line(try read("cat", "/proc/sys/kernel/random/boot_id"))
+  const foreground = line(try read("am", "get-current-user"))
+  const running = line(try read("am", "get-started-user-state", user))
+  const fingerprint = line(try read("getprop", "ro.build.fingerprint"))
+  const paths = pathsOf(try read("pm", "path", "--user", user, expected.packageName))
+  const digest = paths?.length === 1 && paths[0] === `package:${expected.apkPath}` ? measuredDigest(try read("sha256sum", expected.apkPath), expected.apkPath) : undefined
+  const home = activities(try read("cmd", "package", "resolve-activity", "--brief", ...homeArgs(user)))
+  const selinux = line(try read("getenforce"))
+  return { completed, id: id && BOOT_ID.test(id) ? id : undefined, user: foreground, running, fingerprint, paths, digest, home, selinux }
+}
+
+function stable(before: Snapshot, after: Snapshot, user: string): Reading {
+  const required = [
+    [before.completed, after.completed, "1"],
+    [before.id, after.id, before.id],
+    [before.user, after.user, user],
+    [before.running, after.running, "RUNNING_UNLOCKED"],
+    [before.fingerprint, after.fingerprint, before.fingerprint],
+    [before.digest, after.digest, before.digest],
+    [before.selinux, after.selinux, before.selinux],
+  ]
+  const pairs = [[before.paths, after.paths], [before.home, after.home]]
+  if (required.some(([first, last, wanted]) =>
+    (first !== undefined && wanted !== undefined && first !== wanted) || (last !== undefined && wanted !== undefined && last !== wanted))) return reading(false)
+  if (pairs.some(([first, last]) => first !== undefined && last !== undefined && JSON.stringify(first) !== JSON.stringify(last))) return reading(false)
+  if (pairs.some(([first, last]) => first === undefined || last === undefined) || required.some(([first, last]) => first === undefined || last === undefined)) return reading(undefined)
+  return reading(true)
+}
+
+effect function enabledSystem(read: Read, user: string, pkg: string) {
+  const raw = try read("pm", "list", "packages", "--user", user, "-s", "-e", pkg)
+  return raw === undefined ? undefined : rows(raw).includes(`package:${pkg}`)
+}
+
+effect function recoveryHomes(read: Read, user: string, pkg: string) {
+  const list = activities(try read("cmd", "package", "query-activities", "--brief", "--components", ...homeArgs(user)))
+  if (list === undefined) return { observation: reading(undefined), candidates: [] }
+  const candidates: string[] = []
+  let unread = false
+  for (const row of new Set(list)) {
+    const owner = row.split("/")[0]
+    if (owner === undefined || owner === pkg || row === fallbackHome || !Package.test(owner)) continue
+    const enabled = try enabledSystem(read, user, owner)
+    if (enabled === undefined) unread = true
+    if (enabled === true) candidates.push(row)
+  }
+  return { observation: reading(candidates.length > 0 ? true : unread ? undefined : false), candidates }
+}
+
+effect function clockReading(read: Read, user: string): ClockReading!! {
+  const clockEnabled = try enabledSystem(read, user, CLOCK)
+  const handledActions: string[] = []
+  let missing = clockEnabled === undefined
+  for (const action of clockAlarmActions) {
+    const handlers = activities(try read(...queryArgs(user, `android.intent.action.${action}`, CLOCK)))
+    if (handlers === undefined) missing = true
+    if (handlers?.some((name) => name.startsWith(`${CLOCK}/`))) handledActions.push(action)
+  }
+  return missing || clockEnabled === undefined ? { tag: "ClockUnread" } : { tag: "ClockRead", clockEnabled, handledActions }
+}
+
+effect function cameraReading(read: Read, user: string, pkg: string): CameraReading!! {
+  const cameraEnabled = try enabledSystem(read, user, secureCameraPackage)
+  const gesture = line(try read("cmd", "overlay", "lookup", "--user", user, "android", "android:bool/config_cameraDoubleTapPowerGestureEnabled"))
+  const gesturePackage = line(try read("cmd", "overlay", "lookup", "--user", user, "com.android.systemui", "com.android.systemui:string/config_cameraGesturePackage"))
+  const systemHandles: string[] = []
+  const launcherHandles: string[] = []
+  let missing = false
+  for (const action of secureCaptureActions) {
+    const verb = `android.media.action.${action}`
+    const system = activities(try read(...queryArgs(user, verb, secureCameraPackage)))
+    const launcher = activities(try read(...queryArgs(user, verb, pkg)))
+    if (system === undefined || launcher === undefined) missing = true
+    if (system?.includes(secureCameraActivity)) systemHandles.push(action)
+    if (launcher?.some((handler) => handler.startsWith(`${pkg}/`))) launcherHandles.push(action)
+  }
+  if (missing || cameraEnabled === undefined || (gesture !== "true" && gesture !== "false") || gesturePackage === undefined) return { tag: "CameraUnread" }
+  return { tag: "CameraRead", cameraEnabled, systemHandles, launcherHandles, gestureEnabled: gesture === "true", gesturePackage }
+}
+
+function userScope(raw: string | undefined, user: string): string | undefined {
+  if (raw === undefined) return undefined
+  const scopes = [...raw.matchAll(/^\s*User (\d+):[^\r\n]*$/gm)]
+  const index = scopes.findIndex((entry) => entry[1] === user)
+  const first = scopes[index]
+  return index < 0 || first === undefined ? undefined : raw.slice(first.index + first[0].length, scopes[index + 1]?.index)
+}
+
+function permitted(output: string): string[] {
+  return [...output.matchAll(/^\s*([A-Za-z][\w.]+):\s*granted=true\b/gm)].flatMap((match) => match[1] ?? [])
+}
+
+function grantsReading(raw: string | undefined, user: string): GrantsReading {
+  const scope = userScope(raw, user)
+  const lines = scope?.split(/\r?\n/) ?? []
+  const start = lines.findIndex((row) => /^\s*runtime permissions:\s*$/.test(row))
+  const header = lines[start]
+  if (header === undefined) return { tag: "GrantsUnread" }
+  const indent = header.length - header.trimStart().length
+  const granted: RuntimeGrant[] = []
+  for (const raw of lines.slice(start + 1)) {
+    const row = raw.trimStart()
+    if (row === "") continue
+    if (raw.length - row.length <= indent) break
+    const entry = /^([A-Za-z][\w.]+):\s*granted=(true|false),\s*flags=\[([^\]]*)\]$/.exec(row)
+    if (entry?.[1] === undefined || entry[3] === undefined) return { tag: "GrantsUnread" }
+    if (entry[2] === "false") continue
+    const flags = entry[3].split(/[|,\s]+/)
+    const origin = flags.includes("GRANTED_BY_DEFAULT") ? "GrantedByDefault" : flags.includes("GRANTED_BY_COMPATIBILITY") ? "CompatibilityGrant" : "OtherGrant"
+    granted.push({ permission: entry[1], origin, fixed: flags.some((flag) => ["FIXED", "SYSTEM_FIXED", "POLICY_FIXED"].includes(flag)) })
+  }
+  return { tag: "GrantsRead", granted }
+}
+
+function flagsOf(raw: string | undefined, key: "flags" | "privateFlags"): string[] | undefined {
+  const prefix = `${key}=[`
+  const row = rows(raw ?? "").find((value) => value.startsWith(prefix) && value.endsWith("]"))
+  return row?.slice(prefix.length, -1).trim().split(/\s+/).filter(Boolean)
+}
+
+function grantedFor(raw: string, user: string): string[] {
+  const firstUser = /^\s*User \d+:/m.exec(raw)?.index
+  return [...new Set([...permitted(raw.slice(0, firstUser)), ...permitted(userScope(raw, user) ?? "")])]
+}
+
+function privilegeReading(raw: string | undefined, user: string): PrivilegeReading {
+  const flags = flagsOf(raw, "privateFlags")
+  return raw === undefined || flags === undefined ? { tag: "PrivilegeUnread" } : { tag: "PrivilegeRead", privilegedApp: flags.includes("PRIVILEGED"), granted: grantedFor(raw, user) }
+}
+
+effect function listenerReading(read: Read, user: string, parent: string): ListenerReading!! {
+  const pkg = `${parent}.sense`
+  const system = try enabledSystem(read, user, pkg)
+  const dump = try read("dumpsys", "package", pkg)
+  const flags = flagsOf(dump, "flags")
+  const privateFlags = flagsOf(dump, "privateFlags")
+  const indicator = line(try read("device_config", "get", "privacy", "camera_mic_icons_enabled"))
+  const hotword = line(try read("getprop", "ro.hotword.detection_service_required"))
+  const processes = try read("ps", "-AZ", "-o", "LABEL,NAME")
+  const matches = rows(processes ?? "").map((row) => row.split(/\s+/)).filter((parts) => parts.at(-1) === pkg)
+  const domain = /^u:r:([^:]+):s\d(?:[:].*)?$/.exec(matches.length === 1 ? matches[0]?.[0] ?? "" : "")?.[1]
+  let roleHolder = false
+  let rolesUnread = false
+  for (const role of privacyRoles) {
+    const output = try read("cmd", "role", "get-role-holders", "--user", user, role)
+    if (output === undefined) rolesUnread = true
+    if (output?.trim()) roleHolder = true
+  }
+  if (rolesUnread || system === undefined || dump === undefined || flags === undefined || privateFlags === undefined ||
+      (indicator !== "true" && indicator !== "false" && indicator !== "null") || (hotword !== "true" && hotword !== "false") || domain === undefined) {
+    return { tag: "ListenerUnread" }
+  }
+  return {
+    tag: "ListenerRead",
+    privilegedSystemPackage: system && flags.includes("PERSISTENT") && privateFlags.includes("PRIVILEGED"),
+    granted: grantedFor(dump, user),
+    indicatorKept: indicator !== "false" && hotword === "true" && !roleHolder,
+    domain,
+  }
+}
+
+effect function readFrom(adb: string, serial: AdbSerial, captured: Capture[]) {
+  const spawner = try ChildProcessSpawner
+  const call: Read = (...args) => Effect.provideService(effect {
+    const result = effect {
+      const found = try captureCommand(adb, ["-s", serial, "shell", ...args], 60_000)
+      return { args, status: found.code, stdout: new TextDecoder().decode(found.stdout), stderr: found.stderr }
+    } catch (failure) => ({ args, status: null, stdout: "", stderr: failure instanceof AdbTimedOut ? `Timed out after ${failure.timeoutMs} ms` : failure.stderr })
+    captured.push(result)
+    return result.status === 0 ? result.stdout : undefined
+  }, ChildProcessSpawner, spawner)
+  return call
+}
+
+function targetAllowed(target: VerifyImageTarget, serial: string): boolean {
+  return target === "pixel10a" ? /^[A-Za-z0-9]{6,32}$/.test(serial) : /^(?:127\.0\.0\.1|localhost):\d{2,5}$/.test(serial)
+}
+
+function deviceAllowed(target: VerifyImageTarget, hardware: string, device: string): boolean {
+  return target === "pixel10a" ? device === "stallion" : ["cutf_cvm", "cutf_ivshmem", "cutf_vm"].includes(hardware) && device.startsWith("vsoc_")
+}
+
+export effect function verifyImage(options: VerifyImageOptions) {
+  const serial = try adbSerial(options.serial)
+  if ((options.target !== "pixel10a" && options.target !== "cuttlefish") || !targetAllowed(options.target, serial)) {
+    throw new ImageExpectationRefused({ reason: "An explicit serial for the selected image target is required" })
+  }
+  if (!/^(0|[1-9]\d*)$/.test(options.user)) throw new ImageExpectationRefused({ reason: "An explicit Android user is required" })
+  const parsed = decodeImage(options.expected)
+  if (Option.isNone(parsed)) throw new ImageExpectationRefused({ reason: "Expected a staged system APK, exact digests and image fingerprint" })
+  const expected = parsed.value
+  const pkg = try androidPackage(expected.packageName)
+  const user = options.user
+  const privileges = expected.privilegedPermissions ?? []
+  if (expected.apkPath.includes("/priv-app/") !== (privileges.length > 0)) {
+    throw new ImageExpectationRefused({ reason: "Only a descriptor with privileged permissions may expect a priv-app APK" })
+  }
+  const captures: Capture[] = []
+  const read = try readFrom(options.adb ?? "adb", serial, captures)
+  const hardware = line(try read("getprop", "ro.hardware"))
+  const device = line(try read("getprop", "ro.product.device"))
+  if (hardware === undefined || device === undefined || !deviceAllowed(options.target, hardware, device)) {
+    throw new ImageExpectationRefused({ reason: "Device hardware and product do not establish the selected image target" })
+  }
+
+  const first = try sample(read, user, expected)
+  const webView = /Current WebView package \(name, version\):\s*\(([^,\s]+),\s*([^)]+)\)/.exec((try read("dumpsys", "webviewupdate")) ?? "")
+  const dump = try read("dumpsys", "package", pkg)
+  const recovery = try recoveryHomes(read, user, pkg)
+  const clock = try clockReading(read, user)
+  const camera = try cameraReading(read, user, pkg)
+  const boot = options.target === "cuttlefish" ? { tag: "BootUnread" as const } : bootOf(line(try read("getprop", "ro.boot.verifiedbootstate")))
+  const slotSuffix = options.target === "cuttlefish" ? undefined : line(try read("getprop", "ro.boot.slot_suffix"))
+  const listener: ListenerReading = expected.listener === true ? try listenerReading(read, user, pkg) : { tag: "ListenerUnread" }
+  const final = try sample(read, user, expected)
+  const home = `${pkg}/${expected.homeActivity ?? `${pkg}.MainActivity`}`
+
+  const expectation: ImageExpectation = {
+    fingerprint: expected.fingerprint,
+    launcherApk: parseDigest(expected.apkSha256),
+    defaultPermissions: [...(expected.defaultPermissions ?? [])],
+    privilegedPermissions: [...privileges],
+    listener: expected.listener === true,
+    boot: options.target === "cuttlefish" ? { tag: "BootUnchecked" } : { tag: "BootAtLeast", minimum: "Yellow" },
+  }
+  const observation: ImageObservation = {
+    fingerprint: first.fingerprint === undefined ? { tag: "FingerprintUnread" } : { tag: "FingerprintRead", fingerprint: first.fingerprint },
+    launcher: launcherOf(first, expected),
+    home: reading(first.home === undefined ? undefined : first.home.length === 1 && first.home[0] === home),
+    stockHome: recovery.observation,
+    clock,
+    webView: reading(webView === null ? undefined : true),
+    grants: grantsReading(dump, user),
+    camera,
+    sameBoot: stable(first, final, user),
+    selinux: selinuxOf(first.selinux),
+    verifiedBoot: boot,
+    privilege: privilegeReading(dump, user),
+    listener,
+  }
+  const verdict = imageVerdict(expectation, observation)
+  return {
+    passed: verdict === "Pass",
+    verdict: healthName[verdict],
+    evidence: `${options.target}-launcher-postboot`,
+    fingerprint: first.fingerprint,
+    hardware,
+    device,
+    user,
+    verifiedBoot: options.target === "cuttlefish" ? null : { state: boot.tag === "BootRead" ? boot.booted.toLowerCase() : null, slotSuffix: slotSuffix ?? null },
+    apkPath: expected.apkPath,
+    apkSha256: first.digest,
+    certificateSha256: observation.launcher.tag === "SystemApk" && first.digest === expected.apkSha256 ? expected.certificateSha256 : undefined,
+    home: first.home?.[0],
+    recoveryHomes: recovery.candidates,
+    clock,
+    webview: webView === null ? null : { packageName: webView[1], version: webView[2] },
+    listener: expected.listener === true ? listener : null,
+    ...(privileges.length > 0 ? { privilegedPermissions: privileges } : {}),
+    observation,
+    checks: imageReport(expectation, observation).map(({ check, outcome }) => ({ check, outcome: healthName[outcome] })),
+    captures,
+    runtimeExecutionVerified: false,
+    physicalDeviceVerified: false,
+    productionReleaseVerified: false,
+  }
+}

@@ -5,15 +5,34 @@ import { NATIVE_TARGETS, createDevelopmentLauncherDescriptor, finalizeNative, re
 import { androidTools, buildApk, testSigner, type NativeAbi } from "./support/android-tools.ts"
 import { commitTree, git, readTree, scratch, writeTree } from "./support/scratch.vibe"
 import { loadProfile, verifySource, verifyDeviceSource, admitPatchEnvelope } from "../src/image/source-lock.vibe"
+import { main as qualify, qualifyDevice } from "../src/image/device-qualification.vibe"
+import { readOnlyCommands } from "../src/image/device-qualification-facts.vibe"
+import { verifyImage } from "../src/image/verify-device.vibe"
 
 module node {
   import { createHash } from "node:crypto"
   import { chmod, mkdir, readFile, stat, utimes, writeFile } from "node:fs/promises"
   import { join } from "node:path"
+  import { fileURLToPath } from "node:url"
   import type { Tree } from "./support/scratch.vibe"
   const sourceDigest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
   const sourceText = (value: string) => new TextEncoder().encode(value)
   export async function changeMode(file: string, mode: number): Promise<void> { await chmod(file, mode) }
+  export async function qualificationBinary(directory: string, commands: Readonly<Record<string, string>>, failed?: string) {
+    const binary = join(directory, failed ?? "adb-fixture")
+    const fixture = fileURLToPath(new URL("./fixtures/device-qualify/android15-emulator/", import.meta.url))
+    const log = join(directory, `${failed ?? "adb-fixture"}.jsonl`)
+    const script = `#!/usr/bin/env node\nimport { appendFileSync, readFileSync, existsSync } from "node:fs";\nimport { join } from "node:path";\nconst args = process.argv.slice(2);\nappendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + "\\n");\nif (args[0] !== "-s" || args[1] !== "emulator-4242") process.exit(77);\nif (args.length === 3 && args[2] === "get-state") { process.stdout.write("device\\n"); process.exit(0); }\nconst command = Object.entries(${JSON.stringify(commands)}).find(([, value]) => value === args[3]);\nif (args.length !== 4 || args[2] !== "shell" || command === undefined) process.exit(78);\nconst [key] = command;\nconst input = join(${JSON.stringify(fixture)}, key + ".txt");\nif (existsSync(input)) process.stdout.write(readFileSync(input));\nif (key === ${JSON.stringify(failed ?? "")}) { process.stderr.write("Capture unavailable\\n"); process.exit(79); }\n`
+    await writeFile(binary, script, { mode: 0o700 })
+    return { binary, log, fixture }
+  }
+  export async function verificationBinary(directory: string, name: string, responses: Readonly<Record<string, string | string[]>>) {
+    const binary = join(directory, `${name}.mjs`)
+    const log = join(directory, `${name}.jsonl`)
+    const script = `#!/usr/bin/env node\nimport { appendFileSync, readFileSync, existsSync } from "node:fs";\nconst args = process.argv.slice(2);\nif (args[0] !== "-s" || args[1] !== "127.0.0.1:6520" || args[2] !== "shell") process.exit(80);\nconst key = args.slice(3).join(" ");\nconst log = ${JSON.stringify(log)};\nconst past = existsSync(log) ? readFileSync(log, "utf8").trim().split("\\n").filter(Boolean).map((row) => JSON.parse(row)) : [];\nappendFileSync(log, JSON.stringify(key) + "\\n");\nconst answers = ${JSON.stringify(responses)};\nif (!Object.hasOwn(answers, key)) process.exit(81);\nconst row = answers[key];\nprocess.stdout.write(Array.isArray(row) ? row[past.filter((value) => value === key).length] ?? "" : row);\n`
+    await writeFile(binary, script, { mode: 0o700 })
+    return { binary, log }
+  }
   export function platformProjectTree(): Tree {
     return { ".gitignore": "ignored/**\n", "input.txt": "reviewed source\n", "board.mk": "RELEASE_BOARD_API_LEVEL := 202604\n" }
   }
@@ -130,7 +149,7 @@ module node {
 }
 import { ARM_ELF, X86_ELF, companionManifest, launcherManifest, parsed, runtimeNatives } from node
 
-import { changeMode, fixedSourceStat, patchFixture, platformProjectTree, rewriteWithSameStat, sourceLockFixture } from node
+import { changeMode, fixedSourceStat, patchFixture, platformProjectTree, qualificationBinary, rewriteWithSameStat, sourceLockFixture, verificationBinary } from node
 
 const tools = androidTools()
 const skipped = tools.kind === "missing" ? tools.reason : null
@@ -461,3 +480,106 @@ it.live('Verify every pinned platform input before admitting a reviewed source p
     })
   }
 }, { timeout: 180_000 })
+
+it.live('Qualify a device through the read-only command set and keep the captures (spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/image/qualification.md, "Story: Read the verdict against my requirements")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const work = try scratch("device-qualification")
+      const files = try FileSystem.FileSystem
+      const path = try Path.Path
+      const source = try path.fromFileUrl(new URL("../aosp/device-requirements/treble-gsi.json", import.meta.url))
+      const first = try tryPromise(() => qualificationBinary(work, readOnlyCommands))
+      const output = path.join(work, "qualified")
+      const qualified = try qualify(["--serial", "emulator-4242", "--requirements", source, "--out", output, "--adb", first.binary])
+      const input = try files.readFileString(path.join(first.fixture, "getprop.txt"))
+      const retained = try files.readFileString(path.join(output, "raw", "getprop.txt"))
+      const calls = (try files.readFileString(first.log)).trim().split("\n")
+      const requirements = try Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(try files.readFileString(source))
+      const partial = try tryPromise(() => qualificationBinary(work, readOnlyCommands, "getprop"))
+      const incomplete = try qualifyDevice({ serial: "emulator-4242", requirements, binary: partial.binary })
+      try Effect.try(() => assert.deepStrictEqual({
+        qualification: [qualified.evaluation.verdict, qualified.evaluation.evidenceLevel, qualified.evaluation.warnings],
+        observations: [qualified.facts.vendorApiLevel, qualified.facts.abi, qualified.facts.kernel?.gkiBranch, qualified.facts.cameras?.length],
+        retained,
+        calls,
+        unavailable: [incomplete.evaluation.verdict, incomplete.evaluation.results.find((item) => item.id === "treble")?.result, incomplete.collectionErrors["getprop"]],
+        retainedFailedCapture: incomplete.raw["getprop"],
+      }, {
+        qualification: ["pass", "emulator-observation", ["ab-updates"]],
+        observations: [35, "arm64-v8a", "android15-6.6", 1],
+        retained: input,
+        calls: [
+          JSON.stringify(["-s", "emulator-4242", "get-state"]),
+          ...Object.values(readOnlyCommands).map((command) => JSON.stringify(["-s", "emulator-4242", "shell", command])),
+        ],
+        unavailable: ["incomplete", "unknown", "Capture unavailable"],
+        retainedFailedCapture: input,
+      }))
+    })
+  }
+})
+
+it.live('Check the exact booted image and report a change during readback (spec/os/image/verification.md, "Story: Know whether a booted image is what I staged")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const work = try scratch("booted-image")
+      const packageName = "ai.elizaos.app"
+      const launcher = `${packageName}/.MainActivity`
+      const system = "com.android.launcher3"
+      const camera = "com.android.camera2"
+      const apkPath = "/product/app/Eliza/Eliza.apk"
+      const apkSha256 = "a".repeat(64)
+      const fingerprint = "elizaOS/eliza_cf/vsoc_x86_64_only:17/test:userdebug/test-keys"
+      const expected = { packageName, apkPath, apkSha256, certificateSha256: "b".repeat(64), fingerprint, defaultPermissions: ["android.permission.RECORD_AUDIO"] }
+      const home = "--user 0 -a android.intent.action.MAIN -c android.intent.category.HOME"
+      const defaultCategory = "-c android.intent.category.DEFAULT"
+      const query = "cmd package query-activities --brief --components --user 0 -a"
+      const sum = `sha256sum ${apkPath}`
+      const provider = "dumpsys webviewupdate"
+      const responses: Record<string, string | string[]> = {
+        "getprop ro.hardware": "cutf_cvm",
+        "getprop ro.product.device": "vsoc_x86_64_only",
+        "getprop sys.boot_completed": "1",
+        "cat /proc/sys/kernel/random/boot_id": "12345678-1234-1234-1234-123456789abc",
+        "am get-current-user": "0",
+        "am get-started-user-state 0": "RUNNING_UNLOCKED",
+        "getprop ro.build.fingerprint": fingerprint,
+        "getenforce": "Enforcing",
+        [`pm path --user 0 ${packageName}`]: `package:${apkPath}`,
+        [sum]: `${apkSha256}  ${apkPath}`,
+        [`cmd package resolve-activity --brief ${home}`]: launcher,
+        [`cmd package query-activities --brief --components ${home}`]: `${launcher}\n${system}/.Launcher`,
+        [`pm list packages --user 0 -s -e ${system}`]: `package:${system}`,
+        [provider]: "Current WebView package (name, version): (com.android.webview, 145.0.1)",
+        [`dumpsys package ${packageName}`]: "privateFlags=[ ]\n  User 0:\n    runtime permissions:\n      android.permission.RECORD_AUDIO: granted=true, flags=[ GRANTED_BY_DEFAULT ]\n  User 10:\n    runtime permissions:\n      android.permission.READ_SMS: granted=true, flags=[ SYSTEM_FIXED ]",
+        "pm list packages --user 0 -s -e com.android.deskclock": "package:com.android.deskclock",
+        [`pm list packages --user 0 -s -e ${camera}`]: `package:${camera}`,
+        "cmd overlay lookup --user 0 android android:bool/config_cameraDoubleTapPowerGestureEnabled": "true",
+        "cmd overlay lookup --user 0 com.android.systemui com.android.systemui:string/config_cameraGesturePackage": camera,
+      }
+      for (const action of ["SET_ALARM", "SHOW_ALARMS", "SNOOZE_ALARM", "DISMISS_ALARM"]) {
+        responses[`${query} android.intent.action.${action} ${defaultCategory} -p com.android.deskclock`] = "com.android.deskclock/.HandleApiCalls"
+      }
+      for (const action of ["STILL_IMAGE_CAMERA_SECURE", "IMAGE_CAPTURE_SECURE"]) {
+        responses[`${query} android.media.action.${action} ${defaultCategory} -p ${camera}`] = `${camera}/com.android.camera.SecureCameraActivity`
+        responses[`${query} android.media.action.${action} ${defaultCategory} -p ${packageName}`] = "No activities found"
+      }
+      const healthy = try tryPromise(() => verificationBinary(work, "healthy", responses))
+      const changed = try tryPromise(() => verificationBinary(work, "changed", { ...responses, [sum]: [`${apkSha256}  ${apkPath}`, `${"b".repeat(64)}  ${apkPath}`], [provider]: "Unrecognized provider status" }))
+      const options = { serial: "127.0.0.1:6520", user: "0", target: "cuttlefish" as const, expected }
+      const stable = try verifyImage({ ...options, adb: healthy.binary })
+      const raced = try verifyImage({ ...options, adb: changed.binary })
+      try Effect.try(() => assert.deepStrictEqual({
+        staged: stable.passed,
+        checks: stable.checks.every(({ outcome }) => outcome === "pass"),
+        capture: stable.captures.every(({ status }) => status === 0),
+        measuredTwice: stable.captures.filter(({ args }) => args[0] === "sha256sum").length,
+        actual: raced.verdict,
+        changed: raced.checks.filter(({ outcome }) => outcome !== "pass"),
+      }, {
+        staged: true, checks: true, capture: true, measuredTwice: 2, actual: "fail",
+        changed: [{ check: "WebViewProvider", outcome: "unknown" }, { check: "SameBootThroughout", outcome: "fail" }],
+      }))
+    })
+  }
+})

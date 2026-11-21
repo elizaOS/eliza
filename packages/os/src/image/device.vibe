@@ -228,7 +228,7 @@ export effect function androidPackage(value: string) {
   return value as AndroidPackage
 }
 
-export effect function execute(binary: string, args: readonly string[], timeoutMs: number) {
+export effect function captureCommand(binary: string, args: readonly string[], timeoutMs: number) {
   const spawner = try ChildProcessSpawner
   const run = scoped(effect {
     const child = try spawner.spawn(ChildProcess.make(binary, [...args], { stdin: "ignore", extendEnv: true }))
@@ -236,10 +236,14 @@ export effect function execute(binary: string, args: readonly string[], timeoutM
     const code: number = try child.exitCode
     return { stdout, stderr, code }
   })
-  const finished = timeout(run, timeoutMs) catch effect (failure) => {
+  return timeout(run, timeoutMs) catch effect (failure) => {
     if (failure._tag === "TimeoutError") throw new AdbTimedOut({ args, timeoutMs })
     throw new AdbFailed({ args, code: -1, stderr: failure.message })
   }
+}
+
+export effect function execute(binary: string, args: readonly string[], timeoutMs: number) {
+  const finished = try captureCommand(binary, args, timeoutMs)
   if (finished.code !== 0) throw new AdbFailed({ args, code: finished.code, stderr: finished.stderr.trim().slice(0, 1024) })
   return finished.stdout
 }
