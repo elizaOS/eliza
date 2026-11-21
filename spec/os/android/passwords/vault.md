@@ -185,7 +185,11 @@ side delivers it on the main thread only while the page is still unlocked
 in that generation and the host still admits the owner. Signing the owner
 out (the host's `lockAndClose`) locks the vault and closes the page and
 any reveal, so a delivery already queued is refused: a generation, once
-left, never comes back.
+left, never comes back. Retirement captures both the revealed password and
+the native confirmation it owns. A delayed close or reveal handle closes
+only those captured dialogs, leaving later dialogs with a new owner open.
+Stopping or destroying an Activity closes only its own native dialogs, so
+an old Activity cannot close a replacement Activity's reveal or confirmation.
 
 ```quint
 pure def mayDeliverVaultSecret(s: VaultUi, ticket: int, admitted: bool): bool =
