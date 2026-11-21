@@ -83,6 +83,20 @@ function createClient() {
   };
 }
 
+// The service posts through its own bot-token WebClient. Hand it the stub
+// client of the Bolt app created just before it.
+vi.mock("@slack/web-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@slack/web-api")>()),
+  WebClient: class MockOutboundWebClient {
+    constructor() {
+      const app = bolt.apps.at(-1);
+      if (!app) throw new Error("outbound WebClient built before the Bolt app");
+      // biome-ignore lint/correctness/noConstructorReturn: the stub client stands in for the instance.
+      return app.client;
+    }
+  },
+}));
+
 vi.mock("@slack/bolt", () => ({
   LogLevel: { INFO: "info" },
   App: class MockBoltApp {
