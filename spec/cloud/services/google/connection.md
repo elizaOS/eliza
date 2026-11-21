@@ -200,8 +200,14 @@ pure def sometimesExpiredAttemptShownOnTheCloud(c: Connection): bool = callbackA
 ### A later grant for the same Google subject, or a native code for a new one, replaces the connection's tokens and scopes and makes it active
 
 `connect/native` exchanges the device's one-time server auth code (Google
-refuses a used one) and lands like a callback: on the row of its subject
-when held, else on a fresh row with no attempt.
+refuses a used one) for Cloud's configured native server client, with no
+browser redirect. The grant lands for the authenticated cloud owner on the
+row of its verified Google subject when held, else on a fresh row with no
+attempt. A native sign-in continuation can provide `expectedGoogleSubject`.
+A different returned subject stores nothing. The answer names the connection
+and its reported scopes, with verified email and display name when available.
+If Google omits a refresh token, a verified refresh token from the same
+active grant can be retained only with the same reported scopes.
 
 ```quint
 pure def canReceiveGrant(c: Connection, subject: str, lifetime: Millis): bool =

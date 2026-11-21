@@ -45,7 +45,7 @@ export type CodeExchange =
 
 const unread: IdTokenReading = { expiresAt: undefined, signatureOk: false, issuerOk: false, audienceOk: false, nonce: undefined, subject: undefined, verifiedEmail: undefined, givenName: undefined }
 const failed: CodeExchange = { kind: "TokenExchangeFailed" }
-const subjectPattern = /^[A-Za-z0-9_-]{1,255}$/
+export const googleSubjectPattern = /^[A-Za-z0-9_-]{1,255}$/
 
 const Claims = Schema.Struct({
   iss: Schema.optionalKey(Schema.String),
@@ -85,7 +85,7 @@ function reading(google: GoogleProfile, raw: unknown, now: number, audience: "br
     issuerOk: claims.iss !== undefined && google.issuers.includes(claims.iss),
     audienceOk: audiences.length === 1 && audiences[0] === (audience === "native" ? google.serverClientId : google.clientId),
     nonce: claims.nonce,
-    subject: claims.sub !== undefined && subjectPattern.test(claims.sub) ? claims.sub : undefined,
+    subject: claims.sub !== undefined && googleSubjectPattern.test(claims.sub) ? claims.sub : undefined,
     verifiedEmail: claims.email_verified === true || claims.email_verified === "true" ? email : undefined,
     givenName: named(claims.given_name) ?? named(claims.name)
   }

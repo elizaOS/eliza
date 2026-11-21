@@ -24,13 +24,18 @@ interface Grant {
   readonly challenge: string;
 }
 
+interface NativeCodeOptions {
+  readonly identity?: IdTokenClaims | null;
+  readonly refreshToken?: boolean;
+}
+
 export interface GoogleIdentityFake {
   readonly handler: FakeHandler;
   readonly tokenRequests: URLSearchParams[];
   signInAs(person: GooglePerson): void;
   denyNext(): void;
   idToken(person: GooglePerson, claims: IdTokenClaims): Promise<string>;
-  serverAuthCode(person: GooglePerson, scopes: ReadonlyArray<string>): string;
+  serverAuthCode(person: GooglePerson, scopes: ReadonlyArray<string>, options?: NativeCodeOptions): string;
 }
 
 const keyId = "google-identity-test";
@@ -48,7 +53,8 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
   const jwk = exportJWK(publicKey).then((key) => ({ ...key, kid: keyId, alg: "RS256", use: "sig" }));
   const grants = new Map<string, Grant>();
   const tokenRequests: URLSearchParams[] = [];
-  const serverCodes = new Map<string, { readonly person: GooglePerson; readonly scopes: ReadonlyArray<string> }>();
+  const serverCodes = new Map<string, { readonly person: GooglePerson; readonly scopes: ReadonlyArray<string>; readonly options: NativeCodeOptions }>();
+  const nativeAccess = new Map<string, GooglePerson>();
   let person: GooglePerson = { subject: "google-subject-1", email: "Person@Example.com", emailVerified: true, givenName: "Person" };
   let deny = false;
 
@@ -84,12 +90,17 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
     const server = serverCodes.get(form.get("code") ?? "");
     serverCodes.delete(form.get("code") ?? "");
     if (server !== undefined) {
-      if (form.get("redirect_uri") !== "" || form.has("code_verifier")) return { status: 400, body: { error: "invalid_grant" } };
+      if (form.get("client_id") !== "google-server-client" || form.get("redirect_uri") !== "" || form.has("code_verifier")) return { status: 400, body: { error: "invalid_grant" } };
+      const access = `access-${server.person.subject}`;
+      nativeAccess.set(access, server.person);
+      const { identity, refreshToken } = server.options;
       return {
         status: 200,
         body: {
-          access_token: `access-${server.person.subject}`, token_type: "Bearer", expires_in: 3600, refresh_token: `refresh-${server.person.subject}`,
-          scope: server.scopes.join(" "), id_token: await idToken(server.person, { audience: form.get("client_id") ?? "" }),
+          access_token: access, token_type: "Bearer", expires_in: 3600,
+          ...(refreshToken === false ? {} : { refresh_token: `refresh-${server.person.subject}` }),
+          scope: server.scopes.join(" "),
+          ...(identity === null ? {} : { id_token: await idToken(server.person, identity ?? { audience: "google-server-client" }) }),
         },
       };
     }
@@ -102,6 +113,12 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
   const handler: FakeHandler = async (request) => {
     if (request.method === "GET" && request.path === "/accounts") return accounts(request);
     if (request.method === "GET" && request.path === "/jwks") return { status: 200, body: { keys: [await jwk] } };
+    if (request.method === "GET" && request.path === "/api/oauth2/v2/userinfo") {
+      const bearer = typeof request.headers.authorization === "string" ? /^Bearer (.+)$/.exec(request.headers.authorization) : null;
+      const user = bearer === null ? undefined : nativeAccess.get(bearer[1] ?? "");
+      if (user === undefined) return { status: 401, body: { error: "invalid_token" } };
+      return { status: 200, body: { id: user.subject, email: user.email, verified_email: user.emailVerified, name: user.givenName } };
+    }
     if (request.method === "POST" && request.path === "/token" && new URLSearchParams(request.body).get("grant_type") === "authorization_code") return token(request);
     return undefined;
   };
@@ -112,9 +129,9 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
     signInAs: (next) => { person = next; },
     denyNext: () => { deny = true; },
     idToken,
-    serverAuthCode: (who, scopes) => {
+    serverAuthCode: (who, scopes, options = {}) => {
       const code = `4/${randomBytes(16).toString("base64url")}`;
-      serverCodes.set(code, { person: who, scopes });
+      serverCodes.set(code, { person: who, scopes, options });
       return code;
     },
   };

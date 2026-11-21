@@ -46,7 +46,7 @@ import { refused, type Refused } from "../src/http/refusal.vibe"
 import type { RouteClass } from "../src/http/request-auth.vibe"
 import { matchRoute, type Route } from "../src/http/routes.vibe"
 import { areas, listening, respond } from "../src/http/server.vibe"
-import { googleIdentityFake, type GooglePerson } from "./support/google-identity-fake.ts"
+import { googleIdentityFake, visit, type GooglePerson } from "./support/google-identity-fake.ts"
 import { authenticatorCode } from "./support/authenticator.ts"
 import { manualClock } from "./support/clock.ts"
 import { testDatabaseIdentity } from "./support/profile.ts"
@@ -736,15 +736,70 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
     ))
   }), 60_000)
 
+  it.live("Connect only the verified native Google grant and retain only its granted scopes (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => scoped(effect {
+    const { cloud, google } = try nativeCloud(undefined, native)
+    const caller = try signedCaller(cloud, "managed-connect-owner")
+    const outsider = try signedCaller(cloud, "managed-connect-other")
+    const now = try Clock.currentTimeMillis
+    const session = try cloud.store.transaction((tx) => issueSession(tx, { ...caller, assurance: "SingleFactor", accountCreated: false, now }))
+    const client = try sync(() => createCloudClient({ baseUrl: cloud.url, credential: () => session.accessToken }))
+    const nativePath = "/api/v1/eliza/google/connect/native"
+    const post = (json: unknown, headers = caller.headers) => cloud.call(nativePath, { json, headers })
+    const expected = { expectedGoogleSubject: person.subject }
+    const report = (answer: { readonly status: number; readonly body: unknown }) => [answer.status, (answer.body as { readonly code?: string }).code ?? null]
+    const code = try sync(() => google.serverAuthCode(person, scopes, { identity: null }))
+    const unauthenticated = try post({ serverAuthCode: code, ...expected }, {})
+    const wrongOwner = try post({ serverAuthCode: code, ...expected, organizationId: outsider.organizationId })
+    const mismatched = try post({ serverAuthCode: try sync(() => google.serverAuthCode(person, scopes)), expectedGoogleSubject: "another-subject" })
+    const wrongAudience = try post({ serverAuthCode: try sync(() => google.serverAuthCode(person, scopes, { identity: { audience: "google-web-client" } })), ...expected })
+    const noScopes = try post({ serverAuthCode: try sync(() => google.serverAuthCode(person, [])), ...expected })
+    const browserUrl = `${cloud.fakes.url}/google/accounts?${new URLSearchParams({ client_id: "google-web-client", redirect_uri: "https://api.staging.example.com/api/v1/auth/google/callback", code_challenge: s256(challengeVerifier), state: "browser" })}`
+    const redirect = try tryPromise(() => visit(browserUrl))
+    const browserCode = try sync(() => new URL(redirect.location).searchParams.get("code"))
+    const wrongPurpose = try post({ serverAuthCode: browserCode, ...expected })
+    const untouched = try sql(cloud, "SELECT key FROM google_connections", [])
+
+    const linked = try post({ serverAuthCode: code, ...expected })
+    const receipt = linked.body as { readonly connectionId: string }
+    const replayed = try post({ serverAuthCode: code, ...expected }, outsider.headers)
+    const sameScopes = try post({ serverAuthCode: try sync(() => google.serverAuthCode(person, scopes, { refreshToken: false })) }, { authorization: `Bearer ${session.accessToken}` })
+    const stillRefreshable = try promise(() => client.googleStatus({ grantId: receipt.connectionId }))
+    const basic = scopes.slice(0, 2)
+    const narrowed = try post({ serverAuthCode: try sync(() => google.serverAuthCode(person, basic, { refreshToken: false })), ...expected })
+    const narrowStatus = try promise(() => client.googleStatus({ grantId: receipt.connectionId }))
+    const rows = try sql(cloud, "SELECT key, user_id, organization_id, subject, granted_scopes, tokens LIKE 'v1.%' AS sealed, revision FROM google_connections", [])
+    const metadata = { connected: true, connectionId: receipt.connectionId, email: person.email, displayName: person.givenName, scopes, refreshTokenIssued: true }
+    const forms = google.tokenRequests.map((form) => [form.get("client_id"), form.get("redirect_uri"), form.has("code_verifier")])
+    try check(() => assert.deepStrictEqual({
+      rejected: [report(unauthenticated), report(wrongOwner), report(mismatched), report(wrongAudience), report(noScopes), report(wrongPurpose)], untouched,
+      connected: [linked.status, linked.headers["cache-control"], linked.body], replay: report(replayed),
+      reused: [sameScopes.status, sameScopes.body, stillRefreshable.hasRefreshToken],
+      narrowed: [narrowed.status, narrowed.body, narrowStatus.hasRefreshToken, narrowStatus.grantedCapabilities],
+      id: /^[a-f0-9-]{36}$/.test(receipt.connectionId),
+      rows: rows.map((row) => [row.key, row.user_id, row.organization_id, row.subject, row.granted_scopes, row.sealed, Number(row.revision)]),
+      userInfoLookups: cloud.fakes.seen.filter(({ path }) => path === "/google/api/oauth2/v2/userinfo").length,
+      forms
+    }, {
+      rejected: [[401, null], [400, null], [400, "google_account_mismatch"], [400, "google_account_mismatch"], [400, "google_scopes_missing"], [400, "google_code_rejected"]], untouched: [],
+      connected: [200, "no-store", metadata], replay: [400, "google_code_rejected"],
+      reused: [200, { ...metadata, refreshTokenIssued: false }, true],
+      narrowed: [200, { ...metadata, scopes: basic, refreshTokenIssued: false }, false, ["google.basic_identity"]],
+      id: true, rows: [[receipt.connectionId, caller.userId, caller.organizationId, person.subject, basic, true, 3]], userInfoLookups: 1,
+      forms: Array.from({ length: 8 }, () => ["google-server-client", "", false])
+    }))
+  }), 120_000)
+
   it.live("Refuse native Google when Google is off or the registration does not enable it (spec/cloud/nativeClients/registry.md, \"Story: Tell a client exactly why it was refused\")", () => scoped(effect {
     const off = try nativeCloud(googleOff, native)
     const offAnswer = try off.cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody("missing-challenge", "x".repeat(40)) })
+    const offOwner = try signedCaller(off.cloud, "managed-native-off")
+    const offConnect = try off.cloud.call("/api/v1/eliza/google/connect/native", { headers: offOwner.headers, json: { serverAuthCode: "4/local-one-use-code" } })
     const plain = try nativeCloud(undefined, { ...native, nativeGoogle: false })
     const plainAnswer = try plain.cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody("missing-challenge", "x".repeat(40)) })
     const unknownClient = try plain.cloud.call("/api/v1/app-auth/mobile/google", { json: { ...signInBody("missing-challenge", "x".repeat(40)), clientId: "com.example.unknown" } })
     try check(() => assert.deepStrictEqual(
-      [refusal(offAnswer), refusal(plainAnswer), (unknownClient.body as { readonly error?: string }).error],
-      ["503 provider_unavailable google_not_configured", "400 invalid_client", "invalid_client"]
+      [refusal(offAnswer), refusal(offConnect), (offConnect.body as { readonly code?: string }).code, off.google.tokenRequests.length, refusal(plainAnswer), (unknownClient.body as { readonly error?: string }).error],
+      ["503 provider_unavailable google_not_configured", "503 provider_unavailable google_not_configured", "google_not_configured", 0, "400 invalid_client", "invalid_client"]
     ))
   }), 60_000)
 
