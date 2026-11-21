@@ -371,3 +371,100 @@ describe("a declined delete question stays declined", {
     expect(await events()).toHaveLength(0);
   });
 });
+
+describe("adversarial review: a bare day only moves the event when the owner said it after the title", {
+  timeout: 60_000,
+}, () => {
+  it("a promoted source-scoped target's day still names the event", async () => {
+    await seed();
+    const result = await send(
+      "move it to 10am",
+      {
+        subaction: "update_event",
+        targetKind: "query",
+        target: "v613 check tomorrow",
+        details: { timeZone: ZONE },
+      },
+      { ...UPDATE, startAt: "2026-11-21T10:00:00" },
+    );
+    expect(result?.success, JSON.stringify(result?.text)).not.toBe(true);
+    const [event] = await events();
+    expect(event?.startAt).toBe("2026-11-20T23:00:00.000Z");
+  });
+
+  it("a day said before the title describes the event, not its destination", async () => {
+    await seed("standup");
+    const result = await send(
+      "push the monday standup back an hour",
+      {
+        subaction: "update_event",
+        query: "standup",
+        details: { timeZone: ZONE },
+      },
+      { ...UPDATE, startAt: "2026-11-20T16:00:00" },
+    );
+    expect(result?.success, JSON.stringify(result?.text)).not.toBe(true);
+    const [event] = await events();
+    expect(event?.startAt).toBe("2026-11-20T23:00:00.000Z");
+  });
+
+  const sync = (id: string, startAt: string) =>
+    ({
+      id,
+      externalId: id,
+      title: "sync",
+      startAt,
+      endAt: startAt,
+      isAllDay: false,
+      metadata: {},
+      attendees: [],
+    }) as never;
+  it("'for' before a word that only starts like a weekday or month keeps the source day", () => {
+    const list = [
+      sync("today", "2026-11-20T23:00:00.000Z"),
+      sync("tomorrow", "2026-11-21T23:00:00.000Z"),
+    ];
+    for (const text of [
+      "reschedule the sync for marketing tomorrow at 10am",
+      "move the sync for monica tomorrow at 10am",
+      "move the sync for sunita tomorrow at 10am",
+      "move the sync for this project tomorrow at 10am",
+    ])
+      expect(
+        resolveCalendarMutationCandidates({
+          action: "update",
+          events: list,
+          titleHint: "sync",
+          texts: [text],
+          timeZone: ZONE,
+        }).map((event) => event.externalId),
+        text,
+      ).toEqual(["tomorrow"]);
+  });
+});
+
+describe("adversarial review: only an answer to the question confirms a delete", {
+  timeout: 60_000,
+}, () => {
+  const confirm = (eventId: string) => ({
+    subaction: "delete_event",
+    targetKind: "eventId",
+    target: eventId,
+    details: { timeZone: ZONE, confirmed: true },
+  });
+  it.each(["ok, what's on tomorrow?", "sure, but what time is it now?"])(
+    "%s deletes nothing",
+    async (answer) => {
+      const event = await seed("v613 check review");
+      await send("delete the calendar event v613 check", {
+        subaction: "delete_event",
+        query: "v613 check",
+        details: { timeZone: ZONE },
+      });
+      agentReply("Delete “v613 check review” today at 3pm?");
+      const result = await send(answer, confirm(event.externalId));
+      expect(result?.success).toBe(false);
+      expect(await events()).toHaveLength(1);
+    },
+  );
+});

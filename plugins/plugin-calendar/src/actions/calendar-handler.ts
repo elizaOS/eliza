@@ -1836,14 +1836,17 @@ function compareLocalDates(left: LocalDateOnly, right: LocalDateOnly): number {
  * to asking, today's behavior); keeping a destination date would retarget the
  * mutation, so the split is deliberately eager. "for"/"until"/"till" count
  * only before a day or clock word, so a title or a duration ("lunch for Sam",
- * "for 30 minutes") keeps its words.
+ * "for 30 minutes", "sync for marketing", "review for this project") keeps
+ * its words: a weekday or month must be the whole word, a month must be
+ * followed by a number, and "this"/"next" must be followed by a day or a
+ * part of the week.
  *
  * v613 (2026-11-20): "reschedule v613 check for tomorrow at 10am" on an event
  * at 3pm today read "tomorrow" as the event's day and answered "No matching
  * event was found".
  */
 const CALENDAR_DESTINATION_CLAUSE_PATTERN =
-  /\b(?:to|(?:for|until|till)(?=\s+(?:today|tonight|tomorrow|(?:this|next)\b|(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\b|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|noon\b|midnight\b|\d{1,2}(?:[:/.-]\d|\s*(?:a\.?m\b|p\.?m\b)|(?:st|nd|rd|th)\b|\s*$|\s+(?:a\.?m\b|p\.?m\b|o['’]clock\b)))))\b/i;
+  /\b(?:to|(?:for|until|till)(?=\s+(?:today|tonight|tomorrow|(?:this|next)\s+(?:week(?:end)?|month|morning|afternoon|evening|(?:mon|tues|wednes|thurs|fri|satur|sun)day)\b|(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day)?\b|(?:tues|wednes|thurs|satur)day\b|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?(?=\s+\d|\s*$)|noon\b|midnight\b|\d{1,2}(?:[:/.-]\d|\s*(?:a\.?m\b|p\.?m\b)|(?:st|nd|rd|th)\b|\s*$|\s+(?:a\.?m\b|p\.?m\b|o['’]clock\b)))))\b/i;
 
 /**
  * An explicit source-day marker: "on tomorrow", "from friday", "of the 21st",
@@ -1962,6 +1965,12 @@ export function resolveCalendarMutationCandidates(args: {
   explicitDate?: string;
   /** Target text with the planner's date field excluded by provenance. */
   nonPlannerDateTexts?: (string | undefined)[];
+  /**
+   * The owner's own current message, when it is free prose (not a promoted,
+   * source-scoped target). Only a bare day in these words, after the event's
+   * title, can say where an update's only title match is going.
+   */
+  ownerText?: string;
 }): LifeOpsCalendarEvent[] {
   const titleHint = args.titleHint;
   const byTitle = titleHint
@@ -2038,17 +2047,51 @@ export function resolveCalendarMutationCandidates(args: {
     titleHint?.trim() &&
     statedSource &&
     !hasDestinationClause &&
+    args.ownerText !== undefined &&
+    statedSource.text.trim() === dateText(args.ownerText)?.trim() &&
     statedSource.text.trim() !== args.explicitDate?.trim() &&
-    !CALENDAR_SOURCE_DAY_MARKER_PATTERN.test(statedSource.text)
+    !CALENDAR_SOURCE_DAY_MARKER_PATTERN.test(statedSource.text) &&
+    bareDayFollowsTitle(
+      args.ownerText,
+      [byTitle[0]?.title, titleHint],
+      args.timeZone,
+    )
   ) {
     // "move v613 check tomorrow at 10am" on the only "v613 check", which is
     // today: with no destination head and no source marker the bare day can
     // only say where the one event named is going, since no event of that
     // title is on it. Several title matches, a marked source day ("on
-    // tomorrow", "tomorrow's") and a delete keep the strict path.
+    // tomorrow", "tomorrow's") and a delete keep the strict path. So do a
+    // day said before the title ("push the monday standup back an hour"),
+    // which describes the event, and a promoted source-scoped target, whose
+    // day always names the event.
     return byTitle;
   }
   return onDate;
+}
+
+/**
+ * The owner's message states a day only after the event's title: "move v613
+ * check tomorrow at 10am" (a destination), not "push the monday standup back
+ * an hour" (which standup).
+ */
+function bareDayFollowsTitle(
+  ownerText: string,
+  titles: (string | undefined)[],
+  timeZone: string,
+): boolean {
+  for (const title of titles) {
+    if (!title?.trim()) continue;
+    const match = new RegExp(escapeRegExp(title.trim()), "iu").exec(ownerText);
+    if (!match) continue;
+    const before = ownerText.slice(0, match.index);
+    const after = ownerText.slice(match.index + match[0].length);
+    return (
+      parseExplicitLocalDate(before, timeZone) === null &&
+      parseExplicitLocalDate(after, timeZone) !== null
+    );
+  }
+  return false;
 }
 
 function resolveCreateEventCalendarTimeZone(
@@ -2499,7 +2542,7 @@ type DeleteConfirmationAnswer = "confirmed" | "declined" | "unanswered";
  *  - the current message is the owner's first message since that question
  *    (when the host's message store can be read); and
  *  - the current message itself says yes, or names the event's whole title,
- *    and turns nothing down.
+ *    asks nothing back, and turns nothing down.
  * A "no, keep it" is "declined": the question is spent and nothing is deleted
  * even if the planner later sends `confirmed` again.
  *
@@ -2525,6 +2568,8 @@ async function deleteConfirmationAnswer(args: {
     return "unanswered";
   const answer = extractUserText(unwrapUserMessageText(message)).trim();
   if (DELETE_ANSWER_DECLINE_PATTERN.test(answer)) return "declined";
+  // A question back ("ok, what's on tomorrow?") is not a yes.
+  if (answer.includes("?")) return "unanswered";
   if (
     !DELETE_ANSWER_CONFIRM_PATTERN.test(answer) &&
     !ownerNamedCalendarEvent(event, [answer])
@@ -7095,6 +7140,7 @@ export function createCalendarActionRunner(
               explicitDate: explicitSourceQuery
                 ? undefined
                 : detailString(details, "date"),
+              ownerText: explicitSourceQuery ? undefined : messageText(message),
               nonPlannerDateTexts: mutationTargetTexts({
                 details,
                 currentMessage: messageText(message),
