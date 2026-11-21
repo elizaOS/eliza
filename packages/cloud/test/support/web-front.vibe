@@ -4,21 +4,30 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import seed from "../fixtures/seed.json" with { type: "json" }
 
 module node {
-  import { createServer, request } from "node:http"
+  import { type ChildProcess, spawn } from "node:child_process"
+  import { createServer, request, type Server } from "node:http"
   import type { AddressInfo } from "node:net"
 
-  async function answers(upstream: URL, deadline: number): Promise<void> {
-    for (;;) {
-      const up = await fetch(new URL("/.well-known/assetlinks.json", upstream)).then(() => true, () => false)
-      if (up) return
-      if (Date.now() > deadline) throw new Error(`${upstream.href} did not answer`)
-      await new Promise((resolve) => setTimeout(resolve, 500))
-    }
+  export function startServe(port: number): ChildProcess {
+    return spawn(process.execPath, [
+      "--env-file=test/fixtures/secrets.env", "--import", "vibelang/register", "src/main.vibe", "serve",
+      "--profile", "test/fixtures/profile.json", "--environment", "staging",
+      "--store", "pglite:.cache/cloud.pglite", "--seed", "test/fixtures/seed.json", "--port", String(port)
+    ], { stdio: "inherit" })
+  }
+
+  export function onExit(child: ChildProcess, exited: (code: number | null) => void): () => void {
+    child.once("exit", exited)
+    return () => child.off("exit", exited)
   }
 
   /** @throws {unknown} */
-  export async function frontDoor(upstream: URL, webHost: string, waitMs: number): Promise<number> {
-    await answers(upstream, Date.now() + waitMs)
+  export async function answers(upstream: URL): Promise<void> {
+    await fetch(new URL("/.well-known/assetlinks.json", upstream))
+  }
+
+  /** @throws {unknown} */
+  export async function openFrontDoor(upstream: URL, webHost: string): Promise<{ server: Server; port: number }> {
     const front = createServer((incoming, outgoing) => {
       const forwarded = request(new URL(incoming.url ?? "/", upstream), {
         method: incoming.method,
@@ -31,22 +40,34 @@ module node {
       incoming.pipe(forwarded)
     })
     await new Promise<void>((resolve, reject) => front.once("error", reject).listen(0, "127.0.0.1", resolve))
-    return (front.address() as AddressInfo).port
+    return { server: front, port: (front.address() as AddressInfo).port }
   }
 }
-import { frontDoor } from node
+import { answers, onExit, openFrontDoor, startServe } from node
 
 export error FrontDoorFailed { upstream: string }
+export error ServeExited { code: number | null }
 
-const upstream = new URL("http://127.0.0.1:8080")
+const servePort = 8080
+const upstream = new URL(`http://127.0.0.1:${servePort}`)
 const fixtureReturn = new URL(seed.clients[0]?.signInReturn ?? "")
 const fixtureState = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde"
 
 effect function main() {
-  const port = try tryPromise({ try: () => frontDoor(upstream, fixtureReturn.host, 300_000), catch: () => new FrontDoorFailed({ upstream: upstream.href }) })
-  const local = `http://127.0.0.1:${port}${fixtureReturn.pathname}?state=${fixtureState}`
+  const serve = try acquireRelease(sync(() => startServe(servePort)), (child) => sync(() => child.kill()))
+  const serveEnds = callback<never, ServeExited>((resume) => {
+    const stop = onExit(serve, (code) => resume(fail(new ServeExited({ code }))))
+    return sync(stop)
+  })
+  const ready = tryPromise({ try: () => answers(upstream), catch: () => new FrontDoorFailed({ upstream: upstream.href }) })
+  try raceFirst(serveEnds, timeout(retry(ready, Schedule.spaced("500 millis")), "5 minutes"))
+  const front = try acquireRelease(
+    tryPromise({ try: () => openFrontDoor(upstream, fixtureReturn.host), catch: () => new FrontDoorFailed({ upstream: upstream.href }) }),
+    (opened) => sync(() => opened.server.close())
+  )
+  const local = `http://127.0.0.1:${front.port}${fixtureReturn.pathname}?state=${fixtureState}`
   try annotateLogs(logInfo("serving the web origin"), { url: local, returnUrl: fixtureReturn.href })
-  try never
+  try serveEnds
 }
 
-NodeRuntime.runMain(Effect.provide(main(), NodeServices.layer))
+NodeRuntime.runMain(Effect.provide(scoped(main()), NodeServices.layer))

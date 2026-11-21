@@ -12,7 +12,6 @@ import { launchDocument, launchFrame, type LaunchOptions } from "./support/scrat
 import { request } from "./support/socket-client.ts"
 
 const tasksModule = "@elizaos/agent/tasks"
-const unbuiltModule = builtinModules.find((name) => !builtinModuleFactories.has(name))
 
 const listedPlugin = {
   name: "listed-fixture",
@@ -73,7 +72,7 @@ for (const [title, rule, test] of refusals) {
   }, 60_000)
 }
 
-it.effect.skipIf(!builtinModuleFactories.has(tasksModule))(`A product route under the tasks module's prefix stops boot with Config (spec/agent/plugins/profile.md, "A product route never claims a route prefix an agent module owns")${builtinModuleFactories.has(tasksModule) ? "" : `: skipped while ${tasksModule} has no factory`}`, effect () => {
+it.effect('A product route under the tasks module\'s prefix stops boot with Config (spec/agent/plugins/profile.md, "A product route never claims a route prefix an agent module owns")', effect () => {
   const phase = try refusal({
     launch: { load: [tasksModule], productPlugin: claimingProductPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] },
     bundled: [claimingProductPlugin],
@@ -114,11 +113,14 @@ const childRefusals: ReadonlyArray<readonly [string, string, LaunchOptions]> = [
   ["A named product that is not in the bundle", "The product plugin must be in the bundle", { productPlugin: "product-fixture", allowed: ["REPLY", "IGNORE", "NONE", productActionName] }],
 ]
 
-it.effect.skipIf(unbuiltModule === undefined)(`A listed built-in module without a factory exits 78 (spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules")${unbuiltModule === undefined ? ": skipped, every built-in module has a factory" : `: ${unbuiltModule}`}`, effect () => {
-  const booted = try boot({ launch: { load: [unbuiltModule ?? ""] } })
-  const exited = try host("exit", () => booted.child.exited)
-  try Effect.try(() => assert.strictEqual(exited.code, 78))
-}, 120_000)
+for (const name of builtinModules) {
+  it.effect(`A load list naming ${name} is admitted and the agent is ready (spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules")`, effect () => {
+    const state = try scratch("plan-state")
+    const { input } = try launched(state, { launch: { load: [name] } })
+    const running = try acquireRelease(startAgent(input), (agent) => orDie(host("retire agent", () => agent.stop())))
+    try Effect.try(() => assert.deepStrictEqual({ factory: builtinModuleFactories.has(name), ready: running.status.ready }, { factory: true, ready: true }))
+  }, 120_000)
+}
 
 for (const [title, rule, launch] of childRefusals) {
   it.effect(`${title} exits 78 (spec/agent/plugins/profile.md, "${rule}")`, effect () => {

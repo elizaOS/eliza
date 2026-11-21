@@ -21,7 +21,7 @@ import { chooseFor } from "../src/services/models.vibe"
 import { forwardScriptHash } from "../src/pages/forward-script.ts"
 import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
 import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
-import { revokeAll, sweepGrants } from "../src/native-clients/device-keys.vibe"
+import { revokeAll, sweepAt } from "../src/native-clients/device-keys.vibe"
 import { s256, signedIn } from "./support/identity.ts"
 import { scopeFor, storeGrant, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
 import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
@@ -36,7 +36,8 @@ import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
 import { recordingBytes, recordingForm } from "./support/recording.ts"
 import { openRelay, upgradeStatus, type Received } from "./support/relay-socket.ts"
 import { realtimeSpeechPerDay, utcDayStart } from "../gen/cloud__billing__plans.ts"
-import { googleMapsFake } from "./support/maps-fake.ts"
+import { googleMapsFake, tilePng } from "./support/maps-fake.ts"
+import { mapsSweeps } from "../src/services/maps.vibe"
 import { osmFake } from "./support/maps-osm-fake.ts"
 import { accountUsable, checkEntitlement, CloudError, createCloudClient, creditFromSnapshot, deviceRoutes, EntitlementInvalid, httpVerb, parseEntitlementKeys, verifyEntitlement as verifyOnDevice, type AuthClass, type CloudClient, type DeviceRoute } from "../src/client/index.vibe"
 import { unlistedRoutes } from "../src/client/routes.vibe"
@@ -286,13 +287,27 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     }
   }
 
-  effect function device(cloud: TestCloud, accessToken: string, name: string) {
-    const connected = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256", deviceName: name } })
-    const code = (connected.body as { readonly code: string }).code
+  effect function opened(cloud: TestCloud, accessToken: string) {
+    const connected = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256" } })
+    return (connected.body as { readonly code: string }).code
+  }
+
+  effect function exchanged(cloud: TestCloud, code: string) {
     const minted = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...binding, grantType: "authorization_code", code, state, codeVerifier: verifier } })
-    const credential = minted.body as { readonly credentialId: string; readonly secret: string }
+    return minted.body as { readonly credentialId: string; readonly secret: string }
+  }
+
+  effect function device(cloud: TestCloud, accessToken: string) {
+    const credential = try exchanged(cloud, try opened(cloud, accessToken))
     const acked = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
-    return { connected, code, minted, credential, acked }
+    return { credential, acked }
+  }
+
+  effect function phases(cloud: TestCloud, codes: ReadonlyArray<string>) {
+    return try Effect.forEach(codes, effect (code) => {
+      const rows = try sql(cloud, "SELECT phase, sealed_copy FROM device_grants WHERE code_digest = $1", [tokenDigest(code)])
+      return [rows[0]?.phase, (rows[0]?.sealed_copy ?? null) !== null]
+    })
   }
 
   it.live("Sign a device in: connect, token twice, a wrong then the right proof, then use the key (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")", () => scoped(effect {
@@ -300,99 +315,119 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     try seeded(cloud)
     const signed = try signedIn(cloud, "devices@example.com")
     const connected = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(signed.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256", deviceName: "Ada's phone" } })
-    const opened = connected.body as { readonly code: string; readonly codeType: string; readonly expiresIn: number }
+    const code = connected.body as { readonly code: string; readonly codeType: string; readonly expiresIn: number }
     const anonymousConnect = try cloud.call("/api/v1/app-auth/connect", { json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256" } })
-    const tokenBody = { ...binding, grantType: "authorization_code", code: opened.code, state, codeVerifier: verifier }
+    const plainConnect = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(signed.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "plain" } })
+    const tokenBody = { ...binding, grantType: "authorization_code", code: code.code, state, codeVerifier: verifier }
+    const unknownCode = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...tokenBody, code: `emac_${"0".repeat(64)}` } })
     const wrongVerifier = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...tokenBody, codeVerifier: "w".repeat(43) } })
     const wrongState = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...tokenBody, state: "t".repeat(43) } })
     const first = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
     const again = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
-    const credential = first.body as { readonly credentialId: string; readonly secret: string; readonly tokenType: string; readonly acknowledgementRequired: boolean; readonly user: { readonly id: string } }
+    const credential = first.body as { readonly credentialId: string; readonly secret: string; readonly tokenType: string; readonly acknowledgementRequired: boolean; readonly scopes: ReadonlyArray<string>; readonly user: { readonly id: string } }
+    const replayed = again.body as { readonly credentialId: string; readonly secret: string }
     const unacknowledged = try cloud.call("/api/v1/user", { headers: bearer(credential.secret) })
+    const unknownCredential = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: "00000000-0000-4000-8000-000000000000", secret: credential.secret } })
     const wrongProof = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: `eliza_mobile_${"0".repeat(64)}` } })
     const acked = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
     const ackedAgain = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
     const tokenAfterAck = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
     const me = try cloud.call("/api/v1/user", { headers: bearer(credential.secret) })
     const stored = try sql(cloud, "SELECT phase, sealed_copy, device_name, key_expires_at FROM device_grants WHERE credential_id = $1", [credential.credentialId])
-    const acknowledged = acked.body as { readonly status: string; readonly credentialId: string; readonly expiresAt: string }
+    const acknowledged = acked.body as { readonly status: string; readonly credentialId: string; readonly expiresAt: string; readonly scopes: ReadonlyArray<string> }
     try check(() => assert.deepStrictEqual(
       {
-        connect: [connected.status, /^emac_[0-9a-f]{64}$/.test(opened.code), opened.codeType, opened.expiresIn],
+        connect: [connected.status, /^emac_[0-9a-f]{64}$/.test(code.code), code.codeType, code.expiresIn],
         anonymousConnect: anonymousConnect.status,
+        plainConnect: [plainConnect.status, refusal(plainConnect.body)[0]],
+        unknownCode: [unknownCode.status, ...refusal(unknownCode.body)],
         wrongVerifier: [wrongVerifier.status, refusal(wrongVerifier.body)[0]],
         wrongState: [wrongState.status, refusal(wrongState.body)[0]],
-        token: [first.status, /^eliza_mobile_[0-9a-f]{64}$/.test(credential.secret), credential.tokenType, credential.acknowledgementRequired, credential.user.id],
-        replay: [again.status, again.body],
+        token: [first.status, /^eliza_mobile_[0-9a-f]{64}$/.test(credential.secret), credential.tokenType, credential.acknowledgementRequired, credential.scopes, credential.user.id],
+        replay: [again.status, replayed.credentialId === credential.credentialId, replayed.secret === credential.secret],
         unacknowledged: [unacknowledged.status, refusal(unacknowledged.body)[0]],
+        unknownCredential: [unknownCredential.status, ...refusal(unknownCredential.body)],
         wrongProof: [wrongProof.status, refusal(wrongProof.body)[0]],
-        acked: [acked.status, acknowledged.status, acknowledged.credentialId],
+        acked: [acked.status, acknowledged.status, acknowledged.credentialId, acknowledged.scopes],
         ackedAgain: [ackedAgain.status, ackedAgain.body],
-        tokenAfterAck: tokenAfterAck.status >= 400,
+        tokenAfterAck: [tokenAfterAck.status, ...refusal(tokenAfterAck.body)],
         me: me.status,
         stored: [stored[0]?.phase, stored[0]?.sealed_copy, stored[0]?.device_name, Number(stored[0]?.key_expires_at) === Date.parse(acknowledged.expiresAt)]
       },
       {
         connect: [200, true, "mobile_app_auth_code", 300],
         anonymousConnect: 401,
+        plainConnect: [400, "invalid_request"],
+        unknownCode: [401, "authentication_required", "credential_unknown"],
         wrongVerifier: [401, "credential_proof_invalid"],
         wrongState: [401, "credential_proof_invalid"],
-        token: [200, true, "Bearer", true, signed.user.id],
-        replay: [200, first.body],
+        token: [200, true, "Bearer", true, ["cloud:user"], signed.user.id],
+        replay: [200, true, true],
         unacknowledged: [401, "authentication_required"],
+        unknownCredential: [401, "authentication_required", "credential_unknown"],
         wrongProof: [401, "credential_proof_invalid"],
-        acked: [200, "acknowledged", credential.credentialId],
+        acked: [200, "acknowledged", credential.credentialId, ["cloud:user"]],
         ackedAgain: [200, acked.body],
-        tokenAfterAck: true,
+        tokenAfterAck: [401, "authentication_required", "credential_unknown"],
         me: 200,
         stored: ["active", null, "Ada's phone", true]
       }
     ))
   }))
 
-  it.live("Refuse an expired key, end this key on self-revoke, end every key on revokeAll, and sweep only stale grants (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")", () => scoped(effect {
+  it.live("Sign a device out, end every key, and clear only grants that can no longer be used (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device out\"; \"Story: Keep no grant longer than it can be used\")", () => scoped(effect {
     const cloud = try testCloud()
     try seeded(cloud)
     const signed = try signedIn(cloud, "keys@example.com")
-    const expiring = try device(cloud, signed.accessToken, "Expiring")
-    const leaving = try device(cloud, signed.accessToken, "Leaving")
-    const kept = try device(cloud, signed.accessToken, "Kept")
-    const now = try Clock.currentTimeMillis
-    try sql(cloud, "UPDATE device_grants SET key_expires_at = $2, state = jsonb_set(state, '{keyExpiresAt}', to_jsonb($2::bigint)) WHERE credential_id = $1", [expiring.credential.credentialId, now - 1])
-    const expired = try cloud.call("/api/v1/user", { headers: bearer(expiring.credential.secret) })
-
+    const leaving = try device(cloud, signed.accessToken)
+    const kept = try device(cloud, signed.accessToken)
     const revoked = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(leaving.credential.secret) })
+    const revokedAgain = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(leaving.credential.secret) })
     const afterSelfRevoke = try cloud.call("/api/v1/user", { headers: bearer(leaving.credential.secret) })
     const keptAfterSelfRevoke = try cloud.call("/api/v1/user", { headers: bearer(kept.credential.secret) })
     const sessionRevoke = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(signed.accessToken) })
 
-    const stale = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(signed.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256" } })
-    const staleCode = (stale.body as { readonly code: string }).code
-    try sql(cloud, "UPDATE device_grants SET code_expires_at = $2, state = jsonb_set(state, '{codeExpiresAt}', to_jsonb($2::bigint)) WHERE code_digest = $1", [tokenDigest(staleCode), now - 1])
+    const staleCode = try opened(cloud, signed.accessToken)
+    const unackedCode = try opened(cloud, signed.accessToken)
+    const unacked = try exchanged(cloud, unackedCode)
+    const now = try Clock.currentTimeMillis
     provide Store = cloud.store {
-      try sweepGrants()
+      try sweepAt(now)
     }
-    const swept = try sql(cloud, "SELECT phase FROM device_grants WHERE code_digest = $1", [tokenDigest(staleCode)])
+    const early = try phases(cloud, [staleCode, unackedCode])
+    provide Store = cloud.store {
+      try sweepAt(now + 6 * 60_000)
+    }
+    const swept = try phases(cloud, [staleCode, unackedCode])
     const lateToken = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...binding, grantType: "authorization_code", code: staleCode, state, codeVerifier: verifier } })
+    const lateAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: unacked.credentialId, secret: unacked.secret } })
     const keptAfterSweep = try cloud.call("/api/v1/user", { headers: bearer(kept.credential.secret) })
 
     const ended = try cloud.store.transaction((tx) => revokeAll(tx, signed.user.id, now))
     const afterRevokeAll = try cloud.call("/api/v1/user", { headers: bearer(kept.credential.secret) })
     const session = try cloud.call("/api/v1/user", { headers: bearer(signed.accessToken) })
+    provide Store = cloud.store {
+      try sweepAt(now + 91 * 24 * 60 * 60_000)
+    }
+    const closed = try Effect.forEach([leaving.credential.credentialId, kept.credential.credentialId], effect (credentialId) => (try sql(cloud, "SELECT phase FROM device_grants WHERE credential_id = $1", [credentialId]))[0]?.phase)
     try check(() => assert.deepStrictEqual(
       {
-        acked: [expiring.acked.status, leaving.acked.status, kept.acked.status],
-        expired: [expired.status, ...refusal(expired.body)],
-        revoked: [revoked.status, (revoked.body as { readonly status: string }).status, afterSelfRevoke.status, keptAfterSelfRevoke.status, sessionRevoke.status],
-        swept: [swept[0]?.phase === "code_issued", lateToken.status >= 400, keptAfterSweep.status],
-        revokeAll: [ended, afterRevokeAll.status, ...refusal(afterRevokeAll.body), session.status]
+        acked: [leaving.acked.status, kept.acked.status],
+        revoked: [revoked.status, revoked.body, revokedAgain.status, ...refusal(revokedAgain.body), afterSelfRevoke.status, keptAfterSelfRevoke.status, sessionRevoke.status],
+        early,
+        swept,
+        late: [lateToken.status, ...refusal(lateToken.body), lateAck.status, ...refusal(lateAck.body), keptAfterSweep.status],
+        revokeAll: [ended, afterRevokeAll.status, ...refusal(afterRevokeAll.body), session.status],
+        closed
       },
       {
-        acked: [200, 200, 200],
-        expired: [401, "authentication_required", "credential_expired"],
-        revoked: [200, "revoked", 401, 200, 401],
-        swept: [false, true, 200],
-        revokeAll: [1, 401, "authentication_required", "credential_revoked", 200]
+        acked: [200, 200],
+        revoked: [204, "", 401, "authentication_required", "credential_revoked", 401, 200, 401],
+        early: [["code_issued", false], ["exchanged", true]],
+        swept: [["ended", false], ["ended", false]],
+        late: [401, "authentication_required", "credential_expired", 401, "authentication_required", "credential_expired", 200],
+        revokeAll: [1, 401, "authentication_required", "credential_revoked", 200],
+        closed: ["ended", "expired"]
       }
     ))
   }))
@@ -1011,7 +1046,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         conflicting: [conflicting.status, errorOf(conflicting)],
         unkeyed: [unkeyed.status, errorOf(unkeyed)],
         noRoute: [noRoute.status, errorOf(noRoute)],
-        tiles: [tileOne.status, tileOne.headers["cache-control"], tileOne.headers["content-type"], String(tileOne.body).length > 0, tileAgain.status, tileAgain.headers["cache-control"], tileRepeated.status, errorOf(tileRepeated), tilesFetched],
+        tiles: [tileOne.status, tileOne.headers["cache-control"], tileOne.headers["content-type"], Array.from(tileOne.bytes ?? []).join(",") === Array.from(tilePng).join(","), tileAgain.status, tileAgain.headers["cache-control"], tileRepeated.status, errorOf(tileRepeated), tilesFetched],
         reverse: [nearbyFound.status, lookupsWithPlace, nearbyEmpty.status, (nearbyEmpty.body as { readonly place: unknown }).place !== null, lookupsWithoutPlace],
         broke: [broke.status, errorOf(broke), maps.calls.length - callsBeforeBroke],
         usage: usage.map((row) => [row.operation, row.status, row.unkept, Number(row.quote), Number(row.charged), row.outcome]),
@@ -1037,6 +1072,63 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
           ["reverse", "answered", false, 37_000, 37_000, "known"]
         ],
         off: [200, { available: false }, 404, "capability_unavailable"]
+      }
+    ))
+  }), 60_000)
+
+  it.live("Hold each credential to its maps limits, send the viewport unmetered and forget a kept answer after 15 minutes (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\")", () => scoped(effect {
+    const maps = try sync(() => googleMapsFake())
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/maps/", maps.handler) })
+    const busy = try signedCaller(cloud, "busy-mapper")
+    const caller = try signedCaller(cloud, "keeping-mapper")
+    const now = try Clock.currentTimeMillis
+    try sql(cloud, "INSERT INTO grants (id, organization_id, family, plan_key, effective_from, effective_until, created_at) VALUES ('grant-busy-mapper', $1, 'pilot', 'pro_monthly', $2, $3, $2)", [busy.organizationId, now - 1000, now + 3_600_000])
+    try cloud.inside(addCredits({ organizationId: busy.organizationId, amount: 1_000_000, requestKey: "busy-maps-funding" }))
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 1_000_000, requestKey: "keeping-maps-funding" }))
+    const post = (path: string, key: string, body: unknown, who = caller) => cloud.call(`/api/v1/maps/${path}`, { json: body, headers: { ...who.headers, "idempotency-key": key } })
+    const errorOf = (answer: { readonly body: unknown }) => (answer.body as { readonly error?: string }).error
+    const holdsOf = (organizationId: string) => sql(cloud, "SELECT count(*) AS n FROM holds WHERE organization_id = $1", [organizationId])
+    const viewport = { south: 52.5, west: 13.3, north: 52.6, east: 13.5, zoom: 12 }
+
+    const statuses: Array<number> = []
+    for (let index = 0; index < 60; index += 1) statuses.push((try cloud.call("/api/v1/maps/capabilities", { headers: busy.headers })).status)
+    const overLimit = try post("geocode", "busy-geo-1", { query: "Brandenburger Tor" }, busy)
+    const holdsBeforeViewport = Number((try holdsOf(busy.organizationId))[0]?.n)
+    const tileStill = try cloud.call("/api/v1/maps/tiles/3/4/2", { headers: { ...busy.headers, "idempotency-key": "busy-tile-1" } })
+    const viewed = try cloud.call("/api/v1/maps/tiles/viewport", { json: viewport, headers: busy.headers })
+    const holdsAfterViewport = Number((try holdsOf(busy.organizationId))[0]?.n)
+
+    try sync(() => maps.script({ kind: "oversized" }))
+    const oversized = try post("geocode", "geo-oversized", { query: "Alexanderplatz" })
+    const keptFirst = try post("geocode", "geo-kept", { query: "Brandenburger Tor" })
+    const keptAgain = try post("geocode", "geo-kept", { query: "Brandenburger Tor" })
+    try sql(cloud, "UPDATE maps_requests SET kept_at = kept_at - $1 WHERE result IS NOT NULL", [15 * 60_000])
+    const keptExpired = try post("geocode", "geo-kept", { query: "Brandenburger Tor" })
+    try cloud.inside(mapsSweeps[0]?.run ?? sync(() => undefined))
+    const keptRows = try sql(cloud, "SELECT count(*) AS n FROM maps_requests WHERE result IS NOT NULL", [])
+    const usage = try sql(cloud, "SELECT r.operation, r.status, u.quote, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key JOIN holds h ON h.key = r.hold_key WHERE h.organization_id = $1 ORDER BY u.settled_at, r.hold_key", [caller.organizationId])
+
+    try check(() => assert.deepStrictEqual(
+      {
+        capabilities: [statuses.length, statuses.every((status) => status === 200)],
+        overLimit: [overLimit.status, errorOf(overLimit), typeof overLimit.headers["retry-after"]],
+        tile: tileStill.status,
+        viewport: [viewed.status, viewed.headers["cache-control"], holdsAfterViewport - holdsBeforeViewport - 1],
+        oversized: [oversized.status, errorOf(oversized)],
+        kept: [keptFirst.status, keptAgain.status, keptAgain.body, keptExpired.status, errorOf(keptExpired), Number(keptRows[0]?.n)],
+        usage: usage.map((row) => [row.operation, row.status, Number(row.quote), Number(row.charged), row.outcome])
+      },
+      {
+        capabilities: [60, true],
+        overLimit: [429, "rate_limited", "string"],
+        tile: 200,
+        viewport: [200, "no-store", 0],
+        oversized: [503, "provider_unavailable"],
+        kept: [200, 200, keptFirst.body, 409, "idempotency_conflict", 0],
+        usage: [
+          ["geocode", "lost", 5_000, 5_000, "unknown"],
+          ["geocode", "answered", 5_000, 5_000, "known"]
+        ]
       }
     ))
   }), 60_000)

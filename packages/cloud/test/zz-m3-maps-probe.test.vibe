@@ -1,6 +1,7 @@
 // spec/cloud/services/maps.md, "Story: Answer a maps request once and pay for it once"
 import { assert, describe, it } from "@effect/vitest"
 import { FetchHttpClient } from "effect/http"
+import { nearbyPrice } from "../gen/cloud__services__maps.effect.vibe"
 import { describeMaps, mapsProvider } from "../src/providers/maps.vibe"
 import { Deployment, deploymentLayer } from "../src/profile/profile.vibe"
 import { startFakeServer } from "./support/fakes.ts"
@@ -44,13 +45,13 @@ describe("probe google maps", () => {
       const slow = try provider.search({ query: "tor" })
       fake.script({ kind: "outage" })
       const geocodeOutage = try provider.geocode({ query: "Pariser Platz" })
-      fake.script({ kind: "outage" })
+      fake.script({ kind: "empty" }, { kind: "outage" })
       const reverseOutage = try provider.reverse({ coordinate: { latitude: 52.5162, longitude: 13.3777 }, preferPlace: true })
       return { geocodeOutage, reverseOutage, search, geocode, reverse, countsAfterNearby, reverseEmpty, countsAfterEmpty, details, drive, driveMask, walk, walkMask, noRoute, zero, malformed, oversized, tile, viewport, slow, described: describeMaps(settings, "Test Cloud") }
     }, layer)
     try Console.log(JSON.stringify({ geocodeOutage: results.geocodeOutage, reverseOutage: results.reverseOutage, oversized: results.oversized, slow: results.slow, tile: results.tile?.kind, viewport: results.viewport }))
     assert.deepStrictEqual(
       [results.search.kind, results.geocode.kind, results.countsAfterNearby, results.countsAfterEmpty, results.tile?.kind, results.viewport?.kind, results.slow.kind, results.oversized.kind === "refused" ? results.oversized.code : "x", results.geocodeOutage, results.reverseOutage],
-      ["answered", "answered", [1, 0], [2, 1], "answered", "answered", "unknown", "ProviderUnavailable", { kind: "refused", code: "ProviderUnavailable", observedMicros: 0 }, { kind: "answered", value: results.reverse.kind === "answered" ? results.reverse.value : undefined, observedMicros: results.reverse.kind === "answered" ? results.reverse.observedMicros : -1 }])
+      ["answered", "answered", [1, 1], [2, 2], "answered", "answered", "unknown", "ProviderUnavailable", { kind: "refused", code: "ProviderUnavailable", observedMicros: 0 }, { kind: "refused", code: "ProviderUnavailable", observedMicros: nearbyPrice }])
   }), 30_000)
 })

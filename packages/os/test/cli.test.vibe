@@ -177,9 +177,9 @@ it.live("Generate test release keys and decrypt them again (spec/os/image/signin
   assert.isTrue(try Effect.try({ try: () => pairsWithCertificate(pk8, certificate), catch: failed("pair the key") }))
 
   const again = try run(...generate)
-  assert.notStrictEqual(again.status, 0)
-  assert.notStrictEqual(again.status, 2)
+  assert.strictEqual(again.status, 1, again.stderr)
   assert.strictEqual(again.stdout, "")
+  assert.include(again.stderr, "KeyOutputRefused")
 }))
 
 effect function admission(tools: Extract<AndroidTools, { kind: "present" }>) {
@@ -211,9 +211,9 @@ effect function admission(tools: Extract<AndroidTools, { kind: "present" }>) {
 
   try writeTree(root, { "descriptor.json": JSON.stringify({ ...descriptor, apkSha256: "0".repeat(64) }) })
   const refused = try run(...stage, "--admission-only")
-  assert.notStrictEqual(refused.status, 0)
-  assert.notStrictEqual(refused.status, 2)
+  assert.strictEqual(refused.status, 1, refused.stderr)
   assert.strictEqual(refused.stdout, "")
+  assert.include(refused.stderr, "StagingRefused")
   assert.isFalse(try files.exists(output))
 }
 
@@ -283,7 +283,8 @@ it.live("Prepare the owned browser's component against the pinned sources (spec/
   assert.strictEqual(try files.readFileString(`${repo.root}/chrome/browser/resources/eliza_browser/runtime-config.mjs`), `export const nativeHost = ${JSON.stringify(host)};\n`)
 
   const stale = try run(...prepare, "--out", `${root}/again`, "--revision", "0".repeat(40))
-  assert.notStrictEqual(stale.status, 0)
+  assert.strictEqual(stale.status, 1, stale.stderr)
   assert.strictEqual(stale.stdout, "")
+  assert.include(stale.stderr, "Chromium revision must match the reviewed component pin")
   assert.isFalse(try files.exists(`${root}/again`))
 }))

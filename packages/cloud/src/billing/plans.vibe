@@ -103,18 +103,16 @@ export effect function checkCatalog(): void!(CatalogMismatch | SecretMissing)!(D
     const product = try providerRead(`/v1/products/${encodeURIComponent(binding.productId)}`, ProviderProduct, wire)
     const observed: ObservedPrice = {
       active: price.active,
-      currency: price.currency === "usd" && !Object.keys(price.currency_options ?? {}).some((currency) => currency !== "usd") ? "Usd" : "OtherCurrency",
+      currency: price.currency === "usd" && !Object.keys(price.currency_options ?? {}).some((currency) => currency !== "usd") ? "UsdCurrency" : "OtherCurrency",
       amountCents: price.unit_amount ?? -1,
-      perUnit: price.billing_scheme === "per_unit" && price.transform_quantity === null,
-      interval: price.type === "recurring" && price.recurring?.interval === "month" && price.recurring.interval_count === 1 ? "OneMonth" : "OtherInterval",
-      usage: price.recurring?.usage_type === "licensed" ? "Licensed" : "Metered",
+      recurrence: price.billing_scheme === "per_unit" && price.transform_quantity === null && price.type === "recurring" && price.recurring?.interval === "month" && price.recurring.interval_count === 1 && price.recurring.usage_type === "licensed" ? "MonthlyPerSeat" : "OtherRecurrence",
       trial: (price.recurring?.trial_period_days ?? null) !== null,
-      sameProduct: price.product === binding.productId && product.id === binding.productId,
-      productActive: product.active && product.deleted !== true,
-      mode: price.livemode ? "LivePrice" : "TestPrice"
+      sameProduct: price.product === binding.productId && product.id === binding.productId && product.active && product.deleted !== true,
+      mode: price.livemode !== product.livemode ? "MixedMode" : price.livemode ? "LivePrice" : "TestPrice"
     }
-    if (price.livemode !== product.livemode || priceCheck(key, observed, livemode ? "Production" : "Staging").tag !== "PriceFits") {
-      throw new CatalogMismatch({ plan: wire, problem: `price ${binding.priceId} is not the catalog's ${wire} as the provider sells it` })
+    const problem = priceCheck(key, observed, livemode ? "Production" : "Staging")
+    if (problem.tag === "CatalogMismatch") {
+      throw new CatalogMismatch({ plan: wire, problem: `price ${binding.priceId} is not the catalog's ${wire} as the provider sells it: ${wireName(problem.mismatch)}` })
     }
   }
 }

@@ -51,7 +51,6 @@ function status(row: Row | undefined): RequestAccountStatus {
 
 effect function deviceKeyCaller(token: string, routeClass: RouteClass, now: number): Caller!(Refused | StoreFailure)!Store {
   const digest = tokenDigest(token)
-  try admit({ subject: digest, scope: "device-key", limit: deviceKeyPerMinute, widthMs: minute })
   const store = try Store
   const row = (try store.transaction((tx) => tx.query(
     "SELECT g.key, g.user_id, g.phase, g.credential_id, g.key_expires_at, g.issued_at, a.organization_id, a.status, a.devices_revoked_before FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.secret_digest = $1",
@@ -111,14 +110,23 @@ effect function sessionCaller(token: string, routeClass: RouteClass, now: number
   }
 }
 
-export effect function authenticate(authorization: string | undefined, routeClass: RouteClass): Caller!(Refused | StoreFailure)!Store {
-  if (routeClass === "Public" || routeClass === "ProviderSignature") return { kind: "anonymous" }
+effect function standing(token: string | undefined, routeClass: RouteClass): Caller!(Refused | StoreFailure)!Store {
   const now = try Clock.currentTimeMillis
-  const token = bearerToken(authorization)
   if (token === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
   if (deviceKeyPattern.test(token)) return try deviceKeyCaller(token, routeClass, now)
   if (sessionTokenPattern.test(token)) return try sessionCaller(token, routeClass, now)
   throw refused("AuthenticationRequired", "CredentialUnknown")
+}
+
+export effect function authenticate(authorization: string | undefined, routeClass: RouteClass): Caller!(Refused | StoreFailure)!Store {
+  if (routeClass === "Public" || routeClass === "ProviderSignature") return { kind: "anonymous" }
+  const token = bearerToken(authorization)
+  if (token !== undefined && deviceKeyPattern.test(token)) try admit({ subject: tokenDigest(token), scope: "device-key", limit: deviceKeyPerMinute, widthMs: minute })
+  return try standing(token, routeClass)
+}
+
+export effect function recheck(authorization: string | undefined, routeClass: RouteClass): Caller!(Refused | StoreFailure)!Store {
+  return try standing(bearerToken(authorization), routeClass)
 }
 
 export function signed(caller: Caller): Signed | undefined {

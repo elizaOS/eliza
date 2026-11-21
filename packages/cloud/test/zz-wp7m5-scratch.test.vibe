@@ -1,9 +1,61 @@
-// spec/cloud/services/maps.md, "Story: Answer a maps request once and pay for it once"
+// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import { assert, describe, it } from "@effect/vitest"
 import { addCredits } from "../src/billing/funds.vibe"
-import { testCloud, type TestCloud } from "./support/cloud.vibe"
+import { drainProviderEvents, webhookPath } from "../src/billing/provider-events.vibe"
+import { createStripeFake } from "./support/fakes/stripe.ts"
+import { refusalBody } from "../src/http/refusal.vibe"
+import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
+import { Store, type Tx } from "../src/store/store.vibe"
+import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
+import type { FakeRequest } from "./support/fakes.ts"
+import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.ts"
+import { periodRows } from "../src/shared/metering.vibe"
+import { tokenDigest } from "../src/shared/sealing.vibe"
+import { stepRow } from "../src/store/rows.vibe"
+import { verifyEntitlement, type PublishedKey } from "./support/entitlement.ts"
+import { decodeRegistration, disableClient, registerClient, updateClient } from "../src/native-clients/registry.vibe"
+import { seedClients } from "../src/operator/clients.vibe"
+import { deviceKey, openAccount, printed } from "./support/operator.vibe"
+import { operator } from "./support/operator.vibe"
+import { chooseFor } from "../src/services/models.vibe"
+import { forwardScriptHash } from "../src/pages/forward-script.ts"
+import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
+import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
+import { revokeAll, sweepAt } from "../src/native-clients/device-keys.vibe"
+import { s256, signedIn } from "./support/identity.ts"
+import { scopeFor, storeGrant, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
+import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
+import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/google-calendar.ts"
+import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
+import { gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/google-gmail-changes.ts"
+import { sha256Hex } from "../src/shared/sealing.vibe"
+import { secrets } from "./support/profile.ts"
 import { signedCaller } from "./support/caller.vibe"
-import { googleMapsFake } from "./support/maps-fake.ts"
+import { callAtHost, callDeclaring } from "./support/http.ts"
+import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
+import { recordingBytes, recordingForm } from "./support/recording.ts"
+import { openRelay, upgradeStatus, type Received } from "./support/relay-socket.ts"
+import { realtimeSpeechPerDay, utcDayStart } from "../gen/cloud__billing__plans.ts"
+import { googleMapsFake, tilePng } from "./support/maps-fake.ts"
+import { mapsSweeps } from "../src/services/maps.vibe"
+import { osmFake } from "./support/maps-osm-fake.ts"
+import { accountUsable, checkEntitlement, CloudError, createCloudClient, creditFromSnapshot, deviceRoutes, EntitlementInvalid, httpVerb, parseEntitlementKeys, verifyEntitlement as verifyOnDevice, type AuthClass, type CloudClient, type DeviceRoute } from "../src/client/index.vibe"
+import { unlistedRoutes } from "../src/client/routes.vibe"
+import { networkFetch } from "./support/client.ts"
+import { refused, type Refused } from "../src/http/refusal.vibe"
+import type { RouteClass } from "../src/http/request-auth.vibe"
+import { matchRoute, type Route } from "../src/http/routes.vibe"
+import { areas, listening, respond } from "../src/http/server.vibe"
+import { fragment, googleIdentityFake, visit, type GooglePerson } from "./support/google-identity-fake.ts"
+import { googleConsent } from "./support/fakes/google-oauth.ts"
+import { authenticatorCode } from "./support/authenticator.ts"
+
+effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
+  return match (try exit(program)) {
+    when Exit.Success(let value): `succeeded with ${JSON.stringify(value)}`;
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => error._tag), Option.getOrElse(() => "defect"));
+  }
+}
 
 effect function check(run: () => void) {
   try Effect.try(run)
@@ -12,7 +64,6 @@ effect function check(run: () => void) {
 effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
   return try cloud.store.transaction((tx) => tx.query(text, params))
 }
-
 describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
   it.live("Answer a maps request once and pay for it once, keep tiles unstored and look a place up nearby first (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\"; spec/cloud/services/maps.md, \"Story: Keep maps requests within the provider's terms\")", () => scoped(effect {
     const maps = try sync(() => googleMapsFake())
@@ -65,7 +116,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         conflicting: [conflicting.status, errorOf(conflicting)],
         unkeyed: [unkeyed.status, errorOf(unkeyed)],
         noRoute: [noRoute.status, errorOf(noRoute)],
-        tiles: [tileOne.status, tileOne.headers["cache-control"], tileOne.headers["content-type"], String(tileOne.body).length > 0, tileAgain.status, tileAgain.headers["cache-control"], tileRepeated.status, errorOf(tileRepeated), tilesFetched],
+        tiles: [tileOne.status, tileOne.headers["cache-control"], tileOne.headers["content-type"], Array.from(tileOne.bytes ?? []).join(",") === Array.from(tilePng).join(","), tileAgain.status, tileAgain.headers["cache-control"], tileRepeated.status, errorOf(tileRepeated), tilesFetched],
         reverse: [nearbyFound.status, lookupsWithPlace, nearbyEmpty.status, (nearbyEmpty.body as { readonly place: unknown }).place !== null, lookupsWithoutPlace],
         broke: [broke.status, errorOf(broke), maps.calls.length - callsBeforeBroke],
         usage: usage.map((row) => [row.operation, row.status, row.unkept, Number(row.quote), Number(row.charged), row.outcome]),
@@ -91,6 +142,63 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
           ["reverse", "answered", false, 37_000, 37_000, "known"]
         ],
         off: [200, { available: false }, 404, "capability_unavailable"]
+      }
+    ))
+  }), 60_000)
+
+  it.live("Hold each credential to its maps limits, send the viewport unmetered and forget a kept answer after 15 minutes (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\")", () => scoped(effect {
+    const maps = try sync(() => googleMapsFake())
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/maps/", maps.handler) })
+    const busy = try signedCaller(cloud, "busy-mapper")
+    const caller = try signedCaller(cloud, "keeping-mapper")
+    const now = try Clock.currentTimeMillis
+    try sql(cloud, "INSERT INTO grants (id, organization_id, family, plan_key, effective_from, effective_until, created_at) VALUES ('grant-busy-mapper', $1, 'pilot', 'pro_monthly', $2, $3, $2)", [busy.organizationId, now - 1000, now + 3_600_000])
+    try cloud.inside(addCredits({ organizationId: busy.organizationId, amount: 1_000_000, requestKey: "busy-maps-funding" }))
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 1_000_000, requestKey: "keeping-maps-funding" }))
+    const post = (path: string, key: string, body: unknown, who = caller) => cloud.call(`/api/v1/maps/${path}`, { json: body, headers: { ...who.headers, "idempotency-key": key } })
+    const errorOf = (answer: { readonly body: unknown }) => (answer.body as { readonly error?: string }).error
+    const holdsOf = (organizationId: string) => sql(cloud, "SELECT count(*) AS n FROM holds WHERE organization_id = $1", [organizationId])
+    const viewport = { south: 52.5, west: 13.3, north: 52.6, east: 13.5, zoom: 12 }
+
+    const statuses: Array<number> = []
+    for (let index = 0; index < 60; index += 1) statuses.push((try cloud.call("/api/v1/maps/capabilities", { headers: busy.headers })).status)
+    const overLimit = try post("geocode", "busy-geo-1", { query: "Brandenburger Tor" }, busy)
+    const holdsBeforeViewport = Number((try holdsOf(busy.organizationId))[0]?.n)
+    const tileStill = try cloud.call("/api/v1/maps/tiles/3/4/2", { headers: { ...busy.headers, "idempotency-key": "busy-tile-1" } })
+    const viewed = try cloud.call("/api/v1/maps/tiles/viewport", { json: viewport, headers: busy.headers })
+    const holdsAfterViewport = Number((try holdsOf(busy.organizationId))[0]?.n)
+
+    try sync(() => maps.script({ kind: "oversized" }))
+    const oversized = try post("geocode", "geo-oversized", { query: "Alexanderplatz" })
+    const keptFirst = try post("geocode", "geo-kept", { query: "Brandenburger Tor" })
+    const keptAgain = try post("geocode", "geo-kept", { query: "Brandenburger Tor" })
+    try sql(cloud, "UPDATE maps_requests SET kept_at = kept_at - $1 WHERE result IS NOT NULL", [15 * 60_000])
+    const keptExpired = try post("geocode", "geo-kept", { query: "Brandenburger Tor" })
+    try cloud.inside(mapsSweeps[0]?.run ?? sync(() => undefined))
+    const keptRows = try sql(cloud, "SELECT count(*) AS n FROM maps_requests WHERE result IS NOT NULL", [])
+    const usage = try sql(cloud, "SELECT r.operation, r.status, u.quote, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key JOIN holds h ON h.key = r.hold_key WHERE h.organization_id = $1 ORDER BY u.settled_at, r.hold_key", [caller.organizationId])
+
+    try check(() => assert.deepStrictEqual(
+      {
+        capabilities: [statuses.length, statuses.every((status) => status === 200)],
+        overLimit: [overLimit.status, errorOf(overLimit), typeof overLimit.headers["retry-after"]],
+        tile: tileStill.status,
+        viewport: [viewed.status, viewed.headers["cache-control"], holdsAfterViewport - holdsBeforeViewport - 1],
+        oversized: [oversized.status, errorOf(oversized)],
+        kept: [keptFirst.status, keptAgain.status, keptAgain.body, keptExpired.status, errorOf(keptExpired), Number(keptRows[0]?.n)],
+        usage: usage.map((row) => [row.operation, row.status, Number(row.quote), Number(row.charged), row.outcome])
+      },
+      {
+        capabilities: [60, true],
+        overLimit: [429, "rate_limited", "string"],
+        tile: 200,
+        viewport: [200, "no-store", 0],
+        oversized: [503, "provider_unavailable"],
+        kept: [200, 200, keptFirst.body, 409, "idempotency_conflict", 0],
+        usage: [
+          ["geocode", "lost", 5_000, 5_000, "unknown"],
+          ["geocode", "answered", 5_000, 5_000, "known"]
+        ]
       }
     ))
   }), 60_000)
@@ -138,7 +246,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         searched: [searched.status, placesOf(searched), typeof osm.calls[1]?.query.get("viewbox")],
         reversed: [reversed.status, place.id, place.name],
         detailed: [detailed.status, detail.website, detail.openingHours, detail.phone],
-        walked: [walked.status, route.distanceMeters, route.durationSeconds, route.traffic, route.steps.map((step) => step.maneuver), (JSON.parse(osm.calls[4]?.body ?? "{}") as { readonly profile?: string }).profile],
+        walked: [walked.status, route.distanceMeters, route.durationSeconds, route.traffic, route.steps.map((step) => step.maneuver), osm.calls[4]?.body.includes("\"profile\":\"foot\"")],
         refusals: [transit.status, errorOf(transit), unroutable.status, errorOf(unroutable), outage.status, errorOf(outage), garbled.status, errorOf(garbled)],
         tile: [tile.status, errorOf(tile), osm.calls.length - callsBeforeTile],
         calls: osm.calls.length,
@@ -151,7 +259,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         searched: [200, [["N240109189", "Brandenburger Tor"], ["W4031000", "1 Pariser Platz"]], "string"],
         reversed: [200, "W4031000", "1 Pariser Platz"],
         detailed: [200, "https://example.org/tor", "24/7", "+49 30 0000"],
-        walked: [200, 1520.4, 912, "none", ["depart", "left", "arrive"], "foot"],
+        walked: [200, 1520.4, 912, "none", ["depart", "left", "arrive"], true],
         refusals: [422, "unsupported_mode", 422, "no_route", 503, "provider_unavailable", 502, "provider_invalid_response"],
         tile: [404, "capability_unavailable", 0],
         calls: 8,

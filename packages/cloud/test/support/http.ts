@@ -5,6 +5,7 @@ export interface Answer {
   readonly status: number;
   readonly headers: Readonly<Record<string, string>>;
   readonly body: unknown;
+  readonly bytes?: Uint8Array;
 }
 
 export interface CallInit {
@@ -20,12 +21,14 @@ export async function callCloud(base: string, path: string, init: CallInit = {})
     headers: { ...(init.json === undefined ? {} : { "content-type": "application/json" }), ...init.headers },
     body: init.form ?? (init.json === undefined ? undefined : JSON.stringify(init.json)),
   });
-  const text = await response.text();
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const text = new TextDecoder().decode(bytes);
   const type = response.headers.get("content-type") ?? "";
   return {
     status: response.status,
     headers: Object.fromEntries(response.headers.entries()),
     body: type.includes("json") && text !== "" ? (JSON.parse(text) as unknown) : text,
+    bytes,
   };
 }
 
