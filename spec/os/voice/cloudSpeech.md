@@ -39,7 +39,7 @@ type SpeechNotice = AskConsent | ReserveLiveCapture | ReleaseLiveCapture | Revok
 type SpeechStep = { state: CloudSpeech, out: List[SpeechNotice] }
 pure val initial: CloudSpeech = { credential: 0, bound: 0, phase: Idle, audioStarted: false, capture: Muted, generation: 0, turn: NoTurn, reply: NoReply, batches: List() }
 pure val consentDeadline: Millis = 30 * millisPerSecond
-pure def quietStep(s: CloudSpeech): SpeechStep = { state: s, out: List() }
+pure def speechStep(out: List[SpeechNotice], s: CloudSpeech): SpeechStep = { state: s, out: out }
 pure def noticeIf(c: bool, n: SpeechNotice): List[SpeechNotice] = if (c) List(n) else List()
 pure def isOpen(p: Phase): bool = match p { | Idle => false | Closed(c) => false | _ => true }
 pure def asksOf(p: Phase): int = match p { | AwaitingConsent(a) => a.asks | _ => 0 }
@@ -48,7 +48,7 @@ pure def canBegin(s: CloudSpeech): bool = s.credential >= 1 and not(isOpen(s.pha
 pure def begin(s: CloudSpeech): SpeechStep = { state: { ...initial, credential: s.credential, bound: s.credential, batches: s.batches, phase: AwaitingConsent({ asks: 1, waitedMs: 0 }) }, out: List(AskConsent) }
 pure def canConsentDismissed(s: CloudSpeech): bool = asksOf(s.phase) >= 1
 pure def consentDismissed(s: CloudSpeech): SpeechStep = if (asksOf(s.phase) == 1)
-  { state: { ...s, phase: AwaitingConsent({ asks: 2, waitedMs: waitedOf(s.phase) }) }, out: List(AskConsent) } else quietStep({ ...s, phase: Closed({ ending: NotConsented }) })
+  { state: { ...s, phase: AwaitingConsent({ asks: 2, waitedMs: waitedOf(s.phase) }) }, out: List(AskConsent) } else speechStep(List(), { ...s, phase: Closed({ ending: NotConsented }) })
 pure def canConsentClock(s: CloudSpeech, waitMs: Millis): bool = asksOf(s.phase) >= 1 and waitMs > 0
 pure def consentClock(s: CloudSpeech, waitMs: Millis): CloudSpeech = if (waitedOf(s.phase) + waitMs >= consentDeadline) { ...s, phase: Closed({ ending: NotConsented }) }
   else { ...s, phase: AwaitingConsent({ asks: asksOf(s.phase), waitedMs: waitedOf(s.phase) + waitMs }) }
@@ -95,7 +95,7 @@ pure def waitOf(a: CloudAnswer): WaitTime = match a { | Refused(r) => r.refusal.
 pure def keyReport(a: CloudAnswer, version: int): List[SpeechNotice] = match a { | Refused(r) => noticeIf(r.refusal.code == AuthenticationRequired
   and isCredentialReason(r.refusal.reason), ReportRefusedKey({ version: version, reason: r.refusal.reason, on: C::OtherRequest })) | _ => List() }
 pure def canMinted(s: CloudSpeech): bool = s.phase == Minting
-pure def minted(s: CloudSpeech, answer: CloudAnswer): SpeechStep = if (answer == Answered) quietStep({ ...s, phase: Connecting })
+pure def minted(s: CloudSpeech, answer: CloudAnswer): SpeechStep = if (answer == Answered) speechStep(List(), { ...s, phase: Connecting })
   else failWith(failureOf(answer), s, keyReport(answer, s.credential), waitOf(answer))
 pure val answerValues = Set(Answered, Misdirected, Unreachable, Refused({ refusal: { code: AuthenticationRequired, reason: CredentialExpired, wait: NoWait } }),
   Refused({ refusal: { code: RateLimited, reason: NoReason, wait: RetryAt({ retryAtMs: 5000 }) } }), Refused({ refusal: { code: AllowanceExhausted, reason: NoReason, wait: ResetsAt({ resetsAtMs: 9000 }) } }))
@@ -111,28 +111,30 @@ pure def stepARefusedKeyIsReportedOnceAndEndsItsRequest(before: CloudSpeech, via
 `ready` comes first, then `extended` at any time; `connected` makes the
 session live, and turns and `complete` follow it (audio is `audioArrived`). An `error`, a closed
 socket or a stalled startup or deadline (`relayLost`) ends the session.
+Discovered by simulation: a protocol failure can only come from the current
+relay. An idle device cannot report one by itself.
 
 ```quint
 pure def mintedPhase(p: Phase): bool = p == Connecting or p == Ready or p == Live
 pure def relayFailure(code: Rl::RelayErrorCode, reason: Rl::RelayReason): Cr::Failure = if (code == Rl::RelayUnauthorized or reason != Rl::NoRelayReason) Cr::AccountIneligible
   else if (code == Rl::RelayUnavailable) Cr::RemoteUnreachable else Cr::RequestFailed
-pure def protocolEnd(s: CloudSpeech): SpeechStep = failWith(Cr::RequestFailed, s, List(), NoWait)
+pure def failRelay(failure: Cr::Failure, s: CloudSpeech): SpeechStep = failWith(failure, s, List(), NoWait)
 pure def canFrameArrived(s: CloudSpeech): bool = mintedPhase(s.phase)
 pure def frameArrived(s: CloudSpeech, frame: Rl::ServerFrame): SpeechStep = match frame {
-  | ReadyFrame => if (s.phase == Connecting) quietStep({ ...s, phase: Ready }) else protocolEnd(s)
-  | SttFrame(e) => if (e.kind == Rl::SttConnected) (if (s.phase == Ready) quietStep({ ...s, phase: Live }) else if (s.phase == Live) quietStep(s) else protocolEnd(s))
-      else if (s.phase == Live) onTurn(e.kind, s) else protocolEnd(s)
-  | ExtendedFrame => if (s.phase != Connecting) quietStep(s) else protocolEnd(s)
-  | CompleteFrame(f) => if (s.phase == Live) onComplete(f.id, s) else protocolEnd(s)
-  | ErrorFrame(e) => failWith(relayFailure(e.code, e.reason), s, List(), NoWait)
-  | CloseFrame(c) => failWith(Cr::RemoteUnreachable, s, List(), NoWait)
-  | _ => if (s.phase == Live) quietStep(s) else protocolEnd(s)
+  | ReadyFrame => if (s.phase == Connecting) speechStep(List(), { ...s, phase: Ready }) else failRelay(Cr::RequestFailed, s)
+  | SttFrame(e) => if (e.kind == Rl::SttConnected) (if (s.phase == Ready) speechStep(List(), { ...s, phase: Live }) else if (s.phase == Live) speechStep(List(), s) else failRelay(Cr::RequestFailed, s))
+      else if (s.phase == Live) onTurn(e.kind, s) else failRelay(Cr::RequestFailed, s)
+  | ExtendedFrame => if (s.phase != Connecting) speechStep(List(), s) else failRelay(Cr::RequestFailed, s)
+  | CompleteFrame(f) => if (s.phase == Live) onComplete(f.id, s) else failRelay(Cr::RequestFailed, s)
+  | ErrorFrame(e) => failRelay(relayFailure(e.code, e.reason), s)
+  | CloseFrame(c) => failRelay(Cr::RemoteUnreachable, s)
+  | _ => if (s.phase == Live) speechStep(List(), s) else failRelay(Cr::RequestFailed, s)
 }
 pure val frameValues = Set(Rl::ReadyFrame, Rl::SttFrame({ kind: Rl::SttConnected }), Rl::SttFrame({ kind: Rl::StartOfTurn }), Rl::SttFrame({ kind: Rl::TranscriptUpdate }),
   Rl::SttFrame({ kind: Rl::EndOfTurn }), Rl::ExtendedFrame, Rl::CompleteFrame({ id: "u1" }), Rl::ErrorFrame({ code: Rl::RelayUnavailable, reason: Rl::FundingReason({ funding: Rl::CreditsShort }) }))
 pure val weight_frameArrived = 10
 pure def canRelayLost(s: CloudSpeech): bool = mintedPhase(s.phase)
-pure def relayLost(s: CloudSpeech): SpeechStep = failWith(Cr::RemoteUnreachable, s, List(), NoWait)
+pure def relayLost(s: CloudSpeech): SpeechStep = failRelay(Cr::RemoteUnreachable, s)
 pure def openingRank(p: Phase): int = match p { | AwaitingConsent(a) => 1 | Minting => 2 | Connecting => 3 | Ready => 4 | Live => 5 | _ => 0 }
 pure def stepTheSessionOpensInOrder(before: CloudSpeech, after: CloudSpeech): bool = openingRank(after.phase) >= 2 implies (openingRank(before.phase) == openingRank(after.phase) or openingRank(before.phase) + 1 == openingRank(after.phase))
 ```
@@ -147,7 +149,7 @@ releases the slot and keeps it, so a turn the capture began may finish.
 pure def canUnmute(s: CloudSpeech, recordAudio: bool): bool = s.phase == Live and s.capture == Muted and recordAudio
 pure def unmute(s: CloudSpeech, recordAudio: bool): SpeechStep = { state: { ...s, capture: Reserving }, out: List(ReserveLiveCapture) }
 pure def canCaptureAnswered(s: CloudSpeech): bool = s.capture == Reserving
-pure def captureAnswered(s: CloudSpeech, slot: M::Refusal): SpeechStep = if (slot == M::NoRefusal) quietStep({ ...s, capture: Listening, generation: s.generation + 1, audioStarted: true })
+pure def captureAnswered(s: CloudSpeech, slot: M::Refusal): SpeechStep = if (slot == M::NoRefusal) speechStep(List(), { ...s, capture: Listening, generation: s.generation + 1, audioStarted: true })
   else failWith(Cr::CapabilityUnavailable, { ...s, capture: Muted }, List(), NoWait)
 pure val slotValues = Set(M::NoRefusal, M::SlotBusy)
 pure def canMute(s: CloudSpeech): bool = s.capture != Muted
@@ -164,7 +166,7 @@ heard while the agent talked never becomes the next turn.
 ```quint
 pure def turnOwner(t: Turn): int = match t { | TurnOf(x) => x.capture | NoTurn => -1 }
 pure def ownedTurn(s: CloudSpeech): bool = turnOwner(s.turn) >= 1 and turnOwner(s.turn) == s.generation
-pure def onTurn(kind: Rl::SttEventKind, s: CloudSpeech): SpeechStep = if (kind == Rl::StartOfTurn or kind == Rl::TurnResumed) quietStep(if (s.turn == NoTurn) { ...s, turn: TurnOf({ capture: if (s.capture == Listening) s.generation else 0 }) } else s)
+pure def onTurn(kind: Rl::SttEventKind, s: CloudSpeech): SpeechStep = if (kind == Rl::StartOfTurn or kind == Rl::TurnResumed) speechStep(List(), if (s.turn == NoTurn) { ...s, turn: TurnOf({ capture: if (s.capture == Listening) s.generation else 0 }) } else s)
   else { state: if (kind == Rl::EndOfTurn) { ...s, turn: NoTurn } else s, out: noticeIf(ownedTurn(s), Heard({ final: kind == Rl::EndOfTurn, capture: s.generation })) }
 pure def heardCapture(n: SpeechNotice): int = match n { | Heard(h) => h.capture | _ => -1 }
 pure def stepOnlyTheCaptureATurnBeganInPublishesIt(before: CloudSpeech, via: str, after: CloudSpeech, out: List[SpeechNotice]): bool = out.every(n => heardCapture(n) == -1 or (heardCapture(n) >= 1 and heardCapture(n) == before.generation and turnOwner(before.turn) == heardCapture(n)))
@@ -190,9 +192,9 @@ pure val utteranceIdValues = Set("u1", "u2")
 pure val paceValues = Set(50, 200, 250)
 pure def canAudioArrived(s: CloudSpeech, utteranceId: str, audioMs: Millis): bool = s.phase == Live and audioMs > 0
 pure def audioArrived(s: CloudSpeech, utteranceId: str, audioMs: Millis): SpeechStep = { val r = s.reply  match r {
-  | Playing(x) => if (x.utteranceId != utteranceId) quietStep(s) else if (x.completed) protocolEnd(s)
-      else quietStep({ ...s, audioStarted: true, reply: Playing({ ...x, receivedMs: x.receivedMs + audioMs }) })
-  | NoReply => quietStep(s) } }
+  | Playing(x) => if (x.utteranceId != utteranceId) speechStep(List(), s) else if (x.completed) failRelay(Cr::RequestFailed, s)
+      else speechStep(List(), { ...s, audioStarted: true, reply: Playing({ ...x, receivedMs: x.receivedMs + audioMs }) })
+  | NoReply => speechStep(List(), s) } }
 pure val audioMsValues = Set(40, 100)
 pure def alwaysAReplyNeverPlaysAheadOfItsAudio(s: CloudSpeech): bool = { val r = s.reply  match r { | NoReply => true | Playing(x) => x.utteranceId != ""
   and x.pace >= minPace and x.pace <= maxPace and x.playedMs >= 0 and x.playedMs <= x.receivedMs and (x.completed implies x.playedMs < x.receivedMs) } }
@@ -209,21 +211,21 @@ tells the relay; a call starting (`O::StopCapture`) ends the session.
 ```quint
 pure def settleReply(id: str, completed: bool, s: CloudSpeech): SpeechStep = { state: { ...s, reply: NoReply }, out: List(ReplySettled({ utteranceId: id, completed: completed })) }
 pure def onComplete(id: str, s: CloudSpeech): SpeechStep = { val r = s.reply  match r {
-  | Playing(x) => if (x.utteranceId != id) quietStep(s) else if (x.receivedMs == 0) protocolEnd(s)
-      else if (x.playedMs == x.receivedMs) settleReply(id, true, s) else quietStep({ ...s, reply: Playing({ ...x, completed: true }) })
-  | NoReply => quietStep(s) } }
+  | Playing(x) => if (x.utteranceId != id) speechStep(List(), s) else if (x.receivedMs == 0) failRelay(Cr::RequestFailed, s)
+      else if (x.playedMs == x.receivedMs) settleReply(id, true, s) else speechStep(List(), { ...s, reply: Playing({ ...x, completed: true }) })
+  | NoReply => speechStep(List(), s) } }
 pure def canPlayed(s: CloudSpeech, playedMs: Millis): bool = { val r = s.reply  match r { | Playing(x) => playedMs > 0 and x.playedMs + playedMs <= x.receivedMs | NoReply => false } }
 pure def played(s: CloudSpeech, playedMs: Millis): SpeechStep = { val r = s.reply  match r {
   | Playing(x) => if (x.completed and x.playedMs + playedMs == x.receivedMs) settleReply(x.utteranceId, true, s)
-      else quietStep({ ...s, reply: Playing({ ...x, playedMs: x.playedMs + playedMs }) })
-  | NoReply => quietStep(s) } }
+      else speechStep(List(), { ...s, reply: Playing({ ...x, playedMs: x.playedMs + playedMs }) })
+  | NoReply => speechStep(List(), s) } }
 pure val playedMsValues = Set(40, 60)
 pure val weight_played = 3
 pure def canCancelReply(s: CloudSpeech): bool = s.reply != NoReply
 pure def cancelReply(s: CloudSpeech): SpeechStep = { val id = replyId(s.reply)  { state: { ...s, reply: NoReply }, out: List(CancelUtterance({ utteranceId: id }), ReplySettled({ utteranceId: id, completed: false })) } }
 pure def canOutputNotice(s: CloudSpeech, notice: O::OutputNotice): bool = s.phase == Live
-pure def outputNotice(s: CloudSpeech, notice: O::OutputNotice): SpeechStep = if (notice == O::StopCapture) failWith(Cr::CapabilityUnavailable, s, List(), NoWait)
-  else if ((notice == O::RefusedFocusDenied or notice == O::RefusedCallActive) and s.reply != NoReply) cancelReply(s) else quietStep(s)
+pure def outputNotice(s: CloudSpeech, notice: O::OutputNotice): SpeechStep = if (notice == O::StopCapture) failRelay(Cr::CapabilityUnavailable, s)
+  else if ((notice == O::RefusedFocusDenied or notice == O::RefusedCallActive) and s.reply != NoReply) cancelReply(s) else speechStep(List(), s)
 pure val noticeValues = Set(O::StopCapture, O::RefusedFocusDenied)
 pure def isReplySettled(n: SpeechNotice): bool = match n { | ReplySettled(x) => true | _ => false }
 pure def stepAReplySettlesOnce(before: CloudSpeech, via: str, after: CloudSpeech, out: List[SpeechNotice]): bool = out.select(n => isReplySettled(n)).length() == (if (replyId(before.reply) != "" and replyId(after.reply) != replyId(before.reply)) 1 else 0)
