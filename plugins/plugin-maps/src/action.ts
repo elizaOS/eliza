@@ -447,7 +447,11 @@ async function placeFromQuery(
       data: { actionName: "MAPS", action, reason: "not_found", query },
     };
   }
-  const meant = dominantPlace(query, page.places, options.anchor?.coordinates);
+  // "here", "my current location": a provider answers these words with a
+  // business named "Here", never the phone, so the owner is asked.
+  const meant = isOwnPositionQuery(query)
+    ? undefined
+    : dominantPlace(query, page.places, options.anchor?.coordinates);
   if (meant) return meant;
   const ask = missingInput(
     action,
@@ -1285,10 +1289,11 @@ async function execute(
           origin = found;
         }
         // "the nearest pharmacy" from here: the phone searches around itself.
+        // "how far is the nearest pharmacy" names no origin: it is from here.
         if (
           !origin &&
           !destination &&
-          fromHere &&
+          (fromHere || !originQuery) &&
           destinationQuery &&
           nearbyPlaceKind(destinationQuery)
         )
