@@ -15,5 +15,6 @@ android {
 }
 dependencies {
  implementation project(':capacitor-android')
+ implementation 'com.google.android.gms:play-services-auth:21.1.1'
  androidTestImplementation "androidx.test:runner:${rootProject.ext.androidxTestRunnerVersion}"
 }
