@@ -1,61 +1,24 @@
 // spec/cloud/client.md, "Story: Use the cloud from the device as configured"
-import { assert, describe, it } from "vitest"
+import { assert, describe, it } from "@effect/vitest"
 import { createCloudClient } from "../src/client/index.vibe"
+import { clientBundleGraph, recordingFetch, runsInBrowser } from "./support/client.ts"
 
-const sources: Readonly<Record<string, string>> = import.meta.glob(["../src/**/*.{vibe,ts}", "../gen/*.{vibe,ts}"], { query: "?raw", import: "default", eager: true })
-
-const importPattern = /(?:^|[\s;}])(?:import|export)\s[^"';]*?from\s*["']([^"']+)["']|(?:^|[\s;])import\s*(?:\(\s*)?["']([^"']+)["']/gm
-
-function resolved(from: string, specifier: string): string {
-  const parts = from.split("/").slice(0, -1)
-  for (const part of specifier.split("/")) {
-    if (part === "..") parts.pop()
-    else if (part !== ".") parts.push(part)
-  }
-  return parts.join("/")
-}
-
-function reachable(entry: string): { readonly files: ReadonlyArray<string>; readonly packages: ReadonlyArray<string> } {
-  const files = new Set<string>()
-  const packages = new Set<string>()
-  const pending = [entry]
-  while (pending.length > 0) {
-    const file = pending.pop() as string
-    if (files.has(file)) continue
-    files.add(file)
-    for (const found of (sources[file] ?? "").matchAll(importPattern)) {
-      const specifier = found[1] ?? found[2] ?? ""
-      if (specifier.startsWith(".")) pending.push(resolved(file, specifier))
-      else packages.add(specifier)
-    }
-  }
-  return { files: [...files].sort(), packages: [...packages].sort() }
+effect function check(run: () => void) {
+  try Effect.try(run)
 }
 
 describe("The client bundle in a browser (spec/cloud/client.md, \"Story: Use the cloud from the device as configured\")", () => {
-  it("Loads with no Node, core or server import and sends the credential the getter holds at each call (spec/cloud/client.md, \"Every call reads the credential when it is sent\")", async () => {
-    const graph = reachable("../src/client/index.vibe")
-    const missing = graph.files.filter((file) => sources[file] === undefined)
-    const serverFiles = graph.files.filter((file) => /^\.\.\/src\/(http|store)\//.test(file))
-    const forbidden = graph.packages.filter((name) => name.startsWith("node:") || name.startsWith("@elizaos/") || !/^(effect|vibelang-runtime)(\/|$)/.test(name))
-
-    const sent: Array<string | null> = []
+  it.live("Loads with no Node, core or server import and sends the credential the getter holds at each call (spec/cloud/client.md, \"Every call reads the credential when it is sent\")", () => effect {
+    const graph = try sync(() => clientBundleGraph())
+    const wire = try sync(() => recordingFetch({ object: "list", data: [{ id: "test-chat", object: "model", owned_by: "llm" }] }))
     let held = "eliza_mobile_first"
-    const client = createCloudClient({
-      baseUrl: "https://api.example.com",
-      credential: () => held,
-      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-        sent.push(new Request(input, init).headers.get("authorization"))
-        return Response.json({ object: "list", data: [{ id: "test-chat", object: "model", owned_by: "llm" }] })
-      }
-    })
-    await client.models()
+    const client = createCloudClient({ baseUrl: "https://api.example.com", credential: () => held, fetch: wire.fetch })
+    try promise(() => client.models())
     held = "eliza_mobile_second"
-    await client.models()
-
-    assert.deepStrictEqual(
-      { missing, serverFiles, forbidden, sent, inBrowser: typeof window === "object" && typeof document === "object" },
-      { missing: [], serverFiles: [], forbidden: [], sent: ["Bearer eliza_mobile_first", "Bearer eliza_mobile_second"], inBrowser: true }
-    )
+    try promise(() => client.models())
+    try check(() => assert.deepStrictEqual(
+      { graph, sent: wire.authorizations, inBrowser: runsInBrowser() },
+      { graph: { missing: [], serverFiles: [], forbidden: [] }, sent: ["Bearer eliza_mobile_first", "Bearer eliza_mobile_second"], inBrowser: true }
+    ))
   })
 })

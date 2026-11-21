@@ -1,0 +1,332 @@
+// spec/agent/tasks/wire.md, "Story: Show a task's choice in the chat"; spec/agent/tasks/wire.md, "A chat turn names a task only while the host presents it at that epoch"; spec/agent/tasks/wire.md, "A choice batch is shown only when every choice is valid for the task and epoch"; spec/agent/tasks/index.md, "A chat turn is shown a task only while it is active at the epoch it named"
+module node {
+  import { createHash } from "node:crypto"
+  import type { InteractiveTask, TaskChoiceWidget } from "@elizaos/core"
+
+  export function choiceReference(task: InteractiveTask, contextKey: string, block: TaskChoiceWidget["block"]): string {
+    return createHash("sha256").update(JSON.stringify([
+      task.id, task.owner.actorId, task.owner.agentId, task.owner.connector.source, task.owner.connector.accountId, task.epoch,
+      task.authorization.decisionId, contextKey, block.id, block.scope, block.prompt ?? null,
+      block.options.map((option) => [option.value, option.label, option.description ?? null]),
+    ])).digest("hex").slice(0, 32)
+  }
+}
+import { choiceReference } from node
+import {
+  BUTTON_INTERACTION_PROFILE, ElizaError, MessageInteractionSessionAuthority, TASK_ID_PATTERN, createConnectorInteractionCapabilityProfile,
+  decodeMessageInteractionCallback, encodeMessageInteractionCallback, logger, validateTaskChoiceWidget,
+  type IAgentRuntime, type InteractiveTask, type MessageInteractionAuthorityConsumeOutcome, type MessageInteractionSession,
+  type MessageInteractionSessionStore, type TaskChoiceWidget,
+} from "@elizaos/core"
+import type { Presentation } from "../../gen/agent__tasks.effect.vibe"
+import { chatTaskEnd, chatTaskStart, httpStatus, type OfferedChoice, type TaskError } from "../../gen/agent__tasks__wire.effect.vibe"
+import { taskCodes } from "./routes.vibe"
+
+export const tasksServiceType = "agent_tasks"
+
+export error ChoiceStale { taskId: string; get code() { return "TASK_CHOICE_STALE" } }
+
+export type TaskChoiceBlock = TaskChoiceWidget["block"]
+export type ChoiceResult = Readonly<Record<string, string | number | boolean | null>>
+
+export interface ChatTaskRequest {
+  readonly taskId: string
+  readonly expectedEpoch: number
+}
+
+export interface TaskPresentation {
+  readonly taskId: string
+  readonly epoch: number
+  readonly revision: number
+  readonly choice: TaskChoiceWidget | null
+}
+
+export type FormatTaskContext = (presentation: TaskPresentation) => string
+
+export interface PresentedTasks {
+  view(taskId: string): Promise<InteractiveTask>
+}
+
+export interface ChatTaskPresenter {
+  present(request: ChatTaskRequest, actorId: string): Promise<Presentation>
+  choice(taskId: string): Promise<TaskChoiceWidget | null>
+  format(presentation: TaskPresentation): string
+}
+
+export interface ChatTaskSource {
+  chatTaskPresenter(): ChatTaskPresenter | undefined
+}
+
+export interface ChatTaskRefusal {
+  readonly kind: "Refused"
+  readonly status: number
+  readonly error: string
+}
+
+export type ChatTaskEnding = ChatTaskRefusal | { readonly kind: "Shown"; readonly taskChoices: readonly TaskChoiceWidget[] }
+
+export interface ChatTaskTurn {
+  readonly kind: "Admitted"
+  readonly context: string
+  end(): Promise<ChatTaskEnding>
+}
+
+const choiceLifetimeMs = 10 * 60 * 1000
+const refusedPresentation: Presentation = { tag: "PresentationRefused" }
+
+const ChatTaskBody = Schema.Struct({
+  taskId: Schema.String.check(Schema.makeFilter((id) => TASK_ID_PATTERN.test(id))),
+  expectedEpoch: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+})
+const chatTaskBody = Schema.decodeUnknownOption(ChatTaskBody, { onExcessProperty: "error" })
+
+const activeTask = (task: InteractiveTask) => task.status === "active" && task.authorization.state === "active"
+
+function bindings(task: InteractiveTask, contextKey: string, choiceId: string) {
+  return {
+    ...task.owner,
+    audience: { kind: "task", id: task.id },
+    roomId: task.id,
+    sourceMessageId: `${task.id}:${task.epoch}:${contextKey}:${choiceId}`,
+  }
+}
+
+function belongs(session: MessageInteractionSession, task: InteractiveTask, contextKey: string): boolean {
+  const meta = session.effect.metadata
+  return session.authorization.state === "active"
+    && session.effect.kind === "task-choice"
+    && meta?.taskId === task.id
+    && meta.epoch === task.epoch
+    && meta.contextKey === contextKey
+    && typeof meta.choiceId === "string"
+    && session.authorization.decisionId === task.authorization.decisionId
+    && session.bindings.actorId === task.owner.actorId
+    && session.bindings.agentId === task.owner.agentId
+    && session.bindings.connector.source === task.owner.connector.source
+    && session.bindings.connector.accountId === task.owner.connector.accountId
+}
+
+function alreadyExists(error: unknown): boolean {
+  return error instanceof ElizaError && error.code === "MESSAGE_INTERACTION_ALREADY_EXISTS"
+}
+
+export class InteractiveTaskChoices {
+  constructor(
+    private readonly tasks: PresentedTasks,
+    private readonly store: MessageInteractionSessionStore,
+    private readonly clock: () => number = Date.now,
+  ) {}
+
+  private async active(taskId: string): Promise<InteractiveTask> {
+    const task = await this.tasks.view(taskId)
+    if (!activeTask(task)) throw new ChoiceStale({ taskId })
+    return task
+  }
+
+  async offer(taskId: string, contextKey: string, offered: TaskChoiceBlock): Promise<TaskChoiceWidget> {
+    const block = structuredClone(offered)
+    const task = await this.active(taskId)
+    const reference = choiceReference(task, contextKey, block)
+    const widget: TaskChoiceWidget = {
+      schemaVersion: 1, taskId, epoch: task.epoch, contextKey,
+      callbackData: encodeMessageInteractionCallback(reference),
+      expiresAt: new Date(this.clock() + choiceLifetimeMs).toISOString(),
+      state: "pending", block: structuredClone(block),
+    }
+    validateTaskChoiceWidget(widget)
+    const session = await this.store.get(reference) ?? await this.open(task, reference, contextKey, block, widget.expiresAt)
+    const current = await this.active(taskId)
+    if (session === null || !belongs(session, current, contextKey)) throw new ChoiceStale({ taskId })
+    return { ...widget, expiresAt: session.expiresAt, state: session.consume.state }
+  }
+
+  private async open(task: InteractiveTask, reference: string, contextKey: string, block: TaskChoiceBlock, expiresAt: string) {
+    const authority = new MessageInteractionSessionAuthority(this.store, { clock: this.clock, referenceFactory: () => reference })
+    try {
+      const created = await authority.create({
+        block,
+        profile: createConnectorInteractionCapabilityProfile({
+          template: BUTTON_INTERACTION_PROFILE, source: task.owner.connector.source, accountId: task.owner.connector.accountId,
+          targetKind: "task", targetId: task.id,
+        }),
+        bindings: bindings(task, contextKey, block.id),
+        purpose: "choice",
+        flow: "native",
+        authorization: {
+          decisionId: task.authorization.decisionId,
+          policyRevision: task.authorization.policyRevision,
+          decidedAt: task.authorization.decidedAt,
+        },
+        effect: { kind: "task-choice", metadata: { taskId: task.id, epoch: task.epoch, contextKey, choiceId: block.id } },
+        expiresAt,
+      })
+      return created.session
+    } catch (error) {
+      if (!alreadyExists(error)) throw error
+      return this.store.get(reference)
+    }
+  }
+
+  async refresh(value: TaskChoiceWidget): Promise<TaskChoiceWidget> {
+    validateTaskChoiceWidget(value)
+    const widget = structuredClone(value)
+    const task = await this.active(widget.taskId)
+    const reference = decodeMessageInteractionCallback(widget.callbackData)
+    if (reference === null || widget.epoch !== task.epoch || reference !== choiceReference(task, widget.contextKey, widget.block)) {
+      throw new ChoiceStale({ taskId: widget.taskId })
+    }
+    const session = await this.store.get(reference)
+    const current = await this.active(widget.taskId)
+    if (session === null || !belongs(session, current, widget.contextKey) || Date.parse(session.expiresAt) <= this.clock()) {
+      throw new ChoiceStale({ taskId: widget.taskId })
+    }
+    return { ...widget, expiresAt: session.expiresAt, state: session.consume.state }
+  }
+
+  async respond(args: {
+    readonly taskId: string
+    readonly contextKey: string
+    readonly callbackData: string
+    readonly value: string
+    readonly execute: (input: { readonly value: string; readonly operationId: string; readonly isCurrent: () => Promise<boolean> }) => Promise<ChoiceResult>
+  }): Promise<MessageInteractionAuthorityConsumeOutcome> {
+    const reference = decodeMessageInteractionCallback(args.callbackData)
+    if (reference === null) throw new ChoiceStale({ taskId: args.taskId })
+    const task = await this.active(args.taskId)
+    const session = await this.store.get(reference)
+    if (session === null || !belongs(session, task, args.contextKey)) throw new ChoiceStale({ taskId: args.taskId })
+    const choiceId = session.effect.metadata?.choiceId
+    if (typeof choiceId !== "string") throw new ChoiceStale({ taskId: args.taskId })
+    const isCurrent = async () => {
+      try {
+        return belongs(session, await this.active(args.taskId), args.contextKey)
+      } catch {
+        return false
+      }
+    }
+    if (!(await isCurrent())) throw new ChoiceStale({ taskId: args.taskId })
+    const clock = this.clock
+    return new MessageInteractionSessionAuthority(this.store, { clock }).consumeWithOutcome({
+      callbackData: args.callbackData,
+      bindings: bindings(task, args.contextKey, choiceId),
+      replayKey: `task-choice:${reference}`,
+      response: { value: args.value },
+      executor: {
+        execute: async ({ idempotencyKey, response }) => {
+          if (!(await isCurrent()) || typeof response.value !== "string") throw new ChoiceStale({ taskId: args.taskId })
+          const result = await args.execute({ value: response.value, operationId: `choice-${reference}`, isCurrent })
+          return { receiptId: `choice-${reference}`, idempotencyKey, status: "completed", completedAt: new Date(clock()).toISOString(), result }
+        },
+      },
+    })
+  }
+}
+
+export interface TaskPresentations {
+  publish(taskId: string, contextKey: string, block: TaskChoiceBlock): Promise<TaskChoiceWidget>
+  read(taskId: string): Promise<TaskChoiceWidget | null>
+  clear(taskId: string): Promise<void>
+}
+
+export function taskPresentations(tasks: PresentedTasks, choices: InteractiveTaskChoices): TaskPresentations {
+  const shown = new Map<string, { readonly generation: number; readonly widget: TaskChoiceWidget | null }>()
+  const reserve = async (taskId: string) => {
+    await tasks.view(taskId)
+    const generation = (shown.get(taskId)?.generation ?? 0) + 1
+    shown.set(taskId, { generation, widget: null })
+    return generation
+  }
+  return {
+    async publish(taskId, contextKey, block) {
+      const generation = await reserve(taskId)
+      const current = await choices.refresh(await choices.offer(taskId, contextKey, block))
+      const task = await tasks.view(taskId)
+      if (task.epoch !== current.epoch || !activeTask(task) || shown.get(taskId)?.generation !== generation) throw new ChoiceStale({ taskId })
+      shown.set(taskId, { generation, widget: current })
+      return current
+    },
+    async read(taskId) {
+      if (!activeTask(await tasks.view(taskId))) return null
+      const entry = shown.get(taskId)
+      if (entry?.widget == null) return null
+      try {
+        const current = await choices.refresh(entry.widget)
+        const latest = await tasks.view(taskId)
+        return latest.epoch === current.epoch && activeTask(latest) && shown.get(taskId) === entry ? current : null
+      } catch (error) {
+        if (error instanceof ChoiceStale) return null
+        throw error
+      }
+    },
+    async clear(taskId) {
+      await reserve(taskId)
+    },
+  }
+}
+
+const refusal = (error: TaskError): ChatTaskRefusal => ({ kind: "Refused", status: httpStatus(error), error: taskCodes[error] })
+
+async function presented(presenter: ChatTaskPresenter, request: ChatTaskRequest, actorId: string): Promise<Presentation> {
+  try {
+    return await presenter.present(request, actorId)
+  } catch {
+    return refusedPresentation
+  }
+}
+
+async function offeredChoice(presenter: ChatTaskPresenter, taskId: string): Promise<TaskChoiceWidget | null> {
+  try {
+    return await presenter.choice(taskId)
+  } catch (error) {
+    if (error instanceof ChoiceStale) return null
+    throw error
+  }
+}
+
+function offeredOf(widget: TaskChoiceWidget | null): OfferedChoice {
+  if (widget === null) return { tag: "NoChoice" }
+  let widgetValid = true
+  try {
+    validateTaskChoiceWidget(widget)
+  } catch {
+    widgetValid = false
+  }
+  return { tag: "Offered", taskId: widget.taskId, epoch: widget.epoch, widgetValid }
+}
+
+function presenterOf(runtime: IAgentRuntime): ChatTaskPresenter | undefined {
+  const source = runtime.getService(tasksServiceType)
+  return source !== null && "chatTaskPresenter" in source ? (source as unknown as ChatTaskSource).chatTaskPresenter() : undefined
+}
+
+export async function beginChatTask(runtime: IAgentRuntime, sent: unknown, actorId: string): Promise<ChatTaskRefusal | ChatTaskTurn> {
+  const decoded = chatTaskBody(sent)
+  if (decoded._tag !== "Some") return refusal("TaskInvalid")
+  const request = decoded.value
+  const presenter = presenterOf(runtime)
+  const before = presenter === undefined ? refusedPresentation : await presented(presenter, request, actorId)
+  const started = chatTaskStart(presenter !== undefined, before)
+  if (started.tag === "ChatTaskRefused") return refusal(started.error)
+  if (presenter === undefined || before.tag !== "Presented") return refusal("TaskStateConflict")
+  const shown = { taskId: before.taskId, epoch: before.epoch, revision: before.revision, choice: await offeredChoice(presenter, request.taskId) }
+  let context: string
+  try {
+    context = presenter.format(shown)
+  } catch (cause) {
+    logger.warn({ src: "agent", taskId: request.taskId, error: String(cause) }, "The product could not describe the task for a chat turn")
+    return refusal("TaskUnavailable")
+  }
+  return {
+    kind: "Admitted",
+    context,
+    async end() {
+      const after = await presented(presenter, request, actorId)
+      const offered = after.tag === "Presented" ? await offeredChoice(presenter, request.taskId) : null
+      const ended = chatTaskEnd(request.taskId, request.expectedEpoch, before, after, offeredOf(offered))
+      switch (ended.tag) {
+        case "ChatTaskChanged": return refusal("TaskStateConflict")
+        case "ChatTaskShown": return { kind: "Shown", taskChoices: ended.choices.length === 1 && offered !== null ? [offered] : [] }
+      }
+    },
+  }
+}

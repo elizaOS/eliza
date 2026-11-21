@@ -40,6 +40,7 @@ import { googleMapsFake } from "./support/maps-fake.ts"
 import { osmFake } from "./support/maps-osm-fake.ts"
 import { accountUsable, checkEntitlement, CloudError, createCloudClient, creditFromSnapshot, deviceRoutes, EntitlementInvalid, httpVerb, parseEntitlementKeys, verifyEntitlement as verifyOnDevice, type AuthClass, type CloudClient, type DeviceRoute } from "../src/client/index.vibe"
 import { unlistedRoutes } from "../src/client/routes.vibe"
+import { networkFetch } from "./support/client.ts"
 import { refused, type Refused } from "../src/http/refusal.vibe"
 import type { RouteClass } from "../src/http/request-auth.vibe"
 import { matchRoute, type Route } from "../src/http/routes.vibe"
@@ -1639,7 +1640,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
   }
 
   function clientOf(baseUrl: string, credential: () => string): CloudClient {
-    return createCloudClient({ baseUrl, credential, fetch: (input, init) => fetch(input, init) })
+    return createCloudClient({ baseUrl, credential, fetch: networkFetch })
   }
 
   effect function failureOf(run: () => Promise<unknown>) {

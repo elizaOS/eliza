@@ -12,6 +12,8 @@ const HOST_PORT = /^[^\s/:]+:\d+(?:[/?#]|$)/;
 const BRACKETED_HOST = /^\[[0-9a-fA-F.%]*:[0-9a-fA-F:.%]*\](?::\d+)?(?:[/?#]|$)/;
 const SCHEME = /^[a-z][a-z\d+.-]*:(?:\S|$)/i;
 const DOTTED_DOMAIN = /^[^\s/?#]+\.[^\s/?#]+(?:[/?#].*)?$/;
+const AUTHORITY = /^[a-z][a-z\d+.-]*:\/\/([^/?#]*)/i;
+const SERVER = /^(?:[^@]*@)?(?:\[[^\]]+\]|[^:@]+)(?::\d*)?$/;
 const PROTOCOL: Readonly<Record<DefaultProtocol, "http:" | "https:">> = { DefaultHttp: "http:", DefaultHttps: "https:" };
 
 function schemeOf(url: URL | null): WebScheme {
@@ -52,8 +54,16 @@ export function parseBrowserAddressInput(input: string, options: { defaultProtoc
 }
 
 export function webAddress(href: string): WebAddress {
-  const url = URL.parse(href);
-  return { href, units: href.length, cleanText: !UNCLEAN.test(href), scheme: schemeOf(url), validHost: url !== null && url.hostname !== "", userInfo: hasUserInfo(url) };
+  const authority = AUTHORITY.exec(href)?.[1];
+  const url = authority === undefined ? null : URL.parse(href);
+  return {
+    href,
+    units: href.length,
+    cleanText: !UNCLEAN.test(href),
+    scheme: schemeOf(url),
+    validHost: authority !== undefined && SERVER.test(authority) && url !== null && url.hostname !== "",
+    userInfo: authority?.includes("@") === true || hasUserInfo(url),
+  };
 }
 
 export function isWebAddress(value: unknown): value is string {
