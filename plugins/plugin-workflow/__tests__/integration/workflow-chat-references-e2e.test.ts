@@ -189,11 +189,16 @@ test('a word fragment never removes or renames another workflow', async () => {
     expect(renamed.text).toBe('Renamed “Folder cleanup” to “Archive”.');
     expect(await f.names()).toEqual(['Archive', 'Backup', 'Morning news', 'Q3 review']);
 
-    // A planner name that only reads as a plural ("new" -> "news") is asked about, not acted on.
+    // "new" is not "news": a short stem gets no plural, so a planner name "new"
+    // neither removes nor turns on "Morning news".
     expect(await f.invoke({ action: 'remove', workflowName: 'new' }, 'go ahead')).toMatchObject({
       success: false,
-      failureProvenance: { code: 'WORKFLOW_CONFIRM_TARGET', retryable: false },
+      failureProvenance: { code: 'WORKFLOW_NOT_FOUND' },
     });
+    expect(
+      await f.invoke({ action: 'activate', workflowName: 'new' }, 'turn on the new one')
+    ).toMatchObject({ success: false, failureProvenance: { code: 'WORKFLOW_NOT_FOUND' } });
+    expect((await f.service.listWorkflows(owner)).every((w) => !w.active)).toBe(true);
     expect(await f.invoke({ action: 'remove', workflowName: 'morn' }, 'go ahead')).toMatchObject({
       success: false,
       failureProvenance: { code: 'WORKFLOW_NOT_FOUND' },

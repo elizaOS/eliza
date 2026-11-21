@@ -60,8 +60,11 @@ function nameMatchTier(name: string, reference: string): 0 | 1 | 2 | undefined {
   if (stored === given) return 0;
   const query = withoutFiller(given);
   if (withoutFiller(stored) === query) return 1;
+  // A plural is allowed only after a word of four or more letters ("report" ->
+  // "reports"). A shorter stem is too often a different word: "new" is not "news".
+  const plural = /\p{L}{4,}$/u.test(query) ? '(?:e?s)?' : '';
   const words = new RegExp(
-    `(?<![\\p{L}\\p{N}])${escapeRegExp(query)}(?:e?s)?(?![\\p{L}\\p{N}])`,
+    `(?<![\\p{L}\\p{N}])${escapeRegExp(query)}${plural}(?![\\p{L}\\p{N}])`,
     'u'
   );
   return words.test(stored) ? 2 : undefined;

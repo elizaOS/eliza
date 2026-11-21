@@ -63,6 +63,8 @@ test.each([
   'delete the workflow I just created',
   'delete the other workflow',
   'rename the old workflow to Archive',
+  'delete the one you made',
+  'remove the workflow we set up yesterday',
 ])('leaves the rest to the planner: %s', (text) => {
   expect(authoredWorkflowRequest(text)).toBeUndefined();
 });
@@ -93,4 +95,14 @@ test('registers one whole-request WORKFLOW route that replaces a view switch', (
   expect(rule.contexts).toEqual(['automation', 'general']);
   expect(rule.wholeRequest?.matches('delete the Alpha check workflow')).toBe(true);
   expect(rule.wholeRequest?.matches('open workflows')).toBe(false);
+});
+
+// A leading pronoun marks a clause only before a clause word, so these stay names.
+test.each([
+  ['delete the IT backup workflow', 'IT backup'],
+  ['delete the I/O monitor workflow', 'I/O monitor'],
+  ['delete the we-love-cats workflow', 'we-love-cats'],
+  ['delete the New hires workflow', 'New hires'],
+])('reads a pronoun-led name as a name: %s', (text, workflowName) => {
+  expect(authoredWorkflowRequest(text)).toEqual({ op: 'remove', workflowName });
 });

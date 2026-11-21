@@ -31,7 +31,11 @@ const NAME = String.raw`["“'‘]?([\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p
 const DESCRIPTIVE_WORD =
   '(?:this|that|these|those|it|one|ones|the|my|last|latest|newest|new|old|oldest|older|newer|first|second|other|another|current|same|previous|recent|most|earlier|above|below|only|just|made|created|added)';
 const DESCRIBES_NOT_NAMES = new RegExp(`^${DESCRIPTIVE_WORD}(?:\\s+${DESCRIPTIVE_WORD})*$`, 'iu');
-const PRONOUN_CLAUSE = /^(?:i|i['’]ve|i['’]d|we|we['’]ve|you|you['’]ve|it|they)\b/iu;
+// "the workflow I just created" and "the one you made" are clauses, but "IT
+// backup", "I/O monitor" and "we-love-cats" are names, so a pronoun counts only
+// before a clause word.
+const PRONOUN_CLAUSE =
+  /^(?:i|we|you|they|it)(?:['’](?:ve|d|ll|m|re|s))?\s+(?:just|recently|earlier|already|today|yesterday|made|make|created|create|added|add|set|setup|built|build|wrote|write|have|had|did|do|was|were|is|are|asked|told|mentioned|named|called|started|use|used|got|showed|saw)\b/iu;
 const NOT_A_NAME =
   /\b(?:that|which|who|to|and|then|also|but|or|if|when|whenever|unless|every|each|daily|weekly|at|on|for|with|from|after|before|until|not|don['’]?t|never)\b/iu;
 
