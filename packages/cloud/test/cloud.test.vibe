@@ -1223,7 +1223,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         disconnected: [200, { ok: true }, ["google-connect-1"]],
         afterDisconnect: [false, "disconnected", { email: "connect@example.com" }, [], [], false, connectionId, true],
         disconnectedAgain: [200, { ok: true }, 1],
-        anonymous: [401, "authentication_required", undefined],
+        anonymous: [401, "authentication_required", "credential_unknown"],
         held: [[connectionId, "Revoked", "google-connect-1"], [nativeId, "Active", "google-connect-2"]]
       }
     ))
