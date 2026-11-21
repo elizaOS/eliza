@@ -215,8 +215,52 @@ type Printed = {
   /** Index of the printed segment holding this row. */
   at: number;
 };
-/** Reads printed records with only what the prompt says: each legend's
- * columns, receiptColumns and receiptShapes. */
+/** The template a legend's encoding prints after `marker`: a word, or a
+ * bracketed list such as [operation,[resourceKind,resourceId],outcome] read
+ * as nested name lists. */
+function legendTemplate(encoding: string, marker: string): unknown {
+  const start = encoding.indexOf(marker) + marker.length;
+  expect(start).toBeGreaterThanOrEqual(marker.length);
+  if (encoding[start] !== "[") return /^\w+/.exec(encoding.slice(start))?.[0];
+  let depth = 0;
+  for (let at = start; at < encoding.length; at++) {
+    if (encoding[at] === "[") depth++;
+    else if (encoding[at] === "]" && --depth === 0)
+      return JSON.parse(
+        encoding
+          .slice(start, at + 1)
+          .replace(",...", "")
+          .replace(/\w+/g, '"$&"'),
+      );
+  }
+  throw new Error(`legend has no ${marker} template`);
+}
+/** A [shape,values] receipt read with the legend's receipt template and the
+ * detail its shape adds; [resourceKind,resourceId] is resource's kind and id. */
+function decodeReceipt(encoding: string, [shape, values]: [number, unknown[]]) {
+  const [, base] = legendTemplate(encoding, "receipt=") as [string, unknown[]];
+  const fields =
+    shape === 0 ? base : [...base, legendTemplate(encoding, `${shape} adds `)];
+  expect(fields).toHaveLength(values.length);
+  return Object.fromEntries(
+    fields.map((field, at) => {
+      if (typeof field === "string") return [field, values[at]];
+      const children = field as string[];
+      const parent = /^[a-z]+/.exec(children[0])?.[0] ?? "";
+      return [
+        parent,
+        Object.fromEntries(
+          children.map((child, index) => [
+            child[parent.length].toLowerCase() + child.slice(parent.length + 1),
+            (values[at] as unknown[])[index],
+          ]),
+        ),
+      ];
+    }),
+  );
+}
+/** Reads printed records with only what the prompt says: each legend's row
+ * and receipt templates. */
 function decode(segments: ContextObjectPromptSegment[]): Printed[] {
   const legends = new Map<string, Record<string, unknown>>();
   const out: Printed[] = [];
@@ -226,10 +270,11 @@ function decode(segments: ContextObjectPromptSegment[]): Printed[] {
     [key, outcomes]: [string, unknown[][]],
     at: number,
   ) => {
-    const columns = legend.receiptColumns as string[];
-    const shapes = legend.receiptShapes as
-      | (string | [string, string[]])[][]
-      | undefined;
+    const encoding = legend.encoding as string;
+    const [, [columns]] = legendTemplate(encoding, "row=") as [
+      string,
+      [string[]],
+    ];
     out.push({
       label,
       key,
@@ -238,28 +283,9 @@ function decode(segments: ContextObjectPromptSegment[]): Printed[] {
         Object.fromEntries(
           columns.map((column, index) => {
             const value = values[index];
-            if (column !== "receipt" || !Array.isArray(value) || !shapes)
-              return [column, value];
-            const shape = shapes[value[0] as number];
-            const fields = value[1] as unknown[];
-            return [
-              column,
-              Object.fromEntries(
-                shape.map((entry, position) =>
-                  typeof entry === "string"
-                    ? [entry, fields[position]]
-                    : [
-                        entry[0],
-                        Object.fromEntries(
-                          entry[1].map((child, index) => [
-                            child,
-                            (fields[position] as unknown[])[index],
-                          ]),
-                        ),
-                      ],
-                ),
-              ),
-            ];
+            return column === "receipt" && Array.isArray(value)
+              ? [column, decodeReceipt(encoding, value as [number, unknown[]])]
+              : [column, value];
           }),
         ),
       ),
@@ -635,7 +661,7 @@ describe("binding and cache properties over 200 seeded rooms", () => {
     expect(rows).toBeGreaterThan(1_000);
   });
 
-  it("gives the same bytes for the same input and only appends when a request's outcome is recorded", () => {
+  it("gives the same bytes for the same input and, inside the dialogue window, only appends when a request's outcome is recorded", () => {
     const legends = new Set<string>();
     for (let seed = 1; seed <= 200; seed++) {
       const { memories, end } = randomRoom(seed);
@@ -677,6 +703,112 @@ describe("binding and cache properties over 200 seeded rooms", () => {
     }
     // The legend never depends on which records a room holds.
     expect(legends.size).toBeLessThanOrEqual(3);
+  });
+
+  it("names an interrupted request by the same key in its note and its record", () => {
+    const request = requestMemory("cut", "Make note-cut.", T0, [
+      result(
+        "NOTES_CREATE",
+        applied("notes.note", "note-cut", "notes.note.create"),
+      ),
+    ]);
+    const interrupted = {
+      ...replyMemory("cut", "", T0 + 500),
+      content: { text: "", interrupted: true, inReplyTo: request.id },
+    } as Memory;
+    const context = contextOf(
+      [request, interrupted, replyMemory("other", "Hi.", T0 + 900)],
+      T0 + 60_000,
+    );
+    const key = `history:${historicalRequestSourceIds(context).get(`history:${request.id}`)}`;
+    expect(key).toBe("history:h1");
+    const layouts: ContextObjectPromptSegment[][] = [
+      positioned(context),
+      table(context),
+    ];
+    for (const segments of layouts) {
+      expect(decode(segments).map((row) => row.key)).toEqual([key]);
+      const note = segments.find(
+        (segment) => segment.label === "runtime:interrupted_turn",
+      );
+      expect(JSON.parse(note?.content ?? "{}")).toMatchObject({
+        requestSourceEventId: key,
+        responseGeneration: "interrupted",
+      });
+      expect(note?.content).not.toContain(String(request.id));
+      expect(recordText(segments)).not.toContain(String(request.id));
+    }
+  });
+
+  it("keys rows by dialogue-window position: a slide shifts every key, and each row still binds to its own request", () => {
+    const notes = Array.from(
+      { length: 8 },
+      (_, index) => `note-slide-${index}`,
+    );
+    const memories = notes.flatMap((id, index) => [
+      requestMemory(`slide-${index}`, `Make ${id}.`, T0 + index * 2_000, [
+        result("NOTES_CREATE", applied("notes.note", id, "notes.note.create")),
+      ]),
+      replyMemory(`slide-${index}`, "Done.", T0 + index * 2_000 + 500),
+    ]);
+    const window = 10;
+    // Turn A's window is messages 4-13; one request and reply later, turn B's
+    // is messages 6-15. The window holds five requests in both turns.
+    const turnA = contextOf(memories.slice(4, 4 + window), T0 + 13_000);
+    const turnB = contextOf(memories.slice(6, 6 + window), T0 + 15_000);
+    const wire = (segments: ContextObjectPromptSegment[]) =>
+      segments.map(segmentBlock).join("\n\n");
+    const rowsOf = new Map<ContextObject, Map<string, Printed>>();
+    for (const context of [turnA, turnB]) {
+      expect(wire(positioned(context))).toBe(
+        wire(positioned(structuredClone(context))),
+      );
+      expect(wire(table(context))).toBe(wire(table(structuredClone(context))));
+      const sources = historicalRequestSourceIds(context);
+      const requestOf = new Map(
+        [...sources].map(([eventId, label]) => [`history:${label}`, eventId]),
+      );
+      for (const [layout, segments] of [
+        ["positioned", positioned(context)],
+        ["table", table(context)],
+      ] as const) {
+        const printed = decode(segments);
+        expect(printed).toHaveLength(window / 2);
+        const byNote = new Map<string, Printed>();
+        for (const row of printed) {
+          // The key names the request that made exactly this row's note.
+          const { resource } = row.outcomes[0].receipt as {
+            resource: { id: string };
+          };
+          const request = memories.find(
+            (memory) => `history:${memory.id}` === requestOf.get(row.key),
+          );
+          expect(request?.content.text).toBe(`Make ${resource.id}.`);
+          byNote.set(resource.id, row);
+          if (layout === "positioned") {
+            const message = segments
+              .slice(row.at + 1)
+              .find((segment) => segment.label?.startsWith("prior_message:"));
+            expect(message?.id).toBe(requestOf.get(row.key));
+          }
+        }
+        if (layout === "positioned") rowsOf.set(context, byNote);
+      }
+    }
+    // The same request is h3 in turn A and h1 in turn B: only its key moved,
+    // so its row's bytes change (the rows re-send from the first one) while
+    // the legend stays the same.
+    const sameNote = notes[3];
+    const before = rowsOf.get(turnA)?.get(sameNote);
+    const after = rowsOf.get(turnB)?.get(sameNote);
+    expect([before?.key, after?.key]).toEqual(["history:h3", "history:h1"]);
+    expect(after?.outcomes).toEqual(before?.outcomes);
+    const legendOf = (segments: ContextObjectPromptSegment[]) =>
+      segments.find(
+        (segment) => segment.label === "runtime:historical_receipt_encoding",
+      )?.content;
+    expect(legendOf(positioned(turnB))).toBe(legendOf(positioned(turnA)));
+    expect(legendOf(positioned(turnA))).toBeDefined();
   });
 
   it("rewrites exactly one row when a proposal ends and adds none", async () => {

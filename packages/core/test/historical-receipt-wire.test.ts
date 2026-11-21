@@ -94,6 +94,129 @@ describe("historical outcome wire", () => {
 		).toEqual(segments);
 	});
 
+	it("prints one fixed legend per record kind that says each rule once", () => {
+		const effects =
+			"row=[requestSourceEventId,[[actionName,success,receipt],...]]; receipt=[shape,[operation,[resourceKind,resourceId],outcome]]; shape 1 adds reason, 2 adds [commitKind], 3 adds [failureCode,failureRetryable,failureAcceptance]; other receipts are objects. history:hN names history source hN. Values are exact. A preview records a proposal, not its completion; a later proposal state takes its place.";
+		const navigation =
+			"row=[requestSourceEventId,[[success,receipt],...]]; receipt is the recorded navigation object. history:hN names history source hN. Values are exact.";
+		const position =
+			" Each [id,row] segment with this id holds one row under this scope at its own chronological position.";
+		const segments = [
+			record("a", [preview("p-a")]),
+			message("a"),
+			{
+				id: "historical-navigation:b",
+				label: "runtime:historical_navigation",
+				stable: false,
+				content: JSON.stringify({
+					requestSourceEventId: "history:b",
+					navigation: [
+						{
+							success: true,
+							receipt: JSON.stringify({ viewId: "notes", status: "delivered" }),
+						},
+					],
+				}),
+			},
+			message("b"),
+		];
+		const sourceIds = new Map([
+			["history:a", "h1"],
+			["history:b", "h2"],
+		]);
+		const out = compactHistoricalReceiptSegments(segments, { sourceIds });
+		expect(
+			out
+				.filter((s) => s.label === "runtime:historical_receipt_encoding")
+				.map((s) => JSON.parse(s.content)),
+		).toEqual([
+			{ id: "receipt_wire_1", encoding: effects + position, scope: SCOPE },
+			{ id: "receipt_wire_2", encoding: navigation + position },
+		]);
+		const tables = compactHistoricalReceiptSegments(segments, {
+			sourceIds,
+			layout: "table",
+		}).filter((s) => s.label?.endsWith("_table"));
+		expect(tables.map((s) => JSON.parse(s.content))).toEqual([
+			{
+				encoding: effects,
+				scope: SCOPE,
+				rows: [
+					[
+						"history:h1",
+						[
+							[
+								"PROPOSE_DEVICE_ACTION",
+								true,
+								[
+									0,
+									["device.sms_compose", ["device.approval", "p-a"], "preview"],
+								],
+							],
+						],
+					],
+				],
+			},
+			{
+				encoding: navigation,
+				rows: [
+					["history:h2", [[true, { viewId: "notes", status: "delivered" }]]],
+				],
+			},
+		]);
+		// One record pays for its legend once: no rule is repeated.
+		const one = compactHistoricalReceiptSegments(segments.slice(0, 2), {
+			sourceIds,
+		})
+			.map((s) => s.content)
+			.join("\n");
+		for (const rule of [
+			"exact",
+			"chronological",
+			"later proposal state",
+			SCOPE,
+		])
+			expect(one.split(rule)).toHaveLength(2);
+	});
+
+	it("names a request note's request by the key its records use", () => {
+		const note = (label: string, request: string, extra = "") => ({
+			id: `${label}:${request}`,
+			label,
+			stable: false,
+			content: `{"requestSourceEventId":"history:${request}","requestText":"x"${extra}}`,
+		});
+		const segments = [
+			note("runtime:interrupted_turn", "a"),
+			note("runtime:historical_read_continuations", "b"),
+			note("runtime:interrupted_turn", "c"),
+			{ ...note("runtime:interrupted_turn", "a"), content: "not json" },
+			note("runtime:interrupted_turn", "a", ` `),
+			message("a"),
+		];
+		const sourceIds = new Map([
+			["history:a", "h1"],
+			["history:b", "h2"],
+		]);
+		for (const layout of ["positioned", "table"] as const) {
+			const out = compactHistoricalReceiptSegments(segments, {
+				sourceIds,
+				layout,
+			});
+			expect(out.map((s) => s.content)).toEqual([
+				'{"requestSourceEventId":"history:h1","requestText":"x"}',
+				'{"requestSourceEventId":"history:h2","requestText":"x"}',
+				// Not a shown source, malformed, or not in canonical form.
+				segments[2].content,
+				"not json",
+				segments[4].content,
+				"user: a",
+			]);
+		}
+		// Without source labels every note stays as it is.
+		expect(compactHistoricalReceiptSegments(segments)).toEqual(segments);
+	});
+
 	it("keeps the event id where no source label is known", () => {
 		const out = compactHistoricalReceiptSegments(
 			[record("a", [preview("p-a")]), record("b", [preview("p-b")])],
