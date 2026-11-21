@@ -345,6 +345,7 @@ async function requireRendererCloudApiOrigin(
       return config?.cloudApiBase ?? "";
     });
   const observation = await waitForRendererCloudApiOrigin({
+    mode: stagingRenderer ? "same-origin" : "direct",
     readCloudBase: readRendererCloudBase,
     expectedApiOrigin: expectedRendererOrigin,
   });
