@@ -215,3 +215,46 @@ describe("contact changes and deletions name a contact the agent cannot see", ()
     expect(description).toContain("never say the contact exists");
   });
 });
+
+/**
+ * Review (2026-11-20): "call 911" was no call command, and an emergency
+ * request in words ("call an ambulance") was left to Stage 1.
+ */
+describe("emergency and short-number calls reach the phone", () => {
+  it.each([
+    "call 911",
+    "Call 911!",
+    "dial 112",
+    "call 311",
+    "call an ambulance",
+    "call the police",
+    "call for help",
+    "I need help, call emergency services now",
+    "call mom again",
+    "Call Maya's mobile please",
+  ])("routes %s to the phone's operation", async (request) => {
+    const f = await fixture(request);
+    await inTurn(f, TELEPHONY, async () => {
+      expect(f.rule.matches(request, f.message)).toBe(true);
+    });
+  });
+
+  it("routes an emergency request to a phone with only its keypad", async () => {
+    const request = "call an ambulance";
+    const f = await fixture(request);
+    await inTurn(f, ["phone.keypad.v1"], async () => {
+      expect(f.rule.matches(request, f.message)).toBe(true);
+    });
+  });
+
+  it.each([
+    "she said she'd call the police",
+    "call 5 people",
+    "call mom and dad",
+  ])("leaves %s to the planner", async (request) => {
+    const f = await fixture(request);
+    await inTurn(f, TELEPHONY, async () => {
+      expect(f.rule.matches(request, f.message)).toBe(false);
+    });
+  });
+});

@@ -54,6 +54,7 @@ import {
 import {
   authoredKeypadRequest,
   authoredTelephonyRequest,
+  emergencyServicesRequest,
 } from "./telephony-request.ts";
 import { turnObservation } from "./turn-observation.ts";
 
@@ -902,6 +903,13 @@ export function registerDeviceTelephonyRouting(
   ): boolean => {
     const capabilities = ownerPhoneChatCapabilities(runtime, message);
     if (!capabilities) return false;
+    // An emergency request ("call an ambulance", "call for help") always
+    // reaches the phone: its keypad opens for the local emergency number.
+    if (emergencyServicesRequest(text))
+      return (
+        deviceOperationSupportedByCapabilities("phone_keypad", capabilities) ||
+        deviceOperationSupportedByCapabilities("phone_call", capabilities)
+      );
     const request = authoredTelephonyRequest(text);
     if (request === "sender")
       return deviceOperationSupportedByCapabilities(

@@ -2788,8 +2788,15 @@ export class DeviceActionService {
           (isPhoneDial(grounded.operation) &&
             !phoneDialCapabilityAvailable(grounded.operation, c.capabilities))
         )
-          throw new DeviceTelephonyTargetNotRequestedError("form");
+          // An emergency keypad this phone cannot open tells the owner to
+          // dial their local emergency number, never to name a recipient.
+          throw new DeviceTelephonyTargetNotRequestedError(
+            grounded.emergency ? "emergency" : "form",
+          );
         validated = grounded.operation;
+        if (grounded.emergency)
+          telephonyReason =
+            "Open the keypad so the owner can dial their local emergency number.";
         // The review shows the owner's recipient; the model's reason may
         // still name the number it invented.
         if (grounded.handedThrough)
