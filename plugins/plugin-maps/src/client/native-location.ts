@@ -164,14 +164,20 @@ export class NativeMapsLocation {
           if (
             !Number.isFinite(coords.accuracy) ||
             coords.accuracy < 0 ||
-            !Number.isFinite(coords.timestamp) ||
-            Date.now() - coords.timestamp > 30000 ||
-            coords.timestamp > Date.now() + 5000
+            !Number.isFinite(coords.timestamp)
           )
             throw new MapsFailure(
               "invalid-response",
               "A fresh location fix is not available.",
             );
+          // A stale or future-dated fix (cached reading, clock skew, a GPS
+          // gap in a tunnel) is skipped, not fatal: the watch keeps running
+          // and the next fresh fix is reported.
+          if (
+            Date.now() - coords.timestamp > 30000 ||
+            coords.timestamp > Date.now() + 5000
+          )
+            return;
           const heading = coords.heading,
             speed = coords.speed;
           onFix({

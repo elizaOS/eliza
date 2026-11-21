@@ -26,10 +26,17 @@ export type MapsDeviceNavigationState =
   | "stopped"
   | "awaiting-location"
   | "awaiting-confirmation";
+/** Length and time of the route the phone planned; never the phone's position. */
+export interface MapsDeviceRouteSummary {
+  durationSeconds: number;
+  distanceMeters: number;
+  traffic: "none" | "approximated" | "live";
+}
 export interface MapsDeviceNavigationStatus {
   state: MapsDeviceNavigationState;
   placeName?: string;
   travelMode?: TravelMode;
+  route?: MapsDeviceRouteSummary;
 }
 /** The agent's provider-neutral place (plugin-maps `PlaceRef`). */
 export type AgentPlaceRef = Readonly<{
@@ -464,7 +471,15 @@ export class DeviceMapsNavigation implements MapsDeviceNavigation {
         value.to.longitude !== destination.coordinate.longitude
       )
         throw unavailable("The route could not be planned on the phone.");
-      return { state: "awaiting-confirmation", ...status };
+      return {
+        state: "awaiting-confirmation",
+        ...status,
+        route: {
+          durationSeconds: Math.round(value.durationSeconds),
+          distanceMeters: Math.round(value.distanceMeters),
+          traffic: value.traffic,
+        },
+      };
     } catch (error) {
       throw deviceNavigationFailure(error);
     } finally {

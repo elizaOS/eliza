@@ -19,6 +19,18 @@ export interface MapsDeviceNavigationStatus {
   /** Destination or selected place name, for the user-facing reply. */
   placeName?: string;
   travelMode?: TravelMode;
+  /**
+   * The planned route's time and length, so the reply can say how long it takes.
+   * A summary of the route, never the device position.
+   */
+  route?: MapsDeviceRouteSummary;
+}
+
+export interface MapsDeviceRouteSummary {
+  durationSeconds: number;
+  distanceMeters: number;
+  /** `none` when the duration ignores traffic. */
+  traffic: "none" | "approximated" | "live";
 }
 
 export interface MapsDeviceNavigation {

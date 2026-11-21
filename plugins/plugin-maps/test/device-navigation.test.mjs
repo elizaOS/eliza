@@ -354,6 +354,8 @@ function screen(maps, options = {}) {
       state: "awaiting-confirmation",
       placeName: "Port Hercule",
       travelMode: "walk",
+      // The planned route's time and length, so the agent can say how long it takes.
+      route: { durationSeconds: 480, distanceMeters: 640, traffic: "none" },
     },
   );
   assert.deepEqual(maps.calls.at(-1), ["route", CASINO, PORT, "walk"]);
