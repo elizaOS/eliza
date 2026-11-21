@@ -92,7 +92,7 @@ describe("WP8 G5 scratch", () => {
         mailbox: [["UNREAD", "TRASH"], 1]
       }
     ))
-  }), 30_000)
+  }))
 
   it.live("Send a message with an attachment once though the dispatch is replayed, and refuse a forward at a stale history id (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\"; spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
     const { mailbox, switches, operation, grantId } = try mailOperationSetup("ops-send")

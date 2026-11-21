@@ -404,4 +404,4 @@ it.live('Follow the verified Checkout and scope shared charge events (spec/cloud
     deliveries: [204, 204, 204, 204, 204], owners: [{ charge_id: "ch_fixture", customer_id: "cus_new" }],
     outcomes: [[{ status: "clawed_back" }], [{ status: "open" }], [{ status: "clawed_back" }]],
   }))
-}, 30_000)
+})

@@ -142,5 +142,5 @@ describe("WP8 tmp", () => {
         anonymous: [401, "authentication_required"]
       }
     ))
-  }), 30_000)
+  }))
 })
