@@ -6,7 +6,7 @@ import type { StreamCut, StreamedAnswer } from "./support/socket-client.ts"
 
 type Frame = { readonly type: string; readonly text?: string; readonly fullText?: string; readonly failureKind?: string; readonly provisional?: boolean }
 
-const Created = Schema.Struct({ conversation: Schema.Struct({ id: Schema.String }) })
+schema Created { conversation: { id: string } }
 const created = Schema.decodeUnknownOption(Created)
 const parsed = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))
 
@@ -75,7 +75,7 @@ for (const transport of ["socket", "http"] as const) {
       const buffered = try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`, body: offered })
       try Effect.try(() => assert.deepStrictEqual({
         status: answer.status, error: answer.error, first: frames[0], ends: frames.filter((frame) => frame.type === "done" || frame.type === "error").length,
-        terminal: terminal?.type, fullText: terminal?.fullText, rebuilt: rebuilt(frames),
+        terminal: terminal?.type === "done" ? "done" : JSON.stringify([terminal, cloud.calls.map((made) => made.path)]), fullText: terminal?.fullText, rebuilt: rebuilt(frames),
         snapshots: kinds(frames).includes("snapshot"), provisional: frames.some((frame) => frame.provisional === true),
         refused: [refused.status, refused.json],
       }, {

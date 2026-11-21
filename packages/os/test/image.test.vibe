@@ -4,6 +4,8 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { NATIVE_TARGETS, createDevelopmentLauncherDescriptor, finalizeNative, readNativeLibraries, renderOverlay, stageLauncher, validateDescriptor, type LauncherDescriptor } from "../src/image/stage-launcher.vibe"
 import { androidTools, buildApk, testSigner, type NativeAbi } from "./support/android-tools.ts"
 import { commitTree, git, readTree, scratch, writeTree } from "./support/scratch.vibe"
+import { composeProduct } from "../src/image/compose-product.vibe"
+import { admitProduct } from "../gen/os__image__sourceLock.effect.vibe"
 import { loadProfile, verifySource, verifyDeviceSource, admitPatchEnvelope } from "../src/image/source-lock.vibe"
 import { main as qualify, qualifyDevice } from "../src/image/device-qualification.vibe"
 import { readOnlyCommands } from "../src/image/device-qualification-facts.vibe"
@@ -82,6 +84,23 @@ module node {
     await writeFile(lockFile, JSON.stringify({ schemaVersion: 1, profiles: { fixture: profile, partial: { kind: "virtual", targets: ["fixture"], manifest: manifestIdentity, projects: [{ path: "project-a", commit: projectCommit }] } } }))
     return { lockFile, factory: join(root, "factory.img"), manifest, projectList, ignored, vendor }
   }
+  export async function virtualCompositionLock(root: string, manifestCommit: string, projectCommit: string) {
+    const manifest = "<manifest/>\n"
+    const projects = "project-a\n"
+    await writeFile(join(root, ".repo/manifest.xml"), manifest)
+    await writeFile(join(root, ".repo/project.list"), projects)
+    const inputs = (path: string, text: string) => ({ path, sha256: sourceDigest(sourceText(text)), sizeBytes: sourceText(text).byteLength })
+    const profile = {
+      kind: "virtual", targets: ["cf_x86_64_phone"],
+      manifest: { commit: manifestCommit, tagObject: manifestCommit, tag: "fixture" },
+      projects: [{ path: "project-a", commit: projectCommit }],
+      manifestConfiguration: [inputs(".repo/manifest.xml", manifest), inputs(".repo/project.list", projects)],
+    }
+    const lock = join(root, "aosp.lock.json")
+    await writeFile(lock, JSON.stringify({ schemaVersion: 1, profiles: { cuttlefish: profile } }))
+    return lock
+  }
+
   export async function patchFixture(root: string, baseline: string, revision: string) {
     const patch = "resettable source patch fixture\n"
     const patchFile = join(root, "reviewed.patch")
@@ -156,7 +175,7 @@ module node {
 }
 import { ARM_ELF, X86_ELF, companionManifest, launcherManifest, parsed, runtimeNatives } from node
 
-import { changeMode, copySystemui, fixedSourceStat, patchFixture, platformProjectTree, qualificationBinary, rewriteWithSameStat, sourceLockFixture, verificationBinary } from node
+import { changeMode, copySystemui, fixedSourceStat, patchFixture, platformProjectTree, qualificationBinary, rewriteWithSameStat, sourceLockFixture, verificationBinary, virtualCompositionLock } from node
 
 const tools = androidTools()
 const skipped = tools.kind === "missing" ? tools.reason : null
@@ -195,6 +214,26 @@ effect function outcome(options: Parameters<typeof stageLauncher>[0]) {
 
 effect function finalized(output: string) {
   return (effect { const done = try finalizeNative(output); return done.evidence.tag === "OverlayStaged" ? done.evidence.conversion : done.evidence.tag } catch (error) => error._tag)
+}
+
+effect function compositionSource(root: string) {
+  const files = try FileSystem.FileSystem
+  const manifest = `${root}/.repo/manifests`
+  const project = `${root}/project-a`
+  for (const directory of [manifest, project]) {
+    try files.makeDirectory(directory, { recursive: true })
+    try git(directory, ["init", "--quiet", "--initial-branch=main"])
+  }
+  const manifestPin = try commitTree(manifest, { "default.xml": "<manifest/>\n" }, "Pin the fixture manifest")
+  const projectPin = try commitTree(project, { "device.mk": "PRODUCT_NAME := fixture\n" }, "Pin the fixture product")
+  const lockFile = try tryPromise(() => virtualCompositionLock(root, manifestPin, projectPin))
+  const profile = try loadProfile({ name: "cuttlefish", lockFile })
+  return (try verifySource({ profile, sourceRoot: root })).state
+}
+
+effect function compositionFailure(request: Parameters<typeof composeProduct>[0]) {
+  return (effect { try composeProduct(request); return "published" } catch (failure) =>
+    failure._tag === "ProductRefused" ? failure.problems.join(",") : failure._tag)
 }
 
 it.effect.skipIf(skipped !== null)(`Stage a development launcher and a signer-pinned privileged launcher with a companion into a Cuttlefish add-on, and refuse every other APK${suffix} (spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/image/staging.md, "A descriptor names a valid launcher, at most 32 unique first-boot grants, only reviewed privileged permissions, and distinct companions"; spec/os/image/staging.md, "The launcher is the descriptor's APK, home launcher and only signer, and declares every permission the descriptor names"; spec/os/image/staging.md, "The overlay grants only declared permissions, and places the launcher in priv-app with its allow-list and the agent socket policy only when it names privileged permissions"; spec/os/image/staging.md, "The staging evidence names the staged APK and mode and nothing beyond staging")`, effect () => {
@@ -316,7 +355,7 @@ it.effect.skipIf(skipped !== null)(`Stage a non-privileged launcher that carries
   }
 }, 240_000)
 
-it.effect.skipIf(skipped !== null)(`Defer the Soong conversion of a privileged runtime launcher, finalize it once after composition, and refuse a tampered overlay${suffix} (spec/os/image/staging.md, "A deferred Soong conversion runs once, only on a published overlay, and only over its unchanged admitted bytes"; spec/os/image/staging.md, "An APK that carries the Node runtime is staged only with its natives for the image ABI, under the install rules the target supports")`, effect () => {
+it.effect.skipIf(skipped !== null)(`Defer the Soong conversion of a privileged runtime launcher, finalize it once after composition, and refuse a tampered overlay${suffix} (spec/os/image/staging.md, "A deferred Soong conversion runs once, only on a published overlay, and only over its unchanged admitted bytes"; spec/os/image/staging.md, "An APK that carries the Node runtime is staged only with its natives for the image ABI, under the install rules the target supports"; spec/os/image/product.md, "Story: Compose my product from a pinned device profile"; spec/os/image/product.md, "The product's launcher is the staged launcher, and on a Pixel it stays off the system partition and apart from the hardware config identity")`, effect () => {
   provide NodeServices.layer {
     const k = try kit("image-soong")
     if (k === undefined) return
@@ -327,6 +366,18 @@ it.effect.skipIf(skipped !== null)(`Defer the Soong conversion of a privileged r
     const options = { aapt: k.aapt, apksigner: k.apksigner, descriptor, apk: launcher.apk, development: false, nativeAbi: "x86_64" as const, nativeInstall: "soong" as const, deferSoong: true, soongOnly: true }
 
     const output = path.join(k.checkout, "launcher")
+    const source = try compositionSource(path.join(k.work, "pinned-source"))
+    assert.deepStrictEqual([source.verdict, source.lock.developmentOnly], ["Match", true])
+    const product = {
+      schemaVersion: 1, target: "cuttlefish_x86_64", sourceProfile: "cuttlefish", vendorDirectory: "example",
+      productName: "example_cf_x86_64_phone", model: "Example Phone", brand: "example", manufacturer: "Example",
+      releaseConfig: "aosp_current", launcher: { moduleName: IDENTITY.moduleName, packageName: LAUNCHER },
+    }
+    const productDescriptor = try writeDescriptor(path.join(k.work, "product.json"), product)
+    const compose = {
+      descriptor: productDescriptor, source, purpose: "Development",
+      provisioning: { assistant: { tag: "NoAssistant" }, requires: { autofill: false, allFilesAccess: false }, telephonyRoles: false, lockScreen: "SystemOwnsLockScreen" },
+    } as const
     const staged = try stageLauncher({ ...options, output })
     assert.deepStrictEqual(staged.evidence, { tag: "OverlayStaged", apkSha256: { tag: "Sha256", hex: launcher.sha256 }, stagingMode: "StageProduction", conversion: "ConversionPending" })
     const before = try readTree(output)
@@ -334,8 +385,19 @@ it.effect.skipIf(skipped !== null)(`Defer the Soong conversion of a privileged r
     const deferredReport = parsed(before["native-libraries.json"])
     assert.deepStrictEqual([deferredReport.installRule, deferredReport.deferred, deferredReport.soongPatch?.name], ["soong-app-native", true, "soong-app-native"])
 
-    assert.strictEqual(try finalized(output), "Converted")
+    const admitted = admitProduct(source, "example", { brand: "example", target: "cf_x86_64_phone" }, "Development")
+    for (const name of ["different_cf_x86_64_phone", "example_stallion"]) {
+      const bad = try writeDescriptor(path.join(k.work, `${name}.json`), { ...product, productName: name })
+      assert.strictEqual(try compositionFailure({ ...compose, source: admitted, descriptor: bad, output }), "SourceNotAdmitted")
+    }
+    assert.strictEqual(try compositionFailure({ ...compose, purpose: "Production", output }), "SourceNotAdmitted,CuttlefishHostUnpinned")
+    assert.deepStrictEqual(try readTree(output), before)
+
+    const composed = try composeProduct({ ...compose, output })
+    assert.deepStrictEqual([composed.product, composed.launcher.apkSha256, composed.claims], [product.productName, launcher.sha256, ["ProductStaged"]])
     const after = try readTree(output)
+    assert.property(after, "physical-product.json")
+    assert.property(after, `${product.productName}.mk`)
     assert.notProperty(after, "Android.mk")
     assert.include(after["Android.bp"] ?? "", `required: ["ExampleHome_native_0", "ExampleHome_native_1"],`)
     assert.include(after["Android.bp"] ?? "", `prebuilt_priv_app_native {\n    name: "ExampleHome_native_1",\n    src: "native-x86_64/libeliza_node.so",\n    filename: "libeliza_node.so",\n    relative_install_path: "ExampleHome/lib/x86_64",\n    product_specific: true,\n}`)
@@ -349,6 +411,9 @@ it.effect.skipIf(skipped !== null)(`Defer the Soong conversion of a privileged r
     const tampered = path.join(k.checkout, "tampered")
     try stageLauncher({ ...options, output: tampered })
     try files.writeFile(path.join(tampered, "native-x86_64", "libagent.so"), ARM_ELF)
+    const beforeRefusal = try readTree(tampered)
+    assert.strictEqual(try compositionFailure({ ...compose, output: tampered }), "ProductInputUnreadable")
+    assert.deepStrictEqual(try readTree(tampered), beforeRefusal)
     assert.strictEqual(try finalized(tampered), "NativeFinalizeRefused")
     const refused = try readTree(tampered)
     assert.property(refused, "Android.mk")
@@ -357,6 +422,18 @@ it.effect.skipIf(skipped !== null)(`Defer the Soong conversion of a privileged r
 
     const make = try stageLauncher({ ...options, deferSoong: false, nativeInstall: "make", soongOnly: false, output: path.join(k.checkout, "make") })
     assert.strictEqual(try finalized(make.output), "NativeFinalizeRefused")
+    try files.writeFile(path.join(make.output, "Launcher.apk"), ARM_ELF)
+    assert.strictEqual(try compositionFailure({ ...compose, output: make.output }), "ProductInputUnreadable")
+    assert.isFalse(try files.exists(path.join(make.output, "physical-product.json")))
+
+    const development = try stageLauncher({ ...options, development: true, output: path.join(k.checkout, "development") })
+    const beforeDevelopment = try readTree(development.output)
+    assert.strictEqual(try compositionFailure({ ...compose, purpose: "Production", output: development.output }), "LauncherDiffers")
+    assert.deepStrictEqual(try readTree(development.output), beforeDevelopment)
+
+    assert.strictEqual(try finalized(development.output), "Converted")
+    const resumed = try composeProduct({ ...compose, output: development.output })
+    assert.deepStrictEqual([resumed.product, resumed.claims], [product.productName, ["ProductStaged"]])
   }
 }, 240_000)
 

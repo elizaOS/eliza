@@ -12,11 +12,11 @@ module node {
     type AgentRuntime, type Content, type DurableConversationChatMarker, type JsonObject, type Memory, type MemoryMetadata, type Room, type UUID,
   } from "@elizaos/core"
   import { canCreate, defaultTitle, initial } from "../../gen/agent__conversation__conversations.ts"
-  import { decide, receiptRetentionMs, stopConfirmMs, stopWindowOpen, type KeyView } from "../../gen/agent__conversation__turns.ts"
+  import { decide, receiptRetentionMs, stopConfirmMs, stopWindowOpen, type Admission, type KeyView, type ReplyKind } from "../../gen/agent__conversation__turns.ts"
   import type { LocalRoute } from "../access/routes.vibe"
   import type { AgendaOffer } from "../device-actions/agenda.vibe"
   import { recordHeard } from "./heard.vibe"
-  import { streamRoutes, type ReplyWriter, type StreamRole, type StreamStart, type Terminal } from "./stream.vibe"
+  import { streamRoutes, type ReplyWriter, type StreamStart, type TurnEnd } from "./stream.vibe"
 
   export interface TurnReply {
     readonly fullText: string
@@ -79,8 +79,22 @@ module node {
 
   type SendAnswer = ReturnType<typeof okay<TurnReply>> | ReturnType<typeof failure>
 
+  function replyKind(failureKind: string | undefined): ReplyKind {
+    switch (failureKind) {
+      case undefined: return { tag: "Answered" }
+      case "credential_invalid": return { tag: "AccountFailed", failure: { tag: "CredentialInvalid", version: 0 } }
+      case "insufficient_credits": return { tag: "AccountFailed", failure: { tag: "InsufficientCredits" } }
+      case "limit_reached": return { tag: "AccountFailed", failure: { tag: "LimitReached", retryAt: 0 } }
+      case "provider_issue": return { tag: "AccountFailed", failure: { tag: "ProviderIssue" } }
+      case "timeout": return { tag: "TimedOut" }
+      default: return { tag: "Aborted" }
+    }
+  }
+
+  type OpenVerdict = Extract<Admission, { readonly tag: "Owner" | "Unkeyed" | "Duplicate" | "Settled" }>
+
   interface StreamDelivery {
-    readonly admit: (role: StreamRole) => void
+    readonly admit: (verdict: OpenVerdict) => void
     readonly attached: Promise<{ readonly writer: ReplyWriter; readonly signal: AbortSignal }>
   }
 
@@ -193,12 +207,12 @@ module node {
         const admission = decide(true, { tag: "HeldRunning", fingerprint: 1 }, true, true,
           current.key.marker.fingerprint === key.marker.fingerprint ? 1 : 2, 1)
         if (admission.tag !== "Duplicate") return failure(409, "CHAT_IDEMPOTENCY_CONFLICT")
-        if (await current.admitted) stream?.admit("waits")
+        if (await current.admitted) stream?.admit(admission)
         return current.result
       }
 
       const admitted = Promise.withResolvers<boolean>()
-      const admit = (role: StreamRole) => { admitted.resolve(true); stream?.admit(role) }
+      const admit = (verdict: OpenVerdict) => { admitted.resolve(true); stream?.admit(verdict) }
 
       async function sendOwned(interrupt: AbortSignal) {
         if (key !== undefined) {
@@ -218,7 +232,7 @@ module node {
             const admission = decide(true, view, true, busy, expected.fingerprint === key.marker.fingerprint ? 1 : 2, 1)
             if (admission.tag === "Conflict") return failure(409, "CHAT_IDEMPOTENCY_CONFLICT")
             if (admission.tag !== "Settled") return failure(429, "conversation_busy")
-            admit("waits")
+            admit(admission)
             if (answered) {
               return answer(reply.content.text ?? "", key.replyId, key.inputId, storedFailure(reply.content))
             }
@@ -231,8 +245,8 @@ module node {
           }
         }
         const admission = decide(true, { tag: "NoKey" }, key !== undefined, busy, 1, 1)
-        if (admission.tag === "Busy") return failure(429, "conversation_busy")
-        admit("streams")
+        if (admission.tag !== "Owner" && admission.tag !== "Unkeyed") return failure(429, "conversation_busy")
+        admit(admission)
         const attached = stream === undefined ? undefined : await stream.attached
         const turnSignal = attached === undefined ? interrupt : AbortSignal.any([interrupt, attached.signal])
         const conversationId = conversation(room)?.id
@@ -325,20 +339,20 @@ module node {
         if (!room) return { kind: "refused", status: 404, error: "unknown_conversation" }
         const payload = turnBody(body)
         if (payload._tag !== "Some") return { kind: "refused", status: 400, error: "invalid_message" }
-        const opening = Promise.withResolvers<StreamRole | Extract<StreamStart, { kind: "refused" }>>()
+        const opening = Promise.withResolvers<OpenVerdict | Extract<StreamStart, { kind: "refused" }>>()
         const attached = Promise.withResolvers<Awaited<StreamDelivery["attached"]>>()
         const result = send(room, payload.value, signal, headers, { admit: opening.resolve, attached: attached.promise })
         void result.then(({ status, body }) => {
           if ("error" in body) opening.resolve({ kind: "refused", status, error: body.error })
         }, opening.reject)
-        const role = await opening.promise
-        if (typeof role !== "string") return role
-        return { kind: "admitted", role, run: async (writer, left): Promise<Terminal> => {
+        const verdict = await opening.promise
+        if ("kind" in verdict) return verdict
+        return { kind: "admitted", verdict, run: async (writer, left): Promise<TurnEnd> => {
           attached.resolve({ writer, signal: left })
           const { body } = await result
           if ("error" in body) return { type: "error", code: body.error, message: "The turn did not complete" }
           const { fullText, messageId, userMessageId, agentName, actionResults, failureKind } = body
-          return { type: "done", fullText, messageId, userMessageId, agentName, actionResults, ...(failureKind === undefined ? {} : { failureKind }) }
+          return { type: "done", fullText, messageId, userMessageId, agentName, actionResults, kind: replyKind(failureKind) }
         } }
       }),
       {

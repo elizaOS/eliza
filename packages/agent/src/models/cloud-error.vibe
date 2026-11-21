@@ -11,7 +11,7 @@ const codeTable = {
   InvalidRequest: 0, ModelUnavailable: 0, InvalidClient: 0, RedirectMismatch: 0, GrantCodeInvalid: 0,
   AuthenticationRequired: 0, CredentialProofInvalid: 0, InsufficientCredits: 0, AllowanceExhausted: 0,
   AccessDenied: 0, ClientDisabled: 0, SpeechConsentRequired: 0, NotFound: 0, CapabilityUnavailable: 0,
-  IdempotencyConflict: 0, StaleRevision: 0, BillingStateConflict: 0, IdentityInUse: 0, LastMethod: 0,
+  IdempotencyConflict: 0, AlreadyDispatched: 0, StaleRevision: 0, BillingStateConflict: 0, IdentityInUse: 0, LastMethod: 0,
   GoogleReauthRequired: 0, SubscriptionGrantAlreadyRedeemed: 0, SubscriptionGrantPaidPlanActive: 0,
   ReferralAlreadyApplied: 0, SessionClosed: 0, PreconditionFailed: 0, ContentTooLarge: 0, NoRoute: 0,
   UnsupportedMode: 0, UnsupportedRegion: 0, FreshSessionRequired: 0, RateLimited: 0, ProviderInvalidResponse: 0,
