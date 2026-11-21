@@ -13,7 +13,7 @@ export const CLIENT_OBSERVATION_SCOPE =
 
 /** Added only to a turn whose observation carries the phone's position. */
 export const CLIENT_LOCATION_NOTE =
-  "location is the phone's last known position: the owner's current location (capturedAt in epoch ms). Coordinates do not name a street, neighborhood or city; never guess one. For a place name, call MAPS_PLACE with these latitude and longitude and no query.";
+  "location is the phone's last known position: the owner's current location (capturedAt in epoch ms). Never guess a street, neighborhood or city from coordinates: when asked where the owner is, call MAPS_PLACE with these latitude and longitude and no query, or else give the coordinates.";
 
 const SOURCE_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,255}$/;
 

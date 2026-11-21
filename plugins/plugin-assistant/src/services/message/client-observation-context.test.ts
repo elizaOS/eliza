@@ -339,7 +339,7 @@ test("the phone's reported position reaches the model once, as the owner's curre
   expect(projected.segment).toContain(CLIENT_OBSERVATION_SCOPE);
   expect(projected.segment).toContain(CLIENT_LOCATION_NOTE);
   expect(CLIENT_LOCATION_NOTE).toContain("current location");
-  expect(CLIENT_LOCATION_NOTE).toContain("never guess");
+  expect(CLIENT_LOCATION_NOTE).toContain("Never guess");
   expect(projected.segment?.match(/"latitude":37\.7749/g)).toHaveLength(1);
   expect(projected.content.text).toBe("Where am I?");
 });
