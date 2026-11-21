@@ -57,6 +57,8 @@ describe("WP10 U7 deletion provider phases (spec/cloud/identity/deletion.md, \"S
     try Effect.try(() => providers.loseNextCancelReply(stored.subscriptionId))
     const lost = try cloud.inside(cancelBilling(storedTarget, now + 30_000))
     const statusAfterLost = try Effect.try(() => providers.subscriptionStatus(stored.subscriptionId))
+    const hidden = try cloud.inside(lookUpBilling(storedTarget))
+    try Effect.try(() => providers.revealCanceled(stored.subscriptionId))
     const seen = try cloud.inside(lookUpBilling(storedTarget))
     const again = try cloud.inside(cancelBilling(storedTarget, now + 30_000))
     const workerCancel = try cloud.inside(cancelBilling(workerTarget, now + 30_000))
@@ -75,11 +77,11 @@ describe("WP10 U7 deletion provider phases (spec/cloud/identity/deletion.md, \"S
     const unreadable = try cloud.inside(revokeGoogle({ kind: "layered", sealed: "not-sealed" }))
     const workerStatus = try Effect.try(() => providers.subscriptionStatus(worker.subscriptionId))
     try Effect.try(() => assert.deepStrictEqual({
-      lost: lost.kind, statusAfterLost, seen, again, workerCancel, workerStatus, workerSeen, absent,
+      lost: lost.kind, statusAfterLost, hidden: hidden.kind, seen, again, workerCancel, workerStatus, workerSeen, absent,
       cancelCalls: providers.cancelCalls(cloud.fakes, stored.subscriptionId),
       keptBefore, revokeLost: revokeLost.kind, revokedAtGoogle, revokeSeen, revokeAgain, unreadable, revokeCalls: providers.revokeCalls(), keptRevoked: providers.revoked(kept)
     }, {
-      lost: "unknown", statusAfterLost: "canceled", seen: { kind: "applied", value: { tag: "EffectSeen" } },
+      lost: "unknown", statusAfterLost: "canceled", hidden: "unknown", seen: { kind: "applied", value: { tag: "EffectSeen" } },
       again: { kind: "applied", value: undefined },
       workerCancel: { kind: "applied", value: undefined }, workerStatus: "canceled", workerSeen: { kind: "applied", value: { tag: "EffectSeen" } },
       absent: undefined,
