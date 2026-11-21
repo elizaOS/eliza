@@ -1,7 +1,8 @@
 // spec/os/appUpdate/install.md, "Story: Install an app update without running the agent mid-install"; spec/os/android/secureStore.md, "Story: Persist a value without losing a newer edit"; spec/os/browser/surface/profiles.md, "Story: Keep two sites' storage apart unless I share a profile"
 import { type ChildProcessWithoutNullStreams, execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, globSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import type { Driver, Outcome } from "../../gen/_conformance.ts";
@@ -13,6 +14,48 @@ const PACKAGE = path.resolve(import.meta.dirname, "../..");
 const SOURCE_TREES = ["android", "aosp", "test/drivers/java"] as const;
 const ADAPTERS = "test/drivers/java";
 const CACHE = path.join(PACKAGE, ".cache", "jvm");
+
+const JSON_JAVA_SHA256 = "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796";
+const JSON_JAVA_URL = "https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar";
+
+const verifiedJsonJava = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex") === JSON_JAVA_SHA256;
+
+function gradleJsonJava(filename: string): Uint8Array | undefined {
+  const home = process.env.GRADLE_USER_HOME || path.join(homedir(), ".gradle");
+  const directory = path.join(home, "caches/modules-2/files-2.1/org.json/json/20250517");
+  for (const candidate of globSync(`*/${filename}`, { cwd: directory })) {
+    const bytes = readFileSync(path.join(directory, candidate));
+    if (verifiedJsonJava(bytes)) return bytes;
+  }
+  return undefined;
+}
+
+async function downloadJsonJava(): Promise<Uint8Array> {
+  const response = await fetch(JSON_JAVA_URL, { redirect: "error", signal: AbortSignal.timeout(30_000) });
+  if (!response.ok) throw new Error(`JSON-java download failed (HTTP ${response.status})`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (!verifiedJsonJava(bytes)) throw new Error("JSON-java 20250517 did not match its pinned SHA-256");
+  return bytes;
+}
+
+async function resolveJsonJava(): Promise<string> {
+  const artifact = path.join(CACHE, "json-20250517.jar");
+  if (existsSync(artifact) && verifiedJsonJava(readFileSync(artifact))) return artifact;
+  const bytes = gradleJsonJava(path.basename(artifact)) ?? await downloadJsonJava();
+  mkdirSync(CACHE, { recursive: true });
+  const staging = mkdtempSync(path.join(CACHE, ".json-java-"));
+  try {
+    const temporary = path.join(staging, path.basename(artifact));
+    writeFileSync(temporary, bytes);
+    renameSync(temporary, artifact);
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
+  return artifact;
+}
+
+let jsonJava: Promise<string> | undefined;
+const jsonJavaArtifact = () => jsonJava ??= resolveJsonJava().finally(() => { jsonJava = undefined; });
 
 type Request =
   | { readonly kind: "reset" }
@@ -76,18 +119,22 @@ function sources(): Sources {
   return { digest: digest.digest("hex").slice(0, 24), roots: [...roots], adapters };
 }
 
-export function compileAdapter(main: string, found: Sources = sources()): string {
+export function compileAdapter(main: string, found: Sources = sources(), dependencies: readonly string[] = []): string {
   const adapter = found.adapters.get(main);
   if (adapter === undefined) throw new Error(`no JVM adapter ${main} under ${ADAPTERS}`);
-  const classes = path.join(CACHE, `${found.digest}-${main}`);
-  if (existsSync(classes)) return classes;
   const tools = androidTools();
+  const classpath = [...dependencies, ...(tools.kind === "present" ? [tools.androidJar] : [])];
+  const dependencyKey = dependencies.length
+    ? createHash("sha256").update(JSON.stringify(classpath.map((jar) => createHash("sha256").update(readFileSync(jar)).digest("hex")))).digest("hex")
+    : "";
+  const classes = path.join(CACHE, `${found.digest}-${main}${dependencyKey ? "-" + dependencyKey : ""}`);
+  if (existsSync(classes)) return classes;
   mkdirSync(CACHE, { recursive: true });
   const staging = mkdtempSync(path.join(CACHE, ".compiling-"));
   try {
     execFileSync(javaTool("javac"), [
       "--release", "21", "-encoding", "UTF-8", "-nowarn", "-implicit:class", "-d", staging,
-      ...(tools.kind === "present" ? ["-classpath", tools.androidJar] : []),
+      ...(classpath.length ? ["-classpath", classpath.join(path.delimiter)] : []),
       "-sourcepath", found.roots.join(path.delimiter), adapter,
     ], { stdio: ["ignore", "ignore", "pipe"] });
     renameSync(staging, classes);
@@ -100,13 +147,19 @@ export function compileAdapter(main: string, found: Sources = sources()): string
   return classes;
 }
 
-export function compileAdapters(): { readonly compiled: readonly string[]; readonly failed: readonly string[] } {
+export async function orgJsonAdapterClasspath(main: string): Promise<string> {
+  const jar = await jsonJavaArtifact();
+  return [compileAdapter(main, undefined, [jar]), jar].join(path.delimiter);
+}
+
+export async function compileAdapters(): Promise<{ readonly compiled: readonly string[]; readonly failed: readonly string[] }> {
   const found = sources();
   const compiled: string[] = [];
   const failed: string[] = [];
   for (const main of found.adapters.keys()) {
     try {
-      compiled.push(compileAdapter(main, found));
+      const needsJson = main.startsWith("ai.eliza.plugins.media.") || main === "ai.eliza.plugins.signin.ReadinessJourney";
+      compiled.push(compileAdapter(main, found, needsJson ? [await jsonJavaArtifact()] : []));
     } catch (error) {
       failed.push(error instanceof Error ? error.message : String(error));
     }
@@ -204,7 +257,7 @@ export function jvmDriver<E, V>(main: string, options: JvmOptions = {}): Driver<
 }
 
 if (import.meta.main && process.argv.includes("--compile")) {
-  const { compiled, failed } = compileAdapters();
+  const { compiled, failed } = await compileAdapters();
   process.stdout.write(`${JSON.stringify({ compiled: compiled.map((classes) => path.relative(PACKAGE, classes)), failed: failed.length }, null, 2)}\n`);
   for (const failure of failed) process.stderr.write(`${failure}\n`);
   process.exitCode = failed.length ? 1 : 0;

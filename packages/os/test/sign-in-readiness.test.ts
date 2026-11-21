@@ -1,32 +1,20 @@
 // spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; spec/os/signIn/readiness.md, "Story: Read the service's own terms"
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import * as spec from "../gen/os__signIn__readiness.ts";
-import { compileAdapter } from "./drivers/jvm-adapter.ts";
+import { compileAdapter, orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts";
 
 interface Case { readonly fn: string; readonly args: readonly unknown[]; readonly result: unknown }
 
 const javaTool = (name: string) => process.env.JAVA_HOME ? `${process.env.JAVA_HOME}/bin/${name}` : name;
-const ORG_JSON = path.join(homedir(), ".gradle", "caches", "modules-2", "files-2.1", "org.json", "json", "20250517");
-
-function orgJson(): string {
-  const jar = existsSync(ORG_JSON)
-    ? readdirSync(ORG_JSON).map((hash) => path.join(ORG_JSON, hash, "json-20250517.jar")).find((candidate) => existsSync(candidate))
-    : undefined;
-  if (jar === undefined) throw new Error(`org.json 20250517 is required at runtime: resolve it once with Gradle into ${ORG_JSON}`);
-  return jar;
-}
-
-function javaLines(main: string, classpath: readonly string[] = []): unknown[] {
-  const out = execFileSync(javaTool("java"), ["-cp", [compileAdapter(main), ...classpath].join(path.delimiter), main], { encoding: "utf8", maxBuffer: 1 << 28, timeout: 120_000 });
+function javaLines(main: string, classpath: string = compileAdapter(main)): unknown[] {
+  const out = execFileSync(javaTool("java"), ["-cp", classpath, main], { encoding: "utf8", maxBuffer: 1 << 28, timeout: 120_000 });
   return out.split("\n").filter(Boolean).map((line) => JSON.parse(line) as unknown);
 }
 
-function journey(): ReadonlyMap<string, unknown> {
-  const lines = javaLines("ai.eliza.plugins.signin.ReadinessJourney", [orgJson()]) as { step: string; value: unknown }[];
+async function journey(): Promise<ReadonlyMap<string, unknown>> {
+  const main = "ai.eliza.plugins.signin.ReadinessJourney";
+  const lines = javaLines(main, await orgJsonAdapterClasspath(main)) as { step: string; value: unknown }[];
   return new Map(lines.map((line) => [line.step, line.value]));
 }
 
@@ -46,8 +34,8 @@ describe("Show only the methods the cloud is ready for", () => {
     }
   });
 
-  it("serves a fresh answer at once, measures behind it, keeps it through no reading and announces only a change", () => {
-    const steps = journey();
+  it("serves a fresh answer at once, measures behind it, keeps it through no reading and announces only a change", async () => {
+    const steps = await journey();
     expect(["registration-no-client", "registration-test-environment-not-enabled", "registration-plain-http", "registration-no-production",
       "registration-shared-origin", "registration-hosted-mode"].map((step) => steps.get(step))).toEqual(Array(6).fill("refused"));
     expect(steps.get("registration-valid")).toBe("accepted");
@@ -73,8 +61,8 @@ describe("Show only the methods the cloud is ready for", () => {
 });
 
 describe("Read the service's own terms", () => {
-  it("is read only from the registered environment's API origin and shown as received, or reported unavailable", () => {
-    const steps = journey();
+  it("is read only from the registered environment's API origin and shown as received, or reported unavailable", async () => {
+    const steps = await journey();
     expect(steps.get("service-origins")).toEqual(["https://staging-api.cloud.test"]);
     expect(steps.get("service-body")).toEqual(steps.get("service-expected-document"));
     expect(steps.get("service-outcomes")).toEqual(["SERVICE_SHOWN", "SERVICE_UNAVAILABLE", "SERVICE_UNAVAILABLE", "SERVICE_UNKNOWN_ENVIRONMENT"]);
