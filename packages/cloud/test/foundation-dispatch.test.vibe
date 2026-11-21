@@ -4,7 +4,7 @@ import { NotAState, conflictRefusal, decodeState, initial } from "../gen/cloud__
 import { Refused, refusalBody } from "../src/http/refusal.vibe"
 import { dispatchReceipt, loadReceipt, mayFollowWith, prepareReceipt, receiptOwner, receiptStatusAt, renderProviderKey, requestDigest, resolveReceipt, type LookupResult, type ProviderKey, type ProviderReply, type Receipt, type ReceiptRows } from "../src/shared/dispatch-once.vibe"
 import { Store, StoreFailure, storeLayer } from "../src/store/store.vibe"
-import { shiftedClock } from "./support/clock.ts"
+import { manualClock } from "./support/clock.ts"
 import { startFakeServer, type FakeServer } from "./support/fakes.ts"
 
 type Mode = "apply" | "lose-reply" | "hang"
@@ -148,8 +148,9 @@ describe("WP0 Foundation: dispatch once (spec/cloud/shared/dispatchOnce.md, \"St
     const modes = new Map<string, Mode>()
     const applied = new Set<string>()
     const cloud = try bench(modes, applied)
-    const clock = try sync(() => shiftedClock())
-    const staleAfter = 300
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(minute))
+    const staleAfter = 2_000
     const first: ProviderKey = { providerKind: "CheckoutSession", providerId: "req-2-a1" }
     const second: ProviderKey = { providerKind: "CheckoutSession", providerId: "req-2-a2" }
     modes.set(renderProviderKey(first), "hang")
@@ -159,9 +160,10 @@ describe("WP0 Foundation: dispatch once (spec/cloud/shared/dispatchOnce.md, \"St
       const rows = changesFor("req-2")
       try cloud.store.transaction((tx) => prepareReceipt(tx, rows, "req-2#1", owner, terms("req-2", first, staleAfter, now), now))
       const dispatched = try dispatchReceipt(rows, "req-2#1", owner, (key: string) => sendChange(cloud, "req-2#1", durable, key))
+      const earlyAt = now + 2 * staleAfter - 1
+      try sync(() => clock.set(earlyAt))
       const early = try resolveReceipt(rows, "req-2#1", (key: string) => lookupChange(cloud, key))
-      const earlyAt = try Clock.currentTimeMillis
-      try sync(() => clock.advance(staleAfter))
+      try sync(() => clock.set(earlyAt + 1))
       const settled = try resolveReceipt(rows, "req-2#1", (key: string) => lookupChange(cloud, key))
       const retryAllowed = [mayFollowWith(early.receipt, second), mayFollowWith(settled.receipt, first), mayFollowWith(settled.receipt, second)]
       const at = try Clock.currentTimeMillis
