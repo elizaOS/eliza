@@ -1,0 +1,298 @@
+// spec/agent/tasks/index.md, "Story: Run one task operation without losing or repeating its effect"; spec/agent/tasks/index.md, "Story: Finish a task and wait for its actuator to let go"
+import { assert, it } from "@effect/vitest"
+import { createTaskHost, type TaskHostHandle } from "../src/tasks/host.vibe"
+import type { TaskRoutesHost } from "../src/tasks/routes.vibe"
+import { createTaskStore } from "../src/tasks/store.vibe"
+import { scratch, SupportFailed } from "./support/kernel.vibe"
+
+module node {
+  import { randomBytes } from "node:crypto"
+  import { Redacted } from "effect"
+  import type { InteractiveTask, TaskActionProposal, TaskObservation, TaskOutcome, TaskOwner } from "@elizaos/core"
+  import { openNodeTaskDatabase, storageKeySource, type TaskDatabaseOpener } from "../src/tasks/store.vibe"
+  import type { AuthorizedTaskGoal, TaskActuator, TaskCleanupReason, TaskDispatchContext, TaskGoalAuthorizer } from "../src/tasks/host.vibe"
+
+  export const owner: TaskOwner = { agentId: "agent-1", actorId: "owner-1", connector: { source: "device", accountId: "owner-account" } }
+  export const origin = "https://example.com"
+
+  export function newKey(): string {
+    return randomBytes(32).toString("base64")
+  }
+
+  export function keyFor(key: string) {
+    return storageKeySource(Redacted.make(key))
+  }
+
+  export function failingDatabase() {
+    let armed = false
+    const open: TaskDatabaseOpener = (path) => {
+      const db = openNodeTaskDatabase(path)
+      return {
+        exec: (sql) => db.exec(sql),
+        close: () => db.close(),
+        prepare(sql) {
+          const statement = db.prepare(sql)
+          return {
+            all: (...parameters) => statement.all(...parameters),
+            run: (...parameters) => {
+              if (armed) throw new Error("disk full")
+              return statement.run(...parameters)
+            },
+          }
+        },
+      }
+    }
+    return { open, arm: () => { armed = true } }
+  }
+
+  export type Behaviour = (proposal: TaskActionProposal, context: TaskDispatchContext) => Promise<TaskOutcome>
+
+  export function fixture() {
+    let clock = 1_000
+    let version = 0
+    let held: (() => void) | undefined
+    const behaviours: Behaviour[] = []
+    const seen: { current: boolean[]; quiesced: (TaskCleanupReason | "none")[]; aborted: boolean[] } = { current: [], quiesced: [], aborted: [] }
+    let failQuiesce = 0
+    let readback: TaskOutcome = { status: "unknown" }
+    let entered: () => void = () => undefined
+    const actuator: TaskActuator = {
+      capabilities: ["read"],
+      async observe() {
+        version += 1
+        const observation: TaskObservation = { id: `observation-${version}`, pageId: "page-1", origin, version, inputRevision: version, observedAt: clock }
+        return observation
+      },
+      async execute(proposal, context) {
+        seen.current.push(context.isCurrent())
+        const behaviour = behaviours.shift()
+        if (behaviour === undefined) throw new Error("no scripted reply")
+        return behaviour(proposal, context)
+      },
+      async reconcile(_proposal, context) {
+        seen.current.push(context.isCurrent())
+        return readback
+      },
+      async quiesce(context) {
+        seen.quiesced.push(context.reason ?? "none")
+        if (failQuiesce > 0) {
+          failQuiesce -= 1
+          throw new Error("guide still shown")
+        }
+      },
+    }
+    const goals: TaskGoalAuthorizer = {
+      async authorize(goalRef) {
+        const goal: AuthorizedTaskGoal = {
+          id: `task-${goalRef}`, goalRef,
+          authorization: { decisionId: `decision-${goalRef}`, policyRevision: "1", decidedAt: "2026-01-01T00:00:00.000Z", state: "active", revokedAt: null },
+          allowedCapabilities: ["read", "write"], allowedOrigins: [origin],
+        }
+        return goal
+      },
+    }
+    return {
+      actuator, goals, seen,
+      now: () => clock,
+      advance: (by: number) => { clock += by },
+      reply: (behaviour: Behaviour) => { behaviours.push(behaviour) },
+      answer: (outcome: TaskOutcome): Behaviour => async () => outcome,
+      lose: (): Behaviour => async () => { throw new Error("connection reset") },
+      hold: (outcome: TaskOutcome): Behaviour => async (_proposal, context) => {
+        await new Promise<void>((resolve) => {
+          held = resolve
+          entered()
+        })
+        seen.current.push(context.isCurrent())
+        seen.aborted.push(context.signal.aborted)
+        return outcome
+      },
+      whenEntered: () => new Promise<void>((resolve) => { entered = resolve }),
+      release: () => held?.(),
+      readback: (outcome: TaskOutcome) => { readback = outcome },
+      failQuiesce: (times: number) => { failQuiesce = times },
+    }
+  }
+
+  /** @throws {never} */
+  export function clockOf(fx: { readonly now: () => number }): number {
+    return fx.now()
+  }
+
+  export function proposal(task: InteractiveTask, id: string, now: number): TaskActionProposal {
+    const observed = task.observation
+    return {
+      id, taskId: task.id, epoch: task.epoch, observationId: observed?.id ?? "none", observationVersion: observed?.version ?? 0,
+      inputRevision: observed?.inputRevision ?? 0, targetRef: "button-1", capability: "read", authorizationId: task.authorization.decisionId, expiresAt: now + 60_000,
+    }
+  }
+
+  export function operationStatuses(task: InteractiveTask | null): string[] {
+    return task === null ? [] : task.operations.map((operation) => operation.status)
+  }
+}
+import { clockOf, failingDatabase, fixture, keyFor, newKey, operationStatuses, owner, proposal } from node
+
+effect function support<A>(step: string, call: () => A) {
+  return try Effect.try({ try: call, catch: (cause) => new SupportFailed({ step, cause }) })
+}
+
+effect function waitFor(step: string, call: () => Promise<void>) {
+  try tryPromise({ try: call, catch: (cause) => new SupportFailed({ step, cause }) })
+}
+
+effect function code<A, E>(run: A!E) {
+  const ran = try exit(run)
+  return Exit.isSuccess(ran) ? "accepted" : codeOf(Cause.squash(ran.cause))
+}
+
+function codeOf(value: unknown): string {
+  return typeof value === "object" && value !== null && "code" in value && typeof value.code === "string" ? value.code : "untyped"
+}
+
+effect function hostOver(directory: string, key: string, fx: ReturnType<typeof fixture>, database?: ReturnType<typeof failingDatabase>) {
+  const store = try createTaskStore({ directory, keys: try support("key", () => keyFor(key)), now: () => clockOf(fx), ...(database === undefined ? {} : { database: database.open }) })
+  return try createTaskHost({ store, now: () => clockOf(fx), actuator: fx.actuator, authorizer: fx.goals })
+}
+
+effect function summary(host: TaskHostHandle) {
+  const state = try host.state()
+  return { status: state.task.status, operation: state.task.operation.status, actuator: state.actuator.tag, cleanup: state.cleanup, poisoned: state.poisoned }
+}
+
+it.effect('An operation is recorded before it runs, a stop fences it and a lost reply stays unknown (spec/agent/tasks/index.md, "Story: Run one task operation without losing or repeating its effect")', effect () => {
+  const state = try scratch("task-host")
+  const directory = state.file("tasks")
+  const key = try support("key", () => newKey())
+  const fx = try support("fixture", () => fixture())
+  const host = try hostOver(directory, key, fx)
+  const routesHost: TaskRoutesHost = host
+
+  const beforeStart = try code(host.current())
+  try host.start(owner)
+  const twice = try code(host.start(owner))
+  const started = try host.create("errand")
+  const repeated = try host.create("errand")
+  const other = (try host.create("other")).reply.tag
+  const taskId = started.task?.id ?? ""
+
+  const observed = try host.observe(taskId, 0)
+  const first = observed.task?.revision ?? 0
+  try support("script success", () => fx.reply(fx.answer({ status: "succeeded", evidenceRef: "receipt-1" })))
+  const succeeded = try host.execute(taskId, first, try support("proposal", () => proposal(observed.task!, "operation-1", fx.now())))
+  const presented = try host.presentationForConversation({ taskId, expectedEpoch: succeeded?.epoch ?? -1, actorId: owner.actorId })
+  const stranger = try host.presentationForConversation({ taskId, expectedEpoch: succeeded?.epoch ?? -1, actorId: "someone-else" })
+
+  try support("script hold", () => fx.reply(fx.hold({ status: "succeeded", evidenceRef: "late-receipt" })))
+  const entered = try support("entered", () => fx.whenEntered())
+  const running = fork host.execute(taskId, succeeded?.revision ?? 0, try support("proposal", () => proposal(succeeded!, "operation-2", fx.now())))
+  try waitFor("actuator entered", () => entered)
+  const whileRunning = try summary(host)
+  const busy = try code(host.observe(taskId, (try host.state()).task.revision))
+  const paused = try host.pause(taskId, (try host.state()).task.revision)
+  const retired = try host.presentationForConversation({ taskId, expectedEpoch: succeeded?.epoch ?? -1, actorId: owner.actorId })
+  try support("release", () => fx.release())
+  const late = join running
+  const afterLate = try summary(host)
+
+  try support("readback", () => fx.readback({ status: "succeeded", evidenceRef: "readback-1" }))
+  const settled = try host.reconcile(taskId, paused.task?.revision ?? 0)
+  const resumed = try host.resume(taskId, settled.task?.revision ?? 0)
+  try support("script lost", () => fx.reply(fx.lose()))
+  const lostReply = try host.execute(taskId, resumed.task?.revision ?? 0, try support("proposal", () => proposal(resumed.task!, "operation-3", fx.now())))
+  try support("script missing evidence", () => fx.reply(fx.answer({ status: "succeeded", evidenceRef: "receipt-4" })))
+  const blockedRun = try code(host.execute(taskId, lostReply?.revision ?? 0, try support("proposal", () => proposal(lostReply!, "operation-4", fx.now()))))
+  const holdingSlot = (try host.create("other")).reply
+  const stillAuthorized = try code(host.acknowledgeUnknown(taskId, lostReply?.revision ?? 0))
+  const revoked = try host.revoke(taskId, lostReply?.revision ?? 0)
+  const accepted = try host.acknowledgeUnknown(taskId, revoked.task?.revision ?? 0)
+  const afterAccept = try summary(host)
+  const next = try host.create("other")
+  const page = try host.events(taskId, -1)
+
+  try Effect.try(() => {
+    assert.strictEqual(typeof routesHost.storageProbe, "function")
+    assert.deepStrictEqual({ beforeStart, twice, other }, { beforeStart: "TASK_UNAVAILABLE", twice: "TASK_CONFLICT", other: "StartRefused" })
+    assert.deepStrictEqual([started.reply.tag, repeated.reply.tag, repeated.task?.id], ["NewTask", "ExistingTask", taskId])
+    assert.deepStrictEqual([succeeded?.status, operationStatuses(succeeded)], ["active", ["succeeded"]])
+    assert.deepStrictEqual([presented.tag, stranger.tag, retired.tag], ["Presented", "PresentationRefused", "PresentationRefused"])
+    assert.deepStrictEqual(whileRunning, { status: "Waiting", operation: "Dispatched", actuator: "Executing", cleanup: "CleanupDone", poisoned: false })
+    assert.strictEqual(busy, "TASK_BUSY")
+    assert.deepStrictEqual([paused.task?.status, operationStatuses(paused.task), paused.cleanupConfirmed], ["paused", ["succeeded", "unknown"], true])
+    assert.deepStrictEqual([late?.status, operationStatuses(late), late?.revision], ["paused", ["succeeded", "unknown"], paused.task?.revision])
+    assert.deepStrictEqual(afterLate, { status: "Paused", operation: "Unknown", actuator: "ActuatorIdle", cleanup: "CleanupDone", poisoned: false })
+    assert.deepStrictEqual([settled.task?.status, operationStatuses(settled.task)], ["paused", ["succeeded", "succeeded"]])
+    assert.deepStrictEqual([resumed.task?.status, lostReply?.status, operationStatuses(lostReply)], ["active", "blocked", ["succeeded", "succeeded", "unknown"]])
+    assert.deepStrictEqual({ blockedRun, holdingSlot, stillAuthorized }, { blockedRun: "TASK_NOT_ACTIVE", holdingSlot: { tag: "StartRefused", error: "TaskStateConflict" }, stillAuthorized: "TASK_CONFLICT" })
+    assert.deepStrictEqual([revoked.task?.status, revoked.task?.authorization.state, accepted.task?.status], ["paused", "revoked", "cancelled"])
+    assert.deepStrictEqual(afterAccept, { status: "Cancelled", operation: "Unknown", actuator: "ActuatorIdle", cleanup: "CleanupDone", poisoned: false })
+    assert.deepStrictEqual([next.reply.tag, next.task?.goalRef], ["NewTask", "other"])
+    assert.deepStrictEqual(fx.seen.current, [true, true, false, true, true])
+    assert.deepStrictEqual(fx.seen.aborted, [true])
+    assert.deepStrictEqual(fx.seen.quiesced, ["pause", "none", "revoke", "cancel"])
+    assert.deepStrictEqual([page.cursor, page.hasMore, page.events.map((event) => event.kind).slice(0, 4)], [page.task.revision, false, ["create", "observe", "prepare", "dispatch"]])
+  })
+})
+
+it.effect('A storage failure poisons the host and a restart pauses the dispatch it left (spec/agent/tasks/index.md, "A storage failure poisons the host until the agent restarts")', effect () => {
+  const state = try scratch("task-host-poison")
+  const directory = state.file("tasks")
+  const key = try support("key", () => newKey())
+  const fx = try support("fixture", () => fixture())
+  const database = try support("database", () => failingDatabase())
+  const host = try hostOver(directory, key, fx, database)
+  try host.start(owner)
+  const started = try host.create("errand")
+  const taskId = started.task?.id ?? ""
+  const observed = try host.observe(taskId, 0)
+  try support("script failure", () => fx.reply(async () => {
+    database.arm()
+    return { status: "succeeded", evidenceRef: "receipt-1" }
+  }))
+  const failed = try code(host.execute(taskId, observed.task?.revision ?? 0, try support("proposal", () => proposal(observed.task!, "operation-1", fx.now()))))
+  const poisoned = try summary(host)
+  const refusedRead = try code(host.current())
+  const probe = try host.storageProbe()
+  try host.close()
+
+  const restarted = try hostOver(directory, key, fx)
+  const notYet = try code(restarted.current())
+  const recovered = try restarted.start(owner)
+  const afterRestart = try summary(restarted)
+  const resumedWithUnknown = try code(restarted.resume(taskId, recovered?.revision ?? 0))
+
+  try Effect.try(() => {
+    assert.strictEqual(failed, "TASK_STORAGE_UNAVAILABLE")
+    assert.deepStrictEqual(poisoned, { status: "Waiting", operation: "Dispatched", actuator: "ActuatorIdle", cleanup: "CleanupDone", poisoned: true })
+    assert.deepStrictEqual({ refusedRead, notYet }, { refusedRead: "TASK_UNAVAILABLE", notYet: "TASK_UNAVAILABLE" })
+    assert.strictEqual(typeof probe, "string")
+    assert.deepStrictEqual([recovered?.status, recovered?.epoch, operationStatuses(recovered)], ["paused", (observed.task?.epoch ?? 0) + 1, ["unknown"]])
+    assert.deepStrictEqual(afterRestart, { status: "Paused", operation: "Unknown", actuator: "ActuatorIdle", cleanup: "CleanupDone", poisoned: false })
+    assert.strictEqual(resumedWithUnknown, "TASK_UNKNOWN_OUTCOME")
+    assert.deepStrictEqual(fx.seen.quiesced, ["none"])
+  })
+})
+
+it.effect('A completed task waits for the actuator to confirm its cleanup (spec/agent/tasks/index.md, "Story: Finish a task and wait for its actuator to let go")', effect () => {
+  const state = try scratch("task-host-complete")
+  const fx = try support("fixture", () => fixture())
+  const host = try hostOver(state.file("tasks"), try support("key", () => newKey()), fx)
+  try host.start(owner)
+  const started = try host.create("errand")
+  const taskId = started.task?.id ?? ""
+  try support("quiesce fails once", () => fx.failQuiesce(1))
+  const completed = try host.complete(taskId, 0)
+  const unconfirmed = try summary(host)
+  const current = try host.current()
+  const confirmed = try summary(host)
+  const again = try code(host.complete(taskId, completed.task?.revision ?? 0))
+
+  try Effect.try(() => {
+    assert.deepStrictEqual([completed.task?.status, completed.saved, completed.cleanupConfirmed], ["completed", true, false])
+    assert.deepStrictEqual(unconfirmed, { status: "Completed", operation: "Empty", actuator: "ActuatorIdle", cleanup: "QuiesceFailed", poisoned: false })
+    assert.strictEqual(current, null)
+    assert.deepStrictEqual(confirmed, { status: "Completed", operation: "Empty", actuator: "ActuatorIdle", cleanup: "CleanupDone", poisoned: false })
+    assert.strictEqual(again, "TASK_ENDED")
+    assert.deepStrictEqual(fx.seen.quiesced, ["complete", "complete"])
+  })
+})

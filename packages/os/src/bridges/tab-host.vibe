@@ -13,8 +13,13 @@ module capacitor {
   export function tabHostPlugin(name: string): BrowserTabHostPlugin {
     return registerPlugin<BrowserTabHostPlugin>(name)
   }
+
+  /** @throws {never} */
+  export function randomId(): string {
+    return globalThis.crypto.randomUUID()
+  }
 }
-import { tabHostPlugin } from capacitor
+import { randomId, tabHostPlugin } from capacitor
 export { tabHostPlugin }
 
 export type TabRefusal = "browser-closed" | "invalid-tab" | "tab-limit" | "invalid-session" | "invalid-tab-limit"
@@ -65,7 +70,7 @@ export function validBrowserTabId(id: unknown): id is string {
 }
 
 export function newBrowserTabId(): string {
-  return `b${globalThis.crypto.randomUUID().replace(/-/g, "")}`
+  return `b${randomId().replace(/-/g, "")}`
 }
 
 function webAddressOf(href: string): WebAddress {
@@ -104,7 +109,7 @@ export class BrowserTabSession {
   private readonly invalid: TabRefusal | undefined
 
   constructor(options: BrowserTabSessionOptions = {}) {
-    this.session = options.session ?? globalThis.crypto.randomUUID()
+    this.session = options.session ?? randomId()
     this.maxTabs = options.maxTabs ?? DEFAULT_MAX_TABS
     this.invalid = this.session === "" || this.session.length > 100 ? "invalid-session" : !Number.isInteger(this.maxTabs) || this.maxTabs < 1 ? "invalid-tab-limit" : undefined
   }

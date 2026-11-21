@@ -41,6 +41,12 @@ module node {
     readonly acknowledgedUnknown?: true
   }
 
+  export interface TaskDecoder {
+    /** @throws {unknown} */
+    (text: string): TaskRecord
+  }
+
+  /** @throws {never} */
   export function holdsSlot(record: TaskRecord): boolean {
     const { status, operations } = record.task
     if (status !== "completed" && status !== "cancelled") return true
@@ -264,6 +270,7 @@ module node {
     return { task, events, acknowledgedUnknown: true }
   }
 
+  /** @throws {never} */
   export function failureReason(error: unknown): string {
     return error instanceof Error ? error.message : "The task record could not be decoded"
   }
@@ -279,13 +286,13 @@ module node {
 }
 export {
   decodeTaskRecord, holdsSlot, openNodeTaskDatabase, storageKeySource,
-  type KeyReading, type TaskRecord, type TaskDatabase, type TaskDatabaseOpener, type TaskKeySource, type TaskStatement,
+  type KeyReading, type TaskDecoder, type TaskRecord, type TaskDatabase, type TaskDatabaseOpener, type TaskKeySource, type TaskStatement,
 } from node
 import {
   decodeTaskRecord as decodeRecord, failureReason, holdRecord, holdsSlot as slotHeld, insertRecord, lockIntact, openNodeTaskDatabase as nodeDatabase,
   openTaskRows, privatePath, readPayload, releaseLock, releaseRecord, retire, takeLock, updateRecord,
   type KeyReading as Reading, type LockIdentity, type TaskDatabase as Database, type TaskDatabaseOpener as Opener, type TaskKeySource as KeySource,
-  type TaskRecord as TaskRecordShape, type TaskRow,
+  type TaskDecoder as Decoder, type TaskRecord as TaskRecordShape, type TaskRow,
 } from node
 
 type TaskRecord = TaskRecordShape
@@ -295,8 +302,7 @@ export interface TaskStoreOptions {
   readonly keys: KeySource
   readonly namespace?: string
   readonly database?: Opener
-  /** @throws {unknown} */
-  readonly decode?: (text: string) => TaskRecord
+  readonly decode?: Decoder
   readonly now?: () => number
 }
 
@@ -434,11 +440,11 @@ export effect function createTaskStore(options: TaskStoreOptions) {
       aside.set(row.id, { taskId: row.id, reason: row.reason ?? "", heldAt: row.heldAt ?? 0, releasedAt: row.releasedAt })
       return
     }
-    const decoded = try Effect.result(Effect.try(() => decode(text)))
+    const decoded = try Effect.result(Effect.try({ try: () => decode(text), catch: (cause) => new Unreadable({ taskId: row.id, reason: failureReason(cause) }) }))
     const state = (try send({ type: "scan", taskId: row.id, decodes: Result.isSuccess(decoded) })).state
     const hold = persistedHold(state.records.find((record) => record.taskId === row.id && authentic(record, account)) ?? noRecord)
     if (hold === "held") {
-      const reason = Result.isFailure(decoded) ? host(() => failureReason(decoded.failure), "") catch () => "The task record could not be decoded" : ""
+      const reason = Result.isFailure(decoded) ? decoded.failure.reason : ""
       const entry = { taskId: row.id, reason, heldAt: row.heldAt ?? now(), releasedAt: null }
       aside.set(row.id, entry)
       if (row.hold !== "held" || row.reason !== entry.reason) {

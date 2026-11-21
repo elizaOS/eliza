@@ -5,12 +5,12 @@ import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client
 
 module node {
   import { Effect } from "effect"
-  import { createInteractiveTask, transitionInteractiveTask, type InteractiveTask, type TaskEvent, type TaskTransition } from "@elizaos/core"
+  import { createInteractiveTask, ElizaError, transitionInteractiveTask, type InteractiveTask, type TaskEvent, type TaskTransition } from "@elizaos/core"
   import { failStorage, initial, start, type TaskHost } from "../gen/agent__tasks.ts"
   import { startReply } from "../gen/agent__tasks__wire.ts"
   import type { ModuleFactory } from "../src/host/module.vibe"
   import { taskRoutes, taskView, type TaskRoutesHost, type TaskWrite } from "../src/tasks/routes.vibe"
-  import { Corrupt, NoTask, type TaskStorageStatus, type UnreadableTaskRecord } from "../src/tasks/store.vibe"
+  import type { TaskStorageStatus, UnreadableTaskRecord } from "../src/tasks/store.vibe"
 
   export const moduleName = "@elizaos/agent/tasks"
   const owner = { agentId: "agent-1", actorId: "owner-1", connector: { source: "device", accountId: "owner-account" } }
@@ -42,7 +42,7 @@ module node {
       catch: (cause) => cause,
     })
     const held = (taskId: string): InteractiveTask => {
-      if (task === null || task.id !== taskId) throw new NoTask({ taskId })
+      if (task === null || task.id !== taskId) throw coded(taskId, "TASK_NOT_FOUND")
       return task
     }
     const write = (taskId: string, expectedRevision: number, transition: TaskTransition) => failing((): TaskWrite => {
@@ -86,7 +86,7 @@ module node {
       acknowledgeUnreadable: (taskId) => failing(() => {
         journey.writes.push(`acknowledge-unreadable ${taskId}`)
         const found = journey.unreadable.find((record) => record.taskId === taskId)
-        if (found === undefined) throw new NoTask({ taskId })
+        if (found === undefined) throw coded(taskId, "TASK_NOT_FOUND")
         const released = { ...found, releasedAt: now }
         journey.unreadable = journey.unreadable.map((record) => record.taskId === taskId ? released : record)
         return released
@@ -107,10 +107,10 @@ module node {
     return journey
   }
 
-  export const corrupt = (taskId: string) => new Corrupt({ taskId })
+  export const coded = (taskId: string, code: string) => new ElizaError(`Task ${taskId} failed`, { code })
 }
 
-import { corrupt, journeyHost, moduleName, type JourneyHost } from node
+import { coded, journeyHost, moduleName, type JourneyHost } from node
 
 const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
 
@@ -128,7 +128,7 @@ const statusCode = (answer: { status: number; body: unknown }) => [answer.status
 const taskOf = (answer: { body: unknown }) => (answer.body as { task: { id: string; revision: number; epoch: number; status: string } | null }).task
 
 it.effect('The owner starts, reads, pages and stops one task, and a repeated start returns it (spec/agent/tasks/wire.md, "Each route names one command and the one method it answers"; spec/agent/tasks/wire.md, "A repeated start of the running task\'s goal returns that task"; spec/agent/tasks/wire.md, "A view shows six public fields of the held task, or null")', effect () => {
-  const journey = journeyHost()
+  const journey = try Effect.sync(() => journeyHost())
   const agent = try boot(journey)
   const empty = try ask(agent, get("/api/tasks/current"))
   const started = try ask(agent, post("/api/tasks", { goalRef: "goal:inbox/1" }))
@@ -169,7 +169,7 @@ it.effect('The owner starts, reads, pages and stops one task, and a repeated sta
 }, 120_000)
 
 it.effect('A malformed, foreign or misrouted task request is refused with one code and changes nothing (spec/agent/tasks/wire.md, "Only the launch account reaches a serving host, and the storage probe needs neither"; spec/agent/tasks/wire.md, "A command body has exactly the fields its command names"; spec/agent/tasks/wire.md, "Only the event page takes a query, and its cursor is canonical"; spec/agent/tasks/wire.md, "Every refusal is one documented code with a fixed status")', effect () => {
-  const journey = journeyHost()
+  const journey = try Effect.sync(() => journeyHost())
   const agent = try boot(journey)
   const started = try ask(agent, post("/api/tasks", { goalRef: "goal-1" }))
   const id = taskOf(started)?.id ?? ""
@@ -216,16 +216,16 @@ it.effect('A malformed, foreign or misrouted task request is refused with one co
 }, 120_000)
 
 it.effect('A write that outlived the account, an unconfirmed cleanup and a failing store each answer their own code, and the probe reports a poisoned host (spec/agent/tasks/wire.md, "A reply after the host stopped serving says whether a change was saved"; spec/agent/tasks/wire.md, "The storage probe reports unavailable for a poisoned host"; spec/agent/tasks/wire.md, "Every refusal is one documented code with a fixed status")', effect () => {
-  const journey = journeyHost()
+  const journey = try Effect.sync(() => journeyHost())
   const agent = try boot(journey)
   const started = try ask(agent, post("/api/tasks", { goalRef: "goal-1" }))
   const id = taskOf(started)?.id ?? ""
   journey.cleanupConfirmed = false
   const unconfirmed = try ask(agent, post(`/api/tasks/${id}/pause`, { expectedRevision: taskOf(started)?.revision ?? 0 }))
   const read = try ask(agent, get(`/api/tasks/${id}`))
-  journey.failure = corrupt(id)
+  journey.failure = try Effect.sync(() => coded(id, "TASK_STORAGE_CORRUPT"))
   const corrupted = try ask(agent, get(`/api/tasks/${id}`))
-  journey.failure = new Error("secret path /home/owner/tasks.sqlite")
+  journey.failure = try Effect.sync(() => new Error("secret path /home/owner/tasks.sqlite"))
   const hidden = try ask(agent, get("/api/tasks/current"))
   journey.failure = { code: "TASK_STORAGE_SOMETHING_NEW" }
   const storageCode = try ask(agent, get("/api/tasks/current"))
@@ -239,9 +239,9 @@ it.effect('A write that outlived the account, an unconfirmed cleanup and a faili
   const changed = try ask(agent, post(`/api/tasks/${id}/cancel`, { expectedRevision: taskOf(read)?.revision ?? 0 }))
   const afterChange = try ask(agent, get("/api/tasks/current"))
   const probeAfterChange = try ask(agent, get("/api/tasks/storage"))
-  const poisoned = journeyHost()
+  const poisoned = try Effect.sync(() => journeyHost())
   const second = try boot(poisoned)
-  poisoned.poison()
+  try Effect.sync(() => poisoned.poison())
   const unavailable = try ask(second, get("/api/tasks/storage"))
   const refusedWhilePoisoned = try ask(second, post("/api/tasks", { goalRef: "goal-1" }))
   try Effect.try(() => {
