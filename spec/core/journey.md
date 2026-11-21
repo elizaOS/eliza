@@ -93,6 +93,7 @@ pure val weight_configureModel = 12
 pure val weight_admitModel = 12
 pure val weight_invokeModel = 12
 pure val weight_observeModel = 16
+pure val weight_rejectAction = 12
 pure val weight_recordAction = 16
 pure val weight_bindReply = 12
 pure val weight_sendReply = 12
