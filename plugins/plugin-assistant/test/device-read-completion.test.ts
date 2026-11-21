@@ -622,6 +622,24 @@ it("keeps an open-thread reply and refuses to turn an addressed draft into a sen
       expect(sent.request.payload.operation).toEqual(send);
       expect(sent.request.state).toBe("pending");
     }
+    // A send to anyone but the addressed recipient is not kept: it becomes
+    // the draft to the person the owner addressed.
+    const elsewhere = await proposeFromOwnerText(
+      f,
+      targets,
+      "Write a text to Mom saying Dad is home and send it",
+      {
+        type: "sms_compose",
+        target: { kind: "contact", query: "Dad" },
+        body: "is home",
+      },
+    );
+    expect(elsewhere.request.payload.operation).toEqual({
+      type: "sms_compose",
+      target: { kind: "contact", query: "Mom" },
+      body: "is home",
+      draft: true,
+    });
     const v1 = {
       ...f.credential,
       capabilities: [

@@ -251,6 +251,7 @@ import {
   DeviceTelephonyTargetNotRequestedError,
   groundTelephonyTarget,
   namesTelephonyTarget,
+  proposesRequestedRecipient,
   swappedPhoneReferences,
 } from "./telephony-target-grounding.ts";
 import { requireTurnObservation, turnObservation } from "./turn-observation.ts";
@@ -2671,11 +2672,14 @@ export class DeviceActionService {
     ) {
       const requested = requestedSmsDraftRecipient(requestOrigin.requestText);
       // "Write a text to Mom ... and send it" asks for a send: the model's
-      // reviewed operation stays, and its recipient is grounded as usual.
+      // reviewed operation stays when it goes to the recipient the owner
+      // addressed, and that recipient is grounded as usual. A send to anyone
+      // else is still made the addressed draft, never sent elsewhere.
       const sends =
         (requested?.kind === "contact" || requested?.kind === "number") &&
         validated.type !== "sms_reply_selected" &&
-        smsDraftRequestAlsoSends(requestOrigin.requestText);
+        smsDraftRequestAlsoSends(requestOrigin.requestText) &&
+        proposesRequestedRecipient(validated, requested);
       const recipient =
         sends ||
         (validated.type === "sms_reply_selected" &&

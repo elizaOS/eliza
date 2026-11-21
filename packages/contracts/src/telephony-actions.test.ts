@@ -961,6 +961,7 @@ test("address lookup and a reply draft use the complete negotiated address", () 
     "Compose a message saying hi and send it to Sam and send it to Mom",
     "Write a text saying hi, actually to Ada, and send it to Mom",
     "Compose a message saying hi and send it to Sam or Mom",
+    "Write a text saying hi and send it to Sam instead",
   ]) {
     assert.equal(
       requestedSmsDraftRecipient(request)?.kind,

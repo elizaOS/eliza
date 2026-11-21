@@ -945,8 +945,10 @@ export function requestedSmsDraftRecipient(
   if (sendTo) {
     const head = instructions.slice(0, sendTo.index);
     if (CORRECTED_RECIPIENT.test(head)) return { kind: "ambiguous" };
-    instructions = instructions.slice(sendTo.index + sendTo[0].length);
-    remainder = `to ${instructions}`;
+    // Read as an addressing clause, so "... and send it to Sam instead"
+    // stays a correction.
+    instructions = `to ${instructions.slice(sendTo.index + sendTo[0].length)}`;
+    remainder = instructions;
   }
   if (CORRECTED_RECIPIENT.test(instructions)) return { kind: "ambiguous" };
   if (

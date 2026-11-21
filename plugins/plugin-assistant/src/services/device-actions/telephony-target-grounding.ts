@@ -215,6 +215,40 @@ export function writesContactName(text: string, name: string): boolean {
   return ` ${normalizedWords(text)} `.includes(` ${query} `);
 }
 
+/**
+ * Whether a send proposal goes to exactly the recipient of the owner's own
+ * addressing clause: the same contact name or the same number. "Write a text
+ * to Mom saying Dad is home and send it" never sends to Dad.
+ */
+export function proposesRequestedRecipient(
+  operation: DeviceOperation,
+  requested:
+    | { kind: "contact"; query: string }
+    | { kind: "number"; number: string },
+): boolean {
+  if (operation.type === "sms_send")
+    return (
+      requested.kind === "number" &&
+      operation.recipients.length === 1 &&
+      samePhoneNumber(operation.recipients[0] ?? "", requested.number)
+    );
+  if (operation.type !== "sms_compose") return false;
+  const target =
+    "target" in operation
+      ? operation.target
+      : { kind: "contact" as const, query: operation.query };
+  if (target.kind === "number")
+    return (
+      requested.kind === "number" &&
+      samePhoneNumber(target.number, requested.number)
+    );
+  return (
+    requested.kind === "contact" &&
+    writesContactName(requested.query, target.query) &&
+    writesContactName(target.query, requested.query)
+  );
+}
+
 const WORD_CHARACTER = /[\p{L}\p{N}]/u;
 
 /**
