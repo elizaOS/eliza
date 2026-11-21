@@ -311,7 +311,7 @@ pure def elapse(c: Command, elapsed: Millis): Command = {
     | _ => work
   } }
 }
-pure val elapsedValues = Set(1000, 60000, 300000)
+pure val elapsedValues = Set(1000, 60000, 300000, 30 * millisPerDay)
 pure def soundReceipt(r: D::Receipt): bool =
   D::alwaysPreparedIsBound(r) and D::alwaysSessionIsSound(r) and D::alwaysSentBeforeStale(r) and D::alwaysOutcomeFollowsTheSession(r)
 pure def alwaysReceiptIsSound(c: Command): bool =
