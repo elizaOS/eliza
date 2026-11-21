@@ -260,6 +260,10 @@ const REQUESTS = [
   [CREATE, "CALENDAR_CREATE_EVENT"],
   [MOVE, "CALENDAR_UPDATE_EVENT"],
   [REMOVE, "CALENDAR_DELETE_EVENT"],
+  ["move v613 check to November 25 at 2pm", "CALENDAR_UPDATE_EVENT"],
+  ["push v613 check back an hour", "CALENDAR_UPDATE_EVENT"],
+  ["rename the event v613 check to v614 check", "CALENDAR_UPDATE_EVENT"],
+  ["remove v613 check from my calendar tomorrow", "CALENDAR_DELETE_EVENT"],
 ] as const;
 
 describe("the calendar event phrasings name their operation", () => {
@@ -280,6 +284,18 @@ describe("the calendar event phrasings name their operation", () => {
     ["Move V613 check to 4 PM.", "update"],
     ["Delete the calendar event V613 check.", "delete"],
     ["add an event called team notes review tomorrow", "create"],
+    // v613 review (2026-11-20): dates, shifts, renames and a trailing day.
+    ["move v613 check to November 25", "update"],
+    ["move v613 check to 11/25 at 2pm", "update"],
+    ["move v613 check to the 25th of November at 2pm", "update"],
+    ["reschedule v613 check for Nov 25th, 2026", "update"],
+    ["push v613 check back an hour", "update"],
+    ["move v613 check up 30 minutes", "update"],
+    ["bump the standup a day later", "update"],
+    ["rename the event v613 check to v614 check", "update"],
+    ["edit my dentist appointment", "update"],
+    ["remove v613 check from my calendar tomorrow", "delete"],
+    ["take v613 check off my calendar on November 25", "delete"],
   ])("%s", (text, expected) => {
     expect(calendarEventRequest(text)).toBe(expected);
   });
@@ -318,6 +334,14 @@ describe("the calendar event phrasings name their operation", () => {
     // Settings set to a time.
     "change my status to 5pm",
     "change my wake-up to 7am",
+    // Shifts, renames and dated removals of other records.
+    "push my alarm back an hour",
+    "move my reminder up 30 minutes",
+    "rename the note v613 check to v614 check",
+    "update the meeting notes",
+    "edit the meeting link",
+    "remove v613 check from my notes tomorrow",
+    "move the note v613 check to November 25",
   ])("leaves other requests alone: %s", (text) => {
     expect(calendarEventRequest(text)).toBeUndefined();
   });

@@ -1826,15 +1826,34 @@ function compareLocalDates(left: LocalDateOnly, right: LocalDateOnly): number {
  * A day word in a mutation request plays one of two roles: it says WHICH event
  * ("cancel my haircut on friday") or, for an update only, WHERE the event is
  * going ("move my haircut to friday 2pm"). Only the first role identifies a
- * target, and English marks the second with a "to" head, so an update's
- * target-scoped text stops at the first such marker. A delete has no
- * destination, so all of its text is target-scoped.
+ * target, and English marks the second with a "to" head, or with "for",
+ * "until" or "till" before a day or time ("reschedule v613 check for tomorrow
+ * at 10am", "push it until monday"), so an update's target-scoped text stops
+ * at the first such marker. A delete has no destination, so all of its text
+ * is target-scoped.
  *
  * Dropping too much only costs a narrowing opportunity (the handler falls back
  * to asking, today's behavior); keeping a destination date would retarget the
- * mutation, so the split is deliberately eager.
+ * mutation, so the split is deliberately eager. "for"/"until"/"till" count
+ * only before a day or clock word, so a title or a duration ("lunch for Sam",
+ * "for 30 minutes", "sync for marketing", "review for this project") keeps
+ * its words: a weekday or month must be the whole word, a month must be
+ * followed by a number, and "this"/"next" must be followed by a day or a
+ * part of the week.
+ *
+ * v613 (2026-11-20): "reschedule v613 check for tomorrow at 10am" on an event
+ * at 3pm today read "tomorrow" as the event's day and answered "No matching
+ * event was found".
  */
-const CALENDAR_DESTINATION_CLAUSE_PATTERN = /\bto\b/i;
+const CALENDAR_DESTINATION_CLAUSE_PATTERN =
+  /\b(?:to|(?:for|until|till)(?=\s+(?:today|tonight|tomorrow|(?:this|next)\s+(?:week(?:end)?|month|morning|afternoon|evening|(?:mon|tues|wednes|thurs|fri|satur|sun)day)\b|(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day)?\b|(?:tues|wednes|thurs|satur)day\b|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?(?=\s+\d|\s*$)|noon\b|midnight\b|\d{1,2}(?:[:/.-]\d|\s*(?:a\.?m\b|p\.?m\b)|(?:st|nd|rd|th)\b|\s*$|\s+(?:a\.?m\b|p\.?m\b|o['’]clock\b)))))\b/i;
+
+/**
+ * An explicit source-day marker: "on tomorrow", "from friday", "of the 21st",
+ * "tomorrow's". Such a day names WHICH event, whatever else the request says.
+ */
+const CALENDAR_SOURCE_DAY_MARKER_PATTERN =
+  /\b(?:on|from|of)\s+(?:the\s+)?(?:today|tonight|tomorrow|yesterday|this\b|next\b|last\b|(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\b|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|\d)|\b(?:today|tonight|tomorrow|yesterday|(?:mon|tues|wednes|thurs|fri|satur|sun)day)['’]s?\b/i;
 
 function resolveTargetScopedText(
   action: "update" | "delete",
@@ -1864,6 +1883,15 @@ function resolveStatedTargetLocalDate(args: {
   texts: (string | undefined)[];
   timeZone: string;
 }): LocalDateOnly | null {
+  return resolveStatedTargetDateSource(args)?.date ?? null;
+}
+
+/** The stated target day and the text that stated it. */
+function resolveStatedTargetDateSource(args: {
+  action: "update" | "delete";
+  texts: (string | undefined)[];
+  timeZone: string;
+}): { date: LocalDateOnly; text: string } | null {
   for (const text of args.texts) {
     if (!text || text.trim().length === 0) {
       continue;
@@ -1871,7 +1899,7 @@ function resolveStatedTargetLocalDate(args: {
     const scoped = resolveTargetScopedText(args.action, text);
     const parsed = parseExplicitLocalDate(scoped, args.timeZone);
     if (parsed) {
-      return parsed;
+      return { date: parsed, text };
     }
   }
   return null;
@@ -1937,6 +1965,12 @@ export function resolveCalendarMutationCandidates(args: {
   explicitDate?: string;
   /** Target text with the planner's date field excluded by provenance. */
   nonPlannerDateTexts?: (string | undefined)[];
+  /**
+   * The owner's own current message, when it is free prose (not a promoted,
+   * source-scoped target). Only a bare day in these words, after the event's
+   * title, can say where an update's only title match is going.
+   */
+  ownerText?: string;
 }): LifeOpsCalendarEvent[] {
   const titleHint = args.titleHint;
   const byTitle = titleHint
@@ -1956,11 +1990,12 @@ export function resolveCalendarMutationCandidates(args: {
   const hasDestinationClause = texts.some(
     (text) => text && resolveTargetScopedText(args.action, text) !== text,
   );
-  const statedDate = resolveStatedTargetLocalDate({
+  const statedSource = resolveStatedTargetDateSource({
     action: args.action,
     texts,
     timeZone: args.timeZone,
   });
+  const statedDate = statedSource?.date ?? null;
   const queryDate =
     !statedDate && titleHint
       ? parseExplicitLocalDate(
@@ -2005,7 +2040,58 @@ export function resolveCalendarMutationCandidates(args: {
     });
     if (!userStatedDate) return byTitle;
   }
+  if (
+    onDate.length === 0 &&
+    byTitle.length === 1 &&
+    args.action === "update" &&
+    titleHint?.trim() &&
+    statedSource &&
+    !hasDestinationClause &&
+    args.ownerText !== undefined &&
+    statedSource.text.trim() === dateText(args.ownerText)?.trim() &&
+    statedSource.text.trim() !== args.explicitDate?.trim() &&
+    !CALENDAR_SOURCE_DAY_MARKER_PATTERN.test(statedSource.text) &&
+    bareDayFollowsTitle(
+      args.ownerText,
+      [byTitle[0]?.title, titleHint],
+      args.timeZone,
+    )
+  ) {
+    // "move v613 check tomorrow at 10am" on the only "v613 check", which is
+    // today: with no destination head and no source marker the bare day can
+    // only say where the one event named is going, since no event of that
+    // title is on it. Several title matches, a marked source day ("on
+    // tomorrow", "tomorrow's") and a delete keep the strict path. So do a
+    // day said before the title ("push the monday standup back an hour"),
+    // which describes the event, and a promoted source-scoped target, whose
+    // day always names the event.
+    return byTitle;
+  }
   return onDate;
+}
+
+/**
+ * The owner's message states a day only after the event's title: "move v613
+ * check tomorrow at 10am" (a destination), not "push the monday standup back
+ * an hour" (which standup).
+ */
+function bareDayFollowsTitle(
+  ownerText: string,
+  titles: (string | undefined)[],
+  timeZone: string,
+): boolean {
+  for (const title of titles) {
+    if (!title?.trim()) continue;
+    const match = new RegExp(escapeRegExp(title.trim()), "iu").exec(ownerText);
+    if (!match) continue;
+    const before = ownerText.slice(0, match.index);
+    const after = ownerText.slice(match.index + match[0].length);
+    return (
+      parseExplicitLocalDate(before, timeZone) === null &&
+      parseExplicitLocalDate(after, timeZone) !== null
+    );
+  }
+  return false;
 }
 
 function resolveCreateEventCalendarTimeZone(
@@ -2438,23 +2524,85 @@ function pendingDeleteConfirmationKey(message: Memory): string {
   return `calendar-delete-confirmation:${message.roomId}:${message.entityId}`;
 }
 
+/** The owner turned the delete question down ("no", "keep it", "wait"). */
+const DELETE_ANSWER_DECLINE_PATTERN =
+  /\b(?:no|nope|nah|not|never|don['’]?t|do\s+not|keep|stop|wait|hold\s+on|never\s*mind|cancel\s+that|leave\s+it)\b/iu;
+/** The owner said yes to the delete question. */
+const DELETE_ANSWER_CONFIRM_PATTERN =
+  /^\s*(?:(?:yes|yeah|yea|yep|yup|sure|ok|okay|confirm(?:ed)?|correct|right|absolutely|definitely|please\s+do|go\s+ahead|do\s+it|delete\s+it|remove\s+it|that\s+one)\b|y\s*[.!]?\s*$)/iu;
+
+type DeleteConfirmationAnswer = "confirmed" | "declined" | "unanswered";
+
 /**
- * A planner's `confirmed` stands for the owner's yes only after this action
- * asked about this event in an earlier turn of the same conversation.
+ * Whether the owner's current message answers the built-in delete question
+ * this action asked about this event. A planner's `confirmed` stands for the
+ * owner's yes only when all hold:
+ *  - this action asked about this event in an earlier turn of the same
+ *    conversation, under 30 minutes ago;
+ *  - the current message is the owner's first message since that question
+ *    (when the host's message store can be read); and
+ *  - the current message itself says yes, or names the event's whole title,
+ *    asks nothing back, and turns nothing down.
+ * A "no, keep it" is "declined": the question is spent and nothing is deleted
+ * even if the planner later sends `confirmed` again.
+ *
+ * Live risk (v613 review, 2026-11-20): the owner answered "no, keep it" and a
+ * planner call with `confirmed=true` on that turn, or any turn in the next 30
+ * minutes, deleted the event.
  */
-function pendingDeleteConfirmationMatches(
-  pending: unknown,
-  event: Pick<LifeOpsCalendarEvent, "externalId">,
-  message: Memory,
-): boolean {
-  if (!pending || typeof pending !== "object") return false;
+async function deleteConfirmationAnswer(args: {
+  runtime: IAgentRuntime;
+  pending: unknown;
+  event: Pick<LifeOpsCalendarEvent, "externalId" | "title">;
+  message: Memory;
+}): Promise<DeleteConfirmationAnswer> {
+  const { pending, event, message } = args;
+  if (!pending || typeof pending !== "object") return "unanswered";
   const record = pending as Partial<PendingDeleteConfirmation>;
-  return (
-    record.eventId === event.externalId &&
-    record.askedInMessageId !== (message.id ?? null) &&
-    typeof record.askedAt === "number" &&
-    Date.now() - record.askedAt < 30 * 60_000
-  );
+  if (
+    record.eventId !== event.externalId ||
+    record.askedInMessageId === (message.id ?? null) ||
+    typeof record.askedAt !== "number" ||
+    Date.now() - record.askedAt >= 30 * 60_000
+  )
+    return "unanswered";
+  const answer = extractUserText(unwrapUserMessageText(message)).trim();
+  if (DELETE_ANSWER_DECLINE_PATTERN.test(answer)) return "declined";
+  // A question back ("ok, what's on tomorrow?") is not a yes.
+  if (answer.includes("?")) return "unanswered";
+  if (
+    !DELETE_ANSWER_CONFIRM_PATTERN.test(answer) &&
+    !ownerNamedCalendarEvent(event, [answer])
+  )
+    return "unanswered";
+  if (typeof args.runtime.getMemories === "function") {
+    let since: Memory[];
+    try {
+      since = await args.runtime.getMemories({
+        tableName: "messages",
+        roomId: message.roomId,
+        start: record.askedAt,
+        count: 50,
+      });
+    } catch {
+      // Unknown history cannot show this is the answer; ask again.
+      return "unanswered";
+    }
+    const askedAt = record.askedAt;
+    const currentAt =
+      typeof message.createdAt === "number" ? message.createdAt : Date.now();
+    const intervening = since.some(
+      (memory) =>
+        memory.entityId === message.entityId &&
+        memory.id !== message.id &&
+        memory.id !== record.askedInMessageId &&
+        typeof memory.createdAt === "number" &&
+        memory.createdAt > askedAt &&
+        memory.createdAt < currentAt,
+    );
+    if (intervening) return "unanswered";
+  }
+  return "confirmed";
 }
 
 /** The owner's words name this guest: their address, the part before the @, or a word of their name. */
@@ -6992,6 +7140,7 @@ export function createCalendarActionRunner(
               explicitDate: explicitSourceQuery
                 ? undefined
                 : detailString(details, "date"),
+              ownerText: explicitSourceQuery ? undefined : messageText(message),
               nonPlannerDateTexts: mutationTargetTexts({
                 details,
                 currentMessage: messageText(message),
@@ -7760,17 +7909,43 @@ export function createCalendarActionRunner(
               ? undefined
               : observation?.selectedObject;
             const confirmationKey = pendingDeleteConfirmationKey(message);
-            const ownerConfirmed =
+            const confirmationAnswer =
               detailBoolean(details, "confirmed") === true &&
               explicitEventId !== undefined &&
-              [targetEvent.externalId, targetEvent.id].includes(
-                explicitEventId,
-              ) &&
-              pendingDeleteConfirmationMatches(
-                await runtime.getCache<unknown>(confirmationKey),
-                targetEvent,
-                message,
-              );
+              [targetEvent.externalId, targetEvent.id].includes(explicitEventId)
+                ? await deleteConfirmationAnswer({
+                    runtime,
+                    pending: await runtime.getCache<unknown>(confirmationKey),
+                    event: targetEvent,
+                    message,
+                  })
+                : "unanswered";
+            if (confirmationAnswer === "declined") {
+              // The owner's no spends the question; a later planner
+              // `confirmed` needs a new question and a new yes.
+              await runtime.deleteCache(confirmationKey);
+              return respond({
+                success: false,
+                text: await renderReply(
+                  "delete_event_declined",
+                  `Nothing was deleted. The owner declined deleting “${targetEvent.title}”, so it stays on the calendar.`,
+                  { event: targetEvent },
+                ),
+                effectReceipt: calendarRequestNoopReceipt({
+                  message,
+                  operation: "calendar.event.delete",
+                  discriminator: targetEvent.externalId,
+                  reason: "The owner declined the delete confirmation.",
+                }),
+                data: {
+                  actionName: "CALENDAR",
+                  subaction: "delete_event",
+                  declined: true,
+                  eventId: targetEvent.externalId,
+                },
+              });
+            }
+            const ownerConfirmed = confirmationAnswer === "confirmed";
             const ownerChoseTarget =
               ownerConfirmed ||
               (lookupSawEveryCalendar &&
