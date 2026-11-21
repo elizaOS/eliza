@@ -4,7 +4,7 @@ import {
   type Checkout, type CheckoutEffect, type CheckoutPhase, type CheckoutReturn, type CheckoutStep, type Event, type Presentation
 } from "../../gen/cloud__billing__checkout.effect.vibe"
 import { isConflict } from "../../gen/cloud__shared__dispatchOnce.effect.vibe"
-import { apply as stepSubscription, isLive } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+import { apply as stepSubscription, isLive, type Rejected as SubscriptionRejected } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import type { ReturnUrl } from "../../gen/cloud__nativeClients__registry.ts"
 import { payerPath } from "../../gen/cloud__returnPages.effect.vibe"
 import { refused, type Refused } from "../http/refusal.vibe"
@@ -280,7 +280,7 @@ effect function verdictOf(stored: StoredCheckout) {
   return answerOf(stored.state, isLive(subscription.status) && subscription.subscriptionId === stored.state.subscriptionId)
 }
 
-effect function settledAnswer(stored: StoredCheckout, now: number): CheckoutAnswer!Refused {
+effect function settledAnswer(stored: StoredCheckout, now: number) {
   const answer = try verdictOf(stored)
   switch (answer) {
     case "AnswerCompleted": return { status: "completed", commandId: stored.commandId } satisfies CheckoutAnswer
@@ -384,7 +384,7 @@ export effect function startCheckout(caller: Signed, request: StartRequest) {
   let state = opened.stored.state
   const deadline = staleAt(state.receipt)
   const terms = { organizationId, commandId, customerId, priceId, expiresAt: state.sessionExpiresAt, returns: providerReturns(state.returns, deployment.settings.api) }
-  const reply = try dispatchOnce<StripeCheckoutSession, StoreFailure | RowCorrupt | RowConflict | NotAState | Rejected | Refused | SecretMissing | InvalidAllowancePeriod, Store | StripeContext | Deployment>({
+  const reply = try dispatchOnce<StripeCheckoutSession, StoreFailure | RowCorrupt | RowConflict | NotAState | Rejected | SubscriptionRejected | Refused | SecretMissing | InvalidAllowancePeriod, Store | StripeContext | Deployment>({
     claim: Effect.void,
     send: providerReply(createCheckoutSession(terms, { idempotencyKey: renderProviderKey(state.receipt.providerKey), timeout: Math.max(1, Math.min(providerTimeout, deadline - now)) })),
     record: effect (seen: ProviderReply<StripeCheckoutSession>, at: number) => {

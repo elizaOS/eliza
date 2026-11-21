@@ -1,6 +1,6 @@
 // spec/agent/conversation/conversations.md, "Story: Create and find my conversations"; spec/agent/conversation/conversations.md, "Story: Read history a page at a time"
 import { assert, it } from "@effect/vitest"
-import type { AgentRuntime, Memory, UUID } from "@elizaos/core"
+import type { Memory, UUID } from "@elizaos/core"
 import { privateNotice } from "../gen/agent__conversation__conversations.ts"
 import { call, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
@@ -12,9 +12,11 @@ interface Hit { readonly messageId: string; readonly conversationId: string; rea
 
 module node {
   import { randomUUID } from "node:crypto"
+  import type { AgentRuntime, UUID } from "@elizaos/core"
   import { conversationStore } from "../src/conversation/conversations.vibe"
 
   export const freshId = () => randomUUID() as UUID
+  export const unknownIds = { message: freshId(), conversation: freshId() }
 
   export async function pendingBeside(runtime: AgentRuntime, roomId: UUID, title: string) {
     const [room] = await runtime.adapter.getRoomsByIds([roomId])
@@ -22,7 +24,7 @@ module node {
     return conversationStore(runtime, owner).createPending(title)
   }
 }
-import { freshId, pendingBeside } from node
+import { freshId, pendingBeside, unknownIds } from node
 
 const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
 
@@ -95,8 +97,8 @@ it.effect('Create, list, page history to the start, jump to a message and search
   const paged = try pageBack(agent, plans.conversation.id, first.page)
   const pivot = inOrder(long)[120]
   const near = try history(agent, plans.conversation.id, `?around=${pivot}&before=5`)
-  const unknownPivot = try history(agent, plans.conversation.id, `?around=${freshId()}`)
-  const unknownConversation = try history(agent, freshId(), "")
+  const unknownPivot = try history(agent, plans.conversation.id, `?around=${unknownIds.message}`)
+  const unknownConversation = try history(agent, unknownIds.conversation, "")
   const pendingHistory = try history(agent, pending.id, "")
   const idWithoutTime = try history(agent, plans.conversation.id, `?beforeId=${pivot}`)
   const padded = try history(agent, plans.conversation.id, "?before=0123")
