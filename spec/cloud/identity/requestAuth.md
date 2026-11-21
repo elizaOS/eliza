@@ -112,8 +112,8 @@ device key.
 
 ```quint
 pure def isActiveAccount(standing: Standing): bool = standing.status == A::Active
-pure def sessionAdmission(route: RouteClass, lookup: SessionLookup, standing: Standing, now: Millis): Admission =
-  match lookup {
+pure def sessionAdmission(route: RouteClass, familyLookup: SessionLookup, standing: Standing, now: Millis): Admission =
+  match familyLookup {
     | NoFamily => deniedFor(CredentialUnknown)
     | FamilyRow(x) => familyAdmission(route, x.family, x.generation, standing, now)
   }
@@ -128,8 +128,8 @@ pure def liveFamily(family: S::Family, generation: int, standing: Standing, now:
   S::accepts({ ...family, now: now }, generation, standing.personEpoch)
 pure def liveGrant(grant: Dk::Grant, standing: Standing, now: Millis): bool =
   Dk::isLive({ ...grant, now: now }) and not(Dk::revokedSince(grant, standing.deviceEpoch))
-pure def liveLookup(lookup: SessionLookup, standing: Standing, now: Millis): bool =
-  match lookup { | FamilyRow(x) => liveFamily(x.family, x.generation, standing, now) | NoFamily => false }
+pure def liveLookup(familyLookup: SessionLookup, standing: Standing, now: Millis): bool =
+  match familyLookup { | FamilyRow(x) => liveFamily(x.family, x.generation, standing, now) | NoFamily => false }
 pure def liveKeyLookup(lookup: KeyLookup, standing: Standing, now: Millis): bool =
   match lookup { | GrantRow(x) => liveGrant(x.grant, standing, now) | NoGrant => false }
 pure def isLiveCredential(presented: Presented, standing: Standing, now: Millis): bool =
