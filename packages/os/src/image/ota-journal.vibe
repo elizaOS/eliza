@@ -1,0 +1,78 @@
+// spec/os/update/operator.md, "One device has one operator: every journal change and device write happens under the device's install lock"; spec/os/update/operator.md, "Each run resumes from what the device shows, sends the package only under a marked lock, and refuses a foreign build or the installed build on the other slot"
+import {
+  acquireLock, beginWrites, canBeginWrites, decodeState, initial, inv, lockHeld, releaseLock, removeLeftLock,
+  type OperatorJournal,
+} from "../../gen/os__update__operator.effect.vibe"
+import { acquireDeviceLease, HELD_FOR_THE_RUN, markDeviceLeaseForWrites, settleDeviceLease, writeDurableDeviceState, type AdbSerial } from "./device.vibe"
+import { OtaRefused } from "./ota-records.vibe"
+import { readSigningJson } from "./signing-keys.vibe"
+
+const digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const identity = Schema.String.check(Schema.isMinLength(1))
+const binding = Schema.Struct({
+  serial: identity,
+  channel: digest,
+  installedRecord: digest,
+  candidateRecord: digest,
+  ota: digest,
+})
+export type JournalBinding = typeof binding.Type
+const contents = Schema.Struct({
+  schema: Schema.Literal(1),
+  kind: Schema.Literal("aosp-ota-update-journal"),
+  binding,
+  state: Schema.Unknown,
+})
+const decodeContents = Schema.decodeUnknownEffect(contents, { onExcessProperty: "error" })
+
+export effect function readOperatorJournal(file: string, serial: string) {
+  const files = try FileSystem.FileSystem
+  if (!(try files.exists(file))) return undefined
+  const info = try files.stat(file)
+  if (info.type !== "File" || (info.mode & 0o077) !== 0) throw new OtaRefused({ reason: "Use a private regular OTA journal" })
+  const stored = try decodeContents((try readSigningJson(file)).value)
+  const state = try decodeState(stored.state)
+  if (stored.binding.serial !== serial || !inv(state) || state.phase === "Unstarted") {
+    throw new OtaRefused({ reason: "OTA journal is invalid or belongs to a different device" })
+  }
+  return { binding: stored.binding, state }
+}
+
+export function sameJournalBinding(stored: JournalBinding, expected: JournalBinding): boolean {
+  return stored.serial === expected.serial && stored.channel === expected.channel && stored.installedRecord === expected.installedRecord &&
+    stored.candidateRecord === expected.candidateRecord && stored.ota === expected.ota
+}
+
+export effect function openOperatorJournal(file: string, serial: AdbSerial, expected?: JournalBinding, directory?: string) {
+  const path = try Path.Path
+  const target = path.resolve(file)
+  const held = try acquireDeviceLease(serial, { ttlMs: HELD_FOR_THE_RUN, waitMs: 0, ...(directory === undefined ? {} : { stateDir: directory }) })
+  const previous = try readOperatorJournal(target, serial)
+  const identity = previous?.binding ?? expected
+  if (identity === undefined || (expected !== undefined && !sameJournalBinding(identity, expected))) {
+    throw new OtaRefused({ reason: "The selected OTA records or bytes do not match the journal" })
+  }
+  const loaded = previous?.state ?? initial
+  const closed = lockHeld(loaded.lock) ? releaseLock(loaded) : loaded
+  let current = acquireLock(closed.lock.tag === "LeftLocked" ? removeLeftLock(closed) : closed)
+  const state = () => current
+  const store = (next: OperatorJournal) => effect {
+    if (!inv(next) || next.phase === "Unstarted") throw new OtaRefused({ reason: "Cannot persist an invalid OTA journal transition" })
+    try writeDurableDeviceState(target, `${JSON.stringify({ schema: 1, kind: "aosp-ota-update-journal", binding: identity, state: next }, null, 2)}\n`)
+    current = next
+  }
+  const beforeWrites = () => effect {
+    if (current.lock.tag === "Locked" && current.lock.writing) return
+    if (!canBeginWrites(current)) throw new OtaRefused({ reason: "The OTA journal cannot begin device writes" })
+    try markDeviceLeaseForWrites(held)
+    try store(beginWrites(current))
+  }
+  const finish = () => effect {
+    if (current.phase === "Unstarted") return
+    const wrote = current.lock.tag === "Locked" && current.lock.writing
+    const next = releaseLock(current)
+    try store(next)
+    if (wrote && next.lock.tag === "Unlocked") try settleDeviceLease(held)
+  }
+  return { state, store, beforeWrites, finish }
+}
