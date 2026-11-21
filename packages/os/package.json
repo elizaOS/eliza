@@ -24,7 +24,8 @@
     "browser",
     "native",
     "android/browser-surface/resources/control-channel.js",
-    "!android/browser-surface/native-control-channel.mjs"
+    "!android/browser-surface/native-control-channel.mjs",
+    "!android/**/build/**"
   ],
   "exports": {
     ".": {
