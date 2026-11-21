@@ -10,7 +10,7 @@ import { json, jsonBody, type Route, type Sweep } from "../http/routes.vibe"
 import { Deployment } from "../profile/profile.vibe"
 import {
   bindPlanChange, dispatchPlanUpgrade, failureReply, findUpgradeOrigin, previewPlanChange,
-  upgradeInvoice, upgradedSubscription, type StripeUpgradeOrigin, type StripeUpgradeTerms, type StripeInvoice
+  upgradeInvoice, upgradedSubscription, type StripeUpgradeOrigin, type StripeUpgradeTerms, type StripeUpgradeApplication, type StripeInvoice
 } from "../providers/stripe.vibe"
 import { dispatchOnce, receiptOwner, renderProviderKey, replyOf, requestDigest, type ProviderReply } from "../shared/dispatch-once.vibe"
 import { Store, type Tx } from "../store/connection.vibe"
@@ -108,7 +108,7 @@ effect function recordProvider(store: Store.Shape, row: PlanCommandRecord, answe
 
 type UpgradeEvidence =
   | { readonly kind: "refused" }
-  | { readonly kind: "invoice"; readonly origin: StripeUpgradeOrigin; readonly invoice: StripeInvoice; readonly applied: boolean }
+  | { readonly kind: "invoice"; readonly origin: StripeUpgradeOrigin; readonly invoice: StripeInvoice; readonly application: StripeUpgradeApplication | undefined }
 
 effect function settleUpgrade(row: PlanCommandRecord, evidence: UpgradeEvidence, at: number) {
   const store = try Store
@@ -130,10 +130,11 @@ effect function settleUpgrade(row: PlanCommandRecord, evidence: UpgradeEvidence,
       }
     }
     let invoice: UpgradeInvoice = "NoUpgradeInvoice"
+    const application = evidence.kind === "invoice" ? evidence.application : undefined
     if (evidence.kind === "invoice") {
       if (evidence.invoice.status === "open") invoice = "UpgradeInvoiceOpen"
       else if (evidence.invoice.status === "void") invoice = "UpgradeInvoiceVoided"
-      else if (evidence.invoice.status === "paid" && evidence.applied) invoice = "UpgradeInvoicePaid"
+      else if (evidence.invoice.status === "paid" && application !== undefined) invoice = "UpgradeInvoicePaid"
       else {
         if (current.origin === undefined) try savePlanCommand(tx, { ...current, command, origin }, at)
         return { ...current, command, origin }
@@ -145,10 +146,12 @@ effect function settleUpgrade(row: PlanCommandRecord, evidence: UpgradeEvidence,
     const paid = invoice === "UpgradeInvoicePaid"
     if (!canFinish(command, invoice, paid ? subscription.revision : 0)) return current
     let revision = 0
-    if (paid) {
+    if (paid && application !== undefined) {
+      if (subscription.periodStart > application.periodStart ||
+        (subscription.periodStart === application.periodStart && subscription.periodEnd > application.periodEnd)) return current
       const updated = try reconcileSubscription(tx, row.organizationId, {
         customerId: current.binding.customerId, subscriptionId: command.subscriptionId, plan: wirePlanKey(terms.targetPlanKey),
-        status: "active", startsAt: terms.periodStart, endsAt: terms.periodEnd, latestInvoice: "PlanChangeInvoice", cancelAtPeriodEnd: false
+        status: "active", startsAt: application.periodStart, endsAt: application.periodEnd, latestInvoice: "PlanChangeInvoice", cancelAtPeriodEnd: false
       }, at)
       revision = updated.revision
     }
@@ -179,10 +182,8 @@ effect function refreshUpgrade(row: PlanCommandRecord) {
   if (origin === undefined) return { row }
   const invoice = upgradeInvoice(terms, origin, providerRead) catch () => undefined
   if (invoice === undefined) return { row }
-  const applied = invoice.status === "paid"
-    ? (upgradedSubscription(terms, providerRead) catch () => undefined) !== undefined
-    : false
-  return { row: try settleUpgrade(row, { kind: "invoice", origin, invoice, applied }, try Clock.currentTimeMillis), invoice }
+  const application = invoice.status === "paid" ? (upgradedSubscription(terms, providerRead) catch () => undefined) : undefined
+  return { row: try settleUpgrade(row, { kind: "invoice", origin, invoice, application }, try Clock.currentTimeMillis), invoice }
 }
 
 effect function sendUpgrade(terms: StripeUpgradeTerms, operationKey: string) {

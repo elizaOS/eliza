@@ -199,7 +199,8 @@ effect function everyPage<A extends { readonly id: string }>(item: Schema.Codec<
     const listed: { readonly data: ReadonlyArray<A>; readonly has_more: boolean } = try read(page, { method: "GET", path, timeout, params: [...params, ["limit", "100"], ...(after === undefined ? [] : [["starting_after", after] as const])] })
     all.push(...listed.data)
     const last = listed.data.at(-1)
-    more = listed.has_more && last !== undefined
+    if (listed.has_more && (last === undefined || last.id === after)) throw new StripeInvalidResponse({ path, status: 200 })
+    more = listed.has_more
     after = last?.id
   }
   return all
@@ -425,19 +426,19 @@ export effect function dispatchPlanUpgrade(terms: StripeUpgradeTerms, mutation: 
 }
 
 export effect function findUpgradeOrigin(terms: StripeUpgradeTerms, operationKey: string, call: StripeRead): (StripeUpgradeOrigin | undefined)!StripeFailure!StripeContext {
-  const events = Schema.Struct({
-    data: Schema.Array(Schema.Struct({
-      id: Schema.String, type: Schema.String, created: Schema.Number, livemode: Schema.Boolean,
-      account: Schema.optionalKey(Schema.NullOr(Schema.String)), context: Schema.optionalKey(Schema.NullOr(Schema.String)),
-      request: Schema.NullOr(Schema.Struct({ id: Schema.NullOr(Schema.String), idempotency_key: Schema.NullOr(Schema.String) })),
-      data: Schema.Struct({ object: Schema.Unknown })
-    }))
+  const Event = Schema.Struct({
+    id: Schema.String, type: Schema.String, created: Schema.Number, livemode: Schema.Boolean,
+    account: Schema.optionalKey(Schema.NullOr(Schema.String)), context: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    request: Schema.NullOr(Schema.Struct({ id: Schema.NullOr(Schema.String), idempotency_key: Schema.NullOr(Schema.String) })),
+    data: Schema.Struct({ object: Schema.Unknown })
   })
+  const path = "/v1/events"
   const now = try Clock.currentTimeMillis
   const live = try livemode()
-  const reply = try read(events, { method: "GET", path: "/v1/events", timeout: call.timeout,
-    params: [["type", "invoice.created"], ["created[gte]", seconds(terms.sentAt)], ["limit", "100"]] })
-  const seen = reply.data.filter((event) => event.type === "invoice.created" && event.livemode === live &&
+  const reply = try timeoutOrElse(everyPage(Event, path, [["type", "invoice.created"], ["created[gte]", seconds(terms.sentAt)]], call.timeout), {
+    duration: Duration.millis(call.timeout), orElse: () => fail(new StripeUnavailable({ path, status: null }))
+  })
+  const seen = reply.filter((event) => event.type === "invoice.created" && event.livemode === live &&
     event.account == null && event.context == null && /^evt_[A-Za-z0-9]+$/.test(event.id) &&
     event.request?.idempotency_key === operationKey)
   const [event] = seen
@@ -461,15 +462,24 @@ export effect function upgradeInvoice(terms: StripeUpgradeTerms, origin: StripeU
   return invoice
 }
 
+export interface StripeUpgradeApplication {
+  readonly periodStart: number
+  readonly periodEnd: number
+}
+
 export effect function upgradedSubscription(terms: StripeUpgradeTerms, call: StripeRead) {
   const subscription = try retrieveSubscription(terms.subscriptionId, call)
   const [item] = subscription.items.data
   if (subscription.id !== terms.subscriptionId || subscription.customer !== terms.binding.customerId ||
     subscription.livemode !== try livemode() || subscription.status !== "active" || subscription.cancel_at_period_end ||
     subscription.items.has_more || subscription.items.data.length !== 1 || item === undefined ||
-    item.id !== terms.binding.subscriptionItemId || item.price.id !== terms.binding.targetPriceId || item.quantity !== 1 ||
-    item.current_period_start * 1000 !== terms.periodStart || item.current_period_end * 1000 !== terms.periodEnd) return undefined
-  return subscription
+    item.id !== terms.binding.subscriptionItemId || item.price.id !== terms.binding.targetPriceId || item.quantity !== 1) return undefined
+  const periodStart = item.current_period_start * 1000
+  const periodEnd = item.current_period_end * 1000
+  const originalPeriod = periodStart === terms.periodStart && periodEnd === terms.periodEnd
+  if (!Number.isSafeInteger(periodStart) || !Number.isSafeInteger(periodEnd) || periodStart >= periodEnd ||
+    periodStart > (try Clock.currentTimeMillis) || (!originalPeriod && periodStart < terms.periodEnd)) return undefined
+  return { periodStart, periodEnd } satisfies StripeUpgradeApplication
 }
 
 export effect function retrieveInvoice(invoiceId: string, call: StripeRead): StripeInvoice!StripeFailure!StripeContext {

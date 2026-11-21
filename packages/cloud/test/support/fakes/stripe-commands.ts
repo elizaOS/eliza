@@ -117,7 +117,8 @@ export function stripePlanUpgrade(stripe: StripeFake, now: () => number) {
       parent: { subscription_details: { subscription: subscription.id } },
       lines: { has_more: false, data: [line(item.price.id, -credit), line(target.priceId, charge)] },
     };
-    return { invoice, targetPrice, subscription, key, requestId: `req_upgrade${revision}` };
+    return { invoice, targetPrice, subscription, key, requestId: `req_upgrade${revision}`,
+      periodStart: item.current_period_start, periodEnd: item.current_period_end };
   }
 
   const handler: FakeHandler = (request) => {
@@ -147,17 +148,24 @@ export function stripePlanUpgrade(stripe: StripeFake, now: () => number) {
       if (entry !== undefined) {
         const sub = entry.subscription;
         const items = entry.invoice.status === "paid"
-          ? { ...sub.items, data: [{ ...sub.items.data[0], price: entry.targetPrice }] }
+          ? { ...sub.items, data: [{ ...sub.items.data[0], price: entry.targetPrice,
+            current_period_start: entry.periodStart, current_period_end: entry.periodEnd }] }
           : sub.items;
         return { status: 200, body: { ...sub, items, latest_invoice: entry.invoice.id } };
       }
     }
     if (request.method === "GET" && request.path === "/v1/events") {
-      return { status: 200, body: { data: [...dispatched.values()].map((entry, index) => ({
+      const records = [...dispatched.values()];
+      const page = records.map((entry, index) => ({
         id: `evt_upgrade${index}`, type: "invoice.created", created: entry.invoice.created,
         livemode: false, request: { id: entry.requestId, idempotency_key: showOrigin ? entry.key : `unrelated-${entry.key}` },
         data: { object: entry.invoice },
-      })) } };
+      }));
+      const [first] = page;
+      if (showOrigin && first !== undefined && !request.query.has("starting_after")) {
+        return { status: 200, body: { has_more: true, data: [{ ...first, id: "evt_skip", request: { id: "req_skip", idempotency_key: "unrelated" } }] } };
+      }
+      return { status: 200, body: { has_more: false, data: page } };
     }
     const invoiceId = /^\/v1\/invoices\/([^/]+)$/.exec(request.path)?.[1];
     if (request.method === "GET" && invoiceId !== undefined) {
@@ -171,6 +179,12 @@ export function stripePlanUpgrade(stripe: StripeFake, now: () => number) {
     handler,
     loseNextReply: () => { loseNext = true; },
     showInvoiceOrigins: () => { showOrigin = true; },
+    advance: (id: string, periodStart: number, periodEnd: number) => {
+      const entry = dispatched.get(id);
+      if (entry === undefined) throw new Error("Missing fixture upgrade");
+      entry.periodStart = periodStart / 1000;
+      entry.periodEnd = periodEnd / 1000;
+    },
     settle: (id: string, status: "paid" | "void") => {
       const entry = dispatched.get(id);
       if (entry === undefined) throw new Error("Missing fixture upgrade");

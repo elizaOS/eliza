@@ -1,7 +1,7 @@
 // spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
 import { assert, describe, it } from "@effect/vitest"
 import { area as billing } from "../src/http/routes/billing.vibe"
-import { claimLiveCommand, reconcileSubscription } from "../src/billing/subscriptions.vibe"
+import { claimLiveCommand, readSubscription, reconcileSubscription } from "../src/billing/subscriptions.vibe"
 import { readReviewedPlanQuote, reviewPlanChange, type ReviewPlanChange } from "../src/billing/plan-quotes.vibe"
 import { readStripeSubscription, stripeClient } from "../src/billing/stripe-observation.vibe"
 import type { BillingSnapshot } from "../src/billing/snapshot.vibe"
@@ -446,8 +446,27 @@ describe("Node subscriptions", () => {
       const noOrigin = try cloud.call(root + "/" + originCommand.commandId, recovering)
       try sync(() => upgrade.showInvoiceOrigins())
       const recovered = try cloud.call(root + "/" + originCommand.commandId, recovering)
-      try sync(() => upgrade.settle(lostSource.subscriptionId, "paid"))
-      const recoveredPaid = try cloud.call(root + "/" + originCommand.commandId, recovering)
+      const futureStart = lostSource.periodEnd
+      const futureEnd = futureStart + (lostSource.periodEnd - lostSource.periodStart)
+      const afterRollover = futureStart + 1000
+      try sync(() => {
+        upgrade.settle(lostSource.subscriptionId, "paid")
+        upgrade.advance(lostSource.subscriptionId, futureStart, futureEnd)
+        clock.set(afterRollover)
+      })
+      const customerId = lostSource.customer.tag === "PinnedCustomer" ? lostSource.customer.customerId : ""
+      try cloud.store.transaction((tx) => reconcileSubscription(tx, "org-recovering", {
+        customerId, subscriptionId: lostSource.subscriptionId, plan: "pro_monthly", status: "active",
+        startsAt: futureStart, endsAt: futureEnd, cancelAtPeriodEnd: false, latestInvoice: "PeriodInvoicePaid",
+        payment: { id: "in_later_renewal", startsAt: futureStart, endsAt: futureEnd, condition: "paid" }
+      }, afterRollover))
+      const rolled = try sql(cloud, "SELECT state FROM allowance_periods WHERE key='invoice/in_later_renewal'", [])
+      const renewed = sessionToken("z")
+      try session(cloud, "recovering", renewed, { ...live, authAt: afterRollover,
+        accessExpiresAt: afterRollover + minuteMs * 15, refreshExpiresAt: afterRollover + minuteMs * 60 }, afterRollover)
+      const recoveredPaid = try cloud.call(root + "/" + originCommand.commandId, renewed)
+      const periodAfter = try cloud.store.transaction((tx) => readSubscription(tx, "org-recovering"))
+      const nextPage = try sync(() => cloud.fakes.seen.some((request) => request.path.endsWith("/v1/events") && request.query.get("starting_after") === "evt_skip"))
       const final = try sql(cloud, "SELECT organization_id,key,state,state->>'adjustment' AS adjustment FROM allowance_periods ORDER BY organization_id,key", [])
       const receipts = try sql(cloud, "SELECT stripe_invoice_id,stripe_request_id FROM subscription_commands ORDER BY stripe_invoice_id", [])
       const providerWrites = try sync(() => cloud.fakes.seen.filter((request) => request.method === "POST" && /\/v1\/subscriptions\//.test(request.path)).length)
@@ -459,9 +478,11 @@ describe("Node subscriptions", () => {
         assert.deepStrictEqual([replay.body, appliedAgain.body, payment.body, unpaid, held], [
           confirmed.body, applied.body, { url: "https://invoice.stripe.com/i/test-upgrade-1" }, initial, [{ plan: "PlusMonthly", command: commandId }]
         ])
-        assert.deepStrictEqual([status(applied), history.status, providerWrites], ["succeeded", 200, 2])
+        assert.deepStrictEqual([status(applied), history.status, providerWrites, nextPage, periodAfter.periodStart, periodAfter.periodEnd],
+          ["succeeded", 200, 2, true, futureStart, futureEnd])
         assert.deepStrictEqual(final.find((row) => row.key === historical.key)?.state, initial.find((row) => row.key === historical.key)?.state)
-        assert.deepStrictEqual(final.filter((row) => row.key !== historical.key).map((row) => [row.organization_id, Number(row.adjustment)]),
+        assert.deepStrictEqual(final.find((row) => row.key === "invoice/in_later_renewal")?.state, rolled[0]?.state)
+        assert.deepStrictEqual(final.filter((row) => row.key !== historical.key && row.key !== "invoice/in_later_renewal").map((row) => [row.organization_id, Number(row.adjustment)]),
           [["org-recovering", 65_000_000], ["org-upgrader", 65_000_000]])
         assert.deepStrictEqual(receipts, [
           { stripe_invoice_id: "in_upgrade1", stripe_request_id: "req_upgrade1" },
