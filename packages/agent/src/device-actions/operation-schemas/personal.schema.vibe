@@ -1,4 +1,5 @@
 // spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"; spec/calendar/availability.md, "Choose a bounded interval and accept occupancy-only rows"; spec/calendar/availability.md, "Return sorted rows and preserve their multiplicity"; spec/notes/read.md, "A query receipt carries the original query, an allowed basis and a record only on a match"; spec/notes/read.md, "Wire and authored content have different boundaries"
+import { SchemaGetter } from "effect"
 import type { OperationType } from "../../../gen/agent__deviceActions__operations.effect.vibe"
 import type { Classification, Evidence, FamilySchemas, OperationSchema, WireOperation } from "./family.vibe"
 
@@ -75,22 +76,42 @@ function instantAt(wall: number, timeZone: string): number | undefined {
   }
 }
 
-const Text = (max: number) => Schema.String.check(Schema.makeFilter((value: string) => plainText(value, max, false)))
-const BlankText = (max: number) => Schema.String.check(Schema.makeFilter((value: string) => plainText(value, max, true)))
+function sampled<Wire extends Schema.Constraint, Seed extends Schema.Constraint>(wire: Wire, seed: Seed, build: (seed: Seed["Type"]) => Wire["Type"]) {
+  const domain = Schema.declare(Schema.is(Schema.toType(wire)), {
+    toCodecArbitrary: () => Schema.link<Wire["Type"]>()(seed, { decode: SchemaGetter.transform(build), encode: SchemaGetter.forbiddenEncoding }),
+  })
+  return Schema.decodeTo(domain)(wire)
+}
+
+const Text = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max), Schema.makeFilter((value: string) => plainText(value, max, false)))
+const BlankText = (max: number) => Schema.String.check(Schema.isMaxLength(max), Schema.makeFilter((value: string) => plainText(value, max, true)))
 const Identifier = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/))
 const ReminderId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/))
 const Revision = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
-const Instant = Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/), Schema.makeFilter(isoInstant))
-const ZoneName = Schema.String.check(Schema.makeFilter(knownZone))
-const Epoch = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 8_640_000_000_000_000 }))
-const AlertMinutes = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 10_080 }))
-const CivilDate = Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\d$/), Schema.makeFilter(realDate))
 const between = (minimum: number, maximum: number) => Schema.Int.check(Schema.isBetween({ minimum, maximum }))
+const firstInstant = Date.parse("0000-01-01T00:00:00.000Z")
+const lastInstant = Date.parse("9999-12-31T23:59:59.999Z")
+const instantText = (millis: number) => new Date(millis).toISOString()
+const dateText = (millis: number) => instantText(millis).slice(0, 10)
+const ZoneSeed = Schema.Literals(["UTC", "America/New_York", "Europe/Berlin", "Asia/Kolkata", "Australia/Sydney"])
+const Instant = sampled(Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/), Schema.makeFilter(isoInstant)), between(firstInstant, lastInstant), instantText)
+const ZoneName = sampled(Schema.String.check(Schema.makeFilter(knownZone)), ZoneSeed, (zone) => zone)
+const Epoch = between(0, 8_640_000_000_000_000)
+const AlertMinutes = between(0, 10_080)
+const CivilDate = sampled(Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\d$/), Schema.makeFilter(realDate)), between(firstInstant / day, Math.floor(lastInstant / day)), (date) => dateText(date * day))
 const version = Schema.Literal(1)
 
-const CalendarFields = Schema.Struct({
-  title: Text(500), description: BlankText(16_000), location: BlankText(2_000), start: Instant, end: Instant, timeZone: ZoneName,
-}).check(Schema.makeFilter(({ start, end }) => interval(start, end, 370 * day)))
+const calendarSpan = (maximum: number) => Schema.Struct({ from: between(0, lastInstant - maximum), duration: between(1, maximum), timeZone: ZoneSeed })
+function calendarRange({ from, duration, timeZone }: typeof CalendarSpan.Type) {
+  return { start: instantText(from), end: instantText(from + duration), timeZone }
+}
+const CalendarSpan = calendarSpan(370 * day)
+const calendarText = { title: Text(500), description: BlankText(16_000), location: BlankText(2_000) }
+const CalendarFields = sampled(
+  Schema.Struct({ ...calendarText, start: Instant, end: Instant, timeZone: ZoneName }).check(Schema.makeFilter(({ start, end }) => interval(start, end, 370 * day))),
+  Schema.Struct({ ...calendarText, ...CalendarSpan.fields }),
+  ({ title, description, location, ...span }) => ({ title, description, location, ...calendarRange(span) }),
+)
 export const CalendarSource = Schema.Struct({ sourceId: Identifier, sourceRevision: Revision })
 const CalendarTarget = Schema.Struct({ sourceId: Identifier, sourceRevision: Revision, eventId: Identifier, revision: Revision })
 
@@ -134,9 +155,27 @@ function nextEventFits({ window, event }: { readonly window: CalendarWindow; rea
   }
 }
 
-export const CalendarNextResult = Schema.Struct({
-  version, kind: Schema.Literal("calendar_read_next"), window: CalendarWindow, event: Schema.NullOr(NextEvent),
-}).check(Schema.makeFilter(nextEventFits))
+const lastDay = Math.floor(lastInstant / day)
+export const CalendarNextResult = sampled(
+  Schema.Struct({ version, kind: Schema.Literal("calendar_read_next"), window: CalendarWindow, event: Schema.NullOr(NextEvent) }).check(Schema.makeFilter(nextEventFits)),
+  Schema.Struct({
+    localDay: between(0, lastDay - 31), elapsed: between(1_000, day - 1),
+    event: Schema.NullOr(Schema.Struct({ offset: between(0, 29), allDay: Schema.Boolean, title: NextEvent.fields.title })),
+  }),
+  ({ localDay, elapsed, event }) => {
+    const midnight = localDay * day
+    const start = midnight + elapsed
+    const timeZone = "UTC"
+    const window = { start: instantText(start), end: instantText(midnight + 30 * day), timeZone }
+    const receipt = { version: 1, kind: "calendar_read_next", window } as const
+    if (event === null) return { ...receipt, event }
+    const from = (event.allDay ? midnight : start) + event.offset * day
+    return { ...receipt, event: {
+      start: instantText(from), end: instantText(from + (event.allDay ? day : 3_600_000)), allDay: event.allDay, title: event.title,
+      timeZone, timing: event.allDay && event.offset === 0 ? "ongoing" : "upcoming",
+    } } as const
+  },
+)
 
 export type CalendarOperation = typeof CalendarOperation.Type
 export type CalendarRecordResult = typeof CalendarRecordResult.Type
@@ -246,8 +285,23 @@ export function reminderScheduleAt(local: LocalReminderSchedule): ReminderSchedu
   return { at: dueAt - lead * 60_000, recurrence: repeat, dueAt, alertMinutes: local.alertMinutes }
 }
 
-const CreateSchedule = Schema.Struct({ at: Epoch, recurrence: Schema.NullOr(ReminderRepeat), dueAt: Epoch, alertMinutes: Schema.NullOr(AlertMinutes) })
-  .check(Schema.makeFilter(timingAgrees))
+const ScheduleSeed = Schema.Struct({
+  dueMinute: between(10_080, Math.floor(lastInstant / 60_000)),
+  repeat: Schema.NullOr(ReminderRepeat.fields.rule), alertMinutes: Schema.NullOr(AlertMinutes),
+})
+function scheduleFromSeed({ dueMinute, repeat, alertMinutes }: typeof ScheduleSeed.Type) {
+  const dueAt = dueMinute * 60_000
+  const leadMinutes = alertMinutes ?? 0
+  const recurrence = repeat === null ? null : {
+    rule: repeat, zone: "UTC", date: dateText(dueAt), time: instantText(dueAt).slice(11, 16), leadMinutes,
+  }
+  return { at: dueAt - leadMinutes * 60_000, dueAt, alertMinutes, recurrence }
+}
+
+const CreateSchedule = sampled(
+  Schema.Struct({ at: Epoch, recurrence: Schema.NullOr(ReminderRepeat), dueAt: Epoch, alertMinutes: Schema.NullOr(AlertMinutes) }).check(Schema.makeFilter(timingAgrees)),
+  ScheduleSeed, scheduleFromSeed,
+)
 const CreateFields = Schema.Struct({
   title: Text(200).check(Schema.makeFilter((title: string) => title === title.trim())), body: BlankText(4_000), schedule: CreateSchedule,
 })
@@ -266,8 +320,10 @@ function reminderCreated(result: ReminderCreateResult, op: ReminderCreate) {
     && (schedule.alertMinutes === null ? result.status === "pending" : result.status !== "pending")
 }
 
-export const CalendarAvailability = Schema.Struct({ type: Schema.Literal("calendar_availability"), start: Instant, end: Instant, timeZone: ZoneName })
-  .check(Schema.makeFilter(({ start, end }) => interval(start, end, 7 * day)))
+export const CalendarAvailability = sampled(
+  Schema.Struct({ type: Schema.Literal("calendar_availability"), start: Instant, end: Instant, timeZone: ZoneName }).check(Schema.makeFilter(({ start, end }) => interval(start, end, 7 * day))),
+  calendarSpan(7 * day), (span) => ({ type: "calendar_availability", ...calendarRange(span) } as const),
+)
 const BusyInterval = Schema.Struct({ start: Instant, end: Instant, allDay: Schema.Boolean, tentative: Schema.Boolean })
 export const CalendarAvailabilityResult = Schema.Struct({
   version, kind: Schema.Literal("calendar_availability"), window: Schema.Struct({ start: Instant, end: Instant, timeZone: ZoneName }),
@@ -387,7 +443,7 @@ function namedMatches(result: NamedResult, op: NamedTarget) {
     && chosenRecordMatches(result)
 }
 
-const MapsText = (max: number) => Schema.String.check(Schema.makeFilter((value: string) => value.length <= max && value.trim() !== "" && !/[\u0000-\u001f]/.test(value)))
+const MapsText = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max), Schema.makeFilter((value: string) => value.trim() !== "" && !/[\u0000-\u001f]/.test(value)))
 const MapsTarget = Schema.Struct({
   kind: Schema.Literals(["map-place", "map-route"]),
   id: Schema.String.check(Schema.isPattern(/^maps_[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/)),
