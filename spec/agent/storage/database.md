@@ -57,10 +57,11 @@ pure def launchOwner(agentId: str, launch: StoreLaunch): DataOwner = { agentId: 
 pure def failed(fault: StoreFault, s: Store): Store = { ...s, phase: Failed, fault: fault, locked: false }
 pure def seedable(b: Bundle): bool = b.snapshotVersion > 0 and b.snapshotVersion == latest(b)
 pure def enterSchema(version: int, seeded: bool, owner: DataOwner, s: Store): Store = { ...s, phase: Migrating, version: version, seeded: seeded, recorded: owner }
-pure def startEmpty(s: Store): Store = enterSchema(if (seedable(s.bundle)) latest(s.bundle) else 0, seedable(s.bundle), launchOwner(s.agentId, s.launch), s)
+pure def startEmpty(owner: DataOwner, s: Store): Store =
+  enterSchema(if (seedable(s.bundle)) latest(s.bundle) else 0, seedable(s.bundle), owner, s)
 pure def identified(agentId: str, s: Store): Store = {
   val known = { ...s, agentId: agentId, candidate: "" }
-  if (s.launch.persist) { ...known, phase: Locking } else startEmpty(known)
+  if (s.launch.persist) { ...known, phase: Locking } else startEmpty(launchOwner(agentId, s.launch), known)
 }
 pure def validRetention(r: LogRetention): bool = match r { | Prune(x) => x.ageMs >= 0 and x.maxRowsPerRoom >= 0 and (x.ageMs > 0 or x.maxRowsPerRoom > 0) | KeepAll => true }
 pure def canOpen(s: Store, launch: StoreLaunch, bundle: Bundle): bool = s.phase == Unopened and bundle.snapshotVersion >= 0 and validRetention(launch.retention)
@@ -121,7 +122,7 @@ pure val foundValues = Set(DirEmpty, DirCorrupt,
   DirStore({ owner: { agentId: "agent1", account: OwnerAccount({ userId: "user2", organizationId: "org1" }), embeddingDimensions: 384 }, version: 1 }))
 pure def canReadDirectory(s: Store, found: Directory): bool = s.phase == ReadingDirectory
 pure def readDirectory(s: Store, found: Directory): Store = match found {
-  | DirEmpty => startEmpty(s)
+  | DirEmpty => startEmpty(launchOwner(s.agentId, s.launch), s)
   | DirCorrupt => failed(Corrupt, s)
   | DirStore(d) => if (d.owner != launchOwner(s.agentId, s.launch)) failed(OtherOwner, s) else if (d.version < 0 or d.version > latest(s.bundle)) failed(NewerSchema, s) else enterSchema(d.version, false, d.owner, s)
 }
