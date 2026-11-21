@@ -1,13 +1,14 @@
 // spec/cloud/index.md, "Story: Connect Google mail and calendar"; spec/cloud/identity/federatedSignIn.md, "Story: Connect mail and calendar from the same Google sheet"
 import type { Client } from "pg"
 import { canReadCloudCalendarReminder, currentAttachmentTransfer } from "../gen/cloud.effect.vibe"
-import { nativeConnectStores, nativeConnectStoresAny } from "../gen/cloud__identity__federatedSignIn.effect.vibe"
+import { nativeConnectAttempts, nativeConnectStores, nativeConnectStoresAny, nativeConnectWindowSeconds } from "../gen/cloud__identity__federatedSignIn.effect.vibe"
 import { Aead, Digest, SecureRandom } from "effect/crypto"
 import { Base64 } from "effect/encoding"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpServerResponse, HttpServerRequest, HttpIncomingMessage } from "effect/http"
 import { attachmentSelection, googleCalendarFeed, googleCalendarItem, googleGmailAttachment, googleGmailMessage, googleGmailTriage, googleReplyTarget, hasControlCharacter, mailAddress, GoogleAttachmentMissing, GoogleAttachmentStale, GoogleAttachmentUnsupported, GoogleReadInput, type GoogleReadApi } from "./google-read.vibe"
 
 import { boundedText } from "./providers/bounded-body.vibe"
+import { rateLimit, RateLimited, StorageUnavailable } from "./identity-store.vibe"
 
 export type GoogleEnv = {
   PUBLIC_API_ORIGIN: string
@@ -339,6 +340,7 @@ effect function connectCode(env: GoogleEnv, db: Client, account: string, signedI
 
 effect function connectNative(request: Request, env: GoogleEnv, db: Client, account: string) {
   const { serverAuthCode } = try readAction(request, NativeConnect)
+  try rateLimit(db, "google:native:connect", account, nativeConnectAttempts, nativeConnectWindowSeconds)
   const { rows } = try query<{ provider_subject: string }>(db, `
     SELECT p.provider_subject FROM accounts a JOIN cloud_sign_in_identities p ON p.account_id = a.key
     WHERE a.key = $1 AND a.status = 'active' AND p.provider = 'google'`, [account])
@@ -827,6 +829,8 @@ export function googleRequest(request: Request, env: GoogleEnv, db: Client, acco
       when AuthorizationFailed: body(409, { error: "google_reconnect_required" });
       when ConnectionUnavailable: body(409, { error: "google_connection_unavailable" });
       when DatabaseUnavailable: body(503, { error: "storage_unavailable" });
+      when StorageUnavailable: body(503, { error: "storage_unavailable" });
+      when RateLimited: body(429, { error: "rate_limited" });
       when ProviderUnavailable: body(502, { error: "google_unavailable" });
       default: body(502, { error: "google_response_invalid" });
     }
