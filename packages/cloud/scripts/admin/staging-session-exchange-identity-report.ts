@@ -179,18 +179,18 @@ async function main() {
     ["User id", userId, process.env.ALLOWED_USER_IDS],
     ["Organization id", organizationId, process.env.ALLOWED_ORGANIZATION_IDS],
   ] as const;
-  const credentialEligible =
-    rows.every(([, id, allowlist]) => includesId(allowlist, id)) &&
+  const activeOrdinaryCredential =
     fixture.active_user &&
     fixture.active_organization &&
     fixture.ordinary_steward_user &&
     fixture.matching_steward_identity &&
     !fixture.app_key &&
     !fixture.sandbox_key;
+  const credentialEligible =
+    activeOrdinaryCredential &&
+    rows.every(([, id, allowlist]) => includesId(allowlist, id));
   const authority = credentialEligible
     ? await resolveStagingSessionTenantAuthority({
-        fixtureSubject: process.env.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT,
-        reader: process.env.STAGING_SESSION_EXCHANGE_GRANT_READ_KEY,
         tenantId: STAGING_STEWARD_TENANT,
         stewardUserId: fixture.steward_user_id,
         organizationTenantId: fixture.steward_tenant_id,
@@ -201,9 +201,41 @@ async function main() {
         },
         user: fixture,
         nowSeconds: Math.floor(Date.now() / 1000),
+        fixtureSubject: process.env.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT,
+        reader: process.env.STAGING_SESSION_EXCHANGE_GRANT_READ_KEY,
       })
     : null;
+  const fixtureEmail =
+    process.env.STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL?.trim().toLowerCase();
+  const configuredSubject =
+    process.env.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT?.trim();
+  const fixtureWallet =
+    process.env.STAGING_SESSION_EXCHANGE_FIXTURE_WALLET_ADDRESS?.trim().toLowerCase();
+  const matchesPrincipal = fixtureWallet
+    ? /^0x[0-9a-f]{40}$/.test(fixtureWallet) &&
+      fixture.wallet_verified &&
+      fixture.wallet_chain_type === "ethereum" &&
+      fixture.wallet_address?.toLowerCase() === fixtureWallet
+    : fixtureEmail &&
+      fixture.email_verified &&
+      fixture.email?.trim().toLowerCase() === fixtureEmail;
+  const exactFixtureOwner = Boolean(
+    activeOrdinaryCredential &&
+      matchesPrincipal &&
+      UUID.test(fixture.steward_user_id) &&
+      (!configuredSubject || configuredSubject === fixture.steward_user_id) &&
+      fixture.role === "owner" &&
+      fixture.user_created &&
+      fixture.source_app_id === null,
+  );
+  if (exactFixtureOwner && process.env.GITHUB_OUTPUT) {
+    const digest = createHash("sha256")
+      .update(JSON.stringify([userId, organizationId, fixture.steward_user_id]))
+      .digest("hex");
+    await appendFile(process.env.GITHUB_OUTPUT, `fixture_digest=${digest}\n`);
+  }
   const checks = [
+    ["Exact verified fixture owner", exactFixtureOwner],
     ["App credential", fixture.app_key],
     ["Sandbox credential", fixture.sandbox_key],
     ["Active registered Cloud user", fixture.active_user],

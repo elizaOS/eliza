@@ -313,7 +313,12 @@ export class MapsScreenController {
   private backgroundRunning = false;
   private query = "";
   private searching = false;
-  private waitingSearch?: { query: string; intent: number };
+  private waitingSearch?: {
+    query: string;
+    intent: number;
+    /** The hand-off's search point, kept for the resumed search. */
+    near?: Coordinate;
+  };
   private message = "";
   private disposed = false;
   private revision = 0;
@@ -334,6 +339,8 @@ export class MapsScreenController {
   private recenterPosition?: Coordinate;
   private locationTimeout?: ReturnType<typeof setTimeout>;
   private viewport?: Coordinate;
+  /** A hand-off's own search point ("pharmacy near the Ferry Building"), used by its one search. */
+  private handoffNear?: Coordinate;
   private readonly releaseListeners = new Set<() => void>();
   private readonly lifecycle = {
     releases: 0,
@@ -372,8 +379,11 @@ export class MapsScreenController {
             this.query === pending.query;
           void Promise.resolve(this.initialization).then(
             () => {
-              if (current() && this.state?.search.phase === "idle")
+              if (current() && this.state?.search.phase === "idle") {
+                // A hand-off's resumed search keeps its own search point.
+                this.handoffNear = pending.near;
                 this.submit();
+              }
             },
             (error) => {
               if (!current()) return;
@@ -563,12 +573,22 @@ export class MapsScreenController {
 
   // ---- search ---------------------------------------------------------------
 
-  /** Another app opened Maps with a one-use search (e.g. an event's location). */
-  handoff(text: string, fromEvent: boolean): void {
+  /**
+   * Another app opened Maps with a one-use search (e.g. an event's location).
+   * `near` is the place the search was made around (a chat card for "pharmacy
+   * near the Ferry Building"): the search is ranked around it, not around the
+   * viewport or the phone, so Maps shows the places the chat listed.
+   */
+  handoff(text: string, fromEvent: boolean, near?: Coordinate): void {
     if (!text.trim()) return;
     this.release();
     this.query = text.trim();
     this.eventQuery = fromEvent ? this.query : "";
+    try {
+      this.handoffNear = near ? coordinate(near) : undefined;
+    } catch {
+      this.handoffNear = undefined;
+    }
     this.submit();
     this.invalidate();
   }
@@ -624,6 +644,9 @@ export class MapsScreenController {
 
   /** Enter in the search field: coordinates drop a pin; other text searches the provider. */
   submit(): void {
+    // Only the hand-off's own search is ranked around its point.
+    const handoffNear = this.handoffNear;
+    this.handoffNear = undefined;
     if (this.choosingOrigin()) {
       this.planOrigin();
       return;
@@ -656,7 +679,11 @@ export class MapsScreenController {
     // A new explicit search also retries a failed configured connection. Never
     // poll in the background or replay the search after the user leaves or edits.
     const requested = this.query;
-    this.waitingSearch = { query: requested, intent };
+    this.waitingSearch = {
+      query: requested,
+      intent,
+      ...(handoffNear ? { near: handoffNear } : {}),
+    };
     void (async () => {
       this.ensure();
       const diagnostics = this.host.diagnostics();
@@ -689,7 +716,7 @@ export class MapsScreenController {
       this.message = "";
       if (this.host.connection().config.status === "configured")
         this.waitingSearch = undefined;
-      void this.ensure().search(requested, this.viewport);
+      void this.ensure().search(requested, handoffNear ?? this.viewport);
     })().catch((error) => {
       if (this.disposed || intent !== this.searchIntent || !this.host.active())
         return;

@@ -99,7 +99,11 @@ async function fixture() {
   runtime.registerAction(proposeDeviceAction);
   runtime.registerAction(browser);
   for (const tool of deviceActionTools)
-    if (tool.name.startsWith("DEVICE_BROWSER_") && tool !== browser)
+    if (
+      (tool.name.startsWith("DEVICE_BROWSER_") ||
+        tool.name === "DEVICE_CAMERA_CAPTURE") &&
+      tool !== browser
+    )
       runtime.registerAction(tool);
   const enqueue = vi.spyOn(PgApprovalQueue.prototype, "enqueueTransactional");
   const decide = vi.spyOn(DeviceActionService.prototype, "decide");
@@ -211,6 +215,26 @@ async function fixture() {
             () => action.handler!(runtime, original, undefined, options),
           );
         if (custody === "replay") await invoke();
+        if (custody === "twokeys") {
+          await invoke();
+          options.parameters.operationKey = randomUUID();
+        }
+        // The planner proposes the same capture twice in the turn: once here
+        // and once through the routed camera tool, each with its own key.
+        if (custody === "camera-double") {
+          const first = await invoke();
+          const capture = runtime.actions.find(
+            (a) => a.name === "DEVICE_CAMERA_CAPTURE",
+          )!;
+          const second = await capture.handler!(runtime, original, undefined, {
+            parameters: {
+              operation,
+              operationKey: randomUUID(),
+              reason: "Take the photo the owner asked for",
+            },
+          });
+          return { first, second };
+        }
         // The planner also calls the routed open for the same address in the
         // same turn, with its own operation key.
         if (custody === "double") {
@@ -1528,3 +1552,146 @@ it("opens the address once when the model proposes an empty tab and the routed o
     await f.pg.close();
   }
 });
+
+// Fable review (camera 1): in direct-request mode a capture the model proposed
+// for a message that never asked for a photo was bound to that message, so
+// the phone took a front-camera photo with no card.
+it.each([
+  "summarize the page I have open",
+  "what's on my calendar tomorrow?",
+  "don't take a photo",
+  "did you take a photo?",
+  "take a photo in five minutes",
+])(
+  "keeps the Take photo card for a capture %j never asked for",
+  async (text) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, {
+        capabilities: ["camera.capture-photo.v1", "camera.capture-lens.v1"],
+      });
+      const result = await f.run(text, false, true, undefined, "current", {
+        type: "camera_capture_photo",
+        lens: "front",
+      });
+      const rows = (
+        await f.pg.query<{ payload: Record<string, unknown> }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].payload).not.toHaveProperty("requestMessageId");
+      expect(result).toMatchObject({
+        userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+        data: { approvalRequired: true },
+      });
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it.each([
+  "take a photo",
+  "Eliza, snap a picture please",
+  "can you take a picture?",
+  "could you please take a selfie",
+])("runs the photo the owner asked for (%j) without a card", async (text) => {
+  const f = await fixture();
+  try {
+    Object.assign(f.credential, { capabilities: ["camera.capture-photo.v1"] });
+    const result = await f.run(text, false, true, undefined, "current", {
+      type: "camera_capture_photo",
+    });
+    const rows = (
+      await f.pg.query<{ payload: Record<string, unknown> }>(
+        "SELECT payload FROM approval_requests",
+      )
+    ).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].payload.requestMessageId).toEqual(expect.any(String));
+    expect(result).toMatchObject({
+      userFacingText: "Opening Camera to take the photo.",
+      data: { directRequest: true, approvalRequired: false },
+    });
+  } finally {
+    await f.pg.close();
+  }
+});
+// Fable review (camera 2): the camera the owner named was honoured only
+// through DEVICE_CAMERA_CAPTURE; PROPOSE_DEVICE_ACTION kept the model's lens.
+it.each([
+  ["take a selfie", undefined, "front"],
+  ["take a picture with the back camera", "front", "back"],
+  ["take a picture", "front", undefined],
+  ["can you take a picture with the front camera?", "back", "front"],
+] as const)(
+  "shoots with the camera the owner named in %j (model lens %s) through either tool",
+  async (text, modelLens, lens) => {
+    for (const direct of [true, false])
+      for (const tool of [false, "DEVICE_CAMERA_CAPTURE"] as const) {
+        const f = await fixture();
+        try {
+          Object.assign(f.credential, {
+            capabilities: ["camera.capture-photo.v1", "camera.capture-lens.v1"],
+          });
+          await f.run(text, tool, direct, undefined, "current", {
+            type: "camera_capture_photo",
+            ...(modelLens ? { lens: modelLens } : {}),
+          });
+          const rows = (
+            await f.pg.query<{ payload: Record<string, unknown> }>(
+              "SELECT payload FROM approval_requests",
+            )
+          ).rows;
+          expect(rows).toHaveLength(1);
+          // The review card names the same camera in review mode.
+          expect(rows[0].payload.operation).toEqual({
+            type: "camera_capture_photo",
+            ...(lens ? { lens } : {}),
+          });
+          expect(rows[0].payload.requestMessageId !== undefined).toBe(direct);
+        } finally {
+          await f.pg.close();
+        }
+      }
+  },
+);
+// Fable review (camera 3): two capture proposals in one direct turn, each with
+// its own operation key, were two photos.
+it.each(["twokeys", "camera-double"] as const)(
+  "takes one photo for one request however often the turn proposes it (%s)",
+  async (custody) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, {
+        capabilities: ["camera.capture-photo.v1", "camera.capture-lens.v1"],
+      });
+      const result = (await f.run(
+        "take a picture",
+        false,
+        true,
+        undefined,
+        custody,
+        { type: "camera_capture_photo", lens: "front" },
+      )) as PlannerToolResult & {
+        first?: PlannerToolResult;
+        second?: PlannerToolResult;
+      };
+      const rows = (
+        await f.pg.query<{ payload: Record<string, unknown> }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].payload.operation).toEqual({
+        type: "camera_capture_photo",
+      });
+      if (custody === "camera-double")
+        expect(result.second?.data?.proposalId).toBe(
+          result.first?.data?.proposalId,
+        );
+    } finally {
+      await f.pg.close();
+    }
+  },
+);

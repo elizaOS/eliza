@@ -28,6 +28,7 @@ import {
   smsComposeReceiptOutcome,
   smsComposeResultText,
   smsComposeTarget,
+  smsDraftRequestAlsoSends,
   smsLatestSenderReply,
   smsReplyReceiptOutcome,
   smsReplyResultText,
@@ -932,6 +933,50 @@ test("address lookup and a reply draft use the complete negotiated address", () 
     "Who texted me last? Don't show the full number.",
   ]) {
     assert.ok(!directSmsRequest(operation, request));
+  }
+  // "... and send it to Sam" names the one recipient of a draft whose body
+  // came first; it corrects a recipient only when one was already named.
+  for (const [request, recipient] of [
+    [
+      "Compose a message saying I'm late and send it to Sam",
+      { kind: "contact", query: "Sam" },
+    ],
+    [
+      "Write a text saying happy birthday and send it to Mom",
+      { kind: "contact", query: "Mom" },
+    ],
+    [
+      "Write a text saying hi, then send it to 415-555-0100.",
+      { kind: "number", number: "4155550100" },
+    ],
+    [
+      "Write a text to Mom saying happy birthday and send it",
+      { kind: "contact", query: "Mom" },
+    ],
+  ] as const) {
+    assert.deepEqual(requestedSmsDraftRecipient(request), recipient, request);
+    assert.ok(smsDraftRequestAlsoSends(request), request);
+  }
+  for (const request of [
+    "Compose a message saying hi and send it to Sam and send it to Mom",
+    "Write a text saying hi, actually to Ada, and send it to Mom",
+    "Compose a message saying hi and send it to Sam or Mom",
+    "Write a text saying hi and send it to Sam instead",
+  ]) {
+    assert.equal(
+      requestedSmsDraftRecipient(request)?.kind,
+      "ambiguous",
+      request,
+    );
+  }
+  for (const request of [
+    "Draft a text to Sam saying hi",
+    "Draft a text to Sam saying I'll send it tomorrow",
+    'Draft a text to Sam saying "pack it and send it"',
+    "Draft a text to Sam saying the files are ready and don't send it yet",
+    "Send Sam a text saying hi and send it",
+  ]) {
+    assert.ok(!smsDraftRequestAlsoSends(request), request);
   }
   // The open or named thread a reply belongs to, or a recipient after the
   // body, is not an addressing clause.

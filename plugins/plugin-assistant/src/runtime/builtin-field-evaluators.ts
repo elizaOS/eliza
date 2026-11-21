@@ -10,6 +10,7 @@ import type {
   CompletionContextSelection,
   JSONSchema,
   ReplyEffectStatus,
+  ResponseHandlerFieldContext,
   ResponseHandlerFieldEvaluator,
 } from "@elizaos/core";
 import {
@@ -18,7 +19,9 @@ import {
   parseCompletionContextSelection,
   stripJsonStructuralJunkReply,
 } from "@elizaos/core";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import { ACKNOWLEDGMENT_RULE } from "../prompts/acknowledgment.ts";
+import { postTurnReviewRuns } from "../services/evaluator-progress.ts";
 
 /**
  * Stage-1 envelope `emotion` enum value set — kept in lock-step with
@@ -282,11 +285,27 @@ export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<Repl
   };
 
 // ---------------------------------------------------------------------------
+// Memory pipeline activation (facts, relationships).
+// ---------------------------------------------------------------------------
+
+/**
+ * Extracted facts and relationships have two readers: post-turn review, which
+ * they queue, and the foreground facts stage, which returns at once on mobile.
+ * Where neither runs the fields leave the schema and are never generated.
+ */
+function memoryExtractionRuns({
+  message,
+}: ResponseHandlerFieldContext): boolean {
+  return postTurnReviewRuns(message) || !isMobilePlatform();
+}
+
+// ---------------------------------------------------------------------------
 // facts — priority 80. Memory pipeline.
 // ---------------------------------------------------------------------------
 
 export const factsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
   name: "facts",
+  shouldRun: memoryExtractionRuns,
   description:
     "Durable assertions newly stated by the user in this message only; exclude recalled answers, transient state and facts owned by explicit memory mutations. Preserve fictional framing; empty when none.",
   descriptionCompressed:
@@ -352,6 +371,7 @@ export const relationshipsFieldEvaluator: ResponseHandlerFieldEvaluator<
   RelationshipTriple[]
 > = {
   name: "relationships",
+  shouldRun: memoryExtractionRuns,
   description:
     "New user-stated subject/predicate/object relationships; snake_case predicate, empty when none. Exclude relationships owned by explicit memory mutations.",
   descriptionCompressed:

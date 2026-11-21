@@ -290,7 +290,7 @@ describe("selected phone capability guidance", () => {
         (event) => event.type === "tool" && event.tool.name === native.name,
       );
       expect(tool?.type === "tool" && tool.tool.description).toContain(
-        "Use sms_latest_sender with no fields",
+        "Use sms_latest_sender for an explicit question about who sent the newest incoming SMS",
       );
     } finally {
       capabilities.pop();
