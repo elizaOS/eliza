@@ -48,10 +48,12 @@ module node {
   import { authRoutes } from "../access/auth.vibe"
   import { createRouter } from "../access/router.vibe"
   import { listenOnSocket } from "../access/socket.vibe"
-  import { noEvents } from "../access/events-port.vibe"
+  import { feedsOver } from "../access/event-feeds.vibe"
+  import { createEventHub } from "../conversation/events.vibe"
+  import { eventWiring } from "./event-wiring.vibe"
   import { listenOnHttp } from "../access/http.vibe"
   import { conversationRoutes } from "../conversation/routes.vibe"
-  import { ownerMessageService } from "../conversation/message-service.vibe"
+  import { accountFailureOf, ownerMessageService } from "../conversation/message-service.vibe"
   import { openDeviceStorage, type DeviceStorageSnapshot } from "../storage/index.vibe"
   import { StoreFailed } from "../storage/fault.vibe"
   import { logSweeps, scheduleSweeps } from "../storage/retention.vibe"
@@ -196,10 +198,11 @@ module node {
     const permissions = new Set(launch.policy.actions.allowed)
     const user = launch.account ? (validateUuid(launch.account.userId) ?? stringToUuid(`account:${launch.account.userId}`)) : stringToUuid(`device-owner:${agentId}`)
     const ownerId = role === "OWNER" ? user : agentId
+    const wiring = eventWiring()
     const formed = await Effect.runPromise(Effect.result(composeAgent({
       agentId, character, settings: {}, bundled: input.bundled ?? new Map(), modules: input.modules, hostRoutes: reservedHostPrefixes,
       context: { launch, stateDirectory, timeZone: launch.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, epoch: authority.epoch, ...(authority.storageKey === undefined ? {} : { storageKey: authority.storageKey }),
-        ownerEntityId: ownerId },
+        ownerEntityId: ownerId, publishEvent: wiring.publishEvent, viewFeeds: wiring.viewFeeds },
       storage: { name: storagePlugin, description: "Own the device database", services: [TaskService], init: async (_config, runtime) => {
         if (!(runtime instanceof AgentRuntime)) throw new Error("The storage plugin requires the device Core runtime")
         runtime.registerDatabaseAdapter(adapter)
@@ -207,7 +210,7 @@ module node {
         if (sweeper !== undefined) runtime.registerTaskWorker(sweeper)
       } },
       cloudLink: modelPlugin(launch, models), privacy: { kind: "off" }, worker: pinned === undefined ? { kind: "none" } : { kind: "pinned", expected: pinned.worker.expected, measured: pinned.worker.measured },
-      messageService: (runtime, actionGate) => ownerMessageService(runtime, [role], actionGate),
+      messageService: (runtime, actionGate) => ownerMessageService(runtime, [role], actionGate, accountFailureOf(() => Effect.runSync(models.read()))),
       policy: {
         actionsAllowed: [...permissions], pluginsLoad: [...launch.policy.plugins.load],
         productPlugin: launch.policy.plugins.product === undefined ? { tag: "NoProductPlugin" }
@@ -252,6 +255,8 @@ module node {
         id: world, agentId, name: "Device",
         metadata: { ownership: { ownerId }, roles: { [user]: role === "OWNER" ? "OWNER" : "MEMBER" } },
       })
+      const hub = await Effect.runPromise(createEventHub(runtime, { user, world }))
+      wiring.attach(hub)
       const router = createRouter({
         token: authority.token, epoch: authority.epoch, instanceId: status.serverInstanceId,
         health: () => healthAnswer(lifecycle.get()),
@@ -262,9 +267,10 @@ module node {
           ...composed.routes,
         ],
       })
-      return binding.kind === "socket"
-        ? listenOnSocket(binding.path, router, { token: authority.token, events: noEvents })
-        : listenOnHttp(binding.port, router, { token: authority.token, events: noEvents })
+      const feeds = { token: authority.token, events: feedsOver(wiring.feeds) }
+      const close = await (binding.kind === "socket" ? listenOnSocket(binding.path, router, feeds) : listenOnHttp(binding.port, router, feeds))
+        .catch((error: unknown) => { hub.stop(); throw error })
+      return async () => { hub.stop(); await close() }
     })().then((close) => ({ kind: "bound" as const, close }), (error: unknown) => ({ kind: "refused" as const, error }))
     if (bound.kind === "refused") {
       logger.error({ src: "agent", agentId, phase: "BindTransport", error: String(bound.error) }, "The transport could not be bound")

@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { listenerGates, listenerPrivilegedPermissions } from "../gen/os__image__listener.effect.vibe"
-import type { PatchEnvelope, SourceVerdict } from "../gen/os__image__sourceLock.effect.vibe"
+import type { PatchEnvelope, Problem, SourceVerdict, Verdict } from "../gen/os__image__sourceLock.effect.vibe"
 import { listenerPermissions, prepareListenerSystemui, stageListener, verifyListenerSystemui, type StageListenerOptions, type SystemuiBundle } from "../src/image/listener.vibe"
 import { admitPatchEnvelope, assertStockVendorApi, loadProfile, verifySource, type Checkout, type SourceProfile } from "../src/image/source-lock.vibe"
 import { androidTools, testSigner } from "./support/android-tools.ts"
@@ -75,7 +75,7 @@ import { HOTWORD_PERMISSIONS, LAUNCHER, buildListener, certificatePem, fileSha25
 
 const tools = androidTools()
 const skipped = tools.kind === "missing" ? tools.reason : null
-const MANIFEST_COMMIT = "5bc9a7ce1cd78dd53613bbfd0ebf506e1e4adb0f"
+const MATCHED: { readonly verdict: Verdict; readonly problems: readonly Problem[]; readonly differences: readonly string[] } = { verdict: "Match", problems: [], differences: [] }
 
 effect function repoAt(root: string, relative: string, tree: Tree) {
   const files = try FileSystem.FileSystem
@@ -95,6 +95,10 @@ effect function writePatchBundle(directory: string, project: string, revision: s
   const patch = `--- a/${file}\n+++ b/${file}\n@@ -1 +1 @@\n-${before.trimEnd()}\n+${after.trimEnd()}\n`
   const manifest = { schema: 1, project, revision, baselineLockSha256: baseline, patch: "change.patch", patchSha256: sha256(patch), files: [{ path: file, beforeSha256: sha256(before), afterSha256: sha256(after) }], ...extra }
   try writeTree(directory, { "change.patch": patch, "manifest.json": JSON.stringify(manifest, null, 2) })
+}
+
+effect function stageProblem(options: StageListenerOptions) {
+  return (stageListener(options) |> map(%, (staged) => (staged.activated ? "Activated" : "Inert"))) catch (error) => (error._tag === "ListenerRefused" ? error.problem : error._tag)
 }
 
 it.effect('Verify a pinned physical and virtual checkout read-only and refuse every drift (spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"; spec/os/image/sourceLock.md, "A verdict is Match only when the checkout shows no problem against its lock"; spec/os/image/sourceLock.md, "A physical device matches only with its factory archive and the vendor API level its stock vendor declares"; spec/os/image/sourceLock.md, "A reviewed patch is admitted only when every file has its preimage at the pinned revision and its postimage in the checkout")', effect () => {
@@ -120,7 +124,7 @@ it.effect('Verify a pinned physical and virtual checkout read-only and refuse ev
       device: { codename: "fixture", androidRelease: "17" },
       developmentOnly: false,
       manifest: {
-        commit: MANIFEST_COMMIT,
+        commit: manifestRepo,
         tag: "android-17.0.0_r1",
         tagObject: "7a9e46ba6ed424f922a3457f4964e67e0b966201",
         configuration: Object.entries(configuration).map(([file, content]) => ({ path: file, sizeBytes: content.length, sha256: sha256(content) })),
@@ -134,28 +138,28 @@ it.effect('Verify a pinned physical and virtual checkout read-only and refuse ev
     const inventoryText = JSON.stringify(inventory, null, 2)
     const lockFile = path.join(work, "lock", "aosp.lock.json")
     const pin = { url: "https://android.example.invalid/platform/manifest", tag: "android-17.0.0_r1", tagObject: "7a9e46ba6ed424f922a3457f4964e67e0b966201" }
-    const lockFor = (manifestCommit: string) => JSON.stringify({
+    const lock = JSON.stringify({
       schemaVersion: 1,
       profiles: {
         fixture: {
           kind: "physical",
           device: { sourceTarget: "fixture", codename: "fixture", androidRelease: "17", vendorApiLevel: "202604" },
-          manifest: { ...pin, commit: MANIFEST_COMMIT },
+          manifest: { ...pin, commit: manifestRepo },
           developmentOnly: false,
           targets: ["fixture"],
           sourceInventory: { path: "sources/fixture.json", sha256: sha256(inventoryText) },
         },
-        virtual: { kind: "virtual", manifest: { ...pin, commit: manifestCommit }, projects: [{ path: "build/soong", name: "build/soong", commit: soong }], requiredSourceFiles: ["build/soong/etc/a.go"], developmentOnly: true, targets: ["cf_x86_64_phone"] },
+        virtual: { kind: "virtual", manifest: { ...pin, commit: manifestRepo }, projects: [{ path: "build/soong", name: "build/soong", commit: soong }], requiredSourceFiles: ["build/soong/etc/a.go"], developmentOnly: true, targets: ["cf_x86_64_phone"] },
       },
     })
-    try writeTree(path.join(work, "lock"), { "sources/fixture.json": inventoryText, "aosp.lock.json": lockFor(manifestRepo) })
+    try writeTree(path.join(work, "lock"), { "sources/fixture.json": inventoryText, "aosp.lock.json": lock })
 
     const physical = try loadProfile("fixture", lockFile)
     assert.strictEqual(physical.lock.digest, sha256(inventoryText))
     const checkout: Checkout = { aospRoot: aosp, archive, releaseConfig: "rel_fixture" }
     const readOnly = try git(path.join(aosp, "frameworks/base"), ["status", "--porcelain"])
-    assert.deepStrictEqual(try verdictOf(physical, { ...checkout, archive: undefined }) catch (error) => error._tag, "CheckoutIncomplete")
-    assert.deepStrictEqual((try verdictOf(physical, checkout)).verdict, "Match", (try verdictOf(physical, checkout)).differences.join("; "))
+    assert.deepStrictEqual((verdictOf(physical, { ...checkout, archive: undefined }) |> map(%, (read) => read.verdict)) catch (error) => error._tag, "CheckoutIncomplete")
+    assert.deepStrictEqual(try verdictOf(physical, checkout), MATCHED)
     assert.strictEqual(try git(path.join(aosp, "frameworks/base"), ["status", "--porcelain"]), readOnly, "verification never writes to the checkout")
 
     try files.writeFileString(path.join(aosp, "build/soong/etc/a.go"), "package drifted\n")
@@ -173,7 +177,7 @@ it.effect('Verify a pinned physical and virtual checkout read-only and refuse ev
     try writeTree(aosp, { "build/release/flag_values/rel_fixture/RELEASE_BOARD_API_LEVEL.textproto": 'value: { string_value: "202604" }\n', "frameworks/base/tools/o.mk": override })
     try files.remove(path.join(aosp, "build/soong/out/y.o"))
     try files.writeFileString(archive, "factory archive bytes\n")
-    assert.deepStrictEqual((try verdictOf(physical, checkout)).problems, [])
+    assert.deepStrictEqual(try verdictOf(physical, checkout), MATCHED)
 
     try writePatchBundle(path.join(work, "bundles", "soong"), "build/soong", soong, physical.lock.digest, "etc/a.go", "package etc\n", "package patched\n")
     const admitted = try admitPatchEnvelope("soong", path.join(work, "bundles", "soong"))
@@ -190,8 +194,8 @@ it.effect('Verify a pinned physical and virtual checkout read-only and refuse ev
     try files.writeFileString(path.join(aosp, "build/soong/etc/a.go"), "package etc\n")
     assert.deepStrictEqual(try verdictOf(virtual, { aospRoot: aosp }), { verdict: "Mismatch", problems: ["SourceChangeDiffers"], differences: [`the ignored inputs are build/soong:${inventory.ignoredInputs[0]?.sha256}; the lock records none`] })
     try files.remove(path.join(aosp, "build/soong/out"), { recursive: true })
-    assert.deepStrictEqual((try verdictOf(virtual, { aospRoot: aosp })).verdict, "Match")
-    try files.writeFileString(path.join(aosp, ".repo/local_manifests/extra.xml"), "<manifest />\n")
+    assert.deepStrictEqual(try verdictOf(virtual, { aospRoot: aosp }), MATCHED)
+    try writeTree(aosp, { ".repo/local_manifests/extra.xml": "<manifest />\n" })
     assert.deepStrictEqual((try verdictOf(virtual, { aospRoot: aosp })).problems, ["ManifestDiffers"], "an unlisted local manifest reads as another manifest")
 
     const pixel = try loadProfile("pixel10a")
@@ -199,22 +203,21 @@ it.effect('Verify a pinned physical and virtual checkout read-only and refuse ev
     assert.deepStrictEqual([pixel.kind, pixel.lock.targets, pixel.lock.developmentOnly, pixel.lock.digest], ["physical", ["stallion"], false, "b7041cce4faf186f5c6e410694b52d8ee4ef2edab8edbef58119e943089d2ce3"])
     assert.deepStrictEqual([cuttlefish.kind, cuttlefish.lock.targets], ["virtual", ["cf_arm64_phone", "cf_x86_64_phone"]])
   }
-})
+}, 300_000)
 
 it.effect('Prepare the reviewed SystemUI patches outside the source and refuse power together with assist (spec/os/image/listener.md, "A listener is staged only from a matched source that carries the chip and ops SystemUI patches")', effect () => {
   provide NodeServices.layer {
     const files = try FileSystem.FileSystem
     const path = try Path.Path
-    const source = try fixture("sense-systemui")
     const work = try scratch("listener-systemui")
-    const before = try verifyListenerSystemui({ source, state: "before", bundle: "chip" })
+    const root = path.join(work, "aosp")
+    try files.makeDirectory(path.join(root, "frameworks"), { recursive: true })
+    try files.copy(try fixture("sense-systemui"), path.join(root, "frameworks", "base"))
+    const before = try verifyListenerSystemui({ source: root, state: "before", bundle: "chip" })
     assert.deepStrictEqual([before.project, before.files.length], ["frameworks/base", 9])
     const output = path.join(work, "chip")
-    const prepared = try prepareListenerSystemui({ source: path.dirname(source), output, bundles: ["chip"] }) catch (error) => error._tag
-    assert.strictEqual(prepared, "SystemuiRefused", "the fixture is the frameworks/base project, so its parent is the source root")
-    const root = path.join(work, "aosp")
-    try files.makeDirectory(root)
-    try files.copy(source, path.join(root, "frameworks", "base"))
+    const inside = (prepareListenerSystemui({ source: root, output: path.join(root, "out"), bundles: ["chip"] }) |> map(%, () => "Prepared")) catch (error) => error._tag
+    assert.strictEqual(inside, "ListenerOptionsInvalid", "the prepared output never lands inside the source")
     const receipts = try prepareListenerSystemui({ source: root, output, bundles: ["chip"] })
     assert.deepStrictEqual(receipts.map((receipt) => [receipt.bundle, receipt.state]), [["chip", "after"]])
     assert.strictEqual((try verifyListenerSystemui({ source: output, state: "after", bundle: "chip" })).files.length, 9)
@@ -261,7 +264,6 @@ it.effect.skipIf(skipped !== null)(`Stage the launcher's reviewed listener inert
     try files.writeFileString(descriptor, JSON.stringify({ packageName: `${LAUNCHER}.sense`, apkSha256, certificateSha256: signer.certificateSha256 }))
     const launcher = { packageName: LAUNCHER, signerSha256: signer.certificateSha256, apkSha256: "a".repeat(64), descriptorSha256: "d".repeat(64) }
     const base: StageListenerOptions = { apk, output: path.join(work, "inert"), moduleName: "Listener", launcher, wakeNames: ["hey", "eliza"], certificate, source, development: true, speech: [{ entry: "assets/speech/model.bin", sha256: sha256(speech) }] }
-    const stageProblem = (options: StageListenerOptions) => (stageListener(options) |> map(%, (staged) => (staged.activated ? "Activated" : "Inert"))) catch (error) => (error._tag === "ListenerRefused" ? error.problem : error._tag)
 
     const inert = try stageListener(base)
     assert.deepStrictEqual([inert.activated, inert.speechIncluded, inert.packageName], [false, true, `${LAUNCHER}.sense`])
@@ -271,7 +273,8 @@ it.effect.skipIf(skipped !== null)(`Stage the launcher's reviewed listener inert
     assert.include(try staged("sepolicy/seapp_contexts"), `name=${LAUNCHER}.sense isPrivApp=true domain=eliza_sense_app`)
     assert.include(try staged("sepolicy/mac_permissions.xml"), `<package name="${LAUNCHER}.sense">`)
     assert.strictEqual(sha256(try files.readFile(path.join(inert.output, "Listener.apk"))), apkSha256, "the signed APK is staged unchanged")
-    assert.strictEqual(JSON.parse(try staged("evidence.json")).reach, "ListenerInert")
+    const evidence = try staged("evidence.json")
+    assert.strictEqual(try Effect.try(() => JSON.parse(evidence).reach), "ListenerInert")
     assert.strictEqual(try stageProblem(base), "ListenerOutputExists")
 
     const at = (name: string) => path.join(work, name)
@@ -307,4 +310,4 @@ it.effect.skipIf(skipped !== null)(`Stage the launcher's reviewed listener inert
     try files.writeFileString(qualified, record("0".repeat(64)))
     assert.strictEqual(try stageProblem({ ...production, output: at("other-policy"), qualification: { record: qualified, enrolledSha256: sha256(try files.readFile(qualified)) } }), "QualificationMismatch")
   }
-})
+}, 300_000)

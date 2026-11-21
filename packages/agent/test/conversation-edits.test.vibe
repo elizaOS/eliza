@@ -5,7 +5,7 @@ module node {
   import { conversationStore } from "../src/conversation/conversations.vibe"
   import { forkService, type ForkRequest } from "../src/conversation/fork.vibe"
 
-  export const fresh = () => fresh() as UUID
+  export const fresh = (): UUID => randomUUID() as UUID
 
   export async function seedMessages(runtime: AgentRuntime, roomId: UUID, rows: readonly { readonly text: string; readonly agent: boolean }[], from: number) {
     const memories = rows.map(({ text, agent }, index): Memory => ({
@@ -39,7 +39,7 @@ module node {
   }
 }
 
-import { fresh, forkRecordText, interruptedFork, promptsOf, seedLogs, seedMessages } from node
+import { forkRecordText, interruptedFork, promptsOf, seedLogs, seedMessages } from node
 import { assert, it } from "@effect/vitest"
 import type { UUID } from "@elizaos/core"
 import { privateNotice } from "../gen/agent__conversation__conversations.ts"
@@ -52,6 +52,7 @@ interface Message { readonly id: string; readonly role: string; readonly text: s
 
 const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
 const base = 1_700_000_000_000
+const unknownId = "00000000-0000-4000-8000-000000000000"
 
 effect function ask(agent: InProcess, asked: LocalRequest) {
   return answerOf(try call(agent, asked))
@@ -92,7 +93,7 @@ it.effect('Fork at my own message: the copy is whole before it is listed, a retr
   const agent = try startInProcess()
   const runtime = agent.agent.runtime
   const plans = try open(agent, "Plans")
-  const [hello, greeting, trip, sure] = try seed(agent, plans.roomId, [
+  const [hello, greeting, trip] = try seed(agent, plans.roomId, [
     { text: "hello", agent: false }, { text: "hi there", agent: true }, { text: "plan a trip", agent: false }, { text: "sure", agent: true },
   ], base)
   const before = try history(agent, plans.id)
@@ -103,16 +104,16 @@ it.effect('Fork at my own message: the copy is whole before it is listed, a retr
   const otherText = try forkAt(agent, plans.id, { messageId: trip, requestId: "r1", expectedText: "plan a walk" })
   const changed = try forkAt(agent, plans.id, { messageId: trip, requestId: "r2", expectedText: "plan a walk" })
   const agentMessage = try forkAt(agent, plans.id, { messageId: greeting, requestId: "r2", expectedText: "hi there" })
-  const unknownMessage = try forkAt(agent, plans.id, { messageId: fresh(), requestId: "r2", expectedText: "hello" })
-  const unknownConversation = try forkAt(agent, fresh(), { messageId: trip, requestId: "r2", expectedText: "plan a trip" })
+  const unknownMessage = try forkAt(agent, plans.id, { messageId: unknownId, requestId: "r2", expectedText: "hello" })
+  const unknownConversation = try forkAt(agent, unknownId, { messageId: trip, requestId: "r2", expectedText: "plan a trip" })
   const malformed = try forkAt(agent, plans.id, { messageId: trip, expectedText: "plan a trip" })
   const copied = try history(agent, made.conversation?.id ?? "")
   const after = try history(agent, plans.id)
   const record = try host("fork records", () => forkRecordText(runtime, plans.id))
-  const pendingId = try host("interrupted fork", () => interruptedFork(runtime, plans.id, { messageId: sure, requestId: "r3", expectedText: "sure" }))
+  const pendingId = try host("interrupted fork", () => interruptedFork(runtime, plans.id, { messageId: trip, requestId: "r3", expectedText: "plan a trip" }))
   const whilePending = try listed(agent)
   const pendingHistory = try history(agent, pendingId)
-  const retried = try forkAt(agent, plans.id, { messageId: sure, requestId: "r3", expectedText: "sure" })
+  const retried = try forkAt(agent, plans.id, { messageId: trip, requestId: "r3", expectedText: "plan a trip" })
   const published = try history(agent, pendingId)
   const finally_ = try listed(agent)
 
@@ -135,7 +136,7 @@ it.effect('Fork at my own message: the copy is whole before it is listed, a retr
       listed: finally_.filter(({ title }) => title === "Plans · edit").length,
     }, {
       pendingListed: false, pendingHistory: 404,
-      retried: [200, true], published: ["hello", "hi there", "plan a trip"], listed: 2,
+      retried: [200, true], published: ["hello", "hi there"], listed: 2,
     })
   })
 }, 180_000)
@@ -159,7 +160,7 @@ it.effect('Redact a secret: the message, its exact copies and the model-call log
 
   const wrongText = try redactOf(agent, private_.id, said, { expectedText: "my pin is 1234" })
   const wrongConversation = try redactOf(agent, private_.id, elsewhere, { expectedText: secret })
-  const unknown = try redactOf(agent, private_.id, fresh(), { expectedText: secret })
+  const unknown = try redactOf(agent, private_.id, unknownId, { expectedText: secret })
   const malformed = try redactOf(agent, private_.id, said, {})
   const redacted = try redactOf(agent, private_.id, said, { expectedText: secret })
   const repeated = try redactOf(agent, private_.id, said, { expectedText: secret })

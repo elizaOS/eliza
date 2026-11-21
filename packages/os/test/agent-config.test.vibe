@@ -1,7 +1,6 @@
 // spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/agent/host/launch.md, "Story: Keep the credential out of every file and reply"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { decodeLaunchDocument, decodeLaunchFrame } from "../../agent/src/host/launch.schema.vibe"
 import { AGENT_ASSETS, AgentConfigRefused, admitAgentBytes, admitAgentData, type AgentFile } from "../src/build/agent-config.vibe"
 import { scratch, writeTree } from "./support/scratch.vibe"
 
@@ -45,6 +44,20 @@ module node {
   }
 }
 import { project, type Answer, type Ask } from node
+
+interface AgentLaunchSchema {
+  readonly decodeLaunchDocument: (input: string) => Effect.Effect<{ readonly [field: string]: unknown }, unknown>
+  readonly decodeLaunchFrame: (input: string) => Effect.Effect<{ readonly epoch: number; readonly credential?: { readonly version: number }; readonly storageKey?: string }, unknown>
+}
+
+effect function agentLaunchSchema() {
+  const path = try Path.Path
+  const schema: AgentLaunchSchema = try Effect.promise(() => import(path.join(import.meta.dirname, "../../agent/src/host/launch.schema.vibe")))
+  return {
+    decodeLaunchDocument: (input: string) => Effect.flatten(Effect.try(() => schema.decodeLaunchDocument(input))),
+    decodeLaunchFrame: (input: string) => Effect.flatten(Effect.try(() => schema.decodeLaunchFrame(input))),
+  }
+}
 
 type Files = Readonly<Record<AgentFile, string>>
 
@@ -146,6 +159,7 @@ effect function admittedAnswer(answer: Answer | undefined) {
 
 it.effect('Start my agent with my character, policy and model: the service and the build admit the same files, and the agent accepts every launch the service writes (spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Each data file is at most 256 KiB, and the host and policy files are schema 1"; spec/os/agentService/config.md, "The host file names a qualified service class and notification words of 1 to 200 characters"; spec/os/agentService/config.md, "The renderer\'s route list is admitted whole by the route gate\'s own rule"; spec/os/agentService/config.md, "The character, policy and launch settings are admitted exactly as the agent admits them"; spec/os/agentService/config.md, "The launch carries the active key\'s account and the staged worker, and never an agent id"; spec/os/agentService/config.md, "The agent admits every launch the service writes, given a launch frame with a key"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all")', effect () => {
   provide NodeServices.layer {
+    const { decodeLaunchDocument, decodeLaunchFrame } = try agentLaunchSchema()
     const answers = try Effect.try(() => project([...ADMITTED.map((entry) => ({ ...entry.files, ...entry.ask })), ...REFUSED.map((entry) => entry.files)]))
     for (const [index, entry] of ADMITTED.entries()) {
       const answer = try admittedAnswer(answers[index])

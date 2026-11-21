@@ -1,160 +1,350 @@
-// spec/agent/conversation/conversations.md, "Story: Create and find my conversations", "Messages and model-call log rows arrive only in a published conversation"; spec/core/turnControllers.md, "Story: Cancel room work without cancelling the cancel request"
+// spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"
 module node {
   import { randomUUID } from "node:crypto"
-  import { Schema } from "effect"
-  import { ChannelType, type AgentRuntime, type Content, type Memory, type MemoryMetadata, type Room, type UUID } from "@elizaos/core"
-  import { canCreate, defaultTitle, initial } from "../../gen/agent__conversation__conversations.ts"
+  import { Effect, Result, Schema } from "effect"
+  import {
+    CHAT_IMAGE_MIME_TYPE_SET, CHAT_UPLOAD_MIME_TYPE_SET, MAX_CHAT_ATTACHMENT_NAME_LENGTH, MAX_CHAT_IMAGE_BASE64_BYTES,
+    MAX_CHAT_MEDIA_BASE64_BYTES, MAX_CHAT_UPLOAD_ATTACHMENTS, ModelType, logger, parseViewInteractionClientId,
+    type AgentRuntime, type Content, type Media, type Memory, type MemoryMetadata, type MessageProcessingResult, type Room, type UUID,
+  } from "@elizaos/core"
+  import { turnDeadlineMs } from "../../gen/agent__conversation__turns.ts"
   import type { LocalRoute } from "../access/routes.vibe"
-  import { streamRoutes } from "./stream.vibe"
+  import type { PublishEvent } from "../host/module.vibe"
+  import type { FailureKind } from "../models/binding.vibe"
+  import { conversationStore, conversationView, recordOf, type ConversationOwner, type ConversationRecord, type ConversationStore } from "./conversations.vibe"
+  import { fingerprintOf, replyIdOf, turnLedger, type ClientMessageId, type KeyRecord, type Ticket, type Turn } from "./idempotency.vibe"
+  import type { ReplyWriter, StartStream, Terminal } from "./stream.vibe"
+  import { decodeObservation, decodeVoiceUiContext } from "./turn-context.schema.vibe"
+
+  export type TurnFailureKind = FailureKind | "timeout" | "aborted"
+
+  export interface ActionResultData {
+    readonly action: string
+    readonly data: unknown
+  }
 
   export interface TurnReply {
-    readonly fullText: string
+    readonly text: string
+    readonly agentName: string
+    readonly messageId: UUID
+    readonly userMessageId: UUID
+    readonly actionResults: readonly ActionResultData[]
+    readonly taskChoices?: readonly unknown[]
+    readonly failureKind?: TurnFailureKind
   }
 
-  const Body = Schema.Struct({ text: Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(32768)) })
-  const Create = Schema.Struct({ title: Schema.optionalKey(Schema.String) })
-  const Stamp = Schema.Struct({
-    id: Schema.String,
-    createdAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-    updatedAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-  })
-  const createBody = Schema.decodeUnknownOption(Create, { onExcessProperty: "error" })
-  const messageBody = Schema.decodeUnknownOption(Body, { onExcessProperty: "error" })
-  const stamp = Schema.decodeUnknownOption(Stamp)
-  const failure = (status: number, error: string) => ({ status, body: { error } })
-  const okay = (body: object) => ({ status: 200, body })
+  export type TurnResult = { readonly kind: "Replied"; readonly reply: TurnReply } | { readonly kind: "Unavailable" }
 
-  export function conversation(room: Room) {
-    const metadata = stamp(room.metadata?.deviceConversation)
-    if (metadata._tag !== "Some") return undefined
-    return { ...metadata.value, roomId: room.id, title: room.name ?? defaultTitle }
+  export interface TurnRefusal {
+    readonly kind: "Refused"
+    readonly status: number
+    readonly error: string
   }
 
-  export interface ConversationOwner {
-    readonly user: UUID
-    readonly world: UUID
+  export interface TurnInput {
+    readonly text: string
+    readonly attachments: readonly Media[]
+    readonly channelType: "DM" | "VOICE_DM"
+    readonly metadata?: Readonly<Record<string, unknown>>
+    readonly task?: Readonly<Record<string, unknown>>
+    readonly key?: KeyRecord
   }
 
   export interface TurnOptions {
+    readonly signal?: AbortSignal
+    readonly clientId?: string
+    readonly onFrame?: ReplyWriter
+  }
+
+  export interface AdmittedTurn {
+    readonly kind: "Admitted"
+    readonly streams: boolean
+    readonly run: (options?: TurnOptions) => Promise<TurnResult>
+  }
+
+  export interface ProcessOptions {
     readonly onStreamChunk?: (chunk: string) => void
     readonly metadata?: MemoryMetadata
   }
 
-  function memory(runtime: AgentRuntime, owner: ConversationOwner, room: Room, text: string, metadata?: MemoryMetadata): Memory {
+  export interface TurnDeps {
+    readonly agentName: string
+    readonly publish?: PublishEvent
+  }
+
+  const failureKinds: ReadonlySet<string> = new Set<FailureKind>(["credential_invalid", "insufficient_credits", "limit_reached", "provider_issue"])
+  const metadataLimit = 65536
+  const base64 = /^[A-Za-z0-9+/]+={0,2}$/
+  const utf8 = new TextEncoder()
+
+  const Attachment = Schema.Struct({
+    data: Schema.String,
+    mimeType: Schema.String,
+    name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MAX_CHAT_ATTACHMENT_NAME_LENGTH)),
+    thumbnail: Schema.optionalKey(Schema.Struct({ data: Schema.String, mimeType: Schema.String })),
+  }).check(Schema.makeFilter(({ data, mimeType, thumbnail }) => {
+    const type = mimeType.toLowerCase()
+    const limit = CHAT_IMAGE_MIME_TYPE_SET.has(type) ? MAX_CHAT_IMAGE_BASE64_BYTES : MAX_CHAT_MEDIA_BASE64_BYTES
+    const sound = (payload: string) => payload.length > 0 && base64.test(payload) && payload.replace(/=+$/, "").length > 1
+    return CHAT_UPLOAD_MIME_TYPE_SET.has(type) && data.length <= limit && sound(data)
+      && (thumbnail === undefined || (thumbnail.mimeType.toLowerCase().startsWith("image/") && thumbnail.data.length <= MAX_CHAT_IMAGE_BASE64_BYTES && sound(thumbnail.data)))
+  }))
+  const Body = Schema.Struct({
+    text: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(32768))),
+    images: Schema.optionalKey(Schema.Array(Attachment).check(Schema.isMaxLength(MAX_CHAT_UPLOAD_ATTACHMENTS))),
+    channelType: Schema.optionalKey(Schema.Literals(["DM", "VOICE_DM"])),
+    metadata: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown).check(Schema.makeFilter((metadata) =>
+      utf8.encode(JSON.stringify(metadata)).byteLength <= metadataLimit))),
+    task: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+    clientMessageId: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
+  })
+  const messageBody = Schema.decodeUnknownOption(Body)
+  const failure = (status: number, error: string) => ({ status, body: { error } })
+  const refused = (status: number, error: string): TurnRefusal => ({ kind: "Refused", status, error })
+  const unavailable: TurnResult = { kind: "Unavailable" }
+  const refusals = {
+    InferenceUnavailable: refused(503, "INFERENCE_UNAVAILABLE"),
+    Busy: refused(429, "ROOM_HANDLER_QUEUE_SATURATED"),
+    Conflict: refused(409, "CHAT_IDEMPOTENCY_CONFLICT"),
+  } as const satisfies Record<Extract<Ticket<TurnResult>, { kind: "Refused" }>["why"], TurnRefusal>
+
+  function turnContextOf(metadata: Readonly<Record<string, unknown>> | undefined, clientId: string | undefined) {
+    if (metadata === undefined) return { kind: "kept" as const, metadata }
+    const { observation, voiceUi, ...rest } = metadata
+    const voice = voiceUi === undefined ? undefined : Effect.runSync(Effect.result(decodeVoiceUiContext(voiceUi, clientId)))
+    if (voice !== undefined && Result.isFailure(voice)) return { kind: "refused" as const }
+    const seen = observation === undefined ? undefined : Effect.runSync(Effect.result(decodeObservation(observation)))
+    return { kind: "kept" as const, metadata: {
+      ...rest,
+      ...(seen !== undefined && Result.isSuccess(seen) ? { observation: seen.success } : {}),
+      ...(voice === undefined ? {} : { voiceUi: voice.success }),
+    } }
+  }
+
+  export function turnInput(body: unknown, headers: ReadonlyMap<string, string>): { readonly kind: "Input"; readonly input: TurnInput; readonly clientId?: string } | TurnRefusal {
+    const sent = headers.get("x-elizaos-client-id")
+    const clientId = sent === undefined ? undefined : parseViewInteractionClientId(sent)
+    if (sent !== undefined && clientId === undefined) return refused(400, "invalid_client_id")
+    const decoded = messageBody(body)
+    if (decoded._tag !== "Some") return refused(400, "invalid_message")
+    const { text = "", images = [], channelType = "DM", metadata, task, clientMessageId } = decoded.value
+    if (!text.trim() && images.length === 0) return refused(400, "invalid_message")
+    const context = turnContextOf(metadata, clientId)
+    if (context.kind === "refused") return refused(400, "VOICE_UI_CONTEXT_INVALID")
+    const attachments = images.map(({ data, mimeType, name }): Media =>
+      ({ id: randomUUID(), url: `data:${mimeType.toLowerCase()};base64,${data}`, title: name, filename: name, mimeType: mimeType.toLowerCase() }))
+    const fingerprint = fingerprintOf({ text, images, channelType, metadata: metadata ?? null, task: task ?? null })
     return {
-      id: randomUUID(), entityId: owner.user, agentId: runtime.agentId, roomId: room.id,
-      worldId: owner.world, createdAt: Date.now(), content: { text, source: "device" },
-      ...(metadata === undefined ? {} : { metadata }),
+      kind: "Input",
+      input: {
+        text, attachments, channelType,
+        ...(context.metadata === undefined ? {} : { metadata: context.metadata }),
+        ...(task === undefined ? {} : { task }),
+        ...(clientMessageId === undefined ? {} : { key: { clientMessageId: clientMessageId as ClientMessageId, fingerprint } }),
+      },
+      ...(clientId === undefined ? {} : { clientId }),
     }
   }
 
-  export async function createConversation(runtime: AgentRuntime, owner: ConversationOwner, title: string) {
-    const id = randomUUID()
-    const roomId = randomUUID()
-    const time = Date.now()
-    const created = { id, roomId, title: title || defaultTitle, createdAt: time, updatedAt: time }
-    await runtime.ensureConnection({
-      entityId: owner.user, roomId, roomName: created.title, worldId: owner.world, userName: "person",
-      name: "Person", source: "device", type: ChannelType.DM, channelId: roomId,
-    })
-    const room = await runtime.getRoom(roomId)
-    if (!room) return undefined
-    await runtime.updateRooms([{ ...room, metadata: {
-      ...room.metadata, deviceConversation: { id, createdAt: time, updatedAt: time },
-    } }])
-    return created
+  function actionResultsOf(value: unknown): readonly ActionResultData[] {
+    return Array.isArray(value) ? value.flatMap((entry): ActionResultData[] =>
+      typeof entry === "object" && entry !== null && typeof entry.action === "string" ? [{ action: entry.action, data: entry.data }] : []) : []
   }
 
-  export async function processTurn(runtime: AgentRuntime, owner: ConversationOwner, room: Room, text: string, signal: AbortSignal, options: TurnOptions = {}) {
+  function replyOf(memory: Memory, agentName: string): TurnReply {
+    const { text, inReplyTo, failureKind, actionResults } = memory.content
+    return {
+      text: text ?? "", agentName, messageId: memory.id as UUID, userMessageId: inReplyTo as UUID,
+      actionResults: actionResultsOf(actionResults),
+      ...(typeof failureKind === "string" && (failureKinds.has(failureKind) || failureKind === "timeout" || failureKind === "aborted")
+        ? { failureKind: failureKind as TurnFailureKind } : {}),
+    }
+  }
+
+  function kindOf(outcome: MessageProcessingResult["outcome"], deadline: AbortSignal): TurnFailureKind | undefined {
+    switch (outcome.status) {
+      case "completed": case "denied": return undefined
+      case "cancelled": return deadline.aborted ? "timeout" : "aborted"
+      case "failed": return failureKinds.has(outcome.error.kind) ? outcome.error.kind as FailureKind : undefined
+    }
+  }
+
+  function agentMemory(runtime: AgentRuntime, owner: ConversationOwner, roomId: UUID, id: UUID, content: Content, metadata?: MemoryMetadata): Memory {
+    return {
+      id, entityId: runtime.agentId, agentId: runtime.agentId, roomId, worldId: owner.world, createdAt: Date.now(),
+      content: { source: "device", ...content }, ...(metadata === undefined ? {} : { metadata }),
+    }
+  }
+
+  async function converse(runtime: AgentRuntime, owner: ConversationOwner, input: Memory, signal: AbortSignal, options: ProcessOptions & { readonly replyId?: UUID } = {}) {
     const service = runtime.messageService ?? (() => { throw new Error("A conversation requires the message service") })()
+    const store = conversationStore(runtime, owner)
+    const replies: Memory[] = []
     const storeReply = async (content: Content): Promise<Memory[]> => {
       if (!content.text?.trim()) return []
-      const response = { ...memory(runtime, owner, room, content.text, options.metadata), entityId: runtime.agentId, content }
+      const id = replies.length === 0 && options.replyId !== undefined ? options.replyId : randomUUID() as UUID
+      const response = agentMemory(runtime, owner, input.roomId, id, { ...content, inReplyTo: input.id }, options.metadata)
       await runtime.createMessageMemory(response)
+      replies.push(response)
       return [response]
     }
-    return runtime.roomHandlerQueue.withLease(room.id, async (lease) => {
+    return runtime.roomHandlerQueue.withLease(input.roomId, async (lease) => {
       signal.throwIfAborted()
-      const input = memory(runtime, owner, room, text, options.metadata)
       const userMessageId = await runtime.createMessageMemory(input)
-      const [current] = await runtime.adapter.getRoomsByIds([room.id])
-      const metadata = stamp(current?.metadata?.deviceConversation)
-      if (metadata._tag === "Some" && current !== undefined) {
-        await runtime.updateRooms([{
-          ...current, metadata: {
-            ...current.metadata, deviceConversation: { ...metadata.value, updatedAt: Math.max(metadata.value.updatedAt, input.createdAt ?? 0) },
-          },
-        }])
-      }
+      await store.touch(input.roomId, input.createdAt ?? Date.now())
       const result = await service.handleMessage(runtime, input, storeReply, {
         roomHandlerLease: lease, abortSignal: signal, ...(options.onStreamChunk === undefined ? {} : { onStreamChunk: options.onStreamChunk }),
       })
-      return { ...result, userMessageId }
+      return { ...result, responseMessages: replies, userMessageId }
     }, { signal })
   }
 
-  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string): LocalRoute[] {
-    if (!runtime.messageService) throw new Error("A conversation requires the message service")
-    const rooms = () => runtime.getRooms(owner.world)
-    const find = async (id: string | undefined): Promise<Room | undefined> =>
-      (await rooms()).find((room) => conversation(room)?.id === id)
+  export async function processTurn(runtime: AgentRuntime, owner: ConversationOwner, room: Room, text: string, signal: AbortSignal, options: ProcessOptions = {}) {
+    const input: Memory = {
+      id: randomUUID() as UUID, entityId: owner.user, agentId: runtime.agentId, roomId: room.id, worldId: owner.world,
+      createdAt: Date.now(), content: { text, source: "device" }, ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
+    }
+    return converse(runtime, owner, input, signal, options)
+  }
 
-    return [
-      {
-        method: "POST", path: "/api/conversations",
-        handler: async ({body}) => {
-          const payload = createBody(body ?? {})
-          if (payload._tag !== "Some") return failure(400, "invalid_conversation")
-          const title = payload.value.title?.trim() ?? ""
-          if (!canCreate(initial, title, title.length)) return failure(400, "invalid_title")
-          const created = await createConversation(runtime, owner, title)
-          return created === undefined ? failure(500, "room_unavailable") : { status: 201, body: { conversation: created } }
+  export const deviceConversation = (room: Room) => {
+    const record = recordOf(room)
+    return record === undefined ? undefined : conversationView(record)
+  }
+
+  export const createConversation = async (runtime: AgentRuntime, owner: ConversationOwner, title: string) =>
+    conversationView(await conversationStore(runtime, owner).create(title))
+
+  export function turnRunner(runtime: AgentRuntime, owner: ConversationOwner, deps: TurnDeps) {
+    const ledger = turnLedger<TurnResult>(runtime)
+    const { agentName } = deps
+
+    const announce = (record: ConversationRecord, result: TurnResult) => {
+      if (result.kind === "Replied") deps.publish?.("conversation", {
+        type: "conversation-updated", conversationId: record.id, roomId: record.roomId, messageId: result.reply.messageId,
+      })
+    }
+
+    const keep = async (record: ConversationRecord, userMessageId: UUID, text: string, kind: TurnFailureKind): Promise<TurnResult> => {
+      const reply = agentMemory(runtime, owner, record.roomId, replyIdOf(userMessageId), { text, inReplyTo: userMessageId, failureKind: kind })
+      await runtime.createMessageMemory(reply)
+      return { kind: "Replied", reply: replyOf(reply, agentName) }
+    }
+
+    async function start(record: ConversationRecord, input: TurnInput, userMessageId: UUID, options: TurnOptions): Promise<TurnResult> {
+      const deadline = AbortSignal.timeout(turnDeadlineMs)
+      const signal = options.signal === undefined ? deadline : AbortSignal.any([deadline, options.signal])
+      const said: Memory = {
+        id: userMessageId, entityId: owner.user, agentId: runtime.agentId, roomId: record.roomId, worldId: owner.world, createdAt: Date.now(),
+        content: {
+          text: input.text, source: "device", channelType: input.channelType,
+          ...(input.attachments.length === 0 ? {} : { attachments: [...input.attachments] }),
+          ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
+          ...(input.task === undefined ? {} : { task: input.task }),
+          ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
         },
+        ...(input.key === undefined ? {} : { metadata: { type: "custom", clientMessageId: input.key.clientMessageId, fingerprint: input.key.fingerprint } }),
+      }
+      const writer = options.onFrame
+      try {
+        const result = await converse(runtime, owner, said, signal, {
+          replyId: replyIdOf(userMessageId), ...(writer === undefined ? {} : { onStreamChunk: (chunk: string) => writer.append(chunk) }),
+        })
+        const kind = kindOf(result.outcome, deadline)
+        const [first] = result.responseMessages
+        if (kind !== undefined) return first === undefined ? keep(record, userMessageId, result.responseContent?.text ?? "", kind) : { kind: "Replied", reply: replyOf(first, agentName) }
+        if (result.outcome.status !== "completed" || first === undefined) return unavailable
+        const actionResults = (result.actionResults ?? []).flatMap((done): ActionResultData[] => done.data === undefined ? [] : [{ action: "REPLY", data: done.data }])
+        if (actionResults.length > 0) await runtime.adapter.updateMemories([{ id: first.id as UUID, content: { ...first.content, actionResults: [...actionResults] } }])
+        return { kind: "Replied", reply: { ...replyOf(first, agentName), actionResults } }
+      } catch (cause) {
+        if (signal.aborted && await runtime.getMemoryById(userMessageId) !== null)
+          return keep(record, userMessageId, "", deadline.aborted ? "timeout" : "aborted")
+        logger.warn({ src: "agent", conversationId: record.id, error: String(cause) }, "A turn ended without a reply")
+        return unavailable
+      }
+    }
+
+    const finish = (record: ConversationRecord, turn: Turn<TurnResult>, work: Promise<TurnResult>) => work.then((result) => {
+      turn.settle(result, result.kind === "Replied")
+      announce(record, result)
+      return result
+    }, (cause: unknown) => {
+      turn.settle(unavailable, false)
+      throw cause
+    })
+
+    async function admit(record: ConversationRecord, input: TurnInput): Promise<AdmittedTurn | TurnRefusal> {
+      const ready = runtime.getModel(ModelType.TEXT_LARGE) !== undefined
+      const ticket = await ledger.admit(record.roomId, input.key, ready, Date.now())
+      const settled = (result: TurnResult): AdmittedTurn => ({ kind: "Admitted", streams: false, run: () => Promise.resolve(result) })
+      switch (ticket.kind) {
+        case "Refused": return refusals[ticket.why]
+        case "Joined": return { kind: "Admitted", streams: false, run: () => ticket.ended }
+        case "Replayed": return settled(ticket.result)
+        case "Stored": return settled({ kind: "Replied", reply: replyOf(ticket.reply, agentName) })
+        case "Cut": return settled(await finish(record, ticket.turn, keep(record, ticket.userMessage.id as UUID, "", "aborted")))
+        case "Started": return {
+          kind: "Admitted", streams: true,
+          run: (options = {}) => finish(record, ticket.turn, start(record, input, ticket.userMessageId, options)),
+        }
+      }
+    }
+
+    async function runTurn(record: ConversationRecord, input: TurnInput, options: TurnOptions = {}): Promise<TurnResult | TurnRefusal> {
+      const admitted = await admit(record, input)
+      return admitted.kind === "Refused" ? admitted : admitted.run(options)
+    }
+
+    return { admit, runTurn }
+  }
+
+  export function turnRoutes(runtime: AgentRuntime, owner: ConversationOwner, store: ConversationStore, deps: TurnDeps): LocalRoute[] {
+    if (!runtime.messageService) throw new Error("A conversation requires the message service")
+    const runner = turnRunner(runtime, owner, deps)
+    return [{
+      method: "POST", path: "/api/conversations/{id}/messages",
+      handler: async ({ parameters, body, headers }) => {
+        const record = await store.find(parameters.get("id") ?? "")
+        if (record === undefined) return failure(404, "unknown_conversation")
+        const parsed = turnInput(body, headers)
+        if (parsed.kind === "Refused") return failure(parsed.status, parsed.error)
+        const result = await runner.runTurn(record, parsed.input, parsed.clientId === undefined ? {} : { clientId: parsed.clientId })
+        switch (result.kind) {
+          case "Refused": return failure(result.status, result.error)
+          case "Unavailable": return failure(503, "ASSISTANT_RESPONSE_UNAVAILABLE")
+          case "Replied": return { status: 200, body: result.reply }
+        }
       },
-      {
-        method: "GET", path: "/api/conversations",
-        handler: async () => okay({ conversations: (await rooms()).flatMap((room) => conversation(room) ?? [])
-          .sort((a, b) => b.updatedAt - a.updatedAt || b.id.localeCompare(a.id)) }),
-      },
-      {
-        method: "POST", path: "/api/conversations/{id}/messages",
-        handler: async ({ parameters, body, signal }) => {
-          const room = await find(parameters.get("id"))
-          if (!room) return failure(404, "unknown_conversation")
-          const payload = messageBody(body)
-          if (payload._tag !== "Some") return failure(400, "invalid_message")
-          const result = await processTurn(runtime, owner, room, payload.value.text, signal)
-          return result.didRespond && result.responseContent?.text
-            ? okay({ fullText: result.responseContent.text } satisfies TurnReply)
-            : failure(502, "turn_failed")
-        },
-      },
-      ...streamRoutes(async (id, body) => {
-        const room = await find(id)
-        if (!room) return { kind: "refused", status: 404, error: "unknown_conversation" }
-        const payload = messageBody(body)
-        if (payload._tag !== "Some") return { kind: "refused", status: 400, error: "invalid_message" }
-        return { kind: "admitted", verdict: { tag: "Unkeyed", turn: 1 }, run: async (writer, signal) => {
-          const result = await processTurn(runtime, owner, room, payload.value.text, signal, { onStreamChunk: (text) => writer.append(text) })
-          const [reply] = result.responseMessages
-          return result.didRespond && result.responseContent?.text && reply?.id
-            ? {
-              type: "done", fullText: result.responseContent.text, messageId: reply.id,
-              userMessageId: result.userMessageId, agentName, actionResults: [], kind: { tag: "Answered" },
-            }
-            : { type: "error", code: "turn_failed", message: "The turn did not complete" }
-        } }
-      }),
-      {
-        method: "POST", path: "/api/turns/{room}/abort",
-        handler: async ({ parameters }) => {
-          const requested = parameters.get("room")
-          const room = (await rooms()).find((candidate) => candidate.id === requested && conversation(candidate) !== undefined)
-          if (!room) return failure(404, "unknown_conversation")
-          return okay({ aborted: runtime.turnControllers.abortTurn(room.id, "owner_requested_abort") })
-        },
-      },
-    ]
+    }]
+  }
+
+  export function startTurnStream(runtime: AgentRuntime, owner: ConversationOwner, store: ConversationStore, deps: TurnDeps): StartStream {
+    const runner = turnRunner(runtime, owner, deps)
+    const terminalOf = (result: TurnResult): Terminal => result.kind === "Unavailable"
+      ? { type: "error", code: "ASSISTANT_RESPONSE_UNAVAILABLE", message: "The turn left no reply" }
+      : {
+        type: "done", fullText: result.reply.text, messageId: result.reply.messageId, userMessageId: result.reply.userMessageId,
+        agentName: result.reply.agentName, actionResults: result.reply.actionResults,
+        ...(result.reply.taskChoices === undefined ? {} : { taskChoices: result.reply.taskChoices }),
+        ...(result.reply.failureKind === undefined ? {} : { failureKind: result.reply.failureKind }),
+      }
+    return async (conversationId, body, headers) => {
+      const record = await store.find(conversationId)
+      if (record === undefined) return { kind: "refused", status: 404, error: "unknown_conversation" }
+      const parsed = turnInput(body, headers)
+      if (parsed.kind === "Refused") return { kind: "refused", status: parsed.status, error: parsed.error }
+      const admitted = await runner.admit(record, parsed.input)
+      if (admitted.kind === "Refused") return { kind: "refused", status: admitted.status, error: admitted.error }
+      return {
+        kind: "admitted", role: admitted.streams ? "streams" : "waits",
+        run: async (writer, left) => terminalOf(await admitted.run({ signal: left, onFrame: writer, ...(parsed.clientId === undefined ? {} : { clientId: parsed.clientId }) })),
+      }
+    }
   }
 }
-export { conversation as deviceConversation, conversationRoutes, createConversation, processTurn, type ConversationOwner, type TurnOptions, type TurnReply } from node
+export {
+  createConversation, deviceConversation, processTurn, startTurnStream, turnInput, turnRoutes, turnRunner,
+  type ActionResultData, type AdmittedTurn, type ProcessOptions, type TurnDeps, type TurnFailureKind, type TurnInput, type TurnOptions, type TurnRefusal, type TurnReply, type TurnResult,
+} from node
+export type { ConversationOwner } from "./conversations.vibe"

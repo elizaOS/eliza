@@ -515,6 +515,7 @@ function label(file: SourceFile): string {
 
 function sourceDifferences(lock: SourceLock, facts: SourceFacts, patches: readonly PatchEnvelope[]): string[] {
   const differences: string[] = []
+  if (facts.manifest !== lock.manifest) differences.push(`the manifest checkout reads as ${facts.manifest || "none"}; the lock pins ${lock.manifest}`)
   lock.projects.forEach((project, index) => {
     const read = facts.projects[index]?.revision ?? ""
     if (read !== project.revision) differences.push(`${project.path} is at ${read || "no checkout"}; the lock pins ${project.revision}`)

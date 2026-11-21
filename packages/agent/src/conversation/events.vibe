@@ -179,7 +179,7 @@ export effect function makeFeedHub(ports: HubPorts) {
   const sinks = new Map<number, FeedSink>()
   const timers = new Map<string, { cancel: () => void }[]>()
 
-  const send = (event: Event): FeedStep | undefined => Effect.runSync(machine.send(event) catch () => undefined)
+  const send = (event: Event): FeedStep | undefined => Effect.runSync(Effect.orElseSucceed(machine.send(event), () => undefined))
   const current = (): EventFeed => Effect.runSync(machine.get())
 
   function settle(out: readonly Frame[], wire: (news: FeedEvent) => AgentEvent | undefined) {
@@ -286,7 +286,7 @@ export effect function makeFeedHub(ports: HubPorts) {
     return true
   }
 
-  const unsubscribe = ports.events.onNotification(inboxChanged)
+  const unsubscribe = try sync(() => ports.events.onNotification(inboxChanged))
 
   function stop(): boolean {
     const step = send({ type: "stop" })
@@ -310,7 +310,8 @@ export error EventHubUnavailable { reason: string }
 
 export effect function createEventHub(runtime: AgentRuntime, owner: ConversationOwner) {
   const events = try tryPromise({ try: () => coreEvents(runtime), catch: (cause) => new EventHubUnavailable({ reason: String(cause) }) })
-  const hub = try makeFeedHub({ events, storeNotice: noticeStore(runtime, owner), expireLater: expireOnShellClock })
+  const storeNotice = try sync(() => noticeStore(runtime, owner))
+  const hub = try makeFeedHub({ events, storeNotice, expireLater: expireOnShellClock })
   const detach = try tryPromise({ try: () => attachEscalation(runtime, hub), catch: (cause) => new EventHubUnavailable({ reason: String(cause) }) })
   const running: EventHub = {
     ...hub,

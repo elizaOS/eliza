@@ -5,5 +5,7 @@ import { routes as commands, sweeps as commandSweeps } from "../../billing/comma
 import { routes as snapshot } from "../../billing/snapshot.vibe"
 import { routes as invoices } from "../../billing/invoices.vibe"
 import { sweeps as allowanceSweeps } from "../../billing/allowance.vibe"
+import { routes as grantCodes } from "../../billing/grant-codes.vibe"
+import { routes as planChanges, sweeps as planChangeSweeps } from "../../billing/plan-change.vibe"
 
-export const area: Area = { routes: [...entitlements, ...snapshot, ...invoices, ...commands], sweeps: [...commandSweeps, ...allowanceSweeps] }
+export const area: Area = { routes: [...entitlements, ...snapshot, ...invoices, ...commands, ...grantCodes, ...planChanges], sweeps: [...commandSweeps, ...allowanceSweeps, ...planChangeSweeps] }
