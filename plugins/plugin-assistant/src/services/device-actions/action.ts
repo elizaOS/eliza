@@ -1088,6 +1088,25 @@ const browserControlSchemas: ActionParameterSchema[] = [
     },
   },
 ];
+/** Whether the form of this operation offered on the turn takes a contact the phone looks up. */
+const takesContactTarget = (
+  offered: readonly ActionParameterSchema[],
+  type: string,
+): boolean =>
+  offered.some(
+    (form) =>
+      form.properties?.type?.enum?.includes(type) === true &&
+      form.properties?.target?.properties?.kind?.enum?.includes("contact") ===
+        true,
+  );
+/**
+ * How a person named by a role is called or texted, whichever of the two the
+ * phone offers. The query is the role word without "my" or "the": with the
+ * owner's phrase as the example the model wrote "my mom" and "the dentist" as
+ * the query, and the phone's address book holds "mom".
+ */
+const CONTACT_BY_ROLE =
+  "at once with a contact target, also when the owner names them by a role or relation: the query is that word alone, brother for my brother or dentist for the dentist. The phone finds the contact and the owner picks when several match.";
 /**
  * Proposal guidance, in the order it is sent. A connection is told only about
  * the operations its schema offers, and each fact has one home. What holds
@@ -1131,6 +1150,34 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
           ) === true,
       ),
     text: "A target is {kind: number, number} or {kind: contact, query: the contact name as the owner said it}; the phone resolves a contact locally and its number is never returned.",
+  },
+  // "Ping my brother" and "ring the dentist" were planned as contact_show,
+  // which returns nothing a call or text can use. A phone is told this only
+  // of the operations it is offered with a contact target.
+  {
+    forms: (offered) =>
+      takesContactTarget(offered, "phone_call") &&
+      takesContactTarget(offered, "sms_compose"),
+    text: `To call or text a person, propose phone_call or sms_compose ${CONTACT_BY_ROLE}`,
+  },
+  {
+    forms: (offered) =>
+      takesContactTarget(offered, "phone_call") &&
+      !takesContactTarget(offered, "sms_compose"),
+    text: `To call a person, propose phone_call ${CONTACT_BY_ROLE}`,
+  },
+  {
+    forms: (offered) =>
+      !takesContactTarget(offered, "phone_call") &&
+      takesContactTarget(offered, "sms_compose"),
+    text: `To text a person, propose sms_compose ${CONTACT_BY_ROLE}`,
+  },
+  {
+    types: ["contact_show"],
+    forms: (offered) =>
+      takesContactTarget(offered, "phone_call") ||
+      takesContactTarget(offered, "sms_compose"),
+    text: "Never propose contact_show first to look them up.",
   },
   {
     types: ["camera_capture_photo"],
@@ -2256,6 +2303,26 @@ function byOperationType(
 }
 
 /**
+ * Whether the owner's message is a direct open of an address in a new tab.
+ * "Open x.com in a new tab" is an open of x.com: an empty tab is never
+ * offered for it, by the proposal tool or by the empty-tab tool (the service
+ * also turns a proposed one into that open).
+ */
+export function opensAddressInNewTab(
+  request: Memory | null | undefined,
+  assistantName?: string,
+): boolean {
+  if (request == null) return false;
+  const text = extractUserText(unwrapUserMessageText(request));
+  return (
+    (
+      directBrowserOpen(text, assistantName) ??
+      spokenBrowserOpen(text, assistantName)
+    )?.newTab === true
+  );
+}
+
+/**
  * The operation forms a device action offers on this turn, each operation
  * type in a closed branch of its own, as the forms are registered.
  * PROPOSE_DEVICE_ACTION is narrowed to the negotiated capabilities, the
@@ -2281,20 +2348,10 @@ export function offeredDeviceOperations(
   const files =
     capabilities?.includes(FILES_CAPABILITY) === true &&
     (!current || current.isCurrent());
-  // "Open x.com in a new tab" is an open of x.com: an empty tab is never
-  // offered for it (the service also turns one into that open).
-  const request = binding?.message ?? current?.replyContext?.message;
-  const requestText =
-    request === undefined
-      ? undefined
-      : extractUserText(unwrapUserMessageText(request));
-  const requestName = (binding?.runtime ?? current?.runtime)?.character.name;
-  const addressInNewTab =
-    requestText !== undefined &&
-    (
-      directBrowserOpen(requestText, requestName) ??
-      spokenBrowserOpen(requestText, requestName)
-    )?.newTab === true;
+  const addressInNewTab = opensAddressInNewTab(
+    binding?.message ?? current?.replyContext?.message,
+    (binding?.runtime ?? current?.runtime)?.character?.name,
+  );
   const offered = (branch: ActionParameterSchema): boolean => {
     if (
       branch.properties?.days &&
