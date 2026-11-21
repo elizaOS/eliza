@@ -12,7 +12,10 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Pattern;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -100,7 +103,7 @@ public final class CloudDeviceAccount {
   return credential;
  }
 
- public record NativeGoogleAttempt(String clientId, String environment, String serverClientId, String challengeId,
+ public record NativeGoogleAttempt(String clientId, String environment, String serverClientId, List<String> scopes, String challengeId,
     String nonce, String state, long expiresAt) {
   @Override public String toString() { return "CloudDeviceAccount.NativeGoogleAttempt"; }
  }
@@ -121,6 +124,13 @@ public final class CloudDeviceAccount {
   String serverClientId = google.getString("serverClientId");
   if (!serverClientId.matches("[A-Za-z0-9-]{1,100}\\.apps\\.googleusercontent\\.com"))
    throw new IOException("Invalid Google client configuration");
+  List<String> scopes = new ArrayList<>();
+  JSONArray listed = google.optJSONArray("scopes");
+  for (int index = 0; listed != null && index < listed.length(); index++) {
+   String scope = listed.getString(index);
+   if (!scope.matches("openid|email|https://www\\.googleapis\\.com/auth/[a-z.]{1,64}")) throw new IOException("Invalid Google scope");
+   scopes.add(scope);
+  }
   JSONObject pending = beginPending("google", 120_000L);
   String state = pending.getString("state");
   try {
@@ -131,20 +141,21 @@ public final class CloudDeviceAccount {
    if (!opaque(nonce) || seconds < 1 || seconds > 120)
     throw new IOException("Invalid Google challenge");
    long expiry = Math.min(pending.getLong("expiresAt"), System.currentTimeMillis() + seconds * 1000);
-   return new NativeGoogleAttempt(clientId, environment, serverClientId, challengeId, nonce, state, expiry);
+   return new NativeGoogleAttempt(clientId, environment, serverClientId, List.copyOf(scopes), challengeId, nonce, state, expiry);
   } catch (Exception failure) {
    clearNativeGoogle(state);
    throw failure;
   }
  }
 
- public boolean finishNativeGoogle(NativeGoogleAttempt attempt, String idToken) throws Exception {
+ public boolean finishNativeGoogle(NativeGoogleAttempt attempt, String idToken, String serverAuthCode) throws Exception {
   if (idToken == null || idToken.length() > 7500 || !idToken.matches("[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+"))
    throw new IOException("Invalid Google result");
   String snapshot = pendingSnapshot(attempt.state(), "google");
   if (snapshot == null || attempt.expiresAt() <= System.currentTimeMillis()) return false;
   JSONObject request = mobileClient(attempt.clientId(), attempt.environment())
       .put("challengeId", attempt.challengeId()).put("idToken", idToken);
+  if (serverAuthCode != null && serverAuthCode.matches("[A-Za-z0-9/_.~-]{10,2048}")) request.put("serverAuthCode", serverAuthCode);
   JSONObject response = new JSONObject(post("/api/v1/app-auth/mobile/google", request, null, 200).body());
   String code = response.getString("code");
   return opaque(code) && attempt.state().equals(response.getString("state")) && exchangeCode(code, snapshot);

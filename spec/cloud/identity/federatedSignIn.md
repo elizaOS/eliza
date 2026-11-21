@@ -302,3 +302,43 @@ pure def canExpireNative(a: GoogleAttempt): bool = isOpen(a.native) and not(nati
 pure def expireNative(a: GoogleAttempt): GoogleAttempt = { ...a, native: ChallengeExpired }
 pure def sometimesNativeExpired(a: GoogleAttempt): bool = a.native == ChallengeExpired
 ```
+
+## Story: Connect mail and calendar from the same Google sheet
+
+> As a person who signed in on the device with its Google account, I want
+> that account to grant my mail and calendar right there, so that I never
+> sign in to Google a second time, while a code for another Google account
+> can never connect to mine.
+
+### A native connect stores tokens only for the signed-in account's own Google identity and only the scopes Google granted
+
+The device sends Google's one-use `serverAuthCode` for the account it
+signed in with, and the cloud redeems it. The connection is stored only when
+Google returned a refresh token and Google's verified subject is the Google
+sign-in subject of the account, which an account without a Google sign-in
+lacks. It keeps reading mail and reading the
+calendar as Google granted them, sending or trashing mail only with reading
+mail, and changing the calendar only with reading it. A connect that would
+store nothing stores no scope at all.
+
+```quint
+type NativeGoogleScopes = { readMail: bool, sendMail: bool, trashMail: bool, readCalendar: bool, writeCalendar: bool }
+pure val noNativeGoogleScopes: NativeGoogleScopes = { readMail: false, sendMail: false, trashMail: false, readCalendar: false, writeCalendar: false }
+pure def nativeConnectStores(signedInSubject: str, grantedSubject: str, refreshIssued: bool, granted: NativeGoogleScopes): NativeGoogleScopes =
+  if (signedInSubject == "" or signedInSubject != grantedSubject or not(refreshIssued)) noNativeGoogleScopes
+  else { readMail: granted.readMail, sendMail: granted.readMail and granted.sendMail, trashMail: granted.readMail and granted.trashMail,
+         readCalendar: granted.readCalendar, writeCalendar: granted.readCalendar and granted.writeCalendar }
+pure def nativeConnectStoresAny(stored: NativeGoogleScopes): bool = stored.readMail or stored.readCalendar
+pure val grantedValues: Set[NativeGoogleScopes] = tuples(Set(true, false), Set(true, false), Set(true, false), Set(true, false), Set(true, false))
+  .map(g => { readMail: g._1, sendMail: g._2, trashMail: g._3, readCalendar: g._4, writeCalendar: g._5 })
+pure val signedInSubjectValues = Set("", "sub1", "sub2")
+pure val grantedSubjectValues = Set("", "sub1", "sub2")
+pure def lawANativeConnectStoresOnlyTheSignedInAccountsGrantedScopes(signedInSubject: str, grantedSubject: str, refreshIssued: bool, granted: NativeGoogleScopes): bool = {
+  val stored = nativeConnectStores(signedInSubject, grantedSubject, refreshIssued, granted)
+  (nativeConnectStoresAny(stored) implies (signedInSubject != "" and signedInSubject == grantedSubject and refreshIssued))
+  and (stored.readMail implies granted.readMail) and (stored.sendMail implies (granted.sendMail and stored.readMail))
+  and (stored.trashMail implies (granted.trashMail and stored.readMail)) and (stored.readCalendar implies granted.readCalendar)
+  and (stored.writeCalendar implies (granted.writeCalendar and stored.readCalendar))
+  and (not(nativeConnectStoresAny(stored)) implies stored == noNativeGoogleScopes)
+}
+```

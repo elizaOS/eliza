@@ -1,6 +1,7 @@
-// spec/cloud/index.md, "Story: Connect Google mail and calendar"
+// spec/cloud/index.md, "Story: Connect Google mail and calendar"; spec/cloud/identity/federatedSignIn.md, "Story: Connect mail and calendar from the same Google sheet"
 import type { Client } from "pg"
 import { canReadCloudCalendarReminder, currentAttachmentTransfer } from "../gen/cloud.effect.vibe"
+import { nativeConnectStores, nativeConnectStoresAny } from "../gen/cloud__identity__federatedSignIn.effect.vibe"
 import { Aead, Digest, SecureRandom } from "effect/crypto"
 import { Base64 } from "effect/encoding"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpServerResponse, HttpServerRequest, HttpIncomingMessage } from "effect/http"
@@ -26,6 +27,7 @@ type Connection = Capabilities & {
 type Authorization = Capabilities & { expected_email: string | null; provider: string; provider_subject: string }
 type User = { provider: string; provider_subject: string; email: string | null }
 
+schema NativeConnect { serverAuthCode: string }
 schema Consent { mail: boolean; calendar: boolean; sendMail?: boolean; trashMail?: boolean; writeCalendar?: boolean; expectedEmail?: string }
 schema SendMail { accountId: string; grantId: string; operationId: string; recipient: string; subject: string; text: string; replyTo?: string }
 schema GmailAccepted { id: string; threadId?: string }
@@ -70,6 +72,14 @@ function client(env: GoogleEnv) {
 
 function enabled(env: GoogleEnv) {
   return client(env) !== null && /^[a-f0-9A-F]{64}$/.test(env.GOOGLE_CONNECT_TOKEN_KEY ?? "")
+}
+
+function nativeConnectReady(env: GoogleEnv) {
+  return enabled(env) && client(env)?.id === env.GOOGLE_CLIENT_ID
+}
+
+export function nativeGoogleScopes(env: GoogleEnv) {
+  return nativeConnectReady(env) ? ["openid", "email", ...Object.values(scopeByCapability)] : []
 }
 
 effect function googleConfig(env: GoogleEnv) {
@@ -259,28 +269,76 @@ effect function complete(request: Request, url: URL, env: GoogleEnv, db: Client,
   }))
   const granted = new Set((credentials.scope ?? "").split(/\s+/))
   if (!credentials.refresh_token || !capabilities(intended).every((scope) => granted.has(scope))) throw new AuthorizationFailed()
+  const profile = try verifiedProfile(credentials)
+  if (intended.provider === "google" ? intended.provider_subject !== profile.sub : profile.email !== intended.expected_email) throw new AuthorizationFailed()
+  try link(env, config, db, account, profile, intended, credentials.refresh_token, stateHash)
+}
+
+effect function verifiedProfile(credentials: OAuthResult) {
   const profileResponse = try http("https://openidconnect.googleapis.com/v1/userinfo", { access: credentials.access_token })
   if (!ok(profileResponse.status)) throw new ProviderUnavailable()
   const profileRaw = timeout(profileResponse.json, "10 seconds") catch effect () => { throw new ProviderUnavailable() }
   const verified = Schema.decodeUnknownOption(GoogleProfile)(profileRaw)
   if (Option.isNone(verified) || !verified.value.email_verified || !/^[a-zA-Z0-9_-]{1,255}$/.test(verified.value.sub)) throw new AuthorizationFailed()
-  const email = verified.value.email.trim().toLowerCase()
-  if (intended.provider === "google" ? intended.provider_subject !== verified.value.sub : email !== intended.expected_email) throw new AuthorizationFailed()
+  return { sub: verified.value.sub, email: verified.value.email.trim().toLowerCase() }
+}
+
+effect function link(env: GoogleEnv, config: Config, db: Client, account: string, profile: { sub: string; email: string }, scopes: Capabilities, refreshToken: string, stateHash: string | null) {
   const id = try (try SecureRandom.SecureRandom).uuidV4()
-  const refresh = try seal(config, credentials.refresh_token, credentialContext(env, account, verified.value.sub, intended))
+  const refresh = try seal(config, refreshToken, credentialContext(env, account, profile.sub, scopes))
   const { rowCount } = try forAccount(db, account, query(db, `
     WITH approved AS (
       DELETE FROM cloud_google_authorizations
       WHERE account_id = $1 AND state_hash = $2 AND expires_at > now()
-      RETURNING account_id, mail, calendar, send_mail, trash_mail, write_calendar
+      RETURNING account_id
     )
     INSERT INTO cloud_google_connections (account_id, id, subject, email, mail, calendar, send_mail, trash_mail, write_calendar, refresh_cipher)
-    SELECT account_id, $3, $4, $5, mail, calendar, send_mail, trash_mail, write_calendar, $6 FROM approved
+    SELECT $1::text, $3::uuid, $4::text, $5::text, $6::boolean, $7::boolean, $8::boolean, $9::boolean, $10::boolean, $11::text
+    WHERE ($2::text IS NOT NULL AND EXISTS (SELECT 1 FROM approved))
+       OR ($2::text IS NULL AND EXISTS (
+         SELECT 1 FROM cloud_sign_in_identities
+         WHERE account_id = $1 AND provider = 'google' AND provider_subject = $4
+       ))
     ON CONFLICT (account_id) DO UPDATE SET
       id = EXCLUDED.id, subject = EXCLUDED.subject, email = EXCLUDED.email, mail = EXCLUDED.mail,
       calendar = EXCLUDED.calendar, send_mail = EXCLUDED.send_mail, trash_mail = EXCLUDED.trash_mail, write_calendar = EXCLUDED.write_calendar, refresh_cipher = EXCLUDED.refresh_cipher, linked_at = now(), last_used_at = NULL
-  `, [account, stateHash, id, verified.value.sub, email, refresh]))
+  `, [account, stateHash, id, profile.sub, profile.email, scopes.mail, scopes.calendar, scopes.send_mail, scopes.trash_mail, scopes.write_calendar, refresh]))
   if (!rowCount) throw new AuthorizationFailed()
+}
+
+effect function connectCode(env: GoogleEnv, db: Client, account: string, signedInSubject: string, serverAuthCode: string) {
+  if (!nativeConnectReady(env)) throw new ConnectionUnavailable()
+  const config = try googleConfig(env)
+  if (!/^[A-Za-z0-9/_.~-]{10,2048}$/.test(serverAuthCode)) throw new BadRequest()
+  if (signedInSubject === "") throw new AuthorizationFailed()
+  const credentials = try oauthToken(config, new URLSearchParams({ grant_type: "authorization_code", code: serverAuthCode, redirect_uri: "" }))
+  const refreshToken = credentials.refresh_token ?? ""
+  const granted = new Set((credentials.scope ?? "").split(/\s+/))
+  const profile = try verifiedProfile(credentials)
+  const stored = nativeConnectStores(signedInSubject, profile.sub, refreshToken !== "", {
+    readMail: granted.has(scopeByCapability.mail), sendMail: granted.has(scopeByCapability.send_mail), trashMail: granted.has(scopeByCapability.trash_mail),
+    readCalendar: granted.has(scopeByCapability.calendar), writeCalendar: granted.has(scopeByCapability.write_calendar)
+  })
+  if (!nativeConnectStoresAny(stored)) throw new AuthorizationFailed()
+  try link(env, config, db, account, profile, {
+    mail: stored.readMail, send_mail: stored.sendMail, trash_mail: stored.trashMail, calendar: stored.readCalendar, write_calendar: stored.writeCalendar
+  }, refreshToken, null)
+  return true
+}
+
+effect function connectNative(request: Request, env: GoogleEnv, db: Client, account: string) {
+  const { serverAuthCode } = try readAction(request, NativeConnect)
+  const { rows } = try query<{ provider_subject: string }>(db, `
+    SELECT p.provider_subject FROM accounts a JOIN cloud_sign_in_identities p ON p.account_id = a.key
+    WHERE a.key = $1 AND a.status = 'active' AND p.provider = 'google'`, [account])
+  try connectCode(env, db, account, rows[0]?.provider_subject ?? "", serverAuthCode)
+  return try status(db, env, account)
+}
+
+export effect function connectSignedInGoogle(env: GoogleEnv, db: Client, account: string, signedInSubject: string, serverAuthCode: string) {
+  const result = try exit(Effect.provide(connectCode(env, db, account, signedInSubject, serverAuthCode), providerLayer))
+  if (Exit.isFailure(result)) try annotateLogs(logWarning("native google connection not linked"), { cause: String(Cause.squash(result.cause)) })
+  return Exit.isSuccess(result)
 }
 
 effect function disconnect(db: Client, account: string) {
@@ -671,6 +729,7 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
   const url = try Effect.try({ try: () => new URL(request.url), catch: () => new BadRequest() })
   if (url.pathname === deviceAttachmentPath && request.method === "POST") return try redeemAttachment(request, env, db, account)
   const path = url.pathname.slice(route.length)
+  if (request.method === "POST" && path === "/connect/native") return try connectNative(request, env, db, account)
   if (request.method === "POST") {
     const origin = request.headers.get("origin")
     if (origin !== env.PUBLIC_API_ORIGIN && origin !== env.WEB_ORIGIN) return body(403, { error: "forbidden_origin" })
