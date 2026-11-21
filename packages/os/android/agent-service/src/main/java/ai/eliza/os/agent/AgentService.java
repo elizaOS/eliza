@@ -485,7 +485,7 @@ public class AgentService extends Service {
     else if (effect instanceof AgentPolicy.Kill kill) {
       cancelTimers();
       AgentSupervisor.Child target = child;
-      if (target != null && target.epoch == base + kill.epoch()) work.execute(target::stop);
+      if (target != null && target.epoch == base + kill.epoch()) offload(target::stop);
     } else if (effect instanceof AgentPolicy.PushCredential push) push(push);
     else if (effect instanceof AgentPolicy.RecoveryReview recovery) {
       if (review != null) review.complete(new Review(recovery.token().token() + "." + recovery.token().nonce(), retained()));
@@ -696,7 +696,7 @@ public class AgentService extends Service {
     Path agentSocket = socket;
     String launchToken = token;
     if (!owns(launchEpoch) || policy.state().phase() != Phase.RUNNING) return;
-    work.execute(() -> {
+    offload(() -> {
       HealthPolicy.Observation seen;
       if (probe) seen = new HealthPolicy.Probed(probe(agentSocket, launchToken, running::alive));
       else {

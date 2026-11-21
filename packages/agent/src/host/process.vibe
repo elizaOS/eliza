@@ -1,7 +1,7 @@
 // spec/agent/host/process.md, "Story: Boot from a launch and serve only when ready"; spec/agent/host/process.md, "Story: Tell the host whether the agent can answer"; spec/agent/host/process.md, "Story: Stop on a signal and exit with an honest code"; spec/agent/host/launch.md, "Story: Start the agent from one launch document"
 
 module node {
-  import type { BootFailure, LaunchFrame as FrameModel } from "../../gen/agent__host__launch.ts"
+  import type { BootFailure } from "../../gen/agent__host__launch.ts"
   import type { AgentProcess, Event as ProcessEvent } from "../../gen/agent__host__process.ts"
   import type { Endpoint, LaunchDocument, LaunchFrame } from "./launch.vibe"
   import type { AgentPlugin, ModuleFactory } from "./module.vibe"
@@ -60,15 +60,8 @@ module node {
   import { bootFailureOf, composeAgent } from "./compose.vibe"
   import { reservedHostPrefixes } from "../plugins/product.vibe"
   import { bindModels, launchModel } from "../models/binding.vibe"
+  import { frameModel } from "./launch.vibe"
   import { modelPlugin } from "../models/plugin.vibe"
-
-  function frameModel(frame: LaunchFrame): FrameModel {
-    return {
-      version: frame.version, token: String(frame.token), epoch: frame.epoch,
-      credential: frame.credential === undefined ? { tag: "NoCredential" } : { tag: "Keyed", version: frame.credential.version, value: String(frame.credential.value) },
-      storageKey: frame.storageKey === undefined ? { tag: "NoStorageKey" } : { tag: "StorageKey", key: String(frame.storageKey) },
-    }
-  }
 
   function healthAnswer(state: AgentProcess) {
     const reply = healthReply(state)

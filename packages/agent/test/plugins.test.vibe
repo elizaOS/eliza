@@ -1,5 +1,4 @@
 // spec/agent/plugins/profile.md, "Story: Load only the plugins my product lists"; spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"
-import { randomBytes } from "node:crypto"
 import { assert, it } from "@effect/vitest"
 import { addLogListener, type LogEntry } from "@elizaos/core"
 import { builtinModules, cloudLinkPlugin, storagePlugin } from "../gen/agent__plugins__profile.ts"
@@ -13,7 +12,7 @@ import { launchDocument, launchFrame, type LaunchOptions } from "./support/scrat
 import { request } from "./support/socket-client.ts"
 
 const tasksModule = "@elizaos/agent/tasks"
-const storageKey = randomBytes(32).toString("base64")
+const storageKey = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc="
 
 const listedPlugin = {
   name: "listed-fixture",
