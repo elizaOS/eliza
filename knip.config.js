@@ -112,7 +112,9 @@ export default {
       ]
     },
     "packages/agent": {
+      "vitest": { "config": [] },
       "entry": [
+        "vitest.config.ts",
         "src/{index,bin}.vibe",
         "src/{client,voice,tasks}/index.vibe",
         "test/**/*.test.{ts,vibe}",
