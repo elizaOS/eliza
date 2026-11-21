@@ -29,6 +29,7 @@ import {
 } from "./definitions/notices.ts"
 
 export type * from "./definitions/notices.ts"
+export { noticeOwnerOf } from "./definitions/notices.ts"
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"

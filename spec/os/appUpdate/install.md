@@ -67,6 +67,8 @@ pure val planValues = Set(
 )
 pure val installedValues = Set(1, 2)
 pure val planIdValues = Set(1, 2)
+pure val weight_stage = 4
+pure val weight_verify = 4
 pure val weight_changeChannel = 1
 pure val weight_dropPlan = 1
 pure def alwaysPlanOutsideIdle(j: Journal): bool = if (j.phase == Idle) j.plan == noPlan else validPlan(j.plan)
@@ -92,6 +94,8 @@ pure def canCommitCandidate(j: Journal, sessionId: int): bool = j.phase == Verif
 pure def commitCandidate(j: Journal, sessionId: int): Journal = { ...j, phase: Committing, session: sessionId, revision: j.revision + 1 }
 pure val targetValues = Set(2, 3, 4)
 pure val sessionIdValues = Set(1, 2)
+pure val weight_requestHold = 4
+pure val weight_acknowledgeHold = 4
 pure def alwaysAwaitingIsHeld(j: Journal): bool = awaitsReadback(j) implies (j.hold == HoldGranted and j.session > 0)
 pure def alwaysHoldOnlyForAnOpenAttempt(j: Journal): bool =
   j.hold != Unheld implies (awaitsReadback(j) or j.phase == Verified or j.phase == RecoveryReady)
@@ -249,7 +253,7 @@ pure val evidenceValues = Set(
   { planId: 1, generation: 0, revision: 11, installed: 3, verdict: HealthFailed },
   { planId: 1, generation: 1, revision: 6, installed: 2, verdict: HealthPassed }
 )
-pure val weight_observeHealth = 4
+pure val weight_observeHealth = 8
 pure def sometimesHealthy(j: Journal): bool = j.phase == Healthy
 ```
 
@@ -267,6 +271,7 @@ pure def commitRecovery(j: Journal, sessionId: int): Journal =
 pure def canDenyRecovery(j: Journal): bool = j.phase == RecoveryReady
 pure def denyRecovery(j: Journal): JournalStep =
   conclude(true, j.plan.candidate, j, { ...j, phase: Quarantined, quarantine: j.quarantine.union(Set(j.plan.recovery)), revision: j.revision + 1 })
+pure val weight_commitRecovery = 4
 pure def alwaysRecoveryFollowsQuarantinedCandidate(j: Journal): bool =
   (j.recoveryAttempted or j.phase == RecoveryReady) implies j.quarantine.contains(j.plan.candidate)
 pure def alwaysRecoveryPhasesMatchTheAttempt(j: Journal): bool =

@@ -60,6 +60,7 @@ export interface RouteInput {
   readonly query: ReadonlyMap<string, string>
   readonly headers: ReadonlyMap<string, string>
   readonly body: unknown
+  readonly rawBodyBytes?: number
   readonly signal: AbortSignal
 }
 

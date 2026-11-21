@@ -1,8 +1,10 @@
 // spec/agent/plugins/profile.md, "Storage loads first, then the cloud link, the privacy service, the listed plugins in order and the product plugin last"; spec/agent/plugins/profile.md, "A refused plan loads nothing more"; spec/agent/plugins/profile.md, "The product plugin must be in the bundle"; spec/agent/plugins/profile.md, "A product route never claims a route prefix an agent module owns"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/plugins/profile.md, "The worker is installed only after its executable digest matches the launch"; spec/agent/plugins/profile.md, "The worker never receives the credential, the launch token or the storage key"
+// spec/agent/access/routes.md, "A list is loaded whole or not at all"
 import { AgentRuntime, logger, type Character, type IMessageService, type RuntimeSettings, type UUID } from "@elizaos/core"
 import type { BootFailure, LaunchPolicy } from "../../gen/agent__host__launch.ts"
 import { Machine, cloudLinkPlugin, machine, overlaps, privacyPlugin, storagePlugin, type PlanFailure, type PlanPhase, type ProcessValue, type WorkerLaunch } from "../../gen/agent__plugins__profile.effect.vibe"
 import type { LocalRoute } from "../access/routes.vibe"
+import { pluginRouteListAccepted } from "../access/router.vibe"
 import { builtinModuleFactories } from "../plugins/profile.vibe"
 import { ModuleRefused, actionNames, routePrefixes, type AgentPlugin, type ModuleContext, type ModuleFactory } from "./module.vibe"
 
@@ -145,6 +147,9 @@ effect function loadPlan(runtime: AgentRuntime, input: ComposeInput) {
   }
   try orDie(plan.send({ type: "finishPlan" }))
   state = try settled(plan, "allowlist")
+  const refusedRoutes = new ModuleRefused({ module: "routes", reason: "The route list was refused whole" })
+  const routeListAccepted = try Effect.try({ try: () => pluginRouteListAccepted(routes), catch: () => refusedRoutes })
+  if (!routeListAccepted) throw refusedRoutes
   const allowed: ReadonlySet<string> = new Set(state.allowed)
   runtime.messageService = input.messageService(runtime, (action) =>
     allowed.has(action.name) ? undefined : `Action ${action.name} is not available in this product`)

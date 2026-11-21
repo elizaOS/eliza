@@ -1,10 +1,10 @@
-// spec/agent/access/auth.md, "Story: Admit only the supervising host"; spec/agent/access/transport.md, "Story: Answer each local request exactly once"
+// spec/agent/access/auth.md, "Story: Admit only the supervising host"; spec/agent/access/routes.md, "A list is loaded whole or not at all"; spec/agent/access/transport.md, "Story: Answer each local request exactly once"
 module node {
   import type { Redacted } from "effect"
   import { entry, publicPath, type Caller, type RouteOrigin } from "../../gen/agent__access__auth.ts"
   import type { Delivery } from "../../gen/agent__access__routes.ts"
   import { authStatusAnswer, authStatusRoute, callerOf } from "./auth.vibe"
-  import { defineRoutes, modelRoute, type LocalCall, type LocalRoute, type LocalRouter, type Route, type RouteInput } from "./routes.vibe"
+  import { modelRoute, routeGate, type LocalCall, type LocalRoute, type LocalRouter, type Route, type RouteInput } from "./routes.vibe"
 
   type Token = Redacted.Redacted<string>
 
@@ -37,6 +37,8 @@ module node {
   }
 
   const json = (status: number, value: object): Response => Response.json(value, { status })
+  const healthRoute = { method: "GET", path: "/api/health" } as const satisfies Route
+  const builtin: RouteOrigin = { tag: "Builtin" }
 
   function location(target: string) {
     const at = target.indexOf("?")
@@ -58,18 +60,35 @@ module node {
     }
   }
 
+  function load(routes: readonly Route[]) {
+    const gate = routeGate()
+    return { gate, accepted: gate.load(routes).tag === "Loaded" }
+  }
+
+  const plugins = (routes: readonly LocalRoute[]) => routes.filter((route) => !publicPath(route.path))
+
+  export function pluginRouteListAccepted(routes: readonly LocalRoute[]): boolean {
+    return load([healthRoute, authStatusRoute, ...plugins(routes).map(listed)]).accepted
+  }
+
   export function createRouter({ token, epoch, instanceId, routes, health }: RouterOptions): AgentRouter {
-    const builtin: RouteOrigin = { tag: "Builtin" }
-    const bindings: Binding[] = [
-      { route: { method: "GET", path: "/api/health" }, origin: builtin, handle: health ?? (() => json(200, { ready: true, runtime: "ok", agentState: "running", epoch })) },
+    const publicBindings: Binding[] = [
+      { route: healthRoute, origin: builtin, handle: health ?? (() => json(200, { ready: true, runtime: "ok", agentState: "running", epoch })) },
       { route: authStatusRoute, origin: builtin, handle: (_input, caller) => authStatusAnswer(caller, instanceId) },
-      ...routes.filter((route) => !publicPath(route.path)).map((route) => ({
+    ]
+    const bindings: Binding[] = [
+      ...publicBindings,
+      ...plugins(routes).map((route) => ({
         route: listed(route), origin: declared(route), handle: registrations.get(route) ?? route.handler,
       })),
     ]
-    const gate = defineRoutes(bindings.map(({ route }) => route))
+    const root = load(bindings.map(({ route }) => route))
+    if (!root.accepted) throw new Error("The route list was refused whole")
+    const anonymous = load(publicBindings.map(({ route }) => route))
+    const gates = { Root: root.gate, Anonymous: anonymous.gate }
     const byRoute = new Map(bindings.toReversed().map((binding) => [JSON.stringify(modelRoute(binding.route)), binding]))
     const delivery = (call: Omit<LocalCall, "streamed">): Delivery | undefined => {
+      const gate = gates[callerOf(token, call.authorization)]
       for (const streamed of [false, true]) {
         const admitted = gate.admit({ ...call, streamed })
         if (admitted.tag !== "RouteRefused") return streamed ? "Streamed" : "Buffered"
@@ -77,12 +96,13 @@ module node {
       return undefined
     }
     const route = async (request: LocalCall, signal: AbortSignal): Promise<Response> => {
-      const admitted = gate.admit(request)
+      const caller = callerOf(token, request.authorization)
+      const admitted = gates[caller].admit(request)
+      if (caller === "Anonymous" && admitted.tag !== "Admitted") return json(401, { error: "unauthorized" })
       if (admitted.tag === "RouteRefused") return json(404, { error: "not_found" })
       if (admitted.tag === "TooLarge") return json(413, { error: "too_large" })
       const binding = byRoute.get(JSON.stringify(admitted.route))
       if (!binding) return json(404, { error: "not_found" })
-      const caller = callerOf(token, request.authorization)
       const { segments, query } = location(request.target)
       if (entry({ verb: admitted.route.method, path: binding.route.path, origin: binding.origin }, caller) !== "Allowed") {
         return json(401, { error: "unauthorized" })
@@ -92,11 +112,11 @@ module node {
         if (piece.startsWith("{")) parameters.set(piece.slice(1, -1), segments[index])
       })
       const body: unknown = request.body === undefined ? undefined : JSON.parse(new TextDecoder().decode(request.body))
-      const result = await binding.handle({ parameters, query, headers: request.headers ?? new Map(), body, signal }, caller)
+      const result = await binding.handle({ parameters, query, headers: request.headers ?? new Map(), body, rawBodyBytes: request.body?.byteLength ?? 0, signal }, caller)
       return result instanceof Response ? result : json(result.status, result.body)
     }
     return Object.assign(route, { delivery })
   }
 }
 
-export { createRouter, registerCallerRoute, type AgentRouter } from node
+export { createRouter, pluginRouteListAccepted, registerCallerRoute, type AgentRouter } from node

@@ -484,3 +484,5 @@ export { readReplyStream, REPLY_STREAM_PROTOCOL, type ReplyOutcome, type ReplySt
 export { TaskLifecycle, TaskView, TASK_PAUSE_TIMEOUT_MS, type TaskLifecycleCommand, type TaskLifecycleMessages, type TaskLifecycleRequest, type TaskLifecycleState } from "./task-lifecycle.vibe"
 export { createSurfaceClient, SurfaceProtocol, SurfaceTransport, type SurfaceClient, type SurfaceClientOptions, type SurfaceCommandContext, type SurfaceFailure, type SurfaceRequest } from "./surface-client.vibe"
 export { TASK_ID_PATTERN } from "@elizaos/core/task-events"
+
+export { TurnController, ConversationRecord, InvalidConversation, findStoppedUserTurn, type ClientMessageId, type HistoryMessage, type StopResult, type StoppedConversationTurn, type TurnMessage, type TurnOptions, type TurnRefusal, type TurnReply, type TurnResult, type TurnTransport } from "./turn-controller.vibe"

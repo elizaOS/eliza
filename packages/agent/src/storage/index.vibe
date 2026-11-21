@@ -393,7 +393,7 @@ module node {
         memories, input.accessContext, this.agentId,
         input.tableName === "messages" && input.accessContext.authorizedRoomIds !== undefined ? "room" : "private",
       ) : memories
-      const floor = input.match_threshold || Number.NEGATIVE_INFINITY
+      const floor = input.match_threshold ?? Number.NEGATIVE_INFINITY
       const offset = input.offset ?? 0
       const limit = input.count ?? input.limit
       return rerankMemories(input.query, readable.filter((memory) => memory.similarity >= floor)

@@ -1,15 +1,16 @@
 // spec/cloud/services/maps.md, "Story: Answer a maps request once and pay for it once"; spec/cloud/services/maps.md, "Story: Keep maps requests within the provider's terms"
 import { answerKeptFor, courseOf, entryOf, keepsAnswer, limitOf, mapsHoldKey, mayDispatch, providerQuote, settlementOf, stillKept, type MapsOperation, type MapsOutcome, type MapsSettlement, type TravelMode as SpecMode } from "../../gen/cloud__services__maps.effect.vibe"
-import { laneFor } from "../billing/policy.vibe"
+import { planRpm } from "../billing/plans.vibe"
+import { laneFor, readPolicy } from "../billing/policy.vibe"
 import { refused, Refused } from "../http/refusal.vibe"
-import { authenticate, signed, type Signed } from "../http/request-auth.vibe"
+import { recheckServiceAccess, signed, type Signed } from "../http/request-auth.vibe"
 import { json, jsonBody, type CloudContext, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import { Deployment } from "../profile/profile.vibe"
 import { describeMaps, mapsProvider, providerKindOf, specModeOf, type MapsContext, type MapsProvider, type MapsReply, type MapsTile, type ProviderRefusal } from "../providers/maps.vibe"
 import { requestDigest } from "../shared/dispatch-once.vibe"
-import { markDispatched, reserve, settle, type HoldTicket, type Settlement } from "../shared/metering.vibe"
-import { admitCheck, minute } from "../shared/rate-limit.vibe"
-import { Store, toInt, toText } from "../store/connection.vibe"
+import { markDispatched, reserveIn, settle, type HoldTicket, type MeteringFailure, type Settlement } from "../shared/metering.vibe"
+import { admitCheck, admitAll, minute, perWindow } from "../shared/rate-limit.vibe"
+import { Store, toInt, toText, type Tx } from "../store/connection.vibe"
 import { IdempotencyKey, PlaceDetailsRequest, ReverseRequest, RoutesRequest, TextSearchRequest, ViewportRequest, tileAddressOf } from "./maps.schema.ts"
 
 type Metered = Exclude<MapsOperation, "Capabilities" | "Viewport">
@@ -124,6 +125,17 @@ function asJson<A>(reply: MapsReply<A>!!MapsContext): MapsReply<Answer>!!MapsCon
   return Effect.map(reply, (got): MapsReply<Answer> => got.kind === "answered" ? { kind: "answered", value: { kind: "json", body: got.value }, observedMicros: got.observedMicros } : got)
 }
 
+effect function admitLimits(caller: Signed, credential: string, op: MapsOperation): void!Refused!Store {
+  const operation = { subject: credential, rule: limitOf(op) }
+  if (op === "Tile") return try admitCheck(operation)
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const policy = store.transaction((tx) => readPolicy(tx, caller.organizationId, now)) catch () => undefined
+  if (policy === undefined) throw refused("ServiceUnavailable", "NoReason", now + providerPause)
+  const plan = { subject: caller.organizationId, rule: perWindow("plan-StandardRequests", planRpm(policy.planKey, "StandardRequests"), minute) }
+  try admitAll([plan, operation])
+}
+
 effect function enter(context: RouteContext, op: MapsOperation): Entered!Refused!(Store | Deployment) {
   const caller = signed(context.caller)
   if (caller === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
@@ -136,15 +148,27 @@ effect function enter(context: RouteContext, op: MapsOperation): Entered!Refused
   const provider = mapsProvider(maps)
   if (provider === undefined) throw refused("CapabilityUnavailable")
   const credential = credentialOf(caller)
-  try admitCheck({ subject: credential, rule: limitOf(op) })
+  try admitLimits(caller, credential, op)
   return { caller, credential, provider, kind, key }
 }
 
-effect function kept(holdKey: string, now: number) {
-  const store = try Store
-  const row = (try store.transaction((tx) => tx.query("SELECT request_digest, result, kept_at FROM maps_requests WHERE hold_key = $1", [holdKey])))[0]
+type OpenRequest =
+  | { readonly kind: "fresh"; readonly ticket: Extract<HoldTicket, { replayed: false }> }
+  | { readonly kind: "prior"; readonly digest: string | undefined; readonly answer: unknown; readonly key: string }
+
+effect function openRequest(tx: Tx, entered: Entered, id: string, call: Call, quote: number, digest: string, now: number): OpenRequest!MeteringFailure {
+  const caller = entered.caller
+  const ticket = try reserveIn(tx, caller, mapsHoldKey(entered.credential, id), quote, now)
+  if (!ticket.replayed) {
+    try tx.query(
+      "INSERT INTO maps_requests (hold_key, operation, request_digest, status, created_at) VALUES ($1, $2, $3, 'running', $4)",
+      [ticket.key, wireOperation[call.op], digest, now]
+    )
+    return { kind: "fresh", ticket }
+  }
+  const row = (try tx.query("SELECT request_digest, result, kept_at FROM maps_requests WHERE hold_key = $1", [ticket.key]))[0]
   const answer = row?.result === undefined || row.result === null || !stillKept(toInt(row.kept_at), now) ? undefined : row.result
-  return { digest: toText(row?.request_digest), answer }
+  return { kind: "prior", key: ticket.key, digest: toText(row?.request_digest), answer }
 }
 
 effect function repeatKept(holdKey: string, stored: unknown, now: number): Answer!(Refused | KeptAnswerCorrupt) {
@@ -153,12 +177,12 @@ effect function repeatKept(holdKey: string, stored: unknown, now: number): Answe
   return { kind: "json", body: answer.body }
 }
 
-effect function keepStanding(context: RouteContext, caller: Signed, ticket: HoldTicket) {
-  try authenticate(context.request.headers.authorization, "ServiceAccess")
+effect function keepStanding(context: RouteContext, caller: Signed, ticket: Extract<HoldTicket, { replayed: false }>) {
+  try recheckServiceAccess(context.request.headers.authorization, caller)
   const store = try Store
   const now = try Clock.currentTimeMillis
   const lane = try store.transaction((tx) => laneFor(tx, caller.organizationId, "MeteredMaps", now))
-  const laneUnchanged = lane !== "Refused" && (ticket.hold.fromAllowance === 0 || lane === "AllowanceThenCredits")
+  const laneUnchanged = lane === ticket.lane
   if (!mayDispatch(true, true, laneUnchanged)) throw refused("BillingStateConflict")
 }
 
@@ -175,24 +199,16 @@ effect function metered(context: RouteContext, entered: Entered, call: Call): An
   if (key === undefined) throw refused("InvalidRequest")
   const quote = providerQuote(entered.kind, call.op, call.preferPlace, call.mode)
   const digest = requestDigest({ operation: call.op, request: call.request })
-  const owner = { organizationId: entered.caller.organizationId, userId: entered.caller.userId }
-  const ticket = try reserve(owner, mapsHoldKey(entered.credential, key), quote)
-  const earlier = ticket.replayed ? try kept(ticket.key, context.now) : { digest: undefined, answer: undefined }
-  const course = courseOf(ticket.replayed, earlier.digest === digest, earlier.answer !== undefined)
-  switch (course) {
-    case "RepeatKept": return try repeatKept(ticket.key, earlier.answer, context.now)
-    case "RefuseRepeat": throw refused("IdempotencyConflict")
-    case "RunFresh": break
-    default: {
-      const _exhaustive: never = course
-      return _exhaustive
-    }
-  }
   const store = try Store
-  try store.transaction((tx) => tx.query(
-    "INSERT INTO maps_requests (hold_key, operation, request_digest, status, created_at) VALUES ($1, $2, $3, 'running', $4)",
-    [ticket.key, wireOperation[call.op], digest, context.now]
-  ))
+  const reservedAt = try Clock.currentTimeMillis
+  const opened = try store.transaction((tx) => openRequest(tx, entered, key, call, quote, digest, reservedAt))
+  if (opened.kind === "prior") {
+    if (courseOf(true, opened.digest === digest, opened.answer !== undefined) === "RepeatKept") {
+      return try repeatKept(opened.key, opened.answer, reservedAt)
+    }
+    throw refused("IdempotencyConflict")
+  }
+  const ticket = opened.ticket
   keepStanding(context, entered.caller, ticket) catch effect (failure) => {
     try settle(ticket.key, meteringOf(settlementOf(false, { tag: "ReplyLost" }, quote, 0)))
     try record(ticket.key, "released", undefined, context.now)
@@ -218,7 +234,7 @@ effect function metered(context: RouteContext, entered: Entered, call: Call): An
 effect function capabilities(context: RouteContext): HttpServerResponse.HttpServerResponse!Refused!(Store | Deployment) {
   const caller = signed(context.caller)
   if (caller === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
-  try admitCheck({ subject: credentialOf(caller), rule: limitOf("Capabilities") })
+  try admitLimits(caller, credentialOf(caller), "Capabilities")
   const settings = (try Deployment).settings
   return json(describeMaps(settings.maps, settings.name))
 }
@@ -279,17 +295,17 @@ effect function forgetKept() {
   }
 }
 
-const operation = (path: `/${string}`, handler: Route["handler"]): Route => ({ method: "POST", path, auth: "ServiceAccess", area: "MapsOperationRoutes", rateClass: "StandardRequests", handler })
+const operation = (path: `/${string}`, handler: Route["handler"]): Route => ({ method: "POST", path, auth: "ServiceAccess", area: "MapsOperationRoutes", handler })
 
 export const mapsRoutes: ReadonlyArray<Route> = [
-  { method: "GET", path: "/api/v1/maps/capabilities", auth: "ServiceAccess", area: "MapsCapabilityRoute", rateClass: "StandardRequests", handler: capabilities },
+  { method: "GET", path: "/api/v1/maps/capabilities", auth: "ServiceAccess", area: "MapsCapabilityRoute", handler: capabilities },
   operation("/api/v1/maps/geocode", geocode),
   operation("/api/v1/maps/reverse", reverse),
   operation("/api/v1/maps/places/search", search),
   operation("/api/v1/maps/places/details", details),
   operation("/api/v1/maps/routes", routes),
   operation("/api/v1/maps/tiles/viewport", viewport),
-  { method: "GET", path: "/api/v1/maps/tiles/:z/:x/:y", auth: "ServiceAccess", area: "MapsOperationRoutes", rateClass: "StandardRequests", handler: tile }
+  { method: "GET", path: "/api/v1/maps/tiles/:z/:x/:y", auth: "ServiceAccess", area: "MapsOperationRoutes", handler: tile }
 ]
 
 export const mapsSweeps: ReadonlyArray<Sweep> = [{ name: "maps kept answers", everyMs: minute, run: forgetKept() }]

@@ -84,12 +84,14 @@ it.effect('Notify, list with each filter, page natively and mark read twice (spe
   const again = try markRead(agent, first.id)
   const absent = try markRead(agent, absentId)
   const malformed = try markRead(agent, "not-a-uuid")
+  const [expired] = try notifyAll(service, [{ title: "An old reminder", category: "reminder", expiresAt: 1 }])
   const unread = try list(agent, "?unreadOnly=true")
   try Effect.try(() => {
     assert.deepStrictEqual([marked, again, absent], [
       { status: 200, body: { ok: true } }, { status: 200, body: { ok: false } }, { status: 200, body: { ok: false } },
     ])
     assert.include([400, 404], malformed.status)
+    assert.include(service.listIncludingExpired().map(({ id }) => id), expired.id)
     assert.deepStrictEqual(listed(unread.body), [quiet.id, second.id])
     assert.deepInclude(unread.body as object, { unreadCount: 1 })
     assert.deepStrictEqual(service.listIncludingExpired().filter((notice) => notice.readAt != null).map(({ id }) => id), [first.id])

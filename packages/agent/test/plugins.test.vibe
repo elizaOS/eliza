@@ -86,11 +86,16 @@ it.effect('A bundled package whose plugin has another name is refused (spec/agen
   try Effect.try(() => assert.deepStrictEqual({ tag: failed._tag, packageName: failed.packageName }, { tag: "BundleEntryRefused", packageName: "@product/plugin" }))
 })
 
-it.effect('The product plugin adds its action and route beside the agent\'s own (spec/agent/plugins/profile.md, "Story: Register my product\'s own actions and routes")', effect () => {
+it.effect('A malformed product route refuses the whole list, then a corrected launch serves its action and route (spec/agent/plugins/profile.md, "Story: Register my product\'s own actions and routes"; spec/agent/access/routes.md, "A list is loaded whole or not at all")', effect () => {
   const state = try scratch("plan-state")
+  const launch = { persistMemory: true, productPlugin: productPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] }
+  const invalid = try launched(state, {
+    launch, bundled: [{ ...productPlugin, routes: [...productPlugin.routes, { ...productPlugin.routes[0], path: "/api/product/:id" }] }],
+  })
+  const refused = try Effect.flip(startAgent(invalid.input))
+  try Effect.try(() => assert.deepStrictEqual([refused._tag, "phase" in refused ? refused.phase : null], ["AgentBootFailed", "Config"]))
   const { frame, socket, input } = try launched(state, {
-    launch: { productPlugin: productPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] },
-    bundled: [productPlugin],
+    launch, bundled: [productPlugin],
   })
   const running = try acquireRelease(startAgent(input), (agent) => orDie(host("retire agent", () => agent.stop())))
   const ping = try host("product route", () => request(socket, { method: "GET", path: "/api/product/ping", token: frame.token }))

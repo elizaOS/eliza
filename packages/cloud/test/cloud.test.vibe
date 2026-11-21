@@ -39,12 +39,13 @@ import { gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/go
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
 import { signedCaller } from "./support/caller.vibe"
-import { callCloud, callDeclaring } from "./support/http.ts"
+import { callCloud, callDeclaring, openCloud } from "./support/http.ts"
 import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
 import { recordingBytes, recordingForm } from "./support/recording.ts"
 import { openRelay, upgradeStatus, type Received } from "./support/relay-socket.ts"
 import { realtimeSpeechPerDay, utcDayStart } from "../gen/cloud__billing__plans.ts"
-import { googleMapsFake } from "./support/maps-fake.ts"
+import { googleMapsFake, tilePng } from "./support/maps-fake.ts"
+import { mapsSweeps } from "../src/services/maps.vibe"
 import { osmFake } from "./support/maps-osm-fake.ts"
 import { accountUsable, checkEntitlement, CloudError, createCloudClient, creditFromSnapshot, deviceRoutes, EntitlementInvalid, httpVerb, parseEntitlementKeys, verifyEntitlement as verifyOnDevice, type AuthClass, type CloudClient, type DeviceRoute } from "../src/client/index.vibe"
 import { unlistedRoutes } from "../src/client/routes.vibe"
@@ -1322,7 +1323,8 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     try sync(() => maps.script({ kind: "empty" }))
     const noRoute = try post("routes", "route-1", { from: { latitude: 52.517, longitude: 13.3888 }, to: berlin, mode: "drive" })
 
-    const tileOne = try tile("tile-1")
+    const tileOne = try promise(() => openCloud(cloud.url, "/api/v1/maps/tiles/3/4/2", { headers: { ...caller.headers, "idempotency-key": "tile-1" } }))
+    const tileOneBytes = new Uint8Array(try promise(() => tileOne.arrayBuffer()))
     const tileAgain = try tile("tile-2")
     const tileRepeated = try tile("tile-1")
     const tilesFetched = maps.count("tile")
@@ -1337,6 +1339,16 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     const broke = try post("geocode", "geo-broke", { query: "Brandenburger Tor" }, unfunded)
     const usage = try sql(cloud, "SELECT r.operation, r.status, r.result IS NULL AS unkept, u.quote, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key ORDER BY u.settled_at, r.hold_key", [])
 
+    const callsAfterBroke = maps.calls.length
+    const callsBeforeRollback = maps.count("geocode")
+    try sql(cloud, "ALTER TABLE maps_requests ADD CONSTRAINT no_geocode CHECK (operation <> 'geocode') NOT VALID", [])
+    const rolledBack = try post("geocode", "geo-rollback", { query: "Alexanderplatz" })
+    const callsAfterRollback = maps.count("geocode")
+    const holdsAfterRollback = try sql(cloud, "SELECT count(*)::int AS n FROM holds WHERE organization_id = $1", [caller.organizationId])
+    try sql(cloud, "ALTER TABLE maps_requests DROP CONSTRAINT no_geocode", [])
+    const retried = try post("geocode", "geo-rollback", { query: "Alexanderplatz" })
+    const retriedUsage = try sql(cloud, "SELECT count(*)::int AS n, sum(u.charged)::int AS charged FROM usage_records u JOIN holds h ON h.key = u.hold_key WHERE h.organization_id = $1", [caller.organizationId])
+
     const off = try testCloud({ edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, maps: { provider: "none" }, capabilities: ["inference", "speech", "managedGoogle", "billing"] } } }) })
     const offCaller = try signedCaller(off, "offline")
     const offCapabilities = try off.call("/api/v1/maps/capabilities", { headers: offCaller.headers })
@@ -1350,9 +1362,10 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         conflicting: [conflicting.status, errorOf(conflicting)],
         unkeyed: [unkeyed.status, errorOf(unkeyed)],
         noRoute: [noRoute.status, errorOf(noRoute)],
-        tiles: [tileOne.status, tileOne.headers["cache-control"], tileOne.headers["content-type"], String(tileOne.body).length > 0, tileAgain.status, tileAgain.headers["cache-control"], tileRepeated.status, errorOf(tileRepeated), tilesFetched],
+        tiles: [tileOne.status, tileOne.headers.get("cache-control"), tileOne.headers.get("content-type"), tileOneBytes, tileAgain.status, tileAgain.headers["cache-control"], tileRepeated.status, errorOf(tileRepeated), tilesFetched],
         reverse: [nearbyFound.status, lookupsWithPlace, nearbyEmpty.status, (nearbyEmpty.body as { readonly place: unknown }).place !== null, lookupsWithoutPlace],
-        broke: [broke.status, errorOf(broke), maps.calls.length - callsBeforeBroke],
+        broke: [broke.status, errorOf(broke), callsAfterBroke - callsBeforeBroke],
+        rollback: [rolledBack.status, callsAfterRollback - callsBeforeRollback, Number(holdsAfterRollback[0]?.n), retried.status, maps.count("geocode") - callsAfterRollback, Number(retriedUsage[0]?.n), Number(retriedUsage[0]?.charged)],
         usage: usage.map((row) => [row.operation, row.status, row.unkept, Number(row.quote), Number(row.charged), row.outcome]),
         off: [offCapabilities.status, offCapabilities.body, offGeocode.status, errorOf(offGeocode)]
       },
@@ -1363,9 +1376,10 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         conflicting: [409, "idempotency_conflict"],
         unkeyed: [400, "invalid_request"],
         noRoute: [422, "no_route"],
-        tiles: [200, "no-store", "image/png", true, 200, "no-store", 409, "idempotency_conflict", 2],
+        tiles: [200, "no-store", "image/png", tilePng, 200, "no-store", 409, "idempotency_conflict", 2],
         reverse: [200, [1, 2], 200, true, [2, 3]],
         broke: [402, "insufficient_credits", 0],
+        rollback: [503, 0, 7, 200, 1, 8, 95_200],
         usage: [
           ["geocode", "lost", true, 5_000, 5_000, "unknown"],
           ["geocode", "answered", false, 5_000, 5_000, "known"],
@@ -1378,6 +1392,70 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         off: [200, { available: false }, 404, "capability_unavailable"]
       }
     ))
+  }), 60_000)
+
+  it.live("Hold Maps to its credential and plan limits, send the viewport unmetered, and forget old answers (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(3_600_100))
+    provide Clock.Clock = clock.clock {
+      const maps = try sync(() => googleMapsFake())
+      const cloud = try testCloud({ mount: (fakes) => fakes.mount("/maps/", maps.handler) })
+      const busy = try signedCaller(cloud, "busy-mapper")
+      const free = try signedCaller(cloud, "free-mapper")
+      const keeping = try signedCaller(cloud, "keeping-mapper")
+      const now = try Clock.currentTimeMillis
+      try sql(cloud, "INSERT INTO grants (id, organization_id, family, plan_key, effective_from, effective_until, created_at) VALUES ('grant-busy-mapper', $1, 'pilot', 'pro_monthly', $2, $3, $2)", [busy.organizationId, now - 1000, now + 3_600_000])
+      try cloud.inside(addCredits({ organizationId: free.organizationId, amount: 1_000_000, requestKey: "free-maps-funding" }))
+      try cloud.inside(addCredits({ organizationId: keeping.organizationId, amount: 1_000_000, requestKey: "keeping-maps-funding" }))
+      const capabilities = (headers: Readonly<Record<string, string>>) => cloud.call("/api/v1/maps/capabilities", { headers })
+      const geocode = (key: string, headers = keeping.headers) => cloud.call("/api/v1/maps/geocode", { json: { query: "Brandenburger Tor" }, headers: { ...headers, "idempotency-key": key } })
+      const errorBody = Schema.is(Schema.Struct({ error: Schema.String }))
+      const errorOf = (body: unknown) => errorBody(body) ? body.error : undefined
+      const viewport = { south: 52.5, west: 13.3, north: 52.6, east: 13.5, zoom: 12 }
+      const viewportResponse = try cloud.call("/api/v1/maps/tiles/viewport", { json: viewport, headers: busy.headers })
+      const busyHolds = try sql(cloud, "SELECT count(*)::int AS n FROM holds WHERE organization_id = $1", [busy.organizationId])
+      const busyStatuses: Array<number> = []
+      for (let index = 0; index < 59; index += 1) busyStatuses.push((try capabilities(busy.headers)).status)
+      const credentialLimited = try geocode("busy-geo-1", busy.headers)
+      const busyPlan = try sql(cloud, "SELECT (state->>'count')::int AS n FROM rate_windows WHERE key = $1", [`plan-StandardRequests|${busy.organizationId}`])
+
+      const freeStatuses: Array<number> = []
+      for (let index = 0; index < 30; index += 1) freeStatuses.push((try capabilities(free.headers)).status)
+      const planLimited = try geocode("free-geo-1", free.headers)
+      const tileStill = try cloud.call("/api/v1/maps/tiles/3/4/2", { headers: { ...free.headers, "idempotency-key": "free-tile-1" } })
+      const freePlan = try sql(cloud, "SELECT (state->>'count')::int AS n FROM rate_windows WHERE key = $1", [`plan-StandardRequests|${free.organizationId}`])
+
+      try sync(() => maps.script({ kind: "oversized" }))
+      const oversized = try geocode("geo-oversized")
+      const keptFirst = try geocode("geo-kept")
+      const keptAgain = try geocode("geo-kept")
+      try sync(() => clock.set(now + 15 * 60_000))
+      const keptExpired = try geocode("geo-kept")
+      for (const sweep of mapsSweeps) try cloud.inside(sweep.run)
+      const keptRows = try sql(cloud, "SELECT count(*)::int AS n FROM maps_requests WHERE result IS NOT NULL", [])
+      const usage = try sql(cloud, "SELECT r.status, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key JOIN holds h ON h.key = r.hold_key WHERE h.organization_id = $1 ORDER BY r.status", [keeping.organizationId])
+
+      try check(() => assert.deepStrictEqual(
+        {
+          viewport: [viewportResponse.status, viewportResponse.headers["cache-control"], Number(busyHolds[0]?.n)],
+          credential: [busyStatuses.length, busyStatuses.every((status) => status === 200), credentialLimited.status, errorOf(credentialLimited.body), typeof credentialLimited.headers["retry-after"], Number(busyPlan[0]?.n)],
+          plan: [freeStatuses.length, freeStatuses.every((status) => status === 200), planLimited.status, errorOf(planLimited.body), typeof planLimited.headers["retry-after"], tileStill.status, Number(freePlan[0]?.n)],
+          oversized: [oversized.status, errorOf(oversized.body)],
+          kept: [keptFirst.status, keptAgain.status, keptAgain.body, keptExpired.status, errorOf(keptExpired.body), Number(keptRows[0]?.n)],
+          usage: usage.map((row) => [row.status, Number(row.charged), row.outcome]),
+          upstream: [maps.count("viewport"), maps.count("tile"), maps.count("geocode")]
+        },
+        {
+          viewport: [200, "no-store", 0],
+          credential: [59, true, 429, "rate_limited", "string", 60],
+          plan: [30, true, 429, "rate_limited", "string", 200, 30],
+          oversized: [503, "provider_unavailable"],
+          kept: [200, 200, keptFirst.body, 409, "idempotency_conflict", 0],
+          usage: [["answered", 5_000, "known"], ["refused", 5_000, "known"]],
+          upstream: [1, 1, 2]
+        }
+      ))
+    }
   }), 60_000)
 
   it.live("Answer maps requests from the operator's own OpenStreetMap stack at no charge, with no tiles, nearby lookup or transit (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\")", () => scoped(effect {
@@ -1543,7 +1621,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         anonymous: [401, "authentication_required"]
       }
     ))
-  }), 30_000)
+  }))
 
   it.live("Trash a message as reviewed, lose Google's reply, and learn by lookup that it succeeded once (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\"; spec/cloud/shared/dispatchOnce.md, \"Story: Send a change once and recover its outcome without sending it again\")", () => scoped(effect {
     const { mailbox, switches, operation, grantId } = try mailOperationSetup("ops-trash")
@@ -1584,7 +1662,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         mailbox: [["UNREAD", "TRASH"], 1]
       }
     ))
-  }), 30_000)
+  }))
 
   it.live("Send a message with an attachment once though the dispatch is replayed, and refuse a forward at a stale history id (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\"; spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
     const { mailbox, switches, operation, grantId } = try mailOperationSetup("ops-send")
@@ -1627,7 +1705,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         stale: [409, "stale_revision"]
       }
     ))
-  }), 30_000)
+  }))
 })
 
 type OperationAnswer = {
@@ -1889,7 +1967,7 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
         }
       ))
     }
-  }), 30_000)
+  }))
 })
 effect function calendarSetup(email: string) {
   const google = try Effect.try(() => googleFakeState())
@@ -1952,7 +2030,7 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
         anonymous: 401
       }
     ))
-  }), 30_000)
+  }))
 
   it.live("Create an event once per key and change or delete it only at the revision I read (spec/cloud/services/google/calendar.md, \"Story: Change an event only at the revision I read\"; spec/cloud/shared/dispatchOnce.md, \"Story: Send a change once and recover its outcome without sending it again\")", () => scoped(effect {
     const { google, cloud, headers } = try calendarSetup("calendar-writes@example.com")
@@ -2005,7 +2083,7 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
         rows: [["change", "rejected"], ["change", "succeeded"], ["create", "succeeded"], ["create", "succeeded"], ["delete", "rejected"], ["delete", "succeeded"]]
       }
     ))
-  }), 30_000)
+  }))
 })
 describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from the device as configured\")", () => {
   const unknownKey = `eliza_mobile_${"0".repeat(64)}`

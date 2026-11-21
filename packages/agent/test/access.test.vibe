@@ -26,13 +26,13 @@ effect function call(method: string, target: string, authorization?: string) {
 }
 
 const callers = { none: undefined, wrong: "Bearer not-the-token", earlier: "Bearer launch-token-epoch-0", bare: launchToken }
-const everyRoute = [["GET", "/api/health"], ["GET", "/api/auth/status"], ["GET", "/api/auth/me"], ["GET", "/api/plugin/x"], ["POST", "/api/conversations"], ["GET", "/api/events/stream"]] as const
+const everyRoute = [["GET", "/api/health"], ["GET", "/api/auth/status"], ["GET", "/api/auth/me"], ["GET", "/api/plugin/x"], ["POST", "/api/conversations"], ["GET", "/api/events/stream"], ["GET", "/api/unknown"]] as const
 
 it.effect('No token, a wrong token or an earlier launch token is Anonymous and reaches only health and auth status (spec/agent/access/auth.md, "Only the token of this launch makes a caller Root")', effect () => {
   for (const authorization of Object.values(callers)) {
     const answers = try Effect.forEach(everyRoute, ([method, target]) => call(method, target, authorization))
-    try Effect.try(() => assert.deepStrictEqual(answers.map(({ status }) => status), [200, 200, 401, 401, 401, 401], String(authorization)))
-    try Effect.try(() => assert.deepStrictEqual(answers.slice(2).map(({ body }) => body), [0, 1, 2, 3].map(() => ({ error: "unauthorized" }))))
+    try Effect.try(() => assert.deepStrictEqual(answers.map(({ status }) => status), [200, 200, 401, 401, 401, 401, 401], String(authorization)))
+    try Effect.try(() => assert.deepStrictEqual(answers.slice(2).map(({ body }) => body), Array.from({ length: 5 }, () => ({ error: "unauthorized" }))))
     try Effect.try(() => assert.deepStrictEqual(answers[1].body, { authenticated: false, serverInstanceId: "instance-1" }))
   }
 })
@@ -49,7 +49,7 @@ it.effect('A plugin route declared public stays Root-only and no plugin takes th
 
 it.effect('The Root caller reaches every route and is the local owner (spec/agent/access/auth.md, "The Root caller is the local owner of this agent")', effect () => {
   const answers = try Effect.forEach(everyRoute, ([method, target]) => call(method, target, `Bearer ${launchToken}`))
-  try Effect.try(() => assert.deepStrictEqual(answers.map(({ status }) => status), everyRoute.map(() => 200)))
+  try Effect.try(() => assert.deepStrictEqual(answers.map(({ status }) => status), [200, 200, 200, 200, 200, 200, 404]))
   try Effect.try(() => assert.deepStrictEqual([answers[1].body, answers[2].body], [
     { authenticated: true, serverInstanceId: "instance-1" },
     { identity: { kind: "owner", id: agentId }, access: { role: "OWNER", mode: "local" } },
@@ -57,10 +57,12 @@ it.effect('The Root caller reaches every route and is the local owner (spec/agen
 })
 
 it('A listener learns the delivery of the admitted route before it sets a deadline (spec/agent/access/auth.md, "A Root-only route admits only a caller holding the launch token")', () => {
-  const at = (method: string, target: string) => router.delivery({ method, target, body: undefined, authorization: undefined })
+  const at = (method: string, target: string, authorization?: string) => router.delivery({ method, target, body: undefined, authorization })
+  const root = `Bearer ${launchToken}`
   assert.deepStrictEqual(
-    [at("GET", "/api/events/stream"), at("POST", "/api/conversations"), at("GET", "/api/unknown")],
-    ["Streamed", "Buffered", undefined])
+    [at("GET", "/api/events/stream", root), at("POST", "/api/conversations", root), at("GET", "/api/unknown", root),
+      at("GET", "/api/events/stream"), at("GET", "/api/unknown")],
+    ["Streamed", "Buffered", undefined, undefined, undefined])
 })
 
 const ask = (path: string, socket: string, token?: string): Promise<LocalAnswer | Refusal> =>
@@ -73,6 +75,7 @@ it.effect('The token of an earlier launch is anonymous to the second child, and 
   try ready(second)
   const socket = second.state.file("agent.sock")
   const earlier = try host("earlier token", () => ask("/api/auth/me", socket, first.frame.token))
+  const unknown = try host("unknown route with earlier token", () => ask("/api/unknown", socket, first.frame.token))
   const earlierStatus = try host("earlier status", () => ask("/api/auth/status", socket, first.frame.token))
   const current = try host("current token", () => ask("/api/auth/me", socket, second.frame.token))
   const health = try host("health", () => ask("/api/health", socket))
@@ -80,9 +83,20 @@ it.effect('The token of an earlier launch is anonymous to the second child, and 
     ["status" in earlier ? [earlier.status, earlier.json] : earlier,
       "status" in earlierStatus ? (earlierStatus.json as { authenticated: boolean }).authenticated : earlierStatus,
       "status" in current ? (current.json as { access: unknown }).access : current,
-      "status" in health ? (health.json as { epoch: number }).epoch : health],
-    [[401, { error: "unauthorized" }], false, { role: "OWNER", mode: "local" }, 2]))
+      "status" in health ? (health.json as { epoch: number }).epoch : health,
+      "status" in unknown ? [unknown.status, unknown.json] : unknown],
+    [[401, { error: "unauthorized" }], false, { role: "OWNER", mode: "local" }, 2, [401, { error: "unauthorized" }]]))
 }, 300_000)
+
+it.live('An anonymous HTTP caller gets the same refusal for a private stream and an unknown route (spec/agent/access/auth.md, "A Root-only route admits only a caller holding the launch token")', effect () => {
+  const agent = try startInProcess({ http: true })
+  const body = { text: "Hello" }
+  const protectedRoute = try reach(agent, { method: "POST", path: `/api/conversations/${agentId}/messages/stream`, body, token: "earlier-launch" })
+  const unknown = try reach(agent, { method: "POST", path: "/api/unknown", body, token: "earlier-launch" })
+  try Effect.try(() => assert.deepStrictEqual(
+    [protectedRoute, unknown].map((answer) => "status" in answer ? [answer.status, answer.json] : answer),
+    [[401, { error: "unauthorized" }], [401, { error: "unauthorized" }]]))
+}, 120_000)
 
 it.effect('The chat principal of a User launch is a member, not the owner, although its requests arrive as Root (spec/agent/access/auth.md, "The Root caller is the local owner of this agent")', effect () => {
   const principal = effect (callerRole: "owner" | "user") => {
