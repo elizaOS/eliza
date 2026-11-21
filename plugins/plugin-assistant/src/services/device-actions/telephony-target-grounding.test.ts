@@ -1,13 +1,19 @@
 import { spokenPhoneNumbers } from "@elizaos/contracts/telephony-actions";
 import { describe, expect, it } from "vitest";
 import type { DeviceOperation } from "./contract.ts";
-import { authoredTelephonyTarget } from "./telephony-request.ts";
+import {
+  authoredTelephonyTarget,
+  emergencyServicesRequest,
+} from "./telephony-request.ts";
 import {
   DeviceTelephonyTargetNotRequestedError,
+  EMERGENCY_KEYPAD_REPLY,
   groundTelephonyTarget,
   ownerPhoneNumbers,
   samePhoneNumber,
   swappedPhoneReferences,
+  telephonyTargetRefusalReply,
+  writesUnreadableNumber,
   writtenPhoneNumbers,
 } from "./telephony-target-grounding.ts";
 
@@ -608,5 +614,239 @@ describe("numbers the planner saw only as contact references", () => {
     })();
     expect(plain?.references).toEqual([]);
     expect(plain?.message).not.toContain("__ELIZA_");
+  });
+});
+
+/**
+ * Review (2026-11-20): "call mom again" handed "mom again" to the phone's
+ * Contacts filter, which matches nobody; the owner's name is "mom".
+ */
+describe("a whole-message call keeps only the name the owner wrote", () => {
+  it.each([
+    ["call mom again", "mom", "mom"],
+    ["call mom back", "mom", "mom"],
+    ["call mom right now", "mom", "mom"],
+    ["call mom's cell", "mom", "mom"],
+    ["Call Maya's mobile please", "Maya", "Maya"],
+    ["call my mom's cell", "mom", "mom"],
+    ["ring Sam Lee right away", "Sam Lee", "Sam Lee"],
+  ])("%s calls %s", (request, proposed, query) => {
+    expect(authoredTelephonyTarget(request)?.target).toEqual({
+      kind: "contact",
+      query,
+    });
+    expect(groundTelephonyTarget(callContact(proposed), request)).toEqual({
+      operation: callContact(query),
+      handedThrough: true,
+    });
+  });
+
+  it("never narrows a full name the owner wrote to the model's part of it", () => {
+    expect(
+      groundTelephonyTarget(callContact("Sam"), "call Sam Lee").operation,
+    ).toEqual(callContact("Sam Lee"));
+  });
+
+  it("leaves two callees to the planner and grounds the model's one", () => {
+    expect(authoredTelephonyTarget("call mom and dad")).toBeUndefined();
+    expect(
+      groundTelephonyTarget(callContact("mom"), "call mom and dad"),
+    ).toEqual({ operation: callContact("mom"), handedThrough: false });
+  });
+});
+
+/**
+ * Review (2026-11-20): "call an ambulance" with 911 proposed was refused as
+ * "that number isn't one you wrote", and "call emergency services" looked up a
+ * contact. An emergency request always reaches the phone's keypad.
+ */
+describe("an emergency request reaches the phone's keypad", () => {
+  const keypad = (number?: string) =>
+    ({
+      type: "phone_keypad",
+      ...(number ? { number } : {}),
+    }) as DeviceOperation;
+  const emergencyKeypad = {
+    operation: keypad(),
+    handedThrough: false,
+    emergency: true,
+  };
+
+  it.each([
+    "call an ambulance",
+    "call the police",
+    "I need help, call emergency services now",
+    "please get the fire department",
+    "I need an ambulance",
+    "send an ambulance to 12 Main St",
+    "Help! Call the police",
+    "call for an ambulance for me",
+  ])("%s opens the empty keypad for any proposed number", (request) => {
+    expect(emergencyServicesRequest(request)).toBe(true);
+    for (const operation of [
+      call("911"),
+      call("112"),
+      dial("911"),
+      keypad("911"),
+    ])
+      expect(groundTelephonyTarget(operation, request)).toEqual(
+        emergencyKeypad,
+      );
+  });
+
+  it("keeps a written emergency number and opens the keypad for any other", () => {
+    const request = "someone call 911";
+    expect(emergencyServicesRequest(request)).toBe(true);
+    for (const operation of [call("911"), dial("911"), keypad("911")])
+      expect(groundTelephonyTarget(operation, request)).toEqual({
+        operation,
+        handedThrough: false,
+      });
+    expect(groundTelephonyTarget(call("112"), request)).toEqual(
+      emergencyKeypad,
+    );
+  });
+
+  it.each(["call for help", "call emergency services", "call police"])(
+    "%s is not a contact lookup",
+    (request) => {
+      expect(authoredTelephonyTarget(request)).toBeUndefined();
+      for (const query of ["for help", "emergency services", "police", "help"])
+        expect(groundTelephonyTarget(callContact(query), request)).toEqual(
+          emergencyKeypad,
+        );
+      expect(groundTelephonyTarget(call("911"), request)).toEqual(
+        emergencyKeypad,
+      );
+    },
+  );
+
+  it("keeps the number the owner wrote as the reviewed call", () => {
+    expect(groundTelephonyTarget(call("911"), "call 911")).toEqual({
+      operation: call("911"),
+      handedThrough: true,
+    });
+  });
+
+  it.each([
+    "she said she'd call the police",
+    "call my emergency contact",
+    "the police station number please",
+    // Adversarial review (2026-11-20): these promoted the turn to the phone's
+    // call route, replacing MESSAGE_SEND and VIEWS, though they ask for
+    // something else or deny a need.
+    "Get the police report from my email",
+    "get the emergency number for Spain",
+    "Send the police department an email",
+    "contact the police department about my stolen bike tomorrow",
+    "get the fire truck toy on amazon",
+    "Call the fire department's non-emergency line",
+    "call for help with my homework",
+    "Read my email and get the police report",
+    "I don't need an ambulance, just call mom",
+  ])("does not read %s as an emergency request", (request) => {
+    expect(emergencyServicesRequest(request)).toBe(false);
+  });
+
+  it("tells the owner to dial when the keypad cannot open", () => {
+    expect(telephonyTargetRefusalReply("emergency")).toContain(
+      "dial your local emergency number",
+    );
+    expect(EMERGENCY_KEYPAD_REPLY).toContain(
+      "Dial your local emergency number",
+    );
+  });
+});
+
+/** Review (2026-11-20): "call 911" was not a whole-message call command. */
+describe("short numbers are whole-message call commands", () => {
+  it.each([
+    ["call 911", "911"],
+    ["Call 911!", "911"],
+    ["dial 112", "112"],
+    ["call 311", "311"],
+  ])("%s calls %s", (request, number) => {
+    expect(authoredTelephonyTarget(request)).toEqual({
+      request: "call",
+      target: { kind: "number", number },
+    });
+    expect(groundTelephonyTarget(call("6505715862"), request)).toEqual({
+      operation: call(number),
+      handedThrough: true,
+    });
+  });
+
+  it.each(["call 5 people", "call 42"])(
+    "leaves %s to the planner",
+    (request) => {
+      expect(authoredTelephonyTarget(request)).toBeUndefined();
+    },
+  );
+});
+
+/**
+ * Review (2026-11-20): "call 415-555 0100" was refused as "that number isn't
+ * one you wrote in your message".
+ */
+describe("a number written with mixed separators asks for it again", () => {
+  it.each([
+    "call 415-555 0100",
+    "call 415 - 555 - 0100",
+    "call (415)555 - 0100",
+    "call 415/555/0100",
+    "could you ring 415/555/0100 later",
+  ])("%s is refused as unreadable, never as unwritten", (request) => {
+    expect(writesUnreadableNumber(request, "4155550100")).toBe(true);
+    expect(refusal(call("4155550100"), request)).toBe("unreadable");
+    // A keypad prefill of the owner's digits is never "a number you didn't write".
+    expect(
+      refusal({ type: "phone_keypad", number: "4155550100" }, request),
+    ).not.toBe("number");
+  });
+
+  it("refuses an invented number in a whole-message call as unreadable too", () => {
+    expect(refusal(call("6505715862"), "call 415-555 0100")).toBe("unreadable");
+  });
+
+  it("asks for digits only and never says the owner wrote no number", () => {
+    const reply = telephonyTargetRefusalReply(
+      "unreadable",
+      "call 415-555 0100",
+    );
+    expect(reply).toContain("Type the number again with digits only");
+    expect(reply).not.toContain("isn't one you wrote");
+  });
+
+  it("says a message with no number has none", () => {
+    expect(
+      telephonyTargetRefusalReply("number", "call the pharmacy back"),
+    ).toContain("your message doesn't include a phone number");
+    expect(
+      telephonyTargetRefusalReply("number", "can you call 415-555-0100"),
+    ).toContain("isn't one you wrote");
+    expect(
+      telephonyTargetRefusalReply(
+        "number",
+        "call four one five five five five oh one double oh",
+      ),
+    ).toContain("isn't one you wrote");
+  });
+
+  it("keeps reading well-formed numbers", () => {
+    expect(writesUnreadableNumber("call (415) 555-0100", "4155550100")).toBe(
+      false,
+    );
+    expect(
+      writesUnreadableNumber(
+        "call back about invoice 2026-11-20",
+        "4155550100",
+      ),
+    ).toBe(false);
+    expect(
+      refusal(call("6505715862"), "call Sam about invoice 11/20/2026"),
+    ).toBe("number");
+    expect(refusal(call("6505715862"), "call 415-555-0100 later")).toBe(
+      "number",
+    );
   });
 });

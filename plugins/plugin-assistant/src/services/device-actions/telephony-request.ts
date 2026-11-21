@@ -11,13 +11,17 @@ import { phoneDialNumber } from "./phone-dial-contract.ts";
 
 export type AuthoredTelephonyRequest = "call" | "text" | "sender";
 
-// A dialable number as typed, or a short name ("mom", "Sam Lee").
+// A dialable number as typed, a short number written as bare digits ("911",
+// "112", "311"), or a short name ("mom", "Sam Lee").
 const target = (names: "{0,2}" | "{0,2}?") =>
-  String.raw`(?:\+?[\d(][\d\s().-]{5,}\d|[\p{L}][\p{L}'’.-]*(?:\s+[\p{L}][\p{L}'’.-]*)${names})`;
+  String.raw`(?:\+?[\d(][\d\s().-]{5,}\d|\d{3,6}|[\p{L}][\p{L}'’.-]*(?:\s+[\p{L}][\p{L}'’.-]*)${names})`;
 const TARGET = target("{0,2}");
+// Words after the callee that only say how or when: "call mom again", "call
+// Sam back", "call Maya right now, please". They never name anyone.
+const TRAILING = String.raw`(?:,?\s+(?:please|now|right\s+now|right\s+away|again|back|asap|for\s+me))`;
 const COURTESY = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?`;
 const CALL = new RegExp(
-  `${COURTESY}(?:call|ring|phone|dial)\\s+(${TARGET})(?:,?\\s+(?:please|now|for\\s+me))?[.!?]*$`,
+  `${COURTESY}(?:call|ring|phone|dial)\\s+(${TARGET})${TRAILING}*[.!?]*$`,
   "iu",
 );
 const textCommand = (recipient: string) =>
@@ -29,11 +33,49 @@ const TEXT = textCommand(TARGET);
 // The same messages, with the name ending at the first "saying", "that" or
 // "to say": "text mom saying that I'm late" is to "mom", not "mom saying".
 const TEXT_RECIPIENT = textCommand(target("{0,2}?"));
+// Emergency services named in words, or a short emergency number. "my
+// emergency contact" names a contact, not a service.
+const EMERGENCY_SERVICE = String.raw`(?:(?:an?|the|my\s+local|local)\s+)?(?:ambulances?|paramedics?|police|cops|fire\s+(?:department|brigade|service|truck)s?|fire\s*fighters?|emergency(?:\s+(?:services?|number|line))?(?!\s+contacts?)|9-?1-?1|1-?1-?2|9-?9-?9)(?![\p{L}\p{N}])`;
+// The service ends its clause, or only says when, for whom or where: "call
+// the police now", "send an ambulance to 12 Main St". "Get the police report",
+// "get the emergency number for Spain" and "call for help with my homework"
+// ask for something else and stay with the planner.
+const EMERGENCY_END = String.raw`(?:\s+(?:now|right\s+now|right\s+away|immediately|please|asap|quick(?:ly)?|here|over\s+here|for\s+(?:me|us|him|her|them)|(?:to|at)\s+[^.!?;]+))*\s*(?:[,.!?;:]|$)`;
+const EMERGENCY_REQUEST = new RegExp(
+  // A call at the start of a clause ("call an ambulance", "I need help, call
+  // emergency services now", "please get the police"), never a report of one
+  // ("she said she'd call the police"); or a plain need ("I need an ambulance"),
+  // never its denial ("I don't need an ambulance").
+  String.raw`(?:(?:^|[,.!?;:]\s*|\b(?:please|quick|quickly|someone|somebody|and)\s+)(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:(?:call|ring|phone|dial|get|send|contact)(?:\s+(?:me|us))?(?:\s+for)?\s+${EMERGENCY_SERVICE}|call\s+for\s+help(?![\p{L}\p{N}]))|(?<!\b(?:don['’]?t|do\s+not|doesn['’]?t|does\s+not|didn['’]?t|did\s+not|won['’]?t|no|never)\s+)\bneed\s+(?:an?\s+|the\s+)?(?:ambulance|paramedics|police|fire\s+department)(?![\p{L}\p{N}]))${EMERGENCY_END}`,
+  "iu",
+);
+
+/**
+ * Whether the owner's message asks for emergency services ("call an
+ * ambulance", "call the police", "call for help", "dial 911"). Such a
+ * request always reaches the phone's own keypad, where the system dialer
+ * handles the local emergency number; it is never refused.
+ */
+export function emergencyServicesRequest(text: string): boolean {
+  const request = text.trim();
+  return request.length <= 400 && EMERGENCY_REQUEST.test(request);
+}
+
+/** A contact query that names emergency services rather than a person ("emergency services", "the police"). */
+export function namesEmergencyService(query: string): boolean {
+  return new RegExp(
+    String.raw`^(?:for\s+)?(?:${EMERGENCY_SERVICE}|help)[.!?]*$`,
+    "iu",
+  ).test(query.trim());
+}
+
 // Words that make "call X" something else ("call it a day", "call me",
 // "call Sam on WhatsApp") or name another service; those stay with the planner.
 // "phone dialer", "phone keypad" and "dial pad" name the keypad, not a callee.
+// "call for help" and "call emergency services" name no contact, and "call mom
+// and dad" names two: the planner handles them.
 const NOT_A_PHONE_TARGET =
-  /^(?:me|myself|us|it|this|that|them|him|her|back|off|out|up|in|a|an|the|someone|somebody|anyone)\b|\b(?:on|via|in|through|using|with|over|from|at|tomorrow|later|tonight|today)\b|^(?:dialer|dial\s?-?\s?pad|key\s?-?\s?pad|pad|number\s+pad|app)[.!?]*$/iu;
+  /^(?:me|myself|us|it|this|that|them|him|her|back|off|out|up|in|a|an|the|someone|somebody|anyone|for|police|cops|emergency|ambulance|paramedics?)\b|\b(?:on|via|in|through|using|with|over|from|at|tomorrow|later|tonight|today|and|or)\b|&|^(?:dialer|dial\s?-?\s?pad|key\s?-?\s?pad|pad|number\s+pad|app)[.!?]*$/iu;
 
 export function authoredTelephonyRequest(
   text: string,
@@ -108,11 +150,16 @@ export function authoredTelephonyTarget(
   | undefined {
   const request = authoredTelephonyRequest(text);
   if (!request) return;
-  // A greedy name also takes a trailing "please", "now" or "for me".
+  // A greedy name also takes a trailing "please", "again", "back" or "right
+  // now", and "Maya's mobile" names Maya: the address book has no "Maya's".
   const written = (request === "call" ? CALL : TEXT_RECIPIENT)
     .exec(text.trim())?.[1]
     ?.replace(/[.!?]+$/u, "")
-    .replace(/(?:,?\s+(?:please|now|for\s+me))+$/iu, "")
+    .replace(new RegExp(`${TRAILING}+$`, "iu"), "")
+    .replace(
+      /['’]s\s+(?:cell(?:\s+phone)?|mobile(?:\s+phone)?|phone|work(?:\s+phone)?|home(?:\s+phone)?|office|landline)(?:\s+(?:number|line))?$/iu,
+      "",
+    )
     .trim();
   if (!written) return { request };
   if (/^[+\d(]/.test(written)) {
