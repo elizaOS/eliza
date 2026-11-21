@@ -1,0 +1,264 @@
+// spec/agent/voice/session.md, "Story: Send my words once I finish speaking"; spec/agent/voice/session.md, "Story: Send only what I meant"; spec/agent/voice/session.md, "Story: Report what of an interrupted reply I heard"; spec/agent/voice/session.md, "Story: Show which phase the voice session is in"
+import { assert, it } from "@effect/vitest"
+import type { EndOfTurnReply } from "../gen/agent__voice__session.ts"
+import { voiceNetworkPorts, type JsonAnswer } from "../src/voice/agent-ports.vibe"
+import type { CaptureEvents, HeardAnswer, HeardBody, SpeakerEvents, VoiceFailure, VoiceReply, VoiceSessionPorts, VoiceTurn } from "../src/voice/ports.vibe"
+import { VoiceSession } from "../src/voice/session.vibe"
+import { call, cloudFake, deviceKey, startInProcess, type InProcess } from "./support/kernel.vibe"
+import { text } from "./support/cloud-fake.ts"
+import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
+
+module node {
+  import type { UUID } from "@elizaos/core"
+  import type { RunningAgent } from "../src/host/process.vibe"
+  import { heardView } from "../src/conversation/heard.vibe"
+
+  export async function storedHeard(agent: RunningAgent, id: string) {
+    const [memory] = await agent.runtime.adapter.getMemoriesByIds([id as UUID], "messages")
+    return memory === undefined ? undefined : heardView(memory)
+  }
+}
+import { storedHeard } from node
+
+interface Sent {
+  readonly turn: VoiceTurn
+  readonly signal: AbortSignal
+  readonly reply: PromiseWithResolvers<VoiceReply>
+}
+
+interface Asked {
+  readonly text: string
+  readonly answer: PromiseWithResolvers<EndOfTurnReply>
+}
+
+function harness(network: Partial<Pick<VoiceSessionPorts, "endOfTurn" | "turns" | "heard">> = {}, room = { id: "conversation-1", roomId: "room-1" }) {
+  const timers: Array<{ at: number; run: () => void }> = []
+  const captures: CaptureEvents[] = []
+  const asked: Asked[] = []
+  const sent: Sent[] = []
+  const aborted: Array<[string, string]> = []
+  const heard: Array<[string, HeardBody]> = []
+  const heardAnswers: HeardAnswer[] = []
+  const spoken: Array<{ segments: readonly string[]; events: SpeakerEvents }> = []
+  const drafts: string[] = []
+  const failures: VoiceFailure[] = []
+  const phases: string[] = []
+  const counts = { closes: 0, stops: 0 }
+  let now = 1000
+  const session = new VoiceSession({
+    conversationId: room.id,
+    roomId: room.roomId,
+    capture: { open: (_request, events) => { captures.push(events) }, close: () => { counts.closes += 1 } },
+    endOfTurn: (spokenText) => {
+      const answer = Promise.withResolvers<EndOfTurnReply>()
+      asked.push({ text: spokenText, answer })
+      return answer.promise
+    },
+    turns: {
+      send: (turn, signal) => {
+        const reply = Promise.withResolvers<VoiceReply>()
+        sent.push({ turn, signal, reply })
+        return reply.promise
+      },
+      abort: async (roomId, reason) => { aborted.push([roomId, reason]) },
+    },
+    heard: async (_conversationId, messageId, body) => {
+      heard.push([messageId, body])
+      return heardAnswers.shift() ?? { status: 200, body: { ok: true, messageId, changed: true } }
+    },
+    ...network,
+    speaker: { speak: (segments, events) => { spoken.push({ segments, events }) }, stop: () => { counts.stops += 1 } },
+    clock: { now: () => now, after: (ms, run) => { timers.push({ at: now + ms, run }) } },
+    clientMessageId: () => `client-${sent.length + 1}`,
+    voiceUi: () => ({ view: "/calendar" }),
+    onDraft: (draft) => { drafts.push(draft) },
+    onFailure: (failure) => { failures.push(failure) },
+  })
+  session.onChange(() => { if (phases.at(-1) !== session.phase) phases.push(session.phase) })
+  const settle = async () => {
+    for (let round = 0; round < 50; round += 1) await Promise.resolve()
+  }
+  const advance = async (ms: number) => {
+    const until = now + ms
+    for (;;) {
+      const due = timers.filter((timer) => timer.at <= until).sort((a, b) => a.at - b.at)[0]
+      if (due === undefined) break
+      timers.splice(timers.indexOf(due), 1)
+      now = due.at
+      due.run()
+      await settle()
+    }
+    now = until
+    await settle()
+  }
+  const say = async (words: string) => {
+    const startedAt = now
+    session.onSpeechStart()
+    await advance(400)
+    session.onSpeechEnd()
+    session.onFinal(words, startedAt)
+    await settle()
+  }
+  const reply = async (index: number, messageId: string, replyText: string) => {
+    sent[index]?.reply.resolve({ messageId, text: replyText })
+    await settle()
+  }
+  return { session, captures, asked, sent, aborted, heard, heardAnswers, spoken, drafts, failures, phases, counts, advance, settle, say, reply }
+}
+
+it.effect('Send my words once I finish speaking: half duplex, the long gap submits, the turn waits for the closed microphone and is sent once (spec/agent/voice/session.md, "Only a complete end-of-turn score submits before the 1,200 ms long gap, which always submits"; spec/agent/voice/session.md, "New speech advances the utterance epoch, so an answer asked for an older utterance changes nothing"; spec/agent/voice/session.md, "A turn is sent once, and a half-duplex turn only after the capture confirmed its close"; spec/agent/voice/session.md, "The shown phase is computed from the session state, never kept apart")', () => effect {
+  const h = harness()
+  h.session.start("ConversationMode", "HalfDuplex")
+  h.captures[0]?.opened({ echoCancelled: false })
+  try promise(() => h.say("Book a table"))
+  try promise(() => h.advance(300))
+  try promise(() => h.say("for two at seven"))
+  h.asked[0]?.answer.resolve("ScoredComplete")
+  try promise(() => h.settle())
+  const afterStale = { turn: h.session.state.turn, utterance: h.session.state.utterance }
+  try promise(() => h.advance(300))
+  h.asked[1]?.answer.resolve("ScoredIncomplete")
+  try promise(() => h.advance(800))
+  const waiting = { utterance: h.session.state.utterance, closes: h.counts.closes, sent: h.sent.length }
+  try promise(() => h.advance(100))
+  const closing = { turn: h.session.state.turn, closes: h.counts.closes, sent: h.sent.length, phase: h.session.phase }
+  h.captures[0]?.closed()
+  try promise(() => h.advance(0))
+  try promise(() => h.reply(0, "reply-1", "Done, a table for two at seven is booked. I added it to your calendar."))
+  const playing = { turn: h.session.state.turn, spoken: h.spoken.map((s) => s.segments.length) }
+  for (const _segment of h.spoken[0]?.segments ?? []) h.spoken[0]?.events.segmentPlayed()
+  try promise(() => h.advance(0))
+  h.captures[1]?.opened({ echoCancelled: false })
+  try promise(() => h.say("um uh"))
+  try promise(() => h.advance(1300))
+  const filler = { sent: h.sent.length, utterance: h.session.state.utterance }
+  h.session.stop()
+  h.captures[1]?.closed()
+  h.session.start("ConversationMode", "HalfDuplex")
+  h.session.stop()
+  h.captures[2]?.opened({ echoCancelled: false })
+  const closedAtOnce = { closes: h.counts.closes, capture: h.session.state.capture }
+  h.captures[2]?.closed()
+  try Effect.try(() => {
+    assert.deepStrictEqual(afterStale, { turn: "NoTurn", utterance: "GapWaiting" })
+    assert.deepStrictEqual(h.asked.map((a) => a.text), ["Book a table", "Book a table for two at seven"])
+    assert.deepStrictEqual(waiting, { utterance: "WaitingLongGap", closes: 0, sent: 0 })
+    assert.deepStrictEqual(closing, { turn: "AwaitingClose", closes: 1, sent: 0, phase: "PhaseThinking" })
+    assert.deepStrictEqual(h.sent.map((s) => s.turn), [{
+      text: "Book a table for two at seven", channelType: "VOICE_DM", metadata: { voiceUi: { view: "/calendar" } }, clientMessageId: "client-1",
+    }])
+    assert.deepStrictEqual(playing, { turn: "Playing", spoken: [2] })
+    assert.deepStrictEqual(filler, { sent: 1, utterance: "NoUtterance" })
+    assert.deepStrictEqual(closedAtOnce, { closes: 3, capture: "CaptureClosing" })
+    assert.deepStrictEqual([h.session.state.capture, h.session.state.lastEnd, h.session.state.cause, h.session.state.sent], ["CaptureClosed", "ReplyPlayed", "NoSubmit", 1])
+    assert.deepStrictEqual(h.phases, ["PhaseStarting", "PhaseListening", "PhaseThinking", "PhaseSpeaking", "PhaseListening", "PhaseIdle", "PhaseStarting", "PhaseIdle"])
+  })
+})
+
+it.effect('Send only what I meant: dictation drafts and never submits, and a failed capture shows the error (spec/agent/voice/session.md, "Dictation never submits by itself"; spec/agent/voice/session.md, "A session owns one microphone capture, and a half-duplex session reopens it only after the turn")', () => effect {
+  const h = harness()
+  h.session.start("DictationMode", "HalfDuplex")
+  h.captures[0]?.opened({ echoCancelled: false })
+  try promise(() => h.say("  Pick up milk on the way home "))
+  try promise(() => h.say("hmm"))
+  try promise(() => h.advance(1300))
+  const dictated = { drafts: h.session.state.drafts, sent: h.sent.length, asked: h.asked.length, phase: h.session.phase }
+  h.session.stop()
+  h.captures[0]?.closed()
+  h.session.start("ConversationMode", "FullDuplex")
+  const cause = new Error("Permission denied")
+  h.captures[1]?.failed(cause)
+  try Effect.try(() => {
+    assert.deepStrictEqual(dictated, { drafts: 1, sent: 0, asked: 0, phase: "PhaseListening" })
+    assert.deepStrictEqual(h.drafts, ["Pick up milk on the way home"])
+    assert.deepStrictEqual([h.session.phase, h.session.state.capture, h.session.state.life], ["PhaseError", "CaptureClosed", "Failed"])
+    assert.deepStrictEqual(h.failures, [{ kind: "capture", cause }])
+    assert.strictEqual(h.session.start("ConversationMode", "FullDuplex"), true)
+  })
+})
+
+it.effect('A barge-in is confirmed only by an accepted transcript or a 700 ms hold: a pending turn is aborted, never resent, and a cut reply is reported twice at most (spec/agent/voice/session.md, "A barge-in is confirmed only by an accepted transcript or a 700 ms hold"; spec/agent/voice/session.md, "A reply plays segment by segment, and a cut or broken one reserves one report"; spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or missing answer, and its outcomes stay distinct")', () => effect {
+  const h = harness()
+  h.session.start("ConversationMode", "FullDuplex")
+  h.captures[0]?.opened({ echoCancelled: true })
+  try promise(() => h.say("Check my mail"))
+  try promise(() => h.advance(300))
+  h.asked[0]?.answer.resolve("ScoredComplete")
+  try promise(() => h.advance(0))
+  const pending = { sent: h.sent.length, phase: h.session.phase }
+  try promise(() => h.say("Actually check my calendar"))
+  const aborted = { aborted: h.aborted, signal: h.sent[0]?.signal.aborted, lastEnd: h.session.state.lastEnd, phase: h.session.phase }
+  try promise(() => h.reply(0, "reply-stale", "You have three new emails."))
+  try promise(() => h.advance(300))
+  h.asked[1]?.answer.resolve("ScoredComplete")
+  try promise(() => h.advance(0))
+  try promise(() => h.reply(1, "reply-2", "Your first meeting is at nine in the morning. After that you are free until four."))
+  h.spoken[0]?.events.segmentPlayed()
+  h.session.onSpeechStart()
+  h.session.onPartial("wait")
+  const candidate = { stops: h.counts.stops, turn: h.session.state.turn, bargeIn: h.session.state.bargeIn, phase: h.session.phase }
+  h.heardAnswers.push({ status: 503, body: null })
+  h.session.onHold(700)
+  try promise(() => h.advance(0))
+  const firstAnswer = h.session.state.receipts
+  try promise(() => h.advance(1499))
+  const beforeRetry = h.heard.length
+  try promise(() => h.advance(1))
+  try Effect.try(() => {
+    assert.deepStrictEqual(pending, { sent: 1, phase: "PhaseThinking" })
+    assert.deepStrictEqual(aborted, { aborted: [["room-1", "barge-in"]], signal: true, lastEnd: "TurnAborted", phase: "PhaseListening" })
+    assert.deepStrictEqual(h.sent.map((s) => s.turn.text), ["Check my mail", "Actually check my calendar"])
+    assert.deepStrictEqual(h.spoken.map((s) => s.segments), [["Your first meeting is at nine in the morning.", "After that you are free until four."]])
+    assert.deepStrictEqual(candidate, { stops: 0, turn: "Playing", bargeIn: true, phase: "PhaseSpeaking" })
+    assert.deepStrictEqual(firstAnswer, [{ reply: 1, attempts: 1, phase: { tag: "ReportDue" }, nothingHeard: false }])
+    assert.strictEqual(beforeRetry, 1)
+    assert.deepStrictEqual(h.heard, [
+      ["reply-2", { heardText: "Your first meeting is at nine in the morning." }],
+      ["reply-2", { heardText: "Your first meeting is at nine in the morning." }],
+    ])
+    assert.deepStrictEqual(h.session.state.receipts, [{
+      reply: 1, attempts: 2, phase: { tag: "ReportSettled", outcome: { tag: "ReportAnswered", verdict: "HeardRecorded" } }, nothingHeard: false,
+    }])
+    assert.deepStrictEqual([h.counts.stops, h.session.state.lastEnd, h.session.state.utterance, h.counts.closes], [1, "ReplyCut", "Hearing", 0])
+  })
+})
+
+const answerOf = (answer: LocalAnswer | Refusal): JsonAnswer => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
+
+effect function until(check: () => boolean) {
+  while (!check()) try sleep("20 millis")
+}
+
+it.live('Report what of an interrupted reply I heard: a voice turn through the real agent, cut after its first segment, records what was heard (spec/agent/voice/session.md, "A reply plays segment by segment, and a cut or broken one reserves one report"; spec/agent/voice/session.md, "Only a complete end-of-turn score submits before the 1,200 ms long gap, which always submits")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent: InProcess = try startInProcess({ launch: { backend: { kind: "cloud", origin: cloud.origin } }, frame: { credential: { version: 1, value: deviceKey } } })
+  const opened = answerOf(try call(agent, { method: "POST", path: "/api/conversations", body: {} }))
+  const chat = (opened.body as { conversation: { id: string; roomId: string } }).conversation
+  const request = (method: "GET" | "POST", path: string, body: unknown) =>
+    Effect.runPromise(call(agent, method === "GET" ? { method, path } : { method, path, body })).then(answerOf)
+  const network = try Effect.try(() => voiceNetworkPorts(chat.id, request))
+  const h = harness(network, chat)
+  try Effect.sync(() => cloud.script(text("The meeting moved to Thursday at ten. ", "Bring the signed contract with you.")))
+  h.session.start("ConversationMode", "FullDuplex")
+  h.captures[0]?.opened({ echoCancelled: true })
+  try promise(() => h.say("When is the meeting now?"))
+  try promise(() => h.advance(300))
+  try until(() => h.session.state.utterance === "WaitingLongGap")
+  try promise(() => h.advance(900))
+  try until(() => h.session.state.turn === "Playing")
+  h.spoken[0]?.events.segmentPlayed()
+  h.session.onSpeechStart()
+  h.session.onHold(700)
+  try promise(() => h.advance(0))
+  try until(() => h.session.state.receipts.every((r) => r.phase.tag === "ReportSettled"))
+  const replyId = String(h.heard[0]?.[0])
+  const stored = try promise(() => storedHeard(agent.agent, replyId))
+  try Effect.try(() => {
+    assert.deepStrictEqual(h.spoken.map((s) => s.segments), [["The meeting moved to Thursday at ten.", "Bring the signed contract with you."]])
+    assert.deepStrictEqual([h.session.state.cause, h.session.state.sent, cloud.calls.filter((c) => c.path.endsWith("/chat/completions")).length], ["LongGapSubmit", 1, 1])
+    assert.deepStrictEqual(h.session.state.receipts, [{
+      reply: 1, attempts: 1, phase: { tag: "ReportSettled", outcome: { tag: "ReportAnswered", verdict: "HeardRecorded" } }, nothingHeard: false,
+    }])
+    assert.deepStrictEqual(stored, { heard: "The meeting moved to Thursday at ten.", unheard: "Bring the signed contract with you." })
+  })
+}, 120_000)

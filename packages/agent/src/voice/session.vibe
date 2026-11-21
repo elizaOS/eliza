@@ -206,7 +206,7 @@ export class VoiceSession implements RecognizerPort {
   #abortTurn(after: SessionState): void {
     this.#turnAbort?.abort()
     const reason = after.life === "Idle" ? "stop" : after.life === "Failed" ? "capture-failed" : "barge-in"
-    this.#ports.turns.abort(this.#ports.conversationId, reason).then(undefined, (cause: unknown) => this.#fail({ kind: "abort", cause }))
+    this.#ports.turns.abort(this.#ports.roomId, reason).then(undefined, (cause: unknown) => this.#fail({ kind: "abort", cause }))
   }
 
   #reportFollows(before: SessionState, after: SessionState, event: Event): void {

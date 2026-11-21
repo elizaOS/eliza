@@ -73,6 +73,7 @@ export interface VoiceFailure {
 
 export interface VoiceSessionPorts {
   readonly conversationId: string
+  readonly roomId: string
   readonly capture: CapturePort
   readonly endOfTurn: EndOfTurnPort
   readonly turns: TurnPort
