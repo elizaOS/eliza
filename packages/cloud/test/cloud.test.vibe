@@ -8,11 +8,11 @@ import { readBackCheckouts } from "../src/billing/checkout-readback.vibe"
 import { stripeClient } from "../src/billing/stripe-observation.vibe"
 import { assert, describe, it } from "@effect/vitest"
 import { addCredits } from "../src/billing/funds.vibe"
-import { drainProviderEvents, webhookPath } from "../src/billing/provider-events.vibe"
+import { drainProviderEvents, queuedState, webhookPath } from "../src/billing/provider-events.vibe"
 import { createStripeFake, fakeSecretKey } from "./support/fakes/stripe.ts"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
-import { migrate, Store, type Tx } from "../src/store/store.vibe"
+import { migrate, Store, StoreFailure, type Tx } from "../src/store/store.vibe"
 import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
 import type { FakeRequest } from "./support/fakes.ts"
 import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.ts"
@@ -1073,6 +1073,40 @@ describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Ap
       { stored: statusOf(stored), repeated: statusOf(repeated), tampered: statusOf(tampered), stale: statusOf(stale), foreign: statusOf(foreign), rewritten: statusOf(rewritten), replayed: statusOf(replayed), rows: rows[0]?.n, row },
       { stored: [200, "queued"], repeated: [200, "duplicate"], tampered: [400, "invalid_request"], stale: [400, "invalid_request"], foreign: [400, "invalid_request"], rewritten: [409, "idempotency_conflict"], replayed: [200, "duplicate"], rows: 1, row: { state: "Done", attempts: 1, dropped: true, error: null } }
     ))
+    const doneRow = (try sql(cloud, "SELECT * FROM provider_events WHERE id = $1", [first.id]))[0]
+    const historicalReceipt = try Effect.try(() => doneRow === undefined ? undefined : queuedState(doneRow))
+    if (historicalReceipt === undefined) throw new StoreFailure({ operation: "read applied provider event fixture", cause: "missing or unreadable receipt" })
+    const invalidReceipt = { ...historicalReceipt, lease: { ...historicalReceipt.lease, owner: { ...historicalReceipt.lease.owner, actorId: "anotherQueue" } } }
+    try cloud.store.transaction(effect (tx: Tx) => {
+      try tx.script(`
+        ALTER TABLE provider_events RENAME COLUMN id TO key;
+        ALTER TABLE provider_events RENAME COLUMN state TO phase;
+        ALTER TABLE provider_events ADD COLUMN state jsonb, ADD COLUMN revision bigint;
+      `)
+      try tx.query("UPDATE provider_events SET state=$2::jsonb,revision=1 WHERE key=$1", [first.id, JSON.stringify(invalidReceipt)])
+      try tx.script(`
+        ALTER TABLE provider_events ALTER COLUMN state SET NOT NULL, ALTER COLUMN revision SET NOT NULL,
+          ALTER COLUMN attempts DROP DEFAULT, DROP COLUMN claim, DROP COLUMN revivals;
+        DELETE FROM schema_migrations WHERE name IN ('0121_provider_event_revivals.sql', '0122_provider_event_shape.sql');
+      `)
+    })
+    const upgrade = migrate({ digest: testDatabaseIdentity, environment: "staging", now: started })
+    const refusedUpgrade = try cloud.inside(Effect.flip(upgrade))
+    const rolledBack = (try sql(cloud, "SELECT state, phase, revision FROM provider_events WHERE key=$1", [first.id]))[0]
+    const oldColumns = try sql(cloud, "SELECT column_name FROM information_schema.columns WHERE table_name='provider_events' AND column_name IN ('key','id','claim','revivals')", [])
+    try check(() => assert.deepStrictEqual(
+      [refusedUpgrade._tag, rolledBack?.state, rolledBack?.phase, Number(rolledBack?.revision), oldColumns],
+      ["StoreFailure", invalidReceipt, "Done", 1, [{ column_name: "key" }]]
+    ))
+    try sql(cloud, "UPDATE provider_events SET state=$2::jsonb WHERE key=$1", [first.id, JSON.stringify(historicalReceipt)])
+    const converted = try cloud.inside(upgrade)
+    const migratedRow = (try sql(cloud, "SELECT * FROM provider_events WHERE id=$1", [first.id]))[0]
+    const duplicateAfterUpgrade = try deliver(cloud, first)
+    try check(() => assert.deepStrictEqual(
+      [converted.applied, migratedRow === undefined ? undefined : queuedState(migratedRow), statusOf(duplicateAfterUpgrade)],
+      [["0121_provider_event_revivals.sql", "0122_provider_event_shape.sql"], historicalReceipt, [200, "duplicate"]]
+    ))
+
     const retained = try sync(() => stripe.signedEvent("customer.created", { id: "cus_legacy", object: "customer" }))
     try deliver(cloud, retained)
     const legacy = (try sql(cloud, "SELECT payload_digest,next_attempt_at FROM provider_events WHERE id=$1", [retained.id]))[0]
