@@ -122,7 +122,13 @@ export function dominantPlace(
 ): PlaceRef | undefined {
   const qualified = qualifiedPlaces(query, places);
   const candidates = qualified ?? places;
-  if (candidates.length <= 1) return candidates[0];
+  if (candidates.length === 0) return undefined;
+  // A lone result is meant only when it is what was asked for: a provider
+  // answers "my current location" with a business named "Here".
+  if (candidates.length === 1)
+    return qualified || loneResultMatches(query, candidates[0] as PlaceRef)
+      ? candidates[0]
+      : undefined;
   const local =
     qualified === undefined && anchor
       ? candidates.filter(
@@ -167,6 +173,22 @@ export function dominantPlace(
   // Far-away namesakes are fewer than the results around the top one.
   const around = pool.filter((place) => away(place) <= AREA_METERS).length;
   return around * 2 > pool.length ? first : undefined;
+}
+
+/**
+ * True when a lone result is named what was asked, sits at the asked address,
+ * or answers a street address (a geocode names the street, not the words).
+ */
+function loneResultMatches(query: string, place: PlaceRef): boolean {
+  if (/\p{N}/u.test(query)) return true;
+  const name = placeNameKey(place.name);
+  const address = placeNameKey(place.formattedAddress ?? "");
+  return queryKeys(query).some(
+    (key) =>
+      contains(name, key) ||
+      contains(key, name) ||
+      (address.length > 0 && contains(address, key)),
+  );
 }
 
 const ORDINALS: Record<string, number> = {
