@@ -195,10 +195,11 @@ pure def sometimesCompletedAfterALostReply(c: Checkout): bool = c.phase == Compl
 
 ### Only the provider's report that the session expired ends an open checkout
 
-The report is the `checkout.session.expired` event or a read-back. The
-shell never declares a session expired itself: it asks the provider to
-expire a session only to replace it or for an account that is no longer
-Active, and then reads it back. Ending frees the slot.
+The report is the `checkout.session.expired` event or a read-back. To
+replace a checkout, the shell asks the provider to expire its recorded
+session. For an inactive account, the shell first checks the provider
+session's binding and that no other account holds the billing. The shell
+reads the result back before closing the checkout. Ending frees the slot.
 
 ```quint
 pure def canObserveExpired(c: Checkout, sessionId: str): bool = c.phase == Open and sessionId == c.sessionId

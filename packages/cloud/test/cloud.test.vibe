@@ -5,10 +5,11 @@ import { requestDigest } from "../src/shared/dispatch-once.vibe"
 import { deletionProviders, workerRefreshCipher } from "./support/fakes/deletion.ts"
 import { acquire, create, elapse, initial as noClaim } from "../gen/core__sessions.ts"
 import { readBackCheckouts } from "../src/billing/checkout-readback.vibe"
+import { stripeClient } from "../src/billing/stripe-observation.vibe"
 import { assert, describe, it } from "@effect/vitest"
 import { addCredits } from "../src/billing/funds.vibe"
 import { drainProviderEvents, webhookPath } from "../src/billing/provider-events.vibe"
-import { createStripeFake } from "./support/fakes/stripe.ts"
+import { createStripeFake, fakeSecretKey } from "./support/fakes/stripe.ts"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
 import { migrate, Store, type Tx } from "../src/store/store.vibe"
@@ -2320,6 +2321,32 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
   })
 })
 describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\")", () => {
+  effect function hostedCheckout(cloud: TestCloud, owner: Owner, request: string) {
+    try openAccount(cloud, owner)
+    const now = try Clock.currentTimeMillis
+    const key = try deviceKey(cloud, owner.userId, { deviceName: "Phone", createdAt: now - 1000, expiresAt: now + 86_400_000 })
+    const answer = try cloud.call("/api/v1/subscriptions/checkout", {
+      headers: { authorization: `Bearer ${key}`, "idempotency-key": request },
+      json: { planKey: "plus_monthly", idempotencyKey: request, presentation: "shared" }
+    })
+    try check(() => assert.equal(answer.status, 200, JSON.stringify(answer.body)))
+    return Schema.decodeUnknownSync(Schema.Struct({ sessionId: Schema.String }))(answer.body).sessionId
+  }
+
+  effect function requestRemoval(cloud: TestCloud, owner: Owner) {
+    const result = try printed(operator(cloud, ["account", "delete", "--user", owner.userId, "--confirmed-with-owner"]))
+    try check(() => assert.ok(Exit.isSuccess(result.exit), result.err.join("\n")))
+  }
+
+  effect function shareOrganization(cloud: TestCloud, userId: string, organizationId: string) {
+    try sql(cloud, "ALTER TABLE accounts DROP CONSTRAINT accounts_organization_id_key", [])
+    try sql(cloud, "UPDATE accounts SET organization_id=$2, state=jsonb_set(state,'{organizationId}',to_jsonb($2::text)) WHERE key=$1", [userId, organizationId])
+  }
+
+  effect function checkoutDeletion(cloud: TestCloud, owner: Owner) {
+    return (try sql(cloud, "SELECT phase,step FROM deletion_requests WHERE key=$1", [owner.userId]))[0]
+  }
+
   it.live("Fund an active account, list and revoke a lost device, and refuse every command on another or an unreadable database (spec/cloud/operator.md, \"Story: Operate the deployment without reading secrets\")", () => scoped(effect {
     const cloud = try testCloud()
     const now = try Clock.currentTimeMillis
@@ -2471,6 +2498,124 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
       }
     ))
   }), 60_000)
+  it.live("Wait for an authoritative checkout result before finishing deletion billing (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\")", () => scoped(effect {
+    const stripe = try sync(() => createStripeFake())
+    const cloud = try testCloud({ stripe })
+    const owner = { userId: "user-deletion-open-checkout", organizationId: "org-deletion-open-checkout" }
+    const sessionId = try hostedCheckout(cloud, owner, "pending-deletion-checkout")
+    const expirePath = `/v1/checkout/sessions/${sessionId}/expire`
+    try requestRemoval(cloud, owner)
+    try sync(() => stripe.failNext(expirePath, { status: 500, type: "api_error" }))
+    try cloud.inside(sweepDeletions())
+    const pending = try checkoutDeletion(cloud, owner)
+    const now = try Clock.currentTimeMillis
+    const checked = try cloud.inside(readBackCheckouts(now + 180_000))
+    const idle = try cloud.inside(readBackCheckouts(now + 360_000))
+    try cloud.inside(sweepDeletions())
+    const finished = try checkoutDeletion(cloud, owner)
+    const checkout = (try sql(cloud, "SELECT status FROM checkouts WHERE provider_session_id=$1", [sessionId]))[0]?.status
+    const provider = try sync(() => stripe.object(sessionId))
+    if (provider.object !== "checkout.session") throw new Error("the provider fixture did not hold a checkout session")
+    const expiry = try sync(() => cloud.fakes.seen.filter((request) => request.method === "POST" && request.path === `/stripe${expirePath}`).map((request) => request.headers["idempotency-key"]))
+    try check(() => assert.deepStrictEqual([pending, checked, idle, checkout, provider.status, finished, expiry],
+      [{ phase: "running", step: "cancel_billing" }, 1, 0, "expired", "expired", { phase: "running", step: "revoke_google" }, [`expire_${sessionId}`, `expire_${sessionId}`]]))
+
+    const shared = { userId: "user-deletion-shared-checkout", organizationId: "org-deletion-shared-checkout" }
+    const peer = { userId: "user-deletion-checkout-peer", organizationId: "org-deletion-checkout-peer" }
+    const sharedId = try hostedCheckout(cloud, shared, "shared-deletion-checkout")
+    try openAccount(cloud, peer)
+    try shareOrganization(cloud, peer.userId, shared.organizationId)
+    try requestRemoval(cloud, shared)
+    try cloud.inside(sweepDeletions())
+    try cloud.inside(readBackCheckouts((try Clock.currentTimeMillis) + 180_000))
+    const saved = try sync(() => stripe.object(sharedId))
+    if (saved.object !== "checkout.session") throw new Error("the provider fixture did not hold a shared checkout")
+    const sharedStep = try checkoutDeletion(cloud, shared)
+    const peerStatus = (try sql(cloud, "SELECT status FROM accounts WHERE key=$1", [peer.userId]))[0]?.status
+    try check(() => assert.deepStrictEqual([sharedStep, saved.status, peerStatus], [{ phase: "running", step: "revoke_google" }, "open", "active"]))
+  }), 90_000)
+
+  it.live("Resolve paid Node checkout and an issued Worker checkout before finishing deletion billing (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\")", () => scoped(effect {
+    const stripe = try sync(() => createStripeFake())
+    const cloud = try testCloud({ stripe })
+    const owner = { userId: "user-deletion-paid-checkout", organizationId: "org-deletion-paid-checkout" }
+    const sessionId = try hostedCheckout(cloud, owner, "paid-deletion-checkout")
+    const paid = try sync(() => stripe.completeSession(sessionId))
+    if (paid.kind !== "paid") throw new Error("the provider fixture did not hold a paid checkout")
+    try requestRemoval(cloud, owner)
+    try cloud.inside(sweepDeletions())
+    const node = try checkoutDeletion(cloud, owner)
+    const saved = (try sql(cloud, "SELECT target FROM deletion_receipts WHERE user_id=$1 AND step='cancel_billing'", [owner.userId]))[0]?.target
+    const canceled = try sync(() => stripe.object(paid.subscription.id))
+    if (canceled.object !== "subscription") throw new Error("the provider fixture did not hold a subscription")
+
+    const worker = { userId: "user-deletion-worker-checkout", organizationId: "org-deletion-worker-checkout" }
+    try openAccount(cloud, worker)
+    const localStripe = stripeClient(fakeSecretKey, `${cloud.fakes.url}/stripe`)
+    const customerId = (try promise(() => localStripe.customers.create())).id
+    const legacyId = (try promise(() => localStripe.checkout.sessions.create({
+      mode: "subscription", customer: customerId, client_reference_id: worker.organizationId,
+      line_items: [{ price: catalogPrices[0].priceId, quantity: 1 }],
+      success_url: "https://example.test/paid", cancel_url: "https://example.test/cancel"
+    }))).id
+    try sql(cloud, "INSERT INTO cloud_checkout_customers (organization_id,customer_id,checkout_id) VALUES ($1,$2,$3)", [worker.organizationId, customerId, legacyId])
+    try requestRemoval(cloud, worker)
+    try cloud.inside(sweepDeletions())
+    const legacy = try checkoutDeletion(cloud, worker)
+    const expired = try sync(() => stripe.object(legacyId))
+    if (expired.object !== "checkout.session") throw new Error("the provider fixture did not hold a Worker checkout")
+    try check(() => assert.deepStrictEqual([node, saved, canceled.status, legacy, expired.status],
+      [{ phase: "running", step: "revoke_google" }, JSON.stringify({ kind: "stripe", customerId: paid.subscription.customer, subscriptionId: paid.subscription.id }),
+        "canceled", { phase: "running", step: "revoke_google" }, "expired"]))
+  }), 90_000)
+
+  it.live("Keep an in-progress Google receipt when retained billing still needs settlement (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\")", () => scoped(effect {
+    const stripe = try sync(() => createStripeFake())
+    const cloud = try testCloud({ stripe })
+    const owner = { userId: "user-deletion-retained-checkout", organizationId: "org-deletion-retained-checkout" }
+    const sessionId = try hostedCheckout(cloud, owner, "retained-deletion-checkout")
+    const paid = try sync(() => stripe.completeSession(sessionId))
+    if (paid.kind !== "paid") throw new Error("the provider fixture did not hold a paid checkout")
+    try requestRemoval(cloud, owner)
+    const now = try Clock.currentTimeMillis
+    const target = JSON.stringify({ kind: "google-layered", key: "known-google-connection" })
+    try cloud.store.transaction(effect (tx: Tx) => {
+      try stepDeletion(tx, owner.userId, { type: "completeStep", workLeft: false, billingBoundary: "BillingSettled" }, now)
+      try stepDeletion(tx, owner.userId, { type: "prepareCall", providerKey: { providerKind: "GoogleGrant", providerId: "del_retained_google" },
+        staleAfter: 30_000, expiresAt: now + 60_000, billingBoundary: "BillingSettled",
+        digest: requestDigest({ step: "RevokeGoogle", userId: owner.userId, organizationId: owner.organizationId, target }) }, now, target)
+      const claim = try stepDeletion(tx, owner.userId, { type: "claimCall" }, now)
+      try stepDeletion(tx, owner.userId, { type: "sendCall", claimToken: claim.state.receipt.session.currentClaim }, now)
+    })
+    const receipts = () => sql(cloud, "SELECT step,target,state FROM deletion_receipts WHERE user_id=$1 ORDER BY provider_key", [owner.userId])
+    const before = try receipts()
+    const clock = try sync(() => shiftedClock())
+    try sync(() => clock.advance(45_000))
+    try provideService(cloud.inside(sweepDeletions()), Clock.Clock, clock.clock)
+    const held = try checkoutDeletion(cloud, owner)
+    const after = try receipts()
+    try check(() => assert.deepStrictEqual([held, after], [{ phase: "running", step: "revoke_google" }, before]))
+
+    const older = { userId: "user-deletion-retained-erase", organizationId: "org-deletion-retained-erase" }
+    const olderSession = try hostedCheckout(cloud, older, "retained-erase-checkout")
+    const olderPayment = try sync(() => stripe.completeSession(olderSession))
+    if (olderPayment.kind !== "paid") throw new Error("the provider fixture did not hold a paid checkout")
+    try requestRemoval(cloud, older)
+    const retainedAt = try Clock.currentTimeMillis
+    try cloud.store.transaction(effect (tx: Tx) => {
+      try stepDeletion(tx, older.userId, { type: "completeStep", workLeft: false, billingBoundary: "BillingSettled" }, retainedAt)
+      try stepDeletion(tx, older.userId, { type: "completeStep", workLeft: false, billingBoundary: "BillingSettled" }, retainedAt)
+    })
+    try cloud.inside(sweepDeletions())
+    const beforeRecovery = try checkoutDeletion(cloud, older)
+    const localStripe = stripeClient(fakeSecretKey, `${cloud.fakes.url}/stripe`)
+    const canceled = try promise(() => localStripe.subscriptions.cancel(olderPayment.subscription.id))
+    try cloud.inside(sweepDeletions())
+    const afterRecovery = try checkoutDeletion(cloud, older)
+    try check(() => assert.deepStrictEqual([beforeRecovery, canceled.status, afterRecovery],
+      [{ phase: "running", step: "erase_data" }, "canceled", { phase: "erased", step: "erase_data" }]))
+  }), 90_000)
+
   it.live("Keep shared billing and a retained unaddressable cancellation intact (spec/cloud/identity/deletion.md, \"Each provider call of a step is one receipt of that step's kind, owned by the account, under a provider key never used before\")", () => scoped(effect {
     const providers = try sync(() => deletionProviders())
     const cloud = try testCloud({ stripe: providers.stripe, mount: (fakes) => { providers.mount(fakes) } })
@@ -2480,8 +2625,7 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
     try openAccount(cloud, shared)
     try openAccount(cloud, retained)
     try openAccount(cloud, peer)
-    try sql(cloud, "ALTER TABLE accounts DROP CONSTRAINT accounts_organization_id_key", [])
-    try sql(cloud, "UPDATE accounts SET organization_id=$2, state=jsonb_set(state,'{organizationId}',to_jsonb($2::text)) WHERE key=$1", [peer.userId, shared.organizationId])
+    try shareOrganization(cloud, peer.userId, shared.organizationId)
     const prepare = effect (owner: Owner) => {
       const subscription = try sync(() => providers.subscribe(catalogPrices[0].priceId))
       try sql(cloud, "INSERT INTO cloud_checkout_customers (organization_id,customer_id) VALUES ($1,$2)", [owner.organizationId, subscription.customerId])
@@ -2496,7 +2640,7 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
       const target = retained.organizationId
       try stepDeletion(tx, retained.userId, {
         type: "prepareCall", providerKey: { providerKind: "SubscriptionUpdate", providerId: "del_retained_org_only" }, staleAfter: 30_000,
-        expiresAt: now + 60_000, digest: requestDigest({ step: "CancelBilling", userId: retained.userId, organizationId: target, target })
+        expiresAt: now + 60_000, billingBoundary: "BillingCheckoutSettled", digest: requestDigest({ step: "CancelBilling", userId: retained.userId, organizationId: target, target })
       }, now, target)
       const claimed = try stepDeletion(tx, retained.userId, { type: "claimCall" }, now)
       try stepDeletion(tx, retained.userId, { type: "sendCall", claimToken: claimed.state.receipt.session.currentClaim }, now)

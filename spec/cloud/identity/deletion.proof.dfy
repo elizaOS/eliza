@@ -3,17 +3,17 @@ lemma ProviderKeysView(d: Deletion)
 {
 }
 
-lemma prepareCall_ensures(d: Deletion, digest: string, providerKey: cloud__shared__types_ProviderKey, staleAfter: int, expiresAt: int)
-  ensures (inv(d) ==> canPrepareCall(d, digest, providerKey, staleAfter, expiresAt) ==> alwaysEarlierStepsAreFinished(prepareCall(d, digest, providerKey, staleAfter, expiresAt)))
-  ensures (inv(d) ==> canPrepareCall(d, digest, providerKey, staleAfter, expiresAt) ==> alwaysReceiptBelongsToItsStep(prepareCall(d, digest, providerKey, staleAfter, expiresAt)))
-  ensures (inv(d) ==> canPrepareCall(d, digest, providerKey, staleAfter, expiresAt) ==> alwaysNoProviderKeyIsUsedTwice(prepareCall(d, digest, providerKey, staleAfter, expiresAt)))
-  ensures (inv(d) ==> canPrepareCall(d, digest, providerKey, staleAfter, expiresAt) ==> alwaysAttemptsWithinBudget(prepareCall(d, digest, providerKey, staleAfter, expiresAt)))
-  ensures (inv(d) ==> canPrepareCall(d, digest, providerKey, staleAfter, expiresAt) ==> stepEffectsOnlyAtFenceAndErasure(d, "prepareCall", prepareCall(d, digest, providerKey, staleAfter, expiresAt), []))
-  ensures (inv(d) ==> canPrepareCall(d, digest, providerKey, staleAfter, expiresAt) ==> stepStepsAdvanceOneAtATime(d, prepareCall(d, digest, providerKey, staleAfter, expiresAt)))
-  ensures (inv(d) ==> canPrepareCall(d, digest, providerKey, staleAfter, expiresAt) ==> stepErasedIsFinal(d, prepareCall(d, digest, providerKey, staleAfter, expiresAt)))
+lemma prepareCall_ensures(d: Deletion, digest: string, providerKey: cloud__shared__types_ProviderKey, staleAfter: int, expiresAt: int, billingBoundary: BillingBoundary)
+  ensures (inv(d) ==> canPrepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary) ==> alwaysEarlierStepsAreFinished(prepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary)))
+  ensures (inv(d) ==> canPrepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary) ==> alwaysReceiptBelongsToItsStep(prepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary)))
+  ensures (inv(d) ==> canPrepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary) ==> alwaysNoProviderKeyIsUsedTwice(prepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary)))
+  ensures (inv(d) ==> canPrepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary) ==> alwaysAttemptsWithinBudget(prepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary)))
+  ensures (inv(d) ==> canPrepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary) ==> stepEffectsOnlyAtFenceAndErasure(d, "prepareCall", prepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary), []))
+  ensures (inv(d) ==> canPrepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary) ==> stepStepsAdvanceOneAtATime(d, prepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary)))
+  ensures (inv(d) ==> canPrepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary) ==> stepErasedIsFinal(d, prepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary)))
 {
-  if inv(d) && canPrepareCall(d, digest, providerKey, staleAfter, expiresAt) {
-    var after := prepareCall(d, digest, providerKey, staleAfter, expiresAt);
+  if inv(d) && canPrepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary) {
+    var after := prepareCall(d, digest, providerKey, staleAfter, expiresAt, billingBoundary);
     var before := d.usedKeys;
     assert providerKey !in before;
     assert after.usedKeys == before + [providerKey];

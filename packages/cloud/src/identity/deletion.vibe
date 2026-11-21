@@ -1,6 +1,7 @@
 // spec/cloud/identity/deletion.md, "Story: Delete an account once the person asked support"; spec/cloud/identity/deletion.md, "Only an active account is fenced, and the fence ends every session and device key in the same transaction"; spec/cloud/identity/deletion.md, "The account's data is erased once, last, and the erased deletion never changes again"
-import { type NotAState, type Rejected, apply, callFailed, callSucceeded, canEraseFailed, canLookUpCall, canPassTime, canReplyToCall, canRequireAction, canResume, currentStep, decodeState, defaultAttemptBudget, initial, kindFor, noCall, passTime, type Deletion, type DeletionEffect, type DeletionStep, type Event, type SagaStep } from "../../gen/cloud__identity__deletion.effect.vibe"
+import { type NotAState, type Rejected, apply, callFailed, callSucceeded, canEraseFailed, canLookUpCall, canPassTime, canReplyToCall, canRequireAction, canResume, currentStep, decodeState, defaultAttemptBudget, initial, kindFor, noCall, passTime, type BillingBoundary, type Deletion, type DeletionEffect, type DeletionStep, type Event, type SagaStep } from "../../gen/cloud__identity__deletion.effect.vibe"
 import { decodeState as decodeReceipt, isUnknown, receiptStatus, staleAt } from "../../gen/cloud__shared__dispatchOnce.effect.vibe"
+import { settleOwnedCheckouts } from "../billing/checkout-readback.vibe"
 import { refused, wireName } from "../http/refusal.vibe"
 import type { CloudContext } from "../http/routes.vibe"
 import { bounded, dispatchOnce, renderProviderKey, replyOf, requestDigest, resolveUnknown, type LookupResult, type ProviderKey, type ProviderReply } from "../shared/dispatch-once.vibe"
@@ -9,7 +10,7 @@ import { Store, toInt, toText, type Tx } from "../store/connection.vibe"
 import { loadRow, stepRow, RowCorrupt, type Columns, type MachineRows } from "../store/rows.vibe"
 import { readAccount, stepAccount } from "./accounts.vibe"
 import {
-  ProviderTarget, billingAuthority, billingSourceOf, cancelBilling, googleTargetOf, heldGoogle, identifyBilling, lookUpBilling, lookUpGoogle,
+  ProviderTarget, billingAuthority, billingSourceOf, cancelBilling, checkoutBilling, googleTargetOf, heldGoogle, identifyBilling, lookUpBilling, lookUpGoogle,
   removeGoogle, revokeGoogle, type BillingSource, type BillingTarget
 } from "./deletion-providers.vibe"
 
@@ -31,7 +32,10 @@ type Work =
   | { readonly kind: "erase" }
   | { readonly kind: "send" | "lookUp"; readonly organizationId: string; readonly target: ProviderTarget; readonly call: ProviderCall }
 
-type Next = Work | { readonly kind: "identify"; readonly source: BillingSource }
+type BillingScope =
+  | { readonly kind: "pending" }
+  | { readonly kind: "shared" }
+  | { readonly kind: "owned"; readonly source: BillingSource | undefined; readonly checkout: BillingTarget | undefined }
 
 const table = "deletion_requests"
 const lease = 10 * 60_000
@@ -209,28 +213,43 @@ effect function receiptTarget(tx: Tx, deletion: Deletion, step: ProviderStep) {
   return parsed.value
 }
 
-effect function openCall(tx: Tx, deletion: Deletion, step: ProviderStep, target: ProviderTarget | undefined, now: number) {
+effect function openCall(tx: Tx, deletion: Deletion, step: ProviderStep, target: ProviderTarget | undefined, billingBoundary: BillingBoundary, now: number) {
   const { userId, organizationId } = deletion
   if (target === undefined) {
-    try stepDeletion(tx, userId, { type: "completeStep", workLeft: false }, now)
+    try stepDeletion(tx, userId, { type: "completeStep", workLeft: false, billingBoundary }, now)
     return done
   }
   const encoded = JSON.stringify(target)
   const providerKey: ProviderKey = { providerKind: kindFor(step), providerId: `del_${sha256Hex([userId, step, encoded, deletion.usedKeys.length].join("\n")).slice(0, 32)}` }
   const digest = targetDigest(deletion, step, encoded)
-  try stepDeletion(tx, userId, { type: "prepareCall", digest, providerKey, staleAfter, expiresAt: now + callLife }, now, encoded)
+  try stepDeletion(tx, userId, { type: "prepareCall", digest, providerKey, staleAfter, expiresAt: now + callLife, billingBoundary }, now, encoded)
   const claimed = try stepDeletion(tx, userId, { type: "claimCall" }, now)
   const sent = try stepDeletion(tx, userId, { type: "sendCall", claimToken: claimed.state.receipt.session.currentClaim }, now)
   return { kind: "send", organizationId, target, call: { providerKey: renderProviderKey(providerKey), deadline: staleAt(sent.state.receipt) } } satisfies Work
 }
 
-effect function finishStep(tx: Tx, deletion: Deletion, target: ProviderTarget | undefined, now: number) {
+effect function finishStep(tx: Tx, deletion: Deletion, target: ProviderTarget | undefined, billingBoundary: BillingBoundary, now: number) {
   const { userId, organizationId } = deletion
   const google = target !== undefined && target.kind !== "stripe"
   if (google) try removeGoogle(tx, organizationId, userId, target)
   const workLeft = google && (try googleTargetOf(tx, organizationId, userId)) !== undefined
-  try stepDeletion(tx, userId, { type: "completeStep", workLeft }, now)
+  try stepDeletion(tx, userId, { type: "completeStep", workLeft, billingBoundary }, now)
   return workLeft ? again : done
+}
+
+effect function billingScope(tx: Tx, deletion: Deletion, now: number) {
+  const { userId, organizationId } = deletion
+  if (!(try billingAuthority(tx, userId, organizationId))) return { kind: "shared" } satisfies BillingScope
+  const source = try billingSourceOf(tx, organizationId)
+  const checkout = try settleOwnedCheckouts(tx, { organizationId, customerId: source?.customerId, workerSessionId: source?.workerSessionId }, now)
+  if (checkout.kind === "pending") return { kind: "pending" } satisfies BillingScope
+  return { kind: "owned", source, checkout: try checkoutBilling(source, checkout.subscriptionIds) } satisfies BillingScope
+}
+
+function settledBoundary(scope: BillingScope): BillingBoundary {
+  if (scope.kind === "pending") return "BillingUnsettled"
+  if (scope.kind === "shared") return "BillingShared"
+  return scope.checkout === undefined ? "BillingSettled" : "BillingCheckoutSettled"
 }
 
 effect function nextWork(tx: Tx, userId: string, now: number, firstRound: boolean) {
@@ -238,33 +257,42 @@ effect function nextWork(tx: Tx, userId: string, now: number, firstRound: boolea
   if (deletion.phase.tag !== "Running") return done
   const { organizationId, receipt } = deletion
   const step = deletion.phase.at
-  if (step === "EraseData") return { kind: "erase" } satisfies Next
+  if (step === "EraseData") return { kind: "erase" } satisfies Work
+  const scope = try billingScope(tx, deletion, now)
+  if (scope.kind === "pending") return done
+  const boundary = settledBoundary(scope)
+  const checkedAt = try Clock.currentTimeMillis
+  if (step === "RevokeGoogle" && boundary === "BillingCheckoutSettled") {
+    try reportBillingRecovery(userId)
+    return done
+  }
   if (noCall(receipt)) {
-    if (step === "RevokeGoogle") return try openCall(tx, deletion, step, try googleTargetOf(tx, organizationId, userId), now)
-    const source = (try billingAuthority(tx, userId, organizationId)) ? try billingSourceOf(tx, organizationId) : undefined
-    return source === undefined ? try openCall(tx, deletion, step, undefined, now) : { kind: "identify", source } satisfies Next
+    if (step === "RevokeGoogle") return try openCall(tx, deletion, step, try googleTargetOf(tx, organizationId, userId), boundary, checkedAt)
+    if (scope.kind === "shared") return try openCall(tx, deletion, step, undefined, "BillingShared", checkedAt)
+    const retained = scope.source === undefined || scope.checkout?.subscriptionId === scope.source.subscriptionId
+      ? undefined : try identifyBilling(scope.source)
+    if (scope.checkout !== undefined && retained !== undefined && scope.checkout.subscriptionId !== retained.subscriptionId)
+      throw new RowCorrupt({ table: "subscriptions", key: organizationId, cause: "the retained subscription and paid checkout identify different live billing" })
+    const target = scope.checkout ?? retained
+    const pinAt = try Clock.currentTimeMillis
+    return try openCall(tx, deletion, step, target, target === undefined ? "BillingSettled" : "BillingCheckoutSettled", pinAt)
   }
   const target = try receiptTarget(tx, deletion, step)
-  if (callSucceeded(step, receipt)) return try finishStep(tx, deletion, target, now)
+  if (callSucceeded(step, receipt)) {
+    if (boundary === "BillingCheckoutSettled") return done
+    return try finishStep(tx, deletion, target, boundary, checkedAt)
+  }
   if (target === undefined) return done
   if (callFailed(step, receipt)) {
     if (canRequireAction(deletion)) {
       try stepDeletion(tx, userId, { type: "requireAction" }, now)
       return done
     }
-    return firstRound ? try openCall(tx, deletion, step, target, now) : done
+    if (!firstRound || (step === "CancelBilling" && scope.kind === "shared")) return done
+    return try openCall(tx, deletion, step, target, boundary, checkedAt)
   }
-  if (isUnknown(receipt)) return { kind: "lookUp", organizationId, target, call: { providerKey: renderProviderKey(receipt.providerKey), deadline: now + receipt.staleAfter } } satisfies Next
+  if (isUnknown(receipt)) return { kind: "lookUp", organizationId, target, call: { providerKey: renderProviderKey(receipt.providerKey), deadline: checkedAt + receipt.staleAfter } } satisfies Work
   return done
-}
-
-effect function pinBilling(tx: Tx, userId: string, source: BillingSource, target: BillingTarget | undefined, now: number) {
-  const deletion = advanced((try loadRow(tx, deletionRows, userId)).state, now)
-  if (deletion.phase.tag !== "Running" || deletion.phase.at !== "CancelBilling" || !noCall(deletion.receipt)) return done
-  if (!(try billingAuthority(tx, userId, deletion.organizationId))) return try openCall(tx, deletion, "CancelBilling", undefined, now)
-  const current = try billingSourceOf(tx, deletion.organizationId)
-  if (current?.customerId !== source.customerId || current.subscriptionId !== source.subscriptionId) return done
-  return try openCall(tx, deletion, "CancelBilling", target, now)
 }
 
 effect function recordReply(userId: string, providerKey: string, reply: ProviderReply<unknown>, now: number) {
@@ -305,12 +333,21 @@ effect function lookUpCall(userId: string, organizationId: string, target: Provi
   return try lookUpGoogle(connection)
 }
 
+effect function reportBillingRecovery(userId: string) {
+  return try annotateLogs(logWarning("a retained deletion is waiting for its checkout subscription to settle"), { userId })
+}
+
 effect function erase(userId: string) {
   const store = try Store
   const now = try Clock.currentTimeMillis
   store.transaction(effect (tx: Tx) => {
-    const { out } = try stepDeletion(tx, userId, { type: "eraseData" }, now)
-    try perform(tx, userId, out, now)
+    const deletion = (try loadRow(tx, deletionRows, userId)).state
+    const billingBoundary = settledBoundary(try billingScope(tx, deletion, now))
+    if (billingBoundary === "BillingCheckoutSettled") return try reportBillingRecovery(userId)
+    if (billingBoundary === "BillingUnsettled") return
+    const checkedAt = try Clock.currentTimeMillis
+    const { out } = try stepDeletion(tx, userId, { type: "eraseData", billingBoundary }, checkedAt)
+    try perform(tx, userId, out, checkedAt)
   }) catch effect (failure) => {
     try annotateLogs(logWarning("an account erasure failed and is tried again on the next sweep"), { userId, failure: failure._tag })
     try store.transaction(effect (tx: Tx) => {
@@ -326,12 +363,7 @@ effect function advance(userId: string) {
   let firstRound = true
   while (true) {
     const now = try Clock.currentTimeMillis
-    const planned = try store.transaction((tx) => nextWork(tx, userId, now, firstRound))
-    const next: Work = planned.kind === "identify" ? try effect {
-      const target = try identifyBilling(planned.source)
-      const pinAt = try Clock.currentTimeMillis
-      return try store.transaction((tx) => pinBilling(tx, userId, planned.source, target, pinAt))
-    } : planned
+    const next = try store.transaction((tx) => nextWork(tx, userId, now, firstRound))
     firstRound = false
     switch (next.kind) {
       case "done":

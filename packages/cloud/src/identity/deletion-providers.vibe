@@ -33,6 +33,7 @@ const LegacyCustody = Schema.Struct({
 export interface BillingSource {
   readonly customerId: string
   readonly subscriptionId: string | null
+  readonly workerSessionId?: string
 }
 
 type GoogleConnection =
@@ -53,7 +54,7 @@ export effect function billingAuthority(tx: Tx, userId: string, organizationId: 
 }
 
 export effect function billingSourceOf(tx: Tx, organizationId: string) {
-  const row = (try tx.query(`SELECT s.provider_subscription_id, s.customer_id AS subscription_customer, c.customer_id AS checkout_customer
+  const row = (try tx.query(`SELECT s.provider_subscription_id, s.customer_id AS subscription_customer, c.customer_id AS checkout_customer, c.checkout_id
     FROM organizations o LEFT JOIN subscriptions s ON s.key = o.id LEFT JOIN cloud_checkout_customers c ON c.organization_id = o.id WHERE o.id = $1`, [organizationId]))[0]
   const subscriptionId = toText(row?.provider_subscription_id)
   const subscribedCustomer = toText(row?.subscription_customer)
@@ -65,7 +66,7 @@ export effect function billingSourceOf(tx: Tx, organizationId: string) {
   const customer = Schema.decodeUnknownOption(StripeCustomerId)(customerId)
   if (Option.isNone(customer) || (subscriptionId !== undefined && Option.isNone(Schema.decodeUnknownOption(StripeSubscriptionId)(subscriptionId))))
     throw new RowCorrupt({ table: "subscriptions", key: organizationId, cause: "the Stripe billing identifiers are invalid" })
-  return { customerId, subscriptionId: subscriptionId ?? null } satisfies BillingSource
+  return { customerId, subscriptionId: subscriptionId ?? null, workerSessionId: toText(row?.checkout_id) } satisfies BillingSource
 }
 
 function stillLive(subscription: StripeSubscription): boolean {
@@ -95,6 +96,18 @@ export effect function identifyBilling(source: BillingSource): (BillingTarget | 
   const live = matches.filter(stillLive)
   if (live.length > 1) throw new StripeInvalidResponse({ path: "/v1/subscriptions", status: 200 })
   return live[0] === undefined ? undefined : { kind: "stripe", customerId: source.customerId, subscriptionId: live[0].id }
+}
+
+export effect function checkoutBilling(source: BillingSource | undefined, subscriptionIds: ReadonlyArray<string>) {
+  if (source === undefined) return undefined
+  let active: BillingTarget | undefined
+  for (const subscriptionId of subscriptionIds) {
+    const found = try identifyBilling({ ...source, subscriptionId })
+    if (found === undefined) continue
+    if (active !== undefined) throw new StripeInvalidResponse({ path: "/v1/subscriptions", status: 200 })
+    active = found
+  }
+  return active
 }
 
 export effect function cancelBilling(target: BillingTarget, deadline: number) {

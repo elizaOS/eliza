@@ -1,4 +1,4 @@
-// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/billing/providerEvents.md, "Each event type has one owner, and an event of any other type is done at its first handling"
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/billing/providerEvents.md, "Each event type has one owner, and an event of any other type is done at its first handling"; spec/cloud/identity/deletion.md, "Story: Delete an account once the person asked support"
 import { WorkerResponse } from "./worker-platform.ts"
 import type { Client } from "pg"
 import Stripe from "stripe"
@@ -156,6 +156,9 @@ export async function billingRequest(request: Request, env: BillingEnv, db: Clie
   const stripe = provider(env)
   const returnUrl = new URL("/#account", env.WEB_ORIGIN).href
   return billingTransaction(db, account, async () => {
+    await db.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [account])
+    const active = await db.query("SELECT key FROM accounts WHERE key=$1 AND organization_id=$2 AND status='active' FOR UPDATE", [user, account])
+    if (active.rowCount !== 1) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
     let customer = await customerFor(db, account)
     if (route.endsWith("/portal")) {
       if (!customer) return WorkerResponse.json({ error: "no_customer" }, { status: 409 })
