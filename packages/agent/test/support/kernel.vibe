@@ -43,12 +43,13 @@ export interface BootOptions {
   readonly cloud?: boolean
   readonly http?: boolean
   readonly env?: Readonly<Record<string, string>>
+  readonly state?: Scratch
 }
 
 export const deviceKey = "device-key-1"
 
 effect function prepare(options: BootOptions) {
-  const state = try scratch("agent-state")
+  const state = options.state === undefined ? try scratch("agent-state") : options.state
   const cloud = options.cloud === true ? try cloudFake(deviceKey) : undefined
   const launch = cloud === undefined ? options.launch : { ...options.launch, backend: options.launch?.backend ?? { kind: "cloud" as const, origin: cloud.origin } }
   const document = launchDocument(launch)

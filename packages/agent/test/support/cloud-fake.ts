@@ -15,6 +15,7 @@ export type CloudReply =
   | { readonly kind: "images" }
   | { readonly kind: "drop" }
   | { readonly kind: "hang" }
+  | { readonly kind: "partial"; readonly chunks: readonly string[] }
   | { readonly kind: "held"; readonly gate: Promise<void>; readonly reply: CloudReply };
 
 export interface CloudCall {
@@ -60,6 +61,7 @@ export const allowanceExhausted = (resetsAt: number): CloudReply => refusal(402,
 export const rateLimited = (retryAt: number): CloudReply => refusal(429, "rate_limited", { retryable: true, retryAt });
 export const unavailable = (retryAfterSeconds: number): CloudReply => refusal(503, "service_unavailable", { retryable: true, retryAfterSeconds });
 export const dropped = (): CloudReply => ({ kind: "drop" });
+export const partial = (...chunks: string[]): CloudReply => ({ kind: "partial", chunks });
 export const echoImages = (): CloudReply => ({ kind: "images" });
 export const held = (gate: Promise<void>, reply: CloudReply): CloudReply => ({ kind: "held", gate, reply });
 export const answerJson = (body: unknown, status = 200): RouteReply => ({ kind: "json", status, body });
@@ -127,6 +129,11 @@ function imageUrls(body: unknown): string[] {
 function answerCompletion(response: ServerResponse, reply: CloudReply, body: unknown, dialect: Dialect): void {
   switch (reply.kind) {
     case "hang":
+      return;
+    case "partial":
+      response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store" });
+      for (const chunk of reply.chunks)
+        response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model: modelOf(body), choices: [{ index: 0, delta: { content: chunk }, finish_reason: null }] })}\n\n`);
       return;
     case "held":
       void reply.gate.then(() => answerCompletion(response, reply.reply, body, dialect));

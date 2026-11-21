@@ -7,6 +7,12 @@ module node {
   import type { AgentEvent, FeedRequest, Refused } from "../access/events-port.vibe"
   import type { PublishEvent, ViewFeeds } from "../host/module.vibe"
 
+  export const publishEventServiceType = "publishEvent"
+
+  export interface PublishEventService extends Service {
+    publish(stream: string, payload: unknown): boolean
+  }
+
   const streams = {
     conversation: "ConversationStream",
     notification: "NotificationStream",
@@ -35,10 +41,11 @@ module node {
   export function createEventHub(): AgentEventHub {
     const holder = Effect.runSync(Effect.provide(Machine, machine()))
     const read = () => Effect.runSync(holder.get())
-    const send = (event: Event): readonly Frame[] => {
+    const apply = (event: Event) => {
       const outcome = Effect.runSync(Effect.result(holder.send(event)))
-      return outcome._tag === "Success" ? outcome.success.out : []
+      return outcome._tag === "Success" ? outcome.success : undefined
     }
+    const send = (event: Event): readonly Frame[] => apply(event)?.out ?? []
     const connections = new Map<number, Connection>()
     const observers = new Map<string, Set<() => void>>()
     const outgoing = new WeakMap<object, { readonly feeds: readonly number[]; readonly ready: Promise<boolean> | undefined }>()
@@ -94,10 +101,13 @@ module node {
       }
     }
 
-    function publish(source: Source, news: FeedEvent, stream: string, payload: unknown): void {
-      for (const frame of send({ type: "publish", source, news })) {
+    function publish(source: Source, news: FeedEvent, stream: string, payload: unknown): boolean {
+      const admitted = apply({ type: "publish", source, news })
+      if (admitted === undefined) return false
+      for (const frame of admitted.out) {
         if (frame.tag === "Delivered") wire(frame, stream, payload)
       }
+      return true
     }
 
     const publishFromModule: PublishEvent = (stream, payload, clientId) => {
@@ -106,13 +116,13 @@ module node {
       }
     }
 
-    class PublishEventService extends Service {
-      static serviceType = "publishEvent"
+    class TranscriptPublisher extends Service implements PublishEventService {
+      static serviceType = publishEventServiceType
       capabilityDescription = "Publish the agent plugin's voice transcript"
-      static async start(runtime: IAgentRuntime): Promise<Service> { return new PublishEventService(runtime) }
+      static async start(runtime: IAgentRuntime): Promise<Service> { return new TranscriptPublisher(runtime) }
       async stop(): Promise<void> {}
-      publish(stream: string, payload: unknown): void {
-        if (stream === "voice-transcript") publish("PluginSource", { tag: "Transcript" }, stream, payload)
+      publish(stream: string, payload: unknown): boolean {
+        return stream === "voice-transcript" && publish("PluginSource", { tag: "Transcript" }, stream, payload)
       }
     }
 
@@ -200,10 +210,10 @@ module node {
     }
 
     return {
-      hub, viewFeeds, publishFromModule, PublishEventService, attach, report, stop,
+      hub, viewFeeds, publishFromModule, PublishEventService: TranscriptPublisher, attach, report, stop,
       conversationUpdated: (payload: unknown) => publish("AgentSource", { tag: "ConversationUpdated" }, "conversation", payload),
     }
   }
 }
 
-export { createEventHub } from node
+export { createEventHub, publishEventServiceType, type PublishEventService } from node

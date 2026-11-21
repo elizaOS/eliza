@@ -3,6 +3,7 @@ module node {
   import { connect } from "node:net"
   import { Effect } from "effect"
   import { ElizaError, stringToUuid, type AgentRuntime, type UUID } from "@elizaos/core"
+  import { publishEventServiceType, type PublishEventService } from "../src/index.vibe"
   import type { ModuleFactory, PublishEvent } from "../src/host/module.vibe"
   import type { Subscription } from "./support/socket-client.ts"
 
@@ -22,10 +23,10 @@ module node {
     return event !== undefined && event.stream === stream && JSON.stringify(event.payload).includes(marker)
   }
 
-  export function publishTranscript(runtime: AgentRuntime, payload: unknown): void {
-    const service = runtime.getService("publishEvent") as unknown as { publish(stream: string, payload: unknown): void } | null
+  export function publishTranscript(runtime: AgentRuntime, payload: unknown, stream = "voice-transcript"): boolean {
+    const service = runtime.getService<PublishEventService>(publishEventServiceType)
     if (service === null) throw new Error("The agent offers no publishEvent service")
-    service.publish("voice-transcript", payload)
+    return service.publish(stream, payload)
   }
 
   export function failRepeatedly(runtime: AgentRuntime, times: number): void {
@@ -160,7 +161,10 @@ it.live(`Hear conversation, view, transcript and notice events over the socket, 
   try Effect.sync(() => screen.close())
   const voice = try events(agent, ["voice-transcript"])
   try host("voice subscribed", () => subscribed(voice))
-  try Effect.try(() => publishTranscript(runtime, { kind: "final", text: "remind me at noon" }))
+  const published = try Effect.try(() => [
+    publishTranscript(runtime, { kind: "final", text: "remind me at noon" }),
+    publishTranscript(runtime, { type: "conversation-updated" }, "conversation"),
+  ])
   const transcript = try host("voice transcript", () => nextEvent(voice, "voice-transcript", "remind me at noon"))
 
   try Effect.try(() => failRepeatedly(runtime, 3))
@@ -189,6 +193,7 @@ it.live(`Hear conversation, view, transcript and notice events over the socket, 
     assert.strictEqual(updated?.stream, "conversation")
     assert.strictEqual(interaction?.stream, "view-interact")
     assert.strictEqual(strayed, 0)
+    assert.deepStrictEqual(published, [true, false])
     assert.strictEqual(transcript?.stream, "voice-transcript")
     assert.strictEqual(notice?.stream, "conversation")
     assert.strictEqual(noticesHeard, 1)

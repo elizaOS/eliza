@@ -1,6 +1,6 @@
 // spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"
 import { assert, describe, it } from "@effect/vitest"
-import { held, insufficientCredits, text, type CloudFake } from "./support/cloud-fake.ts"
+import { held, insufficientCredits, partial, text, type CloudFake } from "./support/cloud-fake.ts"
 import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
 import type { StreamCut, StreamedAnswer } from "./support/socket-client.ts"
 
@@ -99,13 +99,23 @@ for (const transport of ["socket", "http"] as const) {
       const cloud = try cloudFake(deviceKey)
       const agent = try cloudAgent(cloud, transport === "http")
       const id = try conversation(agent)
-      try Effect.sync(() => cloud.script({ kind: "hang" }))
+      try Effect.sync(() => cloud.script(partial("Let me think")))
       const started = try Effect.sync(() => cloud.nextCompletion())
-      const answer = try send(agent, id, { text: "Think forever." }, { afterChunks: 1, ready: started })
+      const body = { text: "Think forever.", clientMessageId: "cut-with-text" }
+      const answer = try send(agent, id, body, { afterChunks: 2, ready: started })
       const completion = try host("model call started", () => started)
       try host("model call cancelled", () => completion.aborted)
-      try Effect.try(() => assert.deepStrictEqual({ status: answer.status, frames: framesOf(answer), error: answer.error },
-        { status: 200, frames: [{ type: "status", activity: "thinking" }], error: "closed before complete" }))
+      const recovered = try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`, body })
+      if (!("status" in recovered)) return try Effect.die(new Error("The cut reply was not recovered"))
+      const saved = recovered.json as { text?: string; failureKind?: string }
+      try Effect.try(() => assert.deepStrictEqual({
+        status: answer.status, frames: framesOf(answer), error: answer.error,
+        recovered: [recovered.status, saved.text, saved.failureKind],
+        calls: cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length,
+      }, {
+        status: 200, frames: [{ type: "status", activity: "thinking" }, { type: "token", text: "Let me think" }], error: "closed before complete",
+        recovered: [200, "Let me think", "aborted"], calls: 1,
+      }))
     }, 120_000)
 
     it.live('An account refusal still ends with done and its failure kind (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written")', effect () => {

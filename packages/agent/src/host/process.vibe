@@ -54,7 +54,7 @@ module node {
   import { conversationRoutes } from "../conversation/routes.vibe"
   import { conversationStore } from "../conversation/conversations.vibe"
   import { createEventHub } from "../conversation/events.vibe"
-  import { ownerMessageService } from "../conversation/message-service.vibe"
+  import { accountFailureOf, ownerMessageService } from "../conversation/message-service.vibe"
   import { deviceEnrollment } from "../device-actions/enrollment.vibe"
   import { agendaOffer } from "../device-actions/agenda.vibe"
   import { proposalReviewRoutes } from "../device-actions/proposal-review.vibe"
@@ -218,7 +218,7 @@ module node {
         if (sweeper !== undefined) runtime.registerTaskWorker(sweeper)
       } },
       cloudLink: modelPlugin(launch, models), privacy: { kind: "off" }, worker: pinned === undefined ? { kind: "none" } : { kind: "pinned", expected: pinned.worker.expected, measured: pinned.worker.measured },
-      messageService: (runtime, actionGate) => ownerMessageService(runtime, [role], actionGate),
+      messageService: (runtime, actionGate) => ownerMessageService(runtime, [role], actionGate, accountFailureOf(() => Effect.runSync(models.read()))),
       policy: {
         actionsAllowed: [...permissions], pluginsLoad: [...launch.policy.plugins.load],
         productPlugin: launch.policy.plugins.product === undefined ? { tag: "NoProductPlugin" }

@@ -18,6 +18,12 @@ module node {
     return undefined
   }
 
+  export function heardView(memory: Memory) {
+    const text = memory.content.text ?? ""
+    const boundary = boundaryOf(memory, text.length) ?? text.length
+    return { heard: text.slice(0, boundary), unheard: text.slice(boundary) }
+  }
+
   export function textForTurn(memory: Memory): string | undefined {
     const text = memory.content.text
     const boundary = text === undefined ? undefined : boundaryOf(memory, text.length)
@@ -58,4 +64,4 @@ module node {
   }
 }
 
-export { recordHeard, textForTurn } from node
+export { heardView, recordHeard, textForTurn } from node
