@@ -91,11 +91,11 @@ const version = Schema.Literal(1)
 const CalendarFields = Schema.Struct({
   title: Text(500), description: BlankText(16_000), location: BlankText(2_000), start: Instant, end: Instant, timeZone: ZoneName,
 }).check(Schema.makeFilter(({ start, end }) => interval(start, end, 370 * day)))
-const CalendarSource = Schema.Struct({ sourceId: Identifier, sourceRevision: Revision })
+schema CalendarSource { readonly sourceId: Identifier; readonly sourceRevision: Revision }
 const CalendarTarget = Schema.Struct({ sourceId: Identifier, sourceRevision: Revision, eventId: Identifier, revision: Revision })
 
 const CalendarCreateLocal = Schema.Struct({ type: Schema.Literal("calendar_create_local"), fields: CalendarFields })
-const CalendarReadNext = Schema.Struct({ type: Schema.Literal("calendar_read_next") })
+schema CalendarReadNext { readonly type: "calendar_read_next" }
 const CalendarCreate = Schema.Struct({ type: Schema.Literal("calendar_create"), source: CalendarSource, fields: CalendarFields })
 const CalendarReadSelected = Schema.Struct({ type: Schema.Literal("calendar_read_selected"), target: CalendarTarget })
 const CalendarUpdate = Schema.Struct({ type: Schema.Literal("calendar_update"), target: CalendarTarget, fields: CalendarFields })
@@ -500,7 +500,7 @@ function unread<Op extends WireOperation>(operation: Schema.Decoder<Op>, opType:
 const reminderReads = <Op extends ReminderOperation, R extends ReminderResult>(operation: Schema.Decoder<Op>, result: Schema.Decoder<R>, opType: OperationType) =>
   reads(operation, result, opType, reminderMatches, reminderVersionTwo)
 
-export const personalFamilies = {
+export const personalOperations = {
   calendar_create_local: reads(CalendarCreateLocal, CalendarCreateLocalResult, "CalendarCreateLocal", calendarRecordMatches),
   calendar_read_next: reads(CalendarReadNext, CalendarNextResult, "CalendarReadNext", () => true),
   calendar_create: reads(CalendarCreate, CalendarCreateResult, "CalendarCreate", calendarRecordMatches),

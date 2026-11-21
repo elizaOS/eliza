@@ -905,12 +905,11 @@ effect function decryptKey(entry: FingerprintEntry, input: string, target: strin
   try mapError(files.writeFile(to(certificate ? ".pk8" : ".pem"), key.plaintext, { flag: "wx", mode: 0o600 }), (cause) => refuse(cause.message))
   const publicFiles = certificate ? [`${entry.name}.x509.pem`] : [`${entry.name}.pub.pem`, `${entry.name}.avbpubkey`, ...(entry.name === "avb" ? ["avb_pkmd.bin"] : [])]
   for (const name of publicFiles) {
-    if (try present(path.join(input, name))) try mapError(files.copyFile(path.join(input, name), path.join(target, name)), (cause) => refuse(cause.message))
+    if (try present(path.join(input, name))) try mapError(writeKeyFile(path.join(target, name), try read(path.join(input, name)), 0o600), (cause) => refuse(cause.message))
   }
 }
 
 export effect function decrypt(options: DecryptOptions) {
-  const files = try FileSystem.FileSystem
   const path = try Path.Path
   const { resolved, passphrase } = try admitKeyOutput(options.output, options.passphraseFile, "plaintext keys")
   const raw = try mapError(readJson(path.join(options.input, "fingerprints.json")), (cause) => new KeyDecryptionRefused({ name: "fingerprints.json", message: cause.message }))
@@ -928,7 +927,7 @@ export effect function decrypt(options: DecryptOptions) {
     written.push(entry.name)
   }
   for (const name of ["fingerprints.json", TEST_KEYS_MARKER]) {
-    if (try present(path.join(options.input, name))) try mapError(files.copyFile(path.join(options.input, name), path.join(resolved, name)), (cause) => new KeyOutputRefused({ output: resolved, message: cause.message }))
+    if (try present(path.join(options.input, name))) try writeKeyFile(path.join(resolved, name), try mapError(readBytes(path.join(options.input, name)), (cause) => new KeyOutputRefused({ output: resolved, message: cause.message })), 0o600)
   }
   return { target: resolved, written, testKeys: field(raw, "testKeys") === true }
 }

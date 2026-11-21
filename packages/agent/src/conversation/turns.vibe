@@ -268,7 +268,10 @@ module node {
         const [first] = result.responseMessages
         if (kind !== undefined) return first === undefined ? keep(record, userMessageId, result.responseContent?.text ?? "", kind) : { kind: "Replied", reply: replyOf(first, agentName) }
         if (result.outcome.status !== "completed" || first === undefined) return unavailable
-        const actionResults = (result.actionResults ?? []).flatMap((done): ActionResultData[] => done.data === undefined ? [] : [{ action: "REPLY", data: done.data }])
+        const actionResults = (result.actionResults ?? []).flatMap((done): ActionResultData[] => {
+          const { actionName, ...data } = done.data ?? {}
+          return typeof actionName === "string" && Object.keys(data).length > 0 ? [{ action: actionName, data }] : []
+        })
         if (actionResults.length > 0) await runtime.adapter.updateMemories([{ id: first.id as UUID, content: { ...first.content, actionResults: actionResults.map(({ action, data }) => ({ action, data: data as ContentValue })) } }])
         return { kind: "Replied", reply: { ...replyOf(first, agentName), actionResults } }
       } catch (cause) {
