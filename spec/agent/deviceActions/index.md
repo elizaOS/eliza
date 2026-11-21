@@ -15,7 +15,7 @@ device does with a claimed request and its execution journal are
 
 The routes are `POST /api/client-devices/{register,revoke}`,
 `GET /api/client-devices/context`, `GET /api/client-devices/proposals` and
-`POST /api/client-devices/proposals/:id/{decide,claim,receipt,reconcile,read-completion,cancel-read-completion}`.
+`POST /api/client-devices/proposals/:id/{decision,claim,receipt,reconcile,read-completion,cancel-read-completion}`.
 The shell checks the device key in constant time and passes the sender as a
 session owner: the agent's id, the owner's user id and the installation id.
 A refused event answers 409 and changes nothing; a store failure answers 503.
