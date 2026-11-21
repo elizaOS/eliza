@@ -22,6 +22,7 @@ import { foreign, Store, toText, type StoreFailure, type Tx } from "../store/con
 import { loadRow, RowCorrupt, stepRow, type Columns, type MachineRows, type RowConflict } from "../store/rows.vibe"
 import { idempotencyKeyPattern } from "./commands.vibe"
 import { parsePlanKey, wirePlanKey, type PaidPlanKey, type PlanKey } from "./plans.vibe"
+import type { Rejected as AllowanceRejected } from "../../gen/cloud__billing__allowance.effect.vibe"
 import type { InvalidAllowancePeriod } from "./stripe-ledger.vibe"
 import { readStripeSubscription, stripeClient } from "./stripe-observation.vibe"
 import { claimLiveCommand, readSubscription, reconcileSubscription, releaseLiveCommand } from "./subscriptions.vibe"
@@ -384,7 +385,7 @@ export effect function startCheckout(caller: Signed, request: StartRequest) {
   let state = opened.stored.state
   const deadline = staleAt(state.receipt)
   const terms = { organizationId, commandId, customerId, priceId, expiresAt: state.sessionExpiresAt, returns: providerReturns(state.returns, deployment.settings.api) }
-  const reply = try dispatchOnce<StripeCheckoutSession, StoreFailure | RowCorrupt | RowConflict | NotAState | Rejected | SubscriptionRejected | Refused | SecretMissing | InvalidAllowancePeriod, Store | StripeContext | Deployment>({
+  const reply = try dispatchOnce<StripeCheckoutSession, StoreFailure | RowCorrupt | RowConflict | NotAState | Rejected | SubscriptionRejected | AllowanceRejected | Refused | SecretMissing | InvalidAllowancePeriod, Store | StripeContext | Deployment>({
     claim: Effect.void,
     send: providerReply(createCheckoutSession(terms, { idempotencyKey: renderProviderKey(state.receipt.providerKey), timeout: Math.max(1, Math.min(providerTimeout, deadline - now)) })),
     record: effect (seen: ProviderReply<StripeCheckoutSession>, at: number) => {
