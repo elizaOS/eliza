@@ -6,7 +6,7 @@ import { claimLiveCommand, observeSubscription, readSubscription, reconcileSubsc
 import { readReviewedPlanQuote, reviewPlanChange, type ReviewPlanChange } from "../src/billing/plan-quotes.vibe"
 import { readStripeSubscription, stripeClient } from "../src/billing/stripe-observation.vibe"
 import type { BillingSnapshot } from "../src/billing/snapshot.vibe"
-import type { CommandView } from "../src/billing/commands.vibe"
+import { commandIdOf, type CommandView } from "../src/billing/commands.vibe"
 import { quoteOf, type Command } from "../gen/cloud__billing__subscriptionCommands.effect.vibe"
 import { initial as initialSubscription } from "../gen/cloud__billing__subscriptions.effect.vibe"
 import { claim, initial as initialReceipt, prepare, receiveReply, send, type ProviderReply } from "../gen/cloud__shared__dispatchOnce.effect.vibe"
@@ -103,6 +103,14 @@ effect function grant(cloud: HttpFixture, user: string, token: string, phase: "a
   try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, device_epoch, issued_at, updated_at) VALUES ($1, $2::jsonb, 1, $3, 'test-client', $4, $5, $6, $7, $8, $9, $10, $10)", [
     `grant-${token.slice(-8)}`, JSON.stringify(state), user, phase, `cred-${token.slice(-8)}`, tokenDigest(token), issuedAt + minuteMs, keyExpiresAt, deviceEpoch, issuedAt
   ])
+}
+
+effect function retainedPlanHistory(cloud: HttpFixture, now: number) {
+  try sql(cloud, "DROP VIEW retained_plan_command_history", [])
+  try sql(cloud, "ALTER TABLE quotes ADD COLUMN command_id text UNIQUE, ADD COLUMN state jsonb, ADD COLUMN created_at bigint", [])
+  try sql(cloud, "DELETE FROM schema_migrations WHERE name='0123_retained_plan_command_history.sql'", [])
+  const [identity] = try sql(cloud, "SELECT digest FROM cloud_identity", [])
+  try cloud.inside(migrate({ digest: String(identity?.digest), environment: "staging", now }))
 }
 
 function subscriptionChangeReceipt(organizationId: string, actorId: string, providerId: string, digest: string, now: number, reply: ProviderReply) {
@@ -630,11 +638,7 @@ describe("Node subscriptions", () => {
       try account(cloud, other, "active", { sessions: 0, devices: 0 }, now)
       try session(cloud, user, access, live, now)
       try session(cloud, other, peerAccess, live, now)
-      try sql(cloud, "DROP VIEW retained_plan_command_history", [])
-      try sql(cloud, "ALTER TABLE quotes ADD COLUMN command_id text UNIQUE, ADD COLUMN state jsonb, ADD COLUMN created_at bigint", [])
-      try sql(cloud, "DELETE FROM schema_migrations WHERE name='0123_retained_plan_command_history.sql'", [])
-      const [identity] = try sql(cloud, "SELECT digest FROM cloud_identity", [])
-      try cloud.inside(migrate({ digest: String(identity?.digest), environment: "staging", now }))
+      try retainedPlanHistory(cloud, now)
 
       const historicalQuote = "quo_" + "a".repeat(32), reviewId = "quo_" + "b".repeat(32)
       const appliedId = "cmd_" + "c".repeat(32), undoId = "cmd_" + "e".repeat(32), currentId = "cmd_" + "7".repeat(32)
@@ -690,7 +694,7 @@ describe("Node subscriptions", () => {
     }
   }))
 
-  it.live("An exact paid upgrade applies once through both allowance row formats (spec/cloud/billing/subscriptionCommands.md, \"A settled command applies only what the provider did, and an upgrade applies only once its invoice is paid\")", () => scoped(effect {
+  it.live("An exact paid upgrade applies once through both allowance row formats (spec/cloud/billing/subscriptionCommands.md, \"A settled command applies only what the provider did, and an upgrade applies only once its invoice is paid\"; spec/cloud/billing/subscriptionCommands.md, \"The provider is asked once, by the claim holder, and a lost reply is recovered by a lookup, never by sending again\")", () => scoped(effect {
     const now = 1_800_000_000_987
     const clock = try sync(() => manualClock())
     try sync(() => clock.set(now))
@@ -715,6 +719,33 @@ describe("Node subscriptions", () => {
       const quote = try cloud.call(root + "/review", buyer, { json: { targetPlanKey: "pro_monthly", subscriptionId: original.subscriptionId, expectedSubscriptionRevision: original.revision } })
       const { quoteId } = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(quote.body)
       const foreignConfirm = try cloud.call(root + "/confirm", recovering, { json: { quoteId, idempotencyKey: "foreign" } })
+      try retainedPlanHistory(cloud, now)
+      const retainedKey = "already-confirmed"
+      const retainedId = commandIdOf("org-upgrader", "upgrader", retainedKey)
+      const retainedQuote = quoteOf(original, "UpgradeCommand", "ProMonthly", "quo_" + "9".repeat(32), 100, now - minuteMs)
+      const retained = { phase: "Applied", kind: "UpgradeCommand", commandId: retainedId, subscriptionId: original.subscriptionId,
+        createdAt: now - minuteMs, expectedRevision: original.revision, resultRevision: original.revision + 1, quote: retainedQuote,
+        receipt: subscriptionChangeReceipt("org-upgrader", "upgrader", retainedId,
+          requestDigest({ kind: "UpgradeCommand", quoteId: retainedQuote.quoteId }), now - minuteMs, { tag: "ShowsEffect" })
+      } satisfies Omit<Command, "schedule">
+      try sql(cloud, `INSERT INTO quotes (id,organization_id,command_kind,target_plan_key,proration_date,due_now_cents,recurring_cents,adjustment_micros,expires_at,command_id,state,created_at)
+        VALUES ($1,'org-upgrader','upgrade','pro_monthly',$2,$3,$4,$5,$6,$7,$8,$9)`, [retainedQuote.quoteId, retainedQuote.effectiveAt,
+        retainedQuote.dueNowCents, retainedQuote.recurringCents, retainedQuote.adjustment, retainedQuote.expiresAt, retainedId, JSON.stringify(retained), retained.createdAt])
+      const trafficBeforeRetry = try sync(() => cloud.fakes.seen.length)
+      const repeatedPlan = { json: { quoteId, idempotencyKey: retainedKey } }
+      const repeatedCancellation = { json: { subscriptionId: original.subscriptionId, expectedSubscriptionRevision: original.revision, idempotencyKey: retainedKey } }
+      const repeatedUpgrade = try cloud.call(root + "/confirm", buyer, repeatedPlan)
+      try check(() => assert.strictEqual(outcome(repeatedUpgrade), "409 idempotency_conflict"))
+      const repeatedDowngrade = try cloud.call("/api/v1/subscriptions/downgrade/confirm", buyer, repeatedPlan)
+      const repeatedCancel = try cloud.call("/api/v1/subscriptions/cancel", buyer, repeatedCancellation)
+      const repeatedUndo = try cloud.call("/api/v1/subscriptions/cancel/undo", buyer, repeatedCancellation)
+      const appliedBeforeNext = try cloud.call(root + "/" + retainedId, buyer)
+      const preserved = try sql(cloud, "SELECT state FROM quotes WHERE id=$1", [retainedQuote.quoteId])
+      try check(() => {
+        assert.deepStrictEqual([outcome(repeatedDowngrade), outcome(repeatedCancel), outcome(repeatedUndo)], Array(3).fill("409 idempotency_conflict"))
+        assert.deepStrictEqual([appliedBeforeNext.status, (appliedBeforeNext.body as CommandView).status, preserved, cloud.fakes.seen.length],
+          [200, "succeeded", [{ state: retained }], trafficBeforeRetry])
+      })
       const input = { json: { quoteId, idempotencyKey: "exact-upgrade" } }
       const confirmed = try cloud.call(root + "/confirm", buyer, input)
       const { commandId } = try Schema.decodeUnknownEffect(Schema.Struct({ commandId: Schema.String }))(confirmed.body)

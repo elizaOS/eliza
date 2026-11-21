@@ -116,6 +116,11 @@ function senderOf(organizationId: string, userId: string, providerKind: Provider
   return { agentId: organizationId, actorId: userId, connector: connectorOf(providerKind) }
 }
 
+export effect function refuseRetainedCommandConflict(tx: Tx, organizationId: string, commandId: string) {
+  const [retained] = try tx.query("SELECT 1 FROM retained_plan_command_history WHERE organization_id=$1 AND command_id=$2", [organizationId, commandId])
+  if (retained !== undefined) throw refused("IdempotencyConflict")
+}
+
 export function commandIdOf(organizationId: string, userId: string, idempotencyKey: string): string {
   return `cmd_${sha256Hex(`${organizationId}\n${userId}\n${idempotencyKey}`).slice(0, 32)}`
 }
@@ -256,6 +261,7 @@ effect function confirmReviewedUndo(request: CommandRequest, quoteId: string | u
   const digest = commandDigest("UndoCommand", request)
   const before = try freshOwner(authorization)
   const admitted = try store.transaction(effect (tx: Tx) => {
+    try refuseRetainedCommandConflict(tx, request.organizationId, commandId)
     const existing = try readPlanCommand(tx, commandId, false)
     if (existing !== undefined) return { existing }
     if ((try tx.query("SELECT key FROM subscription_commands WHERE key=$1", [commandId]))[0] !== undefined) return {}
@@ -281,6 +287,7 @@ effect function confirmReviewedUndo(request: CommandRequest, quoteId: string | u
   const started = try store.transaction(effect (tx: Tx) => {
     try lockOrganization(tx, request.organizationId)
     try tx.query("SELECT key FROM subscriptions WHERE key=$1 FOR UPDATE", [request.organizationId])
+    try refuseRetainedCommandConflict(tx, request.organizationId, commandId)
     const existing = try readPlanCommand(tx, commandId, true)
     if (existing !== undefined) {
       try checkUndoReplay(existing, request, digest)
@@ -324,6 +331,7 @@ effect function admit(spec: CommandSpec, request: CommandRequest, commandId: str
   const prepare: Event = { type: "prepare", digest, providerKey, staleAfter: spec.staleAfter, expiresAt: now + commandLifetime }
   try store.transaction(effect (tx: Tx) => {
     try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [request.organizationId])
+    try refuseRetainedCommandConflict(tx, request.organizationId, commandId)
     if ((try readPlanCommand(tx, commandId, true)) !== undefined) throw refused("IdempotencyConflict")
     const existing = try commandRow(tx, commandId, true)
     if (existing !== undefined) {

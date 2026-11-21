@@ -14,7 +14,7 @@ import {
 import { dispatchOnce, receiptOwner, renderProviderKey, replyOf, requestDigest, type ProviderReply } from "../shared/dispatch-once.vibe"
 import { Store, type Tx } from "../store/connection.vibe"
 import { adjustForUpgrade } from "./allowance.vibe"
-import { commandIdOf, idempotencyKeyPattern, readRetainedCommand } from "./commands.vibe"
+import { commandIdOf, idempotencyKeyPattern, readRetainedCommand, refuseRetainedCommandConflict } from "./commands.vibe"
 import { commandAt, insertPlanCommand, lockOrganization, planCommandView, readPlanCommand, savePlanCommand, upgradeTerms, type PlanCommandRecord } from "./plan-command-state.vibe"
 import { consumeReviewedPlanQuote, freshOwner, PlanConfirmation, PlanReviewBody, readReviewedPlanQuote, reviewPlanChange, type ReviewedPlanQuote } from "./plan-quotes.vibe"
 import { wirePlanKey } from "./plans.vibe"
@@ -59,6 +59,7 @@ effect function recheckPrices(quote: ReviewedPlanQuote) {
 }
 
 effect function existingUpgrade(tx: Tx, commandId: string, digest: string, organizationId: string, userId: string, lock: boolean) {
+  try refuseRetainedCommandConflict(tx, organizationId, commandId)
   const row = try readPlanCommand(tx, commandId, lock)
   if (row !== undefined) {
     if (row.organizationId !== organizationId || row.command.kind !== "UpgradeCommand" || row.command.receipt.session.owner.actorId !== userId || row.command.receipt.digest !== digest)
