@@ -1,0 +1,380 @@
+// spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/image/signing.md, "An unmapped APK, APEX or verified-boot key refuses signing"; spec/os/image/signing.md, "The update package is built only after every re-signed APK and APEX verifies with a release certificate"
+import {
+  bootChainAdmitted, channelSigningProblems, keyStoreAdmitted, signingPlanAdmitted, unmappedKeys, updatePackageAdmitted,
+  type PackageCheck,
+} from "../../gen/os__image__signing.effect.vibe"
+import { deviceName } from "../../gen/os__image__product.effect.vibe"
+import { isDigest } from "../../gen/os__image__apk.effect.vibe"
+import { readAndroidArtifactEntryBuffers, readApkSigner, type Environment } from "./apk.vibe"
+import { readArtifact } from "./artifact.vibe"
+import { productDescriptor } from "./compose-product.vibe"
+import { captureCommand } from "./device.vibe"
+import { outsideGit, ownerDirectory, type GenerateOptions } from "./key-ceremony.vibe"
+import { archiveDigest, archiveEntries, archiveEntry, chainedPartitions, packageRows, properties, verifiedBoot } from "./signing-archive.vibe"
+import { keyName, loadKeyManifest, readSigningJson, SigningRefused, type KeyManifestRow } from "./signing-keys.vibe"
+import { channelDistributionProblems, compatibilityRecord, releaseArtifact, releaseChannel, releaseDescriptorProblems } from "./signing-record.vibe"
+import { verifySource, type VerifySourceOptions } from "./source-lock.vibe"
+
+export { generate, decrypt, type GenerateOptions, type DecryptOptions } from "./key-ceremony.vibe"
+export { encodeAvbPublicKey, loadKeyManifest } from "./signing-keys.vibe"
+export { channelDistributionProblems, compatibilityRecord, releaseDescriptorProblems, releaseRecordProblems, type ReleaseRecord } from "./signing-record.vibe"
+
+module node {
+  import { Buffer } from "node:buffer"
+  import { X509Certificate, createHash, createPublicKey } from "node:crypto"
+  import { encodeAvbPublicKey } from "./signing-keys.vibe"
+
+  export function certificate(bytes: Uint8Array): { sha256: string; testOnly: boolean } {
+    const got = new X509Certificate(Buffer.from(bytes))
+    return { sha256: got.fingerprint256.replaceAll(":", "").toLowerCase(),
+      testOnly: /(?:^|\n)(?:OU=TEST ONLY|CN=Android Debug)(?:$|\n)/i.test(got.subject) }
+  }
+
+  export function avbKey(bytes: Uint8Array): Uint8Array {
+    return encodeAvbPublicKey(createPublicKey(Buffer.from(bytes)))
+  }
+
+  export function sha256(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+}
+import { avbKey, certificate, sha256 } from node
+
+interface ManagedSigning {
+  readonly pkcs11Config: string
+  readonly avbSigningHelper: string
+  readonly payloadSigner: string
+  readonly payloadSignerSignatureSize: number
+  readonly payloadSignerArgs?: readonly string[]
+}
+
+export interface SignReleaseOptions {
+  readonly descriptor: string
+  readonly product: string
+  readonly channel: string
+  readonly source: VerifySourceOptions
+  readonly keyManifest: string
+  readonly keysDir: string
+  readonly releasetools: string
+  readonly targetFiles: string
+  readonly targetFilesSha256: string
+  readonly out: string
+  readonly keyMap: Readonly<Record<string, string>>
+  readonly apexKeys?: Readonly<Record<string, { readonly container: string; readonly payload: string }>>
+  readonly apksigner?: string
+  readonly env?: Environment
+  readonly managed?: ManagedSigning
+  readonly incrementalFrom?: { readonly file: string; readonly sha256: string }
+  readonly dryRun?: boolean
+}
+
+type PackageSource =
+  | { readonly kind: "Presigned"; readonly entry: string; readonly name: string }
+  | { readonly kind: "Apk"; readonly entry: string; readonly name: string; readonly certificate: string }
+  | { readonly kind: "Apex"; readonly entry: string; readonly name: string }
+interface Operation {
+  readonly tool: string
+  readonly args: readonly string[]
+}
+
+const label = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/))
+const digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const required = Schema.decodeUnknownEffect(Schema.Struct({
+  schema: Schema.Literal(1),
+  product: label,
+  device: Schema.Struct({ codename: label, androidRelease: label }),
+  avb: Schema.Struct({ algorithm: Schema.String, chainedPartitions: Schema.Array(label), vbmetaKey: label, publicKeyMetadata: label, publicKeySha256: digest }),
+  sourceLock: Schema.Struct({ sha256: digest }),
+}))
+const keyUsage = "Supply --output NEW_DIRECTORY, --passphrase-file FILE, and --manifest FILE"
+const secretLimit = 1024 * 1024
+const toolTimeout = 2 * 60 * 60_000
+const rowText = new TextEncoder()
+const shlex = /^[A-Za-z0-9_@%+=:,./-]+$/
+const safeSource = /^(?:[a-zA-Z0-9_.-]+\/)*[a-zA-Z0-9_.-]+$/
+const presigned = new Set(["PRESIGNED", "EXTERNAL"])
+const keyOptions = new Set(["--output", "--passphrase-file", "--organization", "--manifest", "--only"])
+
+export effect function parseArgs(argv: readonly string[]) {
+  const values = new Map<string, string>()
+  let testKeys = false
+  for (let cursor = 0; cursor < argv.length; cursor++) {
+    const arg = argv[cursor] ?? ""
+    if (arg === "--test-keys" && !testKeys) { testKeys = true; continue }
+    const value = argv[cursor + 1]
+    if (!keyOptions.has(arg) || values.has(arg) || value === undefined || value === "" || value.startsWith("--")) {
+      throw new SigningRefused({ reason: `Invalid or repeated generation option ${arg}` })
+    }
+    cursor++
+    values.set(arg, value)
+  }
+  const output = values.get("--output")
+  const passphraseFile = values.get("--passphrase-file")
+  const manifest = values.get("--manifest")
+  const organization = values.get("--organization") ?? (testKeys ? "Test Keys" : undefined)
+  const only = values.get("--only")
+  if (output === undefined || passphraseFile === undefined || manifest === undefined) throw new SigningRefused({ reason: keyUsage })
+  if (organization === undefined || !/^[\w .,&'-]{1,64}$/.test(organization)) throw new SigningRefused({ reason: "Supply a plain organization name for release keys" })
+  const parsed: GenerateOptions = { output, passphraseFile, manifest, organization, testKeys, ...(only === undefined ? {} : { only }) }
+  return parsed
+}
+
+function refused(cause: unknown): SigningRefused {
+  return new SigningRefused({ reason: String(cause) })
+}
+
+effect function publicFile(file: string) {
+  return (try tryPromise({ try: () => readArtifact(file, secretLimit), catch: refused })).bytes
+}
+
+effect function ownerKey(file: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const info = try files.stat(file)
+  if ((try files.realPath(file)) !== path.resolve(file) || info.type !== "File" || (info.mode & 0o077) !== 0) {
+    throw new SigningRefused({ reason: `Key path must name an owner-only regular file: ${path.basename(file)}` })
+  }
+}
+
+effect function sourcePackages(zip: string, keysDir?: string) {
+  const path = try Path.Path
+  const entries = try archiveEntries(zip)
+  const apkRows = try packageRows(zip, "META/apkcerts.txt")
+  const apexRows = entries.includes("META/apexkeys.txt") ? (try packageRows(zip, "META/apexkeys.txt")) : []
+  const byApk = new Map(apkRows.map((row) => [row.name, row]))
+  const byApex = new Map(apexRows.map((row) => [row.name, row]))
+  if (byApk.size !== apkRows.length || byApex.size !== apexRows.length) throw new SigningRefused({ reason: "Target metadata has duplicate package names" })
+  const packages: PackageSource[] = []
+  for (const entry of entries.filter((name) => /\.(apk|apex|capex)$/.test(name))) {
+    const name = path.basename(entry)
+    const isApk = entry.endsWith(".apk")
+    const row = isApk ? byApk.get(name) : byApex.get(name) ?? byApex.get(name.replace(/\.capex$/, ".apex"))
+    if (row === undefined) throw new SigningRefused({ reason: `Target metadata omits ${name}` })
+    const certificate = isApk ? row.certificate : row.container_certificate
+    if (certificate === undefined || certificate === "") throw new SigningRefused({ reason: `Target metadata omits the certificate for ${name}` })
+    if (presigned.has(certificate)) {
+      packages.push({ kind: "Presigned", entry, name })
+    } else if (isApk) {
+      const source = certificate.replace(/\.x509\.pem$/, "")
+      const relative = safeSource.test(source) && source.split("/").every((part) => part !== "." && part !== "..")
+      const enrolled = keysDir !== undefined && keyName.test(path.basename(source)) && path.join(keysDir, path.basename(source)) === source
+      if (source === certificate || (!relative && !enrolled)) {
+        throw new SigningRefused({ reason: `Unrecognized APK source key for ${name}` })
+      }
+      packages.push({ kind: "Apk", entry, name, certificate: source })
+    } else {
+      packages.push({ kind: "Apex", entry, name: row.name ?? name })
+    }
+  }
+  if (packages.length === 0) throw new SigningRefused({ reason: "Target files contain no APKs or APEX packages" })
+  return packages
+}
+
+effect function matchingPackages(unsigned: string, signed: string, packages: readonly PackageSource[],
+  certificates: ReadonlyMap<string, string>, options: SignReleaseOptions, payloads: ReadonlyMap<string, Uint8Array>, keysDir: string,
+  application: { readonly entry: string; readonly certificate: string }) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const expected = new Set(packages.map((pkg) => pkg.entry))
+  const entries = new Set((try archiveEntries(signed)).filter((name) => /\.(apk|apex|capex)$/.test(name)))
+  if (entries.size !== expected.size || ![...entries].every((name) => expected.has(name))) {
+    throw new SigningRefused({ reason: "Signing changed the set of packaged APKs and APEX modules" })
+  }
+  return try scoped(effect {
+    const work = try files.makeTempDirectoryScoped()
+    const checks: PackageCheck[] = []
+    const declared = new Map((try sourcePackages(signed, keysDir)).map((pkg) => [pkg.entry, pkg]))
+    for (const [index, pkg] of packages.entries()) {
+      if (pkg.kind === "Presigned") {
+        const before = try archiveDigest(unsigned, pkg.entry)
+        const after = try archiveDigest(signed, pkg.entry)
+        if (before.sha256 !== after.sha256) throw new SigningRefused({ reason: `Signing changed presigned package ${pkg.name}` })
+        if (pkg.entry !== application.entry) continue
+      }
+      const mapping = pkg.kind === "Apk" ? options.keyMap[pkg.certificate] : pkg.kind === "Apex" ? options.apexKeys?.[pkg.name]?.container : undefined
+      const info = declared.get(pkg.entry)
+      let artifact: Uint8Array = try archiveEntry(signed, pkg.entry, 512 * 1024 * 1024)
+      const packagePath = path.join(work, `package-${index}.${pkg.entry.endsWith(".apk") ? "apk" : "apex"}`)
+      if (pkg.entry.endsWith(".capex")) {
+        const [unwrapped] = try readAndroidArtifactEntryBuffers(packagePath, ["original_apex"], { artifactBytes: artifact, label: "compressed APEX" })
+        if (unwrapped === undefined) throw new SigningRefused({ reason: `Cannot open compressed APEX ${pkg.name}` })
+        artifact = unwrapped
+      }
+      try files.writeFile(packagePath, artifact, { flag: "wx", mode: 0o600 })
+      const signer = try readApkSigner(packagePath, { ...(options.apksigner === undefined ? {} : { apksigner: options.apksigner }), ...(options.env === undefined ? {} : { env: options.env }) })
+      if (pkg.entry === application.entry && (signer.tag !== "OneSigner" || signer.certificate.tag !== "Sha256" || signer.certificate.hex !== application.certificate)) {
+        throw new SigningRefused({ reason: "Staged application certificate differs from the reviewed release descriptor" })
+      }
+      if (pkg.kind === "Presigned") continue
+      const certificate = mapping === undefined ? undefined : certificates.get(mapping)
+      let kind: PackageCheck["kind"] = { tag: "ApkPackage" }
+      if (pkg.kind === "Apex") {
+        const [actual] = try readAndroidArtifactEntryBuffers(packagePath, ["apex_pubkey"], { artifactBytes: artifact, label: "APEX payload key" })
+        const expected = payloads.get(pkg.name)
+        kind = { tag: "ApexPackage", payloadKeyMatches: actual !== undefined && expected !== undefined && actual.length === expected.length &&
+          actual.every((byte, offset) => byte === expected[offset]) }
+      }
+      checks.push({ presigned: false, listed: info !== undefined && info.kind !== "Presigned", verified: signer.tag === "OneSigner",
+        releaseSigned: signer.tag === "OneSigner" && signer.certificate.tag === "Sha256" && signer.certificate.hex === certificate, kind })
+    }
+    if (!updatePackageAdmitted(checks)) throw new SigningRefused({ reason: "Signed target files contain an unreviewed package certificate or APEX payload key" })
+  })
+}
+
+effect function execute(operation: Operation) {
+  const result = try captureCommand(operation.tool, operation.args, toolTimeout)
+  if (result.code !== 0) throw new SigningRefused({ reason: `${operation.tool} exited ${result.code}: ${result.stderr.trim().slice(-2048)}` })
+}
+
+export effect function signRelease(options: SignReleaseOptions) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const dir = try files.realPath(options.keysDir)
+  const managed = options.managed
+  const managedValues = [managed?.pkcs11Config, managed?.avbSigningHelper, managed?.payloadSigner, managed?.payloadSignerSignatureSize]
+  const managedCount = managedValues.filter((value) => value !== undefined && value !== "").length
+  if (!keyStoreAdmitted({ insideWorkTree: !(try outsideGit(dir)), existed: true, ownerOnly: try ownerDirectory(dir) }, managedCount) ||
+      (managed !== undefined && managedCount !== 4)) throw new SigningRefused({ reason: "Use an owner-only key directory outside Git and every managed signing option together" })
+  if (managed !== undefined && (!Number.isSafeInteger(managed.payloadSignerSignatureSize) || managed.payloadSignerSignatureSize <= 0 ||
+    ![managed.pkcs11Config, managed.avbSigningHelper, managed.payloadSigner, ...(managed.payloadSignerArgs ?? [])].every((value) => shlex.test(value)))) {
+    throw new SigningRefused({ reason: "Invalid managed signing paths, arguments, or signature size" })
+  }
+  const dest = path.resolve(options.out)
+  const parent = try files.realPath(path.dirname(dest))
+  const output = path.join(parent, path.basename(dest))
+  if (try files.exists(output)) throw new SigningRefused({ reason: "Release output already exists" })
+  const fingerprints = path.join(dir, "fingerprints.json")
+  const identity = (try files.exists(fingerprints)) ? (try readSigningJson(fingerprints)).value : undefined
+  let marker = (try files.exists(path.join(dir, "TEST-KEYS-DO-NOT-SHIP"))) ||
+    (identity !== null && typeof identity === "object" && "testKeys" in identity && identity.testKeys === true)
+  const enrollment = try loadKeyManifest(options.keyManifest)
+  const keys = new Map(enrollment.keys.map((key) => [key.name, key]))
+  const release = try readSigningJson(options.descriptor)
+  const descriptor = try required(release.value)
+  const composition = productDescriptor((try readSigningJson(options.product)).value)
+  if (composition === undefined || !composition.syntaxValid || composition.placeholderFields !== 0 ||
+    composition.productName !== descriptor.product || deviceName(composition) !== descriptor.device.codename ||
+    composition.sourceProfile !== options.source.profile.name) throw new SigningRefused({ reason: "Release descriptor, product, and source profile disagree" })
+  const verifiedSource = (try verifySource(options.source)).state
+  if (verifiedSource.verdict !== "Match") throw new SigningRefused({ reason: "Release source changed or does not match its lock" })
+  const review = releaseDescriptorProblems(release.value, { sha256: verifiedSource.lock.digest, developmentOnly: verifiedSource.lock.developmentOnly })
+  const channelDocument = (try readSigningJson(options.channel)).value
+  const { model: channel } = try releaseChannel(channelDocument)
+  const refusals = [...review.problems, ...channelSigningProblems(channel, composition, review.descriptor)]
+  if (refusals.length !== 0 || !bootChainAdmitted(descriptor.avb.algorithm, [...descriptor.avb.chainedPartitions]) ||
+      descriptor.avb.chainedPartitions.length !== new Set(descriptor.avb.chainedPartitions).size) {
+    throw new SigningRefused({ reason: refusals.length === 0 ? "The verified-boot algorithm or chain differs" : refusals.join(", ") })
+  }
+  if (verifiedSource.lock.device.tag === "PhysicalDevice" && (channel.stockFactoryImage.tag !== "Sha256" ||
+      channel.stockFactoryImage.hex !== verifiedSource.lock.device.archive)) throw new SigningRefused({ reason: "The stock factory archive differs from the release source pin" })
+  const input = try releaseArtifact(options.targetFiles)
+  if (input.sha256 !== options.targetFilesSha256) throw new SigningRefused({ reason: "Target files changed before signing" })
+  const packages = try sourcePackages(options.targetFiles)
+  const launchers = packages.filter(({ name, entry }) => name === `${composition.launcherModule}.apk` && entry.endsWith(".apk"))
+  const launcher = launchers[0]
+  const application = review.descriptor.applicationCertificate
+  if (launchers.length !== 1 || launcher === undefined || application.tag !== "Sha256") {
+    throw new SigningRefused({ reason: "Target files do not name exactly one reviewed launcher APK" })
+  }
+  const misc = try properties(options.targetFiles, "META/misc_info.txt")
+  if (!bootChainAdmitted(misc.avb_vbmeta_algorithm ?? "", chainedPartitions(misc))) throw new SigningRefused({ reason: "Target files use a different verified-boot chain" })
+  const requiredApk = packages.flatMap((pkg) => pkg.kind === "Apk" ? [pkg.certificate] : [])
+  const mappedApk = Object.entries(options.keyMap).filter(([source, name]) => safeSource.test(source) && keys.get(name)?.kind === "x509-pk8").map(([source]) => source)
+  if (!signingPlanAdmitted(requiredApk, mappedApk)) throw new SigningRefused({ reason: `Unmapped APK keys: ${unmappedKeys(requiredApk, mappedApk).join(", ")}` })
+  const certificates = new Map<string, string>()
+  const payloads = new Map<string, Uint8Array>()
+  const requiredCertificates = new Set(["releasekey", "platform", ...requiredApk.map((source) => options.keyMap[source] ?? "")])
+  const apex = new Map<string, { readonly container: string; readonly payload: string }>()
+  for (const pkg of packages) {
+    if (pkg.kind !== "Apex") continue
+    const map = options.apexKeys?.[pkg.name]
+    if (map === undefined || keys.get(map.container)?.kind !== "x509-pk8" || keys.get(map.payload)?.kind !== "avb-rsa") throw new SigningRefused({ reason: `Unmapped APEX keys for ${pkg.name}` })
+    requiredCertificates.add(map.container)
+    apex.set(pkg.name, map)
+  }
+  for (const key of requiredCertificates) {
+    const row = keys.get(key)
+    if (row?.kind !== "x509-pk8") throw new SigningRefused({ reason: `Missing enrolled certificate for ${key}` })
+    const observed = try publicFile(path.join(dir, `${key}.x509.pem`))
+    const { sha256: hex, testOnly } = try Effect.try({ try: () => certificate(observed), catch: refused })
+    if (row.certificateSha256 !== undefined && row.certificateSha256 !== hex) throw new SigningRefused({ reason: `Certificate bytes differ from enrollment for ${key}` })
+    if (managed === undefined) try ownerKey(path.join(dir, `${key}.pk8`))
+    marker = marker || testOnly
+    certificates.set(key, hex)
+  }
+  if (!isDigest(channel.otaCertificate) || channel.otaCertificate.tag !== "Sha256" || review.descriptor.platformCertificate.tag !== "Sha256" ||
+      certificates.get("releasekey") !== channel.otaCertificate.hex || certificates.get("platform") !== review.descriptor.platformCertificate.hex) {
+    throw new SigningRefused({ reason: "Release or platform certificate differs from its pin" })
+  }
+  const readAvb = (row: KeyManifestRow | undefined, file: string, encodedFile: string) => effect {
+    if (row?.kind !== "avb-rsa") throw new SigningRefused({ reason: "Missing enrolled AVB key" })
+    if (managed === undefined) try ownerKey(file)
+    const publicKey = try publicFile(path.join(dir, `${row.name}.pub.pem`))
+    const actual = try publicFile(encodedFile)
+    const expected = try Effect.try({ try: () => avbKey(publicKey), catch: refused })
+    if (actual.length !== expected.length || !actual.every((byte, i) => byte === expected[i])) throw new SigningRefused({ reason: `AVB key material differs from its public key: ${row.name}` })
+    return actual
+  }
+  const verifiedKey = descriptor.avb.vbmetaKey.replace(/\.pem$/, "")
+  if (!descriptor.avb.vbmetaKey.endsWith(".pem")) throw new SigningRefused({ reason: "The verified-boot key must name an enrolled PEM key" })
+  const avbFile = path.join(dir, descriptor.avb.vbmetaKey)
+  const avb = try readAvb(keys.get(verifiedKey), avbFile, path.join(dir, descriptor.avb.publicKeyMetadata))
+  if ((try Effect.try({ try: () => sha256(avb), catch: refused })) !== descriptor.avb.publicKeySha256) throw new SigningRefused({ reason: "Verified-boot key differs from the reviewed descriptor" })
+  for (const [name, mapped] of apex) payloads.set(name, try readAvb(keys.get(mapped.payload), path.join(dir, `${mapped.payload}.pem`), path.join(dir, `${mapped.payload}.avbpubkey`)))
+  const previous = options.incrementalFrom
+  if (previous !== undefined && (try releaseArtifact(previous.file)).sha256 !== previous.sha256) throw new SigningRefused({ reason: "Previous target files differ from their reviewed digest" })
+  const tools = try files.realPath(options.releasetools)
+  const signingMode = managed === undefined ? "key-files" as const : "managed" as const
+  const distributionProblems = channelDistributionProblems(channelDocument, marker)
+  return try scoped(effect {
+    const scratch = try files.makeTempDirectoryScoped({ directory: parent, prefix: ".android-signing-" })
+    const unsigned = options.dryRun === true ? options.targetFiles : path.join(scratch, "unsigned-target_files.zip")
+    if (options.dryRun !== true) {
+      if (marker) throw new SigningRefused({ reason: "Test keys cannot sign a release" })
+      try files.copyFile(options.targetFiles, unsigned)
+      if ((try releaseArtifact(unsigned)).sha256 !== input.sha256) throw new SigningRefused({ reason: "Target files changed while taking custody" })
+    }
+    const work = options.dryRun === true ? output : scratch
+    const signed = path.join(work, "signed-target_files.zip")
+    const ota = path.join(work, previous === undefined ? "ota.zip" : "incremental-ota.zip")
+    const otaKey = path.join(dir, "releasekey")
+    const signerArgs = managed === undefined ? [] : [
+      "--payload_signer", managed.payloadSigner, "--payload_signer_maximum_signature_size", String(managed.payloadSignerSignatureSize),
+      ...((managed.payloadSignerArgs ?? []).length === 0 ? [] : ["--payload_signer_args", (managed.payloadSignerArgs ?? []).join(" ")]),
+    ]
+    const token = managed === undefined ? [] : [
+      "--java_args", "-Xmx4096m --add-exports=jdk.crypto.cryptoki/sun.security.pkcs11=ALL-UNNAMED",
+      "--extra_signapk_args", `-providerClass sun.security.pkcs11.SunPKCS11 -providerArg ${managed.pkcs11Config} -loadPrivateKeysFromKeyStore PKCS11`,
+    ]
+    const boot = ["vbmeta", ...descriptor.avb.chainedPartitions].flatMap((partition) => [
+      `--avb_${partition}_key`, avbFile, `--avb_${partition}_algorithm`, descriptor.avb.algorithm,
+      ...(managed === undefined ? [] : [`--avb_${partition}_extra_args`, `--signing_helper_with_files ${managed.avbSigningHelper}`]),
+    ])
+    const apkArgs = [...new Set(requiredApk)].flatMap((source) => ["-k", `${source}=${path.join(dir, options.keyMap[source] ?? "")}`])
+    const apexArgs = [...apex].flatMap(([name, key]) => ["--extra_apex_payload_key", `${name}=${path.join(dir, `${key.payload}.pem`)}`,
+      "--extra_apks", `${name}=${path.join(dir, key.container)}`])
+    const apexHelper = managed === undefined || apex.size === 0 ? [] : ["--avb_apex_extra_args", `--signing_helper_with_files ${managed.avbSigningHelper}`]
+    const sign: Operation = { tool: path.join(tools, "sign_target_files_apks"), args: ["-p", path.dirname(tools), ...token, "-o", "-d", dir, ...apkArgs, ...apexArgs, ...apexHelper, ...boot,
+      "--package_key", otaKey, ...signerArgs, unsigned, signed] }
+    const pack: Operation = { tool: path.join(tools, "ota_from_target_files"), args: ["-p", path.dirname(tools), "-k", otaKey, ...signerArgs,
+      ...(previous === undefined ? [] : ["-i", previous.file]), signed, ota] }
+    const commands = [sign, pack]
+    if (options.dryRun === true) return { ran: false, dryRun: true, commands, signingMode, distributionProblems, record: null }
+    try execute(sign)
+    try matchingPackages(unsigned, signed, packages, certificates, options, payloads, dir, { entry: launcher.entry, certificate: application.hex })
+    try verifiedBoot(signed, descriptor.avb.publicKeySha256, descriptor.avb.algorithm)
+    try execute(pack)
+    const record = try compatibilityRecord({ unsignedTargetFiles: unsigned, signedTargetFiles: signed, ota, channel, certificates: Object.fromEntries(certificates),
+      inputs: { unsignedTargetFilesSha256: input.sha256, productDescriptorSha256: release.sha256, sourceLockSha256: verifiedSource.lock.digest, signingMode },
+      ...(previous === undefined ? {} : { incrementalFrom: previous }) })
+    try files.writeFile(path.join(scratch, "avb_pkmd.bin"), avb, { mode: 0o600, flag: "wx" })
+    try files.writeFile(path.join(scratch, "release-record.json"), rowText.encode(`${JSON.stringify(record, null, 2)}\n`), { mode: 0o600, flag: "wx" })
+    try files.makeDirectory(output, { mode: 0o700 })
+    try Effect.onError(effect {
+      for (const name of [path.basename(signed), path.basename(ota), "avb_pkmd.bin", "release-record.json"]) {
+        try files.rename(path.join(scratch, name), path.join(output, name))
+      }
+    }, () => ignore(files.remove(output, { recursive: true, force: true })))
+    return { ran: true, dryRun: false, commands, signingMode, distributionProblems, record: path.join(output, "release-record.json") }
+  })
+}

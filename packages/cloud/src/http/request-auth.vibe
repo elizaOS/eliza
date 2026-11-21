@@ -1,5 +1,6 @@
 // spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
-import { admitRequest, type RequestAccountStatus, type CredentialView, type RouteClass } from "../../gen/cloud__identity__sessions.effect.vibe"
+import { admitPrincipal, admitRequest, type RequestAccountStatus, type RequestAdmission, type RouteClass } from "../../gen/cloud__identity__sessions.effect.vibe"
+import { inspectKey } from "../native-clients/grants.vibe"
 import { refused, Refused } from "./refusal.vibe"
 import { admit, minute } from "../shared/rate-limit.vibe"
 import { tokenDigest } from "../shared/sealing.vibe"
@@ -13,7 +14,7 @@ export type Caller =
       readonly kind: "deviceKey"
       readonly userId: string
       readonly organizationId: string
-      readonly credentialId: string
+      readonly credentialScope: string
       readonly grantKey: string
       readonly expiresAt: number
     }
@@ -40,8 +41,7 @@ export function bearerToken(authorization: string | undefined): string | undefin
   return match?.[1]
 }
 
-effect function verdict(view: CredentialView, routeClass: RouteClass, now: number): void!Refused {
-  const decided = admitRequest(view, routeClass, now)
+effect function verdict(decided: RequestAdmission): void!Refused {
   if (decided.tag === "RequestRefused") throw new Refused({ refusal: decided.refusal })
 }
 
@@ -49,34 +49,28 @@ function status(row: Row | undefined): RequestAccountStatus {
   return row?.status === "active" ? "RequestAccountActive" : "RequestAccountInactive"
 }
 
-effect function deviceKeyCaller(token: string, routeClass: RouteClass, now: number): Caller!(Refused | StoreFailure)!Store {
+effect function deviceKeyCaller(token: string, routeClass: RouteClass): Caller!(Refused | StoreFailure)!Store {
   const digest = tokenDigest(token)
   try admit({ subject: digest, scope: "device-key", limit: deviceKeyPerMinute, widthMs: minute })
   const store = try Store
   const row = (try store.transaction((tx) => tx.query(
-    "SELECT g.key, g.user_id, g.phase, g.credential_id, g.key_expires_at, g.issued_at, a.organization_id, a.status, a.devices_revoked_before FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.secret_digest = $1",
+    "SELECT g.key, g.state, g.phase, g.key_expires_at, g.device_epoch AS grant_epoch, g.user_id, g.credential_id, a.organization_id, a.status, a.device_epoch AS account_epoch FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.secret_digest = $1",
     [digest]
   )))[0]
-  try verdict({
-    kind: "RequestDevice",
-    found: row !== undefined,
-    live: row?.phase === "active",
-    expiresAt: toInt(row?.key_expires_at ?? 0),
-    issuedAt: toInt(row?.issued_at ?? 0),
-    revokedBefore: toInt(row?.devices_revoked_before ?? 0),
-    accountStatus: status(row),
-    authAt: 0,
-    stepUpAt: 0,
-    mfaAt: 0
-  }, routeClass, now)
   if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const at = try Clock.currentTimeMillis
+  const key = inspectKey(row, at) catch effect () => { throw refused("ServiceUnavailable") }
+  if (key.reason !== "NoReason") throw refused("AuthenticationRequired", key.reason)
+  try verdict(admitPrincipal({ accountStatus: status(row), credential: { tag: "DevicePrincipal" } }, routeClass, at))
+  const grantKey = toText(row.key)
+  if (!grantKey) throw refused("ServiceUnavailable")
   return {
     kind: "deviceKey",
     userId: toText(row.user_id) ?? "",
     organizationId: toText(row.organization_id) ?? "",
-    credentialId: toText(row.credential_id) ?? "",
-    grantKey: toText(row.key) ?? "",
-    expiresAt: toInt(row.key_expires_at)
+    credentialScope: toText(row.credential_id) || `recorded-grant:${grantKey}`,
+    grantKey,
+    expiresAt: key.expiresAt
   }
 }
 
@@ -86,7 +80,7 @@ effect function sessionCaller(token: string, routeClass: RouteClass, now: number
     "SELECT s.key, s.user_id, s.live, (s.state->>'epoch')::bigint AS epoch, s.access_expires_at, s.refresh_expires_at, s.auth_at, s.step_up_at, s.mfa_at, a.organization_id, a.status, a.sessions_revoked_before FROM sessions s JOIN accounts a ON a.key = s.user_id WHERE s.access_digest = $1",
     [tokenDigest(token)]
   )))[0]
-  try verdict({
+  try verdict(admitRequest({
     kind: "RequestSession",
     found: row !== undefined && now < toInt(row.refresh_expires_at),
     live: row?.live === true && toInt(row.epoch) === toInt(row.sessions_revoked_before),
@@ -97,7 +91,7 @@ effect function sessionCaller(token: string, routeClass: RouteClass, now: number
     authAt: toInt(row?.auth_at ?? 0),
     stepUpAt: toInt(row?.step_up_at ?? 0),
     mfaAt: toInt(row?.mfa_at ?? 0)
-  }, routeClass, now)
+  }, routeClass, now))
   if (row === undefined || !(now < toInt(row.refresh_expires_at))) throw refused("AuthenticationRequired", "CredentialUnknown")
   return {
     kind: "session",
@@ -116,7 +110,7 @@ export effect function authenticate(authorization: string | undefined, routeClas
   const now = try Clock.currentTimeMillis
   const token = bearerToken(authorization)
   if (token === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
-  if (deviceKeyPattern.test(token)) return try deviceKeyCaller(token, routeClass, now)
+  if (deviceKeyPattern.test(token)) return try deviceKeyCaller(token, routeClass)
   if (sessionTokenPattern.test(token)) return try sessionCaller(token, routeClass, now)
   throw refused("AuthenticationRequired", "CredentialUnknown")
 }

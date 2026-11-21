@@ -1,4 +1,4 @@
-// spec/os/image/verification.md, "Story: Know whether a booted image is what I staged"; spec/os/image/qualification.md, "Story: Qualify a device read-only"
+// spec/os/image/verification.md, "Story: Know whether a booted image is what I staged"; spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/update/operator.md, "One device has one operator: every journal change and device write happens under the device's install lock"
 import { ChildProcess } from "effect/process"
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
 
@@ -39,6 +39,12 @@ module node {
   /** @throws {never} */
   export function defaultLeaseDirectory(): string {
     return path.join(os.homedir(), ".local", "state", "eliza", "device-leases")
+  }
+
+  /** @throws {never} */
+  export function legacyInstallLockPath(serial: string): string {
+    const name = createHash("sha256").update(serial).digest("hex")
+    return path.join(os.homedir(), ".local", "state", "elizaos", "android-install-locks", `${name}.jsonl`)
   }
 
   /** @throws {never} */
@@ -144,6 +150,7 @@ module node {
   }
 }
 import { defaultLeaseDirectory, hostName, listenSingleDevice, processAlive, processId, sha256Hex, uniqueToken } from node
+export { legacyInstallLockPath } from node
 
 export type AdbSerial = string & { readonly __brand: "AdbSerial" }
 export type AndroidPackage = string & { readonly __brand: "AndroidPackage" }
@@ -177,6 +184,7 @@ schema Lease {
   readonly acquiredAt: string
   readonly ttlMs: number
   readonly hostname: string
+  readonly writeMarked?: boolean
 }
 
 export interface DeviceLease {
@@ -228,7 +236,7 @@ export effect function androidPackage(value: string) {
   return value as AndroidPackage
 }
 
-export effect function execute(binary: string, args: readonly string[], timeoutMs: number) {
+export effect function captureCommand(binary: string, args: readonly string[], timeoutMs: number) {
   const spawner = try ChildProcessSpawner
   const run = scoped(effect {
     const child = try spawner.spawn(ChildProcess.make(binary, [...args], { stdin: "ignore", extendEnv: true }))
@@ -236,10 +244,14 @@ export effect function execute(binary: string, args: readonly string[], timeoutM
     const code: number = try child.exitCode
     return { stdout, stderr, code }
   })
-  const finished = timeout(run, timeoutMs) catch effect (failure) => {
+  return timeout(run, timeoutMs) catch effect (failure) => {
     if (failure._tag === "TimeoutError") throw new AdbTimedOut({ args, timeoutMs })
     throw new AdbFailed({ args, code: -1, stderr: failure.message })
   }
+}
+
+export effect function execute(binary: string, args: readonly string[], timeoutMs: number) {
+  const finished = try captureCommand(binary, args, timeoutMs)
   if (finished.code !== 0) throw new AdbFailed({ args, code: finished.code, stderr: finished.stderr.trim().slice(0, 1024) })
   return finished.stdout
 }
@@ -271,7 +283,7 @@ export function deviceLeasePath(deviceKey: string, stateDir: string = defaultLea
 
 export function leaseActive(lease: Lease, now: number): boolean {
   const acquired = Date.parse(lease.acquiredAt)
-  return Number.isFinite(acquired) && lease.ttlMs > 0 && now - acquired <= lease.ttlMs && processAlive(lease.pid)
+  return lease.writeMarked === true || (Number.isFinite(acquired) && lease.ttlMs > 0 && now - acquired <= lease.ttlMs && processAlive(lease.pid))
 }
 
 type Snapshot =
@@ -303,7 +315,7 @@ effect function snapshot(file: string) {
 effect function writeExclusive(file: string, content: string) {
   const files = try FileSystem.FileSystem
   const written = effect {
-    try files.writeFileString(file, content, { flag: "wx" })
+    try files.writeFileString(file, content, { flag: "wx", mode: 0o600 })
     return true
   } catch effect (failure) => {
     if (failure.reason._tag === "AlreadyExists") return false
@@ -365,7 +377,7 @@ effect function claim(deviceKey: string, leasePath: string, options: LeaseOption
       hostname: hostName(),
     }
     const temporary = `${leasePath}.${processId()}.${uniqueToken()}.tmp`
-    try files.writeFileString(temporary, `${JSON.stringify(lease, null, 2)}\n`, { flag: "wx" })
+    try files.writeFileString(temporary, `${JSON.stringify(lease, null, 2)}\n`, { flag: "wx", mode: 0o600 })
     const link = effect {
       try files.link(temporary, leasePath)
       return true
@@ -386,23 +398,70 @@ effect function claim(deviceKey: string, leasePath: string, options: LeaseOption
       continue
     }
     if (now - started >= waitMs) {
-      const holder = current.kind === "parsed" ? `pid ${current.lease.pid} session ${current.lease.sessionId}` : `an unparsable lease file ${leasePath}`
+      const holder = current.kind === "parsed" ? `pid ${current.lease.pid} session ${current.lease.sessionId}${current.lease.writeMarked === true ? ` with an interrupted write; inspect the device and journal before removing ${leasePath}` : ""}` : `an unparsable lease file ${leasePath}`
       throw new DeviceLeased({ deviceKey, holder, waitedMs: now - started })
     }
     try sleep(options.pollMs ?? LEASE_POLL_MS)
   }
 }
 
+function ownsLease(held: DeviceLease, lease: Lease): boolean {
+  return lease.deviceKey === held.lease.deviceKey && lease.pid === held.lease.pid &&
+    lease.sessionId === held.lease.sessionId && lease.acquiredAt === held.lease.acquiredAt
+}
+
 effect function releaseLease(held: DeviceLease) {
   const current = try snapshot(held.path)
-  if (current.kind === "parsed" && current.lease.pid === held.lease.pid && current.lease.sessionId === held.lease.sessionId && current.lease.acquiredAt === held.lease.acquiredAt)
+  if (current.kind === "parsed" && current.lease.writeMarked !== true && ownsLease(held, current.lease))
     try removeIfUnchanged(held.path, current)
+}
+
+export effect function writeDurableDeviceState(file: string, content: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const pending = `${file}.${processId()}.${uniqueToken()}.tmp`
+  try ensuring(scoped(effect {
+    const written = try files.open(pending, { flag: "wx", mode: 0o600 })
+    try written.writeAll(new TextEncoder().encode(content))
+    try written.sync
+    try files.rename(pending, file)
+    const directory = try files.open(path.dirname(file), { flag: "r" })
+    try directory.sync
+  }), ignore(files.remove(pending, { force: true })))
+}
+
+export effect function markDeviceLeaseForWrites(held: DeviceLease) {
+  return try withMutationLock(held.path, effect {
+    const current = try snapshot(held.path)
+    if (current.kind !== "parsed" || current.lease.pid !== processId() || !ownsLease(held, current.lease)) {
+      throw new LeaseLockConflict({ lockPath: held.path })
+    }
+    if (current.lease.writeMarked !== true) {
+      try writeDurableDeviceState(held.path, `${JSON.stringify({ ...current.lease, writeMarked: true }, null, 2)}\n`)
+    }
+  })
+}
+
+export effect function settleDeviceLease(held: DeviceLease) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  return try withMutationLock(held.path, effect {
+    const current = try snapshot(held.path)
+    if (current.kind !== "parsed" || current.lease.pid !== processId() || !ownsLease(held, current.lease)) {
+      throw new LeaseLockConflict({ lockPath: held.path })
+    }
+    try files.remove(held.path)
+    try scoped(effect {
+      const directory = try files.open(path.dirname(held.path), { flag: "r" })
+      try directory.sync
+    })
+  })
 }
 
 export effect function acquireDeviceLease(deviceKey: string, options: LeaseOptions = {}) {
   const files = try FileSystem.FileSystem
   const stateDir = options.stateDir ?? defaultLeaseDirectory()
-  try files.makeDirectory(stateDir, { recursive: true })
+  try files.makeDirectory(stateDir, { recursive: true, mode: 0o700 })
   const leasePath = deviceLeasePath(deviceKey, stateDir)
   return try acquireRelease(claim(deviceKey, leasePath, options), (held) => releaseLease(held).pipe(Effect.provideService(FileSystem.FileSystem, files), Effect.orDie))
 }

@@ -12,6 +12,7 @@ import { holdRows, markDispatched, reserveIn, settle, type HoldOwner, type Meter
 import { newId, sameText, secretText, tokenDigest } from "../shared/sealing.vibe"
 import { loadRow, machineRows, stepRow, type RowConflict, type RowCorrupt } from "../store/rows.vibe"
 import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
+import { inspectKey } from "../native-clients/grants.vibe"
 
 export type { Session, SessionEnd, Shortfall, SpeechDirection, WindowAdmission, WindowUsage }
 
@@ -351,12 +352,11 @@ export effect function reapSessions(): number!!(Store | Deployment) {
   const store = try Store
   const now = try Clock.currentTimeMillis
   const rows = store.transaction((tx) => tx.query(
-    `SELECT s.key, s.phase, s.expires_at, s.updated_at, a.status AS account_status,
-      CASE s.credential_kind
-        WHEN 'device_key' THEN EXISTS (SELECT 1 FROM device_grants g WHERE g.key = s.credential_ref AND g.phase = 'active' AND g.issued_at >= a.devices_revoked_before)
-        ELSE EXISTS (SELECT 1 FROM sessions c WHERE c.key = s.credential_ref AND c.live AND (c.state->>'epoch')::bigint = a.sessions_revoked_before)
-      END AS credential_live
+    `SELECT s.key, s.phase, s.expires_at, s.updated_at, s.credential_kind, a.status AS account_status, a.device_epoch AS account_epoch,
+      g.state AS device_state, g.phase AS device_phase, g.key_expires_at, g.device_epoch AS grant_epoch,
+      EXISTS (SELECT 1 FROM sessions c WHERE c.key = s.credential_ref AND c.live AND (c.state->>'epoch')::bigint = a.sessions_revoked_before) AS session_live
     FROM speech_sessions s LEFT JOIN accounts a ON a.key = s.user_id
+    LEFT JOIN device_grants g ON s.credential_kind = 'device_key' AND g.key = s.credential_ref AND g.user_id = s.user_id
     WHERE s.phase IN ('minted', 'starting', 'active', 'retiring')
     ORDER BY s.expires_at LIMIT $1`,
     [reaperBatch]
@@ -367,7 +367,9 @@ export effect function reapSessions(): number!!(Store | Deployment) {
   let reaped = 0
   for (const row of rows) {
     const id = toText(row.key) ?? ""
-    const done = reapOne(id, reapOf(row, now)) catch effect (failure) => {
+    const key = row.credential_kind === "device_key" ? (inspectKey({ ...row, state: row.device_state, phase: row.device_phase }, now) catch () => undefined) : undefined
+    const credentialLive = row.credential_kind === "device_key" ? key?.reason === "NoReason" : row.session_live === true
+    const done = reapOne(id, reapOf({ ...row, credential_live: credentialLive }, now)) catch effect (failure) => {
       try annotateLogs(logError("the speech reaper could not end a session"), { sessionId: id, failure: failure._tag })
       return false
     }
@@ -434,18 +436,18 @@ effect function mint(context: RouteContext) {
 
 effect function revoke(context: RouteContext) {
   const caller = try signer(context)
-  const id = context.params.id ?? ""
+  const sessionId = context.params.sessionId ?? ""
   const store = try Store
-  const row = (try store.transaction((tx) => tx.query("SELECT user_id FROM speech_sessions WHERE key = $1", [id])))[0]
+  const row = (try store.transaction((tx) => tx.query("SELECT user_id FROM speech_sessions WHERE key = $1", [sessionId])))[0]
   if (row === undefined || toText(row.user_id) !== caller.userId) throw refused("NotFound")
-  try retire(id, "Revoked")
+  try retire(sessionId, "Revoked")
   return json({ revoked: true })
 }
 
 export const sessionSpeechRoutes: ReadonlyArray<Route> = [
   { method: "POST", path: `${speechPath}/consent`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: consent },
   { method: "POST", path: `${speechPath}/session`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: mint },
-  { method: "POST", path: `${speechPath}/session/:id/revoke`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: revoke }
+  { method: "POST", path: `${speechPath}/session/:sessionId/revoke`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: revoke }
 ]
 
 effect function refusedOnly<A, R>(work: A!SessionFailure!R): A!Refused!R {

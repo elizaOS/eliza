@@ -6,64 +6,35 @@ import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
 import { launchDocument, launchFrame } from "./support/scratch.ts"
 
 module node {
+  import { setTimeout as wait } from "node:timers/promises"
   import { Effect } from "effect"
   import type { Memory, UUID } from "@elizaos/core"
-  import { machineOver, initial, type DeviceRequest, type Event } from "../gen/agent__deviceActions.effect.vibe"
   import type { SessionOwner } from "../gen/core__sessions.effect.vibe"
-  import { readCompletionRoutes, type StoredRequest } from "../src/device-actions/read-completion.vibe"
-  import type { ModuleFactory } from "../src/host/module.vibe"
+  import { offerRequest, openRequest, recordRequestReceipt, type RequestTerms } from "../src/device-actions/store.vibe"
   import type { RunningAgent } from "../src/host/process.vibe"
   import { text, type CloudFake } from "./support/cloud-fake.ts"
   import { request } from "./support/socket-client.ts"
 
-  const moduleName = "@elizaos/agent/device-actions"
-  const capability = "calendar.read.v1"
+  const capability = "calendar.agenda-read.v1"
   const result = { kind: "calendar", events: [{ title: "Dentist", start: "2026-11-18T09:00:00Z" }] }
 
-  export function requestBook() {
-    const kept = new Map<string, { state: DeviceRequest }>()
-    const machineFor = (proposalId: string) => {
-      const record = kept.get(proposalId) ?? { state: initial }
-      kept.set(proposalId, record)
-      return Effect.runPromise(machineOver(() => Effect.sync(() => record.state), (next) => Effect.sync(() => { record.state = next })))
-    }
-    const open = (proposalId: string) => kept.has(proposalId)
-      ? Effect.map(Effect.promise(() => machineFor(proposalId)), (machine): StoredRequest => ({ machine, result }))
-      : Effect.succeed(undefined)
-    const factory: ModuleFactory<never> = (context) => Effect.succeed({
-      name: moduleName,
-      plugin: {
-        name: moduleName, description: "Device requests",
-        routes: readCompletionRoutes({ runtime: context.runtime, sender: () => Effect.succeed(ownerOf(context.runtime.agentId)), open }),
-      },
-    })
-    async function drive(proposalId: string, by: SessionOwner, events: readonly Event[]) {
-      const machine = await machineFor(proposalId)
-      for (const event of events) await Effect.runPromise(machine.send(event, by))
-    }
-    return { modules: new Map([[moduleName, factory]]), drive }
+  const terms: RequestTerms = {
+    operation: { type: "read_calendar_range", start: "2026-11-18", end: "2026-11-19" },
+    binding: "AgendaBinding", boundProfile: { tag: "NoRevisionRead" },
+    need: { required: ["CalendarAgendaReadV1"], oneOf: [] },
   }
 
-  const ownerOf = (agentId: string): SessionOwner => ({ agentId, actorId: "owner-user", connector: agentId })
-
-  function appliedRead(proposalId: string, origin: { requestId: string; conversationId: string; inReplyTo: string }): Event[] {
-    const digest = `digest-${proposalId}`
-    return [
-      { type: "elapse", elapsed: Date.now() },
-      { type: "registerDevice", keyHash: "device-key-hash", capabilities: [capability], workflowProtocol: 1 },
-      { type: "offer", proposalId, digest, capability, expiresAt: Date.now() + 600_000, readBack: true, origin },
-      { type: "decide", digest, approved: true },
-      { type: "claim", digest },
-      { type: "receipt", digest, attemptId: 1, reportedOutcome: "ReportedApplied" },
-    ]
-  }
-
-  export async function completeOriginalRead(running: RunningAgent, socket: string, token: string, cloud: CloudFake, book: ReturnType<typeof requestBook>) {
-    const call = async (path: string, body: object) => {
-      const answer = await request(socket, { method: "POST", path, token, body })
+  export async function completeOriginalRead(running: RunningAgent, socket: string, token: string, cloud: CloudFake) {
+    const adapter = running.runtime.adapter
+    const by: SessionOwner = { agentId: running.status.agentId, actorId: "owner-user", connector: running.status.agentId }
+    const device = { "x-eliza-device-id": by.agentId, "x-eliza-device-key": "a".repeat(64) }
+    const call = async (path: string, body: object, headers: Record<string, string> = device, key: string | null = token) => {
+      const answer = await request(socket, { method: "POST", path, token: key ?? undefined, body, headers })
       if (!("status" in answer)) throw new Error(answer.refused)
       return answer
     }
+    const enrolled = await call("/api/client-devices/register", { capabilities: [capability], workflowProtocol: 1 })
+    if (enrolled.status !== 200) throw new Error(`Device enrollment was refused: ${enrolled.text}`)
     const inferences = () => cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length
     const opened = await call("/api/conversations", {})
     const { conversation } = opened.json as { conversation: { id: string; roomId: UUID } }
@@ -73,58 +44,108 @@ module node {
     const asked = messages.find((message: Memory) => message.entityId !== running.runtime.agentId)
     if (asked?.id === undefined) throw new Error("The original request was not stored")
     const origin = { requestId: "request-1", conversationId: conversation.id, inReplyTo: asked.id }
-    const by = ownerOf(running.status.agentId)
-    await book.drive("p1", by, appliedRead("p1", origin))
-    await book.drive("p2", by, appliedRead("p2", origin))
-    const hint = { proposalId: "p1", digest: "digest-p1", attemptId: 1, ...origin }
-    const completion = "/api/client-devices/proposals/p1/read-completion"
+    const hintOf = (proposalId: string) => ({ proposalId, digest: `digest-${proposalId}`, attemptId: 1, ...origin })
+    const pathOf = (proposalId: string, action: "read-completion" | "cancel-read-completion" = "read-completion") =>
+      `/api/client-devices/proposals/${proposalId}/${action}`
+    async function appliedRead(proposalId: string) {
+      const hint = hintOf(proposalId)
+      const record = await Effect.runPromise(offerRequest(adapter, {
+        type: "offer", proposalId, digest: hint.digest, capability, expiresAt: Date.now() + 600_000, readBack: true, origin,
+      }, by, terms))
+      await Effect.runPromise(record.machine.send({ type: "decide", digest: hint.digest, approved: true }, by))
+      await Effect.runPromise(record.machine.send({ type: "claim", digest: hint.digest }, by))
+      const receipt = await Effect.runPromise(recordRequestReceipt(adapter, {
+        proposalId, by, result,
+        event: { type: "receipt", digest: hint.digest, attemptId: 1, reportedOutcome: "ReportedApplied" },
+      }))
+      if (receipt.kind !== "recorded") throw new Error("The claimed read was not settled")
+      return hint
+    }
+    const hint = await appliedRead("p1")
+    const lapsedHint = await appliedRead("p2")
+    const cancelHint = await appliedRead("p3")
+    const completion = pathOf("p1")
     const before = inferences()
+    const noRoot = await call(completion, hint, device, null)
+    const wrongKey = await call(completion, hint, { ...device, "x-eliza-device-key": "b".repeat(64) })
     const wrongConversation = await call(completion, { ...hint, conversationId: "another" })
     const wrongAttempt = await call(completion, { ...hint, attemptId: 2 })
-    cloud.script(text("You have the dentist at 9 tomorrow."))
-    const first = await call(completion, hint)
+    cloud.script(text("You have the dentist at 9 tomorrow. The reference was sk-notasecret-example-01234567890."))
+    const simultaneous = await Promise.all([call(completion, hint), call(completion, hint)])
+    const first = simultaneous.find(({ status }) => status === 200)
+    if (first === undefined) throw new Error(`No completion was delivered: ${JSON.stringify(simultaneous)}`)
     const repeated = await call(completion, hint)
-    const cancelled = await call("/api/client-devices/proposals/p1/cancel-read-completion", { digest: "digest-p1" })
+    const cancelled = await call(pathOf("p1", "cancel-read-completion"), { digest: hint.digest })
     const afterCancel = await call(completion, hint)
-    await book.drive("p2", by, [{ type: "elapse", elapsed: 660_000 }])
-    const lapsed = await call("/api/client-devices/proposals/p2/read-completion", { ...hint, proposalId: "p2", digest: "digest-p2" })
+    const expires = await Effect.runPromise(openRequest(adapter, "p2"))
+    if (expires === undefined) throw new Error("The read to expire is gone")
+    await Effect.runPromise(expires.machine.send({ type: "elapse", elapsed: 660_000 }, by))
+    const lapsed = await call(pathOf("p2"), lapsedHint)
     const reply = (first.json as { reply: { messageId: UUID } }).reply
+    const deliveredInferenceCount = inferences() - before
+    const beforeCancellation = await running.runtime.getMemories({ tableName: "messages", roomId: conversation.roomId, count: 10 })
+    cloud.script(text("This reply must never be published."))
+    const lease = await running.runtime.roomHandlerQueue.acquire(conversation.roomId)
+    const pending = call(pathOf("p3"), cancelHint)
+    pending.catch(() => undefined)
+    let cancelledBeforePublication
+    try {
+      const cancellation = await Effect.runPromise(openRequest(adapter, "p3"))
+      if (cancellation === undefined) throw new Error("The read to cancel is gone")
+      const deadline = Date.now() + 20_000
+      while ((await Effect.runPromise(cancellation.machine.get())).completion !== "CompletionPrepared") {
+        if (Date.now() >= deadline) throw new Error("The reply was never prepared")
+        await wait(25)
+      }
+      cancelledBeforePublication = await call(pathOf("p3", "cancel-read-completion"), { digest: cancelHint.digest })
+    } finally {
+      await lease.release()
+    }
+    const afterPublication = await pending
+    const afterCancellation = await running.runtime.getMemories({ tableName: "messages", roomId: conversation.roomId, count: 10 })
     const stored = await running.runtime.getMemoryById(reply.messageId)
     return {
-      wrongConversation: wrongConversation.status, wrongAttempt: wrongAttempt.status,
+      noRoot: noRoot.status, wrongKey: wrongKey.status, wrongConversation: wrongConversation.status, wrongAttempt: wrongAttempt.status,
+      successfulReplaysAgree: simultaneous.every(({ status, json }) => status !== 200 || JSON.stringify(json) === JSON.stringify(first.json)),
+      simultaneousRefused: simultaneous.every(({ status }) => status === 200 || status === 409),
       first: first.json, repeated: repeated.json, cancelled: cancelled.json, afterCancel: afterCancel.json, lapsed: lapsed.status,
-      inferences: inferences() - before,
+      inferences: deliveredInferenceCount,
+      cancellationRace: {
+        cancelled: cancelledBeforePublication.json, replyStatus: afterPublication.status,
+        sameMessages: afterCancellation.length === beforeCancellation.length,
+      },
       stored: { roomId: stored?.roomId, inReplyTo: stored?.content.inReplyTo, text: stored?.content.text },
       expected: { roomId: conversation.roomId, inReplyTo: asked.id, messageId: reply.messageId, conversationId: conversation.id },
     }
   }
 }
 
-import { completeOriginalRead, requestBook } from node
+import { completeOriginalRead } from node
 
 it.effect('A shared device read answers the original request once, in its conversation (spec/agent/deviceActions/index.md, "Story: Complete the original request with the result I shared")', effect () => {
   const state = try scratch("read-completion")
   const cloud = try cloudFake(deviceKey)
   const socket = state.file("agent.sock")
   const frame = launchFrame({ credential: { version: 1, value: deviceKey } })
-  const book = try Effect.try(() => requestBook())
   const config = try Effect.try(() => launchDocument({
-    callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, load: ["@elizaos/agent/device-actions"], hostContextRevision: 1,
+    callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, persistMemory: true, hostContextRevision: 1,
   }))
   const parsed = try parseLaunch(JSON.stringify(config), JSON.stringify(frame))
   const running = try acquireRelease(
-    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket }, modules: book.modules }),
+    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket } }),
     (agent) => orDie(host("retire agent", () => agent.stop())),
   )
-  const observed = try host("read completion journey", () => completeOriginalRead(running, socket, frame.token, cloud, book))
+  const observed = try host("read completion journey", () => completeOriginalRead(running, socket, frame.token, cloud))
   const reply = {
     messageId: observed.expected.messageId, requestId: "request-1", conversationId: observed.expected.conversationId,
-    inReplyTo: observed.expected.inReplyTo, text: "You have the dentist at 9 tomorrow.",
+    inReplyTo: observed.expected.inReplyTo, text: "You have the dentist at 9 tomorrow. The reference was sk-not…7890.",
   }
   try Effect.try(() => assert.deepStrictEqual({ ...observed, expected: undefined }, {
-    wrongConversation: 409, wrongAttempt: 409,
+    noRoot: 401, wrongKey: 401, wrongConversation: 409, wrongAttempt: 409,
+    successfulReplaysAgree: true, simultaneousRefused: true,
     first: { reply }, repeated: { reply }, cancelled: { completion: "CompletionDelivered" }, afterCancel: { reply }, lapsed: 409,
     inferences: 1,
+    cancellationRace: { cancelled: { completion: "CompletionCancelled" }, replyStatus: 409, sameMessages: true },
     stored: { roomId: observed.expected.roomId, inReplyTo: observed.expected.inReplyTo, text: reply.text },
     expected: undefined,
   }))

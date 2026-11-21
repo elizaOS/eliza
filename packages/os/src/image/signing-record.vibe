@@ -1,0 +1,295 @@
+// spec/os/image/signing.md, "A release descriptor is refused while a field is unset, a signer or AVB key is unpinned, the lock hash differs or the lock is development-only"; spec/os/image/signing.md, "The release record binds the target files, the signed outputs and the certificates by digest and carries no key material"; spec/os/image/signing.md, "A channel is distributable only with a retained known-good release, release keys, and the signed-update, interrupted-update, compatible-rollback and stock-recovery drills all passed"
+import {
+  bootChainAdmitted,
+  boundRecordFields,
+  channelDistributable,
+  knownGoodRetained,
+  recordBindsOutputs,
+  recordFieldsAdmitted,
+  releaseDescriptorProblems as descriptorProblems,
+  type DrillResult,
+  type Drills,
+  type KnownGood,
+  type ReleaseChannel,
+  type ReleaseDescriptor,
+} from "../../gen/os__image__signing.effect.vibe"
+import { parseDigest } from "./apk.vibe"
+import { hashArtifact } from "./artifact.vibe"
+import { archiveDigest, archiveEntries, properties, verifiedBoot } from "./signing-archive.vibe"
+import { keyName, readSigningJson, SigningRefused } from "./signing-keys.vibe"
+
+export const releaseRecordKind = "aosp-release-compatibility"
+const hex = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/))
+const nonEmpty = Schema.String.check(Schema.isMinLength(1))
+const label = Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/))
+const calendar = Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/))
+const bytes = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER))
+const timestamp = Schema.String.check(Schema.isPattern(/^(0|[1-9][0-9]{0,14})$/))
+const rollback = Schema.String.check(Schema.isPattern(/^(0|[1-9][0-9]{0,19})$/))
+const part = Schema.Literals(["vbmeta", "vbmeta_system", "vbmeta_vendor"])
+const file = Schema.Struct({ file: label, sha256: hex, sizeBytes: Schema.optionalKey(bytes) })
+const nullable = Schema.optionalKey(Schema.NullOr(Schema.String))
+const keyDigests = Schema.Record(Schema.String.check(Schema.isPattern(keyName)), hex)
+const publicProperty = Schema.String.check(Schema.isPattern(/^(?!.*(?:password|passphrase|private[-_.]?key|credential|secret))[A-Za-z0-9._-]+$/i))
+const publicProperties = Schema.Record(publicProperty, Schema.String)
+const artifact = Schema.Struct({ file: label, sha256: hex, sizeBytes: Schema.optionalKey(bytes), type: Schema.Literals(["full", "incremental"]),
+  incrementalFrom: Schema.NullOr(file) })
+const build = Schema.Struct({
+  fingerprint: nonEmpty,
+  vendorFingerprint: nullable,
+  id: nullable,
+  incremental: nullable,
+  androidRelease: nullable,
+  sdk: nullable,
+  securityPatch: calendar,
+  vendorSecurityPatch: Schema.optionalKey(Schema.NullOr(calendar)),
+  dateUtc: timestamp,
+})
+const record = Schema.Struct({
+  schema: Schema.Literal(1),
+  kind: Schema.Literal(releaseRecordKind),
+  product: label,
+  device: label,
+  channel: label,
+  createdAt: Schema.optionalKey(Schema.String),
+  build,
+  inputs: Schema.optionalKey(Schema.Struct({
+    unsignedTargetFilesSha256: hex,
+    productDescriptorSha256: hex,
+    sourceLockSha256: hex,
+    signingMode: Schema.Literals(["managed", "key-files"]),
+  })),
+  artifacts: Schema.Struct({ signedTargetFiles: file, ota: artifact }),
+  verifiedBoot: Schema.Struct({
+    algorithm: Schema.optionalKey(Schema.String),
+    publicKeySha256: hex,
+    chainedPartitions: Schema.optionalKey(Schema.Array(part)),
+    images: Schema.optionalKey(Schema.Record(part, hex)),
+    rollbackIndexes: Schema.Array(Schema.Struct({ partition: part, location: bytes, index: rollback })).check(Schema.isMinLength(1)),
+  }),
+  payload: Schema.Struct({
+    sha256: Schema.optionalKey(hex),
+    sizeBytes: Schema.optionalKey(bytes),
+    properties: Schema.optionalKey(publicProperties),
+    metadata: publicProperties,
+  }),
+  certificates: keyDigests,
+  apks: Schema.optionalKey(Schema.Array(Schema.Struct({
+    file: nonEmpty, sha256: hex, signerSha256: hex, versionCode: bytes, distributable: Schema.Boolean,
+  }))),
+  downgradeAllowed: Schema.optionalKey(Schema.Literal(false)),
+  drills: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.String))),
+  problems: Schema.Array(Schema.String),
+  imageBooted: Schema.Literal(false),
+  signedUpdateApplied: Schema.Literal(false),
+  releaseQualified: Schema.Literal(false),
+  deviceAcceptanceVerified: Schema.Literal(false),
+})
+
+export type ReleaseRecord = typeof record.Type
+const decodeRecord = Schema.decodeUnknownEffect(record, { onExcessProperty: "error" })
+
+const enrollment = Schema.Struct({
+  schema: Schema.Literal(1),
+  channel: label,
+  product: label,
+  device: label,
+  otaCertificateSha256: hex,
+  avbPublicKeySha256: hex,
+  downgradeAllowed: Schema.Literal(false),
+  recovery: Schema.Struct({ stockFactoryImage: Schema.Struct({ filename: label, sha256: hex }) }),
+})
+const decodeEnrollment = Schema.decodeUnknownEffect(enrollment)
+
+export interface SigningSourceLock {
+  readonly sha256: string
+  readonly developmentOnly: boolean
+}
+
+export interface SigningDescriptorReport {
+  readonly descriptor: ReleaseDescriptor
+  readonly problems: ReturnType<typeof descriptorProblems>
+}
+
+type Json = Readonly<Record<string, unknown>>
+function object(value: unknown): Json {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Json : {}
+}
+
+function placeholders(value: unknown): number {
+  if (typeof value === "string") return /^(?:\s*|unset|tbd|pending|placeholder|<[^>]+>)$/i.test(value.trim()) ? 1 : 0
+  if (Array.isArray(value)) return value.reduce((count: number, entry: unknown) => count + placeholders(entry), 0)
+  if (value === null) return 1
+  return typeof value === "object" ? Object.values(object(value)).reduce((count: number, entry) => count + placeholders(entry), 0) : 0
+}
+
+export function releaseDescriptorProblems(raw: unknown, source: SigningSourceLock): SigningDescriptorReport {
+  const root = object(raw)
+  const signer = object(root.signer)
+  const avb = object(root.avb)
+  const lock = object(root.sourceLock)
+  const claims = [root.releaseQualified, root.deviceAcceptanceVerified, root.qualification, root.acceptance, root.userAcceptance].filter((item) => item !== undefined && item !== false)
+  const descriptor: ReleaseDescriptor = {
+    unsetFields: placeholders(raw) + (root.schema !== 1 ? 1 : 0),
+    applicationCertificate: parseDigest(signer.applicationCertificateSha256),
+    platformCertificate: parseDigest(signer.platformCertificateSha256),
+    avbPublicKey: parseDigest(avb.publicKeySha256),
+    lockPinned: parseDigest(lock.sha256),
+    lockRead: parseDigest(source.sha256),
+    developmentOnly: source.developmentOnly,
+    evidenceClaims: claims.length,
+  }
+  return { descriptor, problems: descriptorProblems(descriptor) }
+}
+
+export effect function releaseChannel(raw: unknown) {
+  const channel = try decodeEnrollment(raw)
+  const model: ReleaseChannel = { name: channel.channel, product: channel.product, device: channel.device,
+    otaCertificate: parseDigest(channel.otaCertificateSha256), avbPublicKey: parseDigest(channel.avbPublicKeySha256),
+    downgradeAllowed: channel.downgradeAllowed, stockFactoryImage: parseDigest(channel.recovery.stockFactoryImage.sha256) }
+  return { channel, model }
+}
+
+function drill(raw: unknown): DrillResult {
+  return raw === "passed" ? "DrillPassed" : raw === "failed" ? "DrillFailed" : "DrillNotRun"
+}
+
+export function channelDistributionProblems(input: unknown, testKeys: boolean = false) {
+  const channel = object(input)
+  const recovery = object(object(channel.recovery).knownGoodRelease)
+  const knownGood: KnownGood = typeof recovery.buildFingerprint === "string" && typeof recovery.recordFile === "string" && recovery.recordFile !== "" &&
+    placeholders(recovery.buildFingerprint) === 0 && placeholders(recovery.recordFile) === 0
+    ? { tag: "KnownGoodRelease", buildFingerprint: recovery.buildFingerprint, updatePackage: parseDigest(recovery.otaSha256) } : { tag: "NoKnownGood" }
+  const results = object(channel.drills)
+  const drills: Drills = { signedUpdate: drill(results.signedUpdate), interruptedUpdate: drill(results.interruptedUpdate),
+    compatibleRollback: drill(results.compatibleRollback), stockRecovery: drill(results.stockRecovery) }
+  if (channelDistributable(drills, knownGood, testKeys)) return []
+  return [
+    ...Object.entries(drills).flatMap(([name, result]) => result === "DrillPassed" ? [] : [`The ${name} drill has not passed`]),
+    ...(knownGoodRetained(knownGood) ? [] : ["No known-good release is retained"]),
+    ...(testKeys ? ["Release keys are required for distribution"] : []),
+  ]
+}
+
+function recordProblems(observed: ReleaseRecord, channel: ReleaseChannel): string[] {
+  const problems = [...observed.problems]
+  if (observed.product !== channel.product || observed.device !== channel.device || observed.channel !== channel.name) problems.push("The release belongs to another channel, product, or device")
+  const otaCertificate = channel.otaCertificate
+  if (otaCertificate.tag !== "Sha256" || observed.certificates.releasekey !== otaCertificate.hex) problems.push("The OTA certificate differs from the channel's pin")
+  const avb = channel.avbPublicKey
+  if (avb.tag !== "Sha256" || observed.verifiedBoot.publicKeySha256 !== avb.hex) problems.push("The verified-boot public key differs from the channel's pin")
+  const boot = observed.verifiedBoot
+  if ((boot.algorithm !== undefined || boot.chainedPartitions !== undefined) && !bootChainAdmitted(boot.algorithm ?? "", [...(boot.chainedPartitions ?? [])])) {
+    problems.push("The release has a different verified-boot algorithm or chain")
+  }
+  if (new Set(boot.rollbackIndexes.map((point) => point.location)).size !== boot.rollbackIndexes.length ||
+      boot.rollbackIndexes.some((point) => point.index.length === 20 && point.index > "18446744073709551615")) problems.push("The release has invalid verified-boot rollback indexes")
+  const { ota } = observed.artifacts
+  if ((ota.type === "incremental") !== (ota.incrementalFrom !== null)) problems.push("The OTA type and source target files disagree")
+  if (observed.payload.metadata["post-build"] !== observed.build.fingerprint || observed.payload.metadata["post-timestamp"] !== observed.build.dateUtc) {
+    problems.push("The OTA post-build identity differs from the signed build")
+  }
+  return problems
+}
+
+export effect function releaseRecordProblems(value: unknown, channel: ReleaseChannel) {
+  const decoded = try Effect.result(decodeRecord(value))
+  return decoded._tag === "Failure" ? ["The release record is missing, invalid, or makes an evidence claim"] : recordProblems(decoded.success, channel)
+}
+
+export effect function loadReleaseRecord(file: string, channel: ReleaseChannel) {
+  const envelope = try readSigningJson(file)
+  const checked = try decodeRecord(envelope.value)
+  const problems = recordProblems(checked, channel)
+  if (problems.length !== 0) throw new SigningRefused({ reason: problems.join("\n") })
+  return { record: checked, sha256: envelope.sha256 }
+}
+
+export interface CompatibilityOptions {
+  readonly unsignedTargetFiles: string
+  readonly signedTargetFiles: string
+  readonly ota: string
+  readonly channel: ReleaseChannel
+  readonly certificates: Readonly<Record<string, string>>
+  readonly inputs: NonNullable<ReleaseRecord["inputs"]>
+  readonly incrementalFrom?: { readonly file: string; readonly sha256: string }
+}
+
+export effect function releaseArtifact(file: string) {
+  const path = try Path.Path
+  const observed = try tryPromise({
+    try: () => hashArtifact(file, Number.MAX_SAFE_INTEGER),
+    catch: (cause) => new SigningRefused({ reason: String(cause) }),
+  })
+  return { file: path.basename(file), sizeBytes: observed.size, sha256: observed.sha256 }
+}
+
+export effect function compatibilityRecord(options: CompatibilityOptions) {
+  const path = try Path.Path
+  const input = try releaseArtifact(options.unsignedTargetFiles)
+  if (input.sha256 !== options.inputs.unsignedTargetFilesSha256) throw new SigningRefused({ reason: "Unsigned target files differ from the signing input" })
+  const before = try releaseArtifact(options.signedTargetFiles)
+  const ota = try releaseArtifact(options.ota)
+  const target = new Set(try archiveEntries(options.signedTargetFiles))
+  try archiveEntries(options.ota)
+  const system = try properties(options.signedTargetFiles, "SYSTEM/build.prop")
+  const vendor: Readonly<Record<string, string>> = target.has("VENDOR/build.prop") ? (try properties(options.signedTargetFiles, "VENDOR/build.prop")) : {}
+  const misc = try properties(options.signedTargetFiles, "META/misc_info.txt")
+  const avb = options.channel.avbPublicKey
+  if (avb.tag !== "Sha256") throw new SigningRefused({ reason: "The release channel has no enrolled AVB key" })
+  const boot = try verifiedBoot(options.signedTargetFiles, avb.hex, misc.avb_vbmeta_algorithm ?? "")
+  const payload = try archiveDigest(options.ota, "payload.bin")
+  const payloadProperties = try properties(options.ota, "payload_properties.txt")
+  const metadata = try properties(options.ota, "META-INF/com/android/metadata")
+  const fingerprint = system["ro.build.fingerprint"] ?? system["ro.system.build.fingerprint"] ?? ""
+  const date = system["ro.build.date.utc"] ?? system["ro.system.build.date.utc"] ?? ""
+  const patch = system["ro.build.version.security_patch"] ?? ""
+  if (payload.sizeBytes === 0 || payloadProperties.FILE_HASH !== payload.base64 || payloadProperties.FILE_SIZE !== String(payload.sizeBytes) ||
+      metadata["post-build"] !== fingerprint || metadata["post-timestamp"] !== date || metadata["post-security-patch-level"] !== patch) {
+    throw new SigningRefused({ reason: "OTA metadata or payload does not match the signed build" })
+  }
+  const incremental = options.incrementalFrom
+  if (incremental !== undefined) {
+    const previous = try releaseArtifact(incremental.file)
+    if (previous.sha256 !== incremental.sha256) throw new SigningRefused({ reason: "Previous signed target files no longer match their pin" })
+    const installed = try properties(incremental.file, "SYSTEM/build.prop")
+    const preBuild = installed["ro.build.fingerprint"] ?? installed["ro.system.build.fingerprint"] ?? ""
+    if (preBuild === "" || metadata["pre-build"] !== preBuild) throw new SigningRefused({ reason: "OTA starts from a different installed build" })
+  } else if (metadata["pre-build"] !== undefined) throw new SigningRefused({ reason: "A full OTA unexpectedly names an installed build" })
+  const checked = try decodeRecord({
+    schema: 1,
+    kind: releaseRecordKind,
+    product: options.channel.product,
+    device: options.channel.device,
+    channel: options.channel.name,
+    build: { fingerprint, vendorFingerprint: vendor["ro.vendor.build.fingerprint"] ?? null,
+      id: system["ro.build.id"] ?? null, incremental: system["ro.build.version.incremental"] ?? null,
+      androidRelease: system["ro.build.version.release"] ?? null, sdk: system["ro.build.version.sdk"] ?? null,
+      securityPatch: patch, vendorSecurityPatch: vendor["ro.vendor.build.security_patch"] ?? null, dateUtc: date },
+    inputs: options.inputs,
+    artifacts: { signedTargetFiles: before, ota: { ...ota, type: incremental === undefined ? "full" : "incremental",
+      incrementalFrom: incremental === undefined ? null : { file: path.basename(incremental.file), sha256: incremental.sha256 } } },
+    verifiedBoot: boot,
+    payload: { sha256: payload.sha256, sizeBytes: payload.sizeBytes, properties: payloadProperties, metadata },
+    certificates: options.certificates,
+    downgradeAllowed: false,
+    problems: [],
+    imageBooted: false,
+    signedUpdateApplied: false,
+    releaseQualified: false,
+    deviceAcceptanceVerified: false,
+  })
+  const problems = recordProblems(checked, options.channel)
+  const currentUnsigned = try releaseArtifact(options.unsignedTargetFiles)
+  const currentSigned = try releaseArtifact(options.signedTargetFiles)
+  const currentOta = try releaseArtifact(options.ota)
+  const binds = {
+    targetFiles: parseDigest(input.sha256),
+    signedTargetFiles: parseDigest(before.sha256), updatePackage: parseDigest(ota.sha256),
+    releaseCertificate: parseDigest(options.certificates.releasekey), verifiedBootKey: parseDigest(boot.publicKeySha256),
+  }
+  if (problems.length !== 0 || !recordFieldsAdmitted(boundRecordFields) || !recordBindsOutputs(binds, {
+    ...binds, targetFiles: parseDigest(currentUnsigned.sha256), signedTargetFiles: parseDigest(currentSigned.sha256), updatePackage: parseDigest(currentOta.sha256),
+  })) throw new SigningRefused({ reason: problems.length === 0 ? "Release outputs changed before the record could be written" : problems.join("\n") })
+  return checked
+}

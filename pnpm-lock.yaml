@@ -501,6 +501,9 @@ importers:
       esbuild:
         specifier: 'catalog:'
         version: 0.28.2
+      jsonc-parser:
+        specifier: 3.3.1
+        version: 3.3.1
       punycode:
         specifier: 'catalog:'
         version: 2.3.1
@@ -517,6 +520,9 @@ importers:
       '@effect/vitest':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
+      '@elizaos/agent':
+        specifier: workspace:*
+        version: link:../agent
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6

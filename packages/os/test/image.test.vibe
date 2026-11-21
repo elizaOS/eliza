@@ -3,9 +3,94 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { NATIVE_TARGETS, createDevelopmentLauncherDescriptor, finalizeNative, readNativeLibraries, renderOverlay, stageLauncher, validateDescriptor, type LauncherDescriptor } from "../src/image/stage-launcher.vibe"
 import { androidTools, buildApk, testSigner, type NativeAbi } from "./support/android-tools.ts"
-import { readTree, scratch } from "./support/scratch.vibe"
+import { commitTree, git, readTree, scratch, writeTree } from "./support/scratch.vibe"
+import { loadProfile, verifySource, verifyDeviceSource, admitPatchEnvelope } from "../src/image/source-lock.vibe"
+import { main as qualify, qualifyDevice } from "../src/image/device-qualification.vibe"
+import { readOnlyCommands } from "../src/image/device-qualification-facts.vibe"
+import { verifyImage } from "../src/image/verify-device.vibe"
+import { listenerPermissions, prepareListenerSystemui, verifyListenerSystemui } from "../src/image/listener.vibe"
+import { captureCommand } from "../src/image/device.vibe"
 
 module node {
+  import { createHash } from "node:crypto"
+  import { chmod, cp, mkdir, readFile, stat, utimes, writeFile } from "node:fs/promises"
+  import { join } from "node:path"
+  import type { Tree } from "./support/scratch.vibe"
+  const sourceDigest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
+  const sourceText = (value: string) => new TextEncoder().encode(value)
+  export async function changeMode(file: string, mode: number): Promise<void> { await chmod(file, mode) }
+  export async function copySystemui(folder: string, fixture: string): Promise<string> {
+    const source = join(folder, "source")
+    const project = join(source, "frameworks/base")
+    await mkdir(join(source, "frameworks"), { recursive: true })
+    await cp(fixture, project, { recursive: true, force: false, errorOnExist: true })
+    return source
+  }
+  export async function qualificationBinary(directory: string, fixture: string, commands: Readonly<Record<string, string>>, failed?: string) {
+    const binary = join(directory, failed ?? "adb-fixture")
+    const log = join(directory, `${failed ?? "adb-fixture"}.jsonl`)
+    const script = `#!/usr/bin/env node\nimport { appendFileSync, readFileSync, existsSync } from "node:fs";\nimport { join } from "node:path";\nconst args = process.argv.slice(2);\nappendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + "\\n");\nif (args[0] !== "-s" || args[1] !== "emulator-4242") process.exit(77);\nif (args.length === 3 && args[2] === "get-state") { process.stdout.write("device\\n"); process.exit(0); }\nconst command = Object.entries(${JSON.stringify(commands)}).find(([, value]) => value === args[3]);\nif (args.length !== 4 || args[2] !== "shell" || command === undefined) process.exit(78);\nconst [key] = command;\nconst input = join(${JSON.stringify(fixture)}, key + ".txt");\nif (existsSync(input)) process.stdout.write(readFileSync(input));\nif (key === ${JSON.stringify(failed ?? "")}) { process.stderr.write("Capture unavailable\\n"); process.exit(79); }\n`
+    await writeFile(binary, script, { mode: 0o700 })
+    return { binary, log, fixture }
+  }
+  export async function verificationBinary(directory: string, name: string, responses: Readonly<Record<string, string | string[]>>) {
+    const binary = join(directory, `${name}.mjs`)
+    const log = join(directory, `${name}.jsonl`)
+    const script = `#!/usr/bin/env node\nimport { appendFileSync, readFileSync, existsSync } from "node:fs";\nconst args = process.argv.slice(2);\nif (args[0] !== "-s" || args[1] !== "127.0.0.1:6520" || args[2] !== "shell") process.exit(80);\nconst key = args.slice(3).join(" ");\nconst log = ${JSON.stringify(log)};\nconst past = existsSync(log) ? readFileSync(log, "utf8").trim().split("\\n").filter(Boolean).map((row) => JSON.parse(row)) : [];\nappendFileSync(log, JSON.stringify(key) + "\\n");\nconst answers = ${JSON.stringify(responses)};\nif (!Object.hasOwn(answers, key)) process.exit(81);\nconst row = answers[key];\nprocess.stdout.write(Array.isArray(row) ? row[past.filter((value) => value === key).length] ?? "" : row);\n`
+    await writeFile(binary, script, { mode: 0o700 })
+    return { binary, log }
+  }
+  export function platformProjectTree(): Tree {
+    return { ".gitignore": "ignored/**\n", "input.txt": "reviewed source\n", "board.mk": "RELEASE_BOARD_API_LEVEL := 202604\n" }
+  }
+  export async function fixedSourceStat(file: string): Promise<void> { await utimes(file, 1700000000, 1700000000) }
+  export async function rewriteWithSameStat(file: string, value: string): Promise<void> {
+    const before = await stat(file)
+    if ((await readFile(file)).byteLength !== sourceText(value).byteLength) throw new Error("The stat-cache fixture must preserve the actual byte length")
+    await writeFile(file, value)
+    await fixedSourceStat(file)
+    const after = await stat(file)
+    if (before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs) throw new Error("The stat-cache fixture did not preserve inode, size and modification time")
+  }
+  export async function sourceLockFixture(root: string, manifestCommit: string, projectCommit: string) {
+    const manifest = "<manifest/>\n"
+    const projectList = "project-a\n"
+    const ignored = "locally generated but explicitly inventoried\n"
+    const vendor = "<manifest><sepolicy><version>202604</version></sepolicy></manifest>\n"
+    const factory = "bounded resettable factory fixture, never flashed\n"
+    await mkdir(join(root, ".repo"), { recursive: true })
+    await mkdir(join(root, "project-a/ignored"), { recursive: true })
+    await mkdir(join(root, "vendor/generated"), { recursive: true })
+    await writeFile(join(root, ".repo/manifest.xml"), manifest)
+    await writeFile(join(root, ".repo/project.list"), projectList)
+    await writeFile(join(root, "project-a/ignored/input.bin"), ignored)
+    await writeFile(join(root, "vendor/generated/manifest.xml"), vendor)
+    await writeFile(join(root, "factory.img"), factory)
+    const files = (path: string, value: string) => ({ path, sizeBytes: sourceText(value).byteLength, sha256: sourceDigest(sourceText(value)) })
+    const manifestIdentity = { commit: manifestCommit, tag: "fixture", tagObject: manifestCommit }
+    const ignoredRow = files("project-a/ignored/input.bin", ignored)
+    const inventory = { schema: 1, target: "fixture", device: { codename: "fixture", androidRelease: "17" }, developmentOnly: true, releaseQualified: false,
+      manifest: { ...manifestIdentity, configuration: [files(".repo/manifest.xml", manifest), files(".repo/project.list", projectList)] },
+      factory: { filename: "factory.img", sizeBytes: sourceText(factory).byteLength, sha256: sourceDigest(sourceText(factory)) }, projects: [{ path: "project-a", commit: projectCommit }],
+      overrides: [], generated: { root: "vendor/generated", files: [files("vendor/generated/manifest.xml", vendor)] },
+      ignoredInputs: [{ project: "project-a", files: 1, sha256: sourceDigest(sourceText(JSON.stringify(ignoredRow) + "\n")) }] }
+    const sourceBytes = sourceText(JSON.stringify(inventory) + "\n")
+    await writeFile(join(root, "source-inventory.json"), sourceBytes)
+    const profile = { kind: "physical", targets: ["fixture"], manifest: manifestIdentity, sourceInventory: { path: "source-inventory.json", sha256: sourceDigest(sourceBytes) },
+      device: { sourceTarget: "fixture", codename: "fixture", androidRelease: "17", vendorApiLevel: "202604" } }
+    const lockFile = join(root, "aosp.lock.json")
+    await writeFile(lockFile, JSON.stringify({ schemaVersion: 1, profiles: { fixture: profile, partial: { kind: "virtual", targets: ["fixture"], manifest: manifestIdentity, projects: [{ path: "project-a", commit: projectCommit }] } } }))
+    return { lockFile, factory: join(root, "factory.img"), manifest, projectList, ignored, vendor }
+  }
+  export async function patchFixture(root: string, baseline: string, revision: string) {
+    const patch = "resettable source patch fixture\n"
+    const patchFile = join(root, "reviewed.patch")
+    const manifestFile = join(root, "patch-manifest.json")
+    await writeFile(patchFile, patch)
+    const manifest = JSON.stringify({ baselineLockSha256: baseline, project: "project-a", revision, patchSha256: sourceDigest(sourceText(patch)), files: [{ path: "input.txt", beforeSha256: sourceDigest(sourceText("reviewed source\n")), afterSha256: sourceDigest(sourceText("reviewed patched source\n")) }] })
+    await writeFile(manifestFile, manifest)
+    return { name: "fixture-patch", patchFile, manifestFile, manifestSha256: sourceDigest(sourceText(manifest)) }
+  }
   import { standInElf, type NativeAbi } from "./support/android-tools.ts"
 
   export interface StagedJson {
@@ -70,6 +155,8 @@ module node {
   }
 }
 import { ARM_ELF, X86_ELF, companionManifest, launcherManifest, parsed, runtimeNatives } from node
+
+import { changeMode, copySystemui, fixedSourceStat, patchFixture, platformProjectTree, qualificationBinary, rewriteWithSameStat, sourceLockFixture, verificationBinary } from node
 
 const tools = androidTools()
 const skipped = tools.kind === "missing" ? tools.reason : null
@@ -303,3 +390,259 @@ it.effect.skipIf(skipped !== null)(`Refuse to stage over an existing output and 
     assert.deepStrictEqual((try files.readDirectory(k.checkout)).sort(), ["checked", "existing"])
   }
 }, 240_000)
+
+it.live('Verify every pinned platform input before admitting a reviewed source patch (spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"; spec/os/image/sourceLock.md, "Every observed platform project and manifest input is bound by the lock")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const files = try FileSystem.FileSystem
+      const root = try scratch("platform-source")
+      const retainedProfile = try loadProfile({ name: "pixel10a" })
+      const manifests = `${root}/.repo/manifests`
+      const project = `${root}/project-a`
+      for (const directory of [manifests, project]) {
+        try files.makeDirectory(directory, { recursive: true })
+        try git(directory, ["init", "--quiet", "--initial-branch=main"])
+      }
+      const manifestPin = try commitTree(manifests, { "default.xml": "<manifest/>\n" }, "Pin the resettable manifest")
+      const treePin = try commitTree(project, try Effect.try(platformProjectTree), "Pin the resettable project")
+      try git(project, ["update-index", "--add", "--cacheinfo", `160000,${treePin},opaque-child`])
+      try git(project, ["-c", "commit.gpgsign=false", "commit", "--quiet", "--no-verify", "--message", "Pin an opaque child repository"])
+      const projectPin = try git(project, ["rev-parse", "HEAD"])
+      try files.makeDirectory(`${project}/opaque-child`)
+      try tryPromise(() => fixedSourceStat(`${project}/input.txt`))
+      try git(project, ["config", "core.trustctime", "false"])
+      try git(project, ["update-index", "--refresh"])
+      const fixture = try tryPromise(() => sourceLockFixture(root, manifestPin, projectPin))
+      const profile = try loadProfile({ name: "fixture", lockFile: fixture.lockFile })
+      const options = { profile, sourceRoot: root, factory: fixture.factory, boardConfiguration: "project-a/board.mk", vendorManifest: "vendor/generated/manifest.xml" }
+      const baseline = try verifyDeviceSource(options)
+      const partial = try loadProfile({ name: "partial", lockFile: fixture.lockFile })
+      const incomplete = try exit(verifySource({ ...options, profile: partial }))
+      const observations: { input: string; problems: readonly string[] }[] = []
+      try tryPromise(() => rewriteWithSameStat(`${project}/input.txt`, "tampered source\n"))
+      observations.push({ input: "stat-cache", problems: (try verifySource(options)).problems })
+      try tryPromise(() => rewriteWithSameStat(`${project}/input.txt`, "reviewed source\n"))
+      try git(project, ["rm", "--quiet", "input.txt"])
+      observations.push({ input: "deleted-tracked", problems: (try verifySource(options)).problems })
+      try git(project, ["restore", "--source", "HEAD", "--staged", "--worktree", "input.txt"])
+      try tryPromise(() => changeMode(`${project}/input.txt`, 0o755))
+      observations.push({ input: "execute-bits", problems: (try verifySource(options)).problems })
+      try tryPromise(() => changeMode(`${project}/input.txt`, 0o644))
+      try writeTree(project, { "input.txt": { kind: "symlink", target: "reviewed source\n" } })
+      observations.push({ input: "same-digest-link", problems: (try verifySource(options)).problems })
+      try writeTree(project, { "input.txt": "reviewed source\n" })
+      try writeTree(root, { "project-a/ignored/input.bin": fixture.ignored + "changed\n" })
+      observations.push({ input: "ignored", problems: (try verifySource(options)).problems })
+      try writeTree(root, { "project-a/ignored/input.bin": fixture.ignored })
+      try writeTree(root, { "vendor/generated/manifest.xml": fixture.vendor.replace("202604", "202504") })
+      observations.push({ input: "vendor", problems: (try verifySource(options)).problems })
+      try writeTree(root, { "vendor/generated/manifest.xml": fixture.vendor })
+      try writeTree(root, { "project-a/board.mk": "RELEASE_BOARD_API_LEVEL := 202504\n" })
+      observations.push({ input: "board", problems: (try verifySource(options)).problems })
+      try writeTree(root, { "project-a/board.mk": "RELEASE_BOARD_API_LEVEL := 202604\n" })
+      try writeTree(root, { ".repo/manifest.xml": fixture.manifest + "<!-- unreviewed -->\n" })
+      observations.push({ input: "manifest", problems: (try verifySource(options)).problems })
+      try writeTree(root, { ".repo/manifest.xml": fixture.manifest })
+      try files.writeFileString(`${manifests}/.git/info/exclude`, "unreviewed.xml\n")
+      try writeTree(manifests, { "unreviewed.xml": "<manifest/>\n" })
+      observations.push({ input: "ignored-manifest-file", problems: (try verifySource(options)).problems })
+      try files.remove(`${manifests}/unreviewed.xml`)
+      try git(project, ["update-index", "--assume-unchanged", "input.txt"])
+      observations.push({ input: "hidden-index", problems: (try verifySource(options)).problems })
+      try git(project, ["update-index", "--no-assume-unchanged", "input.txt"])
+      try git(project, ["update-index", "--cacheinfo", `160000,${projectPin},opaque-child`])
+      observations.push({ input: "changed-gitlink", problems: (try verifySource(options)).problems })
+      try git(project, ["restore", "--source", "HEAD", "--staged", "opaque-child"])
+      const extraProject = `${root}/project-b`
+      try files.makeDirectory(extraProject)
+      try git(extraProject, ["init", "--quiet", "--initial-branch=main"])
+      try commitTree(extraProject, { "input.txt": "unbound project\n" }, "Create an observed but unpinned project")
+      try writeTree(root, { ".repo/project.list": fixture.projectList + "project-b\n" })
+      observations.push({ input: "project-coverage", problems: (try verifySource(options)).problems })
+      try writeTree(root, { ".repo/project.list": fixture.projectList })
+      const patch = try tryPromise(() => patchFixture(root, baseline.state.lock.digest, projectPin))
+      try writeTree(project, { "input.txt": "reviewed patched source\n" })
+      const admitted = try admitPatchEnvelope(options, patch)
+      try git(project, ["add", "input.txt"])
+      const stagedAdmitted = try admitPatchEnvelope(options, patch)
+      try writeTree(project, { "input.txt": "reviewed source\n" })
+      const indexOnly = try verifySource({ ...options, patches: [patch] })
+      try git(project, ["restore", "--staged", "input.txt"])
+      try writeTree(project, { "input.txt": "changed after earlier admission\n" })
+      const drift = try verifySource({ ...options, patches: [patch] })
+      const changedPatch = try exit(admitPatchEnvelope(options, patch))
+      try writeTree(project, { "input.txt": "reviewed source\n" })
+      try writeTree(root, { "factory.img": "wrong factory of equal intent but different actual bytes\n" })
+      const changedFactory = try verifyDeviceSource(options)
+      try Effect.try(() => assert.deepStrictEqual({ baseline: { verdict: baseline.state.verdict, problems: baseline.problems, projects: baseline.projectsChecked, releaseQualified: baseline.releaseQualified },
+        retainedProfile: retainedProfile.name, partialRefused: Exit.isFailure(incomplete), observations, patched: { verdict: admitted.source.state.verdict, problems: admitted.source.problems },
+        stagedPatch: stagedAdmitted.source.state.verdict, indexOnly: indexOnly.problems,
+        drift: drift.problems, changedPatchRefused: Exit.isFailure(changedPatch), changedFactory: changedFactory.problems }, {
+        baseline: { verdict: "Match", problems: [], projects: 1, releaseQualified: false }, retainedProfile: "pixel10a", partialRefused: true,
+        observations: [{ input: "stat-cache", problems: ["SourceChangeDiffers"] }, { input: "deleted-tracked", problems: ["SourceChangeDiffers"] }, { input: "execute-bits", problems: ["SourceChangeDiffers"] }, { input: "same-digest-link", problems: ["SourceChangeDiffers"] }, { input: "ignored", problems: ["SourceChangeDiffers"] }, { input: "vendor", problems: ["GeneratedDiffers", "VintfApiDiffers"] },
+          { input: "board", problems: ["SourceChangeDiffers", "BoardApiDiffers"] }, { input: "manifest", problems: ["ManifestConfigurationDiffers"] }, { input: "ignored-manifest-file", problems: ["ManifestDiffers"] },
+          { input: "hidden-index", problems: ["HiddenIndexEntries"] }, { input: "changed-gitlink", problems: ["SourceChangeDiffers"] }, { input: "project-coverage", problems: ["ManifestConfigurationDiffers", "RevisionDiffers"] }],
+        patched: { verdict: "Match", problems: [] }, stagedPatch: "Match", indexOnly: ["PatchRefused"], drift: ["SourceChangeDiffers", "PatchRefused"], changedPatchRefused: true, changedFactory: ["ArchiveDiffers"],
+      }))
+    })
+  }
+}, { timeout: 180_000 })
+
+it.live('Prepare and recheck the reviewed SystemUI chip without changing the supplied source (spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const path = try Path.Path
+      const files = try FileSystem.FileSystem
+      const work = try scratch("listener-systemui")
+      const fixture = try path.fromFileUrl(new URL("./fixtures/sense-systemui/", import.meta.url))
+      const source = try tryPromise(() => copySystemui(work, fixture))
+      const output = path.join(work, "output")
+      const before = try verifyListenerSystemui(source, "before", "chip")
+      const staged = try prepareListenerSystemui(source, output, "chip")
+      const after = try verifyListenerSystemui(output, "after", "chip")
+      assert.deepStrictEqual(after, staged)
+      assert.deepStrictEqual(try verifyListenerSystemui(source, "before", "chip"), before)
+      assert.strictEqual(after.indicatorHealthLeaseImplemented, true)
+      assert.strictEqual((try exit(prepareListenerSystemui(source, output, "chip")))._tag, "Failure")
+      const first = after.files[0]?.path ?? assert.fail("The prepared image has no reviewed files")
+      try files.writeFileString(path.join(output, "frameworks/base", first), "modified after staging")
+      assert.strictEqual((try exit(verifyListenerSystemui(output, "after", "chip")))._tag, "Failure")
+    })
+  }
+}, 120_000)
+
+it.effect.skipIf(skipped !== null)(`Read the listener's real APK grants and reject a network permission${suffix} (spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed")`, effect () => {
+  provide NodeServices.layer {
+    const k = try kit("listener-permissions")
+    if (k === undefined) return
+    const packageName = `${LAUNCHER}.sense`
+    const manifest = (extra: string) => `<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${packageName}" android:versionCode="1">
+      <uses-permission android:name="android.permission.CAPTURE_AUDIO_HOTWORD" />
+      <uses-permission android:name="android.permission.START_ACTIVITIES_FROM_BACKGROUND" />
+      <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+      <uses-permission android:name="android.permission.RECORD_AUDIO" />
+      <permission android:name="${packageName}.CONTROL" android:protectionLevel="signature" />
+      <uses-permission android:name="${packageName}.CONTROL" />
+      ${extra}
+      <application android:debuggable="false" />
+    </manifest>`
+    const approved = try k.build("reviewed", manifest(""))
+    const rejected = try k.build("forbidden", manifest('<uses-permission android:name="android.permission.INTERNET" />'))
+    const read = (apk: string) => effect {
+      const dump = try captureCommand(k.aapt, ["dump", "permissions", apk], 60_000)
+      assert.strictEqual(dump.code, 0)
+      return try listenerPermissions(new TextDecoder().decode(dump.stdout), packageName)
+    }
+    const grants = try read(approved.apk)
+    assert.deepStrictEqual(grants, {
+      packageName,
+      requested: ["android.permission.CAPTURE_AUDIO_HOTWORD", "android.permission.FOREGROUND_SERVICE_MICROPHONE", "android.permission.RECORD_AUDIO", "android.permission.START_ACTIVITIES_FROM_BACKGROUND"],
+      privileged: ["android.permission.CAPTURE_AUDIO_HOTWORD", "android.permission.START_ACTIVITIES_FROM_BACKGROUND"],
+    })
+    assert.strictEqual((try exit(read(rejected.apk)))._tag, "Failure")
+  }
+}, 240_000)
+
+it.live('Qualify a device through the read-only command set and keep the captures (spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/image/qualification.md, "Story: Read the verdict against my requirements")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const work = try scratch("device-qualification")
+      const files = try FileSystem.FileSystem
+      const path = try Path.Path
+      const source = try path.fromFileUrl(new URL("../aosp/device-requirements/treble-gsi.json", import.meta.url))
+      const fixture = try path.fromFileUrl(new URL("./fixtures/device-qualify/android15-emulator/", import.meta.url))
+      const first = try tryPromise(() => qualificationBinary(work, fixture, readOnlyCommands))
+      const output = path.join(work, "qualified")
+      const qualified = try qualify(["--serial", "emulator-4242", "--requirements", source, "--out", output, "--adb", first.binary])
+      const input = try files.readFileString(path.join(first.fixture, "getprop.txt"))
+      const retained = try files.readFileString(path.join(output, "raw", "getprop.txt"))
+      const calls = (try files.readFileString(first.log)).trim().split("\n")
+      const requirements = try Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(try files.readFileString(source))
+      const partial = try tryPromise(() => qualificationBinary(work, fixture, readOnlyCommands, "getprop"))
+      const incomplete = try qualifyDevice({ serial: "emulator-4242", requirements, binary: partial.binary })
+      try Effect.try(() => assert.deepStrictEqual({
+        qualification: [qualified.evaluation.verdict, qualified.evaluation.evidenceLevel, qualified.evaluation.warnings],
+        observations: [qualified.facts.vendorApiLevel, qualified.facts.abi, qualified.facts.kernel?.gkiBranch, qualified.facts.cameras?.length],
+        retained,
+        calls,
+        unavailable: [incomplete.evaluation.verdict, incomplete.evaluation.evidenceLevel, incomplete.evaluation.results.find((item) => item.id === "treble")?.result, incomplete.collectionErrors["getprop"]],
+        retainedFailedCapture: incomplete.raw["getprop"],
+      }, {
+        qualification: ["pass", "emulator-observation", ["ab-updates"]],
+        observations: [35, "arm64-v8a", "android15-6.6", 1],
+        retained: input,
+        calls: [
+          JSON.stringify(["-s", "emulator-4242", "get-state"]),
+          ...Object.values(readOnlyCommands).map((command) => JSON.stringify(["-s", "emulator-4242", "shell", command])),
+        ],
+        unavailable: ["incomplete", "emulator-observation", "unknown", "Capture unavailable"],
+        retainedFailedCapture: input,
+      }))
+    })
+  }
+})
+
+it.live('Check the exact booted image and report a change during readback (spec/os/image/verification.md, "Story: Know whether a booted image is what I staged")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const work = try scratch("booted-image")
+      const packageName = "ai.elizaos.app"
+      const launcher = `${packageName}/.MainActivity`
+      const system = "com.android.launcher3"
+      const camera = "com.android.camera2"
+      const apkPath = "/product/app/Eliza/Eliza.apk"
+      const apkSha256 = "a".repeat(64)
+      const fingerprint = "elizaOS/eliza_cf/vsoc_x86_64_only:17/test:userdebug/test-keys"
+      const expected = { packageName, apkPath, apkSha256, certificateSha256: "b".repeat(64), fingerprint, defaultPermissions: ["android.permission.RECORD_AUDIO"] }
+      const home = "--user 0 -a android.intent.action.MAIN -c android.intent.category.HOME"
+      const defaultCategory = "-c android.intent.category.DEFAULT"
+      const query = "cmd package query-activities --brief --components --user 0 -a"
+      const sum = `sha256sum ${apkPath}`
+      const provider = "dumpsys webviewupdate"
+      const responses: Record<string, string | string[]> = {
+        "getprop ro.hardware": "cutf_cvm",
+        "getprop ro.product.device": "vsoc_x86_64_only",
+        "getprop sys.boot_completed": "1",
+        "cat /proc/sys/kernel/random/boot_id": "12345678-1234-1234-1234-123456789abc",
+        "am get-current-user": "0",
+        "am get-started-user-state 0": "RUNNING_UNLOCKED",
+        "getprop ro.build.fingerprint": fingerprint,
+        "getenforce": "Enforcing",
+        [`pm path --user 0 ${packageName}`]: `package:${apkPath}`,
+        [sum]: `${apkSha256}  ${apkPath}`,
+        [`cmd package resolve-activity --brief ${home}`]: launcher,
+        [`cmd package query-activities --brief --components ${home}`]: `${launcher}\n${system}/.Launcher`,
+        [`pm list packages --user 0 -s -e ${system}`]: `package:${system}`,
+        [provider]: "Current WebView package (name, version): (com.android.webview, 145.0.1)",
+        [`dumpsys package ${packageName}`]: "privateFlags=[ ]\n  User 0:\n    runtime permissions:\n      android.permission.RECORD_AUDIO: granted=true, flags=[ GRANTED_BY_DEFAULT ]\n  User 10:\n    runtime permissions:\n      android.permission.READ_SMS: granted=true, flags=[ SYSTEM_FIXED ]",
+        "pm list packages --user 0 -s -e com.android.deskclock": "package:com.android.deskclock",
+        [`pm list packages --user 0 -s -e ${camera}`]: `package:${camera}`,
+        "cmd overlay lookup --user 0 android android:bool/config_cameraDoubleTapPowerGestureEnabled": "true",
+        "cmd overlay lookup --user 0 com.android.systemui com.android.systemui:string/config_cameraGesturePackage": camera,
+      }
+      for (const action of ["SET_ALARM", "SHOW_ALARMS", "SNOOZE_ALARM", "DISMISS_ALARM"]) {
+        responses[`${query} android.intent.action.${action} ${defaultCategory} -p com.android.deskclock`] = "com.android.deskclock/.HandleApiCalls"
+      }
+      for (const action of ["STILL_IMAGE_CAMERA_SECURE", "IMAGE_CAPTURE_SECURE"]) {
+        responses[`${query} android.media.action.${action} ${defaultCategory} -p ${camera}`] = `${camera}/com.android.camera.SecureCameraActivity`
+        responses[`${query} android.media.action.${action} ${defaultCategory} -p ${packageName}`] = "No activities found"
+      }
+      const healthy = try tryPromise(() => verificationBinary(work, "healthy", responses))
+      const changed = try tryPromise(() => verificationBinary(work, "changed", { ...responses, [sum]: [`${apkSha256}  ${apkPath}`, `${"b".repeat(64)}  ${apkPath}`], [provider]: "Unrecognized provider status" }))
+      const options = { serial: "127.0.0.1:6520", user: "0", target: "cuttlefish" as const, expected }
+      const stable = try verifyImage({ ...options, adb: healthy.binary })
+      const raced = try verifyImage({ ...options, adb: changed.binary })
+      try Effect.try(() => assert.deepStrictEqual({
+        staged: stable.passed,
+        checks: stable.checks.every(({ outcome }) => outcome === "pass"),
+        capture: stable.captures.every(({ status }) => status === 0),
+        measuredTwice: stable.captures.filter(({ args }) => args[0] === "sha256sum").length,
+        actual: raced.verdict,
+        changed: raced.checks.filter(({ outcome }) => outcome !== "pass"),
+      }, {
+        staged: true, checks: true, capture: true, measuredTwice: 2, actual: "fail",
+        changed: [{ check: "WebViewProvider", outcome: "unknown" }, { check: "SameBootThroughout", outcome: "fail" }],
+      }))
+    })
+  }
+})

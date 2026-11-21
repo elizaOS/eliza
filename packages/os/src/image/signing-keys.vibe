@@ -1,0 +1,94 @@
+// spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/image/signing.md, "The key set comes only from the consumer manifest, as x509-pk8 or avb-rsa keys of RSA-4096 or ed25519 keys"; spec/os/image/signing.md, "Verified boot is signed with SHA256_RSA4096 and chains exactly vbmeta_system and vbmeta_vendor"
+import { manifestAdmitted, type KeyKind } from "../../gen/os__image__signing.effect.vibe"
+import { artifactJson, readArtifact } from "./artifact.vibe"
+
+module node {
+  import { Buffer } from "node:buffer"
+  import type { KeyObject } from "node:crypto"
+
+  function inverse(value: bigint, modulus: bigint): bigint {
+    let left = value
+    let right = modulus
+    let previous = 1n
+    let current = 0n
+    while (right !== 0n) {
+      const quotient = left / right
+      const remainder = left - quotient * right
+      const coefficient = previous - quotient * current
+      left = right
+      right = remainder
+      previous = current
+      current = coefficient
+    }
+    if (left !== 1n) throw new Error("AVB modulus is not invertible")
+    return ((previous % modulus) + modulus) % modulus
+  }
+
+  export function encodeAvbPublicKey(publicKey: KeyObject): Buffer {
+    if (publicKey.type !== "public" || publicKey.asymmetricKeyType !== "rsa") throw new Error("AVB requires an RSA public key")
+    const jwk = publicKey.export({ format: "jwk" })
+    if (jwk.e !== "AQAB" || jwk.n === undefined) throw new Error("AVB requires RSA exponent 65537")
+    const modulus = BigInt(`0x${Buffer.from(jwk.n, "base64url").toString("hex")}`)
+    const bits = modulus.toString(2).length
+    if (bits !== 2048 && bits !== 4096 && bits !== 8192) throw new Error(`Unsupported AVB key size ${bits}`)
+    const word = 1n << 32n
+    const leastWord = (word - inverse(modulus % word, word)) % word
+    const rSquared = (1n << BigInt(2 * bits)) % modulus
+    const header = Buffer.alloc(8)
+    header.writeUInt32BE(bits, 0)
+    header.writeUInt32BE(Number(leastWord), 4)
+    return Buffer.concat([header, Buffer.from(modulus.toString(16).padStart(bits / 4, "0"), "hex"), Buffer.from(rSquared.toString(16).padStart(bits / 4, "0"), "hex")])
+  }
+}
+export { encodeAvbPublicKey } from node
+
+export error SigningRefused { reason: string }
+
+export const keyName = /^[a-z][a-z0-9_]{0,62}$/
+const name = Schema.String.check(Schema.isPattern(keyName))
+const digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const manifest = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  reviewedAt: Schema.optionalKey(Schema.String),
+  keys: Schema.Array(Schema.Struct({
+    name,
+    kind: Schema.Literals(["x509-pk8", "avb-rsa", "ed25519"]),
+    bits: Schema.optionalKey(Schema.Number),
+    consumer: Schema.optionalKey(Schema.String),
+    storage: Schema.optionalKey(Schema.Literals(["offline-encrypted", "hsm", "cloud-hsm"])),
+    rotatable: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.String])),
+    subject: Schema.optionalKey(Schema.String),
+    certificateSha256: Schema.optionalKey(digest),
+  })),
+})
+
+export type KeyManifest = typeof manifest.Type
+export type KeyManifestRow = KeyManifest["keys"][number]
+const decodeManifest = Schema.decodeUnknownEffect(manifest)
+
+function keyKind(key: KeyManifestRow): KeyKind {
+  switch (key.kind) {
+    case "x509-pk8": return { tag: "X509Pk8", bits: key.bits ?? 0 }
+    case "avb-rsa": return { tag: "AvbRsa", bits: key.bits ?? 0 }
+    case "ed25519": return { tag: "Ed25519" }
+  }
+}
+
+export effect function readSigningJson(file: string, maxBytes: number = 2 * 1024 * 1024) {
+  return try tryPromise({
+    try: async () => {
+      const artifact = await readArtifact(file, maxBytes)
+      return { sha256: artifact.sha256, value: artifactJson(artifact.bytes) }
+    },
+    catch: (cause) => new SigningRefused({ reason: String(cause) }),
+  })
+}
+
+export effect function loadKeyManifest(file: string) {
+  const document = try readSigningJson(file)
+  const decoded = try decodeManifest(document.value)
+  if (!manifestAdmitted(decoded.schemaVersion, decoded.keys.map((key) => ({ name: key.name, kind: keyKind(key) })))) {
+    throw new SigningRefused({ reason: "The consumer key manifest is empty or contains a repeated name or unsupported key size" })
+  }
+  return decoded
+}

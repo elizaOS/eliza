@@ -1,5 +1,5 @@
-// spec/agent/voice/session.md, "Barge-in is confirmed by an accepted transcript or a 700 ms hold"; spec/agent/voice/session.md, "A session owns one microphone capture and reopens it only after the turn"
-import { bargeInHoldMs, type InputMode, type ShownPhase, type VoiceSession as SessionState } from "../../gen/agent__voice__session.effect.vibe"
+// spec/agent/voice/session.md, "A barge-in is confirmed only by an accepted transcript or a 700 ms hold"; spec/agent/voice/session.md, "A session owns one microphone capture, and a half-duplex session reopens it only after the turn"
+import { bargeInHoldMs, canStart, type Duplex, type InputMode, type ShownPhase, type VoiceSession as SessionState } from "../../gen/agent__voice__session.effect.vibe"
 import { mayBecomeNonSpeechVoiceTranscript } from "./heuristics.vibe"
 import type { RecognizerPort, VoiceSessionPorts } from "./ports.vibe"
 import { VoiceSession } from "./session.vibe"
@@ -14,7 +14,7 @@ export interface LiveVoiceSessionOptions extends VoiceSessionPorts {
 }
 
 export interface LiveVoiceSession {
-  start(mode?: InputMode): void
+  start(mode?: InputMode, duplex?: Duplex): void
   stop(): void
   readonly phase: ShownPhase
   readonly state: SessionState
@@ -110,7 +110,9 @@ export function createLiveVoiceSession(options: LiveVoiceSessionOptions): LiveVo
     if (event === undefined) return
     switch (event.kind) {
       case "speechStart": {
-        if (!finished.has(event.turnId) && current?.id !== event.turnId) begin(event.turnId, clock.now())
+        if (finished.has(event.turnId) || current?.id === event.turnId) return
+        if (current !== undefined) finish(current.id, "")
+        begin(event.turnId, clock.now())
         return
       }
       case "speechEnd": {
@@ -133,10 +135,11 @@ export function createLiveVoiceSession(options: LiveVoiceSessionOptions): LiveVo
   }
 
   return {
-    start(mode: InputMode = "ConversationMode") {
+    start(mode: InputMode = "ConversationMode", duplex: Duplex = "FullDuplex") {
+      if (!canStart(session.state)) return
       if (unsubscribe === undefined) unsubscribe = subscribe(receive)
       current = undefined
-      session.start(mode, "FullDuplex")
+      session.start(mode, duplex)
     },
     stop() {
       const close = unsubscribe

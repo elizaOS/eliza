@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/update/operator.md, "Story: Update a device by cable and get back if it fails"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"
+// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/update/operator.md, "Story: Update a device by cable"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { buildChromium, prepareChromium } from "./browser/index.vibe"
@@ -40,7 +40,7 @@ const USAGE = [
   "eliza-os stage-launcher --descriptor FILE --apk FILE --output NEW_DIR [--aapt PATH] [--apksigner PATH] [--development] [--companion MODULE=FILE ...] [--native-abi arm64-v8a|x86_64 [--native-install make|soong]] [--defer-soong | --admission-only]",
   "eliza-os stage-launcher --finalize-soong --output DIR",
   "eliza-os ota check|apply|status|fallback|stock-archive|verify-stock|retain-known-good [options]",
-  "eliza-os keys generate --output NEW_DIR --passphrase-file FILE [--organization NAME] [--manifest FILE] [--only a,b] [--test-keys]",
+  "eliza-os keys generate --output NEW_DIR --passphrase-file FILE --manifest FILE [--organization NAME] [--only a,b] [--test-keys]",
   "eliza-os keys decrypt --input DIR --output NEW_DIR --passphrase-file FILE [--only a,b]",
   "eliza-os chromium prepare --source DIR --extension DIR --out NEW_DIR --certificate SHA256 [--application ID] [--revision REV]",
   "eliza-os chromium build --source DIR --extension DIR --out NEW_DIR --certificate SHA256 --build DIR --args-file FILE [--jobs N] [--embed-host true|false] [--target NAME] [--application ID] [--revision REV]",
@@ -146,7 +146,7 @@ effect function keys(argv: readonly string[]) {
   const [command, ...rest] = argv
   switch (command) {
     case "generate":
-      return try generate(try parseArgs(rest))
+      return try generate(try mapError(parseArgs(rest), (failure) => new UsageError({ message: failure.reason })))
     case "decrypt": {
       const found = try flags(rest, { valued: ["input", "output", "passphrase-file", "only"] })
       const [input = "", output = "", passphraseFile = ""] = try required(found, "input", "output", "passphrase-file")
@@ -210,12 +210,21 @@ export effect function cli(argv: readonly string[]) {
 }
 
 effect function main(argv: readonly string[]) {
-  const result = try (cli(argv) catch effect (failure) => {
-    if (!(failure instanceof UsageError)) throw failure
-    try Console.error(`${failure.message}\n\n${USAGE}`)
-    try sync(() => exitWith(2))
+  const result = cli(argv) catch effect (failure) => {
+    if (failure instanceof UsageError) {
+      try Console.error(`${failure.message}\n\n${USAGE}`)
+      try sync(() => exitWith(2))
+    } else {
+      let detail = String(failure)
+      if (typeof failure === "object" && failure !== null) {
+        if ("reason" in failure && typeof failure.reason === "string") detail = failure.reason
+        else if ("message" in failure && typeof failure.message === "string" && failure.message !== "") detail = failure.message
+      }
+      try Console.error(detail)
+      try sync(() => exitWith(1))
+    }
     return undefined
-  })
+  }
   if (result !== undefined) try Console.log(JSON.stringify(result, null, 2))
 }
 

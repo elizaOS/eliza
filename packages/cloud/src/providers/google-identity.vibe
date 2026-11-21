@@ -23,6 +23,7 @@ import { verifiedClaims } from node
 export type GoogleProfile = typeof GoogleSettings.Type
 
 export interface IdTokenReading {
+  readonly expiresAt: number | undefined
   readonly signatureOk: boolean
   readonly issuerOk: boolean
   readonly audienceOk: boolean
@@ -42,9 +43,9 @@ export type CodeExchange =
   | { readonly kind: "IdentityVerified"; readonly identity: GoogleIdentity }
   | { readonly kind: Exclude<GoogleAnswer, "IdentityVerified"> }
 
-const unread: IdTokenReading = { signatureOk: false, issuerOk: false, audienceOk: false, nonce: undefined, subject: undefined, verifiedEmail: undefined, givenName: undefined }
+const unread: IdTokenReading = { expiresAt: undefined, signatureOk: false, issuerOk: false, audienceOk: false, nonce: undefined, subject: undefined, verifiedEmail: undefined, givenName: undefined }
 const failed: CodeExchange = { kind: "TokenExchangeFailed" }
-const subjectPattern = /^[A-Za-z0-9_-]{1,255}$/
+export const googleSubjectPattern = /^[A-Za-z0-9_-]{1,255}$/
 
 const Claims = Schema.Struct({
   iss: Schema.optionalKey(Schema.String),
@@ -72,25 +73,28 @@ function named(text: string | undefined): string | undefined {
   return trimmed === undefined || trimmed === "" ? undefined : trimmed
 }
 
-export function reading(google: GoogleProfile, raw: unknown, now: number): IdTokenReading {
+function reading(google: GoogleProfile, raw: unknown, now: number, audience: "browser" | "native"): IdTokenReading {
   const claims = Option.getOrUndefined(Schema.decodeUnknownOption(Claims)(raw))
   if (claims === undefined) return unread
   const audiences = typeof claims.aud === "string" ? [claims.aud] : claims.aud ?? []
   const email = named(claims.email)?.toLowerCase()
+  const expiresAt = claims.exp === undefined || !Number.isSafeInteger(claims.exp * 1000) ? undefined : claims.exp * 1000
   return {
-    signatureOk: claims.exp !== undefined && claims.exp * 1000 > now,
+    expiresAt,
+    signatureOk: expiresAt !== undefined && expiresAt > now,
     issuerOk: claims.iss !== undefined && google.issuers.includes(claims.iss),
-    audienceOk: audiences.length === 1 && (audiences[0] === google.clientId || audiences[0] === google.serverClientId),
+    audienceOk: audiences.length === 1 && audiences[0] === (audience === "native" ? google.serverClientId : google.clientId),
     nonce: claims.nonce,
-    subject: claims.sub !== undefined && subjectPattern.test(claims.sub) ? claims.sub : undefined,
+    subject: claims.sub !== undefined && googleSubjectPattern.test(claims.sub) ? claims.sub : undefined,
     verifiedEmail: claims.email_verified === true || claims.email_verified === "true" ? email : undefined,
     givenName: named(claims.given_name) ?? named(claims.name)
   }
 }
 
-export effect function readIdToken(google: GoogleProfile, idToken: string, now: number): IdTokenReading!! {
-  const claims = tryPromise(() => verifiedClaims(idToken, google.jwksUrl)) catch () => undefined
-  return claims === undefined ? unread : reading(google, claims, now)
+export effect function readIdToken(google: GoogleProfile, request: { readonly idToken: string; readonly audience: "browser" | "native" }): IdTokenReading!! {
+  const claims = tryPromise(() => verifiedClaims(request.idToken, google.jwksUrl)) catch () => undefined
+  const now = try Clock.currentTimeMillis
+  return claims === undefined ? unread : reading(google, claims, now, request.audience)
 }
 
 export function authorizeUrl(google: GoogleProfile, request: { readonly state: string; readonly challenge: string; readonly callback: string }): string {
@@ -123,7 +127,7 @@ export effect function exchangeGoogleCode(google: GoogleProfile, request: { read
     const text = response.text catch () => ""
     const reply = Option.getOrUndefined(Schema.decodeUnknownOption(TokenReply)(parsedJson(text)))
     if (reply === undefined) return failed
-    const token = try readIdToken(google, reply.id_token, request.now)
+    const token = try readIdToken(google, { idToken: reply.id_token, audience: "browser" })
     if (!token.signatureOk || !token.issuerOk || !token.audienceOk) return failed
     if (token.subject === undefined) return { kind: "IdentityIncomplete" } satisfies CodeExchange
     return { kind: "IdentityVerified", identity: { subject: token.subject, verifiedEmail: token.verifiedEmail, givenName: token.givenName } } satisfies CodeExchange

@@ -1,19 +1,16 @@
 // spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/registry.md, "Native Google sign-in is refused as google_not_configured when Google is off, and as invalid_client when the registration does not enable it"; spec/cloud/identity/federatedSignIn.md, "An ID token spends a live challenge once, only with the client, verifier, signature, issuer, audience and nonce all right, and a refused one spends nothing"
-import { tokenPerIp } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
+import { tokenPerIp, type GrantEffect } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
 import { nativeGoogleCheck, nativeGoogleRefusal } from "../../gen/cloud__nativeClients__registry.effect.vibe"
-import { millisPerSecond } from "../../gen/cloud__shared__types.effect.vibe"
 import { refused, Refused } from "../http/refusal.vibe"
 import { json, jsonBody, type Route, type RouteContext } from "../http/routes.vibe"
 import { landAccount, type Landed } from "../identity/accounts.vibe"
 import { spendNativeGoogle, verifyNativeGoogle, type VerifiedGoogle } from "../identity/federated.vibe"
 import { factorChallenge } from "../identity/second-factor.vibe"
 import { Deployment, rowOf } from "../profile/profile.vibe"
-import { readIdToken } from "../providers/google-identity.vibe"
-import { openTokens, tokenForm, type GoogleProfile } from "../providers/google.vibe"
-import { storeGrant } from "../services/google/grant-access.vibe"
+import { linkNativeGoogle, ServerAuthCode, unlinked, type GoogleLink } from "../services/google/managed-native.vibe"
 import { s256 } from "../shared/credential-crypto.vibe"
 import { newId } from "../shared/sealing.vibe"
-import { Store, toText, type Tx } from "../store/connection.vibe"
+import { Store, type Tx } from "../store/connection.vibe"
 import { connectAndMint, deviceName, perIp, signInClient, type Credential } from "./device-keys.vibe"
 
 const pkceText = /^[A-Za-z0-9._~-]{43,128}$/
@@ -30,32 +27,23 @@ const SignInBody = Schema.Struct({
     idToken: Schema.String.check(Schema.isMinLength(20), Schema.isMaxLength(8192)),
     codeVerifier: Text
   }),
-  serverAuthCode: Schema.optionalKey(Schema.String.check(Schema.isMinLength(10), Schema.isMaxLength(2048), Schema.isPattern(/^[A-Za-z0-9/_.~-]+$/)))
+  serverAuthCode: Schema.optionalKey(ServerAuthCode)
 })
-schema ServerCodeReply { access_token: string; expires_in: number; refresh_token?: string; scope?: string; id_token?: string }
 
-export type GoogleLink =
-  | { readonly connected: true; readonly connectionId: string; readonly email: string | null; readonly scopes: ReadonlyArray<string>; readonly refreshTokenIssued: boolean }
-  | { readonly connected: false; readonly code: GoogleLinkFault }
-
-type GoogleLinkFault = "google_not_configured" | "google_code_rejected" | "google_scopes_missing" | "google_account_mismatch" | "google_unavailable"
+export type { GoogleLink } from "../services/google/managed-native.vibe"
 
 type SignedIn =
   | { readonly kind: "mfa"; readonly answer: { readonly status: "mfa_required"; readonly challengeId: string; readonly methods: ReadonlyArray<string>; readonly expiresAt: number } }
-  | { readonly kind: "minted"; readonly landed: Landed; readonly verified: VerifiedGoogle; readonly code: string; readonly credential: Credential }
+  | { readonly kind: "minted"; readonly landed: Landed; readonly verified: VerifiedGoogle; readonly code: string; readonly credential: Credential; readonly out: ReadonlyArray<GrantEffect> }
 
-interface Linked {
-  readonly connectionId: string
-  readonly email: string
-  readonly scopes: ReadonlyArray<string>
-  readonly refreshTokenIssued: boolean
+export interface MobileOpening {
+  readonly grantKey: string
+  readonly request: typeof SignInBody.Type
 }
 
-function unlinked(code: GoogleLinkFault): Extract<GoogleLink, { readonly connected: false }> {
-  return { connected: false, code }
-}
-
-effect function signIn(body: typeof SignInBody.Type, now: number) {
+effect function signIn(opening: MobileOpening) {
+  const body = opening.request
+  const now = try Clock.currentTimeMillis
   const deployment = try Deployment
   const store = try Store
   const name = deviceName(body.deviceName)
@@ -67,98 +55,61 @@ effect function signIn(body: typeof SignInBody.Type, now: number) {
     const verified = try verifyNativeGoogle(tx, {
       challengeId: body.identity.challengeId,
       idToken: body.identity.idToken,
-      presenter: { kind: "signIn", clientId: registration.clientId, redirectUri: body.redirectUri, codeVerifier: body.identity.codeVerifier },
-      now
+      presenter: { kind: "signIn", clientId: registration.clientId, redirectUri: body.redirectUri, codeVerifier: body.identity.codeVerifier }
     })
     const landed = try landAccount(tx, verified.identity, verified.verifiedEmail, now, verified.givenName)
     const factor = try factorChallenge(tx, landed, registration.clientId, now)
     if (factor !== undefined) {
-      try spendNativeGoogle(tx, verified, "SecondFactorRequired", now)
+      try spendNativeGoogle(tx, verified, "SecondFactorRequired")
       return { kind: "mfa", answer: factor } satisfies SignedIn
     }
-    try spendNativeGoogle(tx, verified, "SessionStarts", now)
+    const spent = try spendNativeGoogle(tx, verified, "SessionStarts")
     const minted = try connectAndMint(tx, {
+      grantKey: opening.grantKey,
       userId: landed.userId,
-      registration,
-      codeChallenge: s256(body.codeVerifier),
-      state: body.state,
-      now,
-      ...(name === null ? {} : { deviceName: name })
+      request: { clientId: body.clientId, environment: body.environment, redirectUri: body.redirectUri,
+        codeChallenge: s256(body.codeVerifier), codeChallengeMethod: "S256", state: body.state,
+        ...(name === null ? {} : { deviceName: name }) },
+      nativeGoogle: native,
+      verdict: spent.verdict,
+      yielded: spent.yielded,
+      serverCode: body.serverAuthCode === undefined ? "NoServerCode" : "WithServerCode"
     })
-    return { kind: "minted", landed, verified, code: minted.code, credential: minted.credential } satisfies SignedIn
+    return { kind: "minted", landed, verified, code: minted.code, credential: minted.credential, out: minted.out } satisfies SignedIn
   })
 }
 
-effect function redeemServerCode(google: GoogleProfile, serverAuthCode: string, subject: string, now: number) {
-  const secret = try orDie((try Deployment).secret(google.clientSecretEnv))
-  const answer = try tokenForm(google.tokenUrl, new URLSearchParams({
-    grant_type: "authorization_code",
-    code: serverAuthCode,
-    client_id: google.serverClientId,
-    client_secret: secret,
-    redirect_uri: ""
-  }))
-  if (answer.status >= 400 && answer.status < 500) return unlinked("google_code_rejected")
-  if (answer.status < 200 || answer.status >= 300) return unlinked("google_unavailable")
-  const reply = Option.getOrUndefined(Schema.decodeUnknownOption(ServerCodeReply)(answer.body))
-  if (reply === undefined || reply.access_token === "" || !(reply.expires_in > 0)) return unlinked("google_unavailable")
-  const scopes = [...new Set((reply.scope ?? "").split(/\s+/).filter((scope) => scope !== ""))]
-  if (scopes.length === 0) return unlinked("google_scopes_missing")
-  const token = reply.id_token === undefined ? undefined : try readIdToken(google, reply.id_token, now)
-  if (token === undefined || !token.signatureOk || !token.issuerOk || !token.audienceOk || token.subject !== subject) return unlinked("google_account_mismatch")
-  return { connected: true, reply, scopes, email: token.verifiedEmail } as const
-}
-
-effect function storeConnection(tx: Tx, landed: Landed, subject: string, redeemed: { readonly reply: typeof ServerCodeReply.Type; readonly scopes: ReadonlyArray<string>; readonly email: string | undefined }, now: number) {
-  const held = (try tx.query("SELECT key, email, tokens FROM google_connections WHERE organization_id = $1 AND subject = $2 FOR UPDATE", [landed.organizationId, subject]))[0]
-  const previous = toText(held?.tokens)
-  const kept = previous === undefined ? "" : (try openTokens(previous)).refreshToken
-  const issued = redeemed.reply.refresh_token ?? ""
-  const connectionId = toText(held?.key) ?? newId()
-  const email = redeemed.email ?? toText(held?.email) ?? landed.email ?? ""
-  try storeGrant(tx, {
-    connectionId,
-    owner: { organizationId: landed.organizationId, userId: landed.userId },
-    subject,
-    email,
-    grantedScopes: redeemed.scopes,
-    tokens: { refreshToken: issued === "" ? kept : issued, accessToken: redeemed.reply.access_token, expiresAt: now + redeemed.reply.expires_in * millisPerSecond },
-    now
-  })
-  return { connectionId, email, scopes: redeemed.scopes, refreshTokenIssued: issued !== "" } satisfies Linked
-}
-
-effect function linkGoogle(landed: Landed, subject: string, serverAuthCode: string, now: number) {
-  const google = (try Deployment).settings.google
-  if (google === undefined) return unlinked("google_not_configured")
-  const store = try Store
-  const linked = effect {
-    const redeemed = try redeemServerCode(google, serverAuthCode, subject, now)
-    if (!redeemed.connected) return redeemed
-    const stored = try store.transaction((tx: Tx) => storeConnection(tx, landed, subject, redeemed, now))
-    return { connected: true, connectionId: stored.connectionId, email: stored.email === "" ? null : stored.email, scopes: stored.scopes, refreshTokenIssued: stored.refreshTokenIssued } satisfies GoogleLink
-  }
-  return linked catch effect (failure) => {
+effect function linkGoogle(landed: Landed, subject: string, code: string) {
+  const linked = linkNativeGoogle(landed, code, subject) catch effect (failure) => {
     try annotateLogs(logWarning("native google connection not linked"), { cause: failure._tag })
     return unlinked("google_unavailable")
   }
+  if (!linked.connected) return linked
+  const { connectionId, email, scopes, refreshTokenIssued } = linked
+  return { connected: true, connectionId, email, scopes, refreshTokenIssued } satisfies GoogleLink
 }
 
-effect function mobileGoogle(context: RouteContext) {
-  try perIp(context, tokenPerIp)
-  const body = try jsonBody(context, SignInBody)
-  const signed = try signIn(body, context.now)
-  if (signed.kind === "mfa") return json(signed.answer, { headers: { "cache-control": "no-store" } })
+export effect function signInDevice(opening: MobileOpening) {
+  const body = opening.request
+  const signed = try signIn(opening)
+  if (signed.kind === "mfa") return { kind: "mfa", answer: signed.answer, out: [] } as const
   const { landed, verified, credential } = signed
-  const google = body.serverAuthCode === undefined ? undefined : try linkGoogle(landed, verified.identity.subject, body.serverAuthCode, context.now)
-  return json({
+  const google = signed.out.includes("LinkGoogle") && body.serverAuthCode !== undefined ? try linkGoogle(landed, verified.identity.subject, body.serverAuthCode) : undefined
+  return { kind: "minted", out: signed.out, answer: {
     status: "signed_in",
     ...credential,
     code: signed.code,
     accountCreated: landed.created,
     identity: { provider: "google", subject: verified.identity.subject, email: verified.verifiedEmail ?? null },
     ...(google === undefined ? {} : { google })
-  }, { headers: { "cache-control": "no-store" } })
+  } } as const
+}
+
+effect function mobileGoogle(context: RouteContext) {
+  try perIp(context, tokenPerIp)
+  const body = try jsonBody(context, SignInBody)
+  const signed = try signInDevice({ grantKey: newId(), request: body })
+  return json(signed.answer, { headers: { "cache-control": "no-store" } })
 }
 
 export const routes: ReadonlyArray<Route> = [

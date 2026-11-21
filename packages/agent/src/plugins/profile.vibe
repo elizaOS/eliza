@@ -1,16 +1,26 @@
 // spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/plugins/profile.md, "The product plugin must be in the bundle"
-import type { AgentPlugin, ModuleFactory } from "../host/module.vibe"
+import { ModuleRefused, type AgentPlugin, type ModuleFactory } from "../host/module.vibe"
 import { isAgentPlugin } from "./product.vibe"
 import { approvalsModule, approvalsModuleName } from "../approvals/module.vibe"
 import { notificationsModule, notificationsModuleName } from "../notifications/module.vibe"
 import { basicActionsModule, basicActionsModuleName } from "./basic-actions.vibe"
 import { replyDraftModule, replyDraftModuleName } from "../device-actions/reply-draft.vibe"
+import { scheduledTasksModuleFactory, scheduledTasksModuleName } from "../schedule/scheduled-task-routes.vibe"
+import { triggersModule, triggersModuleName } from "../schedule/trigger-routes.vibe"
+import { openPromptTriggers } from "../schedule/triggers.vibe"
+import { viewsModule, viewsModuleName } from "../views/module.vibe"
 
 export const builtinModuleFactories: ReadonlyMap<string, ModuleFactory<never>> = new Map<string, ModuleFactory<never>>([
   [basicActionsModuleName, basicActionsModule],
   [approvalsModuleName, approvalsModule],
   [notificationsModuleName, notificationsModule],
   [replyDraftModuleName, replyDraftModule],
+  [scheduledTasksModuleName, scheduledTasksModuleFactory],
+  [triggersModuleName, triggersModule(effect ({ runtime, conversationOwner }) => {
+    if (conversationOwner === undefined) throw new ModuleRefused({ module: triggersModuleName, reason: "The launch has no conversation identity" })
+    return openPromptTriggers(runtime, conversationOwner)
+  })],
+  [viewsModuleName, viewsModule],
 ])
 
 export interface BundledEntry {

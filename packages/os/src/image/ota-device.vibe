@@ -1,0 +1,105 @@
+// spec/os/update/operator.md, "An update starts only from booted Android running the installed build on a known slot, enforcing, with a known verified boot state"; spec/os/update/operator.md, "A fallback to the original slot needs a transferred update, the updated slot current and unconfirmed, the original slot bootable and no merge, and on Virtual A/B a snapshotted update"; spec/os/update/operator.md, "Stock recovery prints its plan only for the channel's locked factory archive and never flashes"
+import { updatedSlot, type DeviceObservation, type Slot, type SlotReading, type SnapshotStatus } from "../../gen/os__update__operator.effect.vibe"
+import type { BootState } from "../../gen/os__image__verification.effect.vibe"
+import { adbSerial, captureCommand, type AdbSerial } from "./device.vibe"
+import { loadFactoryLock, patchLevel } from "./ota-records.vibe"
+
+export interface DeviceTools {
+  readonly serial: AdbSerial
+  readonly adb: string
+  readonly fastboot: string
+}
+
+const utf8 = new TextDecoder()
+const bootStates = new Map<string, BootState>([["green", "Green"], ["yellow", "Yellow"], ["orange", "Orange"], ["red", "Red"]])
+
+export effect function deviceTools(serial: string, adb: string = "adb", fastboot: string = "fastboot") {
+  const tools: DeviceTools = { serial: try adbSerial(serial), adb, fastboot }
+  return tools
+}
+
+export function slotOf(value: string | undefined): Slot {
+  return value === "_a" || value === "a" ? "SlotA" : value === "_b" || value === "b" ? "SlotB" : "NoSlot"
+}
+
+export function slotArgument(slot: Slot): "a" | "b" | null {
+  return slot === "SlotA" ? "a" : slot === "SlotB" ? "b" : null
+}
+
+function adbProperties(text: string): ReadonlyMap<string, string> {
+  const values = new Map<string, string>()
+  const repeated = new Set<string>()
+  for (const row of text.matchAll(/^\[([^\]\r\n]+)\]: \[([^\]\r\n]*)\]\r?$/gm)) {
+    const key = row[1]
+    if (key === undefined || row[2] === undefined) continue
+    if (values.has(key)) repeated.add(key)
+    values.set(key, row[2])
+  }
+  for (const key of repeated) values.delete(key)
+  return values
+}
+
+export effect function readAdb(tool: DeviceTools, args: readonly string[]) {
+  const receipt = captureCommand(tool.adb, ["-s", tool.serial, ...args], 30_000) catch () => null
+  return receipt !== null && receipt.code === 0 ? utf8.decode(receipt.stdout).trim() : null
+}
+
+export effect function fastbootVariable(tool: DeviceTools, name: string) {
+  const receipt = captureCommand(tool.fastboot, ["-s", tool.serial, "getvar", name], 30_000) catch () => null
+  if (receipt === null || receipt.code !== 0) return undefined
+  const prefix = `${name}:`
+  const rows = `${utf8.decode(receipt.stdout)}\n${receipt.stderr}`.split(/\r?\n/).map((line) => line.replace(/^\s*(?:\(bootloader\)\s*)?/, ""))
+    .filter((line) => line.startsWith(prefix)).map((line) => line.slice(prefix.length).trim())
+  return rows.length === 1 && rows[0] !== "" ? rows[0] : undefined
+}
+
+export effect function observeDevice(tool: DeviceTools) {
+  const state = try readAdb(tool, ["get-state"])
+  if (state === "sideload") return { tag: "InSideload" } satisfies DeviceObservation
+  if (state === "recovery" || state === "rescue") return { tag: "InRecovery" } satisfies DeviceObservation
+  if (state !== "device") return { tag: (try fastbootVariable(tool, "product")) === undefined ? "Unreachable" : "InBootloader" } satisfies DeviceObservation
+  const props = adbProperties((try readAdb(tool, ["shell", "getprop"])) ?? "")
+  const device = props.get("ro.product.device")
+  const fingerprint = props.get("ro.build.fingerprint")
+  const locked = props.get("ro.boot.flash.locked")
+  if (props.get("sys.boot_completed") !== "1" || device === undefined || fingerprint === undefined || (locked !== "0" && locked !== "1")) {
+    return { tag: "StillBooting" } satisfies DeviceObservation
+  }
+  const mode = try readAdb(tool, ["shell", "getenforce"])
+  const boot = bootStates.get(props.get("ro.boot.verifiedbootstate") ?? "")
+  return { tag: "OnAndroid", device, fingerprint, slot: slotOf(props.get("ro.boot.slot_suffix")),
+    selinux: mode === "Enforcing" ? "Enforcing" : mode === "Permissive" ? "Permissive" : "SelinuxUnread",
+    verifiedBoot: boot === undefined ? { tag: "BootUnread" } : { tag: "BootRead", booted: boot },
+    flashLocked: locked === "1", securityPatch: patchLevel(props.get("ro.build.version.security_patch")),
+    virtualAb: props.get("ro.virtual_ab.enabled") !== "false" } satisfies DeviceObservation
+}
+
+export effect function observeSlots(tool: DeviceTools, original: Slot, device: string) {
+  const updated = slotArgument(updatedSlot(original))
+  const prior = slotArgument(original)
+  const reported = try fastbootVariable(tool, "product")
+  const currentSlot = reported === device ? slotOf(try fastbootVariable(tool, "current-slot")) : "NoSlot"
+  const successful = updated === null ? undefined : (try fastbootVariable(tool, `slot-successful:${updated}`))
+  const unbootable = prior === null ? undefined : (try fastbootVariable(tool, `slot-unbootable:${prior}`))
+  const status = try fastbootVariable(tool, "snapshot-update-status")
+  const snapshot: SnapshotStatus = status === "snapshotted" ? "Snapshotted" : status === "merging" ? "Merging" :
+    status === "none" ? "NoSnapshot" : "SnapshotUnread"
+  const reading: SlotReading = { currentSlot, updatedUnconfirmed: successful === "no", originalBootable: unbootable === "no", snapshot }
+  return reading
+}
+
+export effect function verifyStockRecovery(tool: DeviceTools, sourceLock: string) {
+  const locked = try loadFactoryLock(sourceLock)
+  const observed = try observeDevice(tool)
+  const device = locked.device.codename
+  const build = locked.factory.buildId
+  if (observed.tag !== "OnAndroid") return { passed: false, observed, problems: ["Stock Android has not completed booting"] }
+  const problems = [
+    ...(observed.device === device && observed.fingerprint.startsWith(`google/${device}/${device}:`) &&
+      observed.fingerprint.includes(`/${build}/`) && observed.fingerprint.endsWith(":user/release-keys") ? [] : ["The device is not running the locked stock build"]),
+    ...(observed.selinux === "Enforcing" ? [] : ["Stock SELinux is not enforcing"]),
+    ...(observed.verifiedBoot.tag === "BootRead" && (!observed.flashLocked || observed.verifiedBoot.booted === "Green") ? [] :
+      ["Verified boot could not confirm the stock image"]),
+  ]
+  return { passed: problems.length === 0, observed, problems }
+}

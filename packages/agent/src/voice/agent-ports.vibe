@@ -53,7 +53,7 @@ module node {
       return answer
     }
 
-    const endOfTurn: EndOfTurnPort = (text, signal) => post(END_OF_TURN_PATH, { text }, signal).then(
+    const endOfTurn: EndOfTurnPort = (transcript, signal) => post(END_OF_TURN_PATH, { transcript }, signal).then(
       (answer) => decodeEndOfTurnReply(answer.status, answer.body),
       () => (signal.aborted ? "ReplyLate" : decodeEndOfTurnReply(0, undefined)),
     )

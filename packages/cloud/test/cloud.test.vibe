@@ -5,7 +5,7 @@ import { drainProviderEvents, webhookPath } from "../src/billing/provider-events
 import { createStripeFake } from "./support/fakes/stripe.ts"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
-import { Store, type Tx } from "../src/store/store.vibe"
+import { migrate, Store, type Tx } from "../src/store/store.vibe"
 import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
 import type { FakeRequest } from "./support/fakes.ts"
 import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.ts"
@@ -13,7 +13,7 @@ import { periodRows } from "../src/shared/metering.vibe"
 import { tokenDigest } from "../src/shared/sealing.vibe"
 import { stepRow } from "../src/store/rows.vibe"
 import { verifyEntitlement, type PublishedKey } from "./support/entitlement.ts"
-import { decodeRegistration, disableClient, registerClient, updateClient } from "../src/native-clients/registry.vibe"
+import { decodeRegistration, disableClient, readClient, registerClient, updateClient } from "../src/native-clients/registry.vibe"
 import { seedClients } from "../src/operator/clients.vibe"
 import { deviceKey, openAccount, printed } from "./support/operator.vibe"
 import { operator } from "./support/operator.vibe"
@@ -23,7 +23,9 @@ import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profil
 import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
 import { revokeAll, sweepGrants } from "../src/native-clients/device-keys.vibe"
 import { s256, signedIn } from "./support/identity.ts"
-import { scopeFor, storeGrant, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
+import { connectionColumns, connectionRows, scopeFor, storeGrant, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
+import { issueSession } from "../src/identity/sessions.vibe"
+import { sealTokens } from "../src/providers/google.vibe"
 import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
 import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/google-calendar.ts"
 import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
@@ -31,7 +33,7 @@ import { gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/go
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
 import { signedCaller } from "./support/caller.vibe"
-import { callDeclaring } from "./support/http.ts"
+import { callCloud, callDeclaring } from "./support/http.ts"
 import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
 import { recordingBytes, recordingForm } from "./support/recording.ts"
 import { openRelay, upgradeStatus, type Received } from "./support/relay-socket.ts"
@@ -44,8 +46,11 @@ import { refused, type Refused } from "../src/http/refusal.vibe"
 import type { RouteClass } from "../src/http/request-auth.vibe"
 import { matchRoute, type Route } from "../src/http/routes.vibe"
 import { areas, listening, respond } from "../src/http/server.vibe"
-import { googleIdentityFake, type GooglePerson } from "./support/google-identity-fake.ts"
+import { googleIdentityFake, visit, type GooglePerson } from "./support/google-identity-fake.ts"
 import { authenticatorCode } from "./support/authenticator.ts"
+import { manualClock } from "./support/clock.ts"
+import { testDatabaseIdentity } from "./support/profile.ts"
+import { legacyGrant } from "../gen/cloud__nativeClients__deviceKeys.effect.vibe"
 
 effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
   return match (try exit(program)) {
@@ -290,6 +295,9 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
   }
 
   it.live("Sign a device in: connect, token twice, a wrong then the right proof, then use the key (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(1_000_000))
+    provide Clock.Clock = clock.clock {
     const cloud = try testCloud()
     try seeded(cloud)
     const signed = try signedIn(cloud, "devices@example.com")
@@ -301,15 +309,43 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     const wrongState = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...tokenBody, state: "t".repeat(43) } })
     const first = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
     const again = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
-    const credential = first.body as { readonly credentialId: string; readonly secret: string; readonly tokenType: string; readonly acknowledgementRequired: boolean; readonly user: { readonly id: string } }
+    const credential = first.body as { readonly credentialId: string; readonly secret: string; readonly expiresAt: string; readonly expiresIn: number; readonly tokenType: string; readonly acknowledgementRequired: boolean; readonly user: { readonly id: string } }
     const unacknowledged = try cloud.call("/api/v1/user", { headers: bearer(credential.secret) })
+    try sync(() => clock.set(1_001_000))
+    const laterReplay = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
+    const beforeAck = try sql(cloud, "SELECT key_expires_at, sealed_copy FROM device_grants WHERE credential_id = $1", [credential.credentialId])
+    const rejectedClaims: number[] = []
+    for (const claim of [
+      { clientId: "com.example.other" }, { environment: "production" }, { redirectUri: "https://www.staging.example.com/apps/fixture/billing" }, { redirectUri: "not-a-return" },
+      { code: `emac_${"0".repeat(64)}` }, { state: "t".repeat(43) }, { codeVerifier: "w".repeat(43) }
+    ]) {
+      const rejected = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret, ...claim } })
+      rejectedClaims.push(rejected.status)
+    }
     const wrongProof = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: `eliza_mobile_${"0".repeat(64)}` } })
     const acked = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
     const ackedAgain = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
     const tokenAfterAck = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
     const me = try cloud.call("/api/v1/user", { headers: bearer(credential.secret) })
+    const deviceConnect = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(credential.secret), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256" } })
     const stored = try sql(cloud, "SELECT phase, sealed_copy, device_name, key_expires_at FROM device_grants WHERE credential_id = $1", [credential.credentialId])
     const acknowledged = acked.body as { readonly status: string; readonly credentialId: string; readonly expiresAt: string }
+    try sync(() => clock.set(1_301_001))
+    const registration = try cloud.inside(cloud.store.transaction((tx) => readClient(tx, binding.clientId)))
+    if (registration === undefined) throw new Error("the fixture registration disappeared")
+    try cloud.inside(cloud.store.transaction((tx) => disableClient(tx, binding.clientId, 1_301_001)))
+    const disabledAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
+    try cloud.inside(cloud.store.transaction((tx) => updateClient(tx, { ...registration, signInReturn: { ...registration.signInReturn, path: "/apps/fixture/replaced" } }, 1_301_001)))
+    const changedReturnAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
+    try cloud.inside(cloud.store.transaction((tx) => updateClient(tx, registration, 1_301_001)))
+    const lateAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret, ...binding, code: opened.code, state, codeVerifier: verifier } })
+    try check(() => assert.deepStrictEqual({
+      earliestExpiry: Date.parse((laterReplay.body as { readonly expiresAt: string }).expiresAt) - Date.parse(credential.expiresAt),
+      lifetime: (laterReplay.body as { readonly expiresIn: number }).expiresIn,
+      beforeAck: [Number(beforeAck[0]?.key_expires_at), typeof beforeAck[0]?.sealed_copy],
+      rejectedClaims, registryWithdrawal: [disabledAck.status, changedReturnAck.status],
+      finalExpiry: Date.parse(acknowledged.expiresAt) - Date.parse(credential.expiresAt), lateAck: [lateAck.status, lateAck.body]
+    }, { earliestExpiry: 1000, lifetime: credential.expiresIn, beforeAck: [0, "string"], rejectedClaims: [401, 401, 401, 401, 401, 401, 401], registryWithdrawal: [403, 400], finalExpiry: 1000, lateAck: [200, acked.body] }))
     try check(() => assert.deepStrictEqual(
       {
         connect: [connected.status, /^emac_[0-9a-f]{64}$/.test(opened.code), opened.codeType, opened.expiresIn],
@@ -324,6 +360,7 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
         ackedAgain: [ackedAgain.status, ackedAgain.body],
         tokenAfterAck: tokenAfterAck.status >= 400,
         me: me.status,
+        deviceConnect: deviceConnect.status,
         stored: [stored[0]?.phase, stored[0]?.sealed_copy, stored[0]?.device_name, Number(stored[0]?.key_expires_at) === Date.parse(acknowledged.expiresAt)]
       },
       {
@@ -339,20 +376,30 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
         ackedAgain: [200, acked.body],
         tokenAfterAck: true,
         me: 200,
+        deviceConnect: 401,
         stored: ["active", null, "Ada's phone", true]
       }
     ))
+    }
   }))
 
-  it.live("Refuse an expired key, end this key on self-revoke, end every key on revokeAll, and sweep only stale grants (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")", () => scoped(effect {
+  it.live("Refuse an expired key, end this key on self-revoke, end every key on revokeAll, and sweep only stale grants (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\"; spec/cloud/identity/sessions.md, \"Story: Admit a request only for a live credential of an active account\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(1_000_000))
+    provide Clock.Clock = clock.clock {
     const cloud = try testCloud()
     try seeded(cloud)
     const signed = try signedIn(cloud, "keys@example.com")
+    const registration = try cloud.inside(cloud.store.transaction((tx) => readClient(tx, binding.clientId)))
+    if (registration === undefined) throw new Error("the fixture registration disappeared")
+    try cloud.inside(cloud.store.transaction((tx) => updateClient(tx, { ...registration, credentialTtl: 86_400_000 }, 1_000_000)))
     const expiring = try device(cloud, signed.accessToken, "Expiring")
+    try cloud.inside(cloud.store.transaction((tx) => updateClient(tx, registration, 1_000_000)))
     const leaving = try device(cloud, signed.accessToken, "Leaving")
     const kept = try device(cloud, signed.accessToken, "Kept")
+    try sync(() => clock.set(87_400_001))
+    const fresh = try signedIn(cloud, "keys@example.com")
     const now = try Clock.currentTimeMillis
-    try sql(cloud, "UPDATE device_grants SET key_expires_at = $2, state = jsonb_set(state, '{keyExpiresAt}', to_jsonb($2::bigint)) WHERE credential_id = $1", [expiring.credential.credentialId, now - 1])
     const expired = try cloud.call("/api/v1/user", { headers: bearer(expiring.credential.secret) })
 
     const revoked = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(leaving.credential.secret) })
@@ -360,9 +407,9 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     const keptAfterSelfRevoke = try cloud.call("/api/v1/user", { headers: bearer(kept.credential.secret) })
     const sessionRevoke = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(signed.accessToken) })
 
-    const stale = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(signed.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256" } })
+    const stale = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(fresh.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256" } })
     const staleCode = (stale.body as { readonly code: string }).code
-    try sql(cloud, "UPDATE device_grants SET code_expires_at = $2, state = jsonb_set(state, '{codeExpiresAt}', to_jsonb($2::bigint)) WHERE code_digest = $1", [tokenDigest(staleCode), now - 1])
+    try sync(() => clock.set(87_700_002))
     provide Store = cloud.store {
       try sweepGrants()
     }
@@ -372,23 +419,108 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
 
     const ended = try cloud.store.transaction((tx) => revokeAll(tx, signed.user.id, now))
     const afterRevokeAll = try cloud.call("/api/v1/user", { headers: bearer(kept.credential.secret) })
-    const session = try cloud.call("/api/v1/user", { headers: bearer(signed.accessToken) })
+    const session = try cloud.call("/api/v1/user", { headers: bearer(fresh.accessToken) })
     try check(() => assert.deepStrictEqual(
       {
         acked: [expiring.acked.status, leaving.acked.status, kept.acked.status],
         expired: [expired.status, ...refusal(expired.body)],
-        revoked: [revoked.status, (revoked.body as { readonly status: string }).status, afterSelfRevoke.status, keptAfterSelfRevoke.status, sessionRevoke.status],
+        revoked: [revoked.status, revoked.body, afterSelfRevoke.status, keptAfterSelfRevoke.status, sessionRevoke.status],
         swept: [swept[0]?.phase === "code_issued", lateToken.status >= 400, keptAfterSweep.status],
         revokeAll: [ended, afterRevokeAll.status, ...refusal(afterRevokeAll.body), session.status]
       },
       {
         acked: [200, 200, 200],
         expired: [401, "authentication_required", "credential_expired"],
-        revoked: [200, "revoked", 401, 200, 401],
+        revoked: [204, "", 401, 200, 401],
         swept: [false, true, 200],
         revokeAll: [1, 401, "authentication_required", "credential_revoked", 200]
       }
     ))
+    const at = try Clock.currentTimeMillis
+    const futureCutoff = try signedIn(cloud, "future-cutoff@example.com")
+    const expiry = at + 86_400_000
+    const legacy = ["active", "revoked", "pending", "bound", "malformed", "truncated", "nullable", "minimal", "missing-ttl", "contradictory", "other-nested", "numeric", "bound-active", "empty", "null-id-active", "null-id-revoked", "null-id-pending", "scalar-active"]
+    try cloud.store.transaction(effect (tx: Tx) => {
+      try tx.query("DELETE FROM device_grants")
+      try tx.query("DELETE FROM schema_migrations WHERE name = '0114_device_grant_binding.sql'")
+      try tx.query("ALTER TABLE accounts DROP COLUMN device_epoch")
+      try tx.query("ALTER TABLE device_grants DROP COLUMN device_epoch")
+      try tx.query("ALTER TABLE accounts ALTER COLUMN devices_revoked_before DROP NOT NULL")
+      try tx.query("UPDATE accounts SET devices_revoked_before = $2 WHERE key = $1", [signed.user.id, at - 500])
+      try tx.query("UPDATE accounts SET devices_revoked_before = $2 WHERE key = $1", [futureCutoff.user.id, at + 10_000])
+      try tx.query("INSERT INTO organizations (id, name, created_at) VALUES ('legacy-null-org', 'Nullable cutoff', $1)", [at])
+      try tx.query("INSERT INTO accounts (key, state, revision, organization_id, status, devices_revoked_before, created_at, updated_at) VALUES ('legacy-null-user', '{}'::jsonb, 1, 'legacy-null-org', 'active', NULL, $1, $1)", [at])
+      for (const name of legacy) {
+        const pending = ["pending", "bound", "malformed", "truncated", "missing-ttl", "contradictory", "other-nested", "numeric", "empty", "null-id-pending"].includes(name)
+        const witnessed = ["bound", "missing-ttl", "contradictory", "other-nested", "numeric", "bound-active", "empty", "null-id-pending"].includes(name)
+        const old = { phase: { tag: pending ? "Exchanged" : "Active" }, clientId: binding.clientId, credentialTtl: 86_400_000,
+          ...(witnessed ? { environment: "Staging", signInReturn: registration.signInReturn } : {}) }
+        const stored = name === "malformed" ? { ...old, environment: "Staging", signInReturn: { origin: 1, path: 2 } }
+          : name === "truncated" || name === "minimal" ? {}
+          : name === "missing-ttl" ? { clientId: binding.clientId, environment: "Staging", signInReturn: registration.signInReturn }
+          : name === "contradictory" ? { ...old, client: { tag: "BoundClient", clientId: binding.clientId, environment: "Staging", signInReturn: { ...registration.signInReturn, path: "/another-return" } } }
+          : name === "other-nested" ? { ...old, client: { tag: "BoundClient", clientId: "another.app", environment: "Staging", signInReturn: registration.signInReturn } }
+          : name === "numeric" ? { ...old, clientId: 123 } : name === "empty" ? { ...old, clientId: "" } : name === "scalar-active" ? "legacy" : old
+        const id = `00000000-0000-4000-8000-${String(legacy.indexOf(name) + 1).padStart(12, "0")}`
+        const secret = `eliza_mobile_${tokenDigest(`legacy-${name}`)}`
+        try tx.query("INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, code_digest, credential_id, secret_digest, sealed_copy, code_challenge, state_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, $2::jsonb, 1, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)", [
+          `legacy-${name}`, JSON.stringify(stored), name === "nullable" ? "legacy-null-user" : signed.user.id, name === "numeric" ? "123" : name === "empty" ? "" : binding.clientId, pending ? "exchanged" : "active",
+          tokenDigest(`emac_${tokenDigest(name)}`), name.startsWith("null-id-") ? null : id, tokenDigest(secret), pending ? "old-sealed-copy" : null, s256(verifier), tokenDigest(state), at + 300_000, pending ? 0 : expiry, ["revoked", "null-id-revoked"].includes(name) ? at - 1000 : at - 100, at
+        ])
+      }
+    })
+    const migrated = try cloud.inside(migrate({ digest: testDatabaseIdentity, environment: "staging", now: at }))
+    const admitted: number[] = []
+    for (const name of legacy) {
+      const answer = try cloud.call("/api/v1/user", { headers: bearer(`eliza_mobile_${tokenDigest(`legacy-${name}`)}`) })
+      admitted.push(answer.status)
+    }
+    try sync(() => clock.set(at + 1000))
+    const unboundActiveAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: "00000000-0000-4000-8000-000000000001", secret: `eliza_mobile_${tokenDigest("legacy-active")}` } })
+    const pendingAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: "00000000-0000-4000-8000-000000000003", secret: `eliza_mobile_${tokenDigest("legacy-pending")}` } })
+    const boundAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: "00000000-0000-4000-8000-000000000004", secret: `eliza_mobile_${tokenDigest("legacy-bound")}` } })
+    const recoveredAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: "00000000-0000-4000-8000-000000000011", secret: `eliza_mobile_${tokenDigest("legacy-other-nested")}` } })
+    const boundActiveAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: "00000000-0000-4000-8000-000000000013", secret: `eliza_mobile_${tokenDigest("legacy-bound-active")}` } })
+    const retained = try sql(cloud, "SELECT key, phase, sealed_copy, key_expires_at, device_epoch FROM device_grants ORDER BY key", [])
+    try check(() => assert.deepStrictEqual({
+      applied: migrated.applied,
+      admitted,
+      pendingAck: pendingAck.status,
+      unboundActiveAck: unboundActiveAck.status,
+      boundAck: [boundAck.status, Date.parse((boundAck.body as { readonly expiresAt: string }).expiresAt)],
+      recoveredAck: recoveredAck.status,
+      boundActiveAck: [boundActiveAck.status, Date.parse((boundActiveAck.body as { readonly expiresAt: string }).expiresAt)],
+      rows: retained.map((row) => [row.key, row.phase, row.sealed_copy, Number(row.key_expires_at), Number(row.device_epoch)])
+    }, {
+      applied: ["0114_device_grant_binding.sql"], admitted: [200, 401, 401, 401, 401, 401, 200, 200, 401, 401, 401, 401, 200, 401, 200, 401, 401, 200], pendingAck: 401, unboundActiveAck: 401, boundAck: [200, expiry + 1000], recoveredAck: 200, boundActiveAck: [200, expiry],
+      rows: [
+        ["legacy-active", "active", null, expiry, 0], ["legacy-bound", "active", null, expiry + 1000, 0], ["legacy-bound-active", "active", null, expiry, 0], ["legacy-contradictory", "ended", null, 0, 0],
+        ["legacy-empty", "ended", null, 0, 0], ["legacy-malformed", "ended", null, 0, 0], ["legacy-minimal", "active", null, expiry, 0], ["legacy-missing-ttl", "ended", null, 0, 0],
+        ["legacy-null-id-active", "active", null, expiry, 0], ["legacy-null-id-pending", "ended", null, 0, 0], ["legacy-null-id-revoked", "active", null, expiry, -1],
+        ["legacy-nullable", "active", null, expiry, 0], ["legacy-numeric", "ended", null, 0, 0], ["legacy-other-nested", "active", null, expiry + 1000, 0],
+        ["legacy-pending", "ended", null, 0, 0], ["legacy-revoked", "active", null, expiry, -1], ["legacy-scalar-active", "active", null, expiry, 0], ["legacy-truncated", "ended", null, 0, 0]
+      ]
+    }))
+    const afterMigration = try device(cloud, futureCutoff.accessToken, "After migration")
+    const admittedAfterMigration = try cloud.call("/api/v1/user", { headers: bearer(afterMigration.credential.secret) })
+    const observed = try sql(cloud, "SELECT g.issued_at, g.device_epoch, a.device_epoch AS account_epoch, a.devices_revoked_before FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.credential_id = $1", [afterMigration.credential.credentialId])
+    try check(() => assert.deepStrictEqual([
+      admittedAfterMigration.status, Number(observed[0]?.issued_at) < Number(observed[0]?.devices_revoked_before),
+      Number(observed[0]?.device_epoch), Number(observed[0]?.account_epoch), Number(observed[0]?.devices_revoked_before)
+    ], [200, true, 0, 0, at + 10_000]))
+    const historicalBearer = bearer(`eliza_mobile_${tokenDigest("legacy-null-id-active")}`)
+    try sync(() => clock.set(expiry - 1))
+    const beforeLegacyExpiry = try cloud.call("/api/v1/user", { headers: historicalBearer })
+    try sync(() => clock.set(expiry))
+    const atLegacyExpiry = try cloud.call("/api/v1/user", { headers: historicalBearer })
+    provide Store = cloud.store {
+      try sweepGrants()
+    }
+    const expiredLegacy = (try sql(cloud, "SELECT phase, credential_id, key_expires_at FROM device_grants WHERE key = $1", ["legacy-null-id-active"]))[0]
+    try check(() => assert.deepStrictEqual([beforeLegacyExpiry.status, atLegacyExpiry.status, ...refusal(atLegacyExpiry.body),
+      expiredLegacy?.phase, expiredLegacy?.credential_id, Number(expiredLegacy?.key_expires_at)],
+      [200, 401, "authentication_required", "credential_expired", "expired", null, expiry]))
+    }
   }))
 })
 describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/registry.md)", () => {
@@ -604,15 +736,70 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
     ))
   }), 60_000)
 
+  it.live("Connect only the verified native Google grant and retain only its granted scopes (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => scoped(effect {
+    const { cloud, google } = try nativeCloud(undefined, native)
+    const caller = try signedCaller(cloud, "managed-connect-owner")
+    const outsider = try signedCaller(cloud, "managed-connect-other")
+    const now = try Clock.currentTimeMillis
+    const session = try cloud.store.transaction((tx) => issueSession(tx, { ...caller, assurance: "SingleFactor", accountCreated: false, now }))
+    const client = try sync(() => createCloudClient({ baseUrl: cloud.url, credential: () => session.accessToken }))
+    const nativePath = "/api/v1/eliza/google/connect/native"
+    const post = (json: unknown, headers = caller.headers) => cloud.call(nativePath, { json, headers })
+    const expected = { expectedGoogleSubject: person.subject }
+    const report = (answer: { readonly status: number; readonly body: unknown }) => [answer.status, (answer.body as { readonly code?: string }).code ?? null]
+    const code = try sync(() => google.serverAuthCode(person, scopes, { identity: null }))
+    const unauthenticated = try post({ serverAuthCode: code, ...expected }, {})
+    const wrongOwner = try post({ serverAuthCode: code, ...expected, organizationId: outsider.organizationId })
+    const mismatched = try post({ serverAuthCode: try sync(() => google.serverAuthCode(person, scopes)), expectedGoogleSubject: "another-subject" })
+    const wrongAudience = try post({ serverAuthCode: try sync(() => google.serverAuthCode(person, scopes, { identity: { audience: "google-web-client" } })), ...expected })
+    const noScopes = try post({ serverAuthCode: try sync(() => google.serverAuthCode(person, [])), ...expected })
+    const browserUrl = `${cloud.fakes.url}/google/accounts?${new URLSearchParams({ client_id: "google-web-client", redirect_uri: "https://api.staging.example.com/api/v1/auth/google/callback", code_challenge: s256(challengeVerifier), state: "browser" })}`
+    const redirect = try tryPromise(() => visit(browserUrl))
+    const browserCode = try sync(() => new URL(redirect.location).searchParams.get("code"))
+    const wrongPurpose = try post({ serverAuthCode: browserCode, ...expected })
+    const untouched = try sql(cloud, "SELECT key FROM google_connections", [])
+
+    const linked = try post({ serverAuthCode: code, ...expected })
+    const receipt = linked.body as { readonly connectionId: string }
+    const replayed = try post({ serverAuthCode: code, ...expected }, outsider.headers)
+    const sameScopes = try post({ serverAuthCode: try sync(() => google.serverAuthCode(person, scopes, { refreshToken: false })) }, { authorization: `Bearer ${session.accessToken}` })
+    const stillRefreshable = try promise(() => client.googleStatus({ grantId: receipt.connectionId }))
+    const basic = scopes.slice(0, 2)
+    const narrowed = try post({ serverAuthCode: try sync(() => google.serverAuthCode(person, basic, { refreshToken: false })), ...expected })
+    const narrowStatus = try promise(() => client.googleStatus({ grantId: receipt.connectionId }))
+    const rows = try sql(cloud, "SELECT key, user_id, organization_id, subject, granted_scopes, tokens LIKE 'v1.%' AS sealed, revision FROM google_connections", [])
+    const metadata = { connected: true, connectionId: receipt.connectionId, email: person.email, displayName: person.givenName, scopes, refreshTokenIssued: true }
+    const forms = google.tokenRequests.map((form) => [form.get("client_id"), form.get("redirect_uri"), form.has("code_verifier")])
+    try check(() => assert.deepStrictEqual({
+      rejected: [report(unauthenticated), report(wrongOwner), report(mismatched), report(wrongAudience), report(noScopes), report(wrongPurpose)], untouched,
+      connected: [linked.status, linked.headers["cache-control"], linked.body], replay: report(replayed),
+      reused: [sameScopes.status, sameScopes.body, stillRefreshable.hasRefreshToken],
+      narrowed: [narrowed.status, narrowed.body, narrowStatus.hasRefreshToken, narrowStatus.grantedCapabilities],
+      id: /^[a-f0-9-]{36}$/.test(receipt.connectionId),
+      rows: rows.map((row) => [row.key, row.user_id, row.organization_id, row.subject, row.granted_scopes, row.sealed, Number(row.revision)]),
+      userInfoLookups: cloud.fakes.seen.filter(({ path }) => path === "/google/api/oauth2/v2/userinfo").length,
+      forms
+    }, {
+      rejected: [[401, null], [400, null], [400, "google_account_mismatch"], [400, "google_account_mismatch"], [400, "google_scopes_missing"], [400, "google_code_rejected"]], untouched: [],
+      connected: [200, "no-store", metadata], replay: [400, "google_code_rejected"],
+      reused: [200, { ...metadata, refreshTokenIssued: false }, true],
+      narrowed: [200, { ...metadata, scopes: basic, refreshTokenIssued: false }, false, ["google.basic_identity"]],
+      id: true, rows: [[receipt.connectionId, caller.userId, caller.organizationId, person.subject, basic, true, 3]], userInfoLookups: 1,
+      forms: Array.from({ length: 8 }, () => ["google-server-client", "", false])
+    }))
+  }), 120_000)
+
   it.live("Refuse native Google when Google is off or the registration does not enable it (spec/cloud/nativeClients/registry.md, \"Story: Tell a client exactly why it was refused\")", () => scoped(effect {
     const off = try nativeCloud(googleOff, native)
     const offAnswer = try off.cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody("missing-challenge", "x".repeat(40)) })
+    const offOwner = try signedCaller(off.cloud, "managed-native-off")
+    const offConnect = try off.cloud.call("/api/v1/eliza/google/connect/native", { headers: offOwner.headers, json: { serverAuthCode: "4/local-one-use-code" } })
     const plain = try nativeCloud(undefined, { ...native, nativeGoogle: false })
     const plainAnswer = try plain.cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody("missing-challenge", "x".repeat(40)) })
     const unknownClient = try plain.cloud.call("/api/v1/app-auth/mobile/google", { json: { ...signInBody("missing-challenge", "x".repeat(40)), clientId: "com.example.unknown" } })
     try check(() => assert.deepStrictEqual(
-      [refusal(offAnswer), refusal(plainAnswer), (unknownClient.body as { readonly error?: string }).error],
-      ["503 provider_unavailable google_not_configured", "400 invalid_client", "invalid_client"]
+      [refusal(offAnswer), refusal(offConnect), (offConnect.body as { readonly code?: string }).code, off.google.tokenRequests.length, refusal(plainAnswer), (unknownClient.body as { readonly error?: string }).error],
+      ["503 provider_unavailable google_not_configured", "503 provider_unavailable google_not_configured", "google_not_configured", 0, "400 invalid_client", "invalid_client"]
     ))
   }), 60_000)
 
@@ -635,7 +822,38 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
   }), 60_000)
 })
 
-describe.todo("WP3 Checkout and provider events (spec/cloud/billing/checkout.md, \"Story: Subscribe once, whichever screen or payer finishes it\")")
+describe("WP3 Checkout (spec/cloud/billing/checkout.md, \"Story: Subscribe once, whichever screen or payer finishes it\")", () => {
+  schema CheckoutOpened { status: "open"; commandId: string; sessionId: string; checkoutUrl: string }
+  it.live("Pay once through a shared link and confirm only as the account that started it", () => scoped(effect {
+    const stripe = try sync(() => createStripeFake())
+    const cloud = try testCloud({ stripe })
+    const owner = try signedCaller(cloud, "checkout-owner")
+    const other = try signedCaller(cloud, "checkout-other")
+    const checkout = "/api/v1/subscriptions/checkout"
+    const idempotencyKey = "shared-checkout-first"
+    const body = { planKey: "plus_monthly", idempotencyKey, presentation: "shared" }
+    const open = try cloud.call(checkout, { json: body, headers: { ...owner.headers, "idempotency-key": idempotencyKey } })
+    try check(() => assert.equal(open.status, 200, JSON.stringify(open.body)))
+    const started = try Schema.decodeUnknownEffect(CheckoutOpened)(open.body)
+    const retried = try cloud.call(checkout, { json: body, headers: { ...owner.headers, "idempotency-key": idempotencyKey } })
+    const paid = try Effect.try(() => stripe.completeSession(started.sessionId))
+    const confirm = (headers: Record<string, string>) => cloud.call(checkout + "/confirm", { json: { sessionId: started.sessionId }, headers })
+    const refusedOther = try confirm(other.headers)
+    const confirmed = try confirm(owner.headers)
+    const repeated = try confirm(owner.headers)
+    const stored = try sql(cloud, "SELECT key, status, plan_key, provider_session_id FROM checkouts WHERE organization_id = $1", [owner.organizationId])
+    try check(() => assert.deepStrictEqual({
+      paid: paid.kind, retried: [retried.status, retried.body],
+      refusedOther: refusedOther.status, confirmed: [confirmed.status, confirmed.body],
+      repeated: [repeated.status, repeated.body], rows: stored
+    }, {
+      paid: "paid", retried: [200, open.body], refusedOther: 404,
+      confirmed: [200, { status: "completed", commandId: started.commandId }],
+      repeated: [200, { status: "completed", commandId: started.commandId }],
+      rows: [{ key: started.commandId, status: "completed", plan_key: "plus_monthly", provider_session_id: started.sessionId }]
+    }))
+  }))
+})
 describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Apply each payment event once, whatever the delivery order\")", () => {
   effect function deliver(cloud: TestCloud, signed: { readonly raw: string; readonly header: string }) {
     const json = try Effect.try(() => JSON.parse(signed.raw) as unknown)
@@ -887,6 +1105,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     const first = try post("geocode", "geo-1", { query: "Brandenburger Tor" })
     const geocodesAfterFirst = maps.count("geocode")
     const repeated = try post("geocode", "geo-1", { query: "Brandenburger Tor" })
+    const repeatedGeocodes = maps.count("geocode") - geocodesAfterFirst
     const conflicting = try post("geocode", "geo-1", { query: "Alexanderplatz" })
     const unkeyed = try cloud.call("/api/v1/maps/geocode", { json: { query: "Brandenburger Tor" }, headers: caller.headers })
 
@@ -917,7 +1136,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
       {
         lost: [lost.status, errorOf(lost)],
         first: [first.status, (first.body as { readonly places: ReadonlyArray<{ readonly name: string }> }).places.length],
-        repeated: [repeated.status, repeated.body, maps.count("geocode") - geocodesAfterFirst],
+        repeated: [repeated.status, repeated.body, repeatedGeocodes],
         conflicting: [conflicting.status, errorOf(conflicting)],
         unkeyed: [unkeyed.status, errorOf(unkeyed)],
         noRoute: [noRoute.status, errorOf(noRoute)],
@@ -1256,7 +1475,165 @@ effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string
   }))
 }
 
+effect function serveOnStore(cloud: TestCloud, routes: ReadonlyArray<Route>, edit?: ProfileEdit) {
+  const raw = try sync(() => {
+    const profile = testProfile(cloud.fakes.url)
+    return edit === undefined ? profile : edit(profile)
+  })
+  const profile = try parseProfile(raw)
+  const built = try Layer.build(HttpServer.serve(respond(routes)).pipe(
+    Layer.provideMerge(listening(0, "127.0.0.1")),
+    Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer))
+  ))
+  const { address } = Context.get(built, HttpServer.HttpServer)
+  return "port" in address ? `http://127.0.0.1:${address.port}` : ""
+}
+
 describe("WP8 Managed Google: grant access (spec/cloud/services/google/connection.md)", () => {
+  it.live("See my Google connection and list only my accounts (spec/cloud/services/google/connection.md, \"Story: See my Google connection as the cloud holds it\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    const start = 1_800_000_000_000
+    try sync(() => clock.set(start))
+    provide Clock.Clock = clock.clock {
+    const google = try sync(() => googleFakeState())
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", mountGoogleToken(google)) })
+    const caller = try signedCaller(cloud, "google-status")
+    const other = try signedCaller(cloud, "google-status-other")
+    const session = try cloud.store.transaction((tx) => issueSession(tx, { ...caller, assurance: "SingleFactor", accountCreated: false, now: start }))
+    const sibling = { organizationId: caller.organizationId, userId: other.userId }
+    const path = "/api/v1/eliza/google"
+    const read = (tail: string) => cloud.call(`${path}/${tail}`, { headers: caller.headers })
+    const client = try sync(() => createCloudClient({ baseUrl: cloud.url, credential: () => session.accessToken }))
+    const clientStatus = () => promise(() => client.googleStatus())
+    const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage"), "https://www.googleapis.com/auth/contacts.readonly"]
+    const expiry = start + 1000
+    const link = (tx: Tx, owner: Owner, connectionId: string) => storeGrant(tx, {
+      connectionId, owner, subject: `subject-${connectionId}`, email: `${connectionId}@example.com`, grantedScopes: scopes,
+      tokens: { accessToken: `access-${connectionId}`, refreshToken: "", expiresAt: expiry }, now: start
+    })
+    const missing = try clientStatus()
+    const unauthorized = try cloud.call(`${path}/accounts`)
+    try cloud.inside(cloud.store.transaction(effect (tx: Tx) => {
+      try link(tx, caller, "status-live")
+      try link(tx, other, "status-foreign")
+      try link(tx, sibling, "status-sibling")
+    }))
+    const [live, accounts, foreign, sameOrg, wrongSide, unsupportedConsent] = try all([
+      clientStatus(), read("accounts?side=owner"), read("status?grantId=status-foreign"),
+      read("status?grantId=status-sibling"), read("accounts?side=agent"), read("status?purpose=personal_google_context_v1")
+    ], { concurrency: "unbounded" })
+    try sync(() => clock.set(expiry))
+    const lapsed = try clientStatus()
+
+    const sealed = try cloud.inside(sealTokens({ accessToken: "legacy-access", refreshToken: "legacy-refresh", expiresAt: expiry }))
+    for (const [key, tokens, linked] of [["verified-old", sealed, start + 100], ["unverified-old", "bad", start + 200]] as const) {
+      const legacy = { status: "Active", scopes, tokens, expiresAt: expiry, refreshingUntil: 0 }
+      try sql(cloud, `INSERT INTO google_connections (key, state, revision, organization_id, user_id, subject, email, status, tokens, granted_scopes, expires_at, linked_at, last_used_at) VALUES ($1, $2::jsonb, 1, $3, $4, $1, $5, 'Active', $6, $7::jsonb, $8, $9, $9)`, [key, JSON.stringify(legacy), caller.organizationId, caller.userId, `${key}@example.com`, tokens, JSON.stringify(scopes), expiry, linked])
+    }
+    try cloud.inside(cloud.store.transaction(effect (tx: Tx) => {
+      try link(tx, caller, "status-revoked")
+      try stepRow(tx, connectionRows, "status-revoked", { at: expiry, event: { type: "disconnect" } }, connectionColumns())
+    }))
+    const [several, named, listed] = try all([
+      read("status"), read("status?grantId=verified-old"), read("accounts?side=owner")
+    ], { concurrency: "unbounded" })
+    const unchanged = try sql(cloud, "SELECT key, revision, last_used_at FROM google_connections WHERE user_id = $1 ORDER BY key", [caller.userId])
+
+    const off = try serveOnStore(cloud, areas.flatMap((area) => area.routes), (profile) => {
+      const { google, ...staging } = profile.environments.staging
+      return { ...profile, environments: { ...profile.environments, staging: { ...staging, capabilities: staging.capabilities.filter((capability) => capability !== "managedGoogle") } } }
+    })
+    const [offStatus, offAccounts] = try promise(() => Promise.all([
+      callCloud(off, `${path}/status?grantId=verified-old`, { headers: caller.headers }),
+      callCloud(off, `${path}/accounts`, { headers: caller.headers })
+    ]))
+
+    const empty = { provider: "google", side: "owner", mode: "cloud_managed", configured: true, connected: false, reason: "disconnected", identity: null, grantedCapabilities: [], grantedScopes: [], expiresAt: null, hasRefreshToken: false, connectionId: null, linkedAt: null, lastUsedAt: null }
+    const active = { ...empty, connected: true, reason: "connected", identity: { email: "status-live@example.com" }, grantedCapabilities: ["google.basic_identity", "google.gmail.triage"], grantedScopes: scopes, expiresAt: new Date(expiry).toISOString(), connectionId: "status-live", linkedAt: new Date(start).toISOString() }
+    const legacyStatus = (connectionId: string, linked: number, connected: boolean) => ({ ...active, connectionId, identity: { id: connectionId, email: `${connectionId}@example.com`, name: null, avatarUrl: null }, connected, reason: connected ? "connected" : "needs_reauth", hasRefreshToken: connected, linkedAt: new Date(linked).toISOString(), lastUsedAt: new Date(linked).toISOString() })
+    const full = { ...active, identity: { id: "subject-status-live", email: "status-live@example.com", name: null, avatarUrl: null } }
+    const old = legacyStatus("verified-old", start + 100, true)
+    const revoked = { ...empty, connectionId: "status-revoked", identity: { id: "subject-status-revoked", email: "status-revoked@example.com", name: null, avatarUrl: null }, linkedAt: new Date(start).toISOString() }
+    try check(() => assert.deepStrictEqual({
+      missing, unauthorized: unauthorized.status, live, accounts: [accounts.status, accounts.headers["cache-control"], accounts.body],
+      denied: [errorOf(foreign), errorOf(sameOrg), errorOf(wrongSide), errorOf(unsupportedConsent)], lapsed,
+      several: [errorOf(several), (several.body as { readonly reason: string }).reason], named: [named.status, named.body], listed: [listed.status, listed.body],
+      unchanged: unchanged.map((row) => [row.key, Number(row.revision), row.last_used_at === null ? null : Number(row.last_used_at)]), refreshes: google.tokenCalls,
+      off: [offStatus.status, offStatus.body, offAccounts.status, offAccounts.body]
+    }, {
+      missing: empty, unauthorized: 401, live: active, accounts: [200, "no-store", [full]],
+      denied: [[404, "not_found"], [404, "not_found"], [400, "invalid_request"], [400, "invalid_request"]], lapsed: { ...active, connected: false, reason: "token_missing" },
+      several: [[400, "invalid_request"], "grant_required"], named: [200, old],
+      listed: [200, [legacyStatus("unverified-old", start + 200, false), old, { ...full, connected: false, reason: "token_missing" }, revoked]],
+      unchanged: [["status-live", 1, null], ["status-revoked", 2, null], ["unverified-old", 1, start + 200], ["verified-old", 1, start + 100]], refreshes: 0,
+      off: [200, { ...empty, configured: false, reason: "config_missing" }, 200, []]
+    }))
+    }
+  }), 120_000)
+
+  it.live("Disconnect only my chosen Google grant and discard a refresh that arrives afterwards (spec/cloud/services/google/connection.md, \"Story: Disconnect it\")", () => scoped(effect {
+    const google = try sync(() => googleFakeState())
+    const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
+    const refreshToken = try sync(() => seedGrant(google, { subject: "subject-racing", email: "racing@example.com", scopes }))
+    const refreshAnswered = try Deferred.make<void>()
+    const releaseRefresh = try acquireRelease(Deferred.make<void>(), (gate) => Deferred.succeed(gate, undefined))
+    const provider = try Effect.try(() => mountGoogleToken(google))
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", async (request) => {
+      const answer = await provider(request)
+      if (request.path === "/token" && new URLSearchParams(request.body).get("refresh_token") === refreshToken) {
+        await Effect.runPromise(Deferred.succeed(refreshAnswered, undefined))
+        await Effect.runPromise(Deferred.await(releaseRefresh))
+      }
+      return answer
+    }) })
+    const caller = try signedCaller(cloud, "disconnect-owner")
+    const other = try signedCaller(cloud, "disconnect-other")
+    const now = try Clock.currentTimeMillis
+    const session = try cloud.store.transaction((tx) => issueSession(tx, { ...caller, assurance: "SingleFactor", accountCreated: false, now }))
+    const client = try sync(() => createCloudClient({ baseUrl: cloud.url, credential: () => session.accessToken }))
+    try cloud.inside(linkedGrant(cloud, caller, "racing", refreshToken, scopes, now - 1_000))
+    try cloud.inside(linkedGrant(cloud, { organizationId: caller.organizationId, userId: other.userId }, "another-owner", "", scopes, now + 600_000))
+    const accessToken = "legacy-access-only"
+    const expiresAt = now + 600_000
+    const legacy = try cloud.inside(sealTokens({ accessToken, refreshToken: "", expiresAt }))
+    const state = { status: "Active", scopes, tokens: legacy, expiresAt, refreshingUntil: 0 }
+    try sql(cloud, `INSERT INTO google_connections (key, state, revision, organization_id, user_id, subject, email, status, tokens, granted_scopes, expires_at, linked_at) VALUES ('legacy', $1::jsonb, 1, $2, $3, 'legacy-subject', 'legacy@example.com', 'Active', $4, $5::jsonb, $6, $7)`, [JSON.stringify(state), caller.organizationId, caller.userId, legacy, JSON.stringify(scopes), expiresAt, now])
+
+    const root = "/api/v1/eliza/google"
+    const disconnect = (json?: unknown) => cloud.call(`${root}/disconnect`, { method: "POST", headers: caller.headers, json })
+    const revokes = () => cloud.fakes.seen.filter(({ path }) => path === "/google/revoke").map(({ body }) => new URLSearchParams(body).get("token"))
+    const unauthenticated = try cloud.call(`${root}/disconnect`, { method: "POST" })
+    const [ambiguous, foreign, wrongSide, conflict] = try all([
+      disconnect(), disconnect({ connectionId: "another-owner" }), disconnect({ side: "agent", connectionId: "racing" }),
+      disconnect({ connectionId: "legacy", grantId: "racing" })
+    ], { concurrency: "unbounded" })
+    const refusedCalls = try sync(revokes)
+    const reading = try forkChild(cloud.call(`${root}/gmail/triage?grantId=racing`, { headers: caller.headers }))
+    try Deferred.await(refreshAnswered)
+    try promise(() => client.googleDisconnect({ grantId: "racing" }))
+    try Deferred.succeed(releaseRefresh, undefined)
+    const dropped = try Fiber.join(reading)
+    const repeated = try disconnect({ side: "owner", connectionId: "racing" })
+    try sync(() => { google.switches.failNext = { status: 503, body: {} } })
+    const failedRevoke = try disconnect({ connectionId: null })
+    const clean = try sql(cloud, "SELECT key, status, tokens IS NULL AS erased, expires_at, refreshing_until, granted_scopes, revision FROM google_connections ORDER BY key", [])
+    const ended = try promise(() => client.googleStatus({ grantId: "legacy" }))
+    try check(() => assert.deepStrictEqual({
+      denied: [unauthenticated.status, errorOf(ambiguous), errorOf(foreign), errorOf(wrongSide), errorOf(conflict)],
+      ambiguousReason: (ambiguous.body as { readonly reason: string }).reason, refusedCalls,
+      dropped: errorOf(dropped), repeated: [repeated.status, repeated.body], failedRevoke: [failedRevoke.status, failedRevoke.body],
+      revokes: revokes(), providerRevoked: [...google.revoked], refreshes: google.tokenCalls,
+      clean: clean.map((row) => [row.key, row.status, row.erased, Number(row.expires_at), Number(row.refreshing_until), row.granted_scopes, Number(row.revision)]),
+      ended: [ended.connected, ended.reason, ended.expiresAt, ended.hasRefreshToken, ended.grantedScopes, ended.grantedCapabilities]
+    }, {
+      denied: [401, [400, "invalid_request"], [404, "not_found"], [400, "invalid_request"], [400, "invalid_request"]],
+      ambiguousReason: "grant_required", refusedCalls: [], dropped: [409, "google_reauth_required"],
+      repeated: [200, { ok: true }], failedRevoke: [200, { ok: true }], revokes: [refreshToken, accessToken], providerRevoked: [refreshToken], refreshes: 1,
+      clean: [["another-owner", "Active", false, expiresAt, 0, scopes, 1], ["legacy", "Revoked", true, 0, 0, [], 3], ["racing", "Revoked", true, 0, 0, [], 3]],
+      ended: [false, "disconnected", null, false, [], []]
+    }))
+  }), 120_000)
+
   it.live("Refresh a held grant once for concurrent callers and mark it Expired when Google refuses it (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => scoped(effect {
     const google = try Effect.try(() => googleFakeState())
     google.tokenDelayMs = 300
@@ -1437,7 +1814,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
   }
 
   function clientOf(baseUrl: string, credential: () => string): CloudClient {
-    return createCloudClient({ baseUrl, credential, fetch: (input, init) => fetch(input, init) })
+    return createCloudClient({ baseUrl, credential })
   }
 
   effect function failureOf(run: () => Promise<unknown>) {
@@ -1445,7 +1822,6 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
   }
 
   effect function refusingServer(cloud: TestCloud, refusals: ReadonlyArray<Refused>) {
-    const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
     let next = 0
     const models: Route = {
       method: "GET",
@@ -1457,12 +1833,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
         throw refusal
       }
     }
-    const built = try Layer.build(HttpServer.serve(respond([models])).pipe(
-      Layer.provideMerge(listening(0, "127.0.0.1")),
-      Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer))
-    ))
-    const { address } = Context.get(built, HttpServer.HttpServer)
-    return "port" in address ? `http://127.0.0.1:${address.port}` : ""
+    return try serveOnStore(cloud, [models])
   }
 
   it.live("Read every refusal as one CloudError and leave the credential to its holder (spec/cloud/client.md, \"Every refusal reads as one CloudError and none touches the credential\")", () => scoped(effect {
@@ -1471,7 +1842,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
     const live = try entitledDevice(cloud, "custody", now)
     const expiring = try entitledDevice(cloud, "expiring", now)
     const ended = try entitledDevice(cloud, "ended", now)
-    try sql(cloud, "UPDATE device_grants SET key_expires_at = $2, state = jsonb_set(state, '{keyExpiresAt}', to_jsonb($2::bigint)) WHERE credential_id = $1", ["cred-expiring", now - 1])
+    try sql(cloud, "UPDATE device_grants SET key_expires_at = $2, state = jsonb_set(state, '{phase,keyExpiresAt}', to_jsonb($2::bigint)) WHERE credential_id = $1", ["cred-expiring", now - 1])
     try cloud.store.transaction((tx) => revokeAll(tx, "user-ended", now))
     let held = unknownKey
     const read: Array<string> = []
@@ -1519,6 +1890,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
 
   it.live("Send the credential the getter holds now, with the same client (spec/cloud/client.md, \"Every call reads the credential when it is sent\")", () => scoped(effect {
     const cloud = try testCloud()
+    try operator(cloud, ["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--output-per-1k", "600"])
     const now = try Clock.currentTimeMillis
     const first = try entitledDevice(cloud, "first", now)
     const second = try entitledDevice(cloud, "second", now)
@@ -1733,10 +2105,11 @@ describe("WP10 Operator and deletion: prices (spec/cloud/operator.md)", () => {
 
 effect function entitledDevice(cloud: TestCloud, name: string, now: number) {
   const token = `eliza_mobile_${tokenDigest(name)}`
+  const grant = legacyGrant({ phase: "OldActive", client: { tag: "UnrecordedClient" }, codeExpiresAt: now - 1000, credentialTtl: 0, credentialId: `cred-${name}`, keyExpiresAt: now + 24 * 3_600_000, epoch: 0, now })
   try organization(cloud, `org-${name}`)
   try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [`user-${name}`, `org-${name}`, `${name}@example.com`, now])
-  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'test-client', 'active', $3, $4, $5, $6, $5, $5)", [
-    `grant-${name}`, `user-${name}`, `cred-${name}`, tokenDigest(token), now - 1000, now + 24 * 3_600_000
+  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, $7::jsonb, 1, $2, 'test-client', 'active', $3, $4, $5, $6, $5, $5)", [
+    `grant-${name}`, `user-${name}`, `cred-${name}`, tokenDigest(token), now - 1000, now + 24 * 3_600_000, JSON.stringify(grant)
   ])
   return token
 }

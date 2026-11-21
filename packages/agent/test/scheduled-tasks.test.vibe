@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { startAgent } from "../src/host/process.vibe"
-import { scheduledTasksModuleFactory, scheduledTasksModuleName } from "../src/schedule/scheduled-task-routes.vibe"
+import { scheduledTasksModuleName } from "../src/schedule/scheduled-task-routes.vibe"
 import { host, scratch } from "./support/kernel.vibe"
 import { scheduledProductPlugin } from "./support/product-plugin/index.ts"
 import { launchDocument, launchFrame, type Scratch } from "./support/scratch.ts"
@@ -245,7 +245,6 @@ effect function launched(state: Scratch, socketName: string) {
     startAgent({
       ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket },
       bundled: new Map([[fixture, scheduledProductPlugin]]),
-      modules: new Map([[scheduledTasksModuleName, scheduledTasksModuleFactory]]),
     }),
     (running) => orDie(host("retire agent", () => running.stop())),
   )

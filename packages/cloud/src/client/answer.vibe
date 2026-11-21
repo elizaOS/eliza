@@ -15,19 +15,23 @@ function unreadable(issue: unknown): CloudError {
   return new CloudError({ failure: { tag: "CloudProviderIssue" }, cause: issue })
 }
 
-export async function answerOf<A>(answer: CloudAnswer, schema: Schema.Codec<A>): Promise<A> {
+export async function bodyOf(answer: CloudAnswer): Promise<unknown> {
   let text: string
   try {
     text = await answer.text()
   } catch (cause) {
     throw networkError(cause)
   }
-  let body: unknown
   try {
-    body = JSON.parse(text)
+    const body: unknown = JSON.parse(text)
+    return body
   } catch (cause) {
     throw unreadable(cause)
   }
+}
+
+export async function answerOf<A>(answer: CloudAnswer, schema: Schema.Codec<A>): Promise<A> {
+  const body = await bodyOf(answer)
   const read = Schema.decodeUnknownExit(schema)(body)
   if (read._tag === "Failure") throw unreadable(read.cause)
   return read.value

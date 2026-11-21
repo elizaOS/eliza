@@ -96,7 +96,10 @@ pure def lawNoCapabilityNeedsManagedGoogle(setup: CloudSetup, wanted: CloudCapab
 `Tracestate`; a route's `headers` names the others it admits:
 `Idempotency-Key` on subscription checkout, redeem, every metered maps
 operation and calendar create, `If-Match` on calendar change and delete. The
-auth classes are those of the cloud's request authentication. A sign-in
+auth classes are those of the cloud's request authentication. Enrollment
+and confirmation use a signed session. Their handlers apply the
+[second-factor policy](./identity/secondFactor.md) for a fresh first setup
+or a recent step-up for later changes. A sign-in
 route marked `Public` carries its proof in the body (code, verifier,
 challenge or refresh token); the speech socket carries the session token in
 its `hello`. Routes the cloud calls itself, provider callbacks, the payment
@@ -128,10 +131,10 @@ pure val signInRoutes: List[DeviceRoute] = List(
   route(Post, api(List("auth", "logout")), Session),
   route(Post, api(List("auth", "mfa", "step-up")), Session),
   route(Get, api(List("auth", "mfa")), Session),
-  route(Post, api(List("auth", "mfa", "totp", "enroll")), StepUp),
-  route(Post, api(List("auth", "mfa", "totp", "confirm")), StepUp),
-  route(Post, api(List("auth", "mfa", "sms", "enroll")), StepUp),
-  route(Post, api(List("auth", "mfa", "sms", "confirm")), StepUp),
+  route(Post, api(List("auth", "mfa", "totp", "enroll")), Session),
+  route(Post, api(List("auth", "mfa", "totp", "confirm")), Session),
+  route(Post, api(List("auth", "mfa", "sms", "enroll")), Session),
+  route(Post, api(List("auth", "mfa", "sms", "confirm")), Session),
   route(Delete, apiWith(List("auth", "mfa"), List(Param({ name: "factorId" }))), StepUp),
   route(Get, api(List("user", "methods")), Session),
   route(Post, api(List("user", "methods", "phone", "code", "send")), Session),

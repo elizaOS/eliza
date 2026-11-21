@@ -48,7 +48,7 @@ const decodeKey = Schema.decodeUnknownOption(IdempotencyKey)
 
 function credentialOf(caller: Signed): string {
   switch (caller.kind) {
-    case "deviceKey": return `key:${caller.credentialId}`
+    case "deviceKey": return `key:${caller.credentialScope}`
     case "session": return `session:${caller.sessionKey}`
     default: {
       const _exhaustive: never = caller

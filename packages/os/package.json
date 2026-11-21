@@ -13,6 +13,10 @@
   },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
+  "imports": {
+    "#chromium-component": "./browser/chromium/component/chromium-component.mjs",
+    "#chromium-android-host": "./browser/chromium/component/android-host.mjs"
+  },
   "files": [
     "dist",
     "android",
@@ -93,6 +97,7 @@
     "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
     "esbuild": "catalog:",
+    "jsonc-parser": "3.3.1",
     "punycode": "catalog:",
     "tldts": "catalog:",
     "vibelang-runtime": "0.0.13"
@@ -103,6 +108,7 @@
   "devDependencies": {
     "@capacitor/core": "8.5.2",
     "@effect/vitest": "4.1.1",
+    "@elizaos/agent": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vibelang": "0.0.13",

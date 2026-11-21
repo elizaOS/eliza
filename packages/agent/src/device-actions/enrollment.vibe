@@ -20,7 +20,7 @@ import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
 import type { LocalRoute, RouteInput } from "../access/routes.vibe"
 import type { ModuleContext } from "../host/module.vibe"
 import { readViewProfileChange, supportedViews, viewProfileWire } from "./capabilities.vibe"
-import { changeEnrollment, changeViewProfile, enrollment, viewProfile, type DeviceStoreUnavailable, type EnrollmentEvent } from "./store.vibe"
+import { changeEnrollment, changeViewProfile, enrollment, viewProfile, DeviceStoreUnavailable, type EnrollmentEvent } from "./store.vibe"
 import { hashOf, sameHash } from node
 
 export const deviceIdHeader = "x-eliza-device-id"
@@ -78,10 +78,10 @@ export function deviceEnrollment(context: Pick<ModuleContext, "runtime" | "launc
   }
 
   effect function changed(event: EnrollmentEvent, by: SessionOwner): (DeviceRequest | undefined)!DeviceStoreUnavailable {
-    return try lock.withPermits(1)(changeEnrollment(adapter, event, by) catch effect (error) => match (error) {
+    return lock.withPermits(1)(changeEnrollment(adapter, event, by)) catch effect (error) => match (error) {
       when Rejected: undefined;
       default: throw error;
-    })
+    }
   }
 
   effect function register(input: RouteInput): Answer!DeviceStoreUnavailable {
@@ -115,7 +115,11 @@ export function deviceEnrollment(context: Pick<ModuleContext, "runtime" | "launc
       case "ContextRefused": return failure(401, "device_unauthorized")
       case "ContextServed": {
         const identity = { agentId: reply.agentId, enrollmentId: enrollmentId(state), installationId: reply.installationId, subjectUserId: reply.subjectUserId }
-        return { status: 200, body: { ...identity, scope: hashOf(JSON.stringify(identity)) } }
+        const scope = try Effect.try({
+          try: () => hashOf(JSON.stringify(identity)),
+          catch: (cause) => new DeviceStoreUnavailable({ step: "device context", cause })
+        })
+        return { status: 200, body: { ...identity, scope } }
       }
     }
   }

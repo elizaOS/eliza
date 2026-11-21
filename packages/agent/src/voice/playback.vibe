@@ -149,15 +149,13 @@ function sentenceEnd(text: string, at: number): boolean {
 }
 
 function firstSegment(value: string): readonly [string, string] {
-  const urls: string[] = []
-  const sheltered = value.replace(/https?:\/\/\S+/g, (url) => `__URL${urls.push(url) - 1}__`)
-  const restore = (text: string) => text.replace(/__URL(\d+)__/g, (whole, index: string) => urls[Number(index)] ?? whole)
+  const sheltered = value.replace(/https?:\/\/\S+/g, (url) => url.replace(/./g, "x"))
   for (const match of sheltered.matchAll(boundary)) {
     const punctuation = match[1] ?? ""
     if (punctuation.startsWith(".") && (punctuation.length >= 3 || !sentenceEnd(sheltered, match.index))) continue
     const end = match.index + match[0].length
-    const first = restore(sheltered.slice(0, end).trim())
-    if (first !== "") return [first, restore(sheltered.slice(end).trim())]
+    const first = value.slice(0, end).trim()
+    if (first !== "") return [first, value.slice(end).trim()]
   }
   const cut = value.length >= longSegmentUnits ? value.slice(0, longSegmentUnits).lastIndexOf(" ") : -1
   return cut > shortestCutUnits ? [value.slice(0, cut).trim(), value.slice(cut).trim()] : [value, ""]
@@ -172,6 +170,22 @@ export function splitSpeechSegments(text: string): string[] {
     rest = remainder
   }
   return segments
+}
+
+export interface SpeechSegmentSource {
+  readonly text: string
+  readonly sourceEnd: number
+}
+
+export function speechSegmentsWithSource(source: string): SpeechSegmentSource[] {
+  let sourceEnd = 0
+  return splitSpeechSegments(source).map((text) => {
+    for (const word of text.split(" ")) {
+      while (/\s/u.test(source.charAt(sourceEnd))) sourceEnd += 1
+      sourceEnd += word.length
+    }
+    return { text, sourceEnd }
+  })
 }
 
 function safely(close: () => void): void {

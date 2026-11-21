@@ -1,0 +1,119 @@
+// spec/os/appUpdate/admission.md, "Publisher role floors only ratchet"
+import type { RoleVersions } from "../../gen/os__appUpdate__admission.effect.vibe"
+
+module node {
+  import { closeSync, fsyncSync, linkSync, lstatSync, mkdtempSync, openSync, rmSync } from "node:fs"
+  import { dirname, join, resolve } from "node:path"
+  import { DatabaseSync } from "node:sqlite"
+  import { Schema } from "effect"
+  import { advancePublisherFloors, type RoleVersions } from "../../gen/os__appUpdate__admission.effect.vibe"
+
+  export const PublisherInteger = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }))
+  export const RoleVersionsSchema = Schema.Struct({
+    root: PublisherInteger,
+    timestamp: PublisherInteger,
+    snapshot: PublisherInteger,
+    targets: PublisherInteger,
+    stable: PublisherInteger,
+    beta: PublisherInteger
+  })
+  const floorsOf = Schema.decodeUnknownSync(RoleVersionsSchema, { onExcessProperty: "error" })
+  const qualifiedTime = Schema.decodeUnknownSync(PublisherInteger)
+
+  export interface PublisherPolicy {
+    readonly trustedUpperMs: number
+    readonly minimumVersions: Readonly<RoleVersions>
+  }
+
+  function inspect(db: DatabaseSync): RoleVersions {
+    if (db.prepare("PRAGMA user_version").get()?.user_version !== 1) throw new Error("Unsupported publisher policy schema")
+    const rows = db.prepare("SELECT role, version FROM floors").all()
+    return floorsOf(Object.fromEntries(rows.map(({ role, version }) => [String(role), version])))
+  }
+
+  function withDatabase<A>(file: string, readOnly: boolean, run: (db: DatabaseSync) => A): A {
+    if (!lstatSync(file).isFile()) throw new Error("Publisher policy must be an existing regular file")
+    const db = new DatabaseSync(file, { readOnly })
+    try {
+      db.exec("PRAGMA busy_timeout=10000")
+      if (!readOnly) db.exec("PRAGMA synchronous=FULL; PRAGMA fullfsync=ON")
+      return run(db)
+    } finally {
+      db.close()
+    }
+  }
+
+  /** @throws {unknown} */
+  export function initializePolicyFile(file: string, input: RoleVersions): void {
+    const floors = floorsOf(input)
+    const target = resolve(file)
+    const parent = dirname(target)
+    const staged = mkdtempSync(join(parent, ".publisher-policy-"))
+    try {
+      const data = join(staged, "policy")
+      closeSync(openSync(data, "wx", 0o600))
+      withDatabase(data, false, (db) => {
+        db.exec("BEGIN IMMEDIATE; CREATE TABLE floors (role TEXT PRIMARY KEY, version INTEGER NOT NULL CHECK(version > 0)); PRAGMA user_version=1")
+        const insert = db.prepare("INSERT INTO floors VALUES (?, ?)")
+        for (const [role, version] of Object.entries(floors)) insert.run(role, version)
+        db.exec("COMMIT")
+      })
+      linkSync(data, target)
+      const directory = openSync(parent, "r")
+      try {
+        fsyncSync(directory)
+      } finally {
+        closeSync(directory)
+      }
+    } finally {
+      rmSync(staged, { recursive: true, force: true })
+    }
+  }
+
+  /** @throws {unknown} */
+  export function readPolicyFile(file: string, upper: number): PublisherPolicy {
+    const trustedUpperMs = qualifiedTime(upper)
+    const minimumVersions = withDatabase(file, true, (db) => {
+      db.exec("BEGIN")
+      const floors = inspect(db)
+      db.exec("COMMIT")
+      return floors
+    })
+    return { trustedUpperMs, minimumVersions }
+  }
+
+  /** @throws {unknown} */
+  export function advancePolicyFile(file: string, input: RoleVersions): RoleVersions {
+    const versions = floorsOf(input)
+    return withDatabase(file, false, (db) => {
+      db.exec("BEGIN IMMEDIATE")
+      const result = advancePublisherFloors(inspect(db), versions)
+      if (result.tag === "FloorsRefused") throw new Error("Concurrent publisher role rollback")
+      const update = db.prepare("UPDATE floors SET version = ? WHERE role = ?")
+      for (const [role, version] of Object.entries(result.floors)) update.run(version, role)
+      db.exec("COMMIT")
+      return result.floors
+    })
+  }
+}
+
+import { PublisherInteger, RoleVersionsSchema, advancePolicyFile, initializePolicyFile, readPolicyFile, type PublisherPolicy } from node
+export { PublisherInteger, RoleVersionsSchema, type PublisherPolicy }
+
+export error PublisherPolicyFailed { cause: unknown }
+
+function publisherPolicyFailure(cause: unknown): PublisherPolicyFailed {
+  return new PublisherPolicyFailed({ cause })
+}
+
+export effect function initializePublisherPolicy(file: string, versions: Readonly<RoleVersions>): void!PublisherPolicyFailed {
+  return try Effect.try({ try: () => initializePolicyFile(file, versions), catch: publisherPolicyFailure })
+}
+
+export effect function readPublisherPolicy(file: string, trustedUpperMs: number): PublisherPolicy!PublisherPolicyFailed {
+  return try Effect.try({ try: () => readPolicyFile(file, trustedUpperMs), catch: publisherPolicyFailure })
+}
+
+export effect function advancePublisherPolicy(file: string, versions: Readonly<RoleVersions>): RoleVersions!PublisherPolicyFailed {
+  return try Effect.try({ try: () => advancePolicyFile(file, versions), catch: publisherPolicyFailure })
+}

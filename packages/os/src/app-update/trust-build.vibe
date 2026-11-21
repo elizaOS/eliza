@@ -1,0 +1,83 @@
+// spec/os/appUpdate/admission.md, "Story: Install an app update only when every authority allows it"
+module node {
+  import { findPackageJSON } from "node:module"
+  import { pathToFileURL } from "node:url"
+
+  export type TrustOperation = "composeTrustSource" | "buildAndroidTrust"
+
+  const scripts: Record<TrustOperation, string> = {
+    composeTrustSource: "compose-source.mjs",
+    buildAndroidTrust: "build-android.mjs"
+  }
+
+  /** @throws {unknown} */
+  export async function runTrustScript(moduleUrl: string, operation: TrustOperation, options: unknown): Promise<unknown> {
+    const owner = findPackageJSON("@elizaos/os", moduleUrl)
+    if (owner === undefined) throw new Error("The OS package manifest could not be located")
+    const script = new URL(`./native/ota-trust/scripts/${scripts[operation]}`, pathToFileURL(owner))
+    const loaded: unknown = await import(script.href)
+    const run = typeof loaded === "object" && loaded !== null && operation in loaded
+      ? Reflect.get(loaded, operation)
+      : undefined
+    if (typeof run !== "function") throw new Error(`The OS native package does not export ${operation}`)
+    const result: unknown = Reflect.apply(run, undefined, [options])
+    return result
+  }
+}
+import { runTrustScript, type TrustOperation } from node
+
+export interface TrustHostPolicy {
+  readonly schema: 2
+  readonly product: string
+  readonly package: string
+  readonly cohortDomain: string
+  readonly runtimeInventoryHeader: string
+  readonly runtimeExcludedAgentDirectories: ReadonlyArray<string>
+}
+
+export interface ComposeTrustOptions {
+  readonly sharedSource: string
+  readonly hostPolicy: TrustHostPolicy
+  readonly testDirectory?: string
+  readonly cacheDirectory: string
+}
+
+schema ComposedTrustSource {
+  source: string
+  ldflags: string
+}
+
+export interface BuildAndroidTrustOptions {
+  readonly source: string
+  readonly output: string
+  readonly ldflags: string
+  readonly toolchain: {
+    readonly go: string
+    readonly ndk: string
+    readonly ndkRevision?: string
+    readonly target: string
+    readonly androidApi: number
+    readonly javaPackage: string
+  }
+  readonly env?: Readonly<Record<string, string | undefined>>
+}
+
+export error TrustBuildFailed { operation: TrustOperation; cause: unknown }
+
+effect function run<A>(operation: TrustOperation, options: unknown, output: Schema.ConstraintDecoder<A>): A!TrustBuildFailed {
+  const result = try tryPromise({
+    try: () => runTrustScript(import.meta.url, operation, options),
+    catch: (cause) => new TrustBuildFailed({ operation, cause })
+  })
+  return try mapError(Schema.decodeUnknownEffect(output)(result), (cause) => new TrustBuildFailed({ operation, cause }))
+}
+
+export effect function composeTrustSource(options: ComposeTrustOptions): ComposedTrustSource!TrustBuildFailed {
+  const hostPolicy = { ...options.hostPolicy, runtimeExcludedAgentDirectories: [...options.hostPolicy.runtimeExcludedAgentDirectories] }
+  return try run("composeTrustSource", { ...options, hostPolicy }, ComposedTrustSource)
+}
+
+export effect function buildAndroidTrust(options: BuildAndroidTrustOptions): string!TrustBuildFailed {
+  const env = options.env === undefined ? undefined : { ...options.env }
+  return try run("buildAndroidTrust", { ...options, toolchain: { ...options.toolchain }, env }, Schema.String)
+}

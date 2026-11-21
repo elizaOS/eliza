@@ -1,8 +1,8 @@
 // spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"
 import type { GenerateTextParams, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
-import { outcomeOf, type ModelHandler } from "../../gen/agent__models__binding.effect.vibe"
-import type { BoundModels } from "./binding.vibe"
+import { failureOf, outcomeOf, type ModelHandler } from "../../gen/agent__models__binding.effect.vibe"
+import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
 import { readCloudError, type CloudFailure } from "./cloud-error.vibe"
 
 export type ChatHandler = Exclude<ModelHandler, "TextEmbedding">
@@ -19,7 +19,7 @@ export interface Sink {
   readonly onStreamChunk?: StreamChunkCallback
 }
 
-export error ModelRefusal { message: string; code: string | undefined; status: number | undefined }
+export error ModelRefusal { message: string; code: string | undefined; status: number | undefined; failureKind: FailureKind }
 
 export error Refused { cloud: CloudFailure }
 
@@ -111,18 +111,20 @@ module edge {
 import { run } from edge
 
 function refusalOf(cloud: CloudFailure): ModelRefusal {
+  const failureKind = failureKindName(failureOf(cloud, 0))
+  const refused = (message: string, status?: number, code?: string) => new ModelRefusal({ message, code, status, failureKind })
   const outcome = outcomeOf(cloud)
   switch (outcome) {
-    case "RefusedConnection": return new ModelRefusal({ message: "The model connection failed", code: "ECONNRESET", status: undefined })
-    case "RetryEnvelope": return new ModelRefusal({ message: "The model service refused the call", code: undefined, status: 503 })
-    case "ExhaustedBudget": return new ModelRefusal({ message: "The model call limit was reached", code: "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", status: 429 })
-    case "FundingDenied": return new ModelRefusal({ message: "The model account has no funds", code: "MODEL_FUNDING_AUTHORITY_FAILED", status: 402 })
-    case "BadRequest": return new ModelRefusal({ message: "The model service rejected the request", code: undefined, status: 400 })
+    case "RefusedConnection": return refused("The model connection failed", undefined, "ECONNRESET")
+    case "RetryEnvelope": return refused("The model service refused the call", 503)
+    case "ExhaustedBudget": return refused("The model call limit was reached", 429, "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED")
+    case "FundingDenied": return refused("The model account has no funds", 402, "MODEL_FUNDING_AUTHORITY_FAILED")
+    case "BadRequest": return refused("The model service rejected the request", 400)
     case "ProcessingDenied":
     case "Answer":
     case "ProviderAbort":
     case "CallerAbort":
-      return new ModelRefusal({ message: "The model account refused the call", code: undefined, status: cloud.tag === "CloudCredentialInvalid" ? 401 : 403 })
+      return refused("The model account refused the call", cloud.tag === "CloudCredentialInvalid" ? 401 : 403)
   }
 }
 

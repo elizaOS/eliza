@@ -76,6 +76,18 @@ export interface StripeInvoicesFake {
 
 const pageSize = 10;
 
+function invoiceWire(invoice: FakeInvoice) {
+  return {
+    ...invoice,
+    lines: {
+      object: "list",
+      url: `/v1/invoices/${invoice.id}/lines`,
+      data: invoice.lines.slice(0, pageSize),
+      has_more: invoice.lines.length > pageSize,
+    },
+  };
+}
+
 function refuse(status: number, message: string, code?: string): FakeAnswer {
   return { status, body: { error: { type: "invalid_request_error", message, ...(code === undefined ? {} : { code }) } } };
 }
@@ -150,7 +162,8 @@ export function createStripeInvoicesFake(options: { readonly livemode?: boolean 
     const configuration = /^\/v1\/billing_portal\/configurations\/([^/]+)$/.exec(request.path);
     if (request.method === "GET" && request.path === "/v1/invoices") {
       const customer = request.query.get("customer");
-      return page(invoices.filter((entry) => customer === null || entry.customer === customer).reverse(), request.query, request.path);
+      const listed = invoices.filter((entry) => customer === null || entry.customer === customer).reverse();
+      return page(listed.map(invoiceWire), request.query, request.path);
     }
     if (request.method === "GET" && invoiceLines !== null) {
       const found = invoices.find((entry) => entry.id === invoiceLines[1]);
@@ -159,7 +172,7 @@ export function createStripeInvoicesFake(options: { readonly livemode?: boolean 
     if (request.method === "GET" && invoice !== null) {
       const found = invoices.find((entry) => entry.id === invoice[1]);
       if (found === undefined) return refuse(404, `No such invoice: '${invoice[1]}'`, "resource_missing");
-      return { status: 200, body: { ...found, lines: { object: "list", url: `/v1/invoices/${found.id}/lines`, data: found.lines.slice(0, pageSize), has_more: found.lines.length > pageSize } } };
+      return { status: 200, body: invoiceWire(found) };
     }
     if (request.method === "GET" && request.path === "/v1/billing_portal/configurations") {
       const active = request.query.get("active");

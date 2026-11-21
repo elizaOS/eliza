@@ -84,7 +84,7 @@ const kept = {
   admission: Schema.optionalKey(Schema.Array(Step)),
 }
 
-const ProfileTwo = Schema.Struct({
+const ProfileTwoSchema = Schema.Struct({
   ...kept,
   schema: Schema.Literal(2),
   companion: Schema.optionalKey(Schema.Unknown),
@@ -97,7 +97,7 @@ const ProfileTwo = Schema.Struct({
   })),
 })
 
-const ProfileOne = Schema.Struct({
+const ProfileOneSchema = Schema.Struct({
   ...kept,
   schema: Schema.Literal(1),
   modules: Schema.Array(Schema.Struct({ name: Schema.String, source: Ref, appDependency: Schema.optionalKey(Schema.Boolean), relocateBuild: Schema.optionalKey(Schema.Boolean) })),
@@ -119,11 +119,11 @@ const ProfileOne = Schema.Struct({
 
 const Identity = Schema.Struct({ appId: Schema.String, appName: Schema.String, version: Schema.String, versionCode: Schema.Number })
 
-type ProfileTwo = typeof ProfileTwo.Type
-type ProfileOne = typeof ProfileOne.Type
+type ProfileTwo = typeof ProfileTwoSchema.Type
+type ProfileOne = typeof ProfileOneSchema.Type
 type RawField = { readonly name: string; readonly type: string; readonly value: unknown }
 
-export type OsModuleName = "agent-service" | "runtime-files" | "sign-in" | "secure-store" | "system" | "camera" | "browser-surface" | "calendar" | "contacts" | "reminders"
+export type OsModuleName = "agent-service" | "runtime-files" | "sign-in" | "cloud-auth" | "secure-store" | "system" | "camera" | "browser-surface" | "calendar" | "contacts" | "reminders"
   | "action-journal" | "notifications" | "messages" | "phone" | "passwords" | "media" | "filesystem" | "location" | "wifi" | "voice-io" | "app-update"
 export type SourceKind = "java" | "kotlin" | "assets" | "res" | "jniLibs"
 export type HostRootName = "consumer" | "dependencies"
@@ -435,12 +435,16 @@ effect function readSchemaOne(one: ProfileOne) {
   for (const module of one.modules) {
     if (module.source.root === UPSTREAM) try selectUpstream(selections, module.source.path)
   }
-  const sourceSets: Record<string, Record<string, Ref[]>> = {}
+  const sourceSets = new Map<string, Map<string, Ref[]>>()
   for (const [sourceSet, kinds] of Object.entries(one.sourceSets ?? {})) {
     for (const [kind, refs] of Object.entries(kinds)) {
       for (const ref of refs) {
         if (ref.root === UPSTREAM) try selectUpstream(selections, ref.path)
-        else (sourceSets[sourceSet] ??= {})[kind] = [...(sourceSets[sourceSet]?.[kind] ?? []), ref]
+        else {
+          const selected = sourceSets.get(sourceSet) ?? new Map<string, Ref[]>()
+          selected.set(kind, [...(selected.get(kind) ?? []), ref])
+          sourceSets.set(sourceSet, selected)
+        }
       }
     }
   }
@@ -471,7 +475,7 @@ effect function readSchemaOne(one: ProfileOne) {
     ...(one.androidResources === undefined ? {} : { androidResources: one.androidResources }),
     ...(one.assetFiles === undefined ? {} : { assetFiles: one.assetFiles }),
     ...(one.appScripts === undefined ? {} : { appScripts: one.appScripts }),
-    sourceSets,
+    sourceSets: Object.fromEntries([...sourceSets].map(([name, kinds]) => [name, Object.fromEntries(kinds)])),
     admission: [
       ...(one.settingsAdmission ?? []).map((step, index) => ({ name: `settingsAdmission${index + 1}`, ...step })),
       ...(one.admission ?? []),
@@ -501,8 +505,8 @@ effect function readSchemaOne(one: ProfileOne) {
 effect function decodeProfile(raw: unknown) {
   if (!isRecord(raw) || typeof raw.schema !== "number") throw refused("ProfileMalformed", "the profile is not an object with a numeric schema")
   const malformed = (issue: { readonly message: string }) => refused("ProfileMalformed", issue.message)
-  if (raw.schema === 2) return try mapError(Schema.decodeUnknownEffect(ProfileTwo)(raw, { onExcessProperty: "error" }), malformed)
-  if (raw.schema === 1) return try readSchemaOne(try mapError(Schema.decodeUnknownEffect(ProfileOne)(raw, { onExcessProperty: "error" }), malformed))
+  if (raw.schema === 2) return try mapError(Schema.decodeUnknownEffect(ProfileTwoSchema)(raw, { onExcessProperty: "error" }), malformed)
+  if (raw.schema === 1) return try readSchemaOne(try mapError(Schema.decodeUnknownEffect(ProfileOneSchema)(raw, { onExcessProperty: "error" }), malformed))
   throw refused("SchemaUnsupported", `schema ${raw.schema}`)
 }
 

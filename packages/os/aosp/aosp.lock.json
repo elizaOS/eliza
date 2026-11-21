@@ -21,7 +21,8 @@
       "sourceInventory": {
         "path": "sources/pixel10a-stallion.json",
         "sha256": "b7041cce4faf186f5c6e410694b52d8ee4ef2edab8edbef58119e943089d2ce3"
-      }
+      },
+      "targets": ["stallion"]
     },
     "cuttlefish": {
       "kind": "virtual",
@@ -43,7 +44,7 @@
         "device/google/cuttlefish/vsoc_arm64/phone/aosp_cf.mk",
         "device/google/cuttlefish/vsoc_x86_64_only/phone/aosp_cf.mk"
       ],
-      "supportedProducts": ["eliza_cf_arm64_phone", "eliza_cf_x86_64_phone"]
+      "targets": ["cf_arm64_phone", "cf_x86_64_phone"]
     }
   }
 }

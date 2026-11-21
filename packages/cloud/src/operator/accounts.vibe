@@ -3,10 +3,10 @@ import type { DeviceRow } from "../../gen/cloud__operator.effect.vibe"
 import { addCreditsIn } from "../billing/funds.vibe"
 import { revokeAllSessions } from "../identity/sessions.vibe"
 import { revokeAll } from "../native-clients/device-keys.vibe"
+import { inspectKey } from "../native-clients/grants.vibe"
 import { toInt, toText, type Tx } from "../store/store.vibe"
 import type { AccountNamed, OperatorCommandHandler, OperatorFlags } from "./admin.vibe"
 
-const liveKeys = "FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.user_id = $1 AND g.phase = 'active' AND g.key_expires_at > $2 AND g.issued_at >= a.devices_revoked_before"
 const wholeMicros = /^\d{1,16}$/
 
 effect function organizationNamed(flags: OperatorFlags) {
@@ -30,8 +30,15 @@ effect function addCreditsFromFlags(tx: Tx, flags: OperatorFlags, now: number) {
 }
 
 effect function listDevices(tx: Tx, flags: OperatorFlags, now: number) {
-  const rows = try tx.query(`SELECT COALESCE(g.device_name, '') AS device_name, g.issued_at, g.key_expires_at ${liveKeys} ORDER BY g.issued_at, g.key`, [try flags.required("user"), now])
-  return rows.map((row) => JSON.stringify({ deviceName: toText(row.device_name) ?? "", createdAt: toInt(row.issued_at), expiresAt: toInt(row.key_expires_at) } satisfies DeviceRow))
+  const rows = try tx.query("SELECT COALESCE(g.device_name, '') AS device_name, g.state, g.phase, g.key_expires_at, g.device_epoch AS grant_epoch, g.issued_at, a.device_epoch AS account_epoch FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.user_id = $1 ORDER BY g.issued_at, g.key", [try flags.required("user")])
+  const listed: string[] = []
+  for (const row of rows) {
+    const key = inspectKey(row, now) catch () => undefined
+    if (key?.reason === "NoReason") {
+      listed.push(JSON.stringify({ deviceName: toText(row.device_name) ?? "", createdAt: toInt(row.issued_at), expiresAt: key.expiresAt } satisfies DeviceRow))
+    }
+  }
+  return listed
 }
 
 effect function revokeDevices(tx: Tx, flags: OperatorFlags, now: number) {

@@ -6,9 +6,9 @@ module node {
   import { historyRoutes } from "./history.vibe"
   import { conversationRoutes as turnRoutes } from "./turns.vibe"
 
-  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string): LocalRoute[] {
+  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string, publish: (payload: unknown) => void): LocalRoute[] {
     const store = conversationStore(runtime, owner)
-    return [...conversationRecordRoutes(store), ...historyRoutes(runtime, store), ...turnRoutes(runtime, owner, agentName)]
+    return [...conversationRecordRoutes(store), ...historyRoutes(runtime, store), ...turnRoutes(runtime, owner, agentName, publish)]
   }
 }
 export { conversationRoutes } from node

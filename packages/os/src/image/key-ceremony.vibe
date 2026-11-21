@@ -1,0 +1,300 @@
+// spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/image/signing.md, "Keys are generated and decrypted only into a new owner-only directory outside every work tree, under an owner-only passphrase of at least 20 characters"; spec/os/image/signing.md, "A key is decrypted only when the fingerprints list it and its private half and public identity match what the ceremony recorded"
+import { keyDecryptionAdmitted, keyOutputAdmitted, rsaKeyBits } from "../../gen/os__image__signing.effect.vibe"
+import { ChildProcess } from "effect/process"
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+import { readArtifact } from "./artifact.vibe"
+import { encodeAvbPublicKey, keyName, loadKeyManifest, readSigningJson, SigningRefused } from "./signing-keys.vibe"
+
+module node {
+  import { Buffer } from "node:buffer"
+  import { X509Certificate, createHash, createPrivateKey, createPublicKey, generateKeyPair, type KeyObject } from "node:crypto"
+  import { constants } from "node:fs"
+  import { open } from "node:fs/promises"
+
+  interface Pair {
+    readonly publicKey: KeyObject
+    readonly privateKey: KeyObject
+  }
+
+  export async function ownerPassphrase(file: string): Promise<string> {
+    const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW)
+    try {
+      const before = await handle.stat({ bigint: true })
+      if (!before.isFile() || before.uid !== BigInt(process.getuid?.() ?? -1) ||
+          (before.mode & 0o077n) !== 0n || before.size > 4096n) throw new Error("Passphrase must be a bounded owner-only regular file")
+      const bytes = Buffer.alloc(Number(before.size))
+      const count = await handle.read(bytes, 0, bytes.length, 0)
+      const after = await handle.stat({ bigint: true })
+      if (count.bytesRead !== bytes.length || before.size !== after.size || before.mode !== after.mode ||
+          before.ctimeNs !== after.ctimeNs || before.mtimeNs !== after.mtimeNs) throw new Error("Passphrase file changed while reading it")
+      const passphrase = new TextDecoder("utf-8", { fatal: true }).decode(bytes).split(/\r?\n/)[0] ?? ""
+      bytes.fill(0)
+      if (passphrase.includes("\0")) throw new Error("Passphrase contains an invalid character")
+      return passphrase
+    } finally {
+      await handle.close()
+    }
+  }
+
+  export async function makeKeyPair(kind: "rsa" | "ed25519", bits: number): Promise<Pair> {
+    return new Promise((resolve, reject) => {
+      const done = (failure: Error | null, publicKey: KeyObject, privateKey: KeyObject) => {
+        if (failure !== null) reject(failure)
+        else resolve({ publicKey, privateKey })
+      }
+      if (kind === "ed25519") generateKeyPair("ed25519", done)
+      else generateKeyPair("rsa", { modulusLength: bits, publicExponent: 65537 }, done)
+    })
+  }
+
+  export function privatePem(key: KeyObject): Uint8Array {
+    return Buffer.from(key.export({ format: "pem", type: "pkcs8" }))
+  }
+
+  export function certificateInfo(bytes: Uint8Array, key: KeyObject) {
+    const certificate = new X509Certificate(Buffer.from(bytes))
+    return { matches: certificate.publicKey.equals(key), sha256: certificate.fingerprint256.replaceAll(":", "").toLowerCase(), subject: certificate.subject.replaceAll("\n", ", ") }
+  }
+
+  export function digest(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  export function publicInfo(key: KeyObject) {
+    const pem = Buffer.from(key.export({ format: "pem", type: "spki" }))
+    const der = key.export({ format: "der", type: "spki" })
+    return { pem, sha256: digest(der), base64: der.toString("base64") }
+  }
+
+  export function decryptPrivate(bytes: Uint8Array, format: "pem" | "der", passphrase: string) {
+    const privateKey = createPrivateKey({ key: Buffer.from(bytes), type: "pkcs8", format, passphrase })
+    return { publicKey: createPublicKey(privateKey), plain: Buffer.from(privateKey.export({ type: "pkcs8", format })) }
+  }
+
+  export function equalPublic(bytes: Uint8Array, publicKey: KeyObject): boolean {
+    return createPublicKey(Buffer.from(bytes)).equals(publicKey)
+  }
+
+  /** @throws {never} */
+  export function ownerUid(): number | undefined {
+    return process.getuid?.()
+  }
+}
+import { certificateInfo, decryptPrivate, digest, equalPublic, makeKeyPair, ownerPassphrase, ownerUid, privatePem, publicInfo } from node
+
+interface KeyOutput {
+  readonly output: string
+  readonly passphraseFile: string
+  readonly only?: string
+}
+
+export interface GenerateOptions extends KeyOutput {
+  readonly manifest: string
+  readonly organization: string
+  readonly testKeys: boolean
+  readonly openssl?: string
+}
+
+export interface DecryptOptions extends KeyOutput {
+  readonly input: string
+}
+
+interface KeyFile {
+  readonly name: string
+  readonly bytes: Uint8Array
+}
+
+const key = Schema.String.check(Schema.isPattern(keyName))
+const sha256 = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const Fingerprints = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  testKeys: Schema.Boolean,
+  keys: Schema.Array(Schema.Union([
+    Schema.Struct({ name: key, kind: Schema.Literal("x509-pk8"), certificateSha256: sha256 }),
+    Schema.Struct({ name: key, kind: Schema.Literal("avb-rsa"), avbPublicKeySha256: sha256 }),
+    Schema.Struct({ name: key, kind: Schema.Literal("ed25519"), spkiSha256: sha256 }),
+  ])).check(Schema.isMinLength(1)),
+})
+const decodeFingerprints = Schema.decodeUnknownEffect(Fingerprints)
+const text = new TextEncoder()
+
+function refused(cause: unknown): SigningRefused {
+  return new SigningRefused({ reason: String(cause) })
+}
+
+function eligible(names: readonly string[], only: string | undefined): Set<string> {
+  return new Set(only === undefined ? names : only.split(","))
+}
+
+export effect function outsideGit(directory: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  let current = directory
+  while (true) {
+    if (try files.exists(path.join(current, ".git"))) return false
+    const parent = path.dirname(current)
+    if (parent === current) return true
+    current = parent
+  }
+}
+
+export effect function ownerDirectory(directory: string) {
+  const files = try FileSystem.FileSystem
+  const info = try files.stat(directory)
+  return info.type === "Directory" && (info.mode & 0o077) === 0 && Option.getOrUndefined(info.uid) === ownerUid() && ownerUid() !== undefined
+}
+
+effect function freshOutput(options: KeyOutput) {
+  const path = try Path.Path
+  const files = try FileSystem.FileSystem
+  const absolute = path.resolve(options.output)
+  const parent = try files.realPath(path.dirname(absolute))
+  const output = path.join(parent, path.basename(absolute))
+  const passphrase = try tryPromise({ try: () => ownerPassphrase(options.passphraseFile), catch: refused })
+  if (!keyOutputAdmitted(
+    { insideWorkTree: !(try outsideGit(parent)), existed: try files.exists(output), ownerOnly: ownerUid() !== undefined },
+    { ownerOnly: true, characters: [...passphrase.trim()].length },
+  )) throw new SigningRefused({ reason: "Use a new owner-only directory outside Git and an owner-only passphrase of at least 20 characters" })
+  return { output, passphrase }
+}
+
+effect function openssl(command: string, args: readonly string[], passphrase: string, input?: Uint8Array) {
+  const spawner = try ChildProcessSpawner
+  const run = scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make(command, [...args], {
+      stdin: input === undefined ? "ignore" : { stream: Stream.make(input) },
+      additionalFds: { fd3: { type: "input", stream: Stream.make(text.encode(`${passphrase}\n`)) } },
+      extendEnv: true,
+    }))
+    const [stdout, stderr] = try.all [Stream.mkUint8Array(child.stdout), Stream.mkString(Stream.decodeText(child.stderr))]
+    const code: number = try child.exitCode
+    if (code !== 0) throw new SigningRefused({ reason: `OpenSSL refused ${args[0]}: ${stderr.trim()}` })
+    return stdout
+  })
+  return try timeout(run, 60_000)
+}
+
+effect function encrypted(command: string, passphrase: string, pem: Uint8Array, format: "PEM" | "DER") {
+  return try openssl(command, ["pkcs8", "-topk8", "-scrypt", "-v2", "aes-256-cbc", "-outform", format, "-passout", "fd:3"], passphrase, pem)
+}
+
+effect function readKey(file: string) {
+  return (try tryPromise({ try: () => readArtifact(file, 1024 * 1024), catch: refused })).bytes
+}
+
+effect function publish(output: string, products: readonly KeyFile[]) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  try files.makeDirectory(output, { mode: 0o700 })
+  try Effect.onError(effect {
+    if (!(try ownerDirectory(output))) throw new SigningRefused({ reason: "Key output is not owner-only" })
+    for (const file of products) try files.writeFile(path.join(output, file.name), file.bytes, { flag: "wx", mode: 0o600 })
+  }, () => ignore(files.remove(output, { recursive: true, force: true })))
+}
+
+export effect function generate(options: GenerateOptions) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const { output, passphrase } = try freshOutput(options)
+  const manifest = try loadKeyManifest(options.manifest)
+  const names = eligible(manifest.keys.map(({ name }) => name), options.only)
+  if (!/^[\w .,&'-]{1,64}$/.test(options.organization) || ![...names].every((name) => manifest.keys.some((row) => row.name === name))) {
+    throw new SigningRefused({ reason: "Choose a plain organization name and only enrolled keys" })
+  }
+  return try scoped(effect {
+    const scratch = try files.makeTempDirectoryScoped()
+    const products: KeyFile[] = []
+    const fingerprints: { name: string; kind: string; [field: string]: string | number | undefined }[] = []
+    const command = options.openssl ?? "openssl"
+    for (const row of manifest.keys.filter(({ name }) => names.has(name))) {
+      if (row.storage !== undefined && row.storage !== "offline-encrypted") throw new SigningRefused({ reason: `Enroll ${row.name} with its declared hardware provider` })
+      const pair = try tryPromise({ try: () => makeKeyPair(row.kind === "ed25519" ? "ed25519" : "rsa", rsaKeyBits), catch: refused })
+      const pem = try Effect.try({ try: () => privatePem(pair.privateKey), catch: refused })
+      const fingerprint: typeof fingerprints[number] = { name: row.name, kind: row.kind, storage: row.storage }
+      if (row.kind === "x509-pk8") {
+        const encryptedFile = path.join(scratch, `${row.name}.enc.pem`)
+        try files.writeFile(encryptedFile, try encrypted(command, passphrase, pem, "PEM"), { flag: "wx", mode: 0o600 })
+        const subject = `/C=US/O=${options.organization}/OU=${options.testKeys ? "TEST ONLY" : "Release"}/CN=${row.name}`
+        const certificate = try openssl(command, ["req", "-new", "-x509", "-sha256", "-key", encryptedFile, "-passin", "fd:3", "-days", "10950", "-subj", subject], passphrase)
+        const checked = try Effect.try({ try: () => certificateInfo(certificate, pair.publicKey), catch: refused })
+        if (!checked.matches || (row.certificateSha256 !== undefined && row.certificateSha256 !== checked.sha256)) throw new SigningRefused({ reason: `Certificate for ${row.name} differs from its enrolled key or fingerprint` })
+        fingerprint.certificateSha256 = checked.sha256
+        fingerprint.subject = checked.subject
+        fingerprint.bits = rsaKeyBits
+        products.push({ name: `${row.name}.x509.pem`, bytes: certificate }, { name: `${row.name}.pk8.enc`, bytes: try encrypted(command, passphrase, pem, "DER") })
+      } else {
+        const publicKey = try Effect.try({ try: () => publicInfo(pair.publicKey), catch: refused })
+        products.push({ name: `${row.name}.pub.pem`, bytes: publicKey.pem }, { name: `${row.name}.pem.enc`, bytes: try encrypted(command, passphrase, pem, "PEM") })
+        if (row.kind === "avb-rsa") {
+          const avb = try Effect.try({ try: () => encodeAvbPublicKey(pair.publicKey), catch: refused })
+          fingerprint.avbPublicKeySha256 = try Effect.try({ try: () => digest(avb), catch: refused })
+          fingerprint.bits = rsaKeyBits
+          products.push({ name: `${row.name}.avbpubkey`, bytes: avb })
+          if (row.name === "avb") products.push({ name: "avb_pkmd.bin", bytes: avb })
+        } else {
+          fingerprint.spkiSha256 = publicKey.sha256
+          fingerprint.spkiBase64 = publicKey.base64
+          fingerprint.publicKeyPem = new TextDecoder().decode(publicKey.pem)
+        }
+      }
+      pem.fill(0)
+      fingerprints.push(fingerprint)
+    }
+    const result = { schemaVersion: 1, testKeys: options.testKeys, organization: options.organization, manifestReviewedAt: manifest.reviewedAt, keys: fingerprints }
+    products.push({ name: "fingerprints.json", bytes: text.encode(`${JSON.stringify(result, null, 2)}\n`) })
+    if (options.testKeys) products.push({ name: "TEST-KEYS-DO-NOT-SHIP", bytes: text.encode("Generated with --test-keys.\n") })
+    try publish(output, products)
+    return { output, fingerprints: result }
+  })
+}
+
+export effect function decrypt(options: DecryptOptions) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const { output, passphrase } = try freshOutput(options)
+  const input = try files.realPath(options.input)
+  if (!(try ownerDirectory(input)) || !(try outsideGit(input))) throw new SigningRefused({ reason: "Encrypted keys must be in an owner-only directory outside Git" })
+  const fingerprintFile = path.join(input, "fingerprints.json")
+  const envelope = try readSigningJson(fingerprintFile)
+  const fingerprints = try decodeFingerprints(envelope.value)
+  const names = eligible(fingerprints.keys.map(({ name }) => name), options.only)
+  if (new Set(fingerprints.keys.map(({ name }) => name)).size !== fingerprints.keys.length ||
+      ![...names].every((name) => fingerprints.keys.some((entry) => entry.name === name))) throw new SigningRefused({ reason: "Choose unique key names listed by the fingerprints" })
+  const products: KeyFile[] = []
+  for (const row of fingerprints.keys.filter(({ name }) => names.has(name))) {
+    const x509 = row.kind === "x509-pk8"
+    const cipher = try readKey(path.join(input, `${row.name}.${x509 ? "pk8" : "pem"}.enc`))
+    const privateKey = try Effect.try({ try: () => decryptPrivate(cipher, x509 ? "der" : "pem", passphrase), catch: refused })
+    const identityName = `${row.name}.${x509 ? "x509.pem" : "pub.pem"}`
+    const identity = try readKey(path.join(input, identityName))
+    let matches: boolean
+    let fingerprint: boolean
+    if (row.kind === "x509-pk8") {
+      const cert = try Effect.try({ try: () => certificateInfo(identity, privateKey.publicKey), catch: refused })
+      matches = cert.matches
+      fingerprint = cert.sha256 === row.certificateSha256
+    } else {
+      matches = try Effect.try({ try: () => equalPublic(identity, privateKey.publicKey), catch: refused })
+      if (row.kind === "avb-rsa") {
+        const encoded = try Effect.try({ try: () => encodeAvbPublicKey(privateKey.publicKey), catch: refused })
+        const name = `${row.name}.avbpubkey`
+        const file = try readKey(path.join(input, name))
+        fingerprint = (try Effect.try({ try: () => digest(encoded), catch: refused })) === row.avbPublicKeySha256 &&
+          file.length === encoded.length && file.every((byte, i) => byte === encoded[i])
+        products.push({ name, bytes: encoded })
+        if (row.name === "avb") products.push({ name: "avb_pkmd.bin", bytes: encoded })
+      } else {
+        const publicKey = try Effect.try({ try: () => publicInfo(privateKey.publicKey), catch: refused })
+        fingerprint = publicKey.sha256 === row.spkiSha256
+      }
+    }
+    if (!keyDecryptionAdmitted(true, matches, fingerprint)) throw new SigningRefused({ reason: `Private or public identity differs from the ceremony for ${row.name}` })
+    products.push({ name: identityName, bytes: identity }, { name: `${row.name}.${x509 ? "pk8" : "pem"}`, bytes: privateKey.plain })
+  }
+  if (options.only === undefined) {
+    products.push({ name: "fingerprints.json", bytes: text.encode(`${JSON.stringify(envelope.value, null, 2)}\n`) })
+    if (fingerprints.testKeys) products.push({ name: "TEST-KEYS-DO-NOT-SHIP", bytes: text.encode("Generated with --test-keys.\n") })
+  }
+  try publish(output, products)
+  return { target: output, written: [...names], testKeys: fingerprints.testKeys }
+}

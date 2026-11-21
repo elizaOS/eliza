@@ -1,9 +1,10 @@
-// spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"; spec/agent/voice/session.md, "The end-of-turn query scores 1 to 4,096 units and only a finished answer submits early"; spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or busy answer, and its outcomes stay distinct"
+// spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"; spec/agent/voice/session.md, "Only a complete end-of-turn score submits before the 1,200 ms long gap, which always submits"; spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or missing answer, and its outcomes stay distinct"
 import {
-  echoWindowOpen, endOfTurnSendable, endOfTurnVerdict, heardWireOf, turnAccepted,
-  type EndOfTurnReply, type EndpointVerdict, type HeardResult, type HeardTurn, type HeardWire,
+  echoWindowOpen, endOfTurnSendable, reportOutcomeOf, turnAccepted,
+  type EndOfTurnReply, type HeardBody as HeardReplyBody, type HeardTurn, type ReportOutcome,
 } from "../../gen/agent__voice__session.effect.vibe"
 import type { ReplyWindow } from "./echo-filter.ts"
+import type { HeardBody } from "./ports.vibe"
 
 module proved {
   import { heardTurn, type ReplyWindow } from "./echo-filter.ts"
@@ -191,31 +192,30 @@ export function decodeEndOfTurnReply(status: number, body: unknown): EndOfTurnRe
   return score.complete ? "ScoredComplete" : "ScoredIncomplete"
 }
 
-export function endOfTurnAnswer(units: number, status: number, body: unknown): EndpointVerdict {
-  return endOfTurnVerdict(units, decodeEndOfTurnReply(status, body))
+export function endOfTurnAnswer(units: number, status: number, body: unknown): EndOfTurnReply | undefined {
+  return endOfTurnSendable(units) ? decodeEndOfTurnReply(status, body) : undefined
 }
 
 export function heardPath(conversationId: string, messageId: string): string {
   return `/api/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/heard`
 }
 
-export type HeardBody = { readonly heardText: string } | { readonly nothingHeard: true }
+export type { HeardBody }
 
 export function heardBody(heardText: string): HeardBody {
-  const text = heardText.replace(/\s+/g, " ").trim()
-  return text.length > 0 ? { heardText: text } : { nothingHeard: true }
+  return heardText.trim().length > 0 ? { heardText } : { nothingHeard: true }
 }
 
 const decodeRecorded = Schema.decodeUnknownOption(Schema.Struct({
   ok: Schema.Literal(true), messageId: Schema.String, changed: Schema.Boolean,
 }))
 
-export function decodeHeardResult(messageId: string, body: unknown): HeardResult {
+export function decodeHeardResult(messageId: string, body: unknown): HeardReplyBody {
   const found = Option.getOrUndefined(decodeRecorded(body))
-  if (found === undefined || found.messageId !== messageId) return "ResultOther"
-  return found.changed ? "ResultRecorded" : "ResultUnchanged"
+  if (found === undefined || found.messageId !== messageId) return "BodyOther"
+  return found.changed ? "BodyRecorded" : "BodyUnchanged"
 }
 
-export function decodeHeardReply(status: number, messageId: string, body: unknown): HeardWire {
-  return heardWireOf(status, decodeHeardResult(messageId, body))
+export function decodeHeardReply(status: number, messageId: string, body: unknown): ReportOutcome {
+  return reportOutcomeOf(status, decodeHeardResult(messageId, body))
 }

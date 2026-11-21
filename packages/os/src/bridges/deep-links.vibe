@@ -61,7 +61,10 @@ effect function attempt(session: Session, id: LinkReceipt) {
 
 effect function begin(session: Session, before: DeepLinks, after: DeepLinks) {
   for (const id of after.running) {
-    if (!before.running.includes(id)) fork.detached attempt(session, id as LinkReceipt)
+    if (!before.running.includes(id)) {
+      const receipt = try orDie(Schema.decodeUnknownEffect(Receipt)(id))
+      fork.detached attempt(session, receipt)
+    }
   }
 }
 

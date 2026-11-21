@@ -1,0 +1,233 @@
+// spec/agent/voice/session.md, "Story: Send my words once I finish speaking"; spec/agent/voice/session.md, "Story: Report what of an interrupted reply I heard"; spec/agent/voice/session.md, "Story: Show which phase the voice session is in"
+module browser {
+  import { Effect } from "effect"
+  import {
+    Machine, enabled, endOfTurnDeadlineMs, longGapMs, machine, shortGapMs, shownPhase, turnAccepted, voiceChannelType,
+    type Duplex, type EndOfTurnReply, type Event, type InputMode, type VoiceSession as SessionState,
+  } from "../../gen/agent__voice__session.effect.vibe"
+  import { createHeardReports } from "./heard-reports.vibe"
+  import { endOfTurnText, heardTurnFor } from "./heuristics.vibe"
+  import { speechSegmentsWithSource, type SpeechSegmentSource } from "./playback.vibe"
+  import type { RecognizerPort, VoiceReply, VoiceSessionPorts } from "./ports.vibe"
+
+  interface Capture {
+    echoCancelled: boolean
+  }
+
+  interface Playback {
+    readonly messageId: string
+    readonly text: string
+    readonly segments: readonly SpeechSegmentSource[]
+    endedAt: number | undefined
+  }
+
+  export class VoiceSession implements RecognizerPort {
+    readonly #machine = Effect.runSync(Effect.provide(Machine, machine()))
+    #capture: Capture | undefined
+    #score: AbortController | undefined
+    #turn: AbortController | undefined
+    #playback: Playback | undefined
+    #text = ""
+    #speechEndedAt = 0
+    readonly #reports: ReturnType<typeof createHeardReports>
+
+    constructor(private readonly ports: VoiceSessionPorts) {
+      this.#reports = createHeardReports({ clock: ports.clock, heard: ports.heard,
+        machine: { read: () => this.state, send: (event) => this.#send(event) } })
+    }
+
+    get state() { return Effect.runSync(this.#machine.get()) }
+    get phase() { return shownPhase(this.state) }
+
+    start(mode: InputMode, duplex: Duplex): void {
+      this.#send({ type: "start", mode, duplex })
+    }
+
+    stop(): void {
+      if (this.#send({ type: "stop" })) this.#text = ""
+    }
+
+    onSpeechStart(): void {
+      this.#send({ type: "speechStarted" })
+    }
+
+    onSpeechEnd(): void {
+      if (this.#send({ type: "speechEnded" })) this.#speechEndedAt = this.ports.clock.now()
+    }
+
+    onPartial(text: string): void {
+      if (this.state.utterance === "Hearing") this.ports.onPartial?.(text)
+    }
+
+    onFinal(text: string, startedAtMs?: number): void {
+      const before = this.state
+      if (before.utterance !== "AwaitingFinal") return
+      const playback = this.#playback
+      const endedAt = playback?.endedAt
+      const startedAfterReplyEndMs = startedAtMs === undefined || endedAt === undefined ? undefined : startedAtMs - endedAt
+      const heard = heardTurnFor(text, playback?.text ?? "", {
+        agentSpeaking: before.turn === "Playing", startKnown: startedAfterReplyEndMs !== undefined,
+        startedAfterReplyEndMs: startedAfterReplyEndMs ?? 0,
+        replyAgeMs: endedAt === undefined ? Number.MAX_SAFE_INTEGER : this.ports.clock.now() - endedAt,
+        echoCancelled: this.#capture?.echoCancelled ?? false,
+      })
+      if (before.mode === "ConversationMode" && turnAccepted(heard)) this.#text = [this.#text, text.trim()].filter(Boolean).join(" ")
+      if (!this.#send({ type: "finalTranscript", heard })) return
+      const after = this.state
+      if (after.drafts > before.drafts) this.ports.onDraft?.(text.trim())
+      if (after.utterance === "GapWaiting") this.#waitForGap(before.epoch, this.#speechEndedAt)
+    }
+
+    onHold(heldMs: number): void {
+      this.#send({ type: "bargeInHeld", heldMs })
+    }
+
+    #send(event: Event): boolean {
+      const before = this.state
+      if (!enabled(before, event)) return false
+      const after = Effect.runSync(this.#machine.send(event))
+      if (before.utterance === "AskingEndOfTurn" && after.utterance !== "AskingEndOfTurn") this.#cancelScore()
+      if (before.turn === "AwaitingReply" && after.turn === "NoTurn" && after.lastEnd === "TurnAborted") {
+        this.#abortTurn(event.type === "stop" ? "Stopped" : "BargeIn")
+      }
+      if (before.turn === "Playing" && after.turn !== "Playing") this.#endPlayback(before, after)
+      if (before.capture !== after.capture) {
+        if (after.capture === "CaptureOpening") this.#openCapture()
+        if (after.capture === "CaptureClosing") this.#closeCapture()
+      }
+      const current = this.state
+      if (current.turn === "ReadyToSend") this.#sendTurn()
+      else if (enabled(current, { type: "reopenCapture" })) this.#send({ type: "reopenCapture" })
+      return true
+    }
+
+    #captureFailed(capture: Capture): void {
+      if (this.#capture !== capture) return
+      const { capture: phase } = this.state
+      if (phase !== "CaptureOpening" && phase !== "CaptureClosing") return
+      this.#capture = undefined
+      this.#text = ""
+      this.#send({ type: "captureFailed" })
+    }
+
+    #openCapture(): void {
+      const capture = { echoCancelled: false }
+      this.#capture = capture
+      const { mode, duplex } = this.state
+      try {
+        this.ports.capture.open({ mode, duplex }, {
+          opened: ({ echoCancelled }) => {
+            if (this.#capture !== capture || this.state.capture !== "CaptureOpening") return
+            capture.echoCancelled = echoCancelled
+            this.#send({ type: "captureOpened" })
+          },
+          closed: () => {
+            if (this.#capture !== capture || this.state.capture !== "CaptureClosing") return
+            this.#capture = undefined
+            this.#send({ type: "captureClosed" })
+          },
+          failed: () => this.#captureFailed(capture),
+        })
+      } catch { this.#captureFailed(capture) }
+    }
+
+    #closeCapture(): void {
+      const capture = this.#capture
+      if (capture === undefined) return
+      try { this.ports.capture.close() } catch { this.#captureFailed(capture) }
+    }
+
+    #waitForGap(epoch: number, endedAt: number): void {
+      const clock = this.ports.clock
+      const afterGap = (ms: number) => Math.max(0, endedAt + ms - clock.now())
+      clock.after(afterGap(longGapMs), () => this.#send({ type: "longGapElapsed", epoch }))
+      clock.after(afterGap(shortGapMs), () => {
+        const { text, units } = endOfTurnText(this.#text)
+        if (!this.#send({ type: "shortGapElapsed", epoch, units }) || this.state.utterance !== "AskingEndOfTurn") return
+        this.#scoreTurn(epoch, text)
+      })
+    }
+
+    #scoreTurn(epoch: number, text: string): void {
+      const score = new AbortController()
+      this.#score = score
+      const answer = (answer: EndOfTurnReply) => {
+        if (this.#score !== score) return
+        this.#score = undefined
+        if (answer === "ReplyLate") score.abort()
+        this.#send({ type: "endOfTurnAnswered", epoch, answer })
+      }
+      this.ports.clock.after(endOfTurnDeadlineMs, () => answer("ReplyLate"))
+      try { void this.ports.endOfTurn(text, score.signal).then(answer, () => answer("ScoringFailed")) }
+      catch { answer("ScoringFailed") }
+    }
+
+    #cancelScore(): void {
+      const score = this.#score
+      this.#score = undefined
+      score?.abort()
+    }
+
+    #sendTurn(): void {
+      const turn = new AbortController()
+      this.#turn = turn
+      const text = this.#text
+      this.#text = ""
+      this.#send({ type: "sendTurn" })
+      const fail = () => {
+        if (this.#turn !== turn) return
+        this.#turn = undefined
+        this.#send({ type: "replyFailed" })
+      }
+      try {
+        const voiceUi = this.ports.voiceUi?.()
+        const request = { text, channelType: voiceChannelType, metadata: voiceUi === undefined ? {} : { voiceUi },
+          clientMessageId: this.ports.clientMessageId() }
+        void this.ports.turns.send(request, turn.signal).then((reply) => {
+          if (this.#turn !== turn) return
+          this.#turn = undefined
+          this.#speak(reply)
+        }, fail)
+      } catch { fail() }
+    }
+
+    #abortTurn(reason: string): void {
+      const turn = this.#turn
+      if (turn === undefined) return
+      this.#turn = undefined
+      turn.abort()
+      try { void this.ports.turns.abort(this.ports.roomId, reason).catch(() => undefined) } catch {}
+    }
+
+    #speak(reply: VoiceReply): void {
+      const segments = speechSegmentsWithSource(reply.text)
+      if (!this.#send({ type: "replyStarted", segments: segments.length }) || segments.length === 0) return
+      const playback: Playback = { ...reply, segments, endedAt: undefined }
+      this.#playback = playback
+      const send = (event: Event) => {
+        if (this.#playback === playback && playback.endedAt === undefined) this.#send(event)
+      }
+      try {
+        this.ports.speaker.speak(segments.map(({ text }) => text), {
+          segmentPlayed: () => send({ type: "segmentPlayed" }),
+          broke: () => send({ type: "playbackBroke" }),
+        })
+      } catch { send({ type: "playbackBroke" }) }
+    }
+
+    #endPlayback(before: SessionState, after: SessionState): void {
+      const playback = this.#playback
+      if (playback === undefined) return
+      playback.endedAt = this.ports.clock.now()
+      if (after.lastEnd === "ReplyCut") {
+        try { this.ports.speaker.stop() } catch {}
+      }
+      if (after.receipts.length === before.receipts.length) return
+      const sourceEnd = playback.segments[before.played - 1]?.sourceEnd ?? 0
+      void this.#reports.report({ reply: before.reply, conversationId: this.ports.conversationId,
+        messageId: playback.messageId, heardText: playback.text.slice(0, sourceEnd),
+        nothingHeard: before.played === 0 }).catch(() => undefined)
+    }
+  }
+}
+export { VoiceSession } from browser

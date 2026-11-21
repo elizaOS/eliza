@@ -5,7 +5,8 @@ process, started by the device host from a [launch](./host/launch.md), with
 one PGlite store, one bound model backend and a local API reached over a
 private Unix socket or loopback HTTP. It also ships the libraries a screen
 uses to talk to that agent (`@elizaos/agent/client`, `@elizaos/agent/voice`),
-the route gate (`@elizaos/agent/routes`) and the bundle builder
+the launch decoders (`@elizaos/agent/launch`), the route gate
+(`@elizaos/agent/routes`) and the bundle builder
 (`@elizaos/agent/bundle`). Optional modules (approvals, notifications, views,
 device actions, reply draft, triggers, scheduled tasks, interactive tasks and
 the page command channel) load only when the launch's

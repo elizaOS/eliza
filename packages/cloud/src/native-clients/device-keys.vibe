@@ -1,26 +1,22 @@
 // spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"
-import { ackPerIp, apply, decodeState, initial, Rejected, tokenPerIp, type Event, type Grant } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
-import { codeChallengeMethod, type ClientRequest, type Registration } from "../../gen/cloud__nativeClients__registry.effect.vibe"
+import { ackOutcome, ackPerIp, apply, recordedExpiryReached, grantBindingMatches, nativeOutcome, revokeAll as revokeDeviceEpoch, tokenAnswer, tokenOutcome, tokenPerIp, type ClientBinding, type CodeRequest, type Event, type GoogleLink, type Grant, type GrantEffect } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
+import { clientCheck, codeChallengeMethod, faultRefusal, type ClientCheck, type ClientRequest, type Registration } from "../../gen/cloud__nativeClients__registry.effect.vibe"
+import type { NativeVerdict, SignInYield } from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
+import type { CodeBinding } from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
+import { admitRequest, type CredentialView } from "../../gen/cloud__identity__sessions.effect.vibe"
+import type { NativeGoogleCheck } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import type { RateLimit } from "../../gen/cloud__shared__rateLimit.effect.vibe"
-import { refused, type Refused } from "../http/refusal.vibe"
+import { refused, Refused } from "../http/refusal.vibe"
 import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import { admitCheck } from "../shared/rate-limit.vibe"
+import { s256 } from "../shared/credential-crypto.vibe"
 import { newId, sameText, seal, secretText, tokenDigest, unseal } from "../shared/sealing.vibe"
 import { Store, toInt, toText, type Row, type Tx } from "../store/connection.vibe"
-import { outputRows, stepRow, type Columns } from "../store/rows.vibe"
-import { admitClient } from "./registry.vibe"
+import { type Columns } from "../store/rows.vibe"
+import { currentGrant, decodeGrant, endKey, grants, inspectKey, isFlatGrant, keyExpiresAt, phaseColumn, stepGrant } from "./grants.vibe"
+import { admitClient, parseReturn, readRegistry, servedEnvironment } from "./registry.vibe"
 
-module node {
-  import { createHash } from "node:crypto"
-
-  /** @throws {never} */
-  export function s256(verifier: string): string {
-    return createHash("sha256").update(verifier, "ascii").digest("base64url")
-  }
-}
-import { s256 } from node
-
-export const grants = outputRows("device_grants", { initial, decodeState, apply })
+export { grants, s256 }
 
 const pkceText = /^[A-Za-z0-9._~-]{43,128}$/
 const challengeText = /^[A-Za-z0-9_-]{43}$/
@@ -43,13 +39,7 @@ const ConnectBody = Schema.Struct({
   codeChallengeMethod: Text,
   deviceName: Schema.optionalKey(Schema.String)
 })
-const TokenBody = Schema.Struct({
-  ...Binding,
-  grantType: Schema.Literal("authorization_code"),
-  code: Text,
-  state: Text,
-  codeVerifier: Text
-})
+const TokenBody = Schema.Struct({ ...Binding, grantType: Schema.Literal("authorization_code"), code: Text, state: Text, codeVerifier: Text })
 const AckBody = Schema.Struct({
   credentialId: Text,
   secret: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
@@ -75,33 +65,23 @@ export interface Credential {
 }
 
 export interface Opening {
+  readonly grantKey: string
   readonly userId: string
-  readonly registration: Registration
-  readonly codeChallenge: string
-  readonly state?: string
-  readonly deviceName?: string
-  readonly now: number
+  readonly sessionKey: string
+  readonly request: typeof ConnectBody.Type
 }
 
-interface Issued {
-  readonly key: string
-  readonly code: string
-  readonly codeExpiresAt: number
+export interface NativeOpening {
+  readonly grantKey: string
+  readonly userId: string
+  readonly request: typeof ConnectBody.Type
+  readonly nativeGoogle: NativeGoogleCheck
+  readonly verdict: NativeVerdict
+  readonly yielded: SignInYield
+  readonly serverCode: GoogleLink
 }
 
-function phaseColumn(grant: Grant): string {
-  return match (grant.phase.tag) {
-    when "CodeIssued": "code_issued";
-    when "Exchanged": "exchanged";
-    when "Active": "active";
-    when "Expired": "expired";
-    when "Ended": "ended";
-  }
-}
-
-function iso(at: number): string {
-  return new Date(at).toISOString()
-}
+function iso(at: number): string { return new Date(at).toISOString() }
 
 export function deviceName(raw: string | undefined): string | null {
   if (raw === undefined) return null
@@ -109,98 +89,174 @@ export function deviceName(raw: string | undefined): string | null {
   return name.length >= 1 && name.length <= 80 && !/[\p{Cc}\p{Cf}]/u.test(name) ? name : null
 }
 
+function bindingOf(registration: Registration): ClientBinding {
+  return { clientId: registration.clientId, environment: registration.environment, signInReturn: registration.signInReturn }
+}
+
+function requestOf(body: { readonly clientId: string; readonly environment: "production" | "staging"; readonly redirectUri: string }): ClientRequest {
+  const url = parseReturn(body.redirectUri)
+  return { clientId: body.clientId, environment: body.environment === "production" ? "Production" : "Staging", redirect: url === undefined ? { tag: "NoRedirect" } : { tag: "ClaimsReturn", purpose: "SignInPurpose", url } }
+}
+
+effect function admission(tx: Tx, request: ClientRequest) {
+  try tx.query("LOCK TABLE native_clients IN SHARE MODE")
+  const served = try servedEnvironment()
+  const registry = try readRegistry(tx)
+  const check = clientCheck(registry, served, request)
+  if (check.tag === "ClientRefused") throw new Refused({ refusal: faultRefusal(check.fault) })
+  const registration = registry.find((entry) => entry.clientId === request.clientId && entry.environment === request.environment)
+  if (registration === undefined) throw refused("InvalidClient")
+  return { registration, check }
+}
+
 export effect function signInClient(tx: Tx, body: { readonly clientId: string; readonly environment: "production" | "staging"; readonly redirectUri: string }) {
-  const url = try Effect.try({ try: () => new URL(body.redirectUri), catch: () => refused("RedirectMismatch") })
-  const request: ClientRequest = {
-    clientId: body.clientId,
-    environment: body.environment === "production" ? "Production" : "Staging",
-    redirect: { tag: "ClaimsReturn", purpose: "SignInPurpose", url: { origin: url.origin, path: url.pathname } }
+  return try admitClient(tx, requestOf(body))
+}
+
+effect function storedAdmission(tx: Tx, grant: Grant) {
+  const client = grant.client
+  if (client.tag !== "BoundClient") throw refused("CredentialProofInvalid")
+  return try admission(tx, { clientId: client.clientId, environment: client.environment, redirect: { tag: "ClaimsReturn", purpose: "SignInPurpose", url: client.signInReturn } })
+}
+
+function bindingMatches(grant: Grant, body: { readonly clientId: string; readonly environment: "production" | "staging"; readonly redirectUri: string }): boolean {
+  const offered = requestOf(body)
+  return offered.redirect.tag === "ClaimsReturn" && grantBindingMatches(grant, { clientId: offered.clientId, environment: offered.environment, signInReturn: offered.redirect.url })
+}
+
+function codeRequest(body: typeof ConnectBody.Type, client: ClientCheck): CodeRequest {
+  return { client, method: body.codeChallengeMethod === codeChallengeMethod ? "S256" : "PlainMethod", hasState: pkceText.test(body.state) }
+}
+
+function openingName(body: typeof ConnectBody.Type): string | null {
+  return deviceName(body.deviceName)
+}
+
+effect function account(tx: Tx, userId: string) {
+  const row = (try tx.query("SELECT key, organization_id, status, device_epoch FROM accounts WHERE key = $1 FOR UPDATE", [userId]))[0]
+  if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  return row
+}
+
+effect function sessionView(tx: Tx, opening: Opening) {
+  const row = (try tx.query("SELECT s.live, s.state->>'epoch' AS epoch, s.access_expires_at, s.refresh_expires_at, s.auth_at, s.step_up_at, s.mfa_at, a.status, a.sessions_revoked_before FROM sessions s JOIN accounts a ON a.key = s.user_id WHERE s.key = $1 AND s.user_id = $2 FOR UPDATE OF s, a", [opening.sessionKey, opening.userId]))[0]
+  const now = try Clock.currentTimeMillis
+  return {
+    kind: "RequestSession", found: row !== undefined && now < toInt(row.refresh_expires_at),
+    live: row?.live === true && toInt(row.epoch) === toInt(row.sessions_revoked_before),
+    expiresAt: toInt(row?.access_expires_at ?? 0), issuedAt: toInt(row?.auth_at ?? 0), revokedBefore: 0,
+    accountStatus: row?.status === "active" ? "RequestAccountActive" : "RequestAccountInactive",
+    authAt: toInt(row?.auth_at ?? 0), stepUpAt: toInt(row?.step_up_at ?? 0), mfaAt: toInt(row?.mfa_at ?? 0)
+  } satisfies CredentialView
+}
+
+function openingColumns(opening: Pick<Opening, "userId" | "request">, code: string, name: string | null, grant: Grant): Columns {
+  return {
+    user_id: opening.userId, client_id: opening.request.clientId, phase: phaseColumn(grant), code_digest: tokenDigest(code),
+    code_challenge: opening.request.codeChallenge, state_digest: tokenDigest(opening.request.state), device_name: name,
+    code_expires_at: grant.codeExpiresAt, device_epoch: grant.epoch, issued_at: grant.now, updated_at: grant.now
   }
-  if (url.origin + url.pathname !== body.redirectUri) throw refused("RedirectMismatch")
-  return try admitClient(tx, request)
 }
 
-effect function step(tx: Tx, key: string, event: Event, columns: (grant: Grant) => Columns) {
-  return try stepRow(tx, grants, key, event, columns)
-}
-
-effect function openGrant(tx: Tx, opening: Opening) {
-  if (!challengeText.test(opening.codeChallenge)) throw refused("InvalidRequest")
+export effect function openGrant(tx: Tx, opening: Opening) {
+  const body = opening.request
+  const name = openingName(body)
+  if (!challengeText.test(body.codeChallenge) || (body.deviceName !== undefined && name === null)) throw refused("InvalidRequest")
+  const admitted = try admission(tx, requestOf(body))
+  const owner = try account(tx, opening.userId)
+  const view = try sessionView(tx, opening)
   const code = secretText("emac_", 32, "hex")
-  const key = newId()
-  const stepped = try step(tx, key, { type: "connect", clientId: opening.registration.clientId, credentialTtl: opening.registration.credentialTtl, now: opening.now }, (grant) => ({
-    user_id: opening.userId,
-    client_id: opening.registration.clientId,
-    phase: phaseColumn(grant),
-    code_digest: tokenDigest(code),
-    code_challenge: opening.codeChallenge,
-    state_digest: opening.state === undefined ? null : tokenDigest(opening.state),
-    device_name: opening.deviceName ?? null,
-    code_expires_at: grant.codeExpiresAt,
-    issued_at: opening.now,
-    updated_at: opening.now
-  }))
-  const issued: Issued = { key, code, codeExpiresAt: stepped.state.codeExpiresAt }
-  return issued
-}
-
-function proofRefusal(grant: Grant, now: number): Refused {
-  return now >= grant.codeExpiresAt ? refused("AuthenticationRequired", "CredentialExpired") : refused("CredentialProofInvalid")
-}
-
-effect function mint(tx: Tx, row: Row, verifierMatches: boolean, now: number) {
-  const key = toText(row.key) ?? ""
-  const before = decodeState(row.state) catch effect () => { throw refused("ServiceUnavailable", "NoReason", now + 5000) }
-  if (toText(row.status) !== "active" || toInt(row.issued_at) < toInt(row.devices_revoked_before)) throw refused("AuthenticationRequired", "CredentialRevoked")
-  const event: Event = { type: "token", verifierMatches, now }
-  apply(before, event) catch effect (failure) => { throw proofRefusal(failure.state, now) }
-  const minting = before.phase.tag === "CodeIssued"
-  const secret = minting ? secretText("eliza_mobile_", 32, "hex") : try unseal("device-key", toText(row.sealed_copy) ?? "")
-  const credentialId = minting ? newId() : toText(row.credential_id) ?? ""
-  const sealed = minting ? try seal("device-key", secret) : toText(row.sealed_copy) ?? ""
-  const stepped = try step(tx, key, event, (grant) => ({
-    phase: phaseColumn(grant),
-    credential_id: credentialId,
-    secret_digest: tokenDigest(secret),
-    sealed_copy: sealed,
-    updated_at: now
-  }))
-  const credential: Credential = {
-    credentialId,
-    secret,
-    tokenType: "Bearer",
-    expiresAt: iso(now + stepped.state.credentialTtl),
-    expiresIn: Math.floor(stepped.state.credentialTtl / 1000),
-    scopes,
-    acknowledgementRequired: true,
-    acknowledgeBy: iso(stepped.state.codeExpiresAt),
-    user: { id: toText(row.user_id) ?? "" },
-    organizationId: toText(row.organization_id) ?? ""
+  const stepped = stepGrant(tx, opening.grantKey, {
+    type: "connect", view, codeRequest: codeRequest(body, admitted.check), clientBinding: bindingOf(admitted.registration),
+    credentialTtl: admitted.registration.credentialTtl, deviceEpoch: toInt(owner.device_epoch)
+  }, (grant) => openingColumns(opening, code, name, grant)) catch effect (failure) => {
+    if (failure._tag === "Rejected") {
+      const decision = admitRequest(view, "SignedSession", failure.state.now)
+      if (decision.tag === "RequestRefused") throw new Refused({ refusal: decision.refusal })
+      throw refused("InvalidRequest")
+    }
+    throw failure
   }
-  return credential
+  return { key: opening.grantKey, code, codeExpiresAt: stepped.state.codeExpiresAt, out: stepped.out.out }
 }
 
-const grantColumns = "g.key, g.state, g.client_id, g.user_id, g.code_challenge, g.state_digest, g.credential_id, g.secret_digest, g.sealed_copy, g.issued_at, a.organization_id, a.status, a.devices_revoked_before"
+const grantColumns = "g.key, g.state, g.phase, g.device_epoch AS grant_epoch, a.device_epoch AS account_epoch, g.client_id, g.user_id, g.code_digest, g.code_challenge, g.state_digest, g.credential_id, g.secret_digest, g.sealed_copy, g.issued_at, g.key_expires_at, a.organization_id, a.status, a.device_epoch"
 
 effect function grantBy(tx: Tx, column: "code_digest" | "credential_id" | "key", value: string) {
-  const found: Row | undefined = (try tx.query(`SELECT ${grantColumns} FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.${column} = $1 FOR UPDATE OF g`, [value]))[0]
-  return found
+  return (try tx.query(`SELECT ${grantColumns} FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.${column} = $1 FOR UPDATE OF a, g`, [value]))[0]
 }
 
-export effect function connectAndMint(tx: Tx, opening: Opening) {
-  const issued = try openGrant(tx, opening)
-  const row = try grantBy(tx, "key", issued.key)
-  if (row === undefined) throw refused("ServiceUnavailable", "NoReason", opening.now + 5000)
-  return { code: issued.code, credential: try mint(tx, row, true, opening.now) }
+effect function current(row: Row, now: number) {
+  if (isFlatGrant(row.state)) throw refused("CredentialProofInvalid")
+  const grant = decodeGrant(row.state) catch effect () => { throw refused("ServiceUnavailable", "NoReason", now + 5000) }
+  if (row.status !== "active") throw refused("AuthenticationRequired", "CredentialRevoked")
+  return try currentGrant(grant, now)
+}
+
+function credential(grant: Grant, row: Row, secret: string): Credential {
+  const answer = tokenAnswer(grant)
+  return {
+    credentialId: answer.credentialId, secret, tokenType: "Bearer", expiresAt: iso(answer.expiresAt),
+    expiresIn: Math.floor((answer.expiresAt - grant.now) / 1000), scopes, acknowledgementRequired: true,
+    acknowledgeBy: iso(answer.acknowledgeBy), user: { id: toText(row.user_id) ?? "" }, organizationId: toText(row.organization_id) ?? ""
+  }
+}
+
+effect function mint(tx: Tx, row: Row, body: typeof TokenBody.Type) {
+  const now = try Clock.currentTimeMillis
+  const before = try current(row, now)
+  const admitted = try storedAdmission(tx, before)
+  const at = try Clock.currentTimeMillis
+  const ready = try currentGrant(before, at)
+  const proof = sameText(s256(body.codeVerifier), toText(row.code_challenge) ?? "") && sameText(tokenDigest(body.state), toText(row.state_digest) ?? "")
+  const binding: CodeBinding = !bindingMatches(ready, body) ? "RedirectDiffers" : proof ? "BindingMatches" : "VerifierDiffers"
+  const outcome = tokenOutcome(ready, admitted.check, binding, toInt(row.device_epoch))
+  if (outcome.tag === "GrantRefused") throw new Refused({ refusal: outcome.refusal })
+  const credentialId = ready.phase.tag === "CodeIssued" ? newId() : ready.credentialId
+  const event: Event = { type: "token", client: admitted.check, binding, credentialId, deviceEpoch: toInt(row.device_epoch) }
+  const preview = try apply(ready, event)
+  const minting = preview.out.includes("MintSealedKey")
+  const secret = minting ? secretText("eliza_mobile_", 32, "hex") : try unseal("device-key", toText(row.sealed_copy) ?? "")
+  const sealed = minting ? try seal("device-key", secret) : toText(row.sealed_copy) ?? ""
+  const stepped = stepGrant(tx, toText(row.key) ?? "", event, (grant) => ({ phase: phaseColumn(grant), credential_id: credentialId, secret_digest: tokenDigest(secret), sealed_copy: sealed, updated_at: grant.now })) catch effect (failure) => {
+    if (failure._tag === "Rejected") {
+      const decision = tokenOutcome(failure.state, admitted.check, binding, toInt(row.device_epoch))
+      if (decision.tag === "GrantRefused") throw new Refused({ refusal: decision.refusal })
+      throw refused("CredentialProofInvalid")
+    }
+    throw failure
+  }
+  return { credential: credential(stepped.state, row, secret), out: stepped.out.out }
+}
+
+export effect function connectAndMint(tx: Tx, opening: NativeOpening) {
+  const body = opening.request
+  const name = openingName(body)
+  if (!challengeText.test(body.codeChallenge) || (body.deviceName !== undefined && name === null)) throw refused("InvalidRequest")
+  const admitted = try admission(tx, requestOf(body))
+  const outcome = nativeOutcome(codeRequest(body, admitted.check), opening.nativeGoogle, opening.verdict, opening.yielded)
+  if (outcome.tag === "NativeRefused") throw new Refused({ refusal: outcome.refusal })
+  const owner = try account(tx, opening.userId)
+  if (owner.status !== "active") throw refused("AuthenticationRequired", "CredentialRevoked")
+  const code = secretText("emac_", 32, "hex")
+  const secret = secretText("eliza_mobile_", 32, "hex")
+  const credentialId = newId()
+  const sealed = try seal("device-key", secret)
+  const stepped = try stepGrant(tx, opening.grantKey, {
+    type: "signInNatively", codeRequest: codeRequest(body, admitted.check), clientBinding: bindingOf(admitted.registration),
+    nativeGoogle: opening.nativeGoogle, verdict: opening.verdict, yielded: opening.yielded, serverCode: opening.serverCode,
+    credentialTtl: admitted.registration.credentialTtl, credentialId, deviceEpoch: toInt(owner.device_epoch)
+  }, (grant) => ({ ...openingColumns(opening, code, name, grant), credential_id: credentialId, secret_digest: tokenDigest(secret), sealed_copy: sealed }))
+  return { code, credential: credential(stepped.state, { user_id: opening.userId, organization_id: owner.organization_id }, secret), out: stepped.out.out }
 }
 
 export effect function revokeAll(tx: Tx, userId: string, now: number) {
-  const live = try tx.query(
-    "SELECT count(*)::int AS live FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.user_id = $1 AND g.phase = 'active' AND g.key_expires_at > $2 AND g.issued_at >= a.devices_revoked_before",
-    [userId, now]
-  )
-  try tx.query("UPDATE accounts SET devices_revoked_before = GREATEST(devices_revoked_before, $2), updated_at = $3 WHERE key = $1", [userId, now + 1, now])
-  return toInt(live[0]?.live ?? 0)
+  const owner = try account(tx, userId)
+  const rows = try tx.query("SELECT state, phase, key_expires_at, device_epoch AS grant_epoch, $2::bigint AS account_epoch FROM device_grants WHERE user_id = $1 FOR UPDATE", [userId, owner.device_epoch])
+  const live = try Effect.forEach(rows, effect (row) => { return inspectKey(row, now) catch () => undefined })
+  const changed = revokeDeviceEpoch(toInt(owner.device_epoch))
+  try tx.query("UPDATE accounts SET device_epoch = $2, updated_at = $3 WHERE key = $1", [userId, changed.toDeviceEpoch, now])
+  return live.filter((key) => key?.reason === "NoReason").length
 }
 
 export effect function perIp(context: RouteContext, limit: RateLimit) {
@@ -211,93 +267,105 @@ effect function connect(context: RouteContext) {
   const caller = context.caller
   if (caller.kind !== "session") throw refused("AuthenticationRequired", "CredentialUnknown")
   const body = try jsonBody(context, ConnectBody)
-  if (body.codeChallengeMethod !== codeChallengeMethod || !pkceText.test(body.state)) throw refused("InvalidRequest")
-  const name = deviceName(body.deviceName)
-  if (body.deviceName !== undefined && name === null) throw refused("InvalidRequest")
   const store = try Store
-  const issued = try store.transaction(effect (tx: Tx) => {
-    const registration = try signInClient(tx, body)
-    return try openGrant(tx, { userId: caller.userId, registration, codeChallenge: body.codeChallenge, state: body.state, now: context.now, ...(name === null ? {} : { deviceName: name }) })
-  })
-  return json({
-    code: issued.code,
-    codeType: "mobile_app_auth_code",
-    expiresAt: iso(issued.codeExpiresAt),
-    expiresIn: Math.floor((issued.codeExpiresAt - context.now) / 1000)
-  })
+  const issued = try store.transaction((tx: Tx) => openGrant(tx, { grantKey: newId(), userId: caller.userId, sessionKey: caller.sessionKey, request: body }))
+  return json({ code: issued.code, codeType: "mobile_app_auth_code", expiresAt: iso(issued.codeExpiresAt), expiresIn: Math.floor((issued.codeExpiresAt - (try Clock.currentTimeMillis)) / 1000) })
+}
+
+export effect function exchangeGrant(tx: Tx, body: typeof TokenBody.Type) {
+  if (!codeText.test(body.code) || !pkceText.test(body.codeVerifier)) throw refused("CredentialProofInvalid")
+  const row = try grantBy(tx, "code_digest", tokenDigest(body.code))
+  if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  return try mint(tx, row, body)
 }
 
 effect function token(context: RouteContext) {
   try perIp(context, tokenPerIp)
   const body = try jsonBody(context, TokenBody)
-  if (!codeText.test(body.code) || !pkceText.test(body.codeVerifier)) throw refused("CredentialProofInvalid")
   const store = try Store
-  const credential = try store.transaction(effect (tx: Tx) => {
-    const registration = try signInClient(tx, body)
-    const row = try grantBy(tx, "code_digest", tokenDigest(body.code))
-    if (row === undefined || toText(row.client_id) !== registration.clientId) throw refused("CredentialProofInvalid")
-    const boundState = toText(row.state_digest)
-    const verifierMatches = sameText(s256(body.codeVerifier), toText(row.code_challenge) ?? "") && (boundState === undefined || sameText(tokenDigest(body.state), boundState))
-    return try mint(tx, row, verifierMatches, context.now)
+  const minted = try store.transaction((tx: Tx) => exchangeGrant(tx, body))
+  return json(minted.credential)
+}
+
+export effect function acknowledgeGrant(tx: Tx, body: typeof AckBody.Type) {
+  if (!uuidText.test(body.credentialId) || !keyText.test(body.secret)) throw refused("CredentialProofInvalid")
+  const row = try grantBy(tx, "credential_id", body.credentialId)
+  if (row === undefined) throw refused("CredentialProofInvalid")
+  const before = try current(row, try Clock.currentTimeMillis)
+  const admitted = try storedAdmission(tx, before)
+  const snapshot = before.client
+  if (snapshot.tag !== "BoundClient") throw refused("CredentialProofInvalid")
+  const matches = bindingMatches(before, {
+    clientId: body.clientId ?? snapshot.clientId,
+    environment: body.environment ?? (snapshot.environment === "Production" ? "production" : "staging"),
+    redirectUri: body.redirectUri ?? snapshot.signInReturn.origin + snapshot.signInReturn.path
   })
-  return json(credential)
+  const proofMatches = matches && sameText(tokenDigest(body.secret), toText(row.secret_digest) ?? "")
+    && (body.code === undefined || sameText(tokenDigest(body.code), toText(row.code_digest) ?? ""))
+    && (body.state === undefined || sameText(tokenDigest(body.state), toText(row.state_digest) ?? ""))
+    && (body.codeVerifier === undefined || (pkceText.test(body.codeVerifier) && sameText(s256(body.codeVerifier), toText(row.code_challenge) ?? "")))
+  const now = try Clock.currentTimeMillis
+  const ready = try currentGrant(before, now)
+  const outcome = ackOutcome(ready, admitted.check, proofMatches, toInt(row.device_epoch))
+  if (outcome.tag === "GrantRefused") throw new Refused({ refusal: outcome.refusal })
+  const stepped = stepGrant(tx, toText(row.key) ?? "", { type: "ack", client: admitted.check, proofMatches, deviceEpoch: toInt(row.device_epoch) },
+    (grant) => ({ phase: phaseColumn(grant), sealed_copy: null, key_expires_at: keyExpiresAt(grant), updated_at: grant.now })) catch effect (failure) => {
+    if (failure._tag === "Rejected") {
+      const decision = ackOutcome(failure.state, admitted.check, proofMatches, toInt(row.device_epoch))
+      if (decision.tag === "GrantRefused") throw new Refused({ refusal: decision.refusal })
+      throw refused("CredentialProofInvalid")
+    }
+    throw failure
+  }
+  return { answer: { status: "acknowledged", credentialId: body.credentialId, expiresAt: iso(keyExpiresAt(stepped.state)), scopes }, out: stepped.out.out }
 }
 
 effect function ack(context: RouteContext) {
   try perIp(context, ackPerIp)
   const body = try jsonBody(context, AckBody)
-  if (!uuidText.test(body.credentialId) || !keyText.test(body.secret)) throw refused("CredentialProofInvalid")
   const store = try Store
-  const expiresAt = try store.transaction(effect (tx: Tx) => {
-    const row = try grantBy(tx, "credential_id", body.credentialId)
-    if (row === undefined) throw refused("CredentialProofInvalid")
-    if (toText(row.status) !== "active" || toInt(row.issued_at) < toInt(row.devices_revoked_before)) throw refused("AuthenticationRequired", "CredentialRevoked")
-    const secretMatches = sameText(tokenDigest(body.secret), toText(row.secret_digest) ?? "")
-    const before = decodeState(row.state) catch effect () => { throw refused("ServiceUnavailable", "NoReason", context.now + 5000) }
-    if (before.phase.tag === "Active" && secretMatches) return before.keyExpiresAt
-    const stepped = step(tx, toText(row.key) ?? "", { type: "ack", secretMatches, now: context.now }, (grant) => ({
-      phase: phaseColumn(grant),
-      sealed_copy: null,
-      key_expires_at: grant.keyExpiresAt,
-      updated_at: context.now
-    })) catch effect (failure) => match (failure) {
-      when Rejected: throw secretMatches ? proofRefusal(failure.state, context.now) : refused("CredentialProofInvalid");
-      default: throw failure;
-    }
-    return stepped.state.keyExpiresAt
-  })
-  return json({ status: "acknowledged", credentialId: body.credentialId, expiresAt: iso(expiresAt) })
+  const acknowledged = try store.transaction((tx: Tx) => acknowledgeGrant(tx, body))
+  return json(acknowledged.answer)
 }
 
 effect function selfRevoke(context: RouteContext) {
   const caller = context.caller
   if (caller.kind !== "deviceKey") throw refused("AuthenticationRequired", "CredentialUnknown")
   const store = try Store
-  try store.transaction((tx: Tx) => step(tx, caller.grantKey, { type: "selfRevoke", now: context.now }, (grant) => ({
-    phase: phaseColumn(grant),
-    sealed_copy: null,
-    updated_at: context.now
-  })))
-  return json({ status: "revoked", credentialId: caller.credentialId })
+  try store.transaction(effect (tx: Tx) => {
+    const row = try grantBy(tx, "key", caller.grantKey)
+    if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+    const reason = try endKey(tx, row, try Clock.currentTimeMillis)
+    if (reason !== "NoReason") throw refused("AuthenticationRequired", reason)
+  })
+  return HttpServerResponse.empty({ status: 204, headers: { "cache-control": "no-store" } })
+}
+
+export effect function retireGrant(tx: Tx, key: string, kind: "lapse" | "expire") {
+  const held = try grantBy(tx, "key", key)
+  if (held === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const now = try Clock.currentTimeMillis
+  const authority = try inspectKey(held, now)
+  if (authority.authority.tag === "RecordedAuthority") {
+    if (kind !== "expire" || !recordedExpiryReached(authority.authority.key, now)) throw refused("CredentialProofInvalid")
+    try tx.query("UPDATE device_grants SET phase = 'expired', sealed_copy = NULL, revision = revision + 1, updated_at = $2 WHERE key = $1", [key, now])
+    const out: ReadonlyArray<GrantEffect> = []
+    return out
+  }
+  const stepped = try stepGrant(tx, key, { type: kind }, (grant) => ({ phase: phaseColumn(grant), sealed_copy: null, updated_at: grant.now }))
+  return stepped.out.out
 }
 
 export effect function sweepGrants(): void!!Store {
-  const now = try Clock.currentTimeMillis
   const store = try Store
-  const stale = store.transaction((tx: Tx) => tx.query(
-    "SELECT key FROM device_grants WHERE phase IN ('code_issued', 'exchanged') AND code_expires_at <= $1",
-    [now]
-  )) catch effect (failure) => {
+  const now = try Clock.currentTimeMillis
+  const stale = store.transaction((tx: Tx) => tx.query("SELECT key, phase FROM device_grants WHERE (phase IN ('code_issued', 'exchanged') AND code_expires_at <= $1 AND NOT state ? 'flatDeviceGrant') OR (phase = 'active' AND key_expires_at <= $1)", [now])) catch effect (failure) => {
     try annotateLogs(logWarning("device grant sweep failed"), { cause: failure._tag })
     return []
   }
   for (const row of stale) {
     const key = toText(row.key) ?? ""
-    store.transaction((tx: Tx) => step(tx, key, { type: "cleanup", now }, (grant) => ({
-      phase: phaseColumn(grant),
-      sealed_copy: null,
-      updated_at: now
-    }))) catch effect (failure) => {
+    store.transaction((tx: Tx) => retireGrant(tx, key, row.phase === "active" ? "expire" : "lapse")) catch effect (failure) => {
       try annotateLogs(logWarning("device grant cleanup failed"), { key, cause: failure._tag })
     }
   }
@@ -309,7 +377,4 @@ export const routes: ReadonlyArray<Route> = [
   { method: "POST", path: "/api/v1/app-auth/mobile/ack", auth: "Public", maxBodyBytes: 4096, handler: ack },
   { method: "DELETE", path: "/api/v1/api-keys/current", auth: "ServiceAccess", handler: selfRevoke }
 ]
-
-export const sweeps: ReadonlyArray<Sweep> = [
-  { name: "device grants", everyMs: 60 * 60_000, run: sweepGrants() }
-]
+export const sweeps: ReadonlyArray<Sweep> = [{ name: "device grants", everyMs: 60 * 60_000, run: sweepGrants() }]

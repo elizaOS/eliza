@@ -1,8 +1,8 @@
 // spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"
 import { assert, describe, it } from "@effect/vitest"
-import { insufficientCredits, text, type CloudFake } from "./support/cloud-fake.ts"
+import { held, insufficientCredits, text, type CloudFake } from "./support/cloud-fake.ts"
 import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
-import type { StreamedAnswer } from "./support/socket-client.ts"
+import type { StreamCut, StreamedAnswer } from "./support/socket-client.ts"
 
 type Frame = { readonly type: string; readonly text?: string; readonly fullText?: string; readonly failureKind?: string; readonly provisional?: boolean }
 
@@ -33,23 +33,46 @@ effect function conversation(agent: InProcess) {
   return decoded.value.conversation.id
 }
 
-effect function send(agent: InProcess, id: string, body: object, abortAfterChunks?: number) {
-  return try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, body }, abortAfterChunks)
+effect function send(agent: InProcess, id: string, body: object, cut?: StreamCut, opened?: (status: number) => void) {
+  return try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, body }, cut, opened)
 }
 
 const piece = (letter: string) => letter.repeat(1500)
 
 for (const transport of ["socket", "http"] as const) {
   describe(`See a reply as it is written over the ${transport} (spec/agent/conversation/replyStream.md, "Story: See a reply as it is written")`, () => {
-    it.live('Appended text carries the whole text again at the cadence, and the stream ends with one done (spec/agent/conversation/replyStream.md, "Appended text carries the whole text again once the units appended since the last whole text reach the larger of 2048 and that text\'s length")', effect () => {
+    it.live('Appended text carries the whole text again at the cadence, and retries receive only the same done (spec/agent/conversation/replyStream.md, "Appended text carries the whole text again once the units appended since the last whole text reach the larger of 2048 and that text\'s length"; spec/agent/conversation/replyStream.md, "Only a message that starts its own turn streams text, a repeat waits for its reply, and a refusal opens no stream")', effect () => {
       const cloud = try cloudFake(deviceKey)
       const agent = try cloudAgent(cloud, transport === "http")
       const id = try conversation(agent)
-      try Effect.sync(() => cloud.script(text(piece("a"), piece("b"), piece("c"))))
-      const answer = try send(agent, id, { text: "Write at length." })
+      const offered = { text: "Write at length.", channelType: "VOICE_DM", metadata: { voiceUi: { surface: "voice" } }, clientMessageId: "cadence" }
+      const release = Promise.withResolvers<void>()
+      try Effect.sync(() => cloud.script(held(release.promise, text(piece("a"), piece("b"), piece("c")))))
+      const started = try Effect.sync(() => cloud.nextCompletion())
+      const [answer, { conflict, duplicate }] = try Effect.all([
+        send(agent, id, offered),
+        effect {
+          try host("the first inference has started", () => started)
+          const conflict = try send(agent, id, { ...offered, text: "Use another body." })
+          const awaitingReply = Promise.withResolvers<number>()
+          const [duplicate] = try Effect.all([
+            send(agent, id, offered, undefined, awaitingReply.resolve),
+            effect {
+              if (transport === "socket") {
+                const status = try host("the duplicate joined before the reply", () => awaitingReply.promise)
+                try Effect.try(() => assert.strictEqual(status, 200))
+              }
+              try Effect.sync(() => release.resolve())
+            },
+          ], { concurrency: "unbounded" })
+          return { conflict, duplicate }
+        },
+      ], { concurrency: "unbounded" })
       const frames = framesOf(answer)
       const terminal = frames.at(-1)
       const refused = try send(agent, id, { text: "Again.", streamProtocol: "v2" })
+      const replay = try send(agent, id, offered)
+      const buffered = try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`, body: offered })
       try Effect.try(() => assert.deepStrictEqual({
         status: answer.status, error: answer.error, first: frames[0], ends: frames.filter((frame) => frame.type === "done" || frame.type === "error").length,
         terminal: terminal?.type, fullText: terminal?.fullText, rebuilt: rebuilt(frames),
@@ -61,6 +84,15 @@ for (const transport of ["socket", "http"] as const) {
         snapshots: true, provisional: false,
         refused: [400, { error: "stream_protocol_unsupported" }],
       }))
+      if (!("status" in buffered) || terminal === undefined) return try die(new Error("The buffered reply did not complete"))
+      try Effect.try(() => {
+        assert.deepStrictEqual([conflict.status, conflict.json, framesOf(conflict)], [409, { error: "CHAT_IDEMPOTENCY_CONFLICT" }, []])
+        assert.deepStrictEqual([framesOf(duplicate), framesOf(replay)], [[terminal], [terminal]])
+        assert.strictEqual(buffered.status, 200)
+        const { type: _frame, ...reply } = terminal
+        assert.deepStrictEqual(buffered.json, { ...reply, text: terminal.fullText })
+        assert.lengthOf(cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions"), 1)
+      })
     }, 120_000)
 
     it.live('A client that leaves aborts the turn it streams (spec/agent/conversation/replyStream.md, "A client that leaves aborts the turn it streams, and nothing more is written to it")', effect () => {
@@ -68,9 +100,9 @@ for (const transport of ["socket", "http"] as const) {
       const agent = try cloudAgent(cloud, transport === "http")
       const id = try conversation(agent)
       try Effect.sync(() => cloud.script({ kind: "hang" }))
-      const answer = try send(agent, id, { text: "Think forever." }, 1)
-      const completion = cloud.calls.find((made) => made.path.endsWith("/chat/completions"))
-      if (completion === undefined) return try Effect.die(new Error("The turn never called the model"))
+      const started = try Effect.sync(() => cloud.nextCompletion())
+      const answer = try send(agent, id, { text: "Think forever." }, { afterChunks: 1, ready: started })
+      const completion = try host("model call started", () => started)
       try host("model call cancelled", () => completion.aborted)
       try Effect.try(() => assert.deepStrictEqual({ status: answer.status, frames: framesOf(answer), error: answer.error },
         { status: 200, frames: [{ type: "status", activity: "thinking" }], error: "closed before complete" }))

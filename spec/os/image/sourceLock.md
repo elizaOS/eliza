@@ -33,31 +33,42 @@ equal the lock's. The verdict is Mismatch exactly when a problem remains,
 and the shell reports every problem `problemsOf` lists, not only the first.
 
 ```quint
-type DeviceSource = PhysicalDevice({ archive: str, vendorApiLevel: int }) | VirtualDevice
+type DeviceSource = PhysicalDevice({ archive: str, archiveSize: int, vendorApiLevel: int }) | VirtualDevice
 type Project = { path: str, revision: str }
 type SourceFile = { project: str, path: str, digest: str }
+type SourceChange = ChangedFile({ file: SourceFile }) | DeletedFile({ project: str, path: str }) | ChangedKind({ project: str, path: str }) | ChangedGitlink({ project: str, path: str })
+type ManifestFile = { path: str, digest: str }
+type IgnoredTree = { project: str, files: int, digest: str }
 type PatchFile = { path: str, pre: str, post: str }
 type PatchEnvelope = { name: str, project: str, revision: str, baseline: str, files: List[PatchFile], manifestSha256: str }
-type SourceLock = { name: str, digest: str, device: DeviceSource, developmentOnly: bool, manifest: str, projects: List[Project], overrides: List[SourceFile], ignored: List[SourceFile], generated: List[SourceFile], targets: List[str] }
-type SourceFacts = { manifest: str, projects: List[Project], changes: List[SourceFile], ignored: List[SourceFile], generated: List[SourceFile], heads: List[SourceFile], archive: str, boardApi: int, vintfApi: int }
-type Problem = ManifestDiffers | RevisionDiffers | SourceChangeDiffers | GeneratedDiffers | ArchiveDiffers | BoardApiDiffers | VintfApiDiffers | PatchRefused
+type SourceLock = { name: str, digest: str, device: DeviceSource, developmentOnly: bool, manifest: str, manifestConfiguration: List[ManifestFile], projects: List[Project], overrides: List[SourceFile], ignored: List[IgnoredTree], generated: List[SourceFile], targets: List[str] }
+type SourceFacts = { manifest: str, manifestClean: bool, manifestConfiguration: List[ManifestFile], indexVisible: bool, projects: List[Project], changes: List[SourceChange], indexChanges: List[SourceChange], ignored: List[IgnoredTree], generated: List[SourceFile], heads: List[SourceFile], archive: str, archiveBytes: int, boardApi: int, vintfApi: int }
+type Problem = ManifestDiffers | ManifestConfigurationDiffers | HiddenIndexEntries | RevisionDiffers | SourceChangeDiffers | GeneratedDiffers | ArchiveDiffers | BoardApiDiffers | VintfApiDiffers | PatchRefused
 type Verdict = Unverified | Match | Mismatch
 type BuildPurpose = Development | Production
 type ProductName = { brand: str, target: str }
 type Admission = { brand: str, product: ProductName, purpose: BuildPurpose }
 type SourceVerdict = { checkout: int, verified: int, verdict: Verdict, lock: SourceLock, read: SourceFacts, patches: List[PatchEnvelope], admitted: List[Admission] }
 
-pure val noLock: SourceLock = { name: "", digest: "", device: VirtualDevice, developmentOnly: true, manifest: "", projects: List(), overrides: List(), ignored: List(), generated: List(), targets: List() }
-pure val noFacts: SourceFacts = { manifest: "", projects: List(), changes: List(), ignored: List(), generated: List(), heads: List(), archive: "", boardApi: 0, vintfApi: 0 }
+pure val noLock: SourceLock = { name: "", digest: "", device: VirtualDevice, developmentOnly: true, manifest: "", manifestConfiguration: List(), projects: List(), overrides: List(), ignored: List(), generated: List(), targets: List() }
+pure val noFacts: SourceFacts = { manifest: "", manifestClean: true, manifestConfiguration: List(), indexVisible: true, projects: List(), changes: List(), indexChanges: List(), ignored: List(), generated: List(), heads: List(), archive: "", archiveBytes: 0, boardApi: 0, vintfApi: 0 }
 pure val initial: SourceVerdict = { checkout: 1, verified: 0, verdict: Unverified, lock: noLock, read: noFacts, patches: List(), admitted: List() }
 
 pure def problemIf(found: bool, p: Problem): List[Problem] = if (found) List(p) else List()
-pure def expectedChange(lock: SourceLock, patches: List[PatchEnvelope], c: SourceFile): bool =
-  lock.overrides.includes(c) or patches.some(e => e.project == c.project and e.files.some(f => f.path == c.path and f.post == c.digest))
+pure def expectedChange(lock: SourceLock, patches: List[PatchEnvelope], c: SourceChange): bool =
+  match c {
+    | ChangedFile(observed) => observed.file.digest != "" and
+      (lock.overrides.includes(observed.file) or patches.some(e => e.project == observed.file.project and e.files.some(f => f.path == observed.file.path and f.post == observed.file.digest)))
+    | DeletedFile(_) => false
+    | ChangedKind(_) => false
+    | ChangedGitlink(_) => false
+  }
 pure def changesMatch(lock: SourceLock, facts: SourceFacts, patches: List[PatchEnvelope]): bool =
-  facts.changes.every(c => expectedChange(lock, patches, c)) and lock.overrides.every(o => facts.changes.includes(o)) and facts.ignored == lock.ignored
+  facts.changes.every(c => expectedChange(lock, patches, c)) and facts.indexChanges.every(c => expectedChange(lock, patches, c)) and lock.overrides.every(o => facts.changes.includes(ChangedFile({ file: o }))) and facts.ignored == lock.ignored
 pure def problemsOf(lock: SourceLock, facts: SourceFacts, patches: List[PatchEnvelope]): List[Problem] =
-  problemIf(facts.manifest != lock.manifest, ManifestDiffers)
+  problemIf(facts.manifest != lock.manifest or not(facts.manifestClean), ManifestDiffers)
+    .concat(problemIf(facts.manifestConfiguration != lock.manifestConfiguration, ManifestConfigurationDiffers))
+    .concat(problemIf(not(facts.indexVisible), HiddenIndexEntries))
     .concat(problemIf(facts.projects != lock.projects, RevisionDiffers))
     .concat(problemIf(not(changesMatch(lock, facts, patches)), SourceChangeDiffers))
     .concat(problemIf(facts.generated != lock.generated, GeneratedDiffers))
@@ -66,7 +77,10 @@ pure def problemsOf(lock: SourceLock, facts: SourceFacts, patches: List[PatchEnv
 pure def lockWellFormed(lock: SourceLock): bool = {
   val device = lock.device
   lock.digest != "" and lock.manifest != "" and lock.projects.length() > 0 and lock.targets.length() > 0 and
-  match device { | PhysicalDevice(d) => d.archive != "" and d.vendorApiLevel >= 100000 and d.vendorApiLevel <= 999999 and lock.generated.length() > 0 | VirtualDevice => true }
+  lock.manifestConfiguration.some(f => f.path == ".repo/manifest.xml" and f.digest != "") and
+  lock.manifestConfiguration.some(f => f.path == ".repo/project.list" and f.digest != "") and
+  lock.ignored.every(t => t.project != "" and t.files >= 0 and t.digest != "") and
+  match device { | PhysicalDevice(d) => d.archive != "" and d.archiveSize > 0 and d.vendorApiLevel >= 100000 and d.vendorApiLevel <= 999999 and lock.generated.length() > 0 | VirtualDevice => true }
 }
 
 pure def canVerify(s: SourceVerdict, lock: SourceLock): bool = lockWellFormed(lock)
@@ -76,19 +90,21 @@ pure def verify(s: SourceVerdict, lock: SourceLock, facts: SourceFacts, patches:
 pure def alwaysMatchExactlyWithoutProblems(s: SourceVerdict): bool =
   s.verdict != Unverified implies (s.verdict == Match iff problemsOf(s.lock, s.read, s.patches) == List())
 
+pure val configurationA: List[ManifestFile] = List({ path: ".repo/manifest.xml", digest: "manifestA" }, { path: ".repo/project.list", digest: "projectsA" })
 pure val lockValues = {
-  val physical: SourceLock = { name: "pixel10a", digest: "lockA", device: PhysicalDevice({ archive: "z1", vendorApiLevel: 202604 }), developmentOnly: false, manifest: "m1",
+  val physical: SourceLock = { name: "pixel10a", digest: "lockA", device: PhysicalDevice({ archive: "z1", archiveSize: 9, vendorApiLevel: 202604 }), developmentOnly: false, manifest: "m1", manifestConfiguration: configurationA,
     projects: List({ path: "frameworks/base", revision: "r1" }), overrides: List({ project: "frameworks/base", path: "o.mk", digest: "d1" }), ignored: List(),
     generated: List({ project: "vendor/google_devices", path: "manifest.xml", digest: "g1" }), targets: List("stallion") }
   Set(physical).union(Set({ ...physical, digest: "lockD", developmentOnly: true }))
-    .union(Set({ ...noLock, name: "cuttlefish", digest: "lockV", developmentOnly: false, manifest: "m1", projects: List({ path: "device/google/cuttlefish", revision: "r1" }), targets: List("cf_x86_64_phone") }))
+    .union(Set({ ...noLock, name: "cuttlefish", digest: "lockV", developmentOnly: false, manifest: "m1", manifestConfiguration: configurationA, projects: List({ path: "device/google/cuttlefish", revision: "r1" }), targets: List("cf_x86_64_phone") }))
 }
 pure val factsValues = {
-  val physical: SourceFacts = { manifest: "m1", projects: List({ path: "frameworks/base", revision: "r1" }), changes: List({ project: "frameworks/base", path: "o.mk", digest: "d1" }), ignored: List(),
-    generated: List({ project: "vendor/google_devices", path: "manifest.xml", digest: "g1" }), heads: List(), archive: "z1", boardApi: 202604, vintfApi: 202604 }
+  val physical: SourceFacts = { manifest: "m1", manifestClean: true, manifestConfiguration: configurationA, indexVisible: true, projects: List({ path: "frameworks/base", revision: "r1" }), changes: List(ChangedFile({ file: { project: "frameworks/base", path: "o.mk", digest: "d1" } })), indexChanges: List(), ignored: List(),
+    generated: List({ project: "vendor/google_devices", path: "manifest.xml", digest: "g1" }), heads: List(), archive: "z1", archiveBytes: 9, boardApi: 202604, vintfApi: 202604 }
   Set(physical).union(Set({ ...physical, projects: List({ path: "frameworks/base", revision: "r9" }) })).union(Set({ ...physical, boardApi: 202504 }))
-    .union(Set({ ...physical, changes: physical.changes.append({ project: "frameworks/base", path: "Ui.java", digest: "post1" }), heads: List({ project: "frameworks/base", path: "Ui.java", digest: "pre1" }) }))
-    .union(Set({ ...noFacts, manifest: "m1", projects: List({ path: "device/google/cuttlefish", revision: "r1" }) }))
+    .union(Set({ ...physical, changes: physical.changes.append(ChangedFile({ file: { project: "frameworks/base", path: "Ui.java", digest: "post1" } })), heads: List({ project: "frameworks/base", path: "Ui.java", digest: "pre1" }) }))
+    .union(Set({ ...physical, changes: physical.changes.append(DeletedFile({ project: "frameworks/base", path: "Removed.java" })) }))
+    .union(Set({ ...noFacts, manifest: "m1", manifestConfiguration: configurationA, projects: List({ path: "device/google/cuttlefish", revision: "r1" }) }))
 }
 pure val patchesValues = {
   val reviewed: PatchEnvelope = { name: "chip", project: "frameworks/base", revision: "r1", baseline: "lockA", files: List({ path: "Ui.java", pre: "pre1", post: "post1" }), manifestSha256: "p1" }
@@ -99,10 +115,58 @@ pure def sometimesVirtualSourceMatched(s: SourceVerdict): bool = s.verdict == Ma
 pure def sometimesRevisionDriftRefused(s: SourceVerdict): bool = s.verdict == Mismatch and problemsOf(s.lock, s.read, s.patches) == List(RevisionDiffers)
 ```
 
+### Every observed platform project and manifest input is bound by the lock
+
+The shell reads the complete actual `.repo/project.list`, then observes every
+listed project's revision, including projects absent from the lock. It orders
+known projects as the lock does and appends any extra paths; a missing, extra
+or changed project prevents a match. The manifest configuration includes the
+manifest file, project list and every local manifest with its actual digest.
+A hidden, unresolved, assume-unchanged or skip-worktree index entry is a
+separate refusal, never encoded as a fabricated revision or digest.
+
+Every pinned entry is observed from its actual file handle or literal link
+target, independently of Git's stat cache. Its committed kind and execute
+bits are part of the [source entry contract](../build/sourceIntegrity.md):
+a kind or mode mismatch is an explicit `ChangedKind` and always refuses,
+even when content digests happen to match. A staged gitlink object-identity
+change is a `ChangedGitlink`, also refused because a file override or patch
+postimage does not approve a different child-repository pointer. Gitlinks remain opaque; a child
+project listed by the manifest is separately observed as its own project.
+The manifest checkout is observed in the same way; `manifestClean` records
+its actual cleanliness, while `indexVisible` means only that index entries
+were visible and resolved. An ignored extra file in that checkout is still
+an extra manifest input; an ignore rule cannot make it clean. The staged index has its own typed change
+inventory: every staged delta must be approved, but it cannot substitute
+for a required override in the actual working files.
+
+A tracked path that is missing is an explicit `DeletedFile`
+observation. It always prevents a match and cannot satisfy a recorded
+override or patch postimage. Other unreadable files remain I/O failures.
+The empty patch preimage still means a deliberately reviewed new file;
+it is not a deletion observation or a source-content digest.
+
+Ignored inputs are recorded per project as the exact file count and digest
+of its ordered file inventory, matching the source inventory's actual
+`ignoredInputs` shape. A link contributes its raw target, and a regular file
+its path, size and content digest; special entries are refused. A partial
+profile without complete reviewed manifest and project pins cannot establish
+full platform source integrity. Matching source is separate from building,
+signing, runtime execution or device qualification.
+
+```quint
+pure def lawUnboundManifestNeverMatches(lock: SourceLock, facts: SourceFacts, patches: List[PatchEnvelope]): bool =
+  (facts.manifestConfiguration != lock.manifestConfiguration or facts.projects != lock.projects or not(facts.manifestClean) or not(facts.indexVisible)) implies problemsOf(lock, facts, patches).length() > 0
+pure def lawChangedIgnoredTreeNeverMatches(lock: SourceLock, facts: SourceFacts, patches: List[PatchEnvelope]): bool =
+  facts.ignored != lock.ignored implies problemsOf(lock, facts, patches).includes(SourceChangeDiffers)
+pure def lawDeletedTrackedSourceNeverMatches(lock: SourceLock, facts: SourceFacts, patches: List[PatchEnvelope]): bool =
+  facts.changes.some(c => match c { | DeletedFile(d) => true | _ => false }) implies problemsOf(lock, facts, patches).includes(SourceChangeDiffers)
+```
+
 ### A physical device matches only with its factory archive and the vendor API level its stock vendor declares
 
 A physical product keeps the factory vendor partition. The factory archive's
-digest must equal the lock's, and the lunch release's single
+digest and exact byte length must equal the lock's, and the lunch release's single
 `RELEASE_BOARD_API_LEVEL` and the generated vendor VINTF sepolicy version
 must both equal the lock's six-digit `vendorApiLevel`. A mismatch is
 corrected in the release configuration by the operator, never by rewriting
@@ -112,7 +176,7 @@ of these checks.
 ```quint
 pure def stockVendorProblems(device: DeviceSource, facts: SourceFacts): List[Problem] =
   match device {
-    | PhysicalDevice(d) => problemIf(facts.archive != d.archive, ArchiveDiffers)
+    | PhysicalDevice(d) => problemIf(facts.archive != d.archive or facts.archiveBytes != d.archiveSize, ArchiveDiffers)
         .concat(problemIf(facts.boardApi != d.vendorApiLevel, BoardApiDiffers))
         .concat(problemIf(facts.vintfApi != d.vendorApiLevel, VintfApiDiffers))
     | VirtualDevice => List()
@@ -135,7 +199,7 @@ and manifest bytes; the verdict binds each admitted envelope by its
 pure def patchAdmitted(lock: SourceLock, facts: SourceFacts, e: PatchEnvelope): bool =
   e.baseline == lock.digest and lock.projects.includes({ path: e.project, revision: e.revision }) and
   e.files.every(f => facts.heads.includes({ project: e.project, path: f.path, digest: f.pre }) and
-    facts.changes.includes({ project: e.project, path: f.path, digest: f.post }) and
+    facts.changes.includes(ChangedFile({ file: { project: e.project, path: f.path, digest: f.post } })) and
     not(lock.overrides.some(o => o.project == e.project and o.path == f.path)))
 pure def patchesDisjoint(patches: List[PatchEnvelope]): bool =
   patches.every(a => patches.every(b => a == b or a.project != b.project or not(a.files.some(f => b.files.some(g => g.path == f.path)))))

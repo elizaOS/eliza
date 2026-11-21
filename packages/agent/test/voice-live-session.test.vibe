@@ -1,7 +1,7 @@
-// spec/agent/voice/session.md, "Barge-in is confirmed by an accepted transcript or a 700 ms hold"; spec/agent/voice/session.md, "A session owns one microphone capture and reopens it only after the turn"; spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"
+// spec/agent/voice/session.md, "A barge-in is confirmed only by an accepted transcript or a 700 ms hold"; spec/agent/voice/session.md, "A session owns one microphone capture, and a half-duplex session reopens it only after the turn"; spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"
 import { assert, it } from "@effect/vitest"
 import { createLiveVoiceSession, parseVoiceTranscriptEnvelope } from "../src/voice/live-session.vibe"
-import type { CaptureEvents, HeardBody, SpeakerEvents, VoiceTurn } from "../src/voice/ports.vibe"
+import type { CaptureEvents, HeardBody, SpeakerEvents, VoiceSessionPorts, VoiceTurn } from "../src/voice/ports.vibe"
 
 const sessionId = "live-session-1"
 const reply = "Your dentist appointment is at three this afternoon."
@@ -11,7 +11,7 @@ interface Spoken {
   readonly events: SpeakerEvents
 }
 
-function harness() {
+function harness(options: { endOfTurn?: VoiceSessionPorts["endOfTurn"]; send?: VoiceSessionPorts["turns"]["send"] } = {}) {
   const timers: Array<{ at: number; run: () => void }> = []
   const listeners = new Set<(envelope: unknown) => void>()
   const captures: CaptureEvents[] = []
@@ -21,19 +21,15 @@ function harness() {
   const spoken: Spoken[] = []
   const counts = { closes: 0, stops: 0 }
   let now = 1000
-  const live = createLiveVoiceSession({
-    sessionId,
-    subscribe: (listener) => {
-      listeners.add(listener)
-      return () => { listeners.delete(listener) }
-    },
+  const ports: VoiceSessionPorts = {
     conversationId: "conversation-1",
+    roomId: "room-1",
     capture: { open: (_request, events) => { captures.push(events) }, close: () => { counts.closes += 1 } },
-    endOfTurn: async () => "ScoredComplete",
+    endOfTurn: options.endOfTurn ?? (async () => "ScoredComplete"),
     turns: {
-      send: async (turn) => {
+      send: async (turn, signal) => {
         sent.push(turn)
-        return { messageId: `reply-${sent.length}`, text: reply }
+        return options.send?.(turn, signal) ?? { messageId: `reply-${sent.length}`, text: reply }
       },
       abort: async (roomId) => { aborted.push(roomId) },
     },
@@ -44,6 +40,14 @@ function harness() {
     speaker: { speak: (segments, events) => { spoken.push({ segments, events }) }, stop: () => { counts.stops += 1 } },
     clock: { now: () => now, after: (ms, run) => { timers.push({ at: now + ms, run }) } },
     clientMessageId: () => `client-${sent.length + 1}`,
+  }
+  const live = createLiveVoiceSession({
+    ...ports,
+    sessionId,
+    subscribe: (listener) => {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
   })
   const settle = async () => {
     for (let round = 0; round < 50; round += 1) await Promise.resolve()
@@ -88,7 +92,7 @@ function harness() {
   return { live, listeners, captures, sent, aborted, heard, spoken, counts, advance, emit, say, settle, open, replyPlaying }
 }
 
-it.effect("Barge-in is confirmed by an accepted transcript or a 700 ms hold: held speech cuts the playing reply and reserves its heard report", () => effect {
+it.effect("A barge-in is confirmed only by an accepted transcript or a 700 ms hold: held speech cuts the playing reply and reserves its heard report", () => effect {
   const h = harness()
   try promise(() => h.replyPlaying(true))
   const playing = { sent: h.sent.map((turn) => [turn.text, turn.channelType]), spoken: h.spoken.length, turn: h.live.state.turn, phase: h.live.phase }
@@ -107,6 +111,7 @@ it.effect("Barge-in is confirmed by an accepted transcript or a 700 ms hold: hel
     assert.deepStrictEqual(candidate, { stops: 0, turn: "Playing", phase: "PhaseSpeaking" })
     assert.deepStrictEqual(cut, { stops: 1, lastEnd: "ReplyCut", receipts: [[1, true]] })
     assert.deepStrictEqual(h.sent.map((turn) => turn.text), ["What is on my calendar today?", "Wait, make it tomorrow instead."])
+    assert.deepStrictEqual(h.heard, [{ nothingHeard: true }])
     assert.strictEqual(h.captures.length, 1)
     assert.strictEqual(h.counts.closes, 0)
   })
@@ -129,7 +134,21 @@ it.effect("Filler, sound annotations and the assistant's own echo are never a tu
   })
 })
 
-it.effect("Barge-in is confirmed by an accepted transcript or a 700 ms hold: a sound annotation still arriving as partials cuts nothing", () => effect {
+it.effect('Report what of an interrupted reply I heard: keep the exact prefix of the reply as written (spec/agent/voice/session.md, "A reply plays segment by segment, and a cut or broken one reserves one report")', () => effect {
+  const prefix = "  Call  Alex’s 📞 phone."
+  const h = harness({ send: async () => ({ messageId: "spaced-reply", text: `${prefix}\nThen text Bob.` }) })
+  try promise(() => h.replyPlaying(false))
+  const first = h.spoken[0]
+  first?.events.segmentPlayed()
+  h.live.stop()
+  try promise(() => h.settle())
+  try Effect.try(() => {
+    assert.deepStrictEqual(first?.segments, ["Call Alex’s 📞 phone.", "Then text Bob."])
+    assert.deepStrictEqual(h.heard, [{ heardText: prefix }])
+  })
+})
+
+it.effect("A barge-in is confirmed only by an accepted transcript or a 700 ms hold: a sound annotation still arriving as partials cuts nothing", () => effect {
   const h = harness()
   try promise(() => h.replyPlaying(true))
   h.emit({ turnId: "turn-2", phase: "speech-start" })
@@ -149,7 +168,7 @@ it.effect("Barge-in is confirmed by an accepted transcript or a 700 ms hold: a s
   })
 })
 
-it.effect("A session owns one microphone capture and reopens it only after the turn: malformed envelopes are refused and Stop ends the feed", () => effect {
+it.effect("A session owns one microphone capture, and a half-duplex session reopens it only after the turn: malformed envelopes are refused and Stop ends the feed", () => effect {
   const h = harness()
   try promise(() => h.open(true))
   const before = h.live.state
@@ -182,6 +201,67 @@ it.effect("A session owns one microphone capture and reopens it only after the t
       { kind: "failed", turnId: "turn-1" },
       ...junk.map(() => undefined),
     ])
-    assert.deepStrictEqual([h.listeners.size, h.live.state.running, h.counts.closes, h.live.phase], [0, false, 1, "PhaseIdle"])
+    assert.deepStrictEqual([h.listeners.size, h.live.state.life, h.counts.closes, h.live.phase], [0, "Idle", 1, "PhaseIdle"])
+  })
+})
+
+it.effect('Send my words once I finish speaking: half-duplex waits for capture close and reopens after the reply (spec/agent/voice/session.md, "A turn is sent once, and a half-duplex turn only after the capture confirmed its close")', () => effect {
+  const h = harness()
+  h.live.start("ConversationMode", "HalfDuplex")
+  h.captures[0]?.opened({ echoCancelled: false })
+  try promise(() => h.say("first", "Find my dentist appointment."))
+  try promise(() => h.advance(300))
+  const beforeClose = [h.counts.closes, h.sent.length, h.live.state.turn]
+  h.captures[0]?.closed()
+  try promise(() => h.settle())
+  const duringReply = [h.captures.length, h.sent.map((turn) => turn.text), h.live.phase]
+  const spoken = h.spoken[0]
+  for (const _segment of spoken?.segments ?? []) spoken?.events.segmentPlayed()
+  h.captures[0]?.closed()
+  h.captures[1]?.opened({ echoCancelled: false })
+  try Effect.try(() => {
+    assert.deepStrictEqual(beforeClose, [1, 0, "AwaitingClose"])
+    assert.deepStrictEqual(duringReply, [1, ["Find my dentist appointment."], "PhaseSpeaking"])
+    assert.deepStrictEqual([h.captures.length, h.live.state.capture, h.live.state.lastEnd], [2, "CaptureOpen", "ReplyPlayed"])
+  })
+})
+
+it.effect('Send my words once I finish speaking: a new utterance fences out an old score (spec/agent/voice/session.md, "New speech advances the utterance epoch, so an answer asked for an older utterance changes nothing")', () => effect {
+  const scores: Array<{ signal: AbortSignal; complete: () => void }> = []
+  const h = harness({ endOfTurn: (_transcript, signal) => new Promise((resolve) => {
+    scores.push({ signal, complete: () => resolve("ScoredComplete") })
+  }) })
+  try promise(() => h.open(true))
+  try promise(() => h.say("first", "I want to ask"))
+  try promise(() => h.advance(300))
+  try promise(() => h.say("second", "when is my appointment?"))
+  scores[0]?.complete()
+  try promise(() => h.settle())
+  const oldScore = [scores[0]?.signal.aborted, h.sent.length]
+  try promise(() => h.advance(1_200))
+  scores[1]?.complete()
+  try promise(() => h.settle())
+  try Effect.try(() => {
+    assert.deepStrictEqual(oldScore, [true, 0])
+    assert.deepStrictEqual(h.sent.map((turn) => turn.text), ["I want to ask when is my appointment?"])
+    assert.strictEqual(h.live.state.cause, "LongGapSubmit")
+  })
+})
+
+it.effect('A barge-in is confirmed only by an accepted transcript or a 700 ms hold: abort the pending room and refuse its late reply (spec/agent/voice/session.md, "A barge-in is confirmed only by an accepted transcript or a 700 ms hold")', () => effect {
+  const pending: Array<{ signal: AbortSignal; complete: () => void }> = []
+  const h = harness({ send: (_turn, signal) => new Promise((resolve) => {
+    pending.push({ signal, complete: () => resolve({ messageId: "late-reply", text: reply }) })
+  }) })
+  try promise(() => h.open(true))
+  try promise(() => h.say("first", "Find my calendar."))
+  try promise(() => h.advance(300))
+  h.emit({ turnId: "interrupt", phase: "speech-start" })
+  try promise(() => h.advance(700))
+  pending[0]?.complete()
+  try promise(() => h.settle())
+  try Effect.try(() => {
+    assert.deepStrictEqual([h.aborted, pending[0]?.signal.aborted, h.live.state.lastEnd, h.spoken.length],
+      [["room-1"], true, "TurnAborted", 0])
   })
 })

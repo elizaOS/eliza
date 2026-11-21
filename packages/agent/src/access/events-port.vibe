@@ -22,15 +22,3 @@ export interface EventSubscriptions {
 }
 
 export const isRefused = (feed: AsyncIterable<AgentEvent> | Refused): feed is Refused => "kind" in feed
-
-export const noEvents: EventSubscriptions = {
-  subscribe: (_request, signal) => ({
-    [Symbol.asyncIterator]: () => ({
-      next: () => new Promise<IteratorResult<AgentEvent>>((resolve) => {
-        const end = () => resolve({ done: true, value: undefined })
-        if (signal.aborted) end()
-        else signal.addEventListener("abort", end, { once: true })
-      }),
-    }),
-  }),
-}

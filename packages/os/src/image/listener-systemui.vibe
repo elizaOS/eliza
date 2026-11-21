@@ -1,0 +1,166 @@
+// spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed"; spec/os/image/listener.md, "A listener is staged only from a matched source that carries the chip and ops SystemUI patches"
+import { captureCommand } from "./device.vibe"
+import { hashArtifact, observeCommittedEntry, readArtifact } from "./artifact.vibe"
+import type { PatchReference } from "./source-lock.vibe"
+
+type Bundle = "ops" | "chip" | "assist"
+type State = "before" | "after"
+
+const Digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const Revision = Schema.String.check(Schema.isPattern(/^[a-f0-9]{40}$/))
+const Relative = Schema.String.check(Schema.makeFilter((value) =>
+  value.split("/").every((part) => /^[A-Za-z0-9_.-]+$/.test(part) && part !== "." && part !== "..")))
+const PatchFilename = Relative.check(Schema.makeFilter((value) => !value.includes("/") && value.endsWith(".patch")))
+const Manifest = Schema.Struct({
+  schema: Schema.Literal(1),
+  project: Schema.Literal("frameworks/base"),
+  revision: Revision,
+  baselineLockSha256: Digest,
+  patch: PatchFilename,
+  patchSha256: Digest,
+  files: Schema.Array(Schema.Struct({
+    path: Relative,
+    beforeSha256: Schema.NullOr(Digest),
+    afterSha256: Digest,
+  })).check(Schema.isMinLength(1)),
+  indicatorHealthLeaseImplemented: Schema.optionalKey(Schema.Boolean),
+})
+const decodeManifest = Schema.decodeUnknownEffect(Schema.fromJsonString(Manifest))
+const sourceBudget = 16 * 1024 * 1024
+
+export error ListenerSourceRefused { reason: string }
+
+effect function senseRoot() {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const relative = "aosp/sense/systemui"
+  const here = try path.fromFileUrl(new URL(".", import.meta.url))
+  for (const distance of ["../..", "../../.."]) {
+    const found = path.resolve(here, distance, relative)
+    if (try files.exists(path.join(found, "manifest.json"))) return found
+  }
+  throw new ListenerSourceRefused({ reason: `Cannot locate ${relative}` })
+}
+
+effect function bytes(file: string) {
+  return try tryPromise({ try: () => readArtifact(file, sourceBudget), catch: (cause) => new ListenerSourceRefused({ reason: String(cause) }) })
+}
+
+effect function envelope(bundle: Bundle) {
+  if (bundle !== "ops" && bundle !== "chip" && bundle !== "assist") throw new ListenerSourceRefused({ reason: "Unknown SystemUI bundle" })
+  const path = try Path.Path
+  const root = try senseRoot()
+  const directory = bundle === "ops" ? root : path.join(root, bundle)
+  const manifestFile = path.join(directory, "manifest.json")
+  const observed = try bytes(manifestFile)
+  const manifest = try decodeManifest(new TextDecoder().decode(observed.bytes))
+  const patchFile = path.join(directory, manifest.patch)
+  const baseline = try bytes(path.resolve(root, "../../sources/pixel10a-stallion.json"))
+  const patch = try bytes(patchFile)
+  if (new Set(manifest.files.map(({ path }) => path)).size !== manifest.files.length) {
+    throw new ListenerSourceRefused({ reason: "SystemUI manifest names a source path twice" })
+  }
+  if (baseline.sha256 !== manifest.baselineLockSha256) throw new ListenerSourceRefused({ reason: "SystemUI baseline source lock differs from its manifest" })
+  if (patch.sha256 !== manifest.patchSha256) throw new ListenerSourceRefused({ reason: "SystemUI patch digest differs from its manifest" })
+  const reference: PatchReference = { name: bundle, manifestFile, manifestSha256: observed.sha256, patchFile }
+  return { manifest, reference, patch: patch.bytes }
+}
+
+export effect function listenerPatchReference(bundle: Bundle) {
+  return (try envelope(bundle)).reference
+}
+
+interface BundleEvidence {
+  readonly manifest: typeof Manifest.Type
+  readonly reference: PatchReference
+  readonly patch: Uint8Array
+}
+
+effect function verify(source: string, state: State, bundle: Bundle, envelope: BundleEvidence) {
+  const path = try Path.Path
+  const files = try FileSystem.FileSystem
+  if (state !== "before" && state !== "after") throw new ListenerSourceRefused({ reason: "Expected before or after state" })
+  const root = try files.realPath(source)
+  const project = path.join(root, envelope.manifest.project)
+  if ((try files.realPath(project)) !== project) throw new ListenerSourceRefused({ reason: "SystemUI project resolved through a symlink" })
+  const reviewed: { path: string; sha256: string | null }[] = []
+  for (const entry of envelope.manifest.files) {
+    const expected = state === "before" ? entry.beforeSha256 : entry.afterSha256
+    const file = path.join(project, entry.path)
+    if (expected === null) {
+      const observed = try tryPromise({
+        try: () => observeCommittedEntry(project, { path: entry.path, mode: "RegularEntry" }, sourceBudget),
+        catch: (cause) => new ListenerSourceRefused({ reason: String(cause) }),
+      })
+      if (observed.kind !== "MissingFile") throw new ListenerSourceRefused({ reason: `New SystemUI path already exists: ${entry.path}` })
+      reviewed.push({ path: entry.path, sha256: null })
+      continue
+    }
+    if ((try files.realPath(file)) !== file) throw new ListenerSourceRefused({ reason: `SystemUI path resolved through a symlink: ${entry.path}` })
+    const observed = try tryPromise({ try: () => hashArtifact(file, sourceBudget), catch: (cause) => new ListenerSourceRefused({ reason: String(cause) }) })
+    if (observed.sha256 !== expected) throw new ListenerSourceRefused({ reason: `SystemUI ${state} digest mismatch: ${entry.path}` })
+    reviewed.push({ path: entry.path, sha256: observed.sha256 })
+  }
+  return {
+    schema: 1,
+    bundle,
+    state,
+    expectedProjectRevision: envelope.manifest.revision,
+    baselineLockSha256: envelope.manifest.baselineLockSha256,
+    manifestSha256: envelope.reference.manifestSha256,
+    patchSha256: envelope.manifest.patchSha256,
+    files: reviewed,
+    indicatorHealthLeaseImplemented: bundle === "chip" && envelope.manifest.indicatorHealthLeaseImplemented === true,
+    indicatorHealthLeaseQualified: false,
+    fullTreeVerified: false,
+    imageBuilt: false,
+    lockAodIndicatorQualified: false,
+    systemUiCompiled: false,
+  }
+}
+
+export effect function verifyListenerSystemui(source: string, state: State = "before", bundle: Bundle = "chip") {
+  return try verify(source, state, bundle, try envelope(bundle))
+}
+
+export effect function prepareListenerSystemui(source: string, output: string, bundle: Bundle = "chip") {
+  const path = try Path.Path
+  const files = try FileSystem.FileSystem
+  const sourceRoot = try files.realPath(source)
+  const parent = try files.realPath(path.dirname(path.resolve(output)))
+  const target = path.join(parent, path.basename(output))
+  const relative = path.relative(sourceRoot, target)
+  if (relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`))) {
+    throw new ListenerSourceRefused({ reason: "Derived SystemUI output must be outside the supplied source" })
+  }
+  const selected = try envelope(bundle)
+  const before = try verify(sourceRoot, "before", bundle, selected)
+  return try scoped(effect {
+    const temp = try files.makeTempDirectoryScoped()
+    const project = path.join(temp, selected.manifest.project)
+    const patch = path.join(temp, "reviewed.patch")
+    try files.makeDirectory(project, { recursive: true })
+    try files.writeFile(patch, selected.patch, { flag: "wx" })
+    for (const entry of before.files) {
+      if (entry.sha256 === null) continue
+      const input = try bytes(path.join(sourceRoot, selected.manifest.project, entry.path))
+      if (input.sha256 !== entry.sha256) throw new ListenerSourceRefused({ reason: `SystemUI preimage changed while staging ${entry.path}` })
+      const file = path.join(project, entry.path)
+      try files.makeDirectory(path.dirname(file), { recursive: true })
+      try files.writeFile(file, input.bytes, { flag: "wx" })
+    }
+    const applied = try captureCommand("git", ["-C", project, "apply", "--whitespace=error", patch], 60_000)
+    if (applied.code !== 0) throw new ListenerSourceRefused({ reason: applied.stderr.trim() || "SystemUI patch refused" })
+    const after = try verify(temp, "after", bundle, selected)
+    try files.makeDirectory(target)
+    for (const entry of after.files) {
+      const input = try bytes(path.join(project, entry.path))
+      if (input.sha256 !== entry.sha256) throw new ListenerSourceRefused({ reason: `Derived SystemUI file changed while staging ${entry.path}` })
+      const file = path.join(target, selected.manifest.project, entry.path)
+      try files.makeDirectory(path.dirname(file), { recursive: true })
+      try files.writeFile(file, input.bytes, { flag: "wx" })
+    }
+    try files.writeFileString(path.join(target, "derived-source.json"), `${JSON.stringify(after, null, 2)}\n`, { flag: "wx" })
+    return after
+  })
+}

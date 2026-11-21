@@ -9,6 +9,14 @@ import type { CloudTransport } from "./client.vibe"
 import type { CloudError } from "./errors.vibe"
 import { idempotencyKey, routesByName, type DeviceRoute } from "./routes.vibe"
 
+module browser {
+  /** @throws {never} */
+  export function freshRequestId(): string {
+    return globalThis.crypto.randomUUID()
+  }
+}
+import { freshRequestId } from browser
+
 export type {
   MapsCapabilities, MapsPlaceResponse, MapsPlacesResponse, MapsRoutesResponse, MapsViewportResponse,
   PlaceDetailsRequest, ReverseRequest, RoutesRequest, TextSearchRequest, TileAddress, ViewportRequest
@@ -35,7 +43,7 @@ export function mapsRefusalOf(error: CloudError): MapsRefusal | undefined {
 }
 
 function freshKey(route: DeviceRoute): Readonly<Record<string, string>> {
-  return route.headers.includes(idempotencyKey) ? { [idempotencyKey]: crypto.randomUUID() } : {}
+  return route.headers.includes(idempotencyKey) ? { [idempotencyKey]: freshRequestId() } : {}
 }
 
 export function mapsCalls(transport: CloudTransport) {

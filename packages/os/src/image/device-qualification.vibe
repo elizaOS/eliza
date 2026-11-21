@@ -1,0 +1,366 @@
+// spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/image/qualification.md, "Story: Read the verdict against my requirements"
+import {
+  admitRun,
+  atLeast,
+  commandAllowed,
+  fastbootGetvarNames,
+  outcomeOf,
+  qualificationOf,
+  readOnlyCommandKeys,
+  requirementsValid,
+  vendorApiAtLeast,
+  type CheckOutcome,
+  type DeviceCommand,
+  type ProbeMode,
+  type Reading,
+  type Requirement as ModelRequirement,
+  type RequirementLevel,
+  type RequirementResult,
+} from "../../gen/os__image__qualification.effect.vibe"
+import { AdbTimedOut, adbSerial, captureCommand, type AdbSerial } from "./device.vibe"
+import {
+  compareVersion,
+  deriveFacts,
+  parseFastbootVars,
+  readOnlyCommands,
+  type DeviceFacts,
+  type RawAdbCaptures,
+} from "./device-qualification-facts.vibe"
+
+const Named = Schema.String.check(Schema.isMinLength(1))
+const NonBlank = Named.check(Schema.makeFilter((name) => name.trim() !== ""))
+const WholeMinimum = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const GiBMinimum = Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER / 100 }))
+const RequirementName = Schema.String.check(Schema.makeFilter((id) => /^[a-z0-9][a-z0-9-]*$/.test(id)))
+const Level = Schema.Literals(["required", "preferred"])
+const IdentityField = Schema.Literals(["manufacturer", "model", "device", "fingerprint", "vendorFingerprint"])
+const base = { id: RequirementName, level: Level, rationale: Schema.optionalKey(Schema.String) }
+const NumericCheck = Schema.Literals(["androidRelease", "vendorApiLevel", "displayLongEdgePx", "displayShortEdgePx", "microphoneCount"])
+const FlagCheck = Schema.Literals(["treble", "wifi5GHz", "dynamicPartitions", "abUpdates", "selinuxEnforcing", "chargeControl", "wifiCountryProcNotWorldWritable"])
+const BootloaderCheck = Schema.Literals(["fastbootUnlockable", "fastbootAvbCustomKey"])
+const Requirement = Schema.Union([
+  Schema.Struct({ ...base, check: Schema.Literal("identity"), field: IdentityField, equals: NonBlank }),
+  Schema.Struct({ ...base, check: Schema.Literal("abi"), equals: NonBlank }),
+  Schema.Struct({ ...base, check: Schema.Literal("kernelVersion"), min: Schema.String.check(Schema.makeFilter((min) => /^\d+\.\d+$/.test(min))) }),
+  Schema.Struct({ ...base, check: NumericCheck, min: WholeMinimum }),
+  Schema.Struct({ ...base, check: Schema.Literals(["ramGiB", "dataGiB"]), min: GiBMinimum }),
+  Schema.Struct({ ...base, check: Schema.Literals(["camera", "cameraAutofocus"]), facing: NonBlank }),
+  Schema.Struct({ ...base, check: Schema.Literal("codec"), mime: NonBlank }),
+  Schema.Struct({ ...base, check: FlagCheck }),
+  Schema.Struct({ ...base, check: BootloaderCheck }),
+])
+const Requirements = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  description: Schema.optionalKey(Schema.String),
+  reviewedAt: Schema.optionalKey(Schema.String),
+  requirements: Schema.Array(Requirement),
+  fastbootRequirements: Schema.optionalKey(Schema.Array(Requirement)),
+})
+const decodeRequirements = Schema.decodeUnknownOption(Requirements)
+const readRequirements = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
+
+export type DeviceRequirements = typeof Requirements.Type
+type Requirement = typeof Requirement.Type
+
+const verdictName = { Qualified: "pass", Disqualified: "fail", Incomplete: "incomplete" } as const
+const evidenceName = { EmulatorObservation: "emulator-observation", BootloaderObservation: "bootloader-observation", DeviceObservation: "device-observation" } as const
+const outcomeName = { Met: "pass", Unmet: "fail", Unknown: "unknown" } as const
+const levelName = { required: "Required", preferred: "Preferred" } as const satisfies Readonly<Record<Requirement["level"], RequirementLevel>>
+
+export error RequirementsInvalid { reason: string }
+export error QualificationRefused { reason: string }
+export error QualificationUsage { reason: string }
+
+function modelRequirements(requirements: DeviceRequirements): ModelRequirement[] {
+  return [
+    ...requirements.requirements.map((rule) => ({ id: rule.id, level: levelName[rule.level], mode: "AdbProbe" as const, wellFormed: !Schema.is(BootloaderCheck)(rule.check) })),
+    ...(requirements.fastbootRequirements ?? []).map((rule) => ({ id: rule.id, level: levelName[rule.level], mode: "FastbootProbe" as const, wellFormed: Schema.is(BootloaderCheck)(rule.check) })),
+  ]
+}
+
+export effect function validateRequirements(input: unknown) {
+  const parsed = decodeRequirements(input)
+  if (Option.isNone(parsed)) throw new RequirementsInvalid({ reason: "Expected a version 1 device requirements file with recognized checks" })
+  const profile = parsed.value
+  if (!requirementsValid(profile.schemaVersion, modelRequirements(profile))) {
+    throw new RequirementsInvalid({ reason: "Requirements must have unique IDs across modes, recognized checks for each mode, and at least one adb requirement" })
+  }
+  return profile
+}
+
+interface Check {
+  readonly checkOutcome: CheckOutcome
+  readonly observed: unknown
+}
+
+function observed(satisfied: boolean | null | undefined, reading: unknown = satisfied ?? null): Check {
+  return { checkOutcome: outcomeOf(satisfied == null ? { tag: "Unobserved" } : { tag: "Observed", satisfied }), observed: reading }
+}
+
+function numberReading(value: number | null | undefined): Reading {
+  return value == null ? { tag: "NotRead" } : { tag: "ReadValue", value }
+}
+
+function threshold(value: number | null | undefined, minimum: number, units = 1): Check {
+  const reading = numberReading(value == null ? null : Math.round(value * units))
+  return { checkOutcome: outcomeOf(atLeast(reading, Math.ceil(minimum * units))), observed: value ?? null }
+}
+
+function matches(value: string | null | undefined, expected: string): Check {
+  return value ? observed(value === expected, value) : observed(null)
+}
+
+function check(facts: DeviceFacts, rule: Requirement): Check {
+  switch (rule.check) {
+    case "identity": return matches(facts[rule.field], rule.equals)
+    case "abi": return matches(facts.abi, rule.equals)
+    case "kernelVersion": {
+      const value = facts.kernel
+      return value == null ? observed(null) : observed(compareVersion(`${value.major}.${value.minor}`, rule.min) >= 0, value.release)
+    }
+    case "vendorApiLevel": {
+      const reading = numberReading(facts.vendorApiLevelRaw ?? facts.vendorApiLevel)
+      return { checkOutcome: outcomeOf(vendorApiAtLeast(reading, rule.min)), observed: facts.vendorApiLevel ?? null }
+    }
+    case "androidRelease": return threshold(facts.androidRelease, rule.min)
+    case "displayLongEdgePx": return threshold(facts.display?.longEdge, rule.min)
+    case "displayShortEdgePx": return threshold(facts.display?.shortEdge, rule.min)
+    case "microphoneCount": return facts.microphoneCount === 0 ? observed(null, 0) : threshold(facts.microphoneCount, rule.min)
+    case "ramGiB": return threshold(facts.ramGiB, rule.min, 100)
+    case "dataGiB": return threshold(facts.dataGiB, rule.min, 100)
+    case "camera": {
+      if (!facts.cameras?.length) return observed(null, [])
+      const cameras = facts.cameras.filter((camera) => camera.facing === rule.facing)
+      return observed(cameras.length > 0, cameras.map(({ id }) => id))
+    }
+    case "cameraAutofocus": {
+      const cameras = (facts.cameras ?? []).filter((camera) => camera.facing === rule.facing)
+      const readable = cameras.length > 0 && cameras.every(({ autofocus }) => autofocus !== null)
+      const autofocus = cameras.some((camera) => camera.autofocus === true) ? true : readable ? false : null
+      return observed(autofocus, cameras.map(({ id, afModes, minimumFocusDistance }) => ({ id, afModes, minimumFocusDistance })))
+    }
+    case "codec": return facts.codecs?.decoders.length ? observed(facts.codecs.decoders.includes(rule.mime), rule.mime) : observed(null)
+    case "treble": return observed(facts.treble)
+    case "wifi5GHz": return observed(facts.wifi5GHz)
+    case "dynamicPartitions": return observed(facts.dynamicPartitions)
+    case "abUpdates": return observed(facts.abUpdates)
+    case "selinuxEnforcing": return matches(facts.selinux, "Enforcing")
+    case "chargeControl": {
+      const values = facts.chargeControlNodes ?? []
+      return observed(values.length > 0 ? true : null, values)
+    }
+    case "wifiCountryProcNotWorldWritable": {
+      const mode = facts.wlanCountryProcMode
+      return mode == null ? observed(null) : observed(mode[8] !== "w", mode)
+    }
+    case "fastbootUnlockable": {
+      const { unlocked, unlock_ability: allowed } = facts.fastboot ?? {}
+      if (unlocked === "yes" || allowed === "1") return observed(true, unlocked ?? allowed)
+      return observed(allowed === "0" ? false : null, allowed === "0" ? allowed : unlocked ?? null)
+    }
+    case "fastbootAvbCustomKey": {
+      const value = facts.fastboot?.["partition-type:avb_custom_key"]
+      return value ? observed(!/fail|unknown|not found/i.test(value), value) : observed(null)
+    }
+  }
+}
+
+export function evaluate(facts: DeviceFacts, requirements: DeviceRequirements, { fastboot = false }: { readonly fastboot?: boolean } = {}) {
+  const rules = (fastboot ? requirements.fastbootRequirements : requirements.requirements) ?? []
+  const results: RequirementResult[] = []
+  const rows = rules.map((rule) => {
+    const finding = check(facts, rule)
+    results.push({ id: rule.id, level: levelName[rule.level], checkOutcome: finding.checkOutcome })
+    return { id: rule.id, level: rule.level, result: outcomeName[finding.checkOutcome], observed: finding.observed }
+  })
+  const assessed = qualificationOf(results, facts.emulator === true, fastboot ? "FastbootProbe" : "AdbProbe")
+  return {
+    verdict: verdictName[assessed.verdict],
+    evidenceLevel: evidenceName[assessed.evidence],
+    disclaimer: "Read-only observation. Image boot, RF, FCC, acoustic, battery and user acceptance require separate evidence.",
+    results: rows,
+    warnings: assessed.warnings,
+  }
+}
+
+interface Capture {
+  readonly command: DeviceCommand
+  readonly status: number | null
+  readonly stdout: string
+  readonly stderr: string
+  readonly failure?: string
+}
+
+export interface QualificationOptions {
+  readonly serial: string
+  readonly requirements: unknown
+  readonly fastboot?: boolean
+  readonly binary?: string
+}
+
+function isCaptureKey(key: string): key is keyof typeof readOnlyCommands {
+  return Object.hasOwn(readOnlyCommands, key)
+}
+
+effect function readDevice(mode: ProbeMode, binary: string, serial: AdbSerial, command: DeviceCommand): Capture!QualificationRefused!import("effect/process/ChildProcessSpawner").ChildProcessSpawner {
+  if (!commandAllowed(mode, command)) throw new QualificationRefused({ reason: "The probe command does not belong to this mode" })
+  let args: readonly string[]
+  switch (command.tag) {
+    case "AdbGetState": args = ["get-state"]; break
+    case "AdbShellRead": {
+      if (!isCaptureKey(command.key)) throw new QualificationRefused({ reason: `No read adapter for ${command.key}` })
+      args = ["shell", readOnlyCommands[command.key]]
+      break
+    }
+    case "FastbootGetvar": args = ["getvar", command.name]; break
+  }
+  return effect {
+    const outcome = try captureCommand(binary, ["-s", serial, ...args], 60_000)
+    return { command, status: outcome.code, stdout: new TextDecoder().decode(outcome.stdout), stderr: outcome.stderr }
+  } catch (failure) => ({
+    command, status: null, stdout: "", stderr: "",
+    failure: failure instanceof AdbTimedOut ? `Timed out after ${failure.timeoutMs} ms` : failure.stderr,
+  })
+}
+
+function rawKey(command: DeviceCommand): string {
+  switch (command.tag) {
+    case "AdbGetState": return "getState"
+    case "AdbShellRead": return command.key
+    case "FastbootGetvar": return command.name === "all" ? "getvarAll" : "getvarAvbCustomKey"
+  }
+}
+
+function rawText(probeMode: ProbeMode, capture: Capture): string {
+  return probeMode === "AdbProbe" ? capture.stdout : `${capture.stderr}\n${capture.stdout}`
+}
+
+function captureErrors(captures: readonly Capture[]) {
+  return Object.fromEntries(captures.filter(({ status }) => status !== 0).map((capture) => [rawKey(capture.command), capture.failure ?? (capture.stderr.trim() || `exit ${capture.status}`)]))
+}
+
+effect function gatherAdb(binary: string, serial: AdbSerial) {
+  const mode = "AdbProbe"
+  const readiness = try readDevice(mode, binary, serial, { tag: "AdbGetState" })
+  if (readiness.status !== 0 || readiness.stdout.trim() !== "device") {
+    throw new QualificationRefused({ reason: `adb device ${serial} is not ready: ${readiness.failure ?? (readiness.stderr || readiness.stdout).trim()}` })
+  }
+  const captures: Capture[] = [readiness]
+  const observations: RawAdbCaptures = {}
+  for (const key of readOnlyCommandKeys) {
+    if (!isCaptureKey(key)) throw new QualificationRefused({ reason: `Missing adb read ${key}` })
+    const captured = try readDevice(mode, binary, serial, { tag: "AdbShellRead", key })
+    captures.push(captured)
+    if (captured.status === 0) observations[key] = captured.stdout
+  }
+  return { facts: deriveFacts(observations), captures }
+}
+
+effect function gatherFastboot(binary: string, serial: AdbSerial) {
+  const mode = "FastbootProbe"
+  const captures: Capture[] = []
+  for (const name of fastbootGetvarNames) captures.push(try readDevice(mode, binary, serial, { tag: "FastbootGetvar", name }))
+  const bulk = captures.find((entry) => entry.command.tag === "FastbootGetvar" && entry.command.name === "all")
+  const custom = captures.find((entry) => entry.command.tag === "FastbootGetvar" && entry.command.name === "partition-type:avb_custom_key")
+  if (bulk === undefined || custom === undefined) throw new QualificationRefused({ reason: "Fastboot capture set is incomplete" })
+  const all = rawText(mode, bulk)
+  const queried = rawText(mode, custom)
+  const vars = parseFastbootVars(all)
+  if (Object.keys(vars).length === 0 || (bulk.status !== 0 && !all.includes("(bootloader)"))) {
+    throw new QualificationRefused({ reason: `fastboot device ${serial} did not answer getvar: ${bulk.failure ?? all.trim()}` })
+  }
+  const partition = "partition-type:avb_custom_key"
+  const found = parseFastbootVars(queried)[partition] ?? /FAILED[^\n]*/.exec(queried)?.[0]
+  if (found !== undefined) vars[partition] = found
+  const emulator = vars.emulator === "yes" || vars.emulator === "1" || vars["ro.kernel.qemu"] === "1" || vars["ro.boot.qemu"] === "1"
+  return { facts: { emulator, fastboot: vars }, captures }
+}
+
+export effect function qualifyDevice(options: QualificationOptions) {
+  const serial = try adbSerial(options.serial)
+  const requirements = try validateRequirements(options.requirements)
+  const fastboot = options.fastboot === true
+  const mode = fastboot ? "FastbootProbe" : "AdbProbe"
+  if (admitRun(true, requirements.schemaVersion, modelRequirements(requirements), mode) !== "RunAdmitted") {
+    throw new QualificationRefused({ reason: "The requirements file has no fastboot requirements" })
+  }
+  const collected: { readonly facts: DeviceFacts; readonly captures: Capture[] } = fastboot
+    ? try gatherFastboot(options.binary ?? "fastboot", serial)
+    : try gatherAdb(options.binary ?? "adb", serial)
+  const facts = !fastboot && /^emulator-\d+$/.test(serial) ? { ...collected.facts, emulator: true } : collected.facts
+  return {
+    serial,
+    mode: fastboot ? "fastboot" as const : "adb" as const,
+    requirementsReviewedAt: requirements.reviewedAt ?? null,
+    facts,
+    capture: collected.captures,
+    raw: Object.fromEntries(collected.captures.map((found) => [rawKey(found.command), rawText(mode, found)])),
+    collectionErrors: captureErrors(collected.captures),
+    evaluation: evaluate(facts, requirements, { fastboot }),
+  }
+}
+
+const relativeRequirements = "aosp/device-requirements/treble-gsi.json"
+
+effect function defaultRequirements() {
+  const path = try Path.Path
+  const files = try FileSystem.FileSystem
+  const here = try path.fromFileUrl(new URL(".", import.meta.url))
+  for (const up of ["../..", "../../.."]) {
+    const candidate = path.resolve(here, up, relativeRequirements)
+    if (try files.exists(candidate)) return candidate
+  }
+  throw new QualificationUsage({ reason: `Cannot locate ${relativeRequirements}` })
+}
+
+const valueFlags = ["--serial", "--requirements", "--out", "--adb", "--fastboot-bin"] as const
+type ValueFlag = typeof valueFlags[number]
+
+function isValueFlag(argument: string): argument is ValueFlag {
+  return valueFlags.some((flag) => flag === argument)
+}
+
+effect function parseArguments(argv: readonly string[]) {
+  const values = new Map<ValueFlag, string>()
+  let fastboot = false
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index] ?? ""
+    if (argument === "--fastboot") {
+      if (fastboot) throw new QualificationUsage({ reason: "--fastboot appears twice" })
+      fastboot = true
+      continue
+    }
+    const value = argv[index + 1]
+    if (!isValueFlag(argument) || values.has(argument) || value === undefined || value === "" || value.startsWith("--")) {
+      throw new QualificationUsage({ reason: `Invalid or repeated qualification argument: ${argument}` })
+    }
+    values.set(argument, value)
+    index += 1
+  }
+  const serial = values.get("--serial")
+  if (serial === undefined) throw new QualificationUsage({ reason: "An explicit --serial is required" })
+  return { serial, fastboot, requirements: values.get("--requirements"), out: values.get("--out"), binary: values.get(fastboot ? "--fastboot-bin" : "--adb") }
+}
+
+export effect function main(argv: readonly string[]) {
+  const args = try parseArguments(argv)
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const requirementsPath = path.resolve(args.requirements ?? (try defaultRequirements()))
+  const requirements = try readRequirements(try files.readFileString(requirementsPath))
+  const qualified = try qualifyDevice({ serial: args.serial, requirements, fastboot: args.fastboot, ...(args.binary === undefined ? {} : { binary: args.binary }) })
+  const capturedAt = new Date(try Clock.currentTimeMillis).toISOString()
+  const stamp = capturedAt.replace(/[:.]/g, "-")
+  const name = `${qualified.serial.replace(/[^\w.-]/g, "_")}-${qualified.mode}-${stamp}`
+  const output = path.resolve(args.out ?? path.join("test-results", "os-device-qualification", name))
+  const rawDirectory = path.join(output, "raw")
+  try files.makeDirectory(path.dirname(output), { recursive: true })
+  try files.makeDirectory(output)
+  try files.makeDirectory(rawDirectory)
+  for (const [key, value] of Object.entries(qualified.raw)) {
+    try files.writeFileString(path.join(rawDirectory, `${key}.txt`), value, { flag: "wx" })
+  }
+  const record = { schemaVersion: 1, tool: "@elizaos/os/image", capturedAt, requirementsPath, ...qualified }
+  try files.writeFileString(path.join(output, "record.json"), `${JSON.stringify(record, null, 2)}\n`, { flag: "wx" })
+  return record
+}

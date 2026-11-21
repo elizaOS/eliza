@@ -10,7 +10,7 @@ import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/conne
 import { fundsRows } from "./funds.vibe"
 import { readSubscription } from "./subscriptions.vibe"
 import { parsePlanKey, wirePlanKey, type PaidPlanKey, type WirePlanKey } from "./plans.vibe"
-import { fundingOf, readPolicy, type PolicyUnreadable, type FundingClass, type PlanSource } from "./policy.vibe"
+import { fundingOf, planSummary, readPolicy, type PolicyUnreadable, type FundingClass, type PlanSource } from "./policy.vibe"
 
 export type AccountStatus = "active" | "deleting" | "erased"
 export type WireSubscriptionStatus = "pending" | "incomplete" | "active" | "dunning" | "past_due" | "unpaid" | "canceled" | "incomplete_expired"
@@ -166,7 +166,7 @@ export effect function readSnapshot(tx: Tx, caller: { readonly userId: string; r
     observedAt: now,
     account: { status: account },
     balance: { usdMicros: funds.state.creditBalance, revision: funds.revision },
-    plan: { key: wirePlanKey(policy.planKey), source: policy.source, effectiveUntil: policy.effectiveUntil },
+    plan: planSummary(policy),
     subscription: subscriptionView(try readSubscription(tx, organizationId)),
     grant: try grantView(tx, organizationId, now),
     allowance: try allowanceView(tx, organizationId, now),

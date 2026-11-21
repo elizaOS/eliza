@@ -1,0 +1,185 @@
+// spec/os/appUpdate/admission.md, "A publication is authorized only when one approved graph at the floors binds the plan and every descriptor is approved and preflighted"
+import { PublisherInteger, RoleVersionsSchema, type PublisherPolicy } from "./publisher-policy.vibe"
+
+module node {
+  import { execFile } from "node:child_process"
+  import { createHash } from "node:crypto"
+  import { mkdtemp, rm, writeFile } from "node:fs/promises"
+  import { tmpdir } from "node:os"
+  import { isAbsolute, join } from "node:path"
+  import { isDeepStrictEqual, promisify } from "node:util"
+  import { visit } from "jsonc-parser"
+  import type { PublisherPolicy } from "./publisher-policy.vibe"
+
+  export interface PublicationBundle {
+    readonly timestamp: Uint8Array
+    readonly dependencies: ReadonlyArray<{ readonly name: string; readonly bytes: Uint8Array }>
+  }
+
+  export interface VerifyPublicationOptions {
+    readonly executable: string
+    readonly root: Uint8Array
+    readonly bundle: PublicationBundle
+    readonly policy: PublisherPolicy
+    readonly timeoutMs: number
+    readonly signal?: AbortSignal
+  }
+
+  const execute = promisify(execFile)
+  const mebibyte = 1024 * 1024
+  const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
+
+  export function publicationDigest(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  export function samePublicationData(before: unknown, after: unknown): boolean {
+    return isDeepStrictEqual(before, after)
+  }
+
+  /** @throws {unknown} */
+  export function copyPublicationBundle(input: PublicationBundle): PublicationBundle {
+    if (!(input.timestamp instanceof Uint8Array) || input.timestamp.length < 1 || input.timestamp.length > 16384 ||
+        !Array.isArray(input.dependencies) || input.dependencies.length < 4 || input.dependencies.length > 127) {
+      throw new Error("A complete bounded publication is required")
+    }
+    const dependencies = new Map<string, Uint8Array>()
+    let total = input.timestamp.length
+    for (const dependency of input.dependencies) {
+      const { name, bytes } = dependency
+      if (typeof name !== "string" || name === "timestamp.json" || dependencies.has(name) ||
+          !(bytes instanceof Uint8Array) || bytes.length < 1 || bytes.length > mebibyte || (total += bytes.length) > 64 * mebibyte) {
+        throw new Error("Invalid, duplicate, or oversized publication dependency")
+      }
+      dependencies.set(name, Uint8Array.from(bytes))
+    }
+    return {
+      timestamp: Uint8Array.from(input.timestamp),
+      dependencies: [...dependencies].map(([name, bytes]) => ({ name, bytes }))
+    }
+  }
+
+  /** @throws {unknown} */
+  export function copyRoot(root: Uint8Array): Uint8Array {
+    if (!(root instanceof Uint8Array) || root.length < 1 || root.length > mebibyte) throw new Error("A provisioned root is required")
+    return Uint8Array.from(root)
+  }
+
+  type JsonFrame = { kind: "object"; keys: Set<string> } | { kind: "array"; size: number }
+
+  /** @throws {unknown} */
+  export function descriptorJson(bytes: Uint8Array): unknown {
+    if (!(bytes instanceof Uint8Array) || bytes.length > mebibyte) throw new Error("Descriptor exceeds its byte budget")
+    const text = utf8.decode(bytes)
+    const frames: JsonFrame[] = []
+    const element = () => {
+      const parent = frames.at(-1)
+      if (parent?.kind === "array" && ++parent.size > 4096) throw new Error("Descriptor array exceeds its item budget")
+    }
+    const enter = (frame: JsonFrame) => {
+      element()
+      frames.push(frame)
+      if (frames.length > 33) throw new Error("Descriptor exceeds its nesting budget")
+    }
+    const validString = (value: string) => {
+      if (value.length > 4096 || !value.isWellFormed()) throw new Error("Descriptor contains an invalid or oversized string")
+    }
+    visit(text, {
+      onObjectBegin: () => enter({ kind: "object", keys: new Set() }),
+      onArrayBegin: () => enter({ kind: "array", size: 0 }),
+      onObjectEnd: () => { frames.pop() },
+      onArrayEnd: () => { frames.pop() },
+      onObjectProperty: (key) => {
+        validString(key)
+        const parent = frames.at(-1)
+        if (parent?.kind !== "object" || parent.keys.has(key) || parent.keys.size >= 256) {
+          throw new Error("Descriptor contains a duplicate key or exceeds its field budget")
+        }
+        parent.keys.add(key)
+      },
+      onLiteralValue: (value: unknown, offset, length) => {
+        element()
+        if (frames.length > 32) throw new Error("Descriptor exceeds its nesting budget")
+        if (typeof value === "string") validString(value)
+        if (typeof value === "number" &&
+            (!Number.isSafeInteger(value) || !/^(0|-?[1-9][0-9]*)$/.test(text.slice(offset, offset + length)))) {
+          throw new Error("Descriptor requires canonical safe integers")
+        }
+      },
+      onError: (code) => { throw new Error("Invalid descriptor JSON: " + code) }
+    }, { disallowComments: true, allowTrailingComma: false, allowEmptyContent: false })
+    return JSON.parse(text)
+  }
+
+  /** @throws {unknown} */
+  export async function runVerifier(options: VerifyPublicationOptions, effectSignal: AbortSignal) {
+    if (typeof options.executable !== "string" || !isAbsolute(options.executable) ||
+        !Number.isSafeInteger(options.timeoutMs) || options.timeoutMs < 1 || options.timeoutMs > 2147483647) {
+      throw new Error("The verifier needs an absolute path and a bounded deadline")
+    }
+    const signal = options.signal === undefined ? effectSignal : AbortSignal.any([options.signal, effectSignal])
+    signal.throwIfAborted()
+    const root = copyRoot(options.root)
+    const bundle = copyPublicationBundle(options.bundle)
+    const timestampSha256 = publicationDigest(bundle.timestamp)
+    const files = Object.fromEntries([
+      ["timestamp.json", Buffer.from(bundle.timestamp).toString("base64")],
+      ...bundle.dependencies.map(({ name, bytes }) => [name, Buffer.from(bytes).toString("base64")])
+    ])
+    const policy = JSON.stringify(options.policy)
+    const directory = await mkdtemp(join(tmpdir(), "os-publication-graph-"))
+    try {
+      const write = async (name: string, bytes: string | Uint8Array) => {
+        const file = join(directory, name)
+        await writeFile(file, bytes, { flag: "wx", mode: 0o400, signal })
+        return file
+      }
+      const args = ["-root", await write("root.json", root), "-bundle", await write("bundle.json", JSON.stringify({ files })),
+        "-policy", await write("policy.json", policy)]
+      const { stdout } = await execute(options.executable, args, {
+        signal, timeout: options.timeoutMs, maxBuffer: 8 * mebibyte, encoding: "buffer"
+      })
+      const report: unknown = JSON.parse(utf8.decode(stdout))
+      return { timestampSha256, report }
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+}
+
+import { copyPublicationBundle, copyRoot, descriptorJson, publicationDigest, runVerifier, samePublicationData, type PublicationBundle, type VerifyPublicationOptions } from node
+export { copyPublicationBundle, copyRoot, publicationDigest, samePublicationData, type PublicationBundle, type VerifyPublicationOptions }
+
+export error PublicationFailed { cause: unknown }
+
+export function publicationFailure(cause: unknown): PublicationFailed {
+  return new PublicationFailed({ cause })
+}
+
+const DigestText = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const RoleEvidence = Schema.Struct({
+  threshold: PublisherInteger,
+  members: Schema.Array(DigestText).check(Schema.isMinLength(1), Schema.isMaxLength(16)),
+  approvers: Schema.Array(DigestText).check(Schema.isMinLength(1), Schema.isMaxLength(16))
+})
+const VerifiedReport = Schema.Struct({
+  graphVerified: Schema.Literal(true),
+  timestampSha256: DigestText,
+  versions: RoleVersionsSchema,
+  descriptors: Schema.Record(Schema.String, Schema.Unknown),
+  authority: Schema.Struct({ rootKeys: Schema.Array(DigestText), stable: RoleEvidence, beta: RoleEvidence })
+})
+export type VerifiedReport = typeof VerifiedReport.Type
+
+const PolicyInput = Schema.Struct({ trustedUpperMs: PublisherInteger, minimumVersions: RoleVersionsSchema })
+export effect function parseDescriptorJson(bytes: Uint8Array): unknown!PublicationFailed {
+  return try Effect.try({ try: () => descriptorJson(bytes), catch: publicationFailure })
+}
+
+export effect function verifyPublicationGraph(options: VerifyPublicationOptions): VerifiedReport!PublicationFailed {
+  const policy = try mapError(Schema.decodeUnknownEffect(PolicyInput, { onExcessProperty: "error" })(options.policy), publicationFailure)
+  const output = try tryPromise({ try: (signal) => runVerifier({ ...options, policy }, signal), catch: publicationFailure })
+  const report = try mapError(Schema.decodeUnknownEffect(VerifiedReport, { onExcessProperty: "error" })(output.report), publicationFailure)
+  if (output.timestampSha256 !== report.timestampSha256) throw publicationFailure("The verifier report does not bind this timestamp")
+  return report
+}

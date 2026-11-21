@@ -1,0 +1,209 @@
+// spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open", "Story: Stop hearing when I leave", "Story: Learn when something keeps going wrong"
+module node {
+  import { Effect } from "effect"
+  import { AgentEventService, Service, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
+  import { Machine, machine, rendererOf, type Event, type FeedEvent, type Frame, type NoticeKind, type Source, type StreamName } from "../../gen/agent__conversation__events.effect.vibe"
+  import type { FeedHub, FeedSink, LiveFeed } from "../access/event-feeds.vibe"
+  import type { AgentEvent, FeedRequest, Refused } from "../access/events-port.vibe"
+  import type { PublishEvent, ViewFeeds } from "../host/module.vibe"
+
+  const streams = {
+    conversation: "ConversationStream",
+    notification: "NotificationStream",
+    "view-interact": "ViewInteractStream",
+    "voice-transcript": "VoiceTranscriptStream",
+  } satisfies Record<string, StreamName>
+  const clientIdPattern = /^[A-Za-z0-9._-]{1,128}$/
+  const errorWindow = 10 * 60_000
+
+  type Delivered = Extract<Frame, { tag: "Delivered" }>
+  interface Connection { readonly sink: FeedSink; readonly clientId: string | undefined }
+  interface StrikeClock { readonly at: number; readonly timer: AbortController }
+  const noticeName = (kind: NoticeKind) => kind === "ModelUnavailable" ? "model-unavailable" : "runtime-error"
+
+  interface AgentEventHub {
+    readonly hub: FeedHub
+    readonly viewFeeds: ViewFeeds
+    readonly publishFromModule: PublishEvent
+    readonly PublishEventService: ServiceClass
+    readonly attach: (service: AgentEventService, hostRunId: string) => void
+    readonly report: (code: string, cause: string, quiet: boolean, store: (kind: ReturnType<typeof noticeName>) => Promise<void>) => Promise<void>
+    readonly stop: () => Promise<void>
+    readonly conversationUpdated: (payload: unknown) => void
+  }
+
+  export function createEventHub(): AgentEventHub {
+    const holder = Effect.runSync(Effect.provide(Machine, machine()))
+    const read = () => Effect.runSync(holder.get())
+    const send = (event: Event): readonly Frame[] => {
+      const outcome = Effect.runSync(Effect.result(holder.send(event)))
+      return outcome._tag === "Success" ? outcome.success.out : []
+    }
+    const connections = new Map<number, Connection>()
+    const observers = new Map<string, Set<() => void>>()
+    const outgoing = new WeakMap<object, { readonly feeds: readonly number[]; readonly ready: Promise<boolean> | undefined }>()
+    const clocks = new Map<string, StrikeClock[]>()
+    let core: AgentEventService | undefined
+    let runId: string | undefined
+    let unsubscribe: (() => void) | undefined
+    let keepNotices = Promise.resolve()
+
+    const receivers = (clientId: string) => read().feeds.filter(({ kind }) => rendererOf(kind, clientId)).length
+    const viewFeeds: ViewFeeds = {
+      receivers,
+      onRendererClosed(clientId, closed) {
+        const listeners = observers.get(clientId) ?? new Set()
+        observers.set(clientId, listeners)
+        listeners.add(closed)
+        return () => {
+          listeners.delete(closed)
+          if (listeners.size === 0 && observers.get(clientId) === listeners) observers.delete(clientId)
+        }
+      },
+    }
+
+    function closeEnded(frames: readonly Frame[]): void {
+      for (const frame of frames) {
+        if (frame.tag !== "Ended") continue
+        for (const id of frame.feeds) {
+          const connection = connections.get(id)
+          if (connection === undefined) continue
+          connections.delete(id)
+          connection.sink.end()
+          const { clientId } = connection
+          if (clientId !== undefined && receivers(clientId) === 0) {
+            const listeners = observers.get(clientId)
+            observers.delete(clientId)
+            for (const callback of listeners ?? []) callback()
+          }
+        }
+      }
+    }
+
+    function wire(frame: Delivered, stream: string, payload: unknown, ready?: Promise<boolean>): void {
+      if (core === undefined || runId === undefined) return
+      let captured = payload
+      try { captured = JSON.parse(JSON.stringify({ payload })).payload }
+      catch {}
+      const data = { payload: captured }
+      outgoing.set(data, { feeds: frame.feeds, ready })
+      try {
+        core.emit({ runId, stream, data })
+      } finally {
+        outgoing.delete(data)
+      }
+    }
+
+    function publish(source: Source, news: FeedEvent, stream: string, payload: unknown): void {
+      for (const frame of send({ type: "publish", source, news })) {
+        if (frame.tag === "Delivered") wire(frame, stream, payload)
+      }
+    }
+
+    const publishFromModule: PublishEvent = (stream, payload, clientId) => {
+      if (stream === "view-interact" && clientId !== undefined && clientIdPattern.test(clientId)) {
+        publish("AgentSource", { tag: "ViewInteraction", clientId }, stream, { clientId, frame: payload })
+      }
+    }
+
+    class PublishEventService extends Service {
+      static serviceType = "publishEvent"
+      capabilityDescription = "Publish the agent plugin's voice transcript"
+      static async start(runtime: IAgentRuntime): Promise<Service> { return new PublishEventService(runtime) }
+      async stop(): Promise<void> {}
+      publish(stream: string, payload: unknown): void {
+        if (stream === "voice-transcript") publish("PluginSource", { tag: "Transcript" }, stream, payload)
+      }
+    }
+
+    const hub: FeedHub = {
+      subscribe(request: FeedRequest, sink: FeedSink): LiveFeed | Refused {
+        const names: StreamName[] = []
+        for (const name of new Set(request.streams)) {
+          if (!Object.hasOwn(streams, name)) return { kind: "refused", reason: "invalid_streams" }
+          names.push(streams[name as keyof typeof streams])
+        }
+        const clientId = request.clientId
+        if (clientId !== undefined && !clientIdPattern.test(clientId)) return { kind: "refused", reason: "invalid_client" }
+        const opened = send({ type: "subscribe", streams: names, clientId: clientId ?? "" }).find((frame) => frame.tag === "Subscribed")
+        if (opened === undefined) return { kind: "refused", reason: "invalid_streams" }
+        const { feed } = opened
+        connections.set(feed, { sink, clientId: names.includes("ViewInteractStream") ? clientId : undefined })
+        return {
+          kind: "live",
+          backlog(queuedBytes, frameBytes) {
+            closeEnded(send({ type: "backlog", feed, queuedBytes, frameBytes }))
+            return connections.has(feed)
+          },
+          close() { closeEnded(send({ type: "closeFeed", feed })) },
+        }
+      },
+    }
+
+    function attach(service: AgentEventService, hostRunId: string): void {
+      core = service
+      runId = hostRunId
+      unsubscribe = service.subscribe(({ runId, seq, stream, data }) => {
+        const sent = outgoing.get(data)
+        if (sent === undefined) return
+        const event: AgentEvent = { stream, runId, seq, payload: data.payload }
+        for (const id of sent.feeds) connections.get(id)?.sink.deliver(event, sent.ready)
+      })
+    }
+
+    function expireDue(code: string, now: number): void {
+      const current = clocks.get(code)
+      if (current === undefined) return
+      const kept = current.filter(({ at, timer }) => {
+        if (now - at < errorWindow) return true
+        timer.abort()
+        send({ type: "expireStrike", code })
+        return false
+      })
+      if (kept.length === 0) clocks.delete(code)
+      else clocks.set(code, kept)
+    }
+
+    function report(code: string, cause: string, quiet: boolean, store: (kind: ReturnType<typeof noticeName>) => Promise<void>): Promise<void> {
+      const now = Date.now()
+      expireDue(code, now)
+      const frames = send({ type: "reportError", code, cause, quiet })
+      const notice = frames.find((frame) => frame.tag === "StoreNotice")
+      if (notice !== undefined) {
+        for (const { timer } of clocks.get(code) ?? []) timer.abort()
+        clocks.delete(code)
+        const kind = noticeName(notice.kind)
+        const kept = keepNotices.then(() => store(kind))
+        keepNotices = kept.catch(() => undefined)
+        const ready = kept.then(() => true, () => false)
+        for (const frame of frames) {
+          if (frame.tag === "Delivered") wire(frame, "conversation", { type: "system-notice", kind }, ready)
+        }
+        return kept
+      }
+      if (!quiet && !read().stopped && code !== "") {
+        const timer = new AbortController()
+        clocks.set(code, [...(clocks.get(code) ?? []), { at: now, timer }])
+        void Effect.runPromise(Effect.sleep(errorWindow), { signal: timer.signal })
+          .then(() => expireDue(code, Date.now()), () => undefined)
+      }
+      return Promise.resolve()
+    }
+
+    function stop(): Promise<void> {
+      closeEnded(send({ type: "stop" }))
+      for (const triggers of clocks.values()) for (const { timer } of triggers) timer.abort()
+      clocks.clear()
+      observers.clear()
+      unsubscribe?.()
+      return keepNotices
+    }
+
+    return {
+      hub, viewFeeds, publishFromModule, PublishEventService, attach, report, stop,
+      conversationUpdated: (payload: unknown) => publish("AgentSource", { tag: "ConversationUpdated" }, "conversation", payload),
+    }
+  }
+}
+
+export { createEventHub } from node

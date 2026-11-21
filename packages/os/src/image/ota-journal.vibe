@@ -1,0 +1,141 @@
+// spec/os/update/operator.md, "One device has one operator: every journal change and device write happens under the device's install lock"; spec/os/update/operator.md, "Each run resumes from what the device shows, sends the package only under a marked lock, and refuses a foreign build or the installed build on the other slot"
+import {
+  acquireLock, beginWrites, canBeginWrites, decodeState, initial, inv, lockHeld, releaseLock, removeLeftLock,
+  type OperatorJournal, type OperatorPhase,
+} from "../../gen/os__update__operator.effect.vibe"
+import type { BootState } from "../../gen/os__image__verification.effect.vibe"
+import { acquireDeviceLease, HELD_FOR_THE_RUN, legacyInstallLockPath, markDeviceLeaseForWrites, settleDeviceLease, writeDurableDeviceState, type AdbSerial } from "./device.vibe"
+import { OtaRefused, patchLevel } from "./ota-records.vibe"
+import { readSigningJson } from "./signing-keys.vibe"
+
+const digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const identity = Schema.String.check(Schema.isMinLength(1))
+const binding = Schema.Struct({
+  serial: identity,
+  channel: digest,
+  installedRecord: digest,
+  candidateRecord: digest,
+  ota: digest,
+})
+export type JournalBinding = typeof binding.Type
+const contents = Schema.Struct({
+  schema: Schema.Literal(1),
+  kind: Schema.Literal("aosp-ota-update-journal"),
+  binding,
+  state: Schema.Unknown,
+})
+const decodeContents = Schema.decodeUnknownEffect(contents, { onExcessProperty: "error" })
+
+const decodeLegacy = Schema.decodeUnknownEffect(Schema.Struct({
+  schema: Schema.Literal(1), kind: Schema.Literal("aosp-ota-update-journal"), serial: identity, state: identity,
+  release: Schema.Struct({ device: identity, product: identity, channel: identity, fingerprint: identity, securityPatch: identity,
+    otaSha256: digest, recordSha256: digest }),
+  from: Schema.Struct({ fingerprint: identity, slot: Schema.Literals(["a", "b"]),
+    verifiedBootState: Schema.Literals(["green", "yellow", "orange", "red"]), flashLocked: Schema.Boolean, virtualAb: Schema.Boolean, recordSha256: digest }),
+}))
+const legacyPhases = new Map<string, OperatorPhase>([
+  ["preflight", "AwaitingSideload"], ["recovery", "AwaitingSideload"], ["sideload-unavailable", "AwaitingSideload"],
+  ["transfer-failed", "AwaitingSideload"], ["sideload-failed", "AwaitingSideload"],
+  ["sideload", "Sideloading"], ["sideloading", "Sideloading"],
+  ["transferred", "Transferred"], ["reboot-incomplete", "Transferred"], ["rebooted", "Transferred"],
+  ["verification-failed", "VerificationFailed"], ["verified", "Verified"],
+  ["fallback-started", "FallingBack"], ["fallback-failed", "FallbackFailed"], ["rolled-back", "RolledBack"],
+])
+const bootStates: Readonly<Record<"green" | "yellow" | "orange" | "red", BootState>> = { green: "Green", yellow: "Yellow", orange: "Orange", red: "Red" }
+
+export interface JournalAdoption {
+  readonly binding: JournalBinding
+  readonly name: string
+  readonly product: string
+  readonly device: string
+  readonly installedBuild: string
+  readonly candidateBuild: string
+  readonly candidatePatch: number
+}
+
+effect function readStored(file: string, serial: string) {
+  const files = try FileSystem.FileSystem
+  if (!(try files.exists(file))) return undefined
+  const info = try files.stat(file)
+  if (info.type !== "File" || (info.mode & 0o077) !== 0) throw new OtaRefused({ reason: "Use a private regular OTA journal" })
+  const raw = (try readSigningJson(file)).value
+  if (raw !== null && typeof raw === "object" && "binding" in raw) {
+    const stored = try decodeContents(raw)
+    const state = try decodeState(stored.state)
+    if (stored.binding.serial !== serial || !inv(state) || state.phase === "Unstarted") throw new OtaRefused({ reason: "OTA journal is invalid or belongs to a different device" })
+    return { kind: "bound", binding: stored.binding, state } as const
+  }
+  const legacy = try decodeLegacy(raw)
+  const phase = legacyPhases.get(legacy.state)
+  const candidatePatch = patchLevel(legacy.release.securityPatch)
+  if (legacy.serial !== serial || phase === undefined || candidatePatch === 0 || legacy.from.fingerprint === legacy.release.fingerprint) {
+    throw new OtaRefused({ reason: "Earlier OTA journal is invalid or belongs to a different device" })
+  }
+  const state: OperatorJournal = { phase, lock: { tag: "Unlocked" }, start: { device: legacy.release.device,
+    installedBuild: legacy.from.fingerprint, candidateBuild: legacy.release.fingerprint, candidatePatch,
+    originalSlot: legacy.from.slot === "a" ? "SlotA" : "SlotB", originalBoot: bootStates[legacy.from.verifiedBootState],
+    wasLocked: legacy.from.flashLocked, virtualAb: legacy.from.virtualAb } }
+  if (!inv(state)) throw new OtaRefused({ reason: "Earlier OTA journal has an invalid state" })
+  return { kind: "legacy", state, legacy } as const
+}
+
+export effect function readOperatorStatus(file: string, serial: string) {
+  return (try readStored(file, serial))?.state
+}
+
+export effect function readOperatorJournal(file: string, serial: string, adoption?: JournalAdoption) {
+  const stored = try readStored(file, serial)
+  if (stored === undefined) return undefined
+  if (stored.kind === "bound") return { binding: stored.binding, state: stored.state, adopted: false }
+  const { legacy, state } = stored
+  if (adoption === undefined || adoption.binding.serial !== serial || adoption.binding.installedRecord !== legacy.from.recordSha256 ||
+      adoption.binding.candidateRecord !== legacy.release.recordSha256 || adoption.binding.ota !== legacy.release.otaSha256 ||
+      adoption.name !== legacy.release.channel || adoption.product !== legacy.release.product || adoption.device !== legacy.release.device ||
+      adoption.installedBuild !== state.start.installedBuild || adoption.candidateBuild !== state.start.candidateBuild || adoption.candidatePatch !== state.start.candidatePatch) {
+    throw new OtaRefused({ reason: "Use apply with the original signed records and OTA bytes to resume this earlier journal" })
+  }
+  return { binding: adoption.binding, state, adopted: true }
+}
+
+export function sameJournalBinding(stored: JournalBinding, expected: JournalBinding): boolean {
+  return stored.serial === expected.serial && stored.channel === expected.channel && stored.installedRecord === expected.installedRecord &&
+    stored.candidateRecord === expected.candidateRecord && stored.ota === expected.ota
+}
+
+export effect function openOperatorJournal(file: string, serial: AdbSerial, expected?: JournalBinding, directory?: string, adoption?: JournalAdoption) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const target = path.resolve(file)
+  const held = try acquireDeviceLease(serial, { ttlMs: HELD_FOR_THE_RUN, waitMs: 0, ...(directory === undefined ? {} : { stateDir: directory }) })
+  const previous = try readOperatorJournal(target, serial, adoption)
+  if (previous?.adopted === true && (try files.exists(legacyInstallLockPath(serial)))) {
+    throw new OtaRefused({ reason: "Inspect the earlier install lock and device before resuming the OTA" })
+  }
+  const identity = previous?.binding ?? expected
+  if (identity === undefined || (expected !== undefined && !sameJournalBinding(identity, expected))) {
+    throw new OtaRefused({ reason: "The selected OTA records or bytes do not match the journal" })
+  }
+  const loaded = previous?.state ?? initial
+  const closed = lockHeld(loaded.lock) ? releaseLock(loaded) : loaded
+  let current = acquireLock(closed.lock.tag === "LeftLocked" ? removeLeftLock(closed) : closed)
+  const state = () => current
+  const store = (next: OperatorJournal) => effect {
+    if (!inv(next) || next.phase === "Unstarted") throw new OtaRefused({ reason: "Cannot persist an invalid OTA journal transition" })
+    try writeDurableDeviceState(target, `${JSON.stringify({ schema: 1, kind: "aosp-ota-update-journal", binding: identity, state: next }, null, 2)}\n`)
+    current = next
+  }
+  const beforeWrites = () => effect {
+    if (current.lock.tag === "Locked" && current.lock.writing) return
+    if (!canBeginWrites(current)) throw new OtaRefused({ reason: "The OTA journal cannot begin device writes" })
+    try markDeviceLeaseForWrites(held)
+    try store(beginWrites(current))
+  }
+  const finish = () => effect {
+    if (current.phase === "Unstarted") return
+    const wrote = current.lock.tag === "Locked" && current.lock.writing
+    const next = releaseLock(current)
+    try store(next)
+    if (wrote && next.lock.tag === "Unlocked") try settleDeviceLease(held)
+  }
+  return { state, store, beforeWrites, finish }
+}

@@ -6,10 +6,11 @@ module node {
   import { vector } from "@electric-sql/pglite/vector"
   import {
     DatabaseAdapter, filterMemoryReadByAccessContext, rerankMemories,
-    type Agent, type Entity, type IDatabaseAdapter, type Log, type Memory, type MemoryEmbeddingUpdate, type Room, type Task,
+    type Agent, type Entity, type IDatabaseAdapter, type Log, type Memory, type MemoryEmbeddingUpdate, type Relationship, type Room, type Task,
     type UUID, type World,
   } from "@elizaos/core"
   import { seedable } from "../../gen/agent__storage__database.ts"
+  import { commitReadCompletion, readCompletionPublication } from "../device-actions/store.vibe"
   import { migrations as shipped, type Migration } from "./schema.vibe"
   import { claimDeviceState } from "./identity.vibe"
   import { migrate, seedDurableStore, startStore, storeBundle, type DeviceStorageSnapshot } from "./migrate.vibe"
@@ -24,7 +25,7 @@ module node {
   }
 
   type DB = PGlite | Transaction
-  type Collection = "agents" | "entities" | "worlds" | "rooms" | "participants" | "memories" | "logs" | "cache" | "tasks"
+  type Collection = "agents" | "entities" | "worlds" | "rooms" | "participants" | "memories" | "logs" | "cache" | "relationships" | "tasks"
   type StoredParticipant = { id: UUID; entityId: UUID; roomId: UUID; userState: "FOLLOWED" | "MUTED" | null }
   type Write = { key: string; data: unknown; createdAt: number; tableName: string | null }
 
@@ -458,7 +459,15 @@ module node {
 
     async publishMessageContentSegments(input: Parameters<NonNullable<IDatabaseAdapter["publishMessageContentSegments"]>>[0]): ReturnType<NonNullable<IDatabaseAdapter["publishMessageContentSegments"]>> {
       const db = this.db
-      if (db instanceof PGlite) return this.transaction((tx) => tx.publishMessageContentSegments!(input))
+      if (db instanceof PGlite) {
+        const completion = input.mode === "create" ? readCompletionPublication(this, input.parent.id) : undefined
+        return this.transaction(async (tx) => {
+          if (completion !== undefined && !await commitReadCompletion(tx, completion)) return { status: "conflict" }
+          const published = await tx.publishMessageContentSegments!(input)
+          if (completion !== undefined && published.status !== "created") throw new Error("The read completion message could not be published")
+          return published
+        })
+      }
       const parentId = input.mode === "create" ? input.parent.id : input.messageId
       const agentId = input.mode === "create" ? input.parent.agentId : input.agentId
       if (agentId !== this.agentId) throw new Error("Message content belongs to another agent")
@@ -534,6 +543,16 @@ module node {
 
     async deleteTasks(keys: UUID[]): Promise<void> { await this.remove("tasks", keys) }
 
+    async getRelationships(input: Parameters<IDatabaseAdapter["getRelationships"]>[0]): Promise<Relationship[]> {
+      const entities = new Set(input.entityIds)
+      const rows = await this.values<Relationship>("relationships")
+      const matching = rows.filter((row) => row.agentId === this.agentId
+        && (entities.size === 0 || entities.has(row.sourceEntityId) || entities.has(row.targetEntityId))
+        && (input.tags?.every((tag) => row.tags.includes(tag)) ?? true))
+      const offset = input.offset ?? 0
+      return matching.slice(offset, input.limit === undefined ? undefined : offset + input.limit)
+    }
+
     readonly readMessageContentRange = unsupported("readMessageContentRange")
     readonly queryDocuments = unsupported("queryDocuments")
     readonly getDocument = unsupported("getDocument")
@@ -561,7 +580,6 @@ module node {
     readonly getParticipantsForEntities = unsupported("getParticipantsForEntities")
     readonly updateParticipantUserStates = unsupported("updateParticipantUserStates")
     readonly getRelationshipsByPairs = unsupported("getRelationshipsByPairs")
-    readonly getRelationships = unsupported("getRelationships")
     readonly createRelationships = unsupported("createRelationships")
     readonly getRelationshipsByIds = unsupported("getRelationshipsByIds")
     readonly updateRelationships = unsupported("updateRelationships")

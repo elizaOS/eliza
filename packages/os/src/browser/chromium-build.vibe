@@ -3,15 +3,15 @@ import { ChildProcess } from "effect/process"
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
 import type { Buffer } from "node:buffer"
 import { readApkSignerDigest } from "../image/apk.vibe"
-import { assetNames, pin, type ComponentReport } from "../../browser/chromium/component/chromium-component.mjs"
+import { assetNames, pin, type ComponentReport } from "#chromium-component"
 
 module node {
   import { Buffer } from "node:buffer"
   import { createHash } from "node:crypto"
   import { build } from "esbuild"
-  import { androidNativeHost } from "../../browser/chromium/component/android-host.mjs"
-  import { createComponentPatch, generateComponentOverlay, readReviewedChromiumSources, validateAssets } from "../../browser/chromium/component/chromium-component.mjs"
-  import type { ComponentReport } from "../../browser/chromium/component/chromium-component.mjs"
+  import { androidNativeHost } from "#chromium-android-host"
+  import { createComponentPatch, generateComponentOverlay, readReviewedChromiumSources, validateAssets } from "#chromium-component"
+  import type { ComponentReport } from "#chromium-component"
 
   /** @throws {never} */
   export function sha256Hex(bytes: Uint8Array | string): string {

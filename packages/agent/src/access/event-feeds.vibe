@@ -4,7 +4,7 @@ module node {
   import type { AgentEvent, EventSubscriptions, FeedRequest, Refused } from "./events-port.vibe"
 
   export interface FeedSink {
-    readonly deliver: (event: AgentEvent) => void
+    readonly deliver: (event: AgentEvent, ready?: Promise<boolean>) => void
     readonly end: () => void
   }
 
@@ -29,31 +29,34 @@ module node {
   export function feedsOver(hub: FeedHub): EventSubscriptions {
     return {
       subscribe: (request, signal, cut) => {
-        const queue: { readonly event: AgentEvent; readonly bytes: number }[] = []
+        const queue: { readonly event: AgentEvent; readonly bytes: number; readonly ready: Promise<boolean> | undefined }[] = []
         let unread = 0
         let writing = 0
         let live = true
         let wake = () => {}
+        let detach = () => {}
         const end = (after: () => void) => {
           if (!live) return
           live = false
+          detach()
           queue.length = 0
           wake()
           after()
         }
         const feed = hub.subscribe({ ...request, streams: [...new Set(request.streams)] }, {
-          deliver: (event) => {
+          deliver: (event, ready) => {
             if (!live || feed.kind !== "live") return
             const bytes = frameBytes(event)
             if (!feed.backlog(unread, bytes)) return end(cut)
             unread += bytes
-            queue.push({ event, bytes })
+            queue.push({ event, bytes, ready })
             wake()
           },
           end: () => end(cut),
         })
         if (feed.kind !== "live") return feed
         const hangUp = () => end(feed.close)
+        detach = () => signal.removeEventListener("abort", hangUp)
         signal.addEventListener("abort", hangUp, { once: true })
         if (signal.aborted) hangUp()
         return {
@@ -61,11 +64,30 @@ module node {
             next: async () => {
               unread -= writing
               writing = 0
-              if (live && queue.length === 0) await new Promise<void>((resolve) => { wake = resolve })
-              const next = queue.shift()
-              if (next === undefined) return { done: true, value: undefined }
-              writing = next.bytes
-              return { done: false, value: next.event }
+              while (live) {
+                if (queue.length === 0) await new Promise<void>((resolve) => { wake = resolve })
+                const next = queue.shift()
+                if (next === undefined) return { done: true, value: undefined }
+                if (next.ready !== undefined) {
+                  const ready = next.ready
+                  const durable = await new Promise<boolean>((resolve) => {
+                    wake = () => { if (!live) resolve(false) }
+                    void ready.then(resolve, () => resolve(false))
+                  })
+                  wake = () => {}
+                  if (!durable || !live) {
+                    unread -= next.bytes
+                    continue
+                  }
+                }
+                writing = next.bytes
+                return { done: false, value: next.event }
+              }
+              return { done: true, value: undefined }
+            },
+            return: async () => {
+              hangUp()
+              return { done: true, value: undefined } as const
             },
           }),
         }

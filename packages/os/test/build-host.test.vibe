@@ -42,8 +42,8 @@ const RESIDENT_HOST = {
   tree: {
     [MAIN]: manifest(["INTERNET", "ACCESS_WIFI_STATE", "CAMERA"]),
     "check.mjs": "",
-    "node_modules/@capacitor/android/package.json": JSON.stringify({ name: "@capacitor/android" }),
-    "node_modules/@capacitor/android/capacitor/build.gradle": "",
+    "android/java/constructor/Selected.java": "final class Selected {}\n",
+    "android/kotlin/toString/Selected.kt": "class Selected\n",
   },
   profile: {
     schema: 1,
@@ -51,7 +51,8 @@ const RESIDENT_HOST = {
     releaseMinify: false,
     nativeLibraries: "extract-16k",
     manifest: consumer(MAIN),
-    flavors: [{ name: "device" }],
+    flavors: [{ name: "device" }, { name: "constructor" }, { name: "toString" }],
+    sourceSets: { constructor: { java: [consumer("android/java/constructor")] }, toString: { kotlin: [consumer("android/kotlin/toString")] } },
     modules: [
       { name: "capacitor-android", source: { root: "dependencies", path: "@capacitor/android/capacitor" } },
       { name: "eliza-wifi", source: upstream("plugins/plugin-native-wifi/android") },
@@ -102,6 +103,7 @@ interface HostDocument {
   readonly nativeLibraries: string | null
   readonly hostManifest: string | null
   readonly runtimeMain: string | null
+  readonly sourceSets: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>>
   readonly signing: unknown
   readonly versionOverride: unknown
 }
@@ -171,16 +173,26 @@ it.effect('Generate my app\'s Android host from data: an agent host gets the age
 it.effect('Generate my app\'s Android host from data: a schema-1 resident host maps to os modules and drops what no module was asked for (spec/os/build/androidHost.md, "Story: Generate my app\'s Android host from data"; spec/os/build/androidHost.md, "An os module adds no permission or exported component the profile did not request"; spec/os/build/androidHost.md, "A schema-1 field without a successor is refused when it is set, and an upstream source becomes the os module its path lies in")', effect () => {
   provide NodeServices.layer {
     const path = try Path.Path
-    const root = try consumerWith("resident-host", RESIDENT_HOST.tree)
+    const workspaceTree = { "pnpm-workspace.yaml": "packages:\n  - apps/*\n  - packages/*\n", "packages/capacitor-android/package.json": JSON.stringify({ name: "@capacitor/android" }), "packages/capacitor-android/capacitor/build.gradle": "" }
+    const workspace = try consumerWith("resident-workspace", workspaceTree)
+    const root = path.join(workspace, "apps/consumer")
+    try writeTree(root, RESIDENT_HOST.tree)
+    try writeTree(root, { "node_modules/@capacitor/android": { kind: "symlink", target: path.join(workspace, "packages/capacitor-android") } })
     const output = path.join(root, "android/host")
     try generateAndroidHost({ consumerRoot: root, dependencyRoot: path.join(root, "node_modules"), output, identity: IDENTITY, profile: RESIDENT_HOST.profile })
     const { document, overlay, gradle } = try readHost(output)
-    assert.deepStrictEqual(document.modules.map((module) => module.name).sort(), ["capacitor-android", "eliza-agent-service", "eliza-runtime-files", "eliza-sign-in", "eliza-wifi"])
+    assert.deepStrictEqual(document.modules.map((module) => module.name).sort(), ["capacitor-android", "eliza-agent-service", "eliza-runtime-files", "eliza-secure-store", "eliza-sign-in", "eliza-wifi"])
     assert.deepStrictEqual(document.modules.find((module) => module.name === "capacitor-android"), {
-      name: "capacitor-android", directory: path.join(root, "node_modules/@capacitor/android/capacitor"), appDependency: true, relocateBuild: true,
+      name: "capacitor-android", directory: path.join(workspace, "packages/capacitor-android/capacitor"), appDependency: true, relocateBuild: true,
     })
     assert.deepStrictEqual(document.admission.map((step) => [step.name, step.command]), [["settingsAdmission1", ["node", "check.mjs"]]])
     assert.deepStrictEqual(document.agentFiles, [])
+    assert.deepStrictEqual(document.sourceSets, { constructor: { java: [path.join(root, "android/java/constructor")] }, toString: { kotlin: [path.join(root, "android/kotlin/toString")] } })
+    const unrelated = try consumerWith("unrelated-workspace", workspaceTree)
+    try writeTree(unrelated, { "node_modules/@capacitor/android": { kind: "symlink", target: path.join(unrelated, "packages/capacitor-android") } })
+    const foreign = (effect { try generateAndroidHost({ consumerRoot: root, dependencyRoot: path.join(unrelated, "node_modules"), output, identity: IDENTITY, profile: RESIDENT_HOST.profile }); return "generated" } catch (error) => tagOf(error))
+    assert.strictEqual(foreign, "HostInputRefused")
+    assert.deepStrictEqual((try readHost(output)).document, document)
     assert.notInclude(gradle, ANDROID_RUNTIME_PACKAGING_DIRECTIVE, "no staged runtime, no packaging directive")
 
     assert.include(overlay, ' <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" tools:node="remove" />')

@@ -1,4 +1,5 @@
 // spec/agent/host/process.md, "Story: Boot from a launch and serve only when ready"; spec/agent/host/process.md, "Story: Tell the host whether the agent can answer"; spec/agent/host/process.md, "Story: Stop on a signal and exit with an honest code"; spec/agent/host/launch.md, "Story: Start the agent from one launch document"
+// spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open", "Story: Learn when something keeps going wrong"
 
 module node {
   import type { BootFailure, LaunchDocument as LaunchModel, LaunchFrame as FrameModel, UrlShape } from "../../gen/agent__host__launch.ts"
@@ -41,17 +42,21 @@ module node {
 
   import { randomUUID } from "node:crypto"
   import { Effect, Result } from "effect"
-  import { AgentRuntime, TaskService, createCharacter, logger, stringToUuid, validateUuid } from "@elizaos/core"
+  import { AgentEventService, AgentRuntime, EventType, QUIET_ERROR_CODES, TaskService, createCharacter, logger, stringToUuid, systemNoticeText, validateUuid, type ErrorReportedPayload } from "@elizaos/core"
   import { canRequestStop, exitedCode, healthReply, healthStatus } from "../../gen/agent__host__process.ts"
   import { storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
   import { backendOf, runStateOf, statusRoutes } from "./status.vibe"
   import { authRoutes } from "../access/auth.vibe"
   import { createRouter } from "../access/router.vibe"
   import { listenOnSocket } from "../access/socket.vibe"
-  import { noEvents } from "../access/events-port.vibe"
+  import { feedsOver } from "../access/event-feeds.vibe"
   import { listenOnHttp } from "../access/http.vibe"
   import { conversationRoutes } from "../conversation/routes.vibe"
+  import { conversationStore } from "../conversation/conversations.vibe"
+  import { createEventHub } from "../conversation/events.vibe"
   import { ownerMessageService } from "../conversation/message-service.vibe"
+  import { deviceEnrollment } from "../device-actions/enrollment.vibe"
+  import { readCompletionRoutes } from "../device-actions/read-completion.vibe"
   import { openDeviceStorage, type DeviceStorageSnapshot } from "../storage/index.vibe"
   import { StoreFailed } from "../storage/fault.vibe"
   import { logSweeps, scheduleSweeps } from "../storage/retention.vibe"
@@ -196,11 +201,14 @@ module node {
     const permissions = new Set(launch.policy.actions.allowed)
     const user = launch.account ? (validateUuid(launch.account.userId) ?? stringToUuid(`account:${launch.account.userId}`)) : stringToUuid(`device-owner:${agentId}`)
     const ownerId = role === "OWNER" ? user : agentId
+    const conversationOwner = { user, world: stringToUuid(`device:${agentId}`) }
+    const events = createEventHub()
+    let detachReports = () => {}
     const formed = await Effect.runPromise(Effect.result(composeAgent({
       agentId, character, settings: {}, bundled: input.bundled ?? new Map(), modules: input.modules, hostRoutes: reservedHostPrefixes,
       context: { launch, stateDirectory, timeZone: launch.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, epoch: authority.epoch, ...(authority.storageKey === undefined ? {} : { storageKey: authority.storageKey }),
-        ownerEntityId: ownerId },
-      storage: { name: storagePlugin, description: "Own the device database", services: [TaskService], init: async (_config, runtime) => {
+        ownerEntityId: ownerId, conversationOwner, publishEvent: events.publishFromModule, viewFeeds: events.viewFeeds },
+      storage: { name: storagePlugin, description: "Own the device database", services: [TaskService, AgentEventService, events.PublishEventService], init: async (_config, runtime) => {
         if (!(runtime instanceof AgentRuntime)) throw new Error("The storage plugin requires the device Core runtime")
         runtime.registerDatabaseAdapter(adapter)
         const sweeper = await Effect.runPromise(scheduleSweeps(adapter, sweeps.success))
@@ -231,7 +239,10 @@ module node {
     const composed = formed.success
     const { runtime } = composed
     closeStore = () => runtime.close()
-    startCoreStop = () => { coreStop ??= runtime.stop({ fast: true }) }
+    startCoreStop = () => {
+      detachReports()
+      coreStop ??= events.stop().then(() => runtime.stop({ fast: true }))
+    }
     releases.set("runtime", () => coreStop ?? Promise.resolve())
     releases.set("plugins", () => Promise.resolve())
     lifecycle.send({ type: "beginInitialization" })
@@ -247,24 +258,47 @@ module node {
       ready: true, actions: [...composed.allowed].sort(),
     }
     const bound = await (async () => {
-      const world = stringToUuid(`device:${agentId}`)
+      const { world } = conversationOwner
       await runtime.ensureWorldExists({
         id: world, agentId, name: "Device",
         metadata: { ownership: { ownerId }, roles: { [user]: role === "OWNER" ? "OWNER" : "MEMBER" } },
       })
+      const eventSource = runtime.getService<AgentEventService>(AgentEventService.serviceType)
+      if (eventSource === null) throw new Error("The Agent event service did not start")
+      events.attach(eventSource, status.serverInstanceId)
+      const conversations = conversationStore(runtime, conversationOwner)
+      const onError = async (reported: ErrorReportedPayload) => {
+        const { code, context } = reported
+        const cause = typeof context?.reason === "string" ? context.reason : ""
+        await events.report(code, cause, context?.diagnosticOnly === true || QUIET_ERROR_CODES.has(code), async (kind) => {
+          const room = (await conversations.list())[0] ?? await conversations.create("")
+          const createdAt = Date.now()
+          await runtime.createMessageMemory({
+            id: randomUUID(), roomId: room.roomId, worldId: world, agentId, entityId: agentId, createdAt,
+            content: { text: systemNoticeText(kind), systemNotice: kind, source: "device" },
+          })
+          await conversations.touch(room.roomId, createdAt)
+        })
+      }
+      runtime.registerEvent(EventType.ERROR_REPORTED, onError)
+      detachReports = () => runtime.unregisterEvent(EventType.ERROR_REPORTED, onError)
+      const enrollment = deviceEnrollment({ runtime, launch, ownerEntityId: ownerId })
       const router = createRouter({
         token: authority.token, epoch: authority.epoch, instanceId: status.serverInstanceId,
         health: () => healthAnswer(lifecycle.get()),
         routes: [
           ...statusRoutes({ agentId, name: launch.character.name, serverInstanceId: status.serverInstanceId, backend: backendOf(launch.model), embeddings: launch.embeddings, state: () => runStateOf(lifecycle.get()), binding: () => Effect.runSync(models.state()), now: Date.now }),
           ...authRoutes(agentId),
-          ...conversationRoutes(runtime, { user, world }, launch.character.name),
+          ...conversationRoutes(runtime, conversationOwner, launch.character.name, events.conversationUpdated),
+          ...enrollment.routes,
+          ...readCompletionRoutes({ runtime, owner: conversationOwner, sender: enrollment.deviceSender }),
           ...composed.routes,
         ],
       })
+      const feeds = { token: authority.token, events: feedsOver(events.hub) }
       return binding.kind === "socket"
-        ? listenOnSocket(binding.path, router, { token: authority.token, events: noEvents })
-        : listenOnHttp(binding.port, router, { token: authority.token, events: noEvents })
+        ? listenOnSocket(binding.path, router, feeds)
+        : listenOnHttp(binding.port, router, feeds)
     })().then((close) => ({ kind: "bound" as const, close }), (error: unknown) => ({ kind: "refused" as const, error }))
     if (bound.kind === "refused") {
       logger.error({ src: "agent", agentId, phase: "BindTransport", error: String(bound.error) }, "The transport could not be bound")

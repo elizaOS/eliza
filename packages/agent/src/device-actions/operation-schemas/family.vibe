@@ -11,6 +11,10 @@ export interface Evidence {
   readonly nothingSubmitted: boolean
 }
 
+export interface ReceiptContext {
+  readonly operationId: string | undefined
+}
+
 export type WireOperation = { readonly type: string }
 
 export type OperationSchema<Op extends WireOperation = WireOperation, R = unknown> =
@@ -23,7 +27,7 @@ export type OperationSchema<Op extends WireOperation = WireOperation, R = unknow
     readonly operation: Schema.Decoder<Op>
     readonly result: Schema.Decoder<R>
     classify(op: Op): Classification
-    evidence(result: R, op: Op): Evidence | undefined
+    evidence(result: R, op: Op, receipt: ReceiptContext): Evidence | undefined
   }
 
 export type FamilySchemas = { readonly [wireType: string]: OperationSchema }

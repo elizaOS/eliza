@@ -28,6 +28,12 @@
       "import": "./dist/src/client/index.js",
       "default": "./dist/src/client/index.js"
     },
+    "./launch": {
+      "eliza-source": "./src/host/launch.schema.vibe",
+      "types": "./dist/src/host/launch.schema.d.ts",
+      "import": "./dist/src/host/launch.schema.js",
+      "default": "./dist/src/host/launch.schema.js"
+    },
     "./routes": {
       "eliza-source": "./src/access/routes.vibe",
       "types": "./dist/src/access/routes.d.ts",

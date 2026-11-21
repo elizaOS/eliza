@@ -2,16 +2,20 @@ package otatrust
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/theupdateframework/go-tuf/v2/metadata"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/theupdateframework/go-tuf/v2/metadata"
 )
 
 func boundMeta(data []byte, v int64) *metadata.MetaFiles {
@@ -70,7 +74,25 @@ func checkPublication(t *testing.T, r *repository, b publicationBundle, p []byte
 	return VerifyPublicationGraph(r.root, data, p)
 }
 func TestPublicationGraphAuthenticatesCompleteClosure(t *testing.T) {
-	r, b, p := publicationFixture(t)
+	r := fixture(t)
+	public, _, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spare, err := metadata.KeyFromPublicKey(public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := spare.ID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewriteRole(t, r, "1.targets.json", "targets", func(top *metadata.Metadata[metadata.TargetsType]) {
+		top.Signed.Delegations.Keys[id] = spare
+		role := stableRole(top)
+		role.KeyIDs = append(role.KeyIDs, id)
+	})
+	r, b, p := publicationFixtureFrom(t, r)
 	result, err := checkPublication(t, r, b, p)
 	if err != nil {
 		t.Fatal(err)
@@ -78,9 +100,40 @@ func TestPublicationGraphAuthenticatesCompleteClosure(t *testing.T) {
 	var report struct {
 		GraphVerified bool                       `json:"graphVerified"`
 		Descriptors   map[string]json.RawMessage `json:"descriptors"`
+		Authority     publicationAuthority       `json:"authority"`
 	}
 	if err = json.Unmarshal(result, &report); err != nil || !report.GraphVerified || string(report.Descriptors["stable/launcher.json"]) != string(r.body) {
 		t.Fatalf("wrong report %s %v", result, err)
+	}
+	fingerprint := func(key *metadata.Key) string {
+		t.Helper()
+		identity, err := publicIdentity(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return hex.EncodeToString(identity[:])
+	}
+	stable := report.Authority.Stable
+	stableSigners := []string{fingerprint(r.channelKeys["stable"]), fingerprint(r.channelKeys["stable-second"])}
+	if stable.Threshold != 2 || !slices.Equal(stable.Approvers, stableSigners) || !slices.Equal(stable.Members, append(stableSigners, fingerprint(spare))) {
+		t.Fatalf("wrong stable authority %+v", stable)
+	}
+	beta := report.Authority.Beta
+	betaSigner := []string{fingerprint(r.channelKeys["beta"])}
+	if beta.Threshold != 1 || !slices.Equal(beta.Members, betaSigner) || !slices.Equal(beta.Approvers, betaSigner) {
+		t.Fatalf("wrong beta authority %+v", beta)
+	}
+	root, err := metadata.Root().FromBytes(r.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rootKeys []string
+	for _, key := range root.Signed.Keys {
+		rootKeys = append(rootKeys, fingerprint(key))
+	}
+	slices.Sort(rootKeys)
+	if !slices.Equal(report.Authority.RootKeys, rootKeys) {
+		t.Fatalf("wrong root authority %+v", report.Authority.RootKeys)
 	}
 }
 func TestPublicationGraphRejectsMissingAndTamperedDependencies(t *testing.T) {

@@ -1,0 +1,157 @@
+// spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed"; spec/os/image/listener.md, "Story: Activate the listener only on a qualified image"
+import {
+  listenerPrivilegedPermissions,
+  permissionsReviewed,
+  qualificationMatches,
+  qualificationPassed,
+  type GateRow,
+  type ListenerOverlay,
+  type ListenerRequest,
+  type PackageName,
+  type Qualification,
+  type WakeName,
+  indicatorExemptRoles,
+} from "../../gen/os__image__listener.effect.vibe"
+import type { SourceVerdict } from "../../gen/os__image__sourceLock.effect.vibe"
+import { parseDigest } from "./apk.vibe"
+import { artifactJson, readArtifact } from "./artifact.vibe"
+
+export error ListenerAdmissionRefused { reason: string }
+
+const Package = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/
+const Hex = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const Commit = Schema.String.check(Schema.isPattern(/^[a-f0-9]{40}$/))
+const PackageText = Schema.String.check(Schema.makeFilter((value) => Package.test(value)))
+const Review = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  qualified: Schema.Boolean,
+  inputs: Schema.Struct({
+    packageName: PackageText,
+    launcher: Hex,
+    listener: Hex,
+    launcherDescriptor: Hex,
+    listenerDescriptor: Hex,
+    certificate: Hex,
+    sourceLock: Hex,
+    sdkCommit: Commit,
+    sepolicy: Hex,
+    patches: Schema.Array(Schema.Struct({ name: Schema.String, manifestSha256: Hex })),
+  }),
+  gates: Schema.Array(Schema.Struct({
+    gate: Schema.String,
+    result: Schema.Union([
+      Schema.Struct({ status: Schema.Literal("pass"), evidenceSha256: Hex }),
+      Schema.Struct({ status: Schema.Literals(["fail", "unknown", "pending"]) }),
+    ]),
+  })),
+})
+const decodeReview = Schema.decodeUnknownEffect(Review)
+
+export interface EnrolledListenerQualification {
+  readonly file: string
+  readonly sha256: string
+}
+
+export function packageParts(name: string): PackageName {
+  const boundary = name.lastIndexOf(".")
+  return { parent: boundary === -1 ? "" : name.slice(0, boundary), leaf: name.slice(boundary + 1) }
+}
+
+export function wakeWords(words: readonly string[]): WakeName[] {
+  return words.map((word) => /^[a-z][a-z0-9]{0,31}$/.test(word) ? { tag: "WakeWord", word } : { tag: "MalformedWakeName" })
+}
+
+export effect function readListenerPermissions(dump: string, expectedPackage: string) {
+  const packageRows = [...dump.matchAll(/^package:\s+([^\s]+)\s*$/gm)]
+  const packageName = packageRows.length === 1 ? packageRows[0]?.[1] : undefined
+  if (packageName !== expectedPackage || !Package.test(expectedPackage)) {
+    throw new ListenerAdmissionRefused({ reason: `The APK permission dump does not identify ${expectedPackage}` })
+  }
+  const declared = new Set([...dump.matchAll(/^permission:[ \t]+([^\s]+)[ \t]*\r?$/gm)].map((row) => row[1]))
+  const requested = [...dump.matchAll(/^uses-permission(?:-sdk-23)?:\s+name='([^']+)'/gm)]
+    .flatMap((match) => match[1] === undefined || (match[1].startsWith(`${expectedPackage}.`) && declared.has(match[1])) ? [] : [match[1]])
+  return { packageName, requested: [...new Set(requested)].sort(), privileged: [...listenerPrivilegedPermissions] }
+}
+
+export effect function listenerPermissions(dump: string, expectedPackage: string) {
+  const grants = try readListenerPermissions(dump, expectedPackage)
+  if (!permissionsReviewed(grants.requested)) throw new ListenerAdmissionRefused({ reason: "Listener APK permissions differ from the reviewed allowlist" })
+  return grants
+}
+
+function uncommented(xml: string): string {
+  return xml.replace(/<!--(?:[^-]|-(?!-))*-->/g, "")
+}
+
+export function listenerOverlay(xml: string): ListenerOverlay {
+  const body = uncommented(xml)
+  const content = /^\s*(?:<\?xml version="1\.0"(?: encoding="utf-8")?\?>\s*)?<resources>\s*([\s\S]*?)<\/resources>\s*$/.exec(body)?.[1]
+  const invalid: ListenerOverlay = { roles: [], microphoneToggle: false }
+  if (content === undefined) return invalid
+  const resource = /<(string|bool|integer)\s+name="([A-Za-z0-9_]+)"(?:\s+translatable="(?:true|false)")?\s*>([^<]*)<\/\1>/g
+  const values = [...content.matchAll(resource)]
+  if (content.replace(resource, "").trim() !== "" || new Set(values.map((entry) => entry[2])).size !== values.length) return invalid
+  const cleared = values.flatMap((entry) => {
+    const role = entry[2]
+    if (entry[1] !== "string" || role === undefined || !indicatorExemptRoles.includes(role)) return []
+    return [{ role, value: (entry[3] ?? "").trim() === "" ? "RoleCleared" as const : "RoleHeld" as const }]
+  })
+  return { roles: cleared, microphoneToggle: values.some((entry) => entry[1] === "bool" && entry[2] === "config_supportsMicToggle" && entry[3]?.trim() === "true") }
+}
+
+export effect function listenerArtifact(path: string, maxBytes: number) {
+  return try tryPromise({
+    try: () => readArtifact(path, maxBytes),
+    catch: (cause) => new ListenerAdmissionRefused({ reason: String(cause) }),
+  })
+}
+
+export effect function listenerJson(bytes: Uint8Array) {
+  return try Effect.try({ try: () => artifactJson(bytes), catch: (cause) => new ListenerAdmissionRefused({ reason: String(cause) }) })
+}
+
+export effect function readListenerQualification(enrolled: EnrolledListenerQualification) {
+  const artifact = try listenerArtifact(enrolled.file, 2 * 1024 * 1024)
+  const record = try decodeReview(try listenerJson(artifact.bytes))
+  const gates: GateRow[] = record.gates.map(({ gate, result }) => ({
+    gate,
+    result: result.status === "pass" ? { tag: "GatePassed", evidence: parseDigest(result.evidenceSha256) } : { tag: "GateNotPassed" },
+  }))
+  if (new Set(gates.map(({ gate }) => gate)).size !== gates.length) throw new ListenerAdmissionRefused({ reason: "Listener qualification names a gate twice" })
+  const pinned = record.inputs
+  const qualification: Qualification = {
+    tag: "QualificationRecord",
+    bytes: parseDigest(artifact.sha256),
+    qualified: record.qualified,
+    inputs: {
+      packageName: packageParts(pinned.packageName),
+      launcher: parseDigest(pinned.launcher),
+      listener: parseDigest(pinned.listener),
+      launcherDescriptor: parseDigest(pinned.launcherDescriptor),
+      listenerDescriptor: parseDigest(pinned.listenerDescriptor),
+      certificate: parseDigest(pinned.certificate),
+      sourceLock: pinned.sourceLock,
+      sdkCommit: pinned.sdkCommit,
+      sepolicy: parseDigest(pinned.sepolicy),
+      patches: [...pinned.patches],
+    },
+    gates,
+  }
+  return { qualification, enrolledQualification: parseDigest(enrolled.sha256) }
+}
+
+export effect function verifyListenerQualification(
+  enrolled: EnrolledListenerQualification,
+  request: Omit<ListenerRequest, "qualification" | "enrolledQualification">,
+  source: SourceVerdict,
+  production: boolean,
+) {
+  const observed = try readListenerQualification(enrolled)
+  if (!qualificationMatches({ ...request, ...observed }, source)) {
+    throw new ListenerAdmissionRefused({ reason: "Listener qualification names different staged inputs" })
+  }
+  if (!qualificationPassed(observed.qualification, production)) {
+    throw new ListenerAdmissionRefused({ reason: "Listener qualification lacks evidence for the required gates" })
+  }
+  return observed
+}

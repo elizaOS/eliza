@@ -2,10 +2,8 @@
 import { assert, it } from "@effect/vitest"
 import { findViewActionHandoff, type Action, type ActionResult, type Memory, type UUID } from "@elizaos/core"
 import { navigationWaitMs } from "../gen/agent__views.effect.vibe"
-import { builtinModuleFactories } from "../src/plugins/profile.vibe"
-import type { ModuleFactory } from "../src/host/module.vibe"
 import type { ViewBinding, ViewHost } from "../src/views/host.vibe"
-import { viewHostServiceType, viewsModule, viewsModuleName } from "../src/views/module.vibe"
+import { viewHostServiceType, viewsModuleName } from "../src/views/module.vibe"
 import { call, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
 
@@ -17,7 +15,6 @@ const loaded = {
       { id: "chat", label: "Chat", path: "/chat" },
     ],
   },
-  modules: new Map<string, ModuleFactory<never>>([...builtinModuleFactories, [viewsModuleName, viewsModule]]),
 }
 
 const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }

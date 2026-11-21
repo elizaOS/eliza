@@ -16,7 +16,7 @@ const viewNames = {
 
 type ViewName = (typeof viewNames)[DeviceView]
 
-const viewsByName = new Map(Object.entries(viewNames).map(([view, name]) => [name, view as DeviceView]))
+const viewsByName = new Map<string, DeviceView>(Object.entries(viewNames).map(([view, name]) => [name, view as DeviceView]))
 
 export const supportedViews: readonly ViewName[] = Object.values(viewNames)
 

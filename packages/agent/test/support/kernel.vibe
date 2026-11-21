@@ -6,7 +6,7 @@ import { freePort, startAgentChild, type AgentChild, type AgentRun, type Transpo
 import { startCloudFake, type CloudFake } from "./cloud-fake.ts"
 import { httpRequest, httpRequestStream, httpSubscribe } from "./http-client.ts"
 import { launchDocument, launchFrame, scratchDirectory, writeLaunch, type FrameOptions, type LaunchFrame, type LaunchOptions, type Scratch } from "./scratch.ts"
-import { request, requestStream, subscribe, type LocalAnswer, type LocalRequest, type Refusal, type StreamedAnswer, type Subscription } from "./socket-client.ts"
+import { request, requestStream, subscribe, type LocalAnswer, type LocalRequest, type Refusal, type StreamCut, type StreamedAnswer, type Subscription } from "./socket-client.ts"
 
 export error SupportFailed { step: string; cause: unknown }
 
@@ -121,11 +121,11 @@ export effect function call(reachable: Reachable, asked: LocalRequest) {
     transport.kind === "socket" ? request(transport.path, signed) : httpRequest(transport.port, signed))
 }
 
-export effect function stream(reachable: Reachable, asked: LocalRequest, abortAfterChunks?: number) {
+export effect function stream(reachable: Reachable, asked: LocalRequest, cut?: StreamCut, opened?: (status: number) => void) {
   const transport = reachable.transport
   const signed = authorized(reachable, asked)
   return try host(`${asked.method} ${asked.path} stream`, (): Promise<StreamedAnswer> =>
-    transport.kind === "socket" ? requestStream(transport.path, signed, abortAfterChunks) : httpRequestStream(transport.port, signed, abortAfterChunks))
+    transport.kind === "socket" ? requestStream(transport.path, signed, cut, opened) : httpRequestStream(transport.port, signed, cut, opened))
 }
 
 export effect function events(reachable: Reachable, streams: readonly string[], clientId?: string) {

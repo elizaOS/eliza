@@ -191,7 +191,7 @@ effect function totpObserved(sealed: string | undefined, code: string, state: Se
   if (sealed === undefined) return missed
   const seed = try unseal("totp-secret", sealed)
   const at = totpStepAt(state.caller.now)
-  const matching = [at - totpWindow, at, at + totpWindow].filter((step) => sameText(totpCode(seed, step), code))
+  const matching = [at - totpWindow, at, at + totpWindow].filter((step) => step > noTotpStep && sameText(totpCode(seed, step), code))
   const matchedStep = matching.find((step) => step > state.factors.lastTotpStep) ?? matching[0]
   return matchedStep === undefined ? missed : { codeMatches: true, matchedStep }
 }
@@ -349,6 +349,9 @@ effect function stepUp(context: RouteContext) {
   try verifyLimited(context, caller.userId)
   const at = try forSession(caller, context.now, effect (tx: Tx, who: Owner, family: Family, secrets: Held) => {
     const before = try current(tx, who, family)
+    if (method === "Sms" && isConfirmed(before.factors, method) && before.stepUpCode.tag === "NoCode") {
+      throw refused("CredentialProofInvalid")
+    }
     const bound = secrets.stepUpSession === caller.sessionKey ? secrets.stepUpDigest : undefined
     const seen = try observe(method, secrets, code, before, `step-up:${caller.sessionKey}`, bound)
     const accepted = factorCodeAccepted(before.factors, method, family.now, seen.codeMatches, seen.matchedStep)

@@ -7,8 +7,8 @@ android {
 }
 dependencies {
  implementation project(':capacitor-android')
- implementation project(':secure-store')
- implementation project(':agent-service')
+ implementation project(':eliza-secure-store')
+ implementation project(':eliza-agent-service')
  implementation 'androidx.appcompat:appcompat:1.7.1'
  implementation 'androidx.credentials:credentials:1.6.0'
  implementation 'androidx.credentials:credentials-play-services-auth:1.6.0'

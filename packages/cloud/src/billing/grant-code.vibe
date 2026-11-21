@@ -1,0 +1,23 @@
+// spec/cloud/billing/grantCodes.md, "A code is 16 Crockford base32 characters, read without case, spaces or hyphens, with I and L read as 1 and O as 0"
+import { declassifyGrantCodeValid, normalizeGrantCodeUnits } from "../../gen/cloud__billing__grantCodes.effect.vibe"
+
+module node {
+  /** @throws {never} */
+  export function readUnits(text: string): number[] {
+    const units: number[] = []
+    for (let index = 0; index < text.length; index++) units.push(text.charCodeAt(index))
+    return units
+  }
+
+  /** @throws {never} */
+  export function writeGrantCodeUnits(units: ReadonlyArray<number>): string {
+    return units.map((unit) => String.fromCharCode(unit)).join("")
+  }
+}
+import { readUnits, writeGrantCodeUnits } from node
+export { writeGrantCodeUnits } from node
+
+export function normalizeSubscriptionCode(text: string): string | undefined {
+  const normalized = normalizeGrantCodeUnits(readUnits(text))
+  return declassifyGrantCodeValid(normalized) ? writeGrantCodeUnits(normalized) : undefined
+}

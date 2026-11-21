@@ -1,7 +1,7 @@
 // spec/cloud/returnPages.md, "Story: Bring me back to the app when its link did not open"; spec/cloud/returnPages.md, "Story: Tell a payer the checkout ended"
-import { connectedPage, pageAt, pageHeaders, payerPath, type Page, type PagePurpose } from "../../gen/cloud__returnPages.effect.vibe"
+import { answerAt, connectedAnswer, pageHeaders, payerPath, readOf, type Page, type PageAnswer, type PagePurpose } from "../../gen/cloud__returnPages.effect.vibe"
 import type { Registration, ReturnPurpose } from "../../gen/cloud__nativeClients__registry.effect.vibe"
-import { refused } from "../http/refusal.vibe"
+import { Refused } from "../http/refusal.vibe"
 import type { Route, RouteContext } from "../http/routes.vibe"
 import { forwardScriptHash, pageFile, pageSlots, type PageSlot, type PageTemplate } from "../pages/forward-script.ts"
 import { Deployment, rowOf } from "../profile/profile.vibe"
@@ -62,7 +62,7 @@ function escaped(value: string): string {
 
 type Shown = { readonly template: PageTemplate; readonly slots: Readonly<Partial<Record<PageSlot, string>>> }
 
-function shown(page: Exclude<Page, { tag: "NoPage" }>): Shown {
+function shown(page: Page): Shown {
   switch (page.tag) {
     case "CheckoutOutcome":
       return { template: { kind: "checkoutOutcome", outcome: page.shown === "PaidOutcome" ? "paid" : "canceled" }, slots: {} }
@@ -86,8 +86,9 @@ function contentPolicy(page: Page, template: Template): string {
   return `default-src 'none';${script}${style} base-uri 'none'; form-action ${headers.formAction}; frame-ancestors ${headers.frameAncestors}`
 }
 
-effect function pageResponse(page: Page) {
-  if (page.tag === "NoPage") throw refused("NotFound")
+effect function pageResponse(answer: PageAnswer) {
+  if (answer.tag === "Refused") throw new Refused({ refusal: answer.refusal })
+  const { page } = answer
   const { template, slots } = shown(page)
   const file = try sync(() => pageFile(template))
   const loaded = try tryPromise({ try: () => pageTemplate(packageRoot, file), catch: () => new PageTemplateMissing({ file }) })
@@ -116,16 +117,17 @@ effect function servePage(context: RouteContext) {
   const deployment = try Deployment
   const { web, api } = deployment.settings
   const onWeb = forwardedOrigin(context) === web
-  const registry = onWeb ? try (try Store).transaction((tx) => readRegistry(tx)) : []
+  const registry = onWeb ? (try Store).transaction((tx) => readRegistry(tx)) catch () => undefined : []
   const path = new URL(context.request.url, api).pathname
   const served = deployment.environment === "production" ? "Production" : "Staging"
-  const page = pageAt(rowOf(deployment.settings.name, deployment.settings), [...registry], served, { origin: onWeb ? web : api, path }, context.query.get("outcome") ?? "")
-  return try pageResponse(page)
+  const read = readOf(registry === undefined ? [] : [...registry], registry !== undefined)
+  const answer = answerAt(rowOf(deployment.settings.name, deployment.settings), read, served, { origin: onWeb ? web : api, path }, context.query.get("outcome") ?? "")
+  return try pageResponse(answer)
 }
 
 export effect function connectedReturnPage(registration: Registration) {
   const deployment = try Deployment
-  return try pageResponse(connectedPage(rowOf(deployment.settings.name, deployment.settings), registration))
+  return try pageResponse(connectedAnswer(rowOf(deployment.settings.name, deployment.settings), registration))
 }
 
 export const returnPageRoute: Route = { method: "GET", path: "/*", auth: "Public", handler: servePage }

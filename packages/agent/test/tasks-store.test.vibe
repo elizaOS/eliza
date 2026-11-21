@@ -9,10 +9,10 @@ module node {
   import { chmodSync, existsSync, readdirSync, renameSync, writeFileSync } from "node:fs"
   import { join } from "node:path"
   import { DatabaseSync } from "node:sqlite"
-  import { Redacted } from "effect"
+  import { Redacted, Result } from "effect"
   import { createInteractiveTask, ElizaError, transitionInteractiveTask, type InteractiveTask, type TaskEvent, type TaskTransition } from "@elizaos/core"
   import { createTaskSealer, deriveTaskKeys, type TaskPurpose } from "../src/tasks/sealing.vibe"
-  import { decodeTaskRecord, openNodeTaskDatabase, storageKeySource, type TaskDatabaseOpener, type TaskRecord } from "../src/tasks/store.vibe"
+  import { decodeTaskRecord, decodeTaskRecordResult, openNodeTaskDatabase, storageKeySource, type TaskDatabaseOpener, type TaskRecord } from "../src/tasks/store.vibe"
 
   export const account = "owner-account"
   const owner = { agentId: "agent-1", actorId: "owner-1", connector: { source: "device", accountId: "device" } }
@@ -59,11 +59,19 @@ module node {
   }
 
   export function laterBuild(unreadableIds: readonly string[]) {
-    return (text: string): TaskRecord => {
-      const record = decodeTaskRecord(text)
-      if (unreadableIds.includes(record.task.id)) throw new ElizaError("Task schema 2 is not known to this build", { code: "TASK_INVALID" })
-      return record
+    /** @throws {never} */
+    function decode(text: string): Result.Result<TaskRecord, unknown> {
+      try {
+        const decoded = decodeTaskRecordResult(text)
+        if (Result.isSuccess(decoded) && unreadableIds.includes(decoded.success.task.id)) {
+          return Result.fail(new ElizaError("Task schema 2 is not known to this build", { code: "TASK_INVALID" }))
+        }
+        return decoded
+      } catch (cause) {
+        return Result.fail(cause)
+      }
     }
+    return decode
   }
 
   export function decodes(record: unknown): string {

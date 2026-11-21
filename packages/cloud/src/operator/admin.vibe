@@ -8,6 +8,7 @@ import { RowCorrupt } from "../store/rows.vibe"
 import { identityDigest, parseStoreLocation, Store, storeLayer, type StoreFailure, toText, type Tx } from "../store/store.vibe"
 import { commands as accounts } from "./accounts.vibe"
 import { commands as clients, seedClients } from "./clients.vibe"
+import { commands as grants } from "./grants.vibe"
 import { commands as prices, seedPrices } from "./prices.vibe"
 
 export type OperatorContext = Deployment | HttpClient.HttpClient
@@ -49,7 +50,7 @@ export interface SeedHandler {
 }
 
 export function commandTable(): ReadonlyArray<OperatorCommandHandler> {
-  return [...accounts, ...clients, ...prices]
+  return [...accounts, ...clients, ...grants, ...prices]
 }
 
 export function seedTable(): ReadonlyArray<SeedHandler> {
@@ -136,11 +137,19 @@ effect function carryOut(handler: OperatorCommandHandler, flags: OperatorFlags) 
   const named = handler.account === undefined ? undefined : try handler.account(flags)
   const batch = flags.values("count")[0] ?? ""
   const now = try Clock.currentTimeMillis
-  return try (try Store).transaction(effect (tx: Tx) => {
+  const store = try Store
+  const run = effect (tx: Tx) => {
     const verdict = try verdictIn(tx, handler.operatorCommand, named, flags.has("confirmed-with-owner"), batchSize.test(batch) ? Number(batch) : 0)
     if (verdict.tag === "Refused") return outcomeOf(verdict, [])
     return outcomeOf(verdict, try handler.run(tx, flags, now, verdict.tag))
-  })
+  }
+  while (true) {
+    const outcome = store.transaction(run) catch effect (failure) => {
+      if (failure._tag !== "GrantRevocationMoved") throw failure
+      return undefined
+    }
+    if (outcome !== undefined) return outcome
+  }
 }
 
 effect function report(outcome: OperatorOutcome): void!OperatorRefused {

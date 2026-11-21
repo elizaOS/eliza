@@ -1,7 +1,7 @@
 // spec/os/build/androidHost.md, "Story: Generate my app's Android host from data"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"
 import { mergedNodes } from "../../gen/os__build__androidHost.effect.vibe"
 import { maxFileBytes, serviceNamed } from "../../gen/os__agentService__config.effect.vibe"
-import { admitHostProfile, type AndroidHostProfile, type ConfigField, type HostOsModule, type HostSource } from "./android-host-profile.vibe"
+import { admitHostProfile, type AndroidHostProfile, type ConfigField, type HostOsModule, type HostSource, type SourceKind } from "./android-host-profile.vibe"
 import { INVENTORY_ASSET } from "./runtime-payload.vibe"
 
 module node {
@@ -187,7 +187,9 @@ effect function osPackageRoot() {
 
 effect function realDirectory(place: string) {
   const files = try FileSystem.FileSystem
-  return try mapError(files.realPath(place), () => new HostInputRefused({ place, reason: "The root is unavailable" }))
+  const real = try mapError(files.realPath(place), () => new HostInputRefused({ place, reason: "The root is unavailable" }))
+  if ((try files.stat(real)).type !== "Directory") throw new HostInputRefused({ place, reason: "The root must be a directory" })
+  return real
 }
 
 effect function workspaceOf(directory: string) {
@@ -214,28 +216,33 @@ effect function containerOf(roots: Roots, source: HostSource) {
   return directory
 }
 
-effect function readInput(roots: Roots, source: HostSource, wanted: Wanted) {
+effect function containedInput(root: string, place: string, wanted: Wanted) {
   const files = try FileSystem.FileSystem
-  const real = try mapError(files.realPath(source.place), () => new HostInputRefused({ place: source.place, reason: "The input is unavailable" }))
-  if (!inside(try containerOf(roots, source), real)) throw new HostInputRefused({ place: source.place, reason: "The input escapes its declared root" })
-  if ((try files.stat(real)).type !== wanted) throw new HostInputRefused({ place: source.place, reason: `The input must be a ${wanted === "File" ? "file" : "directory"}` })
+  const real = try mapError(files.realPath(place), () => new HostInputRefused({ place, reason: "The input is unavailable" }))
+  if (!inside(root, real)) throw new HostInputRefused({ place, reason: "The input escapes its declared root" })
+  if ((try files.stat(real)).type !== wanted) throw new HostInputRefused({ place, reason: `The input must be a ${wanted === "File" ? "file" : "directory"}` })
   return real
 }
 
-effect function moduleSources(module: HostOsModule) {
+effect function readInput(roots: Roots, source: HostSource, wanted: Wanted) {
+  return try containedInput(try containerOf(roots, source), source.place, wanted)
+}
+
+effect function moduleSources(module: HostOsModule, directory: string) {
   const files = try FileSystem.FileSystem
   const path = try Path.Path
-  const directory = try realDirectory(module.directory)
   const copies: { readonly from: string; readonly to: string }[] = []
   for (const source of module.sources) {
     const [, sourceSet = "", ...rest] = source.split("/")
     const real = try mapError(files.realPath(path.join(directory, source)), () => new HostInputRefused({ place: path.join(directory, source), reason: "The os module source is unavailable" }))
     if (!inside(directory, real)) throw new HostInputRefused({ place: real, reason: `The source escapes the os module ${module.module}` })
     const target = `app/src/${sourceSet}/${rest.join("/")}`
-    if ((try files.stat(real)).type === "File") {
+    const kind = (try files.stat(real)).type
+    if (kind === "File") {
       copies.push({ from: real, to: target })
       continue
     }
+    if (kind !== "Directory") throw new HostInputRefused({ place: real, reason: "An os module source must be a file or directory" })
     for (const entry of (try files.readDirectory(real, { recursive: true })).sort()) {
       const file = try files.realPath(path.join(real, entry))
       if (!inside(directory, file)) throw new HostInputRefused({ place: file, reason: `The source escapes the os module ${module.module}` })
@@ -250,8 +257,10 @@ effect function moduleManifest(directory: string) {
   const path = try Path.Path
   const manifest = path.join(directory, "src", "main", "AndroidManifest.xml")
   if (!(try files.exists(manifest))) return manifestNodes("", undefined)
-  const gradle = (files.readFileString(path.join(directory, "build.gradle")) catch () => "")
-  return manifestNodes(try files.readFileString(manifest), /namespace\s*=?\s*["']([^"']+)["']/.exec(gradle)?.[1])
+  const admitted = try containedInput(directory, manifest, "File")
+  const buildFile = path.join(directory, "build.gradle")
+  const gradle = (try files.exists(buildFile)) ? try files.readFileString(try containedInput(directory, buildFile, "File")) : ""
+  return manifestNodes(try files.readFileString(admitted), /namespace\s*=?\s*["']([^"']+)["']/.exec(gradle)?.[1])
 }
 
 effect function agentService(roots: Roots, profile: AndroidHostProfile) {
@@ -341,7 +350,7 @@ export effect function generateAndroidHost(options: GenerateAndroidHost) {
   const requested = path.resolve(options.output)
   const output = inside(path.resolve(options.consumerRoot), requested) ? path.join(consumer, path.relative(path.resolve(options.consumerRoot), requested)) : requested
   const workspace = dependencies === undefined ? undefined : try workspaceOf(path.dirname(dependencies))
-  const roots: Roots = { consumer, os, dependencies, packages: [consumer, os, ...(dependencies === undefined ? [] : [dependencies]), ...(workspace === undefined ? [] : [workspace])] }
+  const roots: Roots = { consumer, os, dependencies, packages: [consumer, os, ...(dependencies === undefined ? [] : [dependencies]), ...(workspace === undefined || !inside(workspace, consumer) ? [] : [workspace])] }
   const toolchain = try mapError(
     Schema.decodeUnknownEffect(Schema.fromJsonString(Toolchain))(try fileSystem.readFileString(path.join(templates, "toolchain.json"))),
     () => new HostInputRefused({ place: path.join(templates, "toolchain.json"), reason: "The pinned toolchain record is malformed" }),
@@ -387,10 +396,11 @@ export effect function generateAndroidHost(options: GenerateAndroidHost) {
     })
   }
 
-  const sourceSets: Record<string, Record<string, string[]>> = {}
+  const sourceSets = new Map<string, Map<SourceKind, string[]>>()
   for (const entry of profile.sourceSets) {
-    const kinds = (sourceSets[entry.sourceSet] ??= {})
-    ;(kinds[entry.kind] ??= []).push(try readInput(roots, entry.source, "Directory"))
+    const kinds = sourceSets.get(entry.sourceSet) ?? new Map<SourceKind, string[]>()
+    kinds.set(entry.kind, [...(kinds.get(entry.kind) ?? []), try readInput(roots, entry.source, "Directory")])
+    sourceSets.set(entry.sourceSet, kinds)
   }
 
   const modules = []
@@ -399,10 +409,9 @@ export effect function generateAndroidHost(options: GenerateAndroidHost) {
   }
   const contributed: ManifestNodes[] = []
   for (const module of profile.osModules) {
-    for (const source of try moduleSources(module)) try copy(source.from, source.to)
+    const directory = try containedInput(os, module.directory, "Directory")
+    for (const source of try moduleSources(module, directory)) try copy(source.from, source.to)
     if (module.project === undefined) continue
-    const directory = try realDirectory(module.directory)
-    if (!inside(os, directory)) throw new HostInputRefused({ place: directory, reason: `The os module ${module.module} lies outside the os package` })
     modules.push({ name: module.project, directory, appDependency: true, relocateBuild: true })
     contributed.push(try moduleManifest(directory))
   }
@@ -443,7 +452,7 @@ export effect function generateAndroidHost(options: GenerateAndroidHost) {
     hostManifest: overlay === undefined ? null : path.join(output, HOST_MANIFEST),
     identityResources: path.join(output, IDENTITY_RESOURCES),
     flavors,
-    sourceSets,
+    sourceSets: Object.fromEntries([...sourceSets].map(([name, kinds]) => [name, Object.fromEntries(kinds)])),
     generatedSources: profile.generatedSources,
     dependencies: profile.dependencies,
     manifestPlaceholders: profile.manifestPlaceholders,

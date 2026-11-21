@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/theupdateframework/go-tuf/v2/metadata"
-	"github.com/theupdateframework/go-tuf/v2/metadata/trustedmetadata"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/theupdateframework/go-tuf/v2/metadata"
+	"github.com/theupdateframework/go-tuf/v2/metadata/trustedmetadata"
 )
 
 type publicationBundle struct {
@@ -19,6 +21,66 @@ type publicationBundle struct {
 type publicationPolicy struct {
 	Upper   int64            `json:"trustedUpperMs"`
 	Minimum map[string]int64 `json:"minimumVersions"`
+}
+
+type publicationRoleEvidence struct {
+	Threshold int      `json:"threshold"`
+	Members   []string `json:"members"`
+	Approvers []string `json:"approvers"`
+}
+
+type publicationAuthority struct {
+	RootKeys []string                `json:"rootKeys"`
+	Stable   publicationRoleEvidence `json:"stable"`
+	Beta     publicationRoleEvidence `json:"beta"`
+}
+
+func publicationGraphAuthority(trusted *trustedmetadata.TrustedMetadata) (publicationAuthority, error) {
+	result := publicationAuthority{RootKeys: []string{}}
+	rootKeys := map[[32]byte]bool{}
+	for _, key := range trusted.Root.Signed.Keys {
+		identity, err := publicIdentity(key)
+		if err != nil {
+			return publicationAuthority{}, err
+		}
+		if !rootKeys[identity] {
+			rootKeys[identity] = true
+			result.RootKeys = append(result.RootKeys, hex.EncodeToString(identity[:]))
+		}
+	}
+	sort.Strings(result.RootKeys)
+	delegations := trusted.Targets["targets"].Signed.Delegations
+	for _, role := range delegations.Roles {
+		roleEvidence := publicationRoleEvidence{Threshold: role.Threshold, Members: []string{}, Approvers: []string{}}
+		for _, keyID := range role.KeyIDs {
+			key := delegations.Keys[keyID]
+			identity, err := publicIdentity(key)
+			if err != nil {
+				return publicationAuthority{}, err
+			}
+			fingerprint := hex.EncodeToString(identity[:])
+			roleEvidence.Members = append(roleEvidence.Members, fingerprint)
+			singleKey := metadata.Targets()
+			singleRole := role
+			singleRole.KeyIDs = []string{keyID}
+			singleRole.Threshold = 1
+			singleKey.Signed.Delegations = &metadata.Delegations{
+				Keys: map[string]*metadata.Key{keyID: key}, Roles: []metadata.DelegatedRole{singleRole},
+			}
+			if singleKey.VerifyDelegate(role.Name, trusted.Targets[role.Name]) == nil {
+				roleEvidence.Approvers = append(roleEvidence.Approvers, fingerprint)
+			}
+		}
+		if len(roleEvidence.Approvers) < roleEvidence.Threshold {
+			return publicationAuthority{}, errors.New("publication signer evidence below the verified threshold")
+		}
+		if role.Name == "stable" {
+			result.Stable = roleEvidence
+		} else {
+			result.Beta = roleEvidence
+		}
+	}
+	return result, nil
 }
 
 // VerifyPublicationGraph validates an offline complete signed metadata closure.
@@ -197,13 +259,18 @@ func VerifyPublicationGraph(root, bundleJSON, policyJSON []byte) ([]byte, error)
 	if len(used) != len(bundle.Files) {
 		return nil, errors.New("unreferenced publication files")
 	}
+	authority, err := publicationGraphAuthority(trusted)
+	if err != nil {
+		return nil, err
+	}
 	sum := sha256.Sum256(timestamp)
 	return json.Marshal(struct {
 		GraphVerified bool                       `json:"graphVerified"`
 		Timestamp     string                     `json:"timestampSha256"`
 		Versions      map[string]int64           `json:"versions"`
 		Descriptors   map[string]json.RawMessage `json:"descriptors"`
-	}{true, hex.EncodeToString(sum[:]), versions, descriptors})
+		Authority     publicationAuthority       `json:"authority"`
+	}{true, hex.EncodeToString(sum[:]), versions, descriptors, authority})
 }
 func strongPublicationReference(ref *metadata.MetaFiles) bool {
 	return ref != nil && ref.Version > 0 && ref.Length > 0 && ref.Length <= maxBytes && len(ref.Hashes["sha256"]) == 32

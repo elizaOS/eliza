@@ -1,0 +1,137 @@
+// spec/os/appUpdate/admission.md, "Story: Publish an app update only with authorized versions"
+import { authorizePublication, type PublicationGraph, type SignedDescriptor, type SourceEvidence } from "../../gen/os__appUpdate__admission.effect.vibe"
+import { advancePublisherPolicy, readPublisherPolicy, type PublisherPolicy } from "./publisher-policy.vibe"
+import { copyPublicationBundle, copyRoot, parseDescriptorJson, publicationDigest, publicationFailure, samePublicationData, verifyPublicationGraph, type PublicationBundle, type VerifiedReport } from "./publication-boundary.vibe"
+
+export { advancePublisherPolicy, initializePublisherPolicy, readPublisherPolicy, PublisherPolicyFailed, type PublisherPolicy } from "./publisher-policy.vibe"
+export { parseDescriptorJson, verifyPublicationGraph, PublicationFailed, type PublicationBundle, type VerifiedReport, type VerifyPublicationOptions } from "./publication-boundary.vibe"
+
+type ChannelName = "stable" | "beta"
+type DistributionName = "launcher" | "standalone"
+const targetPaths = {
+  stable: { launcher: "stable/launcher.json", standalone: "stable/standalone.json" },
+  beta: { launcher: "beta/launcher.json", standalone: "beta/standalone.json" }
+} as const
+type DescriptorPath = (typeof targetPaths)[ChannelName][DistributionName]
+
+export interface PublicationSubject {
+  readonly path: DescriptorPath
+  readonly descriptor: unknown
+  readonly descriptorSha256: string
+}
+
+export interface PublicationPreflight {
+  readonly channel: ChannelName
+  readonly distribution: DistributionName
+  readonly descriptorSha256: string
+}
+
+export interface PublicationAuthorizerOptions<E, R> {
+  readonly root: Uint8Array
+  readonly executable: string
+  readonly timeoutMs: number
+  readonly policyFile: string
+  readonly trustedUpperMs: () => number!E!R
+  readonly approveSource: (subject: PublicationSubject) => boolean!E!R
+  readonly preflight: (subject: PublicationSubject) => PublicationPreflight!E!R
+}
+
+interface PlannedDescriptor {
+  readonly path: DescriptorPath
+  readonly channel: ChannelName
+  readonly distribution: DistributionName
+  readonly sha256: string
+  readonly bytes: Uint8Array
+  readonly model: SignedDescriptor
+}
+
+const descriptorPath = /^targets\/(stable|beta)\/([a-f0-9]{64})\.(launcher|standalone)\.json$/
+function digest(hex: string): { tag: "Sha256"; hex: string } {
+  return { tag: "Sha256", hex }
+}
+
+effect function plannedDescriptors(plan: PublicationBundle) {
+  const result = new Map<DescriptorPath, PlannedDescriptor>()
+  for (const { name, bytes } of plan.dependencies) {
+    const fields = descriptorPath.exec(name)
+    if (fields === null) continue
+    const [, channel, sha256, distribution] = fields
+    const observed = try Effect.try({ try: () => publicationDigest(bytes), catch: publicationFailure })
+    if ((channel !== "stable" && channel !== "beta") || (distribution !== "launcher" && distribution !== "standalone") ||
+        sha256 === undefined || observed !== sha256) throw publicationFailure("A descriptor does not bind its exact bytes")
+    const path = targetPaths[channel][distribution]
+    if (result.has(path)) throw publicationFailure("The plan contains more than one descriptor for " + path)
+    const model: SignedDescriptor = {
+      path: { channel: channel === "stable" ? "Stable" : "Beta", distribution: distribution === "launcher" ? "Launcher" : "Standalone" },
+      sha256: digest(sha256)
+    }
+    result.set(path, { path, channel, distribution, sha256, bytes, model })
+  }
+  if (result.size === 0) throw publicationFailure("The plan has no descriptor")
+  return [...result.values()].sort((a, b) => a.path.localeCompare(b.path))
+}
+
+effect function descriptorEvidence<E, R>(options: PublicationAuthorizerOptions<E, R>, plan: ReadonlyArray<PlannedDescriptor>, report: VerifiedReport) {
+  if (Object.keys(report.descriptors).length !== plan.length) throw publicationFailure("The graph descriptors differ from the plan")
+  const evidence: SourceEvidence = { approved: [], preflighted: [] }
+  for (const entry of plan) {
+    const descriptor = try parseDescriptorJson(entry.bytes)
+    const bound = try Effect.try({ try: () => samePublicationData(report.descriptors[entry.path], descriptor), catch: publicationFailure })
+    if (!Object.hasOwn(report.descriptors, entry.path) || !bound) {
+      throw publicationFailure("The graph does not bind the planned descriptor " + entry.path)
+    }
+    const input = { path: entry.path, descriptor, descriptorSha256: entry.sha256 }
+    if (!(try options.approveSource(input))) throw publicationFailure("Source was not approved for " + entry.path)
+    evidence.approved.push(entry.model.sha256)
+    const preflight = try options.preflight({ ...input, descriptor: try parseDescriptorJson(entry.bytes) })
+    if (preflight.descriptorSha256 !== entry.sha256 || preflight.channel !== entry.channel || preflight.distribution !== entry.distribution) {
+      throw publicationFailure("The preflight did not bind the planned descriptor " + entry.path)
+    }
+    evidence.preflighted.push(entry.model)
+  }
+  return evidence
+}
+
+function keyNames(report: VerifiedReport) {
+  const { rootKeys, stable, beta } = report.authority
+  return [...rootKeys, ...stable.members, ...beta.members, ...stable.approvers, ...beta.approvers]
+}
+
+function modeledGraph(report: VerifiedReport, descriptors: SignedDescriptor[], keySpace: ReadonlyArray<string>): PublicationGraph {
+  const { stable, beta } = report.authority
+  const ids = (keys: ReadonlyArray<string>) => keys.map((key) => keySpace.indexOf(key))
+  return {
+    timestamp: digest(report.timestampSha256), versions: report.versions, descriptors,
+    roles: { stableKeys: { threshold: stable.threshold, members: ids(stable.members) }, betaKeys: { threshold: beta.threshold, members: ids(beta.members) } },
+    stableApprovers: ids(stable.approvers),
+    betaApprovers: ids(beta.approvers)
+  }
+}
+
+export effect function createPublicationAuthorizer<E, R>(options: PublicationAuthorizerOptions<E, R>) {
+  const root = try Effect.try({ try: () => copyRoot(options.root), catch: publicationFailure })
+  const host = { ...options, root }
+  return effect (input: PublicationBundle) => {
+    const bundle = try Effect.try({ try: () => copyPublicationBundle(input), catch: publicationFailure })
+    const plan = try plannedDescriptors(bundle)
+    const verifier = (policy: PublisherPolicy) => verifyPublicationGraph({ executable: host.executable, timeoutMs: host.timeoutMs, root, bundle, policy })
+    const before = try readPublisherPolicy(host.policyFile, try host.trustedUpperMs())
+    const report = try verifier(before)
+    const evidence = try descriptorEvidence(host, plan, report)
+    const current = try readPublisherPolicy(host.policyFile, try host.trustedUpperMs())
+    const checked = try verifier(current)
+    const unchanged = try Effect.try({ try: () => samePublicationData(report, checked), catch: publicationFailure })
+    if (!unchanged) throw publicationFailure("The publication graph changed during approval")
+    const descriptors = plan.map(({ model }) => model)
+    const keySpace = [...new Set([...keyNames(report), ...keyNames(checked)])]
+    const rootKeys = report.authority.rootKeys.map((key) => keySpace.indexOf(key))
+    const original = modeledGraph(report, descriptors, keySpace)
+    const fresh = modeledGraph(checked, descriptors, keySpace)
+    const timestamp = try Effect.try({ try: () => publicationDigest(bundle.timestamp), catch: publicationFailure })
+    const decision = authorizePublication({ planTimestamp: digest(timestamp), planDescriptors: descriptors },
+      rootKeys, before.minimumVersions, original, evidence, current.minimumVersions, fresh)
+    if (decision.tag === "PublicationRefused") throw publicationFailure(decision.why)
+    const versions = try advancePublisherPolicy(host.policyFile, decision.versions)
+    return { timestampSha256: report.timestampSha256, versions, descriptors: plan.map(({ path }) => path) }
+  }
+}

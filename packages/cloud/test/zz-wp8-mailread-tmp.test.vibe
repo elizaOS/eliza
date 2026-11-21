@@ -3,13 +3,11 @@ import { assert, describe, it } from "@effect/vitest"
 import { addCredits } from "../src/billing/funds.vibe"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
-import { Store, type Tx } from "../src/store/store.vibe"
-import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
+import { Store } from "../src/store/store.vibe"
+import { testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
 import type { FakeRequest } from "./support/fakes.ts"
 import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.ts"
 import { periodRows } from "../src/shared/metering.vibe"
-import { tokenDigest } from "../src/shared/sealing.vibe"
-import { stepRow } from "../src/store/rows.vibe"
 import { verifyEntitlement, type PublishedKey } from "./support/entitlement.ts"
 import { decodeRegistration, disableClient, registerClient, updateClient } from "../src/native-clients/registry.vibe"
 import { seedClients } from "../src/operator/clients.vibe"
@@ -21,8 +19,7 @@ import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profil
 import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
 import { revokeAll, sweepGrants } from "../src/native-clients/device-keys.vibe"
 import { s256, signedIn } from "./support/identity.ts"
-import { connectionColumns, connectionRows, scopeFor, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
-import { sealTokens } from "../src/providers/google.vibe"
+import { scopeFor, storeGrant, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
 import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
 import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/google-calendar.ts"
 import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
@@ -51,24 +48,11 @@ effect function check(run: () => void) {
   try Effect.try(run)
 }
 
-effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
-  return try cloud.store.transaction((tx) => tx.query(text, params))
-}
 effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string, refreshToken: string, scopes: ReadonlyArray<string>, expiresAt: number) {
-  const now = try Clock.currentTimeMillis
-  const tokens = try sealTokens({ refreshToken, accessToken: `stale-${connectionId}`, expiresAt })
-  try cloud.store.transaction((tx) => stepRow(tx, connectionRows, connectionId, { type: "link", scopes, tokens, expiresAt }, connectionColumns({
-    organization_id: owner.organizationId, user_id: owner.userId, subject: `subject-${connectionId}`, email: `${connectionId}@example.com`, linked_at: now
-  })))
-}
-effect function entitledDevice(cloud: TestCloud, name: string, now: number) {
-  const token = `eliza_mobile_${tokenDigest(name)}`
-  try organization(cloud, `org-${name}`)
-  try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [`user-${name}`, `org-${name}`, `${name}@example.com`, now])
-  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'test-client', 'active', $3, $4, $5, $6, $5, $5)", [
-    `grant-${name}`, `user-${name}`, `cred-${name}`, tokenDigest(token), now - 1000, now + 24 * 3_600_000
-  ])
-  return token
+  try cloud.store.transaction((tx) => storeGrant(tx, {
+    connectionId, owner, subject: `subject-${connectionId}`, email: `${connectionId}@example.com`, grantedScopes: scopes,
+    tokens: { refreshToken, accessToken: `stale-${connectionId}`, expiresAt }, now: expiresAt - 1
+  }))
 }
 describe("WP8 tmp", () => {
   it.live("Triage, search and read my mail at the history Google answered, refusing a stale attachment and an oversized body (spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
@@ -92,8 +76,8 @@ describe("WP8 tmp", () => {
       fakes.mount("/google/", mountGoogleToken(google))
       fakes.mount("/google/api/", gmailReads(mailbox))
     } })
-    const token = try entitledDevice(cloud, "mail", now)
-    const owner: Owner = { organizationId: "org-mail", userId: "user-mail" }
+    const { bearer: token, organizationId, userId } = try signedCaller(cloud, "mail")
+    const owner: Owner = { organizationId, userId }
     const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage"), ...scopeFor("google.gmail.drafts")]
     const refreshToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-mail", email: "conn-mail@example.com", scopes }))
     const profile = try parseProfile(try Effect.try(() => testProfile(cloud.fakes.url)))

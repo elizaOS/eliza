@@ -200,8 +200,14 @@ pure def sometimesExpiredAttemptShownOnTheCloud(c: Connection): bool = callbackA
 ### A later grant for the same Google subject, or a native code for a new one, replaces the connection's tokens and scopes and makes it active
 
 `connect/native` exchanges the device's one-time server auth code (Google
-refuses a used one) and lands like a callback: on the row of its subject
-when held, else on a fresh row with no attempt.
+refuses a used one) for Cloud's configured native server client, with no
+browser redirect. The grant lands for the authenticated cloud owner on the
+row of its verified Google subject when held, else on a fresh row with no
+attempt. A native sign-in continuation can provide `expectedGoogleSubject`.
+A different returned subject stores nothing. The answer names the connection
+and its reported scopes, with verified email and display name when available.
+If Google omits a refresh token, a verified refresh token from the same
+active grant can be retained only with the same reported scopes.
 
 ```quint
 pure def canReceiveGrant(c: Connection, subject: str, lifetime: Millis): bool =
@@ -256,11 +262,12 @@ pure def sometimesRotationLost(c: Connection): bool = c.status == Errored
 
 ### A request names a grant or uses the only active connection, never another organization's, and only the owner side
 
-Every Google route, disconnect included, selects this way over the caller's
-organization's rows, newest first. A named grant that is not one of them is
-`404 not_found`; with none named, several active are `400 invalid_request`
-reason `grant_required`, and with none active the newest is used. A `side`
-other than `owner` is `400 invalid_request`.
+A Google route that needs one grant, including disconnect, selects this way
+over the caller's organization's rows, newest first. A named grant outside
+those rows returns `404 not_found`. With no named grant, several active rows
+return `400 invalid_request` with reason `grant_required`. If no row is
+active, selection uses the newest established grant. A `side` other than
+`owner` returns `400 invalid_request`.
 
 ```quint
 type GrantChoice = AnyGrant | NamedGrant({ grantId: str })
@@ -320,7 +327,12 @@ connectionId, linkedAt, lastUsedAt}` for the selected connection, with
 `grantedCapabilities` = `capabilitiesOf` the scopes. Google off is
 `config_missing` and names nothing; no connection or a revoked one is
 `disconnected`; an active one whose access is lost is `token_missing`; an
-expired or errored one is `needs_reauth`.
+expired or errored one is `needs_reauth`. Status and account listing expose
+only established connections held for the caller's cloud user and organization.
+`GET accounts` returns the same status records in a bare array, newest first,
+and an empty array if Google is off. These reads do not refresh the grant or
+change when it was last used. The status route refuses a consent `purpose`
+selector because it reports the managed grant only.
 
 ```quint
 type StatusReason = ReasonConnected | ReasonDisconnected | ReasonConfigMissing | ReasonTokenMissing | ReasonNeedsReauth

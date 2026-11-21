@@ -1,5 +1,6 @@
+/// <reference types="vite/client" />
 // spec/cloud/client.md, "Story: Use the cloud from the device as configured"
-import { assert, describe, it } from "vitest"
+import { assert, describe, expect, it } from "vitest"
 import { createCloudClient } from "../src/client/index.vibe"
 
 const sources: Readonly<Record<string, string>> = import.meta.glob(["../src/**/*.{vibe,ts}", "../gen/*.{vibe,ts}"], { query: "?raw", import: "default", eager: true })
@@ -32,30 +33,42 @@ function reachable(entry: string): { readonly files: ReadonlyArray<string>; read
   return { files: [...files].sort(), packages: [...packages].sort() }
 }
 
-describe("The client bundle in a browser (spec/cloud/client.md, \"Story: Use the cloud from the device as configured\")", () => {
-  it("Loads with no Node, core or server import and sends the credential the getter holds at each call (spec/cloud/client.md, \"Every call reads the credential when it is sent\")", async () => {
+describe("Cloud client in Chromium", () => {
+  it("Reads the held credential for each request (spec/cloud/client.md, \"Every call reads the credential when it is sent\")", async () => {
     const graph = reachable("../src/client/index.vibe")
     const missing = graph.files.filter((file) => sources[file] === undefined)
     const serverFiles = graph.files.filter((file) => /^\.\.\/src\/(http|store)\//.test(file))
     const forbidden = graph.packages.filter((name) => name.startsWith("node:") || name.startsWith("@elizaos/") || !/^(effect|vibelang-runtime)(\/|$)/.test(name))
 
-    const sent: Array<string | null> = []
+    const sent: Array<{ readonly path: string; readonly authorization: string | null; readonly redirect: RequestRedirect; readonly credentials: RequestCredentials }> = []
     let held = "eliza_mobile_first"
+    let credentialReads = 0
+    const credential = () => {
+      credentialReads += 1
+      return held
+    }
     const client = createCloudClient({
       baseUrl: "https://api.example.com",
-      credential: () => held,
+      credential,
       fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-        sent.push(new Request(input, init).headers.get("authorization"))
-        return Response.json({ object: "list", data: [{ id: "test-chat", object: "model", owned_by: "llm" }] })
+        const request = new globalThis.Request(input, init)
+        sent.push({ path: new URL(request.url).pathname, authorization: request.headers.get("authorization"), redirect: request.redirect, credentials: request.credentials })
+        return globalThis.Response.json({ object: "list", data: [{ id: "test-chat", object: "model", owned_by: "llm" }] })
       }
     })
     await client.models()
     held = "eliza_mobile_second"
     await client.models()
+    const invalid = { failure: { tag: "CloudRefused", code: "InvalidRequest", reason: "NoReason" } }
+    expect(() => createCloudClient({ baseUrl: "https://api.example.com/api/../", credential })).toThrowError(expect.objectContaining(invalid))
+    await expect(client.calendarEvent({ eventId: ".." })).rejects.toMatchObject(invalid)
 
     assert.deepStrictEqual(
-      { missing, serverFiles, forbidden, sent, inBrowser: typeof window === "object" && typeof document === "object" },
-      { missing: [], serverFiles: [], forbidden: [], sent: ["Bearer eliza_mobile_first", "Bearer eliza_mobile_second"], inBrowser: true }
+      { missing, serverFiles, forbidden, sent, credentialReads, inBrowser: typeof window === "object" && typeof document === "object" },
+      { missing: [], serverFiles: [], forbidden: [], sent: [
+        { path: "/api/v1/models", authorization: "Bearer eliza_mobile_first", redirect: "error", credentials: "omit" },
+        { path: "/api/v1/models", authorization: "Bearer eliza_mobile_second", redirect: "error", credentials: "omit" }
+      ], credentialReads: 2, inBrowser: true }
     )
   })
 })

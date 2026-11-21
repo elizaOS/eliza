@@ -28,6 +28,12 @@
       "import": "./dist/src/profile/profile.js",
       "default": "./dist/src/profile/profile.js"
     },
+    "./client": {
+      "eliza-source": "./src/client/index.vibe",
+      "types": "./dist/src/client/index.d.ts",
+      "import": "./dist/src/client/index.js",
+      "default": "./dist/src/client/index.js"
+    },
     "./worker": {
       "eliza-source": "./src/worker.vibe",
       "types": "./dist/src/worker.d.ts",

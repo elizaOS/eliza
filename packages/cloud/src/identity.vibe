@@ -7,16 +7,18 @@ import { FetchHttpClient, HttpClient, HttpClientRequest, HttpIncomingMessage, Ht
 
 import {
   accessCookie, refreshCookie, accessDigest, deviceDigest, digestCredential, readCookie, newSecret,
-  authQuery as query, accountTransaction, browserAccount, signInWithProof, openSignInFamily, renewBrowserSession, logoutBrowserSession,
+  authQuery as query, accountTransaction, identityTx, browserAccount, signInWithProof, openSignInFamily, renewBrowserSession, logoutBrowserSession,
   rateLimit, RateLimited, StorageUnavailable, IdentityConflict, type BrowserSession, type Identity
 } from "./identity-store.vibe"
 
+import { endKey, inspectKey } from "./native-clients/grants.vibe"
+
 import { browserNativeRegistration, mobileRegistration, type NativeRegistryEnv } from "./native-registry.vibe"
 import { googleServerClientId, verifyNativeGoogle } from "./native-google.vibe"
+import { connectSignedInGoogle, nativeGoogleScopes, type GoogleEnv } from "./google.vibe"
 import { ownsPasswordBackupPath, passwordBackupRequest } from "./password-backup.vibe"
 
-export type IdentityEnv = NativeRegistryEnv & {
-  GOOGLE_CLIENT_SECRET?: string
+export type IdentityEnv = NativeRegistryEnv & GoogleEnv & {
   SIGN_IN_EMAIL?: { send(message: { from: string; to: string; subject: string; text: string }): Promise<unknown> }
   RESEND_API_KEY?: string
   EMAIL_FROM?: string
@@ -42,7 +44,7 @@ schema GoogleToken { access_token: string }
 schema GoogleProfile { sub: string; email?: string; email_verified?: boolean }
 schema DeviceAuthorization { challenge: string; state: string; expectedAccountId?: string }
 schema NativeGoogleChallenge { clientId: string; environment: string; redirectUri: string; challenge: string; state: string }
-schema NativeGoogleCompletion { clientId: string; environment: string; redirectUri: string; challengeId: string; idToken: string }
+schema NativeGoogleCompletion { clientId: string; environment: string; redirectUri: string; challengeId: string; idToken: string; serverAuthCode?: string }
 schema DeviceExchange { code: string; verifier: string }
 schema SmsReceipt { status: string; to?: string; channel?: string; service_sid?: string }
 schema BlooioReceipt { id: string; channel_id: string; status: string; channel_type?: string; to?: string; direction?: string; dry_run?: boolean }
@@ -123,12 +125,15 @@ effect function accountForInference(request: Request, db: Client, env: NativeReg
   const hash = try deviceDigest(request)
   if (hash === null || !registration) return null
   const now = try Clock.currentTimeMillis
-  const { rows } = try query<{ user_id: string }>(db, `
-    SELECT d.user_id FROM device_grants d JOIN accounts a ON a.key = d.user_id
-    WHERE d.secret_digest = $1 AND d.phase = 'active' AND d.key_expires_at > $2
-      AND a.status = 'active' AND d.issued_at >= a.devices_revoked_before AND d.client_id = $3
-  `, [hash, now, registration.clientId])
-  return rows[0]?.user_id ?? null
+  const { rows } = try query(db, `
+    SELECT d.user_id, d.state, d.phase, d.key_expires_at, d.device_epoch AS grant_epoch, a.device_epoch AS account_epoch
+    FROM device_grants d JOIN accounts a ON a.key = d.user_id
+    WHERE d.secret_digest = $1 AND a.status = 'active' AND d.client_id = $2
+  `, [hash, registration.clientId])
+  const row = rows[0]
+  if (row === undefined) return null
+  const key = inspectKey(row, now) catch effect () => { throw new StorageUnavailable() }
+  return key.reason === "NoReason" && typeof row.user_id === "string" ? row.user_id : null
 }
 
 export function inferenceAccount(request: Request, db: Client, env?: NativeRegistryEnv): Promise<string | null> {
@@ -404,14 +409,17 @@ effect function issueDeviceCode(db: Client, proof: { accountId: string; sessionK
   const code = try token()
   const codeHash = try digestCredential(code)
   const key = try (try SecureRandom.SecureRandom).uuidV4()
-  try query(db, `
-    WITH created AS (
-      INSERT INTO device_grants (key,state,revision,user_id,client_id,phase,code_digest,code_expires_at,issued_at,updated_at)
-      VALUES ($1,jsonb_build_object('phase','CodeIssued'),1,$2,$3,'code_issued',$4,$5,$6,$6) RETURNING key
+  const { rowCount } = try query(db, `
+    WITH owner AS MATERIALIZED (
+      SELECT key, device_epoch FROM accounts WHERE key = $2 AND status = 'active' FOR UPDATE
+    ), created AS (
+      INSERT INTO device_grants (key,state,revision,user_id,client_id,phase,code_digest,code_expires_at,device_epoch,issued_at,updated_at)
+      SELECT $1,jsonb_build_object('flatDeviceGrant','FlatTokenStarted','phase','CodeIssued'),1,key,$3,'code_issued',$4,$5,device_epoch,$6,$6 FROM owner RETURNING key
     )
     INSERT INTO cloud_device_proofs (grant_key, session_key, challenge)
     SELECT key,$7,$8 FROM created
   `, [key, proof.accountId, proof.clientId, codeHash, now + deviceGrantSeconds * 1000, now, proof.sessionKey, proof.challenge])
+  if (!rowCount) throw new Unauthorized()
   return code
 }
 
@@ -456,7 +464,7 @@ effect function nativeGoogle(request: Request, env: IdentityEnv, db: Client, sta
   if (pending.rows.length === 0) throw new Unauthorized()
   const verified = verifyNativeGoogle(idToken, audience, keys) catch effect () => { throw new Unauthorized() }
   const nonceHash = try digestCredential(verified.nonce)
-  return try accountTransaction(db, effect {
+  const signedIn = try accountTransaction(db, effect {
     const verifiedAt = try Clock.currentTimeMillis
     const { rows } = try query<{ challenge: string; state: string }>(db, `
       DELETE FROM cloud_native_google_challenges
@@ -470,8 +478,12 @@ effect function nativeGoogle(request: Request, env: IdentityEnv, db: Client, sta
     const code = try issueDeviceCode(db, {
       accountId: family.account.id, sessionKey: family.key, clientId: admitted.registration.clientId, challenge: proof.challenge
     })
-    return json(200, { code, state: proof.state })
+    return { code, state: proof.state, accountId: family.account.id }
   })
+  const { serverAuthCode } = input.value
+  if (serverAuthCode === undefined) return json(200, { code: signedIn.code, state: signedIn.state })
+  const connected = try connectSignedInGoogle(env, db, signedIn.accountId, verified.identity.subject, serverAuthCode)
+  return json(200, { code: signedIn.code, state: signedIn.state, google: { connected } })
 }
 
 effect function authorizeDevice(request: Request, env: IdentityEnv, db: Client) {
@@ -507,13 +519,17 @@ effect function exchangeDevice(request: Request, env: IdentityEnv, db: Client) {
   const credential = try (try SecureRandom.SecureRandom).uuidV4()
   const now = try Clock.currentTimeMillis
   const { rows } = try query<{ id: string; organization_id: string }>(db, `
-    UPDATE device_grants d SET phase = 'exchanged', state = jsonb_build_object('phase','Exchanged'),
+    WITH owner AS MATERIALIZED (
+      SELECT a.* FROM accounts a JOIN device_grants d ON d.user_id = a.key WHERE d.code_digest = $1 FOR UPDATE OF a
+    )
+    UPDATE device_grants d SET phase = 'exchanged', state = jsonb_build_object('flatDeviceGrant','FlatTokenStarted','phase','Exchanged'),
       credential_id = $4, secret_digest = $5, key_expires_at = $6, revision = d.revision + 1, updated_at = $3, code_digest = NULL
-    FROM cloud_device_proofs p JOIN sessions s ON s.key = p.session_key JOIN accounts a ON a.key = s.user_id
+    FROM cloud_device_proofs p JOIN sessions s ON s.key = p.session_key JOIN owner a ON a.key = s.user_id
     WHERE d.key = p.grant_key AND d.user_id = a.key AND d.phase = 'code_issued' AND d.code_digest = $1 AND p.challenge = $2
+      AND d.state->>'flatDeviceGrant' = 'FlatTokenStarted'
       AND d.code_expires_at > $3 AND s.refresh_expires_at > $3 AND s.live AND a.status = 'active'
       AND (s.state->>'epoch')::bigint = a.sessions_revoked_before
-      AND d.issued_at >= a.devices_revoked_before AND d.client_id = $7
+      AND d.device_epoch = a.device_epoch AND d.client_id = $7
     RETURNING a.key AS id, a.organization_id
   `, [codeHash, challenge, now, credential, bearerHash, now + registration.credentialTtl, registration.clientId])
   const device = rows[0]
@@ -530,13 +546,17 @@ effect function acknowledgeDevice(request: Request, env: IdentityEnv, db: Client
   if (hash === null) throw new Unauthorized()
   const now = try Clock.currentTimeMillis
   const { rowCount } = try query(db, `
-    UPDATE device_grants d SET phase = 'active', state = jsonb_build_object('phase','Active'),
+    WITH owner AS MATERIALIZED (
+      SELECT a.* FROM accounts a JOIN device_grants d ON d.user_id = a.key WHERE d.secret_digest = $1 FOR UPDATE OF a
+    )
+    UPDATE device_grants d SET phase = 'active',
+      state = CASE WHEN d.phase = 'active' THEN d.state ELSE jsonb_build_object('flatDeviceGrant','FlatTokenStarted','phase','Active','ackedAt',$2::bigint) END,
       revision = d.revision + CASE WHEN d.phase = 'exchanged' THEN 1 ELSE 0 END,
       updated_at = CASE WHEN d.phase = 'exchanged' THEN $2 ELSE d.updated_at END
-    FROM cloud_device_proofs p JOIN sessions s ON s.key = p.session_key JOIN accounts a ON a.key = s.user_id
+    FROM cloud_device_proofs p JOIN sessions s ON s.key = p.session_key JOIN owner a ON a.key = s.user_id
     WHERE d.key = p.grant_key AND d.user_id = a.key AND d.secret_digest = $1
-      AND d.key_expires_at > $2 AND d.issued_at >= a.devices_revoked_before AND a.status = 'active' AND d.client_id = $3
-      AND (d.phase = 'active' OR (d.phase = 'exchanged' AND d.code_expires_at > $2 AND s.live
+      AND d.key_expires_at > $2 AND d.device_epoch = a.device_epoch AND a.status = 'active' AND d.client_id = $3
+      AND (d.phase = 'active' OR (d.phase = 'exchanged' AND d.state->>'flatDeviceGrant' = 'FlatTokenStarted' AND d.code_expires_at > $2 AND s.live
         AND s.refresh_expires_at > $2 AND (s.state->>'epoch')::bigint = a.sessions_revoked_before))
     RETURNING d.key
   `, [hash, now, registration.clientId])
@@ -547,11 +567,21 @@ effect function acknowledgeDevice(request: Request, env: IdentityEnv, db: Client
 effect function revokeDevice(request: Request, db: Client) {
   const hash = try deviceDigest(request)
   if (hash === null) throw new Unauthorized()
-  const now = try Clock.currentTimeMillis
-  try query(db, `
-    UPDATE device_grants SET phase = 'ended', state = jsonb_build_object('phase','Ended'), revision = revision + 1, updated_at = $2
-    WHERE secret_digest = $1 AND phase IN ('exchanged', 'active')
-  `, [hash, now])
+  try accountTransaction(db, effect {
+    const row = (try query(db, `
+      SELECT d.key, d.state, d.phase, d.key_expires_at, d.device_epoch AS grant_epoch, a.device_epoch AS account_epoch, a.status
+      FROM device_grants d JOIN accounts a ON a.key = d.user_id WHERE d.secret_digest = $1 FOR UPDATE OF a, d
+    `, [hash])).rows[0]
+    if (row === undefined) return
+    const now = try Clock.currentTimeMillis
+    if (row.phase === "exchanged") {
+      try query(db, "UPDATE device_grants SET phase = 'ended', state = state || jsonb_build_object('endedBy','SelfRevoked'), sealed_copy = NULL, revision = revision + 1, updated_at = $2 WHERE key = $1 AND state->>'flatDeviceGrant' = 'FlatTokenStarted'", [row.key, now])
+    } else if (row.phase === "active") {
+      if (row.status !== "active") throw new Unauthorized()
+      const reason = endKey(identityTx(db), row, now) catch effect () => { throw new StorageUnavailable() }
+      if (reason !== "NoReason") throw new Unauthorized()
+    }
+  })
   return empty()
 }
 
@@ -572,7 +602,7 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client, k
           credentialTtlMs: registered.credentialTtl, methods: { google: configured, email: emailReady(env), sms: smsReady(env) },
           google: { configured, serverClientId: configured ? env.GOOGLE_CLIENT_ID : "",
             nativeSignIn: registered.nativeGoogle && nativeGoogleAudience(env) !== null &&
-              browserNativeRegistration(env)?.clientId === registered.clientId }
+              browserNativeRegistration(env)?.clientId === registered.clientId, scopes: nativeGoogleScopes(env) }
         })
       }
       case "/api/auth/providers":

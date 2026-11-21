@@ -1,0 +1,77 @@
+// spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"; spec/cloud/services/google/connection.md, "A later grant for the same Google subject, or a native code for a new one, replaces the connection's tokens and scopes and makes it active"
+import { millisPerSecond } from "../../../gen/cloud__shared__types.effect.vibe"
+import { capabilityEnabled, Deployment } from "../../profile/profile.vibe"
+import { googleSubjectPattern, readIdToken } from "../../providers/google-identity.vibe"
+import { googleJson, tokenForm, type GoogleProfile } from "../../providers/google.vibe"
+import { Store, type Tx } from "../../store/connection.vibe"
+import { issueManagedGrant, type ManagedLanding, type Owner } from "./grant-access.vibe"
+
+export const ServerAuthCode = Schema.String.check(Schema.isMinLength(10), Schema.isMaxLength(2048), Schema.isPattern(/^[A-Za-z0-9/_.~-]+$/))
+export const GoogleSubject = Schema.String.check(Schema.isPattern(googleSubjectPattern))
+schema ServerCodeReply { access_token: string; expires_in: number; refresh_token?: string; scope?: string; id_token?: string }
+const UserInfo = Schema.Struct({ id: GoogleSubject, email: Schema.optionalKey(Schema.String), verified_email: Schema.optionalKey(Schema.Boolean), name: Schema.optionalKey(Schema.String) })
+
+export type GoogleLinkFault = "google_not_configured" | "google_code_rejected" | "google_scopes_missing" | "google_account_mismatch" | "google_unavailable"
+export type GoogleLink =
+  | { readonly connected: true; readonly connectionId: string; readonly email: string | null; readonly scopes: ReadonlyArray<string>; readonly refreshTokenIssued: boolean }
+  | { readonly connected: false; readonly code: GoogleLinkFault }
+
+type NativeLanding = Omit<ManagedLanding, "owner"> & { readonly displayName: string | undefined }
+
+type NativeIdentity = { readonly subject: string; readonly email: string | undefined; readonly displayName: string | undefined }
+
+export function unlinked(code: GoogleLinkFault): Extract<GoogleLink, { readonly connected: false }> {
+  return { connected: false, code }
+}
+
+function named(text: string | undefined): string | undefined {
+  return text?.trim() || undefined
+}
+
+effect function identityOf(google: GoogleProfile, reply: typeof ServerCodeReply.Type) {
+  if (reply.id_token !== undefined) {
+    const claims = try readIdToken(google, { idToken: reply.id_token, audience: "native" })
+    if (!claims.signatureOk || !claims.issuerOk || !claims.audienceOk || claims.subject === undefined) return undefined
+    return { subject: claims.subject, email: claims.verifiedEmail, displayName: claims.givenName } satisfies NativeIdentity
+  }
+  const raw = try googleJson(reply.access_token, "GET", "/oauth2/v2/userinfo", { maxBytes: 64 * 1024 })
+  const info = Option.getOrUndefined(Schema.decodeUnknownOption(UserInfo)(raw))
+  if (info === undefined) return undefined
+  return { subject: info.id, email: info.verified_email === true ? named(info.email)?.toLowerCase() : undefined, displayName: named(info.name) } satisfies NativeIdentity
+}
+
+effect function redeemServerCode(google: GoogleProfile, code: string, expectedSubject: string | undefined) {
+  const secret = try orDie((try Deployment).secret(google.clientSecretEnv))
+  const answer = try tokenForm(google.tokenUrl, new URLSearchParams({
+    grant_type: "authorization_code", code, client_id: google.serverClientId, client_secret: secret, redirect_uri: ""
+  }))
+  if (answer.status >= 400 && answer.status < 500) return unlinked("google_code_rejected")
+  if (answer.status < 200 || answer.status >= 300) return unlinked("google_unavailable")
+  const reply = Option.getOrUndefined(Schema.decodeUnknownOption(ServerCodeReply)(answer.body))
+  if (reply === undefined || reply.access_token === "") return unlinked("google_unavailable")
+  const lifetime = reply.expires_in * millisPerSecond
+  if (!Number.isSafeInteger(lifetime) || lifetime <= 0) return unlinked("google_unavailable")
+  const grantedScopes = [...new Set((reply.scope ?? "").split(/\s+/).filter((scope) => scope !== ""))]
+  if (grantedScopes.length === 0) return unlinked("google_scopes_missing")
+  const identity = try identityOf(google, reply)
+  if (identity === undefined || (expectedSubject !== undefined && identity.subject !== expectedSubject)) return unlinked("google_account_mismatch")
+  const now = try Clock.currentTimeMillis
+  const expiresAt = now + lifetime
+  if (!Number.isSafeInteger(expiresAt)) return unlinked("google_unavailable")
+  const landing: NativeLanding = { ...identity, grantedScopes, tokens: { accessToken: reply.access_token, refreshToken: reply.refresh_token ?? "", expiresAt }, now }
+  return { connected: true, landing } as const
+}
+
+export effect function linkNativeGoogle(owner: Owner, code: string, expectedSubject?: string) {
+  const { settings } = try Deployment
+  if (settings.google === undefined || !capabilityEnabled(settings, "managedGoogle")) return unlinked("google_not_configured")
+  const redeemed = redeemServerCode(settings.google, code, expectedSubject) catch effect (failure) => {
+    try annotateLogs(logWarning("Google could not exchange the managed authorization code"), { failure: failure._tag })
+    return unlinked("google_unavailable")
+  }
+  if (!redeemed.connected) return redeemed
+  const { landing } = redeemed
+  const store = try Store
+  const stored = try store.transaction((tx: Tx) => issueManagedGrant(tx, { ...landing, owner }))
+  return { connected: true, ...stored, displayName: landing.displayName ?? null, scopes: landing.grantedScopes } as const
+}
