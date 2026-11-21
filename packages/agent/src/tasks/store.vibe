@@ -30,7 +30,7 @@ module node {
   import { randomUUID } from "node:crypto"
   import { closeSync, fstatSync, fsyncSync, linkSync, lstatSync, openSync, readFileSync, renameSync, rmSync, unlinkSync, writeSync } from "node:fs"
   import { DatabaseSync } from "node:sqlite"
-  import { Redacted } from "effect"
+  import { Redacted, Result } from "effect"
   import { ElizaError, validateInteractiveTask, validateTaskEvent, type InteractiveTask, type TaskEvent } from "@elizaos/core"
   import { deriveTaskKeys, isPrivateFile, privateDirectory, storageCorrupt, type TaskKeys } from "./sealing.vibe"
   import type { KeyRead } from "../../gen/agent__tasks__store.ts"
@@ -39,13 +39,6 @@ module node {
     readonly task: InteractiveTask
     readonly events: readonly TaskEvent[]
     readonly acknowledgedUnknown?: true
-  }
-
-  export function holdsSlot(record: TaskRecord): boolean {
-    const { status, operations } = record.task
-    if (status !== "completed" && status !== "cancelled") return true
-    return record.acknowledgedUnknown !== true
-      && operations.some((operation) => operation.status === "prepared" || operation.status === "dispatched" || operation.status === "unknown")
   }
 
   export interface TaskStatement {
@@ -268,6 +261,14 @@ module node {
     return error instanceof Error ? error.message : "The task record could not be decoded"
   }
 
+  export function decodeTaskRecordResult(text: string): Result.Result<TaskRecord, unknown> {
+    try {
+      return Result.succeed(decodeTaskRecord(text))
+    } catch (cause) {
+      return Result.fail(cause)
+    }
+  }
+
   export function retire(keys: TaskKeys, db: TaskDatabase | undefined): void {
     keys.wipe()
     try {
@@ -278,11 +279,11 @@ module node {
   }
 }
 export {
-  decodeTaskRecord, holdsSlot, openNodeTaskDatabase, storageKeySource,
+  decodeTaskRecord, decodeTaskRecordResult, openNodeTaskDatabase, storageKeySource,
   type KeyReading, type TaskRecord, type TaskDatabase, type TaskDatabaseOpener, type TaskKeySource, type TaskStatement,
 } from node
 import {
-  decodeTaskRecord as decodeRecord, failureReason, holdRecord, holdsSlot as slotHeld, insertRecord, lockIntact, openNodeTaskDatabase as nodeDatabase,
+  decodeTaskRecordResult as decodeRecord, failureReason, holdRecord, insertRecord, lockIntact, openNodeTaskDatabase as nodeDatabase,
   openTaskRows, privatePath, readPayload, releaseLock, releaseRecord, retire, takeLock, updateRecord,
   type KeyReading as Reading, type LockIdentity, type TaskDatabase as Database, type TaskDatabaseOpener as Opener, type TaskKeySource as KeySource,
   type TaskRecord as TaskRecordShape, type TaskRow,
@@ -290,13 +291,19 @@ import {
 
 type TaskRecord = TaskRecordShape
 
+export function holdsSlot(record: TaskRecord): boolean {
+  const { status, operations } = record.task
+  if (status !== "completed" && status !== "cancelled") return true
+  return record.acknowledgedUnknown !== true
+    && operations.some((operation) => operation.status === "prepared" || operation.status === "dispatched" || operation.status === "unknown")
+}
+
 export interface TaskStoreOptions {
   readonly directory: string
   readonly keys: KeySource
   readonly namespace?: string
   readonly database?: Opener
-  /** @throws {unknown} */
-  readonly decode?: (text: string) => TaskRecord
+  readonly decode?: (text: string) => Result.Result<TaskRecord, unknown>
   readonly now?: () => number
 }
 
@@ -405,7 +412,10 @@ export effect function createTaskStore(options: TaskStoreOptions) {
 
   effect function loadReadable(taskId: string) {
     const sealed = try statement(taskId, false, (held) => ({ text: readPayload(held.db, taskId), sealer: held.sealer }))
-    return try Effect.try({ try: () => decode(sealed.sealer.open(sealed.text, "TaskRecord")), catch: () => new Corrupt({ taskId }) })
+    const text = try Effect.try({ try: () => sealed.sealer.open(sealed.text, "TaskRecord"), catch: () => new Corrupt({ taskId }) })
+    const decoded = try Effect.try({ try: () => decode(text), catch: () => new Corrupt({ taskId }) })
+    if (Result.isFailure(decoded)) throw new Corrupt({ taskId })
+    return decoded.success
   }
 
   function classify(row: TaskRow, sealer: TaskSealer, account: string): { seal: Seal; text?: string } {
@@ -434,7 +444,8 @@ export effect function createTaskStore(options: TaskStoreOptions) {
       aside.set(row.id, { taskId: row.id, reason: row.reason ?? "", heldAt: row.heldAt ?? 0, releasedAt: row.releasedAt })
       return
     }
-    const decoded = try Effect.result(Effect.try(() => decode(text)))
+    const reading = try Effect.result(Effect.try({ try: () => decode(text), catch: (cause) => cause }))
+    const decoded: Result.Result<TaskRecord, unknown> = Result.isSuccess(reading) ? reading.success : Result.fail(reading.failure)
     const state = (try send({ type: "scan", taskId: row.id, decodes: Result.isSuccess(decoded) })).state
     const hold = persistedHold(state.records.find((record) => record.taskId === row.id && authentic(record, account)) ?? noRecord)
     if (hold === "held") {
@@ -526,19 +537,20 @@ export effect function createTaskStore(options: TaskStoreOptions) {
           return unhandled
         }
       }
+      const unfinished = holdsSlot(record)
       try statement(taskId, true, (held) => insertRecord(held.db, {
-        id: taskId, revision: record.task.revision, unfinished: slotHeld(record), at: now(),
+        id: taskId, revision: record.task.revision, unfinished, at: now(),
         payload: held.sealer.seal(JSON.stringify(record), "TaskRecord"),
       }))
       try send({ type: "createRecord", taskId })
-      if (!slotHeld(record)) try send({ type: "endRecord", taskId })
+      if (!unfinished) try send({ type: "endRecord", taskId })
     },
 
     effect save(record: TaskRecord) {
       const taskId = record.task.id
       if (!(try readable(taskId))) throw new NoTask({ taskId })
       const stored = (try machine.get()).records.find((entry) => entry.taskId === taskId)
-      const unfinished = slotHeld(record)
+      const unfinished = holdsSlot(record)
       if (stored !== undefined && !stored.unfinished && unfinished) throw new SlotTaken({ taskId })
       try statement(taskId, true, (held) => updateRecord(held.db, {
         id: taskId, revision: record.task.revision, unfinished, at: now(),

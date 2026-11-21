@@ -7,8 +7,8 @@ module node {
   import type { ModuleFactory, PublishEvent } from "../src/host/module.vibe"
   import type { Subscription } from "./support/socket-client.ts"
 
-  export function hubWritten(): boolean {
-    return existsSync(new URL("../src/conversation/events.vibe", import.meta.url))
+  export function hubExists(base: string): boolean {
+    return existsSync(new URL("../src/conversation/events.vibe", base))
   }
 
   export interface AgentEventFrame {
@@ -118,13 +118,14 @@ module node {
   }
 }
 
-import { endsOnStop, failRepeatedly, heardCount, hubWritten, loopback, nextEvent, publishPartials, publishTranscript, stalledFeed, storedBeyond, subscribed, viewProbe, within } from node
+import { endsOnStop, failRepeatedly, heardCount, hubExists, loopback, nextEvent, publishPartials, publishTranscript, stalledFeed, storedBeyond, subscribed, viewProbe, within } from node
 import { assert, it } from "@effect/vitest"
 import { text } from "./support/cloud-fake.ts"
 import { call, events, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 import { sendRaw, type LocalAnswer, type Refusal } from "./support/socket-client.ts"
 
 const viewsModule = "@elizaos/agent/views"
+const hubWritten = () => hubExists(import.meta.url)
 const pending = hubWritten() ? "" : ": pending until the event hub is written"
 
 const statusOf = (answer: LocalAnswer | Refusal) => "status" in answer ? answer.status : answer.refused

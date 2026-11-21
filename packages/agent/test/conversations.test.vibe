@@ -1,5 +1,14 @@
 // spec/agent/conversation/conversations.md, "Story: Create and find my conversations"; spec/agent/conversation/conversations.md, "Story: Read history a page at a time"
-import { randomUUID } from "node:crypto"
+module node {
+  import { randomUUID } from "node:crypto"
+  import type { UUID } from "@elizaos/core"
+
+  export function newId(): UUID {
+    return randomUUID() as UUID
+  }
+}
+
+import { newId } from node
 import { assert, it } from "@effect/vitest"
 import type { Memory, UUID } from "@elizaos/core"
 import { privateNotice } from "../gen/agent__conversation__conversations.ts"
@@ -35,12 +44,14 @@ effect function search(agent: InProcess, query: string) {
 
 effect function seed(agent: InProcess, roomId: UUID, rows: readonly { readonly text: string; readonly at: number }[]) {
   const runtime = agent.agent.runtime
-  const memories = rows.map(({ text, at }, index): Memory => ({
-    id: randomUUID() as UUID, roomId, agentId: runtime.agentId, createdAt: at,
-    entityId: index % 2 === 0 ? randomUUID() as UUID : runtime.agentId, content: { text, source: "device" },
-  }))
-  try host("seed messages", () => runtime.adapter.createMemories(memories.map((memory) => ({ memory, tableName: "messages" }))))
-  return memories
+  return try host("seed messages", async () => {
+    const memories = rows.map(({ text, at }, index): Memory => ({
+      id: newId(), roomId, agentId: runtime.agentId, createdAt: at,
+      entityId: index % 2 === 0 ? newId() : runtime.agentId, content: { text, source: "device" },
+    }))
+    await runtime.adapter.createMemories(memories.map((memory) => ({ memory, tableName: "messages" })))
+    return memories
+  })
 }
 
 const inOrder = (memories: readonly Memory[]) => memories.map((memory) => ({ id: String(memory.id), at: memory.createdAt ?? 0 }))
@@ -75,8 +86,8 @@ it.effect('Create, list, page history to the start, jump to a message and search
   try seed(agent, blank.conversation.roomId, [
     { text: "another NEEDLE here", at: base + 500 }, { text: privateNotice, at: base + 501 }, { text: "needle again", at: base + 502 },
   ])
-  const store = conversationStore(agent.agent.runtime, { user: randomUUID() as UUID, world: randomUUID() as UUID })
-  const pending = try host("pending fork", () => store.createPending("Plans · edit"))
+  const pending = try host("pending fork", () =>
+    conversationStore(agent.agent.runtime, { user: newId(), world: newId() }).createPending("Plans · edit"))
   try seed(agent, pending.roomId, [{ text: "needle in a pending fork", at: base + 600 }])
   const listedAfter = try ask(agent, { method: "GET", path: "/api/conversations" })
 
@@ -84,8 +95,9 @@ it.effect('Create, list, page history to the start, jump to a message and search
   const paged = try pageBack(agent, plans.conversation.id, first.page)
   const pivot = inOrder(long)[120]
   const near = try history(agent, plans.conversation.id, `?around=${pivot}&before=5`)
-  const unknownPivot = try history(agent, plans.conversation.id, `?around=${randomUUID()}`)
-  const unknownConversation = try history(agent, randomUUID(), "")
+  const [missingMessage, missingConversation] = try Effect.try(() => [newId(), newId()] as const)
+  const unknownPivot = try history(agent, plans.conversation.id, `?around=${missingMessage}`)
+  const unknownConversation = try history(agent, missingConversation, "")
   const pendingHistory = try history(agent, pending.id, "")
   const idWithoutTime = try history(agent, plans.conversation.id, `?beforeId=${pivot}`)
   const padded = try history(agent, plans.conversation.id, "?before=0123")
