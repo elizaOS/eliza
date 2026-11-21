@@ -171,7 +171,7 @@ export effect function recordLookup<S, Corrupt>(tx: Tx, rows: ReceiptRows<S, Cor
   return try receiptStep(tx, rows, key, { event: { type: "resolve", lookup }, by: receipt.session.owner, now })
 }
 
-effect function bounded<A, E, R>(call: ProviderReply<A>!E!R, within: number): ProviderReply<A>!E!R {
+export effect function bounded<A, E, R>(call: ProviderReply<A>!E!R, within: number): ProviderReply<A>!E!R {
   return try Effect.timeoutOrElse(call, {
     duration: Duration.millis(Math.max(1, within)),
     orElse: () => Effect.succeed<ProviderReply<A>>({ kind: "unknown", cause: "the provider did not answer before the stale time" })

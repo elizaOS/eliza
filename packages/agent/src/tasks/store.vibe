@@ -285,8 +285,8 @@ module node {
   }
 }
 export {
-  decodeTaskRecord, holdsSlot, openNodeTaskDatabase, storageKeySource,
-  type KeyReading, type TaskDecoder, type TaskRecord, type TaskDatabase, type TaskDatabaseOpener, type TaskKeySource, type TaskStatement,
+  decodeTaskRecord, holdsSlot, insertRecord, openNodeTaskDatabase, openTaskRows, storageKeySource,
+  type KeyReading, type TaskDecoder, type TaskRow, type TaskRecord, type TaskDatabase, type TaskDatabaseOpener, type TaskKeySource, type TaskStatement,
 } from node
 import {
   decodeTaskRecord as decodeRecord, failureReason, holdRecord, holdsSlot as slotHeld, insertRecord, lockIntact, openNodeTaskDatabase as nodeDatabase,

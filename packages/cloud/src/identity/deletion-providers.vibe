@@ -1,0 +1,146 @@
+// spec/cloud/identity/deletion.md, "Each provider call of a step is one receipt of that step's kind, owned by the account, under a provider key never used before"; spec/cloud/identity/deletion.md, "A step is finished when its call took effect, the provider no longer holds the thing, or nothing was left to do"
+import { providerTimeout as stripeTimeout } from "../billing/commands.vibe"
+import { openTokens, refreshAccess, revokeToken, type GoogleContext, type GoogleFailure } from "../providers/google.vibe"
+import { cancelSubscriptionNow, listSubscriptions, providerReply, retrieveSubscription, StripeInvalidResponse, type StripeContext, type StripeFailure, type StripeRead, type StripeSubscription } from "../providers/stripe.vibe"
+import type { LookupResult, ProviderReply } from "../shared/dispatch-once.vibe"
+import { Store, type StoreFailure, toText, type Tx } from "../store/connection.vibe"
+
+export type BillingTarget =
+  | { readonly kind: "subscription"; readonly subscriptionId: string }
+  | { readonly kind: "customer"; readonly customerId: string }
+  | { readonly kind: "none" }
+
+export interface BillingCanceled {
+  readonly subscriptionId: string | null
+}
+
+export interface GoogleConnection {
+  readonly key: string
+  readonly tokens: string
+}
+
+const notFound: ProviderReply<LookupResult> = { kind: "applied", value: { tag: "RefusalSeen", cause: "NotFoundAtProvider" } }
+
+function live(subscription: StripeSubscription): boolean {
+  return subscription.status !== "canceled" && subscription.status !== "incomplete_expired"
+}
+
+export effect function billingTargetOf(tx: Tx, organizationId: string): BillingTarget!StoreFailure {
+  const rows = try tx.query(`SELECT s.provider_subscription_id, c.customer_id FROM organizations o
+    LEFT JOIN subscriptions s ON s.key = o.id LEFT JOIN cloud_checkout_customers c ON c.organization_id = o.id WHERE o.id = $1`, [organizationId])
+  const subscriptionId = toText(rows[0]?.provider_subscription_id)
+  if (subscriptionId !== undefined) return { kind: "subscription", subscriptionId }
+  const customerId = toText(rows[0]?.customer_id)
+  return customerId === undefined ? { kind: "none" } : { kind: "customer", customerId }
+}
+
+export effect function googleConnectionsOf(tx: Tx, organizationId: string, userId: string): ReadonlyArray<GoogleConnection>!StoreFailure {
+  const rows = try tx.query("SELECT key, tokens FROM google_connections WHERE organization_id = $1 AND user_id = $2 AND tokens IS NOT NULL ORDER BY key", [organizationId, userId])
+  return rows.flatMap((row) => {
+    const key = toText(row.key)
+    const tokens = toText(row.tokens)
+    return key === undefined || tokens === undefined ? [] : [{ key, tokens }]
+  })
+}
+
+effect function billingTarget(organizationId: string): BillingTarget!StoreFailure!Store {
+  const store = try Store
+  return try store.transaction((tx) => billingTargetOf(tx, organizationId))
+}
+
+effect function liveSubscriptionOf(target: BillingTarget, call: StripeRead): (string | undefined)!StripeFailure!StripeContext {
+  switch (target.kind) {
+    case "subscription": return target.subscriptionId
+    case "customer": return (try listSubscriptions(target.customerId, call)).find(live)?.id
+    case "none": return undefined
+    default: {
+      const _exhaustive: never = target
+      return _exhaustive
+    }
+  }
+}
+
+effect function cancelTarget(target: BillingTarget, idempotencyKey: string, timeout: number): BillingCanceled!StripeFailure!StripeContext {
+  const subscriptionId = try liveSubscriptionOf(target, { timeout })
+  if (subscriptionId === undefined) return { subscriptionId: null }
+  const canceled = cancelSubscriptionNow(subscriptionId, { idempotencyKey, timeout }) catch effect (failure) => {
+    if (failure._tag !== "StripeRefused" || failure.status === 404 || failure.code === "resource_missing") throw failure
+    const held = try retrieveSubscription(subscriptionId, { timeout })
+    if (live(held)) throw failure
+    return held
+  }
+  if (live(canceled)) throw new StripeInvalidResponse({ path: `/v1/subscriptions/${subscriptionId}`, status: 200 })
+  return { subscriptionId }
+}
+
+export effect function cancelBilling(organizationId: string, providerKey: string, deadline: number): ProviderReply<BillingCanceled>!StoreFailure!(Store | StripeContext) {
+  const target = try billingTarget(organizationId)
+  const now = try Clock.currentTimeMillis
+  return try providerReply(cancelTarget(target, providerKey, Math.max(1, deadline - now)))
+}
+
+effect function seenTarget(target: BillingTarget, call: StripeRead): LookupResult!StripeFailure!StripeContext {
+  switch (target.kind) {
+    case "subscription": return live(try retrieveSubscription(target.subscriptionId, call)) ? { tag: "NothingSeen" } : { tag: "EffectSeen" }
+    case "customer": {
+      const held = try listSubscriptions(target.customerId, call)
+      if (held.some(live)) return { tag: "NothingSeen" }
+      return held.length > 0 ? { tag: "EffectSeen" } : { tag: "RefusalSeen", cause: "NotFoundAtProvider" }
+    }
+    case "none": return { tag: "RefusalSeen", cause: "NotFoundAtProvider" }
+    default: {
+      const _exhaustive: never = target
+      return _exhaustive
+    }
+  }
+}
+
+function asLookup(reply: ProviderReply<LookupResult>): ProviderReply<LookupResult> {
+  switch (reply.kind) {
+    case "applied":
+    case "unknown": return reply
+    case "refused": return reply.code === "NotFoundAtProvider" ? notFound : { kind: "unknown", cause: reply.code }
+    default: {
+      const _exhaustive: never = reply
+      return _exhaustive
+    }
+  }
+}
+
+export effect function lookUpBilling(organizationId: string): ProviderReply<LookupResult>!StoreFailure!(Store | StripeContext) {
+  const target = try billingTarget(organizationId)
+  return asLookup(try providerReply(seenTarget(target, { timeout: stripeTimeout })))
+}
+
+function googleReply(failure: GoogleFailure): ProviderReply<never> {
+  switch (failure._tag) {
+    case "NotFound": return { kind: "refused", code: "NotFoundAtProvider" }
+    case "InvalidGrant": return { kind: "refused", code: "AuthorizationLost" }
+    case "PreconditionFailed":
+    case "Duplicate":
+    case "Rejected": return { kind: "refused", code: failure._tag }
+    case "ContentTooLarge":
+    case "Unavailable":
+    case "InvalidResponse": return { kind: "unknown", cause: `Google's revoke answer was ${failure._tag}` }
+    default: {
+      const _exhaustive: never = failure
+      return _exhaustive
+    }
+  }
+}
+
+export effect function revokeGoogle(connection: GoogleConnection): ProviderReply<void>!!GoogleContext {
+  const opened = openTokens(connection.tokens) catch effect () => { return undefined }
+  if (opened === undefined) return { kind: "refused", code: "SealingFailed" }
+  return try Effect.match(revokeToken(opened.refreshToken), {
+    onFailure: (failure): ProviderReply<void> => googleReply(failure),
+    onSuccess: (): ProviderReply<void> => ({ kind: "applied", value: undefined })
+  })
+}
+
+export effect function lookUpGoogle(connection: GoogleConnection): ProviderReply<LookupResult>!!GoogleContext {
+  return try Effect.match(refreshAccess(connection.tokens), {
+    onFailure: (failure): ProviderReply<LookupResult> => failure._tag === "InvalidGrant" ? { kind: "applied", value: { tag: "EffectSeen" } } : { kind: "unknown", cause: `Google's token answer was ${failure._tag}` },
+    onSuccess: (): ProviderReply<LookupResult> => ({ kind: "applied", value: { tag: "NothingSeen" } })
+  })
+}

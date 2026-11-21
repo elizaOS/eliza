@@ -300,14 +300,15 @@ export effect function createTaskHost(options: TaskHostOptions) {
   }
 
   effect function settle(): boolean!! {
-    return try cleaning.withPermits(1)(effect {
-      const before = project().cleanup
-      if (before === "CleanupDone") return true
-      if (before === "QuiesceFailed") try locked(offer({ type: "retryCleanup" }))
+    if (project().cleanup === "CleanupDone") return true
+    const ran = try cleaning.withPermitsIfAvailable(1)(effect {
+      if (project().cleanup === "QuiesceFailed") try locked(offer({ type: "retryCleanup" }))
+      if (project().cleanup !== "Quiescing") return project().cleanup === "CleanupDone"
       const confirmed = try quiesce()
       try locked(offer({ type: confirmed ? "confirmCleanup" : "failCleanup" }))
       return project().cleanup === "CleanupDone"
     })
+    return Option.isSome(ran) && ran.value
   }
 
   effect function settled() {

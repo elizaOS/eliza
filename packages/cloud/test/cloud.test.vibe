@@ -1782,6 +1782,10 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
     try check(() => assert.deepStrictEqual({ unlisted: unlistedRoutes, mismatched }, { unlisted: [], mismatched: [] }))
   })
 })
+import { claimDue, sweepDeletions } from "../src/identity/deletion.vibe"
+import { deletionProviders } from "./support/fakes/deletion.ts"
+import { shiftedClock } from "./support/clock.ts"
+
 describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\")", () => {
   it.live("Fund an active account, list and revoke a lost device, and refuse every command on another or an unreadable database (spec/cloud/operator.md, \"Story: Operate the deployment without reading secrets\")", () => scoped(effect {
     const cloud = try testCloud()
@@ -1829,6 +1833,78 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
       }
     ))
   }), 30_000)
+  it.live("Delete an account the person asked support to delete: fence it at once, cancel billing and revoke Google once though both replies are lost, retry a phase after a crashed sweep's claim expires, and erase the person (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\"; spec/cloud/operator.md, \"An account deletion starts only for an active account, after the operator confirmed the request with its owner\")", () => scoped(effect {
+    const providers = try Effect.try(() => deletionProviders())
+    const cloud = try testCloud({ stripe: providers.stripe, mount: (fakes) => { providers.mount(fakes) } })
+    const now = try Clock.currentTimeMillis
+    const owner = { userId: "user-leaving", organizationId: "org-leaving" }
+    try openAccount(cloud, owner)
+    const subscribed = try Effect.try(() => providers.subscribe(catalogPrices[0].priceId))
+    const subscription: Subscription = {
+      ...noSubscription, status: "Active", subscriptionId: subscribed.subscriptionId, customer: { tag: "PinnedCustomer", customerId: subscribed.customerId },
+      planKey: "PlusMonthly", periodStart: now - 60_000, periodEnd: now + 30 * 86_400_000, revision: 4
+    }
+    try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, customer_id, provider_subscription_id, period_end, updated_at) VALUES ($1, $2, 4, 'active', 'plus_monthly', $3, $4, $5, $6)", [
+      owner.organizationId, JSON.stringify(subscription), subscribed.customerId, subscribed.subscriptionId, subscription.periodEnd, now
+    ])
+    const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
+    const refreshToken = try Effect.try(() => providers.grant("subject-conn-leaving"))
+    try cloud.inside(linkedGrant(cloud, owner, "conn-leaving", refreshToken, scopes, now - 1000))
+    const key = try deviceKey(cloud, owner.userId, { deviceName: "Phone", createdAt: now - 1000, expiresAt: now + 86_400_000 })
+    const entitlement = effect () => {
+      const answer = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${key}` } })
+      return [answer.status, (answer.body as { readonly reason?: string }).reason]
+    }
+    const shown = (result: { readonly exit: Exit.Exit<unknown, unknown>; readonly out: ReadonlyArray<string>; readonly err: ReadonlyArray<string> }) =>
+      [Exit.isSuccess(result.exit), result.out, result.err.map((line) => /"error":"([a-z_]+)"/.exec(line)?.[1])]
+    const remove = ["account", "delete", "--user", owner.userId]
+    const funded = try printed(operator(cloud, ["credits", "add", "--organization", owner.organizationId, "--amount", "1000000", "--request", "pilot-leaving"]))
+    const before = try entitlement()
+    const unconfirmed = try printed(operator(cloud, remove))
+    const requested = try printed(operator(cloud, [...remove, "--confirmed-with-owner"]))
+    const fenced = try entitlement()
+    const status = effect () => (try sql(cloud, "SELECT status, email, phone, name FROM accounts WHERE key = $1", [owner.userId]))[0]
+    const closing = try status()
+    const later = try sync(() => shiftedClock())
+    const sweep = () => provideService(cloud.inside(sweepDeletions()), Clock.Clock, later.clock)
+    try Effect.try(() => providers.loseNextCancelReply(subscribed.subscriptionId))
+    const billing = try sweep()
+    const phase = effect () => (try sql(cloud, "SELECT phase, step, attempts FROM deletion_requests WHERE key = $1", [owner.userId]))[0]
+    const afterBilling = try phase()
+    try cloud.inside(claimDue(try later.clock.currentTimeMillis))
+    const whileClaimed = try sweep()
+    try Effect.try(() => later.advance(10 * 60_000 + 1))
+    try Effect.try(() => providers.loseNextRevokeReply())
+    const google = try sweep()
+    const afterGoogle = try phase()
+    const erasing = try sweep()
+    const idle = try sweep()
+    const again = try printed(operator(cloud, [...remove, "--confirmed-with-owner"]))
+    const erased = try status()
+    const left = try sql(cloud, "SELECT (SELECT count(*) FROM sessions WHERE user_id = $1)::int AS sessions, (SELECT count(*) FROM device_grants WHERE user_id = $1)::int AS devices, (SELECT count(*) FROM google_connections WHERE user_id = $1)::int AS google, (SELECT count(*) FROM cloud_sign_in_identities WHERE account_id = $1)::int AS identities, (SELECT count(*) FROM credit_entries WHERE organization_id = $2)::int AS ledger", [owner.userId, owner.organizationId])
+    const outside = try Effect.try(() => ({
+      stripe: [providers.subscriptionStatus(subscribed.subscriptionId), providers.cancelCalls(cloud.fakes, subscribed.subscriptionId)],
+      google: [providers.revoked(refreshToken), providers.revokeCalls()]
+    }))
+    try check(() => assert.deepStrictEqual(
+      {
+        funded: Exit.isSuccess(funded.exit), before, unconfirmed: shown(unconfirmed), requested: shown(requested), fenced, closing: closing?.status,
+        sweeps: [billing, whileClaimed, google, erasing, idle], afterBilling, afterGoogle,
+        ...outside, erased, left: left[0],
+        again: shown(again)
+      },
+      {
+        funded: true, before: [200, undefined], unconfirmed: [false, [], ["invalid_request"]],
+        requested: [true, ["user user-leaving: every session and device key ended; deletion running at cancel_billing, 0 of 12 attempts, no provider call"], []],
+        fenced: [401, "credential_revoked"], closing: "deleting",
+        sweeps: [1, 0, 1, 1, 0], afterBilling: { phase: "running", step: "revoke_google", attempts: 0 }, afterGoogle: { phase: "running", step: "erase_data", attempts: 0 },
+        stripe: ["canceled", 1], google: [true, 1],
+        erased: { status: "erased", email: null, phone: null, name: null },
+        left: { sessions: 0, devices: 0, google: 0, identities: 0, ledger: 1 },
+        again: [true, ["user user-leaving: already requested; deletion erased at erase_data, 0 of 12 attempts, no provider call"], []]
+      }
+    ))
+  }), 60_000)
 })
 describe("WP10 Operator and deletion: clients (spec/cloud/operator.md)", () => {
   it.live("Register, update and disable a native client from the operator command line (spec/cloud/operator.md, \"Story: Operate the deployment without reading secrets\"; spec/cloud/nativeClients/registry.md, \"A registration is accepted only when the registry stays valid and no return lies on the API origin, and it never changes how another client is admitted\")", () => scoped(effect {
