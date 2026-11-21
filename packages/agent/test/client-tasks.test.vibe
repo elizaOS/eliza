@@ -11,7 +11,6 @@ module node {
   import type { SurfaceChannelService } from "../src/tasks/surface-channel.vibe"
   import { Option, Schema } from "effect"
 
-  export { tasksModuleName }
   export const storageKey = randomBytes(32).toString("base64")
   const messages = { start: "Could not start", pause: "Could not pause", resume: "Could not resume", cancel: "Could not cancel" }
 
@@ -213,8 +212,9 @@ module node {
 }
 
 import {
-  cancelNeedsANewEpoch, malformedViewIsNotNoTask, modules, pauseBeforeCreationReply, staleResumeAndChangedIdentity, storageKey, surfaceConnections, tasksModuleName,
+  cancelNeedsANewEpoch, malformedViewIsNotNoTask, modules, pauseBeforeCreationReply, staleResumeAndChangedIdentity, storageKey, surfaceConnections,
 } from node
+import { tasksModuleName } from "../src/tasks/module.vibe"
 import { surfaceChannelServiceType, surfaceModuleName, type SurfaceChannelService } from "../src/tasks/surface-channel.vibe"
 
 effect function boot() {
