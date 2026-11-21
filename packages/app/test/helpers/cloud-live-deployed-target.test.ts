@@ -4,6 +4,7 @@ import {
   CloudLiveRequiredActionUnavailableError,
   chooseCloudRuntimeUnlessIdentityStarted,
 } from "../cloud-live-optional-action";
+import { waitForRendererCloudApiOrigin } from "../cloud-live-renderer-api-readiness";
 
 describe("deployed Cloud smoke target", () => {
   it("pins production and staging to distinct first-party origins", () => {
@@ -16,6 +17,36 @@ describe("deployed Cloud smoke target", () => {
     expect(() =>
       cloudLiveDeployedRendererOrigin("https://untrusted.example"),
     ).toThrow();
+  });
+
+  it("observes the staging Pages proxy separately from the direct API", async () => {
+    const app = cloudLiveDeployedRendererOrigin("staging");
+    const api = "https://api-staging.eliza.app";
+    const readCloudBase = async () => app;
+    await expect(
+      waitForRendererCloudApiOrigin({
+        mode: "same-origin",
+        readCloudBase,
+        expectedApiOrigin: app,
+        timeoutMs: 0,
+      }),
+    ).resolves.toEqual({ cloudBase: app, apiOrigin: app });
+    await expect(
+      waitForRendererCloudApiOrigin({
+        mode: "direct",
+        readCloudBase,
+        expectedApiOrigin: api,
+        timeoutMs: 0,
+      }),
+    ).resolves.toEqual({ cloudBase: app, apiOrigin: api });
+    await expect(
+      waitForRendererCloudApiOrigin({
+        mode: "same-origin",
+        readCloudBase: async () => api,
+        expectedApiOrigin: app,
+        timeoutMs: 0,
+      }),
+    ).rejects.toThrow(`resolved to ${api}; expected ${app}`);
   });
 });
 

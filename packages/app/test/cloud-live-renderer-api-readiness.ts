@@ -10,7 +10,10 @@ export interface RendererCloudApiObservation {
   apiOrigin: string;
 }
 
+type RendererCloudApiOriginMode = "same-origin" | "direct";
+
 interface RendererCloudApiReadinessOptions {
+  mode: RendererCloudApiOriginMode;
   readCloudBase: () => Promise<string>;
   expectedApiOrigin: string;
   timeoutMs?: number;
@@ -21,6 +24,7 @@ interface RendererCloudApiReadinessOptions {
 
 function observeRendererCloudApi(
   cloudBase: string,
+  mode: RendererCloudApiOriginMode,
 ): RendererCloudApiObservation {
   const normalizedCloudBase = cloudBase.trim();
   if (!normalizedCloudBase) {
@@ -28,10 +32,13 @@ function observeRendererCloudApi(
   }
 
   try {
+    const apiBase =
+      mode === "same-origin"
+        ? normalizedCloudBase
+        : resolveDirectCloudAuthApiBase(normalizedCloudBase);
     return {
       cloudBase: normalizedCloudBase,
-      apiOrigin: new URL(resolveDirectCloudAuthApiBase(normalizedCloudBase))
-        .origin,
+      apiOrigin: new URL(apiBase).origin,
     };
   } catch {
     // error-policy:J3 the exact malformed build value remains visible in the
@@ -62,7 +69,10 @@ export async function waitForRendererCloudApiOrigin(
 
   while (true) {
     try {
-      lastObservation = observeRendererCloudApi(await options.readCloudBase());
+      lastObservation = observeRendererCloudApi(
+        await options.readCloudBase(),
+        options.mode,
+      );
       if (lastObservation.apiOrigin === options.expectedApiOrigin) {
         return lastObservation;
       }

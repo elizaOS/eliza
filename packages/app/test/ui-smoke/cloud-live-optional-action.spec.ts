@@ -1203,13 +1203,18 @@ test("the renderer waits for its exact origin across a document navigation", asy
       return location.origin;
     });
   expect(
-    await waitForRendererCloudApiOrigin({ readCloudBase, expectedApiOrigin }),
+    await waitForRendererCloudApiOrigin({
+      mode: "same-origin",
+      readCloudBase,
+      expectedApiOrigin,
+    }),
   ).toEqual({
     cloudBase: expectedApiOrigin,
     apiOrigin: expectedApiOrigin,
   });
   await expect(
     waitForRendererCloudApiOrigin({
+      mode: "same-origin",
       readCloudBase,
       expectedApiOrigin: "https://other.test",
       timeoutMs: 0,
@@ -1218,6 +1223,7 @@ test("the renderer waits for its exact origin across a document navigation", asy
   await page.goto(`${expectedApiOrigin}/boot`);
   await expect(
     waitForRendererCloudApiOrigin({
+      mode: "same-origin",
       readCloudBase,
       expectedApiOrigin,
       timeoutMs: 0,
@@ -1226,6 +1232,7 @@ test("the renderer waits for its exact origin across a document navigation", asy
   await page.close();
   await expect(
     waitForRendererCloudApiOrigin({
+      mode: "same-origin",
       readCloudBase,
       expectedApiOrigin,
       timeoutMs: 0,
