@@ -1,0 +1,193 @@
+# Request authentication
+
+Who is calling, for every route of the cloud. Each route has one class, and
+the class says what credential it needs:
+
+| Class | Admits | Routes |
+|---|---|---|
+| Public | anyone; no credential is read | health, public service document, plans, entitlement keys, sign-in starts, return pages |
+| Signature | anyone; the route verifies the provider's signature | the payment provider's webhook |
+| Key or Session | a live device key or session | inference (with `/models`), speech, maps, Google, billing reads (invoices too), checkout start and confirm, redeem, account read, referrals, self-revoke |
+| Session | a live session | sign-in methods, factors, step-up send, connect |
+| Fresh | a live session signed in or stepped up within 60 minutes | cancel, undo, upgrade, downgrade, payment continuation, portal |
+| Step-up | a live session with a second factor within 5 minutes | unlink a method, change factors |
+
+The credential arrives only as `Authorization: Bearer <token>`; no other
+header and no cookie is read. The shell sorts the token by its shape: a
+session token (`eliza_session_` + 43 base64url, `identity/sessions`) or a
+device key (`eliza_mobile_` + 64 hex, `nativeClients/deviceKeys`); anything
+else, or no header, presents nothing. It matches the token's digest in the
+store and reads the account's status and both revocation epochs in the same
+store operation, and passes them here as the `Standing`. The token itself
+never enters the model. The device half, which decides what a refusal means
+on the device, is os `signIn/credential.md`. The source is develop
+`packages/cloud/shared/src/lib/auth/` and `packages/cloud/api/src/bootstrap-app.ts`.
+
+## Story: Admit a request only for a live credential of an active account
+
+> As an account owner, I want the cloud to serve a request only for a
+> credential of mine that is still live, and a billing or sign-in change
+> only after I recently confirmed it is me, so that a lost device, a stolen
+> token or a closed account stops working at once.
+
+### Public and signed routes authenticate no one, and every other route needs a credential
+
+```quint
+import types.* from "../shared/types"
+import rateLimit as R from "../shared/rateLimit"
+import accounts as A from "./accounts"
+import sessions as S from "./sessions"
+import deviceKeys as Dk from "../nativeClients/deviceKeys"
+type RouteClass = PublicRoute | SignatureRoute | KeyOrSessionRoute | SessionRoute | FreshRoute | StepUpRoute
+type SessionLookup = NoFamily | FamilyRow({ family: S::Family, generation: int })
+type KeyLookup = NoGrant | GrantRow({ grant: Dk::Grant })
+type Presented = NoCredential | SessionBearer({ lookup: SessionLookup }) | KeyBearer({ window: R::Window, lookup: KeyLookup })
+type Standing = { status: A::AccountStatus, personEpoch: int, deviceEpoch: int }
+type Admission = Anonymous | Caller({ kind: CredentialKind, expiresAt: Millis }) | Denied({ refusal: Refusal })
+pure def isProtected(route: RouteClass): bool = route != PublicRoute and route != SignatureRoute
+pure def isAnonymous(a: Admission): bool = match a { | Anonymous => true | _ => false }
+pure def lawOnlyPublicAndSignedRoutesAuthenticateNoOne(route: RouteClass, presented: Presented, standing: Standing, now: Millis): bool =
+  isAnonymous(admit(route, presented, standing, now)) iff not(isProtected(route))
+```
+
+### A missing, unreadable or unknown credential is refused 401 with credential_unknown
+
+A device takes the reason as the custody owner's input: `credential_expired`
+for a credential past its end, `credential_revoked` for one signed out,
+revoked by an epoch move or of an account that is not Active, and
+`credential_unknown` for anything else. The reason of a session is
+`S::sessionRefusal`'s and of a device key `Dk::keyRefusal`'s.
+
+```quint
+pure def deniedFor(reason: RefusalReason): Admission = Denied({ refusal: refuseFor(AuthenticationRequired, reason) })
+pure def admit(route: RouteClass, presented: Presented, standing: Standing, now: Millis): Admission =
+  if (not(isProtected(route))) Anonymous
+  else match presented {
+    | NoCredential => deniedFor(CredentialUnknown)
+    | SessionBearer(x) => sessionAdmission(route, x.lookup, standing, now)
+    | KeyBearer(y) => keyAdmission(route, y.window, y.lookup, standing, now)
+  }
+pure def lawEveryRefusalIsWellFormed(route: RouteClass, presented: Presented, standing: Standing, now: Millis): bool = {
+  val a = admit(route, presented, standing, now)
+  match a { | Denied(x) => wellFormed(x.refusal) | _ => true }
+}
+```
+
+### A device key is limited to 120 requests a minute before it is looked up
+
+The subject is a keyed digest of the presented key, never the key. Over the
+limit the answer is `429 rate_limited` with its retry time, and `503` when
+the limiter cannot count; either way the key's row is not read.
+
+```quint
+pure val keyIngressLimit: R::RateLimit = R::perMinute("deviceKeyIngress", 120)
+pure def keyIngress(window: R::Window): List[R::Check] = List({ window: window, rule: keyIngressLimit })
+pure def keyAdmission(route: RouteClass, window: R::Window, lookup: KeyLookup, standing: Standing, now: Millis): Admission =
+  if (not(R::admitsAll(keyIngress(window), now))) Denied({ refusal: R::groupRefusal(keyIngress(window), now) })
+  else match lookup {
+    | NoGrant => deniedFor(CredentialUnknown)
+    | GrantRow(x) => grantAdmission(route, x.grant, standing, now)
+  }
+pure def lawAKeyOverItsLimitIsRefusedWhateverItsRow(route: RouteClass, window: R::Window, lookup: KeyLookup, otherLookup: KeyLookup, standing: Standing, now: Millis): bool =
+  (isProtected(route) and not(R::admitsAll(keyIngress(window), now))) implies (
+    admit(route, KeyBearer({ window: window, lookup: lookup }), standing, now) == admit(route, KeyBearer({ window: window, lookup: otherLookup }), standing, now)
+    and admit(route, KeyBearer({ window: window, lookup: lookup }), standing, now) == Denied({ refusal: R::groupRefusal(keyIngress(window), now) }))
+```
+
+### A refused credential never yields a caller
+
+A session is live when `sessions` accepts its presented generation at the
+person's session epoch; a device key when it is acknowledged, unexpired and
+of the person's current device epoch. Either needs an Active account. An
+admitted caller carries its credential kind and the end of its credential,
+which is after now: the access token's end for a session, the key's for a
+device key.
+
+```quint
+pure def isActiveAccount(standing: Standing): bool = standing.status == A::Active
+pure def sessionAdmission(route: RouteClass, lookup: SessionLookup, standing: Standing, now: Millis): Admission =
+  match lookup {
+    | NoFamily => deniedFor(CredentialUnknown)
+    | FamilyRow(x) => familyAdmission(route, x.family, x.generation, standing, now)
+  }
+pure def grantAdmission(route: RouteClass, grant: Dk::Grant, standing: Standing, now: Millis): Admission = {
+  val reason = Dk::keyRefusal(grant, now, standing.deviceEpoch)
+  if (reason != NoReason) deniedFor(reason)
+  else if (not(isActiveAccount(standing))) deniedFor(CredentialRevoked)
+  else if (needsSession(route)) Denied({ refusal: refuse(AccessDenied) })
+  else Caller({ kind: DeviceKeyCredential, expiresAt: Dk::ackAnswer(grant).expiresAt })
+}
+pure def liveFamily(family: S::Family, generation: int, standing: Standing, now: Millis): bool =
+  S::accepts({ ...family, now: now }, generation, standing.personEpoch)
+pure def liveGrant(grant: Dk::Grant, standing: Standing, now: Millis): bool =
+  Dk::isLive({ ...grant, now: now }) and not(Dk::revokedSince(grant, standing.deviceEpoch))
+pure def liveLookup(lookup: SessionLookup, standing: Standing, now: Millis): bool =
+  match lookup { | FamilyRow(x) => liveFamily(x.family, x.generation, standing, now) | NoFamily => false }
+pure def liveKeyLookup(lookup: KeyLookup, standing: Standing, now: Millis): bool =
+  match lookup { | GrantRow(x) => liveGrant(x.grant, standing, now) | NoGrant => false }
+pure def isLiveCredential(presented: Presented, standing: Standing, now: Millis): bool =
+  isActiveAccount(standing) and match presented {
+    | SessionBearer(x) => liveLookup(x.lookup, standing, now)
+    | KeyBearer(y) => R::admitsAll(keyIngress(y.window), now) and liveKeyLookup(y.lookup, standing, now)
+    | NoCredential => false
+  }
+pure def lawARefusedCredentialNeverYieldsACaller(route: RouteClass, presented: Presented, standing: Standing, now: Millis): bool = {
+  val a = admit(route, presented, standing, now)
+  match a { | Caller(x) => isLiveCredential(presented, standing, now) and x.expiresAt > now | _ => true }
+}
+pure def lawAnInactiveAccountIsRevoked(route: RouteClass, presented: Presented, standing: Standing, now: Millis): bool =
+  (isProtected(route) and not(isActiveAccount(standing)) and isLiveCredential(presented, { ...standing, status: A::Active }, now))
+    implies admit(route, presented, standing, now) == deniedFor(CredentialRevoked)
+```
+
+### Session, fresh and step-up routes admit only a session, and only with the assurance they name
+
+A live device key on such a route is refused `403 access_denied`, so a
+device never takes it for a signed-out key. A live session that is not fresh
+enough is refused `428 fresh_session_required`, which asks for a step-up
+rather than a new sign-in. Freshness and step-up are `S::isFresh` and
+`S::isSteppedUp` at the request's time.
+
+```quint
+pure def needsSession(route: RouteClass): bool = Set(SessionRoute, FreshRoute, StepUpRoute).contains(route)
+pure def hasAssurance(route: RouteClass, f: S::Family): bool =
+  if (route == FreshRoute) S::isFresh(f) else if (route == StepUpRoute) S::isSteppedUp(f) else true
+pure def familyAdmission(route: RouteClass, family: S::Family, generation: int, standing: Standing, now: Millis): Admission = {
+  val f = { ...family, now: now }
+  val reason = S::sessionRefusal(generation, f, standing.personEpoch)
+  if (reason != NoReason) deniedFor(reason)
+  else if (not(isActiveAccount(standing))) deniedFor(CredentialRevoked)
+  else if (not(hasAssurance(route, f))) Denied({ refusal: refuse(FreshSessionRequired) })
+  else Caller({ kind: SessionCredential, expiresAt: f.accessExpiresAt })
+}
+pure def lawSessionRoutesAdmitOnlyAssuredSessions(route: RouteClass, family: S::Family, generation: int, standing: Standing, now: Millis): bool = {
+  val a = admit(route, SessionBearer({ lookup: FamilyRow({ family: family, generation: generation }) }), standing, now)
+  val live = liveFamily(family, generation, standing, now) and isActiveAccount(standing)
+  val assured = hasAssurance(route, { ...family, now: now })
+  (needsSession(route) and live) implies (a == (if (assured) Caller({ kind: SessionCredential, expiresAt: family.accessExpiresAt }) else Denied({ refusal: refuse(FreshSessionRequired) })))
+}
+pure def lawADeviceKeyNeverPassesASessionRoute(route: RouteClass, presented: Presented, standing: Standing, now: Millis): bool = {
+  val a = admit(route, presented, standing, now)
+  needsSession(route) implies match a { | Caller(x) => x.kind == SessionCredential | _ => true }
+}
+pure val signedIn: S::Family = { phase: S::Live, generation: 1, epoch: 0, seenEpoch: 0, authAt: 0, issuedAt: 0, accessExpiresAt: 900000,
+  refreshExpiresAt: 2592000000, stepUpAt: S::Never, mfaAt: S::Never, now: 0 }
+pure val familyValues: Set[S::Family] = Set(signedIn, { ...signedIn, mfaAt: S::At({ ms: 0 }) }, { ...signedIn, phase: S::Revoked },
+  { ...signedIn, generation: 2, issuedAt: 3600000, accessExpiresAt: 4500000 })
+pure val generationValues = Set(1, 2)
+pure val nowValues = Set(1000, 4000000)
+pure val keyed: Dk::Grant = { phase: Dk::Active({ ackedAt: 0, keyExpiresAt: 86400000 }), origin: Dk::Connected, codeExpiresAt: 300000,
+  credentialTtl: 86400000, credentialId: "k1", epoch: 0, now: 0 }
+pure val lookupValues: Set[KeyLookup] = Set(NoGrant, GrantRow({ grant: keyed }), GrantRow({ grant: { ...keyed, phase: Dk::Expired } }))
+pure val otherLookupValues: Set[KeyLookup] = Set(NoGrant, GrantRow({ grant: keyed }))
+pure val fullWindow: R::Window = { start: 0, end: 60000, count: 120, ceiling: 120, clock: 0, last: R::Admitted }
+pure val windowValues: Set[R::Window] = Set(R::initial, fullWindow)
+pure val standingValues: Set[Standing] = Set({ status: A::Active, personEpoch: 0, deviceEpoch: 0 },
+  { status: A::Active, personEpoch: 1, deviceEpoch: 1 }, { status: A::Deleting, personEpoch: 0, deviceEpoch: 0 })
+pure val presentedValues: Set[Presented] = Set(NoCredential,
+  SessionBearer({ lookup: NoFamily }), SessionBearer({ lookup: FamilyRow({ family: signedIn, generation: 1 }) }),
+  SessionBearer({ lookup: FamilyRow({ family: { ...signedIn, mfaAt: S::At({ ms: 0 }) }, generation: 1 }) }),
+  SessionBearer({ lookup: FamilyRow({ family: { ...signedIn, generation: 2, issuedAt: 3600000, accessExpiresAt: 4500000 }, generation: 2 }) }),
+  KeyBearer({ window: R::initial, lookup: GrantRow({ grant: keyed }) }), KeyBearer({ window: fullWindow, lookup: GrantRow({ grant: keyed }) }),
+  KeyBearer({ window: R::initial, lookup: NoGrant }))
+```

@@ -10,7 +10,6 @@ import {
   enrollmentProblems,
   isPixel,
   lunchChoices,
-  lockTarget,
   lunchFor,
   recordAdmitted,
   type BootArchive,
@@ -395,6 +394,11 @@ export function productDescriptor(raw: unknown): ProductDescriptor | undefined {
   }
 }
 
+function productName(name: string): ProductName {
+  const split = name.indexOf("_")
+  return split < 0 ? { brand: name, target: "" } : { brand: name.slice(0, split), target: name.slice(split + 1) }
+}
+
 function outputName(d: ProductDescriptor, output: CompositionOutput): string {
   switch (output) {
     case "ProductList":
@@ -688,7 +692,7 @@ export effect function composeProduct(request: ComposeRequest) {
   if (d.firstRun) add(`first-run/overlay/vendor/${d.vendorDirectory}/first-run/res/values/config.xml`, utf8(firstRunOverlay(roles)))
   const composed = [...planned].filter(([relative]) => relative.endsWith(".mk")).map(([, file]) => textOf(file.bytes))
   const brandToken = d.brand.toLowerCase()
-  const named: ProductName = { brand: brandToken, target: lockTarget(d) }
+  const named = productName(d.productName)
   const source = canAdmitProduct(request.source, brandToken, named, request.purpose) ? admitProduct(request.source, brandToken, named, request.purpose) : request.source
   const call: CompositionCall = {
     descriptor: d,
