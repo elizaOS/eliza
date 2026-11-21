@@ -1,7 +1,7 @@
 // spec/os/android/deepLinks.md, "Story: Open the link I followed exactly once, even across a cold start"; spec/os/android/deepLinks.md, "Story: Keep two links I followed apart, even when they are the same URL"
 import type { PluginListenerHandle } from "@capacitor/core"
 import { Machine, machine, type DeepLinks, type LinkOutcome } from "../../gen/os__android__deepLinks.effect.vibe"
-import { nativeCall, nativeReply, settled } from "./bridge.vibe"
+import { MalformedReply, nativeCall, nativeReply, settled } from "./bridge.vibe"
 import type { DeepLinksClient, DeepLinksNativePlugin, FollowedLink, LinkOpener, LinkReceipt } from "./definitions/deep-links.ts"
 
 export type * from "./definitions/deep-links.ts"
@@ -22,7 +22,7 @@ const PLUGIN = "ElizaDeepLinks"
 const Receipt = Schema.Int.check(Schema.isGreaterThan(0)).pipe(Schema.brand("LinkReceipt"))
 const Link = Schema.Struct({ receipt: Receipt, url: Schema.String.check(Schema.isPattern(/^\S(?:[^\r\n]*\S)?$/)) })
 const Pending = Schema.Struct({ link: Schema.NullOr(Link) })
-const Cleared = Schema.Struct({ cleared: Schema.Boolean })
+schema Cleared { cleared: boolean }
 
 interface Session {
   readonly links: Machine.Shape
@@ -61,10 +61,7 @@ effect function attempt(session: Session, id: LinkReceipt) {
 
 effect function begin(session: Session, before: DeepLinks, after: DeepLinks) {
   for (const id of after.running) {
-    if (!before.running.includes(id)) {
-      const receipt = try orDie(Schema.decodeUnknownEffect(Receipt)(id))
-      fork.detached attempt(session, receipt)
-    }
+    if (!before.running.includes(id)) fork.detached attempt(session, id as LinkReceipt)
   }
 }
 
@@ -78,7 +75,8 @@ effect function deliver(session: Session, link: FollowedLink) {
 }
 
 effect function poll(session: Session) {
-  const answer = try nativeReply(PLUGIN, "pending", Pending, () => session.plugin.pending())
+  const raw = try nativeCall(PLUGIN, "pending", () => session.plugin.pending())
+  const answer = try mapError(Schema.decodeUnknownEffect(Pending)(raw), (refusal) => new MalformedReply({ plugin: PLUGIN, method: "pending", issue: refusal.message }))
   if (answer.link !== null) try deliver(session, answer.link)
 }
 

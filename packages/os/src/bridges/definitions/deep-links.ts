@@ -5,7 +5,7 @@ import type { DeepLinks, LinkOutcome } from "../../../gen/os__android__deepLinks
 
 export type { DeepLinks, LinkOutcome };
 
-export type LinkReceipt = Brand.Branded<number, "LinkReceipt">;
+export type LinkReceipt = number & Brand.Brand<"LinkReceipt">;
 
 export interface FollowedLink {
   readonly receipt: LinkReceipt;

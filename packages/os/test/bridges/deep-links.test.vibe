@@ -1,0 +1,107 @@
+// spec/os/android/deepLinks.md, "Story: Open the link I followed exactly once, even across a cold start"; spec/os/android/deepLinks.md, "Story: Keep two links I followed apart, even when they are the same URL"
+import { assert, it } from "@effect/vitest"
+import { deepLinksClient } from "../../src/bridges/deep-links.vibe"
+
+module android {
+  import type { DeepLinksNativePlugin, LinkOutcome } from "../../src/bridges/definitions/deep-links.ts"
+
+  export interface NativeSlot { captured: number; pending: number; url: string; heard: ((event: unknown) => void) | undefined; acks: number[] }
+
+  /** @throws {never} */
+  export function nativeSlot(): NativeSlot {
+    return { captured: 0, pending: 0, url: "", heard: undefined, acks: [] }
+  }
+
+  /** @throws {never} */
+  export function follow(slot: NativeSlot, url: string): void {
+    slot.captured += 1
+    slot.pending = slot.captured
+    slot.url = url
+    slot.heard?.({ receipt: slot.captured, url })
+  }
+
+  /** @throws {never} */
+  export function nativeLinks(slot: NativeSlot): DeepLinksNativePlugin {
+    return {
+      pending: async () => ({ link: slot.pending === 0 ? null : { receipt: slot.pending, url: slot.url } }),
+      acknowledge: async ({ receipt, url }) => {
+        slot.acks.push(receipt)
+        const cleared = slot.pending === receipt && slot.url === url
+        if (cleared) { slot.pending = 0; slot.url = "" }
+        return { cleared }
+      },
+      addListener: async (_eventName, listener) => {
+        slot.heard = listener
+        return { remove: async () => { slot.heard = undefined } }
+      },
+    }
+  }
+
+  /** @throws {never} */
+  export function opener(opened: string[], answers: LinkOutcome[]): (url: string) => Promise<LinkOutcome> {
+    return async (url) => {
+      opened.push(url)
+      const answer = answers.shift() ?? "LinkApplied"
+      if (answer === "LinkFailed") throw new Error("the renderer could not open the link")
+      return answer
+    }
+  }
+}
+import { follow, nativeLinks, nativeSlot, opener } from android
+
+effect function settle(check: () => boolean) {
+  for (let round = 0; round < 200 && !check(); round += 1) try sleep("5 millis")
+  return check()
+}
+
+effect function settledFailure(state: () => Promise<{ readonly running: readonly number[]; readonly waiting: readonly number[] }>) {
+  for (let round = 0; round < 200; round += 1) {
+    const current = try promise(state)
+    if (!current.running.includes(1) && !current.waiting.includes(1)) return true
+    try sleep("5 millis")
+  }
+  return false
+}
+
+it.live("Open the link I followed exactly once, even across a cold start (spec/os/android/deepLinks.md, \"Story: Open the link I followed exactly once, even across a cold start\"; spec/os/android/deepLinks.md, \"A link waits until the renderer is ready, then starts once\"; spec/os/android/deepLinks.md, \"The native slot clears only after the renderer applied or rejected the link\")", () => effect {
+  const slot = nativeSlot()
+  follow(slot, "https://links.example.test/open/cold")
+  const opened: string[] = []
+  const links = deepLinksClient(opener(opened, ["LinkFailed"]), nativeLinks(slot))
+  try promise(() => links.start())
+  assert.deepStrictEqual(opened, [])
+  assert.deepStrictEqual((try promise(() => links.state())).waiting, [1])
+  try promise(() => links.ready())
+  assert.isTrue(try settle(() => opened.length === 1))
+  assert.isTrue(try settle(() => slot.heard !== undefined))
+  const failed = try settledFailure(() => links.state())
+  assert.isTrue(failed)
+  assert.deepStrictEqual([slot.pending, slot.acks], [1, []])
+  try promise(() => links.stop())
+  assert.isUndefined(slot.heard)
+  const reopened: string[] = []
+  const relaunched = deepLinksClient(opener(reopened, ["LinkRejected"]), nativeLinks(slot))
+  try promise(() => relaunched.start())
+  try promise(() => relaunched.ready())
+  assert.isTrue(try settle(() => slot.pending === 0))
+  assert.deepStrictEqual([reopened, slot.acks], [["https://links.example.test/open/cold"], [1]])
+  try promise(() => relaunched.poll())
+  assert.deepStrictEqual(reopened.length, 1)
+  try promise(() => relaunched.stop())
+})
+
+it.live("Keep two links I followed apart, even when they are the same URL (spec/os/android/deepLinks.md, \"Story: Keep two links I followed apart, even when they are the same URL\"; spec/os/android/deepLinks.md, \"Each capture keeps its own receipt, and only a newer capture takes the slot\")", () => effect {
+  const slot = nativeSlot()
+  const opened: string[] = []
+  const links = deepLinksClient(opener(opened, []), nativeLinks(slot))
+  try promise(() => links.start())
+  try promise(() => links.ready())
+  follow(slot, "https://links.example.test/open/same")
+  follow(slot, "https://links.example.test/open/same")
+  assert.isTrue(try settle(() => slot.acks.length === 2))
+  assert.deepStrictEqual(opened, ["https://links.example.test/open/same", "https://links.example.test/open/same"])
+  assert.deepStrictEqual([[...slot.acks].sort(), slot.pending], [[1, 2], 0])
+  const after = try promise(() => links.state())
+  assert.deepStrictEqual([after.captured, [...after.settled].sort(), after.acks], [2, [1, 2], []])
+  try promise(() => links.stop())
+})
