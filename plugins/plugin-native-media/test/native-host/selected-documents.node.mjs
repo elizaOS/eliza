@@ -70,3 +70,46 @@ test("source references store a grace time before the reference and reconcile be
     store.includes("persistedReadAccess(context.getContentResolver(),uri)"),
   );
 });
+
+// Source check of the described fields. Not Android evidence: no provider has been queried here.
+test("a described selection, restored ones included, reports provider size and date when known", () => {
+  const documents = source("SelectedDocuments");
+  const describe = compact(
+    documents.slice(
+      documents.indexOf("private JSObject describe(String id)"),
+      documents.indexOf("public synchronized JSObject rename("),
+    ),
+  );
+  assert.ok(
+    describe.includes(
+      compact(
+        'Long size = optionalLong(uri, android.provider.OpenableColumns.SIZE); if (size != null && size >= 0) value.put("size", size);',
+      ),
+    ),
+  );
+  assert.ok(
+    describe.includes(
+      compact(
+        'optionalLong(uri, android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED); if (modified != null && modified > 0) value.put("modified", modified);',
+      ),
+    ),
+    "an unknown date is left out, never reported as the epoch",
+  );
+  assert.ok(
+    describe.includes(
+      "catch(SecurityExceptionrevoked){throwrevoked;}catch(RuntimeExceptionunsupported){returnnull;}",
+    ),
+    "a revoked grant still reaches the caller that forgets it; a missing column is omitted",
+  );
+  const restore = compact(
+    documents.slice(
+      documents.indexOf("public synchronized JSObject restore()"),
+      documents.indexOf("private JSObject describe(String id)"),
+    ),
+  );
+  assert.equal(
+    restore.match(/JSObjectvalue=describe\(id\);/g)?.length,
+    2,
+    "restore and describeSelected both report through describe",
+  );
+});

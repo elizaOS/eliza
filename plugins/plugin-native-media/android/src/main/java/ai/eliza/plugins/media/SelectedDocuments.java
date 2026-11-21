@@ -299,6 +299,15 @@ public final class SelectedDocuments {
         throw new IllegalStateException();
       value.put("name", cursor.getString(0));
     }
+    // Size and date are optional provider columns, each read on its own so one a provider lacks
+    // never hides the other; an unknown value is left out, never reported as 0.
+    Long size = optionalLong(uri, android.provider.OpenableColumns.SIZE);
+    if (size != null && size >= 0)
+      value.put("size", size);
+    Long modified =
+        optionalLong(uri, android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED);
+    if (modified != null && modified > 0)
+      value.put("modified", modified);
     boolean rename = false;
     try (android.database.Cursor cursor = context.getContentResolver().query(uri,
              new String[] {android.provider.DocumentsContract.Document.COLUMN_FLAGS}, null, null,
@@ -315,6 +324,18 @@ public final class SelectedDocuments {
                    android.os.Process.myUid(), Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                 == android.content.pm.PackageManager.PERMISSION_GRANTED);
     return value;
+  }
+  /** One numeric column of the document, or null when the provider omits or refuses it. */
+  private Long optionalLong(Uri uri, String column) {
+    try (android.database.Cursor cursor =
+             owner.getContentResolver().query(uri, new String[] {column}, null, null, null)) {
+      return cursor != null && cursor.moveToFirst() && !cursor.isNull(0) ? cursor.getLong(0)
+                                                                         : null;
+    } catch (SecurityException revoked) {
+      throw revoked;
+    } catch (RuntimeException unsupported) {
+      return null;
+    }
   }
   public synchronized JSObject rename(String id, String name) {
     Context context = owner;

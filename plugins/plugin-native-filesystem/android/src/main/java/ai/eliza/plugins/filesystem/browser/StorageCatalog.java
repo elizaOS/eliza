@@ -101,14 +101,19 @@ public final class StorageCatalog {
  }
  /** Matches the hidden-name and hidden-folder filtering in rows(). */
  public static final String VISIBLE="relative_path IS NOT NULL AND _display_name IS NOT NULL AND _display_name NOT LIKE '.%' AND ('/'||relative_path) NOT LIKE '%/.%'";
- /** Browse needs counts without loading and serializing every media row. */
+ /** Browse needs counts without loading and serializing every media row. `count` is every visible
+  * file in the category and `bytes` their total size (a row with no recorded size adds 0). */
  public static JSObject count(ContentResolver resolver,StorageBrowser browser,String category)throws java.io.IOException{
   JSObject out=new JSObject();
-  if("downloads".equals(category)){out.put("count",browser.files(DOWNLOAD_FOLDER,Integer.MAX_VALUE).size());return out;}
+  if("downloads".equals(category)){
+   List<StorageBrowser.Row> files=browser.files(DOWNLOAD_FOLDER,Integer.MAX_VALUE);long bytes=0;for(StorageBrowser.Row r:files)bytes+=r.size;
+   out.put("count",files.size());out.put("bytes",bytes);return out;
+  }
   String selection=selection(category);
-  try(Cursor cursor=resolver.query(collection(category),new String[]{MediaStore.MediaColumns._ID},selection==null?VISIBLE:selection+" AND "+VISIBLE,selection==null?null:DOCUMENT_TYPES,null)){
+  try(Cursor cursor=resolver.query(collection(category),new String[]{MediaStore.MediaColumns.SIZE},selection==null?VISIBLE:selection+" AND "+VISIBLE,selection==null?null:DOCUMENT_TYPES,null)){
    if(cursor==null)throw new IllegalStateException("Media provider unavailable");
-   out.put("count",cursor.getCount());
+   long bytes=0;while(cursor.moveToNext())if(!cursor.isNull(0))bytes+=Math.max(0,cursor.getLong(0));
+   out.put("count",cursor.getCount());out.put("bytes",bytes);
   }
   return out;
  }
