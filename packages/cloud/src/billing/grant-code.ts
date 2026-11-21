@@ -42,14 +42,11 @@ export function canonical(text: string): string {
   //@ ensures allCrockford(\result)
   if (text.length === 0) return ""
   const unit = text.charCodeAt(0)
-  const rest = canonical(text.slice(1))
   const read = readUnit(unit)
-  if (isSeparator(unit) || read === -1) return rest
-  const code = String.fromCharCode(read) + rest
-  //@ assert code.slice(1) === rest
-  return code
+  return isSeparator(unit) || read === -1 ? canonical(text.slice(1)) : String.fromCharCode(read) + canonical(text.slice(1))
 }
 
+/** @throws {never} */
 //@ pure
 export function normalizeSubscriptionCode(text: string): string {
   //@ ensures allCrockford(\result)

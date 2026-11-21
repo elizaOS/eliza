@@ -1,45 +1,56 @@
-// spec/cloud/billing/providerEvents.md, "Story: Apply each payment event once, whatever the delivery order"; spec/core/sessions.md, "Story: Retry an interaction without repeating its external effect"
-import { apply as stepClaim, decodeState as decodeClaim, initial as noClaim, type Event as ClaimEvent, type Session, type SessionOwner } from "../../gen/core__sessions.effect.vibe"
+// spec/cloud/billing/providerEvents.md, "Story: Apply each payment event once, whatever the delivery order"; spec/cloud/billing/providerEvents.md, "Story: Keep an event that cannot be applied until the provider sends it again"
+import {
+  NotAState, Rejected, apply, canClaim, decodeState, drainBatch, drainBudget, drainEvery, elapse, holdsLease, initial, intakeAnswer, nowOf, routeOf, verifiedDelivery,
+  type Event, type HandlerError, type HandlerResult, type ProviderEvent, type ProviderEventType
+} from "../../gen/cloud__billing__providerEvents.effect.vibe"
 import { refused } from "../http/refusal.vibe"
 import { json, type CloudContext, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import { Deployment } from "../profile/profile.vibe"
-import { retrieveCharge, retrieveInvoice, StripeCharge, StripeCheckoutSession, StripeDispute, StripeEvent, StripeInvoice, StripeSubscription, verifyWebhookSignature } from "../providers/stripe.vibe"
+import { retrieveCharge, retrieveInvoice, StripeCharge, StripeCheckoutSession, StripeDispute, StripeEvent, StripeInvoice, StripeSubscription, StripeUnavailable, verifyWebhookSignature } from "../providers/stripe.vibe"
 import { sha256Hex } from "../shared/sealing.vibe"
-import { Store, toInt, toText, type Row, type Tx } from "../store/connection.vibe"
-import { RowCorrupt } from "../store/rows.vibe"
+import { Store, StoreFailure, toText, type Tx } from "../store/connection.vibe"
+import { loadRow, RowConflict, RowCorrupt, stepRow, type Columns, type MachineRows } from "../store/rows.vibe"
 import { clawBackInvoice, restoreInvoice } from "./allowance.vibe"
+import { applyCheckoutEvent } from "./checkout.vibe"
 import { observeSubscription, reconcileSubscription } from "./subscriptions.vibe"
 
 export const webhookPath = "/api/stripe/webhook"
 export const maxWebhookBytes = 256 * 1024
-export const drainEveryMs = 10_000
-export const drainBatch = 25
-export const drainBudgetMs = 25_000
-export const leaseMs = drainBudgetMs + 60_000
-export const retryMinutes = [1, 2, 4, 8, 16, 32, 60, 60] as const
-export const maxAttempts = retryMinutes.length
-const claimLifetimeMs = 30 * 24 * 3_600_000
-const drainer: SessionOwner = { agentId: "cloud", actorId: "payment-provider", connector: "provider-events" }
 
 export error ProviderEventMalformed { id: string; type: string }
 
-export type EventState = "Pending" | "Leased" | "Done" | "DeadLettered"
+interface Timed {
+  readonly now: number
+  readonly event: Event
+}
+
+const stripeTypes: ReadonlyMap<string, ProviderEventType> = new Map<string, ProviderEventType>([
+  ["checkout.session.completed", "CheckoutSessionCompleted"],
+  ["checkout.session.expired", "CheckoutSessionExpired"],
+  ["invoice.paid", "InvoicePaid"],
+  ["invoice.payment_failed", "InvoicePaymentFailed"],
+  ["customer.subscription.updated", "SubscriptionUpdated"],
+  ["customer.subscription.deleted", "SubscriptionDeleted"],
+  ["charge.refunded", "ChargeRefunded"],
+  ["charge.dispute.funds_withdrawn", "DisputeFundsWithdrawn"],
+  ["charge.dispute.funds_reinstated", "DisputeFundsReinstated"]
+])
 
 type Sink =
   | { readonly kind: "checkout"; readonly session: StripeCheckoutSession }
   | { readonly kind: "subscription"; readonly customerId: string | null }
   | { readonly kind: "refund"; readonly charge: StripeCharge }
-  | { readonly kind: "dispute"; readonly dispute: StripeDispute; readonly funds: "withdrawn" | "reinstated" }
-  | { readonly kind: "ignored" }
+  | { readonly kind: "dispute"; readonly dispute: StripeDispute }
+  | { readonly kind: "unowned" }
 
 type Settled =
   | { readonly kind: "done" }
-  | { readonly kind: "retried"; readonly code: string }
-  | { readonly kind: "deadLettered"; readonly code: string }
+  | { readonly kind: "retried" }
+  | { readonly kind: "deadLettered" }
   | { readonly kind: "stale" }
 
 interface Claimed {
-  readonly id: string
+  readonly key: string
   readonly token: number
 }
 
@@ -49,6 +60,9 @@ export interface DrainReport {
   readonly deadLettered: number
   readonly released: number
 }
+
+const applied: HandlerResult = { tag: "Applied" }
+const nothingToApply: HandlerResult = { tag: "NothingToApply" }
 
 function decoded<A>(schema: Schema.Codec<A>, raw: unknown): A | undefined {
   return Option.getOrUndefined(Schema.decodeUnknownOption(schema)(raw))
@@ -62,33 +76,70 @@ function parsedJson(text: string): unknown {
   }
 }
 
-effect function claimAt(claim: Session, now: number, event: ClaimEvent) {
-  const current = try stepClaim(claim, { type: "elapse", elapsed: Math.max(0, now - claim.now) }, drainer)
-  return try stepClaim(current, event, drainer)
+function signedAtOf(header: string): number {
+  const stamp = /(?:^|,)\s*t=(\d{1,12})\s*(?:,|$)/.exec(header)
+  return stamp === null ? 0 : Number(stamp[1]) * 1000
 }
 
-effect function freshClaim(now: number) {
-  return try claimAt(noClaim, now, { type: "create", expiresAt: now + claimLifetimeMs })
+function at(state: ProviderEvent, now: number): ProviderEvent {
+  return now > nowOf(state) ? elapse(state, now - nowOf(state)) : state
+}
+
+effect function applyAt(state: ProviderEvent, sent: Timed): ProviderEvent!Rejected {
+  const current = sent.now > nowOf(state) ? try apply(state, { type: "elapse", elapsed: sent.now - nowOf(state) }) : state
+  return try apply(current, sent.event)
+}
+
+const eventRows: MachineRows<ProviderEvent, Timed, ProviderEvent, Rejected, NotAState> = {
+  table: "provider_events", initial, decodeState, apply: applyAt, next: (state) => state
+}
+
+function columnsOf(state: ProviderEvent, now: number, changes: Columns): Columns {
+  const leaseEnds = state.lease.phase === "Claimed" ? state.lease.leaseUntil : 0
+  return {
+    phase: state.phase.tag,
+    attempts: state.attempts,
+    next_attempt_at: Math.max(state.dueAt, leaseEnds),
+    lease_until: state.phase.tag === "Leased" ? state.lease.leaseUntil : null,
+    updated_at: now,
+    ...(state.phase.tag === "Done" ? { payload: null } : {}),
+    ...changes
+  }
+}
+
+effect function step(tx: Tx, key: string, now: number, event: Event, changes: Columns = {}) {
+  return (try stepRow(tx, eventRows, key, { now, event }, (state) => columnsOf(state, now, changes))).state
+}
+
+effect function logDeadLetter(state: ProviderEvent, code: string) {
+  try annotateLogs(logWarning("a provider event was dead-lettered"), { eventId: state.eventId, eventType: state.eventType, attempts: state.attempts, code })
 }
 
 type Intake = "stored" | "revived" | "duplicate"
 
-effect function record(tx: Tx, event: StripeEvent, payload: string, digest: string, now: number) {
-  const claim = JSON.stringify(try freshClaim(now))
-  const inserted = try tx.query(
-    `INSERT INTO provider_events (id, type, livemode, payload, payload_digest, state, attempts, next_attempt_at, claim, created_at, updated_at)
-     VALUES ($1, $2, $3, $4::jsonb, $5, 'Pending', 0, $6, $7::jsonb, $6, $6) ON CONFLICT (id) DO NOTHING RETURNING id`,
-    [event.id, event.type, event.livemode, payload, digest, now, claim]
-  )
-  if (inserted.length === 1) return "stored" satisfies Intake
-  const row = (try tx.query("SELECT state, payload_digest FROM provider_events WHERE id = $1 FOR UPDATE", [event.id]))[0]
-  if (row === undefined || row.payload_digest !== digest) throw refused("IdempotencyConflict")
-  if (row.state !== "DeadLettered") return "duplicate" satisfies Intake
-  try tx.query(
-    `UPDATE provider_events SET state = 'Pending', attempts = 0, next_attempt_at = $2, lease_until = NULL, claim = $3::jsonb, last_error_code = NULL, updated_at = $2 WHERE id = $1`,
-    [event.id, now, claim]
-  )
-  return "revived" satisfies Intake
+effect function record(tx: Tx, event: StripeEvent, eventType: ProviderEventType, payload: string, signedAt: number, liveEnvironment: boolean, now: number) {
+  const payloadDigest = sha256Hex(payload)
+  const loaded = try loadRow(tx, eventRows, event.id)
+  const delivery = { payloadDigest, signatureValid: true, signedAt, livemode: event.livemode, liveEnvironment }
+  const answer = intakeAnswer(at(loaded.state, now), payloadDigest, true)
+  switch (answer) {
+    case "StoredNew":
+      try step(tx, event.id, now, { type: "receive", eventId: event.id, eventType, ...delivery },
+        { type: event.type, livemode: event.livemode, payload, payload_digest: payloadDigest, last_error_code: null, created_at: now })
+      return "stored" satisfies Intake
+    case "RevivedResend": {
+      const revived = try step(tx, event.id, now, { type: "revive", ...delivery }, { last_error_code: null })
+      try annotateLogs(logInfo("a dead-lettered provider event was revived"), { eventId: event.id, revivals: revived.revivals })
+      return "revived" satisfies Intake
+    }
+    case "DuplicateDelivery": return "duplicate" satisfies Intake
+    case "RefusedOtherPayload": throw refused("IdempotencyConflict")
+    case "RefusedUnverified": throw refused("InvalidRequest")
+    default: {
+      const _exhaustive: never = answer
+      return _exhaustive
+    }
+  }
 }
 
 effect function receive(context: RouteContext) {
@@ -97,48 +148,55 @@ effect function receive(context: RouteContext) {
   if (billing === undefined) throw refused("CapabilityUnavailable")
   const secret = deployment.secret(billing.webhookSecretEnv) catch effect () => { throw refused("ServiceUnavailable", "NoReason", context.now + 5_000) }
   const raw = context.request.text catch effect () => { throw refused("InvalidRequest") }
-  if (!verifyWebhookSignature(raw, context.request.headers["stripe-signature"] ?? "", secret, context.now)) throw refused("InvalidRequest")
+  const header = context.request.headers["stripe-signature"] ?? ""
+  const signedAt = signedAtOf(header)
+  const liveEnvironment = deployment.environment === "production"
   const event = decoded(StripeEvent, parsedJson(raw))
-  if (event === undefined || event.livemode !== (deployment.environment === "production")) throw refused("InvalidRequest")
-  const payload = JSON.stringify(event)
+  if (event === undefined || !verifiedDelivery(at(initial, context.now), verifyWebhookSignature(raw, header, secret, context.now), signedAt, event.livemode, liveEnvironment)) throw refused("InvalidRequest")
   const store = try Store
-  const intake = try store.transaction((tx) => record(tx, event, payload, sha256Hex(payload), context.now))
-  return json({ duplicate: intake === "duplicate" })
+  const intake = store.transaction((tx) => record(tx, event, stripeTypes.get(event.type) ?? "OtherEventType", JSON.stringify(event), signedAt, liveEnvironment, context.now)) catch effect (failure) => {
+    if (failure instanceof RowConflict) throw refused("ServiceUnavailable", "NoReason", context.now + 5_000)
+    throw failure
+  }
+  return json(intake === "duplicate" ? { received: true, duplicate: true } : { received: true, queued: true })
 }
 
-function sinkOf(event: StripeEvent): Sink | undefined {
-  const object = event.data.object
-  switch (event.type) {
-    case "checkout.session.completed":
-    case "checkout.session.expired": {
+function sinkOf(eventType: ProviderEventType, object: unknown): Sink | undefined {
+  switch (eventType) {
+    case "CheckoutSessionCompleted":
+    case "CheckoutSessionExpired": {
       const session = decoded(StripeCheckoutSession, object)
       return session === undefined ? undefined : { kind: "checkout", session }
     }
-    case "invoice.paid":
-    case "invoice.payment_failed": {
+    case "InvoicePaid":
+    case "InvoicePaymentFailed": {
       const invoice = decoded(StripeInvoice, object)
       return invoice === undefined ? undefined : { kind: "subscription", customerId: invoice.customer }
     }
-    case "customer.subscription.updated":
-    case "customer.subscription.deleted": {
+    case "SubscriptionUpdated":
+    case "SubscriptionDeleted": {
       const subscription = decoded(StripeSubscription, object)
       return subscription === undefined ? undefined : { kind: "subscription", customerId: subscription.customer }
     }
-    case "charge.refunded": {
+    case "ChargeRefunded": {
       const charge = decoded(StripeCharge, object)
       return charge === undefined ? undefined : { kind: "refund", charge }
     }
-    case "charge.dispute.funds_withdrawn":
-    case "charge.dispute.funds_reinstated": {
+    case "DisputeFundsWithdrawn":
+    case "DisputeFundsReinstated": {
       const dispute = decoded(StripeDispute, object)
-      return dispute === undefined ? undefined : { kind: "dispute", dispute, funds: event.type === "charge.dispute.funds_withdrawn" ? "withdrawn" : "reinstated" }
+      return dispute === undefined ? undefined : { kind: "dispute", dispute }
     }
-    default:
-      return { kind: "ignored" }
+    case "OtherEventType": return { kind: "unowned" }
+    default: {
+      const _exhaustive: never = eventType
+      return _exhaustive
+    }
   }
 }
 
-effect function organizationOf(tx: Tx, customerId: string) {
+effect function organizationOf(tx: Tx, customerId: string | null) {
+  if (customerId === null) return undefined
   const rows = try tx.query(
     "SELECT organization_id AS organization FROM cloud_checkout_customers WHERE customer_id = $1 UNION SELECT key AS organization FROM subscriptions WHERE customer_id = $1",
     [customerId]
@@ -147,48 +205,46 @@ effect function organizationOf(tx: Tx, customerId: string) {
   return toText(rows[0]?.organization)
 }
 
-effect function reconcileCustomer(tx: Tx, customerId: string | null, now: number) {
-  const organizationId = customerId === null ? undefined : try organizationOf(tx, customerId)
-  if (organizationId === undefined) return
+effect function reconcileOrganization(tx: Tx, organizationId: string, now: number) {
   try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId])
   try reconcileSubscription(tx, organizationId, try observeSubscription(tx, organizationId), now)
+  return applied
 }
 
-effect function subscriptionInvoiceOf(charge: StripeCharge, deadline: number, now: number) {
+effect function settleCharge(tx: Tx, eventType: ProviderEventType, charge: StripeCharge, deadline: number, now: number) {
+  const organizationId = try organizationOf(tx, charge.customer)
   const invoiceId = charge.invoice ?? null
-  if (invoiceId === null || charge.customer === null) return undefined
+  if (organizationId === undefined || invoiceId === null || (eventType === "ChargeRefunded" && charge.amount_refunded <= 0)) return nothingToApply
   const invoice = try retrieveInvoice(invoiceId, { timeout: Math.max(1, deadline - now) })
-  return (invoice.parent?.subscription_details?.subscription ?? null) === null ? undefined : invoice.id
-}
-
-effect function settleInvoiceCharge(tx: Tx, charge: StripeCharge, funds: "refunded" | "withdrawn" | "reinstated", deadline: number, now: number) {
-  const invoiceId = try subscriptionInvoiceOf(charge, deadline, now)
-  if (invoiceId === undefined) return
-  switch (funds) {
-    case "refunded":
-      if (charge.amount_refunded > 0) try clawBackInvoice(tx, invoiceId, "RefundClawback", now)
+  const route = routeOf(eventType, (invoice.parent?.subscription_details?.subscription ?? null) !== null)
+  if (route.tag !== "ToAllowance") return nothingToApply
+  const change = route.change
+  switch (change.tag) {
+    case "ClawBack":
+      if (change.cause === "NoClawback") return nothingToApply
+      try clawBackInvoice(tx, invoice.id, change.cause, now)
       break
-    case "withdrawn":
-      try clawBackInvoice(tx, invoiceId, "DisputeClawback", now)
-      break
-    case "reinstated":
-      try restoreInvoice(tx, invoiceId, now)
+    case "RestoreAllowance":
+      try restoreInvoice(tx, invoice.id, now)
       break
     default: {
-      const _exhaustive: never = funds
+      const _exhaustive: never = change
       return _exhaustive
     }
   }
-  try reconcileCustomer(tx, charge.customer, now)
+  return try reconcileOrganization(tx, organizationId, now)
 }
 
-effect function applySink(tx: Tx, sink: Sink, deadline: number, now: number) {
+effect function applySink(tx: Tx, eventType: ProviderEventType, sink: Sink, deadline: number, now: number) {
   switch (sink.kind) {
-    case "checkout": return try reconcileCustomer(tx, sink.session.customer, now)
-    case "subscription": return try reconcileCustomer(tx, sink.customerId, now)
-    case "refund": return try settleInvoiceCharge(tx, sink.charge, "refunded", deadline, now)
-    case "dispute": return try settleInvoiceCharge(tx, try retrieveCharge(sink.dispute.charge, { timeout: Math.max(1, deadline - now) }), sink.funds, deadline, now)
-    case "ignored": return
+    case "checkout": return (try applyCheckoutEvent(tx, sink.session, now)) === undefined ? nothingToApply : applied
+    case "subscription": {
+      const organizationId = try organizationOf(tx, sink.customerId)
+      return organizationId === undefined ? nothingToApply : try reconcileOrganization(tx, organizationId, now)
+    }
+    case "refund": return try settleCharge(tx, eventType, sink.charge, deadline, now)
+    case "dispute": return try settleCharge(tx, eventType, try retrieveCharge(sink.dispute.charge, { timeout: Math.max(1, deadline - now) }), deadline, now)
+    case "unowned": return nothingToApply
     default: {
       const _exhaustive: never = sink
       return _exhaustive
@@ -196,131 +252,109 @@ effect function applySink(tx: Tx, sink: Sink, deadline: number, now: number) {
   }
 }
 
-effect function leasedClaim(tx: Tx, claimed: Claimed) {
-  const row = (try tx.query("SELECT type, state, claim, attempts, payload FROM provider_events WHERE id = $1 FOR UPDATE", [claimed.id]))[0]
-  if (row === undefined || row.state !== "Leased") return undefined
-  const claim = decodeClaim(row.claim) catch () => undefined
-  return claim === undefined || claim.currentClaim !== claimed.token ? undefined : { row, claim }
+function handlerErrorOf(failure: unknown): HandlerError {
+  if (failure instanceof ProviderEventMalformed) return "PayloadParseFailed"
+  if (failure instanceof StripeUnavailable) return failure.status === 429 ? "ProviderThrottled" : "ProviderDown"
+  if (failure instanceof StoreFailure || failure instanceof RowConflict) return "StoreBusy"
+  return "UnclassifiedError"
+}
+
+effect function heldLease(tx: Tx, claimed: Claimed, now: number) {
+  const loaded = try loadRow(tx, eventRows, claimed.key)
+  return loaded.found && holdsLease(at(loaded.state, now), claimed.token) ? loaded.state : undefined
 }
 
 effect function settleDone(claimed: Claimed, deadline: number, now: number) {
   const store = try Store
   return try store.transaction(effect (tx: Tx) => {
-    const leased = try leasedClaim(tx, claimed)
-    if (leased === undefined) return { kind: "stale" } satisfies Settled
-    const event = decoded(StripeEvent, leased.row.payload)
-    const sink = event === undefined ? undefined : sinkOf(event)
-    if (event === undefined || sink === undefined) throw new ProviderEventMalformed({ id: claimed.id, type: toText(leased.row.type) ?? "" })
-    const committed = try claimAt(leased.claim, now, { type: "commit", claimToken: claimed.token, responseDigest: leased.claim.digest })
-    try applySink(tx, sink, deadline, now)
-    const invoked = try stepClaim(committed, { type: "invoke", claimToken: claimed.token }, drainer)
-    const completed = try stepClaim(try stepClaim(invoked, { type: "recordOutcome" }, drainer), { type: "complete" }, drainer)
-    try tx.query(
-      "UPDATE provider_events SET state = 'Done', payload = NULL, lease_until = NULL, claim = $2::jsonb, last_error_code = NULL, updated_at = $3 WHERE id = $1",
-      [claimed.id, JSON.stringify(completed), now]
-    )
+    const held = try heldLease(tx, claimed, now)
+    if (held === undefined) return { kind: "stale" } satisfies Settled
+    const payload = (try tx.query("SELECT payload FROM provider_events WHERE key = $1", [claimed.key]))[0]?.payload
+    const event = decoded(StripeEvent, payload)
+    const sink = event === undefined ? undefined : sinkOf(held.eventType, event.data.object)
+    if (sink === undefined) throw new ProviderEventMalformed({ id: claimed.key, type: held.eventType })
+    const result = try applySink(tx, held.eventType, sink, deadline, now)
+    try step(tx, claimed.key, now, { type: "finish", claimToken: claimed.token, result }, { last_error_code: null })
     return { kind: "done" } satisfies Settled
   })
 }
 
-effect function deadLetter(tx: Tx, id: string, code: string, now: number) {
-  try tx.query("UPDATE provider_events SET state = 'DeadLettered', lease_until = NULL, last_error_code = $2, updated_at = $3 WHERE id = $1", [id, code, now])
-}
-
-function retryAt(attempts: number, claim: Session, now: number): number {
-  return Math.max(now + (retryMinutes[attempts - 1] ?? 60) * 60_000, claim.leaseUntil)
-}
-
-effect function settleFailed(claimed: Claimed, code: string, now: number) {
+effect function settleFailed(claimed: Claimed, failure: unknown, code: string, now: number) {
   const store = try Store
   return try store.transaction(effect (tx: Tx) => {
-    const leased = try leasedClaim(tx, claimed)
-    if (leased === undefined) return { kind: "stale" } satisfies Settled
-    const attempts = toInt(leased.row.attempts)
-    if (code === "ProviderEventMalformed" || attempts >= maxAttempts) {
-      try deadLetter(tx, claimed.id, code, now)
-      return { kind: "deadLettered", code } satisfies Settled
-    }
-    try tx.query(
-      "UPDATE provider_events SET state = 'Pending', next_attempt_at = $2, lease_until = NULL, last_error_code = $3, updated_at = $4 WHERE id = $1",
-      [claimed.id, retryAt(attempts, leased.claim, now), code, now]
-    )
-    return { kind: "retried", code } satisfies Settled
+    if ((try heldLease(tx, claimed, now)) === undefined) return { kind: "stale" } satisfies Settled
+    const settled = try step(tx, claimed.key, now, { type: "finish", claimToken: claimed.token, result: { tag: "Failed", error: handlerErrorOf(failure) } }, { last_error_code: code })
+    if (settled.phase.tag !== "DeadLettered") return { kind: "retried" } satisfies Settled
+    try logDeadLetter(settled, code)
+    return { kind: "deadLettered" } satisfies Settled
   })
 }
 
 effect function release(claimed: Claimed, now: number) {
   const store = try Store
-  try store.transaction((tx) => tx.query(
-    "UPDATE provider_events SET state = 'Pending', attempts = attempts - 1, next_attempt_at = lease_until, lease_until = NULL, updated_at = $3 WHERE id = $1 AND state = 'Leased' AND (claim->>'currentClaim')::bigint = $2",
-    [claimed.id, claimed.token, now]
-  ))
+  try store.transaction(effect (tx: Tx) => {
+    if ((try heldLease(tx, claimed, now)) !== undefined) try step(tx, claimed.key, now, { type: "release", claimToken: claimed.token })
+  })
 }
 
-effect function claimRow(tx: Tx, row: Row, now: number) {
-  const id = toText(row.id) ?? ""
-  const attempts = toInt(row.attempts)
-  const lapsed = row.state === "Leased"
-  if (attempts >= maxAttempts) {
-    try deadLetter(tx, id, "LeaseLapsed", now)
-    return undefined
-  }
-  const claim = decodeClaim(row.claim) catch () => undefined
-  const acquired = claim === undefined ? undefined
-    : claimAt(claim, now, { type: "acquire", responseDigest: toText(row.payload_digest) ?? "", leaseDuration: leaseMs }) catch () => undefined
-  if (acquired === undefined) {
-    try deadLetter(tx, id, claim === undefined ? "ClaimCorrupt" : "ClaimExpired", now)
-    return undefined
-  }
-  try tx.query(
-    `UPDATE provider_events SET state = 'Leased', attempts = attempts + 1, lease_until = $2, claim = $3::jsonb, last_error_code = CASE WHEN $4 THEN 'LeaseLapsed' ELSE last_error_code END, updated_at = $5 WHERE id = $1`,
-    [id, acquired.leaseUntil, JSON.stringify(acquired), lapsed, now]
-  )
-  return { id, token: acquired.currentClaim } satisfies Claimed
+type ClaimOutcome =
+  | { readonly kind: "claimed"; readonly claimed: Claimed }
+  | { readonly kind: "deadLettered" }
+  | { readonly kind: "skipped" }
+
+effect function claimOne(tx: Tx, key: string, now: number) {
+  const loaded = try loadRow(tx, eventRows, key)
+  const current = at(loaded.state, now)
+  if (!loaded.found || !canClaim(current)) return { kind: "skipped" } satisfies ClaimOutcome
+  const claimed = try step(tx, key, now, { type: "claim" }, current.phase.tag === "Leased" ? { last_error_code: "LeaseLapsed" } : {})
+  if (claimed.phase.tag !== "DeadLettered") return { kind: "claimed", claimed: { key, token: claimed.lease.currentClaim } } satisfies ClaimOutcome
+  try logDeadLetter(claimed, "LeaseLapsed")
+  return { kind: "deadLettered" } satisfies ClaimOutcome
 }
 
 effect function claimDue(now: number) {
   const store = try Store
   return try store.transaction(effect (tx: Tx) => {
     const due = try tx.query(
-      `SELECT id, state, attempts, claim, payload_digest FROM provider_events
-       WHERE (state = 'Pending' AND next_attempt_at <= $1) OR (state = 'Leased' AND lease_until <= $1)
-       ORDER BY created_at, id LIMIT $2 FOR UPDATE SKIP LOCKED`,
+      `SELECT key FROM provider_events WHERE phase IN ('Pending', 'Leased') AND next_attempt_at <= $1
+       ORDER BY created_at, key LIMIT $2 FOR UPDATE SKIP LOCKED`,
       [now, drainBatch]
     )
     const claimed: Array<Claimed> = []
+    let deadLettered = 0
     for (const row of due) {
-      const one = try claimRow(tx, row, now)
-      if (one !== undefined) claimed.push(one)
+      const one: ClaimOutcome = try claimOne(tx, toText(row.key) ?? "", now)
+      if (one.kind === "claimed") claimed.push(one.claimed)
+      if (one.kind === "deadLettered") deadLettered += 1
     }
-    return claimed
+    return { claimed, deadLettered }
   })
 }
 
 effect function settle(claimed: Claimed, deadline: number, now: number) {
   return settleDone(claimed, deadline, now) catch effect (failure) => {
-    try annotateLogs(logWarning("a provider event failed"), { eventId: claimed.id, code: failure._tag })
-    return try settleFailed(claimed, failure._tag, now)
+    try annotateLogs(logWarning("a provider event failed"), { eventId: claimed.key, code: failure._tag })
+    return try settleFailed(claimed, failure, failure._tag, now)
   }
 }
 
 export effect function drainProviderEvents(now: number): DrainReport!!CloudContext {
   const started = try Clock.currentTimeMillis
-  const claimed = claimDue(now) catch effect (failure) => {
+  const due = claimDue(now) catch effect (failure) => {
     try annotateLogs(logWarning("provider events could not be claimed"), { failure: failure._tag })
-    return []
+    return { claimed: [], deadLettered: 0 }
   }
-  const deadline = now + drainBudgetMs
-  const report = { done: 0, retried: 0, deadLettered: 0, released: 0 }
-  for (const each of claimed) {
-    const at = now + (try Clock.currentTimeMillis) - started
-    if (at >= deadline) {
-      release(each, at) catch effect (failure) => { try annotateLogs(logWarning("a provider event could not be released"), { eventId: each.id, failure: failure._tag }) }
+  const deadline = now + drainBudget
+  const report = { done: 0, retried: 0, deadLettered: due.deadLettered, released: 0 }
+  for (const each of due.claimed) {
+    const reached = now + (try Clock.currentTimeMillis) - started
+    if (reached >= deadline) {
+      release(each, reached) catch effect (failure) => { try annotateLogs(logWarning("a provider event could not be released"), { eventId: each.key, failure: failure._tag }) }
       report.released += 1
       continue
     }
-    const settled = settle(each, deadline, at) catch effect (failure) => {
-      try annotateLogs(logWarning("a provider event failure could not be recorded"), { eventId: each.id, failure: failure._tag })
+    const settled = settle(each, deadline, reached) catch effect (failure) => {
+      try annotateLogs(logWarning("a provider event failure could not be recorded"), { eventId: each.key, failure: failure._tag })
       return { kind: "stale" } satisfies Settled
     }
     switch (settled.kind) {
@@ -345,4 +379,4 @@ export const routes: ReadonlyArray<Route> = [
   { method: "POST", path: webhookPath, auth: "ProviderSignature", capability: "billing", maxBodyBytes: maxWebhookBytes, handler: receive }
 ]
 
-export const sweeps: ReadonlyArray<Sweep> = [{ name: "provider events", everyMs: drainEveryMs, run: drainDue() }]
+export const sweeps: ReadonlyArray<Sweep> = [{ name: "provider events", everyMs: drainEvery, run: drainDue() }]

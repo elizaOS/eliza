@@ -53,8 +53,8 @@ type ClientStep = { state: RuntimeClient, out: List[BridgeCall] }
 pure val initial: RuntimeClient = { gen: 0, nextId: 0, refresh: Current, startup: NoStartup, requests: List() }
 pure val reportValues = Set(Unavailable, Available({ phase: Stopped }), Available({ phase: Starting }), Available({ phase: Running }))
 pure val fallbackValues = Set(NoFallback, HttpFallback)
-pure val ofGenValues = Set(0, 1, 2)
-pure val idValues = Set(0, 1, 2)
+pure val ofGenValues = 0.to(20)
+pure val idValues = 0.to(20)
 pure def emit(out: List[BridgeCall], c: RuntimeClient): ClientStep = { state: c, out: out }
 pure def ensureCalls(phase: RuntimePhase, c: RuntimeClient): List[BridgeCall] = if (c.startup == NoStartup and phase == Stopped) List(CallStart) else List()
 pure def refreshing(r: Refresh): bool = r == ProbingAccount or r == Restarting or r == AwaitRestart
@@ -343,7 +343,7 @@ pure def canReply(c: RuntimeClient, id: int): bool = own(c, id) and sentNow(c, i
 pure def reply(c: RuntimeClient, id: int, httpStatus: int, retry: RetryAdvice): RuntimeClient =
   { ...c, requests: c.requests.listMap(r => if (r.id == id) { ...r, stage: answerOf(r.stage, r.delivery, httpStatus, retry) } else r) }
 pure val httpStatusValues = Set(200, 409, 429, 503)
-pure val retryValues = Set(NoAdvice, RetryAfter({ seconds: -1 }), RetryAfter({ seconds: 0 }), RetryAfter({ seconds: 30 }), RetryAfter({ seconds: 9007199254740992 }))
+pure val retryValues = Set(NoAdvice, RetryAfter({ seconds: -1 }), RetryAfter({ seconds: 0 }), RetryAfter({ seconds: 30 }), RetryAfter({ seconds: maxSafeInteger }))
 pure def adviceAllowed(httpStatus: int, advice: RetryAdvice): bool = match advice {
   | RetryAfter(a) => httpStatus == 429 and a.seconds >= 0 and a.seconds <= maxSafeInteger
   | NoAdvice => true

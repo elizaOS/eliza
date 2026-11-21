@@ -1,0 +1,510 @@
+// spec/cloud/services/google/connection.md, "Initiate is admitted only for the owner side, at least one capability, Google configured, and either no return or the exact connect return of one enabled registration with one state parameter"; spec/cloud/services/google/connection.md, "Every step of a connect attempt is a step of core's OAuth flow, and its state lives ten minutes"; spec/cloud/services/google/connection.md, "The callback stores the sealed grant only on the one connection of its Google subject"; spec/cloud/services/google/connection.md, "The callback returns connected only with the grant stored, denied when the owner refused at Google, and failed otherwise, and an unconsumed attempt never returns to the app"; spec/cloud/services/google/connection.md, "A later grant for the same Google subject, or a native code for a new one, replaces the connection's tokens and scopes and makes it active"; spec/cloud/services/google/connection.md, "The status says connected exactly when a use of a granted capability can succeed now or after a refresh"; spec/cloud/services/google/connection.md, "Disconnect revokes the grant at Google, then erases its tokens and scopes and marks it revoked, whatever Google answered"
+import {
+  appReturnFit, callbackAnswerOf, canDisconnect, holdsRefreshToken, initial, initiateAdmitted, initiateRefusal, requestedScopes, selectionRefusal, statusReason,
+  type AppReturnFit, type CallbackKind, type ConnectRequest, type ConnectResult, type Connection, type Event, type StatusReason
+} from "../../../gen/cloud__services__google__connection.effect.vibe"
+import { returnsAt, type Registration } from "../../../gen/cloud__nativeClients__registry.effect.vibe"
+import { millisPerMinute, millisPerSecond } from "../../../gen/cloud__shared__types.effect.vibe"
+import { refused, Refused } from "../../http/refusal.vibe"
+import type { Caller } from "../../http/request-auth.vibe"
+import { json, jsonBody, owner as ownerOf, type Route, type RouteContext, type Sweep } from "../../http/routes.vibe"
+import { parseReturn, readClient, readRegistry, servedEnvironment } from "../../native-clients/registry.vibe"
+import { connectedReturnPage } from "../../native-clients/return-routes.vibe"
+import { capabilityEnabled, Deployment } from "../../profile/profile.vibe"
+import { readIdToken } from "../../providers/google-identity.vibe"
+import { openTokens, revokeToken, sealTokens, tokenForm, type GoogleProfile, type GoogleTokens } from "../../providers/google.vibe"
+import { s256 } from "../../shared/credential-crypto.vibe"
+import { newId, secretText, tokenDigest } from "../../shared/sealing.vibe"
+import { Store, toInt, toText, type Row, type Tx } from "../../store/connection.vibe"
+import { loadRow, stepRow, type Columns } from "../../store/rows.vibe"
+import {
+  atTime, capabilitiesOf, connectionColumns, connectionRows, googleCapabilities, kindOf, knownScopes, pickGrant, restoreLegacyConnection, scopeName, sideOf, storeGrant,
+  type GoogleCapability, type Owner
+} from "./grant-access.vibe"
+
+export const callbackPath = "/api/v1/oauth/google/callback"
+const google = "/api/v1/eliza/google"
+const statePattern = /^[A-Za-z0-9_-]{43}$/
+const noStore = { "cache-control": "no-store", "referrer-policy": "no-referrer" }
+const unexchanged = { subject: "unexchanged", lifetime: 1 }
+
+const InitiateBody = Schema.Struct({
+  side: Schema.optionalKey(Schema.String),
+  capabilities: Schema.Array(Schema.String).check(Schema.isMaxLength(16)),
+  redirectUrl: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2048)))
+})
+const NativeBody = Schema.Struct({
+  serverAuthCode: Schema.String.check(Schema.isMinLength(10), Schema.isMaxLength(2048), Schema.isPattern(/^[A-Za-z0-9/_.~-]+$/))
+})
+const GrantId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200))
+const DisconnectBody = Schema.Struct({ side: Schema.optionalKey(Schema.String), connectionId: Schema.optionalKey(GrantId), grantId: Schema.optionalKey(GrantId) })
+schema CodeReply { access_token: string; expires_in: number; refresh_token?: string; scope?: string; id_token?: string }
+
+const results: Readonly<Record<ConnectResult, string>> = { Connected: "connected", Denied: "denied", Failed: "failed" }
+const reasons: Readonly<Record<StatusReason, string>> = {
+  ReasonConnected: "connected",
+  ReasonDisconnected: "disconnected",
+  ReasonConfigMissing: "config_missing",
+  ReasonTokenMissing: "token_missing",
+  ReasonNeedsReauth: "needs_reauth"
+}
+
+type AppReturn = { readonly fit: AppReturnFit; readonly registration: Registration | undefined; readonly url: string | undefined; readonly state: string }
+
+interface Granted {
+  readonly subject: string
+  readonly email: string
+  readonly scopes: ReadonlyArray<string>
+  readonly lifetime: number
+  readonly tokens: GoogleTokens
+}
+
+type CodeExchange =
+  | { readonly kind: "granted"; readonly granted: Granted }
+  | { readonly kind: "codeRejected" }
+  | { readonly kind: "unavailable" }
+  | { readonly kind: "invalidResponse" }
+
+interface Attempt {
+  readonly key: string
+  readonly owner: Owner
+  readonly capabilities: ReadonlyArray<GoogleCapability>
+  readonly redirectUrl: string | undefined
+  readonly appState: string
+  readonly clientId: string | undefined
+  readonly verifier: string
+}
+
+interface Landed {
+  readonly state: Connection
+  readonly connectionId: string | undefined
+}
+
+interface Held {
+  readonly key: string
+  readonly state: Connection
+  readonly email: string
+  readonly grantedScopes: ReadonlyArray<string>
+  readonly linkedAt: number
+  readonly lastUsedAt: number
+}
+
+function isCapability(name: string): name is GoogleCapability {
+  return googleCapabilities.some((capability) => capability === name)
+}
+
+function iso(at: number): string | null {
+  return Number.isSafeInteger(at) && at > 0 ? new Date(at).toISOString() : null
+}
+
+function texts(value: unknown): ReadonlyArray<string> {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+}
+
+function splitReturn(raw: string): { readonly wellFormed: boolean; readonly rest: string; readonly state: string } {
+  if (!URL.canParse(raw)) return { wellFormed: false, rest: "", state: "" }
+  const url = new URL(raw)
+  const states = url.searchParams.getAll("state")
+  const state = states[0] ?? ""
+  const wellFormed = url.hash === "" && [...url.searchParams.keys()].length === 1 && states.length === 1 && statePattern.test(state)
+  url.search = ""
+  return { wellFormed, rest: url.toString(), state }
+}
+
+function authorizeUrl(profile: GoogleProfile, request: ConnectRequest, state: string, verifier: string, callback: string): string {
+  return `${profile.accountsUrl}?${new URLSearchParams({
+    client_id: profile.clientId,
+    redirect_uri: callback,
+    response_type: "code",
+    scope: ["openid", ...requestedScopes(request.capabilities).map(scopeName)].join(" "),
+    state,
+    code_challenge: s256(verifier),
+    code_challenge_method: "S256",
+    access_type: "offline",
+    include_granted_scopes: "true",
+    prompt: "consent select_account"
+  })}`
+}
+
+function cloudResult(result: string) {
+  return json({ provider: "google", result }, { status: result === "connected" ? 200 : 400, headers: noStore })
+}
+
+function callbackKind(query: URLSearchParams): CallbackKind {
+  if (query.get("error") !== null) return "DeniedCallback"
+  return query.get("code") === null ? "IncompleteCallback" : "CodeCallback"
+}
+
+function attemptOf(row: Row): Attempt {
+  return {
+    key: toText(row.connection_id) ?? "",
+    owner: { organizationId: toText(row.organization_id) ?? "", userId: toText(row.user_id) ?? "" },
+    capabilities: texts(row.capabilities).filter(isCapability),
+    redirectUrl: toText(row.redirect_url),
+    appState: toText(row.app_state) ?? "",
+    clientId: toText(row.client_id),
+    verifier: toText(row.verifier) ?? ""
+  }
+}
+
+effect function managedGoogle() {
+  const settings = (try Deployment).settings
+  return capabilityEnabled(settings, "managedGoogle") ? settings.google : undefined
+}
+
+effect function callerOwner(caller: Caller): Owner!Refused {
+  const owner = ownerOf(caller)
+  if (owner === undefined) throw refused("AuthenticationRequired")
+  return owner
+}
+
+effect function callbackUrl() {
+  return `${(try Deployment).settings.api}${callbackPath}`
+}
+
+effect function step(tx: Tx, key: string, event: Event, now: number, extra: Columns = {}) {
+  return (try stepRow(tx, connectionRows, key, { at: now, event }, connectionColumns(extra))).state
+}
+
+effect function appReturnOf(tx: Tx, redirectUrl: string | undefined) {
+  if (redirectUrl === undefined) return { fit: "NoAppReturn", registration: undefined, url: undefined, state: "" } satisfies AppReturn
+  const split = splitReturn(redirectUrl)
+  const rest = parseReturn(split.rest)
+  const entries = rest === undefined ? [] : returnsAt(try readRegistry(tx), try servedEnvironment(), rest)
+  const fit = appReturnFit(entries, split.wellFormed)
+  return { fit, registration: fit === "RegisteredConnectReturn" ? entries[0]?.registration : undefined, url: redirectUrl, state: split.state } satisfies AppReturn
+}
+
+effect function callerClient(tx: Tx, caller: Caller) {
+  if (caller.kind !== "deviceKey") return undefined
+  return toText((try tx.query("SELECT client_id FROM device_grants WHERE key = $1", [caller.grantKey]))[0]?.client_id)
+}
+
+effect function initiate(context: RouteContext) {
+  const owner = try callerOwner(context.caller)
+  const body = try jsonBody(context, InitiateBody)
+  const capabilities = body.capabilities.filter(isCapability)
+  if (capabilities.length !== body.capabilities.length) throw refused("InvalidRequest")
+  const profile = try managedGoogle()
+  const callback = try callbackUrl()
+  const key = newId()
+  const googleState = secretText("", 32, "base64url")
+  const verifier = secretText("", 48, "base64url")
+  const now = context.now
+  const authUrl = try (try Store).transaction(effect (tx: Tx) => {
+    const target = try appReturnOf(tx, body.redirectUrl)
+    const request: ConnectRequest = { side: sideOf(body.side), capabilities: [...new Set(capabilities.map((capability) => kindOf[capability]))], appReturn: target.fit }
+    if (profile === undefined || !initiateAdmitted(true, request)) throw new Refused({ refusal: initiateRefusal(profile !== undefined, request) })
+    const clientId = target.registration?.clientId ?? (try callerClient(tx, context.caller))
+    const begun = try step(tx, key, { type: "begin", supported: true, configured: true, request }, now, { organization_id: owner.organizationId, user_id: owner.userId })
+    try tx.query(
+      "INSERT INTO google_connect_states (state_digest, organization_id, user_id, capabilities, redirect_url, verifier, expires_at, connection_id, client_id, app_state) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10)",
+      [tokenDigest(googleState), owner.organizationId, owner.userId, JSON.stringify(capabilities), target.url ?? null, verifier, begun.stateExpiresAt, key, clientId ?? null, target.state]
+    )
+    try step(tx, key, { type: "createResult", success: true }, now)
+    const url = authorizeUrl(profile, request, googleState, verifier, callback)
+    try step(tx, key, { type: "startProviderResult", success: true }, now)
+    try step(tx, key, { type: "writeStart", write: "WriteAcknowledged" }, now)
+    return url
+  })
+  return json({ authUrl, ...(body.redirectUrl === undefined ? {} : { appReturn: 2 }) }, { headers: noStore })
+}
+
+effect function exchangeCode(profile: GoogleProfile, clientId: string, fields: Readonly<Record<string, string>>) {
+  const secret = try orDie((try Deployment).secret(profile.clientSecretEnv))
+  const now = try Clock.currentTimeMillis
+  const answer = tokenForm(profile.tokenUrl, new URLSearchParams({ grant_type: "authorization_code", client_id: clientId, client_secret: secret, ...fields })) catch () => undefined
+  if (answer === undefined || answer.status === 429 || answer.status >= 500) return { kind: "unavailable" } satisfies CodeExchange
+  if (answer.status >= 400) return { kind: "codeRejected" } satisfies CodeExchange
+  const reply = Option.getOrUndefined(Schema.decodeUnknownOption(CodeReply)(answer.body))
+  if (answer.status >= 300 || reply === undefined || reply.access_token === "" || !(reply.expires_in > 0) || reply.id_token === undefined) return { kind: "invalidResponse" } satisfies CodeExchange
+  const token = try readIdToken(profile, reply.id_token, now)
+  if (!token.signatureOk || !token.issuerOk || !token.audienceOk || token.subject === undefined) return { kind: "invalidResponse" } satisfies CodeExchange
+  const lifetime = Math.round(reply.expires_in * millisPerSecond)
+  return {
+    kind: "granted",
+    granted: {
+      subject: token.subject,
+      email: token.verifiedEmail ?? "",
+      scopes: [...new Set((reply.scope ?? "").split(/\s+/).filter((scope) => scope !== ""))],
+      lifetime,
+      tokens: { refreshToken: reply.refresh_token ?? "", accessToken: reply.access_token, expiresAt: now + lifetime }
+    }
+  } satisfies CodeExchange
+}
+
+effect function heldConnection(tx: Tx, organizationId: string, subject: string, except: string) {
+  try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId])
+  const row = (try tx.query("SELECT key, tokens FROM google_connections WHERE organization_id = $1 AND subject = $2 AND key <> $3 FOR UPDATE", [organizationId, subject, except]))[0]
+  if (row === undefined) return undefined
+  const sealed = toText(row.tokens)
+  const kept = sealed === undefined ? undefined : openTokens(sealed) catch () => undefined
+  return { key: toText(row.key) ?? "", keptRefreshToken: kept?.refreshToken ?? "" }
+}
+
+effect function landOn(tx: Tx, connectionId: string, owner: Owner, granted: Granted, keptRefreshToken: string, now: number) {
+  try storeGrant(tx, {
+    connectionId,
+    owner,
+    subject: granted.subject,
+    email: granted.email,
+    grantedScopes: granted.scopes,
+    tokens: { ...granted.tokens, refreshToken: granted.tokens.refreshToken === "" ? keptRefreshToken : granted.tokens.refreshToken },
+    now
+  })
+}
+
+effect function consumeAttempt(tx: Tx, attempt: Attempt, callback: CallbackKind, now: number) {
+  try tx.query("SELECT state_digest FROM google_connect_states WHERE connection_id = $1 FOR UPDATE", [attempt.key])
+  const before = atTime((try loadRow(tx, connectionRows, attempt.key)).state, now)
+  if (before.flow.phase !== "AwaitingCallback" || (try managedGoogle()) === undefined) return undefined
+  try step(tx, attempt.key, { type: "beginCallback", verifierPresent: attempt.verifier !== "", verifierRequired: true }, now)
+  const consumed = try step(tx, attempt.key, { type: "consume", pendingAndUnexpired: now < before.stateExpiresAt, inputError: callback !== "CodeCallback", providerInstalled: true, callback }, now)
+  try tx.query("UPDATE google_connect_states SET consumed_at = $2 WHERE connection_id = $1 AND consumed_at IS NULL", [attempt.key, now])
+  if (consumed.flow.phase !== "FailureWritePending") return consumed
+  try tx.query("UPDATE google_connect_states SET verifier = '' WHERE connection_id = $1", [attempt.key])
+  return try step(tx, attempt.key, { type: "writeFailure", write: "WriteAcknowledged" }, now)
+}
+
+effect function landAttempt(attempt: Attempt, granted: Granted, now: number) {
+  return try (try Store).transaction(effect (tx: Tx) => {
+    const held = try heldConnection(tx, attempt.owner.organizationId, granted.subject, attempt.key)
+    if (held !== undefined) try landOn(tx, held.key, attempt.owner, granted, held.keptRefreshToken, now)
+    const columns: Columns = held !== undefined ? {} : {
+      subject: granted.subject,
+      email: granted.email,
+      granted_scopes: JSON.stringify(granted.scopes),
+      tokens: try sealTokens(granted.tokens),
+      linked_at: now
+    }
+    try step(tx, attempt.key, { type: "accountResult", success: true, subjectHeld: held !== undefined }, now, columns)
+    const state = try step(tx, attempt.key, { type: "writeSuccess", write: "WriteAcknowledged", selectedStatus: "CompletedState" }, now)
+    return { state, connectionId: held?.key ?? attempt.key } satisfies Landed
+  })
+}
+
+effect function exchangeAttempt(attempt: Attempt, code: string) {
+  const store = try Store
+  const profile = try managedGoogle()
+  const callback = try callbackUrl()
+  const exchanged = profile === undefined
+    ? { kind: "unavailable" } satisfies CodeExchange
+    : try exchangeCode(profile, profile.clientId, { code, redirect_uri: callback, code_verifier: attempt.verifier })
+  const asked = requestedScopes([...new Set(attempt.capabilities.map((capability) => kindOf[capability]))]).map(scopeName)
+  const granted = exchanged.kind === "granted" && asked.every((scope) => exchanged.granted.scopes.includes(scope)) ? exchanged.granted : undefined
+  const now = try Clock.currentTimeMillis
+  const provided = try store.transaction(effect (tx: Tx) => {
+    try tx.query("UPDATE google_connect_states SET verifier = '' WHERE connection_id = $1", [attempt.key])
+    if (granted !== undefined) {
+      return try step(tx, attempt.key, {
+        type: "providerResult", success: true, hasAccount: true, subject: granted.subject, granted: knownScopes(granted.scopes), lifetime: granted.lifetime, refreshable: granted.tokens.refreshToken !== ""
+      }, now)
+    }
+    try step(tx, attempt.key, { type: "providerResult", success: false, hasAccount: true, subject: unexchanged.subject, granted: [], lifetime: unexchanged.lifetime, refreshable: false }, now)
+    return try step(tx, attempt.key, { type: "writeFailure", write: "WriteAcknowledged" }, now)
+  })
+  if (granted === undefined) {
+    try annotateLogs(logWarning("google connect exchange failed"), { outcome: exchanged.kind === "granted" ? "scopesMissing" : exchanged.kind })
+    return { state: provided, connectionId: undefined } satisfies Landed
+  }
+  const landed = landAttempt(attempt, granted, now) catch effect (failure) => {
+    try annotateLogs(logWarning("google connect grant not stored"), { cause: failure._tag })
+    return undefined
+  }
+  if (landed !== undefined) return landed
+  const failed = try store.transaction(effect (tx: Tx) => {
+    try step(tx, attempt.key, { type: "accountResult", success: false, subjectHeld: false }, now)
+    try step(tx, attempt.key, { type: "compensate", supported: false, success: false }, now)
+    return try step(tx, attempt.key, { type: "writeFailure", write: "WriteAcknowledged" }, now)
+  })
+  return { state: failed, connectionId: undefined } satisfies Landed
+}
+
+effect function returned(attempt: Attempt, landed: Landed) {
+  const answer = callbackAnswerOf(landed.state)
+  if (answer.tag !== "ReturnResult") return cloudResult("failed")
+  const result = results[answer.result]
+  const connectionId = answer.result === "Connected" ? landed.connectionId : undefined
+  if (attempt.redirectUrl !== undefined) {
+    const fields = new URLSearchParams({ state: attempt.appState, result, ...(connectionId === undefined ? {} : { connectionId }) })
+    return HttpServerResponse.redirect(`${attempt.redirectUrl}#${fields}`, { status: 302, headers: noStore })
+  }
+  const clientId = attempt.clientId
+  const registration = clientId === undefined ? undefined : try (try Store).transaction((tx: Tx) => readClient(tx, clientId))
+  if (answer.result === "Connected" && registration !== undefined && registration.enabled && registration.connectReturn.tag === "NoConnectReturn") return try connectedReturnPage(registration)
+  return cloudResult(result)
+}
+
+effect function callback(context: RouteContext) {
+  const state = context.query.get("state") ?? ""
+  if (!statePattern.test(state)) return cloudResult("failed")
+  const store = try Store
+  const row = (try store.transaction((tx: Tx) => tx.query(
+    "SELECT connection_id, organization_id, user_id, capabilities, redirect_url, app_state, client_id, verifier FROM google_connect_states WHERE state_digest = $1",
+    [tokenDigest(state)]
+  )))[0]
+  if (row === undefined) return cloudResult("failed")
+  const attempt = attemptOf(row)
+  const consumed = try store.transaction((tx: Tx) => consumeAttempt(tx, attempt, callbackKind(context.query), context.now))
+  if (consumed === undefined) return cloudResult("failed")
+  const landed = consumed.flow.phase === "ProviderPending"
+    ? try exchangeAttempt(attempt, context.query.get("code") ?? "")
+    : { state: consumed, connectionId: undefined } satisfies Landed
+  return try returned(attempt, landed)
+}
+
+effect function nativeConnect(context: RouteContext) {
+  const owner = try callerOwner(context.caller)
+  const body = try jsonBody(context, NativeBody)
+  const profile = try managedGoogle()
+  if (profile === undefined) throw refused("ProviderUnavailable", "GoogleNotConfigured")
+  const exchanged = try exchangeCode(profile, profile.serverClientId, { code: body.serverAuthCode, redirect_uri: "" })
+  switch (exchanged.kind) {
+    case "codeRejected": throw refused("InvalidRequest")
+    case "unavailable": throw refused("ProviderUnavailable")
+    case "invalidResponse": throw refused("ProviderInvalidResponse")
+    case "granted": break
+    default: {
+      const _exhaustive: never = exchanged
+      return _exhaustive
+    }
+  }
+  const granted = exchanged.granted
+  if (granted.scopes.length === 0) throw refused("InvalidRequest")
+  const now = try Clock.currentTimeMillis
+  const connectionId = try (try Store).transaction(effect (tx: Tx) => {
+    const held = try heldConnection(tx, owner.organizationId, granted.subject, "")
+    const key = held?.key ?? newId()
+    try landOn(tx, key, owner, granted, held?.keptRefreshToken ?? "", now)
+    return key
+  })
+  return json({
+    connected: true,
+    connectionId,
+    email: granted.email === "" ? null : granted.email,
+    scopes: granted.scopes,
+    refreshTokenIssued: granted.tokens.refreshToken !== ""
+  }, { headers: noStore })
+}
+
+effect function readHeld(tx: Tx, owner: Owner, key: string) {
+  try restoreLegacyConnection(tx, owner, key)
+  const loaded = try loadRow(tx, connectionRows, key, false)
+  const row = (try tx.query("SELECT email, granted_scopes, linked_at, last_used_at FROM google_connections WHERE key = $1", [key]))[0]
+  return {
+    key,
+    state: loaded.state,
+    email: toText(row?.email) ?? "",
+    grantedScopes: texts(row?.granted_scopes),
+    linkedAt: toInt(row?.linked_at),
+    lastUsedAt: toInt(row?.last_used_at)
+  } satisfies Held
+}
+
+function statusBody(configured: boolean, held: Held | undefined, now: number) {
+  const state = held === undefined ? initial : atTime(held.state, now)
+  const reason = statusReason(configured, state)
+  const named = configured ? held : undefined
+  return {
+    provider: "google",
+    side: "owner",
+    mode: "cloud_managed",
+    configured,
+    connected: reason === "ReasonConnected",
+    reason: reasons[reason],
+    identity: named === undefined || named.email === "" ? null : { email: named.email },
+    grantedCapabilities: named === undefined ? [] : capabilitiesOf(state.scopes.map(scopeName)),
+    grantedScopes: named === undefined ? [] : named.grantedScopes,
+    expiresAt: named !== undefined && state.tokens.tag === "SealedTokens" ? iso(state.tokens.expiresAt) : null,
+    hasRefreshToken: named !== undefined && holdsRefreshToken(state),
+    connectionId: named?.key ?? null,
+    linkedAt: named === undefined ? null : iso(named.linkedAt),
+    lastUsedAt: named === undefined ? null : iso(named.lastUsedAt)
+  }
+}
+
+effect function statusRoute(context: RouteContext) {
+  const owner = try callerOwner(context.caller)
+  const configured = (try managedGoogle()) !== undefined
+  const held = try (try Store).transaction(effect (tx: Tx) => {
+    const key = try pickGrant(tx, owner, context.query.get("grantId") ?? undefined, context.query.get("side"))
+    return key === undefined || !configured ? undefined : try readHeld(tx, owner, key)
+  })
+  return json(statusBody(configured, held, context.now))
+}
+
+effect function accountsRoute(context: RouteContext) {
+  const owner = try callerOwner(context.caller)
+  if (sideOf(context.query.get("side")) !== "OwnerSide") throw new Refused({ refusal: selectionRefusal("SideNotOwner") })
+  if ((try managedGoogle()) === undefined) return json([])
+  const held = try (try Store).transaction(effect (tx: Tx) => {
+    const rows = try tx.query("SELECT key FROM google_connections WHERE organization_id = $1 AND status <> 'Pending' ORDER BY linked_at DESC NULLS LAST, key", [owner.organizationId])
+    return try Effect.forEach(rows, (row) => readHeld(tx, owner, toText(row.key) ?? ""))
+  })
+  return json(held.map((each) => statusBody(true, each, context.now)))
+}
+
+effect function disconnectConnection(owner: Owner, key: string) {
+  const store = try Store
+  const sealed = try store.transaction(effect (tx: Tx) => {
+    try restoreLegacyConnection(tx, owner, key)
+    return toText((try tx.query("SELECT tokens FROM google_connections WHERE key = $1", [key]))[0]?.tokens)
+  })
+  const tokens = sealed === undefined ? undefined : openTokens(sealed) catch () => undefined
+  const token = tokens === undefined ? "" : tokens.refreshToken === "" ? tokens.accessToken : tokens.refreshToken
+  if (token !== "") {
+    revokeToken(token) catch effect (failure) => {
+      try annotateLogs(logWarning("google revoke failed; tokens erased"), { cause: failure._tag })
+    }
+  }
+  const now = try Clock.currentTimeMillis
+  return try store.transaction(effect (tx: Tx) => {
+    const state = atTime((try loadRow(tx, connectionRows, key)).state, now)
+    if (!canDisconnect(state)) return false
+    try stepRow(tx, connectionRows, key, { at: now, event: { type: "disconnect" } }, connectionColumns({ granted_scopes: "[]", refreshing_until: 0 }))
+    return true
+  })
+}
+
+effect function disconnectRoute(context: RouteContext) {
+  const owner = try callerOwner(context.caller)
+  const body = try jsonBody(context, DisconnectBody)
+  if (body.connectionId !== undefined && body.grantId !== undefined && body.connectionId !== body.grantId) throw refused("InvalidRequest")
+  const key = try (try Store).transaction((tx: Tx) => pickGrant(tx, owner, body.connectionId ?? body.grantId, body.side ?? null))
+  if (key !== undefined) try disconnectConnection(owner, key)
+  return json({ ok: true })
+}
+
+export effect function revokeOrganizationGrants(organizationId: string) {
+  const rows = try (try Store).transaction((tx: Tx) => tx.query(
+    "SELECT key, user_id FROM google_connections WHERE organization_id = $1 AND status NOT IN ('Pending', 'Revoked') ORDER BY key",
+    [organizationId]
+  ))
+  let revoked = 0
+  for (const row of rows) {
+    if (try disconnectConnection({ organizationId, userId: toText(row.user_id) ?? "" }, toText(row.key) ?? "")) revoked += 1
+  }
+  return revoked
+}
+
+effect function sweepAttempts() {
+  const now = try Clock.currentTimeMillis
+  const store = try Store
+  store.transaction((tx: Tx) => tx.query(
+    "WITH gone AS (DELETE FROM google_connect_states WHERE expires_at <= $1 RETURNING connection_id) DELETE FROM google_connections WHERE status = 'Pending' AND key IN (SELECT connection_id FROM gone)",
+    [now]
+  )) catch effect (failure) => {
+    try annotateLogs(logWarning("google connect attempt sweep failed"), { cause: failure._tag })
+  }
+}
+
+export const connectionRoutes: ReadonlyArray<Route> = [
+  { method: "POST", path: `${google}/connect/initiate`, auth: "ServiceAccess", handler: initiate },
+  { method: "POST", path: `${google}/connect/native`, auth: "ServiceAccess", handler: nativeConnect },
+  { method: "GET", path: `${google}/status`, auth: "ServiceAccess", handler: statusRoute },
+  { method: "GET", path: `${google}/accounts`, auth: "ServiceAccess", handler: accountsRoute },
+  { method: "POST", path: `${google}/disconnect`, auth: "ServiceAccess", handler: disconnectRoute },
+  { method: "GET", path: callbackPath, auth: "Public", handler: callback }
+]
+
+export const connectionSweeps: ReadonlyArray<Sweep> = [{ name: "expired google connect attempts", everyMs: 10 * millisPerMinute, run: sweepAttempts() }]

@@ -1,8 +1,9 @@
 // spec/agent/deviceActions/replyDraft.md, "A draft request is exactly the open thread's tail, ending in a received message"; spec/agent/deviceActions/replyDraft.md, "Only an admitted thread with a person to answer reaches the model, and only once"; spec/agent/deviceActions/replyDraft.md, "Message text reaches the model only as escaped data inside one thread block"; spec/agent/deviceActions/replyDraft.md, "The answer is one draft of at most 320 units, or none, and nothing is sent"
 import { ModelType, logger, type AgentRuntime } from "@elizaos/core"
-import { decision, draftMaxTokens, handle, httpStatus, keptUnits, requestLimitBytes, speakerOf, type Direction, type DraftAnswer, type DraftRequest, type ModelResult, type Participant, type ThreadMessage } from "../../gen/agent__deviceActions__replyDraft.effect.vibe"
+import { clockAt } from "../../gen/agent__models__binding.effect.vibe"
+import { decision, draftMaxTokens, drafterCanCall, handle, httpStatus, keptUnits, requestLimitBytes, speakerOf, type Direction, type DraftAnswer, type DraftRequest, type ModelResult, type Participant, type ThreadMessage } from "../../gen/agent__deviceActions__replyDraft.effect.vibe"
 import type { LocalRoute, RouteInput } from "../access/routes.vibe"
-import type { AgentModule, ModuleFactory } from "../host/module.vibe"
+import type { AgentModule, ModuleContext, ModuleFactory } from "../host/module.vibe"
 
 export const replyDraftModuleName = "@elizaos/agent/reply-draft"
 export const replyDraftPath = "/api/messages/reply-draft"
@@ -132,11 +133,12 @@ function bodyOf(answer: DraftAnswer, draft: string): object {
   }
 }
 
-export effect function replyDraft(runtime: AgentRuntime, { body, signal }: Pick<RouteInput, "body" | "signal">) {
+export effect function replyDraft(runtime: AgentRuntime, binding: ModuleContext["binding"], { body, signal }: Pick<RouteInput, "body" | "signal">) {
   const parsed = decodeThread(body)
   const thread = parsed._tag === "Some" ? parsed.value : undefined
   const request = requestOf(thread)
-  const callStarts = runtime.getModel(ModelType.TEXT_SMALL) !== undefined
+  const state = binding()
+  const callStarts = drafterCanCall(state, clockAt(state, try Clock.currentTimeMillis))
   const said = signal.aborted ? closed
     : thread !== undefined && callStarts && decision(request) === "AskModel" ? try asked(runtime, thread, signal) : notAsked
   const handled = handle(request, callStarts, said.result)
@@ -146,10 +148,10 @@ export effect function replyDraft(runtime: AgentRuntime, { body, signal }: Pick<
   return { status: httpStatus(handled.answer), body: bodyOf(handled.answer, said.draft) }
 }
 
-export function replyDraftRoutes(runtime: AgentRuntime): LocalRoute[] {
+export function replyDraftRoutes(runtime: AgentRuntime, binding: ModuleContext["binding"]): LocalRoute[] {
   return [{
     method: "POST", path: replyDraftPath, maxBodyBytes: requestLimitBytes,
-    handler: (input) => runPromise(replyDraft(runtime, input)),
+    handler: (input) => runPromise(replyDraft(runtime, binding, input)),
   }]
 }
 
@@ -159,7 +161,7 @@ export const replyDraftModule: ModuleFactory<never> = effect (context) => {
     plugin: {
       name: replyDraftModuleName,
       description: "Drafts one short reply to the message thread the owner has open; sends and stores nothing",
-      routes: replyDraftRoutes(context.runtime),
+      routes: replyDraftRoutes(context.runtime, context.binding),
     },
   } satisfies AgentModule
 }

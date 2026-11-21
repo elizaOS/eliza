@@ -134,6 +134,11 @@ public final class SignInReadiness {
     return true;
   }
 
+  public Readiness admitting(String environmentName) {
+    Answer cached = answer(environmentName);
+    return ReadinessPolicy.answerFresh(cached, clock.getAsLong()) ? cached.readiness : Readiness.NOT_MEASURED;
+  }
+
   /** The cloud refused this client on another route: that is an answer that no method is ready. */
   public void clientRefused(String environmentName) {
     SignInRegistration.Environment environment = registration.environment(environmentName);

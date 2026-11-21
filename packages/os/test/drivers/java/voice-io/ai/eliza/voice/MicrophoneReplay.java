@@ -32,11 +32,6 @@ public final class MicrophoneReplay {
     private static boolean flag(String body, String name) { return Boolean.parseBoolean(field(body, name, "(true|false)").group(1)); }
     private static long number(String body, String name) { return Long.parseLong(field(body, name, "(-?\\d+)").group(1)); }
 
-    private LocalMicrophoneLease newest() {
-        long newest = slot.snapshot().issued;
-        return leases.get(newest);
-    }
-
     private boolean reserve(String user, boolean reopen) {
         try {
             switch (user) {
@@ -44,15 +39,16 @@ public final class MicrophoneReplay {
                     LiveCaptureResource resource = new LiveCaptureResource(slot);
                     resource.reserveMicrophone(reopen);
                     live = resource;
+                    last = resource.microphone();
                 }
                 case "DraftRecorder" -> {
                     if (reopen) return false;
                     draft = slot.reserve(LocalMicrophoneLease.User.DRAFT_RECORDER, false, null);
+                    last = draft;
                 }
                 case "NoUser" -> { return false; }
                 default -> throw new IllegalArgumentException("unknown user " + user);
             }
-            last = newest();
             leases.put(last.token, last);
         } catch (LocalMicrophoneLease.Refused refused) {
             return true;
@@ -60,12 +56,20 @@ public final class MicrophoneReplay {
         return true;
     }
 
+    private boolean attach() {
+        try {
+            return live.attach(new Source());
+        } catch (IllegalStateException alreadyAttached) {
+            return false;
+        }
+    }
+
     private boolean liveHolds() { return last != null && last.user == LocalMicrophoneLease.User.LIVE_CAPTURE; }
 
     private boolean apply(String type, String body) {
         return switch (type) {
             case "reserve" -> reserve(text(body, "user"), flag(body, "reopen"));
-            case "opened" -> last != null && (liveHolds() ? live.attach(new Source()) : draft.opened());
+            case "opened" -> last != null && (liveHolds() ? attach() : draft.opened());
             case "cancel" -> last != null && (liveHolds() ? live.requestStop() : draft.cancel());
             case "released" -> {
                 LocalMicrophoneLease lease = leases.get(number(body, "token"));

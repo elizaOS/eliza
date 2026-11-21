@@ -53,7 +53,7 @@ export const refreshLease = 15 * millisPerSecond
 const refreshPoll = 100
 const statuses: ReadonlyArray<Connection["status"]> = ["Pending", "Active", "Expired", "Revoked", "Errored"]
 
-const kindOf: Readonly<Record<GoogleCapability, CapabilityKind>> = {
+export const kindOf: Readonly<Record<GoogleCapability, CapabilityKind>> = {
   "google.basic_identity": "BasicIdentity",
   "google.gmail.triage": "GmailTriage",
   "google.gmail.send": "GmailSend",
@@ -137,7 +137,7 @@ schema LegacyConnection {
   refreshingUntil: number
 }
 
-effect function restoreLegacyConnection(tx: Tx, owner: Owner, connectionId: string) {
+export effect function restoreLegacyConnection(tx: Tx, owner: Owner, connectionId: string) {
   const row = (try tx.query(
     "SELECT state, organization_id, user_id, subject, status, tokens, expires_at, refreshing_until FROM google_connections WHERE key = $1 AND jsonb_typeof(state->'tokens') = 'string' FOR UPDATE",
     [connectionId]

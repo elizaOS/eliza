@@ -8,7 +8,7 @@ public final class InstallerResultContract {
  private InstallerResultContract() {}
  private static void check(boolean condition,String message){if(!condition)throw new AssertionError(message);}
  public static void run(Context app,UpdateJournal journal,UpdateJournal.Plan plan,String target,String action)throws Exception {
-  journal.begin(plan,plan.baseline,0);
+  GrantedHolds.admitHeld(journal,plan);
   android.content.pm.PackageInstaller installer=app.getPackageManager().getPackageInstaller();
   android.content.pm.PackageInstaller.SessionParams params=new android.content.pm.PackageInstaller.SessionParams(android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
   params.setAppPackageName(target);
@@ -63,7 +63,7 @@ public final class InstallerResultContract {
   * timeout have passed, so a later
   * release can install. Needs API 29 or later. */
  public static void runUncommittedSession(Context app,UpdateJournal journal,UpdateJournal.Plan plan,String target)throws Exception {
-  journal.begin(plan,plan.baseline,0);
+  GrantedHolds.admitHeld(journal,plan);
   android.content.pm.PackageInstaller installer=app.getPackageManager().getPackageInstaller();
   android.content.pm.PackageInstaller.SessionParams params=new android.content.pm.PackageInstaller.SessionParams(android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
   params.setAppPackageName(target);
@@ -82,7 +82,7 @@ public final class InstallerResultContract {
    UpdateJournal.Snapshot after=PackageInstallCoordinator.reconcilePending(app,target,journal,1);
    check(!PackageInstallCoordinator.hasPendingSession(app,target,session),"Uncommitted session was kept");
    check(after.phase==UpdateJournal.Phase.IDLE&&UpdateJournal.INSTALL_RELEASED.equals(after.reason)&&after.quarantine.isEmpty(),"Uncommitted session was not released");
-   journal.begin(plan,plan.baseline,0);check(journal.read().phase==UpdateJournal.Phase.VERIFIED,"Released plan was not admitted again");
+   GrantedHolds.admit(journal,plan);check(journal.read().phase==UpdateJournal.Phase.VERIFIED,"Released plan was not admitted again");
   } finally {try{installer.abandonSession(session);}catch(Exception ignored){}}
  }
 }

@@ -1,0 +1,27 @@
+// spec/agent/deviceActions/index.md, "Story: Approve a device request once and learn exactly what happened"; spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it"; spec/agent/deviceActions/index.md, "Story: Complete the original request with the result I shared"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"
+import type { AgentModule, ModuleFactory } from "../host/module.vibe"
+import { deviceEnrollment } from "./enrollment.vibe"
+import { readCompletionRoutes } from "./read-completion.vibe"
+import { deviceRequests } from "./requests.vibe"
+
+export const deviceActionsModuleName = "@elizaos/agent/device-actions"
+
+export const deviceActionsModule: ModuleFactory<never> = effect (context) => {
+  const enrollment = deviceEnrollment(context)
+  const requests = deviceRequests(context, enrollment.deviceSender)
+  const completion = try sync(() => readCompletionRoutes({ runtime: context.runtime, sender: enrollment.deviceSender, open: requests.open }))
+  return {
+    name: deviceActionsModuleName,
+    plugin: {
+      name: deviceActionsModuleName,
+      description: "Enrolls the owner's device and offers it the device operations a turn asks for, once each, until each settles",
+      services: [requests.service],
+      events: { RUN_ENDED: [requests.turnEnded] },
+      routes: [
+        ...enrollment.routes,
+        ...requests.routes,
+        ...completion,
+      ],
+    },
+  } satisfies AgentModule
+}

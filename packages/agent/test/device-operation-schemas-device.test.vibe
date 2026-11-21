@@ -1,0 +1,174 @@
+// spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check"; spec/agent/deviceActions/operations.md, "Story: Learn exactly what the device did"
+import { assert, it } from "@effect/vitest"
+import { negotiation } from "../src/device-actions/capabilities.vibe"
+import { mayRunDirectly, readOperation, receiptOutcome, validate, type CheckedOperation } from "../src/device-actions/operations.schema.vibe"
+import { MessagesThread, agendaReadFits, simBindingText } from "../src/device-actions/operation-schemas/device.schema.vibe"
+
+const digest = "a".repeat(64)
+const photo = "lib:i:42:0"
+const range = { type: "read_calendar_range", calendarIds: ["cal-1"], start: "2026-11-21T00:00:00.000Z", end: "2026-11-22T00:00:00.000Z", timeZone: "UTC", maximumEvents: 10 }
+const sms = { type: "sms_send", recipients: ["+15550100"], body: "On my way", subscriptionId: 1 }
+
+const samples: Record<string, unknown> = {
+  CameraCapturePhoto: { type: "camera_capture_photo" },
+  FilesFilter: { type: "files_filter", text: " lease ", kind: "pdf", folder: "Download" },
+  FilesOpen: { type: "files_open", shown: 1 },
+  FilesShare: { type: "files_share", paths: ["Download/lease.pdf"] },
+  FilesMove: { type: "files_move", paths: ["Download/lease.pdf"], dest: "" },
+  FilesTrash: { type: "files_trash", paths: ["Download/old.pdf"] },
+  FilesFolderCreate: { type: "files_folder_create", parent: "", name: "Taxes" },
+  PhotoLibrarySearch: { type: "photo_library_search", kind: "image", from: 0, to: 10, limit: 5 },
+  PhotoLibraryInspect: { type: "photo_library_inspect", id: photo },
+  PhotoLibrarySelect: { type: "photo_library_select", ids: [photo] },
+  PhotoLibraryReview: { type: "photo_library_review", action: "trash", items: [{ id: photo, revision: "rev-abc-1" }] },
+  PhotosFilter: { type: "photos_filter", album: "favorites" },
+  PhotosOpen: { type: "photos_open", id: photo },
+  PhotosAlbumCreate: { type: "photos_album_create", name: "Trip", ids: [photo] },
+  PhotosShare: { type: "photos_share", ids: [photo] },
+  SmsSend: sms,
+  MmsSend: { type: "mms_send", recipients: ["+15550100"], body: "", attachments: [{ contentType: "image/jpeg", name: "a.jpg", sha256: digest, size: 10 }], subscriptionId: 1 },
+  PhoneDial: { type: "phone_dial", target: { kind: "number", number: "+15550100" } },
+  PhoneCall: { type: "phone_call", target: { kind: "contact", query: "Sam" } },
+  ContactCreate: { type: "contact_create", contact: { displayName: "Sam", phoneNumbers: ["+15550100"], emailAddresses: [] } },
+  ContactUpdate: { type: "contact_update", query: "Sam", set: { emailAddresses: ["sam@example.com"] } },
+  ContactDelete: { type: "contact_delete", query: "Sam" },
+  SmsCompose: { type: "sms_compose", query: "Sam", body: "Running late" },
+  SmsReplySelected: { type: "sms_reply_selected", body: "Sounds good" },
+  MessagesReadSelected: { type: "messages_read_selected" },
+  VoicemailReadSelected: { type: "voicemail_read_selected" },
+  VoicemailDeleteSelected: { type: "voicemail_delete_selected" },
+  ReadSelectedNotes: { type: "read_selected_notes", notes: [{ id: "note-1", revision: digest }] },
+  ReadCalendarRange: range,
+  ReadSelectedReminders: { type: "read_selected_reminders", window: "open_and_completed_today", day: "2026-11-21", timeZone: "UTC", maximumItems: 20 },
+  PostNotification: { type: "post_notification", title: "Today", body: "Two meetings" },
+  SpeakText: { type: "speak_text", text: "Two meetings" },
+  CreateNote: { type: "create_note", title: "Groceries", body: "" },
+  CreateReminder: { type: "create_reminder", title: "Call Sam", dueAt: "2026-11-22T09:00:00Z" },
+  OpenView: { type: "open_view", view: "photos" },
+  BrowserNavigate: { type: "browser_navigate", url: "example.com/menu" },
+}
+
+function checked(input: unknown): CheckedOperation {
+  const found = readOperation(input)
+  assert.isDefined(found)
+  return found as CheckedOperation
+}
+
+const outcome = (op: unknown, receipt: unknown, claimKey = "claim-1") => {
+  const verdict = receiptOutcome(checked(op), receipt, claimKey)
+  return verdict.kind === "refused" ? "refused" : verdict.reported
+}
+
+it("Propose only operations the device can check: every media, files, telephony, workflow and base wire type reads as its own operation", () => {
+  for (const [opType, input] of Object.entries(samples)) assert.strictEqual(checked(input).opType, opType, opType)
+  assert.strictEqual((checked(samples.BrowserNavigate).operation as { url: string }).url, "https://example.com/menu")
+  assert.deepStrictEqual(checked({ type: "files_open", path: "Download/" }).operation, { type: "files_open", path: "Download" })
+  assert.strictEqual((checked(samples.FilesFilter).operation as { text: string }).text, "lease")
+})
+
+it("Propose only operations the device can check: a proposal with a stray key or a field outside its bounds is refused", () => {
+  const refused = [
+    { ...sms, extra: true },
+    { ...sms, recipients: ["+1555010", "+1555011", "+1555012", "+1555013", "+1555014", "+1555015"] },
+    { ...sms, recipients: ["+15550100", "+15550100"] },
+    { type: "files_open", path: "/etc/passwd" },
+    { type: "files_open", path: "Download/../secret" },
+    { type: "files_filter" },
+    { type: "files_move", paths: ["a.pdf"], dest: "", reviewed: [] },
+    { type: "photos_open", id: "m:external:i:1" },
+    { type: "photo_library_select", ids: [photo, photo] },
+    { type: "phone_dial", target: { kind: "contact", query: "Sam" } },
+    { type: "contact_update", query: "Sam", set: {} },
+    { type: "sms_reply_selected", body: "   " },
+    { type: "browser_navigate", url: "http://example.com" },
+    { type: "browser_navigate", url: "https://user:pw@example.com" },
+    { type: "open_view", view: "terminal" },
+    { type: "create_reminder", title: "Call", dueAt: "2026-11-22 09:00" },
+    { ...range, end: "2026-11-30T00:00:00.000Z" },
+    { type: "read_selected_reminders", window: "all", day: "2026-11-21", timeZone: "UTC", maximumItems: 20 },
+    { type: "mms_send", recipients: ["+15550100"], body: "", attachments: [], subscriptionId: 1 },
+  ]
+  for (const input of refused) assert.isUndefined(readOperation(input), JSON.stringify(input))
+})
+
+it("Propose only operations the device can check: each operation needs its own capability and a workflow read needs its binding", () => {
+  assert.isDefined(validate(sms, negotiation(true, "sms.send.v1"), "NoBinding"))
+  assert.isUndefined(validate(sms, negotiation(true, "sms.compose.v1"), "NoBinding"))
+  assert.isUndefined(validate(samples.PhotosOpen, negotiation(true, "photos.library.v1"), "NoBinding"))
+  assert.isDefined(validate(samples.PhotosOpen, negotiation(true, "photos.library.v1,photos.view.v1"), "NoBinding"))
+  assert.isUndefined(validate(samples.CreateNote, negotiation(true, "clock.handoff.v1"), "NoBinding"))
+  assert.isDefined(validate(samples.CreateNote, negotiation(true, "files.browser.v1"), "NoBinding"))
+  assert.isUndefined(validate(range, negotiation(true, "files.browser.v1"), "NoBinding"))
+  assert.isDefined(validate(range, negotiation(true, "files.browser.v1"), "WorkflowBinding"))
+  assert.isUndefined(validate(range, negotiation(true, "files.browser.v1"), "AgendaBinding"))
+  assert.isDefined(validate(range, negotiation(true, "calendar.agenda-read.v1"), "AgendaBinding"))
+  assert.isUndefined(validate(samples.SpeakText, negotiation(true, "calendar.agenda-read.v1"), "AgendaBinding"))
+  assert.isTrue(agendaReadFits(checked(range).operation as Parameters<typeof agendaReadFits>[0], "cal-1"))
+})
+
+it("Propose only operations the device can check: only a reversible local operation bound to the owner's message runs directly", () => {
+  assert.isTrue(mayRunDirectly(checked(samples.FilesOpen), "NoBinding", true))
+  assert.isTrue(mayRunDirectly(checked(samples.SmsReplySelected), "NoBinding", true))
+  assert.isFalse(mayRunDirectly(checked(samples.FilesOpen), "NoBinding", false))
+  for (const type of ["SmsSend", "PhoneCall", "ContactDelete", "FilesShare", "PhotosShare", "PhotoLibraryReview", "VoicemailDeleteSelected"])
+    assert.isFalse(mayRunDirectly(checked(samples[type]), "NoBinding", true), type)
+})
+
+it("Learn exactly what the device did: a SIM send settles only on evidence that names its claim", () => {
+  const sent = { kind: "sms-send", operationId: "claim-1", subscriptionId: 1, bindingHash: digest, status: "sent", createdAt: 1,
+    parts: [{ index: 0, recipientIndex: 0, partIndex: 0, sent: "success", delivery: "unknown" }] }
+  assert.strictEqual(outcome(sms, { outcome: "applied", operationId: "claim-1", result: sent }), "ReportedApplied")
+  assert.strictEqual(outcome(sms, { outcome: "applied", operationId: "other", result: sent }), "refused")
+  assert.strictEqual(outcome(sms, { outcome: "applied", operationId: "claim-1", result: { ...sent, subscriptionId: 2 } }), "refused")
+  assert.strictEqual(outcome(sms, { outcome: "applied", operationId: "claim-1", result: { ...sent, parts: [] } }), "refused")
+  assert.strictEqual(outcome(sms, { outcome: "failed", operationId: "claim-1", result: { ...sent, status: "cancelled", parts: [] } }), "ReportedNothingRan")
+  assert.strictEqual(outcome(sms, { outcome: "applied", operationId: "claim-1", result: { ...sent, status: "cancelled", parts: [] } }), "refused")
+  assert.strictEqual(outcome(sms, { outcome: "unknown", operationId: "claim-1", result: { ...sent, status: "failed", parts: [] } }), "ReportedUnknown")
+  assert.strictEqual(outcome(sms, { outcome: "unknown", operationId: "claim-1" }), "ReportedUnknown")
+  assert.strictEqual(outcome(sms, { outcome: "failed", code: "DEVICE_NOT_DISPATCHED" }), "ReportedNothingRan")
+  assert.isTrue(simBindingText(checked(sms).operation as Parameters<typeof simBindingText>[0]).startsWith("{\"body\":\"On my way\""))
+})
+
+it("Learn exactly what the device did: phone results are evidence, and only a draft or SIM refusal is trusted", () => {
+  const dial = samples.PhoneDial
+  assert.strictEqual(outcome(dial, { outcome: "applied", operationId: "n1", result: { kind: "phone-dial", status: "handed-off", handler: "Phone", contact: false } }), "ReportedApplied")
+  assert.strictEqual(outcome(dial, { outcome: "failed", operationId: "n1", result: { kind: "phone-dial", status: "cancelled", handler: null, contact: false } }), "ReportedUnknown")
+  assert.strictEqual(outcome(dial, { outcome: "failed", operationId: "n1", result: { kind: "phone-dial", status: "handed-off", handler: "Phone", contact: false } }), "refused")
+  assert.strictEqual(outcome(dial, { outcome: "failed", operationId: "n1" }), "refused")
+  assert.strictEqual(outcome(samples.SmsReplySelected, { outcome: "failed", operationId: "n1", result: { kind: "sms-reply", status: "none-selected" } }), "ReportedNothingRan")
+  assert.strictEqual(outcome(samples.SmsCompose, { outcome: "failed", operationId: "claim-1", result: { kind: "sms-compose", status: "cancelled" } }), "ReportedNothingRan")
+  assert.strictEqual(outcome(samples.ContactCreate, { outcome: "failed", operationId: "n1", result: { kind: "contact-write", status: "stale" } }), "refused")
+  assert.strictEqual(outcome(samples.ContactDelete, { outcome: "applied", operationId: "n1", result: { kind: "contact-write", status: "deleted" } }), "ReportedApplied")
+  const thread = { participant: "Sam", messages: [{ direction: "in", date: 1, body: "Dinner?" }], truncated: false }
+  assert.strictEqual(outcome(samples.MessagesReadSelected, { outcome: "applied", operationId: "n1", result: { kind: "messages-read", status: "read", ...thread } }), "ReportedApplied")
+  assert.isTrue(Schema.is(MessagesThread)(thread))
+  assert.strictEqual(outcome(samples.VoicemailReadSelected, { outcome: "applied", operationId: "n1",
+    result: { kind: "voicemail-read", status: "read", caller: null, date: 1, durationSeconds: 3, transcriptState: "ready", engine: null, transcript: "Hi" } }), "refused")
+})
+
+it("Learn exactly what the device did: reads carry a result exactly when applied, and presentations and base operations never do", () => {
+  const saved = { version: 1, kind: "camera_capture_photo", operationId: "n1", mediaId: "17", width: 640, height: 480, mime: "image/jpeg" }
+  assert.strictEqual(outcome(samples.CameraCapturePhoto, { outcome: "applied", operationId: "n1", result: saved }), "ReportedApplied")
+  assert.strictEqual(outcome(samples.CameraCapturePhoto, { outcome: "applied", operationId: "n1" }), "refused")
+  assert.strictEqual(outcome(samples.FilesOpen, { outcome: "applied", operationId: "n1" }), "ReportedApplied")
+  assert.strictEqual(outcome(samples.FilesOpen, { outcome: "applied", operationId: "n1", result: { shown: 1 } }), "refused")
+  assert.strictEqual(outcome(samples.SpeakText, { outcome: "applied", operationId: "n1" }), "ReportedApplied")
+  assert.strictEqual(outcome(samples.PhotosShare, { outcome: "applied", operationId: "n1", result: { kind: "photos_share", status: "review_opened", count: 1, missing: 0 } }), "ReportedApplied")
+  assert.strictEqual(outcome(samples.PhotosShare, { outcome: "applied", operationId: "n1", result: { kind: "photos_share", status: "review_opened", count: 2, missing: 0 } }), "refused")
+  assert.strictEqual(outcome(samples.PhotoLibraryInspect, { outcome: "applied", operationId: "n1",
+    result: { kind: "photo_library_inspect", item: { id: photo, revision: "rev-abc-1", kind: "image", takenAt: 1, width: 2, height: 3 } } }), "ReportedApplied")
+  assert.strictEqual(outcome(samples.PhotoLibraryInspect, { outcome: "applied", operationId: "n1",
+    result: { kind: "photo_library_inspect", item: { id: photo, revision: "rev-abc-1", kind: "video", takenAt: 1, width: 2, height: 3 } } }), "refused")
+  const note = { kind: "notes", notes: [{ id: "note-1", revision: digest, title: "List", text: "Milk" }] }
+  assert.strictEqual(outcome(samples.ReadSelectedNotes, { outcome: "applied", operationId: "n1", result: note }), "ReportedApplied")
+  assert.strictEqual(outcome(samples.ReadSelectedNotes, { outcome: "applied", operationId: "n1", result: { kind: "notes", notes: [{ ...note.notes[0], revision: "b".repeat(64) }] } }), "refused")
+  const event = { id: "ev-1", calendarId: "cal-1", revision: digest, title: "Dentist", start: "2026-11-21T09:00:00.000Z", end: "2026-11-21T10:00:00.000Z", allDay: false }
+  assert.strictEqual(outcome(range, { outcome: "applied", operationId: "n1", result: { kind: "calendar", events: [event] } }), "ReportedApplied")
+  assert.strictEqual(outcome(range, { outcome: "applied", operationId: "n1", result: { kind: "calendar", events: [{ ...event, start: "2026-11-23T09:00:00.000Z", end: "2026-11-23T10:00:00.000Z" }] } }), "refused")
+  assert.strictEqual(outcome(range, { outcome: "applied", operationId: "n1", result: { kind: "calendar", events: [{ ...event, calendarId: "cal-2" }] } }), "refused")
+  const reminders = samples.ReadSelectedReminders
+  const done = { id: "r-1", revision: digest, title: "Pay rent", dueAt: "2026-11-20T09:00:00.000Z", status: "completed", completedAt: "2026-11-21T08:00:00.000Z" }
+  assert.strictEqual(outcome(reminders, { outcome: "applied", operationId: "n1", result: { kind: "reminders", reminders: [done] } }), "ReportedApplied")
+  assert.strictEqual(outcome(reminders, { outcome: "applied", operationId: "n1", result: { kind: "reminders", reminders: [{ ...done, completedAt: "2026-11-20T08:00:00.000Z" }] } }), "refused")
+  assert.strictEqual(outcome(samples.CreateNote, { outcome: "failed", code: "DEVICE_NOT_DISPATCHED" }), "ReportedNothingRan")
+})

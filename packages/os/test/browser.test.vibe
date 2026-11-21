@@ -1,0 +1,294 @@
+// spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"; spec/os/browser/chromium.md, "Story: Replace the image's WebView provider only with the pinned one"; spec/os/browser/protection.md, "Story: Block known-bad sites without blocking unknown ones"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { buildBrowserExtension, buildChromium, chromiumBuildPlan, prepareAndroidConsumerInputs, prepareChromium } from "../src/browser/chromium-build.vibe"
+import { componentAssetNames, pin } from "../browser/chromium/component/chromium-component.mjs"
+import { androidTools, buildApk, testSigner } from "./support/android-tools.ts"
+import { commitTree, git, scratch } from "./support/scratch.vibe"
+
+module node {
+  import { Buffer } from "node:buffer"
+  import { createHash } from "node:crypto"
+  import { pathToFileURL } from "node:url"
+  import { validateAssets } from "../browser/chromium/component/chromium-component.mjs"
+  import { composeProtectionAssets } from "../browser/protection/build.mjs"
+
+  /** @throws {never} */
+  export function sha256(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function hostPlatform(): string {
+    return process.platform
+  }
+
+  /** @throws {never} */
+  export function json(text: string): unknown {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function assetsProblem(assets: Readonly<Record<string, Uint8Array>>, certificate: string, application: string): string | undefined {
+    try {
+      validateAssets(Object.fromEntries(Object.entries(assets).map(([name, bytes]) => [name, Buffer.from(bytes)])), certificate, application)
+      return undefined
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  export async function composeProtection(assets: Readonly<Record<string, Uint8Array>>, advisory?: { readonly referenceDomains: string[] }): Promise<Record<string, Uint8Array>> {
+    return composeProtectionAssets(Object.fromEntries(Object.entries(assets).map(([name, bytes]) => [name, Buffer.from(bytes)])), advisory === undefined ? {} : { advisory })
+  }
+
+  export async function loadModule(file: string): Promise<unknown> {
+    return import(pathToFileURL(file).href)
+  }
+}
+import { assetsProblem, composeProtection, hostPlatform, json, loadModule, sha256 } from node
+
+const tools = androidTools()
+const skipped = tools.kind === "missing" ? tools.reason : null
+const CERTIFICATE = "ab".repeat(32)
+const OTHER_CERTIFICATE = "cd".repeat(32)
+const APPLICATION = "ai.elizaos.app"
+const WEBVIEW_ARGS = 'target_os = "android"\ntarget_cpu = "arm64"\nsystem_webview_package_name = "example.fixture.webview"\n'
+const BROWSER_ARGS = 'target_os = "android"\ntarget_cpu = "x64"\nis_desktop_android = true\nchrome_public_manifest_package = "ai.elizaos.chromium"\n'
+
+function described(error: { readonly _tag: string }): string {
+  return "reason" in error ? `${error._tag}: ${String(error.reason)}` : error._tag
+}
+
+effect function refusal<E extends { readonly _tag: string }, R>(attempt: unknown!E!R) {
+  return (effect { try attempt; return "Done" } catch (error) => described(error))
+}
+
+effect function browserRoot() {
+  const path = try Path.Path
+  return try path.fromFileUrl(new URL("../browser", import.meta.url))
+}
+
+effect function readAssets(directory: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const assets: Record<string, Uint8Array> = {}
+  for (const name of (try files.readDirectory(directory)).sort()) assets[name] = try files.readFile(path.join(directory, name))
+  return assets
+}
+
+effect function writeAssets(directory: string, assets: Readonly<Record<string, Uint8Array>>) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  try files.makeDirectory(directory, { recursive: true })
+  for (const [name, bytes] of Object.entries(assets)) try files.writeFile(path.join(directory, name), bytes)
+}
+
+effect function pinnedCheckout(prefix: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const root = path.join(try scratch(prefix), "chromium")
+  try files.copy(path.join(try browserRoot(), "chromium", "fixtures"), root)
+  try git(root, ["init", "--quiet", "--initial-branch=main"])
+  const commit = try commitTree(root, {}, "Pin the fixture Chromium sources")
+  return { root, commit }
+}
+
+effect function pinHead(root: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  try files.writeFileString(path.join(root, ".git", "refs", "heads", "main"), `${pin.revision}\n`)
+}
+
+it.effect(`Build the Android extension bound to the app signer, and refuse a missing certificate or a broken module graph (spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity")`, effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const browser = try browserRoot()
+    const work = try scratch("browser-extension")
+
+    assert.strictEqual(try refusal(buildBrowserExtension({ browser, out: path.join(work, "none"), certificate: "" })), "BrowserExtensionInvalid: The Android app signing certificate SHA-256 is required")
+    assert.isFalse(try files.exists(path.join(work, "none")), "nothing is written without a certificate")
+    assert.strictEqual(try refusal(buildBrowserExtension({ browser, out: path.join(work, "bad-app"), certificate: CERTIFICATE, application: "not an id" })), "BrowserExtensionInvalid: The Android native host must be a valid application ID of at most 80 characters")
+
+    const out = path.join(work, "extension")
+    const assets = try buildBrowserExtension({ browser, out, certificate: CERTIFICATE })
+    assert.deepStrictEqual(Object.keys(assets).sort(), [...componentAssetNames({})].sort(), "exactly the component inventory is staged")
+    assert.deepStrictEqual((try files.readDirectory(out)).sort(), [...componentAssetNames({})].sort())
+    assert.strictEqual(new TextDecoder().decode(assets["runtime-config.mjs"]), `export const nativeHost = ${JSON.stringify({ application: APPLICATION, androidCertificates: [CERTIFICATE.toUpperCase()] })};\n`)
+    const manifest = json(new TextDecoder().decode(assets["manifest.json"]))
+    assert.deepInclude(manifest, { manifest_version: 3, background: { service_worker: "background.mjs", type: "module" } })
+    for (const name of componentAssetNames({}).filter((name) => name !== "manifest.json" && name !== "runtime-config.mjs")) {
+      assert.deepStrictEqual(assets[name], try files.readFile(path.join(browser, "src", name)), `${name} is copied byte for byte`)
+    }
+    assert.isFalse(Object.hasOwn(assets, "native-wire.d.mts"), "type declarations never ship")
+    assert.isUndefined(assetsProblem(try readAssets(out), CERTIFICATE, APPLICATION))
+    assert.strictEqual(try refusal(buildBrowserExtension({ browser, out, certificate: CERTIFICATE })), `BrowserExtensionInvalid: ${out} must be a new directory`)
+
+    const broken = path.join(work, "broken")
+    try files.copy(browser, broken)
+    try files.writeFileString(path.join(broken, "src", "protocol.mjs"), 'export * from "./missing-wire.mjs";\n')
+    const refused = try refusal(buildBrowserExtension({ browser: broken, out: path.join(work, "broken-out"), certificate: CERTIFICATE }))
+    assert.match(refused, /^BrowserExtensionInvalid: The staged extension module graph is invalid: .*missing-wire\.mjs/s)
+  }
+}, 120_000)
+
+it.effect(`Generate and apply the owned component overlay only on the pinned Chromium sources (spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity")`, effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const work = try scratch("browser-prepare")
+    const extension = path.join(work, "extension")
+    try buildBrowserExtension({ browser: try browserRoot(), out: extension, certificate: CERTIFICATE })
+    const checkout = try pinnedCheckout("browser-checkout")
+    const source = checkout.root
+    const request = (out: string) => ({ source, extension, out: path.join(work, out), certificate: CERTIFICATE })
+
+    assert.strictEqual(try refusal(prepareChromium(request("unpinned"))), "ChromiumSourceRefused: Chromium HEAD does not match the pinned component revision")
+    try pinHead(source)
+    assert.strictEqual(try refusal(prepareChromium({ ...request("revision"), revision: "0".repeat(40) })), "ChromiumInputInvalid: Chromium revision must match the reviewed component pin")
+    assert.strictEqual(try refusal(prepareChromium({ ...request("no-cert"), certificate: "" })), "ChromiumInputInvalid: The final launcher certificate SHA-256 is required")
+    assert.strictEqual(try refusal(prepareChromium({ ...request("inside"), out: path.join(source, "out", "component") })), "ChromiumInputInvalid: Component output must be outside the Chromium checkout")
+    assert.strictEqual(try refusal(prepareChromium({ ...request("other-signer"), certificate: OTHER_CERTIFICATE })), "ChromiumSourceRefused: Native host configuration does not match the Android application and certificate")
+    assert.isFalse(try files.exists(path.join(work, "other-signer")), "a refused overlay leaves no output")
+    assert.strictEqual(try git(source, ["diff", "--name-only"]), "", "a refused overlay leaves the checkout untouched")
+
+    const prepared = try prepareChromium({ ...request("component"), revision: pin.revision })
+    assert.strictEqual(prepared.chromiumRevision, pin.revision)
+    assert.strictEqual(prepared.platform, "android")
+    assert.deepStrictEqual(prepared.nativeHost, { application: APPLICATION, androidCertificates: [CERTIFICATE.toUpperCase()] })
+    assert.strictEqual(prepared.launcherSignerSha256, CERTIFICATE)
+    assert.isNull(prepared.trustedActivityEmbedding, "host embedding is opt-in")
+    assert.isFalse(prepared.releaseQualified)
+    const out = path.join(work, "component")
+    const patch = try files.readFile(path.join(out, "eliza-component.patch"))
+    assert.strictEqual(sha256(patch), prepared.patchSha256)
+    assert.deepInclude(json(try files.readFileString(path.join(out, "eliza-component-overlay.json"))), { patchSha256: prepared.patchSha256, chromiumRevision: pin.revision })
+    for (const [relative, expected] of Object.entries(prepared.outputs)) {
+      assert.strictEqual(sha256(try files.readFile(path.join(source, relative))), expected, `${relative} carries the generated bytes`)
+      assert.strictEqual(sha256(try files.readFile(path.join(out, relative))), expected, `${relative} is kept beside the patch`)
+    }
+    assert.notStrictEqual(try git(source, ["diff", "--name-only"]), "", "the patch changed reviewed sources")
+
+    assert.strictEqual(try refusal(prepareChromium(request("component"))), "ChromiumInputInvalid: Component output directory must be new")
+    assert.match(try refusal(prepareChromium(request("again"))), /^ChromiumSourceRefused: Chromium source integrity mismatch: /, "a patched checkout is never patched again")
+  }
+}, 180_000)
+
+it.effect(`Build the protection module with esbuild and embed its complete inventory in the owned component (spec/os/browser/protection.md, "Story: Block known-bad sites without blocking unknown ones")`, effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const work = try scratch("browser-protection")
+    const base = try buildBrowserExtension({ browser: try browserRoot(), out: path.join(work, "extension"), certificate: CERTIFICATE })
+    const composed = try promise(() => composeProtection(base, { referenceDomains: ["example.com"] }))
+    assert.deepStrictEqual(Object.keys(composed).sort(), [...componentAssetNames(composed)].sort())
+    assert.isTrue(Object.hasOwn(composed, "protection.mjs"))
+    assert.isUndefined(assetsProblem(composed, CERTIFICATE, APPLICATION))
+    const text = (name: string) => new TextDecoder().decode(composed[name] ?? new Uint8Array())
+    const manifest = json(text("manifest.json"))
+    assert.deepInclude(manifest, { web_accessible_resources: [{ resources: ["warning.html"], matches: ["<all_urls>"] }] })
+    assert.include(typeof manifest === "object" && manifest !== null && "permissions" in manifest && Array.isArray(manifest.permissions) ? manifest.permissions : [], "declarativeNetRequest")
+    assert.notInclude(text("warning.html"), "{{", "every warning slot is filled")
+    assert.include(text("licenses.html"), "tldts")
+    assert.include(text("protection.mjs"), "installBrowserProtection({chrome:globalThis.chrome")
+
+    const staged = path.join(work, "protected")
+    try writeAssets(staged, composed)
+    const advisory = try promise(() => loadModule(path.join(staged, "advisory.mjs")))
+    assert.isTrue(typeof advisory === "object" && advisory !== null && "createProtectionAdvisory" in advisory && typeof advisory.createProtectionAdvisory === "function", "the esbuild advisory bundle loads and exports its entry")
+
+    const checkout = try pinnedCheckout("browser-protection-checkout")
+    try pinHead(checkout.root)
+    const prepared = try prepareChromium({ source: checkout.root, extension: staged, out: path.join(work, "component"), certificate: CERTIFICATE })
+    assert.deepStrictEqual(Object.keys(prepared.resources).sort(), [...componentAssetNames(composed)].sort(), "the component embeds the protection inventory")
+    assert.strictEqual(prepared.resources["protection.mjs"]?.sha256, sha256(composed["protection.mjs"] ?? new Uint8Array()))
+    assert.isTrue(try files.exists(path.join(work, "component", "eliza-component.patch")))
+  }
+}, 180_000)
+
+it.effect(`Plan an owned browser or WebView provider build only from reviewed GN arguments (spec/os/browser/chromium.md, "Story: Replace the image's WebView provider only with the pinned one"; spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity")`, effect () => {
+  provide NodeServices.layer {
+    const path = try Path.Path
+    const source = "/work/chromium/src"
+    const build = path.join(source, "out", "webview")
+    const webview = try chromiumBuildPlan({ source, build, gnArgs: WEBVIEW_ARGS, target: "system_webview_apk", jobs: 4 })
+    assert.deepStrictEqual(webview, {
+      target: "system_webview_apk",
+      apks: [path.join(build, "apks/SystemWebView.apk"), path.join(build, "apks/SystemWebView64.apk")],
+      commands: [["gn", ["gen", "out/webview"]], ["autoninja", ["-C", "out/webview", "-j", "4", "system_webview_apk"]]],
+    })
+    const browser = try chromiumBuildPlan({ source, build: path.join(source, "out", "browser"), gnArgs: BROWSER_ARGS })
+    assert.strictEqual(browser.target, "chrome_public_apk", "the owned browser is the default target")
+    assert.deepStrictEqual(browser.commands[1], ["autoninja", ["-C", "out/browser", "-j", "8", "chrome_public_apk"]])
+
+    assert.strictEqual(try refusal(chromiumBuildPlan({ source, build, gnArgs: WEBVIEW_ARGS })), "ChromiumInputInvalid: GN arguments must select the reviewed owned Desktop Android browser")
+    assert.strictEqual(try refusal(chromiumBuildPlan({ source, build, gnArgs: BROWSER_ARGS, target: "system_webview_apk" })), "ChromiumInputInvalid: GN arguments must name the reviewed Android WebView provider")
+    assert.strictEqual(try refusal(chromiumBuildPlan({ source, build, gnArgs: `${WEBVIEW_ARGS}target_os = "linux"\n`, target: "system_webview_apk" })), "ChromiumInputInvalid: GN arguments must name the reviewed Android WebView provider", "an argument set twice is not reviewed")
+    assert.strictEqual(try refusal(chromiumBuildPlan({ source, build, gnArgs: WEBVIEW_ARGS, target: "content_shell_apk" })), "ChromiumInputInvalid: target must be one of chrome_public_apk, system_webview_apk")
+    assert.strictEqual(try refusal(chromiumBuildPlan({ source, build, gnArgs: WEBVIEW_ARGS, target: "system_webview_apk", jobs: 0 })), "ChromiumInputInvalid: jobs must be an integer between 1 and 256")
+    assert.strictEqual(try refusal(chromiumBuildPlan({ source, build: "/elsewhere/out", gnArgs: WEBVIEW_ARGS, target: "system_webview_apk" })), "ChromiumInputInvalid: build must be a new directory inside the Chromium checkout")
+  }
+})
+
+it.effect.skipIf(hostPlatform() === "linux")(`Refuse to compile Chromium for Android off a Linux build host, before anything is written (spec/os/browser/chromium.md, "Story: Replace the image's WebView provider only with the pinned one")`, effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const work = try scratch("browser-build")
+    const source = path.join(work, "src")
+    try files.makeDirectory(source)
+    const argsFile = path.join(work, "args.gn")
+    try files.writeFileString(argsFile, WEBVIEW_ARGS)
+    const options = { source, extension: path.join(work, "extension"), out: path.join(work, "out"), certificate: CERTIFICATE, build: path.join(source, "out", "webview"), argsFile, target: "system_webview_apk" }
+    assert.strictEqual(try refusal(buildChromium(options)), "ChromiumInputInvalid: Android Chromium compilation requires a Linux build host")
+    assert.isFalse(try files.exists(path.join(work, "out")))
+    assert.isFalse(try files.exists(path.join(source, "out")))
+  }
+})
+
+it.effect.skipIf(skipped !== null)(`Prepare Android consumer browser inputs bound to the APK signer from a clean reviewed checkout, with the product's protection composed${skipped === null ? "" : ` (skipped: ${skipped})`} (spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"; spec/os/browser/protection.md, "Story: Block known-bad sites without blocking unknown ones")`, effect () => {
+  provide NodeServices.layer {
+    if (tools.kind === "missing") return
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const work = try scratch("browser-consumer")
+    const source = path.join(work, "checkout")
+    try files.copy(try browserRoot(), path.join(source, "packages", "os", "browser"))
+    try git(source, ["init", "--quiet", "--initial-branch=main"])
+    const commit = try commitTree(source, {}, "Pin the reviewed browser inputs")
+    const signer = try Effect.try(() => testSigner(tools, work, "launcher"))
+    const built = try Effect.try(() => buildApk(tools, { directory: path.join(work, "apk"), manifest: `<?xml version="1.0" encoding="utf-8"?>\n<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${APPLICATION}" android:versionCode="1" android:versionName="1">\n  <application android:label="Fixture" />\n</manifest>\n`, signer, name: "launcher" }))
+    const request = (output: string) => ({ source, expectedCommit: commit, apk: built.apk, output: path.join(work, output), application: APPLICATION, apksigner: tools.apksigner })
+
+    assert.strictEqual(try refusal(prepareAndroidConsumerInputs({ ...request("relative"), output: "relative/out" })), "ChromiumInputInvalid: Source, APK and output require absolute paths")
+    assert.strictEqual(try refusal(prepareAndroidConsumerInputs({ ...request("commit"), expectedCommit: "f".repeat(40) })), "ChromiumInputInvalid: Source differs from the reviewed commit")
+    assert.strictEqual(try refusal(prepareAndroidConsumerInputs({ ...request("nested"), source: path.join(source, "packages") })), "ChromiumInputInvalid: Source must be the checkout root")
+
+    const prepared = try prepareAndroidConsumerInputs({
+      ...request("inputs"),
+      composeAssets: ({ assets }) => composeProtection(assets).then((composed) => ({ assets: composed, provenance: { protection: "default feeds" } })),
+    })
+    assert.strictEqual(prepared.sourceCommit, commit)
+    assert.strictEqual(prepared.certificateSha256, signer.certificateSha256.toLowerCase(), "the extension is bound to the APK's verified signer")
+    assert.strictEqual(prepared.apkSha256, built.sha256)
+    assert.strictEqual(prepared.chromiumRevision, pin.revision)
+    assert.deepStrictEqual(prepared.composition, { protection: "default feeds" })
+    const extension = path.join(work, "inputs", "extension")
+    const written = try readAssets(extension)
+    assert.deepStrictEqual(Object.keys(written), Object.keys(prepared.resources).sort())
+    assert.deepStrictEqual(Object.keys(written), [...componentAssetNames(written)].sort())
+    for (const [name, digest] of Object.entries(prepared.resources)) assert.strictEqual(sha256(written[name] ?? new Uint8Array()), digest)
+    assert.isUndefined(assetsProblem(written, prepared.certificateSha256, APPLICATION))
+
+    assert.strictEqual(try refusal(prepareAndroidConsumerInputs(request("inputs"))), "ChromiumInputInvalid: Output directory must be new")
+    assert.match(try refusal(prepareAndroidConsumerInputs({ ...request("dropped"), composeAssets: ({ assets }) => Promise.resolve({ assets: Object.fromEntries(Object.entries(assets).filter(([name]) => name !== "guide-font.mjs")) }) })), /^BrowserExtensionInvalid: Extension resource inventory changed/)
+    try files.writeFileString(path.join(source, "packages", "os", "browser", "src", "unreviewed.mjs"), "export {}\n")
+    assert.strictEqual(try refusal(prepareAndroidConsumerInputs(request("dirty"))), "ChromiumInputInvalid: Browser build inputs must be clean")
+    assert.isFalse(try files.exists(path.join(work, "dirty")))
+  }
+}, 300_000)

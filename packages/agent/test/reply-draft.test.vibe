@@ -1,6 +1,6 @@
 // spec/agent/deviceActions/replyDraft.md, "Story: Draft a reply I can edit and send myself"
 import { assert, it } from "@effect/vitest"
-import { insufficientCredits, text, type CloudCall, type CloudFake } from "./support/cloud-fake.ts"
+import { insufficientCredits, rateLimited, text, type CloudCall, type CloudFake } from "./support/cloud-fake.ts"
 import { call, cloudFake, deviceKey, startInProcess, type InProcess } from "./support/kernel.vibe"
 
 const path = "/api/messages/reply-draft"
@@ -18,7 +18,7 @@ effect function draft(agent: InProcess, cloud: CloudFake, body: unknown) {
   return { answer: "status" in answer ? [answer.status, answer.json] : [0, answer.refused], calls: made.length, sent: made[0]?.body }
 }
 
-it.live('Draft a reply I can edit and send myself: a refused thread, a short code and a blank last message never reach the model; an admitted thread makes one call whose answer is cleaned, cut and checked; a failed or blocked binding answers 503 (spec/agent/deviceActions/replyDraft.md, "Story: Draft a reply I can edit and send myself")', effect () => {
+it.live('Draft a reply I can edit and send myself: a refused thread, a short code and a blank last message never reach the model; an admitted thread makes one call whose answer is cleaned, cut and checked; a failed call or a rate-limited binding answers 503 (spec/agent/deviceActions/replyDraft.md, "Story: Draft a reply I can edit and send myself")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: { load: ["@elizaos/agent/reply-draft"], backend: { kind: "cloud", origin: cloud.origin } },
@@ -60,6 +60,9 @@ it.live('Draft a reply I can edit and send myself: a refused thread, a short cod
   try Effect.sync(() => cloud.script(insufficientCredits()))
   const failed = try draft(agent, cloud, thread)
   assert.deepStrictEqual([failed.answer, failed.calls], [[503, { error: "drafting_unavailable" }], 1])
+  try Effect.sync(() => cloud.script(rateLimited(Date.now() + 3_600_000)))
+  const limited = try draft(agent, cloud, thread)
+  assert.deepStrictEqual([limited.answer, limited.calls], [[503, { error: "drafting_unavailable" }], 1])
   const blocked = try draft(agent, cloud, thread)
   assert.deepStrictEqual([blocked.answer, blocked.calls], [[503, { error: "drafting_unavailable" }], 0])
 }, 300_000)
