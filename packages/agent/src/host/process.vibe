@@ -56,6 +56,7 @@ module node {
   import { createEventHub } from "../conversation/events.vibe"
   import { ownerMessageService } from "../conversation/message-service.vibe"
   import { deviceEnrollment } from "../device-actions/enrollment.vibe"
+  import { readCompletionRoutes } from "../device-actions/read-completion.vibe"
   import { openDeviceStorage, type DeviceStorageSnapshot } from "../storage/index.vibe"
   import { StoreFailed } from "../storage/fault.vibe"
   import { logSweeps, scheduleSweeps } from "../storage/retention.vibe"
@@ -290,6 +291,7 @@ module node {
           ...authRoutes(agentId),
           ...conversationRoutes(runtime, conversationOwner, launch.character.name, events.conversationUpdated),
           ...enrollment.routes,
+          ...readCompletionRoutes({ runtime, owner: conversationOwner, sender: enrollment.deviceSender }),
           ...composed.routes,
         ],
       })

@@ -1,19 +1,19 @@
 // spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment never returns and retires every open offer"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A settled request never changes again"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"
 import type { IDatabaseAdapter } from "@elizaos/core"
-import { apply, initial, machineOver, noOwner, Rejected, step, type DeviceRequest } from "../../gen/agent__deviceActions.effect.vibe"
+import { apply, initial, machineOver, noOwner, Rejected, step, type DeviceRequest, type Machine } from "../../gen/agent__deviceActions.effect.vibe"
 import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
 import type { DeviceView, RevisionRead, ViewProfile } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
-import type { StoredRequest } from "./read-completion.vibe"
 
 export error DeviceStoreUnavailable { step: string; cause: unknown }
 export error StaleDeviceRow { table: "device_enrollment" | "device_requests"; id: string; revision: number }
 export error ProposalIdTaken { proposalId: string }
 
 module node {
+  import { AsyncLocalStorage } from "node:async_hooks"
   import { randomUUID } from "node:crypto"
   import { Schema } from "effect"
-  import type { IDatabaseAdapter } from "@elizaos/core"
-  import { parseState, requestSettled, step, type DeviceRequest, type Event } from "../../gen/agent__deviceActions.ts"
+  import type { IDatabaseAdapter, UUID } from "@elizaos/core"
+  import { canClaimCompletion, canDeliverCompletion, parseState, requestSettled, step, type CompletionHint, type DeviceRequest, type Event } from "../../gen/agent__deviceActions.ts"
   import type { SessionOwner } from "../../gen/core__sessions.ts"
   import { allCapabilities, canSetViewProfile, setViewProfile, type DeviceView, type Need, type RevisionRead, type ViewProfile } from "../../gen/agent__deviceActions__capabilities.ts"
   import type { ReadBinding } from "../../gen/agent__deviceActions__operations.ts"
@@ -164,6 +164,43 @@ module node {
     })
   }
 
+  export interface ReadCompletionPublication {
+    readonly adapter: IDatabaseAdapter
+    readonly messageId: UUID
+    readonly hint: CompletionHint
+    readonly by: SessionOwner
+  }
+
+  const completingRead = new AsyncLocalStorage<ReadCompletionPublication>()
+
+  export function withReadCompletionPublication<A>(publication: ReadCompletionPublication, publish: () => Promise<A>): Promise<A> {
+    return completingRead.run(publication, publish)
+  }
+
+  export function readCompletionPublication(adapter: IDatabaseAdapter, messageId: UUID): ReadCompletionPublication | undefined {
+    const publication = completingRead.getStore()
+    return publication?.adapter === adapter && publication.messageId === messageId ? publication : undefined
+  }
+
+  export async function commitReadCompletion(tx: IDatabaseAdapter, { hint, by }: ReadCompletionPublication): Promise<boolean> {
+    const sql = connection(await tx.getConnection())
+    const found = await sql.query<{ revision: number; state: unknown }>(
+      "SELECT revision, state FROM device_requests WHERE proposal_id = $1 FOR UPDATE", [hint.proposalId],
+    )
+    const row = found.rows[0]
+    if (row === undefined) return false
+    const before = parsed(`request ${hint.proposalId}`, row.state)
+    const elapsed = Date.now() - before.session.now
+    const current = elapsed > 0 ? step(before, { type: "elapse", elapsed }, by) : before
+    if (!canClaimCompletion(current, by, hint) || !canDeliverCompletion(current)) return false
+    const delivered = step(current, { type: "deliverCompletion" }, by)
+    const kept = await sql.query(
+      "UPDATE device_requests SET revision = revision + 1, state = $3::jsonb WHERE proposal_id = $1 AND revision = $2",
+      [hint.proposalId, row.revision, JSON.stringify(delivered)],
+    )
+    return kept.affectedRows === 1
+  }
+
   export function requestRows(adapter: IDatabaseAdapter, which: Settled): Promise<RequestRow[]> {
     return within(adapter, async (sql) => {
       const found = await sql.query<Row>(`SELECT ${columns} FROM device_requests WHERE settled = $1 ORDER BY created_at, proposal_id`, [which === "settled"])
@@ -203,8 +240,11 @@ import {
   type EnrollmentEvent, type EnrollmentRow, type OfferEvent, type ProfileChange, type RequestRow, type RequestTerms, type Settled,
 } from node
 export type { EnrollmentEvent, OfferEvent, ProfileChange, RequestRow, RequestTerms, Settled } from node
+export { commitReadCompletion, readCompletionPublication, withReadCompletionPublication } from node
 
-export interface DeviceRequestRecord extends StoredRequest {
+export interface DeviceRequestRecord {
+  readonly machine: Machine.Shape
+  readonly result: unknown
   readonly proposalId: string
   readonly terms: RequestTerms
   readonly createdAt: number

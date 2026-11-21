@@ -10,6 +10,7 @@ module node {
     type UUID, type World,
   } from "@elizaos/core"
   import { seedable } from "../../gen/agent__storage__database.ts"
+  import { commitReadCompletion, readCompletionPublication } from "../device-actions/store.vibe"
   import { migrations as shipped, type Migration } from "./schema.vibe"
   import { claimDeviceState } from "./identity.vibe"
   import { migrate, seedDurableStore, startStore, storeBundle, type DeviceStorageSnapshot } from "./migrate.vibe"
@@ -458,7 +459,15 @@ module node {
 
     async publishMessageContentSegments(input: Parameters<NonNullable<IDatabaseAdapter["publishMessageContentSegments"]>>[0]): ReturnType<NonNullable<IDatabaseAdapter["publishMessageContentSegments"]>> {
       const db = this.db
-      if (db instanceof PGlite) return this.transaction((tx) => tx.publishMessageContentSegments!(input))
+      if (db instanceof PGlite) {
+        const completion = input.mode === "create" ? readCompletionPublication(this, input.parent.id) : undefined
+        return this.transaction(async (tx) => {
+          if (completion !== undefined && !await commitReadCompletion(tx, completion)) return { status: "conflict" }
+          const published = await tx.publishMessageContentSegments!(input)
+          if (completion !== undefined && published.status !== "created") throw new Error("The read completion message could not be published")
+          return published
+        })
+      }
       const parentId = input.mode === "create" ? input.parent.id : input.messageId
       const agentId = input.mode === "create" ? input.parent.agentId : input.agentId
       if (agentId !== this.agentId) throw new Error("Message content belongs to another agent")
