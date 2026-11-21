@@ -98,6 +98,33 @@ export function parseRelationshipsScope(
   return { ok: false, message: RELATIONSHIPS_SCOPE_ERROR };
 }
 
+const RELATIONSHIPS_PAGING_ERROR = "Invalid relationships pagination.";
+
+/**
+ * Parse the relationships-graph `limit` and `offset` query. An omitted value
+ * keeps the unpaged read. A present value that is not a number, a `limit` that
+ * is not positive, or an `offset` that is not a non-negative integer is a
+ * client error: the sibling `/activity` route answers 400 for the same input.
+ * Dropping the value silently turned "give me zero rows" into "give me every
+ * row", because the graph service reads a missing limit as no limit.
+ */
+export function parseRelationshipsPaging(
+  rawLimit: string | null,
+  rawOffset: string | null,
+):
+  | { ok: true; limit?: number; offset?: number }
+  | { ok: false; message: string } {
+  const limit = parseRelationshipsQueryInteger(rawLimit, { min: 1 });
+  const offset = parseRelationshipsQueryInteger(rawOffset, { min: 0 });
+  if (
+    (rawLimit !== null && limit === undefined) ||
+    (rawOffset !== null && offset === undefined)
+  ) {
+    return { ok: false, message: RELATIONSHIPS_PAGING_ERROR };
+  }
+  return { ok: true, limit, offset };
+}
+
 export function parseRelationshipsQuery(
   reqUrl: string | undefined,
 ): RelationshipsGraphQuery {
@@ -291,6 +318,14 @@ export async function handleRelationshipsRoutes(
     const parsedScope = parseRelationshipsScope(url.searchParams.get("scope"));
     if (!parsedScope.ok) {
       error(res, parsedScope.message, 400);
+      return true;
+    }
+    const parsedPaging = parseRelationshipsPaging(
+      url.searchParams.get("limit"),
+      url.searchParams.get("offset"),
+    );
+    if (!parsedPaging.ok) {
+      error(res, parsedPaging.message, 400);
       return true;
     }
   }
