@@ -2865,6 +2865,23 @@ describe("browser control operations", () => {
     }
   });
 
+  // Review finding: the new-tab card told the owner about browser_navigate and
+  // newTab. Tool guidance belongs in the model's tool text, never on a card.
+  it("describes a new tab to the owner without tool names", async () => {
+    for (const [operation, description] of [
+      [{ type: "browser_tab_new" }, "Opens an empty tab in Browser."],
+      [
+        { type: "browser_tab_new", private: true },
+        "Opens an empty private tab in Browser.",
+      ],
+    ] as const) {
+      const f = browserControlFixture(operation);
+      const [card] = await f.actions.pending(homeContext, signal());
+      expect(card).toMatchObject({ description });
+      expect(JSON.stringify(card)).not.toMatch(/browser_navigate|newTab/);
+    }
+  });
+
   it("always reviews closing a tab", async () => {
     for (const operation of [
       { type: "browser_tab_close" },
