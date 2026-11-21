@@ -90,11 +90,8 @@ async function dispatch(key: string, event: Event): Promise<"accepted" | "refuse
       return moved("closing", await run(within((tx) => closePeriods(tx, organizationId, closingOf(period, event), 0))));
     case "adjustForUpgrade":
       return moved("adjusting for an upgrade", await run(within((tx) => adjustForUpgrade(tx, organizationId, event.target, event.effectiveAt, event.reviewed, event.now))));
-    case "clawBack": {
-      if (event.cause === "NoClawback") return "refused";
-      const cause = event.cause;
-      return moved("clawing back", await run(deployed((tx) => clawBackInvoice(tx, invoiceOf(period), cause, 0))));
-    }
+    case "clawBack":
+      return moved("clawing back", await run(deployed((tx) => clawBackInvoice(tx, invoiceOf(period), event.cause, 0))));
     case "restore":
       return moved("restoring", await run(deployed((tx) => restoreInvoice(tx, invoiceOf(period), event.now))));
     default: {

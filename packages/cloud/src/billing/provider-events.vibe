@@ -221,7 +221,6 @@ effect function settleCharge(tx: Tx, eventType: ProviderEventType, charge: Strip
   const change = route.change
   switch (change.tag) {
     case "ClawBack":
-      if (change.cause === "NoClawback") return nothingToApply
       try clawBackInvoice(tx, invoice.id, change.cause, now)
       break
     case "RestoreAllowance":

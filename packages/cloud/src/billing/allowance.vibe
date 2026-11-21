@@ -1,9 +1,9 @@
 // spec/cloud/billing/allowance.md, "Story: Spend my plan's allowance before my credits, and never carry it over"; spec/cloud/billing/allowance.md, "Story: Get more allowance when I upgrade mid-period"; spec/cloud/billing/allowance.md, "Story: Lose the allowance of a refunded invoice, and get it back if I win the dispute"
-import { enabled, type ClawbackCause, type CloseReason, type Event, type Period, type PeriodPhase, type Rejected } from "../../gen/cloud__billing__allowance.effect.vibe"
+import { enabled, type ClawbackCause, type CloseReason, type Event, type Period, type Rejected } from "../../gen/cloud__billing__allowance.effect.vibe"
 import type { PlanKey } from "../../gen/cloud__billing__plans.effect.vibe"
 import type { Sweep } from "../http/routes.vibe"
 import { Deployment } from "../profile/profile.vibe"
-import { periodRows, stepPeriod } from "../shared/metering.vibe"
+import { allowanceStatus, periodRows, stepPeriod, type WireAllowanceState } from "../shared/metering.vibe"
 import { loadRow, RowCorrupt, stepRow, type RowConflict } from "../store/rows.vibe"
 import { type Row, Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 import { parsePlanKey } from "./plans.vibe"
@@ -38,7 +38,7 @@ export type Closing =
   | { readonly kind: "SupersededByPaid" }
   | { readonly kind: "GrantRevoked"; readonly grantId: string }
 
-export type WireAllowanceState = "open" | "expired" | "closed" | "clawed_back"
+export type { WireAllowanceState }
 
 export interface AllowanceView {
   readonly state: WireAllowanceState
@@ -95,13 +95,6 @@ export function grantMonths(grant: GrantTerm, now: number): ReadonlyArray<GrantM
     if (window.endsAt > now) months.push(window)
   }
   return months
-}
-
-const wireStates: Readonly<Record<Exclude<PeriodPhase, "PeriodUnopened">, WireAllowanceState>> = {
-  PeriodOpen: "open",
-  PeriodExpired: "expired",
-  PeriodClosed: "closed",
-  PeriodClawedBack: "clawed_back"
 }
 
 function opening(organizationId: string, now: number) {
@@ -190,7 +183,7 @@ export effect function adjustForUpgrade(tx: Tx, organizationId: string, target: 
   return step
 }
 
-export effect function clawBackInvoice(tx: Tx, invoiceId: string, cause: Exclude<ClawbackCause, "NoClawback">, now: number): PeriodStep!AllowanceFailure!Deployment {
+export effect function clawBackInvoice(tx: Tx, invoiceId: string, cause: ClawbackCause, now: number): PeriodStep!AllowanceFailure!Deployment {
   const key = renewalKey((try Deployment).environment, invoiceId)
   try lockOwnerOf(tx, key)
   return try stepWhenEnabled(tx, key, { type: "clawBack", cause }, now)
@@ -209,9 +202,10 @@ export effect function allowanceView(tx: Tx, organizationId: string, now: number
   ))[0]?.key)
   if (key === undefined) return null
   const period = (try loadRow(tx, periodRows, key, false)).state
-  if (period.phase === "PeriodUnopened") throw new RowCorrupt({ table: periodRows.table, key, cause: "an allowance row holds an unopened period" })
+  const state = allowanceStatus(period.phase)
+  if (state === null) throw new RowCorrupt({ table: periodRows.table, key, cause: "an allowance row holds an unopened period" })
   return {
-    state: wireStates[period.phase],
+    state,
     granted: period.granted,
     adjustment: period.adjustment,
     available: period.available,

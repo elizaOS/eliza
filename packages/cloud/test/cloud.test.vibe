@@ -2365,6 +2365,9 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
     const again = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(openRenewal(tx, "org-refund", invoice, now))))
     const ticket = try cloud.inside(reserve({ organizationId: "org-refund", userId: "user-refund" }, { service: "MeteredInference", caller: "user-refund", requestId: "refund-1", part: { tag: "WholeRequest" } }, 1_000_000))
     const clawed = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(clawBackInvoice(tx, "in_refund", "RefundClawback", now))))
+    try sql(cloud, `UPDATE allowance_periods
+      SET state = state || '{"phase":"PeriodClawedBack","clawbackCause":"RefundClawback"}'::jsonb
+      WHERE key = 'renewal/staging/in_refund'`)
     try cloud.inside(markDispatched(ticket.key))
     try cloud.inside(settle(ticket.key, { kind: "known", actual: 400_000 }))
     const restored = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(restoreInvoice(tx, "in_refund", now))))
@@ -2374,7 +2377,7 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
       {
         opened: [opened.key, opened.moved, opened.period.granted, again.moved],
         held: ticket.hold.fromAllowance > 0,
-        clawed: [clawed.moved, clawed.period.phase, clawed.period.clawbackCause],
+        clawed: [clawed.moved, clawed.period.phase],
         restored: restored.moved,
         view,
         usage: usage.map((row) => [Number(row.from_allowance), Number(row.from_credits)])
@@ -2382,7 +2385,7 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
       {
         opened: ["renewal/staging/in_refund", true, 90_000_000, false],
         held: true,
-        clawed: [true, "PeriodClawedBack", "RefundClawback"],
+        clawed: [true, "PeriodRefunded"],
         restored: false,
         view: { state: "clawed_back", granted: 90_000_000, adjustment: 0, available: 0, reserved: 0, settled: 400_000, expired: 0, clawedBack: 89_600_000, periodStart: now - 1000, resetsAt: now + allowanceMonth },
         usage: [[400_000, 0]]
@@ -2405,6 +2408,9 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
     }
     const opened = [try open("in_won", now - 1000, now + allowanceMonth), try open("in_late", now - allowanceMonth, now - 1000)]
     const clawed = [try disputed("in_won"), try disputed("in_late")]
+    try sql(cloud, `UPDATE allowance_periods
+      SET state = state || '{"phase":"PeriodClawedBack","clawbackCause":"DisputeClawback"}'::jsonb
+      WHERE key = 'renewal/staging/in_won'`)
     const during = try cloud.store.transaction((tx) => allowanceView(tx, "org-dispute", now))
     const restored = [try won("in_won"), try won("in_late")]
     const after = try cloud.store.transaction((tx) => allowanceView(tx, "org-dispute", now))
@@ -2418,7 +2424,7 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
         restored,
         after: [after?.state, after?.available, after?.clawedBack, after?.resetsAt],
         refundedLate,
-        late: [late.phase, late.clawbackCause, late.clawedBack, late.available],
+        late: [late.phase, late.clawedBack, late.available],
         statuses
       },
       {
@@ -2428,7 +2434,7 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
         restored: [true, false],
         after: ["open", 25_000_000, 0, now + allowanceMonth],
         refundedLate: true,
-        late: ["PeriodClawedBack", "RefundClawback", 25_000_000, 0],
+        late: ["PeriodRefunded", 25_000_000, 0],
         statuses: [["renewal/staging/in_late", "clawed_back"], ["renewal/staging/in_won", "open"]]
       }
     ))

@@ -1,6 +1,6 @@
-// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/shared/metering.md, "Story: Never overdraw an account"
+// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/shared/metering.md, "Story: Never overdraw an account"; spec/cloud/billing/allowance.md, "Story: Lose the allowance of a refunded invoice, and get it back if I win the dispute"
 import { type Rejected, admission, apply, decodeState, initial, allowanceCharge, creditCharge, reservedTimeout, dispatchedTimeout, type Event, type FundingLane, type Hold } from "../../gen/cloud__shared__metering.effect.vibe"
-import { type Rejected as PeriodRejected, apply as applyPeriod, decodeState as decodePeriod, initial as initialPeriod, type Event as PeriodEvent, type Period } from "../../gen/cloud__billing__allowance.effect.vibe"
+import { type Rejected as PeriodRejected, apply as applyPeriod, decodeState as decodePeriod, initial as initialPeriod, type Event as PeriodEvent, type Period, type PeriodPhase } from "../../gen/cloud__billing__allowance.effect.vibe"
 import type { HoldKey, RefusalCode } from "../../gen/cloud__shared__types.ts"
 import { creditAvailable, readFunds, stepFunds, type Funds, type FundsFailure } from "../billing/funds.vibe"
 import { laneFor } from "../billing/policy.vibe"
@@ -11,7 +11,35 @@ import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/conne
 export type { Hold, HoldKey }
 
 export const holdRows = machineRows<Hold, Event, Rejected, unknown>("holds", { initial, decodeState, apply })
-export const periodRows = machineRows<Period, PeriodEvent, PeriodRejected, unknown>("allowance_periods", { initial: initialPeriod, decodeState: decodePeriod, apply: applyPeriod })
+export type WireAllowanceState = "open" | "expired" | "closed" | "clawed_back"
+
+const allowanceStatuses: Readonly<Record<PeriodPhase, WireAllowanceState | null>> = {
+  PeriodUnopened: null,
+  PeriodOpen: "open",
+  PeriodExpired: "expired",
+  PeriodClosed: "closed",
+  PeriodDisputed: "clawed_back",
+  PeriodRefunded: "clawed_back",
+}
+
+export function allowanceStatus(phase: PeriodPhase): WireAllowanceState | null {
+  return allowanceStatuses[phase]
+}
+
+export effect function decodeAllowancePeriod(input: unknown) {
+  if (typeof input === "object" && input !== null && "phase" in input && "clawbackCause" in input) {
+    const { clawbackCause, ...period } = input
+    if (period.phase === "PeriodClawedBack") {
+      if (clawbackCause === "RefundClawback") return try decodePeriod({ ...period, phase: "PeriodRefunded" })
+      if (clawbackCause === "DisputeClawback") return try decodePeriod({ ...period, phase: "PeriodDisputed" })
+    } else if (clawbackCause === "NoClawback") {
+      return try decodePeriod(period)
+    }
+  }
+  return try decodePeriod(input)
+}
+
+export const periodRows = machineRows<Period, PeriodEvent, PeriodRejected, unknown>("allowance_periods", { initial: initialPeriod, decodeState: decodeAllowancePeriod, apply: applyPeriod })
 
 export error HoldUnknown { key: string }
 
@@ -72,7 +100,7 @@ effect function openPeriod(tx: Tx, organizationId: string, now: number): ({ read
 }
 
 export effect function stepPeriod(tx: Tx, key: string, event: PeriodEvent, now: number) {
-  return try stepRow(tx, periodRows, key, event, (period) => ({ status: wireName(period.phase.slice("Period".length)), updated_at: now }))
+  return try stepRow(tx, periodRows, key, event, (period) => ({ status: allowanceStatus(period.phase), updated_at: now }))
 }
 
 function refusalOf(code: RefusalCode, now: number): Refused {
