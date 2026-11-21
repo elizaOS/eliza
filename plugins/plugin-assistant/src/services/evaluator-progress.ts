@@ -19,8 +19,23 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { ElizaError, hashStableJson, isPlainObject } from "@elizaos/core";
+import {
+  ChannelType,
+  ElizaError,
+  hashStableJson,
+  isPlainObject,
+} from "@elizaos/core";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import { evaluatorEvidenceByteLength } from "./evaluator-evidence-page.ts";
+
+/** Post-turn review is skipped where the room must admit the next utterance at
+ * once: mobile and group voice. No evaluator progress advances there. */
+export function postTurnReviewRuns(message: Pick<Memory, "content">): boolean {
+  return (
+    !isMobilePlatform() &&
+    message.content.channelType !== ChannelType.VOICE_GROUP
+  );
+}
 
 // Bump when extraction/progress semantics require an explicit new backfill.
 const EXTRACTION_VERSION = 1;

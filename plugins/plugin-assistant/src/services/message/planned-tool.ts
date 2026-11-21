@@ -35,6 +35,7 @@ import {
   completionContextSources,
   composedPromotedSubactionDescription,
   composeToolDiagnosticRedactor,
+  DISCOVER_ACTIONS_NAME,
   ElizaError,
   type ExecutePlannedToolCallContext,
   type ExecutePlannedToolCallOptions,
@@ -77,6 +78,7 @@ import {
   runSubPlanner,
   subPlannerCallDigest,
 } from "../../runtime/sub-planner";
+import { proposeDeviceAction } from "../device-actions/action.ts";
 import {
   buildRuntimeActionLookup,
   resolvePlannerActionName,
@@ -749,6 +751,16 @@ export function subPlannerResultToPlannerToolResult(
  * JSONSchema. We also always include the universal terminal-sentinel tools
  * (REPLY / IGNORE / STOP) so the planner has a stable way to end the turn.
  *
+ * Wire order is IGNORE and STOP, then discovery and the device tool when
+ * offered, then every other tool by name, then REPLY. A provider prompt cache
+ * reads the tool definitions first and reuses a request only up to its first
+ * changed byte, so the tools offered on every request of a conversation
+ * precede the ones admitted per request, and REPLY, whose schema changes
+ * between two requests of one turn, comes after both. The order is what this
+ * function fixes: the planner still adds its source review argument to the
+ * device tool and the other domain tools on the requests that offer one.
+ * Tools are dispatched by name, never by position.
+ *
  * When no actions are gated for the current turn we fall back to an empty
  * tool array so the planner can short-circuit (the pipeline's stage-1
  * shortcut still emits HANDLE_RESPONSE through its own dedicated call).
@@ -967,14 +979,28 @@ export function collectPlannerTools(
   // these protocol terminals, so keep its canonical definitions exactly once;
   // duplicate native tool names waste schema tokens and are ambiguous to model
   // providers that preserve both entries.
-  return [
-    ...actionTools.filter(
-      (tool) => !terminalNames.has(normalizeActionIdentifier(tool.name)),
-    ),
-    ...CORE_PLANNER_TERMINALS,
-  ].sort((left, right) =>
-    left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+  const offered = actionTools.filter(
+    (tool) => !terminalNames.has(normalizeActionIdentifier(tool.name)),
   );
+  // Discovery leads the device tool: a conversation's planner requests offer
+  // it with one constant definition, while the device tool is admitted by the
+  // turn's contexts and its schema drops branches by request. The name is read
+  // at call time so this module does not depend on the device action's load
+  // order.
+  const head: readonly string[] = [
+    DISCOVER_ACTIONS_NAME,
+    proposeDeviceAction.name,
+  ];
+  return [
+    ...CORE_PLANNER_TERMINALS.filter((tool) => tool.name !== "REPLY"),
+    ...head.flatMap((name) => offered.filter((tool) => tool.name === name)),
+    ...offered
+      .filter((tool) => !head.includes(tool.name))
+      .sort((left, right) =>
+        left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+      ),
+    ...CORE_PLANNER_TERMINALS.filter((tool) => tool.name === "REPLY"),
+  ];
 }
 
 /** Word-boundary common lead of two or more texts when it is long enough to be worth stating once. */

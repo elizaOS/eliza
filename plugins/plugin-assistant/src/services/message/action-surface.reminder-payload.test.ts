@@ -141,11 +141,11 @@ describe("registered owner distinguishes reminder payload from phone work", () =
       "OWNER_REMINDERS_CREATE",
     ]);
     expect(result.tools.map((tool) => tool.name)).toEqual([
-      "DISCOVER_ACTIONS",
       "IGNORE",
+      "STOP",
+      "DISCOVER_ACTIONS",
       "OWNER_REMINDERS_CREATE",
       "REPLY",
-      "STOP",
     ]);
     expect(
       result.tools.find((tool) => tool.name === "OWNER_REMINDERS_CREATE"),
