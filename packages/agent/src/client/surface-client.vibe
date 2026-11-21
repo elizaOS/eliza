@@ -1,4 +1,4 @@
-// spec/agent/surfaceChannel.md, "Story: Retire delivered page commands without repeating a possible effect"; spec/agent/surfaceChannel.md, "A pull hands over the oldest command not yet handed over, once, and only one pull waits at a time"; spec/agent/surfaceChannel.md, "A command the agent gives up on is settled once, uncertain only if it was handed over and can have an effect"
+// spec/agent/surfaceChannel.md, "Story: Retire delivered page commands without repeating a possible effect"; spec/agent/surfaceChannel.md, "A pull hands over only the oldest command not yet handed over, and only one pull waits at a time"; spec/agent/surfaceChannel.md, "A command given up on is uncertain only if it was handed over and can have an effect"
 import { commandTimeoutMs, maxPending } from "../../gen/agent__surfaceChannel.effect.vibe"
 
 export type SurfaceRequest = (path: string, body: unknown, signal: AbortSignal) => Promise<unknown>
