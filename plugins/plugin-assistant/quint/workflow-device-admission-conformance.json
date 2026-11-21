@@ -19,7 +19,8 @@
         "device Notes/Calendar admission treats a reminder selection in Calendar as no Calendar selection",
         "device Notes/Calendar admission treats a clock-draft selection in Calendar as no Calendar selection",
         "device Notes/Calendar admission keeps a malformed Calendar selection unavailable",
-        "device Notes/Calendar admission leaves a new event to the canonical CALENDAR action unless a phone calendar is selected"
+        "device Notes/Calendar admission leaves a new event to the canonical CALENDAR action unless a phone calendar is selected",
+        "device Notes/Calendar admission keeps a v617 create from Contacts on the canonical Calendar"
       ]
     },
     {
