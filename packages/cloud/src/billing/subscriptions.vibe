@@ -3,7 +3,7 @@ import { apply, customerIdOf, initial, isLive, parseState, windowFrom, type Comm
 import { Deployment } from "../profile/profile.vibe"
 import { foreign, toInt, toText, type Tx } from "../store/connection.vibe"
 import { RowCorrupt } from "../store/rows.vibe"
-import { parsePlanKey, wirePlanKey } from "./plans.vibe"
+import { parsePlanKey, wirePlanKey, type PaidPlanKey, type PlanKey } from "./plans.vibe"
 import { settleSubscriptionAllowance, type SubscriptionObservation } from "./stripe-ledger.vibe"
 import { readStripeSubscription, stripeClient } from "./stripe-observation.vibe"
 
@@ -32,17 +32,31 @@ export effect function observeSubscription(tx: Tx, organizationId: string) {
   const deployment = try Deployment
   const billing = deployment.settings.billing
   if (billing === undefined) throw invalid(organizationId, "billing is unconfigured")
-  const row = (try tx.query("SELECT customer_id, plan_key FROM subscriptions WHERE key = $1", [organizationId]))[0]
+  const row = (try tx.query("SELECT customer_id, plan_key, state FROM subscriptions WHERE key = $1", [organizationId]))[0]
   const customerId = toText(row?.customer_id)
   const plan = row?.plan_key
   if (!customerId || (plan !== "plus_monthly" && plan !== "pro_monthly")) throw invalid(organizationId, "missing provider customer or plan")
   const key = try deployment.secret(billing.secretKeyEnv)
-  return (try foreign("observe subscription", () => readStripeSubscription(stripeClient(key, billing.apiUrl), {
-    STRIPE_PRICE_ID: billing.plans[plan].priceId,
-    STRIPE_PRODUCT_ID: billing.plans[plan].productId,
-    STRIPE_PLAN: plan,
+  const stripe = stripeClient(key, billing.apiUrl)
+  const state = parseState(row?.state)
+  const observed = (chosen: PaidPlanKey) => foreign("observe subscription", () => readStripeSubscription(stripe, {
+    STRIPE_PRICE_ID: billing.plans[chosen].priceId,
+    STRIPE_PRODUCT_ID: billing.plans[chosen].productId,
+    STRIPE_PLAN: chosen,
     CLOUD_ENVIRONMENT: deployment.environment
-  }, customerId))).observation
+  }, customerId))
+  if (state?.planned.tag === "DowngradeAtRenewal") {
+    const next = wirePlanKey(state.planned.planKey)
+    if (next !== "free") {
+      const { observation } = try observed(next)
+      if (observation.subscriptionId === state.subscriptionId && observation.startsAt >= state.periodEnd) {
+        if (observation.status === "active" && observation.latestInvoice === "PeriodInvoicePaid" &&
+            observation.payment?.condition === "paid") return observation
+        return { ...observation, plan, startsAt: state.periodStart, endsAt: state.periodEnd, payment: undefined } satisfies SubscriptionObservation
+      }
+    }
+  }
+  return (try observed(plan)).observation
 }
 
 export effect function reconcileSubscription(tx: Tx, organizationId: string, observed: SubscriptionObservation, now: number, verifiedCheckout?: string) {
@@ -99,11 +113,11 @@ export effect function reconcileSubscription(tx: Tx, organizationId: string, obs
   }
   const ended = row?.status === "active" && (state.status !== "Active" || row.provider_subscription_id !== state.subscriptionId)
   try settleSubscriptionAllowance(tx, organizationId, state.status === "Active" ? observed : { ...observed, payment: undefined }, ended, now)
-  try tx.query(`INSERT INTO subscriptions (key,state,revision,status,plan_key,customer_id,provider_subscription_id,period_end,stale_after,updated_at)
-    VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (key) DO UPDATE SET state=excluded.state,revision=subscriptions.revision+(subscriptions.state IS DISTINCT FROM excluded.state)::int,
+  try tx.query(`INSERT INTO subscriptions (key,state,revision,status,plan_key,customer_id,provider_subscription_id,period_end,stale_after,updated_at,pending_plan_key)
+    VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (key) DO UPDATE SET state=excluded.state,revision=subscriptions.revision+(subscriptions.state IS DISTINCT FROM excluded.state)::int,
       status=excluded.status,plan_key=excluded.plan_key,customer_id=excluded.customer_id,provider_subscription_id=excluded.provider_subscription_id,
-      period_end=excluded.period_end,stale_after=excluded.stale_after,updated_at=excluded.updated_at`,
-    [organizationId, JSON.stringify(state), wireStatus[state.status], wirePlanKey(state.planKey), customerIdOf(state), state.subscriptionId || null, state.periodEnd, now + 300_000, now])
+      period_end=excluded.period_end,stale_after=excluded.stale_after,updated_at=excluded.updated_at,pending_plan_key=excluded.pending_plan_key`,
+    [organizationId, JSON.stringify(state), wireStatus[state.status], wirePlanKey(state.planKey), customerIdOf(state), state.subscriptionId || null, state.periodEnd, now + 300_000, now, state.planned.tag === "DowngradeAtRenewal" ? wirePlanKey(state.planned.planKey) : null])
   return state
 }
 
@@ -115,4 +129,11 @@ export effect function claimLiveCommand(tx: Tx, organizationId: string, kind: Co
 export effect function releaseLiveCommand(tx: Tx, organizationId: string, commandId: string) {
   const state = (try apply(try readSubscription(tx, organizationId), { type: "releaseCommand", commandId })).state
   try tx.query("UPDATE subscriptions SET state=$2,revision=revision+1 WHERE key=$1", [organizationId, JSON.stringify(state)])
+}
+
+export effect function recordScheduledDowngrade(tx: Tx, organizationId: string, commandId: string, target: PlanKey) {
+  const state = (try apply(try readSubscription(tx, organizationId), { type: "scheduleDowngrade", commandId, planKey: target })).state
+  try tx.query("UPDATE subscriptions SET state=$2,revision=revision+1,pending_plan_key=$3 WHERE key=$1",
+    [organizationId, JSON.stringify(state), wirePlanKey(target)])
+  return state
 }

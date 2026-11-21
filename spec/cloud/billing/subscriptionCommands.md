@@ -1,8 +1,8 @@
 # Subscription commands
 
 Cancel, undo a cancellation, upgrade and downgrade of a live subscription.
-One `Command` is one row: its review, its one provider change
-(`spec/cloud/shared/dispatchOnce.md`) and its outcome. In the step's
+One `Command` is one row with its review, required provider operations
+(`spec/cloud/shared/dispatchOnce.md`) and outcome. In the step's
 transaction the shell applies `ClaimSlot`, `ScheduleDowngrade` and
 `ReleaseSlot` to the subscription (`spec/cloud/billing/subscriptions.md`) and
 `AdjustAllowance` to the open renewal period
@@ -33,7 +33,10 @@ targetPlanKey, dueNow: {amountDueCents}, recurringEstimate:
 provider's prorated invoice preview at the pinned proration instant, which
 is the review time for an upgrade and the period end otherwise. A cancel
 needs no review: it confirms against the cancel control of the billing
-snapshot. A new review replaces an unconfirmed one.
+snapshot. A new review replaces an unconfirmed one. A downgrade review
+records whether the provider subscription already has an exact compatible
+schedule. The shell checks the subscription, customer, mode and current
+phase before admitting that schedule.
 
 ```quint
 import types.* from "../shared/types"
@@ -44,9 +47,13 @@ import dispatchOnce as D from "../shared/dispatchOnce"
 import sessions as S from "../../core/sessions"
 type CommandPhase = NoCommand | Quoted | Running | AwaitingPayment | Applied | Failed
 type QuoteTerms = { quoteId: str, sourcePlanKey: PlanKey, targetPlanKey: PlanKey, dueNowCents: int, recurringCents: int, reviewedAt: Millis, effectiveAt: Millis, expiresAt: Millis, periodStart: Millis, periodEnd: Millis, adjustment: Micros }
-type Command = { phase: CommandPhase, kind: Sub::CommandKind, commandId: str, subscriptionId: str, expectedRevision: int, resultRevision: int, createdAt: Millis, quote: QuoteTerms, receipt: D::Receipt }
+type AttachmentEvidence = OriginalAttachment | CompatibleSchedule
+type ScheduleReview = NoAttachedSchedule | ExistingSchedule({ scheduleId: str })
+type ScheduleWork = NoScheduleWork | ScheduleReviewPending | ReviewedUnscheduled | ReviewedExisting({ scheduleId: str })
+  | Attaching({ receipt: D::Receipt }) | ScheduleVerified({ receipt: D::Receipt, scheduleId: str, evidence: AttachmentEvidence })
+type Command = { phase: CommandPhase, kind: Sub::CommandKind, commandId: str, subscriptionId: str, expectedRevision: int, resultRevision: int, createdAt: Millis, quote: QuoteTerms, receipt: D::Receipt, schedule: ScheduleWork }
 pure val noQuote: QuoteTerms = { quoteId: "", sourcePlanKey: Free, targetPlanKey: Free, dueNowCents: 0, recurringCents: 0, reviewedAt: 0, effectiveAt: 0, expiresAt: 0, periodStart: 0, periodEnd: 0, adjustment: 0 }
-pure val initial: Command = { phase: NoCommand, kind: Sub::CancelCommand, commandId: "", subscriptionId: "", expectedRevision: 0, resultRevision: 0, createdAt: 0, quote: noQuote, receipt: D::initial }
+pure val initial: Command = { phase: NoCommand, kind: Sub::CancelCommand, commandId: "", subscriptionId: "", expectedRevision: 0, resultRevision: 0, createdAt: 0, quote: noQuote, receipt: D::initial, schedule: NoScheduleWork }
 pure val quoteLifetime: Millis = millisPerMinute
 pure def nowOf(c: Command): Millis = c.receipt.session.now
 pure def reviewFits(sub: Sub::Subscription, kind: Sub::CommandKind, targetPlanKey: PlanKey, dueNowCents: int): bool =
@@ -64,7 +71,19 @@ pure def canReview(c: Command, sub: Sub::Subscription, kind: Sub::CommandKind, t
   and sub.liveCommand == Sub::NoLiveCommand and Sub::commandEligible(sub, kind, sub.revision) and reviewFits(sub, kind, targetPlanKey, dueNowCents)
   and nowOf(c) >= sub.periodStart and nowOf(c) < sub.periodEnd
 pure def review(c: Command, sub: Sub::Subscription, kind: Sub::CommandKind, targetPlanKey: PlanKey, quoteId: str, dueNowCents: int, freshOwner: bool): Command =
-  { ...c, phase: Quoted, kind: kind, subscriptionId: sub.subscriptionId, expectedRevision: sub.revision, quote: quoteOf(sub, kind, targetPlanKey, quoteId, dueNowCents, nowOf(c)) }
+  { ...c, phase: Quoted, kind: kind, subscriptionId: sub.subscriptionId, expectedRevision: sub.revision, quote: quoteOf(sub, kind, targetPlanKey, quoteId, dueNowCents, nowOf(c)),
+    schedule: if (kind == Sub::DowngradeCommand) ScheduleReviewPending else NoScheduleWork }
+pure def canRecordScheduleReview(c: Command, observed: ScheduleReview): bool =
+  c.phase == Quoted and c.schedule == ScheduleReviewPending and (match observed {
+    | NoAttachedSchedule => true
+    | ExistingSchedule(x) => x.scheduleId != ""
+  })
+pure def recordScheduleReview(c: Command, observed: ScheduleReview): Command =
+  { ...c, schedule: match observed {
+    | NoAttachedSchedule => ReviewedUnscheduled
+    | ExistingSchedule(x) => ReviewedExisting({ scheduleId: x.scheduleId })
+  } }
+pure val observedValues = Set(NoAttachedSchedule, ExistingSchedule({ scheduleId: "sched1" }))
 pure val subValues = Set({ ...Sub::initial, status: Sub::Active, subscriptionId: "sub1", customer: Sub::PinnedCustomer({ customerId: "cus1" }), planKey: PlusMonthly, periodStart: 0, periodEnd: 2592000000, revision: 1 })
   .union(Set({ ...Sub::initial, status: Sub::Active, subscriptionId: "sub1", customer: Sub::PinnedCustomer({ customerId: "cus1" }), planKey: ProMonthly, periodStart: 0, periodEnd: 2592000000, revision: 2 }))
   .union(Set({ ...Sub::initial, status: Sub::Active, subscriptionId: "sub1", customer: Sub::PinnedCustomer({ customerId: "cus1" }), planKey: PlusMonthly, periodStart: 0, periodEnd: 2592000000, cancelAtPeriodEnd: true, revision: 3 }))
@@ -98,13 +117,14 @@ pure def alwaysQuoteIsTheReviewedEstimate(c: Command): bool = c.quote.quoteId !=
 
 ### A command starts only while its quote holds, the subscription is at the reviewed revision and no other command is live
 
-Confirming claims the subscription's command slot and prepares and claims
-one receipt in one transaction, before the provider is asked. Cancel, undo
-and upgrade are one subscription update, a downgrade one subscription
-schedule; each is keyed by the command id and found stale five minutes after
-its claim. An upgrade update is sent with `payment_behavior:
-pending_if_incomplete`, `proration_behavior: always_invoice` and the quote's
-proration instant.
+Confirming claims the subscription's command slot and the first required
+provider operation in one transaction. Cancel, undo and upgrade each need
+one subscription update. A downgrade with a verified schedule prepares
+configuration directly. Stripe requires an unscheduled subscription to
+attach a schedule first and configure it separately. Each operation has
+its own key and becomes stale five minutes after its own claim. An upgrade
+uses `payment_behavior=pending_if_incomplete`, `proration_behavior=always_invoice`
+and the quote's proration instant.
 
 ```quint
 type CommandEffect = ClaimSlot({ kind: Sub::CommandKind, commandId: str, expectedRevision: int }) | ReleaseSlot({ commandId: str })
@@ -115,23 +135,45 @@ pure val commandLifetime: Millis = millisPerDay
 pure def isChange(kind: Sub::CommandKind): bool = kind != Sub::CheckoutCommand
 pure def providerKeyOf(kind: Sub::CommandKind, commandId: str): ProviderKey =
   { providerKind: if (kind == Sub::DowngradeCommand) SubscriptionSchedule else SubscriptionUpdate, providerId: commandId }
-pure def preparedFor(c: Command, by: S::SessionOwner, kind: Sub::CommandKind, commandId: str, digest: str): D::Receipt =
-  D::prepare(c.receipt, by, digest, providerKeyOf(kind, commandId), commandStaleAfter, nowOf(c) + commandLifetime)
+pure def attachmentKeyOf(attachmentProviderId: str): ProviderKey =
+  { providerKind: SubscriptionSchedule, providerId: attachmentProviderId }
+pure def needsAttachment(c: Command, kind: Sub::CommandKind): bool =
+  kind == Sub::DowngradeCommand and c.schedule == ReviewedUnscheduled
+pure def scheduleReady(c: Command): bool = {
+  val work = c.schedule
+  match work {
+    | ReviewedExisting(_) => true
+    | ScheduleVerified(_) => true
+    | _ => false
+  }
+}
+pure def firstKeyOf(c: Command, kind: Sub::CommandKind, commandId: str, attachmentProviderId: str): ProviderKey =
+  if (needsAttachment(c, kind)) attachmentKeyOf(attachmentProviderId) else providerKeyOf(kind, commandId)
+pure def preparedFor(c: Command, by: S::SessionOwner, kind: Sub::CommandKind, commandId: str, attachmentProviderId: str, digest: str): D::Receipt =
+  D::prepare(c.receipt, by, digest, firstKeyOf(c, kind, commandId, attachmentProviderId), commandStaleAfter, nowOf(c) + commandLifetime)
 pure def startsFromReview(c: Command, sub: Sub::Subscription, kind: Sub::CommandKind, quoteId: str, expectedRevision: int): bool =
   if (kind == Sub::CancelCommand) c.phase == NoCommand and quoteId == ""
   else c.phase == Quoted and c.kind == kind and c.quote.quoteId == quoteId and c.expectedRevision == expectedRevision and nowOf(c) < c.quote.expiresAt
     and sub.subscriptionId == c.subscriptionId and sub.planKey == c.quote.sourcePlanKey and sub.periodStart == c.quote.periodStart and sub.periodEnd == c.quote.periodEnd
-pure def canConfirm(c: Command, by: S::SessionOwner, sub: Sub::Subscription, kind: Sub::CommandKind, commandId: str, quoteId: str, expectedRevision: int, digest: str, freshOwner: bool): bool =
+    and (kind != Sub::DowngradeCommand or needsAttachment(c, kind) or scheduleReady(c))
+pure def canConfirm(c: Command, by: S::SessionOwner, sub: Sub::Subscription, kind: Sub::CommandKind, commandId: str, quoteId: str, expectedRevision: int, attachmentProviderId: str, digest: str, freshOwner: bool): bool =
   freshOwner and isChange(kind) and expectedRevision >= 1 and Sub::alwaysSubscriptionHasIdPlanAndCustomer(sub)
   and startsFromReview(c, sub, kind, quoteId, expectedRevision) and Sub::canClaimCommand(sub, kind, commandId, expectedRevision)
-  and D::canPrepare(c.receipt, by, digest, providerKeyOf(kind, commandId), commandStaleAfter, nowOf(c) + commandLifetime)
-  and D::canClaim(preparedFor(c, by, kind, commandId, digest), by)
-pure def confirm(c: Command, by: S::SessionOwner, sub: Sub::Subscription, kind: Sub::CommandKind, commandId: str, quoteId: str, expectedRevision: int, digest: str, freshOwner: bool): CommandStep =
-  { state: { ...c, phase: Running, kind: kind, commandId: commandId, subscriptionId: sub.subscriptionId, expectedRevision: expectedRevision, createdAt: nowOf(c),
-      receipt: D::claim(preparedFor(c, by, kind, commandId, digest), by) },
-    out: List(ClaimSlot({ kind: kind, commandId: commandId, expectedRevision: expectedRevision })) }
+  and (if (needsAttachment(c, kind)) attachmentProviderId != "" and attachmentProviderId != commandId else attachmentProviderId == "")
+  and D::canPrepare(c.receipt, by, digest, firstKeyOf(c, kind, commandId, attachmentProviderId), commandStaleAfter, nowOf(c) + commandLifetime)
+  and D::canClaim(preparedFor(c, by, kind, commandId, attachmentProviderId, digest), by)
+pure def confirm(c: Command, by: S::SessionOwner, sub: Sub::Subscription, kind: Sub::CommandKind, commandId: str, quoteId: str, expectedRevision: int, attachmentProviderId: str, digest: str, freshOwner: bool): CommandStep =
+  {
+    val first = D::claim(preparedFor(c, by, kind, commandId, attachmentProviderId, digest), by)
+    val attach = needsAttachment(c, kind)
+    { state: { ...c, phase: Running, kind: kind, commandId: commandId, subscriptionId: sub.subscriptionId, expectedRevision: expectedRevision, createdAt: nowOf(c),
+        receipt: if (attach) c.receipt else first,
+        schedule: if (attach) Attaching({ receipt: first }) else c.schedule },
+      out: List(ClaimSlot({ kind: kind, commandId: commandId, expectedRevision: expectedRevision })) }
+  }
 pure val byValues = Set({ agentId: "org1", actorId: "user1", connector: "subscription_update" }, { agentId: "org1", actorId: "user1", connector: "subscription_schedule" })
 pure val commandIdValues = Set("cmd1")
+pure val attachmentProviderIdValues = Set("", "cmd1", "cmd1:attach")
 pure val expectedRevisionValues = Set(1, 2, 3)
 ```
 
@@ -151,10 +193,105 @@ pure def stepStartedCommandIsFixed(before: Command, after: Command): bool =
     and (isFinished(before) implies (after.phase == before.phase and after.resultRevision == before.resultRevision)))
 ```
 
+### Downgrade configuration needs the verified schedule and its own claim
+
+An attachment alone does not schedule or bill the lower plan. The shell
+looks up the exact original attachment when its reply is lost. A compatible
+schedule found on the same reviewed subscription can be used after its
+subscription, customer, mode and current phase are verified. Its existence
+does not prove who created it. Configuration keeps the current phase and
+sets the reviewed lower plan at the paid period boundary. The same command
+keeps the slot between operations.
+
+```quint
+pure def attachmentReceipt(c: Command): D::Receipt = {
+  val work = c.schedule
+  match work {
+    | Attaching(x) => x.receipt
+    | ScheduleVerified(x) => x.receipt
+    | _ => D::initial
+  }
+}
+pure def attaching(c: Command): bool = {
+  val work = c.schedule
+  match work {
+    | Attaching(_) => c.phase == Running
+    | _ => false
+  }
+}
+pure def withAttachment(receipt: D::Receipt, c: Command): Command = { ...c, schedule: Attaching({ receipt: receipt }) }
+pure def canSendAttachment(c: Command, by: S::SessionOwner, claimToken: int): bool =
+  attaching(c) and D::canSend(attachmentReceipt(c), by, claimToken)
+pure def sendAttachment(c: Command, by: S::SessionOwner, claimToken: int): Command =
+  withAttachment(D::send(attachmentReceipt(c), by, claimToken), c)
+pure def canReceiveAttachmentReply(c: Command, reply: D::ProviderReply): bool =
+  attaching(c) and D::canReceiveReply(attachmentReceipt(c), reply)
+pure def receiveAttachmentReply(c: Command, reply: D::ProviderReply): Command =
+  withAttachment(D::receiveReply(attachmentReceipt(c), reply), c)
+pure def canResolveAttachment(c: Command, lookup: D::LookupResult): bool =
+  attaching(c) and D::canResolve(attachmentReceipt(c), lookup)
+pure def resolveAttachment(c: Command, lookup: D::LookupResult): Command =
+  withAttachment(D::resolve(attachmentReceipt(c), lookup), c)
+pure def canVerifySchedule(c: Command, scheduleId: str, evidence: AttachmentEvidence): bool =
+  attaching(c) and scheduleId != "" and attachmentReceipt(c).session.effects == 1 and
+  (if (evidence == OriginalAttachment) attachmentReceipt(c).settlement == D::Succeeded
+   else D::isUnknown(attachmentReceipt(c)))
+pure def verifySchedule(c: Command, scheduleId: str, evidence: AttachmentEvidence): Command =
+  { ...c, schedule: ScheduleVerified({ receipt: attachmentReceipt(c), scheduleId: scheduleId, evidence: evidence }) }
+pure def configurationFor(c: Command, by: S::SessionOwner, digest: str): D::Receipt =
+  D::prepare(c.receipt, by, digest, providerKeyOf(c.kind, c.commandId), commandStaleAfter, nowOf(c) + commandLifetime)
+pure def waitingForConfiguration(c: Command): bool = {
+  val work = c.schedule
+  match work {
+    | ScheduleVerified(_) => c.receipt.session.phase == S::Absent
+    | _ => false
+  }
+}
+pure def canClaimConfiguration(c: Command, by: S::SessionOwner, digest: str): bool =
+  c.phase == Running and waitingForConfiguration(c) and attachmentReceipt(c).session.owner == by
+  and nowOf(c) < c.quote.periodEnd
+  and D::canPrepare(c.receipt, by, digest, providerKeyOf(c.kind, c.commandId), commandStaleAfter, nowOf(c) + commandLifetime)
+  and D::canClaim(configurationFor(c, by, digest), by)
+pure def claimConfiguration(c: Command, by: S::SessionOwner, digest: str): Command =
+  { ...c, receipt: D::claim(configurationFor(c, by, digest), by) }
+pure def expiredConfiguration(c: Command): bool = waitingForConfiguration(c) and nowOf(c) >= c.quote.periodEnd
+pure def canExpireConfiguration(c: Command): bool = c.phase == Running and expiredConfiguration(c)
+pure def expireConfiguration(c: Command): CommandStep =
+  { state: { ...c, phase: Failed }, out: List(ReleaseSlot({ commandId: c.commandId })) }
+pure val scheduleIdValues = Set("", "sched1")
+pure val evidenceValues = Set(OriginalAttachment, CompatibleSchedule)
+pure def alwaysConfigurationWaitsForItsSchedule(c: Command): bool =
+  c.kind == Sub::DowngradeCommand and c.receipt.session.phase != S::Absent implies scheduleReady(c)
+pure def alwaysVerifiedAttachmentKeepsItsOrigin(c: Command): bool = {
+  val work = c.schedule
+  match work {
+    | ScheduleVerified(x) => x.scheduleId != "" and x.receipt.session.effects == 1 and
+      (if (x.evidence == OriginalAttachment) x.receipt.settlement == D::Succeeded else x.receipt.settlement == D::Unsettled)
+    | _ => true
+  }
+}
+pure def sometimesAttachmentRecovered(c: Command): bool = {
+  val work = c.schedule
+  match work {
+    | ScheduleVerified(x) => x.evidence == OriginalAttachment and x.receipt.settlement == D::Succeeded
+    | _ => false
+  }
+}
+pure def sometimesCompatibleScheduleUsed(c: Command): bool = {
+  val work = c.schedule
+  match work {
+    | ScheduleVerified(x) => x.evidence == CompatibleSchedule
+    | _ => false
+  }
+}
+```
+
 ### The provider is asked once, by the claim holder, and a lost reply is recovered by a lookup, never by sending again
 
-The receipt keeps every rule of `dispatchOnce.md`. The shell's sweep looks
-up an unknown outcome by the command id.
+Each required operation keeps its own receipt under `dispatchOnce.md`.
+The shell records an operation's send before contacting the provider and
+looks up an unknown result by that operation's key. A committed attachment
+or configuration is never sent again.
 
 ```quint
 pure def canSend(c: Command, by: S::SessionOwner, claimToken: int): bool = c.phase == Running and D::canSend(c.receipt, by, claimToken)
@@ -166,16 +303,31 @@ pure def loseExecutor(c: Command): Command = { ...c, receipt: D::loseExecutor(c.
 pure def canResolve(c: Command, lookup: D::LookupResult): bool = c.phase == Running and D::canResolve(c.receipt, lookup)
 pure def resolve(c: Command, lookup: D::LookupResult): Command = { ...c, receipt: D::resolve(c.receipt, lookup) }
 pure def canElapse(c: Command, elapsed: Millis): bool = D::canElapse(c.receipt, elapsed)
-pure def elapse(c: Command, elapsed: Millis): Command = { ...c, receipt: D::elapse(c.receipt, elapsed) }
+pure def elapse(c: Command, elapsed: Millis): Command = {
+  val work = c.schedule
+  { ...c, receipt: D::elapse(c.receipt, elapsed), schedule: match work {
+    | Attaching(x) => Attaching({ receipt: D::elapse(x.receipt, elapsed) })
+    | ScheduleVerified(x) => ScheduleVerified({ ...x, receipt: D::elapse(x.receipt, elapsed) })
+    | _ => work
+  } }
+}
 pure val elapsedValues = Set(1000, 60000, 300000)
+pure def soundReceipt(r: D::Receipt): bool =
+  D::alwaysPreparedIsBound(r) and D::alwaysSessionIsSound(r) and D::alwaysSentBeforeStale(r) and D::alwaysOutcomeFollowsTheSession(r)
 pure def alwaysReceiptIsSound(c: Command): bool =
-  D::alwaysPreparedIsBound(c.receipt) and D::alwaysSessionIsSound(c.receipt) and D::alwaysSentBeforeStale(c.receipt) and D::alwaysOutcomeFollowsTheSession(c.receipt)
-  and ((c.receipt.session.phase == S::Absent) iff not(isStarted(c)))
-  and (isStarted(c) implies c.receipt.providerKey == providerKeyOf(c.kind, c.commandId))
+  soundReceipt(c.receipt) and soundReceipt(attachmentReceipt(c))
+  and ((c.receipt.session.phase != S::Absent or attachmentReceipt(c).session.phase != S::Absent) iff isStarted(c))
+  and (c.receipt.session.phase != S::Absent implies D::usesProviderKey(c.receipt, providerKeyOf(c.kind, c.commandId)))
+  and (attachmentReceipt(c).session.phase != S::Absent implies
+    (c.kind == Sub::DowngradeCommand and attachmentReceipt(c).providerKey.providerKind == SubscriptionSchedule
+      and attachmentReceipt(c).providerKey.providerId != "" and attachmentReceipt(c).providerKey.providerId != c.commandId))
+pure def keepsReceipt(before: D::Receipt, via: str, after: D::Receipt): bool =
+  D::stepBindingIsFixed(before, after) and D::stepCommitNeverReopens(before, after) and D::stepStaleTimeIsFixed(before, after)
+  and D::stepSettledIsFinal(before, after) and D::stepUnknownSettlesOnlyByLookup(before, via, after)
 pure def stepReceiptKeepsItsRules(before: Command, via: str, after: Command): bool =
-  D::stepBindingIsFixed(before.receipt, after.receipt) and D::stepCommitNeverReopens(before.receipt, after.receipt) and D::stepStaleTimeIsFixed(before.receipt, after.receipt)
-  and D::stepSettledIsFinal(before.receipt, after.receipt) and D::stepUnknownSettlesOnlyByLookup(before.receipt, via, after.receipt)
-pure def sometimesOutcomeUnknown(c: Command): bool = c.phase == Running and D::isUnknown(c.receipt)
+  keepsReceipt(before.receipt, via, after.receipt)
+  and keepsReceipt(attachmentReceipt(before), if (via == "resolveAttachment") "resolve" else "attachment", attachmentReceipt(after))
+pure def sometimesOutcomeUnknown(c: Command): bool = c.phase == Running and (D::isUnknown(c.receipt) or D::isUnknown(attachmentReceipt(c)))
 ```
 
 ## Story: Get the plan I paid for
@@ -186,7 +338,9 @@ pure def sometimesOutcomeUnknown(c: Command): bool = c.phase == Running and D::i
 
 ### A settled command applies only what the provider did, and an upgrade applies only once its invoice is paid
 
-A refused or not applied change fails. An upgrade's invoice is paid (the
+A refused or not applied change fails. An attachment refusal releases the
+slot without scheduling a change. If the period ends before configuration
+is claimed, the command can end without a configuration send. An upgrade's invoice is paid (the
 command applies now), open (the command awaits payment and keeps the slot)
 or voided (it fails); while it awaits payment, a fresh owner's `POST
 /upgrade/:commandId/payment` answers `{url}`, the open invoice's hosted page
@@ -203,8 +357,11 @@ pure def outcomeOf(c: Command, invoice: UpgradeInvoice): CommandPhase =
   else if (c.kind != Sub::UpgradeCommand or invoice == UpgradeInvoicePaid) Applied
   else if (invoice == UpgradeInvoiceOpen) AwaitingPayment
   else Failed
+pure def attachmentFailed(c: Command): bool =
+  attachmentReceipt(c).settlement == D::Refused or attachmentReceipt(c).settlement == D::NotApplied
 pure def canFinish(c: Command, invoice: UpgradeInvoice, resultRevision: int): bool =
-  ((c.phase == Running and c.receipt.settlement != D::Unsettled and ((invoice == NoUpgradeInvoice) iff not(awaitsInvoice(c))))
+  ((c.phase == Running and (c.receipt.settlement != D::Unsettled or (attaching(c) and attachmentFailed(c)))
+    and ((invoice == NoUpgradeInvoice) iff not(awaitsInvoice(c))))
     or (c.phase == AwaitingPayment and (invoice == UpgradeInvoicePaid or invoice == UpgradeInvoiceVoided)))
   and (if (outcomeOf(c, invoice) == Applied) resultRevision >= c.expectedRevision else resultRevision == 0)
 pure def finish(c: Command, invoice: UpgradeInvoice, resultRevision: int): CommandStep = {
@@ -218,7 +375,7 @@ pure val resultRevisionValues = Set(0, 1, 2, 3, 4)
 pure def mayContinuePayment(c: Command, freshOwner: bool): bool = freshOwner and c.phase == AwaitingPayment
 pure def alwaysOutcomeFollowsTheReceipt(c: Command): bool =
   ((c.phase == Applied or c.phase == AwaitingPayment) implies c.receipt.settlement == D::Succeeded)
-  and (c.phase == Failed implies c.receipt.settlement != D::Unsettled)
+  and (c.phase == Failed implies (c.receipt.settlement != D::Unsettled or attachmentFailed(c) or expiredConfiguration(c)))
   and ((c.phase == AwaitingPayment or (c.phase == Failed and c.receipt.settlement == D::Succeeded)) implies c.kind == Sub::UpgradeCommand)
   and (if (c.phase == Applied) c.resultRevision >= c.expectedRevision else c.resultRevision == 0)
 pure def sometimesCancelApplied(c: Command): bool = c.kind == Sub::CancelCommand and c.phase == Applied
@@ -294,6 +451,6 @@ pure def commandStatus(c: Command): CommandStatus =
   else if (c.phase == Applied) ShowSucceeded
   else if (c.phase == Failed) ShowRejected
   else if (c.phase == AwaitingPayment) ShowAwaitingPayment
-  else if (D::isUnknown(c.receipt)) ShowUnknown
+  else if (D::isUnknown(c.receipt) or (attaching(c) and D::isUnknown(attachmentReceipt(c)))) ShowUnknown
   else ShowDispatched
 ```

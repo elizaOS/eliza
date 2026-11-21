@@ -3,6 +3,7 @@ import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import type { LookupResult } from "../../gen/cloud__shared__dispatchOnce.ts"
 import { Deployment } from "../profile/profile.vibe"
 import { sameText } from "../shared/credential-crypto.vibe"
+import { requestDigest } from "../shared/dispatch-once.vibe"
 import type { ProviderReply } from "../shared/dispatch-once.vibe"
 
 module node {
@@ -72,6 +73,7 @@ export schema StripeSubscription {
   readonly canceled_at?: number | null
   readonly ended_at?: number | null
   readonly latest_invoice: string | null
+  readonly schedule?: string | null
   readonly metadata: Record<string, string>
   readonly items: { readonly data: ReadonlyArray<SubscriptionItem>; readonly has_more: boolean }
 }
@@ -142,6 +144,7 @@ interface Call {
   readonly params: Params
   readonly timeout: number
   readonly idempotencyKey?: string
+  readonly apiVersion?: string
 }
 
 function parsed(text: string): unknown {
@@ -172,6 +175,7 @@ effect function send(call: Call) {
   const query = call.method === "GET" && form !== "" ? `?${form}` : ""
   let request = HttpClientRequest.make(call.method)(`${billing.apiUrl}${call.path}${query}`).pipe(HttpClientRequest.bearerToken(key), HttpClientRequest.acceptJson)
   if (call.idempotencyKey !== undefined) request = HttpClientRequest.setHeader(request, "idempotency-key", call.idempotencyKey)
+  if (call.apiVersion !== undefined) request = HttpClientRequest.setHeader(request, "stripe-version", call.apiVersion)
   if (call.method === "POST") request = HttpClientRequest.bodyText(request, form, "application/x-www-form-urlencoded")
   const answered = effect {
     const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect () => { throw new StripeUnavailable({ path: call.path, status: null }) }
@@ -311,6 +315,7 @@ export schema StripePlanBinding {
   readonly subscriptionItemId: string
   readonly sourcePriceId: string
   readonly targetPriceId: string
+  readonly scheduleId?: string | null
 }
 
 export interface StripePlanSource {
@@ -331,7 +336,8 @@ export effect function bindPlanChange(source: StripePlanSource, call: StripeRead
     !/^si_[A-Za-z0-9]{1,250}$/.test(item.id) || item.price.id !== source.sourcePriceId ||
     item.current_period_start * 1000 !== source.periodStart || item.current_period_end * 1000 !== source.periodEnd)
     throw new StripeInvalidResponse({ path: "/v1/subscriptions", status: 200 })
-  return { customerId: source.customerId, subscriptionItemId: item.id, sourcePriceId: source.sourcePriceId, targetPriceId: source.targetPriceId }
+  return { customerId: source.customerId, subscriptionItemId: item.id, sourcePriceId: source.sourcePriceId, targetPriceId: source.targetPriceId,
+    ...(subscription.schedule === undefined ? {} : { scheduleId: subscription.schedule }) }
 }
 
 export type StripePlanPreview =
@@ -425,7 +431,7 @@ export effect function dispatchPlanUpgrade(terms: StripeUpgradeTerms, mutation: 
   return { invoiceId: subscription.latest_invoice.id, requestId: response.requestId }
 }
 
-export effect function findUpgradeOrigin(terms: StripeUpgradeTerms, operationKey: string, call: StripeRead): (StripeUpgradeOrigin | undefined)!StripeFailure!StripeContext {
+effect function operationEvent(type: string, sentAt: number, operationKey: string, call: StripeRead) {
   const Event = Schema.Struct({
     id: Schema.String, type: Schema.String, created: Schema.Number, livemode: Schema.Boolean,
     account: Schema.optionalKey(Schema.NullOr(Schema.String)), context: Schema.optionalKey(Schema.NullOr(Schema.String)),
@@ -435,18 +441,25 @@ export effect function findUpgradeOrigin(terms: StripeUpgradeTerms, operationKey
   const path = "/v1/events"
   const now = try Clock.currentTimeMillis
   const live = try livemode()
-  const reply = try timeoutOrElse(everyPage(Event, path, [["type", "invoice.created"], ["created[gte]", seconds(terms.sentAt)]], call.timeout), {
+  const reply = try timeoutOrElse(everyPage(Event, path, [["type", type], ["created[gte]", seconds(sentAt)]], call.timeout), {
     duration: Duration.millis(call.timeout), orElse: () => fail(new StripeUnavailable({ path, status: null }))
   })
-  const seen = reply.filter((event) => event.type === "invoice.created" && event.livemode === live &&
+  const seen = reply.filter((event) => event.type === type && event.livemode === live &&
     event.account == null && event.context == null && /^evt_[A-Za-z0-9]+$/.test(event.id) &&
     event.request?.idempotency_key === operationKey)
   const [event] = seen
-  if (seen.length !== 1 || event === undefined || event.request?.id == null || !providerRequestId.test(event.request.id)) return undefined
+  if (seen.length !== 1 || event === undefined || event.request?.id == null || !providerRequestId.test(event.request.id) ||
+    !Number.isSafeInteger(event.created) || event.created < Math.floor(sentAt / 1000) || event.created > Math.floor(now / 1000)) return undefined
+  return { ...event, requestId: event.request.id }
+}
+
+export effect function findUpgradeOrigin(terms: StripeUpgradeTerms, operationKey: string, call: StripeRead): (StripeUpgradeOrigin | undefined)!StripeFailure!StripeContext {
+  const event = try operationEvent("invoice.created", terms.sentAt, operationKey, call)
+  if (event === undefined) return undefined
   const invoice = decoded(StripeInvoice, event.data.object)
-  if (invoice === undefined || !ownsUpgradeInvoice(invoice, terms, live, now) ||
-    event.created < invoice.created || event.created > Math.floor(now / 1000)) return undefined
-  return { invoiceId: invoice.id, requestId: event.request.id }
+  if (invoice === undefined || !ownsUpgradeInvoice(invoice, terms, event.livemode, try Clock.currentTimeMillis) ||
+    event.created < invoice.created) return undefined
+  return { invoiceId: invoice.id, requestId: event.requestId }
 }
 
 export effect function upgradeInvoice(terms: StripeUpgradeTerms, origin: StripeUpgradeOrigin, call: StripeRead) {
@@ -480,6 +493,172 @@ export effect function upgradedSubscription(terms: StripeUpgradeTerms, call: Str
   if (!Number.isSafeInteger(periodStart) || !Number.isSafeInteger(periodEnd) || periodStart >= periodEnd ||
     periodStart > (try Clock.currentTimeMillis) || (!originalPeriod && periodStart < terms.periodEnd)) return undefined
   return { periodStart, periodEnd } satisfies StripeUpgradeApplication
+}
+
+export schema StripeScheduleBinding {
+  readonly scheduleId: string
+  readonly phaseDigest: string
+  readonly currentProration: "none" | "create_prorations"
+}
+
+export interface StripeDowngradeTerms {
+  readonly subscriptionId: string
+  readonly binding: StripePlanBinding
+  readonly periodStart: number
+  readonly periodEnd: number
+  readonly recurringCents: number
+}
+
+export type StripeScheduleEffect = "attach" | "configure"
+
+export schema StripeScheduleOrigin { readonly scheduleId: string; readonly requestId: string }
+
+const scheduleVersion = "2024-11-20.acacia"
+const schedulePath = "/v1/subscription_schedules"
+const scheduleIdPattern = /^sub_sched_[A-Za-z0-9]+$/
+
+schema StripeSchedule {
+  readonly id: string
+  readonly status: string
+  readonly subscription: string | null
+  readonly released_subscription?: string | null
+  readonly customer: string
+  readonly livemode: boolean
+  readonly end_behavior: string
+  readonly default_settings?: Schema.Unknown
+  readonly current_phase: { readonly start_date: number; readonly end_date: number } | null
+  readonly phases: ReadonlyArray<Readonly<Record<string, Schema.Unknown>>>
+}
+
+function neutralSetting(value: unknown): boolean {
+  return value == null || value === false || value === 0 || value === "" ||
+    (typeof value === "object" && Object.keys(value).length === 0)
+}
+
+function currentPhaseSupported(phase: Readonly<Record<string, unknown>>, priceId: string, start: number, end: number): boolean {
+  const row = decoded(Schema.Struct({
+    start_date: Schema.Number, end_date: Schema.Number, items: Schema.Array(Schema.Record(Schema.String, Schema.Unknown))
+  }), phase)
+  const item = row?.items[0]
+  return row !== undefined && row.start_date * 1000 === start && row.end_date * 1000 === end && row.items.length === 1 &&
+    item !== undefined && item.price === priceId && item.quantity === 1 &&
+    Object.entries(item).every(([key, value]) => key === "price" || key === "quantity" || (key === "plan" && value === priceId) || neutralSetting(value)) &&
+    Object.entries(phase).every(([key, value]) =>
+      key === "start_date" || key === "end_date" || key === "items" ||
+      (key === "currency" && value === "usd") || (key === "proration_behavior" && (value === "none" || value === "create_prorations")) ||
+      neutralSetting(value))
+}
+
+function scheduleOwns(schedule: StripeSchedule, terms: StripeDowngradeTerms, live: boolean): boolean {
+  return scheduleIdPattern.test(schedule.id) && schedule.customer === terms.binding.customerId &&
+    schedule.livemode === live && schedule.end_behavior === "release"
+}
+
+function scheduleBinds(schedule: StripeSchedule, terms: StripeDowngradeTerms, live: boolean): boolean {
+  return scheduleOwns(schedule, terms, live) && schedule.status === "active" && schedule.subscription === terms.subscriptionId &&
+    schedule.current_phase !== null && schedule.current_phase.start_date * 1000 === terms.periodStart &&
+    schedule.current_phase.end_date * 1000 === terms.periodEnd
+}
+
+export effect function readScheduleToConfigure(terms: StripeDowngradeTerms, scheduleId: string, call: StripeRead) {
+  const path = `${schedulePath}/${id(scheduleId)}`
+  const schedule = try read(StripeSchedule, { method: "GET", path, timeout: call.timeout, params: [], apiVersion: scheduleVersion })
+  const phase = schedule.phases[0]
+  const currentProration = phase?.proration_behavior
+  if (schedule.id !== scheduleId || !scheduleBinds(schedule, terms, try livemode()) ||
+    schedule.phases.length !== 1 || phase === undefined || (currentProration !== "none" && currentProration !== "create_prorations") ||
+    !currentPhaseSupported(phase, terms.binding.sourcePriceId, terms.periodStart, terms.periodEnd))
+    throw new StripeInvalidResponse({ path, status: 200 })
+  return { scheduleId, currentProration, phaseDigest: requestDigest({ phase, defaults: schedule.default_settings ?? null }) } satisfies StripeScheduleBinding
+}
+
+function downgradeParams(terms: StripeDowngradeTerms, binding: StripeScheduleBinding): Params {
+  return [
+    ["end_behavior", "release"], ["proration_behavior", "none"],
+    ["phases[0][start_date]", seconds(terms.periodStart)], ["phases[0][end_date]", seconds(terms.periodEnd)],
+    ["phases[0][proration_behavior]", binding.currentProration], ["phases[0][items][0][price]", terms.binding.sourcePriceId], ["phases[0][items][0][quantity]", "1"],
+    ["phases[1][start_date]", seconds(terms.periodEnd)], ["phases[1][iterations]", "1"],
+    ["phases[1][items][0][price]", terms.binding.targetPriceId], ["phases[1][items][0][quantity]", "1"],
+    ["phases[1][proration_behavior]", "none"]
+  ]
+}
+
+schema StripeSchedulePreview {
+  readonly id: string
+  readonly status: "draft"
+  readonly customer: string
+  readonly subscription: string
+  readonly currency: "usd"
+  readonly amount_due: number
+  readonly amount_paid: number
+  readonly livemode: boolean
+  readonly lines: { readonly has_more: boolean; readonly data: ReadonlyArray<{
+    readonly price: { readonly id: string }
+    readonly quantity: number
+    readonly amount: number
+    readonly proration: boolean
+    readonly period: { readonly start: number; readonly end: number }
+  }> }
+}
+
+export effect function verifySchedulePreview(terms: StripeDowngradeTerms, binding: StripeScheduleBinding, call: StripeRead) {
+  const path = "/v1/invoices/create_preview"
+  const invoice = try read(StripeSchedulePreview, { method: "POST", path, timeout: call.timeout, apiVersion: scheduleVersion, params: [
+    ["customer", terms.binding.customerId], ["schedule", binding.scheduleId], ["preview_mode", "next"],
+    ...downgradeParams(terms, binding).filter(([key]) => key !== "proration_behavior").map(([key, value]) => {
+      const field = key.indexOf("[")
+      return [field === -1 ? `schedule_details[${key}]` : `schedule_details[${key.slice(0, field)}]${key.slice(field)}`, value] as const
+    })
+  ] })
+  const [line] = invoice.lines.data
+  if (invoice.customer !== terms.binding.customerId || invoice.subscription !== terms.subscriptionId ||
+      invoice.livemode !== try livemode() || invoice.amount_due !== terms.recurringCents || invoice.amount_paid !== 0 ||
+      !invoice.id.startsWith("upcoming_in_") || invoice.lines.has_more || invoice.lines.data.length !== 1 ||
+      line === undefined || line.price.id !== terms.binding.targetPriceId || line.quantity !== 1 || line.proration ||
+      line.amount !== terms.recurringCents || line.period.start * 1000 !== terms.periodEnd || line.period.end <= line.period.start)
+    throw new StripeInvalidResponse({ path, status: 200 })
+}
+
+export effect function dispatchScheduleChange(terms: StripeDowngradeTerms, effectKind: StripeScheduleEffect, binding: StripeScheduleBinding | undefined, mutation: StripeMutation) {
+  const path = effectKind === "attach" ? schedulePath : `${schedulePath}/${id(binding?.scheduleId ?? "")}`
+  if ((effectKind === "configure") !== (binding !== undefined)) throw new StripeInvalidResponse({ path, status: 0 })
+  const response = try send({ method: "POST", path, ...mutation, apiVersion: scheduleVersion,
+    params: binding === undefined ? [["from_subscription", terms.subscriptionId]] : downgradeParams(terms, binding) })
+  const schedule = decoded(StripeSchedule, response.body)
+  if (response.status !== 200 || response.requestId === undefined || !providerRequestId.test(response.requestId) ||
+    response.idempotencyKey !== mutation.idempotencyKey || schedule === undefined ||
+    !scheduleBinds(schedule, terms, try livemode()) || (binding !== undefined && binding.scheduleId !== schedule.id))
+    throw new StripeInvalidResponse({ path, status: response.status })
+  return { scheduleId: schedule.id, requestId: response.requestId } satisfies StripeScheduleOrigin
+}
+
+export effect function recoverScheduleChange(terms: StripeDowngradeTerms, effectKind: StripeScheduleEffect, operationKey: string, sentAt: number, call: StripeRead) {
+  const event = try operationEvent(effectKind === "attach" ? "subscription_schedule.created" : "subscription_schedule.updated", sentAt, operationKey, call)
+  if (event === undefined) return undefined
+  const schedule = decoded(StripeSchedule, event.data.object)
+  return schedule !== undefined && scheduleBinds(schedule, terms, event.livemode)
+    ? { scheduleId: schedule.id, requestId: event.requestId } satisfies StripeScheduleOrigin : undefined
+}
+
+export effect function configuredSchedule(terms: StripeDowngradeTerms, binding: StripeScheduleBinding, call: StripeRead) {
+  const path = `${schedulePath}/${id(binding.scheduleId)}`
+  const schedule = try read(StripeSchedule, { method: "GET", path, timeout: call.timeout, params: [], apiVersion: scheduleVersion })
+  const [current, future] = schedule.phases
+  const futureEnd = decoded(Schema.Number, future?.end_date)
+  const live = try livemode()
+  const now = try Clock.currentTimeMillis
+  const activeTargetPhase = schedule.status === "active" && schedule.subscription === terms.subscriptionId &&
+    schedule.current_phase !== null && schedule.current_phase.start_date * 1000 === terms.periodEnd &&
+    schedule.current_phase.end_date === futureEnd
+  const released = (schedule.status === "released" || schedule.status === "completed") &&
+    schedule.released_subscription === terms.subscriptionId && schedule.current_phase === null &&
+    futureEnd !== undefined && now >= futureEnd * 1000
+  return schedule.id === binding.scheduleId && scheduleOwns(schedule, terms, live) && schedule.phases.length === 2 &&
+    (scheduleBinds(schedule, terms, live) || (now >= terms.periodEnd && (activeTargetPhase || released))) &&
+    current !== undefined && currentPhaseSupported(current, terms.binding.sourcePriceId, terms.periodStart, terms.periodEnd) &&
+    requestDigest({ phase: current, defaults: schedule.default_settings ?? null }) === binding.phaseDigest &&
+    future !== undefined && futureEnd !== undefined && futureEnd * 1000 > terms.periodEnd &&
+    future.proration_behavior === "none" && currentPhaseSupported(future, terms.binding.targetPriceId, terms.periodEnd, futureEnd * 1000)
 }
 
 export effect function retrieveInvoice(invoiceId: string, call: StripeRead): StripeInvoice!StripeFailure!StripeContext {

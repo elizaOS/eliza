@@ -4,7 +4,6 @@ import {
   type UpgradeInvoice
 } from "../../gen/cloud__billing__subscriptionCommands.effect.vibe"
 import { holdsCommand } from "../../gen/cloud__billing__subscriptions.effect.vibe"
-import { authenticate } from "../http/request-auth.vibe"
 import { refused } from "../http/refusal.vibe"
 import { json, jsonBody, type Route, type Sweep } from "../http/routes.vibe"
 import { Deployment } from "../profile/profile.vibe"
@@ -16,43 +15,21 @@ import { dispatchOnce, receiptOwner, renderProviderKey, replyOf, requestDigest, 
 import { Store, type Tx } from "../store/connection.vibe"
 import { adjustForUpgrade } from "./allowance.vibe"
 import { commandIdOf, idempotencyKeyPattern } from "./commands.vibe"
-import { commandAt, insertPlanCommand, planCommandView, readPlanCommand, savePlanCommand, upgradeTerms, type PlanCommandRecord } from "./plan-command-state.vibe"
-import { consumeReviewedPlanQuote, readReviewedPlanQuote, reviewPlanChange, type ReviewedPlanQuote } from "./plan-quotes.vibe"
+import { commandAt, insertPlanCommand, lockOrganization, planCommandView, readPlanCommand, savePlanCommand, upgradeTerms, type PlanCommandRecord } from "./plan-command-state.vibe"
+import { consumeReviewedPlanQuote, freshOwner, PlanConfirmation, PlanReviewBody, readReviewedPlanQuote, reviewPlanChange, type ReviewedPlanQuote } from "./plan-quotes.vibe"
 import { wirePlanKey } from "./plans.vibe"
 import { claimLiveCommand, readSubscription, reconcileSubscription, releaseLiveCommand } from "./subscriptions.vibe"
-
-schema UpgradeReviewBody {
-  targetPlanKey: "plus_monthly" | "pro_monthly"
-  subscriptionId?: string
-  expectedSubscriptionRevision?: number
-}
-
-export schema UpgradeConfirmation {
-  quoteId: string
-  idempotencyKey: string
-  expectedSubscriptionRevision?: number
-}
 
 const providerRead = { timeout: 8_000 }
 const commandIdPattern = /^cmd_[0-9a-f]{32}$/
 
-effect function freshOwner(authorization: string | undefined) {
-  const caller = try authenticate(authorization, "FreshSession")
-  if (caller.kind !== "session") throw refused("AuthenticationRequired")
-  return caller
-}
-
-effect function lockOrganization(tx: Tx, organizationId: string) {
-  try tx.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [organizationId])
-}
-
 effect function commandFor(tx: Tx, organizationId: string, commandId: string, lock: boolean) {
   const row = try readPlanCommand(tx, commandId, lock)
-  if (row === undefined || row.organizationId !== organizationId) throw refused("NotFound")
+  if (row === undefined || row.organizationId !== organizationId || row.command.kind !== "UpgradeCommand") throw refused("NotFound")
   return row
 }
 
-effect function currentQuote(tx: Tx, organizationId: string, quote: ReviewedPlanQuote, input: UpgradeConfirmation, now: number) {
+effect function currentQuote(tx: Tx, organizationId: string, quote: ReviewedPlanQuote, input: PlanConfirmation, now: number) {
   const subscription = try readSubscription(tx, organizationId)
   const terms = quote.command.quote
   if (quote.command.kind !== "UpgradeCommand" || now >= terms.expiresAt ||
@@ -84,7 +61,7 @@ effect function recheckPrices(quote: ReviewedPlanQuote) {
 effect function existingUpgrade(tx: Tx, commandId: string, digest: string, organizationId: string, userId: string, lock: boolean) {
   const row = try readPlanCommand(tx, commandId, lock)
   if (row !== undefined) {
-    if (row.organizationId !== organizationId || row.command.receipt.session.owner.actorId !== userId || row.command.receipt.digest !== digest)
+    if (row.organizationId !== organizationId || row.command.kind !== "UpgradeCommand" || row.command.receipt.session.owner.actorId !== userId || row.command.receipt.digest !== digest)
       throw refused("IdempotencyConflict")
     return row
   }
@@ -193,7 +170,7 @@ effect function sendUpgrade(terms: StripeUpgradeTerms, operationKey: string) {
   } catch (failure) => failureReply(failure)
 }
 
-export effect function confirmUpgrade(authorization: string | undefined, input: UpgradeConfirmation) {
+export effect function confirmUpgrade(authorization: string | undefined, input: PlanConfirmation) {
   if (!idempotencyKeyPattern.test(input.idempotencyKey) || input.quoteId === "" ||
     (input.expectedSubscriptionRevision !== undefined && (!Number.isSafeInteger(input.expectedSubscriptionRevision) || input.expectedSubscriptionRevision < 1)))
     throw refused("InvalidRequest")
@@ -226,11 +203,11 @@ export effect function confirmUpgrade(authorization: string | undefined, input: 
     const subscription = try currentQuote(tx, own.organizationId, retained, input, now)
     const quoted = commandAt(retained.command, now)
     const revision = quoted.expectedRevision
-    if (!canConfirm(quoted, by, subscription, "UpgradeCommand", commandId, input.quoteId, revision, digest, true))
+    if (!canConfirm(quoted, by, subscription, "UpgradeCommand", commandId, input.quoteId, revision, "", digest, true))
       throw refused("BillingStateConflict")
     const started = try apply(quoted, {
       type: "confirm", sub: subscription, kind: "UpgradeCommand", commandId,
-      quoteId: input.quoteId, expectedRevision: revision, digest, freshOwner: true
+      quoteId: input.quoteId, expectedRevision: revision, attachmentProviderId: "", digest, freshOwner: true
     }, by)
     for (const action of started.out) {
       if (action.tag !== "ClaimSlot") throw refused("BillingStateConflict")
@@ -285,11 +262,11 @@ export effect function upgradePayment(authorization: string | undefined, command
 export const routes: ReadonlyArray<Route> = [
   { method: "POST", path: "/api/v1/subscriptions/upgrade/review", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests",
     handler: (context) => effect {
-      const request = try jsonBody(context, UpgradeReviewBody)
+      const request = try jsonBody(context, PlanReviewBody)
       return json(try reviewPlanChange(context.request.headers.authorization, { ...request, kind: "UpgradeCommand" }))
     } },
   { method: "POST", path: "/api/v1/subscriptions/upgrade/confirm", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests",
-    handler: (context) => effect { return json(try confirmUpgrade(context.request.headers.authorization, try jsonBody(context, UpgradeConfirmation))) } },
+    handler: (context) => effect { return json(try confirmUpgrade(context.request.headers.authorization, try jsonBody(context, PlanConfirmation))) } },
   { method: "GET", path: "/api/v1/subscriptions/upgrade/:commandId", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests",
     handler: (context) => effect {
       const row = try findUpgrade(context.request.headers.authorization, context.params.commandId ?? "")
@@ -302,14 +279,14 @@ export const routes: ReadonlyArray<Route> = [
 export const sweeps: ReadonlyArray<Sweep> = [{ name: "subscription upgrades", everyMs: 60_000, run: effect {
   const store = try Store
   const pending = store.transaction((tx) => tx.query(
-    "SELECT key FROM subscription_commands WHERE stripe_plan_binding IS NOT NULL AND status IN ('prepared','dispatched','unknown','awaiting_payment') ORDER BY updated_at,key LIMIT 100", []
+    "SELECT key FROM subscription_commands WHERE kind='upgrade' AND stripe_plan_binding IS NOT NULL AND status IN ('prepared','dispatched','unknown','awaiting_payment') ORDER BY updated_at,key LIMIT 100", []
   )) catch () => []
   for (const found of pending) {
     const commandId = found.key
     if (typeof commandId !== "string") continue
     const refreshed = effect {
       const row = try store.transaction((tx) => readPlanCommand(tx, commandId, false))
-      if (row !== undefined) try refreshUpgrade(row)
+      if (row?.command.kind === "UpgradeCommand") try refreshUpgrade(row)
     }
     refreshed catch effect (failure) => {
       try annotateLogs(logWarning("a reviewed upgrade could not be settled"), { commandId, failure: failure._tag })

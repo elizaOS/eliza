@@ -1,7 +1,8 @@
 // spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
 import { assert, describe, it } from "@effect/vitest"
 import { area as billing } from "../src/http/routes/billing.vibe"
-import { claimLiveCommand, readSubscription, reconcileSubscription } from "../src/billing/subscriptions.vibe"
+import { sweeps as downgradeSweeps } from "../src/billing/downgrade-commands.vibe"
+import { claimLiveCommand, observeSubscription, readSubscription, reconcileSubscription } from "../src/billing/subscriptions.vibe"
 import { readReviewedPlanQuote, reviewPlanChange, type ReviewPlanChange } from "../src/billing/plan-quotes.vibe"
 import { readStripeSubscription, stripeClient } from "../src/billing/stripe-observation.vibe"
 import type { BillingSnapshot } from "../src/billing/snapshot.vibe"
@@ -21,7 +22,7 @@ import { migrate, Store, storeLayer } from "../src/store/store.vibe"
 import { startFakeServer, type FakeServer, type FakeHandler, type FakeAnswer } from "./support/fakes.ts"
 import { callCloud, type CallInit } from "./support/http.ts"
 import { createStripeFake, fakeSecretKey, type StripeFake } from "./support/fakes/stripe.ts"
-import { stripePlanPreview, stripePlanUpgrade } from "./support/fakes/stripe-commands.ts"
+import { stripePlanDowngrade, stripePlanPreview, stripePlanUpgrade } from "./support/fakes/stripe-commands.ts"
 import { openRenewal } from "../src/billing/allowance.vibe"
 import { catalogPrices, secrets, testProfile } from "./support/profile.ts"
 
@@ -396,6 +397,133 @@ describe("Node subscriptions", () => {
           ["next", String(providerAt / 1000)], ["recurring", null], ["recurring", null], ["next", String(providerAt / 1000)], ["recurring", null]])
         assert.deepStrictEqual(rows.map((row) => [row.id, row.reviewer_user_id, Number(row.proration_date), row.revision]).sort(),
           [[secondId, "buyer", providerAt / 1000, String(plus.revision)], [downId, "other", pro.periodEnd / 1000, String(pro.revision)], ["legacy", null, 0, null]].sort())
+      })
+    }
+  }))
+
+  it.live("Schedule a downgrade once after verifying attachment and schedule binding (spec/cloud/billing/subscriptionCommands.md, \"A downgrade is scheduled once, for the quoted plan, before the command frees the slot\")", () => scoped(effect {
+    const now = 1_800_000_000_987
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(now))
+    provide Clock.Clock = clock.clock {
+      const stripe = try sync(() => createStripeFake({ now: () => now }))
+      const provider = try sync(() => stripePlanDowngrade(stripe, () => now))
+      const cloud = try testHttp(billing.routes, provider.handler)
+      const token = sessionToken("w"), other = sessionToken("d")
+      const path = "/api/v1/subscriptions/downgrade"
+      const live = { live: true, epoch: 0, authAt: now, accessExpiresAt: now + 15 * minuteMs, refreshExpiresAt: now + 60 * minuteMs, stepUpAt: 0, mfaAt: 0 }
+      try account(cloud, "direct-schedule", "active", { sessions: 0, devices: 0 }, now)
+      try account(cloud, "recover-schedule", "active", { sessions: 0, devices: 0 }, now)
+      try session(cloud, "direct-schedule", token, live, now)
+      try session(cloud, "recover-schedule", other, live, now)
+      const direct = try paidReviewSubscription(cloud, stripe, "org-direct-schedule", "pro_monthly", now)
+      const pending = try paidReviewSubscription(cloud, stripe, "org-recover-schedule", "pro_monthly", now)
+      const existing = try sync(() => provider.existing(direct.subscriptionId))
+      const target = { json: { targetPlanKey: "plus_monthly" } }
+      const identity = Schema.Struct({ quoteId: Schema.String })
+      const view = Schema.Struct({ commandId: Schema.String, status: Schema.String, kind: Schema.String })
+      const reviewedDirect = try cloud.call(path + "/review", token, target)
+      const { quoteId: directId } = try Schema.decodeUnknownEffect(identity)(reviewedDirect.body)
+      const directConfirm = { json: { quoteId: directId, idempotencyKey: "direct-downgrade-20261121", expectedSubscriptionRevision: direct.revision } }
+      const foreign = try cloud.call(path + "/confirm", other, directConfirm)
+      try sync(() => provider.hideScheduleBinding(direct.subscriptionId))
+      const obscured = try cloud.call(path + "/confirm", token, directConfirm)
+      try sync(() => provider.showScheduleBinding(direct.subscriptionId))
+      const same = try cloud.call(path + "/confirm", token, directConfirm)
+      const directView = try Schema.decodeUnknownEffect(view)(same.body)
+      const repeat = try cloud.call(path + "/confirm", token, directConfirm)
+      const reviewedPending = try cloud.call(path + "/review", other, target)
+      const { quoteId: pendingId } = try Schema.decodeUnknownEffect(identity)(reviewedPending.body)
+      const pendingConfirm = { json: { quoteId: pendingId, idempotencyKey: "recheck-downgrade-20261121", expectedSubscriptionRevision: pending.revision } }
+      try sync(() => {
+        provider.lose("attach")
+        provider.lose("configure")
+        provider.hideScheduleBinding(pending.subscriptionId)
+      })
+      const waiting = try cloud.call(path + "/confirm", other, pendingConfirm)
+      const waitingView = try Schema.decodeUnknownEffect(view)(waiting.body)
+      const statusPath = path + "/" + waitingView.commandId
+      const wrongOwnerStatus = try cloud.call(statusPath, token)
+      const unbound = try cloud.call(statusPath, other)
+      const blocked = try sql(cloud, "SELECT pending_plan_key,state->'liveCommand'->>'tag' AS held FROM subscriptions WHERE key=$1", ["org-recover-schedule"])
+      try sync(() => {
+        provider.showScheduleBinding(pending.subscriptionId)
+        provider.reveal("attach")
+      })
+      const ready = try cloud.call(statusPath, other)
+      const writes = () => cloud.fakes.seen.filter((request) => request.method === "POST" && request.path.startsWith("/stripe/v1/subscription_schedules"))
+      const beforeSweep = try sync(() => writes().length)
+      for (const sweep of downgradeSweeps) try cloud.inside(sweep.run)
+      const unanswered = try cloud.call(statusPath, other)
+      const replay = try cloud.call(path + "/confirm", other, pendingConfirm)
+      try sync(() => provider.reveal("configure"))
+      const settled = try cloud.call(statusPath, other)
+      const settledView = try Schema.decodeUnknownEffect(view)(settled.body)
+      const unansweredView = try Schema.decodeUnknownEffect(view)(unanswered.body)
+      for (const sweep of downgradeSweeps) try cloud.inside(sweep.run)
+      const saved = try sql(cloud, "SELECT key,plan_key,pending_plan_key,state->'liveCommand'->>'tag' AS held FROM subscriptions WHERE key IN ($1,$2) ORDER BY key",
+        ["org-direct-schedule", "org-recover-schedule"])
+      const origins = try sql(cloud, "SELECT status,stripe_schedule_attach_origin->>'requestId' AS attached,stripe_schedule_configure_origin->>'requestId' AS configured FROM subscription_commands WHERE key=$1",
+        [waitingView.commandId])
+      const compatibleToken = sessionToken("k")
+      try account(cloud, "compatible-schedule", "active", { sessions: 0, devices: 0 }, now)
+      try session(cloud, "compatible-schedule", compatibleToken, live, now)
+      const compatible = try paidReviewSubscription(cloud, stripe, "org-compatible-schedule", "pro_monthly", now)
+      const reviewedCompatible = try cloud.call(path + "/review", compatibleToken, target)
+      const { quoteId: compatibleId } = try Schema.decodeUnknownEffect(identity)(reviewedCompatible.body)
+      try sync(() => {
+        provider.lose("attach")
+        provider.conceal("attach")
+      })
+      const compatibleResponse = try cloud.call(path + "/confirm", compatibleToken, { json: {
+        quoteId: compatibleId, idempotencyKey: "compatible-downgrade-20261121", expectedSubscriptionRevision: compatible.revision
+      } })
+      const compatibleView = try Schema.decodeUnknownEffect(view)(compatibleResponse.body)
+      const guarantee = try sql(cloud, "SELECT state->'schedule'->>'evidence' AS evidence, stripe_schedule_attach_origin AS origin FROM subscription_commands WHERE key=$1",
+        [compatibleView.commandId])
+      const effects = try sync(() => writes().map((request) => [request.path.slice("/stripe".length), request.headers["idempotency-key"], new URLSearchParams(request.body).get("from_subscription")]))
+      const renewalAt = direct.periodEnd + 1_000
+      try sync(() => {
+        clock.set(renewalAt)
+        provider.renew(direct.subscriptionId, false)
+      })
+      const renewalToken = sessionToken("h")
+      try session(cloud, "direct-schedule", renewalToken, { ...live, authAt: renewalAt,
+        accessExpiresAt: renewalAt + 15 * minuteMs, refreshExpiresAt: renewalAt + 60 * minuteMs }, renewalAt)
+      const refresh = cloud.inside(cloud.store.transaction(effect (tx) => {
+        const observed = try observeSubscription(tx, "org-direct-schedule")
+        return try reconcileSubscription(tx, "org-direct-schedule", observed, renewalAt)
+      }))
+      try refresh
+      const unpaid = try cloud.call("/api/v1/billing/limits", renewalToken)
+      try sync(() => provider.renew(direct.subscriptionId, true))
+      try refresh
+      try refresh
+      const paid = try cloud.call("/api/v1/billing/limits", renewalToken)
+      const unpaidSnapshot = (unpaid.body as { data: BillingSnapshot }).data
+      const paidSnapshot = (paid.body as { data: BillingSnapshot }).data
+      const renewedAllowances = try sql(cloud, "SELECT key FROM allowance_periods WHERE organization_id=$1 AND status='open'", ["org-direct-schedule"])
+      try check(() => {
+        assert.deepStrictEqual([foreign.status, obscured.status, same.status, directView.kind, directView.status, repeat.body, wrongOwnerStatus.status,
+          waitingView.status, unbound.body, ready.status, beforeSweep, unanswered.body, replay.body, settled.status],
+          [404, 503, 200, "downgrade", "succeeded", same.body, 404, "unknown", waiting.body, 200, 2, replay.body, unanswered.body, 200])
+        assert.equal(settledView.status, "succeeded")
+        assert.equal(unansweredView.status, "unknown")
+        assert.deepStrictEqual([compatibleResponse.status, compatibleView.status, guarantee], [200, "succeeded", [{ evidence: "CompatibleSchedule", origin: null }]])
+        assert.deepStrictEqual(blocked.map((row) => [row.pending_plan_key, row.held]), [[null, "Live"]])
+        assert.deepStrictEqual(saved.map((row) => [row.plan_key, row.pending_plan_key, row.held]),
+          [["pro_monthly", "plus_monthly", "NoLiveCommand"], ["pro_monthly", "plus_monthly", "NoLiveCommand"]])
+        assert.deepStrictEqual(origins.map((row) => [row.status, row.attached, row.configured]), [["succeeded", "req_schedule2", "req_schedule3"]])
+        assert.deepStrictEqual([unpaid.status, unpaidSnapshot.plan.key, unpaidSnapshot.subscription?.pendingPlanKey,
+          paid.status, paidSnapshot.plan.key, paidSnapshot.subscription?.pendingPlanKey, paidSnapshot.allowance?.granted, renewedAllowances.length],
+          [200, "pro_monthly", "plus_monthly", 200, "plus_monthly", null, 25_000_000, 1])
+        assert.deepStrictEqual(effects, [
+          ["/v1/subscription_schedules/" + existing, "subscription_schedule_" + directView.commandId, null],
+          ["/v1/subscription_schedules", "subscription_schedule_" + waitingView.commandId + ":attach", pending.subscriptionId],
+          ["/v1/subscription_schedules/sub_sched_test2", "subscription_schedule_" + waitingView.commandId, null],
+          ["/v1/subscription_schedules", "subscription_schedule_" + compatibleView.commandId + ":attach", compatible.subscriptionId],
+          ["/v1/subscription_schedules/sub_sched_test3", "subscription_schedule_" + compatibleView.commandId, null]
+        ])
       })
     }
   }))

@@ -193,3 +193,173 @@ export function stripePlanUpgrade(stripe: StripeFake, now: () => number) {
     },
   };
 }
+
+export function stripePlanDowngrade(stripe: StripeFake, now: () => number) {
+  type Subscription = Extract<StripeObject, { readonly object: "subscription" }>;
+  type Phase = { start_date: number; end_date: number; items: { price: string; quantity: number }[]; proration_behavior: string };
+  type Schedule = ReturnType<typeof scheduleOf>;
+  type Stage = "attach" | "configure";
+  const entries = new Map<string, Schedule>();
+  const attached = new Map<string, string>();
+  const events: { type: string; created: number; object: Schedule; key: string; requestId: string }[] = [];
+  const preview = stripePlanPreview(stripe, (_mode, answer) => answer);
+  const failures = new Set<Stage>();
+  const revealed = new Set<Stage>();
+  const withheld = new Set<string>();
+  const renewals = new Map<string, ReturnType<typeof renewalOf>>();
+  const prefix = "/v1/subscription_schedules";
+  const target = catalogPrices[0];
+
+  function scheduleOf(subscription: Subscription) {
+    const item = subscription.items.data[0];
+    const current = { start_date: item.current_period_start, end_date: item.current_period_end };
+    const phases: Phase[] = [{ ...current, items: [{ price: item.price.id, quantity: 1 }], proration_behavior: "create_prorations" }];
+    return { id: `sub_sched_test${entries.size + 1}`, subscription: subscription.id, customer: subscription.customer,
+      livemode: false, status: "active", current_phase: current, phases, end_behavior: "release" };
+  }
+
+  function remember(subscription: Subscription) {
+    const schedule = scheduleOf(subscription);
+    entries.set(schedule.id, schedule);
+    attached.set(subscription.id, schedule.id);
+    return schedule;
+  }
+
+  function send(stage: Stage, object: Schedule, key: string): FakeAnswer {
+    const requestId = `req_schedule${events.length + 1}`;
+    const type = stage === "attach" ? "subscription_schedule.created" : "subscription_schedule.updated";
+    events.push({ type, object: structuredClone(object), created: Math.floor(now() / 1000), key, requestId });
+    if (failures.delete(stage)) return { status: 503, body: { error: { type: "api_error" } } };
+    return { status: 200, headers: { "request-id": requestId, "idempotency-key": key }, body: object };
+  }
+
+  function validPhases(form: URLSearchParams, schedule: Schedule, prefix: string): boolean {
+    const prior = schedule.phases[0];
+    return form.get(`${prefix}[0][start_date]`) === String(prior.start_date) &&
+      form.get(`${prefix}[0][end_date]`) === String(prior.end_date) &&
+      form.get(`${prefix}[0][proration_behavior]`) === prior.proration_behavior &&
+      form.get(`${prefix}[0][items][0][price]`) === prior.items[0].price &&
+      form.get(`${prefix}[0][items][0][quantity]`) === "1" &&
+      form.get(`${prefix}[1][start_date]`) === String(prior.end_date) &&
+      form.get(`${prefix}[1][iterations]`) === "1" && form.get(`${prefix}[1][items][0][price]`) === target.priceId &&
+      form.get(`${prefix}[1][items][0][quantity]`) === "1" && form.get(`${prefix}[1][proration_behavior]`) === "none";
+  }
+
+  function renewalOf(subscription: Subscription, phase: Phase, paid: boolean) {
+    const item = subscription.items.data[0];
+    const price = stripe.object(target.priceId);
+    if (price.object !== "price") throw new Error("Missing the reviewed renewal price");
+    const { start_date: start, end_date: end } = phase;
+    const invoiceId = `in_renewal${subscription.id}`;
+    const chargeId = `ch_renewal${subscription.id}`;
+    const amount = target.unitAmount;
+    const observed: Subscription = { ...subscription, latest_invoice: invoiceId,
+      current_period_start: start, current_period_end: end, items: { ...subscription.items, data: [
+        { ...item, price, current_period_start: start, current_period_end: end }
+      ] } };
+    const invoice = { id: invoiceId, customer: subscription.customer, livemode: false, billing_reason: "subscription_cycle",
+      parent: { subscription_details: { subscription: subscription.id } }, status: paid ? "paid" : "open", attempted: false,
+      amount_paid: paid ? amount : 0, currency: "usd", lines: { has_more: false, data: [
+        { quantity: 1, period: { start, end }, pricing: { price_details: { price: target.priceId } },
+          parent: { subscription_item_details: { subscription_item: item.id, proration: false } } }
+      ] } };
+    const paidItems = paid ? [{ amount_paid: amount, payment: { type: "charge", charge: chargeId } }] : [];
+    const charge = { id: chargeId, customer: subscription.customer, livemode: false, currency: "usd",
+      paid, captured: paid, amount_refunded: 0, disputed: false };
+    return { observed, invoice, paidItems, charge };
+  }
+
+  const bad = { status: 400, body: { error: { type: "invalid_request_error" } } };
+  const handler: FakeHandler = (request) => {
+    const form = new URLSearchParams(request.body);
+    const key = request.headers["idempotency-key"];
+    if (request.path === "/v1/events" && request.method === "GET") {
+      const type = request.query.get("type");
+      const stage = type === "subscription_schedule.created" ? "attach" : "configure";
+      const eligible = events.filter((event) => event.type === type);
+      return { status: 200, body: { has_more: false, data: eligible.map((event, index) => ({
+        id: `evt_schedule${stage}${index}`, type: event.type, created: event.created, livemode: false,
+        request: { id: event.requestId, idempotency_key: revealed.has(stage) ? event.key : `other-${event.key}` },
+        data: { object: event.object },
+      })) } };
+    }
+    if (request.method === "GET") {
+      const queryCustomer = request.query.get("customer");
+      const queryPrice = request.query.get("price");
+      const byCustomer = [...renewals.values()].find((entry) => entry.observed.customer === queryCustomer);
+      if (request.path === "/v1/subscriptions" && byCustomer !== undefined) {
+        const data = queryPrice === target.priceId ? [byCustomer.observed] : [];
+        return { status: 200, body: { object: "list", has_more: false, data } };
+      }
+      for (const renewal of renewals.values()) {
+        if (request.path === `/v1/invoices/${renewal.invoice.id}`) return { status: 200, body: renewal.invoice };
+        if (request.path === `/v1/charges/${renewal.charge.id}`) return { status: 200, body: renewal.charge };
+        if (request.path === "/v1/invoice_payments" && request.query.get("invoice") === renewal.invoice.id)
+          return { status: 200, body: { object: "list", has_more: false, data: renewal.paidItems } };
+      }
+    }
+    const subscriptionId = /^\/v1\/subscriptions\/([^/]+)$/.exec(request.path)?.[1];
+    if (request.method === "GET" && subscriptionId !== undefined) {
+      const schedule = attached.get(subscriptionId);
+      if (schedule !== undefined) return { status: 200, body: { ...(renewals.get(subscriptionId)?.observed ?? stripe.object(subscriptionId)), schedule } };
+    }
+    if (request.path === prefix && request.method === "POST") {
+      const subscription = stripe.object(form.get("from_subscription") ?? "");
+      if (request.headers.authorization !== `Bearer ${fakeSecretKey}` || typeof key !== "string" ||
+          !isSubscription(subscription) || attached.has(subscription.id) ||
+          request.headers["stripe-version"] !== "2024-11-20.acacia" || [...form].length !== 1) return bad;
+      return send("attach", remember(subscription), key);
+    }
+    if (request.path.startsWith(prefix + "/")) {
+      const stored = entries.get(request.path.slice(prefix.length + 1));
+      if (stored === undefined) return { status: 404, body: { error: { type: "invalid_request_error", code: "resource_missing" } } };
+      if (request.method === "GET") {
+        return { status: 200, body: withheld.has(stored.subscription) ? { ...stored, customer: "cus_other" } : stored };
+      }
+      if (typeof key !== "string" || request.headers.authorization !== `Bearer ${fakeSecretKey}` ||
+          stored.phases.length !== 1 || request.headers["stripe-version"] !== "2024-11-20.acacia" ||
+          !validPhases(form, stored, "phases") || form.get("proration_behavior") !== "none" || form.get("end_behavior") !== "release")
+        return bad;
+      const prior = stored.phases[0];
+      stored.phases.push({ start_date: prior.end_date, end_date: prior.end_date + prior.end_date - prior.start_date,
+        items: [{ price: target.priceId, quantity: 1 }], proration_behavior: "none" });
+      return send("configure", stored, key);
+    }
+    if (request.path === "/v1/invoices/create_preview" && request.method === "POST" && form.has("schedule")) {
+      const schedule = entries.get(form.get("schedule") ?? "");
+      if (schedule === undefined || schedule.customer !== form.get("customer") || !validPhases(form, schedule, "schedule_details[phases]") ||
+          form.get("preview_mode") !== "next" || form.get("schedule_details[end_behavior]") !== "release" ||
+          request.headers["stripe-version"] !== "2024-11-20.acacia") return bad;
+      const start = schedule.current_phase.end_date;
+      const end = start + start - schedule.current_phase.start_date;
+      return { status: 200, body: {
+        id: "upcoming_in_scheduletest", customer: schedule.customer, subscription: schedule.subscription, currency: "usd",
+        amount_due: target.unitAmount, amount_paid: 0, livemode: false, status: "draft",
+        lines: { has_more: false, data: [{ id: "il_downgrade", currency: "usd", amount: target.unitAmount, quantity: 1,
+          period: { start, end }, price: { id: target.priceId }, proration: false }] },
+      } };
+    }
+    return preview(request) ?? stripe.handler(request);
+  };
+  return {
+    handler,
+    existing: (id: string) => {
+      const subscription = stripe.object(id);
+      if (!isSubscription(subscription)) throw new Error("Missing fixture subscription");
+      return remember(subscription).id;
+    },
+    renew: (id: string, paid: boolean) => {
+      const subscription = stripe.object(id);
+      const schedule = entries.get(attached.get(id) ?? "");
+      const effective = schedule?.phases[1];
+      if (!isSubscription(subscription) || schedule === undefined || effective === undefined) throw new Error("Missing configured fixture renewal");
+      schedule.current_phase = { start_date: effective.start_date, end_date: effective.end_date };
+      renewals.set(id, renewalOf(subscription, effective, paid));
+    },
+    lose: (stage: Stage) => { failures.add(stage); },
+    reveal: (stage: Stage) => { revealed.add(stage); },
+    conceal: (stage: Stage) => { revealed.delete(stage); },
+    hideScheduleBinding: (subscription: string) => withheld.add(subscription),
+    showScheduleBinding: (subscription: string) => withheld.delete(subscription),
+  };
+}

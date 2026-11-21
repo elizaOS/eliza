@@ -3,9 +3,10 @@ import type { Area } from "../routes.vibe"
 import { routes as entitlements } from "../../billing/entitlements.vibe"
 import { routes as commands, sweeps as commandSweeps } from "../../billing/commands.vibe"
 import { routes as upgrades, sweeps as upgradeSweeps } from "../../billing/upgrade-commands.vibe"
+import { routes as downgrades, sweeps as downgradeSweeps } from "../../billing/downgrade-commands.vibe"
 import { routes as snapshot } from "../../billing/snapshot.vibe"
 import { routes as invoices } from "../../billing/invoices.vibe"
 import { routes as grants } from "../../billing/grant-codes.vibe"
 import { sweeps as allowanceSweeps } from "../../billing/allowance.vibe"
 
-export const area: Area = { routes: [...entitlements, ...snapshot, ...invoices, ...grants, ...commands, ...upgrades], sweeps: [...commandSweeps, ...upgradeSweeps, ...allowanceSweeps] }
+export const area: Area = { routes: [...entitlements, ...snapshot, ...invoices, ...grants, ...commands, ...upgrades, ...downgrades], sweeps: [...commandSweeps, ...upgradeSweeps, ...downgradeSweeps, ...allowanceSweeps] }
