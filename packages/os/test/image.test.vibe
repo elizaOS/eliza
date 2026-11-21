@@ -13,14 +13,12 @@ module node {
   import { createHash } from "node:crypto"
   import { chmod, mkdir, readFile, stat, utimes, writeFile } from "node:fs/promises"
   import { join } from "node:path"
-  import { fileURLToPath } from "node:url"
   import type { Tree } from "./support/scratch.vibe"
   const sourceDigest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
   const sourceText = (value: string) => new TextEncoder().encode(value)
   export async function changeMode(file: string, mode: number): Promise<void> { await chmod(file, mode) }
-  export async function qualificationBinary(directory: string, commands: Readonly<Record<string, string>>, failed?: string) {
+  export async function qualificationBinary(directory: string, fixture: string, commands: Readonly<Record<string, string>>, failed?: string) {
     const binary = join(directory, failed ?? "adb-fixture")
-    const fixture = fileURLToPath(new URL("./fixtures/device-qualify/android15-emulator/", import.meta.url))
     const log = join(directory, `${failed ?? "adb-fixture"}.jsonl`)
     const script = `#!/usr/bin/env node\nimport { appendFileSync, readFileSync, existsSync } from "node:fs";\nimport { join } from "node:path";\nconst args = process.argv.slice(2);\nappendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + "\\n");\nif (args[0] !== "-s" || args[1] !== "emulator-4242") process.exit(77);\nif (args.length === 3 && args[2] === "get-state") { process.stdout.write("device\\n"); process.exit(0); }\nconst command = Object.entries(${JSON.stringify(commands)}).find(([, value]) => value === args[3]);\nif (args.length !== 4 || args[2] !== "shell" || command === undefined) process.exit(78);\nconst [key] = command;\nconst input = join(${JSON.stringify(fixture)}, key + ".txt");\nif (existsSync(input)) process.stdout.write(readFileSync(input));\nif (key === ${JSON.stringify(failed ?? "")}) { process.stderr.write("Capture unavailable\\n"); process.exit(79); }\n`
     await writeFile(binary, script, { mode: 0o700 })
@@ -488,14 +486,15 @@ it.live('Qualify a device through the read-only command set and keep the capture
       const files = try FileSystem.FileSystem
       const path = try Path.Path
       const source = try path.fromFileUrl(new URL("../aosp/device-requirements/treble-gsi.json", import.meta.url))
-      const first = try tryPromise(() => qualificationBinary(work, readOnlyCommands))
+      const fixture = try path.fromFileUrl(new URL("./fixtures/device-qualify/android15-emulator/", import.meta.url))
+      const first = try tryPromise(() => qualificationBinary(work, fixture, readOnlyCommands))
       const output = path.join(work, "qualified")
       const qualified = try qualify(["--serial", "emulator-4242", "--requirements", source, "--out", output, "--adb", first.binary])
       const input = try files.readFileString(path.join(first.fixture, "getprop.txt"))
       const retained = try files.readFileString(path.join(output, "raw", "getprop.txt"))
       const calls = (try files.readFileString(first.log)).trim().split("\n")
       const requirements = try Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(try files.readFileString(source))
-      const partial = try tryPromise(() => qualificationBinary(work, readOnlyCommands, "getprop"))
+      const partial = try tryPromise(() => qualificationBinary(work, fixture, readOnlyCommands, "getprop"))
       const incomplete = try qualifyDevice({ serial: "emulator-4242", requirements, binary: partial.binary })
       try Effect.try(() => assert.deepStrictEqual({
         qualification: [qualified.evaluation.verdict, qualified.evaluation.evidenceLevel, qualified.evaluation.warnings],
