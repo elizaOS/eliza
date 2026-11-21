@@ -146,7 +146,7 @@ async function scripted(script: GoogleScript, operation: GoogleOperation, reques
     case "notJson":
       return { status: 200, body: "{\"places\": [", headers: { "content-type": "application/json" } };
     case "outage":
-      return { status: 503, body: { error: { code: 503, status: "UNAVAILABLE" } } };
+      return operation === "geocode" ? { status: 200, body: { status: "OVER_QUERY_LIMIT", results: [] } } : { status: 503, body: { error: { code: 503, status: "UNAVAILABLE" } } };
     case "oversized":
       return { status: 200, body: "x".repeat(2 * 1024 * 1024 + 1) };
   }

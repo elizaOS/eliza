@@ -1,11 +1,10 @@
 # Speech relay protocol
 
-The wire on the one socket of a minted speech session. `relayStep` answers
-one device frame, or one provider or session edge, with the frames the shell
-sends before it reads the next input. Each socket holds one `Relay`; the
-session's consent, windows and receipts are [the speech session's](./speechSession.md).
-The device side is `spec/os/voice/cloudSpeech.md`. JSON, bytes, the token
-digest and provider calls stay in the codec and the shell.
+The wire on the one socket of a minted speech session. Each socket holds a
+`Relay`; `relayStep` answers one device frame or one provider or session edge
+with the frames the shell sends before the next input. Consent, windows and
+receipts are [the speech session's](./speechSession.md); the device side is
+`spec/os/voice/cloudSpeech.md`.
 
 ## Story: Speak the relay protocol on one socket
 
@@ -24,9 +23,9 @@ version: 1, sampleRate: 16000, channels: 1, expiresAt}`, `{t: "stt", event:
 {type, transcript?}}` (transcript at most 16384 chars), `{t: "tts_prepared" |
 "flush_complete" | "complete", id}`, `{t: "extended", expiresAt}`, `{t:
 "error", code, reason?}`, and binary `[1, idLength, id, PCM16]`. An id matches
-`[A-Za-z0-9_-]{1,64}`. The codec applies these bounds and its contract holds
-the frame round trips; a control frame out of bounds is a `ClientViolation`
-and a binary frame out of bounds is a `ClientBadAudio`.
+`[A-Za-z0-9_-]{1,64}`. The codec owns these bounds and the frame round
+trips; a control frame out of bounds is a `ClientViolation`, a binary one a
+`ClientBadAudio`.
 
 ```quint
 import types.* from "../shared/types"
@@ -48,15 +47,12 @@ pure def validDownlinkAudio(idChars: int, pcmBytes: int): bool =
 
 ### A step keeps the relay well formed
 
-A relay awaits the hello, opens, is live or has ended. While it opens, the
-session admits the first window and starts the providers; their `stt` edges
-are held, at most 64, and `connected` is held exactly when it has arrived.
-Each utterance is open, finishing, cancelled or done, and remembers whether
-audio was forwarded since its last acknowledged flush. A live relay counts
-its windows, each admitting 64 new ids. `Shortfall` is the relay's own name
-for the two funding refusals; the session builds it from its funding
-observation. Close code 1008, develop's only refusal code, stays for a
-protocol break and an outage.
+While a relay opens, its `stt` edges are held, at most 64, and `connected`
+is held exactly when it has arrived. Each utterance remembers whether audio
+was forwarded since its last acknowledged flush. Each live window admits 64
+new ids. `Shortfall` is the relay's own name for the two funding refusals,
+built by the session from its funding observation. Close code 1008, develop's
+only refusal code, stays for a protocol break and an outage.
 
 ```quint
 type RelayPhase = RelayAwaitingHello | RelayOpening | RelayLive | RelayEnded
@@ -170,6 +166,9 @@ pure def relayWellFormed(r: Relay): bool =
     and r.pending.every(f => isSttFrame(f)) and (r.sttConnected iff r.pending.includes(SttFrame({ kind: SttConnected })))))
   and (r.phase != RelayOpening implies r.pending == List())
   and (r.phase == RelayLive implies (r.windows >= 1 and r.utterances.length() <= maxUtterancesPerWindow * r.windows))
+pure def endsNow(r: Relay, a: RelayAnswer): bool = r.phase != RelayEnded and a.relay.phase == RelayEnded
+pure def endedAs(a: RelayAnswer, code: RelayErrorCode, closeCode: int): bool =
+  a.relay.phase == RelayEnded and a.frames == List(ErrorFrame({ code: code, reason: NoRelayReason }), CloseFrame({ closeCode: closeCode }))
 pure def lawStepKeepsTheRelayWellFormed(r: Relay, input: RelayInput): bool =
   relayWellFormed(relayAtUpgrade) and (relayWellFormed(r) implies relayWellFormed(relayStep(r, input).relay))
 pure val idValues = Set("u1", "u2")
@@ -193,9 +192,9 @@ pure val inputValues = Set(
   ProviderFailed, FundingRefused({ funding: AllowanceShort }), FundingRefused({ funding: CreditsShort }), CredentialRefused, SessionOver)
 ```
 
-### Only a hello carrying the session token opens the relay, and audio sent first is answered unavailable
+### Only a hello carrying the session token opens the relay
 
-The hello's `errorReasons` and `extend` flags hold for the socket. Any binary
+The hello's `errorReasons` and `extend` flags hold for the socket. A binary
 frame first, well formed or not, ends the relay as `unavailable`, as in
 develop; any other frame first ends it as `unauthorized`.
 
@@ -205,11 +204,8 @@ pure def lawOnlyTheSessionTokenOpensTheRelay(r: Relay, input: RelayInput): bool 
   val a = relayStep(r, input)
   (r.phase == RelayAwaitingHello and a.relay.phase != RelayEnded and a.relay.phase != RelayAwaitingHello) implies (isTokenHello(input) and a.relay.phase == RelayOpening and a.frames == List())
 }
-pure def lawAudioBeforeTheHelloIsUnavailable(r: Relay): bool = {
-  val unavailable = ErrorFrame({ code: RelayUnavailable, reason: NoRelayReason })
-  r.phase == RelayAwaitingHello implies (relayStep(r, ClientAudio).frames.nthOr(0, ReadyFrame) == unavailable
-    and relayStep(r, ClientBadAudio).frames.nthOr(0, ReadyFrame) == unavailable)
-}
+pure def lawAudioBeforeTheHelloIsUnavailable(r: Relay, input: RelayInput): bool =
+  (r.phase == RelayAwaitingHello and (input == ClientAudio or input == ClientBadAudio)) implies endedAs(relayStep(r, input), RelayUnavailable, violationClose)
 ```
 
 ### Ready and then the held edges are sent once, when the first window is admitted
@@ -248,18 +244,16 @@ pure def lawConnectedPrecedesTurnsAndAcceptedAudio(r: Relay, input: RelayInput):
 
 ### While live, each utterance is answered in the order of its life
 
-`prepare`, or the first `tts` of an id, opens the utterance and is answered
-with one `tts_prepared`. A `tts` for an open utterance adds text, and
-`finish` moves it to finishing. `cancel` cancels any id, and nothing more is
-sent for it. A frame for a cancelled id, and `finish` for a done one, is
-ignored, since a cancel or the provider's end may overtake queued phrases;
-`prepare` or `tts` for a finishing or done id, and `finish` twice or for an
-unseen id, break the protocol. Provider audio of a speaking utterance is
-forwarded; a flush is acknowledged only after audio forwarded since the last
-acknowledgement. The provider's completion is answered with `complete` even
-before `finish` (develop `speech-relay-session.ts:1142-1145`), so the plan's
-"`complete` follows `finish`" does not hold; `completedBeforeFinish` tells
-the session to mark that TTS settlement uncertain.
+`prepare`, or the first `tts` of an id, opens it with one `tts_prepared`;
+`finish` moves an open one to finishing; `cancel` cancels any id, and nothing
+more is sent for it. A frame for a cancelled id, and `finish` for a done one,
+is ignored, since a cancel or the provider's end may overtake queued phrases;
+`prepare` or `tts` for a finishing or done id, and `finish` twice or unseen,
+break the protocol. A flush is acknowledged only after audio forwarded since
+the last one. The provider may complete before `finish` (develop
+`speech-relay-session.ts:1142-1145`), so the plan's "`complete` follows
+`finish`" is replaced; `completedBeforeFinish` tells the session to mark that
+TTS settlement uncertain.
 
 ```quint
 pure def completedBeforeFinish(r: Relay, input: RelayInput): bool =
@@ -297,22 +291,17 @@ pure def lawExtendedOnlyForAHelloThatAsked(r: Relay, input: RelayInput): bool =
 
 ### Every end is one error and the close code of its cause, except a stop the device asked for
 
-A live device's `stop` closes with 1000 and no error. Otherwise:
-`unauthorized` (4401) for a wrong token, no hello within 5 s or a refused
-credential; `unavailable` (4402) when funding refused a window; `closed`
-(4410) when the session is over (deadline passed unrenewed, owner revoked
-it, account deleting); `protocol` (1008) for a frame that breaks the
-protocol, including a 65th new id in a window; `unavailable` (1008) for a
-provider or service outage, including a transcript over 16384 chars or a
-65th held edge. An ended relay answers nothing. These differ from develop,
-which closed a missing hello with 1008 and no error, answered a repeated
-hello or a bad frame after the hello with `unavailable`, and had no
-`closed`; the Android bridge reads no close code and needs no change.
+A live `stop` closes with 1000 and no error. Otherwise: `unauthorized`
+(4401) for a wrong token, no hello within 5 s or a refused credential;
+`unavailable` (4402) for refused funding; `closed` (4410) when the session is
+over; `protocol` (1008) for a protocol break, a 65th new id in a window
+included; `unavailable` (1008) for an outage, a transcript over 16384 chars
+or a 65th held edge included. An ended relay answers nothing. Develop closed
+a missing hello with 1008 and no error, answered a repeated hello or a bad
+frame after it with `unavailable`, and had no `closed`; the Android bridge
+reads no close code and needs no change.
 
 ```quint
-pure def endsNow(r: Relay, a: RelayAnswer): bool = r.phase != RelayEnded and a.relay.phase == RelayEnded
-pure def endedAs(a: RelayAnswer, code: RelayErrorCode, closeCode: int): bool =
-  a.relay.phase == RelayEnded and a.frames == List(ErrorFrame({ code: code, reason: NoRelayReason }), CloseFrame({ closeCode: closeCode }))
 pure def lawEveryEndIsOneErrorThenItsCloseOrAStop(r: Relay, input: RelayInput): bool = {
   val a = relayStep(r, input)
   val stopped = a.frames == List(CloseFrame({ closeCode: normalClose }))

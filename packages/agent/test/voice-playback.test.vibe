@@ -1,20 +1,22 @@
 // spec/agent/voice/clientAudio.md, "A segment is played only once its input has ended and its audio has played"; spec/agent/voice/clientAudio.md, "Segments play in order once each, and Stop silences the reply at once"; spec/agent/voice/clientAudio.md, "The progressive attachment is ready at its first appended frame, or at the end without streaming"
 import { assert, it } from "@effect/vitest"
 import { lawASegmentPlaysOnlyAfterBothEnds, mediaWaitMs, segmentOf } from "../gen/agent__voice__clientAudio.effect.vibe"
-import { attachProgressiveSpeech, speakerPortOf, SpeechPlaybackError, SpeechRateRefused, SpeechStopped, splitSpeechSegments } from "../src/voice/playback.vibe"
-import { FakePlayer, fakeSpeaker, fakeSpeechMedia, fakeSpeechSource } from "./support/speech-playback-fake.ts"
+import {
+  attachProgressiveSpeech, speakerPortOf, SpeechPlaybackError, SpeechRateRefused, SpeechStopped, splitSpeechSegments, type SegmentedSpeechState,
+} from "../src/voice/playback.vibe"
+import { FakePlayer, FakeSpeaker, fakeSpeechMedia, fakeSpeechSource } from "./support/speech-playback-fake.ts"
 
-const idle = { phase: "idle", caption: "" }
+const idle: SegmentedSpeechState = { phase: "idle", caption: "" }
 
 it.effect("Segments play in order once each, and Stop silences the reply at once: a reply is split keeping every word", () => effect {
-  const reply = "  Dr. Chen moved the visit to 3.30 pm.  Bring the form from https://clinic.example/forms?id=7. Is that fine?\n Yes!"
+  const reply = "  Dr. Chen moved the visit to 3.30 pm.  Bring the form from https://clinic.example/forms?id=7 today. Is that fine?\n Yes!"
   const segments = splitSpeechSegments(reply)
   const unpunctuated = Array.from({ length: 60 }, (_, i) => `word${i}`).join(" ")
   const long = splitSpeechSegments(unpunctuated)
   try Effect.try(() => {
     assert.deepStrictEqual(segments, [
       "Dr. Chen moved the visit to 3.30 pm.",
-      "Bring the form from https://clinic.example/forms?id=7.",
+      "Bring the form from https://clinic.example/forms?id=7 today.",
       "Is that fine?",
       "Yes!",
     ])
@@ -27,7 +29,7 @@ it.effect("Segments play in order once each, and Stop silences the reply at once
 })
 
 it.effect("Segments play in order once each, and Stop silences the reply at once: each segment plays once, in order, and Speak while playing does nothing", () => effect {
-  const s = fakeSpeaker()
+  const s = new FakeSpeaker()
   const speaking = s.speak("First part. Second part! Third part?")
   try promise(() => s.flush())
   const ignored = try promise(() => s.outcome(s.speak("Something else entirely.")))
@@ -53,7 +55,7 @@ it.effect("Segments play in order once each, and Stop silences the reply at once
 })
 
 it.effect("A segment is played only once its input has ended and its audio has played: neither end alone plays it", () => effect {
-  const s = fakeSpeaker()
+  const s = new FakeSpeaker()
   let played = false
   const speaking = s.speak("Only one.")
   try promise(() => s.flush())
@@ -75,26 +77,26 @@ it.effect("A segment is played only once its input has ended and its audio has p
 })
 
 it.effect("A segment is played only once its input has ended and its audio has played: invalid audio and media failures end the reply with their error", () => effect {
-  const zeroSpeed = fakeSpeaker()
+  const zeroSpeed = new FakeSpeaker()
   const badSpeed = zeroSpeed.speak("Bad speed. Never played.")
   try promise(() => zeroSpeed.flush())
   zeroSpeed.current().ready(0)
   const bad = try promise(() => zeroSpeed.outcome(badSpeed))
 
-  const unready = fakeSpeaker()
+  const unready = new FakeSpeaker()
   const loadedFirst = unready.speak("Loaded early.")
   try promise(() => unready.flush())
   unready.current().load()
   const early = try promise(() => unready.outcome(loadedFirst))
 
-  const refused = fakeSpeaker()
+  const refused = new FakeSpeaker()
   const refusing = refused.speak("Autoplay blocked. Second.")
   try promise(() => refused.flush())
   refused.current().player.refusal = new Error("NotAllowedError")
   refused.current().ready(1.25)
   const blocked = try promise(() => refused.outcome(refusing))
 
-  const broken = fakeSpeaker()
+  const broken = new FakeSpeaker()
   const breaking = broken.speak("Decoder fails.")
   try promise(() => broken.flush())
   const brokenEntry = broken.current()
@@ -116,7 +118,7 @@ it.effect("A segment is played only once its input has ended and its audio has p
 })
 
 it.effect("Segments play in order once each, and Stop silences the reply at once: nothing plays after Stop until the next Speak", () => effect {
-  const s = fakeSpeaker()
+  const s = new FakeSpeaker()
   const played: string[] = []
   const broke: unknown[] = []
   const port = speakerPortOf(s.playback)
@@ -147,7 +149,7 @@ it.effect("Segments play in order once each, and Stop silences the reply at once
 })
 
 it.effect("Segments play in order once each, and Stop silences the reply at once: the rate divides by the rendered speed and a bad rate is refused", () => effect {
-  const s = fakeSpeaker()
+  const s = new FakeSpeaker()
   s.playback.setRate(1.5)
   const speaking = s.speak("Quick one.")
   try promise(() => s.flush())
@@ -156,13 +158,13 @@ it.effect("Segments play in order once each, and Stop silences the reply at once
   entry.ready(1.25)
   try promise(() => s.flush())
   const rendered = [entry.player.playbackRate, entry.player.defaultPlaybackRate]
-  const refused = try Effect.flip(Effect.try({ try: () => s.playback.setRate(0), catch: (cause) => cause }))
+  const refused = try Effect.flip(Effect.try({ try: () => s.playback.setRate(0), catch: (cause) => new SpeechPlaybackError({ code: "playback", cause }) }))
   s.playback.stop()
   const result = try promise(() => s.outcome(speaking))
   try Effect.try(() => {
     assert.strictEqual(before, 1.5)
     assert.deepStrictEqual(rendered, [1.2, 1.2])
-    assert.instanceOf(refused, SpeechRateRefused)
+    assert.instanceOf(refused.cause, SpeechRateRefused)
     assert.strictEqual(result, "played")
   })
 })

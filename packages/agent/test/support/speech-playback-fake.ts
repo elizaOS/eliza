@@ -4,19 +4,25 @@ import {
   type SpeechEndFrame, type SpeechMedia, type SpeechMediaSource, type SpeechPlayer, type SpeechSourceBuffer,
 } from "../../src/voice/playback.vibe"
 
+const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 2))
+
 class Events<Name extends string> {
   readonly #listeners = new Map<Name, Set<() => void>>()
+  /** @throws {never} */
   addEventListener(type: Name, listener: () => void): void {
     const set = this.#listeners.get(type) ?? new Set()
     set.add(listener)
     this.#listeners.set(type, set)
   }
+  /** @throws {never} */
   removeEventListener(type: Name, listener: () => void): void {
     this.#listeners.get(type)?.delete(listener)
   }
+  /** @throws {never} */
   fire(type: Name): void {
     for (const listener of [...(this.#listeners.get(type) ?? [])]) listener()
   }
+  /** @throws {never} */
   count(): number {
     return [...this.#listeners.values()].reduce((sum, set) => sum + set.size, 0)
   }
@@ -35,56 +41,78 @@ export class FakePlayer extends Events<PlayerEvent> implements SpeechPlayer {
     this.plays += 1
     return this.refusal === undefined ? Promise.resolve() : Promise.reject(this.refusal)
   }
+  /** @throws {never} */
   pause(): void {
     this.pauses += 1
   }
+  /** @throws {never} */
   load(): void {
     this.loads += 1
   }
+  /** @throws {never} */
   removeAttribute(): void {
     this.src = ""
   }
 }
 
-export interface AttachedSegment {
-  readonly player: FakePlayer
-  readonly text: string
-  readonly ready: (renderedSpeed: number | null) => void
-  readonly load: () => void
-  disposed: number
+export class AttachedSegment {
+  disposed = 0
+  #ready: (renderedSpeed: number | null) => void
+  #load: () => void
+  constructor(readonly player: FakePlayer, readonly text: string, ready: (renderedSpeed: number | null) => void, load: () => void) {
+    this.#ready = ready
+    this.#load = load
+  }
+  /** @throws {never} */
+  ready(renderedSpeed: number | null): void {
+    this.#ready(renderedSpeed)
+  }
+  /** @throws {never} */
+  load(): void {
+    this.#load()
+  }
 }
 
-const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 2))
-
-export function fakeSpeaker() {
-  const attached: AttachedSegment[] = []
-  const shown: SegmentedSpeechState[] = []
-  const outcomes: Array<Promise<unknown>> = []
-  const playback = new SegmentedSpeechPlayback({
+export class FakeSpeaker {
+  readonly attached: AttachedSegment[] = []
+  readonly shown: SegmentedSpeechState[] = []
+  readonly #outcomes: Array<Promise<unknown>> = []
+  readonly #none = new AttachedSegment(new FakePlayer(), "", () => {}, () => {})
+  readonly playback = new SegmentedSpeechPlayback({
     player: () => new FakePlayer(),
     attach: (player, text, { onReady }) => {
       let load = () => {}
       const loaded = new Promise<void>((resolve) => {
         load = () => resolve()
       })
-      const entry: AttachedSegment = { player: player as FakePlayer, text, ready: onReady, load, disposed: 0 }
-      attached.push(entry)
+      const entry = new AttachedSegment(player as FakePlayer, text, onReady, () => load())
+      this.attached.push(entry)
       return { loaded, dispose: () => { entry.disposed += 1 } }
     },
-    changed: (state) => { shown.push(state) },
+    changed: (state) => { this.shown.push(state) },
   })
-  const current = (): AttachedSegment => {
-    const entry = attached.at(-1)
-    if (entry === undefined) throw new Error("no segment attached")
-    return entry
+
+  /** @throws {never} */
+  current(): AttachedSegment {
+    return this.attached.at(-1) ?? this.#none
   }
-  const speak = (text: string, options?: SpeakOptions): number => {
-    outcomes.push(playback.speak(text, options).then(() => "played", (failure: unknown) => failure))
-    return outcomes.length - 1
+
+  /** @throws {never} */
+  speak(text: string, options?: SpeakOptions): number {
+    this.#outcomes.push(this.playback.speak(text, options).then(() => "played", (failure: unknown) => failure))
+    return this.#outcomes.length - 1
   }
-  const outcome = (index: number): Promise<unknown> => outcomes[index] ?? Promise.reject(new Error(`no reply ${index}`))
-  const playThrough = async (audioFirst: boolean) => {
-    const entry = current()
+
+  outcome(index: number): Promise<unknown> {
+    return this.#outcomes[index] ?? Promise.resolve(`no reply ${index}`)
+  }
+
+  flush(): Promise<void> {
+    return flush()
+  }
+
+  async playThrough(audioFirst: boolean): Promise<void> {
+    const entry = this.current()
     entry.ready(null)
     await flush()
     if (audioFirst) entry.player.fire("ended")
@@ -94,11 +122,11 @@ export function fakeSpeaker() {
     else entry.player.fire("ended")
     await flush()
   }
-  return { playback, attached, shown, current, speak, outcome, playThrough, flush }
 }
 
 class FakeBuffer extends Events<"updateend" | "error"> implements SpeechSourceBuffer {
   readonly appended: number[] = []
+  /** @throws {never} */
   appendBuffer(data: ArrayBuffer): void {
     this.appended.push(data.byteLength)
     queueMicrotask(() => this.fire("updateend"))
@@ -108,15 +136,25 @@ class FakeBuffer extends Events<"updateend" | "error"> implements SpeechSourceBu
 class FakeMediaSource extends Events<"sourceopen" | "error"> implements SpeechMediaSource {
   readonly buffer = new FakeBuffer()
   ended = 0
+  /** @throws {never} */
   addSourceBuffer(): SpeechSourceBuffer {
     return this.buffer
   }
+  /** @throws {never} */
   endOfStream(): void {
     this.ended += 1
   }
 }
 
-export function fakeSpeechMedia(streams: boolean, player: FakePlayer) {
+export interface FakeSpeechMedia {
+  readonly media: SpeechMedia
+  readonly sources: readonly FakeMediaSource[]
+  readonly revoked: readonly string[]
+  readonly clips: readonly Blob[]
+}
+
+/** @throws {never} */
+export function fakeSpeechMedia(streams: boolean, player: FakePlayer): FakeSpeechMedia {
   const sources: FakeMediaSource[] = []
   const revoked: string[] = []
   const clips: Blob[] = []
@@ -143,7 +181,14 @@ export interface NumberedFrame extends SpeechAudioFrame {
   readonly seq: number
 }
 
-export function fakeSpeechSource(bytes: readonly number[]) {
+export interface FakeSpeechSource {
+  readonly source: ProgressiveSpeechSource<NumberedFrame>
+  readonly counts: { readonly opened: number; readonly cancelled: number }
+  release(): Promise<void>
+}
+
+/** @throws {never} */
+export function fakeSpeechSource(bytes: readonly number[]): FakeSpeechSource {
   const gates: Array<() => void> = []
   let next = 0
   const counts = { opened: 0, cancelled: 0 }

@@ -26,3 +26,11 @@ export {
 } from "./agent-ports.vibe"
 export { VoiceSession, type ShownPhase } from "./session.vibe"
 export type { VoiceFailure } from "./ports.vibe"
+export {
+  attachProgressiveSpeech, browserSpeechMedia, SegmentedSpeechPlayback, speakerPortOf, SpeechMediaFailed, SpeechPlaybackError, SpeechRateRefused,
+  SpeechSourceFailed, SpeechStopped, splitSpeechSegments,
+  type CompletedSpeechAudio, type MediaEvents, type PlayerEvent, type ProgressiveSpeechAttachment, type ProgressiveSpeechFailure,
+  type ProgressiveSpeechOptions, type ProgressiveSpeechSource, type SegmentAttach, type SegmentedSpeechOptions, type SegmentedSpeechState,
+  type SpeakOptions, type SpeechAttachment, type SpeechAudioFrame, type SpeechEndFrame, type SpeechMedia, type SpeechMediaSource,
+  type SpeechPlaybackCode, type SpeechPlayer, type SpeechSourceBuffer,
+} from "./playback.vibe"
