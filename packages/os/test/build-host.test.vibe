@@ -181,7 +181,7 @@ it.effect('Generate my app\'s Android host from data: a schema-1 resident host m
     const output = path.join(root, "android/host")
     try generateAndroidHost({ consumerRoot: root, dependencyRoot: path.join(root, "node_modules"), output, identity: IDENTITY, profile: RESIDENT_HOST.profile })
     const { document, overlay, gradle } = try readHost(output)
-    assert.deepStrictEqual(document.modules.map((module) => module.name).sort(), ["capacitor-android", "eliza-agent-service", "eliza-runtime-files", "eliza-sign-in", "eliza-wifi"])
+    assert.deepStrictEqual(document.modules.map((module) => module.name).sort(), ["capacitor-android", "eliza-agent-service", "eliza-runtime-files", "eliza-secure-store", "eliza-sign-in", "eliza-wifi"])
     assert.deepStrictEqual(document.modules.find((module) => module.name === "capacitor-android"), {
       name: "capacitor-android", directory: path.join(workspace, "packages/capacitor-android/capacitor"), appDependency: true, relocateBuild: true,
     })

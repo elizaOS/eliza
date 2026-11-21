@@ -126,7 +126,7 @@ it.effect.skipIf(skipped !== null)(`Generate the fixture host, refuse a partial 
     const files = try FileSystem.FileSystem
     const path = try Path.Path
     const consumer = try fixture("android-host")
-    const signer = try Effect.try(() => testSigner(tools, consumer))
+    const signer = try Effect.try(() => testSigner(tools, path.dirname(consumer)))
     const identityText = try files.readFileString(path.join(consumer, "identity.json"))
     const profileText = try files.readFileString(path.join(consumer, "profile.json"))
     const identity: { readonly appId: string } = try Effect.try(() => JSON.parse(identityText))
@@ -141,7 +141,7 @@ it.effect.skipIf(skipped !== null)(`Generate the fixture host, refuse a partial 
     const signing = environments(tools.sdk, javaHome, signer)
     const PASSES = passes(consumer)
     const build = (environment: NodeJS.ProcessEnv, verify: Command) =>
-      buildAndroid({ root: consumer, project: "host", output: "artifacts", variants: [...FLAVORS], environment, verify, pin, runtime, lint: false, androidTest: false })
+      buildAndroid({ root: consumer, project: "host", output: "artifacts", variants: [...FLAVORS], environment, verify, pin, lint: false, androidTest: false })
 
     const partial = (effect { try build(signing.partial, PASSES); return "built" } catch (error) => message(error))
     assert.match(partial, /FIXTURE_STORE_PASSWORD/)
