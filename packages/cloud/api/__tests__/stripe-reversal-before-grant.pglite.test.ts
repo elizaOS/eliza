@@ -1,7 +1,8 @@
 /**
  * Stripe does not guarantee event ordering. A `charge.refunded` or
  * `charge.dispute.funds_withdrawn` for a top-up can reach the queue before the
- * `checkout.session.completed` that grants the credits. The reversal must be
+ * event that grants the credits: `checkout.session.completed` for a top-up, or
+ * the payment-request settlement webhook for a Stripe payment request. The reversal must be
  * retried until the grant commits; acknowledging it leaves the refunded
  * customer with the credits. Real PGlite, real queue consumer and credits
  * service; the Stripe client is replaced by the sessions this test owns.
@@ -71,7 +72,14 @@ const { referralCodes, referralSignups } = await import(
 const { earningsSourceEnum, ledgerEntryTypeEnum, redeemableEarningsLedger } =
   await import("@elizaos/cloud-shared/db/schemas/redeemable-earnings");
 const { invoices } = await import("@elizaos/cloud-shared/db/schemas/invoices");
+const { webhookEvents } = await import("@elizaos/cloud-shared/db/schemas");
+const { drainStripeDeliveries } = await import(
+  "@elizaos/cloud-shared/lib/services/stripe-delivery-outbox"
+);
 const { processStripeEvent } = await import("../src/queue/stripe-event");
+const { processPaymentProviderEvent } = await import(
+  "@elizaos/cloud-shared/lib/services/payment-request-settlement"
+);
 
 const pg = () => getPgliteClientForTests();
 
@@ -94,11 +102,41 @@ beforeAll(async () => {
         ledgerEntryTypeEnum,
         redeemableEarningsLedger,
         invoices,
+        webhookEvents,
       },
       empty.id,
     ),
   ))
     await pg().exec(statement.replaceAll('"public".', ""));
+  // Payment-request tables as the migrations before 0254 left them (the full
+  // schema references apps/agents), then the real settlement and receipt migrations.
+  await pg().exec(`
+    CREATE TABLE payment_requests (
+      id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id),
+      agent_id uuid, app_id uuid, provider text NOT NULL, amount_cents bigint NOT NULL,
+      currency text NOT NULL, reason text, payment_context jsonb NOT NULL DEFAULT '{"kind":"any_payer"}',
+      payer_identity_id text, payer_user_id uuid, status text NOT NULL, hosted_url text,
+      callback_url text, callback_secret text, provider_intent jsonb NOT NULL DEFAULT '{}',
+      settled_at timestamptz, settlement_tx_ref text, settlement_proof jsonb,
+      expires_at timestamptz NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(), metadata jsonb NOT NULL DEFAULT '{}');
+    CREATE TABLE payment_request_events (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      payment_request_id uuid NOT NULL REFERENCES payment_requests(id) ON DELETE CASCADE,
+      event_name text NOT NULL, redacted_payload jsonb NOT NULL DEFAULT '{}',
+      occurred_at timestamptz NOT NULL DEFAULT now());
+  `);
+  for (const file of [
+    "0254_payment_request_provider_settlement.sql",
+    "0262_payment_request_receipts.sql",
+    "0263_payment_request_receipt_backfill.sql",
+  ]) {
+    const migration = await Bun.file(
+      new URL(`../../shared/src/db/migrations/${file}`, import.meta.url),
+    ).text();
+    for (const statement of migration.split("--> statement-breakpoint"))
+      if (statement.trim()) await pg().exec(statement);
+  }
 });
 
 afterAll(async () => {
@@ -284,4 +322,163 @@ test("a refund for a payment that never grants credits is still acknowledged", a
       refundEvent(`ch_${randomUUID()}`, 500, paymentIntentId),
     ),
   ).toBe("ack");
+});
+
+/** A delivered Stripe payment request whose Checkout session is paid but not settled yet. */
+async function pendingPaymentRequest(cents: number) {
+  const org = randomUUID();
+  const requestId = randomUUID();
+  const paymentIntentId = `pi_${requestId.replaceAll("-", "")}`;
+  const sessionId = `cs_${requestId.replaceAll("-", "")}`;
+  await pg().query(
+    "INSERT INTO organizations(id,name,slug,credit_balance) VALUES ($1,'Payer',$2,'0')",
+    [org, `payer-${org}`],
+  );
+  await pg().query(
+    `INSERT INTO payment_requests(id,organization_id,provider,amount_cents,currency,status,provider_intent,expires_at)
+     VALUES ($1,$2,'stripe',$3,'usd','delivered',$4::jsonb, now() + interval '1 hour')`,
+    [requestId, org, cents, JSON.stringify({ stripe_session_id: sessionId })],
+  );
+  // The paid session as payment-adapters/stripe.ts creates it.
+  sessions.set(paymentIntentId, {
+    id: sessionId,
+    object: "checkout.session",
+    mode: "payment",
+    payment_status: "paid",
+    payment_intent: paymentIntentId,
+    amount_total: cents,
+    currency: "usd",
+    client_reference_id: requestId,
+    metadata: { payment_request_id: requestId, provider: "stripe" },
+  });
+  const settle = async () => {
+    const eventId = `evt_${randomUUID()}`;
+    await processPaymentProviderEvent({
+      provider: "stripe",
+      providerEventId: eventId,
+      paymentRequestId: requestId,
+      disposition: "settled",
+      providerTxRef: paymentIntentId,
+      payloadDigest: "a".repeat(64),
+      amountCents: cents,
+      currency: "usd",
+      proof: {
+        stripe_event_id: eventId,
+        stripe_event_type: "checkout.session.completed",
+        stripe_session_id: sessionId,
+        stripe_payment_intent_id: paymentIntentId,
+        stripe_amount_total: cents,
+        stripe_currency: "usd",
+        stripe_payment_status: "paid",
+      },
+    });
+  };
+  return { org, paymentIntentId, settle };
+}
+
+test("a refund delivered before a Stripe payment-request settlement is retried, then claws the grant back", async () => {
+  const request = await pendingPaymentRequest(2500);
+  const refund = refundEvent(
+    `ch_${randomUUID()}`,
+    2500,
+    request.paymentIntentId,
+  );
+
+  expect(await processStripeEvent(refund)).toBe("retry");
+  await request.settle();
+  expect(await balance(request.org)).toBe(25);
+
+  expect(await processStripeEvent(refund)).toBe("ack");
+  expect(await balance(request.org)).toBe(0);
+  expect(await ledger(request.org)).toEqual(["credit", "clawback"]);
+});
+
+test("a dispute delivered before a Stripe payment-request settlement is retried", async () => {
+  const request = await pendingPaymentRequest(2500);
+  const dispute = disputeWithdrawn(
+    `dp_${randomUUID()}`,
+    2500,
+    request.paymentIntentId,
+  );
+
+  expect(await processStripeEvent(dispute)).toBe("retry");
+  await request.settle();
+  expect(await processStripeEvent(dispute)).toBe("ack");
+  expect(await balance(request.org)).toBe(0);
+});
+
+test("a refund that read no grant just before the payment-request settlement committed is retried", async () => {
+  const request = await pendingPaymentRequest(2500);
+  // The queue found no grant, then the settlement committed before the
+  // payment request was read, so the request already reads settled.
+  await pg().query(
+    "UPDATE payment_requests SET status='settled' WHERE organization_id=$1",
+    [request.org],
+  );
+  expect(
+    await processStripeEvent(
+      refundEvent(`ch_${randomUUID()}`, 2500, request.paymentIntentId),
+    ),
+  ).toBe("retry");
+});
+
+test("a refund for a payment request settled by another payment intent is acknowledged, not retried", async () => {
+  const request = await pendingPaymentRequest(2500);
+  // The request settled under a different intent, so this intent never grants.
+  await pg().query(
+    "UPDATE payment_requests SET status='settled', settlement_tx_ref=$2 WHERE organization_id=$1",
+    [request.org, `pi_${randomUUID().replaceAll("-", "")}`],
+  );
+  expect(
+    await processStripeEvent(
+      refundEvent(`ch_${randomUUID()}`, 2500, request.paymentIntentId),
+    ),
+  ).toBe("ack");
+});
+
+test("a refund dead-lettered before a Stripe payment-request settlement still claws the grant back", async () => {
+  const request = await pendingPaymentRequest(2500);
+  const refund = refundEvent(
+    `ch_${randomUUID()}`,
+    2500,
+    request.paymentIntentId,
+  );
+  // The webhook route stores the verified event in its outbox row.
+  await dbWrite.insert(webhookEvents).values({
+    event_id: refund.body.eventId,
+    provider: "stripe",
+    event_type: refund.body.eventType,
+    payload_hash: "b".repeat(64),
+    delivery_payload: {
+      ...refund.body,
+      paymentIntentId: request.paymentIntentId,
+    },
+  });
+  const drain = () =>
+    drainStripeDeliveries(processStripeEvent, {
+      maxAttempts: 8,
+      retryBaseDelayMs: 0,
+      retryMaxDelayMs: 0,
+    });
+  const outbox = async () =>
+    (
+      await pg().query<{ attempts: number; dead: boolean; done: boolean }>(
+        `SELECT delivery_attempts AS attempts, delivery_dead_lettered_at IS NOT NULL AS dead,
+                delivery_completed_at IS NOT NULL AS done
+         FROM webhook_events WHERE event_id=$1`,
+        [refund.body.eventId],
+      )
+    ).rows[0];
+
+  // The settlement stays late for the whole retry budget: the refund is dead-lettered.
+  for (let run = 0; run < 8; run++) await drain();
+  expect(await outbox()).toEqual({ attempts: 8, dead: true, done: false });
+
+  await request.settle();
+  expect(await balance(request.org)).toBe(25);
+
+  await drain();
+  expect((await outbox())?.done).toBe(true);
+  expect(await balance(request.org)).toBe(0);
+  expect(await ledger(request.org)).toEqual(["credit", "clawback"]);
 });

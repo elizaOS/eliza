@@ -5,7 +5,19 @@
  */
 import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
-import { and, asc, eq, inArray, isNull, lt, lte, notInArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import { dbWrite, writeTransaction } from "../../db/helpers";
 import {
   MAX_PAYMENT_REQUEST_LEDGER_CENTS,
@@ -15,6 +27,7 @@ import {
   paymentRequestEvents,
   paymentRequests,
 } from "../../db/schemas/payment-requests";
+import { webhookEvents } from "../../db/schemas/webhook-events";
 import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
@@ -244,6 +257,40 @@ function callbackFromPayload(
   throw new PaymentProviderEventConflictError(
     `Durable callback payload is invalid (${callbackState ?? "missing state"})`,
   );
+}
+
+const STRIPE_REVERSAL_EVENT_TYPES = ["charge.refunded", "charge.dispute.funds_withdrawn"];
+
+/**
+ * A refund or dispute that reached the Stripe outbox before this settlement
+ * retried while the grant was pending, and can have spent its retry budget and
+ * been dead-lettered. Stripe does not resend an event this service already
+ * answered with 200, so the settlement makes those reversals due again with a
+ * fresh budget, in the same transaction that grants the credit. A delivery
+ * that a drain holds leased is left to that drain.
+ */
+async function reviveStripeReversalsAwaitingSettlement(
+  tx: Parameters<Parameters<typeof writeTransaction>[0]>[0],
+  paymentIntentId: string,
+): Promise<void> {
+  const deliveryPaymentIntent = sql`coalesce(${webhookEvents.delivery_payload}->>'paymentIntentId', ${webhookEvents.delivery_payload}->'event'->'data'->'object'->>'payment_intent')`;
+  await tx
+    .update(webhookEvents)
+    .set({
+      delivery_attempts: 0,
+      delivery_next_attempt_at: sql`clock_timestamp()`,
+      delivery_dead_lettered_at: null,
+    })
+    .where(
+      and(
+        eq(webhookEvents.provider, "stripe"),
+        isNotNull(webhookEvents.delivery_payload),
+        isNull(webhookEvents.delivery_completed_at),
+        isNull(webhookEvents.delivery_lease_token),
+        inArray(sql`${webhookEvents.delivery_payload}->>'eventType'`, STRIPE_REVERSAL_EVENT_TYPES),
+        sql`${deliveryPaymentIntent} = ${paymentIntentId}`,
+      ),
+    );
 }
 
 export async function processPaymentProviderEvent(
@@ -489,6 +536,9 @@ export async function processPaymentProviderEvent(
           redacted_payload: callbackPayload,
           occurred_at: occurredAt,
         });
+        if (event.provider === "stripe") {
+          await reviveStripeReversalsAwaitingSettlement(tx, event.providerTxRef);
+        }
       }
     } else if (request.status === "pending" || request.status === "delivered") {
       await tx

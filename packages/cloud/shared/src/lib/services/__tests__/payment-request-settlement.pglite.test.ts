@@ -4,6 +4,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import type { PGlite } from "@electric-sql/pglite";
+import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { sql } from "drizzle-orm";
 import { sqlRows } from "../../../db/execute-helpers";
 import * as outboundFetch from "../../security/safe-fetch";
@@ -100,6 +101,14 @@ beforeAll(async () => {
       occurred_at timestamptz NOT NULL DEFAULT now()
     );
   `);
+  // A Stripe settlement revives reversals waiting in the Stripe outbox.
+  const { webhookEvents } = await import("../../../db/schemas/webhook-events");
+  const empty = generateDrizzleJson({});
+  for (const statement of await generateMigration(
+    empty,
+    generateDrizzleJson({ webhookEvents }, empty.id),
+  ))
+    await pglite.exec(statement.replaceAll('"public".', ""));
   const migration = await Bun.file(
     new URL("../../../db/migrations/0254_payment_request_provider_settlement.sql", import.meta.url),
   ).text();
