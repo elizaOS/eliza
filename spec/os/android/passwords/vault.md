@@ -1,11 +1,13 @@
 # Password vault page
 
-The device keeps saved passwords in one native vault: an AES-GCM frame in
-no-backup storage under an Android Keystore key that needs a fresh strong
-biometric or device-credential unlock, valid for a short window. A
-consumer's own vault page reaches it through the `ElizaPasswords` bridge
+The native vault stores saved passwords in an AES-GCM frame in no-backup
+storage under an Android Keystore key. The host selects the custody mode.
+Timed custody requires a fresh strong biometric or device-credential unlock
+for a short access window. Device-unlocked custody admits the current owner
+in the foreground on an unlocked device, even without a secure screen lock.
+A consumer's own vault page reaches it through the `ElizaPasswords` bridge
 ([bridge vocabulary](../bridge.md)) and the validating passwords client.
-This machine follows one vault page in the app's foreground: what it may
+`VaultUi` follows a timed-custody page in the app's foreground: what it may
 hold, when, and on which native evidence, and the decisions the native side
 makes when it delivers a revealed or copied password. The vault records,
 the unlock window, the reveal dialog and the native protected editor stay
@@ -20,7 +22,7 @@ Sources: `PasswordsPlugin`, `PasswordVaultAccess`, `PasswordClipboard` and
 > left behind when I leave, so that unlocking the vault never leaks a
 > password.
 
-### A vault page opens only when the bridge, a secure screen lock and the host's admission all allow it
+### Opening a vault page in timed custody requires the bridge, a secure screen lock and the host's admission
 
 The vault call needs the registered plugin, the app in the foreground on an
 unlocked device, and a secure screen lock (Android's `isDeviceSecure`, the
@@ -62,7 +64,7 @@ pure def stepAccessChangeStartsNewGeneration(before: VaultUi, after: VaultUi): b
   before.view != after.view implies after.generation > before.generation
 ```
 
-### Only Android's own authentication unlocks the page
+### Only Android's own authentication unlocks a vault in timed custody
 
 `unlocked` is the native unlock result for the current generation. A
 cancelled or failed prompt changes nothing. The only other way in is the
@@ -133,10 +135,10 @@ pure def alwaysAgentPausedWhileVaultDataHeld(s: VaultUi): bool = (s.listed or s.
 
 ## Story: Reset a damaged vault only on purpose
 
-> As an owner whose saved passwords can no longer be decrypted (for
-> example, after I removed the screen lock), I want the vault deleted only
-> when I confirm it and authenticate again, so that nothing erases my
-> passwords by accident.
+> As an owner using timed custody, if my saved passwords can no longer
+> be decrypted (for example, after I removed the screen lock), I want the
+> vault deleted only when I confirm it and authenticate again, so that
+> nothing erases my passwords by accident.
 
 ### A vault whose key is invalidated forgets everything the page held and offers only a reset
 
@@ -155,7 +157,7 @@ pure def stepDamagedVaultLeavesOnlyByResetOrLeaving(before: VaultUi, via: str, a
 pure def alwaysDamagedPageHoldsNothing(s: VaultUi): bool = damaged(s.view) implies (not(s.listed) and s.form == NoForm)
 ```
 
-### Reset needs the owner's review and a fresh Android authentication after it, in the same visit
+### Resetting a vault in timed custody requires the owner's review followed by fresh Android authentication in the same visit
 
 For timed custody, reviewing the reset starts a new generation, so an authentication begun
 before the review cannot confirm it; a refresh, a lock or leaving withdraws
