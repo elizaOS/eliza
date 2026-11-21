@@ -1,4 +1,4 @@
-// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/update/operator.md, "Story: Update a device by cable and get back if it fails"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"
+// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/update/operator.md, "Story: Update a device by cable"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { buildApk, testSigner, type AndroidTools } from "./support/android-tools.ts"
@@ -221,7 +221,7 @@ it.live.skipIf(TOOLS.kind === "missing")(`Check a launcher for admission without
   if (TOOLS.kind === "present") try admission(TOOLS)
 }))
 
-it.live("Read an update's status from the device by cable (spec/os/update/operator.md, \"Story: Update a device by cable and get back if it fails\")", () => journey(effect {
+it.live("Read an update's status from the device by cable (spec/os/update/operator.md, \"Story: Update a device by cable\")", () => journey(effect {
   const root = try scratch("cli-ota")
   const files = try FileSystem.FileSystem
   const serial = "FAKE0001"

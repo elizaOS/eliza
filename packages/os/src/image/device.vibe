@@ -42,6 +42,12 @@ module node {
   }
 
   /** @throws {never} */
+  export function legacyInstallLockPath(serial: string): string {
+    const name = createHash("sha256").update(serial).digest("hex")
+    return path.join(os.homedir(), ".local", "state", "elizaos", "android-install-locks", `${name}.jsonl`)
+  }
+
+  /** @throws {never} */
   export function processAlive(pid: number): boolean {
     if (!Number.isSafeInteger(pid) || pid <= 0) return false
     try {
@@ -144,6 +150,7 @@ module node {
   }
 }
 import { defaultLeaseDirectory, hostName, listenSingleDevice, processAlive, processId, sha256Hex, uniqueToken } from node
+export { legacyInstallLockPath } from node
 
 export type AdbSerial = string & { readonly __brand: "AdbSerial" }
 export type AndroidPackage = string & { readonly __brand: "AndroidPackage" }

@@ -1,4 +1,4 @@
-// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/image/apk.md, "Story: Put only a reviewed release APK into an image"; spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/image/verification.md, "Story: Know whether a booted image is what I staged"; spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/update/operator.md, "Story: Update a device by cable and get back if it fails"
+// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/image/apk.md, "Story: Put only a reviewed release APK into an image"; spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/image/verification.md, "Story: Know whether a booted image is what I staged"; spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/update/operator.md, "Story: Update a device by cable"
 export {
   NATIVE_INSTALLS,
   NATIVE_TARGETS,

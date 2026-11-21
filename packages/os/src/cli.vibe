@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/update/operator.md, "Story: Update a device by cable and get back if it fails"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"
+// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/update/operator.md, "Story: Update a device by cable"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { buildChromium, prepareChromium } from "./browser/index.vibe"
@@ -210,12 +210,12 @@ export effect function cli(argv: readonly string[]) {
 }
 
 effect function main(argv: readonly string[]) {
-  const result = try (cli(argv) catch effect (failure) => {
+  const result = cli(argv) catch effect (failure) => {
     if (!(failure instanceof UsageError)) throw failure
     try Console.error(`${failure.message}\n\n${USAGE}`)
     try sync(() => exitWith(2))
     return undefined
-  })
+  }
   if (result !== undefined) try Console.log(JSON.stringify(result, null, 2))
 }
 
