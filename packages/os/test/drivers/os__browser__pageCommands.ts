@@ -1,9 +1,13 @@
 // spec/os/browser/pageCommands.md, "Story: Run a website task step only on the page it was planned for"
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { createSurfaceTaskHandler, type SurfaceControlReply, type SurfacePage, type SurfaceTaskHandler } from "@elizaos/os/browser/runtime/surface-task-handler.mjs";
 import { COMMIT_GRANT_MAX_MS } from "@elizaos/os/browser/runtime/task-bindings.mjs";
 import type { Driver, Options } from "../../gen/os__browser__pageCommands.conformance.ts";
 import type { BindingOffer, CommandScope, Event, PageRequest, ReceiverPhase, Reply, RequestedAction, SurfaceReceiver } from "../../gen/os__browser__pageCommands.ts";
+
+export const { nativeControlProgram }: typeof import("../../native-control-channel.mjs") =
+  createRequire(import.meta.url)("../../native-control-channel.mjs");
 
 export interface PeerView {
   readonly retired: boolean;

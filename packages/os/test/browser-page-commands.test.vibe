@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { createSurfaceTaskHandler, type SurfacePage } from "../browser/src/surface-task-handler.mjs"
-import { driver, reviewedTarget } from "./drivers/os__browser__pageCommands.ts"
+import { driver, nativeControlProgram, reviewedTarget } from "./drivers/os__browser__pageCommands.ts"
 
 const LIVE = { contextMatches: true, commandExpiresAt: 50, bindingExpiresAt: 40, now: 30, originAllowed: true, targetReviewed: true, grantMatches: true, pageCurrent: true }
 const PEER = "peer"
@@ -20,7 +20,7 @@ it.effect('Run a website task step only on the page it was planned for: the nati
     const files = try FileSystem.FileSystem
     const path = try Path.Path
     const read = (relative: string) => files.readFileString(path.join(import.meta.dirname, relative))
-    const channel = flattened(try read("../android/browser-surface/resources/control-channel.js"))
+    const channel = flattened(try Effect.try(nativeControlProgram))
     const command = exported(try read("../browser/src/page-command.mjs"), "pageCommand")
     const guidance = exported(try read("../browser/src/page-guidance.mjs"), "pageGuidance")
     assert.isAbove(command.length, 1000)

@@ -34,3 +34,4 @@ test-results/
 **/test/__traces__/
 test/__traces__/
 .DS_Store
+/packages/os/android/browser-surface/resources/control-channel.js

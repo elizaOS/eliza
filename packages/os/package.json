@@ -22,7 +22,8 @@
     "android",
     "aosp",
     "browser",
-    "native"
+    "native",
+    "android/browser-surface/resources/control-channel.js"
   ],
   "exports": {
     ".": {
@@ -80,7 +81,7 @@
     "./aosp/*": "./aosp/*"
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json && node --input-type=module -e \"import { writeFileSync } from 'node:fs'; import { nativeControlProgram } from './native-control-channel.mjs'; writeFileSync('android/browser-surface/resources/control-channel.js', nativeControlProgram());\"",
     "typecheck": "vibelang --noEmit -p .",
     "test": "vitest run",
     "jvm:prepare": "node test/drivers/jvm-adapter.ts --compile",

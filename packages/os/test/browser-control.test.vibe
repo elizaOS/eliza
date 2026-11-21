@@ -1,15 +1,10 @@
 // spec/os/browser/pageCommands.md, "Story: Run a website task step only on the page it was planned for"
 import { assert, it } from "@effect/vitest"
-import * as NodeServices from "@effect/platform-node/NodeServices"
+import { nativeControlProgram } from "./drivers/os__browser__pageCommands.ts"
 import { chromium, type CDPSession } from "playwright"
 
 it('Observe field edits and form membership before guiding a person (spec/os/browser/pageCommands.md, "Story: Run a website task step only on the page it was planned for")', async () => {
-  const nativeControl = await runPromise(effect {
-    provide NodeServices.layer {
-      const path = try Path.Path
-      return try (try FileSystem.FileSystem).readFileString(path.join(import.meta.dirname, "../android/browser-surface/resources/control-channel.js"))
-    }
-  })
+  const nativeControl = nativeControlProgram()
   const bridge = `globalThis.elizaSurfaceControl = { sequence: 0, postMessage(text) {
     const message = JSON.parse(text)
     if (message.ready) this.documentId = message.documentId
