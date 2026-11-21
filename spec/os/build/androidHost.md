@@ -154,10 +154,10 @@ Without `src/main` sources the module is the Gradle project
 `:eliza-<module>` (its `src/androidTest` sources join the app's
 instrumentation tests); with them only those sources are compiled into the
 app. `agent-service` and `app-update` share `runtime-files`, so an updater
-builds without the agent service; `voice-io` needs `sign-in`.
+builds without the agent service. `voice-io` needs `sign-in`.
 
 ```quint
-pure val osModuleNames = List("agent-service", "runtime-files", "sign-in", "secure-store", "system", "camera", "browser-surface", "calendar", "contacts", "reminders",
+pure val osModuleNames = List("agent-service", "runtime-files", "sign-in", "cloud-auth", "secure-store", "system", "camera", "browser-surface", "calendar", "contacts", "reminders",
   "action-journal", "notifications", "messages", "phone", "passwords", "media", "filesystem", "location", "wifi", "voice-io", "app-update")
 type OsModuleEntry = { osModule: str, sources: List[List[str]] }
 pure def builtAsProject(entry: OsModuleEntry): bool = not(entry.sources.some(s => s.nthOr(1, "") == "main"))
@@ -174,11 +174,24 @@ pure def osModulesAdmitted(entries: List[OsModuleEntry]): bool = {
 ### Gradle project names are distinct and never app, and a Maven dependency takes its version only from a toolchain version key
 
 The project names are the consumer's own Gradle modules and the
-`eliza-<module>` projects. A dependency names a configuration, a
+`eliza-<module>` projects. When `cloud-auth` is built as a Gradle project,
+the consumer must declare the project named `capacitor-android` that its
+build file uses. Selecting `src/main` sources leaves that build file out.
+A dependency names a configuration, a
 `group:artifact` and a key of `toolchain.json`'s `versions`.
 
 ```quint
-pure def projectsAdmitted(projects: List[str], projectNamesValid: bool): bool = projectNamesValid and distinctNames(projects) and not(projects.includes("app"))
+pure def cloudAuthProjectSelected(entries: List[OsModuleEntry]): bool =
+  entries.some(e => e.osModule == "cloud-auth" and builtAsProject(e))
+pure def projectsAdmitted(projects: List[str], projectNamesValid: bool, entries: List[OsModuleEntry]): bool =
+  projectNamesValid and distinctNames(projects) and not(projects.includes("app")) and
+  (cloudAuthProjectSelected(entries) implies projects.includes("capacitor-android"))
+pure val entriesValues = Set(List(), List({ osModule: "cloud-auth", sources: List() }),
+  List({ osModule: "cloud-auth", sources: List(List("src", "androidTest", "java")) }),
+  List({ osModule: "cloud-auth", sources: List(List("src", "main", "java")) }))
+pure val projectsValues = Set(List(), List("eliza-cloud-auth"), List("eliza-cloud-auth", "capacitor-android"))
+pure def lawCloudAuthProjectNeedsCapacitor(entries: List[OsModuleEntry], projects: List[str]): bool =
+  (projectsAdmitted(projects, true, entries) and cloudAuthProjectSelected(entries)) implies projects.includes("capacitor-android")
 type MavenDependency = { configuration: str, artifactValid: bool, versionKey: str }
 pure def dependencyAdmitted(toolchainKeys: List[str], d: MavenDependency): bool =
   List("implementation", "androidTestImplementation", "testImplementation").includes(d.configuration) and d.artifactValid and toolchainKeys.includes(d.versionKey)
@@ -258,7 +271,7 @@ pure def hostVerdict(f: HostFacts): HostVerdict = {
   else if (not(f.sources.every(r => sourceAdmitted(f.roots, r)))) HostRefused({ refusal: SourceRefused })
   else if (not(f.uses.every(u => sourceSetUseAdmitted(f.flavors, u)))) HostRefused({ refusal: SourceSetInvalid })
   else if (not(osModulesAdmitted(f.osModules))) HostRefused({ refusal: OsModulesInvalid })
-  else if (not(projectsAdmitted(f.projects, f.projectNamesValid))) HostRefused({ refusal: ProjectsInvalid })
+  else if (not(projectsAdmitted(f.projects, f.projectNamesValid, f.osModules))) HostRefused({ refusal: ProjectsInvalid })
   else if (not(f.dependencies.every(d => dependencyAdmitted(f.toolchainKeys, d)))) HostRefused({ refusal: DependencyNotPinned })
   else if (not(extrasAdmitted(f.assetNames, f.noCompress, f.namesValid, f.commands))) HostRefused({ refusal: ExtrasInvalid })
   else if (not(agentAdmitted(f.agent, f.packaging, f.osModules.listMap(e => e.osModule)))) HostRefused({ refusal: AgentInvalid })

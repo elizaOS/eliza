@@ -11,6 +11,7 @@ error GoogleReadResponse
 
 schema MessageId { id: string }
 schema MessageList { messages?: MessageId[]; nextPageToken?: string }
+schema MailLabel { id: string; messagesUnread?: number; messagesTotal?: number }
 schema Header { name: string; value: string }
 schema MessageBody { data?: string; attachmentId?: string; size?: number }
 schema MailPart { partId?: string; mimeType?: string; filename?: string; headers?: Header[]; body?: MessageBody; parts?: Schema.Unknown[] }
@@ -212,10 +213,27 @@ function paging(params: URLSearchParams, target: URLSearchParams) {
   if (cursor && cursor.length <= 1024) target.set("pageToken", cursor)
 }
 
+const folderLabels = new Map([["inbox", "INBOX"], ["sent", "SENT"], ["drafts", "DRAFT"], ["trash", "TRASH"]])
+
+effect function labelCount<E, R>(api: GoogleReadApi<E, R>, label: string, field: "messagesUnread" | "messagesTotal") {
+  const value = Schema.decodeUnknownOption(MailLabel)(try api(`${gmail}/labels/${label}?fields=id,${field}`))
+  if (Option.isNone(value) || value.value.id !== label) throw new GoogleReadResponse()
+  const count = value.value[field]
+  if (count === undefined || !Number.isSafeInteger(count) || count < 0) throw new GoogleReadResponse()
+  return count
+}
+
 export effect function googleGmailTriage<E, R>(api: GoogleReadApi<E, R>, url: URL, syncedAt: string) {
   const limit = url.searchParams.get("maxResults") ?? "12"
-  if (!/^\d{1,2}$/.test(limit) || Number(limit) < 1 || Number(limit) > 20) throw new GoogleReadInput()
-  const query = new URLSearchParams({ maxResults: limit, labelIds: "INBOX", fields: "messages/id,nextPageToken" })
+  const folder = url.searchParams.get("folder") ?? "inbox"
+  const label = folderLabels.get(folder)
+  const search = url.searchParams.get("q") ?? ""
+  const counts = url.searchParams.get("counts")
+  if (!label || !/^\d{1,2}$/.test(limit) || Number(limit) < 1 || Number(limit) > 20 ||
+      search.length > 512 || hasControlCharacter(search) || (counts !== null && counts !== "1")) throw new GoogleReadInput()
+  const query = new URLSearchParams({ maxResults: limit, labelIds: label, fields: "messages/id,nextPageToken" })
+  if (label === "TRASH") query.set("includeSpamTrash", "true")
+  if (search.trim()) query.set("q", search.trim())
   paging(url.searchParams, query)
   const raw = try api(gmail + "/messages?" + query)
   const result = Schema.decodeUnknownOption(MessageList)(raw)
@@ -223,7 +241,12 @@ export effect function googleGmailTriage<E, R>(api: GoogleReadApi<E, R>, url: UR
   const messages = try Effect.forEach(result.value.messages ?? [], effect (entry) => {
     return try mailCard(try readMessage(api, entry.id, "metadata"))
   }, { concurrency: 4 })
-  return { messages, syncedAt, nextPageToken: result.value.nextPageToken ?? null }
+  const totals = counts === "1" ? {
+    inboxUnread: try labelCount(api, "INBOX", "messagesUnread"),
+    drafts: try labelCount(api, "DRAFT", "messagesTotal")
+  } : undefined
+  const current = messages.filter(({ labels }) => labels.includes(label) && (label === "TRASH" || !(labels.includes("TRASH") || labels.includes("SPAM"))))
+  return { folder, q: search.trim(), messages: current, syncedAt, nextPageToken: result.value.nextPageToken ?? null, ...(totals && { counts: totals }) }
 }
 
 export effect function googleGmailMessage<E, R>(api: GoogleReadApi<E, R>, url: URL) {

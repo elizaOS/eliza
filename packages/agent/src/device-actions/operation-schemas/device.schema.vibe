@@ -1,12 +1,20 @@
 // spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "Only an applied receipt settles applied, and only a trusted refusal settles that nothing ran"; spec/agent/deviceActions/capabilities.md, "An open-view proposal runs only on the profile revision it bound and a view the profile enables"
+module node {
+  import { createHash } from "node:crypto"
+
+  export function sha256(text: string): string {
+    return createHash("sha256").update(text).digest("hex")
+  }
+}
+
+import { sha256 } from node
+import { civilDay, day, isoInstant, knownZone, realDate, utf8Bytes, zonedWall } from "./personal.schema.vibe"
 import type { OperationType, ReportedOutcome } from "../../../gen/agent__deviceActions__operations.effect.vibe"
 import { supportedViews } from "../capabilities.vibe"
-import type { Classification, Evidence, FamilySchemas, OperationSchema, WireOperation } from "./family.vibe"
+import type { Classification, Evidence, FamilySchemas, OperationSchema, ReceiptContext, WireOperation } from "./family.vibe"
 
-const day = 86_400_000
-const unsafeText = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/
-const unsafeBody = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/
-const controls = /[\u0000-\u001f\u007f]/
+const unsafeText = /[\p{Cc}\u202a-\u202e\u2066-\u2069]/u
+const hasAsciiControl = (value: string) => Array.from(value).some((char) => char < " " || char === "\u007f")
 
 const pattern = (shape: RegExp) => Schema.String.check(Schema.isPattern(shape))
 const between = (minimum: number, maximum: number) => Schema.Int.check(Schema.isBetween({ minimum, maximum }))
@@ -18,47 +26,18 @@ const listOf = <S extends Schema.Top>(item: S, min: number, max: number) => Sche
 const normalized = (checked: Schema.Codec<string, string>, decode: (value: string) => string) =>
   Schema.String.pipe(Schema.decodeTo(checked, SchemaTransformation.transform({ decode, encode: (value: string) => value })))
 
-function knownZone(name: string) {
-  if (name.length === 0 || name.length > 100) return false
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: name }).format(0)
-    return true
-  } catch {
-    return false
-  }
-}
-
-function canonicalUtc(value: string) {
-  try {
-    return new Date(value).toISOString() === value
-  } catch {
-    return false
-  }
-}
-
-function realDate(date: string) {
-  try {
-    return new Date(`${date}T00:00:00.000Z`).toISOString().slice(0, 10) === date
-  } catch {
-    return false
-  }
-}
-
 function wall(instant: number, timeZone: string) {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
-    timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
-  }).formatToParts(instant).map((part) => [part.type, part.value]))
-  return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second))
+  return zonedWall(instant, timeZone) + new Date(instant).getUTCMilliseconds()
 }
 
-const localDay = (instant: number, timeZone: string) => new Date(wall(instant, timeZone)).toISOString().slice(0, 10)
+const revisionOf = (fields: readonly unknown[]) => sha256(JSON.stringify(fields))
 
 function localDayStart(date: string, timeZone: string) {
   const midnight = Date.parse(`${date}T00:00:00.000Z`)
   let low = midnight - 20 * 3_600_000, high = midnight + 20 * 3_600_000
   while (high - low > 1_000) {
     const middle = low + Math.max(1_000, Math.floor((high - low) / 2_000) * 1_000)
-    if (localDay(middle, timeZone) < date) low = middle
+    if (civilDay(middle, timeZone) < midnight) low = middle
     else high = middle
   }
   return high
@@ -69,9 +48,8 @@ function localDayBounds(date: string, timeZone: string) {
   return { start: localDayStart(date, timeZone), end: localDayStart(next, timeZone) }
 }
 
-const utf8Bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength
 const safeText = (value: string) => value.isWellFormed() && !unsafeText.test(value)
-const safeBody = (value: string) => value.isWellFormed() && !unsafeBody.test(value)
+const safeBody = (value: string) => value.isWellFormed() && !unsafeText.test(value.replace(/[\t\n\r]/g, ""))
 
 const version = Schema.Literal(1)
 const Epoch = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }))
@@ -79,8 +57,8 @@ const Count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const Identifier = pattern(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/)
 const CalendarId = pattern(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/)
 const Digest = pattern(/^[a-f0-9]{64}$/)
-const Utc = Schema.String.check(Schema.isMaxLength(30), where(canonicalUtc))
-const ZoneName = Schema.String.check(where(knownZone))
+const Utc = Schema.String.check(Schema.isMaxLength(30), where(isoInstant))
+const ZoneName = Schema.String.check(Schema.isMaxLength(100), where(knownZone))
 const CivilDate = Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\d$/), where(realDate))
 const ordered = where((range: { readonly from?: number; readonly to?: number }) => range.from === undefined || range.to === undefined || range.from <= range.to)
 
@@ -91,10 +69,12 @@ export const CameraCaptureResult = Schema.Struct({
 })
 export type CameraCaptureResult = typeof CameraCaptureResult.Type
 
-const fileName = (name: string) => name.length >= 1 && name.length <= 255 && name === name.trim() && name !== "." && name !== ".." && !/[/\\\u0000-\u001f\u007f]/.test(name)
+const fileName = (name: string) => name.length >= 1 && name.length <= 255 && name === name.trim() && name !== "." && name !== ".." && !hasAsciiControl(name) && !name.includes("/") && !name.includes("\\")
 const volumePath = (root: boolean) => (path: string) =>
-  path.length <= 1024 && !path.startsWith("/") && (path === "" ? root : path.split("/").every(fileName))
-const FilePath = (root: boolean) => normalized(Schema.String.check(where(volumePath(root))), (path) => path.replace(/\/+$/, ""))
+  path === "" ? root : path.split("/").every(fileName)
+const FilePath = (root: boolean) => Schema.String.check(Schema.isMaxLength(1024), where((path: string) => !path.startsWith("/"))).pipe(
+  Schema.decodeTo(Schema.String.check(where(volumePath(root))), SchemaTransformation.transform({ decode: (path) => path.replace(/\/+$/, ""), encode: (path) => path })),
+)
 const FilePaths = listOf(FilePath(false), 1, 50).check(distinct())
 const Reviewed = listOf(pattern(/^[A-Za-z0-9_-]{43}$/), 1, 50)
 const reviewedEach = where((op: { readonly paths: readonly string[]; readonly reviewed?: readonly string[] }) => op.reviewed === undefined || op.reviewed.length === op.paths.length)
@@ -102,7 +82,7 @@ const FileDate = Schema.String.check(Schema.isMaxLength(40), Schema.isPattern(/^
 
 const FilesFilter = Schema.Struct({
   type: Schema.Literal("files_filter"),
-  text: Schema.optionalKey(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(120), where((text: string) => !/[\u0000-\u001f]/.test(text)))),
+  text: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(120), where((text: string) => !hasAsciiControl(text))).pipe(Schema.decodeTo(Schema.Trimmed.check(Schema.isMinLength(1)), SchemaTransformation.transform({ decode: (text) => text.trim(), encode: (text) => text })))),
   kind: Schema.optionalKey(Schema.Literals(["image", "video", "audio", "document", "pdf", "folder"])),
   folder: Schema.optionalKey(FilePath(true)), from: Schema.optionalKey(FileDate), to: Schema.optionalKey(FileDate),
 }).check(where((op) => Object.keys(op).length > 1 && (op.from === undefined || op.to === undefined || Date.parse(op.from) <= Date.parse(op.to))))
@@ -147,7 +127,7 @@ export schema PhotoLibraryOperation = PhotoLibrarySearch | PhotoLibraryInspect |
 const LibraryItem = Schema.Struct({
   id: LibraryId, revision: ModelRevision, kind: Schema.Literals(["image", "video"]), takenAt: Measure, width: Measure, height: Measure,
   duration: Schema.optionalKey(Count), favorite: Schema.optionalKey(Schema.Literal(true)),
-}).check(where((item) => item.kind === libraryKindOf(item.id)))
+}).check(where((item) => item.kind === libraryKindOf(item.id) && (item.kind === "video" || item.duration === undefined)))
 const PhotoLibrarySearchResult = Schema.Struct({
   kind: Schema.Literal("photo_library_search"), scope: Schema.Literals(["full", "partial", "selected"]), items: listOf(LibraryItem, 0, 50), more: Schema.Boolean,
 })
@@ -169,12 +149,14 @@ const PhotosFilter = Schema.Struct({
   type: Schema.Literal("photos_filter"), from: Schema.optionalKey(Epoch), to: Schema.optionalKey(Epoch),
   kind: Schema.optionalKey(Schema.Literals(["image", "video"])), favorite: Schema.optionalKey(Schema.Boolean),
   album: Schema.optionalKey(Schema.Union([Schema.Literals(["favorites", "videos", "camera", "screenshots"]), pattern(/^custom:[A-Za-z0-9_-]{1,80}$/)])),
-  text: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(80), where((text: string) => !controls.test(text)))),
+  text: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(80), where((text: string) => !hasAsciiControl(text)))),
 }).check(ordered)
 schema PhotosOpen { type: "photos_open"; id: LibraryId }
 const PhotosAlbumCreate = Schema.Struct({
   type: Schema.Literal("photos_album_create"),
-  name: normalized(Schema.String.check(where((name: string) => name.length >= 1 && name.length <= 80 && name === name.trim() && !controls.test(name))), (name) => name.trim()),
+  name: Schema.String.check(where((name: string) => !hasAsciiControl(name))).pipe(
+    Schema.decodeTo(Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(80)), SchemaTransformation.transform({ decode: (name) => name.trim(), encode: (name) => name })),
+  ),
   ids: LibraryIds(2_000),
 })
 const PhotosShare = Schema.Struct({ type: Schema.Literal("photos_share"), ids: LibraryIds(100) })
@@ -202,6 +184,7 @@ function photosMatches(result: PhotosViewResult, op: PhotosViewOperation) {
 const PhoneNumber = pattern(/^\+?[0-9]{2,20}$/)
 const Numbers = (min: number, max: number) => listOf(PhoneNumber, min, max).check(distinct())
 const ContactQuery = Schema.String.check(where((query: string) => query.length >= 1 && query.length <= 128 && query === query.trim() && safeText(query)))
+const DisplayLabel = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128), where(safeText))
 const Email = Schema.String.check(Schema.isMaxLength(254), Schema.isPattern(/^[^\s@]{1,64}@[^\s@]{1,189}$/), where(safeText))
 const Emails = listOf(Email, 0, 8).check(distinct())
 const Subscription = between(0, 2_147_483_647)
@@ -273,7 +256,7 @@ export const SmsComposeResult = Schema.Struct({
 })
 export const SmsReplyResult = Schema.Struct({ kind: Schema.Literal("sms-reply"), status: Schema.Literals(["drafted", "none-selected", "occupied", "unavailable"]) })
 export const MessagesThread = Schema.Struct({
-  participant: Schema.NullOr(ContactQuery),
+  participant: Schema.NullOr(DisplayLabel),
   messages: listOf(Schema.Struct({ direction: Schema.Literals(["in", "out"]), date: Epoch, body: Schema.String.check(Schema.isMaxLength(1_600), where(safeBody)) }), 0, 20)
     .check(where((messages: readonly { readonly date: number }[]) => messages.every((message, index) => index === 0 || messages[index - 1].date <= message.date))),
   truncated: Schema.Boolean,
@@ -287,7 +270,7 @@ export const MessagesReadResult = Schema.Union([
 const Transcript = Schema.String.check(where((text: string) => text.length >= 1 && text.length <= 8_000 && safeBody(text)))
 export const VoicemailReadResult = Schema.Union([
   Schema.Struct({
-    kind: Schema.Literal("voicemail-read"), status: Schema.Literal("read"), caller: Schema.NullOr(ContactQuery), date: Schema.Int, durationSeconds: Count,
+    kind: Schema.Literal("voicemail-read"), status: Schema.Literal("read"), caller: Schema.NullOr(DisplayLabel), date: Schema.Int, durationSeconds: Count,
     transcriptState: Schema.Literals(["ready", "pending", "unavailable", "failed"]),
     engine: Schema.NullOr(Schema.Literals(["device", "cloud", "carrier"])), transcript: Schema.NullOr(Transcript),
   }).check(where((read) => read.transcriptState === "ready" ? read.transcript !== null && read.engine !== null : read.transcript === null && read.engine === null)),
@@ -339,8 +322,14 @@ function simShows(status: SmsSendResult["status"]): Evidence {
   }
 }
 
-const smsSendShows = (result: SmsSendResult, op: SmsSend) => result.subscriptionId === op.subscriptionId && partsSupport(result, op) ? simShows(result.status) : undefined
-const mmsSendShows = (result: typeof MmsSendResult.Type, op: MmsSend) => result.subscriptionId === op.subscriptionId ? simShows(result.status) : undefined
+function simMatches(result: SmsSendResult | typeof MmsSendResult.Type, op: SmsSend | MmsSend, receipt: ReceiptContext) {
+  return result.operationId === receipt.operationId && result.subscriptionId === op.subscriptionId && result.bindingHash === sha256(simBindingText(op))
+}
+
+const smsSendShows = (result: SmsSendResult, op: SmsSend, receipt: ReceiptContext) =>
+  simMatches(result, op, receipt) && partsSupport(result, op) ? simShows(result.status) : undefined
+const mmsSendShows = (result: typeof MmsSendResult.Type, op: MmsSend, receipt: ReceiptContext) =>
+  simMatches(result, op, receipt) ? simShows(result.status) : undefined
 
 function dialShows(result: typeof PhoneDialResult.Type): Evidence | undefined {
   if (result.contact || (result.status !== "handed-off" && result.handler !== null)) return undefined
@@ -425,7 +414,7 @@ export const WorkflowRemindersResult = Schema.Struct({ kind: Schema.Literal("rem
 type CalendarRow = typeof CalendarRow.Type
 
 const selectedNotesMatch = (result: typeof WorkflowNotesResult.Type, op: typeof ReadSelectedNotes.Type) =>
-  result.notes.length === op.notes.length && result.notes.every((note, index) => note.id === op.notes[index].id && note.revision === op.notes[index].revision)
+  result.notes.length === op.notes.length && result.notes.every((note, index) => note.id === op.notes[index].id && note.revision === op.notes[index].revision && note.revision === revisionOf([note.title, note.text]))
 
 function overlaps(op: ReadCalendarRange, event: CalendarRow) {
   const begin = Date.parse(op.start), finish = Date.parse(op.end)
@@ -441,20 +430,25 @@ function overlaps(op: ReadCalendarRange, event: CalendarRow) {
 
 const calendarRangeMatches = (result: typeof WorkflowCalendarResult.Type, op: ReadCalendarRange) =>
   result.events.length <= op.maximumEvents
-  && result.events.every((event) => op.calendarIds.includes(event.calendarId) && overlaps(op, event))
+  && result.events.every((event) => op.calendarIds.includes(event.calendarId) && overlaps(op, event)
+      && event.revision === revisionOf([event.id, event.calendarId, event.title, event.start, event.end, event.allDay]))
   && new Set(result.events.map((event) => JSON.stringify([event.calendarId, event.id, event.start]))).size === result.events.length
 
 function remindersMatch(result: typeof WorkflowRemindersResult.Type, op: typeof ReadSelectedReminders.Type) {
   const { start, end } = localDayBounds(op.day, op.timeZone)
   return result.reminders.length <= op.maximumItems
-    && result.reminders.every((row) => row.status === "completed" ? Date.parse(row.completedAt) >= start && Date.parse(row.completedAt) < end : Date.parse(row.dueAt) < end)
+    && result.reminders.every((row) => {
+      const completed = row.status === "completed" ? row.completedAt : null
+      const inWindow = completed === null ? Date.parse(row.dueAt) < end : Date.parse(completed) >= start && Date.parse(completed) < end
+      return inWindow && row.revision === revisionOf([row.id, row.title, row.dueAt, row.status, completed])
+    })
     && new Set(result.reminders.map((row) => JSON.stringify([row.id, row.dueAt, row.status]))).size === result.reminders.length
 }
 
 const CreateNote = Schema.Struct({ type: Schema.Literal("create_note"), title: Text(256), body: Text(32_000, true) })
 const CreateReminder = Schema.Struct({
   type: Schema.Literal("create_reminder"), title: Text(200),
-  dueAt: Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/), where((dueAt: string) => canonicalUtc(dueAt.length === 20 ? dueAt.replace("Z", ".000Z") : dueAt))),
+  dueAt: Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/), where((dueAt: string) => isoInstant(dueAt.length === 20 ? dueAt.replace("Z", ".000Z") : dueAt))),
 })
 const OpenView = Schema.Struct({ type: Schema.Literal("open_view"), view: Schema.Literals(supportedViews) })
 
@@ -469,10 +463,16 @@ function httpsDestination(text: string): string | undefined {
   }
 }
 
+const HttpsDestination = Schema.String.check(where((url: string) => httpsDestination(url) === url))
 const BrowserNavigate = Schema.Struct({
-  type: Schema.Literal("browser_navigate"),
-  url: normalized(Schema.String.check(where((url: string) => httpsDestination(url) === url)), (text) => httpsDestination(text) ?? text),
-})
+  type: Schema.Literal("browser_navigate"), url: normalized(HttpsDestination, (text) => httpsDestination(text) ?? text), newTab: Schema.optionalKey(Schema.Boolean)
+}).pipe(Schema.decodeTo(
+  Schema.Struct({ type: Schema.Literal("browser_navigate"), url: HttpsDestination, newTab: Schema.optionalKey(Schema.Literal(true)) }),
+  SchemaTransformation.transform({
+    decode: ({ type, url, newTab }) => newTab === true ? { type, url, newTab: true as const } : { type, url },
+    encode: (value) => value
+  })
+))
 export schema BaseOperation = CreateNote | CreateReminder | OpenView | BrowserNavigate
 export type OpenView = typeof OpenView.Type
 
@@ -482,7 +482,7 @@ function reads<Op extends WireOperation, R>(operation: Schema.Decoder<Op>, resul
   return { operation, result, classify: () => as(opType), evidence: (shown, op) => matches(shown, op) ? applied : undefined }
 }
 
-function reports<Op extends WireOperation, R>(operation: Schema.Decoder<Op>, result: Schema.Decoder<R>, opType: OperationType, evidence: (result: NoInfer<R>, op: NoInfer<Op>) => Evidence | undefined): OperationSchema<Op, R> {
+function reports<Op extends WireOperation, R>(operation: Schema.Decoder<Op>, result: Schema.Decoder<R>, opType: OperationType, evidence: (result: NoInfer<R>, op: NoInfer<Op>, receipt: ReceiptContext) => Evidence | undefined): OperationSchema<Op, R> {
   return { operation, result, classify: () => as(opType), evidence }
 }
 
@@ -491,7 +491,7 @@ function unread<Op extends WireOperation>(operation: Schema.Decoder<Op>, opType:
 }
 
 export const deviceOperations = {
-  camera_capture_photo: reads(CameraCapturePhoto, CameraCaptureResult, "CameraCapturePhoto", () => true),
+  camera_capture_photo: reports(CameraCapturePhoto, CameraCaptureResult, "CameraCapturePhoto", (result, _op, receipt) => result.operationId === receipt.operationId ? applied : undefined),
   files_filter: unread(FilesFilter, "FilesFilter"),
   files_open: unread(FilesOpen, "FilesOpen"),
   files_share: unread(FilesShare, "FilesShare"),

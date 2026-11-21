@@ -2529,6 +2529,7 @@ module node {
       let redirect = false
       let changedBytes = false
       let revokeDuringDownload = false
+      let revokeListing: "grant" | "session" | undefined
       let providerRequestsValid = true
       globalThis.fetch = async (input, init) => {
         const request = new Request(input, init)
@@ -2537,6 +2538,24 @@ module node {
         if (url.href === "https://oauth2.googleapis.com/token" && request.method === "POST")
           return Response.json({ access_token: "fixture-access", scope: "https://www.googleapis.com/auth/gmail.readonly" })
         providerRequestsValid &&= request.headers.get("authorization") === "Bearer fixture-access"
+        if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages") {
+          const label = url.searchParams.get("labelIds")
+          const found = label === "INBOX" ? ["fixture-message", "moved-to-trash"] : label === "TRASH" && url.searchParams.get("includeSpamTrash") === "true" &&
+            url.searchParams.get("q") === "subject:plan & dates" ? ["trashed-message", "moved-message"] : []
+          return Response.json({ messages: found.map((id) => ({ id })), nextPageToken: "page-two" })
+        }
+        if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/labels/INBOX")
+          return Response.json({ id: "INBOX", messagesUnread: 52 })
+        if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/labels/DRAFT") {
+          if (revokeListing === "grant") await fixture.db.query("DELETE FROM cloud_google_connections WHERE account_id = $1", [owner.account.id])
+          if (revokeListing === "session") await fixture.db.query("UPDATE sessions SET live = false WHERE user_id = $1", [owner.account.id])
+          return Response.json({ id: "DRAFT", messagesTotal: 7 })
+        }
+        if (url.origin === "https://gmail.googleapis.com" && ["/gmail/v1/users/me/messages/trashed-message", "/gmail/v1/users/me/messages/moved-message", "/gmail/v1/users/me/messages/moved-to-trash"].includes(url.pathname)) {
+          const id = url.pathname.split("/").at(-1)
+          const labelIds = id === "moved-to-trash" ? ["TRASH", "INBOX"] : [id === "trashed-message" ? "TRASH" : "INBOX"]
+          return Response.json({ id, threadId: "trash-thread", internalDate: "1760000000000", labelIds })
+        }
         if (url.hostname === "gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/fixture-message")
           return Response.json({ id: "fixture-message", threadId: "fixture-thread", internalDate: "1760000000000", historyId: "789", labelIds: ["INBOX"],
             payload: { headers: [{ name: "Subject", value: "Selected PDF" }], parts: [{ mimeType: "text/plain", body: { data: "aGVsbG8" } }, part, unsupported, oversized] } })
@@ -2577,6 +2596,15 @@ module node {
         headers: cookie ? { origin: web, cookie: "__Host-eliza-session=" + cookie } : { origin: web },
       }), env)
       const query = "grantId=" + grant + "&messageId=fixture-message"
+      const folder = "triage?" + new URLSearchParams({ grantId: grant, folder: "trash", q: "  subject:plan & dates ", counts: "1" })
+      const readFolder = async (path: string) => {
+        const answer = await get(path, owner.access)
+        const value = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String, folder: Schema.String, q: Schema.String, messages: Schema.Array(Schema.Struct({ externalId: Schema.String })),
+          counts: Schema.optional(Schema.Struct({ inboxUnread: Schema.Number, drafts: Schema.Number })), nextPageToken: Schema.String }))(await answer.json())
+        return [answer.status, value.accountId === owner.account.id, value.folder, value.q, value.messages.map(({ externalId }) => externalId), value.counts ?? null, value.nextPageToken]
+      }
+      const mailboxes = [await readFolder("triage?grantId=" + grant), await readFolder(folder)]
+      const deniedFolders = [(await get(folder, other.access)).status, (await get("triage?folder=shared", owner.access)).status]
       const attachment = "attachment?" + query
       const selected = attachment + "&historyId=789&partId=1"
       const read = await get("read?" + query, owner.access)
@@ -2616,7 +2644,13 @@ module node {
       revokeDuringDownload = false
       redirect = true
       const rejectedRedirect = await get(selected, owner.access)
+      revokeListing = "session"
+      const signedOut = await get(folder, owner.access)
+      const signedBackIn = await signIn("attachment-owner@example.test")
+      revokeListing = "grant"
+      const disconnected = await get(folder, signedBackIn.access)
       return {
+        mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
         refused, beforeDeviceRead, deviceStatus: onDevice.status, deviceReceipt, changed: changed.status, revoked: revoked.status,
         organization: (await fixture.db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1", [owner.account.id])).rows[0]?.organization_id, grant, manifest, readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
         cache: downloaded.headers.get("cache-control"), owner: owner.account.id, expectedHash: createHash("sha256").update(bytes).digest("hex"),
@@ -2649,6 +2683,7 @@ it.live('Open the selected named attachment (spec/cloud/index.md, "Story: Connec
       refuse: [got.guardStatuses, got.guardedDownloads, got.rejectedRedirect],
       file: [got.fileStatus, got.cache, got.file],
       provider: [got.providerRequestsValid, got.attachmentFetches],
+      mailboxes: [got.mailboxes, got.deniedFolders, got.signedOut, got.disconnected],
       device: [got.refused, got.beforeDeviceRead, got.deviceStatus, got.deviceReceipt, got.changed, got.revoked],
     },
     {
@@ -2661,6 +2696,7 @@ it.live('Open the selected named attachment (spec/cloud/index.md, "Story: Connec
       file: [200, "no-store", { version: 1, accountId: got.owner, organizationId: got.organization, grantId: got.grant, messageId: "fixture-message", partId: "1", historyId: "789",
         name: "fixture.pdf", mimeType: "application/pdf", size: got.size, dataBase64: got.expectedData, sha256: got.expectedHash, supported: true }],
       provider: [true, 5],
+      mailboxes: [[[200, true, "inbox", "", ["fixture-message"], null, "page-two"], [200, true, "trash", "subject:plan & dates", ["trashed-message"], { inboxUnread: 52, drafts: 7 }, "page-two"]], [409, 400], 401, 409],
       device: [[401, 409, 409], 1, 200, got.file, 409, 401],
     },
   ))

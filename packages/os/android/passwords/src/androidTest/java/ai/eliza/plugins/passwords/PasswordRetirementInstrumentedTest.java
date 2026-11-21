@@ -8,6 +8,7 @@ import androidx.test.core.app.ActivityScenario;
 import androidx.test.platform.app.InstrumentationRegistry;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.Test;
 import static org.junit.Assert.*;
 
@@ -62,6 +63,31 @@ public final class PasswordRetirementInstrumentedTest {
         assertEquals("synthetic-replacement", replacement.getLabel());
         clipboard.clearPrimaryClip();
       });
+    }
+  }
+
+  @Test public void lockingDismissesOnlyTheConfirmationOwnedAtRetirement() {
+    AtomicInteger cancelled = new AtomicInteger();
+    AtomicReference<Runnable> retired = new AtomicReference<>();
+    try (var scenario = ActivityScenario.launch(ClipboardActivity.class)) {
+      scenario.onActivity(activity -> {
+        assertTrue(SecretSurfaces.confirm(activity, R.string.eliza_passwords_copy_confirm,
+          () -> fail("A dismissed confirmation cannot copy"), cancelled::incrementAndGet));
+        retired.set(SecretSurfaces.currentDismissal());
+        retired.get().run();
+      });
+      InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+      assertEquals(1, cancelled.get());
+      scenario.onActivity(activity -> {
+        assertTrue(SecretSurfaces.confirm(activity, R.string.eliza_passwords_reveal_confirm,
+          () -> fail("A dismissed confirmation cannot reveal"), cancelled::incrementAndGet));
+        retired.get().run();
+      });
+      InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+      assertEquals(1, cancelled.get());
+      scenario.onActivity(activity -> SecretSurfaces.currentDismissal().run());
+      InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+      assertEquals(2, cancelled.get());
     }
   }
 

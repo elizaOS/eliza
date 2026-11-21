@@ -639,13 +639,17 @@ function transferContext(env: GoogleEnv, account: string, organization: string) 
   return encoder.encode(JSON.stringify(["cloud-google-attachment-v1", env.PUBLIC_API_ORIGIN, account, organization]))
 }
 
+effect function mailGrant(db: Client, account: string, grant: string | null) {
+  const { rows } = try query<{ id: string; organization_id: string }>(db, `SELECT c.id, a.organization_id FROM accounts a JOIN cloud_google_connections c ON c.account_id = a.key
+    WHERE a.key = $1 AND a.status = 'active' AND ($2::text IS NULL OR c.id::text = $2) AND c.mail`, [account, grant])
+  if (!rows[0]?.organization_id) throw new ConnectionUnavailable()
+  return rows[0]
+}
+
 effect function selectedAttachment(env: GoogleEnv, db: Client, account: string, grant: string, selection: { messageId: string; partId: string; historyId: string }) {
   const api = googleReadApi(try accessFor(env, db, account, "mail", grant))
   const { bytes, ...file } = try googleGmailAttachment(api, selection)
-  const { rows } = try query<{ organization_id: string }>(db, `SELECT a.organization_id FROM accounts a JOIN cloud_google_connections c ON c.account_id = a.key
-    WHERE a.key = $1 AND a.status = 'active' AND c.id::text = $2 AND c.mail`, [account, grant])
-  const organizationId = rows[0]?.organization_id
-  if (!organizationId) throw new ConnectionUnavailable()
+  const organizationId = (try mailGrant(db, account, grant)).organization_id
   const digest = try (try Digest.Digest).digest(Digest.sha256, bytes)
   return { version: 1, accountId: account, organizationId, grantId: grant, ...file, dataBase64: Base64.encode(bytes), sha256: hex(digest), supported: true }
 }
@@ -705,8 +709,10 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
       return body(200, { ...file, deviceTransfer })
     }
     if (path === "/gmail/triage" || path === "/gmail/read") {
-      const api = googleReadApi(try accessFor(env, db, account, "mail", selected))
+      const grant = selected ?? (try mailGrant(db, account, null)).id
+      const api = googleReadApi(try accessFor(env, db, account, "mail", grant))
       const result = path === "/gmail/triage" ? try googleGmailTriage(api, url, now) : try googleGmailMessage(api, url)
+      try mailGrant(db, account, grant)
       return body(200, { accountId: account, ...result })
     }
     if (path === "/calendar/reminder/event") {

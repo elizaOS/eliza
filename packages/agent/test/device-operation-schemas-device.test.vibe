@@ -1,4 +1,13 @@
 // spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check"; spec/agent/deviceActions/operations.md, "Story: Learn exactly what the device did"
+module node {
+  import { createHash } from "node:crypto"
+
+  export function digestOf(value: object): string {
+    return createHash("sha256").update(JSON.stringify(value)).digest("hex")
+  }
+}
+
+import { digestOf } from node
 import { assert, it } from "@effect/vitest"
 import { negotiation } from "../src/device-actions/capabilities.vibe"
 import { mayRunDirectly, readOperation, receiptOutcome, validate, type CheckedOperation } from "../src/device-actions/operations.schema.vibe"
@@ -8,6 +17,8 @@ const digest = "a".repeat(64)
 const photo = "lib:i:42:0"
 const range = { type: "read_calendar_range", calendarIds: ["cal-1"], start: "2026-11-21T00:00:00.000Z", end: "2026-11-22T00:00:00.000Z", timeZone: "UTC", maximumEvents: 10 }
 const sms = { type: "sms_send", recipients: ["+15550100"], body: "On my way", subscriptionId: 1 }
+
+const noteRevision = digestOf(["List", "Milk"])
 
 const samples: Record<string, unknown> = {
   CameraCapturePhoto: { type: "camera_capture_photo" },
@@ -37,7 +48,7 @@ const samples: Record<string, unknown> = {
   MessagesReadSelected: { type: "messages_read_selected" },
   VoicemailReadSelected: { type: "voicemail_read_selected" },
   VoicemailDeleteSelected: { type: "voicemail_delete_selected" },
-  ReadSelectedNotes: { type: "read_selected_notes", notes: [{ id: "note-1", revision: digest }] },
+  ReadSelectedNotes: { type: "read_selected_notes", notes: [{ id: "note-1", revision: noteRevision }] },
   ReadCalendarRange: range,
   ReadSelectedReminders: { type: "read_selected_reminders", window: "open_and_completed_today", day: "2026-11-21", timeZone: "UTC", maximumItems: 20 },
   PostNotification: { type: "post_notification", title: "Today", body: "Two meetings" },
@@ -62,6 +73,10 @@ const outcome = (op: unknown, receipt: unknown, claimKey = "claim-1") => {
 it("Propose only operations the device can check: every media, files, telephony, workflow and base wire type reads as its own operation", () => {
   for (const [opType, input] of Object.entries(samples)) assert.strictEqual(checked(input).opType, opType, opType)
   assert.strictEqual((checked(samples.BrowserNavigate).operation as { url: string }).url, "https://example.com/menu")
+  assert.deepStrictEqual(checked({ type: "browser_navigate", url: "example.com/menu", newTab: true }).operation,
+    { type: "browser_navigate", url: "https://example.com/menu", newTab: true })
+  assert.deepStrictEqual(checked({ type: "browser_navigate", url: "example.com/menu", newTab: false }).operation,
+    { type: "browser_navigate", url: "https://example.com/menu" })
   assert.deepStrictEqual(checked({ type: "files_open", path: "Download/" }).operation, { type: "files_open", path: "Download" })
   assert.strictEqual((checked(samples.FilesFilter).operation as { text: string }).text, "lease")
 })
@@ -115,9 +130,11 @@ it("Propose only operations the device can check: only a reversible local operat
 })
 
 it("Learn exactly what the device did: a SIM send settles only on evidence that names its claim", () => {
-  const sent = { kind: "sms-send", operationId: "claim-1", subscriptionId: 1, bindingHash: digest, status: "sent", createdAt: 1,
+  const { body, recipients, subscriptionId, type } = sms
+  const sent = { kind: "sms-send", operationId: "claim-1", subscriptionId: 1, bindingHash: digestOf({ body, recipients, subscriptionId, type }), status: "sent", createdAt: 1,
     parts: [{ index: 0, recipientIndex: 0, partIndex: 0, sent: "success", delivery: "unknown" }] }
   assert.strictEqual(outcome(sms, { outcome: "applied", operationId: "claim-1", result: sent }), "ReportedApplied")
+  assert.strictEqual(outcome(sms, { outcome: "applied", operationId: "claim-1", result: { ...sent, bindingHash: digest } }), "refused")
   assert.strictEqual(outcome(sms, { outcome: "applied", operationId: "other", result: sent }), "refused")
   assert.strictEqual(outcome(sms, { outcome: "applied", operationId: "claim-1", result: { ...sent, subscriptionId: 2 } }), "refused")
   assert.strictEqual(outcome(sms, { outcome: "applied", operationId: "claim-1", result: { ...sent, parts: [] } }), "refused")
@@ -149,6 +166,7 @@ it("Learn exactly what the device did: phone results are evidence, and only a dr
 it("Learn exactly what the device did: reads carry a result exactly when applied, and presentations and base operations never do", () => {
   const saved = { version: 1, kind: "camera_capture_photo", operationId: "n1", mediaId: "17", width: 640, height: 480, mime: "image/jpeg" }
   assert.strictEqual(outcome(samples.CameraCapturePhoto, { outcome: "applied", operationId: "n1", result: saved }), "ReportedApplied")
+  assert.strictEqual(outcome(samples.CameraCapturePhoto, { outcome: "applied", operationId: "n1", result: { ...saved, operationId: "n2" } }), "refused")
   assert.strictEqual(outcome(samples.CameraCapturePhoto, { outcome: "applied", operationId: "n1" }), "refused")
   assert.strictEqual(outcome(samples.FilesOpen, { outcome: "applied", operationId: "n1" }), "ReportedApplied")
   assert.strictEqual(outcome(samples.FilesOpen, { outcome: "applied", operationId: "n1", result: { shown: 1 } }), "refused")
@@ -159,16 +177,21 @@ it("Learn exactly what the device did: reads carry a result exactly when applied
     result: { kind: "photo_library_inspect", item: { id: photo, revision: "rev-abc-1", kind: "image", takenAt: 1, width: 2, height: 3 } } }), "ReportedApplied")
   assert.strictEqual(outcome(samples.PhotoLibraryInspect, { outcome: "applied", operationId: "n1",
     result: { kind: "photo_library_inspect", item: { id: photo, revision: "rev-abc-1", kind: "video", takenAt: 1, width: 2, height: 3 } } }), "refused")
-  const note = { kind: "notes", notes: [{ id: "note-1", revision: digest, title: "List", text: "Milk" }] }
+  const note = { kind: "notes", notes: [{ id: "note-1", revision: noteRevision, title: "List", text: "Milk" }] }
   assert.strictEqual(outcome(samples.ReadSelectedNotes, { outcome: "applied", operationId: "n1", result: note }), "ReportedApplied")
   assert.strictEqual(outcome(samples.ReadSelectedNotes, { outcome: "applied", operationId: "n1", result: { kind: "notes", notes: [{ ...note.notes[0], revision: "b".repeat(64) }] } }), "refused")
-  const event = { id: "ev-1", calendarId: "cal-1", revision: digest, title: "Dentist", start: "2026-11-21T09:00:00.000Z", end: "2026-11-21T10:00:00.000Z", allDay: false }
-  assert.strictEqual(outcome(range, { outcome: "applied", operationId: "n1", result: { kind: "calendar", events: [event] } }), "ReportedApplied")
-  assert.strictEqual(outcome(range, { outcome: "applied", operationId: "n1", result: { kind: "calendar", events: [{ ...event, start: "2026-11-23T09:00:00.000Z", end: "2026-11-23T10:00:00.000Z" }] } }), "refused")
-  assert.strictEqual(outcome(range, { outcome: "applied", operationId: "n1", result: { kind: "calendar", events: [{ ...event, calendarId: "cal-2" }] } }), "refused")
+  assert.strictEqual(outcome(samples.ReadSelectedNotes, { outcome: "applied", operationId: "n1", result: { kind: "notes", notes: [{ ...note.notes[0], text: "Bread" }] } }), "refused")
+  const event = { id: "ev-1", calendarId: "cal-1", title: "Dentist", start: "2026-11-21T09:00:00.000Z", end: "2026-11-21T10:00:00.000Z", allDay: false }
+  const revised = (row: typeof event) => ({ ...row, revision: digestOf([row.id, row.calendarId, row.title, row.start, row.end, row.allDay]) })
+  assert.strictEqual(outcome(range, { outcome: "applied", operationId: "n1", result: { kind: "calendar", events: [revised(event)] } }), "ReportedApplied")
+  assert.strictEqual(outcome(range, { outcome: "applied", operationId: "n1", result: { kind: "calendar", events: [{ ...revised(event), title: "Other" }] } }), "refused")
+  assert.strictEqual(outcome(range, { outcome: "applied", operationId: "n1", result: { kind: "calendar", events: [revised({ ...event, start: "2026-11-23T09:00:00.000Z", end: "2026-11-23T10:00:00.000Z" })] } }), "refused")
+  assert.strictEqual(outcome(range, { outcome: "applied", operationId: "n1", result: { kind: "calendar", events: [revised({ ...event, calendarId: "cal-2" })] } }), "refused")
   const reminders = samples.ReadSelectedReminders
-  const done = { id: "r-1", revision: digest, title: "Pay rent", dueAt: "2026-11-20T09:00:00.000Z", status: "completed", completedAt: "2026-11-21T08:00:00.000Z" }
-  assert.strictEqual(outcome(reminders, { outcome: "applied", operationId: "n1", result: { kind: "reminders", reminders: [done] } }), "ReportedApplied")
-  assert.strictEqual(outcome(reminders, { outcome: "applied", operationId: "n1", result: { kind: "reminders", reminders: [{ ...done, completedAt: "2026-11-20T08:00:00.000Z" }] } }), "refused")
+  const done = { id: "r-1", title: "Pay rent", dueAt: "2026-11-20T09:00:00.000Z", status: "completed", completedAt: "2026-11-21T08:00:00.000Z" }
+  const completed = (row: typeof done) => ({ ...row, revision: digestOf([row.id, row.title, row.dueAt, row.status, row.completedAt]) })
+  assert.strictEqual(outcome(reminders, { outcome: "applied", operationId: "n1", result: { kind: "reminders", reminders: [completed(done)] } }), "ReportedApplied")
+  assert.strictEqual(outcome(reminders, { outcome: "applied", operationId: "n1", result: { kind: "reminders", reminders: [{ ...completed(done), title: "Other" }] } }), "refused")
+  assert.strictEqual(outcome(reminders, { outcome: "applied", operationId: "n1", result: { kind: "reminders", reminders: [completed({ ...done, completedAt: "2026-11-20T08:00:00.000Z" })] } }), "refused")
   assert.strictEqual(outcome(samples.CreateNote, { outcome: "failed", code: "DEVICE_NOT_DISPATCHED" }), "ReportedNothingRan")
 })

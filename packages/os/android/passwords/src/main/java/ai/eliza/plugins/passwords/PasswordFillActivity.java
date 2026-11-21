@@ -23,7 +23,7 @@ public class PasswordFillActivity extends Activity {
   private PasswordVaultAccess access;
   private String requestToken;
   private long ticket;
-  private boolean prompting, finished;
+  private boolean prompting, finished, startInForeground;
   private PasswordSurfaces.Hold surface;
 
   @Override protected void onCreate(Bundle state) {
@@ -44,6 +44,13 @@ public class PasswordFillActivity extends Activity {
     sheet.root.addView(sheet.button(this, getString(R.string.eliza_passwords_cancel), view -> cancel()));
     // Every fill authenticates in this picker. An earlier unlock (Settings, another fill) is
     // never reused here: begin() in PasswordUnlock drops any existing grant first.
+    if (access.deviceUnlockedCustody()) startInForeground = true; else unlock();
+  }
+
+  @Override protected void onPostResume() {
+    super.onPostResume();
+    if (!startInForeground || finished) return;
+    startInForeground = false;
     unlock();
   }
 

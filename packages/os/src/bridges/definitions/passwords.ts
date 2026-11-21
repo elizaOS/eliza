@@ -30,11 +30,12 @@ export type PasswordAutofillSelection =
   | "unknown";
 
 export interface PasswordsStatus {
-  /** False when the device has no secure screen lock or the platform is unsupported. */
+  /** Whether the current native custody policy permits access. */
   available: boolean;
-  reason?: "no-screen-lock" | "unsupported";
+  reason?: "no-screen-lock" | "unsupported" | "not-admitted" | "device-locked" | "legacy-authorization-required" | "legacy-key-unavailable";
+  custody?: "device-unlocked";
   locked: boolean;
-  unlockRemainingMs: number;
+  unlockRemainingMs: number | null;
   unlockSeconds: number;
   biometric: boolean;
   autofill: { supported: boolean | null; selected: PasswordAutofillSelection };
@@ -93,8 +94,7 @@ export type PasswordsErrorCode =
 
 export interface ElizaPasswordsPlugin {
   status(): Promise<PasswordsStatus>;
-  /** Shows the platform BiometricPrompt (strong biometric or device credential). */
-  unlock(): Promise<{ unlocked: true; unlockRemainingMs: number }>;
+  unlock(): Promise<{ unlocked: true; unlockRemainingMs: number | null }>;
   lock(): Promise<{ locked: true }>;
   list(): Promise<{ entries: PasswordEntrySummary[] }>;
   save(input: PasswordSaveInput): Promise<PasswordSaveResult>;

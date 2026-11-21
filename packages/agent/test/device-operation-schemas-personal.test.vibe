@@ -25,7 +25,7 @@ function shown(op: Wire, result: unknown): Evidence | undefined {
   const operation = Schema.decodeUnknownOption(schema.operation, strict)(op)
   if (Option.isNone(operation) || schema.result === undefined) return assert.fail(`Operation ${op.type} does not decode or has no result`)
   const decoded = Schema.decodeUnknownOption(schema.result, strict)(result)
-  return Option.isSome(decoded) ? schema.evidence(decoded.value, operation.value) : undefined
+  return Option.isSome(decoded) ? schema.evidence(decoded.value, operation.value, { operationId: undefined }) : undefined
 }
 
 const rev = (digit: string) => digit.repeat(64)

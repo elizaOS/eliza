@@ -37,7 +37,7 @@ export function pageCommand(
   validateOnly = false,
   host = undefined,
 ) {
-  const policy = command.taskPolicy;
+  const policy = command?.taskPolicy;
   const denied = () => ({
     error: {
       kind: "POLICY_BLOCKED",
@@ -102,6 +102,7 @@ export function pageCommand(
       domRevision: 0,
       inputRevision: 0,
       ownedHosts: host?.ownedHosts ?? new WeakSet(),
+      fromDocumentStart: command === null && document.readyState === "loading",
       editedFields: new WeakSet(),
     };
     monitor.recordMutations = (records) => {
@@ -131,11 +132,13 @@ export function pageCommand(
     });
     const input = (event) => {
       monitor.inputRevision++;
-      if (
-        ["input", "change"].includes(event?.type) &&
-        event.target instanceof Element
-      )
+      if (event?.target instanceof Element) {
         monitor.editedFields.add(event.target);
+        for (const item of event.composedPath()) {
+          if (item instanceof HTMLElement && item.isContentEditable)
+            monitor.editedFields.add(item);
+        }
+      }
     };
     document.addEventListener("beforeinput", input, true);
     document.addEventListener("input", input, true);
@@ -149,6 +152,7 @@ export function pageCommand(
     );
     store[monitorKey] = monitor;
   }
+  if (command === null) return;
   // Drain queued mutations synchronously as an effect may arrive before the
   // MutationObserver microtask. Never store or return form values in this monitor.
   monitor.recordMutations(monitor.observer.takeRecords());
@@ -408,10 +412,11 @@ export function pageCommand(
             .filter(Boolean)
             .join(" ") || null,
         sensitive: sensitivity(node),
-        ...(node instanceof HTMLInputElement ||
-        node instanceof HTMLSelectElement ||
-        node instanceof HTMLTextAreaElement ||
-        node.isContentEditable
+        ...((node instanceof HTMLInputElement ||
+          node instanceof HTMLSelectElement ||
+          node instanceof HTMLTextAreaElement ||
+          node.isContentEditable) &&
+        (monitor.fromDocumentStart || monitor.editedFields.has(node))
           ? { edited: monitor.editedFields.has(node) }
           : {}),
         // A select can have a valid choice whose internal value is empty.
@@ -549,6 +554,15 @@ export function pageCommand(
           null
         : null;
     const forms = [...document.forms];
+    const semanticForm = '[role~="form" i]';
+    const ownedRegions = [
+      ...document.querySelectorAll(
+        `form[aria-owns],${semanticForm}[aria-owns]`,
+      ),
+    ]
+      .flatMap((form) => form.getAttribute("aria-owns").trim().split(/\s+/))
+      .map((id) => document.getElementById(id))
+      .filter((element) => element !== null);
     // Position of an element among its siblings with the same tag, counted
     // once per parent.
     const typeIndexes = new Map();
@@ -630,6 +644,10 @@ export function pageCommand(
       });
       const state = controlState(node);
       const form = node.form ?? node.closest("form");
+      const landmark = node.closest(semanticForm);
+      const semanticOwner =
+        (landmark !== null && !(landmark instanceof HTMLFormElement)) ||
+        ownedRegions.some((region) => region.contains(node));
       const hint = (value) => withoutSecrets(value?.trim() || null);
       elements.push({
         bounds: geometry,
@@ -679,9 +697,11 @@ export function pageCommand(
               : null;
           })(),
         ),
-        form: form
-          ? { index: forms.indexOf(form), name: hint(groupName(form)) }
-          : null,
+        form: semanticOwner
+          ? { index: -1, name: null }
+          : form
+            ? { index: forms.indexOf(form), name: hint(groupName(form)) }
+            : null,
         group: hint(groupName(node.closest("fieldset,[role=group]"))),
         // A button that sends its form when pressed.
         submits:

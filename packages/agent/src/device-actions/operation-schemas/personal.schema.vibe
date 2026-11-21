@@ -2,13 +2,13 @@
 import type { OperationType } from "../../../gen/agent__deviceActions__operations.effect.vibe"
 import type { Classification, Evidence, FamilySchemas, OperationSchema, WireOperation } from "./family.vibe"
 
-const day = 86_400_000
+export const day = 86_400_000
 
 function plainText(value: string, max: number, blank: boolean) {
   return value.length <= max && !value.includes("\0") && (blank || value.trim() !== "")
 }
 
-function isoInstant(value: string) {
+export function isoInstant(value: string) {
   try {
     return new Date(value).toISOString() === value
   } catch {
@@ -16,7 +16,7 @@ function isoInstant(value: string) {
   }
 }
 
-function knownZone(name: string) {
+export function knownZone(name: string) {
   if (!plainText(name, 128, false)) return false
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: name })
@@ -26,7 +26,7 @@ function knownZone(name: string) {
   }
 }
 
-function realDate(date: string) {
+export function realDate(date: string) {
   try {
     return new Date(`${date}T00:00:00.000Z`).toISOString().slice(0, 10) === date
   } catch {
@@ -34,7 +34,7 @@ function realDate(date: string) {
   }
 }
 
-function utf8Bytes(value: unknown) {
+export function utf8Bytes(value: unknown) {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength
 }
 
@@ -50,14 +50,14 @@ function interval(start: string, end: string, longest: number) {
   return from >= 0 && to > from && to - from <= longest
 }
 
-function zonedWall(instant: number, timeZone: string) {
+export function zonedWall(instant: number, timeZone: string) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
     timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
   }).formatToParts(instant).map((part) => [part.type, part.value]))
   return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second))
 }
 
-function civilDay(instant: number, timeZone: string) {
+export function civilDay(instant: number, timeZone: string) {
   return Math.floor(zonedWall(instant, timeZone) / day) * day
 }
 

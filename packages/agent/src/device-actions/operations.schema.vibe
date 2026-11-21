@@ -93,7 +93,7 @@ function evidenceOf(checked: CheckedOperation, receipt: DeviceReceipt): { readon
   const decoded = reader?.result === undefined ? Option.none() : reader.result(receipt.result)
   const shown = reader === undefined || reader.schema.result === undefined || Option.isNone(decoded)
     ? undefined
-    : reader.schema.evidence(decoded.value, checked.operation)
+    : reader.schema.evidence(decoded.value, checked.operation, { operationId: receipt.operationId })
   return shown === undefined
     ? { evidence: { tag: "InvalidResult" }, result: undefined }
     : { evidence: { tag: "ValidResult", shows: shown.shows, nothingSubmitted: shown.nothingSubmitted }, result: Option.getOrUndefined(decoded) }
