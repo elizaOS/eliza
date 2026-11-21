@@ -22,6 +22,7 @@ public final class BrowserReturnPolicy {
     "oauth_authentication_failed", "oauth_callback_incomplete", "oauth_identity_incomplete", "oauth_provider_unavailable",
     "oauth_redirect_invalid", "oauth_state_consumed", "oauth_state_expired", "oauth_state_invalid", "oauth_token_exchange_failed");
   private static final Pattern STATE = Pattern.compile("[A-Za-z0-9_-]{43}");
+  private static final Pattern VERIFIER = Pattern.compile("[A-Za-z0-9._~-]{43,128}");
   private static final Pattern NAME = Pattern.compile("[a-z_]{1,16}");
   private static final Pattern VALUE = Pattern.compile("[A-Za-z0-9_.~-]{1,4096}");
   private static final int MAX_URL = 8192;
@@ -140,6 +141,8 @@ public final class BrowserReturnPolicy {
 
   public static boolean validState(String value) { return value != null && STATE.matcher(value).matches(); }
 
+  public static boolean validVerifier(String value) { return value != null && VERIFIER.matcher(value).matches(); }
+
   public static boolean sameSecret(String a, String b) {
     return a != null && b != null && java.security.MessageDigest.isEqual(a.getBytes(StandardCharsets.US_ASCII), b.getBytes(StandardCharsets.US_ASCII));
   }
@@ -147,7 +150,7 @@ public final class BrowserReturnPolicy {
   public static StartChecks checks(SignInRegistration registration, SignInRegistration.Environment environment, String state, String verifier, boolean appLinkVerified) {
     boolean registered = environment != null && registration.environment(environment.name) == environment;
     boolean origin = registered && environment.apiOrigin.startsWith("https://") && environment.redirectUri.startsWith("https://" + environment.appLinkHost + "/");
-    boolean proof = validState(state) && SignInPolicy.validVerifier(verifier) && validState(SignInPolicy.s256(verifier));
+    boolean proof = validState(state) && validVerifier(verifier) && validState(SignInPolicy.s256(verifier));
     return new StartChecks(registered, origin, proof, appLinkVerified);
   }
 

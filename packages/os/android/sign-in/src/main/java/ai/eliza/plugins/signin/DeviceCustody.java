@@ -89,7 +89,7 @@ public final class DeviceCustody implements SignInCustody {
 
   @Override public Proof connect(int attempt, Environment environment, String accessToken) throws Refused {
     Authority authority = authority(environment);
-    if (authority.store().generation() != attempt) throw new Refused(Failure.CANCELLED);
+    if (!authority.store().state().attempt().equals(new CredentialPolicy.Attempt.Exchanging(attempt))) throw new Refused(Failure.CANCELLED);
     String state = SignInPolicy.newState(), verifier = SignInPolicy.newVerifier();
     Answer<Grant> answer = authority.client().connect(accessToken, binding(environment), state, SignInPolicy.s256(verifier), null);
     if (answer instanceof Answer.Answered<Grant> granted) return new Proof(granted.value().code(), state, verifier);
