@@ -239,7 +239,20 @@ export effect function googleGmailMessage<E, R>(api: GoogleReadApi<E, R>, url: U
   const counts = new Map<string, number>()
   for (const part of manifest) counts.set(part.partId, (counts.get(part.partId) ?? 0) + 1)
   const attachments = manifest.map((part) => ({ ...part, supported: part.supported && historyId !== null && counts.get(part.partId) === 1 }))
-  return { historyId, attachments, message: try mailCard(message), reply, bodyText: text ?? "", bodyTextAvailable: text !== null, bodyHtml: null, bodyHtmlStatus: "none" }
+  const authenticationResults = receivedAuthentication(message.payload?.headers ?? [])
+  return { historyId, attachments, message: try mailCard(message), reply, bodyText: text ?? "", bodyTextAvailable: text !== null, bodyHtml: null, bodyHtmlStatus: "none", authenticationResults }
+}
+
+export function receivedAuthentication(headers: ReadonlyArray<{ readonly name: string; readonly value: string }>): string | null {
+  const named = (name: string) => (header: { readonly name: string }) => header.name.toLowerCase() === name
+  const results = headers.findIndex(named("authentication-results"))
+  const receipt = headers.findIndex((header) => named("received")(header) && /^\s*from\s/i.test(header.value))
+  return receipt >= 0 && results > receipt &&
+    /\sby\s+mx\.google\.com\s+with\s+(?:UTF8)?E?SMTPS?A?\b/i.test(headers[receipt].value) &&
+    !headers.slice(receipt + 1, results).some(named("received")) &&
+    /^\s*mx\.google\.com\s*;/i.test(headers[results].value)
+    ? headers[results].value
+    : null
 }
 
 function eventCard(event: CalendarEvent, timezone: string | null) {
