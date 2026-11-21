@@ -350,7 +350,7 @@ public final class ElizaReminderMessagingService extends MessagingService {
             return;
         }
         NotificationChannel selected = manager.getNotificationChannel(channel);
-        if (selected == null || selected.getImportance() == NotificationManager.IMPORTANCE_NONE
+        if (isReminderChannelBlocked(manager, selected)
             || !NotificationManagerCompat.from(context).areNotificationsEnabled()) return;
         Intent open = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
         if (open == null || open.getComponent() == null
