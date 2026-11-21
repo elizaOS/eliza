@@ -1,0 +1,532 @@
+// spec/os/update/operator.md, "Story: Get back if the update fails"; spec/os/update/operator.md, "A fallback to the original slot needs a transferred update, the updated slot current and unconfirmed, the original slot bootable and no merge, and on Virtual A/B a snapshotted update"; spec/os/update/operator.md, "A fallback rolls back only when the installed build boots enforcing on the original slot, and a journal that started a fallback is never updated again"; spec/os/update/operator.md, "A release is retained as known-good only from an admitted release-keys record with no placeholder, whose target files and image are the bytes it names"; spec/os/update/operator.md, "Stock recovery prints its plan only for the channel's locked factory archive and never flashes"
+import { digestsMatch, type Digest } from "../../gen/os__image__apk.effect.vibe"
+import { type KnownGood, type ReleaseChannel } from "../../gen/os__image__signing.effect.vibe"
+import {
+  Machine,
+  fallbackAdmitted,
+  fallbackPhase,
+  recordAdmitted,
+  retainedKnownGood,
+  retentionAdmitted,
+  stockPlanAdmitted,
+  updatedSlot,
+  type BuildKeys,
+  type DeviceObservation,
+  type OperatorJournal,
+  type Retention,
+  type RollbackIndex,
+  type Slot,
+  type SlotReading,
+  type StartFacts,
+  type StockArchive,
+} from "../../gen/os__update__operator.effect.vibe"
+import { parseDigest } from "./apk.vibe"
+import { capture } from "./device.vibe"
+import { observeBootloader, observeDevice, readRecord, required, waitFor, type DeviceRunner, type InstallLockHandle, type ReleaseRecord, type Timing } from "./ota-operator.vibe"
+import { placeholderFields } from "./signing.vibe"
+import { hashFile } from "./source-lock.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+
+  /** @throws {never} */
+  export function sha256Hex(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function parseJson(text: string): unknown {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return undefined
+    }
+  }
+}
+import { parseJson, sha256Hex } from node
+
+export type RecoveryProblemKind =
+  | "NotInBootloader"
+  | "NothingToFallBackFrom"
+  | "NoOriginalSlot"
+  | "NotOnUpdatedSlot"
+  | "UpdatedSlotConfirmed"
+  | "OriginalSlotUnbootable"
+  | "MergeRunning"
+  | "NotSnapshotted"
+  | "FallbackRefused"
+  | "SlotNotSwitched"
+  | "InstalledBuildNotRestored"
+  | "ArchiveNotChannelImage"
+  | "ChannelImageNotLocked"
+  | "ArchiveSizeDiffers"
+  | "ArchiveLayout"
+  | "StockBuildNotBooted"
+  | "RecordNotAdmitted"
+  | "Placeholder"
+  | "NotReleaseKeys"
+  | "TargetFilesDiffer"
+  | "VbmetaDiffers"
+  | "NamesNotDistinct"
+  | "ArchiveExists"
+  | "RetentionUnreadable"
+  | "RetentionForAnotherChannel"
+  | "RetainedFileChanged"
+
+export interface RecoveryProblem {
+  readonly kind: RecoveryProblemKind
+  readonly detail: string
+}
+
+export interface FileRecord {
+  readonly file: string
+  readonly sha256: string
+  readonly sizeBytes: number
+}
+
+export type PlanStep = readonly string[]
+
+export type FallbackResult =
+  | { readonly kind: "Refused"; readonly executed: false; readonly slots: SlotReading | null; readonly problems: readonly RecoveryProblem[] }
+  | { readonly kind: "Admitted"; readonly executed: false; readonly slots: SlotReading; readonly problems: readonly RecoveryProblem[] }
+  | { readonly kind: "RolledBack"; readonly executed: true; readonly journal: OperatorJournal; readonly observed: DeviceObservation; readonly problems: readonly RecoveryProblem[] }
+  | { readonly kind: "FallbackFailed"; readonly executed: true; readonly journal: OperatorJournal; readonly observed: DeviceObservation; readonly problems: readonly RecoveryProblem[] }
+
+export interface FallbackRequest {
+  readonly device: DeviceRunner
+  readonly execute: boolean
+  readonly confirm: boolean
+  readonly lock?: InstallLockHandle
+  readonly timing?: Timing
+}
+
+export interface KnownGoodPlan {
+  readonly kind: "KnownGoodPlan"
+  readonly fingerprint: string | null
+  readonly rollbackIndexes: readonly RollbackIndex[] | null
+  readonly image: string | null
+  readonly steps: readonly PlanStep[]
+  readonly notes: readonly string[]
+  readonly problems: readonly RecoveryProblem[]
+  readonly executed: false
+}
+
+export interface StockPlan {
+  readonly kind: "StockPlan"
+  readonly archive: FileRecord
+  readonly buildId: string | null
+  readonly steps: readonly PlanStep[]
+  readonly notes: readonly string[]
+  readonly problems: readonly RecoveryProblem[]
+  readonly knownGood: KnownGoodPlan | null
+  readonly executed: false
+}
+
+export interface StockVerification {
+  readonly kind: "StockVerification"
+  readonly passed: boolean
+  readonly observed: DeviceObservation
+  readonly problems: readonly RecoveryProblem[]
+  readonly scope: string
+}
+
+export interface KnownGoodManifest {
+  readonly schema: 1
+  readonly kind: typeof KNOWN_GOOD_KIND
+  readonly product: string
+  readonly device: string
+  readonly channel: string
+  readonly fingerprint: string
+  readonly rollbackIndexes: readonly RollbackIndex[]
+  readonly createdAt: string
+  readonly record: FileRecord
+  readonly signedTargetFiles: FileRecord
+  readonly signedImage: FileRecord & { readonly vbmetaSha256: string }
+  readonly knownGood: KnownGood
+}
+
+export type Retained =
+  | { readonly kind: "Retained"; readonly retained: true; readonly archiveDir: string; readonly manifest: KnownGoodManifest; readonly problems: readonly RecoveryProblem[]; readonly executed: false }
+  | { readonly kind: "NotRetained"; readonly retained: false; readonly problems: readonly RecoveryProblem[]; readonly executed: false }
+
+export error FallbackUnconfirmed { message: string }
+export error RecoveryInputUnreadable { place: string; message: string }
+export error RetentionWriteFailed { archiveDir: string; message: string }
+
+export const KNOWN_GOOD_KIND = "aosp-known-good-retention"
+export const KNOWN_GOOD_FILE = "known-good.json"
+
+const TOOL_MS = 60_000
+const SERIAL = "SERIAL"
+const SLOT_LETTER: Readonly<Record<Slot, string>> = { SlotA: "a", SlotB: "b", NoSlot: "" }
+const STOCK_NOTES = [
+  "Extract the verified archive into a new directory and run the steps from it.",
+  "flashing unlock is refused unless OEM unlocking was enabled in the running image's developer options; a device that no longer boots cannot enable it, so the drill checks it first.",
+  "flashing unlock and -w update erase all user data; the device asks for physical confirmation.",
+  "Relock (fastboot flashing lock, which wipes again) only after verify-stock passes.",
+  "This restores the vendor's stock image; it is not a signed update or rollback of the product.",
+]
+const KNOWN_GOOD_NOTES = [
+  "Run the steps from the retained directory; the image is re-hashed before every plan.",
+  "A locked bootloader refuses fastboot flashing: flashing unlock (refused unless OEM unlocking was enabled in the running image) and -w update erase all user data, and the device asks for physical confirmation.",
+  "Relock (fastboot flashing lock, which wipes again) only after the retained build boots and verifies.",
+  "The device must still trust the product's AVB key; a stock-recovered device needs the product's key re-enrolled first.",
+  "The bootloader refuses an image whose rollback index is below the device's stored index; stock recovery then applies.",
+  "This reflashes a retained signed release. It is not a signed update, and no drill is recorded.",
+]
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function field(value: unknown, ...keys: readonly string[]): unknown {
+  let current = value
+  for (const key of keys) current = isRecord(current) ? current[key] : undefined
+  return current
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value : ""
+}
+
+function baseName(file: string): string {
+  return file.split("/").filter(Boolean).at(-1) ?? ""
+}
+
+function hexOf(digest: Digest): string {
+  return digest.tag === "Sha256" ? digest.hex : ""
+}
+
+function problem(kind: RecoveryProblemKind, detail: string): RecoveryProblem {
+  return { kind, detail }
+}
+
+export function fallbackProblems(journal: OperatorJournal, slots: SlotReading): RecoveryProblem[] {
+  if (fallbackPhase(journal.phase) && fallbackAdmitted(journal.start, slots)) return []
+  const original = journal.start.originalSlot
+  const updated = updatedSlot(original)
+  const problems = [
+    ...(fallbackPhase(journal.phase) ? [] : [problem("NothingToFallBackFrom", `the journal is ${journal.phase}; no updated slot to fall back from`)]),
+    ...(updated === "NoSlot" ? [problem("NoOriginalSlot", "the journal records no original slot")] : []),
+    ...(updated !== "NoSlot" && slots.currentSlot !== updated ? [problem("NotOnUpdatedSlot", `the bootloader's current slot is ${slots.currentSlot}, not the updated slot ${updated}`)] : []),
+    ...(slots.updatedUnconfirmed ? [] : [problem("UpdatedSlotConfirmed", "the updated slot is marked successful or does not say; its rollback indexes may already be stored, so the original build may no longer boot")]),
+    ...(slots.originalBootable ? [] : [problem("OriginalSlotUnbootable", `the original slot ${original} is not reported bootable`)]),
+    ...(slots.snapshot === "Merging" ? [problem("MergeRunning", "a snapshot merge is in progress; the original slot is being overwritten")] : []),
+    ...(journal.start.virtualAb && slots.snapshot !== "Snapshotted" && slots.snapshot !== "Merging"
+      ? [problem("NotSnapshotted", `the bootloader reports snapshot status ${slots.snapshot}, not Snapshotted; on a Virtual A/B device the original slot's dynamic partitions may have been overwritten, so recover with a compatible release or the stock factory image`)]
+      : []),
+  ]
+  return problems.length > 0 ? problems : [problem("FallbackRefused", "the fallback is not admitted from this journal and slot reading")]
+}
+
+function restoreProblems(start: StartFacts, observed: DeviceObservation): RecoveryProblem[] {
+  if (observed.tag !== "OnAndroid") return [problem("InstalledBuildNotRestored", `Android did not finish booting (the device is ${observed.tag})`)]
+  const problems = [
+    ...(observed.device === start.device ? [] : [problem("InstalledBuildNotRestored", `the device reports ${observed.device}, not ${start.device}`)]),
+    ...(observed.fingerprint === start.installedBuild ? [] : [problem("InstalledBuildNotRestored", `the device runs ${observed.fingerprint}, not the installed ${start.installedBuild}`)]),
+    ...(observed.slot === start.originalSlot ? [] : [problem("InstalledBuildNotRestored", `the device booted ${observed.slot}, not ${start.originalSlot}`)]),
+    ...(observed.selinux === "Enforcing" ? [] : [problem("InstalledBuildNotRestored", "SELinux is not enforcing")]),
+  ]
+  return problems.length > 0 ? problems : [problem("InstalledBuildNotRestored", "the installed build was not restored")]
+}
+
+effect function fallbackReading(device: DeviceRunner, journal: OperatorJournal) {
+  const seen = try observeDevice(device)
+  if (seen.observation.tag !== "InBootloader") {
+    const refused: FallbackResult = { kind: "Refused", executed: false, slots: null, problems: [problem("NotInBootloader", `the device is ${seen.state}; enter the bootloader first (adb reboot bootloader, or the key combination when Android does not boot)`)] }
+    return refused
+  }
+  const slots = (try observeBootloader(device, journal.start)).slots
+  const problems = fallbackProblems(journal, slots)
+  const reading: FallbackResult = problems.length > 0 ? { kind: "Refused", executed: false, slots, problems } : { kind: "Admitted", executed: false, slots, problems: [] }
+  return reading
+}
+
+export effect function fallbackToOriginalSlot(request: FallbackRequest) {
+  const device = request.device
+  const journal = try Machine
+  const start = (try journal.get()).start
+  const admitted = try fallbackReading(device, try journal.get())
+  if (admitted.kind !== "Admitted" || !request.execute) return admitted
+  if (!request.confirm) throw new FallbackUnconfirmed({ message: "--execute changes the active slot; add --confirm-fallback" })
+  if (request.lock !== undefined) try request.lock.beforeWrites()
+  try journal.send({ type: "fallback", slots: admitted.slots })
+  const original = SLOT_LETTER[start.originalSlot]
+  try required(try device.fastboot(["set_active", original]), "fastboot", ["set_active", original])
+  if ((try observeBootloader(device, start)).slots.currentSlot !== start.originalSlot) {
+    const stuck: DeviceObservation = { tag: "InBootloader" }
+    const failed: FallbackResult = { kind: "FallbackFailed", executed: true, journal: try journal.send({ type: "fallbackEnded", observed: stuck }), observed: stuck, problems: [problem("SlotNotSwitched", `the bootloader did not switch to the original slot ${start.originalSlot}`)] }
+    return failed
+  }
+  try device.fastboot(["reboot"])
+  const booted = try waitFor(device, (observation) => observation.tag === "OnAndroid", request.timing?.rebootMs ?? 10 * 60_000, request.timing?.pollMs ?? 2000)
+  const ended = try journal.send({ type: "fallbackEnded", observed: booted.observation })
+  const result: FallbackResult = ended.phase === "RolledBack"
+    ? { kind: "RolledBack", executed: true, journal: ended, observed: booted.observation, problems: [] }
+    : { kind: "FallbackFailed", executed: true, journal: ended, observed: booted.observation, problems: restoreProblems(start, booted.observation) }
+  return result
+}
+
+effect function unzipOutput(place: string, args: readonly string[]) {
+  const finished = try mapError(capture("unzip", args, TOOL_MS), (cause) => new RecoveryInputUnreadable({ place, message: `unzip could not run: ${cause._tag}` }))
+  if (finished.code !== 0) throw new RecoveryInputUnreadable({ place, message: `${place} could not be read as a zip: ${finished.stderr.trim()}` })
+  return finished.stdout
+}
+
+effect function archiveEntries(archive: string) {
+  return new TextDecoder().decode(try unzipOutput(archive, ["-Z1", archive])).split(/\r?\n/).filter(Boolean)
+}
+
+effect function entryDigest(archive: string, entry: string) {
+  if (!(try archiveEntries(archive)).includes(entry)) return { tag: "NotADigest" } as Digest
+  return parseDigest(sha256Hex(try unzipOutput(`${archive}!${entry}`, ["-p", archive, entry])))
+}
+
+effect function fileRecord(file: string) {
+  const hashed = try mapError(hashFile(file), (cause) => new RecoveryInputUnreadable({ place: file, message: cause.message }))
+  const record: FileRecord = { file: baseName(file), sha256: hashed.sha256, sizeBytes: hashed.sizeBytes }
+  return record
+}
+
+effect function readJson(file: string) {
+  const files = try FileSystem.FileSystem
+  const content = try mapError(files.readFileString(file), (cause) => new RecoveryInputUnreadable({ place: file, message: cause.message }))
+  const value = parseJson(content)
+  if (value === undefined) throw new RecoveryInputUnreadable({ place: file, message: `${file} is not JSON` })
+  return value
+}
+
+function stockLayout(entries: readonly string[], device: string, buildId: string) {
+  const roots = new Set(entries.map((name) => name.split("/")[0]))
+  const codename = device.replace(/[^a-z0-9_-]/g, "")
+  const one = (pattern: RegExp, what: string) => {
+    const found = entries.filter((name) => pattern.test(name))
+    return { name: found.length === 1 ? (found[0] ?? "") : "", problems: found.length === 1 ? [] : [problem("ArchiveLayout", `the archive has ${found.length} ${what} entries, not one`)] }
+  }
+  const bootloader = one(new RegExp(`^[^/]+/bootloader-${codename}-[^/]+\\.img$`), "bootloader")
+  const radio = one(new RegExp(`^[^/]+/radio-${codename}-[^/]+\\.img$`), "radio")
+  const image = one(new RegExp(`^[^/]+/image-${codename}-[^/]+\\.zip$`), "system image")
+  const problems = [
+    ...(codename !== "" && roots.size === 1 ? [] : [problem("ArchiveLayout", "the archive does not have one top-level directory for the channel's device")]),
+    ...bootloader.problems,
+    ...radio.problems,
+    ...image.problems,
+    ...(buildId !== "" && image.name.toLowerCase().includes(buildId.toLowerCase()) ? [] : [problem("ArchiveLayout", `the system image is not the locked build ${buildId || "(the source lock names no build)"}`)]),
+  ]
+  return { problems, bootloader: bootloader.name, radio: radio.name, image: image.name }
+}
+
+export effect function stockRecoveryPlan(request: { readonly channel: ReleaseChannel; readonly sourceLock: string; readonly archive: string; readonly knownGood?: string }) {
+  const channel = request.channel
+  const lock = try readJson(request.sourceLock)
+  const buildId = text(field(lock, "factory", "buildId"))
+  const lockedSize = field(lock, "factory", "sizeBytes")
+  const actual = try fileRecord(request.archive)
+  const layout = stockLayout(try archiveEntries(request.archive), channel.device, buildId)
+  const archive: StockArchive = {
+    sha256: parseDigest(actual.sha256),
+    lockedFactory: parseDigest(field(lock, "factory", "sha256")),
+    sizeMatches: typeof lockedSize === "number" && lockedSize === actual.sizeBytes,
+    layoutMatches: layout.problems.length === 0,
+  }
+  const admitted = stockPlanAdmitted(channel, archive)
+  const reasons = [
+    ...(digestsMatch(archive.sha256, channel.stockFactoryImage) ? [] : [problem("ArchiveNotChannelImage", "the archive SHA-256 is not the channel's stock factory image")]),
+    ...(digestsMatch(channel.stockFactoryImage, archive.lockedFactory) ? [] : [problem("ChannelImageNotLocked", "the channel's stock image is not the locked factory archive")]),
+    ...(archive.sizeMatches ? [] : [problem("ArchiveSizeDiffers", "the archive size is not the locked factory archive size")]),
+    ...layout.problems,
+  ]
+  const fastboot = (...args: readonly string[]): PlanStep => ["fastboot", "-s", SERIAL, ...args]
+  const plan: StockPlan = {
+    kind: "StockPlan",
+    archive: actual,
+    buildId: buildId || null,
+    steps: admitted
+      ? [
+          ["adb", "-s", SERIAL, "reboot", "bootloader"],
+          fastboot("flashing", "unlock"),
+          fastboot("erase", "avb_custom_key"),
+          fastboot("flash", "bootloader", layout.bootloader),
+          fastboot("reboot-bootloader"),
+          fastboot("flash", "radio", layout.radio),
+          fastboot("reboot-bootloader"),
+          fastboot("-w", "update", layout.image),
+        ]
+      : [],
+    notes: STOCK_NOTES,
+    problems: admitted ? [] : reasons.length > 0 ? reasons : [problem("ArchiveNotChannelImage", "the archive is not the channel's locked factory archive")],
+    knownGood: request.knownGood === undefined ? null : try knownGoodRecoveryPlan({ channel: request.channel, directory: request.knownGood }),
+    executed: false,
+  }
+  return plan
+}
+
+export effect function verifyStockRecovery(request: { readonly device: DeviceRunner; readonly sourceLock: string }) {
+  const lock = try readJson(request.sourceLock)
+  const codename = text(field(lock, "device", "codename"))
+  const buildId = text(field(lock, "factory", "buildId"))
+  const seen = try observeDevice(request.device)
+  const observed = seen.observation
+  const stock = codename !== "" && buildId !== ""
+  const problems = observed.tag !== "OnAndroid"
+    ? [problem("StockBuildNotBooted", `the device is ${seen.state}, not booted Android`)]
+    : [
+        ...(stock && observed.device === codename ? [] : [problem("StockBuildNotBooted", `the device is ${observed.device}, not ${codename || "the source lock's device"}`)]),
+        ...(stock && observed.fingerprint.startsWith(`google/${codename}/${codename}:`) && observed.fingerprint.includes(`/${buildId}/`) && observed.fingerprint.endsWith(":user/release-keys")
+          ? []
+          : [problem("StockBuildNotBooted", `the device runs ${observed.fingerprint}, not stock ${buildId}`)]),
+        ...(observed.selinux === "Enforcing" ? [] : [problem("StockBuildNotBooted", "SELinux is not enforcing")]),
+        ...(!observed.flashLocked || (observed.verifiedBoot.tag === "BootRead" && observed.verifiedBoot.booted === "Green") ? [] : [problem("StockBuildNotBooted", "a locked bootloader does not report green verified boot")]),
+      ]
+  const verification: StockVerification = { kind: "StockVerification", passed: problems.length === 0, observed, problems, scope: "Stock build identity after recovery; not hardware acceptance" }
+  return verification
+}
+
+function buildKeysOf(fingerprint: string): BuildKeys {
+  if (fingerprint.endsWith(":user/release-keys")) return "ReleaseKeys"
+  return fingerprint.includes("dev-keys") ? "DevKeys" : "TestKeys"
+}
+
+export function retentionOf(record: ReleaseRecord, targetFilesSha256: string, imageVbmeta: Digest): Retention {
+  return {
+    record: record.release,
+    placeholders: placeholderFields(record.json).length,
+    keys: buildKeysOf(record.json.build.fingerprint),
+    targetFiles: parseDigest(targetFilesSha256),
+    recordVbmeta: parseDigest(record.json.verifiedBoot.images?.vbmeta),
+    imageVbmeta,
+  }
+}
+
+export function knownGoodProblems(channel: ReleaseChannel, record: ReleaseRecord, retention: Retention): RecoveryProblem[] {
+  if (retentionAdmitted(channel, retention)) return []
+  const problems = [
+    ...(recordAdmitted(channel, retention.record)
+      ? []
+      : [
+          problem("RecordNotAdmitted", `the record is not a clean ${channel.name} release of ${channel.product} on ${channel.device} under the channel's OTA certificate and AVB key, with rollback indexes`),
+          ...record.problems.map((detail) => problem("RecordNotAdmitted", detail)),
+        ]),
+    ...placeholderFields(record.json).map((at) => problem("Placeholder", `known-good record ${at} is unset or a placeholder`)),
+    ...(retention.keys === "ReleaseKeys" ? [] : [problem("NotReleaseKeys", `known-good build ${record.json.build.fingerprint} is not a release-keys user build`)]),
+    ...(digestsMatch(retention.targetFiles, retention.record.signedTargetFiles) ? [] : [problem("TargetFilesDiffer", "the target-files SHA-256 is not the record's signed target-files")]),
+    ...(digestsMatch(retention.imageVbmeta, retention.recordVbmeta) ? [] : [problem("VbmetaDiffers", "the signed image's vbmeta.img is not the record's signed vbmeta, or either is missing")]),
+  ]
+  return problems.length > 0 ? problems : [problem("RecordNotAdmitted", "the release is not admitted as known-good")]
+}
+
+effect function inspectRetention(channel: ReleaseChannel, recordFile: string, targetFiles: FileRecord, image: string) {
+  const record = try readRecord(recordFile)
+  const retention = retentionOf(record, targetFiles.sha256, try entryDigest(image, "vbmeta.img"))
+  return { record, retention, problems: knownGoodProblems(channel, record, retention) }
+}
+
+effect function retainFile(source: string, directory: string, archiveDir: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const target = path.join(directory, baseName(source))
+  const failed = (cause: { readonly message: string }) => new RetentionWriteFailed({ archiveDir, message: `${source} could not be retained: ${cause.message}` })
+  try mapError(files.copyFile(source, target), failed)
+  try mapError(files.chmod(target, 0o444), failed)
+  return try fileRecord(target)
+}
+
+export effect function retainKnownGood(request: { readonly channel: ReleaseChannel; readonly recordFile: string; readonly signedTargetFiles: string; readonly signedImage: string; readonly archiveDir: string }) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const channel = request.channel
+  const recordFile = try fileRecord(request.recordFile)
+  const targetFiles = try fileRecord(request.signedTargetFiles)
+  const image = try fileRecord(request.signedImage)
+  const inspected = try inspectRetention(channel, request.recordFile, targetFiles, request.signedImage)
+  const names = [recordFile.file, targetFiles.file, image.file]
+  const archiveDir = path.resolve(request.archiveDir)
+  const exists = (files.exists(archiveDir) catch () => true)
+  const problems = [
+    ...inspected.problems,
+    ...(new Set(names).size === 3 && !names.includes(KNOWN_GOOD_FILE) ? [] : [problem("NamesNotDistinct", `the record, target-files and image need distinct names other than ${KNOWN_GOOD_FILE}`)]),
+    ...(exists ? [problem("ArchiveExists", `${request.archiveDir} already exists; retain into a new directory`)] : []),
+  ]
+  if (problems.length > 0) {
+    const refused: Retained = { kind: "NotRetained", retained: false, problems, executed: false }
+    return refused
+  }
+  const failed = (cause: { readonly message: string }) => new RetentionWriteFailed({ archiveDir, message: cause.message })
+  try mapError(files.makeDirectory(path.dirname(archiveDir), { recursive: true }), failed)
+  const temporary = try mapError(files.makeTempDirectory({ directory: path.dirname(archiveDir), prefix: ".known-good-" }), failed)
+  const written = effect {
+    const copied = {
+      record: try retainFile(request.recordFile, temporary, archiveDir),
+      signedTargetFiles: try retainFile(request.signedTargetFiles, temporary, archiveDir),
+      signedImage: try retainFile(request.signedImage, temporary, archiveDir),
+    }
+    if (copied.record.sha256 !== recordFile.sha256 || copied.signedTargetFiles.sha256 !== targetFiles.sha256 || copied.signedImage.sha256 !== image.sha256)
+      throw new RetentionWriteFailed({ archiveDir, message: "a retained file changed while it was copied" })
+    const release = inspected.retention.record
+    const manifest: KnownGoodManifest = {
+      schema: 1,
+      kind: KNOWN_GOOD_KIND,
+      product: release.release.product,
+      device: release.release.device,
+      channel: release.channel,
+      fingerprint: release.release.fingerprint,
+      rollbackIndexes: release.rollbackIndexes,
+      createdAt: new Date(try Clock.currentTimeMillis).toISOString(),
+      record: copied.record,
+      signedTargetFiles: copied.signedTargetFiles,
+      signedImage: { ...copied.signedImage, vbmetaSha256: hexOf(inspected.retention.recordVbmeta) },
+      knownGood: retainedKnownGood(channel, inspected.retention),
+    }
+    try mapError(files.writeFileString(path.join(temporary, KNOWN_GOOD_FILE), `${JSON.stringify(manifest, null, 2)}\n`, { flag: "wx", mode: 0o444 }), failed)
+    try mapError(files.rename(temporary, archiveDir), failed)
+    try mapError(files.chmod(archiveDir, 0o555), failed)
+    const retained: Retained = { kind: "Retained", retained: true, archiveDir, manifest, problems: [], executed: false }
+    return retained
+  }
+  return try ensuring(written, ignore(files.remove(temporary, { recursive: true, force: true })))
+}
+
+function retainedEntry(manifest: unknown, key: "record" | "signedTargetFiles" | "signedImage"): FileRecord | null {
+  const file = text(field(manifest, key, "file"))
+  const sizeBytes = field(manifest, key, "sizeBytes")
+  return file !== "" && baseName(file) === file && file !== KNOWN_GOOD_FILE && typeof sizeBytes === "number" ? { file, sha256: text(field(manifest, key, "sha256")), sizeBytes } : null
+}
+
+function knownGoodPlanOf(manifest: unknown, problems: readonly RecoveryProblem[]): KnownGoodPlan {
+  const image = retainedEntry(manifest, "signedImage")?.file ?? null
+  const indexes = field(manifest, "rollbackIndexes")
+  return {
+    kind: "KnownGoodPlan",
+    fingerprint: text(field(manifest, "fingerprint")) || null,
+    rollbackIndexes: Array.isArray(indexes) ? (indexes as RollbackIndex[]) : null,
+    image,
+    steps: problems.length > 0 || image === null ? [] : [["adb", "-s", SERIAL, "reboot", "bootloader"], ["fastboot", "-s", SERIAL, "flashing", "unlock"], ["fastboot", "-s", SERIAL, "-w", "update", image]],
+    notes: KNOWN_GOOD_NOTES,
+    problems,
+    executed: false,
+  }
+}
+
+export effect function knownGoodRecoveryPlan(request: { readonly channel: ReleaseChannel; readonly directory: string }) {
+  const path = try Path.Path
+  const channel = request.channel
+  const manifest = (readJson(path.join(request.directory, KNOWN_GOOD_FILE)) catch () => undefined)
+  if (manifest === undefined) return knownGoodPlanOf(undefined, [problem("RetentionUnreadable", `${request.directory} has no readable ${KNOWN_GOOD_FILE}`)])
+  const shape = [
+    ...(field(manifest, "schema") === 1 && field(manifest, "kind") === KNOWN_GOOD_KIND ? [] : [problem("RetentionUnreadable", `${KNOWN_GOOD_FILE} is not a ${KNOWN_GOOD_KIND} record`)]),
+    ...(field(manifest, "product") === channel.product && field(manifest, "device") === channel.device && field(manifest, "channel") === channel.name ? [] : [problem("RetentionForAnotherChannel", "the retained release is not this channel's")]),
+  ]
+  const recordEntry = retainedEntry(manifest, "record")
+  const targetEntry = retainedEntry(manifest, "signedTargetFiles")
+  const imageEntry = retainedEntry(manifest, "signedImage")
+  const changed: RecoveryProblem[] = []
+  for (const [key, entry] of [["record", recordEntry], ["signedTargetFiles", targetEntry], ["signedImage", imageEntry]] as const) {
+    const actual = entry === null ? undefined : (fileRecord(path.join(request.directory, entry.file)) catch () => undefined)
+    if (entry === null || actual === undefined) changed.push(problem("RetainedFileChanged", `the retained ${key} is missing`))
+    else if (actual.sha256 !== entry.sha256 || actual.sizeBytes !== entry.sizeBytes) changed.push(problem("RetainedFileChanged", `the retained ${key} changed since it was retained`))
+  }
+  if (shape.length > 0 || changed.length > 0 || recordEntry === null || targetEntry === null || imageEntry === null) return knownGoodPlanOf(manifest, [...shape, ...changed])
+  const inspected = try inspectRetention(channel, path.join(request.directory, recordEntry.file), targetEntry, path.join(request.directory, imageEntry.file))
+  const sameBuild = inspected.record.json.build.fingerprint === field(manifest, "fingerprint")
+  return knownGoodPlanOf(manifest, [...inspected.problems, ...(sameBuild ? [] : [problem("RetainedFileChanged", "the retained record is not the retained build")])])
+}

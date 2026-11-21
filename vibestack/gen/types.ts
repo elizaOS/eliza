@@ -96,7 +96,8 @@ export function typeWalks(typedefs: Json[], module: string, prefix = "") {
   const ownerOf = (variant: string): Json => {
     const [base, alias] = variant.split("::").reverse();
     const owners = typedefs.filter((d) => d.type.kind === "sum" && d.alias === alias && fields(d.type).some((f: Json) => f.fieldName === base));
-    return owners.find((d) => d.module === module) ?? owners[0] ?? fail(`unknown variant ${variant}`);
+    const direct = (d: Json) => d.name.split("::").length === variant.split("::").length;
+    return owners.find((d) => d.module === module) ?? owners.find(direct) ?? owners[0] ?? fail(`unknown variant ${variant}`);
   };
 
   // --- spellings -------------------------------------------------------------

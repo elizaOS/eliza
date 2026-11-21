@@ -1,0 +1,249 @@
+// spec/agent/voice/clientAudio.md, "A segment is played only once its input has ended and its audio has played"; spec/agent/voice/clientAudio.md, "Segments play in order once each, and Stop silences the reply at once"; spec/agent/voice/clientAudio.md, "The progressive attachment is ready at its first appended frame, or at the end without streaming"
+import { assert, it } from "@effect/vitest"
+import { lawASegmentPlaysOnlyAfterBothEnds, mediaWaitMs, segmentOf } from "../gen/agent__voice__clientAudio.effect.vibe"
+import {
+  attachProgressiveSpeech, speakerPortOf, SpeechPlaybackError, SpeechRateRefused, SpeechStopped, splitSpeechSegments, type SegmentedSpeechState,
+} from "../src/voice/playback.vibe"
+import { FakePlayer, FakeSpeaker, fakeSpeechMedia, fakeSpeechSource } from "./support/speech-playback-fake.ts"
+
+const idle: SegmentedSpeechState = { phase: "idle", caption: "" }
+
+it.effect("Segments play in order once each, and Stop silences the reply at once: a reply is split keeping every word", () => effect {
+  const reply = "  Dr. Chen moved the visit to 3.30 pm.  Bring the form from https://clinic.example/forms?id=7 today. Is that fine?\n Yes!"
+  const segments = splitSpeechSegments(reply)
+  const unpunctuated = Array.from({ length: 60 }, (_, i) => `word${i}`).join(" ")
+  const long = splitSpeechSegments(unpunctuated)
+  try Effect.try(() => {
+    assert.deepStrictEqual(segments, [
+      "Dr. Chen moved the visit to 3.30 pm.",
+      "Bring the form from https://clinic.example/forms?id=7 today.",
+      "Is that fine?",
+      "Yes!",
+    ])
+    assert.strictEqual(segments.join(" "), reply.replace(/\s+/g, " ").trim())
+    assert.strictEqual(long.join(" "), unpunctuated)
+    assert.isTrue(long.every((segment) => segment.length <= 180))
+    assert.isAbove(long.length, 1)
+    assert.deepStrictEqual(splitSpeechSegments(" \n "), [])
+  })
+})
+
+it.effect("Segments play in order once each, and Stop silences the reply at once: each segment plays once, in order, and Speak while playing does nothing", () => effect {
+  const s = new FakeSpeaker()
+  const speaking = s.speak("First part. Second part! Third part?")
+  try promise(() => s.flush())
+  const ignored = try promise(() => s.outcome(s.speak("Something else entirely.")))
+  try promise(() => s.playThrough(false))
+  try promise(() => s.playThrough(true))
+  try promise(() => s.playThrough(false))
+  const result = try promise(() => s.outcome(speaking))
+  const whole = s.speak("One. Two.", { keepWhole: true })
+  try promise(() => s.flush())
+  try promise(() => s.playThrough(false))
+  const wholeResult = try promise(() => s.outcome(whole))
+  try Effect.try(() => {
+    assert.deepStrictEqual([ignored, result, wholeResult], ["played", "played", "played"])
+    assert.deepStrictEqual(s.attached.map((entry) => entry.text), ["First part.", "Second part!", "Third part?", "One. Two."])
+    assert.deepStrictEqual(s.attached.map((entry) => [entry.player.plays, entry.disposed, entry.player.count()]), [[1, 1, 0], [1, 1, 0], [1, 1, 0], [1, 1, 0]])
+    assert.isTrue(s.attached.every((entry) => entry.player.preservesPitch))
+    assert.deepStrictEqual(s.shown.filter((state) => state.phase === "playing").map((state) => state.caption),
+      ["First part.", "Second part!", "Third part?", "One. Two."])
+    assert.isTrue(s.shown.some((state) => state.phase === "waiting" && state.caption === "Second part!"))
+    assert.deepStrictEqual(s.shown.at(-1), idle)
+    assert.isFalse(s.playback.pending)
+  })
+})
+
+it.effect("A segment is played only once its input has ended and its audio has played: neither end alone plays it", () => effect {
+  const s = new FakeSpeaker()
+  let played = false
+  const speaking = s.speak("Only one.")
+  try promise(() => s.flush())
+  const entry = s.current()
+  entry.ready(null)
+  try promise(() => s.flush())
+  entry.player.fire("ended")
+  try promise(() => s.flush())
+  const afterAudio = s.playback.pending
+  entry.load()
+  const result = try promise(() => s.outcome(speaking))
+  try Effect.try(() => {
+    assert.isTrue(afterAudio)
+    assert.strictEqual(result, "played")
+    assert.isFalse(s.playback.pending)
+    assert.isTrue(lawASegmentPlaysOnlyAfterBothEnds(["AudioReady", "AudioEnded", "InputLoaded"]))
+    assert.strictEqual(segmentOf(["AudioReady", "AudioEnded"]).outcome, "SegmentPending")
+  })
+})
+
+it.effect("A segment is played only once its input has ended and its audio has played: invalid audio and media failures end the reply with their error", () => effect {
+  const zeroSpeed = new FakeSpeaker()
+  const badSpeed = zeroSpeed.speak("Bad speed. Never played.")
+  try promise(() => zeroSpeed.flush())
+  zeroSpeed.current().ready(0)
+  const bad = try promise(() => zeroSpeed.outcome(badSpeed))
+
+  const unready = new FakeSpeaker()
+  const loadedFirst = unready.speak("Loaded early.")
+  try promise(() => unready.flush())
+  unready.current().load()
+  const early = try promise(() => unready.outcome(loadedFirst))
+
+  const refused = new FakeSpeaker()
+  const refusing = refused.speak("Autoplay blocked. Second.")
+  try promise(() => refused.flush())
+  refused.current().player.refusal = new Error("NotAllowedError")
+  refused.current().ready(1.25)
+  const blocked = try promise(() => refused.outcome(refusing))
+
+  const broken = new FakeSpeaker()
+  const breaking = broken.speak("Decoder fails.")
+  try promise(() => broken.flush())
+  const brokenEntry = broken.current()
+  brokenEntry.ready(null)
+  try promise(() => broken.flush())
+  brokenEntry.player.fire("error")
+  brokenEntry.load()
+  brokenEntry.player.fire("ended")
+  const media = try promise(() => broken.outcome(breaking))
+  try Effect.try(() => {
+    const code = (failure: unknown) => failure instanceof SpeechPlaybackError ? failure.code : failure
+    assert.deepStrictEqual([code(bad), code(early), code(blocked), code(media)], ["invalid-audio", "invalid-audio", "playback", "playback"])
+    assert.deepStrictEqual([zeroSpeed.attached.length, refused.attached.length], [1, 1])
+    assert.strictEqual(zeroSpeed.current().player.plays, 0)
+    assert.deepStrictEqual(broken.shown.at(-1), idle)
+    assert.deepStrictEqual([zeroSpeed.current().disposed, brokenEntry.disposed], [1, 1])
+    assert.isFalse(broken.playback.pending)
+  })
+})
+
+it.effect("Segments play in order once each, and Stop silences the reply at once: nothing plays after Stop until the next Speak", () => effect {
+  const s = new FakeSpeaker()
+  const played: string[] = []
+  const broke: unknown[] = []
+  const port = speakerPortOf(s.playback)
+  port.speak(["Hello there.", "This is cut.", "Never heard."], { segmentPlayed: () => { played.push("played") }, broke: (cause) => { broke.push(cause) } })
+  try promise(() => s.flush())
+  try promise(() => s.playThrough(false))
+  const second = s.current()
+  second.ready(null)
+  try promise(() => s.flush())
+  const pausesBefore = second.player.pauses
+  port.stop()
+  const stopped = { pauses: second.player.pauses - pausesBefore, disposed: second.disposed, shown: s.shown.at(-1), pending: s.playback.pending }
+  second.load()
+  second.player.fire("ended")
+  try promise(() => s.flush())
+  const late = { attached: s.attached.length, played: played.length, shown: s.shown.at(-1), plays: second.player.plays }
+  const again = s.speak("After stop.")
+  try promise(() => s.flush())
+  try promise(() => s.playThrough(false))
+  const result = try promise(() => s.outcome(again))
+  try Effect.try(() => {
+    assert.deepStrictEqual(stopped, { pauses: 1, disposed: 1, shown: idle, pending: false })
+    assert.deepStrictEqual(late, { attached: 2, played: 1, shown: idle, plays: 1 })
+    assert.deepStrictEqual(broke, [])
+    assert.strictEqual(result, "played")
+    assert.deepStrictEqual(s.attached.map((entry) => entry.text), ["Hello there.", "This is cut.", "After stop."])
+  })
+})
+
+it.effect("Segments play in order once each, and Stop silences the reply at once: the rate divides by the rendered speed and a bad rate is refused", () => effect {
+  const s = new FakeSpeaker()
+  s.playback.setRate(1.5)
+  const speaking = s.speak("Quick one.")
+  try promise(() => s.flush())
+  const entry = s.current()
+  const before = entry.player.playbackRate
+  entry.ready(1.25)
+  try promise(() => s.flush())
+  const rendered = [entry.player.playbackRate, entry.player.defaultPlaybackRate]
+  const refused = try Effect.flip(Effect.try({ try: () => s.playback.setRate(0), catch: (cause) => new SpeechPlaybackError({ code: "playback", cause }) }))
+  s.playback.stop()
+  const result = try promise(() => s.outcome(speaking))
+  try Effect.try(() => {
+    assert.strictEqual(before, 1.5)
+    assert.deepStrictEqual(rendered, [1.2, 1.2])
+    assert.instanceOf(refused.cause, SpeechRateRefused)
+    assert.strictEqual(result, "played")
+  })
+})
+
+it.effect("The progressive attachment is ready at its first appended frame, or at the end without streaming: a stream is ready at its first nonempty append", () => effect {
+  const player = new FakePlayer()
+  const m = fakeSpeechMedia(true, player)
+  const s = fakeSpeechSource([0, 3, 2])
+  const ready: Array<number | null> = []
+  const frames: number[] = []
+  const attachment = attachProgressiveSpeech(player, s.source, { media: m.media, onReady: (speed) => { ready.push(speed) }, onFrame: (frame) => { frames.push(frame.seq) } })
+  try promise(() => s.release())
+  const afterEmpty = ready.length
+  try promise(() => s.release())
+  const afterFirst = [...ready]
+  try promise(() => s.release())
+  try promise(() => s.release())
+  const result = try promise(() => attachment.loaded)
+  const buffered = try promise(() => result.audio.arrayBuffer())
+  attachment.dispose()
+  try Effect.try(() => {
+    assert.isTrue(attachment.progressive)
+    assert.strictEqual(afterEmpty, 0)
+    assert.deepStrictEqual(afterFirst, [1.1])
+    assert.deepStrictEqual(ready, [1.1])
+    assert.deepStrictEqual(frames, [1, 2, 3])
+    assert.deepStrictEqual(m.sources[0]?.buffer.appended, [3, 2])
+    assert.strictEqual(m.sources[0]?.ended, 1)
+    assert.deepStrictEqual([result.frames.map((frame) => frame.seq), result.renderedSpeed, buffered.byteLength], [[1, 2, 3], 1.1, 5])
+    assert.deepStrictEqual(m.clips, [])
+    assert.deepStrictEqual([s.counts.opened, s.counts.cancelled], [1, 0])
+    assert.deepStrictEqual(m.revoked, ["blob:stream-1"])
+    assert.deepStrictEqual([player.src, player.loads], ["", 1])
+    assert.strictEqual(mediaWaitMs, 30000)
+  })
+})
+
+it.effect("The progressive attachment is ready at its first appended frame, or at the end without streaming: without a media source the same clip plays only at the end", () => effect {
+  const player = new FakePlayer()
+  const m = fakeSpeechMedia(false, player)
+  const s = fakeSpeechSource([4, 4])
+  const ready: Array<number | null> = []
+  const attachment = attachProgressiveSpeech(player, s.source, { media: m.media, onReady: (speed) => { ready.push(speed) } })
+  try promise(() => s.release())
+  try promise(() => s.release())
+  const beforeEnd = ready.length
+  try promise(() => s.release())
+  const result = try promise(() => attachment.loaded)
+  const playing = player.src
+  player.src = "blob:someone-else"
+  attachment.dispose()
+  try Effect.try(() => {
+    assert.isFalse(attachment.progressive)
+    assert.strictEqual(beforeEnd, 0)
+    assert.deepStrictEqual(ready, [1.1])
+    assert.deepStrictEqual([playing, m.clips.length, m.clips[0] === result.audio, result.audio.size], ["blob:clip-1", 1, true, 8])
+    assert.deepStrictEqual([s.counts.opened, s.counts.cancelled], [1, 0])
+    assert.deepStrictEqual(m.revoked, ["blob:clip-1"])
+    assert.deepStrictEqual([player.src, player.loads, player.pauses], ["blob:someone-else", 0, 0])
+  })
+})
+
+it.effect("The progressive attachment is ready at its first appended frame, or at the end without streaming: dispose before the end cancels upstream and detaches the player", () => effect {
+  const player = new FakePlayer()
+  const m = fakeSpeechMedia(true, player)
+  const s = fakeSpeechSource([2, 2, 2])
+  const stop = new AbortController()
+  const ready: Array<number | null> = []
+  const attachment = attachProgressiveSpeech(player, s.source, { media: m.media, signal: stop.signal, onReady: (speed) => { ready.push(speed) } })
+  try promise(() => s.release())
+  stop.abort()
+  const failure = try promise(() => attachment.loaded.then(() => undefined, (cause: unknown) => cause))
+  try promise(() => s.release())
+  attachment.dispose()
+  try Effect.try(() => {
+    assert.instanceOf(failure, SpeechStopped)
+    assert.deepStrictEqual(ready, [1.1])
+    assert.strictEqual(s.counts.cancelled, 1)
+    assert.deepStrictEqual(m.revoked, ["blob:stream-1"])
+    assert.deepStrictEqual([player.src, player.loads], ["", 1])
+  })
+})

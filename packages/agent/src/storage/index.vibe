@@ -392,7 +392,7 @@ module node {
         memories, input.accessContext, this.agentId,
         input.tableName === "messages" && input.accessContext.authorizedRoomIds !== undefined ? "room" : "private",
       ) : memories
-      const floor = input.match_threshold || Number.NEGATIVE_INFINITY
+      const floor = input.match_threshold ?? Number.NEGATIVE_INFINITY
       const offset = input.offset ?? 0
       const limit = input.count ?? input.limit
       return rerankMemories(input.query, readable.filter((memory) => memory.similarity >= floor)
@@ -439,8 +439,13 @@ module node {
     }
 
     async getLogInventory(input: Parameters<IDatabaseAdapter["getLogInventory"]>[0]): ReturnType<IDatabaseAdapter["getLogInventory"]> {
-      return (await this.getLogs({})).filter((row) => !input.excludeTypes?.includes(row.type))
-        .map(({ id, roomId, createdAt }) => ({ id, roomId, createdAt }))
+      const result = await this.dispatch(() => this.db.query<{ key: UUID; room_id: UUID; created_at: number | bigint | string }>(
+        `SELECT key, room_id, created_at FROM device_records
+          WHERE collection = 'logs' AND ($1::text[] IS NULL OR data->>'type' <> ALL($1))
+          ORDER BY created_at DESC, key DESC`,
+        [input.excludeTypes === undefined || input.excludeTypes.length === 0 ? null : [...input.excludeTypes]],
+      ))
+      return result.rows.map((row) => ({ id: row.key, roomId: row.room_id, createdAt: new Date(Number(row.created_at)) }))
     }
 
     async deleteLogs(keys: UUID[]): Promise<void> { await this.remove("logs", keys) }

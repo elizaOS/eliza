@@ -186,6 +186,7 @@ public final class DeviceKeyJourney {
     seen.add(take("firstHeld", held()));
     seen.add(take("lostReplyAskedAgainWithSameProof", cloud.proofs.size() == 2 && cloud.proofs.get(0).equals(cloud.proofs.get(1))));
     seen.add(take("keyHiddenFromText", !store.current().toString().contains(store.current().value())));
+    seen.add(take("unknownAckRefusal", client.ack("cred-unknown", "eliza_unknown") instanceof DeviceKeyClient.Answer.Refused<?> r ? r.status() + "/" + r.error() : "answered"));
 
     seen.add(take("secondSignIn", signIn()));
     seen.add(take("secondHeld", held()));

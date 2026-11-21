@@ -3,8 +3,8 @@ module node {
   import { processOwnerUid } from "../host/process-owner.vibe"
   import { Schema, type Redacted } from "effect"
   import { once, type EventEmitter } from "node:events"
-  import { chmod, lstat } from "node:fs/promises"
-  import { createServer, type Socket } from "node:net"
+  import { chmod, lstat, unlink } from "node:fs/promises"
+  import { connect, createServer, type Socket } from "node:net"
   import { dirname } from "node:path"
   import {
     admit, enabled, feedCount, frameLimitBytes, initial, isLive, isTerminal, step,
@@ -82,7 +82,7 @@ module node {
   export function localRouteClass(target: string): RouteClass {
     const path = target.split("?", 1)[0]
     if (/^\/api\/conversations\/[^/]+\/messages(?:\/stream)?$/.test(path)) return "MessageRoute"
-    if (/^\/api\/asr\/local-inference(?:\/|$)/.test(path)) return "SpeechRoute"
+    if (/^\/api\/(?:asr|tts)\/local-inference(?:\/|$)/.test(path)) return "SpeechRoute"
     return "PlainRoute"
   }
 
@@ -373,11 +373,27 @@ module node {
     })
   }
 
+  async function removeStaleSocket(path: string): Promise<void> {
+    const found = await lstat(path).catch((failure: NodeJS.ErrnoException) => {
+      if (failure.code === "ENOENT") return undefined
+      throw failure
+    })
+    if (found === undefined) return
+    if (!found.isSocket() || found.uid !== processOwnerUid()) throw new Error("The agent socket path holds a file the agent does not own")
+    const live = await new Promise<boolean>((resolve) => {
+      const probe = connect(path)
+      probe.once("connect", () => { probe.destroy(); resolve(true) })
+      probe.once("error", () => resolve(false))
+    })
+    if (!live) await unlink(path)
+  }
+
   export async function listenOnSocket(path: string, route: LocalRouter, feeds: FeedAccess): Promise<() => Promise<void>> {
     const directory = await lstat(dirname(path))
     if (!directory.isDirectory() || directory.uid !== processOwnerUid() || (directory.mode & 0o077) !== 0) {
       throw new Error("The agent socket directory must be owner-only")
     }
+    await removeStaleSocket(path)
     const exchanges = new Exchanges()
     exchanges.listen("PrivateSocket")
     const sockets = new Set<Socket>()

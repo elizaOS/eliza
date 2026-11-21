@@ -5,7 +5,7 @@ import type { BrowserDockState, ElizaSurfaceManagerPlugin, KeyboardChangedEvent,
 export type * from "./definitions/surface.ts"
 
 module capacitor {
-  import { registerPlugin, WebPlugin } from "@capacitor/core"
+  import { CapacitorException, ExceptionCode, registerPlugin, WebPlugin } from "@capacitor/core"
   import type { ElizaSurfaceManagerPlugin } from "./definitions/surface.ts"
 
   const UNAVAILABLE = "ElizaSurfaceManager is a native-only plugin: a web host has no native child web surface."
@@ -14,7 +14,7 @@ module capacitor {
   /** @throws {never} */
   function webSurface(): ElizaSurfaceManagerPlugin {
     const web = new WebPlugin()
-    const refuse = () => Promise.reject(web.unavailable(UNAVAILABLE))
+    const refuse = () => Promise.reject(new CapacitorException(UNAVAILABLE, ExceptionCode.Unavailable))
     return new Proxy(web, {
       get: (target, key) => key === "then" || key === "addListener" || key === "removeAllListeners" ? Reflect.get(target, key) : refuse,
     }) as unknown as ElizaSurfaceManagerPlugin

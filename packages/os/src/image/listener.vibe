@@ -1,0 +1,576 @@
+// spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed"; spec/os/image/listener.md, "Story: Activate the listener only on a qualified image"; spec/os/image/listener.md, "A listener is staged only from a matched source that carries the chip and ops SystemUI patches"; spec/os/image/listener.md, "The listener runs in its own SELinux domain, selected only for the launcher's signer"
+import { ChildProcess } from "effect/process"
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+import { hexOf, isDigest, type Digest, type StagingMode } from "../../gen/os__image__apk.effect.vibe"
+import {
+  indicatorExemptRoles,
+  listenerPrivilegedPermissions,
+  listenerSelinuxDomain,
+  listenerStaging,
+  qualificationMatches,
+  qualificationPassed,
+  sourcePatches,
+  type GateRow,
+  type ListenerApk,
+  type ListenerDescriptor,
+  type ListenerOverlay,
+  type ListenerProblem,
+  type ListenerRequest,
+  type ListenerSpeech,
+  type PackageName,
+  type Qualification,
+  type RoleRow,
+  type WakeName,
+  type ZipLayout,
+} from "../../gen/os__image__listener.effect.vibe"
+import type { SourceVerdict } from "../../gen/os__image__sourceLock.effect.vibe"
+import {
+  aaptManifestTree,
+  listAndroidArtifactEntries,
+  manifestFacts,
+  parseDigest,
+  readAndroidArtifactEntryBuffers,
+  readApkSigner,
+  resolveAndroidBuildTools,
+  snapshotAndroidArtifact,
+  type Environment,
+} from "./apk.vibe"
+import { admitPatchEnvelope, aospDirectory, hashFile, loadProfiles, safePath, type AdmittedPatch, type RawRecord } from "./source-lock.vibe"
+
+module node {
+  import { X509Certificate, createHash } from "node:crypto"
+
+  /** @throws {never} */
+  export function sha256Hex(bytes: Uint8Array | string): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function certificateDer(pem: Uint8Array): Uint8Array | undefined {
+    try {
+      return new Uint8Array(new X509Certificate(pem).raw)
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function hexBytes(bytes: Uint8Array): string {
+    return Buffer.from(bytes).toString("hex")
+  }
+
+  /** @throws {never} */
+  export function parseJson(text: string): unknown {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return undefined
+    }
+  }
+}
+import { certificateDer, hexBytes, parseJson, sha256Hex } from node
+
+export type SystemuiBundle = "ops" | "chip" | "assist" | "power"
+export type SystemuiState = "before" | "after"
+
+export interface SystemuiFile {
+  readonly path: string
+  readonly sha256: string
+}
+
+export interface SystemuiReceipt {
+  readonly bundle: SystemuiBundle
+  readonly state: SystemuiState
+  readonly project: string
+  readonly revision: string
+  readonly baselineLockSha256: string
+  readonly manifestSha256: string
+  readonly patchSha256: string
+  readonly files: readonly SystemuiFile[]
+}
+
+export interface LauncherIdentity {
+  readonly packageName: string
+  readonly signerSha256: string
+  readonly apkSha256: string
+  readonly descriptorSha256: string
+}
+
+export interface SpeechPin {
+  readonly entry: string
+  readonly sha256: string
+}
+
+export interface ListenerQualificationInput {
+  readonly record: string
+  readonly enrolledSha256: string
+}
+
+export interface StageListenerOptions {
+  readonly apk: string
+  readonly output: string
+  readonly moduleName: string
+  readonly launcher: LauncherIdentity
+  readonly wakeNames: readonly string[]
+  readonly certificate: string
+  readonly source: SourceVerdict
+  readonly development?: boolean
+  readonly descriptor?: string
+  readonly qualification?: ListenerQualificationInput
+  readonly sdkCommit?: string
+  readonly speech?: readonly SpeechPin[]
+  readonly aapt?: string
+  readonly apksigner?: string
+  readonly zipalign?: string
+  readonly env?: Environment
+}
+
+export interface StagedListener {
+  readonly output: string
+  readonly packageName: string
+  readonly activated: boolean
+  readonly speechIncluded: boolean
+  readonly sepolicySha256: string
+  readonly request: ListenerRequest
+}
+
+export interface ListenerPermissions {
+  readonly packageName: string
+  readonly privileged: readonly string[]
+  readonly xml: string
+}
+
+interface StagedFile {
+  readonly name: string
+  readonly bytes: Uint8Array | string
+}
+
+export error ListenerOptionsInvalid { message: string }
+export error ListenerInputUnreadable { file: string; message: string }
+export error ListenerRefused { problem: ListenerProblem; message: string }
+export error ListenerOutputExists { output: string; message: string }
+export error ListenerWriteFailed { output: string; message: string }
+export error ListenerToolFailed { tool: string; args: readonly string[]; message: string }
+export error SystemuiRefused { bundle: string; message: string }
+
+const PACKAGE = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/
+const MODULE = /^[A-Z][A-Za-z0-9]*$/
+const WAKE_NAME = /^[a-z][a-z0-9]{0,31}$/
+const SDK_COMMIT = /^[0-9a-f]{40}$/
+const HEX64 = /^[0-9a-f]{64}$/
+const RECEIVER_CLASS = "ai.eliza.sense.ListenerActionReceiver"
+const SEINFO = "eliza_sense"
+const ASSOCIATED_HOSTS = ["com.android.systemui", "com.android.permissioncontroller", "com.android.settings"]
+const BUNDLE_DIRECTORY: Readonly<Record<SystemuiBundle, string>> = { ops: "", chip: "chip", assist: "assist", power: "power" }
+const ZIPALIGN_ROW = /^\s*\d+\s+(.+?)\s+\((OK - compressed|OK|BAD[^)]*)\)\s*$/
+const PROBLEM_TEXT: Readonly<Record<ListenerProblem, string>> = {
+  SourceNotAdmitted: "the source verdict is not a match carrying the chip and ops SystemUI patches",
+  NotTheLaunchersListener: "the APK is not the launcher's .sense package",
+  SignerNotTheLaunchers: "the APK is not signed by exactly the launcher's signer",
+  PermissionsUnreviewed: "the APK requests a permission outside the reviewed set, or lacks a privileged grant, the microphone or its foreground service",
+  OverlayNotAdmitted: "the listener overlay does not clear every indicator-exempt role or does not keep the microphone toggle",
+  WakeNamesInvalid: "wake names must be one to eight distinct lowercase words of at most 32 letters or digits",
+  ZipLayoutRefused: "the APK has an unsafe or duplicate entry, no manifest or DEX, or native libraries and DEX that are compressed or unaligned",
+  PolicyCertificateDiffers: "the public release certificate is not the launcher's signer",
+  DescriptorMismatch: "the APK does not match its reviewed listener descriptor",
+  NotAReleaseBuild: "a production or activated listener must be a non-debuggable release build",
+  SpeechBundleMissing: "a production or activated listener must package its pinned speech bundle",
+  QualificationMissing: "production staging needs the product's qualification record",
+  QualificationMismatch: "the qualification record is not the enrolled one, or names other inputs than this image's",
+  QualificationNotPassed: "the qualification record does not pass every gate with an evidence digest",
+}
+
+function isRecord(value: unknown): value is RawRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value : ""
+}
+
+function xml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+}
+
+function withoutComments(body: string): string {
+  return body.replace(/<!--[\s\S]*?-->/g, "")
+}
+
+export function packageNameOf(name: string): PackageName {
+  const dot = name.lastIndexOf(".")
+  return dot < 0 ? { parent: "", leaf: name } : { parent: name.slice(0, dot), leaf: name.slice(dot + 1) }
+}
+
+function digestOf(hex: string): Digest {
+  return parseDigest(hex)
+}
+
+export function listenerPermissions(launcherPackage: string): ListenerPermissions {
+  const packageName = `${launcherPackage}.sense`
+  const rows = listenerPrivilegedPermissions.map((permission) => `        <permission name="${xml(permission)}" />\n`).join("")
+  return {
+    packageName,
+    privileged: listenerPrivilegedPermissions,
+    xml: `<?xml version="1.0" encoding="utf-8"?>\n<permissions>\n    <privapp-permissions package="${xml(packageName)}">\n${rows}    </privapp-permissions>\n</permissions>\n`,
+  }
+}
+
+export function requestedPermissions(dump: string): { readonly packageName: string; readonly requested: string[] } {
+  const packageName = /^package: (\S+)$/m.exec(dump)?.[1] ?? ""
+  const requested = [...dump.matchAll(/^uses-permission: name='([^']+)'/gm)].map((row) => row[1] ?? "").filter((name) => !name.startsWith(`${packageName}.`))
+  return { packageName, requested: [...new Set(requested)].sort() }
+}
+
+export function listenerOverlay(configXml: string): ListenerOverlay {
+  const body = withoutComments(configXml)
+  const roles: RoleRow[] = []
+  for (const role of indicatorExemptRoles) {
+    const values = [...body.matchAll(new RegExp(`<string\\s+name="${role}"[^>]*?(?:/>|>([^<]*)</string>)`, "g"))].map((row) => (row[1] ?? "").trim())
+    if (values.length === 0) roles.push({ role, value: "RoleNotOverlaid" })
+    for (const value of values) roles.push({ role, value: value === "" ? "RoleCleared" : "RoleHeld" })
+  }
+  return { roles, microphoneToggle: /<bool\s+name="config_supportsMicToggle"\s*>\s*true\s*<\/bool>/.test(body) }
+}
+
+export function wakeNames(names: readonly string[]): WakeName[] {
+  return names.map((word): WakeName => (WAKE_NAME.test(word) ? { tag: "WakeWord", word } : { tag: "MalformedWakeName" }))
+}
+
+export function zipLayoutOf(entries: readonly string[], alignment: string, aligned: boolean): ZipLayout {
+  const rows = alignment.split(/\r?\n/).map((line) => ZIPALIGN_ROW.exec(line)).filter((row) => row !== null)
+  const loaded = (entry: string) => entry.endsWith(".dex") || (entry.startsWith("lib/") && entry.endsWith(".so"))
+  const stored = rows.every((row) => !loaded(row[1] ?? "") || row[2] === "OK")
+  return aligned && stored && rows.length === entries.length && entries.includes("AndroidManifest.xml") && entries.includes("classes.dex") ? "ZipAligned" : "ZipRefused"
+}
+
+export function parseQualification(bytes: Uint8Array, record: unknown): Qualification | undefined {
+  if (!isRecord(record) || record.schemaVersion !== 1 || typeof record.qualified !== "boolean") return undefined
+  const patches = isRecord(record.patchManifests) ? record.patchManifests : {}
+  const gates = isRecord(record.gates) ? record.gates : {}
+  const sdkCommit = text(record.sdkCommit)
+  return {
+    tag: "QualificationRecord",
+    bytes: digestOf(sha256Hex(bytes)),
+    qualified: record.qualified,
+    inputs: {
+      packageName: packageNameOf(text(record.packageName)),
+      launcher: parseDigest(record.launcherSha256),
+      listener: parseDigest(record.listenerSha256),
+      launcherDescriptor: parseDigest(record.launcherDescriptorSha256),
+      listenerDescriptor: parseDigest(record.listenerDescriptorSha256),
+      certificate: parseDigest(record.certificateSha256),
+      sourceLock: text(record.sourceLockSha256),
+      sdkCommit: SDK_COMMIT.test(sdkCommit) ? sdkCommit : "",
+      sepolicy: parseDigest(record.sepolicySha256),
+      patches: Object.entries(patches).map(([name, manifestSha256]) => ({ name, manifestSha256: text(manifestSha256) })),
+    },
+    gates: Object.entries(gates).map(([gate, result]): GateRow => ({
+      gate,
+      result: isRecord(result) && result.status === "passed" ? { tag: "GatePassed", evidence: parseDigest(result.evidenceSha256) } : { tag: "GateNotPassed" },
+    })),
+  }
+}
+
+function parseDescriptor(bytes: Uint8Array, descriptor: unknown): ListenerDescriptor | undefined {
+  if (!isRecord(descriptor)) return undefined
+  return {
+    tag: "ListenerReviewed",
+    bytes: digestOf(sha256Hex(bytes)),
+    packageName: packageNameOf(text(descriptor.packageName)),
+    apk: parseDigest(descriptor.apkSha256),
+    certificate: parseDigest(descriptor.certificateSha256),
+  }
+}
+
+effect function runTool(tool: string, args: readonly string[], cwd: string | undefined, env: Environment | undefined, extendEnv = false) {
+  const spawner = try ChildProcessSpawner
+  return try mapError(scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make(tool, [...args], { stdin: "ignore", ...(cwd === undefined ? {} : { cwd }), ...(env === undefined ? {} : { env, extendEnv }) }))
+    const [stdout, stderr] = try.all [Stream.mkString(Stream.decodeText(child.stdout)), Stream.mkString(Stream.decodeText(child.stderr))]
+    const code: number = try child.exitCode
+    return { code, stdout, stderr }
+  }), (cause) => new ListenerToolFailed({ tool, args, message: `${tool} could not run: ${cause.message}` }))
+}
+
+effect function toolOutput(tool: string, args: readonly string[], env: Environment | undefined) {
+  const result = try runTool(tool, args, undefined, env)
+  if (result.code !== 0) throw new ListenerToolFailed({ tool, args, message: `${tool} ${args.join(" ")} exited with ${result.code}: ${(result.stderr || result.stdout).trim()}` })
+  return result.stdout
+}
+
+effect function readInput(file: string) {
+  const files = try FileSystem.FileSystem
+  return try mapError(files.readFile(file), (cause) => new ListenerInputUnreadable({ file, message: `Cannot read ${file}: ${cause.message}` }))
+}
+
+effect function readJsonInput(file: string) {
+  const bytes = try readInput(file)
+  return { bytes, value: parseJson(new TextDecoder().decode(bytes)) }
+}
+
+export effect function readListenerQualification(file: string) {
+  const read = try readJsonInput(file)
+  const qualification = parseQualification(read.bytes, read.value)
+  if (qualification === undefined) throw new ListenerInputUnreadable({ file, message: `${file} is not a schema 1 listener qualification record` })
+  return qualification
+}
+
+export effect function verifyListenerQualification(request: ListenerRequest, source: SourceVerdict, production: boolean) {
+  const qualification = request.qualification
+  if (qualification.tag === "NoQualification") throw new ListenerRefused({ problem: "QualificationMissing", message: PROBLEM_TEXT.QualificationMissing })
+  if (!qualificationMatches(request, source) || !isDigest(request.enrolledQualification)) throw new ListenerRefused({ problem: "QualificationMismatch", message: PROBLEM_TEXT.QualificationMismatch })
+  if (!qualificationPassed(qualification, production)) throw new ListenerRefused({ problem: "QualificationNotPassed", message: PROBLEM_TEXT.QualificationNotPassed })
+  return qualification
+}
+
+effect function bundleDirectory(bundle: SystemuiBundle) {
+  const path = try Path.Path
+  return path.join(try aospDirectory(), "sense", "systemui", BUNDLE_DIRECTORY[bundle])
+}
+
+export effect function systemuiPatch(bundle: SystemuiBundle) {
+  const admitted = try admitPatchEnvelope(bundle, try bundleDirectory(bundle))
+  const envelope = admitted.envelope
+  const reviewed = (try loadProfiles()).some((profile) => profile.lock.digest === envelope.baseline && profile.lock.projects.some((project) => project.path === envelope.project && project.revision === envelope.revision))
+  if (!reviewed) throw new SystemuiRefused({ bundle, message: `The ${bundle} SystemUI patch was reviewed against a source lock or revision this package no longer pins; review it again` })
+  return admitted
+}
+
+effect function regularDigest(file: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const type = (files.lstat(file) |> map(%, (info) => info.type)) catch () => "Missing"
+  if (type === "Missing") return ""
+  const real = (files.realPath(file) catch () => "")
+  if (type !== "File" || real !== path.resolve(file)) return "not-a-regular-file"
+  return (try hashFile(file)).sha256
+}
+
+effect function receiptOf(source: string, state: SystemuiState, bundle: SystemuiBundle, admitted: AdmittedPatch) {
+  const path = try Path.Path
+  const envelope = admitted.envelope
+  const files: SystemuiFile[] = []
+  for (const file of envelope.files) {
+    const sha256 = try regularDigest(path.join(source, envelope.project, file.path))
+    if (sha256 !== (state === "before" ? file.pre : file.post))
+      throw new SystemuiRefused({ bundle, message: `${envelope.project}/${file.path} is not the ${bundle} patch's ${state === "before" ? "preimage" : "postimage"}` })
+    files.push({ path: file.path, sha256 })
+  }
+  const receipt: SystemuiReceipt = {
+    bundle,
+    state,
+    project: envelope.project,
+    revision: envelope.revision,
+    baselineLockSha256: envelope.baseline,
+    manifestSha256: envelope.manifestSha256,
+    patchSha256: text(admitted.manifest.patchSha256),
+    files,
+  }
+  return receipt
+}
+
+export effect function verifyListenerSystemui(options: { readonly source: string; readonly state: SystemuiState; readonly bundle: SystemuiBundle }) {
+  const files = try FileSystem.FileSystem
+  const source = try mapError(files.realPath(options.source), (cause) => new ListenerInputUnreadable({ file: options.source, message: cause.message }))
+  return try receiptOf(source, options.state, options.bundle, try systemuiPatch(options.bundle))
+}
+
+function exclusive(bundles: readonly { readonly bundle: SystemuiBundle; readonly admitted: AdmittedPatch }[]): string | undefined {
+  for (const a of bundles)
+    for (const b of bundles) {
+      if (a === b) continue
+      const excluded = Array.isArray(a.admitted.manifest.exclusiveWith) && a.admitted.manifest.exclusiveWith.includes(b.bundle)
+      const overlapping = a.admitted.envelope.project === b.admitted.envelope.project && a.admitted.envelope.files.some((file) => b.admitted.envelope.files.some((other) => other.path === file.path))
+      if (excluded || overlapping) return `the ${a.bundle} and ${b.bundle} SystemUI patches cannot be applied together`
+    }
+  return undefined
+}
+
+export effect function prepareListenerSystemui(options: { readonly source: string; readonly output: string; readonly bundles: readonly SystemuiBundle[] }) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  if (options.bundles.length === 0 || new Set(options.bundles).size !== options.bundles.length) throw new ListenerOptionsInvalid({ message: "Choose one or more distinct SystemUI patch bundles" })
+  const admitted: { readonly bundle: SystemuiBundle; readonly admitted: AdmittedPatch }[] = []
+  for (const bundle of options.bundles) admitted.push({ bundle, admitted: try systemuiPatch(bundle) })
+  const refusal = exclusive(admitted)
+  if (refusal !== undefined) throw new SystemuiRefused({ bundle: options.bundles.join("+"), message: `Refusing to prepare SystemUI: ${refusal}` })
+  const source = try mapError(files.realPath(options.source), (cause) => new ListenerInputUnreadable({ file: options.source, message: cause.message }))
+  const output = path.resolve(options.output)
+  const parent = try mapError(files.realPath(path.dirname(output)), (cause) => new ListenerWriteFailed({ output, message: cause.message }))
+  const relative = path.relative(source, path.join(parent, path.basename(output)))
+  if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) throw new ListenerOptionsInvalid({ message: "The prepared SystemUI output must be outside the AOSP source" })
+  if (try files.exists(output)) throw new ListenerOutputExists({ output, message: `${output} exists; choose a new directory` })
+  for (const entry of admitted) try receiptOf(source, "before", entry.bundle, entry.admitted)
+  return try scoped(effect {
+    const work = try acquireRelease(
+      mapError(files.makeTempDirectory({ directory: parent, prefix: ".listener-systemui-" }), (cause) => new ListenerWriteFailed({ output, message: cause.message })),
+      (directory) => orElseSucceed(files.remove(directory, { recursive: true, force: true }), () => undefined),
+    )
+    const tree = path.join(work, "tree")
+    const write = (cause: { readonly message: string }) => new ListenerWriteFailed({ output, message: cause.message })
+    for (const entry of admitted) {
+      const envelope = entry.admitted.envelope
+      for (const file of envelope.files) {
+        const target = path.join(tree, envelope.project, file.path)
+        try mapError(files.makeDirectory(path.dirname(target), { recursive: true }), write)
+        if (file.pre !== "") try mapError(files.copyFile(path.join(source, envelope.project, file.path), target), write)
+      }
+    }
+    const receipts: SystemuiReceipt[] = []
+    for (const entry of admitted) {
+      const project = path.join(tree, entry.admitted.envelope.project)
+      const applied = try runTool("git", ["apply", "--whitespace=error", entry.admitted.patchFile], project, { GIT_CEILING_DIRECTORIES: work, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" }, true)
+      if (applied.code !== 0) throw new SystemuiRefused({ bundle: entry.bundle, message: `git apply refused the ${entry.bundle} patch: ${applied.stderr.trim()}` })
+      receipts.push(try receiptOf(tree, "after", entry.bundle, entry.admitted))
+    }
+    try mapError(files.writeFileString(path.join(tree, "derived-source.json"), `${JSON.stringify({ schema: 1, receipts, sourcePatched: false, systemUiCompiled: false, imageBuilt: false }, null, 2)}\n`, { flag: "wx" }), write)
+    if (try files.exists(output)) throw new ListenerOutputExists({ output, message: `${output} appeared while SystemUI was prepared` })
+    try mapError(files.rename(tree, output), write)
+    return receipts
+  })
+}
+
+effect function listenerApkFacts(copy: string, options: StageListenerOptions, tools: { readonly aapt: string; readonly apksigner: string; readonly zipalign: string }) {
+  const snapshot = try snapshotAndroidArtifact(copy)
+  const dump = requestedPermissions(try toolOutput(tools.aapt, ["dump", "permissions", copy], options.env))
+  const signer = try readApkSigner(copy, { apksigner: tools.apksigner, env: options.env })
+  const { application } = manifestFacts(try aaptManifestTree(copy, { aapt: tools.aapt, env: options.env }))
+  const entries = (listAndroidArtifactEntries(copy, { artifactBytes: snapshot.bytes }) catch (): string[] => [])
+  const alignment = try runTool(tools.zipalign, ["-c", "-v", "-P", "16", "4", copy], undefined, options.env)
+  const pins = options.speech ?? []
+  const speech: ListenerSpeech = pins.length > 0 && pins.every((pin) => entries.includes(pin.entry) && HEX64.test(pin.sha256))
+    ? ((readAndroidArtifactEntryBuffers(copy, pins.map((pin) => pin.entry), { artifactBytes: snapshot.bytes, label: "speech bundle" }) |> map(%, (buffers) => (buffers.every((bytes, index) => sha256Hex(bytes) === pins[index]?.sha256) ? "SpeechPinned" : "SpeechNotPinned"))) catch (): ListenerSpeech => "SpeechNotPinned")
+    : "SpeechNotPinned"
+  const facts: ListenerApk = {
+    packageName: packageNameOf(dump.packageName),
+    sha256: digestOf(snapshot.sha256),
+    signer,
+    buildType: !application.declared ? "BuildTypeUnread" : application.debuggable === "0xffffffff" ? "DebuggableBuild" : "ReleaseBuild",
+    requested: dump.requested,
+    layout: zipLayoutOf(entries, alignment.stdout, alignment.code === 0),
+    speech,
+  }
+  return { facts, bytes: snapshot.bytes }
+}
+
+effect function sepolicyFiles(packageName: string, certificate: Uint8Array | undefined) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const domainFile = path.join(try aospDirectory(), "sense", "sepolicy", `${listenerSelinuxDomain}.te`)
+  const domain = try mapError(files.readFile(domainFile), (cause) => new ListenerInputUnreadable({ file: domainFile, message: cause.message }))
+  const signature = certificate === undefined ? "" : hexBytes(certificate)
+  const staged: StagedFile[] = [
+    { name: `${listenerSelinuxDomain}.te`, bytes: domain },
+    { name: "mac_permissions.xml", bytes: `<?xml version="1.0" encoding="utf-8"?>\n<policy>\n  <signer signature="${signature}">\n    <package name="${xml(packageName)}">\n      <seinfo value="${SEINFO}" />\n    </package>\n  </signer>\n</policy>\n` },
+    { name: "seapp_contexts", bytes: `user=_app seinfo=${SEINFO} name=${packageName} isPrivApp=true domain=${listenerSelinuxDomain} type=${listenerSelinuxDomain}_data_file levelFrom=all\n` },
+  ]
+  return { staged, sha256: sha256Hex(JSON.stringify(staged.map((file) => ({ name: file.name, sha256: sha256Hex(file.bytes) })))) }
+}
+
+function buildFiles(moduleName: string, packageName: string, launcherPackage: string, signer: string, overlay: string): StagedFile[] {
+  const permissions = listenerPermissions(launcherPackage)
+  const associations = [launcherPackage, ...ASSOCIATED_HOSTS].map((host) => ` <allow-association target="${xml(packageName)}" allowed="${xml(host)}" />`).join("\n")
+  return [
+    { name: `permissions/privapp-permissions-${packageName}.xml`, bytes: permissions.xml },
+    { name: "sysconfig/sense.xml", bytes: `<config>\n <install-in-user-type package="${xml(packageName)}"><install-in user-type="android.os.usertype.full.SYSTEM" /></install-in-user-type>\n${associations}\n</config>\n` },
+    { name: "overlay/frameworks/base/core/res/res/values/config.xml", bytes: overlay },
+    {
+      name: "systemui/overlay/frameworks/base/packages/SystemUI/res/values/sense-listener.xml",
+      bytes: `<resources>\n <string name="config_senseListeningPackage" translatable="false">${xml(packageName)}</string>\n <string name="config_senseListeningHostPackage" translatable="false">${xml(launcherPackage)}</string>\n <string name="config_senseListeningReceiverClass" translatable="false">${RECEIVER_CLASS}</string>\n <string name="config_senseListeningCertificateSha256" translatable="false">${signer}</string>\n</resources>\n`,
+    },
+    {
+      name: "Android.bp",
+      bytes: `android_app_import {\n    name: "${moduleName}",\n    apk: "${moduleName}.apk",\n    presigned: true,\n    preprocessed: true,\n    privileged: true,\n    system_ext_specific: true,\n    dex_preopt: { enabled: false },\n    required: ["privapp-permissions-${packageName}.xml", "${moduleName}-sysconfig.xml"],\n}\n\nprebuilt_etc {\n    name: "privapp-permissions-${packageName}.xml",\n    src: "permissions/privapp-permissions-${packageName}.xml",\n    sub_dir: "permissions",\n    system_ext_specific: true,\n}\n\nprebuilt_etc {\n    name: "${moduleName}-sysconfig.xml",\n    src: "sysconfig/sense.xml",\n    sub_dir: "sysconfig",\n    system_ext_specific: true,\n}\n`,
+    },
+    {
+      name: "listener.mk",
+      bytes: `sense_listener_dir := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))\nPRODUCT_PACKAGES += ${moduleName}\nPRODUCT_PACKAGE_OVERLAYS += $(sense_listener_dir)/overlay $(sense_listener_dir)/systemui/overlay\nPRODUCT_PRODUCT_PROPERTIES += ro.hotword.detection_service_required=true\n`,
+    },
+  ]
+}
+
+export effect function stageListener(options: StageListenerOptions) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const launcher = options.launcher
+  if (!PACKAGE.test(launcher.packageName)) throw new ListenerOptionsInvalid({ message: `${launcher.packageName} is not an Android package name` })
+  if (!MODULE.test(options.moduleName)) throw new ListenerOptionsInvalid({ message: `${options.moduleName} is not a module name (an uppercase letter, then letters and digits)` })
+  const output = path.resolve(options.output)
+  if (try files.exists(output)) throw new ListenerOutputExists({ output, message: `${output} exists; choose a new listener staging directory` })
+  const parent = path.dirname(output)
+  const write = (cause: { readonly message: string }) => new ListenerWriteFailed({ output, message: cause.message })
+  try mapError(files.makeDirectory(parent, { recursive: true }), write)
+  const built = options.aapt !== undefined && options.apksigner !== undefined && options.zipalign !== undefined ? undefined : try resolveAndroidBuildTools(options.env)
+  const tools = { aapt: options.aapt ?? built?.aapt ?? "aapt", apksigner: options.apksigner ?? built?.apksigner ?? "apksigner", zipalign: options.zipalign ?? built?.zipalign ?? "zipalign" }
+  return try scoped(effect {
+    const work = try acquireRelease(
+      mapError(files.makeTempDirectory({ directory: parent, prefix: ".listener-stage-" }), write),
+      (directory) => orElseSucceed(files.remove(directory, { recursive: true, force: true }), () => undefined),
+    )
+    const copy = path.join(work, `${options.moduleName}.apk`)
+    try mapError(files.writeFile(copy, try readInput(options.apk), { flag: "wx" }), write)
+    const read = try listenerApkFacts(copy, options, tools)
+    const descriptorRead = options.descriptor === undefined ? undefined : try readJsonInput(options.descriptor)
+    const descriptor: ListenerDescriptor = descriptorRead === undefined ? { tag: "NoListenerDescriptor" } : parseDescriptor(descriptorRead.bytes, descriptorRead.value) ?? { tag: "NoListenerDescriptor" }
+    if (descriptorRead !== undefined && descriptor.tag === "NoListenerDescriptor") throw new ListenerInputUnreadable({ file: options.descriptor ?? "", message: "The listener descriptor is not a JSON object" })
+    const overlayFile = path.join(try aospDirectory(), "sense", "config.xml")
+    const overlay = try mapError(files.readFileString(overlayFile), (cause) => new ListenerInputUnreadable({ file: overlayFile, message: cause.message }))
+    const der = certificateDer(try readInput(options.certificate))
+    const packageName = `${read.facts.packageName.parent}.${read.facts.packageName.leaf}`
+    const policy = try sepolicyFiles(packageName, der)
+    const sdkCommit = SDK_COMMIT.test(options.sdkCommit ?? "") ? (options.sdkCommit ?? "") : ""
+    const request: ListenerRequest = {
+      launcherPackage: launcher.packageName,
+      launcherSigner: digestOf(launcher.signerSha256),
+      launcherApk: digestOf(launcher.apkSha256),
+      launcherDescriptor: digestOf(launcher.descriptorSha256),
+      listener: read.facts,
+      descriptor,
+      wakeNames: wakeNames(options.wakeNames),
+      overlay: listenerOverlay(overlay),
+      policyCertificate: der === undefined ? { tag: "NotADigest" } : digestOf(sha256Hex(der)),
+      sepolicy: digestOf(policy.sha256),
+      sdkCommit,
+      enrolledQualification: digestOf(options.qualification?.enrolledSha256 ?? ""),
+      qualification: options.qualification === undefined ? { tag: "NoQualification" } : try readListenerQualification(options.qualification.record),
+    }
+    const mode: StagingMode = options.development === true ? "StageDevelopment" : "StageProduction"
+    const staging = listenerStaging(request, options.source, mode)
+    if (staging.tag === "ListenerRefused") throw new ListenerRefused({ problem: staging.problem, message: `Refusing to stage the listener ${options.apk}: ${PROBLEM_TEXT[staging.problem]}` })
+    const staged = path.join(work, "listener")
+    const evidence = {
+      schemaVersion: 1,
+      packageName,
+      moduleName: options.moduleName,
+      reach: staging.reach,
+      speechIncluded: staging.speechIncluded,
+      apkSha256: hexOf(read.facts.sha256),
+      signerSha256: hexOf(request.launcherSigner),
+      selinuxDomain: listenerSelinuxDomain,
+      sepolicyDirectory: "sepolicy",
+      sepolicySha256: policy.sha256,
+      sourceLockSha256: options.source.lock.digest,
+      sourcePatches: sourcePatches(options.source),
+      qualificationSha256: request.qualification.tag === "QualificationRecord" ? hexOf(request.qualification.bytes) : null,
+      systemUiCompiled: false,
+      imageBuilt: false,
+      deviceAcceptanceVerified: false,
+    }
+    const outputs: StagedFile[] = [
+      { name: `${options.moduleName}.apk`, bytes: read.bytes },
+      ...buildFiles(options.moduleName, packageName, launcher.packageName, hexOf(request.launcherSigner), overlay),
+      ...policy.staged.map((file) => ({ name: `sepolicy/${file.name}`, bytes: file.bytes })),
+      { name: "evidence.json", bytes: `${JSON.stringify(evidence, null, 2)}\n` },
+    ]
+    for (const file of outputs) {
+      if (!safePath(file.name)) throw new ListenerWriteFailed({ output, message: `Refusing to write ${file.name}` })
+      const target = path.join(staged, file.name)
+      try mapError(files.makeDirectory(path.dirname(target), { recursive: true }), write)
+      try mapError(typeof file.bytes === "string" ? files.writeFileString(target, file.bytes, { flag: "wx" }) : files.writeFile(target, file.bytes, { flag: "wx" }), write)
+    }
+    if (try files.exists(output)) throw new ListenerOutputExists({ output, message: `${output} appeared while the listener was staged` })
+    try mapError(files.rename(staged, output), write)
+    const result: StagedListener = { output, packageName, activated: staging.reach === "ListenerActivated", speechIncluded: staging.speechIncluded, sepolicySha256: policy.sha256, request }
+    return result
+  })
+}

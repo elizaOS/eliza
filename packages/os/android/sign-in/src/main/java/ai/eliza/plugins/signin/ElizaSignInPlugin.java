@@ -1,9 +1,9 @@
-// spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Connect my Google mail and calendar with the same sign-in"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"
+// spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Connect my Google mail and calendar with the same sign-in"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"
 package ai.eliza.plugins.signin;
 
-import ai.eliza.plugins.signin.CodeSignIn.Verified;
+import ai.eliza.plugins.signin.CodeSignIn.Checked;
+import ai.eliza.plugins.signin.CredentialPolicy.Account;
 import ai.eliza.plugins.signin.GoogleSignIn.Authorized;
-import ai.eliza.plugins.signin.GoogleSignIn.Challenge;
 import ai.eliza.plugins.signin.GoogleSignIn.Picked;
 import ai.eliza.plugins.signin.GoogleSignIn.SecretServerCode;
 import ai.eliza.plugins.signin.ReadinessPolicy.DeviceFacts;
@@ -12,17 +12,26 @@ import ai.eliza.plugins.signin.SignInCustody.Held;
 import ai.eliza.plugins.signin.SignInCustody.Proof;
 import ai.eliza.plugins.signin.SignInCustody.Refused;
 import ai.eliza.plugins.signin.SignInCustody.Session;
+import ai.eliza.plugins.signin.SignInPolicy.BuildKind;
+import ai.eliza.plugins.signin.SignInPolicy.CloudReply;
+import ai.eliza.plugins.signin.SignInPolicy.Effect;
 import ai.eliza.plugins.signin.SignInPolicy.Event;
 import ai.eliza.plugins.signin.SignInPolicy.Failure;
-import ai.eliza.plugins.signin.SignInPolicy.Google;
+import ai.eliza.plugins.signin.SignInPolicy.GoogleReport;
+import ai.eliza.plugins.signin.SignInPolicy.KeyOutcome;
 import ai.eliza.plugins.signin.SignInPolicy.Method;
-import ai.eliza.plugins.signin.SignInPolicy.Purpose;
+import ai.eliza.plugins.signin.SignInPolicy.PhaseTag;
+import ai.eliza.plugins.signin.SignInPolicy.PickerResult;
+import ai.eliza.plugins.signin.SignInPolicy.Registration;
+import ai.eliza.plugins.signin.SignInPolicy.ServerCode;
 import ai.eliza.plugins.signin.SignInPolicy.State;
 import ai.eliza.plugins.signin.SignInPolicy.Step;
-import ai.eliza.plugins.signin.SignInPolicy.Verify;
+import ai.eliza.plugins.signin.SignInPolicy.Verdict;
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.verify.domain.DomainVerificationManager;
 import android.content.pm.verify.domain.DomainVerificationUserState;
@@ -37,49 +46,54 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 @CapacitorPlugin(name = "ElizaSignIn")
 public class ElizaSignInPlugin extends Plugin {
-  private static final class Open {
-    final String requestId, attemptId = UUID.randomUUID().toString();
+  private static final class Attempt {
+    final int number;
     final SignInRegistration.Environment environment;
     final Method method;
-    final Purpose purpose;
+    final boolean reauthenticating;
     final String destination, verifier = SignInPolicy.newVerifier();
     final CancellationSignal cancellation = new CancellationSignal();
-    long expiresAt, resendAt;
+    long expiresAt, resendAt, expiryAt;
     String challengeId = "";
     List<String> factors = List.of();
-    Challenge google;
+    GoogleSignIn.Challenge challenge;
     String idToken;
     SecretServerCode serverCode;
-    int custodyAttempt;
-    PluginCall waiting;
-    boolean settled;
+    Session session;
+    boolean handed;
+    ScheduledFuture<?> expiry;
 
-    Open(String requestId, SignInRegistration.Environment environment, Method method, Purpose purpose, String destination) {
-      this.requestId = requestId; this.environment = environment; this.method = method; this.purpose = purpose; this.destination = destination;
+    Attempt(int number, SignInRegistration.Environment environment, Method method, boolean reauthenticating, String destination) {
+      this.number = number; this.environment = environment; this.method = method; this.reauthenticating = reauthenticating; this.destination = destination;
     }
 
-    Open resent(String id) { return new Open(id, environment, method, purpose, destination); }
+    @Override public String toString() { return "Attempt[" + number + ", " + method + "]"; }
   }
 
   private final Object lock = new Object();
   private final ExecutorService worker = Executors.newSingleThreadExecutor();
+  private final ScheduledExecutorService timers = Executors.newSingleThreadScheduledExecutor();
   private final Map<Method, Long> sendAllowedAt = new EnumMap<>(Method.class);
+  private final Map<Integer, Attempt> attempts = new HashMap<>();
+  private final Map<Integer, PluginCall> calls = new HashMap<>();
   private State state = SignInPolicy.INITIAL;
-  private Open open, resending;
   private SignInRegistration registration;
   private CodeSignIn codes;
   private GoogleSignIn google;
@@ -92,8 +106,10 @@ public class ElizaSignInPlugin extends Plugin {
   }
 
   protected GoogleSignIn.Browser browser(SignInRegistration registration, SignInCustody custody) {
-    return BrowserSignIn.browser(this, registration);
+    return BrowserSignIn.browser(this, registration, custody);
   }
+
+  protected CodeSignIn.Http http() { return CodeSignIn.CONNECTION; }
 
   protected DeviceFacts deviceFacts() {
     Context context = getContext();
@@ -116,14 +132,24 @@ public class ElizaSignInPlugin extends Plugin {
   }
 
   @Override public void load() {
-    registration = SignInRegistration.parse(map(getConfig().getConfigJSON()));
-    codes = new CodeSignIn(CodeSignIn.CONNECTION, registration.clientId);
-    google = new GoogleSignIn(CodeSignIn.CONNECTION, registration);
+    BuildKind build = (getContext().getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0 ? BuildKind.DEBUG_BUILD : BuildKind.RELEASE_BUILD;
+    registration = registration(getConfig().getConfigJSON());
+    Registration loaded = registration == null ? new Registration(false, false, false)
+      : new Registration(true, !registration.googleScopes().isEmpty(), registration.testEnvironmentsEnabled);
+    dispatch(new Event.Load(loaded, build));
+    if (registration == null) return;
+    codes = new CodeSignIn(http(), registration.clientId);
+    google = new GoogleSignIn(http(), registration);
     custody = custody(getContext(), registration);
+    BrowserSignIn.notices(new BrowserSignIn.Notices() {
+      @Override public void incomplete(String environment, String code) { accountChanged(environment, code); }
+      @Override public void signedIn(String environment, String credentialId) { accountChanged(environment, null); }
+    });
     browser = browser(registration, custody);
     SharedPreferences preferences = getContext().getSharedPreferences("eliza-sign-in-readiness", Context.MODE_PRIVATE);
+    CodeSignIn.Http http = http();
     readiness = new SignInReadiness(registration, url -> {
-      CodeSignIn.Answer answer = CodeSignIn.CONNECTION.send("GET", url, null, null);
+      CodeSignIn.Answer answer = http.send("GET", url, null, null);
       return new SignInReadiness.Response(answer.status(), answer.body().toString());
     }, new SignInReadiness.Store() {
       @Override public String get(String key) { return preferences.getString(key, null); }
@@ -135,24 +161,27 @@ public class ElizaSignInPlugin extends Plugin {
 
   @Override protected void handleOnResume() {
     boolean active;
-    synchronized (lock) { active = state.step().open(); }
+    synchronized (lock) { active = state.open() != 0; }
     if (readiness != null) readiness.resume(active);
   }
 
   @Override protected void handleOnDestroy() {
-    Open current;
-    synchronized (lock) { current = open; }
-    if (current != null) cancelled(current);
+    int current;
+    synchronized (lock) { current = state.attempt(); }
+    if (current > 0) dispatch(new Event.Cancel(current));
     worker.shutdownNow();
+    timers.shutdownNow();
   }
 
   @PluginMethod public void status(PluginCall call) {
-    SignInRegistration.Environment environment = registration.environment(call.getString("environment"));
-    if (environment == null || !readiness.status(environment.name, Boolean.TRUE.equals(call.getBoolean("retry", false)),
-        status -> call.resolve(readiness(environment.name, status).put("account", account(environment))))) refuse(call, Failure.INVALID_REQUEST);
+    SignInRegistration.Environment environment = environment(call);
+    if (environment == null) return;
+    readiness.status(environment.name, Boolean.TRUE.equals(call.getBoolean("retry", false)),
+      status -> call.resolve(readiness(environment.name, status).put("account", account(environment))));
   }
 
   @PluginMethod public void serviceInfo(PluginCall call) {
+    if (registration == null) { reject(call, Failure.REJECTED); return; }
     readiness.service(call.getString("environment"), service -> {
       JSObject answer = new JSObject().put("outcome", service.outcome.name().toLowerCase(Locale.ROOT));
       if (service.body != null) answer.put("service", CodeSignIn.object(service.body).optJSONObject("service"));
@@ -160,373 +189,418 @@ public class ElizaSignInPlugin extends Plugin {
     });
   }
 
-  @PluginMethod public void startEmail(PluginCall call) { startCode(call, Method.EMAIL_CODE, purpose(call)); }
+  @PluginMethod public void startEmail(PluginCall call) { startCode(call, Method.EMAIL_CODE, false); }
 
-  @PluginMethod public void startPhone(PluginCall call) { startCode(call, Method.SMS_CODE, purpose(call)); }
+  @PluginMethod public void startPhone(PluginCall call) { startCode(call, Method.SMS_CODE, false); }
 
   @PluginMethod public void startGoogle(PluginCall call) {
-    Purpose purpose = purpose(call);
-    startGoogle(call, purpose == Purpose.REAUTHENTICATE ? Method.GOOGLE_BROWSER : Method.google(registration.googleMode), purpose);
+    if (registration == null) { reject(call, Failure.REJECTED); return; }
+    startGoogle(call, Method.google(registration.googleMode), false);
   }
 
   @PluginMethod public void reauthenticate(PluginCall call) {
     switch (call.getString("method", "")) {
-      case "email" -> startCode(call, Method.EMAIL_CODE, Purpose.REAUTHENTICATE);
-      case "sms" -> startCode(call, Method.SMS_CODE, Purpose.REAUTHENTICATE);
-      case "google" -> startGoogle(call, Method.GOOGLE_BROWSER, Purpose.REAUTHENTICATE);
-      default -> refuse(call, Failure.INVALID_REQUEST);
+      case "email" -> startCode(call, Method.EMAIL_CODE, true);
+      case "sms" -> startCode(call, Method.SMS_CODE, true);
+      case "google" -> startGoogle(call, Method.GOOGLE_BROWSER, true);
+      default -> reject(call, Failure.INVALID_INPUT);
     }
   }
 
   @PluginMethod public void resend(PluginCall call) {
-    String id = call.getString("requestId");
-    if (!SignInPolicy.validUuid(id)) { refuse(call, Failure.INVALID_REQUEST); return; }
-    Open next;
+    Integer number = call.getInt("attempt");
+    if (number == null) { reject(call, Failure.INVALID_INPUT); return; }
+    Attempt earlier;
+    long allowedAt;
     synchronized (lock) {
-      long allowedAt = open == null ? 0 : sendAllowedAt.getOrDefault(open.method, 0L);
-      if (open != null && System.currentTimeMillis() < allowedAt) { refuse(call, Failure.BUSY, allowedAt); return; }
-      if (open == null || !apply(new Event.Resend(id))) { refuse(call, Failure.BUSY); return; }
-      next = open.resent(id);
-      resending = next;
+      earlier = attempts.get(number);
+      allowedAt = earlier == null ? 0 : sendAllowedAt.getOrDefault(earlier.method, 0L);
     }
-    send(call, next);
+    if (earlier == null) { refuse(call, new Event.Resend(number)); return; }
+    if (System.currentTimeMillis() < allowedAt) { reject(call, Failure.BUSY, allowedAt); return; }
+    Attempt next = open(call, new Event.Resend(number), earlier, false);
+    if (next != null) run(() -> send(next));
   }
 
   @PluginMethod public void verify(PluginCall call) {
-    String id = call.getString("requestId"), code = call.getString("code"), factor = call.getString("method");
-    if (!SignInPolicy.validCode(code)) { refuse(call, Failure.INVALID_CODE); return; }
-    Open current;
+    Integer number = call.getInt("attempt");
+    String code = call.getString("code"), factor = call.getString("method");
+    if (number == null || !SignInPolicy.validCode(code)) { reject(call, Failure.INVALID_INPUT); return; }
+    Attempt attempt;
     boolean second;
     synchronized (lock) {
-      current = open;
-      if (current == null || !current.requestId.equals(id)) { refuse(call, Failure.INVALID_REQUEST); return; }
-      second = state.step() == Step.SECOND_FACTOR;
-      String chosen = second ? (factor == null && current.factors.size() == 1 ? current.factors.get(0) : factor) : null;
-      if (second && !current.factors.contains(chosen)) { refuse(call, Failure.INVALID_REQUEST); return; }
-      if (!apply(new Event.Submit(id))) { refuse(call, Failure.BUSY); return; }
-      current.waiting = call;
-      factor = chosen;
+      attempt = attempts.get(number);
+      second = state.attempt() == number && state.phase().tag() == PhaseTag.SECOND_FACTOR;
+      if (attempt != null && second && factor == null && attempt.factors.size() == 1) factor = attempt.factors.get(0);
     }
-    if (System.currentTimeMillis() >= current.expiresAt) { fail(current, Failure.EXPIRED); return; }
-    String chosenFactor = factor;
-    run(current, () -> {
-      Verified verified = second ? codes.completeFactor(current.environment, current.challengeId, chosenFactor, code)
-        : codes.verify(current.environment, current.method, current.destination, code, current.verifier);
-      verified(current, verified);
-    });
+    if (attempt == null) { refuse(call, new Event.Verify(number)); return; }
+    if (second && !attempt.factors.contains(factor)) { reject(call, Failure.INVALID_INPUT); return; }
+    if (open(call, new Event.Verify(number), attempt, true) == null) return;
+    String chosen = factor;
+    run(() -> checked(attempt, second
+      ? codes.completeFactor(attempt.environment, attempt.challengeId, chosen, code, System.currentTimeMillis())
+      : codes.verify(attempt.environment, attempt.method, attempt.destination, code, attempt.verifier, System.currentTimeMillis()), 0));
   }
 
   @PluginMethod public void sendFactorCode(PluginCall call) {
-    Open current;
+    Integer number = call.getInt("attempt");
+    Attempt attempt;
     synchronized (lock) {
-      current = open;
-      if (current == null || !current.requestId.equals(call.getString("requestId")) || state.step() != Step.SECOND_FACTOR
-          || !current.factors.contains("sms")) { refuse(call, Failure.INVALID_REQUEST); return; }
+      attempt = number == null ? null : attempts.get(number);
+      if (attempt != null && (state.attempt() != number || state.phase().tag() != PhaseTag.SECOND_FACTOR || !attempt.factors.contains("sms"))) attempt = null;
     }
-    run(current, () -> {
-      try { codes.sendFactorCode(current.environment, current.challengeId); call.resolve(new JSObject().put("requestId", current.requestId)); }
-      catch (Refused refused) { refuse(call, refused.failure); }
+    if (attempt == null) { reject(call, Failure.INVALID_INPUT); return; }
+    Attempt asked = attempt;
+    run(() -> {
+      CloudReply reply = codes.sendFactorCode(asked.environment, asked.challengeId);
+      if (reply instanceof CloudReply.Delivered) call.resolve(new JSObject().put("attempt", asked.number));
+      else reject(call, reply instanceof CloudReply.Refused refused ? SignInPolicy.failureOf(false, refused.code(), refused.reason()) : Failure.UNAVAILABLE);
     });
   }
 
   @PluginMethod public void cancel(PluginCall call) {
-    String id = call.getString("requestId", "");
-    Open current, resend;
+    Integer number = call.getInt("attempt");
+    if (number == null) { reject(call, Failure.INVALID_INPUT); return; }
+    List<Runnable> after;
+    boolean changed;
     synchronized (lock) {
-      current = open != null && open.requestId.equals(id) ? open : null;
-      resend = resending != null && resending.requestId.equals(id) ? resending : null;
-      if ((current == null && resend == null) || !apply(new Event.Cancel(id))) { call.resolve(new JSObject().put("cancelled", false)); return; }
-      if (resend != null) { resending = null; resend.settled = true; }
+      State before = state;
+      after = apply(new Event.Cancel(number));
+      changed = after != null && !state.equals(before);
     }
-    if (resend != null) refuse(resend.waiting, Failure.CANCELLED);
-    else stopped(current);
-    call.resolve(new JSObject().put("cancelled", true));
+    if (after != null) after.forEach(Runnable::run);
+    call.resolve(new JSObject().put("cancelled", changed));
   }
 
   @PluginMethod public void signOut(PluginCall call) {
-    SignInRegistration.Environment environment = registration.environment(call.getString("environment"));
-    if (environment == null) { refuse(call, Failure.INVALID_REQUEST); return; }
-    Open current;
-    synchronized (lock) { current = open; }
-    if (current != null) cancelled(current);
+    SignInRegistration.Environment environment = environment(call);
+    if (environment == null) return;
+    int current;
+    synchronized (lock) { current = state.attempt(); }
+    if (current > 0) dispatch(new Event.Cancel(current));
     try {
       worker.execute(() -> { custody.signOut(environment); call.resolve(new JSObject().put("account", account(environment))); });
     } catch (RejectedExecutionException closed) {
-      refuse(call, Failure.UNAVAILABLE);
+      reject(call, Failure.UNAVAILABLE);
     }
   }
 
-  private void startCode(PluginCall call, Method method, Purpose purpose) {
+  private void startCode(PluginCall call, Method method, boolean reauthenticating) {
+    SignInRegistration.Environment environment = environment(call);
+    if (environment == null) return;
     String raw = call.getString(method == Method.SMS_CODE ? "phone" : "email");
     String destination = raw == null ? null : method == Method.SMS_CODE ? raw.trim() : raw.trim().toLowerCase(Locale.ROOT);
-    if (!SignInPolicy.validDestination(method, destination)) { refuse(call, Failure.INVALID_REQUEST); return; }
-    Open next = opened(call, method, purpose, destination);
-    if (next != null) send(call, next);
+    if (!SignInPolicy.validDestination(method, destination)) { reject(call, Failure.INVALID_INPUT); return; }
+    long allowedAt;
+    synchronized (lock) { allowedAt = sendAllowedAt.getOrDefault(method, 0L); }
+    if (System.currentTimeMillis() < allowedAt) { reject(call, Failure.BUSY, allowedAt); return; }
+    Event event = startEvent(call, environment, method, reauthenticating);
+    if (event == null) return;
+    Attempt opened = open(call, event, new Attempt(0, environment, method, reauthenticating, destination), false);
+    if (opened != null) run(() -> send(opened));
   }
 
-  private void startGoogle(PluginCall call, Method method, Purpose purpose) {
-    Open next = opened(call, method, purpose, null);
-    if (next == null) return;
-    synchronized (lock) { next.waiting = call; }
-    if (method == Method.GOOGLE_BROWSER) { browser.open(next.requestId, next.environment, purpose, returned(next)); return; }
-    run(next, () -> {
-      Challenge challenge = google.challenge(next.environment, System.currentTimeMillis());
-      synchronized (lock) { next.google = challenge; next.expiresAt = challenge.expiresAt(); }
-      getActivity().runOnUiThread(() -> GoogleSignIn.pick(getActivity(), challenge, next.cancellation, picked -> picked(next, picked)));
-    });
-  }
-
-  private Open opened(PluginCall call, Method method, Purpose purpose, String destination) {
-    String id = call.getString("requestId");
-    SignInRegistration.Environment environment = registration.environment(call.getString("environment"));
-    if (!SignInPolicy.validUuid(id) || environment == null) { refuse(call, Failure.INVALID_REQUEST); return null; }
-    if (!SignInPolicy.admitted(method, purpose, registration.googleMode)) { refuse(call, Failure.REFUSED); return null; }
-    if (purpose == Purpose.REAUTHENTICATE && custody.held(environment) == null) { refuse(call, Failure.REFUSED); return null; }
-    synchronized (lock) {
-      long allowedAt = method.code() ? sendAllowedAt.getOrDefault(method, 0L) : 0;
-      if (System.currentTimeMillis() < allowedAt) { refuse(call, Failure.BUSY, allowedAt); return null; }
-      if (!apply(new Event.Open(id, method, purpose))) { refuse(call, Failure.BUSY); return null; }
-      open = new Open(id, environment, method, purpose, destination);
-      resending = null;
-      return open;
+  private void startGoogle(PluginCall call, Method method, boolean reauthenticating) {
+    SignInRegistration.Environment environment = environment(call);
+    if (environment == null) return;
+    Event event = startEvent(call, environment, method, reauthenticating);
+    if (event == null) return;
+    Attempt opened = open(call, event, new Attempt(0, environment, method, reauthenticating, null), false);
+    if (opened == null) return;
+    if (method == Method.GOOGLE_BROWSER) {
+      browser.open(opened.number, environment, reauthenticating, (credentialAttempt, answer) -> run(() -> checked(opened, answer, credentialAttempt)));
+      return;
     }
-  }
-
-  private void send(PluginCall call, Open next) {
-    synchronized (lock) { next.waiting = call; }
-    run(next, () -> {
-      CodeSignIn.Sent sent;
-      try {
-        sent = codes.send(next.environment, next.method, next.destination, next.verifier, System.currentTimeMillis());
-      } catch (CodeSignIn.NotSent refused) {
-        synchronized (lock) { if (refused.resendAt > 0) sendAllowedAt.merge(next.method, refused.resendAt, Math::max); }
-        fail(next, refused.failure, refused.resendAt);
-        return;
-      }
-      synchronized (lock) {
-        sendAllowedAt.merge(next.method, sent.resendAt(), Math::max);
-        if (!apply(new Event.CodeSent(next.requestId))) return;
-        next.expiresAt = sent.expiresAt(); next.resendAt = sendAllowedAt.get(next.method);
-        if (next != open) { open.cancellation.cancel(); open = next; resending = null; }
-        next.waiting = null;
-      }
-      call.resolve(new JSObject().put("requestId", next.requestId).put("attemptId", next.attemptId)
-        .put("step", Step.CODE_SENT.wire).put("expiresAt", next.expiresAt).put("resendAt", next.resendAt));
+    run(() -> {
+      GoogleSignIn.Challenge challenge = google.challenge(environment, System.currentTimeMillis());
+      Activity activity = getActivity();
+      if (challenge == null || activity == null) { dispatch(new Event.PickerAnswered(opened.number, PickerResult.NO_GOOGLE_ACCOUNT)); return; }
+      synchronized (lock) { opened.challenge = challenge; }
+      activity.runOnUiThread(() -> GoogleSignIn.pick(activity, challenge, opened.cancellation, picked -> picked(opened, picked)));
     });
   }
 
-  private void picked(Open current, Picked picked) {
-    if (picked instanceof Picked.NotPicked refused) { fail(current, refused.failure()); return; }
+  private Event startEvent(PluginCall call, SignInRegistration.Environment environment, Method method, boolean reauthenticating) {
+    SignInPolicy.Environment named = environment.name.equals(SignInRegistration.PRODUCTION) ? SignInPolicy.Environment.PRODUCTION : SignInPolicy.Environment.STAGING;
+    DeviceFacts device = deviceFacts();
+    ReadinessPolicy.Readiness ready = readiness.admitting(environment.name);
+    if (!reauthenticating) return new Event.Start(named, method, ready, device);
+    Held held = custody.held(environment);
+    if (held == null) { reject(call, Failure.REJECTED); return null; }
+    return new Event.Reauthenticate(named, method, ready, device, held.account());
+  }
+
+  private void picked(Attempt attempt, Picked picked) {
+    if (picked instanceof Picked.NotPicked refused) { dispatch(new Event.PickerAnswered(attempt.number, refused.result())); return; }
     Picked.Token token = (Picked.Token) picked;
-    synchronized (lock) { current.idToken = token.idToken(); }
+    synchronized (lock) { attempt.idToken = token.idToken(); }
     List<String> scopes = registration.googleScopes();
-    if (scopes.isEmpty()) { proofReady(current, Google.NOT_REQUESTED, null); return; }
-    GoogleSignIn.authorize(getActivity(), current.google, token.account(), scopes, current.cancellation, authorized ->
-      proofReady(current, authorized instanceof Authorized.Code ? Google.HELD : Google.REFUSED,
-        authorized instanceof Authorized.Code code ? code.code() : null));
+    if (scopes.isEmpty()) { pickerAnswered(attempt, false, null); return; }
+    GoogleSignIn.authorize(getActivity(), attempt.challenge, token.account(), scopes, attempt.cancellation, authorized ->
+      pickerAnswered(attempt, authorized instanceof Authorized.Code, authorized instanceof Authorized.Code granted ? granted.code() : null));
   }
 
-  private void proofReady(Open current, Google custodyOfCode, SecretServerCode code) {
-    synchronized (lock) {
-      if (!apply(new Event.ProofReady(current.requestId, custodyOfCode))) { if (code != null) code.drop(); return; }
-      current.serverCode = code;
+  private void pickerAnswered(Attempt attempt, boolean granted, SecretServerCode code) {
+    synchronized (lock) { attempt.serverCode = code; }
+    if (!dispatch(new Event.PickerAnswered(attempt.number, PickerResult.picked(granted)))) {
+      if (code != null) code.drop();
+      return;
     }
-    run(current, () -> {
-      if (System.currentTimeMillis() >= current.google.expiresAt()) throw new Refused(Failure.EXPIRED);
-      int attempt = begin(current);
-      GoogleSignIn.SignedIn answer = google.signIn(current.environment, current.google, current.idToken, current.serverCode, System.currentTimeMillis());
-      if (answer instanceof GoogleSignIn.SignedIn.FactorRequired factor) {
-        custody.signInEnded(current.environment, attempt);
-        factorRequired(current, new Event.FactorRequired(current.requestId), factor.challengeId(), factor.methods(), factor.expiresAt());
-        return;
-      }
-      GoogleSignIn.SignedIn.Minted minted = (GoogleSignIn.SignedIn.Minted) answer;
-      if (minted.googleConnected() != null) synchronized (lock) { apply(new Event.GoogleSettled(current.requestId, minted.googleConnected())); }
-      acknowledged(current, custody.redeem(attempt, current.environment, minted.proof()));
-    });
+    run(() -> checked(attempt, google.signIn(attempt.environment, attempt.challenge, attempt.idToken, attempt.serverCode, System.currentTimeMillis()), 0));
   }
 
-  private GoogleSignIn.Returned returned(Open current) {
-    return new GoogleSignIn.Returned() {
-      @Override public void answered(Verified exchange) {
-        synchronized (lock) { if (!apply(new Event.ProofReady(current.requestId, Google.NOT_REQUESTED))) return; }
-        run(current, () -> {
-          if (exchange instanceof Verified.SignedIn signedIn) signedIn(current, signedIn.session());
-          else if (exchange instanceof Verified.FactorRequired factor)
-            factorRequired(current, new Event.FactorRequired(current.requestId), factor.challengeId(), factor.methods(), factor.expiresAt());
-          else fail(current, failureOf(((Verified.NotVerified) exchange).answer()));
-        });
-      }
+  private void send(Attempt attempt) {
+    CodeSignIn.Sent sent = codes.send(attempt.environment, attempt.method, attempt.destination, attempt.verifier, System.currentTimeMillis());
+    synchronized (lock) {
+      if (sent.resendAt() > 0) sendAllowedAt.merge(attempt.method, sent.resendAt(), Math::max);
+      attempt.expiresAt = sent.expiresAt();
+      attempt.resendAt = sendAllowedAt.getOrDefault(attempt.method, 0L);
+    }
+    dispatch(new Event.CloudAnswered(attempt.number, sent.reply()));
+  }
 
-      @Override public void failed(Failure failure) { fail(current, failure); }
+  private void checked(Attempt attempt, Checked answer, int reserved) {
+    switch (answer) {
+      case Checked.SessionIssued issued -> sessionIssued(attempt, issued.session(), reserved);
+      case Checked.KeyMinted minted -> keyMinted(attempt, minted, reserved);
+      case Checked.FactorAsked factor -> {
+        synchronized (lock) { attempt.challengeId = factor.challengeId(); attempt.factors = List.copyOf(factor.factors()); attempt.expiresAt = factor.expiresAt(); }
+        dispatch(new Event.CloudAnswered(attempt.number, new CloudReply.FactorRequired()));
+        if (reserved > 0) custody.signInEnded(attempt.environment, reserved);
+      }
+      case Checked.NotChecked refused -> {
+        dispatch(new Event.CloudAnswered(attempt.number, refused.reply()));
+        if (reserved > 0) custody.signInEnded(attempt.environment, reserved);
+      }
+    }
+  }
+
+  private void sessionIssued(Attempt attempt, Session session, int reserved) {
+    if (attempt.reauthenticating) {
+      synchronized (lock) { attempt.session = session; }
+      dispatch(new Event.CloudAnswered(attempt.number,
+        new CloudReply.Authenticated(session.account().userId(), 1, session.accessExpiresAt(), GoogleReport.GOOGLE_NOT_REQUESTED)));
+      boolean handed;
+      synchronized (lock) { handed = attempt.handed; attempt.session = null; }
+      if (!handed) codes.logout(attempt.environment, session);
+      return;
+    }
+    int credentialAttempt = reserved > 0 ? reserved : begin(attempt.environment);
+    if (credentialAttempt == 0) {
+      codes.logout(attempt.environment, session);
+      dispatch(new Event.CloudAnswered(attempt.number, new CloudReply.Unanswered()));
+      return;
+    }
+    if (!dispatch(new Event.CloudAnswered(attempt.number,
+        new CloudReply.Authenticated(session.account().userId(), credentialAttempt, session.accessExpiresAt(), GoogleReport.GOOGLE_NOT_REQUESTED)))) {
+      codes.logout(attempt.environment, session);
+      custody.signInEnded(attempt.environment, credentialAttempt);
+      return;
+    }
+    KeyOutcome key;
+    try {
+      Proof proof;
+      try { proof = custody.connect(credentialAttempt, attempt.environment, session.accessToken()); }
+      finally { codes.logout(attempt.environment, session); }
+      key = KeyOutcome.acknowledged(custody.redeem(credentialAttempt, attempt.environment, proof));
+    } catch (Refused refused) {
+      key = KeyOutcome.REFUSED;
+    }
+    exchanged(attempt, credentialAttempt, key);
+  }
+
+  private void keyMinted(Attempt attempt, Checked.KeyMinted minted, int reserved) {
+    int credentialAttempt = reserved > 0 ? reserved : begin(attempt.environment);
+    if (credentialAttempt == 0) { dispatch(new Event.CloudAnswered(attempt.number, new CloudReply.Unanswered())); return; }
+    GoogleReport report = minted.googleConnected() ? GoogleReport.GOOGLE_CONNECTED : GoogleReport.GOOGLE_REFUSED;
+    if (!dispatch(new Event.CloudAnswered(attempt.number, new CloudReply.Authenticated(minted.userId(), credentialAttempt, minted.keyExpiresAt(), report)))) {
+      custody.signInEnded(attempt.environment, credentialAttempt);
+      return;
+    }
+    KeyOutcome key;
+    try { key = KeyOutcome.acknowledged(custody.redeem(credentialAttempt, attempt.environment, minted.proof())); }
+    catch (Refused refused) { key = KeyOutcome.REFUSED; }
+    exchanged(attempt, credentialAttempt, key);
+  }
+
+  private void exchanged(Attempt attempt, int credentialAttempt, KeyOutcome key) {
+    boolean settled = dispatch(new Event.ExchangeSettled(credentialAttempt, key));
+    if (!settled || key.tag() == SignInPolicy.KeyTag.KEY_REFUSED) custody.signInEnded(attempt.environment, credentialAttempt);
+  }
+
+  private void connectGoogle(Attempt attempt, SecretServerCode code) {
+    Held held = custody.held(attempt.environment);
+    boolean connected = held != null && google.connectNative(attempt.environment, held.key(), code);
+    if (code != null) code.drop();
+    dispatch(new Event.GoogleConnected(attempt.number, connected));
+  }
+
+  private int begin(SignInRegistration.Environment environment) {
+    try { return custody.beginSignIn(environment); }
+    catch (Refused unstored) { return 0; }
+  }
+
+  private Attempt open(PluginCall call, Event event, Attempt template, boolean same) {
+    List<Runnable> after;
+    Attempt opened = null;
+    Failure refused = null;
+    synchronized (lock) {
+      after = apply(event);
+      if (after == null) refused = refusalOf(event);
+      else {
+        calls.put(state.open(), call);
+        if (same) opened = template;
+        else {
+          opened = new Attempt(state.attempt(), template.environment, template.method, template.reauthenticating, template.destination);
+          attempts.put(opened.number, opened);
+        }
+      }
+    }
+    if (refused != null) { reject(call, refused); return null; }
+    after.forEach(Runnable::run);
+    return opened;
+  }
+
+  private void refuse(PluginCall call, Event event) {
+    Failure refused;
+    synchronized (lock) { refused = SignInPolicy.enabled(state, event) ? Failure.INVALID_INPUT : refusalOf(event); }
+    reject(call, refused);
+  }
+
+  private Failure refusalOf(Event event) {
+    if (SignInPolicy.isBusy(state.phase())) return Failure.BUSY;
+    return switch (event) {
+      case Event.Start start -> SignInPolicy.admits(state.plugin(), start.environment()) ? Failure.UNAVAILABLE : Failure.REJECTED;
+      case Event.Reauthenticate again -> SignInPolicy.admits(state.plugin(), again.environment()) && again.method() != Method.GOOGLE_PICKER
+        ? Failure.UNAVAILABLE : Failure.REJECTED;
+      case Event.Verify verify -> ended(verify.attempt());
+      case Event.Resend resend -> ended(resend.attempt());
+      default -> Failure.INVALID_INPUT;
     };
   }
 
-  private void verified(Open current, Verified verified) throws Refused {
-    if (verified instanceof Verified.SignedIn signedIn) {
-      synchronized (lock) { if (!apply(new Event.VerifyAnswered(current.requestId, Verify.VERIFIED))) return; }
-      signedIn(current, signedIn.session());
-      return;
-    }
-    if (verified instanceof Verified.FactorRequired factor) {
-      factorRequired(current, new Event.VerifyAnswered(current.requestId, Verify.FACTOR_REQUIRED), factor.challengeId(), factor.methods(), factor.expiresAt());
-      return;
-    }
-    Verify answer = ((Verified.NotVerified) verified).answer();
-    PluginCall waiting;
-    Step kept;
-    synchronized (lock) {
-      if (!apply(new Event.VerifyAnswered(current.requestId, answer))) return;
-      kept = state.step();
-      if (!kept.open()) waiting = null;
-      else { waiting = current.waiting; current.waiting = null; }
-    }
-    if (waiting == null) { settle(current); return; }
-    Failure reason = answer == Verify.WRONG_CODE ? Failure.INVALID_CODE : Failure.UNAVAILABLE;
-    waiting.reject(reason.wire, reason.wire, new JSObject().put("requestId", current.requestId).put("step", kept.wire).put("kept", true));
+  private Failure ended(int number) {
+    return state.phase().tag() == PhaseTag.FAILED && state.attempt() == number ? state.phase().failure() : Failure.INVALID_INPUT;
   }
 
-  private void signedIn(Open current, Session session) throws Refused {
-    if (current.purpose == Purpose.REAUTHENTICATE) {
-      Held held = custody.held(current.environment);
-      if (held == null || !custody.grantSession(current.environment, session)) throw new Refused(Failure.REFUSED);
-      acknowledged(current, held.credentialId());
-      return;
-    }
-    int attempt = begin(current);
-    Proof proof;
-    try { proof = custody.connect(attempt, current.environment, session.accessToken()); }
-    finally { codes.logout(current.environment, session); }
-    acknowledged(current, custody.redeem(attempt, current.environment, proof));
-  }
-
-  private void acknowledged(Open current, String credentialId) {
-    boolean connect;
-    synchronized (lock) {
-      if (!apply(new Event.Acknowledged(current.requestId, credentialId))) return;
-      connect = state.google() == Google.HELD;
-    }
-    if (connect) {
-      Held held = custody.held(current.environment);
-      boolean connected = held != null && google.connectNative(current.environment, held.key(), current.serverCode);
-      synchronized (lock) { apply(new Event.GoogleSettled(current.requestId, connected)); }
-    }
-    settle(current);
-  }
-
-  private void factorRequired(Open current, Event event, String challengeId, List<String> methods, long expiresAt) {
-    PluginCall waiting;
-    synchronized (lock) {
-      if (!apply(event)) return;
-      if (state.step() != Step.SECOND_FACTOR) waiting = null;
-      else {
-        current.challengeId = challengeId; current.factors = List.copyOf(methods); current.expiresAt = expiresAt;
-        waiting = current.waiting; current.waiting = null;
-      }
-    }
-    if (waiting == null) { settle(current); return; }
-    waiting.resolve(new JSObject().put("requestId", current.requestId).put("attemptId", current.attemptId)
-      .put("step", Step.SECOND_FACTOR.wire).put("methods", new JSArray(methods)).put("expiresAt", expiresAt));
-  }
-
-  private int begin(Open current) throws Refused {
-    int attempt = custody.beginSignIn(current.environment);
-    synchronized (lock) { current.custodyAttempt = attempt; }
-    return attempt;
-  }
-
-  private void fail(Open current, Failure failure) { fail(current, failure, 0); }
-
-  private void fail(Open current, Failure failure, long resendAt) {
-    boolean resend;
-    synchronized (lock) {
-      resend = current == resending;
-      if (!apply(new Event.Fail(current.requestId, failure))) return;
-      if (resend) { resending = null; current.settled = true; }
-    }
-    if (resend) refuse(current.waiting, failure, resendAt);
-    else stopped(current);
-  }
-
-  private void cancelled(Open current) {
-    synchronized (lock) { if (!apply(new Event.Cancel(current.requestId))) return; }
-    stopped(current);
-  }
-
-  private void stopped(Open current) {
-    Open orphan;
-    synchronized (lock) {
-      orphan = resending != null && state.resend().isEmpty() ? resending : null;
-      if (orphan != null) { resending = null; orphan.settled = true; }
-    }
-    if (orphan != null) refuse(orphan.waiting, Failure.CANCELLED);
-    current.cancellation.cancel();
-    if (current.serverCode != null) current.serverCode.drop();
-    if (current.method == Method.GOOGLE_BROWSER) browser.cancel(current.requestId);
-    if (current.custodyAttempt > 0 && current.purpose == Purpose.SIGN_IN) custody.signInEnded(current.environment, current.custodyAttempt);
-    settle(current);
-  }
-
-  private void settle(Open current) {
-    State settled;
-    PluginCall waiting;
-    synchronized (lock) {
-      settled = state;
-      if (current.settled || !current.requestId.equals(settled.request()) || settled.step().open()) return;
-      current.settled = true;
-      waiting = current.waiting;
-      current.waiting = null;
-    }
-    if (current.serverCode != null) current.serverCode.drop();
-    JSObject receipt = new JSObject().put("requestId", current.requestId).put("attemptId", current.attemptId)
-      .put("credentialId", settled.credentialId()).put("google", settled.google().wire).put("step", settled.step().wire);
-    if (settled.failure() != null) receipt.put("failure", settled.failure().wire);
-    notifyListeners("signInSettled", receipt);
-    if (waiting == null) return;
-    if (settled.failure() == null) waiting.resolve(receipt);
-    else waiting.reject(settled.failure().wire, settled.failure().wire, receipt);
-  }
-
-  private interface Work {
-    void run() throws Refused;
-  }
-
-  private void run(Open current, Work work) {
-    try {
-      worker.execute(() -> {
-        try { work.run(); }
-        catch (Refused refused) { fail(current, refused.failure); }
-        catch (RuntimeException broken) { fail(current, Failure.UNAVAILABLE); }
-      });
-    } catch (RejectedExecutionException closed) {
-      fail(current, Failure.UNAVAILABLE);
-    }
-  }
-
-  private boolean apply(Event event) {
-    if (!SignInPolicy.enabled(state, event)) return false;
-    state = SignInPolicy.step(state, event);
+  private boolean dispatch(Event event) {
+    List<Runnable> after;
+    synchronized (lock) { after = apply(event); }
+    if (after == null) return false;
+    after.forEach(Runnable::run);
     return true;
   }
 
-  private static Failure failureOf(Verify answer) {
-    return switch (answer) {
-      case WRONG_CODE -> Failure.INVALID_CODE;
-      case LOCKED -> Failure.TOO_MANY_ATTEMPTS;
-      case EXPIRED -> Failure.EXPIRED;
-      case REFUSED -> Failure.REFUSED;
-      case VERIFIED, FACTOR_REQUIRED, UNANSWERED, MALFORMED -> Failure.UNAVAILABLE;
+  private List<Runnable> apply(Event event) {
+    if (!SignInPolicy.enabled(state, event)) return null;
+    State before = state;
+    Step step = SignInPolicy.step(state, event);
+    state = step.state();
+    List<Runnable> after = new ArrayList<>();
+    for (Effect effect : step.out()) after.add(effect(before, effect));
+    retire(after);
+    schedule();
+    return after;
+  }
+
+  private Runnable effect(State before, Effect effect) {
+    return switch (effect) {
+      case Effect.Settled settled -> {
+        JSObject receipt = receipt(settled);
+        PluginCall waiting = calls.remove(settled.request());
+        yield () -> {
+          notifyListeners("signInSettled", receipt);
+          if (waiting != null) waiting.resolve(receipt);
+        };
+      }
+      case Effect.ConnectGoogle connect -> {
+        Attempt attempt = attempts.get(state.attempt());
+        SecretServerCode code = attempt == null ? null : attempt.serverCode;
+        if (attempt != null) attempt.serverCode = null;
+        yield () -> run(() -> connectGoogle(attempt, code));
+      }
+      case Effect.AbandonExchange abandoned -> {
+        Attempt attempt = attempts.get(before.attempt());
+        yield attempt == null ? () -> {} : () -> custody.signInEnded(attempt.environment, abandoned.abandoned());
+      }
+      case Effect.HandSession hand -> {
+        Attempt attempt = attempts.get(before.attempt());
+        Session session = attempt == null ? null : attempt.session;
+        if (session != null) attempt.handed = true;
+        yield session == null ? () -> {} : () -> custody.grantSession(attempt.environment, session);
+      }
     };
   }
 
-  private static Purpose purpose(PluginCall call) {
-    return "reauthenticate".equals(call.getString("purpose")) ? Purpose.REAUTHENTICATE : Purpose.SIGN_IN;
+  private void retire(List<Runnable> after) {
+    boolean live = !(state.phase().tag() == PhaseTag.IDLE || state.phase().tag() == PhaseTag.FAILED
+      || state.phase().tag() == PhaseTag.SIGNED_IN || state.phase().tag() == PhaseTag.REAUTHENTICATED);
+    int fallback = SignInPolicy.fallbackOf(state.phase());
+    for (Iterator<Map.Entry<Integer, Attempt>> each = attempts.entrySet().iterator(); each.hasNext(); ) {
+      Attempt attempt = each.next().getValue();
+      if (live && (attempt.number == state.attempt() || attempt.number == fallback)) {
+        if (state.serverCode() != ServerCode.HELD_CODE && attempt.serverCode != null) { attempt.serverCode.drop(); attempt.serverCode = null; }
+        continue;
+      }
+      each.remove();
+      attempt.cancellation.cancel();
+      if (attempt.expiry != null) attempt.expiry.cancel(false);
+      if (attempt.serverCode != null) attempt.serverCode.drop();
+      attempt.serverCode = null;
+      attempt.idToken = null;
+      if (attempt.method == Method.GOOGLE_BROWSER) after.add(() -> browser.cancel(attempt.number));
+    }
+  }
+
+  private void schedule() {
+    PhaseTag tag = state.phase().tag();
+    Attempt attempt = attempts.get(state.attempt());
+    if ((tag != PhaseTag.CODE_SENT && tag != PhaseTag.SECOND_FACTOR) || attempt == null || attempt.expiresAt <= 0 || attempt.expiryAt == attempt.expiresAt) return;
+    if (attempt.expiry != null) attempt.expiry.cancel(false);
+    attempt.expiryAt = attempt.expiresAt;
+    long delay = Math.max(0, attempt.expiresAt - System.currentTimeMillis());
+    try { attempt.expiry = timers.schedule(() -> { dispatch(new Event.Expire(attempt.number)); }, delay, TimeUnit.MILLISECONDS); }
+    catch (RejectedExecutionException closed) { attempt.expiry = null; }
+  }
+
+  private JSObject receipt(Effect.Settled settled) {
+    JSObject receipt = new JSObject().put("request", settled.request()).put("attempt", settled.attempt());
+    Verdict verdict = settled.verdict();
+    Attempt attempt = attempts.get(settled.attempt());
+    return switch (verdict.tag()) {
+      case CODE_ON_ITS_WAY -> receipt.put("verdict", "code-on-its-way").put("expiresAt", attempt.expiresAt).put("resendAt", attempt.resendAt);
+      case FACTOR_ASKED -> receipt.put("verdict", "factor-asked").put("factors", new JSArray(attempt.factors)).put("expiresAt", attempt.expiresAt);
+      case SIGNED_IN_AS -> receipt.put("verdict", "signed-in-as").put("credentialId", verdict.credentialId()).put("google", verdict.google().wire);
+      case ACCOUNT_CONFIRMED -> receipt.put("verdict", "account-confirmed");
+      case TRY_AGAIN -> receipt.put("verdict", "try-again").put("retry", verdict.failure().wire);
+      case ENDED -> receipt.put("verdict", "ended").put("problem", verdict.failure().wire);
+    };
+  }
+
+  private void run(Runnable work) {
+    try { worker.execute(work); }
+    catch (RejectedExecutionException closed) { return; }
+  }
+
+  private void accountChanged(String name, String problem) {
+    SignInRegistration.Environment environment = registration.environment(name);
+    if (environment == null) return;
+    JSObject changed = new JSObject().put("environment", environment.name).put("account", account(environment));
+    notifyListeners("signInAccountChanged", problem == null ? changed : changed.put("problem", problem));
+  }
+
+  private SignInRegistration.Environment environment(PluginCall call) {
+    if (registration == null) { reject(call, Failure.REJECTED); return null; }
+    SignInRegistration.Environment environment = registration.environment(call.getString("environment"));
+    if (environment == null) reject(call, Failure.INVALID_INPUT);
+    return environment;
   }
 
   private JSObject account(SignInRegistration.Environment environment) {
     Held held = custody.held(environment);
     if (held == null) return new JSObject().put("signedIn", false);
-    return new JSObject().put("signedIn", true).put("userId", held.account().userId()).put("organizationId", held.account().organizationId())
+    Account account = held.account();
+    return new JSObject().put("signedIn", true).put("userId", account.userId()).put("organizationId", account.organizationId())
       .put("credentialId", held.credentialId()).put("keyExpiresAt", held.keyExpiresAt());
   }
 
@@ -535,12 +609,16 @@ public class ElizaSignInPlugin extends Plugin {
       .put("sms", status.sms).put("google", status.google).put("googleMode", status.googleMode == GoogleMode.BROWSER ? "browser" : "picker");
   }
 
-  private static void refuse(PluginCall call, Failure failure) { refuse(call, failure, 0); }
+  private static void reject(PluginCall call, Failure failure) { reject(call, failure, 0); }
 
-  private static void refuse(PluginCall call, Failure failure, long resendAt) {
-    if (call == null) return;
+  private static void reject(PluginCall call, Failure failure, long resendAt) {
     if (resendAt > 0) call.reject(failure.wire, failure.wire, new JSObject().put("resendAt", resendAt));
     else call.reject(failure.wire, failure.wire);
+  }
+
+  static SignInRegistration registration(JSONObject config) {
+    try { return SignInRegistration.parse(map(config)); }
+    catch (SignInRegistration.Refused refused) { return null; }
   }
 
   private static Map<String, Object> map(JSONObject object) {

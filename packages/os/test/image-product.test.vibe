@@ -1,0 +1,266 @@
+// spec/os/image/product.md, "Story: Compose my product from a pinned device profile"; spec/os/image/product.md, "Story: Enroll my product's update channel"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { composeProduct, enrollUpdater, packBootAnimation, type ComposeRequest, type EnrollmentRequest } from "../src/image/compose-product.vibe"
+import { stageLauncher, validateDescriptor } from "../src/image/stage-launcher.vibe"
+import { acmeSource } from "../gen/os__image__product.effect.vibe"
+import type { ProvisioningRequest } from "../gen/os__image__provisioning.effect.vibe"
+import { androidTools, buildApk, testSigner } from "./support/android-tools.ts"
+import { readTree, scratch, writeTree } from "./support/scratch.vibe"
+
+module node {
+  import { X509Certificate, createHash } from "node:crypto"
+
+  /** @throws {never} */
+  export function sha256(bytes: Uint8Array | string): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function parsed(text: string): unknown {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function fingerprint(pem: Uint8Array): string {
+    return new X509Certificate(pem).fingerprint256.replaceAll(":", "").toLowerCase()
+  }
+
+  /** @throws {never} */
+  export function launcherManifest(packageName: string): string {
+    return `<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${packageName}" android:versionCode="1" android:versionName="1.0">
+  <application android:label="Home" android:debuggable="false" android:allowBackup="false">
+    <activity android:name=".HomeActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.HOME" />
+        <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>
+`
+  }
+}
+import { fingerprint, launcherManifest, parsed, sha256 } from node
+
+const tools = androidTools()
+const skipped = tools.kind === "missing" ? tools.reason : null
+const suffix = skipped === null ? "" : ` (skipped: ${skipped})`
+const LAUNCHER = { brand: "acme", moduleName: "AcmeHome", packageName: "com.acme.home" }
+const PROVISIONING: ProvisioningRequest = { assistant: { tag: "LauncherAssistant" }, requires: { autofill: false, allFilesAccess: false }, telephonyRoles: false, lockScreen: "SystemOwnsLockScreen" }
+const SOURCE = { ...acmeSource, admitted: [] }
+const PIXEL = {
+  schemaVersion: 1,
+  target: "pixel10a",
+  sourceProfile: "pixel10a",
+  vendorDirectory: "acme",
+  productName: "acme_stallion",
+  model: "Acme Phone",
+  brand: "Acme",
+  manufacturer: "Acme",
+  releaseConfig: "bp4a",
+  launcher: { moduleName: LAUNCHER.moduleName, packageName: LAUNCHER.packageName },
+  systemUpdater: true,
+  firstRun: true,
+  pixelConfig: { moduleName: "AcmeConfig", packageName: "com.acme.config", mimeType: "vnd.android.cursor.dir/vnd.acme.flags" },
+}
+const CUTTLEFISH = {
+  schemaVersion: 1,
+  target: "cuttlefish_x86_64",
+  sourceProfile: "cuttlefish",
+  vendorDirectory: "acme",
+  productName: "acme_cf_x86_64_phone",
+  model: "Acme Virtual",
+  brand: "Acme",
+  manufacturer: "Acme",
+  releaseConfig: "bp4a",
+  launcher: { moduleName: LAUNCHER.moduleName, packageName: LAUNCHER.packageName },
+}
+const FRAMES = { "desc.txt": "1080 2400 30\np 1 0 part0\np 0 0 part1\n", "part0/00000.png": "frame-a", "part0/00001.png": "frame-b", "part1/00000.png": "frame-c" }
+
+effect function stagedOverlay(prefix: string, partition?: "system") {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  if (tools.kind === "missing") return undefined
+  const work = try scratch(prefix)
+  const signer = try Effect.try(() => testSigner(tools, work, "launcher"))
+  const apk = try Effect.try(() => buildApk(tools, { directory: path.join(work, "apks"), manifest: launcherManifest(LAUNCHER.packageName), signer, name: "home" }))
+  const descriptor = try validateDescriptor({ schemaVersion: 1, ...LAUNCHER, apkSha256: apk.sha256, certificateSha256: signer.certificateSha256, ...(partition === undefined ? {} : { partition }) })
+  const descriptorFile = path.join(work, "launcher.json")
+  try files.writeFileString(descriptorFile, JSON.stringify(descriptor))
+  const checkout = path.join(work, "aosp")
+  const output = path.join(checkout, "vendor", "acme")
+  try stageLauncher({ descriptor: descriptorFile, apk: apk.apk, output, aapt: tools.aapt, apksigner: tools.apksigner, development: false })
+  return { work, checkout, output }
+}
+
+effect function writeJson(file: string, value: unknown) {
+  const files = try FileSystem.FileSystem
+  try files.writeFileString(file, `${JSON.stringify(value, null, 2)}\n`)
+  return file
+}
+
+effect function problemsOf(request: ComposeRequest) {
+  return (composeProduct(request) |> map(%, (): readonly string[] => [])) catch (error): readonly string[] => (error._tag === "ProductRefused" ? error.problems : [error._tag])
+}
+
+effect function enrollmentOf(request: EnrollmentRequest) {
+  return (enrollUpdater(request) |> map(%, (record): readonly string[] => [record.outcome])) catch (error): readonly string[] => (error._tag === "EnrollmentRefused" ? ["EnrollmentRefused", ...error.problems] : [error._tag])
+}
+
+it.effect.skipIf(skipped !== null)(`Compose a Pixel 10a production product with first run, the system updater and a pinned boot animation, refuse every unreviewed variant, and never overwrite it${suffix} (spec/os/image/product.md, "Story: Compose my product from a pinned device profile"; spec/os/image/product.md, "A product targets the Pixel 10a or the Cuttlefish x86_64 phone, from the source profile pinned for it and a source verdict that admitted it"; spec/os/image/product.md, "Composition never overwrites the product list, the product makefile, the device templates, the brand assets, the record, the updater or first-run sources"; spec/os/image/product.md, "The boot animation is the stock one, or exactly the pinned archive of stored entries with a root desc.txt and a frame in every part"; spec/os/image/product.md, "A production composition has no unset or placeholder field, and a production Cuttlefish product pins its host packages and platform certificate"; spec/os/image/product.md, "The composition record binds every staged artifact to the descriptor digest and claims staging only")`, effect () => {
+  provide NodeServices.layer {
+    const staged = try stagedOverlay("image-product-pixel")
+    if (staged === undefined) return
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const frames = path.join(staged.work, "frames")
+    try writeTree(frames, FRAMES)
+    const packed = try packBootAnimation(frames)
+    const pixel = { ...PIXEL, bootAnimation: { sha256: packed.sha256 } }
+    const base = { output: staged.output, source: SOURCE, purpose: "Production" as const, provisioning: PROVISIONING, bootAnimation: { kind: "frames" as const, directory: frames } }
+    const at = (name: string, value: unknown) => writeJson(path.join(staged.work, `${name}.json`), value)
+    const before = Object.keys(try readTree(staged.output)).sort()
+
+    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("unset", { ...pixel, model: "UNSET" }) }), ["PlaceholderInProduction"])
+    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("brand", { ...pixel, brand: "Other" }) }), ["SourceNotAdmitted"])
+    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("target", { ...pixel, productName: "acme_cf_x86_64_phone" }) }), ["SourceNotAdmitted"])
+    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("pixel", pixel), source: { ...SOURCE, lock: { ...SOURCE.lock, developmentOnly: true } } }), ["SourceNotAdmitted"])
+    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("profile", { ...pixel, sourceProfile: "cuttlefish" }) }), ["SourceProfileNotPinned"])
+    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("collides", { ...pixel, pixelConfig: { ...pixel.pixelConfig, packageName: LAUNCHER.packageName } }) }), ["PixelConfigCollides"])
+    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("other-launcher", { ...pixel, launcher: { ...pixel.launcher, moduleName: "OtherHome" } }) }), ["LauncherDiffers"])
+    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("unpinned-animation", { ...pixel, bootAnimation: { sha256: sha256("other") } }) }), ["BootAnimationDiffers"])
+    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("stock-animation", PIXEL) }), ["BootAnimationDiffers"])
+    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("extra-field", { ...pixel, hostPackages: [] }) }), ["DescriptorInvalid"])
+    assert.deepStrictEqual(Object.keys(try readTree(staged.output)).sort(), before)
+
+    const descriptorFile = try at("pixel", pixel)
+    const record = try composeProduct({ ...base, descriptor: descriptorFile })
+    const descriptorSha256 = sha256(new Uint8Array(try files.readFile(descriptorFile)))
+    const tree = try readTree(staged.output)
+    assert.strictEqual(record.lunch, "acme_stallion-bp4a-user")
+    assert.deepStrictEqual(record.lunchChoices, ["acme_stallion-bp4a-userdebug", "acme_stallion-bp4a-user"])
+    assert.strictEqual(record.device, "stallion")
+    assert.deepStrictEqual(record.claims, ["ProductStaged"])
+    assert.deepStrictEqual(record.firstRun, { roles: ["home=com.acme.home", "assistant=com.acme.home"] })
+    assert.deepStrictEqual(record.bootAnimation, { sha256: packed.sha256, parts: ["part0", "part1"] })
+    assert.isTrue(record.artifacts.length > 0 && record.artifacts.every((artifact) => artifact.descriptorSha256 === descriptorSha256))
+    assert.deepStrictEqual(record.artifacts.filter((artifact) => !artifact.path.endsWith(".zip")).filter((artifact) => artifact.sha256 !== sha256(tree[artifact.path] ?? "")), [])
+    assert.deepStrictEqual(parsed(tree["physical-product.json"] ?? ""), parsed(JSON.stringify(record)))
+    assert.strictEqual(tree["AndroidProducts.mk"], "PRODUCT_MAKEFILES := $(LOCAL_DIR)/acme_stallion.mk\nCOMMON_LUNCH_CHOICES := \\\n    acme_stallion-bp4a-userdebug \\\n    acme_stallion-bp4a-user\n")
+    const makefile = tree["acme_stallion.mk"] ?? ""
+    assert.include(makefile, "USE_STOCK_KERNEL := true\n$(call inherit-product, vendor/google_devices/stallion/stallion.mk)\n$(call inherit-product, vendor/acme/product.mk)\n")
+    assert.include(makefile, "PRODUCT_NAME := acme_stallion\nPRODUCT_DEVICE := stallion\nPRODUCT_MODEL := Acme Phone\nPRODUCT_BRAND := Acme\nPRODUCT_MANUFACTURER := Acme\n")
+    assert.include(makefile, "PRODUCT_COPY_FILES += vendor/acme/brand/bootanimation.zip:$(TARGET_COPY_OUT_PRODUCT)/media/bootanimation.zip\n")
+    assert.include(makefile, "PRODUCT_PACKAGES += DeskClock\n")
+    assert.include(makefile, "$(call inherit-product, vendor/acme/system-updater/product.mk)\n")
+    assert.include(makefile, "$(call inherit-product, vendor/acme/first-run/product.mk)\nPRODUCT_PACKAGE_OVERLAYS += vendor/acme/first-run/overlay\n")
+    assert.include(tree["stallion/device.mk"] ?? "", "include vendor/acme/stallion/device-common.mk\n")
+    assert.include(tree["stallion/device.mk"] ?? "", "PRODUCT_PACKAGES += AcmeConfig\n")
+    assert.notInclude(Object.entries(tree).filter(([name]) => !name.startsWith("stallion/patches/")).map(([, content]) => content).join("\n"), "@VENDOR_DIRECTORY@")
+    assert.isDefined(tree["stallion/vendor-config/src/com/acme/config/FlagsProvider.java"])
+    assert.include(tree["stallion/vendor-config/AndroidManifest.xml"] ?? "", "com.acme.config")
+    assert.strictEqual(sha256(new Uint8Array(try files.readFile(path.join(staged.output, "brand", "bootanimation.zip")))), packed.sha256)
+    assert.include(tree["system-updater/res/values/config.xml"] ?? "", `<bool name="os_update_enabled">false</bool>`)
+    const roles = tree["first-run/overlay/vendor/acme/first-run/res/values/config.xml"] ?? ""
+    assert.include(roles, `<bool name="first_run_enabled">true</bool>`)
+    assert.include(roles, "<item>home=com.acme.home</item>\n        <item>assistant=com.acme.home</item>")
+
+    assert.deepStrictEqual(try problemsOf({ ...base, descriptor: descriptorFile }), ["OutputExists"])
+    assert.strictEqual(try files.readFileString(path.join(staged.output, "acme_stallion.mk")), makefile)
+  }
+}, 240_000)
+
+it.effect.skipIf(skipped !== null)(`Compose a Cuttlefish development product on the stock device tree, refuse a production one without pinned host packages, and refuse a Pixel launcher on the system partition${suffix} (spec/os/image/product.md, "Story: Compose my product from a pinned device profile"; spec/os/image/product.md, "The lunch choices are the product with its release configuration as userdebug and user, and production builds user"; spec/os/image/product.md, "The composed product keeps the stock kernel, Virtual A/B with lz4 snapshots, enforcing SELinux with neverallows checked, and DeskClock required once"; spec/os/image/product.md, "The product's launcher is the staged launcher, and on a Pixel it stays off the system partition and apart from the hardware config identity")`, effect () => {
+  provide NodeServices.layer {
+    const staged = try stagedOverlay("image-product-cuttlefish")
+    if (staged === undefined) return
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const at = (name: string, value: unknown) => writeJson(path.join(staged.work, `${name}.json`), value)
+    const base = { output: staged.output, source: SOURCE, provisioning: PROVISIONING }
+    assert.deepStrictEqual(try problemsOf({ ...base, purpose: "Production", descriptor: try at("unpinned", CUTTLEFISH) }), ["CuttlefishHostUnpinned"])
+    const pinned = { ...CUTTLEFISH, hostPackages: [{ name: "cuttlefish-base", version: "1.0", sha256: sha256("base") }], platformCertificateSha256: "UNSET" }
+    assert.deepStrictEqual([...(try problemsOf({ ...base, purpose: "Production", descriptor: try at("certificate", pinned) }))].sort(), ["CuttlefishHostUnpinned", "PlaceholderInProduction"])
+    try writeTree(staged.output, { "permissive.mk": "BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive\nPRODUCT_PACKAGES += DeskClock\nPRODUCT_PACKAGES += DeskClock\n" })
+    assert.deepStrictEqual([...(try problemsOf({ ...base, purpose: "Development", descriptor: try at("development", CUTTLEFISH) }))].sort(), ["BuildSettingsChanged", "ClockNamedTwice"])
+    try files.remove(path.join(staged.output, "permissive.mk"))
+
+    const record = try composeProduct({ ...base, purpose: "Development", descriptor: try at("development", CUTTLEFISH) })
+    const tree = try readTree(staged.output)
+    assert.strictEqual(record.lunch, "acme_cf_x86_64_phone-bp4a-userdebug")
+    assert.strictEqual(record.device, "vsoc_x86_64_only")
+    assert.strictEqual(record.systemUpdater, null)
+    assert.strictEqual(record.firstRun, null)
+    assert.strictEqual(record.bootAnimation, null)
+    assert.isUndefined(Object.keys(tree).find((name) => name.startsWith("stallion/") || name.startsWith("brand/") || name.startsWith("system-updater/") || name.startsWith("first-run/")))
+    const makefile = tree["acme_cf_x86_64_phone.mk"] ?? ""
+    assert.include(makefile, "$(call inherit-product, device/google/cuttlefish/vsoc_x86_64_only/phone/aosp_cf.mk)\n$(call inherit-product, vendor/acme/product.mk)\n")
+    assert.include(makefile, "PRODUCT_DEVICE := vsoc_x86_64_only\n")
+    assert.include(makefile, "PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := lz4\n")
+
+    const system = try stagedOverlay("image-product-system", "system")
+    if (system === undefined) return
+    const systemDescriptor = try writeJson(path.join(system.work, "pixel.json"), PIXEL)
+    assert.deepStrictEqual(try problemsOf({ output: system.output, source: SOURCE, purpose: "Production", provisioning: PROVISIONING, descriptor: systemDescriptor }), ["LauncherOnSystemPartition"])
+  }
+}, 240_000)
+
+it.effect.skipIf(skipped !== null)(`Enroll a composed Pixel product's update channel only on execute, only under the channel's certificate and hosts, and only once${suffix} (spec/os/image/product.md, "Story: Enroll my product's update channel"; spec/os/image/product.md, "An enrollment enables updates from an HTTPS manifest on a listed host, for this product and device, under the channel's OTA certificate"; spec/os/image/product.md, "An enrollment is written only on explicit execute, into a checkout whose updater sources and product makefile are what was reviewed, and never over an earlier one"; spec/os/image/product.md, "The shared updater is staged only from its reviewed sources, with updates disabled")`, effect () => {
+  provide NodeServices.layer {
+    const staged = try stagedOverlay("image-product-enroll")
+    if (staged === undefined) return
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const descriptor = try writeJson(path.join(staged.work, "pixel.json"), PIXEL)
+    try composeProduct({ output: staged.output, source: SOURCE, purpose: "Production", provisioning: PROVISIONING, descriptor })
+    const certificate = try path.fromFileUrl(new URL("./fixtures/product/releasekey.x509.pem", import.meta.url))
+    const other = try path.fromFileUrl(new URL("./fixtures/product/otherkey.x509.pem", import.meta.url))
+    const otaCertificateSha256 = fingerprint(new Uint8Array(try files.readFile(certificate)))
+    const makefile = path.join(staged.output, "acme_stallion.mk")
+    const preimage = sha256(try files.readFileString(makefile))
+    const channel = { manifestUrl: "https://updates.acme.test/stallion/manifest.json", hosts: ["updates.acme.test"], product: "acme_stallion", device: "stallion", otaCertificateSha256 }
+    const request: EnrollmentRequest = { checkout: staged.checkout, descriptor, channel, certificate, productMakefileSha256: preimage, receipt: path.join(staged.work, "receipts", "enrollment.json"), execute: false }
+    const enrollment = path.join(staged.output, "system-update-enrollment")
+    const reviewedConfig = try files.readFileString(try path.fromFileUrl(new URL("../aosp/system-updater/res/values/config.xml", import.meta.url)))
+
+    assert.deepStrictEqual(try enrollmentOf(request), ["EnrollmentPlanned"])
+    assert.isFalse(try files.exists(enrollment))
+    assert.deepStrictEqual(try enrollmentOf({ ...request, execute: true, channel: { ...channel, manifestUrl: "http://updates.acme.test/m.json" } }), ["EnrollmentRefused", "ManifestNotHttps"])
+    assert.deepStrictEqual(try enrollmentOf({ ...request, execute: true, channel: { ...channel, hosts: ["cdn.acme.test"] } }), ["EnrollmentRefused", "ManifestHostNotListed"])
+    assert.deepStrictEqual(try enrollmentOf({ ...request, execute: true, channel: { ...channel, device: "vsoc_x86_64_only" } }), ["EnrollmentRefused", "DeviceDiffers"])
+    assert.deepStrictEqual(try enrollmentOf({ ...request, execute: true, certificate: other }), ["EnrollmentRefused", "CertificateNotTheChannels"])
+    assert.deepStrictEqual(try enrollmentOf({ ...request, execute: true, productMakefileSha256: sha256("other") }), ["EnrollmentRefused"])
+    try writeTree(staged.output, { "system-updater/res/values/config.xml": reviewedConfig.replace(`<bool name="os_update_enabled">false</bool>`, `<bool name="os_update_enabled">true</bool>`) })
+    assert.deepStrictEqual(try enrollmentOf({ ...request, execute: true }), ["EnrollmentRefused"])
+    try writeTree(staged.output, { "system-updater/res/values/config.xml": reviewedConfig })
+    assert.isFalse(try files.exists(enrollment))
+    assert.strictEqual(sha256(try files.readFileString(makefile)), preimage)
+
+    const written = try enrollUpdater({ ...request, execute: true })
+    assert.strictEqual(written.outcome, "EnrollmentWritten")
+    const tree = try readTree(enrollment)
+    assert.deepStrictEqual(Object.keys(tree).sort(), ["enrollment.mk", "overlay/vendor/acme/system-updater/res/values/config.xml", "releasekey.x509.pem"])
+    const overlay = tree["overlay/vendor/acme/system-updater/res/values/config.xml"] ?? ""
+    assert.include(overlay, `<bool name="os_update_enabled">true</bool>`)
+    assert.include(overlay, `<string name="os_update_manifest" translatable="false">https://updates.acme.test/stallion/manifest.json</string>`)
+    assert.include(overlay, "<item>updates.acme.test</item>")
+    assert.include(overlay, `<string name="os_update_device" translatable="false">stallion</string>`)
+    assert.include(overlay, `<string name="os_update_ota_certificate" translatable="false">${otaCertificateSha256}</string>`)
+    assert.include(tree["enrollment.mk"] ?? "", "PRODUCT_OTA_PUBLIC_KEYS += vendor/acme/system-update-enrollment/releasekey.x509.pem\n")
+    const after = try files.readFileString(makefile)
+    assert.isTrue(after.endsWith("\n$(call inherit-product, vendor/acme/system-update-enrollment/enrollment.mk)\n"))
+    assert.strictEqual(written.productMakefileBefore, preimage)
+    assert.strictEqual(written.productMakefileAfter, sha256(after))
+    assert.deepStrictEqual(parsed(try files.readFileString(request.receipt)), parsed(JSON.stringify(written)))
+
+    assert.deepStrictEqual(try enrollmentOf({ ...request, execute: true, productMakefileSha256: sha256(after) }), ["EnrollmentRefused"])
+    assert.strictEqual(try files.readFileString(makefile), after)
+  }
+}, 240_000)

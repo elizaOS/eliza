@@ -1,4 +1,4 @@
-// spec/agent/voice/session.md, "Barge-in is confirmed by an accepted transcript or a 700 ms hold"; spec/agent/voice/session.md, "A session owns one microphone capture and reopens it only after the turn"
+// spec/agent/voice/session.md, "A barge-in is confirmed only by an accepted transcript or a 700 ms hold"; spec/agent/voice/session.md, "A session owns one microphone capture, and a half-duplex session reopens it only after the turn"
 import { bargeInHoldMs, type InputMode, type ShownPhase, type VoiceSession as SessionState } from "../../gen/agent__voice__session.effect.vibe"
 import { mayBecomeNonSpeechVoiceTranscript } from "./heuristics.vibe"
 import type { RecognizerPort, VoiceSessionPorts } from "./ports.vibe"

@@ -1,4 +1,4 @@
-// spec/os/update/operator.md, "Story: Update a device by cable and get back if it fails"; spec/os/image/verification.md, "Story: Know whether a booted image is what I staged"; spec/os/image/qualification.md, "Story: Qualify a device read-only"
+// spec/os/update/operator.md, "Story: Update a device by cable"; spec/os/image/verification.md, "Story: Know whether a booted image is what I staged"; spec/os/image/qualification.md, "Story: Qualify a device read-only"
 import { createHash } from "node:crypto";
 import { appendFileSync, chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import net from "node:net";

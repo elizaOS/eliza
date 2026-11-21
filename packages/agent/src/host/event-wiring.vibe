@@ -1,0 +1,58 @@
+// spec/agent/conversation/events.md, "Each published event reaches exactly the live feeds that want it"; spec/agent/conversation/events.md, "Every ended feed is announced with its reason"
+import { rendererOf } from "../../gen/agent__conversation__events.ts"
+import type { FeedHub, FeedSink, LiveFeed } from "../access/event-feeds.vibe"
+import type { FeedRequest, Refused } from "../access/events-port.vibe"
+import type { EventHub } from "../conversation/events.vibe"
+import type { PublishEvent, ViewFeeds } from "./module.vibe"
+
+export interface EventWiring {
+  readonly publishEvent: PublishEvent
+  readonly viewFeeds: ViewFeeds
+  readonly feeds: FeedHub
+  readonly attach: (hub: EventHub) => void
+}
+
+const starting: Refused = { kind: "refused", reason: "starting" }
+
+export function eventWiring(): EventWiring {
+  let hub: EventHub | undefined
+  const watchers = new Map<string, Set<() => void>>()
+
+  const receivers = (clientId: string): number =>
+    hub === undefined ? 0 : hub.current().feeds.filter((feed) => rendererOf(feed.kind, clientId)).length
+
+  const rendererEnded = (clientId: string) => {
+    if (receivers(clientId) > 0) return
+    for (const closed of [...(watchers.get(clientId) ?? [])]) closed()
+  }
+
+  function subscribe(request: FeedRequest, sink: FeedSink): LiveFeed | Refused {
+    if (hub === undefined) return starting
+    const clientId = request.clientId
+    if (clientId === undefined || !request.streams.every((stream) => stream === "view-interact")) return hub.subscribe(request, sink)
+    let ended = false
+    const ending = () => {
+      if (ended) return
+      ended = true
+      rendererEnded(clientId)
+    }
+    const feed = hub.subscribe(request, { deliver: sink.deliver, end: () => { sink.end(); ending() } })
+    if (feed.kind !== "live") return feed
+    return { ...feed, close: () => { feed.close(); ending() } }
+  }
+
+  return {
+    publishEvent: (stream, payload, clientId) => { hub?.publish(stream, payload, clientId) },
+    viewFeeds: {
+      receivers,
+      onRendererClosed: (clientId, closed) => {
+        const watching = watchers.get(clientId) ?? new Set<() => void>()
+        watching.add(closed)
+        watchers.set(clientId, watching)
+        return () => { watching.delete(closed) }
+      },
+    },
+    feeds: { subscribe },
+    attach: (next) => { hub = next },
+  }
+}

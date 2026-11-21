@@ -13,6 +13,7 @@ public final class LiveCaptureResource {
  public LiveCaptureResource(LocalMicrophoneLease.Slot slot){this.slot=slot;}
  public void cancel(){stopped=true;LocalMicrophoneLease held=microphone;if(held!=null)held.cancel();}
  public boolean stopped(){return stopped;}
+ LocalMicrophoneLease microphone(){return microphone;}
  public synchronized void reserveMicrophone(boolean reopen){
   if(stopped)throw new IllegalStateException("Live capture stopped");
   if(microphone!=null)throw new IllegalStateException("Live capture already reserved the microphone");

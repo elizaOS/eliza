@@ -66,38 +66,40 @@ final class AgentSupervisor {
     }
 
     void kill() { stopping = true; process.destroyForcibly(); }
+
+    void watch(Readiness readiness, Listener listener) {
+      Thread exit = new Thread(() -> {
+        int code;
+        while (true) {
+          try { code = process.waitFor(); break; }
+          catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+        }
+        listener.exited(epoch, code);
+      }, "ElizaAgentExit");
+      exit.setDaemon(true);
+      exit.start();
+      Thread ready = new Thread(() -> awaitReady(this, readiness, listener), "ElizaAgentReady");
+      ready.setDaemon(true);
+      ready.start();
+    }
   }
 
   private AgentSupervisor() {}
 
-  static Child spawn(long epoch, Command command, byte[] frame, Journal journal, Readiness readiness, Listener listener) throws IOException {
+  static Child spawn(long epoch, Command command, byte[] frame, Journal journal) throws IOException {
     Files.deleteIfExists(command.socket());
     rotate(command.log());
     ProcessBuilder builder = command.builder().redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.appendTo(command.log().toFile()));
     Process process = builder.start();
-    Child child;
     try {
-      child = new Child(epoch, pidOf(command.socket()), process);
+      Child child = new Child(epoch, pidOf(command.socket()), process);
       journal.spawned(epoch, child.pid);
       try (OutputStream input = process.getOutputStream()) { input.write(frame); }
+      return child;
     } catch (IOException | RuntimeException failed) {
       process.destroyForcibly();
       throw failed;
     }
-    Thread exit = new Thread(() -> {
-      int code;
-      while (true) {
-        try { code = process.waitFor(); break; }
-        catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
-      }
-      listener.exited(epoch, code);
-    }, "ElizaAgentExit");
-    exit.setDaemon(true);
-    exit.start();
-    Thread ready = new Thread(() -> awaitReady(child, readiness, listener), "ElizaAgentReady");
-    ready.setDaemon(true);
-    ready.start();
-    return child;
   }
 
   private static void awaitReady(Child child, Readiness readiness, Listener listener) {

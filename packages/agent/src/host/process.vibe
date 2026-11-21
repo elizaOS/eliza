@@ -1,7 +1,7 @@
 // spec/agent/host/process.md, "Story: Boot from a launch and serve only when ready"; spec/agent/host/process.md, "Story: Tell the host whether the agent can answer"; spec/agent/host/process.md, "Story: Stop on a signal and exit with an honest code"; spec/agent/host/launch.md, "Story: Start the agent from one launch document"
 
 module node {
-  import type { BootFailure, LaunchDocument as LaunchModel, LaunchFrame as FrameModel, UrlShape } from "../../gen/agent__host__launch.ts"
+  import type { BootFailure } from "../../gen/agent__host__launch.ts"
   import type { AgentProcess, Event as ProcessEvent } from "../../gen/agent__host__process.ts"
   import type { Endpoint, LaunchDocument, LaunchFrame } from "./launch.vibe"
   import type { AgentPlugin, ModuleFactory } from "./module.vibe"
@@ -41,59 +41,28 @@ module node {
 
   import { randomUUID } from "node:crypto"
   import { Effect, Result } from "effect"
-  import { AgentRuntime, TaskService, createCharacter, logger, stringToUuid, validateUuid } from "@elizaos/core"
+  import { AgentRuntime, TaskService, createCharacter, logger, stringToUuid, validateUuid, type RoleName } from "@elizaos/core"
   import { canRequestStop, exitedCode, healthReply, healthStatus } from "../../gen/agent__host__process.ts"
+  import { chatRole } from "../../gen/agent__host__launch.ts"
   import { storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
   import { backendOf, runStateOf, statusRoutes } from "./status.vibe"
   import { authRoutes } from "../access/auth.vibe"
-  import { createRouter } from "../access/router.vibe"
+  import { createRouter, refusedRoutes } from "../access/router.vibe"
   import { listenOnSocket } from "../access/socket.vibe"
-  import { noEvents } from "../access/events-port.vibe"
+  import { feedsOver } from "../access/event-feeds.vibe"
+  import { createEventHub } from "../conversation/events.vibe"
+  import { eventWiring } from "./event-wiring.vibe"
   import { listenOnHttp } from "../access/http.vibe"
   import { conversationRoutes } from "../conversation/routes.vibe"
-  import { ownerMessageService } from "../conversation/message-service.vibe"
+  import { accountFailureOf, ownerMessageService } from "../conversation/message-service.vibe"
   import { openDeviceStorage, type DeviceStorageSnapshot } from "../storage/index.vibe"
   import { StoreFailed } from "../storage/fault.vibe"
   import { logSweeps, scheduleSweeps } from "../storage/retention.vibe"
   import { bootFailureOf, composeAgent } from "./compose.vibe"
   import { reservedHostPrefixes } from "../plugins/product.vibe"
-  import { bindModels } from "../models/binding.vibe"
+  import { bindModels, launchModel } from "../models/binding.vibe"
+  import { frameModel } from "./launch.vibe"
   import { modelPlugin } from "../models/plugin.vibe"
-
-  function urlShape(url: string): UrlShape {
-    const address = URL.parse(url)
-    if (address === null || address.protocol !== "https:") return "NotHttps"
-    return address.origin === url ? "HttpsOrigin" : "HttpsWithPath"
-  }
-
-  function launchModel(launch: LaunchDocument): LaunchModel {
-    const backend = backendOf(launch.model)
-    return {
-      schema: launch.schema,
-      character: { name: launch.character.name, nameUnits: launch.character.name.length, systemBlank: !/\S/.test(launch.character.system) },
-      policy: {
-        actionsAllowed: [...launch.policy.actions.allowed], pluginsLoad: [...launch.policy.plugins.load],
-        productPlugin: launch.policy.plugins.product === undefined ? { tag: "NoProductPlugin" } : { tag: "NamedProductPlugin", name: launch.policy.plugins.product },
-      },
-      backend: backend.tag === "NoBackend" ? backend : { ...backend, baseUrlShape: urlShape(backend.baseUrl) },
-      account: launch.account === undefined ? { tag: "NoAccount" } : { tag: "SignedIn", ...launch.account },
-      embeddings: launch.embeddings === "local" ? { tag: "LocalEmbeddings", dimensions: launch.embeddingDimensions ?? 0 } : { tag: "NoEmbeddings" },
-      persistMemory: launch.persistMemory ?? false,
-      callerRole: launch.callerRole === "owner" ? "ChatAsOwner" : "ChatAsUser",
-      google: { gmailChanges: launch.google?.gmailChanges ?? false, calendarEdits: launch.google?.calendarEdits ?? false },
-      retention: launch.retention === undefined ? { tag: "KeepLogs" }
-        : { tag: "PruneLogs", dayThousandths: Math.round(launch.retention.days * 1000), maxRowsPerRoom: launch.retention.maxRowsPerRoom, intervalMinutes: launch.retention.intervalMinutes },
-      environment: Object.entries(launch.environment ?? {}).map(([key, value]) => ({ key, keyKind: "PluginSetting", singleLine: !/[\r\n]/.test(value) })),
-    }
-  }
-
-  function frameModel(frame: LaunchFrame): FrameModel {
-    return {
-      version: frame.version, token: String(frame.token), epoch: frame.epoch,
-      credential: frame.credential === undefined ? { tag: "NoCredential" } : { tag: "Keyed", version: frame.credential.version, value: String(frame.credential.value) },
-      storageKey: frame.storageKey === undefined ? { tag: "NoStorageKey" } : { tag: "StorageKey", key: String(frame.storageKey) },
-    }
-  }
 
   function healthAnswer(state: AgentProcess) {
     const reply = healthReply(state)
@@ -159,7 +128,9 @@ module node {
     }
 
     if (lifecycle.send({ type: "readLaunch", doc: launchModel(launch), f: frameModel(authority) }).failure.tag !== "NoFailure") return failed()
-    const models = await Effect.runPromise(bindModels(launch, authority))
+    const modelsBound = await Effect.runPromise(Effect.result(bindModels(launch, authority)))
+    if (Result.isFailure(modelsBound)) return failed()
+    const models = modelsBound.success
 
     const opened = await openDeviceStorage({
       stateDirectory, persistMemory: launch.persistMemory ?? false,
@@ -174,6 +145,12 @@ module node {
     const { agentId, adapter } = opened
     let closeStore = () => adapter.close()
     releases.set("store", () => closeStore())
+    const sweeper = await Effect.runPromise(Effect.result(scheduleSweeps(adapter, sweeps.success)))
+    if (Result.isFailure(sweeper)) {
+      logger.error({ src: "agent", phase: "Storage", step: sweeper.failure.step, error: String(sweeper.failure.cause) }, "Log retention could not be scheduled")
+      lifecycle.send({ type: "openStore", ok: false })
+      return failed()
+    }
     lifecycle.send({ type: "openStore", ok: true })
     lifecycle.send({ type: "migrate", ok: true })
 
@@ -192,22 +169,22 @@ module node {
       style: { all: [...(persona.style?.all ?? [])], chat: [...(persona.style?.chat ?? [])], post: [...(persona.style?.post ?? [])] },
       messageExamples: examples,
     })
-    const role = launch.callerRole === "owner" ? "OWNER" : "USER"
+    const role: RoleName = chatRole(launchModel(launch).callerRole) === "Owner" ? "OWNER" : "USER"
     const permissions = new Set(launch.policy.actions.allowed)
     const user = launch.account ? (validateUuid(launch.account.userId) ?? stringToUuid(`account:${launch.account.userId}`)) : stringToUuid(`device-owner:${agentId}`)
     const ownerId = role === "OWNER" ? user : agentId
+    const wiring = eventWiring()
     const formed = await Effect.runPromise(Effect.result(composeAgent({
       agentId, character, settings: {}, bundled: input.bundled ?? new Map(), modules: input.modules, hostRoutes: reservedHostPrefixes,
       context: { launch, stateDirectory, timeZone: launch.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, epoch: authority.epoch, ...(authority.storageKey === undefined ? {} : { storageKey: authority.storageKey }),
-        ownerEntityId: ownerId },
+        ownerEntityId: ownerId, binding: () => Effect.runSync(models.state()), publishEvent: wiring.publishEvent, viewFeeds: wiring.viewFeeds },
       storage: { name: storagePlugin, description: "Own the device database", services: [TaskService], init: async (_config, runtime) => {
         if (!(runtime instanceof AgentRuntime)) throw new Error("The storage plugin requires the device Core runtime")
         runtime.registerDatabaseAdapter(adapter)
-        const sweeper = await Effect.runPromise(scheduleSweeps(adapter, sweeps.success))
-        if (sweeper !== undefined) runtime.registerTaskWorker(sweeper)
+        if (sweeper.success !== undefined) runtime.registerTaskWorker(sweeper.success)
       } },
       cloudLink: modelPlugin(launch, models), privacy: { kind: "off" }, worker: pinned === undefined ? { kind: "none" } : { kind: "pinned", expected: pinned.worker.expected, measured: pinned.worker.measured },
-      messageService: (runtime, actionGate) => ownerMessageService(runtime, [role], actionGate),
+      messageService: (runtime, actionGate) => ownerMessageService(runtime, [role], actionGate, accountFailureOf(() => Effect.runSync(models.read()))),
       policy: {
         actionsAllowed: [...permissions], pluginsLoad: [...launch.policy.plugins.load],
         productPlugin: launch.policy.plugins.product === undefined ? { tag: "NoProductPlugin" }
@@ -224,6 +201,12 @@ module node {
       lifecycle.send({ type: "loadPlugins", ok: true })
       lifecycle.send({ type: "beginInitialization" })
       lifecycle.send({ type: "completeInitialization", ok: false })
+      return failed()
+    }
+    const refused = refusedRoutes(formed.success.routes)
+    if (refused.length > 0) {
+      logger.error({ src: "agent", agentId, phase: "LoadPlugins", refused }, "The plugin route list was refused whole")
+      lifecycle.send({ type: "loadPlugins", ok: false })
       return failed()
     }
     lifecycle.send({ type: "loadPlugins", ok: true })
@@ -252,6 +235,8 @@ module node {
         id: world, agentId, name: "Device",
         metadata: { ownership: { ownerId }, roles: { [user]: role === "OWNER" ? "OWNER" : "MEMBER" } },
       })
+      const hub = await Effect.runPromise(createEventHub(runtime, { user, world }))
+      wiring.attach(hub)
       const router = createRouter({
         token: authority.token, epoch: authority.epoch, instanceId: status.serverInstanceId,
         health: () => healthAnswer(lifecycle.get()),
@@ -262,9 +247,10 @@ module node {
           ...composed.routes,
         ],
       })
-      return binding.kind === "socket"
-        ? listenOnSocket(binding.path, router, { token: authority.token, events: noEvents })
-        : listenOnHttp(binding.port, router, { token: authority.token, events: noEvents })
+      const feeds = { token: authority.token, events: feedsOver(wiring.feeds) }
+      const close = await (binding.kind === "socket" ? listenOnSocket(binding.path, router, feeds) : listenOnHttp(binding.port, router, feeds))
+        .catch((error: unknown) => { hub.stop(); throw error })
+      return async () => { hub.stop(); await close() }
     })().then((close) => ({ kind: "bound" as const, close }), (error: unknown) => ({ kind: "refused" as const, error }))
     if (bound.kind === "refused") {
       logger.error({ src: "agent", agentId, phase: "BindTransport", error: String(bound.error) }, "The transport could not be bound")

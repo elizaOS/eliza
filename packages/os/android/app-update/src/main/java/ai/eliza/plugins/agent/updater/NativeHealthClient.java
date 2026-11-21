@@ -1,39 +1,111 @@
+// spec/os/appUpdate/health.md, "Evidence names the installation it was asked about and is sent only before the deadline of an open service"; spec/os/appUpdate/health.md, "Only the updater gets an answer, and only a well-timed request for this version starts the worker"
 package ai.eliza.plugins.agent.updater;
+
+import ai.eliza.plugins.agent.health.HealthWork;
 import ai.eliza.plugins.agent.health.NativeHealthEvidence;
-import android.content.*;import android.content.pm.*;import android.os.*;import java.io.IOException;import java.security.SecureRandom;import java.util.*;import java.util.concurrent.*;import org.json.JSONObject;
-/** Fresh native runtime observations only; never marks journal health. Call off
- * the main thread. Expected installed identity is read before and after IPC. */
+import ai.eliza.plugins.agent.health.NativeHealthService;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.IBinder;
+import android.os.Looper;
+import android.os.Message;
+import android.os.Messenger;
+import android.os.SystemClock;
+import java.io.IOException;
+import java.security.SecureRandom;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+
 public final class NativeHealthClient {
- public static JSONObject read(Context context,String target,String serviceClass,String distributionKey,long requestBudgetMillis)throws Exception {
-  if(requestBudgetMillis<=0)throw new IllegalArgumentException("Positive host health request budget required");
-  if(Looper.myLooper()==Looper.getMainLooper())throw new IOException("Health probe cannot block main thread");
-  java.util.Objects.requireNonNull(target);java.util.Objects.requireNonNull(serviceClass);java.util.Objects.requireNonNull(distributionKey);PackageManager pm=context.getPackageManager();
-  if(pm.checkSignatures(context.getPackageName(),target)!=PackageManager.SIGNATURE_MATCH)throw new IOException("Health peer signer mismatch");
-  UpdateJournal.Identity before=PackageInstallCoordinator.installed(context,target);int expectedUid=pm.getApplicationInfo(target,0).uid;
-  byte[] random=new byte[32];new SecureRandom().nextBytes(random);StringBuilder text=new StringBuilder();for(byte b:random)text.append(String.format(Locale.ROOT,"%02x",b&255));String nonce=text.toString();
-  long started=SystemClock.elapsedRealtime(),deadline=Math.addExact(started,requestBudgetMillis);CompletableFuture<IBinder> connection=new CompletableFuture<>();CompletableFuture<JSONObject> response=new CompletableFuture<>();
-  HandlerThread thread=new HandlerThread("SupervisorHealthReply");thread.start();
-  Messenger replies=new Messenger(new Handler(thread.getLooper(),m->{
-   try{
-    if(m.sendingUid!=expectedUid)throw new IOException("Health reply UID mismatch");
-    if(m.what!=200)throw new IOException("Health observation unavailable");
-    String body=m.getData().getString("body");if(body==null||body.length()>4096)throw new IOException("Health response budget");
-    JSONObject value=NativeHealthEvidence.parse(body,nonce,before.code,started,SystemClock.elapsedRealtime(),deadline);
-    response.complete(value);
-   }catch(Exception error){response.completeExceptionally(error);}return true;
-  }));
-  ServiceConnection callbacks=new ServiceConnection(){public void onServiceConnected(ComponentName name,IBinder binder){connection.complete(binder);}public void onServiceDisconnected(ComponentName name){response.completeExceptionally(new IOException("Health peer disconnected"));}public void onNullBinding(ComponentName name){connection.completeExceptionally(new IOException("Health binding unavailable"));}public void onBindingDied(ComponentName name){connection.completeExceptionally(new IOException("Health binding died"));response.completeExceptionally(new IOException("Health binding died"));}};
-  boolean bound=false;
-  try{
-   bound=context.bindService(new Intent().setComponent(new ComponentName(target,serviceClass)),callbacks,Context.BIND_AUTO_CREATE);if(!bound)throw new IOException("Health service unavailable");
-   IBinder binder=connection.get(remaining(deadline),TimeUnit.MILLISECONDS);Message request=Message.obtain();request.what=1;request.replyTo=replies;Bundle data=new Bundle();data.putString("nonce",nonce);data.putLong("versionCode",before.code);data.putLong("deadlineElapsed",deadline);request.setData(data);new Messenger(binder).send(request);
-   JSONObject result=response.get(remaining(deadline),TimeUnit.MILLISECONDS);
-   UpdateJournal.Identity after=PackageInstallCoordinator.installed(context,target);
-   if(!before.matches(after)||SystemClock.elapsedRealtime()>=deadline||pm.getApplicationInfo(target,0).uid!=expectedUid)throw new IOException("Installed health subject changed or expired");
-   ApplicationInfo info=pm.getApplicationInfo(target,PackageManager.GET_META_DATA);
-   if(info.metaData==null||!result.getString("distribution").equals(info.metaData.getString(distributionKey)))throw new IOException("Health distribution mismatch");
-   return result;
-  }finally{try{if(bound)context.unbindService(callbacks);}finally{thread.quitSafely();}}
- }
- private static long remaining(long deadline)throws IOException {long left=deadline-SystemClock.elapsedRealtime();if(left<=0)throw new IOException("Health request expired");return left;}
+  private NativeHealthClient() {}
+
+  public static Optional<NativeHealthEvidence> read(Context context, String target, String serviceClass, String planId, long generation, long revision, long requestBudgetMillis) throws Exception {
+    if (requestBudgetMillis <= 0 || requestBudgetMillis > HealthWork.MAX_REQUEST_MS) throw new IllegalArgumentException("Health request budget must be positive and at most 20 s");
+    if (Looper.myLooper() == Looper.getMainLooper()) throw new IOException("Health probe cannot block the main thread");
+    Objects.requireNonNull(target); Objects.requireNonNull(serviceClass);
+    PackageManager packages = context.getPackageManager();
+    if (packages.checkSignatures(context.getPackageName(), target) != PackageManager.SIGNATURE_MATCH) throw new IOException("Health peer signer mismatch");
+    UpdateJournal.Identity before = PackageInstallCoordinator.installed(context, target);
+    int expectedUid = packages.getApplicationInfo(target, 0).uid;
+    NativeHealthEvidence.Subject subject = new NativeHealthEvidence.Subject(planId, generation, revision, before.code, before.digest);
+    String nonce = nonce();
+    long started = SystemClock.elapsedRealtime(), deadline = Math.addExact(started, requestBudgetMillis);
+    CompletableFuture<IBinder> connection = new CompletableFuture<>();
+    CompletableFuture<Optional<NativeHealthEvidence>> response = new CompletableFuture<>();
+    HandlerThread thread = new HandlerThread("AppUpdateHealthReply");
+    thread.start();
+    Messenger replies = new Messenger(new Handler(thread.getLooper(), message -> {
+      try {
+        if (message.sendingUid != expectedUid) throw new IOException("Health reply UID mismatch");
+        if (message.what == NativeHealthService.UNAVAILABLE) response.complete(Optional.empty());
+        else if (message.what != NativeHealthService.OBSERVED) throw new IOException("Health request refused: " + message.what);
+        else response.complete(Optional.of(NativeHealthEvidence.parse(message.getData().getString("body"), nonce, subject, started, SystemClock.elapsedRealtime(), deadline)));
+      } catch (Exception error) {
+        response.completeExceptionally(error);
+      }
+      return true;
+    }));
+    ServiceConnection callbacks = new ServiceConnection() {
+      @Override public void onServiceConnected(ComponentName name, IBinder binder) { connection.complete(binder); }
+      @Override public void onServiceDisconnected(ComponentName name) { response.completeExceptionally(new IOException("Health peer disconnected")); }
+      @Override public void onNullBinding(ComponentName name) { connection.completeExceptionally(new IOException("Health binding unavailable")); }
+      @Override public void onBindingDied(ComponentName name) {
+        connection.completeExceptionally(new IOException("Health binding died"));
+        response.completeExceptionally(new IOException("Health binding died"));
+      }
+    };
+    boolean bound = false;
+    try {
+      bound = context.bindService(new Intent().setComponent(new ComponentName(target, serviceClass)), callbacks, Context.BIND_AUTO_CREATE);
+      if (!bound) throw new IOException("Health service unavailable");
+      IBinder binder = connection.get(remaining(deadline), TimeUnit.MILLISECONDS);
+      Message request = Message.obtain();
+      request.what = NativeHealthService.REQUEST;
+      request.replyTo = replies;
+      request.setData(request(nonce, deadline, subject));
+      new Messenger(binder).send(request);
+      Optional<NativeHealthEvidence> result = response.get(remaining(deadline), TimeUnit.MILLISECONDS);
+      UpdateJournal.Identity after = PackageInstallCoordinator.installed(context, target);
+      if (!before.matches(after) || SystemClock.elapsedRealtime() >= deadline || packages.getApplicationInfo(target, 0).uid != expectedUid)
+        throw new IOException("Installed health subject changed or expired");
+      return result;
+    } finally {
+      try { if (bound) context.unbindService(callbacks); } finally { thread.quitSafely(); }
+    }
+  }
+
+  static Bundle request(String nonce, long deadline, NativeHealthEvidence.Subject subject) {
+    Bundle data = new Bundle();
+    data.putString("nonce", nonce);
+    data.putLong("versionCode", subject.versionCode);
+    data.putLong("deadlineElapsed", deadline);
+    data.putString("planId", subject.planId);
+    data.putLong("generation", subject.generation);
+    data.putLong("revision", subject.revision);
+    data.putString("installed", subject.installed);
+    return data;
+  }
+
+  private static String nonce() {
+    byte[] random = new byte[32];
+    new SecureRandom().nextBytes(random);
+    StringBuilder text = new StringBuilder();
+    for (byte b : random) text.append(String.format(Locale.ROOT, "%02x", b & 255));
+    return text.toString();
+  }
+
+  private static long remaining(long deadline) throws IOException {
+    long left = deadline - SystemClock.elapsedRealtime();
+    if (left <= 0) throw new IOException("Health request expired");
+    return left;
+  }
 }

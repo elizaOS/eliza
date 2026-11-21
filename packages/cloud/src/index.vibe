@@ -36,7 +36,7 @@ function identityRead(identity: DatabaseIdentity, expected: string): IdentityRea
 effect function refuseStart(problem: StartProblem, options: CloudLayerOptions, identity: DatabaseIdentity): void!(ProfileInvalid | DatabaseUnreadable | DatabaseIdentityMismatch | SeedOutsideStaging | LoopbackOutsidePglite | CatalogMismatch) {
   const expected = options.profile.environments[options.environment].databaseIdentity
   switch (problem.tag) {
-    case "NoProblem": return
+    case "StartsCleanly": return
     case "CatalogMissing": return
     case "ProfileRefused": throw new ProfileInvalid({ problem: "the profile breaks a deployment rule" })
     case "DatabaseUnreadable": throw new DatabaseUnreadable({ problem: identity.kind === "unreadable" ? identity.problem : "the database identity could not be read" })

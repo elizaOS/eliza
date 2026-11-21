@@ -20,3 +20,24 @@ export {
   createLiveVoiceSession, parseVoiceTranscriptEnvelope, VOICE_TRANSCRIPT_STREAM,
   type AgentEventSubscribe, type LiveTranscriptEvent, type LiveVoiceSession, type LiveVoiceSessionOptions,
 } from "./live-session.vibe"
+export { createHeardReports, type HeardEvent, type HeardReport, type HeardReports, type HeardReportsOptions } from "./heard-reports.vibe"
+export {
+  jsonRequestOf, VoiceRouteRefused, voiceNetworkPorts, type JsonAnswer, type JsonRequest, type RuntimeJsonRequester, type VoiceNetworkPorts,
+} from "./agent-ports.vibe"
+export { VoiceSession, type ShownPhase } from "./session.vibe"
+export type { VoiceFailure } from "./ports.vibe"
+export {
+  attachProgressiveSpeech, browserSpeechMedia, SegmentedSpeechPlayback, speakerPortOf, SpeechMediaFailed, SpeechPlaybackError, SpeechRateRefused,
+  SpeechSourceFailed, SpeechStopped, splitSpeechSegments,
+  type CompletedSpeechAudio, type MediaEvents, type PlayerEvent, type ProgressiveSpeechAttachment, type ProgressiveSpeechFailure,
+  type ProgressiveSpeechOptions, type ProgressiveSpeechSource, type SegmentAttach, type SegmentedSpeechOptions, type SegmentedSpeechState,
+  type SpeakOptions, type SpeechAttachment, type SpeechAudioFrame, type SpeechEndFrame, type SpeechMedia, type SpeechMediaSource,
+  type SpeechPlaybackCode, type SpeechPlayer, type SpeechSourceBuffer,
+} from "./playback.vibe"
+export {
+  AudioReadFailed, audioBlobBase64, captureBlockSamples, CapturePolicyRefused, CaptureUnavailable, captureWorkletUrl, ClipCancelled,
+  ClipDecodeFailed, ClipRefused, decodeRecordedClip, encodeMonoPcm16WavChunks, SharedContextRateRefused, startCumulativeMicrophoneCapture,
+  WavRateRefused, type AudioBlob, type CaptureAudioPort, type CaptureContext, type CaptureMeter, type CaptureNode, type CaptureSamples,
+  type ClipAudioPort, type CumulativeCapture, type CumulativeCaptureOptions, type DecodedClip, type PreviewReceiver,
+} from "./capture.vibe"
+export { browserCaptureAudio, browserClipAudio, captureProcessorName } from "./capture-browser.ts"

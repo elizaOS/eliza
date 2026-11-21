@@ -1,10 +1,10 @@
+// spec/os/appUpdate/health.md, "Only the updater gets an answer, and only a well-timed request for this version starts the worker"
 package ai.eliza.plugins.agent.health.contract;
+import ai.eliza.plugins.agent.health.NativeHealthService;
 import android.content.*;
 import android.content.pm.PackageManager;
 import android.os.*;
 import java.util.concurrent.*;
-/** Binds a host's declared NativeHealthService from the instrumentation app. That app must share
- * the service signer and must not be the supervisor package, so the service must answer 403. */
 public final class NativeHealthServiceContract {
  private NativeHealthServiceContract() {}
  public static void assertRefusesSameSigner(Context context,ComponentName service)throws Exception {
@@ -20,13 +20,13 @@ public final class NativeHealthServiceContract {
   try {
    bound=context.bindService(new Intent().setComponent(service),connection,Context.BIND_AUTO_CREATE);
    if(!bound)throw new AssertionError("Health service did not bind");
-   // A well-formed request: only the sender identity can make the service refuse it.
-   Bundle data=new Bundle();data.putString("nonce","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");data.putLong("versionCode",0);data.putLong("deadlineElapsed",SystemClock.elapsedRealtime()+5000);
-   Message request=Message.obtain();request.what=1;request.setData(data);
+   Bundle data=new Bundle();data.putString("nonce","a".repeat(64));data.putLong("versionCode",1);data.putLong("deadlineElapsed",SystemClock.elapsedRealtime()+5000);
+   data.putString("planId","plan-1");data.putLong("generation",0);data.putLong("revision",0);data.putString("installed","b".repeat(64));
+   Message request=Message.obtain();request.what=NativeHealthService.REQUEST;request.setData(data);
    request.replyTo=new Messenger(new Handler(thread.getLooper(),m->{reply.complete(m.what);return true;}));
    new Messenger(ready.get(10,TimeUnit.SECONDS)).send(request);
    int code=reply.get(10,TimeUnit.SECONDS);
-   if(code!=403)throw new AssertionError("Same-signer caller was not refused: "+code);
+   if(code!=NativeHealthService.UNAUTHORIZED)throw new AssertionError("Same-signer caller was not refused: "+code);
   } finally {
    try{if(bound)context.unbindService(connection);}finally{thread.quitSafely();}
   }

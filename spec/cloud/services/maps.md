@@ -13,10 +13,10 @@ and the Quint models `maps_credit_funding`, `MapsPlaceLookup` and
 `MapsTileCache`.
 
 The shell handles a request in this order: `requestAuth`, the deployment's
-capability gate, `entryOf`, the plan's standard request limit with `limitOf`
-in one store transaction, the body, `providerQuote`, the hold
-(`M::admission`, then `courseOf`), `mayDispatch`, `M::markDispatched`, the
-provider, and one `settlementOf`. Wire shapes and string formats are the
+capability gate, `entryOf`, the plan's standard request limit (for every
+operation but tiles) with `limitOf` in one store transaction, the body,
+`providerQuote`, the hold (`M::admission`, then `courseOf`), `mayDispatch`,
+`M::markDispatched`, the provider, and one `settlementOf`. Wire shapes and string formats are the
 Effect Schemas of `src/services/maps.schema.ts`. Every maps answer is sent
 `Cache-Control: no-store`.
 
@@ -86,9 +86,13 @@ pure def lawCredentialsNeverShareAHold(caller: str, other: str, requestId: Idemp
 ### A credential makes at most 300 tile requests and 60 other maps requests a minute
 
 The subject of both limits is the calling credential. A map draws many tiles
-for one gesture, so tiles never spend the limit of the other operations.
-Capabilities and viewport count as operations. A request over a limit is
-refused `429 rate_limited` by [the rate limiter](../shared/rateLimit.md).
+for one gesture, so tiles spend only the tile limit: neither the limit of the
+other operations nor the plan's standard request limit of
+[plans](../billing/plans.md). Capabilities and viewport count as operations
+and are standard requests. A device key's requests, tiles included, first
+pass the per-key ingress limit of [request auth](../identity/requestAuth.md).
+A request over a limit is refused `429 rate_limited` by
+[the rate limiter](../shared/rateLimit.md).
 
 ```quint
 pure val operationsLimit: R::RateLimit = R::perMinute("maps-operations", 60)
