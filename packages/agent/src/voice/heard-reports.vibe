@@ -1,10 +1,10 @@
-// spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or busy answer, and its outcomes stay distinct"
+// spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or missing answer, and its outcomes stay distinct"
 module node {
   import {
-    dispatchHeard, dueToPost, heardRetryMs, initial, settleHeard,
-    type HeardOutcome, type HeardReceipt, type HeardWire,
+    heardRetryMs, initial, step,
+    type Event, type HeardBody as HeardAnswerBody, type HeardReceipt, type ReportOutcome, type VoiceSession,
   } from "../../gen/agent__voice__session.effect.vibe"
-  import { decodeHeardReply, heardBody, type HeardBody } from "./heuristics.vibe"
+  import { decodeHeardResult, heardBody, type HeardBody } from "./heuristics.vibe"
   import type { ClockPort, HeardPort } from "./ports.vibe"
 
   export interface HeardReport {
@@ -14,85 +14,105 @@ module node {
     readonly nothingHeard: boolean
   }
 
-  export type SettledHeard = Exclude<HeardOutcome, "HeardPending">
+  export type HeardEvent =
+    | { readonly type: "dispatchHeard"; readonly reply: number; readonly waitedMs: number }
+    | { readonly type: "heardAnswered"; readonly reply: number; readonly status: number; readonly body: HeardAnswerBody }
 
   export interface HeardReportsOptions {
     readonly heard: HeardPort
     readonly clock: ClockPort
-    posted?(report: HeardReport, receipt: HeardReceipt, waitedMs: number): void
-    answered?(report: HeardReport, receipt: HeardReceipt, wire: HeardWire): void
-    onOutcome?(report: HeardReport, outcome: SettledHeard): void
+    onEvent?(report: HeardReport, event: HeardEvent): void
+    onOutcome?(report: HeardReport, outcome: ReportOutcome): void
   }
 
   export interface HeardReports {
-    report(report: HeardReport): Promise<SettledHeard>
+    report(report: HeardReport, reply?: number): Promise<ReportOutcome>
     receipt(conversationId: string, messageId: string): HeardReceipt | undefined
   }
 
   interface Entry {
     readonly report: HeardReport
+    readonly reply: number
     readonly body: HeardBody
-    receipt: HeardReceipt
-    settle(outcome: SettledHeard): void
+    readonly settled: Promise<ReportOutcome>
+    readonly settle: (outcome: ReportOutcome) => void
   }
 
   const keyOf = (conversationId: string, messageId: string) => `${conversationId}\n${messageId}`
 
   export function createHeardReports(options: HeardReportsOptions): HeardReports {
     const { clock } = options
-    const entries = new Map<string, { entry: Entry; settled: Promise<SettledHeard> }>()
+    const entries = new Map<string, Entry>()
+    let reports: VoiceSession = { ...initial, receipts: [] }
 
-    function post(entry: Entry, waitedMs: number): void {
-      const before = entry.receipt
-      const [posted = before] = dispatchHeard({ ...initial, reply: before.reply, receipts: [before] }, before.reply, waitedMs).receipts
-      entry.receipt = posted
-      options.posted?.(entry.report, posted, waitedMs)
+    const receiptOf = (reply: number) => reports.receipts.find((receipt) => receipt.reply === reply)
+
+    function apply(entry: Entry, event: HeardEvent): HeardReceipt | undefined {
+      const before = receiptOf(entry.reply)
+      reports = step(reports, event as Event)
+      const after = receiptOf(entry.reply)
+      if (after !== before) options.onEvent?.(entry.report, event)
+      return after
+    }
+
+    function post(entry: Entry, waitedMs: number): boolean {
+      const receipt = apply(entry, { type: "dispatchHeard", reply: entry.reply, waitedMs })
+      if (receipt?.phase.tag !== "ReportPosting") return false
       const { conversationId, messageId } = entry.report
       options.heard(conversationId, messageId, entry.body).then(
-        (answer) => decodeHeardReply(answer.status, messageId, answer.body),
-        () => decodeHeardReply(0, messageId, undefined),
-      ).then((wire) => answered(entry, wire))
+        (answer) => ({ status: answer.status, body: decodeHeardResult(messageId, answer.body) }),
+        () => ({ status: 0, body: "BodyOther" as const }),
+      ).then((answer) => answered(entry, answer.status, answer.body))
+      return true
     }
 
     function retry(entry: Entry, since: number): void {
       const waitedMs = clock.now() - since
-      if (dueToPost(entry.receipt, entry.receipt.reply, waitedMs)) post(entry, waitedMs)
-      else clock.after(heardRetryMs - waitedMs, () => retry(entry, since))
+      if (!post(entry, waitedMs)) clock.after(Math.max(1, heardRetryMs - waitedMs), () => retry(entry, since))
     }
 
-    function answered(entry: Entry, wire: HeardWire): void {
-      const since = clock.now()
-      entry.receipt = settleHeard(entry.receipt, wire)
-      options.answered?.(entry.report, entry.receipt, wire)
-      const { outcome } = entry.receipt
-      if (entry.receipt.phase === "HeardRetry" || outcome === "HeardPending") {
-        clock.after(heardRetryMs, () => retry(entry, since))
-        return
+    function answered(entry: Entry, status: number, body: HeardAnswerBody): void {
+      const receipt = apply(entry, { type: "heardAnswered", reply: entry.reply, status, body })
+      if (receipt === undefined) return
+      const { phase } = receipt
+      switch (phase.tag) {
+        case "ReportDue": {
+          const since = clock.now()
+          clock.after(heardRetryMs, () => retry(entry, since))
+          return
+        }
+        case "ReportSettled":
+          options.onOutcome?.(entry.report, phase.outcome)
+          entry.settle(phase.outcome)
+          return
+        case "ReportPosting":
+          return
       }
-      options.onOutcome?.(entry.report, outcome)
-      entry.settle(outcome)
     }
 
     return {
-      report(report) {
+      report(report, reply) {
         const key = keyOf(report.conversationId, report.messageId)
         const known = entries.get(key)
         if (known !== undefined) return known.settled
         const body: HeardBody = report.nothingHeard ? { nothingHeard: true } : heardBody(report.heardText)
-        let settle: (outcome: SettledHeard) => void = () => undefined
-        const settled = new Promise<SettledHeard>((resolve) => { settle = resolve })
-        const receipt: HeardReceipt = {
-          reply: entries.size + 1, phase: "HeardReady", attempts: 0, outcome: "HeardPending", nothingHeard: "nothingHeard" in body,
+        let settle: (outcome: ReportOutcome) => void = () => undefined
+        const settled = new Promise<ReportOutcome>((resolve) => { settle = resolve })
+        const number = reply ?? Math.max(0, ...reports.receipts.map((receipt) => receipt.reply)) + 1
+        const entry: Entry = { report, reply: number, body, settled, settle }
+        entries.set(key, entry)
+        reports = {
+          ...reports,
+          receipts: [...reports.receipts, { reply: number, attempts: 0, phase: { tag: "ReportDue" }, nothingHeard: "nothingHeard" in body }],
         }
-        const entry: Entry = { report, body, receipt, settle }
-        entries.set(key, { entry, settled })
         post(entry, 0)
         return settled
       },
       receipt(conversationId, messageId) {
-        return entries.get(keyOf(conversationId, messageId))?.entry.receipt
+        const entry = entries.get(keyOf(conversationId, messageId))
+        return entry === undefined ? undefined : receiptOf(entry.reply)
       },
     }
   }
 }
-export { createHeardReports, type HeardReport, type HeardReports, type HeardReportsOptions, type SettledHeard } from node
+export { createHeardReports, type HeardEvent, type HeardReport, type HeardReports, type HeardReportsOptions } from node

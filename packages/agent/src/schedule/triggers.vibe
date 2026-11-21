@@ -188,6 +188,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
   }
 
   effect function perform(id: string, room: string, prompt: string, startedAt: number, controller: AbortController): TriggerRun!! {
+    if (controller.signal.aborted) return try finish(id, interrupted, startedAt, controller)
     const outcome = try exit(promise(() => delivery.deliver(room, prompt, id, controller.signal)))
     const delivered: Delivery = Exit.isSuccess(outcome) ? outcome.value
       : { kind: "Turn", turn: controller.signal.aborted ? "Cancelled" : "Failed", reason: String(Cause.squash(outcome.cause)) }

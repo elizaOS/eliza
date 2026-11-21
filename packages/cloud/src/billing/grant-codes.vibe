@@ -1,0 +1,273 @@
+// spec/cloud/billing/grantCodes.md, "Story: Redeem a membership code once"; spec/cloud/billing/grantCodes.md, "Story: Stop a code or a grant"
+import { apply, canDisable, crockfordAlphabet, decodeState, enabled, grantCodeLength, grantOf, initial, isInForce, redeemPerAddress, redeemPerCredential, type Code, type CodeEffect, type CodeExpiry, type CodeStep, type Event, type Grant, type Rejected, type Term } from "../../gen/cloud__billing__grantCodes.effect.vibe"
+import { isLive } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+import type { PlanKey } from "../../gen/cloud__billing__plans.effect.vibe"
+import { json, jsonBody, owner, type Route, type RouteContext } from "../http/routes.vibe"
+import { refused, Refused } from "../http/refusal.vibe"
+import type { Signed } from "../http/request-auth.vibe"
+import type { Deployment, SecretMissing } from "../profile/profile.vibe"
+import { admitAll } from "../shared/rate-limit.vibe"
+import { keyedDigest, newId, secretText } from "../shared/sealing.vibe"
+import { loadRow, outputRows, RowCorrupt, stepRow } from "../store/rows.vibe"
+import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
+import { closePeriods, openGrantMonths } from "./allowance.vibe"
+import { idempotencyKeyPattern } from "./commands.vibe"
+import { signEntitlement } from "./entitlements.vibe"
+import { normalizeSubscriptionCode } from "./grant-code.ts"
+import { parsePlanKey, wirePlanKey } from "./plans.vibe"
+import { readPolicy } from "./policy.vibe"
+import type { SnapshotGrant } from "./snapshot.vibe"
+import { readSubscription } from "./subscriptions.vibe"
+
+export const codeRows = outputRows<Code, Event, CodeEffect[], Rejected, unknown>("grant_codes", { initial, decodeState, apply })
+
+export interface MintRequest {
+  readonly family: string
+  readonly planKey: PlanKey
+  readonly term: Term
+  readonly requiresNoPaidPlan: boolean
+  readonly maxRedemptions: number
+  readonly expiresAt: number | undefined
+  readonly count: number
+}
+
+export type CodeSelection =
+  | { readonly kind: "codes"; readonly codes: ReadonlyArray<string> }
+  | { readonly kind: "family"; readonly family: string }
+
+export type GrantSelection =
+  | { readonly kind: "grants"; readonly grantIds: ReadonlyArray<string> }
+  | { readonly kind: "codes"; readonly codes: ReadonlyArray<string> }
+
+export interface Redemption {
+  readonly replayed: boolean
+  readonly grant: SnapshotGrant
+  readonly now: number
+}
+
+schema RedeemBody { code: string; idempotencyKey: string }
+
+function columns(now: number) {
+  return (code: Code) => ({ family: code.family, plan_key: wirePlanKey(code.planKey), disabled: code.status === "Disabled", updated_at: now })
+}
+
+function displayed(code: string): string {
+  return [0, 4, 8, 12].map((at) => code.slice(at, at + 4)).join("-")
+}
+
+function freshCode(): string {
+  const bits = Array.from(secretText("", grantCodeLength * 5 / 8, "hex"), (digit) => parseInt(digit, 16).toString(2).padStart(4, "0")).join("")
+  return Array.from({ length: grantCodeLength }, (_, index) => crockfordAlphabet.charAt(parseInt(bits.slice(index * 5, index * 5 + 5), 2))).join("")
+}
+
+function credentialOf(caller: Signed): string {
+  return caller.kind === "deviceKey" ? `device-key:${caller.credentialId}` : `session:${caller.sessionKey}`
+}
+
+effect function codeKey(text: string): string!(Refused | SecretMissing)!Deployment {
+  const code = normalizeSubscriptionCode(text)
+  if (code === "") throw refused("GrantCodeInvalid")
+  return try keyedDigest(code)
+}
+
+effect function lockOrganization(tx: Tx, organizationId: string) {
+  try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId])
+}
+
+effect function applyEffects(tx: Tx, organizationId: string, out: ReadonlyArray<CodeEffect>, now: number) {
+  for (const done of out) {
+    switch (done.tag) {
+      case "OpenGrantMonths":
+        try openGrantMonths(tx, organizationId, { id: done.grantId, planKey: done.planKey, effectiveFrom: done.startsAt, effectiveUntil: done.ends.tag === "EndsAt" ? done.ends.endsAtMs : null }, now)
+        break
+      case "RetireGrantMonths":
+        try closePeriods(tx, organizationId, { kind: "GrantRevoked", grantId: done.grantId }, now)
+        break
+      default: {
+        const _exhaustive: never = done
+        return _exhaustive
+      }
+    }
+  }
+}
+
+effect function paidPlanOpen(tx: Tx, organizationId: string): boolean!StoreFailure {
+  const subscription = readSubscription(tx, organizationId) catch effect (failure) => match (failure) {
+    when RowCorrupt: undefined;
+    default: throw failure;
+  }
+  return subscription === undefined || isLive(subscription.status)
+}
+
+effect function exists(tx: Tx, text: string, params: ReadonlyArray<unknown>): boolean!StoreFailure {
+  return (try tx.query(text, params)).length > 0
+}
+
+effect function insertGrant(tx: Tx, code: Code, key: string, grant: Grant) {
+  try tx.query(
+    "INSERT INTO grants (id, organization_id, family, plan_key, effective_from, effective_until, created_at, code_key, idempotency_key) VALUES ($1, $2, $3, $4, $5, $6, $5, $7, $8)",
+    [grant.grantId, grant.organizationId, code.family, wirePlanKey(code.planKey), grant.startsAt, grant.ends.tag === "EndsAt" ? grant.ends.endsAtMs : null, key, grant.idempotencyKey]
+  )
+}
+
+export effect function readGrant(tx: Tx, grantId: string): SnapshotGrant!(StoreFailure | RowCorrupt) {
+  const row = (try tx.query("SELECT family, plan_key, effective_from, effective_until, revoked FROM grants WHERE id = $1", [grantId]))[0]
+  const planKey = row === undefined ? undefined : parsePlanKey(row.plan_key)
+  const wire = planKey === undefined ? "free" : wirePlanKey(planKey)
+  const family = toText(row?.family)
+  if (row === undefined || wire === "free" || family === undefined) throw new RowCorrupt({ table: "grants", key: grantId, cause: "the grant a code issued has no readable row" })
+  return {
+    id: grantId,
+    planKey: wire,
+    family,
+    effectiveFrom: toInt(row.effective_from),
+    effectiveUntil: row.effective_until === null ? null : toInt(row.effective_until),
+    revoked: row.revoked === true
+  }
+}
+
+export effect function redeemIn(tx: Tx, caller: { readonly userId: string; readonly organizationId: string }, key: string, idempotencyKey: string) {
+  const { organizationId } = caller
+  try lockOrganization(tx, organizationId)
+  const loaded = try loadRow(tx, codeRows, key)
+  const now = try Clock.currentTimeMillis
+  const code = loaded.state
+  const event: Event = {
+    type: "redeem",
+    organizationId,
+    accountActive: toText((try tx.query("SELECT status FROM accounts WHERE key = $1 AND organization_id = $2", [caller.userId, organizationId]))[0]?.status) === "active",
+    idempotencyKey,
+    keyUsedForAnotherCode: try exists(tx, "SELECT 1 FROM grants WHERE organization_id = $1 AND idempotency_key = $2 AND code_key IS DISTINCT FROM $3", [organizationId, idempotencyKey, key]),
+    familyHeld: code.family !== "" && try exists(tx, "SELECT 1 FROM grants WHERE organization_id = $1 AND family = $2 AND code_key IS DISTINCT FROM $3", [organizationId, code.family, key]),
+    paidPlanOpen: code.requiresNoPaidPlan && try paidPlanOpen(tx, organizationId),
+    grantId: newId(),
+    now
+  }
+  const stepped: CodeStep = loaded.found ? (try stepRow(tx, codeRows, key, event, columns(now))).out : try apply(code, event)
+  const answer = stepped.state.last
+  switch (answer.tag) {
+    case "RedeemRefused": throw new Refused({ refusal: answer.refusal })
+    case "NoAnswer": throw new RowCorrupt({ table: codeRows.table, key, cause: "a redemption left no answer" })
+    case "Answered": {
+      if (!answer.replayed) {
+        try insertGrant(tx, stepped.state, key, grantOf(stepped.state, organizationId))
+        try applyEffects(tx, organizationId, stepped.out, now)
+      }
+      return { replayed: answer.replayed, grant: try readGrant(tx, answer.grantId), now } satisfies Redemption
+    }
+    default: {
+      const _exhaustive: never = answer
+      return _exhaustive
+    }
+  }
+}
+
+export effect function mintGrantCodes(tx: Tx, request: MintRequest, now: number) {
+  const expiry: CodeExpiry = request.expiresAt === undefined ? { tag: "NeverExpires" } : { tag: "ExpiresAt", at: request.expiresAt }
+  const minted: string[] = []
+  for (let index = 0; index < request.count; index += 1) {
+    const code = freshCode()
+    try stepRow(tx, codeRows, try keyedDigest(code), { type: "mint", family: request.family, planKey: request.planKey, term: request.term, requiresNoPaidPlan: request.requiresNoPaidPlan, maxRedemptions: request.maxRedemptions, expiry }, columns(now))
+    minted.push(displayed(code))
+  }
+  return minted
+}
+
+effect function codeKeys(tx: Tx, selection: CodeSelection) {
+  switch (selection.kind) {
+    case "codes": {
+      const keys: string[] = []
+      for (const code of selection.codes) keys.push(try codeKey(code))
+      return keys
+    }
+    case "family":
+      return (try tx.query("SELECT key FROM grant_codes WHERE family = $1 AND NOT disabled ORDER BY key", [selection.family])).map((row) => toText(row.key) ?? "")
+    default: {
+      const _exhaustive: never = selection
+      return _exhaustive
+    }
+  }
+}
+
+effect function disableKey(tx: Tx, key: string, now: number) {
+  const loaded = try loadRow(tx, codeRows, key)
+  if (!loaded.found || !canDisable(loaded.state)) return false
+  try stepRow(tx, codeRows, key, { type: "disable" }, columns(now))
+  return true
+}
+
+export effect function disableGrantCodes(tx: Tx, selection: CodeSelection) {
+  const now = try Clock.currentTimeMillis
+  let disabled = 0
+  for (const key of try codeKeys(tx, selection)) if (try disableKey(tx, key, now)) disabled += 1
+  return disabled
+}
+
+effect function revokeHeld(tx: Tx, key: string, organizationId: string, now: number) {
+  try lockOrganization(tx, organizationId)
+  const loaded = try loadRow(tx, codeRows, key)
+  const event: Event = { type: "revokeGrant", organizationId, now }
+  if (!loaded.found || !enabled(loaded.state, event)) return false
+  const stepped = (try stepRow(tx, codeRows, key, event, columns(now))).out
+  try tx.query("UPDATE grants SET revoked = true, revoked_at = $2 WHERE id = $1", [grantOf(stepped.state, organizationId).grantId, now])
+  try applyEffects(tx, organizationId, stepped.out, now)
+  return true
+}
+
+export effect function revokeGrants(tx: Tx, selection: GrantSelection, reason: string) {
+  const now = try Clock.currentTimeMillis
+  let revoked = 0
+  switch (selection.kind) {
+    case "grants":
+      for (const grantId of selection.grantIds) {
+        const row = (try tx.query("SELECT organization_id, code_key FROM grants WHERE id = $1", [grantId]))[0]
+        const key = toText(row?.code_key)
+        const organizationId = toText(row?.organization_id)
+        if (key !== undefined && organizationId !== undefined && try revokeHeld(tx, key, organizationId, now)) revoked += 1
+      }
+      break
+    case "codes":
+      for (const text of selection.codes) {
+        const key = try codeKey(text)
+        for (const grant of (try loadRow(tx, codeRows, key, false)).state.grants.filter(isInForce)) if (try revokeHeld(tx, key, grant.organizationId, now)) revoked += 1
+        try disableKey(tx, key, now)
+      }
+      break
+    default: {
+      const _exhaustive: never = selection
+      return _exhaustive
+    }
+  }
+  try annotateLogs(logInfo("grants revoked"), { revoked, reason })
+  return revoked
+}
+
+effect function redeem(context: RouteContext) {
+  const caller = context.caller
+  const signed = owner(caller)
+  if (signed === undefined || caller.kind === "anonymous") throw refused("AuthenticationRequired", "CredentialUnknown")
+  try admitAll([
+    { subject: credentialOf(caller), rule: redeemPerCredential },
+    { subject: Option.getOrElse(context.request.remoteAddress, () => "unknown"), rule: redeemPerAddress }
+  ])
+  const body = try jsonBody(context, RedeemBody)
+  if (!idempotencyKeyPattern.test(body.idempotencyKey)) throw refused("InvalidRequest")
+  const key = try codeKey(body.code)
+  const store = try Store
+  return json(try store.transaction(effect (tx: Tx) => {
+    const redeemed = try redeemIn(tx, signed, key, body.idempotencyKey)
+    const policy = try readPolicy(tx, signed.organizationId, redeemed.now)
+    return {
+      replayed: redeemed.replayed,
+      grant: redeemed.grant,
+      entitlement: {
+        plan: { key: wirePlanKey(policy.planKey), source: policy.source, effectiveUntil: policy.effectiveUntil },
+        token: try signEntitlement(tx, signed, redeemed.now)
+      }
+    }
+  }))
+}
+
+export const routes: ReadonlyArray<Route> = [
+  { method: "POST", path: "/api/v1/subscription/redeem", auth: "ServiceAccess", capability: "billing", rateClass: "StandardRequests", handler: redeem }
+]

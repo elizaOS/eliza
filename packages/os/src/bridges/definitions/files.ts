@@ -1,5 +1,6 @@
 // spec/os/android/files/storage.md, "Story: Change files only as reviewed"; spec/os/android/files/storage.md, "Story: Get back exactly what I trashed"; spec/os/android/files/handoff.md, "Story: Open or share a file without granting write"; spec/os/android/files/storageWatch.md, "Story: Watch a folder with one live observer"
 import type { PluginListenerHandle } from "@capacitor/core";
+import type { FilesPreview } from "../../../gen/os__android__files__handoff.ts";
 
 export type FilesCategory = "downloads" | "images" | "videos" | "audio" | "documents";
 
@@ -122,4 +123,15 @@ export interface ElizaFilesPlugin {
   storageWatch(input: OnVolume & { path?: string; category?: FilesCategory }): Promise<FilesResult>;
   storageUnwatch(): Promise<FilesResult>;
   addListener(eventName: "storageChanged", listener: () => void): Promise<PluginListenerHandle>;
+}
+
+export type FilesPreviewAnswer =
+  | { kind: "shown"; selection: FilesSelected }
+  | { kind: "couldNotOpen"; reply: FilesResult }
+  | { kind: "forgotten" };
+
+export interface FilesPreviewClient {
+  leave(): Promise<FilesPreview>;
+  select(input: OnVolume & { path: string }): Promise<FilesPreviewAnswer>;
+  state(): Promise<FilesPreview>;
 }

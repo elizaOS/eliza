@@ -13,7 +13,7 @@ import (
 // be embedded by the signed build.
 func TestMain(m *testing.M) {
 	if compiledHostPolicyBase64 == "" {
-		compiledHostPolicyBase64 = base64.RawURLEncoding.EncodeToString([]byte(`{"schema":2,"product":"example-app","package":"com.example.app","cohortDomain":"example-app-ota-v1","runtimeInventoryHeader":"eliza-runtime-v1","runtimeExcludedAgentDirectories":["models"]}`))
+		compiledHostPolicyBase64 = base64.RawURLEncoding.EncodeToString([]byte(`{"schema":3,"product":"example-app","package":"com.example.app","cohortDomain":"example-app-ota-v1"}`))
 	}
 	os.Exit(m.Run())
 }
@@ -22,9 +22,8 @@ func TestHostPolicyFailsClosed(t *testing.T) {
 	defer func() { compiledHostPolicyBase64 = saved }()
 	v := admissionVectors(t)[0]
 	for _, value := range []string{"", "invalid", base64.RawURLEncoding.EncodeToString([]byte(`{"schema":1}`)),
-		// Schema 1 lacked runtime exclusions and must be migrated explicitly.
-		base64.RawURLEncoding.EncodeToString([]byte(`{"schema":1,"product":"example-app","package":"com.example.app","cohortDomain":"example-app-ota-v1","runtimeInventoryHeader":"eliza-runtime-v1"}`)),
-		base64.RawURLEncoding.EncodeToString([]byte(`{"schema":2,"product":"example-app","package":"com.example.app","cohortDomain":"example-app-ota-v1","runtimeInventoryHeader":"eliza-runtime-v1","runtimeExcludedAgentDirectories":["../models"]}`))} {
+		base64.RawURLEncoding.EncodeToString([]byte(`{"schema":2,"product":"example-app","package":"com.example.app","cohortDomain":"example-app-ota-v1","runtimeInventoryHeader":"eliza-runtime-v1","runtimeExcludedAgentDirectories":["models"]}`)),
+		base64.RawURLEncoding.EncodeToString([]byte(`{"schema":3,"product":"example-app","package":"com.example.app","cohortDomain":"example-app-ota-v1","runtimeInventoryHeader":"eliza-runtime-v1"}`))} {
 		compiledHostPolicyBase64 = value
 		if _, err := EvaluateReleaseInterval(v.Release, v.Device, v.Policy); err == nil {
 			t.Fatal("unconfigured host admitted release")
@@ -47,7 +46,6 @@ func TestIndependentHostCannotAdmitLegacyProduct(t *testing.T) {
 	policy.Product = "independent-host"
 	policy.Package = "org.example.independent"
 	policy.CohortDomain = "independent-ota-v1"
-	policy.RuntimeInventoryHeader = "independent-runtime-v1"
 	data, _ := json.Marshal(policy)
 	compiledHostPolicyBase64 = base64.RawURLEncoding.EncodeToString(data)
 	if _, err := EvaluateReleaseInterval(legacy.Release, legacy.Device, legacy.Policy); err == nil {
@@ -66,7 +64,7 @@ func TestIndependentHostCannotAdmitLegacyProduct(t *testing.T) {
 func TestVectorsBindToCompiledHost(t *testing.T) {
 	saved := compiledHostPolicyBase64
 	defer func() { compiledHostPolicyBase64 = saved }()
-	compiledHostPolicyBase64 = base64.RawURLEncoding.EncodeToString([]byte(`{"schema":2,"product":"independent-host","package":"org.example.independent","cohortDomain":"independent-ota-v1","runtimeInventoryHeader":"independent-runtime-v1","runtimeExcludedAgentDirectories":[]}`))
+	compiledHostPolicyBase64 = base64.RawURLEncoding.EncodeToString([]byte(`{"schema":3,"product":"independent-host","package":"org.example.independent","cohortDomain":"independent-ota-v1"}`))
 	vectors := admissionVectors(t)
 	if !bytes.Contains(vectors[0].Release, []byte(`"independent-host"`)) || bytes.Contains(vectors[0].Release, []byte(`"`+vectorProduct+`"`)) {
 		t.Fatal("vectors not bound to the compiled host")

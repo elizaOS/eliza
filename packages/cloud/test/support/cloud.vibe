@@ -5,6 +5,7 @@ import type { CloudContext } from "../../src/http/routes.vibe"
 import { serveDatabase, type DatabaseSetup } from "./database.ts"
 import { startFakeServer, stripeCatalog, type CatalogPrice, type FakeServer } from "./fakes.ts"
 import { callCloud, type Answer, type CallInit } from "./http.ts"
+import { builtPages } from "./pages.ts"
 import { catalogPrices, secrets, testProfile } from "./profile.ts"
 import type { StripeFake } from "./fakes/stripe.ts"
 
@@ -51,6 +52,7 @@ export effect function testCloud(options: TestCloudOptions = {}) {
   const store = choice.kind === "pg"
     ? (try acquireRelease(promise(() => serveDatabase(choice.setup)), (database) => promise(() => database.close()))).url
     : "pglite"
+  try promise(() => builtPages())
   const prepared = try prepare({ profile, environment: options.environment ?? "staging", store, seed: options.seed, port: 0, host: options.host ?? "127.0.0.1" })
   const built = try Layer.build(cloudLayer(prepared).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))))
   const { address } = Context.get(built, HttpServer.HttpServer)

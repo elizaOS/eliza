@@ -1,0 +1,317 @@
+// spec/os/update/operator.md, "Story: Update a device by cable"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { OPERATOR_STEPS, applyUpdate, checkUpdate, deviceRunner, otaMain, readChannel, readJournal, updateStatus, type ApplyRequest } from "../src/image/ota-operator.vibe"
+import { device, fakeAdb, type Device, type FakeAdb, type Image, type Scripted } from "./support/fake-adb.ts"
+import { scratch } from "./support/scratch.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+
+  /** @throws {never} */
+  export function sha256(text: string): string {
+    return createHash("sha256").update(text).digest("hex")
+  }
+}
+import { sha256 } from node
+
+const SERIAL = "FAKE0001"
+const OTA_CERT = "b".repeat(64)
+const AVB_KEY = "a".repeat(64)
+const STORY = 'spec/os/update/operator.md, "Story: Update a device by cable"'
+const fingerprint = (build: string) => `example/example_phone/example:17/BP2A.${build}/1:user/release-keys`
+
+const CHANNEL = {
+  schema: 1,
+  channel: "stable",
+  product: "example_phone",
+  device: "example",
+  otaCertificateSha256: OTA_CERT,
+  avbPublicKeySha256: AVB_KEY,
+  downgradeAllowed: false,
+  recovery: { stockFactoryImage: { filename: "example-factory.zip", sha256: "0".repeat(64) } },
+}
+
+interface Release {
+  readonly build: string
+  readonly dateUtc: string
+  readonly securityPatch?: string
+  readonly indexes?: readonly string[]
+  readonly releasekey?: string
+  readonly postTimestamp?: string
+  readonly incremental?: { readonly preBuild: string; readonly targetFiles: string }
+}
+
+const INSTALLED: Release = { build: "261005.001", dateUtc: "1790000000" }
+const CANDIDATE: Release = { build: "261105.001", dateUtc: "1792000000", securityPatch: "2026-11-05" }
+const otaBytes = (release: Release) => `ota ${release.build}`
+
+function record(release: Release) {
+  const ota = otaBytes(release)
+  const incremental = release.incremental
+  return {
+    schema: 1,
+    kind: "aosp-release-compatibility",
+    product: "example_phone",
+    device: "example",
+    channel: "stable",
+    build: { fingerprint: fingerprint(release.build), securityPatch: release.securityPatch ?? "2026-10-05", vendorSecurityPatch: release.securityPatch ?? "2026-10-05", dateUtc: release.dateUtc },
+    artifacts: {
+      signedTargetFiles: { file: "signed-target_files.zip", sha256: sha256(`tf ${release.build}`) },
+      ota: { file: "ota.zip", sha256: sha256(ota), sizeBytes: ota.length, type: incremental === undefined ? "full" : "incremental", incrementalFrom: incremental === undefined ? null : { sha256: incremental.targetFiles } },
+    },
+    verifiedBoot: { publicKeySha256: AVB_KEY, rollbackIndexes: (release.indexes ?? ["1", "1", "1"]).map((index, location) => ({ location, index })) },
+    payload: { metadata: { "post-build": fingerprint(release.build), "post-timestamp": release.postTimestamp ?? release.dateUtc, ...(incremental === undefined ? {} : { "pre-build": incremental.preBuild }) } },
+    certificates: { releasekey: release.releasekey ?? OTA_CERT, platform: "c".repeat(64) },
+    problems: [],
+    imageBooted: false,
+    signedUpdateApplied: false,
+    releaseQualified: false,
+    deviceAcceptanceVerified: false,
+  }
+}
+
+function image(release: Release, slot: "a" | "b", change: { readonly verifiedBoot?: string; readonly selinux?: "Enforcing" | "Permissive" } = {}): Image {
+  return {
+    props: {
+      "sys.boot_completed": "1",
+      "ro.product.device": "example",
+      "ro.build.fingerprint": fingerprint(release.build),
+      "ro.boot.slot_suffix": `_${slot}`,
+      "ro.boot.verifiedbootstate": change.verifiedBoot ?? "yellow",
+      "ro.boot.flash.locked": "1",
+      "ro.build.version.security_patch": release.securityPatch ?? "2026-10-05",
+      "ro.virtual_ab.enabled": "true",
+    },
+    selinux: change.selinux ?? "Enforcing",
+  }
+}
+
+const INSTALLED_IMAGE = image(INSTALLED, "a")
+const CANDIDATE_IMAGE = image(CANDIDATE, "b")
+const TO_SIDELOAD: Scripted = { tool: "adb", args: ["-s", SERIAL, "reboot", "recovery"], answer: { status: 0 }, become: "sideload" }
+
+interface Bench {
+  readonly root: string
+  readonly phone: FakeAdb
+  readonly request: ApplyRequest
+  readonly messages: string[]
+}
+
+effect function bench(name: string, phone: Partial<Omit<Device, "serial">> = {}, candidate: Release = CANDIDATE) {
+  const files = try FileSystem.FileSystem
+  const root = try scratch(name)
+  try files.makeDirectory(`${root}/phone`)
+  try files.writeFileString(`${root}/channel.json`, JSON.stringify(CHANNEL))
+  try files.writeFileString(`${root}/installed.json`, JSON.stringify(record(INSTALLED)))
+  try files.writeFileString(`${root}/candidate.json`, JSON.stringify(record(candidate)))
+  try files.writeFileString(`${root}/ota.zip`, otaBytes(candidate))
+  const fake = try Effect.try(() => fakeAdb(`${root}/phone`, device(SERIAL, { image: INSTALLED_IMAGE, boots: [CANDIDATE_IMAGE], scripted: [TO_SIDELOAD], ...phone })))
+  const messages: string[] = []
+  const request: ApplyRequest = {
+    device: try deviceRunner({ serial: SERIAL, adb: fake.adb, fastboot: fake.fastboot }),
+    channel: (try readChannel(`${root}/channel.json`)).channel,
+    from: `${root}/installed.json`,
+    to: `${root}/candidate.json`,
+    ota: `${root}/ota.zip`,
+    journal: `${root}/journal.json`,
+    lockDirectory: `${root}/locks`,
+    timing: { rebootMs: 1500, operatorMs: 500, sideloadMs: 30_000, pollMs: 100 },
+    notify: (message) => sync(() => {
+      messages.push(message)
+    }),
+  }
+  const made: Bench = { root, phone: fake, request, messages }
+  return made
+}
+
+effect function writes(phone: FakeAdb) {
+  const calls = try Effect.try(() => phone.calls())
+  return calls.filter((call) => ["reboot", "sideload", "set_active", "flash", "flashing", "erase"].includes(call.args[2] ?? "")).map((call) => [call.tool, ...call.args.slice(2)].join(" "))
+}
+
+effect function phases(file: string) {
+  const files = try FileSystem.FileSystem
+  const text = try files.readFileString(file)
+  const journal = try Effect.try(() => JSON.parse(text) as { history: readonly { phase: string }[] })
+  return journal.history.map((entry) => entry.phase).filter((phase, index, all) => index === 0 || all[index - 1] !== phase)
+}
+
+effect function locks(bench: Bench) {
+  const files = try FileSystem.FileSystem
+  return try files.readDirectory(`${bench.root}/locks`)
+}
+
+effect function removeLocks(bench: Bench) {
+  const files = try FileSystem.FileSystem
+  for (const name of try locks(bench)) try files.remove(`${bench.root}/locks/${name}`)
+}
+
+effect function setPhone(bench: Bench, change: Partial<Device>) {
+  try Effect.try(() => bench.phone.set(change))
+}
+
+const execute = (bench: Bench) => applyUpdate({ ...bench.request, execute: true, confirm: true })
+const journey = <A, E>(body: A!E!(NodeServices.NodeServices | Scope.Scope)) => Effect.provide(Effect.scoped(body), NodeServices.layer)
+
+it.live(`Admit only a newer signed release of the channel and refuse every other candidate before touching the device (${STORY})`, () => journey(effect {
+  const files = try FileSystem.FileSystem
+  const subject = try bench("ota-admission")
+  const channel = subject.request.channel
+  const check = effect (name: string, release: Release, changed: object = {}) => {
+    const file = `${subject.root}/${name}.json`
+    try files.writeFileString(file, JSON.stringify({ ...record(release), ...changed }))
+    return (try checkUpdate(channel, subject.request.from, file)).problems.join("\n")
+  }
+  assert.strictEqual(try check("clean", CANDIDATE), "")
+  assert.match(try check("downgrade", { build: "260905.001", dateUtc: "1780000000" }), /downgrades are refused/)
+  assert.match(try check("same-build", INSTALLED), /downgrades are refused/)
+  assert.match(try check("older-patch", { ...CANDIDATE, securityPatch: "2026-09-05" }), /no lower patch level/)
+  assert.match(try check("foreign-certificate", { ...CANDIDATE, releasekey: "d".repeat(64) }), /candidate record is not a clean stable release/)
+  assert.match(try check("lower-rollback", { ...CANDIDATE, indexes: ["1", "0", "1"] }), /rollback index/)
+  assert.match(try check("missing-rollback", { ...CANDIDATE, indexes: ["1"] }), /rollback index/)
+  assert.match(try check("post-timestamp", { ...CANDIDATE, postTimestamp: "1790000000" }), /post-timestamp is not the candidate build date/)
+  assert.match(try check("other-start", { ...CANDIDATE, incremental: { preBuild: fingerprint("260905.001"), targetFiles: sha256(`tf ${INSTALLED.build}`) } }), /does not start from exactly the installed build/)
+  assert.match(try check("other-target-files", { ...CANDIDATE, incremental: { preBuild: fingerprint(INSTALLED.build), targetFiles: sha256("tf other") } }), /does not start from exactly the installed build/)
+  assert.strictEqual(try check("incremental", { ...CANDIDATE, incremental: { preBuild: fingerprint(INSTALLED.build), targetFiles: sha256(`tf ${INSTALLED.build}`) } }), "")
+  assert.match(try check("listed-problem", CANDIDATE, { problems: ["vbmeta differs"] }), /lists a problem/)
+  assert.match(try check("claimed", CANDIDATE, { signedUpdateApplied: true }), /claims signedUpdateApplied/)
+  const downgrades = `${subject.root}/downgrades.json`
+  try files.writeFileString(downgrades, JSON.stringify({ ...CHANNEL, downgradeAllowed: true }))
+  assert.match((try checkUpdate((try readChannel(downgrades)).channel, subject.request.from, subject.request.to)).problems.join("\n"), /must refuse downgrades/)
+  const refused = try Effect.flip(otaMain(["check", "--channel", downgrades, "--from", subject.request.from, "--to", subject.request.to]))
+  assert.strictEqual(refused._tag, "UpdateRefused")
+  const usage = try Effect.flip(otaMain(["check", "--channel", downgrades, "--from", subject.request.from, "--to", subject.request.to, "--execute"]))
+  assert.deepInclude(usage, { _tag: "OtaUsageError", message: "check is read-only" })
+  const confirmation = try Effect.flip(otaMain(["apply", "--serial", SERIAL, "--channel", downgrades, "--from", "a", "--to", "b", "--ota", "c", "--journal", "d", "--confirm-update"]))
+  assert.deepInclude(confirmation, { _tag: "OtaUsageError", message: "--confirm-update belongs to apply --execute" })
+
+  const dry = try applyUpdate(subject.request)
+  assert.deepStrictEqual(dry.problems, [])
+  assert.isFalse(dry.executed)
+  assert.strictEqual(dry.plan.next, "Sideload")
+  assert.isFalse(try files.exists(subject.request.journal))
+  const unconfirmed = try Effect.flip(applyUpdate({ ...subject.request, execute: true }))
+  assert.strictEqual(unconfirmed._tag, "ConfirmationRequired")
+  try files.writeFileString(subject.request.ota, "tampered")
+  assert.match((try execute(subject)).problems.join("\n"), /not the one the candidate record describes/)
+  assert.deepStrictEqual(try writes(subject.phone), [])
+
+  for (const [name, start] of [["other-build", image({ build: "260101.001", dateUtc: "1" }, "a")], ["permissive", image(INSTALLED, "a", { selinux: "Permissive" })], ["unread-boot", image(INSTALLED, "a", { verifiedBoot: "unknown" })]] as const) {
+    const other = try bench(`ota-start-${name}`, { image: start })
+    const result = try execute(other)
+    assert.isFalse(result.executed, name)
+    assert.match(result.problems.join("\n"), /a new update starts from booted Android running the installed build/, name)
+    assert.deepStrictEqual(try writes(other.phone), [], name)
+    assert.isFalse(try files.exists(other.request.journal), name)
+  }
+}))
+
+it.live(`Sideload a confirmed update under the install lock, verify it on the other slot and keep a verified journal (${STORY})`, () => journey(effect {
+  const files = try FileSystem.FileSystem
+  const subject = try bench("ota-update")
+  const result = try execute(subject)
+  assert.isTrue(result.executed)
+  assert.deepStrictEqual(result.journal.phase, "Verified")
+  assert.deepStrictEqual(result.journal.lock, { tag: "Unlocked" })
+  assert.deepStrictEqual(try phases(subject.request.journal), ["Unstarted", "AwaitingSideload", "Sideloading", "Transferred", "Verified"])
+  assert.deepStrictEqual(try writes(subject.phone), ["adb reboot recovery", `adb sideload ${subject.request.ota}`, "adb reboot"])
+  assert.deepStrictEqual(subject.messages, [OPERATOR_STEPS.enterSideload, OPERATOR_STEPS.rebootAfterSideload])
+  assert.strictEqual(((try files.stat(subject.request.journal)).mode & 0o077), 0)
+  assert.deepStrictEqual(try locks(subject), [])
+  const journal = try readJournal(subject.request.journal)
+  assert.strictEqual(journal.state.start.originalSlot, "SlotA")
+  assert.strictEqual(journal.state.start.originalBoot, "Yellow")
+  assert.isTrue(journal.state.start.virtualAb)
+  const again = try execute(subject)
+  assert.isFalse(again.executed)
+  assert.strictEqual((try writes(subject.phone)).length, 3)
+  const status = try updateStatus(subject.request.device, subject.request.journal)
+  assert.strictEqual(status.next, "Verify")
+  assert.strictEqual(status.phase, "Verified")
+}))
+
+it.live(`Keep the lock after a refused or unplugged transfer and resume from what the device shows (${STORY})`, () => journey(effect {
+  const refusing: Scripted = { tool: "adb", args: ["-s", SERIAL, "sideload"], answer: { status: 1, stderr: "adb: failed to read command: Success\n" } }
+  const subject = try bench("ota-refused", { scripted: [TO_SIDELOAD, refusing] })
+  const failed = try Effect.flip(execute(subject))
+  assert.strictEqual(failed._tag, "TransferFailed")
+  assert.strictEqual((try readJournal(subject.request.journal)).state.phase, "AwaitingSideload")
+  assert.deepStrictEqual((try readJournal(subject.request.journal)).state.lock, { tag: "LeftLocked" })
+  assert.lengthOf(try locks(subject), 1)
+  try setPhone(subject, { scripted: [TO_SIDELOAD] })
+  assert.strictEqual((try Effect.flip(execute(subject)))._tag, "DeviceLocked")
+  try removeLocks(subject)
+  assert.strictEqual((try updateStatus(subject.request.device, subject.request.journal)).next, "Sideload")
+  assert.isTrue((try execute(subject)).executed)
+  assert.deepStrictEqual(try phases(subject.request.journal), ["Unstarted", "AwaitingSideload", "Sideloading", "AwaitingSideload", "Sideloading", "Transferred", "Verified"])
+
+  const unplugging: Scripted = { ...refusing, become: "absent" }
+  const pulled = try bench("ota-unplugged", { scripted: [TO_SIDELOAD, unplugging] })
+  assert.strictEqual((try Effect.flip(execute(pulled)))._tag, "TransferFailed")
+  assert.strictEqual((try updateStatus(pulled.request.device, pulled.request.journal)).next, "Absent")
+  try setPhone(pulled, { mode: "device", scripted: [TO_SIDELOAD] })
+  assert.strictEqual((try updateStatus(pulled.request.device, pulled.request.journal)).next, "Retry")
+  try removeLocks(pulled)
+  assert.strictEqual((try applyUpdate(pulled.request)).plan.next, "Retry")
+  assert.isTrue((try execute(pulled)).executed)
+  assert.deepStrictEqual((try phases(pulled.request.journal)).slice(-3), ["Sideloading", "Transferred", "Verified"])
+}))
+
+it.live(`Leave the device unchanged when the operator does not choose sideload, and resume from sideload later (${STORY})`, () => journey(effect {
+  const subject = try bench("ota-idle", { scripted: [] })
+  const stopped = try Effect.flip(execute(subject))
+  assert.strictEqual(stopped._tag, "UpdateStopped")
+  assert.match(stopped._tag === "UpdateStopped" ? stopped.reason : "", /did not enter recovery sideload \(it is recovery\); nothing was sent/)
+  assert.deepStrictEqual(subject.messages, [OPERATOR_STEPS.enterSideload])
+  assert.deepStrictEqual(try writes(subject.phone), ["adb reboot recovery"])
+  const journal = try readJournal(subject.request.journal)
+  assert.strictEqual(journal.state.phase, "AwaitingSideload")
+  assert.deepStrictEqual(journal.state.lock, { tag: "LeftLocked" })
+  try setPhone(subject, { mode: "sideload" })
+  assert.strictEqual((try Effect.flip(execute(subject)))._tag, "DeviceLocked")
+  try removeLocks(subject)
+  assert.isTrue((try execute(subject)).executed)
+  assert.deepStrictEqual(try writes(subject.phone), ["adb reboot recovery", `adb sideload ${subject.request.ota}`, "adb reboot"])
+}))
+
+it.live(`Never record an update applied when the candidate boots weaker, permissive or not at all (${STORY})`, () => journey(effect {
+  for (const [name, booted] of [["permissive", image(CANDIDATE, "b", { selinux: "Permissive" })], ["orange", image(CANDIDATE, "b", { verifiedBoot: "orange" })], ["same-slot", image(CANDIDATE, "a")]] as const) {
+    const subject = try bench(`ota-${name}`, { boots: [booted] })
+    const failed = try Effect.flip(execute(subject))
+    assert.strictEqual(failed._tag, "VerificationFailed", name)
+    const journal = try readJournal(subject.request.journal)
+    assert.strictEqual(journal.state.phase, "VerificationFailed", name)
+    assert.deepStrictEqual(journal.state.lock, { tag: "LeftLocked" }, name)
+  }
+  const fellBack = try bench("ota-fell-back", { boots: [INSTALLED_IMAGE] })
+  const stopped = try Effect.flip(execute(fellBack))
+  assert.match(stopped._tag === "UpdateStopped" ? stopped.reason : stopped._tag, /the update did not take effect/)
+  assert.strictEqual((try readJournal(fellBack.request.journal)).state.phase, "Transferred")
+  const foreign = try bench("ota-foreign", { boots: [image({ build: "260101.001", dateUtc: "1" }, "b")] })
+  assert.strictEqual((try Effect.flip(execute(foreign)))._tag, "UpdateStopped")
+  try removeLocks(foreign)
+  assert.match((try applyUpdate(foreign.request)).problems.join("\n"), /refusing to continue/)
+}))
+
+it.live(`Verify a transferred update whose candidate already booted without sending it again, and refuse another package's journal (${STORY})`, () => journey(effect {
+  const files = try FileSystem.FileSystem
+  const lost: Scripted = { tool: "adb", args: ["-s", SERIAL, "reboot"], answer: { status: 0 }, become: "absent" }
+  const subject = try bench("ota-booted-later", { scripted: [TO_SIDELOAD, lost] })
+  const stopped = try Effect.flip(execute(subject))
+  assert.match(stopped._tag === "UpdateStopped" ? stopped.reason : stopped._tag, /did not finish booting/)
+  assert.strictEqual((try readJournal(subject.request.journal)).state.phase, "Transferred")
+  try setPhone(subject, { mode: "device", image: CANDIDATE_IMAGE, scripted: [] })
+  try removeLocks(subject)
+  const before = (try writes(subject.phone)).length
+  const verified = try execute(subject)
+  assert.isTrue(verified.executed)
+  assert.strictEqual(verified.journal.phase, "Verified")
+  assert.strictEqual((try writes(subject.phone)).length, before)
+  assert.deepStrictEqual(try locks(subject), [])
+
+  const other = try bench("ota-other-package", {}, { build: "261205.001", dateUtc: "1793000000", securityPatch: "2026-12-05" })
+  try files.copyFile(subject.request.journal, other.request.journal)
+  try files.chmod(other.request.journal, 0o600)
+  assert.match((try applyUpdate(other.request)).problems.join("\n"), /journal belongs to another device, package or release/)
+}))

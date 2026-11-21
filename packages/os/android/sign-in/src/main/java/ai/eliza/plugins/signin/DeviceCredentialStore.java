@@ -178,6 +178,15 @@ public final class DeviceCredentialStore implements CredentialReader {
     return Outcome.ACCEPTED;
   }
 
+  public Outcome adoptSignIn(int generation) {
+    synchronized (lock) {
+      advance();
+      if (generation < 1 || state.generation() != generation || !(state.attempt() instanceof Attempt.NoAttempt)) return Outcome.REFUSED;
+      commit(new Step(state.with(new Attempt.Exchanging(generation)), List.of()));
+    }
+    return Outcome.ACCEPTED;
+  }
+
   public Outcome rejected(int version, Reason reason, RejectedOn on) {
     List<Notice> out;
     synchronized (lock) {

@@ -90,6 +90,15 @@ pure val referralCodeValues = Set("R1", "R2")
 pure def alwaysLiveAccountHasReferralCode(a: Account): bool = (a.status == Active or a.status == Deleting) implies a.referralCode != ""
 ```
 
+### An account not yet opened was referred by nobody
+
+A referral is applied only to an active account, so opening an account never
+replaces a referral already made.
+
+```quint
+pure def alwaysUnopenedIsNotReferred(a: Account): bool = a.status == Unopened implies a.referredBy == NotReferred
+```
+
 ### An identity held by nobody is linked, and an identity is removed only while another remains
 
 This record is the one owner of an account's identities and of the unique

@@ -1,0 +1,297 @@
+# Managed Gmail reads
+
+The owner's mail, read through the grant of [the connection](./connection.md)
+(develop `agent-google-connector/{gmail.ts,inbox-provider.ts}`). Routes, by
+device key or session, `side` only `owner`, grant chosen by `connection`'s
+selection rule: `GET /api/v1/eliza/google/gmail/{triage,search,read}` and
+`GET …/gmail/inbox-v1/{capabilities,thread,attachment,drafts,draft}`. This
+library decides what a read may answer; the shell calls Google and renders
+the wire. [The reviewed operations](./mailOperations.md) reuse its revision
+check, mail cap and operation kinds.
+
+## Story: Read my mail through the grant I chose
+
+> As an owner, I want my assistant to triage, search and read my mail through
+> the Google grant I chose, each answer whole or refused, so that it never
+> acts on a message it saw only in part or at another revision.
+
+### A read needs a usable connection that holds the Gmail scope of its surface
+
+Triage reads headers, so `gmail.metadata` is enough; search, message,
+thread and attachment reads need the body (`gmail.readonly` or
+`gmail.modify`); the drafts surfaces need `gmail.compose` or `gmail.modify`;
+capabilities need only the connection. A refused read answers
+`connection`'s use refusal, after its refresh.
+
+```quint
+import types.* from "../../shared/types"
+import connection as C from "./connection"
+type MailSurface = TriageSurface | SearchSurface | MessageSurface | ThreadSurface | AttachmentSurface | DraftsSurface | DraftSurface | CapabilitiesSurface
+pure val allSurfaces: List[MailSurface] = List(TriageSurface, SearchSurface, MessageSurface, ThreadSurface, AttachmentSurface, DraftsSurface, DraftSurface, CapabilitiesSurface)
+pure def surfaceScopes(surface: MailSurface): List[C::GoogleScope] =
+  if (surface == TriageSurface) List(C::ScopeGmailMetadata, C::ScopeGmailReadonly, C::ScopeGmailModify)
+  else if (surface == DraftsSurface or surface == DraftSurface) List(C::ScopeGmailCompose, C::ScopeGmailModify)
+  else List(C::ScopeGmailReadonly, C::ScopeGmailModify)
+pure def surfaceHeld(surface: MailSurface, scopes: List[C::GoogleScope]): bool =
+  surface == CapabilitiesSurface or surfaceScopes(surface).some(x => scopes.includes(x))
+pure def readAllowed(surface: MailSurface, status: C::ConnectionStatus, access: C::AccessState, scopes: List[C::GoogleScope]): bool =
+  C::useAllowed(status, access, surfaceHeld(surface, scopes))
+pure def readRefusal(surface: MailSurface, status: C::ConnectionStatus, access: C::AccessState, scopes: List[C::GoogleScope]): Refusal =
+  C::useRefusal(status, access, surfaceHeld(surface, scopes))
+pure val scopesValues = Set(List(), List(C::ScopeGmailMetadata), List(C::ScopeGmailReadonly), List(C::ScopeGmailCompose), List(C::ScopeGmailModify), List(C::ScopeGmailSend, C::ScopeCalendarEvents))
+pure def lawAReadNeedsTheCapabilityTheStatusReports(surface: MailSurface, scopes: List[C::GoogleScope]): bool =
+  (surface != CapabilitiesSurface and surfaceHeld(surface, scopes)) implies
+    C::capabilitiesOf(scopes).includes(if (surface == DraftsSurface or surface == DraftSurface) C::GmailDrafts else C::GmailTriage)
+```
+
+### A list asks for a count within its bounds, and a count outside them is refused rather than clamped
+
+Triage defaults to 12 and allows at most 50; search defaults to 50 and allows
+at most 100. A count that is not a canonical positive integer, or is over the
+bound, is `400 invalid_request`.
+
+```quint
+type MailList = TriageList | SearchList
+type RequestedCount = CountOmitted | CountGiven({ count: int })
+type CountAnswer = CountAccepted({ accepted: int }) | CountRefused
+pure def countBound(list: MailList): int = if (list == TriageList) 50 else 100
+pure def countDefault(list: MailList): int = if (list == TriageList) 12 else 50
+pure def listCount(list: MailList, requested: RequestedCount): CountAnswer = match requested {
+  | CountOmitted => CountAccepted({ accepted: countDefault(list) })
+  | CountGiven(r) => if (r.count >= 1 and r.count <= countBound(list)) CountAccepted({ accepted: r.count }) else CountRefused
+}
+pure val requestedValues = Set(CountOmitted, CountGiven({ count: 0 }), CountGiven({ count: 1 }), CountGiven({ count: 50 }), CountGiven({ count: 51 }), CountGiven({ count: 100 }), CountGiven({ count: 101 }))
+pure def lawAnAcceptedCountIsWithinItsBound(list: MailList, requested: RequestedCount): bool = { val answer = listCount(list, requested)
+  match answer {
+  | CountAccepted(a) => a.accepted >= 1 and a.accepted <= countBound(list)
+  | CountRefused => requested != CountOmitted
+} }
+```
+
+### Triage scores each inbox message by fixed signal weights, and a message likely needing a reply outranks all automated mail
+
+Triage lists the newest inbox messages that are not in Trash, each
+`{id, threadId, subject, from, to, cc, snippet, receivedAt, labels, isUnread,
+isImportant, likelyReplyNeeded, triageScore, triageReason, metadata:
+{historyId}}`, ordered by score, then newest first. Unread adds 30, the
+`IMPORTANT` label 35, being addressed in To or Cc (the grant's address,
+trimmed and lower-cased) 15, a likely reply 30; an automated sender
+(no-reply, notification or mailer-daemon address, `List-Id`, `Precedence`
+bulk, list or junk, or `Auto-Submitted` other than `no`) takes 25 and mail
+sent by the owner 60; the score is never below 0. `triageReason` joins the
+reasons that applied with `, `, or is `recent inbox message`.
+
+```quint
+type TriageSignals = { unread: bool, labelledImportant: bool, addressed: bool, automated: bool, fromSelf: bool }
+type TriageReason = TriageUnread | TriageImportantLabel | TriageAddressed | TriageNeedsReply | TriageAutomated | TriageSentBySelf
+pure def needsReply(signals: TriageSignals): bool = not(signals.automated) and not(signals.fromSelf) and signals.unread and signals.addressed
+pure def triageImportant(signals: TriageSignals): bool = signals.labelledImportant or needsReply(signals)
+pure def triageScore(signals: TriageSignals): int = {
+  val sum = (if (signals.unread) 30 else 0) + (if (signals.labelledImportant) 35 else 0) + (if (signals.addressed) 15 else 0)
+    + (if (needsReply(signals)) 30 else 0) - (if (signals.automated) 25 else 0) - (if (signals.fromSelf) 60 else 0)
+  if (sum < 0) 0 else sum
+}
+pure def reasonApplies(signals: TriageSignals, reason: TriageReason): bool =
+  if (reason == TriageUnread) signals.unread else if (reason == TriageImportantLabel) signals.labelledImportant else if (reason == TriageAddressed) signals.addressed
+  else if (reason == TriageNeedsReply) needsReply(signals) else if (reason == TriageAutomated) signals.automated else signals.fromSelf
+pure def triageReasons(signals: TriageSignals): List[TriageReason] =
+  List(TriageUnread, TriageImportantLabel, TriageAddressed, TriageNeedsReply, TriageAutomated, TriageSentBySelf).select(r => reasonApplies(signals, r))
+pure val signalsValues: Set[TriageSignals] = {
+  val quiet: TriageSignals = { unread: false, labelledImportant: false, addressed: false, automated: false, fromSelf: false }
+  Set(quiet, { ...quiet, unread: true, addressed: true }, { ...quiet, unread: true, labelledImportant: true, addressed: true, automated: true },
+    { ...quiet, unread: true, addressed: true, fromSelf: true }, { ...quiet, automated: true, fromSelf: true }, { ...quiet, labelledImportant: true })
+}
+pure val otherValues = signalsValues
+pure def lawAReplyNeededOutranksAutomatedMail(signals: TriageSignals, other: TriageSignals): bool =
+  (needsReply(signals) and other.automated) implies triageScore(signals) > triageScore(other)
+pure def lawAScoreIsWithinItsRange(signals: TriageSignals): bool =
+  triageScore(signals) >= 0 and triageScore(signals) <= 110 and (triageReasons(signals) == List() implies triageScore(signals) == 0)
+```
+
+### A search page names the mailbox revision read before it was listed and never continues at the token it was asked with
+
+The query is non-blank and a page token is 1 to 4,096 characters. The shell
+reads the mailbox `historyId` (1 to 20 digits) first, then lists; two pages
+of one search with different revisions came from a changed mailbox. A
+Google answer without a revision, or whose next token repeats the one asked,
+is `502 provider_invalid_response`.
+
+```quint
+type Continuation = NoContinuation | ContinueAt({ pageToken: str })
+type SearchOutcome = SearchServed({ mailboxRevision: str }) | SearchRefused({ refusal: Refusal })
+pure def searchOutcome(asked: Continuation, answered: Continuation, mailboxRevision: str): SearchOutcome =
+  if (mailboxRevision == "" or (answered != NoContinuation and answered == asked)) SearchRefused({ refusal: refuse(ProviderInvalidResponse) })
+  else SearchServed({ mailboxRevision: mailboxRevision })
+pure val askedValues = Set(NoContinuation, ContinueAt({ pageToken: "p1" }), ContinueAt({ pageToken: "p2" }))
+pure val answeredValues = askedValues
+pure val mailboxRevisionValues = Set("", "41", "42")
+pure def lawASearchPageNeverLoops(asked: Continuation, answered: Continuation, mailboxRevision: str): bool = { val result = searchOutcome(asked, answered, mailboxRevision)
+  match result {
+  | SearchServed(p) => p.mailboxRevision != "" and (answered == NoContinuation or answered != asked)
+  | SearchRefused(r) => wellFormed(r.refusal) and not(retryableOf(r.refusal))
+} }
+```
+
+### A message read answers the message whole, with inert HTML whole or absent, or is refused as too large
+
+`read(messageId)` answers the triage row of the message, `bodyText` (the
+plain part, else the HTML part as text, else the snippet), `bodyHtml` and
+`bodyHtmlStatus` (`available`, `none`, `too_large`), its links and its
+attachment descriptors. The HTML is served as text and never fetched or run
+by the cloud; over 512 KiB, or past 200 MIME parts, it is left out with
+`too_large` while the text stays whole. Text over the 8 MiB mail cap is
+`413 content_too_large`, never cut. Google answering another message is
+`502`; a connection that changed during the read is `409 stale_revision`.
+
+```quint
+type HtmlView = HtmlAvailable | HtmlAbsent | HtmlTooLarge
+type MessageFetch = { sameMessage: bool, grantUnchanged: bool, textBytes: int, htmlBytes: int, partsWithinLimit: bool }
+type ReadOutcome = MessageServed({ html: HtmlView }) | ReadRefused({ refusal: Refusal })
+pure val mebibyte: int = 1048576
+pure val mailMaxBytes: int = 8 * mebibyte
+pure val htmlMaxBytes: int = 512 * 1024
+pure def htmlViewOf(htmlBytes: int, partsWithinLimit: bool): HtmlView =
+  if (not(partsWithinLimit) or htmlBytes > htmlMaxBytes) HtmlTooLarge else if (htmlBytes <= 0) HtmlAbsent else HtmlAvailable
+pure def readOutcome(got: MessageFetch): ReadOutcome =
+  if (not(got.sameMessage)) ReadRefused({ refusal: refuse(ProviderInvalidResponse) })
+  else if (not(got.grantUnchanged)) ReadRefused({ refusal: refuse(StaleRevision) })
+  else if (got.textBytes > mailMaxBytes) ReadRefused({ refusal: refuse(ContentTooLarge) })
+  else MessageServed({ html: htmlViewOf(got.htmlBytes, got.partsWithinLimit) })
+pure val gotValues: Set[MessageFetch] = {
+  val ok: MessageFetch = { sameMessage: true, grantUnchanged: true, textBytes: 10, htmlBytes: 0, partsWithinLimit: true }
+  Set(ok, { ...ok, htmlBytes: 524288 }, { ...ok, htmlBytes: 524289 }, { ...ok, partsWithinLimit: false, htmlBytes: 5 }, { ...ok, textBytes: 8388609 }, { ...ok, sameMessage: false }, { ...ok, grantUnchanged: false })
+}
+pure def lawAServedMessageIsWhole(got: MessageFetch): bool = { val result = readOutcome(got)
+  match result {
+  | MessageServed(m) => got.sameMessage and got.grantUnchanged and got.textBytes <= mailMaxBytes and (m.html == HtmlAvailable implies (got.htmlBytes > 0 and got.htmlBytes <= htmlMaxBytes))
+  | ReadRefused(r) => wellFormed(r.refusal) and not(retryableOf(r.refusal))
+} }
+```
+
+### A thread page is served only at the revision of its first page and covers the thread without a gap
+
+A page starts at the offset asked for and holds at most 25 messages, oldest
+first, as many as fit 1.5 MiB; `nextOffset` is its end while messages remain.
+Each message carries its own `historyId`, `bodyText` and inert HTML as a
+message read does. A page after the first must name the thread `historyId`
+of the first: none is `400`, another is `409 stale_revision`. An offset
+outside the thread is `400`; a thread over 2,000 messages, a message over
+the mail cap, or one that alone does not fit a page is `413`.
+
+```quint
+type Revision = AnyRevision | AtRevision({ historyId: str })
+type NextOffset = ThreadEnd | NextAt({ nextOffset: int })
+type ThreadAsk = { offset: int, asked: Revision }
+type ThreadSnapshot = { threadRevision: str, total: int, fitting: int, oversized: bool }
+type ThreadOutcome = ThreadServed({ first: int, count: int, rest: NextOffset }) | ThreadRefused({ refusal: Refusal })
+pure val threadPageMax: int = 25
+pure val threadMaxMessages: int = 2000
+pure def minOf(x: int, y: int): int = if (x < y) x else y
+pure def threadOutcome(ask: ThreadAsk, snapshot: ThreadSnapshot): ThreadOutcome = {
+  val asked = ask.asked
+  val stale = match asked { | AtRevision(r) => r.historyId != snapshot.threadRevision | AnyRevision => false }
+  val fit = minOf(minOf(threadPageMax, snapshot.total - ask.offset), snapshot.fitting)
+  val count = if (fit < 0) 0 else fit
+  if (ask.offset < 0 or ask.offset > snapshot.total or (ask.offset > 0 and ask.asked == AnyRevision)) ThreadRefused({ refusal: refuse(InvalidRequest) })
+  else if (stale) ThreadRefused({ refusal: refuse(StaleRevision) })
+  else if (snapshot.total > threadMaxMessages or snapshot.oversized or (ask.offset < snapshot.total and count < 1)) ThreadRefused({ refusal: refuse(ContentTooLarge) })
+  else ThreadServed({ first: ask.offset, count: count, rest: if (ask.offset + count < snapshot.total) NextAt({ nextOffset: ask.offset + count }) else ThreadEnd })
+}
+pure val askValues = Set({ offset: 0, asked: AnyRevision }, { offset: 25, asked: AnyRevision }, { offset: 25, asked: AtRevision({ historyId: "7" }) }, { offset: 25, asked: AtRevision({ historyId: "8" }) }, { offset: 31, asked: AtRevision({ historyId: "7" }) })
+pure val snapshotValues = Set({ threadRevision: "7", total: 30, fitting: 25, oversized: false }, { threadRevision: "7", total: 30, fitting: 3, oversized: false }, { threadRevision: "7", total: 30, fitting: 0, oversized: false },
+  { threadRevision: "7", total: 2001, fitting: 25, oversized: false }, { threadRevision: "7", total: 30, fitting: 25, oversized: true }, { threadRevision: "7", total: 0, fitting: 0, oversized: false })
+pure def lawAThreadPageLiesInsideTheThreadAndEndsWhereTheNextBegins(ask: ThreadAsk, snapshot: ThreadSnapshot): bool = { val result = threadOutcome(ask, snapshot)
+  match result {
+  | ThreadServed(p) => p.first >= 0 and p.count >= 0 and p.count <= threadPageMax and p.first + p.count <= snapshot.total
+      and (p.rest == ThreadEnd iff p.first + p.count == snapshot.total) and (p.rest != ThreadEnd implies (p.count >= 1 and p.rest == NextAt({ nextOffset: p.first + p.count })))
+  | ThreadRefused(r) => wellFormed(r.refusal) and not(retryableOf(r.refusal))
+} }
+pure def lawALaterPageIsServedOnlyAtTheFirstPagesRevision(ask: ThreadAsk, snapshot: ThreadSnapshot): bool = { val result = threadOutcome(ask, snapshot)
+  match result {
+  | ThreadServed(p) => p.first > 0 implies ask.asked == AtRevision({ historyId: snapshot.threadRevision })
+  | ThreadRefused(r) => true
+} }
+```
+
+### An attachment is served only at the message revision it was read at, as the exact bytes Google declared, within the mail cap
+
+`GET attachment {messageId, partId, historyId}` answers `{version: 1,
+messageId, partId, historyId, name, mimeType, size, dataBase64, sha256}`, the
+SHA-256 of the decoded bytes in hex, for a part of any type. A message
+changed since that read is `409 stale_revision`; no single part with that
+id is `404 not_found`; a part over 8 MiB is `413`; bytes that do not count
+to the declared size are `502`. A reviewed forward binds its attachments the
+same way.
+
+```quint
+type PartFetch = { readAt: str, currentRevision: str, matchingParts: int, declaredBytes: int, fetchedBytes: int }
+type AttachmentOutcome = AttachmentServed({ bytes: int }) | AttachmentRefused({ refusal: Refusal })
+pure def revisionHeld(readAt: str, currentRevision: str): bool = readAt != "" and readAt == currentRevision
+pure def withinMailCap(bytes: int): bool = bytes >= 0 and bytes <= mailMaxBytes
+pure def attachmentOutcome(part: PartFetch): AttachmentOutcome =
+  if (not(revisionHeld(part.readAt, part.currentRevision))) AttachmentRefused({ refusal: refuse(StaleRevision) })
+  else if (part.matchingParts != 1) AttachmentRefused({ refusal: refuse(NotFound) })
+  else if (not(withinMailCap(part.declaredBytes))) AttachmentRefused({ refusal: refuse(ContentTooLarge) })
+  else if (part.fetchedBytes != part.declaredBytes) AttachmentRefused({ refusal: refuse(ProviderInvalidResponse) })
+  else AttachmentServed({ bytes: part.fetchedBytes })
+pure val partValues: Set[PartFetch] = {
+  val ok: PartFetch = { readAt: "9", currentRevision: "9", matchingParts: 1, declaredBytes: 100, fetchedBytes: 100 }
+  Set(ok, { ...ok, currentRevision: "10" }, { ...ok, readAt: "", currentRevision: "" }, { ...ok, matchingParts: 0 }, { ...ok, matchingParts: 2 }, { ...ok, declaredBytes: 8388609, fetchedBytes: 8388609 }, { ...ok, fetchedBytes: 99 })
+}
+pure def lawAServedAttachmentIsTheDeclaredPartAtItsRevision(part: PartFetch): bool = { val result = attachmentOutcome(part)
+  match result {
+  | AttachmentServed(a) => revisionHeld(part.readAt, part.currentRevision) and part.matchingParts == 1 and withinMailCap(a.bytes) and a.bytes == part.declaredBytes
+  | AttachmentRefused(r) => wellFormed(r.refusal) and not(retryableOf(r.refusal))
+} }
+```
+
+### A draft is opened from one snapshot with the digest of its raw message, or refused
+
+A drafts page holds at most 25 drafts `{draftId, messageId, subject, to,
+snippet, updatedAt}` without bodies (a longer Google page is `502`). A draft
+answers `{id, messageId, providerDigest, content}`, the digest of the raw
+message read in the snapshot of the content; raw and full reads of
+different messages are `409 stale_revision`. A draft the cloud cannot
+reproduce exactly (encoded subject, body not decodable losslessly or held
+as a part) is `400 invalid_request`; a body over the mail cap is `413`.
+
+```quint
+type DraftSnapshot = { rawMessageId: str, fullMessageId: str, reproducible: bool, bodyBytes: int }
+type DraftOutcome = DraftServed({ messageId: str }) | DraftRefused({ refusal: Refusal })
+pure val draftsPageMax: int = 25
+pure def draftOutcome(draft: DraftSnapshot): DraftOutcome =
+  if (draft.rawMessageId == "" or draft.rawMessageId != draft.fullMessageId) DraftRefused({ refusal: refuse(StaleRevision) })
+  else if (not(draft.reproducible)) DraftRefused({ refusal: refuse(InvalidRequest) })
+  else if (not(withinMailCap(draft.bodyBytes))) DraftRefused({ refusal: refuse(ContentTooLarge) })
+  else DraftServed({ messageId: draft.rawMessageId })
+pure val draftValues = Set({ rawMessageId: "m1", fullMessageId: "m1", reproducible: true, bodyBytes: 10 }, { rawMessageId: "m1", fullMessageId: "m2", reproducible: true, bodyBytes: 10 },
+  { rawMessageId: "m1", fullMessageId: "m1", reproducible: false, bodyBytes: 10 }, { rawMessageId: "m1", fullMessageId: "m1", reproducible: true, bodyBytes: 8388609 })
+pure def lawADraftIsServedFromOneSnapshot(draft: DraftSnapshot): bool = { val result = draftOutcome(draft)
+  match result {
+  | DraftServed(d) => d.messageId == draft.rawMessageId and d.messageId == draft.fullMessageId and draft.reproducible and withinMailCap(draft.bodyBytes)
+  | DraftRefused(r) => wellFormed(r.refusal) and not(retryableOf(r.refusal))
+} }
+```
+
+### Capabilities offer exactly the reads and changes the grant allows, and each change comes with the read its review needs
+
+`GET capabilities` answers `{version: 1, from, reads, kinds,
+attachmentPolicy: {mimeTypes, maxBytes}, providerExactlyOnce: false}`:
+`reads` are the surfaces the scopes hold, `kinds` the operation kinds whose
+capability the grant holds (send needs `google.gmail.send`, the draft kinds
+`google.gmail.drafts`, the others `google.gmail.manage`), `mimeTypes` PDF,
+PNG, JPEG, WebP and plain text, `maxBytes` the mail cap.
+
+```quint
+type MailOperationKind = SendKind | DraftCreateKind | DraftReplaceKind | DraftDeleteKind | ArchiveKind | UnarchiveKind | TrashKind | UntrashKind | MarkReadKind | MarkUnreadKind | StarKind | UnstarKind
+type AttachmentMime = MimePdf | MimePng | MimeJpeg | MimeWebp | MimeText
+pure val allOperationKinds: List[MailOperationKind] = List(SendKind, DraftCreateKind, DraftReplaceKind, DraftDeleteKind, ArchiveKind, UnarchiveKind, TrashKind, UntrashKind, MarkReadKind, MarkUnreadKind, StarKind, UnstarKind)
+pure val attachmentMimes: List[AttachmentMime] = List(MimePdf, MimePng, MimeJpeg, MimeWebp, MimeText)
+pure def isDraftKind(kind: MailOperationKind): bool = kind == DraftCreateKind or kind == DraftReplaceKind or kind == DraftDeleteKind
+pure def kindNeeds(kind: MailOperationKind): C::GoogleCapability = if (kind == SendKind) C::GmailSend else if (isDraftKind(kind)) C::GmailDrafts else C::GmailManage
+pure def offeredKinds(scopes: List[C::GoogleScope]): List[MailOperationKind] = allOperationKinds.select(k => C::capabilitiesOf(scopes).includes(kindNeeds(k)))
+pure def offeredReads(scopes: List[C::GoogleScope]): List[MailSurface] = allSurfaces.select(s => surfaceHeld(s, scopes))
+pure def lawEveryOfferedChangeComesWithTheReadItsReviewNeeds(kind: MailOperationKind, scopes: List[C::GoogleScope]): bool =
+  offeredKinds(scopes).includes(kind) implies
+    (if (kind == SendKind) true else if (isDraftKind(kind)) offeredReads(scopes).includes(DraftSurface) else offeredReads(scopes).includes(MessageSurface) and offeredReads(scopes).includes(ThreadSurface))
+```

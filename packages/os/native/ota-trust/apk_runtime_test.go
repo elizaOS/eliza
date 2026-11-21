@@ -1,14 +1,13 @@
+// spec/os/build/runtimePayload.md, "The APK carries exactly one Node runtime for each targeted ABI and none for another"; spec/os/build/runtimePayload.md, "The inventory lists every staged payload file once, by digest and size, and nothing else"
 package otatrust
 
 import (
 	"archive/zip"
+	"bytes"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,84 +15,136 @@ import (
 	"testing"
 )
 
-func bytesHash(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToString(sum[:]) }
-func runtimeAPKFixture(t *testing.T, mutation string) (string, []byte) {
-	return runtimeAPKFixtureForABI(t, mutation, "arm64-v8a")
+type fixtureRow struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
+	Size   int    `json:"size"`
 }
-func runtimeAPKFixtureForABI(t *testing.T, mutation, abi string) (string, []byte) {
-	t.Helper()
-	v := admissionVectors(t)[0]
-	var release releaseDescriptor
-	if err := json.Unmarshal(v.Release, &release); err != nil {
-		t.Fatal(err)
-	}
-	a := release.Candidate
-	a.Android.ABIs = []string{abi}
-	machine, otherMachine, loader := uint16(183), uint16(62), "libeliza_ld_musl_aarch64.so"
+
+func bytesHash(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToString(sum[:]) }
+
+func otherRuntimeABI(abi string) string {
 	if abi == "x86_64" {
-		machine, otherMachine, loader = 62, 183, "libeliza_ld_musl_x86_64.so"
+		return "arm64-v8a"
 	}
-	bunPath := "lib/" + abi + "/libeliza_bun.so"
-	loaderPath := "lib/" + abi + "/" + loader
-	assets := map[string][]byte{"assets/agent/agent-bundle.js": []byte("agent"), "assets/agent/gateway/local-agent-gateway.mjs": []byte("gateway"), "assets/agent/gateway/task-runtime.mjs": []byte("policy"), "assets/agent/gateway/bootstrap.mjs": []byte("bootstrap"), bunPath: fixtureELF(machine), loaderPath: fixtureELF(machine)}
-	if mutation == "mixed-loaders" {
-		other := "libeliza_ld_musl_x86_64.so"
-		if abi == "x86_64" {
-			other = "libeliza_ld_musl_aarch64.so"
-		}
-		assets["lib/"+abi+"/"+other] = fixtureELF(machine)
+	return "x86_64"
+}
+
+func fixtureInventory(t *testing.T, files map[string][]byte, listed []string) []byte {
+	t.Helper()
+	rows := []fixtureRow{}
+	for _, name := range listed {
+		rows = append(rows, fixtureRow{name, bytesHash(files[name]), len(files[name])})
 	}
-	if mutation == "empty-agent" {
-		assets["assets/agent/agent-bundle.js"] = []byte{}
-	}
-	if mutation == "wrong-native-abi" {
-		assets[bunPath] = fixtureELF(otherMachine)
-	}
-	a.Runtime.Agent = bytesHash(assets["assets/agent/agent-bundle.js"])
-	a.Runtime.Gateway = bytesHash(assets["assets/agent/gateway/local-agent-gateway.mjs"])
-	a.Runtime.Policy = bytesHash(assets["assets/agent/gateway/task-runtime.mjs"])
-	a.Runtime.Libraries = map[string]string{}
-	var rows []string
-	for name, data := range assets {
-		if strings.HasPrefix(name, "lib/") {
-			lib := filepath.Base(name)
-			a.Runtime.Libraries[lib] = bytesHash(data)
-			rows = append(rows, fmt.Sprintf("native\t%d\t%s\t%s\t-", len(data), bytesHash(data), lib))
-		} else {
-			source := strings.TrimPrefix(name, "assets/")
-			destination := "bundle/" + strings.TrimPrefix(source, "agent/")
-			rows = append(rows, fmt.Sprintf("asset\t%d\t%s\t%s\t%s", len(data), bytesHash(data), source, destination))
-		}
-	}
-	sort.Strings(rows)
-	if mutation == "duplicate-destination" {
-		rows = append(rows, rows[0])
-	}
-	if mutation == "traversal" {
-		rows[0] = strings.Replace(rows[0], "agent/", "agent/../", 1)
-	}
-	host, err := requiredHostPolicy()
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Path < rows[j].Path })
+	data, err := json.MarshalIndent(struct {
+		Schema int          `json:"schema"`
+		Files  []fixtureRow `json:"files"`
+	}{1, rows}, "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
-	inventory := []byte(host.RuntimeInventoryHeader + "\n" + strings.Join(rows, "\n") + "\n")
-	a.Runtime.Inventory = bytesHash(inventory)
-	assets[runtimeInventoryAsset] = inventory
+	return append(data, '\n')
+}
+
+func runtimeAPKFixture(t *testing.T, mutation string) (string, []byte) {
+	return runtimeAPKFixtureForABIs(t, mutation, []string{"arm64-v8a"})
+}
+
+func runtimeAPKFixtureForABIs(t *testing.T, mutation string, abis []string) (string, []byte) {
+	t.Helper()
+	var release releaseDescriptor
+	if err := json.Unmarshal(admissionVectors(t)[0].Release, &release); err != nil {
+		t.Fatal(err)
+	}
+	a := release.Candidate
+	a.Android.ABIs = abis
+	abi := abis[0]
+	node := "lib/" + abi + "/" + nodeLibraryName
+	files := map[string][]byte{
+		agentBundleAsset:           []byte("export {};\n"),
+		bundleManifestAsset:        []byte(`{"schema":1}`),
+		"assets/host/notice.txt":   []byte("consumer asset\n"),
+		"classes.dex":              []byte("host code outside the payload"),
+		"assets/public/index.html": []byte("host page outside the payload"),
+	}
+	for _, target := range abis {
+		files["lib/"+target+"/"+nodeLibraryName] = fixtureELF(runtimeMachines[target])
+	}
+	extra := map[string]string{
+		"musl-loader":        "lib/" + abi + "/libeliza_ld_musl_aarch64.so",
+		"bun-runtime":        "lib/" + abi + "/libeliza_bun.so",
+		"gateway-file":       "assets/agent/gateway/local-agent-gateway.mjs",
+		"second-abi-runtime": "lib/" + otherRuntimeABI(abi) + "/" + nodeLibraryName,
+		"zero-size":          "assets/agent/empty.js",
+	}[mutation]
+	if extra != "" {
+		files[extra] = fixtureELF(runtimeMachines[abi])
+		if mutation == "gateway-file" {
+			files[extra] = []byte("gateway")
+		}
+		if mutation == "second-abi-runtime" {
+			files[extra] = fixtureELF(runtimeMachines[otherRuntimeABI(abi)])
+		}
+		if mutation == "zero-size" {
+			files[extra] = []byte{}
+		}
+	}
+	if mutation == "wrong-native-abi" {
+		files[node] = fixtureELF(runtimeMachines[otherRuntimeABI(abi)])
+	}
+	listed := []string{}
+	for name := range files {
+		if strings.HasPrefix(name, "lib/") || strings.HasPrefix(name, "assets/agent/") || strings.HasPrefix(name, "assets/host/") {
+			if !(mutation == "missing-node" && name == node) {
+				listed = append(listed, name)
+			}
+		}
+	}
+	if mutation == "missing-node" {
+		delete(files, node)
+	}
+	a.Runtime.Agent = bytesHash(files[agentBundleAsset])
+	a.Runtime.Libraries = map[string]string{}
+	for _, name := range listed {
+		if strings.HasPrefix(name, "lib/") {
+			a.Runtime.Libraries[name] = bytesHash(files[name])
+		}
+	}
+	inventory := fixtureInventory(t, files, listed)
 	switch mutation {
-	case "unlisted":
-		assets["assets/agent/unlisted.js"] = []byte("unexpected")
+	case "duplicate-row":
+		inventory = bytes.Replace(inventory, []byte(`"files": [`), []byte(`"files": [{"path":"`+agentBundleAsset+`","sha256":"`+bytesHash(files[agentBundleAsset])+`","size":11},`), 1)
+	case "traversal":
+		inventory = bytes.Replace(inventory, []byte(`"assets/host/notice.txt"`), []byte(`"assets/host/../host/notice.txt"`), 1)
+	case "unknown-field":
+		inventory = bytes.Replace(inventory, []byte(`"size":`), []byte(`"extra": 1, "size":`), 1)
+	case "old-inventory":
+		inventory = []byte("eliza-runtime-v1\nasset\t11\t" + bytesHash(files[agentBundleAsset]) + "\tagent/agent.mjs\tbundle/agent.mjs\n")
+	}
+	files[runtimeInventoryAsset] = inventory
+	a.Runtime.Inventory = bytesHash(inventory)
+	switch mutation {
+	case "unlisted-gateway":
+		files["assets/agent/gateway/bootstrap.mjs"] = []byte("bootstrap")
+	case "unlisted-library":
+		files["lib/"+abi+"/libextra.so"] = fixtureELF(runtimeMachines[abi])
+	case "unlisted-asset":
+		files["assets/agent/unlisted.js"] = []byte("unexpected")
+	case "unlisted-consumer-asset":
+		files["assets/host/extra.txt"] = []byte("unexpected")
 	case "missing-file":
-		delete(assets, "assets/agent/agent-bundle.js")
+		delete(files, agentBundleAsset)
 	case "wrong-agent":
-		assets["assets/agent/agent-bundle.js"] = []byte("wrong")
+		files[agentBundleAsset] = []byte("export {}; \n")
 	case "wrong-library":
-		assets[bunPath] = []byte("wrong-runtime!")
+		files[node] = append(fixtureELF(runtimeMachines[abi])[:119], 1)
 	case "wrong-inventory":
 		a.Runtime.Inventory = strings.Repeat("0", 64)
-	case "wrong-policy":
-		a.Runtime.Policy = strings.Repeat("0", 64)
+	case "wrong-agent-declaration":
+		a.Runtime.Agent = strings.Repeat("0", 64)
 	case "extra-library":
-		a.Runtime.Libraries["libother.so"] = strings.Repeat("0", 64)
+		a.Runtime.Libraries["lib/"+abi+"/libother.so"] = strings.Repeat("0", 64)
 	}
 	name := filepath.Join(t.TempDir(), "fixture.apk")
 	file, err := os.Create(name)
@@ -101,7 +152,7 @@ func runtimeAPKFixtureForABI(t *testing.T, mutation, abi string) (string, []byte
 		t.Fatal(err)
 	}
 	writer := zip.NewWriter(file)
-	for name, data := range assets {
+	for name, data := range files {
 		entry, err := writer.Create(name)
 		if err != nil {
 			t.Fatal(err)
@@ -139,21 +190,18 @@ func runtimeAPKFixtureForABI(t *testing.T, mutation, abi string) (string, []byte
 	}
 	return name, artifact
 }
+
 func TestPackagedRuntimeVerification(t *testing.T) {
 	for _, abi := range []string{"arm64-v8a", "x86_64"} {
-		for _, mutation := range []string{"valid", "mixed-loaders", "empty-agent", "wrong-native-abi", "unlisted", "missing-file", "wrong-agent", "wrong-library", "wrong-inventory", "wrong-policy", "extra-library", "duplicate-zip", "duplicate-destination", "traversal", "wrong-apk", "directory-count"} {
+		for _, mutation := range []string{"valid", "musl-loader", "bun-runtime", "gateway-file", "unlisted-gateway", "second-abi-runtime", "zero-size", "wrong-native-abi", "missing-node", "unlisted-library", "unlisted-asset", "unlisted-consumer-asset", "missing-file", "wrong-agent", "wrong-library", "wrong-inventory", "wrong-agent-declaration", "extra-library", "duplicate-zip", "duplicate-row", "traversal", "unknown-field", "old-inventory", "wrong-apk", "directory-count"} {
 			t.Run(abi+"/"+mutation, func(t *testing.T) {
-				name, artifact := runtimeAPKFixtureForABI(t, mutation, abi)
+				name, artifact := runtimeAPKFixtureForABIs(t, mutation, []string{abi})
 				err := VerifyRuntimeArtifact(name, artifact, "github.com,updates.example.com", abi)
 				if mutation == "valid" {
 					if err != nil {
 						t.Fatal(err)
 					}
-					other := "x86_64"
-					if abi == "x86_64" {
-						other = "arm64-v8a"
-					}
-					if err = VerifyRuntimeArtifact(name, artifact, "github.com,updates.example.com", other); err == nil {
+					if err = VerifyRuntimeArtifact(name, artifact, "github.com,updates.example.com", otherRuntimeABI(abi)); err == nil {
 						t.Fatal("unqualified ABI accepted")
 					}
 					return
@@ -164,71 +212,37 @@ func TestPackagedRuntimeVerification(t *testing.T) {
 			})
 		}
 	}
-
 }
 
-// Opt-in inspection of retained real native APKs. Expectations are derived from
-// the packaged inventory for consistency testing; this is not release signing.
+func TestPackagedRuntimeForEveryTargetedABI(t *testing.T) {
+	abis := []string{"arm64-v8a", "x86_64"}
+	name, artifact := runtimeAPKFixtureForABIs(t, "valid", abis)
+	for _, abi := range abis {
+		if err := VerifyRuntimeArtifact(name, artifact, "github.com,updates.example.com", abi); err != nil {
+			t.Fatalf("%s: %v", abi, err)
+		}
+	}
+	name, artifact = runtimeAPKFixtureForABIs(t, "missing-node", abis)
+	for _, abi := range abis {
+		if err := VerifyRuntimeArtifact(name, artifact, "github.com,updates.example.com", abi); err == nil {
+			t.Fatalf("%s: runtime missing for a targeted ABI accepted", abi)
+		}
+	}
+}
+
 func TestActualPackagedRuntime(t *testing.T) {
 	directory := os.Getenv("OTA_NATIVE_APK_DIRECTORY")
 	if directory == "" {
 		t.Skip("native APK directory not supplied")
 	}
+	var release releaseDescriptor
+	if err := json.Unmarshal(admissionVectors(t)[0].Release, &release); err != nil {
+		t.Fatal(err)
+	}
 	for _, variant := range []string{"launcher", "standalone"} {
 		t.Run(variant, func(t *testing.T) {
 			name := filepath.Join(directory, variant+"-release-unsigned.apk")
-			archive, err := zip.OpenReader(name)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer archive.Close()
-			var inventory []byte
-			for _, entry := range archive.File {
-				if entry.Name == runtimeInventoryAsset {
-					inventory, err = readAPKEntry(entry, 2*1024*1024)
-					if err != nil {
-						t.Fatal(err)
-					}
-				}
-			}
-			if inventory == nil {
-				t.Fatal("inventory absent")
-			}
-			var d releaseDescriptor
-			if err = json.Unmarshal(admissionVectors(t)[0].Release, &d); err != nil {
-				t.Fatal(err)
-			}
-			a := d.Candidate
-			a.Runtime.Inventory = bytesHash(inventory)
-			a.Runtime.Libraries = map[string]string{}
-			for _, line := range strings.Split(string(inventory), "\n")[1:] {
-				fields := strings.Split(line, "\t")
-				if len(fields) != 5 {
-					continue
-				}
-				if fields[0] == "native" {
-					a.Runtime.Libraries[fields[3]] = fields[2]
-				}
-				switch fields[4] {
-				case "bundle/agent-bundle.js":
-					a.Runtime.Agent = fields[2]
-				case "bundle/gateway/local-agent-gateway.mjs":
-					a.Runtime.Gateway = fields[2]
-				case "bundle/gateway/task-runtime.mjs":
-					a.Runtime.Policy = fields[2]
-				}
-			}
-			file, err := os.Open(name)
-			if err != nil {
-				t.Fatal(err)
-			}
-			hash := sha256.New()
-			a.Length, err = io.Copy(hash, file)
-			file.Close()
-			if err != nil {
-				t.Fatal(err)
-			}
-			a.SHA256 = hex.EncodeToString(hash.Sum(nil))
+			a := preparationArtifact(t, name, release.Candidate)
 			metadata, err := json.Marshal(a)
 			if err != nil {
 				t.Fatal(err)
@@ -244,7 +258,7 @@ func TestActualPackagedRuntime(t *testing.T) {
 func fixtureELF(machine uint16) []byte {
 	b := make([]byte, 120)
 	copy(b, []byte{0x7f, 'E', 'L', 'F', 2, 1, 1})
-	binary.LittleEndian.PutUint16(b[16:18], 2)
+	binary.LittleEndian.PutUint16(b[16:18], 3)
 	binary.LittleEndian.PutUint16(b[18:20], machine)
 	binary.LittleEndian.PutUint32(b[20:24], 1)
 	binary.LittleEndian.PutUint64(b[32:40], 64)
@@ -254,14 +268,10 @@ func fixtureELF(machine uint16) []byte {
 	return b
 }
 
-// packagedRuntimeAPK zips testdata/runtime-apk, whose inventory and blobs were
-// written by plugin-native-agent's stageAndroidRuntimeInventory (the plugin's
-// native-host suite fails if they drift). Ignored packager inputs are restored:
-// the original archive (the blob's bytes) and an excluded model directory.
 func packagedRuntimeAPK(t *testing.T, mutate func(map[string][]byte)) string {
 	t.Helper()
 	root := filepath.Join("testdata", "runtime-apk")
-	files := map[string][]byte{}
+	files := map[string][]byte{"classes.dex": []byte("host code outside the payload")}
 	err := filepath.WalkDir(root, func(name string, entry os.DirEntry, err error) error {
 		if err != nil || entry.IsDir() {
 			return err
@@ -274,12 +284,6 @@ func packagedRuntimeAPK(t *testing.T, mutate func(map[string][]byte)) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range files {
-		if strings.HasPrefix(name, "assets/runtime-blobs/") {
-			files["assets/agent/extension.tar.gz"] = data
-		}
-	}
-	files["assets/agent/models/model.bin"] = []byte("excluded synthetic model read directly from assets\n")
 	if mutate != nil {
 		mutate(files)
 	}
@@ -317,78 +321,37 @@ func TestPackagerProducedRuntimeInventory(t *testing.T) {
 	if err := json.Unmarshal(admissionVectors(t)[0].Release, &release); err != nil {
 		t.Fatal(err)
 	}
+	expected := preparationArtifact(t, packagedRuntimeAPK(t, nil), release.Candidate)
 	verify := func(apk string) error {
-		metadata, err := json.Marshal(preparationArtifact(t, apk, release.Candidate))
+		data, err := os.ReadFile(apk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		artifact := expected
+		artifact.SHA256, artifact.Length = bytesHash(data), int64(len(data))
+		metadata, err := json.Marshal(artifact)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return VerifyRuntimeArtifact(apk, metadata, "github.com,updates.example.com", "arm64-v8a")
 	}
 	if err := verify(packagedRuntimeAPK(t, nil)); err != nil {
-		t.Fatalf("packager-produced runtime rejected: %v", err)
+		t.Fatalf("staged runtime payload rejected: %v", err)
 	}
 	for name, mutate := range map[string]func(map[string][]byte){
 		"legacy-inventory-path": func(files map[string][]byte) {
-			files["assets/runtime-payload.tsv"] = files[runtimeInventoryAsset]
+			files["assets/agent-runtime.inventory"] = files[runtimeInventoryAsset]
 			delete(files, runtimeInventoryAsset)
 		},
-		"unlisted-agent-file": func(files map[string][]byte) { files["assets/agent/gateway/extra.mjs"] = []byte("unlisted") },
-		"unlisted-blob": func(files map[string][]byte) {
-			files["assets/runtime-blobs/"+strings.Repeat("0", 64)+".bin"] = []byte("unlisted")
-		},
-		"archive-without-blob": func(files map[string][]byte) { files["assets/agent/other.tar"] = []byte("unlisted") },
-		"excluded-prefix-only": func(files map[string][]byte) { files["assets/agent/models.txt"] = []byte("not excluded") },
-		"tampered-listed-asset": func(files map[string][]byte) {
-			files["assets/agent/gateway/bootstrap.mjs"] = []byte("synthetic bootstrap?")
-		},
+		"unlisted-agent-file":   func(files map[string][]byte) { files["assets/agent/extra.mjs"] = []byte("unlisted") },
+		"unlisted-library":      func(files map[string][]byte) { files["lib/arm64-v8a/libextra.so"] = fixtureELF(183) },
+		"gateway-bootstrap":     func(files map[string][]byte) { files["assets/agent/gateway/bootstrap.mjs"] = []byte("bootstrap") },
+		"tampered-listed-asset": func(files map[string][]byte) { files["assets/agent/pglite.data"] = []byte("synthetic pglite dat?\n") },
 	} {
 		t.Run(name, func(t *testing.T) {
-			apk := packagedRuntimeAPK(t, mutate)
-			if name == "tampered-listed-asset" || name == "legacy-inventory-path" {
-				// Expectations come from the untampered inventory, as a signed release would.
-				metadata, _ := json.Marshal(preparationArtifact(t, packagedRuntimeAPK(t, nil), release.Candidate))
-				var artifact releaseArtifact
-				json.Unmarshal(metadata, &artifact)
-				data, _ := os.ReadFile(apk)
-				artifact.SHA256, artifact.Length = bytesHash(data), int64(len(data))
-				metadata, _ = json.Marshal(artifact)
-				if err := VerifyRuntimeArtifact(apk, metadata, "github.com,updates.example.com", "arm64-v8a"); err == nil {
-					t.Fatal("altered packaged runtime accepted")
-				}
-				return
-			}
-			if err := verify(apk); err == nil {
-				t.Fatal("unlisted packaged runtime asset accepted")
+			if err := verify(packagedRuntimeAPK(t, mutate)); err == nil {
+				t.Fatal("altered packaged runtime accepted")
 			}
 		})
-	}
-	saved := compiledHostPolicyBase64
-	defer func() { compiledHostPolicyBase64 = saved }()
-	for name, change := range map[string]func(*hostPolicy){
-		"other-header":      func(p *hostPolicy) { p.RuntimeInventoryHeader = "independent-runtime-v1" },
-		"models-not-exempt": func(p *hostPolicy) { p.RuntimeExcludedAgentDirectories = []string{} },
-	} {
-		t.Run(name, func(t *testing.T) {
-			compiledHostPolicyBase64 = saved
-			policy, err := requiredHostPolicy()
-			if err != nil {
-				t.Fatal(err)
-			}
-			change(&policy)
-			data, _ := json.Marshal(policy)
-			compiledHostPolicyBase64 = base64.RawURLEncoding.EncodeToString(data)
-			if err = verify(packagedRuntimeAPK(t, nil)); err == nil {
-				t.Fatal("runtime accepted outside host policy")
-			}
-		})
-	}
-}
-
-func TestReaddressedArchive(t *testing.T) {
-	destinations := map[string]string{"vector.tar.gz": strings.Repeat("a", 64), "bundle/plain.js": strings.Repeat("b", 64)}
-	for name, want := range map[string]bool{"vector.tar": true, "nested/vector.tar": true, "vector.tar.gz": true, "other.tar": false, "plain.js": false, "vector.tar.gz.bak": false} {
-		if readdressedArchive(name, destinations) != want {
-			t.Fatalf("%s: want %v", name, want)
-		}
 	}
 }

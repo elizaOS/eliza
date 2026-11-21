@@ -1,0 +1,107 @@
+// spec/agent/deviceActions/capabilities.md, "Story: Offer the agent only what my device advertised"; spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check"; spec/agent/deviceActions/operations.md, "Story: Learn exactly what the device did"
+import { assert, it } from "@effect/vitest"
+import type { ViewProfile } from "../gen/agent__deviceActions__capabilities.effect.vibe"
+import { wireType, type OperationType } from "../gen/agent__deviceActions__operations.effect.vibe"
+import { negotiation, openViewAllowed, readViewProfileChange, viewProfileWire } from "../src/device-actions/capabilities.vibe"
+import { deviceOperationTypes, mayRunDirectly, notDispatchedCode, readOperation, receiptOutcome, validate } from "../src/device-actions/operations.schema.vibe"
+
+const everyOperation = {
+  CalendarCreateLocal: true, CalendarReadNext: true, CalendarCreate: true, CalendarReadSelected: true, CalendarUpdate: true, CalendarDelete: true,
+  ReminderReadSelected: true, ReminderUpdate: true, ReminderComplete: true, ReminderSnooze: true, ReminderCancel: true, ReminderCreate: true,
+  CameraCapturePhoto: true, FilesFilter: true, FilesOpen: true, FilesShare: true, FilesMove: true, FilesTrash: true, FilesFolderCreate: true,
+  CalendarAvailability: true, NotesSearch: true, NotesNamed: true, CalendarNamedRead: true, CalendarNamedEdit: true, ReminderNamed: true,
+  MapsReadSelected: true, NotesReadSelected: true, NotesUpdate: true, NotesDelete: true,
+  NotesFilter: true, NotesListFilter: true, NotesMove: true, NotesFolderCreate: true, NotesRestore: true, NotesRecord: true, NotesQuery: true,
+  PhotoLibrarySearch: true, PhotoLibraryInspect: true, PhotoLibrarySelect: true, PhotoLibraryReview: true,
+  PhotosFilter: true, PhotosOpen: true, PhotosAlbumCreate: true, PhotosShare: true,
+  SmsSend: true, MmsSend: true, PhoneDial: true, PhoneCall: true, ContactCreate: true, ContactUpdate: true, ContactDelete: true, SmsCompose: true, SmsReplySelected: true,
+  MessagesReadSelected: true, VoicemailReadSelected: true, VoicemailDeleteSelected: true, ClockHandoff: true,
+  ReadSelectedNotes: true, ReadCalendarRange: true, ReadSelectedReminders: true, PostNotification: true, SpeakText: true,
+  CreateNote: true, CreateReminder: true, OpenView: true, BrowserNavigate: true,
+} as const satisfies Record<OperationType, true>
+
+const alarm = { type: "clock_handoff", action: "set", hour: 7, minute: 30, label: "Wake up", timeZone: "Europe/Berlin" } as const
+const repeating = { ...alarm, days: [1, 2, 3, 4, 5] }
+const filter = { type: "notes_filter", text: "groceries" }
+const opened = { kind: "clock-handoff", action: "set", status: "opened" }
+
+it('Offer the agent only what my device advertised: the header is read whole, refused on a line break, an unknown or repeated name or both reminder versions, and an absent header negotiates nothing (spec/agent/deviceActions/capabilities.md, "Story: Offer the agent only what my device advertised")', () => {
+  assert.deepStrictEqual(negotiation(true, undefined), { tag: "Negotiated", capabilities: [] })
+  assert.deepStrictEqual(negotiation(false, undefined), { tag: "Refused" })
+  assert.deepStrictEqual(negotiation(true, " clock.handoff.v1 ,notes.query.v1"), { tag: "Negotiated", capabilities: ["NotesQueryV1", "ClockHandoffV1"] })
+  assert.deepStrictEqual(negotiation(false, "clock.handoff.v1"), { tag: "Refused" })
+  for (const refused of ["clock.handoff.v1\r\nx-injected: 1", "clock.handoff.v1\n", "", "clock.handoff.v1,", "gmail.request-policy.v1", "clock.handoff.v1, clock.handoff.v1", "reminders.local-record.v1,reminders.local-record.v2"]) {
+    assert.deepStrictEqual(negotiation(true, refused), { tag: "Refused" }, refused)
+  }
+
+  assert.deepStrictEqual(readViewProfileChange({ version: 1, expectedRevision: null, views: ["notes", "home"] }), { read: { tag: "NoRevisionRead" }, views: ["NotesView", "HomeView"] })
+  assert.deepStrictEqual(readViewProfileChange({ version: 1, expectedRevision: "r1", views: [] }), { read: { tag: "ReadAt", revision: "r1" }, views: [] })
+  for (const refused of [{ version: 1, expectedRevision: null, views: ["home", "home"] }, { version: 1, expectedRevision: null, views: ["mail"] }, { version: 2, expectedRevision: null, views: [] }, { version: 1, views: [] }, { version: 1, expectedRevision: null, views: [], extra: true }]) {
+    assert.strictEqual(readViewProfileChange(refused), undefined)
+  }
+  const profile: ViewProfile = { tag: "Profile", revision: "r1", views: ["NotesView", "HomeView"] }
+  assert.deepStrictEqual(viewProfileWire(profile), { version: 1, revision: "r1", views: ["home", "notes"] })
+  assert.strictEqual(viewProfileWire({ tag: "NoProfile" }), null)
+  assert.isTrue(openViewAllowed(profile, { tag: "ReadAt", revision: "r1" }, "notes"))
+  assert.isFalse(openViewAllowed(profile, { tag: "ReadAt", revision: "r0" }, "notes"))
+  assert.isFalse(openViewAllowed(profile, { tag: "ReadAt", revision: "r1" }, "maps"))
+  assert.isFalse(openViewAllowed(profile, { tag: "ReadAt", revision: "r1" }, "mail"))
+  assert.isTrue(openViewAllowed({ tag: "NoProfile" }, { tag: "NoRevisionRead" }, "maps"))
+  assert.isFalse(openViewAllowed({ tag: "NoProfile" }, { tag: "ReadAt", revision: "r1" }, "maps"))
+})
+
+it('Propose only operations the device can check: one schema per wire type of the closed vocabulary, exact keys, the need of its version and its binding (spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check")', () => {
+  assert.deepStrictEqual([...deviceOperationTypes].toSorted(), [...new Set(Object.keys(everyOperation).map((type) => wireType(type as OperationType)))].toSorted())
+  assert.strictEqual(readOperation({ type: "gmail_send" }), undefined)
+  assert.strictEqual(readOperation({ ...alarm, extra: 1 }), undefined)
+  assert.strictEqual(readOperation({ ...alarm, hour: 24 }), undefined)
+  assert.strictEqual(readOperation(null), undefined)
+
+  const v1 = negotiation(true, "clock.handoff.v1")
+  const v2 = negotiation(true, "clock.handoff.v2")
+  assert.deepStrictEqual(validate(alarm, v1, "NoBinding"), { operation: alarm, opType: "ClockHandoff", versionTwo: false, need: { required: [], oneOf: ["ClockHandoffV1", "ClockHandoffV2"] } })
+  assert.strictEqual(validate(repeating, v1, "NoBinding"), undefined)
+  assert.strictEqual(validate(repeating, v2, "NoBinding")?.versionTwo, true)
+  assert.strictEqual(validate(alarm, negotiation(true, "notes.local-record.v1"), "NoBinding"), undefined)
+  assert.strictEqual(validate(alarm, negotiation(true, "clock.handoff.v1\n"), "NoBinding"), undefined)
+  assert.strictEqual(validate(alarm, v1, "AgendaBinding"), undefined)
+
+  const notes = negotiation(true, "notes.organize.v1,notes.local-record.v1")
+  const checked = validate(filter, notes, "NoBinding")
+  assert.strictEqual(checked?.opType, "NotesFilter")
+  assert.isTrue(checked !== undefined && mayRunDirectly(checked, "NoBinding", true))
+  assert.isFalse(checked !== undefined && mayRunDirectly(checked, "NoBinding", false))
+  const handoff = validate(alarm, v1, "NoBinding")
+  assert.isFalse(handoff !== undefined && mayRunDirectly(handoff, "NoBinding", true))
+})
+
+it('Learn exactly what the device did: a receipt settles only on evidence that agrees with it, an invalid result is refused, and only a not-dispatched failure settles that nothing ran (spec/agent/deviceActions/operations.md, "Story: Learn exactly what the device did")', () => {
+  const handoff = readOperation(alarm)
+  const notes = readOperation(filter)
+  assert.isDefined(handoff)
+  assert.isDefined(notes)
+  if (handoff === undefined || notes === undefined) return
+  const outcome = (checked: typeof handoff, receipt: unknown) => {
+    const verdict = receiptOutcome(checked, receipt, "claim-1")
+    return verdict.kind === "admitted" ? verdict.reported : verdict.kind
+  }
+
+  assert.deepStrictEqual(receiptOutcome(handoff, { outcome: "applied", operationId: "op-1", result: opened }, "claim-1"), {
+    kind: "admitted", reported: "ReportedApplied", receipt: { outcome: "applied", operationId: "op-1", result: opened }, result: opened,
+  })
+  assert.strictEqual(outcome(handoff, { outcome: "applied", result: opened }), "refused")
+  assert.strictEqual(outcome(handoff, { outcome: "applied", operationId: "op-1" }), "refused")
+  assert.strictEqual(outcome(handoff, { outcome: "applied", operationId: "op-1", result: { ...opened, status: "denied" } }), "refused")
+  assert.strictEqual(outcome(handoff, { outcome: "applied", operationId: "op-1", result: { ...opened, action: "snooze" } }), "refused")
+  assert.strictEqual(outcome(handoff, { outcome: "applied", operationId: "op-1", result: { ...opened, extra: 1 } }), "refused")
+  assert.strictEqual(outcome(handoff, { outcome: "failed", result: { ...opened, status: "denied" } }), "ReportedUnknown")
+  assert.strictEqual(outcome(handoff, { outcome: "unknown" }), "ReportedUnknown")
+  assert.strictEqual(outcome(handoff, { outcome: "failed", code: notDispatchedCode }), "ReportedNothingRan")
+  assert.strictEqual(outcome(handoff, { outcome: "failed", code: notDispatchedCode, result: { ...opened, status: "failed" } }), "ReportedUnknown")
+  assert.strictEqual(outcome(handoff, { outcome: "done", operationId: "op-1" }), "refused")
+  assert.strictEqual(outcome(handoff, { outcome: "failed", code: "bad code!" }), "refused")
+
+  assert.strictEqual(outcome(notes, { outcome: "applied", operationId: "op-2" }), "ReportedApplied")
+  assert.strictEqual(outcome(notes, { outcome: "applied", operationId: "op-2", result: {} }), "refused")
+  assert.strictEqual(outcome(notes, { outcome: "failed", code: "NOTES_LOCKED" }), "ReportedUnknown")
+})

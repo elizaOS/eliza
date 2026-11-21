@@ -1,0 +1,366 @@
+// spec/os/voice/invocation.md, "Story: Start voice from a trusted gesture, once"; spec/os/voice/invocation.md, "Story: Start voice only where I can see it"
+import { assert, it } from "@effect/vitest"
+import {
+  ASSISTANT_INVOCATION_VOICE_ENTRY,
+  CONVERSATION_ONLY_VOICE_ENTRY,
+  LISTENER_STOP_TIMEOUT_MS,
+  createSenseInvocationController,
+  invocationSessionKey,
+  listenerStartsVoice,
+  listenerStatus,
+  mobileVoiceEntryPolicy,
+  parseAssistantInvocation,
+  parseListenerStatus,
+  parseListenerStopReceipt,
+  sensePlugin,
+  stopListener,
+  stopListenerForChatOnly,
+  stopSenseListenerForChatOnly,
+} from "../../src/bridges/sense.vibe"
+
+module fakes {
+  import type { SenseInvocationHost, SenseInvocationNative, SenseScreen } from "../../src/bridges/definitions/sense.ts"
+
+  export interface Phone {
+    hidden: boolean
+    modal: boolean
+    ready: boolean
+    active: boolean
+    authority: string | null
+    restoring: boolean | undefined
+    account: string | null | undefined
+    pending: "listener" | "system" | "power" | "assist" | null
+    holdTake: boolean
+    held: ((reply: unknown) => void) | undefined
+    launch: "power" | undefined
+    holdClaim: boolean
+    releaseClaim: (() => void) | undefined
+    bindings: (string | null)[]
+    starts: number
+    takes: number
+    claims: number
+    invocationDiscards: number
+    launchDiscards: number
+    native: number
+  }
+
+  /** @throws {never} */
+  export function phone(changes: Partial<Phone> = {}): Phone {
+    return {
+      hidden: false, modal: false, ready: true, active: false, authority: "owner/session", restoring: undefined, account: undefined,
+      pending: null, holdTake: false, held: undefined, launch: undefined, holdClaim: false, releaseClaim: undefined,
+      bindings: [], starts: 0, takes: 0, claims: 0, invocationDiscards: 0, launchDiscards: 0, native: 0, ...changes,
+    }
+  }
+
+  /** @throws {never} */
+  export function screen(device: Phone): SenseScreen {
+    return { hidden: () => device.hidden, dialogOpen: () => device.modal, watch: () => () => {} }
+  }
+
+  /** @throws {never} */
+  export function host(device: Phone): SenseInvocationHost {
+    return {
+      authority: () => device.authority,
+      ready: () => device.ready,
+      voiceActive: () => device.active,
+      startVoice: () => { device.starts += 1 },
+      ...(device.restoring === undefined ? {} : { initialRestorePending: () => device.restoring === true }),
+      ...(device.account === undefined ? {} : { powerAccountRef: () => device.account ?? null }),
+    }
+  }
+
+  /** @throws {never} */
+  export function native(device: Phone): SenseInvocationNative {
+    return {
+      bindInvocationSession: async ({ sessionKey }) => {
+        device.bindings.push(sessionKey)
+        device.pending = null
+      },
+      takeInvocation: async () => {
+        device.takes += 1
+        const origin = device.pending
+        device.pending = null
+        const reply = { assistant: origin !== null, invocation: origin, locked: false }
+        if (!device.holdTake) return reply
+        device.holdTake = false
+        return new Promise((resolve) => { device.held = () => resolve(reply) })
+      },
+      discardProtectedPowerInvocation: async () => {
+        device.invocationDiscards += 1
+        if (device.pending === "power") device.pending = null
+      },
+      discardProtectedPowerLaunch: async () => {
+        device.launchDiscards += 1
+      },
+      claimProtectedPowerLaunch: async ({ accountRef }) => {
+        device.claims += 1
+        const launch = device.launch
+        device.launch = undefined
+        const reply = launch === undefined || accountRef !== "verified-account" ? { assistant: false, locked: true } : { assistant: true, invocation: launch, locked: false }
+        if (!device.holdClaim) return reply
+        return new Promise((resolve) => { device.releaseClaim = () => resolve(reply) })
+      },
+    }
+  }
+
+  /** @throws {never} */
+  export function counting(device: Phone): { native: SenseInvocationNative; host: SenseInvocationHost } {
+    const call = () => { device.native += 1 }
+    const touch = () => { device.starts += 1 }
+    return {
+      native: { bindInvocationSession: async () => call(), takeInvocation: async () => call(), discardProtectedPowerInvocation: async () => call(), discardProtectedPowerLaunch: async () => call(), claimProtectedPowerLaunch: async () => call() },
+      host: { authority: () => { touch(); return "owner" }, ready: () => { touch(); return true }, voiceActive: () => { touch(); return false }, startVoice: touch },
+    }
+  }
+
+  /** @throws {never} */
+  export function answerHeld(device: Phone): void {
+    device.held?.(undefined)
+    device.releaseClaim?.()
+  }
+
+  /** @throws {never} */
+  export function never(): Promise<unknown> {
+    return new Promise(() => {})
+  }
+}
+import { answerHeld, counting, host, native, never, phone, screen } from fakes
+
+const settle = () => sleep("25 millis")
+
+it.effect("The renderer starts voice from a voice answer only while unlocked, visible, with no dialog, no connection prompt and no active voice (spec/os/voice/invocation.md, \"The renderer starts voice from a voice answer only while unlocked, visible, with no dialog, no connection prompt and no active voice\"; spec/os/voice/invocation.md, \"Only a listener wake, a system assistant gesture or a protected power press is a voice origin\")", () => effect {
+  const base = { invocation: "listener" as const, unlocked: true, hidden: false, dialogOpen: false, connectionOpen: false, voiceActive: false }
+  const blockers = ["hidden", "dialogOpen", "connectionOpen", "voiceActive"] as const
+  const table = (["listener", "system", "power"] as const).map((invocation) => ({
+    invocation,
+    clear: listenerStartsVoice({ ...base, invocation }),
+    blocked: blockers.map((key) => listenerStartsVoice({ ...base, invocation, [key]: true })),
+    locked: listenerStartsVoice({ ...base, invocation, unlocked: false }),
+  }))
+  const parsed = [
+    parseAssistantInvocation({ assistant: true, invocation: "listener" }),
+    parseAssistantInvocation({ assistant: true, invocation: "system" }),
+    parseAssistantInvocation({ assistant: true, invocation: "power" }),
+    ...["assist", "hardware", "SYSTEM", null, 1].map((invocation) => parseAssistantInvocation({ assistant: true, invocation })),
+    parseAssistantInvocation({ assistant: false, invocation: "system" }),
+  ]
+  try Effect.try(() => {
+    for (const row of table) assert.deepStrictEqual(row, { invocation: row.invocation, clear: true, blocked: [false, false, false, false], locked: false })
+    assert.strictEqual(listenerStartsVoice({ ...base, invocation: "assist" }), false)
+    assert.strictEqual(listenerStartsVoice({ ...base, invocation: null }), false)
+    assert.deepStrictEqual(parsed, ["listener", "system", "power", "assist", "assist", "assist", "assist", "assist", null])
+  })
+})
+
+it.effect("A listener status parses fail-closed and live state stays authoritative (spec/os/voice/invocation.md, \"Without an admitted listener a listener launch only opens the assistant\")", () => effect {
+  const complete = { available: true, state: "PAUSED_USER", label: "Paused", consented: true, saved: true, listening: false, microphoneOpen: false }
+  const refusedPauses = [
+    { ...complete, saved: false }, { ...complete, saved: undefined }, { ...complete, saved: 1 }, { ...complete, state: "PAUSED_CALL" },
+    { ...complete, state: "LISTENING" }, { ...complete, state: "OTHER" }, { ...complete, state: true }, { ...complete, listening: true },
+    { ...complete, listening: undefined }, { ...complete, microphoneOpen: true }, { ...complete, microphoneOpen: "false" }, { ...complete, microphoneOpen: undefined },
+  ].map((receipt) => parseListenerStopReceipt(receipt, "pause").available)
+  try Effect.try(() => {
+    assert.deepStrictEqual(parseListenerStatus({ available: true, state: "OTHER" }), { available: false })
+    assert.deepStrictEqual(parseListenerStatus({ available: true, state: "OFF", listening: true }), { available: true, state: "OFF", label: "Listening off", consented: false, listening: false, microphoneOpen: false })
+    assert.deepStrictEqual(parseListenerStatus({ available: true, state: "LISTENING", label: "x".repeat(81), listening: true, microphoneOpen: true }), { available: true, state: "LISTENING", label: "Listening off", consented: false, listening: true, microphoneOpen: true })
+    assert.deepStrictEqual(parseListenerStopReceipt(complete, "pause") as unknown, complete)
+    assert.strictEqual(parseListenerStopReceipt({ ...complete, state: "OFF" }, "pause").available, true)
+    assert.strictEqual(parseListenerStopReceipt({ ...complete, state: "PERMISSION_REQUIRED" }, "pause").available, true)
+    assert.strictEqual(parseListenerStopReceipt(complete, "turnOff").available, false)
+    assert.deepStrictEqual(refusedPauses, refusedPauses.map(() => false))
+  })
+})
+
+it.live("Without an admitted listener the sense bridge answers Unavailable and a listener launch only opens the assistant (spec/os/voice/invocation.md, \"Without an admitted listener a listener launch only opens the assistant\")", () => effect {
+  const plugin = sensePlugin("ElizaSenseWithoutListener")
+  const status = try promise(() => listenerStatus(plugin))
+  const paused = try promise(() => stopListener("pause", plugin))
+  const off = try promise(() => stopListener("turnOff", plugin))
+  const take = try promise(() => plugin.takeInvocation({ generation: 1, bindingId: "binding", sessionKey: "a".repeat(64) }))
+  const device = phone({ pending: "assist" })
+  const controller = createSenseInvocationController(native(device), host(device), ASSISTANT_INVOCATION_VOICE_ENTRY, screen(device))
+  try settle()
+  controller.dispose()
+  try Effect.try(() => {
+    assert.deepStrictEqual({ status, paused, off, take: parseAssistantInvocation(take) }, { status: { available: false }, paused: { available: false }, off: { available: false }, take: null })
+    assert.deepStrictEqual({ starts: device.starts, takes: device.takes > 0, pending: device.pending }, { starts: 0, takes: true, pending: null })
+  })
+})
+
+it.live("The bridge holds only an opaque fixed-length digest of the session (spec/os/voice/invocation.md, \"A warm arrival belongs to the current session and starts voice within 5,000 ms\")", () => effect {
+  const first = try promise(() => invocationSessionKey("owner-a/session-a"))
+  const other = try promise(() => invocationSessionKey("owner-b/session-a"))
+  try Effect.try(() => {
+    assert.match(first, /^[a-f0-9]{64}$/)
+    assert.notStrictEqual(first, other)
+  })
+})
+
+it.live("A renderer drops an arrival whose session changed during the native read (spec/os/voice/invocation.md, \"A warm arrival belongs to the current session and starts voice within 5,000 ms\"; spec/os/voice/invocation.md, \"Each arrival starts voice at most once\")", () => effect {
+  const device = phone({ authority: "owner-a/session-a" })
+  const controller = createSenseInvocationController(native(device), host(device), ASSISTANT_INVOCATION_VOICE_ENTRY, screen(device))
+  try settle()
+  device.holdTake = true
+  device.pending = "listener"
+  controller.check()
+  try settle()
+  device.authority = "owner-b/session-b"
+  answerHeld(device)
+  controller.check()
+  try settle()
+  device.hidden = true
+  const reads = device.takes
+  controller.check()
+  try settle()
+  controller.dispose()
+  try settle()
+  try Effect.try(() => {
+    assert.strictEqual(device.starts, 0)
+    assert.strictEqual(device.takes, reads)
+    assert.strictEqual(new Set(device.bindings.filter((key) => key !== null)).size, 2)
+    assert.strictEqual(device.bindings.at(-1), null)
+  })
+})
+
+it.live("A warm power press starts voice once and a blocked press is discarded, not deferred (spec/os/voice/invocation.md, \"Each arrival is recorded with its origin and replaces any arrival still waiting\"; spec/os/voice/invocation.md, \"Each arrival starts voice at most once\"; spec/os/voice/invocation.md, \"The renderer starts voice from a voice answer only while unlocked, visible, with no dialog, no connection prompt and no active voice\")", () => effect {
+  const device = phone()
+  const controller = createSenseInvocationController(native(device), host(device), ASSISTANT_INVOCATION_VOICE_ENTRY, screen(device))
+  try settle()
+  device.pending = "power"
+  controller.check()
+  try settle()
+  const first = device.starts
+  controller.check()
+  try settle()
+  const again = device.starts
+  const discarded: boolean[] = []
+  for (const blocker of ["hidden", "modal", "ready", "active"] as const) {
+    device.pending = "power"
+    device.hidden = blocker === "hidden"
+    device.modal = blocker === "modal"
+    device.ready = blocker !== "ready"
+    device.active = blocker === "active"
+    const before = device.invocationDiscards
+    controller.check()
+    try settle()
+    discarded.push(device.invocationDiscards > before && device.pending === null)
+    device.hidden = false
+    device.modal = false
+    device.ready = true
+    device.active = false
+    controller.check()
+    try settle()
+  }
+  const afterBlockers = device.starts
+  device.pending = "listener"
+  device.modal = true
+  controller.check()
+  try settle()
+  const kept = device.pending
+  device.modal = false
+  controller.check()
+  try settle()
+  controller.dispose()
+  try settle()
+  try Effect.try(() => assert.deepStrictEqual(
+    { first, again, discarded, afterBlockers, kept, last: device.starts },
+    { first: 1, again: 1, discarded: [true, true, true, true], afterBlockers: 1, kept: "listener", last: 2 },
+  ))
+})
+
+it.live("A cold protected launch waits for the initial restore and the account is checked again after the claim (spec/os/voice/invocation.md, \"A cold listener or system arrival waits up to 15,000 ms for the same owner and is adopted once\"; spec/os/voice/invocation.md, \"Each arrival starts voice at most once\")", () => effect {
+  const results: { mode: string; starts: number; claims: number; claimsBeforeRestore: number; discardsDuringRestore: number; replayed: number }[] = []
+  for (const mode of ["success", "modal", "interactive", "account-change"] as const) {
+    const device = phone({ authority: null, ready: false, restoring: true, account: null, launch: "power", holdClaim: mode === "account-change" })
+    const controller = createSenseInvocationController(native(device), host(device), ASSISTANT_INVOCATION_VOICE_ENTRY, screen(device))
+    try settle()
+    device.authority = "owner/session"
+    device.ready = true
+    controller.check()
+    try settle()
+    const claimsBeforeRestore = device.claims
+    const discardsDuringRestore = device.launchDiscards
+    if (mode === "modal") {
+      device.modal = true
+      controller.check()
+      try settle()
+      device.modal = false
+    }
+    if (mode === "interactive") {
+      device.restoring = false
+      controller.check()
+      try settle()
+    }
+    device.restoring = false
+    device.account = "verified-account"
+    controller.check()
+    try settle()
+    if (mode === "account-change") {
+      device.account = "other-account"
+      answerHeld(device)
+      try settle()
+    }
+    const starts = device.starts
+    controller.check()
+    try settle()
+    controller.dispose()
+    try settle()
+    results.push({ mode, starts, claims: device.claims, claimsBeforeRestore, discardsDuringRestore, replayed: device.starts - starts })
+  }
+  try Effect.try(() => assert.deepStrictEqual(results, [
+    { mode: "success", starts: 1, claims: 1, claimsBeforeRestore: 0, discardsDuringRestore: 0, replayed: 0 },
+    { mode: "modal", starts: 0, claims: 0, claimsBeforeRestore: 0, discardsDuringRestore: 0, replayed: 0 },
+    { mode: "interactive", starts: 0, claims: 0, claimsBeforeRestore: 0, discardsDuringRestore: 0, replayed: 0 },
+    { mode: "account-change", starts: 0, claims: 1, claimsBeforeRestore: 0, discardsDuringRestore: 0, replayed: 0 },
+  ]))
+})
+
+it.live("Conversation-only entry never binds, takes or starts an external arrival (spec/os/voice/invocation.md, \"Only a listener wake, a system assistant gesture or a protected power press is a voice origin\")", () => effect {
+  const device = phone()
+  const { native: inert, host: untouched } = counting(device)
+  const controller = createSenseInvocationController(inert, untouched, CONVERSATION_ONLY_VOICE_ENTRY, screen(device))
+  controller.check()
+  controller.dispose()
+  try settle()
+  try Effect.try(() => {
+    assert.deepStrictEqual({ native: device.native, host: device.starts }, { native: 0, host: 0 })
+    assert.strictEqual(mobileVoiceEntryPolicy(false), CONVERSATION_ONLY_VOICE_ENTRY)
+    assert.strictEqual(mobileVoiceEntryPolicy(true), ASSISTANT_INVOCATION_VOICE_ENTRY)
+  })
+})
+
+it.live("A chat-only stop needs an exact raw acknowledgement (spec/os/voice/invocation.md, \"Without an admitted listener a listener launch only opens the assistant\")", () => effect {
+  const absent = { available: false, reason: "not-installed" }
+  const accepted = { available: true, saved: true, state: "OFF", listening: false, microphoneOpen: false }
+  const stop = (reply: unknown) => promise(() => stopSenseListenerForChatOnly({ turnOff: async () => reply }))
+  const contradictions = [{ available: true }, { reason: "unavailable" }, { state: "LISTENING" }, { state: "OFF" }, { listening: true }, { listening: "false" }, { microphoneOpen: true }, { microphoneOpen: 0 }].map((change) => ({ ...absent, ...change }))
+  const refusals = [
+    { ...accepted, listening: true }, { ...accepted, microphoneOpen: true }, { ...accepted, state: "PAUSED_USER" }, { ...accepted, available: false },
+    { ...accepted, saved: false }, { ...accepted, saved: "true" }, { ...accepted, saved: undefined }, { ...accepted, state: undefined },
+    { ...accepted, listening: "false" }, { ...accepted, microphoneOpen: 0 }, { ...accepted, microphoneOpen: undefined }, { ...accepted, listening: undefined }, null,
+  ]
+  const stoppedAbsent = try stop(absent)
+  const stoppedAccepted = try stop(accepted)
+  const contradicted: boolean[] = []
+  for (const receipt of contradictions) contradicted.push(try stop(receipt))
+  const refused: boolean[] = []
+  for (const receipt of refusals) refused.push(try stop(receipt))
+  const noBridge = try promise(() => stopSenseListenerForChatOnly(undefined))
+  const failed = try promise(() => stopSenseListenerForChatOnly({ turnOff: async () => Promise.reject(new Error("native unavailable")) }))
+  try Effect.try(() => {
+    assert.deepStrictEqual(parseListenerStatus(absent) as unknown, absent)
+    assert.deepStrictEqual(parseListenerStopReceipt(absent, "turnOff"), { available: false })
+    assert.deepStrictEqual(contradictions.map(parseListenerStatus), contradictions.map(() => ({ available: false })))
+    assert.deepStrictEqual({ stoppedAbsent, stoppedAccepted, contradicted, refused, noBridge, failed }, {
+      stoppedAbsent: true, stoppedAccepted: true, contradicted: contradictions.map(() => false), refused: refusals.map(() => false), noBridge: false, failed: false,
+    })
+  })
+})
+
+it.effect("A chat-only stop is bounded when the native bridge never replies (spec/os/voice/invocation.md, \"Without an admitted listener a listener launch only opens the assistant\")", () => effect {
+  const stopping = fork stopListenerForChatOnly({ turnOff: never })
+  try TestClock.adjust(LISTENER_STOP_TIMEOUT_MS)
+  const stopped = try join stopping
+  try Effect.try(() => assert.strictEqual(stopped, false))
+})

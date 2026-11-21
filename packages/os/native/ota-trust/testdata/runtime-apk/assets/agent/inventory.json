@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "files": [
+    {
+      "path": "assets/agent/agent.mjs",
+      "sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "size": 11
+    },
+    {
+      "path": "assets/agent/initdb.wasm",
+      "sha256": "0715b64f5a0011fd98a260aad1470704b02ce462ee007bc2446bef351d8f5bd8",
+      "size": 9
+    },
+    {
+      "path": "assets/agent/manifest.json",
+      "sha256": "2d2b01371087dd73c47f85a7006d757044360ef90adfa377905ca8826136aafd",
+      "size": 251
+    },
+    {
+      "path": "assets/agent/pglite-migrated.bin",
+      "sha256": "afe3b6958a479cf703c50d9dd016c5606f28eb5f5a70aacb88cb0a22e003af99",
+      "size": 28
+    },
+    {
+      "path": "assets/agent/pglite.data",
+      "sha256": "77e9469cf3eec5dc5ac6e8056ec6e1446f6db061a977506112722b741bff8901",
+      "size": 22
+    },
+    {
+      "path": "assets/agent/pglite.wasm",
+      "sha256": "93a44bbb96c751218e4c00d479e4c14358122a389acca16205b1e4d0dc5f9476",
+      "size": 8
+    },
+    {
+      "path": "assets/host/notice.txt",
+      "sha256": "fc27c455d7988fe675cbc507b4a25e14439041c69ef2c81c4601abe45bd4876b",
+      "size": 25
+    },
+    {
+      "path": "lib/arm64-v8a/libeliza_node.so",
+      "sha256": "7fb5f905ffdfd40b9e4b59c80b56dcb1d9c136cb11f554b93d05af2492e6bb03",
+      "size": 141
+    }
+  ]
+}

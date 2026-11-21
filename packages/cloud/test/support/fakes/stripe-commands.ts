@@ -41,3 +41,9 @@ export function stripeRenewalPreview(stripe: StripeFake): FakeHandler {
     };
   };
 }
+
+/** @throws {never} */
+export function withRenewalPreview(stripe: StripeFake): FakeHandler {
+  const preview = stripeRenewalPreview(stripe);
+  return (request) => preview(request) ?? stripe.handler(request);
+}

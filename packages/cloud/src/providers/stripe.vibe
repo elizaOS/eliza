@@ -74,6 +74,8 @@ export schema StripeSubscription {
   readonly latest_invoice: string | null
   readonly metadata: Record<string, string>
   readonly items: { readonly data: ReadonlyArray<SubscriptionItem>; readonly has_more: boolean }
+  readonly schedule?: string | null
+  readonly pending_update?: { readonly expires_at: number } | null
 }
 
 schema InvoiceLine {
@@ -137,7 +139,7 @@ schema ErrorBody { readonly error: { readonly type: string; readonly code?: stri
 type Params = ReadonlyArray<readonly [string, string]>
 
 interface Call {
-  readonly method: "GET" | "POST"
+  readonly method: "GET" | "POST" | "DELETE"
   readonly path: string
   readonly params: Params
   readonly timeout: number
@@ -305,6 +307,10 @@ export effect function retrieveSubscription(subscriptionId: string, call: Stripe
   return try read(StripeSubscription, { method: "GET", path: `/v1/subscriptions/${id(subscriptionId)}`, params: [], timeout: call.timeout })
 }
 
+export effect function cancelSubscriptionNow(subscriptionId: string, mutation: StripeMutation): StripeSubscription!StripeFailure!StripeContext {
+  return try read(StripeSubscription, { method: "DELETE", path: `/v1/subscriptions/${id(subscriptionId)}`, params: [], ...mutation })
+}
+
 export effect function retrieveInvoice(invoiceId: string, call: StripeRead): StripeInvoice!StripeFailure!StripeContext {
   return try read(StripeInvoice, { method: "GET", path: `/v1/invoices/${id(invoiceId)}`, params: [], timeout: call.timeout })
 }
@@ -378,4 +384,93 @@ export function lookupOf<A>(reply: ProviderReply<A | undefined>): ProviderReply<
       return _exhaustive
     }
   }
+}
+
+export schema StripeInvoicePreview { readonly amount_due: number; readonly currency: string }
+
+schema SchedulePhaseItem { readonly price: string }
+
+schema SchedulePhase { readonly start_date: number; readonly end_date: number | null; readonly items: ReadonlyArray<SchedulePhaseItem> }
+
+export schema StripeSubscriptionSchedule { readonly id: string; readonly subscription: string | null; readonly phases: ReadonlyArray<SchedulePhase> }
+
+export interface PriceChange {
+  readonly subscriptionId: string
+  readonly itemId: string
+  readonly priceId: string
+}
+
+function itemParams(items: string, change: PriceChange): Params {
+  return [[`${items}[0][id]`, change.itemId], [`${items}[0][price]`, change.priceId], [`${items}[0][quantity]`, "1"]]
+}
+
+export effect function previewUpgrade(customerId: string, change: PriceChange, prorationDate: number, call: StripeRead): StripeInvoicePreview!StripeFailure!StripeContext {
+  return try read(StripeInvoicePreview, {
+    method: "POST",
+    path: "/v1/invoices/create_preview",
+    timeout: call.timeout,
+    params: [
+      ["customer", customerId],
+      ["subscription", change.subscriptionId],
+      ...itemParams("subscription_details[items]", change),
+      ["subscription_details[proration_behavior]", "always_invoice"],
+      ["subscription_details[proration_date]", seconds(prorationDate)]
+    ]
+  })
+}
+
+export effect function upgradeSubscription(change: PriceChange, prorationDate: number, mutation: StripeMutation): StripeSubscription!StripeFailure!StripeContext {
+  return try read(StripeSubscription, {
+    method: "POST",
+    path: `/v1/subscriptions/${id(change.subscriptionId)}`,
+    ...mutation,
+    params: [...itemParams("items", change), ["payment_behavior", "pending_if_incomplete"], ["proration_behavior", "always_invoice"], ["proration_date", seconds(prorationDate)]]
+  })
+}
+
+export interface ScheduledPrice {
+  readonly subscriptionId: string
+  readonly currentPriceId: string
+  readonly priceId: string
+  readonly periodStart: number
+  readonly periodEnd: number
+}
+
+export effect function schedulePrice(terms: ScheduledPrice, mutation: StripeMutation): StripeSubscriptionSchedule!StripeFailure!StripeContext {
+  const created = try read(StripeSubscriptionSchedule, { method: "POST", path: "/v1/subscription_schedules", ...mutation, params: [["from_subscription", terms.subscriptionId]] })
+  return try read(StripeSubscriptionSchedule, {
+    method: "POST",
+    path: `/v1/subscription_schedules/${id(created.id)}`,
+    timeout: mutation.timeout,
+    idempotencyKey: `${mutation.idempotencyKey}-phases`,
+    params: [
+      ["end_behavior", "release"],
+      ["proration_behavior", "none"],
+      ["phases[0][items][0][price]", terms.currentPriceId],
+      ["phases[0][items][0][quantity]", "1"],
+      ["phases[0][start_date]", seconds(terms.periodStart)],
+      ["phases[0][end_date]", seconds(terms.periodEnd)],
+      ["phases[1][items][0][price]", terms.priceId],
+      ["phases[1][items][0][quantity]", "1"],
+      ["phases[1][duration][interval]", "month"],
+      ["phases[1][duration][interval_count]", "1"]
+    ]
+  })
+}
+
+export effect function retrieveSubscriptionSchedule(scheduleId: string, call: StripeRead): StripeSubscriptionSchedule!StripeFailure!StripeContext {
+  return try read(StripeSubscriptionSchedule, { method: "GET", path: `/v1/subscription_schedules/${id(scheduleId)}`, params: [], timeout: call.timeout })
+}
+
+export effect function setCancelAtPeriodEnd(subscriptionId: string, cancel: boolean, mutation: StripeMutation): StripeSubscription!StripeFailure!StripeContext {
+  return try read(StripeSubscription, { method: "POST", path: `/v1/subscriptions/${id(subscriptionId)}`, ...mutation, params: [["cancel_at_period_end", String(cancel)]] })
+}
+
+export effect function previewRenewal(customerId: string, subscriptionId: string, call: StripeRead): StripeInvoicePreview!StripeFailure!StripeContext {
+  return try read(StripeInvoicePreview, {
+    method: "POST",
+    path: "/v1/invoices/create_preview",
+    timeout: call.timeout,
+    params: [["customer", customerId], ["subscription", subscriptionId], ["subscription_details[cancel_at_period_end]", "false"]]
+  })
 }

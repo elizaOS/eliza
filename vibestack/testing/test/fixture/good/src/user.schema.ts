@@ -20,4 +20,6 @@ export const User = Schema.Struct({ id: UserId, age: Schema.FiniteFromString, sh
 /** No value can be generated for a declaration that says nothing of its values: reported, never tested. */
 export const Opaque = Schema.declare((u): u is WeakKey => typeof u === "object" && u !== null);
 
+export const Refused = Schema.Int.check(Schema.makeFilter(() => false));
+
 export const limit = 3;

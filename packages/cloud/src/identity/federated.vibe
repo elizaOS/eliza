@@ -352,7 +352,7 @@ export effect function verifyNativeGoogle(tx: Tx, presented: NativePresentation)
   const row = (try tx.query("SELECT client_id, redirect_uri, challenge_digest, nonce_digest, link_user_id FROM oauth_attempts WHERE key = $1 AND route = 'native'", [presented.challengeId]))[0]
   if (row === undefined) throw new Refused({ refusal: nativeRefusal("NativeUnknown") })
   const before = try current(tx, presented.challengeId, presented.now)
-  const token = try readIdToken(google, presented.idToken, presented.now)
+  const token = try readIdToken(google, presented.idToken, google.serverClientId, presented.now)
   const proof: NativeProof = {
     ...presenterMatches(row, presented.presenter),
     signatureOk: token.signatureOk && token.subject !== undefined,

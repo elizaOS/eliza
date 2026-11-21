@@ -1,10 +1,11 @@
-// spec/agent/access/auth.md, "Story: Admit only the supervising host"; spec/agent/access/transport.md, "Story: Answer each local request exactly once"
+// spec/agent/access/auth.md, "Story: Admit only the supervising host"; spec/agent/access/routes.md, "A list is loaded whole or not at all"; spec/agent/access/transport.md, "Story: Answer each local request exactly once"
 module node {
   import type { Redacted } from "effect"
+  import { ElizaError } from "@elizaos/core"
   import { entry, publicPath, type Caller, type RouteOrigin } from "../../gen/agent__access__auth.ts"
   import type { Delivery } from "../../gen/agent__access__routes.ts"
   import { authStatusAnswer, authStatusRoute, callerOf } from "./auth.vibe"
-  import { defineRoutes, modelRoute, type LocalCall, type LocalRoute, type LocalRouter, type Route, type RouteInput } from "./routes.vibe"
+  import { modelRoute, routeGate, type LocalCall, type LocalRoute, type LocalRouter, type Route, type RouteInput } from "./routes.vibe"
 
   type Token = Redacted.Redacted<string>
 
@@ -27,6 +28,8 @@ module node {
   }
 
   const json = (status: number, value: object): Response => Response.json(value, { status })
+  const healthRoute = { method: "GET", path: "/api/health" } as const satisfies Route
+  const builtin: RouteOrigin = { tag: "Builtin" }
 
   function location(target: string) {
     const at = target.indexOf("?")
@@ -48,33 +51,53 @@ module node {
     }
   }
 
-  export function createRouter({ token, epoch, instanceId, routes, health }: RouterOptions): AgentRouter {
-    const builtin: RouteOrigin = { tag: "Builtin" }
-    const bindings: Binding[] = [
-      { route: { method: "GET", path: "/api/health" }, origin: builtin, handle: health ?? (() => json(200, { ready: true, runtime: "ok", agentState: "running", epoch })) },
+  function loaded(routes: readonly Route[]) {
+    const gate = routeGate()
+    return { gate, table: gate.load(routes.map(listed)) }
+  }
+
+  const named = ({ method, path }: Route) => `${method} ${path}`
+
+  export function refusedRoutes(routes: readonly LocalRoute[]): readonly string[] {
+    const offered = routes.filter((route) => !publicPath(route.path))
+    if (loaded([healthRoute, authStatusRoute, ...offered]).table.tag === "Loaded") return []
+    const alone = offered.filter((route) => loaded([route]).table.tag !== "Loaded").map(named)
+    return alone.length > 0 ? alone : offered.map(named)
+  }
+
+  export function createRouter({ token, instanceId, routes, health }: RouterOptions): AgentRouter {
+    const builtins: Binding[] = [
+      ...(health === undefined ? [] : [{ route: healthRoute, origin: builtin, handle: health }]),
       { route: authStatusRoute, origin: builtin, handle: (_input, caller) => authStatusAnswer(caller, instanceId) },
+    ]
+    const bindings: Binding[] = [
+      ...builtins,
       ...routes.filter((route) => !publicPath(route.path)).map((route) => ({ route: listed(route), origin: declared(route), handle: route.handler })),
     ]
-    const gate = defineRoutes(bindings.map(({ route }) => route))
+    const all = loaded(bindings.map(({ route }) => route))
+    if (all.table.tag !== "Loaded") {
+      throw new ElizaError("The route list was refused whole", { code: "ROUTES_REFUSED", context: { refused: refusedRoutes(routes) } })
+    }
+    const gates: Record<Caller, ReturnType<typeof routeGate>> = { Root: all.gate, Anonymous: loaded(builtins.map(({ route }) => route)).gate }
     const byRoute = new Map(bindings.toReversed().map((binding) => [JSON.stringify(modelRoute(binding.route)), binding]))
     const delivery = (call: Omit<LocalCall, "streamed">): Delivery | undefined => {
       for (const streamed of [false, true]) {
-        const admitted = gate.admit({ ...call, streamed })
-        if (admitted.tag !== "RouteRefused") return streamed ? "Streamed" : "Buffered"
+        if (all.gate.admit({ ...call, streamed }).tag !== "RouteRefused") return streamed ? "Streamed" : "Buffered"
       }
       return undefined
     }
     const route = async (request: LocalCall, signal: AbortSignal): Promise<Response> => {
-      const admitted = gate.admit(request)
+      const caller = callerOf(token, request.authorization)
+      const admitted = gates[caller].admit(request)
+      if (caller === "Anonymous" && admitted.tag !== "Admitted") return json(401, { error: "unauthorized" })
       if (admitted.tag === "RouteRefused") return json(404, { error: "not_found" })
       if (admitted.tag === "TooLarge") return json(413, { error: "too_large" })
       const binding = byRoute.get(JSON.stringify(admitted.route))
       if (!binding) return json(404, { error: "not_found" })
-      const caller = callerOf(token, request.authorization)
-      const { segments, query } = location(request.target)
       if (entry({ verb: admitted.route.method, path: binding.route.path, origin: binding.origin }, caller) !== "Allowed") {
         return json(401, { error: "unauthorized" })
       }
+      const { segments, query } = location(request.target)
       const parameters = new Map<string, string>()
       binding.route.path.split("/").slice(1).forEach((piece, index) => {
         if (piece.startsWith("{")) parameters.set(piece.slice(1, -1), segments[index])
@@ -87,4 +110,4 @@ module node {
   }
 }
 
-export { createRouter, type AgentRouter } from node
+export { createRouter, refusedRoutes, type AgentRouter } from node

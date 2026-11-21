@@ -22,12 +22,13 @@ final class JournalStore {
             byte[] data = input.readNBytes(16385);
             if (data.length > 16384) throw new IOException("Update journal exceeds bound");
             JSONObject value = new JSONObject(new String(data, StandardCharsets.UTF_8));
-            if (value.length() != 6 || value.getInt("schema") != 1) {
+            if (value.length() != 8 || value.getInt("schema") != 2) {
                 throw new IOException("Unknown update journal format");
             }
             return new UpdateJournal(UpdateJournal.Phase.valueOf(value.getString("phase")),
                     value.getString("source"), value.getString("target"),
-                    value.getString("sha256"), value.getString("boot"));
+                    value.getString("sha256"), value.getString("boot"), value.getInt("applyCalls"),
+                    UpdateJournal.RestartHold.valueOf(value.getString("hold")));
         } catch (FileNotFoundException absent) {
             File directory = file.getBaseFile().getParentFile();
             String[] entries = directory.list();
@@ -44,13 +45,14 @@ final class JournalStore {
 
     synchronized void write(UpdateJournal expected, UpdateJournal next) throws IOException {
         UpdateJournal current = read();
-        if (!same(current, expected)) throw new IOException("Update state changed");
+        if (!current.same(expected)) throw new IOException("Update state changed");
         final byte[] bytes;
         try {
             JSONObject value = new JSONObject();
-            value.put("schema", 1); value.put("phase", next.phase.name());
+            value.put("schema", 2); value.put("phase", next.phase.name());
             value.put("source", next.sourceBuild); value.put("target", next.targetBuild);
             value.put("sha256", next.packageSha256); value.put("boot", next.intentBoot);
+            value.put("applyCalls", next.applyCalls); value.put("hold", next.restartHold.name());
             bytes = value.toString().getBytes(StandardCharsets.UTF_8);
         } catch (JSONException invalid) { throw new IOException("Cannot encode update journal", invalid); }
         FileOutputStream output = null;
@@ -58,12 +60,6 @@ final class JournalStore {
             output = file.startWrite(); output.write(bytes); output.getFD().sync();
             file.finishWrite(output); output = null;
         } finally { if (output != null) file.failWrite(output); }
-        if (!same(read(), next)) throw new IOException("Update journal write is unconfirmed");
-    }
-
-    private static boolean same(UpdateJournal a, UpdateJournal b) {
-        return a.phase == b.phase && a.sourceBuild.equals(b.sourceBuild)
-                && a.targetBuild.equals(b.targetBuild) && a.packageSha256.equals(b.packageSha256)
-                && a.intentBoot.equals(b.intentBoot);
+        if (!read().same(next)) throw new IOException("Update journal write is unconfirmed");
     }
 }

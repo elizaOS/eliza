@@ -1,0 +1,436 @@
+// spec/cloud/billing/subscriptionCommands.md, "Story: Review a plan change before I confirm it"; spec/cloud/billing/subscriptionCommands.md, "Story: Change or cancel my plan without paying twice"; spec/cloud/billing/subscriptionCommands.md, "Story: Get the plan I paid for"; spec/cloud/billing/subscriptionCommands.md, "Story: See my commands"; spec/cloud/billing/allowance.md, "Story: Get more allowance when I upgrade mid-period"
+import { NotAState, Rejected, apply, awaitsInvoice, commandStatus, decodeState, elapse, initial, isFinished, mayContinuePayment, nowOf, outcomeOf, reviewFits, type Command, type CommandEffect, type CommandStatus, type CommandStep, type Event, type UpgradeInvoice } from "../../gen/cloud__billing__subscriptionCommands.effect.vibe"
+import type { Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+import { refused } from "../http/refusal.vibe"
+import { json, jsonBody, owner, type CloudContext, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
+import { Deployment } from "../profile/profile.vibe"
+import { previewUpgrade, providerReply, retrieveInvoice, retrieveSubscription, retrieveSubscriptionSchedule, schedulePrice, StripeInvalidResponse, upgradeSubscription, type PriceChange, type StripeContext, type StripeFailure } from "../providers/stripe.vibe"
+import { dispatchOnce, receiptOwner, receiptStatusAt, renderProviderKey, replyOf, requestDigest, resolveUnknown, staleAt, type LookupResult, type ProviderReply, type SessionOwner } from "../shared/dispatch-once.vibe"
+import { newId } from "../shared/sealing.vibe"
+import { Store, toText, type Tx } from "../store/connection.vibe"
+import { loadRow, stepRow, type MachineRows } from "../store/rows.vibe"
+import { adjustForUpgrade } from "./allowance.vibe"
+import { commandIdOf, idempotencyKeyPattern, providerTimeout } from "./commands.vibe"
+import { parsePlanKey, wirePlanKey, type PlanKey, type WirePlanKey } from "./plans.vibe"
+import { claimLiveCommand, observeSubscription, readSubscription, reconcileSubscription, releaseLiveCommand, scheduleDowngrade } from "./subscriptions.vibe"
+
+export type PlanChangeKind = "upgrade" | "downgrade"
+export type PlanChangeStatus = "dispatched" | "unknown" | "awaiting_payment" | "succeeded" | "rejected"
+
+export interface PlanChangeView {
+  readonly commandId: string
+  readonly kind: PlanChangeKind
+  readonly subscriptionId: string
+  readonly status: PlanChangeStatus
+  readonly expectedRevision: number
+  readonly resultRevision: number | null
+  readonly createdAt: number
+}
+
+export interface PlanChangeReview {
+  readonly quoteId: string
+  readonly review: {
+    readonly kind: "upgrade_estimate" | "downgrade_estimate"
+    readonly targetPlanKey: WirePlanKey
+    readonly dueNow: { readonly amountDueCents: number }
+    readonly recurringEstimate: { readonly amountDueCents: number }
+    readonly effectiveAt: number
+    readonly expiresAt: number
+  }
+}
+
+interface Change {
+  readonly wire: PlanChangeKind
+  readonly kind: "UpgradeCommand" | "DowngradeCommand"
+  readonly providerKind: "SubscriptionUpdate" | "SubscriptionSchedule"
+  readonly estimate: PlanChangeReview["review"]["kind"]
+}
+
+interface Sent {
+  readonly event: Event
+  readonly by: SessionOwner
+  readonly now: number
+}
+
+interface Found {
+  readonly key: string
+  readonly command: Command
+  readonly invoiceId: string | null
+}
+
+interface Seen {
+  readonly lookup: LookupResult
+  readonly invoiceId: string | null
+}
+
+const upgrade: Change = { wire: "upgrade", kind: "UpgradeCommand", providerKind: "SubscriptionUpdate", estimate: "upgrade_estimate" }
+const downgrade: Change = { wire: "downgrade", kind: "DowngradeCommand", providerKind: "SubscriptionSchedule", estimate: "downgrade_estimate" }
+
+const quoteIdPattern = /^quo_[0-9a-f]{32}$/
+
+effect function applyAt(command: Command, sent: Sent): CommandStep!Rejected {
+  const current = sent.now > nowOf(command) ? (try apply(command, { type: "elapse", elapsed: sent.now - nowOf(command) }, sent.by)).state : command
+  return try apply(current, sent.event, sent.by)
+}
+
+export const planChangeRows: MachineRows<Command, Sent, CommandStep, Rejected, NotAState> = { table: "quotes", initial, decodeState, apply: applyAt, next: (step) => step.state }
+
+effect function stepPlan(tx: Tx, key: string, organizationId: string, sent: Sent) {
+  return (try stepRow(tx, planChangeRows, key, sent, (command) => ({
+    organization_id: organizationId,
+    command_kind: command.kind === "UpgradeCommand" ? "upgrade" : "downgrade",
+    target_plan_key: wirePlanKey(command.quote.targetPlanKey),
+    proration_date: command.quote.effectiveAt,
+    due_now_cents: command.quote.dueNowCents,
+    recurring_cents: command.quote.recurringCents,
+    adjustment_micros: command.quote.adjustment,
+    expires_at: command.quote.expiresAt,
+    command_id: command.commandId === "" ? null : command.commandId,
+    created_at: command.createdAt === 0 ? command.quote.reviewedAt : command.createdAt,
+    updated_at: sent.now
+  }))).out
+}
+
+effect function rowOf(tx: Tx, organizationId: string, commandId: string, lock: boolean) {
+  const row = (try tx.query("SELECT key, organization_id, invoice_id FROM quotes WHERE command_id = $1", [commandId]))[0]
+  if (row === undefined || toText(row.organization_id) !== organizationId) return undefined
+  const key = toText(row.key) ?? ""
+  const found: Found = { key, command: (try loadRow(tx, planChangeRows, key, lock)).state, invoiceId: toText(row.invoice_id) ?? null }
+  return found
+}
+
+effect function lockOrganization(tx: Tx, organizationId: string) {
+  try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId])
+}
+
+effect function perform(tx: Tx, organizationId: string, effects: ReadonlyArray<CommandEffect>, now: number) {
+  for (const item of effects) {
+    switch (item.tag) {
+      case "ClaimSlot":
+        try claimLiveCommand(tx, organizationId, item.kind, item.commandId, item.expectedRevision, now)
+        break
+      case "ReleaseSlot":
+        try releaseLiveCommand(tx, organizationId, item.commandId, now)
+        break
+      case "ScheduleDowngrade":
+        try scheduleDowngrade(tx, organizationId, item.commandId, item.planKey, now)
+        break
+      case "AdjustAllowance":
+        try adjustForUpgrade(tx, organizationId, item.planKey, item.effectiveAt, item.reviewed, now)
+        break
+      default: {
+        const _exhaustive: never = item
+        return _exhaustive
+      }
+    }
+  }
+}
+
+effect function priceOf(planKey: PlanKey) {
+  const billing = (try Deployment).settings.billing
+  const wire = wirePlanKey(planKey)
+  if (billing === undefined || wire === "free") throw refused("BillingStateConflict")
+  return billing.plans[wire].priceId
+}
+
+effect function priceChange(subscriptionId: string, priceId: string, timeout: number): PriceChange!StripeFailure!StripeContext {
+  const seen = try retrieveSubscription(subscriptionId, { timeout })
+  const item = seen.items.data.length === 1 ? seen.items.data[0] : undefined
+  if (item === undefined) throw new StripeInvalidResponse({ path: `/v1/subscriptions/${subscriptionId}`, status: 200 })
+  return { subscriptionId, itemId: item.id, priceId }
+}
+
+effect function upgradeDue(subscription: Subscription, target: PlanKey, now: number) {
+  if (subscription.customer.tag !== "PinnedCustomer") throw refused("BillingStateConflict")
+  const customerId = subscription.customer.customerId
+  const priceId = try priceOf(target)
+  const reply = try providerReply(effect {
+    const change = try priceChange(subscription.subscriptionId, priceId, providerTimeout)
+    return try previewUpgrade(customerId, change, now, { timeout: providerTimeout })
+  })
+  if (reply.kind !== "applied" || reply.value.currency !== "usd") throw refused("ProviderUnavailable", "NoReason", now + 5_000)
+  return reply.value.amount_due
+}
+
+effect function sendChange(command: Command, prices: { readonly source: string; readonly target: string }, idempotencyKey: string, timeout: number): (string | null)!StripeFailure!StripeContext {
+  if (command.kind === "UpgradeCommand") {
+    const change = try priceChange(command.subscriptionId, prices.target, timeout)
+    return (try upgradeSubscription(change, command.quote.reviewedAt, { idempotencyKey, timeout })).latest_invoice
+  }
+  try schedulePrice({ subscriptionId: command.subscriptionId, currentPriceId: prices.source, priceId: prices.target, periodStart: command.quote.periodStart, periodEnd: command.quote.periodEnd }, { idempotencyKey, timeout })
+  return null
+}
+
+effect function lookupChange(command: Command, targetPriceId: string): ProviderReply<Seen>!!StripeContext {
+  const reply = try providerReply(effect {
+    const seen = try retrieveSubscription(command.subscriptionId, { timeout: providerTimeout })
+    if (command.kind === "UpgradeCommand") {
+      const moved = seen.items.data.some((item) => item.price.id === targetPriceId) || (seen.pending_update ?? null) !== null
+      const found: Seen = { lookup: moved ? { tag: "EffectSeen" } : { tag: "NothingSeen" }, invoiceId: moved ? seen.latest_invoice : null }
+      return found
+    }
+    const scheduleId = seen.schedule ?? null
+    const schedule = scheduleId === null ? undefined : try retrieveSubscriptionSchedule(scheduleId, { timeout: providerTimeout })
+    const scheduled = schedule !== undefined && schedule.phases.some((phase) => phase.items.some((item) => item.price === targetPriceId))
+    const found: Seen = { lookup: scheduled ? { tag: "EffectSeen" } : { tag: "NothingSeen" }, invoiceId: null }
+    return found
+  })
+  if (reply.kind === "refused" && reply.code === "NotFoundAtProvider") return { kind: "applied", value: { lookup: { tag: "RefusalSeen", cause: "NotFoundAtProvider" }, invoiceId: null } }
+  return reply
+}
+
+effect function upgradeInvoice(invoiceId: string): (UpgradeInvoice | undefined)!!StripeContext {
+  const reply = try providerReply(retrieveInvoice(invoiceId, { timeout: providerTimeout }))
+  if (reply.kind !== "applied") return undefined
+  switch (reply.value.status) {
+    case "paid": return "UpgradeInvoicePaid"
+    case "void":
+    case "uncollectible": return "UpgradeInvoiceVoided"
+    case "draft":
+    case "open":
+    case null: return "UpgradeInvoiceOpen"
+    default: {
+      const _exhaustive: never = reply.value.status
+      return _exhaustive
+    }
+  }
+}
+
+effect function record(store: Store.Shape, organizationId: string, key: string, by: SessionOwner, event: Event, invoiceId: string | null, now: number) {
+  store.transaction(effect (tx: Tx) => {
+    try stepPlan(tx, key, organizationId, { event, by, now })
+    if (invoiceId !== null) try tx.query("UPDATE quotes SET invoice_id = $2 WHERE key = $1", [key, invoiceId])
+  }) catch effect (failure) => match (failure) {
+    when Rejected: undefined;
+    default: throw failure;
+  }
+}
+
+effect function finishChange(organizationId: string, commandId: string) {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const found = try store.transaction((tx) => rowOf(tx, organizationId, commandId, false))
+  if (found === undefined || isFinished(found.command)) return
+  const invoice = awaitsInvoice(found.command)
+    ? found.invoiceId === null ? undefined : try upgradeInvoice(found.invoiceId)
+    : "NoUpgradeInvoice"
+  if (invoice === undefined) {
+    try annotateLogs(logWarning("a confirmed upgrade's invoice could not be read yet"), { commandId })
+    return
+  }
+  store.transaction(effect (tx: Tx) => {
+    try lockOrganization(tx, organizationId)
+    const command = (try loadRow(tx, planChangeRows, found.key, true)).state
+    const resultRevision = outcomeOf(command, invoice) === "Applied" ? (try reconcileSubscription(tx, organizationId, try observeSubscription(tx, organizationId), now)).revision : 0
+    const finished = try stepPlan(tx, found.key, organizationId, { event: { type: "finish", invoice, resultRevision }, by: command.receipt.session.owner, now })
+    try perform(tx, organizationId, finished.out, now)
+  }) catch effect (failure) => match (failure) {
+    when Rejected: undefined;
+    default: throw failure;
+  }
+}
+
+effect function settle(organizationId: string, commandId: string) {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const found = try store.transaction((tx) => rowOf(tx, organizationId, commandId, false))
+  if (found === undefined) return
+  if (receiptStatusAt(found.command.receipt, now) === "StatusUnknown") {
+    const targetPriceId = try priceOf(found.command.quote.targetPlanKey)
+    try resolveUnknown({
+      lookup: lookupChange(found.command, targetPriceId),
+      record: (seen: ProviderReply<Seen>, at: number) => seen.kind === "applied"
+        ? record(store, organizationId, found.key, found.command.receipt.session.owner, { type: "resolve", lookup: seen.value.lookup }, seen.value.invoiceId, at)
+        : Effect.void
+    })
+  }
+  try finishChange(organizationId, commandId)
+}
+
+function wireStatus(status: CommandStatus): PlanChangeStatus | undefined {
+  switch (status) {
+    case "NotListed": return undefined
+    case "ShowDispatched": return "dispatched"
+    case "ShowUnknown": return "unknown"
+    case "ShowAwaitingPayment": return "awaiting_payment"
+    case "ShowSucceeded": return "succeeded"
+    case "ShowRejected": return "rejected"
+    default: {
+      const _exhaustive: never = status
+      return _exhaustive
+    }
+  }
+}
+
+export effect function readPlanChange(organizationId: string, commandId: string, kind: PlanChangeKind) {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const found = try store.transaction((tx) => rowOf(tx, organizationId, commandId, false))
+  const command = found === undefined ? initial : found.command
+  const status = wireStatus(commandStatus(now > nowOf(command) ? elapse(command, now - nowOf(command)) : command))
+  if (found === undefined || status === undefined || command.kind !== (kind === "upgrade" ? upgrade : downgrade).kind) throw refused("NotFound")
+  const view: PlanChangeView = {
+    commandId,
+    kind,
+    subscriptionId: command.subscriptionId,
+    status,
+    expectedRevision: command.expectedRevision,
+    resultRevision: command.resultRevision === 0 ? null : command.resultRevision,
+    createdAt: command.createdAt
+  }
+  return view
+}
+
+effect function signedOwner(context: RouteContext) {
+  const signed = owner(context.caller)
+  if (signed === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  return signed
+}
+
+schema ReviewBody { subscriptionId: string; expectedSubscriptionRevision: number; targetPlanKey: string }
+schema ConfirmBody { quoteId: string; idempotencyKey: string }
+
+effect function current(subscription: Subscription, subscriptionId: string, expectedRevision: number) {
+  if (subscription.subscriptionId !== subscriptionId) throw refused("BillingStateConflict")
+  if (subscription.revision !== expectedRevision) throw refused("StaleRevision")
+}
+
+effect function reviewPlanChange(change: Change, context: RouteContext) {
+  const signed = try signedOwner(context)
+  const body = try jsonBody(context, ReviewBody)
+  const target = parsePlanKey(body.targetPlanKey)
+  if (target === undefined || !Number.isSafeInteger(body.expectedSubscriptionRevision)) throw refused("InvalidRequest")
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const subscription = try store.transaction((tx) => readSubscription(tx, signed.organizationId))
+  try current(subscription, body.subscriptionId, body.expectedSubscriptionRevision)
+  if (!reviewFits(subscription, change.kind, target, 0)) throw refused("BillingStateConflict")
+  const dueNowCents = change.kind === "UpgradeCommand" ? try upgradeDue(subscription, target, now) : 0
+  const quoteId = `quo_${newId().replaceAll("-", "")}`
+  const by = receiptOwner(signed.organizationId, signed.userId, change.providerKind)
+  const reviewed = store.transaction(effect (tx: Tx) => {
+    try lockOrganization(tx, signed.organizationId)
+    const fresh = try readSubscription(tx, signed.organizationId)
+    try current(fresh, body.subscriptionId, body.expectedSubscriptionRevision)
+    try tx.query("DELETE FROM quotes WHERE organization_id = $1 AND command_id IS NULL", [signed.organizationId])
+    return try stepPlan(tx, quoteId, signed.organizationId, { event: { type: "review", sub: fresh, kind: change.kind, targetPlanKey: target, quoteId, dueNowCents, freshOwner: true }, by, now })
+  }) catch effect (failure) => match (failure) {
+    when Rejected: throw refused("BillingStateConflict");
+    default: throw failure;
+  }
+  const quote = reviewed.state.quote
+  const answer: PlanChangeReview = {
+    quoteId,
+    review: {
+      kind: change.estimate,
+      targetPlanKey: wirePlanKey(quote.targetPlanKey),
+      dueNow: { amountDueCents: quote.dueNowCents },
+      recurringEstimate: { amountDueCents: quote.recurringCents },
+      effectiveAt: quote.effectiveAt,
+      expiresAt: quote.expiresAt
+    }
+  }
+  return json(answer)
+}
+
+effect function confirmPlanChange(change: Change, context: RouteContext) {
+  const signed = try signedOwner(context)
+  const body = try jsonBody(context, ConfirmBody)
+  if (!idempotencyKeyPattern.test(body.idempotencyKey) || !quoteIdPattern.test(body.quoteId)) throw refused("InvalidRequest")
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const commandId = commandIdOf(signed.organizationId, signed.userId, body.idempotencyKey)
+  const by = receiptOwner(signed.organizationId, signed.userId, change.providerKind)
+  const digest = requestDigest({ kind: change.kind, quoteId: body.quoteId })
+  const started = store.transaction(effect (tx: Tx) => {
+    try lockOrganization(tx, signed.organizationId)
+    const replayed = try rowOf(tx, signed.organizationId, commandId, true)
+    if (replayed !== undefined) {
+      if (replayed.key !== body.quoteId || replayed.command.kind !== change.kind) throw refused("IdempotencyConflict")
+      return false
+    }
+    const quote = (try tx.query("SELECT organization_id, command_kind FROM quotes WHERE key = $1 FOR UPDATE", [body.quoteId]))[0]
+    if (quote === undefined || toText(quote.organization_id) !== signed.organizationId || quote.command_kind !== change.wire) throw refused("NotFound")
+    const subscription = try readSubscription(tx, signed.organizationId)
+    const reviewed = (try loadRow(tx, planChangeRows, body.quoteId, true)).state
+    if (subscription.revision !== reviewed.expectedRevision) throw refused("StaleRevision")
+    const confirmed = try stepPlan(tx, body.quoteId, signed.organizationId, {
+      event: { type: "confirm", sub: subscription, kind: change.kind, commandId, quoteId: body.quoteId, expectedRevision: reviewed.expectedRevision, digest, freshOwner: true },
+      by,
+      now
+    })
+    try perform(tx, signed.organizationId, confirmed.out, now)
+    try stepPlan(tx, body.quoteId, signed.organizationId, { event: { type: "send", claimToken: confirmed.state.receipt.session.currentClaim }, by, now })
+    return true
+  }) catch effect (failure) => match (failure) {
+    when Rejected: throw refused("BillingStateConflict");
+    default: throw failure;
+  }
+  if (started) {
+    const command = (try store.transaction((tx) => loadRow(tx, planChangeRows, body.quoteId, false))).state
+    const prices = { source: try priceOf(command.quote.sourcePlanKey), target: try priceOf(command.quote.targetPlanKey) }
+    try dispatchOnce({
+      claim: Effect.void,
+      send: providerReply(sendChange(command, prices, renderProviderKey(command.receipt.providerKey), Math.max(1, staleAt(command.receipt) - now))),
+      record: (reply: ProviderReply<string | null>, at: number) => record(store, signed.organizationId, body.quoteId, by, { type: "receiveReply", reply: replyOf(reply) }, reply.kind === "applied" ? reply.value : null, at)
+    })
+  }
+  try settle(signed.organizationId, commandId)
+  return json(try readPlanChange(signed.organizationId, commandId, change.wire))
+}
+
+effect function planChangeStatus(change: Change, context: RouteContext) {
+  const signed = try signedOwner(context)
+  const commandId = context.params.commandId ?? ""
+  try readPlanChange(signed.organizationId, commandId, change.wire)
+  try settle(signed.organizationId, commandId)
+  return json(try readPlanChange(signed.organizationId, commandId, change.wire))
+}
+
+effect function continuePayment(context: RouteContext) {
+  const signed = try signedOwner(context)
+  const commandId = context.params.commandId ?? ""
+  try readPlanChange(signed.organizationId, commandId, "upgrade")
+  try settle(signed.organizationId, commandId)
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const found = try store.transaction((tx) => rowOf(tx, signed.organizationId, commandId, false))
+  if (found === undefined || !mayContinuePayment(found.command, true) || found.invoiceId === null) throw refused("BillingStateConflict")
+  const reply = try providerReply(retrieveInvoice(found.invoiceId, { timeout: providerTimeout }))
+  if (reply.kind !== "applied") throw refused("ProviderUnavailable", "NoReason", now + 5_000)
+  const url = reply.value.hosted_invoice_url ?? null
+  if (reply.value.status !== "open" || url === null || !url.startsWith("https://invoice.stripe.com/")) throw refused("BillingStateConflict")
+  return json({ url })
+}
+
+export effect function sweepPlanChanges(): number!!CloudContext {
+  const store = try Store
+  const live = store.transaction((tx) => tx.query(
+    "SELECT organization_id, command_id FROM quotes WHERE command_id IS NOT NULL AND state->>'phase' IN ('Running', 'AwaitingPayment') ORDER BY created_at LIMIT 100",
+    []
+  )) catch () => []
+  let settled = 0
+  for (const row of live) {
+    const commandId = toText(row.command_id) ?? ""
+    const done = settle(toText(row.organization_id) ?? "", commandId) catch effect (failure) => {
+      try annotateLogs(logWarning("a plan change could not be settled yet"), { commandId, failure: failure._tag })
+      return false
+    }
+    if (done !== false) settled += 1
+  }
+  return settled
+}
+
+const fresh = { auth: "FreshSession", capability: "billing", rateClass: "StandardRequests" } as const
+
+export const routes: ReadonlyArray<Route> = [
+  { method: "POST", path: "/api/v1/subscriptions/upgrade/review", ...fresh, handler: (context) => reviewPlanChange(upgrade, context) },
+  { method: "POST", path: "/api/v1/subscriptions/upgrade/confirm", ...fresh, handler: (context) => confirmPlanChange(upgrade, context) },
+  { method: "POST", path: "/api/v1/subscriptions/upgrade/:commandId/payment", ...fresh, handler: continuePayment },
+  { method: "GET", path: "/api/v1/subscriptions/upgrade/:commandId", ...fresh, handler: (context) => planChangeStatus(upgrade, context) },
+  { method: "POST", path: "/api/v1/subscriptions/downgrade/review", ...fresh, handler: (context) => reviewPlanChange(downgrade, context) },
+  { method: "POST", path: "/api/v1/subscriptions/downgrade/confirm", ...fresh, handler: (context) => confirmPlanChange(downgrade, context) },
+  { method: "GET", path: "/api/v1/subscriptions/downgrade/:commandId", ...fresh, handler: (context) => planChangeStatus(downgrade, context) }
+]
+
+export const sweeps: ReadonlyArray<Sweep> = [{ name: "plan changes", everyMs: 60_000, run: sweepPlanChanges() }]

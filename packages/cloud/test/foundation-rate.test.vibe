@@ -2,9 +2,8 @@
 import { assert, describe, it } from "@effect/vitest"
 import { refusalBody, refusalResponse, type Refusal } from "../src/http/refusal.vibe"
 import { admit, admitAll, minute, perWindow, readWindow, windowEndOf } from "../src/shared/rate-limit.vibe"
-import { Store, StoreFailure, type Tx } from "../src/store/store.vibe"
+import { Store, StoreFailure, migrate, storeLayer, type Tx } from "../src/store/store.vibe"
 import { manualClock, type ManualClock } from "./support/clock.ts"
-import { testCloud } from "./support/cloud.vibe"
 
 effect function clockAt(at: number) {
   const time = try Effect.orDie(Effect.try(() => manualClock()))
@@ -14,6 +13,15 @@ effect function clockAt(at: number) {
 
 effect function setClock(time: ManualClock, at: number) {
   try Effect.orDie(Effect.try(() => time.set(at)))
+}
+
+effect function migratedStore() {
+  const built = try Layer.build(storeLayer({ kind: "pglite", file: undefined }))
+  const store = Context.get(built, Store)
+  provide Store = store {
+    try migrate({ digest: "0".repeat(64), environment: "staging", now: 0 })
+  }
+  return store
 }
 
 effect function check(run: () => void) {
@@ -33,12 +41,12 @@ const brokenStore: Store.Shape = {
 
 describe("WP0 Foundation: rate limits", () => {
   it.live("Refuse excess requests with a usable retry time (spec/cloud/shared/rateLimit.md, \"Story: Refuse excess requests with a usable retry time\")", () => scoped(effect {
-    const cloud = try testCloud()
+    const store = try migratedStore()
     const hour = 60 * minute
     const start = 1_000 * 2 * hour + 1_000
     const clock = try clockAt(start)
     const end = windowEndOf(start, hour)
-    provide Store = cloud.store, Clock.Clock = clock.clock {
+    provide Store = store, Clock.Clock = clock.clock {
       const limit = { subject: "203.0.113.7", scope: "journeyPerIp", limit: 2, widthMs: hour }
       const first = admit(limit) catch (failure) => failure.refusal
       const second = admit(limit) catch (failure) => failure.refusal

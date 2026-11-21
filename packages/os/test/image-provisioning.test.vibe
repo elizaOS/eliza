@@ -1,0 +1,356 @@
+// spec/os/image/provisioning.md, "Story: Make my launcher Home on first boot"; spec/os/image/provisioning.md, "Story: Keep my launcher eligible for the phone and messages roles without assigning them"; spec/os/image/provisioning.md, "Story: Keep image-only features honest"; spec/os/image/provisioning.md, "Story: Start voice from the power button only on a listener image"; spec/os/image/provisioning.md, "Story: Leave the lock screen, alarms and secure capture to the system"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import type { ProvisioningRequest } from "../gen/os__image__provisioning.effect.vibe"
+import { aaptManifestTree } from "../src/image/apk.vibe"
+import {
+  IMAGE_FEATURE_VERSION,
+  imageFeatureName,
+  listenerStagingOf,
+  provisioningComponents,
+  requireClockProduct,
+  verifySecureCameraSource,
+  writeImageCapability,
+  writeImageProvisioningOverlay,
+  writeListenerActivation,
+  writeProvisioningOverlay,
+  writeSecureCameraOverlay,
+} from "../src/image/provisioning.vibe"
+import { androidTools, buildApk, testSigner } from "./support/android-tools.ts"
+import { commitTree, git, readTree, scratch, writeTree } from "./support/scratch.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+
+  export const PACKAGE = "example.launcher"
+  const NS = `xmlns:android="http://schemas.android.com/apk/res/android"`
+  const DEFAULT = "android.intent.category.DEFAULT"
+
+  /** @throws {never} */
+  export const sha256 = (text: string) => createHash("sha256").update(text).digest("hex")
+
+  /** @throws {never} */
+  export function launcher(components: readonly string[], permissions: readonly string[] = []): string {
+    return `<?xml version="1.0" encoding="utf-8"?>
+<manifest ${NS} package="${PACKAGE}" android:versionCode="1" android:versionName="1">
+${permissions.map((name) => `  <uses-permission android:name="${name}" />\n`).join("")}  <application android:label="Launcher">
+${components.join("\n")}
+  </application>
+</manifest>
+`
+  }
+
+  /** @throws {never} */
+  function filter(action: string, categories: readonly string[], data = ""): string {
+    return `      <intent-filter>\n        <action android:name="${action}" />\n${categories.map((name) => `        <category android:name="${name}" />\n`).join("")}${data}      </intent-filter>\n`
+  }
+
+  /** @throws {never} */
+  export function home(name = ".HomeActivity", extra = ""): string {
+    return `    <activity android:name="${name}" android:exported="true"${extra}>\n${filter("android.intent.action.MAIN", ["android.intent.category.HOME", DEFAULT])}${filter("android.intent.action.MAIN", ["android.intent.category.LAUNCHER"])}    </activity>`
+  }
+
+  /** @throws {never} */
+  export function assist(enabled: boolean, power = ""): string {
+    const meta = power === "" ? "" : `      <meta-data android:name="ai.eliza.os.POWER_VOICE_ACTIVITY" android:value="${power}" />\n`
+    return `    <activity android:name=".AssistActivity" android:exported="true" android:enabled="${enabled}">\n${filter("android.intent.action.ASSIST", [DEFAULT])}${meta}    </activity>`
+  }
+
+  /** @throws {never} */
+  export function powerChild(permission: string): string {
+    return `    <activity android:name=".PowerVoiceActivity" android:exported="true" android:enabled="false"${permission === "" ? "" : ` android:permission="${permission}"`} />`
+  }
+
+  /** @throws {never} */
+  export function autofill(permission: string): string {
+    return `    <service android:name=".FillService" android:exported="true"${permission === "" ? "" : ` android:permission="${permission}"`}>\n${filter("android.service.autofill.AutofillService", [])}    </service>`
+  }
+
+  export const LOCKED_ACTIVITY = `    <activity android:name=".LockedActivity" android:exported="false" android:showWhenLocked="true" />`
+
+  /** @throws {never} */
+  export function telephony(enabled: boolean, carMode: boolean): string[] {
+    const state = `android:enabled="${enabled}"`
+    const car = carMode ? `      <meta-data android:name="android.telecom.IN_CALL_SERVICE_CAR_MODE_UI" android:value="true" />\n` : ""
+    return [
+      `    <service android:name=".InCall" android:exported="true" ${state} android:permission="android.permission.BIND_INCALL_SERVICE">\n${filter("android.telecom.InCallService", [])}      <meta-data android:name="android.telecom.IN_CALL_SERVICE_UI" android:value="true" />\n${car}    </service>`,
+      `    <activity android:name=".Dial" android:exported="true" ${state}>\n${filter("android.intent.action.DIAL", [DEFAULT])}${filter("android.intent.action.DIAL", [DEFAULT], `        <data android:scheme="tel" />\n`)}    </activity>`,
+      `    <receiver android:name=".SmsDeliver" android:exported="true" ${state} android:permission="android.permission.BROADCAST_SMS">\n${filter("android.provider.Telephony.SMS_DELIVER", [])}    </receiver>`,
+      `    <receiver android:name=".MmsDeliver" android:exported="true" ${state} android:permission="android.permission.BROADCAST_WAP_PUSH">\n${filter("android.provider.Telephony.WAP_PUSH_DELIVER", [], `        <data android:mimeType="application/vnd.wap.mms-message" />\n`)}    </receiver>`,
+      `    <service android:name=".RespondViaSms" android:exported="true" ${state} android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE">\n${filter("android.intent.action.RESPOND_VIA_MESSAGE", [DEFAULT], `        <data android:scheme="smsto" />\n`)}    </service>`,
+      `    <activity android:name=".Compose" android:exported="true" ${state}>\n${filter("android.intent.action.SENDTO", [DEFAULT], `        <data android:scheme="smsto" />\n`)}    </activity>`,
+      `    <provider android:name=".MmsProvider" android:authorities="${PACKAGE}.mms" android:exported="false" ${state} android:grantUriPermissions="true" />`,
+    ]
+  }
+
+  /** @throws {never} */
+  export function hostValues(defaultValue: string, policy: string): string {
+    return `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <bool name="aosp_image_capability">${defaultValue}</bool>
+  <overlayable name="ImageProvisioning">
+    <policy type="${policy}">
+      <item type="bool" name="aosp_image_capability" />
+    </policy>
+  </overlayable>
+</resources>
+`
+  }
+}
+import { LOCKED_ACTIVITY, PACKAGE, assist, autofill, home, hostValues, launcher, powerChild, sha256, telephony } from node
+
+const tools = androidTools()
+const skipped = tools.kind === "missing" ? tools.reason : null
+const suffix = skipped === null ? "" : ` (skipped: ${skipped})`
+const AUTOFILL = "android.permission.BIND_AUTOFILL_SERVICE"
+const ALL_FILES = "android.permission.MANAGE_EXTERNAL_STORAGE"
+const STATUS_BAR = "android.permission.STATUS_BAR_SERVICE"
+const LONG_PRESS = `<resources><integer name="config_longPressOnPowerBehavior">5</integer></resources>`
+
+function request(overrides: Partial<ProvisioningRequest> = {}): ProvisioningRequest {
+  return { assistant: { tag: "NoAssistant" }, requires: { autofill: false, allFilesAccess: false }, telephonyRoles: false, lockScreen: "LauncherMayUseLockScreen", ...overrides }
+}
+
+effect function kit(prefix: string) {
+  if (tools.kind === "missing") return undefined
+  const path = try Path.Path
+  const work = try scratch(prefix)
+  const signer = try Effect.try(() => testSigner(tools, work, "launcher"))
+  const tree = (name: string, manifest: string) => effect {
+    const built = try Effect.try(() => buildApk(tools, { directory: path.join(work, "apks"), manifest, signer, name }))
+    return try aaptManifestTree(built.apk, { aapt: tools.aapt })
+  }
+  const product = (name: string, makefile = "PRODUCT_PACKAGES += ExampleHome\n") => effect {
+    const output = path.join(work, "products", name)
+    try writeTree(output, { "product.mk": makefile })
+    return output
+  }
+  return { work, tree, product }
+}
+
+effect function refusal(tree: string, provisioning: ProvisioningRequest) {
+  return (provisioningComponents(tree, PACKAGE, provisioning) |> map(%, () => "admitted")) catch (error) => error._tag === "ProvisioningNotAdmitted" ? error.problem.tag : error._tag
+}
+
+effect function overlayVerdict(output: string, mode: "StageProduction" | "StageDevelopment", values: string) {
+  return (writeImageProvisioningOverlay(output, PACKAGE, { mode, hostValues: values }) |> map(%, () => "written")) catch (error) => error._tag === "ImageOverlayRefused" ? error.problem : error._tag
+}
+
+effect function stagedFile(output: string, file: string) {
+  const tree = try readTree(output)
+  return tree[file] ?? ""
+}
+
+it.effect.skipIf(skipped !== null)(`Admit a built launcher for first boot, write Home, the assistant and Autofill defaults once, and refuse what the product cannot back${suffix} (spec/os/image/provisioning.md, "Story: Make my launcher Home on first boot"; spec/os/image/provisioning.md, "First-boot defaults name only components the APK declares once and exports, the assistant only when the product takes it, and only once the product's requirements hold")`, effect () => {
+  provide NodeServices.layer {
+    const k = try kit("image-provisioning-home")
+    if (k === undefined) return
+    const path = try Path.Path
+    const plain = try k.tree("plain", launcher([home(), assist(false), autofill(AUTOFILL)], [ALL_FILES]))
+    const admitted = try provisioningComponents(plain, PACKAGE, request({ requires: { autofill: true, allFilesAccess: true } }))
+    assert.deepStrictEqual(admitted, { tag: "ProvisioningAdmitted", home: `${PACKAGE}.HomeActivity`, assistant: { tag: "NoDefault" }, autofill: { tag: "DefaultOf", name: `${PACKAGE}.FillService` }, overrides: [] })
+
+    const output = try k.product("home")
+    assert.deepStrictEqual((try writeProvisioningOverlay(output, PACKAGE, admitted)).sort(), ["provisioning/overlay/frameworks/base/core/res/res/values/config.xml", "provisioning/preferred-apps/launcher-home.xml"])
+    const staged = try readTree(output)
+    const preferred = staged["provisioning/preferred-apps/launcher-home.xml"] ?? ""
+    assert.include(preferred, `<item name="${PACKAGE}/${PACKAGE}.HomeActivity" match="100000" set="1">`)
+    const config = staged["provisioning/overlay/frameworks/base/core/res/res/values/config.xml"] ?? ""
+    assert.include(config, `<string name="config_defaultAutofillService" translatable="false">${PACKAGE}/${PACKAGE}.FillService</string>`)
+    assert.notInclude(config, "config_defaultAssistant")
+    const makefile = staged["product.mk"] ?? ""
+    assert.isTrue(makefile.startsWith("PRODUCT_PACKAGES += ExampleHome\n"), "the product's own lines are kept")
+    assert.include(makefile, "PRODUCT_PACKAGE_OVERLAYS += $(launcher_provisioning_dir)/overlay\n")
+    assert.include(makefile, "PRODUCT_COPY_FILES += $(launcher_provisioning_dir)/preferred-apps/launcher-home.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/preferred-apps/launcher-home.xml\n")
+    assert.notMatch(makefile, /PRODUCT_PACKAGES\s*-=|LOCAL_OVERRIDES_PACKAGES|Launcher3/, "nothing removes the stock launcher")
+    const again = (writeProvisioningOverlay(output, PACKAGE, admitted) |> map(%, () => "written")) catch (error) => error._tag
+    assert.notStrictEqual(again, "written", "a staged file is never overwritten")
+    assert.strictEqual(try stagedFile(output, "provisioning/preferred-apps/launcher-home.xml"), preferred)
+
+    const enabledAssist = try k.tree("enabled-assist", launcher([home(), assist(true), autofill(AUTOFILL)], [ALL_FILES]))
+    assert.strictEqual(try refusal(enabledAssist, request()), "EnabledAssistWithoutRole")
+    const asAssistant = try provisioningComponents(enabledAssist, PACKAGE, request({ assistant: { tag: "LauncherAssistant" } }))
+    assert.deepStrictEqual(asAssistant.assistant, { tag: "DefaultOf", name: `${PACKAGE}.AssistActivity` })
+    const assistantOutput = try k.product("assistant")
+    try writeProvisioningOverlay(assistantOutput, PACKAGE, asAssistant)
+    assert.include(try stagedFile(assistantOutput, "provisioning/overlay/frameworks/base/core/res/res/values/config.xml"), `<string name="config_defaultAssistant" translatable="false">${PACKAGE}</string>`)
+
+    assert.strictEqual(try refusal(try k.tree("unprotected-fill", launcher([home(), autofill("")])), request()), "AutofillUnprotected")
+    assert.strictEqual(try refusal(try k.tree("two-homes", launcher([home(), home(".SecondHome")])), request()), "HomeNotExactlyOne")
+    const bare = try k.tree("bare", launcher([home()]))
+    assert.strictEqual(try refusal(bare, request({ assistant: { tag: "LauncherAssistant" } })), "AssistNotExactlyOne")
+    assert.strictEqual(try refusal(bare, request({ requires: { autofill: true, allFilesAccess: false } })), "AutofillMissing")
+    assert.strictEqual(try refusal(bare, request({ requires: { autofill: false, allFilesAccess: true } })), "AllFilesAccessMissing")
+    assert.strictEqual(try refusal(bare, request()), "admitted")
+    const foreign = (provisioningComponents(bare, "example.other", request()) |> map(%, () => "admitted")) catch (error) => error._tag
+    assert.strictEqual(foreign, "LauncherManifestUnread")
+    const missing = (writeProvisioningOverlay(path.join(k.work, "no-product"), PACKAGE, admitted) |> map(%, () => "written")) catch (error) => error._tag
+    assert.strictEqual(missing, "ProductMakefileMissing")
+  }
+}, 240_000)
+
+it.effect.skipIf(skipped !== null)(`Enable the launcher's disabled phone and messages handlers by component override without naming a role holder, and refuse an enabled, car-mode or missing handler${suffix} (spec/os/image/provisioning.md, "Story: Keep my launcher eligible for the phone and messages roles without assigning them"; spec/os/image/provisioning.md, "Role overrides enable each required handler, found once and disabled in the APK with its exact protection, and assign no role"; spec/os/image/provisioning.md, "An image declares Home, the assistant when the product takes it, and the dialer and SMS app when it declares telephony roles, each backed by an admitted component")`, effect () => {
+  provide NodeServices.layer {
+    const k = try kit("image-provisioning-roles")
+    if (k === undefined) return
+    const roles = request({ telephonyRoles: true })
+    const fit = try k.tree("roles", launcher([home(), ...telephony(false, false)]))
+    const admitted = try provisioningComponents(fit, PACKAGE, roles)
+    const handlers = ["InCall", "Dial", "SmsDeliver", "MmsDeliver", "RespondViaSms", "Compose", "MmsProvider"].map((name) => `${PACKAGE}.${name}`)
+    assert.deepStrictEqual(admitted.overrides, handlers)
+    const output = try k.product("roles")
+    assert.include(try writeProvisioningOverlay(output, PACKAGE, admitted), `provisioning/sysconfig/${PACKAGE}-telephony-components.xml`)
+    const tree = try readTree(output)
+    const sysconfig = tree[`provisioning/sysconfig/${PACKAGE}-telephony-components.xml`] ?? ""
+    assert.include(sysconfig, `<component-override package="${PACKAGE}">`)
+    for (const handler of handlers) assert.include(sysconfig, `<component class="${handler}" enabled="true" />`)
+    assert.notMatch(sysconfig, /role|default-|enabled="false"/i, "the override only enables components and names no role holder")
+    assert.include(tree["product.mk"] ?? "", `PRODUCT_COPY_FILES += $(launcher_role_overrides_dir)/${PACKAGE}-telephony-components.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/sysconfig/${PACKAGE}-telephony-components.xml\n`)
+
+    assert.deepStrictEqual((try provisioningComponents(fit, PACKAGE, request())).overrides, [], "without telephony roles the handlers are left alone")
+    assert.strictEqual(try refusal(try k.tree("enabled-roles", launcher([home(), ...telephony(true, false)])), roles), "RoleHandlerUnfit")
+    assert.strictEqual(try refusal(try k.tree("car-mode", launcher([home(), ...telephony(false, true)])), roles), "RoleHandlerUnfit")
+    const withoutProvider = try k.tree("no-provider", launcher([home(), ...telephony(false, false).slice(0, -1)]))
+    const unfit = (provisioningComponents(withoutProvider, PACKAGE, roles) |> map(%, () => "admitted")) catch (error) => error._tag === "ProvisioningNotAdmitted" && error.problem.tag === "RoleHandlerUnfit" ? error.problem.handles : error._tag
+    assert.strictEqual(unfit, "MmsAuthority")
+  }
+}, 240_000)
+
+it.effect(`Write the image feature once, and the presigned host's capability overlay only in production for a protected false default (spec/os/image/provisioning.md, "Story: Keep image-only features honest"; spec/os/image/provisioning.md, "An image-only surface answers only from a system install that sees the image feature at the current version"; spec/os/image/provisioning.md, "The capability overlay for a presigned host is written only in production, for a resource that defaults false and only system or product may overlay")`, effect () => {
+  provide NodeServices.layer {
+    const path = try Path.Path
+    const work = try scratch("image-provisioning-feature")
+    const output = path.join(work, "product")
+    try writeTree(output, { "product.mk": "" })
+    const feature = imageFeatureName(PACKAGE)
+    assert.strictEqual(feature, `${PACKAGE}.aosp_image`)
+    assert.strictEqual(imageFeatureName(PACKAGE, "ListenerFeature"), `${PACKAGE}.feature.LISTENER`)
+    assert.strictEqual(IMAGE_FEATURE_VERSION, 1)
+    assert.deepStrictEqual(try writeImageCapability(output, PACKAGE), [`image-capability/${feature}.xml`])
+    const tree = try readTree(output)
+    assert.include(tree[`image-capability/${feature}.xml`] ?? "", `<feature name="${feature}" version="1" />`)
+    assert.include(tree["product.mk"] ?? "", `PRODUCT_COPY_FILES += $(image_capability_dir)/${feature}.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/permissions/${feature}.xml\n`)
+    assert.notStrictEqual((writeImageCapability(output, PACKAGE) |> map(%, () => "written")) catch (error) => error._tag, "written")
+    assert.strictEqual((writeImageCapability(output, "Not A Package") |> map(%, () => "written")) catch (error) => error._tag, "InvalidPackage")
+
+    const overlay = (mode: "StageProduction" | "StageDevelopment", values: string) => overlayVerdict(output, mode, values)
+    assert.strictEqual(try overlay("StageDevelopment", hostValues("false", "system|product")), "OverlayInDevelopment")
+    assert.strictEqual(try overlay("StageProduction", hostValues("true", "system|product")), "ResourceDefaultsTrue")
+    assert.strictEqual(try overlay("StageProduction", hostValues("false", "public")), "ResourceOverlayableByOthers")
+    assert.strictEqual(try overlay("StageProduction", `<resources><bool name="aosp_image_capability">false</bool></resources>`), "ResourceNotOverlayable")
+    const badName = (writeImageProvisioningOverlay(output, PACKAGE, { mode: "StageProduction", hostValues: hostValues("false", "product|system"), resource: "Bad-Name" }) |> map(%, () => "written")) catch (error) => error._tag
+    assert.strictEqual(badName, "InvalidOverlayName")
+    assert.deepStrictEqual(try readTree(output) |> Object.keys(%).sort(), ["image-capability/example.launcher.aosp_image.xml", "product.mk"], "a refused overlay writes nothing")
+    assert.strictEqual(try overlay("StageProduction", hostValues("false", "product|system")), "written")
+    const written = try readTree(output)
+    assert.include(written["image-capabilities/AndroidManifest.xml"] ?? "", `<overlay android:targetPackage="${PACKAGE}" android:targetName="ImageProvisioning" android:isStatic="true" android:priority="10" />`)
+    assert.include(written["image-capabilities/res/values/capabilities.xml"] ?? "", `<bool name="aosp_image_capability">true</bool>`)
+    assert.include(written["image-capabilities/Android.bp"] ?? "", `runtime_resource_overlay {\n    name: "ImageProvisioningOverlay",\n    product_specific: true,`)
+    assert.include(written["product.mk"] ?? "", "PRODUCT_PACKAGES += ImageProvisioningOverlay\n")
+  }
+})
+
+it.effect.skipIf(skipped !== null)(`Write listener activation for the disabled plain assist activity and its protected power child only with the power bundle, without the assist bundle, and with the long-press overlay${suffix} (spec/os/image/provisioning.md, "Story: Start voice from the power button only on a listener image"; spec/os/image/provisioning.md, "Listener activation enables exactly the launcher's disabled plain assist activity and, for power voice, its protected power child, given the power bundle without the assist bundle and the long-press overlay")`, effect () => {
+  provide NodeServices.layer {
+    const k = try kit("image-provisioning-listener")
+    if (k === undefined) return
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const bundle = try files.readFileString(path.join(import.meta.dirname, "..", "aosp", "sense", "systemui", "power", "manifest.json"))
+    const exclusive = try Effect.try(() => (JSON.parse(bundle) as { readonly exclusiveWith: readonly string[] }).exclusiveWith)
+    assert.include(exclusive, "assist", "the power bundle declares itself exclusive with the assist bundle")
+
+    const power = request({ assistant: { tag: "ListenerAssistant", power: true } })
+    const tree = try k.tree("listener", launcher([home(), assist(false, ".PowerVoiceActivity"), powerChild(STATUS_BAR)]))
+    const staging = try listenerStagingOf(["chip", "ops", "power"], LONG_PRESS)
+    assert.deepStrictEqual(staging, { patches: ["ChipPatch", "OpsPatch", "PowerPatch"], longPressAssistant: true })
+    const output = try k.product("listener")
+    const feature = `${PACKAGE}.feature.LISTENER`
+    assert.deepStrictEqual(try writeListenerActivation(output, PACKAGE, tree, power, staging), { feature, assistant: `${PACKAGE}.AssistActivity`, power: `${PACKAGE}.PowerVoiceActivity` })
+    const staged = try readTree(output)
+    const activation = staged[`listener-activation/${feature}.xml`] ?? ""
+    assert.include(activation, `<feature name="${feature}" version="1" />`)
+    assert.include(activation, `<component class="${PACKAGE}.AssistActivity" enabled="true" />`)
+    assert.include(activation, `<component class="${PACKAGE}.PowerVoiceActivity" enabled="true" />`)
+    assert.include(staged["product.mk"] ?? "", `$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/sysconfig/${feature}.xml\n`)
+
+    const quiet = try k.product("quiet")
+    const plain = try writeListenerActivation(quiet, PACKAGE, tree, request({ assistant: { tag: "ListenerAssistant", power: false } }), try listenerStagingOf(["chip", "ops"], ""))
+    assert.deepStrictEqual(plain, { feature, assistant: `${PACKAGE}.AssistActivity`, power: null })
+    assert.notInclude(try stagedFile(quiet, `listener-activation/${feature}.xml`), "PowerVoiceActivity")
+
+    const activate = (name: string, manifest: string, provisioning: ProvisioningRequest, patches: readonly string[], overlay: string) => effect {
+      const target = try k.product(name)
+      const result = (effect {
+        try writeListenerActivation(target, PACKAGE, manifest, provisioning, try listenerStagingOf(patches, overlay))
+        return "written"
+      }) catch (error) => error._tag === "ListenerActivationRefused" ? error.problem : error._tag
+      return result
+    }
+    assert.strictEqual(try activate("both", tree, power, ["chip", "ops", "power", "assist"], LONG_PRESS), "AssistAndPowerPatches")
+    assert.strictEqual(try activate("no-power", tree, power, ["chip", "ops"], LONG_PRESS), "PowerPatchMissing")
+    assert.strictEqual(try activate("no-long-press", tree, power, ["chip", "ops", "power"], ""), "LongPressOverlayMissing")
+    assert.strictEqual(try activate("not-listener", tree, request({ assistant: { tag: "LauncherAssistant" } }), ["power"], LONG_PRESS), "NotAListenerImage")
+    assert.strictEqual(try activate("unknown", tree, power, ["chip", "lights"], LONG_PRESS), "UnknownSystemuiPatch")
+    const enabledAssist = try k.tree("enabled-assist", launcher([home(), assist(true, ".PowerVoiceActivity"), powerChild(STATUS_BAR)]))
+    assert.strictEqual(try activate("enabled-assist", enabledAssist, power, ["power"], LONG_PRESS), "AssistNotDisabledPlain")
+    const openChild = try k.tree("open-child", launcher([home(), assist(false, ".PowerVoiceActivity"), powerChild("")]))
+    assert.strictEqual(try activate("open-child", openChild, power, ["power"], LONG_PRESS), "PowerChildNotProtected")
+    const unnamed = try k.tree("unnamed-child", launcher([home(), assist(false), powerChild(STATUS_BAR)]))
+    assert.strictEqual(try activate("unnamed-child", unnamed, power, ["power"], LONG_PRESS), "PowerChildNotProtected")
+  }
+}, 240_000)
+
+it.effect.skipIf(skipped !== null)(`Refuse a launcher that would show over the lock screen, require DeskClock exactly once, and stage the secure camera only from verified Camera2 source${suffix} (spec/os/image/provisioning.md, "Story: Leave the lock screen, alarms and secure capture to the system"; spec/os/image/provisioning.md, "Where the system owns the lock screen, an admitted launcher declares no activity shown when locked, turning the screen on, or handling secure capture"; spec/os/image/provisioning.md, "The product requires DeskClock exactly once"; spec/os/image/provisioning.md, "The secure camera overlay is staged only from verified Camera2 source and points the power gesture at Camera2")`, effect () => {
+  provide NodeServices.layer {
+    const k = try kit("image-provisioning-system")
+    if (k === undefined) return
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const locked = try k.tree("locked", launcher([home(), LOCKED_ACTIVITY]))
+    assert.strictEqual(try refusal(locked, request({ lockScreen: "SystemOwnsLockScreen" })), "LockScreenSurfaceDeclared")
+    assert.strictEqual(try refusal(locked, request()), "admitted")
+    const wakes = try k.tree("wakes", launcher([home(".HomeActivity", ` android:turnScreenOn="true"`)]))
+    assert.strictEqual(try refusal(wakes, request({ lockScreen: "SystemOwnsLockScreen" })), "LockScreenSurfaceDeclared")
+
+    const clock = try k.product("clock")
+    assert.strictEqual(try requireClockProduct(clock), "ClockAdded")
+    assert.strictEqual(try requireClockProduct(clock), "ClockKept")
+    assert.strictEqual((try files.readFileString(path.join(clock, "product.mk"))).match(/\bDeskClock\b/g)?.length, 1)
+    const twice = try k.product("clock-twice", "PRODUCT_PACKAGES += DeskClock\nPRODUCT_PACKAGES += Camera2 DeskClock\n")
+    assert.strictEqual((requireClockProduct(twice) |> map(%, () => "kept")) catch (error) => error._tag, "ClockRequiredTwice")
+
+    const unverified = try k.product("camera-unverified")
+    assert.strictEqual((writeSecureCameraOverlay(unverified, { tag: "CameraSourceUnverified" }) |> map(%, () => "written")) catch (error) => error._tag, "SecureCameraUnverified")
+
+    const checkout = path.join(k.work, "aosp")
+    const camera = path.join(checkout, "packages", "apps", "Camera2")
+    const sources = { "Android.bp": `android_app { name: "Camera2" }\n`, "src/com/android/camera/SecureCameraActivity.java": "class SecureCameraActivity {}\n" }
+    try files.makeDirectory(camera, { recursive: true })
+    try git(camera, ["init", "--quiet", "--initial-branch=main"])
+    const commit = try commitTree(camera, sources, "Pin Camera2")
+    const contract = path.join(k.work, "secure-camera.json")
+    const contractText = `${JSON.stringify({ schemaVersion: 1, modules: [{ path: "packages/apps/Camera2", commit, files: Object.fromEntries(Object.entries(sources).map(([file, text]) => [file, sha256(text)])) }] })}\n`
+    try files.writeFileString(contract, contractText)
+    const evidence = try verifySecureCameraSource(checkout, { contract })
+    assert.deepStrictEqual(evidence.source, { tag: "CameraSourceVerified", contract: { tag: "Sha256", hex: sha256(contractText) } })
+    const output = try k.product("camera")
+    try writeSecureCameraOverlay(output, evidence.source)
+    const staged = try readTree(output)
+    assert.include(staged["secure-camera/overlay/frameworks/base/core/res/res/values/config.xml"] ?? "", `<bool name="config_cameraDoubleTapPowerGestureEnabled">true</bool>`)
+    assert.include(staged["secure-camera/overlay/frameworks/base/packages/SystemUI/res/values/config.xml"] ?? "", `<string name="config_cameraGesturePackage" translatable="false">com.android.camera2</string>`)
+    const record = try Effect.try(() => JSON.parse(staged["secure-camera/source-evidence.json"] ?? "") as unknown)
+    assert.deepStrictEqual(record, { gesturePackage: "com.android.camera2", contractSha256: sha256(contractText), sourceVerified: true, imageVerified: false, lockedCaptureVerified: false })
+    assert.include(staged["product.mk"] ?? "", "PRODUCT_PACKAGES += Camera2\nPRODUCT_PACKAGE_OVERLAYS += $(secure_camera_dir)/overlay\n")
+
+    const edit = `android_app { name: "Camera3" }\n`
+    try files.writeFileString(path.join(camera, "Android.bp"), edit)
+    assert.strictEqual((verifySecureCameraSource(checkout, { contract }) |> map(%, () => "verified")) catch (error) => error._tag, "SecureCameraSourceRefused")
+    const override = { path: "packages/apps/Camera2/Android.bp", sizeBytes: new TextEncoder().encode(edit).byteLength, sha256: sha256(edit) }
+    const reviewed = (verifySecureCameraSource(checkout, { contract, reviewedOverrides: [override] }) |> map(%, () => "verified")) catch (error) => error._tag
+    assert.strictEqual(reviewed, "SecureCameraSourceRefused", "a reviewed override does not excuse a pinned file whose bytes changed")
+    try git(camera, ["checkout", "--", "Android.bp"])
+    try files.writeFileString(path.join(camera, "stray.txt"), "unreviewed\n")
+    assert.strictEqual((verifySecureCameraSource(checkout, { contract }) |> map(%, () => "verified")) catch (error) => error._tag, "SecureCameraSourceRefused")
+  }
+}, 240_000)

@@ -1,0 +1,52 @@
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"
+import { execFileSync } from "node:child_process";
+import { describe, expect, it } from "vitest";
+import { compileAdapter } from "./drivers/jvm-adapter.ts";
+
+const javaTool = (name: string) => process.env.JAVA_HOME ? `${process.env.JAVA_HOME}/bin/${name}` : name;
+
+let walked: Readonly<Record<string, unknown>> | undefined;
+
+function journey(): Readonly<Record<string, unknown>> {
+  const main = "ai.eliza.plugins.signin.DeviceKeyJourney";
+  walked ??= JSON.parse(execFileSync(javaTool("java"), ["-cp", compileAdapter(main), main], { encoding: "utf8", timeout: 120_000 })) as Record<string, unknown>;
+  return walked;
+}
+
+const account = { userId: "user-1", organizationId: "org-1" };
+const announce = (version: number) => ({ tag: "Announce", version, account });
+
+describe("Keep me signed in without a second copy of my key", () => {
+  it("keeps a minted key after a lost token reply asked again with the same code and verifier, and announces each new key once", () => {
+    const seen = journey();
+    expect([seen.firstSignIn, seen.firstHeld, seen.lostReplyAskedAgainWithSameProof, seen.keyHiddenFromText]).toEqual(["SIGNED_IN", "1/cred-2/user-1", true, true]);
+    expect([seen.secondSignIn, seen.secondHeld, seen.owedAfterReplace, seen.revokedAfterReplace]).toEqual(["SIGNED_IN", "2/cred-4/user-1", 1, "cred-2"]);
+    expect(seen.unprefixedSlots).toBe(0);
+    expect(seen.unknownAckRefusal).toBe("401/credential_proof_invalid");
+  });
+
+  it("keeps the account on an expired key and signs out only when the account read finds the key revoked", () => {
+    const seen = journey();
+    expect(seen.afterRevokedElsewhere).toBe("none");
+    expect(seen.afterExpired).toBe("none/user-1");
+    expect(seen.dutiesAfterCloudEnded).toBe(0);
+    expect(seen.notices).toEqual([announce(1), announce(2), { tag: "SignedOutNotice" }, announce(3), { tag: "VerifyAccount" }, { tag: "SignedOutNotice" },
+      announce(4), { tag: "ExpiredNotice" }, announce(5)]);
+  });
+});
+
+describe("Sign out or reset cleanly", () => {
+  it("stores the revoke duty with the sign-out, asks three times offline and once more at the next start", () => {
+    const seen = journey();
+    expect([seen.dutyStoredWithSignOut, seen.offlineRevokeAsks, seen.dutiesKeptOffline]).toEqual([true, 3, 1]);
+    expect([seen.triesAtStart, seen.revokedAfterStart, seen.dutiesAfterStart]).toEqual([1, "cred-2,cred-4", 0]);
+  });
+});
+
+describe("Confirm it is me before a billing change", () => {
+  it("holds a session only for the signed-in account, shares one refresh among readers and ends it after the hour", () => {
+    const seen = journey();
+    expect([seen.otherAccountRefused, seen.sessionGranted, seen.usableToken]).toEqual([true, true, "access-1"]);
+    expect([seen.refreshesForFourReaders, seen.tokensAfterRefresh, seen.afterTheHour]).toEqual([1, "access-2,access-2,access-2,access-2", "null"]);
+  });
+});

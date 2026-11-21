@@ -198,7 +198,7 @@ public class UpdateJournal {
   private Snapshot admitPrepared(Plan plan,Identity installed,long channelGeneration,CommitAction validate,Phase phase)throws IOException {
     Objects.requireNonNull(validate);
     return transact(s->{
-      require(!active(s.phase)||(phase==Phase.VERIFIED&&s.phase==Phase.STAGING&&samePlan(s.plan,plan)),"An update transaction is active");
+      require(phase==Phase.STAGING?!active(s.phase):s.phase==Phase.STAGING&&samePlan(s.plan,plan),phase==Phase.STAGING?"An update transaction is active":"No staged plan to verify");
       require(s.generation==channelGeneration,"Channel decision is stale");
       require(plan.baseline.matches(installed),"Installed baseline changed");
       require(s.channel.equals(plan.channel),"Update plan channel does not match requested channel");

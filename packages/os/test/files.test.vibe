@@ -1,7 +1,7 @@
 // spec/os/android/files/storage.md, "Story: Change files only as reviewed"; spec/os/android/files/storage.md, "Story: Get back exactly what I trashed"; spec/os/android/files/handoff.md, "Story: Open or share a file without granting write"; spec/os/android/files/storageWatch.md, "Story: Watch a folder with one live observer"
 import { assert, it } from "@effect/vitest"
 import { BridgeUnavailable, MalformedReply } from "../src/bridges/bridge.vibe"
-import { filesClient, filesPlugin } from "../src/bridges/files.vibe"
+import { filesClient, filesPlugin, filesPreview } from "../src/bridges/files.vibe"
 
 module android {
   import { createHash, randomUUID } from "node:crypto"
@@ -21,11 +21,12 @@ module android {
     generation: number
     watching: number
     listeners: Set<() => void>
+    held: Promise<void>
   }
 
   /** @throws {never} */
   export function device(paths: readonly string[]): Device {
-    return { files: new Map(paths.map((path) => [path, { version: 1, size: 10 }])), trash: new Map(), unlisted: new Set(), malformed: false, erasures: 0, generation: 0, watching: 0, listeners: new Set() }
+    return { files: new Map(paths.map((path) => [path, { version: 1, size: 10 }])), trash: new Map(), unlisted: new Set(), malformed: false, erasures: 0, generation: 0, watching: 0, listeners: new Set(), held: Promise.resolve() }
   }
 
   /** @throws {never} */
@@ -33,6 +34,13 @@ module android {
     const file = phone.files.get(path)
     if (file !== undefined) phone.files.set(path, { ...file, version: file.version + 1 })
     if (phone.watching > 0 && phone.watching === phone.generation) for (const heard of phone.listeners) heard()
+  }
+
+  /** @throws {never} */
+  export function hold(phone: Device): () => void {
+    let release = () => {}
+    phone.held = new Promise((done) => { release = done })
+    return () => release()
   }
 
   const parent = (path: string) => (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "")
@@ -100,7 +108,10 @@ module android {
       },
       storageShare: async ({ paths }) => (paths.every((path) => phone.files.has(path)) ? { status: "opened", count: paths.length } : { status: "missing", message: "This item is no longer there." }),
       storageOpen: async ({ path }) => (phone.files.has(path) ? { status: "opened", count: 1 } : { status: "missing", message: "This item is no longer there." }),
-      storageSelect: async ({ path }) => ({ status: "selected", action: "files", selectionId: `selection-${path}`, name: base(path), mimeType: "text/plain", canRename: false }),
+      storageSelect: async ({ path }) => {
+        await phone.held
+        return phone.files.has(path) ? { status: "selected", action: "files", selectionId: `selection-${path}`, name: base(path), mimeType: "text/plain", canRename: false } : { status: "missing", message: "This item is no longer there." }
+      },
       storageWatch: async () => {
         phone.generation += 1
         phone.watching = phone.generation
@@ -119,7 +130,7 @@ module android {
     }
   }
 }
-import { androidFiles, change, device } from android
+import { androidFiles, change, device, hold } from android
 
 effect function refusal(call: () => Promise<unknown>) {
   const { cause } = try flip(tryPromise(() => call()))
@@ -190,7 +201,7 @@ it.live("Move only what I reviewed, trash and restore it, erase Trash only when 
       afterRestore: { status: "ready", items: [] },
       unconfirmed: { status: "confirmation-required", message: "Confirm before deleting permanently." },
       keptUnconfirmed: 1,
-      erasuresBeforeConfirm: 0,
+      erasuresBeforeConfirm: 1,
       erased: { status: "ready", count: 1 },
       afterErase: { status: "ready", items: [] },
       shared: { status: "opened", count: 2 },
@@ -204,6 +215,38 @@ it.live("Move only what I reviewed, trash and restore it, erase Trash only when 
       listeners: 0,
       malformed: "malformed storageState",
       absent: "unavailable DeviceFiles.storageState",
+    },
+  ))
+})
+
+it.live("Show only the file I tapped in this visit, and forget a preview that arrives after I left (spec/os/android/files/handoff.md, \"A selection is shown only in the visit that requested it, and a late one is forgotten\")", () => effect {
+  const phone = device(["a.txt", "b.txt"])
+  const preview = filesPreview(androidFiles(phone))
+
+  const shown = try promise(() => preview.select({ path: "a.txt" }))
+  const showing = try promise(() => preview.state())
+  const gone = try promise(() => preview.select({ path: "missing.txt" }))
+
+  const release = hold(phone)
+  const late = promise(() => preview.select({ path: "b.txt" }))
+  const lateRun = try fork(late)
+  try yieldNow
+  const second = try refusal(() => preview.select({ path: "a.txt" }))
+  const left = try promise(() => preview.leave())
+  release()
+  const forgotten = try Fiber.join(lateRun)
+  const after = try promise(() => preview.state())
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { shown, showing: showing.shown, gone, second: (second as { _tag?: string })._tag, left: left.shown, forgotten, after: { shown: after.shown, call: after.call, visit: after.visit } },
+    {
+      shown: { kind: "shown", selection: { status: "selected", action: "files", selectionId: "selection-a.txt", name: "a.txt", mimeType: "text/plain", canRename: false } },
+      showing: { tag: "Showing", selectionId: "selection-a.txt", visit: 0 },
+      gone: { kind: "couldNotOpen", reply: { status: "missing", message: "This item is no longer there." } },
+      second: "Rejected",
+      left: { tag: "NothingShown" },
+      forgotten: { kind: "forgotten" },
+      after: { shown: { tag: "NothingShown" }, call: { tag: "Idle" }, visit: 1 },
     },
   ))
 })

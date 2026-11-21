@@ -1,0 +1,74 @@
+// spec/os/browser/pageCommands.md, "Story: Run a website task step only on the page it was planned for"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { createSurfaceTaskHandler, type SurfacePage } from "../browser/src/surface-task-handler.mjs"
+import { driver } from "./drivers/os__browser__pageCommands.ts"
+
+const LIVE = { contextMatches: true, commandExpiresAt: 50, bindingExpiresAt: 40, now: 30, originAllowed: true, targetReviewed: true, grantMatches: true, pageCurrent: true }
+const PEER = "peer"
+
+const flattened = (source: string) => source.replace(/\s+/g, "").replace(/,(?=[)\]}])/g, "")
+const exported = (source: string, name: string) => new RegExp(`^export (function ${name}\\([\\s\\S]*?^\\})$`, "m").exec(source)?.[1] ?? `missing ${name}`
+const settled = (pending: Promise<unknown>) => pending.then((value) => ({ value }), (error: { code?: string }) => ({ code: error.code }))
+
+effect function send(event: Parameters<typeof driver.dispatch>[1]) {
+  return try Effect.promise(async () => ({ outcome: await driver.dispatch(PEER, event), view: await driver.observe(PEER) }))
+}
+
+it.effect('Run a website task step only on the page it was planned for: the native page channel carries the same page command and guidance as the owned browser (spec/os/browser/pageCommands.md, "The peer takes only the fixed page commands, and a request needs a live binding and its scope")', effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const read = (relative: string) => files.readFileString(path.join(import.meta.dirname, relative))
+    const channel = flattened(try read("../android/browser-surface/resources/control-channel.js"))
+    const command = exported(try read("../browser/src/page-command.mjs"), "pageCommand")
+    const guidance = exported(try read("../browser/src/page-guidance.mjs"), "pageGuidance")
+    assert.isAbove(command.length, 1000)
+    assert.isAbove(guidance.length, 1000)
+    assert.isTrue(channel.includes(flattened(command)), "control-channel.js embeds the current pageCommand from browser/src/page-command.mjs")
+    assert.isTrue(channel.includes(flattened(guidance)), "control-channel.js embeds the current pageGuidance from browser/src/page-guidance.mjs")
+  }
+})
+
+it.effect('Run a website task step only on the page it was planned for: a granted click is dispatched once, its repeat is unknown and its grant is never spent twice (spec/os/browser/pageCommands.md, "A commit grant is spent once, before the page sees it, even when the command is then refused"; spec/os/browser/pageCommands.md, "A request identity runs at most once, and a repeated one is reported unknown"; spec/os/browser/pageCommands.md, "An input is Dispatched only when the page confirms it, and Unknown otherwise"; spec/os/browser/pageCommands.md, "Only a read of the page is ever reported Succeeded")', effect () => {
+  try Effect.promise(async () => driver.reset())
+  const click = { requestId: "r6", pageAction: "ClickAction" as const, selectorRef: "snap1", grantId: "g1" }
+  assert.strictEqual((try send({ type: "bindTask", offer: { revision: 1, taskId: "task1", epoch: 1, revoke: false, renewsExpired: false } })).outcome, "accepted")
+  try send({ type: "settleBinding", storedWhileCurrent: true })
+  assert.deepStrictEqual((try send({ type: "admitRequest", message: { requestId: "r1", pageAction: "SnapshotAction", selectorRef: "", grantId: "" }, scope: LIVE })).view.phase, "ReceiverReading")
+  assert.deepStrictEqual((try send({ type: "settleRead", snapshotRef: "snap1", completeForOrigin: true })).view.reply, { tag: "Reported", status: "Succeeded", evidenceRef: "snap1" })
+  assert.deepStrictEqual((try send({ type: "admitRequest", message: click, scope: LIVE })).view.phase, "ReceiverChecking")
+  assert.deepStrictEqual((try send({ type: "dispatchInput", previewReady: true })).view.phase, "ReceiverSending")
+  assert.deepStrictEqual((try send({ type: "settleInput", confirmed: true, cleanupOkay: true })).view.reply, { tag: "Reported", status: "Dispatched", evidenceRef: "snap1" }, "a confirmed input is only dispatched, never succeeded")
+  assert.deepStrictEqual((try send({ type: "admitRequest", message: click, scope: LIVE })).view.reply, { tag: "Reported", status: "Unknown", evidenceRef: "" }, "a repeated request is reported unknown, not run again")
+  assert.deepStrictEqual((try send({ type: "admitRequest", message: { ...click, requestId: "r7" }, scope: LIVE })).view.reply, { tag: "Refused", refusal: "RefusedPolicy" }, "a spent grant admits nothing")
+  try send({ type: "admitRequest", message: { requestId: "r8", pageAction: "SnapshotAction", selectorRef: "", grantId: "" }, scope: LIVE })
+  try send({ type: "settleRead", snapshotRef: "snap2", completeForOrigin: true })
+  try send({ type: "admitRequest", message: { requestId: "r9", pageAction: "ClickAction", selectorRef: "snap2", grantId: "" }, scope: LIVE })
+  try send({ type: "dispatchInput", previewReady: true })
+  assert.deepStrictEqual((try send({ type: "settleInput", confirmed: false, cleanupOkay: true })).view.reply, { tag: "Reported", status: "Unknown", evidenceRef: "" }, "an input the page never confirmed is unknown, never a retryable error")
+  try Effect.promise(() => driver[Symbol.asyncDispose]())
+})
+
+it.effect('Run a website task step only on the page it was planned for: the current page is reported only when it is selected and at a secure web address (spec/os/browser/pageCommands.md, "The current page is reported only when it is selected and at a secure web address")', effect () => {
+  let selected: SurfacePage | undefined = undefined
+  const handler = createSurfaceTaskHandler({
+    getPage: async () => selected,
+    listPages: async () => [],
+    control: async () => ({}),
+    cleanup: async () => ({ visible: false }),
+    isCurrent: () => true,
+  })
+  const ask = (id: string) => Effect.promise(() => settled(handler({ type: "current-page", id })))
+  const page = (url: string, current = true): SurfacePage => ({ id: "page-1", url, title: "Checkout", isCurrent: () => current })
+  assert.deepStrictEqual(try ask("q1"), { value: null }, "no selected page reports none")
+  selected = page("http://shop.example/checkout")
+  assert.deepStrictEqual(try ask("q2"), { value: null }, "a page that is not at a secure web address reports none")
+  selected = page("https://owner:secret@shop.example/checkout")
+  assert.deepStrictEqual(try ask("q3"), { value: null }, "an address with credentials reports none")
+  selected = page("https://shop.example/checkout", false)
+  assert.deepStrictEqual(try ask("q4"), { code: "STALE_REF" }, "a page whose selection lease changed is stale")
+  selected = page("https://shop.example/checkout")
+  assert.deepStrictEqual(try ask("q5"), { value: { tabId: "page-1", origin: "https://shop.example", title: "Checkout" } })
+  try Effect.promise(() => handler.close())
+})
