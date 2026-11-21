@@ -70,7 +70,7 @@ final class PasswordEditor implements Application.ActivityLifecycleCallbacks {
     try {
       if (entry != null) editor.show(entry);
       editor.dialog.show();
-      editor.deadline.watch(() -> access.unlocked(ticket) ? access.remainingMillis() : 0, editor::cancel);
+      if (!access.deviceUnlockedCustody()) editor.deadline.watch(() -> access.unlocked(ticket) ? access.remainingMillis() : 0, editor::cancel);
     } catch (Exception failure) { editor.clear(); throw failure; }
   }
 

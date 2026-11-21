@@ -17,6 +17,29 @@ import static org.junit.Assert.*;
 public final class PasswordVaultEntriesInstrumentedTest {
   private static final String APP = "android://abababababababababababababababababababababababababababababababab@com.example.synthetic";
 
+  @Test public void openSavedPasswordsOnADeviceWithoutAScreenLock() throws Exception {
+    android.content.Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+    android.app.KeyguardManager guard = context.getSystemService(android.app.KeyguardManager.class);
+    org.junit.Assume.assumeFalse("Run on an unlocked fixture with no PIN", guard.isDeviceSecure());
+    assertTrue(PasswordVaultStore.deviceUnlockedNow(context));
+    File root = new File(context.getNoBackupFilesDir(), "password-no-lock-" + UUID.randomUUID());
+    String alias = "eliza.password-no-lock." + UUID.randomUUID();
+    byte[] aad = "fixture-host/passwords/no-lock".getBytes(StandardCharsets.UTF_8);
+    String secret = "synthetic-no-lock-7Q";
+    PasswordVaultStore vault = new PasswordVaultStore(root, alias, aad, PasswordVaultStore.KeyPolicy.deviceUnlocked(context));
+    try {
+      String id = vault.saveEntry(null, "Fixture", "fixture-user", Arrays.asList("https://fixture.example.test"), secret);
+      KeyStore keys = KeyStore.getInstance("AndroidKeyStore");
+      keys.load(null);
+      assertNull(keys.getKey(alias, null).getEncoded());
+      assertFalse(vault.keyProtection().isUserAuthenticationRequired());
+      assertFalse(new String(Files.readAllBytes(new File(root, "vault.enc").toPath()), StandardCharsets.ISO_8859_1).contains(secret));
+      PasswordVaultStore reopened = new PasswordVaultStore(root, alias, aad, PasswordVaultStore.KeyPolicy.deviceUnlocked(context));
+      assertFalse(reopened.entries().getJSONObject(0).has("password"));
+      assertEquals(secret, reopened.get(id).getString("password"));
+    } finally { vault.destroy(); }
+  }
+
   @Test public void entriesKeepBindingsAndNeverExposePasswords() throws Exception {
     File root = new File(InstrumentationRegistry.getInstrumentation().getTargetContext().getNoBackupFilesDir(), "password-entries-" + UUID.randomUUID());
     String alias = "eliza.password-entries-test." + UUID.randomUUID();

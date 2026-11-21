@@ -22,10 +22,44 @@ import java.util.UUID;
 public final class SecretSurfaces {
   private SecretSurfaces() {}
   static final long REVEAL_MILLIS = 30_000, CLIPBOARD_MILLIS = 45_000;
-  private static volatile AlertDialog current;
+  private static volatile AlertDialog current, confirmation;
   private static PasswordSurfaces.Hold currentSurface;
   private static final NativeDeadlineTimer REVEAL_TIMER = new NativeDeadlineTimer();
   private static final Handler MAIN = new Handler(Looper.getMainLooper());
+
+  static boolean confirm(Activity activity, int action, Runnable accept, Runnable cancel) {
+    if (confirmation != null) return false;
+    PasswordSurfaces.Hold hold = PasswordSurfaces.open();
+    AlertDialog dialog = new AlertDialog.Builder(activity)
+      .setTitle(action)
+      .setNegativeButton(R.string.eliza_passwords_cancel, null)
+      .setPositiveButton(action, null)
+      .create();
+    dialog.setOwnerActivity(activity);
+    boolean[] accepted = { false };
+    dialog.setOnDismissListener(ignored -> {
+      if (confirmation == dialog) confirmation = null;
+      hold.close();
+      if (!accepted[0]) cancel.run();
+    });
+    confirmation = dialog;
+    try {
+      dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+      dialog.show();
+      dialog.getButton(AlertDialog.BUTTON_POSITIVE).setFilterTouchesWhenObscured(true);
+      dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+        if (confirmation != dialog) return;
+        accepted[0] = true;
+        dialog.dismiss();
+        accept.run();
+      });
+      return true;
+    } catch (RuntimeException unavailable) {
+      confirmation = null;
+      hold.close();
+      return false;
+    }
+  }
 
   /** FLAG_SECURE dialog; dismissed after {@link #REVEAL_MILLIS} or when the host stops. */
   static void reveal(Activity activity, String title, String secret) {
@@ -39,13 +73,14 @@ public final class SecretSurfaces {
     value.setPadding(pad, pad / 2, pad, 0);
     AlertDialog dialog = new AlertDialog.Builder(activity).setTitle(title).setView(value)
       .setPositiveButton(R.string.eliza_passwords_hide, (shown, which) -> shown.dismiss()).create();
+    dialog.setOwnerActivity(activity);
     dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
     PasswordSurfaces.Hold surface = PasswordSurfaces.open(); // Before an earlier reveal closes, so the surface stays up.
     dismiss();
     dialog.setOnDismissListener(closed -> { value.setText(""); surface.close(); if (current == closed) { current = null; currentSurface = null; REVEAL_TIMER.cancel(); } });
     current = dialog; currentSurface = surface;
     dialog.show();
-    REVEAL_TIMER.after(REVEAL_MILLIS, SecretSurfaces::dismiss);
+    REVEAL_TIMER.after(REVEAL_MILLIS, () -> dismissReveal(dialog));
   }
 
   /** Native-only reuse for another protected credential; no secret is returned to a renderer.
@@ -62,23 +97,45 @@ public final class SecretSurfaces {
       long elapsed = android.os.SystemClock.elapsedRealtime() - started;
       return ownerCurrent.getAsBoolean() && elapsed >= 0 && elapsed < REVEAL_MILLIS
           ? Math.min(250, REVEAL_MILLIS - elapsed) : 0;
-    }, () -> { if (current == owned) dismiss(); });
+    }, () -> dismissReveal(owned));
     return () -> {
-      Runnable close = () -> { if (current == owned) dismiss(); };
+      Runnable close = () -> dismissReveal(owned);
       if (Looper.myLooper() == Looper.getMainLooper()) close.run(); else MAIN.post(close);
     };
   }
 
   static Runnable currentDismissal() {
-    AlertDialog owned = current;
-    return () -> { if (owned != null && current == owned) dismiss(); };
+    return dismissal(current, confirmation);
+  }
+
+  private static Runnable dismissal(AlertDialog reveal, AlertDialog confirm) {
+    return () -> { dismissConfirmation(confirm); dismissReveal(reveal); };
+  }
+
+  static void dismiss(Activity owner) {
+    AlertDialog reveal = current, confirm = confirmation;
+    Runnable close = dismissal(
+      owner != null && reveal != null && reveal.getOwnerActivity() == owner ? reveal : null,
+      owner != null && confirm != null && confirm.getOwnerActivity() == owner ? confirm : null);
+    if (Looper.myLooper() == Looper.getMainLooper()) close.run(); else MAIN.post(close);
   }
 
   /** Hide, the timer and every host close end the surface here or in the dismiss listener, whichever is first. */
   static void dismiss() {
+    currentDismissal().run();
+  }
+
+  private static void dismissConfirmation(AlertDialog owned) {
+    if (owned == null || confirmation != owned) return;
+    confirmation = null;
+    owned.dismiss();
+  }
+
+  private static void dismissReveal(AlertDialog owned) {
+    if (owned == null || current != owned) return;
     REVEAL_TIMER.cancel();
-    AlertDialog dialog = current; PasswordSurfaces.Hold surface = currentSurface; current = null; currentSurface = null;
-    if (dialog != null && dialog.isShowing()) dialog.dismiss();
+    PasswordSurfaces.Hold surface = currentSurface; current = null; currentSurface = null;
+    if (owned.isShowing()) owned.dismiss();
     if (surface != null) surface.close();
   }
 
