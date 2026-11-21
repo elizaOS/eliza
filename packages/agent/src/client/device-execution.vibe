@@ -4,6 +4,7 @@ import {
   type AttemptStep, type AuthorityCheck, type DeviceAttempt, type DeviceResult, type Event, type ExecutorAnswer, type JournalAnswer,
 } from "../../gen/agent__deviceActions__execution.effect.vibe"
 import type { ReceiptOutcome, ReviewOutcome } from "../../gen/agent__deviceActions.effect.vibe"
+import { notDispatchedCode, type DeviceReceipt } from "../device-actions/operations.schema.vibe"
 
 export interface JournalIdentity {
   readonly ownerId: string
@@ -33,13 +34,6 @@ export interface ExecutorCall {
   readonly proposalId: string
   readonly operationId: string
   readonly attemptId: number
-}
-
-export interface DeviceReceipt {
-  readonly reported: "applied" | "failed" | "unknown"
-  readonly operationId: string
-  readonly code?: string
-  readonly result?: unknown
 }
 
 export type DeviceReview = "applied" | "not_applied" | "unresolved"
@@ -76,8 +70,6 @@ export type ApproveResult =
 type Finished = { readonly kind: "history" } | Settled
 export type RecoverResult = { readonly kind: "live" } | Finished
 export type ReviewResult = "sent" | "unsent" | "refused"
-
-export const NOT_DISPATCHED = "not_dispatched"
 
 const reviewWire = {
   ReviewedApplied: "applied", ReviewedNotApplied: "not_applied", ReviewedUnresolved: "unresolved",
@@ -248,12 +240,12 @@ effect function carryOut<Op>(ports: DeviceExecutionPorts<Op>, attempt: Journaled
 
 function receiptOf(outcome: ReceiptOutcome, result: DeviceResult, operationId: string, evidence: Evidence): DeviceReceipt {
   switch (outcome) {
-    case "ReportedApplied": return { reported: "applied", operationId, ...evidenceOf({ result: evidence.result }) }
-    case "ReportedUnknown": return { reported: "unknown", operationId, ...evidenceOf({ result: evidence.result }) }
+    case "ReportedApplied": return { outcome: "applied", operationId, ...evidenceOf({ result: evidence.result }) }
+    case "ReportedUnknown": return { outcome: "unknown", operationId, ...evidenceOf({ result: evidence.result }) }
     case "ReportedNothingRan":
       return result.tag === "NoEffect" && result.proof === "NeverCalled"
-        ? { reported: "failed", operationId, code: NOT_DISPATCHED }
-        : { reported: "failed", operationId, ...evidence }
+        ? { outcome: "failed", operationId, code: notDispatchedCode }
+        : { outcome: "failed", operationId, ...evidence }
   }
 }
 

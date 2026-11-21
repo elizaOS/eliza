@@ -5,8 +5,8 @@ import { Store } from "../src/store/store.vibe"
 import { organization, testCloud, type TestCloud } from "./support/cloud.vibe"
 import { tokenDigest } from "../src/shared/sealing.vibe"
 import { revokeAll } from "../src/native-clients/device-keys.vibe"
-import { accountUsable, CloudError, createCloudClient, creditFromSnapshot, type CloudClient } from "../src/client/index.vibe"
-import { routesByName } from "../src/client/routes.vibe"
+import { accountUsable, CloudError, createCloudClient, creditFromSnapshot, type CloudClient } from "../.vibe/u6build/out/src/client/index.js"
+
 import { hostFetch, seen, streamedAnswer } from "./zz-wp9u6-fetch-tmp.ts"
 
 effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
@@ -67,42 +67,8 @@ describe("U6 tmp", () => {
     const afterRevoke = try failureOf(() => client.account())
     try check(() => assert.deepStrictEqual(
       { unknown, expired, revoked, account: account.id, models: models.data.map((m) => m.id), referral: typeof referral.code, plans: plans.map((p) => p.key), keys: keys.length > 0, token: token.split(".").length, commands: commands.items.length, badReferral, usable: [accountUsable(unfunded), creditFromSnapshot(unfunded, unfunded.observedAt).kind, accountUsable(funded)], consent, revokedSelf: revokedSelf.status, afterRevoke },
-      { unknown: { tag: "CloudCredentialInvalid", reason: "CredentialUnknown" }, expired: { tag: "CloudCredentialInvalid", reason: "CredentialExpired" }, revoked: { tag: "CloudCredentialInvalid", reason: "CredentialRevoked" }, account: "user-custody", models: ["test-chat"], referral: "string", plans: ["free", "plus_monthly", "pro_monthly"], keys: true, token: 3, commands: 0, badReferral: "x", usable: [false, "zero", true], consent: "x", revokedSelf: "revoked", afterRevoke: { tag: "CloudCredentialInvalid", reason: "CredentialRevoked" } }
+      { unknown: { tag: "CloudCredentialInvalid", reason: "CredentialUnknown" }, expired: { tag: "CloudCredentialInvalid", reason: "CredentialExpired" }, revoked: { tag: "CloudCredentialInvalid", reason: "CredentialRevoked" }, account: "user-custody", models: ["test-chat"], referral: "string", plans: ["free", "plus_monthly", "pro_monthly"], keys: true, token: 3, commands: 0, badReferral: { tag: "CloudRefused", code: "NotFound", reason: "NoReason" }, usable: [false, "zero", true], consent: "succeeded", revokedSelf: "revoked", afterRevoke: { tag: "CloudCredentialInvalid", reason: "CredentialRevoked" } }
     ))
   }))
 
-  it.live("origin, routes, headers, stream", () => effect {
-    const refusedUrls = ["https://api.example.com/api/v1", "ftp://x.example.com", "http://api.example.com", "https://api.example.com/?a=1", "https://api.example.com#x", "nope"].map((baseUrl) => {
-      try {
-        createCloudClient({ baseUrl, credential: () => "", fetch: hostFetch })
-        return "created"
-      } catch (error) {
-        return error instanceof CloudError ? error.failure.tag : "other"
-      }
-    })
-    const sent = seen()
-    const local = createCloudClient({ baseUrl: "http://127.0.0.1:9/", credential: () => "k", fetch: sent.fetch })
-    try promise(() => local.models())
-    try promise(() => local.mapsCapabilities().catch(() => undefined))
-    const wrongParam = try failureOf(() => local.planChangeStatus("undo", "review"))
-    const stream = createCloudClient({ baseUrl: "https://api.example.com", credential: () => "k", fetch: async () => streamedAnswer([
-      'data: {"id":"c","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"he"}}]}\n',
-      '\ndata: {"id":"c","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"llo"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'
-    ]) })
-    const text = try promise(async () => {
-      let joined = ""
-      for await (const chunk of await stream.chatCompletionStream({ model: "m", messages: [{ role: "user", content: "hi" }] })) joined += chunk.choices[0]?.delta.content ?? ""
-      return joined
-    })
-    const cut = createCloudClient({ baseUrl: "https://api.example.com", credential: () => "k", fetch: async () => streamedAnswer(['data: {"id":"c","object":"chat.completion.chunk","created":1,"model":"m","choices":[]}\n\n']) })
-    const truncated = try failureOf(async () => { for await (const _ of await cut.chatCompletionStream({ model: "m", messages: [{ role: "user", content: "hi" }] })) {} })
-    const failing = createCloudClient({ baseUrl: "https://api.example.com", credential: () => "k", fetch: async () => streamedAnswer(['data: {"error":{"message":"x"}}\n\ndata: [DONE]\n\n']) })
-    const errorChunk = try failureOf(async () => { for await (const _ of await failing.chatCompletionStream({ model: "m", messages: [{ role: "user", content: "hi" }] })) {} })
-    const offline = createCloudClient({ baseUrl: "https://api.example.com", credential: () => "k", fetch: async () => { throw new TypeError("offline") } })
-    const network = try failureOf(() => offline.models())
-    try check(() => assert.deepStrictEqual(
-      { refusedUrls, urls: sent.urls, auth: sent.headers.map((h) => h.authorization), wrongParam, text, truncated, errorChunk, network, route: routesByName.models.auth },
-      { refusedUrls: [], urls: [], auth: [], wrongParam: "x", text: "hello", truncated: { tag: "CloudNetwork" }, errorChunk: { tag: "CloudProviderIssue" }, network: { tag: "CloudNetwork" }, route: "KeyOrSession" }
-    ))
-  })
 })

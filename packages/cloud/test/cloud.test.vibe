@@ -44,7 +44,8 @@ import { refused, type Refused } from "../src/http/refusal.vibe"
 import type { RouteClass } from "../src/http/request-auth.vibe"
 import { matchRoute, type Route } from "../src/http/routes.vibe"
 import { areas, listening, respond } from "../src/http/server.vibe"
-import { googleIdentityFake, type GooglePerson } from "./support/google-identity-fake.ts"
+import { fragment, googleIdentityFake, visit, type GooglePerson } from "./support/google-identity-fake.ts"
+import { googleConsent } from "./support/fakes/google-oauth.ts"
 import { authenticatorCode } from "./support/authenticator.ts"
 
 effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
@@ -1111,6 +1112,123 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
   }), 60_000)
 })
 describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => {
+  it.live("Connect Google through a registered return, consume the state once, see the status, land a later grant on the same connection, link a second one natively and disconnect at Google (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\"; spec/cloud/services/google/connection.md, \"Story: See my Google connection as the cloud holds it\"; spec/cloud/services/google/connection.md, \"Story: Disconnect it\")", () => scoped(effect {
+    const google = try Effect.try(() => googleFakeState())
+    const identity = try Effect.try(() => googleIdentityFake(secrets.GOOGLE_CLIENT_SECRET ?? ""))
+    const consent = try Effect.try(() => googleConsent(google, identity, secrets.GOOGLE_CLIENT_SECRET ?? ""))
+    const cloud = try testCloud({ mount: (fakes) => {
+      fakes.mount("/google/", consent.handler)
+      fakes.mount("/google/", identity.handler)
+      fakes.mount("/google/", mountGoogleToken(google))
+    } })
+    const now = try Clock.currentTimeMillis
+    const web = "https://www.staging.example.com"
+    const connectReturn = `${web}/apps/link/connect`
+    const app = (name: string, fingerprint: string) => ({
+      clientId: `com.example.${name}`, environment: "staging", displayName: name === "link" ? "Link" : "Plain", androidPackage: `com.example.${name}`,
+      certFingerprints: [`E3:DC:37:EF:3F:94:F0:CB:F5:06:F2:6E:CD:F7:99:99:29:C2:B2:D0:53:D1:63:83:56:91:F7:C9:67:F6:7E:${fingerprint}`],
+      signInReturn: `${web}/apps/${name}/sign-in`, billingReturn: `${web}/apps/${name}/billing`, credentialTtlMs: 30 * 86_400_000, nativeGoogle: false, enabled: true
+    })
+    try cloud.inside(cloud.store.transaction(effect (tx: Tx) => {
+      try registerClient(tx, try decodeRegistration({ ...app("link", "A5"), connectReturn }), now)
+      try registerClient(tx, try decodeRegistration(app("plain", "A6")), now)
+    }))
+    const token = try entitledDevice(cloud, "connect", now)
+    try sql(cloud, "UPDATE device_grants SET client_id = 'com.example.plain' WHERE key = 'grant-connect'", [])
+    const headers = { authorization: `Bearer ${token}` }
+    const call = (path: string, json?: unknown) => cloud.call(`/api/v1/eliza/google${path}`, json === undefined ? { headers } : { method: "POST", headers, json })
+    const errorOf = (answer: { readonly status: number; readonly body: unknown }) => [answer.status, (answer.body as { readonly error?: string }).error, (answer.body as { readonly reason?: string }).reason]
+    const appState = "s".repeat(43)
+    const redirectUrl = `${connectReturn}?state=${appState}`
+    const asked = ["google.gmail.triage", "google.calendar.read"]
+    const through = effect (body: unknown) => {
+      const started = try call("/connect/initiate", body)
+      const authUrl = (started.body as { readonly authUrl: string }).authUrl
+      const consented = try tryPromise(() => visit(authUrl))
+      const callback = new URL(consented.location)
+      const back = try tryPromise(() => visit(`${cloud.url}${callback.pathname}${callback.search}`))
+      return { started, authUrl, callbackPath: `${callback.pathname}${callback.search}`, back }
+    }
+    type Status = { readonly connected: boolean; readonly reason: string; readonly identity: unknown; readonly grantedCapabilities: ReadonlyArray<string>; readonly grantedScopes: ReadonlyArray<string>; readonly hasRefreshToken: boolean; readonly connectionId: string | null; readonly expiresAt: string | null }
+    const seen = (answer: { readonly body: unknown }) => {
+      const body = answer.body as Status
+      return [body.connected, body.reason, body.identity, body.grantedCapabilities, body.grantedScopes, body.hasRefreshToken, body.connectionId, body.expiresAt === null]
+    }
+    const twoParams = try call("/connect/initiate", { capabilities: asked, redirectUrl: `${redirectUrl}&extra=1` })
+    const foreign = try call("/connect/initiate", { capabilities: asked, redirectUrl: `${web}/apps/other/connect?state=${appState}` })
+    const nothingAsked = try call("/connect/initiate", { capabilities: [] })
+    const agentSide = try call("/connect/initiate", { side: "agent", capabilities: asked })
+    const stored = (try sql(cloud, "SELECT count(*)::int AS n FROM google_connect_states", []))[0]?.n
+    const first = try through({ capabilities: asked, redirectUrl })
+    const replayed = try tryPromise(() => visit(`${cloud.url}${first.callbackPath}`))
+    const returned = fragment(first.back.location)
+    const connectionId = returned.get("connectionId") ?? ""
+    const afterFirst = try call("/status")
+    try sync(() => consent.withholdRefreshToken())
+    const again = try through({ capabilities: ["google.gmail.send"] })
+    const afterAgain = try call("/status")
+    try sync(() => consent.denyNext())
+    const denied = try through({ capabilities: asked, redirectUrl })
+    try sync(() => consent.consentAs({ subject: "google-connect-1", email: "connect@example.com", emailVerified: true }, (scopes) => scopes.filter((scope) => !scope.endsWith("/gmail.readonly"))))
+    const narrowed = try through({ capabilities: asked, redirectUrl })
+    const second = { subject: "google-connect-2", email: "second@example.com", emailVerified: true }
+    const nativeCode = try sync(() => consent.serverAuthCode(second, ["openid", "email", "https://www.googleapis.com/auth/gmail.readonly"]))
+    const native = try call("/connect/native", { serverAuthCode: nativeCode })
+    const nativeId = (native.body as { readonly connectionId: string }).connectionId
+    const ambiguous = try call("/status")
+    const accounts = try call("/accounts")
+    const disconnected = try call("/disconnect", { side: "owner", connectionId })
+    const revokedOnce = [...google.revoked].map((refresh) => google.grants.get(refresh)?.subject)
+    const afterDisconnect = try call(`/status?grantId=${connectionId}`)
+    const disconnectedAgain = try call("/disconnect", { connectionId })
+    const anonymous = try cloud.call("/api/v1/eliza/google/status")
+    const held = try sql(cloud, "SELECT key, status, subject FROM google_connections WHERE status <> 'Pending' ORDER BY linked_at", [])
+    const authorize = new URL(first.authUrl)
+    const auth = "https://www.googleapis.com/auth/"
+    try check(() => assert.deepStrictEqual(
+      {
+        refused: [errorOf(twoParams), errorOf(foreign), errorOf(nothingAsked), errorOf(agentSide), stored],
+        started: [first.started.status, (first.started.body as { readonly appReturn?: number }).appReturn, authorize.pathname, authorize.searchParams.get("redirect_uri"), authorize.searchParams.get("scope"), authorize.searchParams.get("code_challenge_method"), authorize.searchParams.get("access_type")],
+        back: [first.back.status, first.back.location.startsWith(`${redirectUrl}#`), returned.get("state"), returned.get("result"), connectionId !== ""],
+        replayed: replayed.status,
+        afterFirst: seen(afterFirst),
+        again: [(again.started.body as { readonly appReturn?: number }).appReturn, again.back.status, again.back.body.includes("Plain")],
+        afterAgain: seen(afterAgain),
+        denied: [fragment(denied.back.location).get("result"), fragment(denied.back.location).get("connectionId")],
+        narrowed: [fragment(narrowed.back.location).get("result"), fragment(narrowed.back.location).get("connectionId")],
+        native: [native.status, native.body],
+        ambiguous: errorOf(ambiguous),
+        accounts: [accounts.status, (accounts.body as ReadonlyArray<{ readonly connectionId: string }>).map((account) => account.connectionId)],
+        disconnected: [disconnected.status, disconnected.body, revokedOnce],
+        afterDisconnect: seen(afterDisconnect),
+        disconnectedAgain: [disconnectedAgain.status, disconnectedAgain.body, google.revoked.size],
+        anonymous: errorOf(anonymous),
+        held: held.map((row) => [row.key, row.status, row.subject])
+      },
+      {
+        refused: [[400, "invalid_request", undefined], [400, "redirect_mismatch", undefined], [400, "invalid_request", undefined], [400, "invalid_request", undefined], 0],
+        started: [200, 2, "/google/accounts", "https://api.staging.example.com/api/v1/oauth/google/callback", `openid ${auth}userinfo.email ${auth}userinfo.profile ${auth}calendar.events ${auth}gmail.readonly`, "S256", "offline"],
+        back: [302, true, appState, "connected", true],
+        replayed: 400,
+        afterFirst: [true, "connected", { email: "connect@example.com" }, ["google.basic_identity", "google.gmail.triage", "google.calendar.read", "google.calendar.write"],
+          ["openid", `${auth}userinfo.email`, `${auth}userinfo.profile`, `${auth}calendar.events`, `${auth}gmail.readonly`], true, connectionId, false],
+        again: [undefined, 200, true],
+        afterAgain: [true, "connected", { email: "connect@example.com" }, ["google.basic_identity", "google.gmail.send"],
+          ["openid", `${auth}userinfo.email`, `${auth}userinfo.profile`, `${auth}gmail.send`], true, connectionId, false],
+        denied: ["denied", null],
+        narrowed: ["failed", null],
+        native: [200, { connected: true, connectionId: nativeId, email: "second@example.com", scopes: ["openid", "email", `${auth}gmail.readonly`], refreshTokenIssued: true }],
+        ambiguous: [400, "invalid_request", "grant_required"],
+        accounts: [200, [nativeId, connectionId]],
+        disconnected: [200, { ok: true }, ["google-connect-1"]],
+        afterDisconnect: [false, "disconnected", { email: "connect@example.com" }, [], [], false, connectionId, true],
+        disconnectedAgain: [200, { ok: true }, 1],
+        anonymous: [401, "authentication_required", undefined],
+        held: [[connectionId, "Revoked", "google-connect-1"], [nativeId, "Active", "google-connect-2"]]
+      }
+    ))
+  }), 60_000)
+
   it.live("Triage, search and read my mail at the history Google answered, refusing a stale attachment and an oversized body (spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
     const google = try Effect.try(() => googleFakeState())
     const now = try Clock.currentTimeMillis
