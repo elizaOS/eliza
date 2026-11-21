@@ -164,7 +164,11 @@ pure val feedValues = Set(1, 2, 3)
 pure def endsFeed(fr: Frame, feed: int): bool = match fr { | Ended(e) => e.feeds.contains(feed) | _ => false }
 pure def stepEndedFeedsAreAnnounced(before: EventFeed, after: EventFeed, out: List[Frame]): bool =
   before.feeds.every(f => isLive(after, f.id) or out.some(fr => endsFeed(fr, f.id)))
-pure def sometimesAllFeedsClosedByPeers(s: EventFeed): bool = not(s.stopped) and s.nextFeed > 1 and s.feeds.length() == 0 and s.lastEnded == EndedBy({ reason: PeerClosed })
+pure def sometimesAllFeedsClosedByPeers(s: EventFeed): bool = {
+  val ending = s.lastEnded
+  not(s.stopped) and s.nextFeed > 1 and s.feeds.length() == 0 and match ending {
+    | EndedBy(e) => e.reason == PeerClosed | _ => false }
+}
 ```
 
 ### A feed whose next frame passes 256 KiB, or whose unread bytes would pass 1 MiB, is closed
