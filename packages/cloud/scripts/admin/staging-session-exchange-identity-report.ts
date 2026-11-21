@@ -209,11 +209,19 @@ async function main() {
     process.env.STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL?.trim().toLowerCase();
   const configuredSubject =
     process.env.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT?.trim();
+  const fixtureWallet =
+    process.env.STAGING_SESSION_EXCHANGE_FIXTURE_WALLET_ADDRESS?.trim().toLowerCase();
+  const matchesPrincipal = fixtureWallet
+    ? /^0x[0-9a-f]{40}$/.test(fixtureWallet) &&
+      fixture.wallet_verified &&
+      fixture.wallet_chain_type === "ethereum" &&
+      fixture.wallet_address?.toLowerCase() === fixtureWallet
+    : fixtureEmail &&
+      fixture.email_verified &&
+      fixture.email?.trim().toLowerCase() === fixtureEmail;
   const exactFixtureOwner = Boolean(
     activeOrdinaryCredential &&
-      fixtureEmail &&
-      fixture.email_verified &&
-      fixture.email?.trim().toLowerCase() === fixtureEmail &&
+      matchesPrincipal &&
       UUID.test(fixture.steward_user_id) &&
       (!configuredSubject || configuredSubject === fixture.steward_user_id) &&
       fixture.role === "owner" &&

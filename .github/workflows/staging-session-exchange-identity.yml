@@ -52,6 +52,7 @@ jobs:
           STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT: ${{ vars.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT }}
           STAGING_SESSION_EXCHANGE_GRANT_READ_KEY: ${{ secrets.STAGING_SESSION_EXCHANGE_GRANT_READ_KEY }}
           STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL }}
+          STAGING_SESSION_EXCHANGE_FIXTURE_WALLET_ADDRESS: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_WALLET_ADDRESS }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ALLOWED_API_KEY_IDS: ${{ vars.STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS }}
           ALLOWED_USER_IDS: ${{ vars.STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS }}
@@ -72,24 +73,29 @@ jobs:
           EXPECTED_DIGEST: ${{ needs.identity.outputs.fixture_digest }}
           FIXTURE_KEY: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_API_KEY }}
           FIXTURE_EMAIL: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_EMAIL }}
+          FIXTURE_WALLET: ${{ secrets.STAGING_SESSION_EXCHANGE_FIXTURE_WALLET_ADDRESS }}
           FIXTURE_SUBJECT: ${{ vars.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT }}
           STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
         run: |
           node --input-type=module <<'JS'
           import { createHash } from 'node:crypto';
           import { appendFileSync } from 'node:fs';
-          const { EXPECTED_DIGEST, FIXTURE_EMAIL, FIXTURE_KEY, FIXTURE_SUBJECT, STEWARD_PLATFORM_KEYS } = process.env;
+          const { EXPECTED_DIGEST, FIXTURE_EMAIL, FIXTURE_KEY, FIXTURE_SUBJECT, FIXTURE_WALLET, STEWARD_PLATFORM_KEYS } = process.env;
           async function readMembership() {
             const email = FIXTURE_EMAIL?.trim().toLowerCase();
+            const wallet = FIXTURE_WALLET?.trim().toLowerCase();
             const operator = STEWARD_PLATFORM_KEYS?.split(',', 1)[0]?.trim();
-            if (!EXPECTED_DIGEST || !email || !FIXTURE_KEY || !operator) return 'not requested';
+            if (!EXPECTED_DIGEST || (!email && !wallet) || !FIXTURE_KEY || !operator) return 'not requested';
             const get = (url, headers) => fetch(url, { headers, redirect: 'error', signal: AbortSignal.timeout(15000) });
             const cloud = await get('https://api-staging.eliza.app/api/v1/user', { Authorization: `Bearer ${FIXTURE_KEY}` });
             if (!cloud.ok) return 'fixture unavailable';
             const { data: user } = await cloud.json();
             const subject = user?.steward_user_id;
-            if (user?.email_verified !== true || user.email?.trim().toLowerCase() !== email ||
-                user.role !== 'owner' || user.is_active !== true || user.is_anonymous !== false ||
+            const matchesPrincipal = wallet
+              ? /^0x[0-9a-f]{40}$/.test(wallet) && user?.wallet_verified === true &&
+                user.wallet_chain_type === 'ethereum' && user.wallet_address?.toLowerCase() === wallet
+              : user?.email_verified === true && user.email?.trim().toLowerCase() === email;
+            if (!matchesPrincipal || user.role !== 'owner' || user.is_active !== true || user.is_anonymous !== false ||
                 user.organization?.is_active !== true || typeof subject !== 'string' ||
                 !/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(subject) ||
                 (FIXTURE_SUBJECT?.trim() && FIXTURE_SUBJECT.trim() !== subject)) return 'fixture mismatch';
