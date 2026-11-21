@@ -46,10 +46,13 @@ import org.json.JSONObject;
  * redaction invalidates them.
  */
 public final class NotificationMirror {
+  private static final String HISTORY_CLEANUP = "historyCleanupPending";
+
   public final Object lock = new Object();
   private final NotificationMirrorConfig config;
   private final Map<String, Entry> entries = new LinkedHashMap<>();
   private final Set<String> historyFailures = new HashSet<>();
+  private final Set<String> unconfirmedHistoryCleanup = new HashSet<>();
   private volatile long generation;
   private NotificationMirrorListenerService listener;
   private static final class Entry {
@@ -165,11 +168,17 @@ public final class NotificationMirror {
   }
   public JSONObject status(Context c) throws Exception {
     synchronized (lock) {
-      JSONObject p = policy(c);
-      if (!granted(c)) {
-        invalidate();
-        clearHistory(c);
+      if (historyCleanupPending(c)) {
+        try {
+          clearHistory(c);
+        } catch (IllegalStateException unavailable) {
+          historyFailures.add(c.getPackageName());
+        }
       }
+      JSONObject p = policy(c);
+      boolean accessGranted = granted(c);
+      if (!accessGranted)
+        invalidate();
       try {
         pruneHistory(c, p);
       } catch (Exception unavailable) {
@@ -178,11 +187,11 @@ public final class NotificationMirror {
       JSONObject out = new JSONObject();
       out.put("revision", p.getString("revision"));
       out.put("enabled", p.optBoolean("enabled"));
-      out.put("accessGranted", granted(c));
+      out.put("accessGranted", accessGranted);
       out.put("connected", listener != null);
       out.put("paused", paused(c));
       out.put("history", p.optBoolean("history"));
-      out.put("historyUnavailable", historyFailures.contains(c.getPackageName()));
+      out.put("historyUnavailable", historyCleanupPending(c) || historyFailures.contains(c.getPackageName()));
       JSONArray selected = new JSONArray(), stored = p.getJSONArray("apps");
       for (int i = 0; i < stored.length(); i++) {
         JSONObject a = stored.getJSONObject(i);
@@ -507,6 +516,8 @@ public final class NotificationMirror {
     }
   }
   private void recordEvent(Context c, JSONObject app, long posted, String state) throws Exception {
+    if (historyCleanupPending(c))
+      return;
     JSONArray old = readHistory(c), next = new JSONArray();
     next.put(new JSONObject()
             .put("id", UUID.randomUUID().toString())
@@ -521,6 +532,8 @@ public final class NotificationMirror {
     writeHistory(c, next);
   }
   private void pruneHistory(Context c, JSONObject p) throws Exception {
+    if (historyCleanupPending(c))
+      return;
     if (!NotificationMirrorPolicy.keepsHistory(
             granted(c), p.optBoolean("enabled"), p.optBoolean("history"), paused(c))) {
       clearHistory(c);
@@ -552,6 +565,8 @@ public final class NotificationMirror {
   /** Retained post/remove events for still-selected apps: label, time and state only. */
   public JSONArray history(Context c) throws Exception {
     synchronized (lock) {
+      if (historyCleanupPending(c))
+        return new JSONArray();
       JSONObject p = policy(c);
       pruneHistory(c, p);
       if (!active(c, p) || !p.optBoolean("history") || locked(c))
@@ -580,14 +595,31 @@ public final class NotificationMirror {
       clearHistory(c);
     }
   }
+  private boolean historyCleanupPending(Context c) {
+    return unconfirmedHistoryCleanup.contains(c.getPackageName()) || prefs(c).contains(HISTORY_CLEANUP);
+  }
+
+  private static boolean historyArtifactsRemain(AtomicFile file) {
+    return historyExists(file) || new File(file.getBaseFile().getPath() + ".new").exists();
+  }
+
   public void clearHistory(Context c) {
     synchronized (lock) {
+      String owner = c.getPackageName();
       AtomicFile file = historyFile(c);
-      file.delete();
-      if (file.getBaseFile().exists() || new File(file.getBaseFile().getPath() + ".bak").exists()
-          || new File(file.getBaseFile().getPath() + ".new").exists())
-        throw new IllegalStateException("History cleanup unavailable");
-      historyFailures.remove(c.getPackageName());
+      if (historyCleanupPending(c) || historyArtifactsRemain(file)) {
+        unconfirmedHistoryCleanup.add(owner);
+        SharedPreferences preferences = prefs(c);
+        if (!preferences.edit().putString(HISTORY_CLEANUP, UUID.randomUUID().toString()).commit())
+          throw new IllegalStateException("History cleanup could not be recorded");
+        file.delete();
+        if (historyArtifactsRemain(file))
+          throw new IllegalStateException("History cleanup unavailable");
+        if (!preferences.edit().remove(HISTORY_CLEANUP).commit())
+          throw new IllegalStateException("History cleanup could not be confirmed");
+        unconfirmedHistoryCleanup.remove(owner);
+      }
+      historyFailures.remove(owner);
     }
   }
 }

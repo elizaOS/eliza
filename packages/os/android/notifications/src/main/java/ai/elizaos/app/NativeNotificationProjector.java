@@ -1,6 +1,7 @@
 package ai.elizaos.app;
 
 import android.Manifest;
+import android.app.Activity;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -30,7 +31,8 @@ final class NativeNotificationProjector {
     private static final String TAG = "eliza.native.notification:";
     private static final String GROUP = "elizaNativeNotificationGroup";
 
-    static boolean post(Context context, String owner, JSONObject notification) throws Exception {
+    static boolean post(Context context, Class<? extends Activity> tapComponent, String owner, JSONObject notification) throws Exception {
+        java.util.Objects.requireNonNull(tapComponent);
         if (!validOwner(owner)) throw new SecurityException("Invalid notification presentation owner");
         JSONObject item = NativeNotificationInbox.checked(notification);
         if ((Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
@@ -57,7 +59,7 @@ final class NativeNotificationProjector {
         SharedPreferences.Editor authority = receipts.edit().putString(key, token);
         for (String stale : receipts.getAll().keySet()) if (!stale.equals(key) && !shown.contains(stale)) authority.remove(stale);
         if (!authority.commit()) throw new IOException("Notification tap authority could not be persisted");
-        Intent tap = new Intent(context, MainActivity.class)
+        Intent tap = new Intent(context, tapComponent)
                 .setAction(context.getPackageName() + ".NATIVE_NOTIFICATION." + key)
                 .setData(new Uri.Builder().scheme("eliza-native-notification").authority(owner).appendPath(id).build())
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -102,14 +104,14 @@ final class NativeNotificationProjector {
     }
 
     /** Call before native deep-link capture. Only current-profile, private-token taps become routes. */
-    static boolean onOpened(Context context, Intent intent, String currentOwner) {
+    static boolean onOpened(Context context, Class<? extends Activity> tapComponent, Intent intent, String currentOwner) {
         if (intent == null || !intent.hasExtra(OWNER)) return false;
         String owner = intent.getStringExtra(OWNER), id = intent.getStringExtra("notificationId");
         SharedPreferences receipts = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         boolean verified = validOwner(currentOwner) && currentOwner.equals(owner) && validId(id)
                 && (context.getPackageName() + ".NATIVE_NOTIFICATION." + owner + ":" + id).equals(intent.getAction())
                 && intent.getComponent() != null && context.getPackageName().equals(intent.getComponent().getPackageName())
-                && MainActivity.class.getName().equals(intent.getComponent().getClassName())
+                && tapComponent != null && tapComponent.getName().equals(intent.getComponent().getClassName())
                 && java.util.Objects.equals(receipts.getString(owner + ":" + id, null), intent.getStringExtra(TOKEN))
                 && intent.getStringExtra(TOKEN) != null;
         // Neither a stale profile tap nor an unverified producer route enters the URL buffer.

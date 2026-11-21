@@ -1,0 +1,74 @@
+// spec/agent/tasks/index.md, "Every task request comes from the launch account of a started host"; spec/agent/tasks/store.md, "Storage opens only with a private path, the exclusive lock, a 32-byte key and the launch account"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"
+import { Service, logger, stringToUuid, type IAgentRuntime, type TaskOwner } from "@elizaos/core"
+import { ModuleRefused, type AgentModule, type ModuleContext, type ModuleFactory } from "../host/module.vibe"
+import { createTaskHost, modelOwner, type TaskHostHandle, type TaskHostOptions } from "./host.vibe"
+import { bindTaskPresentation, type TaskPresentationPorts } from "./chat-task.vibe"
+import { taskRoutes } from "./routes.vibe"
+import { createTaskStore, storageKeySource } from "./store.vibe"
+
+export type {
+  AuthorizedTaskGoal, TaskActuator, TaskCleanupReason, TaskDispatchContext, TaskGoalAuthorizer,
+} from "./host.vibe"
+
+export const tasksModuleName = "@elizaos/agent/tasks"
+export type { TaskPresentation, TaskPresentationPorts } from "./chat-task.vibe"
+export type TaskModulePorts = Pick<TaskHostOptions, "actuator" | "authorizer"> & { readonly presentation?: TaskPresentationPorts }
+
+function taskOwner(context: ModuleContext): TaskOwner | undefined {
+  const { account, callerRole } = context.launch
+  if (account === undefined || callerRole !== "owner") return undefined
+  return {
+    agentId: context.runtime.agentId,
+    actorId: context.ownerEntityId,
+    connector: { source: "device", accountId: stringToUuid(JSON.stringify(["task-account", account.organizationId, account.userId])) },
+  }
+}
+
+function taskService(host: TaskHostHandle, owner: TaskOwner | undefined, presentation: TaskPresentationPorts | undefined) {
+  return class InteractiveTaskService extends Service {
+    static override serviceType = tasksModuleName
+    override capabilityDescription = "The launch owner's durable interactive task lifecycle"
+    private detachPresentation: () => void = () => {}
+
+    static override async start(runtime: IAgentRuntime): Promise<Service> {
+      const service = new InteractiveTaskService(runtime)
+      if (owner !== undefined) {
+        const opened = await Effect.runPromiseExit(host.start(owner))
+        if (Exit.isFailure(opened)) {
+          logger.warn({ src: "agent", agentId: runtime.agentId, code: "TASK_STORAGE_UNAVAILABLE" }, "The interactive task host could not start")
+        } else if (presentation !== undefined) {
+          service.detachPresentation = bindTaskPresentation(runtime, host, presentation)
+        }
+      }
+      return service
+    }
+
+    override stop(): Promise<void> {
+      this.detachPresentation()
+      return runPromise(host.close())
+    }
+  }
+}
+
+export function tasksModule(ports: TaskModulePorts = {}): ModuleFactory<never> {
+  return effect (context) => {
+    const owner = taskOwner(context)
+    const keys = try Effect.try({
+      try: () => storageKeySource(owner === undefined || context.storageKey === undefined
+        ? undefined : Redacted.make(Redacted.value(context.storageKey))),
+      catch: () => new ModuleRefused({ module: tasksModuleName, reason: "The launch storage key could not be read" }),
+    })
+    const store = try createTaskStore({ directory: `${context.stateDirectory}/tasks`, keys })
+    const { presentation, ...helpers } = ports
+    const host = try createTaskHost({ store, ...helpers })
+    return {
+      name: tasksModuleName,
+      plugin: {
+        name: tasksModuleName,
+        description: "Start, inspect and stop the launch owner's interactive task",
+        services: [taskService(host, owner, presentation)],
+        routes: taskRoutes(host, owner === undefined ? undefined : modelOwner(owner)),
+      },
+    } satisfies AgentModule
+  }
+}

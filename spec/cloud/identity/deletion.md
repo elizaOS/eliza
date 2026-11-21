@@ -1,7 +1,7 @@
 # Account deletion
 
 An account is deleted only by the operator, through `elizaos-cloud account
-delete <user>`, after the operator has confirmed the request with the person
+delete --user <user> --confirmed-with-owner`, after the operator has confirmed the request with the person
 (no app has a deletion route; the person asks support). There is no recovery
 window and no cancel. Sources are develop
 `lib/services/account-deletion-saga.ts`,
@@ -63,8 +63,9 @@ pure def stepEffectsOnlyAtFenceAndErasure(before: Deletion, via: str, after: Del
 
 ### The steps run in order, and a step is finished only once every step before it is
 
-Cancelling billing comes first, so nothing is charged after the fence;
-revoking Google comes next; erasing comes last, so a provider is never left
+Cancelling the person's exclusively owned billing comes first. Billing for
+another account sharing the organization stays in place.
+Revoking Google comes next. Erasing comes last, so a provider is never left
 holding a grant or a subscription for an account that no longer exists here.
 
 ```quint
@@ -85,6 +86,11 @@ pure def stepStepsAdvanceOneAtATime(before: Deletion, after: Deletion): bool =
 Cancelling billing is a `SubscriptionUpdate` (cancel now, no proration);
 revoking Google is a `GoogleGrant` per connection. The shell derives each
 provider key from the request, the step, the connection and a call number.
+Before sending, the shell records the exact Stripe subscription and its
+customer or the exact Google connection and its storage format. Stripe
+lookup and retry use that recorded subscription. An unresolved older receipt
+holding only an organization id needs operator diagnosis because it does
+not identify what was sent. A completed older receipt can finish its step.
 Claiming, sending, a reply, a lost sender and a lookup are those of
 `shared/dispatchOnce`, so each call reaches the provider at most once and an
 unknown outcome is settled only by a lookup.
@@ -135,7 +141,10 @@ revoked. The shell reads `workLeft` in the finishing transaction: a live
 subscription for billing, an unrevoked connection for Google. After a
 connection is revoked, the shell erases its sealed tokens in the same
 transaction, and the next connection starts a fresh budget; billing holds
-one subscription.
+one subscription. The shell checks both server and legacy Worker token
+custody with their original keys and OAuth client configuration. A missing
+required credential leaves the cleanup unresolved and preserves the sealed
+record for recovery.
 
 ```quint
 pure def alreadyGone(s: SagaStep, cause: D::RefusalCause): bool = cause == D::NotFoundAtProvider or (s == RevokeGoogle and cause == D::AuthorizationLost)

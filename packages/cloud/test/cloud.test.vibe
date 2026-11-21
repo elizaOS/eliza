@@ -1,4 +1,8 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+import { reservedFor } from "../gen/cloud__shared__metering.effect.vibe"
+import { claimDue, stepDeletion, sweepDeletions } from "../src/identity/deletion.vibe"
+import { requestDigest } from "../src/shared/dispatch-once.vibe"
+import { deletionProviders, workerRefreshCipher } from "./support/fakes/deletion.ts"
 import { acquire, create, elapse, initial as noClaim } from "../gen/core__sessions.ts"
 import { readBackCheckouts } from "../src/billing/checkout-readback.vibe"
 import { assert, describe, it } from "@effect/vitest"
@@ -49,7 +53,7 @@ import { matchRoute, type Route } from "../src/http/routes.vibe"
 import { areas, listening, respond } from "../src/http/server.vibe"
 import { googleIdentityFake, visit, type GooglePerson } from "./support/google-identity-fake.ts"
 import { authenticatorCode } from "./support/authenticator.ts"
-import { manualClock } from "./support/clock.ts"
+import { manualClock, shiftedClock } from "./support/clock.ts"
 import { testDatabaseIdentity } from "./support/profile.ts"
 import { legacyGrant } from "../gen/cloud__nativeClients__deviceKeys.effect.vibe"
 
@@ -145,7 +149,7 @@ describe("WP0 Foundation", () => {
       const key = { service: "MeteredInference", caller: owner.userId, requestId: "request-1", part: { tag: "WholeRequest" } } as const
       const first = try reserve(owner, key, 100_000)
       const replay = try reserve(owner, key, 100_000)
-      const held = try sql(cloud, "SELECT credit_balance FROM organizations WHERE id = $1", ["org-funded"])
+      const held = try sql(cloud, "SELECT f.state->>'creditBalance' AS total, f.state->>'creditHeld' AS held, o.credit_balance AS available FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-funded"])
       try markDispatched(first.key)
       const settled = try settle(first.key, { kind: "known", actual: 80_000 })
       const twice = try settle(first.key, { kind: "known", actual: 80_000 })
@@ -156,14 +160,14 @@ describe("WP0 Foundation", () => {
       try check(() => assert.deepStrictEqual(
         {
           added: [added.balance, added.replayed, again.balance, again.replayed],
-          reserved: [first.hold.phase, first.hold.fromCredits, first.replayed, replay.replayed, Number(held[0]?.credit_balance)],
+          reserved: [first.hold.phase, first.hold.fromCredits, first.replayed, replay.replayed, Number(held[0]?.total), Number(held[0]?.held), Number(held[0]?.available)],
           settled: [settled.phase, settled.charged, twice.charged, Number(balance[0]?.credit_balance)],
           usage: usage.map((row) => [Number(row.charged), Number(row.from_credits), Number(row.uncollected), row.outcome]),
           refusal
         },
         {
           added: [1_000_000, false, 1_000_000, true],
-          reserved: ["Reserved", 150_000, false, true, 1_000_000],
+          reserved: ["Reserved", 150_000, false, true, 1_000_000, 150_000, 850_000],
           settled: ["Settled", 80_000, 80_000, 920_000],
           usage: [[80_000, 80_000, 0, "known"]],
           refusal: { error: "insufficient_credits", errorDescription: "Insufficient credits.", retryable: false }
@@ -1204,8 +1208,8 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
     try TestClock.adjust(Duration.seconds(5))
     const caller = try signedCaller(cloud, "talker")
-    const windowQuote = 60 * 100 + 4096 * 30
-    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 2 * windowQuote + 1_000, requestKey: "talk-funding" }))
+    const reservedPerWindow = reservedFor(60 * 100) + reservedFor(4096 * 30)
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 2 * reservedPerWindow + 1_000, requestKey: "talk-funding" }))
     const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
     const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
     const session = minted.body as { readonly sessionId: string; readonly token: string; readonly expiresAt: string; readonly wsUrl: string }
@@ -1236,7 +1240,10 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
       phase = (try sql(cloud, "SELECT phase FROM speech_sessions WHERE key = $1", [session.sessionId]))[0]?.phase
     }
     const windows = try sql(cloud, "SELECT number, expires_at, settled_at IS NOT NULL AS settled FROM speech_windows WHERE session_id = $1 ORDER BY number", [session.sessionId])
-    const usage = try sql(cloud, "SELECT quote, outcome FROM usage_records WHERE organization_id = $1 ORDER BY hold_key", [caller.organizationId])
+    const usage = try sql(cloud, `SELECT w.number, u.quote, u.outcome,
+      CASE WHEN u.hold_key = w.transcribe_hold THEN 'transcribe' ELSE 'synthesize' END AS direction
+      FROM speech_windows w JOIN usage_records u ON u.hold_key IN (w.transcribe_hold, w.synthesize_hold)
+      WHERE w.session_id = $1 AND u.organization_id = $2 ORDER BY w.number, direction DESC`, [session.sessionId, caller.organizationId])
 
     const spender = try signedCaller(cloud, "spender")
     const now = try Clock.currentTimeMillis
@@ -1258,7 +1265,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
         forwarded: speech.sttPcmBytes,
         phase,
         windows: windows.map((row) => [Number(row.number), Number(row.expires_at) - mintedAt, row.settled]),
-        usage: usage.map((row) => [Number(row.quote), row.outcome]),
+        usage: usage.map((row) => [Number(row.number), row.direction, Number(row.quote), row.outcome]),
         spent: [spent.status, (spent.body as { readonly error?: string }).error]
       },
       {
@@ -1284,7 +1291,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
         forwarded: 3_200,
         phase: "closed",
         windows: [[1, 60_000, true], [2, 120_000, true]],
-        usage: [[6_000, "unknown"], [122_880, "unknown"], [6_000, "unknown"], [122_880, "unknown"]],
+        usage: [[1, "transcribe", 6_000, "unknown"], [1, "synthesize", 122_880, "unknown"], [2, "transcribe", 6_000, "unknown"], [2, "synthesize", 122_880, "unknown"]],
         spent: [402, "allowance_exhausted"]
       }
     ))
@@ -1959,6 +1966,7 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
     google.switches.dropNextReply = true
     const dropped = try create("coffee-key-0001", { title: "Coffee", startAt: "2026-12-01T15:00:00Z", endAt: "2026-12-01T15:30:00Z" })
     const changedAccount = try create("tea-key-00000001", { ...lunch, title: "Tea", expectedAccountId: "subject-elsewhere" })
+    try check(() => assert.equal(first.status, 201, JSON.stringify(first.body)))
     const created = (first.body as { readonly event: { readonly externalId: string; readonly etag: string; readonly title: string } }).event
     const eventPath = `${calendarBase}/events/${created.externalId}`
     const patch = (etag: string | undefined, json: unknown) => cloud.call(eventPath, { method: "PATCH", headers: etag === undefined ? headers : { ...headers, "if-match": etag }, json })
@@ -2203,6 +2211,160 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
       }
     ))
   }), 30_000)
+  it.live("Delete an account the person asked support to delete: fence it at once, cancel billing and revoke Google once though both replies are lost, retry a phase after a crashed sweep's claim expires, and erase the person (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\"; spec/cloud/operator.md, \"An account deletion starts only for an active account, after the operator confirmed the request with its owner\")", () => scoped(effect {
+    const providers = try Effect.try(() => deletionProviders())
+    const cloud = try testCloud({ stripe: providers.stripe, mount: (fakes) => { providers.mount(fakes) } })
+    const now = try Clock.currentTimeMillis
+    const owner = { userId: "user-leaving", organizationId: "org-leaving" }
+    try openAccount(cloud, owner)
+    const subscribed = try Effect.try(() => providers.subscribe(catalogPrices[0].priceId))
+    const replacement = try Effect.try(() => providers.subscribe(catalogPrices[0].priceId))
+    try sql(cloud, "INSERT INTO cloud_checkout_customers (organization_id, customer_id) VALUES ($1, $2)", [owner.organizationId, subscribed.customerId])
+    const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
+    const connectionId = "90111111-1111-4111-8111-111111111111"
+    const refreshToken = try Effect.try(() => providers.grant("subject-conn-leaving"))
+    try cloud.inside(linkedGrant(cloud, owner, connectionId, refreshToken, scopes, now - 1000))
+    const legacyKey = "b".repeat(64)
+    const legacyOrigin = "https://worker-custody.example.test"
+    const legacySubject = "worker-conn-leaving"
+    const workerRefresh = try sync(() => providers.grant(legacySubject))
+    const cipher = try sync(() => workerRefreshCipher(legacyKey, legacyOrigin, owner.userId, legacySubject, workerRefresh))
+    try sql(cloud, `INSERT INTO cloud_google_connections (account_id, id, subject, email, mail, calendar, send_mail, refresh_cipher)
+      VALUES ($1, $2, $3, 'worker-conn-leaving@example.test', true, false, true, $4)`, [owner.userId, connectionId, legacySubject, cipher])
+    const key = try deviceKey(cloud, owner.userId, { deviceName: "Phone", createdAt: now - 1000, expiresAt: now + 86_400_000 })
+    const entitlement = effect () => {
+      const answer = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${key}` } })
+      return [answer.status, (answer.body as { readonly reason?: string }).reason]
+    }
+    const shown = (result: { readonly exit: Exit.Exit<unknown, unknown>; readonly out: ReadonlyArray<string>; readonly err: ReadonlyArray<string> }) =>
+      [Exit.isSuccess(result.exit), result.out, result.err.map((line) => /"error":"([a-z_]+)"/.exec(line)?.[1])]
+    const remove = ["account", "delete", "--user", owner.userId]
+    const funded = try printed(operator(cloud, ["credits", "add", "--organization", owner.organizationId, "--amount", "1000000", "--request", "pilot-leaving"]))
+    const before = try entitlement()
+    const unconfirmed = try printed(operator(cloud, remove))
+    const requested = try printed(operator(cloud, [...remove, "--confirmed-with-owner"]))
+    const fenced = try entitlement()
+    const status = effect () => (try sql(cloud, "SELECT status, email, phone, name, device_epoch::int FROM accounts WHERE key = $1", [owner.userId]))[0]
+    const closing = try status()
+    const later = try sync(() => shiftedClock())
+    const legacyBindings: Readonly<Record<string, string>> = {
+      GOOGLE_CONNECT_TOKEN_KEY: legacyKey, PUBLIC_API_ORIGIN: legacyOrigin,
+      GOOGLE_CONNECT_CLIENT_ID: "legacy-google-client", GOOGLE_CONNECT_CLIENT_SECRET: "legacy-google-secret"
+    }
+    const sweep = () => provideService(cloud.inside(effect {
+      const deployed = try Deployment
+      return try provideService(sweepDeletions(), Deployment, {
+        ...deployed, secret: effect (name: string) => name in legacyBindings ? legacyBindings[name] : try deployed.secret(name)
+      })
+    }), Clock.Clock, later.clock)
+    try Effect.try(() => providers.loseNextCancelReply(subscribed.subscriptionId))
+    const billing = try sweep()
+    const phase = effect () => (try sql(cloud, "SELECT phase, step, attempts FROM deletion_requests WHERE key = $1", [owner.userId]))[0]
+    const afterBilling = try phase()
+    try cloud.inside(claimDue(try later.clock.currentTimeMillis))
+    const whileClaimed = try sweep()
+    try Effect.try(() => later.advance(10 * 60_000 + 1))
+    const pinned = (try sql(cloud, "SELECT target FROM deletion_receipts WHERE user_id = $1 AND step = 'cancel_billing'", [owner.userId]))[0]?.target
+    try sql(cloud, "UPDATE cloud_checkout_customers SET customer_id = $2 WHERE organization_id = $1", [owner.organizationId, replacement.customerId])
+    try sync(() => providers.revealCanceled(subscribed.subscriptionId))
+    const recovered = try sweep()
+    const afterRecovery = try phase()
+    try sync(() => {
+      providers.loseNextRevokeReply(refreshToken)
+      providers.loseNextRevokeReply(workerRefresh)
+    })
+    const missingKey = try provideService(cloud.inside(sweepDeletions()), Clock.Clock, later.clock)
+    const afterMissingKey = try phase()
+    const preserved = (try sql(cloud, "SELECT refresh_cipher FROM cloud_google_connections WHERE account_id = $1", [owner.userId]))[0]?.refresh_cipher === cipher
+    const google = try sweep()
+    const afterGoogle = try phase()
+    const erasing = try sweep()
+    const idle = try sweep()
+    const again = try printed(operator(cloud, [...remove, "--confirmed-with-owner"]))
+    const erased = try status()
+    const left = try sql(cloud, "SELECT (SELECT count(*) FROM sessions WHERE user_id = $1)::int AS sessions, (SELECT count(*) FROM device_grants WHERE user_id = $1)::int AS devices, (SELECT count(*) FROM google_connections WHERE user_id = $1)::int AS google, (SELECT count(*) FROM cloud_google_connections WHERE account_id = $1)::int AS worker_google, (SELECT count(*) FROM cloud_sign_in_identities WHERE account_id = $1)::int AS identities, (SELECT count(*) FROM credit_entries WHERE organization_id = $2)::int AS ledger", [owner.userId, owner.organizationId])
+    const googleTargets = try sql(cloud, "SELECT target FROM deletion_receipts WHERE user_id=$1 AND step='revoke_google' ORDER BY target", [owner.userId])
+    const outside = try Effect.try(() => ({
+      stripe: [providers.subscriptionStatus(subscribed.subscriptionId), providers.cancelCalls(cloud.fakes, subscribed.subscriptionId),
+        providers.subscriptionStatus(replacement.subscriptionId), providers.cancelCalls(cloud.fakes, replacement.subscriptionId)],
+      google: [providers.revoked(refreshToken), providers.revoked(workerRefresh), providers.revokeCalls()],
+      checkedOAuthClients: cloud.fakes.seen.filter((request) => request.path === "/google/token")
+        .map((request) => new URLSearchParams(request.body).get("client_id"))
+    }))
+    try check(() => assert.deepStrictEqual(
+      {
+        funded: Exit.isSuccess(funded.exit), before, unconfirmed: shown(unconfirmed), requested: shown(requested), fenced, closing: [closing?.status, closing?.device_epoch],
+        sweeps: [billing, whileClaimed, recovered, missingKey, google, erasing, idle], afterBilling, afterRecovery, afterMissingKey, afterGoogle,
+        ...outside, pinned, googleTargets: googleTargets.map((row) => row.target), preserved, erased, left: left[0],
+        again: shown(again)
+      },
+      {
+        funded: true, before: [200, undefined], unconfirmed: [false, [], ["invalid_request"]],
+        requested: [true, ["user user-leaving: every session and device key ended; deletion running at cancel_billing, 0 of 12 attempts, no provider call"], []],
+        fenced: [401, "credential_revoked"], closing: ["deleting", 1],
+        sweeps: [1, 0, 1, 1, 1, 1, 0], afterBilling: { phase: "running", step: "cancel_billing", attempts: 1 },
+        afterRecovery: { phase: "running", step: "revoke_google", attempts: 0 }, afterMissingKey: { phase: "running", step: "revoke_google", attempts: 1 },
+        afterGoogle: { phase: "running", step: "erase_data", attempts: 0 },
+        stripe: ["canceled", 1, "active", 0], google: [true, true, 2],
+        checkedOAuthClients: ["google-web-client", "legacy-google-client"],
+        pinned: JSON.stringify({ kind: "stripe", customerId: subscribed.customerId, subscriptionId: subscribed.subscriptionId }),
+        googleTargets: [JSON.stringify({ kind: "google-layered", key: connectionId }), JSON.stringify({ kind: "google-worker", key: connectionId }), JSON.stringify({ kind: "google-worker", key: connectionId })],
+        preserved: true,
+        erased: { status: "erased", email: null, phone: null, name: null, device_epoch: 1 },
+        left: { sessions: 0, devices: 0, google: 0, worker_google: 0, identities: 0, ledger: 1 },
+        again: [true, ["user user-leaving: already requested; deletion erased at erase_data, 0 of 12 attempts, no provider call"], []]
+      }
+    ))
+  }), 60_000)
+  it.live("Keep shared billing and a retained unaddressable cancellation intact (spec/cloud/identity/deletion.md, \"Each provider call of a step is one receipt of that step's kind, owned by the account, under a provider key never used before\")", () => scoped(effect {
+    const providers = try sync(() => deletionProviders())
+    const cloud = try testCloud({ stripe: providers.stripe, mount: (fakes) => { providers.mount(fakes) } })
+    const shared = { userId: "user-shared-leaving", organizationId: "org-shared" }
+    const retained = { userId: "user-legacy-leaving", organizationId: "org-legacy" }
+    const peer = { userId: "user-shared-remaining", organizationId: "org-peer" }
+    try openAccount(cloud, shared)
+    try openAccount(cloud, retained)
+    try openAccount(cloud, peer)
+    try sql(cloud, "ALTER TABLE accounts DROP CONSTRAINT accounts_organization_id_key", [])
+    try sql(cloud, "UPDATE accounts SET organization_id=$2, state=jsonb_set(state,'{organizationId}',to_jsonb($2::text)) WHERE key=$1", [peer.userId, shared.organizationId])
+    const prepare = effect (owner: Owner) => {
+      const subscription = try sync(() => providers.subscribe(catalogPrices[0].priceId))
+      try sql(cloud, "INSERT INTO cloud_checkout_customers (organization_id,customer_id) VALUES ($1,$2)", [owner.organizationId, subscription.customerId])
+      const command = ["account", "delete", "--user", owner.userId, "--confirmed-with-owner"]
+      try operator(cloud, command)
+      return { subscription, command }
+    }
+    const kept = try prepare(shared)
+    const previous = try prepare(retained)
+    const now = try Clock.currentTimeMillis
+    try cloud.store.transaction(effect (tx: Tx) => {
+      const target = retained.organizationId
+      try stepDeletion(tx, retained.userId, {
+        type: "prepareCall", providerKey: { providerKind: "SubscriptionUpdate", providerId: "del_retained_org_only" }, staleAfter: 30_000,
+        expiresAt: now + 60_000, digest: requestDigest({ step: "CancelBilling", userId: retained.userId, organizationId: target, target })
+      }, now, target)
+      const claimed = try stepDeletion(tx, retained.userId, { type: "claimCall" }, now)
+      try stepDeletion(tx, retained.userId, { type: "sendCall", claimToken: claimed.state.receipt.session.currentClaim }, now)
+    })
+    const peerKey = try deviceKey(cloud, peer.userId, { deviceName: "Peer phone", createdAt: now - 1000, expiresAt: now + 86_400_000 })
+    const clock = try sync(() => shiftedClock())
+    try sync(() => clock.advance(31_000))
+    const sweep = provideService(cloud.inside(sweepDeletions()), Clock.Clock, clock.clock)
+    try sweep
+    try sweep
+    try sweep
+    const reasked = try printed(operator(cloud, previous.command))
+    const peerAnswer = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${peerKey}` } })
+    const accounts = try sql(cloud, "SELECT key,status FROM accounts ORDER BY key", [])
+    const receipts = try sql(cloud, "SELECT user_id,target FROM deletion_receipts ORDER BY user_id", [])
+    const accessed = try sync(() => cloud.fakes.seen.filter((request) => request.path.startsWith("/stripe/v1/subscriptions")))
+    try check(() => {
+      assert.deepStrictEqual(accounts, [{ key: retained.userId, status: "deleting" }, { key: shared.userId, status: "erased" }, { key: peer.userId, status: "active" }])
+      assert.deepStrictEqual(receipts, [{ user_id: retained.userId, target: retained.organizationId }])
+      assert.deepStrictEqual([providers.subscriptionStatus(kept.subscription.subscriptionId), providers.subscriptionStatus(previous.subscription.subscriptionId), peerAnswer.status, accessed.length], ["active", "active", 200, 0])
+      assert.match(reasked.out[0] ?? "", /provider target unresolved/)
+    })
+  }), 60_000)
 })
 describe("WP10 Operator and deletion: clients (spec/cloud/operator.md)", () => {
   it.live("Register, update and disable a native client from the operator command line (spec/cloud/operator.md, \"Story: Operate the deployment without reading secrets\"; spec/cloud/nativeClients/registry.md, \"A registration is accepted only when the registry stays valid and no return lies on the API origin, and it never changes how another client is admitted\")", () => scoped(effect {
@@ -2210,9 +2372,9 @@ describe("WP10 Operator and deletion: clients (spec/cloud/operator.md)", () => {
     const fingerprint = "E3:DC:37:EF:3F:94:F0:CB:F5:06:F2:6E:CD:F7:99:99:29:C2:B2:D0:53:D1:63:83:56:91:F7:C9:67:F6:7E:A5"
     const rotated = "A1:DC:37:EF:3F:94:F0:CB:F5:06:F2:6E:CD:F7:99:99:29:C2:B2:D0:53:D1:63:83:56:91:F7:C9:67:F6:7E:A5"
     const web = "https://www.staging.example.com"
-    const flagsOf = (name: string) => [
+    const flagsOf = (name: string, signInReturn = `${web}/apps/${name}/sign-in`) => [
       "--client-id", `com.example.${name}`, "--display-name", name, "--android-package", `com.example.${name}`, "--cert", fingerprint,
-      "--sign-in-return", `${web}/apps/${name}/sign-in`, "--billing-return", `${web}/apps/${name}/billing`, "--credential-ttl-days", "7"
+      "--sign-in-return", signInReturn, "--billing-return", `${web}/apps/${name}/billing`, "--credential-ttl-days", "7"
     ]
     const config = (name: string) => cloud.call(`/api/v1/app-auth/mobile/config?${new URLSearchParams({ clientId: `com.example.${name}`, environment: "staging", redirectUri: `${web}/apps/${name}/sign-in` }).toString()}`)
     const run = (args: ReadonlyArray<string>) => failureTag(operator(cloud, args))
@@ -2220,7 +2382,7 @@ describe("WP10 Operator and deletion: clients (spec/cloud/operator.md)", () => {
       try run(["client", "register", ...flagsOf("one"), "--native-google"]),
       try run(["client", "register", ...flagsOf("two")]),
       try run(["client", "register", ...flagsOf("five"), "--cert", fingerprint, "--cert", fingerprint, "--cert", fingerprint, "--cert", fingerprint]),
-      try run(["client", "register", ...flagsOf("api"), "--sign-in-return", "https://api.staging.example.com/apps/api"]),
+      try run(["client", "register", ...flagsOf("api", "https://api.staging.example.com/apps/api")]),
       try run(["client", "register", "--client-id", "com.example.bare"]),
       try run(["client", "update", "--client-id", "com.example.two", "--display-name", "Two", "--cert", fingerprint, "--cert", rotated]),
       try run(["client", "update", "--client-id", "com.example.nobody", "--display-name", "Nobody"])
@@ -2802,7 +2964,6 @@ module node {
   }
   export async function readSelectedAttachment() {
     const fixture = await openBackupDatabase()
-    const original = globalThis.fetch
     try {
       const digest = "a".repeat(64)
       await fixture.db.query("INSERT INTO cloud_identity (digest, environment, created_at) VALUES ($1, 'staging', 1)", [digest])
@@ -2830,9 +2991,11 @@ module node {
       let revokeDuringDownload = false
       let revokeListing: "grant" | "session" | undefined
       let providerRequestsValid = true
-      globalThis.fetch = async (input, init) => {
+      const providerCalls: string[] = []
+      const providerFetch: typeof fetch = async (input, init) => {
         const request = new Request(input, init)
         const url = new URL(request.url)
+        providerCalls.push(`${request.method} ${url.origin}${url.pathname}`)
         providerRequestsValid &&= request.redirect === "manual"
         if (url.href === "https://oauth2.googleapis.com/token" && request.method === "POST")
           return Response.json({ access_token: "fixture-access", scope: "https://www.googleapis.com/auth/gmail.readonly" })
@@ -2890,7 +3053,7 @@ module node {
           billingReturn: web + "/billing", certFingerprints: [Array(32).fill("AA").join(":")], enabled: true }]),
         GOOGLE_CLIENT_ID: "fixture-client", GOOGLE_CLIENT_SECRET: "fixture-secret", GOOGLE_CONNECT_TOKEN_KEY: key,
       } satisfies CloudBindings
-      const worker = cloudWorker()
+      const worker = cloudWorker(undefined, providerFetch)
       const get = (path: string, cookie?: string) => worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/" + path, {
         headers: cookie ? { origin: web, cookie: "__Host-eliza-session=" + cookie } : { origin: web },
       }), env)
@@ -2899,7 +3062,7 @@ module node {
       const readFolder = async (path: string) => {
         const answer = await get(path, owner.access)
         const result: unknown = await answer.json()
-        if (!answer.ok) throw new Error(`Reading the Gmail fixture folder returned ${answer.status}: ${JSON.stringify(result)}`)
+        if (!answer.ok) throw new Error(`Reading the Gmail fixture folder returned ${answer.status}: ${JSON.stringify(result)} after ${providerCalls.join(", ")}`)
         const value = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String, folder: Schema.String, q: Schema.String, messages: Schema.Array(Schema.Struct({ externalId: Schema.String })),
           counts: Schema.optional(Schema.Struct({ inboxUnread: Schema.Number, drafts: Schema.Number })), nextPageToken: Schema.String }))(result)
         return [answer.status, value.accountId === owner.account.id, value.folder, value.q, value.messages.map(({ externalId }) => externalId), value.counts ?? null, value.nextPageToken]
@@ -2958,7 +3121,6 @@ module node {
         expectedData: bytes.toString("base64"), size: bytes.length, rejectedRedirect: rejectedRedirect.status, providerRequestsValid, attachmentFetches,
       }
     } finally {
-      globalThis.fetch = original
       await fixture.close()
     }
   }

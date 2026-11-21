@@ -170,12 +170,17 @@ it.effect("A page binding holds only while the same settled document is selected
   const sameAddressNewLoad = tabs.current(binding, "t1")
   tabs.applyState(committed({ url: "http://plain.test/", navigation: "4" }))
   const plain = { https: tabs.pageBinding("t1", { https: true }), any: tabs.pageBinding("t1")?.url }
+  const malformed = ["https:/example.test/a", "https://@example.test/a"].map((url) => {
+    const begun = tabs.beginNavigation("t1", url)
+    const committedPage = tabs.applyState(committed({ url }))?.committedPage
+    return { begun, committedPage, https: tabs.pageBinding("t1", { https: true }), current: tabs.current(tabs.pageBinding("t1"), "t1") }
+  })
   tabs.applyState(committed({ error: "Page could not load." }))
   const failed = tabs.pageBinding("t1")
   const external = try opened()
   const externalChange = external.applyState(committed({ externalOnly: true }))
   try Effect.try(() => assert.deepStrictEqual(
-    { beforeCommit, unselected, bound, selection, leaksAddress: JSON.stringify(selection).includes("example.test"), sameAddressNewLoad, plain, failed, external: { committedPage: externalChange?.committedPage, committed: external.info("t1")?.committed, binding: external.pageBinding("t1") } },
+    { beforeCommit, unselected, bound, selection, leaksAddress: JSON.stringify(selection).includes("example.test"), sameAddressNewLoad, plain, malformed, failed, external: { committedPage: externalChange?.committedPage, committed: external.info("t1")?.committed, binding: external.pageBinding("t1") } },
     {
       beforeCommit: undefined,
       unselected: undefined,
@@ -190,6 +195,10 @@ it.effect("A page binding holds only while the same settled document is selected
       leaksAddress: false,
       sameAddressNewLoad: false,
       plain: { https: undefined, any: "http://plain.test/" },
+      malformed: [
+        { begun: undefined, committedPage: false, https: undefined, current: false },
+        { begun: undefined, committedPage: false, https: undefined, current: false },
+      ],
       failed: undefined,
       external: { committedPage: false, committed: false, binding: undefined },
     },

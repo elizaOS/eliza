@@ -1,0 +1,143 @@
+// spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"; spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"
+import { assert, describe, it } from "@effect/vitest"
+import { insufficientCredits, partial, text, type CloudFake } from "./support/cloud-fake.ts"
+import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
+import { REPLY_STREAM_PROTOCOL, type ReplyOutcome } from "../src/client/stream-reader.vibe"
+
+module node {
+  import { readReplyStream, type ReplyOutcome } from "../src/client/stream-reader.vibe"
+
+  export interface Read {
+    readonly outcome: ReplyOutcome
+    readonly previews: ReadonlyArray<{ readonly text: string; readonly provisional: boolean }>
+    readonly statuses: readonly string[]
+  }
+
+  async function* pieces(bytes: Uint8Array, size: number, broken: boolean): AsyncGenerator<Uint8Array> {
+    for (let at = 0; at < bytes.length; at += size) yield bytes.slice(at, at + size)
+    if (broken) throw new Error("connection reset")
+  }
+
+  export async function readSplit(chunks: readonly string[], size: number, broken = false): Promise<Read> {
+    const previews: Array<{ text: string; provisional: boolean }> = []
+    const statuses: string[] = []
+    const bytes = new TextEncoder().encode(chunks.join(""))
+    const outcome = await readReplyStream(pieces(bytes, Math.max(1, size === 0 ? bytes.length : size), broken), {
+      onPreview: (shown, provisional) => { previews.push({ text: shown, provisional }) },
+      onStatus: (activity) => { statuses.push(activity) },
+    })
+    return { outcome, previews, statuses }
+  }
+
+  async function* endless(first: Uint8Array): AsyncGenerator<Uint8Array> {
+    yield first
+    await new Promise<never>(() => undefined)
+  }
+
+  export async function leftRead(): Promise<boolean> {
+    const leave = new AbortController()
+    const reason = new Error("Stop")
+    const reading = readReplyStream(endless(new TextEncoder().encode(`data: {"type":"status","activity":"thinking"}\n\n`)), {}, leave.signal)
+    leave.abort(reason)
+    return reading.then(() => false, (answered: unknown) => answered === reason)
+  }
+}
+import { leftRead, readSplit } from node
+
+schema Created { conversation: { id: string } }
+const created = Schema.decodeUnknownOption(Created)
+
+effect function cloudAgent(cloud: CloudFake, http: boolean) {
+  return try startInProcess({ http, launch: { backend: { kind: "cloud", origin: cloud.origin } }, frame: { credential: { version: 1, value: deviceKey } } })
+}
+
+effect function conversation(agent: InProcess) {
+  const answer = try call(agent, { method: "POST", path: "/api/conversations", body: {} })
+  const decoded = "json" in answer ? created(answer.json) : Option.none()
+  if (decoded._tag !== "Some") return try Effect.die(new Error(`The conversation was not created: ${JSON.stringify(answer)}`))
+  return decoded.value.conversation.id
+}
+
+effect function streamed(agent: InProcess, id: string, body: object, abortAfterChunks?: number) {
+  const cut = abortAfterChunks === undefined ? undefined : try Effect.sync(() => ({ afterChunks: abortAfterChunks, ready: Promise.resolve() }))
+  const answer = try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, body }, cut)
+  return answer.chunks
+}
+
+effect function read(chunks: readonly string[], size: number, broken = false) {
+  return try host("read the reply stream", () => readSplit(chunks, size, broken))
+}
+
+const frames = (...payloads: string[]) => payloads.map((payload) => `data: ${payload}\n\n`)
+
+const summary = (outcome: ReplyOutcome) => outcome.kind === "Done"
+  ? { kind: outcome.kind, text: outcome.text, failureKind: outcome.failureKind, keyed: outcome.messageId !== "" && outcome.userMessageId !== "" }
+  : outcome
+
+const long = "a".repeat(1500) + "é".repeat(1500) + "🙂".repeat(800)
+
+for (const transport of ["socket", "http"] as const) {
+  describe(`Read a streamed reply from the ${transport} (spec/agent/conversation/replyStream.md, "Story: See a reply as it is written")`, () => {
+    it.live('The reader rebuilds the preview from split frames and ends with the done text exactly (spec/agent/conversation/replyStream.md, "The frames written rebuild exactly the text the client holds")', effect () => {
+      const cloud = try cloudFake(deviceKey)
+      const agent = try cloudAgent(cloud, transport === "http")
+      const id = try conversation(agent)
+      try Effect.sync(() => cloud.script(text(long.slice(0, 1500), long.slice(1500, 3000), long.slice(3000))))
+      const chunks = try streamed(agent, id, { text: "Write at length." })
+      const whole = try read(chunks, 0)
+      const split = try read(chunks, 7)
+      try Effect.try(() => assert.deepStrictEqual({
+        whole: summary(whole.outcome), split: summary(split.outcome), samePreviews: split.previews.length === whole.previews.length,
+        lastPreview: split.previews.at(-1), firstStatus: split.statuses[0],
+      }, {
+        whole: { kind: "Done", text: long, failureKind: undefined, keyed: true }, split: { kind: "Done", text: long, failureKind: undefined, keyed: true }, samePreviews: true,
+        lastPreview: { text: long, provisional: false }, firstStatus: "thinking",
+      }))
+    }, 120_000)
+
+    it.live('A stream cut before its terminal frame is Dropped, and a broken transport too (spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId")', effect () => {
+      const cloud = try cloudFake(deviceKey)
+      const agent = try cloudAgent(cloud, transport === "http")
+      const id = try conversation(agent)
+      try Effect.sync(() => cloud.script(partial("Let me think")))
+      const chunks = try streamed(agent, id, { text: "Think forever." }, 2)
+      const cut = try read(chunks, 5)
+      const broken = try read(chunks, 5, true)
+      try Effect.try(() => assert.deepStrictEqual(
+        { cut: cut.outcome, broken: broken.outcome, preview: cut.previews.at(-1) },
+        { cut: { kind: "Dropped" }, broken: { kind: "Dropped" }, preview: { text: "Let me think", provisional: false } }))
+    }, 120_000)
+
+    it.live('An account refusal is Done with its failure kind, and a frame after the terminal one is a protocol failure (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written")', effect () => {
+      const cloud = try cloudFake(deviceKey)
+      const agent = try cloudAgent(cloud, transport === "http")
+      const id = try conversation(agent)
+      try Effect.sync(() => cloud.script(insufficientCredits()))
+      const chunks = try streamed(agent, id, { text: "Answer me." })
+      const refused = try read(chunks, 11)
+      const afterEnd = try read([...chunks, ...frames(`{"type":"token","text":"more"}`)], 11)
+      const outcome = refused.outcome
+      try Effect.try(() => assert.deepStrictEqual(
+        { kind: outcome.kind, failureKind: outcome.kind === "Done" ? outcome.failureKind : undefined, afterEnd: afterEnd.outcome.kind === "Failed" ? afterEnd.outcome.code : afterEnd.outcome.kind },
+        { kind: "Done", failureKind: "insufficient_credits", afterEnd: REPLY_STREAM_PROTOCOL }))
+    }, 120_000)
+  })
+}
+
+describe('Frames the agent never writes (spec/agent/conversation/replyStream.md, "Story: See a reply as it is written")', () => {
+  it.live('A malformed frame fails the read, an error frame is Failed with its code, and only a whole text clears the provisional mark (spec/agent/conversation/replyStream.md, "A frame marks its text provisional while any of it may be taken back, and only a whole text clears the mark")', effect () => {
+    const malformed = try read(frames(`{"type":"token","text":"hi"}`, `{"type":"token","text":"more","fullText":42}`), 3)
+    const failed = try read(frames(`{"type":"tool","name":"CALCULATE"}`, `{"type":"error","code":"ASSISTANT_RESPONSE_UNAVAILABLE","message":"The turn left no reply"}`), 4)
+    const marked = try read(frames(`{"type":"token","fullText":"Checking é","provisional":true}`, `{"type":"token","text":" now 🙂","provisional":true}`, `{"type":"token","text":" soon"}`, `{"type":"token","fullText":"Done."}`), 9)
+    try Effect.try(() => assert.deepStrictEqual({ malformed: malformed.outcome, failed: failed.outcome, marked: marked.previews }, {
+      malformed: { kind: "Failed", code: REPLY_STREAM_PROTOCOL, message: "A reply stream frame does not match the reply protocol" },
+      failed: { kind: "Failed", code: "ASSISTANT_RESPONSE_UNAVAILABLE", message: "The turn left no reply" },
+      marked: [{ text: "Checking é", provisional: true }, { text: "Checking é now 🙂", provisional: true }, { text: "Checking é now 🙂 soon", provisional: true }, { text: "Done.", provisional: false }],
+    }))
+  })
+
+  it.live('Leaving a read rejects it with the reason instead of a Dropped outcome (spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId")', effect () => {
+    const rejectedWithReason = try host("left read", () => leftRead())
+    try Effect.try(() => assert.isTrue(rejectedWithReason))
+  })
+})

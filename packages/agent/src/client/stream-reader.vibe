@@ -1,0 +1,107 @@
+// spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"; spec/agent/conversation/replyStream.md, "The frames written rebuild exactly the text the client holds"; spec/agent/conversation/replyStream.md, "A frame marks its text provisional while any of it may be taken back, and only a whole text clears the mark"; spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written"; spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId"
+import { applyFrame, markOf, type Frame } from "../../gen/agent__conversation__replyStream.effect.vibe"
+import { ReplyFrame, type ActionResultFrame, type DoneFrame } from "./reply-frame.schema.vibe"
+
+export const REPLY_STREAM_PROTOCOL = "REPLY_STREAM_PROTOCOL"
+
+export interface ReplyStreamHooks {
+  readonly onPreview?: (text: string, provisional: boolean) => void
+  readonly onStatus?: (activity: string) => void
+  readonly onTool?: (name: string) => void
+  readonly onReady?: (fullText: string, actionResults: readonly ActionResultFrame[]) => void
+}
+
+export type StreamedReply = Omit<DoneFrame, "type" | "fullText"> & { readonly text: string }
+
+export type ReplyOutcome =
+  | ({ readonly kind: "Done" } & StreamedReply)
+  | { readonly kind: "Failed"; readonly code: string; readonly message: string }
+  | { readonly kind: "Dropped" }
+
+error StreamBroken { cause: unknown }
+
+const decodeFrame = Schema.decodeUnknownOption(Schema.fromJsonString(ReplyFrame), { onExcessProperty: "error" })
+const malformed: ReplyOutcome = { kind: "Failed", code: REPLY_STREAM_PROTOCOL, message: "A reply stream frame does not match the reply protocol" }
+const afterEnd: ReplyOutcome = { kind: "Failed", code: REPLY_STREAM_PROTOCOL, message: "A reply stream frame came after its terminal frame" }
+
+const unitsOf = (text: string): number[] => Array.from({ length: text.length }, (_, at) => text.charCodeAt(at))
+function textOf(units: readonly number[]): string {
+  let text = ""
+  for (let at = 0; at < units.length; at += 8192) text += String.fromCharCode(...units.slice(at, at + 8192))
+  return text
+}
+
+function textFrame(frame: { readonly text?: string; readonly fullText?: string; readonly provisional?: boolean }): Frame {
+  const provisional = frame.provisional === true
+  if (frame.text === undefined) return { tag: "Replace", fullText: unitsOf(frame.fullText ?? ""), provisional }
+  if (frame.fullText === undefined) return { tag: "Token", text: unitsOf(frame.text), provisional }
+  return { tag: "TokenSnapshot", text: unitsOf(frame.text), fullText: unitsOf(frame.fullText), provisional }
+}
+
+function done(frame: DoneFrame): ReplyOutcome {
+  const { type: _type, fullText, ...reply } = frame
+  return { kind: "Done", text: fullText, ...reply }
+}
+
+function field(line: string): { readonly name: string; readonly value: string } {
+  const colon = line.indexOf(":")
+  if (colon < 0) return { name: line, value: "" }
+  const value = line.slice(colon + 1)
+  return { name: line.slice(0, colon), value: value.startsWith(" ") ? value.slice(1) : value }
+}
+
+effect function read(bytes: AsyncIterable<Uint8Array>, hooks: ReplyStreamHooks): ReplyOutcome!! {
+  let shown: number[] = []
+  let provisional = false
+  let data: string[] | undefined
+  let ending: ReplyOutcome | undefined
+  let refused: ReplyOutcome | undefined
+  const deliver = (payload: string): void => {
+    if (ending !== undefined) {
+      refused = afterEnd
+      return
+    }
+    const decoded = decodeFrame(payload)
+    if (decoded._tag === "None") {
+      refused = malformed
+      return
+    }
+    const frame = decoded.value
+    switch (frame.type) {
+      case "token": {
+        const wire = textFrame(frame)
+        shown = applyFrame(shown, wire)
+        provisional = markOf(wire) || (wire.tag === "Token" && provisional)
+        hooks.onPreview?.(textOf(shown), provisional)
+        break
+      }
+      case "status": hooks.onStatus?.(frame.activity); break
+      case "tool": hooks.onTool?.(frame.name); break
+      case "reply_ready": hooks.onReady?.(frame.fullText, frame.actionResults); break
+      case "done": ending = done(frame); break
+      case "error": ending = { kind: "Failed", code: frame.code, message: frame.message }; break
+    }
+  }
+  const lines = Stream.splitLines(Stream.decodeText(Stream.fromAsyncIterable(bytes, (cause) => new StreamBroken({ cause }))))
+  const consume = effect {
+    for try (const line of lines) {
+      if (line === "") {
+        const payload = data
+        data = undefined
+        if (payload !== undefined) try sync(() => deliver(payload.join("\n")))
+        if (refused !== undefined) break
+        continue
+      }
+      const { name, value } = field(line)
+      if (name === "data") data = [...(data ?? []), value]
+    }
+  }
+  consume catch () => undefined
+  return refused ?? ending ?? { kind: "Dropped" }
+}
+
+export async function readReplyStream(bytes: AsyncIterable<Uint8Array>, hooks: ReplyStreamHooks = {}, signal?: AbortSignal): Promise<ReplyOutcome> {
+  return runPromise(read(bytes, hooks), signal === undefined ? undefined : { signal }).catch(async (error: unknown) => {
+    throw signal?.aborted === true ? signal.reason : error
+  })
+}

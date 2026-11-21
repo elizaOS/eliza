@@ -2,6 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { createTaskStore, type TaskDatabaseOpener, type TaskStoreOptions } from "../src/tasks/store.vibe"
 import { scratch, SupportFailed } from "./support/kernel.vibe"
+import { copyIn, sealedFor } from "./support/task-record.vibe"
 
 module node {
   import { randomBytes } from "node:crypto"
@@ -11,7 +12,6 @@ module node {
   import { DatabaseSync } from "node:sqlite"
   import { Redacted, Result } from "effect"
   import { createInteractiveTask, ElizaError, transitionInteractiveTask, type InteractiveTask, type TaskEvent, type TaskTransition } from "@elizaos/core"
-  import { createTaskSealer, deriveTaskKeys, type TaskPurpose } from "../src/tasks/sealing.vibe"
   import { decodeTaskRecord, decodeTaskRecordResult, openNodeTaskDatabase, storageKeySource, type TaskDatabaseOpener, type TaskRecord } from "../src/tasks/store.vibe"
 
   export const account = "owner-account"
@@ -83,24 +83,6 @@ module node {
     }
   }
 
-  export function sealedFor(key: string, sealedAccount: string, purpose: TaskPurpose, record: unknown): string {
-    const sealer = createTaskSealer(deriveTaskKeys(Buffer.from(key, "base64"), { account: sealedAccount, namespace: "agent" }))
-    try {
-      return sealer.seal(JSON.stringify(record), purpose)
-    } finally {
-      sealer.wipe()
-    }
-  }
-
-  export function copyIn(directory: string, id: string, payload: string, unfinished = true): void {
-    const db = new DatabaseSync(join(directory, "tasks.sqlite"))
-    try {
-      db.prepare("INSERT INTO task_records_v1 (id, revision, unfinished, hold, updated_at, payload) VALUES (?, 0, ?, 'readable', 1, ?)").run(id, unfinished ? 1 : 0, payload)
-    } finally {
-      db.close()
-    }
-  }
-
   export function storedIds(directory: string): string[] {
     const db = new DatabaseSync(join(directory, "tasks.sqlite"))
     try {
@@ -155,7 +137,7 @@ module node {
 }
 
 import {
-  account, cancelled, closePermissions, copyIn, decodes, exists, keyFor, laterBuild, newKey, openPermissions, replaceLock, sealedFor,
+  account, cancelled, closePermissions, decodes, exists, keyFor, laterBuild, newKey, openPermissions, replaceLock,
   stealingDatabase, storedIds, task, unknownOutcome,
 } from node
 

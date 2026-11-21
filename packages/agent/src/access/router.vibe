@@ -23,7 +23,17 @@ module node {
   interface Binding {
     readonly route: Route
     readonly origin: RouteOrigin
-    readonly handle: (input: RouteInput, caller: Caller) => ReturnType<LocalRoute["handler"]>
+    readonly handle: RouteHandler
+  }
+
+  type RouteHandler = (input: RouteInput, caller: Caller) => ReturnType<LocalRoute["handler"]>
+
+  const registrations = new WeakMap<LocalRoute, RouteHandler>()
+
+  export function registerCallerRoute(route: Route, handle: RouteHandler): LocalRoute {
+    const registered: LocalRoute = { ...route, handler: (input) => handle(input, "Anonymous") }
+    registrations.set(registered, handle)
+    return registered
   }
 
   const json = (status: number, value: object): Response => Response.json(value, { status })
@@ -53,7 +63,9 @@ module node {
     const bindings: Binding[] = [
       { route: { method: "GET", path: "/api/health" }, origin: builtin, handle: health ?? (() => json(200, { ready: true, runtime: "ok", agentState: "running", epoch })) },
       { route: authStatusRoute, origin: builtin, handle: (_input, caller) => authStatusAnswer(caller, instanceId) },
-      ...routes.filter((route) => !publicPath(route.path)).map((route) => ({ route: listed(route), origin: declared(route), handle: route.handler })),
+      ...routes.filter((route) => !publicPath(route.path)).map((route) => ({
+        route: listed(route), origin: declared(route), handle: registrations.get(route) ?? route.handler,
+      })),
     ]
     const gate = defineRoutes(bindings.map(({ route }) => route))
     const byRoute = new Map(bindings.toReversed().map((binding) => [JSON.stringify(modelRoute(binding.route)), binding]))
@@ -87,4 +99,4 @@ module node {
   }
 }
 
-export { createRouter, type AgentRouter } from node
+export { createRouter, registerCallerRoute, type AgentRouter } from node

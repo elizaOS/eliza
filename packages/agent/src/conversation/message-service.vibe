@@ -13,6 +13,9 @@ type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 type ContentPart = Exclude<NonNullable<ChatMessage["content"]>, string>[number]
 
 export type AccountFailureSince = (since: number) => FailureKind | undefined
+export interface AgentTurnProcessingOptions extends MessageProcessingOptions {
+  readonly taskContext?: string
+}
 
 export const accountFailureOf = (read: () => BindingView): AccountFailureSince => (since) => {
   const view = read()
@@ -94,7 +97,7 @@ async function respond(
   actionGate: (action: { name: string }) => string | undefined,
   accountFailure: AccountFailureSince,
   callback?: HandlerCallback,
-  options?: MessageProcessingOptions,
+  options?: AgentTurnProcessingOptions,
 ): Promise<MessageProcessingResult> {
   const asked = message.content.text ?? ""
   if (!asked.trim() && (message.content.attachments ?? []).length === 0)
@@ -121,7 +124,7 @@ async function respond(
           examples.flatMap(({ name, content }) => content.text ? [`${name}: ${content.text}`] : []).join("\n"))
           .filter(Boolean)
         const system = [character.system, ...(character.bio ?? []), ...(character.style?.all ?? []),
-          ...(character.style?.chat ?? []), ...examples, contextNote(message)].filter(Boolean).join("\n\n")
+          ...(character.style?.chat ?? []), ...examples, contextNote(message), options?.taskContext].filter(Boolean).join("\n\n")
         const text = await runtime.useModel(ModelType.TEXT_LARGE, {
           system, messages, maxTokens: 1024, signal,
           ...(onStreamChunk === undefined ? {} : {

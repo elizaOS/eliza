@@ -139,7 +139,7 @@ schema ErrorBody { readonly error: { readonly type: string; readonly code?: stri
 type Params = ReadonlyArray<readonly [string, string]>
 
 interface Call {
-  readonly method: "GET" | "POST"
+  readonly method: "GET" | "POST" | "DELETE"
   readonly path: string
   readonly params: Params
   readonly timeout: number
@@ -308,6 +308,10 @@ export effect function listSubscriptions(customerId: string, call: StripeRead): 
 
 export effect function retrieveSubscription(subscriptionId: string, call: StripeRead): StripeSubscription!StripeFailure!StripeContext {
   return try read(StripeSubscription, { method: "GET", path: `/v1/subscriptions/${id(subscriptionId)}`, params: [], timeout: call.timeout })
+}
+
+export effect function cancelSubscriptionNow(subscriptionId: string, call: StripeRead): StripeSubscription!StripeFailure!StripeContext {
+  return try read(StripeSubscription, { method: "DELETE", path: `/v1/subscriptions/${id(subscriptionId)}`, params: [], timeout: call.timeout })
 }
 
 export schema StripePlanBinding {

@@ -13,6 +13,7 @@ android {
 }
 repositories { google(); mavenCentral() }
 dependencies {
+ implementation "androidx.core:core:${rootProject.ext.has('androidxCoreVersion') ? rootProject.ext.androidxCoreVersion : '1.16.0'}"
  if (rootProject.findProject(':capacitor-android') != null) {
   implementation project(':capacitor-android')
   // Plugin.getActivity() exposes AppCompatActivity in Capacitor's Java API.

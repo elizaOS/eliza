@@ -24,6 +24,7 @@ type Capabilities = { mail: boolean; calendar: boolean; send_mail: boolean; tras
 type Connection = Capabilities & {
   id: string; account_id: string; subject: string; email: string; refresh_cipher: string; linked_at: Date; last_used_at: Date | null
 }
+export type LegacyGoogleCustody = Pick<Connection, "account_id" | "subject" | "refresh_cipher" | keyof Capabilities>
 type Authorization = Capabilities & { expected_email: string | null; provider: string; provider_subject: string }
 type User = { provider: string; provider_subject: string; email: string | null }
 
@@ -84,10 +85,15 @@ export function nativeGoogleScopes(env: GoogleEnv) {
 
 effect function googleConfig(env: GoogleEnv) {
   const credentials = client(env)
-  const raw = env.GOOGLE_CONNECT_TOKEN_KEY
-  if (!credentials || !raw || !/^[a-f0-9A-F]{64}$/.test(raw)) throw new ConnectionUnavailable()
-  const key = Aead.key(Aead.aes256Gcm, fromHex(raw)) catch effect () => { throw new ConnectionUnavailable() }
+  if (!credentials) throw new ConnectionUnavailable()
+  const key = try tokenKey(env.GOOGLE_CONNECT_TOKEN_KEY)
   return { clientId: credentials.id, clientSecret: credentials.secret, key, redirectUri: env.PUBLIC_API_ORIGIN + callbackPath }
+}
+
+effect function tokenKey(raw: string | undefined) {
+  if (!raw || !/^[a-f0-9A-F]{64}$/.test(raw)) throw new ConnectionUnavailable()
+  const key = Aead.key(Aead.aes256Gcm, fromHex(raw)) catch effect () => { throw new ConnectionUnavailable() }
+  return key
 }
 
 effect function query<Row extends Record<string, unknown>>(db: Client, statement: string, args: (string | boolean | number | null)[]) {
@@ -170,7 +176,7 @@ effect function oauthToken(config: Config, grant: URLSearchParams) {
   return decoded.value
 }
 
-function credentialContext(env: GoogleEnv, account: string, subject: string, scopes: Capabilities) {
+function credentialContext(env: Pick<GoogleEnv, "PUBLIC_API_ORIGIN">, account: string, subject: string, scopes: Capabilities) {
   return encoder.encode(JSON.stringify(["cloud-google-token-v1", env.PUBLIC_API_ORIGIN, account, subject, scopes.mail, scopes.calendar, ...(scopes.send_mail ? ["send_mail"] : []), ...(scopes.trash_mail ? ["trash_mail"] : []), ...(scopes.write_calendar ? ["write_calendar"] : [])]))
 }
 
@@ -181,13 +187,18 @@ effect function seal(config: Config, token: string, aad: Uint8Array) {
   return hex(nonce) + hex(cipher)
 }
 
-effect function unseal(config: Config, encoded: string, aad: Uint8Array) {
+effect function unseal(key: Aead.Key, encoded: string, aad: Uint8Array) {
   if (!/^[a-f0-9]+$/.test(encoded) || encoded.length < 58 || encoded.length % 2 !== 0) throw new ConnectionUnavailable()
   const nonce = fromHex(encoded.slice(0, 24))
   const cipher = fromHex(encoded.slice(24))
   const vault = try Aead.Aead
-  const plain = vault.decrypt(config.key, cipher, { nonce, aad }) catch effect () => { throw new ConnectionUnavailable() }
+  const plain = vault.decrypt(key, cipher, { nonce, aad }) catch effect () => { throw new ConnectionUnavailable() }
   return decoder.decode(plain)
+}
+
+export effect function openLegacyRefreshToken(origin: string, rawKey: string | undefined, connection: LegacyGoogleCustody) {
+  const key = try tokenKey(rawKey)
+  return try Effect.provide(unseal(key, connection.refresh_cipher, credentialContext({ PUBLIC_API_ORIGIN: origin }, connection.account_id, connection.subject, connection)), providerLayer)
 }
 
 effect function status(db: Client, env: GoogleEnv, account: string) {
@@ -354,7 +365,7 @@ effect function accessFor(env: GoogleEnv, db: Client, account: string, capabilit
   const { rows } = try query<Connection>(db, "SELECT * FROM cloud_google_connections WHERE account_id = $1 AND ($2::text IS NULL OR id::text = $2)", [account, selected])
   const connection = rows[0]
   if (!connection?.[capability]) throw new ConnectionUnavailable()
-  const refresh = try unseal(config, connection.refresh_cipher, credentialContext(env, connection.account_id, connection.subject, connection))
+  const refresh = try unseal(config.key, connection.refresh_cipher, credentialContext(env, connection.account_id, connection.subject, connection))
   const credentials = try oauthToken(config, new URLSearchParams({ grant_type: "refresh_token", refresh_token: refresh }))
   if (credentials.scope && !credentials.scope.split(/\s+/).includes(scopeByCapability[capability])) throw new AuthorizationFailed()
   const used = try query(db, "UPDATE cloud_google_connections SET last_used_at = now() WHERE account_id = $1 AND id = $2", [account, connection.id])
@@ -718,7 +729,7 @@ effect function redeemAttachment(request: Request, env: GoogleEnv, db: Client, a
   const { rows } = try query<{ organization_id: string }>(db, "SELECT organization_id FROM accounts WHERE key = $1 AND status = 'active'", [account])
   const organization = rows[0]?.organization_id
   if (!organization) throw new ConnectionUnavailable()
-  const value = try unseal(try googleConfig(env), ticket, transferContext(env, account, organization))
+  const value = try unseal((try googleConfig(env)).key, ticket, transferContext(env, account, organization))
   const raw: unknown = try Effect.try({ try: () => JSON.parse(value), catch: () => new BadRequest() })
   const claims = Schema.decodeUnknownOption(TransferSelection)(raw)
   if (Option.isNone(claims)) throw new BadRequest()
@@ -802,8 +813,8 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
   return body(404, { error: "route_not_found" })
 }
 
-export function googleRequest(request: Request, env: GoogleEnv, db: Client, account: string): Promise<Response> {
-  return runPromise(Effect.provide(effect {
+export function googleRequest(request: Request, env: GoogleEnv, db: Client, account: string, send: typeof fetch): Promise<Response> {
+  const routed = effect {
     const response = routeGoogle(request, env, db, account) catch (error) => match (error) {
       when BadRequest: body(400, { error: "invalid_request" });
       when GoogleReadInput: body(400, { error: "invalid_request" });
@@ -820,5 +831,6 @@ export function googleRequest(request: Request, env: GoogleEnv, db: Client, acco
       default: body(502, { error: "google_response_invalid" });
     }
     return HttpServerResponse.toWeb(response)
-  }, providerLayer))
+  }
+  return runPromise(Effect.provideService(Effect.provide(routed, providerLayer), FetchHttpClient.Fetch, send))
 }
