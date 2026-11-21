@@ -121,6 +121,15 @@ export function stripePlanUpgrade(stripe: StripeFake, now: () => number) {
       periodStart: item.current_period_start, periodEnd: item.current_period_end };
   }
 
+  function subscriptionAfter(entry: State): Subscription {
+    const sub = entry.subscription;
+    const items = entry.invoice.status === "paid"
+      ? { ...sub.items, data: [{ ...sub.items.data[0], price: entry.targetPrice,
+        current_period_start: entry.periodStart, current_period_end: entry.periodEnd }] }
+      : sub.items;
+    return { ...sub, items, latest_invoice: entry.invoice.id };
+  }
+
   const handler: FakeHandler = (request) => {
     const id = /^\/v1\/subscriptions\/([^/]+)$/.exec(request.path)?.[1];
     if (request.method === "POST" && id !== undefined) {
@@ -145,13 +154,16 @@ export function stripePlanUpgrade(stripe: StripeFake, now: () => number) {
     }
     if (request.method === "GET" && id !== undefined) {
       const entry = dispatched.get(id);
+      if (entry !== undefined) return { status: 200, body: subscriptionAfter(entry) };
+    }
+    if (request.method === "GET" && request.path === "/v1/subscriptions") {
+      const customer = request.query.get("customer");
+      const entry = [...dispatched.values()].find((each) => each.subscription.customer === customer);
       if (entry !== undefined) {
-        const sub = entry.subscription;
-        const items = entry.invoice.status === "paid"
-          ? { ...sub.items, data: [{ ...sub.items.data[0], price: entry.targetPrice,
-            current_period_start: entry.periodStart, current_period_end: entry.periodEnd }] }
-          : sub.items;
-        return { status: 200, body: { ...sub, items, latest_invoice: entry.invoice.id } };
+        const subscription = subscriptionAfter(entry);
+        const price = request.query.get("price");
+        const data = price === null || price === subscription.items.data[0].price.id ? [subscription] : [];
+        return { status: 200, body: { object: "list", has_more: false, data } };
       }
     }
     if (request.method === "GET" && request.path === "/v1/events") {
@@ -288,7 +300,7 @@ export function stripePlanDowngrade(stripe: StripeFake, now: () => number) {
       const queryPrice = request.query.get("price");
       const byCustomer = [...renewals.values()].find((entry) => entry.observed.customer === queryCustomer);
       if (request.path === "/v1/subscriptions" && byCustomer !== undefined) {
-        const data = queryPrice === target.priceId ? [byCustomer.observed] : [];
+        const data = queryPrice === null || queryPrice === target.priceId ? [byCustomer.observed] : [];
         return { status: 200, body: { object: "list", has_more: false, data } };
       }
       for (const renewal of renewals.values()) {

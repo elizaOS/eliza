@@ -129,7 +129,7 @@ effect function settleUpgrade(row: PlanCommandRecord, evidence: UpgradeEvidence,
       const updated = try reconcileSubscription(tx, row.organizationId, {
         customerId: current.binding.customerId, subscriptionId: command.subscriptionId, plan: wirePlanKey(terms.targetPlanKey),
         status: "active", startsAt: application.periodStart, endsAt: application.periodEnd, latestInvoice: "PlanChangeInvoice", cancelAtPeriodEnd: false
-      }, at)
+      }, at, { kind: "ReviewedUpgrade", commandId: command.commandId, source: terms.sourcePlanKey, target: terms.targetPlanKey })
       revision = updated.revision
     }
     const finished = try apply(command, { type: "finish", invoice, resultRevision: revision }, command.receipt.session.owner)
@@ -137,7 +137,7 @@ effect function settleUpgrade(row: PlanCommandRecord, evidence: UpgradeEvidence,
       if (action.tag === "AdjustAllowance") {
         const adjustment = try adjustForUpgrade(tx, row.organizationId, action.planKey, action.effectiveAt, action.reviewed, at, terms)
         if (!adjustment.moved) throw refused("BillingStateConflict")
-      } else if (action.tag === "ReleaseSlot") try releaseLiveCommand(tx, row.organizationId, action.commandId)
+      } else if (action.tag === "ReleaseSlot") try releaseLiveCommand(tx, row.organizationId, action.commandId, at)
       else throw refused("BillingStateConflict")
     }
     const settled = { ...current, command: finished.state, origin } satisfies PlanCommandRecord
@@ -211,7 +211,7 @@ export effect function confirmUpgrade(authorization: string | undefined, input: 
     }, by)
     for (const action of started.out) {
       if (action.tag !== "ClaimSlot") throw refused("BillingStateConflict")
-      try claimLiveCommand(tx, own.organizationId, action.kind, action.commandId, action.expectedRevision)
+      try claimLiveCommand(tx, own.organizationId, action.kind, action.commandId, action.expectedRevision, now)
     }
     const sent = (try apply(started.state, { type: "send", claimToken: started.state.receipt.session.currentClaim }, by)).state
     const row = { organizationId: own.organizationId, command: sent, binding: retained.binding } satisfies PlanCommandRecord

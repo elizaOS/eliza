@@ -7,6 +7,7 @@ import { routes as downgrades, sweeps as downgradeSweeps } from "../../billing/d
 import { routes as snapshot } from "../../billing/snapshot.vibe"
 import { routes as invoices } from "../../billing/invoices.vibe"
 import { routes as grants } from "../../billing/grant-codes.vibe"
+import { sweeps as subscriptionSweeps } from "../../billing/subscriptions.vibe"
 import { sweeps as allowanceSweeps } from "../../billing/allowance.vibe"
 
-export const area: Area = { routes: [...entitlements, ...snapshot, ...invoices, ...grants, ...commands, ...upgrades, ...downgrades], sweeps: [...commandSweeps, ...upgradeSweeps, ...downgradeSweeps, ...allowanceSweeps] }
+export const area: Area = { routes: [...entitlements, ...snapshot, ...invoices, ...grants, ...commands, ...upgrades, ...downgrades], sweeps: [...commandSweeps, ...upgradeSweeps, ...downgradeSweeps, ...subscriptionSweeps, ...allowanceSweeps] }

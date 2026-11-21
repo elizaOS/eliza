@@ -6,6 +6,7 @@ import { Deployment } from "../profile/profile.vibe"
 import { periodRows, stepPeriod } from "../shared/metering.vibe"
 import { loadRow, RowCorrupt, stepRow, type RowConflict } from "../store/rows.vibe"
 import { type Row, Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
+import { existingRenewalPeriod, InvalidAllowancePeriod } from "./stripe-ledger.vibe"
 import { parsePlanKey } from "./plans.vibe"
 import { readPolicy, type PolicyUnreadable } from "./policy.vibe"
 
@@ -128,9 +129,15 @@ effect function openOnce(tx: Tx, organizationId: string, key: string, event: Eve
   return { key, period: (try stepRow(tx, periodRows, key, event, opening(organizationId, now))).state, moved: true }
 }
 
-export effect function openRenewal(tx: Tx, organizationId: string, invoice: RenewalInvoice, now: number): PeriodStep!AllowanceFailure!Deployment {
+export effect function openRenewal(tx: Tx, organizationId: string, invoice: RenewalInvoice, now: number): PeriodStep!(AllowanceFailure | InvalidAllowancePeriod)!Deployment {
   const deployment = try Deployment
   try lockOrganization(tx, organizationId)
+  const existing = try existingRenewalPeriod(tx, organizationId, invoice.invoiceId)
+  if (existing !== undefined) {
+    if (existing.period.startsAt !== invoice.startsAt || existing.period.endsAt !== invoice.endsAt)
+      throw new InvalidAllowancePeriod({ key: existing.key })
+    return { ...existing, moved: false }
+  }
   return try openOnce(tx, organizationId, renewalKey(deployment.environment, invoice.invoiceId), { type: "openRenewal", ...invoice }, now)
 }
 

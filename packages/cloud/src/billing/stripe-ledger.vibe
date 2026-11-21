@@ -32,9 +32,26 @@ effect function savePeriod(tx: Tx, org: string, key: string, period: Period, eve
     [key, JSON.stringify(next), org, phases[next.phase], next.startsAt, next.endsAt, now])
 }
 
-export effect function settleSubscriptionAllowance(tx: Tx, org: string, subscription: SubscriptionObservation, ended: boolean, now: number) {
+export effect function existingRenewalPeriod(tx: Tx, organizationId: string, invoiceId: string) {
+  const legacyKey = "invoice/" + invoiceId
+  const rows = try tx.query(
+    `SELECT key,state FROM allowance_periods WHERE organization_id=$1
+      AND (key=$2 OR (starts_with(key,'renewal/') AND split_part(key,'/',3)=$3 AND split_part(key,'/',4)=''))
+      ORDER BY key FOR UPDATE`,
+    [organizationId, legacyKey, invoiceId]
+  )
+  if (rows.length === 0) return undefined
+  const key = toText(rows[0]?.key)
+  if (key === undefined || rows.length !== 1) throw new InvalidAllowancePeriod({ key: legacyKey })
+  const period = decodeState(rows[0]?.state) catch effect () => { throw new InvalidAllowancePeriod({ key }) }
+  if (period.source.tag !== "RenewalInvoice" || period.source.invoiceId !== invoiceId) throw new InvalidAllowancePeriod({ key })
+  return { key, period }
+}
+
+export effect function settleSubscriptionAllowance(tx: Tx, org: string, subscription: SubscriptionObservation, ended: boolean, now: number, openLegacy: boolean) {
   const retiring = try tx.query(
-    "SELECT key,state FROM allowance_periods WHERE organization_id=$1 AND status='open' AND (period_end <= $2 OR $3) FOR UPDATE",
+    `SELECT key,state FROM allowance_periods WHERE organization_id=$1 AND status='open' AND (period_end <= $2 OR $3)
+      AND (starts_with(key,'invoice/') OR starts_with(key,'renewal/')) FOR UPDATE`,
     [org, now, ended])
   for (const row of retiring) {
     const key = toText(row.key)
@@ -47,17 +64,19 @@ export effect function settleSubscriptionAllowance(tx: Tx, org: string, subscrip
   const payment = subscription.payment
   const key = "invoice/" + payment.id
   const plan: PlanKey = subscription.plan === "plus_monthly" ? "PlusMonthly" : "ProMonthly"
-  const row = (try tx.query("SELECT state FROM allowance_periods WHERE key=$1 AND organization_id=$2 FOR UPDATE", [key,org]))[0]
-  if (!row) {
-    if (payment.condition === "paid" && subscription.status === "active" && payment.startsAt <= now && now < payment.endsAt) {
+  const existing = try existingRenewalPeriod(tx, org, payment.id)
+  if (existing === undefined) {
+    if (openLegacy && payment.condition === "paid" && subscription.status === "active" && payment.startsAt <= now && now < payment.endsAt) {
       try savePeriod(tx,org,key,initial,{type:"openRenewal",invoiceId:payment.id,planKey:plan,startsAt:payment.startsAt,endsAt:payment.endsAt},now)
     }
     return
   }
-  const period = try decodeState(row.state)
-  if (payment.condition === "paid" && canRestore(period, now)) try savePeriod(tx,org,key,period,{type:"restore",now},now)
+  const { key: existingKey, period } = existing
+  if (payment.startsAt !== period.startsAt || payment.endsAt !== period.endsAt)
+    throw new InvalidAllowancePeriod({ key: existingKey })
+  if (payment.condition === "paid" && canRestore(period, now)) try savePeriod(tx,org,existingKey,period,{type:"restore",now},now)
   if (payment.condition !== "paid") {
     const cause = payment.condition === "refunded" ? "RefundClawback" : "DisputeClawback"
-    if (canClawBack(period, cause)) try savePeriod(tx,org,key,period,{type:"clawBack",cause},now)
+    if (canClawBack(period, cause)) try savePeriod(tx,org,existingKey,period,{type:"clawBack",cause},now)
   }
 }

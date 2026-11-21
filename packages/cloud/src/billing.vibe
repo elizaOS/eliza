@@ -59,7 +59,8 @@ async function reconcile(stripe: Stripe, env: BillingEnv, db: Client, organizati
         checkout.line_items.data[0]?.price?.id === env.STRIPE_PRICE_ID && checkout.line_items.data[0]?.quantity === 1)
       verifiedCheckout = checkout.id
   }
-  const state = await Effect.runPromise(reconcileSubscription(tx, organization, observation, Date.now(), verifiedCheckout))
+  const state = await Effect.runPromise(reconcileSubscription(tx, organization, observation, Date.now(),
+    verifiedCheckout === undefined ? undefined : { kind: "Checkout", checkoutId: verifiedCheckout }))
   if (chargeIds.length && observation.subscriptionId === state.subscriptionId) {
     await db.query(`INSERT INTO cloud_stripe_charge_owners (charge_id, customer_id)
       SELECT unnest($1::text[]), $2 ON CONFLICT (charge_id) DO NOTHING`, [chargeIds, customer])

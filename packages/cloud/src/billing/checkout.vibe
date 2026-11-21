@@ -139,11 +139,11 @@ effect function perform(tx: Tx, organizationId: string, out: CheckoutEffect, now
   switch (out.tag) {
     case "ClaimSlot": {
       const subscription = try readSubscription(tx, organizationId)
-      try claimLiveCommand(tx, organizationId, "CheckoutCommand", out.commandId, subscription.revision)
+      try claimLiveCommand(tx, organizationId, "CheckoutCommand", out.commandId, subscription.revision, now)
       return
     }
     case "ReleaseSlot":
-      try releaseLiveCommand(tx, organizationId, out.commandId)
+      try releaseLiveCommand(tx, organizationId, out.commandId, now)
       return
     case "CheckoutPaid": {
       const customerId = try pinnedCustomer(tx, organizationId)
@@ -151,7 +151,7 @@ effect function perform(tx: Tx, organizationId: string, out: CheckoutEffect, now
       if (customerId === undefined || plan === undefined) throw new RowCorrupt({ table: "checkouts", key: out.commandId, cause: "a paid checkout has no pinned customer or paid plan" })
       const observed = try observeCheckout(customerId, plan)
       if (observed.subscriptionId !== out.subscriptionId) throw new RowCorrupt({ table: "checkouts", key: out.commandId, cause: "the provider does not show the subscription the checkout bought" })
-      try reconcileSubscription(tx, organizationId, observed, now, out.commandId)
+      try reconcileSubscription(tx, organizationId, observed, now, { kind: "Checkout", checkoutId: out.commandId })
       return
     }
     default: {

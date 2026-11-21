@@ -193,7 +193,7 @@ effect function admit(spec: CommandSpec, request: CommandRequest, commandId: str
     if (subscription.subscriptionId !== request.subscriptionId) throw refused("BillingStateConflict")
     if (subscription.revision !== request.expectedRevision) throw refused("StaleRevision")
     if (!canClaimCommand(subscription, spec.kind, commandId, request.expectedRevision)) throw refused("BillingStateConflict")
-    try claimLiveCommand(tx, request.organizationId, spec.kind, commandId, request.expectedRevision)
+    try claimLiveCommand(tx, request.organizationId, spec.kind, commandId, request.expectedRevision, now)
     const row = { commandId, organizationId: request.organizationId, kind: wireKinds[spec.kind], expectedRevision: request.expectedRevision, createdAt: now }
     try stepCommand(tx, row, { event: prepare, by, now })
     const claimed = try stepCommand(tx, row, { event: { type: "claim" }, by, now })
@@ -219,7 +219,7 @@ effect function finish(spec: CommandSpec, organizationId: string, commandId: str
     try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId])
     if (!holdsCommand(try readSubscription(tx, organizationId), spec.kind, commandId)) return
     const result = status === "StatusSucceeded" ? try reconcileSubscription(tx, organizationId, try observeSubscription(tx, organizationId), now) : undefined
-    try releaseLiveCommand(tx, organizationId, commandId)
+    try releaseLiveCommand(tx, organizationId, commandId, now)
     if (result !== undefined) try tx.query("UPDATE subscription_commands SET result_revision = $2, updated_at = $3 WHERE key = $1", [commandId, result.revision, now])
   })
 }
