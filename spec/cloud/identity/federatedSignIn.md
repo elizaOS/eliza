@@ -316,10 +316,10 @@ The device sends Google's one-use `serverAuthCode` for the account it
 signed in with, and the cloud redeems it. The connection is stored only when
 Google returned a refresh token and Google's verified subject is the Google
 sign-in subject of the account, which an account without a Google sign-in
-lacks. It keeps reading mail and reading the
-calendar as Google granted them, sending or trashing mail only with reading
-mail, and changing the calendar only with reading it. A connect that would
-store nothing stores no scope at all.
+lacks. A stored connection has reading mail exactly when Google granted it
+and reading the calendar exactly when Google granted it, sending or trashing
+mail only with reading mail, and changing the calendar only with reading it.
+A connect that would store nothing stores no scope at all.
 
 ```quint
 type NativeGoogleScopes = { readMail: bool, sendMail: bool, trashMail: bool, readCalendar: bool, writeCalendar: bool }
@@ -340,5 +340,7 @@ pure def lawANativeConnectStoresOnlyTheSignedInAccountsGrantedScopes(signedInSub
   and (stored.trashMail implies (granted.trashMail and stored.readMail)) and (stored.readCalendar implies granted.readCalendar)
   and (stored.writeCalendar implies (granted.writeCalendar and stored.readCalendar))
   and (not(nativeConnectStoresAny(stored)) implies stored == noNativeGoogleScopes)
+  and ((signedInSubject != "" and signedInSubject == grantedSubject and refreshIssued)
+    implies (stored.readMail == granted.readMail and stored.readCalendar == granted.readCalendar))
 }
 ```
