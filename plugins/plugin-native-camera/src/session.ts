@@ -6,7 +6,8 @@
  *   restarted never moves the session (or the host) forward;
  * - stops are chained, so a new preview never races the previous one's release;
  * - a stopped or hidden surface finishes an active recording instead of abandoning it;
- * - at most one capture, control change or recording start runs at a time;
+ * - at most one capture, control change or recording start runs at a time; while a recording
+ *   runs only a zoom or torch change (`RECORDING_CONTROLS`) may run, one at a time;
  * - a recording is only reported saved when the bridge returned a non-empty receipt and the
  *   host accepted it; the host decides where it lives (its own owned-media store) and how a
  *   receipt is identified.
@@ -87,6 +88,10 @@ export type CameraStartOutcome =
 
 export type CameraControlOutcome = "done" | "failed" | "skipped" | "stale";
 
+/** Controls a host may change while a recording runs. Every other control waits for the stop. */
+export const RECORDING_CONTROLS = ["zoom", "torch"] as const;
+export type CameraRecordingControl = (typeof RECORDING_CONTROLS)[number];
+
 export type CameraRecordingStart =
   | "recording"
   /** Microphone permission was explicitly denied. */
@@ -130,8 +135,12 @@ export interface CameraSession {
   start(retry?: boolean): Promise<CameraStartOutcome>;
   /** Release the preview; an active recording is finished (and reported) first. */
   stop(): Promise<void>;
-  /** One preview control change (zoom, flash, switch, focus) at a time, only while ready. */
-  control(task: () => Promise<unknown>): Promise<CameraControlOutcome>;
+  /** One preview control change (zoom, flash, switch, focus) at a time, only while ready. While a
+   * recording runs it is skipped unless `kind` names a recording control (zoom or torch). */
+  control(
+    task: () => Promise<unknown>,
+    kind?: CameraRecordingControl,
+  ): Promise<CameraControlOutcome>;
   startRecording(): Promise<CameraRecordingStart>;
   /** Finish the active recording; concurrent calls share one finalization. With no recording it
    * reports "failed" without calling the bridge or the hooks. */
@@ -310,8 +319,19 @@ export function createCameraSession<
 
   async function control(
     task: () => Promise<unknown>,
+    kind?: CameraRecordingControl,
   ): Promise<CameraControlOutcome> {
-    if (phase !== "ready" || busy()) return "skipped";
+    // A running recording admits only a zoom or torch change; a starting or finalizing recording,
+    // a capture or another control change still refuses every control.
+    const recordingControl =
+      recording &&
+      kind !== undefined &&
+      RECORDING_CONTROLS.includes(kind) &&
+      !capturing &&
+      !controlBusy &&
+      !recordingStarting &&
+      !finalizing;
+    if (phase !== "ready" || (busy() && !recordingControl)) return "skipped";
     controlBusy = true;
     const token = epoch;
     changed();

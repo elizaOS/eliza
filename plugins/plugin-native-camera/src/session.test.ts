@@ -279,6 +279,48 @@ describe("createCameraSession controls and captures", () => {
     expect(h.session.controlBusy).toBe(false);
   });
 
+  it("runs only zoom and torch while a recording runs", async () => {
+    const h = harness();
+    await h.session.start();
+    expect(await h.session.startRecording()).toBe("recording");
+    // An unnamed control (flash, switch, focus) still waits for the recording to stop.
+    expect(await h.session.control(async () => {})).toBe("skipped");
+    const gate = deferred();
+    const zoom = h.session.control(() => gate.promise, "zoom");
+    expect(h.session.controlBusy).toBe(true);
+    // One control at a time, and no capture or second recording start meanwhile.
+    expect(await h.session.control(async () => {}, "torch")).toBe("skipped");
+    expect(await h.session.exclusive(async () => "photo")).toEqual({
+      status: "busy",
+    });
+    expect(await h.session.startRecording()).toBe("skipped");
+    gate.resolve();
+    expect(await zoom).toBe("done");
+    expect(await h.session.control(async () => {}, "torch")).toBe("done");
+    expect(
+      await h.session.control(async () => {
+        throw new Error("no torch");
+      }, "torch"),
+    ).toBe("failed");
+    expect(h.session.recording).toBe(true);
+    // A finalizing recording refuses every control.
+    const finish = h.session.finishRecording();
+    expect(await h.session.control(async () => {}, "zoom")).toBe("skipped");
+    expect(await finish).toBe("saved");
+    // Ready again: every control runs.
+    expect(await h.session.control(async () => {})).toBe("done");
+  });
+
+  it("refuses a recording control while the recording is starting", async () => {
+    const gate = deferred();
+    const h = harness({ startRecording: () => gate.promise });
+    await h.session.start();
+    const started = h.session.startRecording();
+    expect(await h.session.control(async () => {}, "zoom")).toBe("skipped");
+    gate.resolve();
+    expect(await started).toBe("recording");
+  });
+
   it("a control that finishes after the surface closed is stale", async () => {
     const h = harness();
     await h.session.start();

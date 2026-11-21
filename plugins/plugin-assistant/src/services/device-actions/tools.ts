@@ -371,7 +371,14 @@ function operationSchema(type: string): ActionParameterSchema {
       (branch.properties as Record<string, { enum?: readonly string[] }>).type
         ?.enum?.[0] === type,
   );
-  if (selected.length !== (type === "camera_capture_photo" ? 2 : 1))
+  // These operations declare two forms; their tool filters one out per phone.
+  const forms =
+    type === "camera_capture_photo" ||
+    type === "photos_album_create" ||
+    type === "photos_share"
+      ? 2
+      : 1;
+  if (selected.length !== forms)
     throw Error("Canonical device operation is not uniquely declared: " + type);
   return readableReminderOperationSchema(type, { anyOf: selected });
 }

@@ -63,9 +63,11 @@ import {
   validatePhoneDial,
 } from "./phone-dial-contract.ts";
 import {
+  isPhotosViewOperation,
   isPhotosViewType,
   type PhotosViewOperation,
   photosViewCapabilityAvailable,
+  photosViewFormSupported,
   validatePhotosViewOperation,
 } from "./photos-view-contract.ts";
 import {
@@ -236,8 +238,9 @@ export function deviceOperationSupportedByCapabilities(
 }
 /**
  * An optional form of an operation needs its own negotiated capability: a
- * requested camera lens, an SMS `target`, or a contact update with `add` or
- * `remove`. It is never sent to a phone that did not advertise it.
+ * requested camera lens, an SMS `target`, a contact update with `add` or
+ * `remove`, or a Photos album or share of the open item (`selected`). It is
+ * never sent to a phone that did not advertise it.
  */
 export function deviceOperationFormSupported(
   operation: DeviceOperation,
@@ -247,6 +250,8 @@ export function deviceOperationFormSupported(
     return cameraCaptureCapabilityAvailable(operation, capabilities);
   if (isTelephonyAction(operation))
     return telephonyActionFormAvailable(operation, capabilities);
+  if (isPhotosViewOperation(operation))
+    return photosViewFormSupported(operation, capabilities);
   if (operation.type === "browser_navigate" && operation.newTab)
     return capabilities?.includes(BROWSER_OPEN_NEW_TAB_CAPABILITY) === true;
   return true;

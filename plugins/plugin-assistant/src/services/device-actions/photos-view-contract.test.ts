@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  deviceOperationFormSupported,
   deviceOperationSupportedByCapabilities,
   validateDeviceOperation,
 } from "./contract";
@@ -12,6 +13,7 @@ import {
   describePhotosViewOperation,
   isPhotosViewOperation,
   PHOTOS_FILTER_ALBUMS,
+  PHOTOS_SELECTED_CAPABILITY,
   PHOTOS_SHARE_MAX,
   PHOTOS_VIEW_CAPABILITY,
   PHOTOS_VIEW_DIRECT_TYPES,
@@ -194,6 +196,69 @@ describe("photos view contract", () => {
     ).toThrow("Unexpected Photos field");
   });
 
+  it("accepts the open item (selected) in place of album or share ids", () => {
+    expect(valid({ type: "photos_share", selected: true })).toEqual({
+      type: "photos_share",
+      ids: [],
+      selected: true,
+    });
+    expect(
+      valid({ type: "photos_album_create", name: " Trip ", selected: true }),
+    ).toEqual({
+      type: "photos_album_create",
+      name: "Trip",
+      ids: [],
+      selected: true,
+    });
+    // A validated open-item operation (ids: []) validates again unchanged, as it does when it is
+    // stored, sent to the phone and read back.
+    for (const raw of [
+      { type: "photos_share", selected: true },
+      { type: "photos_album_create", name: "Trip", selected: true },
+    ]) {
+      const once = valid(raw);
+      const wire = JSON.parse(JSON.stringify(once));
+      expect(valid(wire)).toEqual(once);
+      expect(validateDeviceOperation(wire)).toEqual(once);
+    }
+    // Exactly one of ids and selected; selected is only ever true.
+    for (const bad of [
+      { selected: true, ids: [id(1)] },
+      { selected: true, ids: "" },
+      { selected: true, ids: null },
+      { selected: false },
+      { selected: "true" },
+      { selected: false, ids: [id(1)] },
+    ]) {
+      expect(invalid({ type: "photos_share", ...bad })).toThrow(
+        "Invalid share items",
+      );
+      expect(
+        invalid({ type: "photos_album_create", name: "Trip", ...bad }),
+      ).toThrow("Invalid album items");
+    }
+    expect(invalid({ type: "photos_open", selected: true })).toThrow(
+      "Unexpected Photos field",
+    );
+  });
+
+  it("sends the open-item form only to a phone with photos.view-selected.v1", () => {
+    expect(PHOTOS_SELECTED_CAPABILITY).toBe("photos.view-selected.v1");
+    const view = [PHOTO_LIBRARY_CAPABILITY, PHOTOS_VIEW_CAPABILITY];
+    const withSelected = [...view, PHOTOS_SELECTED_CAPABILITY];
+    const open = valid({ type: "photos_share", selected: true });
+    const byId = valid({ type: "photos_share", ids: [id(1)] });
+    expect(deviceOperationFormSupported(open, view)).toBe(false);
+    expect(deviceOperationFormSupported(open, withSelected)).toBe(true);
+    expect(deviceOperationFormSupported(byId, view)).toBe(true);
+    expect(
+      deviceOperationFormSupported(open, [
+        PHOTOS_VIEW_CAPABILITY,
+        PHOTOS_SELECTED_CAPABILITY,
+      ]),
+    ).toBe(false);
+  });
+
   it("is admitted by the device contract and wraps its errors", () => {
     expect(validateDeviceOperation({ type: "photos_open", id: id(1) })).toEqual(
       { type: "photos_open", id: id(1) },
@@ -265,6 +330,13 @@ describe("photos view contract", () => {
       title: "Share 1 item",
       description: "Android share sheet",
     });
+    expect(d({ type: "photos_share", ids: [], selected: true })).toEqual({
+      title: "Share the open item",
+      description: "Android share sheet",
+    });
+    expect(
+      d({ type: "photos_album_create", name: "Trip", ids: [], selected: true }),
+    ).toEqual({ title: "Create album “Trip”", description: "The open item" });
   });
 
   it("validates results without accepting extra fields", () => {
@@ -308,6 +380,27 @@ describe("photos view contract", () => {
         { ...row, count: 2, missing: 1 },
         { ...row, status: "done" },
         { ...row, ids: [] },
+      ])
+        expect(() => validatePhotosViewResult(op, bad)).toThrow();
+    }
+  });
+
+  it("counts the open item as the one target of a selected result", () => {
+    for (const op of [
+      { type: "photos_album_create", name: "Trip", ids: [], selected: true },
+      { type: "photos_share", ids: [], selected: true },
+    ] as const) {
+      const row = {
+        kind: op.type,
+        status: "review_opened",
+        count: 1,
+        missing: 0,
+      };
+      expect(validatePhotosViewResult(op, row)).toEqual(row);
+      for (const bad of [
+        { ...row, count: 2 },
+        { ...row, count: 0, missing: 1 },
+        { ...row, missing: 1 },
       ])
         expect(() => validatePhotosViewResult(op, bad)).toThrow();
     }
