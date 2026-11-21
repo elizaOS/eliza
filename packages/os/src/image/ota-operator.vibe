@@ -246,7 +246,8 @@ export effect function otaMain(argv: readonly string[], options: OperatorOptions
       const stored = try readOperatorStatus(value(args, "journal"), tool.serial)
       if (stored === undefined) throw new OtaRefused({ reason: "No OTA journal exists for this device" })
       const observed = try observeDevice(tool)
-      return { executed: false, observed, state: stored, deviceState: deviceStates[observed.tag], next: nextStep(stored.start, observed).toLowerCase() }
+      const slots = observed.tag === "InBootloader" ? (try observeSlots(tool, stored.start.originalSlot, stored.start.device)) : null
+      return { executed: false, observed, state: stored, deviceState: deviceStates[observed.tag], next: nextStep(stored.start, observed).toLowerCase(), slots }
     }
     case "stock-archive": {
       const channel = value(args, "channel")

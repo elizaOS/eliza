@@ -11,6 +11,10 @@ records [release signing](../image/signing.md) wrote, runs `adb` and
 `fastboot`, and keeps this machine in a private journal file it replaces
 atomically. The admission of the [system updater](./updater.md) is reused.
 Results are observations for a drill record; nothing here marks a drill passed.
+`status` reads the journal and the selected device without changing either.
+Its `slots` field is null outside the bootloader. In the bootloader it reports
+slot and snapshot observations for the journal's device product. An unread or
+different product leaves these observations unconfirmed.
 
 ## Story: Update a device by cable
 

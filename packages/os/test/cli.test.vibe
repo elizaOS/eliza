@@ -275,14 +275,31 @@ it.live("Read an update's status from the device by cable (spec/os/update/operat
   }
   try files.writeFileString(`${root}/journal.json`, JSON.stringify(journal), { mode: 0o600 })
   const before = try files.readFileString(`${root}/journal.json`)
-  const status = try run("ota", "status", "--serial", serial, "--journal", `${root}/journal.json`, "--adb", phone.adb, "--fastboot", phone.fastboot)
+  const statusArgs = ["ota", "status", "--serial", serial, "--journal", `${root}/journal.json`, "--adb", phone.adb, "--fastboot", phone.fastboot]
+  const status = try run(...statusArgs)
   assert.strictEqual(status.status, 0, status.stderr)
   const result = try parsed("ota status", status)
-  assert.strictEqual(result.deviceState, "sideload")
-  assert.strictEqual(result.next, "sideload")
+  assert.deepStrictEqual([result.deviceState, result.next, result.slots], ["sideload", "sideload", null])
+
+  const variables = { product: journal.release.device, "current-slot": "b", "slot-successful:b": "no", "slot-unbootable:a": "no", "snapshot-update-status": "snapshotted" }
+  try Effect.try({ try: () => phone.set({ mode: "bootloader", variables }), catch: failed("enter the bootloader") })
+  const bootloader = try run(...statusArgs)
+  assert.strictEqual(bootloader.status, 0, bootloader.stderr)
+  const observed = try parsed("ota status in the bootloader", bootloader)
+  assert.deepStrictEqual([observed.deviceState, observed.next, observed.slots], ["bootloader", "bootloader",
+    { currentSlot: "SlotB", updatedUnconfirmed: true, originalBootable: true, snapshot: "Snapshotted" }])
+
+  const beforeForeign = (try Effect.try({ try: () => phone.calls(), catch: failed("read the cable calls") })).length
+  try Effect.try({ try: () => phone.set({ variables: { ...variables, product: "another_device" } }), catch: failed("change the reported product") })
+  const foreign = try run(...statusArgs)
+  assert.strictEqual(foreign.status, 0, foreign.stderr)
+  const untrusted = try parsed("ota status for an unexpected product", foreign)
+  assert.deepStrictEqual(untrusted.slots, { currentSlot: "NoSlot", updatedUnconfirmed: false, originalBootable: false, snapshot: "SnapshotUnread" })
   assert.strictEqual(try files.readFileString(`${root}/journal.json`), before)
-  const calls = try Effect.try({ try: () => phone.calls(), catch: failed("read the adb calls") })
-  assert.deepStrictEqual(calls.filter((call) => ["reboot", "sideload", "set_active"].includes(call.args[2] ?? "")), [])
+  const calls = try Effect.try({ try: () => phone.calls(), catch: failed("read the cable calls") })
+  assert.isTrue(calls.every((call) => call.args[0] === "-s" && call.args[1] === serial &&
+    (call.tool === "adb" ? call.args[2] === "get-state" : call.args[2] === "getvar")))
+  assert.deepStrictEqual(calls.slice(beforeForeign).filter((call) => call.tool === "fastboot").map((call) => call.args[3]), ["product", "product"])
 }))
 
 it.live("Prepare the owned browser's component against the pinned sources (spec/os/browser/chromium.md, \"Story: Use the owned browser only with its expected identity\")", () => journey(effect {

@@ -77,8 +77,10 @@ export effect function observeDevice(tool: DeviceTools) {
 export effect function observeSlots(tool: DeviceTools, original: Slot, device: string) {
   const updated = slotArgument(updatedSlot(original))
   const prior = slotArgument(original)
-  const reported = try fastbootVariable(tool, "product")
-  const currentSlot = reported === device ? slotOf(try fastbootVariable(tool, "current-slot")) : "NoSlot"
+  if ((try fastbootVariable(tool, "product")) !== device) {
+    return { currentSlot: "NoSlot", updatedUnconfirmed: false, originalBootable: false, snapshot: "SnapshotUnread" } satisfies SlotReading
+  }
+  const currentSlot = slotOf(try fastbootVariable(tool, "current-slot"))
   const successful = updated === null ? undefined : (try fastbootVariable(tool, `slot-successful:${updated}`))
   const unbootable = prior === null ? undefined : (try fastbootVariable(tool, `slot-unbootable:${prior}`))
   const status = try fastbootVariable(tool, "snapshot-update-status")
