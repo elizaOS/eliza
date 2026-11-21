@@ -195,8 +195,9 @@ describe("historical navigation input", () => {
         (segment) => segment.label === "runtime:historical_navigation_table",
       );
       const table = JSON.parse(tableSegment?.content.trim() ?? "{}");
-      expect(table.columns).toEqual(["requestSourceEventId", "navigation"]);
-      expect(table.receiptColumns).toEqual(["success", "receipt"]);
+      expect(table.encoding).toContain(
+        "row=[requestSourceEventId,[[success,receipt],...]]; receipt is the recorded navigation object.",
+      );
       // Each row names its request by its history label and keeps every
       // recorded navigation field except the in-turn step/handoff identities
       // and the effect name its label already gives.

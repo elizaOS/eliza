@@ -30,6 +30,53 @@ const owner = {
   name: "CALENDAR_NEXT_EVENT",
   historicalObservationOperations: ["calendar.event.next.read"],
 } as Action;
+/** The template a legend's encoding prints after `marker`: a word, or a
+ * bracketed list such as [operation,[resourceKind,resourceId],outcome] read
+ * as nested name lists. */
+function legendTemplate(encoding: string, marker: string): unknown {
+  const start = encoding.indexOf(marker) + marker.length;
+  expect(start).toBeGreaterThanOrEqual(marker.length);
+  if (encoding[start] !== "[") return /^\w+/.exec(encoding.slice(start))?.[0];
+  let depth = 0;
+  for (let at = start; at < encoding.length; at++) {
+    if (encoding[at] === "[") depth++;
+    else if (encoding[at] === "]" && --depth === 0)
+      return JSON.parse(
+        encoding
+          .slice(start, at + 1)
+          .replace(",...", "")
+          .replace(/\w+/g, '"$&"'),
+      );
+  }
+  throw new Error(`legend has no ${marker} template`);
+}
+/** A [shape,values] receipt read with the legend's receipt template and the
+ * detail its shape adds; [resourceKind,resourceId] is resource's kind and id. */
+function decodeReceipt(encoding: string, [shape, values]: [number, unknown[]]) {
+  const [, base] = legendTemplate(encoding, "receipt=") as [string, unknown[]];
+  const fields =
+    shape === 0 ? base : [...base, legendTemplate(encoding, `${shape} adds `)];
+  expect(fields).toHaveLength(values.length);
+  return Object.fromEntries(
+    fields.map((field, at) => {
+      if (typeof field === "string") return [field, values[at]];
+      const children = field as string[];
+      const parent = /^[a-z]+/.exec(children[0])?.[0] ?? "";
+      expect(["resource", "commit", "failure"]).toContain(parent);
+      expect(values[at]).toHaveLength(children.length);
+      return [
+        parent,
+        Object.fromEntries(
+          children.map((child, index) => [
+            child[parent.length].toLowerCase() + child.slice(parent.length + 1),
+            (values[at] as unknown[])[index],
+          ]),
+        ),
+      ];
+    }),
+  );
+}
+
 /** The fields a later step reads, written independently of the wire. */
 function slimRecord(
   record: {
@@ -457,47 +504,28 @@ it("retains observation admission and every ordered mutation outcome a later ste
           }
           const table = Array.isArray(body) ? legends.get(body[0]) : body;
           expect(table).toBeDefined();
-          expect(table.columns).toEqual(["requestSourceEventId", "outcomes"]);
+          const [key, [columns]] = legendTemplate(table.encoding, "row=") as [
+            string,
+            [string[]],
+          ];
+          expect(key).toBe("requestSourceEventId");
           const rows = Array.isArray(body) ? [body[1]] : body.rows;
           for (const [requestSourceEventId, outcomes] of rows) {
-            const completeOutcomes = outcomes.map((columns: unknown[]) =>
+            const completeOutcomes = outcomes.map((values: unknown[]) =>
               Object.fromEntries(
-                table.receiptColumns.map((column: string, index: number) => {
-                  const value = columns[index];
-                  // A shaped receipt is [shapeIndex, values]; any other is an object.
+                columns.map((column, index) => {
+                  const value = values[index];
+                  // A shaped receipt is [shape, values]; any other is an object.
                   if (column !== "receipt" || !Array.isArray(value))
                     return [column, value];
-                  const shape = table.receiptShapes[Number(value[0])];
-                  const values = value[1] as unknown[];
-                  return [
-                    column,
-                    Object.fromEntries(
-                      shape.map(
-                        (
-                          field: string | [string, string[]],
-                          fieldIndex: number,
-                        ) => {
-                          if (typeof field === "string")
-                            return [field, values[fieldIndex]];
-                          sawNestedShape = true;
-                          expect(["resource", "commit", "failure"]).toContain(
-                            field[0],
-                          );
-                          const childValues = values[fieldIndex] as unknown[];
-                          expect(childValues).toHaveLength(field[1].length);
-                          return [
-                            field[0],
-                            Object.fromEntries(
-                              field[1].map((key, childIndex) => [
-                                key,
-                                childValues[childIndex],
-                              ]),
-                            ),
-                          ];
-                        },
-                      ),
-                    ),
-                  ];
+                  const receipt = decodeReceipt(
+                    table.encoding,
+                    value as [number, unknown[]],
+                  );
+                  sawNestedShape ||= Object.values(receipt).some(
+                    (field) => typeof field === "object" && field !== null,
+                  );
+                  return [column, receipt];
                 }),
               ),
             );

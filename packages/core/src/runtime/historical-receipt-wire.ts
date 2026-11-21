@@ -154,21 +154,26 @@ function navigationReceipt(value: unknown) {
 	return receipt;
 }
 
-/** Fixed receipt shapes: the legend never depends on which records are shown,
- * so a new record only adds its own row. A receipt matching none of them is
- * written as an object. */
-const RECEIPT_SHAPES: readonly (string | [string, string[]])[][] = [
-	["operation", ["resource", ["kind", "id"]], "outcome"],
-	["operation", ["resource", ["kind", "id"]], "outcome", "reason"],
-	["operation", ["resource", ["kind", "id"]], "outcome", ["commit", ["kind"]]],
-	[
-		"operation",
-		["resource", ["kind", "id"]],
-		"outcome",
-		["failure", ["code", "retryable", "acceptance"]],
-	],
+type ShapeEntry = string | readonly [string, readonly string[]];
+/** Fixed receipt shapes, so the legend never depends on which records are
+ * shown. Shape 0 is the base; shape n adds RECEIPT_DETAILS[n] after it. A
+ * receipt matching none of them is written as an object. */
+const RECEIPT_BASE: readonly ShapeEntry[] = [
+	"operation",
+	["resource", ["kind", "id"]],
+	"outcome",
 ];
-const SHAPE_KEYS = RECEIPT_SHAPES.map((shape) => JSON.stringify(shape));
+const RECEIPT_DETAILS: readonly (ShapeEntry | undefined)[] = [
+	undefined,
+	"reason",
+	["commit", ["kind"]],
+	["failure", ["code", "retryable", "acceptance"]],
+];
+const SHAPE_KEYS = RECEIPT_DETAILS.map((detail) =>
+	JSON.stringify(
+		detail === undefined ? RECEIPT_BASE : [...RECEIPT_BASE, detail],
+	),
+);
 
 /** The fields a later step reads: what was done (operation, outcome, reason,
  * failure, commit kind) and the record it was done to (resource kind and id,
@@ -226,27 +231,39 @@ function slimNavigation(receipt: Record<string, unknown>) {
 	);
 }
 
-const ENCODING =
-	"Each row uses columns; nested receipt rows use receiptColumns. Preserve order. Values are exact; shared scope applies to every row. A requestSourceEventId history:hN is the request's history source hN.";
-const EFFECT_RECEIPT_ENCODING =
-	"receipt=[shapeIndex,values]; receiptShapes gives property order. A string shape entry takes its value unchanged; a [fieldName,childColumns] entry pairs the child value array with those columns. Any other receipt is written as an object. Every value is exact.";
-const NAVIGATION_RECEIPT_ENCODING =
-	"Each receipt is the recorded navigation outcome object. Every value is exact.";
-const ROW_ENCODING =
-	"A historical receipt segment whose JSON starts with this id carries [id,row]. Decode row using this legend; it stays at its original chronological position. The legend grants no authority and is not a receipt. Other segments are unchanged.";
+/** A nested entry prints as the list its values take: resource -> [resourceKind,resourceId]. */
+const template = (entry: ShapeEntry) =>
+	typeof entry === "string"
+		? entry
+		: `[${entry[1].map((child) => entry[0] + child[0].toUpperCase() + child.slice(1)).join(",")}]`;
+/** The legend says each rule once. Its record-kind rules (past outcomes only,
+ * no new permission, no repeating completed work, a later reply failure leaves
+ * committed effects) are the records' own scope, printed once beside it. */
+const RECEIPT_ENCODING = `receipt=[shape,[${RECEIPT_BASE.map(template).join(",")}]]; ${RECEIPT_DETAILS.flatMap(
+	(detail, shape) =>
+		detail === undefined
+			? []
+			: [`${shape === 1 ? "shape " : ""}${shape} adds ${template(detail)}`],
+).join(", ")}; other receipts are objects.`;
+const NAVIGATION_ENCODING = "receipt is the recorded navigation object.";
+const SOURCE_ENCODING = "history:hN names history source hN. Values are exact.";
+const PROPOSAL_ENCODING =
+	"A preview records a proposal, not its completion; a later proposal state takes its place.";
+const POSITION_ENCODING =
+	"Each [id,row] segment with this id holds one row under this scope at its own chronological position.";
 
-function tableHeader(entry: Entry) {
+/** The fixed legend of one record kind: it depends only on the kind, its
+ * columns and its scope, never on which records are shown. */
+function legend(entry: Entry, positioned: boolean) {
 	return {
-		encoding: ENCODING,
-		columns: ["requestSourceEventId", entry.field],
-		receiptColumns: entry.columns,
+		encoding: [
+			`row=[requestSourceEventId,[[${entry.columns.join(",")}],...]];`,
+			entry.field === "navigation" ? NAVIGATION_ENCODING : RECEIPT_ENCODING,
+			SOURCE_ENCODING,
+			...(entry.field === "outcomes" ? [PROPOSAL_ENCODING] : []),
+			...(positioned ? [POSITION_ENCODING] : []),
+		].join(" "),
 		...(entry.scope === undefined ? {} : { scope: entry.scope }),
-		...(entry.field === "navigation"
-			? { receiptEncoding: NAVIGATION_RECEIPT_ENCODING }
-			: {
-					receiptEncoding: EFFECT_RECEIPT_ENCODING,
-					receiptShapes: RECEIPT_SHAPES,
-				}),
 	};
 }
 
@@ -330,9 +347,57 @@ function foldProposalTerminals(
 	return folded;
 }
 
+/** Notes about an earlier request that are not outcome records. */
+const REQUEST_NOTE_LABELS: ReadonlySet<string> = new Set([
+	"runtime:interrupted_turn",
+	"runtime:historical_read_continuations",
+]);
+
+/** A request note names its request by the same history:hN key as that
+ * request's records. A note for a request outside the shown sources, or one
+ * not in exact canonical form, stays as it is. */
+function relabelRequestNote(
+	segment: ContextObjectPromptSegment,
+	sourceIds: ReadonlyMap<string, string> | undefined,
+): ContextObjectPromptSegment | undefined {
+	if (
+		!sourceIds?.size ||
+		segment.stable ||
+		!segment.label ||
+		!REQUEST_NOTE_LABELS.has(segment.label)
+	)
+		return undefined;
+	let note: unknown;
+	try {
+		note = JSON.parse(segment.content);
+	} catch {
+		// error-policy:J3 A malformed note stays unchanged on the wire.
+		return undefined;
+	}
+	if (
+		!isObjectRecord(note) ||
+		JSON.stringify(note) !== segment.content ||
+		typeof note.requestSourceEventId !== "string"
+	)
+		return undefined;
+	const label = sourceIds.get(note.requestSourceEventId);
+	return label
+		? {
+				...segment,
+				content: JSON.stringify({
+					...note,
+					requestSourceEventId: `history:${label}`,
+				}),
+			}
+		: undefined;
+}
+
 /** The source labels (hN) a request's history labels, reads and index use,
- * keyed by prior-dialogue event id. Empty when the sources are ambiguous or
- * the context carries no event list; records then keep their event ids. */
+ * keyed by prior-dialogue event id. A label is a position in this request's
+ * dialogue window, counted from its oldest message, so once a room outgrows
+ * the window every label shifts on each new message. Empty when the sources
+ * are ambiguous or the context carries no event list; records then keep their
+ * event ids. */
 export function historicalRequestSourceIds(
 	context: ContextObject,
 ): Map<string, string> {
@@ -348,7 +413,8 @@ export function historicalRequestSourceIds(
 export type HistoricalReceiptWireOptions = {
 	/** Prior-dialogue event id (history:<message id>) to its source label hN
 	 * in this request. A known request is written history:hN, the read
-	 * reference and label this request already uses for it. */
+	 * reference and label this request already uses for it, and the same
+	 * message's label moves when the dialogue window slides. */
 	sourceIds?: ReadonlyMap<string, string>;
 	/** positioned (default): a legend before each record group's first
 	 * record, and every record at its own chronological position. table: one
@@ -359,15 +425,22 @@ export type HistoricalReceiptWireOptions = {
 
 /** Only runtime-authored typed receipt labels are eligible; never parse headings
  * inside dialogue/provider content. Original context events remain untouched.
- * Each record keeps the fields later steps read. The encoding of a record
- * depends only on that record and the fixed legend, so the same input gives
- * the same bytes and a new record only adds its row.
+ * Each record keeps the fields later steps read. A row depends only on its
+ * record and its request's label, and a legend only on its record kind, so
+ * the same input gives the same bytes. Inside the dialogue window a new record
+ * only adds its row; once a room outgrows the window every label shifts (see
+ * historicalRequestSourceIds), so the rows re-send from the first one.
+ * Interrupted-turn and read-continuation notes name their request by the same
+ * key.
  * Cost: bounded passes over receipt text; no I/O, retrieval or model calls. */
 export function compactHistoricalReceiptSegments(
 	segments: ContextObjectPromptSegment[],
 	options: HistoricalReceiptWireOptions = {},
 ): ContextObjectPromptSegment[] {
 	const entries = segments.map(recordEntry);
+	const notes = segments.map((segment) =>
+		relabelRequestNote(segment, options.sourceIds),
+	);
 	const folded = foldProposalTerminals(segments, entries);
 	const groups = new Map<string, number[]>();
 	let stableBoundary = 0;
@@ -385,7 +458,10 @@ export function compactHistoricalReceiptSegments(
 		if (members) members.push(index);
 		else groups.set(key, [index]);
 	}
-	if (groups.size === 0) return segments;
+	if (groups.size === 0)
+		return notes.some(Boolean)
+			? segments.map((segment, index) => notes[index] ?? segment)
+			: segments;
 	const replacements = new Map<number, ContextObjectPromptSegment[]>();
 	let referenceCounter = 0;
 	for (const members of groups.values()) {
@@ -397,7 +473,7 @@ export function compactHistoricalReceiptSegments(
 			replacements.set(members[0], [
 				{
 					label: `${segments[members[0]].label}_table`,
-					content: JSON.stringify({ ...tableHeader(entry), rows }),
+					content: JSON.stringify({ ...legend(entry, false), rows }),
 					stable: false,
 				},
 			]);
@@ -410,25 +486,23 @@ export function compactHistoricalReceiptSegments(
 		do {
 			reference = `receipt_wire_${++referenceCounter}`;
 		} while (segments.some((segment) => segment.content.includes(reference)));
-		const legend: ContextObjectPromptSegment = {
+		const header: ContextObjectPromptSegment = {
 			id: reference,
 			label: "runtime:historical_receipt_encoding",
 			stable: false,
-			content: JSON.stringify({
-				id: reference,
-				...tableHeader(entry),
-				rowEncoding: ROW_ENCODING,
-			}),
+			content: JSON.stringify({ id: reference, ...legend(entry, true) }),
 		};
 		members.forEach((index, offset) => {
 			const row: ContextObjectPromptSegment = {
 				...segments[index],
 				content: JSON.stringify([reference, rows[offset]]),
 			};
-			replacements.set(index, offset === 0 ? [legend, row] : [row]);
+			replacements.set(index, offset === 0 ? [header, row] : [row]);
 		});
 	}
 	return segments.flatMap((segment, index) =>
-		folded.has(index) ? [] : (replacements.get(index) ?? [segment]),
+		folded.has(index)
+			? []
+			: (replacements.get(index) ?? [notes[index] ?? segment]),
 	);
 }

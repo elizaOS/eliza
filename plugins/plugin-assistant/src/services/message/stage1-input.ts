@@ -265,13 +265,16 @@ export function renderMessageHandlerModelInput(
   );
   // This region is ordered by how often it changes: text that rarely changes,
   // then receipts, then navigation, which gains an entry on most navigation
-  // turns. A turn that adds no receipt shares the prefix through the
-  // transcript. One that adds a receipt shares the prefix through the earlier
-  // rows of its table (a row's bytes depend only on its own record) and
-  // re-sends the transcript; a proposal that ends rewrites its one row.
-  // Receipts still lead because they are the larger region and change on
-  // fewer turns. What the client reported for this message alone
-  // changes every turn and follows the transcript.
+  // turns. Inside the dialogue window, a turn that adds no receipt shares the
+  // prefix through the transcript, and one that adds a receipt shares it
+  // through the earlier rows of its table (a row's bytes depend only on its
+  // record and its request's hN key) and re-sends the transcript; a proposal
+  // that ends rewrites its one row. hN keys are window positions: once a room
+  // outgrows the window, every key shifts on each new message, so the tables
+  // re-send from their first row, as the transcript's labels do. Receipts
+  // still lead because they are the larger region and change on fewer turns.
+  // What the client reported for this message alone changes every turn and
+  // follows the transcript.
   const clientObservation = otherTurnSegments.filter(
     (segment) => segment.label === CLIENT_OBSERVATION_SEGMENT_LABEL,
   );

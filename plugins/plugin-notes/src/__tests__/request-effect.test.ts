@@ -3665,12 +3665,14 @@ describe("a later request acting on an earlier request's printed outcome", () =>
     expect(row[0]).toBe(legend.id);
     const [key, [[actionName, success, [shape, values]]]] = row[1];
     expect(key).toBe("history:h1");
-    expect(legend.receiptShapes[shape]).toEqual([
-      "operation",
-      ["resource", ["kind", "id"]],
-      "outcome",
-      ["commit", ["kind"]],
-    ]);
+    // The legend's receipt template and the detail this shape adds.
+    expect(legend.encoding).toContain(
+      "row=[requestSourceEventId,[[actionName,success,receipt],...]]",
+    );
+    expect(legend.encoding).toContain(
+      "receipt=[shape,[operation,[resourceKind,resourceId],outcome]]",
+    );
+    expect(legend.encoding).toContain(`${shape} adds [commitKind]`);
     const [operation, [kind, noteId], outcome] = values;
     expect({ actionName, success, operation, kind, outcome }).toEqual({
       actionName: "NOTES_CREATE",
