@@ -20,7 +20,7 @@ const everyOperation = {
   CreateNote: true, CreateReminder: true, OpenView: true, BrowserNavigate: true,
 } as const satisfies Record<OperationType, true>
 
-const alarm = { type: "clock_handoff", action: "set", hour: 7, minute: 30, label: "Wake up", timeZone: "Europe/Berlin" }
+const alarm = { type: "clock_handoff", action: "set", hour: 7, minute: 30, label: "Wake up", timeZone: "Europe/Berlin" } as const
 const repeating = { ...alarm, days: [1, 2, 3, 4, 5] }
 const filter = { type: "notes_filter", text: "groceries" }
 const opened = { kind: "clock-handoff", action: "set", status: "opened" }

@@ -1,0 +1,108 @@
+// spec/cloud/client.md, "Story: Use the cloud from the device as configured"
+import { assert, describe, it } from "@effect/vitest"
+import { addCredits } from "../src/billing/funds.vibe"
+import { Store } from "../src/store/store.vibe"
+import { organization, testCloud, type TestCloud } from "./support/cloud.vibe"
+import { tokenDigest } from "../src/shared/sealing.vibe"
+import { revokeAll } from "../src/native-clients/device-keys.vibe"
+import { accountUsable, CloudError, createCloudClient, creditFromSnapshot, type CloudClient } from "../src/client/index.vibe"
+import { routesByName } from "../src/client/routes.vibe"
+import { hostFetch, seen, streamedAnswer } from "./zz-wp9u6-fetch-tmp.ts"
+
+effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
+  return try cloud.store.transaction((tx) => tx.query(text, params))
+}
+effect function check(run: () => void) {
+  try Effect.try(run)
+}
+effect function entitledDevice(cloud: TestCloud, name: string, now: number) {
+  const token = `eliza_mobile_${tokenDigest(name)}`
+  try organization(cloud, `org-${name}`)
+  try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [`user-${name}`, `org-${name}`, `${name}@example.com`, now])
+  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'test-client', 'active', $3, $4, $5, $6, $5, $5)", [
+    `grant-${name}`, `user-${name}`, `cred-${name}`, tokenDigest(token), now - 1000, now + 24 * 3_600_000
+  ])
+  return token
+}
+function clientOf(baseUrl: string, credential: () => string): CloudClient {
+  return createCloudClient({ baseUrl, credential, fetch: hostFetch })
+}
+effect function failureOf(run: () => Promise<unknown>) {
+  return try promise(() => run().then(() => "succeeded", (error: unknown) => error instanceof CloudError ? error.failure : `threw ${String(error)}`))
+}
+const unknownKey = `eliza_mobile_${"0".repeat(64)}`
+
+describe("U6 tmp", () => {
+  it.live("credential reasons and getter", () => scoped(effect {
+    const cloud = try testCloud()
+    const now = try Clock.currentTimeMillis
+    const live = try entitledDevice(cloud, "custody", now)
+    const expiring = try entitledDevice(cloud, "expiring", now)
+    const ended = try entitledDevice(cloud, "ended", now)
+    try sql(cloud, "UPDATE device_grants SET key_expires_at = $2, state = jsonb_set(state, '{keyExpiresAt}', to_jsonb($2::bigint)) WHERE credential_id = $1", ["cred-expiring", now - 1])
+    try cloud.store.transaction((tx) => revokeAll(tx, "user-ended", now))
+    let held = unknownKey
+    const client = clientOf(cloud.url, () => held)
+    const unknown = try failureOf(() => client.account())
+    held = expiring
+    const expired = try failureOf(() => client.account())
+    held = ended
+    const revoked = try failureOf(() => client.account())
+    held = live
+    const account = try promise(() => client.account())
+    const models = try promise(() => client.models())
+    const referral = try promise(() => client.referral())
+    const plans = try promise(() => client.plans())
+    const keys = try promise(() => client.entitlementKeys())
+    const token = try promise(() => client.entitlement())
+    const commands = try promise(() => client.subscriptionCommands({ limit: 5 }))
+    const badReferral = try failureOf(() => client.applyReferral("NOPE"))
+    const unfunded = try promise(() => client.snapshot())
+    provide Store = cloud.store {
+      try addCredits({ organizationId: "org-custody", amount: 5_000_000, requestKey: "u6-funding" })
+    }
+    const funded = try promise(() => client.snapshot())
+    const consent = try failureOf(() => client.speechConsent())
+    const revokedSelf = try promise(() => client.revokeSelf())
+    const afterRevoke = try failureOf(() => client.account())
+    try check(() => assert.deepStrictEqual(
+      { unknown, expired, revoked, account: account.id, models: models.data.map((m) => m.id), referral: typeof referral.code, plans: plans.map((p) => p.key), keys: keys.length > 0, token: token.split(".").length, commands: commands.items.length, badReferral, usable: [accountUsable(unfunded), creditFromSnapshot(unfunded, unfunded.observedAt).kind, accountUsable(funded)], consent, revokedSelf: revokedSelf.status, afterRevoke },
+      { unknown: { tag: "CloudCredentialInvalid", reason: "CredentialUnknown" }, expired: { tag: "CloudCredentialInvalid", reason: "CredentialExpired" }, revoked: { tag: "CloudCredentialInvalid", reason: "CredentialRevoked" }, account: "user-custody", models: ["test-chat"], referral: "string", plans: ["free", "plus_monthly", "pro_monthly"], keys: true, token: 3, commands: 0, badReferral: "x", usable: [false, "zero", true], consent: "x", revokedSelf: "revoked", afterRevoke: { tag: "CloudCredentialInvalid", reason: "CredentialRevoked" } }
+    ))
+  }))
+
+  it.live("origin, routes, headers, stream", () => effect {
+    const refusedUrls = ["https://api.example.com/api/v1", "ftp://x.example.com", "http://api.example.com", "https://api.example.com/?a=1", "https://api.example.com#x", "nope"].map((baseUrl) => {
+      try {
+        createCloudClient({ baseUrl, credential: () => "", fetch: hostFetch })
+        return "created"
+      } catch (error) {
+        return error instanceof CloudError ? error.failure.tag : "other"
+      }
+    })
+    const sent = seen()
+    const local = createCloudClient({ baseUrl: "http://127.0.0.1:9/", credential: () => "k", fetch: sent.fetch })
+    try promise(() => local.models())
+    try promise(() => local.mapsCapabilities().catch(() => undefined))
+    const wrongParam = try failureOf(() => local.planChangeStatus("undo", "review"))
+    const stream = createCloudClient({ baseUrl: "https://api.example.com", credential: () => "k", fetch: async () => streamedAnswer([
+      'data: {"id":"c","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"he"}}]}\n',
+      '\ndata: {"id":"c","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"llo"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'
+    ]) })
+    const text = try promise(async () => {
+      let joined = ""
+      for await (const chunk of await stream.chatCompletionStream({ model: "m", messages: [{ role: "user", content: "hi" }] })) joined += chunk.choices[0]?.delta.content ?? ""
+      return joined
+    })
+    const cut = createCloudClient({ baseUrl: "https://api.example.com", credential: () => "k", fetch: async () => streamedAnswer(['data: {"id":"c","object":"chat.completion.chunk","created":1,"model":"m","choices":[]}\n\n']) })
+    const truncated = try failureOf(async () => { for await (const _ of await cut.chatCompletionStream({ model: "m", messages: [{ role: "user", content: "hi" }] })) {} })
+    const failing = createCloudClient({ baseUrl: "https://api.example.com", credential: () => "k", fetch: async () => streamedAnswer(['data: {"error":{"message":"x"}}\n\ndata: [DONE]\n\n']) })
+    const errorChunk = try failureOf(async () => { for await (const _ of await failing.chatCompletionStream({ model: "m", messages: [{ role: "user", content: "hi" }] })) {} })
+    const offline = createCloudClient({ baseUrl: "https://api.example.com", credential: () => "k", fetch: async () => { throw new TypeError("offline") } })
+    const network = try failureOf(() => offline.models())
+    try check(() => assert.deepStrictEqual(
+      { refusedUrls, urls: sent.urls, auth: sent.headers.map((h) => h.authorization), wrongParam, text, truncated, errorChunk, network, route: routesByName.models.auth },
+      { refusedUrls: [], urls: [], auth: [], wrongParam: "x", text: "hello", truncated: { tag: "CloudNetwork" }, errorChunk: { tag: "CloudProviderIssue" }, network: { tag: "CloudNetwork" }, route: "KeyOrSession" }
+    ))
+  })
+})
