@@ -31,7 +31,7 @@ export async function requireStagingJoinBytes(
     });
     if (
       response.status !== 200 ||
-      response.url !== origin + "/join" ||
+      response.url !== `${origin}/join` ||
       response.headers.get("content-type")?.split(";")[0]?.trim() !==
         "text/html"
     )
@@ -48,6 +48,23 @@ export async function requireStagingJoinBytes(
     throw new Error(
       "Staging join document does not match the attested renderer",
     );
+}
+
+export async function openStagingJoin(
+  page: Page,
+  origin: string,
+): Promise<void> {
+  const url = `${origin}/join`;
+  const response = await page.goto(url, { waitUntil: "commit" });
+  if (
+    response?.status() !== 200 ||
+    response.url() !== url ||
+    response.frame() !== page.mainFrame() ||
+    response.request().redirectedFrom() ||
+    response.headers()["content-type"]?.split(";")[0]?.trim() !== "text/html"
+  ) {
+    throw new Error("Unexpected staging join document");
+  }
 }
 
 /** Runs inside the verified top-level JSON document, before any app script loads. */
@@ -118,7 +135,7 @@ async function establishStagingBrowserSession(input: {
   localStorage.setItem(input.storageKey, session.token);
 }
 
-async function readPublicJsonDocument(page: Page, url: string) {
+export async function readPublicJsonDocument(page: Page, url: string) {
   const response = await page.goto(url, { waitUntil: "domcontentloaded" });
   if (
     response?.status() !== 200 ||
@@ -127,7 +144,7 @@ async function readPublicJsonDocument(page: Page, url: string) {
     response.headers()["content-type"]?.split(";")[0]?.trim() !==
       "application/json"
   ) {
-    throw new Error("Staging sign-in requires the exact public JSON document");
+    throw new Error("Expected the exact public staging JSON document");
   }
   return response.json();
 }
@@ -176,5 +193,5 @@ export async function openAuthenticatedStagingJoin(
     verifier,
     challenge: createHash("sha256").update(verifier).digest("hex"),
   });
-  await page.goto(`${appOrigin}/join`, { waitUntil: "domcontentloaded" });
+  await openStagingJoin(page, appOrigin);
 }
