@@ -219,6 +219,7 @@ class CameraPlugin : Plugin() {
                     put("maxZoom", device.maxZoom)
                     put("supportedResolutions", resolutions)
                     put("supportedFrameRates", frameRates)
+                    put("supportedCaptureAspectRatios", JSArray().apply { CaptureAspectRatios.SUPPORTED.forEach { put(it) } })
                 })
             }
 
@@ -243,6 +244,12 @@ class CameraPlugin : Plugin() {
             // The preview stream runs at CameraX's default rate here; recording honors frameRate.
             if (!call.data.isNull("frameRate")) {
                 call.reject("Android does not support a preview frame rate; set frameRate when recording", "INVALID_OPTIONS")
+                return@runOnUiThread
+            }
+            try {
+                captureAspectRatio(call)
+            } catch (error: IllegalArgumentException) {
+                call.reject(error.message, "INVALID_OPTIONS", error)
                 return@runOnUiThread
             }
             stopPreviewInternal()
@@ -378,8 +385,13 @@ class CameraPlugin : Plugin() {
                             it.setSurfaceProvider(previewView?.surfaceProvider)
                         }
 
+                    // CameraX falls back to another ratio when the lens has none; captureSize reports the bound size.
+                    val aspectStrategy = when (captureAspectRatio(call)) {
+                        "16:9" -> AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY
+                        else -> AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY
+                    }
                     val captureSelector = ResolutionSelector.Builder()
-                        .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                        .setAspectRatioStrategy(aspectStrategy)
                         .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
                         .build()
                     // Keep the fast shutter path while capturing at the highest supported size.
@@ -417,6 +429,9 @@ class CameraPlugin : Plugin() {
             failPreview(call, error)
         }
     }
+
+    private fun captureAspectRatio(call: PluginCall): String =
+        CaptureAspectRatios.parse(call.data.opt("captureAspectRatio")?.takeUnless { it == org.json.JSONObject.NULL })
 
     /** Report the sizes CameraX bound, upright, rather than the requested size. */
     private fun putBoundSizes(result: JSObject) {
