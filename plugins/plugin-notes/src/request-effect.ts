@@ -7,6 +7,7 @@ import {
   type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEvaluator,
 } from "@elizaos/core";
+import { ownerRequestText } from "./owner-text.js";
 import { getNotesService } from "./service.js";
 
 type ParsedNotesEffect = NotesRequestInterpretation & {
@@ -175,7 +176,7 @@ export const namedNoteReadEvaluator: ResponseHandlerEvaluator = {
   evaluate({ runtime, message }) {
     try {
       const notes = getNotesService(runtime).findNotesNamedInText(
-        message.content.text ?? "",
+        ownerRequestText(message),
       );
       if (notes.length === 1)
         return {

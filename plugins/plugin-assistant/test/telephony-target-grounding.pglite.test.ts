@@ -481,6 +481,100 @@ it("refuses a keypad prefill the owner did not write", async () => {
 });
 
 /**
+ * Review (2026-11-20): "call an ambulance" with 911 proposed was refused as
+ * "that number isn't one you wrote". It opens the empty keypad with no review,
+ * and the owner is told to dial their local emergency number.
+ */
+it.each([
+  ["call an ambulance", call("911")],
+  ["call the police", { type: "phone_keypad", number: "911" }],
+  [
+    "call emergency services",
+    {
+      type: "phone_call",
+      target: { kind: "contact", query: "emergency services" },
+    },
+  ],
+])(
+  "opens the keypad for the emergency request %s",
+  async (request, operation) => {
+    const f = await fixture();
+    try {
+      const result = await f.run(request, operation);
+      expect(result).toMatchObject({
+        success: true,
+        userFacingText: expect.stringContaining(
+          "Dial your local emergency number",
+        ),
+        data: { directRequest: true, approvalRequired: false },
+      });
+      expect((await f.rows())[0].operation).toEqual({ type: "phone_keypad" });
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+
+it("tells the owner to dial when the phone has no keypad", async () => {
+  const f = await fixture(CAPABILITIES.filter((c) => c !== "phone.keypad.v1"));
+  try {
+    const result = await f.run("call an ambulance", call("911"));
+    await refused(f, result);
+    expect((result as { userFacingText: string }).userFacingText).toContain(
+      "dial your local emergency number",
+    );
+  } finally {
+    await f.pg.close();
+  }
+});
+
+it("reviews a call to the emergency number the owner wrote", async () => {
+  const f = await fixture();
+  try {
+    expect(await f.run("call 911", call("911"))).toMatchObject({
+      success: true,
+    });
+    expect((await f.rows())[0].operation).toEqual(call("911"));
+  } finally {
+    await f.pg.close();
+  }
+});
+
+it("looks up the owner's contact without trailing words", async () => {
+  const f = await fixture();
+  try {
+    expect(
+      await f.run("call mom again", {
+        type: "phone_call",
+        target: { kind: "contact", query: "mom" },
+      }),
+    ).toMatchObject({ success: true });
+    expect((await f.rows())[0].operation).toEqual({
+      type: "phone_call",
+      target: { kind: "contact", query: "mom" },
+    });
+  } finally {
+    await f.pg.close();
+  }
+});
+
+it.each([
+  ["call 415 - 555 - 0100", "Type the number again with digits only"],
+  ["call the pharmacy back", "your message doesn't include a phone number"],
+])("explains the refusal of %s truthfully", async (request, reply) => {
+  const f = await fixture();
+  try {
+    const result = await f.run(request, call("4155550100"));
+    await refused(f, result);
+    expect((result as { userFacingText: string }).userFacingText).toContain(
+      reply,
+    );
+  } finally {
+    await f.pg.close();
+  }
+});
+
+/**
  * v613 (Pixel): secret swap showed the planner "call __ELIZA_CONTACT_<s>_6__"
  * in place of the owner's number, and the model wrote 6505715862. The model
  * must copy the reference; the execution boundary restores it.
@@ -619,5 +713,83 @@ it("replays the v613 prompt: coordinates stay, the call is the owner's number", 
     } finally {
       await f.pg.close();
     }
+  }
+});
+
+const CONTACT_CAPABILITIES = [
+  ...CAPABILITIES,
+  "contacts.write.v1",
+  "contacts.write.v2",
+];
+const newContact = (number: string) => ({
+  type: "contact_create",
+  contact: {
+    displayName: "Bob Lee",
+    phoneNumbers: [number],
+    emailAddresses: [],
+  },
+});
+
+it("refuses an invented number in a new contact or a contact change (v612)", async () => {
+  const request = "add a contact Bob Lee 415-555-0100";
+  for (const operation of [
+    newContact("6505715862"),
+    {
+      type: "contact_update",
+      query: "Bob Lee",
+      add: { phoneNumbers: ["6505715862"] },
+    },
+  ]) {
+    const f = await fixture(CONTACT_CAPABILITIES);
+    try {
+      const { session, reference } = swapped(request);
+      const result = await inTurn(session, () =>
+        f.run(request, restored(session, operation)),
+      );
+      await refused(f, result);
+      expect((result as { text: string }).text).toContain(reference);
+      // The owner asked to save a contact: the reply says nothing was saved.
+      expect((result as { userFacingText: string }).userFacingText).toContain(
+        "Nothing was saved.",
+      );
+    } finally {
+      await f.pg.close();
+    }
+  }
+});
+
+it("saves the owner's number typed with mixed separators, from its copied reference", async () => {
+  for (const written of ["415-555 0100", "+1 415-555 0100"]) {
+    const request = `add Bob Lee ${written} to my contacts`;
+    const f = await fixture(CONTACT_CAPABILITIES);
+    try {
+      const { session, prompt, reference } = swapped(request);
+      expect(prompt).not.toContain(written);
+      expect(
+        await inTurn(session, () =>
+          f.run(request, restored(session, newContact(reference))),
+        ),
+      ).toMatchObject({ success: true });
+      expect((await f.rows())[0].operation).toEqual(
+        newContact(written.startsWith("+1") ? "+14155550100" : "4155550100"),
+      );
+    } finally {
+      await f.pg.close();
+    }
+  }
+});
+
+it("leaves a contact whose message writes no number to the owner's review", async () => {
+  const f = await fixture(CONTACT_CAPABILITIES);
+  try {
+    expect(
+      await f.run(
+        "save the pizza place as a contact",
+        newContact("4155550100"),
+      ),
+    ).toMatchObject({ success: true });
+    expect((await f.rows())[0].operation).toEqual(newContact("4155550100"));
+  } finally {
+    await f.pg.close();
   }
 });

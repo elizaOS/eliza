@@ -124,10 +124,12 @@ import {
 } from "./telephony-actions-contract.ts";
 import {
   authoredKeypadRequest,
+  emergencyServicesRequest,
   writesDialNumber,
 } from "./telephony-request.ts";
 import {
   DeviceTelephonyTargetNotRequestedError,
+  EMERGENCY_KEYPAD_REPLY,
   telephonyTargetRefusalReply,
 } from "./telephony-target-grounding.ts";
 
@@ -1189,7 +1191,7 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   },
   {
     types: ["phone_keypad"],
-    text: "phone_keypad opens the Phone keypad on the phone, with number filled in when the owner gave one. Use it for open the dialer, open the keypad, or open the dialer with a number. It never dials or calls: the owner taps Call there. opened proves only that the keypad is showing; never report a call. To call for the owner use phone_call instead, which the owner reviews.",
+    text: "phone_keypad opens the Phone keypad on the phone, with number filled in when the owner gave one. Use it for open the dialer, open the keypad, or open the dialer with a number. It never dials or calls: the owner taps Call there. opened proves only that the keypad is showing; never report a call. To call for the owner use phone_call instead, which the owner reviews. When the owner asks for emergency services in words (an ambulance, the police, the fire department, help) and writes no number, use phone_keypad with no number: the owner dials their local emergency number there.",
   },
   {
     types: ["phone_call"],
@@ -1811,7 +1813,11 @@ export const proposeDeviceAction: Action = {
         return {
           success: false,
           text: error.message,
-          userFacingText: telephonyTargetRefusalReply(error.refusal),
+          userFacingText: telephonyTargetRefusalReply(
+            error.refusal,
+            extractUserText(unwrapUserMessageText(_message)),
+            operationType,
+          ),
           verifiedUserFacing: true,
           data: {
             code: error.code,
@@ -2136,6 +2142,14 @@ export const proposeDeviceAction: Action = {
           extractUserText(unwrapUserMessageText(_message)),
           operation.number,
         ));
+    // An emergency request ("call an ambulance") opens the empty keypad: the
+    // owner dials their local emergency number there.
+    const emergencyKeypad =
+      requestedKeypad &&
+      !operation.number &&
+      emergencyServicesRequest(
+        extractUserText(unwrapUserMessageText(_message)),
+      );
     const requestedHandoff =
       requestedBrowserOpen ||
       requestedCameraCapture ||
@@ -2167,7 +2181,9 @@ export const proposeDeviceAction: Action = {
                   ? {
                       userFacingText: operation.number
                         ? `Opening the keypad with ${operation.number}.`
-                        : "Opening the keypad.",
+                        : emergencyKeypad
+                          ? EMERGENCY_KEYPAD_REPLY
+                          : "Opening the keypad.",
                     }
                   : request.state === "pending"
                     ? { userFacingText: DEVICE_APPROVAL_REVIEW_TEXT }
@@ -2181,7 +2197,7 @@ export const proposeDeviceAction: Action = {
             : requestedBrowserControl
               ? "The requesting phone runs this requested Browser control right after this reply, with no review. It has not run yet; do not claim that it finished, what a search found or what a page shows."
               : requestedKeypad
-                ? "The requesting phone brings its Phone keypad in front right after this reply, with no review. It never dials: only the owner's Call tap there places a call. It is not showing yet; never report a call."
+                ? `The requesting phone brings its Phone keypad in front right after this reply, with no review. It never dials: only the owner's Call tap there places a call. It is not showing yet; never report a call.${emergencyKeypad ? " The owner asked for emergency services: the keypad opens empty for them to dial their local emergency number." : ""}`
                 : `Durable device proposal state: ${request.state}. This tool has performed no device operation.`,
       data: {
         proposalId: request.id,
