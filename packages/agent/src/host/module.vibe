@@ -1,6 +1,7 @@
 // spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/plugins/profile.md, "A product route never claims a route prefix an agent module owns"
 import { type AgentRuntime, type Plugin, type UUID } from "@elizaos/core"
 import { type LocalRoute } from "../access/routes.vibe"
+import type { ConversationOwner } from "../conversation/turns.vibe"
 import type { LaunchDocument, LaunchFrame } from "./launch.schema.vibe"
 
 export type AgentPlugin = Plugin & { readonly routes?: readonly LocalRoute[] }
@@ -27,6 +28,7 @@ export interface ModuleContext {
   readonly timeZone: string
   readonly epoch: number
   readonly ownerEntityId: UUID
+  readonly conversationOwner?: ConversationOwner
   readonly publishEvent?: PublishEvent | undefined
   readonly viewFeeds?: ViewFeeds | undefined
 }
