@@ -241,6 +241,56 @@ describe("other requests ground the model's recipient", () => {
     ).toBe("number");
   });
 
+  it("cuts the body only as whole words, never inside the recipient", () => {
+    const named = (query: string, body: string) =>
+      ({
+        type: "sms_compose",
+        target: { kind: "contact", query },
+        body,
+      }) as DeviceOperation;
+    // The body "hi" is not the "hi" in "Phil".
+    for (const [query, body, request] of [
+      ["Phil", "hi", "text Phil hi"],
+      ["Sophia", "hi", "text Sophia hi"],
+      ["Noah", "no", "message Noah: no"],
+      ["Brooke", "ok", "send a text to Brooke: ok"],
+      ["Sam", "hi", "text Sam hi"],
+    ] as const)
+      expect(
+        groundTelephonyTarget(named(query, body), request).operation,
+      ).toEqual(named(query, body));
+    // "55" is not the "55" in "555".
+    expect(
+      groundTelephonyTarget(
+        text("4155550100", "55"),
+        "message 415-555-0100: 55",
+      ).operation,
+    ).toEqual(text("4155550100", "55"));
+    // A body that repeats part of the recipient's number leaves the number.
+    expect(
+      groundTelephonyTarget(
+        text("4155550100", "0100"),
+        "text 415-555-0100 saying 0100",
+      ).operation,
+    ).toEqual(text("4155550100", "0100"));
+    expect(
+      groundTelephonyTarget(
+        send(["4155550100"], "55"),
+        "message 415-555-0100: 55",
+      ).operation,
+    ).toEqual(send(["4155550100"], "55"));
+    // A name or number only inside the body is still refused.
+    expect(
+      refusal(named("Phil", "tell Phil hi"), "Sam should get: tell Phil hi"),
+    ).toBe("contact");
+    expect(
+      refusal(
+        text("4155550100", "call me at 415-555-0100"),
+        "Sam should get: call me at 415-555-0100",
+      ),
+    ).toBe("number");
+  });
+
   it("grounds a keypad prefill and allows an empty keypad", () => {
     expect(
       groundTelephonyTarget(
@@ -335,6 +385,33 @@ describe("numbers the owner spoke", () => {
       operation: call(proposed.replace("+1", "")),
       handedThrough: false,
     });
+  });
+
+  it("matches a written number before a spoken reading of it", () => {
+    // "to 415-555-0100" also reads as a spoken 24155550100.
+    const owner = "send a text to 415-555-0100: hi";
+    expect(ownerPhoneNumbers(owner)).toContain("24155550100");
+    for (const request of [owner, "message 415-555-0100: hi"])
+      expect(
+        groundTelephonyTarget(text("+14155550100", "hi"), request).operation,
+      ).toEqual(text("4155550100", "hi"));
+    expect(
+      groundTelephonyTarget(
+        call("+14155550100"),
+        "place a call to 415-555-0100",
+      ).operation,
+    ).toEqual(call("4155550100"));
+    expect(
+      groundTelephonyTarget(
+        send(["+14155550100"], "hi"),
+        "a text for 415 555 0100 please: hi",
+      ).operation,
+    ).toEqual(send(["4155550100"], "hi"));
+    // Two written numbers with the same last ten digits stay ambiguous.
+    expect(
+      refusal(call("4155550100"), "call +1 415-555-0100 or +2 415-555-0100"),
+    ).toBe("number");
+    expect(refusal(call("+16505715862"), owner)).toBe("number");
   });
 
   it("refuses a number the owner did not speak", () => {
