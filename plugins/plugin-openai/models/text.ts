@@ -57,7 +57,7 @@ import {
   type UserContent,
 } from "ai";
 import { z } from "zod";
-import { createOpenAIClient } from "../providers";
+import { createOpenAIClient, isModelAttemptIdleTimeout } from "../providers";
 import type { TextStreamResult, TokenUsage } from "../types";
 import {
   cerebrasReasoningContent,
@@ -2559,6 +2559,44 @@ function isSpuriousToolPairingRejection(error: unknown): boolean {
 }
 
 /**
+ * True when the provider's error body says it failed to parse a tool call out
+ * of the model's generation: Cerebras's flat
+ * `{"type":"generation_error","param":"tool_calls","code":"parser_error"}`,
+ * also inside an OpenAI `{"error":{...}}` envelope. Read structurally from the
+ * AI SDK's parsed `data` or the raw response body along a bounded `.cause`
+ * chain, so a change in the message wording cannot change the answer.
+ */
+function isProviderToolCallParseFailure(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let node: unknown = error;
+  for (let depth = 0; depth < 5 && node && typeof node === "object" && !seen.has(node); depth++) {
+    seen.add(node);
+    const record = node as { data?: unknown; responseBody?: unknown; cause?: unknown };
+    let body: unknown;
+    if (typeof record.responseBody === "string") {
+      try {
+        body = JSON.parse(record.responseBody);
+      } catch {
+        // error-policy:J3 a body that is not JSON carries no structured fields to read.
+      }
+    }
+    for (const candidate of [record.data, body]) {
+      if (!candidate || typeof candidate !== "object") continue;
+      const envelope = (candidate as { error?: unknown }).error;
+      const fields = (envelope && typeof envelope === "object" ? envelope : candidate) as {
+        code?: unknown;
+        type?: unknown;
+        param?: unknown;
+      };
+      if (fields.code === "parser_error") return true;
+      if (fields.type === "generation_error" && fields.param === "tool_calls") return true;
+    }
+    node = record.cause;
+  }
+  return false;
+}
+
+/**
  * Per-model rate-limit cooldown shared by a runtime's text handlers. A
  * provider that answers with a per-minute-bucket 429 (`Retry-After` beyond the
  * transient lane's cap) will reject the same concrete model until the window
@@ -2784,6 +2822,9 @@ function isTransientProviderError(error: unknown): boolean {
   // already-exhausted SDK retry envelope rather than multiply another owner's
   // attempts if a wrapped provider surfaces one.
   if (RetryError.isInstance(error)) return false;
+  // An attempt the provider left silent past its idle bound is not re-sent:
+  // the call fails now, so the turn ends with its normal failure reply.
+  if (isModelAttemptIdleTimeout(error)) return false;
   // A valid provider delay beyond this lane's wait budget must reach runtime
   // fallback immediately. Never shorten the delay and resend early.
   if (providerRetryOutlastsTransientLane(error)) return false;
@@ -2819,13 +2860,22 @@ function isTransientProviderError(error: unknown): boolean {
   // normalization makes structurally impossible, so it can only be a spurious
   // provider-side rejection worth retrying.
   if (status === 400) {
+    // The provider could not parse a tool call out of the model's own output.
+    // Never re-sent here, whatever its wording: the caller decides whether the
+    // call gets one more try, and a re-send in this lane would multiply it.
+    if (isProviderToolCallParseFailure(error)) return false;
     if (SPURIOUS_TOOL_PAIRING_400_RE.test(msg) || TRANSIENT_OPENROUTER_NO_MODELS_400_RE.test(msg)) {
       return true;
     }
     if (/invalid|unsupported|must be|required|malformed|not allowed|schema/.test(msg)) {
       return false;
     }
-    return /server error|try again|overload|capacity|temporarily|busy|rate/.test(msg);
+    // "rate" as a word, or rate limit in any spelling (rate_limit, ratelimit,
+    // tokens_rate_limit): the rate-limit wording this lane was written for, never
+    // the "rate" inside "generate".
+    return /server error|try again|overload|capacity|temporarily|busy|\brate\b|rate.?limit/.test(
+      msg
+    );
   }
   return false;
 }
