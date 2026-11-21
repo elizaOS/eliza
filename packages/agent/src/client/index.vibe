@@ -1,7 +1,7 @@
-// spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account", "Story: Reach a runtime that is not running yet", "Story: Understand why the runtime refused"
+// spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account", "Story: Reach a runtime that is not running yet", "Story: Understand why the runtime refused", "A stream is sent at most once and only in its generation"
 module node {
   import { Effect, Schema } from "effect"
-  import type { Event, RetryAdvice, StatusReport } from "../../gen/agent__client__runtimeClient.effect.vibe"
+  import type { Delivery, Event, RetryAdvice, Route, StatusReport } from "../../gen/agent__client__runtimeClient.effect.vibe"
   import { createRuntimeCoordinator, pollStartup } from "./coordination.vibe"
 
   export interface RuntimeStatus {
@@ -21,6 +21,18 @@ module node {
     start(): Promise<RuntimeStatus>
     restart(): Promise<RuntimeStatus>
     request(input: { path: string; method: "GET" | "POST"; body?: unknown }): Promise<RuntimeJsonResponse>
+    requestStream?(input: { path: string; method: "POST"; body?: unknown }, signal: AbortSignal): AsyncIterable<RuntimeStreamFrame>
+  }
+
+  export type RuntimeStreamFrame =
+    | { readonly kind: "head"; readonly status: number; readonly headers: Readonly<Record<string, string>> }
+    | { readonly kind: "chunk"; readonly data: Uint8Array }
+    | { readonly kind: "end" | "error" | "aborted" }
+
+  export interface RuntimeStream {
+    readonly status: number
+    readonly headers: Readonly<Record<string, string>>
+    readonly body: AsyncIterable<Uint8Array>
   }
 
   export interface RuntimeClientOptions {
@@ -49,6 +61,10 @@ module node {
     status: Schema.Int.check(Schema.isGreaterThanOrEqualTo(100), Schema.isLessThanOrEqualTo(599)),
     data: Schema.Unknown,
   }))
+  const decodeHead = Schema.decodeUnknownSync(Schema.Struct({
+    status: Schema.Int.check(Schema.isGreaterThanOrEqualTo(100), Schema.isLessThanOrEqualTo(599)),
+    headers: Schema.Record(Schema.String, Schema.String),
+  }))
   const refusal = Schema.decodeUnknownOption(Schema.Struct({
     error: Schema.optionalKey(Schema.String), code: Schema.optionalKey(Schema.String),
     retryAfter: Schema.optionalKey(Schema.Number),
@@ -75,12 +91,39 @@ module node {
     })
   }
 
+  function rooted(path: string) {
+    if (!path.startsWith("/") || path.startsWith("//") || /[\\\u0000-\u0020]/.test(path)) throw new Error("InvalidPath")
+  }
+
+  function retryOf(data: unknown): RetryAdvice {
+    const said = refusal(data)
+    const retryAfter = said._tag === "Some" ? said.value.retryAfter : undefined
+    return typeof retryAfter === "number" && Number.isSafeInteger(retryAfter) ? { tag: "RetryAfter", seconds: retryAfter } : { tag: "NoAdvice" }
+  }
+
+  function parsedOrNull(text: string): unknown {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return null
+    }
+  }
+
+  interface Wire {
+    readonly status: number
+    readonly headers: Readonly<Record<string, string>>
+    readonly chunks: AsyncIterator<Uint8Array>
+  }
+
   interface Pending {
     path: string
     body: unknown
+    delivery: Delivery
     resolve: (data: unknown) => void
     reject: (reason: unknown) => void
     bridge?: RuntimeJsonBridge
+    stop?: AbortController
+    opened?: RuntimeStream
   }
 
   export function createRuntimeJsonClient(options: RuntimeClientOptions) {
@@ -115,7 +158,12 @@ module node {
         switch (command.tag) {
           case "Send": {
             const input = pending.get(command.request)
-            if (input) void dispatch(command.request, input, command.over, generation.signal)
+            if (input) void (input.delivery === "Stream" ? open : dispatch)(command.request, input, command.over, generation.signal)
+            break
+          }
+          case "Open": {
+            const input = pending.get(command.id)
+            if (input?.opened) input.resolve(input.opened)
             break
           }
           case "Probe": {
@@ -128,6 +176,7 @@ module node {
             if (!input) break
             pending.delete(command.id)
             const stage = command.stage
+            input.stop?.abort(new Error(stage.tag === "Failed" ? stage.why : "Settled"))
             if (stage.tag === "Failed") {
               input.reject(new Error(stage.why))
             } else if (answer && stage.tag === "Replied") {
@@ -203,13 +252,130 @@ module node {
             })
           return { status: response.status, data }
         })
-        const said = refusal(answer.data)
-        const retryAfter = said._tag === "Some" ? said.value.retryAfter : undefined
-        const retry: RetryAdvice = typeof retryAfter === "number" && Number.isSafeInteger(retryAfter)
-          ? { tag: "RetryAfter", seconds: retryAfter } : { tag: "NoAdvice" }
-        send({ type: "reply", id, httpStatus: answer.status, retry }, answer)
+        send({ type: "reply", id, httpStatus: answer.status, retry: retryOf(answer.data) }, answer)
       } catch {
         send({ type: "transportFailed", id })
+      }
+    }
+
+    async function connect(input: Pending, route: Route, signal: AbortSignal): Promise<Wire> {
+      const body = input.body === undefined ? {} : { body: input.body }
+      if (route === "Bridge" && input.bridge) {
+        if (!input.bridge.requestStream) throw new Error("NoRoute")
+        const frames = input.bridge.requestStream({ path: input.path, method: "POST", ...body }, signal)[Symbol.asyncIterator]()
+        const first = await frames.next()
+        if (first.done || first.value.kind !== "head") throw new Error("TransportFailed")
+        const head = decodeHead(first.value)
+        const chunks: AsyncIterator<Uint8Array> = {
+          async next() {
+            const frame = await frames.next()
+            if (frame.done) throw new Error("TransportFailed")
+            switch (frame.value.kind) {
+              case "chunk": return { done: false, value: frame.value.data }
+              case "end": return { done: true, value: undefined }
+              case "head":
+              case "error":
+              case "aborted": throw new Error("TransportFailed")
+            }
+          },
+          async return() {
+            await frames.return?.()
+            return { done: true, value: undefined }
+          },
+        }
+        return { ...head, chunks }
+      }
+      if (route !== "Http" || !httpOrigin) throw new Error("NoRoute")
+      const url = new URL(input.path, httpOrigin)
+      if (url.origin !== httpOrigin) throw new Error("InvalidPath")
+      const response = await fetch(url, {
+        method: "POST", signal, credentials: "omit", redirect: "manual",
+        ...(input.body === undefined ? {} : { body: JSON.stringify(input.body), headers: { "Content-Type": "application/json" } }),
+      })
+      const head = decodeHead({ status: response.status, headers: Object.fromEntries(response.headers) })
+      const reader = response.body?.getReader()
+      return {
+        ...head,
+        chunks: {
+          async next() {
+            const read = reader ? await reader.read() : { done: true as const, value: undefined }
+            return read.done ? { done: true, value: undefined } : { done: false, value: read.value }
+          },
+          async return() {
+            await reader?.cancel()
+            return { done: true, value: undefined }
+          },
+        },
+      }
+    }
+
+    function body(id: number, wire: Wire, live: AbortSignal, stop: AbortController): AsyncIterable<Uint8Array> {
+      let taken = false
+      let finished = false
+      const close = () => {
+        finished = true
+        void wire.chunks.return?.().catch(() => undefined)
+      }
+      return {
+        [Symbol.asyncIterator]() {
+          if (taken) throw new Error("StreamAlreadyRead")
+          taken = true
+          return {
+            async next(): Promise<IteratorResult<Uint8Array>> {
+              if (finished) return { done: true, value: undefined }
+              try {
+                live.throwIfAborted()
+                const step = await abortable(live, () => wire.chunks.next())
+                live.throwIfAborted()
+                if (!step.done) return step
+                finished = true
+                send({ type: "streamEnded", id })
+                return { done: true, value: undefined }
+              } catch (error) {
+                close()
+                if (live.aborted) throw live.reason
+                send({ type: "transportFailed", id })
+                throw new Error("TransportFailed", { cause: error })
+              }
+            },
+            async return(): Promise<IteratorResult<Uint8Array>> {
+              if (!finished) {
+                close()
+                stop.abort(new Error("Cancelled"))
+                send({ type: "cancel", id })
+              }
+              return { done: true, value: undefined }
+            },
+          }
+        },
+      }
+    }
+
+    async function open(id: number, input: Pending, route: Route, signal: AbortSignal) {
+      const stop = input.stop ?? new AbortController()
+      const live = AbortSignal.any([signal, stop.signal])
+      const head = new AbortController()
+      const timer = setTimeout(() => head.abort(new Error("TransportFailed")), options.requestTimeoutMs)
+      try {
+        const wire = await abortable(AbortSignal.any([live, head.signal]), () => connect(input, route, AbortSignal.any([live, head.signal])))
+        clearTimeout(timer)
+        if (wire.status >= 200 && wire.status < 300) {
+          input.opened = { status: wire.status, headers: wire.headers, body: body(id, wire, live, stop) }
+          send({ type: "reply", id, httpStatus: wire.status, retry: { tag: "NoAdvice" } })
+          if (current().requests.find((entry) => entry.id === id)?.stage.tag !== "Streaming") void wire.chunks.return?.().catch(() => undefined)
+          return
+        }
+        const decoder = new TextDecoder()
+        let text = ""
+        for (let step = await abortable(live, () => wire.chunks.next()); !step.done; step = await abortable(live, () => wire.chunks.next())) {
+          text += decoder.decode(step.value, { stream: true })
+        }
+        const data = parsedOrNull(text + decoder.decode())
+        send({ type: "reply", id, httpStatus: wire.status, retry: retryOf(data) }, { status: wire.status, data })
+      } catch {
+        send({ type: "transportFailed", id })
+      } finally {
+        clearTimeout(timer)
       }
     }
 
@@ -247,16 +413,38 @@ module node {
 
     function request(path: string, body?: unknown): Promise<unknown> {
       return new Promise((resolve, reject) => {
-        if (!path.startsWith("/") || path.startsWith("//") || /[\\\u0000-\u0020]/.test(path)) throw new Error("InvalidPath")
+        rooted(path)
         const id = current().nextId
-        pending.set(id, { path, body, resolve, reject })
-        send({ type: "submit", path: "Rooted" })
+        pending.set(id, { path, body, delivery: "Plain", resolve, reject })
+        send({ type: "submit", path: "Rooted", delivery: "Plain" })
       })
     }
 
-    return { request, refreshNativeAccount, get requestBodyLimit() { return bodyLimit } }
+    function stream(path: string, body: unknown, signal?: AbortSignal): Promise<RuntimeStream> {
+      return new Promise((resolve, reject) => {
+        rooted(path)
+        signal?.throwIfAborted()
+        const id = current().nextId
+        const stop = new AbortController()
+        const cancel = () => {
+          stop.abort(signal?.reason)
+          send({ type: "cancel", id })
+        }
+        signal?.addEventListener("abort", cancel, { once: true })
+        stop.signal.addEventListener("abort", () => signal?.removeEventListener("abort", cancel), { once: true })
+        pending.set(id, { path, body, delivery: "Stream", stop, resolve: (opened) => resolve(opened as RuntimeStream), reject })
+        send({ type: "submit", path: "Rooted", delivery: "Stream" })
+      })
+    }
+
+    return { request, stream, refreshNativeAccount, get requestBodyLimit() { return bodyLimit } }
   }
 }
 
-export { createRuntimeJsonClient, RuntimeRequestError, type RuntimeClientOptions, type RuntimeJsonBridge, type RuntimeJsonResponse, type RuntimeStatus } from node
-export { DeviceExecution, NOT_DISPATCHED, type ApproveResult, type DeviceAgent, type DeviceExecutionPorts, type DeviceJournal, type DeviceProposal, type DeviceReceipt, type DeviceReview, type ExecutorCall, type JournalEntry, type JournalIdentity, type RecoverResult, type ReviewResult, type ScreenCheck } from "./device-execution.vibe"
+export { createRuntimeJsonClient, RuntimeRequestError, type RuntimeClientOptions, type RuntimeJsonBridge, type RuntimeJsonResponse, type RuntimeStatus, type RuntimeStream, type RuntimeStreamFrame } from node
+export { DeviceExecution, type ApproveResult, type DeviceAgent, type DeviceExecutionPorts, type DeviceJournal, type DeviceProposal, type DeviceReview, type ExecutorCall, type JournalEntry, type JournalIdentity, type RecoverResult, type ReviewResult, type ScreenCheck } from "./device-execution.vibe"
+export { TaskLifecycle, TaskView, TASK_PAUSE_TIMEOUT_MS, type TaskLifecycleCommand, type TaskLifecycleMessages, type TaskLifecycleRequest, type TaskLifecycleState } from "./task-lifecycle.vibe"
+export { createSurfaceClient, SurfaceProtocol, SurfaceTransport, type SurfaceClient, type SurfaceClientOptions, type SurfaceCommandContext, type SurfaceFailure, type SurfaceRequest } from "./surface-client.vibe"
+export { TASK_ID_PATTERN } from "@elizaos/core/task-events"
+export { readReplyStream, REPLY_STREAM_PROTOCOL, type ReplyOutcome, type ReplyStreamHooks, type StreamedReply } from "./stream-reader.vibe"
+export { TurnController, ConversationRecord, InvalidConversation, findStoppedUserTurn, type ClientMessageId, type HistoryMessage, type StopResult, type StoppedConversationTurn, type TurnMessage, type TurnOptions, type TurnRefusal, type TurnReply, type TurnResult, type TurnTransport } from "./turn-controller.vibe"

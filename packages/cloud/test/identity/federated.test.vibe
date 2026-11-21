@@ -1,5 +1,7 @@
 // spec/cloud/identity/federatedSignIn.md, "Story: Sign in with Google in the browser"; spec/cloud/identity/federatedSignIn.md, "Story: Sign in with the device's Google account"; spec/cloud/identity/federatedSignIn.md, "A callback returns a one-minute code only after Google's verified identity and the code are stored, and otherwise one error of the closed list"
 import { assert, describe, it } from "@effect/vitest"
+import { verifyNativeGoogle } from "../../src/identity/federated.vibe"
+import { refusalBody } from "../../src/http/refusal.vibe"
 import { decodeRegistration, registerClient } from "../../src/native-clients/registry.vibe"
 import type { Tx } from "../../src/store/connection.vibe"
 import { testCloud, type Answer, type TestCloud } from "../support/cloud.vibe"
@@ -120,22 +122,38 @@ describe("WP1 Identity: Google sign-in", () => {
     ))
   }))
 
-  it.live("A native challenge needs S256 and a registered return, and answers a nonce for five minutes (spec/cloud/identity/federatedSignIn.md, \"Story: Sign in with the device's Google account\")", () => scoped(effect {
-    const { cloud } = try googleCloud()
+  it.live("A native challenge needs S256 and a registered return, answers a nonce for five minutes, and takes only a token for the server client id (spec/cloud/identity/federatedSignIn.md, \"Story: Sign in with the device's Google account\"; spec/cloud/identity/federatedSignIn.md, \"An ID token spends a live challenge once, only with the client, verifier, signature, issuer, audience and nonce all right, and a refused one spends nothing\")", () => scoped(effect {
+    const { cloud, google } = try googleCloud()
     const fields = { clientId: app.clientId, environment: "staging", redirectUri: signInReturn, codeChallenge: s256(verifier), codeChallengeMethod: "S256" }
     const startedAt = try Clock.currentTimeMillis
     const opened = try cloud.call("/api/v1/auth/google/native/challenge", { json: fields })
     const plain = try cloud.call("/api/v1/auth/google/native/challenge", { json: { ...fields, codeChallengeMethod: "plain" } })
     const wrongReturn = try cloud.call("/api/v1/auth/google/native/challenge", { json: { ...fields, redirectUri: app.billingReturn } })
     const body = opened.body as { challengeId: string; nonce: string; serverClientId: string; expiresAt: number }
+    const person = { subject: "google-subject-native", email: "native@example.com", emailVerified: true }
+    const present = effect (audience: string) => {
+      const idToken = try tryPromise(() => google.idToken(person, { audience, nonce: body.nonce }))
+      const now = try Clock.currentTimeMillis
+      const presenter = { kind: "signIn", clientId: app.clientId, redirectUri: signInReturn, codeVerifier: verifier } as const
+      return try cloud.inside(cloud.store.transaction(effect (tx: Tx) => {
+        const verified = verifyNativeGoogle(tx, { challengeId: body.challengeId, idToken, presenter, now }) catch effect (failure) => {
+          return refusalBody(failure.refusal).error
+        }
+        return typeof verified === "string" ? verified : verified.identity.subject
+      }))
+    }
+    const webAudience = try present("google-web-client")
+    const serverAudience = try present(body.serverClientId)
     try check(() => assert.deepStrictEqual(
       {
         opened: [opened.status, /^[0-9a-f]{64}$/.test(body.nonce), body.serverClientId, body.expiresAt >= startedAt + 5 * 60_000 && body.expiresAt <= Date.now() + 5 * 60_000],
-        refused: [refusal(plain), refusal(wrongReturn)]
+        refused: [refusal(plain), refusal(wrongReturn)],
+        audiences: [webAudience, serverAudience]
       },
       {
         opened: [200, true, "google-server-client", true],
-        refused: ["400 invalid_request", "400 redirect_mismatch"]
+        refused: ["400 invalid_request", "400 redirect_mismatch"],
+        audiences: ["credential_proof_invalid", "google-subject-native"]
       }
     ))
   }))

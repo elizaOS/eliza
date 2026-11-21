@@ -32,7 +32,7 @@ function limitOf(limit: string | undefined): number | undefined {
   return Math.min(Number(limit), pageCap)
 }
 
-const ResolveBody = Schema.Struct({ decision: Schema.Literals(["approve", "reject"]), revision: Schema.NonEmptyString })
+schema ResolveBody { readonly decision: "approve" | "reject"; readonly revision: Schema.NonEmptyString }
 const resolveBody = Schema.decodeUnknownOption(ResolveBody, { onExcessProperty: "error" })
 const failure = (status: number, error: string) => ({ status, body: { error } })
 

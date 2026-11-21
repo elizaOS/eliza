@@ -1,14 +1,19 @@
-// spec/agent/conversation/conversations.md, "Story: Create and find my conversations"; spec/agent/conversation/conversations.md, "Story: Read history a page at a time"
+// spec/agent/conversation/conversations.md, "Story: Create and find my conversations"; spec/agent/conversation/conversations.md, "Story: Read history a page at a time"; spec/agent/conversation/conversations.md, "Story: Fork a conversation at a message without changing the original"; spec/agent/conversation/conversations.md, "Story: Remove private text I sent by mistake"; spec/agent/conversation/turns.md, "Story: Stop a reply and know whether it stopped"; spec/agent/conversation/turns.md, "Story: Remember what of a spoken reply was heard"; spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"
 module node {
   import type { AgentRuntime } from "@elizaos/core"
   import type { LocalRoute } from "../access/routes.vibe"
   import { conversationRecordRoutes, conversationStore, type ConversationOwner } from "./conversations.vibe"
+  import { forkRoutes } from "./fork.vibe"
+  import { heardRoutes } from "./heard.vibe"
   import { historyRoutes } from "./history.vibe"
-  import { conversationRoutes as turnRoutes } from "./turns.vibe"
+  import { redactRoutes } from "./redact.vibe"
+  import { stopRoutes } from "./stop.vibe"
+  import { streamRoutes } from "./stream.vibe"
+  import { startTurnStream, turnRoutes } from "./turns.vibe"
 
   export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string): LocalRoute[] {
     const store = conversationStore(runtime, owner)
-    return [...conversationRecordRoutes(store), ...historyRoutes(runtime, store), ...turnRoutes(runtime, owner, agentName)]
+    return [...conversationRecordRoutes(store), ...historyRoutes(runtime, store), ...forkRoutes(runtime, store), ...redactRoutes(runtime, store), ...stopRoutes(runtime, store), ...heardRoutes(runtime, store), ...turnRoutes(runtime, owner, store, { agentName }), ...streamRoutes(startTurnStream(runtime, owner, store, { agentName }))]
   }
 }
 export { conversationRoutes } from node

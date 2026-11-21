@@ -60,7 +60,7 @@ pure def showsReturnToApp(answer: PageAnswer): bool = match answer { | Shows(s) 
 pure def readOf(registry: List[Registration], readable: bool): RegistryRead = if (readable) ReadRegistry({ registrations: registry }) else UnreadableRegistry
 pure val rowValues: Set[EnvironmentProfile] = {
   val doc: LegalDocument = { title: "Terms", revision: "1", sections: List({ title: "Use", paragraphs: List("Plain text.") }) }
-  val row: EnvironmentProfile = { name: "Cloud", api: "https://api.one", web: "https://www.one", audience: "aud", mailSender: "m@one", databaseDigest: "d1", firstPartyOrigins: List("https://www.one"), capabilities: Set(BillingCapability), signIn: { mail: HttpsDelivery, sms: NoDelivery, google: GoogleOn }, terms: doc, privacy: doc }
+  val row: EnvironmentProfile = { name: "Cloud", api: "https://api.one", web: "https://www.one", audience: "aud", mailSender: "m@one", databaseDigest: "d1", firstPartyOrigins: List("https://www.one"), capabilities: Set(BillingCapability), mapsProvider: NoMaps, signIn: { mail: HttpsDelivery, sms: NoDelivery, google: GoogleOn }, terms: doc, privacy: doc }
   Set(row).union(Set({ ...row, capabilities: Set(InferenceCapability) }))
 }
 pure def lawReturnToAppExactlyForAnEnabledWebReturn(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, reported: str): bool =

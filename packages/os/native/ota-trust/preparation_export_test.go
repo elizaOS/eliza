@@ -23,7 +23,7 @@ func preparationArtifact(t *testing.T, name string, artifact releaseArtifact) re
 	var inventory []byte
 	for _, entry := range archive.File {
 		if entry.Name == runtimeInventoryAsset {
-			inventory, err = readAPKEntry(entry, 2*1024*1024)
+			inventory, err = readAPKEntry(entry, maxInventoryBytes)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -32,23 +32,18 @@ func preparationArtifact(t *testing.T, name string, artifact releaseArtifact) re
 	if inventory == nil {
 		t.Fatal("real runtime inventory missing")
 	}
+	rows, err := parseRuntimeInventory(inventory)
+	if err != nil {
+		t.Fatal(err)
+	}
 	artifact.Runtime.Inventory = bytesHash(inventory)
 	artifact.Runtime.Libraries = map[string]string{}
-	for _, line := range strings.Split(string(inventory), "\n")[1:] {
-		fields := strings.Split(line, "\t")
-		if len(fields) != 5 {
-			continue
+	for _, row := range rows {
+		if strings.HasPrefix(*row.Path, "lib/") {
+			artifact.Runtime.Libraries[*row.Path] = *row.SHA256
 		}
-		if fields[0] == "native" {
-			artifact.Runtime.Libraries[fields[3]] = fields[2]
-		}
-		switch fields[4] {
-		case "bundle/agent-bundle.js":
-			artifact.Runtime.Agent = fields[2]
-		case "bundle/gateway/local-agent-gateway.mjs":
-			artifact.Runtime.Gateway = fields[2]
-		case "bundle/gateway/task-runtime.mjs":
-			artifact.Runtime.Policy = fields[2]
+		if *row.Path == agentBundleAsset {
+			artifact.Runtime.Agent = *row.SHA256
 		}
 	}
 	file, err := os.Open(name)

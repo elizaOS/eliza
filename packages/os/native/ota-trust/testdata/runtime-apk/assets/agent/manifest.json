@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "node": "26",
+  "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "bundleSha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+  "packages": [
+    "@elizaos/agent"
+  ],
+  "localInference": false
+}

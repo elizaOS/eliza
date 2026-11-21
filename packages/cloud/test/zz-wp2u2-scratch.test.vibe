@@ -1,0 +1,187 @@
+// spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"
+import { assert, describe, it } from "@effect/vitest"
+import { Store } from "../src/store/store.vibe"
+import { testCloud, type TestCloud } from "./support/cloud.vibe"
+import { testProfile } from "./support/profile.ts"
+import { tokenDigest } from "../src/shared/sealing.vibe"
+import { seedClients } from "../src/operator/clients.vibe"
+import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
+import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
+import { revokeAll, sweepAt } from "../src/native-clients/device-keys.vibe"
+import { s256, signedIn } from "./support/identity.ts"
+
+effect function check(run: () => void) {
+  try Effect.try(run)
+}
+
+effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
+  return try cloud.store.transaction((tx) => tx.query(text, params))
+}
+
+describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/deviceKeys.md)", () => {
+  const binding = { clientId: "com.example.fixture", environment: "staging", redirectUri: "https://www.staging.example.com/apps/fixture/sign-in" }
+  const verifier = "v".repeat(43) + "device-key-verifier"
+  const state = "s".repeat(43)
+
+  function bearer(token: string) {
+    return { authorization: `Bearer ${token}` }
+  }
+
+  function refusal(body: unknown): ReadonlyArray<unknown> {
+    const answer = body as { readonly error?: string; readonly reason?: string }
+    return [answer.error, answer.reason]
+  }
+
+  effect function seeded(cloud: TestCloud) {
+    const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
+    const now = try Clock.currentTimeMillis
+    provide Store = cloud.store, deploymentLayer(profile, "staging") {
+      try cloud.store.transaction((tx) => seedClients(tx, fixtureSeed.clients, now))
+    }
+  }
+
+  effect function opened(cloud: TestCloud, accessToken: string) {
+    const connected = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256" } })
+    return (connected.body as { readonly code: string }).code
+  }
+
+  effect function exchanged(cloud: TestCloud, code: string) {
+    const minted = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...binding, grantType: "authorization_code", code, state, codeVerifier: verifier } })
+    return minted.body as { readonly credentialId: string; readonly secret: string }
+  }
+
+  effect function device(cloud: TestCloud, accessToken: string) {
+    const credential = try exchanged(cloud, try opened(cloud, accessToken))
+    const acked = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
+    return { credential, acked }
+  }
+
+  effect function phases(cloud: TestCloud, codes: ReadonlyArray<string>) {
+    return try Effect.forEach(codes, effect (code) => {
+      const rows = try sql(cloud, "SELECT phase, sealed_copy FROM device_grants WHERE code_digest = $1", [tokenDigest(code)])
+      return [rows[0]?.phase, (rows[0]?.sealed_copy ?? null) !== null]
+    })
+  }
+
+  it.live("Sign a device in: connect, token twice, a wrong then the right proof, then use the key (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")", () => scoped(effect {
+    const cloud = try testCloud()
+    try seeded(cloud)
+    const signed = try signedIn(cloud, "devices@example.com")
+    const connected = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(signed.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256", deviceName: "Ada's phone" } })
+    const code = connected.body as { readonly code: string; readonly codeType: string; readonly expiresIn: number }
+    const anonymousConnect = try cloud.call("/api/v1/app-auth/connect", { json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256" } })
+    const plainConnect = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(signed.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "plain" } })
+    const tokenBody = { ...binding, grantType: "authorization_code", code: code.code, state, codeVerifier: verifier }
+    const unknownCode = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...tokenBody, code: `emac_${"0".repeat(64)}` } })
+    const wrongVerifier = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...tokenBody, codeVerifier: "w".repeat(43) } })
+    const wrongState = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...tokenBody, state: "t".repeat(43) } })
+    const first = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
+    const again = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
+    const credential = first.body as { readonly credentialId: string; readonly secret: string; readonly tokenType: string; readonly acknowledgementRequired: boolean; readonly scopes: ReadonlyArray<string>; readonly user: { readonly id: string } }
+    const replayed = again.body as { readonly credentialId: string; readonly secret: string }
+    const unacknowledged = try cloud.call("/api/v1/user", { headers: bearer(credential.secret) })
+    const unknownCredential = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: "00000000-0000-4000-8000-000000000000", secret: credential.secret } })
+    const wrongProof = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: `eliza_mobile_${"0".repeat(64)}` } })
+    const acked = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
+    const ackedAgain = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
+    const tokenAfterAck = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
+    const me = try cloud.call("/api/v1/user", { headers: bearer(credential.secret) })
+    const stored = try sql(cloud, "SELECT phase, sealed_copy, device_name, key_expires_at FROM device_grants WHERE credential_id = $1", [credential.credentialId])
+    const acknowledged = acked.body as { readonly status: string; readonly credentialId: string; readonly expiresAt: string; readonly scopes: ReadonlyArray<string> }
+    try check(() => assert.deepStrictEqual(
+      {
+        connect: [connected.status, /^emac_[0-9a-f]{64}$/.test(code.code), code.codeType, code.expiresIn],
+        anonymousConnect: anonymousConnect.status,
+        plainConnect: [plainConnect.status, refusal(plainConnect.body)[0]],
+        unknownCode: [unknownCode.status, ...refusal(unknownCode.body)],
+        wrongVerifier: [wrongVerifier.status, refusal(wrongVerifier.body)[0]],
+        wrongState: [wrongState.status, refusal(wrongState.body)[0]],
+        token: [first.status, /^eliza_mobile_[0-9a-f]{64}$/.test(credential.secret), credential.tokenType, credential.acknowledgementRequired, credential.scopes, credential.user.id],
+        replay: [again.status, replayed.credentialId === credential.credentialId, replayed.secret === credential.secret],
+        unacknowledged: [unacknowledged.status, refusal(unacknowledged.body)[0]],
+        unknownCredential: [unknownCredential.status, ...refusal(unknownCredential.body)],
+        wrongProof: [wrongProof.status, refusal(wrongProof.body)[0]],
+        acked: [acked.status, acknowledged.status, acknowledged.credentialId, acknowledged.scopes],
+        ackedAgain: [ackedAgain.status, ackedAgain.body],
+        tokenAfterAck: [tokenAfterAck.status, ...refusal(tokenAfterAck.body)],
+        me: me.status,
+        stored: [stored[0]?.phase, stored[0]?.sealed_copy, stored[0]?.device_name, Number(stored[0]?.key_expires_at) === Date.parse(acknowledged.expiresAt)]
+      },
+      {
+        connect: [200, true, "mobile_app_auth_code", 300],
+        anonymousConnect: 401,
+        plainConnect: [400, "invalid_request"],
+        unknownCode: [401, "authentication_required", "credential_unknown"],
+        wrongVerifier: [401, "credential_proof_invalid"],
+        wrongState: [401, "credential_proof_invalid"],
+        token: [200, true, "Bearer", true, ["cloud:user"], signed.user.id],
+        replay: [200, true, true],
+        unacknowledged: [401, "authentication_required"],
+        unknownCredential: [401, "authentication_required", "credential_unknown"],
+        wrongProof: [401, "credential_proof_invalid"],
+        acked: [200, "acknowledged", credential.credentialId, ["cloud:user"]],
+        ackedAgain: [200, acked.body],
+        tokenAfterAck: [401, "authentication_required", "credential_unknown"],
+        me: 200,
+        stored: ["active", null, "Ada's phone", true]
+      }
+    ))
+  }))
+
+  it.live("Sign a device out, end every key, and clear only grants that can no longer be used (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device out\"; \"Story: Keep no grant longer than it can be used\")", () => scoped(effect {
+    const cloud = try testCloud()
+    try seeded(cloud)
+    const signed = try signedIn(cloud, "keys@example.com")
+    const leaving = try device(cloud, signed.accessToken)
+    const kept = try device(cloud, signed.accessToken)
+    const revoked = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(leaving.credential.secret) })
+    const revokedAgain = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(leaving.credential.secret) })
+    const afterSelfRevoke = try cloud.call("/api/v1/user", { headers: bearer(leaving.credential.secret) })
+    const keptAfterSelfRevoke = try cloud.call("/api/v1/user", { headers: bearer(kept.credential.secret) })
+    const sessionRevoke = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(signed.accessToken) })
+
+    const staleCode = try opened(cloud, signed.accessToken)
+    const unackedCode = try opened(cloud, signed.accessToken)
+    const unacked = try exchanged(cloud, unackedCode)
+    const now = try Clock.currentTimeMillis
+    provide Store = cloud.store {
+      try sweepAt(now)
+    }
+    const early = try phases(cloud, [staleCode, unackedCode])
+    provide Store = cloud.store {
+      try sweepAt(now + 6 * 60_000)
+    }
+    const swept = try phases(cloud, [staleCode, unackedCode])
+    const lateToken = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...binding, grantType: "authorization_code", code: staleCode, state, codeVerifier: verifier } })
+    const lateAck = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: unacked.credentialId, secret: unacked.secret } })
+    const keptAfterSweep = try cloud.call("/api/v1/user", { headers: bearer(kept.credential.secret) })
+
+    const ended = try cloud.store.transaction((tx) => revokeAll(tx, signed.user.id, now))
+    const afterRevokeAll = try cloud.call("/api/v1/user", { headers: bearer(kept.credential.secret) })
+    const session = try cloud.call("/api/v1/user", { headers: bearer(signed.accessToken) })
+    provide Store = cloud.store {
+      try sweepAt(now + 91 * 24 * 60 * 60_000)
+    }
+    const closed = try Effect.forEach([leaving.credential.credentialId, kept.credential.credentialId], effect (credentialId) => (try sql(cloud, "SELECT phase FROM device_grants WHERE credential_id = $1", [credentialId]))[0]?.phase)
+    try check(() => assert.deepStrictEqual(
+      {
+        acked: [leaving.acked.status, kept.acked.status],
+        revoked: [revoked.status, revoked.body, revokedAgain.status, ...refusal(revokedAgain.body), afterSelfRevoke.status, keptAfterSelfRevoke.status, sessionRevoke.status],
+        early,
+        swept,
+        late: [lateToken.status, ...refusal(lateToken.body), lateAck.status, ...refusal(lateAck.body), keptAfterSweep.status],
+        revokeAll: [ended, afterRevokeAll.status, ...refusal(afterRevokeAll.body), session.status],
+        closed
+      },
+      {
+        acked: [200, 200],
+        revoked: [204, "", 401, "authentication_required", "credential_revoked", 401, 200, 401],
+        early: [["code_issued", false], ["exchanged", true]],
+        swept: [["ended", false], ["ended", false]],
+        late: [401, "authentication_required", "credential_expired", 401, "authentication_required", "credential_expired", 200],
+        revokeAll: [1, 401, "authentication_required", "credential_revoked", 200],
+        closed: ["ended", "expired"]
+      }
+    ))
+  }))
+})

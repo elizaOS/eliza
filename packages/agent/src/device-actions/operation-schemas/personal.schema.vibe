@@ -91,15 +91,15 @@ const version = Schema.Literal(1)
 const CalendarFields = Schema.Struct({
   title: Text(500), description: BlankText(16_000), location: BlankText(2_000), start: Instant, end: Instant, timeZone: ZoneName,
 }).check(Schema.makeFilter(({ start, end }) => interval(start, end, 370 * day)))
-const CalendarSource = Schema.Struct({ sourceId: Identifier, sourceRevision: Revision })
-const CalendarTarget = Schema.Struct({ sourceId: Identifier, sourceRevision: Revision, eventId: Identifier, revision: Revision })
+schema CalendarSource { readonly sourceId: Identifier; readonly sourceRevision: Revision }
+schema CalendarTarget { readonly sourceId: Identifier; readonly sourceRevision: Revision; readonly eventId: Identifier; readonly revision: Revision }
 
-const CalendarCreateLocal = Schema.Struct({ type: Schema.Literal("calendar_create_local"), fields: CalendarFields })
-const CalendarReadNext = Schema.Struct({ type: Schema.Literal("calendar_read_next") })
-const CalendarCreate = Schema.Struct({ type: Schema.Literal("calendar_create"), source: CalendarSource, fields: CalendarFields })
-const CalendarReadSelected = Schema.Struct({ type: Schema.Literal("calendar_read_selected"), target: CalendarTarget })
-const CalendarUpdate = Schema.Struct({ type: Schema.Literal("calendar_update"), target: CalendarTarget, fields: CalendarFields })
-const CalendarDelete = Schema.Struct({ type: Schema.Literal("calendar_delete"), target: CalendarTarget })
+schema CalendarCreateLocal { readonly type: "calendar_create_local"; readonly fields: CalendarFields }
+schema CalendarReadNext { readonly type: "calendar_read_next" }
+schema CalendarCreate { readonly type: "calendar_create"; readonly source: CalendarSource; readonly fields: CalendarFields }
+schema CalendarReadSelected { readonly type: "calendar_read_selected"; readonly target: CalendarTarget }
+schema CalendarUpdate { readonly type: "calendar_update"; readonly target: CalendarTarget; readonly fields: CalendarFields }
+schema CalendarDelete { readonly type: "calendar_delete"; readonly target: CalendarTarget }
 export const CalendarOperation = Schema.Union([CalendarCreateLocal, CalendarReadNext, CalendarCreate, CalendarReadSelected, CalendarUpdate, CalendarDelete])
 
 const calendarRecord = <K extends string>(kind: K) => Schema.Struct({ version, kind: Schema.Literal(kind), sourceId: Identifier, eventId: Identifier, revision: Revision })
@@ -251,13 +251,12 @@ const CreateSchedule = Schema.Struct({ at: Epoch, recurrence: Schema.NullOr(Remi
 const CreateFields = Schema.Struct({
   title: Text(200).check(Schema.makeFilter((title: string) => title === title.trim())), body: BlankText(4_000), schedule: CreateSchedule,
 })
-export const ReminderCreate = Schema.Struct({ type: Schema.Literal("reminder_create"), fields: CreateFields })
+export schema ReminderCreate { readonly type: "reminder_create"; readonly fields: CreateFields }
 export const ReminderCreateResult = Schema.Struct({
   version, kind: Schema.Literal("reminder_create"), sourceId: Identifier, reminderId: ReminderId, occurrenceId: Identifier, revision: Revision,
   status: Schema.Literals(["pending", "scheduled", "permission-denied", "scheduling-failed"]), at: Epoch, dueAt: Epoch,
   alertMinutes: Schema.NullOr(AlertMinutes), fields: CreateFields,
 })
-export type ReminderCreate = typeof ReminderCreate.Type
 export type ReminderCreateResult = typeof ReminderCreateResult.Type
 
 function reminderCreated(result: ReminderCreateResult, op: ReminderCreate) {
@@ -268,7 +267,7 @@ function reminderCreated(result: ReminderCreateResult, op: ReminderCreate) {
 
 export const CalendarAvailability = Schema.Struct({ type: Schema.Literal("calendar_availability"), start: Instant, end: Instant, timeZone: ZoneName })
   .check(Schema.makeFilter(({ start, end }) => interval(start, end, 7 * day)))
-const BusyInterval = Schema.Struct({ start: Instant, end: Instant, allDay: Schema.Boolean, tentative: Schema.Boolean })
+schema BusyInterval { readonly start: Instant; readonly end: Instant; readonly allDay: boolean; readonly tentative: boolean }
 export const CalendarAvailabilityResult = Schema.Struct({
   version, kind: Schema.Literal("calendar_availability"), window: Schema.Struct({ start: Instant, end: Instant, timeZone: ZoneName }),
   calendarCount: between(1, 16), status: Schema.Literals(["free", "busy"]), busy: Schema.Array(BusyInterval).check(Schema.isMaxLength(200)),
@@ -284,11 +283,11 @@ function availabilityMatches(result: CalendarAvailabilityResult, op: CalendarAva
     && result.busy.every((slot) => Date.parse(slot.start) >= Date.parse(op.start) && Date.parse(slot.end) <= Date.parse(op.end))
 }
 
-const NotesTarget = Schema.Struct({ sourceId: Identifier, sourceRevision: Revision, noteId: Identifier, revision: Revision })
+schema NotesTarget { readonly sourceId: Identifier; readonly sourceRevision: Revision; readonly noteId: Identifier; readonly revision: Revision }
 const NotesFields = Schema.Struct({ title: BlankText(256), body: BlankText(32_000) }).check(Schema.makeFilter((fields) => utf8Bytes(fields) <= 60_000))
-const NotesReadSelected = Schema.Struct({ type: Schema.Literal("notes_read_selected"), target: NotesTarget })
-const NotesUpdate = Schema.Struct({ type: Schema.Literal("notes_update"), target: NotesTarget, fields: NotesFields })
-const NotesDelete = Schema.Struct({ type: Schema.Literal("notes_delete"), target: NotesTarget })
+schema NotesReadSelected { readonly type: "notes_read_selected"; readonly target: NotesTarget }
+schema NotesUpdate { readonly type: "notes_update"; readonly target: NotesTarget; readonly fields: NotesFields }
+schema NotesDelete { readonly type: "notes_delete"; readonly target: NotesTarget }
 export const NotesOperation = Schema.Union([NotesReadSelected, NotesUpdate, NotesDelete])
 
 const notesRecord = <K extends string>(kind: K) => Schema.Struct({ version, kind: Schema.Literal(kind), sourceId: Identifier, noteId: Identifier, revision: Revision })
@@ -298,7 +297,6 @@ const NotesDeleteResult = notesRecord("notes_delete")
 export const NotesResult = Schema.Union([NotesReadSelectedResult, NotesUpdateResult, NotesDeleteResult])
 export type NotesOperation = typeof NotesOperation.Type
 export type NotesResult = typeof NotesResult.Type
-type NotesTarget = typeof NotesTarget.Type
 
 function notesMatches(result: NotesResult, op: NotesOperation) {
   return result.kind === op.type && result.sourceId === op.target.sourceId && result.noteId === op.target.noteId
@@ -309,7 +307,7 @@ const selectedNoteMatches = (target: NotesTarget, record: NotesResult) => notesM
 
 const ContentQuery = Schema.Struct({ kind: Schema.Literal("content"), text: Text(256) })
 const TitlesQuery = Schema.Struct({ kind: Schema.Literal("titles"), limit: between(1, 50) })
-export const NotesSearch = Schema.Struct({ type: Schema.Literal("notes_search"), query: Schema.Union([ContentQuery, TitlesQuery]) })
+export schema NotesSearch { readonly type: "notes_search"; readonly query: ContentQuery | TitlesQuery }
 const searchReceipt = { version, kind: Schema.Literal("notes_search") }
 export const NotesSearchResult = Schema.Union([
   Schema.Struct({ ...searchReceipt, query: Schema.Union([ContentQuery, TitlesQuery]), basis: Schema.Literal("no-match") }),
@@ -317,7 +315,6 @@ export const NotesSearchResult = Schema.Union([
   Schema.Struct({ ...searchReceipt, query: TitlesQuery, basis: Schema.Literal("titles-reviewed"), titles: Schema.Array(BlankText(500)).check(Schema.isMinLength(1)), truncated: Schema.Boolean })
     .check(Schema.makeFilter(({ query, titles }) => titles.length <= query.limit)),
 ])
-export type NotesSearch = typeof NotesSearch.Type
 export type NotesSearchResult = typeof NotesSearchResult.Type
 
 function searchMatches(result: NotesSearchResult, op: NotesSearch) {
@@ -399,7 +396,7 @@ const Point = Schema.Struct({
 })
 const Measure = Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 100_000_000 }))
 const provider = { providerId: MapsText(80), providerRevision: MapsText(128), attribution: MapsText(2_000) }
-export const MapsReadSelected = Schema.Struct({ type: Schema.Literal("maps_read_selected"), target: MapsTarget })
+export schema MapsReadSelected { readonly type: "maps_read_selected"; readonly target: MapsTarget }
 export const MapsResult = Schema.Struct({
   kind: Schema.Literal("maps_read_selected"), version, target: MapsTarget,
   fields: Schema.Union([
@@ -410,7 +407,6 @@ export const MapsResult = Schema.Struct({
     }),
   ]),
 }).check(Schema.makeFilter((result) => result.fields.kind === result.target.kind && utf8Bytes(result) <= 7_600))
-export type MapsReadSelected = typeof MapsReadSelected.Type
 export type MapsResult = typeof MapsResult.Type
 
 const FilterText = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(200), Schema.makeFilter((text: string) => !text.includes("\0")))
@@ -429,15 +425,14 @@ const NotesFilter = Schema.Struct({
 const NotesListFilter = Schema.Struct({ type: Schema.Literal("notes_list_filter"), text: Schema.optionalKey(FilterText), kind: Schema.optionalKey(NoteKind) })
   .check(Schema.makeFilter(narrows))
 const NotesMove = Schema.Struct({ type: Schema.Literal("notes_move"), target: NotesTarget, folder: Schema.NullOr(FolderName) })
-const NotesFolderCreate = Schema.Struct({ type: Schema.Literal("notes_folder_create"), name: FolderName })
-const NotesRestore = Schema.Struct({ type: Schema.Literal("notes_restore"), noteId: Identifier })
-const NotesRecord = Schema.Struct({ type: Schema.Literal("notes_record"), action: Schema.Literals(["start", "stop"]) })
-export const NotesOrganizeOperation = Schema.Union([NotesFilter, NotesListFilter, NotesMove, NotesFolderCreate, NotesRestore, NotesRecord])
-export type NotesOrganizeOperation = typeof NotesOrganizeOperation.Type
+schema NotesFolderCreate { readonly type: "notes_folder_create"; readonly name: FolderName }
+schema NotesRestore { readonly type: "notes_restore"; readonly noteId: Identifier }
+schema NotesRecord { readonly type: "notes_record"; readonly action: "start" | "stop" }
+export schema NotesOrganizeOperation = NotesFilter | NotesListFilter | NotesMove | NotesFolderCreate | NotesRestore | NotesRecord
 
 const TitleQuery = Schema.Struct({ kind: Schema.Literal("title"), text: Text(256) })
-const LatestQuery = Schema.Struct({ kind: Schema.Literal("latest"), by: Schema.Literals(["created", "updated"]) })
-export const NotesQuery = Schema.Struct({ type: Schema.Literal("notes_query"), query: Schema.Union([TitleQuery, LatestQuery]) })
+schema LatestQuery { readonly kind: "latest"; readonly by: "created" | "updated" }
+export schema NotesQuery { readonly type: "notes_query"; readonly query: TitleQuery | LatestQuery }
 const queryReceipt = { version, kind: Schema.Literal("notes_query") }
 export const NotesQueryResult = Schema.Union([
   Schema.Struct({ ...queryReceipt, query: Schema.Union([TitleQuery, LatestQuery]), basis: Schema.Literal("no-match") }),
@@ -447,7 +442,6 @@ export const NotesQueryResult = Schema.Union([
     target: NotesTarget, record: NotesReadSelectedResult,
   }).check(Schema.makeFilter(({ query, basis }) => basis !== (query.by === "created" ? "latest-updated" : "latest-created"))),
 ])
-export type NotesQuery = typeof NotesQuery.Type
 export type NotesQueryResult = typeof NotesQueryResult.Type
 
 function queryMatches(result: NotesQueryResult, op: NotesQuery) {
@@ -465,12 +459,12 @@ export const ClockHandoff = Schema.Union([
   Schema.Struct({ type: Schema.Literal("clock_handoff"), action: Schema.Literal("snooze"), snoozeMinutes: between(1, 60) }),
   Schema.Struct({ type: Schema.Literal("clock_handoff"), action: Schema.Literals(["show", "dismiss"]) }),
 ])
-export const ClockHandoffResult = Schema.Struct({
-  kind: Schema.Literal("clock-handoff"), action: Schema.Literals(["set", "snooze", "show", "dismiss"]),
-  status: Schema.Literals(["opened", "unavailable", "denied", "failed", "unknown"]),
-})
+export schema ClockHandoffResult {
+  readonly kind: "clock-handoff"
+  readonly action: "set" | "snooze" | "show" | "dismiss"
+  readonly status: "opened" | "unavailable" | "denied" | "failed" | "unknown"
+}
 export type ClockHandoff = typeof ClockHandoff.Type
-export type ClockHandoffResult = typeof ClockHandoffResult.Type
 
 function clockShows(result: ClockHandoffResult, op: ClockHandoff): Evidence | undefined {
   if (result.action !== op.action) return undefined
@@ -500,7 +494,7 @@ function unread<Op extends WireOperation>(operation: Schema.Decoder<Op>, opType:
 const reminderReads = <Op extends ReminderOperation, R extends ReminderResult>(operation: Schema.Decoder<Op>, result: Schema.Decoder<R>, opType: OperationType) =>
   reads(operation, result, opType, reminderMatches, reminderVersionTwo)
 
-export const personalFamilies = {
+export const personalOperations = {
   calendar_create_local: reads(CalendarCreateLocal, CalendarCreateLocalResult, "CalendarCreateLocal", calendarRecordMatches),
   calendar_read_next: reads(CalendarReadNext, CalendarNextResult, "CalendarReadNext", () => true),
   calendar_create: reads(CalendarCreate, CalendarCreateResult, "CalendarCreate", calendarRecordMatches),

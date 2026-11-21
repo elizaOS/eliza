@@ -1,0 +1,212 @@
+// spec/os/appUpdate/admission.md, "Story: Install an app update only when every authority allows it"
+import { ChildProcess } from "effect/process"
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+
+module node {
+  import { Buffer } from "node:buffer"
+  import { createHash } from "node:crypto"
+  import { lstat, readdir } from "node:fs/promises"
+  import { join } from "node:path"
+
+  export type SourceListing =
+    | { readonly kind: "files"; readonly files: readonly string[] }
+    | { readonly kind: "irregular"; readonly path: string }
+
+  /** @throws {never} */
+  export function base64Url(text: string): string {
+    return Buffer.from(text).toString("base64url")
+  }
+
+  /** @throws {never} */
+  export function processEnvironment(): Readonly<Record<string, string | undefined>> {
+    return process.env
+  }
+
+  /** @throws {never} */
+  export function sha256Hex(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function composedDigest(encodedPolicy: string, files: readonly (readonly [string, Uint8Array])[]): string {
+    const digest = createHash("sha256")
+    for (const bytes of [Buffer.from(encodedPolicy), ...files.flatMap(([name, content]) => [Buffer.from(name), content])]) {
+      digest.update(`${bytes.length}:`).update(bytes)
+    }
+    return digest.digest("hex")
+  }
+
+  export async function listSource(root: string): Promise<SourceListing> {
+    const files: string[] = []
+    for (const entry of await readdir(root, { recursive: true })) {
+      const info = await lstat(join(root, entry))
+      if (info.isDirectory()) continue
+      if (!info.isFile()) return { kind: "irregular", path: entry }
+      files.push(entry.split("\\").join("/"))
+    }
+    return { kind: "files", files: files.sort() }
+  }
+
+  export async function entryKind(file: string): Promise<"file" | "directory" | "other"> {
+    const info = await lstat(file)
+    return info.isFile() ? "file" : info.isDirectory() ? "directory" : "other"
+  }
+}
+import { base64Url, composedDigest, entryKind, listSource, processEnvironment, sha256Hex, type SourceListing } from node
+
+export type TrustEnvironment = Readonly<Record<string, string | undefined>>
+
+export interface TrustHostPolicy {
+  readonly schema: 3
+  readonly product: string
+  readonly package: string
+  readonly cohortDomain: string
+}
+
+export interface ComposeTrustSource {
+  readonly sharedSource: string
+  readonly hostPolicy: TrustHostPolicy
+  readonly testDirectory?: string
+  readonly cacheDirectory: string
+}
+
+export interface ComposedTrustSource {
+  readonly source: string
+  readonly ldflags: string
+}
+
+export interface TrustToolchain {
+  readonly go: string
+  readonly ndk: string
+  readonly ndkRevision?: string
+  readonly target: string
+  readonly androidApi: number
+  readonly javaPackage: string
+}
+
+export interface BuildAndroidTrust {
+  readonly source: string
+  readonly output: string
+  readonly toolchain: TrustToolchain
+  readonly ldflags: string
+  readonly environment?: TrustEnvironment
+}
+
+export error TrustBuildRefused { reason: string }
+export error TrustBuildFailed { command: string; code: number; output: string }
+
+const POLICY_KEYS = "cohortDomain,package,product,schema"
+const POLICY_SYMBOL = "github.com/elizaOS/eliza/packages/os/native/ota-trust.compiledHostPolicyBase64"
+const VERSION = /^\d+\.\d+\.\d+$/
+const NDK_REVISION = /^\d+\.\d+\.\d+(?:-[A-Za-z0-9]+)?$/
+const TARGETS = /^android\/(arm|arm64|386|amd64)(,android\/(arm|arm64|386|amd64))*$/
+const JAVA_PACKAGE = /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)+$/
+
+function policyValid(policy: TrustHostPolicy): boolean {
+  const entries: readonly (readonly [string, unknown])[] = Object.entries(policy)
+  return entries.map(([key]) => key).sort().join(",") === POLICY_KEYS && policy.schema === 3
+    && entries.every(([key, value]) => key === "schema" || (typeof value === "string" && value.trim() !== ""))
+}
+
+effect function sourceFiles(root: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const listing: SourceListing = try tryPromise({ try: () => listSource(root), catch: (cause) => new TrustBuildRefused({ reason: `${root} cannot be listed: ${String(cause)}` }) })
+  if (listing.kind === "irregular") throw new TrustBuildRefused({ reason: `Unexpected OTA source entry ${listing.path}` })
+  const tree = new Map<string, Uint8Array>()
+  for (const name of listing.files) tree.set(name, try files.readFile(path.join(root, name)))
+  return tree
+}
+
+effect function compatibilityTests(testDirectory: string, shared: ReadonlyMap<string, Uint8Array>) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const tests: [string, Uint8Array][] = []
+  for (const name of (try files.readDirectory(testDirectory)).filter((entry) => entry.endsWith("_test.go")).sort()) {
+    if (shared.has(name) || (try kindOf(path.join(testDirectory, name))) !== "file") throw new TrustBuildRefused({ reason: `Invalid or colliding OTA compatibility test ${name}` })
+    tests.push([name, try files.readFile(path.join(testDirectory, name))])
+  }
+  return tests
+}
+
+effect function kindOf(file: string) {
+  return try tryPromise({ try: () => entryKind(file), catch: (cause) => new TrustBuildRefused({ reason: `${file} cannot be read: ${String(cause)}` }) })
+}
+
+export effect function composeTrustSource(options: ComposeTrustSource) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  if (!policyValid(options.hostPolicy)) throw new TrustBuildRefused({ reason: "Invalid OTA host build policy" })
+  const encoded = base64Url(JSON.stringify(options.hostPolicy))
+  const shared = try sourceFiles(options.sharedSource)
+  const tests = options.testDirectory === undefined ? [] : try compatibilityTests(options.testDirectory, shared)
+  const expected = [...shared, ...tests].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+  const cache = path.resolve(options.cacheDirectory)
+  const source = path.join(cache, composedDigest(encoded, expected))
+  try files.makeDirectory(cache, { recursive: true })
+  if (!(try files.exists(source))) {
+    const temporary = try files.makeTempDirectory({ directory: cache, prefix: ".compose-" })
+    try ensuring(effect {
+      for (const [name, bytes] of expected) {
+        try files.makeDirectory(path.dirname(path.join(temporary, name)), { recursive: true })
+        try files.writeFile(path.join(temporary, name), bytes)
+      }
+      files.rename(temporary, source) catch () => undefined
+    }, Effect.ignore(files.remove(temporary, { recursive: true, force: true })))
+  }
+  if ((try kindOf(source)) !== "directory") throw new TrustBuildRefused({ reason: "Invalid OTA source cache" })
+  const actual = try sourceFiles(source)
+  if (actual.size !== expected.length || expected.some(([name, bytes]) => {
+    const cached = actual.get(name)
+    return cached === undefined || sha256Hex(cached) !== sha256Hex(bytes)
+  })) throw new TrustBuildRefused({ reason: "Composed OTA source inventory mismatch" })
+  const composed: ComposedTrustSource = { source, ldflags: `-X=${POLICY_SYMBOL}=${encoded}` }
+  return composed
+}
+
+effect function go(args: readonly string[], cwd: string, environment: TrustEnvironment) {
+  const spawner = try ChildProcessSpawner
+  const command = `go ${args.join(" ")}`
+  const result = try mapError(scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make("go", [...args], { cwd, env: { ...environment }, extendEnv: false, stdin: "ignore" }))
+    const [stdout, stderr] = try.all [Stream.mkString(Stream.decodeText(child.stdout)), Stream.mkString(Stream.decodeText(child.stderr))]
+    const code: number = try child.exitCode
+    return { code, stdout, stderr }
+  }), (cause) => new TrustBuildFailed({ command, code: -1, output: cause.message }))
+  if (result.code !== 0) throw new TrustBuildFailed({ command, code: result.code, output: (result.stderr || result.stdout).trim() })
+  return result.stdout.trim()
+}
+
+export effect function buildAndroidTrust(options: BuildAndroidTrust) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const { go: goVersion, ndk, target, androidApi, javaPackage } = options.toolchain
+  const ndkRevision = options.toolchain.ndkRevision ?? ndk
+  if (!VERSION.test(goVersion) || !VERSION.test(ndk) || !NDK_REVISION.test(ndkRevision) || !TARGETS.test(target)
+    || !Number.isInteger(androidApi) || androidApi < 21 || !JAVA_PACKAGE.test(javaPackage) || options.ldflags.trim() === "")
+    throw new TrustBuildRefused({ reason: "Invalid Android trust build policy" })
+  const environment = options.environment ?? processEnvironment()
+  const androidHome = environment.ANDROID_HOME
+  const javaHome = environment.JAVA_HOME
+  if (androidHome === undefined || androidHome === "" || javaHome === undefined || javaHome === "") throw new TrustBuildRefused({ reason: "Android SDK and JDK paths are required" })
+  const source = path.resolve(options.source)
+  const output = path.resolve(options.output)
+  const ndkHome = path.join(androidHome, "ndk", ndk)
+  const properties = files.readFileString(path.join(ndkHome, "source.properties")) catch () => ""
+  if (!properties.split(/\r?\n/).some((line) => line.trim() === `Pkg.Revision = ${ndkRevision}`)) throw new TrustBuildRefused({ reason: `Android trust build requires NDK ${ndkRevision}` })
+  const buildEnvironment: TrustEnvironment = { ...environment, ANDROID_NDK_HOME: ndkHome, GOTOOLCHAIN: "local" }
+  const version = try go(["env", "GOVERSION"], source, buildEnvironment)
+  if (version !== `go${goVersion}`) throw new TrustBuildRefused({ reason: `Android trust build requires Go ${goVersion}; got ${version}` })
+  try files.makeDirectory(path.dirname(output), { recursive: true })
+  const temporary = try files.makeTempDirectory({ directory: path.dirname(output), prefix: ".android-trust-" })
+  return try ensuring(effect {
+    const bind: TrustEnvironment = { ...buildEnvironment, PATH: [temporary, path.join(javaHome, "bin"), environment.PATH ?? ""].join(":") }
+    try go(["build", "-trimpath", "-o", path.join(temporary, "gobind"), "golang.org/x/mobile/cmd/gobind"], source, bind)
+    const staged = path.join(temporary, "otatrust.aar")
+    try go(["tool", "gomobile", "bind", `-target=${target}`, `-androidapi=${androidApi}`, `-javapkg=${javaPackage}`, "-trimpath", `-ldflags=${options.ldflags}`, "-o", staged, "."], source, bind)
+    const built = files.stat(staged) catch () => undefined
+    if (built === undefined || built.type !== "File" || Number(built.size) === 0) throw new TrustBuildFailed({ command: "go tool gomobile bind", code: 0, output: "Android trust build produced no AAR" })
+    try files.rename(staged, output)
+    return output
+  }, Effect.ignore(files.remove(temporary, { recursive: true, force: true })))
+}

@@ -1,7 +1,7 @@
 // spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"; spec/cloud/nativeClients/registry.md, "Story: Tell a client exactly why it was refused"
 import type { Environment } from "../../gen/cloud__deployment.effect.vibe"
 import {
-  clientCheck, configAnswer, faultRefusal, maxCertFingerprints, registrationAccepted, registrationsFor, registryValid,
+  clientCheck, configAnswer, disableClient as disabledIn, faultRefusal, maxCertFingerprints, registrationAccepted, registrationsFor, registryValid,
   type ClientRequest, type Registration, type ReturnUrl
 } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import { Refused, refused } from "../http/refusal.vibe"
@@ -111,15 +111,12 @@ export effect function admitClient(tx: Tx, request: ClientRequest): Registration
   return registration
 }
 
-effect function keep(tx: Tx, registration: Registration, now: number, replacing: boolean) {
-  const deployment = try Deployment
-  const served = try servedEnvironment()
+effect function lockedRegistry(tx: Tx) {
   try tx.query("LOCK TABLE native_clients IN SHARE ROW EXCLUSIVE MODE")
-  const registry = try loadRegistry(tx, served)
-  if (replacing && !registry.some((each) => each.clientId === registration.clientId)) throw new ClientNotRegistered({ clientId: registration.clientId })
-  if (!registrationAccepted(registry, rowOf(deployment.profile.name, deployment.settings), served, registration)) {
-    throw new RegistrationRefused({ clientId: registration.clientId })
-  }
+  return try readRegistry(tx)
+}
+
+effect function write(tx: Tx, registration: Registration, now: number) {
   try tx.query(
     `INSERT INTO native_clients (${columns}, created_at, updated_at) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $12)
      ON CONFLICT (client_id) DO UPDATE SET environment = EXCLUDED.environment, display_name = EXCLUDED.display_name,
@@ -136,6 +133,16 @@ effect function keep(tx: Tx, registration: Registration, now: number, replacing:
   return registration
 }
 
+effect function keep(tx: Tx, registration: Registration, now: number, replacing: boolean) {
+  const deployment = try Deployment
+  const registry = try lockedRegistry(tx)
+  if (replacing && !registry.some((each) => each.clientId === registration.clientId)) throw new ClientNotRegistered({ clientId: registration.clientId })
+  if (!registrationAccepted(registry, rowOf(deployment.profile.name, deployment.settings), try servedEnvironment(), registration)) {
+    throw new RegistrationRefused({ clientId: registration.clientId })
+  }
+  return try write(tx, registration, now)
+}
+
 export effect function registerClient(tx: Tx, registration: Registration, now: number) {
   return try keep(tx, registration, now, false)
 }
@@ -145,8 +152,9 @@ export effect function updateClient(tx: Tx, registration: Registration, now: num
 }
 
 export effect function disableClient(tx: Tx, clientId: string, now: number) {
-  const disabled = try tx.query("UPDATE native_clients SET enabled = false, updated_at = $2 WHERE client_id = $1 RETURNING client_id", [clientId, now])
-  if (disabled.length === 0) throw new ClientNotRegistered({ clientId })
+  const disabled = disabledIn(try lockedRegistry(tx), clientId).find((each) => each.clientId === clientId)
+  if (disabled === undefined) throw new ClientNotRegistered({ clientId })
+  try write(tx, disabled, now)
 }
 
 effect function readConfig(context: RouteContext) {

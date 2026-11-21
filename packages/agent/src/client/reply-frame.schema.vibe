@@ -1,0 +1,20 @@
+// spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"; spec/agent/conversation/replyStream.md, "The frames written rebuild exactly the text the client holds"; spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written"
+export schema ActionResultFrame { readonly action: string; readonly data: Schema.Unknown }
+export schema SnapshotFrame { readonly type: "token"; readonly text: string; readonly fullText: string; readonly provisional?: boolean }
+export schema AppendFrame { readonly type: "token"; readonly text: string; readonly provisional?: boolean }
+export schema ReplaceFrame { readonly type: "token"; readonly fullText: string; readonly provisional?: boolean }
+export schema StatusFrame { readonly type: "status"; readonly activity: string }
+export schema ToolFrame { readonly type: "tool"; readonly name: string }
+export schema ReadyFrame { readonly type: "reply_ready"; readonly fullText: string; readonly actionResults: readonly ActionResultFrame[] }
+export schema DoneFrame {
+  readonly type: "done"
+  readonly fullText: string
+  readonly messageId: Schema.NonEmptyString
+  readonly userMessageId: Schema.NonEmptyString
+  readonly agentName: string
+  readonly actionResults: readonly ActionResultFrame[]
+  readonly taskChoices?: readonly Schema.Unknown[]
+  readonly failureKind?: Schema.NonEmptyString
+}
+export schema ErrorFrame { readonly type: "error"; readonly code: Schema.NonEmptyString; readonly message: string }
+export schema ReplyFrame = SnapshotFrame | AppendFrame | ReplaceFrame | StatusFrame | ToolFrame | ReadyFrame | DoneFrame | ErrorFrame

@@ -21,11 +21,11 @@ public final class PreparedRecoveryTest {
   }
   private static final UpdateJournal.Identity OLD=identity(1,'a'), CURRENT=identity(2,'b'), RECOVERY=identity(3,'c');
   private static UpdateJournal journal(Path path) throws Exception {
-    return new UpdateJournal(path, p -> { try (FileChannel f=FileChannel.open(p,StandardOpenOption.READ)) { f.force(true); } });
+    return new UpdateJournal(path, p -> { try (FileChannel f=FileChannel.open(p,StandardOpenOption.READ)) { f.force(true); } }, new GrantedHolds());
   }
   private static UpdateJournal ready(Path path) throws Exception {
     UpdateJournal j=journal(path);
-    j.begin(new UpdateJournal.Plan("recovery-test","stable","launcher",OLD,CURRENT,RECOVERY),OLD,0);
+    GrantedHolds.admitHeld(j,new UpdateJournal.Plan("recovery-test","stable","launcher",OLD,CURRENT,RECOVERY));
     j.committingWithAction("recovery-test",1,0,FRESH,()->{});j.reconcile(CURRENT,false);j.localHealthFailed(j.read(),CURRENT);
     return j;
   }
@@ -49,7 +49,7 @@ public final class PreparedRecoveryTest {
     UpdateJournal changed=ready(root.resolve("channel"));
     rejects(()->PreparedRecovery.open(changed,()->CURRENT,(p,f)->{changed.setChannel("beta");return material();},7));
     UpdateJournal installing=ready(root.resolve("installing"));
-    rejects(()->PreparedRecovery.open(installing,()->CURRENT,(p,f)->{installing.recoveringWithAction(p.id,2,()->{});return material();},7));
+    rejects(()->PreparedRecovery.open(installing,()->CURRENT,(p,f)->{installing.requestHold(p.id);installing.acknowledgeHold(p.id,RECOVERY);installing.recoveringWithAction(p.id,2,()->{});return material();},7));
     AtomicInteger reads=new AtomicInteger();
     rejects(()->PreparedRecovery.open(valid,()->reads.incrementAndGet()==1?CURRENT:OLD,(p,f)->material(),7));
     check(valid.read().revision==revision);

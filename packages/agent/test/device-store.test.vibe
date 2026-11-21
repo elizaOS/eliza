@@ -35,7 +35,9 @@ effect function closed(adapter: IDatabaseAdapter) {
 
 effect function failure<A, E extends { readonly _tag: string }>(work: A!E) {
   const done = try exit(work)
-  return Exit.isFailure(done) ? Cause.squash(done.cause) : undefined
+  if (Exit.isSuccess(done)) return undefined
+  const error = Cause.squash(done.cause)
+  return { _tag: typeof error === "object" && error !== null && "_tag" in error ? String(error._tag) : "Defect" }
 }
 
 effect function send(adapter: IDatabaseAdapter, proposalId: string, events: readonly Event[], write = {}) {

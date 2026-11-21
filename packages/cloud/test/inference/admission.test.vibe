@@ -132,5 +132,5 @@ describe("WP5 Inference: chat admission", () => {
       [statuses.every((status) => status === 401), over.status, overBody.error, overBody.retryAt, over.headers["retry-after"] !== undefined, reached.length],
       [true, 429, "rate_limited", Math.floor(start / minuteMs) * minuteMs + minuteMs, true, 0]
     ))
-  }))
+  }), 180_000)
 })

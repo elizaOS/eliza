@@ -188,6 +188,28 @@ public abstract class NotificationsHostPlugin extends Plugin {
   JSObject result=new JSObject();result.put("status",status);call.resolve(result);
  });}
 
+ /** Persists the owner fence before any notice changes: other owners' results are withdrawn and their
+  * approvals suspended. Resolves the returning owner's suspended approvals for read-only revalidation. */
+ @PluginMethod public void noticeOwner(PluginCall call){noticeWork(call,"Notice owner fence unavailable; retry.",()->{
+  if(!call.getData().has("owner"))throw new IllegalArgumentException("Explicit owner or sign-out required");
+  JSONObject owner=call.getData().isNull("owner")?null:NoticeOwner.identity(call.getObject("owner"));
+  long now=System.currentTimeMillis();
+  JSObject result=new JSObject();result.put("withdrawn",coordinator().withdrawOtherOwners(owner,now));
+  result.put("suspended",owner==null?new JSONArray():routes().suspendedApprovals(owner,now));call.resolve(result);
+ });}
+ /** Posts one approval notice while its approval is pending; resolves the ledger status. */
+ @PluginMethod public void postWorkflowApproval(PluginCall call){noticeWork(call,"Approval notification could not be confirmed. It will not be repeated automatically.",()->{
+  String status=coordinator().postApproval(call.getString("id"),call.getString("bindingHash"),call.getObject("route"),approvalExpiry(call),System.currentTimeMillis());
+  JSObject result=new JSObject();result.put("status",status);call.resolve(result);
+ });}
+ /** Quietly reposts a suspended approval notice the renderer revalidated without deciding it. */
+ @PluginMethod public void resumeWorkflowApproval(PluginCall call){noticeWork(call,"Approval notification could not be resumed.",()->{
+  String status=coordinator().resumeApproval(call.getString("id"),call.getString("bindingHash"),call.getObject("route"),approvalExpiry(call),System.currentTimeMillis());
+  JSObject result=new JSObject();result.put("status",status);call.resolve(result);
+ });}
+ @PluginMethod public void withdrawWorkflowApproval(PluginCall call){noticeWork(call,"Approval notification could not be withdrawn; retry.",()->{coordinator().withdrawApproval(call.getString("id"),System.currentTimeMillis());call.resolve();});}
+ private static long approvalExpiry(PluginCall call){Long expiresAt=call.getLong("expiresAt");if(expiresAt==null)throw new IllegalArgumentException("Approval expiry required");return expiresAt;}
+
  private static String identity(StatusBarNotification row){return row.getKey()+"\n"+row.getPostTime();}
  private StatusBarNotification resolve(String id){if(id==null||id.isEmpty())return null;for(StatusBarNotification row:manager().getActiveNotifications())if(ids.names(id,identity(row)))return row;return null;}
  private static String interruption(int filter){

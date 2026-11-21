@@ -36,7 +36,7 @@ describe("WP9 U5 views scratch", () => {
       },
       {
         free: [false, { tag: "PlanNone" }, "zero", "none"],
-        granted: [true, { tag: "PlanPaid", planKey: "PlusMonthly", warning: false }, "funded", "active", "x"],
+        granted: [true, { tag: "PlanPaid", planKey: "PlusMonthly", warning: false }, "funded", "active", "Admit"],
         bad: "CloudProviderIssue",
         redeemed: ["redeemed", true],
         refusal: { kind: "PaidPlanActive" }

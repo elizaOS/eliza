@@ -31,8 +31,8 @@ public final class UpdateHold {
     return new UpdateHold(context.getNoBackupFilesDir().toPath().resolve("agent-update-hold"));
   }
 
-  public static void holdForUpdate(Context context, long versionCode, String digest) throws IOException {
-    AgentService.holdForUpdate(context, new AgentPolicy.UpdateTarget(versionCode, digest));
+  public static boolean holdForUpdate(Context context, long versionCode, String digest) throws IOException {
+    return AgentService.holdForUpdate(context, new AgentPolicy.UpdateTarget(versionCode, digest));
   }
 
   public static boolean awaitHeld(Context context, long versionCode, String digest, long timeoutMs) throws IOException, InterruptedException {

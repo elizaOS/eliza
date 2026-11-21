@@ -1,0 +1,14 @@
+// spec/cloud/operator.md, "An account deletion starts only for an active account, after the operator confirmed the request with its owner"; spec/cloud/identity/deletion.md, "Requesting deletion again of an account that needs action resumes its step with a fresh budget"
+import { existingDeletion, requestDeletion } from "../identity/deletion.vibe"
+import type { Tx } from "../store/store.vibe"
+import { userNamed } from "./accounts.vibe"
+import type { OperatorCommandHandler, OperatorFlags, RunningVerdict } from "./admin.vibe"
+
+effect function deleteAccount(tx: Tx, flags: OperatorFlags, now: number, verdict: RunningVerdict) {
+  const userId = try flags.required("user")
+  return [verdict === "Proceed" ? try requestDeletion(tx, userId, now) : try existingDeletion(tx, userId, now)]
+}
+
+export const commands: ReadonlyArray<OperatorCommandHandler> = [
+  { words: ["account", "delete"], operatorCommand: "RequestDeletion", valued: ["user"], repeated: [], switches: ["confirmed-with-owner"], account: userNamed, run: deleteAccount }
+]

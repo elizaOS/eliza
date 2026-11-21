@@ -89,10 +89,9 @@ const HostFile = Schema.Struct({
   notification: Schema.Struct({ channel: Schema.String, title: Schema.String, text: Schema.String }),
   routes: RouteList,
   nativeRoutes: Schema.optionalKey(RouteList),
-  model: Schema.optionalKey(Model),
-  cloud: Schema.optionalKey(Schema.Struct({ baseUrl: Schema.String, smallModel: Schema.optionalKey(Schema.String), largeModel: Schema.optionalKey(Schema.String) })),
+  model: Model,
   embeddings: Schema.optionalKey(Schema.Literals(["local", "none"])),
-  embeddingDimensions: Schema.optionalKey(Schema.Int),
+  embeddingDimensions: Schema.optionalKey(PositiveInteger),
   persistMemory: Schema.optionalKey(Schema.Boolean),
   callerRole: Schema.optionalKey(Schema.Literals(["owner", "user"])),
   views: Schema.optionalKey(Views),
@@ -101,7 +100,7 @@ const HostFile = Schema.Struct({
   google: Schema.optionalKey(Switches("gmailChanges", "calendarEdits")),
   retention: Schema.optionalKey(Schema.Struct({ days: Schema.Number, maxRowsPerRoom: Schema.Int, intervalMinutes: Schema.Int })),
   environment: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-}).check(Schema.makeFilter((host) => (host.model === undefined) !== (host.cloud === undefined)))
+})
 
 const Examples = Schema.Array(Schema.Struct({
   name: Nonblank,
@@ -122,10 +121,7 @@ const CharacterFile = Schema.Struct({
 
 const PolicyFile = Schema.Struct({
   schema: Schema.Number,
-  actions: Schema.Struct({
-    allowed: Schema.Union([UniqueNames, Schema.Record(Nonblank, Schema.Unknown)]),
-    refused: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
-  }),
+  actions: Schema.Struct({ allowed: Schema.Union([UniqueNames, Schema.Record(Nonblank, Schema.Unknown)]) }),
   plugins: Schema.Struct({ load: UniqueNames, product: Schema.optionalKey(Nonblank) }),
 })
 
@@ -147,10 +143,6 @@ function urlShape(url: string): UrlShape {
 }
 
 function backend(host: HostFile): Backend {
-  if (host.model === undefined) {
-    const cloud = host.cloud ?? { baseUrl: "" }
-    return { tag: "CloudBackend", baseUrl: cloud.baseUrl, baseUrlShape: urlShape(cloud.baseUrl), smallModel: cloud.smallModel ?? "", largeModel: cloud.largeModel ?? "", imageModel: "" }
-  }
   const model = host.model
   switch (model.backend) {
     case "cloud": return { tag: "CloudBackend", baseUrl: model.cloudBaseUrl, baseUrlShape: urlShape(model.cloudBaseUrl), smallModel: model.smallModel, largeModel: model.largeModel, imageModel: model.imageModel }
@@ -264,9 +256,6 @@ export effect function admitAgentBytes(files: Readonly<Record<AgentFile, Uint8Ar
   const host = try decodeHost(try text("host", files.host)).pipe(Effect.mapError(refused("host")))
   const character = try decodeCharacter(try text("character", files.character)).pipe(Effect.mapError(refused("character")))
   const policy = try decodePolicy(try text("policy", files.policy)).pipe(Effect.mapError(refused("policy")))
-  for (const name of Object.keys(policy.actions.refused ?? {}))
-    if (allowed(policy).includes(name)) throw new AgentConfigRefused({ detail: `Action ${name} is both allowed and refused` })
-  if (host.embeddingDimensions !== undefined && host.embeddingDimensions <= 0) throw new AgentConfigRefused({ detail: "The agent embeddingDimensions is a positive whole number" })
   const data = agentData({ host: files.host.byteLength, character: files.character.byteLength, policy: files.policy.byteLength }, host, character, policy)
   const detail = broken(data, host.nativeRoutes === undefined ? undefined : routeList(host.nativeRoutes))
   if (detail !== undefined) throw new AgentConfigRefused({ detail })

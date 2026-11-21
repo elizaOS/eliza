@@ -94,6 +94,7 @@ describe.concurrent("generated tests", () => {
     const skipped = [
       { file: "src/math.contract.ts", export: "undeclared", reason: expect.stringContaining("declares no property") },
       { file: "src/user.schema.ts", export: "Opaque", reason: expect.stringContaining("no value can be generated") },
+      { file: "src/user.schema.ts", export: "Refused", reason: expect.stringMatching(/^no value can be generated for it: its filters refused all \d+ values tried$/) },
     ];
     const run = await vitest(dir, { NODE_OPTIONS: "" });
     expect(run.status, run.said).toBe(0);

@@ -296,7 +296,15 @@ export function createSurfaceTaskHandler({
         );
       outcome = reply.result;
     } catch (error) {
-      fault = { error };
+      fault = {
+        error:
+          inputDispatched
+            ? failure(
+                "UNCERTAIN_OUTCOME",
+                "The page effect needs fresh readback; do not replay it.",
+              )
+            : error,
+      };
     }
     try {
       await guidance.cancel(message.id);

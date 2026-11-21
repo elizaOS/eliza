@@ -25,7 +25,7 @@ public final class ScratchReplay {
         if (!value) throw new AssertionError(message);
     }
 
-    public static void main(String[] args) throws Exception {
+    static void replay(String[] args) throws Exception {
         Path root = Path.of(args[0]);
         String mode = args[1];
         for (UpdateJournal.Phase phase : UpdateJournal.Phase.values()) {

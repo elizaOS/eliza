@@ -91,11 +91,15 @@ lemma openTurnLease_ensures(s: PreparedRequests, allowanceId: int, leaseId: int,
   if inv(s) && canOpenTurnLease(s, allowanceId, leaseId, messageId) {
     PreparedLeaseOwner(s);
     core__modelAttemptLeases_openTurnLease_ensures(s.leases, allowanceId, leaseId, messageId);
-    var after := openTurnLease(s, allowanceId, leaseId, messageId);
-    assert after.guards == s.guards;
-    assert alwaysPreparedLeasesStayNonnegative(after);
-    assert stepGuardBytesStayFixed(s, after);
+    PreparedLeasesOnlyChanged(s, openTurnLease(s, allowanceId, leaseId, messageId), "openTurnLease");
   }
+}
+
+lemma PreparedLeasesOnlyChanged(s: PreparedRequests, after: PreparedRequests, via: string)
+  requires inv(s) && after.guards == s.guards && alwaysPreparedLeasesStayNonnegative(after)
+  ensures inv(after) && stepGuardBytesStayFixed(s, after) && stepUnchangedCheckDoesNotCount(s, via, after)
+{
+  forall g | g in s.guards ensures g in after.guards {}
 }
 
 lemma closeTurnLease_ensures(s: PreparedRequests, leaseId: int)
