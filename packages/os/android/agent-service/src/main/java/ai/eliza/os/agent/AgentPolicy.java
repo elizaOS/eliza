@@ -42,7 +42,7 @@ public final class AgentPolicy {
   public record Spawned() implements Event {}
   public record SpawnFailed(String reason) implements Event {}
   public record ObserveReady(long epoch) implements Event {}
-  public record ReadyTimeout() implements Event {}
+  public record ReadyTimeout(String reason) implements Event {}
   public record ObserveExit(int code) implements Event {}
   public record ObserveHealth(HealthPolicy.Observation observed) implements Event {}
   public record RestartUnhealthy(HealthPolicy.Observation observed) implements Event {}
@@ -152,7 +152,7 @@ public final class AgentPolicy {
       case Spawned ignored -> spawnable() && spawned();
       case SpawnFailed failed -> spawnable() && enterFailed(Cause.AGENT, failed.reason());
       case ObserveReady ready -> phase == Phase.SPAWNED && ready.epoch() == epoch && observeReady();
-      case ReadyTimeout ignored -> phase == Phase.SPAWNED && readinessTimedOut();
+      case ReadyTimeout timedOut -> phase == Phase.SPAWNED && readinessTimedOut(timedOut.reason());
       case ObserveExit exit -> child instanceof Owned && observeExit(exit.code());
       case ObserveHealth health -> phase == Phase.RUNNING && verdict(health.observed()) == HealthPolicy.Verdict.KEEP_RUNNING && observeHealth(health.observed());
       case RestartUnhealthy unhealthy -> phase == Phase.RUNNING && verdict(unhealthy.observed()) == HealthPolicy.Verdict.RESTART && restartUnhealthy();
@@ -298,9 +298,9 @@ public final class AgentPolicy {
     return true;
   }
 
-  private boolean readinessTimedOut() {
+  private boolean readinessTimedOut(String reason) {
     kill();
-    enterFailed(Cause.AGENT, "the agent did not answer ready within " + READY_TIMEOUT_MS / 1000 + " s");
+    enterFailed(Cause.AGENT, reason);
     child = new Stale(epoch);
     return true;
   }

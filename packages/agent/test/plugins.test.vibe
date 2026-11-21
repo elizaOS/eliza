@@ -1,4 +1,5 @@
 // spec/agent/plugins/profile.md, "Story: Load only the plugins my product lists"; spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"
+import { randomBytes } from "node:crypto"
 import { assert, it } from "@effect/vitest"
 import { addLogListener, type LogEntry } from "@elizaos/core"
 import { builtinModules, cloudLinkPlugin, storagePlugin } from "../gen/agent__plugins__profile.ts"
@@ -6,12 +7,13 @@ import { parseLaunch } from "../src/host/launch.vibe"
 import type { AgentPlugin } from "../src/host/module.vibe"
 import { startAgent, type StartAgentInput } from "../src/host/process.vibe"
 import { builtinModuleFactories, bundledPluginMap } from "../src/plugins/profile.vibe"
-import { boot, host, ready, scratch } from "./support/kernel.vibe"
+import { boot, host, ready, scratch, startInProcess } from "./support/kernel.vibe"
 import { claimingProductPlugin, productActionName, productPlugin } from "./support/product-plugin/index.ts"
 import { launchDocument, launchFrame, type LaunchOptions } from "./support/scratch.ts"
 import { request } from "./support/socket-client.ts"
 
 const tasksModule = "@elizaos/agent/tasks"
+const storageKey = randomBytes(32).toString("base64")
 
 const listedPlugin = {
   name: "listed-fixture",
@@ -72,12 +74,28 @@ for (const [title, rule, test] of refusals) {
   }, 60_000)
 }
 
+effect function composeFailures() {
+  const failures: string[] = []
+  const listen = (entry: LogEntry) => {
+    if (entry.msg === "The agent could not be composed" && typeof entry.failure === "string") failures.push(entry.failure)
+  }
+  try acquireRelease(Effect.sync(() => addLogListener(listen)), (remove) => Effect.sync(() => { remove() }))
+  return failures
+}
+
 it.effect('A product route under the tasks module\'s prefix stops boot with Config (spec/agent/plugins/profile.md, "A product route never claims a route prefix an agent module owns")', effect () => {
-  const phase = try refusal({
+  const failures = try composeFailures()
+  const bundled = try bundledPluginMap([{ packageName: claimingProductPlugin.name, plugin: claimingProductPlugin }])
+  const failed = try Effect.flip(startInProcess({
+    cloud: true,
+    frame: { storageKey },
     launch: { load: [tasksModule], productPlugin: claimingProductPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] },
-    bundled: [claimingProductPlugin],
-  })
-  try Effect.try(() => assert.strictEqual(phase, "Config"))
+    bundled,
+  }))
+  try Effect.try(() => assert.deepStrictEqual(
+    { phase: failed._tag === "AgentBootFailed" ? failed.phase : failed._tag, failures },
+    { phase: "Config", failures: ["PlanRefused"] },
+  ))
 }, 120_000)
 
 it.effect('A bundled package whose plugin has another name is refused (spec/agent/plugins/profile.md, "The product plugin must be in the bundle")', effect () => {
@@ -115,10 +133,8 @@ const childRefusals: ReadonlyArray<readonly [string, string, LaunchOptions]> = [
 
 for (const name of builtinModules) {
   it.effect(`A load list naming ${name} is admitted and the agent is ready (spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules")`, effect () => {
-    const state = try scratch("plan-state")
-    const { input } = try launched(state, { launch: { load: [name] } })
-    const running = try acquireRelease(startAgent(input), (agent) => orDie(host("retire agent", () => agent.stop())))
-    try Effect.try(() => assert.deepStrictEqual({ factory: builtinModuleFactories.has(name), ready: running.status.ready }, { factory: true, ready: true }))
+    const { agent } = try startInProcess({ cloud: true, frame: { storageKey }, launch: { load: [name] } })
+    try Effect.try(() => assert.deepStrictEqual({ factory: builtinModuleFactories.has(name), ready: agent.status.ready }, { factory: true, ready: true }))
   }, 120_000)
 }
 

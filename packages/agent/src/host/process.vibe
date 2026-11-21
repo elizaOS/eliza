@@ -1,7 +1,7 @@
 // spec/agent/host/process.md, "Story: Boot from a launch and serve only when ready"; spec/agent/host/process.md, "Story: Tell the host whether the agent can answer"; spec/agent/host/process.md, "Story: Stop on a signal and exit with an honest code"; spec/agent/host/launch.md, "Story: Start the agent from one launch document"
 
 module node {
-  import type { BootFailure, LaunchDocument as LaunchModel, LaunchFrame as FrameModel, UrlShape } from "../../gen/agent__host__launch.ts"
+  import type { BootFailure, LaunchFrame as FrameModel } from "../../gen/agent__host__launch.ts"
   import type { AgentProcess, Event as ProcessEvent } from "../../gen/agent__host__process.ts"
   import type { Endpoint, LaunchDocument, LaunchFrame } from "./launch.vibe"
   import type { AgentPlugin, ModuleFactory } from "./module.vibe"
@@ -59,35 +59,8 @@ module node {
   import { logSweeps, scheduleSweeps } from "../storage/retention.vibe"
   import { bootFailureOf, composeAgent } from "./compose.vibe"
   import { reservedHostPrefixes } from "../plugins/product.vibe"
-  import { bindModels } from "../models/binding.vibe"
+  import { bindModels, launchModel } from "../models/binding.vibe"
   import { modelPlugin } from "../models/plugin.vibe"
-
-  function urlShape(url: string): UrlShape {
-    const address = URL.parse(url)
-    if (address === null || address.protocol !== "https:") return "NotHttps"
-    return address.origin === url ? "HttpsOrigin" : "HttpsWithPath"
-  }
-
-  function launchModel(launch: LaunchDocument): LaunchModel {
-    const backend = backendOf(launch.model)
-    return {
-      schema: launch.schema,
-      character: { name: launch.character.name, nameUnits: launch.character.name.length, systemBlank: !/\S/.test(launch.character.system) },
-      policy: {
-        actionsAllowed: [...launch.policy.actions.allowed], pluginsLoad: [...launch.policy.plugins.load],
-        productPlugin: launch.policy.plugins.product === undefined ? { tag: "NoProductPlugin" } : { tag: "NamedProductPlugin", name: launch.policy.plugins.product },
-      },
-      backend: backend.tag === "NoBackend" ? backend : { ...backend, baseUrlShape: urlShape(backend.baseUrl) },
-      account: launch.account === undefined ? { tag: "NoAccount" } : { tag: "SignedIn", ...launch.account },
-      embeddings: launch.embeddings === "local" ? { tag: "LocalEmbeddings", dimensions: launch.embeddingDimensions ?? 0 } : { tag: "NoEmbeddings" },
-      persistMemory: launch.persistMemory ?? false,
-      callerRole: launch.callerRole === "owner" ? "ChatAsOwner" : "ChatAsUser",
-      google: { gmailChanges: launch.google?.gmailChanges ?? false, calendarEdits: launch.google?.calendarEdits ?? false },
-      retention: launch.retention === undefined ? { tag: "KeepLogs" }
-        : { tag: "PruneLogs", dayThousandths: Math.round(launch.retention.days * 1000), maxRowsPerRoom: launch.retention.maxRowsPerRoom, intervalMinutes: launch.retention.intervalMinutes },
-      environment: Object.entries(launch.environment ?? {}).map(([key, value]) => ({ key, keyKind: "PluginSetting", singleLine: !/[\r\n]/.test(value) })),
-    }
-  }
 
   function frameModel(frame: LaunchFrame): FrameModel {
     return {
@@ -161,7 +134,9 @@ module node {
     }
 
     if (lifecycle.send({ type: "readLaunch", doc: launchModel(launch), f: frameModel(authority) }).failure.tag !== "NoFailure") return failed()
-    const models = await Effect.runPromise(bindModels(launch, authority))
+    const modelsBound = await Effect.runPromise(Effect.result(bindModels(launch, authority)))
+    if (Result.isFailure(modelsBound)) return failed()
+    const models = modelsBound.success
 
     const opened = await openDeviceStorage({
       stateDirectory, persistMemory: launch.persistMemory ?? false,
