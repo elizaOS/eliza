@@ -427,10 +427,9 @@ async function requireRendererCloudApiOrigin(
     );
   const observation = await waitForRendererCloudApiOrigin({
     readCloudBase: readRendererCloudBase,
-    expectedApiOrigin:
-      stagingRenderer?.origin === STAGING_PAGES_ALIAS
-        ? STAGING_PAGES_ALIAS
-        : expectedApiOrigin,
+    ...(stagingRenderer?.origin === STAGING_PAGES_ALIAS
+      ? { mode: "same-origin", expectedApiOrigin: STAGING_PAGES_ALIAS }
+      : { mode: "direct", expectedApiOrigin }),
   });
   if (stagingRenderer)
     expect(observation.cloudBase).toBe(stagingRenderer.origin);
