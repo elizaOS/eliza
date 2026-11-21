@@ -326,7 +326,6 @@ async function requireRendererCloudApiOrigin(
   expectedApiOrigin: string,
   deployedRenderer: DeployedRendererIdentity | null,
 ): Promise<string> {
-  // Each staging renderer boots through its own first-party API proxy.
   const stagingAppOrigin = cloudLiveDeployedRendererOrigin("staging");
   const stagingRenderer =
     deployedRenderer &&
@@ -334,7 +333,6 @@ async function requireRendererCloudApiOrigin(
       deployedRenderer.origin === STAGING_PAGES_ALIAS)
       ? deployedRenderer
       : null;
-  const expectedRendererOrigin = stagingRenderer?.origin ?? expectedApiOrigin;
   const readRendererCloudBase = () =>
     page.evaluate(() => {
       const config = (
@@ -346,11 +344,14 @@ async function requireRendererCloudApiOrigin(
     });
   const observation = await waitForRendererCloudApiOrigin({
     readCloudBase: readRendererCloudBase,
-    expectedApiOrigin: expectedRendererOrigin,
+    expectedApiOrigin:
+      stagingRenderer?.origin === STAGING_PAGES_ALIAS
+        ? STAGING_PAGES_ALIAS
+        : expectedApiOrigin,
   });
   if (stagingRenderer) {
     expect(expectedApiOrigin).toBe("https://api-staging.eliza.app");
-    expect(await readRendererCloudBase()).toBe(stagingRenderer.origin);
+    expect(observation.cloudBase).toBe(stagingRenderer.origin);
     const health = await page.evaluate(async (expectedOrigin) => {
       if (window.top !== window || window.location.origin !== expectedOrigin) {
         throw new Error(
@@ -1678,7 +1679,7 @@ test.describe("real cloud login + personal identity + chat", () => {
         await writeDeployedBrowserSmokeEvidence(
           deployedBrowserEvidencePath,
           deployedRenderer as DeployedRendererIdentity,
-          originContract.origin,
+          rendererApiOrigin,
           referenceBinding,
           chatCorrelation,
         );
