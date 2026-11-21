@@ -437,18 +437,18 @@ effect function mint(context: RouteContext) {
 
 effect function revoke(context: RouteContext) {
   const caller = try signer(context)
-  const id = context.params.id ?? ""
+  const sessionId = context.params.sessionId ?? ""
   const store = try Store
-  const row = (try store.transaction((tx) => tx.query("SELECT user_id FROM speech_sessions WHERE key = $1", [id])))[0]
+  const row = (try store.transaction((tx) => tx.query("SELECT user_id FROM speech_sessions WHERE key = $1", [sessionId])))[0]
   if (row === undefined || toText(row.user_id) !== caller.userId) throw refused("NotFound")
-  try retire(id, "Revoked")
+  try retire(sessionId, "Revoked")
   return json({ revoked: true })
 }
 
 export const sessionSpeechRoutes: ReadonlyArray<Route> = [
   { method: "POST", path: `${speechPath}/consent`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: consent },
   { method: "POST", path: `${speechPath}/session`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: mint },
-  { method: "POST", path: `${speechPath}/session/:id/revoke`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: revoke }
+  { method: "POST", path: `${speechPath}/session/:sessionId/revoke`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: revoke }
 ]
 
 effect function refusedOnly<A, R>(work: A!SessionFailure!R): A!Refused!R {

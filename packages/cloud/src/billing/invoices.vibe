@@ -317,14 +317,14 @@ export const routes: ReadonlyArray<Route> = [
   },
   {
     method: "GET",
-    path: "/api/v1/billing/invoices/:id",
+    path: "/api/v1/billing/invoices/:invoiceId",
     auth: "ServiceAccess",
     capability: "billing",
     rateClass: "StandardRequests",
     handler: (context) => effect {
       const signed = owner(context.caller)
       if (signed === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
-      return json(try readInvoice(signed.organizationId, context.params.id ?? ""))
+      return json(try readInvoice(signed.organizationId, context.params.invoiceId ?? ""))
     }
   },
   {
