@@ -325,13 +325,14 @@ export interface StripePlanSource {
   readonly targetPriceId: string
   readonly periodStart: number
   readonly periodEnd: number
+  readonly cancelAtPeriodEnd?: boolean
 }
 
 export effect function bindPlanChange(source: StripePlanSource, call: StripeRead): StripePlanBinding!StripeFailure!StripeContext {
   const subscription = try retrieveSubscription(source.subscriptionId, call)
   const [item] = subscription.items.data
   if (subscription.id !== source.subscriptionId || subscription.customer !== source.customerId ||
-    subscription.livemode !== try livemode() || subscription.status !== "active" || subscription.cancel_at_period_end ||
+    subscription.livemode !== try livemode() || subscription.status !== "active" || subscription.cancel_at_period_end !== (source.cancelAtPeriodEnd ?? false) ||
     subscription.items.has_more || subscription.items.data.length !== 1 || item === undefined || item.quantity !== 1 ||
     !/^si_[A-Za-z0-9]{1,250}$/.test(item.id) || item.price.id !== source.sourcePriceId ||
     item.current_period_start * 1000 !== source.periodStart || item.current_period_end * 1000 !== source.periodEnd)
@@ -353,21 +354,9 @@ function proratedLinesFit(lines: ReadonlyArray<typeof InvoiceLine.Type>, binding
     lines.some((line) => line.pricing?.price_details?.price === binding.targetPriceId && line.amount >= 0)
 }
 
-export effect function previewPlanChange(subscriptionId: string, binding: StripePlanBinding, preview: StripePlanPreview, call: StripeRead): number!StripeFailure!StripeContext {
+effect function ownedPlanPreview(subscriptionId: string, binding: StripePlanBinding, params: Params, call: StripeRead) {
   const path = "/v1/invoices/create_preview"
-  const params: Params = [
-    ["customer", binding.customerId], ["subscription", subscriptionId],
-    ["preview_mode", preview.kind === "recurring" ? "recurring" : "next"],
-    ["subscription_details[items][0][id]", binding.subscriptionItemId],
-    ["subscription_details[items][0][price]", binding.targetPriceId],
-    ["subscription_details[items][0][quantity]", "1"]
-  ]
-  const invoice = try read(StripeInvoice, {
-    method: "POST", path, timeout: call.timeout,
-    params: preview.kind === "recurring" ? params : [...params,
-      ["subscription_details[proration_behavior]", "always_invoice"],
-      ["subscription_details[proration_date]", seconds(preview.date)]]
-  })
+  const invoice = try read(StripeInvoice, { method: "POST", path, timeout: call.timeout, params })
   const lines = invoice.lines.data
   if (!invoice.id.startsWith("upcoming_in_") || invoice.status !== "draft" || invoice.customer !== binding.customerId ||
     invoice.parent?.subscription_details?.subscription !== subscriptionId || invoice.livemode !== try livemode() ||
@@ -375,14 +364,40 @@ export effect function previewPlanChange(subscriptionId: string, binding: Stripe
     invoice.lines.has_more || !lines.every((line) => line.currency === "usd" && line.quantity === 1 &&
       line.parent?.subscription_item_details?.subscription_item === binding.subscriptionItemId && Number.isSafeInteger(line.amount)))
     throw new StripeInvalidResponse({ path, status: 200 })
+  return invoice
+}
+
+export effect function previewPlanChange(subscriptionId: string, binding: StripePlanBinding, preview: StripePlanPreview, call: StripeRead): number!StripeFailure!StripeContext {
+  const params: Params = [
+    ["customer", binding.customerId], ["subscription", subscriptionId],
+    ["preview_mode", preview.kind === "recurring" ? "recurring" : "next"],
+    ["subscription_details[items][0][id]", binding.subscriptionItemId],
+    ["subscription_details[items][0][price]", binding.targetPriceId],
+    ["subscription_details[items][0][quantity]", "1"]
+  ]
+  const invoice = try ownedPlanPreview(subscriptionId, binding, preview.kind === "recurring" ? params : [...params,
+    ["subscription_details[proration_behavior]", "always_invoice"], ["subscription_details[proration_date]", seconds(preview.date)]], call)
+  const lines = invoice.lines.data
   const [first] = lines
   const fits = preview.kind === "recurring"
     ? lines.length === 1 && first !== undefined && first.parent?.subscription_item_details?.proration === false &&
       first.pricing?.price_details?.price === binding.targetPriceId && first.period.start < first.period.end &&
       first.amount === preview.expectedCents && invoice.amount_due === preview.expectedCents
     : proratedLinesFit(lines, binding, preview.date, preview.periodEnd)
-  if (!fits) throw new StripeInvalidResponse({ path, status: 200 })
+  if (!fits) throw new StripeInvalidResponse({ path: "/v1/invoices/create_preview", status: 200 })
   return invoice.amount_due
+}
+
+export effect function previewUndoRenewal(subscriptionId: string, binding: StripePlanBinding, periodEnd: number, expectedCents: number, call: StripeRead) {
+  const invoice = try ownedPlanPreview(subscriptionId, binding, [
+    ["customer", binding.customerId], ["subscription", subscriptionId], ["preview_mode", "next"],
+    ["subscription_details[cancel_at_period_end]", "false"], ["subscription_details[proration_behavior]", "none"]
+  ], call)
+  const [line] = invoice.lines.data
+  if (invoice.lines.data.length !== 1 || line === undefined || line.parent?.subscription_item_details?.proration !== false ||
+      line.pricing?.price_details?.price !== binding.sourcePriceId || line.period.start * 1000 !== periodEnd ||
+      line.period.end <= line.period.start || line.amount !== expectedCents || invoice.amount_due !== expectedCents)
+    throw new StripeInvalidResponse({ path: "/v1/invoices/create_preview", status: 200 })
 }
 
 export interface StripeUpgradeTerms {
@@ -460,6 +475,34 @@ export effect function findUpgradeOrigin(terms: StripeUpgradeTerms, operationKey
   if (invoice === undefined || !ownsUpgradeInvoice(invoice, terms, event.livemode, try Clock.currentTimeMillis) ||
     event.created < invoice.created) return undefined
   return { invoiceId: invoice.id, requestId: event.requestId }
+}
+
+export type StripeUndoTerms = Omit<StripeUpgradeTerms, "effectiveAt" | "dueNowCents">
+
+function ownsUndo(subscription: typeof StripeSubscription.Type, terms: StripeUndoTerms, live: boolean): boolean {
+  const [item] = subscription.items.data
+  return subscription.id === terms.subscriptionId && subscription.customer === terms.binding.customerId &&
+    subscription.livemode === live && subscription.status === "active" && !subscription.cancel_at_period_end &&
+    (subscription.schedule ?? null) === terms.binding.scheduleId && !subscription.items.has_more &&
+    subscription.items.data.length === 1 && item !== undefined && item.id === terms.binding.subscriptionItemId && item.quantity === 1 &&
+    item.price.id === terms.binding.targetPriceId && item.current_period_start * 1000 === terms.periodStart &&
+    item.current_period_end * 1000 === terms.periodEnd
+}
+
+export effect function dispatchPlanUndo(terms: StripeUndoTerms, mutation: StripeMutation): void!StripeFailure!StripeContext {
+  const path = `/v1/subscriptions/${id(terms.subscriptionId)}`
+  const response = try send({ method: "POST", path, ...mutation, params: [["cancel_at_period_end", "false"]] })
+  const subscription = decoded(StripeSubscription, response.body)
+  if (response.status !== 200 || response.requestId === undefined || !providerRequestId.test(response.requestId) ||
+      response.idempotencyKey !== mutation.idempotencyKey || subscription === undefined || !ownsUndo(subscription, terms, try livemode()))
+    throw new StripeInvalidResponse({ path, status: response.status })
+}
+
+export effect function findUndoOutcome(terms: StripeUndoTerms, operationKey: string, call: StripeRead): (LookupResult | undefined)!StripeFailure!StripeContext {
+  const event = try operationEvent("customer.subscription.updated", terms.sentAt, operationKey, call)
+  if (event === undefined) return undefined
+  const subscription = decoded(StripeSubscription, event.data.object)
+  return subscription !== undefined && ownsUndo(subscription, terms, event.livemode) ? { tag: "EffectSeen" } : undefined
 }
 
 export effect function upgradeInvoice(terms: StripeUpgradeTerms, origin: StripeUpgradeOrigin, call: StripeRead) {

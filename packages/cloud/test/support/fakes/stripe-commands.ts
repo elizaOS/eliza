@@ -5,10 +5,38 @@ import { fakeSecretKey, parseForm, type StripeFake, type StripeObject } from "./
 
 const isSubscription = (object: StripeObject): object is Extract<StripeObject, { readonly object: "subscription" }> => object.object === "subscription";
 
-export function stripeRenewalPreview(stripe: StripeFake): FakeHandler {
-  return (request) => {
-    if (request.method !== "POST" || request.path !== "/v1/invoices/create_preview") return undefined;
+export function stripeRenewalPreview(stripe: StripeFake, controls: {
+  readonly now: () => number;
+  readonly moveTerms: () => boolean;
+  readonly loseReply: () => boolean;
+  readonly exposeOrigin: () => boolean;
+}): FakeHandler {
+  const events: Array<{ id: string; type: string; created: number; livemode: boolean;
+    request: { id: string; idempotency_key: string }; data: { object: StripeObject } }> = [];
+  return async (request) => {
     if (request.headers.authorization !== `Bearer ${fakeSecretKey}`) return { status: 401, body: { error: { type: "invalid_request_error", message: "Invalid API Key provided." } } };
+    const query = new URLSearchParams(request.body);
+    if (request.method === "GET" && request.path === "/v1/events" && request.query.get("type") === "customer.subscription.updated") {
+      return { status: 200, body: { has_more: false, data: controls.exposeOrigin() ? events : events.map((event) => ({
+        ...event, request: { ...event.request, idempotency_key: "unrelated" }
+      })) } };
+    }
+    const updated = /^\/v1\/subscriptions\/([^/]+)$/.exec(request.path)?.[1];
+    const key = request.headers["idempotency-key"];
+    if (request.method === "POST" && updated !== undefined && query.get("cancel_at_period_end") === "false" && typeof key === "string") {
+      const answer = await stripe.handler(request);
+      if (answer === undefined || answer.status !== 200) return answer;
+      const subscription = stripe.object(updated);
+      if (!isSubscription(subscription)) return answer;
+      const requestId = `req_undo${events.length + 1}`;
+      events.push({ id: `evt_undo${events.length + 1}`, type: "customer.subscription.updated",
+        created: Math.floor(controls.now() / 1000), livemode: subscription.livemode,
+        request: { id: requestId, idempotency_key: key }, data: { object: subscription } });
+      if (controls.loseReply()) return { status: 504, body: { error: { type: "api_error" } } };
+      return { ...answer, headers: { ...answer.headers, "request-id": requestId, "idempotency-key": key } };
+    }
+    if (request.method !== "POST" || request.path !== "/v1/invoices/create_preview" ||
+        query.get("subscription_details[cancel_at_period_end]") !== "false") return stripe.handler(request);
     const form = parseForm(request.body);
     const id = typeof form.subscription === "string" ? form.subscription : "";
     const subscription = (() => {
@@ -18,7 +46,9 @@ export function stripeRenewalPreview(stripe: StripeFake): FakeHandler {
         return undefined;
       }
     })();
-    if (subscription === undefined || !isSubscription(subscription) || subscription.customer !== form.customer) {
+    if (subscription === undefined || !isSubscription(subscription) || subscription.customer !== form.customer ||
+        !subscription.cancel_at_period_end || query.get("preview_mode") !== "next" ||
+        query.get("subscription_details[proration_behavior]") !== "none") {
       return { status: 404, body: { error: { type: "invalid_request_error", code: "resource_missing", message: `No such subscription: '${id}'` } } };
     }
     const item = subscription.items.data[0];
@@ -26,18 +56,25 @@ export function stripeRenewalPreview(stripe: StripeFake): FakeHandler {
     return {
       status: 200,
       body: {
-        object: "invoice",
+        id: "upcoming_in_renewal", object: "invoice", status: "draft",
+        amount_paid: 0, created: item.current_period_end, livemode: subscription.livemode,
+        parent: { subscription_details: { subscription: subscription.id } },
         customer: subscription.customer,
         subscription: subscription.id,
         currency: "usd",
-        amount_due: amount,
+        amount_due: controls.moveTerms() ? amount + 1 : amount,
         subtotal: amount,
         total: amount,
         starting_balance: 0,
         period_start: item.current_period_end,
         period_end: item.current_period_end,
         next_payment_attempt: item.current_period_end,
-        lines: { object: "list", has_more: false, data: [{ object: "line_item", amount, period: { start: item.current_period_end, end: item.current_period_end + (item.current_period_end - item.current_period_start) }, pricing: { price_details: { price: item.price.id } } }] },
+        lines: { object: "list", has_more: false, data: [{
+          id: "il_renewal" + item.id, object: "line_item", amount, currency: "usd", quantity: 1,
+          period: { start: item.current_period_end, end: item.current_period_end + (item.current_period_end - item.current_period_start) },
+          pricing: { price_details: { price: item.price.id } },
+          parent: { subscription_item_details: { subscription_item: item.id, proration: false } }
+        }] },
       },
     };
   };

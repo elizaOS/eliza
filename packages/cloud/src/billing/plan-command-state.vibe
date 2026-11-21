@@ -26,8 +26,9 @@ export function planCommandView(row: PlanCommandRecord, now: number) {
     NotListed: "prepared", ShowDispatched: "dispatched", ShowUnknown: "unknown",
     ShowAwaitingPayment: "awaiting_payment", ShowSucceeded: "succeeded", ShowRejected: "rejected"
   } as const
+  const kind: "undo" | "downgrade" | "upgrade" = command.kind === "UndoCommand" ? "undo" : command.kind === "DowngradeCommand" ? "downgrade" : "upgrade"
   return {
-    commandId: command.commandId, kind: command.kind === "DowngradeCommand" ? "downgrade" as const : "upgrade" as const, subscriptionId: command.subscriptionId,
+    commandId: command.commandId, kind, subscriptionId: command.subscriptionId,
     status: wire[status], expectedRevision: command.expectedRevision, resultRevision: command.resultRevision === 0 ? null : command.resultRevision,
     createdAt: command.createdAt
   }
@@ -68,7 +69,7 @@ export effect function readPlanCommand(tx: Tx, commandId: string, lock: boolean)
   const confirmationDigest = toText(row.quote_confirmation_digest)
   const expectedScheduleId = command?.schedule.tag === "ReviewedExisting" || command?.schedule.tag === "ScheduleVerified"
     ? command.schedule.scheduleId : undefined
-  if (command === undefined || (command.kind !== "UpgradeCommand" && command.kind !== "DowngradeCommand") || command.commandId !== commandId ||
+  if (command === undefined || (command.kind !== "UpgradeCommand" && command.kind !== "DowngradeCommand" && command.kind !== "UndoCommand") || command.commandId !== commandId ||
       planCommandActor(command).agentId !== organizationId || planCommandActor(command).actorId === "" ||
       (command.kind === "DowngradeCommand" && (confirmationDigest === undefined ||
         (Option.isSome(schedule) ? schedule.value.scheduleId : undefined) !== expectedScheduleId)) ||

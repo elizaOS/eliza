@@ -4,9 +4,10 @@ import { amountCentsOf } from "../../gen/cloud__billing__plans.effect.vibe"
 import { authenticate, type Caller } from "../http/request-auth.vibe"
 import { refused } from "../http/refusal.vibe"
 import { Deployment } from "../profile/profile.vibe"
-import { bindPlanChange, previewPlanChange, readScheduleToConfigure, verifySchedulePreview, StripePlanBinding, StripeScheduleBinding } from "../providers/stripe.vibe"
+import { bindPlanChange, previewPlanChange, previewUndoRenewal, readScheduleToConfigure, verifySchedulePreview, StripePlanBinding, StripeScheduleBinding } from "../providers/stripe.vibe"
+import { requestDigest } from "../shared/dispatch-once.vibe"
 import { newId } from "../shared/sealing.vibe"
-import { Store, type Row, type Tx } from "../store/connection.vibe"
+import { Store, toText, type Row, type Tx } from "../store/connection.vibe"
 import { RowCorrupt } from "../store/rows.vibe"
 import { parsePlanKey, wirePlanKey, type PaidPlanKey } from "./plans.vibe"
 import { readSubscription } from "./subscriptions.vibe"
@@ -32,12 +33,15 @@ export effect function freshOwner(authorization: string | undefined) {
 type ReviewOwner = Pick<Extract<Caller, { readonly kind: "session" }>, "organizationId" | "userId">
 type ChangeKind = "UpgradeCommand" | "DowngradeCommand"
 
-export interface ReviewPlanChange {
-  readonly kind: ChangeKind
-  readonly targetPlanKey: PaidPlanKey
+export type ReviewPlanChange = {
   readonly subscriptionId?: string
   readonly expectedSubscriptionRevision?: number
-}
+} & (
+  | { readonly kind: ChangeKind; readonly targetPlanKey: PaidPlanKey }
+  | { readonly kind: "UndoCommand" }
+)
+
+const wireKind = { UpgradeCommand: "upgrade", DowngradeCommand: "downgrade", UndoCommand: "undo" } as const
 
 export interface ReviewedPlanQuote {
   readonly command: Command
@@ -67,6 +71,17 @@ export effect function readReviewedPlanQuote(tx: Tx, owner: ReviewOwner, quoteId
   return try reviewedQuote(row, quoteId)
 }
 
+export effect function readLatestUndoQuote(tx: Tx, owner: ReviewOwner) {
+  const rows = try tx.query(
+    "SELECT id, reviewed_command, stripe_plan_binding, stripe_schedule_binding FROM quotes WHERE organization_id=$1 AND reviewer_user_id=$2 AND command_kind='undo' LIMIT 2",
+    [owner.organizationId, owner.userId]
+  )
+  if (rows.length === 0) throw refused("BillingStateConflict")
+  const quoteId = toText(rows[0]?.id)
+  if (rows.length !== 1 || quoteId === undefined) throw new RowCorrupt({ table: "quotes", key: owner.organizationId, cause: "reviewed undo quote" })
+  return try reviewedQuote(rows[0], quoteId)
+}
+
 export effect function consumeReviewedPlanQuote(tx: Tx, owner: ReviewOwner, quoteId: string) {
   const row = (try tx.query(
     "DELETE FROM quotes WHERE id=$1 AND organization_id=$2 AND reviewer_user_id=$3 RETURNING reviewed_command, stripe_plan_binding, stripe_schedule_binding",
@@ -79,8 +94,10 @@ export effect function reviewPlanChange(authorization: string | undefined, reque
   const caller = try freshOwner(authorization)
   const store = try Store
   const subscription = try store.transaction((tx) => readSubscription(tx, caller.organizationId))
-  const target = parsePlanKey(request.targetPlanKey)
   const source = wirePlanKey(subscription.planKey)
+  const targetKey = request.kind === "UndoCommand" ? (source === "free" ? undefined : source) : request.targetPlanKey
+  if (targetKey === undefined) throw refused("BillingStateConflict")
+  const target = parsePlanKey(targetKey)
   const billing = (try Deployment).settings.billing
   if (billing === undefined) throw refused("CapabilityUnavailable")
   if (target === undefined || target === "Free" ||
@@ -95,13 +112,15 @@ export effect function reviewPlanChange(authorization: string | undefined, reque
   if (!canReview(clocked, subscription, request.kind, target, quoteId, 0, true)) throw refused("BillingStateConflict")
   const binding = bindPlanChange({
     subscriptionId: subscription.subscriptionId, customerId: subscription.customer.customerId,
-    sourcePriceId: billing.plans[source].priceId, targetPriceId: billing.plans[request.targetPlanKey].priceId,
-    periodStart: subscription.periodStart, periodEnd: subscription.periodEnd
+    sourcePriceId: billing.plans[source].priceId, targetPriceId: billing.plans[targetKey].priceId,
+    periodStart: subscription.periodStart, periodEnd: subscription.periodEnd, cancelAtPeriodEnd: request.kind === "UndoCommand"
   }, stripeTimeout) catch effect () => {
     throw refused("ProviderUnavailable", "NoReason", (try Clock.currentTimeMillis) + 5_000)
   }
   const dueNow = effect {
-    if (request.kind === "UpgradeCommand" || binding.scheduleId === null)
+    if (request.kind === "UndoCommand")
+      try previewUndoRenewal(subscription.subscriptionId, binding, subscription.periodEnd, amountCentsOf(target), stripeTimeout)
+    else if (request.kind === "UpgradeCommand" || binding.scheduleId === null)
       try previewPlanChange(subscription.subscriptionId, binding, { kind: "recurring", expectedCents: amountCentsOf(target) }, stripeTimeout)
     return request.kind === "UpgradeCommand"
       ? try previewPlanChange(subscription.subscriptionId, binding, { kind: "proration", date: reviewedAt, periodEnd: subscription.periodEnd }, stripeTimeout)
@@ -143,20 +162,40 @@ export effect function reviewPlanChange(authorization: string | undefined, reque
     try tx.query("DELETE FROM quotes WHERE organization_id=$1 AND reviewer_user_id IS NOT NULL", [caller.organizationId])
     try tx.query(
       "INSERT INTO quotes (id,organization_id,command_kind,target_plan_key,proration_date,due_now_cents,recurring_cents,adjustment_micros,expires_at,reviewer_user_id,reviewed_command,stripe_plan_binding,stripe_schedule_binding) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
-      [quoteId, caller.organizationId, request.kind === "UpgradeCommand" ? "upgrade" : "downgrade", request.targetPlanKey,
+      [quoteId, caller.organizationId, wireKind[request.kind], targetKey,
         terms.effectiveAt / 1000, terms.dueNowCents, terms.recurringCents, terms.adjustment, terms.expiresAt, caller.userId,
         JSON.stringify(command), JSON.stringify(binding), schedule === undefined ? null : JSON.stringify(schedule)]
     )
   })
+  if (request.kind === "UndoCommand") return {
+    kind: "renewal_estimate" as const, quoteId, subscriptionId: command.subscriptionId,
+    expectedSubscriptionRevision: command.expectedRevision, planKey: targetKey,
+    renewalAt: terms.effectiveAt, amountDueCents: terms.recurringCents, currency: "usd" as const,
+    observedAt: terms.reviewedAt, expiresAt: terms.expiresAt
+  }
   return {
     quoteId,
     review: {
       kind: request.kind === "UpgradeCommand" ? "upgrade_estimate" : "downgrade_estimate",
-      targetPlanKey: request.targetPlanKey,
+      targetPlanKey: targetKey,
       dueNow: { amountDueCents: terms.dueNowCents },
       recurringEstimate: { amountDueCents: terms.recurringCents },
       effectiveAt: terms.effectiveAt,
       expiresAt: terms.expiresAt
     }
   }
+}
+
+
+export effect function recheckUndoPlanQuote(quote: ReviewedPlanQuote) {
+  const terms = quote.command.quote
+  const key = wirePlanKey(terms.sourcePlanKey)
+  const billing = (try Deployment).settings.billing
+  if (billing === undefined || key === "free") throw refused("CapabilityUnavailable")
+  if (quote.command.kind !== "UndoCommand" || quote.binding.sourcePriceId !== billing.plans[key].priceId ||
+      quote.binding.targetPriceId !== billing.plans[key].priceId) throw refused("BillingStateConflict")
+  const current = try bindPlanChange({ ...quote.binding, subscriptionId: quote.command.subscriptionId,
+    periodStart: terms.periodStart, periodEnd: terms.periodEnd, cancelAtPeriodEnd: true }, stripeTimeout)
+  if (requestDigest(current) !== requestDigest(quote.binding)) throw refused("BillingStateConflict")
+  try previewUndoRenewal(quote.command.subscriptionId, current, terms.periodEnd, terms.recurringCents, stripeTimeout)
 }

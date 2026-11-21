@@ -22,7 +22,7 @@ import { migrate, Store, storeLayer } from "../src/store/store.vibe"
 import { startFakeServer, type FakeServer, type FakeHandler, type FakeAnswer } from "./support/fakes.ts"
 import { callCloud, type CallInit } from "./support/http.ts"
 import { createStripeFake, fakeSecretKey, type StripeFake } from "./support/fakes/stripe.ts"
-import { stripePlanDowngrade, stripePlanPreview, stripePlanUpgrade } from "./support/fakes/stripe-commands.ts"
+import { stripePlanDowngrade, stripePlanPreview, stripePlanUpgrade, stripeRenewalPreview } from "./support/fakes/stripe-commands.ts"
 import { openRenewal } from "../src/billing/allowance.vibe"
 import { catalogPrices, secrets, testProfile } from "./support/profile.ts"
 
@@ -321,7 +321,7 @@ describe("WP0 Foundation: request authentication", () => {
 
 schema PlanReviewBody { targetPlanKey: "plus_monthly" | "pro_monthly" }
 
-function reviewRoute(path: `/${string}`, kind: ReviewPlanChange["kind"]): Route {
+function reviewRoute(path: `/${string}`, kind: Exclude<ReviewPlanChange["kind"], "UndoCommand">): Route {
   return {
     method: "POST", path, auth: "FreshSession", capability: "billing",
     handler: (context) => effect {
@@ -717,7 +717,13 @@ describe("Node subscriptions", () => {
   it.live("Keep allowance and cancellation coherent when a provider event replays over an older Worker row (spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\"; spec/cloud/billing/subscriptions.md, \"Story: Change my plan one command at a time\")", () => scoped(effect {
     const now = try Clock.currentTimeMillis
     const fake = try sync(() => createStripeFake({ now: () => now }))
-    const cloud = try testHttp(billing.routes, fake.handler)
+    let movedTerms = false
+    let loseUndoReply = false
+    let exposeUndoOrigin = false
+    const renewalPreview = try sync(() => stripeRenewalPreview(fake, {
+      now: Date.now, moveTerms: () => movedTerms, loseReply: () => loseUndoReply, exposeOrigin: () => exposeUndoOrigin
+    }))
+    const cloud = try testHttp(billing.routes, renewalPreview)
     const owner = "subscriber"
     const organizationId = "org-subscriber"
     const token = sessionToken("s")
@@ -751,12 +757,42 @@ describe("Node subscriptions", () => {
     const staleProof = try cloud.call(cancel, oldToken, { json })
     const canceled = try cloud.call(cancel, token, { json })
     const again = try cloud.call(cancel, token, { json })
+    const cancelDispatches = try sync(() => cloud.fakes.seen.filter((request) => request.method === "POST" && request.path.endsWith("/subscriptions/" + subscriptionId)).length)
     const receipt = canceled.body as CommandView
     const observed = try readProvider
     const current = try cloud.store.transaction((tx) => reconcileSubscription(tx, organizationId, observed.observation, now + 1000))
     const after = try cloud.call("/api/v1/billing/limits", token)
     const afterSnapshot = (after.body as { data: BillingSnapshot }).data
     const staleRevision = try cloud.call(cancel, token, { json: { ...json, idempotencyKey: "stale-after-cancel" } })
+    const undo = cancel + "/undo"
+    const originalUndo = { json: { subscriptionId, expectedSubscriptionRevision: current.revision, idempotencyKey: "reviewed-undo" } }
+    const withoutReview = try cloud.call(undo, token, originalUndo)
+    const preview = try cloud.call(undo + "/review", token)
+    const quote = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(preview.body)
+    const requestUndo = { json: { ...originalUndo.json, quoteId: quote.quoteId } }
+    try sync(() => { movedTerms = true })
+    const changedPreview = try cloud.call(undo, token, requestUndo)
+    try sync(() => { movedTerms = false })
+    const retainedQuote = try sql(cloud, "SELECT command_kind,reviewer_user_id FROM quotes WHERE id=$1", [quote.quoteId])
+    try sync(() => { loseUndoReply = true })
+    const lostUndo = try cloud.call(undo, token, requestUndo)
+    const unknown = lostUndo.body as CommandView
+    const waiting = try cloud.call(undo + "/" + unknown.commandId, token)
+    const whileUnknown = try cloud.store.transaction((tx) => readSubscription(tx, organizationId))
+    try sync(() => { loseUndoReply = false; exposeUndoOrigin = true })
+    const undone = try cloud.call(undo + "/" + unknown.commandId, token)
+    const receiptUndo = undone.body as CommandView
+    const replayUndo = try cloud.call(undo, token, requestUndo)
+    const conflictingUndo = try cloud.call(undo, token, { json: { ...requestUndo.json, quoteId: "not-the-original-quote" } })
+    const consumed = try sql(cloud, "SELECT id FROM quotes WHERE id=$1", [quote.quoteId])
+    const reviewedCommand = try sql(cloud, "SELECT state->'quote'->>'quoteId' AS quote_id, state->>'phase' AS phase, stripe_plan_binding->>'customerId' AS customer_id FROM subscription_commands WHERE key=$1", [unknown.commandId])
+    const reCanceled = try cloud.call(cancel, token, { json: { subscriptionId, expectedSubscriptionRevision: receiptUndo.resultRevision,
+      idempotencyKey: "cancel-again-after-reviewed-undo" } })
+    const reCancelReceipt = reCanceled.body as CommandView
+    const replacementReview = try cloud.call(undo + "/review", token)
+    const compatible = try cloud.call(undo, token, { json: { subscriptionId, expectedSubscriptionRevision: reCancelReceipt.resultRevision,
+      idempotencyKey: "undo-compatible-body-after-review" } })
+    const compatibleReceipt = compatible.body as CommandView
     const ended = try promise(() => stripe.subscriptions.cancel(subscriptionId))
     const terminal = try readProvider
     try cloud.store.transaction((tx) => reconcileSubscription(tx, organizationId, terminal.observation, now + 2000))
@@ -765,15 +801,21 @@ describe("Node subscriptions", () => {
     const dispatches = try sync(() => cloud.fakes.seen.filter((request) => request.method === "POST" && request.path.endsWith(`/subscriptions/${subscriptionId}`)).length)
     try check(() => assert.deepStrictEqual({
       before: [before.status, beforeSnapshot.plan.key, beforeSnapshot.subscription?.control.action, beforeSnapshot.allowance?.granted],
-      staleProof: staleProof.status, mutations: [canceled.status, again.status, receipt.status, again.body, dispatches],
+      staleProof: staleProof.status, mutations: [canceled.status, again.status, receipt.status, again.body, cancelDispatches, dispatches],
       after: [after.status, afterSnapshot.subscription?.control, afterSnapshot.allowance, current.revision],
       staleRevision: staleRevision.status,
+      undo: [withoutReview.status, preview.status, changedPreview.status, retainedQuote, lostUndo.status, unknown.status, waiting.body,
+        whileUnknown.liveCommand.tag, undone.status, receiptUndo.status, replayUndo.body, conflictingUndo.status, consumed,
+        reviewedCommand, reCanceled.status, replacementReview.status, compatible.status, compatibleReceipt.status],
       revoked: [ended.status, revoked.status, revokedSnapshot.plan.key, revokedSnapshot.allowance?.state, revokedSnapshot.allowance?.available]
     }, {
       before: [200, "plus_monthly", "cancel", 25_000_000],
-      staleProof: 428, mutations: [200, 200, "succeeded", canceled.body, 1],
+      staleProof: 428, mutations: [200, 200, "succeeded", canceled.body, 1, 4],
       after: [200, { action: "undo", eligible: true, expectedSubscriptionRevision: receipt.resultRevision }, beforeSnapshot.allowance, receipt.resultRevision],
       staleRevision: 409,
+      undo: [409, 200, 503, [{ command_kind: "undo", reviewer_user_id: owner }], 200, "unknown", lostUndo.body,
+        "Live", 200, "succeeded", undone.body, 409, [], [{ quote_id: quote.quoteId, phase: "Applied", customer_id: customer.id }],
+        200, 200, 200, "succeeded"],
       revoked: ["canceled", 200, "free", "closed", 0]
     }))
   }))
