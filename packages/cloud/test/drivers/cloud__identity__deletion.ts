@@ -11,8 +11,22 @@ const keys = ["a", "b"];
 const person = (key: string) => `deleted-${key}`;
 const emitted = new Map<string, unknown>();
 
+type ProviderKey = Deletion["receipt"]["providerKey"];
+
+const providerIdPrefix = (key: string) => `${key}/`;
+
+function logicalProviderKey(key: string, providerKey: ProviderKey): ProviderKey {
+  if (providerKey.providerId === "") return providerKey;
+  const prefix = providerIdPrefix(key);
+  if (!providerKey.providerId.startsWith(prefix)) throw new Error("the stored provider key belongs to a different deletion");
+  return { ...providerKey, providerId: providerKey.providerId.slice(prefix.length) };
+}
+
 async function dispatch(key: string, event: Event) {
-  const done = await cloud.run(within((tx) => Effect.flatMap(loadRow(tx, deletionRows, person(key)), (loaded) => stepDeletion(tx, person(key), event, loaded.state.receipt.session.now))));
+  const stored = event.type === "prepareCall" && event.providerKey.providerId !== ""
+    ? { ...event, providerKey: { ...event.providerKey, providerId: providerIdPrefix(key) + event.providerKey.providerId } }
+    : event;
+  const done = await cloud.run(within((tx) => Effect.flatMap(loadRow(tx, deletionRows, person(key)), (loaded) => stepDeletion(tx, person(key), stored, loaded.state.receipt.session.now))));
   emitted.set(key, done.kind === "done" ? done.value.out : []);
   if (done.kind === "done") return "accepted" as const;
   if (done.tag === "Rejected") return "refused" as const;
@@ -22,7 +36,12 @@ async function dispatch(key: string, event: Event) {
 async function observe(key: string): Promise<Deletion> {
   const done = await cloud.run(within((tx) => loadRow(tx, deletionRows, person(key), false)));
   if (done.kind === "failed") throw new Error(`reading the deletion failed with ${done.tag}`, { cause: done.error });
-  return done.value.state;
+  const state = done.value.state;
+  return {
+    ...state,
+    receipt: { ...state.receipt, providerKey: logicalProviderKey(key, state.receipt.providerKey) },
+    usedKeys: state.usedKeys.map((providerKey) => logicalProviderKey(key, providerKey)),
+  };
 }
 
 export const driver: Driver & AsyncDisposable = {
