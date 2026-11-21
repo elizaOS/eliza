@@ -13,6 +13,10 @@
   },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
+  "imports": {
+    "#chromium-component": "./browser/chromium/component/chromium-component.mjs",
+    "#chromium-android-host": "./browser/chromium/component/android-host.mjs"
+  },
   "files": [
     "dist",
     "android",
