@@ -68,7 +68,7 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
   if (inference) return inferenceRequest(request, env, db, account, workerFetch)
   if (google) {
     const response = await googleRequest(request, env, db, account)
-    if (response.ok && path === "/api/v1/eliza/google/gmail/attachment" && await sessionAccount(request, db) !== account)
+    if (response.ok && request.method === "GET" && path.startsWith("/api/v1/eliza/google/gmail/") && await sessionAccount(request, db) !== account)
       return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
     return response
   }
