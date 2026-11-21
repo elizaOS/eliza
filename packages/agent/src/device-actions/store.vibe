@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment never returns and retires every open offer"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A settled request never changes again"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"
+// spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment never returns and retires every open offer"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A settled request never changes again"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "The claim commits the dispatch once, before the deadline"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"
 import type { IDatabaseAdapter } from "@elizaos/core"
 import { apply, initial, machineOver, noOwner, Rejected, step, type DeviceRequest, type Machine } from "../../gen/agent__deviceActions.effect.vibe"
 import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
@@ -12,8 +12,8 @@ module node {
   import { AsyncLocalStorage } from "node:async_hooks"
   import { randomUUID } from "node:crypto"
   import { Schema } from "effect"
-  import type { IDatabaseAdapter, UUID } from "@elizaos/core"
-  import { canClaimCompletion, canDeliverCompletion, canReceipt, noOwner, parseState, requestSettled, step, type CompletionHint, type DeviceRequest, type Event } from "../../gen/agent__deviceActions.ts"
+  import { validateUuid, type IDatabaseAdapter, type UUID } from "@elizaos/core"
+  import { canClaim, canClaimCompletion, canDeliverCompletion, canReceipt, noOwner, parseState, requestSettled, step, type CompletionHint, type DeviceRequest, type Event } from "../../gen/agent__deviceActions.ts"
   import type { SessionOwner } from "../../gen/core__sessions.ts"
   import { allCapabilities, canSetViewProfile, setViewProfile, type DeviceView, type Need, type RevisionRead, type ViewProfile } from "../../gen/agent__deviceActions__capabilities.ts"
   import type { ReadBinding } from "../../gen/agent__deviceActions__operations.ts"
@@ -45,11 +45,17 @@ module node {
     readonly binding: ReadBinding | BindingAuthority
   }
 
+  export interface ClaimBinding {
+    readonly modelAttemptId: number
+    readonly wireAttemptId: UUID
+  }
+
   export interface RequestRow {
     readonly proposalId: string
     readonly revision: number
     readonly state: DeviceRequest
     readonly terms: RetainedRequestTerms
+    readonly claim: ClaimBinding | undefined
     readonly result: unknown
     readonly createdAt: number
   }
@@ -70,7 +76,7 @@ module node {
 
   type Row = {
     proposal_id: string; revision: number; state: unknown; operation: unknown; binding: string
-    binding_authority: unknown; bound_profile: unknown; need: unknown; result: unknown; created_at: number | string
+    binding_authority: unknown; wire_attempt_id: unknown; bound_profile: unknown; need: unknown; result: unknown; created_at: number | string
   }
 
   const views = {
@@ -91,7 +97,7 @@ module node {
   const decodeTerms = Schema.decodeUnknownSync(Terms)
   const decodeAuthority = Schema.decodeUnknownSync(Authority, { onExcessProperty: "error" })
   const decodeViews = Schema.decodeUnknownSync(Views)
-  const columns = "proposal_id, revision, state, operation, binding, binding_authority, bound_profile, need, result, created_at"
+  const columns = "proposal_id, revision, state, operation, binding, binding_authority, wire_attempt_id, bound_profile, need, result, created_at"
 
   function connection(value: object): Sql {
     if (!("query" in value) || typeof value.query !== "function") throw new TypeError("The device request store needs a SQL connection")
@@ -112,11 +118,21 @@ module node {
     const terms = decodeTerms({ binding: row.binding, boundProfile: row.bound_profile, need: row.need })
     const binding = row.binding_authority === null ? terms.binding : decodeAuthority(row.binding_authority)
     if (typeof binding !== "string" && binding.kind !== terms.binding) throw new TypeError("Stored device authority does not match its binding")
+    const state = parsed(`request ${row.proposal_id}`, row.state)
+    const claim = row.wire_attempt_id === null ? undefined : {
+      modelAttemptId: state.session.currentClaim, wireAttemptId: keptAttemptId(row.wire_attempt_id),
+    }
     return {
-      proposalId: row.proposal_id, revision: row.revision, state: parsed(`request ${row.proposal_id}`, row.state),
+      proposalId: row.proposal_id, revision: row.revision, state, claim,
       terms: { operation: row.operation, binding, boundProfile: terms.boundProfile, need: { required: [...terms.need.required], oneOf: [...terms.need.oneOf] } },
       result: row.result, createdAt: Number(row.created_at),
     }
+  }
+
+  function keptAttemptId(raw: unknown): UUID {
+    const id = validateUuid(raw)
+    if (id === null) throw new TypeError("The stored device attempt is invalid")
+    return id
   }
 
   async function enrollmentIn(sql: Sql): Promise<EnrollmentRow | undefined> {
@@ -162,7 +178,7 @@ module node {
         }
       }
       const inserted = await sql.query(
-        `INSERT INTO device_requests (${columns}, settled) VALUES ($1, 1, $2::jsonb, $3::jsonb, $4, $5::jsonb, $6::jsonb, $7::jsonb, NULL, $8, $9)
+        `INSERT INTO device_requests (${columns}, settled) VALUES ($1, 1, $2::jsonb, $3::jsonb, $4, $5::jsonb, NULL, $6::jsonb, $7::jsonb, NULL, $8, $9)
            ON CONFLICT (proposal_id) DO NOTHING`,
         [offered.proposalId, JSON.stringify(offered), JSON.stringify(terms.operation), checked.binding,
           authority === undefined ? null : JSON.stringify(authority),
@@ -181,7 +197,15 @@ module node {
   }
 
   export type ReceiptEvent = Extract<Event, { type: "receipt" }>
-  export type RequestEvent = Exclude<Event, ReceiptEvent>
+  export type RequestEvent = Exclude<Event, ReceiptEvent | Extract<Event, { type: "claim" }>>
+  export interface RequestClaim {
+    readonly proposalId: string
+    readonly digest: string
+    readonly by: SessionOwner
+  }
+  export type ClaimCommit =
+    | { readonly kind: "claimed"; readonly state: DeviceRequest; readonly binding: ClaimBinding }
+    | { readonly kind: "missing" | "refused" }
 
   export interface AdmittedRequestReceipt {
     readonly proposalId: string
@@ -194,14 +218,19 @@ module node {
     | { readonly kind: "recorded"; readonly state: DeviceRequest }
     | { readonly kind: "missing" | "refused" }
 
-  async function keepRequest(sql: Sql, proposalId: string, read: number, next: DeviceRequest, result?: { readonly json: string | null }): Promise<Written> {
+  type ExtraEvidence =
+    | { readonly kind: "receipt"; readonly value: string | null }
+    | { readonly kind: "claim"; readonly value: UUID }
+
+  const evidenceColumn = { receipt: "result = $5::jsonb", claim: "wire_attempt_id = $5::uuid" } as const
+
+  async function keepRequest(sql: Sql, proposalId: string, read: number, next: DeviceRequest, evidence?: ExtraEvidence): Promise<Written> {
+    const fields = evidence === undefined ? "" : `, ${evidenceColumn[evidence.kind]}`
     const params = [proposalId, read, JSON.stringify(next), requestSettled(next.phase)]
-    const written = result === undefined
-      ? await sql.query("UPDATE device_requests SET revision = revision + 1, state = $3::jsonb, settled = $4 WHERE proposal_id = $1 AND revision = $2", params)
-      : await sql.query(
-        "UPDATE device_requests SET revision = revision + 1, state = $3::jsonb, settled = $4, result = $5::jsonb WHERE proposal_id = $1 AND revision = $2",
-        [...params, result.json],
-      )
+    const written = await sql.query(
+      `UPDATE device_requests SET revision = revision + 1, state = $3::jsonb, settled = $4${fields} WHERE proposal_id = $1 AND revision = $2`,
+      evidence === undefined ? params : [...params, evidence.value],
+    )
     return written.affectedRows === 1 ? "written" : "stale"
   }
 
@@ -212,6 +241,27 @@ module node {
   function atWallTime(state: DeviceRequest): DeviceRequest {
     const elapsed = Date.now() - state.session.now
     return elapsed > 0 ? step(state, { type: "elapse", elapsed }, noOwner) : state
+  }
+
+  async function lockedRequest(sql: Sql, proposalId: string) {
+    const found = await sql.query<{ revision: number; state: unknown }>(
+      "SELECT revision, state FROM device_requests WHERE proposal_id = $1 FOR UPDATE", [proposalId],
+    )
+    return found.rows[0]
+  }
+
+  export function writeClaim(adapter: IDatabaseAdapter, { proposalId, digest, by }: RequestClaim): Promise<ClaimCommit> {
+    return within(adapter, async (sql) => {
+      const row = await lockedRequest(sql, proposalId)
+      if (row === undefined) return { kind: "missing" }
+      const current = atWallTime(parsed(`request ${proposalId}`, row.state))
+      if (!canClaim(current, by, digest)) return { kind: "refused" }
+      const claimed = step(current, { type: "claim", digest }, by)
+      const wireAttemptId = keptAttemptId(randomUUID())
+      const written = await keepRequest(sql, proposalId, row.revision, claimed, { kind: "claim", value: wireAttemptId })
+      if (written !== "written") throw new Error(`The locked claim for ${proposalId} could not be saved`)
+      return { kind: "claimed", state: claimed, binding: { modelAttemptId: claimed.session.currentClaim, wireAttemptId } }
+    })
   }
 
   export function writeReceipt(adapter: IDatabaseAdapter, { proposalId, by, event, result }: AdmittedRequestReceipt): Promise<ReceiptCommit> {
@@ -227,7 +277,7 @@ module node {
       if (!canReceipt(current, by, event.digest, event.attemptId, event.reportedOutcome)) return { kind: "refused" }
       if (current.phase.tag === "Receipted") return row.same_result ? { kind: "recorded", state: current } : { kind: "refused" }
       const settled = step(current, event, by)
-      const written = await keepRequest(sql, proposalId, row.revision, settled, { json })
+      const written = await keepRequest(sql, proposalId, row.revision, settled, { kind: "receipt", value: json })
       if (written !== "written") throw new Error(`The locked receipt for ${proposalId} could not be saved`)
       return { kind: "recorded", state: settled }
     })
@@ -253,10 +303,7 @@ module node {
 
   export async function commitReadCompletion(tx: IDatabaseAdapter, { hint, by }: ReadCompletionPublication): Promise<boolean> {
     const sql = connection(await tx.getConnection())
-    const found = await sql.query<{ revision: number; state: unknown }>(
-      "SELECT revision, state FROM device_requests WHERE proposal_id = $1 FOR UPDATE", [hint.proposalId],
-    )
-    const row = found.rows[0]
+    const row = await lockedRequest(sql, hint.proposalId)
     if (row === undefined) return false
     const current = atWallTime(parsed(`request ${hint.proposalId}`, row.state))
     if (!canClaimCompletion(current, by, hint) || !canDeliverCompletion(current)) return false
@@ -299,11 +346,11 @@ module node {
   }
 }
 import {
-  readEnrollment, readRequest, readViewProfile, requestRows, seedRequest, writeEnrollment, writeReceipt, writeRequest, writeViewProfile,
-  type AdmittedRequestReceipt, type EnrollmentEvent, type EnrollmentRow, type OfferEvent, type ProfileChange,
-  type ReceiptCommit, type RequestEvent, type RequestRow, type RequestTerms, type RetainedRequestTerms, type Settled,
+  readEnrollment, readRequest, readViewProfile, requestRows, seedRequest, writeClaim, writeEnrollment, writeReceipt, writeRequest, writeViewProfile,
+  type AdmittedRequestReceipt, type ClaimBinding, type ClaimCommit, type EnrollmentEvent, type EnrollmentRow, type OfferEvent, type ProfileChange,
+  type ReceiptCommit, type RequestClaim, type RequestEvent, type RequestRow, type RequestTerms, type RetainedRequestTerms, type Settled,
 } from node
-export type { AdmittedRequestReceipt, EnrollmentEvent, OfferEvent, ProfileChange, ReceiptCommit, RequestEvent, RequestRow, RequestTerms, RetainedRequestTerms, Settled } from node
+export type { AdmittedRequestReceipt, ClaimCommit, EnrollmentEvent, OfferEvent, ProfileChange, ReceiptCommit, RequestClaim, RequestEvent, RequestRow, RequestTerms, RetainedRequestTerms, Settled } from node
 export { commitReadCompletion, readCompletionPublication, withReadCompletionPublication } from node
 
 export interface DeviceRequestRecord {
@@ -312,6 +359,7 @@ export interface DeviceRequestRecord {
     readonly send: (event: RequestEvent, by: SessionOwner) => ReturnType<Machine.Shape["send"]>
   }
   readonly result: unknown
+  readonly claim: ClaimBinding | undefined
   readonly proposalId: string
   readonly terms: RetainedRequestTerms
   readonly createdAt: number
@@ -378,7 +426,7 @@ export effect function openRequest(adapter: IDatabaseAdapter, proposalId: string
     if (written === "stale") try die(new StaleDeviceRow({ table: "device_requests", id: proposalId, revision: read }))
   }
   const machine = try machineOver(load, keep)
-  return { proposalId, machine, result: row.result, terms: row.terms, createdAt: row.createdAt }
+  return { proposalId, machine, result: row.result, claim: row.claim, terms: row.terms, createdAt: row.createdAt }
 }
 
 export effect function offerRequest(adapter: IDatabaseAdapter, offer: OfferEvent, by: SessionOwner, terms: RequestTerms): DeviceRequestRecord!(DeviceStoreUnavailable | Rejected | ProposalIdTaken) {
@@ -389,6 +437,10 @@ export effect function offerRequest(adapter: IDatabaseAdapter, offer: OfferEvent
   if (seeded === "stale") return try offerRequest(adapter, offer, by, terms)
   const record = try openRequest(adapter, offer.proposalId)
   return record ?? try die(new Error(`The seeded device request ${offer.proposalId} is gone`))
+}
+
+export effect function recordRequestClaim(adapter: IDatabaseAdapter, claim: RequestClaim): ClaimCommit!DeviceStoreUnavailable {
+  return try stored("keep a device claim", () => writeClaim(adapter, claim))
 }
 
 export effect function recordRequestReceipt(adapter: IDatabaseAdapter, receipt: AdmittedRequestReceipt): ReceiptCommit!DeviceStoreUnavailable {

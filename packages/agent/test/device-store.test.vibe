@@ -4,7 +4,7 @@ import type { IDatabaseAdapter } from "@elizaos/core"
 import { apply } from "../gen/agent__deviceActions.effect.vibe"
 import type { SessionOwner } from "../gen/core__sessions.effect.vibe"
 import {
-  changeEnrollment, changeViewProfile, enrollment, listRequests, offerRequest, openRequest, recordRequestReceipt, viewProfile,
+  changeEnrollment, changeViewProfile, enrollment, listRequests, offerRequest, openRequest, recordRequestClaim, recordRequestReceipt, viewProfile,
   type AdmittedRequestReceipt, type OfferEvent, type RequestEvent, type RequestTerms,
 } from "../src/device-actions/store.vibe"
 import { openDeviceStorage } from "../src/storage/index.vibe"
@@ -91,10 +91,14 @@ it.live('Keep accepted device receipts across a restart and revoke the enrollmen
   for (const id of ["p1", "p2", "p3", "p-without-result"]) try offerRequest(first.adapter, offerOf(id, try Clock.currentTimeMillis), owner, id === "p3" ? workflowTerms : terms)
   const taken = try failure(offerRequest(first.adapter, offerOf("p1", try Clock.currentTimeMillis), owner, terms))
   assert.strictEqual(taken?._tag, "ProposalIdTaken")
-  try send(first.adapter, "p1", [{ type: "decide", digest: "digest-p1", approved: true }, { type: "claim", digest: "digest-p1" }])
+  try send(first.adapter, "p1", [{ type: "decide", digest: "digest-p1", approved: true }])
+  const claimRequest = { proposalId: "p1", digest: "digest-p1", by: owner }
+  const claimed = try recordRequestClaim(first.adapter, claimRequest)
+  if (claimed.kind !== "claimed") return try die(new Error("The device claim was refused"))
+  assert.strictEqual((try recordRequestClaim(first.adapter, claimRequest)).kind, "refused")
   const receipt: AdmittedRequestReceipt = {
     proposalId: "p1", by: owner, result,
-    event: { type: "receipt", digest: "digest-p1", attemptId: 1, reportedOutcome: "ReportedApplied" },
+    event: { type: "receipt", digest: "digest-p1", attemptId: claimed.binding.modelAttemptId, reportedOutcome: "ReportedApplied" },
   }
   const competingResult = { ...result, eventId: "event-2" }
   const [firstResult, secondResult] = try all([
@@ -109,8 +113,11 @@ it.live('Keep accepted device receipts across a restart and revoke the enrollmen
     event: { type: "receipt", digest: "digest-p-without-result", attemptId: 1, reportedOutcome: "ReportedNothingRan" },
   }
   try send(first.adapter, "p-without-result", [
-    { type: "decide", digest: noResult.event.digest, approved: true }, { type: "claim", digest: noResult.event.digest },
+    { type: "decide", digest: noResult.event.digest, approved: true },
   ])
+  assert.strictEqual((try recordRequestClaim(first.adapter, {
+    proposalId: noResult.proposalId, digest: noResult.event.digest, by: owner,
+  })).kind, "claimed")
   assert.strictEqual((try recordRequestReceipt(first.adapter, noResult)).kind, "recorded")
   try send(first.adapter, "p2", [{ type: "decide", digest: "digest-p2", approved: false }])
   try closed(first.adapter)
@@ -132,7 +139,9 @@ it.live('Keep accepted device receipts across a restart and revoke the enrollmen
     "recorded", "refused", "refused", "refused", "recorded", "refused",
   ])
   const applied = try openRequest(second.adapter, "p1")
-  assert.deepStrictEqual({ result: applied?.result, terms: applied?.terms }, { result: keptResult, terms })
+  assert.deepStrictEqual({ result: applied?.result, terms: applied?.terms, claim: applied?.claim }, {
+    result: keptResult, terms, claim: claimed.binding,
+  })
   assert.deepStrictEqual((try openRequest(second.adapter, "p3"))?.terms, workflowTerms)
   assert.isUndefined(try openRequest(second.adapter, "missing"))
 

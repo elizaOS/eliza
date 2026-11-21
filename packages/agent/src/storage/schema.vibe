@@ -76,4 +76,5 @@ export const migrations: readonly Migration[] = [
     CHECK (binding_authority IS NULL OR
       (jsonb_typeof(binding_authority) = 'object' AND binding <> 'NoBinding'
         AND (binding_authority->>'kind') IS NOT DISTINCT FROM binding));` },
+  { kind: "Additive", sql: `ALTER TABLE device_requests ADD COLUMN wire_attempt_id uuid UNIQUE;` },
 ]

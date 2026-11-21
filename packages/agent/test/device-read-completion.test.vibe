@@ -10,7 +10,7 @@ module node {
   import { Effect } from "effect"
   import type { Memory, UUID } from "@elizaos/core"
   import type { SessionOwner } from "../gen/core__sessions.effect.vibe"
-  import { offerRequest, openRequest, recordRequestReceipt, type RequestTerms } from "../src/device-actions/store.vibe"
+  import { offerRequest, openRequest, recordRequestClaim, recordRequestReceipt, type RequestTerms } from "../src/device-actions/store.vibe"
   import type { RunningAgent } from "../src/host/process.vibe"
   import { text, type CloudFake } from "./support/cloud-fake.ts"
   import { request } from "./support/socket-client.ts"
@@ -48,7 +48,7 @@ module node {
     const asked = messages.find((message: Memory) => message.entityId !== running.runtime.agentId)
     if (asked?.id === undefined) throw new Error("The original request was not stored")
     const origin = { requestId: "request-1", conversationId: conversation.id, inReplyTo: asked.id }
-    const hintOf = (proposalId: string) => ({ proposalId, digest: `digest-${proposalId}`, attemptId: 1, ...origin })
+    const hintOf = (proposalId: string) => ({ proposalId, digest: "a".repeat(63) + proposalId.slice(1), attemptId: 1, ...origin })
     const pathOf = (proposalId: string, action: "read-completion" | "cancel-read-completion" = "read-completion") =>
       `/api/client-devices/proposals/${proposalId}/${action}`
     async function appliedRead(proposalId: string) {
@@ -57,34 +57,37 @@ module node {
         type: "offer", proposalId, digest: hint.digest, capability, expiresAt: Date.now() + 600_000, readBack: true, origin,
       }, by, terms))
       await Effect.runPromise(record.machine.send({ type: "decide", digest: hint.digest, approved: true }, by))
-      await Effect.runPromise(record.machine.send({ type: "claim", digest: hint.digest }, by))
+      const claim = await Effect.runPromise(recordRequestClaim(adapter, { proposalId, digest: hint.digest, by }))
+      if (claim.kind !== "claimed") throw new Error("The read claim was refused")
       const receipt = await Effect.runPromise(recordRequestReceipt(adapter, {
         proposalId, by, result,
-        event: { type: "receipt", digest: hint.digest, attemptId: 1, reportedOutcome: "ReportedApplied" },
+        event: { type: "receipt", digest: hint.digest, attemptId: claim.binding.modelAttemptId, reportedOutcome: "ReportedApplied" },
       }))
       if (receipt.kind !== "recorded") throw new Error("The claimed read was not settled")
-      return hint
+      return { hint, native: { ...hint, version: 1, attemptId: claim.binding.wireAttemptId } }
     }
-    const hint = await appliedRead("p1")
-    const lapsedHint = await appliedRead("p2")
-    const cancelHint = await appliedRead("p3")
+    const { hint, native } = await appliedRead("p1")
+    const lapsed = await appliedRead("p2")
+    const { hint: cancelHint } = await appliedRead("p3")
     const completion = pathOf("p1")
     const before = inferences()
-    const noRoot = await call(completion, hint, device, null)
-    const wrongKey = await call(completion, hint, { ...device, "x-eliza-device-key": "b".repeat(64) })
+    const noRoot = await call(completion, native, device, null)
+    const wrongKey = await call(completion, native, { ...device, "x-eliza-device-key": "b".repeat(64) })
     const wrongConversation = await call(completion, { ...hint, conversationId: "another" })
     const wrongAttempt = await call(completion, { ...hint, attemptId: 2 })
+    const wrongNativeAttempt = await call(completion, { ...native, attemptId: lapsed.native.attemptId })
     cloud.script(text("You have the dentist at 9 tomorrow. The reference was sk-notasecret-example-01234567890."))
-    const simultaneous = await Promise.all([call(completion, hint), call(completion, hint)])
+    const simultaneous = await Promise.all([call(completion, native), call(completion, native)])
     const first = simultaneous.find(({ status }) => status === 200)
     if (first === undefined) throw new Error(`No completion was delivered: ${JSON.stringify(simultaneous)}`)
-    const repeated = await call(completion, hint)
+    const repeated = await call(completion, native)
+    const internalReplay = await call(completion, hint)
     const cancelled = await call(pathOf("p1", "cancel-read-completion"), { digest: hint.digest })
-    const afterCancel = await call(completion, hint)
+    const afterCancel = await call(completion, native)
     const expires = await Effect.runPromise(openRequest(adapter, "p2"))
     if (expires === undefined) throw new Error("The read to expire is gone")
     await Effect.runPromise(expires.machine.send({ type: "elapse", elapsed: 660_000 }, by))
-    const lapsed = await call(pathOf("p2"), lapsedHint)
+    const expired = await call(pathOf("p2"), lapsed.native)
     const reply = (first.json as { reply: { messageId: UUID } }).reply
     const deliveredInferenceCount = inferences() - before
     const beforeCancellation = await running.runtime.getMemories({ tableName: "messages", roomId: conversation.roomId, count: 10 })
@@ -110,9 +113,10 @@ module node {
     const stored = await running.runtime.getMemoryById(reply.messageId)
     return {
       noRoot: noRoot.status, wrongKey: wrongKey.status, wrongConversation: wrongConversation.status, wrongAttempt: wrongAttempt.status,
+      wrongNativeAttempt: wrongNativeAttempt.status, internalReplay: internalReplay.json,
       successfulReplaysAgree: simultaneous.every(({ status, json }) => status !== 200 || JSON.stringify(json) === JSON.stringify(first.json)),
       simultaneousRefused: simultaneous.every(({ status }) => status === 200 || status === 409),
-      first: first.json, repeated: repeated.json, cancelled: cancelled.json, afterCancel: afterCancel.json, lapsed: lapsed.status,
+      first: first.json, repeated: repeated.json, cancelled: cancelled.json, afterCancel: afterCancel.json, lapsed: expired.status,
       inferences: deliveredInferenceCount,
       cancellationRace: {
         cancelled: cancelledBeforePublication.json, replyStatus: afterPublication.status,
@@ -145,9 +149,10 @@ it.effect('A shared device read answers the original request once, in its conver
     inReplyTo: observed.expected.inReplyTo, text: "You have the dentist at 9 tomorrow. The reference was sk-not…7890.",
   }
   try Effect.try(() => assert.deepStrictEqual({ ...observed, expected: undefined }, {
-    noRoot: 401, wrongKey: 401, wrongConversation: 409, wrongAttempt: 409,
-    successfulReplaysAgree: true, simultaneousRefused: true,
-    first: { reply }, repeated: { reply }, cancelled: { completion: "CompletionDelivered" }, afterCancel: { reply }, lapsed: 409,
+    noRoot: 401, wrongKey: 401, wrongConversation: 409, wrongAttempt: 409, wrongNativeAttempt: 409,
+    successfulReplaysAgree: true, simultaneousRefused: true, internalReplay: { reply },
+    first: { reply: { version: 1, ...reply } }, repeated: { reply: { version: 1, ...reply } },
+    cancelled: { completion: "CompletionDelivered" }, afterCancel: { reply: { version: 1, ...reply } }, lapsed: 409,
     inferences: 1,
     cancellationRace: { cancelled: { completion: "CompletionCancelled" }, replyStatus: 409, sameMessages: true },
     stored: { roomId: observed.expected.roomId, inReplyTo: observed.expected.inReplyTo, text: reply.text },

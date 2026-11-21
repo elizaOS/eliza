@@ -18,13 +18,30 @@ module node {
     proposalId: Schema.String, digest: Schema.String, attemptId: Schema.Int,
     requestId: Schema.String, conversationId: Schema.String, inReplyTo: Schema.String,
   })
+  const NativeIdentifier = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/))
+  const NativeRequestId = Schema.String.check(
+    Schema.isMinLength(1), Schema.isMaxLength(128), Schema.makeFilter((value) => value.trim() === value && !value.includes("\0")),
+  )
+  const NativeHint = Schema.Struct({
+    version: Schema.Literal(1), proposalId: NativeIdentifier,
+    digest: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)), attemptId: NativeIdentifier,
+    requestId: NativeRequestId, conversationId: NativeIdentifier, inReplyTo: NativeIdentifier,
+  })
+  const HintInput = Schema.Union([Hint, NativeHint])
   const Cancel = Schema.Struct({ digest: Schema.String })
-  const decodeHint = Schema.decodeUnknownOption(Hint, { onExcessProperty: "error" })
+  const decodeHint = Schema.decodeUnknownOption(HintInput, { onExcessProperty: "error" })
   const decodeCancel = Schema.decodeUnknownOption(Cancel, { onExcessProperty: "error" })
   const failure = (status: number, error: string) => ({ status, body: { error } })
 
   type Hint = typeof Hint.Type
-  type Reply = { readonly messageId: UUID; readonly requestId: string; readonly conversationId: string; readonly inReplyTo: string; readonly text: string }
+  type CompletionRequest = { readonly hint: Hint; readonly version?: 1 }
+  type Reply = { readonly version?: 1; readonly messageId: UUID; readonly requestId: string; readonly conversationId: string; readonly inReplyTo: string; readonly text: string }
+
+  function matchAttempt(input: typeof HintInput.Type, record: DeviceRequestRecord): CompletionRequest | undefined {
+    if (!("version" in input)) return { hint: input }
+    const { attemptId, version, ...rest } = input
+    return record.claim?.wireAttemptId === attemptId ? { version, hint: { ...rest, attemptId: record.claim.modelAttemptId } } : undefined
+  }
 
   class CompletionFailed extends Error {}
   class CompletionClosed extends Error {}
@@ -67,7 +84,7 @@ module node {
       return text
     }
 
-    async function deliver(record: DeviceRequestRecord, hint: Hint, by: SessionOwner) {
+    async function deliver(record: DeviceRequestRecord, { hint, version }: CompletionRequest, by: SessionOwner) {
       const kept = await runtime.getCache<{ text: string }>(cacheKey(hint))
       if (kept === undefined) return failure(409, "completion_reply_missing")
       const original = await originalMessage(hint)
@@ -92,13 +109,17 @@ module node {
           throw cause
         }
       })
-      return { status: 200, body: { reply: { messageId, requestId: hint.requestId, conversationId: hint.conversationId, inReplyTo: hint.inReplyTo, text: kept.text } satisfies Reply } }
+      return { status: 200, body: { reply: {
+        ...(version === undefined ? {} : { version }),
+        messageId, requestId: hint.requestId, conversationId: hint.conversationId, inReplyTo: hint.inReplyTo, text: kept.text,
+      } satisfies Reply } }
     }
 
-    async function complete(record: DeviceRequestRecord, hint: Hint, by: SessionOwner, signal: AbortSignal) {
+    async function complete(record: DeviceRequestRecord, request: CompletionRequest, by: SessionOwner, signal: AbortSignal) {
+      const { hint } = request
       const claimed = await send(record.machine, { type: "claimCompletion", hint }, by)
       if (claimed === undefined) return failure(409, "completion_refused")
-      if (claimed.completion !== "CompletionClaimed") return deliver(record, hint, by)
+      if (claimed.completion !== "CompletionClaimed") return deliver(record, request, by)
       const cancelled = new AbortController()
       running.set(hint.proposalId, cancelled)
       const turn = AbortSignal.any([signal, cancelled.signal])
@@ -107,7 +128,7 @@ module node {
           AbortSignal.any([turn, AbortSignal.timeout(Math.max(0, completionDeadline(claimed) - Date.now()))]))
         if (!await runtime.setCache(cacheKey(hint), { text: runtime.redactSecrets(text) })) throw new CompletionFailed("The reply was not kept")
         const prepared = await send(record.machine, { type: "prepareCompletion" }, by)
-        return prepared === undefined ? failure(409, "completion_closed") : deliver(record, hint, by)
+        return prepared === undefined ? failure(409, "completion_closed") : deliver(record, request, by)
       } catch (cause) {
         if (cause instanceof StaleDeviceRow) return failure(409, "completion_closed")
         runtime.logger.warn({ src: "device-actions", proposalId: hint.proposalId, aborted: turn.aborted, cause: cause instanceof Error ? cause.message : String(cause) }, "Read completion failed after its claim")
@@ -138,7 +159,10 @@ module node {
         handler: (input) => {
           const hint = decodeHint(input.body)
           if (hint._tag !== "Some") return failure(400, "invalid_completion_hint")
-          return guarded(input, (record, by) => complete(record, hint.value, by, input.signal))
+          return guarded(input, async (record, by) => {
+            const request = matchAttempt(hint.value, record)
+            return request === undefined ? failure(409, "completion_refused") : complete(record, request, by, input.signal)
+          })
         },
       },
       {
