@@ -5,7 +5,7 @@ import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, periodRows, reserve, settle, sweepHolds } from "../src/shared/metering.vibe"
 import { stepRow } from "../src/store/rows.vibe"
 import { Store } from "../src/store/store.vibe"
-import { shiftedClock } from "./support/clock.ts"
+import { manualClock, shiftedClock } from "./support/clock.ts"
 import { organization, testCloud, type TestCloud } from "./support/cloud.vibe"
 
 const minute = 60_000
@@ -68,18 +68,21 @@ describe("WP0 Foundation: metering and funds", () => {
       const ticket = try reserve(owner, holdKey("user-1", "request-1"), 20_000_000)
       const reserved = {
         hold: [ticket.hold.reserved, ticket.hold.fromAllowance, ticket.hold.fromCredits],
-        period: try numbers(cloud, "SELECT state->'available', state->'reserved' FROM allowance_periods WHERE key = $1", [period]),
-        funds: try numbers(cloud, "SELECT f.state->'creditHeld', o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-past-due"])
+        period: try numbers(cloud, "SELECT state->'available' AS available_balance, state->'reserved' AS reserved_balance FROM allowance_periods WHERE key = $1", [period]),
+        funds: try numbers(cloud, "SELECT f.state->'creditHeld' AS held_credit, o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-past-due"])
       }
       try markDispatched(ticket.key)
       const settled = try settle(ticket.key, { kind: "known", actual: 26_000_000 })
       const granted = try reserve({ organizationId: "org-granted", userId: "user-2" }, holdKey("user-2", "request-2"), 1_000_000)
-      const broken = try failureOf(reserve({ organizationId: "org-broken", userId: "user-3" }, holdKey("user-3", "request-3"), 1))
+      const failedAt = try Clock.currentTimeMillis
+      const clock = try sync(() => manualClock())
+      try sync(() => clock.set(failedAt))
+      const broken = try Effect.provideService(failureOf(reserve({ organizationId: "org-broken", userId: "user-3" }, holdKey("user-3", "request-3"), 1)), Clock.Clock, clock.clock)
       const observed = {
           reserved,
           settled: [settled.charged, settled.uncollected],
-          period: try numbers(cloud, "SELECT state->'available', state->'reserved', state->'settled', status FROM allowance_periods WHERE key = $1", [period]),
-          funds: try numbers(cloud, "SELECT f.state->'creditBalance', f.state->'creditHeld', o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-past-due"]),
+          period: try numbers(cloud, "SELECT state->'available' AS available_balance, state->'reserved' AS reserved_balance, state->'settled' AS settled_balance, status FROM allowance_periods WHERE key = $1", [period]),
+          funds: try numbers(cloud, "SELECT f.state->'creditBalance' AS state_credit, f.state->'creditHeld' AS held_credit, o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-past-due"]),
           usage: try numbers(cloud, "SELECT charged, from_allowance, from_credits, uncollected, outcome FROM usage_records WHERE hold_key = $1", [ticket.key]),
           granted: [granted.hold.fromAllowance, granted.hold.fromCredits],
           broken
@@ -91,7 +94,7 @@ describe("WP0 Foundation: metering and funds", () => {
           funds: [[9_000_000, 0, 9_000_000]],
           usage: [[26_000_000, 25_000_000, 1_000_000, 0, "known"]],
           granted: [1_500_000, 0],
-          broken: { error: "service_unavailable", errorDescription: "Service unavailable.", retryable: true }
+          broken: { error: "service_unavailable", errorDescription: "Service unavailable.", retryable: true, retryAt: failedAt + 5000 }
         }))
     }
   }))
@@ -116,10 +119,10 @@ describe("WP0 Foundation: metering and funds", () => {
       const late = try settle(lost.key, { kind: "known", actual: 50_000 })
       const observed = {
           swept: [early, released, charged, after],
-          holds: try numbers(cloud, "SELECT phase, state->'charged', state->>'basis' FROM holds WHERE organization_id = $1 ORDER BY phase", ["org-sweep"]),
+          holds: try numbers(cloud, "SELECT phase, state->'charged' AS charged_amount, state->>'basis' AS charge_basis FROM holds WHERE organization_id = $1 ORDER BY phase", ["org-sweep"]),
           late: [late.phase, late.charged],
           usage: try numbers(cloud, "SELECT outcome, charged FROM usage_records WHERE organization_id = $1 ORDER BY outcome", ["org-sweep"]),
-          funds: try numbers(cloud, "SELECT f.state->'creditBalance', f.state->'creditHeld', o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-sweep"])
+          funds: try numbers(cloud, "SELECT f.state->'creditBalance' AS state_credit, f.state->'creditHeld' AS held_credit, o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-sweep"])
         }
       try check(() => assert.deepStrictEqual(observed, {
           swept: [0, 1, 1, 0],
@@ -146,7 +149,7 @@ describe("WP0 Foundation: metering and funds", () => {
           held: [first.hold.fromCredits, other.hold.fromCredits],
           settled: [settled.basis, settled.charged, settled.uncollected],
           usage: try numbers(cloud, "SELECT charged, from_credits, uncollected FROM usage_records WHERE hold_key = $1", [first.key]),
-          funds: try numbers(cloud, "SELECT f.state->'creditBalance', f.state->'creditHeld', f.state->'collected', o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-over"])
+          funds: try numbers(cloud, "SELECT f.state->'creditBalance' AS state_credit, f.state->'creditHeld' AS held_credit, f.state->'collected' AS collected_credit, o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-over"])
         }
       try check(() => assert.deepStrictEqual(observed, {
           held: [150_000, 300_000],
