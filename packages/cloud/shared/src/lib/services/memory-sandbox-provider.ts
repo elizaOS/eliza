@@ -31,14 +31,26 @@ interface MemorySandbox {
   state: MemoryAgentState;
 }
 
+/**
+ * A restore body that cannot be read as JSON. Kept distinct from "no body":
+ * `/api/restore` callers infer "state hydrated" from a 2xx alone, so a body we
+ * could not parse must not be reported as a successful restore.
+ */
+class InvalidRestoreBodyError extends Error {
+  constructor(reason: string, cause?: unknown) {
+    super(`Invalid restore body: ${reason}`, { cause });
+    this.name = "InvalidRestoreBodyError";
+  }
+}
+
 async function readJsonBody(req: import("node:http").IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
   if (chunks.length === 0) return undefined;
   try {
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    return undefined;
+  } catch (cause) {
+    throw new InvalidRestoreBodyError("body is not valid JSON", cause);
   }
 }
 
@@ -98,17 +110,41 @@ export class MemorySandboxProvider implements SandboxProvider {
 
       // Restore: overwrite the agent's state (used by wake/resume restore).
       if (req.method === "POST" && url.pathname === "/api/restore") {
-        const body = await readJsonBody(req);
-        if (body && typeof body === "object") {
-          const incoming = body as Partial<MemoryAgentState>;
-          state.memories = Array.isArray(incoming.memories) ? incoming.memories : [];
-          state.config =
-            incoming.config && typeof incoming.config === "object" ? incoming.config : {};
-          state.workspaceFiles =
-            incoming.workspaceFiles && typeof incoming.workspaceFiles === "object"
-              ? incoming.workspaceFiles
-              : {};
+        let body: unknown;
+        try {
+          body = await readJsonBody(req);
+        } catch (error) {
+          const response = json(
+            {
+              success: false,
+              error:
+                error instanceof InvalidRestoreBodyError ? error.message : "Invalid restore body",
+            },
+            400,
+          );
+          res.writeHead(response.status, Object.fromEntries(response.headers));
+          res.end(await response.text());
+          return;
         }
+        if (!body || typeof body !== "object" || Array.isArray(body)) {
+          // Nothing was applied, so this cannot be a successful restore: the
+          // caller only sees `res.ok` and would record the state as hydrated.
+          const response = json(
+            { success: false, error: "Invalid restore body: expected a state object" },
+            400,
+          );
+          res.writeHead(response.status, Object.fromEntries(response.headers));
+          res.end(await response.text());
+          return;
+        }
+        const incoming = body as Partial<MemoryAgentState>;
+        state.memories = Array.isArray(incoming.memories) ? incoming.memories : [];
+        state.config =
+          incoming.config && typeof incoming.config === "object" ? incoming.config : {};
+        state.workspaceFiles =
+          incoming.workspaceFiles && typeof incoming.workspaceFiles === "object"
+            ? incoming.workspaceFiles
+            : {};
         const response = json({ success: true });
         res.writeHead(response.status, Object.fromEntries(response.headers));
         res.end(await response.text());
