@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { calendarReadBindingEvaluator } from "../../plugin-calendar/src/read-binding.ts";
 import { withCalendarSearchAuthorization } from "../../plugin-calendar/src/search-filter-evidence.ts";
 /**
  * Drives the registered CALENDAR action through the canonical executor over
@@ -23,8 +24,10 @@ import {
   executePlannedToolCall,
   isObjectRecord,
   type Memory,
+  type MessageHandlerResult,
   ModelType,
   promoteSubactionsToActions,
+  runResponseHandlerEvaluators,
   type UUID,
 } from "@elizaos/core";
 import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
@@ -827,6 +830,49 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     expect(result.data).toMatchObject({
       windowStart: "2027-01-18T14:00:00.250Z",
       windowEnd: "2027-01-18T17:00:00.250Z",
+    });
+  });
+
+  it("executes a literal Calendar slot request with the registered LifeOps duration schema", async () => {
+    const request = "Find me a 30-minute slot tomorrow between 9 AM and noon.";
+    const actor = message("00000000-0000-0000-0000-000000009986", request);
+    actor.createdAt = Date.parse("2027-01-17T14:00:00Z");
+    actor.content.metadata = { uiTimeZone: "America/New_York" };
+    const messageHandler: MessageHandlerResult = {
+      processMessage: "RESPOND",
+      thought: "",
+      plan: { contexts: ["calendar"], intents: [request] },
+    };
+
+    await runResponseHandlerEvaluators({
+      runtime,
+      message: actor,
+      state: { values: {}, data: {}, text: "" },
+      messageHandler,
+      availableContexts: [],
+      userRoles: ["OWNER"],
+      evaluators: [calendarReadBindingEvaluator],
+    });
+
+    const call = messageHandler.plan.deterministicToolCall;
+    expect(call).toEqual({
+      name: "CALENDAR_PROPOSE_TIMES",
+      params: {
+        duration: { minutes: 30 },
+        windowStart: "2027-01-18T14:00:00.000Z",
+        windowEnd: "2027-01-18T17:00:00.000Z",
+        timeZone: "America/New_York",
+      },
+    });
+    if (!call)
+      throw new Error("The literal request did not produce a tool call");
+
+    const { result } = await invoke(actor, call.params, true, call.name);
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(result.data).toMatchObject({ durationMinutes: 30 });
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      operation: "calendar.propose_times.preview",
+      outcome: "preview",
     });
   });
 

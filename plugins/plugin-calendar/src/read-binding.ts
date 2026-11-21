@@ -103,6 +103,26 @@ function literalSlotWindow(
     : undefined;
 }
 
+/** LifeOps can own the promoted action while the Calendar plugin supplies
+ * the deterministic request. Use the registered action's duration shape. */
+function literalSlotArguments(
+  runtime: Parameters<typeof registerDirectActionRoutingRule>[0],
+  window: NonNullable<ReturnType<typeof literalSlotWindow>>,
+) {
+  const action = runtime.actions?.find(
+    (candidate) => candidate.name === CALENDAR_READ_ACTIONS.propose_times,
+  );
+  if (
+    !action?.parameters?.some(
+      (parameter) => parameter.name === "duration" && parameter.required,
+    )
+  ) {
+    return window;
+  }
+  const { durationMinutes, ...bounds } = window;
+  return { ...bounds, duration: { minutes: durationMinutes } };
+}
+
 const literalSlotRoute = "calendar.literal-slot";
 
 /**
@@ -579,7 +599,7 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
           },
           deterministicToolCall: {
             name: CALENDAR_READ_ACTIONS.propose_times,
-            params: window,
+            params: literalSlotArguments(runtime, window),
           },
         };
       }
@@ -654,12 +674,13 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
       currentAppRecordSource(runtime, "calendar", message) === "runtime"
     ) {
       const window = literalSlotWindow(message, read.requestedAt, read.source);
-      if (window)
+      if (window) {
+        const args = literalSlotArguments(runtime, window);
         deterministicToolCall = {
           name: CALENDAR_READ_ACTIONS.propose_times,
-          params:
-            read.source === "builtin" ? { ...calendar, ...window } : window,
+          params: read.source === "builtin" ? { ...calendar, ...args } : args,
         };
+      }
     }
     return {
       ...(deterministicToolCall
