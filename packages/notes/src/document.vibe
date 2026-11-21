@@ -1,0 +1,39 @@
+// spec/notes/read.md, "Local title and chronology selection is distinct from sharing"
+const Records = Schema.Array(Schema.StructWithRest(
+  Schema.Struct({
+    id: Schema.String.check(Schema.isMinLength(1)),
+    kind: Schema.Literals(["text", "list", "voice", "link"]),
+    title: Schema.String,
+    body: Schema.optionalKey(Schema.String),
+  }),
+  [Schema.Record(Schema.String, Schema.Json)],
+)).check(Schema.isMaxLength(10_000), Schema.makeFilter((records) => new Set(records.map((record) => record.id)).size === records.length))
+
+const Document = Schema.Struct({
+  version: Schema.Literal(2),
+  collectionId: Schema.String.check(Schema.isPattern(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/)),
+  records: Records,
+  deleted: Schema.Array(Schema.Unknown),
+})
+
+export const decodeDocument = Schema.decodeUnknownEffect(Schema.fromJsonString(Document))
+export type Note = typeof Records.Type[number]
+
+module browser {
+  import type { Json, JsonObject } from "effect/Schema"
+  function object(value: Json): value is JsonObject {
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+  }
+  function canonical(value: Json): string {
+    if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]"
+    if (object(value)) return "{" + Object.keys(value).sort()
+      .map((key) => JSON.stringify(key) + ":" + canonical(value[key])).join(",") + "}"
+    return JSON.stringify(value)
+  }
+  export async function digest(value: Json): Promise<string> {
+    const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical(value)))
+    return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("")
+  }
+}
+import { digest } from browser
+export { digest }
