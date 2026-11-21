@@ -1,10 +1,9 @@
 // spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"; spec/cloud/billing/subscriptions.md, "Story: Change my plan one command at a time"; spec/cloud/billing/plans.md, "Story: Apply the plan that funds a call"
 import { controlOf, dunningEndsAt, type ControlAction, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
-import type { PeriodPhase } from "../../gen/cloud__billing__allowance.effect.vibe"
 import type { FundingLane } from "../../gen/cloud__shared__metering.effect.vibe"
 import { json, owner, type Route } from "../http/routes.vibe"
 import { refused, wireName } from "../http/refusal.vibe"
-import { periodRows } from "../shared/metering.vibe"
+import { allowanceStatus, periodRows, type WireAllowanceState } from "../shared/metering.vibe"
 import { loadRow, type RowCorrupt } from "../store/rows.vibe"
 import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 import { fundsRows } from "./funds.vibe"
@@ -15,7 +14,7 @@ import { fundingOf, planSummary, readPolicy, type PolicyUnreadable, type Funding
 export type AccountStatus = "active" | "deleting" | "erased"
 export type WireSubscriptionStatus = "pending" | "incomplete" | "active" | "dunning" | "past_due" | "unpaid" | "canceled" | "incomplete_expired"
 export type WireControlAction = "cancel" | "undo" | "none"
-export type WireAllowanceState = "open" | "expired" | "closed" | "clawed_back"
+export type { WireAllowanceState }
 export type WireFundingLane = "allowanceThenCredits" | "creditsOnly" | "refused"
 
 export interface SnapshotSubscription {
@@ -75,20 +74,6 @@ const controlActions: Readonly<Record<ControlAction, WireControlAction>> = { Can
 
 const fundingLanes: Readonly<Record<FundingLane, WireFundingLane>> = { AllowanceThenCredits: "allowanceThenCredits", CreditsOnly: "creditsOnly", Refused: "refused" }
 
-function allowanceState(phase: PeriodPhase): WireAllowanceState | undefined {
-  switch (phase) {
-    case "PeriodOpen": return "open"
-    case "PeriodExpired": return "expired"
-    case "PeriodClosed": return "closed"
-    case "PeriodClawedBack": return "clawed_back"
-    case "PeriodUnopened": return undefined
-    default: {
-      const _exhaustive: never = phase
-      return _exhaustive
-    }
-  }
-}
-
 export function subscriptionView(subscription: Subscription): SnapshotSubscription | null {
   if (subscription.status === "NoSubscription") return null
   const control = controlOf(subscription)
@@ -137,8 +122,8 @@ effect function allowanceView(tx: Tx, organizationId: string, now: number): (Sna
   const key = toText(row?.key)
   if (key === undefined) return null
   const period = (try loadRow(tx, periodRows, key, false)).state
-  const state = allowanceState(period.phase)
-  if (state === undefined) throw new SnapshotUnreadable({ organizationId, problem: "allowance period" })
+  const state = allowanceStatus(period.phase)
+  if (state === null) throw new SnapshotUnreadable({ organizationId, problem: "allowance period" })
   return {
     state,
     granted: period.granted,

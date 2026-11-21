@@ -2785,6 +2785,7 @@ describe("WP4 Subscriptions and entitlements: snapshot and invoices", () => {
 })
 
 import { addUtcMonths, adjustForUpgrade, allowanceView, clawBackInvoice, closePeriods, openGrantMonths, openRenewal, restoreInvoice, sweepAllowance } from "../src/billing/allowance.vibe"
+import { settleSubscriptionAllowance, type Payment, type SubscriptionObservation } from "../src/billing/stripe-ledger.vibe"
 import { loadRow as loadPeriodRow } from "../src/store/rows.vibe"
 
 const allowanceMonth = 30 * 24 * 3_600_000
@@ -2792,6 +2793,10 @@ const allowanceMonth = 30 * 24 * 3_600_000
 effect function periodStatuses(cloud: TestCloud, organizationId: string) {
   const rows = try sql(cloud, "SELECT key, status FROM allowance_periods WHERE organization_id = $1 ORDER BY key", [organizationId])
   return rows.map((row) => [row.key, row.status])
+}
+
+effect function storedAllowance(cloud: TestCloud, key: string) {
+  return (try sql(cloud, "SELECT status, state->>'phase' AS phase, state->>'clawbackCause' AS cause, revision::int FROM allowance_periods WHERE key=$1", [key]))[0]
 }
 
 describe("WP4 Subscriptions and entitlements: allowance", () => {
@@ -2810,11 +2815,13 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
     const restored = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(restoreInvoice(tx, "in_refund", now))))
     const view = try cloud.store.transaction((tx) => allowanceView(tx, "org-refund", now))
     const usage = try sql(cloud, "SELECT from_allowance, from_credits FROM usage_records WHERE hold_key = $1", [ticket.key])
+    const stored = try storedAllowance(cloud, opened.key)
     try check(() => assert.deepStrictEqual(
       {
         opened: [opened.key, opened.moved, opened.period.granted, again.moved],
         held: ticket.hold.fromAllowance > 0,
-        clawed: [clawed.moved, clawed.period.phase, clawed.period.clawbackCause],
+        clawed: [clawed.moved, clawed.period.phase],
+        stored,
         restored: restored.moved,
         view,
         usage: usage.map((row) => [Number(row.from_allowance), Number(row.from_credits)])
@@ -2822,7 +2829,8 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
       {
         opened: ["renewal/staging/in_refund", true, 90_000_000, false],
         held: true,
-        clawed: [true, "PeriodClawedBack", "RefundClawback"],
+        clawed: [true, "PeriodRefunded"],
+        stored: { status: "clawed_back", phase: "PeriodClawedBack", cause: "RefundClawback", revision: 4 },
         restored: false,
         view: { state: "clawed_back", granted: 90_000_000, adjustment: 0, available: 0, reserved: 0, settled: 400_000, expired: 0, clawedBack: 89_600_000, periodStart: now - 1000, resetsAt: now + allowanceMonth },
         usage: [[400_000, 0]]
@@ -2845,6 +2853,8 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
     }
     const opened = [try open("in_won", now - 1000, now + allowanceMonth), try open("in_late", now - allowanceMonth, now - 1000)]
     const clawed = [try disputed("in_won"), try disputed("in_late")]
+    const oldDisputed = try storedAllowance(cloud, "renewal/staging/in_won")
+    try sql(cloud, "UPDATE allowance_periods SET state=(state - 'clawbackCause') || jsonb_build_object('phase','PeriodDisputed') WHERE key=$1", ["renewal/staging/in_won"])
     const during = try cloud.store.transaction((tx) => allowanceView(tx, "org-dispute", now))
     const restored = [try won("in_won"), try won("in_late")]
     const after = try cloud.store.transaction((tx) => allowanceView(tx, "org-dispute", now))
@@ -2858,7 +2868,8 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
         restored,
         after: [after?.state, after?.available, after?.clawedBack, after?.resetsAt],
         refundedLate,
-        late: [late.phase, late.clawbackCause, late.clawedBack, late.available],
+        late: [late.phase, late.clawedBack, late.available],
+        oldDisputed,
         statuses
       },
       {
@@ -2868,9 +2879,39 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
         restored: [true, false],
         after: ["open", 25_000_000, 0, now + allowanceMonth],
         refundedLate: true,
-        late: ["PeriodClawedBack", "RefundClawback", 25_000_000, 0],
+        late: ["PeriodRefunded", 25_000_000, 0],
+        oldDisputed: { status: "clawed_back", phase: "PeriodClawedBack", cause: "DisputeClawback", revision: 2 },
         statuses: [["renewal/staging/in_late", "clawed_back"], ["renewal/staging/in_won", "open"]]
       }
+    ))
+    const restoredNode = try storedAllowance(cloud, "renewal/staging/in_won")
+    try organization(cloud, "org-worker-rollout")
+    const workerKey = "invoice/in_worker_rollout"
+    const startsAt = now - 1000
+    const endsAt = now + allowanceMonth
+    const observeWorker = (condition: Payment["condition"]) => {
+      const subscription: SubscriptionObservation = {
+        customerId: "cus_worker_rollout", subscriptionId: "sub_worker_rollout",
+        plan: "plus_monthly", status: "active", startsAt, endsAt,
+        cancelAtPeriodEnd: false, latestInvoice: "PeriodInvoicePaid",
+        payment: { id: "in_worker_rollout", startsAt, endsAt, condition }
+      }
+      return cloud.store.transaction((tx) => settleSubscriptionAllowance(tx, "org-worker-rollout", subscription, false, now, true))
+    }
+    try observeWorker("paid")
+    try observeWorker("disputed")
+    const disputedWorker = try storedAllowance(cloud, workerKey)
+    const workerSeenByNode = try cloud.store.transaction((tx) => allowanceView(tx, "org-worker-rollout", now))
+    try observeWorker("paid")
+    const restoredWorker = try storedAllowance(cloud, workerKey)
+    try check(() => assert.deepStrictEqual(
+      [restoredNode, disputedWorker, workerSeenByNode?.state, workerSeenByNode?.clawedBack, restoredWorker],
+      [
+        { status: "open", phase: "PeriodOpen", cause: "NoClawback", revision: 3 },
+        { status: "clawed_back", phase: "PeriodClawedBack", cause: "DisputeClawback", revision: 2 },
+        "clawed_back", 25_000_000,
+        { status: "open", phase: "PeriodOpen", cause: "NoClawback", revision: 3 }
+      ]
     ))
   }))
 

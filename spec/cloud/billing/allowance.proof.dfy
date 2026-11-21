@@ -52,5 +52,5 @@ lemma initialHolds_ensures()
   reveal initial;
   reveal initialHolds, inv, alwaysOpenedPeriodIsPaid, alwaysUnopenedPeriodIsEmpty;
   reveal alwaysEveryMicroAccounted, alwaysOnlyAnOpenPeriodHasAvailable;
-  reveal alwaysAdjustedOnlyByARenewal, alwaysClawbackHasACause;
+  reveal alwaysAdjustedOnlyByARenewal, alwaysOnlyARenewalIsClawedBack, isClawedBack;
 }

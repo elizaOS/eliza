@@ -35,11 +35,11 @@ rounds to nothing opens no period. A free plan opens nothing.
 import types.* from "../shared/types"
 import plans.* from "./plans"
 import metering as M from "../shared/metering"
-type PeriodPhase = PeriodUnopened | PeriodOpen | PeriodExpired | PeriodClosed | PeriodClawedBack
+type PeriodPhase = PeriodUnopened | PeriodOpen | PeriodExpired | PeriodClosed | PeriodDisputed | PeriodRefunded
 type PeriodSource = NoSource | RenewalInvoice({ invoiceId: str }) | GrantMonth({ grantId: str, month: int })
 type ClawbackCause = NoClawback | RefundClawback | DisputeClawback
-type Period = { phase: PeriodPhase, source: PeriodSource, planKey: PlanKey, startsAt: Millis, endsAt: Millis, granted: Micros, adjustment: Micros, available: Micros, reserved: Micros, settled: Micros, expired: Micros, clawedBack: Micros, clawbackCause: ClawbackCause }
-pure val initial: Period = { phase: PeriodUnopened, source: NoSource, planKey: Free, startsAt: 0, endsAt: 0, granted: 0, adjustment: 0, available: 0, reserved: 0, settled: 0, expired: 0, clawedBack: 0, clawbackCause: NoClawback }
+type Period = { phase: PeriodPhase, source: PeriodSource, planKey: PlanKey, startsAt: Millis, endsAt: Millis, granted: Micros, adjustment: Micros, available: Micros, reserved: Micros, settled: Micros, expired: Micros, clawedBack: Micros }
+pure val initial: Period = { phase: PeriodUnopened, source: NoSource, planKey: Free, startsAt: 0, endsAt: 0, granted: 0, adjustment: 0, available: 0, reserved: 0, settled: 0, expired: 0, clawedBack: 0 }
 pure def isRenewal(p: Period): bool = { val src = p.source
   match src { | RenewalInvoice(x) => true | _ => false } }
 pure def isGrantMonth(p: Period): bool = { val src = p.source
@@ -116,7 +116,7 @@ pure def canSettleHold(p: Period, held: Micros, used: Micros): bool = p.phase !=
 pure def settleHold(p: Period, held: Micros, used: Micros, now: Millis): Period = {
   val rest = held - used
   val back = p.phase == PeriodOpen and now < p.endsAt
-  val clawed = p.phase == PeriodClawedBack
+  val clawed = isClawedBack(p)
   { ...p, reserved: p.reserved - held, settled: p.settled + used,
     available: if (back) p.available + rest else p.available,
     clawedBack: if (clawed) p.clawedBack + rest else p.clawedBack,
@@ -198,24 +198,36 @@ pure def sometimesUpgradedMidPeriod(p: Period): bool = p.phase == PeriodOpen and
 
 Only a renewal period is paid by an invoice; a grant month is never clawed
 back. Charges already settled stay settled. A refund after a dispute makes
-the clawback final.
+the clawback final. The SQL status and public allowance view both use
+`clawed_back` for a dispute or a refund. The persisted period carries the
+clawback cause so the Worker and Node server can share rows across versions.
 
 ```quint
+pure def isClawedBack(p: Period): bool = p.phase == PeriodDisputed or p.phase == PeriodRefunded
 pure def canClawBack(p: Period, cause: ClawbackCause): bool =
   isRenewal(p) and cause != NoClawback
-  and (p.phase == PeriodOpen or (p.phase == PeriodClawedBack and p.clawbackCause == DisputeClawback and cause == RefundClawback))
-pure def clawBack(p: Period, cause: ClawbackCause): Period = { ...p, phase: PeriodClawedBack, clawbackCause: cause, clawedBack: p.clawedBack + p.available, available: 0 }
-pure def alwaysClawbackHasACause(p: Period): bool =
-  ((p.phase == PeriodClawedBack) iff (p.clawbackCause != NoClawback)) and (p.phase == PeriodClawedBack implies isRenewal(p)) and (p.clawedBack > 0 implies p.phase == PeriodClawedBack)
-pure def sometimesClawedBack(p: Period): bool = p.phase == PeriodClawedBack and p.clawedBack > 0
+  and (p.phase == PeriodOpen or (p.phase == PeriodDisputed and cause == RefundClawback))
+pure def clawBack(p: Period, cause: ClawbackCause): Period =
+  { ...p, phase: if (cause == RefundClawback) PeriodRefunded else PeriodDisputed, clawedBack: p.clawedBack + p.available, available: 0 }
+pure def alwaysOnlyARenewalIsClawedBack(p: Period): bool = (isClawedBack(p) implies isRenewal(p)) and (p.clawedBack > 0 implies isClawedBack(p))
+pure def sometimesClawedBack(p: Period): bool = p.phase == PeriodRefunded and p.clawedBack > 0
+pure def sometimesDisputed(p: Period): bool = p.phase == PeriodDisputed and p.clawedBack > 0
+```
+
+### A refunded period stays refunded
+
+```quint
+pure def stepARefundIsFinal(before: Period, after: Period): bool = before.phase == PeriodRefunded implies after.phase == PeriodRefunded
 ```
 
 ### A won dispute restores everything clawed back, but only before the period ends
 
-A refund is never restored. A dispute won after the end leaves the period
-clawed back: it would have expired anyway.
+A dispute won after the end leaves the period disputed: it would have
+expired anyway.
 
 ```quint
-pure def canRestore(p: Period, now: Millis): bool = p.phase == PeriodClawedBack and p.clawbackCause == DisputeClawback and now < p.endsAt
-pure def restore(p: Period, now: Millis): Period = { ...p, phase: PeriodOpen, clawbackCause: NoClawback, available: p.available + p.clawedBack, clawedBack: 0 }
+pure def canRestore(p: Period, now: Millis): bool = p.phase == PeriodDisputed and now < p.endsAt
+pure def restore(p: Period, now: Millis): Period = { ...p, phase: PeriodOpen, available: p.available + p.clawedBack, clawedBack: 0 }
+pure def stepOnlyAWonDisputeReopens(before: Period, via: str, after: Period): bool =
+  (before.phase == PeriodDisputed and after.phase == PeriodOpen) implies (via == "restore" and after.available == before.available + before.clawedBack and after.clawedBack == 0)
 ```

@@ -1,17 +1,55 @@
-// spec/cloud/shared/metering.md, "Story: Settle every call once"
+// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/billing/allowance.md, "Story: Lose the allowance of a refunded invoice, and get it back if I win the dispute"
 import { type Rejected, apply, decodeState, initial, fundable, allowanceCharge, creditCharge, reservedTimeout, dispatchedTimeout, type Event, type Hold } from "../../gen/cloud__shared__metering.effect.vibe"
-import { type Rejected as PeriodRejected, apply as applyPeriod, decodeState as decodePeriod, initial as initialPeriod, type Event as PeriodEvent, type Period } from "../../gen/cloud__billing__allowance.effect.vibe"
+import { NotAState as NotAPeriod, type Rejected as PeriodRejected, apply as applyPeriod, decodeState as decodePeriod, initial as initialPeriod, type ClawbackCause, type Event as PeriodEvent, type Period, type PeriodPhase } from "../../gen/cloud__billing__allowance.effect.vibe"
 import type { HoldKey } from "../../gen/cloud__shared__types.ts"
 import { creditAvailable, readFunds, stepFunds, type FundsFailure } from "../billing/funds.vibe"
 import { laneFor, type FundingLane } from "../billing/policy.vibe"
+import type { WireAllowanceState } from "../client/views.vibe"
 import { refused, type Refused, wireName } from "../http/refusal.vibe"
 import { loadRow, machineRows, type RowConflict, RowCorrupt, stepRow } from "../store/rows.vibe"
 import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 
-export type { Hold, HoldKey }
+export type { Hold, HoldKey, WireAllowanceState }
 
 export const holdRows = machineRows<Hold, Event, Rejected, unknown>("holds", { initial, decodeState, apply })
-export const periodRows = machineRows<Period, PeriodEvent, PeriodRejected, unknown>("allowance_periods", { initial: initialPeriod, decodeState: decodePeriod, apply: applyPeriod })
+type StoredAllowancePhase =
+  | { readonly phase: Exclude<PeriodPhase, "PeriodDisputed" | "PeriodRefunded">; readonly clawbackCause: "NoClawback" }
+  | { readonly phase: "PeriodClawedBack"; readonly clawbackCause: Exclude<ClawbackCause, "NoClawback"> }
+
+const allowanceStates: Readonly<Record<PeriodPhase, StoredAllowancePhase & { readonly status: WireAllowanceState | null }>> = {
+  PeriodUnopened: { phase: "PeriodUnopened", clawbackCause: "NoClawback", status: null },
+  PeriodOpen: { phase: "PeriodOpen", clawbackCause: "NoClawback", status: "open" },
+  PeriodExpired: { phase: "PeriodExpired", clawbackCause: "NoClawback", status: "expired" },
+  PeriodClosed: { phase: "PeriodClosed", clawbackCause: "NoClawback", status: "closed" },
+  PeriodDisputed: { phase: "PeriodClawedBack", clawbackCause: "DisputeClawback", status: "clawed_back" },
+  PeriodRefunded: { phase: "PeriodClawedBack", clawbackCause: "RefundClawback", status: "clawed_back" },
+}
+
+export function allowanceStatus(phase: PeriodPhase): WireAllowanceState | null {
+  return allowanceStates[phase].status
+}
+
+export function encodeAllowancePeriod(period: Period) {
+  const { phase, clawbackCause } = allowanceStates[period.phase]
+  return { ...period, phase, clawbackCause }
+}
+
+export effect function decodeAllowancePeriod(input: unknown): Period!NotAPeriod {
+  if (typeof input !== "object" || input === null || !("phase" in input) || !("clawbackCause" in input)) return try decodePeriod(input)
+  const { phase, clawbackCause, ...period } = input
+  if (phase === "PeriodClawedBack") {
+    if (clawbackCause === "RefundClawback") return try decodePeriod({ ...period, phase: "PeriodRefunded" })
+    if (clawbackCause === "DisputeClawback") return try decodePeriod({ ...period, phase: "PeriodDisputed" })
+  } else if (clawbackCause === "NoClawback" && phase !== "PeriodRefunded" && phase !== "PeriodDisputed") {
+    return try decodePeriod({ ...period, phase })
+  }
+  throw new NotAPeriod({ input })
+}
+
+export const periodRows = {
+  ...machineRows<Period, PeriodEvent, PeriodRejected, NotAPeriod>("allowance_periods", { initial: initialPeriod, decodeState: decodeAllowancePeriod, apply: applyPeriod }),
+  encodeState: encodeAllowancePeriod,
+}
 
 export error HoldUnknown { key: string }
 
@@ -72,7 +110,7 @@ effect function openPeriod(tx: Tx, organizationId: string, now: number): ({ read
 }
 
 export effect function stepPeriod(tx: Tx, key: string, event: PeriodEvent, now: number) {
-  return try stepRow(tx, periodRows, key, event, (period) => ({ status: wireName(period.phase.slice("Period".length)), updated_at: now }))
+  return try stepRow(tx, periodRows, key, event, (period) => ({ status: allowanceStatus(period.phase), updated_at: now }))
 }
 
 effect function priorHold(tx: Tx, owner: HoldOwner, key: HoldKey, rendered: string, now: number): (HoldTicket | undefined)!MeteringFailure {
