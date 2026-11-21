@@ -54,7 +54,6 @@ describe("strict whole-message open command (fast path)", () => {
       "https://example.com/a?q=1#section",
     ],
     ["navigate to 'example.com/path'", "https://example.com/path"],
-    ["Open https://example.com/path.", "https://example.com/path."],
     [
       "Open https://example.com/?q=O'Reilly",
       "https://example.com/?q=O%27Reilly",
@@ -69,6 +68,12 @@ describe("strict whole-message open command (fast path)", () => {
   it.each([
     // Everything else is the model's call, not this grammar's.
     "youtube.com",
+    // Review finding: a mark closing a path may be the sentence's or the
+    // address's. The model proposes which and the owner reviews it.
+    "Open https://example.com/path.",
+    "open nytimes.com/section/world.",
+    "open nytimes.com/section/world!",
+    "open example.com/a?q=1?",
     "https://EXAMPLE.com/a?q=1#section",
     "open youtube.com now",
     "can you open youtube.com",
@@ -1220,6 +1225,27 @@ describe("direct bare addresses preserve the file-name boundary", () => {
       expect(directBrowserDestination(text)).toBe(expected);
     },
   );
+});
+
+describe("a path ending the message with closing punctuation", () => {
+  it("is not direct, and still grounds the proposed address for review", () => {
+    for (const text of [
+      "open nytimes.com/section/world.",
+      "Hey Eliza, open nytimes.com/section/world.",
+    ]) {
+      expect(directBrowserOpen(text)).toBeUndefined();
+      expect(
+        groundBrowserDestination(text, "https://nytimes.com/section/world"),
+      ).toBe("https://nytimes.com/section/world");
+    }
+    // A bare host keeps its fast path; the mark is prose there.
+    expect(directBrowserDestination("Open Reddit.com!")).toBe(
+      "https://reddit.com/",
+    );
+    expect(directBrowserDestination("open example.com/a, please")).toBe(
+      "https://example.com/a",
+    );
+  });
 });
 
 describe("direct polite requests keep the existing file-name distinction", () => {

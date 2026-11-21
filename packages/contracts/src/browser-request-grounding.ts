@@ -264,10 +264,14 @@ export function authoredBrowserOpen(
     if (QUOTE_PAIRS[quoted[1]] !== quoted[3]) return;
     target = quoted[2];
   } else {
-    // Closing punctuation after a bare host is prose. It is never removed
-    // from a path, query or fragment.
+    // Closing punctuation after a bare host is prose. After a path, query or
+    // fragment it may be either: when the address differs with and without
+    // it, the message is not a strict command. The model proposes the address
+    // and the owner reviews it, instead of the phone guessing whether
+    // "x.com/a." meant the dot. (An empty query "x.com/a?" is the same page.)
     const bare = stripTrailingPunctuation(target, ".,!?");
     if (!/[/?#]/.test(bare.replace(/^https?:\/\//i, ""))) target = bare;
+    else if (webAddress(bare)?.href !== webAddress(target)?.href) return;
   }
   const href = webAddress(target)?.href;
   return href ? { href, newTab } : undefined;
