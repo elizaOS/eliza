@@ -123,7 +123,7 @@ type ProfileTwo = typeof ProfileTwoSchema.Type
 type ProfileOne = typeof ProfileOneSchema.Type
 type RawField = { readonly name: string; readonly type: string; readonly value: unknown }
 
-export type OsModuleName = "agent-service" | "runtime-files" | "sign-in" | "secure-store" | "system" | "camera" | "browser-surface" | "calendar" | "contacts" | "reminders"
+export type OsModuleName = "agent-service" | "runtime-files" | "sign-in" | "cloud-auth" | "secure-store" | "system" | "camera" | "browser-surface" | "calendar" | "contacts" | "reminders"
   | "action-journal" | "notifications" | "messages" | "phone" | "passwords" | "media" | "filesystem" | "location" | "wifi" | "voice-io" | "app-update"
 export type SourceKind = "java" | "kotlin" | "assets" | "res" | "jniLibs"
 export type HostRootName = "consumer" | "dependencies"
