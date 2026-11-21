@@ -3,6 +3,7 @@ package ai.eliza.plugins.signin;
 
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Bundle;
 import android.util.Log;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -24,7 +25,6 @@ public class DeepLinksPlugin extends Plugin {
       synchronized (PROCESS) {
         if (capture == null) {
           KeystoreSlot slot = new KeystoreSlot(getContext(), KeystoreSlot.DEEP_LINK);
-          capture = DeepLinkCapture.launch(slot, null);
           capture = DeepLinkCapture.launch(slot, uncaptured(launch));
           if (capture.coldLaunch() > 0) launch.putExtra(EXTRA_RECEIPT, capture.coldLaunch());
           return;
@@ -51,7 +51,7 @@ public class DeepLinksPlugin extends Plugin {
     Uri data = intent.getData();
     if (data == null || !BrowserSignIn.claims(data.toString())) return;
     intent.setData(null);
-    intent.replaceExtras((android.os.Bundle) null);
+    intent.replaceExtras((Bundle) null);
     BrowserSignIn.arrived(data.toString());
   }
 

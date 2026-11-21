@@ -145,7 +145,6 @@ async function respond(
             },
           }, { name: "REPLY", params: { text: replyText } }, { abortSignal: signal }))
         terminal.recordActionResult(result)
-        runtime.logger.warn({ src: "agent", debugResult: JSON.stringify(result).slice(0, 1500), replyText }, "DEBUGREPLY")
         const outcome = result.success
           ? { status: "completed" as const, effects: terminal.effects }
           : { status: "denied" as const, reason: "reply_not_admitted", effects: terminal.effects }
