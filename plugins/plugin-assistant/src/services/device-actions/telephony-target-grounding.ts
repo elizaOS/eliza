@@ -90,10 +90,19 @@ export class DeviceTelephonyTargetNotRequestedError extends Error {
   }
 }
 
-/** The reply the owner sees for a refusal: true whichever recipient was refused. */
+/**
+ * The reply the owner sees for a refusal: true whichever recipient was
+ * refused. A refused contact change saves a number rather than calling it.
+ */
 export function telephonyTargetRefusalReply(
   refusal: TelephonyTargetRefusal,
+  operationType?: unknown,
 ): string {
+  if (
+    refusal === "number" &&
+    (operationType === "contact_create" || operationType === "contact_update")
+  )
+    return "I didn't save that, because that number isn't one you wrote in your message. Nothing was saved. Tell me the number to use.";
   if (refusal === "form")
     return "I can't set that up on this phone with that recipient. Tell me the number to use.";
   if (refusal === "contact")

@@ -1811,7 +1811,10 @@ export const proposeDeviceAction: Action = {
         return {
           success: false,
           text: error.message,
-          userFacingText: telephonyTargetRefusalReply(error.refusal),
+          userFacingText: telephonyTargetRefusalReply(
+            error.refusal,
+            operationType,
+          ),
           verifiedUserFacing: true,
           data: {
             code: error.code,

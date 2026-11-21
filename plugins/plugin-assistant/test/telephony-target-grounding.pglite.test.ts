@@ -654,6 +654,10 @@ it("refuses an invented number in a new contact or a contact change (v612)", asy
       );
       await refused(f, result);
       expect((result as { text: string }).text).toContain(reference);
+      // The owner asked to save a contact: the reply says nothing was saved.
+      expect((result as { userFacingText: string }).userFacingText).toContain(
+        "Nothing was saved.",
+      );
     } finally {
       await f.pg.close();
     }
