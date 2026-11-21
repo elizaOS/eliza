@@ -1,4 +1,5 @@
 // spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
+// spec/cloud/identity/sessions.md, "Logout ends only the presented family, and a second logout changes nothing"
 import { admitPrincipal, admitRequest, type RequestAccountStatus, type RequestAdmission, type RouteClass } from "../../gen/cloud__identity__sessions.effect.vibe"
 import { inspectKey } from "../native-clients/grants.vibe"
 import { refused, Refused } from "./refusal.vibe"
@@ -7,6 +8,7 @@ import { tokenDigest } from "../shared/sealing.vibe"
 import { Store, type StoreFailure, toInt, toText, type Row } from "../store/connection.vibe"
 
 export type { RouteClass }
+export type RouteAuth = RouteClass | "SessionFamily"
 
 export type Caller =
   | { readonly kind: "anonymous" }
@@ -105,8 +107,8 @@ effect function sessionCaller(token: string, routeClass: RouteClass, now: number
   }
 }
 
-export effect function authenticate(authorization: string | undefined, routeClass: RouteClass): Caller!(Refused | StoreFailure)!Store {
-  if (routeClass === "Public" || routeClass === "ProviderSignature") return { kind: "anonymous" }
+export effect function authenticate(authorization: string | undefined, routeClass: RouteAuth): Caller!(Refused | StoreFailure)!Store {
+  if (routeClass === "Public" || routeClass === "ProviderSignature" || routeClass === "SessionFamily") return { kind: "anonymous" }
   const now = try Clock.currentTimeMillis
   const token = bearerToken(authorization)
   if (token === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")

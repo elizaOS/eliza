@@ -64,8 +64,8 @@ pure def lawOneForeignRouteRefusesTheTable(routes: Routes::RouteList): bool =
 ### A session-only route is sent only with a live account session, never with the device key
 
 The credential follows the device route's auth class, never the page: a
-`Public` route is sent bare; a `Session`, `FreshSession` or `StepUp` route
-only with the account session from reauthentication (at most an hour old,
+`Public` route is sent bare. `Session`, `SessionFamily`, `FreshSession` and
+`StepUp` use only the account session from reauthentication (at most an hour old,
 `./credential.md`), after one shared refresh when its access token has
 expired, and otherwise fails with `ReauthRequired`; every other route
 carries the active device key, or fails with `SignInRequired` when there is
@@ -79,7 +79,7 @@ type CallRefusal = NoOrigin | NotListed | BodyTooLarge | HeaderRefused | SignInR
 type CallPlan = Send({ attach: Attach }) | RefreshSessionFirst | Refuse({ why: CallRefusal })
 pure def holdingOf(c: C::DeviceCredential): Holding =
   { key: C::activeVersion(c), sessionHeld: c.session != C::NoSession, sessionLive: C::sessionUsable(c) }
-pure def sessionOnly(auth: AuthClass): bool = auth == Session or auth == FreshSession or auth == StepUp
+pure def sessionOnly(auth: AuthClass): bool = auth == Session or auth == SessionFamily or auth == FreshSession or auth == StepUp
 pure def attachFor(h: Holding, auth: AuthClass): CallPlan =
   if (auth == Public) Send({ attach: Bare })
   else if (sessionOnly(auth)) (if (h.sessionLive) Send({ attach: WithSession({ version: h.key }) }) else if (h.sessionHeld) RefreshSessionFirst else Refuse({ why: ReauthRequired }))
@@ -87,7 +87,7 @@ pure def attachFor(h: Holding, auth: AuthClass): CallPlan =
   else Refuse({ why: SignInRequired })
 pure val hValues = Set({ key: 0, sessionHeld: false, sessionLive: false }, { key: 1, sessionHeld: false, sessionLive: false },
   { key: 2, sessionHeld: true, sessionLive: false }, { key: 2, sessionHeld: true, sessionLive: true })
-pure val authValues = Set(Public, KeyOrSession, Session, FreshSession, StepUp)
+pure val authValues = Set(Public, KeyOrSession, Session, SessionFamily, FreshSession, StepUp)
 pure def keyOf(a: Attach): int = match a { | WithKey(k) => k.version | _ => 0 }
 pure def sentKey(p: CallPlan): int = match p { | Send(s) => keyOf(s.attach) | _ => 0 }
 pure def lawASessionRouteNeverCarriesTheKey(h: Holding, auth: AuthClass): bool = sessionOnly(auth) implies sentKey(attachFor(h, auth)) == 0

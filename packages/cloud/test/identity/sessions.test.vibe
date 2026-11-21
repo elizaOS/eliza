@@ -73,16 +73,21 @@ describe("WP1 Identity: sessions and accounts", () => {
     const cloud = try testCloud()
     const here = try signedIn(cloud, "ada@example.com")
     const there = try signedIn(cloud, "ada@example.com")
+    const rotated = try cloud.call("/api/v1/auth/refresh", { json: { refreshToken: here.refreshToken } })
+    const pair = try Schema.decodeUnknownEffect(Schema.Struct({ accessToken: Schema.String, refreshToken: Schema.String }))(rotated.body)
+    const oldAccess = try cloud.call("/api/v1/user", { headers: bearer(here.accessToken) })
     const first = try cloud.call("/api/v1/auth/logout", { method: "POST", headers: bearer(here.accessToken) })
+    const ended = try sql(cloud, "SELECT state, revision FROM sessions WHERE user_id = $1 ORDER BY key", [here.user.id])
     const again = try cloud.call("/api/v1/auth/logout", { json: { refreshToken: here.refreshToken } })
-    const hereAfter = try cloud.call("/api/v1/user", { headers: bearer(here.accessToken) })
+    const endedAgain = try sql(cloud, "SELECT state, revision FROM sessions WHERE user_id = $1 ORDER BY key", [here.user.id])
+    const hereAfter = try cloud.call("/api/v1/user", { headers: bearer(pair.accessToken) })
     const thereAfter = try cloud.call("/api/v1/user", { headers: bearer(there.accessToken) })
-    const refreshAfter = try cloud.call("/api/v1/auth/refresh", { json: { refreshToken: here.refreshToken } })
+    const refreshAfter = try cloud.call("/api/v1/auth/refresh", { json: { refreshToken: pair.refreshToken } })
     const unknown = try cloud.call("/api/v1/auth/logout", { method: "POST", headers: bearer(`eliza_session_${"x".repeat(43)}`) })
     const epoch = try sql(cloud, "SELECT sessions_revoked_before FROM accounts WHERE key = $1", [here.user.id])
     try check(() => assert.deepStrictEqual(
-      [first.status, again.status, hereAfter.status, failure(hereAfter.body), thereAfter.status, refreshAfter.status, failure(refreshAfter.body), unknown.status, failure(unknown.body), Number(epoch[0]?.sessions_revoked_before)],
-      [204, 204, 401, ["authentication_required", "credential_revoked"], 200, 401, ["authentication_required", "credential_revoked"], 401, ["authentication_required", "credential_unknown"], 0]
+      [oldAccess.status, failure(oldAccess.body), first.status, again.status, endedAgain, hereAfter.status, failure(hereAfter.body), thereAfter.status, refreshAfter.status, failure(refreshAfter.body), unknown.status, failure(unknown.body), Number(epoch[0]?.sessions_revoked_before)],
+      [401, ["authentication_required", "credential_unknown"], 204, 204, ended, 401, ["authentication_required", "credential_revoked"], 200, 401, ["authentication_required", "credential_revoked"], 401, ["authentication_required", "credential_unknown"], 0]
     ))
   }))
 

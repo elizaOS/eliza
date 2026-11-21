@@ -183,9 +183,9 @@ effect function logoutFamily(tx: Tx, token: string, now: number): boolean!Sessio
     [digest]
   ))[0]?.key)
   if (key === undefined) return false
-  const family = advanced((try loadRow(tx, familyRows, key)).state, now)
+  const family = advanced((try loadRow(tx, familyRows, key, true)).state, now)
   if (!canLogout(family)) return false
-  try stepFamily(tx, key, { type: "logout" }, now)
+  if (family.phase === "Live") try stepFamily(tx, key, { type: "logout" }, now)
   return true
 }
 
@@ -213,7 +213,7 @@ export const routes: ReadonlyArray<Route> = [
   {
     method: "POST",
     path: "/api/v1/auth/logout",
-    auth: "Public",
+    auth: "SessionFamily",
     handler: (context) => effect {
       const bearer = bearerToken(context.request.headers.authorization)
       const token = bearer ?? (try jsonBody(context, RefreshRequest)).refreshToken

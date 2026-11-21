@@ -55,7 +55,7 @@ that os replaced is sent on the next call by the same client.
 ```quint
 type HttpMethod = Get | Post | Patch | Delete
 type Segment = Literal({ text: str }) | Param({ name: str })
-type AuthClass = Public | KeyOrSession | Session | FreshSession | StepUp
+type AuthClass = Public | KeyOrSession | Session | SessionFamily | FreshSession | StepUp
 type DeviceRoute = { method: HttpMethod, path: List[Segment], auth: AuthClass, headers: Set[str] }
 type DeviceCall = { route: DeviceRoute, bearer: str }
 pure def callOf(route: DeviceRoute, credentialNow: str): DeviceCall = { route: route, bearer: credentialNow }
@@ -101,8 +101,10 @@ and confirmation use a signed session. Their handlers apply the
 [second-factor policy](./identity/secondFactor.md) for a fresh first setup
 or a recent step-up for later changes. A sign-in
 route marked `Public` carries its proof in the body (code, verifier,
-challenge or refresh token); the speech socket carries the session token in
-its `hello`. Routes the cloud calls itself, provider callbacks, the payment
+challenge or refresh token). `SessionFamily` is logout: the handler checks
+the presented access or refresh digest for the family it will end. The
+speech socket carries the session token in its `hello`. Routes the cloud
+calls itself, provider callbacks, the payment
 webhook and the loopback test inbox are not device routes.
 
 ```quint
@@ -128,7 +130,7 @@ pure val signInRoutes: List[DeviceRoute] = List(
   route(Post, api(List("auth", "mfa", "complete")), Public),
   route(Post, api(List("auth", "mfa", "sms", "send")), Public),
   route(Post, api(List("auth", "refresh")), Public),
-  route(Post, api(List("auth", "logout")), Session),
+  route(Post, api(List("auth", "logout")), SessionFamily),
   route(Post, api(List("auth", "mfa", "step-up")), Session),
   route(Get, api(List("auth", "mfa")), Session),
   route(Post, api(List("auth", "mfa", "totp", "enroll")), Session),
