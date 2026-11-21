@@ -1813,6 +1813,93 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     },
   );
 
+  it.each([
+    {
+      name: "applies the conforming retry after an empty update extraction",
+      retry: { startAt: "2026-09-18T16:00:00", requiresInput: false },
+    },
+    {
+      name: "fails the update explicitly, without a write, after two empty extractions",
+      retry: {},
+    },
+  ])("$name", async ({ retry }) => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "V619 check",
+      startAt: "2026-09-18T19:00:00.000Z",
+      endAt: "2026-09-18T19:30:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "calendar-update-extraction-conformance",
+    });
+    if (!created.event)
+      throw new Error("Calendar fixture event was not created");
+    const updateResponses = [{}, retry];
+    const runJsonModel = vi.fn(async ({ actionType }) => {
+      if (actionType !== "lifeops.calendar.extract_update_event") return null;
+      const parsed = updateResponses.shift();
+      if (!parsed) throw new Error("unexpected extra update extraction");
+      return { rawResponse: JSON.stringify(parsed), parsed };
+    });
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel,
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: "00000000-0000-0000-0000-000000000303",
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-09-15T22:00:00.000Z"),
+        content: { text: "move v619 check to 4pm" },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          subaction: "update_event",
+          query: "v619 check",
+          details: {
+            eventId: created.event.id,
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            timeZone: "America/New_York",
+          },
+        },
+      },
+    );
+    const updateCalls = runJsonModel.mock.calls.filter(
+      ([args]) => args.actionType === "lifeops.calendar.extract_update_event",
+    );
+    expect(updateCalls).toHaveLength(2);
+    const stored = await service.getCalendarEventById(created.event.id);
+    if (Object.keys(retry).length > 0) {
+      expect(result?.success, JSON.stringify(result)).toBe(true);
+      expect(stored).toMatchObject({
+        startAt: "2026-09-18T20:00:00.000Z",
+        endAt: "2026-09-18T20:30:00.000Z",
+      });
+      return;
+    }
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        coachingFailure: true,
+        error: "CALENDAR_UPDATE_EXTRACTION_INVALID",
+      },
+    });
+    expect(result?.effectReceipts?.[0]).toMatchObject({
+      outcome: "failed",
+      failure: {
+        code: "CALENDAR_UPDATE_EXTRACTION_INVALID",
+        acceptance: "rejected",
+      },
+    });
+    expect(stored).toMatchObject({
+      startAt: "2026-09-18T19:00:00.000Z",
+      endAt: "2026-09-18T19:30:00.000Z",
+    });
+  });
+
   it.each([{ explicitEnd: "16:30:00" }, { explicitEnd: "17:00:00" }])(
     "preserves stored duration despite a planner end of $explicitEnd",
     async ({ explicitEnd }) => {
