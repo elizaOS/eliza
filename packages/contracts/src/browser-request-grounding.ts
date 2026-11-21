@@ -317,6 +317,10 @@ export function directBrowserOpen(
   const bare = text.trim(),
     url = webAddress(bare);
   if (!url) return;
+  // As in the strict command: a closing mark that changes a typed path,
+  // query or fragment may be the sentence's, so the owner reviews the open.
+  if (webAddress(stripTrailingPunctuation(bare, ".,!?"))?.href !== url.href)
+    return;
   const tld = url.hostname.slice(url.hostname.lastIndexOf(".") + 1);
   if (FILE_TYPE_TLDS.has(tld) && !/^(?:https?:\/\/|www\.)/i.test(bare)) return;
   return { href: url.href, newTab: false };

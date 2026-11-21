@@ -1238,6 +1238,22 @@ describe("a path ending the message with closing punctuation", () => {
         groundBrowserDestination(text, "https://nytimes.com/section/world"),
       ).toBe("https://nytimes.com/section/world");
     }
+    // A bare address message reads the closing mark the same way.
+    for (const text of [
+      "nytimes.com/section/world.",
+      "https://example.com/path!",
+    ]) {
+      expect(directBrowserOpen(text)).toBeUndefined();
+      expect(
+        groundBrowserDestination(text, `https://${text.replace(/^https:\/\/|[.!]$/g, "")}`),
+      ).toBeDefined();
+    }
+    expect(directBrowserDestination("nytimes.com/section/world")).toBe(
+      "https://nytimes.com/section/world",
+    );
+    expect(directBrowserDestination("https://example.com/a?")).toBe(
+      "https://example.com/a",
+    );
     // A bare host keeps its fast path; the mark is prose there.
     expect(directBrowserDestination("Open Reddit.com!")).toBe(
       "https://reddit.com/",
