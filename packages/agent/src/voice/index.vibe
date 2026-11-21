@@ -20,3 +20,9 @@ export {
   createLiveVoiceSession, parseVoiceTranscriptEnvelope, VOICE_TRANSCRIPT_STREAM,
   type AgentEventSubscribe, type LiveTranscriptEvent, type LiveVoiceSession, type LiveVoiceSessionOptions,
 } from "./live-session.vibe"
+export { createHeardReports, type HeardEvent, type HeardReport, type HeardReports, type HeardReportsOptions } from "./heard-reports.vibe"
+export {
+  jsonRequestOf, VoiceRouteRefused, voiceNetworkPorts, type JsonAnswer, type JsonRequest, type RuntimeJsonRequester, type VoiceNetworkPorts,
+} from "./agent-ports.vibe"
+export { VoiceSession, type ShownPhase } from "./session.vibe"
+export type { VoiceFailure } from "./ports.vibe"

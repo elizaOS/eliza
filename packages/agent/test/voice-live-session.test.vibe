@@ -28,6 +28,7 @@ function harness() {
       return () => { listeners.delete(listener) }
     },
     conversationId: "conversation-1",
+    roomId: "room-1",
     capture: { open: (_request, events) => { captures.push(events) }, close: () => { counts.closes += 1 } },
     endOfTurn: async () => "ScoredComplete",
     turns: {

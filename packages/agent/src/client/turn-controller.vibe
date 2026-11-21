@@ -1,0 +1,333 @@
+// spec/agent/client/turns.md, "Story: Stop a reply without sending the next message against an uncertain room"; spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"; spec/agent/client/turns.md, "A message is posted only to the bound room, one turn at a time, and never while a Stop is waiting or uncertain"; spec/agent/client/turns.md, "Stop is posted once for the posted turn, and only a receipt for its room and reason confirms it"; spec/agent/client/turns.md, "An uncertain Stop refuses the next send once and unbinds only the stopped conversation"; spec/agent/client/turns.md, "Binding another conversation or resetting starts a new generation with no open or stopped turn"; spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId"; spec/agent/client/turns.md, "A conversation the agent no longer has ends the turn as a conversation failure and unbinds it"
+import {
+  Machine, boundConversation, boundRoom, enabled, heldConversation, machine, stopConfirmedBy, stopReason, stopTurn, turnId,
+  type Attempt, type ClientCall, type ClientStep, type Event, type StopReceipt, type StreamEnd, type TurnClient,
+} from "../../gen/agent__client__turns.effect.vibe"
+import type { RuntimeStream } from "./index.vibe"
+import { ActionResultFrame } from "./reply-frame.schema.vibe"
+import { readReplyStream, type ReplyOutcome, type ReplyStreamHooks, type StreamedReply } from "./stream-reader.vibe"
+import { newClientMessageId, type ClientMessageId } from "./stopped-turn.ts"
+
+export schema ConversationRecord { readonly id: Schema.NonEmptyString; readonly roomId: Schema.NonEmptyString }
+schema Created { readonly conversation: ConversationRecord }
+schema BufferedReply {
+  readonly text: string
+  readonly agentName: string
+  readonly messageId: Schema.NonEmptyString
+  readonly userMessageId: Schema.NonEmptyString
+  readonly actionResults: readonly ActionResultFrame[]
+  readonly taskChoices?: readonly Schema.Unknown[]
+  readonly failureKind?: Schema.NonEmptyString
+}
+schema StopAnswer { readonly aborted: true; readonly roomId: string; readonly reason: string; readonly outcome: "stopConfirmed" | "nothingRunning" | "stopUncertain" }
+schema RefusedRequest { readonly name: "RuntimeRequestError"; readonly status: Schema.Int; readonly message: string; readonly code?: string }
+
+export error InvalidConversation { input: unknown }
+
+export type TurnReply = StreamedReply
+
+export interface TurnMessage {
+  readonly text: string
+  readonly channelType?: "DM" | "VOICE_DM"
+  readonly metadata?: Readonly<Record<string, unknown>>
+  readonly images?: readonly unknown[]
+}
+
+export interface TurnOptions { readonly stream?: ReplyStreamHooks }
+
+export interface TurnTransport {
+  request(path: string, body?: unknown): Promise<unknown>
+  stream(path: string, body: unknown, signal?: AbortSignal): Promise<RuntimeStream>
+}
+
+export interface TurnRefusal { readonly status: number; readonly code: string; readonly message: string }
+
+export type TurnResult =
+  | { readonly kind: "Replied"; readonly clientMessageId: ClientMessageId; readonly reply: TurnReply }
+  | { readonly kind: "AgentFailed"; readonly clientMessageId: ClientMessageId; readonly code: string; readonly message: string; readonly reply?: TurnReply }
+  | { readonly kind: "NotAccepted"; readonly clientMessageId: ClientMessageId; readonly refusal?: TurnRefusal }
+  | { readonly kind: "MaybeAccepted" | "ConversationLost" | "StoppedByOwner"; readonly clientMessageId: ClientMessageId }
+  | { readonly kind: "RefusedBusy" | "RefusedStopUnconfirmed" }
+
+export interface StopResult { readonly kind: "Idle" | "Stopped" | "Uncertain" }
+
+export interface StoppedConversationTurn { readonly conversation: ConversationRecord; readonly clientMessageId: ClientMessageId }
+
+type Posted =
+  | { readonly ending: "Done"; readonly reply: TurnReply }
+  | { readonly ending: "FailureFrame"; readonly code: string; readonly message: string; readonly reply?: TurnReply }
+  | ({ readonly ending: "Refusal" } & TurnRefusal)
+  | { readonly ending: Exclude<StreamEnd, "Done" | "FailureFrame" | "Refusal"> }
+
+interface Session {
+  readonly transport: TurnTransport
+  readonly machine: Machine.Shape
+  readonly keys: Map<number, ClientMessageId>
+  readonly conversationIds: Map<string, number>
+  readonly roomIds: Map<string, number>
+  readonly records: Map<number, ConversationRecord>
+  readonly rooms: Map<number, string>
+  live: { readonly turn: number; readonly abort: AbortController } | undefined
+  stopping: Promise<StopResult> | undefined
+}
+
+export type TurnSession = Session
+
+const idle: StopResult = { kind: "Idle" }
+const replyProtocol = "REPLY_PROTOCOL"
+const unsent = new Set(["NoRoute", "InvalidPath", "StartupFailed", "RefreshFailed"])
+const stopOutcome = { stopConfirmed: "StopConfirmed", nothingRunning: "NothingRunning", stopUncertain: "StopUncertain" } as const
+const decodeRecord = Schema.decodeUnknownOption(ConversationRecord)
+const decodeCreated = Schema.decodeUnknownOption(Created)
+const decodeReply = Schema.decodeUnknownOption(BufferedReply)
+const decodeStop = Schema.decodeUnknownOption(StopAnswer)
+const decodeRefused = Schema.decodeUnknownOption(RefusedRequest)
+
+effect function hold() {
+  provide machine() {
+    return try Machine
+  }
+}
+
+export function openTurnSession(transport: TurnTransport): Session {
+  return {
+    transport, machine: Effect.runSync(hold()), keys: new Map(), conversationIds: new Map(), roomIds: new Map(), records: new Map(), rooms: new Map(),
+    live: undefined, stopping: undefined,
+  }
+}
+
+function ordinal(known: Map<string, number>, key: string): number {
+  const found = known.get(key) ?? known.size + 1
+  known.set(key, found)
+  return found
+}
+
+function intern(session: Session, record: ConversationRecord) {
+  const conversation = ordinal(session.conversationIds, record.id)
+  const room = ordinal(session.roomIds, record.roomId)
+  session.records.set(conversation, { id: record.id, roomId: record.roomId })
+  session.rooms.set(room, record.roomId)
+  return { conversation, room }
+}
+
+export effect function advanceTurns(session: Session, event: Event) {
+  if (!enabled(try session.machine.get(), event)) return undefined
+  return try orDie(session.machine.send(event))
+}
+
+effect function owns(session: Session, turn: number) {
+  return turnId((try session.machine.get()).turn) === turn
+}
+
+function receiptOf(session: Session, answer: unknown): StopReceipt {
+  const found = decodeStop(answer)
+  if (Option.isNone(found)) return { tag: "NoReceipt" }
+  const { roomId, reason, outcome } = found.value
+  return { tag: "Receipt", room: session.roomIds.get(roomId) ?? 0, reason, outcome: stopOutcome[outcome] }
+}
+
+effect function postStop(session: Session, turn: number, room: number) {
+  const roomId = encodeURIComponent(session.rooms.get(room) ?? "")
+  const answer = tryPromise(() => session.transport.request(`/api/turns/${roomId}/abort`, { reason: stopReason })) catch () => undefined
+  const receipt = receiptOf(session, answer)
+  try advanceTurns(session, { type: "observeStop", turn, receipt })
+  return (stopConfirmedBy(receipt, room) ? { kind: "Stopped" } : { kind: "Uncertain" }) satisfies StopResult
+}
+
+function settle(session: Session, step: ClientStep | undefined): Promise<StopResult> {
+  const live = session.live
+  if (step !== undefined && live !== undefined && turnId(step.state.turn) !== live.turn) {
+    live.abort.abort(new Error("Stopped"))
+    session.live = undefined
+  }
+  for (const call of step?.out ?? []) {
+    if (call.tag === "PostStop") session.stopping = runPromise(postStop(session, call.turn, call.room))
+  }
+  const posted = step?.out.some((call) => call.tag === "PostStop") === true
+  const waiting = posted || stopTurn(Effect.runSync(session.machine.get()).stop) > 0
+  return waiting && session.stopping !== undefined ? session.stopping : Promise.resolve(idle)
+}
+
+function guarded(hooks: ReplyStreamHooks, signal: AbortSignal): ReplyStreamHooks {
+  const live = <A extends unknown[]>(hook: ((...args: A) => void) | undefined) =>
+    hook === undefined ? undefined : (...args: A) => { if (!signal.aborted) hook(...args) }
+  const preview = live(hooks.onPreview)
+  const status = live(hooks.onStatus)
+  const tool = live(hooks.onTool)
+  const ready = live(hooks.onReady)
+  return {
+    ...(preview === undefined ? {} : { onPreview: preview }), ...(status === undefined ? {} : { onStatus: status }),
+    ...(tool === undefined ? {} : { onTool: tool }), ...(ready === undefined ? {} : { onReady: ready }),
+  }
+}
+
+function answered(reply: TurnReply): Posted {
+  return reply.failureKind === undefined ? { ending: "Done", reply } : { ending: "FailureFrame", code: reply.failureKind, message: reply.failureKind, reply }
+}
+
+function streamed(outcome: ReplyOutcome): Posted {
+  switch (outcome.kind) {
+    case "Done": {
+      const { kind: _kind, ...reply } = outcome
+      return answered(reply)
+    }
+    case "Failed": return { ending: "FailureFrame", code: outcome.code, message: outcome.message }
+    case "Dropped": return { ending: "Dropped" }
+  }
+}
+
+function buffered(data: unknown): Posted {
+  const reply = decodeReply(data)
+  return Option.isSome(reply) ? answered(reply.value) : { ending: "FailureFrame", code: replyProtocol, message: "A reply does not match the reply protocol" }
+}
+
+function failed(error: unknown): Posted {
+  const refused = decodeRefused(error)
+  if (Option.isSome(refused)) {
+    const { status, message, code } = refused.value
+    const named = code ?? message
+    if (status === 404 || named === "CONVERSATION_NOT_OWNED") return { ending: "ConversationGone" }
+    return status < 500 ? { ending: "Refusal", status, code: named, message } : { ending: "FailureFrame", code: named, message }
+  }
+  const why = error instanceof Error ? error.message : ""
+  return why === "AccountChanged" ? { ending: "ConversationGone" } : unsent.has(why) ? { ending: "NotDispatched" } : { ending: "Dropped" }
+}
+
+async function post(session: Session, record: ConversationRecord, body: object, attempt: Attempt, hooks: ReplyStreamHooks | undefined, signal: AbortSignal): Promise<Posted> {
+  const path = `/api/conversations/${encodeURIComponent(record.id)}/messages`
+  try {
+    if (attempt !== "Streamed") return buffered(await session.transport.request(path, body))
+    const opened = await session.transport.stream(`${path}/stream`, body, signal)
+    return streamed(await readReplyStream(opened.body, guarded(hooks ?? {}, signal), signal))
+  } catch (error) {
+    return failed(error)
+  }
+}
+
+function resultOf(posted: Posted, clientMessageId: ClientMessageId): TurnResult {
+  switch (posted.ending) {
+    case "Done": return { kind: "Replied", clientMessageId, reply: posted.reply }
+    case "FailureFrame": return { kind: "AgentFailed", clientMessageId, code: posted.code, message: posted.message, ...(posted.reply === undefined ? {} : { reply: posted.reply }) }
+    case "Refusal": return { kind: "NotAccepted", clientMessageId, refusal: { status: posted.status, code: posted.code, message: posted.message } }
+    case "NotDispatched": return { kind: "NotAccepted", clientMessageId }
+    case "Dropped": return { kind: "MaybeAccepted", clientMessageId }
+    case "ConversationGone": return { kind: "ConversationLost", clientMessageId }
+  }
+}
+
+effect function createConversation(session: Session) {
+  const answer = tryPromise(() => session.transport.request("/api/conversations", {})) catch () => undefined
+  const created = decodeCreated(answer)
+  return Option.isSome(created) ? intern(session, created.value.conversation) : undefined
+}
+
+effect function sendTurn(session: Session, message: TurnMessage, options: TurnOptions) {
+  const reserved = try advanceTurns(session, { type: "send" })
+  if (reserved === undefined || reserved.state.outcome === "RefusedBusy") return { kind: "RefusedBusy" } satisfies TurnResult
+  const turn = turnId(reserved.state.turn)
+  const clientMessageId = newClientMessageId()
+  session.keys.set(turn, clientMessageId)
+  const abort = new AbortController()
+  session.live = { turn, abort }
+  const stopped: TurnResult = { kind: "StoppedByOwner", clientMessageId }
+  while (stopTurn((try session.machine.get()).stop) > 0) try promise(() => session.stopping ?? Promise.resolve(idle))
+  const ready = try session.machine.get()
+  if (turnId(ready.turn) !== turn) return stopped
+  if (heldConversation(ready.stop) > 0) {
+    try advanceTurns(session, { type: "refuseAfterStop", turn })
+    return { kind: "RefusedStopUnconfirmed" } satisfies TurnResult
+  }
+  const bound = boundConversation(ready.binding) === 0 ? try createConversation(session) : { conversation: boundConversation(ready.binding), room: boundRoom(ready.binding) }
+  if (!(try owns(session, turn))) return stopped
+  const record = bound === undefined ? undefined : session.records.get(bound.conversation)
+  let posted: Posted = { ending: "NotDispatched" }
+  let calls: readonly ClientCall[] = []
+  if (bound !== undefined && record !== undefined) {
+    const sent = try advanceTurns(session, { type: "dispatch", turn, conversation: bound.conversation, room: bound.room, streaming: options.stream !== undefined })
+    if (sent === undefined) return stopped
+    calls = sent.out
+  }
+  const body = { ...message, clientMessageId }
+  for (;;) {
+    const call = calls.find((each) => each.tag === "PostMessage")
+    if (call !== undefined && record !== undefined) {
+      posted = try promise(() => post(session, record, body, call.attempt, options.stream, abort.signal))
+      if (!(try owns(session, turn))) return stopped
+    }
+    const finished = try advanceTurns(session, { type: "finishTurn", turn, ending: posted.ending })
+    if (finished === undefined) return stopped
+    calls = finished.out
+    if (!calls.some((each) => each.tag === "PostMessage")) break
+  }
+  if (session.live?.turn === turn) session.live = undefined
+  return resultOf(posted, clientMessageId)
+}
+
+export class TurnController {
+  #session: Session
+
+  constructor(transport: TurnTransport) {
+    this.#session = openTurnSession(transport)
+  }
+
+  #state(): TurnClient {
+    return Effect.runSync(this.#session.machine.get())
+  }
+
+  #change(event: Event): Promise<StopResult> {
+    return settle(this.#session, Effect.runSync(advanceTurns(this.#session, event)))
+  }
+
+  get generation(): number {
+    return this.#state().generation
+  }
+
+  get pending(): boolean {
+    return this.#state().turn.tag !== "Idle"
+  }
+
+  get conversation(): ConversationRecord | null {
+    const binding = this.#state().binding
+    return binding.tag === "Bound" ? this.#session.records.get(binding.conversation) ?? null : null
+  }
+
+  get stopped(): StoppedConversationTurn | null {
+    const stopped = this.#state().stopped
+    if (stopped.tag !== "StoppedAt") return null
+    const conversation = this.#session.records.get(stopped.conversation)
+    const clientMessageId = this.#session.keys.get(stopped.turn)
+    return conversation === undefined || clientMessageId === undefined ? null : { conversation, clientMessageId }
+  }
+
+  fence(): () => boolean {
+    const generation = this.generation
+    return () => generation === this.generation
+  }
+
+  send(message: TurnMessage, options: TurnOptions = {}): Promise<TurnResult> {
+    return runPromise(sendTurn(this.#session, message, options))
+  }
+
+  interrupt(): Promise<StopResult> {
+    return this.#change({ type: "interrupt" })
+  }
+
+  bind(conversation: ConversationRecord): Promise<StopResult> {
+    const record = decodeRecord(conversation)
+    if (Option.isNone(record)) return Promise.reject(new InvalidConversation({ input: conversation }))
+    return this.#change({ type: "bind", ...intern(this.#session, record.value) })
+  }
+
+  reset(): Promise<StopResult> {
+    return this.#change({ type: "resetClient" })
+  }
+
+  releaseStopped(clientMessageId: ClientMessageId): void {
+    const stopped = this.#state().stopped
+    if (stopped.tag === "StoppedAt" && this.#session.keys.get(stopped.turn) === clientMessageId) {
+      Effect.runSync(advanceTurns(this.#session, { type: "releaseStopped", turn: stopped.turn, conversation: stopped.conversation }))
+    }
+  }
+}
+
+export { findStoppedUserTurn, type ClientMessageId, type HistoryMessage } from "./stopped-turn.ts"
