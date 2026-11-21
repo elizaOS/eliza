@@ -381,7 +381,7 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     }
   }))
 
-  it.live("Refuse an expired key, end this key on self-revoke, end every key on revokeAll, and sweep only stale grants (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")", () => scoped(effect {
+  it.live("Refuse an expired key, end this key on self-revoke, end every key on revokeAll, and sweep only stale grants (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\"; spec/cloud/identity/sessions.md, \"Story: Admit a request only for a live credential of an active account\")", () => scoped(effect {
     const clock = try sync(() => manualClock())
     try sync(() => clock.set(1_000_000))
     provide Clock.Clock = clock.clock {
@@ -435,6 +435,7 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
       }
     ))
     const at = try Clock.currentTimeMillis
+    const futureCutoff = try signedIn(cloud, "future-cutoff@example.com")
     const expiry = at + 86_400_000
     const legacy = ["active", "revoked", "pending", "bound", "malformed", "truncated", "nullable", "minimal", "missing-ttl", "contradictory", "other-nested", "numeric", "bound-active", "empty"]
     try cloud.store.transaction(effect (tx: Tx) => {
@@ -444,6 +445,7 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
       try tx.query("ALTER TABLE device_grants DROP COLUMN device_epoch")
       try tx.query("ALTER TABLE accounts ALTER COLUMN devices_revoked_before DROP NOT NULL")
       try tx.query("UPDATE accounts SET devices_revoked_before = $2 WHERE key = $1", [signed.user.id, at - 500])
+      try tx.query("UPDATE accounts SET devices_revoked_before = $2 WHERE key = $1", [futureCutoff.user.id, at + 10_000])
       try tx.query("INSERT INTO organizations (id, name, created_at) VALUES ('legacy-null-org', 'Nullable cutoff', $1)", [at])
       try tx.query("INSERT INTO accounts (key, state, revision, organization_id, status, devices_revoked_before, created_at, updated_at) VALUES ('legacy-null-user', '{}'::jsonb, 1, 'legacy-null-org', 'active', NULL, $1, $1)", [at])
       for (const name of legacy) {
@@ -496,6 +498,13 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
         ["legacy-pending", "ended", null, 0, 0], ["legacy-revoked", "active", null, expiry, -1], ["legacy-truncated", "ended", null, 0, 0]
       ]
     }))
+    const afterMigration = try device(cloud, futureCutoff.accessToken, "After migration")
+    const admittedAfterMigration = try cloud.call("/api/v1/user", { headers: bearer(afterMigration.credential.secret) })
+    const observed = try sql(cloud, "SELECT g.issued_at, g.device_epoch, a.device_epoch AS account_epoch, a.devices_revoked_before FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.credential_id = $1", [afterMigration.credential.credentialId])
+    try check(() => assert.deepStrictEqual([
+      admittedAfterMigration.status, Number(observed[0]?.issued_at) < Number(observed[0]?.devices_revoked_before),
+      Number(observed[0]?.device_epoch), Number(observed[0]?.account_epoch), Number(observed[0]?.devices_revoked_before)
+    ], [200, true, 0, 0, at + 10_000]))
     }
   }))
 })

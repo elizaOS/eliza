@@ -221,7 +221,9 @@ account and credential in the same operation. A public route authenticates
 no one. A provider callback verifies its signature at the route. A permitted
 device credential serves device-facing services. Routes that name a browser
 session, fresh session or second factor require a session, with the freshness
-periods defined above. A missing, revoked or expired credential cannot pass.
+periods defined above. A missing, revoked or expired credential cannot pass. Device credential validity
+is decided by `nativeClients/deviceKeys`; account, route and assurance checks
+then use the principal without reinterpreting its credential timestamps.
 
 ```quint
 type RequestAccountStatus = RequestAccountActive | RequestAccountInactive
@@ -235,23 +237,51 @@ pure def credentialRefusal(view: CredentialView, now: Millis): RefusalReason =
   else if (now >= view.expiresAt) CredentialExpired
   else NoReason
 pure def routeNeedsSession(route: RouteClass): bool = Set(SignedSession, FreshSession, StepUp).contains(route)
-pure def requestHasAssurance(view: CredentialView, route: RouteClass, now: Millis): bool =
-  if (route == FreshSession) view.authAt >= now - freshWindow or (view.stepUpAt > 0 and view.stepUpAt >= now - freshWindow)
-  else if (route == StepUp) view.mfaAt > 0 and view.mfaAt >= now - stepUpWindow
+type SessionRequestTimes = { authAt: Millis, stepUpAt: Millis, mfaAt: Millis }
+type PrincipalCredential = DevicePrincipal | SessionPrincipal({ times: SessionRequestTimes })
+type RequestPrincipal = { accountStatus: RequestAccountStatus, credential: PrincipalCredential }
+pure def principalOf(view: CredentialView): RequestPrincipal = {
+  accountStatus: view.accountStatus,
+  credential: if (view.kind == RequestSession) SessionPrincipal({ times: { authAt: view.authAt, stepUpAt: view.stepUpAt, mfaAt: view.mfaAt } }) else DevicePrincipal
+}
+pure def requestHasAssurance(sessionTimes: SessionRequestTimes, route: RouteClass, now: Millis): bool =
+  if (route == FreshSession) sessionTimes.authAt >= now - freshWindow or (sessionTimes.stepUpAt > 0 and sessionTimes.stepUpAt >= now - freshWindow)
+  else if (route == StepUp) sessionTimes.mfaAt > 0 and sessionTimes.mfaAt >= now - stepUpWindow
   else true
 type RequestAdmission = AnonymousRequest | CredentialAccepted | RequestRefused({ refusal: Refusal })
+pure def admitPrincipal(principal: RequestPrincipal, route: RouteClass, now: Millis): RequestAdmission = {
+  val credential = principal.credential
+  if (route == Public or route == ProviderSignature) AnonymousRequest
+  else if (principal.accountStatus != RequestAccountActive) RequestRefused({ refusal: refuseFor(AuthenticationRequired, CredentialRevoked) })
+  else match credential {
+    | DevicePrincipal => if (routeNeedsSession(route)) RequestRefused({ refusal: refuseFor(AuthenticationRequired, CredentialUnknown) }) else CredentialAccepted
+    | SessionPrincipal(session) => if (requestHasAssurance(session.times, route, now)) CredentialAccepted else RequestRefused({ refusal: refuse(FreshSessionRequired) })
+  }
+}
 pure def admitRequest(view: CredentialView, route: RouteClass, now: Millis): RequestAdmission = {
   val reason = credentialRefusal(view, now)
   if (route == Public or route == ProviderSignature) AnonymousRequest
   else if (reason != NoReason) RequestRefused({ refusal: refuseFor(AuthenticationRequired, reason) })
-  else if (routeNeedsSession(route) and view.kind != RequestSession) RequestRefused({ refusal: refuseFor(AuthenticationRequired, CredentialUnknown) })
-  else if (not(requestHasAssurance(view, route, now))) RequestRefused({ refusal: refuse(FreshSessionRequired) })
-  else CredentialAccepted
+  else admitPrincipal(principalOf(view), route, now)
 }
 pure val activeRequest: CredentialView = { kind: RequestSession, found: true, live: true, expiresAt: 900000, issuedAt: 1,
   revokedBefore: 0, accountStatus: RequestAccountActive, authAt: 1, stepUpAt: 1, mfaAt: 1 }
 pure val viewValues = Set(activeRequest, { ...activeRequest, found: false }, { ...activeRequest, live: false },
   { ...activeRequest, accountStatus: RequestAccountInactive }, { ...activeRequest, kind: RequestDevice })
+pure val principalValues = viewValues.map(view => principalOf(view))
+pure val sessionTimesValues = viewValues.map(view => { authAt: view.authAt, stepUpAt: view.stepUpAt, mfaAt: view.mfaAt })
+pure def lawSessionRequestAdmissionIsUnchanged(view: CredentialView, route: RouteClass, now: Millis): bool = {
+  val reason = credentialRefusal(view, now)
+  val sessionTimes = { authAt: view.authAt, stepUpAt: view.stepUpAt, mfaAt: view.mfaAt }
+  val before = if (route == Public or route == ProviderSignature) AnonymousRequest
+    else if (reason != NoReason) RequestRefused({ refusal: refuseFor(AuthenticationRequired, reason) })
+    else if (not(requestHasAssurance(sessionTimes, route, now))) RequestRefused({ refusal: refuse(FreshSessionRequired) })
+    else CredentialAccepted
+  view.kind == RequestSession implies admitRequest(view, route, now) == before
+}
+pure def lawPrincipalKeepsAccountAndRoutePolicy(principal: RequestPrincipal, route: RouteClass, now: Millis): bool =
+  admitPrincipal(principal, route, now) == CredentialAccepted implies
+    (principal.accountStatus == RequestAccountActive and (routeNeedsSession(route) implies principal.credential != DevicePrincipal))
 pure def lawOnlyAnActiveCredentialReachesProtectedRoutes(view: CredentialView, route: RouteClass, now: Millis): bool =
   admitRequest(view, route, now) == CredentialAccepted implies credentialRefusal(view, now) == NoReason
 ```
