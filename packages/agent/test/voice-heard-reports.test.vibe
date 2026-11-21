@@ -125,7 +125,7 @@ it.effect('Report what of an interrupted reply I heard: one retry after 1,500 ms
 
 schema Opened { conversation: { id: string; roomId: string } }
 
-it.effect('Report what of an interrupted reply I heard: a voice turn, its stop and its heard report reach the agent host (spec/agent/voice/session.md, "A turn is sent once, and a half-duplex turn only after the capture confirmed its close"; spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend", "A heard report only moves the heard boundary of an agent reply back, and never changes the reply")', () => effect {
+it.live('Report what of an interrupted reply I heard: a voice turn, its stop and its heard report reach the agent host (spec/agent/voice/session.md, "A turn is sent once, and a half-duplex turn only after the capture confirmed its close"; spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend", "A heard report only moves the heard boundary of an agent reply back, and never changes the reply", "A Stop is confirmed only when its turn ends within five seconds, and is otherwise uncertain")', () => effect {
   const reachable = try startInProcess({ cloud: true, launch: { callerRole: "owner" } })
   const opened = try call(reachable, { method: "POST", path: "/api/conversations", body: {} })
   if (!("json" in opened)) return try die("The conversation was refused")
@@ -159,4 +159,24 @@ it.effect('Report what of an interrupted reply I heard: a voice turn, its stop a
     [reply.text, replay, changedOffer.status, outcomeName(first), outcomeName(again), longer.status,
       written.messages.find(({ id }) => id === reply.messageId)?.text],
     ["Call  Alex. Or call Sam.", reply, 409, "HeardRecorded", "HeardUnchanged", 409, reply.text]))
+  const cloud = reachable.cloud
+  if (cloud === undefined) return try die("The Cloud fixture is missing")
+  const receivedBefore = cloud.calls.length
+  try Effect.sync(() => cloud.script({ kind: "hang" }))
+  const held = try Effect.sync(() => request(
+    "POST", `/api/conversations/${conversation.id}/messages`,
+    { ...offered, text: "Keep thinking.", clientMessageId: "voice-turn-stop" }, signal))
+  try Effect.timeout(effect {
+    while (cloud.calls.length === receivedBefore) try Effect.sleep(10)
+  }, 60_000)
+  const inference = cloud.calls[receivedBefore]
+  const stopPath = `/api/turns/${conversation.roomId}/abort`
+  const stopped = try host("confirm the active turn ended", () => request("POST", stopPath, { reason: "barge-in" }, signal))
+  try host("inference stopped", () => inference.aborted)
+  try host("the original response settled", () => held)
+  const idle = try host("inspect the room after the stop", () => request("POST", stopPath, { reason: "stop" }, signal))
+  try Effect.try(() => assert.deepStrictEqual([stopped, idle], [
+    { status: 200, body: { aborted: true, roomId: conversation.roomId, reason: "barge-in", outcome: "stopped" } },
+    { status: 200, body: { aborted: false, roomId: conversation.roomId, reason: "stop", outcome: "nothingRunning" } },
+  ]))
 }, 180_000)
