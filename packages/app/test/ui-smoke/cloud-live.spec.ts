@@ -426,6 +426,7 @@ async function requireRendererCloudApiOrigin(
       { renderer: stagingRenderer, bridgeUrl },
     );
   const observation = await waitForRendererCloudApiOrigin({
+    mode: stagingRenderer ? "same-origin" : "direct",
     readCloudBase: readRendererCloudBase,
     expectedApiOrigin:
       stagingRenderer?.origin === STAGING_PAGES_ALIAS
