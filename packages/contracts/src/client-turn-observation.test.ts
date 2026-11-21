@@ -3,8 +3,10 @@ import { test } from "node:test";
 import {
   CLIENT_TURN_OBSERVATION_MAX_BYTES,
   CLIENT_TURN_OBSERVATION_SUPPORT,
+  ClientTurnObservationError,
   isClientTimeZone,
   parseClientCalendarDayObservation,
+  parseClientLocationObservation,
   parseClientTurnObservation,
   readClientTurnObservation,
   readClientTurnObservationPeerSupport,
@@ -279,6 +281,20 @@ test("Calendar day parsing rejects invalid civil dates, zones and undeclared dat
 test("optional observation fields require an exact read-only peer schema declaration", () => {
   assert.deepEqual(
     readClientTurnObservationSupport(CLIENT_TURN_OBSERVATION_SUPPORT),
+    { version: 1, optionalFields: ["calendarDay", "location"] },
+  );
+  assert.deepEqual(
+    readClientTurnObservationSupport({
+      version: 1,
+      optionalFields: ["location", "calendarDay"],
+    }),
+    { version: 1, optionalFields: ["calendarDay", "location"] },
+  );
+  assert.deepEqual(
+    readClientTurnObservationSupport({
+      version: 1,
+      optionalFields: ["calendarDay"],
+    }),
     { version: 1, optionalFields: ["calendarDay"] },
   );
   assert.ok(Object.isFrozen(CLIENT_TURN_OBSERVATION_SUPPORT));
@@ -297,6 +313,7 @@ test("optional observation fields require an exact read-only peer schema declara
     { version: 2, optionalFields: ["calendarDay"] },
     { version: 1, optionalFields: "calendarDay" },
     { version: 1, optionalFields: ["calendarDay", "calendarDay"] },
+    { version: 1, optionalFields: ["location", "location"] },
     { version: 1, optionalFields: ["unknown"] },
     { version: 1, optionalFields: ["calendarDay"], permission: true },
   ]) {
@@ -355,4 +372,59 @@ test("format admission is bound to the known API process, not a clock or install
       undefined,
     );
   }
+});
+
+test("a reported device position is bounded and canonical", () => {
+  const base = { view: "home", revision: 3, sensitive: false };
+  const parsed = parseClientTurnObservation({
+    ...base,
+    location: {
+      capturedAt: 1_795_000_000_000,
+      accuracyMeters: 12.5,
+      longitude: -122.4194,
+      latitude: 37.7749,
+    },
+  });
+  assert.deepEqual(parsed.location, {
+    latitude: 37.7749,
+    longitude: -122.4194,
+    accuracyMeters: 12.5,
+    capturedAt: 1_795_000_000_000,
+  });
+  assert.equal(
+    JSON.stringify(parsed.location),
+    '{"latitude":37.7749,"longitude":-122.4194,"accuracyMeters":12.5,"capturedAt":1795000000000}',
+  );
+  assert.ok(Object.isFrozen(parsed.location));
+  assert.deepEqual(
+    parseClientLocationObservation({
+      latitude: 0,
+      longitude: 0,
+      capturedAt: 0,
+    }),
+    { latitude: 0, longitude: 0, capturedAt: 0 },
+  );
+  for (const location of [
+    null,
+    { latitude: 91, longitude: 0, capturedAt: 1 },
+    { latitude: 0, longitude: -181, capturedAt: 1 },
+    { latitude: Number.NaN, longitude: 0, capturedAt: 1 },
+    { latitude: "37", longitude: 0, capturedAt: 1 },
+    { latitude: 0, longitude: 0 },
+    { latitude: 0, longitude: 0, capturedAt: 1.5 },
+    { latitude: 0, longitude: 0, capturedAt: 1, accuracyMeters: -1 },
+    { latitude: 0, longitude: 0, capturedAt: 1, address: "home" },
+  ])
+    assert.throws(
+      () => parseClientTurnObservation({ ...base, location }),
+      ClientTurnObservationError,
+    );
+  assert.equal(
+    readClientTurnObservation({
+      clientDevice: {
+        context: { ...base, location: { latitude: 1, longitude: 2 } },
+      },
+    }),
+    undefined,
+  );
 });

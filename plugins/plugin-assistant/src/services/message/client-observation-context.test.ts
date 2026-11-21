@@ -6,6 +6,7 @@ import {
 } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
 import {
+  CLIENT_LOCATION_NOTE,
   CLIENT_OBSERVATION_SCOPE,
   CLIENT_OBSERVATION_SEGMENT_ID,
   CLIENT_OBSERVATION_SEGMENT_LABEL,
@@ -306,6 +307,7 @@ test("a declared Calendar day projects once without changing authored text or st
   expect(projected.content.text).toBe(content.text);
   expect(projected.content.metadata).not.toHaveProperty("clientDevice");
   expect(projected.segment?.match(/calendarDay/g)).toHaveLength(1);
+  expect(projected.segment).not.toContain(CLIENT_LOCATION_NOTE);
   expect(projected.segment).toContain(CLIENT_OBSERVATION_SCOPE);
   expect(content).toEqual(original);
   const invalid = residentTurn({
@@ -317,4 +319,27 @@ test("a declared Calendar day projects once without changing authored text or st
     },
   });
   expect(projectClientObservation(invalid)).toEqual({ content: invalid });
+});
+
+test("the phone's reported position reaches the model once, as the owner's current location", () => {
+  const location = {
+    latitude: 37.7749,
+    longitude: -122.4194,
+    accuracyMeters: 9,
+    capturedAt: 1_795_000_000_000,
+  };
+  const content = residentTurn({
+    clientDevice: {
+      context: { view: "home", revision: 2, sensitive: false, location },
+    },
+  });
+  content.text = "Where am I?";
+  const projected = projectClientObservation(content);
+  expect(projected.observation?.location).toEqual(location);
+  expect(projected.segment).toContain(CLIENT_OBSERVATION_SCOPE);
+  expect(projected.segment).toContain(CLIENT_LOCATION_NOTE);
+  expect(CLIENT_LOCATION_NOTE).toContain("current location");
+  expect(CLIENT_LOCATION_NOTE).toContain("Never guess");
+  expect(projected.segment?.match(/"latitude":37\.7749/g)).toHaveLength(1);
+  expect(projected.content.text).toBe("Where am I?");
 });

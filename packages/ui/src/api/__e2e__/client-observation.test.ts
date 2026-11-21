@@ -135,3 +135,38 @@ it("retiring the session aborts its pending handshake", async () => {
   expect(handshakeSignal.aborted).toBe(true);
   await rejected;
 }, 1000);
+it("sends the phone position only to a peer that declares the location field", async () => {
+  const location = {
+    latitude: 37.7749,
+    longitude: -122.4194,
+    accuracyMeters: 12,
+    capturedAt: 1_795_000_000_000,
+  };
+  const home = { view: "home", revision: 4, sensitive: false, location };
+  const signal = new AbortController().signal;
+  const old = new ClientObservationSupportSession(
+    identity,
+    () => true,
+    async () => status(),
+  );
+  expect(await old.context(home, signal)).toEqual({
+    view: "home",
+    revision: 4,
+    sensitive: false,
+  });
+  const current = new ClientObservationSupportSession(
+    identity,
+    () => true,
+    async () => ({
+      serverInstanceId: id,
+      clientTurnObservationSupport: {
+        version: 1,
+        optionalFields: ["calendarDay", "location"],
+      },
+    }),
+  );
+  expect((await current.context(home, signal)).location).toEqual(location);
+  const both = await current.context({ ...context, location }, signal);
+  expect(both.calendarDay).toEqual(context.calendarDay);
+  expect(both.location).toEqual(location);
+});

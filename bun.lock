@@ -2137,6 +2137,7 @@
       "name": "@elizaos/plugin-maps",
       "version": "2.0.6",
       "dependencies": {
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",

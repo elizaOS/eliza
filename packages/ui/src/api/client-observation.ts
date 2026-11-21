@@ -1,5 +1,7 @@
 import {
   type ClientCalendarDayObservation,
+  type ClientLocationObservation,
+  type ClientTurnObservationOptionalField,
   type ClientTurnObservationSupport,
   readClientTurnObservationPeerSupport,
 } from "@elizaos/contracts/client-turn-observation";
@@ -14,9 +16,11 @@ type ObservationContext = {
   view: string;
   revision: number;
   calendarDay?: ClientCalendarDayObservation;
+  location?: ClientLocationObservation;
 };
-type SupportedObservation<T> = Omit<T, "calendarDay"> & {
+type SupportedObservation<T> = Omit<T, "calendarDay" | "location"> & {
   calendarDay?: ClientCalendarDayObservation;
+  location?: ClientLocationObservation;
 };
 
 export interface ClientObservationBinding extends ObservationSessionIdentity {
@@ -70,25 +74,37 @@ export class ClientObservationSupportCache {
     this.support = support;
     return true;
   }
-  calendarDaySupported(binding: ClientObservationBinding): boolean {
+  supports(
+    binding: ClientObservationBinding,
+    field: ClientTurnObservationOptionalField,
+  ): boolean {
     const key = this.key(binding);
     return (
       key !== undefined &&
       key === this.binding &&
-      this.support?.optionalFields.includes("calendarDay") === true
+      this.support?.optionalFields.includes(field) === true
     );
   }
+  calendarDaySupported(binding: ClientObservationBinding): boolean {
+    return this.supports(binding, "calendarDay");
+  }
 }
-/** Strip an unsupported optional field without changing the ordinary observation. */
+/** Strip each unsupported optional field without changing the ordinary observation. */
 export function contextForObservationSupport<T extends ObservationContext>(
   context: T,
   cache: ClientObservationSupportCache,
   binding: ClientObservationBinding | undefined,
 ): SupportedObservation<T> {
-  const { calendarDay, ...ordinary } = context;
-  return calendarDay && binding && cache.calendarDaySupported(binding)
-    ? { ...ordinary, calendarDay: { ...calendarDay } }
-    : ordinary;
+  const { calendarDay, location, ...ordinary } = context;
+  return {
+    ...ordinary,
+    ...(calendarDay && binding && cache.supports(binding, "calendarDay")
+      ? { calendarDay: { ...calendarDay } }
+      : {}),
+    ...(location && binding && cache.supports(binding, "location")
+      ? { location: { ...location } }
+      : {}),
+  };
 }
 
 /** One verified session handshake, followed by a fresh comparison before optional-field use. */
@@ -177,11 +193,18 @@ export class ClientObservationSupportSession {
       undefined,
     );
     this.check(signal);
-    if (!context.calendarDay) return ordinary;
+    const wanted = (["calendarDay", "location"] as const).filter(
+      (field) => context[field] !== undefined,
+    );
+    if (!wanted.length) return ordinary;
     await this.handshake(signal);
     this.check(signal);
     const binding = this.known;
-    if (!binding || !this.cache.calendarDaySupported(binding)) return ordinary;
+    if (
+      !binding ||
+      !wanted.some((field) => this.cache.supports(binding, field))
+    )
+      return ordinary;
     try {
       const status = await this.status(signal);
       this.check(signal);

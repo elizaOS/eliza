@@ -62,6 +62,7 @@
     "test:client": "node --test --experimental-transform-types test/*.test.mjs"
   },
   "dependencies": {
+    "@elizaos/contracts": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",

@@ -1,6 +1,7 @@
 /** Implements the MAPS umbrella and its promoted place, route, save, share, and navigation actions. */
 
 import { randomUUID } from "node:crypto";
+import { readClientTurnObservation } from "@elizaos/contracts/client-turn-observation";
 import type {
   Action,
   ActionResult,
@@ -379,6 +380,27 @@ function isReply(value: PlaceRef | ActionResult): value is ActionResult {
 }
 
 /** The owner's own words this turn, which a choice reply binds from. */
+/** A phone position older than this is not "where I am" for a nearby search. */
+const OBSERVED_POSITION_MAX_AGE_MS = 30 * 60_000;
+
+/**
+ * The position the phone reported with this message, when it holds the
+ * location permission and the fix is recent. It is the owner's own phone
+ * position for this turn only; nothing stores it.
+ */
+function observedPosition(
+  message: Memory,
+  now = Date.now(),
+): { latitude: number; longitude: number } | undefined {
+  const location = readClientTurnObservation(
+    message.content?.metadata,
+  )?.location;
+  if (!location) return undefined;
+  const age = now - location.capturedAt;
+  if (age < -60_000 || age > OBSERVED_POSITION_MAX_AGE_MS) return undefined;
+  return { latitude: location.latitude, longitude: location.longitude };
+}
+
 function replyText(message: Memory): string | undefined {
   return text(message.content?.text);
 }
@@ -1065,8 +1087,8 @@ async function execute(
             callback,
           );
         }
-        const latitude = number(params.latitude);
-        const longitude = number(params.longitude);
+        let latitude = number(params.latitude);
+        let longitude = number(params.longitude);
         // "pharmacy near the Ferry Building" names its own search point, so
         // it needs no position from the phone. A planner may pass the whole
         // phrase as the query, or only the kind of place with
@@ -1082,6 +1104,16 @@ async function execute(
                 ? anchoredPlaceQuery(replyText(message) ?? "")
                 : undefined))
             : undefined;
+        // "Near me" with no named place uses the position the phone reported
+        // with this message; only without one does the phone get a locate card.
+        const phonePosition =
+          !anchored &&
+          flag(params.useCurrentLocation) &&
+          latitude === undefined &&
+          longitude === undefined
+            ? observedPosition(message)
+            : undefined;
+        if (phonePosition) ({ latitude, longitude } = phonePosition);
         if (
           !anchored &&
           nearHere &&
@@ -1983,7 +2015,7 @@ export const mapsAction: Action = {
     {
       name: "useCurrentLocation",
       description:
-        "True when the request means the user's current position and no coordinates were supplied: near me, nearest or nearby (place), from here (route), or a navigate destination that is the nearest or a nearby kind of place (nearest pharmacy) and not one named place or address. The assistant never receives the position: the chat surface asks the user's device to use it.",
+        "True when the request means the user's current position and no coordinates were supplied: near me, nearest or nearby (place), from here (route), or a navigate destination that is the nearest or a nearby kind of place (nearest pharmacy) and not one named place or address. A place search uses the position the phone reported with this message (clientDevice.context.location) when it has a recent one; otherwise the chat surface asks the user's device to use it.",
       required: false,
       schema: { type: "boolean" },
       subactions: ["place", "route", "navigate"],
@@ -2203,7 +2235,7 @@ export const mapsNavigationAction: Action = {
     {
       name: "useCurrentLocation",
       description:
-        "True only when placeQuery is the nearest or a nearby kind of place (nearest pharmacy, a gas station near me) and not one named place or address. The phone then finds it around its own position; the assistant never receives the position.",
+        "True only when placeQuery is the nearest or a nearby kind of place (nearest pharmacy, a gas station near me) and not one named place or address. The phone then finds it around its own position.",
       required: false,
       schema: { type: "boolean" },
       subactions: ["start"],
