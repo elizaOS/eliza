@@ -145,7 +145,7 @@ export function bearerGrant(state: GoogleFakeState, request: FakeRequest): FakeG
 
 export const unauthenticated: FakeAnswer = { status: 401, body: { error: { code: 401, status: "UNAUTHENTICATED" } } };
 
-export async function switched(state: GoogleFakeState, request: FakeRequest, handle: () => FakeAnswer | undefined): Promise<FakeAnswer | undefined> {
+export function switched(state: GoogleFakeState, request: FakeRequest, handle: () => FakeAnswer | undefined): FakeAnswer | undefined {
   const failure = state.switches.failNext;
   if (failure !== undefined) {
     state.switches.failNext = undefined;
