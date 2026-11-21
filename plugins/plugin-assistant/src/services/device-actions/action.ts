@@ -1816,6 +1816,7 @@ export const proposeDeviceAction: Action = {
           userFacingText: telephonyTargetRefusalReply(
             error.refusal,
             extractUserText(unwrapUserMessageText(_message)),
+            operationType,
           ),
           verifiedUserFacing: true,
           data: {

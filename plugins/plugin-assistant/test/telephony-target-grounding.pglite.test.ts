@@ -559,7 +559,7 @@ it("looks up the owner's contact without trailing words", async () => {
 });
 
 it.each([
-  ["call 415-555 0100", "Type the number again with digits only"],
+  ["call 415 - 555 - 0100", "Type the number again with digits only"],
   ["call the pharmacy back", "your message doesn't include a phone number"],
 ])("explains the refusal of %s truthfully", async (request, reply) => {
   const f = await fixture();
@@ -713,5 +713,83 @@ it("replays the v613 prompt: coordinates stay, the call is the owner's number", 
     } finally {
       await f.pg.close();
     }
+  }
+});
+
+const CONTACT_CAPABILITIES = [
+  ...CAPABILITIES,
+  "contacts.write.v1",
+  "contacts.write.v2",
+];
+const newContact = (number: string) => ({
+  type: "contact_create",
+  contact: {
+    displayName: "Bob Lee",
+    phoneNumbers: [number],
+    emailAddresses: [],
+  },
+});
+
+it("refuses an invented number in a new contact or a contact change (v612)", async () => {
+  const request = "add a contact Bob Lee 415-555-0100";
+  for (const operation of [
+    newContact("6505715862"),
+    {
+      type: "contact_update",
+      query: "Bob Lee",
+      add: { phoneNumbers: ["6505715862"] },
+    },
+  ]) {
+    const f = await fixture(CONTACT_CAPABILITIES);
+    try {
+      const { session, reference } = swapped(request);
+      const result = await inTurn(session, () =>
+        f.run(request, restored(session, operation)),
+      );
+      await refused(f, result);
+      expect((result as { text: string }).text).toContain(reference);
+      // The owner asked to save a contact: the reply says nothing was saved.
+      expect((result as { userFacingText: string }).userFacingText).toContain(
+        "Nothing was saved.",
+      );
+    } finally {
+      await f.pg.close();
+    }
+  }
+});
+
+it("saves the owner's number typed with mixed separators, from its copied reference", async () => {
+  for (const written of ["415-555 0100", "+1 415-555 0100"]) {
+    const request = `add Bob Lee ${written} to my contacts`;
+    const f = await fixture(CONTACT_CAPABILITIES);
+    try {
+      const { session, prompt, reference } = swapped(request);
+      expect(prompt).not.toContain(written);
+      expect(
+        await inTurn(session, () =>
+          f.run(request, restored(session, newContact(reference))),
+        ),
+      ).toMatchObject({ success: true });
+      expect((await f.rows())[0].operation).toEqual(
+        newContact(written.startsWith("+1") ? "+14155550100" : "4155550100"),
+      );
+    } finally {
+      await f.pg.close();
+    }
+  }
+});
+
+it("leaves a contact whose message writes no number to the owner's review", async () => {
+  const f = await fixture(CONTACT_CAPABILITIES);
+  try {
+    expect(
+      await f.run(
+        "save the pizza place as a contact",
+        newContact("4155550100"),
+      ),
+    ).toMatchObject({ success: true });
+    expect((await f.rows())[0].operation).toEqual(newContact("4155550100"));
+  } finally {
+    await f.pg.close();
   }
 });

@@ -114,16 +114,24 @@ export const EMERGENCY_KEYPAD_REPLY =
 /**
  * The reply the owner sees for a refusal: true whichever recipient was
  * refused. With the owner's `text`, a refused number is described as missing
- * only when the message writes or speaks no number at all.
+ * only when the message writes or speaks no number at all. A refused contact
+ * change (`operationType`) saves a number rather than calling it.
  */
 export function telephonyTargetRefusalReply(
   refusal: TelephonyTargetRefusal,
   text?: string,
+  operationType?: unknown,
 ): string {
+  const contactChange =
+    operationType === "contact_create" || operationType === "contact_update";
   if (refusal === "emergency")
     return "I can't open the keypad on this phone. For an emergency, dial your local emergency number (911 in the US and Canada, 112 in most of Europe) on your phone's dialer now.";
   if (refusal === "unreadable")
-    return "I couldn't read that as one phone number, so I didn't set it up. Nothing was called or sent. Type the number again with digits only, like 4155550100.";
+    return contactChange
+      ? "I couldn't read that as one phone number, so I didn't save it. Nothing was saved. Type the number again with digits only, like 4155550100."
+      : "I couldn't read that as one phone number, so I didn't set it up. Nothing was called or sent. Type the number again with digits only, like 4155550100.";
+  if (refusal === "number" && contactChange)
+    return "I didn't save that, because that number isn't one you wrote in your message. Nothing was saved. Tell me the number to use.";
   if (
     refusal === "number" &&
     text !== undefined &&
@@ -138,14 +146,43 @@ export function telephonyTargetRefusalReply(
   return "I didn't set that up, because that number isn't one you wrote in your message. Nothing was called or sent. Tell me the number to use.";
 }
 
-/** Operations whose recipient or prefill is a phone number or contact. */
+const CONTACT_NUMBER_PARTS = ["set", "add", "remove"] as const;
+
+/**
+ * The phone numbers a contact change writes, adds or removes. A number saved
+ * under a contact's name becomes the recipient of every later "call Bob" and
+ * "text Bob", so it is grounded like a call's recipient.
+ */
+function contactNumbers(value: { type?: unknown }): string[] {
+  const operation = value as { type?: unknown; [key: string]: unknown };
+  const lists: unknown[] = [];
+  if (operation.type === "contact_create")
+    lists.push((operation.contact as { phoneNumbers?: unknown })?.phoneNumbers);
+  if (operation.type === "contact_update")
+    for (const part of CONTACT_NUMBER_PARTS)
+      lists.push(
+        (operation[part] as { phoneNumbers?: unknown } | undefined)
+          ?.phoneNumbers,
+      );
+  return lists.flatMap((list) =>
+    Array.isArray(list)
+      ? list.filter((item): item is string => typeof item === "string")
+      : [],
+  );
+}
+
+/**
+ * Operations whose recipient or prefill is a phone number or contact, and
+ * contact changes that write a phone number.
+ */
 export function namesTelephonyTarget(operation: { type?: unknown }): boolean {
   return (
     operation.type === "phone_call" ||
     operation.type === "phone_dial" ||
     operation.type === "sms_compose" ||
     operation.type === "sms_send" ||
-    operation.type === "phone_keypad"
+    operation.type === "phone_keypad" ||
+    contactNumbers(operation).length > 0
   );
 }
 
@@ -692,7 +729,54 @@ function groundOwnerTarget(
       );
       return { operation: { ...operation, number }, handedThrough: false };
     }
+    case "contact_create":
+    case "contact_update":
+      return {
+        operation: groundContactNumbers(operation, text, references),
+        handedThrough: false,
+      };
     default:
       return { operation, handedThrough: false };
   }
+}
+
+type ContactNumberOperation = Extract<
+  DeviceOperation,
+  { type: "contact_create" | "contact_update" }
+>;
+
+/**
+ * A contact change's numbers, each one the owner wrote in this message (in
+ * the owner's dial form), when the message writes any number. A message that
+ * writes no number has nothing to ground a number in and is left unchanged,
+ * for the owner's review of the exact digits.
+ */
+function groundContactNumbers(
+  operation: ContactNumberOperation,
+  text: string,
+  references: readonly SwappedPhoneReference[],
+): ContactNumberOperation {
+  const owned = ownerPhoneNumberTiers(text);
+  if (!owned.flat().length || !contactNumbers(operation).length)
+    return operation;
+  const grounded = (numbers: string[]) => [
+    ...new Set(
+      numbers.map((number) => groundedNumber(number, owned, references, text)),
+    ),
+  ];
+  if (operation.type === "contact_create")
+    return {
+      ...operation,
+      contact: {
+        ...operation.contact,
+        phoneNumbers: grounded(operation.contact.phoneNumbers),
+      },
+    };
+  const update: ContactNumberOperation = { ...operation };
+  for (const part of CONTACT_NUMBER_PARTS) {
+    const values = operation[part];
+    if (values?.phoneNumbers)
+      update[part] = { ...values, phoneNumbers: grounded(values.phoneNumbers) };
+  }
+  return update;
 }
