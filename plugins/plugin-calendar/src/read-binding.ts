@@ -249,19 +249,17 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         item.purpose !== "mutation_prerequisite"
       )
         return null;
-      // An exact slot request can prove that the interval is the search window.
-      // A plain availability check of that whole interval would answer a different question.
+      // A complete owner-authored slot request defines the operation and window.
+      // A binding must not narrow an unqualified request to the built-in calendar
+      // or substitute a check of the entire window for finding a shorter slot.
       if (
         value.length === 1 &&
         ctx.senderRole === "OWNER" &&
-        item.operation === "check_availability" &&
+        (item.operation === "check_availability" ||
+          item.operation === "propose_times") &&
         item.execution === "required" &&
-        (item.purpose === undefined ||
-          item.purpose === "requested_read" ||
-          item.purpose === "mutation_prerequisite") &&
         Array.isArray(item.filterEvidence) &&
         item.filterEvidence.length === 0 &&
-        !item.singleDaySearchDate &&
         currentAppRecordSource(ctx.runtime, "calendar", ctx.message) ===
           "runtime" &&
         literalSlotWindow(ctx.message, ctx.message.createdAt, undefined)

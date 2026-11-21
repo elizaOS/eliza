@@ -392,11 +392,27 @@ describe("Calendar operation bindings", () => {
       },
     });
     expect(await route(unscoped)).toBeUndefined();
+    for (const request of [
+      "Can you find me a free hour tomorrow afternoon?",
+      "Cool. Can you find me a free hour tomorrow sometime where I could actually go pick up those groceries in the afternoon?",
+    ]) {
+      expect(await route(request, {})).toEqual({
+        name: "CALENDAR_PROPOSE_TIMES",
+        params: {
+          windowStart: "2026-11-21T20:00:00.000Z",
+          windowEnd: "2026-11-22T01:00:00.000Z",
+          durationMinutes: 60,
+          timeZone: "America/Los_Angeles",
+        },
+      });
+    }
     for (const nonliteral of [
       "Find a 30-minute opening tomorrow between noon and five p.m. on my Google calendar.",
       "Find a 30-minute opening tomorrow between noon and five p.m. for a grocery run, then book it.",
       "Find a 30-minute opening tomorrow between noon and five p.m. for when Maya is free.",
       "Find a 30-minute opening tomorrow between noon and five p.m. for a run after work.",
+      "Find me a free hour tomorrow when I can pick up groceries with Carson in the afternoon.",
+      "Find me a free hour tomorrow afternoon, then book it.",
     ]) {
       expect(await route(nonliteral, {})).toBeUndefined();
     }
@@ -502,6 +518,27 @@ describe("Calendar operation bindings", () => {
       },
     };
     expect(calendarReadBindingField.parse?.([capture], exactContext)).toEqual([
+      {
+        intentId: "intent:1",
+        operation: "propose_times",
+        execution: "required",
+        purpose: "requested_read",
+        filterEvidence: [],
+      },
+    ]);
+    expect(
+      calendarReadBindingField.parse?.(
+        [
+          {
+            ...capture,
+            operation: "propose_times",
+            purpose: "requested_read",
+            singleDaySearchDate: "today",
+          },
+        ],
+        exactContext,
+      ),
+    ).toEqual([
       {
         intentId: "intent:1",
         operation: "propose_times",

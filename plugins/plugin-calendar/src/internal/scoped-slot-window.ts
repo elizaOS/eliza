@@ -44,12 +44,18 @@ const tensWords = [
   "ninety",
 ];
 const slotRequest =
-  /^(?:find(?: me)?|show me|suggest) (?:a )?(?<duration>\d{1,3}|[a-z]+(?:[ -][a-z]+)?)[ -]minutes? (?:slot|gap|opening)(?: for (?<topic>[\p{L}\p{M}]+))? (?<window>.+?)(?: for (?<purpose>(?:(?:a|an) )?[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)?))?(?<builtin> (?:on|in) (?:my|the) built[ -]in (?:eliza )?calendar)?$/u;
+  /^(?:(?:cool|okay|thanks|thank you)[,.!] )?(?:(?:can|could|would) you )?(?:find(?: me)?|show me|suggest) (?:(?:a )?(?<duration>\d{1,3}|[a-z]+(?:[ -][a-z]+)?)[ -]minutes? (?:slot|gap|opening)|(?<freeHour>(?:a|one) free hour))(?: for (?<topic>[\p{L}\p{M}]+))? (?<window>.+?)(?: for (?<purpose>(?:(?:a|an) )?[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)?))?(?<builtin> (?:on|in) (?:my|the) built[ -]in (?:eliza )?calendar)?$/u;
 const purposeConstraint =
   /\b(?:today|tomorrow|yesterday|next|last|before|after|during|until|between|unless|if|when|while|then|and|or|with|without|except|on|in|at|past|not|only|calendar|noon|midnight)\b/u;
 const day = String.raw`(?:today|tomorrow|(?:the )?day after tomorrow|\d{4}-\d{2}-\d{2})`;
 const leadingDay = new RegExp(`^(${day}) (.+)$`, "u");
 const trailingDay = new RegExp(`^(.+?) (${day})$`, "u");
+// A first-person errand can explain the request without adding a Calendar
+// filter. It must precede an explicit afternoon and name a simple object.
+const afternoonErrand = new RegExp(
+  String.raw`^(${day}) (?:sometime )?(?:when|where) i (?:can|could) (?:actually )?(?:go )?(?:get|buy|pick up|shop for) ([\p{L}\p{M}]+(?: [\p{L}\p{M}]+){0,4}) in the afternoon$`,
+  "u",
+);
 const betweenTimes = /^between (.+) and (.+)$/u;
 const fromTimes = /^from (.+) (?:to|until) (.+)$/u;
 const explicitClock = new RegExp(`^(?:${STATED_CLOCK_MENTION_SOURCE})$`, "iu");
@@ -119,7 +125,7 @@ export function parseScopedCalendarSlotWindow(
   )?.groups;
   const topic = input?.topic ?? input?.purpose;
   if (
-    !input?.duration ||
+    (!input?.duration && !input?.freeHour) ||
     !input.window ||
     Boolean(input.builtin) !== (source === "builtin") ||
     (input.topic && (!input.builtin || input.purpose)) ||
@@ -138,7 +144,7 @@ export function parseScopedCalendarSlotWindow(
       parseExplicitLocalDate(topic, timeZone, now))
   )
     return;
-  const durationMinutes = quantity(input.duration);
+  const durationMinutes = input.freeHour ? 60 : quantity(input.duration);
   if (
     durationMinutes < CALENDAR_NEW_SLOT_DURATION_MINUTES.min ||
     durationMinutes > CALENDAR_NEW_SLOT_DURATION_MINUTES.max
@@ -147,14 +153,20 @@ export function parseScopedCalendarSlotWindow(
 
   const leading = leadingDay.exec(input.window);
   const trailing = trailingDay.exec(input.window);
+  const errand = afternoonErrand.exec(input.window);
+  if (errand && purposeConstraint.test(errand[2])) return;
   const date = parseExplicitLocalDate(
-    leading?.[1] ?? trailing?.[2] ?? "",
+    errand?.[1] ?? leading?.[1] ?? trailing?.[2] ?? "",
     timeZone,
     now,
   );
-  const window = leading?.[2] ?? trailing?.[1];
+  const window = errand ? "afternoon" : (leading?.[2] ?? trailing?.[1]);
   if (!date || !window) return;
-  const range = betweenTimes.exec(window) ?? fromTimes.exec(window);
+  // Plain afternoon availability uses the local noon–5 PM window.
+  const range =
+    window === "afternoon"
+      ? [window, "noon", "5 pm"]
+      : (betweenTimes.exec(window) ?? fromTimes.exec(window));
   if (!range?.[1] || !range[2]) return;
   const minuteOfDay = (time: StatedClockTime) => time.hour * 60 + time.minute;
   const starts = slotClockOptions(normalizeSpokenCalendarClocks(range[1]));
