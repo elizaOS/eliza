@@ -4,7 +4,7 @@ import { afterFirstFactor } from "../../src/identity/second-factor.vibe"
 import { s256, secretText } from "../../src/shared/credential-crypto.vibe"
 import { authenticatorCode } from "../support/authenticator.ts"
 import { testCloud, type Answer, type TestCloud } from "../support/cloud.vibe"
-import { signedIn } from "../support/identity.ts"
+import { signedIn } from "../support/identity-fixture.ts"
 import { latestCode } from "../support/inbox.ts"
 
 interface Enrolled {

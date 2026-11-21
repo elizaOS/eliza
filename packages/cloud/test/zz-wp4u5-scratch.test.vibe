@@ -5,7 +5,7 @@ import { Store, type Tx } from "../src/store/store.vibe"
 import { testCloud, type TestCloud } from "./support/cloud.vibe"
 import { periodRows } from "../src/shared/metering.vibe"
 import { stepRow } from "../src/store/rows.vibe"
-import { signedIn } from "./support/identity.ts"
+import { signedIn } from "./support/identity-fixture.ts"
 import { accountUsable } from "../src/client/index.vibe"
 
 effect function check(run: () => void) {

@@ -8,7 +8,7 @@ import { seedClients } from "../src/operator/clients.vibe"
 import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
 import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
 import { revokeAll, sweepAt } from "../src/native-clients/device-keys.vibe"
-import { s256, signedIn } from "./support/identity.ts"
+import { s256, signedIn } from "./support/identity-fixture.ts"
 
 effect function check(run: () => void) {
   try Effect.try(run)

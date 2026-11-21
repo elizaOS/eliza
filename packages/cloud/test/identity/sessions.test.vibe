@@ -1,7 +1,7 @@
 // spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/accounts.md, "Story: Attribute a referral without paying for it"
 import { assert, describe, it } from "@effect/vitest"
 import { testCloud, type TestCloud } from "../support/cloud.vibe"
-import { signedIn } from "../support/identity.ts"
+import { signedIn } from "../support/identity-fixture.ts"
 
 effect function check(run: () => void) {
   try Effect.try(run)
