@@ -305,6 +305,73 @@ export effect function retrieveSubscription(subscriptionId: string, call: Stripe
   return try read(StripeSubscription, { method: "GET", path: `/v1/subscriptions/${id(subscriptionId)}`, params: [], timeout: call.timeout })
 }
 
+export schema StripePlanBinding {
+  readonly customerId: string
+  readonly subscriptionItemId: string
+  readonly sourcePriceId: string
+  readonly targetPriceId: string
+}
+
+export interface StripePlanSource {
+  readonly subscriptionId: string
+  readonly customerId: string
+  readonly sourcePriceId: string
+  readonly targetPriceId: string
+  readonly periodStart: number
+  readonly periodEnd: number
+}
+
+export effect function bindPlanChange(source: StripePlanSource, call: StripeRead): StripePlanBinding!StripeFailure!StripeContext {
+  const subscription = try retrieveSubscription(source.subscriptionId, call)
+  const [item] = subscription.items.data
+  if (subscription.id !== source.subscriptionId || subscription.customer !== source.customerId ||
+    subscription.livemode !== try livemode() || subscription.status !== "active" || subscription.cancel_at_period_end ||
+    subscription.items.has_more || subscription.items.data.length !== 1 || item === undefined || item.quantity !== 1 ||
+    !/^si_[A-Za-z0-9]{1,250}$/.test(item.id) || item.price.id !== source.sourcePriceId ||
+    item.current_period_start * 1000 !== source.periodStart || item.current_period_end * 1000 !== source.periodEnd)
+    throw new StripeInvalidResponse({ path: "/v1/subscriptions", status: 200 })
+  return { customerId: source.customerId, subscriptionItemId: item.id, sourcePriceId: source.sourcePriceId, targetPriceId: source.targetPriceId }
+}
+
+export type StripePlanPreview =
+  | { readonly kind: "recurring"; readonly expectedCents: number }
+  | { readonly kind: "proration"; readonly date: number; readonly periodEnd: number }
+
+export effect function previewPlanChange(subscriptionId: string, binding: StripePlanBinding, preview: StripePlanPreview, call: StripeRead): number!StripeFailure!StripeContext {
+  const path = "/v1/invoices/create_preview"
+  const params: Params = [
+    ["customer", binding.customerId], ["subscription", subscriptionId],
+    ["preview_mode", preview.kind === "recurring" ? "recurring" : "next"],
+    ["subscription_details[items][0][id]", binding.subscriptionItemId],
+    ["subscription_details[items][0][price]", binding.targetPriceId],
+    ["subscription_details[items][0][quantity]", "1"]
+  ]
+  const invoice = try read(StripeInvoice, {
+    method: "POST", path, timeout: call.timeout,
+    params: preview.kind === "recurring" ? params : [...params,
+      ["subscription_details[proration_behavior]", "always_invoice"],
+      ["subscription_details[proration_date]", seconds(preview.date)]]
+  })
+  const lines = invoice.lines.data
+  if (!invoice.id.startsWith("upcoming_in_") || invoice.status !== "draft" || invoice.customer !== binding.customerId ||
+    invoice.parent?.subscription_details?.subscription !== subscriptionId || invoice.livemode !== try livemode() ||
+    invoice.currency !== "usd" || invoice.amount_paid !== 0 || !Number.isSafeInteger(invoice.amount_due) || invoice.amount_due < 0 ||
+    invoice.lines.has_more || !lines.every((line) => line.currency === "usd" && line.quantity === 1 &&
+      line.parent?.subscription_item_details?.subscription_item === binding.subscriptionItemId && Number.isSafeInteger(line.amount)))
+    throw new StripeInvalidResponse({ path, status: 200 })
+  const [first] = lines
+  const fits = preview.kind === "recurring"
+    ? lines.length === 1 && first !== undefined && first.parent?.subscription_item_details?.proration === false &&
+      first.pricing?.price_details?.price === binding.targetPriceId && first.period.start < first.period.end &&
+      first.amount === preview.expectedCents && invoice.amount_due === preview.expectedCents
+    : lines.length === 2 && lines.every((line) => line.parent?.subscription_item_details?.proration === true &&
+      line.period.start * 1000 === preview.date && line.period.end * 1000 === preview.periodEnd) &&
+      lines.some((line) => line.pricing?.price_details?.price === binding.sourcePriceId && line.amount <= 0) &&
+      lines.some((line) => line.pricing?.price_details?.price === binding.targetPriceId && line.amount >= 0)
+  if (!fits) throw new StripeInvalidResponse({ path, status: 200 })
+  return invoice.amount_due
+}
+
 export effect function retrieveInvoice(invoiceId: string, call: StripeRead): StripeInvoice!StripeFailure!StripeContext {
   return try read(StripeInvoice, { method: "GET", path: `/v1/invoices/${id(invoiceId)}`, params: [], timeout: call.timeout })
 }

@@ -1,25 +1,27 @@
 // spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
 import { assert, describe, it } from "@effect/vitest"
 import { area as billing } from "../src/http/routes/billing.vibe"
-import { reconcileSubscription } from "../src/billing/subscriptions.vibe"
+import { claimLiveCommand, reconcileSubscription } from "../src/billing/subscriptions.vibe"
+import { readReviewedPlanQuote, reviewPlanChange, type ReviewPlanChange } from "../src/billing/plan-quotes.vibe"
 import { readStripeSubscription, stripeClient } from "../src/billing/stripe-observation.vibe"
 import type { BillingSnapshot } from "../src/billing/snapshot.vibe"
 import type { CommandView } from "../src/billing/commands.vibe"
 import { listening, respond } from "../src/http/transport.vibe"
-import { json, type Route, type RouteContext, type CloudContext } from "../src/http/routes.vibe"
+import { json, jsonBody, owner, type Route, type RouteContext, type CloudContext } from "../src/http/routes.vibe"
 import type { RouteClass } from "../src/http/request-auth.vibe"
 import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
 import { tokenDigest } from "../src/shared/sealing.vibe"
-import { Refused } from "../src/http/refusal.vibe"
+import { refused, Refused } from "../src/http/refusal.vibe"
 import { addCredits } from "../src/billing/funds.vibe"
 import { operate } from "../src/operator/admin.vibe"
 import { redeemResultFromResponse, snapshotFromResponse } from "../src/client/views.vibe"
 import { admitWindow, openSocket, retire, settleWindow, sessionSpeechRoutes } from "../src/services/speech-session.vibe"
 import { manualClock } from "./support/clock.ts"
 import { migrate, Store, storeLayer } from "../src/store/store.vibe"
-import { startFakeServer, type FakeServer, type FakeHandler } from "./support/fakes.ts"
+import { startFakeServer, type FakeServer, type FakeHandler, type FakeAnswer } from "./support/fakes.ts"
 import { callCloud, type CallInit } from "./support/http.ts"
-import { createStripeFake, fakeSecretKey } from "./support/fakes/stripe.ts"
+import { createStripeFake, fakeSecretKey, type StripeFake } from "./support/fakes/stripe.ts"
+import { stripePlanPreview } from "./support/fakes/stripe-commands.ts"
 import { catalogPrices, secrets, testProfile } from "./support/profile.ts"
 
 const minuteMs = 60_000
@@ -289,7 +291,114 @@ describe("WP0 Foundation: request authentication", () => {
   }))
 })
 
+schema PlanReviewBody { targetPlanKey: "plus_monthly" | "pro_monthly" }
+
+function reviewRoute(path: `/${string}`, kind: ReviewPlanChange["kind"]): Route {
+  return {
+    method: "POST", path, auth: "FreshSession", capability: "billing",
+    handler: (context) => effect {
+      const body = try jsonBody(context, PlanReviewBody)
+      return json(try reviewPlanChange(context.request.headers.authorization, { kind, targetPlanKey: body.targetPlanKey }))
+    }
+  }
+}
+
+const readQuoteRoute: Route = {
+  method: "GET", path: "/probe/quotes/:quoteId", auth: "FreshSession",
+  handler: (context) => effect {
+    const caller = owner(context.caller)
+    if (caller === undefined) throw refused("AuthenticationRequired")
+    const store = try Store
+    return json(try store.transaction((tx) => readReviewedPlanQuote(tx, caller, context.params.quoteId ?? "")))
+  }
+}
+
+effect function paidReviewSubscription(cloud: HttpFixture, fake: StripeFake, organizationId: string, plan: "plus_monthly" | "pro_monthly", now: number) {
+  const price = plan === "plus_monthly" ? catalogPrices[0] : catalogPrices[1]
+  const stripe = try Effect.try(() => stripeClient(fakeSecretKey, `${cloud.fakes.url}/stripe`))
+  const customer = try promise(() => stripe.customers.create({ metadata: { organization_id: organizationId } }))
+  const checkout = try promise(() => stripe.checkout.sessions.create({
+    customer: customer.id, mode: "subscription", line_items: [{ price: price.priceId, quantity: 1 }],
+    success_url: "https://example.com/return", cancel_url: "https://example.com/cancel"
+  }))
+  const paid = try Effect.try(() => fake.completeSession(checkout.id))
+  try check(() => assert.equal(paid.kind, "paid"))
+  const { observation } = try promise(() => readStripeSubscription(stripe, {
+    STRIPE_PLAN: plan, STRIPE_PRICE_ID: price.priceId, STRIPE_PRODUCT_ID: price.productId, CLOUD_ENVIRONMENT: "staging"
+  }, customer.id))
+  return try cloud.store.transaction((tx) => reconcileSubscription(tx, organizationId, observation, now, checkout.id))
+}
+
 describe("Node subscriptions", () => {
+  it.live("Review the exact owned plan change without mutating Stripe (spec/cloud/billing/subscriptionCommands.md, \"A review quotes an upgrade, a downgrade or an undo of a live, active subscription with no command running\")", () => scoped(effect {
+    const now = 1_800_000_000_987
+    const providerAt = Math.floor(now / 1000) * 1000
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(now))
+    provide Clock.Clock = clock.clock {
+      const fake = try sync(() => createStripeFake({ now: () => now }))
+      let previews = (mode: string, answer: FakeAnswer): FakeAnswer | Promise<FakeAnswer> => answer
+      const preview = try sync(() => stripePlanPreview(fake, (mode, answer) => previews(mode, answer)))
+      const upgrade = "/api/v1/subscriptions/upgrade/review"
+      const downgrade = "/api/v1/subscriptions/downgrade/review"
+      const cloud = try testHttp([reviewRoute(upgrade, "UpgradeCommand"), reviewRoute(downgrade, "DowngradeCommand"), readQuoteRoute],
+        (request) => preview(request) ?? fake.handler(request))
+      const token = sessionToken("q"), foreignToken = sessionToken("f"), staleToken = sessionToken("e")
+      const live = { live: true, epoch: 0, authAt: now, accessExpiresAt: now + minuteMs * 15, refreshExpiresAt: now + minuteMs * 60, stepUpAt: 0, mfaAt: 0 }
+      try account(cloud, "buyer", "active", { sessions: 0, devices: 0 }, now)
+      try account(cloud, "other", "active", { sessions: 0, devices: 0 }, now)
+      try session(cloud, "buyer", token, live, now)
+      try session(cloud, "other", foreignToken, live, now)
+      try session(cloud, "buyer", staleToken, { ...live, authAt: now - 2 * 60 * minuteMs }, now)
+      const plus = try paidReviewSubscription(cloud, fake, "org-buyer", "plus_monthly", now)
+      const pro = try paidReviewSubscription(cloud, fake, "org-other", "pro_monthly", now)
+      try sql(cloud, "INSERT INTO quotes (id,organization_id,command_kind,target_plan_key,proration_date,due_now_cents,recurring_cents,adjustment_micros,expires_at) VALUES ('legacy','org-buyer','upgrade','pro_monthly',0,0,0,0,$1)", [now])
+      const target = { json: { targetPlanKey: "pro_monthly" } }
+      const staleSession = try cloud.call(upgrade, staleToken, target)
+      const previewed = try cloud.call(upgrade, token, target)
+      const { quoteId: firstId } = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(previewed.body)
+      const readPath = "/probe/quotes/"
+      const stored = try cloud.call(readPath + firstId, token)
+      const foreign = try cloud.call(readPath + firstId, foreignToken)
+      const legacy = try cloud.call(readPath + "legacy", token)
+      const second = try cloud.call(upgrade, token, target)
+      const { quoteId: secondId } = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(second.body)
+      const replaced = try cloud.call(readPath + firstId, token)
+      try sync(() => { previews = (_mode, _answer) => ({ status: 503, body: { error: { type: "api_error" } } }) })
+      const unavailable = try cloud.call(upgrade, token, target)
+      try sync(() => {
+        previews = (mode, answer) => mode === "next"
+          ? Effect.runPromise(cloud.store.transaction((tx) => claimLiveCommand(tx, "org-buyer", "CancelCommand", "concurrent-cancel", plus.revision))).then(() => answer)
+          : answer
+      })
+      const moved = try cloud.call(upgrade, token, target)
+      const kept = try cloud.call(readPath + secondId, token)
+      try sync(() => { previews = (_mode, answer) => answer })
+      const lowered = try cloud.call(downgrade, foreignToken, { json: { targetPlanKey: "plus_monthly" } })
+      const { quoteId: downId } = try Schema.decodeUnknownEffect(Schema.Struct({ quoteId: Schema.String }))(lowered.body)
+      const rows = try sql(cloud, "SELECT id,reviewer_user_id,proration_date,reviewed_command->>'expectedRevision' AS revision FROM quotes ORDER BY organization_id,id", [])
+      const projected = try sync(() => cloud.fakes.seen.filter((request) => request.method === "POST" && request.path.includes("/v1/invoices/create_preview"))
+        .map((request) => {
+          const form = new URLSearchParams(request.body)
+          return [form.get("preview_mode"), form.get("subscription_details[proration_date]")]
+        }))
+      const mutations = try sync(() => cloud.fakes.seen.filter((request) => ["POST", "DELETE"].includes(request.method) &&
+        (/\/v1\/subscriptions\//.test(request.path) || request.path.includes("/v1/subscription_schedules"))).length)
+      try check(() => {
+        assert.deepStrictEqual([staleSession.status, previewed.status, stored.status, foreign.status, legacy.status, replaced.status,
+          unavailable.status, moved.status, kept.status, lowered.status, mutations], [428, 200, 200, 404, 404, 404, 503, 409, 200, 200, 0])
+        assert.deepStrictEqual(previewed.body, { quoteId: firstId, review: { kind: "upgrade_estimate", targetPlanKey: "pro_monthly",
+          dueNow: { amountDueCents: 7000 }, recurringEstimate: { amountDueCents: 10000 }, effectiveAt: providerAt, expiresAt: providerAt + minuteMs } })
+        assert.deepStrictEqual(lowered.body, { quoteId: downId, review: { kind: "downgrade_estimate", targetPlanKey: "plus_monthly",
+          dueNow: { amountDueCents: 0 }, recurringEstimate: { amountDueCents: 3000 }, effectiveAt: pro.periodEnd, expiresAt: providerAt + minuteMs } })
+        assert.deepStrictEqual(projected, [["recurring", null], ["next", String(providerAt / 1000)], ["recurring", null],
+          ["next", String(providerAt / 1000)], ["recurring", null], ["recurring", null], ["next", String(providerAt / 1000)], ["recurring", null]])
+        assert.deepStrictEqual(rows.map((row) => [row.id, row.reviewer_user_id, Number(row.proration_date), row.revision]).sort(),
+          [[secondId, "buyer", providerAt / 1000, String(plus.revision)], [downId, "other", pro.periodEnd / 1000, String(pro.revision)], ["legacy", null, 0, null]].sort())
+      })
+    }
+  }))
+
   it.live("Keep allowance and cancellation coherent when a provider event replays over an older Worker row (spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\"; spec/cloud/billing/subscriptions.md, \"Story: Change my plan one command at a time\")", () => scoped(effect {
     const now = try Clock.currentTimeMillis
     const fake = try sync(() => createStripeFake({ now: () => now }))
