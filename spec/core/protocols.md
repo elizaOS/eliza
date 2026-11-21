@@ -26,6 +26,184 @@ pure val storedValues = Set(List(), List({ id: "request-b", version: 1, payload:
 pure val expectedValues = Set(1, 2)
 pure def lawStoreHoldsOnlyTheDeclaredVersion(stored: List[VersionedValue], value: VersionedValue, expected: int): bool =
   stored.every(v => v.version == expected) implies admitVersioned(stored, value, expected).every(v => v.version == expected)
+pure def lawAdmittedValueIsStoredExactly(stored: List[VersionedValue], value: VersionedValue, expected: int): bool =
+  versionAccepted(value, expected) implies admitVersioned(stored, value, expected) == stored.append(value)
+pure def lawRejectedValueLeavesStoreUnchanged(stored: List[VersionedValue], value: VersionedValue, expected: int): bool =
+  not(versionAccepted(value, expected)) implies admitVersioned(stored, value, expected) == stored
+```
+
+### Hex decoding ignores separators and returns the bytes that hex encoding wrote
+
+`fromHex` removes every character outside `[0-9a-fA-F]` before decoding, so
+separators such as `:`, `-` and spaces change nothing. Each pair of remaining
+digits is one byte, high digit first, in either case. A final unpaired digit
+is dropped, as Node's hex decoder drops it. `toHex` writes each byte as two
+lowercase digits, and decoding that text returns the same bytes. Text is
+given as character codes and bytes as integers from 0 to 255.
+
+```quint
+type HexDecoding = { decoded: List[int], high: int }
+pure def isHexCode(code: int): bool = (code >= 48 and code <= 57) or (code >= 65 and code <= 70) or (code >= 97 and code <= 102)
+pure def hexCodeValue(code: int): int = if (code <= 57) code - 48 else if (code <= 70) code - 55 else code - 87
+pure def hexDigitCode(digit: int): int = if (digit < 10) 48 + digit else 87 + digit
+pure def stripHexSeparators(hexText: List[int]): List[int] = hexText.select(code => isHexCode(code))
+pure def decodeHexDigit(decoding: HexDecoding, code: int): HexDecoding =
+  if (decoding.high < 0) { decoded: decoding.decoded, high: hexCodeValue(code) }
+  else { decoded: decoding.decoded.append(decoding.high * 16 + hexCodeValue(code)), high: -1 }
+pure def decodeHex(hexText: List[int]): List[int] =
+  stripHexSeparators(hexText).foldl({ decoded: List(), high: -1 }, (decoding, code) => decodeHexDigit(decoding, code)).decoded
+pure def encodeHex(byteList: List[int]): List[int] =
+  byteList.foldl(List(), (codes, value) => codes.append(hexDigitCode(value / 16)).append(hexDigitCode(value % 16)))
+pure def allBytes(byteList: List[int]): bool = byteList.every(value => value >= 0 and value <= 255)
+pure val hexTextValues = Set(List(), List(48, 48, 58, 49, 65, 45, 102, 102), List(97, 98, 99), List(70, 32, 48))
+pure val beforeValues = hexTextValues
+pure val afterValues = hexTextValues
+pure val separatorValues = Set(58, 45, 32, 103, 97, 70)
+pure val byteListValues = Set(List(), List(0), List(255, 16, 1), List(171, 205), List(256))
+pure def lawHexSeparatorIsIgnored(before: List[int], after: List[int], separator: int): bool =
+  not(isHexCode(separator)) implies decodeHex(before.append(separator).concat(after)) == decodeHex(before.concat(after))
+pure def lawHexRoundTripReturnsTheBytes(byteList: List[int]): bool =
+  allBytes(byteList) implies decodeHex(encodeHex(byteList)) == byteList
+```
+
+### A UUID input is returned unchanged and any other input derives a version-0 UUID
+
+`validateUuid` accepts exactly 36 characters: hex digits in either case,
+with hyphens at positions 8, 13, 18 and 23, and any version digit.
+`uuidFromString` returns such an input unchanged and does not hash it; a
+number is first converted with `toString`. Any other input derives its UUID
+from the first 16 bytes of the SHA-1 digest of `encodeURIComponent(input)`:
+byte 6 keeps only its low four bits, so the version digit is `0` (the
+elizaOS form, not version 5), and byte 8 keeps its low six bits under the
+RFC 4122 variant bits `10`. The bytes are written as lowercase hex in the
+8-4-4-4-12 form. `stringToUuid` supplies the Node SHA-1 digest, so the same
+input always gives the same UUID, and a derived UUID passed in again is
+returned unchanged. SHA-1 and URI encoding are host boundaries; text is
+given as character codes and the digest as its bytes.
+
+```quint
+pure val uuidPositions = List(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35)
+pure def uuidHyphenAt(index: int): bool = index == 8 or index == 13 or index == 18 or index == 23
+pure def isUuidText(uuidText: List[int]): bool =
+  uuidText.length() == 36 and
+    uuidPositions.every(index => if (uuidHyphenAt(index)) uuidText.nthOr(index, -1) == 45 else isHexCode(uuidText.nthOr(index, -1)))
+pure def uuidBytesFromDigest(digest: List[int]): List[int] =
+  List(digest.nthOr(0, 0), digest.nthOr(1, 0), digest.nthOr(2, 0), digest.nthOr(3, 0), digest.nthOr(4, 0), digest.nthOr(5, 0), digest.nthOr(6, 0) % 16, digest.nthOr(7, 0), digest.nthOr(8, 0) % 64 + 128, digest.nthOr(9, 0), digest.nthOr(10, 0), digest.nthOr(11, 0), digest.nthOr(12, 0), digest.nthOr(13, 0), digest.nthOr(14, 0), digest.nthOr(15, 0))
+pure def formatUuidBytes(uuidBytes: List[int]): List[int] =
+  List(hexDigitCode(uuidBytes.nthOr(0, 0) / 16), hexDigitCode(uuidBytes.nthOr(0, 0) % 16), hexDigitCode(uuidBytes.nthOr(1, 0) / 16), hexDigitCode(uuidBytes.nthOr(1, 0) % 16), hexDigitCode(uuidBytes.nthOr(2, 0) / 16), hexDigitCode(uuidBytes.nthOr(2, 0) % 16), hexDigitCode(uuidBytes.nthOr(3, 0) / 16), hexDigitCode(uuidBytes.nthOr(3, 0) % 16), 45,
+    hexDigitCode(uuidBytes.nthOr(4, 0) / 16), hexDigitCode(uuidBytes.nthOr(4, 0) % 16), hexDigitCode(uuidBytes.nthOr(5, 0) / 16), hexDigitCode(uuidBytes.nthOr(5, 0) % 16), 45,
+    hexDigitCode(uuidBytes.nthOr(6, 0) / 16), hexDigitCode(uuidBytes.nthOr(6, 0) % 16), hexDigitCode(uuidBytes.nthOr(7, 0) / 16), hexDigitCode(uuidBytes.nthOr(7, 0) % 16), 45,
+    hexDigitCode(uuidBytes.nthOr(8, 0) / 16), hexDigitCode(uuidBytes.nthOr(8, 0) % 16), hexDigitCode(uuidBytes.nthOr(9, 0) / 16), hexDigitCode(uuidBytes.nthOr(9, 0) % 16), 45,
+    hexDigitCode(uuidBytes.nthOr(10, 0) / 16), hexDigitCode(uuidBytes.nthOr(10, 0) % 16), hexDigitCode(uuidBytes.nthOr(11, 0) / 16), hexDigitCode(uuidBytes.nthOr(11, 0) % 16), hexDigitCode(uuidBytes.nthOr(12, 0) / 16), hexDigitCode(uuidBytes.nthOr(12, 0) % 16), hexDigitCode(uuidBytes.nthOr(13, 0) / 16), hexDigitCode(uuidBytes.nthOr(13, 0) % 16), hexDigitCode(uuidBytes.nthOr(14, 0) / 16), hexDigitCode(uuidBytes.nthOr(14, 0) % 16), hexDigitCode(uuidBytes.nthOr(15, 0) / 16), hexDigitCode(uuidBytes.nthOr(15, 0) % 16))
+pure def uuidFromDigest(uuidText: List[int], digest: List[int]): List[int] =
+  if (isUuidText(uuidText)) uuidText else formatUuidBytes(uuidBytesFromDigest(digest))
+pure val uuidTextValues = Set(List(), List(97, 45, 98),
+  List(53, 53, 48, 69, 56, 52, 48, 48, 45, 101, 50, 57, 98, 45, 52, 49, 100, 52, 45, 65, 55, 49, 54, 45, 52, 52, 54, 54, 53, 53, 52, 52, 48, 48, 48, 48),
+  List(53, 53, 48, 69, 56, 52, 48, 48, 45, 101, 50, 57, 98, 45, 52, 49, 100, 52, 45, 65, 55, 49, 54, 45, 52, 52, 54, 54, 53, 53, 52, 52, 48, 48, 48, 103))
+pure val digestValues = Set(List(), List(255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255),
+  List(0, 1, 2, 3, 4, 5, 102, 7, 63, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19), List(-1, 300))
+pure val againValues = Set(List(), List(1, 2, 3))
+pure val digestIndexValues = Set(0, 5, 6, 7, 8, 15, 16)
+pure def lawUuidInputIsReturnedUnchanged(uuidText: List[int], digest: List[int]): bool =
+  isUuidText(uuidText) implies uuidFromDigest(uuidText, digest) == uuidText
+pure def lawDerivedUuidHasVersionZeroAndVariantBits(digest: List[int]): bool = {
+  val derived = uuidBytesFromDigest(digest)
+  allBytes(digest) implies
+    derived.length() == 16 and derived.nthOr(6, -1) >= 0 and derived.nthOr(6, -1) < 16 and
+      derived.nthOr(8, -1) >= 128 and derived.nthOr(8, -1) < 192
+}
+pure def lawDerivedUuidKeepsTheOtherDigestBytes(digest: List[int], digestIndex: int): bool =
+  digestIndex >= 0 and digestIndex < 16 and digestIndex != 6 and digestIndex != 8 implies
+    uuidBytesFromDigest(digest).nthOr(digestIndex, -1) == digest.nthOr(digestIndex, 0)
+pure def lawDerivedUuidIsAValidUuid(digest: List[int]): bool =
+  allBytes(digest) implies isUuidText(formatUuidBytes(uuidBytesFromDigest(digest)))
+pure def lawUuidDerivationIsIdempotent(uuidText: List[int], digest: List[int], again: List[int]): bool =
+  allBytes(digest) implies uuidFromDigest(uuidFromDigest(uuidText, digest), again) == uuidFromDigest(uuidText, digest)
+```
+
+### A seeded shuffle keeps every item and samples and picks take only shuffled items
+
+`deterministicShuffle` copies the items and, for each slot from the last
+down to 1, swaps that slot with a pick drawn from `createDeterministicRandom`
+at or below it. The same seed draws the same picks, so it gives the same
+order; the swaps only move items, so every item keeps its count. A swap whose
+slot or pick lies outside the list changes nothing. `deterministicSample`
+returns nothing for a count of 0 or less or for no items, and otherwise the
+first `min(count, length)` shuffled items. `deterministicPick` is the first
+shuffled item, or nothing for no items. `getDeterministicNames` returns
+nothing for a count of 0 or less, and otherwise `count` names cycling
+through the example names shuffled with the seed
+`buildDeterministicSeed(seed, "names")`, with `user<i+1>` for an empty
+name at position i, counting positions from 0. `buildDeterministicSeed`
+trims each part, reads a missing part as empty, drops empty parts and joins
+the rest with `::`, or returns `default` when none is left. The Quint takes
+the parts already trimmed, with a missing part as empty; trimming and the
+`::` join are host string operations. The random generator, the
+FNV-1a `hashStringToUint32` and `stableStringify` (object keys sorted by
+UTF-16 code units at every depth, arrays in order, dates through their
+`toJSON`) require host conformance against the
+[pinned helper](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/utils/deterministic.ts#L5-L128).
+
+```quint
+type ShuffleScan = { slotIndex: int, swapped: List[str] }
+type ShuffleSwap = { slot: int, pick: int }
+type DeterministicPick = NoPick | Picked({ member: str })
+pure def swapItems(items: List[str], slot: int, pick: int): List[str] =
+  items.foldl({ slotIndex: 0, swapped: List() }, (scan, member) => {
+    slotIndex: scan.slotIndex + 1,
+    swapped: scan.swapped.append(if (scan.slotIndex == slot) items.nthOr(pick, member) else if (scan.slotIndex == pick) items.nthOr(slot, member) else member)
+  }).swapped
+pure def shuffleItems(items: List[str], swaps: List[ShuffleSwap]): List[str] =
+  swaps.foldl(items, (arranged, swap) => swapItems(arranged, swap.slot, swap.pick))
+pure def itemCount(items: List[str], member: str): int = items.select(entry => entry == member).length()
+pure def sampleItems(shuffled: List[str], count: int): List[str] =
+  if (count <= 0) List() else shuffled.foldl(List(), (taken, member) => if (taken.length() < count) taken.append(member) else taken)
+pure def pickItem(shuffled: List[str]): DeterministicPick =
+  if (shuffled.length() == 0) NoPick else Picked({ member: shuffled.nthOr(0, "") })
+pure def seedParts(parts: List[str]): List[str] = {
+  val kept = parts.select(part => part != "")
+  if (kept.length() == 0) List("default") else kept
+}
+pure val itemsValues = Set(List(), List("a"), List("a", "b", "a"), List("b", "c"))
+pure val shuffledValues = Set(List(), List("a"), List("a", "b", "a"))
+pure val swapsValues = Set(List(), List({ slot: 2, pick: 0 }), List({ slot: 2, pick: 1 }, { slot: 1, pick: 0 }), List({ slot: 5, pick: 0 }, { slot: 1, pick: 1 }))
+pure val memberValues = Set("a", "b", "c")
+pure val partsValues = Set(List(), List(""), List("a", "", "b"))
+pure def lawSwapKeepsLength(items: List[str], slot: int, pick: int): bool = swapItems(items, slot, pick).length() == items.length()
+pure def lawShuffleKeepsEveryItemCount(items: List[str], swaps: List[ShuffleSwap], member: str): bool =
+  itemCount(shuffleItems(items, swaps), member) == itemCount(items, member)
+pure def lawSampleLengthIsBounded(shuffled: List[str], count: int): bool =
+  sampleItems(shuffled, count).length() == (if (count <= 0) 0 else if (count < shuffled.length()) count else shuffled.length())
+pure def lawSampledItemsComeFromTheInput(items: List[str], swaps: List[ShuffleSwap], count: int, member: str): bool =
+  sampleItems(shuffleItems(items, swaps), count).includes(member) implies items.includes(member)
+pure def lawPickedItemComesFromTheInput(items: List[str], swaps: List[ShuffleSwap]): bool = {
+  val picked = pickItem(shuffleItems(items, swaps))
+  match picked {
+    | NoPick => items.length() == 0
+    | Picked(chosen) => items.includes(chosen.member)
+  }
+}
+pure def lawSeedHasAPart(parts: List[str]): bool = seedParts(parts).length() > 0 and not(seedParts(parts).includes(""))
+```
+
+### The artwork seed hash wraps each step to 32 bits and is never negative
+
+`hashArtworkSeed` starts at 0 and, for each UTF-16 code unit, multiplies by
+31, adds the unit and wraps the result to a signed 32-bit integer (`| 0`).
+It returns the absolute value, so the result is from 0 to 2^31.
+
+```quint
+pure def wrapInt32(wide: int): int = {
+  val unsigned = ((wide % 4294967296) + 4294967296) % 4294967296
+  if (unsigned >= 2147483648) unsigned - 4294967296 else unsigned
+}
+pure def artworkSeedHash(codes: List[int]): int = {
+  val hash = codes.foldl(0, (running, code) => wrapInt32(running * 31 + code))
+  if (hash < 0) 0 - hash else hash
+}
+pure val codesValues = Set(List(), List(97), List(65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535))
+pure def lawWrappedValueIsSigned32Bit(wide: int): bool = wrapInt32(wide) >= -2147483648 and wrapInt32(wide) < 2147483648
+pure def lawArtworkSeedIsNonNegative(codes: List[int]): bool = artworkSeedHash(codes) >= 0 and artworkSeedHash(codes) <= 2147483648
 ```
 
 ## Story: Select localized examples from the owner's locale and recent message
