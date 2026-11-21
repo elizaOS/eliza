@@ -38,19 +38,37 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
+function errnoCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return undefined;
+  }
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
+/**
+ * Reads the 4-byte GGUF magic to tell a real GGUF from a truncated/other file.
+ *
+ * Only "there is no file here" (ENOENT, e.g. the file vanished between the
+ * stat() above and this open()) answers `false`. Every other open/read failure
+ * — EACCES, EIO, EMFILE, EBUSY while llama.cpp holds the model — means the file
+ * could not be inspected, which is not evidence of corruption, so it
+ * propagates instead of reporting the intact model as `truncated`.
+ */
 async function isGgufHeader(path: string): Promise<boolean> {
+  let fd: Awaited<ReturnType<typeof fsp.open>>;
   try {
-    const fd = await fsp.open(path, "r");
-    try {
-      const buf = Buffer.alloc(4);
-      await fd.read(buf, 0, 4, 0);
-      return buf.equals(GGUF_MAGIC);
-    } finally {
-      await fd.close();
-    }
-  } catch {
-    // error-policy:J3 unreadable/short file is not a GGUF header
-    return false;
+    fd = await fsp.open(path, "r");
+  } catch (error) {
+    if (errnoCode(error) === "ENOENT") return false;
+    throw error;
+  }
+  try {
+    const buf = Buffer.alloc(4);
+    await fd.read(buf, 0, 4, 0);
+    return buf.equals(GGUF_MAGIC);
+  } finally {
+    await fd.close();
   }
 }
 
