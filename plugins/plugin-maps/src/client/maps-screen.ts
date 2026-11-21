@@ -313,7 +313,12 @@ export class MapsScreenController {
   private backgroundRunning = false;
   private query = "";
   private searching = false;
-  private waitingSearch?: { query: string; intent: number };
+  private waitingSearch?: {
+    query: string;
+    intent: number;
+    /** The hand-off's search point, kept for the resumed search. */
+    near?: Coordinate;
+  };
   private message = "";
   private disposed = false;
   private revision = 0;
@@ -374,8 +379,11 @@ export class MapsScreenController {
             this.query === pending.query;
           void Promise.resolve(this.initialization).then(
             () => {
-              if (current() && this.state?.search.phase === "idle")
+              if (current() && this.state?.search.phase === "idle") {
+                // A hand-off's resumed search keeps its own search point.
+                this.handoffNear = pending.near;
                 this.submit();
+              }
             },
             (error) => {
               if (!current()) return;
@@ -671,7 +679,11 @@ export class MapsScreenController {
     // A new explicit search also retries a failed configured connection. Never
     // poll in the background or replay the search after the user leaves or edits.
     const requested = this.query;
-    this.waitingSearch = { query: requested, intent };
+    this.waitingSearch = {
+      query: requested,
+      intent,
+      ...(handoffNear ? { near: handoffNear } : {}),
+    };
     void (async () => {
       this.ensure();
       const diagnostics = this.host.diagnostics();

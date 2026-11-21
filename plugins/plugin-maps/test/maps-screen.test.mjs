@@ -1480,6 +1480,20 @@ test("an early search continues once the first provider becomes available", asyn
   f.screen.dispose();
 });
 
+test("a chat card's hand-off made before discovery settles keeps its search point", async () => {
+  const f = fixture({ unconfigured: true });
+  const ferry = { latitude: 37.7955, longitude: -122.3937 };
+  f.screen.setViewport({ latitude: 40.7, longitude: -74 }, 15);
+  f.screen.handoff("pharmacy", false, ferry);
+  await settle();
+  assert.equal(f.calls.searches.length, 0);
+  f.activate();
+  await settle();
+  assert.deepEqual(f.calls.searches, ["pharmacy"]);
+  assert.deepEqual(f.calls.searchNear, [ferry]);
+  f.screen.dispose();
+});
+
 test("editing the automatic origin fences a late device location", async () => {
   const f = fixture();
   f.screen.setQuery("Destination");

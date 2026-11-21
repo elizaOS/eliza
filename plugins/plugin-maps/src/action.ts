@@ -592,8 +592,18 @@ export function nearbyPlaceKind(query: string | undefined): string | undefined {
     /^(?:(?:the|a|an|any)\s+)?(?:nearest|closest)\s+(?!to\b)(\S.{0,79})$/iu.exec(
       trimmed,
     )?.[1];
-  if (nearest && !/\s(?:near|around|close\s+to|next\s+to)\s/iu.test(nearest))
-    return nearest.trim();
+  if (nearest) {
+    // "the nearest pharmacy to the Ferry Building" names its own search
+    // point; only "nearest pharmacy to me" is about the owner's position.
+    const split =
+      /^(.+?)\s+(?:to|near|around|close\s+to|next\s+to|in|at|by|on)\s+(\S.*)$/iu.exec(
+        nearest,
+      );
+    if (!split) return nearest.trim();
+    return OWN_POSITION.test(withoutTail(split[2] ?? ""))
+      ? split[1]?.trim()
+      : undefined;
+  }
   const nearby = /^(\S.{0,79}?)\s+(?:nearby|around\s+here|close\s+by)$/iu.exec(
     trimmed,
   )?.[1];
@@ -1189,7 +1199,8 @@ async function execute(
           field: "originQuery" | "destinationQuery",
         ): PlaceRef | null => {
           const place = carried?.resolved[field];
-          if (!place) return null;
+          // "from where I am": the phone's position replaces a kept origin.
+          if (!place || (field === "originQuery" && fromHere)) return null;
           const asked = text(params[field]);
           return !asked ||
             placeNameKey(asked) ===

@@ -354,6 +354,33 @@ describe("3. own-position words when the planner leaves the flag out", () => {
   });
 
   it.each([
+    ["the nearest pharmacy to the Ferry Building"],
+    ["closest gas station to SFO"],
+    ["nearest coffee in the Mission"],
+  ])("%s names its own search point", (query) => {
+    expect(nearbyPlaceKind(query)).toBeUndefined();
+  });
+
+  it.each([
+    ["the nearest pharmacy to me", "pharmacy"],
+    ["closest coffee to here please", "coffee"],
+    ["the nearest pharmacy near me", "pharmacy"],
+  ])("%s is about the owner's position", (query, kind) => {
+    expect(nearbyPlaceKind(query)).toBe(kind);
+  });
+
+  it("navigation to the nearest place to a named landmark is not held for the phone's position", async () => {
+    const started: Started[] = [];
+    const rx = P("rx", "Ferry Pharmacy", 37.795, -122.394, "2 Ferry Plaza");
+    const result = await navigation(
+      provider(() => [rx], [], started),
+      "take me to the nearest pharmacy to the Ferry Building",
+      { placeQuery: "the nearest pharmacy to the Ferry Building" },
+    );
+    expect(card(result)?.kind).not.toBe("locate");
+  });
+
+  it.each([
     ["coffee near me", "coffee"],
     ["nearest pharmacy", "pharmacy"],
     ["sushi nearby", "sushi"],
@@ -465,6 +492,33 @@ describe("4. a picked destination survives the missing origin", () => {
     expect(routes.map((route) => route.destination.name)).toEqual([
       "Coit Tower",
     ]);
+  });
+
+  it("a route from the owner's position does not reuse a kept origin", async () => {
+    const routes: Array<{ origin: PlaceRef; destination: PlaceRef }> = [];
+    const service = provider(
+      (query) => (query === "Coit Tower" ? [COIT] : (answers[query] ?? [])),
+      [],
+      [],
+      routes,
+    );
+    const run = (text: string, parameters: Record<string, unknown>) =>
+      maps(service, text, { action: "route", ...parameters });
+    const asked = await run("directions from Chicago", {
+      originQuery: "Chicago",
+    });
+    expect(prose(asked)).toBe("I still need a destination.");
+    const fromHere = await run("directions to Coit Tower from where I am", {
+      destinationQuery: "Coit Tower",
+      useCurrentLocation: true,
+    });
+    expect(routes).toEqual([]);
+    expect(fromHere.data).toMatchObject({ reason: "missing_location" });
+    expect(card(fromHere)).toMatchObject({
+      kind: "locate",
+      intent: "route-origin",
+      destination: { name: "Coit Tower" },
+    });
   });
 
   it("a later unrelated turn does not reuse the kept endpoint", async () => {
