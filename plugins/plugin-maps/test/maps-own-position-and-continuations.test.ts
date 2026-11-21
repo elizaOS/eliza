@@ -420,15 +420,72 @@ describe("3. own-position words when the planner leaves the flag out", () => {
     });
   });
 
-  it("a lone result is used only when it is what was asked for", () => {
-    expect(dominantPlace("my current location", [HERE_COFFEE])).toBe(undefined);
+  it("a lone result is used even under the provider's own name", () => {
+    // A provider answers "SFO" or a typo with the place's full name.
+    const sfo = P(
+      "sfo",
+      "San Francisco International Airport",
+      37.6213,
+      -122.379,
+      "San Francisco, CA 94128, USA",
+    );
+    expect(dominantPlace("SFO", [sfo])).toBe(sfo);
+    expect(dominantPlace("San Fransisco airport", [sfo])).toBe(sfo);
     expect(dominantPlace("Coit Tower", [COIT])).toBe(COIT);
-    expect(dominantPlace("Golden Gate Bridge", [COIT])).toBe(undefined);
-    // An address is answered by a geocode named for its street.
-    const street = P("m", "Market Street", 37.79, -122.4, "1 Market St, SF");
-    expect(dominantPlace("1 Market St", [street])).toBe(street);
-    // A query found in the address ("Telegraph Hill").
-    expect(dominantPlace("Telegraph Hill", [COIT])).toBe(COIT);
+  });
+
+  it.each([
+    ["SFO", "SFO"],
+    ["my current location", undefined],
+  ])("a route to a lone result for %s", async (destinationQuery, routed) => {
+    const sfo = P(
+      "sfo",
+      "San Francisco International Airport",
+      37.6213,
+      -122.379,
+      "San Francisco, CA 94128, USA",
+    );
+    const routes: { destination: PlaceRef }[] = [];
+    const result = await maps(
+      provider(
+        (query) =>
+          query === "Coit Tower"
+            ? [COIT]
+            : query === "SFO"
+              ? [sfo]
+              : [HERE_COFFEE],
+        [],
+        [],
+        routes,
+      ),
+      `directions from Coit Tower to ${destinationQuery}`,
+      { action: "route", originQuery: "Coit Tower", destinationQuery },
+    );
+    if (routed) {
+      expect(routes.map((route) => route.destination.name)).toEqual([sfo.name]);
+    } else {
+      // "my current location" is never a business named "Here".
+      expect(routes).toEqual([]);
+      expect(result.data).toMatchObject({ reason: "missing_input" });
+    }
+  });
+
+  it("a route to the nearest pharmacy with no origin starts from the phone", async () => {
+    const searched: Search[] = [];
+    const routes: unknown[] = [];
+    const result = await maps(
+      provider(
+        () => [P("rx", "Nearest Pharmacy Ltd", 51.5, -0.12)],
+        searched,
+        [],
+        routes,
+      ),
+      "how far is the nearest pharmacy",
+      { action: "route", destinationQuery: "the nearest pharmacy" },
+    );
+    expect(searched).toEqual([]);
+    expect(routes).toEqual([]);
+    expect(card(result)).toMatchObject({ kind: "locate" });
   });
 });
 
