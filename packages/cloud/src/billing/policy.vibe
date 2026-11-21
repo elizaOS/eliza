@@ -75,7 +75,7 @@ export effect function readPolicy(tx: Tx, organizationId: string, now: number): 
   return { planKey: "Free", source: "free", effectiveUntil: null, status }
 }
 
-export function laneOf(policy: Policy | undefined): FundingLane {
+function laneOf(policy: Policy | undefined): FundingLane {
   if (policy === undefined) return "Refused"
   const entitled = policy.source === "grant" || (policy.source === "subscription" && isEntitled(policy.status))
   return isPaid(policy.planKey) && entitled ? "AllowanceThenCredits" : "CreditsOnly"

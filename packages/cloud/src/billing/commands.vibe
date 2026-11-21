@@ -77,7 +77,7 @@ effect function applyAt(receipt: Receipt, sent: Sent): Receipt!Rejected {
   return try apply(current, sent.event, sent.by)
 }
 
-export const commandRows: MachineRows<Receipt, Sent, Receipt, Rejected, unknown> = { table: "subscription_commands", initial, decodeState, apply: applyAt, next: (receipt) => receipt }
+const commandRows: MachineRows<Receipt, Sent, Receipt, Rejected, unknown> = { table: "subscription_commands", initial, decodeState, apply: applyAt, next: (receipt) => receipt }
 
 const wireKinds: Readonly<Record<CommandSpec["kind"], WireCommandKind>> = { CancelCommand: "cancel", UndoCommand: "undo", UpgradeCommand: "upgrade", DowngradeCommand: "downgrade" }
 
@@ -86,7 +86,7 @@ const cursorPattern = /^(\d{1,16})\.(cmd_[0-9a-f]{32})$/
 export const idempotencyKeyPattern = /^[\x21-\x7e]{1,200}$/
 
 export const providerTimeout = 30_000
-export const commandLifetime = 24 * 60 * 60_000
+const commandLifetime = 24 * 60 * 60_000
 
 function statusAt(receipt: Receipt, now: number): ReceiptStatus {
   return receiptStatus(now > receipt.session.now ? elapse(receipt, now - receipt.session.now) : receipt)
@@ -387,7 +387,7 @@ effect function settle(spec: CommandSpec, organizationId: string, commandId: str
   try finish(spec, organizationId, commandId)
 }
 
-export effect function runCommand(spec: CommandSpec, request: CommandRequest) {
+effect function runCommand(spec: CommandSpec, request: CommandRequest) {
   const store = try Store
   const now = try Clock.currentTimeMillis
   if (!idempotencyKeyPattern.test(request.idempotencyKey)) throw refused("InvalidRequest")
@@ -419,7 +419,7 @@ effect function commandViewRow(tx: Tx, commandId: string, now: number) {
   return legacy === undefined ? undefined : { organizationId: legacy.organizationId, view: viewOf(legacy, now) }
 }
 
-export effect function readCommand(organizationId: string, commandId: string, kind: WireCommandKind) {
+effect function readCommand(organizationId: string, commandId: string, kind: WireCommandKind) {
   const store = try Store
   const now = try Clock.currentTimeMillis
   const row = commandIdPattern.test(commandId) ? try store.transaction((tx) => commandViewRow(tx, commandId, now)) : undefined
@@ -427,7 +427,7 @@ export effect function readCommand(organizationId: string, commandId: string, ki
   return row.view
 }
 
-export effect function commandsPage(organizationId: string, limit: number, cursor: string | undefined): CommandsPage!(StoreFailure | RowCorrupt | Refused)!Store {
+effect function commandsPage(organizationId: string, limit: number, cursor: string | undefined): CommandsPage!(StoreFailure | RowCorrupt | Refused)!Store {
   const store = try Store
   const now = try Clock.currentTimeMillis
   const after = cursor === undefined ? undefined : cursorPattern.exec(cursor)
@@ -447,7 +447,7 @@ export effect function commandsPage(organizationId: string, limit: number, curso
   return { observedAt: now, items, nextCursor: keys.length > limit && last !== undefined ? `${last.createdAt}.${last.commandId}` : null }
 }
 
-export effect function sweepCommands(specs: ReadonlyArray<CommandSpec>): number!!CloudContext {
+effect function sweepCommands(specs: ReadonlyArray<CommandSpec>): number!!CloudContext {
   const store = try Store
   const kinds = specs.map((spec) => wireKinds[spec.kind])
   const live = store.transaction((tx) => tx.query(

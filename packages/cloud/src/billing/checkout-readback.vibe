@@ -7,7 +7,7 @@ import { Store, toText, type Tx } from "../store/connection.vibe"
 import { applyCheckoutEvent, checkoutAt, loadCheckout, pinnedCustomer, providerTimeout, stepCheckout } from "./checkout.vibe"
 
 export const readBackEveryMs = 60_000
-export const readBackBatch = 100
+const readBackBatch = 100
 
 effect function settleLookup(tx: Tx, organizationId: string, commandId: string, now: number) {
   const stored = try loadCheckout(tx, commandId)

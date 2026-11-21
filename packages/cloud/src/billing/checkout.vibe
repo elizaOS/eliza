@@ -26,7 +26,7 @@ import { readStripeSubscription, stripeClient } from "./stripe-observation.vibe"
 import { claimLiveCommand, readSubscription, reconcileSubscription, releaseLiveCommand } from "./subscriptions.vibe"
 
 export const providerTimeout = 30_000
-export const retryAfterMs = 5_000
+const retryAfterMs = 5_000
 
 export interface CheckoutSent {
   readonly event: Event
@@ -66,7 +66,7 @@ const wireStatus: Readonly<Record<CheckoutPhase, string>> = { NotStarted: "not_s
 const wirePresentation: Readonly<Record<Presentation, "mobile" | "embedded" | "shared">> = { Mobile: "mobile", Embedded: "embedded", Shared: "shared" }
 const noReturn: ReturnUrl = { origin: "", path: "" }
 
-export function parsePresentation(input: string): Presentation | undefined {
+function parsePresentation(input: string): Presentation | undefined {
   switch (input) {
     case "mobile": return "Mobile"
     case "embedded": return "Embedded"
@@ -80,7 +80,7 @@ function paidWire(planKey: PlanKey): PaidPlanKey | undefined {
   return wire === "free" ? undefined : wire
 }
 
-export function checkoutIdOf(organizationId: string, idempotencyKey: string): string {
+function checkoutIdOf(organizationId: string, idempotencyKey: string): string {
   return `cmd_${sha256Hex(`${organizationId}\n${idempotencyKey}`).slice(0, 32)}`
 }
 
@@ -93,7 +93,7 @@ effect function applyAt(state: Checkout, sent: CheckoutSent): CheckoutStep!Rejec
   return try apply(current, sent.event, sent.by)
 }
 
-export const checkoutRows: MachineRows<Checkout, CheckoutSent, CheckoutStep, Rejected, NotAState> = {
+const checkoutRows: MachineRows<Checkout, CheckoutSent, CheckoutStep, Rejected, NotAState> = {
   table: "checkouts", initial, decodeState, apply: applyAt, next: (stepped) => stepped.state
 }
 
@@ -296,7 +296,7 @@ effect function settledAnswer(stored: StoredCheckout, answer: ReturnType<typeof 
   }
 }
 
-export effect function answerCheckout(stored: StoredCheckout, known: StripeCheckoutSession | undefined): CheckoutAnswer!CheckoutAnswerFailure!(Store | StripeContext) {
+effect function answerCheckout(stored: StoredCheckout, known: StripeCheckoutSession | undefined): CheckoutAnswer!CheckoutAnswerFailure!(Store | StripeContext) {
   const store = try Store
   const now = try Clock.currentTimeMillis
   const answer = try verdictOf(stored)
@@ -350,7 +350,7 @@ effect function admitted(caller: Signed, commandId: string, by: SessionOwner, di
   return second
 }
 
-export effect function startCheckout(caller: Signed, request: StartRequest) {
+effect function startCheckout(caller: Signed, request: StartRequest) {
   const store = try Store
   const deployment = try Deployment
   const billing = deployment.settings.billing
@@ -397,7 +397,7 @@ export effect function startCheckout(caller: Signed, request: StartRequest) {
   return try answerCheckout({ commandId, organizationId, state }, reply.kind === "applied" ? reply.value : undefined)
 }
 
-export effect function confirmCheckout(caller: Signed, sessionId: string) {
+effect function confirmCheckout(caller: Signed, sessionId: string) {
   const store = try Store
   const now = try Clock.currentTimeMillis
   const seen = try readSession(sessionId, now)
