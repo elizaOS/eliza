@@ -463,10 +463,11 @@ function httpsDestination(text: string): string | undefined {
   }
 }
 
+const HttpsDestination = Schema.String.check(where((url: string) => httpsDestination(url) === url))
 const BrowserNavigate = Schema.Struct({
-  type: Schema.Literal("browser_navigate"), url: normalized(Schema.String.check(where((url: string) => httpsDestination(url) === url)), (text) => httpsDestination(text) ?? text), newTab: Schema.optionalKey(Schema.Boolean)
+  type: Schema.Literal("browser_navigate"), url: normalized(HttpsDestination, (text) => httpsDestination(text) ?? text), newTab: Schema.optionalKey(Schema.Boolean)
 }).pipe(Schema.decodeTo(
-  Schema.Struct({ type: Schema.Literal("browser_navigate"), url: Schema.String, newTab: Schema.optionalKey(Schema.Literal(true)) }),
+  Schema.Struct({ type: Schema.Literal("browser_navigate"), url: HttpsDestination, newTab: Schema.optionalKey(Schema.Literal(true)) }),
   SchemaTransformation.transform({
     decode: ({ type, url, newTab }) => newTab === true ? { type, url, newTab: true as const } : { type, url },
     encode: (value) => value

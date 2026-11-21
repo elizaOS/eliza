@@ -94,7 +94,6 @@ export type PasswordsErrorCode =
 
 export interface ElizaPasswordsPlugin {
   status(): Promise<PasswordsStatus>;
-  /** Opens the native foreground window, or prompts for timed custody or legacy migration. */
   unlock(): Promise<{ unlocked: true; unlockRemainingMs: number | null }>;
   lock(): Promise<{ locked: true }>;
   list(): Promise<{ entries: PasswordEntrySummary[] }>;

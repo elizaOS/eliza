@@ -75,6 +75,8 @@ it("Propose only operations the device can check: every media, files, telephony,
   assert.strictEqual((checked(samples.BrowserNavigate).operation as { url: string }).url, "https://example.com/menu")
   assert.deepStrictEqual(checked({ type: "browser_navigate", url: "example.com/menu", newTab: true }).operation,
     { type: "browser_navigate", url: "https://example.com/menu", newTab: true })
+  assert.deepStrictEqual(checked({ type: "browser_navigate", url: "example.com/menu", newTab: false }).operation,
+    { type: "browser_navigate", url: "https://example.com/menu" })
   assert.deepStrictEqual(checked({ type: "files_open", path: "Download/" }).operation, { type: "files_open", path: "Download" })
   assert.strictEqual((checked(samples.FilesFilter).operation as { text: string }).text, "lease")
 })
