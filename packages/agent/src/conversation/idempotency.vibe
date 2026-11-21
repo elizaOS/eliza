@@ -1,0 +1,152 @@
+// spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again"
+module node {
+  import { createHash, randomUUID } from "node:crypto"
+  import { stableJsonStringify, stringToUuid, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"
+  import { decide, holdOf, type Admission, type KeyView } from "../../gen/agent__conversation__turns.ts"
+
+  export type ClientMessageId = string & { readonly __brand: "ClientMessageId" }
+  export type Fingerprint = number & { readonly __brand: "Fingerprint" }
+
+  export interface KeyRecord {
+    readonly clientMessageId: ClientMessageId
+    readonly fingerprint: Fingerprint
+  }
+
+  export interface Turn<R> {
+    readonly settle: (result: R, answered: boolean) => void
+  }
+
+  export type Ticket<R> = { readonly verdict: Admission } & (
+    | { readonly kind: "Refused"; readonly why: "InferenceUnavailable" | "Busy" | "Conflict" }
+    | { readonly kind: "Joined"; readonly ended: Promise<R> }
+    | { readonly kind: "Replayed"; readonly result: R }
+    | { readonly kind: "Stored"; readonly reply: Memory }
+    | { readonly kind: "Cut"; readonly userMessage: Memory; readonly turn: Turn<R> }
+    | { readonly kind: "Started"; readonly userMessageId: UUID; readonly turn: Turn<R> })
+
+  export interface TurnLedger<R> {
+    readonly admit: (room: UUID, key: KeyRecord | undefined, ready: boolean, now: number) => Promise<Ticket<R>>
+    readonly ended: (room: UUID) => Promise<void> | undefined
+  }
+
+  interface Stored {
+    readonly userMessage: Memory
+    readonly record: KeyRecord
+    readonly reply: Memory | undefined
+  }
+
+  interface Running<R> {
+    readonly fingerprint: Fingerprint
+    readonly ended: Promise<R>
+  }
+
+  interface Receipt<R> {
+    readonly fingerprint: Fingerprint
+    readonly result: R
+    readonly settledAt: number
+  }
+
+  const thisBoot = 0
+  const earlierBoot = -1
+
+  export function fingerprintOf(body: unknown): Fingerprint {
+    return createHash("sha256").update(stableJsonStringify(body)).digest().readUIntBE(0, 6) + 1 as Fingerprint
+  }
+
+  export const userMessageIdOf = (room: UUID, key: ClientMessageId): UUID => stringToUuid(`turn:${room}:${key}`)
+  export const replyIdOf = (userMessage: UUID): UUID => stringToUuid(`reply:${userMessage}`)
+
+  export function keyRecordOf(memory: Memory): KeyRecord | undefined {
+    const { clientMessageId, fingerprint } = (memory.metadata ?? {}) as { readonly clientMessageId?: unknown; readonly fingerprint?: unknown }
+    return typeof clientMessageId === "string" && typeof fingerprint === "number" && Number.isSafeInteger(fingerprint) && fingerprint > 0
+      ? { clientMessageId: clientMessageId as ClientMessageId, fingerprint: fingerprint as Fingerprint }
+      : undefined
+  }
+
+  const ledgers = new WeakMap<AgentRuntime, TurnLedger<unknown>>()
+
+  export function turnLedger<R>(runtime: AgentRuntime): TurnLedger<R> {
+    const known = ledgers.get(runtime)
+    if (known !== undefined) return known as TurnLedger<R>
+    const running = new Map<string, Running<R>>()
+    const receipts = new Map<string, Receipt<R>>()
+    const rooms = new Map<UUID, Promise<void>>()
+    const slot = (room: UUID, key: KeyRecord) => `${room}\u0000${key.clientMessageId}`
+    const receiptView = (receipt: Receipt<R>, now: number) =>
+      holdOf({ tag: "KeyAnswered", reply: 1, settledAt: receipt.settledAt, boot: thisBoot }, receipt.fingerprint, thisBoot, now)
+
+    const durable = async (room: UUID, key: KeyRecord): Promise<Stored | undefined> => {
+      const userMessageId = userMessageIdOf(room, key.clientMessageId)
+      const userMessage = await runtime.getMemoryById(userMessageId)
+      const record = userMessage?.roomId === room ? keyRecordOf(userMessage) : undefined
+      if (userMessage === null || record === undefined) return undefined
+      const reply = await runtime.getMemoryById(replyIdOf(userMessageId))
+      return { userMessage, record, reply: reply?.roomId === room ? reply : undefined }
+    }
+
+    const viewOf = (room: UUID, key: KeyRecord | undefined, stored: Stored | undefined, now: number): KeyView => {
+      if (key === undefined) return { tag: "NoKey" }
+      const live = running.get(slot(room, key))
+      if (live !== undefined) return holdOf({ tag: "KeyRunning", turn: 1 }, live.fingerprint, thisBoot, now)
+      const receipt = receipts.get(slot(room, key))
+      const answered = receipt === undefined ? undefined : receiptView(receipt, now)
+      if (answered?.tag === "HeldAnswered" && answered.live) return answered
+      if (stored === undefined) return { tag: "NoKey" }
+      return stored.reply === undefined
+        ? holdOf({ tag: "KeyUnanswered" }, stored.record.fingerprint, thisBoot, now)
+        : holdOf({ tag: "KeyAnswered", reply: 1, settledAt: stored.reply.createdAt ?? 0, boot: earlierBoot }, stored.record.fingerprint, thisBoot, now)
+    }
+
+    const begin = (room: UUID, key: KeyRecord | undefined): Turn<R> => {
+      const finished = Promise.withResolvers<R>()
+      const released = Promise.withResolvers<void>()
+      rooms.set(room, released.promise)
+      if (key !== undefined) running.set(slot(room, key), { fingerprint: key.fingerprint, ended: finished.promise })
+      return {
+        settle: (result, answered) => {
+          if (key !== undefined) {
+            running.delete(slot(room, key))
+            if (answered) receipts.set(slot(room, key), { fingerprint: key.fingerprint, result, settledAt: Date.now() })
+          }
+          rooms.delete(room)
+          finished.resolve(result)
+          released.resolve()
+        },
+      }
+    }
+
+    const ledger: TurnLedger<R> = {
+      ended: (room) => rooms.get(room),
+      admit: async (room, key, ready, now) => {
+        const stored = key === undefined ? undefined : await durable(room, key)
+        for (const [at, receipt] of receipts) {
+          const view = receiptView(receipt, now)
+          if (view.tag === "HeldAnswered" && !view.live) receipts.delete(at)
+        }
+        const view = viewOf(room, key, stored, now)
+        const busy = rooms.has(room) || runtime.roomHandlerQueue.pendingFor(room) > 0
+        const verdict = decide(ready, view, key !== undefined, busy, key?.fingerprint ?? 1, 1)
+        const busyNow: Ticket<R> = { verdict: { tag: "Busy" }, kind: "Refused", why: "Busy" }
+        switch (verdict.tag) {
+          case "InferenceUnavailable": case "Busy": case "Conflict": return { verdict, kind: "Refused", why: verdict.tag }
+          case "Duplicate": {
+            const live = key === undefined ? undefined : running.get(slot(room, key))
+            return live === undefined ? busyNow : { verdict, kind: "Joined", ended: live.ended }
+          }
+          case "Settled": {
+            const receipt = key === undefined ? undefined : receipts.get(slot(room, key))
+            if (view.tag === "HeldAnswered" && view.live && receipt !== undefined) return { verdict, kind: "Replayed", result: receipt.result }
+            if (stored?.reply !== undefined) return { verdict, kind: "Stored", reply: stored.reply }
+            if (stored === undefined) return busyNow
+            return { verdict, kind: "Cut", userMessage: stored.userMessage, turn: begin(room, key) }
+          }
+          case "Owner": case "Unkeyed":
+            return { verdict, kind: "Started", userMessageId: key === undefined ? randomUUID() as UUID : userMessageIdOf(room, key.clientMessageId), turn: begin(room, key) }
+        }
+      },
+    }
+    ledgers.set(runtime, ledger as TurnLedger<unknown>)
+    return ledger
+  }
+}
+export { fingerprintOf, keyRecordOf, replyIdOf, turnLedger, userMessageIdOf, type ClientMessageId, type Fingerprint, type KeyRecord, type Ticket, type Turn, type TurnLedger } from node

@@ -73,7 +73,8 @@ export type Settled = { readonly kind: "settled"; readonly result: DeviceResult;
 export type ApproveResult =
   | { readonly kind: "invalid" | "busy" | "noAuthority" | "history" | "retired" | "unclaimed" }
   | Settled
-export type RecoverResult = { readonly kind: "live" | "history" } | Settled
+type Finished = { readonly kind: "history" } | Settled
+export type RecoverResult = { readonly kind: "live" } | Finished
 export type ReviewResult = "sent" | "unsent" | "refused"
 
 export const NOT_DISPATCHED = "not_dispatched"
@@ -119,10 +120,7 @@ export interface JournaledAttempt {
   readonly machine: Machine.Shape
 }
 
-type Found =
-  | { readonly kind: "absent" }
-  | { readonly kind: "unreadable" }
-  | { readonly kind: "entry"; readonly entry: JournalEntry }
+type Found = { readonly kind: "absent" } | { readonly kind: "unreadable" } | { readonly kind: "entry"; readonly entry: JournalEntry }
 
 function sameIdentity(entry: JournalEntry, identity: JournalIdentity): boolean {
   return entry.ownerId === identity.ownerId && entry.agentId === identity.agentId && entry.origin === identity.origin
@@ -268,7 +266,8 @@ effect function acknowledge(attempt: JournaledAttempt): void!! {
   const seen = readEntry(journal, slot.binding.proposalId) catch (): Found => ({ kind: "unreadable" })
   if (seen.kind !== "entry" || seen.entry.revision !== slot.base || !owns(seen.entry, identity, slot.binding)) return
   const next = { ...seen.entry, revision: slot.base + 1, acknowledged: true }
-  if (tryPromise(() => journal.edit(slot.binding.proposalId, slot.base, next)) catch () => false) {
+  const kept = tryPromise(() => journal.edit(slot.binding.proposalId, slot.base, next)) catch () => false
+  if (kept) {
     slot.base = next.revision
     slot.acknowledged = true
   }
@@ -288,14 +287,14 @@ export effect function upload<Op>(ports: DeviceExecutionPorts<Op>, attempt: Jour
   return sent
 }
 
-effect function finish<Op>(ports: DeviceExecutionPorts<Op>, attempt: JournaledAttempt): ({ readonly kind: "history" } | Settled)!! {
+effect function finish<Op>(ports: DeviceExecutionPorts<Op>, attempt: JournaledAttempt): Finished!! {
   const state = try attempt.machine.get()
   if (!canSync(state)) return { kind: "history" }
   return { kind: "settled", result: settledResult(state.phase), synced: try upload(ports, attempt) }
 }
 
 effect function encode(operation: unknown): (string | undefined)!! {
-  return Effect.try({ try: () => JSON.stringify(operation), catch: () => undefined }) catch () => undefined
+  return Effect.try({ try: (): string | undefined => JSON.stringify(operation), catch: () => undefined }) catch () => undefined
 }
 
 effect function decodeOperation<Op>(ports: DeviceExecutionPorts<Op>, operation: string): (Op | undefined)!! {
@@ -319,9 +318,8 @@ effect function approve<Op>(ports: DeviceExecutionPorts<Op>, live: Map<string, J
     if (reserved === undefined || reserved.state.phase.tag !== "Reserved") return { kind: "history" }
     if ((try attempt.machine.get()).retired) return { kind: "retired" }
     const decided = try agentAnswered(() => ports.agent.decide(proposal.id, { digest: proposal.digest, approved: true }))
-    const claimed = decided
-      ? decodeClaimed(tryPromise(() => ports.agent.claim(proposal.id, { digest: proposal.digest })) catch () => undefined)
-      : Option.none()
+    const answered: unknown = decided ? (tryPromise(() => ports.agent.claim(proposal.id, { digest: proposal.digest })) catch () => undefined) : undefined
+    const claimed = decodeClaimed(answered)
     if (Option.isNone(claimed)) return { kind: "unclaimed" }
     try carryOut(ports, attempt, operation, claimed.value.attemptId)
     return try finish(ports, attempt)

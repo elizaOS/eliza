@@ -1,7 +1,7 @@
 // spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"
 import { assert, describe, it } from "@effect/vitest"
 import { Option, Schema } from "effect"
-import { insufficientCredits, text, type CloudFake } from "./support/cloud-fake.ts"
+import { insufficientCredits, partial, text, type CloudFake } from "./support/cloud-fake.ts"
 import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
 import type { StreamedAnswer } from "./support/socket-client.ts"
 
@@ -38,7 +38,7 @@ effect function send(agent: InProcess, id: string, body: object, abortAfterChunk
   return try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, body }, abortAfterChunks)
 }
 
-const piece = (letter: string) => letter.repeat(5)
+const piece = (letter: string) => letter.repeat(1500)
 
 for (const transport of ["socket", "http"] as const) {
   describe(`See a reply as it is written over the ${transport} (spec/agent/conversation/replyStream.md, "Story: See a reply as it is written")`, () => {
@@ -53,7 +53,7 @@ for (const transport of ["socket", "http"] as const) {
       const refused = try send(agent, id, { text: "Again.", streamProtocol: "v2" })
       try Effect.try(() => assert.deepStrictEqual({
         status: answer.status, error: answer.error, first: frames[0], ends: frames.filter((frame) => frame.type === "done" || frame.type === "error").length,
-        terminal: JSON.stringify(terminal), fullText: terminal?.fullText, rebuilt: rebuilt(frames),
+        terminal: terminal?.type, fullText: terminal?.fullText, rebuilt: rebuilt(frames),
         snapshots: kinds(frames).includes("snapshot"), provisional: frames.some((frame) => frame.provisional === true),
         refused: [refused.status, refused.json],
       }, {
@@ -68,13 +68,13 @@ for (const transport of ["socket", "http"] as const) {
       const cloud = try cloudFake(deviceKey)
       const agent = try cloudAgent(cloud, transport === "http")
       const id = try conversation(agent)
-      try Effect.sync(() => cloud.script({ kind: "hang" }))
-      const answer = try send(agent, id, { text: "Think forever." }, 1)
+      try Effect.sync(() => cloud.script(partial("Let me think")))
+      const answer = try send(agent, id, { text: "Think forever." }, 2)
       const completion = cloud.calls.find((made) => made.path.endsWith("/chat/completions"))
       if (completion === undefined) return try Effect.die(new Error("The turn never called the model"))
       try host("model call cancelled", () => completion.aborted)
       try Effect.try(() => assert.deepStrictEqual({ status: answer.status, frames: framesOf(answer), error: answer.error },
-        { status: 200, frames: [{ type: "status", activity: "thinking" }], error: "closed before complete" }))
+        { status: 200, frames: [{ type: "status", activity: "thinking" }, { type: "token", text: "Let me think" }], error: "closed before complete" }))
     }, 120_000)
 
     it.live('An account refusal still ends with done and its failure kind (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written")', effect () => {

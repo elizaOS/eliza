@@ -6,7 +6,7 @@ device key or session, `side` only `owner`, grant chosen by `connection`'s
 selection rule: `GET /api/v1/eliza/google/gmail/{triage,search,read}` and
 `GET …/gmail/inbox-v1/{capabilities,thread,attachment,drafts,draft}`. This
 library decides what a read may answer; the shell calls Google and renders
-the wire. The reviewed operations reuse its revision
+the wire. [The reviewed operations](./mailOperations.md) reuse its revision
 check, mail cap and operation kinds.
 
 ## Story: Read my mail through the grant I chose
@@ -61,16 +61,14 @@ pure def listCount(list: MailList, requested: RequestedCount): CountAnswer = mat
   | CountGiven(r) => if (r.count >= 1 and r.count <= countBound(list)) CountAccepted({ accepted: r.count }) else CountRefused
 }
 pure val requestedValues = Set(CountOmitted, CountGiven({ count: 0 }), CountGiven({ count: 1 }), CountGiven({ count: 50 }), CountGiven({ count: 51 }), CountGiven({ count: 100 }), CountGiven({ count: 101 }))
-pure def lawAnAcceptedCountIsWithinItsBound(list: MailList, requested: RequestedCount): bool = {
-  val answer = listCount(list, requested)
+pure def lawAnAcceptedCountIsWithinItsBound(list: MailList, requested: RequestedCount): bool = { val answer = listCount(list, requested)
   match answer {
   | CountAccepted(a) => a.accepted >= 1 and a.accepted <= countBound(list)
   | CountRefused => requested != CountOmitted
-  }
-}
+} }
 ```
 
-### Triage scores each inbox message by develop's rule, and a message likely needing a reply outranks all automated mail
+### Triage scores each inbox message by fixed signal weights, and a message likely needing a reply outranks all automated mail
 
 Triage lists the newest inbox messages that are not in Trash, each
 `{id, threadId, subject, from, to, cc, snippet, receivedAt, labels, isUnread,
@@ -127,13 +125,11 @@ pure def searchOutcome(asked: Continuation, answered: Continuation, mailboxRevis
 pure val askedValues = Set(NoContinuation, ContinueAt({ pageToken: "p1" }), ContinueAt({ pageToken: "p2" }))
 pure val answeredValues = askedValues
 pure val mailboxRevisionValues = Set("", "41", "42")
-pure def lawASearchPageNeverLoops(asked: Continuation, answered: Continuation, mailboxRevision: str): bool = {
-  val result = searchOutcome(asked, answered, mailboxRevision)
+pure def lawASearchPageNeverLoops(asked: Continuation, answered: Continuation, mailboxRevision: str): bool = { val result = searchOutcome(asked, answered, mailboxRevision)
   match result {
   | SearchServed(p) => p.mailboxRevision != "" and (answered == NoContinuation or answered != asked)
   | SearchRefused(r) => wellFormed(r.refusal) and not(retryableOf(r.refusal))
-  }
-}
+} }
 ```
 
 ### A message read answers the message whole, with inert HTML whole or absent, or is refused as too large
@@ -165,13 +161,11 @@ pure val gotValues: Set[MessageFetch] = {
   val ok: MessageFetch = { sameMessage: true, grantUnchanged: true, textBytes: 10, htmlBytes: 0, partsWithinLimit: true }
   Set(ok, { ...ok, htmlBytes: 524288 }, { ...ok, htmlBytes: 524289 }, { ...ok, partsWithinLimit: false, htmlBytes: 5 }, { ...ok, textBytes: 8388609 }, { ...ok, sameMessage: false }, { ...ok, grantUnchanged: false })
 }
-pure def lawAServedMessageIsWhole(got: MessageFetch): bool = {
-  val result = readOutcome(got)
+pure def lawAServedMessageIsWhole(got: MessageFetch): bool = { val result = readOutcome(got)
   match result {
   | MessageServed(m) => got.sameMessage and got.grantUnchanged and got.textBytes <= mailMaxBytes and (m.html == HtmlAvailable implies (got.htmlBytes > 0 and got.htmlBytes <= htmlMaxBytes))
   | ReadRefused(r) => wellFormed(r.refusal) and not(retryableOf(r.refusal))
-  }
-}
+} }
 ```
 
 ### A thread page is served only at the revision of its first page and covers the thread without a gap
@@ -206,21 +200,17 @@ pure def threadOutcome(ask: ThreadAsk, snapshot: ThreadSnapshot): ThreadOutcome 
 pure val askValues = Set({ offset: 0, asked: AnyRevision }, { offset: 25, asked: AnyRevision }, { offset: 25, asked: AtRevision({ historyId: "7" }) }, { offset: 25, asked: AtRevision({ historyId: "8" }) }, { offset: 31, asked: AtRevision({ historyId: "7" }) })
 pure val snapshotValues = Set({ threadRevision: "7", total: 30, fitting: 25, oversized: false }, { threadRevision: "7", total: 30, fitting: 3, oversized: false }, { threadRevision: "7", total: 30, fitting: 0, oversized: false },
   { threadRevision: "7", total: 2001, fitting: 25, oversized: false }, { threadRevision: "7", total: 30, fitting: 25, oversized: true }, { threadRevision: "7", total: 0, fitting: 0, oversized: false })
-pure def lawAThreadPageLiesInsideTheThreadAndEndsWhereTheNextBegins(ask: ThreadAsk, snapshot: ThreadSnapshot): bool = {
-  val result = threadOutcome(ask, snapshot)
+pure def lawAThreadPageLiesInsideTheThreadAndEndsWhereTheNextBegins(ask: ThreadAsk, snapshot: ThreadSnapshot): bool = { val result = threadOutcome(ask, snapshot)
   match result {
   | ThreadServed(p) => p.first >= 0 and p.count >= 0 and p.count <= threadPageMax and p.first + p.count <= snapshot.total
       and (p.rest == ThreadEnd iff p.first + p.count == snapshot.total) and (p.rest != ThreadEnd implies (p.count >= 1 and p.rest == NextAt({ nextOffset: p.first + p.count })))
   | ThreadRefused(r) => wellFormed(r.refusal) and not(retryableOf(r.refusal))
-  }
-}
-pure def lawALaterPageIsServedOnlyAtTheFirstPagesRevision(ask: ThreadAsk, snapshot: ThreadSnapshot): bool = {
-  val result = threadOutcome(ask, snapshot)
+} }
+pure def lawALaterPageIsServedOnlyAtTheFirstPagesRevision(ask: ThreadAsk, snapshot: ThreadSnapshot): bool = { val result = threadOutcome(ask, snapshot)
   match result {
   | ThreadServed(p) => p.first > 0 implies ask.asked == AtRevision({ historyId: snapshot.threadRevision })
   | ThreadRefused(r) => true
-  }
-}
+} }
 ```
 
 ### An attachment is served only at the message revision it was read at, as the exact bytes Google declared, within the mail cap
@@ -248,13 +238,11 @@ pure val partValues: Set[PartFetch] = {
   val ok: PartFetch = { readAt: "9", currentRevision: "9", matchingParts: 1, declaredBytes: 100, fetchedBytes: 100 }
   Set(ok, { ...ok, currentRevision: "10" }, { ...ok, readAt: "", currentRevision: "" }, { ...ok, matchingParts: 0 }, { ...ok, matchingParts: 2 }, { ...ok, declaredBytes: 8388609, fetchedBytes: 8388609 }, { ...ok, fetchedBytes: 99 })
 }
-pure def lawAServedAttachmentIsTheDeclaredPartAtItsRevision(part: PartFetch): bool = {
-  val result = attachmentOutcome(part)
+pure def lawAServedAttachmentIsTheDeclaredPartAtItsRevision(part: PartFetch): bool = { val result = attachmentOutcome(part)
   match result {
   | AttachmentServed(a) => revisionHeld(part.readAt, part.currentRevision) and part.matchingParts == 1 and withinMailCap(a.bytes) and a.bytes == part.declaredBytes
   | AttachmentRefused(r) => wellFormed(r.refusal) and not(retryableOf(r.refusal))
-  }
-}
+} }
 ```
 
 ### A draft is opened from one snapshot with the digest of its raw message, or refused
@@ -278,13 +266,11 @@ pure def draftOutcome(draft: DraftSnapshot): DraftOutcome =
   else DraftServed({ messageId: draft.rawMessageId })
 pure val draftValues = Set({ rawMessageId: "m1", fullMessageId: "m1", reproducible: true, bodyBytes: 10 }, { rawMessageId: "m1", fullMessageId: "m2", reproducible: true, bodyBytes: 10 },
   { rawMessageId: "m1", fullMessageId: "m1", reproducible: false, bodyBytes: 10 }, { rawMessageId: "m1", fullMessageId: "m1", reproducible: true, bodyBytes: 8388609 })
-pure def lawADraftIsServedFromOneSnapshot(draft: DraftSnapshot): bool = {
-  val result = draftOutcome(draft)
+pure def lawADraftIsServedFromOneSnapshot(draft: DraftSnapshot): bool = { val result = draftOutcome(draft)
   match result {
   | DraftServed(d) => d.messageId == draft.rawMessageId and d.messageId == draft.fullMessageId and draft.reproducible and withinMailCap(draft.bodyBytes)
   | DraftRefused(r) => wellFormed(r.refusal) and not(retryableOf(r.refusal))
-  }
-}
+} }
 ```
 
 ### Capabilities offer exactly the reads and changes the grant allows, and each change comes with the read its review needs

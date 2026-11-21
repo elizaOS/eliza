@@ -3,7 +3,7 @@ export { createCloudClient, type CloudClient } from "./client.vibe"
 export { CloudError, isCredentialInvalid, networkError, readCloudError, type CloudFailure, type CloudResponse } from "./errors.vibe"
 export { checkEntitlement, EntitlementInvalid, nextRefreshDelay, parseEntitlementKeys, verifyEntitlement, type Entitlement, type EntitlementCheck, type EntitlementClaims, type EntitlementExpectation, type EntitlementKey, type PlanAllowance } from "./entitlement.vibe"
 export {
-  accountUsable, checkoutFromResponse, commandFromResponse, commandsFromResponse, creditFromSnapshot, grantFromSnapshot, paymentFromResponse, planAdmission,
+  accountUsable, checkoutFromResponse, normalizeSubscriptionCode, commandFromResponse, commandsFromResponse, creditFromSnapshot, grantFromSnapshot, paymentFromResponse, planAdmission,
   planFromSnapshot, redeemFailureForStatus, redeemResultFromResponse, reviewFromResponse, snapshotFromResponse, snapshotView, subscriptionView,
   type ActiveGrant, type BillingSnapshot, type CheckoutPresentation, type CheckoutStart, type CheckoutStartRequest, type CommandKind, type CommandsPage,
   type CommandStatus, type CreditView, type GrantView, type LifecycleAction, type LifecycleRequest, type PaymentContinuation, type PlanAdmission,

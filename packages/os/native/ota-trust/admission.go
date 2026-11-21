@@ -42,8 +42,6 @@ type releaseCompatibility struct {
 type releaseRuntime struct {
 	Inventory string            `json:"inventorySha256"`
 	Agent     string            `json:"agentSha256"`
-	Gateway   string            `json:"gatewaySha256"`
-	Policy    string            `json:"policySha256"`
 	Libraries map[string]string `json:"nativeLibraries"`
 }
 type releaseArtifact struct {
@@ -353,11 +351,17 @@ func validateNativeArtifact(a releaseArtifact, hosts []string) error {
 		return bad()
 	}
 	r := a.Runtime
-	if !validHex(r.Inventory) || !validHex(r.Agent) || !validHex(r.Gateway) || !validHex(r.Policy) || len(r.Libraries) < 1 || len(r.Libraries) > 128 || r.Libraries["libeliza_bun.so"] == "" {
+	if !validHex(r.Inventory) || !validHex(r.Agent) || len(r.Libraries) < 1 || len(r.Libraries) > 128 {
 		return bad()
 	}
 	for name, hash := range r.Libraries {
-		if !matches(name, `^lib[a-zA-Z0-9_-]+\.so$`) || !validHex(hash) {
+		parts := strings.Split(name, "/")
+		if len(parts) != 3 || parts[0] != "lib" || runtimeMachines[parts[1]] == 0 || !contains(platform.ABIs, parts[1]) || !matches(parts[2], `^lib[a-zA-Z0-9_.+-]+\.so$`) || !validHex(hash) {
+			return bad()
+		}
+	}
+	for _, abi := range platform.ABIs {
+		if r.Libraries["lib/"+abi+"/"+nodeLibraryName] == "" {
 			return bad()
 		}
 	}

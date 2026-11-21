@@ -1,4 +1,4 @@
-// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/update/operator.md, "Story: Update a device by cable and get back if it fails"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"
+// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/update/operator.md, "Story: Update a device by cable"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { buildApk, testSigner, type AndroidTools } from "./support/android-tools.ts"
@@ -221,22 +221,21 @@ it.live.skipIf(TOOLS.kind === "missing")(`Check a launcher for admission without
   if (TOOLS.kind === "present") try admission(TOOLS)
 }))
 
-it.live("Read an update's status from the device by cable (spec/os/update/operator.md, \"Story: Update a device by cable and get back if it fails\")", () => journey(effect {
+it.live("Read an update's status from the device by cable (spec/os/update/operator.md, \"Story: Update a device by cable\")", () => journey(effect {
   const root = try scratch("cli-ota")
   const files = try FileSystem.FileSystem
   const serial = "FAKE0001"
   const phone = try Effect.try({ try: () => fakeAdb(root, device(serial, { mode: "sideload" })), catch: failed("start the fake adb") })
   const journal = {
-    schema: 1,
+    schema: 2,
     kind: "aosp-ota-update-journal",
-    serial,
-    createdAt: "2026-01-01T00:00:00.000Z",
-    release: { product: "example", device: "example_device", channel: "stable", fingerprint: "example/example_device:16/BP2A.260101.001/2:user/release-keys", securityPatch: "2026-01-05", type: "full", otaFile: "update.zip", otaSha256: "d".repeat(64), recordSha256: "e".repeat(64) },
-    from: { fingerprint: "example/example_device:16/BP2A.251201.001/1:user/release-keys", slot: "a", securityPatch: "2025-12-05", verifiedBootState: "green", flashLocked: true, virtualAb: true, recordSha256: "f".repeat(64) },
-    state: "sideloading",
-    events: [],
-    signedUpdateApplied: false,
-    drillRecorded: false,
+    binding: { serial, otaSha256: "d".repeat(64), candidateRecordSha256: "e".repeat(64), installedRecordSha256: "f".repeat(64) },
+    state: {
+      phase: "AwaitingSideload",
+      lock: { tag: "Unlocked" },
+      start: { device: "example_device", installedBuild: "example/example_device:16/BP2A.251201.001/1:user/release-keys", candidateBuild: "example/example_device:16/BP2A.260101.001/2:user/release-keys", candidatePatch: 20260105, originalSlot: "SlotA", originalBoot: "Green", wasLocked: true, virtualAb: true },
+    },
+    history: [],
   }
   try files.writeFileString(`${root}/journal.json`, JSON.stringify(journal), { mode: 0o600 })
   const before = try files.readFileString(`${root}/journal.json`)
@@ -244,7 +243,7 @@ it.live("Read an update's status from the device by cable (spec/os/update/operat
   assert.strictEqual(status.status, 0, status.stderr)
   const result = try parsed("ota status", status)
   assert.strictEqual(result.deviceState, "sideload")
-  assert.strictEqual(result.next, "sideload")
+  assert.strictEqual(result.next, "Sideload")
   assert.strictEqual(try files.readFileString(`${root}/journal.json`), before)
   const calls = try Effect.try({ try: () => phone.calls(), catch: failed("read the adb calls") })
   assert.deepStrictEqual(calls.filter((call) => ["reboot", "sideload", "set_active"].includes(call.args[2] ?? "")), [])

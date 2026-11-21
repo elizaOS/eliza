@@ -1,3 +1,4 @@
+// spec/os/build/runtimePayload.md, "The APK carries exactly one Node runtime for each targeted ABI and none for another"; spec/os/build/runtimePayload.md, "The inventory lists every staged payload file once, by digest and size, and nothing else"
 package otatrust
 
 import (
@@ -6,30 +7,43 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
-	"path"
-	"strconv"
 	"strings"
 	"syscall"
 	"unicode/utf8"
 )
 
-// runtimeInventoryAsset is the APK entry written by plugin-native-agent's
-// stageAndroidRuntimeInventory (ANDROID_RUNTIME_INVENTORY_ASSET) and read by
-// RuntimeBundleStore. Its first line must equal the host policy's
-// runtimeInventoryHeader, which the host also passes to the packager and store.
-const runtimeInventoryAsset = "assets/agent-runtime.inventory"
+const (
+	runtimeInventoryAsset = "assets/agent/inventory.json"
+	nodeLibraryName       = "libeliza_node.so"
+	agentBundleAsset      = "assets/agent/agent.mjs"
+	bundleManifestAsset   = "assets/agent/manifest.json"
+	gatewayAssets         = "assets/agent/gateway/"
+	maxInventoryBytes     = 2 * 1024 * 1024
+	maxInventoryRows      = 16384
+	maxRuntimeFileBytes   = 512 * 1024 * 1024
+	maxRuntimeTotalBytes  = 2 * 1024 * 1024 * 1024
+)
 
-// VerifyRuntimeArtifact verifies complete APK identity and packaged runtime
-// bytes against authenticated artifact metadata. Android must independently
-// verify package/version/distribution/signing and commit-time eligibility.
-// This profile accepts single ZIP32 APKs, at most 1 GiB and 32768 entries.
+var runtimeMachines = map[string]uint16{"arm64-v8a": 183, "x86_64": 62}
+
+type runtimeInventoryRow struct {
+	Path   *string `json:"path"`
+	SHA256 *string `json:"sha256"`
+	Size   *int64  `json:"size"`
+}
+
+type runtimeInventory struct {
+	Schema *int64                `json:"schema"`
+	Files  []runtimeInventoryRow `json:"files"`
+}
+
 func VerifyRuntimeArtifact(name string, artifactJSON []byte, approvedHosts, abi string) error {
-	host, hostErr := requiredHostPolicy()
-	if hostErr != nil {
-		return hostErr
+	if _, err := requiredHostPolicy(); err != nil {
+		return err
 	}
 	var artifact releaseArtifact
 	if err := decodeAdmission(artifactJSON, &artifact); err != nil {
@@ -42,12 +56,8 @@ func VerifyRuntimeArtifact(name string, artifactJSON []byte, approvedHosts, abi 
 	if err := validateNativeArtifact(artifact, hosts); err != nil {
 		return err
 	}
-	if !contains(artifact.Android.ABIs, abi) || (abi != "arm64-v8a" && abi != "x86_64") {
+	if _, node := runtimeMachines[abi]; !node || !contains(artifact.Android.ABIs, abi) {
 		return errors.New("unqualified runtime ABI")
-	}
-	machine, loader, otherLoader := uint16(183), "libeliza_ld_musl_aarch64.so", "libeliza_ld_musl_x86_64.so"
-	if abi == "x86_64" {
-		machine, loader, otherLoader = 62, otherLoader, loader
 	}
 	file, err := os.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
@@ -85,137 +95,138 @@ func VerifyRuntimeArtifact(name string, artifactJSON []byte, approvedHosts, abi 
 		}
 		entries[entry.Name] = entry
 	}
-	inventory := entries[runtimeInventoryAsset]
-	if inventory == nil || inventory.UncompressedSize64 > 2*1024*1024 {
+	inventoryEntry := entries[runtimeInventoryAsset]
+	if inventoryEntry == nil || inventoryEntry.UncompressedSize64 > maxInventoryBytes {
 		return errors.New("runtime inventory missing or oversized")
 	}
-	data, err := readAPKEntry(inventory, 2*1024*1024)
+	data, err := readAPKEntry(inventoryEntry, maxInventoryBytes)
 	if err != nil {
 		return err
 	}
-	sum := sha256.Sum256(data)
-	if hex.EncodeToString(sum[:]) != artifact.Runtime.Inventory {
+	if sum := sha256.Sum256(data); hex.EncodeToString(sum[:]) != artifact.Runtime.Inventory {
 		return errors.New("runtime inventory digest mismatch")
 	}
-	if !utf8.Valid(data) || !bytes.HasSuffix(data, []byte("\n")) {
-		return errors.New("invalid runtime inventory encoding")
+	rows, err := parseRuntimeInventory(data)
+	if err != nil {
+		return err
 	}
-	lines := strings.Split(string(data), "\n")
-	if len(lines) < 3 || len(lines) > 16386 || lines[0] != host.RuntimeInventoryHeader {
-		return errors.New("invalid runtime inventory header")
-	}
-	sources := map[string]bool{}
-	destinations := map[string]string{}
-	native := map[string]string{}
+	listed := map[string]string{}
+	trees := map[string]bool{}
+	natives := map[string]string{}
 	var total int64
-	for _, line := range lines[1 : len(lines)-1] {
-		fields := strings.Split(line, "\t")
-		if len(fields) != 5 || !matches(fields[1], `^(0|[1-9][0-9]{0,9})$`) || !validHex(fields[2]) {
+	for _, row := range rows {
+		path, digest, size := *row.Path, *row.SHA256, *row.Size
+		if _, exists := listed[path]; exists {
+			return errors.New("duplicate runtime inventory path")
+		}
+		if !validHex(digest) || size < 1 || size > maxRuntimeFileBytes {
 			return errors.New("invalid runtime inventory row")
 		}
-		size, err := strconv.ParseInt(fields[1], 10, 64)
-		if err != nil || size > 512*1024*1024 {
-			return errors.New("runtime entry too large")
-		}
-		total += size
-		if total > 2*1024*1024*1024 {
+		if total += size; total > maxRuntimeTotalBytes {
 			return errors.New("runtime total too large")
 		}
-		source, destination := fields[3], fields[4]
-		entryName := ""
-		switch fields[0] {
-		case "asset":
-			if size == 0 && contains([]string{"bundle/agent-bundle.js", "bundle/gateway/local-agent-gateway.mjs", "bundle/gateway/task-runtime.mjs", "bundle/gateway/bootstrap.mjs"}, destination) {
-				return errors.New("required runtime code is empty")
-			}
-			if !runtimePath(source) || !runtimePath(destination) || !(strings.HasPrefix(source, "agent/") || matches(source, `^runtime-blobs/[a-f0-9]{64}\.bin$`)) || !(strings.HasPrefix(destination, "bundle/") || matches(destination, `^[A-Za-z0-9_.+-]+\.tar\.gz$`)) {
-				return errors.New("invalid runtime asset path")
-			}
-			if _, exists := destinations[destination]; exists {
-				return errors.New("duplicate runtime destination")
-			}
-			destinations[destination] = fields[2]
-			entryName = "assets/" + source
-		case "native":
-			if !matches(source, `^lib[A-Za-z0-9_.-]+\.so$`) || destination != "-" {
-				return errors.New("invalid native inventory path")
-			}
-			if _, exists := native[source]; exists {
-				return errors.New("duplicate native runtime")
-			}
-			native[source] = fields[2]
-			if artifact.Runtime.Libraries[source] != fields[2] {
-				return errors.New("native declaration mismatch")
-			}
-			entryName = "lib/" + abi + "/" + source
-		default:
-			return errors.New("unknown runtime inventory kind")
-		}
-		// Repeated digest-addressed blobs are rehashed within the total byte budget.
-		entry := entries[entryName]
+		entry := entries[path]
 		if entry == nil || entry.UncompressedSize64 != uint64(size) {
 			return errors.New("packaged runtime file missing or wrong length")
 		}
-		sources[entryName] = true
-		if fields[0] == "native" {
-			if err = verifyRuntimeELF(entry, machine); err != nil {
+		kind, rowABI := runtimeRowKind(path)
+		switch kind {
+		case "library":
+			if !contains(artifact.Android.ABIs, rowABI) {
+				return errors.New("native runtime for an untargeted ABI")
+			}
+			if forbiddenLoader(path) {
+				return errors.New("runtime loader present")
+			}
+			if err = verifyRuntimeELF(entry, runtimeMachines[rowABI]); err != nil {
 				return err
 			}
+			natives[path] = digest
+		case "asset":
+			if strings.HasPrefix(path, gatewayAssets) {
+				return errors.New("gateway file present")
+			}
+			trees[strings.SplitN(path, "/", 3)[1]] = true
+		default:
+			return errors.New("invalid runtime inventory path")
 		}
-		if err = hashAPKEntry(entry, size, fields[2]); err != nil {
+		if err = hashAPKEntry(entry, size, digest); err != nil {
 			return err
 		}
+		listed[path] = digest
 	}
 	for name, entry := range entries {
-		if entry.FileInfo().IsDir() || sources[name] {
+		if _, ok := listed[name]; ok || entry.FileInfo().IsDir() || name == runtimeInventoryAsset {
 			continue
 		}
-		agentPath, agent := strings.CutPrefix(name, "assets/agent/")
-		if strings.HasPrefix(name, "assets/runtime-blobs/") || agent && !excludedAgentAsset(agentPath, host.RuntimeExcludedAgentDirectories) && !readdressedArchive(agentPath, destinations) {
-			return errors.New("unlisted runtime asset")
+		parts := strings.SplitN(name, "/", 3)
+		if parts[0] == "lib" || strings.HasPrefix(name, gatewayAssets) || (parts[0] == "assets" && len(parts) == 3 && trees[parts[1]]) {
+			return errors.New("unlisted runtime file")
 		}
 	}
-	if native[otherLoader] != "" {
-		return errors.New("mixed runtime ABI loaders")
-	}
-	for _, required := range []string{"libeliza_bun.so", loader} {
-		if native[required] == "" {
-			return errors.New("required native agent library absent")
+	for _, target := range artifact.Android.ABIs {
+		if natives["lib/"+target+"/"+nodeLibraryName] == "" {
+			return errors.New("node runtime absent for a targeted ABI")
 		}
 	}
-	if len(native) != len(artifact.Runtime.Libraries) {
-		return errors.New("native inventory incomplete")
+	if len(natives) != len(artifact.Runtime.Libraries) {
+		return errors.New("native inventory differs from the declaration")
 	}
-	for path, digest := range map[string]string{"bundle/agent-bundle.js": artifact.Runtime.Agent, "bundle/gateway/local-agent-gateway.mjs": artifact.Runtime.Gateway, "bundle/gateway/task-runtime.mjs": artifact.Runtime.Policy} {
-		if destinations[path] != digest {
-			return errors.New("agent/gateway/policy declaration mismatch")
+	for path, digest := range natives {
+		if artifact.Runtime.Libraries[path] != digest {
+			return errors.New("native declaration mismatch")
 		}
 	}
-	if destinations["bundle/gateway/bootstrap.mjs"] == "" {
-		return errors.New("gateway bootstrap missing")
+	if listed[agentBundleAsset] != artifact.Runtime.Agent || listed[bundleManifestAsset] == "" {
+		return errors.New("agent bundle declaration mismatch")
 	}
 	return nil
 }
 
-// excludedAgentAsset mirrors the packager's exact-directory exclusions.
-func excludedAgentAsset(name string, directories []string) bool {
-	for _, directory := range directories {
-		if strings.HasPrefix(name, directory+"/") {
-			return true
+func parseRuntimeInventory(data []byte) ([]runtimeInventoryRow, error) {
+	if !utf8.Valid(data) {
+		return nil, errors.New("invalid runtime inventory encoding")
+	}
+	if err := checkJSON(data); err != nil {
+		return nil, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var inventory runtimeInventory
+	if err := decoder.Decode(&inventory); err != nil {
+		return nil, errors.New("invalid runtime inventory")
+	}
+	if inventory.Schema == nil || *inventory.Schema != 1 || len(inventory.Files) < 1 || len(inventory.Files) > maxInventoryRows {
+		return nil, errors.New("invalid runtime inventory schema")
+	}
+	for _, row := range inventory.Files {
+		if row.Path == nil || row.SHA256 == nil || row.Size == nil {
+			return nil, errors.New("incomplete runtime inventory row")
 		}
 	}
-	return false
+	return inventory.Files, nil
 }
 
-// readdressedArchive reports whether an agent archive was packaged as a listed
-// content-addressed blob. RuntimeBundleStore never extracts the original path.
-func readdressedArchive(name string, destinations map[string]string) bool {
-	base := path.Base(name)
-	if strings.HasSuffix(base, ".tar") {
-		base += ".gz"
+func runtimeRowKind(path string) (string, string) {
+	if !runtimePath(path) {
+		return "", ""
 	}
-	return strings.HasSuffix(base, ".tar.gz") && destinations[base] != ""
+	parts := strings.Split(path, "/")
+	if len(parts) == 3 && parts[0] == "lib" && matches(parts[2], `^lib[A-Za-z0-9_.+-]+\.so$`) {
+		if _, node := runtimeMachines[parts[1]]; node {
+			return "library", parts[1]
+		}
+	}
+	if len(parts) >= 3 && parts[0] == "assets" && path != runtimeInventoryAsset {
+		return "asset", ""
+	}
+	return "", ""
 }
+
+func forbiddenLoader(path string) bool {
+	return matches(path[strings.LastIndex(path, "/")+1:], `^(libeliza_ld_[A-Za-z0-9_]+|libeliza_bun|ld-[A-Za-z0-9_.-]+)\.so$`)
+}
+
 func runtimePath(value string) bool {
 	if value == "" || len(value) > 1024 || strings.HasPrefix(value, "/") {
 		return false
@@ -227,6 +238,7 @@ func runtimePath(value string) bool {
 	}
 	return true
 }
+
 func boundedAPKDirectory(file *os.File, length int64) error {
 	tail := make([]byte, min(length, 65557))
 	if _, err := file.ReadAt(tail, length-int64(len(tail))); err != nil {
@@ -266,6 +278,7 @@ func boundedAPKDirectory(file *os.File, length int64) error {
 	}
 	return errors.New("APK directory absent")
 }
+
 func readAPKEntry(entry *zip.File, limit int64) ([]byte, error) {
 	reader, err := entry.Open()
 	if err != nil {
@@ -278,6 +291,7 @@ func readAPKEntry(entry *zip.File, limit int64) ([]byte, error) {
 	}
 	return data, nil
 }
+
 func hashAPKEntry(entry *zip.File, length int64, expected string) error {
 	reader, err := entry.Open()
 	if err != nil {

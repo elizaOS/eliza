@@ -1,0 +1,190 @@
+// spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"
+import { assert, it } from "@effect/vitest"
+import { family, wireType } from "../gen/agent__deviceActions__operations.effect.vibe"
+import type { Classification, Evidence, OperationSchema } from "../src/device-actions/operation-schemas/family.vibe"
+import { personalOperations, reminderScheduleAt } from "../src/device-actions/operation-schemas/personal.schema.vibe"
+
+const strict = { onExcessProperty: "error" } as const
+const families: Readonly<Record<string, OperationSchema>> = personalOperations
+type Wire = { readonly type: string } & Record<string, unknown>
+
+function schemaOf(type: string): OperationSchema {
+  const schema = families[type]
+  assert.isDefined(schema, `No schema for ${type}`)
+  return schema!
+}
+
+function classified(input: Wire): Classification | undefined {
+  const schema = schemaOf(input.type)
+  const decoded = Schema.decodeUnknownOption(schema.operation, strict)(input)
+  return Option.isSome(decoded) ? schema.classify(decoded.value) : undefined
+}
+
+function shown(op: Wire, result: unknown): Evidence | undefined {
+  const schema = schemaOf(op.type)
+  const operation = Schema.decodeUnknownOption(schema.operation, strict)(op)
+  if (Option.isNone(operation) || schema.result === undefined) return assert.fail(`Operation ${op.type} does not decode or has no result`)
+  const decoded = Schema.decodeUnknownOption(schema.result, strict)(result)
+  return Option.isSome(decoded) ? schema.evidence(decoded.value, operation.value, { operationId: undefined }) : undefined
+}
+
+const rev = (digit: string) => digit.repeat(64)
+const applied: Evidence = { shows: "ReportsApplied", nothingSubmitted: false }
+const fields = {
+  title: "Dentist", description: "", location: "Main St", start: "2026-11-24T15:00:00.000Z", end: "2026-11-24T16:00:00.000Z", timeZone: "America/New_York",
+}
+const calendarTarget = { sourceId: "cal-1", sourceRevision: rev("a"), eventId: "event-1", revision: rev("b") }
+const reminderTarget = { sourceId: "rem-1", sourceRevision: rev("a"), reminderId: "r1", occurrenceId: "occ-1", revision: rev("c") }
+const noteTarget = { sourceId: "notes-1", sourceRevision: rev("a"), noteId: "note-1", revision: rev("d") }
+const noteRecord = { version: 1, kind: "notes_read_selected", sourceId: "notes-1", noteId: "note-1", revision: rev("d"), fields: { title: "Groceries", body: "milk" } }
+const mapsTarget = { kind: "map-place", id: "maps_12345678-1234-4abc-8def-123456789abc", revision: "3" }
+const oneOff = { at: 1_800_000_000_000, recurrence: null, dueAt: 1_800_000_000_000, alertMinutes: null }
+
+const samples: readonly Wire[] = [
+  { type: "calendar_create_local", fields },
+  { type: "calendar_read_next" },
+  { type: "calendar_create", source: { sourceId: "cal-1", sourceRevision: rev("a") }, fields },
+  { type: "calendar_read_selected", target: calendarTarget },
+  { type: "calendar_update", target: calendarTarget, fields },
+  { type: "calendar_delete", target: calendarTarget },
+  { type: "reminder_read_selected", target: reminderTarget },
+  { type: "reminder_update", target: reminderTarget, fields: { title: "Call mom", body: "" } },
+  { type: "reminder_complete", target: reminderTarget },
+  { type: "reminder_snooze", target: reminderTarget },
+  { type: "reminder_cancel", target: reminderTarget },
+  { type: "reminder_create", fields: { title: "Call mom", body: "", schedule: oneOff } },
+  { type: "calendar_availability", start: "2026-11-24T00:00:00.000Z", end: "2026-11-25T00:00:00.000Z", timeZone: "UTC" },
+  { type: "notes_search", query: { kind: "content", text: "milk" } },
+  { type: "notes_named", action: "delete", name: "Groceries" },
+  { type: "calendar_named", action: "read", name: "Dentist" },
+  { type: "reminder_named", action: "cancel", name: "Call mom" },
+  { type: "maps_read_selected", target: mapsTarget },
+  { type: "notes_read_selected", target: noteTarget },
+  { type: "notes_update", target: noteTarget, fields: { title: "Groceries", body: "milk, eggs" } },
+  { type: "notes_delete", target: noteTarget },
+  { type: "notes_filter", folder: "Home" },
+  { type: "notes_list_filter", kind: "list" },
+  { type: "notes_move", target: noteTarget, folder: null },
+  { type: "notes_folder_create", name: "Home" },
+  { type: "notes_restore", noteId: "note-1" },
+  { type: "notes_record", action: "start" },
+  { type: "notes_query", query: { kind: "latest", by: "updated" } },
+  { type: "clock_handoff", action: "show" },
+]
+
+it('Every personal wire type decodes to the one operation the vocabulary names for it (spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check")', () => {
+  assert.deepStrictEqual(samples.map((op) => op.type).toSorted(), Object.keys(families).toSorted())
+  for (const op of samples) {
+    const found = classified(op)
+    assert.isDefined(found, op.type)
+    assert.strictEqual(wireType(found!.opType), op.type)
+    assert.isUndefined(classified({ ...op, extra: true }), `${op.type} admits an excess key`)
+  }
+  assert.strictEqual(classified({ type: "calendar_named", action: "update", name: "Dentist", fields })?.opType, "CalendarNamedEdit")
+  assert.strictEqual(classified({ type: "calendar_named", action: "read", name: "Dentist" })?.opType, "CalendarNamedRead")
+  assert.strictEqual(family("NotesFilter"), "NotesOrganizeFamily")
+  for (const type of ["notes_filter", "notes_list_filter", "notes_move", "notes_folder_create", "notes_restore", "notes_record"]) assert.isUndefined(schemaOf(type).result)
+})
+
+it('A proposal outside its owning bounds has no valid shape (spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check")', () => {
+  const invalid: readonly Wire[] = [
+    { type: "calendar_create_local", fields: { ...fields, end: fields.start } },
+    { type: "calendar_create_local", fields: { ...fields, end: "2027-12-01T00:00:00.000Z" } },
+    { type: "calendar_create_local", fields: { ...fields, timeZone: "Mars/Olympus" } },
+    { type: "calendar_create_local", fields: { ...fields, start: "2026-11-24T15:00:00Z" } },
+    { type: "calendar_update", target: { ...calendarTarget, revision: "short" }, fields },
+    { type: "calendar_availability", start: "2026-11-24T00:00:00.000Z", end: "2026-12-04T00:00:00.000Z", timeZone: "UTC" },
+    { type: "reminder_update", target: { ...reminderTarget, timingVersion: 2 }, fields: { title: "Call mom", body: "", schedule: { at: 0, recurrence: null } } },
+    { type: "reminder_create", fields: { title: " Call mom", body: "", schedule: oneOff } },
+    { type: "reminder_create", fields: { title: "Call mom", body: "", schedule: { at: 0, recurrence: null, dueAt: 600_000, alertMinutes: 5 } } },
+    { type: "notes_filter" },
+    { type: "notes_folder_create", name: "a".repeat(41) },
+    { type: "notes_search", query: { kind: "titles", limit: 51 } },
+    { type: "clock_handoff", action: "set", hour: 7, minute: 0, label: "", timeZone: "UTC", days: [2, 2] },
+    { type: "clock_handoff", action: "snooze", snoozeMinutes: 61 },
+    { type: "maps_read_selected", target: { ...mapsTarget, id: "maps_not-a-uuid" } },
+  ]
+  for (const op of invalid) assert.isUndefined(classified(op), JSON.stringify(op))
+})
+
+it('A newer reminder timing or Clock repeat is classified as version two (spec/agent/deviceActions/capabilities.md, "Story: Offer the agent only what my device advertised")', () => {
+  const dueAt = 1_800_000_000_000
+  const schedule = { at: dueAt - 600_000, recurrence: null, dueAt, alertMinutes: 10 }
+  assert.isFalse(classified({ type: "reminder_snooze", target: reminderTarget })!.versionTwo)
+  assert.isTrue(classified({ type: "reminder_snooze", target: { ...reminderTarget, timingVersion: 2 } })!.versionTwo)
+  assert.isTrue(classified({ type: "reminder_update", target: reminderTarget, fields: { title: "Call mom", body: "", schedule } })!.versionTwo)
+  assert.isTrue(classified({ type: "reminder_named", action: "update", name: "Call mom", fields: { title: "Call mom", body: "", schedule } })!.versionTwo)
+  assert.isFalse(classified({ type: "reminder_named", action: "update", name: "Call mom", fields: { title: "Call mom", body: "" } })!.versionTwo)
+  const set = { type: "clock_handoff", action: "set", hour: 7, minute: 30, label: "Wake", timeZone: "Europe/Berlin" }
+  assert.isFalse(classified(set)!.versionTwo)
+  assert.isTrue(classified({ ...set, days: [] })!.versionTwo)
+  assert.isTrue(classified({ ...set, days: [2, 3, 4, 5, 6] })!.versionTwo)
+  assert.deepStrictEqual(reminderScheduleAt({ localDate: "2026-11-24", localTime: "09:00", timeZone: "America/New_York", alertMinutes: 15, recurrence: null }), {
+    at: Date.parse("2026-11-24T13:45:00.000Z"), recurrence: null, dueAt: Date.parse("2026-11-24T14:00:00.000Z"), alertMinutes: 15,
+  })
+  assert.isUndefined(reminderScheduleAt({ localDate: "2026-03-08", localTime: "02:30", timeZone: "America/New_York", alertMinutes: null, recurrence: null }))
+})
+
+it('A result counts as evidence only when it is the record the operation named (spec/agent/deviceActions/operations.md, "Story: Learn exactly what the device did")', () => {
+  const update = { type: "calendar_update", target: calendarTarget, fields }
+  const updated = { version: 1, kind: "calendar_update", sourceId: "cal-1", eventId: "event-1", revision: rev("e") }
+  assert.deepStrictEqual(shown(update, updated), applied)
+  assert.isUndefined(shown(update, { ...updated, eventId: "event-2" }))
+  assert.isUndefined(shown(update, { ...updated, kind: "calendar_delete" }))
+  assert.isUndefined(shown(update, { ...updated, extra: 1 }))
+
+  const next = { version: 1, kind: "calendar_read_next", window: { start: "2026-11-21T10:00:00.000Z", end: "2026-12-21T00:00:00.000Z", timeZone: "UTC" } }
+  const event = { title: "Dentist", start: "2026-11-24T15:00:00.000Z", end: "2026-11-24T16:00:00.000Z", allDay: false, timing: "upcoming", timeZone: "UTC" }
+  assert.deepStrictEqual(shown({ type: "calendar_read_next" }, { ...next, event }), applied)
+  assert.deepStrictEqual(shown({ type: "calendar_read_next" }, { ...next, event: null }), applied)
+  assert.isUndefined(shown({ type: "calendar_read_next" }, { ...next, event: { ...event, start: "2026-11-20T15:00:00.000Z" } }))
+
+  const create = { type: "reminder_create", fields: { title: "Call mom", body: "", schedule: oneOff } }
+  const created = {
+    version: 1, kind: "reminder_create", sourceId: "rem-1", reminderId: "r9", occurrenceId: "occ-9", revision: rev("f"),
+    status: "pending", at: oneOff.at, dueAt: oneOff.dueAt, alertMinutes: null, fields: create.fields,
+  }
+  assert.deepStrictEqual(shown(create, created), applied)
+  assert.isUndefined(shown(create, { ...created, status: "scheduled" }))
+  assert.isUndefined(shown(create, { ...created, fields: { ...create.fields, title: "Call dad" } }))
+
+  const cancel = { type: "reminder_cancel", target: reminderTarget }
+  const cancelled = { version: 1, kind: "reminder_cancel", sourceId: "rem-1", reminderId: "r1", occurrenceId: "occ-1", revision: rev("c"), status: "cancelled", at: 0 }
+  assert.deepStrictEqual(shown(cancel, cancelled), applied)
+  assert.isUndefined(shown(cancel, { ...cancelled, status: "scheduled" }))
+  assert.isUndefined(shown(cancel, { ...cancelled, dueAt: 0, alertMinutes: 0 }))
+
+  const query = { type: "notes_query", query: { kind: "title", text: "Groceries" } }
+  const matched = { version: 1, kind: "notes_query", query: query.query, basis: "title-match", target: noteTarget, record: noteRecord }
+  assert.deepStrictEqual(shown(query, matched), applied)
+  assert.deepStrictEqual(shown(query, { version: 1, kind: "notes_query", query: query.query, basis: "no-match" }), applied)
+  assert.isUndefined(shown(query, { version: 1, kind: "notes_query", query: { kind: "title", text: "Other" }, basis: "no-match" }))
+  assert.isUndefined(shown(query, { ...matched, record: { ...noteRecord, noteId: "note-2" } }))
+
+  const named = { type: "notes_named", action: "delete", name: "Groceries" }
+  const deleted = { version: 1, kind: "notes_delete", sourceId: "notes-1", noteId: "note-1", revision: rev("d") }
+  const chosen = { version: 1, kind: "notes_named", action: "delete", name: "Groceries", basis: "owner-chosen", operation: { type: "notes_delete", target: noteTarget }, record: deleted }
+  assert.deepStrictEqual(shown(named, chosen), applied)
+  assert.isUndefined(shown(named, { ...chosen, record: { ...deleted, noteId: "note-2" } }))
+
+  const maps = { type: "maps_read_selected", target: mapsTarget }
+  const place = { kind: "map-place", providerId: "osm", providerRevision: "1", attribution: "Map data", label: "Cafe", coordinate: { latitude: 52.5, longitude: 13.4 } }
+  assert.deepStrictEqual(shown(maps, { kind: "maps_read_selected", version: 1, target: mapsTarget, fields: place }), applied)
+  assert.isUndefined(shown(maps, { kind: "maps_read_selected", version: 1, target: { ...mapsTarget, revision: "4" }, fields: place }))
+
+  const availability = { type: "calendar_availability", start: "2026-11-24T00:00:00.000Z", end: "2026-11-25T00:00:00.000Z", timeZone: "UTC" }
+  const busy = [{ start: "2026-11-24T15:00:00.000Z", end: "2026-11-24T16:00:00.000Z", allDay: false, tentative: false }]
+  const window = { start: availability.start, end: availability.end, timeZone: "UTC" }
+  const report = { version: 1, kind: "calendar_availability", window, calendarCount: 2, status: "busy", busy, transparentIgnored: 0 }
+  assert.deepStrictEqual(shown(availability, report), applied)
+  assert.isUndefined(shown(availability, { ...report, status: "free" }))
+})
+
+it('A Clock handoff result shows the outcome it reports (spec/agent/deviceActions/operations.md, "Story: Learn exactly what the device did")', () => {
+  const result = (status: string, action = "show") => shown({ type: "clock_handoff", action: "show" }, { kind: "clock-handoff", action, status })
+  assert.deepStrictEqual(result("opened"), applied)
+  assert.deepStrictEqual(result("unknown"), { shows: "ReportsUnknown", nothingSubmitted: false })
+  for (const status of ["unavailable", "denied", "failed"]) assert.deepStrictEqual(result(status), { shows: "ReportsFailed", nothingSubmitted: false })
+  assert.isUndefined(result("opened", "dismiss"))
+  assert.isUndefined(result("scheduled"))
+})

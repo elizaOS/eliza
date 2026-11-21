@@ -1,0 +1,98 @@
+// spec/agent/conversation/turns.md, "Story: Stop a reply and know whether it stopped"; spec/agent/conversation/turns.md, "A Stop is confirmed only when its turn ends within five seconds, and is otherwise uncertain"; spec/core/turnControllers.md, "Story: Cancel room work without cancelling the cancel request"
+module node {
+  import { once } from "node:events"
+  import { Schema } from "effect"
+  import { validateUuid, type AgentRuntime, type UUID } from "@elizaos/core"
+  import { initial, noTurn, requestStop, stopAnswerOnEnd, stopConfirmMs, stopDeadline, type StopOutcome, type TurnAnswer, type TurnPhase, type Turns } from "../../gen/agent__conversation__turns.ts"
+  import type { LocalRoute } from "../access/routes.vibe"
+  import type { ConversationStore } from "./conversations.vibe"
+
+  interface HeldStop {
+    phase: TurnPhase
+    readonly answer: Promise<StopOutcome>
+  }
+
+  const room = 1
+  const running: TurnPhase = { tag: "Running" }
+  const wire = { StopConfirmed: "stopConfirmed", StopUncertain: "stopUncertain", NothingRunning: "nothingRunning" } as const satisfies Record<StopOutcome, string>
+  const Body = Schema.Struct({ reason: Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(128)) })
+  const stopBody = Schema.decodeUnknownOption(Body, { onExcessProperty: "error" })
+  const failure = (status: number, error: string) => ({ status, body: { error } })
+
+  const outcomeOf = (out: readonly TurnAnswer[]): StopOutcome =>
+    out.flatMap((answer) => answer.tag === "StopAnswered" ? [answer.outcome] : [])[0] ?? "StopUncertain"
+
+  const busy = (runtime: AgentRuntime, roomId: UUID) =>
+    runtime.roomHandlerQueue.pendingFor(roomId) > 0 || runtime.turnControllers.hasActiveTurn(roomId)
+
+  const settled = (runtime: AgentRuntime, roomId: UUID) => runtime.roomHandlerQueue.pendingFor(roomId) > 0
+    ? runtime.roomHandlerQueue.quiesce(roomId)
+    : new Promise<void>((resolve) => {
+      const off = runtime.turnControllers.onEvent((event) => {
+        if (event.roomId !== roomId || event.type === "started" || event.type === "aborted") return
+        off()
+        resolve()
+      })
+    })
+
+  async function idle(runtime: AgentRuntime, roomId: UUID): Promise<void> {
+    while (busy(runtime, roomId)) await settled(runtime, roomId)
+  }
+
+  const stopTables = new WeakMap<AgentRuntime, Map<UUID, HeldStop>>()
+
+  function stopTable(runtime: AgentRuntime): Map<UUID, HeldStop> {
+    const known = stopTables.get(runtime)
+    if (known !== undefined) return known
+    const made = new Map<UUID, HeldStop>()
+    stopTables.set(runtime, made)
+    return made
+  }
+
+  export function stopRoom(runtime: AgentRuntime, roomId: UUID, reason: string): Promise<StopOutcome> {
+    const held = stopTable(runtime)
+    const before = held.get(roomId)
+    const model: Turns = { ...initial, turns: busy(runtime, roomId) ? [{ ...noTurn, id: 1, room, phase: before?.phase ?? running }] : [] }
+    const asked = requestStop(model, room, Date.now())
+    if (asked.out.length > 0) return Promise.resolve(outcomeOf(asked.out))
+    if (before !== undefined && asked.state === model) return before.answer
+    const phase = asked.state.turns[0]?.phase ?? running
+    const release = () => { if (held.get(roomId) === entry) held.delete(roomId) }
+    const window = AbortSignal.timeout(stopConfirmMs + 1)
+    const entry: HeldStop = {
+      phase,
+      answer: Promise.race([
+        idle(runtime, roomId).then(() => "ended" as const),
+        once(window, "abort").then(() => "late" as const),
+      ]).then((how) => {
+        if (how === "ended") {
+          release()
+          return outcomeOf(stopAnswerOnEnd(room, phase, Date.now()))
+        }
+        const late = stopDeadline(asked.state, room, Date.now())
+        entry.phase = late.state.turns[0]?.phase ?? phase
+        void idle(runtime, roomId).then(release)
+        return outcomeOf(late.out)
+      }),
+    }
+    held.set(roomId, entry)
+    runtime.turnControllers.abortTurn(roomId, reason)
+    return entry.answer
+  }
+
+  export function stopRoutes(runtime: AgentRuntime, store: ConversationStore): LocalRoute[] {
+    return [{
+      method: "POST", path: "/api/turns/{roomId}/abort",
+      handler: async ({ parameters, body }) => {
+        const roomId = validateUuid(parameters.get("roomId"))
+        const record = roomId === null ? undefined : await store.findByRoom(roomId)
+        if (roomId === null || record === undefined) return failure(404, "unknown_conversation")
+        const payload = stopBody(body)
+        if (payload._tag !== "Some") return failure(400, "invalid_stop")
+        const outcome = await stopRoom(runtime, roomId, payload.value.reason)
+        return { status: 200, body: { aborted: true, roomId, reason: payload.value.reason, outcome: wire[outcome] } }
+      },
+    }]
+  }
+}
+export { stopRoom, stopRoutes } from node
