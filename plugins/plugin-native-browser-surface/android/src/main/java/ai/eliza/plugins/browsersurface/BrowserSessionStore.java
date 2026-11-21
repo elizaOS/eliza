@@ -31,7 +31,7 @@ public final class BrowserSessionStore {
     this.sealer = sealer;
   }
 
-  /** Canonical restorable form ({@code history}, {@code tabs}, {@code cur}). Invalid rows are dropped. */
+  /** Canonical restorable form with optional visit times on the retained history URLs. */
   public static JSONObject normalize(JSONObject input) throws Exception {
     List<String> history = new ArrayList<>();
     List<BrowserSessionPolicy.Tab> tabs = new ArrayList<>();
@@ -50,10 +50,24 @@ public final class BrowserSessionStore {
     JSONArray rows = new JSONArray();
     for (BrowserSessionPolicy.Tab tab : saved.tabs)
       rows.put(new JSONObject().put("id", tab.id).put("url", tab.url).put("title", tab.title));
-    return new JSONObject()
+    JSONObject result = new JSONObject()
         .put("history", new JSONArray(saved.history))
         .put("tabs", rows)
         .put("cur", saved.current);
+    JSONObject visitTimes = input.optJSONObject("visitTimes");
+    if (visitTimes != null) {
+      JSONObject retained = new JSONObject();
+      for (String url : saved.history) {
+        Object rawTime = visitTimes.opt(url);
+        if (rawTime instanceof Number) {
+          double time = ((Number) rawTime).doubleValue();
+          if (time > 0 && time <= 9_007_199_254_740_991d && time == Math.floor(time))
+            retained.put(url, (long) time);
+        }
+      }
+      if (retained.length() > 0) result.put("visitTimes", retained);
+    }
+    return result;
   }
 
   public synchronized JSONObject read() throws Exception {

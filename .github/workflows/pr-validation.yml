@@ -684,7 +684,7 @@ jobs:
             steps.website_owning_scope.outputs.run == 'true') ||
            (steps.notes_owning_scope.outcome == 'success' &&
             steps.notes_owning_scope.outputs.run == 'true'))
-        timeout-minutes: 5
+        timeout-minutes: 7
         working-directory: plugins/plugin-assistant
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
@@ -692,6 +692,7 @@ jobs:
           bun ../../packages/scripts/run-vitest.ts run --config vitest.device-actions.config.ts
           test/browser-request-grounding.pglite.test.ts
           test/device-actions.e2e.test.ts
+          test/gmail-request-policy.e2e.test.ts
           --maxWorkers=1 --no-file-parallelism
           --execArgv=--max-old-space-size=2048
 

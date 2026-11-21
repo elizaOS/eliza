@@ -1,4 +1,23 @@
 {
+  "ClefDailyQuota.qnt": [
+    {
+      "file": "packages/cloud/api/v1/decisions/route.test.ts",
+      "required": [
+        "disabled and invalid requests do not spend the daily cap",
+        "route answers 503 unavailable while disabled or without the AI binding",
+        "route asks Clef flash through the AI binding and returns the typed answer",
+        "provider failure answers 503 and never logs request text",
+        "invalid requests are refused without echoing their text",
+        "staging and production enable decisions on the Workers AI binding",
+        "route is rate limited and authenticated before any Clef call",
+        "each Clef call counts against the organization's daily cap",
+        "an organization over its daily cap gets 429 and no Clef call",
+        "a settled purchase raises the same organization's cap until revoked",
+        "a funded subscription raises the cap while a promo grant or unavailable policy keeps the base cap",
+        "a subscription renews included capacity beyond the daily burst across credentials"
+      ]
+    }
+  ],
   "CloudFreshMigrationResume.qnt": [
     {
       "file": "packages/cloud/scripts/admin/migrate-with-diagnostics.postgres.test.ts",
@@ -430,7 +449,7 @@
         "barge-in settles only the submitted TTS characters across contexts, not the full reserved monthly allowance",
         "the Cloud client's prepare-first frames speak, finish silently and cancel with one tts_prepared per context",
         "socket Stop settles with the DO bindings and a fresh DB context before a later revoke",
-        "an extending client keeps one live session past its minted end with a fresh fence and reservation",
+        "a renewed proof-required session survives the original deadline and its stale alarm",
         "a declined renewal keeps the minted end and holds no lease for it",
         "pre-hello revoke closes the public socket and late hello cannot open providers",
         "real coordinator forwards STT-only selection and bounds unknown TTS money without confirming proof",

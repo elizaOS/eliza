@@ -8,6 +8,11 @@ on:
         required: true
         type: choice
         options: [staging, production]
+      inspect_staging_login:
+        description: Inspect the staging login service and check read access to its enrolled release account
+        required: false
+        type: boolean
+        default: false
       expected_source_commit:
         description: Exact canonical workflow source commit
         required: true
@@ -18,13 +23,14 @@ permissions: {}
 jobs:
   inspect:
     name: Read binding names and types only
-    if: ${{ inputs.expected_source_commit == github.sha && ((inputs.environment == 'staging' && github.ref == 'refs/heads/staging') || (inputs.environment == 'production' && github.ref == 'refs/heads/main')) }}
+    if: ${{ inputs.expected_source_commit == github.sha && ((inputs.environment == 'staging' && github.ref == 'refs/heads/staging') || (inputs.environment == 'production' && github.ref == 'refs/heads/main' && !inputs.inspect_staging_login)) }}
     runs-on: ubuntu-24.04
     environment: ${{ inputs.environment }}
     timeout-minutes: 3
     steps:
       - name: Read Worker binding inventory
         env:
+          INSPECT_STAGING_LOGIN: ${{ inputs.inspect_staging_login }}
           TARGET_ENVIRONMENT: ${{ inputs.environment }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -48,6 +54,10 @@ jobs:
               if not re.fullmatch(r"[a-f0-9]{32}", account):
                   raise ValueError("invalid account")
               worker = "eliza-cloud-api-staging" if environment == "staging" else "eliza-cloud-api-prod"
+              if os.environ.get("INSPECT_STAGING_LOGIN") == "true":
+                  if environment != "staging":
+                      raise ValueError("staging login service only")
+                  worker = "eliza-login-staging"
               request = urllib.request.Request(
                   "https://api.cloudflare.com/client/v4/accounts/" + account
                   + "/workers/scripts/" + worker + "/settings",
@@ -85,3 +95,49 @@ jobs:
               print("phase=worker-binding-inventory status=failed code=INVENTORY_UNVERIFIED", file=sys.stderr)
               sys.exit(1)
           PY
+
+      - name: Verify operator read access to the designated staging membership
+        if: ${{ inputs.inspect_staging_login && inputs.environment == 'staging' }}
+        env:
+          FIXTURE_SUBJECT: ${{ vars.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT }}
+          STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.request
+          import uuid
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          try:
+              subject = str(uuid.UUID(os.environ["FIXTURE_SUBJECT"]))
+              key = os.environ["STEWARD_PLATFORM_KEYS"].split(",", 1)[0].strip()
+              if not key:
+                  raise ValueError()
+              issuer = "https://login-staging.eliza.app"
+              tenant = "elizacloud-staging"
+              req = urllib.request.Request(
+                  f"{issuer}/platform/tenants/{tenant}/users/{subject}",
+                  headers={"X-Steward-Platform-Key": key, "Accept": "application/json"},
+                  method="GET",
+              )
+              with urllib.request.build_opener(NoRedirect).open(req, timeout=15) as response:
+                  body = json.load(response)
+              profile = body.get("data") or {}
+              if body.get("ok") is not True or profile.get("userId") != subject or profile.get("tenantId") != tenant:
+                  raise ValueError()
+              print("staging_fixture_membership_read=verified")
+          except urllib.error.HTTPError as error:
+              print(f"staging_fixture_membership_read=unverified http={error.code}", file=sys.stderr)
+              sys.exit(1)
+          except Exception:
+              print("staging_fixture_membership_read=unverified", file=sys.stderr)
+              sys.exit(1)
+          PYTHON

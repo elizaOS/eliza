@@ -251,6 +251,30 @@ describe("device Notes/Calendar admission", () => {
       ).toBe(open);
   });
 
+  // v617 (2026-11-20): "add an event called v617 check tomorrow at 3pm" with
+  // Contacts in front, from a phone that advertises calendar.local-event.v1.
+  // The Calendar view's Agent Calendar renders the canonical store, so the
+  // canonical CALENDAR action owns the write and the native create stays
+  // closed; the phone's own calendar is chosen only by selecting it.
+  it("keeps a v617 create from Contacts on the canonical Calendar", async () => {
+    const canonical = [{ name: "CALENDAR" }];
+    const types = ["calendar_create_local"];
+    for (const text of [
+      "add an event called v617 check tomorrow at 3pm",
+      "delete the calendar event v617 check",
+    ]) {
+      const result = await admitted(
+        { view: "contacts", revision: 3, sensitive: false, timeZone },
+        types,
+        ALL,
+        canonical,
+        text,
+      );
+      expect(result.calendar).toBe("runtime");
+      expect(result.admitted.calendar_create_local).toBe(false);
+    }
+  });
+
   it("keeps Home reviews closed without their capability, with a canonical selection, or on a private screen", async () => {
     const types = Object.keys(SAMPLES);
     const none = await admitted(

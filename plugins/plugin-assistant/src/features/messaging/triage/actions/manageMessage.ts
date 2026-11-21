@@ -52,7 +52,7 @@ export const manageMessageAction: Action = {
   contexts: ["messaging", "email", "contacts"],
   roleGate: { minRole: "ADMIN" },
   description:
-    "Mutate a single message or sender: archive, trash, mark spam, mark read/unread, add or remove a label or tag, or unsubscribe. Use this for unsubscribe/archive/delete/label requests, including natural-language targets like newsletters@medium.com; pass messageId when known, otherwise pass sender/content hints.",
+    "Mutate a single message or sender: archive, trash, mark spam, mark read/unread, add or remove a label or tag, or unsubscribe. Use this for unsubscribe/archive/delete/label requests, including natural-language targets like newsletters@example.com; pass messageId when known, otherwise pass sender/content hints.",
   descriptionCompressed:
     "mutate msg/sender archive|trash|spam|read|label|tag|unsubscribe",
   similes: [
