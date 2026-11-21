@@ -53,10 +53,6 @@ public final class ChannelAdapter {
         return new ChannelPolicy.Step(true, List.of());
       }
       case "open": return policy.open(whole(event.get("epoch")), text(event.get("rootToken")));
-      case "admitEntry": {
-        String id = text(event.get("id")), owner = text(event.get("owner"));
-        return policy.admitEntry(id, owner, mode(event.get("mode")));
-      }
       case "ask": {
         ChannelPolicy.CallerKind kind = named(ChannelPolicy.CallerKind.values(), event.get("kind"));
         String owner = text(event.get("owner")), id = text(event.get("id"));
@@ -149,15 +145,6 @@ public final class ChannelAdapter {
       case RESULT -> new ChannelPolicy.Frame(kind, whole(frame.get("status")));
       case HEAD -> new ChannelPolicy.Frame(kind, whole(frame.get("code")));
       default -> ChannelPolicy.Frame.of(kind);
-    };
-  }
-
-  private static ChannelPolicy.Mode mode(Object value) {
-    Map<String, Object> mode = object(value);
-    return switch (named(ChannelPolicy.ModeKind.values(), mode.get("tag"))) {
-      case PLAIN -> ChannelPolicy.Mode.PLAIN;
-      case STREAM -> ChannelPolicy.Mode.STREAM;
-      case WATCH -> ChannelPolicy.Mode.watch(named(ChannelPolicy.Topic.values(), mode.get("topic")));
     };
   }
 

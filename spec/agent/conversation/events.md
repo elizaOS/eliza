@@ -230,7 +230,7 @@ pure val escalationThreshold = 3
 pure def noticeKind(code: str, cause: str): NoticeKind =
   if ((code == "LOCAL_INFERENCE_UNAVAILABLE" and cause == "backend_unavailable") or (code == "NO_MODEL_PROVIDER_CONFIGURED" and cause != "capability-disabled")) ModelUnavailable else RuntimeError
 pure def strikeCount(s: EventFeed, code: str): int = s.strikes.select(x => x.code == code).nthOr(0, { code: code, count: 0 }).count
-pure def withStrikes(s: EventFeed, code: str, n: int): EventFeed =
+pure def withStrikes(code: str, s: EventFeed, n: int): EventFeed =
   { ...s, strikes: if (n > 0) s.strikes.select(x => x.code != code).append({ code: code, count: n }) else s.strikes.select(x => x.code != code) }
 pure def raiseNotice(kind: NoticeKind, s: EventFeed): FeedStep = {
   val r = deliver(SystemNotice({ kind: kind }), s)
@@ -240,11 +240,11 @@ pure def canReportError(s: EventFeed, code: str, cause: str, quiet: bool): bool 
 pure def reportError(s: EventFeed, code: str, cause: str, quiet: bool): FeedStep = {
   val n = strikeCount(s, code) + 1
   if (quiet) { state: s, out: List() }
-  else if (n >= escalationThreshold) raiseNotice(noticeKind(code, cause), withStrikes(s, code, 0))
-  else { state: withStrikes(s, code, n), out: List() }
+  else if (n >= escalationThreshold) raiseNotice(noticeKind(code, cause), withStrikes(code, s, 0))
+  else { state: withStrikes(code, s, n), out: List() }
 }
 pure def canExpireStrike(s: EventFeed, code: str): bool = strikeCount(s, code) > 0
-pure def expireStrike(s: EventFeed, code: str): FeedStep = { state: withStrikes(s, code, strikeCount(s, code) - 1), out: List() }
+pure def expireStrike(s: EventFeed, code: str): FeedStep = { state: withStrikes(code, s, strikeCount(s, code) - 1), out: List() }
 pure val codeValues = Set("LOCAL_INFERENCE_UNAVAILABLE", "NO_MODEL_PROVIDER_CONFIGURED", "E1", "")
 pure val causeValues = Set("backend_unavailable", "capability-disabled", "")
 pure def alwaysStrikesBelowThreshold(s: EventFeed): bool =

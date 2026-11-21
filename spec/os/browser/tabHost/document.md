@@ -45,7 +45,7 @@ pure val initial: BrowserTab = { session: 0, tab: 0, custody: Unclaimed, privacy
   navId: 0, revision: 0, url: S::unknownAddress, status: PageUncommitted, lastHandoff: NoHandoff }
 pure def held(s: BrowserTab): bool = s.custody == Creating or s.custody == Owned
 pure def isPrivate(s: BrowserTab): bool = s.privacy == PrivateTab
-pure def released(s: BrowserTab): BrowserTab = { ...initial, session: s.session }
+pure def released(session: int): BrowserTab = { ...initial, session: session }
 pure def statusOf(o: TabObservation): DocumentStatus =
   if (o.loading) PageLoading else if (o.failed) PageFailed else if (o.externalOnly) PageExternalOnly
   else if (o.committed) PageCommitted else PageUncommitted
@@ -54,7 +54,7 @@ pure def canEnsureTab(s: BrowserTab, session: int, tabId: int): bool =
 pure def ensureTab(s: BrowserTab, session: int, tabId: int, privacy: TabPrivacy): BrowserTab =
   { ...initial, session: session, tab: tabId, custody: Creating, privacy: privacy }
 pure def canFinishCreation(s: BrowserTab): bool = s.custody == Creating
-pure def finishCreation(s: BrowserTab, success: bool): BrowserTab = if (success) { ...s, custody: Owned } else released(s)
+pure def finishCreation(s: BrowserTab, success: bool): BrowserTab = if (success) { ...s, custody: Owned } else released(s.session)
 pure def canBeginNavigation(s: BrowserTab, url: WebAddress): bool = s.custody == Owned and isWebAddress(url)
 pure def beginNavigation(s: BrowserTab, url: WebAddress): BrowserTab =
   { ...s, url: url, status: PageLoading, revision: s.revision + 1 }
@@ -68,9 +68,9 @@ pure def observeTab(s: BrowserTab, observation: TabObservation): BrowserTab = {
     opening: if (s.opening == FreshPopup and observation.committed) UsedPopup else s.opening }
 }
 pure def canCloseTab(s: BrowserTab): bool = held(s)
-pure def closeTab(s: BrowserTab): BrowserTab = released(s)
+pure def closeTab(s: BrowserTab): BrowserTab = released(s.session)
 pure def canDispose(s: BrowserTab): bool = s.custody != Retired
-pure def dispose(s: BrowserTab): BrowserTab = { ...released(s), custody: Retired }
+pure def dispose(s: BrowserTab): BrowserTab = { ...released(s.session), custody: Retired }
 pure def stepRetiredTabIsFinal(before: BrowserTab, after: BrowserTab): bool = before.custody == Retired implies after == before
 pure def stepSequenceNeverRegresses(before: BrowserTab, after: BrowserTab): bool =
   (held(before) and held(after)) implies after.seq >= before.seq
