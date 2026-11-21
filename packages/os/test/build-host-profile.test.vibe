@@ -241,6 +241,15 @@ it.effect("Keep my schema-1 profile readable through one fixed map: profiles sha
     },
     admission: ["settingsAdmission1: node scripts/android-host.mjs --check-identity", "stageLocalAgentSources: node scripts/stage-local-agent-sources.mjs"],
   }))
+  const relocated = try admitHostProfile({
+    ...resident,
+    modules: resident.modules.map((module) => module.name === "eliza-cloud-auth"
+      ? { ...module, source: upstream("packages/os/android/cloud-auth") }
+      : module),
+  }, SETTING)
+  try Effect.try(() => assert.deepStrictEqual(relocated.osModules.find(({ module }) => module === "cloud-auth"), {
+    module: "cloud-auth", directory: `${SETTING.osRoot}/android/cloud-auth`, project: "eliza-cloud-auth", sources: [],
+  }))
   const dropped = try refusalDetail({ ...resident, preserveRuntimeBytes: true, residentHost: { ...resident.residentHost, sockets: { agent: "example.agent.v1" }, classes: ["Inbox"] } })
   try Effect.try(() => assert.match(dropped, /: preserveRuntimeBytes, residentHost\.classes, residentHost\.sockets$/))
 

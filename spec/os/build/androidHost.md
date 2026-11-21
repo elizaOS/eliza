@@ -154,10 +154,11 @@ Without `src/main` sources the module is the Gradle project
 `:eliza-<module>` (its `src/androidTest` sources join the app's
 instrumentation tests); with them only those sources are compiled into the
 app. `agent-service` and `app-update` share `runtime-files`, so an updater
-builds without the agent service; `voice-io` needs `sign-in`.
+builds without the agent service. `voice-io` needs `sign-in`. `cloud-auth` supplies
+the Cloud sign-in library for a consumer that includes `capacitor-android`.
 
 ```quint
-pure val osModuleNames = List("agent-service", "runtime-files", "sign-in", "secure-store", "system", "camera", "browser-surface", "calendar", "contacts", "reminders",
+pure val osModuleNames = List("agent-service", "runtime-files", "sign-in", "cloud-auth", "secure-store", "system", "camera", "browser-surface", "calendar", "contacts", "reminders",
   "action-journal", "notifications", "messages", "phone", "passwords", "media", "filesystem", "location", "wifi", "voice-io", "app-update")
 type OsModuleEntry = { osModule: str, sources: List[List[str]] }
 pure def builtAsProject(entry: OsModuleEntry): bool = not(entry.sources.some(s => s.nthOr(1, "") == "main"))
