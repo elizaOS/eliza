@@ -1,0 +1,41 @@
+{
+  "origin": "journey \"Story: Run a website task step only on the page it was planned for\" / \"The peer takes only the fixed page commands, and a request needs a live binding and its scope\"",
+  "seed": 1,
+  "trace": [
+    [
+      "peer",
+      {
+        "type": "bindTask",
+        "offer": {
+          "revision": 3,
+          "taskId": "task2",
+          "epoch": 0,
+          "revoke": false,
+          "renewsExpired": false
+        }
+      }
+    ],
+    [
+      "peer",
+      {
+        "type": "admitRequest",
+        "message": {
+          "requestId": "r1",
+          "pageAction": "ClickAction",
+          "selectorRef": "snap1",
+          "grantId": ""
+        },
+        "scope": {
+          "contextMatches": true,
+          "commandExpiresAt": 50,
+          "bindingExpiresAt": 40,
+          "now": 30,
+          "originAllowed": true,
+          "targetReviewed": true,
+          "grantMatches": true,
+          "pageCurrent": true
+        }
+      }
+    ]
+  ]
+}

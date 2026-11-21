@@ -140,8 +140,8 @@ export function createTaskGuidance(
       );
     return results[0].result;
   };
-  function clearTab(tabId) {
-    if (!active.has(tabId)) return Promise.resolve();
+  function clearTab(tabId, { confirmHidden = false } = {}) {
+    if (!confirmHidden && !active.has(tabId)) return Promise.resolve();
     const clearing = { id: null };
     active.set(tabId, clearing);
     return enqueue(tabId, async () => {

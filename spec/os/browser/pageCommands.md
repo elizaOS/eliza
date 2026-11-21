@@ -256,6 +256,10 @@ pure def stepOnlyAReadSucceeds(before: SurfaceReceiver, via: str, after: Surface
 A validate-only command checks its selector against the current
 observation and the page's reviewed target; it dispatches no input and
 spends neither the observation nor a request identity.
+The renderer accepts a `validate-target` envelope for a bound page action.
+It refuses a commit grant and uses the native validate-only command in the
+same observed main-frame document. It checks the task, page and document
+again when the native answer returns.
 
 ```quint
 pure def canValidateTarget(s: SurfaceReceiver, selectorRef: str): bool = not(s.retired) and s.phase == ReceiverIdle

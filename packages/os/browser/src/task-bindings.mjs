@@ -198,7 +198,8 @@ export function createTaskBindings({
       throw blocked();
     if (!current()) throw blocked();
     const key = bindingKey(binding.tabId);
-    const previous = bindings.get(binding.tabId) || (await read(key));
+    const stored = bindings.get(binding.tabId) ?? (await read(key));
+    const previous = bindings.get(binding.tabId) ?? stored;
     // The host renews an expired lease without changing task authorization.
     // A newer binding revision may do that only for the identical live scope;
     // a revoked binding still needs a new epoch and cannot be revived here.
@@ -215,6 +216,7 @@ export function createTaskBindings({
       JSON.stringify(binding.targets) === JSON.stringify(previous.targets);
     if (
       !current() ||
+      rebinding.has(binding.tabId) ||
       (previous &&
         (binding.bindingRevision <= previous.bindingRevision ||
           (previous.taskId === binding.taskId &&

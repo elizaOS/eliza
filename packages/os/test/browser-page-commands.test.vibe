@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { createSurfaceTaskHandler, type SurfacePage } from "../browser/src/surface-task-handler.mjs"
-import { driver } from "./drivers/os__browser__pageCommands.ts"
+import { driver, reviewedTarget } from "./drivers/os__browser__pageCommands.ts"
 
 const LIVE = { contextMatches: true, commandExpiresAt: 50, bindingExpiresAt: 40, now: 30, originAllowed: true, targetReviewed: true, grantMatches: true, pageCurrent: true }
 const PEER = "peer"
@@ -34,9 +34,25 @@ it.effect('Run a website task step only on the page it was planned for: a grante
   try Effect.promise(async () => driver.reset())
   const click = { requestId: "r6", pageAction: "ClickAction" as const, selectorRef: "snap1", grantId: "g1" }
   assert.strictEqual((try send({ type: "bindTask", offer: { revision: 1, taskId: "task1", epoch: 1, revoke: false, renewsExpired: false } })).outcome, "accepted")
+  assert.strictEqual((try send({ type: "bindTask", offer: { revision: 2, taskId: "task1", epoch: 2, revoke: false, renewsExpired: false } })).outcome, "refused")
   try send({ type: "settleBinding", storedWhileCurrent: true })
   assert.deepStrictEqual((try send({ type: "admitRequest", message: { requestId: "r1", pageAction: "SnapshotAction", selectorRef: "", grantId: "" }, scope: LIVE })).view.phase, "ReceiverReading")
   assert.deepStrictEqual((try send({ type: "settleRead", snapshotRef: "snap1", completeForOrigin: true })).view.reply, { tag: "Reported", status: "Succeeded", evidenceRef: "snap1" })
+  const check = (selectorRef: string, currentDocument = true, grant?: string) =>
+    Effect.promise(() => reviewedTarget({ selectorRef, id: click.requestId, grant, currentDocument }))
+  assert.deepStrictEqual([
+    try check("wrong"),
+    try check("snap1", false),
+    try check("snap1", true, click.grantId),
+    try check("snap1"),
+    try check("snap1"),
+  ], [
+    { code: "STALE_REF" },
+    { code: "STALE_REF" },
+    { code: "POLICY_BLOCKED" },
+    { result: { validated: true } },
+    { result: { validated: true } },
+  ])
   assert.deepStrictEqual((try send({ type: "admitRequest", message: click, scope: LIVE })).view.phase, "ReceiverChecking")
   assert.deepStrictEqual((try send({ type: "dispatchInput", previewReady: true })).view.phase, "ReceiverSending")
   assert.deepStrictEqual((try send({ type: "settleInput", confirmed: true, cleanupOkay: true })).view.reply, { tag: "Reported", status: "Dispatched", evidenceRef: "snap1" }, "a confirmed input is only dispatched, never succeeded")
