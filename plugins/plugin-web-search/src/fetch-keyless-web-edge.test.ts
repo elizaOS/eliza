@@ -38,7 +38,7 @@ describe("public article fetch facade", () => {
         expect(result?.text).toBe(payload);
         expect(fetchImpl).toHaveBeenCalledTimes(1);
         expect((fetchImpl.mock.calls[0] as unknown as [string])[0]).toBe(
-            "https://search.parallel.ai/mcp"
+            "https://mcp.parallel.ai/mcp"
         );
     });
 });

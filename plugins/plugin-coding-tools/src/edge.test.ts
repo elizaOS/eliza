@@ -111,7 +111,7 @@ test("edge returns exact single-URL provider evidence without origin status or f
   const fetch = vi
     .spyOn(globalThis, "fetch")
     .mockImplementation(async (input, init) => {
-      expect(input).toBe("https://search.parallel.ai/mcp");
+      expect(input).toBe("https://mcp.parallel.ai/mcp");
       const req = JSON.parse(String(init?.body));
       expect(req.params.name).toBe("web_fetch");
       expect(req.params.arguments.urls).toEqual([url]);
