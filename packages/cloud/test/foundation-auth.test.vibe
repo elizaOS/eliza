@@ -524,20 +524,24 @@ describe("Node subscriptions", () => {
       const unpaid = try cloud.call("/api/v1/billing/limits", renewalToken)
       try sync(() => provider.renew(direct.subscriptionId, "failed"))
       const grace = try refresh(renewalAt)
+      const graceView = try cloud.call("/api/v1/billing/limits", renewalToken)
       const afterGrace = direct.periodEnd + 3 * 24 * 60 * minuteMs + 1_000
       try sync(() => clock.set(afterGrace))
       const swept = try cloud.inside(sweepSubscriptions())
       const lapsed = try cloud.store.transaction((tx) => readSubscription(tx, "org-direct-schedule"))
+      const lateToken = sessionToken("j")
+      try session(cloud, "direct-schedule", lateToken, { ...live, authAt: afterGrace,
+        accessExpiresAt: afterGrace + 15 * minuteMs, refreshExpiresAt: afterGrace + 60 * minuteMs }, afterGrace)
+      const lapsedView = try cloud.call("/api/v1/billing/limits", lateToken)
       try sync(() => provider.renew(direct.subscriptionId, "paid"))
       const latePaid = try refresh(afterGrace)
       const paidObservation = try cloud.inside(cloud.store.transaction((tx) => observeSubscription(tx, "org-direct-schedule")))
       try cloud.store.transaction((tx) => reconcileSubscription(tx, "org-direct-schedule", paidObservation, afterGrace))
-      const lateToken = sessionToken("j")
-      try session(cloud, "direct-schedule", lateToken, { ...live, authAt: afterGrace,
-        accessExpiresAt: afterGrace + 15 * minuteMs, refreshExpiresAt: afterGrace + 60 * minuteMs }, afterGrace)
       const paid = try cloud.call("/api/v1/billing/limits", lateToken)
       const unpaidSnapshot = (unpaid.body as { data: BillingSnapshot }).data
       const paidSnapshot = (paid.body as { data: BillingSnapshot }).data
+      const graceSnapshot = (graceView.body as { data: BillingSnapshot }).data
+      const lapsedSnapshot = (lapsedView.body as { data: BillingSnapshot }).data
       const renewedAllowances = try sql(cloud, "SELECT key FROM allowance_periods WHERE organization_id=$1 AND status='open'", ["org-direct-schedule"])
       try check(() => {
         assert.deepStrictEqual([foreign.status, obscured.status, same.status, directView.kind, directView.status, repeat.body, wrongOwnerStatus.status,
@@ -553,6 +557,12 @@ describe("Node subscriptions", () => {
         assert.deepStrictEqual([grace.status, grace.dunning.tag === "DunningSince" ? grace.dunning.endsAt : null,
           swept.expired, lapsed.status, latePaid.status],
           ["Dunning", afterGrace - 1_000, 1, "PastDue", "Active"])
+        assert.deepStrictEqual([graceView.status, graceSnapshot.plan, graceSnapshot.funding, lapsedView.status, lapsedSnapshot.plan, lapsedSnapshot.funding],
+          [200, { key: "pro_monthly", source: "subscription", effectiveUntil: afterGrace - 1_000 },
+            { inference: "allowanceThenCredits", speech: "allowanceThenCredits", maps: "allowanceThenCredits" },
+            200, { key: "pro_monthly", source: "subscription", effectiveUntil: null },
+            { inference: "creditsOnly", speech: "creditsOnly", maps: "creditsOnly" }])
+
         assert.deepStrictEqual([unpaid.status, unpaidSnapshot.plan.key, unpaidSnapshot.subscription?.pendingPlanKey,
           paid.status, paidSnapshot.plan.key, paidSnapshot.subscription?.pendingPlanKey, paidSnapshot.allowance?.granted, renewedAllowances.map((row) => row.key)],
           [200, "pro_monthly", "plus_monthly", 200, "plus_monthly", null, 25_000_000, ["renewal/staging/" + paidObservation.payment?.id]])

@@ -68,21 +68,23 @@ effect function retainLegacyInference(cloud: TestCloud, owner: HoldOwner, reques
 describe("WP0 Foundation: metering and funds", () => {
   it.live("Spend the plan's allowance before credits, from the plan the policy funds (spec/cloud/shared/metering.md, \"Story: Never overdraw an account\"; spec/cloud/billing/plans.md, \"Story: Apply the plan that funds a call\")", () => scoped(effect {
     const cloud = try testCloud()
-    for (const id of ["org-past-due", "org-granted", "org-broken"]) try organization(cloud, id)
-    try subscribe(cloud, "org-past-due", "past_due", "plus_monthly")
+    for (const id of ["org-active", "org-granted", "org-broken", "org-lapsed"]) try organization(cloud, id)
+    try subscribe(cloud, "org-active", "active", "plus_monthly")
+    try subscribe(cloud, "org-lapsed", "past_due", "plus_monthly")
     try subscribe(cloud, "org-granted", "canceled", "plus_monthly")
     try grant(cloud, "org-granted", "pro_monthly")
     try subscribe(cloud, "org-broken", "active", "gold_monthly")
-    const period = try openPeriod(cloud, "org-past-due", "PlusMonthly")
+    const period = try openPeriod(cloud, "org-active", "PlusMonthly")
     try openPeriod(cloud, "org-granted", "ProMonthly")
+    const lapsedPeriod = try openPeriod(cloud, "org-lapsed", "PlusMonthly")
     provide Store = cloud.store {
-      try addCredits({ organizationId: "org-past-due", amount: 10_000_000, requestKey: "operator-1" })
-      const owner = { organizationId: "org-past-due", userId: "user-1" }
+      try addCredits({ organizationId: "org-active", amount: 10_000_000, requestKey: "operator-1" })
+      const owner = { organizationId: "org-active", userId: "user-1" }
       const ticket = try reserve(owner, holdKey("user-1", "request-1"), 20_000_000)
       const reserved = {
         hold: [ticket.hold.reserved, ticket.hold.fromAllowance, ticket.hold.fromCredits],
         period: try numbers(cloud, "SELECT state->'available' AS available_balance, state->'reserved' AS reserved_balance FROM allowance_periods WHERE key = $1", [period]),
-        funds: try numbers(cloud, "SELECT f.state->'creditHeld' AS held_credit, o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-past-due"])
+        funds: try numbers(cloud, "SELECT f.state->'creditHeld' AS held_credit, o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-active"])
       }
       try markDispatched(ticket.key)
       const settled = try settle(ticket.key, { kind: "known", actual: 26_000_000 })
@@ -91,13 +93,22 @@ describe("WP0 Foundation: metering and funds", () => {
       const clock = try sync(() => manualClock())
       try sync(() => clock.set(failedAt))
       const broken = try Effect.provideService(failureOf(reserve({ organizationId: "org-broken", userId: "user-3" }, holdKey("user-3", "request-3"), 1)), Clock.Clock, clock.clock)
+      try addCredits({ organizationId: "org-lapsed", amount: 10_000_000, requestKey: "lapsed-credits" })
+      const lapsedOwner = { organizationId: "org-lapsed", userId: "lapsed-owner" }
+      const pastDue = try reserve(lapsedOwner, holdKey(lapsedOwner.userId, "past-due-request"), 1_000_000)
+      try sql(cloud, "UPDATE subscriptions SET status='unpaid' WHERE key=$1", [lapsedOwner.organizationId])
+      const unpaid = try reserve(lapsedOwner, holdKey(lapsedOwner.userId, "unpaid-request"), 1_000_000)
+      const lapsedBalance = try numbers(cloud, "SELECT state->'available' AS available_balance, state->'reserved' AS reserved_balance FROM allowance_periods WHERE key=$1", [lapsedPeriod])
       const observed = {
           reserved,
           settled: [settled.charged, settled.uncollected],
           period: try numbers(cloud, "SELECT state->'available' AS available_balance, state->'reserved' AS reserved_balance, state->'settled' AS settled_balance, status FROM allowance_periods WHERE key = $1", [period]),
-          funds: try numbers(cloud, "SELECT f.state->'creditBalance' AS state_credit, f.state->'creditHeld' AS held_credit, o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-past-due"]),
+          funds: try numbers(cloud, "SELECT f.state->'creditBalance' AS state_credit, f.state->'creditHeld' AS held_credit, o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-active"]),
           usage: try numbers(cloud, "SELECT charged, from_allowance, from_credits, uncollected, outcome FROM usage_records WHERE hold_key = $1", [ticket.key]),
           granted: [granted.hold.fromAllowance, granted.hold.fromCredits],
+          pastDue: [pastDue.hold.fromAllowance, pastDue.hold.fromCredits],
+          unpaid: [unpaid.hold.fromAllowance, unpaid.hold.fromCredits],
+          lapsedBalance,
           broken
         }
       try check(() => assert.deepStrictEqual(observed, {
@@ -107,6 +118,9 @@ describe("WP0 Foundation: metering and funds", () => {
           funds: [[9_000_000, 0, 9_000_000]],
           usage: [[26_000_000, 25_000_000, 1_000_000, 0, "known"]],
           granted: [1_500_000, 0],
+          pastDue: [0, 1_500_000],
+          unpaid: [0, 1_500_000],
+          lapsedBalance: [[25_000_000, 0]],
           broken: { error: "service_unavailable", errorDescription: "Service unavailable.", retryable: true, retryAt: failedAt + 5000 }
         }))
     }
