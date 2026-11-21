@@ -148,17 +148,24 @@ export effect function revokeAllSessions(tx: Tx, userId: string, now: number): v
   try moveEpochs(tx, userId, [revokeAll(epoch)], now)
 }
 
+effect function presentedAfterLock(tx: Tx, key: string, digest: string, family: Family): { readonly generation: number; readonly accessDigest: string } | undefined!StoreFailure {
+  const row = (try tx.query("SELECT refresh_digest, access_digest FROM sessions WHERE key = $1", [key]))[0]
+  if (toText(row?.refresh_digest) === digest) return { generation: family.generation, accessDigest: toText(row?.access_digest) ?? "" }
+  const spent = (try tx.query("SELECT generation FROM cloud_spent_refresh WHERE digest = $1 AND session_key = $2", [digest, key]))[0]
+  return spent === undefined ? undefined : { generation: toInt(spent.generation), accessDigest: "" }
+}
+
 effect function refreshFamily(tx: Tx, token: string, now: number): Refreshed!SessionFailure {
   const presentedDigest = tokenDigest(token)
-  const found = (try tx.query(
-    "SELECT key, access_digest, NULL::integer AS generation FROM sessions WHERE refresh_digest = $1 UNION ALL SELECT session_key, access_digest, generation FROM cloud_spent_refresh WHERE digest = $1",
+  const key = toText((try tx.query(
+    "SELECT key FROM sessions WHERE refresh_digest = $1 UNION ALL SELECT session_key FROM cloud_spent_refresh WHERE digest = $1",
     [presentedDigest]
-  ))[0]
-  if (found === undefined) return { kind: "refused", reason: "CredentialUnknown" }
-  const key = toText(found.key) ?? ""
+  ))[0]?.key)
+  if (key === undefined) return { kind: "refused", reason: "CredentialUnknown" }
   const { family, epoch, userId } = try liveFamily(tx, key, now)
-  const current = found.generation === null
-  const presented = current ? family.generation : toInt(found.generation)
+  const found = try presentedAfterLock(tx, key, presentedDigest, family)
+  if (found === undefined) return { kind: "refused", reason: "CredentialUnknown" }
+  const presented = found.generation
   if (!canRefresh(family, presented, epoch)) {
     const reason = refreshRefusal(presented, family, epoch)
     return { kind: "refused", reason: reason === "NoReason" ? "CredentialRevoked" : reason }
@@ -169,7 +176,7 @@ effect function refreshFamily(tx: Tx, token: string, now: number): Refreshed!Ses
     try moveEpochs(tx, userId, out, now)
     return { kind: "refused", reason: "CredentialRevoked" }
   }
-  try tx.query("INSERT INTO cloud_spent_refresh (digest, access_digest, session_key, generation) VALUES ($1, $2, $3, $4)", [presentedDigest, toText(found.access_digest) ?? "", key, family.generation])
+  try tx.query("INSERT INTO cloud_spent_refresh (digest, access_digest, session_key, generation) VALUES ($1, $2, $3, $4)", [presentedDigest, found.accessDigest, key, presented])
   return {
     kind: "rotated",
     answer: { accessToken, accessExpiresAt: state.accessExpiresAt, refreshToken, refreshExpiresAt: state.refreshExpiresAt, stepUpAt: at(state.stepUpAt), mfaAt: at(state.mfaAt) }
@@ -184,7 +191,7 @@ effect function logoutFamily(tx: Tx, token: string, now: number): boolean!Sessio
   ))[0]?.key)
   if (key === undefined) return false
   const family = advanced((try loadRow(tx, familyRows, key)).state, now)
-  if (!canLogout(family)) return false
+  if (family.now >= family.refreshExpiresAt || !canLogout(family)) return false
   try stepFamily(tx, key, { type: "logout" }, now)
   return true
 }

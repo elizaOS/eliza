@@ -118,6 +118,7 @@ it.effect('A new notice arrives on the notification stream (spec/agent/notificat
   const agent = try startInProcess(loaded)
   const service = try inbox(agent)
   const feed = try events(agent, ["notification"])
+  try host("notification subscribed", () => feed.next((sent) => (sent as { type?: unknown }).type === "subscribed"))
   const [notice] = try notifyAll(service, [{ title: "Parcel delivered", category: "system" }])
   const frame = try host("notification frame", () => feed.next((sent) => JSON.stringify(sent).includes(notice.id)))
   try Effect.try(() => assert.include(JSON.stringify(frame), '"notification"'))

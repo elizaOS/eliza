@@ -185,7 +185,7 @@ effect function redeemServerCode(google: GoogleProfile, serverAuthCode: string, 
   if (reply === undefined || reply.access_token === "" || !(reply.expires_in > 0)) return unlinked("google_unavailable")
   const scopes = [...new Set((reply.scope ?? "").split(/\s+/).filter((scope) => scope !== ""))]
   if (scopes.length === 0) return unlinked("google_scopes_missing")
-  const token = reply.id_token === undefined ? undefined : try readIdToken(google, reply.id_token, now)
+  const token = reply.id_token === undefined ? undefined : try readIdToken(google, reply.id_token, google.serverClientId, now)
   if (token === undefined || !token.signatureOk || !token.issuerOk || !token.audienceOk || token.subject !== subject) return unlinked("google_account_mismatch")
   return { connected: true, reply, scopes, email: token.verifiedEmail } as const
 }

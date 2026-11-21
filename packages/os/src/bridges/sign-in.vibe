@@ -1,4 +1,4 @@
-// spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"; spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; spec/os/signIn/readiness.md, "Story: Read the service's own terms"
+// spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"; spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; spec/os/signIn/readiness.md, "Story: Read the service's own terms"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"
 import type { PluginListenerHandle } from "@capacitor/core"
 import { MalformedReply, NativeRejection, nativeCall, settled } from "./bridge.vibe"
 import type {
@@ -8,6 +8,7 @@ import type {
   GoogleReport,
   ServiceDocument,
   SignInAccount,
+  SignInAccountChange,
   SignInClient,
   SignInEvents,
   SignInOptions,
@@ -17,6 +18,7 @@ import type {
 } from "./definitions/sign-in.ts"
 import {
   Account,
+  AccountChanged,
   Cancelled,
   FactorCodeSent,
   FailureWire,
@@ -97,6 +99,11 @@ function accountOf(account: Wire<typeof Account>): SignInAccount {
     : { kind: "signedOut" }
 }
 
+function accountChangeOf(changed: Wire<typeof AccountChanged>): SignInAccountChange {
+  const { environment, account, problem } = changed
+  return problem === undefined ? { environment, account: accountOf(account) } : { environment, account: accountOf(account), problem: FAILURES[problem] }
+}
+
 function readinessOf(readiness: Wire<typeof Readiness>): SignInReadiness {
   const { environment, methodsKnown, email, sms, google } = readiness
   return { environment, methodsKnown, email, sms, google, googleMode: readiness.googleMode === "browser" ? "Browser" : "Picker" }
@@ -138,6 +145,9 @@ effect function heard<Name extends keyof SignInEvents>(name: Name, listener: (ev
   if (name === "signInSettled") {
     const settledEvent = try parsed(name, Receipt, event)
     listener(receiptOf(settledEvent) as SignInEvents[Name])
+  } else if (name === "signInAccountChanged") {
+    const changed = try parsed(name, AccountChanged, event)
+    listener(accountChangeOf(changed) as SignInEvents[Name])
   } else {
     const changed = try parsed(name, Readiness, event)
     listener(readinessOf(changed) as SignInEvents[Name])

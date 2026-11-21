@@ -60,10 +60,6 @@ effect function subjectOwner(tx: Tx, identity: Identity): Owner!StoreFailure {
   ))[0])
 }
 
-effect function holdsMethod(tx: Tx, userId: string, identity: Identity): boolean!StoreFailure {
-  return (try tx.query("SELECT 1 FROM cloud_sign_in_identities WHERE account_id = $1 AND provider = $2", [userId, providers[identity.method]])).length > 0
-}
-
 effect function insertIdentity(tx: Tx, userId: string, identity: Identity): void!StoreFailure {
   try tx.query("INSERT INTO cloud_sign_in_identities (provider, provider_subject, account_id) VALUES ($1, $2, $3)", [providers[identity.method], identity.subject, userId])
 }
@@ -94,7 +90,6 @@ export effect function landAccount(tx: Tx, given: Identity, verifiedEmail: strin
   if (!admitsSignIn(landing)) throw new Refused({ refusal: closedRefusal })
   if (landing.tag === "SignInAs") return try landed(tx, landing.account, false)
   if (landing.tag === "AttachTo") {
-    if (try holdsMethod(tx, landing.target, identity)) throw new Refused({ refusal: inUseRefusal })
     try stepAccount(tx, landing.target, { type: "link", identity, subjectOwner: bySubject }, now)
     try insertIdentity(tx, landing.target, identity)
     return try landed(tx, landing.target, false)
@@ -122,7 +117,7 @@ export effect function linkIdentity(tx: Tx, userId: string, given: LinkedIdentit
   const bySubject = try subjectOwner(tx, identity)
   const { state } = try loadRow(tx, accountRows, userId)
   if (alreadyLinked(state, bySubject)) return
-  if (bySubject.tag !== "Unowned" || (try holdsMethod(tx, userId, identity))) throw new Refused({ refusal: inUseRefusal })
+  if (bySubject.tag !== "Unowned") throw new Refused({ refusal: inUseRefusal })
   if (!canLink(state, identity, bySubject)) throw new Refused({ refusal: closedRefusal })
   try stepAccount(tx, userId, { type: "link", identity, subjectOwner: bySubject }, now)
   try insertIdentity(tx, userId, identity)

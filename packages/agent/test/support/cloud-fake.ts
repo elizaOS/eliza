@@ -249,7 +249,6 @@ export async function startCloudFake(options: { deviceKey: string; ownKey?: stri
     const route = (request.url ?? "").replace(/^\/api(?=\/v1\/)/, "");
     if (request.method === "GET" && route === "/v1/models") return json(response, 200, models());
     if (request.method === "POST" && route === "/v1/chat/completions") {
-      if (!acceptedChat(body)) process.stderr.write("REJECTED " + JSON.stringify(body) + "\n");
       if (!acceptedChat(body)) return json(response, 400, { error: "invalid_request", errorDescription: "invalid_request", retryable: false });
       return answerCompletion(response, queue.shift() ?? text("ok"), body, "cloud");
     }

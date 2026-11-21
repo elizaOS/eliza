@@ -2140,14 +2140,15 @@ describe("WP4 Subscriptions and entitlements: entitlement", () => {
 
     const periodEnd = now + 30 * 24 * 3_600_000
     const resetsAt = now + 20 * 60_000
-    try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ('org-entitled', '{}'::jsonb, 1, 'active', 'pro_monthly', $1, $2)", [periodEnd, now])
+    const entitled: Subscription = { ...noSubscription, status: "Active", subscriptionId: "sub_entitled", customer: { tag: "PinnedCustomer", customerId: "cus_entitled" }, planKey: "ProMonthly", periodStart: now - 1000, periodEnd, revision: 1 }
+    try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ('org-entitled', $1, 1, 'active', 'pro_monthly', $2, $3)", [JSON.stringify(entitled), periodEnd, now])
     try cloud.store.transaction((tx) => stepRow(tx, periodRows, "renewal/staging/in_1", { type: "openRenewal", invoiceId: "in_1", planKey: "ProMonthly", startsAt: now - 1000, endsAt: resetsAt }, () => ({
       organization_id: "org-entitled", status: "open", period_start: now - 1000, period_end: resetsAt, updated_at: now
     })))
     const paid = try entitlementClaims(cloud, token, keys)
-    try sql(cloud, "UPDATE subscriptions SET status = 'past_due' WHERE key = 'org-entitled'", [])
+    try sql(cloud, "UPDATE subscriptions SET status = 'past_due', state = jsonb_set(state, '{status}', '\"PastDue\"') WHERE key = 'org-entitled'", [])
     const pastDue = try entitlementClaims(cloud, token, keys)
-    try sql(cloud, "UPDATE subscriptions SET plan_key = 'gold' WHERE key = 'org-entitled'", [])
+    try sql(cloud, "UPDATE subscriptions SET plan_key = 'gold', state = jsonb_set(state, '{planKey}', '\"Gold\"') WHERE key = 'org-entitled'", [])
     const unreadable = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${token}` } })
 
     const seconds = (millis: number) => Math.floor(millis / 1000)
@@ -2357,7 +2358,8 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
     const cloud = try testCloud()
     const now = try Clock.currentTimeMillis
     try organization(cloud, "org-refund")
-    try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ('org-refund', '{}'::jsonb, 1, 'active', 'pro_monthly', $1, $2)", [now + allowanceMonth, now])
+    const refunded: Subscription = { ...noSubscription, status: "Active", subscriptionId: "sub_refund", customer: { tag: "PinnedCustomer", customerId: "cus_refund" }, planKey: "ProMonthly", periodStart: now - 1000, periodEnd: now + allowanceMonth, revision: 1 }
+    try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ('org-refund', $1, 1, 'active', 'pro_monthly', $2, $3)", [JSON.stringify(refunded), now + allowanceMonth, now])
     const invoice = { invoiceId: "in_refund", planKey: "ProMonthly", startsAt: now - 1000, endsAt: now + allowanceMonth } as const
     const opened = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(openRenewal(tx, "org-refund", invoice, now))))
     const again = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(openRenewal(tx, "org-refund", invoice, now))))

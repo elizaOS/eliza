@@ -145,6 +145,12 @@ module node {
     const { agentId, adapter } = opened
     let closeStore = () => adapter.close()
     releases.set("store", () => closeStore())
+    const sweeper = await Effect.runPromise(Effect.result(scheduleSweeps(adapter, sweeps.success)))
+    if (Result.isFailure(sweeper)) {
+      logger.error({ src: "agent", phase: "Storage", step: sweeper.failure.step, error: String(sweeper.failure.cause) }, "Log retention could not be scheduled")
+      lifecycle.send({ type: "openStore", ok: false })
+      return failed()
+    }
     lifecycle.send({ type: "openStore", ok: true })
     lifecycle.send({ type: "migrate", ok: true })
 
@@ -175,8 +181,7 @@ module node {
       storage: { name: storagePlugin, description: "Own the device database", services: [TaskService], init: async (_config, runtime) => {
         if (!(runtime instanceof AgentRuntime)) throw new Error("The storage plugin requires the device Core runtime")
         runtime.registerDatabaseAdapter(adapter)
-        const sweeper = await Effect.runPromise(scheduleSweeps(adapter, sweeps.success))
-        if (sweeper !== undefined) runtime.registerTaskWorker(sweeper)
+        if (sweeper.success !== undefined) runtime.registerTaskWorker(sweeper.success)
       } },
       cloudLink: modelPlugin(launch, models), privacy: { kind: "off" }, worker: pinned === undefined ? { kind: "none" } : { kind: "pinned", expected: pinned.worker.expected, measured: pinned.worker.measured },
       messageService: (runtime, actionGate) => ownerMessageService(runtime, [role], actionGate, accountFailureOf(() => Effect.runSync(models.read()))),

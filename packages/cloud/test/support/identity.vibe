@@ -1,0 +1,13 @@
+// spec/cloud/identity/accounts.md, "Story: Get one account on first sign-in"; spec/cloud/identity/sessions.md, "Story: Stay signed in"
+import { landAccount } from "../../src/identity/accounts.vibe"
+import { issueSession } from "../../src/identity/sessions.vibe"
+import type { Tx } from "../../src/store/connection.vibe"
+import type { TestCloud } from "./cloud.vibe"
+
+export effect function signedIn(cloud: TestCloud, email: string) {
+  const now = try Clock.currentTimeMillis
+  return try cloud.store.transaction(effect (tx: Tx) => {
+    const landed = try landAccount(tx, { method: "EmailSignIn", subject: email }, email, now)
+    return try issueSession(tx, { userId: landed.userId, organizationId: landed.organizationId, assurance: "SingleFactor", accountCreated: landed.created, now })
+  })
+}
