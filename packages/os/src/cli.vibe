@@ -211,9 +211,18 @@ export effect function cli(argv: readonly string[]) {
 
 effect function main(argv: readonly string[]) {
   const result = cli(argv) catch effect (failure) => {
-    if (!(failure instanceof UsageError)) throw failure
-    try Console.error(`${failure.message}\n\n${USAGE}`)
-    try sync(() => exitWith(2))
+    if (failure instanceof UsageError) {
+      try Console.error(`${failure.message}\n\n${USAGE}`)
+      try sync(() => exitWith(2))
+    } else {
+      let detail = String(failure)
+      if (typeof failure === "object" && failure !== null) {
+        if ("reason" in failure && typeof failure.reason === "string") detail = failure.reason
+        else if ("message" in failure && typeof failure.message === "string" && failure.message !== "") detail = failure.message
+      }
+      try Console.error(detail)
+      try sync(() => exitWith(1))
+    }
     return undefined
   }
   if (result !== undefined) try Console.log(JSON.stringify(result, null, 2))
