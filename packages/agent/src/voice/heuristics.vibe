@@ -61,7 +61,7 @@ export interface ShouldRespondContext {
   readonly echoCancelled?: boolean
 }
 
-export function replyWindowOf(context: ShouldRespondContext): ReplyWindow {
+function replyWindowOf(context: ShouldRespondContext): ReplyWindow {
   const started = context.turnStartedAfterReplyEndMs
   const startKnown = typeof started === "number" && Number.isFinite(started)
   return {
@@ -98,9 +98,9 @@ export interface BuildVoiceTurnSignalContext extends ShouldRespondContext {
   readonly selfVoiceThreshold?: number
 }
 
-export const SERVER_EOT_SUPPRESS_THRESHOLD = 0.4
-export const BYSTANDER_SUPPRESS_CONFIDENCE = 0.7
-export const AGENT_SELF_VOICE_THRESHOLD = 0.7
+const SERVER_EOT_SUPPRESS_THRESHOLD = 0.4
+const BYSTANDER_SUPPRESS_CONFIDENCE = 0.7
+const AGENT_SELF_VOICE_THRESHOLD = 0.7
 export const AGENT_SELF_VOICE_IMPRINT_THRESHOLD = 0.28
 
 function confidentBystander(speaker: VoiceTurnSpeakerAttribution, known: readonly string[]): boolean {

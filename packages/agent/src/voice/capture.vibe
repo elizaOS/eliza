@@ -6,7 +6,7 @@ import {
   type CaptureBuffer, type ContextCustody, type SampleValue,
 } from "../../gen/agent__voice__clientAudio.effect.vibe"
 
-export const captureWorkletUrl = new URL("./capture.worklet.mjs", import.meta.url)
+const captureWorkletUrl = new URL("./capture.worklet.mjs", import.meta.url)
 export const captureBlockSamples = 2048
 
 export error WavRateRefused { rate: number }

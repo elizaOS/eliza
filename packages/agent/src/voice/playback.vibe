@@ -5,7 +5,7 @@ import {
 } from "../../gen/agent__voice__clientAudio.effect.vibe"
 import type { SpeakerPort } from "./ports.vibe"
 
-export interface MediaEvents<Name extends string> {
+interface MediaEvents<Name extends string> {
   addEventListener(type: Name, listener: () => void): void
   removeEventListener(type: Name, listener: () => void): void
 }
@@ -97,14 +97,14 @@ export interface SpeakOptions {
   readonly keepWhole?: boolean
 }
 
-export type SpeechPlaybackCode = "invalid-audio" | "playback"
-export error SpeechPlaybackError { code: SpeechPlaybackCode; cause: unknown }
-export error SpeechRateRefused { rate: number }
-export error SpeechStopped
-export error SpeechMediaFailed { reason: "timeout" | "error"; cause: unknown }
-export error SpeechSourceFailed { cause: unknown }
+type SpeechPlaybackCode = "invalid-audio" | "playback"
+error SpeechPlaybackError { code: SpeechPlaybackCode; cause: unknown }
+error SpeechRateRefused { rate: number }
+error SpeechStopped
+error SpeechMediaFailed { reason: "timeout" | "error"; cause: unknown }
+error SpeechSourceFailed { cause: unknown }
 
-export type ProgressiveSpeechFailure = SpeechStopped | SpeechMediaFailed | SpeechSourceFailed
+type ProgressiveSpeechFailure = SpeechStopped | SpeechMediaFailed | SpeechSourceFailed
 
 module browser {
   import type { SpeechMedia } from "./playback.vibe"
@@ -130,7 +130,6 @@ module browser {
   }
 }
 import { audioClip, browserSpeechMedia } from browser
-export { browserSpeechMedia }
 
 const abbreviation = /(?:Mr|Mrs|Ms|Dr|Jr|Sr|St|vs|etc|approx|Prof|Rev|Gen|Sgt|Lt|Col|Maj|Capt|Corp|Pvt|Ave|Blvd|dept|est|govt|assn)$/
 const boundary = /([.!?;:,]+(?:["')\]]+)?)(?:\s|$)/g
@@ -161,7 +160,7 @@ function firstSegment(value: string): readonly [string, string] {
   return cut > shortestCutUnits ? [value.slice(0, cut).trim(), value.slice(cut).trim()] : [value, ""]
 }
 
-export function splitSpeechSegments(text: string): string[] {
+function splitSpeechSegments(text: string): string[] {
   const segments: string[] = []
   let rest = collapseWhitespace(text)
   while (rest !== "") {
