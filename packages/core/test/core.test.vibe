@@ -1,6 +1,6 @@
 // spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
+import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
 import { coreDir, freezeCore, installPacked, packCandidate, runNode, sha256File, spawnNode } from "./support/child.ts"
 import { removeScratch } from "./support/files.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
@@ -397,7 +397,7 @@ it.live("Host a runtime from construction to close and restart (spec/core/runtim
 }, 60_000)
 
 // spec/core/journey.md, "Story: Complete or cancel a turn and retire its runtime"; spec/core/journey.md, "A turn composes the existing machines without a second state store"; spec/core/journey.md, "Action evidence and transport acknowledgement remain distinct"; spec/core/journey.md, "Retirement waits for the admitted turn and its pending reply"; spec/core/providers/work.md, "Story: Share provider work without sharing cancellation"; spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/execution.md, "Callbacks wait for a valid admitted result"; spec/core/execution.md, "Every callback from a finished source reaches delivery settlement"; spec/core/receipts.md, "Story: Confirm only a committed requested effect"; spec/core/receipts.md, "Delivery rechecks the exact text and receipt IDs after hooks have run"; spec/core/authorization.md, "Role gates combine exclusions, minimum rank and all required memberships"; spec/core/messaging.md, "Story: Dispatch through a selected connector account"; spec/core/messaging.md, "Send routing and hook routing have distinct fallback rules"; spec/core/postDelivery.md, "Story: Capture and settle a connector delivery boundary"; spec/core/terminal.md, "Story: Finalize one run after all admitted child work"; spec/core/events.md, "Story: Emit ordered events with their run session"; spec/core/concurrency.md, "Story: Own each room through durable settlement"; spec/core/turnControllers.md, "Story: Cancel room work without cancelling the cancel request"; spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"; spec/core/confirmation.md, "Story: Settle an explicit confirmation from the user's reply"; spec/core/responseEvaluation.md, "Story: Apply response evaluator decisions in priority order"; spec/core/diagnostics.md, "Story: Observe a failure without failing the reporting path"; spec/core/providers/index.md, "Story: Share exactly equivalent provider requests"; spec/core/actionReceipts.md, "Story: Drain action callbacks with exact receipt evidence"; spec/core/receiptBindings.md, "Story: Preserve authentic binding identity across concurrent replies"; spec/core/postDelivery.md, "Story: Track detached work under runtime and room ownership"; spec/core/context.md, "Story: Select relevant history while retaining complete evidence"
-it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journey.md, \"Story: Complete or cancel a turn and retire its runtime\")", () => effect {
+it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journey.md, \"Story: Complete or cancel a turn and retire its runtime\"; spec/core/multiRoomLeases.md, \"Story: Own a room set through the callback and every admitted write\")", () => effect {
   const log: string[] = []
   const gate = () => Effect.try(() => Promise.withResolvers<void>())
   const providerStarted = try gate()
@@ -802,8 +802,58 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
   try host(() => Promise.all([firstTurn, secondTurn]))
   try Effect.try(() => assert.deepStrictEqual(log.filter((entry) => /^(first|second):(start|end)$|^wait:/.test(entry)), ["first:start", "wait:enter", "wait:exit", "first:end", "second:start", "second:end"]))
 
-  // spec/core/turnControllers.md, "Story: Cancel room work without cancelling the cancel request"; spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"
   try host(() => runtime.ensureConnection({ entityId: user, roomId: other, worldId: world, userName: "ada", name: "Ada", source: "chat", type: ChannelType.DM, channelId: "dm-2" }))
+
+  // spec/core/multiRoomLeases.md, "Each transaction captures the sorted deduplicated room set"; spec/core/multiRoomLeases.md, "Release drains the held prefix from its highest room downward"
+  const roomRanks: [UUID, UUID, UUID] = [dm, group, other]
+  const [lowerRoom, overlapRoom, upperRoom] = roomRanks.sort()
+  const leaseJourney = try host(async () => {
+    const queue = runtime.roomHandlerQueue
+    const entered = Promise.withResolvers<string[]>()
+    const leave = Promise.withResolvers<void>()
+    const waiting = Promise.withResolvers<void>()
+    const abort = new AbortController()
+    const reason = new Error("room lease request cancelled")
+    const holding = queue.withLeases([upperRoom, overlapRoom], async (leases) => {
+      entered.resolve([...leases.keys()])
+      await leave.promise
+    })
+    const work: Promise<unknown>[] = [holding]
+    const unsubscribe = queue.onEvent((event) => {
+      if (event.type === "enqueued" && event.roomId === overlapRoom && event.queueDepth === 2) waiting.resolve()
+    })
+    try {
+      const acquired = await Promise.race([entered.promise, holding])
+      const request = queue.withLeases([overlapRoom, lowerRoom], async () => "entered", { signal: abort.signal }).then(
+        (result) => result,
+        (error: unknown) => error instanceof RoomHandlerQueueAbortedError ? [error.roomId, error.cause === reason] : error,
+      )
+      work.push(request)
+      await Promise.race([waiting.promise, request])
+      const beforeAbort = [queue.pendingFor(lowerRoom), queue.pendingFor(overlapRoom)]
+      const recoveredId = stringToUuid("j02-recovered-room-lease")
+      const recovery = queue.withLease(lowerRoom, (lease) => queue.withLeaseWrite(lowerRoom, lease, async () => {
+        await runtime.createMemory({ ...say("j02-recovered-room-lease", lowerRoom, "stored after unwind"), id: recoveredId }, "lease-journey")
+        return (await runtime.getMemoryById(recoveredId))?.content.text
+      }))
+      work.push(recovery)
+      abort.abort(reason)
+      const refused = await request
+      const text = await recovery
+      return { acquired, beforeAbort, refused, text, remaining: queue.pendingFor(overlapRoom) }
+    } finally {
+      unsubscribe()
+      abort.abort(reason)
+      leave.resolve()
+      await Promise.allSettled(work)
+    }
+  })
+  try Effect.try(() => assert.deepStrictEqual(
+    [leaseJourney.acquired, leaseJourney.beforeAbort, leaseJourney.refused, leaseJourney.text, leaseJourney.remaining],
+    [[overlapRoom, upperRoom], [1, 2], [overlapRoom, true], "stored after unwind", 1],
+  ))
+
+  // spec/core/turnControllers.md, "Story: Cancel room work without cancelling the cancel request"; spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"
   const held = try Effect.try(() => runWithTrajectoryContext({ runId: "run-held" }, () => runtime.turnControllers.runWith(dm, async (signal) => {
     holdEntered.resolve()
     await holdRelease.promise
