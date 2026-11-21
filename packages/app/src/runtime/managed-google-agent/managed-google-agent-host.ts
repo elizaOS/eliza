@@ -103,7 +103,7 @@ export type GoogleAgentAccess = {
   gmailChanges: boolean;
   calendarEdits: boolean;
 };
-/** How long one source lookup can serve one read's feed step, from the lookup's start. */
+/** Bound an in-flight lookup and the reuse of its completed observation. */
 const CALENDAR_READ_STEP_MS = 5_000;
 export type ManagedGoogleAgentHostOptions = {
   apiOrigin: string;
@@ -138,16 +138,26 @@ export function createManagedGoogleAgentHost(
   // One Calendar read lists sources, then reads each feed. Without this the feed verifies the owner and lists calendars
   // again. A feed reuses the source step's lookups for seconds, and concurrent reads join one lookup. Source lists only
   // ever join a lookup still in flight, never a finished one, and every read ends with a fresh grant check.
-  const shared = new Map<
-    string,
-    {
-      monotonic: number;
-      wall: number;
-      pending: boolean;
-      value: Promise<unknown>;
-    }
-  >();
+  type SharedRead = {
+    monotonic: number;
+    wall: number;
+    pending: boolean;
+    value: Promise<unknown>;
+  };
+  const shared = new Map<string, SharedRead>();
   let sharedOwner: string | undefined;
+  const rememberCompletedRead = (key: string, value: Promise<unknown>) => {
+    const entry: SharedRead = {
+      monotonic: performance.now(),
+      wall: Date.now(),
+      pending: false,
+      value,
+    };
+    shared.set(key, entry);
+    setTimeout(() => {
+      if (shared.get(key) === entry) shared.delete(key);
+    }, CALENDAR_READ_STEP_MS).unref?.();
+  };
   async function sharedLookup<T>(
     key: string,
     read: () => Promise<T>,
@@ -184,8 +194,7 @@ export function createManagedGoogleAgentHost(
       if (shared.get(key) === next) shared.delete(key);
     };
     value.then(() => {
-      next.pending = false;
-      setTimeout(drop, CALENDAR_READ_STEP_MS).unref?.();
+      if (shared.get(key) === next) rememberCompletedRead(key, value);
     }, drop);
     return value;
   }
@@ -281,7 +290,10 @@ export function createManagedGoogleAgentHost(
       stage = "credential-recheck";
       await current();
       // Every grant used by the read must still hold the capability after it, or nothing is returned.
-      const confirm = async (grantIds: string[]) => {
+      const confirm = async (
+        grantIds: string[],
+        reuseForCalendarFeeds = false,
+      ) => {
         try {
           const latest = await client.gmailAccounts(signal);
           if (
@@ -300,6 +312,16 @@ export function createManagedGoogleAgentHost(
               "Gmail permission changed.",
             );
           await current();
+          if (
+            calendarRead &&
+            reuseForCalendarFeeds &&
+            sharedOwner === ownerKey &&
+            !shared.get(ownerKey)?.pending
+          ) {
+            // Pass the catalog's final verified account observation to the feed.
+            // The feed still makes its own fresh grant check after reading events.
+            rememberCompletedRead(ownerKey, Promise.resolve(latest));
+          }
         } catch (error) {
           if (calendarRead || operation === "calendar") shared.clear();
           recordManagedGoogleFailure(error, "permission-recheck");
@@ -612,7 +634,10 @@ export function createManagedGoogleAgentHost(
             ),
           )
         ).flat();
-        await confirm(accounts.map((a) => a.grantId));
+        await confirm(
+          accounts.map((a) => a.grantId),
+          true,
+        );
         return sources;
       } catch (error) {
         recordManagedGoogleFailure(error, "calendar-sources");
