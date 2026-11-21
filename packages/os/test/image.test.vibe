@@ -8,15 +8,24 @@ import { loadProfile, verifySource, verifyDeviceSource, admitPatchEnvelope } fro
 import { main as qualify, qualifyDevice } from "../src/image/device-qualification.vibe"
 import { readOnlyCommands } from "../src/image/device-qualification-facts.vibe"
 import { verifyImage } from "../src/image/verify-device.vibe"
+import { listenerPermissions, prepareListenerSystemui, verifyListenerSystemui } from "../src/image/listener.vibe"
+import { captureCommand } from "../src/image/device.vibe"
 
 module node {
   import { createHash } from "node:crypto"
-  import { chmod, mkdir, readFile, stat, utimes, writeFile } from "node:fs/promises"
+  import { chmod, cp, mkdir, readFile, stat, utimes, writeFile } from "node:fs/promises"
   import { join } from "node:path"
   import type { Tree } from "./support/scratch.vibe"
   const sourceDigest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
   const sourceText = (value: string) => new TextEncoder().encode(value)
   export async function changeMode(file: string, mode: number): Promise<void> { await chmod(file, mode) }
+  export async function copySystemui(folder: string, fixture: string): Promise<string> {
+    const source = join(folder, "source")
+    const project = join(source, "frameworks/base")
+    await mkdir(join(source, "frameworks"), { recursive: true })
+    await cp(fixture, project, { recursive: true, force: false, errorOnExist: true })
+    return source
+  }
   export async function qualificationBinary(directory: string, fixture: string, commands: Readonly<Record<string, string>>, failed?: string) {
     const binary = join(directory, failed ?? "adb-fixture")
     const log = join(directory, `${failed ?? "adb-fixture"}.jsonl`)
@@ -147,7 +156,7 @@ module node {
 }
 import { ARM_ELF, X86_ELF, companionManifest, launcherManifest, parsed, runtimeNatives } from node
 
-import { changeMode, fixedSourceStat, patchFixture, platformProjectTree, qualificationBinary, rewriteWithSameStat, sourceLockFixture, verificationBinary } from node
+import { changeMode, copySystemui, fixedSourceStat, patchFixture, platformProjectTree, qualificationBinary, rewriteWithSameStat, sourceLockFixture, verificationBinary } from node
 
 const tools = androidTools()
 const skipped = tools.kind === "missing" ? tools.reason : null
@@ -478,6 +487,61 @@ it.live('Verify every pinned platform input before admitting a reviewed source p
     })
   }
 }, { timeout: 180_000 })
+
+it.live('Prepare and recheck the reviewed SystemUI chip without changing the supplied source (spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const path = try Path.Path
+      const files = try FileSystem.FileSystem
+      const work = try scratch("listener-systemui")
+      const fixture = try path.fromFileUrl(new URL("./fixtures/sense-systemui/", import.meta.url))
+      const source = try tryPromise(() => copySystemui(work, fixture))
+      const output = path.join(work, "output")
+      const before = try verifyListenerSystemui(source, "before", "chip")
+      const staged = try prepareListenerSystemui(source, output, "chip")
+      const after = try verifyListenerSystemui(output, "after", "chip")
+      assert.deepStrictEqual(after, staged)
+      assert.deepStrictEqual(try verifyListenerSystemui(source, "before", "chip"), before)
+      assert.strictEqual(after.indicatorHealthLeaseImplemented, true)
+      assert.strictEqual((try exit(prepareListenerSystemui(source, output, "chip")))._tag, "Failure")
+      const first = after.files[0]?.path ?? assert.fail("The prepared image has no reviewed files")
+      try files.writeFileString(path.join(output, "frameworks/base", first), "modified after staging")
+      assert.strictEqual((try exit(verifyListenerSystemui(output, "after", "chip")))._tag, "Failure")
+    })
+  }
+}, 120_000)
+
+it.effect.skipIf(skipped !== null)(`Read the listener's real APK grants and reject a network permission${suffix} (spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed")`, effect () => {
+  provide NodeServices.layer {
+    const k = try kit("listener-permissions")
+    if (k === undefined) return
+    const packageName = `${LAUNCHER}.sense`
+    const manifest = (extra: string) => `<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${packageName}" android:versionCode="1">
+      <uses-permission android:name="android.permission.CAPTURE_AUDIO_HOTWORD" />
+      <uses-permission android:name="android.permission.START_ACTIVITIES_FROM_BACKGROUND" />
+      <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+      <uses-permission android:name="android.permission.RECORD_AUDIO" />
+      <permission android:name="${packageName}.CONTROL" android:protectionLevel="signature" />
+      <uses-permission android:name="${packageName}.CONTROL" />
+      ${extra}
+      <application android:debuggable="false" />
+    </manifest>`
+    const approved = try k.build("reviewed", manifest(""))
+    const rejected = try k.build("forbidden", manifest('<uses-permission android:name="android.permission.INTERNET" />'))
+    const read = (apk: string) => effect {
+      const dump = try captureCommand(k.aapt, ["dump", "permissions", apk], 60_000)
+      assert.strictEqual(dump.code, 0)
+      return try listenerPermissions(new TextDecoder().decode(dump.stdout), packageName)
+    }
+    const grants = try read(approved.apk)
+    assert.deepStrictEqual(grants, {
+      packageName,
+      requested: ["android.permission.CAPTURE_AUDIO_HOTWORD", "android.permission.FOREGROUND_SERVICE_MICROPHONE", "android.permission.RECORD_AUDIO", "android.permission.START_ACTIVITIES_FROM_BACKGROUND"],
+      privileged: ["android.permission.CAPTURE_AUDIO_HOTWORD", "android.permission.START_ACTIVITIES_FROM_BACKGROUND"],
+    })
+    assert.strictEqual((try exit(read(rejected.apk)))._tag, "Failure")
+  }
+}, 240_000)
 
 it.live('Qualify a device through the read-only command set and keep the captures (spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/image/qualification.md, "Story: Read the verdict against my requirements")', effect () => {
   provide NodeServices.layer {

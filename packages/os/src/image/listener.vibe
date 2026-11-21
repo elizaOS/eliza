@@ -1,0 +1,287 @@
+// spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed"; spec/os/image/listener.md, "Story: Activate the listener only on a qualified image"
+import { listenerSelinuxDomain, listenerStaging, sourceAdmitsListener, type ListenerDescriptor, type ListenerRequest } from "../../gen/os__image__listener.effect.vibe"
+import type { ProvisioningRequest } from "../../gen/os__image__provisioning.effect.vibe"
+import {
+  MAX_ANDROID_ARTIFACT_BYTES,
+  aaptManifestTree,
+  buildTypeOf,
+  listenerZipAligned,
+  listAndroidArtifactEntries,
+  manifestFacts,
+  parseDigest,
+  readAndroidArtifactEntryBuffers,
+  readApkSigner,
+  resolveAndroidBuildTools,
+  type Environment,
+} from "./apk.vibe"
+import { captureCommand } from "./device.vibe"
+import { ListenerAdmissionRefused, listenerArtifact, listenerJson, listenerOverlay, packageParts, readListenerPermissions, readListenerQualification, wakeWords, type EnrolledListenerQualification } from "./listener-admission.vibe"
+import { listenerPatchReference } from "./listener-systemui.vibe"
+import { listenerStagingOf, writeListenerActivation } from "./provisioning.vibe"
+import { verifySource, type VerifySourceOptions } from "./source-lock.vibe"
+import { validateDescriptor } from "./stage-launcher.vibe"
+
+export { listenerPermissions, verifyListenerQualification } from "./listener-admission.vibe"
+export { prepareListenerSystemui, verifyListenerSystemui } from "./listener-systemui.vibe"
+
+module node {
+  import { createHash, X509Certificate } from "node:crypto"
+
+  export function byteDigest(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  export function publicCertificate(bytes: Uint8Array): { readonly hex: string; readonly sha256: string } {
+    const certificate = new X509Certificate(Buffer.from(bytes)).raw
+    return { hex: certificate.toString("hex").toUpperCase(), sha256: byteDigest(certificate) }
+  }
+}
+import { byteDigest, publicCertificate } from node
+
+interface PinnedSpeechInputs {
+  readonly voiceHost: EnrolledListenerQualification
+  readonly models: EnrolledListenerQualification
+}
+
+export interface ListenerStageOptions {
+  readonly output: string
+  readonly launcher: { readonly apk: string; readonly descriptor: string }
+  readonly apk: string
+  readonly descriptor?: string
+  readonly moduleName: string
+  readonly componentPackage: string
+  readonly wakeNames: readonly string[]
+  readonly policyCertificate: string
+  readonly sdkCommit: string
+  readonly source: VerifySourceOptions
+  readonly production?: boolean
+  readonly activation?: ProvisioningRequest
+  readonly qualification?: EnrolledListenerQualification
+  readonly speech?: PinnedSpeechInputs
+  readonly aapt?: string
+  readonly apksigner?: string
+  readonly env?: Environment
+}
+
+const packageName = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/
+const hex = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/))
+const safePath = Schema.String.check(Schema.makeFilter((file) => file.split("/").every((part) =>
+  /^[A-Za-z0-9_.-]+$/.test(part) && part !== "." && part !== "..")))
+const pin = Schema.Struct({ path: safePath, sha256: hex })
+const decodeModels = Schema.decodeUnknownEffect(Schema.Struct({ asr: pin, vad: pin, paradee: pin, lexicon: pin }))
+const decodeHost = Schema.decodeUnknownEffect(Schema.Struct({
+  schemaVersion: Schema.Literal(2),
+  asrSlot: Schema.Struct({ paths: Schema.Array(safePath).check(Schema.isMinLength(1)) }),
+  abis: Schema.Array(Schema.Struct({
+    abi: Schema.String.check(Schema.isPattern(/^[a-z0-9_-]+$/)),
+    libraries: Schema.Array(Schema.Struct({ name: Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9_.-]+\.so$/)), sha256: hex })).check(Schema.isMinLength(1)),
+  })).check(Schema.isMinLength(1)),
+}))
+const decodeBundle = Schema.decodeUnknownEffect(Schema.Struct({ files: Schema.Array(pin) }))
+const decodeListenerDescriptor = Schema.decodeUnknownEffect(Schema.Struct({
+  packageName: Schema.String.check(Schema.isPattern(packageName)),
+  apkSha256: hex,
+  certificateSha256: hex,
+}))
+const text = new TextDecoder()
+const utf8 = new TextEncoder()
+const manifest = "assets/paradee-voice/v1/"
+const metadataBudget = 2 * 1024 * 1024
+const makeInclude = "\ninclude $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))/listener/listener.mk\n"
+
+effect function readPinned(pin: EnrolledListenerQualification) {
+  const file = try listenerArtifact(pin.file, metadataBudget)
+  if (file.sha256 !== pin.sha256) throw new ListenerAdmissionRefused({ reason: `Speech input digest differs: ${pin.file}` })
+  return try listenerJson(file.bytes)
+}
+
+effect function verifySpeech(apk: string, artifactBytes: Uint8Array, inputs: PinnedSpeechInputs) {
+  const voice = try decodeHost(try readPinned(inputs.voiceHost))
+  const models = Object.values(try decodeModels(try readPinned(inputs.models)))
+  const [raw] = try readAndroidArtifactEntryBuffers(apk, [`${manifest}manifest.json`], { artifactBytes, maxEntryBytes: metadataBudget, label: "listener speech manifest" })
+  if (raw === undefined) throw new ListenerAdmissionRefused({ reason: "Cannot read the packaged speech manifest" })
+  const bundle = try decodeBundle(try listenerJson(raw))
+  const byPath = new Map(bundle.files.map((file) => [file.path, file.sha256]))
+  if (byPath.size !== bundle.files.length ||
+      new Set(voice.abis.map(({ abi }) => abi)).size !== voice.abis.length ||
+      !voice.asrSlot.paths.every((name) => byPath.has(name)) ||
+      !models.every((file) => byPath.get(file.path) === file.sha256)) {
+    throw new ListenerAdmissionRefused({ reason: "The APK speech manifest differs from its reviewed model inputs" })
+  }
+  const names = new Set(try listAndroidArtifactEntries(apk, { artifactBytes }))
+  const libraries = voice.abis.filter(({ abi }) => names.has(`lib/${abi}/libelizainference.so`) && names.has(`lib/${abi}/libparadeevoicejni.so`))
+  if (libraries.length === 0 || !libraries.every((row) => row.libraries.some(({ name }) => name === "libelizainference.so"))) {
+    throw new ListenerAdmissionRefused({ reason: "The APK has no recorded speech engine and JNI pair" })
+  }
+  const checks = [
+    ...bundle.files.map(({ path, sha256 }) => ({ entry: `${manifest}${path}`, sha256 })),
+    ...libraries.flatMap(({ abi, libraries }) => libraries.map(({ name, sha256 }) => ({ entry: `lib/${abi}/${name}`, sha256 }))),
+  ]
+  const entries = try readAndroidArtifactEntryBuffers(apk, checks.map(({ entry }) => entry), { artifactBytes, label: "listener speech files" })
+  if (!entries.every((bytes, i) => byteDigest(bytes) === checks[i]?.sha256)) {
+    throw new ListenerAdmissionRefused({ reason: "Packaged speech bytes differ from the reviewed inputs" })
+  }
+  return "SpeechPinned" as const
+}
+
+effect function reviewedDescriptor(file: string | undefined) {
+  if (file === undefined) return { tag: "NoListenerDescriptor" } satisfies ListenerDescriptor
+  const artifact = try listenerArtifact(file, metadataBudget)
+  const d = try decodeListenerDescriptor(try listenerJson(artifact.bytes))
+  return { tag: "ListenerReviewed", bytes: parseDigest(artifact.sha256), packageName: packageParts(d.packageName),
+    apk: parseDigest(d.apkSha256), certificate: parseDigest(d.certificateSha256) } satisfies ListenerDescriptor
+}
+
+effect function overlayConfig() {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const here = try path.fromFileUrl(new URL(".", import.meta.url))
+  for (const root of ["../..", "../../.."]) {
+    const file = path.resolve(here, root, "aosp/sense/config.xml")
+    if (try files.exists(file)) return text.decode((try listenerArtifact(file, metadataBudget)).bytes)
+  }
+  throw new ListenerAdmissionRefused({ reason: "Cannot find the shipped listener overlay" })
+}
+
+function selinuxPolicy(listener: string, signature: string): Record<string, string> {
+  const domain = listenerSelinuxDomain
+  const data = `${domain}_data_file`
+  return {
+    "mac_permissions.xml": `<policy>\n <signer signature="${signature}"><package name="${listener}"><seinfo value="eliza_sense" /></package></signer>\n</policy>\n`,
+    "seapp_contexts": `user=_app seinfo=eliza_sense name=${listener} isPrivApp=true domain=${domain} type=${data} levelFrom=user\n`,
+    [`${domain}.te`]: `type ${domain}, domain;\ntypeattribute ${domain} coredomain;\ntype ${data}, file_type, data_file_type, core_data_file_type, app_data_file_type;\napp_domain(${domain})\nallow ${domain} ${data}:dir create_dir_perms;\nallow ${domain} ${data}:file create_file_perms;\n`,
+  }
+}
+
+function imageFiles(
+  moduleName: string, host: string, listener: string, receiver: string, certificate: string, permissions: readonly string[],
+  overlay: string, policy: Readonly<Record<string, string>>, active: boolean, power: boolean,
+): Record<string, string> {
+  const permissionFile = `privapp-permissions-${listener}.xml`
+  const controls = [host, "com.android.systemui", "com.android.permissioncontroller", "com.android.settings"]
+  const frameworkOverlay = power ? overlay : overlay.replace(
+    /^\s*<(?:integer|bool) name="(?:config_longPressOnPowerBehavior|config_longPressOnPowerForAssistantSettingAvailable|config_keyChordPowerVolumeUp)">[^<]*<\/(?:integer|bool)>[^\S\n]*$/gm, "")
+  const chip = Object.entries({ Package: listener, HostPackage: host, ReceiverClass: receiver, CertificateSha256: certificate })
+    .map(([key, value]) => ` <string name="config_senseListening${key}" translatable="false">${value}</string>`)
+  return {
+    "Android.bp": `android_app_import {\n name: "${moduleName}", apk: "${moduleName}.apk", presigned: true, preprocessed: true, privileged: true, system_ext_specific: true, dex_preopt: { enabled: false }, required: ["${permissionFile}", "${moduleName}-sysconfig.xml"],\n}\nprebuilt_etc { name: "${permissionFile}", src: "permissions/${permissionFile}", sub_dir: "permissions", system_ext_specific: true }\nprebuilt_etc { name: "${moduleName}-sysconfig.xml", src: "sysconfig/sense.xml", sub_dir: "sysconfig", system_ext_specific: true }\n`,
+    "listener.mk": `sense_listener_dir := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))\nPRODUCT_PACKAGES += ${moduleName}\nPRODUCT_PACKAGE_OVERLAYS += $(sense_listener_dir)/overlay $(sense_listener_dir)/systemui/chip/overlay\nSYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += $(sense_listener_dir)/sepolicy\n${active ? "PRODUCT_PRODUCT_PROPERTIES += ro.hotword.detection_service_required=true\n" : ""}`,
+    [`permissions/${permissionFile}`]: `<permissions>\n <privapp-permissions package="${listener}">\n${permissions.map((permission) => `  <permission name="${permission}" />`).join("\n")}\n </privapp-permissions>\n</permissions>\n`,
+    "sysconfig/sense.xml": `<config>\n <install-in-user-type package="${listener}"><install-in user-type="android.os.usertype.full.SYSTEM" /></install-in-user-type>\n${controls.map((host) => ` <allow-association target="${listener}" allowed="${host}" />`).join("\n")}\n</config>\n`,
+    "overlay/frameworks/base/core/res/res/values/config.xml": frameworkOverlay,
+    "systemui/chip/overlay/frameworks/base/packages/SystemUI/res/values/sense-listener.xml": `<resources>\n${chip.join("\n")}\n</resources>\n`,
+    ...Object.fromEntries(Object.entries(policy).map(([file, body]) => [`sepolicy/${file}`, body])),
+  }
+}
+
+export effect function stageListener(options: ListenerStageOptions) {
+  if (!/^[A-Z][A-Za-z0-9]*$/.test(options.moduleName) || !packageName.test(options.componentPackage)) {
+    throw new ListenerAdmissionRefused({ reason: "Listener module or component package is invalid" })
+  }
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const output = try files.realPath(options.output)
+  const productFile = path.join(output, "product.mk")
+  const original = try listenerArtifact(productFile, metadataBudget)
+  const target = path.join(output, "listener")
+  if ((try files.exists(target)) || text.decode(original.bytes).includes(makeInclude.trim())) {
+    throw new ListenerAdmissionRefused({ reason: "The product already has a staged listener" })
+  }
+  const pinned = [try listenerPatchReference("ops"), try listenerPatchReference("chip")]
+  const source = (try verifySource({ ...options.source,
+    patches: [...(options.source.patches ?? []).filter(({ name }) => !pinned.some((patch) => patch.name === name)), ...pinned] })).state
+  if (!sourceAdmitsListener(source)) throw new ListenerAdmissionRefused({ reason: "SourceNotAdmitted" })
+  return try scoped(effect {
+    const scratch = try files.makeTempDirectoryScoped()
+    const launcher = try listenerArtifact(options.launcher.apk, MAX_ANDROID_ARTIFACT_BYTES)
+    const apk = try listenerArtifact(options.apk, MAX_ANDROID_ARTIFACT_BYTES)
+    const launcherFile = path.join(scratch, "launcher.apk")
+    const apkFile = path.join(scratch, "listener.apk")
+    try files.writeFile(launcherFile, launcher.bytes, { flag: "wx" })
+    try files.writeFile(apkFile, apk.bytes, { flag: "wx" })
+    const tools = options.aapt !== undefined && options.apksigner !== undefined ?
+      { aapt: options.aapt, apksigner: options.apksigner } : (try resolveAndroidBuildTools(options.env))
+    const aapt = options.aapt ?? tools.aapt
+    const sign = { apksigner: options.apksigner ?? tools.apksigner, ...(options.env === undefined ? {} : { env: options.env }) }
+    const launcherDescriptor = try listenerArtifact(options.launcher.descriptor, metadataBudget)
+    const decodedLauncher = try listenerJson(launcherDescriptor.bytes)
+    const host = try validateDescriptor(decodedLauncher)
+    const launcherTree = try aaptManifestTree(launcherFile, { aapt })
+    const launcherSigner = try readApkSigner(launcherFile, sign)
+    if (launcher.sha256 !== host.apkSha256 || manifestFacts(launcherTree).packageName !== host.packageName ||
+        launcherSigner.tag !== "OneSigner" || launcherSigner.certificate.tag !== "Sha256" || launcherSigner.certificate.hex !== host.certificateSha256) {
+      throw new ListenerAdmissionRefused({ reason: "The launcher does not match its admitted descriptor and signer" })
+    }
+    const listener = `${host.packageName}.sense`
+    const receiver = `${options.componentPackage}.ListenerActionReceiver`
+    const listenerTree = try aaptManifestTree(apkFile, { aapt })
+    const permissions = try captureCommand(aapt, ["dump", "permissions", apkFile], 60_000)
+    const identity = manifestFacts(listenerTree)
+    if (permissions.code !== 0 || identity.packageName !== listener) throw new ListenerAdmissionRefused({ reason: "Cannot read the listener APK identity and permissions" })
+    if (!identity.components.some((component) => component.tag === "receiver" && component.name === receiver)) {
+      throw new ListenerAdmissionRefused({ reason: "The APK does not declare the SystemUI control receiver" })
+    }
+    const grants = try readListenerPermissions(text.decode(permissions.stdout), listener)
+    const overlay = try overlayConfig()
+    const certificate = try listenerArtifact(options.policyCertificate, metadataBudget)
+    const cert = try Effect.try({ try: () => publicCertificate(certificate.bytes), catch: () => new ListenerAdmissionRefused({ reason: "Cannot read the public policy certificate" }) })
+    const policy = selinuxPolicy(listener, cert.hex)
+    const speech = options.speech === undefined ? "SpeechNotPinned" :
+      (verifySpeech(apkFile, apk.bytes, options.speech) catch () => "SpeechNotPinned" as const)
+    const request: Omit<ListenerRequest, "qualification" | "enrolledQualification"> = {
+      launcherPackage: host.packageName, launcherSigner: launcherSigner.certificate, launcherApk: parseDigest(launcher.sha256),
+      launcherDescriptor: parseDigest(launcherDescriptor.sha256),
+      listener: { packageName: packageParts(listener), sha256: parseDigest(apk.sha256), signer: try readApkSigner(apkFile, sign),
+        buildType: buildTypeOf(listenerTree),
+        requested: grants.requested, layout: listenerZipAligned(apk.bytes) ? "ZipAligned" : "ZipRefused", speech },
+      descriptor: try reviewedDescriptor(options.descriptor), wakeNames: wakeWords(options.wakeNames), overlay: listenerOverlay(overlay),
+      policyCertificate: parseDigest(cert.sha256),
+      sepolicy: parseDigest(try Effect.try({ try: () => byteDigest(utf8.encode(JSON.stringify(policy))), catch: () => new ListenerAdmissionRefused({ reason: "Cannot hash the staged policy" }) })),
+      sdkCommit: /^[a-f0-9]{40}$/.test(options.sdkCommit) ? options.sdkCommit : "",
+    }
+    const enrolled = options.qualification === undefined ? { qualification: { tag: "NoQualification" } as const, enrolledQualification: { tag: "NotADigest" } as const } :
+      (try readListenerQualification(options.qualification))
+    const staged = listenerStaging({ ...request, ...enrolled }, source, options.production === true ? "StageProduction" : "StageDevelopment")
+    if (staged.tag === "ListenerRefused") throw new ListenerAdmissionRefused({ reason: staged.problem })
+    const active = staged.reach === "ListenerActivated"
+    const activationFiles: Record<string, string> = {}
+    let enablesPower = false
+    if (active) {
+      if (options.activation === undefined) throw new ListenerAdmissionRefused({ reason: "A qualified listener still requires a provisioning selection" })
+      const activation = try listenerStagingOf(source.patches.map(({ name }) => name).filter((name) => ["chip", "ops", "assist", "power"].includes(name)), overlay)
+      try files.writeFileString(path.join(scratch, "product.mk"), "", { flag: "wx" })
+      const added = try writeListenerActivation(scratch, host.packageName, launcherTree, options.activation, activation)
+      enablesPower = added.power !== null
+      const xml = `listener-activation/${added.feature}.xml`
+      activationFiles[xml] = try files.readFileString(path.join(scratch, xml))
+      const activationMake = try files.readFileString(path.join(scratch, "product.mk"))
+      activationFiles["listener.mk"] = activationMake.replace(")/listener-activation", ")/listener/listener-activation")
+    }
+    const rendered = imageFiles(options.moduleName, host.packageName, listener, receiver, host.certificateSha256, grants.privileged, overlay, policy, active, enablesPower)
+    for (const [entry, body] of Object.entries(activationFiles)) rendered[entry] = (rendered[entry] ?? "") + body
+    const evidence = { schemaVersion: 1, packageName: listener, moduleName: options.moduleName, receiverClass: receiver,
+      apkSha256: apk.sha256, certificateSha256: host.certificateSha256, sepolicy: request.sepolicy, reach: staged.reach,
+      speechIncluded: staged.speechIncluded, sourceLock: source.lock.digest,
+      patches: source.patches.map(({ name, manifestSha256 }) => ({ name, manifestSha256 })),
+      systemUiCompiled: false, imageBuilt: false, releaseQualified: false, deviceAcceptanceVerified: false }
+    rendered["evidence.json"] = `${JSON.stringify(evidence, null, 2)}\n`
+    const making = try files.makeTempDirectoryScoped({ directory: output, prefix: ".listener-stage-" })
+    const next = path.join(making, "product.mk")
+    const productMode = (try files.stat(productFile)).mode & 0o777
+    try files.writeFileString(next, text.decode(original.bytes) + makeInclude, { flag: "wx", mode: productMode })
+    try files.makeDirectory(target)
+    try Effect.onError(effect {
+      try files.writeFile(path.join(target, `${options.moduleName}.apk`), apk.bytes, { flag: "wx" })
+      for (const [entry, body] of Object.entries(rendered)) {
+        const file = path.join(target, entry)
+        try files.makeDirectory(path.dirname(file), { recursive: true })
+        try files.writeFileString(file, body, { flag: "wx" })
+      }
+      if ((try listenerArtifact(productFile, metadataBudget)).sha256 !== original.sha256) {
+        throw new ListenerAdmissionRefused({ reason: "Product makefile changed during listener staging" })
+      }
+      try files.rename(next, productFile)
+    }, () => ignore(files.remove(target, { recursive: true, force: true })))
+    return evidence
+  })
+}

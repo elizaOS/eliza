@@ -228,6 +228,18 @@ module node {
 }
 import { expandArchiveEntry, homeDirectory, parseJson, processEnvironment, readArchiveDirectory, safeArchiveEntry, sha256Hex, type ArchiveEntry } from node
 
+export function listenerZipAligned(bytes: Uint8Array): boolean {
+  const archive = readArchiveDirectory(bytes, MAX_ANDROID_ARCHIVE_ENTRIES)
+  if (archive.kind !== "entries") return false
+  const names = new Set(archive.entries.map(({ entry }) => entry))
+  return names.has("AndroidManifest.xml") && names.has("classes.dex") && archive.entries.every(({ entry, method, dataOffset }) => {
+    if (entry.endsWith("/")) return true
+    const native = entry.startsWith("lib/") && entry.endsWith(".so")
+    if ((native || entry.endsWith(".dex")) && method !== 0) return false
+    return method !== 0 || dataOffset % (native ? 16_384 : 4) === 0
+  })
+}
+
 export type Environment = Readonly<Record<string, string | undefined>>
 export type RawRecord = Readonly<Record<string, unknown>>
 
@@ -603,7 +615,7 @@ export function manifestFacts(xml: string, badging = ""): ManifestFacts {
   }
 }
 
-function buildTypeOf(tree: string): ApkBuildType {
+export function buildTypeOf(tree: string): ApkBuildType {
   const { application } = manifestFacts(tree)
   return !application.declared ? "BuildTypeUnread" : application.debuggable === AAPT_TRUE ? "DebuggableBuild" : "ReleaseBuild"
 }
