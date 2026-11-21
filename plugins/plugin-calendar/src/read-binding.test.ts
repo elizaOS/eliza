@@ -313,6 +313,7 @@ describe("Calendar operation bindings", () => {
         userRoles?: ["OWNER"] | [];
         extraIntent?: string;
         extraContext?: string;
+        missingBinding?: boolean;
         timeZone?: string;
       } = { source: "builtin" },
     ) => {
@@ -341,18 +342,20 @@ describe("Calendar operation bindings", () => {
             text,
             ...(options.extraIntent ? [options.extraIntent] : []),
           ],
-          calendarReadBindings: [
-            {
-              intentId: "intent:1",
-              operation: "propose_times",
-              execution: options.execution ?? "required",
-              ...(options.source ? { source: options.source } : {}),
-              sourceMessageId: message.id as NonNullable<Memory["id"]>,
-              roomId: message.roomId,
-              actorId: message.entityId,
-              requestedAt: message.createdAt as number,
-            },
-          ],
+          calendarReadBindings: options.missingBinding
+            ? []
+            : [
+                {
+                  intentId: "intent:1",
+                  operation: "propose_times",
+                  execution: options.execution ?? "required",
+                  ...(options.source ? { source: options.source } : {}),
+                  sourceMessageId: message.id as NonNullable<Memory["id"]>,
+                  roomId: message.roomId,
+                  actorId: message.entityId,
+                  requestedAt: message.createdAt as number,
+                },
+              ],
         },
       };
       await runResponseHandlerEvaluators({
@@ -382,7 +385,7 @@ describe("Calendar operation bindings", () => {
     expect(await route(text)).toEqual(expected);
     const unscoped =
       "Find a thirty-minute opening tomorrow between noon and five p.m. for a grocery run.";
-    expect(await route(unscoped, {})).toEqual({
+    const exactWindow = {
       name: "CALENDAR_PROPOSE_TIMES",
       params: {
         windowStart: "2026-11-21T20:00:00.000Z",
@@ -390,8 +393,19 @@ describe("Calendar operation bindings", () => {
         durationMinutes: 30,
         timeZone: "America/Los_Angeles",
       },
-    });
-    expect(await route(unscoped)).toBeUndefined();
+    };
+    expect(await route(unscoped, {})).toEqual(exactWindow);
+    expect(await route(unscoped)).toEqual(exactWindow);
+    expect(
+      await route(unscoped, {
+        missingBinding: true,
+        extraContext: "notes",
+        extraIntent: "Search the calendar",
+      }),
+    ).toEqual(exactWindow);
+    expect(
+      await route(unscoped, { missingBinding: true, userRoles: [] }),
+    ).toBeUndefined();
     for (const request of [
       "Can you find me a free hour tomorrow afternoon?",
       "Cool. Can you find me a free hour tomorrow sometime where I could actually go pick up those groceries in the afternoon?",
@@ -502,63 +516,6 @@ describe("Calendar operation bindings", () => {
     ).toEqual([
       expect.objectContaining({ intentId: "intent:1", filterEvidence: [] }),
     ]);
-    const capture = {
-      ...binding,
-      operation: "check_availability",
-      purpose: "mutation_prerequisite",
-      filterEvidence: [],
-    };
-    const unscoped =
-      "Find a thirty-minute opening tomorrow between noon and five p.m. for a grocery run.";
-    const exactContext = {
-      ...ctx,
-      message: {
-        ...message,
-        content: { ...message.content, text: unscoped },
-      },
-    };
-    expect(calendarReadBindingField.parse?.([capture], exactContext)).toEqual([
-      {
-        intentId: "intent:1",
-        operation: "propose_times",
-        execution: "required",
-        purpose: "requested_read",
-        filterEvidence: [],
-      },
-    ]);
-    expect(
-      calendarReadBindingField.parse?.(
-        [
-          {
-            ...capture,
-            operation: "propose_times",
-            purpose: "requested_read",
-            singleDaySearchDate: "today",
-          },
-        ],
-        exactContext,
-      ),
-    ).toEqual([
-      {
-        intentId: "intent:1",
-        operation: "propose_times",
-        execution: "required",
-        purpose: "requested_read",
-        filterEvidence: [],
-      },
-    ]);
-    expect(
-      calendarReadBindingField.parse?.([capture], {
-        ...exactContext,
-        message: {
-          ...exactContext.message,
-          content: {
-            ...exactContext.message.content,
-            text: `${unscoped} Then book it.`,
-          },
-        },
-      }),
-    ).toBeNull();
     for (const filterEvidence of [
       [{ ...purpose, query: "doctor" }],
       [{ ...purpose, origin: "referent" }],

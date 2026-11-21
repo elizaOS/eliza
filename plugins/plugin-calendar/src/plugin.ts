@@ -43,6 +43,7 @@ import { calendarSourcesProvider } from "./providers/calendar-sources.js";
 import {
   calendarReadBindingEvaluator,
   calendarReadBindingField,
+  registerLiteralSlotRouting,
 } from "./read-binding.js";
 import { calendarHttpRoutes } from "./routes/plugin-routes.js";
 import { CalendarService } from "./service/CalendarService.js";
@@ -100,6 +101,7 @@ export const calendarPlugin: Plugin = {
       requestLocalAvailability: requestLocalCalendarAvailability,
     });
     registerLocalCalendarTimeUpdateRouting(runtime);
+    registerLiteralSlotRouting(runtime);
     // Event create/move/delete requests reach Calendar from any open view.
     registerCalendarEventRequestRouting(runtime);
     registerLocalCalendarUpdatePlanner(runtime, (args) =>

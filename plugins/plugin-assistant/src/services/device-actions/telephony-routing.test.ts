@@ -21,7 +21,10 @@ import {
   withDeviceActionTurn,
 } from "./service.ts";
 import { authoredTelephonyRequest } from "./telephony-request.ts";
-import { registerDeviceTelephonyRouting } from "./tools.ts";
+import {
+  phoneMessageIntentField,
+  registerDeviceTelephonyRouting,
+} from "./tools.ts";
 
 const TELEPHONY = [
   "phone.call.v1",
@@ -211,6 +214,116 @@ describe("a whole-message call or text reaches the phone's own operation", () =>
 // proposed for a name nobody in Contacts has. The phone checks the name before
 // it offers a review; the agent, which cannot see the address book, must not
 // claim the contact exists or that its change is ready.
+describe("Stage 1 hands an authored SMS to the phone's proposal tool", () => {
+  it.each([
+    [
+      "Could you let Carson know by text that dinner is covered?",
+      "dinner is covered",
+      "send",
+    ],
+    [
+      "Send Carson a quick text asking whether he can bring ice.",
+      "whether he can bring ice",
+      "send",
+    ],
+    [
+      "Draft a text for Carson asking him to bring ice.",
+      "asking him to bring ice",
+      "draft",
+    ],
+  ] as const)(
+    "routes %s even if the model already tried to clarify",
+    async (text, bodyQuote, mode) => {
+      const f = await fixture(text);
+      await inTurn(f, TELEPHONY, async () => {
+        const ctx = {
+          runtime: f.runtime,
+          message: f.message,
+          senderRole: "OWNER" as const,
+          state: { text: "", values: {}, data: {} },
+          turnSignal: new AbortController().signal,
+        };
+        expect(await phoneMessageIntentField.shouldRun?.(ctx)).toBe(true);
+        const parsed = {
+          shouldRespond: "RESPOND" as const,
+          contexts: ["simple"],
+          intents: [],
+          candidateActionNames: [],
+          replyText: "What should the text say?",
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+        };
+        const value = phoneMessageIntentField.parse?.(
+          [{ mode, recipientQuote: "Carson", bodyQuote }],
+          ctx,
+        );
+        expect(value).toEqual({ mode, recipientQuote: "Carson", bodyQuote });
+        const effect = await phoneMessageIntentField.handle?.({
+          ...ctx,
+          value: value ?? null,
+          parsed,
+        });
+        effect?.mutateResult?.(parsed);
+        expect(parsed).toMatchObject({
+          candidateActionNames: ["PROPOSE_DEVICE_ACTION"],
+          intents: [text],
+          replyText: "",
+          replyEffectStatus: "pending",
+        });
+      });
+    },
+  );
+
+  it.each([
+    [
+      "Don't text Carson that dinner is covered.",
+      "Carson",
+      "dinner is covered",
+    ],
+    [
+      "If I say yes, text Carson that dinner is covered.",
+      "Carson",
+      "dinner is covered",
+    ],
+    [
+      "Text Carson or Maya that dinner is covered.",
+      "Carson",
+      "dinner is covered",
+    ],
+    [
+      "Text Carson on WhatsApp that dinner is covered.",
+      "Carson",
+      "dinner is covered",
+    ],
+    ["Text Carson that dinner is covered.", "Maya", "dinner is covered"],
+    ["Text Carson that dinner is covered.", "Carson", "order a pizza"],
+    [
+      "Draft a text for Carson that dinner is covered.",
+      "Carson",
+      "dinner is covered",
+    ],
+  ])(
+    "rejects ungrounded or unsafe send admission for %s",
+    async (text, recipientQuote, bodyQuote) => {
+      const f = await fixture(text);
+      const ctx = {
+        runtime: f.runtime,
+        message: f.message,
+        senderRole: "OWNER" as const,
+        state: { text: "", values: {}, data: {} },
+        turnSignal: new AbortController().signal,
+      };
+      expect(
+        phoneMessageIntentField.parse?.(
+          [{ mode: "send", recipientQuote, bodyQuote }],
+          ctx,
+        ),
+      ).toBeNull();
+    },
+  );
+});
+
 describe("contact changes and deletions name a contact the agent cannot see", () => {
   it("tells the agent the phone looks the name up first", () => {
     const { description } = deviceActionForCapabilities(proposeDeviceAction, [

@@ -12,6 +12,7 @@ import {
   type Memory,
   type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEvaluator,
+  registerDirectActionRoutingRule,
 } from "@elizaos/core";
 import {
   currentAppRecordSource,
@@ -100,6 +101,29 @@ function literalSlotWindow(
         expectedTopic,
       )
     : undefined;
+}
+
+const literalSlotRoute = "calendar.literal-slot";
+
+/**
+ * A whole, unqualified availability read belongs to the runtime Calendar.
+ * Register it before Stage 1 can stream a reply using a guessed source.
+ */
+export function registerLiteralSlotRouting(
+  runtime: Parameters<typeof registerDirectActionRoutingRule>[0],
+) {
+  const matches = (_text: string, message?: Memory) =>
+    !!message?.id &&
+    currentAppRecordSource(runtime, "calendar", message) === "runtime" &&
+    literalSlotWindow(message, message.createdAt, undefined) !== undefined;
+  registerDirectActionRoutingRule(runtime, {
+    id: literalSlotRoute,
+    actionNames: [CALENDAR_READ_ACTIONS.propose_times],
+    requiredActionTags: [],
+    contexts: ["calendar"],
+    matches,
+    wholeRequest: { matches, invalidateFields: ["calendarReadBindings"] },
+  });
 }
 
 type RequestedRead = Pick<
@@ -249,30 +273,6 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         item.purpose !== "mutation_prerequisite"
       )
         return null;
-      // A complete owner-authored slot request defines the operation and window.
-      // A binding must not narrow an unqualified request to the built-in calendar
-      // or substitute a check of the entire window for finding a shorter slot.
-      if (
-        value.length === 1 &&
-        ctx.senderRole === "OWNER" &&
-        (item.operation === "check_availability" ||
-          item.operation === "propose_times") &&
-        item.execution === "required" &&
-        Array.isArray(item.filterEvidence) &&
-        item.filterEvidence.length === 0 &&
-        currentAppRecordSource(ctx.runtime, "calendar", ctx.message) ===
-          "runtime" &&
-        literalSlotWindow(ctx.message, ctx.message.createdAt, undefined)
-      ) {
-        reads.push({
-          intentId,
-          operation: "propose_times",
-          execution: "required",
-          purpose: "requested_read",
-          filterEvidence: [],
-        });
-        continue;
-      }
       if (
         item.purpose === "mutation_prerequisite" &&
         item.operation !== "search_events" &&
@@ -531,13 +531,59 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
     ((Array.isArray(messageHandler.plan.calendarReadBindings) &&
       messageHandler.plan.calendarReadBindings.length > 0) ||
       (userRoles?.includes("OWNER") === true &&
-        calendarMutationPrerequisites(
-          getStreamingContext()?.actionConstraints,
-          message,
-          String(runtime.agentId),
-        ).length > 0)),
+        (literalSlotWindow(message, message.createdAt, undefined) !==
+          undefined ||
+          calendarMutationPrerequisites(
+            getStreamingContext()?.actionConstraints,
+            message,
+            String(runtime.agentId),
+          ).length > 0))),
   evaluate({ runtime, message, messageHandler, userRoles, wholeRequestOwner }) {
     const { plan } = messageHandler;
+    const turn = getStreamingContext();
+    if (
+      userRoles?.includes("OWNER") &&
+      message.id &&
+      (!wholeRequestOwner || wholeRequestOwner.id === literalSlotRoute) &&
+      !plan.deterministicToolCall &&
+      currentAppRecordSource(runtime, "calendar", message) === "runtime"
+    ) {
+      const window = literalSlotWindow(message, message.createdAt, undefined);
+      if (window && typeof message.content.text === "string") {
+        if (turn?.abortSignal) {
+          turn.actionConstraints ??= new Map();
+          rememberCalendarReadBindings(
+            turn.actionConstraints,
+            message,
+            String(runtime.agentId),
+            [
+              {
+                operation: "propose_times",
+                intentId: "intent:1",
+                execution: "required",
+              },
+            ],
+            turn.abortSignal,
+          );
+        }
+        return {
+          requiresTool: true,
+          clearReply: true,
+          clearCandidateActions: true,
+          clearParentActionHints: true,
+          setContexts: ["calendar"],
+          addCandidateActions: [CALENDAR_READ_ACTIONS.propose_times],
+          replaceIntentScope: {
+            intents: [message.content.text],
+            invalidateFields: ["calendarReadBindings"],
+          },
+          deterministicToolCall: {
+            name: CALENDAR_READ_ACTIONS.propose_times,
+            params: window,
+          },
+        };
+      }
+    }
     const bindings = (plan.calendarReadBindings ?? []) as CalendarReadBinding[];
     if (
       !userRoles?.includes("OWNER") ||
