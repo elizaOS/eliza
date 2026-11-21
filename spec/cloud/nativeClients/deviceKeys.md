@@ -276,8 +276,11 @@ acknowledgement time. A pending row without a complete original binding is
 retired, and its recoverable key copy is erased.
 
 Some older active rows recorded only their phase in JSON. Their actual row
-still records the credential and final expiry, so they need no invented
-lifetime to remain usable. Zero represents an unrecorded historical
+still records the final expiry. A migration-backed row that was already
+active can keep basic credential authority even if its nullable credential
+id was never recorded. This recorded authority is separate from an
+enrollment grant: it cannot exchange or acknowledge without the full
+original evidence, and no migration invents an id or lifetime. Zero represents an unrecorded historical
 lifetime only on an imported grant; a pending grant still needs its
 recorded valid lifetime before it can finish enrollment.
 An older active key with a recovered exact binding can replay its
@@ -309,7 +312,8 @@ pure val recordedValues: Set[LegacyBindingFacts] = {
 type LegacyGrantFacts = { phase: LegacyGrantPhase, client: GrantClient, codeExpiresAt: Millis, credentialTtl: Millis, credentialId: str, keyExpiresAt: Millis, epoch: int, now: Millis }
 pure def legacyGrant(f: LegacyGrantFacts): Grant = {
   val bound = f.client != UnrecordedClient and ttlFits(f.credentialTtl)
-  val phase = if (f.phase == OldActive) LegacyActive({ keyExpiresAt: f.keyExpiresAt })
+  val phase = if (f.credentialId == "" and f.phase != OldCodeIssued) Ended({ endedBy: NeverExchanged })
+    else if (f.phase == OldActive) LegacyActive({ keyExpiresAt: f.keyExpiresAt })
     else if (f.phase == OldCodeIssued) (if (bound) CodeIssued else Ended({ endedBy: NeverExchanged }))
     else if (f.phase == OldExchanged) (if (bound) Exchanged else Ended({ endedBy: NeverAcknowledged }))
     else if (f.credentialId == "") Ended({ endedBy: NeverExchanged })
@@ -319,7 +323,7 @@ pure def legacyGrant(f: LegacyGrantFacts): Grant = {
 }
 pure val fValues: Set[LegacyGrantFacts] = Set({ phase: OldActive, client: UnrecordedClient, codeExpiresAt: 300000, credentialTtl: 86400000, credentialId: "k1", keyExpiresAt: 86400000, epoch: 1, now: 0 }, { phase: OldExchanged, client: UnrecordedClient, codeExpiresAt: 300000, credentialTtl: 86400000, credentialId: "k1", keyExpiresAt: 0, epoch: 1, now: 0 })
 pure def lawMigrationKeepsAnActiveKeysRecordedExpiry(f: LegacyGrantFacts): bool =
-  f.phase == OldActive implies legacyGrant(f).phase == LegacyActive({ keyExpiresAt: f.keyExpiresAt })
+  (f.phase == OldActive and f.credentialId != "") implies legacyGrant(f).phase == LegacyActive({ keyExpiresAt: f.keyExpiresAt })
 pure def lawMigrationRefusesAnUnboundPendingGrant(f: LegacyGrantFacts): bool =
   ((f.phase == OldCodeIssued or f.phase == OldExchanged) and f.client == UnrecordedClient) implies not(isCodePending(legacyGrant(f)))
 pure def alwaysAPendingGrantHasItsRecordedInputs(g: Grant): bool = isCodePending(g) implies (ttlFits(g.credentialTtl) and hasRecordedClient(g))
@@ -349,17 +353,60 @@ the person's current device epoch is revoked, and an acknowledged key past
 its lifetime is expired. The shell answers `credential_unknown` for a key
 whose row is gone.
 
+The independent Worker enrollment records `FlatTokenStarted` on each new
+row. Its credential lifetime starts when the token is exchanged; its real
+acknowledgement activates that same recorded expiry without extending it.
+Both protocols use the same account device generation for basic authority.
+Only imported, previously active rows and explicitly marked Worker rows
+use recorded authority. An imported row that claims to have exchanged a
+code but has no credential id is retired. An unmodified old server ignores
+that generation, so it must stop serving and writing before
+generation-based revocation is activated.
+
 ```quint
+type KeyLifetime = { epoch: int, keyExpiresAt: Millis }
+type RecordedKeyPhase = RecordedPending | RecordedActive | RecordedExpired | RecordedRevoked
+type RecordedKey = { phase: RecordedKeyPhase, lifetime: KeyLifetime }
+type KeyAuthority = GrantAuthority({ grant: Grant }) | RecordedAuthority({ key: RecordedKey })
+pure def lifetimeRefusal(lifetime: KeyLifetime, now: Millis, deviceEpoch: int): RefusalReason =
+  if (lifetime.epoch < deviceEpoch) CredentialRevoked else if (now >= lifetime.keyExpiresAt) CredentialExpired else NoReason
+pure def recordedKeyRefusal(key: RecordedKey, now: Millis, deviceEpoch: int): RefusalReason = {
+  val phase = key.phase
+  match phase {
+  | RecordedActive => if (key.lifetime.epoch != deviceEpoch) CredentialRevoked else lifetimeRefusal(key.lifetime, now, deviceEpoch)
+  | RecordedExpired => if (key.lifetime.epoch != deviceEpoch) CredentialRevoked else CredentialExpired
+  | RecordedRevoked => CredentialRevoked
+  | RecordedPending => CredentialUnknown
+  }
+}
 pure def keyRefusal(g: Grant, now: Millis, deviceEpoch: int): RefusalReason = {
   val p = g.phase
   match p {
-    | Active(a) => if (revokedSince(g, deviceEpoch)) CredentialRevoked else if (now >= a.keyExpiresAt) CredentialExpired else NoReason
-    | LegacyActive(a) => if (revokedSince(g, deviceEpoch)) CredentialRevoked else if (now >= a.keyExpiresAt) CredentialExpired else NoReason
+    | Active(a) => lifetimeRefusal({ epoch: g.epoch, keyExpiresAt: a.keyExpiresAt }, now, deviceEpoch)
+    | LegacyActive(a) => lifetimeRefusal({ epoch: g.epoch, keyExpiresAt: a.keyExpiresAt }, now, deviceEpoch)
     | Expired => if (revokedSince(g, deviceEpoch)) CredentialRevoked else CredentialExpired
     | Ended(e) => if (e.endedBy == SelfRevoked) CredentialRevoked else CredentialUnknown
     | _ => CredentialUnknown
   }
 }
+pure def recordedExpiryReached(key: RecordedKey, now: Millis): bool = key.phase == RecordedActive and now >= key.lifetime.keyExpiresAt
+pure def authorityRefusal(authority: KeyAuthority, now: Millis, deviceEpoch: int): RefusalReason = match authority {
+  | GrantAuthority(a) => keyRefusal(a.grant, now, deviceEpoch)
+  | RecordedAuthority(a) => recordedKeyRefusal(a.key, now, deviceEpoch)
+}
+pure def authorityExpiry(authority: KeyAuthority): Millis = match authority {
+  | GrantAuthority(a) => ackAnswer(a.grant).expiresAt
+  | RecordedAuthority(a) => a.key.lifetime.keyExpiresAt
+}
+pure val keyValues: Set[RecordedKey] = Set(
+  { phase: RecordedPending, lifetime: { epoch: 0, keyExpiresAt: 10 } },
+  { phase: RecordedActive, lifetime: { epoch: 0, keyExpiresAt: 10 } },
+  { phase: RecordedActive, lifetime: { epoch: 1, keyExpiresAt: 10 } },
+  { phase: RecordedExpired, lifetime: { epoch: 0, keyExpiresAt: 10 } },
+  { phase: RecordedRevoked, lifetime: { epoch: 0, keyExpiresAt: 10 } })
+pure def lawRecordedAuthorityKeepsItsLifetime(key: RecordedKey, now: Millis, deviceEpoch: int): bool =
+  (recordedKeyRefusal(key, now, deviceEpoch) == NoReason) iff
+    (key.phase == RecordedActive and key.lifetime.epoch == deviceEpoch and now < key.lifetime.keyExpiresAt)
 pure def lawNoLaterEpochRevivesAKey(g: Grant, now: Millis, deviceEpoch: int, laterEpoch: int): bool =
   (laterEpoch >= deviceEpoch and keyRefusal(g, now, deviceEpoch) == CredentialRevoked) implies keyRefusal(g, now, laterEpoch) == CredentialRevoked
 ```

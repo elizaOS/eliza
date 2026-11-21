@@ -4,6 +4,7 @@ import { addCredits } from "../src/billing/funds.vibe"
 import { testCloud, type TestCloud } from "./support/cloud.vibe"
 import { signedCaller } from "./support/caller.vibe"
 import { googleMapsFake } from "./support/maps-fake.ts"
+import { osmFake } from "./support/maps-osm-fake.ts"
 
 effect function check(run: () => void) {
   try Effect.try(run)
@@ -31,6 +32,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     const first = try post("geocode", "geo-1", { query: "Brandenburger Tor" })
     const geocodesAfterFirst = maps.count("geocode")
     const repeated = try post("geocode", "geo-1", { query: "Brandenburger Tor" })
+    const repeatedGeocodes = maps.count("geocode") - geocodesAfterFirst
     const conflicting = try post("geocode", "geo-1", { query: "Alexanderplatz" })
     const unkeyed = try cloud.call("/api/v1/maps/geocode", { json: { query: "Brandenburger Tor" }, headers: caller.headers })
 
@@ -61,7 +63,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
       {
         lost: [lost.status, errorOf(lost)],
         first: [first.status, (first.body as { readonly places: ReadonlyArray<{ readonly name: string }> }).places.length],
-        repeated: [repeated.status, repeated.body, maps.count("geocode") - geocodesAfterFirst],
+        repeated: [repeated.status, repeated.body, repeatedGeocodes],
         conflicting: [conflicting.status, errorOf(conflicting)],
         unkeyed: [unkeyed.status, errorOf(unkeyed)],
         noRoute: [noRoute.status, errorOf(noRoute)],
@@ -126,6 +128,8 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     const tile = try cloud.call("/api/v1/maps/tiles/3/4/2", { headers: { ...caller.headers, "idempotency-key": "osm-tile-1" } })
     const usage = try sql(cloud, "SELECT r.operation, r.status, u.quote, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key ORDER BY u.settled_at, r.hold_key", [])
     const route = (walked.body as { readonly routes: ReadonlyArray<{ readonly distanceMeters: number; readonly durationSeconds: number; readonly traffic: string; readonly steps: ReadonlyArray<{ readonly maneuver?: string }> }> }).routes[0]
+    const walkedRequest = try Effect.try(() => JSON.parse(osm.calls[4]?.body ?? "{}"))
+    const walkedProfile = try Schema.decodeUnknownEffect(Schema.Struct({ profile: Schema.String }))(walkedRequest)
     const place = (reversed.body as { readonly place: { readonly id: string; readonly name: string } }).place
     const detail = (detailed.body as { readonly place: { readonly website?: string; readonly openingHours?: string; readonly phone?: string } }).place
     const offered = capabilities.body as { readonly providerId: string; readonly tiles?: unknown; readonly capabilities: { readonly map: boolean; readonly placeLookup: boolean; readonly modes: ReadonlyArray<string>; readonly traffic: string; readonly transit: string } }
@@ -138,7 +142,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         searched: [searched.status, placesOf(searched), typeof osm.calls[1]?.query.get("viewbox")],
         reversed: [reversed.status, place.id, place.name],
         detailed: [detailed.status, detail.website, detail.openingHours, detail.phone],
-        walked: [walked.status, route.distanceMeters, route.durationSeconds, route.traffic, route.steps.map((step) => step.maneuver), (JSON.parse(osm.calls[4]?.body ?? "{}") as { readonly profile?: string }).profile],
+        walked: [walked.status, route.distanceMeters, route.durationSeconds, route.traffic, route.steps.map((step) => step.maneuver), walkedProfile.profile],
         refusals: [transit.status, errorOf(transit), unroutable.status, errorOf(unroutable), outage.status, errorOf(outage), garbled.status, errorOf(garbled)],
         tile: [tile.status, errorOf(tile), osm.calls.length - callsBeforeTile],
         calls: osm.calls.length,

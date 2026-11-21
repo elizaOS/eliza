@@ -7,7 +7,7 @@ FROM accounts AS a
 WHERE a.key = g.user_id;
 
 WITH witnessed AS (
-  SELECT key,
+  SELECT key, phase, credential_id,
     CASE WHEN jsonb_typeof(state->'clientId') = 'string'
       AND length(state->>'clientId') > 0
       AND state->>'clientId' = client_id
@@ -34,7 +34,8 @@ WITH witnessed AS (
 ), observed AS (
   SELECT key, COALESCE(COALESCE(flat, nested) IS NOT NULL
     AND (flat IS NULL OR nested IS NULL OR flat = nested)
-    AND ttl = trunc(ttl) AND ttl BETWEEN 86400000 AND 7776000000, false) AS can_continue
+    AND ttl = trunc(ttl) AND ttl BETWEEN 86400000 AND 7776000000
+    AND (phase != 'exchanged' OR length(COALESCE(credential_id, '')) > 0), false) AS can_continue
   FROM witnessed
 )
 UPDATE device_grants AS g

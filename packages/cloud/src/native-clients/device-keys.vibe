@@ -1,5 +1,5 @@
 // spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"
-import { ackOutcome, ackPerIp, apply, grantBindingMatches, keyRefusal, nativeOutcome, revokeAll as revokeDeviceEpoch, tokenAnswer, tokenOutcome, tokenPerIp, type ClientBinding, type CodeRequest, type Event, type GoogleLink, type Grant } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
+import { ackOutcome, ackPerIp, apply, recordedExpiryReached, grantBindingMatches, nativeOutcome, revokeAll as revokeDeviceEpoch, tokenAnswer, tokenOutcome, tokenPerIp, type ClientBinding, type CodeRequest, type Event, type GoogleLink, type Grant, type GrantEffect } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
 import { clientCheck, codeChallengeMethod, faultRefusal, type ClientCheck, type ClientRequest, type Registration } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import type { NativeVerdict, SignInYield } from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
 import type { CodeBinding } from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
@@ -13,7 +13,7 @@ import { s256 } from "../shared/credential-crypto.vibe"
 import { newId, sameText, seal, secretText, tokenDigest, unseal } from "../shared/sealing.vibe"
 import { Store, toInt, toText, type Row, type Tx } from "../store/connection.vibe"
 import { type Columns } from "../store/rows.vibe"
-import { currentGrant, decodeGrant, grants, keyExpiresAt, phaseColumn, stepGrant } from "./grants.vibe"
+import { currentGrant, decodeGrant, endKey, grants, inspectKey, isFlatGrant, keyExpiresAt, phaseColumn, stepGrant } from "./grants.vibe"
 import { admitClient, parseReturn, readRegistry, servedEnvironment } from "./registry.vibe"
 
 export { grants, s256 }
@@ -180,13 +180,14 @@ export effect function openGrant(tx: Tx, opening: Opening) {
   return { key: opening.grantKey, code, codeExpiresAt: stepped.state.codeExpiresAt, out: stepped.out.out }
 }
 
-const grantColumns = "g.key, g.state, g.client_id, g.user_id, g.code_digest, g.code_challenge, g.state_digest, g.credential_id, g.secret_digest, g.sealed_copy, g.issued_at, g.key_expires_at, a.organization_id, a.status, a.device_epoch"
+const grantColumns = "g.key, g.state, g.phase, g.device_epoch AS grant_epoch, a.device_epoch AS account_epoch, g.client_id, g.user_id, g.code_digest, g.code_challenge, g.state_digest, g.credential_id, g.secret_digest, g.sealed_copy, g.issued_at, g.key_expires_at, a.organization_id, a.status, a.device_epoch"
 
 effect function grantBy(tx: Tx, column: "code_digest" | "credential_id" | "key", value: string) {
   return (try tx.query(`SELECT ${grantColumns} FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.${column} = $1 FOR UPDATE OF a, g`, [value]))[0]
 }
 
 effect function current(row: Row, now: number) {
+  if (isFlatGrant(row.state)) throw refused("CredentialProofInvalid")
   const grant = decodeGrant(row.state) catch effect () => { throw refused("ServiceUnavailable", "NoReason", now + 5000) }
   if (row.status !== "active") throw refused("AuthenticationRequired", "CredentialRevoked")
   return try currentGrant(grant, now)
@@ -251,11 +252,11 @@ export effect function connectAndMint(tx: Tx, opening: NativeOpening) {
 
 export effect function revokeAll(tx: Tx, userId: string, now: number) {
   const owner = try account(tx, userId)
-  const rows = try tx.query("SELECT state FROM device_grants WHERE user_id = $1 FOR UPDATE", [userId])
-  const live = try Effect.forEach(rows, effect (row) => { return decodeGrant(row.state) catch () => undefined })
+  const rows = try tx.query("SELECT state, phase, key_expires_at, device_epoch AS grant_epoch, $2::bigint AS account_epoch FROM device_grants WHERE user_id = $1 FOR UPDATE", [userId, owner.device_epoch])
+  const live = try Effect.forEach(rows, effect (row) => { return inspectKey(row, now) catch () => undefined })
   const changed = revokeDeviceEpoch(toInt(owner.device_epoch))
   try tx.query("UPDATE accounts SET device_epoch = $2, updated_at = $3 WHERE key = $1", [userId, changed.toDeviceEpoch, now])
-  return live.filter((grant) => grant !== undefined && keyRefusal(grant, now, toInt(owner.device_epoch)) === "NoReason").length
+  return live.filter((key) => key?.reason === "NoReason").length
 }
 
 export effect function perIp(context: RouteContext, limit: RateLimit) {
@@ -334,7 +335,8 @@ effect function selfRevoke(context: RouteContext) {
   try store.transaction(effect (tx: Tx) => {
     const row = try grantBy(tx, "key", caller.grantKey)
     if (row === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
-    try stepGrant(tx, caller.grantKey, { type: "selfRevoke", deviceEpoch: toInt(row.device_epoch) }, (grant) => ({ phase: phaseColumn(grant), sealed_copy: null, updated_at: grant.now }))
+    const reason = try endKey(tx, row, try Clock.currentTimeMillis)
+    if (reason !== "NoReason") throw refused("AuthenticationRequired", reason)
   })
   return HttpServerResponse.empty({ status: 204, headers: { "cache-control": "no-store" } })
 }
@@ -342,13 +344,22 @@ effect function selfRevoke(context: RouteContext) {
 export effect function retireGrant(tx: Tx, key: string, kind: "lapse" | "expire") {
   const held = try grantBy(tx, "key", key)
   if (held === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
-  return try stepGrant(tx, key, { type: kind }, (grant) => ({ phase: phaseColumn(grant), sealed_copy: null, updated_at: grant.now }))
+  const now = try Clock.currentTimeMillis
+  const authority = try inspectKey(held, now)
+  if (authority.authority.tag === "RecordedAuthority") {
+    if (kind !== "expire" || !recordedExpiryReached(authority.authority.key, now)) throw refused("CredentialProofInvalid")
+    try tx.query("UPDATE device_grants SET phase = 'expired', sealed_copy = NULL, revision = revision + 1, updated_at = $2 WHERE key = $1", [key, now])
+    const out: ReadonlyArray<GrantEffect> = []
+    return out
+  }
+  const stepped = try stepGrant(tx, key, { type: kind }, (grant) => ({ phase: phaseColumn(grant), sealed_copy: null, updated_at: grant.now }))
+  return stepped.out.out
 }
 
 export effect function sweepGrants(): void!!Store {
   const store = try Store
   const now = try Clock.currentTimeMillis
-  const stale = store.transaction((tx: Tx) => tx.query("SELECT key, phase FROM device_grants WHERE (phase IN ('code_issued', 'exchanged') AND code_expires_at <= $1) OR (phase = 'active' AND key_expires_at <= $1)", [now])) catch effect (failure) => {
+  const stale = store.transaction((tx: Tx) => tx.query("SELECT key, phase FROM device_grants WHERE (phase IN ('code_issued', 'exchanged') AND code_expires_at <= $1 AND NOT state ? 'flatDeviceGrant') OR (phase = 'active' AND key_expires_at <= $1)", [now])) catch effect (failure) => {
     try annotateLogs(logWarning("device grant sweep failed"), { cause: failure._tag })
     return []
   }

@@ -1,5 +1,6 @@
 // spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/sessions.md, "Story: Sign out here, or everywhere"
 import type { Client } from "pg"
+import { foreign, type Tx } from "./store/connection.vibe"
 import { SecureRandom } from "effect/crypto"
 import { apply, decodeState, initial, accepts, canRefresh, canLogout, type Family } from "../gen/cloud__identity__sessions.effect.vibe"
 import { firstSight, apply as applyAccount, decodeState as decodeAccount, initial as unopened, type Owner } from "../gen/cloud__identity__accounts.effect.vibe"
@@ -23,6 +24,13 @@ export const devicePattern = /^eliza_mobile_[0-9a-f]{64}$/
 
 export effect function authQuery<Row extends Record<string, unknown>>(db: Client, sql: string, params: readonly unknown[] = []) {
   return try tryPromise({ try: () => db.query<Row>(sql, [...params]), catch: () => new StorageUnavailable() })
+}
+
+export function identityTx(db: Client): Tx {
+  return {
+    query: (sql, params = []) => foreign("query", async () => (await db.query(sql, [...params])).rows),
+    script: (sql) => foreign("script", async () => { await db.query(sql) })
+  }
 }
 
 export effect function rateLimit(db: Client, scope: string, key: string, maximum: number, seconds: number) {

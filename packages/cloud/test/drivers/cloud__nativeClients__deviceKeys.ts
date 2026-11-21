@@ -289,7 +289,7 @@ async function dispatch(key: string, event: Event) {
       const held = await device(key);
       const answer = await attempt(within((tx) => retireGrant(tx, held.grantKey, event.type)));
       if (!answer.accepted) return "refused" as const;
-      outputs.set(key, answer.value.out.out);
+      outputs.set(key, answer.value);
       return "accepted" as const;
     }
     default: {

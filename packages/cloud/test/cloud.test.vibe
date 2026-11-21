@@ -437,7 +437,7 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     const at = try Clock.currentTimeMillis
     const futureCutoff = try signedIn(cloud, "future-cutoff@example.com")
     const expiry = at + 86_400_000
-    const legacy = ["active", "revoked", "pending", "bound", "malformed", "truncated", "nullable", "minimal", "missing-ttl", "contradictory", "other-nested", "numeric", "bound-active", "empty"]
+    const legacy = ["active", "revoked", "pending", "bound", "malformed", "truncated", "nullable", "minimal", "missing-ttl", "contradictory", "other-nested", "numeric", "bound-active", "empty", "null-id-active", "null-id-revoked", "null-id-pending", "scalar-active"]
     try cloud.store.transaction(effect (tx: Tx) => {
       try tx.query("DELETE FROM device_grants")
       try tx.query("DELETE FROM schema_migrations WHERE name = '0114_device_grant_binding.sql'")
@@ -449,8 +449,8 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
       try tx.query("INSERT INTO organizations (id, name, created_at) VALUES ('legacy-null-org', 'Nullable cutoff', $1)", [at])
       try tx.query("INSERT INTO accounts (key, state, revision, organization_id, status, devices_revoked_before, created_at, updated_at) VALUES ('legacy-null-user', '{}'::jsonb, 1, 'legacy-null-org', 'active', NULL, $1, $1)", [at])
       for (const name of legacy) {
-        const pending = ["pending", "bound", "malformed", "truncated", "missing-ttl", "contradictory", "other-nested", "numeric", "empty"].includes(name)
-        const witnessed = ["bound", "missing-ttl", "contradictory", "other-nested", "numeric", "bound-active", "empty"].includes(name)
+        const pending = ["pending", "bound", "malformed", "truncated", "missing-ttl", "contradictory", "other-nested", "numeric", "empty", "null-id-pending"].includes(name)
+        const witnessed = ["bound", "missing-ttl", "contradictory", "other-nested", "numeric", "bound-active", "empty", "null-id-pending"].includes(name)
         const old = { phase: { tag: pending ? "Exchanged" : "Active" }, clientId: binding.clientId, credentialTtl: 86_400_000,
           ...(witnessed ? { environment: "Staging", signInReturn: registration.signInReturn } : {}) }
         const stored = name === "malformed" ? { ...old, environment: "Staging", signInReturn: { origin: 1, path: 2 } }
@@ -458,12 +458,12 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
           : name === "missing-ttl" ? { clientId: binding.clientId, environment: "Staging", signInReturn: registration.signInReturn }
           : name === "contradictory" ? { ...old, client: { tag: "BoundClient", clientId: binding.clientId, environment: "Staging", signInReturn: { ...registration.signInReturn, path: "/another-return" } } }
           : name === "other-nested" ? { ...old, client: { tag: "BoundClient", clientId: "another.app", environment: "Staging", signInReturn: registration.signInReturn } }
-          : name === "numeric" ? { ...old, clientId: 123 } : name === "empty" ? { ...old, clientId: "" } : old
+          : name === "numeric" ? { ...old, clientId: 123 } : name === "empty" ? { ...old, clientId: "" } : name === "scalar-active" ? "legacy" : old
         const id = `00000000-0000-4000-8000-${String(legacy.indexOf(name) + 1).padStart(12, "0")}`
         const secret = `eliza_mobile_${tokenDigest(`legacy-${name}`)}`
         try tx.query("INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, code_digest, credential_id, secret_digest, sealed_copy, code_challenge, state_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, $2::jsonb, 1, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)", [
           `legacy-${name}`, JSON.stringify(stored), name === "nullable" ? "legacy-null-user" : signed.user.id, name === "numeric" ? "123" : name === "empty" ? "" : binding.clientId, pending ? "exchanged" : "active",
-          tokenDigest(`emac_${tokenDigest(name)}`), id, tokenDigest(secret), pending ? "old-sealed-copy" : null, s256(verifier), tokenDigest(state), at + 300_000, pending ? 0 : expiry, name === "revoked" ? at - 1000 : at - 100, at
+          tokenDigest(`emac_${tokenDigest(name)}`), name.startsWith("null-id-") ? null : id, tokenDigest(secret), pending ? "old-sealed-copy" : null, s256(verifier), tokenDigest(state), at + 300_000, pending ? 0 : expiry, ["revoked", "null-id-revoked"].includes(name) ? at - 1000 : at - 100, at
         ])
       }
     })
@@ -490,12 +490,13 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
       boundActiveAck: [boundActiveAck.status, Date.parse((boundActiveAck.body as { readonly expiresAt: string }).expiresAt)],
       rows: retained.map((row) => [row.key, row.phase, row.sealed_copy, Number(row.key_expires_at), Number(row.device_epoch)])
     }, {
-      applied: ["0114_device_grant_binding.sql"], admitted: [200, 401, 401, 401, 401, 401, 200, 200, 401, 401, 401, 401, 200, 401], pendingAck: 401, unboundActiveAck: 401, boundAck: [200, expiry + 1000], recoveredAck: 200, boundActiveAck: [200, expiry],
+      applied: ["0114_device_grant_binding.sql"], admitted: [200, 401, 401, 401, 401, 401, 200, 200, 401, 401, 401, 401, 200, 401, 200, 401, 401, 200], pendingAck: 401, unboundActiveAck: 401, boundAck: [200, expiry + 1000], recoveredAck: 200, boundActiveAck: [200, expiry],
       rows: [
         ["legacy-active", "active", null, expiry, 0], ["legacy-bound", "active", null, expiry + 1000, 0], ["legacy-bound-active", "active", null, expiry, 0], ["legacy-contradictory", "ended", null, 0, 0],
         ["legacy-empty", "ended", null, 0, 0], ["legacy-malformed", "ended", null, 0, 0], ["legacy-minimal", "active", null, expiry, 0], ["legacy-missing-ttl", "ended", null, 0, 0],
+        ["legacy-null-id-active", "active", null, expiry, 0], ["legacy-null-id-pending", "ended", null, 0, 0], ["legacy-null-id-revoked", "active", null, expiry, -1],
         ["legacy-nullable", "active", null, expiry, 0], ["legacy-numeric", "ended", null, 0, 0], ["legacy-other-nested", "active", null, expiry + 1000, 0],
-        ["legacy-pending", "ended", null, 0, 0], ["legacy-revoked", "active", null, expiry, -1], ["legacy-truncated", "ended", null, 0, 0]
+        ["legacy-pending", "ended", null, 0, 0], ["legacy-revoked", "active", null, expiry, -1], ["legacy-scalar-active", "active", null, expiry, 0], ["legacy-truncated", "ended", null, 0, 0]
       ]
     }))
     const afterMigration = try device(cloud, futureCutoff.accessToken, "After migration")
@@ -505,6 +506,18 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
       admittedAfterMigration.status, Number(observed[0]?.issued_at) < Number(observed[0]?.devices_revoked_before),
       Number(observed[0]?.device_epoch), Number(observed[0]?.account_epoch), Number(observed[0]?.devices_revoked_before)
     ], [200, true, 0, 0, at + 10_000]))
+    const historicalBearer = bearer(`eliza_mobile_${tokenDigest("legacy-null-id-active")}`)
+    try sync(() => clock.set(expiry - 1))
+    const beforeLegacyExpiry = try cloud.call("/api/v1/user", { headers: historicalBearer })
+    try sync(() => clock.set(expiry))
+    const atLegacyExpiry = try cloud.call("/api/v1/user", { headers: historicalBearer })
+    provide Store = cloud.store {
+      try sweepGrants()
+    }
+    const expiredLegacy = (try sql(cloud, "SELECT phase, credential_id, key_expires_at FROM device_grants WHERE key = $1", ["legacy-null-id-active"]))[0]
+    try check(() => assert.deepStrictEqual([beforeLegacyExpiry.status, atLegacyExpiry.status, ...refusal(atLegacyExpiry.body),
+      expiredLegacy?.phase, expiredLegacy?.credential_id, Number(expiredLegacy?.key_expires_at)],
+      [200, 401, "authentication_required", "credential_expired", "expired", null, expiry]))
     }
   }))
 })
@@ -1035,6 +1048,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     const first = try post("geocode", "geo-1", { query: "Brandenburger Tor" })
     const geocodesAfterFirst = maps.count("geocode")
     const repeated = try post("geocode", "geo-1", { query: "Brandenburger Tor" })
+    const repeatedGeocodes = maps.count("geocode") - geocodesAfterFirst
     const conflicting = try post("geocode", "geo-1", { query: "Alexanderplatz" })
     const unkeyed = try cloud.call("/api/v1/maps/geocode", { json: { query: "Brandenburger Tor" }, headers: caller.headers })
 
@@ -1065,7 +1079,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
       {
         lost: [lost.status, errorOf(lost)],
         first: [first.status, (first.body as { readonly places: ReadonlyArray<{ readonly name: string }> }).places.length],
-        repeated: [repeated.status, repeated.body, maps.count("geocode") - geocodesAfterFirst],
+        repeated: [repeated.status, repeated.body, repeatedGeocodes],
         conflicting: [conflicting.status, errorOf(conflicting)],
         unkeyed: [unkeyed.status, errorOf(unkeyed)],
         noRoute: [noRoute.status, errorOf(noRoute)],
