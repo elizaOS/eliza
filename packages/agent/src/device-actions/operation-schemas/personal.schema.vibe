@@ -91,7 +91,7 @@ const version = Schema.Literal(1)
 const CalendarFields = Schema.Struct({
   title: Text(500), description: BlankText(16_000), location: BlankText(2_000), start: Instant, end: Instant, timeZone: ZoneName,
 }).check(Schema.makeFilter(({ start, end }) => interval(start, end, 370 * day)))
-const CalendarSource = Schema.Struct({ sourceId: Identifier, sourceRevision: Revision })
+export const CalendarSource = Schema.Struct({ sourceId: Identifier, sourceRevision: Revision })
 const CalendarTarget = Schema.Struct({ sourceId: Identifier, sourceRevision: Revision, eventId: Identifier, revision: Revision })
 
 const CalendarCreateLocal = Schema.Struct({ type: Schema.Literal("calendar_create_local"), fields: CalendarFields })

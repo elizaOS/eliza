@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment never returns and retires every open offer"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A settled request never changes again"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"
+// spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment never returns and retires every open offer"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "A settled request never changes again"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"
 import type { IDatabaseAdapter } from "@elizaos/core"
 import { apply, initial, machineOver, noOwner, Rejected, step, type DeviceRequest, type Machine } from "../../gen/agent__deviceActions.effect.vibe"
 import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
@@ -17,22 +17,39 @@ module node {
   import type { SessionOwner } from "../../gen/core__sessions.ts"
   import { allCapabilities, canSetViewProfile, setViewProfile, type DeviceView, type Need, type RevisionRead, type ViewProfile } from "../../gen/agent__deviceActions__capabilities.ts"
   import type { ReadBinding } from "../../gen/agent__deviceActions__operations.ts"
+  import { CalendarSource } from "./operation-schemas/personal.schema.vibe"
+  import { readOperation } from "./operations.schema.vibe"
 
   export type EnrollmentEvent = Extract<Event, { type: "registerDevice" | "revokeEnrollment" }>
   export type OfferEvent = Extract<Event, { type: "offer" }>
 
+  const WorkflowId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/))
+  const WorkflowDigest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+  const Authority = Schema.Union([
+    Schema.Struct({
+      kind: Schema.Literal("WorkflowBinding"), workflowId: WorkflowId, versionId: WorkflowId,
+      runId: WorkflowId, stepId: WorkflowId, specDigest: WorkflowDigest,
+    }),
+    Schema.Struct({ kind: Schema.Literal("AgendaBinding"), ...CalendarSource.fields }),
+  ])
+  type BindingAuthority = typeof Authority.Type
+
   export interface RequestTerms {
     readonly operation: unknown
-    readonly binding: ReadBinding
+    readonly binding: Extract<ReadBinding, "NoBinding"> | BindingAuthority
     readonly boundProfile: RevisionRead
     readonly need: Need
+  }
+
+  export interface RetainedRequestTerms extends Omit<RequestTerms, "binding"> {
+    readonly binding: ReadBinding | BindingAuthority
   }
 
   export interface RequestRow {
     readonly proposalId: string
     readonly revision: number
     readonly state: DeviceRequest
-    readonly terms: RequestTerms
+    readonly terms: RetainedRequestTerms
     readonly result: unknown
     readonly createdAt: number
   }
@@ -53,7 +70,7 @@ module node {
 
   type Row = {
     proposal_id: string; revision: number; state: unknown; operation: unknown; binding: string
-    bound_profile: unknown; need: unknown; result: unknown; created_at: number | string
+    binding_authority: unknown; bound_profile: unknown; need: unknown; result: unknown; created_at: number | string
   }
 
   const views = {
@@ -72,8 +89,9 @@ module node {
   })
   const Views = Schema.Array(View)
   const decodeTerms = Schema.decodeUnknownSync(Terms)
+  const decodeAuthority = Schema.decodeUnknownSync(Authority, { onExcessProperty: "error" })
   const decodeViews = Schema.decodeUnknownSync(Views)
-  const columns = "proposal_id, revision, state, operation, binding, bound_profile, need, result, created_at"
+  const columns = "proposal_id, revision, state, operation, binding, binding_authority, bound_profile, need, result, created_at"
 
   function connection(value: object): Sql {
     if (!("query" in value) || typeof value.query !== "function") throw new TypeError("The device request store needs a SQL connection")
@@ -92,9 +110,11 @@ module node {
 
   function request(row: Row): RequestRow {
     const terms = decodeTerms({ binding: row.binding, boundProfile: row.bound_profile, need: row.need })
+    const binding = row.binding_authority === null ? terms.binding : decodeAuthority(row.binding_authority)
+    if (typeof binding !== "string" && binding.kind !== terms.binding) throw new TypeError("Stored device authority does not match its binding")
     return {
       proposalId: row.proposal_id, revision: row.revision, state: parsed(`request ${row.proposal_id}`, row.state),
-      terms: { operation: row.operation, binding: terms.binding, boundProfile: terms.boundProfile, need: { required: [...terms.need.required], oneOf: [...terms.need.oneOf] } },
+      terms: { operation: row.operation, binding, boundProfile: terms.boundProfile, need: { required: [...terms.need.required], oneOf: [...terms.need.oneOf] } },
       result: row.result, createdAt: Number(row.created_at),
     }
   }
@@ -132,11 +152,20 @@ module node {
     return within(adapter, async (sql) => {
       const current = await enrollmentIn(sql)
       if ((current?.revision ?? 0) !== enrollment) return "stale"
-      const checked = decodeTerms(terms)
+      const authority = typeof terms.binding === "string" ? undefined : decodeAuthority(terms.binding)
+      const checked = decodeTerms({ ...terms, binding: authority?.kind ?? terms.binding })
+      if (authority?.kind === "AgendaBinding") {
+        const operation = readOperation(terms.operation)?.operation
+        if (operation?.type !== "read_calendar_range" || operation.calendarIds.length !== 1 ||
+          operation.calendarIds[0] !== authority.sourceId || offered.origin.inReplyTo === "") {
+          throw new TypeError("A standalone agenda offer needs the reviewed source and original message")
+        }
+      }
       const inserted = await sql.query(
-        `INSERT INTO device_requests (${columns}, settled) VALUES ($1, 1, $2::jsonb, $3::jsonb, $4, $5::jsonb, $6::jsonb, NULL, $7, $8)
+        `INSERT INTO device_requests (${columns}, settled) VALUES ($1, 1, $2::jsonb, $3::jsonb, $4, $5::jsonb, $6::jsonb, $7::jsonb, NULL, $8, $9)
            ON CONFLICT (proposal_id) DO NOTHING`,
         [offered.proposalId, JSON.stringify(offered), JSON.stringify(terms.operation), checked.binding,
+          authority === undefined ? null : JSON.stringify(authority),
           JSON.stringify(checked.boundProfile), JSON.stringify(checked.need), offered.createdAt, requestSettled(offered.phase)],
       )
       return inserted.affectedRows === 1 ? "seeded" : "taken"
@@ -272,9 +301,9 @@ module node {
 import {
   readEnrollment, readRequest, readViewProfile, requestRows, seedRequest, writeEnrollment, writeReceipt, writeRequest, writeViewProfile,
   type AdmittedRequestReceipt, type EnrollmentEvent, type EnrollmentRow, type OfferEvent, type ProfileChange,
-  type ReceiptCommit, type RequestEvent, type RequestRow, type RequestTerms, type Settled,
+  type ReceiptCommit, type RequestEvent, type RequestRow, type RequestTerms, type RetainedRequestTerms, type Settled,
 } from node
-export type { AdmittedRequestReceipt, EnrollmentEvent, OfferEvent, ProfileChange, ReceiptCommit, RequestEvent, RequestRow, RequestTerms, Settled } from node
+export type { AdmittedRequestReceipt, EnrollmentEvent, OfferEvent, ProfileChange, ReceiptCommit, RequestEvent, RequestRow, RequestTerms, RetainedRequestTerms, Settled } from node
 export { commitReadCompletion, readCompletionPublication, withReadCompletionPublication } from node
 
 export interface DeviceRequestRecord {
@@ -284,7 +313,7 @@ export interface DeviceRequestRecord {
   }
   readonly result: unknown
   readonly proposalId: string
-  readonly terms: RequestTerms
+  readonly terms: RetainedRequestTerms
   readonly createdAt: number
 }
 

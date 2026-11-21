@@ -19,8 +19,12 @@ module node {
   const result = { kind: "calendar", events: [{ title: "Dentist", start: "2026-11-18T09:00:00Z" }] }
 
   const terms: RequestTerms = {
-    operation: { type: "read_calendar_range", start: "2026-11-18", end: "2026-11-19" },
-    binding: "AgendaBinding", boundProfile: { tag: "NoRevisionRead" },
+    operation: {
+      type: "read_calendar_range", calendarIds: ["calendar-1"],
+      start: "2026-11-18T00:00:00.000Z", end: "2026-11-19T00:00:00.000Z", timeZone: "Etc/UTC", maximumEvents: 20,
+    },
+    binding: { kind: "AgendaBinding", sourceId: "calendar-1", sourceRevision: "c".repeat(64) },
+    boundProfile: { tag: "NoRevisionRead" },
     need: { required: ["CalendarAgendaReadV1"], oneOf: [] },
   }
 
