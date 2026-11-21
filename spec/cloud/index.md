@@ -97,7 +97,7 @@ pure def cloudDeviceAllows(deviceEndsAt: int, nowAt: int, acknowledged: bool, in
 ## Story: Connect Google mail and calendar
 
 > As a signed-in person, I can choose to connect Google mail, my primary
-> calendar or both. I can read the Gmail inbox and Calendar events I
+> calendar or both. I can read my Gmail folders and Calendar events I
 > approved, and disconnect the access I granted.
 
 ### Google sign-in and read access require separate permission
@@ -120,7 +120,9 @@ A read requires an active browser session for the account that consented.
 The service keeps the refresh credential encrypted for that deployment,
 account and approved scopes. Disconnecting removes the local credential and any
 pending consent authorizations. Browser and native inference credentials
-have separate permissions. A Gmail message read returns named attachment
+have separate permissions. The owner can search Inbox, Sent, Drafts or Trash.
+Counts show the provider’s unread Inbox messages and total draft messages across
+the mailbox, including messages beyond the displayed page. A Gmail message read returns named attachment
 descriptors without attachment bytes. Fetching a supported part requires the
 same owner and explicit mail grant, with its message, history and part
 identifiers. A changed history or missing part cannot return content.
