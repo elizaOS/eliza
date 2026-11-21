@@ -125,7 +125,7 @@ describe("standalone Calendar availability", () => {
       {
         parameters: {
           subaction: "feed",
-          details: { timeMin: start, timeMax: end, timeZone },
+          details: { side: "owner", timeMin: start, timeMax: end, timeZone },
         },
       },
     );
@@ -263,7 +263,12 @@ describe("standalone Calendar availability", () => {
       {
         parameters: {
           subaction: "feed",
-          details: { timeMin: start, timeMax: wideEnd, timeZone },
+          details: {
+            side: "owner",
+            timeMin: start,
+            timeMax: wideEnd,
+            timeZone,
+          },
         },
       },
     );

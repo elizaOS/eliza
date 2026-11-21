@@ -44,7 +44,7 @@ const tensWords = [
   "ninety",
 ];
 const slotRequest =
-  /^(?:(?:cool|okay|thanks|thank you)[,.!] )?(?:(?:can|could|would) you )?(?:find(?: me)?|show me|suggest) (?:(?:a )?(?<duration>\d{1,3}|[a-z]+(?:[ -][a-z]+)?)[ -]minutes? (?:slot|gap|opening)|(?<freeHour>(?:a|one) free hour))(?: for (?<topic>[\p{L}\p{M}]+))? (?<window>.+?)(?: for (?<purpose>(?:(?:a|an) )?[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)?))?(?<builtin> (?:on|in) (?:my|the) built[ -]in (?:eliza )?calendar)?$/u;
+  /^(?:(?:cool|okay|thanks|thank you)[,.!] )?(?:(?:can|could|would) you )?(?:find(?: me)?|show me|suggest) (?:(?:a )?(?<duration>\d{1,3}|[a-z]+(?:[ -][a-z]+)?)[ -]minutes? (?:slot|gap|opening)|(?<freeHour>(?:a|one) free hour)|(?<halfHour>half an hour free|a free half[- ]hour))(?: for (?<topic>[\p{L}\p{M}]+))? (?<window>.+?)(?:(?: for| to (?:get|buy|pick up|shop for)) (?<purpose>(?:(?:a|an) )?[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)?))?(?<builtin> (?:on|in) (?:my|the) built[ -]in (?:eliza )?calendar)?$/u;
 const purposeConstraint =
   /\b(?:today|tomorrow|yesterday|next|last|before|after|during|until|between|unless|if|when|while|then|and|or|with|without|except|on|in|at|past|not|only|calendar|noon|midnight)\b/u;
 const day = String.raw`(?:today|tomorrow|(?:the )?day after tomorrow|\d{4}-\d{2}-\d{2})`;
@@ -125,7 +125,7 @@ export function parseScopedCalendarSlotWindow(
   )?.groups;
   const topic = input?.topic ?? input?.purpose;
   if (
-    (!input?.duration && !input?.freeHour) ||
+    (!input?.duration && !input?.freeHour && !input?.halfHour) ||
     !input.window ||
     Boolean(input.builtin) !== (source === "builtin") ||
     (input.topic && (!input.builtin || input.purpose)) ||
@@ -144,7 +144,11 @@ export function parseScopedCalendarSlotWindow(
       parseExplicitLocalDate(topic, timeZone, now))
   )
     return;
-  const durationMinutes = input.freeHour ? 60 : quantity(input.duration);
+  const durationMinutes = input.freeHour
+    ? 60
+    : input.halfHour
+      ? 30
+      : quantity(input.duration);
   if (
     durationMinutes < CALENDAR_NEW_SLOT_DURATION_MINUTES.min ||
     durationMinutes > CALENDAR_NEW_SLOT_DURATION_MINUTES.max

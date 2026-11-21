@@ -395,6 +395,25 @@ describe("Calendar operation bindings", () => {
       },
     };
     expect(await route(unscoped, {})).toEqual(exactWindow);
+    expect(
+      await route(
+        "Find me half an hour free tomorrow afternoon to get groceries.",
+        {},
+      ),
+    ).toEqual(exactWindow);
+    expect(
+      await route(
+        "Find me a free half-hour tomorrow between noon and five p.m.",
+        {},
+      ),
+    ).toEqual(exactWindow);
+    expect(
+      await route(
+        "Find me half an hour free tomorrow afternoon to get groceries, then send a text.",
+        {},
+      ),
+    ).toBeUndefined();
+
     expect(await route(unscoped)).toEqual(exactWindow);
     expect(
       await route(unscoped, {

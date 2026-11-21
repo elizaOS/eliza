@@ -283,7 +283,15 @@ export function calendarAvailabilityActions(
           parameters: {
             subaction: "feed",
             ...selectedSource,
-            details: { timeMin: range.start, timeMax: range.end, timeZone },
+            // Availability is about the owner's visible Calendar. Scope its
+            // feed the same way as the app's agenda so other accounts or agent
+            // calendars cannot supply busy intervals or poison completeness.
+            details: {
+              side: "owner",
+              timeMin: range.start,
+              timeMax: range.end,
+              timeZone,
+            },
           },
         });
         signal?.throwIfAborted();
