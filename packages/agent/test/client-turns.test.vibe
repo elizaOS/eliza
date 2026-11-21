@@ -44,12 +44,15 @@ module node {
         },
         async *requestStream({ path, body }, signal): AsyncIterable<RuntimeStreamFrame> {
           note("POST", path, body)
-          const response = await fetch(origin + path, init("POST", body, signal))
+          const native = new AbortController()
+          const dropped = net.dropStreams > 0
+          if (dropped) net.dropStreams -= 1
+          else signal.addEventListener("abort", () => native.abort(signal.reason), { once: true })
+          const response = await fetch(origin + path, init("POST", body, native.signal))
           yield { kind: "head", status: response.status, headers: Object.fromEntries(response.headers) }
           const chunks = response.body?.[Symbol.asyncIterator]()
           if (chunks === undefined) return yield { kind: "end" }
-          if (net.dropStreams > 0) {
-            net.dropStreams -= 1
+          if (dropped) {
             void (async () => { for (let read = await chunks.next(); !read.done; read = await chunks.next()); })().catch(() => undefined)
             return yield { kind: "error" }
           }
@@ -93,7 +96,7 @@ module node {
     const bound = controller.conversation
     const kept = controller.stopped
     cloud.script(text("Hello."))
-    const next = await controller.send({ text: "Say hello." })
+    const next = await controller.send({ text: "Say hello." }, { stream: {} })
     const keptBesideNext = controller.stopped
     if (stoppedFirst.kind === "StoppedByOwner") controller.releaseStopped(stoppedFirst.clientMessageId)
     const released = controller.stopped
@@ -108,7 +111,7 @@ module node {
     const refused = await controller.send({ text: "Still there?" })
     const leftNothing = net.sent.length === before
     cloud.script(text("Yes."))
-    const after = await controller.send({ text: "Still there?" })
+    const after = await controller.send({ text: "Still there?" }, { stream: {} })
     return {
       busy: shown(busy), confirmed, stoppedFirst: shown(stoppedFirst), previews: previews.length,
       kept: kept?.clientMessageId === (stoppedFirst.kind === "StoppedByOwner" ? stoppedFirst.clientMessageId : undefined) && kept?.conversation.id === bound?.id,
@@ -137,9 +140,9 @@ module node {
     const stillBound = controller.conversation !== null
     const gone = controller
     await gone.bind({ id: "00000000-0000-4000-8000-000000000001", roomId: "00000000-0000-4000-8000-000000000002" })
-    const lost = await gone.send({ text: "Hello?" })
+    const lost = await gone.send({ text: "Hello?" }, { stream: {} })
     const unboundAfterLoss = gone.conversation
-    const fresh = await gone.send({ text: "Hello?" })
+    const fresh = await gone.send({ text: "Hello?" }, { stream: {} })
     return {
       resent: shown(resent),
       sameKey: keys.length === 2 && keys[0]?.stream === true && keys[1]?.stream === false && keys[0]?.clientMessageId === keys[1]?.clientMessageId,

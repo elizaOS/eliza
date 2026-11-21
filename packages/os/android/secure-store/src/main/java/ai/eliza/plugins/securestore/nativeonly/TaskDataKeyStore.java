@@ -1,3 +1,4 @@
+// spec/os/android/taskKeys.md, "Each account has at most one task key, and a stored key is never replaced"
 package ai.eliza.plugins.securestore.nativeonly;
 
 import android.os.Build;

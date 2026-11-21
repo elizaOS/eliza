@@ -31,7 +31,7 @@ import { gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/go
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
 import { signedCaller } from "./support/caller.vibe"
-import { callDeclaring } from "./support/http.ts"
+import { callAtHost, callDeclaring } from "./support/http.ts"
 import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
 import { recordingBytes, recordingForm } from "./support/recording.ts"
 import { openRelay, upgradeStatus, type Received } from "./support/relay-socket.ts"
@@ -223,6 +223,7 @@ describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)
     const paid = try cloud.call("/api/v1/subscriptions/checkout/payer?outcome=paid")
     const other = try cloud.call("/api/v1/subscriptions/checkout/payer?outcome=success")
     const payerOnWeb = try cloud.call("/api/v1/subscriptions/checkout/payer?outcome=paid", { headers: web })
+    const spoofed = try promise(() => callAtHost(cloud.url, "/apps/fixture/sign-in", "api.staging.example.com", web))
     try check(() => assert.deepStrictEqual(
       {
         status: signIn.status,
@@ -234,7 +235,7 @@ describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)
         script: /script-src '(sha256-[^']+)'/.exec(signIn.headers["content-security-policy"] ?? "")?.[1],
         framing: /frame-ancestors 'none'/.test(signIn.headers["content-security-policy"] ?? ""),
         connect: [connect.status, /data-purpose="([^"]*)"/.exec(String(connect.body))?.[1]],
-        missing: [elsewhere.status, (elsewhere.body as { readonly error?: string }).error, onApi.status, payerOnWeb.status],
+        missing: [elsewhere.status, (elsewhere.body as { readonly error?: string }).error, onApi.status, payerOnWeb.status, spoofed.status],
         payer: [paid.status, String(paid.body).includes("Check the subscription"), other.status, String(other.body).includes("Checkout closed")],
         payerScript: [/script-src/.test(paid.headers["content-security-policy"] ?? ""), /<script/.test(String(paid.body)), paid.headers["cache-control"]]
       },
@@ -248,7 +249,7 @@ describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)
         script: forwardScriptHash,
         framing: true,
         connect: [200, "ConnectPurpose"],
-        missing: [404, "not_found", 404, 404],
+        missing: [404, "not_found", 404, 404, 404],
         payer: [200, true, 200, true],
         payerScript: [false, false, "no-store"]
       }
@@ -257,7 +258,10 @@ describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)
       try cloud.store.transaction((tx) => disableClient(tx, "com.example.fixture", now))
     }
     const disabled = try cloud.call("/apps/fixture/sign-in", { headers: web })
-    try check(() => assert.strictEqual(disabled.status, 404))
+    try cloud.store.transaction((tx) => tx.query("ALTER TABLE native_clients RENAME TO native_clients_unreadable"))
+    const unreadable = try cloud.call("/apps/fixture/sign-in", { headers: web })
+    const payerUnreadable = try cloud.call("/api/v1/subscriptions/checkout/payer?outcome=paid")
+    try check(() => assert.deepStrictEqual([disabled.status, unreadable.status, payerUnreadable.status], [404, 503, 200]))
   }))
 })
 describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/deviceKeys.md)", () => {
@@ -584,7 +588,7 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
       readonly google: { readonly connected: boolean; readonly connectionId: string; readonly email: string; readonly scopes: ReadonlyArray<string>; readonly refreshTokenIssued: boolean }
     }
     const acked = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: body.credentialId, secret: body.secret } })
-    const grants = try sql(cloud, "SELECT state->>'phase' AS phase FROM device_grants", [])
+    const grants = try sql(cloud, "SELECT phase, state->'phase'->>'tag' AS tag, state->'origin' AS origin FROM device_grants", [])
     const connections = try sql(cloud, "SELECT key, subject, email FROM google_connections", [])
     try check(() => assert.deepStrictEqual(
       {
@@ -592,7 +596,7 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
         signed: [signed.status, signed.headers["cache-control"], body.status, body.tokenType, body.scopes, body.acknowledgementRequired, /^emac_[0-9a-f]{64}$/.test(body.code), body.accountCreated, body.identity],
         google: [body.google.connected, body.google.email, body.google.scopes, body.google.refreshTokenIssued],
         acked: [acked.status, (acked.body as { readonly status?: string }).status],
-        stored: [grants.length, connections.map((row) => [row.key, row.subject, row.email])],
+        stored: [grants.map((row) => [row.phase, row.tag, row.origin]), connections.map((row) => [row.key, row.subject, row.email])],
         googleCalls: google.tokenRequests.map((form) => [form.get("client_id"), form.get("redirect_uri"), form.has("code_verifier")])
       },
       {
@@ -600,7 +604,7 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
         signed: [200, "no-store", "signed_in", "Bearer", ["cloud:user"], true, true, true, { provider: "google", subject: person.subject, email: person.email }],
         google: [true, person.email, scopes, true],
         acked: [200, "acknowledged"],
-        stored: [1, [[body.google.connectionId, person.subject, person.email]]],
+        stored: [[["active", "Active", { tag: "NativeGoogle", serverCode: "WithServerCode" }]], [[body.google.connectionId, person.subject, person.email]]],
         googleCalls: [["google-server-client", "", false]]
       }
     ))

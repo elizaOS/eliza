@@ -92,7 +92,8 @@ effect function pageResponse(answer: PageAnswer) {
   const loaded = try tryPromise({ try: () => pageTemplate(packageRoot, file), catch: () => new PageTemplateMissing({ file }) })
   if (loaded === undefined) throw new PageTemplateMissing({ file })
   const html = loaded.source.replace(slotPattern, (token) => {
-    const value = slots[slotOf.get(token) ?? "purpose"]
+    const slot = slotOf.get(token)
+    const value = slot === undefined ? undefined : slots[slot]
     return value === undefined ? token : escaped(value)
   })
   const headers = pageHeaders(page)

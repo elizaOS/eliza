@@ -235,6 +235,7 @@ effect function sendTurn(session: Session, message: TurnMessage, options: TurnOp
   if (turnId(ready.turn) !== turn) return stopped
   if (heldConversation(ready.stop) > 0) {
     try advanceTurns(session, { type: "refuseAfterStop", turn })
+    session.live = undefined
     return { kind: "RefusedStopUnconfirmed" } satisfies TurnResult
   }
   const bound = boundConversation(ready.binding) === 0 ? try createConversation(session) : { conversation: boundConversation(ready.binding), room: boundRoom(ready.binding) }
