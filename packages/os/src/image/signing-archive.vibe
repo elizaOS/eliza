@@ -1,0 +1,220 @@
+// spec/os/image/signing.md, "An unmapped APK, APEX or verified-boot key refuses signing"; spec/os/image/signing.md, "Verified boot is signed with SHA256_RSA4096 and chains exactly vbmeta_system and vbmeta_vendor"; spec/os/image/signing.md, "The update package is built only after every re-signed APK and APEX verifies with a release certificate"
+import { bootChainAdmitted } from "../../gen/os__image__signing.effect.vibe"
+import { ChildProcess } from "effect/process"
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+import { SigningRefused } from "./signing-keys.vibe"
+
+module node {
+  import { Buffer } from "node:buffer"
+  import { createHash, createPublicKey, verify } from "node:crypto"
+
+  interface ChainEntry {
+    readonly partition: string
+    readonly location: number
+    readonly publicKeySha256: string
+  }
+
+  export interface VerifiedBootImage {
+    readonly index: string
+    readonly location: number
+    readonly publicKeySha256: string
+    readonly imageSha256: string
+    readonly chains: readonly ChainEntry[]
+  }
+
+  export function newDigest() {
+    const hash = createHash("sha256")
+    let sizeBytes = 0
+    return {
+      update(bytes: Uint8Array) {
+        hash.update(bytes)
+        sizeBytes += bytes.length
+      },
+      finish() {
+        const value = hash.digest()
+        return { sizeBytes, sha256: value.toString("hex"), base64: value.toString("base64") }
+      },
+    }
+  }
+
+  function sha256(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  function bounded(buffer: Buffer, offset: number, size: number): Buffer {
+    if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(size) || offset < 0 || size < 0 || offset > buffer.length - size) throw new Error("AVB image field exceeds its block")
+    return buffer.subarray(offset, offset + size)
+  }
+
+  function number(buffer: Buffer, offset: number): number {
+    const value = buffer.readBigUInt64BE(offset)
+    if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("AVB image offset exceeds its block")
+    return Number(value)
+  }
+
+  export function verifiedVbmeta(bytes: Uint8Array, expectedKey: string): VerifiedBootImage {
+    const image = Buffer.from(bytes)
+    const header = bounded(image, 0, 256)
+    if (header.toString("ascii", 0, 4) !== "AVB0" || header.readUInt32BE(4) !== 1 ||
+        header.readUInt32BE(28) !== 2 || header.readUInt32BE(120) !== 0) throw new Error("Invalid SHA256_RSA4096 verified-boot header")
+    const auth = bounded(image, 256, number(header, 12))
+    const aux = bounded(image, 256 + auth.length, number(header, 20))
+    const hash = bounded(auth, number(header, 32), number(header, 40))
+    const signature = bounded(auth, number(header, 48), number(header, 56))
+    const key = bounded(aux, number(header, 64), number(header, 72))
+    const keySha256 = sha256(key)
+    if (key.length !== 1032 || key.readUInt32BE(0) !== 4096 || keySha256 !== expectedKey) throw new Error("AVB image has a different enrolled public key")
+    const signed = Buffer.concat([header, aux])
+    const publicKey = createPublicKey({ format: "jwk", key: { kty: "RSA", n: key.subarray(8, 520).toString("base64url"), e: "AQAB" } })
+    if (hash.length !== 32 || !hash.equals(createHash("sha256").update(signed).digest()) || signature.length !== 512 ||
+        !verify("sha256", signed, publicKey, signature)) throw new Error("AVB image signature does not verify")
+    const descriptors = bounded(aux, number(header, 96), number(header, 104))
+    const chains: ChainEntry[] = []
+    for (let offset = 0; offset < descriptors.length;) {
+      const prefix = bounded(descriptors, offset, 16)
+      const tag = prefix.readBigUInt64BE(0)
+      const size = number(prefix, 8)
+      const body = bounded(descriptors, offset + 16, size)
+      if (size % 8 !== 0) throw new Error("AVB descriptor size is not aligned")
+      if (tag === 4n) {
+        const head = bounded(body, 0, 76)
+        const location = head.readUInt32BE(0)
+        const name = bounded(body, 76, head.readUInt32BE(4))
+        const publicKey = bounded(body, 76 + name.length, head.readUInt32BE(8))
+        const partition = name.toString("utf8")
+        if (!/^[a-z][a-z0-9_]*$/.test(partition) || location === 0 || sha256(publicKey) !== expectedKey) throw new Error("Invalid verified-boot chain")
+        chains.push({ partition, location, publicKeySha256: expectedKey })
+      }
+      offset += 16 + size
+    }
+    return { index: String(header.readBigUInt64BE(112)), location: header.readUInt32BE(124), publicKeySha256: keySha256,
+      imageSha256: sha256(image), chains }
+  }
+}
+import { newDigest, verifiedVbmeta } from node
+export type { VerifiedBootImage } from node
+
+const entryName = /^[A-Za-z0-9._+\/-]+$/
+export const metadataLimit = 2 * 1024 * 1024
+
+function archiveName(name: string): boolean {
+  return entryName.test(name) && name.replace(/\/$/, "").split("/").every((part) => part !== "" && part !== "." && part !== "..")
+}
+
+function toolRefused(command: string, stderr: string) {
+  return new SigningRefused({ reason: `${command} refused: ${stderr.trim().slice(0, 1024)}` })
+}
+
+effect function archiveBytes(zip: string, args: readonly string[], maxBytes: number) {
+  const files = try FileSystem.FileSystem
+  const spawner = try ChildProcessSpawner
+  const archive = try files.realPath(zip)
+  return try scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make("unzip", [...args.slice(0, 1), archive, ...args.slice(1)], { stdin: "ignore" }))
+    const data = Stream.runFoldEffect(child.stdout, (): { length: number; chunks: Uint8Array[] } => ({ length: 0, chunks: [] }), (received, chunk) => effect {
+      received.length += chunk.length
+      if (received.length > maxBytes) throw new SigningRefused({ reason: "ZIP entry exceeds its permitted size" })
+      received.chunks.push(chunk)
+      return received
+    })
+    const [payload, stderr] = try.all [data, Stream.mkString(Stream.decodeText(child.stderr))]
+    if ((try child.exitCode) !== 0) throw toolRefused("unzip", stderr)
+    const output = new Uint8Array(payload.length)
+    let offset = 0
+    for (const chunk of payload.chunks) {
+      output.set(chunk, offset)
+      offset += chunk.length
+    }
+    return output
+  })
+}
+
+export effect function archiveEntries(zip: string) {
+  const data = try archiveBytes(zip, ["-Z1"], 16 * 1024 * 1024)
+  const names = new TextDecoder().decode(data).split(/\r?\n/).filter((name) => name !== "")
+  if (names.length === 0 || new Set(names).size !== names.length || !names.every(archiveName)) {
+    throw new SigningRefused({ reason: "Release ZIP has duplicate, unsafe, or absent paths" })
+  }
+  return names
+}
+
+export effect function archiveEntry(zip: string, name: string, maxBytes: number = metadataLimit) {
+  if (!archiveName(name) || name.endsWith("/")) throw new SigningRefused({ reason: "Invalid release ZIP entry" })
+  return try archiveBytes(zip, ["-p", name], maxBytes)
+}
+
+export effect function archiveDigest(zip: string, name: string) {
+  if (!archiveName(name) || name.endsWith("/")) throw new SigningRefused({ reason: "Invalid release ZIP entry" })
+  const files = try FileSystem.FileSystem
+  const spawner = try ChildProcessSpawner
+  const archive = try files.realPath(zip)
+  return try scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make("unzip", ["-p", archive, name], { stdin: "ignore" }))
+    const hash = try Effect.try({ try: () => newDigest(), catch: (cause) => toolRefused("sha256", String(cause)) })
+    const digested = Stream.runForEach(child.stdout, (bytes) => Effect.try({ try: () => hash.update(bytes), catch: (cause) => toolRefused("sha256", String(cause)) }))
+    const [, stderr] = try.all [digested, Stream.mkString(Stream.decodeText(child.stderr))]
+    if ((try child.exitCode) !== 0) throw toolRefused("unzip", stderr)
+    return try Effect.try({ try: () => hash.finish(), catch: (cause) => toolRefused("sha256", String(cause)) })
+  })
+}
+
+export effect function properties(zip: string, name: string) {
+  const raw = new TextDecoder().decode(try archiveEntry(zip, name))
+  const fields = new Map<string, string>()
+  for (const line of raw.split(/\r?\n/)) {
+    if (line.trim() === "" || line.startsWith("#")) continue
+    const row = /^([A-Za-z0-9_.-]+)=(.*)$/.exec(line)
+    if (row === null || row[1] === undefined || row[2] === undefined || fields.has(row[1])) throw new SigningRefused({ reason: `Invalid or duplicate property in ${name}` })
+    fields.set(row[1], row[2])
+  }
+  return Object.fromEntries(fields)
+}
+
+export effect function packageRows(zip: string, name: string) {
+  const content = new TextDecoder().decode(try archiveEntry(zip, name))
+  const rows: Readonly<Record<string, string>>[] = []
+  for (const line of content.split(/\r?\n/)) {
+    if (line.trim() === "" || line.startsWith("#")) continue
+    const values = [...line.matchAll(/([A-Za-z_]+)="([^"\r\n]*)"/g)]
+    const parsed = Object.fromEntries(values.map(([, field, value]) => [field, value]))
+    if (values.length === 0 || new Set(values.map((row) => row[1])).size !== values.length || line.replace(/([A-Za-z_]+)="([^"\r\n]*)"/g, "").trim() !== "") {
+      throw new SigningRefused({ reason: `Invalid or duplicate package metadata in ${name}` })
+    }
+    rows.push(parsed)
+  }
+  return rows
+}
+
+export function chainedPartitions(metadata: Readonly<Record<string, string>>): string[] {
+  return Object.keys(metadata).flatMap((name) => {
+    const chain = /^avb_(vbmeta_[a-z0-9_]+)_key_path$/.exec(name)?.[1]
+    return chain !== undefined && metadata[name] !== "" ? [chain] : []
+  })
+}
+
+export effect function verifiedBoot(zip: string, enrolledKey: string, algorithm: string) {
+  const images: Record<string, string> = {}
+  const rollbackIndexes: { partition: "vbmeta" | "vbmeta_system" | "vbmeta_vendor"; location: number; index: string }[] = []
+  const read = (partition: string) => effect {
+    const bytes = try archiveEntry(zip, `IMAGES/${partition}.img`, 32 * 1024 * 1024)
+    return try Effect.try({ try: () => verifiedVbmeta(bytes, enrolledKey), catch: (cause) => toolRefused(partition, String(cause)) })
+  }
+  const top = try read("vbmeta")
+  const names = top.chains.map(({ partition }) => partition)
+  if (!bootChainAdmitted(algorithm, names) || names.length !== new Set(names).size || top.location !== 0) {
+    throw new SigningRefused({ reason: "A signed image has a different AVB chain or primary rollback location" })
+  }
+  images.vbmeta = top.imageSha256
+  rollbackIndexes.push({ partition: "vbmeta", location: top.location, index: top.index })
+  for (const chain of top.chains) {
+    const part = chain.partition
+    if (part !== "vbmeta_system" && part !== "vbmeta_vendor") throw new SigningRefused({ reason: "A signed image has a foreign AVB partition" })
+    const image = try read(part)
+    if (rollbackIndexes.some(({ location }) => location === chain.location) || image.chains.length !== 0 || (image.location !== 0 && image.location !== chain.location)) {
+      throw new SigningRefused({ reason: "A signed image has a duplicate or inconsistent rollback location" })
+    }
+    images[part] = image.imageSha256
+    rollbackIndexes.push({ partition: part, location: chain.location, index: image.index })
+  }
+  return { algorithm, publicKeySha256: top.publicKeySha256, chainedPartitions: names, images, rollbackIndexes }
+}
