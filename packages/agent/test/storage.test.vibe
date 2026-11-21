@@ -1,6 +1,6 @@
 // spec/agent/storage/database.md, "Story: Keep one agent identity for my data across restarts"; spec/agent/storage/database.md, "Story: Keep the agent's records in one store that never loses a committed write"
 import { assert, it } from "@effect/vitest"
-import { agentChild, host, scratch } from "./support/kernel.vibe"
+import { agentChild, boot, call, host, ready, scratch } from "./support/kernel.vibe"
 import { launchDocument, launchFrame, writeLaunch, type Scratch } from "./support/scratch.ts"
 import { request } from "./support/socket-client.ts"
 
@@ -138,14 +138,23 @@ it.effect('A second process is refused while the first holds the store, and a ki
 for (const persistMemory of [true, false]) {
   it.live(`A conversation written before a restart is ${persistMemory ? "still listed" : "gone"} with persistMemory ${persistMemory} (spec/agent/storage/database.md, "Story: Keep the agent's records in one store that never loses a committed write")`, effect () => {
     const state = try scratch("agent-records")
-    const first = try start(state, "first", { persistMemory })
-    const { conversation } = try Schema.decodeUnknownEffect(Created)((try served(first, "/api/conversations", {})).json)
+    const first = try boot({ state, cloud: true, launch: { persistMemory } })
+    try ready(first)
+    const created = try call(first, { method: "POST", path: "/api/conversations", body: {} })
+    if (!("status" in created) || created.status !== 201) return try die("The conversation was not created")
+    const { conversation } = try Schema.decodeUnknownEffect(Created)(created.json)
     try Effect.sleep("20 millis")
-    try served(first, `/api/conversations/${conversation.id}/messages`, { text: "Remember the harbour." })
-    const written = try Schema.decodeUnknownEffect(Listed)((try served(first, "/api/conversations")).json)
+    const sent = try call(first, { method: "POST", path: `/api/conversations/${conversation.id}/messages`, body: { text: "Remember the harbour." } })
+    if (!("status" in sent) || sent.status !== 200) return try die("The turn was not admitted")
+    const listed = try call(first, { method: "GET", path: "/api/conversations" })
+    if (!("status" in listed) || listed.status !== 200) return try die("The conversation was not listed")
+    const written = try Schema.decodeUnknownEffect(Listed)(listed.json)
     try host("first stop", () => first.child.stop())
-    const second = try start(state, "second", { persistMemory })
-    const kept = try Schema.decodeUnknownEffect(Listed)((try served(second, "/api/conversations")).json)
+    const second = try boot({ state, cloud: true, launch: { persistMemory } })
+    try ready(second)
+    const recovered = try call(second, { method: "GET", path: "/api/conversations" })
+    if (!("status" in recovered) || recovered.status !== 200) return try die("The recovered conversation list was unavailable")
+    const kept = try Schema.decodeUnknownEffect(Listed)(recovered.json)
     const messaged = written.conversations.map((listed) => ({ id: listed.id, afterCreation: listed.updatedAt > conversation.updatedAt }))
     try Effect.try(() => assert.deepStrictEqual({ messaged, kept: kept.conversations }, {
       messaged: [{ id: conversation.id, afterCreation: true }], kept: persistMemory ? written.conversations : [],
