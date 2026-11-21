@@ -57,7 +57,7 @@ pure def lawOnlyPublicAndSignedRoutesAuthenticateNoOne(route: RouteClass, presen
   isAnonymous(admit(route, presented, standing, now)) iff not(isProtected(route))
 ```
 
-### A missing, unreadable or unknown credential is refused 401 with credential_unknown
+### Every refusal is well formed, and a missing or unknown credential is refused 401 with credential_unknown
 
 A device takes the reason as the custody owner's input: `credential_expired`
 for a credential past its end, `credential_revoked` for one signed out,
@@ -78,6 +78,11 @@ pure def lawEveryRefusalIsWellFormed(route: RouteClass, presented: Presented, st
   val a = admit(route, presented, standing, now)
   match a { | Denied(x) => wellFormed(x.refusal) | _ => true }
 }
+pure def lawAMissingOrUnknownCredentialIsUnknown(route: RouteClass, window: R::Window, standing: Standing, now: Millis): bool =
+  (isProtected(route) and R::admitsAll(keyIngress(window), now)) implies (
+    admit(route, NoCredential, standing, now) == deniedFor(CredentialUnknown)
+    and admit(route, SessionBearer({ lookup: NoFamily }), standing, now) == deniedFor(CredentialUnknown)
+    and admit(route, KeyBearer({ window: window, lookup: NoGrant }), standing, now) == deniedFor(CredentialUnknown))
 ```
 
 ### A device key is limited to 120 requests a minute before it is looked up
