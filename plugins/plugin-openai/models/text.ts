@@ -445,6 +445,19 @@ function resolveThinkingOffReasoningEffort(
 }
 
 /**
+ * Maps the `thinking: "low"` hint (bounded reasoning, not off) only for exact
+ * Cerebras model ids that accept `"low"`; other models keep their effort.
+ */
+function resolveThinkingLowReasoningEffort(
+  runtime: IAgentRuntime,
+  modelName: string | undefined
+): "low" | undefined {
+  if (!modelName || !isCerebrasMode(runtime)) return undefined;
+  const cerebrasId = normalizeCerebrasModelId(modelName);
+  return cerebrasId === "qwen-3.8-27b" || cerebrasId === "gpt-oss-120b" ? "low" : undefined;
+}
+
+/**
  * Per-model Cerebras reasoning default, restricted to models whose provider
  * documentation declares the field. `gemma-4-31b` has no documented reasoning
  * contract, so no default is emitted at all — an undocumented
@@ -522,6 +535,17 @@ function resolveProviderOptions(
     !(typeof configuredEffort === "string" && configuredEffort.trim().toLowerCase() === "none");
   const thinkingOffEffort =
     elizaThinking === "off" ? resolveThinkingOffReasoningEffort(runtime, modelName) : undefined;
+  // Bounded reasoning replaces only the provider default: an
+  // OPENAI_REASONING_EFFORT pin that resolveReasoningEffort honors still wins.
+  const configuredEffortNormalized =
+    typeof configuredEffort === "string" ? configuredEffort.trim().toLowerCase() : "";
+  const hostPinnedEffort =
+    (VALID_REASONING_EFFORTS as readonly string[]).includes(configuredEffortNormalized) ||
+    (configuredEffortNormalized === "none" && reasoningEffort === "none");
+  const thinkingLowEffort =
+    elizaThinking === "low" && !hostPinnedEffort
+      ? resolveThinkingLowReasoningEffort(runtime, modelName)
+      : undefined;
   // Reconciliation or direct-text planning may prefer reasoning on the verified
   // native-tool lane. Other endpoints/models retain their existing suppression.
   const thinkingOnEffort =
@@ -537,6 +561,7 @@ function resolveProviderOptions(
     (preferToolReasoning ? thinkingOnEffort : undefined) ??
     thinkingOffEffort ??
     thinkingOnEffort ??
+    thinkingLowEffort ??
     reasoningEffort;
 
   if (

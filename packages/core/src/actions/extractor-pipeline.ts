@@ -34,6 +34,11 @@ export interface RunExtractorPipelineArgs<TParsed> {
 	/** Opt in to a provider text response format for both first and repair calls. */
 	responseFormat?: GenerateTextParams["responseFormat"];
 	/**
+	 * Per-call provider options for both first and repair calls, such as the
+	 * `eliza.thinking` reasoning hint. Omitted, the calls carry none.
+	 */
+	providerOptions?: GenerateTextParams["providerOptions"];
+	/**
 	 * Convert the raw model text into a typed value. Return `null` when the
 	 * output is unparseable or fails validation; that triggers the repair pass.
 	 */
@@ -74,6 +79,9 @@ export async function runExtractorPipeline<TParsed>(
 		...(args.system !== undefined ? { system: args.system } : {}),
 		...(args.responseFormat !== undefined
 			? { responseFormat: args.responseFormat }
+			: {}),
+		...(args.providerOptions !== undefined
+			? { providerOptions: args.providerOptions }
 			: {}),
 	};
 

@@ -422,6 +422,16 @@ function resolveCerebrasThinkingOffReasoningEffort(
   return undefined;
 }
 
+/**
+ * Maps the `thinking: "low"` hint (bounded reasoning, not off) only for the
+ * Cerebras ids that accept `"low"`, mirroring plugin-openai; other models keep
+ * their effort.
+ */
+function resolveCerebrasThinkingLowReasoningEffort(modelName: string): "low" | undefined {
+  const id = normalizeCerebrasModelId(modelName);
+  return id === "qwen-3.8-27b" || id === "gpt-oss-120b" ? "low" : undefined;
+}
+
 const VALID_USER_REASONING_EFFORTS: ReadonlySet<string> = new Set([
   "low",
   "medium",
@@ -1549,8 +1559,15 @@ function buildNativeRequestBody(
     requestBody.temperature = params.temperature;
   }
   const userReasoningEffort = resolveUserReasoningEffort(runtime, modelName);
+  const thinkingLowEffort =
+    recordAt(asRecord(params.providerOptions), "eliza").thinking === "low"
+      ? resolveCerebrasThinkingLowReasoningEffort(modelName)
+      : undefined;
   if (userReasoningEffort) {
     requestBody.reasoning_effort = userReasoningEffort;
+  } else if (thinkingLowEffort) {
+    // Bounded reasoning replaces only the default below; a host pin still wins.
+    requestBody.reasoning_effort = thinkingLowEffort;
   } else if (resolveCerebrasThinkingOffReasoningEffort(modelName) !== undefined) {
     // Use the highest supported Cerebras effort unless the caller selects one.
     requestBody.reasoning_effort = "high";
