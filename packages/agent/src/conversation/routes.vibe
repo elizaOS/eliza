@@ -1,14 +1,15 @@
 // spec/agent/conversation/conversations.md, "Story: Create and find my conversations"; spec/agent/conversation/conversations.md, "Story: Read history a page at a time"
 module node {
   import type { AgentRuntime } from "@elizaos/core"
+  import type { AgendaOffer } from "../device-actions/agenda.vibe"
   import type { LocalRoute } from "../access/routes.vibe"
   import { conversationRecordRoutes, conversationStore, type ConversationOwner } from "./conversations.vibe"
   import { historyRoutes } from "./history.vibe"
   import { conversationRoutes as turnRoutes } from "./turns.vibe"
 
-  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string, publish: (payload: unknown) => void): LocalRoute[] {
+  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string, publish: (payload: unknown) => void, agenda?: AgendaOffer): LocalRoute[] {
     const store = conversationStore(runtime, owner)
-    return [...conversationRecordRoutes(store), ...historyRoutes(runtime, store), ...turnRoutes(runtime, owner, agentName, publish)]
+    return [...conversationRecordRoutes(store), ...historyRoutes(runtime, store), ...turnRoutes(runtime, owner, agentName, publish, agenda)]
   }
 }
 export { conversationRoutes } from node

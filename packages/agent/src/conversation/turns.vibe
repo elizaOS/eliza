@@ -14,6 +14,7 @@ module node {
   import { canCreate, defaultTitle, initial } from "../../gen/agent__conversation__conversations.ts"
   import { decide, receiptRetentionMs, stopConfirmMs, stopWindowOpen, type KeyView } from "../../gen/agent__conversation__turns.ts"
   import type { LocalRoute } from "../access/routes.vibe"
+  import type { AgendaOffer } from "../device-actions/agenda.vibe"
   import { recordHeard } from "./heard.vibe"
   import { streamRoutes, type ReplyWriter, type StreamRole, type StreamStart, type Terminal } from "./stream.vibe"
 
@@ -66,6 +67,7 @@ module node {
     readonly metadata?: MemoryMetadata
     readonly input?: Pick<TurnBody, "channelType" | "metadata">
     readonly key?: KeyedTurn
+    readonly offerAgenda?: (message: Memory, signal: AbortSignal) => Promise<(() => Promise<void>) | undefined>
   }
 
   interface KeyedTurn {
@@ -146,14 +148,19 @@ module node {
           },
         }])
       }
-      const result = await service.handleMessage(runtime, input, storeReply, {
-        roomHandlerLease: lease, abortSignal: signal, ...(options.onStreamChunk === undefined ? {} : { onStreamChunk: options.onStreamChunk }),
-      })
-      return { ...result, userMessageId }
+      const retireAgenda = await options.offerAgenda?.({ ...input, id: userMessageId }, signal)
+      try {
+        const result = await service.handleMessage(runtime, input, storeReply, {
+          roomHandlerLease: lease, abortSignal: signal, ...(options.onStreamChunk === undefined ? {} : { onStreamChunk: options.onStreamChunk }),
+        })
+        return { ...result, userMessageId }
+      } finally {
+        await retireAgenda?.()
+      }
     }, { signal })
   }
 
-  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string, publish: (payload: unknown) => void): LocalRoute[] {
+  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string, publish: (payload: unknown) => void, agenda?: AgendaOffer): LocalRoute[] {
     if (!runtime.messageService) throw new Error("A conversation requires the message service")
     const rooms = () => runtime.getRooms(owner.world)
     const find = async (id: string | undefined): Promise<Room | undefined> =>
@@ -166,7 +173,9 @@ module node {
       okay({ fullText: text, text, agentName, messageId, userMessageId, actionResults: [],
         ...(failureKind === undefined ? {} : { failureKind }) } satisfies TurnReply)
 
-    async function send(room: Room, input: TurnBody, signal: AbortSignal, stream?: StreamDelivery): Promise<SendAnswer> {
+    async function send(
+      room: Room, input: TurnBody, signal: AbortSignal, headers: ReadonlyMap<string, string>, stream?: StreamDelivery,
+    ): Promise<SendAnswer> {
       const id = normalizeChatIdempotencyKey(input.clientMessageId)
       if (input.clientMessageId !== undefined && id === null) return failure(400, "invalid_message")
       const { text, channelType, metadata } = input
@@ -226,8 +235,12 @@ module node {
         admit("streams")
         const attached = stream === undefined ? undefined : await stream.attached
         const turnSignal = attached === undefined ? interrupt : AbortSignal.any([interrupt, attached.signal])
+        const conversationId = conversation(room)?.id
+        const offerAgenda: TurnOptions["offerAgenda"] = agenda === undefined || conversationId === undefined
+          ? undefined : (message, active) => agenda({ headers }, { conversationId, message, requestId: id ?? message.id ?? "" }, active)
         const result = await processTurn(runtime, owner, room, text, turnSignal, {
           input, ...(key === undefined ? {} : { key }), ...(attached === undefined ? {} : { onStreamChunk: attached.writer.append }),
+          ...(offerAgenda === undefined ? {} : { offerAgenda }),
         })
         updated(room)
         const [reply] = result.responseMessages
@@ -291,12 +304,12 @@ module node {
       },
       {
         method: "POST", path: "/api/conversations/{id}/messages",
-        handler: async ({ parameters, body, signal }) => {
+        handler: async ({ parameters, body, headers, signal }) => {
           const room = await find(parameters.get("id"))
           if (!room) return failure(404, "unknown_conversation")
           const payload = turnBody(body)
           if (payload._tag !== "Some") return failure(400, "invalid_message")
-          return send(room, payload.value, signal)
+          return send(room, payload.value, signal, headers)
         },
       },
       {
@@ -307,14 +320,14 @@ module node {
           return recordHeard(runtime, room.id, parameters.get("messageId"), body)
         },
       },
-      ...streamRoutes(async (id, body, _headers, signal) => {
+      ...streamRoutes(async (id, body, headers, signal) => {
         const room = await find(id)
         if (!room) return { kind: "refused", status: 404, error: "unknown_conversation" }
         const payload = turnBody(body)
         if (payload._tag !== "Some") return { kind: "refused", status: 400, error: "invalid_message" }
         const opening = Promise.withResolvers<StreamRole | Extract<StreamStart, { kind: "refused" }>>()
         const attached = Promise.withResolvers<Awaited<StreamDelivery["attached"]>>()
-        const result = send(room, payload.value, signal, { admit: opening.resolve, attached: attached.promise })
+        const result = send(room, payload.value, signal, headers, { admit: opening.resolve, attached: attached.promise })
         void result.then(({ status, body }) => {
           if ("error" in body) opening.resolve({ kind: "refused", status, error: body.error })
         }, opening.reject)

@@ -164,7 +164,7 @@ const CalendarResult = Schema.Struct({
   kind: Schema.Literal("calendar"), events: Schema.Array(CalendarOccurrence).check(Schema.isMaxLength(200))
 })
 
-function firstOfLocalDay(wallDay: number, timeZone: string): number {
+export function firstOfLocalDay(wallDay: number, timeZone: string): number {
   let low = wallDay - 72_000_000, high = wallDay + 72_000_000
   while (high - low > 1_000) {
     const candidate = low + Math.floor((high - low) / 2_000) * 1_000

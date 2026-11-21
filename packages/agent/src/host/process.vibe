@@ -56,6 +56,9 @@ module node {
   import { createEventHub } from "../conversation/events.vibe"
   import { ownerMessageService } from "../conversation/message-service.vibe"
   import { deviceEnrollment } from "../device-actions/enrollment.vibe"
+  import { agendaOffer } from "../device-actions/agenda.vibe"
+  import { proposalReviewRoutes } from "../device-actions/proposal-review.vibe"
+  import { retireAbandonedAgenda } from "../device-actions/store.vibe"
   import { readCompletionRoutes } from "../device-actions/read-completion.vibe"
   import { openDeviceStorage, type DeviceStorageSnapshot } from "../storage/index.vibe"
   import { StoreFailed } from "../storage/fault.vibe"
@@ -283,14 +286,17 @@ module node {
       runtime.registerEvent(EventType.ERROR_REPORTED, onError)
       detachReports = () => runtime.unregisterEvent(EventType.ERROR_REPORTED, onError)
       const enrollment = deviceEnrollment({ runtime, launch, ownerEntityId: ownerId })
+      const agenda = launch.callerRole === "owner" && launch.hostContextRevision !== undefined ? agendaOffer(runtime, enrollment.deviceSender) : undefined
+      if (agenda !== undefined) await Effect.runPromise(retireAbandonedAgenda(adapter))
       const router = createRouter({
         token: authority.token, epoch: authority.epoch, instanceId: status.serverInstanceId,
         health: () => healthAnswer(lifecycle.get()),
         routes: [
           ...statusRoutes({ agentId, name: launch.character.name, serverInstanceId: status.serverInstanceId, backend: backendOf(launch.model), embeddings: launch.embeddings, state: () => runStateOf(lifecycle.get()), binding: () => Effect.runSync(models.state()), now: Date.now }),
           ...authRoutes(agentId),
-          ...conversationRoutes(runtime, conversationOwner, launch.character.name, events.conversationUpdated),
+          ...conversationRoutes(runtime, conversationOwner, launch.character.name, events.conversationUpdated, agenda),
           ...enrollment.routes,
+          ...(agenda === undefined ? [] : proposalReviewRoutes(adapter, enrollment.deviceSender)),
           ...readCompletionRoutes({ runtime, owner: conversationOwner, sender: enrollment.deviceSender }),
           ...composed.routes,
         ],

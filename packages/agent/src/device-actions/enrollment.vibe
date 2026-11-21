@@ -42,12 +42,17 @@ type Answer = { readonly status: number; readonly body: object }
 const failure = (status: number, error: string): Answer => ({ status, body: { error } })
 
 export interface DeviceEnrollment {
-  readonly deviceSender: (input: RouteInput) => Effect.Effect<SessionOwner | undefined, DeviceStoreUnavailable>
+  readonly deviceSender: (input: Pick<RouteInput, "headers">) => Effect.Effect<SessionOwner | undefined, DeviceStoreUnavailable>
   readonly routes: LocalRoute[]
 }
 
 function sameOwner(a: SessionOwner, b: SessionOwner): boolean {
   return a.agentId === b.agentId && a.actorId === b.actorId && a.connector === b.connector
+}
+
+export function enrollmentId(state: DeviceRequest): string {
+  const by = enrolledOwner(state.enrollment)
+  return hashOf(JSON.stringify([by.agentId, by.actorId, by.connector, enrolledKey(state.enrollment)]))
 }
 
 export function deviceEnrollment(context: Pick<ModuleContext, "runtime" | "launch" | "ownerEntityId">): DeviceEnrollment {
@@ -57,7 +62,7 @@ export function deviceEnrollment(context: Pick<ModuleContext, "runtime" | "launc
   const owner: SessionOwner = { agentId, actorId: context.launch.account?.userId ?? context.ownerEntityId, connector: agentId }
   const lock = Semaphore.makeUnsafe(1)
 
-  function presentedKeyHash(input: RouteInput): string | undefined {
+  function presentedKeyHash(input: Pick<RouteInput, "headers">): string | undefined {
     const key = input.headers.get(deviceKeyHeader)
     return input.headers.get(deviceIdHeader) === agentId && key !== undefined && deviceKeyPattern.test(key) ? hashOf(key) : undefined
   }
@@ -66,12 +71,7 @@ export function deviceEnrollment(context: Pick<ModuleContext, "runtime" | "launc
     return isEnrolled(state.enrollment) && sameOwner(enrolledOwner(state.enrollment), owner) && sameHash(keyHash, enrolledKey(state.enrollment))
   }
 
-  function enrollmentId(state: DeviceRequest): string {
-    const by = enrolledOwner(state.enrollment)
-    return hashOf(JSON.stringify([by.agentId, by.actorId, by.connector, enrolledKey(state.enrollment)]))
-  }
-
-  effect function deviceSender(input: RouteInput): (SessionOwner | undefined)!DeviceStoreUnavailable {
+  effect function deviceSender(input: Pick<RouteInput, "headers">): (SessionOwner | undefined)!DeviceStoreUnavailable {
     const keyHash = presentedKeyHash(input)
     if (keyHash === undefined) return undefined
     return liveFor(try enrollment(adapter), keyHash) ? owner : undefined
