@@ -1,12 +1,13 @@
 // spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"
 import { assert, describe, it } from "@effect/vitest"
+import { Option, Schema } from "effect"
 import { insufficientCredits, text, type CloudFake } from "./support/cloud-fake.ts"
 import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
 import type { StreamedAnswer } from "./support/socket-client.ts"
 
 type Frame = { readonly type: string; readonly text?: string; readonly fullText?: string; readonly failureKind?: string; readonly provisional?: boolean }
 
-const Created = Schema.Struct({ conversation: Schema.Struct({ id: Schema.String }) })
+schema Created { conversation: { id: string } }
 const created = Schema.decodeUnknownOption(Created)
 const parsed = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))
 
