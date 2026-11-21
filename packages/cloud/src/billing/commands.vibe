@@ -1,7 +1,8 @@
-// spec/cloud/billing/subscriptionCommands.md, "Story: Change or cancel my plan without paying twice"; spec/cloud/billing/subscriptions.md, "Story: Change my plan one command at a time"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
+// spec/cloud/billing/subscriptionCommands.md, "Story: Change or cancel my plan without paying twice"; spec/cloud/billing/subscriptionCommands.md, "Story: See my commands"; spec/cloud/billing/subscriptions.md, "Story: Change my plan one command at a time"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
 import { Rejected, apply, connectorOf, decodeState, elapse, initial, receiptStatus, staleAt, type Event, type LookupResult, type ProviderReply as Reply, type Receipt, type ReceiptStatus, type RefusalCause } from "../../gen/cloud__shared__dispatchOnce.effect.vibe"
 import { apply as applyReview, canConfirm as canConfirmReview, canFinish as canFinishReview, canReceiveReply as canReceiveReviewReply,
-  canResolve as canResolveReview, isFinished as isReviewFinished } from "../../gen/cloud__billing__subscriptionCommands.effect.vibe"
+  alwaysCommandIsWellFormed, alwaysOutcomeFollowsTheReceipt, alwaysQuoteIsTheReviewedEstimate, alwaysReceiptIsSound, isStarted,
+  canResolve as canResolveReview, isFinished as isReviewFinished, parseState as parsePlanState } from "../../gen/cloud__billing__subscriptionCommands.effect.vibe"
 import { canClaimCommand, holdsCommand, type Rejected as SubscriptionRejected, type CommandKind, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import type { SessionOwner } from "../../gen/core__sessions.ts"
 import type { ProviderKind } from "../../gen/cloud__shared__types.ts"
@@ -12,10 +13,10 @@ import { dispatchPlanUndo, failureReply, findUndoOutcome, type StripeUndoTerms }
 import { dispatchOnce, renderProviderKey, requestDigest, resolveUnknown, type ProviderReply } from "../shared/dispatch-once.vibe"
 import { sha256Hex } from "../shared/sealing.vibe"
 import { loadRow, stepRow, type RowConflict, RowCorrupt, type MachineRows } from "../store/rows.vibe"
-import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
+import { Store, type Row, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 import { consumeReviewedPlanQuote, freshOwner, readLatestUndoQuote, readReviewedPlanQuote, recheckUndoPlanQuote,
   reviewPlanChange, type ReviewedPlanQuote } from "./plan-quotes.vibe"
-import { commandAt, insertPlanCommand, lockOrganization, planCommandView, readPlanCommand, savePlanCommand, type PlanCommandRecord } from "./plan-command-state.vibe"
+import { commandAt, insertPlanCommand, lockOrganization, planCommandStatusAt, planCommandView, readPlanCommand, savePlanCommand, type PlanCommandRecord } from "./plan-command-state.vibe"
 import { claimLiveCommand, observeSubscription, readSubscription, reconcileSubscription, releaseLiveCommand } from "./subscriptions.vibe"
 
 export type WireCommandKind = "cancel" | "undo" | "upgrade" | "downgrade"
@@ -266,7 +267,7 @@ effect function confirmReviewedUndo(request: CommandRequest, quoteId: string | u
   if (admitted.existing !== undefined) {
     try checkUndoReplay(admitted.existing, request, digest)
     try refreshReviewedUndo(admitted.existing)
-    return try readCommand(request.organizationId, commandId, "undo")
+    return (try readCommand(request.organizationId, commandId, "undo")).view
   }
   if (admitted.quote === undefined) return try runCommand(undoCommand, request)
   const reviewed = admitted.quote
@@ -308,7 +309,7 @@ effect function confirmReviewedUndo(request: CommandRequest, quoteId: string | u
   }
   const row = try store.transaction((tx) => readPlanCommand(tx, commandId, false))
   if (row !== undefined) try refreshReviewedUndo(row)
-  return try readCommand(request.organizationId, commandId, "undo")
+  return (try readCommand(request.organizationId, commandId, "undo")).view
 }
 
 effect function checkUndoReplay(row: PlanCommandRecord, request: CommandRequest, digest: string) {
@@ -409,22 +410,92 @@ effect function runCommand(spec: CommandSpec, request: CommandRequest) {
     }
   }
   try settle(spec, request.organizationId, commandId)
-  return try readCommand(request.organizationId, commandId, wireKinds[spec.kind])
+  return (try readCommand(request.organizationId, commandId, wireKinds[spec.kind])).view
 }
 
-effect function commandViewRow(tx: Tx, commandId: string, now: number) {
-  const planned = try readPlanCommand(tx, commandId, false)
-  if (planned !== undefined) return { organizationId: planned.organizationId, view: planCommandView(planned, now) }
-  const legacy = try commandRow(tx, commandId, false)
-  return legacy === undefined ? undefined : { organizationId: legacy.organizationId, view: viewOf(legacy, now) }
+interface CommandSnapshot {
+  readonly view: CommandView
+  readonly source: "current" | "retained"
+}
+
+const storedCommand = Schema.Record(Schema.String, Schema.Unknown)
+const history = `SELECT entry.*,
+  CASE WHEN entry.quote_id IS NULL THEN EXISTS (
+    SELECT 1 FROM retained_plan_command_history q WHERE q.organization_id=$1 AND q.command_id=entry.command_id
+  ) ELSE EXISTS (
+    SELECT 1 FROM subscription_commands c WHERE c.organization_id=$1 AND c.key=entry.command_id
+  ) END AS conflicting_id
+  FROM (
+    SELECT key AS command_id, NULL::text AS quote_id, kind, created_at, status, expected_revision, result_revision, state,
+      stripe_plan_binding IS NOT NULL AS reviewed FROM subscription_commands WHERE organization_id=$1
+    UNION ALL
+    SELECT command_id, quote_id, kind, created_at, NULL::text, NULL::bigint, NULL::bigint, state, false
+      FROM retained_plan_command_history WHERE organization_id=$1
+  ) AS entry`
+
+effect function retainedView(row: Row, organizationId: string, commandId: string, now: number): (CommandView | undefined)!RowCorrupt {
+  const stored = Schema.decodeUnknownOption(storedCommand)(row.state)
+  if (Option.isNone(stored) || !Object.hasOwn(stored.value, "receipt")) return undefined
+  const quoteId = toText(row.quote_id)
+  const command = Object.hasOwn(stored.value, "schedule") ? undefined
+    : parsePlanState({ ...stored.value, schedule: { tag: "NoScheduleWork" } })
+  if (command === undefined || !isStarted(command) || command.kind === "CheckoutCommand" || !alwaysCommandIsWellFormed(command) ||
+      !alwaysQuoteIsTheReviewedEstimate(command) || !alwaysReceiptIsSound(command) || !alwaysOutcomeFollowsTheReceipt(command))
+    throw new RowCorrupt({ table: "subscription_commands", key: commandId, cause: "retained command state" })
+  const kind = wireKinds[command.kind]
+  const receipt = command.receipt
+  const resultRevision = command.resultRevision === 0 ? null : command.resultRevision
+  const direct = kind === "cancel" || kind === "undo"
+  const digest = direct
+    ? requestDigest({ kind: command.kind, subscriptionId: command.subscriptionId, expectedRevision: command.expectedRevision, quoteId: command.quote.quoteId })
+    : requestDigest({ kind: command.kind, quoteId: command.quote.quoteId })
+  if (command.commandId !== commandId || kind !== row.kind || command.createdAt !== toInt(row.created_at) ||
+      receipt.session.owner.agentId !== organizationId || receipt.session.owner.actorId === "" || receipt.digest !== digest ||
+      (direct ? quoteId !== undefined || command.expectedRevision !== toInt(row.expected_revision) ||
+        resultRevision !== (row.result_revision === null ? null : toInt(row.result_revision)) ||
+        planCommandStatusAt(command, receipt.session.now) !== row.status : quoteId !== command.quote.quoteId))
+    throw new RowCorrupt({ table: "subscription_commands", key: commandId, cause: "retained command binding" })
+  return { commandId, kind, subscriptionId: command.subscriptionId, status: planCommandStatusAt(command, now),
+    expectedRevision: command.expectedRevision, resultRevision, createdAt: command.createdAt }
+}
+
+effect function commandViewRow(tx: Tx, row: Row, organizationId: string, now: number): CommandSnapshot!(StoreFailure | RowCorrupt) {
+  const commandId = toText(row.command_id) ?? ""
+  if (!commandIdPattern.test(commandId) || row.conflicting_id === true)
+    throw new RowCorrupt({ table: "subscription_commands", key: commandId, cause: "conflicting command identity" })
+  if (row.reviewed === true) {
+    const planned = try readPlanCommand(tx, commandId, false)
+    if (planned !== undefined && planned.organizationId === organizationId) return { source: "current", view: planCommandView(planned, now) }
+  } else {
+    const retained = try retainedView(row, organizationId, commandId, now)
+    if (retained !== undefined) return { source: "retained", view: retained }
+    if (row.quote_id === null) {
+      const current = try commandRow(tx, commandId, false)
+      if (current !== undefined && current.organizationId === organizationId) return { source: "current", view: viewOf(current, now) }
+    }
+  }
+  throw new RowCorrupt({ table: "subscription_commands", key: commandId, cause: "command history projection" })
+}
+
+effect function findCommandView(organizationId: string, commandId: string) {
+  if (!commandIdPattern.test(commandId)) return undefined
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  return try store.transaction(effect (tx: Tx) => {
+    const [row] = try tx.query(`${history} WHERE command_id=$2 LIMIT 1`, [organizationId, commandId])
+    return row === undefined ? undefined : try commandViewRow(tx, row, organizationId, now)
+  })
+}
+
+export effect function readRetainedCommand(organizationId: string, commandId: string, kind: WireCommandKind) {
+  const found = try findCommandView(organizationId, commandId)
+  return found?.source === "retained" && found.view.kind === kind ? found.view : undefined
 }
 
 effect function readCommand(organizationId: string, commandId: string, kind: WireCommandKind) {
-  const store = try Store
-  const now = try Clock.currentTimeMillis
-  const row = commandIdPattern.test(commandId) ? try store.transaction((tx) => commandViewRow(tx, commandId, now)) : undefined
-  if (row === undefined || row.organizationId !== organizationId || row.view.kind !== kind) throw refused("NotFound")
-  return row.view
+  const row = try findCommandView(organizationId, commandId)
+  if (row === undefined || row.view.kind !== kind) throw refused("NotFound")
+  return row
 }
 
 effect function commandsPage(organizationId: string, limit: number, cursor: string | undefined): CommandsPage!(StoreFailure | RowCorrupt | Refused)!Store {
@@ -432,19 +503,17 @@ effect function commandsPage(organizationId: string, limit: number, cursor: stri
   const now = try Clock.currentTimeMillis
   const after = cursor === undefined ? undefined : cursorPattern.exec(cursor)
   if (after === null) throw refused("InvalidRequest")
-  const keys = try store.transaction((tx) => tx.query(
-    after === undefined
-      ? "SELECT key FROM subscription_commands WHERE organization_id = $1 ORDER BY created_at DESC, key DESC LIMIT $2"
-      : "SELECT key FROM subscription_commands WHERE organization_id = $1 AND (created_at, key) < ($3::bigint, $4) ORDER BY created_at DESC, key DESC LIMIT $2",
-    after === undefined ? [organizationId, limit + 1] : [organizationId, limit + 1, Number(after[1]), after[2]]
-  ))
-  const items: CommandView[] = []
-  for (const found of keys.slice(0, limit)) {
-    const row = try store.transaction((tx) => commandViewRow(tx, toText(found.key) ?? "", now))
-    if (row !== undefined) items.push(row.view)
-  }
-  const last = items[items.length - 1]
-  return { observedAt: now, items, nextCursor: keys.length > limit && last !== undefined ? `${last.createdAt}.${last.commandId}` : null }
+  const items = try store.transaction(effect (tx: Tx) => {
+    const rows = try tx.query(after === undefined
+      ? `${history} ORDER BY created_at DESC, command_id DESC LIMIT $2`
+      : `${history} WHERE (created_at, command_id) < ($3::bigint, $4) ORDER BY created_at DESC, command_id DESC LIMIT $2`,
+      after === undefined ? [organizationId, limit + 1] : [organizationId, limit + 1, Number(after[1]), after[2]])
+    const entries: CommandView[] = []
+    for (const row of rows.slice(0, limit)) entries.push((try commandViewRow(tx, row, organizationId, now)).view)
+    return { entries, more: rows.length > limit }
+  })
+  const last = items.entries.at(-1)
+  return { observedAt: now, items: items.entries, nextCursor: items.more && last !== undefined ? `${last.createdAt}.${last.commandId}` : null }
 }
 
 effect function sweepCommands(specs: ReadonlyArray<CommandSpec>): number!!CloudContext {
@@ -553,9 +622,11 @@ effect function startCommand(spec: CommandSpec, context: RouteContext) {
 effect function commandStatus(spec: CommandSpec, context: RouteContext) {
   const signed = try signedOwner(context)
   const commandId = context.params.commandId ?? ""
-  try readCommand(signed.organizationId, commandId, wireKinds[spec.kind])
+  const kind = wireKinds[spec.kind]
+  const first = try readCommand(signed.organizationId, commandId, kind)
+  if (first.source === "retained") return json(first.view)
   try settle(spec, signed.organizationId, commandId)
-  return json(try readCommand(signed.organizationId, commandId, wireKinds[spec.kind]))
+  return json((try readCommand(signed.organizationId, commandId, kind)).view)
 }
 
 effect function undoReview(context: RouteContext) {

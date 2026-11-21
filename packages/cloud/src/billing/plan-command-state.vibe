@@ -19,17 +19,20 @@ export function commandAt(command: Command, now: number): Command {
   return now > command.receipt.session.now ? elapse(command, now - command.receipt.session.now) : command
 }
 
-export function planCommandView(row: PlanCommandRecord, now: number) {
-  const command = row.command
-  const status = commandStatus(commandAt(command, now))
+export function planCommandStatusAt(command: Command, now: number) {
   const wire = {
     NotListed: "prepared", ShowDispatched: "dispatched", ShowUnknown: "unknown",
     ShowAwaitingPayment: "awaiting_payment", ShowSucceeded: "succeeded", ShowRejected: "rejected"
   } as const
+  return wire[commandStatus(commandAt(command, now))]
+}
+
+export function planCommandView(row: PlanCommandRecord, now: number) {
+  const command = row.command
   const kind: "undo" | "downgrade" | "upgrade" = command.kind === "UndoCommand" ? "undo" : command.kind === "DowngradeCommand" ? "downgrade" : "upgrade"
   return {
     commandId: command.commandId, kind, subscriptionId: command.subscriptionId,
-    status: wire[status], expectedRevision: command.expectedRevision, resultRevision: command.resultRevision === 0 ? null : command.resultRevision,
+    status: planCommandStatusAt(command, now), expectedRevision: command.expectedRevision, resultRevision: command.resultRevision === 0 ? null : command.resultRevision,
     createdAt: command.createdAt
   }
 }

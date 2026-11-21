@@ -7,6 +7,10 @@ import { readReviewedPlanQuote, reviewPlanChange, type ReviewPlanChange } from "
 import { readStripeSubscription, stripeClient } from "../src/billing/stripe-observation.vibe"
 import type { BillingSnapshot } from "../src/billing/snapshot.vibe"
 import type { CommandView } from "../src/billing/commands.vibe"
+import { quoteOf, type Command } from "../gen/cloud__billing__subscriptionCommands.effect.vibe"
+import { initial as initialSubscription } from "../gen/cloud__billing__subscriptions.effect.vibe"
+import { claim, initial as initialReceipt, prepare, receiveReply, send, type ProviderReply } from "../gen/cloud__shared__dispatchOnce.effect.vibe"
+import { requestDigest } from "../src/shared/dispatch-once.vibe"
 import { listening, respond } from "../src/http/transport.vibe"
 import { json, jsonBody, owner, type Route, type RouteContext, type CloudContext } from "../src/http/routes.vibe"
 import type { RouteClass } from "../src/http/request-auth.vibe"
@@ -99,6 +103,13 @@ effect function grant(cloud: HttpFixture, user: string, token: string, phase: "a
   try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, device_epoch, issued_at, updated_at) VALUES ($1, $2::jsonb, 1, $3, 'test-client', $4, $5, $6, $7, $8, $9, $10, $10)", [
     `grant-${token.slice(-8)}`, JSON.stringify(state), user, phase, `cred-${token.slice(-8)}`, tokenDigest(token), issuedAt + minuteMs, keyExpiresAt, deviceEpoch, issuedAt
   ])
+}
+
+function subscriptionChangeReceipt(organizationId: string, actorId: string, providerId: string, digest: string, now: number, reply: ProviderReply) {
+  const owner = { agentId: organizationId, actorId, connector: "subscription_update" }
+  const claimed = claim(prepare({ ...initialReceipt, session: { ...initialReceipt.session, now } }, owner, digest,
+    { providerId, providerKind: "SubscriptionUpdate" }, 5 * minuteMs, now + 60 * minuteMs), owner)
+  return receiveReply(send(claimed, owner, claimed.session.currentClaim), reply)
 }
 
 interface SessionRow {
@@ -602,6 +613,79 @@ describe("Node subscriptions", () => {
           ["/v1/subscription_schedules", "subscription_schedule_" + compatibleView.commandId + ":attach", compatible.subscriptionId],
           ["/v1/subscription_schedules/sub_sched_test3", "subscription_schedule_" + compatibleView.commandId, null]
         ])
+      })
+    }
+  }))
+
+  it.live("See my commands across the retained and current billing layouts (spec/cloud/billing/subscriptionCommands.md, \"Story: See my commands\")", () => scoped(effect {
+    const now = 1_800_000_000_987
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(now))
+    provide Clock.Clock = clock.clock {
+      const cloud = try testHttp(billing.routes)
+      const user = "command-owner", other = "command-peer", organization = `org-${user}`
+      const access = sessionToken("g"), peerAccess = sessionToken("h")
+      const live = { live: true, epoch: 0, authAt: now, accessExpiresAt: now + 15 * minuteMs, refreshExpiresAt: now + 60 * minuteMs, stepUpAt: 0, mfaAt: 0 }
+      try account(cloud, user, "active", { sessions: 0, devices: 0 }, now)
+      try account(cloud, other, "active", { sessions: 0, devices: 0 }, now)
+      try session(cloud, user, access, live, now)
+      try session(cloud, other, peerAccess, live, now)
+      try sql(cloud, "DROP VIEW retained_plan_command_history", [])
+      try sql(cloud, "ALTER TABLE quotes ADD COLUMN command_id text UNIQUE, ADD COLUMN state jsonb, ADD COLUMN created_at bigint", [])
+      try sql(cloud, "DELETE FROM schema_migrations WHERE name='0123_retained_plan_command_history.sql'", [])
+      const [identity] = try sql(cloud, "SELECT digest FROM cloud_identity", [])
+      try cloud.inside(migrate({ digest: String(identity?.digest), environment: "staging", now }))
+
+      const historicalQuote = "quo_" + "a".repeat(32), reviewId = "quo_" + "b".repeat(32)
+      const appliedId = "cmd_" + "c".repeat(32), undoId = "cmd_" + "e".repeat(32), currentId = "cmd_" + "7".repeat(32)
+      const subscription = { ...initialSubscription, planKey: "PlusMonthly" as const, periodStart: now - 4 * minuteMs, periodEnd: now + 60 * minuteMs }
+      const quote = quoteOf(subscription, "UpgradeCommand", "ProMonthly", historicalQuote, 100, now - 1000)
+      const oldUpgrade = { phase: "Applied", kind: "UpgradeCommand", commandId: appliedId, subscriptionId: "sub_retained_plan",
+        createdAt: now, expectedRevision: 2, resultRevision: 3, quote,
+        receipt: subscriptionChangeReceipt(organization, user, appliedId, requestDigest({ kind: "UpgradeCommand", quoteId: historicalQuote }), now, { tag: "ShowsEffect" })
+      } satisfies Omit<Command, "schedule">
+      const oldUndo = { phase: "Running", kind: "UndoCommand", commandId: undoId, subscriptionId: "sub_retained_undo",
+        createdAt: now - minuteMs, expectedRevision: 4, resultRevision: 0,
+        quote: quoteOf(subscription, "UndoCommand", "PlusMonthly", reviewId, 0, now - minuteMs - 1000),
+        receipt: subscriptionChangeReceipt(organization, user, undoId,
+          requestDigest({ kind: "UndoCommand", subscriptionId: "sub_retained_undo", expectedRevision: 4, quoteId: reviewId }), now - minuteMs, { tag: "Unclear" })
+      } satisfies Omit<Command, "schedule">
+      const current = subscriptionChangeReceipt(organization, user, `sub_current:${currentId}`, "current-intent", now, { tag: "ShowsEffect" })
+      const storedQuote = `INSERT INTO quotes (id,organization_id,command_kind,target_plan_key,proration_date,due_now_cents,recurring_cents,adjustment_micros,expires_at,command_id,state,created_at)
+        VALUES ($1,$2,'upgrade','pro_monthly',$3,$4,$5,$6,$7,$8,$9,$10)`
+      const quoteProjection = [organization, quote.effectiveAt, quote.dueNowCents, quote.recurringCents, quote.adjustment, quote.expiresAt]
+      try sql(cloud, storedQuote, [historicalQuote, ...quoteProjection, appliedId, JSON.stringify(oldUpgrade), now])
+      try sql(cloud, storedQuote, [reviewId, ...quoteProjection, null, JSON.stringify({ phase: "Quoted" }), now])
+      const storedDirect = `INSERT INTO subscription_commands (key,organization_id,kind,status,state,revision,expected_revision,result_revision,created_at,updated_at)
+        VALUES ($1,$2,$3,$4,$5,1,$6,$7,$8,$8)`
+      try sql(cloud, storedDirect, [undoId, organization, "undo", "unknown", JSON.stringify(oldUndo), 4, null, oldUndo.createdAt])
+      try sql(cloud, storedDirect, [currentId, organization, "cancel", "succeeded", JSON.stringify(current), 1, 2, now])
+
+      const root = "/api/v1/subscriptions"
+      const list = root + "/commands?limit=1"
+      const first = try cloud.call(list, access)
+      const second = try cloud.call(list + `&cursor=${now}.${appliedId}`, access)
+      const third = try cloud.call(list + `&cursor=${now}.${currentId}`, access)
+      const applied = try cloud.call(root + "/upgrade/" + appliedId, access)
+      const undo = try cloud.call(root + "/cancel/undo/" + undoId, access)
+      const otherPlan = try cloud.call(root + "/upgrade/" + appliedId, peerAccess)
+      const otherCommands = try cloud.call(list, peerAccess)
+      try sql(cloud, storedDirect, [appliedId, organization, "cancel", "succeeded", JSON.stringify(current), 1, 2, now - 10 * minuteMs])
+      const conflicting = try cloud.call(list, access)
+      const conflictingDetail = try cloud.call(root + "/upgrade/" + appliedId, access)
+      const stillForeign = try cloud.call(root + "/upgrade/" + appliedId, peerAccess)
+      const appliedView = { commandId: appliedId, kind: "upgrade", subscriptionId: "sub_retained_plan", status: "succeeded", expectedRevision: 2, resultRevision: 3, createdAt: now }
+      const currentView = { commandId: currentId, kind: "cancel", subscriptionId: "sub_current", status: "succeeded", expectedRevision: 1, resultRevision: 2, createdAt: now }
+      const undoView = { commandId: undoId, kind: "undo", subscriptionId: "sub_retained_undo", status: "unknown", expectedRevision: 4, resultRevision: null, createdAt: now - minuteMs }
+      try check(() => {
+        assert.deepStrictEqual([first.status, second.status, third.status, applied.status, undo.status], [200, 200, 200, 200, 200])
+        assert.deepStrictEqual([first.body, second.body, third.body, applied.body, undo.body], [
+          { observedAt: now, items: [appliedView], nextCursor: `${now}.${appliedId}` },
+          { observedAt: now, items: [currentView], nextCursor: `${now}.${currentId}` },
+          { observedAt: now, items: [undoView], nextCursor: null }, appliedView, undoView
+        ])
+        assert.deepStrictEqual([otherPlan.status, otherCommands.body, conflicting.status, conflictingDetail.status, stillForeign.status, cloud.fakes.seen],
+          [404, { observedAt: now, items: [], nextCursor: null }, 503, 503, 404, []])
       })
     }
   }))

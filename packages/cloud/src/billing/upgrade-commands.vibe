@@ -14,7 +14,7 @@ import {
 import { dispatchOnce, receiptOwner, renderProviderKey, replyOf, requestDigest, type ProviderReply } from "../shared/dispatch-once.vibe"
 import { Store, type Tx } from "../store/connection.vibe"
 import { adjustForUpgrade } from "./allowance.vibe"
-import { commandIdOf, idempotencyKeyPattern } from "./commands.vibe"
+import { commandIdOf, idempotencyKeyPattern, readRetainedCommand } from "./commands.vibe"
 import { commandAt, insertPlanCommand, lockOrganization, planCommandView, readPlanCommand, savePlanCommand, upgradeTerms, type PlanCommandRecord } from "./plan-command-state.vibe"
 import { consumeReviewedPlanQuote, freshOwner, PlanConfirmation, PlanReviewBody, readReviewedPlanQuote, reviewPlanChange, type ReviewedPlanQuote } from "./plan-quotes.vibe"
 import { wirePlanKey } from "./plans.vibe"
@@ -269,7 +269,13 @@ export const routes: ReadonlyArray<Route> = [
     handler: (context) => effect { return json(try confirmUpgrade(context.request.headers.authorization, try jsonBody(context, PlanConfirmation))) } },
   { method: "GET", path: "/api/v1/subscriptions/upgrade/:commandId", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests",
     handler: (context) => effect {
-      const row = try findUpgrade(context.request.headers.authorization, context.params.commandId ?? "")
+      const own = try freshOwner(context.request.headers.authorization)
+      const commandId = context.params.commandId ?? ""
+      if (!commandIdPattern.test(commandId)) throw refused("NotFound")
+      const retained = try readRetainedCommand(own.organizationId, commandId, "upgrade")
+      if (retained !== undefined) return json(retained)
+      const store = try Store
+      const row = try store.transaction((tx) => commandFor(tx, own.organizationId, commandId, false))
       return json(planCommandView((try refreshUpgrade(row)).row, try Clock.currentTimeMillis))
     } },
   { method: "POST", path: "/api/v1/subscriptions/upgrade/:commandId/payment", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests",
