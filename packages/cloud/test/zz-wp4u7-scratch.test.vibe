@@ -1,0 +1,194 @@
+// spec/cloud/billing/subscriptionCommands.md, "Story: Get the plan I paid for"
+import { assert, describe, it } from "@effect/vitest"
+import { createStripeFake } from "./support/fakes/stripe.ts"
+import { periodRows } from "../src/shared/metering.vibe"
+import { stepRow } from "../src/store/rows.vibe"
+import { testCloud, type TestCloud } from "./support/cloud.vibe"
+import { signedIn } from "./support/identity.ts"
+import { initial as noSubscription, type Subscription } from "../gen/cloud__billing__subscriptions.ts"
+
+effect function check(run: () => void) {
+  try Effect.try(run)
+}
+
+effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
+  return try cloud.store.transaction((tx) => tx.query(text, params))
+}
+
+import { createStripePlanChange } from "./support/fakes/stripe-plan-change.ts"
+import { fakeSecretKey, type StripeFake } from "./support/fakes/stripe.ts"
+import { sweepPlanChanges, type PlanChangeReview, type PlanChangeView } from "../src/billing/plan-change.vibe"
+
+describe("WP4 Subscriptions and entitlements: plan changes", () => {
+  effect function stripeCall(stripe: StripeFake, method: string, path: string, form: Readonly<Record<string, string>>) {
+    const answer = try tryPromise(async () => await stripe.handler({ method, path, query: new URLSearchParams(), headers: { authorization: `Bearer ${fakeSecretKey}` }, body: new URLSearchParams(form).toString(), raw: new Uint8Array() }))
+    return (answer?.body ?? {}) as { readonly id: string }
+  }
+
+  effect function subscribedOn(cloud: TestCloud, stripe: StripeFake, organizationId: string, plan: "PlusMonthly" | "ProMonthly", now: number) {
+    const customer = try stripeCall(stripe, "POST", "/v1/customers", {})
+    const session = try stripeCall(stripe, "POST", "/v1/checkout/sessions", {
+      mode: "subscription", customer: customer.id, "line_items[0][price]": plan === "PlusMonthly" ? "price_plus" : "price_pro", "line_items[0][quantity]": "1", success_url: "https://example.com/done"
+    })
+    const completed = try sync(() => stripe.completeSession(session.id, "paid"))
+    const item = completed.subscription.items.data[0]
+    const state: Subscription = {
+      ...noSubscription, status: "Active", subscriptionId: completed.subscription.id, customer: { tag: "PinnedCustomer", customerId: customer.id },
+      planKey: plan, periodStart: item.current_period_start * 1000, periodEnd: item.current_period_end * 1000, lastRenewalInvoice: completed.invoice.id, revision: 4
+    }
+    try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, customer_id, provider_subscription_id, period_end, updated_at) VALUES ($1, $2, 4, 'active', $3, $4, $5, $6, $7)", [
+      organizationId, JSON.stringify(state), plan === "PlusMonthly" ? "plus_monthly" : "pro_monthly", customer.id, state.subscriptionId, state.periodEnd, now
+    ])
+    try cloud.store.transaction((tx) => stepRow(tx, periodRows, `renewal/staging/${completed.invoice.id}`, { type: "openRenewal", invoiceId: completed.invoice.id, planKey: plan, startsAt: state.periodStart, endsAt: state.periodEnd }, () => ({
+      organization_id: organizationId, status: "open", period_start: state.periodStart, period_end: state.periodEnd, updated_at: now
+    })))
+    return state
+  }
+
+  effect function planCloud() {
+    const stripe = try sync(() => createStripeFake())
+    const planChange = try sync(() => createStripePlanChange(stripe))
+    const cloud = try testCloud({ stripe: { ...stripe, handler: planChange.handler } })
+    return { stripe, planChange, cloud }
+  }
+
+  effect function subscriptionOf(cloud: TestCloud, organizationId: string) {
+    const rows = try sql(cloud, "SELECT state, pending_plan_key FROM subscriptions WHERE key = $1", [organizationId])
+    const state = rows[0]?.state as Subscription
+    return { planKey: state.planKey, planned: state.planned, liveCommand: state.liveCommand.tag, pendingPlanKey: rows[0]?.pending_plan_key }
+  }
+
+  effect function adjustmentOf(cloud: TestCloud, organizationId: string) {
+    const rows = try sql(cloud, "SELECT state FROM allowance_periods WHERE organization_id = $1 AND starts_with(key, 'renewal/')", [organizationId])
+    return rows.map((row) => (row.state as { readonly adjustment: number }).adjustment)
+  }
+
+  function errorOf(answer: { readonly status: number; readonly body: unknown }) {
+    return [answer.status, (answer.body as { readonly error?: string; readonly status?: string }).error ?? (answer.body as { readonly status?: string }).status]
+  }
+
+  it.live("Upgrade unpaid, continue to the hosted invoice, then pay: the plan changes and the allowance grows by the quoted amount once (spec/cloud/billing/subscriptionCommands.md, \"Story: Review a plan change before I confirm it\"; spec/cloud/billing/subscriptionCommands.md, \"Story: Get the plan I paid for\"; spec/cloud/billing/allowance.md, \"Story: Get more allowance when I upgrade mid-period\")", () => scoped(effect {
+    const { stripe, planChange, cloud } = try planCloud()
+    const now = try Clock.currentTimeMillis
+    const signed = try signedIn(cloud, "upgrade@example.com")
+    const headers = { authorization: `Bearer ${signed.accessToken}` }
+    const subscription = try subscribedOn(cloud, stripe, signed.organizationId, "PlusMonthly", now)
+    const reviewBody = { subscriptionId: subscription.subscriptionId, expectedSubscriptionRevision: 4, targetPlanKey: "pro_monthly" }
+    const stale = try cloud.call("/api/v1/subscriptions/upgrade/review", { json: { ...reviewBody, expectedSubscriptionRevision: 3 }, headers })
+    const sideways = try cloud.call("/api/v1/subscriptions/upgrade/review", { json: { ...reviewBody, targetPlanKey: "plus_monthly" }, headers })
+    const reviewed = try cloud.call("/api/v1/subscriptions/upgrade/review", { json: reviewBody, headers })
+    const quote = reviewed.body as PlanChangeReview
+    try sync(() => planChange.declineNextUpgrade())
+    const confirmBody = { quoteId: quote.quoteId, idempotencyKey: "upgrade-key-0001" }
+    const confirmed = try cloud.call("/api/v1/subscriptions/upgrade/confirm", { json: confirmBody, headers })
+    const command = confirmed.body as PlanChangeView
+    const payment = try cloud.call(`/api/v1/subscriptions/upgrade/${command.commandId}/payment`, { method: "POST", headers })
+    const blocked = try cloud.call("/api/v1/subscriptions/downgrade/review", { json: { ...reviewBody, targetPlanKey: "plus_monthly" }, headers })
+    const waiting = try subscriptionOf(cloud, signed.organizationId)
+    const invoice = planChange.invoices[0]
+    try tryPromise(() => planChange.payInvoice(invoice?.id ?? ""))
+    const paid = try cloud.call(`/api/v1/subscriptions/upgrade/${command.commandId}`, { headers })
+    const replayed = try cloud.call("/api/v1/subscriptions/upgrade/confirm", { json: confirmBody, headers })
+    const paidAgain = try cloud.call(`/api/v1/subscriptions/upgrade/${command.commandId}/payment`, { method: "POST", headers })
+    const quoted = (try sql(cloud, "SELECT adjustment_micros FROM quotes WHERE key = $1", [quote.quoteId]))[0]?.adjustment_micros
+    const after = try subscriptionOf(cloud, signed.organizationId)
+    const adjustments = try adjustmentOf(cloud, signed.organizationId)
+    try sql(cloud, "UPDATE sessions SET auth_at = $2 WHERE user_id = $1", [signed.user.id, now - 2 * 3_600_000])
+    const unfresh = try cloud.call("/api/v1/subscriptions/upgrade/review", { json: reviewBody, headers })
+    const paidView = paid.body as PlanChangeView
+    try check(() => assert.deepStrictEqual(
+      {
+        refused: [errorOf(stale), errorOf(sideways)],
+        review: [reviewed.status, quote.review.kind, quote.review.targetPlanKey, quote.review.dueNow.amountDueCents > 0 && quote.review.dueNow.amountDueCents <= 7_000, quote.review.recurringEstimate.amountDueCents, quote.review.expiresAt - quote.review.effectiveAt <= 60_000, quote.review.effectiveAt >= now],
+        preview: planChange.previews.map((form) => [form.get("subscription_details[items][0][price]"), form.get("subscription_details[proration_date]") === String(Math.floor(quote.review.effectiveAt / 1000))]),
+        confirmed: [confirmed.status, command.status, command.kind, command.expectedRevision, command.resultRevision],
+        sent: planChange.updates.map((form) => [form.get("items[0][price]"), form.get("payment_behavior"), form.get("proration_behavior"), form.get("proration_date") === String(Math.floor(quote.review.effectiveAt / 1000))]),
+        payment: [payment.status, (payment.body as { readonly url: string }).url === invoice?.hosted_invoice_url, invoice?.amount_due === quote.review.dueNow.amountDueCents],
+        waiting: [errorOf(blocked), waiting.planKey, waiting.liveCommand],
+        paid: [paid.status, paidView.status, (paidView.resultRevision ?? 0) >= 4],
+        replayed: [replayed.status, (replayed.body as PlanChangeView).commandId === command.commandId, (replayed.body as PlanChangeView).status, planChange.updates.length],
+        paidAgain: errorOf(paidAgain),
+        after: [after.planKey, after.liveCommand, adjustments, Number(quoted) > 0],
+        unfresh: errorOf(unfresh)
+      },
+      {
+        refused: [[409, "stale_revision"], [409, "billing_state_conflict"]],
+        review: [200, "upgrade_estimate", "pro_monthly", true, 10_000, true, true],
+        preview: [["price_pro", true]],
+        confirmed: [200, "awaiting_payment", "upgrade", 4, null],
+        sent: [["price_pro", "pending_if_incomplete", "always_invoice", true]],
+        payment: [200, true, true],
+        waiting: [[409, "billing_state_conflict"], "PlusMonthly", "Live"],
+        paid: [200, "succeeded", true],
+        replayed: [200, true, "succeeded", 1],
+        paidAgain: [409, "billing_state_conflict"],
+        after: ["ProMonthly", "NoLiveCommand", [Number(quoted)], true],
+        unfresh: [428, "fresh_session_required"]
+      }
+    ))
+  }), 60_000)
+
+  it.live("A voided upgrade invoice rejects the upgrade, keeps the plan and frees the command slot (spec/cloud/billing/subscriptionCommands.md, \"Story: Get the plan I paid for\")", () => scoped(effect {
+    const { stripe, planChange, cloud } = try planCloud()
+    const now = try Clock.currentTimeMillis
+    const signed = try signedIn(cloud, "voided@example.com")
+    const headers = { authorization: `Bearer ${signed.accessToken}` }
+    const subscription = try subscribedOn(cloud, stripe, signed.organizationId, "PlusMonthly", now)
+    const reviewed = try cloud.call("/api/v1/subscriptions/upgrade/review", { json: { subscriptionId: subscription.subscriptionId, expectedSubscriptionRevision: 4, targetPlanKey: "pro_monthly" }, headers })
+    try sync(() => planChange.declineNextUpgrade())
+    const confirmed = try cloud.call("/api/v1/subscriptions/upgrade/confirm", { json: { quoteId: (reviewed.body as PlanChangeReview).quoteId, idempotencyKey: "voided-key-0001" }, headers })
+    const command = confirmed.body as PlanChangeView
+    try sync(() => planChange.voidInvoice(planChange.invoices[0]?.id ?? ""))
+    try cloud.inside(sweepPlanChanges())
+    const ended = try cloud.call(`/api/v1/subscriptions/upgrade/${command.commandId}`, { headers })
+    const foreign = try signedIn(cloud, "voided-other@example.com")
+    const hidden = try cloud.call(`/api/v1/subscriptions/upgrade/${command.commandId}`, { headers: { authorization: `Bearer ${foreign.accessToken}` } })
+    const after = try subscriptionOf(cloud, signed.organizationId)
+    const adjustments = try adjustmentOf(cloud, signed.organizationId)
+    try check(() => assert.deepStrictEqual(
+      { confirmed: [confirmed.status, command.status], ended: [ended.status, (ended.body as PlanChangeView).status, (ended.body as PlanChangeView).resultRevision], hidden: errorOf(hidden), after: [after.planKey, after.liveCommand, adjustments] },
+      { confirmed: [200, "awaiting_payment"], ended: [200, "rejected", null], hidden: [404, "not_found"], after: ["PlusMonthly", "NoLiveCommand", [0]] }
+    ))
+  }), 60_000)
+
+  it.live("Downgrade at the period end: the confirmed schedule keeps the higher plan until renewal and records the pending plan (spec/cloud/billing/subscriptionCommands.md, \"Story: Get the plan I paid for\"; spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\")", () => scoped(effect {
+    const { stripe, planChange, cloud } = try planCloud()
+    const now = try Clock.currentTimeMillis
+    const signed = try signedIn(cloud, "downgrade@example.com")
+    const headers = { authorization: `Bearer ${signed.accessToken}` }
+    const subscription = try subscribedOn(cloud, stripe, signed.organizationId, "ProMonthly", now)
+    const reviewBody = { subscriptionId: subscription.subscriptionId, expectedSubscriptionRevision: 4, targetPlanKey: "plus_monthly" }
+    const upward = try cloud.call("/api/v1/subscriptions/downgrade/review", { json: { ...reviewBody, targetPlanKey: "pro_monthly" }, headers })
+    const first = try cloud.call("/api/v1/subscriptions/downgrade/review", { json: reviewBody, headers })
+    const reviewed = try cloud.call("/api/v1/subscriptions/downgrade/review", { json: reviewBody, headers })
+    const quote = reviewed.body as PlanChangeReview
+    const replaced = try cloud.call("/api/v1/subscriptions/downgrade/confirm", { json: { quoteId: (first.body as PlanChangeReview).quoteId, idempotencyKey: "downgrade-key-0000" }, headers })
+    const confirmed = try cloud.call("/api/v1/subscriptions/downgrade/confirm", { json: { quoteId: quote.quoteId, idempotencyKey: "downgrade-key-0001" }, headers })
+    const command = confirmed.body as PlanChangeView
+    const read = try cloud.call(`/api/v1/subscriptions/downgrade/${command.commandId}`, { headers })
+    const wrongKind = try cloud.call(`/api/v1/subscriptions/upgrade/${command.commandId}`, { headers })
+    const after = try subscriptionOf(cloud, signed.organizationId)
+    const again = try cloud.call("/api/v1/subscriptions/downgrade/review", { json: { ...reviewBody, expectedSubscriptionRevision: (try sql(cloud, "SELECT (state->>'revision')::int AS revision FROM subscriptions WHERE key = $1", [signed.organizationId]))[0]?.revision }, headers })
+    const schedule = planChange.schedules[0]
+    try check(() => assert.deepStrictEqual(
+      {
+        upward: errorOf(upward),
+        review: [reviewed.status, quote.review.kind, quote.review.targetPlanKey, quote.review.dueNow.amountDueCents, quote.review.recurringEstimate.amountDueCents, quote.review.effectiveAt],
+        replaced: errorOf(replaced),
+        confirmed: [confirmed.status, command.status, command.kind, (command.resultRevision ?? 0) >= 4, (read.body as PlanChangeView).status, errorOf(wrongKind)],
+        schedule: [planChange.schedules.length, schedule?.subscription, schedule?.end_behavior, schedule?.phases.map((phase) => [phase.items[0]?.price, phase.start_date]), planChange.updates.length],
+        after: [after.planKey, after.planned, after.pendingPlanKey, after.liveCommand],
+        again: errorOf(again)
+      },
+      {
+        upward: [409, "billing_state_conflict"],
+        review: [200, "downgrade_estimate", "plus_monthly", 0, 3_000, subscription.periodEnd],
+        replaced: [404, "not_found"],
+        confirmed: [200, "succeeded", "downgrade", true, "succeeded", [404, "not_found"]],
+        schedule: [1, subscription.subscriptionId, "release", [["price_pro", subscription.periodStart / 1000], ["price_plus", subscription.periodEnd / 1000]], 0],
+        after: ["ProMonthly", { tag: "DowngradeAtRenewal", planKey: "PlusMonthly" }, "plus_monthly", "NoLiveCommand"],
+        again: [409, "billing_state_conflict"]
+      }
+    ))
+  }), 60_000)
+})

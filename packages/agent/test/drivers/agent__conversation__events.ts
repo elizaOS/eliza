@@ -64,8 +64,9 @@ function publish({ hub, inbox }: Entity, plugin: boolean, news: FeedEvent): bool
 }
 
 function expire({ expiries }: Entity, code: string): boolean {
-  const oldest = expiries.get(code)?.[0];
+  const [oldest, ...rest] = expiries.get(code) ?? [];
   if (oldest === undefined) return false;
+  expiries.set(code, rest);
   oldest();
   return true;
 }

@@ -2,7 +2,7 @@
 module node {
   import { createHash, randomUUID } from "node:crypto"
   import { stableJsonStringify, stringToUuid, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"
-  import { decide, holdOf, type KeyView } from "../../gen/agent__conversation__turns.ts"
+  import { decide, holdOf, type Admission, type KeyView } from "../../gen/agent__conversation__turns.ts"
 
   export type ClientMessageId = string & { readonly __brand: "ClientMessageId" }
   export type Fingerprint = number & { readonly __brand: "Fingerprint" }
@@ -16,13 +16,13 @@ module node {
     readonly settle: (result: R, answered: boolean) => void
   }
 
-  export type Ticket<R> =
+  export type Ticket<R> = { readonly verdict: Admission } & (
     | { readonly kind: "Refused"; readonly why: "InferenceUnavailable" | "Busy" | "Conflict" }
     | { readonly kind: "Joined"; readonly ended: Promise<R> }
     | { readonly kind: "Replayed"; readonly result: R }
     | { readonly kind: "Stored"; readonly reply: Memory }
     | { readonly kind: "Cut"; readonly userMessage: Memory; readonly turn: Turn<R> }
-    | { readonly kind: "Started"; readonly userMessageId: UUID; readonly turn: Turn<R> }
+    | { readonly kind: "Started"; readonly userMessageId: UUID; readonly turn: Turn<R> })
 
   export interface TurnLedger<R> {
     readonly admit: (room: UUID, key: KeyRecord | undefined, ready: boolean, now: number) => Promise<Ticket<R>>
@@ -125,22 +125,23 @@ module node {
         }
         const view = viewOf(room, key, stored, now)
         const busy = rooms.has(room) || runtime.roomHandlerQueue.pendingFor(room) > 0
-        const admission = decide(ready, view, key !== undefined, busy, key?.fingerprint ?? 1, 1)
-        switch (admission.tag) {
-          case "InferenceUnavailable": case "Busy": case "Conflict": return { kind: "Refused", why: admission.tag }
+        const verdict = decide(ready, view, key !== undefined, busy, key?.fingerprint ?? 1, 1)
+        const busyNow: Ticket<R> = { verdict: { tag: "Busy" }, kind: "Refused", why: "Busy" }
+        switch (verdict.tag) {
+          case "InferenceUnavailable": case "Busy": case "Conflict": return { verdict, kind: "Refused", why: verdict.tag }
           case "Duplicate": {
             const live = key === undefined ? undefined : running.get(slot(room, key))
-            return live === undefined ? { kind: "Refused", why: "Busy" } : { kind: "Joined", ended: live.ended }
+            return live === undefined ? busyNow : { verdict, kind: "Joined", ended: live.ended }
           }
           case "Settled": {
             const receipt = key === undefined ? undefined : receipts.get(slot(room, key))
-            if (view.tag === "HeldAnswered" && view.live && receipt !== undefined) return { kind: "Replayed", result: receipt.result }
-            if (stored?.reply !== undefined) return { kind: "Stored", reply: stored.reply }
-            if (stored === undefined) return { kind: "Refused", why: "Busy" }
-            return { kind: "Cut", userMessage: stored.userMessage, turn: begin(room, key) }
+            if (view.tag === "HeldAnswered" && view.live && receipt !== undefined) return { verdict, kind: "Replayed", result: receipt.result }
+            if (stored?.reply !== undefined) return { verdict, kind: "Stored", reply: stored.reply }
+            if (stored === undefined) return busyNow
+            return { verdict, kind: "Cut", userMessage: stored.userMessage, turn: begin(room, key) }
           }
           case "Owner": case "Unkeyed":
-            return { kind: "Started", userMessageId: key === undefined ? randomUUID() as UUID : userMessageIdOf(room, key.clientMessageId), turn: begin(room, key) }
+            return { verdict, kind: "Started", userMessageId: key === undefined ? randomUUID() as UUID : userMessageIdOf(room, key.clientMessageId), turn: begin(room, key) }
         }
       },
     }

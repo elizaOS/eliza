@@ -719,12 +719,14 @@ describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Ap
   }
 
   effect function eventRow(cloud: TestCloud, id: string) {
-    const row = (try sql(cloud, "SELECT state, attempts, payload IS NULL AS dropped, last_error_code FROM provider_events WHERE id = $1", [id]))[0]
-    return row === undefined ? undefined : { state: row.state, attempts: row.attempts, dropped: row.dropped, error: row.last_error_code }
+    const row = (try sql(cloud, "SELECT phase, attempts, payload IS NULL AS dropped, last_error_code FROM provider_events WHERE key = $1", [id]))[0]
+    return row === undefined ? undefined : { state: row.phase, attempts: row.attempts, dropped: row.dropped, error: row.last_error_code }
   }
 
-  const statusOf = (answer: { readonly status: number; readonly body: unknown }) =>
-    [answer.status, (answer.body as { readonly error?: string; readonly duplicate?: boolean }).error ?? (answer.body as { readonly duplicate?: boolean }).duplicate]
+  const statusOf = (answer: { readonly status: number; readonly body: unknown }) => {
+    const body = answer.body as { readonly error?: string; readonly received?: boolean; readonly queued?: boolean; readonly duplicate?: boolean }
+    return [answer.status, body.error ?? (body.duplicate === true ? "duplicate" : body.received === true && body.queued === true ? "queued" : "unexpected")]
+  }
 
   it.live("Store a payment event once, refuse a forged, stale, foreign or rewritten one, and apply it once (spec/cloud/billing/providerEvents.md, \"Story: Apply each payment event once, whatever the delivery order\")", () => scoped(effect {
     const stripe = try sync(() => createStripeFake())
@@ -745,7 +747,7 @@ describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Ap
     const row = try eventRow(cloud, first.id)
     try check(() => assert.deepStrictEqual(
       { stored: statusOf(stored), repeated: statusOf(repeated), tampered: statusOf(tampered), stale: statusOf(stale), foreign: statusOf(foreign), rewritten: statusOf(rewritten), replayed: statusOf(replayed), rows: rows[0]?.n, row },
-      { stored: [200, false], repeated: [200, true], tampered: [400, "invalid_request"], stale: [400, "invalid_request"], foreign: [400, "invalid_request"], rewritten: [409, "idempotency_conflict"], replayed: [200, true], rows: 1, row: { state: "Done", attempts: 1, dropped: true, error: null } }
+      { stored: [200, "queued"], repeated: [200, "duplicate"], tampered: [400, "invalid_request"], stale: [400, "invalid_request"], foreign: [400, "invalid_request"], rewritten: [409, "idempotency_conflict"], replayed: [200, "duplicate"], rows: 1, row: { state: "Done", attempts: 1, dropped: true, error: null } }
     ))
   }), 60_000)
 
@@ -770,7 +772,7 @@ describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Ap
       {
         afterFirst: { failing: { state: "Pending", attempts: 1, dropped: false, error: "StripeRefused" }, following: { state: "Done", attempts: 1, dropped: true, error: null } },
         deadLettered: { state: "DeadLettered", attempts: 8, dropped: false, error: "StripeRefused" },
-        revived: [200, false],
+        revived: [200, "queued"],
         pending: { state: "Pending", attempts: 0, dropped: false, error: null }
       }
     ))
@@ -2662,8 +2664,9 @@ describe("WP4 Subscriptions and entitlements: plan changes", () => {
     const foreign = try signedIn(cloud, "voided-other@example.com")
     const hidden = try cloud.call(`/api/v1/subscriptions/upgrade/${command.commandId}`, { headers: { authorization: `Bearer ${foreign.accessToken}` } })
     const after = try subscriptionOf(cloud, signed.organizationId)
+    const adjustments = try adjustmentOf(cloud, signed.organizationId)
     try check(() => assert.deepStrictEqual(
-      { confirmed: [confirmed.status, command.status], ended: [ended.status, (ended.body as PlanChangeView).status, (ended.body as PlanChangeView).resultRevision], hidden: errorOf(hidden), after: [after.planKey, after.liveCommand, try adjustmentOf(cloud, signed.organizationId)] },
+      { confirmed: [confirmed.status, command.status], ended: [ended.status, (ended.body as PlanChangeView).status, (ended.body as PlanChangeView).resultRevision], hidden: errorOf(hidden), after: [after.planKey, after.liveCommand, adjustments] },
       { confirmed: [200, "awaiting_payment"], ended: [200, "rejected", null], hidden: [404, "not_found"], after: ["PlusMonthly", "NoLiveCommand", [0]] }
     ))
   }), 60_000)
@@ -2705,6 +2708,87 @@ describe("WP4 Subscriptions and entitlements: plan changes", () => {
         schedule: [1, subscription.subscriptionId, "release", [["price_pro", subscription.periodStart / 1000], ["price_plus", subscription.periodEnd / 1000]], 0],
         after: ["ProMonthly", { tag: "DowngradeAtRenewal", planKey: "PlusMonthly" }, "plus_monthly", "NoLiveCommand"],
         again: [409, "billing_state_conflict"]
+      }
+    ))
+  }), 60_000)
+})
+
+import { observeSubscription, reconcileSubscription, releaseLiveCommand, claimLiveCommand, scheduleDowngrade, sendSubscription, sweepSubscriptions } from "../src/billing/subscriptions.vibe"
+import { withSubscriptionLifecycle } from "./support/fakes/stripe-subscriptions.ts"
+import { manualClock } from "./support/clock.ts"
+
+effect function reconciledAt(cloud: TestCloud, organizationId: string, now: number, checkout?: string) {
+  return try cloud.inside(cloud.store.transaction((tx) => cloud.inside(effect {
+    const observed = try observeSubscription(tx, organizationId)
+    return try reconcileSubscription(tx, organizationId, observed, now, checkout)
+  })))
+}
+
+effect function heldRow(cloud: TestCloud, organizationId: string) {
+  const row = (try sql(cloud, "SELECT status, plan_key, pending_plan_key, live_command, policy_generation, dunning_started_at, dunning_ends_at FROM subscriptions WHERE key = $1", [organizationId]))[0]
+  return [row?.status, row?.plan_key, row?.pending_plan_key ?? null, row?.live_command ?? null, Number(row?.policy_generation), row?.dunning_started_at === null ? null : Number(row?.dunning_started_at), row?.dunning_ends_at === null ? null : Number(row?.dunning_ends_at)]
+}
+
+describe("WP4 Subscriptions and entitlements: reconcile", () => {
+  it.live("Follow the provider through a paid checkout, a renewal that applies a pending downgrade, a failed payment, its dunning window and the end (spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\"; spec/cloud/billing/subscriptions.md, \"Story: Change my plan one command at a time\"; spec/cloud/billing/allowance.md, \"Story: Spend my plan's allowance before my credits, and never carry it over\")", () => scoped(effect {
+    const lifecycle = try sync(() => withSubscriptionLifecycle(createStripeFake()))
+    const cloud = try testCloud({ stripe: lifecycle.stripe })
+    const now = try Clock.currentTimeMillis
+    const organizationId = "org-reconcile"
+    const day = 24 * 3_600_000
+    try organization(cloud, organizationId)
+    const bought = try sync(() => lifecycle.subscribe("price_pro"))
+    try cloud.inside(cloud.store.transaction((tx) => cloud.inside(sendSubscription(tx, organizationId, { type: "pinCustomer", customerId: bought.customerId }, now))))
+    const paid = try reconciledAt(cloud, organizationId, now, "cmd_checkout")
+    const paidRow = try heldRow(cloud, organizationId)
+    const replay = try reconciledAt(cloud, organizationId, now + 1000)
+    const periodsAfterReplay = try periodStatuses(cloud, organizationId)
+    const scheduled = try cloud.store.transaction(effect (tx: Tx) => {
+      try claimLiveCommand(tx, organizationId, "DowngradeCommand", "cmd_downgrade", replay.revision, now + 1500)
+      const state = try scheduleDowngrade(tx, organizationId, "cmd_downgrade", "PlusMonthly", now + 1500)
+      try releaseLiveCommand(tx, organizationId, "cmd_downgrade", now + 1500)
+      return state
+    })
+    const scheduledRow = try heldRow(cloud, organizationId)
+    const renewal = try sync(() => lifecycle.renew(bought.subscriptionId, "paid", "price_plus"))
+    const renewed = try reconciledAt(cloud, organizationId, now + 2000)
+    const renewedRow = try heldRow(cloud, organizationId)
+    const periodsAfterRenewal = try periodStatuses(cloud, organizationId)
+    try sync(() => lifecycle.renew(bought.subscriptionId, "failed"))
+    const failedAt = now + 3000
+    const dunning = try reconciledAt(cloud, organizationId, failedAt)
+    const stillDunning = try reconciledAt(cloud, organizationId, failedAt + 3_600_000)
+    const dunningRow = try heldRow(cloud, organizationId)
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(failedAt + 3 * day))
+    const swept = try cloud.inside(Effect.provideService(sweepSubscriptions(), Clock.Clock, clock.clock))
+    const lapsedRow = try heldRow(cloud, organizationId)
+    try sync(() => lifecycle.cancel(bought.subscriptionId))
+    const ended = try reconciledAt(cloud, organizationId, failedAt + 3 * day + 1000)
+    const endedRow = try heldRow(cloud, organizationId)
+    const again = try reconciledAt(cloud, organizationId, failedAt + 3 * day + 2000)
+    const periodsAtEnd = try periodStatuses(cloud, organizationId)
+    const first = `renewal/staging/${bought.invoiceId}`
+    const second = `renewal/staging/${renewal.id}`
+    const window = { tag: "DunningSince", startedAt: failedAt, endsAt: failedAt + 3 * day }
+    try check(() => assert.deepStrictEqual(
+      {
+        paid: [paid.status, paid.planKey, paid.lastRenewalInvoice, paid.revision, paid.liveCommand.tag, paidRow],
+        replay: [replay.revision, periodsAfterReplay],
+        scheduled: [scheduled.planned, scheduled.revision, scheduledRow],
+        renewed: [renewed.status, renewed.planKey, renewed.planned.tag, renewed.lastRenewalInvoice, renewed.revision, renewedRow, periodsAfterRenewal],
+        dunning: [dunning.status, dunning.dunning, dunning.revision, stillDunning.dunning, stillDunning.revision, dunningRow],
+        swept: [swept, lapsedRow],
+        ended: [ended.status, ended.revision, endedRow, again, periodsAtEnd]
+      },
+      {
+        paid: ["Active", "ProMonthly", bought.invoiceId, 2, "NoLiveCommand", ["active", "pro_monthly", null, null, 1, null, null]],
+        replay: [2, [[first, "open"]]],
+        scheduled: [{ tag: "DowngradeAtRenewal", planKey: "PlusMonthly" }, 3, ["active", "pro_monthly", "plus_monthly", null, 1, null, null]],
+        renewed: ["Active", "PlusMonthly", "NoPlannedChange", renewal.id, 4, ["active", "plus_monthly", null, null, 2, null, null], [[first, "open"], [second, "open"]]],
+        dunning: ["Dunning", window, 5, window, 5, ["dunning", "plus_monthly", null, null, 3, failedAt, failedAt + 3 * day]],
+        swept: [{ expired: 1, refreshed: 1 }, ["past_due", "plus_monthly", null, null, 4, failedAt, failedAt + 3 * day]],
+        ended: ["Canceled", 7, ["canceled", "plus_monthly", null, null, 5, null, null], ended, [[first, "closed"], [second, "closed"]]]
       }
     ))
   }), 60_000)

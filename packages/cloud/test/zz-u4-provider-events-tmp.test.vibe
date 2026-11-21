@@ -19,12 +19,14 @@ describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Ap
   }
 
   effect function eventRow(cloud: TestCloud, id: string) {
-    const row = (try sql(cloud, "SELECT state, attempts, payload IS NULL AS dropped, last_error_code FROM provider_events WHERE id = $1", [id]))[0]
-    return row === undefined ? undefined : { state: row.state, attempts: row.attempts, dropped: row.dropped, error: row.last_error_code }
+    const row = (try sql(cloud, "SELECT phase, attempts, payload IS NULL AS dropped, last_error_code FROM provider_events WHERE key = $1", [id]))[0]
+    return row === undefined ? undefined : { state: row.phase, attempts: row.attempts, dropped: row.dropped, error: row.last_error_code }
   }
 
-  const statusOf = (answer: { readonly status: number; readonly body: unknown }) =>
-    [answer.status, (answer.body as { readonly error?: string; readonly duplicate?: boolean }).error ?? (answer.body as { readonly duplicate?: boolean }).duplicate]
+  const statusOf = (answer: { readonly status: number; readonly body: unknown }) => {
+    const body = answer.body as { readonly error?: string; readonly received?: boolean; readonly queued?: boolean; readonly duplicate?: boolean }
+    return [answer.status, body.error ?? (body.duplicate === true ? "duplicate" : body.received === true && body.queued === true ? "queued" : "unexpected")]
+  }
 
   it.live("Store a payment event once, refuse a forged, stale, foreign or rewritten one, and apply it once (spec/cloud/billing/providerEvents.md, \"Story: Apply each payment event once, whatever the delivery order\")", () => scoped(effect {
     const stripe = try sync(() => createStripeFake())
@@ -45,7 +47,7 @@ describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Ap
     const row = try eventRow(cloud, first.id)
     try check(() => assert.deepStrictEqual(
       { stored: statusOf(stored), repeated: statusOf(repeated), tampered: statusOf(tampered), stale: statusOf(stale), foreign: statusOf(foreign), rewritten: statusOf(rewritten), replayed: statusOf(replayed), rows: rows[0]?.n, row },
-      { stored: [200, false], repeated: [200, true], tampered: [400, "invalid_request"], stale: [400, "invalid_request"], foreign: [400, "invalid_request"], rewritten: [409, "idempotency_conflict"], replayed: [200, true], rows: 1, row: { state: "Done", attempts: 1, dropped: true, error: null } }
+      { stored: [200, "queued"], repeated: [200, "duplicate"], tampered: [400, "invalid_request"], stale: [400, "invalid_request"], foreign: [400, "invalid_request"], rewritten: [409, "idempotency_conflict"], replayed: [200, "duplicate"], rows: 1, row: { state: "Done", attempts: 1, dropped: true, error: null } }
     ))
   }), 60_000)
 
@@ -70,7 +72,7 @@ describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Ap
       {
         afterFirst: { failing: { state: "Pending", attempts: 1, dropped: false, error: "StripeRefused" }, following: { state: "Done", attempts: 1, dropped: true, error: null } },
         deadLettered: { state: "DeadLettered", attempts: 8, dropped: false, error: "StripeRefused" },
-        revived: [200, false],
+        revived: [200, "queued"],
         pending: { state: "Pending", attempts: 0, dropped: false, error: null }
       }
     ))

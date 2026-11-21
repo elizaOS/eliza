@@ -1,9 +1,38 @@
 // spec/cloud/billing/grantCodes.md, "Story: Redeem a membership code once"
 import { assert, describe, it } from "@effect/vitest"
-import { organization, testCloud, type TestCloud } from "./support/cloud.vibe"
+import { listening, respond } from "../src/http/transport.vibe"
+import type { CloudContext } from "../src/http/routes.vibe"
+import { routes as grantRoutes } from "../src/billing/grant-codes.vibe"
+import { routes as entitlementRoutes } from "../src/billing/entitlements.vibe"
+import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
+import { migrate, Store, storeLayer } from "../src/store/store.vibe"
 import { tokenDigest } from "../src/shared/sealing.vibe"
 import { verifyEntitlement, type PublishedKey } from "./support/entitlement.ts"
+import { callCloud, type CallInit } from "./support/http.ts"
+import { secrets, testProfile } from "./support/profile.ts"
 import { initial as noSubscription, type Subscription } from "../gen/cloud__billing__subscriptions.ts"
+
+interface TestCloud {
+  readonly store: Store.Shape
+  call(path: string, init?: CallInit): ReturnType<typeof callCloud> extends Promise<infer A> ? A!! : never
+  inside<A, E>(body: A!E!CloudContext): A!E
+}
+
+effect function testCloud() {
+  const profile = try parseProfile(testProfile("http://127.0.0.1:9"))
+  const context = Layer.mergeAll(deploymentLayer(profile, "staging"), storeLayer({ kind: "pglite", file: undefined }), FetchHttpClient.layer).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+  const built = try Layer.build(HttpServer.serve(respond([...grantRoutes, ...entitlementRoutes])).pipe(Layer.provideMerge(listening(0, "127.0.0.1")), Layer.provideMerge(context)))
+  const store = Context.get(built, Store)
+  try Effect.provideContext(migrate({ digest: "c".repeat(64), environment: "staging", now: 0 }), built)
+  const { address } = Context.get(built, HttpServer.HttpServer)
+  const url = "port" in address ? `http://127.0.0.1:${address.port}` : ""
+  return { store, call: (path: string, init?: CallInit) => promise(() => callCloud(url, path, init)), inside: <A, E>(body: A!E!CloudContext) => Effect.provideContext(body, built) } satisfies TestCloud
+}
+
+effect function organization(cloud: TestCloud, id: string) {
+  const now = try Clock.currentTimeMillis
+  try cloud.store.transaction((tx) => tx.query("INSERT INTO organizations (id, name, created_at) VALUES ($1, $2, $3)", [id, id, now]))
+}
 
 effect function check(run: () => void) {
   try Effect.try(run)
@@ -148,3 +177,8 @@ describe("WP4 Subscriptions and entitlements: grant codes", () => {
     ))
   }))
 })
+
+import { createStripePlanChange } from "./support/fakes/stripe-plan-change.ts"
+import { fakeSecretKey, type StripeFake } from "./support/fakes/stripe.ts"
+import { sweepPlanChanges, type PlanChangeReview, type PlanChangeView } from "../src/billing/plan-change.vibe"
+

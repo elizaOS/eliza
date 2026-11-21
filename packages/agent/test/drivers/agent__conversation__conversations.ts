@@ -11,8 +11,7 @@ import { redactRoutes } from "../../src/conversation/redact.vibe";
 import { openDeviceStorage } from "../../src/storage/index.vibe";
 import { scratchDirectory, type Scratch } from "../support/scratch.ts";
 
-const base = 1_700_000_000_000;
-const unit = 1_000_000;
+const unit = 100_000;
 const notice = "[Private information removed]";
 const wallClock = Date.now;
 
@@ -30,6 +29,7 @@ interface World {
   readonly routes: readonly LocalRoute[];
   readonly messageIds: Map<string, number>;
   readonly digests: Map<string, number>;
+  readonly base: number;
   now: number;
   tick: number;
   nextMessage: number;
@@ -38,7 +38,7 @@ interface World {
 let opened: Opened | undefined;
 let world: World | undefined;
 
-Date.now = () => world === undefined ? wallClock() : base + world.now * unit + ++world.tick;
+Date.now = () => world === undefined ? wallClock() : world.base + world.now * unit + ++world.tick;
 
 async function storage(): Promise<Opened> {
   if (opened === undefined) {
@@ -58,7 +58,7 @@ async function fresh(): Promise<World> {
   const store = conversationStore(runtime, owner);
   return {
     runtime, owner, store, forks: forkService(runtime, store), routes: [...conversationRecordRoutes(store), ...redactRoutes(runtime, store)],
-    messageIds: new Map(), digests: new Map(), now: 0, tick: 0, nextMessage: 1,
+    messageIds: new Map(), digests: new Map(), base: wallClock(), now: 0, tick: 0, nextMessage: 1,
   };
 }
 
@@ -67,7 +67,7 @@ async function current(): Promise<World> {
   return world;
 }
 
-const modelTime = (real: number) => Math.floor((real - base) / unit);
+const modelTime = (w: World, real: number) => Math.floor((real - w.base) / unit);
 const accepted = (done: boolean) => done ? "accepted" as const : "refused" as const;
 
 async function records(w: World): Promise<ConversationRecord[]> {
@@ -167,12 +167,12 @@ async function observe(): Promise<Conversations> {
   const held = await records(w);
   const seqOf = new Map(held.map((record) => [record.id, record.seq]));
   const conversations = held.map((record): Conversation => ({
-    id: record.seq, title: titleOf(record.title), createdAt: modelTime(record.createdAt), updatedAt: modelTime(record.updatedAt), publication: record.publication,
+    id: record.seq, title: titleOf(record.title), createdAt: modelTime(w, record.createdAt), updatedAt: modelTime(w, record.updatedAt), publication: record.publication,
   }));
   const messages = (await Promise.all(held.map(async (record) => (await storedMessages(w, record)).map((memory): Message => {
     const from = sourceOf(memory);
     return {
-      id: w.messageIds.get(memory.id) ?? 0, conversationId: record.seq, at: modelTime(memory.createdAt ?? 0),
+      id: w.messageIds.get(memory.id) ?? 0, conversationId: record.seq, at: modelTime(w, memory.createdAt ?? 0),
       author: memory.entityId === w.runtime.agentId ? "Agent" : "User", body: bodyOf(memory),
       origin: from === undefined ? { tag: "Original" } : { tag: "Copied", fromId: w.messageIds.get(String(from)) ?? 0 },
     };
@@ -183,7 +183,7 @@ async function observe(): Promise<Conversations> {
   })))).flat().sort((a, b) => a.at - b.at).map(({ row }) => row);
   const forks = (await Promise.all(held.map(async (record) => (await forkRecords(w.runtime, record)).map((kept): Fork => ({
     forkId: seqOf.get(kept.forkId) ?? 0, source: record.seq, requestId: kept.requestId, boundary: w.messageIds.get(kept.boundary) ?? 0,
-    boundaryAt: modelTime(kept.boundaryAt), textDigest: w.digests.get(kept.forkId) ?? 0,
+    boundaryAt: modelTime(w, kept.boundaryAt), textDigest: w.digests.get(kept.forkId) ?? 0,
   }))))).flat().sort((a, b) => a.forkId - b.forkId);
   return {
     conversations, messages, log: logs, forks,

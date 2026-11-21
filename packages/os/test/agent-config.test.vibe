@@ -46,8 +46,8 @@ module node {
 import { project, type Answer, type Ask } from node
 
 interface AgentLaunchSchema {
-  readonly decodeLaunchDocument: (input: string) => Effect.Effect<{ readonly [field: string]: unknown }, unknown>
-  readonly decodeLaunchFrame: (input: string) => Effect.Effect<{ readonly epoch: number; readonly credential?: { readonly version: number }; readonly storageKey?: string }, unknown>
+  readonly decodeLaunchDocument: (input: string) => { readonly [field: string]: unknown }!unknown
+  readonly decodeLaunchFrame: (input: string) => { readonly epoch: number; readonly credential?: { readonly version: number }; readonly storageKey?: string }!unknown
 }
 
 effect function agentLaunchSchema() {
