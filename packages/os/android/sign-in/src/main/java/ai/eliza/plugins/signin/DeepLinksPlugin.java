@@ -46,7 +46,17 @@ public class DeepLinksPlugin extends Plugin {
     }
   }
 
+  private static void sieve(Intent intent) {
+    if (intent == null || FailureReturn.consumeRegistered(intent)) return;
+    Uri data = intent.getData();
+    if (data == null || !BrowserSignIn.claims(data.toString())) return;
+    intent.setData(null);
+    intent.replaceExtras((android.os.Bundle) null);
+    BrowserSignIn.arrived(data.toString());
+  }
+
   private static String uncaptured(Intent intent) {
+    sieve(intent);
     if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction()) || intent.hasExtra(EXTRA_RECEIPT)) return null;
     Uri data = intent.getData();
     String url = data == null ? null : data.toString();

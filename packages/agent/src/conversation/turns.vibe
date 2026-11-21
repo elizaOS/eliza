@@ -265,6 +265,7 @@ module node {
           replyId: replyIdOf(userMessageId), ...(writer === undefined ? {} : { onStreamChunk: (chunk: string) => writer.append(chunk) }),
         })
         const kind = kindOf(result.outcome, deadline)
+        logger.warn({ src: "agent", debugOutcome: JSON.stringify(result.outcome), replies: result.responseMessages.length, content: JSON.stringify(result.responseContent) }, "DEBUGTURN")
         const [first] = result.responseMessages
         if (kind !== undefined) return first === undefined ? keep(record, userMessageId, result.responseContent?.text ?? "", kind) : { kind: "Replied", reply: replyOf(first, agentName) }
         if (result.outcome.status !== "completed" || first === undefined) return unavailable

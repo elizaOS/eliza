@@ -1,7 +1,38 @@
 // spec/cloud/billing/subscriptionCommands.md, "Story: Change or cancel my plan without paying twice"
 import { assert, describe, it } from "@effect/vitest"
 import { createStripeFake, fakeSecretKey, type StripeFake } from "./support/fakes/stripe.ts"
-import { testCloud, type TestCloud } from "./support/cloud.vibe"
+import { area as billing } from "../src/http/routes/billing.vibe"
+import { listening, respond } from "../src/http/transport.vibe"
+import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
+import { migrate, Store, storeLayer } from "../src/store/store.vibe"
+import { startFakeServer, type FakeHandler, type FakeServer } from "./support/fakes.ts"
+import { callCloud, type Answer, type CallInit } from "./support/http.ts"
+import { secrets, testProfile } from "./support/profile.ts"
+
+interface TestCloud {
+  readonly fakes: FakeServer
+  readonly store: Store.Shape
+  call(path: string, init?: CallInit): Answer!!
+}
+
+effect function testCloud(options: { readonly stripe: { readonly handler: FakeHandler } }) {
+  const fakes = try acquireRelease(promise(() => startFakeServer()), (server) => promise(() => server.close()))
+  try sync(() => fakes.mount("/stripe/", options.stripe.handler))
+  const profile = try parseProfile(try sync(() => testProfile(fakes.url)))
+  const storage = try Layer.build(storeLayer({ kind: "pglite", file: undefined }))
+  const store = Context.get(storage, Store)
+  const now = try Clock.currentTimeMillis
+  try Effect.provideContext(migrate({ digest: profile.environments.staging.databaseIdentity, environment: "staging", now }), storage)
+  const deployment = deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+  const clock = try Clock.Clock
+  const built = try Layer.build(HttpServer.serve(respond(billing.routes)).pipe(
+    Layer.provideMerge(listening(0, "127.0.0.1")),
+    Layer.provideMerge(Layer.mergeAll(deployment, Layer.succeed(Store, store), FetchHttpClient.layer, Layer.succeed(Clock.Clock, clock)))
+  ))
+  const { address } = Context.get(built, HttpServer.HttpServer)
+  const url = "port" in address ? `http://127.0.0.1:${address.port}` : ""
+  return { fakes, store, call: (path: string, init?: CallInit) => promise(() => callCloud(url, path, init)) } satisfies TestCloud
+}
 import { tokenDigest } from "../src/shared/sealing.vibe"
 import { signedIn } from "./support/identity.ts"
 import type { BillingSnapshot } from "../src/billing/snapshot.vibe"
@@ -52,9 +83,9 @@ describe("WP4 Subscriptions and entitlements: cancel and undo", () => {
     const stripe = try sync(() => createStripeFake())
     const cloud = try testCloud({ stripe: { ...stripe, handler: withRenewalPreview(stripe) } })
     const now = try Clock.currentTimeMillis
-    const signed = try signedIn(cloud, "cancel@example.com")
-    const earlier = try signedIn(cloud, "cancel@example.com")
-    const other = try signedIn(cloud, "cancel-other@example.com")
+    const signed = try signedIn(cloud as unknown as Parameters<typeof signedIn>[0], "cancel@example.com")
+    const earlier = try signedIn(cloud as unknown as Parameters<typeof signedIn>[0], "cancel@example.com")
+    const other = try signedIn(cloud as unknown as Parameters<typeof signedIn>[0], "cancel-other@example.com")
     try sql(cloud, "UPDATE sessions SET auth_at = $2, step_up_at = 0 WHERE access_digest = $1", [tokenDigest(earlier.accessToken), now - 2 * 3_600_000])
     const as = (session: { readonly accessToken: string }) => ({ authorization: `Bearer ${session.accessToken}` })
     const subscription = try subscribedOnPlus(cloud, stripe, signed.organizationId, now)

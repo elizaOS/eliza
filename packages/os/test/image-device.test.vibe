@@ -153,7 +153,6 @@ it.live("Qualify a device read-only (spec/os/image/qualification.md, \"Story: Qu
   const root = try scratch("image-qualify")
   const files = try FileSystem.FileSystem
   const phone = try Effect.try({ try: () => fakeAdb(root, device(SERIAL, { scripted: [] })), catch: failed("start the fake adb") })
-  try Effect.try({ try: () => phone.set({ scripted: [] }), catch: failed("reset the fake adb") })
   const answers = try fixtureAnswers()
   try Effect.try({ try: () => phone.set({ scripted: answers }), catch: failed("answer with the emulator capture") })
 

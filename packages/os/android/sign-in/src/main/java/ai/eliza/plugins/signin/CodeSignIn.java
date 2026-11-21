@@ -58,7 +58,6 @@ public final class CodeSignIn {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         connection.setDoOutput(true);
         connection.setRequestProperty("Content-Type", "application/json");
-        connection.setFixedLengthStreamingMode(bytes.length);
         try (OutputStream out = connection.getOutputStream()) { out.write(bytes); }
       }
       int status = connection.getResponseCode();
