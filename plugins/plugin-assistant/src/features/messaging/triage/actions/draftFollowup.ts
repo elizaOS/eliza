@@ -26,13 +26,14 @@ import {
   SUPPORTED_MESSAGE_SOURCES_TEXT,
   validateMessageAction,
 } from "./_shared.ts";
+import { deviceEmailDraft } from "./device-email-draft.ts";
 
 export const draftFollowupAction: Action = {
   name: "MESSAGE",
   contexts: ["messaging", "email", "contacts", "tasks"],
   roleGate: { minRole: "ADMIN" },
   description:
-    "Compose a draft follow-up / check-in message to a contact on a chosen platform. Never sends — produces a preview that must be confirmed via MESSAGE.",
+    "Compose a new outbound draft or recreate a previous unsent draft from this chat. No inbox message is needed. On a phone with a Gmail composer, hand the draft to the local editor. Otherwise return a preview. This action never sends.",
   similes: ["COMPOSE_FOLLOWUP", "FOLLOWUP_DRAFT", "CHECK_IN_DRAFT"],
   parameters: [
     {
@@ -108,6 +109,18 @@ export const draftFollowupAction: Action = {
         text: parsed.error,
         error: parsed.error,
       };
+    }
+
+    const local = await deviceEmailDraft(
+      runtime,
+      _message,
+      parsed,
+      options?.parameters,
+    );
+    if (local) {
+      if (callback && local.text)
+        await callback({ text: local.text, action: "MESSAGE" });
+      return local;
     }
 
     const service = getDefaultTriageService();

@@ -62,6 +62,7 @@ import {
   validateSmsResult,
   validateSmsSend,
 } from "@elizaos/contracts/sms-send";
+import { directSmsRequest } from "@elizaos/contracts/telephony-actions";
 import {
   BROWSER_CONTROL_DIRECT_TYPES,
   BROWSER_OPEN_NEW_TAB_CAPABILITY,
@@ -90,6 +91,7 @@ import {
   validateCameraCapture,
   validateCameraCaptureResult,
 } from "./camera-contract.ts";
+import { requestedCameraCapture } from "./camera-request.ts";
 import type {
   ClockHandoffOperation,
   ClockHandoffResult,
@@ -1220,6 +1222,8 @@ export class DeviceActionCoordinator<
   private executing: string | undefined;
   private readonly ports: DeviceActionCoordinatorPorts<C, R>;
   private browserAttempts = new Map<string, CurrentDeviceActionRequest>();
+  /** Request keys whose one direct photo has been started. */
+  private cameraAttempts = new Set<string>();
   private browserPolicy = new Map<string, { key: string; allowed: boolean }>();
   private selectedTelephonyRequests = new Map<
     string,
@@ -1299,6 +1303,31 @@ export class DeviceActionCoordinator<
       return false;
     proof.current();
     this.browserAttempts.set(key, proof);
+    return true;
+  }
+  /** A photo runs without its card only when this very message, as the owner
+   * typed it, asks for one now; a capture the model proposed for any other
+   * words ("summarize this page", "don't take a photo") keeps its card. */
+  private cameraAllowed(
+    messageId: string,
+    proof?: CurrentDeviceActionRequest,
+  ): boolean {
+    if (!proof || proof.messageId !== messageId) return false;
+    proof.current();
+    return (
+      requestedCameraCapture(proof.text, this.profile.assistantName) !==
+      undefined
+    );
+  }
+  /** One requested photo is one shot, however many captures were proposed. */
+  private consumeCameraRequest(messageId: string): boolean {
+    const key = this.requestKey(messageId);
+    if (this.cameraAttempts.has(key)) return false;
+    if (this.cameraAttempts.size >= 128) {
+      const oldest = this.cameraAttempts.values().next().value;
+      if (oldest !== undefined) this.cameraAttempts.delete(oldest);
+    }
+    this.cameraAttempts.add(key);
     return true;
   }
   get supportsCalendarAgenda(): boolean {
@@ -1922,7 +1951,11 @@ export class DeviceActionCoordinator<
     for (const [proposalId, entry] of [...this.proposals]) {
       if (
         results.length >= 4 ||
-        !directTypes.includes(entry.proposal.operation.type) ||
+        (!directTypes.includes(entry.proposal.operation.type) &&
+          !(
+            proof?.messageId === messageId &&
+            directSmsRequest(entry.proposal.operation, proof.text)
+          )) ||
         entry.proposal.workflow ||
         entry.proposal.requestMessageId !== messageId ||
         (operationType !== undefined &&
@@ -1958,8 +1991,15 @@ export class DeviceActionCoordinator<
         !keypadGrounded(entry.proposal.operation, messageId, proof)
       )
         continue;
+      const camera = entry.proposal.operation.type === "camera_capture_photo";
+      if (camera && !this.cameraAllowed(messageId, proof)) continue;
       if (!(await allowed())) break;
       signal.throwIfAborted();
+      if (
+        entry.proposal.operation.type === "sms_latest_sender" ||
+        entry.proposal.operation.type === "sms_compose"
+      )
+        proof?.current();
       if (browser) {
         if (
           this.proposals.get(proposalId) !== entry ||
@@ -1971,6 +2011,13 @@ export class DeviceActionCoordinator<
           continue;
         entry.currentRequest = proof;
       }
+      if (
+        camera &&
+        (this.proposals.get(proposalId) !== entry ||
+          !this.cameraAllowed(messageId, proof) ||
+          !this.consumeCameraRequest(messageId))
+      )
+        continue;
       const result = await this.approve(proposalId, context, signal);
       results.push(result);
       if (result.status !== "succeeded" || signal.aborted) break;
@@ -3828,8 +3875,9 @@ function describeTelephonyAction(operation: TelephonyActionOperation): {
     case "sms_latest_sender":
       return {
         title: "Read latest text sender",
-        description:
-          "Read the last four digits of the newest incoming SMS sender. The phone does not read the message body.",
+        description: operation.includeAddress
+          ? "Read the phone number of your latest incoming text."
+          : "Read the last four digits of the newest incoming SMS sender. The phone does not read the message body.",
       };
     case "voicemail_read_selected":
       return {

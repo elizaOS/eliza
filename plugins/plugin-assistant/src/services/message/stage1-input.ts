@@ -23,7 +23,11 @@ import { v4 } from "uuid";
 import { composePrompt } from "../../text/template-rendering.js";
 import type { OptimizedPromptTask } from "../optimized-prompt.ts";
 import { resolveStage1SenderRole } from "./addressing.js";
-import { createV5MessageContextObject } from "./context-assembly.js";
+import { CLIENT_OBSERVATION_SEGMENT_LABEL } from "./client-observation-context.js";
+import {
+  createV5MessageContextObject,
+  currentTurnBoundaryWithDeferredHistory,
+} from "./context-assembly.js";
 import {
   formatAvailableContextsForPrompt,
   listAvailableContextsForTurn,
@@ -35,7 +39,10 @@ import {
   projectBackgroundHistory,
   withBackgroundHistory,
 } from "./history-discovery.js";
-import { labelHistorySources } from "./history-wire.js";
+import {
+  isHistoryReceiptSegment,
+  labelHistorySources,
+} from "./history-wire.js";
 import { messageHandlerTemplate } from "./prompts.js";
 import {
   ambientTurnProviderExclusions,
@@ -170,14 +177,20 @@ export function renderMessageHandlerModelInput(
     ),
   );
   const rendered = renderContextObject(background.context);
-  if (background.applied)
-    rendered.promptSegments.push({
-      id: "background-history-notice",
-      stable: false,
-      content:
-        "Earlier originals were deferred by a complete, source-bound background review. This is not a review of the current request. Read missing constraints, corrections, referents or exact historical evidence before replying or planning. For a specific saved-fact lookup, first use advertised stored-memory references, known history IDs or literal searches of the fact's subject; inspect matched originals and their corrections. Use history:all when targeted reads leave dependencies unresolved, for exhaustive coverage, or before claiming something was never discussed." +
-        historyReferenceNotice(context, options?.history),
-    });
+  // The notice names the newest source, so it changes on every turn. It
+  // follows the transcript: what an earlier turn sent stays in the prefix.
+  const backgroundHistoryNotice = background.applied
+    ? [
+        {
+          id: "background-history-notice",
+          label: "runtime:history_not_shown",
+          stable: false,
+          content: background.windowed
+            ? `${background.omittedSourceCount} earlier messages and the recorded outcomes of their requests are not shown. The conversation holds the most recent ones, preceded by up to three earlier exchanges matched to this request by its words; others on the same subject may be unread. They were deferred by position, not reviewed, and that alone is no reason to read them. Answer from the messages shown when they hold what the request needs. When they do not (an earlier item, "as before", "like last time", an unresolved "it" or "that", something said, given or done earlier), read first, through READ_CONTEXT or contextRequests: search the subject's main words, or read a known history:hN. Do not reply that you do not know, do not have or will check something before such a read. When the read finds nothing, say what you looked for and that this conversation does not hold it. Read all history only when a search cannot express what is needed. History index: history:h1–history:h${completionContextSources(context).sources.length} in chronological order.`
+            : `Earlier originals were deferred by a complete, source-bound background review. This is not a review of the current request. Read missing constraints, corrections, referents or exact historical evidence before replying or planning. For a specific saved-fact lookup, first use advertised stored-memory references, known history IDs or literal searches of the fact's subject; inspect matched originals and their corrections. Use history:all when targeted reads leave dependencies unresolved, for exhaustive coverage, or before claiming something was never discussed.${historyReferenceNotice(context, options?.history)}`,
+        },
+      ]
+    : [];
   const instructions = renderMessageHandlerInstructions(
     runtime,
     availableContexts,
@@ -189,9 +202,16 @@ export function renderMessageHandlerModelInput(
   const dynamicSegments = rendered.promptSegments.filter(
     (segment) => !segment.stable,
   );
-  const currentTurnBoundary = dynamicSegments.filter(
-    (segment) => segment.id === "current-turn-boundary",
-  );
+  const currentTurnBoundary = dynamicSegments
+    .filter((segment) => segment.id === "current-turn-boundary")
+    .map((segment) =>
+      background.applied
+        ? {
+            ...segment,
+            content: currentTurnBoundaryWithDeferredHistory(segment.content),
+          }
+        : segment,
+    );
   const remainingDynamicSegments = dynamicSegments.filter(
     (segment) =>
       segment.id !== "current-turn-boundary" &&
@@ -242,6 +262,23 @@ export function renderMessageHandlerModelInput(
   const otherTurnSegments = turnTailSegments.filter(
     (segment) => !isCurrentTurnMessage(segment),
   );
+  // This region is ordered by how often it changes: text that rarely changes,
+  // then receipts, then navigation, which gains an entry on most navigation
+  // turns. A turn that adds no receipt shares the prefix through the
+  // transcript. One that adds a receipt shares only up to the first changed
+  // receipt byte (the tables may re-encode earlier rows) and re-sends the
+  // transcript; receipts still lead because they are the larger region and
+  // change on fewer turns. What the client reported for this message alone
+  // changes every turn and follows the transcript.
+  const clientObservation = otherTurnSegments.filter(
+    (segment) => segment.label === CLIENT_OBSERVATION_SEGMENT_LABEL,
+  );
+  const receiptSegments = otherTurnSegments.filter(isHistoryReceiptSegment);
+  const fixedTurnSegments = otherTurnSegments.filter(
+    (segment) =>
+      !isHistoryReceiptSegment(segment) &&
+      segment.label !== CLIENT_OBSERVATION_SEGMENT_LABEL,
+  );
   // The authored catalog and Task text are the same on every turn of a room,
   // so they lead the user message and extend the cached prompt prefix. Past
   // effects still precede the current-turn boundary that establishes the
@@ -253,7 +290,6 @@ export function renderMessageHandlerModelInput(
       ? [{ content: catalogInstructions, stable: false }]
       : []),
     { id: "runtime-task", content: taskInstructions, stable: false },
-    ...compactHistoricalReceiptSegments(historicalNavigationSegments),
     ...(options?.contextCatalog?.loaded
       ? [
           {
@@ -269,7 +305,9 @@ export function renderMessageHandlerModelInput(
       undefined,
       false,
     ),
-    ...compactHistoricalReceiptSegments(otherTurnSegments),
+    ...fixedTurnSegments,
+    ...compactHistoricalReceiptSegments(receiptSegments),
+    ...compactHistoricalReceiptSegments(historicalNavigationSegments),
     ...currentTurnBoundary,
     {
       id: "conversation",
@@ -281,6 +319,8 @@ export function renderMessageHandlerModelInput(
       ].join("\n\n"),
       stable: false,
     },
+    ...backgroundHistoryNotice,
+    ...clientObservation,
     ...dynamicProviderSegments,
     ...currentMessages,
     ...(options?.responseHandlerContext?.trim()

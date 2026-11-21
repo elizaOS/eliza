@@ -820,19 +820,165 @@ async function selectNavigation(
     },
   });
   mutate?.();
-  await runResponseHandlerEvaluators({
+  const evaluation = await runResponseHandlerEvaluators({
     runtime: f.runtime,
     message: input,
     state: { values: {}, data: {}, text: "" },
     messageHandler: handler,
-    availableContexts: [{ id: "general", description: "General" }],
+    availableContexts: [
+      { id: "general", description: "General" },
+      { id: "email", description: "Email" },
+      { id: "messaging", description: "Messaging" },
+    ],
     userRoles: ["OWNER"],
   });
-  return handler;
+  return { ...handler, evaluation };
 }
 const clientMessage = (): Memory => ({
   ...message,
   content: { ...message.content, source: "client_chat", channelType: "DM" },
+});
+
+describe("compound registered-view requests", () => {
+  const read = "show me the email about tomorrow's shoot";
+  const text = `Open my mail inbox and ${read}.`;
+  const declaredRead = "Find tomorrow's shoot email";
+
+  async function inboxFixture() {
+    const f = await fixture();
+    f.runtime.actions = (createElizaPlugin().actions ?? []).filter((action) =>
+      action.name.startsWith("VIEWS"),
+    );
+    await registerPluginViews(
+      f.runtime,
+      {
+        name: "test-inbox-view",
+        description: "Fixture Inbox view owner",
+        views: [
+          {
+            id: "inbox",
+            label: "Inbox",
+            path: "/inbox",
+            bundleUrl: "/inbox.js",
+            navigationAliases: ["email", "mail", "emails"],
+            roleGate: { minRole: "OWNER" },
+            responseContext: {
+              primaryContext: "messaging",
+              secondaryContexts: ["email"],
+            },
+          },
+        ],
+      },
+      { pluginDir: process.cwd(), indexEmbeddings: false },
+    );
+    return f;
+  }
+
+  it.each([
+    {
+      disposition: "none",
+      viewId: "inbox",
+      unconditional: false,
+      intents: [declaredRead],
+      appended: ["Open the Inbox view"],
+    },
+    {
+      disposition: "none",
+      viewId: "",
+      unconditional: false,
+      intents: [declaredRead],
+      appended: ["Open the Inbox view"],
+    },
+    {
+      disposition: "direct",
+      viewId: "inbox",
+      unconditional: true,
+      intents: ["Open the Inbox view"],
+      appended: [read],
+    },
+    {
+      disposition: "planning",
+      viewId: "inbox",
+      unconditional: false,
+      intents: [declaredRead, "Open the Inbox view"],
+      appended: [],
+    },
+  ])(
+    "retains both intents when Stage 1 selects $disposition / $viewId",
+    async ({ disposition, viewId, unconditional, intents, appended }) => {
+      const f = await inboxFixture();
+      const input = clientMessage();
+      input.content.text = text;
+      input.content.channelType = "VOICE_DM";
+      input.content.metadata = {
+        uiView: "chat",
+        viewClientId: "origin-client",
+        viewDelivery: "completed-action",
+      };
+      const collapse = disposition === "direct";
+      const selected = await runWithStreamingContext(
+        { messageId: String(input.id), onStreamChunk: () => {} },
+        () =>
+          selectNavigation(
+            f,
+            input,
+            { disposition, viewId, unconditional },
+            {
+              contexts: [collapse ? "general" : "email"],
+              intents,
+              candidateActions: collapse ? ["VIEWS_SHOW"] : [],
+            },
+          ),
+      );
+      expect(selected.evaluation.requiredViewNavigation).toEqual({
+        viewId: "inbox",
+        clientId: "origin-client",
+        installationId: getView(f.runtime, "inbox")?.installationId,
+      });
+      expect(selected.evaluation.errors).toEqual([]);
+      expect(selected.plan.intents).toEqual([...intents, ...appended]);
+      expect(selected.plan.contexts).toContain("email");
+      expect(selected.plan.candidateActions).toContain("VIEWS_SHOW");
+      expect(selected.plan.deterministicToolCall).toBeUndefined();
+      expect(f.requests()).toBe(0);
+    },
+  );
+
+  it.each([
+    [text, "forbidden", "inbox"],
+    [text, "none", "calendar"],
+    [`Don't open my mail inbox and ${read}.`, "none", "inbox"],
+    [`Open my mail inbox and ${read} only if I have a reply.`, "none", "inbox"],
+    ["Open my mail inbox and read the email first.", "none", "inbox"],
+    ["Open my mail inbox and don't read my email.", "none", "inbox"],
+    ["Open my mail inbox and show me Calendar.", "none", "inbox"],
+    [`Open my mail inbox and ${read}, but stay here.`, "none", "inbox"],
+    [`Open my mail inbox and then ${read}.`, "none", "inbox"],
+    [`“Open my mail inbox and ${read}.”`, "none", "inbox"],
+  ])("does not promote %s (%s, %s)", async (request, disposition, viewId) => {
+    const f = await inboxFixture();
+    const input = clientMessage();
+    input.content.text = request;
+    await runWithStreamingContext(
+      { messageId: String(input.id), onStreamChunk: () => {} },
+      async () => {
+        const selected = await selectNavigation(
+          f,
+          input,
+          { disposition, viewId, unconditional: false },
+          { intents: [declaredRead], candidateActions: [] },
+        );
+        expect(selected.evaluation.requiredViewNavigation).toBeUndefined();
+        expect(selected.plan.intents).toEqual([declaredRead]);
+        expect(selected.plan.candidateActions).toEqual([]);
+        expect(await show(f.runtime, "Inbox", input)).toMatchObject({
+          success: false,
+          data: { navigation: { status: "forbidden" } },
+        });
+      },
+    );
+    expect(f.requests()).toBe(0);
+  });
 });
 
 describe("model-selected host navigation", () => {
@@ -948,11 +1094,32 @@ describe("model-selected host navigation", () => {
     const selected = await selectNavigation(
       f,
       clientMessage(),
-      { disposition: "planning", viewId: "notes" },
+      { disposition: "planning", viewId: "notes", unconditional: false },
       { intents, candidateActions: [] },
     );
     expect(selected.plan.candidateActions).toEqual(["VIEWS_SHOW"]);
     expect(selected.plan.intents).toEqual(intents);
+    expect(selected.plan.deterministicToolCall).toBeUndefined();
+    expect(selected.evaluation.requiredViewNavigation).toBeUndefined();
+    expect(f.requests()).toBe(0);
+  });
+
+  it("binds the unconditional part of a compound request to the installed view without dispatching", async () => {
+    const f = await fixture();
+    f.runtime.actions = (createElizaPlugin().actions ?? []).filter((action) =>
+      action.name.startsWith("VIEWS"),
+    );
+    const selected = await selectNavigation(
+      f,
+      clientMessage(),
+      { disposition: "planning", viewId: "Notes", unconditional: true },
+      { intents: ["Open the Notes view", "Find the requested note"] },
+    );
+    expect(selected.evaluation.requiredViewNavigation).toMatchObject({
+      viewId: "notes",
+      clientId: "origin-client",
+      installationId: expect.any(String),
+    });
     expect(selected.plan.deterministicToolCall).toBeUndefined();
     expect(f.requests()).toBe(0);
   });

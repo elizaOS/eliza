@@ -1,15 +1,15 @@
+import {
+  requestedSmsDraftRecipient,
+  SMS_COMPOSE_TARGET_CAPABILITY,
+  SMS_SENDER_ADDRESS_CAPABILITY,
+} from "@elizaos/contracts/telephony-actions";
 /** Narrow owner-device operations over the canonical proposal/approval/receipt path. */
 import type {
   Action,
   ActionParameterSchema,
   HandlerOptions,
 } from "@elizaos/core";
-import {
-  ElizaError,
-  extractUserText,
-  registerDirectActionRoutingRule,
-  unwrapUserMessageText,
-} from "@elizaos/core";
+import { ElizaError, registerDirectActionRoutingRule } from "@elizaos/core";
 import { proposeDeviceAction } from "./action.ts";
 import { isBrowserControlType } from "./browser-contract.ts";
 import { authoredBrowserDestination } from "./browser-request-grounding.ts";
@@ -20,7 +20,6 @@ import {
 } from "./calendar-contract.ts";
 import {
   CAMERA_CAPTURE_CAPABILITY,
-  CAMERA_LENS_CAPABILITY,
   DEVICE_CAMERA_CAPTURE_ACTION,
 } from "./camera-contract.ts";
 import { authoredCameraCapture } from "./camera-request.ts";
@@ -49,6 +48,7 @@ import {
 import {
   authoredKeypadRequest,
   authoredTelephonyRequest,
+  emergencyServicesRequest,
 } from "./telephony-request.ts";
 import { turnObservation } from "./turn-observation.ts";
 
@@ -716,34 +716,8 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
         throw new ElizaError("Device action handler is unavailable", {
           code: "DEVICE_ACTION_HANDLER_UNAVAILABLE",
         });
-      if (type === "camera_capture_photo") {
-        // A whole-message photo command owns its lens: the camera the owner
-        // named, or the one showing. The model's lens choice never overrides it.
-        // The owner's words, not a prompt-only document envelope around them.
-        const authored = authoredCameraCapture(
-          args[1] ? extractUserText(unwrapUserMessageText(args[1])) : "",
-          args[0].character?.name,
-        );
-        if (
-          authored &&
-          getDeviceActionTurn()?.credential.capabilities?.includes(
-            CAMERA_LENS_CAPABILITY,
-          )
-        ) {
-          const next = [...args] as Parameters<NonNullable<Action["handler"]>>;
-          next[3] = {
-            ...(args[3] as HandlerOptions | undefined),
-            parameters: {
-              ...(raw as Record<string, unknown>),
-              operation: {
-                type,
-                ...(authored.lens ? { lens: authored.lens } : {}),
-              },
-            } as HandlerOptions["parameters"],
-          };
-          return proposeDeviceAction.handler(...next);
-        }
-      }
+      // A camera capture's lens is the one the owner named; the service
+      // applies that for every tool that proposes one (proposeWithOutcome).
       return proposeDeviceAction.handler(...args);
     },
   })),
@@ -904,9 +878,30 @@ export function registerDeviceTelephonyRouting(
   ): boolean => {
     const capabilities = ownerPhoneChatCapabilities(runtime, message);
     if (!capabilities) return false;
+    // An emergency request ("call an ambulance", "call for help") always
+    // reaches the phone: its keypad opens for the local emergency number.
+    if (emergencyServicesRequest(text))
+      return (
+        deviceOperationSupportedByCapabilities("phone_keypad", capabilities) ||
+        deviceOperationSupportedByCapabilities("phone_call", capabilities)
+      );
     const request = authoredTelephonyRequest(text);
+    if (request === "sender")
+      return deviceOperationSupportedByCapabilities(
+        "sms_latest_sender",
+        capabilities,
+      );
     if (request === "call")
       return deviceOperationSupportedByCapabilities("phone_call", capabilities);
+    if (
+      request === "text" &&
+      requestedSmsDraftRecipient(text)?.kind === "previous-sender"
+    )
+      return (
+        capabilities.includes(SMS_SENDER_ADDRESS_CAPABILITY) &&
+        capabilities.includes(SMS_COMPOSE_TARGET_CAPABILITY) &&
+        deviceOperationSupportedByCapabilities("sms_compose", capabilities)
+      );
     if (request === "text")
       return (
         deviceOperationSupportedByCapabilities("sms_compose", capabilities) ||

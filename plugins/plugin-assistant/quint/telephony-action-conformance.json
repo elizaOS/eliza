@@ -42,6 +42,7 @@
       "shared phone and reminder-read parity negotiates the dial handoff and journals/replays the exact result without dialing twice",
       "shared phone and reminder-read parity refuses unnegotiated contact lookup and hides dialing on a locked screen",
       "shared phone and reminder-read parity uses short review copy for dial and SMS",
+      "shared phone and reminder-read parity opens the keypad without a review only for the requesting message and never calls",
       "shared phone and reminder-read parity leaves an SMS with unknown evidence unresolved without calling it sent or not",
       "shared phone and reminder-read parity does not leave a note write unresolved",
       "shared phone and reminder-read parity does not reconcile an unknown dial handoff from the owner's guess",
@@ -78,8 +79,15 @@
       "opt-in current telephony request policy keeps voicemail_read_selected bound to the first reviewed selection and screen revision",
       "opt-in current telephony request policy keeps voicemail_delete_selected bound to the first reviewed selection and screen revision",
       "opt-in current telephony request policy keeps contact_read_selected bound to the first reviewed selection and screen revision",
+      "a requested photo on the phone keeps the card for a capture \"don't take a photo\" never asked for",
+      "a requested photo on the phone keeps the card for a capture \"summarize the page I have open\" never asked for",
+      "a requested photo on the phone keeps the card for a capture \"did you take a photo?\" never asked for",
+      "a requested photo on the phone keeps the card when the host passes no proof of the owner's words",
+      "a requested photo on the phone takes one photo for \"take a photo\" however many captures were bound",
+      "a requested photo on the phone takes one photo for \"can you take a selfie?\" however many captures were bound",
       "browser control operations refuses a Browser control the phone did not negotiate",
       "browser control operations runs search, tab, find and history controls directly for the requesting message and shows Browser",
+      "browser control operations describes a new tab to the owner without tool names",
       "browser control operations always reviews closing a tab",
       "browser control operations searches without a review only when the whole current message is that search",
       "browser control operations is not reviewed on a locked phone"
@@ -102,7 +110,10 @@
       "a voicemail read carries a transcript and its engine only when ready",
       "a voicemail delete targets only the open voicemail",
       "each operation type has one capability and one validator",
-      "capabilities follow the native profile and its parts"
+      "capabilities follow the native profile and its parts",
+      "latest SMS sender exposes only the reviewed suffix",
+      "address lookup and a reply draft use the complete negotiated address",
+      "phone_keypad opens the keypad, filled in at most, and never calls"
     ]
   }
 }

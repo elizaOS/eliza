@@ -325,6 +325,22 @@ test("a phone refusal reaches the owner with the phone's own reason, not a gener
       message:
         "Maps could not be shown on the phone right now. Nothing was changed on the map.",
     });
+    // A used-up allowance and a Cloud refusal keep their own codes, so chat
+    // says neither "Maps is busy" nor "Sign in again".
+    expect(
+      await refuse({
+        code: "MAPS_BUDGET_EXHAUSTED",
+        message: "You have used your Maps allowance for this period.",
+      }),
+    ).toMatchObject({
+      code: "MAPS_BUDGET_EXHAUSTED",
+      message: "You have used your Maps allowance for this period.",
+    });
+    expect(await refuse({ code: "MAPS_PROVIDER_REJECTED" })).toMatchObject({
+      code: "MAPS_PROVIDER_REJECTED",
+      message:
+        "Cloud refused this Maps request. Nothing was changed on the map.",
+    });
     for (const message of ["x".repeat(301), "line\nbreak", "  ", 7])
       expect(await refuse({ code: "MAPS_NOT_FOUND", message })).toMatchObject({
         code: "MAPS_NOT_FOUND",

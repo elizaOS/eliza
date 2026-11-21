@@ -87,7 +87,11 @@ const MOVE = "move v613 check to 4pm";
 const REMOVE = "delete the calendar event v613 check";
 
 /** The phone's actions and routes as v613 registers them. */
-async function phoneFixture(text: string, view: View) {
+async function phoneFixture(
+  text: string,
+  view: View,
+  extraMetadata: Record<string, unknown> = {},
+) {
   const runtime = new AgentRuntime({
     character: {
       name: "Eliza",
@@ -146,6 +150,7 @@ async function phoneFixture(text: string, view: View) {
           primaryContext: shape.primaryContext,
           secondaryContexts: [],
         },
+        ...extraMetadata,
       },
     },
   } as Memory;
@@ -162,8 +167,9 @@ async function replay(
   view: View,
   plan: Record<string, unknown>,
   processMessage = "RESPOND",
+  extraMetadata: Record<string, unknown> = {},
 ) {
-  const { runtime, message } = await phoneFixture(text, view);
+  const { runtime, message } = await phoneFixture(text, view, extraMetadata);
   const state = { text: "", values: {}, data: {} } as never;
   const availableContexts = await listAvailableContextsForTurn(
     runtime,
@@ -254,6 +260,10 @@ const REQUESTS = [
   [CREATE, "CALENDAR_CREATE_EVENT"],
   [MOVE, "CALENDAR_UPDATE_EVENT"],
   [REMOVE, "CALENDAR_DELETE_EVENT"],
+  ["move v613 check to November 25 at 2pm", "CALENDAR_UPDATE_EVENT"],
+  ["push v613 check back an hour", "CALENDAR_UPDATE_EVENT"],
+  ["rename the event v613 check to v614 check", "CALENDAR_UPDATE_EVENT"],
+  ["remove v613 check from my calendar tomorrow", "CALENDAR_DELETE_EVENT"],
 ] as const;
 
 describe("the calendar event phrasings name their operation", () => {
@@ -274,6 +284,18 @@ describe("the calendar event phrasings name their operation", () => {
     ["Move V613 check to 4 PM.", "update"],
     ["Delete the calendar event V613 check.", "delete"],
     ["add an event called team notes review tomorrow", "create"],
+    // v613 review (2026-11-20): dates, shifts, renames and a trailing day.
+    ["move v613 check to November 25", "update"],
+    ["move v613 check to 11/25 at 2pm", "update"],
+    ["move v613 check to the 25th of November at 2pm", "update"],
+    ["reschedule v613 check for Nov 25th, 2026", "update"],
+    ["push v613 check back an hour", "update"],
+    ["move v613 check up 30 minutes", "update"],
+    ["bump the standup a day later", "update"],
+    ["rename the event v613 check to v614 check", "update"],
+    ["edit my dentist appointment", "update"],
+    ["remove v613 check from my calendar tomorrow", "delete"],
+    ["take v613 check off my calendar on November 25", "delete"],
   ])("%s", (text, expected) => {
     expect(calendarEventRequest(text)).toBe(expected);
   });
@@ -312,6 +334,14 @@ describe("the calendar event phrasings name their operation", () => {
     // Settings set to a time.
     "change my status to 5pm",
     "change my wake-up to 7am",
+    // Shifts, renames and dated removals of other records.
+    "push my alarm back an hour",
+    "move my reminder up 30 minutes",
+    "rename the note v613 check to v614 check",
+    "update the meeting notes",
+    "edit the meeting link",
+    "remove v613 check from my notes tomorrow",
+    "move the note v613 check to November 25",
   ])("leaves other requests alone: %s", (text) => {
     expect(calendarEventRequest(text)).toBeUndefined();
   });
@@ -355,6 +385,40 @@ describe("a calendar event request loads the calendar context from any view", ()
         "CALENDAR_DELETE_EVENT",
       ]),
     );
+  });
+
+  // v617 (2026-11-20): the phone's direct-request turn from Contacts. The
+  // create, move and delete reach the canonical Calendar operations, whose
+  // store is the Agent Calendar that Alpha's Calendar view renders; the route
+  // never substitutes the native device operation.
+  it.each(
+    REQUESTS.map(([text, action]) => [text.replace("v613", "v617"), action]),
+  )("v617 direct request from Contacts: %s -> %s", async (text, action) => {
+    const result = await replay(
+      text,
+      "contacts",
+      STAGE1_SHAPES.viewContext,
+      "RESPOND",
+      {
+        uiTimeZone: "America/New_York",
+        agentActionMode: "direct-request-v1",
+        userTextFormat: "plain-v1",
+        viewDelivery: "completed-action",
+        clientDevice: {
+          context: {
+            view: "contacts",
+            revision: 3,
+            timeZone: "America/New_York",
+            sensitive: false,
+          },
+        },
+      },
+    );
+    expect(result.plan.contexts).toContain("calendar");
+    expect(result.plan.candidateActions).toContain(action);
+    expect(result.plan.candidateActions).not.toContain("PROPOSE_DEVICE_ACTION");
+    expect(result.plan.reply ?? "").toBe("");
+    expect(result.surface).toContain(action);
   });
 
   it("only the request's own route matches", async () => {
