@@ -123,11 +123,19 @@ function outcome(answer: { readonly status: number; readonly body: unknown }): s
 
 describe("Membership codes (spec/cloud/billing/grantCodes.md)", () => {
   it.live("Mint, redeem and retire a membership code (spec/cloud/billing/grantCodes.md, \"Story: Redeem a membership code once\"; spec/cloud/billing/grantCodes.md, \"Story: Stop a code or a grant\")", () => scoped(effect {
-    const cloud = try testHttp(billing.routes)
     const now = try Clock.currentTimeMillis
+    const stripe = try sync(() => createStripeFake({ now: () => now }))
+    const cloud = try testHttp(billing.routes, stripe.handler)
     const token = sessionToken("m")
+    const otherSession = sessionToken("r")
+    const payer = sessionToken("p")
+    const active = { live: true, epoch: 0, authAt: now, accessExpiresAt: now + minuteMs, refreshExpiresAt: now + 10 * minuteMs, stepUpAt: 0, mfaAt: 0 }
     try account(cloud, "member", "active", { sessions: 0, devices: 0 }, now)
-    try session(cloud, "member", token, { live: true, epoch: 0, authAt: now, accessExpiresAt: now + minuteMs, refreshExpiresAt: now + 10 * minuteMs, stepUpAt: 0, mfaAt: 0 }, now)
+    try account(cloud, "payer", "active", { sessions: 0, devices: 0 }, now)
+    try session(cloud, "member", token, active, now)
+    try session(cloud, "member", otherSession, active, now)
+    try session(cloud, "payer", payer, active, now)
+    try paidReviewSubscription(cloud, stripe, "org-payer", "plus_monthly", now)
 
     const minted = try cloud.inside(operate(["grants", "mint", "--family", "member-pilot", "--plan", "plus_monthly", "--count", "1", "--lifetime"]))
     const code = minted.kind === "done" ? minted.lines[0] ?? "" : ""
@@ -138,7 +146,7 @@ describe("Membership codes (spec/cloud/billing/grantCodes.md)", () => {
       assert.notStrictEqual(stored, code)
     })
 
-    const redeem = (offered: string, idempotencyKey: string) => cloud.call("/api/v1/subscription/redeem", token, {
+    const redeem = (offered: string, idempotencyKey: string, credential = token) => cloud.call("/api/v1/subscription/redeem", credential, {
       headers: { "idempotency-key": idempotencyKey }, json: { code: offered, idempotencyKey }
     })
     const formatted = `\u00a0${code.slice(0, 8).toLowerCase()}-${code.slice(8).toLowerCase()}\u00a0`
@@ -147,6 +155,18 @@ describe("Membership codes (spec/cloud/billing/grantCodes.md)", () => {
     if (original.kind !== "redeemed") {
       try check(() => assert.fail("a lifetime grant should be active immediately"))
       return
+    }
+    const second = try cloud.inside(operate(["grants", "mint", "--family", "member-pilot", "--plan", "plus_monthly", "--count", "1", "--days", "30", "--requires-no-paid-plan"]))
+    const secondCode = second.kind === "done" ? second.lines[0] ?? "" : ""
+    const exhausted = try redeem(code, "payer-first", payer)
+    const reusedKey = try redeem(secondCode, "member-request", otherSession)
+    const heldFamily = try redeem(secondCode, "member-new-key", otherSession)
+    const paidPlan = try redeem(secondCode, "payer-second", payer)
+    const refusedCode = Schema.Struct({ error: Schema.String })
+    const refusals: Array<[number, string]> = []
+    for (const answer of [exhausted, reusedKey, heldFamily, paidPlan]) {
+      const { error } = try Schema.decodeUnknownEffect(refusedCode)(answer.body)
+      refusals.push([answer.status, error])
     }
     const disabled = try cloud.inside(operate(["grants", "disable", "--code", formatted]))
     const replayed = try redeem(code, "member-again")
@@ -157,16 +177,21 @@ describe("Membership codes (spec/cloud/billing/grantCodes.md)", () => {
     const limits = try cloud.call("/api/v1/billing/limits", token)
     const snapshot = try snapshotFromResponse(limits.body)
     const invalid = try redeem("A".repeat(32_768), "member-invalid")
-    const invalidOutcome = try Schema.decodeUnknownEffect(Schema.Struct({ error: Schema.String }))(invalid.body)
+    const invalidOutcome = try Schema.decodeUnknownEffect(refusedCode)(invalid.body)
+    const unknown = try redeem("0000-0000-0000-0000", "member-unknown")
+    const unknownOutcome = try Schema.decodeUnknownEffect(refusedCode)(unknown.body)
+    const throttled = try redeem(code, "member-throttled")
+    const throttledOutcome = try Schema.decodeUnknownEffect(refusedCode)(throttled.body)
     const periods = try sql(cloud, "SELECT count(*)::int AS count FROM allowance_periods WHERE organization_id = 'org-member' AND starts_with(key, 'grant/') AND status = 'closed'", [])
     try check(() => assert.deepStrictEqual(
       [issued.status, original.replayed, original.grant.planKey, original.grant.effectiveUntil, original.plan,
         disabled, replayed.status, replay, revoked, retired.status, after, limits.status, snapshot.plan, snapshot.grant?.revoked,
-        invalid.status, invalidOutcome.error, periods[0]?.count],
+        invalid.status, invalidOutcome.error, unknown.status, unknownOutcome.error, throttled.status, throttledOutcome.error, periods[0]?.count, refusals],
       [200, false, "plus_monthly", null, { key: "plus_monthly", source: "grant", effectiveUntil: null },
         { kind: "done", lines: ["1 codes disabled; their grants stand"] }, 200, { ...original, replayed: true },
         { kind: "done", lines: ["1 grants revoked"] }, 200, { kind: "ended", id: original.grant.id, planKey: "plus_monthly" },
-        200, { key: "free", source: "free", effectiveUntil: null }, true, 400, "grant_code_invalid", 3]
+        200, { key: "free", source: "free", effectiveUntil: null }, true, 400, "grant_code_invalid", 400, "grant_code_invalid", 429, "rate_limited", 3,
+        [[400, "grant_code_invalid"], [409, "idempotency_conflict"], [409, "subscription_grant_already_redeemed"], [409, "subscription_grant_paid_plan_active"]]]
     ))
   }), 60_000)
 })
