@@ -36,10 +36,13 @@ module node {
       : { tag: "NothingHeard" }
     return runtime.adapter.transaction(async (tx) => {
       const [reply] = await tx.getMemoriesByIds([key.value], "messages")
-      if (reply?.roomId !== roomId || reply.entityId !== runtime.agentId || typeof reply.content.text !== "string") {
+      if (reply?.roomId !== roomId || reply.entityId !== runtime.agentId) {
         return error(404, "unknown_message")
       }
-      const text = reply.content.text
+      const { text, inReplyTo, actions, systemNotice } = reply.content
+      if (typeof text !== "string" || systemNotice !== undefined || (!inReplyTo && !actions?.includes("REPLY"))) {
+        return error(404, "unknown_message")
+      }
       const boundary = boundaryOf(reply, text.length)
       const held: Reply = {
         id: 1, room: 1, userMessage: 0, units: units(text), kind: { tag: "Answered" },

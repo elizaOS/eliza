@@ -1,5 +1,6 @@
 // spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or missing answer, and its outcomes stay distinct"; spec/agent/voice/session.md, "A turn is sent once, and a half-duplex turn only after the capture confirmed its close"
 import { assert, it } from "@effect/vitest"
+import { validateUuid } from "@elizaos/core"
 import { voiceChannelType } from "../gen/agent__voice__session.effect.vibe"
 import { voiceNetworkPorts, type JsonRequest } from "../src/voice/agent-ports.vibe"
 import type { HeardReport } from "../src/voice/heard-reports.vibe"
@@ -150,15 +151,26 @@ it.live('Report what of an interrupted reply I heard: a voice turn, its stop and
   const again = try host("same heard report", () => backedReports(ports.heard, clock, heard).report(heard))
   const longer = try host("refuse re-extending the heard prefix", () =>
     ports.heard(conversation.id, reply.messageId, { heardText: reply.text }))
+  const roomId = validateUuid(conversation.roomId)
+  if (roomId === null) return try die("The conversation has no valid room id")
+  const { runtime } = reachable.agent
+  const [noticeId, legacyId] = try host("store a notice and an older reply", () => Promise.all([
+    runtime.createMessageMemory({ roomId, entityId: runtime.agentId, content: { text: "The model is unavailable.", systemNotice: "model-unavailable", source: "device" } }),
+    runtime.createMessageMemory({ roomId, entityId: runtime.agentId, content: { text: "An older reply.", actions: ["REPLY"], source: "device" } }),
+  ]))
+  const notice = try host("refuse a heard report on a system notice", () =>
+    ports.heard(conversation.id, noticeId, { nothingHeard: true }))
+  const legacy = try host("keep heard reports on older replies", () =>
+    ports.heard(conversation.id, legacyId, { heardText: "An older" }))
   const history = try host("read the unmodified written reply", () =>
     request("GET", `/api/conversations/${conversation.id}/messages`, undefined, signal))
   const written = try Schema.decodeUnknownEffect(Schema.Struct({
     messages: Schema.Array(Schema.Struct({ id: Schema.String, text: Schema.String })),
   }))(history.body)
   try Effect.try(() => assert.deepStrictEqual(
-    [reply.text, replay, changedOffer.status, outcomeName(first), outcomeName(again), longer.status,
+    [reply.text, replay, changedOffer.status, outcomeName(first), outcomeName(again), longer.status, notice.status, legacy.status,
       written.messages.find(({ id }) => id === reply.messageId)?.text],
-    ["Call  Alex. Or call Sam.", reply, 409, "HeardRecorded", "HeardUnchanged", 409, reply.text]))
+    ["Call  Alex. Or call Sam.", reply, 409, "HeardRecorded", "HeardUnchanged", 409, 404, 200, reply.text]))
   const cloud = reachable.cloud
   if (cloud === undefined) return try die("The Cloud fixture is missing")
   try Effect.sync(() => cloud.script({ kind: "hang" }))
