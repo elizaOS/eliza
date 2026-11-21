@@ -89,14 +89,15 @@ effect function testHttp(routes: ReadonlyArray<Route>, stripe?: FakeHandler) {
 
 effect function account(cloud: HttpFixture, key: string, status: "active" | "deleting", revokedBefore: { sessions: number; devices: number }, now: number) {
   try sql(cloud, "INSERT INTO organizations (id, name, created_at) VALUES ($1, $1, $2)", [`org-${key}`, now])
-  try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, sessions_revoked_before, devices_revoked_before, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, $3, $4, $5, $6, $7, $7)", [
-    key, `org-${key}`, status, `${key}@example.com`, revokedBefore.sessions, revokedBefore.devices, now
+  try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, sessions_revoked_before, devices_revoked_before, device_epoch, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, $3, $4, $5, $6, $7, $8, $8)", [
+    key, `org-${key}`, status, `${key}@example.com`, revokedBefore.sessions, revokedBefore.devices, revokedBefore.devices > 0 ? 1 : 0, now
   ])
 }
 
-effect function grant(cloud: HttpFixture, user: string, token: string, phase: string, issuedAt: number, keyExpiresAt: number) {
-  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'test-client', $3, $4, $5, $6, $7, $8, $8)", [
-    `grant-${token.slice(-8)}`, user, phase, `cred-${token.slice(-8)}`, tokenDigest(token), issuedAt + minuteMs, keyExpiresAt, issuedAt
+effect function grant(cloud: HttpFixture, user: string, token: string, phase: "active" | "ended" | "exchanged", issuedAt: number, keyExpiresAt: number, deviceEpoch = 0) {
+  const state = { flatDeviceGrant: "FlatTokenStarted", phase: phase === "active" ? "Active" : phase === "ended" ? "Ended" : "Exchanged" }
+  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, device_epoch, issued_at, updated_at) VALUES ($1, $2::jsonb, 1, $3, 'test-client', $4, $5, $6, $7, $8, $9, $10, $10)", [
+    `grant-${token.slice(-8)}`, JSON.stringify(state), user, phase, `cred-${token.slice(-8)}`, tokenDigest(token), issuedAt + minuteMs, keyExpiresAt, deviceEpoch, issuedAt
   ])
 }
 
@@ -197,7 +198,7 @@ describe("Membership codes (spec/cloud/billing/grantCodes.md)", () => {
 })
 
 describe("WP0 Foundation: request authentication", () => {
-  it.live("Admit a request only for a live credential of an active account (spec/cloud/identity/sessions.md, \"Story: Admit a request only for a live credential of an active account\")", () => scoped(effect {
+  it.live("Admit a request only for a live credential of an active account (spec/cloud/identity/sessions.md, \"Story: Admit a request only for a live credential of an active account\"; spec/cloud/nativeClients/deviceKeys.md, \"A key is accepted only while acknowledged, unexpired and of the person's current device epoch\")", () => scoped(effect {
     const reached: Array<string> = []
     const cloud = try testHttp(probes(reached))
     const call = cloud.call
@@ -208,13 +209,13 @@ describe("WP0 Foundation: request authentication", () => {
     try account(cloud, "rotated", "active", { sessions: 1, devices: 0 }, now)
 
     const liveKey = deviceKey("1")
-    try grant(cloud, "owner", liveKey, "active", now - minuteMs, now + day)
+    try grant(cloud, "owner", liveKey, "active", now - minuteMs, now + day, 1)
     const expiredKey = deviceKey("2")
-    try grant(cloud, "owner", expiredKey, "active", now - minuteMs, now - 1)
+    try grant(cloud, "owner", expiredKey, "active", now - minuteMs, now - 1, 1)
     const endedKey = deviceKey("3")
-    try grant(cloud, "owner", endedKey, "ended", now - minuteMs, now + day)
+    try grant(cloud, "owner", endedKey, "ended", now - minuteMs, now + day, 1)
     const unacknowledgedKey = deviceKey("4")
-    try grant(cloud, "owner", unacknowledgedKey, "exchanged", now - minuteMs, now + day)
+    try grant(cloud, "owner", unacknowledgedKey, "exchanged", now - minuteMs, now + day, 1)
     const beforeRevocationKey = deviceKey("5")
     try grant(cloud, "owner", beforeRevocationKey, "active", now - 2 * day, now + day)
     const deletingKey = deviceKey("6")
@@ -269,7 +270,7 @@ describe("WP0 Foundation: request authentication", () => {
       keyOnSessionRoute: "401 authentication_required credential_unknown",
       expiredKey: "401 authentication_required credential_expired",
       endedKey: "401 authentication_required credential_revoked",
-      unacknowledgedKey: "401 authentication_required credential_revoked",
+      unacknowledgedKey: "401 authentication_required credential_unknown",
       beforeRevocationKey: "401 authentication_required credential_revoked",
       deletingKey: "401 authentication_required credential_revoked",
       freshSession: "200 session",

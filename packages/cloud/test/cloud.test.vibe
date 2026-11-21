@@ -2791,7 +2791,7 @@ module node {
         const now = Date.now()
         await fixture.db.query(`INSERT INTO device_grants (key, state, revision, user_id, client_id, phase,
           credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at)
-          VALUES ($1, '{}'::jsonb, 1, $1, $2, 'active', $1, $3, $4, $5, $4, $4)`,
+          VALUES ($1, jsonb_build_object('flatDeviceGrant','FlatTokenStarted','phase','Active'), 1, $1, $2, 'active', $1, $3, $4, $5, $4, $4)`,
           [user, clientId, createHash("sha256").update(token).digest("hex"), now, now + 86400000])
         return { authorization: "Bearer " + token }
       }
@@ -2815,8 +2815,10 @@ module node {
       const folder = "triage?" + new URLSearchParams({ grantId: grant, folder: "trash", q: "  subject:plan & dates ", counts: "1" })
       const readFolder = async (path: string) => {
         const answer = await get(path, owner.access)
+        const result: unknown = await answer.json()
+        if (!answer.ok) throw new Error(`Reading the Gmail fixture folder returned ${answer.status}: ${JSON.stringify(result)}`)
         const value = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String, folder: Schema.String, q: Schema.String, messages: Schema.Array(Schema.Struct({ externalId: Schema.String })),
-          counts: Schema.optional(Schema.Struct({ inboxUnread: Schema.Number, drafts: Schema.Number })), nextPageToken: Schema.String }))(await answer.json())
+          counts: Schema.optional(Schema.Struct({ inboxUnread: Schema.Number, drafts: Schema.Number })), nextPageToken: Schema.String }))(result)
         return [answer.status, value.accountId === owner.account.id, value.folder, value.q, value.messages.map(({ externalId }) => externalId), value.counts ?? null, value.nextPageToken]
       }
       const mailboxes = [await readFolder("triage?grantId=" + grant), await readFolder(folder)]
