@@ -283,6 +283,11 @@ func packagedRuntimeAPK(t *testing.T, mutate func(map[string][]byte)) string {
 	if mutate != nil {
 		mutate(files)
 	}
+	return writeRuntimeAPK(t, files)
+}
+
+func writeRuntimeAPK(t *testing.T, files map[string][]byte) string {
+	t.Helper()
 	names := make([]string, 0, len(files))
 	for name := range files {
 		names = append(names, name)
@@ -390,5 +395,128 @@ func TestReaddressedArchive(t *testing.T) {
 		if readdressedArchive(name, destinations) != want {
 			t.Fatalf("%s: want %v", name, want)
 		}
+	}
+}
+
+func TestNodeRuntimeInventoryForCompiledHost(t *testing.T) {
+	const abi = "arm64-v8a"
+	const hosts = "github.com,updates.example.com"
+	const library = "lib/arm64-v8a/" + nodeLibraryName
+
+	var release releaseDescriptor
+	if err := json.Unmarshal(admissionVectors(t)[0].Release, &release); err != nil {
+		t.Fatal(err)
+	}
+	legacyAPK, legacyReceipt := runtimeAPKFixture(t, "")
+	legacy := compiledHostPolicyBase64
+	t.Cleanup(func() { compiledHostPolicyBase64 = legacy })
+	compiledHostPolicyBase64 = base64.RawURLEncoding.EncodeToString([]byte(`{"schema":3,"product":"example-app","package":"com.example.app","cohortDomain":"example-app-ota-v1"}`))
+	if err := VerifyRuntimeArtifact(legacyAPK, legacyReceipt, hosts, abi); err == nil {
+		t.Fatal("Node host admitted a Bun receipt")
+	}
+
+	artifactFor := func(t *testing.T, files map[string][]byte, excluded string) (string, releaseArtifact) {
+		t.Helper()
+		inventory := struct {
+			Schema int64              `json:"schema"`
+			Files  []nodeInventoryRow `json:"files"`
+		}{Schema: 1}
+		for name, data := range files {
+			if name != excluded {
+				inventory.Files = append(inventory.Files, nodeInventoryRow{Path: name, SHA256: bytesHash(data), Size: int64(len(data))})
+			}
+		}
+		sort.Slice(inventory.Files, func(i, j int) bool { return inventory.Files[i].Path < inventory.Files[j].Path })
+		bytes, err := json.Marshal(inventory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[nodeInventoryAsset] = bytes
+		apk := writeRuntimeAPK(t, files)
+		binary, err := os.ReadFile(apk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		artifact := release.Candidate
+		artifact.Android.ABIs = []string{abi}
+		artifact.SHA256 = bytesHash(binary)
+		artifact.Length = int64(len(binary))
+		artifact.Runtime = releaseRuntime{Inventory: bytesHash(bytes), Agent: bytesHash(files[nodeBundleAsset]), Libraries: map[string]string{library: bytesHash(files[library])}}
+		return apk, artifact
+	}
+	runtimeFiles := func() map[string][]byte {
+		node := append(fixtureELF(nodeMachines[abi]), []byte(androidInterpreter)...)
+		binary.LittleEndian.PutUint16(node[16:18], 3)
+		binary.LittleEndian.PutUint32(node[64:68], 3)
+		binary.LittleEndian.PutUint64(node[72:80], 120)
+		binary.LittleEndian.PutUint64(node[96:104], uint64(len(androidInterpreter)))
+		agent := []byte("console.log('synthetic embedded Node runtime')\n")
+		manifest := fmt.Appendf(nil, `{"schema":1,"node":"26","bundleSha256":%q,"sourceCommit":%q,"localInference":false}`, bytesHash(agent), strings.Repeat("a", 40))
+		return map[string][]byte{
+			nodeBundleAsset: agent, nodeManifestAsset: manifest, library: node,
+			"assets/agent/pglite.wasm": []byte("synthetic wasm"), "assets/agent/initdb.wasm": []byte("synthetic initdb"),
+			"assets/agent/pglite.data": []byte("synthetic data"), "assets/agent/pglite-migrated.bin": []byte("synthetic migrated database"),
+		}
+	}
+	verify := func(t *testing.T, apk string, artifact releaseArtifact) error {
+		t.Helper()
+		receipt, err := json.Marshal(artifact)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return VerifyRuntimeArtifact(apk, receipt, hosts, abi)
+	}
+
+	name, artifact := artifactFor(t, runtimeFiles(), "")
+	if err := verify(t, name, artifact); err != nil {
+		t.Fatalf("complete Node runtime refused: %v", err)
+	}
+	mixed := artifact
+	mixed.Runtime.Gateway = strings.Repeat("a", 64)
+	mixed.Runtime.Policy = strings.Repeat("b", 64)
+	if err := verify(t, name, mixed); err == nil {
+		t.Fatal("Node host admitted Bun runtime claims")
+	}
+	for _, vacancy := range []string{"assets/agent/pglite.wasm", "assets/agent/initdb.wasm", "assets/agent/pglite.data", "assets/agent/pglite-migrated.bin"} {
+		t.Run(vacancy, func(t *testing.T) {
+			files := runtimeFiles()
+			delete(files, vacancy)
+			files["assets/agent/another.mjs"] = []byte("different content in the same listed asset tree")
+			apk, incomplete := artifactFor(t, files, "")
+			if err := verify(t, apk, incomplete); err == nil || err.Error() != "Node runtime inventory is incomplete" {
+				t.Fatalf("missing required asset produced: %v", err)
+			}
+		})
+	}
+	t.Run("refuse an executable for another loader", func(t *testing.T) {
+		files := runtimeFiles()
+		files[library][121] = 'x'
+		apk, other := artifactFor(t, files, "")
+		if err := verify(t, apk, other); err == nil || err.Error() != "Node executable does not use the Android linker" {
+			t.Fatalf("different executable interpreter produced: %v", err)
+		}
+	})
+	t.Run("refuse a manifest without the exact Node version field", func(t *testing.T) {
+		files := runtimeFiles()
+		files[nodeManifestAsset] = []byte(strings.Replace(string(files[nodeManifestAsset]), `"node"`, `"NODE"`, 1))
+		apk, other := artifactFor(t, files, "")
+		if err := verify(t, apk, other); err == nil || err.Error() != "Node bundle manifest does not bind the executable bundle" {
+			t.Fatalf("incorrect manifest produced: %v", err)
+		}
+	})
+	t.Run("refuse an omitted Agent asset", func(t *testing.T) {
+		files := runtimeFiles()
+		files["assets/agent/extra.mjs"] = []byte("unlisted")
+		apk, other := artifactFor(t, files, "assets/agent/extra.mjs")
+		if err := verify(t, apk, other); err == nil || err.Error() != "unlisted Node runtime file" {
+			t.Fatalf("mixed runtime contents produced: %v", err)
+		}
+	})
+	compiledHostPolicyBase64 = legacy
+	if err := VerifyRuntimeArtifact(legacyAPK, legacyReceipt, hosts, abi); err != nil {
+		t.Fatalf("historical Bun receipt refused: %v", err)
+	}
+	if err := verify(t, name, artifact); err == nil {
+		t.Fatal("Bun host admitted a Node receipt")
 	}
 }

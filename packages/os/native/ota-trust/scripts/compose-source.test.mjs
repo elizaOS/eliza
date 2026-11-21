@@ -45,6 +45,22 @@ test("isolates hosts and source revisions, preserves source, and rejects tampere
       }).source,
       one.source,
     );
+    const nodeHostPolicy = {
+      schema: 3,
+      product: hostPolicy.product,
+      package: hostPolicy.package,
+      cohortDomain: hostPolicy.cohortDomain,
+    };
+    const node = composeTrustSource({ ...options, hostPolicy: nodeHostPolicy });
+    assert.notEqual(node.source, one.source);
+    assert.deepEqual(
+      JSON.parse(Buffer.from(node.ldflags.split("=").at(-1), "base64url")),
+      nodeHostPolicy,
+    );
+    assert.throws(
+      () => composeTrustSource({ ...options, hostPolicy: { ...hostPolicy, schema: 3 } }),
+      /Invalid OTA host/,
+    );
     fs.writeFileSync(path.join(sharedSource, "go.mod"), "module revision\n");
     assert.notEqual(composeTrustSource(options).source, one.source);
     fs.writeFileSync(path.join(sharedSource, "go.mod"), "module fixture\n");

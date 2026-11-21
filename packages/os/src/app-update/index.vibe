@@ -16,4 +16,4 @@ export {
   type VerifiedReport,
   type VerifyPublicationOptions,
 } from "./publication.vibe"
-export { buildAndroidTrust, composeTrustSource, TrustBuildFailed, type BuildAndroidTrustOptions, type ComposeTrustOptions, type TrustHostPolicy } from "./trust-build.vibe"
+export { buildAndroidTrust, composeTrustSource, TrustBuildFailed, type BuildAndroidTrustOptions, type ComposeTrustOptions, type NodeTrustHostPolicy, type TrustHostPolicy } from "./trust-build.vibe"

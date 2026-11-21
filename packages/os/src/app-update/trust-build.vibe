@@ -35,9 +35,16 @@ export interface TrustHostPolicy {
   readonly runtimeExcludedAgentDirectories: ReadonlyArray<string>
 }
 
+export interface NodeTrustHostPolicy {
+  readonly schema: 3
+  readonly product: string
+  readonly package: string
+  readonly cohortDomain: string
+}
+
 export interface ComposeTrustOptions {
   readonly sharedSource: string
-  readonly hostPolicy: TrustHostPolicy
+  readonly hostPolicy: TrustHostPolicy | NodeTrustHostPolicy
   readonly testDirectory?: string
   readonly cacheDirectory: string
 }
@@ -73,7 +80,8 @@ effect function run<A>(operation: TrustOperation, options: unknown, output: Sche
 }
 
 export effect function composeTrustSource(options: ComposeTrustOptions): ComposedTrustSource!TrustBuildFailed {
-  const hostPolicy = { ...options.hostPolicy, runtimeExcludedAgentDirectories: [...options.hostPolicy.runtimeExcludedAgentDirectories] }
+  const policy = options.hostPolicy
+  const hostPolicy = policy.schema === 2 ? { ...policy, runtimeExcludedAgentDirectories: [...policy.runtimeExcludedAgentDirectories] } : { ...policy }
   return try run("composeTrustSource", { ...options, hostPolicy }, ComposedTrustSource)
 }
 

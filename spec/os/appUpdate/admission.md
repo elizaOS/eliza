@@ -10,7 +10,13 @@ digests a descriptor's `core` (without its rollout) and its rollout, reads
 qualified time as an interval, checks device fit (upgrade origins, platform,
 installer, protocols, storage, safety profiles, cohort) in that order, and
 writes lane and publisher floors atomically under a lock. The host policy is
-compiled into the reviewed build with no runtime setter.
+compiled into the reviewed build with no runtime setter. Schema 2 retains
+the historical Bun receipt and inventory. Schema 3 binds the Node payload
+and its [JSON inventory](../build/runtimePayload.md). The compiled policy
+selects one receipt format for both the candidate and its forward recovery.
+The Node verifier checks the complete APK digest, the inventory and its
+files, the bundled database assets, and the Android executable for each
+declared ABI.
 
 ## Story: Install an app update only when every authority allows it
 

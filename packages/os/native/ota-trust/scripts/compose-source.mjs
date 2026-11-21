@@ -29,31 +29,25 @@ export function composeTrustSource({
   testDirectory,
   cacheDirectory,
 }) {
-  // runtimeInventoryHeader and runtimeExcludedAgentDirectories must equal the
-  // format and excludedAgentDirectories the host passes to
-  // stageAndroidRuntimeInventory; schema 2 added the exclusions.
+  const fields = Object.keys(hostPolicy ?? {}).sort().join(",");
   const excluded = hostPolicy?.runtimeExcludedAgentDirectories;
-  if (
-    !hostPolicy ||
-    Object.keys(hostPolicy).sort().join(",") !==
-      "cohortDomain,package,product,runtimeExcludedAgentDirectories,runtimeInventoryHeader,schema" ||
-    hostPolicy.schema !== 2 ||
-    !Array.isArray(excluded) ||
-    new Set(excluded).size !== excluded.length ||
-    !excluded.every(
+  const legacy = hostPolicy?.schema === 2 &&
+    fields === "cohortDomain,package,product,runtimeExcludedAgentDirectories,runtimeInventoryHeader,schema" &&
+    Array.isArray(excluded) &&
+    new Set(excluded).size === excluded.length &&
+    excluded.every(
       (value) =>
         typeof value === "string" &&
         /^[A-Za-z0-9_@.+-]+(\/[A-Za-z0-9_@.+-]+)*$/.test(value) &&
         value.split("/").every((part) => part !== "." && part !== ".."),
-    ) ||
-    Object.entries(hostPolicy).some(
-      ([key, value]) =>
-        key !== "schema" &&
-        key !== "runtimeExcludedAgentDirectories" &&
-        (typeof value !== "string" || !value.trim()),
-    )
-  )
-    throw new Error("Invalid OTA host build policy");
+    );
+  const node = hostPolicy?.schema === 3 && fields === "cohortDomain,package,product,schema";
+  if (!(legacy || node) || Object.entries(hostPolicy).some(
+    ([key, value]) =>
+      key !== "schema" &&
+      key !== "runtimeExcludedAgentDirectories" &&
+      (typeof value !== "string" || !value.trim()),
+  )) throw new Error("Invalid OTA host build policy");
   const encoded = Buffer.from(JSON.stringify(hostPolicy)).toString("base64url");
   const expected = inventory(sharedSource);
   if (testDirectory)

@@ -39,15 +39,11 @@ func VerifyRuntimeArtifact(name string, artifactJSON []byte, approvedHosts, abi 
 	if !stringList(hosts, 1, 16, func(s string) bool { return hostnamePattern.MatchString(s) }) {
 		return errors.New("invalid artifact hosts")
 	}
-	if err := validateNativeArtifact(artifact, hosts); err != nil {
+	if err := validateNativeArtifact(artifact, hosts, host); err != nil {
 		return err
 	}
 	if !contains(artifact.Android.ABIs, abi) || (abi != "arm64-v8a" && abi != "x86_64") {
 		return errors.New("unqualified runtime ABI")
-	}
-	machine, loader, otherLoader := uint16(183), "libeliza_ld_musl_aarch64.so", "libeliza_ld_musl_x86_64.so"
-	if abi == "x86_64" {
-		machine, loader, otherLoader = 62, otherLoader, loader
 	}
 	file, err := os.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
@@ -84,6 +80,17 @@ func VerifyRuntimeArtifact(name string, artifactJSON []byte, approvedHosts, abi 
 			return errors.New("duplicate APK entry")
 		}
 		entries[entry.Name] = entry
+	}
+	if host.Schema == 3 {
+		return verifyNodeRuntime(entries, artifact)
+	}
+	return verifyLegacyRuntime(entries, artifact, host, abi)
+}
+
+func verifyLegacyRuntime(entries map[string]*zip.File, artifact releaseArtifact, host hostPolicy, abi string) error {
+	machine, loader, otherLoader := uint16(183), "libeliza_ld_musl_aarch64.so", "libeliza_ld_musl_x86_64.so"
+	if abi == "x86_64" {
+		machine, loader, otherLoader = 62, otherLoader, loader
 	}
 	inventory := entries[runtimeInventoryAsset]
 	if inventory == nil || inventory.UncompressedSize64 > 2*1024*1024 {
