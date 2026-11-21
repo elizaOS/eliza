@@ -1,9 +1,9 @@
 // spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"
+import { readCloudError, type CloudFailure } from "@elizaos/cloud/client"
 import type { GenerateTextParams, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import { failureOf, outcomeOf, type ModelHandler } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
-import { readCloudError, type CloudFailure } from "./cloud-error.vibe"
 
 export type ChatHandler = Exclude<ModelHandler, "TextEmbedding">
 
