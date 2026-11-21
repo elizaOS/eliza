@@ -9,6 +9,7 @@ export const deviceActionsModuleName = "@elizaos/agent/device-actions"
 export const deviceActionsModule: ModuleFactory<never> = effect (context) => {
   const enrollment = deviceEnrollment(context)
   const requests = deviceRequests(context, enrollment.deviceSender)
+  const completion = try sync(() => readCompletionRoutes({ runtime: context.runtime, sender: enrollment.deviceSender, open: requests.open }))
   return {
     name: deviceActionsModuleName,
     plugin: {
@@ -19,7 +20,7 @@ export const deviceActionsModule: ModuleFactory<never> = effect (context) => {
       routes: [
         ...enrollment.routes,
         ...requests.routes,
-        ...readCompletionRoutes({ runtime: context.runtime, sender: enrollment.deviceSender, open: requests.open }),
+        ...completion,
       ],
     },
   } satisfies AgentModule

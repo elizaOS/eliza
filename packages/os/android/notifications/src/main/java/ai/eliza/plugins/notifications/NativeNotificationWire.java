@@ -1,4 +1,4 @@
-package ai.elizaos.app;
+package ai.eliza.plugins.notifications;
 
 import java.nio.charset.StandardCharsets;
 import org.json.JSONObject;

@@ -1,10 +1,11 @@
 // spec/os/agentService/channel.md, "Story: Ask the agent only on the routes my app allows"; spec/os/agentService/channel.md, "Story: Stream a reply and stop it"; spec/os/agentService/channel.md, "Story: Receive the agent's live events for my screen"
 import type { PluginListenerHandle } from "@capacitor/core";
 import type { FailCode } from "../../../gen/os__agentService__channel.ts";
+import type { FailureCause } from "../../../gen/os__agentService__lifecycle.ts";
 
 export type AgentFailCode = FailCode;
 
-export type AgentFailure = "payload" | "storage" | "config" | "credential" | "agent" | "crashed" | "runtime";
+export type AgentFailure = Lowercase<FailureCause>;
 
 export type AgentStatus = { available: boolean; epoch: number; requestBodyLimit: number } & (
   | { state: "unavailable" | "stopped" | "starting" | "running" }

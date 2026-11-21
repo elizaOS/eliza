@@ -52,7 +52,7 @@
     "typecheck": "vibelang --noEmit -p .",
     "test": "vitest run",
     "test:browser": "vitest run --project browser",
-    "start": "node -e \"const fs=require('node:fs');fs.rmSync('.cache/cloud.pglite',{recursive:true,force:true});fs.mkdirSync('.cache',{recursive:true})\" && (node --env-file=test/fixtures/secrets.env --import vibelang/register src/main.vibe serve --profile test/fixtures/profile.json --environment staging --store pglite:.cache/cloud.pglite --seed test/fixtures/seed.json --port 8080 & node --import vibelang/register test/support/web-front.vibe)",
+    "start": "node -e \"const fs=require('node:fs');fs.rmSync('.cache/cloud.pglite',{recursive:true,force:true});fs.mkdirSync('.cache',{recursive:true})\" && node --import vibelang/register test/support/web-front.vibe",
     "build:worker": "vibelang -p tsconfig.worker.json && node -e \"require('node:fs').cpSync('src/store/migrations','dist/src/store/migrations',{recursive:true})\""
   },
   "dependencies": {

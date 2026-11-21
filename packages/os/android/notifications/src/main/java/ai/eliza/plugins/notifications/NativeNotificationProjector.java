@@ -1,4 +1,4 @@
-package ai.elizaos.app;
+package ai.eliza.plugins.notifications;
 
 import android.Manifest;
 import android.app.NotificationChannel;
@@ -13,9 +13,6 @@ import android.os.Build;
 import android.service.notification.StatusBarNotification;
 import android.system.Os;
 import android.system.OsConstants;
-import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
-import androidx.core.content.ContextCompat;
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -25,18 +22,18 @@ import org.json.JSONObject;
 /** Non-GMS native projection. Transport/inbox authority stays outside the presentation layer.
  * Never consumes FCM receipts or accepts a producer-provided component, scheme or external URL. */
 final class NativeNotificationProjector {
+    private NativeNotificationProjector() {}
     private static final String PREFS = "eliza_native_notification_taps";
     private static final String OWNER = "elizaNativeNotificationOwner", TOKEN = "elizaNativeNotificationToken";
     private static final String TAG = "eliza.native.notification:";
     private static final String GROUP = "elizaNativeNotificationGroup";
 
-    static boolean post(Context context, String owner, JSONObject notification) throws Exception {
+    static boolean post(Context context, Class<?> tapComponent, String owner, JSONObject notification) throws Exception {
         if (!validOwner(owner)) throw new SecurityException("Invalid notification presentation owner");
         JSONObject item = NativeNotificationInbox.checked(notification);
-        if ((Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
-                || !NotificationManagerCompat.from(context).areNotificationsEnabled()) return false;
         NotificationManager manager = context.getSystemService(NotificationManager.class);
-        if (manager == null) return false;
+        if (manager == null || !manager.areNotificationsEnabled()
+                || (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)) return false;
         String priority = item.getString("priority");
         JSONObject data = item.optJSONObject("data");
         String ownerType = "reminder".equals(item.getString("category")) && data != null ? data.optString("ownerType", "") : "";
@@ -57,7 +54,7 @@ final class NativeNotificationProjector {
         SharedPreferences.Editor authority = receipts.edit().putString(key, token);
         for (String stale : receipts.getAll().keySet()) if (!stale.equals(key) && !shown.contains(stale)) authority.remove(stale);
         if (!authority.commit()) throw new IOException("Notification tap authority could not be persisted");
-        Intent tap = new Intent(context, MainActivity.class)
+        Intent tap = new Intent(context, tapComponent)
                 .setAction(context.getPackageName() + ".NATIVE_NOTIFICATION." + key)
                 .setData(new Uri.Builder().scheme("eliza-native-notification").authority(owner).appendPath(id).build())
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -74,10 +71,10 @@ final class NativeNotificationProjector {
         String group = item.optString("groupKey", "");
         if (group.length() > 512 || group.chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException("Invalid notification group");
         android.os.Bundle extras = new android.os.Bundle(); extras.putString(OWNER, owner); extras.putString(GROUP, group);
-        android.app.Notification post = new NotificationCompat.Builder(context, selected.getId())
+        android.app.Notification post = new android.app.Notification.Builder(context, selected.getId())
                 .setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(item.getString("title"))
-                .setContentText(item.getString("body")).setStyle(new NotificationCompat.BigTextStyle().bigText(item.getString("body")))
-                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setAutoCancel(true).setOnlyAlertOnce(true)
+                .setContentText(item.getString("body")).setStyle(new android.app.Notification.BigTextStyle().bigText(item.getString("body")))
+                .setVisibility(android.app.Notification.VISIBILITY_PRIVATE).setAutoCancel(true).setOnlyAlertOnce(true)
                 .setContentIntent(PendingIntent.getActivity(context, 0, tap, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE))
                 .addExtras(extras).build();
         String tag = TAG + key;
@@ -102,14 +99,14 @@ final class NativeNotificationProjector {
     }
 
     /** Call before native deep-link capture. Only current-profile, private-token taps become routes. */
-    static boolean onOpened(Context context, Intent intent, String currentOwner) {
+    static boolean onOpened(Context context, Class<?> tapComponent, Intent intent, String currentOwner) {
         if (intent == null || !intent.hasExtra(OWNER)) return false;
         String owner = intent.getStringExtra(OWNER), id = intent.getStringExtra("notificationId");
         SharedPreferences receipts = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         boolean verified = validOwner(currentOwner) && currentOwner.equals(owner) && validId(id)
                 && (context.getPackageName() + ".NATIVE_NOTIFICATION." + owner + ":" + id).equals(intent.getAction())
                 && intent.getComponent() != null && context.getPackageName().equals(intent.getComponent().getPackageName())
-                && MainActivity.class.getName().equals(intent.getComponent().getClassName())
+                && tapComponent.getName().equals(intent.getComponent().getClassName())
                 && java.util.Objects.equals(receipts.getString(owner + ":" + id, null), intent.getStringExtra(TOKEN))
                 && intent.getStringExtra(TOKEN) != null;
         // Neither a stale profile tap nor an unverified producer route enters the URL buffer.

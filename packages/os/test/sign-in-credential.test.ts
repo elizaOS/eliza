@@ -22,6 +22,7 @@ describe("Keep me signed in without a second copy of my key", () => {
     expect([seen.firstSignIn, seen.firstHeld, seen.lostReplyAskedAgainWithSameProof, seen.keyHiddenFromText]).toEqual(["SIGNED_IN", "1/cred-2/user-1", true, true]);
     expect([seen.secondSignIn, seen.secondHeld, seen.owedAfterReplace, seen.revokedAfterReplace]).toEqual(["SIGNED_IN", "2/cred-4/user-1", 1, "cred-2"]);
     expect(seen.unprefixedSlots).toBe(0);
+    expect(seen.unknownAckRefusal).toBe("401/credential_proof_invalid");
   });
 
   it("keeps the account on an expired key and signs out only when the account read finds the key revoked", () => {

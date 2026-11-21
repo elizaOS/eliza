@@ -105,7 +105,7 @@ pure def canReserve(h: Hold, quote: Micros, lane: FundingLane, allowanceAvailabl
 pure def reserve(h: Hold, key: HoldKey, quote: Micros, lane: FundingLane, allowanceAvailable: Micros, creditAvailable: Micros, now: Millis): Hold = {
   val reserved = holdAmount(lane, quote, allowanceAvailable, creditAvailable)
   val parts = splitHold(lane, reserved, allowanceAvailable)
-  { ...h, phase: Reserved, key: key, quote: quote, reserved: reserved, fromAllowance: parts.allowancePart, fromCredits: parts.creditPart, since: now }
+  { ...h, phase: Reserved, key: { service: key.service, caller: key.caller, requestId: key.requestId, part: key.part }, quote: quote, reserved: reserved, fromAllowance: parts.allowancePart, fromCredits: parts.creditPart, since: now }
 }
 pure val keyValues = Set({ service: MeteredInference, caller: "c1", requestId: "r1", part: WholeRequest }, { service: MeteredSpeech, caller: "c1", requestId: "s1", part: SpeechWindow({ direction: Transcribe, window: 1 }) })
 pure val nowValues = Set(0, 900000, 8100000)

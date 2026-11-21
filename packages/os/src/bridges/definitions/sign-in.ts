@@ -1,4 +1,4 @@
-// spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"; spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; spec/os/signIn/readiness.md, "Story: Read the service's own terms"
+// spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"; spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; spec/os/signIn/readiness.md, "Story: Read the service's own terms"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"
 import type { PluginListenerHandle } from "@capacitor/core";
 import type { Brand } from "effect";
 import type { FailureCode, GoogleReport, Verdict } from "../../../gen/os__signIn__flow.ts";
@@ -90,9 +90,16 @@ export type ServiceDocument =
   | { kind: Extract<ServiceOutcome, "ServiceShown">; environment: EnvironmentName; service: ServiceTerms }
   | { kind: Exclude<ServiceOutcome, "ServiceShown">; environment: EnvironmentName };
 
+export interface SignInAccountChange {
+  environment: EnvironmentName;
+  account: SignInAccount;
+  problem?: FailureCode;
+}
+
 export interface SignInEvents {
   signInSettled: SignInReceipt;
   signInReadinessChanged: SignInReadiness;
+  signInAccountChanged: SignInAccountChange;
 }
 
 export interface ElizaSignInPlugin {

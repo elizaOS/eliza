@@ -4,6 +4,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { buildApk, testSigner, type AndroidTools } from "./support/android-tools.ts"
 import { device, fakeAdb } from "./support/fake-adb.ts"
 import { scratch, scratchRepo, writeTree, type Tree } from "./support/scratch.vibe"
+import { cli, UsageError } from "../src/cli.vibe"
 
 module node {
   import { execFile } from "node:child_process"
@@ -58,6 +59,7 @@ const PASSPHRASE = "a passphrase only this test knows"
 const CERTIFICATE = "c".repeat(64)
 const USAGE_LINE = "eliza-os stage-launcher --descriptor FILE"
 const TOOLS = sdk()
+const CHILDREN = 300_000
 
 const failed = (step: string) => (cause: unknown) => new ChildFailed({ step, cause })
 
@@ -126,16 +128,19 @@ it.live("Refuse a malformed command line with exit 2 and write nothing (spec/os/
     ["chromium with an unknown subcommand", ["chromium", "clean"], "chromium takes prepare or build, not clean"],
     ["chromium prepare without a certificate", ["chromium", "prepare", "--source", `${root}/src`, "--extension", `${root}/ext`, "--out", out], "--certificate required"],
   ]
-  const results = try Effect.forEach(refusals, ([, argv]) => run(...argv), { concurrency: 8 })
-  refusals.forEach(([name, , message], index) => {
-    const result = results[index]
-    assert.strictEqual(result?.status, 2, `${name}: ${result?.stderr}`)
-    assert.strictEqual(result?.stdout, "", name)
-    assert.include(result?.stderr, message, name)
-    assert.include(result?.stderr, USAGE_LINE, name)
-  })
+  for (const [name, argv, message] of refusals) {
+    const failure = try Effect.flip(cli(argv))
+    assert.instanceOf(failure, UsageError, name)
+    if (failure instanceof UsageError) assert.include(failure.message, message, name)
+  }
+  const children = try Effect.forEach([[], [...stage, "--bogus", "x"]], (argv) => run(...argv), { concurrency: 2 })
+  for (const child of children) {
+    assert.strictEqual(child.status, 2, child.stderr)
+    assert.strictEqual(child.stdout, "")
+    assert.include(child.stderr, USAGE_LINE)
+  }
   assert.deepStrictEqual(try listed(root), [])
-}))
+}), CHILDREN)
 
 it.live("Generate test release keys and decrypt them again (spec/os/image/signing.md, \"Story: Sign a release only with keys I enrolled\")", () => journey(effect {
   const root = try scratch("cli-keys")
@@ -177,10 +182,10 @@ it.live("Generate test release keys and decrypt them again (spec/os/image/signin
   assert.isTrue(try Effect.try({ try: () => pairsWithCertificate(pk8, certificate), catch: failed("pair the key") }))
 
   const again = try run(...generate)
-  assert.notStrictEqual(again.status, 0)
-  assert.notStrictEqual(again.status, 2)
+  assert.strictEqual(again.status, 1, again.stderr)
   assert.strictEqual(again.stdout, "")
-}))
+  assert.include(again.stderr, "KeyOutputRefused")
+}), CHILDREN)
 
 effect function admission(tools: Extract<AndroidTools, { kind: "present" }>) {
   const root = try scratch("cli-stage")
@@ -211,15 +216,15 @@ effect function admission(tools: Extract<AndroidTools, { kind: "present" }>) {
 
   try writeTree(root, { "descriptor.json": JSON.stringify({ ...descriptor, apkSha256: "0".repeat(64) }) })
   const refused = try run(...stage, "--admission-only")
-  assert.notStrictEqual(refused.status, 0)
-  assert.notStrictEqual(refused.status, 2)
+  assert.strictEqual(refused.status, 1, refused.stderr)
   assert.strictEqual(refused.stdout, "")
+  assert.include(refused.stderr, "StagingRefused")
   assert.isFalse(try files.exists(output))
 }
 
 it.live.skipIf(TOOLS.kind === "missing")(`Check a launcher for admission without writing an overlay (spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once")${TOOLS.kind === "missing" ? `: ${TOOLS.reason}` : ""}`, () => journey(effect {
   if (TOOLS.kind === "present") try admission(TOOLS)
-}))
+}), CHILDREN)
 
 it.live("Read an update's status from the device by cable (spec/os/update/operator.md, \"Story: Update a device by cable\")", () => journey(effect {
   const root = try scratch("cli-ota")
@@ -247,7 +252,7 @@ it.live("Read an update's status from the device by cable (spec/os/update/operat
   assert.strictEqual(try files.readFileString(`${root}/journal.json`), before)
   const calls = try Effect.try({ try: () => phone.calls(), catch: failed("read the adb calls") })
   assert.deepStrictEqual(calls.filter((call) => ["reboot", "sideload", "set_active"].includes(call.args[2] ?? "")), [])
-}))
+}), CHILDREN)
 
 it.live("Prepare the owned browser's component against the pinned sources (spec/os/browser/chromium.md, \"Story: Use the owned browser only with its expected identity\")", () => journey(effect {
   const root = try scratch("cli-chromium")
@@ -283,7 +288,8 @@ it.live("Prepare the owned browser's component against the pinned sources (spec/
   assert.strictEqual(try files.readFileString(`${repo.root}/chrome/browser/resources/eliza_browser/runtime-config.mjs`), `export const nativeHost = ${JSON.stringify(host)};\n`)
 
   const stale = try run(...prepare, "--out", `${root}/again`, "--revision", "0".repeat(40))
-  assert.notStrictEqual(stale.status, 0)
+  assert.strictEqual(stale.status, 1, stale.stderr)
   assert.strictEqual(stale.stdout, "")
+  assert.include(stale.stderr, "Chromium revision must match the reviewed component pin")
   assert.isFalse(try files.exists(`${root}/again`))
-}))
+}), CHILDREN)

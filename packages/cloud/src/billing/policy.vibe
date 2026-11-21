@@ -1,6 +1,7 @@
 // spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"; spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"
-import { isPaid, rankOf, type PlanKey } from "../../gen/cloud__billing__plans.effect.vibe"
-import { dunningEndsAt, hasPaidLimits, isEntitled, parseState, type SubscriptionStatus } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+import { effectivePolicy, fundingLane, type HeldGrant, type Policy as EffectivePolicy, type PolicyAnswer, type PolicyRead } from "../../gen/cloud__billing__entitlements.effect.vibe"
+import type { PlanKey } from "../../gen/cloud__billing__plans.effect.vibe"
+import { initial as noSubscription, parseState, type SubscriptionStatus } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import type { FundingLane } from "../../gen/cloud__shared__metering.effect.vibe"
 import type { MeteredService } from "../../gen/cloud__shared__types.ts"
 import { parsePlanKey } from "./plans.vibe"
@@ -16,59 +17,62 @@ export interface Policy {
   readonly source: PlanSource
   readonly effectiveUntil: number | null
   readonly status: SubscriptionStatus
+  readonly effective: EffectivePolicy
 }
 
 export error PolicyUnreadable { organizationId: string; problem: string }
 
-const statusOf: Readonly<Record<string, SubscriptionStatus>> = {
-  none: "NoSubscription",
-  pending: "Pending",
-  incomplete: "Incomplete",
-  active: "Active",
-  dunning: "Dunning",
-  past_due: "PastDue",
-  unpaid: "Unpaid",
-  canceled: "Canceled",
-  incomplete_expired: "IncompleteExpired"
+const sourceNames = { FromSubscription: "subscription", FromGrant: "grant", FromFree: "free" } as const
+
+function heldGrant(row: Readonly<Record<string, unknown>>): HeldGrant | undefined {
+  const planKey = parsePlanKey(row.plan_key)
+  const grantId = toText(row.id)
+  const organizationId = toText(row.organization_id)
+  const startsAt = toInt(row.effective_from)
+  const endsAt = row.effective_until === null ? undefined : toInt(row.effective_until)
+  const revokedAt = row.revoked === true ? toInt(row.revoked_at) : undefined
+  if (planKey === undefined || grantId === undefined || organizationId === undefined || !Number.isSafeInteger(startsAt)) return undefined
+  if ((endsAt !== undefined && !Number.isSafeInteger(endsAt)) || (revokedAt !== undefined && !Number.isSafeInteger(revokedAt))) return undefined
+  return {
+    planKey,
+    grant: {
+      grantId,
+      organizationId,
+      idempotencyKey: toText(row.idempotency_key) ?? "",
+      startsAt,
+      ends: endsAt === undefined ? { tag: "NeverEnds" } : { tag: "EndsAt", endsAtMs: endsAt },
+      standing: revokedAt === undefined ? { tag: "InForce" } : { tag: "RevokedAt", revokedAtMs: revokedAt }
+    }
+  }
+}
+
+effect function policyRead(tx: Tx, organizationId: string): PolicyRead!StoreFailure {
+  const row = (try tx.query("SELECT state FROM subscriptions WHERE key = $1", [organizationId]))[0]
+  const subscription = row === undefined ? noSubscription : parseState(row.state)
+  const grants = (try tx.query(
+    "SELECT id, organization_id, plan_key, effective_from, effective_until, revoked, revoked_at, idempotency_key FROM grants WHERE organization_id = $1",
+    [organizationId]
+  )).map(heldGrant)
+  if (subscription === undefined || grants.some((grant) => grant === undefined)) return { tag: "PolicyUnreadable" }
+  return { tag: "PolicyReadable", subscription, grants: grants.filter((grant): grant is HeldGrant => grant !== undefined) }
 }
 
 export effect function readPolicy(tx: Tx, organizationId: string, now: number): Policy!(StoreFailure | PolicyUnreadable) {
-  const row = (try tx.query("SELECT state, status, plan_key, period_end FROM subscriptions WHERE key = $1", [organizationId]))[0]
-  const status = row ? statusOf[toText(row.status) ?? ""] : "NoSubscription"
-  const subscribed = row ? parsePlanKey(row.plan_key) : "Free"
-  if (status === undefined || subscribed === undefined) throw new PolicyUnreadable({ organizationId, problem: "subscription row" })
-  const rows = try tx.query(
-    "SELECT plan_key, effective_from, effective_until, revoked FROM grants WHERE organization_id = $1 AND NOT revoked AND effective_from <= $2 AND (effective_until IS NULL OR effective_until > $2)",
-    [organizationId, now]
-  )
-  let granted: { readonly planKey: PlanKey; readonly effectiveUntil: number | null } | undefined
-  for (const grant of rows) {
-    const planKey = parsePlanKey(grant.plan_key)
-    if (planKey === undefined) throw new PolicyUnreadable({ organizationId, problem: "grant row" })
-    const effectiveUntil = grant.effective_until === null ? null : toInt(grant.effective_until)
-    if (granted === undefined || rankOf(planKey) > rankOf(granted.planKey)) granted = { planKey, effectiveUntil }
-    else if (planKey === granted.planKey && granted.effectiveUntil !== null) granted = { planKey, effectiveUntil: effectiveUntil === null ? null : Math.max(effectiveUntil, granted.effectiveUntil) }
+  const answer = effectivePolicy(try policyRead(tx, organizationId), now)
+  if (answer.tag === "PolicyUnavailable") throw new PolicyUnreadable({ organizationId, problem: "subscription or grant row" })
+  const effective = answer.policy
+  return {
+    planKey: effective.planKey,
+    source: sourceNames[effective.source],
+    effectiveUntil: effective.ends.tag === "PlanEndsAt" ? effective.ends.endsAtMs : null,
+    status: effective.subscription,
+    effective
   }
-  if (hasPaidLimits(status)) {
-    if (!isPaid(subscribed)) throw new PolicyUnreadable({ organizationId, problem: "subscription row" })
-    return { planKey: subscribed, source: "subscription", effectiveUntil: try subscriptionEnd(organizationId, status, row), status }
-  }
-  if (granted !== undefined && isPaid(granted.planKey)) return { ...granted, source: "grant", status }
-  return { planKey: "Free", source: "free", effectiveUntil: null, status }
-}
-
-effect function subscriptionEnd(organizationId: string, status: SubscriptionStatus, row: { readonly state?: unknown; readonly period_end?: unknown } | undefined): (number | null)!PolicyUnreadable {
-  if (status === "Active") return toInt(row?.period_end)
-  if (status !== "Dunning") return null
-  const state = parseState(row?.state)
-  if (state === undefined || state.dunning.tag !== "DunningSince") throw new PolicyUnreadable({ organizationId, problem: "dunning window" })
-  return dunningEndsAt(state.dunning)
 }
 
 export function laneOf(policy: Policy | undefined): FundingLane {
-  if (policy === undefined) return "Refused"
-  const fundsAllowance = isPaid(policy.planKey) && (policy.source === "grant" || (policy.source === "subscription" && isEntitled(policy.status)))
-  return fundsAllowance ? "AllowanceThenCredits" : "CreditsOnly"
+  const answer: PolicyAnswer = policy === undefined ? { tag: "PolicyUnavailable" } : { tag: "PolicyOf", policy: policy.effective }
+  return fundingLane(answer)
 }
 
 export function fundingOf(policy: Policy | undefined): Readonly<Record<FundingClass, FundingLane>> {

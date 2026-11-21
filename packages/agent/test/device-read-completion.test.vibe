@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { startAgent } from "../src/host/process.vibe"
-import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
+import { cloudFake, deviceKey, host, scratch, startInProcess } from "./support/kernel.vibe"
 import { launchDocument, launchFrame } from "./support/scratch.ts"
 
 module node {
@@ -15,6 +15,8 @@ module node {
   import type { RunningAgent } from "../src/host/process.vibe"
   import { text, type CloudFake } from "./support/cloud-fake.ts"
   import { request } from "./support/socket-client.ts"
+  import { proposeDeviceActionServiceType, type ProposeDeviceActionService } from "../src/device-actions/requests.vibe"
+  import { ask, deviceClient, openConversation } from "./support/device.ts"
 
   const moduleName = "@elizaos/agent/device-actions"
   const capability = "calendar.read.v1"
@@ -98,9 +100,44 @@ module node {
       expected: { roomId: conversation.roomId, inReplyTo: asked.id, messageId: reply.messageId, conversationId: conversation.id },
     }
   }
+
+  export async function completeFromTheReceipt(running: RunningAgent, socket: string, token: string, cloud: CloudFake) {
+    const agentId = running.status.agentId
+    const reads = "calendar.next-read.v1"
+    const device = deviceClient(socket, token, agentId, reads)
+    const service = running.runtime.getService(proposeDeviceActionServiceType) as ProposeDeviceActionService | null
+    if (service === null) throw new Error("The device request service did not start")
+    const inferences = () => cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length
+    await device.call("POST", "/api/client-devices/register", { capabilities: [reads], workflowProtocol: 1 })
+    const conversation = await openConversation(device)
+    cloud.script(text("Let me check your phone."))
+    const asked = await ask(device, (roomId) => running.runtime.getMemories({ tableName: "messages", roomId, count: 10 }), agentId, conversation, "When is my next event?")
+    await service.beginTurn(asked, new Map(Object.entries(device.headers())))
+    const offer = await service.propose({ message: asked, operation: { type: "calendar_read_next" } })
+    const proposals = (await device.call("GET", "/api/client-devices/proposals")).json as { proposals: { id: string; readReplyOrigin?: { requestId: string; conversationId: string; inReplyTo: string } }[] }
+    const origin = proposals.proposals.find(({ id }) => id === offer.proposalId)?.readReplyOrigin
+    if (origin === undefined) throw new Error("The open read showed no reply origin")
+    const at = `/api/client-devices/proposals/${offer.proposalId}`
+    await device.call("POST", `${at}/decide`, { digest: offer.digest, approved: true })
+    const claimed = (await device.call("POST", `${at}/claim`, { digest: offer.digest })).json as { attemptId: number }
+    const result = { version: 1, kind: "calendar_read_next", window: { start: "2026-11-21T00:00:00.000Z", end: "2026-12-21T00:00:00.000Z", timeZone: "UTC" }, event: null }
+    await device.call("POST", `${at}/receipt`, { digest: offer.digest, attemptId: claimed.attemptId, receipt: { outcome: "applied", operationId: "native-1", result } })
+    const originAfterReceipt = ((await device.call("GET", "/api/client-devices/proposals")).json as { proposals: { id: string; readReplyOrigin?: unknown }[] }).proposals.find(({ id }) => id === offer.proposalId)
+    const hint = { proposalId: offer.proposalId, digest: offer.digest, attemptId: claimed.attemptId, ...origin }
+    const before = inferences()
+    cloud.script(text("Your next 30 days are clear."))
+    const first = await device.call("POST", `${at}/read-completion`, hint)
+    const repeated = await device.call("POST", `${at}/read-completion`, hint)
+    const prompt = JSON.stringify(cloud.calls.at(-1)?.body ?? "")
+    return {
+      origin: { conversationId: origin.conversationId, inReplyTo: origin.inReplyTo }, expected: { conversationId: conversation.id, inReplyTo: asked.id },
+      originAfterReceipt: originAfterReceipt?.readReplyOrigin, first: first.json, repeated: repeated.json, inferences: inferences() - before,
+      resultReachedTheModel: prompt.includes("calendar_read_next"),
+    }
+  }
 }
 
-import { completeOriginalRead, requestBook } from node
+import { completeFromTheReceipt, completeOriginalRead, requestBook } from node
 
 it.effect('A shared device read answers the original request once, in its conversation (spec/agent/deviceActions/index.md, "Story: Complete the original request with the result I shared")', effect () => {
   const state = try scratch("read-completion")
@@ -127,5 +164,19 @@ it.effect('A shared device read answers the original request once, in its conver
     inferences: 1,
     stored: { roomId: observed.expected.roomId, inReplyTo: observed.expected.inReplyTo, text: reply.text },
     expected: undefined,
+  }))
+}, 180_000)
+
+it.effect('A read I approved answers from the result its receipt kept, once (spec/agent/deviceActions/index.md, "Story: Complete the original request with the result I shared")', effect () => {
+  const started = try startInProcess({ cloud: true, launch: { callerRole: "owner", load: ["@elizaos/agent/device-actions"], hostContextRevision: 1 } })
+  const cloud = started.cloud
+  if (started.transport.kind !== "socket" || cloud === undefined) return try die(new Error("The journey needs the socket transport and the cloud fake"))
+  const socket = started.transport.path
+  const observed = try host("read completion from a receipt", () => completeFromTheReceipt(started.agent, socket, started.frame.token, cloud))
+  const reply = (observed.first as { reply?: { text?: string } }).reply
+  try Effect.try(() => assert.deepStrictEqual({
+    origin: observed.origin, originAfterReceipt: observed.originAfterReceipt, text: reply?.text, repeated: observed.repeated, inferences: observed.inferences, resultReachedTheModel: observed.resultReachedTheModel,
+  }, {
+    origin: observed.expected, originAfterReceipt: undefined, text: "Your next 30 days are clear.", repeated: observed.first, inferences: 1, resultReachedTheModel: true,
   }))
 }, 180_000)

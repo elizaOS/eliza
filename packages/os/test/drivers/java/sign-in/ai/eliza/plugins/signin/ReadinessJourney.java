@@ -49,7 +49,6 @@ public final class ReadinessJourney {
     if (tests) config.put("testEnvironments", true);
     config.put("environments", environments);
     config.put("googleScopes", List.of("openid", "email"));
-    config.put("routes", List.of(Map.of("method", "GET", "path", "/api/v1/user")));
     return config;
   }
 

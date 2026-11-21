@@ -1,8 +1,8 @@
-// spec/cloud/shared/metering.md, "Story: Settle every call once"
-import { type Rejected, apply, decodeState, initial, fundable, allowanceCharge, creditCharge, reservedTimeout, dispatchedTimeout, type Event, type Hold } from "../../gen/cloud__shared__metering.effect.vibe"
+// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/shared/metering.md, "Story: Never overdraw an account"
+import { type Rejected, admission, apply, decodeState, initial, allowanceCharge, creditCharge, reservedTimeout, dispatchedTimeout, type Event, type FundingLane, type Hold } from "../../gen/cloud__shared__metering.effect.vibe"
 import { type Rejected as PeriodRejected, apply as applyPeriod, decodeState as decodePeriod, initial as initialPeriod, type Event as PeriodEvent, type Period } from "../../gen/cloud__billing__allowance.effect.vibe"
-import type { HoldKey } from "../../gen/cloud__shared__types.ts"
-import { creditAvailable, readFunds, stepFunds, type FundsFailure } from "../billing/funds.vibe"
+import type { HoldKey, RefusalCode } from "../../gen/cloud__shared__types.ts"
+import { creditAvailable, readFunds, stepFunds, type Funds, type FundsFailure } from "../billing/funds.vibe"
 import { laneFor } from "../billing/policy.vibe"
 import { refused, type Refused, wireName } from "../http/refusal.vibe"
 import { loadRow, machineRows, type RowConflict, type RowCorrupt, stepRow } from "../store/rows.vibe"
@@ -44,6 +44,7 @@ interface HoldRow {
   readonly service: string
   readonly period: string | undefined
   readonly createdAt: number
+  readonly requestDigest?: string
 }
 
 function columns(row: HoldRow, now: number) {
@@ -54,6 +55,7 @@ function columns(row: HoldRow, now: number) {
     phase: wireName(hold.phase),
     allowance_period: row.period ?? null,
     created_at: row.createdAt,
+    ...(row.requestDigest === undefined ? {} : { request_digest: row.requestDigest }),
     ...(hold.phase === "Dispatched" ? { dispatched_at: hold.since } : {}),
     updated_at: now
   })
@@ -73,29 +75,49 @@ export effect function stepPeriod(tx: Tx, key: string, event: PeriodEvent, now: 
   return try stepRow(tx, periodRows, key, event, (period) => ({ status: wireName(period.phase.slice("Period".length)), updated_at: now }))
 }
 
-export effect function reserveIn(tx: Tx, owner: HoldOwner, key: HoldKey, quote: number, now: number): HoldTicket!MeteringFailure {
-  const rendered = renderHoldKey(owner, key)
-  try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [owner.organizationId])
-  const existing = try loadRow(tx, holdRows, rendered)
-  if (existing.found) return { key: rendered, hold: existing.state, replayed: true }
-  const lane = try laneFor(tx, owner.organizationId, key.service, now)
-  const funds = try readFunds(tx, owner.organizationId)
-  const open = lane === "AllowanceThenCredits" ? try openPeriod(tx, owner.organizationId, now) : undefined
-  const allowanceAvailable = open?.period.available ?? 0
-  if (!fundable(lane, quote, allowanceAvailable, creditAvailable(funds))) {
-    throw lane === "Refused" ? refused("ServiceUnavailable", "NoReason", now + 5000) : refused("InsufficientCredits")
-  }
-  const row: HoldRow = { organizationId: owner.organizationId, userId: owner.userId, service: serviceName(key.service), period: open?.key, createdAt: now }
-  const { state: hold } = try stepRow(tx, holdRows, rendered, { type: "reserve", key, quote, lane, allowanceAvailable, creditAvailable: creditAvailable(funds), now }, columns(row, now))
+function refusalOf(code: RefusalCode, now: number): Refused {
+  return code === "ServiceUnavailable" ? refused(code, "NoReason", now + 5000) : refused(code)
+}
+
+interface Offer {
+  readonly lane: FundingLane
+  readonly funds: Funds
+  readonly open: { readonly key: string; readonly period: Period } | undefined
+}
+
+effect function admit(tx: Tx, owner: HoldOwner, key: HoldKey, rendered: string, quote: number, offer: Offer, now: number, requestDigest: string | undefined): HoldTicket!MeteringFailure {
+  const { lane, funds, open } = offer
+  const row: HoldRow = { organizationId: owner.organizationId, userId: owner.userId, service: serviceName(key.service), period: open?.key, createdAt: now, requestDigest }
+  const { state: hold } = try stepRow(tx, holdRows, rendered, { type: "reserve", key, quote, lane, allowanceAvailable: open?.period.available ?? 0, creditAvailable: creditAvailable(funds), now }, columns(row, now))
   if (hold.fromAllowance > 0 && open !== undefined) try stepPeriod(tx, open.key, { type: "reserveHold", amount: hold.fromAllowance, now }, now)
   if (hold.fromCredits > 0) try stepFunds(tx, owner.organizationId, { type: "holdCredits", fromCredits: hold.fromCredits }, now, rendered)
   return { key: rendered, hold, replayed: false }
 }
 
-export effect function reserve(owner: HoldOwner, key: HoldKey, quote: number): HoldTicket!MeteringFailure!Store {
+export effect function reserveIn(tx: Tx, owner: HoldOwner, key: HoldKey, quote: number, now: number, requestDigest?: string): HoldTicket!MeteringFailure {
+  const rendered = renderHoldKey(owner, key)
+  try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [owner.organizationId])
+  const existing = try loadRow(tx, holdRows, rendered)
+  const stored = existing.found ? toText((try tx.query("SELECT request_digest FROM holds WHERE key = $1", [rendered]))[0]?.request_digest) : undefined
+  const lane = try laneFor(tx, owner.organizationId, key.service, now)
+  const funds = try readFunds(tx, owner.organizationId)
+  const open = lane === "AllowanceThenCredits" ? try openPeriod(tx, owner.organizationId, now) : undefined
+  const admitted = admission(existing.state, stored === requestDigest, lane, quote, open?.period.available ?? 0, creditAvailable(funds))
+  switch (admitted.tag) {
+    case "ReplayHold": return { key: rendered, hold: existing.state, replayed: true }
+    case "RefuseHold": throw refusalOf(admitted.code, now)
+    case "AdmitHold": return try admit(tx, owner, key, rendered, quote, { lane, funds, open }, now, requestDigest)
+    default: {
+      const _exhaustive: never = admitted
+      return _exhaustive
+    }
+  }
+}
+
+export effect function reserve(owner: HoldOwner, key: HoldKey, quote: number, requestDigest?: string): HoldTicket!MeteringFailure!Store {
   const store = try Store
   const now = try Clock.currentTimeMillis
-  return try store.transaction((tx) => reserveIn(tx, owner, key, quote, now))
+  return try store.transaction((tx) => reserveIn(tx, owner, key, quote, now, requestDigest))
 }
 
 effect function holdRow(tx: Tx, key: string): HoldRow!(StoreFailure | HoldUnknown) {
@@ -174,7 +196,10 @@ export effect function sweepHolds(): number!!Store {
   const stale = store.transaction((tx) => tx.query(
     "SELECT key, phase FROM holds WHERE (phase = 'reserved' AND created_at <= $1) OR (phase = 'dispatched' AND dispatched_at <= $2) ORDER BY created_at LIMIT $3",
     [now - reservedTimeout, now - dispatchedTimeout, sweepBatch]
-  )) catch () => []
+  )) catch effect (failure) => {
+    try annotateLogs(logError("hold sweep could not list holds"), { failure: failure._tag })
+    return []
+  }
   for (const row of stale) {
     const key = toText(row.key) ?? ""
     const settlement: Settlement = row.phase === "reserved" ? { kind: "release" } : { kind: "unknown" }

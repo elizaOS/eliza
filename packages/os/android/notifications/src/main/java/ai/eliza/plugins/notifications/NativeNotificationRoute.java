@@ -1,4 +1,4 @@
-package ai.elizaos.app;
+package ai.eliza.plugins.notifications;
 
 /** Presentation-only notification routes. No producer URL, auth/runtime switch,
  * nested command or mutable component crosses this closed navigation policy. */

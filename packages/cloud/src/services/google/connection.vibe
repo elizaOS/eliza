@@ -218,7 +218,7 @@ effect function exchangeCode(profile: GoogleProfile, clientId: string, fields: R
   if (answer.status >= 400) return { kind: "codeRejected" } satisfies CodeExchange
   const reply = Option.getOrUndefined(Schema.decodeUnknownOption(CodeReply)(answer.body))
   if (answer.status >= 300 || reply === undefined || reply.access_token === "" || !(reply.expires_in > 0) || reply.id_token === undefined) return { kind: "invalidResponse" } satisfies CodeExchange
-  const token = try readIdToken(profile, reply.id_token, now)
+  const token = try readIdToken(profile, reply.id_token, clientId, now)
   if (!token.signatureOk || !token.issuerOk || !token.audienceOk || token.subject === undefined) return { kind: "invalidResponse" } satisfies CodeExchange
   const lifetime = Math.round(reply.expires_in * millisPerSecond)
   return {

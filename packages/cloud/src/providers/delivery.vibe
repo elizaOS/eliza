@@ -1,6 +1,6 @@
-// spec/cloud/deployment.md, "An instance starts only for an accepted profile, on its environment's own readable database, seeded only in staging, with loopback delivery only on PGlite"; spec/cloud/identity/codeChallenges.md, "A challenge sends one code, only to an email address or to a phone in a country the deployment allows"
+// spec/cloud/deployment.md, "An instance starts only for an accepted profile, on its environment's own readable database, seeded only in staging, with loopback delivery and its test inbox only on PGlite"; spec/cloud/identity/codeChallenges.md, "A challenge sends one code, only to an email address or to a phone in a country the deployment allows"
 import { FetchHttpClient, HttpClient, type HttpClientRequest } from "effect/http"
-import { loopbackAllowed, usesLoopback } from "../../gen/cloud__deployment.effect.vibe"
+import { inboxOpen as inboxOpenFor } from "../../gen/cloud__deployment.effect.vibe"
 import { refused, type Refused } from "../http/refusal.vibe"
 import { json, type Route, type RouteContext } from "../http/routes.vibe"
 import { Deployment, rowOf } from "../profile/profile.vibe"
@@ -34,10 +34,7 @@ effect function inboxOpen(context: RouteContext): boolean!!(Deployment | Store) 
   const deployment = try Deployment
   const store = try Store
   const remote = Option.getOrElse(context.request.remoteAddress, () => "")
-  return deployment.environment === "staging"
-    && usesLoopback(rowOf(deployment.profile.name, deployment.settings))
-    && loopbackAllowed(store.location.kind === "pglite" ? "PgliteStore" : "PostgresStore")
-    && loopbackAddress.test(remote)
+  return inboxOpenFor(rowOf(deployment.profile.name, deployment.settings), store.location.kind === "pglite" ? "PgliteStore" : "PostgresStore", loopbackAddress.test(remote))
 }
 
 effect function latestMessage(context: RouteContext) {

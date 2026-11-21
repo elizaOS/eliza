@@ -1,0 +1,178 @@
+// spec/agent/tasks/wire.md, "Story: Show a task's choice in the chat"; spec/agent/tasks/index.md, "A chat turn is shown a task only while it is active at the epoch it named"
+import { assert, it } from "@effect/vitest"
+import { Service, type IAgentRuntime, type Memory, type TaskChoiceWidget, type UUID } from "@elizaos/core"
+import type { AgentPlugin } from "../src/host/module.vibe"
+import { tasksServiceType, type AuthorizedTaskGoal, type TaskActuator, type TaskGoalAuthorizer, type TaskPresentation, type TasksApi } from "../src/tasks/index.vibe"
+import { held, text, type CloudFake } from "./support/cloud-fake.ts"
+import { call, cloudFake, deviceKey, host, startInProcess, type InProcess } from "./support/kernel.vibe"
+import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
+
+module node {
+  import { createHash, randomBytes } from "node:crypto"
+  import type { CloudFake } from "./support/cloud-fake.ts"
+
+  /** @throws {never} */
+  export function storageKey(): string {
+    return randomBytes(32).toString("base64")
+  }
+
+  /** @throws {never} */
+  export function contextKeyOf(text: string): string {
+    return createHash("sha256").update(text).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function completions(cloud: CloudFake): number {
+    return cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).length
+  }
+}
+import { completions, contextKeyOf, storageKey } from node
+
+const productServiceType = "task-product-fixture"
+const taskId = "task-1"
+const contextMarker = "[Host task state; data, not permission]"
+
+const actuator: TaskActuator = {
+  capabilities: ["read"],
+  observe: () => Promise.reject(new Error("The chat journey never observes the page")),
+  execute: () => Promise.reject(new Error("The chat journey never acts on the page")),
+  quiesce: () => Promise.resolve(),
+}
+
+const authorizer: TaskGoalAuthorizer = {
+  authorize: (goalRef): Promise<AuthorizedTaskGoal> => Promise.resolve({
+    id: taskId, goalRef,
+    authorization: { decisionId: "decision-1", policyRevision: "policy-1", decidedAt: new Date(0).toISOString(), state: "active", revokedAt: null },
+    allowedCapabilities: ["read"], allowedOrigins: ["https://bills.example.test"],
+  }),
+}
+
+const formatTaskContext = (presentation: TaskPresentation) =>
+  `\n\n${contextMarker} ${JSON.stringify({ taskId: presentation.taskId, epoch: presentation.epoch, choice: presentation.choice?.block.id ?? null })}`
+
+class TaskProductFixture extends Service {
+  static override serviceType = productServiceType
+  override capabilityDescription = "Registers the task actuator, goal authorizer and chat context for the chat-task journey"
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    const tasks = await runtime.getServiceLoadPromise(tasksServiceType) as unknown as TasksApi
+    await tasks.registerActuator(actuator)
+    await tasks.registerAuthorizer(authorizer)
+    tasks.registerTaskContext(formatTaskContext)
+    return new TaskProductFixture(runtime)
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+const taskProduct = {
+  name: "task-product-fixture",
+  description: "Registers what the product supplies to the task module in the chat-task journey.",
+  services: [TaskProductFixture],
+} satisfies AgentPlugin
+
+const block = {
+  kind: "choice" as const, id: "confirm-payment", scope: "task",
+  prompt: "Pay the bill now?", options: [{ value: "yes", label: "Yes" }, { value: "no", label: "Not now" }],
+}
+
+interface WireTask {
+  readonly id: string
+  readonly revision: number
+  readonly epoch: number
+  readonly status: string
+}
+
+interface Reply {
+  readonly text: string
+  readonly userMessageId: string
+  readonly taskChoices?: readonly TaskChoiceWidget[]
+}
+
+const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
+
+effect function ask(agent: InProcess, asked: LocalRequest) {
+  return answerOf(try call(agent, asked))
+}
+
+effect function taskAgent(cloud: CloudFake, load: readonly string[]) {
+  return try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [...load], persistMemory: true },
+    frame: { credential: { version: 1, value: deviceKey }, storageKey: storageKey() },
+    bundled: new Map<string, AgentPlugin>([[taskProduct.name, taskProduct]]),
+  })
+}
+
+effect function conversation(agent: InProcess) {
+  const answer = try ask(agent, { method: "POST", path: "/api/conversations", body: {} })
+  return (answer.body as { conversation: { id: string; roomId: UUID } }).conversation
+}
+
+effect function roomMessages(agent: InProcess, roomId: UUID) {
+  const messages: Memory[] = try host("messages", () => agent.agent.runtime.getMemories({ tableName: "messages", roomId, count: 1000 }))
+  return messages.length
+}
+
+const send = (agent: InProcess, id: string, body: object) => ask(agent, { method: "POST", path: `/api/conversations/${id}/messages`, body })
+const replyOf = (answer: { readonly body: unknown }) => answer.body as Reply
+
+it.live('A chat turn naming the running task at its epoch shows the host\'s offered choice; a malformed, stale or unpresented task is refused and stores nothing; a task paused during the reply is 409 (spec/agent/tasks/wire.md, "A chat turn names a task only while the host presents it at that epoch"; spec/agent/tasks/wire.md, "A choice batch is shown only when every choice is valid for the task and epoch"; spec/agent/tasks/index.md, "A chat turn is shown a task only while it is active at the epoch it named")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try taskAgent(cloud, ["@elizaos/agent/tasks", taskProduct.name])
+  try host("product start", () => agent.agent.runtime.getServiceLoadPromise(productServiceType))
+  const tasks = agent.agent.runtime.getService(tasksServiceType) as unknown as TasksApi
+  const created = try ask(agent, { method: "POST", path: "/api/tasks", body: { goalRef: "pay-bill" } })
+  const task = (created.body as { task: WireTask }).task
+  const offered = try host("publish choice", () => tasks.publishChoice(taskId, contextKeyOf("review"), block))
+  const { id, roomId } = try conversation(agent)
+
+  try Effect.sync(() => cloud.script(text("Review the displayed option.")))
+  const shown = try send(agent, id, { text: "What should I do?", task: { taskId, expectedEpoch: task.epoch } })
+  const asked = try host("user message", () => agent.agent.runtime.getMemoryById(replyOf(shown).userMessageId as UUID))
+
+  const storedBefore = try roomMessages(agent, roomId)
+  const callsBefore = completions(cloud)
+  const malformed = try send(agent, id, { text: "Again?", task: { taskId, expectedEpoch: -1 } })
+  const stale = try send(agent, id, { text: "Again?", task: { taskId, expectedEpoch: task.epoch + 1 } })
+  const foreign = try send(agent, id, { text: "Again?", task: { taskId: "task-2", expectedEpoch: task.epoch } })
+  const storedAfterRefusals = try roomMessages(agent, roomId)
+  const callsAfterRefusals = completions(cloud)
+
+  const gate = Promise.withResolvers<void>()
+  try Effect.sync(() => cloud.script(held(gate.promise, text("Still thinking."))))
+  const pending = fork send(agent, id, { text: "And now?", task: { taskId, expectedEpoch: task.epoch } })
+  while (completions(cloud) === callsAfterRefusals) try Effect.sleep("20 millis")
+  const paused = try ask(agent, { method: "POST", path: `/api/tasks/${taskId}/pause`, body: { expectedRevision: task.revision } })
+  try Effect.sync(() => gate.resolve())
+  const changed = join pending
+  const afterPause = try send(agent, id, { text: "Once more?", task: { taskId, expectedEpoch: task.epoch } })
+
+  try Effect.try(() => {
+    assert.deepStrictEqual({ status: created.status, task: task.id, status_: task.status }, { status: 201, task: taskId, status_: "active" })
+    assert.strictEqual(shown.status, 200)
+    assert.deepStrictEqual(replyOf(shown).taskChoices, [offered])
+    assert.strictEqual(replyOf(shown).text, "Review the displayed option.")
+    assert.include(String(asked?.content.text), `${contextMarker} ${JSON.stringify({ taskId, epoch: task.epoch, choice: block.id })}`)
+    assert.deepStrictEqual(malformed, { status: 400, body: { error: "TASK_INVALID" } })
+    assert.deepStrictEqual(stale, { status: 409, body: { error: "TASK_CONFLICT" } })
+    assert.deepStrictEqual(foreign, { status: 409, body: { error: "TASK_CONFLICT" } })
+    assert.deepStrictEqual({ stored: storedAfterRefusals - storedBefore, calls: callsAfterRefusals - callsBefore }, { stored: 0, calls: 0 })
+    assert.strictEqual(paused.status, 200)
+    assert.deepStrictEqual(changed, { status: 409, body: { error: "TASK_CONFLICT" } })
+    assert.deepStrictEqual(afterPause, { status: 409, body: { error: "TASK_CONFLICT" } })
+  })
+}, 240_000)
+
+it.live('Without the tasks module a chat turn that names a task is 503 and stores nothing (spec/agent/tasks/wire.md, "A chat turn names a task only while the host presents it at that epoch")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try taskAgent(cloud, [])
+  const { id, roomId } = try conversation(agent)
+  const refused = try send(agent, id, { text: "How is my task?", task: { taskId, expectedEpoch: 0 } })
+  const stored = try roomMessages(agent, roomId)
+  try Effect.try(() => {
+    assert.deepStrictEqual(refused, { status: 503, body: { error: "TASK_UNAVAILABLE" } })
+    assert.deepStrictEqual({ stored, calls: completions(cloud) }, { stored: 0, calls: 0 })
+  })
+}, 120_000)

@@ -66,7 +66,7 @@ public final class AgentSocketClient {
   public record Subscription(List<String> streams, String clientId) implements Outgoing {}
 
   public record Account(String userId, String organizationId) {}
-  public record CredentialPush(long version, String credential, String expiresAt, Account account) {}
+  public record CredentialPush(long version, String credential, long expiresAt, Account account) {}
   public sealed interface PushResult permits PushAccepted, PushRefused, PushFailed {}
   public record PushAccepted() implements PushResult {}
   public record PushRefused(String reason) implements PushResult {}
