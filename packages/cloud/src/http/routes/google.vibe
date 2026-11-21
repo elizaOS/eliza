@@ -1,11 +1,31 @@
-// spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"
-import type { Area } from "../routes.vibe"
+// spec/cloud/services/google/connection.md, "Story: See my Google connection as the cloud holds it"
+import { json, owner, type Area, type RouteContext } from "../routes.vibe"
+import { refused } from "../refusal.vibe"
+import { readGrantAccounts, readGrantStatus } from "../../services/google/grant-access.vibe"
 import { mailReadRoutes } from "../../services/google/mail-read.vibe"
 import { calendarRoutes, calendarSweeps } from "../../services/google/calendar.vibe"
 import { mailOperationRoutes, mailOperationSweeps } from "../../services/google/mail-operations.vibe"
 
+effect function status(context: RouteContext) {
+  const caller = owner(context.caller)
+  if (caller === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  if (context.query.has("purpose")) throw refused("InvalidRequest")
+  const grantId = context.query.get("grantId")?.trim() || undefined
+  return json(try readGrantStatus(caller, grantId, context.query.get("side"), context.now))
+}
+
+effect function accounts(context: RouteContext) {
+  const caller = owner(context.caller)
+  if (caller === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  return json(try readGrantAccounts(caller, context.query.get("side"), context.now))
+}
+
+const googlePath = "/api/v1/eliza/google"
+
 export const area: Area = {
   routes: [
+    { method: "GET", path: `${googlePath}/status`, auth: "ServiceAccess", handler: status },
+    { method: "GET", path: `${googlePath}/accounts`, auth: "ServiceAccess", handler: accounts },
     ...mailReadRoutes,
     ...calendarRoutes,
     ...mailOperationRoutes

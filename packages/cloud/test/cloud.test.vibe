@@ -23,7 +23,9 @@ import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profil
 import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
 import { revokeAll, sweepGrants } from "../src/native-clients/device-keys.vibe"
 import { s256, signedIn } from "./support/identity.ts"
-import { scopeFor, storeGrant, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
+import { connectionColumns, connectionRows, scopeFor, storeGrant, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
+import { issueSession } from "../src/identity/sessions.vibe"
+import { sealTokens } from "../src/providers/google.vibe"
 import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
 import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/google-calendar.ts"
 import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
@@ -31,7 +33,7 @@ import { gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/go
 import { sha256Hex } from "../src/shared/sealing.vibe"
 import { secrets } from "./support/profile.ts"
 import { signedCaller } from "./support/caller.vibe"
-import { callDeclaring } from "./support/http.ts"
+import { callCloud, callDeclaring } from "./support/http.ts"
 import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
 import { recordingBytes, recordingForm } from "./support/recording.ts"
 import { openRelay, upgradeStatus, type Received } from "./support/relay-socket.ts"
@@ -1418,7 +1420,102 @@ effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string
   }))
 }
 
+effect function serveOnStore(cloud: TestCloud, routes: ReadonlyArray<Route>, edit?: ProfileEdit) {
+  const raw = try sync(() => {
+    const profile = testProfile(cloud.fakes.url)
+    return edit === undefined ? profile : edit(profile)
+  })
+  const profile = try parseProfile(raw)
+  const built = try Layer.build(HttpServer.serve(respond(routes)).pipe(
+    Layer.provideMerge(listening(0, "127.0.0.1")),
+    Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer))
+  ))
+  const { address } = Context.get(built, HttpServer.HttpServer)
+  return "port" in address ? `http://127.0.0.1:${address.port}` : ""
+}
+
 describe("WP8 Managed Google: grant access (spec/cloud/services/google/connection.md)", () => {
+  it.live("See my Google connection and list only my accounts (spec/cloud/services/google/connection.md, \"Story: See my Google connection as the cloud holds it\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    const start = 1_800_000_000_000
+    try sync(() => clock.set(start))
+    provide Clock.Clock = clock.clock {
+    const google = try sync(() => googleFakeState())
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", mountGoogleToken(google)) })
+    const caller = try signedCaller(cloud, "google-status")
+    const other = try signedCaller(cloud, "google-status-other")
+    const session = try cloud.store.transaction((tx) => issueSession(tx, { ...caller, assurance: "SingleFactor", accountCreated: false, now: start }))
+    const sibling = { organizationId: caller.organizationId, userId: other.userId }
+    const path = "/api/v1/eliza/google"
+    const read = (tail: string) => cloud.call(`${path}/${tail}`, { headers: caller.headers })
+    const client = try sync(() => createCloudClient({ baseUrl: cloud.url, credential: () => session.accessToken }))
+    const clientStatus = () => promise(() => client.googleStatus())
+    const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage"), "https://www.googleapis.com/auth/contacts.readonly"]
+    const expiry = start + 1000
+    const link = (tx: Tx, owner: Owner, connectionId: string) => storeGrant(tx, {
+      connectionId, owner, subject: `subject-${connectionId}`, email: `${connectionId}@example.com`, grantedScopes: scopes,
+      tokens: { accessToken: `access-${connectionId}`, refreshToken: "", expiresAt: expiry }, now: start
+    })
+    const missing = try clientStatus()
+    const unauthorized = try cloud.call(`${path}/accounts`)
+    try cloud.inside(cloud.store.transaction(effect (tx: Tx) => {
+      try link(tx, caller, "status-live")
+      try link(tx, other, "status-foreign")
+      try link(tx, sibling, "status-sibling")
+    }))
+    const [live, accounts, foreign, sameOrg, wrongSide, unsupportedConsent] = try all([
+      clientStatus(), read("accounts?side=owner"), read("status?grantId=status-foreign"),
+      read("status?grantId=status-sibling"), read("accounts?side=agent"), read("status?purpose=personal_google_context_v1")
+    ], { concurrency: "unbounded" })
+    try sync(() => clock.set(expiry))
+    const lapsed = try clientStatus()
+
+    const sealed = try cloud.inside(sealTokens({ accessToken: "legacy-access", refreshToken: "legacy-refresh", expiresAt: expiry }))
+    for (const [key, tokens, linked] of [["verified-old", sealed, start + 100], ["unverified-old", "bad", start + 200]] as const) {
+      const legacy = { status: "Active", scopes, tokens, expiresAt: expiry, refreshingUntil: 0 }
+      try sql(cloud, `INSERT INTO google_connections (key, state, revision, organization_id, user_id, subject, email, status, tokens, granted_scopes, expires_at, linked_at, last_used_at) VALUES ($1, $2::jsonb, 1, $3, $4, $1, $5, 'Active', $6, $7::jsonb, $8, $9, $9)`, [key, JSON.stringify(legacy), caller.organizationId, caller.userId, `${key}@example.com`, tokens, JSON.stringify(scopes), expiry, linked])
+    }
+    try cloud.inside(cloud.store.transaction(effect (tx: Tx) => {
+      try link(tx, caller, "status-revoked")
+      try stepRow(tx, connectionRows, "status-revoked", { at: expiry, event: { type: "disconnect" } }, connectionColumns())
+    }))
+    const [several, named, listed] = try all([
+      read("status"), read("status?grantId=verified-old"), read("accounts?side=owner")
+    ], { concurrency: "unbounded" })
+    const unchanged = try sql(cloud, "SELECT key, revision, last_used_at FROM google_connections WHERE user_id = $1 ORDER BY key", [caller.userId])
+
+    const off = try serveOnStore(cloud, areas.flatMap((area) => area.routes), (profile) => {
+      const { google, ...staging } = profile.environments.staging
+      return { ...profile, environments: { ...profile.environments, staging: { ...staging, capabilities: staging.capabilities.filter((capability) => capability !== "managedGoogle") } } }
+    })
+    const [offStatus, offAccounts] = try promise(() => Promise.all([
+      callCloud(off, `${path}/status?grantId=verified-old`, { headers: caller.headers }),
+      callCloud(off, `${path}/accounts`, { headers: caller.headers })
+    ]))
+
+    const empty = { provider: "google", side: "owner", mode: "cloud_managed", configured: true, connected: false, reason: "disconnected", identity: null, grantedCapabilities: [], grantedScopes: [], expiresAt: null, hasRefreshToken: false, connectionId: null, linkedAt: null, lastUsedAt: null }
+    const active = { ...empty, connected: true, reason: "connected", identity: { email: "status-live@example.com" }, grantedCapabilities: ["google.basic_identity", "google.gmail.triage"], grantedScopes: scopes, expiresAt: new Date(expiry).toISOString(), connectionId: "status-live", linkedAt: new Date(start).toISOString() }
+    const legacyStatus = (connectionId: string, linked: number, connected: boolean) => ({ ...active, connectionId, identity: { id: connectionId, email: `${connectionId}@example.com`, name: null, avatarUrl: null }, connected, reason: connected ? "connected" : "needs_reauth", hasRefreshToken: connected, linkedAt: new Date(linked).toISOString(), lastUsedAt: new Date(linked).toISOString() })
+    const full = { ...active, identity: { id: "subject-status-live", email: "status-live@example.com", name: null, avatarUrl: null } }
+    const old = legacyStatus("verified-old", start + 100, true)
+    const revoked = { ...empty, connectionId: "status-revoked", identity: { id: "subject-status-revoked", email: "status-revoked@example.com", name: null, avatarUrl: null }, linkedAt: new Date(start).toISOString() }
+    try check(() => assert.deepStrictEqual({
+      missing, unauthorized: unauthorized.status, live, accounts: [accounts.status, accounts.headers["cache-control"], accounts.body],
+      denied: [errorOf(foreign), errorOf(sameOrg), errorOf(wrongSide), errorOf(unsupportedConsent)], lapsed,
+      several: [errorOf(several), (several.body as { readonly reason: string }).reason], named: [named.status, named.body], listed: [listed.status, listed.body],
+      unchanged: unchanged.map((row) => [row.key, Number(row.revision), row.last_used_at === null ? null : Number(row.last_used_at)]), refreshes: google.tokenCalls,
+      off: [offStatus.status, offStatus.body, offAccounts.status, offAccounts.body]
+    }, {
+      missing: empty, unauthorized: 401, live: active, accounts: [200, "no-store", [full]],
+      denied: [[404, "not_found"], [404, "not_found"], [400, "invalid_request"], [400, "invalid_request"]], lapsed: { ...active, connected: false, reason: "token_missing" },
+      several: [[400, "invalid_request"], "grant_required"], named: [200, old],
+      listed: [200, [legacyStatus("unverified-old", start + 200, false), old, { ...full, connected: false, reason: "token_missing" }, revoked]],
+      unchanged: [["status-live", 1, null], ["status-revoked", 2, null], ["unverified-old", 1, start + 200], ["verified-old", 1, start + 100]], refreshes: 0,
+      off: [200, { ...empty, configured: false, reason: "config_missing" }, 200, []]
+    }))
+    }
+  }), 120_000)
+
   it.live("Refresh a held grant once for concurrent callers and mark it Expired when Google refuses it (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => scoped(effect {
     const google = try Effect.try(() => googleFakeState())
     google.tokenDelayMs = 300
@@ -1607,7 +1704,6 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
   }
 
   effect function refusingServer(cloud: TestCloud, refusals: ReadonlyArray<Refused>) {
-    const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
     let next = 0
     const models: Route = {
       method: "GET",
@@ -1619,12 +1715,7 @@ describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from 
         throw refusal
       }
     }
-    const built = try Layer.build(HttpServer.serve(respond([models])).pipe(
-      Layer.provideMerge(listening(0, "127.0.0.1")),
-      Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer))
-    ))
-    const { address } = Context.get(built, HttpServer.HttpServer)
-    return "port" in address ? `http://127.0.0.1:${address.port}` : ""
+    return try serveOnStore(cloud, [models])
   }
 
   it.live("Read every refusal as one CloudError and leave the credential to its holder (spec/cloud/client.md, \"Every refusal reads as one CloudError and none touches the credential\")", () => scoped(effect {
