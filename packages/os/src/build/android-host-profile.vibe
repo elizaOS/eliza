@@ -385,6 +385,7 @@ const UPSTREAM_TABLE: readonly ModuleRoot[] = [
     ["plugins/plugin-native-agent/android/src/androidTest/java/ai/eliza/plugins/agent/contract", "app-update", false],
     ["plugins/plugin-native-agent/android", "agent-service", false],
     ["packages/auth/android", "sign-in", false],
+    ["packages/os/android/cloud-auth", "sign-in", false],
     ["packages/host/native-host", "secure-store", false],
     ["plugins/plugin-native-secure-store/android-nativeonly", "secure-store", false],
     ["plugins/plugin-native-secure-store/android", "secure-store", true],
