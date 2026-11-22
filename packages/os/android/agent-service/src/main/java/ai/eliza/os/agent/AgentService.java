@@ -273,7 +273,7 @@ public class AgentService extends Service {
       AgentService service = live;
       if (service == null) {
         UpdateHoldFile store = UpdateHold.of(context);
-        return store.release(new AgentPolicy(null, store.held()), release).accepted();
+        return store.releaseSaved(release);
       }
       return service.call(() -> service.publish(service.hold.release(service.policy, release)).accepted());
     }

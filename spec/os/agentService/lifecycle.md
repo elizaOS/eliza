@@ -424,7 +424,9 @@ pure val weight_archiveRecovery = 3
 The install journal (`appUpdate/install.md`) takes the hold after the
 agent stopped. A release counts only when the installed code and digest
 equal the target, or the attempt is proven ended (baseline installed, no
-session pending). The hold survives a restart of the service.
+session pending). The shell clears and syncs the saved hold before opening
+the launch gate. A failed write keeps the gate closed. On restart, the shell
+keeps the hold or confirms a visible release by syncing its directory.
 
 ```quint
 type UpdateOutcome = Installed({ artifact: int }) | AttemptEnded
@@ -434,11 +436,15 @@ pure def holdForUpdate(s: AgentService, target: int): AgentService = { ...s, hol
 pure def canReleaseUpdate(s: AgentService, result: UpdateOutcome): bool = { val h = s.hold
   match h { | HeldFor(x) => result == Installed({ artifact: x.target }) or result == AttemptEnded | NotHeld => false } }
 pure def releaseUpdate(s: AgentService, result: UpdateOutcome): AgentService = { ...s, hold: NotHeld }
+pure def canReleaseUpdateFailed(s: AgentService, result: UpdateOutcome): bool = canReleaseUpdate(s, result)
+pure def releaseUpdateFailed(s: AgentService, result: UpdateOutcome): AgentService = s
 pure val targetValues = Set(1, 2)
 pure val resultValues = Set(Installed({ artifact: 1 }), Installed({ artifact: 2 }), AttemptEnded)
 pure def alwaysHeldMeansNoAgent(s: AgentService): bool = s.hold != NotHeld implies (s.child == NoChild and (s.phase == Stopped or isFailed(s.phase)))
 pure def stepHoldEndsOnlyByRelease(before: AgentService, via: str, after: AgentService): bool =
   (before.hold != NotHeld and after.hold != before.hold) implies via == "releaseUpdate"
+pure def stepFailedReleaseKeepsState(before: AgentService, via: str, after: AgentService): bool =
+  via == "releaseUpdateFailed" implies after == before
 pure def sometimesHeldForUpdate(s: AgentService): bool = s.hold != NotHeld and s.key != NoKey
 pure val weight_holdForUpdate = 2
 ```

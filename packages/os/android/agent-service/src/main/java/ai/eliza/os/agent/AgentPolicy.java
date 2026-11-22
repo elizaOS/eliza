@@ -139,8 +139,7 @@ public final class AgentPolicy {
     if (event instanceof ArchiveRecovery archive) return archiveRecovery(archive.token());
     if (event instanceof ArchiveFinished finished) return archiveFinished(finished.token(), finished.archiveSucceeded());
     if (event instanceof HoldForUpdate holding) return holdForUpdate(holding.target());
-    ReleaseUpdate release = (ReleaseUpdate) event;
-    return releaseUpdate(release.installedCode(), release.installedDigest(), release.attemptEnded());
+    return releaseUpdate((ReleaseUpdate) event);
   }
 
   private boolean begin(int nextAttempt, long delayMs) {
@@ -400,10 +399,14 @@ public final class AgentPolicy {
     return true;
   }
 
-  private boolean releaseUpdate(long installedCode, String installedDigest, boolean attemptEnded) {
+  synchronized boolean canReleaseUpdate(ReleaseUpdate event) {
     if (hold == null) return false;
-    boolean successor = installedCode == hold.code() && hold.digest().equals(installedDigest);
-    if (!successor && !attemptEnded) return false;
+    boolean successor = event.installedCode() == hold.code() && hold.digest().equals(event.installedDigest());
+    return successor || event.attemptEnded();
+  }
+
+  private boolean releaseUpdate(ReleaseUpdate event) {
+    if (!canReleaseUpdate(event)) return false;
     hold = null;
     return true;
   }

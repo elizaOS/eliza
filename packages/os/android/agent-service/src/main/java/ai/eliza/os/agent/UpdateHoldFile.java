@@ -13,14 +13,21 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.List;
 
 final class UpdateHoldFile {
   private static final int MAGIC = 0x484f4c44;
   private static final Object LOCK = new Object();
   private final Path directory;
+  private final AgentDirectories.Sync sync;
 
   UpdateHoldFile(Path directory) throws IOException {
+    this(directory, UpdateHoldFile::syncDirectory);
+  }
+
+  UpdateHoldFile(Path directory, AgentDirectories.Sync sync) throws IOException {
     this.directory = directory.toAbsolutePath().normalize();
+    this.sync = sync;
     Files.createDirectories(this.directory);
     if (!Files.isDirectory(this.directory, LinkOption.NOFOLLOW_LINKS)) throw new IOException("Invalid update hold storage");
   }
@@ -44,9 +51,15 @@ final class UpdateHoldFile {
   }
 
   AgentPolicy.Step release(AgentPolicy policy, AgentPolicy.ReleaseUpdate event) throws IOException {
-    AgentPolicy.Step step = policy.step(event);
-    if (step.accepted()) save(null);
-    return step;
+    synchronized (policy) {
+      if (!policy.canReleaseUpdate(event)) return new AgentPolicy.Step(false, policy.state(), List.of());
+      save(null);
+      return policy.step(event);
+    }
+  }
+
+  boolean releaseSaved(AgentPolicy.ReleaseUpdate event) throws IOException {
+    synchronized (LOCK) { return release(new AgentPolicy(null, load()), event).accepted(); }
   }
 
   void save(AgentPolicy.UpdateTarget target) throws IOException {
@@ -65,6 +78,7 @@ final class UpdateHoldFile {
       if (in.readInt() != MAGIC) throw new IOException("Invalid update hold record");
       AgentPolicy.UpdateTarget target = in.readBoolean() ? new AgentPolicy.UpdateTarget(in.readLong(), in.readUTF()) : null;
       if (in.read() != -1) throw new IOException("Invalid update hold record");
+      if (target == null) sync.directory(directory);
       return target;
     }
   }
@@ -79,6 +93,10 @@ final class UpdateHoldFile {
       stream.getFD().sync();
     }
     Files.move(next, directory.resolve("hold"), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    sync.directory(directory);
+  }
+
+  private static void syncDirectory(Path directory) throws IOException {
     try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ)) { channel.force(true); }
   }
 }

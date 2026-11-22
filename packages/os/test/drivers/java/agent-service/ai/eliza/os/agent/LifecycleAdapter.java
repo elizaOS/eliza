@@ -2,6 +2,7 @@
 package ai.eliza.os.agent;
 
 import java.io.BufferedReader;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
@@ -27,13 +28,15 @@ public final class LifecycleAdapter {
 
   private final UpdateHoldFile updateHold;
   private final ChildJournal journal;
+  private final Path stagedHold;
   private AgentPolicy policy = new AgentPolicy(ACCOUNT, null);
 
   private LifecycleAdapter() throws IOException {
     Path directory = Files.createTempDirectory("agent-lifecycle-");
+    stagedHold = directory.resolve("hold.next");
     directory.toFile().deleteOnExit();
     directory.resolve("hold").toFile().deleteOnExit();
-    directory.resolve("hold.next").toFile().deleteOnExit();
+    stagedHold.toFile().deleteOnExit();
     updateHold = new UpdateHoldFile(directory);
     journal = new ChildJournal(directory.resolve("child"), new ChildJournal.Processes() {
       @Override public OptionalLong startTime(int pid) throws IOException { throw new IOException("The portable fixture does not observe child processes"); }
@@ -64,9 +67,26 @@ public final class LifecycleAdapter {
     boolean direct = request.containsKey("event");
     Object event = direct ? request.get("event") : request.get("raw");
     AgentPolicy.Step step;
-    try { step = apply(decode(object(event), direct)); }
+    try {
+      Map<String, Object> fields = object(event);
+      step = "releaseUpdateFailed".equals(fields.get("type"))
+        ? observeFailedRelease(releaseEvent(fields, false)) : apply(decode(fields, direct));
+    }
     catch (IllegalArgumentException | ArithmeticException malformed) { step = new AgentPolicy.Step(false, policy.state(), List.of()); }
     return "{\"outcome\":\"" + (step.accepted() ? "accepted" : "refused") + "\",\"state\":" + state(step.state()) + ",\"out\":" + effects(step.effects()) + "}";
+  }
+
+  private AgentPolicy.Step observeFailedRelease(AgentPolicy.ReleaseUpdate event) throws IOException {
+    Files.createDirectory(stagedHold);
+    try {
+      AgentPolicy.Step step = updateHold.release(policy, event);
+      if (step.accepted()) throw new IOException("The blocked hold write unexpectedly succeeded");
+      return step;
+    } catch (FileNotFoundException failed) {
+      return new AgentPolicy.Step(true, policy.state(), List.of());
+    } finally {
+      Files.delete(stagedHold);
+    }
   }
 
   private AgentPolicy.Step apply(AgentPolicy.Event event) throws IOException {
