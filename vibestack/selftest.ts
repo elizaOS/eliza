@@ -2184,6 +2184,22 @@ function eachCheck() {
     await runCli(script, root, "check", "--json");
     assert.equal(unmarked, entries);
     assert.equal(remembered(), unmarked);
+    if (process.platform !== "win32") {
+      const shim = path.join(root, "node_modules/.bin/quint");
+      fs.unlinkSync(shim);
+      fs.copyFileSync(path.join(nodeModules, ".bin/quint"), shim);
+      const retry = await exec(process.execPath, ["--input-type=module", "--eval", `
+        import fs from "node:fs";
+        import { check } from "./vibestack/formal.ts";
+        let models = 0;
+        const result = await check(".", false, (step) => {
+          if (step.stage === "model" && ++models === 1) fs.linkSync("node_modules/.bin/quint", "second-install-quint");
+        });
+        console.log(JSON.stringify([models, result.results.filter(s => s.stage === "model").length, result.results.filter(s => !s.ok).map(s => s.stage)]));
+      `], root);
+      assert.equal(retry.status, 0, retry.stderr);
+      assert.deepEqual(JSON.parse(retry.stdout), [2, 1, ["review"]]);
+    }
     fs.writeFileSync(path.join(root, "tsconfig.json"), '{"compilerOptions":{"noEmit":true},"include":["gen/*.ts"]}');
     if (process.platform !== "win32") {
       const compiler = path.join(root, "node_modules/.bin/vibelang");

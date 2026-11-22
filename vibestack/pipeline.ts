@@ -14,7 +14,7 @@ import { ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, type Offered, type 
 import { bin, run } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
-import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, publishChecked, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
+import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, InstallationChanged, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, publishGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
 import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, UNREAD, workspacePackages, type Reported, type SrcFile } from "./util.ts";
@@ -135,14 +135,23 @@ export async function check(root: string, accept: false | "reviews" | "unproved"
   if (fromTests !== undefined && fromTests.split(path.sep)[0] !== ".." && !path.isAbsolute(fromTests)) throw new Error("a test script cannot run spec check or accept: the check already runs the tests");
   const release = lockProject(root);
   // Node caches imported modules by path, so each run loads its generated code from a directory of its own, out of gen/.
-  const loaded = path.join(root, ".spec-cache", `run-${Date.now()}`);
-  try {
+  const wrote = new Map<string, string>();
+  const attempt = async () => {
+    const loaded = path.join(root, ".spec-cache", `run-${randomUUID()}`);
     const results: Result[] = [];
-    const wrote = new Map<string, string>();
-    await steady(() => checkLocked(root, accept, loaded, (r) => { results.push(r); log(r); }, mode, wrote));
-    return { ok: results.every((r) => r.ok), results, next: nextStep(results), wrote };
+    try {
+      await steady(() => checkLocked(root, accept, loaded, (r) => { results.push(r); log(r); }, mode, wrote));
+      return { ok: results.every((r) => r.ok), results, next: nextStep(results), wrote };
+    } finally {
+      fs.rmSync(loaded, { recursive: true, force: true });
+    }
+  };
+  try {
+    return await attempt().catch((error: unknown) => {
+      if (!(error instanceof InstallationChanged)) throw error;
+      return attempt();
+    });
   } finally {
-    fs.rmSync(loaded, { recursive: true, force: true });
     release();
   }
 }
@@ -384,6 +393,8 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
     await Promise.allSettled(running);
   }
 
+  certifyInstallation();
+
   // A spec that is not a valid model has nothing to reconcile yet. Everything is recorded at once, or nothing is.
   const locks = new Map(specs.map((spec) => [spec.file, lock.specs[spec.file] ?? {}]));
   const citedAt = citationLookup(root);
@@ -393,7 +404,6 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
   const review = (ok: boolean, summary: string, detail = "", where?: string, rules: Result["rules"] = []) =>
     report({ ok, stage: "review", summary, detail: ok ? "" : detail, ...(where ? { where } : {}), ...(rules.length ? { rules } : {}) });
   if (accept) {
-    publishChecked(true);
     try {
       if (JSON.stringify(readSpecs(root)) !== JSON.stringify(specs) || JSON.stringify(readSrc(root)) !== JSON.stringify(srcFiles)
         || JSON.stringify(proofInputs()) !== JSON.stringify(proofsRead))

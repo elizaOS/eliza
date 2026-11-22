@@ -129,6 +129,7 @@ type Check = {
   lastPublished: number;
   changed?: boolean;
   closed?: boolean;
+  certified?: boolean;
 };
 const checking = new AsyncLocalStorage<Check>();
 
@@ -140,7 +141,11 @@ function includePrograms(check: Check) {
   for (const program of check.programs.values()) if (program?.id) check.verify.add(program);
 }
 
-export function publishChecked(complete = false) {
+export class InstallationChanged extends Error {
+  constructor() { super("a tool installation changed during this check; run the check again"); }
+}
+
+function publishChecked(complete = false) {
   const check = checking.getStore();
   if (!check) return;
   if (complete) includePrograms(check);
@@ -149,7 +154,7 @@ export function publishChecked(complete = false) {
     check.changed = true;
     check.pending.clear();
     check.verify.clear();
-    if (replaced) throw new Error("a tool installation changed during this check; run the check again");
+    if (replaced) throw new InstallationChanged();
     return;
   }
   if (!check.pending.size) return;
@@ -158,6 +163,14 @@ export function publishChecked(complete = false) {
   check.verify.clear();
   check.bytes = 0;
   check.lastPublished = performance.now();
+}
+
+export function certifyInstallation() {
+  const check = checking.getStore();
+  if (!check) return;
+  publishChecked(true);
+  if (check.changed) throw new InstallationChanged();
+  check.certified = true;
 }
 
 function installation() {
@@ -179,7 +192,7 @@ export const steady = <T>(run: () => Promise<T>) => {
   return checking.run(check, async () => {
     try {
       const result = await run();
-      publishChecked(true);
+      if (!check.certified) publishChecked(true);
       return result;
     } finally {
       check.closed = true;
