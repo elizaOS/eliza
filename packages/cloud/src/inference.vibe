@@ -129,16 +129,17 @@ export async function inferenceRequest(request: Request, env: InferenceEnv, db: 
   try {
     if (!await dispatchUsage(db, admission.key)) return jsonError(409, "already_dispatched")
     let response: Response
+    const providerSignal = streaming ? AbortSignal.any([request.signal]) : request.signal
     try {
       if (env.AI) {
         const providerInput = embedding ? { text: body.input } : body
-        response = await env.AI.run(upstreamModel, providerInput, { returnRawResponse: true, signal: request.signal })
+        response = await env.AI.run(upstreamModel, providerInput, { returnRawResponse: true, signal: providerSignal })
       } else {
         if (!root) throw new Error("Missing inference endpoint")
         root.pathname = root.pathname.replace(/\/$/, "") + (embedding ? "/embeddings" : "/chat/completions")
         response = await send(root, {
           method: "POST", headers: { Authorization: "Bearer " + env.INFERENCE_API_KEY, "Content-Type": "application/json", "Idempotency-Key": id },
-          body: JSON.stringify(body), signal: request.signal, redirect: "manual"
+          body: JSON.stringify(body), signal: providerSignal, redirect: "manual"
         })
       }
     } catch {
