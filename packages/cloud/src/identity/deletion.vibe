@@ -10,8 +10,8 @@ import { Store, toInt, toText, type Tx } from "../store/connection.vibe"
 import { loadRow, stepRow, RowCorrupt, type Columns, type MachineRows } from "../store/rows.vibe"
 import { readAccount, stepAccount } from "./accounts.vibe"
 import {
-  ProviderTarget, billingAuthority, billingSourceOf, cancelBilling, checkoutBilling, googleTargetOf, heldGoogle, identifyBilling, lookUpBilling, lookUpGoogle,
-  removeGoogle, revokeGoogle, type BillingSource, type BillingTarget
+  ProviderTargetSchema, billingAuthority, billingSourceOf, cancelBilling, checkoutBilling, googleTargetOf, heldGoogle, identifyBilling, lookUpBilling, lookUpGoogle,
+  removeGoogle, revokeGoogle, type BillingSource, type BillingTarget, type ProviderTarget
 } from "./deletion-providers.vibe"
 
 type ProviderStep = Exclude<SagaStep, "EraseData">
@@ -208,7 +208,7 @@ effect function receiptTarget(tx: Tx, deletion: Deletion, step: ProviderStep) {
   if (step === "CancelBilling" && target === deletion.organizationId) return undefined
   if (step === "RevokeGoogle" && target !== "" && !target.startsWith("{")) return { kind: "google-layered", key: target } satisfies ProviderTarget
   const offered = Effect.try(() => JSON.parse(target) as unknown) catch () => undefined
-  const parsed = Schema.decodeUnknownOption(ProviderTarget, { onExcessProperty: "error" })(offered)
+  const parsed = Schema.decodeUnknownOption(ProviderTargetSchema, { onExcessProperty: "error" })(offered)
   if (Option.isNone(parsed) || (step === "CancelBilling") !== (parsed.value.kind === "stripe")) throw wrong
   return parsed.value
 }

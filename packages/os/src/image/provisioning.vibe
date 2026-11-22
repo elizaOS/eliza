@@ -70,14 +70,14 @@ export error SecureCameraContractInvalid { file: string; message: string }
 export error SecureCameraSourceRefused { module: string; message: string }
 
 const Sha256Hex = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/))
-const SecureCameraModule = Schema.Struct({
+const SecureCameraModuleSchema = Schema.Struct({
   path: Schema.String.check(Schema.isPattern(/^(?!\/)(?!.*(?:^|\/)\.\.?(?:\/|$))[^\0\\]+$/)),
   commit: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)),
   files: Schema.Record(Schema.String, Sha256Hex),
 })
-const SecureCameraContract = Schema.Struct({ schemaVersion: Schema.Literal(1), modules: Schema.Array(SecureCameraModule).check(Schema.isMinLength(1)) })
-export type SecureCameraContract = typeof SecureCameraContract.Type
-export type SecureCameraModule = typeof SecureCameraModule.Type
+const SecureCameraContractSchema = Schema.Struct({ schemaVersion: Schema.Literal(1), modules: Schema.Array(SecureCameraModuleSchema).check(Schema.isMinLength(1)) })
+export type SecureCameraContract = typeof SecureCameraContractSchema.Type
+export type SecureCameraModule = typeof SecureCameraModuleSchema.Type
 
 export interface ReviewedOverride {
   readonly path: string
@@ -480,7 +480,7 @@ export effect function loadSecureCameraContract(file?: string) {
   const files = try FileSystem.FileSystem
   const place = file ?? (try secureCameraContractFile())
   const bytes = try mapError(files.readFile(place), (cause) => new SecureCameraContractInvalid({ file: place, message: cause.message }))
-  const contract = try mapError(Schema.decodeUnknownEffect(Schema.fromJsonString(SecureCameraContract))(new TextDecoder().decode(bytes)), (issue) => new SecureCameraContractInvalid({ file: place, message: issue.message }))
+  const contract = try mapError(Schema.decodeUnknownEffect(Schema.fromJsonString(SecureCameraContractSchema))(new TextDecoder().decode(bytes)), (issue) => new SecureCameraContractInvalid({ file: place, message: issue.message }))
   return { contract, sha256: sha256Of(bytes) }
 }
 
