@@ -128,7 +128,7 @@ const cleanupReceipt = Schema.decodeUnknownEffect(CleanupReceipt, options)
 const revisionValue = Schema.decodeUnknownEffect(Revision)
 const sourceReferenceOf = Schema.decodeUnknownEffect(Schema.Struct({ agentId: Schema.String, noteId: Schema.String, contentHash: Schema.String }), options)
 
-effect function optionalRevision(value: unknown): number | undefined!NotesRefused {
+effect function optionalRevision(value: unknown): (number | undefined)!NotesRefused {
   return value === undefined ? undefined : try mapError(revisionValue(value), () => invalid("expectedRevision"))
 }
 

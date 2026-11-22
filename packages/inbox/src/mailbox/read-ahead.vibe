@@ -4,7 +4,7 @@ import { aheadLists, aheadUsable } from "../../gen/inbox__display.effect.vibe"
 /** A bounded, memory-only read-ahead of the next mailbox page: one speculative read at a time, no polling and no retry. */
 export interface MailReadAhead<T, E> {
   prepare(key: string, cursor: string, read: T!E): void!!
-  take(key: string, cursor: string): T | undefined!E
+  take(key: string, cursor: string): (T | undefined)!E
   invalidate(key?: string): void!!
   pause(): void!!
 }

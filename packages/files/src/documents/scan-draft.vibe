@@ -124,7 +124,7 @@ function decodeRow(raw: unknown): Decoded {
 
 /** The device's scan draft store under a consumer-named database: exact-revision saves and deletes acknowledged only on commit. */
 export function createScanDraftStore(databaseName: string) {
-  effect function readScanDraft(): ScanDraft | undefined!DraftRefused {
+  effect function readScanDraft(): (ScanDraft | undefined)!DraftRefused {
     const raw = try tryPromise({ try: () => readRow(databaseName), catch: () => refused("storage") })
     const decoded = decodeRow(raw)
     if (!decoded.present) return undefined

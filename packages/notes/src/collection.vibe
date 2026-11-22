@@ -410,7 +410,7 @@ export effect function acknowledgeIn(document: NotesDocument, receipt: NotesTras
 
 const offsetInstant = /^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{1,3})?)?(?:Z|[+-]\d\d:\d\d)$/
 
-effect function bound(value: string | undefined): number | undefined!NotesRefused {
+effect function bound(value: string | undefined): (number | undefined)!NotesRefused {
   if (value === undefined) return undefined
   const ms = Date.parse(value)
   if (!offsetInstant.test(value) || !Number.isFinite(ms)) throw refused("NOTES_VALIDATION_FAILED", `dateRange bound "${value}" must be an instant with an offset.`)

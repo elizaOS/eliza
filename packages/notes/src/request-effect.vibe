@@ -42,7 +42,7 @@ import { assertNotesAgentViewOperation, decisionFor } from edge
 export { assertNotesAgentViewOperation }
 
 /** A write refused because the turn bound to it did not classify a Notes change; undefined when the write may run. */
-export effect function restrictNotesWrite(runtime: IAgentRuntime, message: Memory, state: State | undefined, operation: NotesRequestOperation): ActionResult | undefined!! {
+export effect function restrictNotesWrite(runtime: IAgentRuntime, message: Memory, state: State | undefined, operation: NotesRequestOperation): (ActionResult | undefined)!! {
   const decision = decisionFor(runtime, state, message, operation)
   const classification: NotesClassification = decision.allowed ? "MutationTurn" : decision.code === "REQUEST_OPERATION_RESTRICTED" ? "ReadOnlyTurn" : "UnresolvedTurn"
   if (decision.allowed || notesWriteAllowed(classification, operation === "get" || operation === "list")) return undefined

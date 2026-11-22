@@ -138,7 +138,7 @@ function quadrilateral(points: readonly Point[], w: number, h: number): ScanCorn
 }
 
 /** A conservative page outline suggestion from local contrast, or undefined; it is never an applied crop. */
-export effect function detectScanEdges(image: Blob): ScanCorners | undefined!ImageRefused {
+export effect function detectScanEdges(image: Blob): (ScanCorners | undefined)!ImageRefused {
   const raster = try scaledImage320(image)
   const pixels = try pixelsOf(raster)
   const w = raster.width, h = raster.height, n = w * h, gray = new Uint8Array(n), border: number[] = []

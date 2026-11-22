@@ -47,7 +47,7 @@ export effect function setGmailReadState(client: GmailReadStateClient, grantId: 
 export interface MailReadStateGuard {
   set(client: GmailReadStateClient, grantId: string, input: ReadStateChange, explicit: boolean): MailReadStateOutcome!!
   clear(): void!!
-  step(event: Event): ReadStateView | undefined!!
+  step(event: Event): (ReadStateView | undefined)!!
   state(): ReadStateView!!
 }
 
@@ -56,7 +56,7 @@ export effect function mailReadStateGuard(): MailReadStateGuard!! {
   const kept = try Ref.make(initial)
   const view = try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
 
-  effect function step(event: Event): ReadStateView | undefined!! {
+  effect function step(event: Event): (ReadStateView | undefined)!! {
     if (!enabled(try view.get(), event)) return undefined
     return try orDie(view.send(event))
   }

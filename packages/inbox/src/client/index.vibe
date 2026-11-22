@@ -131,7 +131,7 @@ function capabilitiesOf(value: typeof CapabilitiesWire.Type): GmailInboxCapabili
   }
 }
 
-effect function nextToken(next: string | null, asked: string | undefined): string | null!MailProtocolFailed {
+effect function nextToken(next: string | null, asked: string | undefined): (string | null)!MailProtocolFailed {
   if (next !== null && (next === "" || next.length > 4096 || next === asked)) throw invalid()
   return next
 }

@@ -37,7 +37,7 @@ const readable = (status: GoogleConnection) => gmailReadable({ ...status, label:
 
 /** One managed read's lifecycle over its model: each step is taken only where the rules allow it. */
 export interface ManagedReadSession {
-  step(event: Event): ManagedInboxRead | undefined!!
+  step(event: Event): (ManagedInboxRead | undefined)!!
   state(): ManagedInboxRead!!
 }
 
