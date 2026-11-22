@@ -420,9 +420,12 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       // run at once and are read in the guards' order. Only a guard that never allows its event fails the check, so
       // only that search goes deeper and gets the witness budget; one that never refuses it is only reported.
       const missing = guarded.flatMap((t) => (["allows", "refuses"] as const).filter((side) => !seen.get(t.guard!)![side]).map((side) => ({ t, side })));
+      const guardMain = `${model.name}.guard.run.qnt`;
+      let positive: Harness | undefined;
       const searched = await allDone(missing.map(({ t, side }) => model.evals.some((v) => v.name === t.guard)
         ? side === "allows"
-          ? search({ ...harness, main: `${model.name}.guard.run.qnt`, files: { ...files, [`${model.name}.guard.run.qnt`]: { text: model.guardHarness, key: model.guardHarness } } }, `never_allows_${t.guard}`, positiveGuardProbe(t.guard!), DEPTHS, WITNESS_SAMPLES, seed)
+          ? search(positive ??= { ...harness, main: guardMain, files: { ...files, [guardMain]: { text: model.guardHarness, key: model.guardHarness } } },
+            `never_allows_${t.guard}`, positiveGuardProbe(t.guard!), DEPTHS, WITNESS_SAMPLES, seed)
           : search(harness, `never_refuses_${t.guard}`, "probe", [STEPS], SAMPLES, seed)
         : Promise.resolve(undefined)));
       for (const [i, { t, side }] of missing.entries()) {

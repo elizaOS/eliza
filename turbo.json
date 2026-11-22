@@ -293,7 +293,10 @@
         "@elizaos/agent#test",
         "@elizaos/os#build",
         "@elizaos/os#typecheck",
-        "@elizaos/os#test"
+        "@elizaos/os#test",
+        "@elizaos/plugin-notes#build",
+        "@elizaos/plugin-notes#typecheck",
+        "@elizaos/plugin-notes#test"
       ],
       "cache": false
     },
