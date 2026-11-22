@@ -452,6 +452,9 @@ Release materializes the prerequisites before running the isolated shards.
 Packing the Vibestack CLI builds the toolchain and Studio. The package's
 prepare script uses `--skip-gen-on-pack` to skip Eliza application generation because
 the tool archive does not include those generated files.
+The default branch's `verify` job publishes the pnpm store after the frozen
+install. All jobs can restore it by the same lockfile key. This cache holds
+public packages only because fork pull requests can read it.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
 are never part of a task fingerprint.
