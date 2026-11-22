@@ -289,7 +289,15 @@ export function resolveWindow(
     String.raw`\bfrom\s+(.+?)\s+(?:${END}|to)\s+(.+)$`,
   ).exec(t);
   if (range?.[1] && range[2]) {
-    const from = parseDateExpr(range[1], now);
+    // "next week from Tuesday until Friday": a weekday that starts the range
+    // is a day of next week. Read it from the Sunday before next Monday. Read
+    // from today, it was this week's Tuesday.
+    const base =
+      /\bnext\s+week\b/.test(t) &&
+      new RegExp(String.raw`^${WEEKDAY}\b`).test(range[1])
+        ? addDays(today, ((8 - today.getUTCDay()) % 7 || 7) - 1)
+        : now;
+    const from = parseDateExpr(range[1], base);
     // A place-to-place phrase ("from Boston to New York on Friday") has the
     // shape of a range but states no start date. Adopting it set from to null
     // and until to the departure day, so the member's duration never ran.
