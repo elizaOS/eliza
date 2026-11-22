@@ -15,7 +15,7 @@ import { ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, type Offered, type 
 import { bin, run } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
-import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
+import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, certifyInstallation, InstallationChanged, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, publishGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
 import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, UNREAD, workspacePackages, type Reported, type SrcFile } from "./util.ts";
@@ -120,6 +120,14 @@ async function* generating(memory: Memory, specs: Spec[], output = memory.root, 
   }
 }
 
+async function withStableInstallation<T>(attempt: () => Promise<T>): Promise<T> {
+  for (let retries = 0; ; retries++) {
+    try { return await steady(attempt); } catch (error) {
+      if (!(error instanceof InstallationChanged) || retries === 2) throw error;
+    }
+  }
+}
+
 // One sequence even when an application loads more than one copy of the tools.
 const CHECK_RUN = Symbol.for("vibestack.checkRun");
 const checkRuns = globalThis as typeof globalThis & { [CHECK_RUN]?: number };
@@ -139,21 +147,27 @@ export async function check(root: string, accept: false | "reviews" | "unproved"
   const fromTests = process.env.SPEC_TESTS ? path.relative(process.env.SPEC_TESTS, fs.realpathSync(root)) : undefined;
   if (fromTests !== undefined && fromTests.split(path.sep)[0] !== ".." && !path.isAbsolute(fromTests)) throw new Error("a test script cannot run spec check or accept: the check already runs the tests");
   const release = lockProject(root);
-  // Separate module instances in this process, with repeatable paths for Node's on-disk compile cache across processes.
-  const run = (checkRuns[CHECK_RUN] ?? 0) + 1;
-  checkRuns[CHECK_RUN] = run;
-  const loaded = path.join(root, ".spec-cache", `run-${run}`);
   const phases = observePhases(root);
-  try {
-    // A stopped process may have left this directory behind. The project lock excludes any other active check.
-    fs.rmSync(loaded, { recursive: true, force: true });
+  const wrote = new Map<string, string>();
+  const attempt = async () => {
+    // Separate module instances in this process, with repeatable paths for Node's on-disk compile cache across processes.
+    const run = (checkRuns[CHECK_RUN] ?? 0) + 1;
+    checkRuns[CHECK_RUN] = run;
+    const loaded = path.join(root, ".spec-cache", `run-${run}`);
     const results: Result[] = [];
-    const wrote = new Map<string, string>();
-    await steady(() => checkLocked(root, accept, loaded, (r) => { results.push(r); log(r); }, mode, wrote, phases?.start));
-    return { ok: results.every((r) => r.ok), results, next: nextStep(results), wrote };
+    try {
+      // A stopped process may have left this directory behind. The project lock excludes any other active check.
+      fs.rmSync(loaded, { recursive: true, force: true });
+      await checkLocked(root, accept, loaded, (r) => { results.push(r); log(r); }, mode, wrote, phases?.start);
+      return { ok: results.every((r) => r.ok), results, next: nextStep(results), wrote };
+    } finally {
+      phases?.finish();
+      fs.rmSync(loaded, { recursive: true, force: true });
+    }
+  };
+  try {
+    return await withStableInstallation(attempt);
   } finally {
-    phases?.finish();
-    fs.rmSync(loaded, { recursive: true, force: true });
     release();
   }
 }
@@ -442,6 +456,8 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
   } finally {
     await Promise.allSettled(running);
   }
+
+  certifyInstallation();
 
   // A spec that is not a valid model has nothing to reconcile yet. Everything is recorded at once, or nothing is.
   const reviewed = observe?.("review");
@@ -756,20 +772,33 @@ async function watch(root: string) {
   await once();
 }
 
+async function generateFiles(root: string, output = root, ownerName?: string) {
+  const generated = await withStableInstallation(async () => {
+    const specs = readSpecs(root, undefined, ownerName);
+    const staged = new Map<string, string>();
+    const errors: string[] = [];
+    for await (const { spec, error } of generating({ root, fresh: false, used: new Set() }, specs, output, staged)) {
+      if (!error) continue;
+      if (error instanceof InstallationChanged) throw error;
+      if (!ownerName) return { error };
+      errors.push(`${spec.file}:\n${error.message}`);
+    }
+    if (errors.length) return { error: new Error(errors.join("\n")) };
+    return { specs, staged };
+  });
+  if (generated.error) throw generated.error;
+  publishGen(output, generated.staged);
+  return generated.specs;
+}
+
 async function generateOwner(root: string, name: string) {
   const ownerDir = codeDirs(root).find((dir) => path.basename(dir) === name);
   if (!ownerDir) throw new Error(`${name}: no package owns spec/${name}/`);
   const release = lockProject(root);
   try {
-    const specs = readSpecs(root, undefined, name);
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "vibestack-owner-gen-"));
     try {
-      const errors: string[] = [];
-      for await (const { spec, error } of generating({ root, fresh: false, used: new Set() }, specs, scratch)) {
-        if (error) errors.push(`${spec.file}:
-${error.message}`);
-      }
-      if (errors.length) throw new Error(errors.join("\n"));
+      const specs = await generateFiles(root, scratch, name);
       mirrorGen(root, specs, { scratch, ownerDir });
     } finally {
       fs.rmSync(scratch, { recursive: true, force: true });
@@ -823,7 +852,7 @@ export async function main(argv = process.argv.slice(2)) {
       [command, ...args] = hosted ? ["tasks", "//#gen"] : ["gen", "--if-valid"];
     }
     if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {
-      await steady(() => generateOwner(args[2] === undefined ? root : projectRoot(args[2]), args[1]));
+      await generateOwner(args[2] === undefined ? root : projectRoot(args[2]), args[1]);
       return;
     }
     const options: Record<string, string[]> = { check: ["--json", "--nightly"], gen: ["--if-valid"], accept: ["unproved"], watch: [], init: [] };
@@ -844,12 +873,7 @@ export async function main(argv = process.argv.slice(2)) {
       let release = () => {};
       try {
         release = lockProject(root);
-        const specs = readSpecs(root);
-        const staged = new Map<string, string>();
-        await steady(async () => {
-          for await (const { error } of generating({ root, fresh: false, used: new Set() }, specs, root, staged)) if (error) throw error;
-        });
-        publishGen(root, staged);
+        const specs = await generateFiles(root);
         mirrorGen(root, specs);
       } catch (e) {
         if (!args.length) throw e;

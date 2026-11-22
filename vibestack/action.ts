@@ -71,7 +71,7 @@ export async function act(memory: Memory, tool: keyof typeof TOOLS, args: string
   if (launcher && !installed) throw new Error(`${launcher} is not installed; run pnpm install`);
   const exe = installed?.exe ?? tool;
   const since = script && stamp([script]);
-  const id = installed ? installed.id + (script ? ` ${executableDigest(script)}` : "") : await verifierIdentity();
+  const id = installed ? installed.id && installed.id + (script ? ` ${executableDigest(script)}` : "") : await verifierIdentity();
   const at = await entry(memory.root, "action", [id, JSON.stringify(args), ...Object.keys(files).sort().flatMap((f) => [f, files[f].key])], (tool === "quint" || tool === "simulator") && args[0] === "run");
   const known = recall<Ran>(memory, at);
   if (known) return known;
@@ -79,10 +79,14 @@ export async function act(memory: Memory, tool: keyof typeof TOOLS, args: string
   fs.rmSync(where, { recursive: true, force: true });
   fs.mkdirSync(where, { recursive: true });
   for (const [f, { text }] of Object.entries(files)) fs.writeFileSync(path.join(where, f), text);
+  const began = performance.now();
   const r = await exec(script ? process.execPath : exe, script ? [script, ...args] : args, where).catch((e: Error) => { throw new Error(`${tool} could not be run (${exe}): ${e.message}; ${tool === "dafny" ? NEEDS_DAFNY : "run pnpm install"}`); });
   const written = fs.readdirSync(where, { withFileTypes: true }).filter((f) => f.isFile() && !Object.hasOwn(files, f.name)).map((f) => f.name).sort();
   const ran: Ran = { ok: r.status === 0 && !r.stopped, status: r.status, out: `${r.stdout}${r.stderr}${r.stopped ? `\n${r.stopped}\n` : ""}`, stderr: r.stderr, stopped: r.stopped,
     files: Object.fromEntries(written.map((f) => [f, fs.readFileSync(path.join(where, f), "utf8")])) };
-  if (!ran.stopped && answered(args, ran) && stableInstallation(installed ? installed.unchanged() && (!script || stamp([script]) === since) : await verifiedNow() === id)) store(memory, at, ran);
+  if (!ran.stopped && answered(args, ran)) {
+    const same = installed ? !script || stamp([script]) === since : await verifiedNow() === id;
+    if (stableInstallation(same)) store(memory, at, ran, installed && { program: installed, began });
+  }
   return ran;
 }
