@@ -262,6 +262,7 @@ lemma CloseSpeechReceipts(before: CloudSpeech, ending: Ending, via: string)
   ensures stepAReplySettlesOnce(before, via, closeWith(ending, before, [], cloud__shared__types_WaitTime.NoWait).state, closeWith(ending, before, [], cloud__shared__types_WaitTime.NoWait).out)
   ensures stepAnEndReleasesRevokesAndReportsOnce(before, via, closeWith(ending, before, [], cloud__shared__types_WaitTime.NoWait).state, closeWith(ending, before, [], cloud__shared__types_WaitTime.NoWait).out)
   ensures stepABatchRequestSettlesOnce(before, via, closeWith(ending, before, [], cloud__shared__types_WaitTime.NoWait).state, closeWith(ending, before, [], cloud__shared__types_WaitTime.NoWait).out)
+  ensures forall n :: n in closeWith(ending, before, [], cloud__shared__types_WaitTime.NoWait).out ==> settledId(n) == 0 && heardCapture(n) == -1
 {
   var closed := closeWith(ending, before, [], cloud__shared__types_WaitTime.NoWait);
   var released := noticeIf(!before.capture.Muted?, SpeechNotice.ReleaseLiveCapture);
@@ -270,7 +271,7 @@ lemma CloseSpeechReceipts(before: CloudSpeech, ending: Ending, via: string)
   var failed := noticeIf(!failureOfEnding(ending).NoFailure?, SessionFailed(failureOfEnding(ending), !before.audioStarted, cloud__shared__types_WaitTime.NoWait));
   assert closed.out == released + settled + revoked + failed;
   forall n | n in closed.out
-    ensures keyReportVersion(n) == -1 && settledId(n) == 0
+    ensures keyReportVersion(n) == -1 && settledId(n) == 0 && heardCapture(n) == -1
     ensures failedBefore(n) == -1 || (failedBefore(n) == 1) == !before.audioStarted
   {
     assert n in released || n in settled || n in revoked || n in failed;
@@ -675,5 +676,198 @@ lemma KeyReportReceiptShape(answer: CloudAnswer, version: int)
   if |prefix| > 0 {
     assert prefix == [prefix[0]];
     ProofLib.FilterAppend(reportsKey, [], prefix[0]);
+  }
+}
+
+lemma credentialChanged_ensures(s: CloudSpeech, version: int)
+  ensures (inv(s) ==> canCredentialChanged(s, version) ==> alwaysConsentIsAskedAtMostTwiceWithinItsDeadline(credentialChanged(s, version).state))
+  ensures (inv(s) ==> canCredentialChanged(s, version) ==> alwaysOpenWorkUsesTheCurrentKey(credentialChanged(s, version).state))
+  ensures (inv(s) ==> canCredentialChanged(s, version) ==> alwaysOnlyALiveSessionCaptures(credentialChanged(s, version).state))
+  ensures (inv(s) ==> canCredentialChanged(s, version) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(credentialChanged(s, version).state))
+  ensures (inv(s) ==> canCredentialChanged(s, version) ==> alwaysAnEndingSaysWhetherAudioStarted(credentialChanged(s, version).state))
+  ensures (inv(s) ==> canCredentialChanged(s, version) ==> alwaysBatchRequestsAreDistinct(credentialChanged(s, version).state))
+  ensures (inv(s) ==> canCredentialChanged(s, version) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "credentialChanged", credentialChanged(s, version).state, credentialChanged(s, version).out))
+  ensures (inv(s) ==> canCredentialChanged(s, version) ==> stepTheSessionOpensInOrder(s, credentialChanged(s, version).state))
+  ensures (inv(s) ==> canCredentialChanged(s, version) ==> stepOnlyTheCaptureATurnBeganInPublishesIt(s, "credentialChanged", credentialChanged(s, version).state, credentialChanged(s, version).out))
+  ensures (inv(s) ==> canCredentialChanged(s, version) ==> stepAReplySettlesOnce(s, "credentialChanged", credentialChanged(s, version).state, credentialChanged(s, version).out))
+  ensures (inv(s) ==> canCredentialChanged(s, version) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "credentialChanged", credentialChanged(s, version).state, credentialChanged(s, version).out))
+  ensures (inv(s) ==> canCredentialChanged(s, version) ==> stepABatchRequestSettlesOnce(s, "credentialChanged", credentialChanged(s, version).state, credentialChanged(s, version).out))
+{
+  hide *;
+  reveal inv, canCredentialChanged, keyGone, isOpen, ProofLib.Filter;
+  if inv(s) && canCredentialChanged(s, version) {
+    var actual := credentialChanged(s, version);
+    var prior := s.batches;
+    var changed := seq(|prior|, i requires 0 <= i < |prior| => keyGone(prior[i]));
+    var waiting := ProofLib.Filter((b: BatchRequest) => b.verdict.BatchPending?, prior);
+    var receipts := seq(|waiting|, i requires 0 <= i < |waiting| => BatchSettled(waiting[i].requestId, keyGone(waiting[i]).verdict));
+    var ending := if s.audioStarted then FailedAfterAudio(core__capabilityRouting_Failure.AccountIneligible) else FailedBeforeAudio(core__capabilityRouting_Failure.AccountIneligible);
+    var closed := closeWith(ending, s, [], cloud__shared__types_WaitTime.NoWait);
+    var suffix := if isOpen(s.phase) then closed.out else [];
+    assert actual.state == (if isOpen(s.phase) then closed.state else s).(credential := version, batches := changed)
+      && actual.out == receipts + suffix by {
+      reveal credentialChanged, failWith, closeWith;
+    }
+    assert forall i :: 0 <= i < |prior| ==> changed[i].requestId == prior[i].requestId;
+    MappedBatchIdsStayDistinct(s, actual.state);
+    forall n | n in receipts
+      ensures n.BatchSettled?
+    {
+      var i :| 0 <= i < |receipts| && receipts[i] == n;
+    }
+    if isOpen(s.phase) {
+      assert actual.state.phase == closed.state.phase && actual.state.reply == closed.state.reply;
+      CloseSpeechReceipts(s, ending, "credentialChanged");
+      BatchPrefixKeepsSpeechReceipts(s, "credentialChanged", closed, actual, receipts);
+    } else {
+      assert actual.out == receipts;
+      assert stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "credentialChanged", actual.state, actual.out) by {
+        reveal keyReportVersion, stepARefusedKeyIsReportedOnceAndEndsItsRequest;
+        ProofLib.FilterNone((n: SpeechNotice) => (keyReportVersion(n) != -1), actual.out);
+      }
+      assert forall n :: n in actual.out ==> !isReplySettled(n) && failedBefore(n) == -1 by {
+        reveal isReplySettled, failedBefore;
+      }
+      assert !closing(s, actual.state) by { reveal closing; }
+      NoReplyOrSessionEndReceipt(s, "credentialChanged", actual.state, actual.out);
+    }
+    assert forall i :: 0 <= i < |receipts| ==> settledId(receipts[i]) == waiting[i].requestId by { reveal settledId; }
+    assert forall n :: n in suffix ==> settledId(n) == 0 && heardCapture(n) == -1;
+    KeyChangeSettlesWaitingBatches(s, actual.state, waiting, receipts, suffix);
+    assert inv(actual.state) by {
+      reveal closeWith, asksOf, waitedOf, endingOf, hasEnded, failedAfterAudio, failedBeforeAudio, failureOfEnding, turnOwner;
+      reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+      reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio, alwaysAnEndingSaysWhetherAudioStarted;
+    }
+    assert stepTheSessionOpensInOrder(s, actual.state) by {
+      reveal closeWith, stepTheSessionOpensInOrder, openingRank;
+    }
+    assert stepOnlyTheCaptureATurnBeganInPublishesIt(s, "credentialChanged", actual.state, actual.out) by {
+      reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+    }
+  }
+}
+
+lemma BatchPrefixKeepsSpeechReceipts(before: CloudSpeech, via: string, closed: SpeechStep, actual: SpeechStep, prefix: seq<SpeechNotice>)
+  requires stepARefusedKeyIsReportedOnceAndEndsItsRequest(before, via, closed.state, closed.out)
+  requires stepAReplySettlesOnce(before, via, closed.state, closed.out)
+  requires stepAnEndReleasesRevokesAndReportsOnce(before, via, closed.state, closed.out)
+  requires actual.state.phase == closed.state.phase && actual.state.reply == closed.state.reply
+  requires actual.out == prefix + closed.out
+  requires forall n :: n in prefix ==> n.BatchSettled?
+  ensures stepARefusedKeyIsReportedOnceAndEndsItsRequest(before, via, actual.state, actual.out)
+  ensures stepAReplySettlesOnce(before, via, actual.state, actual.out)
+  ensures stepAnEndReleasesRevokesAndReportsOnce(before, via, actual.state, actual.out)
+{
+  var out := actual.out;
+  var reportsKey := (n: SpeechNotice) => (keyReportVersion(n) != -1);
+  var settlesReply := (n: SpeechNotice) => isReplySettled(n);
+  var reportsFailure := (n: SpeechNotice) => (failedBefore(n) != -1);
+  assert closing(before, closed.state) == closing(before, actual.state);
+  assert endingOf(closed.state.phase) == endingOf(actual.state.phase);
+  assert replyId(closed.state.reply) == replyId(actual.state.reply);
+  forall i | 0 <= i < |prefix|
+    ensures !reportsKey(prefix[i]) && !settlesReply(prefix[i]) && !reportsFailure(prefix[i])
+  {
+    assert prefix[i] in prefix;
+    assert prefix[i].BatchSettled?;
+  }
+  ProofLib.FilterNone(reportsKey, prefix);
+  ProofLib.FilterNone(settlesReply, prefix);
+  ProofLib.FilterNone(reportsFailure, prefix);
+  assert |ProofLib.Filter(reportsKey, prefix)| == 0;
+  assert |ProofLib.Filter(settlesReply, prefix)| == 0;
+  assert |ProofLib.Filter(reportsFailure, prefix)| == 0;
+  assert out == prefix + closed.out;
+  FilterSpeechNoticeConcat(reportsKey, prefix, closed.out);
+  FilterSpeechNoticeConcat(settlesReply, prefix, closed.out);
+  FilterSpeechNoticeConcat(reportsFailure, prefix, closed.out);
+  assert |ProofLib.Filter(reportsKey, out)| == |ProofLib.Filter(reportsKey, closed.out)|;
+  assert |ProofLib.Filter(settlesReply, out)| == |ProofLib.Filter(settlesReply, closed.out)|;
+  assert |ProofLib.Filter(reportsFailure, out)| == |ProofLib.Filter(reportsFailure, closed.out)|;
+  forall n | n in out
+    ensures keyReportVersion(n) == -1 || (keyReportVersion(n) == before.credential && (closing(before, actual.state) || via == "batchAnswered"))
+    ensures failedBefore(n) == -1 || (failedBefore(n) == 1) == !before.audioStarted
+  {
+    if n in prefix {
+      assert n.BatchSettled?;
+    } else {
+      assert n in closed.out;
+    }
+  }
+  assert SpeechNotice.ReleaseLiveCapture in closed.out ==> SpeechNotice.ReleaseLiveCapture in out;
+  assert SpeechNotice.RevokeSession in closed.out ==> SpeechNotice.RevokeSession in out;
+  assert stepARefusedKeyIsReportedOnceAndEndsItsRequest(before, via, actual.state, out);
+  assert stepAReplySettlesOnce(before, via, actual.state, out);
+  assert stepAnEndReleasesRevokesAndReportsOnce(before, via, actual.state, out);
+}
+
+lemma FilterSpeechNoticeConcat(p: SpeechNotice -> bool, prefix: seq<SpeechNotice>, suffix: seq<SpeechNotice>)
+  ensures |ProofLib.Filter(p, prefix + suffix)| == |ProofLib.Filter(p, prefix)| + |ProofLib.Filter(p, suffix)|
+  decreases |suffix|
+{
+  if |suffix| == 0 {
+    assert prefix + suffix == prefix;
+    ProofLib.FilterNil(p, suffix);
+  } else {
+    var leading := suffix[..|suffix| - 1];
+    var last := suffix[|suffix| - 1];
+    assert suffix == leading + [last];
+    assert prefix + suffix == (prefix + leading) + [last];
+    FilterSpeechNoticeConcat(p, prefix, leading);
+    ProofLib.FilterAppend(p, prefix + leading, last);
+    ProofLib.FilterAppend(p, leading, last);
+    if p(last) {
+      assert |ProofLib.Filter(p, prefix + leading) + [last]| == |ProofLib.Filter(p, prefix + leading)| + 1;
+      assert |ProofLib.Filter(p, leading) + [last]| == |ProofLib.Filter(p, leading)| + 1;
+    }
+  }
+}
+
+lemma KeyChangeSettlesWaitingBatches(before: CloudSpeech, after: CloudSpeech, waiting: seq<BatchRequest>, receipts: seq<SpeechNotice>, suffix: seq<SpeechNotice>)
+  requires alwaysBatchRequestsAreDistinct(before)
+  requires |before.batches| == |after.batches|
+  requires forall i :: 0 <= i < |before.batches| ==> after.batches[i] == keyGone(before.batches[i])
+  requires waiting == ProofLib.Filter((b: BatchRequest) => b.verdict.BatchPending?, before.batches)
+  requires |receipts| == |waiting|
+  requires forall i :: 0 <= i < |receipts| ==> settledId(receipts[i]) == waiting[i].requestId
+  requires forall n :: n in suffix ==> settledId(n) == 0
+  ensures forall a :: a in after.batches ==> !a.verdict.BatchPending?
+  ensures stepABatchRequestSettlesOnce(before, "credentialChanged", after, receipts + suffix)
+{
+  assert forall a :: a in after.batches ==> !a.verdict.BatchPending? by {
+    forall a | a in after.batches
+      ensures !a.verdict.BatchPending?
+    {
+      var i :| 0 <= i < |after.batches| && after.batches[i] == a;
+      assert a == keyGone(before.batches[i]);
+    }
+  }
+  forall b | b in before.batches
+    ensures exists a :: a in after.batches && a.requestId == b.requestId && (!b.verdict.BatchPending? ==> a.verdict == b.verdict)
+    ensures |ProofLib.Filter((n: SpeechNotice) => (settledId(n) == b.requestId), receipts + suffix)| == (if b.verdict.BatchPending? && !pending(after, b.requestId) then 1 else 0)
+  {
+    var index :| 0 <= index < |before.batches| && before.batches[index] == b;
+    var updated := after.batches[index];
+    assert updated in after.batches && updated.requestId == b.requestId;
+    assert !b.verdict.BatchPending? ==> updated == b;
+    assert !pending(after, b.requestId);
+    var matches := (x: BatchRequest) => (x.requestId == b.requestId);
+    var awaiting := (x: BatchRequest) => x.verdict.BatchPending?;
+    var settles := (n: SpeechNotice) => (settledId(n) == b.requestId);
+    assert |ProofLib.Filter(matches, before.batches)| == 1 && b.requestId >= 1;
+    if b.verdict.BatchPending? {
+      ProofLib.FilterOfFilterShorter(awaiting, matches, before.batches);
+      ProofLib.FilterMember(awaiting, before.batches, b);
+      ProofLib.FilterMember(matches, waiting, b);
+      assert b in ProofLib.Filter(matches, waiting);
+    } else {
+      assert exists j :: 0 <= j < |before.batches| && matches(before.batches[j]) && !(awaiting(before.batches[j]) && matches(before.batches[j]));
+      ProofLib.FilterOfFilterLength(awaiting, matches, matches, before.batches);
+    }
+    assert |ProofLib.Filter(matches, waiting)| == (if b.verdict.BatchPending? then 1 else 0);
+    ProofLib.FilterLengthPointwise(matches, settles, waiting, receipts);
+    ProofLib.FilterNone(settles, suffix);
+    FilterSpeechNoticeConcat(settles, receipts, suffix);
   }
 }
