@@ -58,6 +58,32 @@ type Ledger = SpeechRelayBootstrap & {
   phase: "prepared" | "minted" | "starting" | "active" | "retiring" | "closed";
   retirement?: RetirementState;
 };
+function renewalFailureCode(error: unknown): string | undefined {
+  if (!error) return undefined;
+  if (!(error instanceof Error)) return "unknown";
+  if (
+    error.name === "InsufficientCreditsError" ||
+    error.name === "AllowanceExhaustedError"
+  )
+    return "insufficient_credits";
+  if (
+    /Cannot perform I\/O on behalf of a different request/i.test(error.message)
+  )
+    return "cross_request_io";
+  if (error.message === "Speech session is closed") return "session_closed";
+  if (error.message === "Speech revocation fence timed out")
+    return "fence_timeout";
+  if (error.message === "Speech revocation fence closed") return "fence_closed";
+  if (error.message === "Invalid speech revocation fence")
+    return "fence_invalid";
+  if (error.name === "AbortError") return "aborted";
+  const status =
+    /^Speech revocation subscription was refused \(([1-5][0-9]{2})\)$/.exec(
+      error.message,
+    );
+  return status ? `fence_http_${status[1]}` : "unknown";
+}
+
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 /** Default renewable windows for a client that accepts `extended` frames. */
 const DEFAULT_MAX_WINDOWS = 10;
@@ -861,6 +887,12 @@ export class SpeechRelayCoordinator {
               usageLimits: resolveVoiceUsageLimits(this.env),
               expiresAt: ledger.expiresAt,
               maxWindows,
+              onRenewal: ({ phase, result, error }) =>
+                logger.warn("[SpeechRelay] renewal outcome", {
+                  phase,
+                  result,
+                  code: renewalFailureCode(error),
+                }),
               ...(maxWindows > 1
                 ? {
                     extend: (_identity, expiresAt) =>

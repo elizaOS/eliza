@@ -31,7 +31,9 @@ export async function subscribeSpeechRevocation(
     .finally(() => clearTimeout(timeout));
   const socket = response.webSocket;
   if (response.status !== 101 || !socket)
-    throw Error("Speech revocation subscription was refused");
+    throw Error(
+      `Speech revocation subscription was refused (${response.status})`,
+    );
   socket.accept();
   let finished = false;
   let ready = false;
