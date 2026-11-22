@@ -42,11 +42,11 @@ runs:
     - id: pnpm-store
       shell: bash
       env:
-        PNPM_BIN_DIR: ${{ steps.setup-pnpm.outputs.bin_dest }}
+        PNPM_SETUP_DIR: ${{ steps.setup-pnpm.outputs.dest }}
         LOCK_HASH: ${{ hashFiles('pnpm-lock.yaml') }}
       run: |
         store=$(pnpm store path --silent) || exit 0
-        [[ $PNPM_BIN_DIR == /* && ${store#"$PNPM_BIN_DIR"/store/v} =~ ^[0-9]+$ && $LOCK_HASH =~ ^[a-f0-9]{64}$ ]] || exit 0
+        [[ $PNPM_SETUP_DIR == /* && ${store#"$PNPM_SETUP_DIR"/node_modules/.bin/store/v} =~ ^[0-9]+$ && $LOCK_HASH =~ ^[a-f0-9]{64}$ ]] || exit 0
         [[ $(realpath -m -- "$store") == "$store" ]] || exit 0
         arch=$(node -p 'process.arch')
         printf 'path=%s\nkey=node-cache-%s-%s-pnpm-%s\n' "$store" "$RUNNER_OS" "$arch" "$LOCK_HASH" >> "$GITHUB_OUTPUT"
