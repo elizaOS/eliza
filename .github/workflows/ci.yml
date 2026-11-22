@@ -82,7 +82,8 @@ jobs:
     needs: preflight
   quint:
     name: Quint (${{ matrix.shard }}/4)
-    if: github.ref == 'refs/heads/main'
+    needs: preflight
+    if: needs.preflight.outputs.quint == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
@@ -199,8 +200,8 @@ jobs:
           retention-days: 7
   quint-result:
     name: Complete Quint coverage
-    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' }}
-    needs: [quint]
+    if: ${{ always() && !cancelled() && needs.preflight.outputs.quint == 'true' }}
+    needs: [preflight, quint]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -320,7 +321,7 @@ jobs:
             os=${{ needs.os.result }}:${{ needs.preflight.outputs.os }}
             quality=${{ needs.quality.result }}:${{ needs.preflight.outputs.source }}
             tests_auth_integration=${{ needs.tests_auth_integration.result }}:${{ needs.preflight.outputs.auth }}
-            quint-result=${{ needs.quint-result.result }}:${{ github.ref == 'refs/heads/main' }}
+            quint-result=${{ needs.quint-result.result }}:${{ needs.preflight.outputs.quint }}
             preflight=${{ needs.preflight.result }}:true
             remote-capabilities=${{ needs.remote-capabilities.result }}:${{ needs.preflight.outputs.runtime }}
             agent-integration=${{ needs.agent-integration.result }}:${{ needs.preflight.outputs.runtime }}
@@ -350,6 +351,7 @@ jobs:
   preflight:
     name: Select affected validation
     outputs:
+      quint: ${{ steps.quint-policy.outputs.quint }}
       full: ${{ steps.affected.outputs.full }}
       base: ${{ steps.affected.outputs.base }}
       source: ${{ steps.affected.outputs.source }}
@@ -388,6 +390,23 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - name: Check maintained Markdown link targets
         run: node packages/scripts/check-markdown-links.ts
+      - name: Select Quint coverage
+        id: quint-policy
+        env:
+          DEFER_TREE: ${{ vars.ELIZA_ALPHA_TALK_DEFER_QUINT_TREE }}
+        run: |
+          set -euo pipefail
+          quint=false
+          if [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            quint=true
+            tree="$(git rev-parse 'HEAD^{tree}')"
+            if [[ "$DEFER_TREE" == "$tree" ]]; then
+              quint=false
+              echo "::warning title=Quint deferred::Owner authorized deferral for Alpha Talk release tree $tree"
+              echo "Quint was deferred for Alpha Talk release tree \`$tree\`. The previous main run retains the failed Android dependency fetches." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "quint=$quint" >> "$GITHUB_OUTPUT"
       - name: Select affected integration lanes
         id: affected
         env:
