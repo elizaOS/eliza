@@ -495,6 +495,7 @@ it("offers each Browser control only with its own capability and validates its e
     { type: "browser_tab_switch", target: "bbc" },
     { type: "browser_tab_close" },
     { type: "browser_tab_close", target: "bbc" },
+    { type: "browser_tab_close", all: true },
     { type: "browser_find", text: "refund" },
     { type: "browser_history", action: "stop" },
   ])
@@ -507,6 +508,10 @@ it("offers each Browser control only with its own capability and validates its e
     { type: "browser_tab_switch" },
     { type: "browser_tab_switch", target: "bbc", id: "3" },
     { type: "browser_tab_close", target: "a\nb" },
+    // Closing every tab is its own form: never a flag that narrows to one tab.
+    { type: "browser_tab_close", all: false },
+    { type: "browser_tab_close", all: "yes" },
+    { type: "browser_tab_close", all: true, target: "bbc" },
     { type: "browser_find", text: "" },
     { type: "browser_history", action: "home" },
   ])

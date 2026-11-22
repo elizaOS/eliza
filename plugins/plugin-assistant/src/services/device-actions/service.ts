@@ -66,6 +66,7 @@ import {
   BROWSER_OPEN_NEW_TAB_CAPABILITY,
   BROWSER_SEARCH_CAPABILITY,
   BROWSER_TABS_CAPABILITY,
+  BROWSER_TABS_CLOSE_ALL_CAPABILITY,
   isBrowserControl,
 } from "./browser-contract.ts";
 import {
@@ -1361,6 +1362,7 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   BROWSER_FIND_CAPABILITY,
   BROWSER_HISTORY_CAPABILITY,
   BROWSER_OPEN_NEW_TAB_CAPABILITY,
+  BROWSER_TABS_CLOSE_ALL_CAPABILITY,
   TELEPHONY_VIEWS_CAPABILITY,
 ];
 export class DeviceActionService {
@@ -2525,6 +2527,17 @@ export class DeviceActionService {
           "The original owner request did not admit Notes deletion",
         );
     }
+    // A phone that cannot close every tab is never asked to close only the one
+    // showing instead: the agent is told why, so it can say so and offer that.
+    if (
+      validated.type === "browser_tab_close" &&
+      validated.all &&
+      deviceOperationSupportedByCapabilities(validated.type, c.capabilities) &&
+      !deviceOperationFormSupported(validated, c.capabilities)
+    )
+      throw new DeviceActionError(
+        "This phone's Browser closes one tab at a time and cannot close all tabs at once. Nothing was closed. Tell the owner, and offer to close the tab that is showing or a tab they name.",
+      );
     if (
       !deviceOperationSupportedByCapabilities(validated.type, c.capabilities) ||
       !deviceOperationFormSupported(validated, c.capabilities)

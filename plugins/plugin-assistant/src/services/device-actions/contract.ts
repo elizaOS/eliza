@@ -9,6 +9,8 @@ import {
   BROWSER_OPEN_NEW_TAB_CAPABILITY,
   type BrowserControlOperation,
   browserControlCapabilityAvailable,
+  browserControlFormAvailable,
+  isBrowserControl,
   isBrowserControlType,
   validateBrowserControl,
 } from "./browser-contract.ts";
@@ -268,6 +270,8 @@ export function deviceOperationFormSupported(
     return photosViewFormSupported(operation, capabilities);
   if (operation.type === "browser_navigate" && operation.newTab)
     return capabilities?.includes(BROWSER_OPEN_NEW_TAB_CAPABILITY) === true;
+  if (isBrowserControl(operation))
+    return browserControlFormAvailable(operation, capabilities);
   if (isFilesOperation(operation) && filesShownTarget(operation))
     return capabilities?.includes(FILES_SHOWN_TARGET_CAPABILITY) === true;
   return true;

@@ -10,7 +10,11 @@
  * address or page content.
  *
  * A search uses only words the owner typed in the current message. Closing a tab is
- * always reviewed by the owner. The other controls may run without a review when they
+ * always reviewed by the owner. Closing every open tab (browser_tab_close {all: true}) is
+ * its own negotiated form: the phone lists the tabs it will close on that one review card,
+ * because only the phone knows them, and closes exactly those. A phone that did not
+ * negotiate it is never sent it, so a request to close several tabs is refused rather
+ * than narrowed to the tab that is showing. The other controls may run without a review when they
  * are bound to the owner's own current message; otherwise they are reviewed. A tab
  * switch or a find is bound only when the owner typed its words in that message. */
 import { BROWSER_SEARCH_QUERY_MAX } from "@elizaos/contracts/browser-request-grounding";
@@ -22,6 +26,8 @@ export const BROWSER_HISTORY_CAPABILITY = "browser.history.v1";
 /** A typed address opened in a tab of its own: browser_navigate {url, newTab: true}.
  * Without it the phone may open the address in its own earlier tab, replacing that page. */
 export const BROWSER_OPEN_NEW_TAB_CAPABILITY = "browser.open-new-tab.v1";
+/** Every open tab closed by one reviewed browser_tab_close {all: true}. Needs browser.tabs.v1 too. */
+export const BROWSER_TABS_CLOSE_ALL_CAPABILITY = "browser.tabs.close-all.v1";
 
 export const BROWSER_TAB_TARGET_MAX = 128;
 export const BROWSER_FIND_TEXT_MAX = 256;
@@ -37,7 +43,7 @@ export type BrowserControlOperation =
   | { type: "browser_search"; query: string }
   | { type: "browser_tab_new"; private?: boolean }
   | { type: "browser_tab_switch"; target: string }
-  | { type: "browser_tab_close"; target?: string }
+  | { type: "browser_tab_close"; target?: string; all?: true }
   | { type: "browser_find"; text: string }
   | { type: "browser_history"; action: BrowserHistoryAction };
 export type BrowserControlType = BrowserControlOperation["type"];
@@ -82,6 +88,24 @@ export function browserControlCapabilityAvailable(
 ): boolean {
   return capabilities?.includes(CAPABILITY[type]) === true;
 }
+/** Whether this exact form may be sent: closing every tab is negotiated on its own. */
+export function browserControlFormAvailable(
+  op: BrowserControlOperation,
+  capabilities?: readonly string[],
+): boolean {
+  return (
+    browserControlCapabilityAvailable(op.type, capabilities) &&
+    (op.type !== "browser_tab_close" ||
+      !op.all ||
+      capabilities?.includes(BROWSER_TABS_CLOSE_ALL_CAPABILITY) === true)
+  );
+}
+/** An open tab as the phone lists it on a close-every-tab review card. */
+export type BrowserTabLine = {
+  title: string;
+  host?: string;
+  private?: boolean;
+};
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: owner text must reject control characters.
 const CONTROL = /[\u0000-\u001f\u007f]/;
@@ -125,7 +149,13 @@ export function validateBrowserControl(
         target: words(op.target, BROWSER_TAB_TARGET_MAX, "Invalid tab target"),
       };
     case "browser_tab_close":
-      allowed(["target"]);
+      allowed(["target", "all"]);
+      if (op.all !== undefined && op.all !== true)
+        throw Error("Invalid all tabs flag");
+      // One tab or every tab: a request for both is refused, never narrowed.
+      if (op.all && op.target !== undefined)
+        throw Error("Close one named tab or all tabs, not both");
+      if (op.all) return { type: value.type, all: true };
       return {
         type: value.type,
         ...(op.target !== undefined
@@ -159,8 +189,15 @@ const HISTORY_TITLES: Record<BrowserHistoryAction, string> = {
   reload: "Reload page",
   stop: "Stop loading",
 };
-/** The review card: the change itself, nothing else. */
-export function describeBrowserControl(op: BrowserControlOperation): {
+const plural = (count: number, word: string) =>
+  `${count} ${word}${count === 1 ? "" : "s"}`;
+/** The review card: the change itself, nothing else. Closing every tab lists the
+ * tabs the phone will close (`closing`, read on the phone, never from the agent);
+ * without that list the card says only what will happen. */
+export function describeBrowserControl(
+  op: BrowserControlOperation,
+  closing?: readonly BrowserTabLine[],
+): {
   title: string;
   description: string;
 } {
@@ -184,6 +221,28 @@ export function describeBrowserControl(op: BrowserControlOperation): {
         description: `Tab matching ${quoted(op.target)}\n\nYour phone finds the tab. You pick one when more than one matches. The agent does not see your tabs.`,
       };
     case "browser_tab_close":
+      if (op.all) {
+        const shown = closing?.filter((tab) => !tab.private) ?? [];
+        const hidden = (closing?.length ?? 0) - shown.length;
+        return closing
+          ? {
+              title: `Close ${plural(closing.length, "tab")}`,
+              description: `${[
+                ...shown.map(
+                  (tab) =>
+                    `• ${tab.title}${tab.host && tab.host !== tab.title ? ` (${tab.host})` : ""}`,
+                ),
+                ...(hidden ? [`• ${plural(hidden, "private tab")}`] : []),
+              ].join(
+                "\n",
+              )}\n\nCloses every tab listed here. The agent does not see your tabs.`,
+            }
+          : {
+              title: "Close all tabs",
+              description:
+                "Closes every open tab in Browser. The agent does not see your tabs.",
+            };
+      }
       return {
         title: "Close tab",
         description: op.target

@@ -1158,7 +1158,13 @@ const browserControlSchemas: ActionParameterSchema[] = [
       target: {
         type: "string",
         description:
-          "A word of the tab's title or site as the owner said it. Leave it out to close the tab that is showing.",
+          "A word of the tab's title or site as the owner said it. Leave it and all out to close only the tab that is showing.",
+      },
+      all: {
+        type: "boolean",
+        enum: [true],
+        description:
+          "true when the owner asks to close all or every open tab (browser.tabs.close-all.v1); never with target. Without it exactly one tab closes.",
       },
     },
   },
@@ -1368,7 +1374,7 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   },
   {
     types: ["browser_tab_new", "browser_tab_switch", "browser_tab_close"],
-    text: "Browser tabs: browser_tab_new opens an empty tab and never loads an address. To open a typed address in a new tab, use one browser_navigate with newTab true (DEVICE_BROWSER_OPEN), never browser_tab_new. browser_tab_switch shows an open tab and browser_tab_close closes one. The phone finds the tab and the owner picks when more than one matches. Closing a tab is always reviewed by the owner. You never receive the list of tabs, a title or an address; never say which tabs are open.",
+    text: "Browser tabs: browser_tab_new opens an empty tab and never loads an address. To open a typed address in a new tab, use one browser_navigate with newTab true (DEVICE_BROWSER_OPEN), never browser_tab_new. browser_tab_switch shows an open tab and browser_tab_close closes one, or every open tab with all true when the owner asks to close all of them; never narrow a request for several or all tabs to the one showing. The phone finds the tab and the owner picks when more than one matches. Closing a tab is always reviewed by the owner. You never receive the list of tabs, a title or an address; never say which tabs are open.",
   },
   {
     types: ["browser_find"],
