@@ -443,7 +443,7 @@ function namedMatches(result: NamedResult, op: NamedTarget) {
     && chosenRecordMatches(result)
 }
 
-const MapsText = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max), Schema.makeFilter((value: string) => value.trim() !== "" && !/[\u0000-\u001f]/.test(value)))
+const MapsText = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max), Schema.makeFilter((value: string) => value.trim() !== "" && !/(?!\x7f)(?=\p{ASCII})\p{Cc}/u.test(value)))
 const MapsTarget = Schema.Struct({
   kind: Schema.Literals(["map-place", "map-route"]),
   id: Schema.String.check(Schema.isPattern(/^maps_[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/)),
@@ -511,7 +511,7 @@ function queryMatches(result: NotesQueryResult, op: NotesQuery) {
 }
 
 const ClockZone = Schema.String.check(Schema.isMaxLength(100), Schema.isPattern(/^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)*$/), Schema.makeFilter(knownZone))
-const ClockLabel = Schema.String.check(Schema.isMaxLength(200), Schema.makeFilter((label: string) => !/[\u0000-\u001f\u007f]/.test(label)))
+const ClockLabel = Schema.String.check(Schema.isMaxLength(200), Schema.makeFilter((label: string) => !/(?=\p{ASCII})\p{Cc}/u.test(label)))
 const ClockDays = Schema.Array(between(1, 7)).check(Schema.isMaxLength(7), Schema.makeFilter((days) => new Set(days).size === days.length))
 export const ClockHandoff = Schema.Union([
   Schema.Struct({

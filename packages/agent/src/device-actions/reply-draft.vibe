@@ -22,8 +22,8 @@ export schema ReadThread {
 
 const decodeThread = Schema.decodeUnknownOption(ReadThread, { onExcessProperty: "error" })
 
-const unsafeText = /[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/
-const unsafeBody = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‪-‮⁦-⁩]/
+const unsafeText = /[\p{Cc}\u202a-\u202e\u2066-\u2069]/u
+const unsafeBody = /(?![\t\n\r])[\p{Cc}\u202a-\u202e\u2066-\u2069]/u
 const digits = /^[0-9]+$/
 const saysNone = /^none[.!]?$/i
 const quotePairs: readonly (readonly [string, string])[] = [['"', '"'], ["'", "'"], ["`", "`"], ["“", "”"], ["‘", "’"], ["«", "»"]]
