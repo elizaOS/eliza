@@ -557,6 +557,77 @@ describe("NotesStore", () => {
     expect(service.listNotes()).toHaveLength(2);
   });
 
+  it("create-note with a creationId replays only that creation", async () => {
+    const filePath = await temporaryStateFile();
+    const now = clock();
+    const service = new NotesService(undefined, {
+      store: new NotesStore({ filePath, now }),
+      now,
+      createId: idFactory(),
+      threeDayTrash: true,
+    });
+    await service.initialize();
+    const first = await interact(
+      "create-note",
+      { content: "Daily summary", creationId: "run-1:save" },
+      service,
+    );
+    const firstId = (first.data as { note: { id: string } }).note.id;
+
+    // The same creation, sent again after an unconfirmed reply, still
+    // returns its note after the owner edited it.
+    await interact(
+      "update-note",
+      {
+        id: firstId,
+        content: "Daily summary, edited",
+        expectedRevision: service.snapshot().revision,
+      },
+      service,
+    );
+    const repeat = await interact(
+      "create-note",
+      { content: "Daily summary", creationId: "run-1:save" },
+      service,
+    );
+    expect(repeat).toMatchObject({ success: true, data: { replayed: true } });
+    expect((repeat.data as { note: { id: string } }).note.id).toBe(firstId);
+
+    // Another creation with the same words is its own note.
+    const next = await interact(
+      "create-note",
+      { content: "Daily summary", creationId: "run-2:save" },
+      service,
+    );
+    expect(next).toMatchObject({ data: { replayed: false } });
+    expect(service.listNotes()).toHaveLength(2);
+
+    // A note in Trash still replays; its permanent erase retires the id.
+    const { snapshot: deleted } = await service.deleteNoteWithCommit(firstId);
+    const fromTrash = await service.createNoteWithCommit({
+      content: "Daily summary",
+      creationId: "run-1:save",
+    });
+    expect(fromTrash).toMatchObject({
+      replayed: true,
+      value: { id: firstId },
+    });
+    expect(service.listNotes()).toHaveLength(1);
+    const deletedAt = deleted.trash?.find(
+      (entry) => entry.note.id === firstId,
+    )?.deletedAt;
+    await service.eraseTrash({
+      scope: "entry",
+      id: firstId,
+      deletedAt,
+      expectedRevision: service.snapshot().revision,
+    });
+    const persisted = JSON.parse(await fs.readFile(filePath, "utf8"));
+    expect(persisted.noteCreations).toEqual({
+      "run-2:save": (next.data as { note: { id: string } }).note.id,
+    });
+  });
+
   it("serializes concurrent writes without losing a mutation", async () => {
     const filePath = await temporaryStateFile();
     const service = await serviceFor(filePath);

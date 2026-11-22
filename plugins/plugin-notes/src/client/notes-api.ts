@@ -3,7 +3,13 @@ import type { ElizaClientFetch } from "@elizaos/ui/api/transport";
 import { NOTES_CAPABILITIES } from "../capabilities.js";
 import { parseNoteFormat } from "../note-format.js";
 import { NOTE_ID_REGEXP } from "../note-id.js";
-import type { NotesSnapshot, StickyColor, StickyNote } from "../types.js";
+import type {
+  NotesSnapshot,
+  NotesTrashErase,
+  NotesTrashRecordingCleanup,
+  StickyColor,
+  StickyNote,
+} from "../types.js";
 export interface NotesInteractResult {
   success: true;
   text: string;
@@ -188,7 +194,45 @@ function parseBrokerResult(
   };
 }
 
+function parseRecordingCleanup(value: unknown): NotesTrashRecordingCleanup {
+  if (!isRecord(value))
+    throw Error("Notes returned an invalid recording cleanup.");
+  return {
+    operationId: readString(value, "operationId"),
+    noteId: readString(value, "noteId"),
+    audioId: readString(value, "audioId"),
+    deletedAt: readString(value, "deletedAt"),
+  };
+}
+
+function parseRecordingCleanups(value: unknown): NotesTrashRecordingCleanup[] {
+  if (!Array.isArray(value))
+    throw Error("Notes returned an invalid recording cleanup list.");
+  return value.map(parseRecordingCleanup);
+}
+
 export function createNotesClient(api: ElizaClientFetch) {
+  /** Owner-only Trash routes; they exist only on a host that enabled three-day Trash. */
+  async function ownerTrash(
+    path: string,
+    body: unknown,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    signal?.throwIfAborted();
+    const value = await api.fetch<unknown>(path, {
+      method: body === undefined ? "GET" : "POST",
+      headers: {
+        Accept: "application/json",
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(signal ? { signal } : {}),
+    });
+    signal?.throwIfAborted();
+    if (!isRecord(value) || value.success !== true || !("data" in value))
+      throw Error("Notes returned an invalid success envelope.");
+    return value.data;
+  }
   return {
     async readState(signal?: AbortSignal): Promise<NotesSnapshot> {
       signal?.throwIfAborted();
@@ -225,6 +269,54 @@ export function createNotesClient(api: ElizaClientFetch) {
       );
       signal?.throwIfAborted();
       return parseBrokerResult(value, capability, params);
+    },
+    /**
+     * Permanently erases one Trash entry or all of Trash at the revision the owner
+     * confirmed. Recordings the erased notes owned come back for the host to delete.
+     */
+    async eraseTrash(
+      review: NotesTrashErase,
+      signal?: AbortSignal,
+    ): Promise<{
+      erased: number;
+      recordingCleanup: NotesTrashRecordingCleanup[];
+      state: NotesSnapshot;
+    }> {
+      const data = await ownerTrash("/api/notes/trash/erase", review, signal);
+      if (
+        !isRecord(data) ||
+        typeof data.erased !== "number" ||
+        !Number.isSafeInteger(data.erased) ||
+        data.erased < 0
+      )
+        throw Error("Notes returned an invalid Trash erase result.");
+      return {
+        erased: data.erased,
+        recordingCleanup: parseRecordingCleanups(data.recordingCleanup),
+        state: parseSnapshot(data.state),
+      };
+    },
+    /** Recordings of erased notes the host has not yet confirmed deleted. */
+    async readTrashRecordingCleanup(
+      signal?: AbortSignal,
+    ): Promise<NotesTrashRecordingCleanup[]> {
+      return parseRecordingCleanups(
+        await ownerTrash("/api/notes/trash/recordings", undefined, signal),
+      );
+    },
+    /** Confirms one recording is deleted on this device; false when it was not pending. */
+    async completeTrashRecordingCleanup(
+      receipt: NotesTrashRecordingCleanup,
+      signal?: AbortSignal,
+    ): Promise<boolean> {
+      const data = await ownerTrash(
+        "/api/notes/trash/recordings/complete",
+        receipt,
+        signal,
+      );
+      if (!isRecord(data) || typeof data.acknowledged !== "boolean")
+        throw Error("Notes returned an invalid recording cleanup result.");
+      return data.acknowledged;
     },
   };
 }
