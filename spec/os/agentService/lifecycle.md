@@ -128,8 +128,8 @@ pure def alwaysRunningWasReadyThisLaunch(s: AgentService): bool =
     and (s.phase == Stopping({ onExit: ToRestart }) implies s.readyEpoch == s.epoch)
 pure def sometimesStorageFailedAtStart(s: AgentService): bool = s.phase == Failed({ cause: Storage }) and s.readyEpoch < s.epoch
 pure def sometimesTimedOut(s: AgentService): bool = s.phase == Failed({ cause: Agent }) and s.child != NoChild
-pure val weight_spawn = 10
-pure val weight_observeReady = 10
+pure val weight_spawn = 50
+pure val weight_observeReady = 90
 pure val fair_observeReady = "weak"
 pure val fair_readinessTimedOut = "weak"
 pure def leadsToReadinessWaitSettles(s: AgentService, later: AgentService): bool =
@@ -165,7 +165,7 @@ pure def isKill(e: ServiceEffect): bool = e == KillChild
 pure def stepKillOnlyALiveChild(before: AgentService, via: str, after: AgentService, out: List[ServiceEffect]): bool =
   out.some(e => isKill(e)) implies (childOwned(before.child) and not(before.phase == Running and after.phase == Running))
 pure def sometimesStopping(s: AgentService): bool = s.phase == Stopping({ onExit: ToStopped })
-pure val weight_observeExit = 10
+pure val weight_observeExit = 16
 ```
 
 ### The service restarted by Android keeps the epoch, the key and the hold, and leaves its old child to be reaped
