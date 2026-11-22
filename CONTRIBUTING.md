@@ -304,6 +304,9 @@ reads those times of Dafny's installation once, and reads them again after each
 run of Dafny, so a result is not remembered when the verifier was installed
 again during the run. The template install generates locally with `gen --if-valid`.
 The install command runs its listed root prerequisite tasks together before generation.
+The tooling package sets `--skip-gen-on-pack` in its prepare script. A
+`pnpm pack` still builds the CLI and Studio. It skips the application's
+generated models, which the tools' tarball does not contain.
 The three tool selftest jobs in `ci.yml` run only the listed `//#build` task and generate their scratch
 projects on demand. The packaged CLI test rebuilds from a clean copy of the
 workspace. Other GitHub Actions jobs use the same strict root
@@ -349,6 +352,11 @@ outlives a reinstall, as `spec watch` does, reads the installed toolchain
 again on the next check. Simulations and proofs include the resolved package files
 and dependency links for Quint and LemmaScript. Each check shares an installation
 inventory across runs of the same tool and validates its files before publishing a batch.
+Recognized stock pnpm POSIX tools run in private copies of their declared package
+closure with the selected Node interpreter and no ambient module search. The
+simulator uses the tool-local Quint copy, which may differ from the CLI version.
+Source and private files are checked before publication. Custom launchers, Windows
+shims and Node preload options retain ordinary execution without receipt reuse.
 The first action, long actions, completed stages and the end of the check flush pending results.
 If a concurrent installation changes these files, the check discards the pending results
 and retries under the same project lock. It stops after two unsuccessful retries. A
