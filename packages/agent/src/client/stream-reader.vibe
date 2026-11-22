@@ -83,19 +83,17 @@ effect function read(bytes: AsyncIterable<Uint8Array>, hooks: ReplyStreamHooks):
     }
   }
   const lines = Stream.splitLines(Stream.decodeText(Stream.fromAsyncIterable(bytes, (cause) => new StreamBroken({ cause }))))
-  const consume = effect {
-    for try (const line of lines) {
-      if (line === "") {
-        const payload = data
-        data = undefined
-        if (payload !== undefined) try sync(() => deliver(payload.join("\n")))
-        if (refused !== undefined) break
-        continue
-      }
-      const { name, value } = field(line)
-      if (name === "data") data = [...(data ?? []), value]
+  const consume = Stream.runForEachWhile(lines, effect (line: string) => {
+    if (line === "") {
+      const payload = data
+      data = undefined
+      if (payload !== undefined) try sync(() => deliver(payload.join("\n")))
+      return refused === undefined
     }
-  }
+    const { name, value } = field(line)
+    if (name === "data") data = [...(data ?? []), value]
+    return true
+  })
   consume catch () => undefined
   return refused ?? ending ?? { kind: "Dropped" }
 }

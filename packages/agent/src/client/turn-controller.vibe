@@ -11,15 +11,15 @@ import { newClientMessageId, type ClientMessageId } from "./stopped-turn.vibe"
 
 export schema ConversationRecord { readonly id: Schema.NonEmptyString; readonly roomId: Schema.NonEmptyString }
 schema Created { readonly conversation: ConversationRecord }
-schema BufferedReply {
-  readonly text: string
-  readonly agentName: string
-  readonly messageId: Schema.NonEmptyString
-  readonly userMessageId: Schema.NonEmptyString
-  readonly actionResults: readonly ActionResultFrame[]
-  readonly taskChoices?: readonly Schema.Unknown[]
-  readonly failureKind?: Schema.NonEmptyString
-}
+const BufferedReply = Schema.Struct({
+  text: Schema.String,
+  agentName: Schema.String,
+  messageId: Schema.NonEmptyString,
+  userMessageId: Schema.NonEmptyString,
+  actionResults: Schema.Array(ActionResultFrame),
+  taskChoices: Schema.optional(Schema.Array(Schema.Unknown)),
+  failureKind: Schema.optional(Schema.NonEmptyString)
+})
 schema StopAnswer { readonly aborted: boolean; readonly roomId: string; readonly reason: string; readonly outcome: "stopped" | "nothingRunning" | "uncertain" }
 schema RefusedRequest { readonly name: "RuntimeRequestError"; readonly status: Schema.Int; readonly message: string; readonly code?: string }
 

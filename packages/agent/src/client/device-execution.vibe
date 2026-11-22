@@ -1,6 +1,6 @@
 // spec/agent/deviceActions/execution.md, "An effect needs review unless the current request may act directly"; spec/agent/deviceActions/execution.md, "Dispatch needs an exact reservation and the agent's claim"; spec/agent/deviceActions/execution.md, "The executor is called at most once, for a live claim"; spec/agent/deviceActions/execution.md, "No effect needs a trusted refusal or no call"; spec/agent/deviceActions/execution.md, "An abandoned entry closes without running again"; spec/agent/deviceActions/execution.md, "An unknown result is resolved only by exact readback"; spec/agent/deviceActions/execution.md, "A settled result is durable before upload and upload never repeats the call"; spec/agent/deviceActions/execution.md, "A review the owner confirms matches the saved evidence"
 import {
-  Machine, authorityOf, canCloseAbandoned, canReadBack, canSync, initial, machineOver, parseState, settledResult,
+  type Machine, authorityOf, canCloseAbandoned, canReadBack, canSync, initial, machineOver, parseState, settledResult,
   type AttemptStep, type AuthorityCheck, type DeviceAttempt, type DeviceResult, type Event, type ExecutorAnswer, type JournalAnswer,
 } from "../../gen/agent__deviceActions__execution.effect.vibe"
 import type { ReceiptOutcome, ReviewOutcome } from "../../gen/agent__deviceActions.effect.vibe"

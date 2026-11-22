@@ -1,7 +1,7 @@
 // spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open", "Story: Stop hearing when I leave", "Story: Learn when something keeps going wrong"
 module node {
   import { Effect } from "effect"
-  import { AgentEventService, Service, type IAgentRuntime, type NotificationService, type ServiceClass } from "@elizaos/core"
+  import { Service, type AgentEventService, type IAgentRuntime, type NotificationService, type ServiceClass } from "@elizaos/core"
   import { Machine, machine, rendererOf, type Event, type FeedEvent, type Frame, type NoticeKind, type Source, type StreamName } from "../../gen/agent__conversation__events.effect.vibe"
   import type { FeedHub, FeedSink, LiveFeed } from "../access/event-feeds.vibe"
   import type { AgentEvent, FeedRequest, Refused } from "../access/events-port.vibe"
