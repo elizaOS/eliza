@@ -1,0 +1,242 @@
+// spec/os/browser/tabHost/reading.md, "One native support query is shared and only a definite answer is remembered"; spec/os/browser/tabHost/reading.md, "A sensitive page refuses Ask and an unavailable isolated world opens an empty review"; spec/os/browser/tabHost/reading.md, "A reading is admitted only for a ready, non-sensitive page and a valid speech binding"
+import { askReviewFor, canAskSupport, enabled, excerptLimit, initial, step, type Event, type ReadingLease, type ReadingPhase, type SupportAnswer, type SupportProbe } from "../../gen/os__browser__tabHost__reading.effect.vibe"
+import { isWebAddress } from "../browser/address.ts"
+import { rejectionCode } from "./bridge.vibe"
+
+export const READING_UNSUPPORTED = "reading-unsupported"
+export const ISOLATED_WORLD_UNAVAILABLE = "isolated-world-unavailable"
+export const SENSITIVE_PAGE = "sensitive-page"
+export const MAX_READING_EXCERPT = excerptLimit
+export const READING_UNSUPPORTED_MESSAGE =
+  "Read aloud and Ask about page are unavailable on this device: its Android System WebView cannot read a page privately. Update Android System WebView."
+export const SENSITIVE_READING_MESSAGE = "This page may contain credentials or verification codes. Open a different page."
+
+export error SensitiveReading { code: typeof SENSITIVE_PAGE; message: string }
+
+export const sensitiveReadingPattern =
+  /(?:api[\s_-]*key|access[\s_-]*token|refresh[\s_-]*token|password|passphrase|passcode|credential|(?<![a-z])vaults?(?![a-z])|one[\s-]*time[\s-]*(?:password|code)|verification[\s-]*code|security[\s-]*code|authentication[\s-]*code|recovery[\s-]*(?:code|key|phrase)|backup[\s-]*(?:code|key)|seed[\s-]*phrase|secret[\s-]*key|private[\s-]*key|authenticator|two[\s-]*factor|multi[\s-]*factor|(?<![a-z])sign[\s-]*in(?![a-z])|(?<![a-z])log[\s-]*in(?![a-z])|\botp\b|\bmfa\b|\b2fa\b)/i
+
+const PASSWORD_SERVICES = [
+  "pass.proton.me",
+  "account.proton.me",
+  "accounts.google.com",
+  "passwords.google.com",
+  "bitwarden.com",
+  "bitwarden.eu",
+  "1password.com",
+  "lastpass.com",
+  "dashlane.com",
+  "keepersecurity.com",
+  "nordpass.com",
+  "passbolt.com",
+]
+const SENSITIVE_ROUTE =
+  /(?:^|[^a-z0-9])(?:api[\s_-]*key|vault|passwords?|passphrase|signin|sign-in|login|log-in|logout|auth|oauth|sso|account|accounts|security|mfa|2fa|otp|recovery|reset-password|credentials?|access_token|id_token|refresh_token|secret|token)(?:$|[^a-z0-9])/
+const SHORT_CODE = /(?:^|\D)\d{6,8}(?:\D|$)/
+const CREDENTIAL_FIELD =
+  /(?:^|[^a-z0-9])(?:otp|totp|mfa|2fa)(?:$|[^a-z0-9])|password|passcode|one[\s_-]*time|verification[\s_-]*code|security[\s_-]*code|auth(?:entication)?[\s_-]*code/i
+const INVISIBLE = /[​-‍﻿]/g
+const SKIPPED = ["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"]
+const CHROME = ["NAV", "HEADER", "FOOTER", "A"]
+const INPUT_LABELS = ["autocomplete", "id", "name", "aria-label", "placeholder"]
+const ARTICLE_LABELS = ["type", "autocomplete", "id", "name", "class", "aria-label", "title", "placeholder"]
+const NODE_BUDGET = 12000
+const ATTRIBUTE_UNITS = 1024
+const TEXT_NODE_UNITS = 20000
+const ARTICLE_UNITS = 65536
+const ELEMENT_NODE = 1
+const TEXT_NODE = 3
+
+export function readingWords(value: string): string {
+  return value.replace(/([a-z\d])([A-Z])/g, "$1 $2").replace(/([A-Z])([A-Z][a-z])/g, "$1 $2")
+}
+
+function normalized(value: string): string {
+  return value.normalize("NFKC").replace(INVISIBLE, "")
+}
+
+function sensitiveWords(value: string): boolean {
+  return sensitiveReadingPattern.test(value) || sensitiveReadingPattern.test(readingWords(value))
+}
+
+export function sensitiveReadingText(text: string): boolean {
+  const value = normalized(text)
+  return sensitiveWords(value) || SHORT_CODE.test(value)
+}
+
+function decodedRoute(address: string): string | undefined {
+  try {
+    return decodeURIComponent(address.replace(/\+/g, " ")).toLowerCase()
+  } catch {
+    return undefined
+  }
+}
+
+export function sensitiveReadingUrl(address: string): boolean {
+  const url = isWebAddress(address) ? URL.parse(address) : null
+  if (url === null) return true
+  const host = url.hostname.toLowerCase().replace(/\.$/, "")
+  if (PASSWORD_SERVICES.some((service) => host === service || host.endsWith(`.${service}`))) return true
+  const route = decodedRoute(address)
+  return route === undefined || SENSITIVE_ROUTE.test(route)
+}
+
+function attribute(element: Element, name: string): string {
+  return element.getAttribute(name) ?? ""
+}
+
+function credentialInput(element: Element): boolean {
+  return attribute(element, "type").toLowerCase() === "password" || CREDENTIAL_FIELD.test(INPUT_LABELS.map((name) => normalized(attribute(element, name))).join(" "))
+}
+
+function articleRoot(root: Node): Node | undefined {
+  const pending: Node[] = [root]
+  let inspected = 0
+  let article: Node | undefined
+  let body: Node | undefined
+  while (pending.length > 0) {
+    inspected += 1
+    const node = pending.pop()
+    if (node === undefined || inspected > NODE_BUDGET) return undefined
+    if (node.nodeType === ELEMENT_NODE) {
+      const element = node as Element
+      const tag = element.tagName.toUpperCase()
+      if (SKIPPED.includes(tag)) continue
+      if (tag === "INPUT" && credentialInput(element)) return undefined
+      if (article === undefined && (tag === "ARTICLE" || tag === "MAIN" || element.getAttribute("role") === "main")) article = node
+      if (body === undefined && tag === "BODY") body = node
+    }
+    if (node.childNodes.length + pending.length > NODE_BUDGET) return undefined
+    for (let at = node.childNodes.length - 1; at >= 0; at--) pending.push(node.childNodes[at])
+  }
+  return article ?? body ?? root
+}
+
+export function sensitiveReadingDocument(root: Node): boolean {
+  const article = articleRoot(root)
+  if (article === undefined) return true
+  const pending: Node[] = [article]
+  let units = 0
+  let text = ""
+  while (pending.length > 0) {
+    const node = pending.pop()
+    if (node === undefined) break
+    if (node.nodeType === ELEMENT_NODE) {
+      const element = node as Element
+      const tag = element.tagName.toUpperCase()
+      if (SKIPPED.includes(tag) || CHROME.includes(tag) || element.getAttribute("role") === "navigation") continue
+      for (const name of ARTICLE_LABELS) {
+        const value = attribute(element, name)
+        units += value.length
+        if (value.length > ATTRIBUTE_UNITS || units > ARTICLE_UNITS || sensitiveWords(normalized(value))) return true
+      }
+    } else if (node.nodeType === TEXT_NODE) {
+      const value = node.nodeValue ?? ""
+      units += value.length
+      if (value.length > TEXT_NODE_UNITS || units > ARTICLE_UNITS) return true
+      text += ` ${normalized(value)}`
+    }
+    for (let at = node.childNodes.length - 1; at >= 0; at--) pending.push(node.childNodes[at])
+  }
+  return sensitiveReadingText(text)
+}
+
+export type ReadingSupport = "unknown" | "available" | "unavailable"
+
+export interface ReadingSupportProbe {
+  readonly state: ReadingSupport
+  check(): Promise<ReadingSupport>
+}
+
+const SUPPORT: Readonly<Record<SupportProbe, ReadingSupport>> = {
+  SupportUnknown: "unknown",
+  SupportAsking: "unknown",
+  SupportAvailable: "available",
+  SupportUnavailable: "unavailable",
+}
+
+function supportAnswer(reply: unknown): SupportAnswer {
+  const available = typeof reply === "object" && reply !== null && "available" in reply ? reply.available : undefined
+  return available === true ? "LiteralTrue" : available === false ? "LiteralFalse" : "NoDefiniteAnswer"
+}
+
+export function createReadingSupport(query: () => Promise<unknown>, changed: () => void = () => {}): ReadingSupportProbe {
+  let lease: ReadingLease = initial
+  let pending: Promise<ReadingSupport> | undefined
+  const send = (event: Event) => {
+    if (enabled(lease, event)) lease = step(lease, event)
+  }
+  const answered = (answer: SupportAnswer): ReadingSupport => {
+    send({ type: "answerSupport", supportAnswer: answer })
+    const support = SUPPORT[lease.probe]
+    if (support !== "unknown") changed()
+    return support
+  }
+  return {
+    get state() {
+      return SUPPORT[lease.probe]
+    },
+    check() {
+      if (pending !== undefined) return pending
+      if (!canAskSupport(lease)) return Promise.resolve(SUPPORT[lease.probe])
+      send({ type: "askSupport" })
+      const asked: Promise<ReadingSupport> = Promise.resolve()
+        .then(query)
+        .then(supportAnswer, (): SupportAnswer => "NoDefiniteAnswer")
+        .then(answered)
+        .finally(() => {
+          pending = undefined
+        })
+      pending = asked
+      return asked
+    },
+  }
+}
+
+export interface PageQuestionReading {
+  readonly text: string
+  readonly truncated: boolean
+}
+
+type NativeAsk =
+  | { readonly kind: "released"; readonly text: string; readonly truncated: boolean }
+  | { readonly kind: "refused"; readonly failure: unknown }
+
+function released(reply: unknown): NativeAsk {
+  const text = typeof reply === "object" && reply !== null && "text" in reply && typeof reply.text === "string" ? reply.text : ""
+  const truncated = typeof reply === "object" && reply !== null && "truncated" in reply && reply.truncated === true
+  return { kind: "released", text, truncated }
+}
+
+function refusedPhase(failure: unknown): ReadingPhase {
+  const code = rejectionCode(failure)
+  return code === SENSITIVE_PAGE
+    ? { tag: "ReadingRefused", reason: "SensitivePage" }
+    : code === ISOLATED_WORLD_UNAVAILABLE
+      ? { tag: "ReadingRefused", reason: "IsolatedWorldUnavailable" }
+      : { tag: "ReadingRefused", reason: "UnreadablePage" }
+}
+
+const NO_EXCERPT: PageQuestionReading = { text: "", truncated: false }
+
+export async function pageQuestionReading(review: () => Promise<unknown>): Promise<PageQuestionReading> {
+  const ask = await review().then(released, (failure: unknown): NativeAsk => ({ kind: "refused", failure }))
+  if (ask.kind === "refused") {
+    if (askReviewFor(refusedPhase(ask.failure), 0, { blank: true, sensitiveText: false, literalTruncated: false }).tag === "OpenEmptyReview") return NO_EXCERPT
+    throw ask.failure
+  }
+  const outcome = askReviewFor({ tag: "ExcerptReleased" }, ask.text.length, { blank: ask.text.trim() === "", sensitiveText: ask.text !== "" && sensitiveReadingText(ask.text), literalTruncated: ask.truncated })
+  switch (outcome.tag) {
+    case "OpenExcerptReview":
+      return { text: ask.text, truncated: outcome.truncated }
+    case "OpenEmptyReview":
+      return NO_EXCERPT
+    case "RefuseSensitivePage":
+    case "PassOnFailure":
+      throw new SensitiveReading({ code: SENSITIVE_PAGE, message: SENSITIVE_READING_MESSAGE })
+  }
+}
+
+export async function pageQuestionExcerpt(review: () => Promise<unknown>): Promise<string> {
+  return (await pageQuestionReading(review)).text
+}

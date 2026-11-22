@@ -53,7 +53,8 @@ effect function tryGoogle(runtime: AgentRuntime) {
   try host("cloud service", () => runtime.getServiceLoadPromise("cloud"))
   const message = { entityId: runtime.agentId as UUID, roomId: runtime.agentId as UUID, content: { text: "Archive the thread and book the meeting." } }
   const result = try host("product Google action", () => Promise.resolve(action.handler(runtime, message)))
-  return (result as unknown as { data: { attempts: Record<string, CloudLinkReply> } }).data.attempts
+  const { attempts, refused } = (result as unknown as { data: { attempts: Readonly<Record<"gmailChange" | "calendarEdit" | "read", CloudLinkReply>>; refused: ReadonlyArray<string> } }).data
+  return { ...attempts, refused }
 }
 
 it.live('Answer with the backend the host chose: cloud streams and answers whole, describes an image, retries an outage once; own-key answers; none registers nothing (spec/agent/models/binding.md, "Story: Answer with the backend the host chose")', effect () => {
@@ -153,6 +154,7 @@ it.live('Give plugins the owner\'s cloud link: a managed Gmail change needs the 
     gmailChange: { kind: "changes-off", operation: "gmail_change" },
     calendarEdit: { kind: "changes-off", operation: "calendar_edit" },
     read: { kind: "answered", status: 200, body: { threads: [] } },
+    refused: ["path", "path", "path", "path"],
   })
   assert.deepStrictEqual(cloud.calls.map((made) => [made.method, made.path]), [["GET", `${google}/gmail/triage`]])
 
@@ -160,6 +162,8 @@ it.live('Give plugins the owner\'s cloud link: a managed Gmail change needs the 
   const on = try tryGoogle(consented.agent.runtime)
   assert.deepStrictEqual(on.gmailChange, { kind: "answered", status: 200, body: { done: true } })
   assert.deepStrictEqual(on.calendarEdit, { kind: "changes-off", operation: "calendar_edit" })
+  assert.deepStrictEqual(on.refused, ["path", "path", "path", "path"])
+  assert.isFalse(cloud.calls.some((made) => made.path.includes("%67mail") || made.path.includes("//") || made.path.endsWith("/disconnect") || made.path.startsWith("/api/v1/billing")))
   const gmail = cloud.calls.find((made) => made.method === "POST" && made.path === `${google}/gmail/inbox-v1/operations`)
   assert.deepStrictEqual([gmail?.authorization, gmail?.body], [`Bearer ${deviceKey}`, { kind: "archive", threadId: "thread-1" }])
 }, 300_000)

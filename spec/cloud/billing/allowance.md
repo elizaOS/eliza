@@ -2,22 +2,19 @@
 
 The money a paid plan includes each period, spent before credits and never
 carried over. One `Period` is one row: a paid renewal invoice opens one, keyed
-by the environment and the invoice id, and each month of a grant opens one,
-keyed by the grant id and the month number (`spec/cloud/billing/grantCodes.md`).
-Holds take their allowance part from the period that covers the call
-(`spec/cloud/shared/metering.md`), in the same transaction as the hold step.
-Sources are develop `packages/cloud/shared/src/db/repositories/subscription-allowance.ts`
-(reserve, settle, retire), `subscription-grants.ts` (`grantAllowanceSchedule`),
-`organization-upgrade-allowance-posting.ts` and
-`lib/services/subscription-allowance-proration.ts`, the period table of
-migration `0373_subscription_authority.sql`, and the Quint model
-`subscription_funding_reservations`. Downstream readers show
-`allowance.amountUsd` and the remaining allowance with its reset time.
+by the invoice id, and each month of a grant opens one, keyed by the grant id
+and the month number (`spec/cloud/billing/grantCodes.md`). The store key of a
+renewal also holds the provider environment, a column the shell adds: one
+deployment runs in one environment. Holds take their allowance part from the
+period that covers the call (`spec/cloud/shared/metering.md`), in the same
+transaction as the hold step. Sources are develop's
+`subscription-allowance.ts`, `subscription-grants.ts` and the upgrade
+allowance posting; develop's app-scoped periods, trial claims and import
+entries are gone.
 
 The shell keeps the calendar: it computes each grant month's bounds by UTC
-calendar months and passes them in. A refused event (a refund of a period
-already expired, say) moves nothing, and the shell answers it as applied.
-Develop's app-scoped periods, trial claims and import entries are gone.
+calendar months and passes them in. An event whose guard refuses it moves
+nothing.
 
 ## Story: Spend my plan's allowance before my credits, and never carry it over
 
@@ -29,21 +26,23 @@ Develop's app-scoped periods, trial claims and import entries are gone.
 
 A grant's last month may be partial: it gets the monthly allowance prorated
 by whole minutes of the full calendar month, rounded down; a month whose share
-rounds to nothing opens no period. A free plan opens nothing.
+rounds to nothing opens no period. A free plan opens nothing. A period opened
+at or after its end (an invoice settled late) expires in the same
+transaction, so it never shows an open balance.
 
 ```quint
 import types.* from "../shared/types"
 import plans.* from "./plans"
 import metering as M from "../shared/metering"
-type PeriodPhase = PeriodUnopened | PeriodOpen | PeriodExpired | PeriodClosed | PeriodClawedBack
+type PeriodPhase = PeriodUnopened | PeriodOpen | PeriodExpired | PeriodClosed | PeriodDisputed | PeriodRefunded
 type PeriodSource = NoSource | RenewalInvoice({ invoiceId: str }) | GrantMonth({ grantId: str, month: int })
-type ClawbackCause = NoClawback | RefundClawback | DisputeClawback
-type Period = { phase: PeriodPhase, source: PeriodSource, planKey: PlanKey, startsAt: Millis, endsAt: Millis, granted: Micros, adjustment: Micros, available: Micros, reserved: Micros, settled: Micros, expired: Micros, clawedBack: Micros, clawbackCause: ClawbackCause }
-pure val initial: Period = { phase: PeriodUnopened, source: NoSource, planKey: Free, startsAt: 0, endsAt: 0, granted: 0, adjustment: 0, available: 0, reserved: 0, settled: 0, expired: 0, clawedBack: 0, clawbackCause: NoClawback }
+type Period = { phase: PeriodPhase, source: PeriodSource, planKey: PlanKey, startsAt: Millis, endsAt: Millis, granted: Micros, adjustment: Micros, available: Micros, reserved: Micros, settled: Micros, expired: Micros, clawedBack: Micros }
+pure val initial: Period = { phase: PeriodUnopened, source: NoSource, planKey: Free, startsAt: 0, endsAt: 0, granted: 0, adjustment: 0, available: 0, reserved: 0, settled: 0, expired: 0, clawedBack: 0 }
 pure def isRenewal(p: Period): bool = { val src = p.source
   match src { | RenewalInvoice(x) => true | _ => false } }
 pure def isGrantMonth(p: Period): bool = { val src = p.source
   match src { | GrantMonth(x) => true | _ => false } }
+pure def totalGranted(p: Period): Micros = p.granted + p.adjustment
 pure def validWindow(startsAt: Millis, endsAt: Millis): bool = startsAt >= 0 and endsAt - startsAt >= millisPerMinute
 pure def periodOf(source: PeriodSource, planKey: PlanKey, startsAt: Millis, endsAt: Millis, granted: Micros): Period =
   { ...initial, phase: PeriodOpen, source: source, planKey: planKey, startsAt: startsAt, endsAt: endsAt, granted: granted, available: granted }
@@ -58,11 +57,11 @@ pure def canOpenRenewal(p: Period, invoiceId: str, planKey: PlanKey, startsAt: M
   p.phase == PeriodUnopened and invoiceId != "" and isPaid(planKey) and validWindow(startsAt, endsAt)
 pure def openRenewal(p: Period, invoiceId: str, planKey: PlanKey, startsAt: Millis, endsAt: Millis): Period =
   periodOf(RenewalInvoice({ invoiceId: invoiceId }), planKey, startsAt, endsAt, allowanceOf(planKey))
+pure val invoiceIdValues = Set("in_1")
 pure def canOpenGrantMonth(p: Period, grantId: str, month: int, planKey: PlanKey, startsAt: Millis, endsAt: Millis, fullEndsAt: Millis): bool =
   p.phase == PeriodUnopened and grantId != "" and month >= 0 and isPaid(planKey) and validWindow(startsAt, endsAt) and endsAt <= fullEndsAt and grantMonthAllowance(planKey, startsAt, endsAt, fullEndsAt) > 0
 pure def openGrantMonth(p: Period, grantId: str, month: int, planKey: PlanKey, startsAt: Millis, endsAt: Millis, fullEndsAt: Millis): Period =
   periodOf(GrantMonth({ grantId: grantId, month: month }), planKey, startsAt, endsAt, grantMonthAllowance(planKey, startsAt, endsAt, fullEndsAt))
-pure val invoiceIdValues = Set("in_1")
 pure val grantIdValues = Set("grant1")
 pure val monthValues = Set(0, 1)
 pure val startsAtValues = Set(0)
@@ -72,19 +71,35 @@ pure def lawGrantMonthNeverExceedsTheMonthlyAllowance(planKey: PlanKey, startsAt
   (validWindow(startsAt, endsAt) and endsAt <= fullEndsAt) implies (grantMonthAllowance(planKey, startsAt, endsAt, fullEndsAt) >= 0 and grantMonthAllowance(planKey, startsAt, endsAt, fullEndsAt) <= allowanceOf(planKey))
 pure def alwaysUnopenedPeriodIsEmpty(p: Period): bool = (p.phase == PeriodUnopened implies p == initial) and (p.phase != PeriodUnopened implies p.source != NoSource)
 pure def alwaysOpenedPeriodIsPaid(p: Period): bool = p.phase != PeriodUnopened implies (isPaid(p.planKey) and p.granted >= 1 and validWindow(p.startsAt, p.endsAt))
-pure def stepIdentityFixedOnceOpened(before: Period, after: Period): bool =
-  before.phase != PeriodUnopened implies (after.source == before.source and after.startsAt == before.startsAt and after.endsAt == before.endsAt and after.granted == before.granted)
 pure def sometimesPartialGrantMonth(p: Period): bool = isGrantMonth(p) and p.granted < allowanceOf(p.planKey)
+```
+
+### A lifetime grant keeps its current month and the next two opened, and a missed month never opens
+
+The hourly allowance sweep, beside expiry, serves each active account whose
+lifetime grant has started and is not revoked, when no month of that grant
+ends more than 35 days ahead. The shell counts `currentMonth`, the whole UTC
+months from the grant start to now, and opens each due month that has no
+period yet with `openGrantMonth`.
+
+```quint
+pure def lifetimeMonthsDue(currentMonth: int): Set[int] = Set(currentMonth).union(Set(currentMonth + 1)).union(Set(currentMonth + 2))
+pure def lifetimeSweepDue(lastMonthEndsAt: Millis, now: Millis): bool = lastMonthEndsAt <= now + 35 * millisPerDay
+pure val currentMonthValues = Set(0, 4)
+pure def lawAMissedMonthNeverOpens(currentMonth: int, month: int): bool = month < currentMonth implies not(lifetimeMonthsDue(currentMonth).contains(month))
 ```
 
 ### Every micro-dollar of a period is available, held, spent, expired or clawed back, and together they are its grant plus its adjustment
 
-Only an open period has anything available.
-
 ```quint
 pure def alwaysEveryMicroAccounted(p: Period): bool =
   p.granted >= 0 and p.adjustment >= 0 and p.available >= 0 and p.reserved >= 0 and p.settled >= 0 and p.expired >= 0 and p.clawedBack >= 0
-  and p.available + p.reserved + p.settled + p.expired + p.clawedBack == p.granted + p.adjustment
+  and p.available + p.reserved + p.settled + p.expired + p.clawedBack == totalGranted(p)
+```
+
+### Only an open period has allowance available
+
+```quint
 pure def alwaysOnlyAnOpenPeriodHasAvailable(p: Period): bool = p.phase != PeriodOpen implies p.available == 0
 ```
 
@@ -110,13 +125,14 @@ that finishes after the end, or after the period was retired, is forfeited;
 after a clawback it is clawed back.
 
 ```quint
+pure def isClawedBack(p: Period): bool = p.phase == PeriodDisputed or p.phase == PeriodRefunded
 pure def heldOf(h: M::Hold): Micros = h.fromAllowance
 pure def usedOf(h: M::Hold): Micros = M::allowanceCharge(h)
 pure def canSettleHold(p: Period, held: Micros, used: Micros): bool = p.phase != PeriodUnopened and held >= 1 and held <= p.reserved and used >= 0 and used <= held
 pure def settleHold(p: Period, held: Micros, used: Micros, now: Millis): Period = {
   val rest = held - used
   val back = p.phase == PeriodOpen and now < p.endsAt
-  val clawed = p.phase == PeriodClawedBack
+  val clawed = isClawedBack(p)
   { ...p, reserved: p.reserved - held, settled: p.settled + used,
     available: if (back) p.available + rest else p.available,
     clawedBack: if (clawed) p.clawedBack + rest else p.clawedBack,
@@ -148,6 +164,37 @@ pure def close(p: Period, closeReason: CloseReason): Period = { ...p, phase: Per
 pure def sometimesGrantMonthSuperseded(p: Period): bool = p.phase == PeriodClosed and isGrantMonth(p)
 ```
 
+### A renewal opens only after each open period of the organization that overlaps it is closed
+
+In the same transaction, before it opens, each open grant month that overlaps
+the renewal closes with `SupersededByPaid` (later grant months stay open for
+after the paid plan ends), and an overlapping renewal of an ended
+subscription closes with `SubscriptionEnded`. Any other overlap refuses the
+renewal with `409 billing_state_conflict`. Grant months are not checked
+against a paid period; the effective plan of `spec/cloud/billing/entitlements.md`
+names the period that funds a call.
+
+```quint
+type OverlapStep = OpenBeside | CloseFirst({ closeReason: CloseReason }) | OverlapConflict
+pure def overlaps(a: Period, b: Period): bool = a.startsAt < b.endsAt and b.startsAt < a.endsAt
+pure def renewalOverlapStep(other: Period, renewal: Period, otherSubscriptionEnded: bool): OverlapStep =
+  if (other.phase != PeriodOpen or not(overlaps(other, renewal))) OpenBeside
+  else if (isGrantMonth(other)) CloseFirst({ closeReason: SupersededByPaid })
+  else if (isRenewal(other) and otherSubscriptionEnded) CloseFirst({ closeReason: SubscriptionEnded })
+  else OverlapConflict
+pure val otherValues: Set[Period] = {
+  val month = periodOf(GrantMonth({ grantId: "grant1", month: 0 }), PlusMonthly, 0, 600000, 25000000)
+  val renewal = periodOf(RenewalInvoice({ invoiceId: "in_0" }), PlusMonthly, 0, 600000, 25000000)
+  Set(month).union(Set(renewal)).union(Set({ ...renewal, phase: PeriodExpired, available: 0, expired: 25000000 })).union(Set({ ...month, startsAt: 600000, endsAt: 1200000 }))
+}
+pure val renewalValues: Set[Period] = Set(periodOf(RenewalInvoice({ invoiceId: "in_1" }), ProMonthly, 0, 600000, 90000000))
+pure val otherSubscriptionEndedValues = Set(true, false)
+pure def lawARenewalClosesOnlyWhatMayClose(other: Period, renewal: Period, otherSubscriptionEnded: bool): bool = {
+  val decided = renewalOverlapStep(other, renewal, otherSubscriptionEnded)
+  match decided { | CloseFirst(x) => canClose(other, x.closeReason) and overlaps(other, renewal) | _ => true }
+}
+```
+
 ## Story: Get more allowance when I upgrade mid-period
 
 > As a subscriber, I want an upgrade to add the difference in allowance for
@@ -159,7 +206,8 @@ pure def sometimesGrantMonthSuperseded(p: Period): bool = p.phase == PeriodClose
 The amount is `floor((target − previous) × minutesLeft / minutesInPeriod)`
 µUSD, from the proration instant of the reviewed quote
 (`spec/cloud/billing/subscriptionCommands.md`); counting minutes keeps the
-product under 2^53. Posted after the period ended, it expires at once.
+product under 2^53. Posted after the period ended or was retired, it expires
+at once.
 
 ```quint
 pure def upgradeAdjustment(previous: PlanKey, target: PlanKey, startsAt: Millis, endsAt: Millis, effectiveAt: Millis): Micros = {
@@ -169,8 +217,8 @@ pure def upgradeAdjustment(previous: PlanKey, target: PlanKey, startsAt: Millis,
   else (allowanceOf(target) - allowanceOf(previous)) * minutesLeft / totalMinutes
 }
 pure def canAdjustForUpgrade(p: Period, target: PlanKey, effectiveAt: Millis, reviewed: Micros): bool =
-  isRenewal(p) and (p.phase == PeriodOpen or p.phase == PeriodExpired) and isUpgrade(p.planKey, target) and effectiveAt >= p.startsAt and effectiveAt < p.endsAt
-  and reviewed == upgradeAdjustment(p.planKey, target, p.startsAt, p.endsAt, effectiveAt)
+  isRenewal(p) and p.phase != PeriodUnopened and isUpgrade(p.planKey, target) and effectiveAt >= p.startsAt and effectiveAt < p.endsAt
+  and reviewed >= 0 and reviewed == upgradeAdjustment(p.planKey, target, p.startsAt, p.endsAt, effectiveAt)
 pure def adjustForUpgrade(p: Period, target: PlanKey, effectiveAt: Millis, reviewed: Micros, now: Millis): Period = {
   val spendable = p.phase == PeriodOpen and now < p.endsAt
   { ...p, planKey: target, adjustment: p.adjustment + reviewed,
@@ -185,7 +233,8 @@ pure def lawUpgradeAtTheStartAddsTheWholeDifference(previous: PlanKey, target: P
   (isUpgrade(previous, target) and validWindow(startsAt, endsAt)) implies upgradeAdjustment(previous, target, startsAt, endsAt, startsAt) == allowanceOf(target) - allowanceOf(previous)
 pure def alwaysAdjustedOnlyByARenewal(p: Period): bool = p.adjustment > 0 implies isRenewal(p)
 pure def stepPlanNeverMovesDownMidPeriod(before: Period, after: Period): bool = rankOf(after.planKey) >= rankOf(before.planKey)
-pure def sometimesUpgradedMidPeriod(p: Period): bool = p.phase == PeriodOpen and p.adjustment > 0 and p.planKey == ProMonthly
+pure def sometimesUpgradedMidPeriod(p: Period): bool = p.phase == PeriodOpen and p.adjustment > 0
+pure def sometimesLateUpgradeForfeited(p: Period): bool = p.phase == PeriodExpired and p.adjustment > 0 and p.expired >= p.adjustment
 ```
 
 ## Story: Lose the allowance of a refunded invoice, and get it back if I win the dispute
@@ -196,26 +245,38 @@ pure def sometimesUpgradedMidPeriod(p: Period): bool = p.phase == PeriodOpen and
 
 ### A refund or a dispute of the invoice claws back what is still available, and what its holds return
 
-Only a renewal period is paid by an invoice; a grant month is never clawed
+The invoices of a period are its renewal invoice and each upgrade invoice
+applied to it, found by the subscription and the proration instant; a refund
+or a dispute of either claws back the period. A grant month is never clawed
 back. Charges already settled stay settled. A refund after a dispute makes
-the clawback final.
+the clawback final. A period already retired takes nothing: the guard
+refuses, and `spec/cloud/billing/providerEvents.md` marks the event done.
 
 ```quint
+type ClawbackCause = RefundClawback | DisputeClawback
 pure def canClawBack(p: Period, cause: ClawbackCause): bool =
-  isRenewal(p) and cause != NoClawback
-  and (p.phase == PeriodOpen or (p.phase == PeriodClawedBack and p.clawbackCause == DisputeClawback and cause == RefundClawback))
-pure def clawBack(p: Period, cause: ClawbackCause): Period = { ...p, phase: PeriodClawedBack, clawbackCause: cause, clawedBack: p.clawedBack + p.available, available: 0 }
-pure def alwaysClawbackHasACause(p: Period): bool =
-  ((p.phase == PeriodClawedBack) iff (p.clawbackCause != NoClawback)) and (p.phase == PeriodClawedBack implies isRenewal(p)) and (p.clawedBack > 0 implies p.phase == PeriodClawedBack)
-pure def sometimesClawedBack(p: Period): bool = p.phase == PeriodClawedBack and p.clawedBack > 0
+  isRenewal(p) and (p.phase == PeriodOpen or (p.phase == PeriodDisputed and cause == RefundClawback))
+pure def clawBack(p: Period, cause: ClawbackCause): Period =
+  { ...p, phase: if (cause == RefundClawback) PeriodRefunded else PeriodDisputed, clawedBack: p.clawedBack + p.available, available: 0 }
+pure def alwaysOnlyARenewalIsClawedBack(p: Period): bool = (isClawedBack(p) implies isRenewal(p)) and (p.clawedBack > 0 implies isClawedBack(p))
+pure def sometimesClawedBack(p: Period): bool = p.phase == PeriodRefunded and p.clawedBack > 0
+pure def sometimesDisputed(p: Period): bool = p.phase == PeriodDisputed and p.clawedBack > 0
+```
+
+### A refunded period stays refunded
+
+```quint
+pure def stepARefundIsFinal(before: Period, after: Period): bool = before.phase == PeriodRefunded implies after.phase == PeriodRefunded
 ```
 
 ### A won dispute restores everything clawed back, but only before the period ends
 
-A refund is never restored. A dispute won after the end leaves the period
-clawed back: it would have expired anyway.
+A dispute won after the end leaves the period disputed: it would have
+expired anyway.
 
 ```quint
-pure def canRestore(p: Period, now: Millis): bool = p.phase == PeriodClawedBack and p.clawbackCause == DisputeClawback and now < p.endsAt
-pure def restore(p: Period, now: Millis): Period = { ...p, phase: PeriodOpen, clawbackCause: NoClawback, available: p.available + p.clawedBack, clawedBack: 0 }
+pure def canRestore(p: Period, now: Millis): bool = p.phase == PeriodDisputed and now < p.endsAt
+pure def restore(p: Period, now: Millis): Period = { ...p, phase: PeriodOpen, available: p.available + p.clawedBack, clawedBack: 0 }
+pure def stepOnlyAWonDisputeReopens(before: Period, via: str, after: Period): bool =
+  (before.phase == PeriodDisputed and after.phase == PeriodOpen) implies (via == "restore" and after.available == before.available + before.clawedBack and after.clawedBack == 0)
 ```

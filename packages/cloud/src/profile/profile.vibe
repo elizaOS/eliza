@@ -41,7 +41,7 @@ export function rowOf(name: string, settings: EnvironmentProfile): ProfileRow {
   return {
     name, api: settings.api, web: settings.web, audience: settings.entitlementAudience,
     mailSender: settings.mailSender, databaseDigest: settings.databaseIdentity, firstPartyOrigins: [...settings.firstPartyOrigins],
-    capabilities: settings.capabilities.map((value) => capabilityOf[value]), signIn: signInSetup(settings),
+    capabilities: settings.capabilities.map((value) => capabilityOf[value]), mapsProvider: settings.maps?.provider === "google" ? "GoogleMaps" : settings.maps?.provider === "osm" ? "OsmMaps" : "NoMaps", signIn: signInSetup(settings),
     terms: document(settings.documents.terms), privacy: document(settings.documents.privacy)
   }
 }
@@ -118,11 +118,11 @@ export effect function requireSecrets(): void!SecretMissing!Deployment {
 }
 
 export function corsForOrigin(settings: EnvironmentProfile, origin: string): boolean {
-  return corsGrant(rowOf(settings.name, settings), { tag: "FromOrigin", origin }) === "CredentialedGrant"
+  return corsGrant(rowOf(settings.name, settings), { tag: "FromRequestOrigin", origin }) === "CredentialedGrant"
 }
 
 export function capabilityEnabled(settings: EnvironmentProfile, capability: Capability): boolean {
-  return routeOpen(settings.capabilities.map((offered) => capabilityOf[offered]), { tag: "Gated", capability: capabilityOf[capability] })
+  return routeOpen(settings.capabilities.map((offered) => capabilityOf[offered]), { tag: "CapabilityGated", capability: capabilityOf[capability] })
 }
 
 export function enabledCapabilities(settings: EnvironmentProfile): ReadonlyArray<Capability> {

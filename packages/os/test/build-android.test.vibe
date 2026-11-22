@@ -1,0 +1,235 @@
+// spec/os/build/androidBuild.md, "Story: Replace published APKs only with this run's verified set"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { AndroidBuildFailed, AndroidBuildRefused, buildAndroid, type BuildAndroid } from "../src/build/android-build.vibe"
+import { androidTools, buildApk, testSigner } from "./support/android-tools.ts"
+import { git, scratch, scratchRepo, writeTree } from "./support/scratch.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+
+  export const VARIANTS = ["launcher", "sideload"] as const
+  export const SIGNING = ["FIXTURE_STORE", "FIXTURE_STORE_PASSWORD", "FIXTURE_KEY_ALIAS", "FIXTURE_KEY_PASSWORD"] as const
+  export const EXTRA = "release notes\n"
+
+  /** @throws {never} */
+  export const sha256 = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex")
+
+  /** @throws {never} */
+  export function baseEnvironment(): Record<string, string | undefined> {
+    const environment: Record<string, string | undefined> = { ...process.env }
+    for (const name of SIGNING) delete environment[name]
+    return environment
+  }
+
+  export const nodePath = process.execPath
+
+  export const MANIFEST = `<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="example.fixture.build" android:versionCode="3" android:versionName="1.3">
+  <application android:label="Fixture" android:allowBackup="false" />
+</manifest>
+`
+
+  export const GRADLE = `import { appendFileSync, copyFileSync, mkdirSync, writeFileSync } from "node:fs"
+import path from "node:path"
+const env = process.env
+appendFileSync(env.FIXTURE_LOG, process.argv.slice(2).join(" ") + "\\n")
+const mode = env.FIXTURE_MODE
+if (mode === "fail") process.exit(1)
+if (mode === "dirty") writeFileSync(path.join(process.cwd(), "..", "extra.txt"), "edited\\n")
+for (const task of process.argv.slice(2)) {
+  const found = /^:app:assemble([A-Z][A-Za-z0-9]*)(Debug|Release)$/.exec(task)
+  if (found === null) continue
+  const variant = found[1].slice(0, 1).toLowerCase() + found[1].slice(1)
+  const release = found[2] === "Release"
+  if (release && mode === "missing" && variant === "sideload") continue
+  const source = !release ? variant + "-debug" : mode === "mixed" && variant === "sideload" ? "sideload-other" : mode === "model" && variant === "launcher" ? "launcher-model" : variant + "-release"
+  const directory = path.join("app/build/outputs/apk", variant, release ? "release" : "debug")
+  mkdirSync(directory, { recursive: true })
+  copyFileSync(path.join(env.FIXTURE_PREBUILT, source + ".apk"), path.join(directory, "app-" + variant + (release ? "-release" : "-debug") + (release && mode === "unsigned" ? "-unsigned" : "") + ".apk"))
+}
+`
+
+  export const VERIFY = `import { execFileSync } from "node:child_process"
+import { createHash } from "node:crypto"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import path from "node:path"
+const directory = process.argv[2]
+if (process.env.FIXTURE_VERIFY === "stale") process.exit(0)
+const rows = process.env.FIXTURE_VARIANTS.split(",").map((flavor) => {
+  const name = existsSync(path.join(directory, flavor + "-release.apk")) ? flavor + "-release.apk" : flavor + "-debug.apk"
+  const file = path.join(directory, name)
+  const printed = execFileSync(process.env.FIXTURE_APKSIGNER, ["verify", "--print-certs", file], { encoding: "utf8" })
+  const signer = /certificate SHA-256 digest: ([a-f0-9]{64})/.exec(printed)[1]
+  return { flavor, name, sha256: createHash("sha256").update(readFileSync(file)).digest("hex"), signer }
+})
+writeFileSync(path.join(directory, "apk-manifest.json"), JSON.stringify(rows, null, 2))
+`
+}
+import { EXTRA, GRADLE, MANIFEST, SIGNING, VARIANTS, VERIFY, baseEnvironment, nodePath, sha256 } from node
+
+const tools = androidTools()
+const skipped = tools.kind === "missing" ? tools.reason : null
+
+interface Consumer {
+  readonly root: string
+  readonly pin: string
+  readonly log: string
+  readonly signerDigest: string
+  readonly options: (mode: string, signing: "none" | "partial" | "all", extra?: Partial<BuildAndroid>) => BuildAndroid
+}
+
+effect function consumer() {
+  const path = try Path.Path
+  if (tools.kind === "missing") return undefined
+  const work = try scratch("android-build")
+  const signer = try Effect.try(() => testSigner(tools, work, "release"))
+  const other = try Effect.try(() => testSigner(tools, work, "other"))
+  const prebuilt = path.join(work, "prebuilt")
+  const apk = (name: string, owner: typeof signer, assets: Readonly<Record<string, string>>) =>
+    Effect.try(() => buildApk(tools, { directory: prebuilt, manifest: MANIFEST, signer: owner, name, assets }))
+  for (const variant of VARIANTS) {
+    try apk(`${variant}-debug`, signer, { "variant.txt": `${variant} debug` })
+    try apk(`${variant}-release`, signer, { "variant.txt": `${variant} release` })
+  }
+  try apk("sideload-other", other, { "variant.txt": "sideload release" })
+  try apk("launcher-model", signer, { "variant.txt": "launcher release", "models/tiny.gguf": "GGUF" })
+  try writeTree(work, { "gradle.mjs": GRADLE, "verify.mjs": VERIFY })
+  const repo = try scratchRepo("android-build-consumer", {
+    "host/.eliza-consumer-profile.json": JSON.stringify({ signing: { storeFile: SIGNING[0], storePassword: SIGNING[1], keyAlias: SIGNING[2], keyPassword: SIGNING[3] }, runtimeMain: null }),
+    "host/gradlew": { kind: "executable", content: '#!/bin/sh\nexec "$FIXTURE_NODE" "$FIXTURE_GRADLE" "$@"\n' },
+    "extra.txt": EXTRA,
+  })
+  const log = path.join(work, "gradle.log")
+  const values = { all: [signer.keystore, signer.password, signer.alias, signer.password] }
+  const options = (mode: string, signing: "none" | "partial" | "all", extra: Partial<BuildAndroid> = {}): BuildAndroid => {
+    const set = signing === "none" ? [] : signing === "partial" ? [0, 2] : [0, 1, 2, 3]
+    const environment = {
+      ...baseEnvironment(),
+      ANDROID_HOME: tools.sdk,
+      FIXTURE_NODE: nodePath,
+      FIXTURE_GRADLE: path.join(work, "gradle.mjs"),
+      FIXTURE_PREBUILT: prebuilt,
+      FIXTURE_APKSIGNER: tools.apksigner,
+      FIXTURE_LOG: log,
+      FIXTURE_MODE: mode,
+      FIXTURE_VERIFY: mode === "stale" ? "stale" : "fresh",
+      FIXTURE_VARIANTS: (extra.variants ?? VARIANTS).join(","),
+      ...Object.fromEntries(set.map((index) => [SIGNING[index], values.all[index]])),
+    }
+    return {
+      root: repo.root, project: "host", output: "artifacts", variants: [...VARIANTS], pin: repo.commit, environment,
+      verify: { command: nodePath, args: [path.join(work, "verify.mjs")] }, lint: false, androidTest: false, ...extra,
+    }
+  }
+  const made: Consumer = { root: repo.root, pin: repo.commit, log, signerDigest: signer.certificateSha256, options }
+  return made
+}
+
+effect function outcome(options: BuildAndroid) {
+  return (effect {
+    try buildAndroid(options)
+    return "Published"
+  } catch (error) => match (error) {
+    when AndroidBuildFailed: error.failure;
+    when AndroidBuildRefused: error.refusal;
+    default: error._tag;
+  })
+}
+
+effect function published(directory: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const digests: Record<string, string> = {}
+  if (!(try files.exists(directory))) return digests
+  for (const name of (try files.readDirectory(directory, { recursive: true })).sort()) {
+    const file = path.join(directory, name)
+    if ((try files.stat(file)).type === "File") digests[name] = sha256(try files.readFile(file))
+  }
+  return digests
+}
+
+effect function gradleRuns(log: string) {
+  const files = try FileSystem.FileSystem
+  return (try files.exists(log)) ? (try files.readFileString(log)).split("\n").filter((line) => line !== "").length : 0
+}
+
+it.effect.skipIf(skipped !== null)(`Refuse bad requests before Gradle and replace the published APKs only with this run's verified, single-signer, model-free set${skipped === null ? "" : ` (skipped: ${skipped})`} (spec/os/build/androidBuild.md, "Story: Replace published APKs only with this run's verified set"; spec/os/build/androidBuild.md, "A request is admitted only when well formed, built from the pinned source and an identified payload"; spec/os/build/androidBuild.md, "Every selected APK must come out of Gradle, and a release signed as configured, before anything is written"; spec/os/build/androidBuild.md, "The private set is verified against the pin, the payload and a fresh APK manifest before it can be published"; spec/os/build/androidBuild.md, "Only a verified set replaces the published APKs, in one rename, with an honest receipt")`, effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const fixture = try consumer()
+    if (fixture === undefined) return
+    const output = path.join(fixture.root, "artifacts")
+
+    assert.strictEqual(try outcome(fixture.options("signed", "partial")), "SigningPartial")
+    assert.strictEqual(try outcome(fixture.options("signed", "all", { variants: [] })), "NoVariants")
+    assert.strictEqual(try outcome(fixture.options("signed", "all", { variants: ["launcher", "launcher"] })), "DuplicateVariant")
+    assert.strictEqual(try outcome(fixture.options("signed", "all", { record: { name: "apk-manifest.json", metadata: {} } })), "MalformedRequest")
+    assert.strictEqual(try outcome(fixture.options("signed", "all", { gradleArguments: ["--init-script=evil.gradle"] })), "MalformedRequest")
+    assert.strictEqual(try outcome(fixture.options("signed", "all", { pin: "0".repeat(40) })), "SourceNotAtPin")
+    assert.strictEqual(try gradleRuns(fixture.log), 0, "every refused request stops before Gradle")
+    assert.isFalse(try files.exists(output))
+
+    const built = try buildAndroid(fixture.options("signed", "all", { record: { name: "build.json", metadata: { run: 1 } } }))
+    const first = try published(output)
+    assert.deepStrictEqual(Object.keys(first), ["apk-manifest.json", "build.json", "launcher-debug.apk", "launcher-release.apk", "sideload-debug.apk", "sideload-release.apk"])
+    assert.deepStrictEqual(built.manifest, VARIANTS.map((flavor) => ({ flavor, name: `${flavor}-release.apk`, sha256: first[`${flavor}-release.apk`], signer: fixture.signerDigest })))
+    assert.deepStrictEqual(built.files, VARIANTS.flatMap((flavor) => [`${flavor}-debug.apk`, `${flavor}-release.apk`].map((name) => path.join(output, name))))
+    assert.isFalse(try files.exists(path.join(fixture.root, ".artifacts.build", "next")), "the private copy is cleaned up")
+    assert.strictEqual(try git(fixture.root, ["rev-parse", "HEAD"]), fixture.pin)
+
+    for (const [mode, signing, failure] of [
+      ["fail", "all", "GradleFailed"],
+      ["missing", "all", "OutputsIncomplete"],
+      ["unsigned", "all", "ReleaseUnsigned"],
+      ["signed", "none", "ReleaseUnsigned"],
+      ["mixed", "all", "VerificationFailed"],
+      ["model", "all", "VerificationFailed"],
+      ["stale", "all", "VerificationFailed"],
+      ["dirty", "all", "SourceMoved"],
+    ] as const) {
+      assert.strictEqual(try outcome(fixture.options(mode, signing)), failure, `${mode} with ${signing} signing variables`)
+      assert.deepStrictEqual(try published(output), first, `${mode} leaves the published set in place`)
+      assert.isFalse(try files.exists(path.join(fixture.root, ".artifacts.build", "next")), `${mode} leaves no private copy`)
+      try writeTree(fixture.root, { "extra.txt": EXTRA })
+    }
+
+    try buildAndroid(fixture.options("unsigned", "none"))
+    const unsigned = try published(output)
+    assert.deepStrictEqual(Object.keys(unsigned), ["apk-manifest.json", "launcher-debug.apk", "launcher-release-unsigned.apk", "sideload-debug.apk", "sideload-release-unsigned.apk"])
+  }
+}, 600_000)
+
+it.effect.skipIf(skipped !== null)(`Publish a debug-only set without stale releases and archive a verified release with checked extra files${skipped === null ? "" : ` (skipped: ${skipped})`} (spec/os/build/androidBuild.md, "Story: Replace published APKs only with this run's verified set"; spec/os/build/androidBuild.md, "Only a verified set replaces the published APKs, in one rename, with an honest receipt"; spec/os/build/androidBuild.md, "An archive copies the published set with the consumer's verified files, or the previous archive stays")`, effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const fixture = try consumer()
+    if (fixture === undefined) return
+    const output = path.join(fixture.root, "artifacts")
+    const archived = path.join(fixture.root, "archive")
+    const extra = (sha: string) => ({ output: "archive", metadata: { mode: "service" }, files: () => [{ source: "extra.txt", name: "notes/extra.txt", sha256: sha }] })
+
+    assert.strictEqual(try outcome(fixture.options("signed", "all", { release: false, archive: extra(sha256(EXTRA)) })), "DebugOnlyArchive")
+    try buildAndroid(fixture.options("signed", "all"))
+    const debugOnly = try buildAndroid(fixture.options("signed", "all", { release: false }))
+    assert.isNull(debugOnly.archive)
+    assert.deepStrictEqual(Object.keys(try published(output)), ["apk-manifest.json", "launcher-debug.apk", "sideload-debug.apk"], "no earlier release APK stays beside the debug set")
+
+    const built = try buildAndroid(fixture.options("signed", "all", { archive: extra(sha256(EXTRA)), record: { name: "build.json", metadata: { run: 2 } } }))
+    assert.strictEqual(built.archive, archived)
+    const first = try published(archived)
+    assert.deepStrictEqual(Object.keys(first), ["apk-manifest.json", "build-checks.json", "build.json", "launcher-debug.apk", "launcher-release.apk", "notes/extra.txt", "service-mode.json", "sideload-debug.apk", "sideload-release.apk"])
+    assert.strictEqual(first["notes/extra.txt"], sha256(EXTRA))
+    const metadata = try files.readFileString(path.join(archived, "service-mode.json"))
+    assert.deepStrictEqual(try Effect.try(() => JSON.parse(metadata)), { mode: "service" })
+    assert.strictEqual(first["launcher-release.apk"], (try published(output))["launcher-release.apk"])
+
+    assert.strictEqual(try outcome(fixture.options("signed", "all", { archive: extra("0".repeat(64)) })), "ArchiveFilesChanged")
+    assert.deepStrictEqual(try published(archived), first, "the previous archive stays")
+    assert.isTrue(try files.exists(path.join(output, "launcher-release.apk")), "the verified set stands without an archive")
+    assert.strictEqual(try outcome(fixture.options("signed", "all", { archive: { ...extra(sha256(EXTRA)), files: () => [{ source: "extra.txt", name: "apk-manifest.json", sha256: sha256(EXTRA) }] } })), "ArchiveFilesChanged")
+    assert.deepStrictEqual(try published(archived), first)
+  }
+}, 600_000)

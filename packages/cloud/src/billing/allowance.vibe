@@ -185,7 +185,7 @@ export effect function adjustForUpgrade(tx: Tx, organizationId: string, target: 
     ? { key: "", period: periodRows.initial, moved: false }
     : try stepWhenEnabled(tx, key, { type: "adjustForUpgrade", target, effectiveAt, reviewed, now }, now)
   if (!step.moved && reviewed > 0) {
-    try annotateLogs(logWarning("an upgrade's reviewed allowance adjustment matched no renewal period"), { organizationId, period: step.key, target, effectiveAt, reviewed })
+    try annotateLogs(logWarning("an upgrade's reviewed allowance adjustment did not apply to a renewal period"), { organizationId, period: step.key, target, effectiveAt, reviewed })
   }
   return step
 }

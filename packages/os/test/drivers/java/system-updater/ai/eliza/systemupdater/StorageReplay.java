@@ -209,7 +209,7 @@ public final class StorageReplay {
         if (!before && !measuredLowVolume) { fixture.start(); fixture.verify(); }
     }
 
-    public static void main(String[] args) throws IOException {
+    static void replay(String[] args) throws IOException {
         Path root = Path.of(args[0]);
         boolean before = args[1].equals("before");
         recovery(root, "downloading-deferral", false, before, false);

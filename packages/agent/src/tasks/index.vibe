@@ -1,0 +1,127 @@
+// spec/agent/tasks/index.md, "Every task request comes from the launch account of a started host"; spec/agent/tasks/index.md, "A start pauses the work a previous process left unfinished"; spec/agent/tasks/wire.md, "A chat turn names a task only while the host presents it at that epoch"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"
+import { InMemoryMessageInteractionSessionStore, Service, logger, stringToUuid, validateUuid, type IAgentRuntime, type TaskChoiceWidget, type TaskOwner } from "@elizaos/core"
+import { ModuleRefused, type AgentModule, type ModuleContext, type ModuleFactory } from "../host/module.vibe"
+import {
+  InteractiveTaskChoices, taskPresentations, tasksServiceType,
+  type ChatTaskPresenter, type ChatTaskSource, type FormatTaskContext, type TaskChoiceBlock, type TaskPresentations,
+} from "./chat-task.vibe"
+import { createTaskHost, type TaskActuator, type TaskGoalAuthorizer, type TaskHostHandle } from "./host.vibe"
+import { taskRoutes } from "./routes.vibe"
+import { createTaskStore, storageKeySource } from "./store.vibe"
+
+export const tasksModuleName = "@elizaos/agent/tasks"
+
+export interface TasksApi extends Service, ChatTaskSource {
+  readonly host: TaskHostHandle
+  readonly choices: InteractiveTaskChoices
+  registerActuator(actuator: TaskActuator | undefined): Promise<void>
+  registerAuthorizer(authorizer: TaskGoalAuthorizer | undefined): Promise<void>
+  registerTaskContext(format: FormatTaskContext | undefined): void
+  publishChoice(taskId: string, contextKey: string, block: TaskChoiceBlock): Promise<TaskChoiceWidget>
+  readChoice(taskId: string): Promise<TaskChoiceWidget | null>
+  clearChoice(taskId: string): Promise<void>
+}
+
+function tasksApi(host: TaskHostHandle, choices: InteractiveTaskChoices, presentations: TaskPresentations) {
+  let formatter: FormatTaskContext | undefined
+  const presenter = (format: FormatTaskContext): ChatTaskPresenter => ({
+    present: (request, actorId) => runPromise(host.presentationForConversation({ ...request, actorId })),
+    choice: (taskId) => presentations.read(taskId),
+    format,
+  })
+  return class Tasks extends Service implements TasksApi {
+    static override serviceType = tasksServiceType
+    override capabilityDescription = "The owner's interactive task: register its actuator, goal authorizer and chat context, and offer its choices"
+    readonly host = host
+    readonly choices = choices
+
+    static override start(runtime: IAgentRuntime): Promise<Service> {
+      return Promise.resolve(new Tasks(runtime))
+    }
+
+    registerActuator(actuator: TaskActuator | undefined): Promise<void> {
+      return runPromise(host.registerActuator(actuator))
+    }
+
+    registerAuthorizer(authorizer: TaskGoalAuthorizer | undefined): Promise<void> {
+      return runPromise(host.registerAuthorizer(authorizer))
+    }
+
+    registerTaskContext(format: FormatTaskContext | undefined): void {
+      formatter = format
+    }
+
+    chatTaskPresenter(): ChatTaskPresenter | undefined {
+      return formatter === undefined ? undefined : presenter(formatter)
+    }
+
+    publishChoice(taskId: string, contextKey: string, block: TaskChoiceBlock): Promise<TaskChoiceWidget> {
+      return presentations.publish(taskId, contextKey, block)
+    }
+
+    readChoice(taskId: string): Promise<TaskChoiceWidget | null> {
+      return presentations.read(taskId)
+    }
+
+    clearChoice(taskId: string): Promise<void> {
+      return presentations.clear(taskId)
+    }
+
+    override stop(): Promise<void> {
+      return runPromise(host.close())
+    }
+  }
+}
+
+effect function launchOwner(context: ModuleContext) {
+  const accountId = context.launch.account?.userId
+  if (accountId === undefined) throw new ModuleRefused({ module: tasksModuleName, reason: "The task module needs the launch account" })
+  if (context.storageKey === undefined) throw new ModuleRefused({ module: tasksModuleName, reason: "The task module needs the launch frame's storage key" })
+  const actorId = try orDie(Effect.try(() => validateUuid(accountId) ?? stringToUuid(`account:${accountId}`)))
+  const owner: TaskOwner = { agentId: context.runtime.agentId, actorId, connector: { source: "device", accountId } }
+  return { owner, storageKey: context.storageKey }
+}
+
+export const tasksModule: ModuleFactory<never> = effect (context) => {
+  const { owner, storageKey } = try launchOwner(context)
+  const keys = try orDie(Effect.try(() => storageKeySource(storageKey)))
+  const store = try orDie(createTaskStore({ directory: `${context.stateDirectory}/tasks`, keys }))
+  const host = try orDie(createTaskHost({ store }))
+  const started = try exit(host.start(owner))
+  if (Exit.isFailure(started)) {
+    logger.warn({ src: "agent", module: tasksModuleName, error: String(Cause.squash(started.cause)) }, "The task host did not start; task commands answer unavailable")
+  }
+  const tasks = { view: (taskId: string) => runPromise(host.view(taskId)) }
+  const choices = try orDie(Effect.try(() => new InteractiveTaskChoices(tasks, new InMemoryMessageInteractionSessionStore())))
+  return {
+    name: tasksModuleName,
+    plugin: {
+      name: tasksModuleName,
+      description: "The owner's interactive task: its host, sealed store, routes and chat-turn presentation",
+      services: [tasksApi(host, choices, taskPresentations(tasks, choices))],
+      routes: taskRoutes(host),
+    },
+  } satisfies AgentModule
+}
+
+export { transitionInteractiveTask } from "@elizaos/core"
+export {
+  ChoiceStale, InteractiveTaskChoices, beginChatTask, taskPresentations, tasksServiceType,
+  type ChatTaskEnding, type ChatTaskPresenter, type ChatTaskRefusal, type ChatTaskRequest, type ChatTaskSource, type ChatTaskTurn,
+  type ChoiceResult, type FormatTaskContext, type PresentedTasks, type TaskChoiceBlock, type TaskPresentation, type TaskPresentations,
+} from "./chat-task.vibe"
+export {
+  TaskHostError, createTaskHost,
+  type AuthorizedTaskGoal, type PresentationRequest, type TaskActuator, type TaskCleanupReason, type TaskDispatchContext, type TaskGoalAuthorizer,
+  type TaskHostHandle, type TaskHostOptions,
+} from "./host.vibe"
+export {
+  createTaskSealer, deriveTaskKeys, sealedEvidenceCodec, sealedFilePorts, sealedPrefix, sealedTextCodec,
+  type TaskKeys, type TaskPurpose, type TaskSealer,
+} from "./sealing.vibe"
+export {
+  createTaskStore, openNodeTaskDatabase, storageKeySource,
+  type TaskDatabase, type TaskDatabaseOpener, type TaskKeySource, type TaskRecord, type TaskRecords, type TaskStatement, type TaskStorageStatus,
+  type UnreadableTaskRecord,
+} from "./store.vibe"
+export { taskCodes, taskRoutes, taskView, type PauseReason, type TaskRoutesHost } from "./routes.vibe"

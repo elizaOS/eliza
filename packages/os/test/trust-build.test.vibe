@@ -1,0 +1,163 @@
+// spec/os/appUpdate/admission.md, "Story: Install an app update only when every authority allows it"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { TrustBuildFailed, TrustBuildRefused, buildAndroidTrust, composeTrustSource, type BuildAndroidTrust, type TrustHostPolicy } from "../src/app-update/trust-build.vibe"
+import { scratch, writeTree } from "./support/scratch.vibe"
+
+module node {
+  import { Buffer } from "node:buffer"
+
+  export const NDK = "29.0.13113456"
+
+  export const FAKE_GO = `#!${process.execPath}
+const fs = require("node:fs")
+const args = process.argv.slice(2)
+fs.appendFileSync(process.env.TRACE, JSON.stringify({ args, cwd: process.cwd(), ndk: process.env.ANDROID_NDK_HOME, toolchain: process.env.GOTOOLCHAIN }) + "\\n")
+if (args[0] === "env") { console.log(process.env.GO_VERSION || "go1.27.1"); process.exit(0) }
+fs.writeFileSync(args[args.indexOf("-o") + 1], args[0] === "build" ? "gobind" : "new-aar")
+if (process.env.FAIL_BIND === "1" && args[0] === "tool") process.exit(7)
+`
+
+  /** @throws {never} */
+  export function decodedPolicy(ldflags: string): string {
+    return Buffer.from(ldflags.split("=").at(-1) ?? "", "base64url").toString("utf8")
+  }
+
+  /** @throws {never} */
+  export function environment(): Record<string, string | undefined> {
+    return { ...process.env }
+  }
+
+  export interface Call {
+    readonly args: readonly string[]
+    readonly cwd: string
+    readonly ndk: string
+    readonly toolchain: string
+  }
+
+  /** @throws {never} */
+  export function calls(trace: string): readonly Call[] {
+    return trace.trim() === "" ? [] : trace.trim().split("\n").map((line): Call => JSON.parse(line))
+  }
+}
+import { FAKE_GO, NDK, calls, decodedPolicy, environment } from node
+
+const HOST: TrustHostPolicy = { schema: 3, product: "host-one", package: "org.fixture.one", cohortDomain: "fixture" }
+
+effect function outcome<A, E extends { readonly _tag: string }, R>(run: A!E!R) {
+  return (effect { try run; return "built" } catch (error) => match (error) {
+    when TrustBuildRefused: `refused: ${error.reason}`;
+    when TrustBuildFailed: `failed: ${error.command}`;
+    default: error._tag;
+  })
+}
+
+effect function toolFixture() {
+  const path = try Path.Path
+  const root = path.join(try scratch("trust-build"), "ota build")
+  try writeTree(root, {
+    "source/go.mod": "module fixture\n",
+    [`sdk/ndk/${NDK}/source.properties`]: `Pkg.Revision = ${NDK}\n`,
+    "jdk/bin/.keep": "",
+    "bin/go": { kind: "executable", content: FAKE_GO },
+  })
+  const trace = path.join(root, "trace.jsonl")
+  const options: BuildAndroidTrust = {
+    source: path.join(root, "source"),
+    output: path.join(root, "output", "trust.aar"),
+    toolchain: { go: "1.27.1", ndk: NDK, androidApi: 29, target: "android/arm64", javaPackage: "example.host.trust" },
+    ldflags: "-X=example.policy=opaque",
+    environment: { ...environment(), PATH: path.join(root, "bin"), ANDROID_HOME: path.join(root, "sdk"), JAVA_HOME: path.join(root, "jdk"), TRACE: trace },
+  }
+  return { root, trace, options }
+}
+
+effect function traced(trace: string) {
+  const files = try FileSystem.FileSystem
+  return calls(files.readFileString(trace) catch () => "")
+}
+
+it.effect("Compose the trust source only from the admitted tree and the compiled host policy, and refuse a tampered cache (spec/os/appUpdate/admission.md, \"Story: Install an app update only when every authority allows it\")", effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const root = try scratch("trust-compose")
+    const sharedSource = path.join(root, "shared")
+    const testDirectory = path.join(root, "tests")
+    const cacheDirectory = path.join(root, "cache")
+    try writeTree(root, { "shared/go.mod": "module fixture\n", "tests/consumer_test.go": "package fixture\n", "tests/notes.txt": "not a test\n" })
+    const options = { sharedSource, testDirectory, cacheDirectory, hostPolicy: HOST }
+
+    const one = try composeTrustSource(options)
+    assert.deepStrictEqual(try composeTrustSource(options), one)
+    assert.strictEqual(try files.readFileString(path.join(one.source, "consumer_test.go")), "package fixture\n")
+    assert.isFalse(try files.exists(path.join(one.source, "notes.txt")))
+    assert.isTrue(one.ldflags.startsWith("-X=github.com/elizaOS/eliza/packages/os/native/ota-trust.compiledHostPolicyBase64="))
+    assert.deepStrictEqual(try Effect.try(() => JSON.parse(decodedPolicy(one.ldflags))), HOST)
+    assert.notStrictEqual((try composeTrustSource({ ...options, hostPolicy: { ...HOST, product: "host-two" } })).source, one.source)
+
+    try files.writeFileString(path.join(sharedSource, "go.mod"), "module revision\n")
+    assert.notStrictEqual((try composeTrustSource(options)).source, one.source)
+    try files.writeFileString(path.join(sharedSource, "go.mod"), "module fixture\n")
+
+    try files.writeFileString(path.join(one.source, "go.mod"), "tampered")
+    assert.strictEqual(try outcome(composeTrustSource(options)), "refused: Composed OTA source inventory mismatch")
+    assert.strictEqual(try files.readFileString(path.join(sharedSource, "go.mod")), "module fixture\n")
+    try files.writeFileString(path.join(one.source, "go.mod"), "module fixture\n")
+    try files.symlink(path.join(sharedSource, "go.mod"), path.join(one.source, "unexpected"))
+    assert.strictEqual(try outcome(composeTrustSource(options)), "refused: Unexpected OTA source entry unexpected")
+
+    const legacy = { schema: 2, product: "host-one", package: "org.fixture.one", cohortDomain: "fixture", runtimeInventoryHeader: "fixture-v1", runtimeExcludedAgentDirectories: ["models"] }
+    for (const hostPolicy of [{ ...HOST, product: "" }, { ...HOST, cohortDomain: " " }, legacy, { ...HOST, extra: "value" }]) {
+      assert.strictEqual(try outcome(composeTrustSource({ ...options, hostPolicy: hostPolicy as unknown as TrustHostPolicy })), "refused: Invalid OTA host build policy")
+    }
+    try files.writeFileString(path.join(sharedSource, "consumer_test.go"), "existing")
+    assert.strictEqual(try outcome(composeTrustSource(options)), "refused: Invalid or colliding OTA compatibility test consumer_test.go")
+  }
+})
+
+it.effect("Build the trust AAR with the host's binding and policy, keep the previous AAR when a tool fails, and refuse a wrong toolchain before writing (spec/os/appUpdate/admission.md, \"Story: Install an app update only when every authority allows it\")", effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+
+    const built = try toolFixture()
+    assert.strictEqual(try buildAndroidTrust(built.options), built.options.output)
+    assert.strictEqual(try files.readFileString(built.options.output), "new-aar")
+    const made = try traced(built.trace)
+    const source = try files.realPath(built.options.source)
+    assert.strictEqual(made.length, 3)
+    assert.isTrue(made.every((call) => call.cwd === source && call.toolchain === "local" && call.ndk === path.join(built.root, "sdk", "ndk", NDK)))
+    for (const flag of ["-target=android/arm64", "-androidapi=29", "-javapkg=example.host.trust", "-ldflags=-X=example.policy=opaque"]) {
+      assert.include(made[2]?.args ?? [], flag)
+    }
+    assert.deepStrictEqual(try files.readDirectory(path.dirname(built.options.output)), ["trust.aar"])
+
+    const failing = try toolFixture()
+    try writeTree(path.dirname(failing.options.output), { "trust.aar": "previous" })
+    const bindFailure = try outcome(buildAndroidTrust({ ...failing.options, environment: { ...failing.options.environment, FAIL_BIND: "1" } }))
+    assert.isTrue(bindFailure.startsWith("failed: go tool gomobile bind -target=android/arm64"), bindFailure)
+    assert.strictEqual(try files.readFileString(failing.options.output), "previous")
+    assert.deepStrictEqual(try files.readDirectory(path.dirname(failing.options.output)), ["trust.aar"])
+
+    const wrong = try toolFixture()
+    assert.strictEqual(try outcome(buildAndroidTrust({ ...wrong.options, environment: { ...wrong.options.environment, GO_VERSION: "go1.25.0" } })), "refused: Android trust build requires Go 1.27.1; got go1.25.0")
+    assert.isFalse(try files.exists(path.dirname(wrong.options.output)))
+    try writeTree(wrong.root, { [`sdk/ndk/${NDK}/source.properties`]: "Pkg.Revision = 28.0.0\n" })
+    assert.strictEqual(try outcome(buildAndroidTrust(wrong.options)), `refused: Android trust build requires NDK ${NDK}`)
+    assert.isFalse(try files.exists(path.dirname(wrong.options.output)))
+
+    const invalid = try toolFixture()
+    for (const change of [{ javaPackage: "example/host" }, { ndk: "../other" }, { target: "ios" }, { androidApi: 0 }]) {
+      assert.strictEqual(try outcome(buildAndroidTrust({ ...invalid.options, toolchain: { ...invalid.options.toolchain, ...change } })), "refused: Invalid Android trust build policy")
+    }
+    assert.strictEqual(try outcome(buildAndroidTrust({ ...invalid.options, ldflags: " " })), "refused: Invalid Android trust build policy")
+    assert.strictEqual(try outcome(buildAndroidTrust({ ...invalid.options, environment: { ...invalid.options.environment, JAVA_HOME: undefined } })), "refused: Android SDK and JDK paths are required")
+    assert.deepStrictEqual(try traced(invalid.trace), [])
+
+    const prerelease = try toolFixture()
+    try writeTree(prerelease.root, { [`sdk/ndk/${NDK}/source.properties`]: `Pkg.Revision = ${NDK}-beta1\n` })
+    assert.strictEqual(try outcome(buildAndroidTrust(prerelease.options)), `refused: Android trust build requires NDK ${NDK}`)
+    assert.strictEqual(try buildAndroidTrust({ ...prerelease.options, toolchain: { ...prerelease.options.toolchain, ndkRevision: `${NDK}-beta1` } }), prerelease.options.output)
+  }
+})

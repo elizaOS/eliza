@@ -1,0 +1,870 @@
+// spec/os/image/verification.md, "Story: Know whether a booted image is what I staged"; spec/os/image/verification.md, "Each check reads Pass or Fail, and a check that could not be read is Unknown"; spec/os/image/verification.md, "An image passes only when every required check passes, and a failure outranks an unread check"; spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/image/qualification.md, "Story: Read the verdict against my requirements"
+import {
+  clockAlarmActions,
+  imageReport,
+  imageVerdict,
+  secureCaptureActions,
+  type BootReading,
+  type BootState,
+  type CameraReading,
+  type ClockReading,
+  type FingerprintReading,
+  type GrantOrigin,
+  type GrantsReading,
+  type ImageExpectation,
+  type ImageObservation,
+  type LauncherInstall,
+  type ListenerReading,
+  type PrivilegeReading,
+  type Reading,
+  type RuntimeGrant,
+  type SelinuxReading,
+} from "../../gen/os__image__verification.effect.vibe"
+import {
+  admitRun,
+  atLeast,
+  commandAllowed,
+  fastbootGetvarNames,
+  hasRequirementFor,
+  idUnique,
+  normalizeVendorApiLevel,
+  outcomeOf,
+  qualificationOf,
+  requirementsValid,
+  vendorApiAtLeast,
+  type CheckOutcome as RequirementOutcome,
+  type EvidenceLevel,
+  type Observation,
+  type ProbeMode,
+  type Reading as Measure,
+  type Requirement,
+  type RunAdmission,
+  type Verdict,
+} from "../../gen/os__image__qualification.effect.vibe"
+import { indicatorExemptRoles, listenerLeaf } from "../../gen/os__image__listener.effect.vibe"
+import { clockPackage, secureCameraPackage } from "../../gen/os__image__provisioning.effect.vibe"
+import { parseDigest } from "./apk.vibe"
+import { SECURE_CAMERA_COMPONENT } from "./provisioning.vibe"
+import { validateDescriptor } from "./stage-launcher.vibe"
+import { adbRunner, adbSerial, capture, type AdbRun } from "./device.vibe"
+
+export error ImageVerificationRefused { reason: string }
+export error RequirementsInvalid { reason: string }
+export error QualificationRefused { admission: RunAdmission; reason: string }
+export error DeviceUnanswered { serial: string; mode: "adb" | "fastboot"; reason: string }
+export error QualificationUsage { message: string }
+
+export type VerifiedBootMinimum = "unchecked" | "yellow" | "green"
+
+export interface ImageVerificationOptions {
+  readonly serial: string
+  readonly adb?: string
+  readonly user: number
+  readonly descriptor: unknown
+  readonly fingerprint: string
+  readonly homeActivity?: string
+  readonly listener?: boolean
+  readonly verifiedBoot: VerifiedBootMinimum
+}
+
+interface Snapshot {
+  readonly bootId: string | undefined
+  readonly bootCompleted: string | undefined
+  readonly currentUser: string | undefined
+  readonly userState: string | undefined
+  readonly fingerprint: string | undefined
+  readonly installedPath: string | undefined
+  readonly digest: string | undefined
+  readonly home: string | undefined
+  readonly selinux: string | undefined
+}
+
+const IMAGE_TIMEOUT_MS = 15000
+const BOOT_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/
+const COMPONENT = /^[A-Za-z][\w.]*\/[.A-Za-z][\w.$]*$/
+const CLASS_NAME = /^[A-Za-z][\w.$]*$/
+const PRIVILEGED = /privateFlags=\[[^\]]*\bPRIVILEGED\b/
+const FIXED_FLAGS = ["FIXED", "SYSTEM_FIXED", "POLICY_FIXED"]
+const SETTINGS_FALLBACK_HOME = "com.android.settings/com.android.settings.FallbackHome"
+const BOOT_STATES: Readonly<Record<string, BootState>> = { green: "Green", yellow: "Yellow", orange: "Orange", red: "Red" }
+const UNREAD: Reading = { tag: "Unread" }
+
+const read = (holds: boolean): Reading => ({ tag: "Read", holds })
+
+function components(text: string): string[] {
+  return text.split(/\r?\n/).map((line) => line.trim()).filter((line) => COMPONENT.test(line)).map((line) => line.replace("/.", `/${line.split("/")[0]}.`))
+}
+
+function listed(text: string, packageName: string): boolean {
+  return text.split(/\r?\n/).map((line) => line.trim()).includes(`package:${packageName}`)
+}
+
+function homeArgs(user: string): string[] {
+  return ["--user", user, "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME"]
+}
+
+function packageSection(dump: string, packageName: string): string | undefined {
+  const at = dump.indexOf(`Package [${packageName}]`)
+  if (at < 0) return undefined
+  const lines = dump.slice(at).split(/\r?\n/)
+  const end = lines.findIndex((line, index) => index > 0 && /^\S/.test(line))
+  return lines.slice(0, end < 0 ? undefined : end).join("\n")
+}
+
+function userBlock(section: string, user: string): string | undefined {
+  const lines = section.split(/\r?\n/)
+  const start = lines.findIndex((line) => line.trimStart().startsWith(`User ${user}:`))
+  if (start < 0) return undefined
+  const end = lines.findIndex((line, index) => index > start && /^\s*User \d+:/.test(line))
+  return lines.slice(start, end < 0 ? undefined : end).join("\n")
+}
+
+function grantedNames(text: string): string[] {
+  return [...text.matchAll(/^\s*([A-Za-z][\w.]*): granted=true\b/gm)].map((match) => match[1] ?? "")
+}
+
+function runtimeGrants(block: string): RuntimeGrant[] {
+  return [...block.matchAll(/^\s*([A-Za-z][\w.]*): granted=true\b(?:, flags=\[([^\]]*)\])?/gm)].map((match) => {
+    const flags = (match[2] ?? "").split(/[\s|]+/).filter((flag) => flag !== "")
+    const origin: GrantOrigin = flags.includes("GRANTED_BY_DEFAULT") ? "GrantedByDefault" : flags.includes("REVOKE_WHEN_REQUESTED") ? "CompatibilityGrant" : "OtherGrant"
+    return { permission: match[1] ?? "", origin, fixed: flags.some((flag) => FIXED_FLAGS.includes(flag)) }
+  })
+}
+
+function roleOf(configName: string): string {
+  return `android.app.role.${configName.slice("config_".length).replace(/([A-Z])/g, "_$1").toUpperCase()}`
+}
+
+export function selinuxReading(text: string | undefined): SelinuxReading {
+  return text === "Enforcing" || text === "Permissive" ? text : "SelinuxUnread"
+}
+
+export function bootReading(text: string | undefined): BootReading {
+  const booted = text === undefined ? undefined : BOOT_STATES[text]
+  return booted === undefined ? { tag: "BootUnread" } : { tag: "BootRead", booted }
+}
+
+function fingerprintReading(text: string | undefined): FingerprintReading {
+  return text === undefined || text === "" ? { tag: "FingerprintUnread" } : { tag: "FingerprintRead", fingerprint: text }
+}
+
+function launcherInstall(installedPath: string | undefined, digest: string | undefined, apkPath: string): LauncherInstall {
+  if (installedPath === undefined) return { tag: "LauncherUnread" }
+  if (installedPath !== `package:${apkPath}`) return { tag: "NotTheSystemApk" }
+  const hex = digest === undefined ? undefined : /^([a-f0-9]{64})\s/.exec(digest)?.[1]
+  return hex === undefined ? { tag: "LauncherUnread" } : { tag: "SystemApk", sha256: parseDigest(hex) }
+}
+
+function homeReading(text: string | undefined, homeComponent: string): Reading {
+  const found = text === undefined ? [] : components(text)
+  return found.length === 0 ? UNREAD : read(found.length === 1 && found[0] === homeComponent)
+}
+
+function webViewReading(text: string | undefined): Reading {
+  if (text === undefined || !text.includes("Current WebView package")) return UNREAD
+  return read(/Current WebView package \(name, version\):\s*\(([^,\s)]+),\s*([^)]+)\)/.test(text))
+}
+
+function grantsReading(dump: string | undefined, packageName: string, user: string): GrantsReading {
+  const section = dump === undefined ? undefined : packageSection(dump, packageName)
+  const block = section === undefined ? undefined : userBlock(section, user)
+  return block === undefined ? { tag: "GrantsUnread" } : { tag: "GrantsRead", granted: runtimeGrants(block) }
+}
+
+function privilegeReading(dump: string | undefined, packageName: string): PrivilegeReading {
+  const section = dump === undefined ? undefined : packageSection(dump, packageName)
+  return section === undefined ? { tag: "PrivilegeUnread" } : { tag: "PrivilegeRead", privilegedApp: PRIVILEGED.test(section), granted: grantedNames(section) }
+}
+
+function sameBootReading(first: Snapshot, last: Snapshot, user: string): Reading {
+  if ([...Object.values(first), ...Object.values(last)].some((value) => value === undefined)) return UNREAD
+  return read(BOOT_ID.test(first.bootId ?? "") && first.bootCompleted === "1" && first.currentUser === user && first.userState === "RUNNING_UNLOCKED"
+    && JSON.stringify(first) === JSON.stringify(last))
+}
+
+effect function observe(run: AdbRun, ...args: readonly string[]) {
+  const text = run("shell", ...args) catch () => undefined
+  return text?.trim()
+}
+
+effect function enabledSystemPackage(run: AdbRun, user: string, packageName: string) {
+  const text = try observe(run, "pm", "list", "packages", "--user", user, "-s", "-e", packageName)
+  return text === undefined ? undefined : listed(text, packageName)
+}
+
+effect function queryActivities(run: AdbRun, user: string, action: string, ...scope: readonly string[]) {
+  const text = try observe(run, "cmd", "package", "query-activities", "--brief", "--components", "--user", user, "-a", action, "-c", "android.intent.category.DEFAULT", ...scope)
+  return text === undefined ? undefined : components(text)
+}
+
+effect function snapshot(run: AdbRun, user: string, packageName: string, apkPath: string) {
+  const taken: Snapshot = {
+    bootId: try observe(run, "cat", "/proc/sys/kernel/random/boot_id"),
+    bootCompleted: try observe(run, "getprop", "sys.boot_completed"),
+    currentUser: try observe(run, "am", "get-current-user"),
+    userState: try observe(run, "am", "get-started-user-state", user),
+    fingerprint: try observe(run, "getprop", "ro.build.fingerprint"),
+    installedPath: try observe(run, "pm", "path", "--user", user, packageName),
+    digest: try observe(run, "sha256sum", apkPath),
+    home: try observe(run, "cmd", "package", "resolve-activity", "--brief", ...homeArgs(user)),
+    selinux: try observe(run, "getenforce"),
+  }
+  return taken
+}
+
+effect function stockHomeReading(run: AdbRun, user: string, packageName: string) {
+  const text = try observe(run, "cmd", "package", "query-activities", "--brief", "--components", ...homeArgs(user))
+  const found = text === undefined ? [] : components(text)
+  if (found.length === 0) return UNREAD
+  const owners = [...new Set(found.filter((row) => !row.startsWith(`${packageName}/`) && row !== SETTINGS_FALLBACK_HOME).map((row) => row.split("/")[0] ?? ""))]
+  for (const owner of owners) {
+    const enabled = try enabledSystemPackage(run, user, owner)
+    if (enabled === undefined) return UNREAD
+    if (enabled) return read(true)
+  }
+  return read(false)
+}
+
+effect function clockReading(run: AdbRun, user: string) {
+  const unread: ClockReading = { tag: "ClockUnread" }
+  const clockEnabled = try enabledSystemPackage(run, user, clockPackage)
+  if (clockEnabled === undefined) return unread
+  const handledActions: string[] = []
+  for (const action of clockAlarmActions) {
+    const rows = try queryActivities(run, user, `android.intent.action.${action}`, "-p", clockPackage)
+    if (rows === undefined) return unread
+    if (rows.some((row) => row.startsWith(`${clockPackage}/`))) handledActions.push(action)
+  }
+  const reading: ClockReading = { tag: "ClockRead", clockEnabled, handledActions }
+  return reading
+}
+
+effect function cameraReading(run: AdbRun, user: string, packageName: string) {
+  const unread: CameraReading = { tag: "CameraUnread" }
+  const cameraEnabled = try enabledSystemPackage(run, user, secureCameraPackage)
+  if (cameraEnabled === undefined) return unread
+  const systemHandles: string[] = []
+  const launcherHandles: string[] = []
+  for (const action of secureCaptureActions) {
+    const own = try queryActivities(run, user, `android.media.action.${action}`, "-p", secureCameraPackage)
+    const every = try queryActivities(run, user, `android.media.action.${action}`)
+    if (own === undefined || every === undefined) return unread
+    if (own.includes(SECURE_CAMERA_COMPONENT)) systemHandles.push(action)
+    if (every.some((row) => row.startsWith(`${packageName}/`))) launcherHandles.push(action)
+  }
+  const gesture = try observe(run, "cmd", "overlay", "lookup", "--user", user, "android", "android:bool/config_cameraDoubleTapPowerGestureEnabled")
+  const gesturePackage = try observe(run, "cmd", "overlay", "lookup", "--user", user, "com.android.systemui", "com.android.systemui:string/config_cameraGesturePackage")
+  if (gesture === undefined || gesturePackage === undefined) return unread
+  const reading: CameraReading = { tag: "CameraRead", cameraEnabled, systemHandles, launcherHandles, gestureEnabled: gesture === "true", gesturePackage }
+  return reading
+}
+
+effect function listenerReading(run: AdbRun, user: string, launcher: string) {
+  const unread: ListenerReading = { tag: "ListenerUnread" }
+  const name = `${launcher}.${listenerLeaf}`
+  const system = try observe(run, "pm", "list", "packages", "-s", "--user", user, name)
+  const dump = try observe(run, "dumpsys", "package", name)
+  const processes = try observe(run, "ps", "-A", "-Z")
+  const indicator = try observe(run, "cmd", "device_config", "get", "privacy", "camera_mic_icons_enabled")
+  if (system === undefined || dump === undefined || processes === undefined || indicator === undefined) return unread
+  const holders: string[] = []
+  for (const role of indicatorExemptRoles) {
+    const held = try observe(run, "cmd", "role", "get-role-holders", "--user", user, roleOf(role))
+    if (held === undefined) return unread
+    if (held !== "") holders.push(held)
+  }
+  const section = packageSection(dump, name)
+  const row = processes.split(/\r?\n/).map((line) => line.trim().split(/\s+/)).find((fields) => fields[fields.length - 1] === name)
+  const reading: ListenerReading = {
+    tag: "ListenerRead",
+    privilegedSystemPackage: listed(system, name) && section !== undefined && PRIVILEGED.test(section),
+    granted: section === undefined ? [] : grantedNames(section),
+    indicatorKept: holders.length === 0 && !/^false$/i.test(indicator),
+    domain: row?.[0]?.split(":")[2] ?? "",
+  }
+  return reading
+}
+
+export effect function readSelinux(run: AdbRun) {
+  return selinuxReading(try observe(run, "getenforce"))
+}
+
+export effect function readVerifiedBoot(run: AdbRun) {
+  return bootReading(try observe(run, "getprop", "ro.boot.verifiedbootstate"))
+}
+
+effect function imageRefused(holds: boolean, reason: string) {
+  if (!holds) throw new ImageVerificationRefused({ reason })
+}
+
+export effect function verifyImage(options: ImageVerificationOptions) {
+  const serial = try adbSerial(options.serial)
+  try imageRefused(Number.isSafeInteger(options.user) && options.user >= 0, "An explicit Android user is required")
+  try imageRefused(options.fingerprint.length > 0 && options.fingerprint.length <= 512 && !/[\r\n\0]/.test(options.fingerprint), "The exact staged image fingerprint is required")
+  try imageRefused(options.homeActivity === undefined || CLASS_NAME.test(options.homeActivity), "The Home activity is a class name")
+  try imageRefused(["unchecked", "yellow", "green"].includes(options.verifiedBoot), "Verified boot is unchecked, yellow or green")
+  const descriptor = try validateDescriptor(options.descriptor)
+  const privileged = [...(descriptor.privilegedPermissions ?? [])]
+  const packageName = descriptor.packageName
+  const apkPath = `/${descriptor.partition ?? "product"}/${privileged.length > 0 ? "priv-app" : "app"}/${descriptor.moduleName}/${descriptor.moduleName}.apk`
+  const expectation: ImageExpectation = {
+    fingerprint: options.fingerprint,
+    launcherApk: parseDigest(descriptor.apkSha256),
+    defaultPermissions: [...(descriptor.defaultPermissions ?? [])],
+    privilegedPermissions: privileged,
+    listener: options.listener === true,
+    boot: options.verifiedBoot === "unchecked" ? { tag: "BootUnchecked" } : { tag: "BootAtLeast", minimum: options.verifiedBoot === "green" ? "Green" : "Yellow" },
+  }
+  const run = try adbRunner(options.adb ?? "adb", serial, () => IMAGE_TIMEOUT_MS)
+  const user = String(options.user)
+  const homeComponent = `${packageName}/${options.homeActivity ?? `${packageName}.MainActivity`}`
+  const first = try snapshot(run, user, packageName, apkPath)
+  const dump = try observe(run, "dumpsys", "package", packageName)
+  const stockHome = try stockHomeReading(run, user, packageName)
+  const clock = try clockReading(run, user)
+  const webView = webViewReading(try observe(run, "dumpsys", "webviewupdate"))
+  const camera = try cameraReading(run, user, packageName)
+  const verifiedBoot = try readVerifiedBoot(run)
+  const listener: ListenerReading = expectation.listener ? (try listenerReading(run, user, packageName)) : { tag: "ListenerUnread" }
+  const last = try snapshot(run, user, packageName, apkPath)
+  const observation: ImageObservation = {
+    fingerprint: fingerprintReading(first.fingerprint),
+    launcher: launcherInstall(first.installedPath, first.digest, apkPath),
+    home: homeReading(first.home, homeComponent),
+    stockHome,
+    clock,
+    webView,
+    grants: grantsReading(dump, packageName, user),
+    camera,
+    sameBoot: sameBootReading(first, last, user),
+    selinux: selinuxReading(first.selinux),
+    verifiedBoot,
+    privilege: privilegeReading(dump, packageName),
+    listener,
+  }
+  return {
+    verdict: imageVerdict(expectation, observation),
+    checks: imageReport(expectation, observation),
+    serial,
+    user: options.user,
+    apkPath,
+    homeComponent,
+    expectation,
+    observation,
+    observedAt: new Date(try Clock.currentTimeMillis).toISOString(),
+    scope: "Read-only evidence of the booted image, the staged launcher bytes and place, the stock launcher, the clock handlers, a WebView provider, the first-boot grants, the system secure camera, the wake listener when staged, SELinux and verified boot; not that an alarm rings, that a locked capture is isolated, that the listener hears anything, or that a person accepted the device",
+  }
+}
+
+export interface Camera {
+  readonly id: string
+  readonly facing: string
+  readonly afModes: readonly string[]
+  readonly minimumFocusDistance: number | null
+  readonly autofocus: boolean
+}
+
+export interface DeviceFacts {
+  readonly emulator?: boolean
+  readonly manufacturer?: string | null
+  readonly model?: string | null
+  readonly device?: string | null
+  readonly fingerprint?: string | null
+  readonly vendorFingerprint?: string | null
+  readonly androidRelease?: number | null
+  readonly vendorApiLevel?: number | null
+  readonly treble?: boolean | null
+  readonly abi?: string | null
+  readonly kernel?: { readonly release: string; readonly major: number; readonly minor: number } | null
+  readonly ramGiB?: number | null
+  readonly dataGiB?: number | null
+  readonly display?: { readonly width: number; readonly height: number; readonly longEdge: number; readonly shortEdge: number } | null
+  readonly cameras?: readonly Camera[]
+  readonly microphoneCount?: number | null
+  readonly codecs?: { readonly decoders: readonly string[]; readonly encoders: readonly string[] }
+  readonly wifi5GHz?: boolean | null
+  readonly dynamicPartitions?: boolean | null
+  readonly abUpdates?: boolean | null
+  readonly selinux?: string | null
+  readonly chargeControlNodes?: readonly string[]
+  readonly wlanCountryProcMode?: string | null
+  readonly fastboot?: Readonly<Record<string, string>>
+}
+
+export type IdentityField = "manufacturer" | "model" | "device" | "fingerprint" | "vendorFingerprint"
+
+export interface RequirementEntry {
+  readonly id: string
+  readonly level: "required" | "preferred"
+  readonly check: CheckName
+  readonly field?: IdentityField
+  readonly equals?: string
+  readonly min?: number | string
+  readonly facing?: string
+  readonly mime?: string
+  readonly rationale?: string
+}
+
+export interface RequirementsFile {
+  readonly schemaVersion: 1
+  readonly reviewedAt?: string
+  readonly description?: string
+  readonly requirements: readonly RequirementEntry[]
+  readonly fastbootRequirements?: readonly RequirementEntry[]
+}
+
+type Params = Omit<RequirementEntry, "id" | "level" | "check">
+
+interface Finding {
+  readonly observation: Observation
+  readonly observed: unknown
+}
+
+interface CheckRule {
+  readonly params: (entry: Readonly<Record<string, unknown>>) => boolean
+  readonly observe: (facts: DeviceFacts, entry: Params) => Finding
+}
+
+const IDENTITY_FIELDS: readonly string[] = ["manufacturer", "model", "device", "fingerprint", "vendorFingerprint"]
+const REQUIREMENT_ID = /^[a-z0-9][a-z0-9-]*$/
+const NOT_READ: Measure = { tag: "NotRead" }
+
+const unobserved = (observed: unknown = null): Finding => ({ observation: { tag: "Unobserved" }, observed })
+const seen = (satisfied: boolean, observed: unknown): Finding => ({ observation: { tag: "Observed", satisfied }, observed })
+const measured = (value: number | null | undefined): Measure => (value === null || value === undefined ? NOT_READ : { tag: "ReadValue", value })
+const hundredths = (value: number) => Math.round(value * 100)
+const versionLevel = (major: number, minor: number) => major * 1000 + minor
+const minLevel = (min: number | string | undefined) => {
+  const [major = "0", minor = "0"] = String(min).split(".")
+  return versionLevel(Number(major), Number(minor))
+}
+const known = (value: unknown): value is boolean => typeof value === "boolean"
+const flag = (value: boolean | null | undefined): Finding => (known(value) ? seen(value, value) : unobserved())
+
+const anyParams = () => true
+const numberMin = (entry: Readonly<Record<string, unknown>>) => typeof entry.min === "number" && Number.isFinite(entry.min)
+const textOf = (value: unknown) => (typeof value === "string" && value.trim() !== "" ? value : undefined)
+
+const CHECKS = {
+  identity: {
+    params: (entry) => IDENTITY_FIELDS.includes(String(entry.field)) && textOf(entry.equals) !== undefined,
+    observe: (facts, entry) => {
+      const value = entry.field === undefined ? undefined : facts[entry.field]
+      return value === null || value === undefined || value === "" ? unobserved() : seen(value === entry.equals, value)
+    },
+  },
+  androidRelease: { params: numberMin, observe: (facts, entry) => ({ observation: atLeast(measured(facts.androidRelease), Number(entry.min)), observed: facts.androidRelease ?? null }) },
+  treble: { params: anyParams, observe: (facts) => flag(facts.treble) },
+  vendorApiLevel: { params: numberMin, observe: (facts, entry) => ({ observation: vendorApiAtLeast(measured(facts.vendorApiLevel), Number(entry.min)), observed: facts.vendorApiLevel ?? null }) },
+  kernelVersion: {
+    params: (entry) => typeof entry.min === "string" && /^\d{1,3}\.\d{1,3}$/.test(entry.min),
+    observe: (facts, entry) => ({
+      observation: atLeast(measured(facts.kernel ? versionLevel(facts.kernel.major, facts.kernel.minor) : null), minLevel(entry.min)),
+      observed: facts.kernel?.release ?? null,
+    }),
+  },
+  abi: { params: (entry) => textOf(entry.equals) !== undefined, observe: (facts, entry) => (facts.abi ? seen(facts.abi === entry.equals, facts.abi) : unobserved()) },
+  ramGiB: { params: numberMin, observe: (facts, entry) => ({ observation: atLeast(measured(typeof facts.ramGiB === "number" ? hundredths(facts.ramGiB) : null), hundredths(Number(entry.min))), observed: facts.ramGiB ?? null }) },
+  dataGiB: { params: numberMin, observe: (facts, entry) => ({ observation: atLeast(measured(typeof facts.dataGiB === "number" ? hundredths(facts.dataGiB) : null), hundredths(Number(entry.min))), observed: facts.dataGiB ?? null }) },
+  displayLongEdgePx: { params: numberMin, observe: (facts, entry) => ({ observation: atLeast(measured(facts.display?.longEdge), Number(entry.min)), observed: facts.display?.longEdge ?? null }) },
+  displayShortEdgePx: { params: numberMin, observe: (facts, entry) => ({ observation: atLeast(measured(facts.display?.shortEdge), Number(entry.min)), observed: facts.display?.shortEdge ?? null }) },
+  camera: {
+    params: (entry) => textOf(entry.facing) !== undefined,
+    observe: (facts, entry) => {
+      const cameras = facts.cameras ?? []
+      if (cameras.length === 0) return unobserved([])
+      const matching = cameras.filter((camera) => camera.facing === entry.facing)
+      return seen(matching.length > 0, matching.map((camera) => camera.id))
+    },
+  },
+  cameraAutofocus: {
+    params: (entry) => textOf(entry.facing) !== undefined,
+    observe: (facts, entry) => {
+      const matching = (facts.cameras ?? []).filter((camera) => camera.facing === entry.facing)
+      if (matching.length === 0) return unobserved([])
+      return seen(matching.some((camera) => camera.autofocus), matching.map(({ id, afModes, minimumFocusDistance }) => ({ id, afModes, minimumFocusDistance })))
+    },
+  },
+  microphoneCount: {
+    params: numberMin,
+    observe: (facts, entry) => ({ observation: atLeast(measured(facts.microphoneCount === 0 ? null : facts.microphoneCount), Number(entry.min)), observed: facts.microphoneCount ?? null }),
+  },
+  wifi5GHz: { params: anyParams, observe: (facts) => flag(facts.wifi5GHz) },
+  codec: {
+    params: (entry) => typeof entry.mime === "string" && /^[a-z]+\/\S+$/.test(entry.mime),
+    observe: (facts, entry) => {
+      const decoders = facts.codecs?.decoders ?? []
+      return decoders.length === 0 ? unobserved() : seen(decoders.includes(entry.mime ?? ""), entry.mime)
+    },
+  },
+  dynamicPartitions: { params: anyParams, observe: (facts) => flag(facts.dynamicPartitions) },
+  abUpdates: { params: anyParams, observe: (facts) => flag(facts.abUpdates) },
+  selinuxEnforcing: { params: anyParams, observe: (facts) => (facts.selinux ? seen(facts.selinux === "Enforcing", facts.selinux) : unobserved()) },
+  chargeControl: {
+    params: anyParams,
+    observe: (facts) => {
+      const nodes = facts.chargeControlNodes ?? []
+      return nodes.length === 0 ? unobserved([]) : seen(true, nodes)
+    },
+  },
+  wifiCountryProcNotWorldWritable: {
+    params: anyParams,
+    observe: (facts) => (facts.wlanCountryProcMode ? seen(facts.wlanCountryProcMode[8] !== "w", facts.wlanCountryProcMode) : unobserved()),
+  },
+  fastbootUnlockable: {
+    params: anyParams,
+    observe: (facts) => {
+      const vars = facts.fastboot ?? {}
+      if (vars.unlocked === "yes" || vars.unlock_ability === "1") return seen(true, vars.unlocked ?? vars.unlock_ability)
+      if (vars.unlock_ability === "0") return seen(false, "0")
+      return unobserved(vars.unlocked ?? null)
+    },
+  },
+  fastbootAvbCustomKey: {
+    params: anyParams,
+    observe: (facts) => {
+      const value = facts.fastboot?.["partition-type:avb_custom_key"]
+      return value === undefined ? unobserved() : seen(value !== "" && !/fail|unknown|not found/i.test(value), value)
+    },
+  },
+} satisfies Record<string, CheckRule>
+
+export type CheckName = keyof typeof CHECKS
+
+export const checkNames: readonly CheckName[] = Object.keys(CHECKS) as CheckName[]
+
+const LISTS = [["requirements", "AdbProbe"], ["fastbootRequirements", "FastbootProbe"]] as const
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function isCheck(value: unknown): value is CheckName {
+  return typeof value === "string" && Object.hasOwn(CHECKS, value)
+}
+
+function wellFormed(entry: unknown): boolean {
+  return isRecord(entry) && typeof entry.id === "string" && REQUIREMENT_ID.test(entry.id) && (entry.level === "required" || entry.level === "preferred")
+    && isCheck(entry.check) && CHECKS[entry.check].params(entry)
+}
+
+function requirementRows(file: Readonly<Record<string, unknown>>): Requirement[] {
+  return LISTS.flatMap(([name, mode]) => {
+    const list = file[name]
+    return (Array.isArray(list) ? list : []).map((entry: unknown) => {
+      const row: Requirement = {
+        id: isRecord(entry) && typeof entry.id === "string" ? entry.id : "",
+        level: isRecord(entry) && entry.level === "preferred" ? "Preferred" : "Required",
+        mode,
+        wellFormed: wellFormed(entry),
+      }
+      return row
+    })
+  })
+}
+
+function requirementsProblem(schemaVersion: number, rows: readonly Requirement[]): string {
+  if (schemaVersion !== 1) return "requirements: expected schemaVersion 1"
+  const malformed = rows.find((row) => !row.wellFormed)
+  if (malformed) return `requirements: ${JSON.stringify(malformed.id)} needs a valid id, a level of required or preferred, a known check and that check's parameters`
+  const duplicate = rows.find((row) => !idUnique([...rows], row.id))
+  if (duplicate) return `requirements: duplicate id ${duplicate.id}`
+  return hasRequirementFor([...rows], "AdbProbe") ? "requirements: invalid" : "requirements: at least one adb requirement is needed"
+}
+
+export effect function validateRequirements(value: unknown) {
+  const file = isRecord(value) ? value : {}
+  if (!LISTS.every(([name]) => file[name] === undefined || Array.isArray(file[name]))) throw new RequirementsInvalid({ reason: "requirements: requirements and fastbootRequirements must be arrays" })
+  const schemaVersion = typeof file.schemaVersion === "number" ? file.schemaVersion : 0
+  const rows = requirementRows(file)
+  if (!requirementsValid(schemaVersion, rows)) throw new RequirementsInvalid({ reason: requirementsProblem(schemaVersion, rows) })
+  return file as unknown as RequirementsFile
+}
+
+const VERDICTS: Readonly<Record<Verdict, "pass" | "fail" | "incomplete">> = { Qualified: "pass", Disqualified: "fail", Incomplete: "incomplete" }
+const RESULTS: Readonly<Record<RequirementOutcome, "pass" | "fail" | "unknown">> = { Met: "pass", Unmet: "fail", Unknown: "unknown" }
+const EVIDENCE: Readonly<Record<EvidenceLevel, string>> = {
+  EmulatorObservation: "emulator-observation",
+  DeviceObservation: "device-observation",
+  BootloaderObservation: "bootloader-observation",
+}
+const DISCLAIMER = "Read-only observation. Not a GSI or image boot, and not RF, FCC, acoustic, battery or user-acceptance evidence."
+
+export function evaluate(facts: DeviceFacts, requirements: RequirementsFile, options: { readonly fastboot?: boolean } = {}) {
+  const mode: ProbeMode = options.fastboot === true ? "FastbootProbe" : "AdbProbe"
+  const list = (mode === "FastbootProbe" ? requirements.fastbootRequirements : requirements.requirements) ?? []
+  const findings = list.map((entry) => ({ entry, finding: CHECKS[entry.check].observe(facts, entry) }))
+  const outcomes = findings.map(({ entry, finding }) => ({ id: entry.id, level: entry.level, checkOutcome: outcomeOf(finding.observation), observed: finding.observed }))
+  const qualification = qualificationOf(outcomes.map((row) => ({ id: row.id, level: row.level === "preferred" ? "Preferred" : "Required", checkOutcome: row.checkOutcome })), facts.emulator === true, mode)
+  return {
+    verdict: VERDICTS[qualification.verdict],
+    evidenceLevel: EVIDENCE[qualification.evidence],
+    disclaimer: DISCLAIMER,
+    results: outcomes.map((row) => ({ id: row.id, level: row.level, result: RESULTS[row.checkOutcome], observed: row.observed })),
+    warnings: qualification.warnings,
+  }
+}
+
+export const READ_ONLY_COMMANDS: Readonly<Record<string, string>> = {
+  getprop: "getprop",
+  uname: "uname -r",
+  meminfo: "cat /proc/meminfo",
+  dfData: "df -k /data",
+  wmSize: "wm size",
+  wmDensity: "wm density",
+  getenforce: "getenforce",
+  cameras: "dumpsys media.camera",
+  audioPolicy: "dumpsys media.audio_policy",
+  mediaCodecs: "cat /apex/com.android.media.swcodec/etc/media_codecs*.xml /system/etc/media_codecs*.xml /vendor/etc/media_codecs*.xml /odm/etc/media_codecs*.xml 2>/dev/null",
+  wifiCountry: "cmd wifi get-country-code",
+  wifiStatus: "cmd wifi status",
+  wifiDump: "dumpsys wifi | grep -E 'supported_sta_bands|is5GHzBandSupported' | head -10",
+  chargeControl: "ls -d /sys/class/power_supply/*/charge_control* /sys/class/power_supply/*/charge_*_threshold /sys/class/power_supply/*/charging_policy /sys/class/power_supply/*/input_suspend 2>/dev/null",
+  battery: "dumpsys battery",
+  wlanCountryProc: "ls -l /proc/net/wlan/country 2>&1",
+  vendorFirmware: "ls -l /vendor/firmware/ 2>/dev/null",
+  vintfManifest: "cat /vendor/etc/vintf/manifest.xml 2>/dev/null",
+  vintfFragments: "ls /vendor/etc/vintf/manifest/ 2>/dev/null",
+  vintfMatrix: "cat /vendor/etc/vintf/compatibility_matrix.xml 2>/dev/null",
+}
+
+const AF_MODES: Readonly<Record<string, string>> = { "0": "OFF", "1": "AUTO", "2": "MACRO", "3": "CONTINUOUS_VIDEO", "4": "CONTINUOUS_PICTURE", "5": "EDOF" }
+
+function firstInt(...values: readonly (string | undefined)[]): number | null {
+  for (const value of values) {
+    const parsed = Number.parseInt(value ?? "", 10)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+const round = (value: number, digits = 2) => Math.round(value * 10 ** digits) / 10 ** digits
+
+export function parseGetprop(text: string): Record<string, string> {
+  const props: Record<string, string> = {}
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^\[([^\]]+)\]: \[(.*)\]$/.exec(line.trim())
+    if (match) props[match[1] ?? ""] = match[2] ?? ""
+  }
+  return props
+}
+
+function parseCameras(text: string): Camera[] {
+  const cameras: Camera[] = []
+  for (const block of text.split(/^\s*== Camera HAL device /m).slice(1)) {
+    const id = /^([^\s]+)/.exec(block)?.[1] ?? ""
+    const facing = /android\.lens\.facing \([0-9a-f]+\): byte\[1\]\s*\[\s*(\w+)\s*\]/i.exec(block)?.[1]?.toLowerCase()
+    if (facing === undefined || cameras.some((camera) => camera.id === id)) continue
+    const afModes = (/android\.control\.afAvailableModes \([0-9a-f]+\): byte\[\d+\]\s*\[([^\]]*)\]/i.exec(block)?.[1] ?? "")
+      .trim().split(/\s+/).filter((mode) => mode !== "").map((mode) => AF_MODES[mode] ?? mode.toUpperCase())
+    const focus = /android\.lens\.info\.minimumFocusDistance \([0-9a-f]+\): float\[1\]\s*\[\s*([0-9.]+)\s*\]/i.exec(block)?.[1]
+    const minimumFocusDistance = focus === undefined ? null : Number(focus)
+    const autofocus = afModes.some((mode) => ["AUTO", "CONTINUOUS_PICTURE", "CONTINUOUS_VIDEO", "MACRO"].includes(mode)) && minimumFocusDistance !== 0
+    cameras.push({ id, facing, afModes, minimumFocusDistance, autofocus })
+  }
+  return cameras
+}
+
+function parseMicrophoneCount(text: string): number {
+  return new Set([...text.matchAll(/AUDIO_DEVICE_IN_(BUILTIN|BACK)_MIC[^\n]*?(?:@:?\s*"?([^",\s)]*)"?)?/g)].map((match) => `${match[1]}:${match[2] ?? ""}`)).size
+}
+
+function parseMediaCodecs(text: string) {
+  const decoders = new Set<string>()
+  const encoders = new Set<string>()
+  let section: string | null = null
+  for (const [, closing, tag, attrs] of text.matchAll(/<(\/?)(Decoders|Encoders|MediaCodec|Type)\b([^>]*)>/g)) {
+    if (tag === "Decoders" || tag === "Encoders") {
+      section = closing ? null : tag
+      continue
+    }
+    const type = closing || section === null ? undefined : /\b(?:type|name)="([a-z]+\/[^"]+)"/.exec(attrs ?? "")?.[1]
+    if (type !== undefined) (section === "Decoders" ? decoders : encoders).add(type.toLowerCase())
+  }
+  return { decoders: [...decoders].sort(), encoders: [...encoders].sort() }
+}
+
+function parseWifi5GHz(text: string): boolean | null {
+  const mask = /wifi_native_supported_sta_bands=(\d+)/.exec(text)?.[1]
+  if (mask !== undefined) return (Number(mask) & 6) !== 0
+  if (/(5\s?GHz|5G)[^\n]{0,40}(supported|band)[^\n]{0,20}(true|yes)/i.test(text) || /is5GHzBandSupported\s*[:=]\s*true/i.test(text)) return true
+  if (/(5\s?GHz|5G)[^\n]{0,40}(supported|band)[^\n]{0,20}(false|no)/i.test(text)) return false
+  return null
+}
+
+export function parseFastbootVars(text: string): Record<string, string> {
+  const vars: Record<string, string> = {}
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^(?:\(bootloader\)\s+)?([^:\s]+(?::[^:\s]+)?):\s*(.*)$/.exec(line.trim())
+    if (match) vars[(match[1] ?? "").trim()] = (match[2] ?? "").trim()
+  }
+  return vars
+}
+
+export function deriveFacts(raw: Readonly<Record<string, string | undefined>>): DeviceFacts {
+  const props = raw.getprop ? parseGetprop(raw.getprop) : undefined
+  const prop = (name: string) => props?.[name] ?? null
+  const truth = (name: string) => (props === undefined ? null : props[name] === "true")
+  const release = (raw.uname ?? "").trim()
+  const version = /^(\d+)\.(\d+)/.exec(release)
+  const size = /Physical size:\s*(\d+)x(\d+)/.exec(raw.wmSize ?? "")
+  const memory = /^MemTotal:\s+(\d+)\s+kB/m.exec(raw.meminfo ?? "")?.[1]
+  const dataBlocks = Number((raw.dfData ?? "").trim().split(/\r?\n/).filter((line) => line !== "").at(-1)?.trim().split(/\s+/)[1])
+  const width = Number(size?.[1])
+  const height = Number(size?.[2])
+  const vendorApi = firstInt(prop("ro.vendor.api_level") ?? undefined, prop("ro.board.api_level") ?? undefined, prop("ro.board.first_api_level") ?? undefined, prop("ro.vendor.build.version.sdk") ?? undefined)
+  return {
+    emulator: prop("ro.kernel.qemu") === "1" || prop("ro.boot.qemu") === "1",
+    manufacturer: prop("ro.product.manufacturer"),
+    model: prop("ro.product.model"),
+    device: prop("ro.product.device"),
+    fingerprint: prop("ro.build.fingerprint"),
+    vendorFingerprint: prop("ro.vendor.build.fingerprint"),
+    androidRelease: firstInt(prop("ro.build.version.release") ?? undefined),
+    vendorApiLevel: vendorApi === null ? null : normalizeVendorApiLevel(vendorApi),
+    treble: truth("ro.treble.enabled"),
+    abi: prop("ro.product.cpu.abi"),
+    kernel: version ? { release, major: Number(version[1]), minor: Number(version[2]) } : null,
+    ramGiB: memory === undefined ? null : round(Number(memory) / 1024 ** 2),
+    dataGiB: Number.isFinite(dataBlocks) && dataBlocks > 0 ? round(dataBlocks / 1024 ** 2) : null,
+    display: size ? { width, height, longEdge: Math.max(width, height), shortEdge: Math.min(width, height) } : null,
+    cameras: parseCameras(raw.cameras ?? ""),
+    microphoneCount: raw.audioPolicy ? parseMicrophoneCount(raw.audioPolicy) : null,
+    codecs: parseMediaCodecs(raw.mediaCodecs ?? ""),
+    wifi5GHz: parseWifi5GHz(`${raw.wifiStatus ?? ""}\n${raw.wifiDump ?? ""}`),
+    dynamicPartitions: truth("ro.boot.dynamic_partitions"),
+    abUpdates: truth("ro.build.ab_update"),
+    selinux: (raw.getenforce ?? "").trim() || null,
+    chargeControlNodes: (raw.chargeControl ?? "").split(/\r?\n/).map((line) => line.trim()).filter((line) => line.startsWith("/")),
+    wlanCountryProcMode: /^([-dlcbps][-rwxsStT]{9})\S*\s/m.exec(raw.wlanCountryProc ?? "")?.[1] ?? null,
+  }
+}
+
+export interface QualifyOptions {
+  readonly serial: string
+  readonly requirements?: string
+  readonly fastboot?: boolean
+  readonly adb?: string
+  readonly fastbootBin?: string
+  readonly out?: string
+}
+
+const QUALIFY_TIMEOUT_MS = 60000
+const QUALIFY_SERIAL = /^[\w.:-]+$/
+const DEFAULT_REQUIREMENTS = "aosp/device-requirements/treble-gsi.json"
+const ADMISSIONS: Readonly<Record<RunAdmission, string>> = {
+  RunAdmitted: "admitted",
+  RefusedSerial: "Supply --serial SERIAL (see `adb devices`).",
+  RefusedRequirements: "The requirements are not valid",
+  RefusedNoFastbootRequirements: "The requirements have no fastbootRequirements",
+}
+
+const decoded = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
+
+effect function defaultRequirements() {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  let directory = try path.fromFileUrl(new URL(".", import.meta.url))
+  while (!(try files.exists(path.join(directory, DEFAULT_REQUIREMENTS)))) {
+    const parent = path.dirname(directory)
+    if (parent === directory) throw new RequirementsInvalid({ reason: `The os package's ${DEFAULT_REQUIREMENTS} is missing` })
+    directory = parent
+  }
+  return path.join(directory, DEFAULT_REQUIREMENTS)
+}
+
+effect function collectAdb(adb: string, serial: string) {
+  const state = capture(adb, ["-s", serial, "get-state"], QUALIFY_TIMEOUT_MS) catch (failure) => ({ stdout: new Uint8Array(), stderr: failure._tag, code: -1 })
+  if (!commandAllowed("AdbProbe", { tag: "AdbGetState" }) || decoded(state.stdout).trim() !== "device")
+    throw new DeviceUnanswered({ serial, mode: "adb", reason: `adb device ${serial} is not ready: ${(state.stderr || decoded(state.stdout)).trim()}` })
+  const raw: Record<string, string> = {}
+  const errors: Record<string, string> = {}
+  for (const [key, command] of Object.entries(READ_ONLY_COMMANDS)) {
+    if (!commandAllowed("AdbProbe", { tag: "AdbShellRead", key })) continue
+    const out = capture(adb, ["-s", serial, "shell", command], QUALIFY_TIMEOUT_MS) catch (failure) => ({ stdout: new Uint8Array(), stderr: failure._tag, code: -1 })
+    raw[key] = decoded(out.stdout)
+    if (out.code !== 0 && raw[key] === "") errors[key] = out.stderr.trim() || `exit ${out.code}`
+  }
+  return { raw, errors }
+}
+
+effect function collectFastboot(fastboot: string, serial: string) {
+  const texts: Record<string, string> = {}
+  let answered = false
+  for (const name of fastbootGetvarNames) {
+    if (!commandAllowed("FastbootProbe", { tag: "FastbootGetvar", name })) continue
+    const out = capture(fastboot, ["-s", serial, "getvar", name], QUALIFY_TIMEOUT_MS) catch (failure) => ({ stdout: new Uint8Array(), stderr: failure._tag, code: -1 })
+    texts[name] = `${out.stderr}\n${decoded(out.stdout)}`
+    if (name === "all") answered = out.code === 0 || texts[name].includes("(bootloader)")
+  }
+  const all = texts.all ?? ""
+  const custom = texts["partition-type:avb_custom_key"] ?? ""
+  const vars = parseFastbootVars(all)
+  vars["partition-type:avb_custom_key"] = parseFastbootVars(custom)["partition-type:avb_custom_key"] ?? /FAILED[^\n]*/.exec(custom)?.[0] ?? ""
+  if (!answered || Object.keys(vars).length <= 1) throw new DeviceUnanswered({ serial, mode: "fastboot", reason: `fastboot device ${serial} did not answer getvar: ${all.trim()}` })
+  return { raw: { getvarAll: all, getvarAvbCustomKey: custom }, vars }
+}
+
+export effect function qualifyDevice(options: QualifyOptions) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const requirementsPath = path.resolve(options.requirements === undefined ? (try defaultRequirements()) : options.requirements)
+  const text = try mapError(files.readFileString(requirementsPath), (cause) => new RequirementsInvalid({ reason: `${requirementsPath}: ${cause.message}` }))
+  const parsed = try Effect.try({ try: (): unknown => JSON.parse(text), catch: () => new RequirementsInvalid({ reason: `${requirementsPath}: not JSON` }) })
+  const requirements = try mapError(validateRequirements(parsed), (failure) => new RequirementsInvalid({ reason: `${requirementsPath}: ${failure.reason}` }))
+  const mode: ProbeMode = options.fastboot === true ? "FastbootProbe" : "AdbProbe"
+  const admission = admitRun(QUALIFY_SERIAL.test(options.serial), requirements.schemaVersion, requirementRows(requirements as unknown as Readonly<Record<string, unknown>>), mode)
+  if (admission !== "RunAdmitted") throw new QualificationRefused({ admission, reason: ADMISSIONS[admission] })
+  const startedAt = new Date(try Clock.currentTimeMillis)
+  const out = path.resolve(options.out ?? path.join("test-results", "os-device-qualification", `${options.serial.replace(/[^\w.-]/g, "_")}-${mode === "FastbootProbe" ? "fastboot-" : ""}${startedAt.toISOString().replace(/[:.]/g, "-")}`))
+  const collected = mode === "FastbootProbe"
+    ? { ...(try collectFastboot(options.fastbootBin ?? "fastboot", options.serial)), errors: {} }
+    : try collectAdb(options.adb ?? "adb", options.serial)
+  const facts: DeviceFacts = "vars" in collected ? { emulator: false, fastboot: collected.vars } : deriveFacts(collected.raw)
+  const evaluation = evaluate(facts, requirements, { fastboot: mode === "FastbootProbe" })
+  try files.makeDirectory(path.join(out, "raw"), { recursive: true })
+  for (const [key, value] of Object.entries(collected.raw)) try files.writeFileString(path.join(out, "raw", `${key}.txt`), value)
+  const record = {
+    schemaVersion: 1,
+    tool: "@elizaos/os/image qualifyDevice",
+    capturedAt: startedAt.toISOString(),
+    serial: options.serial,
+    mode: mode === "FastbootProbe" ? "fastboot" : "adb",
+    requirementsPath,
+    requirementsReviewedAt: requirements.reviewedAt ?? null,
+    facts,
+    collectionErrors: collected.errors,
+    evaluation,
+    recordPath: path.join(out, "record.json"),
+  }
+  try files.writeFileString(record.recordPath, `${JSON.stringify(record, null, 2)}\n`)
+  return record
+}
+
+effect function qualifyArgs(argv: readonly string[]) {
+  const valued: Readonly<Record<string, keyof QualifyOptions>> = { "--serial": "serial", "--out": "out", "--requirements": "requirements", "--adb": "adb", "--fastboot-bin": "fastbootBin" }
+  const values: Record<string, string> = {}
+  let fastboot = false
+  for (let index = 0; index < argv.length; index++) {
+    const argument = argv[index] ?? ""
+    const value = argv[index + 1]
+    const name = valued[argument]
+    if (argument === "--fastboot") fastboot = true
+    else if (name === undefined) throw new QualificationUsage({ message: `Unknown argument ${argument}. Use --serial SERIAL [--requirements FILE] [--out DIR] [--fastboot]` })
+    else if (value === undefined || value === "" || value.startsWith("--")) throw new QualificationUsage({ message: `${argument} needs a value` })
+    else {
+      values[name] = value
+      index++
+    }
+  }
+  if (values.serial === undefined) throw new QualificationUsage({ message: "Supply --serial SERIAL (see `adb devices`)." })
+  const options: QualifyOptions = { ...values, serial: values.serial, fastboot }
+  return options
+}
+
+export effect function main(argv: readonly string[]) {
+  const record = try qualifyDevice(try qualifyArgs(argv))
+  const rows = record.evaluation.results.map((row) => `${row.result.padEnd(7)} ${row.level.padEnd(9)} ${row.id}  ${JSON.stringify(row.observed)}`)
+  try Console.log(`${record.serial}: ${record.evaluation.verdict} (${record.evaluation.evidenceLevel})\n${rows.join("\n")}\nRecord: ${record.recordPath}`)
+  return record
+}

@@ -102,7 +102,7 @@ it.effect("A tab is created once, retried after a failure, and refused past the 
     {
       firstFailure: "profile",
       heldAfterFailure: false,
-      calls: 2,
+      calls: 3,
       privateTab: true,
       ids: ["t1", "t2"],
       overLimit: "TabRefused: Close a tab before opening another.",

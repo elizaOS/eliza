@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/update/operator.md, "Story: Update a device by cable and get back if it fails"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"
+// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/update/operator.md, "Story: Update a device by cable"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { buildChromium, prepareChromium } from "./browser/index.vibe"
@@ -209,14 +209,26 @@ export effect function cli(argv: readonly string[]) {
   }
 }
 
+function refusal(failure: unknown): string {
+  if (typeof failure !== "object" || failure === null) return String(failure)
+  const tag = "_tag" in failure && typeof failure._tag === "string" ? failure._tag : failure instanceof Error ? failure.name : "Error"
+  const fields = Object.fromEntries(Object.entries(failure).filter(([name]) => name !== "_tag" && name !== "stack"))
+  const detail = JSON.stringify(fields, (_name, value: unknown) => value instanceof Error ? `${value.name}: ${value.message}` : value)
+  return `${tag}: ${detail}`
+}
+
 effect function main(argv: readonly string[]) {
-  const result = try (cli(argv) catch effect (failure) => {
-    if (!(failure instanceof UsageError)) throw failure
-    try Console.error(`${failure.message}\n\n${USAGE}`)
-    try sync(() => exitWith(2))
+  const result = cli(argv) catch effect (failure) => {
+    if (failure instanceof UsageError) {
+      try Console.error(`${failure.message}\n\n${USAGE}`)
+      try sync(() => exitWith(2))
+    } else {
+      try Console.error(refusal(failure))
+      try sync(() => exitWith(1))
+    }
     return undefined
-  })
+  }
   if (result !== undefined) try Console.log(JSON.stringify(result, null, 2))
 }
 
-if (import.meta.main) NodeRuntime.runMain(Effect.provide(main(commandLine()), NodeServices.layer))
+if (import.meta.main) NodeRuntime.runMain(Effect.provide(Effect.tapCause(main(commandLine()), (cause) => Console.error(Cause.pretty(cause))), NodeServices.layer), { disableErrorReporting: true })

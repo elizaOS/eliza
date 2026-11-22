@@ -2226,35 +2226,10 @@ lemma claimInstanceStop_ensures(s: PluginServices, epochId: int)
   ensures (inv(s) ==> canClaimInstanceStop(s, epochId) ==> alwaysSealedOwnedClassesStable(claimInstanceStop(s, epochId)))
 {
   if inv(s) && canClaimInstanceStop(s, epochId) {
-    var k := CurrentAt(s, epochId);
-    var r := s.retirements[k];
-    var g := r.groups[r.cursor];
-    assert g in r.groups && r in s.retirements;
-    var id := currentInstance(s, epochId);
-    var g2 := g.(observedStops := (g.observedStops + [observedInstanceSlot(id, InstanceStopObservation.AwaitedStopSlot)]));
-    var s1 := s.(services := core__serviceInstances_stopObjectOnce(id, s.services));
-    GroupsDistinct(r);
-    PutAt(s1, epochId, g2, k);
-    var r2 := r.(groups := r.groups[r.cursor := g2]);
-    var after := claimInstanceStop(s, epochId);
-    assert after == s1.(retirements := s.retirements[k := r2]);
-    ObjectFound(s.services, id);
-    core__serviceInstances_requestObjectStop_ensures(s.services, id);
-    assert after.services == core__serviceInstances_requestObjectStop(s.services, id);
-    ChildInv(after);
-    SettledKept(s.services, after.services);
-    StopsValid(g2, after.services);
-    UAt(s, after, k, r2);
-    ShapeReplaceCurrent(r, r2, g2);
-    ShapeAt(s, after, k, r2);
-    StopsValid(g, s.services);
-    SlotsAtGroup(s, after, k, r.cursor, g2, r2);
-    OwnsOpen(s, k);
-    NoResourcesAt(s, after, k, r2);
-    OrphanAt(s, after, k, r.cursor, g2, r2);
-    ReachAt(s, after, k, r.cursor, g2, r2);
-    UndeclaredAt(s, after, k, r.cursor, g2, r2);
-    ClassShape(s, after);
+    ClaimKeepsEpochs(s, epochId);
+    ClaimKeepsRetirements(s, epochId);
+    ClaimKeepsServices(s, epochId);
+    ClaimKeepsInstances(s, epochId);
   }
 }
 
@@ -3348,12 +3323,16 @@ lemma withdrawNextType_ensures(s: PluginServices, epochId: int)
     {
     }
     PubSame();
-    forall u, x | x in core__serviceInstances_publishedInstances(s.services, u) && !(!skip && u == t && x in captured)
+    forall u, x | x in core__serviceInstances_publishedInstances(s.services, u) && u != t
       ensures x in core__serviceInstances_publishedInstances(after.services, u)
     {
-      if !skip && u != t {
+      if !skip {
         assert core__serviceInstances_publishedInstances(w, u) == core__serviceInstances_publishedInstances(s.services, u);
       }
+    }
+    forall x | x in core__serviceInstances_publishedInstances(s.services, t) && !(!skip && x in captured)
+      ensures x in core__serviceInstances_publishedInstances(after.services, t)
+    {
     }
     WithdrawCover(s, after, k, r2, group, classes, t, captured, skip);
     forall d | d in s.services.declarations && d.serviceType != t ensures d in after.services.declarations
@@ -3819,7 +3798,8 @@ lemma WithdrawCover(s: PluginServices, after: PluginServices, k: int, r2: Servic
   requires forall i :: 0 <= i < |s.services.classes| ==> after.services.classes[i] == (if (!skip && exists c :: c in xs && c.id == s.services.classes[i].id) then s.services.classes[i].(registered := false, live := 0) else s.services.classes[i])
   requires forall c :: c in xs ==> core__serviceInstances_serviceClass(s.services, c.id).serviceType == t && (core__serviceInstances_serviceClass(s.services, c.id).live == 0 || core__serviceInstances_serviceClass(s.services, c.id).live in captured)
   requires skip ==> !(exists d :: d in s.services.declarations && d.serviceType == t)
-  requires forall u, x :: x in core__serviceInstances_publishedInstances(s.services, u) && !(!skip && u == t && x in captured) ==> x in core__serviceInstances_publishedInstances(after.services, u)
+  requires forall u, x :: x in core__serviceInstances_publishedInstances(s.services, u) && u != t ==> x in core__serviceInstances_publishedInstances(after.services, u)
+  requires forall x :: x in core__serviceInstances_publishedInstances(s.services, t) && !(!skip && x in captured) ==> x in core__serviceInstances_publishedInstances(after.services, t)
   requires core__serviceInstances_alwaysClassAndObjectIdentities(after.services)
   ensures alwaysNoOrphanInstance(after) && alwaysLiveInstanceReachable(after)
 {
@@ -3832,13 +3812,28 @@ lemma WithdrawCover(s: PluginServices, after: PluginServices, k: int, r2: Servic
     var i :| 0 <= i < |after.services.classes| && after.services.classes[i] == cl;
     var c0 := s.services.classes[i];
     assert c0 in s.services.classes && c0 == cl;
-    if c0.live in core__serviceInstances_publishedInstances(s.services, c0.serviceType) && !skip && c0.serviceType == t && c0.live in captured {
-      assert r2 in after.retirements && group in r2.groups && c0.live in group.instances;
-    }
-    if !(core__serviceInstances_serviceObject(s.services, c0.live).stopCalls > 0) && !(c0.live in core__serviceInstances_publishedInstances(s.services, c0.serviceType)) {
+    if core__serviceInstances_serviceObject(s.services, c0.live).stopCalls > 0 {
+      assert core__serviceInstances_serviceObject(after.services, cl.live).stopCalls > 0;
+    } else if c0.live in core__serviceInstances_publishedInstances(s.services, c0.serviceType) {
+      if !skip && c0.serviceType == t && c0.live in captured {
+        assert r2 in after.retirements && group in r2.groups && epochOwnsResources(after, r2.epochId) && cl.live in group.instances;
+      } else {
+        if c0.serviceType == t {
+          assert c0.live in core__serviceInstances_publishedInstances(s.services, t);
+        }
+        assert cl.live in core__serviceInstances_publishedInstances(after.services, cl.serviceType);
+      }
+    } else {
       var rr, g :| rr in s.retirements && g in rr.groups && (missingStopObservedFor(g, c0.live) || (epochOwnsResources(s, rr.epochId) && (c0.live in g.instances)));
       var j :| 0 <= j < |s.retirements| && s.retirements[j] == rr;
-      if j == k { assert g in r2.groups; } else { assert after.retirements[j] == rr; }
+      if j == k {
+        assert r2 in after.retirements && g in r2.groups;
+        assert missingStopObservedFor(g, cl.live) || (epochOwnsResources(after, r2.epochId) && (cl.live in g.instances));
+      } else {
+        assert after.retirements[j] == rr;
+        assert epoch(after, rr.epochId) == epoch(s, rr.epochId);
+        assert missingStopObservedFor(g, cl.live) || (epochOwnsResources(after, rr.epochId) && (cl.live in g.instances));
+      }
     }
   }
   forall o | o in after.services.objects
@@ -3983,4 +3978,95 @@ lemma OrphanFromReach(s: PluginServices)
     ObjectExact(s.services, o);
     PubFound(s.services, cl.serviceType);
   }
+}
+
+lemma ClaimSetup(s: PluginServices, epochId: int) returns (k: int, r2: ServiceRetirement, g2: RetirementGroup)
+  requires inv(s) && canClaimInstanceStop(s, epochId)
+  ensures 0 <= k < |s.retirements| && s.retirements[k].epochId == epochId
+  ensures 0 <= s.retirements[k].cursor < |s.retirements[k].groups| == s.retirements[k].cursor + 1 && retirementShaped(s.retirements[k])
+  ensures currentGroup(s, epochId) == s.retirements[k].groups[s.retirements[k].cursor]
+  ensures g2 == s.retirements[k].groups[s.retirements[k].cursor].(observedStops := (s.retirements[k].groups[s.retirements[k].cursor].observedStops + [observedInstanceSlot(currentInstance(s, epochId), InstanceStopObservation.AwaitedStopSlot)]))
+  ensures r2 == s.retirements[k].(groups := s.retirements[k].groups[s.retirements[k].cursor := g2])
+  ensures claimInstanceStop(s, epochId) == s.(services := core__serviceInstances_requestObjectStop(s.services, currentInstance(s, epochId)), retirements := s.retirements[k := r2])
+{
+  k := CurrentAt(s, epochId);
+  var r := s.retirements[k];
+  var g := r.groups[r.cursor];
+  assert g in r.groups && r in s.retirements;
+  var id := currentInstance(s, epochId);
+  g2 := g.(observedStops := (g.observedStops + [observedInstanceSlot(id, InstanceStopObservation.AwaitedStopSlot)]));
+  var s1 := s.(services := core__serviceInstances_stopObjectOnce(id, s.services));
+  GroupsDistinct(r);
+  PutAt(s1, epochId, g2, k);
+  r2 := r.(groups := r.groups[r.cursor := g2]);
+  var after := claimInstanceStop(s, epochId);
+  assert after == s1.(retirements := s.retirements[k := r2]);
+  ObjectFound(s.services, id);
+  core__serviceInstances_requestObjectStop_ensures(s.services, id);
+  assert after.services == core__serviceInstances_requestObjectStop(s.services, id);
+}
+
+lemma ClaimKeepsEpochs(s: PluginServices, epochId: int)
+  requires inv(s) && canClaimInstanceStop(s, epochId)
+  ensures alwaysEpochIdentityUnique(claimInstanceStop(s, epochId)) && alwaysOneActiveEpochPerName(claimInstanceStop(s, epochId)) && alwaysEpochOutcomeHonest(claimInstanceStop(s, epochId))
+  ensures alwaysLiveClassOwnerUnique(claimInstanceStop(s, epochId)) && alwaysInvokingStartHasNoInstance(claimInstanceStop(s, epochId))
+  ensures alwaysServiceOwnerEpochExists(claimInstanceStop(s, epochId)) && alwaysSealedOwnedClassesStable(claimInstanceStop(s, epochId))
+{
+  var k, r2, g2 := ClaimSetup(s, epochId);
+  var id := currentInstance(s, epochId);
+  ObjectFound(s.services, id);
+  core__serviceInstances_requestObjectStop_ensures(s.services, id);
+}
+
+lemma ClaimKeepsRetirements(s: PluginServices, epochId: int)
+  requires inv(s) && canClaimInstanceStop(s, epochId)
+  ensures alwaysRetirementPerRetiredEpoch(claimInstanceStop(s, epochId)) && alwaysRetirementFollowsPlan(claimInstanceStop(s, epochId)) && alwaysRetiredEpochHasNoResources(claimInstanceStop(s, epochId))
+{
+  var k, r2, g2 := ClaimSetup(s, epochId);
+  var r := s.retirements[k];
+  var after := claimInstanceStop(s, epochId);
+  var id := currentInstance(s, epochId);
+  ObjectFound(s.services, id);
+  core__serviceInstances_requestObjectStop_ensures(s.services, id);
+  SettledKept(s.services, after.services);
+  UAt(s, after, k, r2);
+  ShapeReplaceCurrent(r, r2, g2);
+  ShapeAt(s, after, k, r2);
+  OwnsOpen(s, k);
+  NoResourcesAt(s, after, k, r2);
+}
+
+lemma ClaimKeepsServices(s: PluginServices, epochId: int)
+  requires inv(s) && canClaimInstanceStop(s, epochId)
+  ensures alwaysChildLifecyclesValid(claimInstanceStop(s, epochId)) && alwaysOwnedClassesMatchServices(claimInstanceStop(s, epochId)) && alwaysStopObservationsFollowSlots(claimInstanceStop(s, epochId))
+{
+  var k, r2, g2 := ClaimSetup(s, epochId);
+  var r := s.retirements[k];
+  var g := r.groups[r.cursor];
+  assert g in r.groups && r in s.retirements;
+  var after := claimInstanceStop(s, epochId);
+  var id := currentInstance(s, epochId);
+  ObjectFound(s.services, id);
+  core__serviceInstances_requestObjectStop_ensures(s.services, id);
+  ChildInv(after);
+  SettledKept(s.services, after.services);
+  StopsValid(g2, after.services);
+  StopsValid(g, s.services);
+  SlotsAtGroup(s, after, k, r.cursor, g2, r2);
+  ClassShape(s, after);
+}
+
+lemma ClaimKeepsInstances(s: PluginServices, epochId: int)
+  requires inv(s) && canClaimInstanceStop(s, epochId)
+  ensures alwaysNoOrphanInstance(claimInstanceStop(s, epochId)) && alwaysLiveInstanceReachable(claimInstanceStop(s, epochId)) && alwaysRetiredUndeclaredTypeIsUnknown(claimInstanceStop(s, epochId))
+{
+  var k, r2, g2 := ClaimSetup(s, epochId);
+  var r := s.retirements[k];
+  var after := claimInstanceStop(s, epochId);
+  var id := currentInstance(s, epochId);
+  ObjectFound(s.services, id);
+  core__serviceInstances_requestObjectStop_ensures(s.services, id);
+  OrphanAt(s, after, k, r.cursor, g2, r2);
+  ReachAt(s, after, k, r.cursor, g2, r2);
+  UndeclaredAt(s, after, k, r.cursor, g2, r2);
 }

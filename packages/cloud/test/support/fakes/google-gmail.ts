@@ -12,6 +12,7 @@ export interface FakeAttachment {
 export interface ReadableMessage extends MailboxMessage {
   internalDate?: number;
   headers?: Readonly<Record<string, string>>;
+  received?: ReadonlyArray<{ readonly name: string; readonly value: string }>;
   snippet?: string;
   bodyText?: string;
   bodyHtml?: string;
@@ -50,15 +51,14 @@ function rawParts(raw: string): { readonly headers: Record<string, string>; read
   return { headers, body: split < 0 ? "" : text.slice(split).replace(/^\r?\n\r?\n/, "") };
 }
 
-function headerList(headers: Readonly<Record<string, string>>, only: ReadonlyArray<string> | undefined) {
-  return Object.entries(headers)
-    .filter(([name]) => only === undefined || only.some((wanted) => wanted.toLowerCase() === name.toLowerCase()))
-    .map(([name, value]) => ({ name, value }));
+function headerList(received: ReadonlyArray<{ readonly name: string; readonly value: string }>, headers: Readonly<Record<string, string>>, only: ReadonlyArray<string> | undefined) {
+  return [...received, ...Object.entries(headers).map(([name, value]) => ({ name, value }))]
+    .filter(({ name }) => only === undefined || only.some((wanted) => wanted.toLowerCase() === name.toLowerCase()));
 }
 
 function payload(message: ReadableMessage, format: string, only: ReadonlyArray<string> | undefined) {
   const parsed = message.raw === undefined ? undefined : rawParts(message.raw);
-  const headers = headerList(message.headers ?? parsed?.headers ?? {}, format === "metadata" ? only : undefined);
+  const headers = headerList(message.received ?? [], message.headers ?? parsed?.headers ?? {}, format === "metadata" ? only : undefined);
   if (format === "metadata") return { mimeType: "multipart/mixed", headers };
   const text = message.bodyText ?? parsed?.body;
   const bodies = [

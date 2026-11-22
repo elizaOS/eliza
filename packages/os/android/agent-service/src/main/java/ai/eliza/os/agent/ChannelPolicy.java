@@ -110,7 +110,7 @@ public final class ChannelPolicy {
     return admitEntry(id, owner, mode);
   }
 
-  synchronized Step admitEntry(String id, String owner, Mode mode) {
+  private Step admitEntry(String id, String owner, Mode mode) {
     long seq = nextSeq++;
     pending.add(new Entry(seq, id, owner, mode, servingEpoch(), 0));
     return emit(List.of(new Accepted(id, seq)));

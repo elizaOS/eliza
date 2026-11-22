@@ -1,0 +1,1639 @@
+// spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"
+import { ChildProcess } from "effect/process"
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+import { digestsMatch, type Digest } from "../../gen/os__image__apk.effect.vibe"
+import {
+  allDrillsPassed,
+  bootChainAdmitted,
+  boundRecordFields,
+  channelDistributable,
+  channelSigningProblems,
+  drillsPassed,
+  keyDecryptionAdmitted,
+  keyNamedOnce,
+  keyOutputAdmitted,
+  keyStoreAdmitted,
+  kindAdmitted,
+  knownGoodRetained,
+  manifestAdmitted,
+  minPassphraseCharacters,
+  packageAdmitted,
+  recordBindsOutputs,
+  recordFieldsAdmitted,
+  releaseDescriptorProblems as descriptorProblemsOf,
+  unmappedKeys,
+  updatePackageAdmitted,
+  type ChannelProblem,
+  type DescriptorProblem,
+  type DrillResult,
+  type Drills,
+  type KeyKind,
+  type KnownGood,
+  type ManifestKey,
+  type PackageCheck,
+  type RecordField,
+  type ReleaseChannel,
+  type ReleaseDescriptor,
+  type SigningRecord,
+} from "../../gen/os__image__signing.effect.vibe"
+import { parseDigest } from "./apk.vibe"
+import { productDescriptor } from "./compose-product.vibe"
+
+module node {
+  import { X509Certificate, createHash, createPrivateKey, createPublicKey, generateKeyPairSync, type Hash, type KeyObject } from "node:crypto"
+
+  export type Opened<T> = { readonly kind: "opened"; readonly value: T } | { readonly kind: "refused"; readonly message: string }
+
+  export interface KeyPair {
+    readonly privatePem: string
+    readonly publicPem: string
+    readonly spki: Uint8Array
+    readonly avb: Uint8Array | undefined
+  }
+
+  export interface CertificateFacts {
+    readonly sha256: string
+    readonly subject: string
+    readonly publicPem: string
+  }
+
+  export interface OpenedKey {
+    readonly plaintext: Uint8Array
+    readonly privateMatchesPublic: boolean
+    readonly certificateSha256: string | undefined
+    readonly avbPublicKeySha256: string | undefined
+    readonly spkiSha256: string
+  }
+
+  export type PublicHalf = { readonly kind: "certificate"; readonly pem: Uint8Array } | { readonly kind: "publicKey"; readonly pem: Uint8Array }
+
+  export interface VbmetaChain {
+    readonly partition: string
+    readonly rollbackIndexLocation: number
+  }
+
+  export interface Vbmeta {
+    readonly rollbackIndex: string
+    readonly rollbackIndexLocation: number
+    readonly chains: readonly VbmetaChain[]
+  }
+
+  const PUBLIC_PEM = "-----BEGIN PUBLIC KEY-----"
+  const AVB_HEADER_SIZE = 256
+  const AVB_FOOTER_SIZE = 64
+  const AVB_CHAIN_PARTITION_TAG = 4n
+  const AVB_CHAIN_PARTITION_FIXED = 92
+
+  function refused<T>(cause: unknown): Opened<T> {
+    return { kind: "refused", message: cause instanceof Error ? cause.message : String(cause) }
+  }
+
+  /** @throws {never} */
+  export function sha256Hex(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function hashStart(): Hash {
+    return createHash("sha256")
+  }
+
+  /** @throws {never} */
+  export function hashUpdate(hash: Hash, bytes: Uint8Array): void {
+    hash.update(bytes)
+  }
+
+  /** @throws {never} */
+  export function hashHex(hash: Hash): string {
+    return hash.digest("hex")
+  }
+
+  /** @throws {never} */
+  export function base64Of(bytes: Uint8Array): string {
+    return Buffer.from(bytes).toString("base64")
+  }
+
+  /** @throws {never} */
+  export function hexToBase64(hex: string): string {
+    return Buffer.from(hex, "hex").toString("base64")
+  }
+
+  /** @throws {never} */
+  export function processPath(): string {
+    return process.env.PATH ?? ""
+  }
+
+  /** @throws {never} */
+  export function nowIso(): string {
+    return new Date().toISOString()
+  }
+
+  /** @throws {never} */
+  export function serialized(value: unknown): string {
+    return `${JSON.stringify(value, null, 2)}\n`
+  }
+
+  /** @throws {never} */
+  export function parseJson(bytes: Uint8Array): unknown {
+    try {
+      return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+    } catch {
+      return undefined
+    }
+  }
+
+  function modInverse(a: bigint, m: bigint): bigint {
+    let [oldR, r] = [a, m]
+    let [oldS, s] = [1n, 0n]
+    while (r) {
+      const q = oldR / r
+      ;[oldR, r] = [r, oldR - q * r]
+      ;[oldS, s] = [s, oldS - q * s]
+    }
+    if (oldR !== 1n) throw new Error("the modulus is not invertible")
+    return ((oldS % m) + m) % m
+  }
+
+  function bigToBytes(value: bigint, length: number): Buffer {
+    const hex = value.toString(16).padStart(length * 2, "0")
+    if (hex.length > length * 2) throw new Error("the value is too large")
+    return Buffer.from(hex, "hex")
+  }
+
+  function avbBytes(publicKey: KeyObject): Uint8Array {
+    const jwk = publicKey.export({ format: "jwk" })
+    if (jwk.kty !== "RSA" || jwk.e !== "AQAB" || !jwk.n) throw new Error("AVB keys must be RSA with exponent 65537")
+    const n = BigInt(`0x${Buffer.from(jwk.n, "base64url").toString("hex")}`)
+    const numBits = n.toString(2).length
+    if (![2048, 4096, 8192].includes(numBits)) throw new Error(`unsupported AVB key size ${numBits}`)
+    const b = 1n << 32n
+    const n0inv = b - modInverse(n % b, b)
+    const r = 1n << BigInt(numBits)
+    const header = Buffer.alloc(8)
+    header.writeUInt32BE(numBits, 0)
+    header.writeUInt32BE(Number(n0inv), 4)
+    return Buffer.concat([header, bigToBytes(n, numBits / 8), bigToBytes((r * r) % n, numBits / 8)])
+  }
+
+  /** @throws {never} */
+  export function avbEncoding(key: string | Uint8Array): Opened<Uint8Array> {
+    try {
+      return { kind: "opened", value: avbBytes(createPublicKey(typeof key === "string" ? key : Buffer.from(key))) }
+    } catch (cause) {
+      return refused(cause)
+    }
+  }
+
+  /** @throws {never} */
+  export function newKeyPair(kind: "rsa" | "ed25519", bits: number): Opened<KeyPair> {
+    try {
+      const { privateKey, publicKey } = kind === "rsa" ? generateKeyPairSync("rsa", { modulusLength: bits, publicExponent: 65537 }) : generateKeyPairSync("ed25519")
+      return {
+        kind: "opened",
+        value: {
+          privatePem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+          publicPem: publicKey.export({ type: "spki", format: "pem" }).toString(),
+          spki: publicKey.export({ type: "spki", format: "der" }),
+          avb: kind === "rsa" ? avbBytes(publicKey) : undefined,
+        },
+      }
+    } catch (cause) {
+      return refused(cause)
+    }
+  }
+
+  /** @throws {never} */
+  export function certificateFacts(pem: Uint8Array): Opened<CertificateFacts> {
+    try {
+      const certificate = new X509Certificate(Buffer.from(pem))
+      return {
+        kind: "opened",
+        value: {
+          sha256: certificate.fingerprint256.replaceAll(":", "").toLowerCase(),
+          subject: certificate.subject.replace(/\n/g, ", "),
+          publicPem: certificate.publicKey.export({ type: "spki", format: "pem" }).toString(),
+        },
+      }
+    } catch (cause) {
+      return refused(cause)
+    }
+  }
+
+  /** @throws {never} */
+  export function openKey(encrypted: Uint8Array, format: "der" | "pem", passphrase: string, half: PublicHalf): Opened<OpenedKey> {
+    try {
+      const key = format === "der" ? createPrivateKey({ key: Buffer.from(encrypted), format, type: "pkcs8", passphrase }) : createPrivateKey({ key: Buffer.from(encrypted), format, passphrase })
+      const derived = createPublicKey(key)
+      const certificate = half.kind === "certificate" ? new X509Certificate(Buffer.from(half.pem)) : undefined
+      return {
+        kind: "opened",
+        value: {
+          plaintext: format === "der" ? key.export({ type: "pkcs8", format: "der" }) : Buffer.from(key.export({ type: "pkcs8", format: "pem" })),
+          privateMatchesPublic: certificate === undefined ? derived.equals(createPublicKey(Buffer.from(half.pem))) : certificate.checkPrivateKey(key),
+          certificateSha256: certificate?.fingerprint256.replaceAll(":", "").toLowerCase(),
+          avbPublicKeySha256: derived.asymmetricKeyType === "rsa" ? sha256Hex(avbBytes(derived)) : undefined,
+          spkiSha256: sha256Hex(derived.export({ type: "spki", format: "der" })),
+        },
+      }
+    } catch (cause) {
+      return refused(cause)
+    }
+  }
+
+  /** @throws {never} */
+  export function isPublicPem(bytes: Uint8Array): boolean {
+    return Buffer.from(bytes.subarray(0, PUBLIC_PEM.length)).toString("latin1") === PUBLIC_PEM
+  }
+
+  function vbmetaStruct(bytes: Buffer): Buffer | undefined {
+    if (bytes.length < AVB_HEADER_SIZE) return undefined
+    if (bytes.subarray(0, 4).toString("latin1") === "AVB0") return bytes
+    const footer = bytes.subarray(bytes.length - AVB_FOOTER_SIZE)
+    if (footer.subarray(0, 4).toString("latin1") !== "AVBf") return undefined
+    const offset = footer.readBigUInt64BE(20)
+    const size = footer.readBigUInt64BE(28)
+    if (offset + size > BigInt(bytes.length - AVB_FOOTER_SIZE)) return undefined
+    const struct = bytes.subarray(Number(offset), Number(offset + size))
+    return struct.subarray(0, 4).toString("latin1") === "AVB0" ? struct : undefined
+  }
+
+  function readVbmeta(bytes: Buffer): Vbmeta | undefined {
+    const struct = vbmetaStruct(bytes)
+    if (struct === undefined) return undefined
+    const authSize = struct.readBigUInt64BE(12)
+    const auxSize = struct.readBigUInt64BE(20)
+    const descriptorsOffset = struct.readBigUInt64BE(96)
+    const descriptorsSize = struct.readBigUInt64BE(104)
+    const auxStart = BigInt(AVB_HEADER_SIZE) + authSize
+    if (auxStart + auxSize > BigInt(struct.length) || descriptorsOffset + descriptorsSize > auxSize) return undefined
+    const chains: VbmetaChain[] = []
+    let at = auxStart + descriptorsOffset
+    const end = at + descriptorsSize
+    while (at + 16n <= end) {
+      const tag = struct.readBigUInt64BE(Number(at))
+      const following = struct.readBigUInt64BE(Number(at) + 8)
+      const next = at + 16n + following
+      if (following % 8n !== 0n || next > end) return undefined
+      if (tag === AVB_CHAIN_PARTITION_TAG) {
+        const base = Number(at)
+        if (following + 16n < BigInt(AVB_CHAIN_PARTITION_FIXED)) return undefined
+        const nameLength = struct.readUInt32BE(base + 20)
+        const keyLength = struct.readUInt32BE(base + 24)
+        if (BigInt(AVB_CHAIN_PARTITION_FIXED + nameLength + keyLength) > following + 16n) return undefined
+        const nameStart = base + AVB_CHAIN_PARTITION_FIXED
+        chains.push({ partition: struct.subarray(nameStart, nameStart + nameLength).toString("utf8"), rollbackIndexLocation: struct.readUInt32BE(base + 16) })
+      }
+      at = next
+    }
+    return { rollbackIndex: struct.readBigUInt64BE(112).toString(), rollbackIndexLocation: struct.readUInt32BE(124), chains }
+  }
+
+  /** @throws {never} */
+  export function parseVbmeta(bytes: Uint8Array): Vbmeta | undefined {
+    try {
+      return readVbmeta(Buffer.from(bytes))
+    } catch {
+      return undefined
+    }
+  }
+}
+import { avbEncoding, base64Of, certificateFacts, hashHex, hashStart, hashUpdate, hexToBase64, isPublicPem, newKeyPair, nowIso, openKey, parseJson, parseVbmeta, processPath, serialized, sha256Hex, type KeyPair, type Opened, type PublicHalf } from node
+
+export type RawRecord = Readonly<Record<string, unknown>>
+export type KeyKindName = "x509-pk8" | "avb-rsa" | "ed25519"
+export type SigningMode = "key-files" | "managed"
+
+export interface KeyManifestEntry extends ManifestKey {
+  readonly storage: string | undefined
+  readonly consumer: string | undefined
+  readonly subject: string | undefined
+  readonly certificateSha256: string | undefined
+  readonly rotatable: boolean | string | undefined
+}
+
+export interface KeyManifest {
+  readonly schemaVersion: 1
+  readonly reviewedAt: string | undefined
+  readonly keys: readonly KeyManifestEntry[]
+}
+
+export interface GenerateOptions {
+  readonly output: string
+  readonly passphraseFile: string
+  readonly organization: string
+  readonly manifest: string
+  readonly testKeys: boolean
+  readonly only?: string
+}
+
+export interface DecryptOptions {
+  readonly input: string
+  readonly output: string
+  readonly passphraseFile: string
+  readonly only?: string
+}
+
+export interface FingerprintEntry {
+  readonly name: string
+  readonly kind: KeyKindName
+  readonly storage?: string
+  readonly bits?: number
+  readonly certificateSha256?: string
+  readonly subject?: string
+  readonly avbPublicKeySha256?: string
+  readonly spkiBase64?: string
+  readonly spkiSha256?: string
+  readonly publicKeyPem?: string
+}
+
+export interface Fingerprints {
+  readonly schemaVersion: 1
+  readonly generatedAt: string
+  readonly testKeys: boolean
+  readonly organization: string
+  readonly manifestReviewedAt: string | undefined
+  readonly keys: readonly FingerprintEntry[]
+}
+
+export interface ManagedSigning {
+  readonly pkcs11Config?: string
+  readonly avbSigningHelper?: string
+  readonly payloadSigner?: string
+  readonly payloadSignerArgs?: readonly string[]
+  readonly payloadSignerSignatureSize?: string
+}
+
+export interface SignReleaseOptions extends ManagedSigning {
+  readonly root: string
+  readonly descriptorFile: string
+  readonly productFile: string
+  readonly targetFiles: string
+  readonly targetFilesSha256: string
+  readonly keysDir: string
+  readonly releasetools: string
+  readonly out: string
+  readonly apksigner?: string
+  readonly keyMap?: Readonly<Record<string, string>>
+  readonly apkManifest?: string
+  readonly incrementalFrom?: string
+  readonly dryRun?: boolean
+}
+
+export interface ReleaseCommand {
+  readonly tool: string
+  readonly args: readonly string[]
+}
+
+export type SigningProblem =
+  | { readonly kind: "Descriptor"; readonly problem: DescriptorProblem; readonly detail: string }
+  | { readonly kind: "Channel"; readonly problem: ChannelProblem; readonly detail: string }
+  | { readonly kind: "Unmapped"; readonly key: string; readonly detail: string }
+  | { readonly kind: "BootChain"; readonly detail: string }
+  | { readonly kind: "KeyStore"; readonly detail: string }
+  | { readonly kind: "Input"; readonly detail: string }
+  | { readonly kind: "Package"; readonly entry: string; readonly detail: string }
+  | { readonly kind: "Distribution"; readonly detail: string }
+  | { readonly kind: "Record"; readonly field: RecordField | "Reading"; readonly detail: string }
+
+export type SigningResult =
+  | { readonly kind: "DryRun"; readonly problems: readonly SigningProblem[]; readonly commands: readonly ReleaseCommand[]; readonly signingMode: SigningMode; readonly tokenLabels: Readonly<Record<string, string>> | null }
+  | { readonly kind: "Signed"; readonly record: string; readonly commands: readonly ReleaseCommand[]; readonly signingMode: SigningMode; readonly distributionProblems: readonly SigningProblem[] }
+
+export interface RollbackIndex {
+  readonly partition: string
+  readonly location: number
+  readonly index: string
+}
+
+export interface IncrementalSource {
+  readonly file: string
+  readonly sha256: string
+}
+
+export interface RecordRequest {
+  readonly signedTargetFiles: string
+  readonly ota: string
+  readonly product: string
+  readonly device: string
+  readonly channel: string
+  readonly algorithm: string
+  readonly certificates: Readonly<Record<string, string | null>>
+  readonly avbPublicKeySha256: string | null
+  readonly apkManifest?: unknown
+  readonly inputs: Readonly<Record<string, string>>
+  readonly incrementalFrom?: IncrementalSource | null
+  readonly createdAt?: string
+}
+
+export interface ReleaseRecord {
+  readonly schema: 1
+  readonly kind: typeof RECORD_KIND
+  readonly product: string
+  readonly device: string
+  readonly channel: string
+  readonly createdAt: string
+  readonly build: Readonly<Record<string, string | null>>
+  readonly inputs: Readonly<Record<string, string>>
+  readonly artifacts: {
+    readonly signedTargetFiles: { readonly file: string; readonly sha256: string; readonly sizeBytes: number }
+    readonly ota: { readonly file: string; readonly sha256: string; readonly sizeBytes: number; readonly type: "full" | "incremental"; readonly incrementalFrom: IncrementalSource | null }
+  }
+  readonly verifiedBoot: {
+    readonly algorithm: string
+    readonly publicKeySha256: string | null
+    readonly chainedPartitions: readonly string[]
+    readonly images: Readonly<Record<string, string | null>>
+    readonly rollbackIndexes: readonly RollbackIndex[]
+  }
+  readonly payload: {
+    readonly sha256: string | null
+    readonly sizeBytes: number | null
+    readonly properties: Readonly<Record<string, string>>
+    readonly metadata: Readonly<Record<string, string>>
+  }
+  readonly certificates: Readonly<Record<string, string | null>>
+  readonly apks: readonly { readonly file: unknown; readonly sha256: unknown; readonly signerSha256: unknown; readonly versionCode: unknown; readonly distributable: boolean }[]
+  readonly problems: readonly string[]
+}
+
+export error KeyArgumentsRefused { message: string }
+export error KeyManifestRefused { file: string; message: string }
+export error KeyOutputRefused { output: string; message: string }
+export error KeyDecryptionRefused { name: string; message: string }
+export error KeyToolFailed { tool: string; message: string }
+export error AvbKeyRefused { message: string }
+export error SigningRefused { problems: readonly SigningProblem[]; message: string }
+export error SignedOutputRefused { problems: readonly SigningProblem[]; message: string }
+export error ReleaseToolFailed { tool: string; code: number | undefined; message: string }
+export error ReleaseRecordInconsistent { record: string; problems: readonly SigningProblem[]; message: string }
+export error ReleaseInputUnreadable { place: string; message: string }
+
+export const RECORD_KIND = "aosp-release-compatibility"
+export const TEST_KEYS_MARKER = "TEST-KEYS-DO-NOT-SHIP"
+
+const KEY_NAME = /^[a-z][a-z0-9_]{0,62}$/
+const HEX64 = /^[0-9a-f]{64}$/
+const PLACEHOLDER = /^(unset|todo|tbd)$/i
+const SHLEX_WORD = /^[A-Za-z0-9_@%+=:,./-]+$/
+const ORGANIZATION = /^[\w .,&'-]{1,64}$/
+const CHANNEL_NAME = /^[a-z][a-z0-9-]*$/
+const KEY_FILE_NAME = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/
+const KEY_INPUT = "<private-key-input>"
+const TEST_KEY_BITS = 2048
+const TEST_KEYS_LABEL = "OU=TEST ONLY"
+const PRESIGNED = new Set(["PRESIGNED", "EXTERNAL"])
+const DEFAULT_KEY_MAP: Readonly<Record<string, string>> = { testkey: "releasekey", devkey: "releasekey", platform: "platform", shared: "shared", media: "media", networkstack: "networkstack", sdk_sandbox: "sdk_sandbox" }
+const EXPLICIT_KEYS: readonly string[] = ["bluetooth", "nfc"]
+const DEV_KEY_DIRS: readonly string[] = ["build/make/target/product/security", "build/target/product/security"]
+const APEX_CONTAINER = "apex"
+const APEX_PAYLOAD = "apex_payload"
+const RELEASETOOLS = ["sign_target_files_apks", "ota_from_target_files"] as const
+const PKCS11_PROVIDER = "sun.security.pkcs11.SunPKCS11"
+const PKCS11_JAVA_ARGS = "-Xmx4096m --add-exports=jdk.crypto.cryptoki/sun.security.pkcs11=ALL-UNNAMED"
+const MANAGED_FLAGS = { pkcs11Config: "--pkcs11-config", avbSigningHelper: "--avb-signing-helper", payloadSigner: "--payload-signer", payloadSignerSignatureSize: "--payload-signer-signature-size" } as const
+const CHANNEL_DRILLS = ["signedUpdate", "interruptedUpdate", "compatibleRollback", "stockRecovery"] as const
+const DRILL_RESULTS: Readonly<Record<string, DrillResult>> = { passed: "DrillPassed", failed: "DrillFailed" }
+const EVIDENCE_FIELDS = ["releaseQualified", "deviceAcceptanceVerified", "qualification", "acceptance"] as const
+const RECORD_FORBIDDEN: readonly (readonly [RecordField, RegExp])[] = [
+  ["PrivateKeyBytes", /^(privateKey|private_key|pk8|keyMaterial)$/i],
+  ["KeyPassword", /^(password|passphrase|keyPassword|pin)$/i],
+  ["QualificationClaim", /^(releaseQualified|qualified|qualification)$/i],
+  ["AcceptanceClaim", /^(deviceAcceptanceVerified|accepted|acceptance)$/i],
+]
+
+function isRecord(value: unknown): value is RawRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function field(value: unknown, ...keys: readonly string[]): unknown {
+  let current = value
+  for (const key of keys) current = isRecord(current) ? current[key] : undefined
+  return current
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value : ""
+}
+
+function optionalText(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined
+}
+
+function hexOf(digest: Digest): string | null {
+  return digest.tag === "Sha256" ? digest.hex : null
+}
+
+export function placeholderFields(value: unknown, at = ""): string[] {
+  if (typeof value === "string") return PLACEHOLDER.test(value.trim()) || /placeholder/i.test(value) ? [at || "(value)"] : []
+  if (Array.isArray(value)) return value.flatMap((item: unknown, index: number) => placeholderFields(item, `${at}[${index}]`))
+  if (isRecord(value)) return Object.entries(value).filter(([key]) => key !== "description").flatMap(([key, item]) => placeholderFields(item, at ? `${at}.${key}` : key))
+  return []
+}
+
+function safeRelativePath(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && !value.startsWith("/") && !value.includes("\0") && !value.split(/[\\/]/).some((part) => part === "" || part === "." || part === "..")
+}
+
+function parseProperties(source: string): Record<string, string> {
+  const values: Record<string, string> = {}
+  for (const line of source.split(/\r?\n/)) {
+    if (!line || line.startsWith("#")) continue
+    const at = line.indexOf("=")
+    if (at > 0) values[line.slice(0, at).trim()] = line.slice(at + 1).trim()
+  }
+  return values
+}
+
+function parseQuotedRows(source: string): Record<string, string>[] {
+  return source.split(/\r?\n/).filter((line) => line.trim()).map((line) => Object.fromEntries([...line.matchAll(/([A-Za-z_]+)="([^"]*)"/g)].map((match) => [match[1] ?? "", match[2] ?? ""])))
+}
+
+function chainedPartitionsOf(misc: Readonly<Record<string, string>>): string[] {
+  return Object.keys(misc)
+    .map((key) => /^avb_([a-z0-9_]+)_key_path$/.exec(key)?.[1])
+    .filter((name): name is string => name !== undefined && name !== "vbmeta" && (misc[`avb_${name}_key_path`] ?? "") !== "")
+    .sort()
+}
+
+function selection(only: string | undefined): Set<string> | null {
+  return only === undefined ? null : new Set(only.split(","))
+}
+
+function unknownSelections(selected: Set<string> | null, known: readonly string[]): string[] {
+  return selected === null ? [] : [...selected].filter((name) => !known.includes(name)).map((name) => name || "(empty)")
+}
+
+function describeProblems(problems: readonly SigningProblem[]): string {
+  return problems.map((problem) => `  - ${problem.detail}`).join("\n")
+}
+
+function decoded(bytes: Uint8Array): string {
+  return new TextDecoder().decode(bytes)
+}
+
+function opened<T>(outcome: Opened<T>, name: string): T | string {
+  return outcome.kind === "opened" ? outcome.value : `${name}: ${outcome.message}`
+}
+
+effect function present(file: string) {
+  const files = try FileSystem.FileSystem
+  return (files.exists(file) catch () => false)
+}
+
+effect function info(file: string) {
+  const files = try FileSystem.FileSystem
+  return (files.stat(file) catch () => undefined)
+}
+
+effect function isSymbolicLink(file: string) {
+  const files = try FileSystem.FileSystem
+  return (effect { try files.readLink(file); return true } catch () => false)
+}
+
+effect function executable(file: string) {
+  const stat = try info(file)
+  return stat !== undefined && stat.type === "File" && (stat.mode & 0o111) !== 0
+}
+
+effect function readBytes(place: string) {
+  const files = try FileSystem.FileSystem
+  return try mapError(files.readFile(place), (cause) => new ReleaseInputUnreadable({ place, message: `${place} could not be read: ${cause.message}` }))
+}
+
+effect function readJson(place: string) {
+  const value = parseJson(try readBytes(place))
+  if (value === undefined) throw new ReleaseInputUnreadable({ place, message: `${place} is not JSON` })
+  return value
+}
+
+effect function capture(tool: string, args: readonly string[]) {
+  const spawner = try ChildProcessSpawner
+  return try mapError(scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make(tool, [...args], { stdin: "ignore" }))
+    const [stdout, stderr] = try.all [Stream.mkUint8Array(child.stdout), Stream.mkString(Stream.decodeText(child.stderr))]
+    const code: number = try child.exitCode
+    return { code, stdout, stderr }
+  }), (cause) => new ReleaseToolFailed({ tool, code: undefined, message: `${tool} could not run: ${cause.message}` }))
+}
+
+effect function runReleaseTool(command: ReleaseCommand, releasetools: string) {
+  const spawner = try ChildProcessSpawner
+  const code: number = try mapError(scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make(command.tool, [...command.args], { stdin: "ignore", stdout: "inherit", stderr: "inherit", env: { PATH: `${releasetools}:${processPath()}` }, extendEnv: true }))
+    return try child.exitCode
+  }), (cause) => new ReleaseToolFailed({ tool: command.tool, code: undefined, message: `${command.tool} could not run: ${cause.message}` }))
+  if (code !== 0) throw new ReleaseToolFailed({ tool: command.tool, code, message: `${command.tool} exited with ${code}` })
+}
+
+effect function fileSha256(file: string) {
+  const files = try FileSystem.FileSystem
+  const hash = hashStart()
+  try mapError(Stream.runForEach(files.stream(file), (chunk) => sync(() => hashUpdate(hash, chunk))), (cause) => new ReleaseInputUnreadable({ place: file, message: `${file} could not be hashed: ${cause.message}` }))
+  return hashHex(hash)
+}
+
+effect function zipEntries(zip: string) {
+  const result = try capture("unzip", ["-Z1", zip])
+  if (result.code !== 0) throw new ReleaseInputUnreadable({ place: zip, message: `${zip} is not a readable zip: ${result.stderr.trim()}` })
+  return decoded(result.stdout).split(/\r?\n/).filter(Boolean)
+}
+
+effect function zipEntry(zip: string, entry: string) {
+  const result = try capture("unzip", ["-p", zip, entry])
+  if (result.code !== 0) throw new ReleaseInputUnreadable({ place: `${zip}!${entry}`, message: `${entry} could not be read from ${zip}: ${result.stderr.trim()}` })
+  return result.stdout
+}
+
+effect function zipEntrySha256(zip: string, entry: string) {
+  const spawner = try ChildProcessSpawner
+  const hash = hashStart()
+  let sizeBytes = 0
+  const code: number = try mapError(scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make("unzip", ["-p", zip, entry], { stdin: "ignore", stderr: "ignore" }))
+    try Stream.runForEach(child.stdout, (chunk) => sync(() => {
+      sizeBytes += chunk.byteLength
+      hashUpdate(hash, chunk)
+    }))
+    return try child.exitCode
+  }), (cause) => new ReleaseInputUnreadable({ place: `${zip}!${entry}`, message: `${entry} could not be hashed: ${cause.message}` }))
+  if (code !== 0) throw new ReleaseInputUnreadable({ place: `${zip}!${entry}`, message: `unzip ${entry} from ${zip} exited with ${code}` })
+  return { sha256: hashHex(hash), sizeBytes }
+}
+
+effect function enclosingWorkTree(target: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  let current = path.resolve(target)
+  while (!(try present(current))) {
+    const parent = path.dirname(current)
+    if (parent === current) return undefined
+    current = parent
+  }
+  current = (files.realPath(current) catch () => current)
+  for (;;) {
+    if (try present(path.join(current, ".git"))) return current
+    const parent = path.dirname(current)
+    if (parent === current) return undefined
+    current = parent
+  }
+}
+
+effect function readPassphrase(file: string) {
+  const files = try FileSystem.FileSystem
+  const refuse = (message: string) => new KeyOutputRefused({ output: file, message })
+  const stat = try mapError(files.stat(file), (cause) => refuse(`the passphrase file ${file} could not be read: ${cause.message}`))
+  const passphrase = (try mapError(files.readFileString(file), (cause) => refuse(cause.message))).split(/\r?\n/)[0] ?? ""
+  return { passphrase, facts: { ownerOnly: (stat.mode & 0o077) === 0, characters: passphrase.trim().length } }
+}
+
+effect function admitKeyOutput(output: string, passphraseFile: string, what: string) {
+  const path = try Path.Path
+  const resolved = path.resolve(output)
+  const workTree = try enclosingWorkTree(resolved)
+  const existed = try present(resolved)
+  const { passphrase, facts } = try readPassphrase(passphraseFile)
+  if (!keyOutputAdmitted({ insideWorkTree: workTree !== undefined, existed, ownerOnly: true }, facts)) {
+    const reasons = [
+      ...(workTree === undefined ? [] : [`${resolved} is inside the Git working tree ${workTree}`]),
+      ...(existed ? [`${resolved} already exists; use a new empty directory`] : []),
+      ...(facts.ownerOnly ? [] : [`${passphraseFile} must not be readable by group or others (chmod 600)`]),
+      ...(facts.characters >= minPassphraseCharacters ? [] : [`the passphrase must be at least ${minPassphraseCharacters} characters`]),
+    ]
+    throw new KeyOutputRefused({ output: resolved, message: `Refusing to write ${what}: ${reasons.join("; ")}` })
+  }
+  return { resolved, passphrase }
+}
+
+effect function makePrivateDirectory(directory: string) {
+  const files = try FileSystem.FileSystem
+  try mapError(files.makeDirectory(directory, { mode: 0o700 }), (cause) => new KeyOutputRefused({ output: directory, message: cause.message }))
+  try mapError(files.chmod(directory, 0o700), (cause) => new KeyOutputRefused({ output: directory, message: cause.message }))
+}
+
+effect function writeKeyFile(file: string, content: Uint8Array | string, mode: number) {
+  const files = try FileSystem.FileSystem
+  const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content
+  try mapError(files.writeFile(file, bytes, { flag: "wx", mode }), (cause) => new KeyOutputRefused({ output: file, message: cause.message }))
+}
+
+effect function openssl(args: readonly string[], privatePem: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const failed = (message: string) => new KeyToolFailed({ tool: "openssl", message })
+  return try scoped(effect {
+    const directory = try mapError(files.makeTempDirectoryScoped({ prefix: "eliza-key-" }), (cause) => failed(cause.message))
+    try mapError(files.chmod(directory, 0o700), (cause) => failed(cause.message))
+    const file = path.join(directory, "key.pem")
+    const bytes = new TextEncoder().encode(privatePem)
+    try mapError(files.writeFile(file, bytes, { flag: "wx", mode: 0o600 }), (cause) => failed(cause.message))
+    const result = try ensuring(mapError(capture("openssl", args.map((arg) => (arg === KEY_INPUT ? file : arg))), (cause) => failed(cause.message)), ignore(files.writeFile(file, new Uint8Array(bytes.byteLength))))
+    if (result.code !== 0) throw failed(`openssl ${args[0] ?? ""} failed: ${result.stderr.trim()}`)
+    return result.stdout
+  })
+}
+
+effect function encryptPkcs8(privatePem: string, passphraseFile: string, outform: "PEM" | "DER") {
+  return try openssl(["pkcs8", "-topk8", "-in", KEY_INPUT, "-outform", outform, "-v2", "aes-256-cbc", "-scrypt", "-passout", `file:${passphraseFile}`], privatePem)
+}
+
+function kindOf(raw: RawRecord): KeyKind | undefined {
+  const bits = typeof raw.bits === "number" ? raw.bits : 0
+  switch (raw.kind) {
+    case "x509-pk8":
+      return { tag: "X509Pk8", bits }
+    case "avb-rsa":
+      return { tag: "AvbRsa", bits }
+    case "ed25519":
+      return { tag: "Ed25519" }
+    default:
+      return undefined
+  }
+}
+
+export effect function loadKeyManifest(file: string) {
+  const refuse = (message: string) => new KeyManifestRefused({ file, message: `${file}: ${message}` })
+  const raw = try mapError(readJson(file), (cause) => refuse(cause.message))
+  const rawKeys = field(raw, "keys")
+  if (!Array.isArray(rawKeys)) throw refuse("expected schemaVersion 1 with a keys array")
+  const keys: KeyManifestEntry[] = []
+  for (const key of rawKeys) {
+    const kind = isRecord(key) ? kindOf(key) : undefined
+    if (!isRecord(key) || kind === undefined) throw refuse(`key ${String(field(key, "name"))} has no known kind (x509-pk8, avb-rsa or ed25519)`)
+    const name = text(key.name)
+    if (name !== "" && !KEY_NAME.test(name)) throw refuse(`invalid key name ${name}`)
+    const rotatable = typeof key.rotatable === "boolean" || typeof key.rotatable === "string" ? key.rotatable : undefined
+    keys.push({ name, kind, storage: optionalText(key.storage), consumer: optionalText(key.consumer), subject: optionalText(key.subject), certificateSha256: optionalText(key.certificateSha256), rotatable })
+  }
+  const schemaVersion = field(raw, "schemaVersion")
+  if (!manifestAdmitted(typeof schemaVersion === "number" ? schemaVersion : 0, keys)) {
+    const reasons = [
+      ...(schemaVersion === 1 ? [] : ["schemaVersion must be 1"]),
+      ...(keys.length > 0 ? [] : ["the manifest names no key"]),
+      ...keys.filter((key) => key.name === "").map(() => "a key has no name"),
+      ...keys.filter((key) => !kindAdmitted(key.kind)).map((key) => `${key.name} must be RSA-4096`),
+      ...[...new Set(keys.filter((key) => key.name !== "" && !keyNamedOnce(keys, key.name)).map((key) => key.name))].map((name) => `duplicate key ${name}`),
+    ]
+    throw refuse(reasons.join("; "))
+  }
+  const manifest: KeyManifest = { schemaVersion: 1, reviewedAt: optionalText(field(raw, "reviewedAt")), keys }
+  return manifest
+}
+
+type GenerateFlag = "output" | "passphraseFile" | "organization" | "manifest" | "only"
+
+export effect function parseArgs(argv: readonly string[]) {
+  const valued: Readonly<Record<string, GenerateFlag>> = { "--output": "output", "--passphrase-file": "passphraseFile", "--organization": "organization", "--manifest": "manifest", "--only": "only" }
+  const values: Partial<Record<GenerateFlag, string>> = {}
+  let testKeys = false
+  for (let index = 0; index < argv.length; index++) {
+    const argument = argv[index] ?? ""
+    const name = valued[argument]
+    const value = argv[index + 1]
+    if (argument === "--test-keys") testKeys = true
+    else if (name === undefined) throw new KeyArgumentsRefused({ message: `Unknown argument ${argument}` })
+    else if (value === undefined) throw new KeyArgumentsRefused({ message: `${argument} needs a value` })
+    else if (values[name] !== undefined) throw new KeyArgumentsRefused({ message: `${argument} is given twice` })
+    else {
+      values[name] = value
+      index++
+    }
+  }
+  if (values.output === undefined) throw new KeyArgumentsRefused({ message: "Supply --output NEW_DIRECTORY outside every Git working tree." })
+  if (values.passphraseFile === undefined) throw new KeyArgumentsRefused({ message: "Supply --passphrase-file FILE (mode 0600)." })
+  if (values.manifest === undefined) throw new KeyArgumentsRefused({ message: "Supply --manifest FILE: the key set comes only from your own key manifest." })
+  const organization = values.organization ?? (testKeys ? "Test Keys" : undefined)
+  if (organization === undefined) throw new KeyArgumentsRefused({ message: "Supply --organization for release keys." })
+  if (!ORGANIZATION.test(organization)) throw new KeyArgumentsRefused({ message: "--organization must be 1-64 plain characters." })
+  const options: GenerateOptions = { output: values.output, passphraseFile: values.passphraseFile, organization, manifest: values.manifest, testKeys, ...(values.only === undefined ? {} : { only: values.only }) }
+  return options
+}
+
+effect function keyPair(kind: "rsa" | "ed25519", bits: number, name: string) {
+  const made = opened(newKeyPair(kind, bits), name)
+  if (typeof made === "string") throw new KeyToolFailed({ tool: "node:crypto", message: made })
+  return made
+}
+
+effect function generateKey(key: KeyManifestEntry, directory: string, options: GenerateOptions) {
+  const path = try Path.Path
+  const base = path.join(directory, key.name)
+  const storage = key.storage === undefined ? {} : { storage: key.storage }
+  switch (key.kind.tag) {
+    case "Ed25519": {
+      const made: KeyPair = try keyPair("ed25519", 0, key.name)
+      try writeKeyFile(`${base}.pem.enc`, try encryptPkcs8(made.privatePem, options.passphraseFile, "PEM"), 0o600)
+      try writeKeyFile(`${base}.pub.pem`, made.publicPem, 0o644)
+      const entry: FingerprintEntry = { name: key.name, kind: "ed25519", ...storage, spkiBase64: base64Of(made.spki), spkiSha256: sha256Hex(made.spki), publicKeyPem: made.publicPem }
+      return entry
+    }
+    case "X509Pk8": {
+      const bits = options.testKeys ? TEST_KEY_BITS : key.kind.bits
+      const made: KeyPair = try keyPair("rsa", bits, key.name)
+      const label = options.testKeys ? `TEST-ONLY ${key.name}` : key.name
+      const subject = `/C=US/O=${options.organization}/${options.testKeys ? TEST_KEYS_LABEL : "OU=Release"}/CN=${label}`
+      const certificate = try openssl(["req", "-new", "-x509", "-sha256", "-key", KEY_INPUT, "-days", "10950", "-subj", subject], made.privatePem)
+      const facts = opened(certificateFacts(certificate), key.name)
+      if (typeof facts === "string") throw new KeyToolFailed({ tool: "openssl", message: facts })
+      if (facts.publicPem !== made.publicPem) throw new KeyToolFailed({ tool: "openssl", message: `${key.name}: the certificate does not match the key` })
+      try writeKeyFile(`${base}.x509.pem`, certificate, 0o644)
+      try writeKeyFile(`${base}.pk8.enc`, try encryptPkcs8(made.privatePem, options.passphraseFile, "DER"), 0o600)
+      const entry: FingerprintEntry = { name: key.name, kind: "x509-pk8", ...storage, bits, certificateSha256: facts.sha256, subject: facts.subject }
+      return entry
+    }
+    case "AvbRsa": {
+      const bits = options.testKeys ? TEST_KEY_BITS : key.kind.bits
+      const made: KeyPair = try keyPair("rsa", bits, key.name)
+      const avb = made.avb ?? new Uint8Array()
+      try writeKeyFile(`${base}.pem.enc`, try encryptPkcs8(made.privatePem, options.passphraseFile, "PEM"), 0o600)
+      try writeKeyFile(`${base}.avbpubkey`, avb, 0o644)
+      try writeKeyFile(`${base}.pub.pem`, made.publicPem, 0o644)
+      if (key.name === "avb") try writeKeyFile(path.join(directory, "avb_pkmd.bin"), avb, 0o644)
+      const entry: FingerprintEntry = { name: key.name, kind: "avb-rsa", ...storage, bits, avbPublicKeySha256: sha256Hex(avb) }
+      return entry
+    }
+  }
+}
+
+export effect function generate(options: GenerateOptions) {
+  const path = try Path.Path
+  const { resolved } = try admitKeyOutput(options.output, options.passphraseFile, "keys")
+  const manifest = try loadKeyManifest(options.manifest)
+  const names = manifest.keys.map((key) => key.name)
+  const selected = selection(options.only)
+  const unknown = unknownSelections(selected, names)
+  if (unknown.length) throw new KeyArgumentsRefused({ message: `--only names keys the manifest does not list: ${unknown.join(", ")}` })
+  const keys = manifest.keys.filter((key) => selected === null || selected.has(key.name))
+  if (!keys.length) throw new KeyArgumentsRefused({ message: "No keys selected." })
+  try makePrivateDirectory(resolved)
+  if (options.testKeys) try writeKeyFile(path.join(resolved, TEST_KEYS_MARKER), "Generated with --test-keys.\n", 0o644)
+  const entries: FingerprintEntry[] = []
+  for (const key of keys) entries.push(try generateKey(key, resolved, options))
+  const fingerprints: Fingerprints = { schemaVersion: 1, generatedAt: nowIso(), testKeys: options.testKeys, organization: options.organization, manifestReviewedAt: manifest.reviewedAt, keys: entries }
+  try writeKeyFile(path.join(resolved, "fingerprints.json"), serialized(fingerprints), 0o644)
+  return { output: resolved, fingerprints }
+}
+
+function fingerprintEntries(raw: unknown): FingerprintEntry[] | string {
+  const keys = field(raw, "keys")
+  if (!Array.isArray(keys)) return "fingerprints.json has no keys list"
+  const entries: FingerprintEntry[] = []
+  for (const key of keys) {
+    const name = text(field(key, "name"))
+    const kind = field(key, "kind")
+    if (!KEY_NAME.test(name)) return "fingerprints.json has an invalid key name"
+    if (kind !== "x509-pk8" && kind !== "avb-rsa" && kind !== "ed25519") return `${name}: unknown key kind ${String(kind)}`
+    const digest = (label: string) => (typeof field(key, label) === "string" ? { [label]: text(field(key, label)) } : {})
+    entries.push({ name, kind, ...digest("certificateSha256"), ...digest("avbPublicKeySha256"), ...digest("spkiSha256") })
+  }
+  return entries
+}
+
+effect function decryptKey(entry: FingerprintEntry, input: string, target: string, passphrase: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const from = (suffix: string) => path.join(input, `${entry.name}${suffix}`)
+  const to = (suffix: string) => path.join(target, `${entry.name}${suffix}`)
+  const refuse = (message: string) => new KeyDecryptionRefused({ name: entry.name, message: `${entry.name}: ${message}` })
+  const read = (file: string) => mapError(readBytes(file), (cause) => refuse(cause.message))
+  const certificate = entry.kind === "x509-pk8"
+  const half: PublicHalf = certificate ? { kind: "certificate", pem: try read(from(".x509.pem")) } : { kind: "publicKey", pem: try read(from(".pub.pem")) }
+  const key = opened(openKey(try read(from(certificate ? ".pk8.enc" : ".pem.enc")), certificate ? "der" : "pem", passphrase, half), entry.name)
+  if (typeof key === "string") throw refuse(`the private key could not be decrypted (${key})`)
+  const publicMatchesFingerprint =
+    entry.kind === "x509-pk8" ? key.certificateSha256 === entry.certificateSha256 : entry.kind === "avb-rsa" ? key.avbPublicKeySha256 === entry.avbPublicKeySha256 : key.spkiSha256 === entry.spkiSha256
+  if (!keyDecryptionAdmitted(true, key.privateMatchesPublic, publicMatchesFingerprint))
+    throw refuse(key.privateMatchesPublic ? "its public identity differs from fingerprints.json" : `the private key does not match its ${certificate ? "certificate" : "public key"}`)
+  try mapError(files.writeFile(to(certificate ? ".pk8" : ".pem"), key.plaintext, { flag: "wx", mode: 0o600 }), (cause) => refuse(cause.message))
+  const publicFiles = certificate ? [`${entry.name}.x509.pem`] : [`${entry.name}.pub.pem`, `${entry.name}.avbpubkey`, ...(entry.name === "avb" ? ["avb_pkmd.bin"] : [])]
+  for (const name of publicFiles) {
+    if (try present(path.join(input, name))) try mapError(writeKeyFile(path.join(target, name), try read(path.join(input, name)), 0o600), (cause) => refuse(cause.message))
+  }
+}
+
+export effect function decrypt(options: DecryptOptions) {
+  const path = try Path.Path
+  const { resolved, passphrase } = try admitKeyOutput(options.output, options.passphraseFile, "plaintext keys")
+  const raw = try mapError(readJson(path.join(options.input, "fingerprints.json")), (cause) => new KeyDecryptionRefused({ name: "fingerprints.json", message: cause.message }))
+  const entries = fingerprintEntries(raw)
+  if (typeof entries === "string") throw new KeyDecryptionRefused({ name: "fingerprints.json", message: entries })
+  const names = entries.map((entry) => entry.name)
+  const selected = selection(options.only)
+  const unknown = unknownSelections(selected, names)
+  if (unknown.length) throw new KeyDecryptionRefused({ name: unknown.join(", "), message: `--only names a key that is not in fingerprints.json: ${unknown.join(", ")}` })
+  try makePrivateDirectory(resolved)
+  const written: string[] = []
+  for (const entry of entries) {
+    if (selected !== null && !selected.has(entry.name)) continue
+    try decryptKey(entry, options.input, resolved, passphrase)
+    written.push(entry.name)
+  }
+  return { target: resolved, written, testKeys: field(raw, "testKeys") === true }
+}
+
+export effect function encodeAvbPublicKey(publicKey: string | Uint8Array) {
+  const encoded = avbEncoding(publicKey)
+  if (encoded.kind === "refused") throw new AvbKeyRefused({ message: encoded.message })
+  return encoded.value
+}
+
+function evidenceClaims(raw: unknown): string[] {
+  return EVIDENCE_FIELDS.filter((name) => field(raw, name) !== undefined && field(raw, name) !== false)
+}
+
+export function releaseDescriptorOf(raw: unknown, lockBytes: Uint8Array | undefined, sourceProfile: string): ReleaseDescriptor {
+  const lock = lockBytes === undefined ? undefined : parseJson(lockBytes)
+  const developmentOnly = isRecord(field(lock, "profiles")) ? field(lock, "profiles", sourceProfile, "developmentOnly") : field(lock, "developmentOnly")
+  return {
+    unsetFields: placeholderFields(raw).length,
+    applicationCertificate: parseDigest(field(raw, "signer", "applicationCertificateSha256")),
+    platformCertificate: parseDigest(field(raw, "signer", "platformCertificateSha256")),
+    avbPublicKey: parseDigest(field(raw, "avb", "publicKeySha256")),
+    lockPinned: parseDigest(field(raw, "sourceLock", "sha256")),
+    lockRead: lockBytes === undefined ? { tag: "NotADigest" } : { tag: "Sha256", hex: sha256Hex(lockBytes) },
+    developmentOnly: developmentOnly !== false,
+    evidenceClaims: evidenceClaims(raw).length,
+  }
+}
+
+function descriptorDetail(problem: DescriptorProblem, raw: unknown, file: string): string {
+  switch (problem) {
+    case "FieldUnset":
+      return `${file}: ${placeholderFields(raw).join(", ")} unset or a placeholder`
+    case "SignerUnpinned":
+      return `${file}: signer.applicationCertificateSha256, signer.platformCertificateSha256 and avb.publicKeySha256 must each pin a reviewed SHA-256`
+    case "LockHashDiffers":
+      return `${file}: sourceLock.sha256 does not pin the bytes of ${text(field(raw, "sourceLock", "file")) || "the source lock"}`
+    case "LockDevelopmentOnly":
+      return `${file}: the pinned source lock is still development-only for this product; admit it for release in a reviewed change`
+    case "EvidenceClaimed":
+      return `${file}: a release descriptor carries no qualification or acceptance claim (${evidenceClaims(raw).join(", ")})`
+  }
+}
+
+export effect function releaseDescriptorProblems(request: { readonly root: string; readonly descriptorFile: string; readonly sourceProfile: string }) {
+  const path = try Path.Path
+  const raw = try readJson(path.join(request.root, request.descriptorFile))
+  const lockFile = field(raw, "sourceLock", "file")
+  const lockBytes = safeRelativePath(lockFile) ? (readBytes(path.join(request.root, lockFile)) catch () => undefined) : undefined
+  return descriptorProblemsOf(releaseDescriptorOf(raw, lockBytes, request.sourceProfile)).map((problem): SigningProblem => ({ kind: "Descriptor", problem, detail: descriptorDetail(problem, raw, request.descriptorFile) }))
+}
+
+export function parseReleaseChannel(raw: unknown): ReleaseChannel {
+  const name = text(field(raw, "channel"))
+  return {
+    name: CHANNEL_NAME.test(name) ? name : "",
+    product: text(field(raw, "product")),
+    device: text(field(raw, "device")),
+    otaCertificate: parseDigest(field(raw, "otaCertificateSha256")),
+    avbPublicKey: parseDigest(field(raw, "avbPublicKeySha256")),
+    downgradeAllowed: field(raw, "downgradeAllowed") !== false,
+    stockFactoryImage: parseDigest(field(raw, "recovery", "stockFactoryImage", "sha256")),
+  }
+}
+
+function channelDetail(problem: ChannelProblem, channel: ReleaseChannel, file: string): string {
+  switch (problem) {
+    case "ChannelUnnamed":
+      return `${file}: channel must name the update channel`
+    case "ChannelForAnotherProduct":
+      return `${file}: the channel is for ${channel.product || "no product"} on ${channel.device || "no device"}, not the composed product`
+    case "OtaCertificateUnpinned":
+      return `${file}: otaCertificateSha256 must be a SHA-256`
+    case "AvbKeyDiffers":
+      return `${file}: avbPublicKeySha256 is not the release descriptor's avb.publicKeySha256`
+    case "DowngradeAllowed":
+      return `${file}: downgradeAllowed must be false`
+    case "StockImageUnpinned":
+      return `${file}: recovery.stockFactoryImage.sha256 must be a SHA-256`
+  }
+}
+
+function drillsOf(raw: unknown): Drills {
+  const result = (name: string): DrillResult => DRILL_RESULTS[text(field(raw, "drills", name))] ?? "DrillNotRun"
+  return { signedUpdate: result("signedUpdate"), interruptedUpdate: result("interruptedUpdate"), compatibleRollback: result("compatibleRollback"), stockRecovery: result("stockRecovery") }
+}
+
+function knownGoodOf(raw: unknown): KnownGood {
+  const release = field(raw, "recovery", "knownGoodRelease")
+  if (!isRecord(release)) return { tag: "NoKnownGood" }
+  return { tag: "KnownGoodRelease", buildFingerprint: placeholderFields(release.buildFingerprint).length ? "" : text(release.buildFingerprint), updatePackage: parseDigest(release.otaSha256) }
+}
+
+export function channelDistributionProblems(channel: unknown, testKeys: boolean): SigningProblem[] {
+  const drills = drillsOf(channel)
+  const knownGood = knownGoodOf(channel)
+  if (channelDistributable(drills, knownGood, testKeys)) return []
+  const problems: SigningProblem[] = CHANNEL_DRILLS.filter((drill) => !drillsPassed({ ...allDrillsPassed, [drill]: drills[drill] })).map((drill): SigningProblem => ({
+    kind: "Distribution",
+    detail: `the ${drill} drill is ${text(field(channel, "drills", drill)) || "not run"}, not passed`,
+  }))
+  if (!knownGoodRetained(knownGood)) problems.push({ kind: "Distribution", detail: "recovery.knownGoodRelease must pin the build fingerprint and update package SHA-256 a failed update recovers to" })
+  if (testKeys) problems.push({ kind: "Distribution", detail: "the release is signed with --test-keys keys" })
+  return problems
+}
+
+const BOUND_PATHS: readonly (readonly [RecordField, keyof SigningRecord, readonly string[]])[] = [
+  ["TargetFilesDigest", "targetFiles", ["inputs", "unsignedTargetFilesSha256"]],
+  ["SignedTargetFilesDigest", "signedTargetFiles", ["artifacts", "signedTargetFiles", "sha256"]],
+  ["UpdatePackageDigest", "updatePackage", ["artifacts", "ota", "sha256"]],
+  ["CertificateDigest", "releaseCertificate", ["certificates", "releasekey"]],
+  ["VerifiedBootKeyDigest", "verifiedBootKey", ["verifiedBoot", "publicKeySha256"]],
+]
+
+function recordedFields(record: unknown): RecordField[] {
+  const recorded = new Set<RecordField>(BOUND_PATHS.filter(([, , at]) => field(record, ...at) !== undefined).map(([name]) => name))
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) value.forEach(visit)
+    else if (isRecord(value))
+      for (const [key, item] of Object.entries(value)) {
+        for (const [name, pattern] of RECORD_FORBIDDEN) if (pattern.test(key)) recorded.add(name)
+        visit(item)
+      }
+    else if (typeof value === "string" && /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(value)) recorded.add("PrivateKeyBytes")
+  }
+  visit(record)
+  return [...recorded]
+}
+
+export function signingRecordOf(record: unknown): SigningRecord {
+  const digest = (at: readonly string[]) => parseDigest(field(record, ...at))
+  return {
+    targetFiles: digest(["inputs", "unsignedTargetFilesSha256"]),
+    signedTargetFiles: digest(["artifacts", "signedTargetFiles", "sha256"]),
+    updatePackage: digest(["artifacts", "ota", "sha256"]),
+    releaseCertificate: digest(["certificates", "releasekey"]),
+    verifiedBootKey: digest(["verifiedBoot", "publicKeySha256"]),
+  }
+}
+
+export function releaseRecordProblems(record: unknown, observed: SigningRecord): SigningProblem[] {
+  const recorded = recordedFields(record)
+  const bound = signingRecordOf(record)
+  const fieldProblems: SigningProblem[] = recordFieldsAdmitted(recorded)
+    ? []
+    : [
+        ...boundRecordFields.filter((name) => !recorded.includes(name)).map((name): SigningProblem => ({ kind: "Record", field: name, detail: `the release record does not bind ${name}` })),
+        ...recorded.filter((name) => !boundRecordFields.includes(name)).map((name): SigningProblem => ({ kind: "Record", field: name, detail: `the release record carries ${name}, which a release record never holds` })),
+      ]
+  const digestProblems: SigningProblem[] = recordBindsOutputs(bound, observed)
+    ? []
+    : BOUND_PATHS.filter(([, key]) => !digestsMatch(bound[key], observed[key])).map(([name, key]): SigningProblem => ({
+        kind: "Record",
+        field: name,
+        detail: `the record's ${key} is ${hexOf(bound[key]) ?? "not a digest"}; signing observed ${hexOf(observed[key]) ?? "no digest"}`,
+      }))
+  return [...fieldProblems, ...digestProblems]
+}
+
+interface TargetFiles {
+  readonly misc: Readonly<Record<string, string>> | undefined
+  readonly apkcerts: readonly Record<string, string>[] | undefined
+  readonly apexkeys: readonly Record<string, string>[]
+  readonly packages: ReadonlySet<string>
+  readonly entries: readonly string[]
+}
+
+effect function inspectTargetFiles(zip: string) {
+  const path = try Path.Path
+  const entries = try zipEntries(zip)
+  const read = (name: string) => effect {
+    return entries.includes(name) ? decoded(try zipEntry(zip, name)) : undefined
+  }
+  const misc = try read("META/misc_info.txt")
+  const apkcerts = try read("META/apkcerts.txt")
+  const inspected: TargetFiles = {
+    misc: misc === undefined ? undefined : parseProperties(misc),
+    apkcerts: apkcerts === undefined ? undefined : parseQuotedRows(apkcerts),
+    apexkeys: parseQuotedRows((try read("META/apexkeys.txt")) ?? ""),
+    packages: new Set(entries.filter((name) => /\.(apk|apex|capex)$/.test(name)).map((name) => path.basename(name))),
+    entries,
+  }
+  return inspected
+}
+
+function sourceKey(certificate: string | undefined): string | null {
+  return certificate === undefined || certificate === "" || PRESIGNED.has(certificate) ? null : certificate.replace(/\.x509\.pem$/, "")
+}
+
+function releaseKeyFor(source: string, keyMap: Readonly<Record<string, string>>): string | null {
+  if (Object.hasOwn(keyMap, source)) return keyMap[source] ?? null
+  const at = source.lastIndexOf("/")
+  const base = source.slice(at + 1)
+  if (!DEV_KEY_DIRS.includes(source.slice(0, Math.max(0, at)))) return null
+  return DEFAULT_KEY_MAP[base] ?? (EXPLICIT_KEYS.includes(base) ? base : null)
+}
+
+function signedApexes(apexkeys: readonly Record<string, string>[]): string[] {
+  return apexkeys.filter((row) => (row.name ?? "") !== "" && !PRESIGNED.has(row.private_key ?? "") && !PRESIGNED.has(row.container_private_key ?? "")).map((row) => row.name ?? "")
+}
+
+function x509Names(keyMap: Readonly<Record<string, string>>, apex: boolean): string[] {
+  return [...new Set(["releasekey", ...Object.values(DEFAULT_KEY_MAP), ...EXPLICIT_KEYS, ...Object.values(keyMap), ...(apex ? [APEX_CONTAINER] : [])])]
+}
+
+function managedCount(options: ManagedSigning): number {
+  return (Object.keys(MANAGED_FLAGS) as (keyof typeof MANAGED_FLAGS)[]).filter((name) => options[name] !== undefined).length
+}
+
+function isManaged(options: ManagedSigning): boolean {
+  return managedCount(options) > 0 || (options.payloadSignerArgs ?? []).length > 0
+}
+
+interface CommandRequest {
+  readonly targetFiles: string
+  readonly keysDir: string
+  readonly releasetools: string
+  readonly out: string
+  readonly algorithm: string
+  readonly avbKey: string
+  readonly chainedPartitions: readonly string[]
+  readonly incrementalFrom: string | undefined
+  readonly keyMap: Readonly<Record<string, string>>
+  readonly apexes: readonly string[]
+  readonly managed: ManagedSigning | null
+}
+
+function signingCommands(request: CommandRequest) {
+  const keys = (name: string) => `${request.keysDir}/${name}`
+  const tools = request.releasetools.replace(/\/+$/, "")
+  const otatools = tools.replace(/\/[^/]*$/, "") || "/"
+  const avbKey = keys(request.avbKey)
+  const signed = `${request.out}/signed-target_files.zip`
+  const ota = `${request.out}/${request.incrementalFrom === undefined ? "ota.zip" : "incremental-ota.zip"}`
+  const managed = request.managed
+  const helper = (partition: string) => (managed === null ? [] : [`--avb_${partition}_extra_args`, `--signing_helper_with_files ${managed.avbSigningHelper ?? ""}`])
+  const explicit = [...EXPLICIT_KEYS.map((name): readonly [string, string] => [`${DEV_KEY_DIRS[0] ?? ""}/${name}`, name]), ...Object.entries(request.keyMap)].flatMap(([source, name]) => ["-k", `${source}=${keys(name)}`])
+  const apex = request.apexes.flatMap((name) => ["--extra_apex_payload_key", `${name}=${keys(`${APEX_PAYLOAD}.pem`)}`, "--extra_apks", `${name}=${keys(APEX_CONTAINER)}`])
+  const avb = ["--avb_vbmeta_key", avbKey, "--avb_vbmeta_algorithm", request.algorithm, ...helper("vbmeta"), ...request.chainedPartitions.flatMap((partition) => [`--avb_${partition}_key`, avbKey, `--avb_${partition}_algorithm`, request.algorithm, ...helper(partition)])]
+  const token = managed === null ? [] : ["--java_args", PKCS11_JAVA_ARGS, "--extra_signapk_args", `-providerClass ${PKCS11_PROVIDER} -providerArg ${managed.pkcs11Config ?? ""} -loadPrivateKeysFromKeyStore PKCS11`]
+  const signerArgs = managed?.payloadSignerArgs ?? []
+  const payload = managed === null ? [] : ["--payload_signer", managed.payloadSigner ?? "", ...(signerArgs.length ? ["--payload_signer_args", signerArgs.join(" ")] : []), "--payload_signer_maximum_signature_size", managed.payloadSignerSignatureSize ?? ""]
+  const commands: readonly ReleaseCommand[] = [
+    { tool: `${tools}/sign_target_files_apks`, args: ["-p", otatools, ...token, "-o", "-d", request.keysDir, ...explicit, ...apex, ...(managed !== null && apex.length ? helper("apex") : []), ...avb, "--package_key", keys("releasekey"), ...payload, request.targetFiles, signed] },
+    { tool: `${tools}/ota_from_target_files`, args: ["-p", otatools, ...token, "-k", keys("releasekey"), ...payload, ...(request.incrementalFrom === undefined ? [] : ["-i", request.incrementalFrom]), signed, ota] },
+  ]
+  return { signed, ota, commands }
+}
+
+effect function certificateDigests(keysDir: string, names: readonly string[]) {
+  const path = try Path.Path
+  const digests: Record<string, string | null> = {}
+  for (const name of names) {
+    const file = path.join(keysDir, `${name}.x509.pem`)
+    const bytes = (try present(file)) ? (readBytes(file) catch () => undefined) : undefined
+    const facts = bytes === undefined ? undefined : certificateFacts(bytes)
+    digests[name] = facts === undefined ? null : facts.kind === "opened" ? facts.value.sha256 : "invalid certificate"
+  }
+  return digests
+}
+
+effect function testKeysIn(keysDir: string, names: readonly string[]) {
+  const path = try Path.Path
+  if (try present(path.join(keysDir, TEST_KEYS_MARKER))) return true
+  for (const name of names) {
+    const file = path.join(keysDir, `${name}.x509.pem`)
+    const bytes = (try present(file)) ? (readBytes(file) catch () => undefined) : undefined
+    const facts = bytes === undefined ? undefined : certificateFacts(bytes)
+    if (facts !== undefined && facts.kind === "opened" && facts.value.subject.includes(TEST_KEYS_LABEL)) return true
+  }
+  return false
+}
+
+effect function fileDigest(file: string) {
+  return (try present(file)) ? sha256Hex(try readBytes(file)) : null
+}
+
+effect function managedProblems(options: ManagedSigning) {
+  const problems: SigningProblem[] = []
+  if (!isManaged(options)) return problems
+  const paths: readonly (readonly [keyof typeof MANAGED_FLAGS, boolean])[] = [["pkcs11Config", false], ["avbSigningHelper", true], ["payloadSigner", true]]
+  for (const [name, mustRun] of paths) {
+    const value = options[name]
+    if (value === undefined) continue
+    const flag = MANAGED_FLAGS[name]
+    const stat = try info(value)
+    if (!value.startsWith("/")) problems.push({ kind: "Input", detail: `${flag} must be an absolute path` })
+    else if (!SHLEX_WORD.test(value)) problems.push({ kind: "Input", detail: `${flag} must be a path without spaces, quotes or shell characters` })
+    else if (stat === undefined || stat.type !== "File") problems.push({ kind: "Input", detail: `${flag} ${value} is not a regular file` })
+    else if (mustRun && !(try executable(value))) problems.push({ kind: "Input", detail: `${flag} ${value} is not executable` })
+  }
+  if (options.payloadSignerSignatureSize !== undefined && !/^[1-9][0-9]*$/.test(options.payloadSignerSignatureSize))
+    problems.push({ kind: "Input", detail: `${MANAGED_FLAGS.payloadSignerSignatureSize} must be the signer's maximum signature size in bytes (512 for RSA-4096)` })
+  if (options.payloadSigner === undefined && (options.payloadSignerArgs ?? []).length) problems.push({ kind: "Input", detail: "--payload-signer-arg needs --payload-signer" })
+  for (const argument of options.payloadSignerArgs ?? [])
+    if (!SHLEX_WORD.test(argument)) problems.push({ kind: "Input", detail: `--payload-signer-arg ${argument} must be a plain word without spaces, quotes or shell characters` })
+  return problems
+}
+
+effect function keyStoreProblems(keysDir: string, requiredFiles: readonly string[], managedOptions: number, publicHalves: readonly (readonly [string, string])[]) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const problems: SigningProblem[] = []
+  const stat = try info(keysDir)
+  if (!keysDir.startsWith("/") || stat === undefined || stat.type !== "Directory") {
+    problems.push({ kind: "KeyStore", detail: `--keys-dir ${keysDir} must be the absolute path of the decrypted key directory` })
+    return problems
+  }
+  const workTree = try enclosingWorkTree(keysDir)
+  const looseFiles: string[] = []
+  const missing: string[] = []
+  for (const name of requiredFiles) {
+    const file = path.join(keysDir, name)
+    const fileInfo = try info(file)
+    if (fileInfo === undefined) missing.push(name)
+    else if ((try isSymbolicLink(file)) || fileInfo.type !== "File" || (fileInfo.mode & 0o077) !== 0) looseFiles.push(name)
+  }
+  const directory = { insideWorkTree: workTree !== undefined, existed: true, ownerOnly: (stat.mode & 0o077) === 0 && looseFiles.length === 0 }
+  if (!keyStoreAdmitted(directory, managedOptions)) {
+    if (workTree !== undefined) problems.push({ kind: "KeyStore", detail: `--keys-dir is inside the Git working tree ${workTree}; release keys never enter a working tree` })
+    if ((stat.mode & 0o077) !== 0) problems.push({ kind: "KeyStore", detail: "--keys-dir must not be readable or writable by group or others (mode 0700)" })
+    for (const name of looseFiles) problems.push({ kind: "KeyStore", detail: `--keys-dir ${name} must be a regular owner-only file (mode 0600), not a link` })
+    if (keyStoreAdmitted(directory, 0)) problems.push({ kind: "KeyStore", detail: `token-backed signing needs ${Object.values(MANAGED_FLAGS).join(", ")} together; ${managedOptions} of them are given` })
+  }
+  const managed = managedOptions > 0
+  if (missing.length)
+    problems.push({ kind: "KeyStore", detail: `--keys-dir lacks ${missing.join(", ")} (${managed ? "token-backed signing needs every release certificate and public key" : "decrypt the release key bundle first; .enc files are not read"})` })
+  if (!managed) return problems
+  for (const name of (files.readDirectory(keysDir) catch (): string[] => []).filter((item) => item.endsWith(".pk8")))
+    problems.push({ kind: "KeyStore", detail: `--keys-dir holds ${name}; token-backed signing keeps private keys in the PKCS#11 token` })
+  for (const [pem, metadata] of publicHalves) {
+    const pemFile = path.join(keysDir, pem)
+    if (!(try present(pemFile))) continue
+    const bytes = try readBytes(pemFile)
+    const encoded = avbEncoding(bytes)
+    const expected = try fileDigest(path.join(keysDir, metadata))
+    if (!isPublicPem(bytes)) problems.push({ kind: "KeyStore", detail: `--keys-dir ${pem} must be the public key when the token holds the private key` })
+    else if (encoded.kind === "refused" || sha256Hex(encoded.value) !== expected) problems.push({ kind: "KeyStore", detail: `--keys-dir ${pem} is not the key in ${metadata}` })
+  }
+  return problems
+}
+
+interface ReleaseInputs {
+  readonly descriptor: unknown
+  readonly product: ReturnType<typeof productDescriptor>
+  readonly channel: unknown
+  readonly lockBytes: Uint8Array | undefined
+  readonly problems: readonly SigningProblem[]
+}
+
+effect function readReleaseInputs(options: Pick<SignReleaseOptions, "root" | "descriptorFile" | "productFile">) {
+  const path = try Path.Path
+  const problems: SigningProblem[] = []
+  const load = (place: unknown, label: string) => effect {
+    if (!safeRelativePath(place)) {
+      problems.push({ kind: "Input", detail: `${label} must be a path relative to the release root` })
+      return undefined
+    }
+    return (readJson(path.join(options.root, place)) catch (cause) => {
+      problems.push({ kind: "Input", detail: cause.message })
+      return undefined
+    })
+  }
+  const descriptor = try load(options.descriptorFile, "the release descriptor")
+  const productRaw = try load(options.productFile, "the product composition")
+  const product = productDescriptor(productRaw)
+  if (productRaw !== undefined && product === undefined) problems.push({ kind: "Input", detail: `${options.productFile} is not a product composition` })
+  if (product !== undefined && descriptor !== undefined && text(field(descriptor, "product")) !== product.productName)
+    problems.push({ kind: "Input", detail: `${options.descriptorFile} names product ${text(field(descriptor, "product")) || "none"}; the composition is ${product.productName}` })
+  const channel = descriptor === undefined ? undefined : try load(field(descriptor, "ota", "channel"), "ota.channel")
+  const lockFile = field(descriptor, "sourceLock", "file")
+  const lockBytes = safeRelativePath(lockFile) ? (readBytes(path.join(options.root, lockFile)) catch () => undefined) : undefined
+  if (descriptor !== undefined && lockBytes === undefined) problems.push({ kind: "Input", detail: `${options.descriptorFile}: sourceLock.file must name the readable source lock relative to the release root` })
+  const inputs: ReleaseInputs = { descriptor, product, channel, lockBytes, problems }
+  return inputs
+}
+
+function enrolled(name: string, certificates: Readonly<Record<string, string | null>>, pinned: Readonly<Record<string, unknown>>): boolean {
+  const digest = certificates[name]
+  return typeof digest === "string" && HEX64.test(digest) && pinned[name] === digest
+}
+
+effect function signerDigests(apksigner: string, file: string) {
+  const result = (capture(apksigner, ["verify", "--print-certs", file]) catch () => ({ code: 1, stdout: new Uint8Array(), stderr: "" }))
+  if (result.code !== 0) return []
+  return [...decoded(result.stdout).matchAll(/Signer #\d+ certificate SHA-256 digest:\s*([0-9a-fA-F]{64})/g)].map((match) => (match[1] ?? "").toLowerCase())
+}
+
+interface CheckedPackage {
+  readonly entry: string
+  readonly check: PackageCheck
+  readonly digests: readonly string[]
+}
+
+effect function signedTargetFilesProblems(signed: string, keysDir: string, apksigner: string, x509: readonly string[]) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const release = new Set(Object.values(try certificateDigests(keysDir, x509)).filter((digest): digest is string => digest !== null && HEX64.test(digest)))
+  const inspected = try inspectTargetFiles(signed)
+  const apkcerts = inspected.apkcerts ?? []
+  const presigned = new Set([...apkcerts.filter((row) => sourceKey(row.certificate) === null).map((row) => row.name ?? ""), ...inspected.apexkeys.filter((row) => PRESIGNED.has(row.private_key ?? "")).map((row) => row.name ?? "")])
+  const listed = new Set([...apkcerts, ...inspected.apexkeys].map((row) => row.name ?? ""))
+  const outsideKeys = new Set(
+    apkcerts
+      .filter((row) => {
+        const source = sourceKey(row.certificate)
+        return source !== null && path.dirname(source) !== keysDir
+      })
+      .map((row) => row.name ?? ""),
+  )
+  const payload = try fileDigest(path.join(keysDir, `${APEX_PAYLOAD}.avbpubkey`))
+  const checks: CheckedPackage[] = []
+  try scoped(effect {
+    const work = try files.makeTempDirectoryScoped({ prefix: "eliza-signed-check-" })
+    for (const entry of inspected.entries.filter((name) => /\.(apk|apex)$/.test(name))) {
+      const base = path.basename(entry)
+      const apex = base.endsWith(".apex")
+      if (presigned.has(base) || !listed.has(base)) {
+        checks.push({ entry, digests: [], check: { presigned: presigned.has(base), listed: listed.has(base), verified: false, releaseSigned: false, kind: { tag: "ApkPackage" } } })
+        continue
+      }
+      const file = path.join(work, apex ? "package.apex" : "package.apk")
+      try files.writeFile(file, try zipEntry(signed, entry))
+      const digests = try signerDigests(apksigner, file)
+      const apexKey = apex ? (zipEntry(file, "apex_pubkey") catch () => undefined) : undefined
+      checks.push({
+        entry,
+        digests,
+        check: {
+          presigned: false,
+          listed: true,
+          verified: digests.length > 0,
+          releaseSigned: digests.length > 0 && digests.every((digest) => release.has(digest)) && !outsideKeys.has(base),
+          kind: apex ? { tag: "ApexPackage", payloadKeyMatches: apexKey !== undefined && payload !== null && sha256Hex(apexKey) === payload } : { tag: "ApkPackage" },
+        },
+      })
+      try files.remove(file)
+    }
+  })
+  const problems: SigningProblem[] = []
+  if (updatePackageAdmitted(checks.map(({ check }) => check))) return problems
+  for (const { entry, check, digests } of checks.filter(({ check }) => !packageAdmitted(check)))
+    problems.push({
+      kind: "Package",
+      entry,
+      detail: !check.listed
+        ? `${entry} is in neither apkcerts.txt nor apexkeys.txt`
+        : !check.verified
+          ? `${entry}: apksigner could not verify its signature`
+          : !check.releaseSigned
+            ? `${entry} is signed with ${digests.filter((digest) => !release.has(digest)).join(", ") || "a certificate outside the key directory"}, not a release certificate (a test or development key remains)`
+            : `${entry} does not carry the release APEX payload key`,
+    })
+  return problems
+}
+
+function rollbackIndexes(images: Readonly<Record<string, Uint8Array | null>>): { readonly indexes: RollbackIndex[]; readonly problems: string[] } {
+  const vbmeta = images.vbmeta
+  const main = vbmeta === undefined || vbmeta === null ? undefined : parseVbmeta(vbmeta)
+  if (main === undefined) return { indexes: [], problems: ["IMAGES/vbmeta.img is not an AVB vbmeta image"] }
+  const problems: string[] = []
+  const indexes: RollbackIndex[] = [{ partition: "vbmeta", location: main.rollbackIndexLocation, index: main.rollbackIndex }]
+  for (const [partition, bytes] of Object.entries(images)) {
+    if (partition === "vbmeta" || bytes === null) continue
+    const chain = main.chains.find((row) => row.partition === partition)
+    const parsed = parseVbmeta(bytes)
+    if (chain === undefined) problems.push(`vbmeta does not chain ${partition}`)
+    else if (parsed === undefined) problems.push(`IMAGES/${partition}.img carries no AVB vbmeta struct`)
+    else indexes.push({ partition, location: chain.rollbackIndexLocation, index: parsed.rollbackIndex })
+  }
+  const locations = indexes.map((row) => row.location)
+  for (const location of new Set(locations.filter((value, index) => locations.indexOf(value) !== index))) problems.push(`AVB rollback index location ${location} is used twice`)
+  return { indexes, problems }
+}
+
+export effect function compatibilityRecord(request: RecordRequest) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const problems: string[] = []
+  const signedEntries = try zipEntries(request.signedTargetFiles)
+  const properties = (zip: string, entries: readonly string[], name: string, required: string) => effect {
+    const none: Record<string, string> = {}
+    if (entries.includes(name)) return parseProperties(decoded(try zipEntry(zip, name)))
+    if (required !== "") problems.push(`${name} is missing from the ${required}`)
+    return none
+  }
+  const system = try properties(request.signedTargetFiles, signedEntries, "SYSTEM/build.prop", "signed target-files")
+  const vendor = try properties(request.signedTargetFiles, signedEntries, "VENDOR/build.prop", "")
+  const misc = try properties(request.signedTargetFiles, signedEntries, "META/misc_info.txt", "signed target-files")
+  const chainedPartitions = chainedPartitionsOf(misc)
+  const images: Record<string, string | null> = {}
+  const imageBytes: Record<string, Uint8Array | null> = {}
+  for (const name of ["vbmeta", ...chainedPartitions]) {
+    const file = `IMAGES/${name}.img`
+    const bytes = signedEntries.includes(file) ? try zipEntry(request.signedTargetFiles, file) : null
+    imageBytes[name] = bytes
+    images[name] = bytes === null ? null : sha256Hex(bytes)
+    if (bytes === null) problems.push(`${file} is missing from the signed target-files`)
+  }
+  const rollback = imageBytes.vbmeta === null ? { indexes: [], problems: [] } : rollbackIndexes(imageBytes)
+  problems.push(...rollback.problems)
+  const otaEntries = try zipEntries(request.ota)
+  const payload = otaEntries.includes("payload.bin") ? try zipEntrySha256(request.ota, "payload.bin") : null
+  if (payload === null) problems.push("payload.bin is missing from the OTA package")
+  const payloadProperties = try properties(request.ota, otaEntries, "payload_properties.txt", "OTA package")
+  const metadata = try properties(request.ota, otaEntries, "META-INF/com/android/metadata", "OTA package")
+  const pick = (...names: readonly string[]) => names.map((name) => system[name]).find((value) => value !== undefined) ?? null
+  const fingerprint = pick("ro.system.build.fingerprint", "ro.build.fingerprint")
+  const postBuild = metadata["post-build"]
+  const preDevice = metadata["pre-device"]
+  if (fingerprint === null) problems.push("the signed target-files records no build fingerprint")
+  if (postBuild !== undefined && fingerprint !== null && postBuild !== fingerprint) problems.push(`OTA post-build ${postBuild} is not the target-files fingerprint ${fingerprint}`)
+  if (payload !== null && payloadProperties.FILE_HASH !== undefined && hexToBase64(payload.sha256) !== payloadProperties.FILE_HASH) problems.push("payload_properties.txt FILE_HASH is not the payload.bin SHA-256")
+  if (request.device !== "" && preDevice !== undefined && preDevice !== request.device) problems.push(`OTA pre-device ${preDevice} is not ${request.device}`)
+  const incrementalFrom = request.incrementalFrom ?? null
+  if (incrementalFrom !== null && metadata["pre-build"] === undefined) problems.push("an incremental OTA records no pre-build fingerprint")
+  if (incrementalFrom === null && metadata["pre-build"] !== undefined) problems.push("a full OTA records a pre-build fingerprint")
+  if (incrementalFrom !== null && !HEX64.test(incrementalFrom.sha256)) problems.push("incrementalFrom must identify the previous signed target-files by file and SHA-256")
+  const results = field(request.apkManifest, "results")
+  const apks = (Array.isArray(results) ? results : [])
+    .filter((row) => field(row, "mode") === "release")
+    .map((row) => ({ file: field(row, "file") ?? null, sha256: field(row, "sha256") ?? null, signerSha256: field(row, "signerSha256") ?? null, versionCode: field(row, "versionCode") ?? null, distributable: field(row, "distributable") === true }))
+  const signedStat = try files.stat(request.signedTargetFiles)
+  const otaStat = try files.stat(request.ota)
+  const record: ReleaseRecord = {
+    schema: 1,
+    kind: RECORD_KIND,
+    product: request.product,
+    device: request.device,
+    channel: request.channel,
+    createdAt: request.createdAt ?? nowIso(),
+    build: {
+      fingerprint,
+      vendorFingerprint: vendor["ro.vendor.build.fingerprint"] ?? null,
+      id: pick("ro.build.id", "ro.system.build.id"),
+      incremental: pick("ro.build.version.incremental", "ro.system.build.version.incremental"),
+      androidRelease: pick("ro.build.version.release", "ro.system.build.version.release"),
+      sdk: pick("ro.build.version.sdk", "ro.system.build.version.sdk"),
+      securityPatch: pick("ro.build.version.security_patch"),
+      vendorSecurityPatch: vendor["ro.vendor.build.security_patch"] ?? null,
+      dateUtc: pick("ro.build.date.utc", "ro.system.build.date.utc"),
+    },
+    inputs: request.inputs,
+    artifacts: {
+      signedTargetFiles: { file: path.basename(request.signedTargetFiles), sha256: try fileSha256(request.signedTargetFiles), sizeBytes: Number(signedStat.size) },
+      ota: { file: path.basename(request.ota), sha256: try fileSha256(request.ota), sizeBytes: Number(otaStat.size), type: incrementalFrom === null ? "full" : "incremental", incrementalFrom },
+    },
+    verifiedBoot: { algorithm: request.algorithm, publicKeySha256: request.avbPublicKeySha256, chainedPartitions, images, rollbackIndexes: rollback.indexes },
+    payload: { sha256: payload?.sha256 ?? null, sizeBytes: payload?.sizeBytes ?? null, properties: payloadProperties, metadata },
+    certificates: request.certificates,
+    apks,
+    problems,
+  }
+  return record
+}
+
+export effect function signRelease(options: SignReleaseOptions) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const keyMap = options.keyMap ?? {}
+  const managed = isManaged(options)
+  const inputs = try readReleaseInputs(options)
+  const problems: SigningProblem[] = [...inputs.problems]
+  const descriptor = inputs.descriptor
+  const algorithm = text(field(descriptor, "avb", "algorithm"))
+  const rawChained = field(descriptor, "avb", "chainedPartitions")
+  const descriptorChained = Array.isArray(rawChained) ? rawChained.map(text) : []
+  const avbKey = text(field(descriptor, "avb", "vbmetaKey")) || "avb.pem"
+  const avbMetadata = text(field(descriptor, "avb", "publicKeyMetadata")) || "avb_pkmd.bin"
+  const channelFile = text(field(descriptor, "ota", "channel"))
+  const release = releaseDescriptorOf(descriptor, inputs.lockBytes, inputs.product?.sourceProfile ?? "")
+  if (descriptor !== undefined)
+    problems.push(...descriptorProblemsOf(release).map((problem): SigningProblem => ({ kind: "Descriptor", problem, detail: descriptorDetail(problem, descriptor, options.descriptorFile) })))
+  if (!bootChainAdmitted(algorithm, descriptorChained))
+    problems.push({ kind: "BootChain", detail: `${options.descriptorFile}: avb must sign with SHA256_RSA4096 and chain exactly vbmeta_system and vbmeta_vendor (it names ${algorithm || "no algorithm"} and ${descriptorChained.join(", ") || "no partition"})` })
+  for (const name of [avbKey, avbMetadata])
+    if (!KEY_FILE_NAME.test(name)) problems.push({ kind: "Input", detail: `${options.descriptorFile}: avb key file ${name} must be a file name in the key directory` })
+  const channel = parseReleaseChannel(inputs.channel)
+  if (inputs.product !== undefined && inputs.channel !== undefined)
+    problems.push(...channelSigningProblems(channel, inputs.product, release).map((problem): SigningProblem => ({ kind: "Channel", problem, detail: channelDetail(problem, channel, channelFile) })))
+  for (const [source, name] of Object.entries(keyMap))
+    if (!KEY_NAME.test(name) || source === "" || source.includes("=")) problems.push({ kind: "Input", detail: `--map-key ${source}=${name} must map a source key path to a key name` })
+
+  const targetStat = options.targetFiles.startsWith("/") ? try info(options.targetFiles) : undefined
+  const targetReadable = targetStat !== undefined && targetStat.type === "File"
+  const inspected = targetReadable
+    ? (inspectTargetFiles(options.targetFiles) catch (cause) => {
+        problems.push({ kind: "Input", detail: `--target-files could not be read: ${cause.message}` })
+        return undefined
+      })
+    : undefined
+  if (!targetReadable) problems.push({ kind: "Input", detail: "--target-files must name the unsigned target-files zip by absolute path" })
+  else if (!HEX64.test(options.targetFilesSha256)) problems.push({ kind: "Input", detail: "--target-files-sha256 must be the SHA-256 from the image build record" })
+  else if ((try fileSha256(options.targetFiles)) !== options.targetFilesSha256) problems.push({ kind: "Input", detail: "--target-files differs from --target-files-sha256" })
+  const apexes = signedApexes(inspected?.apexkeys ?? [])
+  const targetChained = inspected?.misc === undefined ? [] : chainedPartitionsOf(inspected.misc)
+  if (inspected !== undefined) {
+    const misc = inspected.misc
+    if (misc === undefined) problems.push({ kind: "Input", detail: "--target-files has no META/misc_info.txt; its verified boot chain cannot be checked" })
+    else {
+      const built = misc.avb_vbmeta_algorithm ?? ""
+      if (misc.avb_enable !== "true") problems.push({ kind: "BootChain", detail: "--target-files was built without verified boot (avb_enable is not true)" })
+      if (!bootChainAdmitted(built, targetChained))
+        problems.push({ kind: "BootChain", detail: `--target-files must sign with SHA256_RSA4096 and chain exactly vbmeta_system and vbmeta_vendor (it names ${built || "no algorithm"} and ${targetChained.join(", ") || "no partition"})` })
+    }
+    if (inspected.apkcerts === undefined) problems.push({ kind: "Input", detail: "--target-files has no META/apkcerts.txt; its APK certificates cannot be checked" })
+    for (const row of inspected.apkcerts ?? [])
+      if (inspected.packages.has(row.name ?? "") && row.certificate === "EXTERNAL") problems.push({ kind: "Input", detail: `APK ${row.name ?? ""} is EXTERNAL; externally signed APKs are not supported` })
+    for (const row of inspected.apexkeys)
+      if (PRESIGNED.has(row.private_key ?? "") !== PRESIGNED.has(row.container_private_key ?? "")) problems.push({ kind: "Input", detail: `APEX ${row.name ?? ""} is only partly presigned` })
+  }
+  if (options.incrementalFrom !== undefined && !(try present(options.incrementalFrom))) problems.push({ kind: "Input", detail: "--incremental-from must name the previous signed target-files zip" })
+  for (const tool of RELEASETOOLS)
+    if (!(try executable(path.join(options.releasetools, tool)))) problems.push({ kind: "Input", detail: `--releasetools lacks an executable ${tool}` })
+  const apksigner = options.apksigner ?? path.join(options.releasetools, "apksigner")
+  if (!(try executable(apksigner))) problems.push({ kind: "Input", detail: "an executable apksigner is required to verify the signed target-files (--apksigner, or apksigner in --releasetools)" })
+  if (!options.out.startsWith("/")) problems.push({ kind: "Input", detail: "--out must be the absolute path of a new directory" })
+  else if (try present(options.out)) problems.push({ kind: "Input", detail: `--out ${options.out} already exists` })
+  problems.push(...(try managedProblems(options)))
+
+  const keysDir = (try info(options.keysDir)) === undefined ? options.keysDir : (files.realPath(options.keysDir) catch () => options.keysDir)
+  const x509 = x509Names(keyMap, apexes.length > 0)
+  const pair = (name: string) => (managed ? [`${name}.x509.pem`] : [`${name}.pk8`, `${name}.x509.pem`])
+  const apexFiles = apexes.length ? [`${APEX_PAYLOAD}.pem`, `${APEX_PAYLOAD}.avbpubkey`] : []
+  const publicHalves: (readonly [string, string])[] = [[avbKey, avbMetadata], ...(apexes.length ? [[`${APEX_PAYLOAD}.pem`, `${APEX_PAYLOAD}.avbpubkey`] as const] : [])]
+  problems.push(...(try keyStoreProblems(keysDir, [...new Set([...x509.flatMap(pair), avbKey, avbMetadata, ...apexFiles])], managedCount(options), publicHalves)))
+
+  const certificates = try certificateDigests(keysDir, x509)
+  const releaseCertificates = field(descriptor, "signer", "releaseCertificates")
+  const pinned: Readonly<Record<string, unknown>> = { ...(isRecord(releaseCertificates) ? releaseCertificates : {}), platform: field(descriptor, "signer", "platformCertificateSha256"), releasekey: hexOf(channel.otaCertificate) }
+  const avbPinned = hexOf(release.avbPublicKey)
+  const avbRead = try fileDigest(path.join(keysDir, avbMetadata))
+  const avbEnrolled = avbPinned !== null && avbRead === avbPinned
+  const payloadPinned = field(descriptor, "signer", "apexPayloadAvbPublicKeySha256")
+  const payloadRead = try fileDigest(path.join(keysDir, `${APEX_PAYLOAD}.avbpubkey`))
+  const payloadEnrolled = typeof payloadPinned === "string" && HEX64.test(payloadPinned) && payloadRead === payloadPinned
+  const required: string[] = []
+  const mapped: string[] = []
+  const reasons = new Map<string, string>()
+  const need = (label: string, ok: boolean, reason: string) => {
+    required.push(label)
+    if (ok) mapped.push(label)
+    else reasons.set(label, reason)
+  }
+  need("ota:releasekey", enrolled("releasekey", certificates, pinned), `releasekey.x509.pem is ${certificates.releasekey ?? "missing"}, not the channel's otaCertificateSha256`)
+  need("avb:vbmeta", avbEnrolled, `${avbMetadata} is not the release descriptor's avb.publicKeySha256`)
+  for (const row of inspected?.apkcerts ?? []) {
+    const source = sourceKey(row.certificate)
+    if (source === null || inspected?.packages.has(row.name ?? "") !== true) continue
+    const name = releaseKeyFor(source, keyMap)
+    need(
+      `apk:${source}`,
+      name !== null && enrolled(name, certificates, pinned),
+      name === null
+        ? `APK ${row.name ?? ""} is signed with ${row.certificate ?? ""}, which no release key mapping covers (use --map-key ${source}=NAME)`
+        : `APK ${row.name ?? ""} maps to ${name}, whose certificate ${certificates[name] ?? "(missing)"} is not the one the release descriptor pins`,
+    )
+  }
+  for (const name of apexes) need(`apex:${name}`, enrolled(APEX_CONTAINER, certificates, pinned) && payloadEnrolled, `APEX ${name} needs the ${APEX_CONTAINER} certificate and ${APEX_PAYLOAD} key the release descriptor pins`)
+  for (const partition of targetChained) need(`avb:${partition}`, descriptorChained.includes(partition) && avbEnrolled, `chained verified-boot partition ${partition} has no enrolled key in ${options.descriptorFile} avb.chainedPartitions`)
+  for (const key of unmappedKeys([...new Set(required)], [...new Set(mapped)])) problems.push({ kind: "Unmapped", key, detail: reasons.get(key) ?? `${key} has no enrolled key` })
+
+  const incrementalFrom = options.incrementalFrom === undefined ? undefined : path.resolve(options.incrementalFrom)
+  const plan = signingCommands({ targetFiles: options.targetFiles, keysDir, releasetools: options.releasetools, out: options.out, algorithm, avbKey, chainedPartitions: descriptorChained, incrementalFrom, keyMap, apexes, managed: managed ? options : null })
+  const signingMode: SigningMode = managed ? "managed" : "key-files"
+  if (options.dryRun === true) {
+    const dryRun: SigningResult = { kind: "DryRun", problems, commands: plan.commands, signingMode, tokenLabels: managed ? Object.fromEntries(x509.map((name) => [name, path.join(keysDir, `${name}.pk8`)])) : null }
+    return dryRun
+  }
+  const [sign, makeOta] = plan.commands
+  if (problems.length || sign === undefined || makeOta === undefined) throw new SigningRefused({ problems, message: `Refusing to sign the release:\n${describeProblems(problems)}` })
+
+  try mapError(files.makeDirectory(options.out, { mode: 0o700 }), (cause) => new ReleaseInputUnreadable({ place: options.out, message: cause.message }))
+  try runReleaseTool(sign, options.releasetools)
+  const packageProblems = try signedTargetFilesProblems(plan.signed, keysDir, apksigner, x509)
+  if (packageProblems.length) throw new SignedOutputRefused({ problems: packageProblems, message: `Refusing the signed target-files; no update package was built:\n${describeProblems(packageProblems)}` })
+  try runReleaseTool(makeOta, options.releasetools)
+  const pkmd = path.join(keysDir, avbMetadata)
+  try mapError(files.copyFile(pkmd, path.join(options.out, "avb_pkmd.bin")), (cause) => new ReleaseInputUnreadable({ place: pkmd, message: cause.message }))
+  const avbPublicKeySha256 = try fileDigest(pkmd)
+  const apkManifest = options.apkManifest === undefined ? undefined : try readJson(options.apkManifest)
+  const previous = incrementalFrom === undefined ? null : { file: path.basename(incrementalFrom), sha256: try fileSha256(incrementalFrom) }
+  const descriptorSha256 = sha256Hex(try readBytes(path.join(options.root, options.descriptorFile)))
+  const record = try compatibilityRecord({
+    signedTargetFiles: plan.signed,
+    ota: plan.ota,
+    product: inputs.product?.productName ?? "",
+    device: channel.device,
+    channel: channel.name,
+    algorithm,
+    certificates,
+    avbPublicKeySha256,
+    apkManifest,
+    incrementalFrom: previous,
+    inputs: { unsignedTargetFilesSha256: options.targetFilesSha256, productDescriptorSha256: descriptorSha256, sourceLockSha256: hexOf(release.lockPinned) ?? "", signingMode },
+  })
+  const observed: SigningRecord = {
+    targetFiles: { tag: "Sha256", hex: options.targetFilesSha256 },
+    signedTargetFiles: { tag: "Sha256", hex: try fileSha256(plan.signed) },
+    updatePackage: { tag: "Sha256", hex: try fileSha256(plan.ota) },
+    releaseCertificate: parseDigest(certificates.releasekey),
+    verifiedBootKey: parseDigest(avbPublicKeySha256),
+  }
+  const recordFile = path.join(options.out, "release-record.json")
+  try mapError(files.writeFileString(recordFile, serialized(record), { flag: "wx" }), (cause) => new ReleaseInputUnreadable({ place: recordFile, message: cause.message }))
+  const inconsistent = [...record.problems.map((detail): SigningProblem => ({ kind: "Record", field: "Reading", detail })), ...releaseRecordProblems(record, observed)]
+  if (inconsistent.length) throw new ReleaseRecordInconsistent({ record: recordFile, problems: inconsistent, message: `Signed outputs are inconsistent; see ${recordFile}:\n${describeProblems(inconsistent)}` })
+  const testKeys = try testKeysIn(keysDir, x509)
+  const signedResult: SigningResult = { kind: "Signed", record: recordFile, commands: plan.commands, signingMode, distributionProblems: channelDistributionProblems(inputs.channel, testKeys) }
+  return signedResult
+}

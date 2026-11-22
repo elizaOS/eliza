@@ -33,7 +33,7 @@ class SecureStoreInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private val first = "test.secure-store.first"
     private val second = "test.secure-store.second"
-    private val legacy = "session.device_auth"
+    private val legacy = "test.secure-store.native"
     private val scratch = mutableListOf<Pair<File, String>>()
 
     @Before fun prepare() {
@@ -303,20 +303,20 @@ class SecureStoreInstrumentedTest {
     @Test fun nativeSnapshotsFenceMutationAcrossInstances() {
         val native = NativeSecureStore(context)
         native.set(legacy, "test-only initial owner")
-        val original = native.snapshot()
+        val original = native.snapshot(legacy)
         assertEquals("test-only initial owner", original.require(legacy))
         native.assertCurrent(original)
         native.set(legacy, "test-only replacement session")
         assertTrue(NativeSecureStore(context).generation > original.generation)
         try { native.assertCurrent(original); fail("Mutation retained stale snapshot") }
         catch (_: SecurityException) {}
-        val current = native.snapshot()
+        val current = native.snapshot(legacy)
         assertTrue(NativeSecureStore(context).remove(legacy))
         var dispatched = false
         try { native.withSnapshot(current) { dispatched = true; null }; fail("Stale effect dispatched") }
         catch (_: SecurityException) {}
         assertFalse(dispatched)
-        assertNull(native.snapshot().get(legacy))
+        assertNull(native.snapshot(legacy).get(legacy))
     }
 
     @Test fun clockIdentityIsStableNativeOnlyAndNeverRotatesMalformedExistingState() {

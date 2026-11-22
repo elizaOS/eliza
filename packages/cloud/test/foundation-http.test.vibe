@@ -86,6 +86,7 @@ describe("WP0 Foundation: HTTP shell", () => {
     const signed = (requestId: string) => ({ authorization: `Bearer ${key}`, "x-request-id": requestId })
 
     const anonymousGated = try call("/probe/subscription", { json: {}, headers: { "x-request-id": "bad id" } })
+    const anonymousOversized = try call("/probe/inference", { json: { text: "x".repeat(1_000) }, headers: { "x-request-id": "journey-http-0001" } })
     const signedGated = try call("/probe/subscription", { json: {}, headers: signed("journey-http-0002") })
     const ungatedArea = try call("/probe/entitlement", { headers: signed("journey-http-0003") })
     const legacyGate = try call("/probe/billing", { headers: signed("journey-http-0004") })
@@ -97,6 +98,7 @@ describe("WP0 Foundation: HTTP shell", () => {
     try check(() => assert.deepStrictEqual(
       {
         anonymousGated: [refusal(anonymousGated), mintedRequestId.test(anonymousGated.headers["x-request-id"] ?? ""), anonymousGated.headers["x-request-id"] !== "bad id"],
+        anonymousOversized: [refusal(anonymousOversized), anonymousOversized.headers["x-request-id"]],
         signedGated: [refusal(signedGated), signedGated.headers["x-request-id"]],
         ungatedArea: [refusal(ungatedArea), ungatedArea.headers["x-request-id"]],
         legacyGate: refusal(legacyGate),
@@ -108,6 +110,7 @@ describe("WP0 Foundation: HTTP shell", () => {
       },
       {
         anonymousGated: ["401 authentication_required", true, true],
+        anonymousOversized: ["401 authentication_required", "journey-http-0001"],
         signedGated: ["404 capability_unavailable", "journey-http-0002"],
         ungatedArea: ["200 deviceKey", "journey-http-0003"],
         legacyGate: "404 capability_unavailable",

@@ -83,6 +83,7 @@ function service(adapter: IDatabaseAdapter): PromptTriggers {
       resolveRoom: async (requested) =>
         rooms.exists ? { kind: "Resolved", conversationId: requested ?? rooms.fallback } : { kind: "Missing" },
       deliver: (_conversationId, _prompt, triggerId, signal) => new Promise<Delivery>((resolve) => {
+        if (signal.aborted) return resolve(cancelled);
         signal.addEventListener("abort", () => resolve(cancelled), { once: true });
         takers.set(triggerId, resolve);
       }),

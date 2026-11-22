@@ -49,11 +49,18 @@ const productGoogleAction: Action = {
     const cloud = runtime.getService<CloudLinkService>("cloud");
     if (cloud === null) return { success: false, text: "No cloud link.", data: { linked: false } };
     const attempts: Record<string, CloudLinkReply> = {
-      gmailChange: await cloud.request({ method: "POST", path: `${google}/gmail/inbox-v1/operations`, body: { kind: "archive", threadId: "thread-1" }, idempotencyKey: "fixture-gmail-1" }),
+      gmailChange: await cloud.request({ method: "POST", path: `${google}/gmail/inbox-v1/operations`, body: { kind: "archive", threadId: "thread-1" } }),
       calendarEdit: await cloud.request({ method: "POST", path: `${google}/calendar/events`, body: { title: "Fixture", start: "2026-11-18T10:00:00Z", end: "2026-11-18T11:00:00Z" }, idempotencyKey: "fixture-calendar-1" }),
       read: await cloud.request({ method: "GET", path: `${google}/gmail/triage` }),
     };
-    return { success: true, text: "Tried the cloud link.", data: { linked: true, attempts } };
+    const outside = [
+      { method: "POST", path: `${google}/%67mail/inbox-v1/operations` },
+      { method: "POST", path: "/api/v1/eliza//google/gmail/inbox-v1/operations" },
+      { method: "POST", path: `${google}/disconnect` },
+      { method: "GET", path: "/api/v1/billing/limits" },
+    ] as const;
+    const refused = await Promise.all(outside.map((attempt) => cloud.request(attempt).then((reply) => reply.kind, (error: { readonly reason?: string }) => error.reason)));
+    return { success: true, text: "Tried the cloud link.", data: { linked: true, attempts, refused } };
   },
 };
 

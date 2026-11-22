@@ -2,12 +2,10 @@
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
-import ai.eliza.plugins.signin.SignInCustody.Refused;
+import ai.eliza.plugins.signin.SignInCustody.Proof;
 import ai.eliza.plugins.signin.SignInCustody.Session;
-import ai.eliza.plugins.signin.SignInPolicy.Failure;
+import ai.eliza.plugins.signin.SignInPolicy.CloudReply;
 import ai.eliza.plugins.signin.SignInPolicy.Method;
-import ai.eliza.plugins.signin.SignInPolicy.Stage;
-import ai.eliza.plugins.signin.SignInPolicy.Verify;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -29,6 +27,7 @@ public final class CodeSignIn {
   public static final String FACTOR_COMPLETE = "/api/v1/auth/mfa/complete";
   public static final String FACTOR_SMS_SEND = "/api/v1/auth/mfa/sms/send";
   public static final String LOGOUT = "/api/v1/auth/logout";
+  public static final List<String> FACTORS = List.of("totp", "sms");
   private static final int MAX_BODY = 65_536;
   private static final int CONNECT_TIMEOUT_MS = 10_000;
   private static final int READ_TIMEOUT_MS = 20_000;
@@ -36,6 +35,7 @@ public final class CodeSignIn {
   public record Answer(int status, JSONObject body, String retryAfter) {
     public String error() { return body.optString("error", ""); }
     public String reason() { return body.optString("reason", ""); }
+    public boolean ok() { return status == 200 || status == 201 || status == 202; }
   }
 
   public interface Http {
@@ -58,7 +58,6 @@ public final class CodeSignIn {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         connection.setDoOutput(true);
         connection.setRequestProperty("Content-Type", "application/json");
-        connection.setFixedLengthStreamingMode(bytes.length);
         try (OutputStream out = connection.getOutputStream()) { out.write(bytes); }
       }
       int status = connection.getResponseCode();
@@ -69,51 +68,45 @@ public final class CodeSignIn {
     }
   };
 
-  public sealed interface Verified {
-    record SignedIn(Session session) implements Verified {}
-    record FactorRequired(String challengeId, List<String> methods, long expiresAt) implements Verified {}
-    record NotVerified(Verify answer) implements Verified {}
+  public sealed interface Checked {
+    record SessionIssued(Session session) implements Checked {}
+    record KeyMinted(Proof proof, String userId, long keyExpiresAt, boolean googleConnected) implements Checked {}
+    record FactorAsked(String challengeId, List<String> factors, long expiresAt) implements Checked {}
+    record NotChecked(CloudReply reply) implements Checked {}
   }
 
-  public record Sent(long expiresAt, long resendAt) {}
-
-  public static final class NotSent extends Exception {
-    public final Failure failure;
-    public final long resendAt;
-    NotSent(Failure failure, long resendAt) { super(failure.wire, null, false, false); this.failure = failure; this.resendAt = resendAt; }
-  }
+  public record Sent(CloudReply reply, long expiresAt, long resendAt) {}
 
   private final Http http;
   private final String clientId;
 
   public CodeSignIn(Http http, String clientId) { this.http = http; this.clientId = clientId; }
 
-  public Sent send(SignInRegistration.Environment environment, Method method, String destination, String verifier, long now) throws NotSent {
+  public Sent send(SignInRegistration.Environment environment, Method method, String destination, String verifier, long now) {
     JSONObject body = json(destinationKey(method), destination, "clientId", clientId,
       "codeChallenge", SignInPolicy.s256(verifier), "codeChallengeMethod", "S256");
     Answer sent;
     try { sent = http.post(environment.apiOrigin + (method == Method.SMS_CODE ? SMS_SEND : EMAIL_SEND), body, null); }
-    catch (IOException | RuntimeException unanswered) { throw new NotSent(Failure.UNAVAILABLE, 0); }
+    catch (IOException | RuntimeException unanswered) { return new Sent(new CloudReply.Unanswered(), 0, 0); }
     long resendAt = SignInPolicy.resendAt(sent.body.opt("retryAt"), sent.retryAfter, now);
-    if (sent.status != 200 && sent.status != 202) throw new NotSent(SignInPolicy.failureFor(Stage.SEND, sent.status, sent.error(), sent.reason()), resendAt);
-    return new Sent(SignInPolicy.codeExpiresAt(sent.body.opt("expiresAt"), now), resendAt);
+    if (!sent.ok()) return new Sent(refusal(sent), 0, resendAt);
+    return new Sent(new CloudReply.Delivered(), SignInPolicy.codeExpiresAt(sent.body.opt("expiresAt"), now), resendAt);
   }
 
-  public Verified verify(SignInRegistration.Environment environment, Method method, String destination, String code, String verifier) {
-    JSONObject body = json(destinationKey(method), destination, "code", code, "clientId", clientId, "codeVerifier", verifier);
-    return verified(environment.apiOrigin + (method == Method.SMS_CODE ? SMS_VERIFY : EMAIL_VERIFY), body);
+  public Checked verify(SignInRegistration.Environment environment, Method method, String destination, String code, String verifier, long now) {
+    return checked(environment.apiOrigin + (method == Method.SMS_CODE ? SMS_VERIFY : EMAIL_VERIFY),
+      json(destinationKey(method), destination, "code", code, "clientId", clientId, "codeVerifier", verifier), now);
   }
 
-  public Verified completeFactor(SignInRegistration.Environment environment, String challengeId, String factor, String code) {
-    return verified(environment.apiOrigin + FACTOR_COMPLETE,
-      json("challengeId", challengeId, "method", factor, "code", code));
+  public Checked completeFactor(SignInRegistration.Environment environment, String challengeId, String factor, String code, long now) {
+    return checked(environment.apiOrigin + FACTOR_COMPLETE, json("challengeId", challengeId, "method", factor, "code", code), now);
   }
 
-  public void sendFactorCode(SignInRegistration.Environment environment, String challengeId) throws Refused {
+  public CloudReply sendFactorCode(SignInRegistration.Environment environment, String challengeId) {
     Answer sent;
     try { sent = http.post(environment.apiOrigin + FACTOR_SMS_SEND, json("challengeId", challengeId), null); }
-    catch (IOException | RuntimeException unanswered) { throw new Refused(Failure.UNAVAILABLE); }
-    if (sent.status != 200 && sent.status != 202) throw new Refused(SignInPolicy.failureFor(Stage.SEND, sent.status, sent.error(), sent.reason()));
+    catch (IOException | RuntimeException unanswered) { return new CloudReply.Unanswered(); }
+    return sent.ok() ? new CloudReply.Delivered() : refusal(sent);
   }
 
   public void logout(SignInRegistration.Environment environment, Session session) {
@@ -121,26 +114,27 @@ public final class CodeSignIn {
     catch (IOException | RuntimeException ended) { return; }
   }
 
-  private Verified verified(String url, JSONObject body) {
+  private Checked checked(String url, JSONObject body, long now) {
     Answer answer;
     try { answer = http.post(url, body, null); }
-    catch (IOException | RuntimeException unanswered) { return new Verified.NotVerified(Verify.UNANSWERED); }
-    return verified(answer, System.currentTimeMillis());
+    catch (IOException | RuntimeException unanswered) { return new Checked.NotChecked(new CloudReply.Unanswered()); }
+    return checked(answer, now);
   }
 
-  public static Verified verified(Answer answer, long now) {
+  public static CloudReply refusal(Answer answer) { return SignInPolicy.refusal(answer.status, answer.error(), answer.reason()); }
+
+  public static Checked checked(Answer answer, long now) {
+    if (!answer.ok()) return new Checked.NotChecked(refusal(answer));
     String status = answer.body.optString("status", "");
-    Verify verify = SignInPolicy.verifyAnswer(answer.status, status, answer.error(), answer.reason());
-    if (verify == Verify.FACTOR_REQUIRED) {
+    if (status.equals("mfa_required")) {
       String challengeId = answer.body.optString("challengeId", "");
-      long expiresAt = SignInPolicy.challengeExpiresAt(answer.body.opt("expiresAt"), null, now);
-      List<String> methods = factors(answer.body.optJSONArray("methods"));
-      return challengeId.isEmpty() || challengeId.length() > 256 || expiresAt == 0 || methods.isEmpty()
-        ? new Verified.NotVerified(Verify.MALFORMED) : new Verified.FactorRequired(challengeId, methods, expiresAt);
+      long expiresAt = SignInPolicy.challengeExpiresAt(answer.body.opt("expiresAt"), now);
+      List<String> factors = factors(answer.body.optJSONArray("methods"));
+      return challengeId.isEmpty() || challengeId.length() > 256 || expiresAt == 0 || factors.isEmpty()
+        ? new Checked.NotChecked(new CloudReply.Unanswered()) : new Checked.FactorAsked(challengeId, factors, expiresAt);
     }
-    if (verify != Verify.VERIFIED) return new Verified.NotVerified(verify);
-    Session session = session(answer.body, now);
-    return session == null ? new Verified.NotVerified(Verify.MALFORMED) : new Verified.SignedIn(session);
+    Session session = status.equals("signed_in") ? session(answer.body, now) : null;
+    return session == null ? new Checked.NotChecked(new CloudReply.Unanswered()) : new Checked.SessionIssued(session);
   }
 
   public static Session session(JSONObject body, long now) {
@@ -157,7 +151,7 @@ public final class CodeSignIn {
     List<String> found = new ArrayList<>();
     for (int i = 0; methods != null && i < methods.length(); i++) {
       String method = methods.optString(i, "");
-      if ((method.equals("totp") || method.equals("sms")) && !found.contains(method)) found.add(method);
+      if (FACTORS.contains(method) && !found.contains(method)) found.add(method);
     }
     return found;
   }

@@ -1,8 +1,8 @@
 // spec/os/android/wifi.md, "A scan offers one row per disclosed network name, the strongest usable one"; spec/os/android/wifi.md, "Only a report of the requested network itself confirms the join or a sign-in portal"; spec/os/android/wifi.md, "Disconnect and the Internet panel report only that Android took the request"; spec/os/android/wifi.md, "A connectivity read reports Android's own flags for the active network, and an unanswered read is unknown"
 import type { HandoffOutcome, HostFacts, PluginPresence } from "../../gen/os__android__bridge.ts"
-import { connectivityReport, disconnectReply, internetPanel, offeredRows, type ScanRow, type WifiSecurity } from "../../gen/os__android__wifi.effect.vibe"
+import { connectivityReport, internetPanel, offeredRows, type ScanRow, type WifiSecurity } from "../../gen/os__android__wifi.effect.vibe"
 import { nativeCall, nativeReply, rejectionCode, settled, type BridgeFailure } from "./bridge.vibe"
-import type { ConnectResult, ConnectivityResult, ListNetworksOptions, ListNetworksResult, WiFiNetwork, WiFiPlugin, WiFiSecurity } from "./definitions/wifi.ts"
+import type { ConnectivityResult, ListNetworksOptions, ListNetworksResult, WiFiNetwork, WiFiPlugin, WiFiSecurity } from "./definitions/wifi.ts"
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
@@ -23,8 +23,6 @@ export interface WiFiClient extends Omit<WiFiPlugin, "openInternetPanel"> {
 }
 
 const SECURITY: Readonly<Record<WiFiSecurity, WifiSecurity>> = { open: "WifiOpen", owe: "WifiOwe", wpa2: "WifiWpa2", wpa3: "WifiWpa3", eap: "WifiEap", wep: "WifiWep" }
-
-const ANSWERED: HostFacts = { foreground: true, unlocked: true, focused: true, granted: true, featurePresent: true }
 
 const NOT_REGISTERED = new Set(["UNIMPLEMENTED", "DISABLED"])
 
@@ -62,13 +60,12 @@ function offers(found: readonly (WiFiNetwork & { security: WiFiSecurity })[], op
   return { networks: limit !== undefined && limit > 0 ? strongest.slice(0, limit) : strongest }
 }
 
-function reported(read: ConnectivityResult): ConnectivityResult {
-  const report = connectivityReport({ answered: true, offersInternet: read.online, androidValidated: read.validated, androidCaptive: read.captivePortal, onWifi: read.ssid !== null, nameDisclosed: read.ssid !== null, activeName: read.ssid ?? "" })
-  return report.tag === "ConnectivityKnown" ? { online: report.online, validated: report.validated, captivePortal: report.captivePortal, ssid: report.wifiName === "" ? null : report.wifiName } : read
-}
-
-function disconnected(change: ConnectResult): ConnectResult {
-  return disconnectReply("PluginRegistered", ANSWERED, change.success) === "DisconnectAccepted" ? { success: true } : change
+effect function connectivity(plugin: string, read: () => Promise<unknown>) {
+  const answer = try result(nativeReply(plugin, "getConnectivity", Connectivity, read))
+  const seen = Result.isSuccess(answer) ? answer.success : undefined
+  const report = connectivityReport({ answered: seen !== undefined, offersInternet: seen?.online ?? false, androidValidated: seen?.validated ?? false, androidCaptive: seen?.captivePortal ?? false, onWifi: seen?.ssid != null, nameDisclosed: seen?.ssid != null, activeName: seen?.ssid ?? "" })
+  if (report.tag === "ConnectivityKnown") return { online: report.online, validated: report.validated, captivePortal: report.captivePortal, ssid: report.wifiName === "" ? null : report.wifiName } satisfies ConnectivityResult
+  return try fromResult(answer)
 }
 
 function refusalCode(failure: BridgeFailure): string | undefined {
@@ -79,7 +76,8 @@ effect function panelHandoff(plugin: string, open: () => Promise<void>) {
   const opened = try result(nativeCall(plugin, "openInternetPanel", () => open()))
   const code = Result.isFailure(opened) ? refusalCode(opened.failure) : undefined
   const presence: PluginPresence = code !== undefined && NOT_REGISTERED.has(code) ? "PluginNotRegistered" : "PluginRegistered"
-  return internetPanel(presence, { ...ANSWERED, featurePresent: code !== "UNSUPPORTED" }, Result.isSuccess(opened))
+  const facts: HostFacts = { foreground: false, unlocked: false, focused: false, granted: false, featurePresent: code !== "UNSUPPORTED" }
+  return internetPanel(presence, facts, Result.isSuccess(opened))
 }
 
 export function wifiClient(plugin: WiFiPlugin = wifiPlugin(), name = "ElizaWiFi"): WiFiClient {
@@ -91,9 +89,8 @@ export function wifiClient(plugin: WiFiPlugin = wifiPlugin(), name = "ElizaWiFi"
     getWifiState: () => settled(nativeReply(name, "getWifiState", Radio, () => plugin.getWifiState())),
     getConnectedNetwork: () => settled(nativeReply(name, "getConnectedNetwork", Connected, () => plugin.getConnectedNetwork())),
     listAvailableNetworks: async (options) => offers((await settled(nativeReply(name, "listAvailableNetworks", Scan, () => plugin.listAvailableNetworks(options)))).networks, options),
-    connectToNetwork: (options) => settled(nativeReply(name, "connectToNetwork", Change, () => plugin.connectToNetwork(options))),
-    disconnectFromNetwork: async () => disconnected(await settled(nativeReply(name, "disconnectFromNetwork", Change, () => plugin.disconnectFromNetwork()))),
-    getConnectivity: async () => reported(await settled(nativeReply(name, "getConnectivity", Connectivity, () => plugin.getConnectivity()))),
+    disconnectFromNetwork: () => settled(nativeReply(name, "disconnectFromNetwork", Change, () => plugin.disconnectFromNetwork())),
+    getConnectivity: () => settled(connectivity(name, () => plugin.getConnectivity())),
     addNetworkWithApproval: (options) => settled(nativeReply(name, "addNetworkWithApproval", Join, () => plugin.addNetworkWithApproval(options))),
   }
 }

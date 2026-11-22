@@ -1,0 +1,97 @@
+// spec/agent/plugins/bundle.md, "Story: Ship one agent bundle whose contents and actions are known"; spec/agent/plugins/bundle.md, "No bundle carries a model weight file or a Node addon"; spec/agent/plugins/bundle.md, "A bundle without the local inference plugin carries only its required files and manifest, all at its root"; spec/agent/plugins/bundle.md, "A manifest is read only for its own bundle bytes and only when it is one a build could write"
+import { assert, it } from "@effect/vitest"
+import { baseFiles } from "../gen/agent__plugins__bundle.ts"
+import { admitPayload, buildAgentBundle, BundleManifestUnreadable, BundleRefused, readBundleManifest } from "../src/bundle/build.vibe"
+import { migrations } from "../src/storage/schema.vibe"
+import { host, scratch } from "./support/kernel.vibe"
+import { productActionName, productPlugin } from "./support/product-plugin/index.ts"
+
+module node {
+  import { execFileSync } from "node:child_process"
+  import { mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises"
+  import * as path from "node:path"
+  import { agentDir } from "./support/child.ts"
+
+  export const sourceRoot = path.resolve(agentDir, "../..")
+  export const sourceCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: agentDir, encoding: "utf8" }).trim()
+  const fixtureLink = path.join(sourceRoot, "node_modules", "product-fixture")
+
+  export async function linkFixture(): Promise<void> {
+    await rm(fixtureLink, { force: true })
+    await symlink(path.join(agentDir, "test/support/product-plugin"), fixtureLink, "dir")
+  }
+
+  export function unlinkFixture(): Promise<void> {
+    return rm(fixtureLink, { force: true })
+  }
+
+  export async function plant(dir: string, files: readonly string[]): Promise<void> {
+    for (const file of files) {
+      await mkdir(path.dirname(path.join(dir, file)), { recursive: true })
+      await writeFile(path.join(dir, file), "x")
+    }
+  }
+
+  export function listing(dir: string): Promise<string[]> {
+    return readdir(dir).then((names) => names.sort())
+  }
+
+  export async function tamper(dir: string): Promise<void> {
+    const file = path.join(dir, "agent.mjs")
+    await writeFile(file, `${await readFile(file, "utf8")}\n`)
+  }
+}
+import { linkFixture, listing, plant, sourceCommit, sourceRoot, tamper, unlinkFixture } from node
+
+effect function fixturePackage() {
+  return try acquireRelease(host("product package link", () => linkFixture()), () => orDie(host("product package unlink", () => unlinkFixture())))
+}
+
+it.effect('A build from the source root ships the product plugin as a package, loads it in the smoke and writes a manifest readable only for its own bytes (spec/agent/plugins/bundle.md, "Story: Ship one agent bundle whose contents and actions are known")', effect () => {
+  try fixturePackage()
+  const out = try scratch("bundle-out")
+  try host("previous bundle", () => plant(out.path, ["stale.txt"]))
+  const manifest = try host("bundle build", () => buildAgentBundle({ plugins: [], productPlugin: productPlugin.name, outDir: out.path, sourceCommit, sourceRoot }))
+  const read = try host("manifest read", () => readBundleManifest(out.path))
+  const files = try host("bundle listing", () => listing(out.path))
+  try Effect.try(() => {
+    assert.deepStrictEqual(read, manifest)
+    assert.deepStrictEqual(files, [...baseFiles, "manifest.json"].sort())
+    assert.deepStrictEqual(
+      { schema: manifest.schema, node: manifest.node, sourceCommit: manifest.sourceCommit, schemaVersion: manifest.schemaVersion, plugins: manifest.plugins, productPlugin: manifest.productPlugin, localInference: manifest.localInference, worker: manifest.workflowWorkerSha256 },
+      { schema: 1, node: "26", sourceCommit, schemaVersion: migrations.length, plugins: [], productPlugin: productPlugin.name, localInference: false, worker: undefined },
+    )
+    assert.includeMembers(manifest.packages.map(({ name }) => name), [productPlugin.name, "@elizaos/agent", "@elizaos/core"])
+    assert.includeDeepMembers([...manifest.actions], [{ name: productActionName }, { name: "REPLY" }])
+  })
+  try host("bundle tamper", () => tamper(out.path))
+  const refused = try Effect.flip(host("tampered manifest read", () => readBundleManifest(out.path)))
+  try Effect.try(() => assert.instanceOf(refused.cause, BundleManifestUnreadable))
+}, 1_500_000)
+
+it.effect('A build that lists the product plugin among the plugins is refused and leaves the previous bundle as it was (spec/agent/plugins/bundle.md, "A build is refused unless every input that emitted bytes comes from a named package inside the source root, at least one did, and the entry imports nothing but Node built-ins")', effect () => {
+  const out = try scratch("bundle-kept")
+  try host("previous bundle", () => plant(out.path, ["agent.mjs"]))
+  const refused = try Effect.flip(host("bundle build", () =>
+    buildAgentBundle({ plugins: [productPlugin.name], productPlugin: productPlugin.name, outDir: out.path, sourceCommit, sourceRoot })))
+  const files = try host("bundle listing", () => listing(out.path))
+  try Effect.try(() => {
+    assert.instanceOf(refused.cause, BundleRefused)
+    assert.strictEqual(refused.cause instanceof BundleRefused ? refused.cause.verdict : undefined, "InputsMalformed")
+    assert.deepStrictEqual(files, ["agent.mjs"])
+  })
+})
+
+it.effect('The payload refuses weights, addons and, without local inference, versioned shared libraries and anything off the root (spec/agent/plugins/bundle.md, "No bundle carries a model weight file or a Node addon"; spec/agent/plugins/bundle.md, "A bundle without the local inference plugin carries only its required files and manifest, all at its root")', effect () => {
+  const staging = try scratch("bundle-payload")
+  try host("payload files", () => plant(staging.path, [...baseFiles, "vector.tar.gz", "models/base.GGUF", "lib/libggml.so.1.2", "addon.node", "tts/voice.bin"]))
+  const cloudOnly = try host("cloud payload", () => admitPayload(staging.path, false))
+  const local = try host("local payload", () => admitPayload(staging.path, true))
+  const paths = (files: readonly { readonly name: string; readonly directories: readonly string[] }[]) =>
+    files.map(({ name, directories }) => [...directories, name].join("/")).sort()
+  try Effect.try(() => {
+    assert.deepStrictEqual(paths(cloudOnly.refused), ["addon.node", "lib/libggml.so.1.2", "models/base.GGUF", "tts/voice.bin", "vector.tar.gz"])
+    assert.deepStrictEqual(paths(local.refused), ["addon.node", "models/base.GGUF"])
+    assert.strictEqual(cloudOnly.files.find(({ name }) => name === "libggml.so.1.2")?.extension, "so")
+  })
+})

@@ -73,6 +73,13 @@ public final class IndicatorLease {
   return !microphoneHeld&&pause==ListenerPolicy.IndicatorPause.DISPLAY_OFF&&(loss==Loss.EXPIRED||loss==Loss.PENDING);
  }
 
+ public record Observation(boolean latches,ListenerPolicy.IndicatorPause pause){}
+ public static Observation observe(boolean microphoneHeld,ListenerPolicy.IndicatorPause was,Loss loss){
+  boolean latches=!sleepLapse(microphoneHeld,was,loss)
+   &&ListenerPolicy.latchesIndicatorLoss(microphoneHeld||was!=ListenerPolicy.IndicatorPause.NONE,loss==Loss.NONE,loss.pause());
+  return new Observation(latches,pauseFor(loss));
+ }
+
  private long generation;
  private boolean live;
  private boolean acknowledged;

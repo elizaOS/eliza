@@ -292,8 +292,8 @@ effect function completeMfa(context: RouteContext) {
       when Rejected: throw new Refused({ refusal: challengeRefusal(failure.state, method) });
       default: throw failure;
     }
-    const started = stepped.out.out[0]
-    if (started === undefined) return { kind: "refused", refusal: challengeRefusal(stepped.state, method) } satisfies Outcome<never>
+    const started = stepped.out.out.find((step) => step.tag === "StartSession")
+    if (started?.tag !== "StartSession") return { kind: "refused", refusal: challengeRefusal(stepped.state, method) } satisfies Outcome<never>
     const session = try issueSession(tx, { userId: who.userId, organizationId: who.organizationId, assurance: started.assurance, accountCreated: false, now: context.now })
     return { kind: "done", value: session } as const
   })

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 package ai.eliza.systemupdater;
 
-import android.os.Build;
 import android.os.SystemClock;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -30,15 +29,19 @@ final class UpdateChannel {
         final URL url;
         final String sha256, fingerprint;
         final long bytes, timestamp;
-        Candidate(URL url, String sha256, String fingerprint, long bytes, long timestamp) {
-            this.url = url; this.sha256 = sha256; this.fingerprint = fingerprint;
-            this.bytes = bytes; this.timestamp = timestamp;
+        final UpdateAdmission.Release release;
+        final UpdateAdmission.ManifestFacts manifest;
+        Candidate(URL url, String sha256, UpdateAdmission.Release release, long bytes,
+                UpdateAdmission.ManifestFacts manifest) {
+            this.url = url; this.sha256 = sha256; this.release = release; this.manifest = manifest;
+            this.fingerprint = release.fingerprint(); this.bytes = bytes; this.timestamp = release.buildDate();
         }
     }
 
     private final Set<String> hosts;
     private final String product, device;
     private final URL manifest;
+    private int redirectsFollowed;
 
     UpdateChannel(String manifestUrl, String[] hosts, String product, String device) throws IOException {
         this.hosts = new HashSet<>(Arrays.asList(hosts));
@@ -49,13 +52,15 @@ final class UpdateChannel {
         }
     }
 
-    Candidate discover() throws IOException {
+    // spec/os/update/updater.md, "A candidate is admitted only for the same product and device, with a newer build and no lower patch levels"
+    Candidate discover(UpdateAdmission.Release installed) throws IOException {
         HttpsURLConnection connection = connect(manifest);
+        int redirects = redirectsFollowed;
         try (InputStream input = connection.getInputStream()) {
             ByteArrayOutputStream data = new ByteArrayOutputStream();
             byte[] buffer = new byte[4096]; int count;
             while ((count = input.read(buffer)) != -1) {
-                if (data.size() + count > 65536) throw new IOException("Update manifest exceeds bound");
+                if (data.size() + count > UpdateAdmission.MAX_MANIFEST_BYTES) throw new IOException("Update manifest exceeds bound");
                 data.write(buffer, 0, count);
             }
             JSONObject value = new JSONObject(data.toString(StandardCharsets.UTF_8));
@@ -65,10 +70,17 @@ final class UpdateChannel {
             }
             String sha256 = value.getString("sha256"), fingerprint = value.getString("buildFingerprint");
             long size = number(value, "sizeBytes"), timestamp = number(value, "buildTimestamp");
-            if (!sha256.matches("[0-9a-f]{64}") || fingerprint.length() > 4096
-                    || size > 12L * 1024 * 1024 * 1024) throw new IOException("Invalid update manifest");
-            if (timestamp <= Build.TIME / 1000 || fingerprint.equals(Build.FINGERPRINT)) return null;
-            return new Candidate(allowed(new URL(value.getString("url"))), sha256, fingerprint, size, timestamp);
+            URL source = connection.getURL();
+            UpdateAdmission.ManifestFacts facts = new UpdateAdmission.ManifestFacts(data.size(),
+                    "https".equals(source.getProtocol()) && (source.getPort() == -1 || source.getPort() == 443),
+                    hosts.contains(source.getHost().toLowerCase(Locale.ROOT)), source.getUserInfo() != null,
+                    redirects, size);
+            if (!sha256.matches("[0-9a-f]{64}") || fingerprint.length() > 4096 || !facts.admitted()) {
+                throw new IOException("Invalid update manifest");
+            }
+            UpdateAdmission.Release release = new UpdateAdmission.Release(fingerprint, product, device, timestamp, 0, 0);
+            if (!UpdateAdmission.offered(installed, release)) return null;
+            return new Candidate(allowed(new URL(value.getString("url"))), sha256, release, size, facts);
         } catch (JSONException | IllegalArgumentException malformed) {
             throw new IOException("Invalid update manifest", malformed);
         } finally { connection.disconnect(); }
@@ -159,15 +171,15 @@ final class UpdateChannel {
 
     private HttpsURLConnection connect(URL initial, long offset) throws IOException {
         URL url = initial;
-        for (int redirects = 0; redirects <= 3; redirects++) {
+        for (int redirects = 0; redirects <= UpdateAdmission.MAX_REDIRECTS; redirects++) {
             HttpsURLConnection connection = (HttpsURLConnection) allowed(url).openConnection();
             connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(20000);
             connection.setReadTimeout(20000); connection.setRequestProperty("Accept-Encoding", "identity");
             if (offset > 0) connection.setRequestProperty("Range", "bytes=" + offset + "-");
             int status = connection.getResponseCode();
-            if (status == 200 || (offset > 0 && status == 206)) return connection;
+            if (status == 200 || (offset > 0 && status == 206)) { redirectsFollowed = redirects; return connection; }
             String location = connection.getHeaderField("Location"); connection.disconnect();
-            if (status < 300 || status >= 400 || location == null || redirects == 3) {
+            if (status < 300 || status >= 400 || location == null || redirects == UpdateAdmission.MAX_REDIRECTS) {
                 throw new IOException("Update service refused the request");
             }
             url = allowed(new URL(url, location));

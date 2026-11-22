@@ -14,7 +14,7 @@ effect function organizationNamed(flags: OperatorFlags) {
   return named
 }
 
-effect function userNamed(flags: OperatorFlags) {
+export effect function userNamed(flags: OperatorFlags) {
   const named: AccountNamed = { kind: "user", userId: try flags.required("user") }
   return named
 }
