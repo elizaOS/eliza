@@ -269,8 +269,9 @@ again during the run. The template install generates locally with `gen --if-vali
 remaining checks runnable and is retried by verification. Generated stories,
 browser build artifacts, compiler declarations and successful test receipts
 are restored with their owning task. `check` is never skipped whole: its
-`driver:` programs run the real application in `traces` every time. Standalone examples install and check
-separately, outside the workspace cache.
+`driver:` programs run the real application in `traces` every time. Standalone examples install and check separately. The selftest keeps a complete passing run for each example
+under its own inputs and the shared toolchain and sources. After an edit to one example, the other examples
+can reuse their passing runs. Use `pnpm selftest:examples` to run every install and check directly.
 
 A complete passing Vitest run records its input fingerprint. `check` reuses
 that result only while its source, generated core, transitive workspace
@@ -402,6 +403,8 @@ commit when you need the tool self-test results for that revision.
 The task entry point disables Turbo telemetry. Local `selftest:tools` tasks wait for the
 root and Studio tests. In CI, the verify job runs those integration tests once.
 Each dedicated shard uses Turbo's `--only` after setup builds the toolchain.
+The two fixture-only shards skip application generation and use only their own
+inputs. The remaining shard still checks the packed workspace.
 Release materializes the prerequisites before running the isolated shards.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
