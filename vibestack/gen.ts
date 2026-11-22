@@ -9,8 +9,8 @@
 // name is spelled. The rest is in gen/: types.ts (everything decided by a type),
 // print.ts (expressions), classify.ts (which definition is a transition, a guard
 // or a rule), secrecy.ts (where a secret may go), typescript.ts and harness.ts (the two outputs).
-import { classify, ROLES, type ImportedMachine, type Opaque, type Param, type Roles } from "./gen/classify.ts";
-import { harness, HARNESS, type Eval, type Fairness } from "./gen/harness.ts";
+import { classify, ROLES, SENDER, type ImportedMachine, type Opaque, type Param, type Roles } from "./gen/classify.ts";
+import { harness, HARNESS, type Eval, type Fairness, type WitnessStep } from "./gen/harness.ts";
 import { BUILTIN, printer } from "./gen/print.ts";
 import { checkSecrets } from "./gen/secrecy.ts";
 import { EMITTED, HELPERS, typescript } from "./gen/typescript.ts";
@@ -47,6 +47,7 @@ export interface Model extends Roles {
   exports: { types: string[]; values: string[]; variants: string[]; visible: Json[]; samples: { name: string; elem: Json }[] };
   ts: string;
   harness: string;
+  witness?: { harness: string; lengths: Map<string, number> };
 }
 
 /** Where a definition came from in the spec, for doc comments and ordering. */
@@ -61,6 +62,32 @@ const TAKEN = new Set([...EMITTED, ...HARNESS, ...`
 `.split(/\s+/).filter(Boolean)]);
 const RULE_OR_GUARD = new RegExp(`^(${[...ROLES, "can"].join("|")})[A-Z]`);
 const GENERATED = new RegExp(`^(${[...HELPERS, "eval", "Out", "set", "opaque", "table", "else"].join("|")})_|^x\\d+$|__\\d+$`);
+const WITNESS_PREFIX = "eval_witness_";
+
+function concreteWitnesses(defs: Json[], roles: Roles, at: (name: string) => string): Map<string, WitnessStep[]> {
+  const tuple = (value: Json): Json[] | undefined => value.kind === "app" && value.opcode === "Tup" ? value.args : undefined;
+  const transitions = new Map(roles.transitions.map((t) => [t.name, t]));
+  const count = (t: Roles["transitions"][number]) => t.params.length + Number(!!roles.sender && !t.params.some((p) => p.name === SENDER));
+  const stepsFor = (def: Json) => {
+    const target: string = def.name.slice(WITNESS_PREFIX.length);
+    if (!roles.sometimes.includes(target)) fail(`${at(def.name)}: name a declared \`sometimes\` rule after \`${WITNESS_PREFIX}\``);
+    const items = tuple(def.expr);
+    const first = items?.[0];
+    const event = first?.kind === "str" && transitions.get(first.value);
+    const rows = items && !(event && count(event) > 0) ? items : [def.expr];
+    const steps = rows.map((row, index): WitnessStep => {
+      const [name, ...args] = tuple(row) ?? [row];
+      const transition = name?.kind === "str" && transitions.get(name.value);
+      if (!transition) return fail(`${at(def.name)}: step ${index + 1} must name a transition of this model`);
+      if (args.length !== count(transition)) return fail(`${at(def.name)}: step ${index + 1} (${transition.name}) takes ${count(transition)} arguments`);
+      const reference = `M::${def.name}${rows === items ? `._${index + 1}` : ""}`;
+      return { transition, args: args.map((_, i) => `${reference}._${i + 2}`) };
+    });
+    if (!steps.length) fail(`${at(def.name)}: give at least one transition`);
+    return [target, steps] as const;
+  };
+  return new Map(defs.map(stepsFor));
+}
 
 export function generate(ir: Json, name: string, source: string, origin: (def: string) => Origin | undefined, deps: Map<string, Model>): Model {
   const decls: Json[] = (ir.modules.find((m: Json) => m.name === name) ?? fail(`module ${name} not found`)).declarations;
@@ -107,9 +134,10 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
   // cannot put off for ever and how soon a `leadsTo` rule is met (SPEC.md, "What goes in the Quint blocks"); like
   // sample sets, they never reach TypeScript.
   const settings = defs.filter((d) => d.qualifier === "pureval" && /^(weight|fair|within)_/.test(d.name));
-  const code = defs.filter((d) => !isSampleSet(d) && !settings.includes(d));
+  const examples = defs.filter((d) => d.qualifier === "pureval" && d.name.startsWith(WITNESS_PREFIX));
+  const code = defs.filter((d) => !isSampleSet(d) && !settings.includes(d) && !examples.includes(d));
   /** Names only the simulator reads; a definition that used one would refer to nothing in TypeScript. */
-  const simulatorOnly = new Set([...ownSamples, ...settings, ...links.flatMap((l) => l.exports.samples.map((s) => ({ name: qualify(l.alias, s.name) })))].map((d) => d.name as string));
+  const simulatorOnly = new Set([...ownSamples, ...settings, ...examples, ...links.flatMap((l) => l.exports.samples.map((s) => ({ name: qualify(l.alias, s.name) })))].map((d) => d.name as string));
   // `const f: (A, B) => R` is an opaque function: no body, only the laws stated with it (SPEC.md, "Opaque functions").
   const consts = decls.filter((d) => d.kind === "const");
   for (const d of consts) if (d.typeAnnotation?.kind !== "oper" || !d.typeAnnotation.args.length) fail(`${d.name}: a \`const\` is an opaque function, written \`const ${d.name}: (A, B) => R\` on one line`);
@@ -117,14 +145,14 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
   const beneath = (m: string): string[] => [m, ...deps.get(m)!.imports.flatMap(beneath)];
   const prefixes = [...new Set(imports.flatMap(beneath))];
   /** A name the spec binds (a type, definition, parameter or local `val`) must survive translation unchanged. */
-  const bind = (n: string): string => {
+  const bind = (n: string, witness = false): string => {
     const owner = prefixes.find((m) => n.startsWith(`${m}_`));
-    return TAKEN.has(n) || GENERATED.test(n) ? fail(`\`${n}\` cannot be used as a name: TypeScript or the generated code uses it`)
+    return TAKEN.has(n) || (!witness && GENERATED.test(n)) ? fail(`\`${n}\` cannot be used as a name: TypeScript or the generated code uses it`)
       : variants.has(n) ? fail(`\`${n}\` is a variant of a type and cannot also name a parameter or value`)
       : owner ? fail(`\`${n}\` cannot be used as a name: names beginning ${owner}_ are how the generated code refers to that module`)
       : n;
   };
-  [...defs, ...localTypedefs, ...consts].forEach((d) => bind(d.name));
+  [...defs, ...localTypedefs, ...consts].forEach((d) => bind(d.name, examples.includes(d)));
 
   // --- types: the module's own, and those of what it imports under the names it knows them by ---
   /** A type from a module imported under a name, with the types it mentions renamed the same way. */
@@ -221,8 +249,13 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
   const ts = render("", true, false);
 
   const run = harness(name, source, [...imports, ...typeOnly], funs, sig, samples, roles, types, { weights, fair });
+  const witnesses = concreteWitnesses(examples, roles, at);
+  const witness = witnesses.size ? {
+    harness: harness(name, source, [...imports, ...typeOnly], funs, sig, samples, roles, types, { weights, fair }, witnesses).text,
+    lengths: new Map([...witnesses].map(([goal, steps]) => [goal, steps.length])),
+  } : undefined;
   return {
-    name, source, imports, ...roles, fair, within, evals: run.evals, uncompared: run.uncompared, harness: run.text,
+    name, source, imports, ...roles, fair, within, evals: run.evals, uncompared: run.uncompared, harness: run.text, witness,
     ts, render, decode: types.decode, canon: types.canon,
     shape: roles.stateType ? types.comparison(roles.stateType) : undefined,
     outputShape: roles.output ? types.comparison(roles.output.out) : undefined,
