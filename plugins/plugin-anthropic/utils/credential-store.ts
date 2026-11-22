@@ -75,7 +75,7 @@ export function getClaudeOAuthToken(opts?: { accountId?: string }): OAuthToken {
     return cached;
   }
 
-  const envToken = getEnvVar("CLAUDE_CODE_OAUTH_TOKEN") ?? getEnvVar("ANTHROPIC_OAUTH_TOKEN");
+  const envToken = getEnvVar("CLAUDE_CODE_OAUTH_TOKEN");
   if (envToken) {
     const token: OAuthToken = {
       accessToken: envToken,
@@ -119,7 +119,7 @@ export async function getClaudeOAuthTokenAsync(opts?: {
     return appToken;
   }
 
-  const envToken = getEnvVar("CLAUDE_CODE_OAUTH_TOKEN") ?? getEnvVar("ANTHROPIC_OAUTH_TOKEN");
+  const envToken = getEnvVar("CLAUDE_CODE_OAUTH_TOKEN");
   if (envToken) {
     const token: OAuthToken = {
       accessToken: envToken,
@@ -197,7 +197,7 @@ export function getClaudeOAuthMeta(): ClaudeCredentials["claudeAiOauth"] | null 
     };
   }
 
-  const envToken = getEnvVar("CLAUDE_CODE_OAUTH_TOKEN") ?? getEnvVar("ANTHROPIC_OAUTH_TOKEN");
+  const envToken = getEnvVar("CLAUDE_CODE_OAUTH_TOKEN");
   if (envToken) return null;
 
   const credentials = readFromCredentialStore();

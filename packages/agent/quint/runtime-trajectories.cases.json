@@ -3,6 +3,8 @@
     "plugins/plugin-assistant/src/features/trajectories/TrajectoriesService.ts",
     "plugins/plugin-assistant/src/features/trajectories/store/trajectory-storage.ts",
     "plugins/plugin-assistant/src/features/trajectories/store/trajectory-internals.ts",
+    "plugins/plugin-assistant/src/features/trajectories/store/recorded-trajectory.ts",
+    "plugins/plugin-assistant/src/features/trajectories/recorded-trajectories.ts",
     "packages/agent/src/runtime/dev-trajectory-recovery.ts",
     "packages/agent/src/runtime/dev-trajectory-recovery-protocol.ts"
   ],

@@ -4,6 +4,10 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  parseEmbeddedAgentData,
+  readEmbeddedAgentFile,
+} from "../../../../../plugins/plugin-native-agent/native-host/embedded-agent.mjs";
 import { injectAndroidRuntimeBytePreservation } from "../../lib/android-runtime-packaging.ts";
 
 const templates = fileURLToPath(new URL("./consumer-host/", import.meta.url));
@@ -32,6 +36,38 @@ const RELEASE_SIGNING_KEYS = Object.freeze([
   "keyPassword",
 ]);
 const sourceKinds = ["java", "kotlin", "assets", "res", "jniLibs"];
+const EMBEDDED_AGENT_MODULE = "eliza-embedded-agent";
+const EMBEDDED_AGENT_JAVA = "plugins/plugin-native-agent/android/src/main/java";
+/** The Java closure of the embedded agent service and bridge: no Kotlin, no local inference or voice class. */
+export const EMBEDDED_AGENT_SOURCES = Object.freeze([
+  ...["EmbeddedAgentConfig", "EmbeddedAgentPlugin", "EmbeddedAgentService"].map(
+    (name) => `ai/eliza/plugins/agent/embedded/${name}.java`,
+  ),
+  ...[
+    "AndroidRuntimeDirectories",
+    "EmbeddedRuntimeGroup",
+    "EmbeddedRuntimeLaunch",
+    "EmbeddedRuntimeService",
+    "InstalledRuntimeLibraries",
+    "LocalRuntimeHttp",
+    "NativeProcessLog",
+    "NativeProcessSupervisor",
+    "NativeRuntimeSession",
+    "RuntimeAssets",
+    "RuntimeBundleStore",
+    "RuntimePrivateFiles",
+    "RuntimeRequestDeadline",
+    "RuntimeRequestDispatcher",
+    "RuntimeStartFailure",
+  ].map((name) => `ai/eliza/plugins/agent/runtime/${name}.java`),
+  "ai/eliza/plugins/agent/health/LocalRuntimeHealth.java",
+]);
+/** The asset name each embedded agent data file is packaged under (EmbeddedAgentConfig.java). */
+const EMBEDDED_AGENT_ASSETS = Object.freeze({
+  host: "eliza-agent.json",
+  character: "eliza-agent-character.json",
+  policy: "eliza-agent-policy.json",
+});
 const dependencyConfigurations = [
   "implementation",
   "androidTestImplementation",
@@ -114,6 +150,54 @@ function environmentNames(value, keys, where) {
 }
 
 /**
+ * The directory an input must stay inside. A `node_modules` dependency root holds
+ * package links (pnpm's point into its `.pnpm` store, a workspace package's at its
+ * source). An input under one stays inside the real directory of the package it
+ * names, which must be that package (its `package.json` names it) and lie inside
+ * `packageRoots`; a symlink within that package still cannot escape it. Every other
+ * root contains its inputs itself.
+ */
+function packageContainer(roots, packageRoots, rootName, relative) {
+  const root = roots[rootName];
+  if (
+    rootName !== "dependencies" ||
+    relative === null ||
+    path.basename(root) !== "node_modules"
+  )
+    return root;
+  const [first, second] = relative.split("/");
+  requireValue(
+    first !== ".pnpm",
+    "Android host dependency inputs must name a package, not the pnpm store",
+  );
+  const name = first.startsWith("@") && second ? `${first}/${second}` : first;
+  const directory = fs.realpathSync(path.join(root, name));
+  requireValue(
+    packageRoots.some((allowed) => inside(allowed, directory)),
+    "Android host dependency link escapes the consumer, upstream and workspace roots",
+  );
+  const manifest = path.join(directory, "package.json");
+  let manifestName;
+  try {
+    if (fs.lstatSync(manifest).isFile())
+      manifestName = JSON.parse(fs.readFileSync(manifest, "utf8")).name;
+  } catch {}
+  requireValue(
+    manifestName === name,
+    `Android host dependency link ${name} is not that package`,
+  );
+  return directory;
+}
+
+/** The pnpm workspace above a directory (holding its `node_modules/.pnpm` store and workspace packages), or null. */
+function workspaceRoot(directory) {
+  for (let cursor = directory; ; cursor = path.dirname(cursor)) {
+    if (fs.existsSync(path.join(cursor, "pnpm-workspace.yaml"))) return cursor;
+    if (cursor === path.dirname(cursor)) return null;
+  }
+}
+
+/**
  * All policy is explicit data: identity, selected modules/sources, manifests,
  * resources, variants, signing/version environment names and BuildConfig values.
  * Paths are admitted against named caller roots. Output must be an owned
@@ -137,6 +221,16 @@ export function generateAndroidConsumerHost({
   upstreamRoot = fs.realpathSync(upstreamRoot);
   const roots = { consumer: consumerRoot, upstream: upstreamRoot };
   if (dependencyRoot) roots.dependencies = fs.realpathSync(dependencyRoot);
+  // A workspace marker widens the roots only when it is the consumer's own
+  // workspace; a stray pnpm-workspace.yaml in a parent directory admits nothing.
+  const workspace =
+    roots.dependencies && workspaceRoot(path.dirname(roots.dependencies));
+  const packageRoots = [
+    consumerRoot,
+    upstreamRoot,
+    roots.dependencies,
+    workspace && inside(workspace, consumerRoot) ? workspace : null,
+  ].filter(Boolean);
   output = path.resolve(output);
   if (inside(requestedConsumerRoot, output)) {
     output = path.resolve(
@@ -224,10 +318,11 @@ export function generateAndroidConsumerHost({
     );
     const root = roots[reference.root];
     // "." names a declared root itself, for example an admission working directory.
-    const requested =
+    const relative =
       reference.path === "." && kind === "directory"
-        ? root
-        : path.join(root, relativePath(reference.path));
+        ? null
+        : relativePath(reference.path);
+    const requested = relative === null ? root : path.join(root, relative);
     let candidate;
     try {
       candidate = fs.realpathSync(requested);
@@ -236,8 +331,14 @@ export function generateAndroidConsumerHost({
         cause,
       });
     }
+    const container = packageContainer(
+      roots,
+      packageRoots,
+      reference.root,
+      relative,
+    );
     requireValue(
-      inside(root, candidate),
+      inside(container, candidate),
       "Android host input escapes its declared root",
     );
     const stat = fs.statSync(candidate);
@@ -552,7 +653,91 @@ export function generateAndroidConsumerHost({
     onlyKeys(step, ["command", "directory"], "Settings admission");
     return command(step, "Settings admission");
   });
-  const assetNames = new Set();
+  // The embedded agent: its data files become assets, and a generated library
+  // module compiles its sources and declares its service, permissions and type.
+  let embeddedAgent = null;
+  if (profile.embeddedAgent !== undefined) {
+    onlyKeys(
+      profile.embeddedAgent,
+      ["host", "character", "policy"],
+      "Embedded agent",
+    );
+    requireValue(
+      Boolean(runtimeDirectory),
+      "An embedded agent needs the staged Android runtime payload",
+    );
+    requireValue(
+      modules.some((module) => module.name === "capacitor-android") &&
+        !moduleNames.has(EMBEDDED_AGENT_MODULE),
+      "An embedded agent needs the capacitor-android module and its own module name",
+    );
+    const files = Object.fromEntries(
+      Object.keys(EMBEDDED_AGENT_ASSETS).map((key) => [
+        key,
+        input(profile.embeddedAgent[key], "file"),
+      ]),
+    );
+    let data;
+    try {
+      data = parseEmbeddedAgentData(
+        Object.fromEntries(
+          Object.entries(files).map(([key, file]) => [
+            key,
+            readEmbeddedAgentFile(file),
+          ]),
+        ),
+      );
+    } catch (cause) {
+      throw new AndroidConsumerHostError(
+        `Invalid embedded agent data: ${cause.message}`,
+        { cause },
+      );
+    }
+    const directory = path.join(output, EMBEDDED_AGENT_MODULE);
+    add(
+      `${EMBEDDED_AGENT_MODULE}/build.gradle`,
+      fs.readFileSync(path.join(templates, "embedded-agent.gradle")),
+    );
+    add(
+      `${EMBEDDED_AGENT_MODULE}/src/main/AndroidManifest.xml`,
+      `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ <uses-permission android:name="android.permission.INTERNET" />
+ <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+ <application>
+  <service android:name="${data.service}" android:exported="false" android:foregroundServiceType="specialUse">
+   <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="embedded-agent-runtime" />
+  </service>
+ </application>
+</manifest>
+`,
+    );
+    modules.push({
+      name: EMBEDDED_AGENT_MODULE,
+      directory,
+      appDependency: true,
+      relocateBuild: false,
+    });
+    // Copied, since AGP ignores source-set filters; a changed upstream source makes the host stale.
+    const sources = EMBEDDED_AGENT_SOURCES.map((relative) => {
+      const file = input(
+        { root: "upstream", path: `${EMBEDDED_AGENT_JAVA}/${relative}` },
+        "file",
+      );
+      const bytes = fs.readFileSync(file);
+      add(`${EMBEDDED_AGENT_MODULE}/src/main/java/${relative}`, bytes);
+      return { file, sha256: hash(bytes) };
+    });
+    const inputs = Object.values(files).map((file) => ({
+      file,
+      sha256: hash(fs.readFileSync(file)),
+    }));
+    embeddedAgent = { files, inputs: [...inputs, ...sources] };
+  }
+  const assetNames = new Set(
+    embeddedAgent ? Object.values(EMBEDDED_AGENT_ASSETS) : [],
+  );
   const assetFiles = (profile.assetFiles ?? []).map((asset) => {
     onlyKeys(asset, ["source", "name"], "Asset file");
     requireValue(
@@ -563,6 +748,9 @@ export function generateAndroidConsumerHost({
     assetNames.add(asset.name);
     return { source: input(asset.source, "file"), name: asset.name };
   });
+  if (embeddedAgent)
+    for (const [key, name] of Object.entries(EMBEDDED_AGENT_ASSETS))
+      assetFiles.push({ source: embeddedAgent.files[key], name });
   const appScripts = (profile.appScripts ?? []).map((reference) => {
     const script = input(reference, "file");
     requireValue(
@@ -572,10 +760,13 @@ export function generateAndroidConsumerHost({
     return script;
   });
   // A host generated from inputs that changed later refuses to configure.
-  const generationInputs = (profile.generationInputs ?? []).map((reference) => {
-    const file = input(reference, "file");
-    return { file, sha256: hash(fs.readFileSync(file)) };
-  });
+  const generationInputs = [
+    ...(profile.generationInputs ?? []).map((reference) => {
+      const file = input(reference, "file");
+      return { file, sha256: hash(fs.readFileSync(file)) };
+    }),
+    ...(embeddedAgent?.inputs ?? []),
+  ];
   let runtimeMain = null;
   // A staged runtime keeps its packaged libraries unstripped, so it always
   // implies byte preservation; an explicit opt-out contradicts the payload.

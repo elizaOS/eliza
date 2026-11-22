@@ -1,0 +1,46 @@
+{
+	"sources": [
+		"packages/core/src/services/pii-scrub.ts",
+		"packages/core/src/security/pii-pseudonym-map-store.ts",
+		"packages/core/src/security/pii-pseudonym-map.ts",
+		"packages/core/src/utils/batch-queue.ts",
+		"packages/core/test/pii-pseudonym-map-stage-model.test.ts",
+		"packages/core/quint/check-pii-pseudonym-map-stage.mjs"
+	],
+	"conformance": "packages/core/quint/check-pii-pseudonym-map-stage.mjs",
+	"bounds": "Two scrub requests without a requester-built context pack arrive in one drain batch (BatchQueue maxParallel 2). Item 1 names one person and item 2 names the same person or another one. Each item joins the map chain, loads the stored corpus map at the head of the chain, mints a pseudonym when its person has none, and either completes (the artifact carries the pseudonym and the item saves its whole copy of the map) or rejects once (nothing is saved, and the item joins the chain again at the tail after its backoff). The conformance script replays every generated sequence that saves both items (both arrival orders, both person choices, no rejection or one rejection of either item: 12 sequences) through PiiScrubService on an initialized runtime, with the drain task worker, a registered PII_SCRUB model handler that the test parks and releases, the encrypted cache map store and a knowledge-graph entity store. After every step it compares the open model calls, each item's pseudonym and the decrypted stored map with the model. Requests that bring their own context pack or assignments, done-marker settlement (PiiScrubSettlement), drain startup and stop (LazyPiiDrain), several processes sharing one cache and more than one rejection are not modeled. Under weak fairness of joining, loading, completing and retrying, both items save. Explicit stuttering lets a model call stay open forever, so the same claim without fairness must fail. No latency bound is proved.",
+	"cases": [
+		{
+			"name": "two-map-items-in-one-drain-batch",
+			"main": "PiiPseudonymMapStage",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"ArtifactsStayInMap",
+				"OnePseudonymPerPerson",
+				"OneStageAtATime",
+				"ChainHoldsQueuedItems",
+				"TypeOK"
+			],
+			"temporal": ["ItemsSave", "ItemsSaveWithoutFairness"],
+			"maxSteps": 24,
+			"samples": 4000,
+			"temporalChecks": [
+				{
+					"property": "ItemsSave",
+					"expect": "holds",
+					"assumptions": [
+						"Every continuously enabled chain join, map load, successful model call and retry eventually runs (weak fairness). At most one model call rejects. The cache read and save settle; a permanent provider or storage failure is not included. No wall-clock bound is proved."
+					]
+				},
+				{
+					"property": "ItemsSaveWithoutFairness",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness is assumed. A model call may stay open forever, so a temporal loop counterexample is required."
+					]
+				}
+			]
+		}
+	]
+}

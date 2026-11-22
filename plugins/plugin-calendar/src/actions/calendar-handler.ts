@@ -19,7 +19,11 @@ import {
   STATED_CLOCK_MENTION_SOURCE,
   WEEKDAY_NAME_PATTERN,
 } from "../internal/request-time.js";
-import { calendarSearchFiltersAreBound } from "../search-filter-evidence.js";
+import {
+  boundCalendarReadSource,
+  boundCalendarSearchDate,
+  calendarSearchFiltersAreBound,
+} from "../search-filter-evidence.js";
 import {
   type CalendarUserSource,
   calendarCreateAuthorityProperties,
@@ -59,6 +63,7 @@ import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
   GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarAllDayRange,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsCalendarRecurrenceScope,
@@ -83,9 +88,9 @@ import type {
 import {
   describeUserReference,
   ElizaError,
-  extractUserText,
   normalizeEffectReceipt,
   resolveOptimizedPromptForRuntime,
+  timeInferenceSpan,
   unwrapUserMessageText,
   userReferenceLogView,
 } from "@elizaos/core";
@@ -153,11 +158,13 @@ import { CalendarService } from "../service/CalendarService.js";
 import { evaluateCalendarWriteAvailability } from "./conflict-detect.js";
 import type {
   CalendarActionDeps,
+  CalendarJsonModelResult,
   CalendarModelCallArgs,
   CalendarMutationApprovalResult,
   CalendarTravelBufferResult,
   CalendarTravelIntent,
 } from "./deps.js";
+import { calendarExtractionSchemaViolations } from "./extraction-conformance.js";
 import { CALENDAR_PLAN_INSTRUCTIONS } from "./optimized-prompt-instructions.js";
 import { standaloneCalendarDeps } from "./standalone-calendar-deps.js";
 
@@ -180,13 +187,75 @@ function runLifeOpsTextModel(
   return hostDeps.runTextModel(args);
 }
 
-function runLifeOpsJsonModel<
+/**
+ * Every calendar JSON model call goes through here, whichever host supplies
+ * the model runner. When the call declares a `responseSchema`, a record that
+ * does not conform to it (see `calendarExtractionSchemaViolations`: not an
+ * object, or no declared field with a value) is not an extraction: the call is
+ * retried once with the violations named (plus the caller's `retryGuidance`),
+ * and a second nonconforming record is returned as `parsed: null` so callers
+ * report an extraction failure instead of reading missing fields as
+ * "no change". A `null` result always means the model call itself failed (no
+ * response from the provider), never a nonconforming record.
+ */
+async function runLifeOpsJsonModel<
   T extends Record<string, unknown> = Record<string, unknown>,
 >(
   args: CalendarModelCallArgs,
   hostDeps: CalendarActionDeps = standaloneCalendarDeps,
-) {
-  return hostDeps.runJsonModel<T>(args);
+  options: { retryGuidance?: string } = {},
+): Promise<CalendarJsonModelResult<T> | null> {
+  const schema = args.responseSchema;
+  const first = await hostDeps.runJsonModel<T>(args);
+  if (!schema || !first) return first;
+  const firstViolations = calendarExtractionSchemaViolations(
+    schema,
+    first.parsed,
+  );
+  if (firstViolations.length === 0) return first;
+  const retry = await hostDeps.runJsonModel<T>({
+    ...args,
+    prompt: [
+      args.prompt,
+      `The previous response did not match the response schema (${firstViolations.join("; ")}). Output one complete JSON object matching the response schema, with every field. Use null for unchanged or unknown values; never invent a value.`,
+      ...(options.retryGuidance ? [options.retryGuidance] : []),
+    ].join("\n"),
+  });
+  if (!retry) return null;
+  const retryViolations = calendarExtractionSchemaViolations(
+    schema,
+    retry.parsed,
+  );
+  if (retryViolations.length === 0) return retry;
+  args.runtime.logger?.warn?.(
+    {
+      src: args.source,
+      actionType: args.actionType,
+      violations: retryViolations,
+    },
+    "Calendar extraction did not match its response schema after one retry",
+  );
+  return { rawResponse: retry.rawResponse, parsed: null };
+}
+
+/**
+ * The extraction model call itself returned nothing (provider unavailable or
+ * failed). This is not a problem with the user's request, so it carries no
+ * rephrase coaching; nothing was read and nothing was written.
+ */
+const CALENDAR_EXTRACTION_MODEL_UNAVAILABLE =
+  "CALENDAR_EXTRACTION_MODEL_UNAVAILABLE";
+
+function calendarExtractionModelUnavailable(
+  operation: "create" | "update",
+): CalendarServiceError {
+  return new CalendarServiceError(
+    503,
+    operation === "create"
+      ? "The calendar model did not respond, so the event request was not read. No event was created. This is a service problem, not a problem with the request."
+      : "The calendar model did not respond, so the requested change was not read. No event was changed. This is a service problem, not a problem with the request.",
+    CALENDAR_EXTRACTION_MODEL_UNAVAILABLE,
+  );
 }
 
 function collectRecentConversationTexts(
@@ -236,21 +305,68 @@ function requireCalendarMutationGateway(
   return gateway;
 }
 
-function requireCompleteFreshCalendarFeed(
-  feed: LifeOpsCalendarFeed,
+function calendarSourceNotFresh(
   operation: "create" | "update" | "delete",
-): LifeOpsCalendarFeed {
-  if (
-    feed.state !== "complete" ||
-    feed.sources.some((source) => source.status !== "fresh")
-  ) {
-    throw new CalendarServiceError(
-      503,
-      `Calendar ${operation} is blocked because one or more requested calendar sources are incomplete or unavailable.`,
-      "CALENDAR_MUTATION_CONTEXT_INCOMPLETE",
-    );
-  }
-  return feed;
+): CalendarServiceError {
+  return new CalendarServiceError(
+    503,
+    `Calendar ${operation} is blocked because the calendar it would change is incomplete or unavailable.`,
+    "CALENDAR_MUTATION_CONTEXT_INCOMPLETE",
+  );
+}
+
+/**
+ * The built-in calendar holds single events only, so a repeating event needs a
+ * connected Google calendar: each account's primary calendar, or its only
+ * writable one. The caller routes to exactly one and asks about several.
+ */
+export function recurringCreateCalendars(
+  calendars: readonly LifeOpsCalendarSummary[],
+): LifeOpsCalendarSummary[] {
+  const writable = calendars.filter(
+    (calendar) =>
+      calendar.provider === "google" &&
+      calendar.side === "owner" &&
+      (calendar.accessRole === "owner" || calendar.accessRole === "writer"),
+  );
+  const primary = writable.filter((calendar) => calendar.primary);
+  return primary.length > 0 || writable.length !== 1 ? primary : writable;
+}
+
+/** Completed-reply fact when a calendar other than the written one was unreadable. */
+function uncheckedOverlapNote(
+  availability: { definitive: boolean } | null,
+): string {
+  return availability?.definitive === false
+    ? " Another calendar could not be read, so overlaps there were not checked."
+    : "";
+}
+
+/**
+ * A chat write needs a fresh view of the one calendar it changes. Another
+ * source that is stale or unreachable (a linked Google account while offline)
+ * does not block a write to the built-in calendar. With no match, an unread
+ * source may hold the event, so "not found" cannot be claimed either.
+ */
+export function requireFreshCalendarMutationTarget(
+  feed: Pick<LifeOpsCalendarFeed, "sources">,
+  candidates: readonly LifeOpsCalendarEvent[],
+  operation: "update" | "delete",
+): void {
+  const [event] = candidates;
+  const stale =
+    candidates.length === 0
+      ? feed.sources.some((source) => source.status !== "fresh")
+      : candidates.length === 1 &&
+        event !== undefined &&
+        !feed.sources.some(
+          (source) =>
+            source.status === "fresh" &&
+            source.key.provider === event.provider &&
+            source.key.calendarId === event.calendarId &&
+            (!event.grantId || source.key.grantId === event.grantId),
+        );
+  if (stale) throw calendarSourceNotFresh(operation);
 }
 
 // Planner-authored `details` records are junk-prone input: the planner fills
@@ -1225,7 +1341,8 @@ function buildCalendarServiceErrorFallback(
     error.code === "CALENDAR_READ_DATE_CONFLICT" ||
     error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
     error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
-    error.code === "CALENDAR_TARGET_SELECTOR_INVALID"
+    error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
+    error.code === CALENDAR_EXTRACTION_MODEL_UNAVAILABLE
   ) {
     return error.message;
   }
@@ -1247,7 +1364,7 @@ function buildCalendarServiceErrorFallback(
     error.code === "CALENDAR_MUTATION_CONTEXT_INCOMPLETE" ||
     error.code === "CALENDAR_MUTATION_CONTEXT_UNAVAILABLE"
   ) {
-    return "I could not verify a complete, fresh view of every requested calendar source, so I did not queue or make a calendar change.";
+    return "I could not get a fresh view of the calendar this would change, so I did not queue or make a calendar change.";
   }
   if (
     normalized.includes("utc 'z' suffix") ||
@@ -1773,15 +1890,34 @@ function compareLocalDates(left: LocalDateOnly, right: LocalDateOnly): number {
  * A day word in a mutation request plays one of two roles: it says WHICH event
  * ("cancel my haircut on friday") or, for an update only, WHERE the event is
  * going ("move my haircut to friday 2pm"). Only the first role identifies a
- * target, and English marks the second with a "to" head, so an update's
- * target-scoped text stops at the first such marker. A delete has no
- * destination, so all of its text is target-scoped.
+ * target, and English marks the second with a "to" head, or with "for",
+ * "until" or "till" before a day or time ("reschedule v613 check for tomorrow
+ * at 10am", "push it until monday"), so an update's target-scoped text stops
+ * at the first such marker. A delete has no destination, so all of its text
+ * is target-scoped.
  *
  * Dropping too much only costs a narrowing opportunity (the handler falls back
  * to asking, today's behavior); keeping a destination date would retarget the
- * mutation, so the split is deliberately eager.
+ * mutation, so the split is deliberately eager. "for"/"until"/"till" count
+ * only before a day or clock word, so a title or a duration ("lunch for Sam",
+ * "for 30 minutes", "sync for marketing", "review for this project") keeps
+ * its words: a weekday or month must be the whole word, a month must be
+ * followed by a number, and "this"/"next" must be followed by a day or a
+ * part of the week.
+ *
+ * v613 (2026-11-20): "reschedule v613 check for tomorrow at 10am" on an event
+ * at 3pm today read "tomorrow" as the event's day and answered "No matching
+ * event was found".
  */
-const CALENDAR_DESTINATION_CLAUSE_PATTERN = /\bto\b/i;
+const CALENDAR_DESTINATION_CLAUSE_PATTERN =
+  /\b(?:to|(?:for|until|till)(?=\s+(?:today|tonight|tomorrow|(?:this|next)\s+(?:week(?:end)?|month|morning|afternoon|evening|(?:mon|tues|wednes|thurs|fri|satur|sun)day)\b|(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day)?\b|(?:tues|wednes|thurs|satur)day\b|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?(?=\s+\d|\s*$)|noon\b|midnight\b|\d{1,2}(?:[:/.-]\d|\s*(?:a\.?m\b|p\.?m\b)|(?:st|nd|rd|th)\b|\s*$|\s+(?:a\.?m\b|p\.?m\b|o['’]clock\b)))))\b/i;
+
+/**
+ * An explicit source-day marker: "on tomorrow", "from friday", "of the 21st",
+ * "tomorrow's". Such a day names WHICH event, whatever else the request says.
+ */
+const CALENDAR_SOURCE_DAY_MARKER_PATTERN =
+  /\b(?:on|from|of)\s+(?:the\s+)?(?:today|tonight|tomorrow|yesterday|this\b|next\b|last\b|(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\b|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|\d)|\b(?:today|tonight|tomorrow|yesterday|(?:mon|tues|wednes|thurs|fri|satur|sun)day)['’]s?\b/i;
 
 function resolveTargetScopedText(
   action: "update" | "delete",
@@ -1811,6 +1947,15 @@ function resolveStatedTargetLocalDate(args: {
   texts: (string | undefined)[];
   timeZone: string;
 }): LocalDateOnly | null {
+  return resolveStatedTargetDateSource(args)?.date ?? null;
+}
+
+/** The stated target day and the text that stated it. */
+function resolveStatedTargetDateSource(args: {
+  action: "update" | "delete";
+  texts: (string | undefined)[];
+  timeZone: string;
+}): { date: LocalDateOnly; text: string } | null {
   for (const text of args.texts) {
     if (!text || text.trim().length === 0) {
       continue;
@@ -1818,7 +1963,7 @@ function resolveStatedTargetLocalDate(args: {
     const scoped = resolveTargetScopedText(args.action, text);
     const parsed = parseExplicitLocalDate(scoped, args.timeZone);
     if (parsed) {
-      return parsed;
+      return { date: parsed, text };
     }
   }
   return null;
@@ -1884,6 +2029,12 @@ export function resolveCalendarMutationCandidates(args: {
   explicitDate?: string;
   /** Target text with the planner's date field excluded by provenance. */
   nonPlannerDateTexts?: (string | undefined)[];
+  /**
+   * The owner's own current message, when it is free prose (not a promoted,
+   * source-scoped target). Only a bare day in these words, after the event's
+   * title, can say where an update's only title match is going.
+   */
+  ownerText?: string;
 }): LifeOpsCalendarEvent[] {
   const titleHint = args.titleHint;
   const byTitle = titleHint
@@ -1903,11 +2054,12 @@ export function resolveCalendarMutationCandidates(args: {
   const hasDestinationClause = texts.some(
     (text) => text && resolveTargetScopedText(args.action, text) !== text,
   );
-  const statedDate = resolveStatedTargetLocalDate({
+  const statedSource = resolveStatedTargetDateSource({
     action: args.action,
     texts,
     timeZone: args.timeZone,
   });
+  const statedDate = statedSource?.date ?? null;
   const queryDate =
     !statedDate && titleHint
       ? parseExplicitLocalDate(
@@ -1952,7 +2104,58 @@ export function resolveCalendarMutationCandidates(args: {
     });
     if (!userStatedDate) return byTitle;
   }
+  if (
+    onDate.length === 0 &&
+    byTitle.length === 1 &&
+    args.action === "update" &&
+    titleHint?.trim() &&
+    statedSource &&
+    !hasDestinationClause &&
+    args.ownerText !== undefined &&
+    statedSource.text.trim() === dateText(args.ownerText)?.trim() &&
+    statedSource.text.trim() !== args.explicitDate?.trim() &&
+    !CALENDAR_SOURCE_DAY_MARKER_PATTERN.test(statedSource.text) &&
+    bareDayFollowsTitle(
+      args.ownerText,
+      [byTitle[0]?.title, titleHint],
+      args.timeZone,
+    )
+  ) {
+    // "move v613 check tomorrow at 10am" on the only "v613 check", which is
+    // today: with no destination head and no source marker the bare day can
+    // only say where the one event named is going, since no event of that
+    // title is on it. Several title matches, a marked source day ("on
+    // tomorrow", "tomorrow's") and a delete keep the strict path. So do a
+    // day said before the title ("push the monday standup back an hour"),
+    // which describes the event, and a promoted source-scoped target, whose
+    // day always names the event.
+    return byTitle;
+  }
   return onDate;
+}
+
+/**
+ * The owner's message states a day only after the event's title: "move v613
+ * check tomorrow at 10am" (a destination), not "push the monday standup back
+ * an hour" (which standup).
+ */
+function bareDayFollowsTitle(
+  ownerText: string,
+  titles: (string | undefined)[],
+  timeZone: string,
+): boolean {
+  for (const title of titles) {
+    if (!title?.trim()) continue;
+    const match = new RegExp(escapeRegExp(title.trim()), "iu").exec(ownerText);
+    if (!match) continue;
+    const before = ownerText.slice(0, match.index);
+    const after = ownerText.slice(match.index + match[0].length);
+    return (
+      parseExplicitLocalDate(before, timeZone) === null &&
+      parseExplicitLocalDate(after, timeZone) !== null
+    );
+  }
+  return false;
 }
 
 function resolveCreateEventCalendarTimeZone(
@@ -2205,18 +2408,26 @@ function parseDateTimeInZone(value: string, timeZone: string): Date | null {
  * 4pm" arrived as `start` only, the stored 3–4 pm event kept its 4 pm end, and
  * the service rejected the zero-length range). The derived end is absolute:
  * elapsed duration identifies one instant even when its local wall clock is a
- * repeated DST-fold time. Every other combination passes through unchanged and
- * the service keeps validating end-after-start.
+ * repeated DST-fold time. An all-day event that gains a clock time has no
+ * duration to keep, so it takes the default timed length. Every other
+ * combination passes through unchanged and the service keeps validating
+ * end-after-start.
+ *
+ * An extracted end at or before the new start is reported as
+ * `endNotAfterStart` for the caller to ask about, never dropped. The one
+ * exception is the event's own current end echoed beside a new start: that is
+ * the unchanged field, not a requested end, so the duration is kept.
  */
 export function resolveUpdateTimeRange(args: {
   explicitStart?: string;
   explicitEnd?: string;
   extractedStart?: string;
   extractedEnd?: string;
-  target: { startAt: string; endAt: string };
+  target: { startAt: string; endAt: string; isAllDay?: boolean };
   timeZone?: string;
-}): { startAt?: string; endAt?: string } {
+}): { startAt?: string; endAt?: string; endNotAfterStart?: true } {
   const startAt = args.explicitStart ?? args.extractedStart;
+  const timeZone = args.timeZone?.trim() || "UTC";
   // Keep supplied bounds paired; unrelated extracted ends cannot change duration.
   let endAt =
     args.explicitEnd ?? (args.explicitStart ? undefined : args.extractedEnd);
@@ -2224,16 +2435,21 @@ export function resolveUpdateTimeRange(args: {
     startAt &&
     endAt &&
     args.explicitEnd === undefined &&
-    !endFollowsStart(startAt, endAt, args.timeZone)
+    !endFollowsStart(startAt, endAt, timeZone)
   ) {
+    if (
+      parseDateTimeInZone(endAt, timeZone)?.getTime() !==
+      Date.parse(args.target.endAt)
+    )
+      return { startAt, endAt, endNotAfterStart: true };
     endAt = undefined;
   }
   if (!startAt || endAt) return { startAt, endAt };
-  const durationMs =
-    Date.parse(args.target.endAt) - Date.parse(args.target.startAt);
+  const durationMs = args.target.isAllDay
+    ? DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES * 60_000
+    : Date.parse(args.target.endAt) - Date.parse(args.target.startAt);
   if (!Number.isFinite(durationMs) || durationMs <= 0)
     return { startAt, endAt };
-  const timeZone = args.timeZone?.trim() || "UTC";
   const start = parseDateTimeInZone(startAt, timeZone);
   if (!start) return { startAt, endAt };
   const end = new Date(start.getTime() + durationMs);
@@ -2246,12 +2462,356 @@ export function resolveUpdateTimeRange(args: {
 function endFollowsStart(
   startAt: string,
   endAt: string,
-  timeZone: string | undefined,
+  timeZone: string,
 ): boolean {
-  const zone = timeZone?.trim() || "UTC";
-  const start = parseDateTimeInZone(startAt, zone);
-  const end = parseDateTimeInZone(endAt, zone);
+  const start = parseDateTimeInZone(startAt, timeZone);
+  const end = parseDateTimeInZone(endAt, timeZone);
   return start !== null && end !== null && end.getTime() > start.getTime();
+}
+
+/**
+ * All-day bounds from the extraction's local dates. `allDayEndDate` is the
+ * last included day; the stored range ends on the day after it. Null when the
+ * request is not all-day. An end before the start is reported as "invalid" for
+ * the caller to ask about; the service validates the dates themselves. When an
+ * update moves an all-day event and gives only a new first day, the event
+ * keeps its number of days, as a timed event keeps its duration.
+ */
+export function extractedAllDayRange(
+  extracted: Record<string, unknown>,
+  target?: Pick<LifeOpsCalendarEvent, "isAllDay" | "startAt" | "endAt">,
+): LifeOpsCalendarAllDayRange | "invalid" | null {
+  const startDate = detailString(extracted, "allDayStartDate");
+  if (!startDate) return null;
+  const statedEnd = detailString(extracted, "allDayEndDate");
+  const start = new Date(`${startDate}T00:00:00.000Z`);
+  if (!statedEnd && target?.isAllDay && !Number.isNaN(start.getTime())) {
+    const days = Math.round(
+      (Date.parse(`${target.endAt.slice(0, 10)}T00:00:00.000Z`) -
+        Date.parse(`${target.startAt.slice(0, 10)}T00:00:00.000Z`)) /
+        86_400_000,
+    );
+    if (Number.isFinite(days) && days > 1) {
+      start.setUTCDate(start.getUTCDate() + days);
+      return { startDate, endDateExclusive: start.toISOString().slice(0, 10) };
+    }
+  }
+  const endDate = statedEnd ?? startDate;
+  const next = new Date(`${endDate}T00:00:00.000Z`);
+  if (endDate < startDate || Number.isNaN(next.getTime())) return "invalid";
+  next.setUTCDate(next.getUTCDate() + 1);
+  return { startDate, endDateExclusive: next.toISOString().slice(0, 10) };
+}
+
+/**
+ * The guest list after a chat update, or undefined when no guest change was
+ * asked. A provider replaces the whole list, so current guests are kept unless
+ * removed. An added address must be in the owner's own words; a removal must
+ * name exactly one current guest by email or display name.
+ */
+export function resolveUpdatedCalendarAttendees(args: {
+  event: Pick<LifeOpsCalendarEvent, "attendees" | "provider">;
+  extracted: Record<string, unknown>;
+  userTexts: ReadonlyArray<string | null | undefined>;
+}): CreateLifeOpsCalendarEventAttendee[] | undefined {
+  const remove = detailArray(args.extracted, "removeGuests") ?? [];
+  const add =
+    userAuthorizedCalendarAttendees(
+      (detailArray(args.extracted, "addGuests") ?? []).map((guest) => {
+        const record = (guest ?? {}) as Record<string, unknown>;
+        return {
+          // A missing address fails the owner-evidence check below.
+          email: typeof record.email === "string" ? record.email.trim() : "",
+          ...(typeof record.name === "string" && record.name.trim()
+            ? { displayName: record.name.trim() }
+            : {}),
+        };
+      }),
+      args.userTexts,
+    ) ?? [];
+  if (add.length === 0 && remove.length === 0) return undefined;
+  const removed = new Set<string>();
+  for (const name of remove) {
+    const key = typeof name === "string" ? normalizeText(name) : "";
+    const matches = args.event.attendees.filter(
+      (attendee) =>
+        key.length > 0 &&
+        [attendee.email, attendee.displayName].some(
+          (value) => value && normalizeText(value) === key,
+        ),
+    );
+    const email = matches[0]?.email;
+    if (matches.length !== 1 || !email) throw calendarGuestRemovalUnresolved();
+    // Like an added address, a removed guest must be in the owner's words:
+    // the extraction sees the whole guest list and the event's own text.
+    if (
+      !ownerNamedCalendarGuest(
+        { email, displayName: matches[0]?.displayName ?? undefined },
+        args.userTexts,
+      )
+    )
+      throw calendarGuestRemovalNotNamed();
+    removed.add(email.toLowerCase());
+  }
+  // The managed Google host accepts guest addresses only; the built-in
+  // calendar has no directory, so it keeps the names it was given.
+  const named = args.event.provider === ELIZA_CALENDAR_PROVIDER;
+  const guests = new Map<string, CreateLifeOpsCalendarEventAttendee>();
+  for (const attendee of [...args.event.attendees, ...add]) {
+    // A guest without an address cannot be sent back, and must not be dropped.
+    if (!attendee.email) throw calendarGuestRemovalUnresolved();
+    const email = attendee.email.toLowerCase();
+    if (removed.has(email)) continue;
+    guests.set(email, {
+      email: attendee.email,
+      ...(named && attendee.displayName
+        ? { displayName: attendee.displayName }
+        : {}),
+      ...(attendee.optional ? { optional: true } : {}),
+    });
+  }
+  return [...guests.values()];
+}
+
+/** Words a reference may add to a title to say which day or time it means. */
+const REFERENCE_DATE_WORD =
+  /^(?:\d+(?:st|nd|rd|th|am|pm|h)?|am|pm|at|on|in|the|my|this|next|today|tomorrow|tonight|morning|afternoon|evening|(?:mon|tues|wednes|thurs|fri|satur|sun)day|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|utc)$/u;
+
+type PendingDeleteConfirmation = {
+  eventId: string;
+  askedInMessageId: string | null;
+  askedAt: number;
+};
+
+type DeclinedDeleteConfirmation = {
+  eventId: string;
+  declinedInMessageId: string | null;
+};
+
+/** The built-in delete question this action asked the owner in this room. */
+function pendingDeleteConfirmationKey(message: Memory): string {
+  return `calendar-delete-confirmation:${message.roomId}:${message.entityId}`;
+}
+
+/** The owner turned the delete question down ("no", "keep it", "wait"). */
+const DELETE_ANSWER_DECLINE_PATTERN =
+  /\b(?:no|nope|nah|not|never|don['’]?t|do\s+not|keep|stop|wait|hold\s+on|never\s*mind|cancel\s+that|leave\s+it)\b/iu;
+/** The owner said yes to the delete question. */
+const DELETE_ANSWER_CONFIRM_PATTERN =
+  /^\s*(?:(?:yes|yeah|yea|yep|yup|sure|ok|okay|confirm(?:ed)?|correct|right|absolutely|definitely|please\s+do|go\s+ahead|do\s+it|delete\s+it|remove\s+it|that\s+one)\b|y\s*[.!]?\s*$)/iu;
+
+type DeleteConfirmationAnswer = "confirmed" | "declined" | "unanswered";
+
+/**
+ * Whether the owner's current message answers the built-in delete question
+ * this action asked about this event. A planner's `confirmed` stands for the
+ * owner's yes only when all hold:
+ *  - this action asked about this event in an earlier turn of the same
+ *    conversation, under 30 minutes ago;
+ *  - the current message is the owner's first message since that question
+ *    (when the host's message store can be read); and
+ *  - the current message itself says yes, or names the event's whole title,
+ *    asks nothing back, and turns nothing down.
+ * A "no, keep it" is "declined": the question is spent and nothing is deleted
+ * even if the planner later sends `confirmed` again.
+ *
+ * Live risk (v613 review, 2026-11-20): the owner answered "no, keep it" and a
+ * planner call with `confirmed=true` on that turn, or any turn in the next 30
+ * minutes, deleted the event.
+ */
+async function deleteConfirmationAnswer(args: {
+  runtime: IAgentRuntime;
+  pending: unknown;
+  event: Pick<LifeOpsCalendarEvent, "externalId" | "title">;
+  message: Memory;
+}): Promise<DeleteConfirmationAnswer> {
+  const { pending, event, message } = args;
+  if (!pending || typeof pending !== "object") return "unanswered";
+  if ("declinedInMessageId" in pending)
+    return "eventId" in pending &&
+      pending.eventId === event.externalId &&
+      message.id !== undefined &&
+      pending.declinedInMessageId === message.id
+      ? "declined"
+      : "unanswered";
+  const record = pending as Partial<PendingDeleteConfirmation>;
+  if (
+    record.eventId !== event.externalId ||
+    record.askedInMessageId === (message.id ?? null) ||
+    typeof record.askedAt !== "number" ||
+    Date.now() - record.askedAt >= 30 * 60_000
+  )
+    return "unanswered";
+  const answer = messageText(message);
+  if (DELETE_ANSWER_DECLINE_PATTERN.test(answer)) return "declined";
+  // A question back ("ok, what's on tomorrow?") is not a yes.
+  if (answer.includes("?")) return "unanswered";
+  if (
+    !DELETE_ANSWER_CONFIRM_PATTERN.test(answer) &&
+    !ownerNamedCalendarEvent(event, [answer])
+  )
+    return "unanswered";
+  if (typeof args.runtime.getMemories === "function") {
+    let since: Memory[];
+    try {
+      since = await args.runtime.getMemories({
+        tableName: "messages",
+        roomId: message.roomId,
+        start: record.askedAt,
+        count: 50,
+      });
+    } catch {
+      // Unknown history cannot show this is the answer; ask again.
+      return "unanswered";
+    }
+    const askedAt = record.askedAt;
+    const currentAt =
+      typeof message.createdAt === "number" ? message.createdAt : Date.now();
+    const intervening = since.some(
+      (memory) =>
+        memory.entityId === message.entityId &&
+        memory.id !== message.id &&
+        memory.id !== record.askedInMessageId &&
+        typeof memory.createdAt === "number" &&
+        memory.createdAt > askedAt &&
+        memory.createdAt < currentAt,
+    );
+    if (intervening) return "unanswered";
+  }
+  return "confirmed";
+}
+
+/** The owner's words name this guest: their address, the part before the @, or a word of their name. */
+function ownerNamedCalendarGuest(
+  guest: Pick<CreateLifeOpsCalendarEventAttendee, "email" | "displayName">,
+  userTexts: ReadonlyArray<string | null | undefined>,
+): boolean {
+  const spoken = userTexts
+    .filter((text): text is string => typeof text === "string")
+    .join("\n")
+    .toLowerCase();
+  const words = new Set(
+    spoken
+      .split(/[^\p{L}\p{N}@._+-]+/u)
+      .map((token) => token.replace(/^[._+-]+|[._+-]+$/g, ""))
+      .filter((token) => token.length > 0),
+  );
+  const plain = ` ${normalizeText(spoken).replace(/[^\p{L}\p{N}]+/gu, " ")} `;
+  const email = guest.email.trim().toLowerCase();
+  const local = email.slice(0, Math.max(0, email.lastIndexOf("@")));
+  const nameWords = normalizeText(guest.displayName ?? "")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word.length > 1);
+  return (
+    words.has(email) ||
+    (local.length > 1 && words.has(local)) ||
+    nameWords.some((word) => plain.includes(` ${word} `))
+  );
+}
+
+function calendarGuestRemovalNotNamed(): CalendarServiceError {
+  return new CalendarServiceError(
+    400,
+    "No event was changed. The owner did not name a guest the change would remove. Ask which guests to remove; do not remove a guest they did not name.",
+    "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
+  );
+}
+
+function calendarGuestRemovalUnresolved(): CalendarServiceError {
+  return new CalendarServiceError(
+    400,
+    "No event was changed. The guest change could not be matched to exactly one current guest with an email address. Ask which guest the owner means; do not guess.",
+    "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
+  );
+}
+
+/**
+ * Whether the owner named this one event: its whole title is in their own
+ * words, and their reference says no more than the title and a date or time.
+ * A partial or model-resolved match is not a name, and neither is a shorter
+ * title inside a longer reference ("Standup" in "Standup notes review"), so a
+ * built-in delete asks before removing it.
+ */
+export function ownerNamedCalendarEvent(
+  event: Pick<LifeOpsCalendarEvent, "title">,
+  userTexts: ReadonlyArray<string | null | undefined>,
+  reference?: string,
+): boolean {
+  const title = normalizeText(event.title);
+  const words = (text: string) =>
+    normalizeText(text)
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((word) => word.length > 0);
+  const titleWords = ` ${words(event.title).join(" ")} `;
+  const referenceWords = ` ${reference === undefined ? "" : words(reference).join(" ")} `;
+  if (referenceWords.trim() && !titleWords.includes(referenceWords)) {
+    const extra = referenceWords.replace(titleWords, " ").trim();
+    if (
+      extra
+        .split(" ")
+        .some((word) => word.length > 0 && !REFERENCE_DATE_WORD.test(word))
+    )
+      return false;
+  }
+  return (
+    title.length > 0 &&
+    userTexts.some(
+      (text) =>
+        typeof text === "string" &&
+        ` ${normalizeText(text).replace(/[^\p{L}\p{N}]+/gu, " ")} `.includes(
+          ` ${title.replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `,
+        ),
+    )
+  );
+}
+
+/**
+ * The create request that puts a deleted built-in event back. A host offers
+ * Undo by sending it to the calendar create route; the restored event gets a
+ * new id. Its idempotency key is bound to the delete, so a repeated Undo
+ * restores one event. Guests are restored without any email, as the built-in
+ * calendar never sends one.
+ */
+export function builtInCalendarEventUndoRequest(
+  event: LifeOpsCalendarEvent,
+  deleteIdempotencyKey: string,
+): CreateLifeOpsCalendarEventRequest {
+  return {
+    idempotencyKey: calendarEffectId("calendar-delete-undo-v1", [
+      deleteIdempotencyKey,
+    ]),
+    grantId: ELIZA_CALENDAR_GRANT_ID,
+    calendarId: event.calendarId,
+    title: event.title,
+    description: event.description,
+    location: event.location,
+    ...(event.timezone ? { timeZone: event.timezone } : {}),
+    ...(event.isAllDay
+      ? {
+          allDay: {
+            startDate: event.startAt.slice(0, 10),
+            endDateExclusive: event.endAt.slice(0, 10),
+          },
+        }
+      : { startAt: event.startAt, endAt: event.endAt }),
+    ...(event.attendees.length > 0
+      ? {
+          attendees: event.attendees.flatMap((attendee) =>
+            attendee.email
+              ? [
+                  {
+                    email: attendee.email,
+                    ...(attendee.displayName
+                      ? { displayName: attendee.displayName }
+                      : {}),
+                    ...(attendee.optional ? { optional: true } : {}),
+                  },
+                ]
+              : [],
+          ),
+        }
+      : {}),
+  };
 }
 
 function createStartDetail(
@@ -2849,17 +3409,24 @@ async function loadCreateEventCalendarContext(
   }
 
   const requestTimeZone = fallbackTimeZone;
-  const feed = await service.getCalendarFeed(INTERNAL_URL, {
-    includeHiddenCalendars: true,
-    ...(grantId ? { grantId } : {}),
-    // Ordinary turns review all authorized sources before destination extraction.
-    // Native turns retain their explicit connected-source boundary instead.
-    timeZone: requestTimeZone,
-    forceSync: true,
-    ...buildLocalDayRange(requestTimeZone, 0, 14),
-  });
+  const { feed, calendars } = await service.getCalendarFeedSnapshot(
+    INTERNAL_URL,
+    {
+      includeHiddenCalendars: true,
+      ...(grantId ? { grantId } : {}),
+      // Ordinary turns review all authorized sources before destination extraction.
+      // Native turns retain their explicit connected-source boundary instead.
+      timeZone: requestTimeZone,
+      forceSync: true,
+      ...buildLocalDayRange(requestTimeZone, 0, 14),
+    },
+  );
 
-  if (!feed || !Array.isArray(feed.events)) {
+  if (
+    !feed ||
+    !Array.isArray(feed.events) ||
+    (feed.state === "unavailable" && calendars.length === 0)
+  ) {
     return null;
   }
 
@@ -2870,10 +3437,7 @@ async function loadCreateEventCalendarContext(
       configuredTimeZone,
     ),
     feed,
-    calendars: await service.listCalendars(
-      INTERNAL_URL,
-      grantId ? { grantId } : undefined,
-    ),
+    calendars,
   };
 }
 
@@ -3951,10 +4515,18 @@ export function buildCreateEventRequest(
         ],
   );
 
+  // Only the source-bound extraction states all-day dates. They replace every
+  // timed bound: the service refuses a request that carries both.
+  const allDayRange = extractedAllDayRange(args.extractedDetails);
+  const allDay =
+    allDayRange && allDayRange !== "invalid"
+      ? allDayRange
+      : args.fallbackRequest?.allDay;
+
   return {
     title,
-    resolvedStartAt,
-    resolvedWindowPreset,
+    resolvedStartAt: allDay ? undefined : resolvedStartAt,
+    resolvedWindowPreset: allDay ? undefined : resolvedWindowPreset,
     travelIntent,
     request: {
       sourceNote: parseCalendarNoteSource(
@@ -3982,13 +4554,17 @@ export function buildCreateEventRequest(
           detailString(args.extractedDetails, "description") ??
           args.fallbackRequest?.description),
       location: pickCreateEventStringField(args, "location"),
-      startAt: resolvedStartAt,
-      endAt: args.requireExtractedTiming
-        ? rawEndAt
-        : (rawEndAt ?? args.fallbackRequest?.endAt),
       timeZone: pickCreateEventStringField(args, "timeZone"),
-      durationMinutes: resolvedDurationMinutes,
-      windowPreset: resolvedWindowPreset,
+      ...(allDay
+        ? { allDay }
+        : {
+            startAt: resolvedStartAt,
+            endAt: args.requireExtractedTiming
+              ? rawEndAt
+              : (rawEndAt ?? args.fallbackRequest?.endAt),
+            durationMinutes: resolvedDurationMinutes,
+            windowPreset: resolvedWindowPreset,
+          }),
       attendees: userAuthorizedCalendarAttendees(
         args.preferExtractedDetails && args.requireExtractedTiming
           ? normalizeCalendarAttendees(args.extractedDetails)
@@ -4031,8 +4607,13 @@ function formatUpdateEventTargetContext(
   if (!event) {
     return "(unknown)";
   }
+  // Both the name and the address identify a guest the user asks to remove.
   const attendees = event.attendees
-    .map((attendee) => attendee.displayName ?? attendee.email ?? "")
+    .map((attendee) =>
+      [attendee.displayName, attendee.email && `<${attendee.email}>`]
+        .filter(Boolean)
+        .join(" "),
+    )
     .filter((value) => value.length > 0)
     .join(", ");
   const recurring = isRecurringCalendarEvent(event);
@@ -4040,6 +4621,7 @@ function formatUpdateEventTargetContext(
     `title: ${event.title}`,
     `startAt: ${event.startAt}`,
     `endAt: ${event.endAt}`,
+    `allDay: ${event.isAllDay ? "yes" : "no"}`,
     `timeZone: ${event.timezone ?? ""}`,
     `formattedStart: ${formatCalendarEventDateTime(event, {
       includeTimeZoneName: true,
@@ -4152,6 +4734,7 @@ async function inferCreateEventDetails(
     "The user may speak in any language.",
     "Use the full recent conversation below, not just the latest message.",
     "Treat the latest user request as authoritative, but recover missing event subject, date, or location from earlier turns when needed.",
+    "Set reviewBeforeCreate:true when the owner asks to preview, review, or confirm this event before it is saved, including a request to prepare it without saving yet. Keep this choice when the owner supplies missing details for the same event. Set it to false for ordinary creation or a request to show the result after saving.",
     "If the current request is a follow-up, recover the event subject from recent conversation and apply new timing or location constraints from the current request.",
     'A follow-up that asks for another event ("make another one", "also add", "one more") and states only a clock time keeps the day the user stated for the event just discussed; that day is user-stated timing, not borrowed timing.',
     "Set requiresInput:true and ask for the missing detail in clarification when the user has not supplied or accepted an exact time and has not explicitly asked you to choose one. Morning, afternoon, and evening alone require a clock-time question. Set requiresInput:false only when the creation request is sufficiently specified.",
@@ -4177,6 +4760,7 @@ async function inferCreateEventDetails(
     "If the user asks for travel time, commute time, or a buffer from a place, capture the origin separately as travelOriginAddress.",
     "Use null for travelOriginAddress unless the request explicitly names the origin or departure place.",
     "When the user asks for a repeating event (every day, every week, every two weeks, weekdays, every month, etc.), emit the matching RFC 5545 RRULE in recurrence. Use BYDAY for weekly day selection, INTERVAL for every-N spacing, and COUNT or UNTIL only when the user bounds the repetition. Use null for recurrence for one-off events.",
+    "An all-day event has dates and no clock time. Use it only when the user asks for all day or the whole day, gives whole days with no clock time (a trip from Monday to Wednesday), or names an occasion that lasts the day by nature (a birthday, anniversary, holiday or day off) without a time. Then set allDayStartDate to the first local date and allDayEndDate to the last included date (null for one day), leave startAt, endAt and durationMinutes null, and do not ask for a time. Otherwise use null for both; a plain event with a date and no time still needs a clock time.",
     "",
     "title: event title",
     "description: optional description",
@@ -4184,6 +4768,8 @@ async function inferCreateEventDetails(
     "startAt: local civil datetime YYYY-MM-DDTHH:mm:ss in the calendar timezone, if stated or resolvable from a date phrase. Preserve an explicit UTC offset only when the user supplied or selected it; never calculate one.",
     "endAt: local civil datetime if explicit; apply the same rules as startAt",
     "durationMinutes: number if implied",
+    "allDayStartDate: first local date YYYY-MM-DD, only for an all-day event",
+    "allDayEndDate: last included local date YYYY-MM-DD of an all-day event that covers more than one day",
     "timeZone: IANA timezone if stated",
     "recurrence: RFC 5545 RRULE string, e.g. RRULE:FREQ=WEEKLY;BYDAY=MO or RRULE:FREQ=DAILY;COUNT=10, only for repeating events",
     "travelOriginAddress: optional origin address for travel-time calculation",
@@ -4209,33 +4795,37 @@ async function inferCreateEventDetails(
     ...(intent === currentMessage
       ? []
       : [`Routing hint (not authority for scheduling details):\n${intent}`]),
+    ...plannerAllDayHint(proposedDetails),
     ...(nativeConstraints ? [nativeConstraints] : []),
     `FINAL CURRENT REQUEST (authoritative; resolve only this request against its relevant prior turns):\n${currentMessage}`,
     "Return the creation fields for this final request. Earlier completed tasks and greetings are not the current request.",
   ].join("\n");
 
-  const result = await runLifeOpsJsonModel<Record<string, unknown>>(
-    {
-      runtime,
-      prompt,
-      actionType: "lifeops.calendar.extract_create_event",
-      temperature: 0,
-      responseSchema: createExtractionSchema(
-        userSources[userSources.length - 1],
-      ),
-      // Schema-bound extraction on the reply's critical path; default provider
-      // reasoning was ~80% of its completion tokens on qwen-3.8-27b.
-      thinking: "off",
-      failureMessage: "Calendar create-event extraction model call failed",
-      source: "action:calendar",
-    },
-    hostDeps,
-  );
-  const extracted = result?.parsed ?? {};
-  if (Object.keys(extracted).length === 0) {
+  const extraction: CalendarModelCallArgs = {
+    runtime,
+    prompt,
+    actionType: "lifeops.calendar.extract_create_event",
+    temperature: 0,
+    responseSchema: createExtractionSchema(userSources[userSources.length - 1]),
+    // Schema-bound extraction on the reply's critical path; default provider
+    // reasoning was ~80% of its completion tokens on qwen-3.8-27b.
+    thinking: "off",
+    failureMessage: "Calendar create-event extraction model call failed",
+    source: "action:calendar",
+  };
+  // A provider can accept the structured request and return no fields; the
+  // shared JSON runner retries a nonconforming record once from the same
+  // conversation and returns `parsed: null` if it still does not conform.
+  const result = await runLifeOpsJsonModel(extraction, hostDeps, {
+    retryGuidance:
+      "Resolve the final request with its relevant previous turns. Preserve the original evidence quotes. If a required detail is still missing, return a clarification object.",
+  });
+  if (!result) throw calendarExtractionModelUnavailable("create");
+  const extracted = result.parsed;
+  if (!extracted) {
     throw new CalendarServiceError(
       400,
-      "The generated Calendar fields were empty. Retry extraction from the complete original request. No event was created.",
+      "The generated Calendar fields did not match the creation schema (no object, or no field with a value). Retry extraction from the complete original request. No event was created.",
       "CALENDAR_CREATE_EXTRACTION_INVALID",
     );
   }
@@ -4277,6 +4867,16 @@ async function inferCreateEventDetails(
   };
 }
 
+/** The planner's all-day flag reaches extraction as a hint; the user's words decide. */
+function plannerAllDayHint(
+  details: Record<string, unknown> | undefined,
+): string[] {
+  const allDay = detailBoolean(details, "allDay");
+  return allDay === undefined
+    ? []
+    : [`Planner all-day proposal (not authority): ${allDay}`];
+}
+
 type CalendarExtractionSchema = NonNullable<
   CalendarModelCallArgs["responseSchema"]
 >;
@@ -4290,6 +4890,7 @@ const createExtractionProperties = {
       "True when a necessary detail is missing. A morning/afternoon/evening window without explicit permission to choose a slot requires clarification.",
   },
   clarification: nullableExtractionText,
+  reviewBeforeCreate: { type: "boolean" },
   grantId: nullableExtractionText,
   calendarId: nullableExtractionText,
   title: nullableExtractionText,
@@ -4297,6 +4898,8 @@ const createExtractionProperties = {
   location: nullableExtractionText,
   startAt: nullableExtractionText,
   endAt: nullableExtractionText,
+  allDayStartDate: nullableExtractionText,
+  allDayEndDate: nullableExtractionText,
   timeZone: nullableExtractionText,
   recurrence: nullableExtractionText,
   travelOriginAddress: nullableExtractionText,
@@ -4326,6 +4929,8 @@ const updateExtractionProperties = {
   location: nullableExtractionText,
   startAt: nullableExtractionText,
   endAt: nullableExtractionText,
+  allDayStartDate: nullableExtractionText,
+  allDayEndDate: nullableExtractionText,
   timeZone: nullableExtractionText,
   recurrence: nullableExtractionText,
   recurrenceScope: {
@@ -4336,6 +4941,19 @@ const updateExtractionProperties = {
     type: "array",
     items: { type: "string", enum: ["description", "location"] },
   },
+  addGuests: {
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        name: nullableExtractionText,
+        email: nullableExtractionText,
+      },
+      required: ["name", "email"],
+      additionalProperties: false,
+    },
+  },
+  removeGuests: { type: "array", items: { type: "string" } },
 } satisfies Record<string, CalendarExtractionSchema>;
 const updateExtractionSchema: CalendarExtractionSchema = {
   type: "object",
@@ -4379,6 +4997,8 @@ async function inferUpdateEventDetails(
     "Notes or body on a calendar event refer to its description field, not a standalone Notes document. Preserve existing description text unless the user asks to replace it; append or insert only when requested.",
     "When the current event is part of a recurring series, set recurrenceScope to instance for only this occurrence, this_and_following for this occurrence and every later one, series for every occurrence including earlier ones, and use null when the user does not say.",
     "Only set recurrence when the user changes how the event repeats (e.g. switch to weekly, stop after 5 times).",
+    "To make the event all-day, or to move an event that is already all-day, set allDayStartDate to its first local date and allDayEndDate to its last included date, and use null for startAt and endAt. Use null for allDayEndDate when the user gives only a new first day; the event then keeps its number of days. To make it one day, set allDayEndDate to the same date. To give an all-day event a clock time, set startAt and use null for both all-day dates. Use null for both all-day dates when the days do not change.",
+    "List in addGuests only people the user asks to add or invite, with the email address the user wrote (null when the user gave none; never invent or look up an address). List in removeGuests the email or name, copied from the current event's attendees, of each guest the user asks to remove. Use empty arrays when the user asks for no guest change.",
     "If a requested change lacks a necessary detail (for example morning or afternoon without a clock time), return requiresInput:true and clarification asking only for the missing detail. Do not claim free or busy times from earlier dialogue; only a fresh availability read can establish openings. Do not guess a time unless the user explicitly delegates choosing it.",
     "Return JSON only as a single object. No prose.",
     "",
@@ -4388,6 +5008,10 @@ async function inferUpdateEventDetails(
     'clearFields: optional array containing "description" and/or "location" only for fields the user explicitly wants removed',
     "startAt: updated local civil datetime if changed; include Z or an offset only when the user supplied or selected it",
     "endAt: updated local civil datetime only if the user changes the end or duration; otherwise use null to preserve the stored duration",
+    "allDayStartDate: first local date YYYY-MM-DD when the event becomes or stays all-day on new days",
+    "allDayEndDate: last included local date YYYY-MM-DD when those days cover more than one day",
+    "addGuests: array of {name, email} for guests to add",
+    "removeGuests: array of current guest emails or names to remove",
     "timeZone: IANA timezone if changed or needed to interpret the update",
     "recurrence: RFC 5545 RRULE string only when the repetition itself changes",
     "recurrenceScope: instance|this_and_following|series only when the current event is recurring and the user says which",
@@ -4414,8 +5038,23 @@ async function inferUpdateEventDetails(
       source: "action:calendar",
     },
     hostDeps,
+    {
+      retryGuidance:
+        "If a requested change still lacks a necessary detail, return requiresInput:true with a clarification.",
+    },
   );
-  return result?.parsed ?? {};
+  // No model response is a provider failure, not an unreadable request.
+  if (!result) throw calendarExtractionModelUnavailable("update");
+  // A nonconforming record is a failed extraction, not a request for no
+  // change: never let it fall through to the "nothing to update" path.
+  if (!result.parsed) {
+    throw new CalendarServiceError(
+      400,
+      "The generated Calendar update fields did not match the update schema (no object, or no field with a value). Retry extraction from the complete original request. No event was changed.",
+      "CALENDAR_UPDATE_EXTRACTION_INVALID",
+    );
+  }
+  return result.parsed;
 }
 
 function scoreCalendarEvent(
@@ -4803,7 +5442,7 @@ const RESERVED_EXAMPLE_DOMAIN_PATTERN =
 function calendarAttendeeIdentityRequired(): CalendarServiceError {
   return new CalendarServiceError(
     400,
-    "No event was created. A proposed attendee's email address is not verified. Ask whether that guest is intended and for their exact email address, or confirm that no guest should be included; do not guess an address or silently omit an attendee.",
+    "No calendar change was made. A proposed attendee's email address is not verified. Ask whether that guest is intended and for their exact email address, or confirm that no guest should be included; do not guess an address or silently omit an attendee.",
     "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
   );
 }
@@ -5198,11 +5837,16 @@ function calendarEventMutationReceipt(args: {
     | "calendar.event.update"
     | "calendar.event.delete";
   deleted?: boolean;
+  /** When the provider confirmed the write. A deleted event's own timestamps
+   * predate its deletion, so a delete passes the time its call returned. */
+  committedAt?: string;
 }): EffectReceipt {
-  const observedAt = latestCalendarTimestamp(
-    [args.event.updatedAt, args.event.syncedAt],
-    new Date().toISOString(),
-  );
+  const observedAt =
+    args.committedAt ??
+    latestCalendarTimestamp(
+      [args.event.updatedAt, args.event.syncedAt],
+      new Date().toISOString(),
+    );
   const providerVersion =
     typeof args.event.metadata.etag === "string"
       ? args.event.metadata.etag
@@ -5307,6 +5951,7 @@ export function createCalendarActionRunner(
       "USE this action for: viewing today's or this week's schedule; checking the next upcoming event; " +
       "searching events by title, attendee, location, or date range; creating new calendar events; " +
       "requests like 'what's my next meeting?', 'show me my calendar for today', 'what does my week look like?', or 'schedule a dentist appointment next Tuesday at 3pm'; " +
+      "Use create_event to prepare a real approval when the owner asks to review an event before it is saved. Do not substitute a chat summary for the approval. " +
       "querying travel itineraries, flights, hotel stays, trip windows, reserving recurring time blocks, and rebooking or moving calendar-backed commitments. " +
       "These are live calendar reads and writes, so do not answer them from provider context alone and do not fall back to NONE or REPLY when this action is available. " +
       "DO NOT use this action when the user is only making an observation like 'my calendar has been crazy this quarter' unless they actually ask you to inspect or change calendar state. " +
@@ -5366,10 +6011,46 @@ export function createCalendarActionRunner(
         params.calendarId === ""
           ? { grantId: undefined, calendarId: undefined }
           : params;
-      const details = mergeCalendarSourceSelection(
+      let details = mergeCalendarSourceSelection(
         normalizedDetails,
         sourceSelection,
       );
+      // Apply the Stage 1 source constraint before the native/managed guard.
+      // An aggregate request still uses the selected feed by default.
+      const explicitSubaction = normalizeCalendarSubaction(params.subaction);
+      if (
+        explicitSubaction === "next_event" ||
+        explicitSubaction === "feed" ||
+        explicitSubaction === "search_events"
+      ) {
+        const scope = boundCalendarReadSource(
+          getStreamingContext()?.actionConstraints,
+          message,
+          String(runtime.agentId),
+          explicitSubaction,
+        );
+        const grantId = connectorGrantIdDetail(details);
+        if (scope === "builtin" || grantId === ELIZA_CALENDAR_GRANT_ID) {
+          // The built-in grant contains one calendar. Its canonical ID is known
+          // once that grant is selected, even when planning supplied an alias.
+          details = {
+            ...mergeCalendarSourceSelection(
+              { ...details, grantId },
+              { grantId: ELIZA_CALENDAR_GRANT_ID },
+            ),
+            calendarId: ELIZA_CALENDAR_ID,
+          };
+        } else if (
+          scope === "explicit" &&
+          (!grantId || !calendarIdDetail(details))
+        ) {
+          throw new CalendarServiceError(
+            400,
+            "Supply an exact source for each requested Calendar read.",
+            "CALENDAR_SOURCE_REQUIRED",
+          );
+        }
+      }
       const nativeGrantId = nativeCalendarFailure
         ? connectorGrantIdDetail(details)
         : undefined;
@@ -5487,7 +6168,6 @@ export function createCalendarActionRunner(
         details,
         clientTimeZone ?? calendarZone.timeZone,
       );
-      const explicitSubaction = normalizeCalendarSubaction(params.subaction);
       // A promoted CALENDAR_* tool call is already the action planner's typed
       // decision. Re-planning the same operation from raw prose inside the tool
       // adds latency and can contradict the selected native action. Preserve the
@@ -5962,12 +6642,16 @@ export function createCalendarActionRunner(
             clientTimeZone || calendarZone.source !== "runtime-default"
               ? creationContextZone
               : null;
-          const calendarContext = await loadCreateEventCalendarContext(
-            service,
-            true,
-            creationContextZone,
-            configuredCreateZone,
-            nativeGrantId,
+          const calendarContext = await timeInferenceSpan(
+            "actions:calendar:create:source-read",
+            () =>
+              loadCreateEventCalendarContext(
+                service,
+                true,
+                creationContextZone,
+                configuredCreateZone,
+                nativeGrantId,
+              ),
           );
           if (!calendarContext) {
             throw new CalendarServiceError(
@@ -5976,34 +6660,45 @@ export function createCalendarActionRunner(
               "CALENDAR_MUTATION_CONTEXT_UNAVAILABLE",
             );
           }
-          requireCompleteFreshCalendarFeed(calendarContext.feed, "create");
           // Native tool arguments describe a proposed write, not evidence that
           // its required timing came from the user. Re-derive scheduling fields
           // from the authoritative request/conversation and calendar zone before
           // any mutation. Missing extraction must remain missing (clarification).
-          const extractedDetails = await inferCreateEventDetails(
-            runtime,
-            message,
-            state,
-            intent,
-            calendarContext,
-            creationContextZone,
-            details,
-            hostDeps,
+          const extractedDetails = await timeInferenceSpan(
+            "actions:calendar:create:extract",
+            () =>
+              inferCreateEventDetails(
+                runtime,
+                message,
+                state,
+                intent,
+                calendarContext,
+                creationContextZone,
+                details,
+                hostDeps,
+              ),
           );
-          const destination = calendarContext.feed.sources.find(
+          let destination = calendarContext.feed.sources.find(
             (source) =>
               source.key.grantId ===
                 detailString(extractedDetails, "grantId") &&
               source.key.calendarId ===
                 detailString(extractedDetails, "calendarId"),
           );
-          if (extractedDetails.requiresInput === true || !destination) {
+          const allDayDatesInvalid =
+            extractedAllDayRange(extractedDetails) === "invalid";
+          if (
+            extractedDetails.requiresInput === true ||
+            !destination ||
+            allDayDatesInvalid
+          ) {
             return respond({
               success: false,
               text: await renderReply(
                 "clarify_create_event_details",
-                "No event was created. Ask for the missing scheduling details.",
+                allDayDatesInvalid
+                  ? "No event was created: the last day of the all-day event is before its first day. Ask for the dates again."
+                  : "No event was created. Ask for the missing scheduling details.",
                 { clarification: extractedDetails.clarification },
               ),
               effectReceipt: calendarRequestNoopReceipt({
@@ -6041,6 +6736,52 @@ export function createCalendarActionRunner(
           );
           const { title, resolvedStartAt, resolvedWindowPreset, request } =
             createEventBuild;
+          // The built-in calendar holds single events only. A repeating event
+          // the owner did not place goes to their one connected Google
+          // calendar, where it still needs their approval. With several the
+          // owner chooses; with none the service names the limit.
+          if (
+            request.recurrence?.length &&
+            !nativeGrantId &&
+            destination.key.grantId === ELIZA_CALENDAR_GRANT_ID
+          ) {
+            const targets = recurringCreateCalendars(calendarContext.calendars);
+            if (targets.length > 1) {
+              return respond({
+                success: false,
+                text: await renderReply(
+                  "clarify_create_event_details",
+                  `No event was created. Repeating events are saved in a connected calendar and more than one is connected. Ask which account to use: ${targets
+                    .map((target) => target.accountEmail ?? target.summary)
+                    .join(", ")}.`,
+                ),
+                effectReceipt: calendarRequestNoopReceipt({
+                  message,
+                  operation: "calendar.event.create",
+                  reason:
+                    "The repeating event needs a chosen connected calendar before writing.",
+                }),
+                data: { requiresInput: true, missing: ["calendar account"] },
+              });
+            }
+            const [target] = targets;
+            const linked =
+              target &&
+              calendarContext.feed.sources.find(
+                (source) =>
+                  source.key.grantId === target.grantId &&
+                  source.key.calendarId === target.calendarId,
+              );
+            if (linked) {
+              destination = linked;
+              request.grantId = linked.key.grantId;
+              request.calendarId = linked.key.calendarId;
+              request.side = linked.key.side;
+            }
+          }
+          if (destination.status !== "fresh") {
+            throw calendarSourceNotFresh("create");
+          }
           // Planner timestamps arrive as offset-less wall time or with a real
           // offset. Anchor them to the create zone so the stored event and every
           // rendering share the owner's zone; the stated-day guard then keeps
@@ -6087,7 +6828,7 @@ export function createCalendarActionRunner(
           // useful prompt instead of "startAt is required when windowPreset is
           // not provided" — and so the failure path doesn't re-trigger the
           // action through planner follow-up.
-          if (!resolvedStartAt && !resolvedWindowPreset) {
+          if (!resolvedStartAt && !resolvedWindowPreset && !request.allDay) {
             const suggestedStartAt = title
               ? suggestCreateEventStartAt({
                   currentMessage: messageText(message).trim(),
@@ -6175,26 +6916,38 @@ export function createCalendarActionRunner(
               },
             });
           }
-          const requestToApprove = await service.prepareCalendarEventCreate(
-            INTERNAL_URL,
-            request,
+          const requestToApprove = await timeInferenceSpan(
+            "actions:calendar:create:prepare",
+            () => service.prepareCalendarEventCreate(INTERNAL_URL, request),
           );
-          const availability = await evaluateCalendarWriteAvailability({
-            runtime,
-            ...scopedAvailabilitySource(
-              requestToApprove.grantId,
-              requestToApprove.calendarId,
-            ),
-            startAt: requestToApprove.startAt,
-            endAt: requestToApprove.endAt,
-            timeZone: requestToApprove.timeZone,
-          });
-          if (!availability.definitive || availability.conflicts.length > 0) {
+          // An all-day event marks its days and reserves no clock time, so it
+          // has no slot to check against timed commitments.
+          const availability = requestToApprove.allDay
+            ? null
+            : await timeInferenceSpan(
+                "actions:calendar:create:availability",
+                () =>
+                  evaluateCalendarWriteAvailability({
+                    runtime,
+                    ...scopedAvailabilitySource(
+                      requestToApprove.grantId,
+                      requestToApprove.calendarId,
+                    ),
+                    destination: requestToApprove,
+                    startAt: requestToApprove.startAt,
+                    endAt: requestToApprove.endAt,
+                    timeZone: requestToApprove.timeZone,
+                  }),
+              );
+          if (
+            availability &&
+            (!availability.writable || availability.conflicts.length > 0)
+          ) {
             return respond({
               success: false,
               text: await renderReply(
                 "create_event_availability_blocked",
-                availability.definitive
+                availability.conflicts.length > 0
                   ? "Nothing was created: the proposed time overlaps existing calendar commitments. Explain the conflict and offer checked alternatives using availability.localTimes for local dates, clock times and timezone labels. Ask which option they prefer; these are checked options later that day, not bookings. Never invent availability or silently move either event."
                   : "Nothing was created: calendar availability is incomplete. Explain the unavailable coverage; do not claim the slot is free.",
                 { title, proposal: requestToApprove, availability },
@@ -6250,18 +7003,25 @@ export function createCalendarActionRunner(
               throw error;
             }
           }
-          if (requestToApprove.grantId === ELIZA_CALENDAR_GRANT_ID) {
+          if (
+            requestToApprove.grantId === ELIZA_CALENDAR_GRANT_ID &&
+            extractedDetails.reviewBeforeCreate === false
+          ) {
             const idempotencyKey = localCalendarOperationKey({
               message,
               operation: "create",
               payload: requestToApprove,
             });
             const { startAt, endAt, ...dateOnlyRequest } = requestToApprove;
-            const createdEvent = await service.createCalendarEvent(
-              INTERNAL_URL,
-              requestToApprove.allDay
-                ? { ...dateOnlyRequest, idempotencyKey }
-                : { ...requestToApprove, startAt, endAt, idempotencyKey },
+            const createdEvent = await timeInferenceSpan(
+              "actions:calendar:create:persist",
+              () =>
+                service.createCalendarEvent(
+                  INTERNAL_URL,
+                  requestToApprove.allDay
+                    ? { ...dateOnlyRequest, idempotencyKey }
+                    : { ...requestToApprove, startAt, endAt, idempotencyKey },
+                ),
             );
             if (travelBuffer && travel) {
               await travel.reserveTravelBuffer({
@@ -6283,6 +7043,7 @@ export function createCalendarActionRunner(
                 Boolean(travelIntent) ||
                 (requestToApprove.recurrence?.length ?? 0) > 0 ||
                 (requestToApprove.attendees?.length ?? 0) > 0 ||
+                availability?.definitive === false ||
                 textFieldAddsDetail(
                   createdEvent.location,
                   createdEvent.title,
@@ -6294,11 +7055,15 @@ export function createCalendarActionRunner(
             });
             const fallback =
               verifiedReply ??
-              `Created “${createdEvent.title}” for ${formatVerifiedEventMoment(
-                new Date(createdEvent.startAt),
-                createdEvent.timezone || createTimeZone,
-                new Date(calendarMessageObservedAt(message)),
-              )}.`;
+              `${
+                createdEvent.isAllDay
+                  ? `Created “${createdEvent.title}” as an all-day event on ${formatCalendarEventDateTime(createdEvent)}.`
+                  : `Created “${createdEvent.title}” for ${formatVerifiedEventMoment(
+                      new Date(createdEvent.startAt),
+                      createdEvent.timezone || createTimeZone,
+                      new Date(calendarMessageObservedAt(message)),
+                    )}.`
+              }${uncheckedOverlapNote(availability)}`;
             return respond({
               success: true,
               text: await renderReply("create_event_completed", fallback),
@@ -6356,7 +7121,7 @@ export function createCalendarActionRunner(
           let targetEvent: LifeOpsCalendarEvent | null = null;
           if (!resolvedEventId) {
             const titleHint = isRedundantObservedClockQuery({
-              original: extractUserText(unwrapUserMessageText(message)),
+              original: messageText(message),
               queries: searchQueries,
               window: observedWindow,
               detailsDate: detailString(details, "date"),
@@ -6426,18 +7191,15 @@ export function createCalendarActionRunner(
                     timeZone: planningTimeZone,
                     ...buildWideLookupRange(planningTimeZone),
                   };
-            const feed = requireCompleteFreshCalendarFeed(
-              await timeCalendarUpdate("source-read", () =>
-                service.getCalendarFeed(INTERNAL_URL, {
-                  includeHiddenCalendars: true,
-                  mode: connectorModeDetail(details),
-                  side: connectorSideDetail(details),
-                  grantId: connectorGrantIdDetail(details),
-                  forceSync: true,
-                  ...feedRequest,
-                }),
-              ),
-              "update",
+            const feed = await timeCalendarUpdate("source-read", () =>
+              service.getCalendarFeed(INTERNAL_URL, {
+                includeHiddenCalendars: true,
+                mode: connectorModeDetail(details),
+                side: connectorSideDetail(details),
+                grantId: connectorGrantIdDetail(details),
+                forceSync: true,
+                ...feedRequest,
+              }),
             );
             const candidates = resolveCalendarMutationCandidates({
               action: "update",
@@ -6464,6 +7226,7 @@ export function createCalendarActionRunner(
               explicitDate: explicitSourceQuery
                 ? undefined
                 : detailString(details, "date"),
+              ownerText: explicitSourceQuery ? undefined : messageText(message),
               nonPlannerDateTexts: mutationTargetTexts({
                 details,
                 currentMessage: messageText(message),
@@ -6473,6 +7236,7 @@ export function createCalendarActionRunner(
               }),
               timeZone: planningTimeZone,
             });
+            requireFreshCalendarMutationTarget(feed, candidates, "update");
             if (candidates.length === 0) {
               const fallback = buildCalendarEventNotFoundFallback(
                 "update",
@@ -6704,6 +7468,44 @@ export function createCalendarActionRunner(
               );
             }
           }
+          const allDayUpdate = extractedAllDayRange(
+            extractedForUpdate,
+            targetEvent,
+          );
+          const updateTimeRange = resolveUpdateTimeRange({
+            extractedStart: extractedStartAt,
+            extractedEnd: extractedEndAt,
+            target: targetEvent,
+            timeZone: updateTimeZone ?? planningTimeZone,
+          });
+          // Contradictory bounds are the owner's to settle: a silent repair
+          // would save a time they did not ask for.
+          const invalidTiming =
+            allDayUpdate === "invalid"
+              ? "the last day of the all-day event is before its first day"
+              : allDayUpdate && (extractedStartAt || extractedEndAt)
+                ? "the request gives both all-day dates and a clock time"
+                : updateTimeRange.endNotAfterStart
+                  ? "the requested end is not after the requested start"
+                  : null;
+          if (invalidTiming) {
+            return respond({
+              success: false,
+              text: await renderReply(
+                "clarify_update_event_details",
+                `No event was changed: ${invalidTiming}. Ask for the intended dates and times again.`,
+                { event: targetEvent },
+              ),
+              effectReceipt: calendarRequestNoopReceipt({
+                message,
+                operation: "calendar.event.update",
+                discriminator: targetEvent.id,
+                reason:
+                  "The requested timing was contradictory, so no mutation was attempted.",
+              }),
+              data: { requiresInput: true, missing: ["update timing"] },
+            });
+          }
           const updateRequest = {
             side: targetEvent.side,
             grantId,
@@ -6722,11 +7524,18 @@ export function createCalendarActionRunner(
               extractedForUpdate,
               "location",
             ),
-            ...resolveUpdateTimeRange({
-              extractedStart: extractedStartAt,
-              extractedEnd: extractedEndAt,
-              target: targetEvent,
-              timeZone: updateTimeZone ?? planningTimeZone,
+            ...(allDayUpdate && allDayUpdate !== "invalid"
+              ? { allDay: allDayUpdate, startAt: undefined, endAt: undefined }
+              : {
+                  allDay: undefined,
+                  startAt: updateTimeRange.startAt,
+                  endAt: updateTimeRange.endAt,
+                }),
+            // Guests the owner asked to add or remove, as the complete new list.
+            attendees: resolveUpdatedCalendarAttendees({
+              event: targetEvent,
+              extracted: extractedForUpdate,
+              userTexts: calendarAuthorizingUserTexts(state, message),
             }),
             // An event saved without a zone is moved in the owner's zone: the
             // derived end above and the bare start in the service must both be
@@ -6750,6 +7559,8 @@ export function createCalendarActionRunner(
                 "location",
                 "startAt",
                 "endAt",
+                "allDay",
+                "attendees",
                 "recurrence",
               ] as const
             ).some((field) => updateRequest[field] !== undefined) ||
@@ -6773,6 +7584,7 @@ export function createCalendarActionRunner(
               data: { requiresInput: true, missing: ["update details"] },
             });
           }
+          let overlapNote = "";
           if (
             updateRequest.startAt !== undefined ||
             updateRequest.endAt !== undefined
@@ -6803,13 +7615,15 @@ export function createCalendarActionRunner(
                   observedTarget.grantId,
                   observedTarget.calendarId,
                 ),
+                destination: { grantId, calendarId: observedTarget.calendarId },
                 startAt: proposedStart,
                 endAt: proposedEnd,
                 timeZone: zone,
                 excludeEventId: observedTarget.id,
               }),
             );
-            if (!availability.definitive || availability.conflicts.length > 0) {
+            overlapNote = uncheckedOverlapNote(availability);
+            if (!availability.writable || availability.conflicts.length > 0) {
               return respond({
                 success: false,
                 text: await renderReply(
@@ -6872,6 +7686,8 @@ export function createCalendarActionRunner(
                 updateRequest.recurrenceScope !== undefined ||
                 updateRequest.location !== undefined ||
                 updateRequest.description !== undefined ||
+                updateRequest.attendees !== undefined ||
+                overlapNote.length > 0 ||
                 isRecurringCalendarEvent(targetEvent) ||
                 targetEvent.attendees.length > 0,
             });
@@ -6880,7 +7696,15 @@ export function createCalendarActionRunner(
               `Updated “${updatedEvent.title}” for ${formatCalendarEventDateTime(
                 updatedEvent,
                 { includeTimeZoneName: true },
-              )}.${builtInNotifyNote(details, targetEvent)}`;
+              )}${updatedEvent.isAllDay ? " (all day)" : ""}.${
+                updateRequest.attendees
+                  ? ` Guests now: ${
+                      updateRequest.attendees
+                        .map((attendee) => attendee.email)
+                        .join(", ") || "none"
+                    }. The built-in calendar sends no invitations.`
+                  : builtInNotifyNote(details, targetEvent)
+              }${overlapNote}`;
             return respond({
               success: true,
               text: await renderReply("update_event_completed", fallback),
@@ -6929,6 +7753,10 @@ export function createCalendarActionRunner(
         if (subaction === "delete_event") {
           const explicitEventId = detailString(details, "eventId");
           let targetEvent: LifeOpsCalendarEvent | null = null;
+          // How a looked-up target was found: the owner's reference, and
+          // whether every calendar could be read to show it is the only one.
+          let lookupTitleHint: string | undefined;
+          let lookupSawEveryCalendar = true;
           const recurrenceScopeForDelete = resolveRecurrenceScopeIntent({
             details,
             text: `${messageText(message)} ${intent}`,
@@ -6976,17 +7804,14 @@ export function createCalendarActionRunner(
                   timeZone: planningTimeZone,
                   ...buildWideLookupRange(planningTimeZone),
                 };
-            const feed = requireCompleteFreshCalendarFeed(
-              await service.getCalendarFeed(INTERNAL_URL, {
-                includeHiddenCalendars: true,
-                mode: connectorModeDetail(details),
-                side: connectorSideDetail(details),
-                grantId: connectorGrantIdDetail(details),
-                forceSync: true,
-                ...feedRequest,
-              }),
-              "delete",
-            );
+            const feed = await service.getCalendarFeed(INTERNAL_URL, {
+              includeHiddenCalendars: true,
+              mode: connectorModeDetail(details),
+              side: connectorSideDetail(details),
+              grantId: connectorGrantIdDetail(details),
+              forceSync: true,
+              ...feedRequest,
+            });
             const candidates = resolveCalendarMutationCandidates({
               action: "delete",
               events: feed.events,
@@ -7009,6 +7834,11 @@ export function createCalendarActionRunner(
               }),
               timeZone: planningTimeZone,
             });
+            requireFreshCalendarMutationTarget(feed, candidates, "delete");
+            lookupTitleHint = titleHint;
+            lookupSawEveryCalendar = feed.sources.every(
+              (source) => source.status === "fresh",
+            );
             if (candidates.length === 0) {
               const fallback = buildCalendarEventNotFoundFallback(
                 "delete",
@@ -7152,6 +7982,106 @@ export function createCalendarActionRunner(
                 "ELIZA_CALENDAR_VERSION_REQUIRED",
               );
             }
+            // A built-in delete has no owner review, so it runs at once only
+            // for the one event the owner pointed at: its whole title in their
+            // words with every calendar read, the event open in Calendar, or
+            // their answer to the question below, which this action asked in
+            // an earlier turn. A partial or model-resolved match is asked
+            // about first.
+            const observation = readClientTurnObservation(
+              message.content.metadata,
+            );
+            const selected = observation?.sensitive
+              ? undefined
+              : observation?.selectedObject;
+            const confirmationKey = pendingDeleteConfirmationKey(message);
+            const confirmationAnswer = await deleteConfirmationAnswer({
+              runtime,
+              pending: await runtime.getCache<unknown>(confirmationKey),
+              event: targetEvent,
+              message,
+            });
+            if (confirmationAnswer === "declined") {
+              // The owner's no spends the question; a later planner
+              // `confirmed` needs a new question and a new yes.
+              await runtime.setCache(confirmationKey, {
+                eventId: targetEvent.externalId,
+                declinedInMessageId: message.id ?? null,
+              } satisfies DeclinedDeleteConfirmation);
+              return respond({
+                success: false,
+                text: await renderReply(
+                  "delete_event_declined",
+                  `Nothing was deleted. The owner declined deleting “${targetEvent.title}”, so it stays on the calendar.`,
+                  { event: targetEvent },
+                ),
+                effectReceipt: calendarRequestNoopReceipt({
+                  message,
+                  operation: "calendar.event.delete",
+                  discriminator: targetEvent.externalId,
+                  reason: "The owner declined the delete confirmation.",
+                }),
+                data: {
+                  actionName: "CALENDAR",
+                  subaction: "delete_event",
+                  declined: true,
+                  eventId: targetEvent.externalId,
+                },
+              });
+            }
+            const ownerConfirmed =
+              confirmationAnswer === "confirmed" &&
+              detailBoolean(details, "confirmed") === true &&
+              explicitEventId !== undefined &&
+              [targetEvent.externalId, targetEvent.id].includes(
+                explicitEventId,
+              );
+            const ownerChoseTarget =
+              ownerConfirmed ||
+              (lookupSawEveryCalendar &&
+                ownerNamedCalendarEvent(
+                  targetEvent,
+                  calendarAuthorizingUserTexts(state, message),
+                  lookupTitleHint ?? searchQueries[0] ?? explicitTitle,
+                )) ||
+              (selected?.kind === "canonical-calendar-event" &&
+                selected.id === targetEvent.id);
+            if (!ownerChoseTarget) {
+              await runtime.setCache(confirmationKey, {
+                eventId: targetEvent.externalId,
+                askedInMessageId: message.id ?? null,
+                askedAt: Date.now(),
+              } satisfies PendingDeleteConfirmation);
+              const unread = lookupSawEveryCalendar
+                ? ""
+                : " Another calendar could not be read, so the event meant may be there.";
+              return respond({
+                success: false,
+                text: await renderReply(
+                  "clarify_delete_event_confirmation",
+                  `Nothing was deleted. The request did not name one exact event; the closest match is “${targetEvent.title}” on ${formatCalendarEventDateTime(
+                    targetEvent,
+                    { includeTimeZoneName: true, timeZone: planningTimeZone },
+                  )}.${unread} Ask the owner whether to delete that event. After a yes, delete it with targetKind=eventId, this eventId and details.confirmed=true.`,
+                  { event: targetEvent },
+                ),
+                effectReceipt: calendarRequestNoopReceipt({
+                  message,
+                  operation: "calendar.event.delete",
+                  discriminator: targetEvent.externalId,
+                  reason:
+                    "The owner did not name one exact event, so the delete waits for their confirmation.",
+                }),
+                data: {
+                  actionName: "CALENDAR",
+                  subaction: "delete_event",
+                  requiresInput: true,
+                  missing: ["delete confirmation"],
+                  eventId: targetEvent.externalId,
+                  targetEvent,
+                },
+              });
+            }
             const idempotencyKey = localCalendarOperationKey({
               message,
               operation: "delete",
@@ -7162,6 +8092,8 @@ export function createCalendarActionRunner(
               expectedProviderVersion,
               idempotencyKey,
             });
+            const deletedAt = new Date().toISOString();
+            if (ownerConfirmed) await runtime.deleteCache(confirmationKey);
             const verifiedReply = verifyAppliedCalendarMutation({
               operation: "delete",
               requestText: messageText(message),
@@ -7185,6 +8117,7 @@ export function createCalendarActionRunner(
                 idempotencyKey,
                 operation: "calendar.event.delete",
                 deleted: true,
+                committedAt: deletedAt,
               }),
               data: {
                 actionName: "CALENDAR",
@@ -7192,6 +8125,17 @@ export function createCalendarActionRunner(
                 approvalRequired: false,
                 deleted: true,
                 targetEvent,
+                // `values` reaches the chat client, which can offer Undo by
+                // sending this request to the calendar create route.
+                values: {
+                  calendarEventUndo: {
+                    deletedEventId: targetEvent.id,
+                    request: builtInCalendarEventUndoRequest(
+                      targetEvent,
+                      idempotencyKey,
+                    ),
+                  },
+                },
               },
             });
           }
@@ -7280,18 +8224,28 @@ export function createCalendarActionRunner(
         // events" returns "no events today" even when the calendar has
         // dozens of upcoming items. We apply this regardless of whether the
         // chat LLM picked feed or search_events because both subactions go
-        // Typed searches own their date filters. The complete message may also
-        // contain a destination date for a separate move/proposal; borrowing it
-        // here can hide the very event being looked up.
+        // A sole title search can resolve its bound owner date here in the
+        // Calendar zone. Other typed searches retain their own window, since
+        // a compound request can also name a date for a separate operation.
+        const ownerDateText =
+          subaction === "feed"
+            ? messageText(message)
+            : subaction === "search_events"
+              ? boundCalendarSearchDate(
+                  getStreamingContext()?.actionConstraints,
+                  message,
+                  String(runtime.agentId),
+                )
+              : undefined;
         const baseResolved = resolveCalendarReadWindow(
           explicitSubaction === "search_events" ? "" : intent,
           details,
           subaction === "search_events",
           llmPlan,
           planningTimeZone,
-          subaction === "feed"
+          ownerDateText
             ? {
-                text: messageText(message),
+                text: ownerDateText,
                 observedAt: new Date(calendarMessageObservedAt(message)),
               }
             : undefined,
@@ -7659,6 +8613,7 @@ export function createCalendarActionRunner(
           // CALENDAR_SERVICE_400).
           const coachingFailure =
             error.code === "CALENDAR_CREATE_EXTRACTION_INVALID" ||
+            error.code === "CALENDAR_UPDATE_EXTRACTION_INVALID" ||
             error.code === "CALENDAR_SEARCH_FILTER_UNBOUND" ||
             error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
             error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
@@ -7682,6 +8637,7 @@ export function createCalendarActionRunner(
                 error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
                 error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
                 error.code === "CALENDAR_CREATE_EXTRACTION_INVALID" ||
+                error.code === "CALENDAR_UPDATE_EXTRACTION_INVALID" ||
                 error.code === "CALENDAR_CREATE_EVIDENCE_INVALID" ||
                 (error.status === 400 && coachingFailure),
               subaction: subaction ?? "none",
@@ -7750,6 +8706,9 @@ export function createCalendarActionRunner(
                 error.code !== "CALENDAR_ATTENDEE_ARGUMENT_INVALID" &&
                 error.code !== "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" &&
                 error.code !== "CALENDAR_CREATE_EXTRACTION_INVALID" &&
+                error.code !== "CALENDAR_UPDATE_EXTRACTION_INVALID" &&
+                // The extraction never ran, so no write was attempted.
+                error.code !== CALENDAR_EXTRACTION_MODEL_UNAVAILABLE &&
                 error.code !== "CALENDAR_CREATE_EVIDENCE_INVALID" &&
                 (subaction === "create_event" ||
                   subaction === "update_event" ||
@@ -7973,16 +8932,48 @@ export async function inferSelectedCalendarUpdate(args: {
     ...standaloneCalendarDeps,
     ...calendarHosts.get(args.runtime),
   };
-  const extracted = await inferUpdateEventDetails(
-    args.runtime,
-    args.message,
-    undefined,
-    messageText(args.message).trim(),
-    null,
-    zone,
-    deps,
-    context,
-  );
+  let extracted: Record<string, unknown>;
+  try {
+    extracted = await inferUpdateEventDetails(
+      args.runtime,
+      args.message,
+      undefined,
+      messageText(args.message).trim(),
+      null,
+      zone,
+      deps,
+      context,
+    );
+  } catch (error) {
+    args.signal.throwIfAborted();
+    // The device update runs before the action's service-error handling.
+    if (
+      error instanceof CalendarServiceError &&
+      error.code === CALENDAR_EXTRACTION_MODEL_UNAVAILABLE
+    ) {
+      // The model did not respond: say so plainly, without asking the owner
+      // to rephrase a request that was never read.
+      args.runtime.reportError("calendar:native-update", error, {
+        code: error.code,
+      });
+      return { text: error.message };
+    }
+    // A nonconforming extraction changes nothing; ask again rather than report
+    // that no change was requested.
+    if (
+      error instanceof CalendarServiceError &&
+      error.code === "CALENDAR_UPDATE_EXTRACTION_INVALID"
+    ) {
+      args.runtime.reportError("calendar:native-update", error, {
+        diagnosticOnly: true,
+        code: error.code,
+      });
+      return {
+        text: "The requested change could not be read from your request. Nothing was changed. Say the change again.",
+      };
+    }
+    throw error;
+  }
   args.signal.throwIfAborted();
   if (extracted.requiresInput === true)
     return {
@@ -7993,7 +8984,10 @@ export async function inferSelectedCalendarUpdate(args: {
   if (
     extracted.requiresInput !== false ||
     extracted.recurrence != null ||
-    extracted.recurrenceScope != null
+    extracted.recurrenceScope != null ||
+    extracted.allDayStartDate != null ||
+    (detailArray(extracted, "addGuests")?.length ?? 0) > 0 ||
+    (detailArray(extracted, "removeGuests")?.length ?? 0) > 0
   )
     return {
       text: "The event was shared, but those requested changes need a supported exact review. Nothing was changed.",
@@ -8018,6 +9012,10 @@ export async function inferSelectedCalendarUpdate(args: {
     target: { startAt: current.start, endAt: current.end },
     timeZone,
   });
+  if (timing.endNotAfterStart)
+    return {
+      text: "The requested end is not after the requested start. Say the new start and end again. Nothing was changed.",
+    };
   const fields: CalendarFields = {
     ...current,
     title: detailString(extracted, "title") ?? current.title,
@@ -8086,7 +9084,18 @@ export async function inferNativeCalendarCreate(args: {
       ].includes(error.code)
     )
       return { text: error.message };
-    // The native create runs before the action's service-error handling. Empty
+    // The native create runs before the action's service-error handling. A
+    // model that did not respond is reported as such, without rephrase coaching.
+    if (
+      error instanceof CalendarServiceError &&
+      error.code === CALENDAR_EXTRACTION_MODEL_UNAVAILABLE
+    ) {
+      args.runtime.reportError("calendar:native-create", error, {
+        code: error.code,
+      });
+      return { text: error.message };
+    }
+    // Empty
     // fields or evidence that does not match the original request refuse this
     // extraction: nothing was created, and the owner is asked again instead of
     // the planner repeating the same request.
@@ -8110,7 +9119,7 @@ export async function inferNativeCalendarCreate(args: {
     extracted.requiresInput !== false ||
     extracted.recurrence != null ||
     extracted.travelOriginAddress != null ||
-    extracted.allDay != null ||
+    extracted.allDayStartDate != null ||
     extracted.attendees != null ||
     detailString(extracted, "grantId") ||
     detailString(extracted, "calendarId")

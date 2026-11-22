@@ -299,13 +299,22 @@ async function dispatchCapability(
     });
   }
   if (capability === "create-note") {
-    assertOnlyParams(params, ["content", "color", "format", "forceNew"]);
+    assertOnlyParams(params, [
+      "content",
+      "color",
+      "format",
+      "forceNew",
+      "creationId",
+    ]);
     const input = {
       content: params.content,
       ...(Object.hasOwn(params, "color") ? { color: params.color } : {}),
       ...(Object.hasOwn(params, "format") ? { format: params.format } : {}),
       ...(Object.hasOwn(params, "forceNew")
         ? { forceNew: params.forceNew }
+        : {}),
+      ...(Object.hasOwn(params, "creationId")
+        ? { creationId: params.creationId }
         : {}),
       ...(Object.hasOwn(params, "authoredEdit")
         ? { authoredEdit: params.authoredEdit }
@@ -386,7 +395,9 @@ async function dispatchCapability(
     // destructive capabilities. Id-selected deletes skip the fence (ids come
     // from structured contexts, not name translation).
     const ownerText =
-      typeof params.ownerText === "string" ? params.ownerText : undefined;
+      typeof params.ownerText === "string" && params.ownerText.trim()
+        ? params.ownerText
+        : undefined;
     const removed =
       target.selector === "id"
         ? await service.deleteNoteWithCommit(target.value)

@@ -438,3 +438,36 @@ test("native edit sends only the entry and revision, and reports a stale revisio
     await assert.rejects(client.openEditor(invalid), { code: "invalid" });
   assert.deepEqual(sent, []);
 });
+
+test("row actions keep the selected revision and retain legacy calls", async () => {
+  const seen = [];
+  const client = createPasswordsClient({
+    remove: async (input) => {
+      seen.push(input);
+      return { removed: true };
+    },
+    reveal: async (input) => {
+      seen.push(input);
+      return { shown: true, hidesAfterMs: 30_000 };
+    },
+    copy: async (input) => {
+      seen.push(input);
+      throw { code: "conflict" };
+    },
+  });
+  await client.remove("entry");
+  await client.remove("entry", 0);
+  await client.reveal("entry", 3);
+  await assert.rejects(client.copy("entry", 3), { code: "conflict" });
+  await assert.rejects(client.remove("entry", -1), { code: "invalid" });
+  await assert.rejects(client.reveal("entry", Number.MAX_SAFE_INTEGER + 1), {
+    code: "invalid",
+  });
+  await assert.rejects(client.copy("entry", 1.5), { code: "invalid" });
+  assert.deepEqual(seen, [
+    { id: "entry" },
+    { id: "entry", expectedRevision: 0 },
+    { id: "entry", expectedRevision: 3 },
+    { id: "entry", expectedRevision: 3 },
+  ]);
+});

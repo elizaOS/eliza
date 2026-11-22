@@ -27,6 +27,8 @@ export type MapsCardSpec =
       places: MapsCardPlace[];
       nextCursor: string | null;
       attribution: string | null;
+      /** The named place the search was made around, when it named one. */
+      near?: MapsCardPlace;
     }
   | {
       kind: "route";
@@ -47,7 +49,16 @@ export type MapsCardSpec =
       webUri: string;
       sharedAt?: string;
     }
-  | { kind: "locate"; intent: "place-near" | "route-origin"; prompt: string };
+  | {
+      kind: "locate";
+      intent: "place-near" | "route-origin";
+      prompt: string;
+      /** What the device searches for around its own position. */
+      query?: string;
+      /** The resolved destination of a `route-origin` card. */
+      destination?: MapsCardPlace;
+      travelMode?: MapsTravelMode;
+    };
 
 export const MAPS_CARD_RE =
   /\[[ \t]*MAPSCARD[ \t]*\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*MAPSCARD[ \t]*\]/g;
@@ -159,7 +170,16 @@ export function parseMapsCardBody(body: string): MapsCardSpec | null {
       if (places.length === 0) return null;
       const nextCursor = boundedString(record.nextCursor, 2_048);
       const attribution = boundedString(record.attribution, 500);
-      return { kind: "places", query, places, nextCursor, attribution };
+      // An unreadable search point only loses the bias, not the card.
+      const near = parsePlace(record.near);
+      return {
+        kind: "places",
+        query,
+        places,
+        nextCursor,
+        attribution,
+        ...(near ? { near } : {}),
+      };
     }
     case "route": {
       const origin = parsePlace(record.origin);
@@ -235,7 +255,19 @@ export function parseMapsCardBody(body: string): MapsCardSpec | null {
       ) {
         return null;
       }
-      return { kind: "locate", intent: record.intent, prompt };
+      // Optional fields from newer agents; an invalid one is left out.
+      const query = boundedString(record.query, 500);
+      const destination = parsePlace(record.destination);
+      return {
+        kind: "locate",
+        intent: record.intent,
+        prompt,
+        ...(query ? { query } : {}),
+        ...(destination ? { destination } : {}),
+        ...(TRAVEL_MODES.has(record.travelMode as MapsTravelMode)
+          ? { travelMode: record.travelMode as MapsTravelMode }
+          : {}),
+      };
     }
     default:
       return null;

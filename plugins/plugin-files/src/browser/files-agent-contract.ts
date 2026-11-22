@@ -23,8 +23,18 @@ export type FilesAgentOperation =
       reviewed?: FilesIdentity[];
     }
   | { type: "files_trash"; paths: string[]; reviewed?: FilesIdentity[] }
+  | FilesShownOperation
   | { type: "files_folder_create"; parent: string; name: string };
+/** A share, move or trash of filter results on screen by position (1 is the first). The
+ * coordinator resolves the positions with `FilesAgentRunner.shownPaths` before the owner
+ * reviews the card, so `run` never receives this form. */
+export type FilesShownOperation =
+  | { type: "files_share"; shown: number[] }
+  | { type: "files_move"; shown: number[]; dest: string }
+  | { type: "files_trash"; shown: number[] };
 export const FILES_CAPABILITY = "files.browser.v1";
+/** `files_share`, `files_move` and `files_trash` may name files by their `shown` positions. */
+export const FILES_SHOWN_TARGET_CAPABILITY = "files.shown-target.v1";
 export const FILES_OPERATION_TYPES: readonly string[] = [
   "files_filter",
   "files_open",
@@ -65,6 +75,28 @@ function paths(value: unknown): string[] {
   if (new Set(out).size !== out.length) throw Error("Duplicate files");
   return out;
 }
+function shownPositions(value: unknown): number[] {
+  if (
+    !Array.isArray(value) ||
+    !value.length ||
+    value.length > FILES_PATHS_MAX ||
+    value.some((n) => !Number.isSafeInteger(n) || (n as number) < 1)
+  )
+    throw Error("Invalid shown items");
+  if (new Set(value).size !== value.length) throw Error("Duplicate files");
+  return value.slice() as number[];
+}
+/** A share, move or trash that names shown positions instead of paths. */
+export function filesShownTarget(
+  op: FilesAgentOperation,
+): op is FilesShownOperation {
+  return (
+    (op.type === "files_share" ||
+      op.type === "files_move" ||
+      op.type === "files_trash") &&
+    "shown" in op
+  );
+}
 function reviewedIdentities(value: unknown, count: number): FilesIdentity[] {
   if (
     !Array.isArray(value) ||
@@ -102,9 +134,17 @@ export function validateFilesOperation(value: unknown): FilesAgentOperation {
         throw Error("Invalid shown item");
       return { type: "files_open", shown: op.shown as number };
     case "files_share":
+      if (op.shown !== undefined) {
+        allowed(["type", "shown"]);
+        return { type: "files_share", shown: shownPositions(op.shown) };
+      }
       allowed(["type", "paths"]);
       return { type: "files_share", paths: paths(op.paths) };
     case "files_trash": {
+      if (op.shown !== undefined) {
+        allowed(["type", "shown"]);
+        return { type: "files_trash", shown: shownPositions(op.shown) };
+      }
       allowed(["type", "paths", "reviewed"]);
       const selected = paths(op.paths);
       return {
@@ -116,6 +156,14 @@ export function validateFilesOperation(value: unknown): FilesAgentOperation {
       };
     }
     case "files_move": {
+      if (op.shown !== undefined) {
+        allowed(["type", "shown", "dest"]);
+        return {
+          type: "files_move",
+          shown: shownPositions(op.shown),
+          dest: agentPath(op.dest, true),
+        };
+      }
       allowed(["type", "paths", "dest", "reviewed"]);
       const selected = paths(op.paths);
       return {
@@ -154,6 +202,8 @@ const listed = (list: string[]) =>
     ? list.map(baseName).join(", ")
     : `${list.slice(0, 2).map(baseName).join(", ")} and ${list.length - 2} more`;
 const count = (n: number) => (n === 1 ? "1 item" : `${n} items`);
+const shownLabel = (list: readonly number[]) =>
+  `${list.length === 1 ? "Item" : "Items"} ${list.join(", ")} in the results shown`;
 /** Owner-facing title and the exact effect of a proposal. */
 export function describeFilesOperation(op: FilesAgentOperation): {
   title: string;
@@ -171,19 +221,29 @@ export function describeFilesOperation(op: FilesAgentOperation): {
         description: "shown" in op ? `Shown item ${op.shown}` : place(op.path),
       };
     case "files_share":
-      return {
-        title: `Share ${count(op.paths.length)}`,
-        description: listed(op.paths),
-      };
+      return "shown" in op
+        ? {
+            title: `Share ${count(op.shown.length)}`,
+            description: shownLabel(op.shown),
+          }
+        : {
+            title: `Share ${count(op.paths.length)}`,
+            description: listed(op.paths),
+          };
     case "files_trash":
-      return {
-        title: `Move ${count(op.paths.length)} to Trash`,
-        description: listed(op.paths),
-      };
+      return "shown" in op
+        ? {
+            title: `Move ${count(op.shown.length)} to Trash`,
+            description: shownLabel(op.shown),
+          }
+        : {
+            title: `Move ${count(op.paths.length)} to Trash`,
+            description: listed(op.paths),
+          };
     case "files_move":
       return {
-        title: `Move ${count(op.paths.length)}`,
-        description: `${listed(op.paths)} → ${place(op.dest)}`,
+        title: `Move ${count("shown" in op ? op.shown.length : op.paths.length)}`,
+        description: `${"shown" in op ? shownLabel(op.shown) : listed(op.paths)} → ${place(op.dest)}`,
       };
     case "files_folder_create":
       return {
@@ -208,6 +268,9 @@ export type FilesAgentRunner = {
     paths: string[],
     signal: AbortSignal,
   ): Promise<FilesIdentity[]>;
+  /** The paths at these positions (1 is the first) in the filter results on screen, in order.
+   * Rejects when Files shows no filter results or a position shows nothing. */
+  shownPaths?(shown: number[], signal: AbortSignal): Promise<string[]>;
   run(
     op: FilesAgentOperation,
     signal: AbortSignal,

@@ -96,9 +96,12 @@ const NEGATIVE_WORDS = new Set([
 	"nein",
 	"nicht",
 	"いいえ",
+	"だめ",
+	"やめ",
 	"不",
 	"不要",
 	"取消",
+	"算了",
 	"아니",
 	"아니요",
 	"아뇨",
@@ -113,6 +116,8 @@ const NEGATIVE_WORDS = new Set([
 /**
  * Chinese and Japanese put no space between words, so a no word there sits
  * inside a longer run of text ("确认，先不要" is "确认" and "先不要").
+ * 别 stays out of the list: the same rule would cancel on 特别, 区别 and 分别,
+ * which are not refusals.
  */
 const UNSPACED_SCRIPT =
 	/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;

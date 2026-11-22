@@ -6,6 +6,7 @@ import {
 } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
 import {
+  CLIENT_LOCATION_NOTE,
   CLIENT_OBSERVATION_SCOPE,
   CLIENT_OBSERVATION_SEGMENT_ID,
   CLIENT_OBSERVATION_SEGMENT_LABEL,
@@ -112,6 +113,30 @@ describe("current-turn client observation", () => {
     expect(text.split('"canonical-note"').length - 1).toBe(1);
     for (const omitted of ["plain-v1", "completed-action", "userTextFormat"])
       expect(text).not.toContain(omitted);
+  });
+
+  test("keeps a turn that carries the Notes folder list as dialogue", () => {
+    const text = renderedText(
+      currentMessageEvents(
+        residentTurn({ notesFolders: [{ id: "f-travel", name: "Travel" }] }),
+      ),
+    );
+    expect(text).toContain("# Current message\nOwner: Add milk to this note");
+    expect(text).not.toContain("f-travel");
+    // A list the Notes plugin rejects is dropped too, never shown as JSON.
+    for (const notesFolders of [
+      [{ id: "f-travel", name: "Travel", color: "blue" }],
+      [{ id: 7, name: "Travel" }],
+      "f-travel",
+    ]) {
+      const malformed = renderedText(
+        currentMessageEvents(residentTurn({ notesFolders })),
+      );
+      expect(malformed).toContain(
+        "# Current message\nOwner: Add milk to this note",
+      );
+      expect(malformed).not.toContain("Travel");
+    }
   });
 
   test("records the before and after prompt size of one resident turn", () => {
@@ -282,6 +307,7 @@ test("a declared Calendar day projects once without changing authored text or st
   expect(projected.content.text).toBe(content.text);
   expect(projected.content.metadata).not.toHaveProperty("clientDevice");
   expect(projected.segment?.match(/calendarDay/g)).toHaveLength(1);
+  expect(projected.segment).not.toContain(CLIENT_LOCATION_NOTE);
   expect(projected.segment).toContain(CLIENT_OBSERVATION_SCOPE);
   expect(content).toEqual(original);
   const invalid = residentTurn({
@@ -293,4 +319,27 @@ test("a declared Calendar day projects once without changing authored text or st
     },
   });
   expect(projectClientObservation(invalid)).toEqual({ content: invalid });
+});
+
+test("the phone's reported position reaches the model once, as the owner's current location", () => {
+  const location = {
+    latitude: 37.7749,
+    longitude: -122.4194,
+    accuracyMeters: 9,
+    capturedAt: 1_795_000_000_000,
+  };
+  const content = residentTurn({
+    clientDevice: {
+      context: { view: "home", revision: 2, sensitive: false, location },
+    },
+  });
+  content.text = "Where am I?";
+  const projected = projectClientObservation(content);
+  expect(projected.observation?.location).toEqual(location);
+  expect(projected.segment).toContain(CLIENT_OBSERVATION_SCOPE);
+  expect(projected.segment).toContain(CLIENT_LOCATION_NOTE);
+  expect(CLIENT_LOCATION_NOTE).toContain("current location");
+  expect(CLIENT_LOCATION_NOTE).toContain("Never guess");
+  expect(projected.segment?.match(/"latitude":37\.7749/g)).toHaveLength(1);
+  expect(projected.content.text).toBe("Where am I?");
 });

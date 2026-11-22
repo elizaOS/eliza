@@ -1,8 +1,10 @@
 /**
  * A manage operation through the Gmail message adapter reports the outcome
  * Gmail returned. Trash reports a failed message in its receipt instead of
- * throwing, so the adapter must not report that message as trashed. Real
- * adapter search and manage paths; only the Google service boundary is stubbed.
+ * throwing, so the adapter must not report that message as trashed. A sender
+ * lookup ("trash the email from Alex Chen") keeps a name of several words in
+ * one Gmail from: phrase. Real adapter search and manage paths; only the
+ * Google service boundary is stubbed.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { expect, it, vi } from "vitest";
@@ -30,7 +32,7 @@ const message: GoogleGmailMessageSummary = {
   metadata: { messageIdHeader: "<msg-1@example.com>" },
 };
 
-async function trash(receipt: GoogleGmailMutationReceipt) {
+function gmail(receipt?: GoogleGmailMutationReceipt) {
   const service = {
     listGmailTriageMessages: vi.fn(),
     searchGmailMessages: vi.fn(async () => [message]),
@@ -47,6 +49,11 @@ async function trash(receipt: GoogleGmailMutationReceipt) {
     emitEvent: vi.fn(async () => undefined),
     reportError: vi.fn(),
   } as unknown as IAgentRuntime;
+  return { service, runtime };
+}
+
+async function trash(receipt: GoogleGmailMutationReceipt) {
+  const { runtime } = gmail(receipt);
   const adapter = new GoogleGmailAdapter();
   const [found] = await adapter.searchMessages(runtime, { content: "Invoice" });
   if (!found) throw new Error("search returned no message");
@@ -72,4 +79,17 @@ it("reports a Gmail trash that Gmail accepted as done", async () => {
     failures: [],
   });
   expect(result).toEqual({ ok: true });
+});
+
+// Gmail applies from: to the next word only, so `from:Alex Chen` also matches
+// another Alex's mail that mentions Chen.
+it.each([
+  [{ displayName: "Alex Chen" }, 'in:anywhere from:"Alex Chen"'],
+  [{ displayName: 'Alex "AJ" Chen' }, 'in:anywhere from:"Alex AJ Chen"'],
+  [{ displayName: "Alex" }, "in:anywhere from:Alex"],
+  [{ identifier: "bob@example.com" }, "in:anywhere from:bob@example.com"],
+])("searches Gmail for sender %o with %s", async (sender, query) => {
+  const { service, runtime } = gmail();
+  await new GoogleGmailAdapter().searchMessages(runtime, { sender });
+  expect(service.searchGmailMessages).toHaveBeenCalledWith(expect.objectContaining({ query }));
 });

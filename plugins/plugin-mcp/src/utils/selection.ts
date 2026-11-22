@@ -12,11 +12,13 @@ import {
   type State,
 } from "@elizaos/core";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
+import type { JSONSchema7 } from "json-schema";
 import {
   toolSelectionArgumentTemplate,
   toolSelectionNameTemplate,
 } from "../protocol-utils/prompts.js";
-import type { McpProvider } from "../types";
+import type { McpService } from "../service";
+import { MCP_SERVICE_NAME, type McpProvider } from "../types";
 import type { ToolSelectionArgument, ToolSelectionName } from "./schemas";
 import {
   createToolSelectionFeedbackPrompt,
@@ -92,13 +94,20 @@ export async function createToolSelectionArgument({
     throw new Error(`Tool "${toolName}" not found on server "${serverName}"`);
   }
   const toolInputSchema = toolData.inputSchema ?? {};
+  // The model sees its provider's rewrite of the schema, which moves keywords
+  // that provider does not accept into descriptions. The arguments are still
+  // validated against the server's schema below.
+  const promptSchema =
+    runtime
+      .getService<McpService>(MCP_SERVICE_NAME)
+      ?.applyToolCompatibility(toolInputSchema as JSONSchema7) ?? toolInputSchema;
   const toolSelectionArgumentPrompt: string = composePromptFromState({
     state: {
       ...state,
       values: {
         ...state.values,
         toolSelectionName,
-        toolInputSchema: JSON.stringify(toolInputSchema),
+        toolInputSchema: JSON.stringify(promptSchema),
       },
     },
     template: toolSelectionArgumentTemplate,

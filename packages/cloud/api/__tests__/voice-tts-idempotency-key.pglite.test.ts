@@ -20,8 +20,11 @@ import { randomUUID } from "node:crypto";
 import { ElevenLabs, ElevenLabsTimeoutError } from "@elevenlabs/elevenlabs-js";
 import * as aiPricing from "@elizaos/cloud-shared/lib/services/ai-pricing";
 import * as elevenlabs from "@elizaos/cloud-shared/lib/services/elevenlabs";
+import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
 import * as firstLineCache from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { Bindings } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { DEFAULT_ELEVENLABS_VOICE_ID } from "@elizaos/host/protocol";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { Hono } from "hono";
 import * as generativeRouteAuth from "../src/lib/generative-route-auth";
@@ -40,6 +43,7 @@ setDefaultTimeout(60_000);
 const orgId = randomUUID();
 const userId = randomUUID();
 const providerCalls: string[] = [];
+const providerVoices: string[] = [];
 const providerFailures = new Map<string, Error>();
 const COST_PER_CHAR = 0.001;
 
@@ -73,8 +77,15 @@ mock.module("@elizaos/cloud-shared/lib/services/ai-pricing", () => ({
 mock.module("@elizaos/cloud-shared/lib/services/elevenlabs", () => ({
   ...elevenlabs,
   getElevenLabsService: () => ({
-    textToSpeech: async ({ text }: { text: string }) => {
+    textToSpeech: async ({
+      text,
+      voiceId,
+    }: {
+      text: string;
+      voiceId: string;
+    }) => {
       providerCalls.push(text);
+      providerVoices.push(voiceId);
       const failure = providerFailures.get(text);
       if (failure) throw failure;
       return new ReadableStream<Uint8Array>({
@@ -188,6 +199,7 @@ async function speak(
   idempotencyKey: string,
   identity: { voiceId?: string; modelId?: string } = {},
   expectedStatus = 200,
+  bindings: Pick<Bindings, "ELEVENLABS_VOICE_ID"> = {},
 ) {
   const response = await app.request(
     "/api/v1/voice/tts",
@@ -199,7 +211,7 @@ async function speak(
       },
       body: JSON.stringify({ text, ...identity }),
     },
-    { NODE_ENV: "test" },
+    { NODE_ENV: "test", ...bindings },
   );
   if (response.status !== expectedStatus)
     throw new Error(`tts ${response.status}: ${await response.text()}`);
@@ -225,6 +237,14 @@ async function balance(): Promise<number> {
   return Number(rows[0]?.credit_balance);
 }
 
+async function reservationIds(key: string): Promise<string[]> {
+  const { rows } = await pg().query<{ stripe_payment_intent_id: string }>(
+    "SELECT stripe_payment_intent_id FROM credit_transactions WHERE organization_id=$1 AND stripe_payment_intent_id LIKE $2 ORDER BY stripe_payment_intent_id",
+    [orgId, `reserve:${orgId}:${key}:%`],
+  );
+  return rows.map((row) => row.stripe_payment_intent_id);
+}
+
 test("one Idempotency-Key pays for one utterance: a different text is charged, the same text replays", async () => {
   const key = `utterance-${randomUUID()}`;
   const first = "Your table is booked for seven.";
@@ -248,12 +268,14 @@ test("one Idempotency-Key pays for one utterance: a different text is charged, t
   expect(providerCalls).toHaveLength(3);
   expect(await balance()).toBeCloseTo(beforeRetry, 6);
 
-  // The direct browser request omits the default voice and model. Its cloud
-  // proxy fallback fills both compatibility defaults. They are the same
-  // logical utterance and must replay one reservation after an ambiguous
-  // direct response instead of charging again.
+  // Older proxies filled both defaults. A retry across the catalog rollout
+  // must still find the reservation written by the old paid route.
   const fallbackKey = `fallback-${randomUUID()}`;
   const fallbackText = "Your driver will arrive in five minutes.";
+  const oldProxyDefault = {
+    voiceId: "EXAVITQu4vr4xnSDxMaL",
+    modelId: "eleven_flash_v2_5",
+  };
   await speak(fallbackText, fallbackKey);
   const afterDirect = await balance();
   expect(afterDirect).toBeCloseTo(
@@ -261,12 +283,116 @@ test("one Idempotency-Key pays for one utterance: a different text is charged, t
     6,
   );
 
-  await speak(fallbackText, fallbackKey, {
-    voiceId: "EXAVITQu4vr4xnSDxMaL",
-    modelId: "eleven_flash_v2_5",
+  const oldDigest = settlementDigest({
+    ...oldProxyDefault,
+    text: fallbackText,
+    format: "mp3",
+    withTimestamps: false,
+    synthesis: {},
   });
+  const oldReceipt = await pg().query(
+    "SELECT id FROM credit_transactions WHERE stripe_payment_intent_id=$1",
+    [`reserve:${orgId}:${fallbackKey}:${oldDigest}`],
+  );
+  expect(oldReceipt.rows).toHaveLength(1);
+  await speak(fallbackText, fallbackKey, oldProxyDefault);
   expect(providerCalls).toHaveLength(5);
+  expect(providerVoices.slice(-2)).toEqual([
+    DEFAULT_ELEVENLABS_VOICE_ID,
+    DEFAULT_ELEVENLABS_VOICE_ID,
+  ]);
   expect(await balance()).toBeCloseTo(afterDirect, 6);
+
+  // Selecting the preset explicitly uses custom voice pricing, even when
+  // the same preset currently supplies the default.
+  await speak(fallbackText, fallbackKey, {
+    voiceId: DEFAULT_ELEVENLABS_VOICE_ID,
+  });
+  const afterExplicit = await balance();
+  expect(afterExplicit).toBeLessThan(afterDirect);
+  await speak(fallbackText, fallbackKey, {
+    voiceId: DEFAULT_ELEVENLABS_VOICE_ID,
+  });
+  expect(await balance()).toBeCloseTo(afterExplicit, 6);
+
+  const operatorText = "The operator selected this voice for the station.";
+  const operatorKey = `operator-${randomUUID()}`;
+  const operatorVoice = "operator-configured-voice";
+  const processVoice = "process-configured-voice";
+  const historicalReservationId = (key: string, voiceId: string) =>
+    `reserve:${orgId}:${key}:${settlementDigest({
+      text: operatorText,
+      voiceId,
+      modelId: "eleven_flash_v2_5",
+      format: "mp3",
+      withTimestamps: false,
+      synthesis: {},
+    })}`;
+  const previousOperatorVoice = process.env.ELEVENLABS_VOICE_ID;
+  try {
+    process.env.ELEVENLABS_VOICE_ID = processVoice;
+    await speak(operatorText, operatorKey, { voiceId: operatorVoice });
+    const afterOperatorSeed = await balance();
+    expect(await reservationIds(operatorKey)).toEqual([
+      historicalReservationId(operatorKey, operatorVoice),
+    ]);
+    await speak(operatorText, operatorKey, {}, 200, {
+      ELEVENLABS_VOICE_ID: operatorVoice,
+    });
+    expect(await balance()).toBeCloseTo(afterOperatorSeed, 6);
+    await speak(operatorText, operatorKey, {}, 200, {
+      ELEVENLABS_VOICE_ID: DEFAULT_ELEVENLABS_VOICE_ID,
+    });
+    const afterOperatorChange = await balance();
+    expect(afterOperatorChange).toBeCloseTo(
+      afterOperatorSeed - operatorText.length * COST_PER_CHAR,
+      6,
+    );
+    await speak(operatorText, operatorKey, {}, 200, {
+      ELEVENLABS_VOICE_ID: DEFAULT_ELEVENLABS_VOICE_ID,
+    });
+    expect(await balance()).toBeCloseTo(afterOperatorChange, 6);
+    expect(await reservationIds(operatorKey)).toEqual(
+      [
+        historicalReservationId(operatorKey, operatorVoice),
+        historicalReservationId(operatorKey, DEFAULT_ELEVENLABS_VOICE_ID),
+      ].sort(),
+    );
+    expect(providerVoices.slice(-4)).toEqual([
+      operatorVoice,
+      operatorVoice,
+      DEFAULT_ELEVENLABS_VOICE_ID,
+      DEFAULT_ELEVENLABS_VOICE_ID,
+    ]);
+
+    for (const [bindings, voiceId, publishedVoice] of [
+      [{}, processVoice, processVoice],
+      [
+        { ELEVENLABS_VOICE_ID: "" },
+        oldProxyDefault.voiceId,
+        DEFAULT_ELEVENLABS_VOICE_ID,
+      ],
+    ] satisfies Array<
+      [Pick<Bindings, "ELEVENLABS_VOICE_ID">, string, string]
+    >) {
+      const key = `operator-precedence-${randomUUID()}`;
+      await speak(operatorText, key, { voiceId }, 200, bindings);
+      const afterSeed = await balance();
+      await speak(operatorText, key, {}, 200, bindings);
+      expect(await balance()).toBeCloseTo(afterSeed, 6);
+      expect(await reservationIds(key)).toEqual([
+        historicalReservationId(key, voiceId),
+      ]);
+      expect(providerVoices.slice(-2)).toEqual([
+        publishedVoice,
+        publishedVoice,
+      ]);
+    }
+  } finally {
+    if (previousOperatorVoice === undefined)
+      delete process.env.ELEVENLABS_VOICE_ID;
+    else process.env.ELEVENLABS_VOICE_ID = previousOperatorVoice;
+  }
 });
 
 test("an ElevenLabs rejection releases the reservation; a failure without a status stays charged", async () => {

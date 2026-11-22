@@ -89,7 +89,7 @@ const startOfDay = (now: Date) =>
 const addDays = (d: Date, n: number) => new Date(d.getTime() + n * 86_400_000);
 const monthIndex = (s: string) => MONTHS.indexOf(s.slice(0, 3).toLowerCase());
 
-/** Next calendar day (today included) with this day-of-month. A named day that is today is today, like statedDay: "until the 14th" said on the 14th ends today. */
+/** Next calendar day with this day-of-month, including today. */
 function nextDayOfMonth(n: number, today: Date): Date | null {
   if (n < 1 || n > 31) return null;
   for (let k = 0; k < 13; k++) {
@@ -213,31 +213,16 @@ export function parseDateExpr(expr: string, now: Date): Date | null {
         (dated[10] && dated[11]))
     )
       return parseDateExpr(after, now);
-    // "next week Friday" names the Friday of the next calendar week too. The
-    // "next week" prefix sits before the weekday match, so the regex only sees
-    // a bare weekday and resolved it to this week's Friday. Same six-days-early
-    // error as the "Friday next week" suffix form fixed in #36789.
-    // Case-insensitive: members write "Next week Friday" at a sentence start.
-    // Accept an optional "on" after "next week", with or without a comma:
-    // "next week on Friday" and "next week, on Friday" name the same Friday.
-    if (/(?:^|[\s,])next\s+week(?:'s)?,?\s*(?:on\s+)?$/i.test(expr.slice(0, m.index)))
-      return nextWeekday(
-        WEEKDAYS.indexOf(m[8].slice(0, 3).toLowerCase()),
-        today,
-        true,
-      );
     // "Friday next week" names the Friday of the next calendar week. The bare
     // weekday branch resolved it to this week's Friday, ending the window six
     // days early; "next Friday" already resolved to that date.
-    // Case-insensitive, same as the prefix form above ("Friday Next Week").
-    if (/^,?\s+(?:of\s+)?next\s+week\b/i.test(rest))
-      return nextWeekday(
-        WEEKDAYS.indexOf(m[8].slice(0, 3).toLowerCase()),
-        today,
-        true,
-      );
     const w = WEEKDAYS.indexOf(m[8].slice(0, 3).toLowerCase());
-    return nextWeekday(w, today, Boolean(m[7]));
+    const before = expr.slice(0, m.index);
+    const nextWeek =
+      Boolean(m[7]) ||
+      /(?:^|[\s,])next\s+week(?:['’]s)?,?\s*(?:on\s+)?$/i.test(before) ||
+      /^,?\s+(?:of\s+)?next\s+week\b/i.test(rest);
+    return nextWeekday(w, today, nextWeek);
   }
   if (m[9]) return nextMonthDay(monthIndex(m[9]), 1, today);
   if (m[10] && m[11]) {
@@ -303,7 +288,15 @@ export function resolveWindow(
     String.raw`\bfrom\s+(.+?)\s+(?:${END}|to)\s+(.+)$`,
   ).exec(t);
   if (range?.[1] && range[2]) {
-    const from = parseDateExpr(range[1], now);
+    // "next week from Tuesday until Friday": a weekday that starts the range
+    // is a day of next week. Read it from the Sunday before next Monday. Read
+    // from today, it was this week's Tuesday.
+    const base =
+      /\bnext\s+week\b/.test(t) &&
+      new RegExp(String.raw`^${WEEKDAY}\b`).test(range[1])
+        ? addDays(today, ((8 - today.getUTCDay()) % 7 || 7) - 1)
+        : now;
+    const from = parseDateExpr(range[1], base);
     // A place-to-place phrase ("from Boston to New York on Friday") has the
     // shape of a range but states no start date. Adopting it set from to null
     // and until to the departure day, so the member's duration never ran.

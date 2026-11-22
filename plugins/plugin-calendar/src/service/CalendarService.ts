@@ -884,7 +884,12 @@ function lifeOpsCalendarEventFromMicrosoft(args: {
       sensitivity: event.sensitivity,
       recurrence: event.recurrence,
       recurringEventId: event.seriesMasterId,
-      transparency: event.showAs === "free" ? "transparent" : "opaque",
+      // Outlook "Working elsewhere" marks where the owner works, not a
+      // commitment; Graph free/busy (parseScheduleInterval) also skips it.
+      transparency:
+        event.showAs === "free" || event.showAs === "workingElsewhere"
+          ? "transparent"
+          : "opaque",
     },
     syncedAt,
     updatedAt,

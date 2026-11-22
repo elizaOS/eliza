@@ -102,7 +102,9 @@ export function recordCloudInferenceFailure(
         ? failure.status
         : undefined;
     // Examine only bounded known error fields in memory. Never copy their text.
-    const message = [failure.message, nested.message]
+    // The Cloud keeps its own `message` on a provider 400 and sends the
+    // provider's text as `provider_message`.
+    const message = [failure.message, nested.message, nested.provider_message]
       .filter((s): s is string => typeof s === "string")
       .map((s) => s.slice(0, 2048).toLowerCase())
       .join(" ");
@@ -131,7 +133,11 @@ export function recordCloudInferenceFailure(
       reason = "schema-limit";
     else if (status === 429) reason = "rate-limit";
     else if (status === 402) reason = "credits";
-    else if (status !== undefined && /context (window|length)|maximum context/.test(message))
+    else if (
+      status !== undefined &&
+      (nested.code === "context_length_exceeded" ||
+        /context (window|length)|maximum context/.test(message))
+    )
       reason = "context-window";
     else if (
       status !== undefined &&

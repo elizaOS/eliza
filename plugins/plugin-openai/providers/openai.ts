@@ -8,6 +8,7 @@
 import { createOpenAI, type OpenAIProvider } from "@ai-sdk/openai";
 import {
   composeToolDiagnosticRedactor,
+  ElizaError,
   fetchWithConfidentialInference,
   getInferenceTimer,
   getTrajectoryContext,
@@ -19,7 +20,135 @@ import {
   applyCerebrasReasoningReplay,
   type CerebrasReasoningReplay,
 } from "../utils/cerebras-reasoning";
-import { getApiKey, getBaseURL } from "../utils/config";
+import { getApiKey, getBaseURL, getSetting, isCerebrasMode } from "../utils/config";
+
+/** Code of the error that ends an HTTP attempt its provider stopped answering. */
+export const MODEL_ATTEMPT_IDLE_TIMEOUT = "MODEL_ATTEMPT_IDLE_TIMEOUT";
+
+/**
+ * How long a streamed direct-Cerebras attempt may wait for provider bytes: its
+ * response headers, then each next body chunk. Without a bound a lost request
+ * or connection waited for the caller's 180 s chat deadline, whose reply then
+ * replaced the normal failure reply. Measured on qwen-3.8-27b (November 2026):
+ * a streamed request gets its headers 0.15 to 0.4 s after it is sent, tool
+ * calls included. The longest silence inside the body is a tool call, because
+ * its whole arguments arrive in one chunk once generated (4,419 tokens after a
+ * 2.5 s gap). That includes Stage 1 when the host streams it, and whether a
+ * reasoning call streams its reasoning or stays silent through it was not
+ * measured; the largest recorded Stage 1 reasoning, about 3,600 tokens, is
+ * about 2 s at these rates. The model writes at most 40,960 tokens, about 25 s at the
+ * measured streamed 1,600 to 1,800 tokens a second, so 60 s holds down to
+ * about 680 tokens a second.
+ *
+ * A non-streamed request has no bound here. Its headers come only when
+ * generation ends, so a limit on that wait is a limit on how much the model may
+ * write, and output is not capped. The caller's signal bounds it (a chat turn's
+ * 180 s deadline), and with no signal the HTTP client's own idle limit does
+ * (Bun 1.4.2 gave up on a silent server after 360 s).
+ */
+const CEREBRAS_STREAM_IDLE_TIMEOUT_MS = 60_000;
+
+/**
+ * The idle bound for this client's streamed attempts:
+ * `OPENAI_ATTEMPT_IDLE_TIMEOUT_SECONDS` when it is a positive number, none when
+ * it is 0, otherwise the Cerebras bound on the direct Cerebras route. Other
+ * routes stay unbounded unless the host sets it: a reasoning model or a local
+ * server can stream nothing for minutes on a sound call.
+ */
+function attemptIdleTimeoutMs(
+  runtime: IAgentRuntime,
+  endpoint: { provider: "openrouter" } | undefined
+): number | undefined {
+  const raw = getSetting(runtime, "OPENAI_ATTEMPT_IDLE_TIMEOUT_SECONDS");
+  const seconds = raw?.trim() ? Number(raw) : Number.NaN;
+  if (seconds === 0) return undefined;
+  if (Number.isFinite(seconds) && seconds > 0) return Math.ceil(seconds * 1000);
+  return !endpoint && isCerebrasMode(runtime) ? CEREBRAS_STREAM_IDLE_TIMEOUT_MS : undefined;
+}
+
+/** True when a request body asks for a streamed response (`"stream": true`). */
+function requestsStream(body: unknown): boolean {
+  if (typeof body !== "string") return false;
+  try {
+    return (JSON.parse(body) as { stream?: unknown } | null)?.stream === true;
+  } catch {
+    // error-policy:J3 a body that is not JSON is not a streamed chat request; it stays unbounded.
+    return false;
+  }
+}
+
+/**
+ * True for the error an idle attempt ends with, also as the cause the AI SDK
+ * wraps a failed body read in. The text lanes never re-send it.
+ */
+export function isModelAttemptIdleTimeout(error: unknown): boolean {
+  let current = error;
+  for (let depth = 0; depth < 4 && current && typeof current === "object"; depth++) {
+    if ((current as { code?: unknown }).code === MODEL_ATTEMPT_IDLE_TIMEOUT) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/**
+ * Binds one streamed HTTP attempt to the caller's signal and to an idle bound:
+ * every wait for provider bytes (the response headers, then each body read)
+ * ends with a typed error after `idleMs`, and aborts the request so its socket
+ * is released. A body read starts only when the consumer asks for the next
+ * chunk, so time the consumer spends between reads is not counted.
+ */
+function boundAttempt(callerSignal: AbortSignal | null | undefined, idleMs: number) {
+  const controller = new AbortController();
+  const onCallerAbort = () => controller.abort(callerSignal?.reason);
+  if (callerSignal?.aborted) controller.abort(callerSignal.reason);
+  else callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+  const release = () => callerSignal?.removeEventListener("abort", onCallerAbort);
+  const wait = <T>(work: Promise<T>): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const idle = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new ElizaError(
+          `Model provider sent nothing for ${idleMs} ms; the HTTP attempt was abandoned`,
+          { code: MODEL_ATTEMPT_IDLE_TIMEOUT }
+        );
+        controller.abort(error);
+        reject(error);
+      }, idleMs);
+    });
+    return Promise.race([work, idle]).finally(() => clearTimeout(timer));
+  };
+  const body = (response: Response): Response => {
+    const source = response.body;
+    if (!source) {
+      release();
+      return response;
+    }
+    const reader = source.getReader();
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        async pull(stream) {
+          try {
+            const next = await wait(reader.read());
+            if (next.done) {
+              release();
+              stream.close();
+            } else stream.enqueue(next.value);
+          } catch (error) {
+            // error-policy:J2 the caller's abort or the idle bound ends the body.
+            release();
+            stream.error(error);
+          }
+        },
+        cancel(reason) {
+          release();
+          return reader.cancel(reason);
+        },
+      }),
+      { status: response.status, statusText: response.statusText, headers: response.headers }
+    );
+  };
+  return { signal: controller.signal, wait, body, release };
+}
 
 const SAFE_RESPONSE_HEADERS = [
   "x-request-id",
@@ -76,6 +205,7 @@ export function createOpenAIClient(
   }
 
   let httpAttempt = 0;
+  const idleMs = attemptIdleTimeoutMs(runtime, endpoint);
   const diagnostic = observeHttpDiagnostic(() => {
     const callId = globalThis.crypto.randomUUID();
     const trajectory = getTrajectoryContext();
@@ -168,11 +298,18 @@ export function createOpenAIClient(
           );
           return { fields, host, span, closeSpan };
         });
+        const bound =
+          idleMs !== undefined && requestsStream(init?.body)
+            ? boundAttempt(init?.signal, idleMs)
+            : undefined;
+        if (bound) init = { ...init, signal: bound.signal };
         let response: Response;
         try {
-          response = await fetchWithConfidentialInference(input, init, globalThis.fetch);
+          const sent = fetchWithConfidentialInference(input, init, globalThis.fetch);
+          response = await (bound ? bound.wait(sent) : sent);
         } catch (error) {
           // error-policy:J2 transport owns the original rejection; observers are isolated.
+          bound?.release();
           const endedAt = Date.now();
           const failedAfterMs = Math.round(performance.now() - startedMonotonic);
           observeHttpDiagnostic(() => {
@@ -221,7 +358,7 @@ export function createOpenAIClient(
           if (response.ok) logger.debug(completed, message);
           else logger.warn(completed, message);
         });
-        return response;
+        return bound ? bound.body(response) : response;
       },
       { preconnect: globalThis.fetch.preconnect }
     ),

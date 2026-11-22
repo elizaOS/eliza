@@ -2,6 +2,7 @@ import {
   ChannelType,
   type ContextEvent,
   conversationClientUserMemoryId,
+  historicalRequestSourceIds,
   type IAgentRuntime,
   type Memory,
   type State,
@@ -194,34 +195,32 @@ describe("historical navigation input", () => {
         (segment) => segment.label === "runtime:historical_navigation_table",
       );
       const table = JSON.parse(tableSegment?.content.trim() ?? "{}");
-      expect(table.columns).toEqual(["requestSourceEventId", "navigation"]);
-      expect(table.receiptColumns).toEqual(["success", "receipt"]);
-      const decodedRows = table.rows.map(
-        ([source, navigation]: [string, [boolean, [number, unknown[]]][]]) => [
-          source,
-          navigation.map(([success, [shape, values]]) => [
-            success,
-            JSON.stringify(
-              Object.fromEntries(
-                table.receiptShapes[shape].map((key: string, index: number) => [
-                  key,
-                  values[index],
-                ]),
-              ),
-            ),
-          ]),
-        ],
+      expect(table.encoding).toContain(
+        "row=[requestSourceEventId,[[success,receipt],...]]; receipt is the recorded navigation object.",
       );
-      expect(decodedRows).toEqual(
+      // Each row names its request by its history label and keeps every
+      // recorded navigation field except the in-turn step/handoff identities
+      // and the effect name its label already gives.
+      const sources = historicalRequestSourceIds({ id: "turn", events });
+      expect(sources.size).toBe(originals.length);
+      expect(table.rows).toEqual(
         receipts.map((receipt) => [
-          receipt.requestSourceEventId,
+          `history:${sources.get(receipt.requestSourceEventId)}`,
           receipt.navigation.map(
-            (entry: { success: boolean; receipt: string }) => [
-              entry.success,
-              entry.receipt,
-            ],
+            (entry: { success: boolean; receipt: string }) => {
+              const {
+                effect: _effect,
+                stepId: _stepId,
+                handoffId: _handoffId,
+                ...kept
+              } = JSON.parse(entry.receipt);
+              return [entry.success, kept];
+            },
           ),
         ]),
+      );
+      expect(tableSegment?.content).not.toMatch(
+        /handoff-|step-|view_navigation/,
       );
     }
     expect(originals).toEqual(before);

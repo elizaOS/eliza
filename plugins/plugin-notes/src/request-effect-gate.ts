@@ -20,7 +20,9 @@ function decisionFor(
   message: Memory | undefined,
   operation: NotesRequestOperation,
 ) {
-  const canonicalOperation = operation === "patch" ? "update" : operation;
+  // A patch and a folder move are both edits of one existing note.
+  const canonicalOperation =
+    operation === "patch" || operation === "move" ? "update" : operation;
   const routing = getActionRoutingContext();
   if (routing?.requestRuntime !== runtime) {
     return checkBoundNotesOperation(undefined, undefined, canonicalOperation);
@@ -110,7 +112,7 @@ export function assertNotesAgentViewOperation(
     "update-note": "update",
     "delete-note": "delete",
     "clear-notes": "delete",
-    "restore-note": "update",
+    "restore-note": "restore",
   };
   const operation = operations[capability];
   if (

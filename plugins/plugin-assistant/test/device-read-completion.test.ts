@@ -6,10 +6,12 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import {
   AgentRuntime,
+  bindIncomingMessagePersistence,
   ChannelType,
   type ContextObject,
   conversationClientUserMemoryId,
   type IDatabaseAdapter,
+  inheritIncomingMessagePersistence,
   type JsonValue,
   type Memory,
   ModelType,
@@ -66,7 +68,11 @@ async function createTable(
   );
 }
 async function fixture(
-  options: { selected?: boolean; hostRevision?: string | null } = {},
+  options: {
+    selected?: boolean;
+    hostRevision?: string | null;
+    augmented?: boolean;
+  } = {},
 ) {
   vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0");
   const pg = new PGlite();
@@ -249,7 +255,33 @@ async function fixture(
     credential,
     async () => {
       setDeviceReadReplyConversation(runtime, conversationId, roomId);
-      setDeviceReadReplyContext(runtime, original, context);
+      // The chat route may hand the planner a prompt-only copy of the stored
+      // message: document excerpts around the owner's words.
+      let routed = original;
+      if (options.augmented) {
+        bindIncomingMessagePersistence(original, structuredClone(original));
+        routed = {
+          ...original,
+          content: {
+            ...original.content,
+            text: [
+              "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+              "If the answer appears verbatim in the contextual documents, repeat it exactly.",
+              "Do not ask follow-up questions or invoke tools/actions when the contextual documents already answer the request.",
+              "",
+              "<contextual_documents>",
+              "Q: What are connectors?\nA: Connectors let Eliza read and quote your notes.",
+              "</contextual_documents>",
+              "",
+              "<user_request>",
+              original.content.text,
+              "</user_request>",
+            ].join("\n"),
+          },
+        };
+        inheritIncomingMessagePersistence(original, routed);
+      }
+      setDeviceReadReplyContext(runtime, routed, context);
       const outcome = await service.proposeWithOutcome(
         credential,
         params.operation,
@@ -312,6 +344,329 @@ async function fixture(
     apply,
   };
 }
+type Fixture = Awaited<ReturnType<typeof fixture>>;
+/** A new durable owner message in the fixture's room whose turn proposes `operation`. */
+function proposeFromOwnerText(
+  f: Fixture,
+  credential: Fixture["credential"],
+  text: string,
+  operation: DeviceOperation,
+) {
+  const scope = JSON.stringify([
+    f.runtime.agentId,
+    f.original.roomId,
+    credential.subjectUserId,
+  ]);
+  return withOwnerDeviceActionTurn(f.runtime, credential, async () => {
+    const nonce = randomUUID();
+    const message: Memory = {
+      ...f.original,
+      id: conversationClientUserMemoryId(scope, nonce),
+      createdAt: Date.now(),
+      content: {
+        text,
+        source: "client_chat",
+        channelType: "DM",
+        metadata: { agentActionMode: "direct-request-v1" },
+        chatIdempotency: {
+          version: 1,
+          scope,
+          clientMessageId: nonce,
+          fingerprint: "e".repeat(64),
+        },
+      },
+    };
+    await f.runtime.createMemory(message, "messages");
+    setDeviceReadReplyConversation(
+      f.runtime,
+      f.conversationId,
+      f.original.roomId,
+    );
+    setDeviceReadReplyContext(f.runtime, message, {
+      id: message.id!,
+      events: [
+        {
+          id: "owner",
+          type: "message",
+          message: { id: message.id!, role: "user", content: text },
+        },
+      ],
+    });
+    return f.service.proposeWithOutcome(
+      credential,
+      operation,
+      randomUUID(),
+      "Owner request",
+    );
+  });
+}
+async function checkDeliveredSenderDraft(threadId?: string) {
+  const f = await fixture();
+  try {
+    const credential = {
+      ...f.credential,
+      capabilities: [
+        ...f.credential.capabilities,
+        "sms.latest-sender.v1",
+        "sms.latest-sender.v2",
+        "sms.compose.v1",
+        "sms.compose.v2",
+      ],
+    };
+    const propose = (text: string, operation: DeviceOperation) =>
+      proposeFromOwnerText(f, credential, text, operation);
+    let preceding: Memory | undefined;
+    f.runtime.getMemories = vi.fn(async () => (preceding ? [preceding] : []));
+    const suffix = await propose(
+      "Who sent my latest SMS? Last four digits only.",
+      { type: "sms_latest_sender", includeAddress: true },
+    );
+    expect(suffix.request.payload.operation).toEqual({
+      type: "sms_latest_sender",
+    });
+    for (const text of [
+      "Who sent my latest SMS? Last two digits only.",
+      "Look up my latest SMS sender: ending digits, no full number.",
+    ]) {
+      await expect(
+        propose(text, { type: "sms_latest_sender", includeAddress: true }),
+      ).rejects.toThrow("Would you like the last four digits");
+    }
+    const read = await propose("Who sent my latest SMS?", {
+      type: "sms_latest_sender",
+    });
+    expect(read.request.payload.operation).toEqual({
+      type: "sms_latest_sender",
+      includeAddress: true,
+    });
+    const digest = deviceProposalDigest(read.request);
+    await f.service.decide(credential, read.request.id, digest, true);
+    const claimed = await f.service.claim(credential, read.request.id, digest);
+    const attempt = claimed.execution!.attemptId;
+    await f.service.receipt(credential, read.request.id, digest, attempt, {
+      outcome: "applied",
+      operationId: randomUUID(),
+      result: {
+        kind: "sms-latest-sender",
+        status: "found",
+        address: "+14155550123",
+        ...(threadId ? { threadId } : {}),
+      },
+    });
+    const hint = (await f.service.readCompletionHint(
+      credential,
+      read.request.id,
+      digest,
+      attempt,
+    ))!;
+    const reply = await f.service.completeReadReply(
+      credential,
+      hint,
+      new AbortController().signal,
+      async (entry) => {
+        preceding = {
+          id: entry.messageId as UUID,
+          entityId: f.runtime.agentId,
+          agentId: f.runtime.agentId,
+          roomId: f.original.roomId,
+          createdAt: Date.now(),
+          content: {
+            text: entry.text,
+            source: "client_chat",
+            inReplyTo: entry.inReplyTo as UUID,
+            metadata: {
+              deviceReadCompletion: {
+                proposalId: hint.proposalId,
+                attemptId: hint.attemptId,
+                requestId: hint.requestId,
+              },
+            },
+          },
+        };
+        await f.runtime.createMemory(preceding, "messages");
+      },
+    );
+    expect(reply.text).toContain("+14155550123");
+    const words =
+      "Draft a quick text asking them to bring the tripod tomorrow. Show me the draft here.";
+    const proposed: DeviceOperation = {
+      type: "sms_compose",
+      target: { kind: "number", number: "+14155550199" },
+      body: "Please bring the tripod tomorrow.",
+    };
+    const draft = await propose(words, proposed);
+    expect(draft.request.payload.operation).toEqual({
+      ...proposed,
+      target: { kind: "number", number: "+14155550123" },
+      draft: true,
+      ...(threadId ? { replyThreadId: threadId } : {}),
+    });
+    expect(draft.request.state).toBe("pending");
+    await expect(
+      propose(words, { ...proposed, draft: true, replyThreadId: "thread:99" }),
+    ).rejects.toThrow(
+      "Reply threads are resolved from the original sender lookup.",
+    );
+    for (const [text, target] of [
+      [
+        "Draft a text to Ada asking them to call +14155550199.",
+        { kind: "contact", query: "Ada" },
+      ],
+      [
+        "Draft a text to +14155550124 saying call +14155550199.",
+        { kind: "number", number: "+14155550124" },
+      ],
+      [
+        "Draft a text to four one five, five five five, oh one double oh saying call +14155550199.",
+        { kind: "number", number: "4155550100" },
+      ],
+    ] as const) {
+      const selected = await propose(text, proposed);
+      expect(selected.request.payload.operation).toEqual({
+        ...proposed,
+        target,
+        draft: true,
+      });
+    }
+    for (const text of [
+      "Draft a text asking them to bring the tripod. Actually send it to Ada instead.",
+      "Draft a text to +14155550124 or +14155550199 about the tripod.",
+      "Draft a text saying to call +14155550199.",
+      "Draft a quick text.",
+      "Draft a reply to this conversation.",
+    ]) {
+      await expect(propose(text, proposed)).rejects.toThrow("Which person");
+    }
+
+    preceding = {
+      ...preceding!,
+      id: randomUUID() as UUID,
+      content: { text: "A different conversation topic." },
+    };
+    await expect(propose(words, proposed)).rejects.toThrow(
+      "No current SMS sender",
+    );
+  } finally {
+    await f.pg.close();
+  }
+}
+it.each(["thread:42", undefined])(
+  "binds a follow-up Messages draft to the preceding delivered SMS sender on this phone and in this room (thread %s)",
+  checkDeliveredSenderDraft,
+);
+it("keeps an open-thread reply and refuses to turn an addressed draft into a send on a phone without targets", async () => {
+  const f = await fixture();
+  try {
+    const targets = {
+      ...f.credential,
+      capabilities: [
+        ...f.credential.capabilities,
+        "sms.latest-sender.v1",
+        "sms.latest-sender.v2",
+        "sms.compose.v1",
+        "sms.compose.v2",
+      ],
+    };
+    // "them" in a reply into the open thread is that thread, never a lookup.
+    const reply = await proposeFromOwnerText(
+      f,
+      targets,
+      "Reply to them saying I'm on my way",
+      { type: "sms_reply_selected", body: "I'm on my way" },
+    );
+    expect(reply.request.payload.operation).toEqual({
+      type: "sms_reply_selected",
+      body: "I'm on my way",
+    });
+    const selected = { type: "sms_reply_selected", body: "hi" } as const;
+    const addressed = await proposeFromOwnerText(
+      f,
+      targets,
+      "Draft a text to Sam saying hi",
+      selected,
+    );
+    expect(addressed.request.payload.operation).toEqual({
+      type: "sms_compose",
+      target: { kind: "contact", query: "Sam" },
+      body: "hi",
+      draft: true,
+    });
+    await expect(
+      proposeFromOwnerText(
+        f,
+        targets,
+        "Reply to them, no wait, to Sam, saying hi",
+        selected,
+      ),
+    ).rejects.toThrow("Which person");
+    // A request that also asks to send keeps the model's reviewed send, with
+    // its one recipient grounded; it is neither refused nor made a draft.
+    for (const [request, query, body] of [
+      [
+        "Compose a message saying I'm late and send it to Sam",
+        "Sam",
+        "I'm late",
+      ],
+      [
+        "Write a text to Mom saying happy birthday and send it",
+        "Mom",
+        "happy birthday",
+      ],
+    ] as const) {
+      const send = {
+        type: "sms_compose",
+        target: { kind: "contact", query },
+        body,
+      } as const;
+      const sent = await proposeFromOwnerText(f, targets, request, send);
+      expect(sent.request.payload.operation).toEqual(send);
+      expect(sent.request.state).toBe("pending");
+    }
+    // A send to anyone but the addressed recipient is not kept: it becomes
+    // the draft to the person the owner addressed.
+    const elsewhere = await proposeFromOwnerText(
+      f,
+      targets,
+      "Write a text to Mom saying Dad is home and send it",
+      {
+        type: "sms_compose",
+        target: { kind: "contact", query: "Dad" },
+        body: "is home",
+      },
+    );
+    expect(elsewhere.request.payload.operation).toEqual({
+      type: "sms_compose",
+      target: { kind: "contact", query: "Mom" },
+      body: "is home",
+      draft: true,
+    });
+    const v1 = {
+      ...f.credential,
+      capabilities: [
+        ...f.credential.capabilities,
+        "sms.compose.v1",
+        "sms.send.v1",
+      ],
+    };
+    const proposals: DeviceOperation[] = [
+      selected,
+      { type: "sms_compose", query: "Samuel", body: "hi" },
+      {
+        type: "sms_send",
+        recipients: ["+14155550199"],
+        body: "hi",
+        subscriptionId: 3,
+      },
+    ];
+    for (const proposed of proposals) {
+      await expect(
+        proposeFromOwnerText(f, v1, "Draft a text to Sam saying hi", proposed),
+      ).rejects.toThrow("An addressed Messages draft is unavailable");
+    }
+  } finally {
+    await f.pg.close();
+  }
+});
 it("additively upgrades existing approvals; fresh original read is bound privately, legacy and replay never rebind", async () => {
   const f = await fixture();
   try {
@@ -396,6 +751,48 @@ it("uses the approved immutable snapshot in one actual no-tools reply and caches
       ),
     ).toEqual(reply);
     expect(f.model).toHaveBeenCalledTimes(1);
+  } finally {
+    await f.pg.close();
+  }
+});
+// "read my notes" and "show my notes" reach the chat route's document gate
+// against the bundled FAQ, so the planner sees a prompt-only envelope around
+// the owner's words. The read's original binding is the stored words; a reply
+// must still be completed for it.
+it("a document-augmented original read completes against the owner's stored words", async () => {
+  const f = await fixture({ augmented: true });
+  try {
+    const attempt = await f.apply();
+    const hint = await f.service.readCompletionHint(
+      f.credential,
+      f.outcome.request.id,
+      f.digest,
+      attempt,
+    );
+    expect(hint).toBeTruthy();
+    const reply = await f.service.prepareReadReply(
+      f.credential,
+      hint!,
+      new AbortController().signal,
+    );
+    expect(reply).toMatchObject({
+      text: "Closed synthetic body.",
+      conversationId: f.conversationId,
+      inReplyTo: f.original.id,
+    });
+    expect(f.model).toHaveBeenCalledTimes(1);
+    // A replaced stored request is still refused.
+    await f.pg.query(
+      "UPDATE original_memories SET data=jsonb_set(data,'{content,text}','\"Replacement request\"'::jsonb) WHERE id=$1",
+      [f.original.id],
+    );
+    await expect(
+      f.service.prepareReadReply(
+        f.credential,
+        hint!,
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow("Original read request changed");
   } finally {
     await f.pg.close();
   }

@@ -17,6 +17,11 @@ import {
   validatePhoneDialResult,
 } from "./phone-dial-contract.ts";
 import {
+  isLibraryOperation,
+  type LibraryAgentOperation,
+  validateLibraryResult,
+} from "./photo-library-contract.ts";
+import {
   isPhotosViewOperation,
   type PhotosViewOperation,
   validatePhotosViewResult,
@@ -146,6 +151,25 @@ export function deviceActionEffectReceipts(
         }),
       ];
     }
+    if (isLibraryOperation(operation)) {
+      // Search and inspect read metadata, select changes only what Photos shows, and a
+      // review result proves only that the owner review opened in Photos.
+      validateLibraryResult(operation, provider.result);
+      return [
+        normalizeEffectReceipt({
+          ...base,
+          receiptId: execution.attemptId,
+          operation: "device." + operation.type,
+          resource: { kind: "device.operation", id: provider.operationId },
+          idempotency: {
+            key: execution.providerIdempotencyKey,
+            replayed: false,
+          },
+          outcome: "noop",
+          reason: libraryReceiptReason(operation),
+        }),
+      ];
+    }
     // A stored telephony result that names no observed effect or returned item
     // never becomes an applied receipt, whatever outcome the stored receipt
     // carries. A call receipt proves a started call, never a connected one.
@@ -187,7 +211,9 @@ export function deviceActionEffectReceipts(
               outcome: "noop",
               reason: noMatch
                 ? "The reviewed name matched no local record; no resource was changed."
-                : "Retrieved the immutable historical selected-read snapshot; no resource was changed or reread.",
+                : operation.type === "contact_show"
+                  ? "Changed only what Contacts shows; no contact was changed or shared."
+                  : "Retrieved the immutable historical selected-read snapshot; no resource was changed or reread.",
             }
           : {
               ...evidence,
@@ -273,6 +299,18 @@ function photosViewReceiptReason(operation: PhotosViewOperation): string {
   }
 }
 
+function libraryReceiptReason(operation: LibraryAgentOperation): string {
+  switch (operation.type) {
+    case "photo_library_search":
+    case "photo_library_inspect":
+      return "Read library item details on the phone; no media was changed or shared.";
+    case "photo_library_select":
+      return "Changed only what Photos selects; no media was changed or shared.";
+    case "photo_library_review":
+      return "Opened the review in Photos; nothing changes or leaves the phone until the owner confirms there.";
+  }
+}
+
 /** Exhaustive closed operation union: new operations require explicit classification. */
 function deviceOperationIsRead(operation: DeviceOperation): boolean {
   switch (operation.type) {
@@ -288,19 +326,28 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "read_calendar_range":
     case "read_selected_reminders":
     case "messages_read_selected":
+    case "sms_latest_sender":
     case "voicemail_read_selected":
+    case "contact_read_selected":
       return true;
     case "calendar_named":
       return operation.action === "read";
     // View state only: no data change (receipts are built by photosViewReceiptReason).
     case "photos_filter":
     case "photos_open":
+    case "photo_library_search":
+    case "photo_library_inspect":
+    case "photo_library_select":
     case "files_filter":
     case "files_open":
+    case "contact_show":
+    // The keypad in front, filled in at most: nothing is dialed or called.
+    case "phone_keypad":
       return true;
     // A data change and an outward share, each opened as an owner review.
     case "photos_album_create":
     case "photos_share":
+    case "photo_library_review":
     case "files_share":
     case "files_move":
     case "files_trash":
@@ -335,6 +382,12 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "reminder_create":
     case "open_view":
     case "browser_navigate":
+    case "browser_search":
+    case "browser_tab_new":
+    case "browser_tab_switch":
+    case "browser_tab_close":
+    case "browser_find":
+    case "browser_history":
     case "notes_filter":
     case "notes_list_filter":
     case "notes_move":

@@ -1,0 +1,44 @@
+{
+  "sources": [
+    "plugins/plugin-personal-assistant/src/actions/app-block.ts",
+    "plugins/plugin-personal-assistant/src/actions/website-block.ts",
+    "plugins/plugin-personal-assistant/test/app-block-stated-duration.test.ts",
+    "plugins/plugin-personal-assistant/quint/check-app-block-stated-duration.mjs"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-app-block-stated-duration.mjs",
+  "bounds": "One owner BLOCK target=app request on Android for Instagram (`com.instagram.android`), with YouTube also installed. The app is selected by planner packageNames, named by display name in the intent text, or answered by the app-block planning model. The action planner sends no durationMinutes, 45 or 0.4. The message says nothing about the length, `for 2 hours`, `for 90 minutes`, `for 1.5 hours` or `until I unblock it`. The planning model, which only the third path asks, answers with no durationMinutes, 60 or 0.4. The conformance script replays every generated request through the production runAppBlockHandler on a PGlite-backed runtime with a canonical owner and requires all 75 requests (15 explicit, 15 named in the intent, 45 from the planning model). The device is registered through the production registerNativeAppBlockerBackend seam and follows the Android plugin: parseDurationMinutes cuts the number to whole minutes, and a missing value or a value below one minute keeps the block with no end time. The planning model's answer is controlled by the test. iOS app tokens (the iPhone plugin refuses a timed block), lengths in seconds or days, string durations, other phrasings of a length, unblock and status are not covered by this model. Under weak fairness of the handler step every request is eventually handled. Explicit stuttering lets the handler never run, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "app-block-stated-duration",
+      "main": "AppBlockStatedDuration",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "PlannerDurationWins",
+        "SilentRequestUsesPlan",
+        "StatedLengthKept",
+        "TimedRequestEnds",
+        "TypeOK"
+      ],
+      "temporal": ["Settles", "SettlesWithoutFairness"],
+      "maxSteps": 4,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "Settles",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled handler step eventually runs (weak fairness). This checks that every request is then handled, not how long the native call takes."
+          ]
+        },
+        {
+          "property": "SettlesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The handler may never run after a request, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}
