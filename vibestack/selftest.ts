@@ -921,6 +921,8 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     const shown = pending(root, readSpecs(root)[0]).filter((p) => p.cited).map(showPending);
     const line = read("spec/index.md", root).split("\n").indexOf("### No more can be removed than the order holds") + 1;
     assert.deepEqual(shown, [`spec/index.md:${line}  Story: Change my mind / No more can be removed than the order holds\n      prose changed: update the model to match, or confirm it already does\n      cited by test/app.test.vibe:19: read them again against it`]);
+    fs.writeFileSync(path.join(root, "test/app.test.vibe"), "\n" + read("test/app.test.vibe", root));
+    assert.deepEqual(pending(root, readSpecs(root)[0]).flatMap((p) => p.cited ?? []), ["test/app.test.vibe:20"]);
   });
 
   test("a shell written for a transition the spec has since renamed no longer fits the generated contract", async () => {
@@ -2237,7 +2239,7 @@ function eachCheck() {
   });
 
   test("a process that outlives a reinstall of Quint, as watch does, keys what it runs and simulates by the Quint installed now, and remembers its runs again", { skip: process.platform === "win32" }, async () => {
-    const root = toolchain(scratch({}));
+    const root = toolchain(scratch({}), "lsc");
     const log = path.join(root, "quint.log");
     const shim = path.join(root, "node_modules/.bin/quint");
     const scope = path.join(root, "node_modules/@informalsystems");
@@ -2245,20 +2247,27 @@ function eachCheck() {
     const original = fs.readFileSync(path.join(nodeModules, "@informalsystems/quint/package.json"), "utf8");
     fs.unlinkSync(scope);
     fs.mkdirSync(path.dirname(manifest), { recursive: true });
-    fs.writeFileSync(manifest, original);
+    const direct = JSON.parse(original);
+    fs.writeFileSync(manifest, JSON.stringify({ ...direct, dependencies: { ...direct.dependencies, "quint-dependency": "*" } }));
+    const dependency = path.join(scope, "quint/node_modules/quint-dependency/package.json");
+    fs.mkdirSync(path.dirname(dependency), { recursive: true });
+    fs.writeFileSync(dependency, JSON.stringify({ name: "quint-dependency", version: "1.0.0" }));
     const install = (build: string) => fs.writeFileSync(shim, `#!/bin/sh\necho ${build} >> '${log}'\necho '{}' > ir.json\n`, { mode: 0o755 });
     install("first");
     const script = [
       'const fs = await import("node:fs");',
       `const { act } = await import(${JSON.stringify(path.join(root, "vibestack/action.ts"))});`,
-      `const { entry } = await import(${JSON.stringify(path.join(root, "vibestack/cache.ts"))});`,
+      `const { entry, steady } = await import(${JSON.stringify(path.join(root, "vibestack/cache.ts"))});`,
       'const memory = { root: ".", fresh: false, used: new Set() };',
       `const runs = async () => { await act(memory, "quint", ["typecheck"], "typed", { "a.qnt": { text: "module a {}", key: "a" } }); return fs.readFileSync(${JSON.stringify(log)}, "utf8").trim().split("\\n"); };`,
       'const simulation = async () => (await entry(".", "simulate", ["same"])).name;',
       'const said = { before: [await runs(), await runs()], simulation: await simulation() };',
       `fs.writeFileSync(${JSON.stringify(shim)}, fs.readFileSync(${JSON.stringify(shim)}, "utf8").replace("first", "second"));`,
       `fs.writeFileSync(${JSON.stringify(manifest)}, JSON.stringify({ ...JSON.parse(fs.readFileSync(${JSON.stringify(manifest)}, "utf8")), version: "0.0.0-reinstalled" }));`,
-      'console.log(JSON.stringify({ ...said, after: [await runs(), await runs()], reinstalled: await simulation() }));',
+      'const reinstalled = await steady(async () => ({ after: [await runs(), await runs()], reinstalled: await simulation(), proof: (await entry(".", "prove", ["same"])).name }));',
+      `fs.writeFileSync(${JSON.stringify(dependency)}, JSON.stringify({ name: "quint-dependency", version: "1.0.1" }));`,
+      'const dependency = await steady(async () => ({ runs: [await runs(), await runs()], simulation: await simulation(), proof: (await entry(".", "prove", ["same"])).name }));',
+      'console.log(JSON.stringify({ ...said, ...reinstalled, dependency }));',
     ].join("\n");
     const r = await exec(process.execPath, ["--input-type=module", "--eval", script], root);
     assert.equal(r.status, 0, r.stderr);
@@ -2266,6 +2275,10 @@ function eachCheck() {
     assert.deepEqual(said.before, [["first"], ["first"]], "a run is remembered");
     assert.deepEqual(said.after, [["first", "second"], ["first", "second"]], "the Quint installed since runs, and its run is remembered");
     assert.notEqual(said.reinstalled, said.simulation, "a simulation is keyed by the Quint installed now");
+
+    assert.notEqual(said.dependency.simulation, said.reinstalled, "a dependency reinstalled under the same Quint launcher changes the simulation identity");
+    assert.equal(said.dependency.proof, said.proof, "the independent LemmaScript proof stays current");
+    assert.deepEqual(said.dependency.runs, [["first", "second", "second"], ["first", "second", "second"]], "Quint runs again for the changed dependency, once");
 
     const shims = path.join(scratch({}), "node_modules/.bin");
     fs.mkdirSync(shims, { recursive: true });
@@ -2276,7 +2289,7 @@ function eachCheck() {
     fs.mkdirSync(path.dirname(explorer), { recursive: true });
     const identities = async (version?: string) => {
       fs.writeFileSync(explorer, JSON.stringify({ ...JSON.parse(shipped), version }));
-      const r = await exec(process.execPath, ["--input-type=module", "--eval", `const { installedPackages } = await import(${JSON.stringify(path.join(root, "vibestack/action.ts"))});
+      const r = await exec(process.execPath, ["--input-type=module", "--eval", `const { installedPackages } = await import(${JSON.stringify(path.join(root, "vibestack/cache.ts"))});
         console.log(JSON.stringify([installedPackages(${JSON.stringify(path.join(shims, "lsc"))}, "lemmascript"), installedPackages(${JSON.stringify(path.join(shims, "bombadil"))}, "@antithesishq/bombadil")]));`], root);
       return r.status === 0 ? JSON.parse(r.stdout) : r.stderr;
     };
@@ -3101,13 +3114,17 @@ describe("the documents name what exists", () => {
     const [docs, examples, ...tools] = ["selftest:docs", "selftest:examples", ...shards].map((task) => new Set([...global, ...Object.keys(plan.tasks.find((t) => t.taskId === `//#${task}`)!.inputs)]));
     const tracked = (await exec("git", ["ls-files"], project)).stdout.trim().split("\n").filter((file) => fs.lstatSync(path.join(project, file)).isFile());
     const missed = (hashed: Set<string>, read: (file: string) => boolean) => tracked.filter((file) => read(file) && !hashed.has(file));
+    const workspace = (file: string) => /^(apps|packages|spec)\//.test(file);
+    const [shardA, shardB, packed] = tools;
     assert.deepEqual({
       docs: missed(docs, () => true),
       examples: missed(examples, (file) => /^vibestack\/(examples\/|(?!studio\/|fixtures\/|(testing|stories|design)\/test\/))/.test(file)),
-      tools: tools.flatMap((hashed) => missed(hashed, (file) => PACKED.includes(file) || /^(vibestack\/(?!examples\/)|vibestack\/examples\/order\/|packages\/|apps\/[^/]+\/package\.json$|spec\/|\.agents\/skills\/)/.test(file))),
+      tools: tools.flatMap((hashed) => missed(hashed, (file) => PACKED.includes(file) || /^(vibestack\/(?!examples\/)|vibestack\/examples\/order\/|\.agents\/skills\/)/.test(file))),
+      packed: missed(packed, workspace),
+      workspaceInFixtures: [shardA, shardB].flatMap((hashed) => [...hashed].filter(workspace)),
       examplesInTools: tools.flatMap((hashed) => [...hashed]).filter((file) => /^vibestack\/examples\/(?!order\/)/.test(file)),
       selftestInGlobal: global.filter((file) => /^vibestack\/(selftest|remote-cache)\.ts$|\/test\//.test(file)),
-    }, { docs: [], examples: [], tools: [], examplesInTools: [], selftestInGlobal: [] });
+    }, { docs: [], examples: [], tools: [], packed: [], workspaceInFixtures: [], examplesInTools: [], selftestInGlobal: [] });
     assert.deepEqual([shards, listed("selftest").sort(), listed("verify").filter((task) => task.includes("selftest")).sort()],
       [["selftest:tools:a", "selftest:tools:b", "selftest:tools:rest"], selftests.map((task) => `//#${task}`), selftests.map((task) => `//#${task}`)], "pnpm selftest and pnpm verify run every selftest task");
     const each = "the tools each check catches its own kind of mistake";
@@ -3125,10 +3142,11 @@ describe("the documents name what exists", () => {
     const release = read(".github/workflows/release.yml");
     assert.match(release, /^ +- run: pnpm selftest --only --concurrency=1$/m);
     const releasePrerequisites = release.match(/^ +- run: pnpm all (.+) --concurrency=1$/m)?.[1].split(" ").sort();
-    assert.deepEqual(releasePrerequisites, JSON.parse(read("turbo.json")).tasks["//#selftest:tools:a"].dependsOn.toSorted(), "a release materializes every prerequisite before using the isolated CI shard cache");
+    assert.match(scripts.prepare, /^node vibestack\/spec\.ts tasks \/\/#build && /);
+    assert.deepEqual(["//#build", ...releasePrerequisites ?? []].sort(), JSON.parse(read("turbo.json")).tasks["//#selftest:tools:a"].dependsOn.toSorted(), "pack and the release tasks materialize every prerequisite before using the isolated CI shard cache");
     assert.deepEqual(read(".github/workflows/fuzz.yml").match(/^ +shard: \[(.+)\]$/m)?.[1].split(", "), shards.map((task) => task.split(":")[2]), "the nightly run names every shard");
-    const [first, ...others] = shards.map((task) => JSON.parse(read("turbo.json")).tasks[`//#${task}`]);
-    assert.deepEqual(others, others.map(() => first), "the shards wait for the same tasks and are keyed by the same files");
+    const [first, ...others] = shards.map((task) => JSON.parse(read("turbo.json")).tasks[`//#${task}`].dependsOn);
+    assert.deepEqual(others, others.map(() => first), "the shards wait for the same integration prerequisites");
     assert.deepEqual(fs.readdirSync(path.join(project, ".github/workflows")).filter((flow) => /\bdevelop\b/.test(read(`.github/workflows/${flow}`))), [], "main is the only long-lived branch");
   });
 
@@ -3226,7 +3244,7 @@ function theCommandLine() {
     fs.writeFileSync(path.join(root, "packages/app/package.json"), JSON.stringify({ name: "app" }));
     fs.symlinkSync(nodeModules, path.join(root, "node_modules"), "dir");
     fs.symlinkSync(path.dirname(script), path.join(root, "vibestack"), "dir");
-    const prepare = (hosted: boolean) => exec(process.execPath, [script, "gen", "--install"], root, { ...process.env, GITHUB_ACTIONS: String(hosted), TURBO_CACHE: "local:rw", TURBO_TOKEN: "" });
+    const prepare = (hosted: boolean, job = "verify") => exec(process.execPath, [script, "gen", "--install"], root, { ...process.env, GITHUB_ACTIONS: String(hosted), GITHUB_JOB: job, TURBO_CACHE: "local:rw", TURBO_TOKEN: "" });
     for (const hosted of [false, true]) {
       const invalid = await prepare(hosted);
       assert.equal(invalid.status, 0, invalid.stderr);
@@ -3234,6 +3252,10 @@ function theCommandLine() {
       assert.equal((await import(path.join(root, "gen/value.ts"))).answer, 42);
     }
     fs.writeFileSync(path.join(root, "spec/value.md"), ruleSpec("pure val answer = 43", "A value"));
+    fs.rmSync(path.join(root, "gen/value.ts"));
+    const fixtures = await prepare(true, "vibestack-fixture-selftests");
+    assert.equal(fixtures.status, 0, fixtures.stderr);
+    assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
     const installed = await prepare(true);
     assert.equal(installed.status, 0, installed.stderr);
     assert.doesNotMatch(installed.stdout, /gen\/ was not generated/);

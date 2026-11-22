@@ -402,6 +402,8 @@ commit when you need the tool self-test results for that revision.
 The task entry point disables Turbo telemetry. Local `selftest:tools` tasks wait for the
 root and Studio tests. In CI, the verify job runs those integration tests once.
 Each dedicated shard uses Turbo's `--only` after setup builds the toolchain.
+The two fixture-only shards skip application generation and use only their own
+inputs. The remaining shard still checks the packed workspace.
 Release materializes the prerequisites before running the isolated shards.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials

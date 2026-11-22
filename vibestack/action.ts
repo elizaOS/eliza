@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { entry, executableDigest, recall, store, verifiedNow, verifierIdentity, type Memory } from "./cache.ts";
-import { NEEDS_DAFNY, bin, exec, stamp } from "./run.ts";
+import { entry, executableDigest, installedProgram, recall, stableInstallation, store, verifiedNow, verifierIdentity, type Memory } from "./cache.ts";
+import { NEEDS_DAFNY, exec, stamp } from "./run.ts";
 import { SIMULATOR, TABLE } from "./simulator.ts";
 
 /** A file a tool reads: its text, and what of the text decides the run, which is what the run is remembered under. */
@@ -19,44 +19,6 @@ export const completed = (r: Ran) => (r.ok || violated(r)) && Object.keys(r.file
 /** Dafny's closing line, with the failures it counts beside its errors. */
 const DAFNY_SUMMARY = /^Dafny program verifier finished with \d+ verified, \d+ errors?((?:, \d+ [a-z ]+)*)$/m;
 
-/** Where Node would find a package from `from`, as installed. */
-function installed(name: string, from: string): string | undefined {
-  for (let dir = from; ; dir = path.dirname(dir)) {
-    const at = path.join(dir, "node_modules", name);
-    if (path.basename(dir) !== "node_modules" && fs.existsSync(path.join(at, "package.json"))) return fs.realpathSync(at);
-    if (dir === path.dirname(dir)) return undefined;
-  }
-}
-
-/** A package and every package it may load, by name and version. */
-function packages(dir: string, found = new Map<string, string>()): Map<string, string> {
-  if (found.has(dir)) return found;
-  const { name, version, dependencies, optionalDependencies } = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
-  found.set(dir, `${name}@${version}`);
-  for (const dep of Object.keys({ ...dependencies, ...optionalDependencies })) {
-    const at = installed(dep, dir);
-    if (at) packages(at, found);
-  }
-  return found;
-}
-
-/** What tells each program installed as a package from another, by the program and its launcher as it was when read. */
-const programs = new Map<string, Promise<string>>();
-
-/**
- * The package `name` that the executable `exe` runs, and every package it may load, by name and version: installed
- * beside the executable, or, for one a package manager exposes from a dependency of these tools, where they load it.
- */
-export function installedPackages(exe: string, name: string): string[] {
-  const at = installed(name, path.resolve(exe, "../../..")) ?? installed(name, import.meta.dirname);
-  const found = at && packages(at);
-  if (!found || /@undefined$/.test(found.get(at)!)) throw new Error(`no ${name} with a version is installed beside ${exe} or these tools; run pnpm install`);
-  return [...found.values()].sort();
-}
-
-/** An executable of the toolchain's dependencies, told apart by its launcher, every package it loads, and the Node and platform that run them. */
-const packaged = (exe: string, name: string) => [executableDigest(exe), ...installedPackages(exe, name), `node@${process.versions.node}:${process.platform}:${process.arch}`].join(" ");
-
 /** Whether Dafny refused a file it could not parse or resolve, which it does again for the same file. */
 const refused = (r: Ran) => r.status === 2 && /^\d+ (?:resolution\/type|parse) errors? detected in /m.test(r.out);
 
@@ -73,20 +35,19 @@ const declined = (r: Ran) => r.status === 1 && /^(?:ERROR|WARNING): /m.test(r.st
  * verification that counts no failure but the ones it would count again, obligations not proved or out of resources. A
  * run that ran out of time or memory, failed for want of a file, a process or a program, or was stopped, is tried again.
  */
-interface Tool { installs?: string; launcher?: string; script?: string; answered: (args: string[], r: Ran) => boolean }
+interface Tool { launcher?: "quint" | "lsc"; script?: string; answered: (args: string[], r: Ran) => boolean }
 const TOOLS = {
   quint: {
-    installs: "@informalsystems/quint",
+    launcher: "quint",
     answered: (args: string[], r: Ran) => args[0] === "typecheck" ? r.ok && Object.keys(r.files).length > 0 : completed(r),
   },
   simulator: {
-    installs: "@informalsystems/quint",
     launcher: "quint",
     script: SIMULATOR,
     answered: (args: string[], r: Ran) => args[0] === "compile" ? r.ok && Object.hasOwn(r.files, TABLE) : completed(r),
   },
   lsc: {
-    installs: "lemmascript",
+    launcher: "lsc",
     answered: (_args: string[], r: Ran) => declined(r) || (r.ok && Object.keys(r.files).some((f) => f.endsWith(".dfy.gen"))),
   },
   dafny: {
@@ -105,13 +66,12 @@ const TOOLS = {
  * names the program installed now.
  */
 export async function act(memory: Memory, tool: keyof typeof TOOLS, args: string[], dir: string, files: Record<string, Input>): Promise<Ran> {
-  const { installs, launcher = tool, script, answered }: Tool = TOOLS[tool];
-  const exe = installs ? bin(launcher, memory.root) : tool;
-  const program = script ? [exe, script] : [exe];
-  const since = installs ? stamp(program) : "";
-  const key = `${program.join("\0")}\0${since}`;
-  if (installs && !programs.has(key)) programs.set(key, Promise.resolve(exe).then((exe) => [packaged(exe, installs), ...program.slice(1).map(executableDigest)].join(" ")).catch((e) => { programs.delete(key); throw e; }));
-  const id = installs ? await programs.get(key)! : await verifierIdentity();
+  const { launcher, script, answered }: Tool = TOOLS[tool];
+  const installed = launcher && installedProgram(memory.root, launcher);
+  if (launcher && !installed) throw new Error(`${launcher} is not installed; run pnpm install`);
+  const exe = installed?.exe ?? tool;
+  const since = script && stamp([script]);
+  const id = installed ? installed.id + (script ? ` ${executableDigest(script)}` : "") : await verifierIdentity();
   const at = await entry(memory.root, "action", [id, JSON.stringify(args), ...Object.keys(files).sort().flatMap((f) => [f, files[f].key])]);
   const known = recall<Ran>(memory, at);
   if (known) return known;
@@ -123,6 +83,6 @@ export async function act(memory: Memory, tool: keyof typeof TOOLS, args: string
   const written = fs.readdirSync(where, { withFileTypes: true }).filter((f) => f.isFile() && !Object.hasOwn(files, f.name)).map((f) => f.name).sort();
   const ran: Ran = { ok: r.status === 0 && !r.stopped, status: r.status, out: `${r.stdout}${r.stderr}${r.stopped ? `\n${r.stopped}\n` : ""}`, stderr: r.stderr, stopped: r.stopped,
     files: Object.fromEntries(written.map((f) => [f, fs.readFileSync(path.join(where, f), "utf8")])) };
-  if (!ran.stopped && answered(args, ran) && (installs ? stamp(program) === since : await verifiedNow() === id)) store(memory, at, ran);
+  if (!ran.stopped && answered(args, ran) && stableInstallation(installed ? installed.unchanged() && (!script || stamp([script]) === since) : await verifiedNow() === id)) store(memory, at, ran);
   return ran;
 }
