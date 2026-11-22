@@ -37,7 +37,7 @@ export function pageCommand(
   validateOnly = false,
   host = undefined,
 ) {
-  const policy = command.taskPolicy;
+  const policy = command?.taskPolicy;
   const denied = () => ({
     error: {
       kind: "POLICY_BLOCKED",
@@ -112,6 +112,7 @@ export function pageCommand(
       domRevision: 0,
       inputRevision: 0,
       ownedHosts: host?.ownedHosts ?? new WeakSet(),
+      fromDocumentStart: command === null && document.readyState === "loading",
       editedFields: new WeakSet(),
       roots: new WeakSet(),
     };
@@ -136,11 +137,13 @@ export function pageCommand(
     monitor.observer = new MutationObserver(monitor.recordMutations);
     const input = (event) => {
       monitor.inputRevision++;
-      if (
-        ["input", "change"].includes(event?.type) &&
-        is(event.target, "Element")
-      )
+      if (is(event?.target, "Element")) {
         monitor.editedFields.add(event.target);
+        for (const item of event.composedPath()) {
+          if (is(item, "HTMLElement") && item.isContentEditable)
+            monitor.editedFields.add(item);
+        }
+      }
     };
     const press = (event) => {
       if (event.isTrusted) input();
@@ -163,6 +166,7 @@ export function pageCommand(
     monitor.watch(document);
     store[monitorKey] = monitor;
   }
+  if (command === null) return;
   // Drain queued mutations synchronously as an effect may arrive before the
   // MutationObserver microtask. Never store or return form values in this monitor.
   monitor.recordMutations(monitor.observer.takeRecords());
@@ -687,10 +691,12 @@ export function pageCommand(
             .filter(Boolean)
             .join(" ") || null,
         sensitive: sensitivity(node),
-        ...(is(node, "HTMLInputElement") ||
-        is(node, "HTMLSelectElement") ||
-        is(node, "HTMLTextAreaElement") ||
-        node.isContentEditable
+        ...((is(node, "HTMLInputElement") ||
+          is(node, "HTMLSelectElement") ||
+          is(node, "HTMLTextAreaElement") ||
+          node.isContentEditable) &&
+        ((monitor.fromDocumentStart && node.ownerDocument === document) ||
+          monitor.editedFields.has(node))
           ? { edited: monitor.editedFields.has(node) }
           : {}),
         // A select can have a valid choice whose internal value is empty.
@@ -812,6 +818,13 @@ export function pageCommand(
     const forms = scan.parts.flatMap(({ root }) => [
       ...root.querySelectorAll("form"),
     ]);
+    const semanticForm = '[role~="form" i]';
+    const ownedRegions = scan.parts.flatMap(({ root }) =>
+      [...root.querySelectorAll(`form[aria-owns],${semanticForm}[aria-owns]`)]
+        .flatMap((form) => form.getAttribute("aria-owns").trim().split(/\s+/))
+        .map((id) => root.getElementById(id))
+        .filter((element) => element !== null),
+    );
     // Position of an element among its siblings with the same tag, counted
     // once per parent.
     const typeIndexes = new Map();
@@ -956,6 +969,10 @@ export function pageCommand(
       });
       const state = controlState(node);
       const form = node.form ?? node.closest("form");
+      const landmark = node.closest(semanticForm);
+      const semanticOwner =
+        (landmark !== null && !is(landmark, "HTMLFormElement")) ||
+        ownedRegions.some((region) => region.contains(node));
       // A button that sends its form when pressed.
       const submits = submitControl(node) && node.form !== null;
       const hint = (value) => withoutSecrets(value?.trim() || null);
@@ -1010,13 +1027,15 @@ export function pageCommand(
               : null;
           })(),
         ),
-        form: form
-          ? {
-              index: forms.indexOf(form),
-              name: hint(groupName(form)),
-              sends: formSends(form),
-            }
-          : null,
+        form: semanticOwner
+          ? { index: -1, name: null, sends: form ? formSends(form) : null }
+          : form
+            ? {
+                index: forms.indexOf(form),
+                name: hint(groupName(form)),
+                sends: formSends(form),
+              }
+            : null,
         group: hint(groupName(node.closest("fieldset,[role=group]"))),
         submits,
         sends: submits ? sendsOf(node, node.form) : null,
