@@ -70,7 +70,7 @@ public final class CloudPasswordBackup {
       .appendQueryParameter("clientId", clientId).appendQueryParameter("environment", environment)
       .appendQueryParameter("redirectUri", this.callback.toString())
       .appendQueryParameter("state", state).appendQueryParameter("codeChallenge", challenge)
-      .appendQueryParameter("codeChallengeMethod", "S256").appendQueryParameter("purpose", purpose.value).build();
+      .appendQueryParameter("codeChallengeMethod", "S256").appendQueryParameter("purpose", purpose.value()).build();
   }
 
   public synchronized void cancel() { pending = null; }
@@ -113,7 +113,7 @@ public final class CloudPasswordBackup {
     if (!current.getAsBoolean()) throw new IOException("Password backup account changed");
     JSONObject input = new JSONObject()
         .put("clientId", clientId).put("environment", environment)
-        .put("redirectUri", this.callback.toString()).put("purpose", expected.value)
+        .put("redirectUri", this.callback.toString()).put("purpose", expected.value())
         .put("state", attempt.state).put("verifier", attempt.verifier)
         .put("code", callback.getQueryParameter("code"));
     HttpsURLConnection request = PasswordBackupApproval.connect(apiOrigin.resolve(PATH + "/exchange"), "POST", attempt.account.token());

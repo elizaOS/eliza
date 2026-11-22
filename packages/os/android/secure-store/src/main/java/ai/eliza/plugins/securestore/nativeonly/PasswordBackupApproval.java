@@ -17,9 +17,10 @@ public final class PasswordBackupApproval {
 
   public enum Purpose {
     READ("read", "GET"), SAVE("save", "PUT"), DELETE("delete", "DELETE"), VERIFY("verify", null);
-    final String value;
+    private final String value;
     private final String method;
     Purpose(String value, String method) { this.value = value; this.method = method; }
+    public String value() { return value; }
   }
 
   public record Response(int status, String revision, byte[] ciphertext) {}
@@ -65,6 +66,23 @@ public final class PasswordBackupApproval {
     if (!current.getAsBoolean()) throw new IOException("Password backup account changed");
     return new PasswordBackupApproval(endpoint, purpose, grant.code() instanceof String value ? value : null,
       state, verifier, grant.scope(), expected, revision, present, current);
+  }
+
+  public static PasswordBackupApproval admitNative(URI endpoint, Purpose purpose, String state, String verifier, Owner expected, Grant grant, BooleanSupplier current) throws IOException {
+    if (!(grant.code() instanceof String code) || !code.matches(CODE)) throw new IOException("Invalid native password backup approval");
+    Grant operation = purpose == Purpose.VERIFY
+      ? new Grant(null, grant.scope(), grant.ownerId(), grant.organizationId(), grant.revision(), grant.present())
+      : grant;
+    return admit(endpoint, purpose, state, verifier, expected, operation, current);
+  }
+
+  public static boolean advertisesNativeV2(URI endpoint) throws IOException {
+    HttpsURLConnection request = connect(endpoint, "GET", null);
+    try {
+      return request.getResponseCode() == 204 && "2".equals(request.getHeaderField("X-Password-Backup-Version"));
+    } finally {
+      request.disconnect();
+    }
   }
 
   public String scope() { return scope; }
