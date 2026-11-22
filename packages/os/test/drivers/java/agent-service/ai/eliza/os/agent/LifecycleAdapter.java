@@ -26,10 +26,20 @@ public final class LifecycleAdapter {
   private static final BigDecimal SAFE = BigDecimal.valueOf(9_007_199_254_740_991L);
   private static final String ACCOUNT = "account-a";
 
+  private static final class HoldSyncUnavailable extends IOException {
+    HoldSyncUnavailable() { super("The update hold directory sync is unavailable"); }
+  }
+
+  @FunctionalInterface
+  private interface HoldStep {
+    AgentPolicy.Step run() throws IOException;
+  }
+
   private final UpdateHoldFile updateHold;
   private final ChildJournal journal;
   private final Path stagedHold;
   private AgentPolicy policy = new AgentPolicy(ACCOUNT, null);
+  private boolean holdSyncBlocked;
 
   private LifecycleAdapter() throws IOException {
     Path directory = Files.createTempDirectory("agent-lifecycle-");
@@ -37,13 +47,18 @@ public final class LifecycleAdapter {
     directory.toFile().deleteOnExit();
     directory.resolve("hold").toFile().deleteOnExit();
     stagedHold.toFile().deleteOnExit();
-    updateHold = new UpdateHoldFile(directory);
+    updateHold = new UpdateHoldFile(directory, path -> {
+      if (holdSyncBlocked) throw new HoldSyncUnavailable();
+      syncDirectory(path);
+    });
     journal = new ChildJournal(directory.resolve("child"), new ChildJournal.Processes() {
       @Override public OptionalLong startTime(int pid) throws IOException { throw new IOException("The portable fixture does not observe child processes"); }
       @Override public void kill(int pid) throws IOException { throw new IOException("The portable fixture does not stop child processes"); }
-    }, path -> {
-      try (var channel = FileChannel.open(path, StandardOpenOption.READ)) { channel.force(true); }
-    });
+    }, LifecycleAdapter::syncDirectory);
+  }
+
+  private static void syncDirectory(Path path) throws IOException {
+    try (var channel = FileChannel.open(path, StandardOpenOption.READ)) { channel.force(true); }
   }
 
   public static void main(String[] args) throws Exception {
@@ -60,6 +75,7 @@ public final class LifecycleAdapter {
   private String answer(String line) throws IOException {
     Map<String, Object> request = object(RouteGate.Json.parse(line));
     if (!request.containsKey("event") && !request.containsKey("raw")) {
+      holdSyncBlocked = false;
       if (updateHold.held() != null) updateHold.save(null);
       policy = new AgentPolicy(ACCOUNT, updateHold.held());
       return "{\"state\":" + state(policy.state()) + ",\"out\":[]}";
@@ -69,19 +85,26 @@ public final class LifecycleAdapter {
     AgentPolicy.Step step;
     try {
       Map<String, Object> fields = object(event);
-      step = "releaseUpdateFailed".equals(fields.get("type"))
-        ? observeFailedRelease(releaseEvent(fields, false)) : apply(decode(fields, direct));
+      step = switch (text(fields.get("type"))) {
+        case "holdWriteFailed" -> observeFailedAcquire(artifact(fields.get("target")), flag(fields.get("absenceConfirmed")));
+        case "observeHoldGrant" -> observeHoldGrant(flag(fields.get("grantSaved")));
+        case "releaseUpdateFailed" -> {
+          AgentPolicy.ReleaseUpdate release = releaseEvent(fields, false);
+          yield observeStagedWriteFailure(() -> updateHold.release(policy, release));
+        }
+        default -> apply(decode(fields, direct));
+      };
     }
     catch (IllegalArgumentException | ArithmeticException malformed) { step = new AgentPolicy.Step(false, policy.state(), List.of()); }
     return "{\"outcome\":\"" + (step.accepted() ? "accepted" : "refused") + "\",\"state\":" + state(step.state()) + ",\"out\":" + effects(step.effects()) + "}";
   }
 
-  private AgentPolicy.Step observeFailedRelease(AgentPolicy.ReleaseUpdate event) throws IOException {
+  private AgentPolicy.Step observeStagedWriteFailure(HoldStep step) throws IOException {
     Files.createDirectory(stagedHold);
     try {
-      AgentPolicy.Step step = updateHold.release(policy, event);
-      if (step.accepted()) throw new IOException("The blocked hold write unexpectedly succeeded");
-      return step;
+      AgentPolicy.Step result = step.run();
+      if (result.accepted()) throw new IOException("The blocked hold write unexpectedly succeeded");
+      return result;
     } catch (FileNotFoundException failed) {
       return new AgentPolicy.Step(true, policy.state(), List.of());
     } finally {
@@ -89,10 +112,62 @@ public final class LifecycleAdapter {
     }
   }
 
+  private AgentPolicy.Step observeFailedAcquire(AgentPolicy.UpdateTarget target, boolean absenceConfirmed) throws IOException {
+    if (absenceConfirmed) {
+      AgentPolicy.Step result = observeStagedWriteFailure(() -> updateHold.acquire(policy, journal, target));
+      if (result.accepted() && (result.state().hold() != null || updateHold.held() != null))
+        throw new IOException("The blocked hold write did not leave a confirmed absence");
+      return result;
+    }
+    boolean wasBlocked = holdSyncBlocked;
+    holdSyncBlocked = true;
+    boolean retained = false;
+    try {
+      AgentPolicy.Step result = updateHold.acquire(policy, journal, target);
+      if (result.accepted()) throw new IOException("The unsynced hold write unexpectedly succeeded");
+      return result;
+    } catch (HoldSyncUnavailable failed) {
+      AgentPolicy.State live = policy.state();
+      if (!target.equals(live.hold())) throw new IOException("The unsynced hold write did not retain its target", failed);
+      retained = true;
+      return new AgentPolicy.Step(true, live, List.of());
+    } finally {
+      holdSyncBlocked = wasBlocked || retained;
+    }
+  }
+
+  private AgentPolicy.Step observeHoldGrant(boolean grantSaved) throws IOException {
+    AgentPolicy.State live = policy.state();
+    if (!grantSaved || !holdSyncBlocked || live.phase() != AgentPolicy.Phase.STOPPED || live.hold() == null)
+      return new AgentPolicy.Step(false, live, List.of());
+    holdSyncBlocked = false;
+    boolean confirmed = false;
+    try {
+      if (!live.hold().equals(updateHold.held())) throw new IOException("The saved grant differs from the fenced target");
+      confirmed = true;
+      return new AgentPolicy.Step(true, live, List.of());
+    } finally {
+      holdSyncBlocked = !confirmed;
+    }
+  }
+
   private AgentPolicy.Step apply(AgentPolicy.Event event) throws IOException {
     if (event instanceof AgentPolicy.HoldForUpdate hold) return updateHold.acquire(policy, journal, hold.target());
-    if (event instanceof AgentPolicy.ReleaseUpdate release) return updateHold.release(policy, release);
+    if (event instanceof AgentPolicy.ReleaseUpdate release) return releaseHold(release);
     return policy.step(event);
+  }
+
+  private AgentPolicy.Step releaseHold(AgentPolicy.ReleaseUpdate release) throws IOException {
+    if (!holdSyncBlocked || !policy.canReleaseUpdate(release)) return updateHold.release(policy, release);
+    holdSyncBlocked = false;
+    boolean released = false;
+    try {
+      AgentPolicy.Step result = updateHold.release(policy, release);
+      released = result.accepted();
+      return result;
+    } finally {
+      holdSyncBlocked = !released;
+    }
   }
 
   private AgentPolicy.Event decode(Map<String, Object> event, boolean direct) {
@@ -193,16 +268,27 @@ public final class LifecycleAdapter {
     String afterExit = s.afterExit() == AgentPolicy.AfterExit.FAIL
       ? "{\"tag\":\"Fail\",\"cause\":" + quote(tag(s.afterExitCause())) + "}"
       : "{\"tag\":" + quote(tag(s.afterExit())) + "}";
-    AgentPolicy.UpdateTarget saved = updateHold.held();
-    if (!Objects.equals(saved, s.hold())) throw new IOException("The persisted update hold differs from the policy");
-    String hold = saved == null ? "{\"tag\":\"NotHeld\"}"
-      : "{\"tag\":\"Held\",\"targetCode\":" + saved.code() + ",\"targetDigest\":" + quote(saved.digest()) + "}";
     String recovery = s.recovery() == null ? "{\"tag\":\"NoReview\"}"
       : "{\"tag\":\"" + (s.recovery().archiving() ? "Archiving" : "Reviewing") + "\",\"token\":" + token(s.recovery().token()) + "}";
     return "{\"phase\":" + phase + ",\"epoch\":" + s.epoch() + ",\"attempt\":" + s.attempt() + ",\"child\":" + s.child()
       + ",\"reaped\":" + s.reaped() + ",\"hookRan\":" + s.hookRan() + ",\"credentialHeld\":" + s.credentialHeld()
       + ",\"credentialVersion\":" + s.credentialVersion() + ",\"delivered\":" + s.delivered() + ",\"account\":" + quote(s.account())
-      + ",\"afterExit\":" + afterExit + ",\"hold\":" + hold + ",\"recovery\":" + recovery + "}";
+      + ",\"afterExit\":" + afterExit + ",\"hold\":" + hold(s.hold()) + ",\"recovery\":" + recovery + "}";
+  }
+
+  private String hold(AgentPolicy.UpdateTarget target) throws IOException {
+    try {
+      AgentPolicy.UpdateTarget saved = updateHold.held();
+      if (!Objects.equals(saved, target)) throw new IOException("The persisted update hold differs from the policy");
+      return saved == null ? "{\"tag\":\"NotHeld\"}" : holdTarget("Held", saved);
+    } catch (HoldSyncUnavailable failed) {
+      if (target == null) throw failed;
+      return holdTarget("Unconfirmed", target);
+    }
+  }
+
+  private static String holdTarget(String tag, AgentPolicy.UpdateTarget target) {
+    return "{\"tag\":" + quote(tag) + ",\"targetCode\":" + target.code() + ",\"targetDigest\":" + quote(target.digest()) + "}";
   }
 
   private static String effects(List<AgentPolicy.Effect> effects) {

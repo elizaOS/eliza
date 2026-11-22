@@ -16,7 +16,7 @@ export type LifecycleEvent =
   | { readonly type: "launchHook"; readonly refused: boolean }
   | { readonly type: "refuse"; readonly cause: Cause }
   | { readonly type: "observeReady"; readonly epoch: number }
-  | Extract<Event, { type: "observeReady" | "readinessTimedOut" | "spawn" | "holdForUpdate" | "releaseUpdate" | "releaseUpdateFailed" }>
+  | Extract<Event, { type: "observeReady" | "readinessTimedOut" | "spawn" | "holdForUpdate" | "holdWriteFailed" | "observeHoldGrant" | "releaseUpdate" | "releaseUpdateFailed" }>
   | { readonly type: "observeExit"; readonly code: number }
   | { readonly type: "credentialArrived" | "credentialReplaced"; readonly version: number }
   | { readonly type: "accountChanged"; readonly account: string }
