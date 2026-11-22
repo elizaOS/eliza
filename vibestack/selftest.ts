@@ -3492,6 +3492,11 @@ function theCommandLine() {
     const fixtures = await prepare(true, "vibestack-fixture-selftests");
     assert.equal(fixtures.status, 0, fixtures.stderr);
     assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
+    const packed = await exec(process.execPath, [script, "gen", "--install", "--skip-gen-on-pack"], root, {
+      ...process.env, GITHUB_ACTIONS: "false", npm_command: "pack", npm_lifecycle_event: "prepare",
+    });
+    assert.equal(packed.status, 0, packed.stderr);
+    assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
     const installed = await prepare(true);
     assert.equal(installed.status, 0, installed.stderr);
     assert.doesNotMatch(installed.stdout, /gen\/ was not generated/);
