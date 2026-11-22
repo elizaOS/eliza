@@ -1200,6 +1200,25 @@ export effect function probe() {
     assert.ok(said("proof", /^sys\.ts: all \d+ obligations proved/), text);
   });
 
+  test("an imported constant keeps the types declared under its own nested aliases in proofs", async () => {
+    const product = 'import staging as St from "./staging"\npure val launcherName: str = St::noCall.descriptor.name\n'
+      + 'pure def lawNamesLauncher(name: str): bool = (name != "empty") implies launcherName != name';
+    const root = scratch({
+      "spec/runtime.md": ruleSpec("type Abi = Arm64 | X86_64", "Runtime", "Runtime"),
+      "spec/staging.md": ruleSpec('import runtime as R from "./runtime"\ntype NativeRequest = NoNative | NativeFor({ abi: R::Abi })\n'
+        + 'type Launcher = { native: NativeRequest, name: str }\ntype Call = { descriptor: Launcher }\n'
+        + 'pure val noCall: Call = { descriptor: { native: NativeFor({ abi: R::Arm64 }), name: "empty" } }', "Staging", "Staging"),
+      "spec/product.md": ruleSpec(product, "Product", "Product"),
+      "spec/host.md": ruleSpec("type Abi = Linux | Mac", "Host", "Host"),
+      "spec/productWithHost.md": ruleSpec('import host as R from "./host"\n' + product
+        + "\npure val hostAbi: R::Abi = R::Linux", "Product with host", "Product with host"),
+    });
+    const { failed, said, text } = await run(root);
+    assert.deepEqual(failed, ["review"], text);
+    assert.ok(said("proof", /^product\.ts: all \d+ obligations proved/), text);
+    assert.ok(said("proof", /^productWithHost\.ts: all \d+ obligations proved/), text);
+  });
+
   test("local enums and records keep their Quint types in generated code and proof", async () => {
     const root = oneRule("choice", "Choose", "type Choice = Left | Right\ntype Pick = { side: Choice, n: int }\npure def read(p: Pick): int = if (p.side == Left) p.n else 0\npure def record(n: int, b: bool): int =\n  val p = { side: if (b) Left else Right, n: n }\n  read(p)\npure def updated(p: Pick): int =\n  val changed = p.with(\"side\", Left)\n  read(changed)\npure def choices(b: bool): List[Choice] = if (b) List(Left) else List(Right)\npure def use(c: Choice): int = if (c == Left) 1 else 2\npure def chosen(b: bool): int =\n  val c = if (b) Left else Right\n  use(c)\npure def lawChosen(b: bool): bool = chosen(b) == (if (b) 1 else 2)");
     const { failed, text } = await run(root);
