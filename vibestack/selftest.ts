@@ -3708,7 +3708,7 @@ test("the lint refuses, in a project's own code, a comment that is neither a cit
   const found = async (file: string, lines: string[]) => (await eslint.lintText(lines.join("\n"), { filePath: path.join(project, file) }))[0]!.messages
     .filter((m) => m.fatal || m.ruleId === "no-console" || m.ruleId?.startsWith("code/")).map((m) => `${m.line} ${m.ruleId ?? "inline config"}`);
   assert.deepEqual(await found("apps/app/src/probe.vibe", [
-    `// spec/app/index.md, "Story: Say hello"; spec/app/index.md, "A rule"`,
+    `// spec/app/index.md, "Story: Say hello"; spec/app/index.md, "The number of greetings is never negative"`,
     `/* spec/app/index.md, "Story: Say hello" */`,
     "//@ ghost",
     "/** @model spec/app/index.md */",
