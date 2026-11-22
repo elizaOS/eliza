@@ -947,14 +947,14 @@ describe("planning progress delivery boundaries", () => {
         );
     },
   );
-  // The acknowledgement rule teaches the model to acknowledge a view planned
-  // with other work only as opening it, in the rule's navigation form, and
-  // quotes no utterance. That form is guidance the unchanged closed grammar
-  // and egress already admit, never a substitute: the owner's live draft
-  // (tj-6ae578d9ff0774) is still dropped and nothing is spoken in its place.
+  // The acknowledgement rule teaches the model to acknowledge opening an app
+  // as "Let me open" and the app asked for. That form is guidance the
+  // unchanged closed grammar and egress already admit, never a substitute:
+  // the owner's live draft (tj-6ae578d9ff0774) is still dropped and nothing
+  // is spoken in its place.
   it.each([
     { draft: "Let me open Calendar.", spoken: true },
-    // The rule's other lead, with its curly apostrophe, is spoken unchanged.
+    // The grammar's other lead, with its curly apostrophe, is spoken unchanged.
     { draft: "I’ll open Calendar.", spoken: true },
     {
       draft: "Calendar. Killing coffee and putting a launch at noon.",
@@ -971,12 +971,12 @@ describe("planning progress delivery boundaries", () => {
     "speaks a planned-view acknowledgement only as the model wrote it: $draft",
     async ({ draft, spoken }) => {
       const sentence =
-        "When a view opens alongside other planned work, acknowledge only opening that view, in the navigation form above; never name items, times or effects.";
-      // A draft in the navigation form: "Let me" plus open and the app name.
+        'When opening an app is part of other planned work: "Let me open Maps." (the app asked for, by its bare name:';
+      // A draft in the rule's open form for the app this request names.
       const example = "Let me open Calendar.";
       const request =
         "Can you open the calendar and delete the coffee event and create a new event to have a launch at noon?";
-      expect(ACKNOWLEDGMENT_RULE.endsWith(` ${sentence}`)).toBe(true);
+      expect(ACKNOWLEDGMENT_RULE).toContain(sentence);
       expect(replyIsClaimSafeAcknowledgment(example)).toBe(true);
       expect(
         evaluatePlannedReplyEgress({
