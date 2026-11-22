@@ -1,6 +1,7 @@
 // spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 import readline from "node:readline";
-import type { Driver, Options } from "../../gen/_conformance.ts";
+import type { Driver } from "../../gen/_conformance.ts";
+import type { Options } from "../../gen/os__agentService__lifecycle.conformance.ts";
 import { jvmDriver } from "./jvm-adapter.ts";
 
 const KEY = "device";
@@ -40,7 +41,7 @@ interface AdapterState extends Omit<LifecycleView, "held"> {
   readonly hold: { readonly tag: "NotHeld" | "Held" };
 }
 
-const viewOf = (state: AdapterState): LifecycleView => ({
+const nativeView = (state: AdapterState): LifecycleView => ({
   phase: state.phase,
   epoch: state.epoch,
   attempt: state.attempt,
@@ -53,10 +54,22 @@ const adapter = jvmDriver<LifecycleEvent, AdapterState>("ai.eliza.os.agent.Lifec
 
 export const driver: Driver<LifecycleEvent, LifecycleView> & AsyncDisposable = {
   ...adapter,
-  observe: async (key) => viewOf(await adapter.observe(key)),
+  observe: async (key) => nativeView(await adapter.observe(key)),
 };
 
-export const options: Options<AdapterState, LifecycleView> = { keys: [KEY], view: viewOf };
+export const options: Options<LifecycleView> = {
+  keys: [KEY],
+  view: ({ phase, epoch, attempt, hold, key, delivered }) => ({
+    phase: phase.tag === "Starting" ? { tag: "Starting", stage: phase.step }
+      : phase.tag === "Stopping" ? { tag: "Stopping" }
+      : phase,
+    epoch,
+    attempt,
+    held: hold.tag === "HeldFor",
+    credentialHeld: key.tag === "Key",
+    delivered,
+  }),
+};
 
 if (import.meta.main) {
   const answer = async (line: string) => {
