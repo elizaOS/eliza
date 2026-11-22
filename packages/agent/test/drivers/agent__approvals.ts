@@ -59,7 +59,7 @@ async function stored(): Promise<Queue> {
 async function remember(): Promise<void> {
   const held = await stored();
   for (const record of await Effect.runPromise(queue!.list({ phases: { tag: "AllPhases" }, limit: 500 }))) {
-    revisions.set(`${record.id}#${held.rows[`$${record.id}`]!.revision}`, record.revision);
+    revisions.set(`${record.id}#${held.rows[`$${record.id}`].revision}`, record.revision);
   }
 }
 
