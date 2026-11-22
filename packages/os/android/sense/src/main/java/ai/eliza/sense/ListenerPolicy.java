@@ -107,10 +107,11 @@ public final class ListenerPolicy {
  public static boolean consented(int storedVersion){return storedVersion==CONSENT_VERSION;}
 
  public static State decide(Inputs in,long nowMs){
-  if(in==null||!consented(in.consentVersion)||!in.enabled)return State.OFF;
+  if(in==null)return State.OFF;
+  if(in.crashLoopTripped)return State.STOPPED_AFTER_ERRORS;
+  if(!consented(in.consentVersion)||!in.enabled)return State.OFF;
   if(!in.recordAudioGranted)return State.PERMISSION_REQUIRED;
   if(!in.notificationsVisible)return State.NOTIFICATIONS_REQUIRED;
-  if(in.crashLoopTripped)return State.STOPPED_AFTER_ERRORS;
   if(in.indicatorLost)return State.STOPPED_INDICATOR_LOST;
   if(!in.userForeground)return State.PAUSED_OTHER_USER;
   if(!in.userUnlocked)return State.WAITING_FOR_UNLOCK;
