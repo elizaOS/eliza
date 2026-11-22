@@ -168,7 +168,9 @@ for its time or its output is ended the same way. A run
 of a tool is remembered when it reached its answer, a refusal of its input
 included, never when it was stopped, timed out or failed for want of a file or
 program: an unchanged unit whose proof failed runs neither again, and an edit
-to a proof file only checks and verifies the Dafny it changes. A unit offered
+to a proof file only checks and verifies the Dafny it changes. When several proof units import
+the same module, the check renders that module once for each name prefix and citation setting they use.
+A unit offered
 what the units it imports proved is proved once when their results are
 remembered, and meanwhile, to be proved again if they fail, only while one of
 them is still being proved. A test run
