@@ -5,6 +5,8 @@ function installControlChannel(pageCommand, pageGuidance) {
   if (window !== window.top || !/^https?:$/.test(location.protocol)) return;
   pageCommand(null);
   const channel = globalThis.elizaSurfaceControl;
+  // randomUUID requires a secure context; getRandomValues also works on HTTP
+  // pages. The identifier is an opaque document reference, never a credential.
   const identifier = () => {
     const bytes = crypto.getRandomValues(new Uint8Array(16));
     bytes[6] = (bytes[6] & 15) | 64;
@@ -42,8 +44,11 @@ function installControlChannel(pageCommand, pageGuidance) {
       );
       return;
     }
+    // Consume before execution. A lost reply must never replay an effect.
     sequence = request.sequence;
     const command = request.command;
+    // Only the native observed-history entrypoint can send this command. The
+    // public controlPage whitelist excludes it; no page/model offset is accepted.
     if (command?.subaction === "native-history") {
       if (
         ![-1, 1].includes(command.offset) ||
@@ -125,6 +130,8 @@ function installControlChannel(pageCommand, pageGuidance) {
           (policy.protectedValueKind !== undefined &&
             (policy.protectedValueKind !== "verification-code" ||
               command.subaction !== "fill")) ||
+          // One commit of the reviewed control, with the exact value for a
+          // fill or select; this channel spends it once, before the page.
           (policy.commitGrant !== undefined &&
             (!policy.commitGrant ||
               typeof policy.commitGrant !== "object" ||
@@ -132,6 +139,7 @@ function installControlChannel(pageCommand, pageGuidance) {
               !Number.isSafeInteger(policy.commitGrant.expiresAt) ||
               typeof policy.expectedSelector !== "string" ||
               policy.commitGrant.selector !== policy.expectedSelector ||
+              // The bridge checked these; a malformed one is never ignored.
               (policy.commitGrant.requestTarget !== undefined &&
                 (!policy.commitGrant.requestTarget ||
                   typeof policy.commitGrant.requestTarget !== "object" ||
@@ -166,6 +174,8 @@ function installControlChannel(pageCommand, pageGuidance) {
         );
         reply(snapshotId && !result.error ? { ...result, snapshotId } : result);
       } catch {
+        // Do not echo exception text: page values may be present in it. An
+        // effect can have run before an exception, so the host must read back.
         reject(
           command.subaction === "snapshot"
             ? "UNAVAILABLE"
@@ -220,10 +230,13 @@ function installControlChannel(pageCommand, pageGuidance) {
   window.addEventListener("pageshow", (event) => {
     if (!event.isTrusted) return;
     active = true;
+    // A restored back/forward-cache document must not revive old commands.
     if (event.persisted) documentId = identifier();
     ready();
   });
   ready();
+  // Android may deliver the document-start message before its navigation
+  // callback. Announce again once the DOM has loaded, retaining the same ID.
   if (document.readyState === "loading")
     document.addEventListener("DOMContentLoaded", ready, { once: true });
 }
