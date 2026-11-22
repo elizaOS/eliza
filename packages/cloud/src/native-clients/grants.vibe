@@ -1,5 +1,5 @@
 // spec/cloud/nativeClients/deviceKeys.md, "An older active key keeps its recorded expiry, while a pending grant without its original binding must restart"; spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"
-import { ackAnswer, apply, authorityExpiry, authorityRefusal, decodeState, initial, keyRefusal, legacyBinding, legacyGrant, NotAState, Rejected, type Event, type Grant, type GrantClient, type GrantStep, type KeyAuthority, type LegacyGrantPhase, type RecordedKeyPhase } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
+import { ackAnswer, apply, authorityExpiry, authorityRefusal, decodeState, initial, keyRefusal, legacyBinding, legacyGrant, NotAState, type Rejected, type Event, type Grant, type GrantClient, type GrantStep, type KeyAuthority, type LegacyGrantPhase, type RecordedKeyPhase } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
 import { loadRow, outputRows, stepRow, type Columns } from "../store/rows.vibe"
 import { type Row, type Tx } from "../store/connection.vibe"
 
@@ -85,7 +85,7 @@ effect function applyAt(grant: Grant, event: Event): GrantStep!Rejected {
   return try apply(try currentGrant(grant, now), event)
 }
 
-const grants = outputRows("device_grants", { initial, decodeState: decodeGrant, apply: applyAt })
+export const grants = outputRows("device_grants", { initial, decodeState: decodeGrant, apply: applyAt })
 
 export effect function observeGrant(tx: Tx, key: string) {
   const loaded = try loadRow(tx, grants, key, false)

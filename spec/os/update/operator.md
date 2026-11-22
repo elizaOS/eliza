@@ -192,6 +192,27 @@ pure def canTransferEnded(s: OperatorJournal, sent: bool): bool = s.phase == Sid
 pure def transferEnded(s: OperatorJournal, sent: bool): OperatorJournal = { ...s, phase: if (sent) Transferred else AwaitingSideload }
 ```
 
+### Status can read earlier journal formats without adopting an update
+
+An earlier updater recorded Android's flash-lock property as `"0"` for
+unlocked or `"1"` for locked. Status reads those values and the Boolean
+format. The earlier updater recorded `interrupted` when Android finished
+booting the installed build on its original slot. Status shows that record
+as awaiting sideload and uses the current device observation to choose
+the next step. These compatibility formats are for status only. Status
+does not write the journal or the device.
+
+```quint
+type LegacyJournalUse = LegacyStatus | LegacyAdoption
+type LegacyJournalShape = { propertyLock: bool, interrupted: bool }
+pure val shapeValues = Set({ propertyLock: false, interrupted: false }, { propertyLock: true, interrupted: false },
+  { propertyLock: false, interrupted: true }, { propertyLock: true, interrupted: true })
+pure def readsLegacyJournal(use: LegacyJournalUse, shape: LegacyJournalShape): bool =
+  use == LegacyStatus or (not(shape.propertyLock) and not(shape.interrupted))
+pure def lawLegacyAdoptionRequiresTheExistingFormat(shape: LegacyJournalShape): bool =
+  readsLegacyJournal(LegacyAdoption, shape) implies (not(shape.propertyLock) and not(shape.interrupted))
+```
+
 ### An update is verified only when the candidate booted on the other slot, enforcing, still locked if it was, with verified boot no weaker and the candidate's patch level
 
 Verified boot is compared, by [booted-image verification](../image/verification.md),

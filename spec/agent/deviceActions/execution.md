@@ -80,6 +80,26 @@ pure def alwaysClaimBeforeDispatch(s: DeviceAttempt): bool =
 pure def sometimesExistingEntryGoesToHistory(s: DeviceAttempt): bool = s.phase == NeedsHistory
 ```
 
+### A lost journal write answer needs an exact readback
+
+A write counts when the journal confirms it. A definite refusal does not
+count. If the write returns an error, read the entry once. The write counts
+only if the stored revision, binding, attempt, and evidence match the entry
+the device tried to save. The read does not repeat the write or change the
+attempt that the write saves.
+
+```quint
+type JournalWrite = WriteKept | WriteRefused | WriteAnswerLost
+type JournalReread = ReadbackSkipped | ReadbackExact | ReadbackUnconfirmed
+pure def needsJournalReread(write: JournalWrite): bool = write == WriteAnswerLost
+pure def journalWriteHeld(write: JournalWrite, reread: JournalReread): bool =
+  write == WriteKept or (needsJournalReread(write) and reread == ReadbackExact)
+pure def lawJournalRefusalIsFinal(reread: JournalReread): bool =
+  not(needsJournalReread(WriteRefused)) and not(journalWriteHeld(WriteRefused, reread))
+pure def lawLostJournalAnswerNeedsExactReadback(reread: JournalReread): bool =
+  journalWriteHeld(WriteAnswerLost, reread) iff reread == ReadbackExact
+```
+
 ### The executor is called at most once, for a live claim
 
 Calling the executor needs the applying entry. An attempt retires when its

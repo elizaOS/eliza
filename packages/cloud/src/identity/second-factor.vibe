@@ -66,9 +66,9 @@ module node {
 }
 import { newTotpSeed, smsCode, totpCode } from node
 
-type WireMethod = "totp" | "sms"
+export type WireMethod = "totp" | "sms"
 
-interface MfaRequired {
+export interface MfaRequired {
   readonly status: "mfa_required"
   readonly challengeId: string
   readonly methods: ReadonlyArray<WireMethod>
@@ -261,6 +261,11 @@ export effect function factorChallenge(tx: Tx, landed: Landed, clientId: string,
   const challengeId = newId()
   const opened = (try stepFactors(tx, who, caller, { type: "openChallenge" }, { challenge_id: challengeId, challenge_client_id: clientId, challenge_digest: null })).state
   return { status: "mfa_required", challengeId, methods: confirmedMethods(opened), expiresAt: opened.challenge.expiresAt } satisfies MfaRequired
+}
+
+export effect function hasAccountSecondFactor(tx: Tx, userId: string, now: number) {
+  const who = try owner(tx, userId)
+  return hasFactor((try current(tx, who, signInCaller(now, who.personEpoch))).factors)
 }
 
 export effect function afterFirstFactor(tx: Tx, landed: Landed, clientId: string, now: number) {

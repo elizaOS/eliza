@@ -52,6 +52,10 @@ const productGoogleAction: Action = {
       gmailChange: await cloud.request({ method: "POST", path: `${google}/gmail/inbox-v1/operations`, body: { kind: "archive", threadId: "thread-1" }, idempotencyKey: "fixture-gmail-1" }),
       calendarEdit: await cloud.request({ method: "POST", path: `${google}/calendar/events`, body: { title: "Fixture", start: "2026-11-18T10:00:00Z", end: "2026-11-18T11:00:00Z" }, idempotencyKey: "fixture-calendar-1" }),
       read: await cloud.request({ method: "GET", path: `${google}/gmail/triage` }),
+      privateInboxArrival: await cloud.request({ method: "GET", path: `${google}/gmail/inbox-v1/arrival` }).then(
+        (response) => response,
+        () => ({ kind: "refused", status: 403, body: null }),
+      ),
     };
     return { success: true, text: "Tried the cloud link.", data: { linked: true, attempts } };
   },

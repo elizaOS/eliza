@@ -8,7 +8,7 @@ const googleCapabilitySchema = Schema.Literals([
   "google.basic_identity", "google.gmail.triage", "google.gmail.send", "google.gmail.manage", "google.gmail.drafts",
   "google.gmail.mailbox", "google.calendar.read", "google.calendar.write"
 ])
-type GoogleCapability = typeof googleCapabilitySchema.Type
+export type GoogleCapability = typeof googleCapabilitySchema.Type
 
 const optionalText = Schema.NullOr(Schema.String)
 
@@ -28,10 +28,10 @@ const googleStatusSchema = Schema.Struct({
   linkedAt: optionalText,
   lastUsedAt: optionalText
 })
-type GoogleStatus = typeof googleStatusSchema.Type
+export type GoogleStatus = typeof googleStatusSchema.Type
 
 const connectStartSchema = Schema.Struct({ authUrl: Schema.String, appReturn: Schema.optionalKey(Schema.Literal(2)) })
-type ConnectStart = typeof connectStartSchema.Type
+export type ConnectStart = typeof connectStartSchema.Type
 
 export type ConnectState = string & { readonly __brand: "ConnectState" }
 
@@ -39,7 +39,7 @@ export function isConnectState(value: string): value is ConnectState {
   return /^[A-Za-z0-9_-]{43}$/.test(value)
 }
 
-interface ConnectRequest {
+export interface ConnectRequest {
   readonly capabilities: ReadonlyArray<GoogleCapability>
   readonly redirect?: { readonly connectReturn: string; readonly state: ConnectState }
 }
@@ -64,7 +64,7 @@ const mailCardSchema = Schema.Struct({
 export type MailCard = typeof mailCardSchema.Type
 
 const mailTriageSchema = Schema.Struct({ messages: Schema.Array(mailCardSchema), syncedAt: Schema.String, mailboxHistoryId: Schema.String })
-type MailTriage = typeof mailTriageSchema.Type
+export type MailTriage = typeof mailTriageSchema.Type
 
 const mailSearchSchema = Schema.Struct({
   messages: Schema.Array(mailCardSchema),
@@ -73,36 +73,39 @@ const mailSearchSchema = Schema.Struct({
   mailboxHistoryId: Schema.String,
   supportsSpamTrash: Schema.Boolean
 })
-type MailSearch = typeof mailSearchSchema.Type
+export type MailSearch = typeof mailSearchSchema.Type
 
 const mailMessageSchema = Schema.Struct({
   message: mailCardSchema,
   bodyText: Schema.String,
   bodyHtml: optionalText,
-  bodyHtmlStatus: Schema.Literals(["available", "none"]),
+  bodyHtmlStatus: Schema.Literals(["available", "none", "too_large"]),
   attachments: Schema.Array(Schema.Struct({
     partId: Schema.String, name: Schema.String, mimeType: Schema.String, size: Schema.Number, supported: Schema.Boolean
   })),
   authenticationResults: Schema.optionalKey(optionalText)
 })
-type MailMessage = typeof mailMessageSchema.Type
+export type MailMessage = typeof mailMessageSchema.Type
 
 const mailKindSchema = Schema.Literals([
   "send", "draft-create", "draft-replace", "draft-delete", "archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"
 ])
-type MailKind = typeof mailKindSchema.Type
+export type MailKind = typeof mailKindSchema.Type
 
+// spec/cloud/services/google/mailRead.md, "Capabilities offer exactly the reads and changes the grant allows, and each change comes with the read its review needs"
 const mailCapabilitiesSchema = Schema.Struct({
   version: Schema.Literal(1),
   from: Schema.String,
+  reads: Schema.optionalKey(Schema.Array(Schema.Literals(["triage", "search", "read", "thread", "attachment", "drafts", "draft", "capabilities"]))),
   kinds: Schema.Array(mailKindSchema),
-  attachmentPolicy: Schema.Struct({ mimeTypes: Schema.Array(Schema.String), maxBytes: Schema.Number })
+  attachmentPolicy: Schema.Struct({ mimeTypes: Schema.Array(Schema.String), maxBytes: Schema.Number }),
+  providerExactlyOnce: Schema.optionalKey(Schema.Literal(false))
 })
-type MailCapabilities = typeof mailCapabilitiesSchema.Type
+export type MailCapabilities = typeof mailCapabilitiesSchema.Type
 
-type LabelKind = Exclude<MailKind, "send" | "draft-create" | "draft-replace" | "draft-delete">
+export type LabelKind = Exclude<MailKind, "send" | "draft-create" | "draft-replace" | "draft-delete">
 
-type MailProposal =
+export type MailProposal =
   | {
     readonly kind: "send" | "draft-create" | "draft-replace"
     readonly mode: "compose" | "reply" | "reply-all" | "forward"
@@ -157,7 +160,7 @@ const mailOperationSchema = Schema.Struct({
   review: Schema.optionalKey(mailReviewSchema),
   providerExactlyOnce: Schema.Literal(false)
 })
-type MailOperation = typeof mailOperationSchema.Type
+export type MailOperation = typeof mailOperationSchema.Type
 
 const calendarRowSchema = Schema.Struct({
   calendarId: Schema.String,
@@ -168,7 +171,7 @@ const calendarRowSchema = Schema.Struct({
   read: Schema.Boolean,
   write: Schema.Boolean
 })
-type CalendarRow = typeof calendarRowSchema.Type
+export type CalendarRow = typeof calendarRowSchema.Type
 
 const calendarEventSchema = Schema.Struct({
   externalId: Schema.String,
@@ -192,14 +195,14 @@ const calendarEventSchema = Schema.Struct({
   })),
   metadata: Schema.Struct({ iCalUID: optionalText, createdAt: optionalText, updatedAt: optionalText })
 })
-type CalendarEvent = typeof calendarEventSchema.Type
+export type CalendarEvent = typeof calendarEventSchema.Type
 
 const calendarFeedSchema = Schema.Struct({ calendarId: Schema.String, events: Schema.Array(calendarEventSchema), syncedAt: Schema.String })
-type CalendarFeed = typeof calendarFeedSchema.Type
+export type CalendarFeed = typeof calendarFeedSchema.Type
 
 const EventAnswer = Schema.Struct({ event: calendarEventSchema })
 
-interface EventFields {
+export interface EventFields {
   readonly title: string
   readonly description?: string
   readonly location?: string

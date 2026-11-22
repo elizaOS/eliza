@@ -1,7 +1,8 @@
-// spec/agent/deviceActions/execution.md, "An effect needs review unless the current request may act directly"; spec/agent/deviceActions/execution.md, "Dispatch needs an exact reservation and the agent's claim"; spec/agent/deviceActions/execution.md, "The executor is called at most once, for a live claim"; spec/agent/deviceActions/execution.md, "No effect needs a trusted refusal or no call"; spec/agent/deviceActions/execution.md, "An abandoned entry closes without running again"; spec/agent/deviceActions/execution.md, "An unknown result is resolved only by exact readback"; spec/agent/deviceActions/execution.md, "A settled result is durable before upload and upload never repeats the call"; spec/agent/deviceActions/execution.md, "A review the owner confirms matches the saved evidence"
+// spec/agent/deviceActions/execution.md, "An effect needs review unless the current request may act directly"; spec/agent/deviceActions/execution.md, "Dispatch needs an exact reservation and the agent's claim"; spec/agent/deviceActions/execution.md, "A lost journal write answer needs an exact readback"; spec/agent/deviceActions/execution.md, "The executor is called at most once, for a live claim"; spec/agent/deviceActions/execution.md, "No effect needs a trusted refusal or no call"; spec/agent/deviceActions/execution.md, "An abandoned entry closes without running again"; spec/agent/deviceActions/execution.md, "An unknown result is resolved only by exact readback"; spec/agent/deviceActions/execution.md, "A settled result is durable before upload and upload never repeats the call"; spec/agent/deviceActions/execution.md, "A review the owner confirms matches the saved evidence"
 import {
-  Machine, authorityOf, canCloseAbandoned, canReadBack, canSync, initial, machineOver, parseState, settledResult,
+  authorityOf, canCloseAbandoned, canReadBack, canSync, initial, journalWriteHeld, machineOver, needsJournalReread, parseState, settledResult,
   type AttemptStep, type AuthorityCheck, type DeviceAttempt, type DeviceResult, type Event, type ExecutorAnswer, type JournalAnswer,
+  type JournalReread, type JournalWrite,
 } from "../../gen/agent__deviceActions__execution.effect.vibe"
 import type { ReceiptOutcome, ReviewOutcome } from "../../gen/agent__deviceActions.effect.vibe"
 
@@ -29,6 +30,7 @@ export type JournalEntry = typeof Entry.Type
 
 export interface DeviceJournal {
   get(proposalId: string): Promise<unknown>
+  /** A false result is a definitive refusal. A rejection can follow a committed write. */
   edit(proposalId: string, expectedRevision: number, next: JournalEntry): Promise<boolean>
   list(): Promise<readonly unknown[]>
 }
@@ -119,11 +121,13 @@ interface Slot {
   acknowledged: boolean
 }
 
+type AttemptMachine = Effect.Success<ReturnType<typeof machineOver>>
+
 export interface JournaledAttempt {
   readonly journal: DeviceJournal
   readonly identity: JournalIdentity
   readonly slot: Slot
-  readonly machine: Machine.Shape
+  readonly machine: AttemptMachine
 }
 
 type Found =
@@ -176,6 +180,13 @@ effect function load(journal: DeviceJournal, identity: JournalIdentity, slot: Sl
   return attempt
 }
 
+effect function rereadWrite(journal: DeviceJournal, entry: JournalEntry): JournalReread!! {
+  const seen = readEntry(journal, entry.proposalId) catch (): Found => ({ kind: "unreadable" })
+  if (seen.kind !== "entry" || seen.entry.revision !== entry.revision) return "ReadbackUnconfirmed"
+  const exact = Effect.try(() => Equal.equals(seen.entry, entry)) catch () => false
+  return exact ? "ReadbackExact" : "ReadbackUnconfirmed"
+}
+
 effect function keep(journal: DeviceJournal, identity: JournalIdentity, slot: Slot, next: DeviceAttempt): void!! {
   if (!slot.written && next.phase.tag !== "Reserved") {
     slot.memo = next
@@ -193,8 +204,10 @@ effect function keep(journal: DeviceJournal, identity: JournalIdentity, slot: Sl
     operation: binding.operation, attempt: next, evidence, acknowledged: slot.acknowledged,
     ...(next.attemptId <= 0 || agentAttemptId === undefined ? {} : { agentAttemptId }),
   }
-  const kept = try orDie(tryPromise(() => journal.edit(binding.proposalId, slot.base, entry)))
-  if (!kept) return try die(new JournalLost({ proposalId: binding.proposalId }))
+  const written = map(tryPromise(() => journal.edit(binding.proposalId, slot.base, entry)), (kept): JournalWrite => kept ? "WriteKept" : "WriteRefused")
+    catch (): JournalWrite => "WriteAnswerLost"
+  const reread = needsJournalReread(written) ? try rereadWrite(journal, entry) : "ReadbackSkipped"
+  if (!journalWriteHeld(written, reread)) return try die(new JournalLost({ proposalId: binding.proposalId }))
   slot.base = entry.revision
   slot.written = true
   slot.evidence = evidence
@@ -212,7 +225,7 @@ export effect function openAttempt(journal: DeviceJournal, identity: JournalIden
   return { journal, identity, slot, machine }
 }
 
-effect function sendOr(attempt: JournaledAttempt, event: Event): (AttemptStep | undefined)!! {
+export effect function sendOr(attempt: JournaledAttempt, event: Event): (AttemptStep | undefined)!! {
   const done = try exit(attempt.machine.send(event))
   return Exit.isSuccess(done) ? done.value : undefined
 }
@@ -296,7 +309,7 @@ effect function acknowledge(attempt: JournaledAttempt): void!! {
   }
 }
 
-effect function upload<Op>(ports: DeviceExecutionPorts<Op>, attempt: JournaledAttempt): boolean!! {
+export effect function upload<Op>(ports: DeviceExecutionPorts<Op>, attempt: JournaledAttempt): boolean!! {
   const step = try sendOr(attempt, { type: "sync" })
   if (step === undefined) return false
   const { proposalId, digest, operationId } = attempt.slot.binding

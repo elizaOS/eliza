@@ -1,6 +1,11 @@
 // spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"
 import type { MigrationKind } from "../../gen/agent__storage__database.ts"
 
+export interface DeviceStorageSnapshot {
+  readonly schemaVersion: number
+  readonly bytes: Uint8Array
+}
+
 export interface Migration {
   readonly kind: MigrationKind
   readonly sql: string

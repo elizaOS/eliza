@@ -5,6 +5,15 @@
   "type": "module",
   "description": "Notes, their trash and recorded audio custody.",
   "license": "MIT",
+  "publishConfig": {
+    "exports": {
+      "./selected-read": {
+        "types": "./dist/src/selected-read.d.ts",
+        "import": "./dist/src/selected-read.js",
+        "default": "./dist/src/selected-read.js"
+      }
+    }
+  },
   "scripts": {
     "build": "vibelang -p tsconfig.build.json",
     "test": "vitest run",

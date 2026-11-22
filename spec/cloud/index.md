@@ -61,9 +61,36 @@ with one `[DONE]`, preceded by one reported usage chunk if the caller asked
 for it. A definite provider rejection before the stream starts is an HTTP
 refusal. A truncated or unreadable stream sends one error frame and then
 `[DONE]`.
-The same hold settles at the billed cost when usable counts were reported,
-or at the quote when the usage is unknown. A caller disconnect releases the
-provider connection and settles the hold using the counts already observed.
+The original hold settles once at the billed cost when usable counts were
+reported, including after a stream failure. It settles at the quote when no
+usable report arrived. A caller disconnect releases the provider connection
+and charges the greater of quoted and reported input tokens, plus the
+output tokens estimated from delivered text. Between dispatch and the
+provider's response headers, a disconnect charges only quoted input.
+
+The [chat completion rules](./services/inference.md) define the framing,
+chunking and charge decisions. The [shared metering rules](./shared/metering.md)
+define the lifecycle of the original hold.
+
+```quint
+import inference as Chat from "./services/inference"
+import metering as Holds from "./shared/metering"
+import models as Models from "./services/models"
+pure def lawInferenceStreamFraming(deltas: List[int], ending: Chat::StreamEnding, usageAsked: bool, usageReported: bool): bool =
+  Chat::lawEveryUnbrokenStreamEndsInOneDone(deltas, ending, usageAsked, usageReported)
+  and Chat::lawOnlyAFinishedStreamCompletes(deltas, ending, usageAsked, usageReported)
+  and Chat::lawUsageIsSentOnceAndOnlyAsReported(deltas, ending, usageAsked, usageReported)
+  and Chat::lawOnlyAFailedStreamSendsAnError(deltas, ending, usageAsked, usageReported)
+pure def lawInferenceStreamChunking(first: List[int], second: List[int]): bool = Chat::lawChunkBoundariesDoNotChangeEvents(first, second)
+pure def lawInferenceStreamReportDeterminesTheCharge(u: Models::ProviderUsage, quoted: Models::TokenCounts): bool =
+  Chat::lawAProviderReportDeterminesTheCharge(u, quoted)
+pure def lawInferenceStreamHangUpChargesDeliveredText(reportedInput: int, deliveredChars: int, quoted: Models::TokenCounts): bool =
+  Chat::lawAHangUpPaysForWhatItGot(reportedInput, deliveredChars, quoted)
+pure def lawInferenceStreamClosesTheOriginalHold(lane: Holds::FundingLane, quote: int, allowanceAvailable: int, creditAvailable: int,
+  dispatched: bool, end: Chat::CompletionEnd, quoted: Models::TokenCounts, creditFree: int): bool =
+  Chat::lawAMissingReportChargesTheQuote(dispatched, end, quoted)
+  and Chat::lawEveryCallClosesItsHoldOnce(lane, quote, allowanceAvailable, creditAvailable, dispatched, end, quoted, creditFree)
+```
 
 ## Story: Sign in to the Cloud
 
@@ -293,8 +320,8 @@ pure def lawPreparedSpeechStillRequiresFunding(authenticated: bool, freshHold: b
 ### Only a current, separately approved device grant accesses the owner’s backup
 
 Opting in needs an explicit native request and recent interactive approval.
-The first-party browser shows the purpose and signed-in account before the
-owner approves. Approval returns a single-use code through the exact
+In the standalone deployment, the first-party browser shows the purpose and
+signed-in account before the owner approves. Approval returns a single-use code through the exact
 registered app link. The active native enrollment for the same owner
 exchanges that code using the original purpose, state and one-time verifier.
 Owner verification returns the verified owner scope without opening any
@@ -328,6 +355,78 @@ pure def canRedeemBackupApproval(approved: PasswordBackupPurpose, requested: Pas
   approved == requested and requested != BackupVerify and exactVerifier and exactState and grantLive and unspent
 pure def lawBackupApprovalCannotBeReplayed(approved: PasswordBackupPurpose, requested: PasswordBackupPurpose, exactVerifier: bool, exactState: bool, grantLive: bool): bool =
   not(canRedeemBackupApproval(approved, requested, exactVerifier, exactState, grantLive, false))
+```
+
+### Shared native approval authorizes only the enrolled owner’s requested backup operation
+
+Shared Cloud requires consent in the native flow and a fresh Google proof for
+the subject already linked to the current owner. The active device enrollment
+must name that account and organization and match the exact registered app,
+environment and callback. The unspent proof must match the requested purpose,
+state and PKCE verifier. A refusal grants nothing. Owner verification returns
+the owner scope without a transferable grant. Read, save and remove each
+authorize one operation under the existing one-use backup grant rule. Native
+backup approval creates no sign-in session and changes no device credential.
+An account with an additional factor requires that factor before native
+backup approval can be granted. This native proof cannot satisfy it.
+The registered approval method is enforced on the server. A native
+registration uses the backup `/native/challenge` and `/native/approve`
+endpoints and cannot open or exchange a browser backup approval. The
+native readiness response and approval routes use the exact callback from
+the app's registration, which can be on the product's own host. They
+require its configured Android OAuth presenters. Browser approval still
+uses the standalone deployment's client and callback.
+
+```quint
+type NativePasswordBackupChecks = { activeEnrollment: bool, exactRegistration: bool, linkedOwnerAndOrganization: bool, nativeConsent: bool, additionalFactorClear: bool, exactPurpose: bool, exactState: bool, exactVerifier: bool, unspent: bool }
+type NativePasswordBackupProvenance = NoNativeBackupProof | FreshNativeBackupProof(NativePasswordBackupChecks)
+type NativePasswordBackupAction = NativeBackupRefused | NativeBackupVerifyOwner | NativeBackupGrantRead | NativeBackupGrantWrite | NativeBackupGrantRemove
+
+pure def nativePasswordBackupApproval(provenance: NativePasswordBackupProvenance, purpose: PasswordBackupPurpose): NativePasswordBackupAction =
+  match provenance {
+    | NoNativeBackupProof => NativeBackupRefused
+    | FreshNativeBackupProof(proof) =>
+      if (proof.activeEnrollment and proof.exactRegistration and proof.linkedOwnerAndOrganization and proof.nativeConsent and proof.additionalFactorClear and proof.exactPurpose and proof.exactState and proof.exactVerifier and proof.unspent)
+        match purpose {
+          | BackupVerify => NativeBackupVerifyOwner
+          | BackupRead => NativeBackupGrantRead
+          | BackupWrite => NativeBackupGrantWrite
+          | BackupRemove => NativeBackupGrantRemove
+        }
+      else NativeBackupRefused
+  }
+
+pure def lawNativeBackupRequiresCurrentProof(provenance: NativePasswordBackupProvenance, purpose: PasswordBackupPurpose): bool =
+  (nativePasswordBackupApproval(provenance, purpose) != NativeBackupRefused) iff
+    match provenance {
+      | NoNativeBackupProof => false
+      | FreshNativeBackupProof(proof) =>
+        proof.activeEnrollment and proof.exactRegistration and proof.linkedOwnerAndOrganization and proof.nativeConsent and proof.additionalFactorClear and proof.exactPurpose and proof.exactState and proof.exactVerifier and proof.unspent
+    }
+
+pure def lawNativeBackupOnlyGrantsItsPurpose(provenance: NativePasswordBackupProvenance, purpose: PasswordBackupPurpose): bool = {
+  val granted = nativePasswordBackupApproval(provenance, purpose)
+  match granted {
+    | NativeBackupRefused => true
+    | NativeBackupVerifyOwner => purpose == BackupVerify and not(canRedeemBackupApproval(purpose, purpose, true, true, true, true))
+    | NativeBackupGrantRead => purpose == BackupRead
+    | NativeBackupGrantWrite => purpose == BackupWrite
+    | NativeBackupGrantRemove => purpose == BackupRemove
+  }
+}
+
+pure val nativeBackupProofSample: NativePasswordBackupChecks = { activeEnrollment: true, exactRegistration: true, linkedOwnerAndOrganization: true, nativeConsent: true, additionalFactorClear: true, exactPurpose: true, exactState: true, exactVerifier: true, unspent: true }
+pure val provenanceValues: Set[NativePasswordBackupProvenance] =
+  Set(NoNativeBackupProof).union(Set(FreshNativeBackupProof(nativeBackupProofSample)))
+    .union(Set(FreshNativeBackupProof({ ...nativeBackupProofSample, activeEnrollment: false })))
+    .union(Set(FreshNativeBackupProof({ ...nativeBackupProofSample, exactRegistration: false })))
+    .union(Set(FreshNativeBackupProof({ ...nativeBackupProofSample, linkedOwnerAndOrganization: false })))
+    .union(Set(FreshNativeBackupProof({ ...nativeBackupProofSample, nativeConsent: false })))
+    .union(Set(FreshNativeBackupProof({ ...nativeBackupProofSample, additionalFactorClear: false })))
+    .union(Set(FreshNativeBackupProof({ ...nativeBackupProofSample, exactPurpose: false })))
+    .union(Set(FreshNativeBackupProof({ ...nativeBackupProofSample, exactState: false })))
+    .union(Set(FreshNativeBackupProof({ ...nativeBackupProofSample, exactVerifier: false })))
+    .union(Set(FreshNativeBackupProof({ ...nativeBackupProofSample, unspent: false })))
 ```
 
 ### Google sign-in for backup returns to the protected approval page

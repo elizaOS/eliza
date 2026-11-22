@@ -132,6 +132,7 @@ export schema StripeEvent {
   readonly data: { readonly object: Schema.Unknown }
 }
 
+
 schema ErrorBody { readonly error: { readonly type: string; readonly code?: string | null; readonly decline_code?: string | null } }
 
 type Params = ReadonlyArray<readonly [string, string]>

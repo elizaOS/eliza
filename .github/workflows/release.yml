@@ -26,7 +26,8 @@ jobs:
       - uses: ./.github/actions/setup
       - run: test "vibestack-v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
       - run: pnpm pack
-      - run: pnpm selftest --concurrency=1
+      - run: pnpm all //#test vibestack-studio#typecheck vibestack-studio#test vibestack-studio#test:browser --concurrency=1
+      - run: pnpm selftest --only --concurrency=1
       - run: gh release create "$GITHUB_REF_NAME" vibestack-*.tgz --verify-tag --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

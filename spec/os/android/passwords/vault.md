@@ -260,15 +260,15 @@ pure def lawMissingRecordRefusesRowAction(selection: RowSelection): bool =
 
 ### Shared backup is offered only when its exact native app is ready
 
-The device checks that the selected deployment serves version 2 of the
-backup contract and that the cloud reports native Google eligibility for
-the exact registered app client. Checking eligibility does not open a challenge.
+The device uses the native contract when the selected cloud advertises
+version 3 for the exact registered app, environment and callback. Checking
+eligibility does not open a challenge.
 
 ```quint
-pure def sharedBackupServiceReady(version2Available: bool, exactNativeAppReady: bool): bool =
-  version2Available and exactNativeAppReady
-pure def lawSharedBackupNeedsItsOwnNativeApp(version2Available: bool): bool =
-  not(sharedBackupServiceReady(version2Available, false))
+pure def sharedBackupServiceReady(version3Available: bool, exactNativeAppReady: bool): bool =
+  version3Available and exactNativeAppReady
+pure def lawSharedBackupNeedsItsOwnNativeApp(version3Available: bool): bool =
+  not(sharedBackupServiceReady(version3Available, false))
 ```
 
 ### Shared approval requires the registered cloud and the current owner
@@ -276,7 +276,9 @@ pure def lawSharedBackupNeedsItsOwnNativeApp(version2Available: bool): bool =
 The device asks for an approval with its registered client and environment
 and the acknowledged device credential of the current cloud account. Each
 backup action needs a fresh confirmation by the account holder at that
-cloud. The approval counts only when it names the account and organization
+cloud. Native approval sends that device credential with a fresh
+device-bound Google challenge and separate backup PKCE proof. The approval
+counts only when it names the account and organization
 of that credential, and only while the same credential is still the active
 one and the request is still open; a renewed or replaced credential, a
 closed request, or a locked device ends the attempt.

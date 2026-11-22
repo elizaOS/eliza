@@ -17,6 +17,7 @@ export interface ReadableMessage extends MailboxMessage {
   bodyText?: string;
   bodyHtml?: string;
   attachments?: ReadonlyArray<FakeAttachment>;
+  mimePayload?: ReturnType<typeof mimeBoundaryPayload>;
 }
 
 export interface ReadableMailbox extends GmailMailbox {
@@ -39,6 +40,24 @@ export function touchMessage(mailbox: ReadableMailbox, id: string): void {
 
 const data = (bytes: Uint8Array | string) => Buffer.from(bytes).toString("base64url");
 
+export function mimeBoundaryPayload(count: number, body: "plain" | "html" | "malformed") {
+  const text = (mimeType: string, value: string) => ({
+    mimeType, body: { data: data(value), size: Buffer.byteLength(value) }
+  });
+  const file = (partId: string, filename: string) => ({ ...text("text/plain", filename), partId, filename });
+  const fillers = Array.from({ length: count - (body === "plain" ? 6 : 5) }, () => ({ mimeType: "application/octet-stream" }));
+  const html = text("text/html", "<p>HTML after the attachments</p>");
+  return { mimeType: "multipart/mixed", parts: [
+    file("1", "first.txt"),
+    ...fillers,
+    { mimeType: "multipart/mixed", parts: [
+      file("2", "last.txt"),
+      ...(body === "plain" ? [text("text/plain", "Complete plain text")] : []),
+      body === "malformed" ? false : html
+    ] }
+  ] };
+}
+
 function rawParts(raw: string): { readonly headers: Record<string, string>; readonly body: string } {
   const text = Buffer.from(raw, "base64url").toString("utf8");
   const split = text.search(/\r?\n\r?\n/);
@@ -60,6 +79,7 @@ function payload(message: ReadableMessage, format: string, only: ReadonlyArray<s
   const parsed = message.raw === undefined ? undefined : rawParts(message.raw);
   const headers = headerList(message.received ?? [], message.headers ?? parsed?.headers ?? {}, format === "metadata" ? only : undefined);
   if (format === "metadata") return { mimeType: "multipart/mixed", headers };
+  if (message.mimePayload !== undefined) return { ...message.mimePayload, headers };
   const text = message.bodyText ?? parsed?.body;
   const bodies = [
     ...(text === undefined ? [] : [{ partId: "0.0", mimeType: "text/plain", filename: "", headers: [{ name: "Content-Type", value: "text/plain; charset=utf-8" }], body: { size: Buffer.byteLength(text), data: data(text) } }]),

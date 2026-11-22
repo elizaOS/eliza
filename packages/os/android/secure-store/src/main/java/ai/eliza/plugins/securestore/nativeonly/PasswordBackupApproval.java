@@ -17,9 +17,10 @@ public final class PasswordBackupApproval {
 
   public enum Purpose {
     READ("read", "GET"), SAVE("save", "PUT"), DELETE("delete", "DELETE"), VERIFY("verify", null);
-    final String value;
+    private final String value;
     private final String method;
     Purpose(String value, String method) { this.value = value; this.method = method; }
+    public String value() { return value; }
   }
 
   public record Response(int status, String revision, byte[] ciphertext) {}
@@ -65,6 +66,15 @@ public final class PasswordBackupApproval {
     if (!current.getAsBoolean()) throw new IOException("Password backup account changed");
     return new PasswordBackupApproval(endpoint, purpose, grant.code() instanceof String value ? value : null,
       state, verifier, grant.scope(), expected, revision, present, current);
+  }
+
+  public static boolean advertisesNative(URI endpoint, String version) throws IOException {
+    HttpsURLConnection request = connect(endpoint, "GET", null);
+    try {
+      return request.getResponseCode() == 204 && version.equals(request.getHeaderField("X-Password-Backup-Version"));
+    } finally {
+      request.disconnect();
+    }
   }
 
   public String scope() { return scope; }

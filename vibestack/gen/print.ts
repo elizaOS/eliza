@@ -359,12 +359,13 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
       return [text, text.startsWith("!") ? UNARY : ATOM];
     }
     if (op === "Set") {
-      const t = resolve(typeOf(e.id));
-      setElem(t);
+      const el = setElem(resolve(typeOf(e.id)));
       const distinct = [...new Set(at(within(), () => a.map((x) => ex(x, TERNARY))))];
       const literal = (x: Json) => ["int", "str", "bool"].includes(x.kind) || !!negative(x) || (x.kind === "name" && variants.has(x.name));
       if (a.length > 1 && !a.every(literal)) fail("Set(…) with several members that are not literals could hold the same value twice; write Set(a).union(Set(b))");
-      return [distinct.length && nesting <= 1 ? `[${distinct.join(", ")}]` : `([${distinct.join(", ")}] as ${tsType(t.elem)}[])`, ATOM];
+      // Keep variant sets typed where TypeScript would otherwise infer string[]. LemmaScript reads the original literals.
+      const items = `[${distinct.join(", ")}]`;
+      return [distinct.length && nesting <= 1 && (proof || resolve(el).kind !== "sum") ? items : `(${items} as ${tsType(el)}[])`, ATOM];
     }
     return [`${reference(op)}(${at("typed", () => a.map((x) => ex(x, TERNARY))).join(", ")})`, ATOM];
   };

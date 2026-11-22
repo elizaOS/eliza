@@ -33,7 +33,7 @@ describe("WP8 tmp", () => {
       },
       {
         id: "msg-digest", threadId: "thr-digest", labelIds: ["INBOX"], internalDate: now - 120_000,
-        headers: { From: "News <noreply@news.example>", To: "conn-mail@example.com", Subject: "Weekly digest", "List-Id": "<digest.news.example>" }, snippet: "digest", bodyText: "x".repeat(300 * 1024)
+        headers: { From: "News <noreply@news.example>", To: "conn-mail@example.com", Subject: "Weekly digest", "List-Id": "<digest.news.example>" }, snippet: "digest", bodyText: "x".repeat(8 * 1024 * 1024 + 1)
       },
       { id: "msg-trashed", threadId: "thr-trashed", labelIds: ["TRASH"], internalDate: now - 30_000, headers: { From: "ada@example.org", Subject: "Old plan" }, snippet: "plan" }
     ]))
@@ -100,7 +100,8 @@ describe("WP8 tmp", () => {
         tooMany: [400, "invalid_request"],
         read: [200, "msg-direct", ["conn-mail@example.com"], "Please review the plan.", null, "none", [{ partId: "1", name: "plan.pdf", mimeType: "application/pdf", size: pdf.length, supported: true }]],
         oversized: [413, "content_too_large"],
-        capabilities: [200, { version: 1, from: "conn-mail@example.com", kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 } }],
+        capabilities: [200, { version: 1, from: "conn-mail@example.com", reads: ["triage", "search", "read", "thread", "attachment", "drafts", "draft", "capabilities"],
+          kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 }, providerExactlyOnce: false }],
         attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
         thread: [200, "1001", 1, ["Please review the plan."]],
         stale: [[409, "stale_revision"], [409, "stale_revision"]],

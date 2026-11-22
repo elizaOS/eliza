@@ -454,7 +454,7 @@ function parts(raw: unknown, recipients: number): SmsSendPart[] | undefined {
     if (part.partIndex !== perRecipient[recipient] || (perRecipient[recipient] ?? 0) >= maxPartsPerRecipient) return undefined;
     if (!oneOf(PART_STATES, part.sent) || !oneOf(PART_STATES, part.delivery)) return undefined;
     perRecipient[recipient] = (perRecipient[recipient] ?? 0) + 1;
-    out.push({ index, recipientIndex: recipient, partIndex: part.partIndex as number, sent: part.sent, delivery: part.delivery });
+    out.push({ index, recipientIndex: recipient, partIndex: part.partIndex, sent: part.sent, delivery: part.delivery });
   }
   return out;
 }

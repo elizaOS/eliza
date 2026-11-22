@@ -108,38 +108,79 @@ jobs:
   verify:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
+    concurrency: &verification-concurrency
+      group: ci-verify-${{ matrix.name }}-${{ github.event_name == 'push' && github.run_attempt == '1' && startsWith(matrix.name, 'selftest-') && github.ref || github.run_id }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: verify
             tasks: build typecheck test test:browser check //#lint:js //#lint:css //#analyze //#selftest:docs //#selftest:examples
-          - name: selftest-a
-            tasks: //#selftest:tools:a
-          - name: selftest-b
-            tasks: //#selftest:tools:b
-          - name: selftest-rest
-            tasks: //#selftest:tools:rest
-    env:
+    env: &cache-env
       TURBO_CACHE: local:rw
-    steps:
+    steps: &verification-steps
       - uses: actions/checkout@v7
       - id: setup
         uses: ./.github/actions/setup
         with:
           job: ${{ matrix.name }}
-      - run: node vibestack/spec.ts tasks ${{ matrix.tasks }} --continue --summarize
-      - if: always() && steps.setup.outputs.spec-cache-key != ''
+      - id: verify-tasks
+        run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue --summarize ${{ matrix.name == 'verify' && '--log-order=stream' || '' }}
+      - name: Report Turbo task timings
+        if: ${{ !cancelled() }}
+        run: |
+          for report in .turbo/runs/*.json; do
+            [[ -f "$report" ]] || continue
+            jq -r '
+              select(.version == "1" and (.tasks | type == "array"))
+              | .execution as $run
+              | select([$run.startTime, $run.endTime, $run.cached, $run.attempted] | all(type == "number"))
+              | "### Turbo task timings", "",
+                "Wall time \(($run.endTime - $run.startTime) / 1000) s. Cache hits \($run.cached) of \($run.attempted) attempted tasks.",
+                "",
+                "| Task | Wall time (s) | Cache | Exit code |",
+                "| --- | ---: | --- | ---: |",
+                ([.tasks[]
+                  | select([.execution.startTime, .execution.endTime] | all(type == "number"))
+                  | {id: .taskId, elapsed: ((.execution.endTime - .execution.startTime) / 1000), cache: .cache.status, exit: .execution.exitCode}]
+                  | sort_by(-.elapsed) | .[]
+                  | "| \(.id) | \(.elapsed) | \(.cache // "-") | \(.exit // "-") |"),
+                ""
+            ' "$report" >> "$GITHUB_STEP_SUMMARY" || echo "::warning::Could not read the Turbo run summary"
+          done
+      - id: superseded-spec-cache
+        if: >-
+          cancelled() && matrix.name == 'verify' && steps.verify-tasks.conclusion == 'cancelled' &&
+          steps.setup.outputs.spec-cache-key != '' &&
+          github.event_name == 'push' && github.run_attempt == '1' &&
+          github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        shell: bash
+        run: |
+          current=$(GIT_TERMINAL_PROMPT=0 timeout 4s git ls-remote --refs --exit-code origin "$GITHUB_REF") || exit 0
+          [[ $current != *$'\n'* ]] || exit 0
+          IFS=$'\t' read -r tip ref <<< "$current"
+          [[ $tip =~ ^[0-9a-f]{40}$ && $ref == "$GITHUB_REF" && $tip != "$GITHUB_SHA" ]] || exit 0
+          echo 'skip=true' >> "$GITHUB_OUTPUT"
+          echo "Skipping the spec cache upload for superseded commit $GITHUB_SHA."
+      - if: always() && steps.setup.outputs.spec-cache-key != '' && steps.superseded-spec-cache.outputs.skip != 'true'
         uses: actions/cache/save@v6
         with:
           path: ${{ steps.setup.outputs.spec-cache-path }}
           key: ${{ steps.setup.outputs.spec-cache-key }}
-      - if: always() && steps.setup.outputs.turbo-cache-key != ''
+      - id: prune-turbo-cache
+        if: always() && steps.setup.outputs.turbo-cache-key != ''
         run: |
-          mkdir -p .turbo/cache
+          [[ -d .turbo/cache ]] || exit 0
           cat .turbo/runs/*.json 2>/dev/null | jq -r '.tasks[] | select(.cache.status == "HIT") | .hash' | while read -r hash; do find .turbo/cache -name "$hash*" -exec touch {} +; done
           find .turbo/cache -type f -mtime +7 -delete
-      - if: always() && steps.setup.outputs.turbo-cache-key != ''
+          for archive in .turbo/cache/*.tar.zst; do
+            metadata="${archive%.tar.zst}-meta.json"
+            [[ -f "$archive" && -s "$archive" && -f "$metadata" && -s "$metadata" ]] || continue
+            echo "populated=true" >> "$GITHUB_OUTPUT"
+            break
+          done
+      - if: always() && steps.prune-turbo-cache.outputs.populated == 'true'
         uses: actions/cache/save@v6
         with:
           path: .turbo/cache
@@ -171,3 +212,20 @@ jobs:
             vibestack/examples/*/test/__traces__/
           if-no-files-found: ignore
           include-hidden-files: true
+
+  vibestack-fixture-selftests:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: selftest-a
+            tasks: //#selftest:tools:a
+          - name: selftest-b
+            tasks: //#selftest:tools:b
+          - name: selftest-rest
+            tasks: //#selftest:tools:rest
+    concurrency: *verification-concurrency
+    env: *cache-env
+    steps: *verification-steps

@@ -72,27 +72,9 @@ schema State {
   textZoom?: number | null
   pageScale?: number | null
 }
-schema Listed {
-  exists: boolean
-  foregrounded: boolean
-  paused?: boolean
-  currentUrl: string | null
-  process: Sharing | null
-  storage: Sharing | null
-  owner: string | null
-  session: string | null
-  epoch: number | null
-  title?: string | null
-  canGoBack?: boolean
-  canGoForward?: boolean
-  progress?: number
-  pageError?: string | null
-  securityBlocked?: boolean
-  textZoom?: number | null
-  pageScale?: number | null
-  id: string
-}
-schema StateList { surfaces: Listed[] }
+const StateList = Schema.Struct({
+  surfaces: Schema.mutable(Schema.Array(Schema.Struct({ ...State.fields, id: Schema.String }))),
+})
 schema Navigation {
   id: string
   owner: string

@@ -83,7 +83,7 @@ const Views = Schema.Array(View).check(
 )
 const Switches =<A extends string, B extends string>(first: A, second: B) => Schema.Struct({ [first]: Schema.Boolean, [second]: Schema.Boolean } as { [K in A | B]: typeof Schema.Boolean })
 
-const HostFile = Schema.Struct({
+const HostFileCodec = Schema.Struct({
   schema: Schema.Number,
   service: Schema.String,
   notification: Schema.Struct({ channel: Schema.String, title: Schema.String, text: Schema.String }),
@@ -120,7 +120,7 @@ const CharacterFile = Schema.Struct({
   messageExamples: Schema.optionalKey(Schema.Array(Schema.Union([Schema.Struct({ examples: Examples }), Examples]))),
 })
 
-const PolicyFile = Schema.Struct({
+const PolicyFileCodec = Schema.Struct({
   schema: Schema.Number,
   actions: Schema.Struct({
     allowed: Schema.Union([UniqueNames, Schema.Record(Nonblank, Schema.Unknown)]),
@@ -129,17 +129,22 @@ const PolicyFile = Schema.Struct({
   plugins: Schema.Struct({ load: UniqueNames, product: Schema.optionalKey(Nonblank) }),
 })
 
-type HostFile = typeof HostFile.Type
-type PolicyFile = typeof PolicyFile.Type
+type HostFile = typeof HostFileCodec.Type
+type PolicyFile = typeof PolicyFileCodec.Type
 
-interface AdmittedAgentData {
+export interface AdmittedAgentData {
   readonly service: string
   readonly notification: { readonly channel: string; readonly title: string; readonly text: string }
   readonly needsAccount: boolean
 }
 
-const trimmed = (text: string) => text.replace(/^[\u0000- ]+|[\u0000- ]+$/g, "")
-const words = (text: string) => ({ words: trimmed(text), units: trimmed(text).length })
+function words(text: string) {
+  let start = 0
+  let end = text.length
+  while (start < end && text.charCodeAt(start) <= 0x20) start += 1
+  while (end > start && text.charCodeAt(end - 1) <= 0x20) end -= 1
+  return { words: text.slice(start, end), units: end - start }
+}
 
 function urlShape(url: string): UrlShape {
   if (ORIGIN.test(url) && URL.canParse(url)) return "HttpsOrigin"
@@ -165,7 +170,7 @@ function backend(host: HostFile): Backend {
 const environment = (settings: Readonly<Record<string, string>>): EnvEntry[] => Object.entries(settings).map(([key, value]) => ({
   key,
   keyKind: !ENVIRONMENT_NAME.test(key) ? "MalformedKey" : RESERVED_ENVIRONMENT.test(key) ? "ReservedKey" : "PluginSetting",
-  singleLine: !/[\u0000\r\n]/.test(value),
+  singleLine: !value.includes("\0") && !/[\r\n]/.test(value),
 }))
 
 function hostLaunch(host: HostFile): HostLaunch {
@@ -251,9 +256,9 @@ function broken(d: AgentData, native: ModelRouteList | undefined): string | unde
   return filesAdmitted(d) ? undefined : "The agent data files are not admitted"
 }
 
-const decodeHost = Schema.decodeUnknownEffect(Schema.fromJsonString(HostFile), { onExcessProperty: "error" })
+const decodeHost = Schema.decodeUnknownEffect(Schema.fromJsonString(HostFileCodec), { onExcessProperty: "error" })
 const decodeCharacter = Schema.decodeUnknownEffect(Schema.fromJsonString(CharacterFile), { onExcessProperty: "error" })
-const decodePolicy = Schema.decodeUnknownEffect(Schema.fromJsonString(PolicyFile), { onExcessProperty: "error" })
+const decodePolicy = Schema.decodeUnknownEffect(Schema.fromJsonString(PolicyFileCodec), { onExcessProperty: "error" })
 
 effect function text(name: AgentFile, bytes: Uint8Array) {
   return try Effect.try({ try: () => new TextDecoder("utf-8", { fatal: true }).decode(bytes), catch: () => new AgentConfigRefused({ detail: `The agent ${name} file is not UTF-8` }) })

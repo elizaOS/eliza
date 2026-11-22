@@ -184,11 +184,13 @@ pure def alwaysNoSpeechDuringCall(s: SpeechOutput): bool = s.mode == CallAudio i
 ### The first write of an utterance is reported once, and no other write is
 
 The report is made as the first sample is handed to the output, before the
-write, so the time to first audio is measured from the write.
+write, so the time to first audio is measured from the write. A speaking
+reply keeps the positive utterance ID that admitted it.
 
 ```quint
 pure def writtenOf(speech: Speech): int = match speech { | Speaking(u) => u.written | _ => -1 }
 pure def speakingId(speech: Speech): int = match speech { | Speaking(u) => u.utteranceId | _ => 0 }
+pure def alwaysSpeakingHasPositiveUtteranceId(s: SpeechOutput): bool = isSilent(s.speech) or speakingId(s.speech) > 0
 pure def canWriteSpeech(s: SpeechOutput): bool = not(isSilent(s.speech))
 pure def writeSpeech(s: SpeechOutput): OutputStep = {
   val speech = s.speech
@@ -246,8 +248,8 @@ pure def focusChanged(s: SpeechOutput, change: FocusChange): OutputStep = {
   match speech {
   | Speaking(u) =>
     if (change == FocusLoss or change == FocusLossTransient) { state: { ...s, speech: Silent }, out: List(StopPlayback, AbandonFocus) }
-    else if (change == FocusLossCanDuck and u.volume == FullVolume) { state: { ...s, speech: Speaking({ ...u, volume: Ducked }) }, out: List(DuckVolume) }
-    else if (change == FocusGain and u.volume == Ducked) { state: { ...s, speech: Speaking({ ...u, volume: FullVolume }) }, out: List(RestoreVolume) }
+    else if (change == FocusLossCanDuck and u.volume == FullVolume) { state: { ...s, speech: Speaking({ utteranceId: u.utteranceId, written: u.written, volume: Ducked }) }, out: List(DuckVolume) }
+    else if (change == FocusGain and u.volume == Ducked) { state: { ...s, speech: Speaking({ utteranceId: u.utteranceId, written: u.written, volume: FullVolume }) }, out: List(RestoreVolume) }
     else { state: s, out: List() }
   | _ => { state: s, out: List() }
   }

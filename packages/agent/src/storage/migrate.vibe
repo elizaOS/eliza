@@ -9,17 +9,12 @@ module node {
     type Bundle, type Directory, type Store, type StoreAccount, type StoreFault,
   } from "../../gen/agent__storage__database.ts"
   import { StoreFailed } from "./fault.vibe"
-  import { migrations as shipped, type Migration } from "./schema.vibe"
+  import type { DeviceStorageSnapshot, Migration } from "./schema.vibe"
 
   export interface StoreOwner {
     readonly agentId: UUID
     readonly account: { readonly userId: string; readonly organizationId: string } | null
     readonly embeddingDimensions: number
-  }
-
-  export interface DeviceStorageSnapshot {
-    readonly schemaVersion: number
-    readonly bytes: Uint8Array
   }
 
   type OwnerRow = { agent_id: string; user_id: string | null; organization_id: string | null; embedding_dimensions: number; version: number }
@@ -127,18 +122,6 @@ module node {
     if (state.phase === "Failed") storeRefused(state.fault)
   }
 
-  export async function createDeviceStorageSnapshot(list: readonly Migration[] = shipped): Promise<DeviceStorageSnapshot> {
-    const db = await PGlite.create()
-    try {
-      await db.transaction(async (tx) => {
-        for (const migration of list) await tx.exec(migration.sql)
-        await tx.exec("CREATE TABLE device_snapshot (version integer NOT NULL)")
-        await tx.query("INSERT INTO device_snapshot VALUES ($1)", [list.length])
-      })
-      return { schemaVersion: list.length, bytes: new Uint8Array(await (await db.dumpDataDir("none")).arrayBuffer()) }
-    } finally { await db.close() }
-  }
-
   export async function seedDurableStore(directory: string, owner: StoreOwner, list: readonly Migration[], bytes: Blob): Promise<void> {
     const parent = dirname(directory)
     const scratch = await mkdtemp(join(parent, ".store-seed-"))
@@ -154,6 +137,5 @@ module node {
   }
 }
 export {
-  createDeviceStorageSnapshot, migrate, seedDurableStore, startStore, storeBundle,
-  type DeviceStorageSnapshot, type StoreOwner,
+  migrate, seedDurableStore, startStore, storeBundle, storeRefused, type StoreOwner,
 } from node

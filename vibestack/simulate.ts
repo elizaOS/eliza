@@ -1,15 +1,11 @@
-import fs from "node:fs";
-import path from "node:path";
 import os from "node:os";
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import type { Model } from "./gen.ts";
 import { SENDER } from "./gen/classify.ts";
 import { act, completed, violated, type Input } from "./action.ts";
-import { entry, remembered, type Memory } from "./cache.ts";
+import { entry, evaluatorForCheck, remembered, type Memory } from "./cache.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
-import { positiveGuardEvaluation, positiveGuardProbe, simulated } from "./gen/harness.ts";
+import { positiveGuardEvaluation, positiveGuardProbe, simulated, witnessAction, witnessFile } from "./gen/harness.ts";
 import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
 import type { Result } from "./pipeline.ts";
 import { TABLE, compiledAs } from "./simulator.ts";
@@ -43,18 +39,20 @@ export interface Step {
 }
 
 /** A simulated trace; with opaque functions, from the step that settled their tables (gen/harness.ts), and empty if none did. */
-function readTrace(itf: string, model: Model): Step[] {
+function readTrace(itf: string, model: Model, witness: boolean): Step[] {
   const states = JSON.parse(itf).states.filter((st: any) => !model.opaques.length || st.settled);
   return states.map((st: any, i: number): Step => {
     // Values are decoded by their type, and sets put in a fixed order, so that they compare equal to TypeScript's.
     const read = (type: any, itf: any) => model.canon(type, model.decode(type, itf));
     const picked = (ps: { name: string; type: any }[]) => Object.fromEntries(ps.map((p) => [p.name, read(p.type, st["mbt::nondetPicks"][p.name].value)]));
-    const taken: string = st["mbt::actionTaken"];
+    const action: string = st["mbt::actionTaken"];
+    const taken: string = witness && action?.startsWith(witnessAction("")) ? st.last : action;
     const t = model.transitions.find((t) => t.name === taken);
     const v = model.evals.find((v) => `eval_${v.name}` === taken || positiveGuardEvaluation(v.name) === taken);
     const l = model.laws.find((l) => l.name === taken);
     return {
-      event: t && { type: t.name, ...picked(t.params) },
+      // Once any transition takes a sender, every event has one: the harness picks it for those that do not take it too (gen/harness.ts).
+      event: t && { type: t.name, ...picked(model.sender && !t.params.some((p) => p.name === SENDER) ? [...t.params, { name: SENDER, type: model.sender }] : t.params) },
       evaluated: v && { name: v.name, picks: picked(v.params.filter((p) => p.from === "pick")), result: read(v.result, st.outcome.value) },
       law: l && { name: l.name, args: picked(l.params) },
       state: model.stateType ? read(model.stateType, st.state) : undefined,
@@ -87,24 +85,12 @@ const seedFor = (seed: number, ...what: string[]) => String(parseInt(digest([Str
  * Quint installs its evaluator the first time it simulates, and runs started together would race to. Until it is
  * installed, the first run in this process goes alone and the others wait for it; once it is, nothing waits.
  */
-let evaluatorInstalled = false;
 let firstRun: Promise<void> | undefined;
-function evaluatorIsInstalled(root: string): boolean {
-  if (evaluatorInstalled) return true;
-  for (const from of [import.meta.url, pathToFileURL(path.join(root, "package.json")).href]) {
-    let version: string | undefined;
-    try { version = fs.readFileSync(createRequire(from).resolve("@informalsystems/quint/dist/src/rust/binaryManager.js"), "utf8").match(/QUINT_EVALUATOR_VERSION = '([^']+)'/)?.[1]; } catch { continue; }
-    const home = process.env.QUINT_HOME ?? path.join(os.homedir(), ".quint");
-    const exe = process.platform === "win32" ? "quint_evaluator.exe" : "quint_evaluator";
-    if (version && fs.existsSync(path.join(home, `rust-evaluator-${version}`, exe))) return (evaluatorInstalled = true);
-  }
-  return false;
-}
 async function simulating<T>(root: string, go: () => Promise<T>): Promise<T> {
-  if (evaluatorIsInstalled(root)) return go();
+  if (evaluatorForCheck(root)) return go();
   if (firstRun) { await firstRun; return go(); }
   const run = go();
-  firstRun = run.then(() => {}, () => {});
+  firstRun = run.then(() => {}, () => {}).finally(() => { firstRun = undefined; });
   return run;
 }
 
@@ -115,9 +101,11 @@ const MAX_SHARDS = 4;
 /** What a spec's runs of Quint share: the check's memory, the model, and every file of Quint its harness reads. */
 export interface Harness { memory: Memory; model: Model; files: Record<string, Input>; main?: string }
 /** What a spec's harness reads: its modules, the harness itself, and the spec as the harness reads it where it has opaque functions. */
-export function harnessFiles(spec: Spec, specs: Spec[], model: Model): Record<string, Input> {
+export function harnessFiles(spec: Spec, specs: Spec[], model: Model, witness?: { harness: string }): Record<string, Input> {
   const sim = model.opaques.length ? simulated(spec.qnt, model.opaques) : undefined;
-  return { ...modules(spec, specs), [`${model.name}.run.qnt`]: { text: model.harness, key: model.harness }, ...(sim ? { [`${model.name}.sim.qnt`]: { text: sim, key: codeOf(sim) } } : {}) };
+  const file = witness ? witnessFile(model.name) : `${model.name}.run.qnt`;
+  const text = witness?.harness ?? model.harness;
+  return { ...modules(spec, specs), [file]: { text, key: text }, ...(sim ? { [`${model.name}.sim.qnt`]: { text: sim, key: codeOf(sim) } } : {}) };
 }
 
 /**
@@ -128,7 +116,7 @@ const compilations = new WeakMap<Harness, Promise<Record<string, Input> | undefi
 function compiled(harness: Harness): Promise<Record<string, Input> | undefined> {
   const { memory, model, files, main = `${model.name}.run.qnt` } = harness;
   let parts = compilations.get(harness);
-  if (!parts) compilations.set(harness, parts = act(memory, "simulator", ["compile", main, "--main", `${model.name}_run`], `${SIMULATIONS}/${main.slice(0, -".run.qnt".length)}.compiled`, files)
+  if (!parts) compilations.set(harness, parts = act(memory, "simulator", ["compile", main, "--main", `${model.name}_run`], `${SIMULATIONS}/${main.replace(/\.run\.qnt$/, "")}.compiled`, files)
     .then((r) => (r.ok ? Object.fromEntries(Object.entries(r.files).map(([f, text]) => [f, { text, key: digest(text) }])) : undefined)));
   return parts;
 }
@@ -145,6 +133,7 @@ function compiled(harness: Harness): Promise<Record<string, Input> | undefined> 
 export async function simulate(harness: Harness, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1, sampleLimit = samples): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
   const { memory, model, files, main = `${model.name}.run.qnt` } = harness;
   const dir = `${SIMULATIONS}/${model.name}.${invariant}.${step}`;
+  const witness = main === witnessFile(model.name);
   const parts = await compiled(harness);
   const needed = [TABLE, ...["init", step, invariant].map(compiledAs)];
   const direct = parts && needed.every((f) => Object.hasOwn(parts, f)) ? Object.fromEntries(needed.map((f) => [f, parts[f]])) : undefined;
@@ -163,7 +152,7 @@ export async function simulate(harness: Harness, invariant: string, traces: numb
     const again = `seed ${derivedSeed}; to simulate again: pnpm exec quint run gen/${main} ${args.join(" ")}`;
     // Anything other than "held" or "violated", each with a trace, is Quint failing to run.
     if ((!r.ok && !broken) || !written.length) throw new Error(`quint run did not complete (${again}):\n${r.out.trim()}`);
-    return { broken, traces: written.map((f) => readTrace(r.files[f], model)).filter((t) => t.length), again };
+    return { broken, traces: written.map((f) => readTrace(r.files[f], model, witness)).filter((t) => t.length), again };
   });
   // Every run finishes before anything is said, so that none is left writing into gen/.
   const done = await allDone(runs);
@@ -347,10 +336,11 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
   };
   const simulationSteps = STEPS + Math.max(0, ...model.within.values());
   const files = harnessFiles(spec, specs, model);
-  const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), model.guardHarness, spec.file, spec.rules.map((r) => `${r.key}\0${r.defs.join(" ")}`).join("\n"),
+  const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), model.guardHarness, ...(model.witness ? [model.witness.harness] : []), spec.file, spec.rules.map((r) => `${r.key}\0${r.defs.join(" ")}`).join("\n"),
     String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
   return remembered<Simulation>(memory, entry(memory.root, "simulate", key), (memory) => inTurn(async () => {
     const harness: Harness = { memory, model, files };
+    const guided = model.witness && { memory, model, files: harnessFiles(spec, specs, model, model.witness), main: witnessFile(model.name) } satisfies Harness;
     const said: Result[] = [];
     let tested: Simulated | undefined;
     /** A result concerns the rules it cites. */
@@ -389,7 +379,15 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       if (broke([sim])) return { said, tested };
       const [probe, ...searches] = await allDone([
         simulate(harness, "inv", REPLAYED, COMPARED_SAMPLES, "probe", true, STEPS, seed),
-        ...model.sometimes.map((w) => search(harness, `never_${w}`, "step", DEPTHS, WITNESS_SAMPLES, seed)),
+        ...model.sometimes.map(async (w) => {
+          const invariant = `never_${w}`;
+          const length = model.witness?.lengths.get(w);
+          if (guided && length !== undefined) {
+            const run = await simulate(guided, invariant, 1, 1, witnessAction(w), false, length + 1 + Number(!!model.opaques.length), seed);
+            if (run.broken) return run;
+          }
+          return search(harness, invariant, "step", DEPTHS, WITNESS_SAMPLES, seed);
+        }),
       ]);
       const witnesses = model.sometimes.map((w, i) => ({ w, run: searches[i] }));
       const runs = [sim, probe, ...searches.filter((run) => run.broken)];
@@ -419,9 +417,12 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       // run at once and are read in the guards' order. Only a guard that never allows its event fails the check, so
       // only that search goes deeper and gets the witness budget; one that never refuses it is only reported.
       const missing = guarded.flatMap((t) => (["allows", "refuses"] as const).filter((side) => !seen.get(t.guard!)![side]).map((side) => ({ t, side })));
+      const guardMain = `${model.name}.guard.run.qnt`;
+      let positive: Harness | undefined;
       const searched = await allDone(missing.map(({ t, side }) => model.evals.some((v) => v.name === t.guard)
         ? side === "allows"
-          ? search({ ...harness, main: `${model.name}.guard.run.qnt`, files: { ...files, [`${model.name}.guard.run.qnt`]: { text: model.guardHarness, key: model.guardHarness } } }, `never_allows_${t.guard}`, positiveGuardProbe(t.guard!), DEPTHS, WITNESS_SAMPLES, seed)
+          ? search(positive ??= { ...harness, main: guardMain, files: { ...files, [guardMain]: { text: model.guardHarness, key: model.guardHarness } } },
+            `never_allows_${t.guard}`, positiveGuardProbe(t.guard!), DEPTHS, WITNESS_SAMPLES, seed)
           : search(harness, `never_refuses_${t.guard}`, "probe", [STEPS], SAMPLES, seed)
         : Promise.resolve(undefined)));
       for (const [i, { t, side }] of missing.entries()) {

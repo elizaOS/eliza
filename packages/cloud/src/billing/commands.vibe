@@ -32,13 +32,13 @@ export interface CommandView {
   readonly createdAt: number
 }
 
-interface CommandsPage {
+export interface CommandsPage {
   readonly observedAt: number
   readonly items: ReadonlyArray<CommandView>
   readonly nextCursor: string | null
 }
 
-interface CommandSpec {
+export interface CommandSpec {
   readonly kind: Exclude<CommandKind, "CheckoutCommand">
   readonly providerKind: Extract<ProviderKind, "SubscriptionUpdate" | "SubscriptionSchedule">
   readonly staleAfter: number
@@ -46,7 +46,7 @@ interface CommandSpec {
   readonly lookup: (subscriptionId: string, deadline: number) => ProviderReply<LookupResult>!!(Deployment | HttpClient.HttpClient)
 }
 
-interface CommandRequest {
+export interface CommandRequest {
   readonly organizationId: string
   readonly userId: string
   readonly idempotencyKey: string

@@ -64,18 +64,18 @@ export interface ComposeContext {
   readonly forwarded: Forwarded | undefined
 }
 
-interface AttachmentReview {
+export interface AttachmentReview {
   readonly name: string
   readonly mimeType: string
   readonly size: number
   readonly sha256: string
 }
 
-interface ForwardedReview extends AttachmentReview {
+export interface ForwardedReview extends AttachmentReview {
   readonly partId: string
 }
 
-type MailReview = {
+export type MailReview = {
   readonly from: string
   readonly to: ReadonlyArray<string>
   readonly cc: ReadonlyArray<string>
@@ -86,7 +86,7 @@ type MailReview = {
   readonly forwardedAttachments: ReadonlyArray<ForwardedReview>
 }
 
-interface Composed {
+export interface Composed {
   readonly raw: string
   readonly threadId?: string
   readonly review: MailReview
@@ -105,8 +105,8 @@ interface ReplyBinding {
   readonly allRecipients: ReadonlyArray<string>
 }
 
-const maxMessageBytes = 8 * 1024 * 1024
-const maxAttachments = 10
+export const maxMessageBytes = 8 * 1024 * 1024
+export const maxAttachments = 10
 const maxRecipients = 50
 const gmail = "/gmail/v1/users/me"
 const mailAddress = /^[A-Za-z0-9.!#$%&'*+\-/=?^_`{|}~]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,63}$/
@@ -116,7 +116,7 @@ const referenceChain = /^(?:<[^<>\s]+@[^<>\s]+>\s*)+$/
 const mailbox = /^(?:"(?:[^"\\]|\\.)*"|[^<>,@"]*)\s*<([^<>]+)>$/
 const headerUnsafe = /[\r\n\0]/
 const mimeToken = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i
-const fileName = /^[^\\/\x00-\x1f\x7f]{1,120}$/
+const fileName = /^[\x20-\x2e\x30-\x5b\x5d-\x7e\x80-\uffff]{1,120}$/
 const replyHeaders = ["From", "Reply-To", "To", "Cc", "Subject", "Message-ID", "References"]
 const sendable: Readonly<Record<string, RegExp>> = {
   "text/plain": /\.txt$/i,
@@ -148,7 +148,6 @@ const RepliedMessage = Schema.Struct({
   payload: Schema.Struct({ headers: Schema.optionalKey(Schema.Array(Schema.Struct({ name: Schema.String, value: Schema.String }))) })
 })
 
-type Proposal = typeof Proposal.Type
 type Replied = typeof RepliedMessage.Type
 
 function headerValues(message: Replied, name: string): ReadonlyArray<string> {
@@ -317,7 +316,7 @@ function attachmentReview(file: File): AttachmentReview {
 export effect function composeMessage(raw: unknown, context: ComposeContext) {
   const decoded = Schema.decodeUnknownOption(Proposal, { onExcessProperty: "error" })(raw)
   if (Option.isNone(decoded)) throw refused("InvalidRequest")
-  const proposal: Proposal = decoded.value
+  const proposal = decoded.value
   const replying = proposal.mode === "reply" || proposal.mode === "reply-all"
   if (headerUnsafe.test(proposal.subject) || replying !== (proposal.replyMessageId !== undefined)) throw refused("InvalidRequest")
   const source = proposal.forwardAttachments

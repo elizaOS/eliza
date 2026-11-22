@@ -1,7 +1,7 @@
 // spec/cloud/billing/checkout.md, "Story: Subscribe once, whichever screen or payer finishes it"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"; spec/cloud/billing/subscriptions.md, "Story: Change my plan one command at a time"; spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"
 import {
-  NotAState, Rejected, answerOf, apply, canReceiveReply, canResolve, decodeState, elapse, initial, nowOf, resumes, returnFor,
-  type Checkout, type CheckoutEffect, type CheckoutPhase, type CheckoutReturn, type CheckoutStep, type Event, type Presentation
+  Rejected, answerOf, apply, canReceiveReply, canResolve, decodeState, elapse, initial, nowOf, resumes, returnFor,
+  type Checkout, type CheckoutEffect, type CheckoutPhase, type CheckoutReturn, type CheckoutStep, type Event, type NotAState, type Presentation
 } from "../../gen/cloud__billing__checkout.effect.vibe"
 import { isConflict } from "../../gen/cloud__shared__dispatchOnce.effect.vibe"
 import { apply as stepSubscription, isLive } from "../../gen/cloud__billing__subscriptions.effect.vibe"
@@ -40,7 +40,7 @@ export interface StoredCheckout {
   readonly state: Checkout
 }
 
-interface StartRequest {
+export interface StartRequest {
   readonly planKey: PlanKey
   readonly idempotencyKey: string
   readonly presentation: Presentation
@@ -51,7 +51,7 @@ type Admission =
   | { readonly kind: "live"; readonly stored: StoredCheckout }
   | { readonly kind: "fresh"; readonly customerId: string | undefined }
 
-type CheckoutAnswer =
+export type CheckoutAnswer =
   | { readonly status: "open"; readonly commandId: string; readonly checkoutUrl: string; readonly sessionId: string; readonly expiresAt: number }
   | {
       readonly status: "open"; readonly commandId: string; readonly uiMode: "embedded"; readonly sessionId: string; readonly clientSecret: string
@@ -198,7 +198,7 @@ effect function billingReturnOf(tx: Tx, caller: Signed, presentation: Presentati
   return registration.billingReturn
 }
 
-effect function admit(tx: Tx, caller: Signed, commandId: string, by: SessionOwner, digest: string, request: StartRequest, billingReturn: ReturnUrl) {
+effect function admit(tx: Tx, caller: Signed, commandId: string, by: SessionOwner, digest: string) {
   try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [caller.organizationId])
   const existing = try loadCheckout(tx, commandId)
   if (existing !== undefined) {
@@ -258,11 +258,11 @@ function providerRefusal<A>(reply: ProviderReply<A>, now: number): Refused {
   return reply.kind === "refused" && reply.code === "NotFoundAtProvider" ? refused("NotFound") : refused("ProviderUnavailable", "NoReason", now + retryAfterMs)
 }
 
-effect function readSession(sessionId: string, now: number) {
+effect function readSession(sessionId: string) {
   return try providerReply(retrieveCheckoutSession(sessionId, { timeout: providerTimeout }))
 }
 
-effect function openAnswer(stored: StoredCheckout, session: StripeCheckoutSession, now: number): CheckoutAnswer!Refused!Deployment {
+effect function openAnswer(stored: StoredCheckout, session: StripeCheckoutSession): CheckoutAnswer!Refused!Deployment {
   const state = stored.state
   if (state.presentation !== "Embedded") {
     if (session.url === null) throw refused("ProviderInvalidResponse")
@@ -303,9 +303,9 @@ effect function answerCheckout(stored: StoredCheckout, known: StripeCheckoutSess
   const answer = try verdictOf(stored)
   if (answer !== "AnswerOpen") return try settledAnswer(stored, answer, now)
   const fresh = known?.id === stored.state.sessionId && known.status === "open" ? known : undefined
-  const seen = fresh === undefined ? try readSession(stored.state.sessionId, now) : { kind: "applied", value: fresh } as const
+  const seen = fresh === undefined ? try readSession(stored.state.sessionId) : { kind: "applied", value: fresh } as const
   if (seen.kind !== "applied") throw providerRefusal(seen, now)
-  if (seen.value.status === "open") return try openAnswer(stored, seen.value, now)
+  if (seen.value.status === "open") return try openAnswer(stored, seen.value)
   const after = try store.transaction((tx) => applyCheckoutEvent(tx, seen.value, now))
   if (after === undefined || after.phase === "Open") throw unavailable(now)
   const current = { ...stored, state: after }
@@ -317,7 +317,7 @@ effect function replaceLive(live: StoredCheckout) {
   const now = try Clock.currentTimeMillis
   if (live.state.phase !== "Open") throw unavailable(now)
   try providerReply(expireCheckoutSession(live.state.sessionId, { idempotencyKey: `expire_${live.state.sessionId}`, timeout: providerTimeout }))
-  const seen = try readSession(live.state.sessionId, now)
+  const seen = try readSession(live.state.sessionId)
   if (seen.kind !== "applied") throw unavailable(now)
   const after = try store.transaction((tx) => applyCheckoutEvent(tx, seen.value, now))
   if (after?.phase === "Completed") throw refused("BillingStateConflict")
@@ -344,10 +344,10 @@ effect function recordReply(tx: Tx, organizationId: string, commandId: string, r
 
 effect function admitted(caller: Signed, commandId: string, by: SessionOwner, digest: string, request: StartRequest, billingReturn: ReturnUrl) {
   const store = try Store
-  const first = try store.transaction((tx) => admit(tx, caller, commandId, by, digest, request, billingReturn))
+  const first = try store.transaction((tx) => admit(tx, caller, commandId, by, digest))
   if (first.kind !== "live" || resumes(first.stored.state, request.planKey, request.presentation, billingReturn)) return first
   try replaceLive(first.stored)
-  const second = try store.transaction((tx) => admit(tx, caller, commandId, by, digest, request, billingReturn))
+  const second = try store.transaction((tx) => admit(tx, caller, commandId, by, digest))
   if (second.kind === "live" && !resumes(second.stored.state, request.planKey, request.presentation, billingReturn)) throw refused("BillingStateConflict")
   return second
 }
@@ -371,7 +371,7 @@ effect function startCheckout(caller: Signed, request: StartRequest) {
   const customerId = try customerFor(organizationId, admission.customerId)
   const now = try Clock.currentTimeMillis
   const opened = try store.transaction(effect (tx: Tx) => {
-    const again = try admit(tx, caller, commandId, by, digest, request, billingReturn)
+    const again = try admit(tx, caller, commandId, by, digest)
     if (again.kind === "live" && !resumes(again.stored.state, request.planKey, request.presentation, billingReturn)) throw refused("BillingStateConflict")
     if (again.kind !== "fresh") return { kind: "existing", stored: again.stored } as const
     try pinCustomer(tx, organizationId, customerId, now)
@@ -402,7 +402,7 @@ effect function startCheckout(caller: Signed, request: StartRequest) {
 effect function confirmCheckout(caller: Signed, sessionId: string) {
   const store = try Store
   const now = try Clock.currentTimeMillis
-  const seen = try readSession(sessionId, now)
+  const seen = try readSession(sessionId)
   if (seen.kind !== "applied") throw providerRefusal(seen, now)
   if (seen.value.metadata?.organizationId !== caller.organizationId) throw refused("NotFound")
   const state = try store.transaction((tx) => applyCheckoutEvent(tx, seen.value, now))

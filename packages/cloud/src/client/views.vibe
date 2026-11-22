@@ -31,7 +31,6 @@ export type PaidWirePlanKey = typeof paidWirePlanKeySchema.Type
 export type WirePlanSource = typeof wirePlanSourceSchema.Type
 type WireAccountStatus = typeof wireAccountStatusSchema.Type
 type WireSubscriptionStatus = typeof wireSubscriptionStatusSchema.Type
-export type WireControlAction = typeof wireControlActionSchema.Type
 export type WireAllowanceState = typeof wireAllowanceStateSchema.Type
 type WireFundingLane = typeof wireFundingLaneSchema.Type
 
@@ -170,7 +169,7 @@ export interface LifecycleRequest {
   readonly idempotencyKey: string
 }
 
-type Answer = "snapshot" | "redeem" | "command" | "commands" | "review" | "payment" | "checkout"
+export type Answer = "snapshot" | "redeem" | "command" | "commands" | "review" | "payment" | "checkout"
 
 function unreadable(answer: Answer, issue: unknown): CloudError {
   return new CloudError({ failure: { tag: "CloudProviderIssue" }, cause: { answer, issue } })
@@ -254,7 +253,7 @@ export function planFromSnapshot(snapshot: BillingSnapshot): PlanView {
 export const planChecking: PlanView = { tag: "PlanChecking" }
 export const planUnavailable: PlanView = { tag: "PlanUnavailable" }
 
-const creditMaxAge: Millis = 5 * millisPerMinute
+export const creditMaxAge: Millis = 5 * millisPerMinute
 
 export type CreditView =
   | { readonly kind: "funded"; readonly usdMicros: Micros; readonly observedAt: Millis }

@@ -13,12 +13,11 @@ import { parsePlanKey, wirePlanKey, type PaidPlanKey } from "./plans.vibe"
 import { settleSubscriptionAllowance, type SubscriptionObservation } from "./stripe-ledger.vibe"
 import { readStripeSubscriptionFromCatalog, stripeClient } from "./stripe-observation.vibe"
 
-error ProviderSubscriptionInvalid { organizationId: string; problem: string }
+export error ProviderSubscriptionInvalid { organizationId: string; problem: string }
 
-const staleAfterMs = 300_000
-const sweepEveryMs = 60_000
+export const staleAfterMs = 300_000
+export const sweepEveryMs = 60_000
 const sweepBatch = 25
-const providerTimeout = 30_000
 
 const wireStatus: Readonly<Record<SubscriptionStatus, string>> = {
   NoSubscription: "none", Pending: "pending", Incomplete: "incomplete", Active: "active", Dunning: "dunning",

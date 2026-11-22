@@ -1,20 +1,25 @@
 // spec/cloud/index.md, "Story: Connect Google mail and calendar"
+// spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"
 import { Result } from "effect"
 import { Base64Url } from "effect/encoding"
+import { htmlMaxBytes, htmlViewOf, listCount, mailMaxBytes, needsReply, searchOutcome, triageImportant, triageReasons, triageScore, type Continuation, type MailList, type TriageReason } from "../gen/cloud__services__google__mailRead.effect.vibe"
 
 export type GoogleReadApi<E, R> = (url: string, maxBytes?: number) => unknown!E!R
 export error GoogleReadInput
+export error GoogleReadTooLarge
 export error GoogleAttachmentStale
 export error GoogleAttachmentMissing
 export error GoogleAttachmentUnsupported
+export error GoogleMailboxResponse
 error GoogleReadResponse
 
 schema MessageId { id: string }
 schema MessageList { messages?: MessageId[]; nextPageToken?: string }
+schema MailboxProfile { historyId: string }
 schema MailLabel { id: string; messagesUnread?: number; messagesTotal?: number }
 schema Header { name: string; value: string }
-schema MessageBody { data?: string; attachmentId?: string; size?: number }
-schema MailPart { partId?: string; mimeType?: string; filename?: string; headers?: Header[]; body?: MessageBody; parts?: Schema.Unknown[] }
+export schema MessageBody { data?: string; attachmentId?: string; size?: number }
+export schema MailPart { partId?: string; mimeType?: string; filename?: string; headers?: Header[]; body?: MessageBody; parts?: Schema.Unknown[] }
 schema MailMessage {
   id: string; threadId: string; historyId?: string; snippet?: string; internalDate?: string; labelIds?: string[]; payload?: MailPart
 }
@@ -43,44 +48,96 @@ const partIdPattern = /^[0-9.]{1,32}$/
 const mimeToken = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i
 export const attachmentMaxBytes = 8 * 1024 * 1024
 export const attachmentMimeTypes: ReadonlyArray<string> = ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"]
-const maxParts = 200
+export const mailMaxParts = 200
+const encoder = new TextEncoder()
 const encodedAttachmentBound = Math.ceil(attachmentMaxBytes / 3) * 4
 const fullMessageBound = encodedAttachmentBound + 65536
 const isoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/
 const isoDate = /^\d{4}-\d{2}-\d{2}$/
 const safeContent = "Content-Type"
-const headerNames = ["From", "To", "Cc", "Subject", "Reply-To", "Message-ID", safeContent]
+const headerNames = ["From", "To", "Cc", "Subject", "Reply-To", "Message-ID", safeContent, "Precedence", "List-Id", "Auto-Submitted"]
+const automatedSender = /(?:^|\b)(?:no-?reply|donotreply|notifications?|mailer-daemon)(?:\b|@)/i
+const triageReasonText = {
+  TriageUnread: "unread",
+  TriageImportantLabel: "important label",
+  TriageAddressed: "directly addressed",
+  TriageNeedsReply: "likely needs reply",
+  TriageAutomated: "automated sender",
+  TriageSentBySelf: "sent by self"
+} satisfies Record<TriageReason, string>
 
-function headerMap(payload: MailPart | undefined) {
+export function headerMap(payload: MailPart | undefined) {
   return new Map((payload?.headers ?? []).map((header) => [header.name.toLowerCase(), header.value]))
 }
 
+function addressOf(value: string) {
+  const bracketed = /<([^<>]+)>\s*$/.exec(value)
+  return (bracketed?.[1] ?? value).trim()
+}
+
+export function mailAddresses(value: string): ReadonlyArray<string> {
+  return value.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(addressOf).filter(Boolean)
+}
+
 function sender(value: string) {
-  const bracketed = value.match(/<([^<>]+)>$/)
-  const candidate = (bracketed?.[1] ?? value).trim()
+  const candidate = addressOf(value)
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(candidate) ? candidate : null
 }
 
-function isoMailDate(value: string | undefined) {
+export function isoMailDate(value: string | undefined) {
   if (!value || !history.test(value)) return null
   const instant = new Date(Number(value))
   return Number.isFinite(instant.getTime()) ? instant.toISOString() : null
 }
 
-effect function mailCard(message: MailMessage) {
-  if (!attachments.test(message.id)) throw new GoogleReadResponse()
+export function mailTriageFields(labels: ReadonlyArray<string>, headers: ReadonlyMap<string, string>, selfEmail: string) {
+  const labelSet = new Set(labels.map((label) => label.trim().toUpperCase()))
+  const self = selfEmail.trim().toLowerCase()
+  const from = sender(headers.get("from") ?? "")?.toLowerCase()
+  const to = mailAddresses(headers.get("to") ?? "")
+  const cc = mailAddresses(headers.get("cc") ?? "")
+  const precedence = headers.get("precedence")?.trim().toLowerCase()
+  const autoSubmitted = headers.get("auto-submitted")?.trim().toLowerCase()
+  const signals = {
+    unread: labelSet.has("UNREAD"),
+    labelledImportant: labelSet.has("IMPORTANT"),
+    addressed: self !== "" && [...to, ...cc].some((entry) => entry.toLowerCase() === self),
+    fromSelf: self !== "" && from === self,
+    automated: (from !== undefined && automatedSender.test(from)) || (headers.get("list-id") ?? "") !== "" ||
+      precedence === "bulk" || precedence === "list" || precedence === "junk" || (autoSubmitted !== undefined && autoSubmitted !== "no")
+  }
+  return {
+    to, cc, isUnread: signals.unread, isImportant: triageImportant(signals), likelyReplyNeeded: needsReply(signals),
+    triageScore: triageScore(signals),
+    triageReason: triageReasons(signals).map((reason) => triageReasonText[reason]).join(", ") || "recent inbox message"
+  }
+}
+
+export function mailListCount(list: MailList, raw: string | null): number | null {
+  if (raw !== null && !/^[1-9]\d{0,2}$/.test(raw)) return null
+  const count = listCount(list, raw === null ? { tag: "CountOmitted" } : { tag: "CountGiven", count: Number(raw) })
+  return count.tag === "CountAccepted" ? count.accepted : null
+}
+
+type RankedMail = { readonly triageScore: number; readonly receivedAt: string }
+
+export function compareMailTriage(left: RankedMail, right: RankedMail): number {
+  return right.triageScore - left.triageScore || Date.parse(right.receivedAt) - Date.parse(left.receivedAt)
+}
+
+effect function mailCard(message: MailMessage, selfEmail: string) {
+  if (!attachments.test(message.id) || !attachments.test(message.threadId)) throw new GoogleReadResponse()
   const receivedAt = isoMailDate(message.internalDate)
   if (!receivedAt) throw new GoogleReadResponse()
   const headers = headerMap(message.payload)
   const labels = message.labelIds ?? []
   const from = headers.get("from") ?? ""
-  const latest = labels.includes("IMPORTANT") || labels.includes("STARRED")
   const split = (name: string) => (headers.get(name) ?? "").split(",").map((part) => part.trim()).filter(Boolean)
   return {
-    externalId: message.id, threadId: message.threadId, subject: headers.get("subject") ?? "", from, fromEmail: sender(from),
+    ...mailTriageFields(labels, headers, selfEmail),
+    id: message.id, externalId: message.id, threadId: message.threadId, subject: headers.get("subject") ?? "", from, fromEmail: sender(from),
     replyTo: sender(headers.get("reply-to") ?? ""), to: split("to"), cc: split("cc"), snippet: message.snippet ?? "",
-    receivedAt, isUnread: labels.includes("UNREAD"), isImportant: latest, likelyReplyNeeded: false,
-    triageScore: latest ? 1 : 0, triageReason: latest ? "Marked important in Gmail" : "", labels,
+    receivedAt, labels,
     htmlLink: `https://mail.google.com/mail/u/0/#all/${message.id}`, metadata: { historyId: message.historyId ?? null }
   }
 }
@@ -119,31 +176,65 @@ export effect function googleReplyTarget<E, R>(api: GoogleReadApi<E, R>, id: str
   return replyTarget(try readMessage(api, id, "metadata"))
 }
 
-function plainPart(root: MailPart | undefined) {
-  const pending: unknown[] = root ? [root] : []
-  let scanned = 0
-  while (pending.length > 0 && scanned < 100) {
-    const candidate = Schema.decodeUnknownOption(MailPart)(pending.shift())
-    scanned += 1
-    if (Option.isNone(candidate) || candidate.value.filename) continue
-    const part = candidate.value
-    if (part.mimeType === "text/plain" && part.body) return part.body
-    if (part.parts) pending.push(...part.parts.slice(0, 100 - scanned))
-  }
-  return null
+function textTooLarge(text: string, maxBytes: number) {
+  return text.length > maxBytes || encoder.encode(text).length > maxBytes
 }
 
-effect function bodyText<E, R>(api: GoogleReadApi<E, R>, message: MailMessage) {
-  const part = plainPart(message.payload)
-  if (!part) return null
-  let data = part.data
-  if (!data && part.attachmentId && attachments.test(part.attachmentId)) {
-    const raw = try api(`${gmail}/messages/${message.id}/attachments/${part.attachmentId}?fields=data`, 1_052_672)
-    const result = Schema.decodeUnknownOption(MessageBody)(raw)
-    if (Option.isSome(result)) data = result.value.data
+export effect function decodeMailText(data: string, charset: string, maxBytes: number) {
+  if (data.length > Math.ceil(maxBytes / 3) * 4) throw new GoogleReadTooLarge()
+  if (data.includes("\n") || data.includes("\r")) throw new GoogleReadResponse()
+  const decoded = Base64Url.decode(data)
+  if (Result.isFailure(decoded)) throw new GoogleReadResponse()
+  if (decoded.success.length > maxBytes) throw new GoogleReadTooLarge()
+  const decoder = (() => {
+    try {
+      return new TextDecoder(charset)
+    } catch {
+      return new TextDecoder("utf-8")
+    }
+  })()
+  const text = Effect.try(() => decoder.decode(decoded.success)) catch effect () => {
+    throw new GoogleReadResponse()
   }
-  if (!data || data.length > 1_048_576 || !/^[A-Za-z0-9_=-]+$/.test(data)) return null
-  return Effect.try(() => new TextDecoder().decode(Uint8Array.from(atob(data.replaceAll("-", "+").replaceAll("_", "/")), (byte) => byte.charCodeAt(0)))) catch () => null
+  if (textTooLarge(text, maxBytes)) throw new GoogleReadTooLarge()
+  return text
+}
+
+effect function bodyPart<E, R>(api: GoogleReadApi<E, R>, messageId: string, part: MailPart, maxBytes: number) {
+  const body = part.body
+  if (body === undefined) throw new GoogleReadResponse()
+  if ((body.size ?? 0) > maxBytes) throw new GoogleReadTooLarge()
+  let data = body.data
+  if (data === undefined && body.attachmentId !== undefined) {
+    if (!attachments.test(body.attachmentId)) throw new GoogleReadResponse()
+    const raw = try api(`${gmail}/messages/${messageId}/attachments/${body.attachmentId}?fields=data`, Math.ceil(maxBytes / 3) * 4 + 4096)
+    const result = Schema.decodeUnknownOption(MessageBody)(raw)
+    if (Option.isNone(result) || result.value.data === undefined) throw new GoogleReadResponse()
+    data = result.value.data
+  }
+  if (data === undefined && body.size !== 0) throw new GoogleReadResponse()
+  const charset = /charset="?([^";\s]+)"?/i.exec(headerMap(part).get("content-type") ?? "")?.[1] ?? "utf-8"
+  return try decodeMailText(data ?? "", charset, maxBytes)
+}
+
+export function htmlText(html: string): string {
+  return html
+    .replace(/<(script|style|head)\b[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:p|div|section|article|li|tr|table|h[1-6])>/gi, "\n")
+    .replace(/<[^<>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, "\"").replace(/&#39;|&apos;/gi, "'").replace(/&amp;/gi, "&")
+    .replace(/\r/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ")
+    .trim()
+}
+
+export function mailHtmlView(html: string | null | undefined, partsWithinLimit: boolean) {
+  const bytes = !partsWithinLimit || html === undefined ? 0 : html === null ? htmlMaxBytes + 1 : encoder.encode(html).length
+  switch (htmlViewOf(bytes, partsWithinLimit)) {
+    case "HtmlAvailable": return { bodyHtml: html ?? null, bodyHtmlStatus: "available" as const }
+    case "HtmlTooLarge": return { bodyHtml: null, bodyHtmlStatus: "too_large" as const }
+    case "HtmlAbsent": return { bodyHtml: null, bodyHtmlStatus: "none" as const }
+  }
 }
 
 export function attachmentDescriptor(part: MailPart) {
@@ -159,23 +250,38 @@ export function attachmentDescriptor(part: MailPart) {
   return { partId, name, mimeType, size: size !== undefined && Number.isSafeInteger(size) && size >= 0 ? size : 0, supported }
 }
 
-effect function namedParts(root: MailPart | undefined) {
-  const found: MailPart[] = []
-  const pending: unknown[] = root === undefined ? [] : [root]
-  let seen = 0
-  while (pending.length > 0) {
-    seen += 1
-    if (seen + pending.length - 1 > maxParts) throw new GoogleReadResponse()
-    const candidate = Schema.decodeUnknownOption(MailPart)(pending.shift())
+export effect function scanMailParts(root: MailPart | undefined, order: "breadth-first" | "depth-first", traversalLimit = Number.POSITIVE_INFINITY) {
+  const pending: Array<{ readonly parts: ReadonlyArray<unknown>; next: number }> = root === undefined ? [] : [{ parts: [root], next: 0 }]
+  const attachments: MailPart[] = []
+  let plain: MailPart | undefined
+  let html: MailPart | undefined
+  let count = 0
+  let firstGroup = 0
+  const depthFirst = order === "depth-first"
+  const decodePart = Schema.decodeUnknownOption(MailPart)
+  // The provider JSON byte envelope bounds the traversal. Queue groups keep their original arrays.
+  while (firstGroup < pending.length) {
+    const frame = pending[depthFirst ? pending.length - 1 : firstGroup]
+    if (frame.next === frame.parts.length) {
+      if (depthFirst) pending.pop()
+      else firstGroup += 1
+      continue
+    }
+    count += 1
+    if (count > traversalLimit) throw new GoogleReadTooLarge()
+    const candidate = decodePart(frame.parts[frame.next])
+    frame.next += 1
     if (Option.isNone(candidate)) throw new GoogleReadResponse()
     const part = candidate.value
-    if (part.filename) found.push(part)
-    if (part.parts) {
-      if (seen + pending.length + part.parts.length > maxParts) throw new GoogleReadResponse()
-      pending.push(...part.parts)
+    if (part.filename) attachments.push(part)
+    else {
+      const mime = part.mimeType?.toLowerCase()
+      if (mime === "text/plain") plain ??= part
+      else if (mime === "text/html") html ??= part
     }
+    if (part.parts?.length) pending.push({ parts: part.parts, next: 0 })
   }
-  return found
+  return { attachments, plain, html, partsWithinLimit: count <= mailMaxParts }
 }
 
 export function attachmentSelection(params: URLSearchParams) {
@@ -189,7 +295,7 @@ export effect function googleGmailAttachment<E, R>(api: GoogleReadApi<E, R>, sel
   const { messageId, partId, historyId } = selection
   const message = try readMessage(api, messageId, "full")
   if (message.historyId !== historyId) throw new GoogleAttachmentStale()
-  const matched = (try namedParts(message.payload)).filter((part) => part.partId === partId)
+  const matched = (try scanMailParts(message.payload, "breadth-first")).attachments.filter((part) => part.partId === partId)
   const part = matched[0]
   if (matched.length !== 1 || !part) throw new GoogleAttachmentMissing()
   const descriptor = attachmentDescriptor(part)
@@ -223,47 +329,110 @@ effect function labelCount<E, R>(api: GoogleReadApi<E, R>, label: string, field:
   return count
 }
 
-export effect function googleGmailTriage<E, R>(api: GoogleReadApi<E, R>, url: URL, syncedAt: string) {
-  const limit = url.searchParams.get("maxResults") ?? "12"
+effect function mailboxHistory<E, R>(api: GoogleReadApi<E, R>) {
+  const profile = Schema.decodeUnknownOption(MailboxProfile)(try api(gmail + "/profile?fields=historyId"))
+  if (Option.isNone(profile) || !revision.test(profile.value.historyId)) throw new GoogleMailboxResponse()
+  return profile.value.historyId
+}
+
+export effect function googleGmailTriage<E, R>(api: GoogleReadApi<E, R>, url: URL, syncedAt: string, selfEmail: string) {
+  const limit = mailListCount("TriageList", url.searchParams.get("maxResults"))
   const folder = url.searchParams.get("folder") ?? "inbox"
   const label = folderLabels.get(folder)
   const search = url.searchParams.get("q") ?? ""
   const counts = url.searchParams.get("counts")
-  if (!label || !/^\d{1,2}$/.test(limit) || Number(limit) < 1 || Number(limit) > 20 ||
+  if (!label || limit === null ||
       search.length > 512 || hasControlCharacter(search) || (counts !== null && counts !== "1")) throw new GoogleReadInput()
-  const query = new URLSearchParams({ maxResults: limit, labelIds: label, fields: "messages/id,nextPageToken" })
+  const mailboxHistoryId = try mailboxHistory(api)
+  const query = new URLSearchParams({ maxResults: String(limit), labelIds: label, fields: "messages/id,nextPageToken" })
   if (label === "TRASH") query.set("includeSpamTrash", "true")
   if (search.trim()) query.set("q", search.trim())
   paging(url.searchParams, query)
   const raw = try api(gmail + "/messages?" + query)
   const result = Schema.decodeUnknownOption(MessageList)(raw)
-  if (Option.isNone(result) || (result.value.messages?.length ?? 0) > 20) throw new GoogleReadResponse()
+  if (Option.isNone(result) || (result.value.messages?.length ?? 0) > limit) throw new GoogleMailboxResponse()
   const messages = try Effect.forEach(result.value.messages ?? [], effect (entry) => {
-    return try mailCard(try readMessage(api, entry.id, "metadata"))
+    return try mailCard(try readMessage(api, entry.id, "metadata"), selfEmail)
   }, { concurrency: 4 })
   const totals = counts === "1" ? {
     inboxUnread: try labelCount(api, "INBOX", "messagesUnread"),
     drafts: try labelCount(api, "DRAFT", "messagesTotal")
   } : undefined
   const current = messages.filter(({ labels }) => labels.includes(label) && (label === "TRASH" || !(labels.includes("TRASH") || labels.includes("SPAM"))))
-  return { folder, q: search.trim(), messages: current, syncedAt, nextPageToken: result.value.nextPageToken ?? null, ...(totals && { counts: totals }) }
+  if (folder === "inbox") current.sort(compareMailTriage)
+  return { folder, q: search.trim(), messages: current, syncedAt, mailboxHistoryId,
+    nextPageToken: result.value.nextPageToken ?? null, ...(totals && { counts: totals }) }
 }
 
-export effect function googleGmailMessage<E, R>(api: GoogleReadApi<E, R>, url: URL) {
+const trashQuery = /(?:^|[\s({])in:(?:spam|trash|anywhere)(?=[\s)}]|$)/i
+const validSearchToken = (token: string) => token.length > 0 && token.length <= 4096 && !/[\r\n\0]/.test(token)
+
+interface GmailSearchInput {
+  readonly query: string
+  readonly limit: number
+  readonly pageToken?: string
+}
+
+// spec/cloud/services/google/mailRead.md, "A search page names the mailbox revision read before it was listed and never continues at the token it was asked with"
+export effect function gmailSearchInput(url: URL): GmailSearchInput!GoogleReadInput {
+  const query = (url.searchParams.get("query") ?? "").trim()
+  const limit = mailListCount("SearchList", url.searchParams.get("maxResults"))
+  const pageToken = url.searchParams.get("pageToken") ?? undefined
+  if (query === "" || query.length > 2048 || limit === null ||
+      (pageToken !== undefined && !validSearchToken(pageToken))) throw new GoogleReadInput()
+  return { query, limit, pageToken }
+}
+
+function searchContinuation(pageToken: string | undefined): Continuation {
+  return pageToken === undefined ? { tag: "NoContinuation" } : { tag: "ContinueAt", pageToken }
+}
+
+export effect function googleGmailSearch<E, R>(api: GoogleReadApi<E, R>, search: GmailSearchInput, syncedAt: string, selfEmail: string) {
+  const mailboxRevision = try mailboxHistory(api)
+  const params = new URLSearchParams({
+    q: search.query, maxResults: String(search.limit), includeSpamTrash: String(trashQuery.test(search.query)),
+    fields: "messages/id,nextPageToken"
+  })
+  if (search.pageToken !== undefined) params.set("pageToken", search.pageToken)
+  const page = Schema.decodeUnknownOption(MessageList)(try api(`${gmail}/messages?${params}`, 128 * 1024))
+  if (Option.isNone(page)) throw new GoogleMailboxResponse()
+  const { messages: listed = [], nextPageToken } = page.value
+  if (listed.length > search.limit || listed.some(({ id }) => !attachments.test(id)) ||
+      (nextPageToken !== undefined && !validSearchToken(nextPageToken))) throw new GoogleMailboxResponse()
+  const answer = searchOutcome(searchContinuation(search.pageToken), searchContinuation(nextPageToken), mailboxRevision)
+  if (answer.tag === "SearchRefused") throw new GoogleMailboxResponse()
+  const messages = Effect.forEach(listed, effect (entry) => {
+    return try mailCard(try readMessage(api, entry.id, "metadata"), selfEmail)
+  }, { concurrency: 4 }) catch effect (failure) => {
+    if (failure instanceof GoogleReadResponse) throw new GoogleMailboxResponse()
+    throw failure
+  }
+  return { messages, nextPageToken: nextPageToken ?? null, syncedAt, mailboxHistoryId: answer.mailboxRevision, supportsSpamTrash: true }
+}
+
+export effect function googleGmailMessage<E, R>(api: GoogleReadApi<E, R>, url: URL, selfEmail: string) {
   const id = url.searchParams.get("messageId")
   if (!id) throw new GoogleReadInput()
   const message = try readMessage(api, id, "full")
-  const text = try bodyText(api, message)
+  const parts = try scanMailParts(message.payload, "breadth-first")
+  const plainText = parts.plain ? try bodyPart(api, message.id, parts.plain, mailMaxBytes) : undefined
+  const omitHtml = plainText !== undefined && !parts.partsWithinLimit
+  const html = parts.html === undefined || omitHtml ? undefined : bodyPart(api, message.id, parts.html, plainText === undefined ? mailMaxBytes : htmlMaxBytes) catch effect (failure) => {
+    if (plainText !== undefined && failure instanceof GoogleReadTooLarge) return null
+    throw failure
+  }
+  const text = plainText ?? (typeof html === "string" ? htmlText(html) : message.snippet)
+  if (plainText === undefined && text !== undefined && textTooLarge(text, mailMaxBytes)) throw new GoogleReadTooLarge()
   const target = replyTarget(message)
   const reply = target && { recipient: target.recipient, subject: target.subject }
   const historyId = message.historyId && revision.test(message.historyId) ? message.historyId : null
-  const named = try namedParts(message.payload)
-  const manifest = named.map(attachmentDescriptor)
+  const manifest = parts.attachments.map(attachmentDescriptor)
   const counts = new Map<string, number>()
   for (const part of manifest) counts.set(part.partId, (counts.get(part.partId) ?? 0) + 1)
   const attachments = manifest.map((part) => ({ ...part, supported: part.supported && historyId !== null && counts.get(part.partId) === 1 }))
   const authenticationResults = receivedAuthentication(message.payload?.headers ?? [])
-  return { historyId, attachments, message: try mailCard(message), reply, bodyText: text ?? "", bodyTextAvailable: text !== null, bodyHtml: null, bodyHtmlStatus: "none", authenticationResults }
+  const card = try mailCard(message, selfEmail)
+  return { historyId, attachments, message: card, reply, bodyText: text ?? "", bodyTextAvailable: text !== undefined, ...mailHtmlView(html, parts.partsWithinLimit), authenticationResults }
 }
 
 export function receivedAuthentication(headers: ReadonlyArray<{ readonly name: string; readonly value: string }>): string | null {

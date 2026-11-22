@@ -123,9 +123,9 @@ read. A missed `once` trigger stays listed, disabled, so the owner can still
 run it now. A stop aborts a run in progress first (core scheduling).
 
 ```quint
-pure val dtValues = Set(1000, 1800001)
-pure val nextInstantValues = Set(2000, 1802000, 3700000)
-pure val processStartedAtValues = Set(0, 1801001)
+pure val dtValues = Set(500, 1000, 1800001, 1801001)
+pure val nextInstantValues = Set(2000, 1802000, 3700000, 5500000)
+pure val processStartedAtValues = Set(0, 1001, 1801001)
 pure def canTick(t: Trigger, dt: int): bool = dt > 0
 pure def tick(t: Trigger, dt: int): Trigger = { ...t, now: t.now + dt }
 pure def missedWhileStopped(t: Trigger, processStartedAt: int): bool = WS::missedOccurrence(t.nextAt, t.now) and t.nextAt < processStartedAt
@@ -144,11 +144,11 @@ pure def alwaysTheNextOccurrenceHasNotFired(t: Trigger): bool = (t.life == Saved
 pure def stepAFiringRunsOrIsMissed(before: Trigger, via: str, after: Trigger): bool = via == "fire" implies (if (after.activity == Idle) after.history.nthOr(after.history.length() - 1, Ran({ source: RunNow, turn: Completed })) == Missed({ scheduledAt: before.nextAt }) else after.history == before.history)
 pure def sometimesCronRanAfterAMiss(t: Trigger): bool = t.schedule == CronSchedule and t.history.includes(Missed({ scheduledAt: 1000 })) and t.history.includes(Ran({ source: Scheduled, turn: Completed }))
 pure def sometimesMissedOnceStaysListed(t: Trigger): bool = t.life == Saved and t.schedule == OnceAt and not(t.enabled) and t.history.includes(Missed({ scheduledAt: 1000 }))
-pure val weight_tick = 3
-pure val weight_fire = 3
-pure val weight_create = 4
-pure val weight_setEnabled = 4
-pure val weight_finishRun = 3
+pure val weight_create = 20
+pure val weight_setEnabled = 6
+pure val weight_finishRun = 12
+pure val weight_tick = 8
+pure val weight_fire = 12
 ```
 
 ### An event trigger runs once for each emitted event of its name, never for its own run's events

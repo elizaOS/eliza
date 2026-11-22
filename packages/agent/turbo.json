@@ -1,0 +1,9 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["//#gen", "^build"],
+      "inputs": ["$TURBO_DEFAULT$", "!test/**", "!vitest.config.ts"]
+    }
+  }
+}
