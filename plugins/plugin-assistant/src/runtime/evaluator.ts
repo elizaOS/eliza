@@ -68,9 +68,7 @@ import {
   hashStableJson,
   historicalRequestSourceIds,
   isDiscoveryActionName,
-  isInsufficientCreditsError,
   isObjectRecord,
-  isPermanentQuotaError,
   MODEL_WINDOW_RESERVE_FRACTION,
   type ModelAttemptContext,
   type ModelRegistrationMetadata,
@@ -83,8 +81,6 @@ import {
   parseJsonObject,
   projectDeferredProviders,
   projectToolDiagnosticValue,
-  providerRateLimitRetryAt,
-  readProviderRateLimit,
   renderContextObject,
   resolveSetting,
   revertedEffectReceiptIds,
@@ -93,8 +89,10 @@ import {
   sleepWithAbort,
   stripReasoningPrefixes,
   type ToolDiagnosticTextRedactor,
+  TURN_RATE_LIMIT_RESEND_MAX_WAIT_MS,
   timeInferenceSpan,
   toWellFormedUnicode,
+  turnRateLimitResendWaitMs,
   withModelInputBudgetProviderOptions,
 } from "@elizaos/core";
 import {
@@ -1129,30 +1127,9 @@ async function runEvaluatorStage(
   return runEvaluatorWithSelectedModel(params, model);
 }
 
-// Buckets refill continuously; a longer wait would stall the visible turn.
-export const RATE_LIMIT_RETRY_MAX_WAIT_MS = 5_000;
-
-/** Wait before the one re-send of a chat request refused with a structural 429:
- * the provider's hint, capped. Spent credit and period allowances get none. */
-export function rateLimitRetryWaitMs(
-  error: unknown,
-  now = Date.now(),
-): number | undefined {
-  if (
-    modelProviderErrorDetail(error)?.status !== 429 ||
-    isInsufficientCreditsError(error) ||
-    isPermanentQuotaError(error)
-  )
-    return undefined;
-  const reported = readProviderRateLimit(error);
-  if (reported?.scope === "period") return undefined;
-  const retryAt = providerRateLimitRetryAt(error, now);
-  const hintMs = retryAt === undefined ? reported?.retryAfterMs : retryAt - now;
-  return Math.min(
-    Math.ceil(hintMs ?? RATE_LIMIT_RETRY_MAX_WAIT_MS),
-    RATE_LIMIT_RETRY_MAX_WAIT_MS,
-  );
-}
+/** The chat turn's one rate-limit re-send rule, shared from core. */
+export const RATE_LIMIT_RETRY_MAX_WAIT_MS = TURN_RATE_LIMIT_RESEND_MAX_WAIT_MS;
+export const rateLimitRetryWaitMs = turnRateLimitResendWaitMs;
 
 /** Keep the initial selection, including no override, across restoration awaits. */
 async function runEvaluatorWithSelectedModel(
@@ -1484,7 +1461,8 @@ async function runEvaluatorWithSelectedModel(
       initialCall = await callEvaluatorModel();
     } catch (error) {
       // error-policy:J2 A chat turn waits out a temporary rate limit once and
-      // re-sends the same request; every other failure propagates unchanged.
+      // re-sends the same request, unless the provider adapter already re-sent
+      // it; every other failure propagates unchanged.
       const waitMs =
         params.trajectory.codingMode === true
           ? undefined

@@ -33,6 +33,7 @@ import {
   logger,
   MAX_WELL_FORMED_DEPTH,
   MODEL_PROVIDER_ATTEMPTS,
+  MODEL_PROVIDER_RESENDS,
   ModelType,
   providerRetryAfterMs,
   recordLlmCall,
@@ -2801,13 +2802,17 @@ function noteRateLimitCooldown(
   );
 }
 
-/** Exhausted server/rate-limit retries shared only within the current model call. */
+/**
+ * Exhausted server/rate-limit retries, and a 429 ending a re-sent call
+ * (endResentRateLimit), shared only within the current model call.
+ */
 const exhaustedEndpointRetries = new WeakMap<object, WeakMap<object, Map<string, unknown>>>();
 
 function endpointRetryBudget(
   params: GenerateTextParams,
   endpointIdentity: object,
-  model: string
+  model: string,
+  heldFallback?: string
 ): (error: unknown) => void {
   const attempts = params[MODEL_PROVIDER_ATTEMPTS];
   if (!attempts) return () => undefined;
@@ -2822,6 +2827,7 @@ function endpointRetryBudget(
     endpoints.set(endpointIdentity, models);
   }
   if (models.has(model)) throw models.get(model);
+  if (heldFallback !== undefined && models.has(heldFallback)) throw models.get(heldFallback);
   return (error) => {
     const status =
       (error as { statusCode?: number; status?: number } | undefined)?.statusCode ??
@@ -2832,6 +2838,37 @@ function endpointRetryBudget(
       models.set(model, error);
     }
   };
+}
+
+/**
+ * Ends a model call on a 429 after its lane already re-sent the request
+ * (`resends` re-sends reached the provider). The error carries that count, so
+ * the turn's own re-send rule (core's turnRateLimitResendWaitMs) adds none:
+ * without it, one call Cerebras kept refusing with no wait hint went out 8
+ * times on the generate lane and 12 on the stream lanes. It is also recorded
+ * for this call when a long Retry-After ended the lane before its budget, so
+ * sibling tiers rethrow it rather than an unstamped cooldown refusal. A call
+ * whose only request was refused keeps the turn's re-send.
+ */
+function endResentRateLimit(
+  error: unknown,
+  resends: number,
+  recordForCall: (error: unknown) => void
+): void {
+  const status =
+    (error as { statusCode?: number; status?: number } | undefined)?.statusCode ??
+    (error as { status?: number } | undefined)?.status;
+  if (resends <= 0 || status !== 429) return;
+  // A frozen error stays unstamped (Reflect.set does not throw) and keeps one turn re-send.
+  Reflect.set(error as object, MODEL_PROVIDER_RESENDS, resends);
+  recordForCall(error);
+}
+
+/** The re-send count endResentRateLimit put on an error, or 0. */
+function resentCount(error: unknown): number {
+  if (typeof error !== "object" || error === null) return 0;
+  const resends = (error as { [MODEL_PROVIDER_RESENDS]?: unknown })[MODEL_PROVIDER_RESENDS];
+  return typeof resends === "number" && resends > 0 ? resends : 0;
 }
 
 /** Longest wait the transient lanes will spend on one retry (see waitForTransientRetry). */
@@ -3404,12 +3441,22 @@ async function generateTextByModelType(
       },
       "[OpenAI] Cerebras rate limited; retrying this model call through the configured OpenRouter fallback"
     );
-    return generateTextAtEndpoint(runtime, params, modelType, getModelFn, {
-      baseURL: getSetting(runtime, "OPENROUTER_BASE_URL")?.trim() || "https://openrouter.ai/api/v1",
-      apiKey,
-      modelName,
-      provider: "openrouter",
-    });
+    try {
+      return await generateTextAtEndpoint(runtime, params, modelType, getModelFn, {
+        baseURL:
+          getSetting(runtime, "OPENROUTER_BASE_URL")?.trim() || "https://openrouter.ai/api/v1",
+        apiKey,
+        modelName,
+        provider: "openrouter",
+      });
+    } catch (fallbackError) {
+      // The fallback's refusal ends a call the Cerebras lane may already have
+      // re-sent; it carries that count, or the turn re-sent both endpoints.
+      if (resentCount(fallbackError) === 0) {
+        endResentRateLimit(fallbackError, resentCount(error), () => undefined);
+      }
+      throw fallbackError;
+    }
   }
 }
 
@@ -3455,7 +3502,27 @@ async function generateTextAtEndpoint(
     : resolveFallbackModelName(runtime, primaryModelName);
   const modelName = selectRequestModelName(modelCooldowns, primaryModelName, fallbackModelName);
   const usageProvider = endpoint?.provider ?? getUsageProvider(runtime);
-  const onExhausted = endpointRetryBudget(params, modelCooldowns, modelName);
+  const onExhausted = endpointRetryBudget(
+    params,
+    modelCooldowns,
+    modelName,
+    // Both models on hold: the primary is selected only to be refused, so a
+    // sibling tier rethrows what the fallback model recorded for this call.
+    fallbackModelName !== undefined &&
+      modelName === primaryModelName &&
+      isModelCoolingDown(modelCooldowns, primaryModelName)
+      ? fallbackModelName
+      : undefined
+  );
+  // A 429 handed to the OpenRouter fallback ends this endpoint's part of the
+  // call: sibling tiers go straight to the fallback instead of re-sending here.
+  const yieldToFallback =
+    yieldRateLimit &&
+    ((error: unknown) => {
+      if (!yieldRateLimit(error)) return false;
+      onExhausted(error);
+      return true;
+    });
 
   if (modelName !== primaryModelName) {
     logger.info(
@@ -3869,7 +3936,7 @@ async function generateTextAtEndpoint(
           {
             model: modelName,
             retryState,
-            yieldRateLimit,
+            yieldRateLimit: yieldToFallback,
             maxRetries: toolArgumentEnvelope.enabled && toolArgumentEnvelope.hasEffectHooks ? 0 : 5,
             onExhausted,
             beforeAttempt: () => assertPreparedAttempt(details),
@@ -3881,7 +3948,9 @@ async function generateTextAtEndpoint(
             stampStreamError(runtime, details, stalledOutput.error);
           }
           noteRateLimitCooldown(modelCooldowns, modelName, error);
-          throw stalledOutput?.error ?? error;
+          const thrown = stalledOutput?.error ?? error;
+          endResentRateLimit(thrown, retryState.retryCount, onExhausted);
+          throw thrown;
         });
         const text = restoreResponseText(result.text);
         const toolCalls = restoreRecordArgToolCalls(
@@ -3987,7 +4056,18 @@ async function generateTextAtEndpoint(
     let attemptTiming: StreamAttemptTiming | undefined;
     let attemptPrefix: unknown[] = [];
     for (let attempt = 0; ; attempt++) {
-      assertModelNotCoolingDown(modelCooldowns, modelName);
+      try {
+        assertModelNotCoolingDown(modelCooldowns, modelName);
+      } catch (error) {
+        // Another call can put the model on hold while this lane waits to
+        // re-send. That refusal ends a re-sent call like a provider 429 does;
+        // unstamped, the turn re-sent it with a fresh lane (3 + 6 requests).
+        // The hold refused this attempt's re-send, so it counts only the
+        // re-sends that reached the provider: a hold that refuses the first
+        // re-send leaves a call of one request, which keeps the turn's re-send.
+        endResentRateLimit(error, retryState.retryCount - 1, onExhausted);
+        throw error;
+      }
       capturedStreamError = undefined;
       attemptPrefix = [];
       assertPreparedAttempt(details);
@@ -4066,7 +4146,7 @@ async function generateTextAtEndpoint(
         !failedBeforeFirstToken ||
         attempt >= (toolArgumentEnvelope.enabled && toolArgumentEnvelope.hasEffectHooks ? 0 : 5) ||
         abortSignal?.aborted ||
-        yieldRateLimit?.(capturedStreamError) ||
+        yieldToFallback?.(capturedStreamError) ||
         !isTransientProviderError(capturedStreamError)
       ) {
         break;
@@ -4112,6 +4192,7 @@ async function generateTextAtEndpoint(
           response: "",
           latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
         });
+        endResentRateLimit(capturedStreamError, retryState.retryCount, onExhausted);
         throw capturedStreamError;
       }
     }
@@ -4300,6 +4381,7 @@ async function generateTextAtEndpoint(
         if (streamError && !streamIterationError && !capturedStreamError) {
           noteRateLimitCooldown(modelCooldowns, modelName, streamError);
         }
+        endResentRateLimit(streamError, retryState.retryCount, onExhausted);
         settleStructuredText(streamError);
         if (streamError) throw streamError;
       })(),
@@ -4332,12 +4414,13 @@ async function generateTextAtEndpoint(
     const result = await generateTextWithTransientRetry(generateParams, {
       model: modelName,
       retryState,
-      yieldRateLimit,
+      yieldRateLimit: yieldToFallback,
       maxRetries: toolArgumentEnvelope.enabled && toolArgumentEnvelope.hasEffectHooks ? 0 : 3,
       onExhausted,
       beforeAttempt: () => assertPreparedAttempt(details),
     }).catch((error: unknown) => {
       noteRateLimitCooldown(modelCooldowns, modelName, error);
+      endResentRateLimit(error, retryState.retryCount, onExhausted);
       if (NoObjectGeneratedError.isInstance(error)) {
         // generateText parses `output` itself and throws before this lane sees
         // the result. The provider billed the answer anyway: report its usage,
