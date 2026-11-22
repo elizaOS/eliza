@@ -89,7 +89,7 @@ runs:
           turbo-${{ runner.os }}-${{ runner.arch }}-
     - id: gen-seed
       if: >-
-        inputs.job == 'verify' && inputs.verification == 'true' && inputs.cache-verification == 'true' &&
+        inputs.job == 'verify' && inputs.cache-verification == 'true' &&
         env.TURBO_CACHE == 'local:rw' && steps.turbo-cache.outputs.key != ''
       shell: bash
       run: printf 'prefix=turbo-gen-v2-%s-%s-verify-\n' "$RUNNER_OS" "$RUNNER_ARCH" >> "$GITHUB_OUTPUT"
@@ -146,12 +146,12 @@ runs:
     - name: Install workspace dependencies
       shell: bash
       env:
-        GEN_SEED_PREFIX: ${{ steps.gen-seed.outputs.prefix }}
+        PUBLISH_GEN_SEED: ${{ inputs.verification == 'true' && steps.gen-seed.outputs.prefix != '' }}
       run: |
-        if [[ -n $GEN_SEED_PREFIX ]]; then export TURBO_RUN_SUMMARY=true; fi
+        if [[ $PUBLISH_GEN_SEED == true ]]; then export TURBO_RUN_SUMMARY=true; fi
         pnpm install --frozen-lockfile
     - id: publish-gen-seed
-      if: steps.gen-seed.outputs.prefix != ''
+      if: inputs.verification == 'true' && steps.gen-seed.outputs.prefix != ''
       continue-on-error: true
       shell: bash
       env:
