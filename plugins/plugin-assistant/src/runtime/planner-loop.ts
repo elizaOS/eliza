@@ -183,7 +183,6 @@ import {
   plannerToolScopedRules,
 } from "../prompts/planner.ts";
 import { withDialNumber } from "../services/device-actions/action.ts";
-import { isCameraCapture } from "../services/device-actions/camera-contract.ts";
 import { validateDeviceOperation } from "../services/device-actions/contract.ts";
 import {
   DEVICE_APPROVAL_REVIEW_TEXT,
@@ -3715,40 +3714,25 @@ async function runPlannerLoopIterations(
       isRequestedDeviceHandoff(latestResult) &&
       trajectory.plannedQueue.length === 0 &&
       lastPlannerExplicitCompleted !== false;
-    // "Take a picture and text mom that I'm here": the phone takes the photo
-    // without a card, and the text queued behind it in the same reply needs
-    // the owner's card. Record those reviews and pause on them, with no
-    // planner or evaluator call, so the photo is never proposed again.
-    const cameraBeforeReviews =
-      isRequestedDeviceHandoff(latestResult) &&
-      isCameraCapture(plannerCallOperation(toolCall)) &&
-      trajectory.plannedQueue.length > 0 &&
-      sameReplyDeviceReviewOperation(trajectory.plannedQueue[0], trajectory) !==
-        undefined;
     // "Text Sam I'll be late, and set an alarm for 7am": the planner's one
     // reply holds both proposals, and the turn pauses at the first review
     // with the second still queued, which nothing runs later. Record the other
     // owner reviews already queued in that reply before the one pause.
-    const recordedReview =
-      cameraBeforeReviews ||
-      (!requestedHandoff &&
-        isPersistedDeviceApprovalPause(latestResult) &&
-        sameReplyDeviceReviewOperation(toolCall, trajectory) !== undefined)
-        ? await recordSameReplyDeviceReviews({
-            params,
-            trajectory,
-            iteration,
-            config,
-            failures,
-            plannerCompleted: lastPlannerExplicitCompleted,
-            checkpoint,
-          })
-        : undefined;
-    // Behind a photo the turn pauses on the last review recorded, if any: the
-    // phone then shows that card and does not open Camera for the photo. A
-    // call refused after it leaves that card's pause as it is.
-    const pauseResult = cameraBeforeReviews ? recordedReview : latestResult;
-    if (requestedHandoff || isPersistedDeviceApprovalPause(pauseResult)) {
+    if (
+      !requestedHandoff &&
+      isPersistedDeviceApprovalPause(latestResult) &&
+      sameReplyDeviceReviewOperation(toolCall, trajectory) !== undefined
+    )
+      await recordSameReplyDeviceReviews({
+        params,
+        trajectory,
+        iteration,
+        config,
+        failures,
+        plannerCompleted: lastPlannerExplicitCompleted,
+        checkpoint,
+      });
+    if (requestedHandoff || isPersistedDeviceApprovalPause(latestResult)) {
       // Otherwise the owner must supply the next event. Do not spend another
       // evaluator or planner call, manufacture a new operation key, or dispatch
       // the queue. Preserve pending scope, remaining calls and settled outcomes.
@@ -3763,7 +3747,7 @@ async function runPlannerLoopIterations(
         !replyClaimsCompletedSideEffect(captured) &&
         !replyClaimsInProgressWork(captured)
           ? captured
-          : (pauseResult?.userFacingText ?? DEVICE_APPROVAL_REVIEW_TEXT);
+          : (latestResult?.userFacingText ?? DEVICE_APPROVAL_REVIEW_TEXT);
       const paused: EvaluatorOutput = requestedHandoff
         ? {
             success: true,
@@ -6898,27 +6882,6 @@ function currentOwnerRequestText(
   return undefined;
 }
 
-/** A planner call's `operation` as the handler receives it, or undefined. The
- * phone's Cloud route sends planner tools non-strict, and the model then
- * writes `operation` as a JSON string (117 of 121 calls in the audit's
- * decode-mode run); core decodes it only into the copy it dispatches
- * (validate-tool-args normalizeModelParameters). The queued call keeps the
- * string, so every check on it here decodes it the same way. */
-function plannerCallOperation(
-  call: PlannerToolCall | undefined,
-): Record<string, unknown> | undefined {
-  let operation = call?.params?.operation;
-  if (typeof operation === "string") {
-    try {
-      operation = JSON.parse(operation);
-    } catch {
-      // Malformed model JSON fails the operation schema at dispatch.
-      return undefined;
-    }
-  }
-  return isObjectRecord(operation) ? operation : undefined;
-}
-
 /** The review key of a PROPOSE_DEVICE_ACTION call that can only end as an
  * owner review card, or undefined for every other call. */
 function sameReplyDeviceReviewOperation(
@@ -6926,9 +6889,10 @@ function sameReplyDeviceReviewOperation(
   trajectory: PlannerTrajectory,
 ): string | undefined {
   if (call.name !== "PROPOSE_DEVICE_ACTION") return undefined;
-  const operation = plannerCallOperation(call);
-  if (!operation) return undefined;
-  const { type, action, draft } = operation;
+  const operation = call.params?.operation;
+  if (!operation || typeof operation !== "object" || Array.isArray(operation))
+    return undefined;
+  const { type, action, draft } = operation as Record<string, unknown>;
   if (typeof type !== "string" || !SAME_REPLY_DEVICE_REVIEW_TYPES.has(type))
     return undefined;
   // A draft for a typed number or the open thread runs without a card. The
@@ -7036,11 +7000,9 @@ function isViewHandoffStep(step: PlannerStep): boolean {
 }
 
 /**
- * After a queued phone proposal became a recorded owner review, or a requested
- * photo the phone takes without a card, record the other owner reviews queued
- * behind it from the same planner reply, in order, so the one pause covers
- * all of them, and return the last one recorded. No planner or evaluator call
- * is made.
+ * After a queued phone proposal became a recorded owner review, record the
+ * other owner reviews queued behind it from the same planner reply, in order,
+ * so the one pause covers all of them. No planner or evaluator call is made.
  * A call that repeats an operation already awaiting review this turn is
  * dropped and the next one is tried; the first call that is not an owner
  * review proposal, or that does not end as one, stops the recording and
@@ -7061,22 +7023,21 @@ async function recordSameReplyDeviceReviews(args: {
     trajectory: PlannerTrajectory,
     phase: "before_tool" | "after_tool",
   ) => Promise<void>;
-}): Promise<PlannerToolResult | undefined> {
+}): Promise<void> {
   const { trajectory } = args;
-  if (deviceRequestScreenHoldsOneCard()) return undefined;
+  if (deviceRequestScreenHoldsOneCard()) return;
   const turnSteps = allTrajectorySteps(trajectory);
-  if (turnSteps.some(isViewHandoffStep)) return undefined;
+  if (turnSteps.some(isViewHandoffStep)) return;
   const awaiting = new Set<string>();
   for (const step of turnSteps) {
-    const operation = plannerCallOperation(step.toolCall);
+    const operation = step.toolCall?.params?.operation;
     if (operation !== undefined && isPersistedDeviceApprovalPause(step.result))
       awaiting.add(deviceOperationReviewKey(operation));
   }
-  let recorded: PlannerToolResult | undefined;
   while (trajectory.plannedQueue.length > 0) {
     const next = trajectory.plannedQueue[0];
     const operation = sameReplyDeviceReviewOperation(next, trajectory);
-    if (operation === undefined) return recorded;
+    if (operation === undefined) return;
     if (awaiting.has(operation)) {
       // A second card for the same text would be a second send if approved.
       trajectory.plannedQueue.shift();
@@ -7098,7 +7059,7 @@ async function recordSameReplyDeviceReviews(args: {
     const toolCalls = [...trajectory.archivedSteps, ...trajectory.steps].filter(
       (step) => step.toolCall && !isDiscoveryActionName(step.toolCall.name),
     ).length;
-    if (toolCalls >= args.config.maxToolCalls) return recorded;
+    if (toolCalls >= args.config.maxToolCalls) return;
     try {
       await args.checkpoint?.(trajectory, "before_tool");
       getStreamingContext()?.abortSignal?.throwIfAborted();
@@ -7116,7 +7077,7 @@ async function recordSameReplyDeviceReviews(args: {
       await args.checkpoint?.(trajectory, "after_tool");
     } catch (error) {
       getStreamingContext()?.abortSignal?.throwIfAborted();
-      // Keep the turn's pause on the reviews already recorded, if any.
+      // The first review is already recorded: keep the turn's pause on it.
       args.params.runtime.logger?.warn?.(
         {
           iteration: args.iteration,
@@ -7125,7 +7086,7 @@ async function recordSameReplyDeviceReviews(args: {
         },
         "[planner-loop] recording a queued device review failed; pausing on the reviews already recorded",
       );
-      return recorded;
+      return;
     }
     getStreamingContext()?.abortSignal?.throwIfAborted();
     const result = trajectory.steps.at(-1)?.result;
@@ -7133,11 +7094,9 @@ async function recordSameReplyDeviceReviews(args: {
       !isPersistedDeviceApprovalPause(result) ||
       isRequestedDeviceHandoff(result)
     )
-      return recorded;
+      return;
     awaiting.add(operation);
-    recorded = result;
   }
-  return recorded;
 }
 
 async function executeQueuedToolCall(params: {

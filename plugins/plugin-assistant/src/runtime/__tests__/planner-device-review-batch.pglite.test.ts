@@ -139,14 +139,6 @@ type ScriptedCall = {
   args?: Record<string, unknown>;
 };
 type Decision = "FINISH" | "CONTINUE";
-// The phone's Cloud route sends planner tools non-strict, and the model then
-// writes each `operation` as a JSON string; the direct route's strict tools
-// give an object.
-const FORMS = ["object", "JSON string"] as const;
-type Form = (typeof FORMS)[number];
-const MODES_AND_FORMS = (["direct-request", "ask-before"] as const).flatMap(
-  (mode) => FORMS.map((form) => [mode, form] as const),
-);
 
 /** VIEWS_SHOW prepared for the renderer, which opens `viewId` after the reply. */
 function preparedNavigation(viewId: string) {
@@ -195,10 +187,7 @@ function deliveredNavigation(viewId: string) {
   };
 }
 
-async function fixture(
-  capabilities: readonly string[] = CAPABILITIES,
-  form: Form = "object",
-) {
+async function fixture(capabilities: readonly string[] = CAPABILITIES) {
   const pg = new PGlite();
   await createTable(pg, approvalRequestTable);
   await createTable(pg, approvalDispatchControlTable);
@@ -341,10 +330,7 @@ async function fixture(
                     JSON.stringify({
                       ...(call.operation !== undefined
                         ? {
-                            operation:
-                              form === "object"
-                                ? call.operation
-                                : JSON.stringify(call.operation),
+                            operation: call.operation,
                             operationKey: call.operationKey ?? `${call.id}-key`,
                             reason: "The owner asked for this.",
                           }
@@ -384,14 +370,9 @@ async function fixture(
                   ? camera
                   : undefined;
             if (!action?.handler) return { success: true, text: "done" };
-            // Core decodes a string `operation` only into the arguments it
-            // dispatches (validate-tool-args); the queued call keeps it.
-            const { operation } = call.params as { operation?: unknown };
             return actionResultToPlannerToolResult(
               await action.handler(runtime, original, undefined, {
-                parameters: (typeof operation === "string"
-                  ? { ...call.params, operation: JSON.parse(operation) }
-                  : call.params) as JsonValue,
+                parameters: call.params as JsonValue,
               }),
             );
           },
@@ -434,10 +415,10 @@ function expectPause(
   });
 }
 
-it.each(MODES_AND_FORMS)(
-  "records a text and an alarm from one planner reply as two reviews (%s, %s operation)",
-  async (mode, form) => {
-    const f = await fixture(CAPABILITIES, form);
+it.each(["direct-request", "ask-before"] as const)(
+  "records a text and an alarm from one planner reply as two reviews (%s)",
+  async (mode) => {
+    const f = await fixture();
     try {
       const outcome = await f.turn(
         "Text Sam I'll be late, and set an alarm for 7am.",
@@ -717,190 +698,20 @@ it.each(
   },
 );
 
-const PHOTO = {
-  id: "photo",
-  name: DEVICE_CAMERA_CAPTURE_ACTION,
-  operation: { type: "camera_capture_photo" },
-};
-const PHOTO_ROW = {
-  operation: { type: "camera_capture_photo" },
-  state: "pending",
-};
-// The camera tool and the general proposal tool propose the same photo.
-const PHOTO_TOOLS = [DEVICE_CAMERA_CAPTURE_ACTION, "PROPOSE_DEVICE_ACTION"];
-
-it.each(
-  FORMS.flatMap((form) => PHOTO_TOOLS.map((tool) => [tool, form] as const)),
-)(
-  "records the text queued behind a photo the phone takes without a card (%s, %s operation)",
-  async (tool, form) => {
-    const f = await fixture(CAPABILITIES, form);
+it.each(["direct-request", "ask-before"] as const)(
+  "leaves a photo and a text as today (%s)",
+  async (mode) => {
+    const f = await fixture();
     try {
       const outcome = await f.turn(
         "Take a picture and text mom that I'm here.",
-        "direct-request",
+        mode,
         [
-          { ...PHOTO, name: tool },
-          { id: "text", name: "PROPOSE_DEVICE_ACTION", operation: TEXT_MOM },
-        ],
-      );
-      // One pause on the text's card: no evaluator call and no replan, so the
-      // photo is never proposed a second time.
-      expectPause(outcome);
-      expect(outcome.executed).toEqual(["photo", "text"]);
-      expect(outcome.result.trajectory.plannedQueue).toEqual([]);
-      expect(await f.rows()).toEqual([
-        PHOTO_ROW,
-        { operation: TEXT_MOM, state: "pending" },
-      ]);
-      const [photo, text] = outcome.result.trajectory.steps;
-      // The recorded calls keep the form the model wrote.
-      expect(typeof text?.toolCall?.params?.operation).toBe(
-        form === "object" ? "object" : "string",
-      );
-      expect(photo?.result?.data).toMatchObject({
-        directRequest: true,
-        awaitingDeviceExecution: true,
-        approvalRequired: false,
-      });
-      expect(text?.result?.data).toMatchObject({
-        awaitingUserInput: true,
-        approvalRequired: true,
-      });
-    } finally {
-      await f.pg.close();
-    }
-  },
-);
-
-it.each(FORMS)(
-  "records a text and an alarm behind a photo, and never a second photo (%s operation)",
-  async (form) => {
-    const f = await fixture(CAPABILITIES, form);
-    try {
-      const outcome = await f.turn(
-        "Take a picture, text mom that I'm here, and set an alarm for 7am.",
-        "direct-request",
-        [
-          PHOTO,
-          { id: "text", name: "PROPOSE_DEVICE_ACTION", operation: TEXT_MOM },
-          { id: "alarm", name: "PROPOSE_DEVICE_ACTION", operation: ALARM_7 },
-          { ...PHOTO, id: "photo-again", operationKey: "another-key" },
-        ],
-      );
-      expectPause(outcome);
-      expect(outcome.executed).toEqual(["photo", "text", "alarm"]);
-      expect(
-        outcome.result.trajectory.plannedQueue.map((call) => call.id),
-      ).toEqual(["photo-again"]);
-      expect(await f.rows()).toEqual([
-        PHOTO_ROW,
-        { operation: TEXT_MOM, state: "pending" },
-        { operation: ALARM_7, state: "pending" },
-      ]);
-    } finally {
-      await f.pg.close();
-    }
-  },
-);
-
-it.each(FORMS)(
-  "skips a repeated text behind a photo (%s operation)",
-  async (form) => {
-    const f = await fixture(CAPABILITIES, form);
-    try {
-      const outcome = await f.turn(
-        "Take a picture, text mom that I'm here, and set an alarm for 7am.",
-        "direct-request",
-        [
-          PHOTO,
-          { id: "text", name: "PROPOSE_DEVICE_ACTION", operation: TEXT_MOM },
           {
-            id: "text-again",
-            name: "PROPOSE_DEVICE_ACTION",
-            operation: { ...TEXT_MOM, body: " I'm here. " },
-            operationKey: "another-key",
+            id: "photo",
+            name: DEVICE_CAMERA_CAPTURE_ACTION,
+            operation: { type: "camera_capture_photo" },
           },
-          { id: "alarm", name: "PROPOSE_DEVICE_ACTION", operation: ALARM_7 },
-        ],
-      );
-      expectPause(outcome);
-      expect(outcome.executed).toEqual(["photo", "text", "alarm"]);
-      expect(await f.rows()).toEqual([
-        PHOTO_ROW,
-        { operation: TEXT_MOM, state: "pending" },
-        { operation: ALARM_7, state: "pending" },
-      ]);
-      expect(
-        outcome.result.trajectory.context.plannedQueue?.find(
-          (entry) => entry.id === "text-again",
-        )?.status,
-      ).toBe("skipped");
-    } finally {
-      await f.pg.close();
-    }
-  },
-);
-
-it.each(FORMS)(
-  "keeps the pause on the text when a call behind it is refused (%s operation)",
-  async (form) => {
-    const f = await fixture(CAPABILITIES, form);
-    try {
-      // The owner wrote no number: the call is refused before persistence,
-      // and the text recorded before it keeps the turn's pause.
-      const outcome = await f.turn(
-        "Take a picture, text mom that I'm here, call the pharmacy, and set an alarm for 7am.",
-        "direct-request",
-        [
-          PHOTO,
-          { id: "text", name: "PROPOSE_DEVICE_ACTION", operation: TEXT_MOM },
-          {
-            id: "call",
-            name: "PROPOSE_DEVICE_ACTION",
-            operation: {
-              type: "phone_call",
-              target: { kind: "number", number: "4155550123" },
-            },
-          },
-          { id: "alarm", name: "PROPOSE_DEVICE_ACTION", operation: ALARM_7 },
-        ],
-      );
-      expectPause(outcome);
-      expect(outcome.executed).toEqual(["photo", "text", "call"]);
-      expect(outcome.result.trajectory.steps[2]?.result).toMatchObject({
-        success: false,
-        data: { code: "DEVICE_TELEPHONY_TARGET_NOT_REQUESTED" },
-      });
-      expect(
-        outcome.result.trajectory.plannedQueue.map((call) => call.id),
-      ).toEqual(["alarm"]);
-      expect(await f.rows()).toEqual([
-        PHOTO_ROW,
-        { operation: TEXT_MOM, state: "pending" },
-      ]);
-    } finally {
-      await f.pg.close();
-    }
-  },
-);
-
-// The photo is a notice, not a card, outside Camera; one-card screens and
-// unreadable observations still record nothing behind it.
-it.each(
-  SCREENS.flatMap(([label, reviews, context]) =>
-    FORMS.map((form) => [label, reviews, form, context] as const),
-  ),
-)(
-  "records a text behind a photo sent from %s only where cards stack (%i, %s operation)",
-  async (_label, reviews, form, context) => {
-    const f = await fixture(CAPABILITIES, form);
-    try {
-      const outcome = await f.turn(
-        "Take a picture and text mom that I'm here.",
-        "direct-request",
-        [
-          PHOTO,
           { id: "text", name: "PROPOSE_DEVICE_ACTION", operation: TEXT_MOM },
         ],
         // A later model call (the no-tools reply synthesis) gets no tools to run.
@@ -913,26 +724,35 @@ it.each(
             },
           ],
         ],
-        context,
       );
-      if (reviews === 2) {
-        expectPause(outcome);
-        expect(outcome.executed).toEqual(["photo", "text"]);
-        expect(await f.rows()).toEqual([
-          PHOTO_ROW,
-          { operation: TEXT_MOM, state: "pending" },
-        ]);
-      } else {
-        // As before: the handoff drops the queued text and the evaluator
-        // finishes the turn; a no-tools synthesis writes the reply.
-        expect(outcome.executed).toEqual(["photo"]);
+      expect(outcome.executed).toEqual(["photo"]);
+      expect(await f.rows()).toEqual([
+        {
+          operation: { type: "camera_capture_photo" },
+          state: "pending",
+        },
+      ]);
+      if (mode === "direct-request") {
+        // The phone takes the photo right after the reply, with no review. A
+        // handoff drops the calls queued behind it, so the text is neither
+        // proposed nor left queued; the evaluator then finishes the turn and a
+        // no-tools synthesis writes the reply.
+        expect(outcome.result.trajectory.steps[0]?.result?.data).toMatchObject({
+          directRequest: true,
+          awaitingDeviceExecution: true,
+        });
         expect(outcome.result.trajectory.plannedQueue).toEqual([]);
         expect(outcome.evaluate).toHaveBeenCalledTimes(1);
         expect(outcome.plans).toBe(2);
         expect(outcome.result.finalMessage).toBe(
           "Opening Camera to take the photo.",
         );
-        expect(await f.rows()).toEqual([PHOTO_ROW]);
+      } else {
+        // The photo is a review card; the text stays queued and unrun.
+        expectPause(outcome);
+        expect(
+          outcome.result.trajectory.plannedQueue.map((call) => call.id),
+        ).toEqual(["text"]);
       }
     } finally {
       await f.pg.close();
@@ -940,88 +760,10 @@ it.each(
   },
 );
 
-it.each(FORMS)(
-  "leaves a photo followed by a call that is not a review as before (%s operation)",
-  async (form) => {
-    const f = await fixture(CAPABILITIES, form);
-    try {
-      const outcome = await f.turn(
-        "Take a picture and then do the later thing.",
-        "direct-request",
-        [PHOTO, { id: "later", name: "LATER_EFFECT" }],
-        [[{ id: "later-again", name: "LATER_EFFECT" }]],
-      );
-      expect(outcome.executed).toEqual(["photo"]);
-      expect(outcome.result.trajectory.plannedQueue).toEqual([]);
-      expect(outcome.evaluate).toHaveBeenCalledTimes(1);
-      expect(await f.rows()).toEqual([PHOTO_ROW]);
-    } finally {
-      await f.pg.close();
-    }
-  },
-);
-
-it.each(FORMS)(
-  "never records a text the owner asked to draft behind a photo (%s operation)",
-  async (form) => {
-    const f = await fixture(CAPABILITIES, form);
-    try {
-      const outcome = await f.turn(
-        "Draft a text to 415-555-0100 saying I'm here, and take a picture.",
-        "direct-request",
-        [
-          PHOTO,
-          {
-            id: "text",
-            name: "PROPOSE_DEVICE_ACTION",
-            operation: {
-              type: "sms_compose",
-              target: { kind: "number", number: "4155550100" },
-              body: "I'm here.",
-            },
-          },
-        ],
-        [[{ id: "later-again", name: "LATER_EFFECT" }]],
-      );
-      expect(outcome.executed).toEqual(["photo"]);
-      expect(outcome.evaluate).toHaveBeenCalledTimes(1);
-      expect(await f.rows()).toEqual([PHOTO_ROW]);
-    } finally {
-      await f.pg.close();
-    }
-  },
-);
-
-it.each(FORMS)(
-  "leaves a photo and a text as today when asked first (ask-before, %s operation)",
-  async (form) => {
-    const f = await fixture(CAPABILITIES, form);
-    try {
-      const outcome = await f.turn(
-        "Take a picture and text mom that I'm here.",
-        "ask-before",
-        [
-          PHOTO,
-          { id: "text", name: "PROPOSE_DEVICE_ACTION", operation: TEXT_MOM },
-        ],
-      );
-      // The photo is a review card; the text stays queued and unrun.
-      expectPause(outcome);
-      expect(outcome.executed).toEqual(["photo"]);
-      expect(
-        outcome.result.trajectory.plannedQueue.map((call) => call.id),
-      ).toEqual(["text"]);
-      expect(await f.rows()).toEqual([PHOTO_ROW]);
-    } finally {
-      await f.pg.close();
-    }
-  },
-);
-
-it.each(MODES_AND_FORMS)(
-  "skips a repeated operation and records the next review (%s, %s operation)",
-  async (mode, form) => {
-    const f = await fixture(CAPABILITIES, form);
+it.each(["direct-request", "ask-before"] as const)(
+  "skips a repeated operation and records the next review (%s)",
+  async (mode) => {
+    const f = await fixture();
     try {
       const outcome = await f.turn(
         "Text Sam I'll be late, and set an alarm for 7am.",
