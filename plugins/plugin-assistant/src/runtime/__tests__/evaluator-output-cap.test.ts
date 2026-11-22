@@ -1,7 +1,6 @@
 /**
- * The evaluator sent no output cap. Measured on a hosted provider, a request
- * without one holds 16,384 tokens against the per-minute limit while it runs,
- * for a verdict of a few hundred. A host can now cap it from its environment.
+ * The evaluator sends no output cap. The former ELIZA_EVALUATOR_MAX_TOKENS
+ * environment variable and the merged model-type cap settings are ignored.
  */
 import type { ContextObject } from "@elizaos/core";
 import { afterEach, expect, it, vi } from "vitest";
@@ -32,6 +31,7 @@ async function evaluatorRequest(): Promise<Record<string, unknown>> {
       evaluatorOutputs: [],
     },
     runtime: {
+      getSetting: (key: string) => (key.endsWith("_MAX_TOKENS") ? "16" : null),
       useModel: async (_type: unknown, params: Record<string, unknown>) => {
         requests.push(params);
         return JSON.stringify({
@@ -47,17 +47,11 @@ async function evaluatorRequest(): Promise<Record<string, unknown>> {
   return requests[0];
 }
 
-it("sends no cap unless the host's environment sets one", async () => {
+it("sends no cap, whatever the former cap settings say", async () => {
   expect(await evaluatorRequest()).not.toHaveProperty("maxTokens");
-  vi.stubEnv("ELIZA_EVALUATOR_MAX_TOKENS", "4096");
-  expect((await evaluatorRequest()).maxTokens).toBe(4096);
-  vi.stubEnv("ELIZA_EVALUATOR_MAX_TOKENS", "");
+  vi.stubEnv("ELIZA_EVALUATOR_MAX_TOKENS", "16");
   expect(await evaluatorRequest()).not.toHaveProperty("maxTokens");
-});
-
-it("refuses a cap that is not a positive integer", async () => {
+  // A value the removed reader used to refuse no longer fails the turn.
   vi.stubEnv("ELIZA_EVALUATOR_MAX_TOKENS", "0");
-  await expect(evaluatorRequest()).rejects.toThrow(
-    'ELIZA_EVALUATOR_MAX_TOKENS must be a positive integer, got "0"',
-  );
+  expect(await evaluatorRequest()).not.toHaveProperty("maxTokens");
 });

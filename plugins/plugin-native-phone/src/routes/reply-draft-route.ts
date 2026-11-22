@@ -32,8 +32,6 @@ export const REPLY_DRAFT_PATH = "/api/messages/reply-draft";
 export const REPLY_DRAFT_MAX = 320;
 
 const REQUEST_FIELDS = ["participant", "messages", "truncated"] as const;
-// A draft is a few dozen words; the bound stops a runaway generation early.
-const DRAFT_MAX_TOKENS = 160;
 // Senders that are a bare 3-8 digit number are short codes: one-time codes and
 // automated notices, which never take a drafted reply.
 const SHORT_CODE = /^\d{3,8}$/;
@@ -197,7 +195,8 @@ export async function handleReplyDraft(
     const raw = await ctx.runtime.useModel(ModelType.TEXT_SMALL, {
       system: SYSTEM_PROMPT,
       prompt: buildReplyDraftPrompt(thread),
-      maxTokens: DRAFT_MAX_TOKENS,
+      // No output cap: reasoning counts inside one, so a small cap can stop
+      // the call before any reply text. normalizeReplyDraft bounds the draft.
       voiceOutput: "internal",
       signal: ctx.signal,
     });

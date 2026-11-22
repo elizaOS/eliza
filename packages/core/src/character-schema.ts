@@ -181,10 +181,11 @@ export const settingsSchema = z
 		alwaysRespondChannels: z.string().optional(),
 		alwaysRespondSources: z.string().optional(),
 		defaultTemperature: z.number().optional(),
-		defaultMaxTokens: z.number().int().optional(),
-		// The former setting imposed an arbitrary completion ceiling. Keep the key
-		// reserved so old configurations fail validation instead of being silently
-		// relocated into `settings.extra`.
+		// The former settings imposed an arbitrary completion ceiling (and
+		// `defaultMaxTokens` never reached a request). Keep the keys reserved so
+		// old configurations fail validation instead of being silently relocated
+		// into `settings.extra`.
+		defaultMaxTokens: z.never().optional(),
 		maxReplyTokens: z.never().optional(),
 		defaultFrequencyPenalty: z.number().optional(),
 		defaultPresencePenalty: z.number().optional(),

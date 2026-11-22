@@ -1,8 +1,8 @@
 /**
- * Stage 1 sends no output cap unless the host configures one. Its request used
- * to override the model settings every other call honours, so a host could not
- * bound it for a provider that reserves the cap, or an upper bound when none is
- * sent, against a rate limit at admission.
+ * Stage 1 sends no output cap. The former host caps, the
+ * ELIZA_STAGE1_MAX_TOKENS environment variable and the merged
+ * RESPONSE_HANDLER_MAX_TOKENS / DEFAULT_MAX_TOKENS settings, are ignored. A
+ * generation that stops at the model's own maximum gets the cut-off reply.
  */
 import { AgentRuntime, ChannelType, ModelType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -66,83 +66,32 @@ async function runStage1OnHost(
 const CUT_OFF_TEXT =
   '{"shouldRespond":"RESPOND","contexts":["simple"],"replyText":"Day 1: Asakusa and';
 
+/** Every Stage 1 cap setting that once applied, set small. */
+const REMOVED_CAP_SETTINGS = {
+  RESPONSE_HANDLER_MAX_TOKENS: "16",
+  DEFAULT_MAX_TOKENS: "16",
+};
+
 describe("Stage 1 output cap", () => {
   it("sends no cap when the host configures none", async () => {
     const { requests } = await runStage1OnHost({});
     expect(requests).toEqual([{ maxTokens: undefined, omitMaxTokens: true }]);
   });
 
-  it.each(["RESPONSE_HANDLER_MAX_TOKENS", "DEFAULT_MAX_TOKENS"])(
-    "sends the host's %s as the cap",
-    async (setting) => {
-      const { requests } = await runStage1OnHost({ [setting]: "2048" });
-      expect(requests).toEqual([{ maxTokens: 2048, omitMaxTokens: false }]);
-    },
-  );
-
-  // A phone's host can set an environment variable but not a runtime setting.
-  it("sends the cap the host's environment sets, over a setting", async () => {
-    vi.stubEnv("ELIZA_STAGE1_MAX_TOKENS", "4096");
-    expect((await runStage1OnHost({})).requests).toEqual([
-      { maxTokens: 4096, omitMaxTokens: false },
-    ]);
-    expect(
-      (await runStage1OnHost({ RESPONSE_HANDLER_MAX_TOKENS: "2048" })).requests,
-    ).toEqual([{ maxTokens: 4096, omitMaxTokens: false }]);
-    const { result } = await runStage1OnHost(
-      {},
-      { text: CUT_OFF_TEXT, finishReason: "length" },
-    );
+  it("ignores the former cap settings and environment variable", async () => {
+    vi.stubEnv("ELIZA_STAGE1_MAX_TOKENS", "16");
+    const { requests, result } = await runStage1OnHost(REMOVED_CAP_SETTINGS);
+    expect(requests).toEqual([{ maxTokens: undefined, omitMaxTokens: true }]);
     expect(result.kind).toBe("direct_reply");
     if (result.kind === "direct_reply")
-      expect(result.result.responseContent?.text).toBe(
-        STAGE1_COMPLETION_LIMIT_REPLY,
-      );
-    vi.stubEnv("ELIZA_STAGE1_MAX_TOKENS", " ");
-    expect((await runStage1OnHost({})).requests).toEqual([
-      { maxTokens: undefined, omitMaxTokens: true },
-    ]);
-    vi.stubEnv("ELIZA_STAGE1_MAX_TOKENS", "lots");
-    await expect(runStage1OnHost({})).rejects.toThrow(
-      'ELIZA_STAGE1_MAX_TOKENS must be a positive integer, got "lots"',
-    );
+      expect(result.result.responseContent?.text).toBe("Hello there.");
   });
 
-  it.each([
-    [
-      "reports using the whole cap",
-      {
-        text: CUT_OFF_TEXT,
-        usage: { promptTokens: 100, completionTokens: 2048, totalTokens: 2148 },
-      },
-    ],
-    // The runtime rejects this result instead of returning it to Stage 1.
-    [
-      "reports stopping at its length limit",
-      { text: CUT_OFF_TEXT, finishReason: "length" },
-    ],
-  ])(
-    "answers that the reply was cut off when a capped generation %s",
-    async (_label, response) => {
-      const { requests, result } = await runStage1OnHost(
-        { RESPONSE_HANDLER_MAX_TOKENS: "2048" },
-        response,
-      );
-      // One call: the same cap would cut a retry off at the same place.
-      expect(requests).toHaveLength(1);
-      expect(result.kind).toBe("direct_reply");
-      if (result.kind === "direct_reply")
-        expect(result.result.responseContent?.text).toBe(
-          STAGE1_COMPLETION_LIMIT_REPLY,
-        );
-    },
-  );
-
-  it("answers that the reply was cut off when an uncapped generation stops at the model's limit", async () => {
-    const { requests, result } = await runStage1OnHost(
-      {},
-      { text: CUT_OFF_TEXT, finishReason: "length" },
-    );
+  it("answers that the reply was cut off when generation stops at the model's limit", async () => {
+    const { requests, result } = await runStage1OnHost(REMOVED_CAP_SETTINGS, {
+      text: CUT_OFF_TEXT,
+      finishReason: "length",
+    });
     // No cap was sent: the model's own maximum ended it, so a retry would too.
     expect(requests).toEqual([{ maxTokens: undefined, omitMaxTokens: true }]);
     expect(result.kind).toBe("direct_reply");
