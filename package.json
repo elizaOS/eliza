@@ -118,22 +118,26 @@
   },
   "packageManager": "pnpm@10.24.0",
   "exports": {
+    "./formal": "./vibestack/formal.ts",
     "./testing": "./vibestack/testing/index.ts",
     "./testing/vitest": "./vibestack/testing/vitest.ts",
     "./testing/generate": "./vibestack/testing/generate.ts",
     "./stories": "./vibestack/stories/meta.ts",
     "./stories/storybook": "./vibestack/stories/storybook.ts",
     "./design/eslint": "./vibestack/design/eslint.ts",
+    "./design/project": "./vibestack/design/project.ts",
     "./package.json": "./package.json"
   },
   "publishConfig": {
     "exports": {
+      "./formal": "./dist/formal.js",
       "./testing": "./dist/testing/index.js",
       "./testing/vitest": "./dist/testing/vitest.js",
       "./testing/generate": "./dist/testing/generate.js",
       "./stories": "./dist/stories/meta.js",
       "./stories/storybook": "./dist/stories/storybook.js",
       "./design/eslint": "./dist/design/eslint.js",
+      "./design/project": "./dist/design/project.js",
       "./package.json": "./package.json"
     }
   }

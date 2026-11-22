@@ -1,34 +1,24 @@
 #!/usr/bin/env node
 // Works on the current directory: ./tokens.json and ./design.md in, ./generated/{tokens,theme}.css out.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { check, syncDoc, themeCss, tokensCss } from "./generate.ts"
-import { type Tokens, applyChanges, parseTokens } from "./tokens.ts"
+import { readFileSync, writeFileSync } from "node:fs"
+import { buildTokenProject, checkTokenProject, loadTokens } from "./project.ts"
+import { applyChanges } from "./tokens.ts"
 
 const read = (file: string) => readFileSync(file, "utf8")
-const put = (file: string, text: string) => {
-  if (!existsSync(file) || read(file) !== text) writeFileSync(file, text)
-}
-const load = () => parseTokens(JSON.parse(read("tokens.json")))
-const build = (tokens: Tokens) => {
-  mkdirSync("generated", { recursive: true })
-  put("generated/tokens.css", tokensCss(tokens))
-  put("generated/theme.css", themeCss(tokens))
-  put("design.md", syncDoc(read("design.md"), tokens))
-}
-
+const directory = process.cwd()
 const [command, ...rest] = process.argv.slice(2)
 const file = rest.find((word) => !word.startsWith("--"))
 try {
-  if (command === "build") build(load())
+  if (command === "build") buildTokenProject(directory)
   else if (command === "check") {
-    const issues = check(load(), read("design.md"))
+    const issues = checkTokenProject(directory)
     if (issues.length) throw new Error(issues.join("\n"))
   } else if (command === "apply" && file) {
-    const { tokens, diff } = applyChanges(load(), JSON.parse(read(file)))
+    const { tokens, diff } = applyChanges(loadTokens(directory), JSON.parse(read(file)))
     console.log(diff)
     if (rest.includes("--write")) {
       writeFileSync("tokens.json", `${JSON.stringify(tokens, null, 2)}\n`)
-      build(tokens)
+      buildTokenProject(directory, tokens)
     } else console.log("Not written. Pass --write to apply.")
   } else throw new Error("usage: cli.ts build | check | apply <changes.json> [--write]")
 } catch (error) {

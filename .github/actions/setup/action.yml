@@ -79,58 +79,69 @@ runs:
       env:
         JOB: ${{ inputs.job }}
       run: echo "key=turbo-${{ runner.os }}-${{ runner.arch }}-${JOB}-${{ github.sha }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
-    - id: restore-turbo
-      if: steps.turbo-cache.outputs.key != ''
+    - if: steps.turbo-cache.outputs.key != ''
       uses: actions/cache/restore@v6
       with:
         path: .turbo/cache
         key: ${{ steps.turbo-cache.outputs.key }}
         restore-keys: |
           turbo-${{ runner.os }}-${{ runner.arch }}-${{ inputs.job }}-
-          ${{ (inputs.job != 'verify' || env.TURBO_CACHE != 'local:rw') && format('turbo-{0}-{1}-', runner.os, runner.arch) || '' }}
+          turbo-${{ runner.os }}-${{ runner.arch }}-
     - id: gen-seed
       if: >-
         inputs.job == 'verify' && inputs.verification == 'true' && inputs.cache-verification == 'true' &&
         env.TURBO_CACHE == 'local:rw' && steps.turbo-cache.outputs.key != ''
       shell: bash
-      env:
-        CACHE_KEY: ${{ steps.restore-turbo.outputs.cache-matched-key }}
-      run: |
-        if [[ $CACHE_KEY == "turbo-$RUNNER_OS-$RUNNER_ARCH-verify-"* ]]; then
-          for archive in .turbo/cache/*.tar.zst; do
-            hash=${archive##*/}
-            hash=${hash%.tar.zst}
-            meta=".turbo/cache/$hash-meta.json"
-            [[ $hash =~ ^[0-9a-f]{16}$ && -f $archive && -s $archive && -f $meta && -s $meta ]] || continue
-            jq -e --arg hash "$hash" '.hash == $hash' "$meta" >/dev/null && exit 0
-          done
-        fi
-        printf 'prefix=turbo-gen-v1-%s-%s-verify-\n' "$RUNNER_OS" "$RUNNER_ARCH" >> "$GITHUB_OUTPUT"
-    - id: restore-gen-seed
+      run: printf 'prefix=turbo-gen-v2-%s-%s-verify-\n' "$RUNNER_OS" "$RUNNER_ARCH" >> "$GITHUB_OUTPUT"
+    - id: lookup-gen-seed
       if: steps.gen-seed.outputs.prefix != ''
       continue-on-error: true
       uses: actions/cache/restore@v6
       with:
         path: .turbo/gen-seed
         key: ${{ steps.gen-seed.outputs.prefix }}${{ github.sha }}
-        restore-keys: ${{ steps.gen-seed.outputs.prefix }}
+        restore-keys: |
+          ${{ steps.gen-seed.outputs.prefix }}${{ github.sha }}-
+          ${{ steps.gen-seed.outputs.prefix }}
+        lookup-only: true
+    - id: missing-gen-seed
+      if: steps.lookup-gen-seed.outputs.cache-matched-key != ''
+      shell: bash
+      env:
+        CACHE_KEY: ${{ steps.lookup-gen-seed.outputs.cache-matched-key }}
+        PREFIX: ${{ steps.gen-seed.outputs.prefix }}
+      run: |
+        seed=${CACHE_KEY#"$PREFIX"}
+        [[ $CACHE_KEY == "$PREFIX"* && $seed =~ ^[0-9a-f]{40}-([0-9a-f]{16})$ ]] || exit 0
+        hash=${BASH_REMATCH[1]}
+        archive=".turbo/cache/$hash.tar.zst"
+        meta=".turbo/cache/$hash-meta.json"
+        if [[ -f $archive && -s $archive && -f $meta && -s $meta ]] &&
+           jq -e --arg hash "$hash" '.hash == $hash' "$meta" >/dev/null 2>&1; then
+          exit 0
+        fi
+        printf 'hash=%s\n' "$hash" >> "$GITHUB_OUTPUT"
+    - id: restore-gen-seed
+      if: steps.missing-gen-seed.outputs.hash != ''
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: .turbo/gen-seed
+        key: ${{ steps.lookup-gen-seed.outputs.cache-matched-key }}
     - name: Import the early generation cache
-      if: steps.restore-gen-seed.outputs.cache-matched-key != ''
+      if: steps.restore-gen-seed.outputs.cache-hit == 'true'
       continue-on-error: true
       shell: bash
       env:
-        CACHE_KEY: ${{ steps.restore-gen-seed.outputs.cache-matched-key }}
-        PREFIX: ${{ steps.gen-seed.outputs.prefix }}
+        HASH: ${{ steps.missing-gen-seed.outputs.hash }}
       run: |
-        hash=${CACHE_KEY#"$PREFIX"}
-        [[ $hash =~ ^[0-9a-f]{16}$ ]] || exit 0
-        archive="$hash.tar.zst"
-        meta="$hash-meta.json"
-        [[ -s .turbo/gen-seed/$archive && -s .turbo/gen-seed/$meta ]] || exit 0
-        jq -e --arg hash "$hash" '.hash == $hash' ".turbo/gen-seed/$meta" >/dev/null || exit 0
-        if [[ -s .turbo/cache/$archive && -s .turbo/cache/$meta ]]; then exit 0; fi
+        archive="$HASH.tar.zst"
+        meta="$HASH-meta.json"
+        [[ -f .turbo/gen-seed/$archive && -s .turbo/gen-seed/$archive &&
+           -f .turbo/gen-seed/$meta && -s .turbo/gen-seed/$meta ]] || exit 0
+        jq -e --arg hash "$HASH" '.hash == $hash' ".turbo/gen-seed/$meta" >/dev/null 2>&1 || exit 0
         mkdir -p .turbo/cache
-        rm -f ".turbo/cache/$hash-manifest.json"
+        rm -f ".turbo/cache/$HASH-manifest.json"
         mv ".turbo/gen-seed/$archive" ".turbo/gen-seed/$meta" .turbo/cache/
     - name: Install workspace dependencies
       shell: bash
@@ -163,7 +174,7 @@ runs:
         rm -rf .turbo/gen-seed
         mkdir -p .turbo/gen-seed
         cp "$archive" "$meta" .turbo/gen-seed/
-        printf 'key=%s%s\n' "$PREFIX" "$hash" >> "$GITHUB_OUTPUT"
+        printf 'key=%s%s-%s\n' "$PREFIX" "$GITHUB_SHA" "$hash" >> "$GITHUB_OUTPUT"
     - if: steps.publish-gen-seed.outputs.key != ''
       uses: actions/cache/save@v6
       with:

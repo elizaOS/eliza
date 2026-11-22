@@ -61,9 +61,10 @@ function offered(dir: string): string[] {
   const entries = leaves([pkg.exports, pkg.main, pkg.module, pkg.browser, pkg.bin]);
   if (!entries.length) return packageFiles(dir, (file) => !file.startsWith("spec/")).map((file) => path.join(dir, file));
   return entries.flatMap((entry) => {
-    if (!entry.includes("*")) return [path.resolve(dir, entry)];
-    const prefix = path.resolve(dir, entry.split("*")[0]);
-    const under = isDirectory(prefix) ? prefix : path.dirname(prefix);
+    const wildcard = entry.indexOf("*");
+    if (wildcard === -1) return [path.resolve(dir, entry)];
+    const under = path.resolve(dir, path.dirname(entry.slice(0, wildcard + 1)));
+    if (!fs.statSync(under, { throwIfNoEntry: false })?.isDirectory()) return [];
     return packageFiles(under, () => true).map((file) => path.join(under, file));
   }).filter(isFile);
 }
@@ -88,7 +89,12 @@ export function pageInputs(root: string, mode: TestProfile = "normal"): string {
   };
   const packages = new Set([base]);
   const found = new Map<string, string | undefined>();
-  const offer = (dir: string) => { if (!packages.has(dir)) { packages.add(dir); for (const file of offered(dir)) read(file, true); } };
+  const offer = (dir: string) => {
+    if (packages.has(dir)) return;
+    packages.add(dir);
+    read(path.join(dir, "package.json"), false);
+    for (const file of offered(dir)) read(file, true);
+  };
   const follow = (from: string, name: string) => {
     if (name.startsWith("./") || name.startsWith("../")) {
       const at = path.resolve(path.dirname(from), name);

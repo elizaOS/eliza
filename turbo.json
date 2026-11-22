@@ -1,5 +1,6 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
+  "globalPassThroughEnv": ["QUINT_HOME"],
   "globalDependencies": [
     ".nvmrc",
     "pnpm-workspace.yaml",
@@ -62,6 +63,9 @@
       ],
       "outputs": [
         ".cache/test-result-*.json"
+      ],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
       ]
     },
     "test:browser": {
@@ -70,7 +74,10 @@
         "//#gen",
         "^build"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "check": {
       "dependsOn": [
@@ -112,6 +119,9 @@
       ],
       "inputs": [
         "vibestack/**",
+        "!vibestack/selftest.ts",
+        "!vibestack/{testing,stories,design}/test/**",
+        "!vibestack/fixtures/**",
         "!vibestack/examples/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
         "!**/.DS_Store",
@@ -162,6 +172,9 @@
       ],
       "outputs": [
         ".cache/test-result-*.json"
+      ],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
       ]
     },
     "//#selftest:tools:a": {
@@ -189,7 +202,10 @@
         "tsconfig.json",
         "tsconfig.build.json"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "//#selftest:tools:b": {
       "dependsOn": [
@@ -216,7 +232,10 @@
         "tsconfig.json",
         "tsconfig.build.json"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "//#selftest:tools:rest": {
       "dependsOn": [
@@ -246,7 +265,10 @@
         "tsconfig.json",
         "tsconfig.build.json"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "//#selftest:docs": {
       "inputs": [
@@ -269,6 +291,9 @@
       ],
       "outputs": [
         "vibestack/examples/*/.spec-cache/tests-*.json.{gz,zst}"
+      ],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
       ]
     },
     "//#check": {
@@ -402,6 +427,9 @@
       ],
       "outputs": [
         ".cache/test-result-*.json"
+      ],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
       ]
     },
     "vibestack-studio#test:browser": {
@@ -409,7 +437,10 @@
         "gen",
         "^build"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "@repo/ui#build": {
       "dependsOn": [
