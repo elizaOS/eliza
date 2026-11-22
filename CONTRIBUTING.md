@@ -115,7 +115,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `1c40171`](https://github.com/lalalune/vibestack/commit/1c40171d189e9a450a37cfe25e0c831efe550852).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `13cdc83`](https://github.com/lalalune/vibestack/commit/13cdc8367af0b5d430fcc85cf3226d5974f2dac5).
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -344,6 +344,11 @@ outlives a reinstall, as `spec watch` does, reads the installed toolchain
 again on the next check. Simulations and proofs include the resolved package files
 and dependency links for Quint and LemmaScript. Each check shares an installation
 inventory across runs of the same tool and validates its files before publishing a batch.
+Recognized stock pnpm POSIX tools run in private copies of their declared package
+closure with the selected Node interpreter and no ambient module search. The
+simulator uses the tool-local Quint copy, which may differ from the CLI version.
+Source and private files are checked before publication. Custom launchers, Windows
+shims and Node preload options retain ordinary execution without receipt reuse.
 The first action, long actions, completed stages and the end of the check flush pending results.
 If a concurrent installation changes these files, the check discards the pending results
 and retries under the same project lock. It stops after two unsuccessful retries. A
