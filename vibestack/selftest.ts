@@ -3305,7 +3305,12 @@ describe("the documents name what exists", () => {
     const studio = (ids: string[]) => ids.filter((id) => /^(vibestack-studio#(?!check)|@repo\/(ui#(build|typecheck)|design-system#build)|\/\/#lint:css)/.test(id));
     const append = (file: string, text = "\nMore words.\n") => () => fs.appendFileSync(path.join(root, file), text);
     const vibeDeclared = ["apps/app", "packages/ui", "vibestack/studio"].filter((dir) => read(`${dir}/tsconfig.json`, root).includes(".vibe/declarations")).map((dir) => `${JSON.parse(read(`${dir}/package.json`, root)).name}#typecheck`);
-    const [prose, selftest, fixture] = [await changedBy(append("spec/app/index.md")), await changedBy(append("vibestack/selftest.ts", "\n")), await changedBy(append("vibestack/fixtures/door.md"))];
+    const [prose, selftest, fixture, frameworkTest] = [
+      await changedBy(append("spec/app/index.md")),
+      await changedBy(append("vibestack/selftest.ts", "\n")),
+      await changedBy(append("vibestack/fixtures/door.md")),
+      await changedBy(append("vibestack/design/test/design.test.ts", "\n")),
+    ];
     const examplesChangedBy = async (edit: () => void) => {
       const before = await exampleCheckKeys(root);
       edit();
@@ -3325,7 +3330,8 @@ describe("the documents name what exists", () => {
       devWaitsFor: tasks.get("vibestack-studio#dev")!.dependencies.toSorted(),
       prose: [studio(prose), prose.includes("@repo/app#test")],
       selftest: [studio(selftest), selftest.includes("//#build"), ["a", "b", "rest"].every((shard) => selftest.includes(`//#selftest:tools:${shard}`))],
-      fixture: studio(fixture),
+      fixture: { studio: studio(fixture), build: fixture.includes("//#build"), selftest: fixture.includes("//#selftest:tools:a") },
+      frameworkTest: { build: frameworkTest.includes("//#build"), test: frameworkTest.includes("//#test") },
       independentOwner: (await changedBy(() => {
         fs.mkdirSync(path.join(root, "packages/kit/spec"));
         fs.writeFileSync(path.join(root, "packages/kit/spec/index.md"), "# Standalone kit\n");
@@ -3338,7 +3344,10 @@ describe("the documents name what exists", () => {
       }),
     }, {
       notWaiting: ["//#analyze", "//#build", "//#lint:css", "//#selftest:docs", "//#selftest:examples", "@repo/design-system#build", "@repo/ui#typecheck", "vibestack-studio#build", "vibestack-studio#dev", "vibestack-studio#test", "vibestack-studio#typecheck"],
-      lintWaitsFor: vibeDeclared, devWaitsFor: tasks.get("vibestack-studio#build")!.dependencies.toSorted(), prose: [[], true], selftest: [[], false, true], fixture: ["vibestack-studio#test"], independentOwner: true, leftovers: [],
+      lintWaitsFor: vibeDeclared, devWaitsFor: tasks.get("vibestack-studio#build")!.dependencies.toSorted(), prose: [[], true], selftest: [[], false, true],
+      fixture: { studio: ["vibestack-studio#test"], build: false, selftest: true },
+      frameworkTest: { build: false, test: true },
+      independentOwner: true, leftovers: [],
     }, "the owners' tasks, @repo/kit's among them, wait for the root's gen, and install's //#build does not, so `gen --if-valid` after it keeps a half-edited spec from failing install");
   });
 });
@@ -3706,4 +3715,34 @@ test("a trace integer of 16 or more digits that Quint wrote as a BigNumber decod
   assert.equal(bigNumberInteger({ s: n(1), e: n(29), c: [n(10), n(0), n(1)] }), 10n ** 29n + 1n);
   assert.equal(bigNumberInteger({ s: n(1), e: n(0), c: [n(15)] }), undefined, "1.5 is not an integer");
   assert.equal(bigNumberInteger({ s: n(1), e: n(15), c: [n(10)], d: n(0) }), undefined, "a record with other fields is not a BigNumber");
+});
+
+test("the lint refuses, in a project's own code, a comment that is neither a citation nor a tool directive, an effect hook, a timer, a console call, inline config that would hide one, and one more than a listed file keeps", async () => {
+  const { ESLint } = await import("eslint");
+  const eslint = new ESLint({ cwd: project });
+  const found = async (file: string, lines: string[]) => (await eslint.lintText(lines.join("\n"), { filePath: path.join(project, file) }))[0]!.messages
+    .filter((m) => m.fatal || m.ruleId === "no-console" || m.ruleId?.startsWith("code/")).map((m) => `${m.line} ${m.ruleId ?? "inline config"}`);
+  assert.deepEqual(await found("apps/app/src/probe.vibe", [
+    `// spec/app/index.md, "Story: Say hello"; spec/app/index.md, "A rule"`,
+    `/* spec/app/index.md, "Story: Say hello" */`,
+    "//@ ghost",
+    "/** @model spec/app/index.md */",
+    "// a note",
+    "/** What it is. */",
+    "//@ pure-ish",
+    "useEffect(() => {}, []);",
+    "window.setTimeout(() => {}, 1);",
+    "requestAnimationFrame(() => {});",
+    `console.log("seen");`,
+    "const later = React.useLayoutEffect;",
+    `globalThis["queueMicrotask"](later);`,
+    "// eslint-disable-next-line no-undef -- a global the page defines",
+  ]), ["5 code/comments", "6 code/comments", "7 code/comments", "8 code/effects", "9 code/effects", "10 code/effects", "11 no-console", "12 code/effects", "13 code/effects"]);
+  const hiding = [["useEffect(() => {}, []); // eslint-disable-line"], ["/* eslint-disable */", "// a note"], ["/* eslint-disable code/comments, code/effects -- it must */", "setTimeout(() => {}, 1);"], ["/* eslint code/comments: off, no-console: off */", `console.log("seen");`], ["// eslint-disable-next-line no-console -- it must", `console.log("seen");`]];
+  assert.deepEqual(await Promise.all(hiding.map((lines) => found("apps/app/src/probe.vibe", lines))), hiding.map(() => ["1 inline config"]));
+  assert.deepEqual(await found("packages/ui/src/components/probe.vibe", ["/** What a component takes, which the stories generator reads. */", "export function Probe() {", "  /** inside it */", "  return 1;", "}", "// a note"]), ["3 code/comments", "6 code/comments"]);
+  const { default: config } = await import(path.join(project, "eslint.config.js"));
+  const [file, left] = Object.entries(config.find((block: { rules?: Record<string, unknown> }) => block.rules?.["code/comments"]).rules["code/comments"][1].left as Record<string, number>).find(([file]) => file.endsWith(".vibe"))!;
+  const notes = (n: number) => Array.from({ length: n }, () => "// a note");
+  assert.deepEqual([(await found(file, notes(left))).length, (await found(file, notes(left + 1))).length], [0, left + 1]);
 });

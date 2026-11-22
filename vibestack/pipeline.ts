@@ -730,7 +730,9 @@ async function runTasks(root: string, args: string[]): Promise<number | null> {
     const declared = JSON.parse(fs.readFileSync(path.join(root, "turbo.json"), "utf8")).remoteCache?.apiUrl;
     env = cacheCredentials(env, args, declared, cache);
   }
-  const child = spawn(bin("turbo", root), ["run", ...args], { cwd: root, env, stdio: "inherit" });
+  const turboPackage = createRequire(bin("turbo", root)).resolve("turbo/package.json");
+  const turboEntry = path.resolve(path.dirname(turboPackage), JSON.parse(fs.readFileSync(turboPackage, "utf8")).bin.turbo);
+  const child = spawn(process.execPath, [turboEntry, "run", ...args], { cwd: root, env, stdio: "inherit" });
   return new Promise((resolve, reject) => {
     child.once("error", reject);
     child.once("exit", resolve);

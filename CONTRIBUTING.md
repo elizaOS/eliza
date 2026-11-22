@@ -334,7 +334,13 @@ compare screenshots.
 Asynchronous Effect programs are tested, not proved. Each `proof` line says
 how many obligations are proved and how many are simulated only.
 
-ESLint enforces package exports and the stack boundaries. Knip finds unused
+ESLint enforces package exports and the stack boundaries, and in `apps/` and
+`packages/` the code rules of AGENTS.md, "Writing code": no comment but a spec
+citation or tool directive, no effect hook, timer or `console`, and no inline
+config but a reasoned `eslint-disable` of another rule. `commented` and
+`scheduled` in `eslint.config.js` give each file that still breaks them the
+count it may keep; one more fails, and cleaning a file lowers or deletes its
+entry. Knip finds unused
 files, exports and dependencies, reading `.vibe` and `.vibex` through VibeLang's
 compiler. Madge checks cycles in `.ts` and `.tsx` imports. jscpd fails on any
 duplicated block of code outside the examples and test fixtures. Their
