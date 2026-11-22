@@ -319,6 +319,21 @@ const COULD_NOT_RUN = "the simulator could not run";
 /** What simulating a spec found: the `always`, `sometimes` and `replay` results, and what the traces stage checks programs against. */
 export interface Simulation { said: Result[]; tested?: Simulated }
 
+const SPECS_AT_ONCE = 2 * os.availableParallelism();
+let specsSimulating = 0;
+const specsWaiting: (() => void)[] = [];
+async function inTurn<T>(go: () => Promise<T>): Promise<T> {
+  if (specsSimulating < SPECS_AT_ONCE) specsSimulating++;
+  else await new Promise<void>((start) => specsWaiting.push(start));
+  try {
+    return await go();
+  } finally {
+    const next = specsWaiting.shift();
+    if (next) next();
+    else specsSimulating--;
+  }
+}
+
 /**
  * Simulate one spec and replay its traces through `domain`, its generated module. A spec is not simulated again while
  * what Quint reads is unchanged, and its results are not said again while its rules keep their names and the
@@ -336,7 +351,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
   const files = harnessFiles(spec, specs, model);
   const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), spec.file, spec.rules.map((r) => `${r.key}\0${r.defs.join(" ")}`).join("\n"),
     String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
-  return remembered<Simulation>(memory, entry(memory.root, "simulate", key), async (memory) => {
+  return remembered<Simulation>(memory, entry(memory.root, "simulate", key), (memory) => inTurn(async () => {
     const harness: Harness = { memory, model, files };
     const said: Result[] = [];
     let tested: Simulated | undefined;
@@ -458,7 +473,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       say(false, mismatch ? "replay" : "always", mismatch ? "this is a bug in the generator (vibestack/gen.ts, vibestack/gen/), not in the spec" : COULD_NOT_RUN, indent((e as Error).message));
     }
     return { said, tested };
-  }, ({ said }) => !said.some((r) => r.summary === COULD_NOT_RUN)).then(({ said, tested }) => {
+  }), ({ said }) => !said.some((r) => r.summary === COULD_NOT_RUN)).then(({ said, tested }) => {
     const lines = new Map(spec.rules.map((r) => [r.key, r.line]));
     const placed = (text: string) => text.replace(/\0([^\0]*)\0/g, (_, key: string) => String(lines.get(key)));
     return { said: said.map((r) => ({ ...r, summary: placed(r.summary), detail: placed(r.detail) })), tested };

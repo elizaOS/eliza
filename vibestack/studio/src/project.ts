@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { trusted } from "vibelang-runtime";
 import { acceptable, type Result } from "../../pipeline.ts";
 import { isStd, parseSpec, readSpecs, specFiles, specName } from "../../parse.ts";
-import { ledgerFile, pending, pendingContracts, pendingKey, pendingSpecs, type Lock, type Pending } from "../../review.ts";
+import { citationLookup, ledgerFile, pending, pendingContracts, pendingKey, pendingSpecs, type Lock, type Pending } from "../../review.ts";
 import { appScript as scriptOfApp, filesUnder, packageScripts, projectRoot, servedAt, short } from "../../util.ts";
 import type { Session, Verdict } from "../gen/index.ts";
 import type { Outline } from "../gen/outline.ts";
@@ -144,7 +144,8 @@ export const readTree = trusted(function readTree(root: string): { specs: SpecVi
   try {
     const read = specs.length ? readSpecs(root, texts).filter((s) => !isStd(s.file)) : [];
     const locks = new Map<string, Lock>();
-    return { specs, review: [...read.flatMap((s) => pending(root, s, read, locks).map((p) => reviewItem(p, s.file))), ...[...pendingSpecs(root, read), ...pendingContracts(root)].map((p) => reviewItem(p))] };
+    const citedAt = citationLookup(root);
+    return { specs, review: [...read.flatMap((s) => pending(root, s, read, locks, citedAt).map((p) => reviewItem(p, s.file))), ...[...pendingSpecs(root, read), ...pendingContracts(root)].map((p) => reviewItem(p))] };
   } catch (e) { return { specs, review: [], problem: (e as Error).message }; }
 }, [Error]);
 
