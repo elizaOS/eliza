@@ -241,6 +241,24 @@ pure def add(a: int, b: int): int = a + b`);
     assert.doesNotMatch(model.render(""), /Number\.isSafeInteger|function exact_/);
   });
 
+  test("variant set literals keep their element type in conditional unions and local bindings", async () => {
+    const root = oneRule("fields", "Evidence fields", `type Field = First | Second
+pure val common: Set[Field] = Set(First)
+pure def required(includeSecond: bool): Set[Field] = common.union(if (includeSecond) Set(Second) else Set())
+pure def selected(which: bool): Set[Field] = {
+  val choices = if (which) Set(First) else Set(Second)
+  choices.union(Set(Second))
+}`);
+    const model = await gen(root, parseSpec(root, "spec/fields.md"));
+    const checked = await tool("vibelang", ["--noEmit", "--strict", "--target", "es2023", "gen/fields.ts"], root);
+    assert.ok(checked.ok, checked.out);
+    const proof = model.render("");
+    assert.match(proof, /includeSecond \? \["Second"\] : \(\[\] as Field\[\]\)/);
+    const domain = await import(pathToFileURL(path.join(root, "gen", "fields.ts")).href);
+    assert.deepEqual([domain.required(true), domain.required(false)], [["First", "Second"], ["First"]]);
+    assert.deepEqual([domain.selected(true), domain.selected(false)], [["First", "Second"], ["Second"]]);
+  });
+
   test("the explore stage finds a page that breaks a property, keeps the trace, replays it first, and drops it once fixed", { skip: !["linux-x64", "linux-arm64", "darwin-arm64"].includes(`${process.platform}-${process.arch}`) }, async () => {
     const remember: Parameters<typeof explore>[1] = (_fingerprint, run) => run();
     const page = (script: string) => `<!doctype html><html><head><title>Page</title></head><body><button>Go</button>${script}</body></html>`;
