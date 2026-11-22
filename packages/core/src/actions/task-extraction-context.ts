@@ -10,7 +10,10 @@ import {
 import { hashStableJson } from "../runtime/context-hash";
 import type { ContextObject } from "../runtime/context-object";
 import { renderContextObject, segmentBlock } from "../runtime/context-renderer";
-import { compactHistoricalReceiptSegments } from "../runtime/historical-receipt-wire";
+import {
+	compactHistoricalReceiptSegments,
+	historicalRequestSourceIds,
+} from "../runtime/historical-receipt-wire";
 import { projectDeferredProviders } from "../runtime/provider-context";
 import type { Action } from "../types/components";
 import type { Memory } from "../types/memory";
@@ -203,7 +206,9 @@ export function readTaskExtractionContext(
 			projectDeferredProviders(binding.projected).context,
 		);
 		return {
-			text: compactHistoricalReceiptSegments(rendered.promptSegments)
+			text: compactHistoricalReceiptSegments(rendered.promptSegments, {
+				sourceIds: historicalRequestSourceIds(binding.original),
+			})
 				.map(segmentBlock)
 				.join("\n\n"),
 			originalText: render(binding.original)

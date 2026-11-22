@@ -1,2 +1,2 @@
 /** Barrel re-exporting the OpenAI client factory. */
-export { createOpenAIClient } from "./openai";
+export { createOpenAIClient, isModelAttemptIdleTimeout } from "./openai";

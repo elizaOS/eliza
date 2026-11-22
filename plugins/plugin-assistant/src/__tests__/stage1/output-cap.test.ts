@@ -138,9 +138,17 @@ describe("Stage 1 output cap", () => {
     },
   );
 
-  it("keeps failing the turn when an uncapped generation stops at the provider's limit", async () => {
-    await expect(
-      runStage1OnHost({}, { text: CUT_OFF_TEXT, finishReason: "length" }),
-    ).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
+  it("answers that the reply was cut off when an uncapped generation stops at the model's limit", async () => {
+    const { requests, result } = await runStage1OnHost(
+      {},
+      { text: CUT_OFF_TEXT, finishReason: "length" },
+    );
+    // No cap was sent: the model's own maximum ended it, so a retry would too.
+    expect(requests).toEqual([{ maxTokens: undefined, omitMaxTokens: true }]);
+    expect(result.kind).toBe("direct_reply");
+    if (result.kind === "direct_reply")
+      expect(result.result.responseContent?.text).toBe(
+        STAGE1_COMPLETION_LIMIT_REPLY,
+      );
   });
 });

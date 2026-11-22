@@ -2355,7 +2355,7 @@ function liveMoveFixture() {
 }
 
 describe("committed Calendar mutations behind a read binding", () => {
-  it("restricts coverage to the turn's intent IDs so a committed move keeps its reply", async () => {
+  it("restricts coverage to intent IDs so a committed move keeps its reply", async () => {
     const f = liveMoveFixture();
     let intentIds: unknown;
     // Strict structured decoding can emit only values the schema allows.
@@ -2382,7 +2382,10 @@ describe("committed Calendar mutations behind a read binding", () => {
       trajectory: f.trajectory,
     });
     expect(result.messageToUser).toBe(f.live.messageToUser);
-    expect(intentIds).toEqual(["intent:1", "intent:2"]);
+    // The same list on every turn; this turn's two intents lead it.
+    expect(intentIds).toEqual(
+      Array.from({ length: 8 }, (_, index) => `intent:${index + 1}`),
+    );
     expect(result.success).toBe(true);
     expect(result.decision).toBe("FINISH");
     expect(result.effectReceiptIds).toEqual(f.live.effectReceiptIds);

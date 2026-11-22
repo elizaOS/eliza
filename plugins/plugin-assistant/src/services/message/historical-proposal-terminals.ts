@@ -4,6 +4,7 @@ import {
   type ContextEvent,
   type ContextObjectPromptSegment,
   HISTORICAL_EFFECT_TERMINALS,
+  HISTORICAL_PROPOSAL_TERMINAL_ID_PREFIX,
   type HistoricalEffectTerminal,
   hashStableJson,
   type IAgentRuntime,
@@ -218,7 +219,7 @@ export async function reconcileHistoricalProposalTerminals(
     const list = proofs.get(ref.event) ?? [];
     list.push(proof);
     proofs.set(ref.event, list);
-    const id = "historical-proposal-terminal:" + row.id;
+    const id = HISTORICAL_PROPOSAL_TERMINAL_ID_PREFIX + row.id;
     terminals.push({
       id,
       type: "segment",

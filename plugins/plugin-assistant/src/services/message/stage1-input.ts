@@ -9,6 +9,7 @@ import {
   compactHistoricalReceiptSegments,
   completionContextSources,
   HANDLE_RESPONSE_TOOL_NAME,
+  historicalRequestSourceIds,
   type IAgentRuntime,
   type Memory,
   normalizePromptSegments,
@@ -264,16 +265,26 @@ export function renderMessageHandlerModelInput(
   );
   // This region is ordered by how often it changes: text that rarely changes,
   // then receipts, then navigation, which gains an entry on most navigation
-  // turns. A turn that adds no receipt shares the prefix through the
-  // transcript. One that adds a receipt shares only up to the first changed
-  // receipt byte (the tables may re-encode earlier rows) and re-sends the
-  // transcript; receipts still lead because they are the larger region and
-  // change on fewer turns. What the client reported for this message alone
-  // changes every turn and follows the transcript.
+  // turns. Inside the dialogue window, a turn that adds no receipt shares the
+  // prefix through the transcript, and one that adds a receipt shares it
+  // through the earlier rows of its table (a row's bytes depend only on its
+  // record and its request's hN key) and re-sends the transcript; a proposal
+  // that ends rewrites its one row. hN keys are window positions: once a room
+  // outgrows the window, every key shifts on each new message, so the tables
+  // re-send from their first row, as the transcript's labels do. Receipts
+  // still lead because they are the larger region and change on fewer turns.
+  // What the client reported for this message alone changes every turn and
+  // follows the transcript.
   const clientObservation = otherTurnSegments.filter(
     (segment) => segment.label === CLIENT_OBSERVATION_SEGMENT_LABEL,
   );
   const receiptSegments = otherTurnSegments.filter(isHistoryReceiptSegment);
+  // This region is not interleaved with its requests: each record names its
+  // request by the history:hN label its source index and reads use.
+  const receiptWire = {
+    sourceIds: historicalRequestSourceIds(context),
+    layout: "table",
+  } as const;
   const fixedTurnSegments = otherTurnSegments.filter(
     (segment) =>
       !isHistoryReceiptSegment(segment) &&
@@ -306,8 +317,11 @@ export function renderMessageHandlerModelInput(
       false,
     ),
     ...fixedTurnSegments,
-    ...compactHistoricalReceiptSegments(receiptSegments),
-    ...compactHistoricalReceiptSegments(historicalNavigationSegments),
+    ...compactHistoricalReceiptSegments(receiptSegments, receiptWire),
+    ...compactHistoricalReceiptSegments(
+      historicalNavigationSegments,
+      receiptWire,
+    ),
     ...currentTurnBoundary,
     {
       id: "conversation",

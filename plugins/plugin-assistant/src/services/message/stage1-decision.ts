@@ -63,6 +63,7 @@ import {
   STAGE1_MAX_TOKENS_ENV,
 } from "../../runtime/output-cap.ts";
 import { cacheProviderOptions } from "../../runtime/planner-loop";
+import { isProviderToolCallParseFailure } from "../../runtime/tool-call-parse-failure.ts";
 import {
   getEvaluatorProgressState,
   postTurnReviewRuns,
@@ -953,10 +954,10 @@ export async function generateStage1Decision(
     } catch (error) {
       outcome = { error };
       // The runtime rejects a generation that stopped at its output limit
-      // instead of returning it. Under a host cap that is a cut-off envelope,
-      // so it takes the completion-limit handling rather than failing the turn.
+      // instead of returning it. Under a host cap, or at the model's own
+      // maximum when no cap is sent, that is a cut-off envelope: it takes the
+      // completion-limit handling rather than failing the turn.
       if (
-        stage1ModelParams.maxTokens !== undefined &&
         isModelOutputLimitFinishReason(
           modelOutputIncompleteEvidence(error)?.finishReason,
         )
@@ -1002,14 +1003,27 @@ export async function generateStage1Decision(
   // retry, repair, context read), and a refusal of any of them ends the turn.
   // They share one re-send, so a run that keeps being refused waits only once.
   let rateLimitResendUsed = false;
+  // A provider that could not parse the model's own tool call failed on that
+  // sample, not on the request: sent again 20 times live, the request that
+  // failed answered every time. Once per Stage 1 run, without a wait.
+  let toolCallParseResendUsed = false;
   const generateRecordedStage1 = async (params: typeof stage1ModelParams) => {
     try {
       return await sendRecordedStage1(params);
     } catch (error) {
       // error-policy:J2 A chat turn waits out a temporary rate limit once and
-      // re-sends the same request; every other failure propagates unchanged.
+      // re-sends the same request, and re-sends once a request whose tool call
+      // the provider could not parse; every other failure propagates unchanged.
       // The refusal is recorded as its own failed attempt and spends none of
       // the empty-output retry budget: no answer came back to be judged.
+      if (!toolCallParseResendUsed && isProviderToolCallParseFailure(error)) {
+        toolCallParseResendUsed = true;
+        args.runtime.logger?.warn?.(
+          { src: "service:message" },
+          "[message] Stage 1 provider could not parse the model's tool call; re-sending the request once",
+        );
+        return await sendRecordedStage1(params);
+      }
       const waitMs = rateLimitResendUsed
         ? undefined
         : rateLimitRetryWaitMs(error);

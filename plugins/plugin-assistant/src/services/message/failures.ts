@@ -215,6 +215,14 @@ export class MessageFailures {
         // four times) before falling back to the canned reply. Treat the
         // typed exhaustion as terminal for this fallback loop while
         // preserving any more actionable sticky failure seen earlier.
+        // A provider refusal can carry the same typed exhaustion (the Cloud
+        // types a 429 so the runtime does not re-send it to sibling slots of
+        // the same model). It is still a refusal or a spent balance: report it
+        // as one, with its wait, not as warming.
+        const refused = isModelProviderRetryBudgetExhaustedError(error)
+          ? terminalProviderFailure(error)
+          : undefined;
+        if (refused) return refused;
         if (isModelProviderRetryBudgetExhaustedError(error)) {
           runtime.logger.warn(
             {

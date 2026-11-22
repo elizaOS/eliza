@@ -38,6 +38,7 @@ import {
   isTrajectoryRecordingEnabled,
   looksLikeRawFieldTranscript,
   ModelType,
+  normalizeContextId,
   promotedSubactionParent,
   type RecordedStage,
   readEnv,
@@ -1353,23 +1354,82 @@ export async function runV5MessageRuntimeStage1(
     const verifyReplyWithoutActionHints =
       prePatchStageOneReplyIsUngroundedAppliedClaim &&
       stageOneCandidates.length === 0;
+    // The enrolled phone's proposal tool, when this turn offers it. The
+    // candidate collection already applied role, disclosure, connector and
+    // action-validation gates; do not bypass them.
+    const deviceProposal =
+      args.codingMode !== true &&
+      !deterministicPlanSelection &&
+      getDeviceActionTurn()?.runtime === args.runtime &&
+      (deviceOperationSupportedByCapabilities(
+        "open_view",
+        getDeviceActionTurn()?.credential.capabilities,
+      ) ||
+        stageOneCandidates.includes("PROPOSE_DEVICE_ACTION"))
+        ? plannerCandidateActions.find(
+            (action) => action.name === "PROPOSE_DEVICE_ACTION",
+          )
+        : undefined;
+    const bootstrapContexts = plannerDiscoveryContexts(
+      args.message,
+      selectedContexts,
+    );
+    // Beside the device tool, what retrieval guesses for the contexts that
+    // tool declares stays behind DISCOVER_ACTIONS. The device tool already
+    // carries the phone's own calls, texts, contacts, alarms and files, and the
+    // guesses beside it go unused: of 51 to 89 offered in each recorded 36-turn
+    // phone conversation the model called 3, all single-operation device tools
+    // that Stage 1 routes by name. Tool definitions lead a provider's cached
+    // prefix, so each new guess also makes the system prompt and the history
+    // behind it a cache miss. Operations Stage 1 named load regardless. So
+    // does the preload of a context Stage 1 selected that the device tool does
+    // not declare, and of the domain of a foreground view that scoped a general
+    // turn, each narrowed to the tools declaring it. "Text Sam and add it to my
+    // calendar" keeps its calendar tools: given the device tool alone the model
+    // proposed the text and did not go looking for the other half (5 of 6 live
+    // requests).
+    const deviceContexts = new Set(
+      deviceProposal
+        ? actionDiscoveryContexts(deviceProposal).map(normalizeContextId)
+        : [],
+    );
+    const preloadDomains = (contexts: readonly string[] | undefined) =>
+      deviceProposal
+        ? new Set(
+            (contexts ?? [])
+              .filter(
+                (context) =>
+                  !selectedContexts.includes(context) ||
+                  !deviceContexts.has(normalizeContextId(context)),
+              )
+              .map(normalizeContextId),
+          )
+        : undefined;
+    const bootstrapDomains = preloadDomains(bootstrapContexts);
+    const pendingDomains = preloadDomains(selectedContexts);
+    const declaresOneOf = (action: Action, domains: ReadonlySet<string>) =>
+      actionDiscoveryContexts(action).some((context) =>
+        domains.has(normalizeContextId(context)),
+      );
     let selectedActionFamilies =
       args.codingMode === true || deterministicPlanSelection
         ? []
         : stageOneCandidates.length === 0
-          ? retrieveContextualPlannerActions({
-              actions: plannerCandidateActions,
-              deferUnscopedBootstrap: true,
-              query: getUserMessageText(args.message),
-              message: args.message,
-              intents: messageHandler.plan.intents,
-              contexts: plannerDiscoveryContexts(
-                args.message,
-                selectedContexts,
-              ),
-              contextAliases: (context) =>
-                args.runtime.contexts?.get(context)?.aliases,
-            }).actions
+          ? bootstrapDomains?.size === 0
+            ? []
+            : retrieveContextualPlannerActions({
+                actions: plannerCandidateActions,
+                deferUnscopedBootstrap: true,
+                query: getUserMessageText(args.message),
+                message: args.message,
+                intents: messageHandler.plan.intents,
+                contexts: bootstrapContexts,
+                contextAliases: (context) =>
+                  args.runtime.contexts?.get(context)?.aliases,
+              }).actions.filter(
+                (action) =>
+                  !bootstrapDomains || declaresOneOf(action, bootstrapDomains),
+              )
           : collectBudgetedStageOneCandidateActions({
               actions: plannerCandidateActions,
               candidateActions: stageOneCandidates,
@@ -1381,44 +1441,36 @@ export async function runV5MessageRuntimeStage1(
     if (
       args.codingMode !== true &&
       !deterministicPlanSelection &&
+      pendingDomains?.size !== 0 &&
       stageOneCandidates.length > 0 &&
       messageHandler.plan.intents?.length
     ) {
       // Cost: one in-memory catalog retrieval, no additional model or I/O call.
       // Fill declared pending domains before paying a discovery/planner round.
+      const named = selectedActionFamilies;
       selectedActionFamilies = retrieveContextualPlannerActions({
         actions: plannerCandidateActions,
         query: getUserMessageText(args.message),
         intents: messageHandler.plan.intents,
         contexts: selectedContexts,
-        selectedActions: selectedActionFamilies,
+        selectedActions: named,
         directRouting: {
           rules: getDirectActionRoutingRules(args.runtime),
           message: args.message,
         },
         contextAliases: (context) =>
           args.runtime.contexts?.get(context)?.aliases,
-      }).actions;
+      }).actions.filter(
+        (action) =>
+          !pendingDomains ||
+          named.includes(action) ||
+          declaresOneOf(action, pendingDomains),
+      );
     }
     // Keep the actual enrolled-phone proposal tool visible even when Stage 1
-    // guessed a page family. The candidate collection already applied role,
-    // disclosure, connector and action-validation gates; do not bypass them.
-    if (
-      args.codingMode !== true &&
-      !deterministicPlanSelection &&
-      getDeviceActionTurn()?.runtime === args.runtime &&
-      (deviceOperationSupportedByCapabilities(
-        "open_view",
-        getDeviceActionTurn()?.credential.capabilities,
-      ) ||
-        stageOneCandidates.includes("PROPOSE_DEVICE_ACTION"))
-    ) {
-      const proposal = plannerCandidateActions.find(
-        (action) => action.name === "PROPOSE_DEVICE_ACTION",
-      );
-      if (proposal && !selectedActionFamilies.includes(proposal))
-        selectedActionFamilies.push(proposal);
-    }
+    // guessed a page family.
+    if (deviceProposal && !selectedActionFamilies.includes(deviceProposal))
+      selectedActionFamilies.push(deviceProposal);
     // Discovery is planner protocol, registered below rather than in
     // runtime.actions. An explicit request must keep it even when no domain
     // hint resolved, or when every admitted domain action was selected.

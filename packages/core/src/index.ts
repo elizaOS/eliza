@@ -242,6 +242,7 @@ export {
 	stableJsonStringify,
 } from "./runtime/context-hash.ts";
 export * from "./runtime/execute-planned-tool-call";
+export * from "./runtime/historical-receipt-wire";
 export * from "./runtime/message-content-segments";
 export * from "./runtime/message-content-storage";
 export { copyBoundOperationDenial } from "./runtime/operation-restriction-projection";
