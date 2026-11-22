@@ -309,8 +309,45 @@ pure def selected(which: bool): Set[Field] = {
     assert.match(unavailable.stdout, /is kept, to be replayed when it can be/);
     assert.ok(fs.existsSync(saved));
     fs.writeFileSync(path.join(root, "index.html"), page(""));
-    const fixed = await explore(root, remember);
-    assert.deepEqual(fixed[0].slice(0, 2), [true, "explore"], fixed.map((r) => r.join("\n")).join("\n"));
+    toolchain(root);
+    const fixtureModule = pathToFileURL(path.join(root, "vibestack/explore.ts")).href;
+    const realBombadil = path.join(nodeModules, ".bin/bombadil");
+    const normalBudget = `${profile("normal").explore}s`;
+    const receivedBudget = path.join(root, "explore-budget");
+    fs.writeFileSync(path.join(root, "node_modules/.bin/bombadil"), `#!/usr/bin/env node
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const { spawnSync } = require("node:child_process");
+
+const args = process.argv.slice(2);
+const launch = (argv) => {
+  const result = spawnSync(${JSON.stringify(realBombadil)}, argv, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+  if (result.error) throw result.error;
+  return result;
+};
+import(${JSON.stringify(fixtureModule)}).then(({ explored }) => {
+  const limit = args.indexOf("--time-limit");
+  const isReplay = args.includes("--reproduce");
+  if (isReplay) {
+    assert.equal(limit, -1);
+  } else {
+    assert.notEqual(limit, -1);
+    assert.equal(args[limit + 1], ${JSON.stringify(normalBudget)});
+    assert.ok(args.includes("--exit-on-violation"));
+    fs.writeFileSync(${JSON.stringify(receivedBudget)}, args[limit + 1]);
+  }
+  let result = launch(isReplay ? args : args.toSpliced(limit + 1, 1, "12s"));
+  if (!isReplay && result.status === 0 && explored(0, result.stdout, result.stderr, false).kind === "failed") result = launch(args);
+  process.stdout.write(result.stdout);
+  process.stderr.write(result.stderr);
+  process.exitCode = result.status ?? 1;
+});
+`, { mode: 0o755 });
+    const { explore: fixtureExplore }: { explore: typeof explore } = await import(fixtureModule);
+    const fixed = await fixtureExplore(root, remember);
+    assert.equal(read("explore-budget", root), normalBudget);
+    assert.deepEqual(fixed.map((r) => r.slice(0, 2)), [[true, "explore"], [true, "explore"]], fixed.map((r) => r.join("\n")).join("\n"));
+    assert.match(fixed[1][2], /\b[1-9]\d* actions in \d+ s broke no property/);
     assert.match(fixed[0][2], /the replay of test\/__traces__\/bombadil (breaks nothing now|no longer applies to the page), so it was removed/);
     assert.ok(!fs.existsSync(saved));
     assert.ok(!fs.existsSync(path.join(root, "test")), "an exploration leaves no test/ behind for the next check to give Vitest");
