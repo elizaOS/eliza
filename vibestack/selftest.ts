@@ -880,6 +880,8 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     const shown = pending(root, readSpecs(root)[0]).filter((p) => p.cited).map(showPending);
     const line = read("spec/index.md", root).split("\n").indexOf("### No more can be removed than the order holds") + 1;
     assert.deepEqual(shown, [`spec/index.md:${line}  Story: Change my mind / No more can be removed than the order holds\n      prose changed: update the model to match, or confirm it already does\n      cited by test/app.test.vibe:19: read them again against it`]);
+    fs.writeFileSync(path.join(root, "test/app.test.vibe"), "\n" + read("test/app.test.vibe", root));
+    assert.deepEqual(pending(root, readSpecs(root)[0]).flatMap((p) => p.cited ?? []), ["test/app.test.vibe:20"]);
   });
 
   test("a shell written for a transition the spec has since renamed no longer fits the generated contract", async () => {

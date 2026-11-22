@@ -11,7 +11,7 @@ import { explore } from "./explore.ts";
 import { ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, type Offered, type Proof } from "./prove.ts";
 import { bin, run } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
-import { contracts, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
+import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
 import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
@@ -384,7 +384,8 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
 
   // A spec that is not a valid model has nothing to reconcile yet. Everything is recorded at once, or nothing is.
   const locks = new Map(specs.map((spec) => [spec.file, lock.specs[spec.file] ?? {}]));
-  const todos = valid.filter((spec) => !isStd(spec.file)).map((spec) => ({ spec, todo: pending(root, spec, specs, locks) }));
+  const citedAt = citationLookup(root);
+  const todos = valid.filter((spec) => !isStd(spec.file)).map((spec) => ({ spec, todo: pending(root, spec, specs, locks, citedAt) }));
   const contractsToDo = pendingContracts(root, srcFiles, lock);
   const removedSpecs = pendingSpecs(root, specs, lock);
   const review = (ok: boolean, summary: string, detail = "", where?: string, rules: Result["rules"] = []) =>
