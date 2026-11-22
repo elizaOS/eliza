@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
-import { installedPackages } from "./action.ts";
+import { installedPackages } from "./cache.ts";
 import { toolScripts, toolsCode } from "./cache.ts";
 import { bin, exec, startGroup } from "./run.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";

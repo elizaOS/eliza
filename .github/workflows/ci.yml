@@ -108,7 +108,7 @@ jobs:
   verify:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
-    concurrency:
+    concurrency: &verification-concurrency
       group: ci-verify-${{ matrix.name }}-${{ github.event_name == 'push' && github.run_attempt == '1' && startsWith(matrix.name, 'selftest-') && github.ref || github.run_id }}
       cancel-in-progress: false
     strategy:
@@ -117,15 +117,11 @@ jobs:
         include:
           - name: verify
             tasks: build typecheck test test:browser check //#lint:js //#lint:css //#analyze //#selftest:docs //#selftest:examples
-          - name: selftest-a
-            tasks: //#selftest:tools:a
-          - name: selftest-b
-            tasks: //#selftest:tools:b
           - name: selftest-rest
             tasks: //#selftest:tools:rest
-    env:
+    env: &cache-env
       TURBO_CACHE: local:rw
-    steps:
+    steps: &verification-steps
       - uses: actions/checkout@v7
       - id: setup
         uses: ./.github/actions/setup
@@ -196,3 +192,18 @@ jobs:
             vibestack/examples/*/test/__traces__/
           if-no-files-found: ignore
           include-hidden-files: true
+
+  vibestack-fixture-selftests:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: selftest-a
+            tasks: //#selftest:tools:a
+          - name: selftest-b
+            tasks: //#selftest:tools:b
+    concurrency: *verification-concurrency
+    env: *cache-env
+    steps: *verification-steps

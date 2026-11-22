@@ -148,8 +148,9 @@ it is reported, then that object as its last line. Each result has `ok`, `stage`
 line ends with. `pnpm selftest` builds scratch projects from this project's spec or from `vibestack/fixtures/`, breaks
 one thing at a time and asserts which stage catches each. It runs as five cached tasks, each keyed by what its tests
 read: `selftest:docs` the documents against every file they can name, `selftest:examples` each standalone example
-against its own files and the tools, and `selftest:tools:a`, `selftest:tools:b` and `selftest:tools:rest` everything
-else, which no example but the order one reaches. The first two each run one shard of the kinds of mistake, the
+against its own files and the tools. `selftest:tools:a` and `selftest:tools:b` build scratch projects from the order
+example and fixtures. `selftest:tools:rest` also rebuilds the packaged CLI from the workspace, so changes under
+`apps/`, `packages/` and `spec/` invalidate its isolated CI run. The first two each run one shard of the kinds of mistake, the
 `describe` named `in shard a` or `in shard b` in `vibestack/selftest.ts`; the third skips what the other four name, so
 a new test runs there unless it is written into a shard. Keep the longest tests spread over the three.
 The two suites of the tools, the command line and each kind of mistake, run side by side under one parent, each at most four tests at a time. The order project the
@@ -165,7 +166,7 @@ tools owes it, and the sync skill, is in [AGENTS.md, "Definition of done"](AGENT
 ## Releasing
 
 Set `version` in the root `package.json`, merge to `vibestack`, and push the tag `vibestack-v<version>` from it.
-`.github/workflows/release.yml` builds, packs with `pnpm pack`, materializes the shard prerequisites and runs `pnpm selftest --only --concurrency=1` using the same keys as CI, and attaches the tarball to a GitHub release of that tag.
+`.github/workflows/release.yml` reuses the build task during `pnpm pack`, materializes the remaining shard prerequisites and runs `pnpm selftest --only --concurrency=1` using the same keys as CI, and attaches the tarball to a GitHub release of that tag.
 A project installs it as [the Vibestack guide, "Using it from another package"](vibestack/README.md#using-it-from-another-package) says.
 ## Architecture
 
@@ -264,7 +265,7 @@ device, inode, size and modification and change times stay the same, so an
 unchanged toolchain is not read again, nor Z3 asked its version. A check
 reads those times of Dafny's installation once, and reads them again after each
 run of Dafny, so a result is not remembered when the verifier was installed
-again during the run. The template install generates locally with `gen --if-valid`. On GitHub Actions it uses the same strict root
+again during the run. The template install generates locally with `gen --if-valid`. The two fixture-only CI shards build the tools and generate their scratch projects on demand. Other GitHub Actions jobs use the same strict root
 `gen` task as verification, so a successful install warms the task cache. A failed generation leaves the
 remaining checks runnable and is retried by verification. Generated stories,
 browser build artifacts, compiler declarations and successful test receipts
@@ -302,8 +303,10 @@ preserved. Proof identity covers the verifier and solver contents, so moving
 an identical installation does not invalidate it and replacing an executable
 with the same version does; tests, drivers and explorations are keyed by the
 verifier too, since they may run proofs, as Studio's do. A process that
-outlives a reinstall, as `spec watch` does, reads Quint, LemmaScript and Dafny
-again once their installed files change. In CI, a Turborepo cache entry is
+outlives a reinstall, as `spec watch` does, reads the installed toolchain
+again on the next check. Simulations and proofs include the resolved package
+versions and dependency links for Quint and LemmaScript respectively. Each
+check reads each package graph once and shares it with all runs of that tool. In CI, a Turborepo cache entry is
 kept for seven days after its last hit, which the run summary names.
 
 ### Seeds and budgets
