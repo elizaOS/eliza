@@ -3407,7 +3407,8 @@ function theCommandLine() {
     fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "install-gen", packageManager: JSON.parse(read("package.json")).packageManager,
       scripts: { gen: "node vibestack/spec.ts gen", build, owner } }));
     fs.writeFileSync(path.join(root, "turbo.json"), JSON.stringify({ tasks: {
-      "//#gen": { inputs: ["spec/**"], outputs: ["gen/**"] }, "//#build": { cache: false }, "//#owner": { cache: false },
+      "//#gen": { inputs: ["spec/**"], outputs: ["gen/**"] }, "//#build": { inputs: ["package.json"], cache: false },
+      "//#owner": { inputs: ["owner-source", "package.json"], cache: false },
     } }));
     fs.writeFileSync(path.join(root, "pnpm-workspace.yaml"), "packages: [packages/*]\n");
     fs.mkdirSync(path.join(root, "packages/app"), { recursive: true });
