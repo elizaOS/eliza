@@ -38,7 +38,7 @@ export interface VerifiedGoogle {
   readonly verdict: NativeVerdict
 }
 
-export interface NativeChallenge {
+interface NativeChallenge {
   readonly challengeId: string
   readonly nonce: string
   readonly serverClientId: string

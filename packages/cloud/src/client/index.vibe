@@ -14,7 +14,7 @@ export { normalizeSubscriptionCode } from "../billing/grant-code.vibe"
 export { checkEntitlement, EntitlementInvalid, nextRefreshDelay, parseEntitlementKeys, verifyEntitlement, type Entitlement, type EntitlementCheck, type EntitlementClaims, type EntitlementExpectation, type EntitlementKey, type PlanAllowance } from "./entitlement.vibe"
 export {
   accountUsable, checkoutFromResponse, commandFromResponse, commandsFromResponse, creditFromSnapshot, grantFromSnapshot, paymentFromResponse, planAdmission,
-  planFromSnapshot, redeemFailureForStatus, redeemResultFromResponse, reviewFromResponse, snapshotFromResponse, snapshotView, subscriptionView,
+  planChecking, planFromSnapshot, planKeyOf, planUnavailable, redeemFailureForStatus, redeemResultFromResponse, reviewFromResponse, snapshotFromResponse, snapshotView, subscriptionView,
   type ActiveGrant, type BillingSnapshot, type CheckoutPresentation, type CheckoutStart, type CheckoutStartRequest, type CommandKind, type CommandsPage,
   type CommandStatus, type CreditView, type GrantView, type LifecycleAction, type LifecycleRequest, type PaymentContinuation, type PlanAdmission,
   type PlanChangeConfirmRequest, type PlanChangeKind, type PlanChangeReview, type PlanChangeReviewRequest, type PlanView, type RedeemFailure, type RedeemResult,
@@ -22,3 +22,5 @@ export {
 } from "./views.vibe"
 export { admitsHeader, baseHeaders, deviceRoutes, httpVerb, idempotencyKey, ifMatch, lookupPath, pathOf, routesByName, type AuthClass, type DeviceRoute, type DeviceRouteName, type HttpMethod, type NamedRoute, type ParamsOf, type RouteLookup, type Segment } from "./routes.vibe"
 export { decodeRelayFrame, decodeServerFrame, encodeClientFrame, encodeRelayAudio, relayCloseCodes, type ClientFrame, type RelayAudio, type WireData, type WireServerFrame } from "./relay-codec.vibe"
+export { isConnectState, type GoogleCalls } from "./google.vibe"
+export { mapsRefusalOf, type MapsCalls } from "./maps.vibe"

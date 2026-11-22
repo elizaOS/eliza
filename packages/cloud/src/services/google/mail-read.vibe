@@ -60,7 +60,7 @@ interface Grant extends ReadGrant {
   readonly scopes: ReadonlyArray<string>
 }
 
-export interface Attachment {
+interface Attachment {
   readonly name: string
   readonly mimeType: string
   readonly size: number
@@ -70,7 +70,6 @@ export interface Attachment {
 
 type Format = "metadata" | "full"
 
-export { attachmentMaxBytes, attachmentMimeTypes } from "../../google-read.vibe"
 const gmail = "/gmail/v1/users/me"
 const providerId = /^[A-Za-z0-9_-]{1,256}$/
 const historyPattern = /^\d{1,20}$/

@@ -8,7 +8,7 @@ const googleCapabilitySchema = Schema.Literals([
   "google.basic_identity", "google.gmail.triage", "google.gmail.send", "google.gmail.manage", "google.gmail.drafts",
   "google.gmail.mailbox", "google.calendar.read", "google.calendar.write"
 ])
-export type GoogleCapability = typeof googleCapabilitySchema.Type
+type GoogleCapability = typeof googleCapabilitySchema.Type
 
 const optionalText = Schema.NullOr(Schema.String)
 
@@ -39,7 +39,7 @@ export function isConnectState(value: string): value is ConnectState {
   return /^[A-Za-z0-9_-]{43}$/.test(value)
 }
 
-export interface ConnectRequest {
+interface ConnectRequest {
   readonly capabilities: ReadonlyArray<GoogleCapability>
   readonly redirect?: { readonly connectReturn: string; readonly state: ConnectState }
 }
@@ -90,7 +90,7 @@ export type MailMessage = typeof mailMessageSchema.Type
 const mailKindSchema = Schema.Literals([
   "send", "draft-create", "draft-replace", "draft-delete", "archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"
 ])
-export type MailKind = typeof mailKindSchema.Type
+type MailKind = typeof mailKindSchema.Type
 
 // spec/cloud/services/google/mailRead.md, "Capabilities offer exactly the reads and changes the grant allows, and each change comes with the read its review needs"
 const mailCapabilitiesSchema = Schema.Struct({
@@ -103,9 +103,9 @@ const mailCapabilitiesSchema = Schema.Struct({
 })
 export type MailCapabilities = typeof mailCapabilitiesSchema.Type
 
-export type LabelKind = Exclude<MailKind, "send" | "draft-create" | "draft-replace" | "draft-delete">
+type LabelKind = Exclude<MailKind, "send" | "draft-create" | "draft-replace" | "draft-delete">
 
-export type MailProposal =
+type MailProposal =
   | {
     readonly kind: "send" | "draft-create" | "draft-replace"
     readonly mode: "compose" | "reply" | "reply-all" | "forward"
@@ -202,7 +202,7 @@ export type CalendarFeed = typeof calendarFeedSchema.Type
 
 const EventAnswer = Schema.Struct({ event: calendarEventSchema })
 
-export interface EventFields {
+interface EventFields {
   readonly title: string
   readonly description?: string
   readonly location?: string

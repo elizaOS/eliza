@@ -28,7 +28,7 @@ export interface Owner {
   readonly userId: string
 }
 
-export interface GoogleGrant {
+interface GoogleGrant {
   readonly connectionId: string
   readonly accessToken: string
   readonly subject: string
@@ -51,7 +51,7 @@ export interface GrantLanding {
   readonly now: number
 }
 
-export const refreshLease = 15 * millisPerSecond
+const refreshLease = 15 * millisPerSecond
 const refreshPoll = 100
 const statuses: ReadonlyArray<Connection["status"]> = ["Pending", "Active", "Expired", "Revoked", "Errored"]
 
@@ -83,7 +83,7 @@ const scopeNames: Readonly<Record<GoogleScope, string>> = {
 
 export const googleCapabilities = Object.keys(kindOf) as ReadonlyArray<GoogleCapability>
 
-export function scopeName(scope: GoogleScope): string {
+function scopeName(scope: GoogleScope): string {
   return scopeNames[scope]
 }
 
@@ -107,7 +107,7 @@ export function holds(granted: ReadonlyArray<string>, capability: GoogleCapabili
   return grantsCapability(knownScopes(granted), kindOf[capability])
 }
 
-export function capabilitiesOf(granted: ReadonlyArray<string>): ReadonlyArray<GoogleCapability> {
+function capabilitiesOf(granted: ReadonlyArray<string>): ReadonlyArray<GoogleCapability> {
   return googleCapabilities.filter((capability) => holds(granted, capability))
 }
 
@@ -119,7 +119,7 @@ export function atTime(state: Connection, time: number): Connection {
   return time > state.now ? elapse(state, time - state.now) : state
 }
 
-export effect function applyTimed(state: Connection, timed: Timed): Connection!ConnectionRejected {
+effect function applyTimed(state: Connection, timed: Timed): Connection!ConnectionRejected {
   return try apply(atTime(state, timed.at), timed.event)
 }
 
@@ -256,7 +256,7 @@ effect function profileGoogle(): void!Refused!Deployment {
   if ((try Deployment).settings.google === undefined) throw refused("ProviderUnavailable", "GoogleNotConfigured")
 }
 
-export effect function pickGrant(tx: Tx, owner: Owner, grantId?: string, side?: string | null) {
+effect function pickGrant(tx: Tx, owner: Owner, grantId?: string, side?: string | null) {
   const rows = try tx.query(
     "SELECT key, organization_id, status FROM google_connections WHERE organization_id = $1 OR key = $2 ORDER BY linked_at DESC NULLS LAST, key",
     [owner.organizationId, grantId ?? null]
@@ -279,12 +279,6 @@ effect function chosenGrant(rows: ReadonlyArray<Row>, organizationId: string, gr
       return _exhaustive
     }
   }
-}
-
-export effect function selectGrant(owner: Owner, grantId?: string, side?: string | null) {
-  try profileGoogle()
-  const store = try Store
-  return try store.transaction((tx) => pickGrant(tx, owner, grantId, side))
 }
 
 const reasonName = {

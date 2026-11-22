@@ -132,7 +132,7 @@ const PolicyFileCodec = Schema.Struct({
 type HostFile = typeof HostFileCodec.Type
 type PolicyFile = typeof PolicyFileCodec.Type
 
-export interface AdmittedAgentData {
+interface AdmittedAgentData {
   readonly service: string
   readonly notification: { readonly channel: string; readonly title: string; readonly text: string }
   readonly needsAccount: boolean
