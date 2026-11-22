@@ -23,7 +23,8 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: pnpm/action-setup@v6
+    - id: setup-pnpm
+      uses: pnpm/action-setup@v6
     - name: Install Dafny
       if: inputs.verification == 'true'
       shell: bash
@@ -37,7 +38,25 @@ runs:
     - uses: actions/setup-node@v7
       with:
         node-version-file: .nvmrc
-        cache: pnpm
+        package-manager-cache: false
+    - id: pnpm-store
+      shell: bash
+      env:
+        PNPM_SETUP_DIR: ${{ steps.setup-pnpm.outputs.dest }}
+        LOCK_HASH: ${{ hashFiles('pnpm-lock.yaml') }}
+      run: |
+        store=$(pnpm store path --silent) || exit 0
+        [[ $PNPM_SETUP_DIR == /* && ${store#"$PNPM_SETUP_DIR"/node_modules/.bin/store/v} =~ ^[0-9]+$ && $LOCK_HASH =~ ^[a-f0-9]{64}$ ]] || exit 0
+        [[ $(realpath -m -- "$store") == "$store" ]] || exit 0
+        arch=$(node -p 'process.arch')
+        printf 'path=%s\nkey=node-cache-%s-%s-pnpm-%s\n' "$store" "$RUNNER_OS" "$arch" "$LOCK_HASH" >> "$GITHUB_OUTPUT"
+    - id: restore-pnpm-store
+      if: steps.pnpm-store.outputs.key != ''
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: ${{ steps.pnpm-store.outputs.key }}
     # Turborepo skips a task whose inputs it has seen; spec skips a simulation or proof it has seen, and the selftest's
     # shared projects skip a tool run an earlier selftest made (nightly, fuzz.yml runs it without them).
     # Quint downloads its evaluator to ~/.quint from GitHub's rate-limited API: once per cache, not per run.
@@ -180,6 +199,23 @@ runs:
       with:
         path: .turbo/gen-seed
         key: ${{ steps.publish-gen-seed.outputs.key }}
+    - id: lookup-pnpm-store
+      if: >-
+        inputs.job == 'verify' && inputs.verification == 'true' && inputs.cache-verification == 'true' &&
+        github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+        steps.pnpm-store.outputs.key != '' && steps.restore-pnpm-store.outputs.cache-hit != 'true'
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: ${{ steps.pnpm-store.outputs.key }}
+        lookup-only: true
+    - if: steps.lookup-pnpm-store.outcome == 'success' && steps.lookup-pnpm-store.outputs.cache-hit != 'true'
+      continue-on-error: true
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: ${{ steps.pnpm-store.outputs.key }}
     - name: Read the pinned Quint evaluator version
       id: quint-evaluator
       if: inputs.verification == 'true'
