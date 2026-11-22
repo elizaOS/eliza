@@ -9,7 +9,6 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { writeWhole } from "../util.ts";
-import { declared, isContract } from "./properties.ts";
 
 /** In every header: a change to what is generated rewrites every file. */
 export const VERSION = 1;
@@ -74,6 +73,7 @@ export async function generateTests(packageDir: string): Promise<Generated> {
         `describe(${JSON.stringify(source)}, () => {`, ...schemas.map((name) => `  schemaTests(${JSON.stringify(name)}, subject[${JSON.stringify(name)}]);`), "});",
       ]);
     } else {
+      const { declared, isContract } = await import("./properties.ts");
       const contracts = names.filter((name) => isContract(module[name]));
       const tests = contracts.flatMap((name) => {
         const properties = Object.entries(declared(module[name] as never)).flatMap(([property, check]) => check ? [property] : []);
