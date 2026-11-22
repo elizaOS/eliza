@@ -3928,6 +3928,28 @@ test("the same installed Quint shares verification results across checkouts and 
     fs.writeFileSync(right.shim, changed);
     assert.notEqual(await identity(right.root), expected);
   }
+  const shared = scratch({});
+  for (const [value, bareFile] of [["first", false], ["second", false], ["third", true]] as const) {
+    const { root } = install("first");
+    const hoisted = path.join(root, "node_modules/.pnpm/node_modules");
+    fs.mkdirSync(hoisted);
+    const marker = path.join(hoisted, "marker");
+    if (!bareFile) {
+      fs.mkdirSync(marker);
+      fs.writeFileSync(path.join(marker, "package.json"), '{"name":"marker","version":"1.0.0"}');
+    }
+    fs.writeFileSync(bareFile ? `${marker}.js` : path.join(marker, "index.js"), `module.exports = ${JSON.stringify(value)};\n`);
+    fs.writeFileSync(path.join(root, "node_modules/@informalsystems/quint/cli.cjs"), 'require("node:fs").writeFileSync("ir.json", JSON.stringify(require("marker")));\n');
+    const child = await exec(process.execPath, ["--input-type=module", "--eval", `
+      import { act } from "./vibestack/action.ts";
+      import { withFormalCache } from "./vibestack/cache.ts";
+      const result = await withFormalCache(${JSON.stringify(shared)}, () => act({ root: ".", fresh: false, used: new Set() }, "quint", ["typecheck"], "run", {}));
+      console.log(result.files["ir.json"]);
+    `], root);
+    assert.equal(child.status, 0, child.stderr);
+    assert.equal(JSON.parse(child.stdout), value);
+  }
+  assert.equal(toolRuns(shared).length, 3);
   const publication = await exec(process.execPath, ["--input-type=module", "--eval", `
     import assert from "node:assert/strict";
     import fs from "node:fs";

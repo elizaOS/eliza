@@ -260,9 +260,8 @@ function shimNode(exe: string, text: string, observe: (file: string) => boolean)
   return resolved === fs.realpathSync(process.execPath) && observe(resolved) ? executableDigest(resolved) : undefined;
 }
 
-function launcherInputs(exe: string, packageDir: string, exists: (file: string) => boolean): { digest: string; extra: string[] } | undefined {
-  const ambient = process.env.NODE_PATH?.split(path.delimiter) ?? [];
-  const fallback = () => ambient.length ? undefined : { digest: executableDigest(exe), extra: [] };
+function launcherInputs(exe: string, packageDir: string, exists: (file: string) => boolean, ambient = process.env.NODE_PATH?.split(path.delimiter) ?? []): { digest: string; searchPaths: string[] } | undefined {
+  const fallback = () => ambient.length ? undefined : { digest: executableDigest(exe), searchPaths: [] };
   const launcher = fs.realpathSync(exe);
   if (path.basename(path.dirname(launcher)) !== ".bin") return fallback();
   const bytes = fs.readFileSync(launcher);
@@ -278,6 +277,7 @@ function launcherInputs(exe: string, packageDir: string, exists: (file: string) 
   const known = new Set(pnpmSearchPaths(bin ? path.dirname(path.resolve(packageDir, bin)) : packageDir, store));
   if (ambient.length && ambient.join(path.delimiter) !== pnpmSearchPaths(path.dirname(ambient[0]), store).join(path.delimiter)) return undefined;
   const lines = [node];
+  const searchPaths = new Set<string>();
   for (const line of text.split("\n")) {
     const assignment = /^( *export NODE_PATH="| *@SET "NODE_PATH=)([^"\r]*)("\r?)$/.exec(line);
     if (!assignment) {
@@ -289,12 +289,15 @@ function launcherInputs(exe: string, packageDir: string, exists: (file: string) 
     const relative: (string | string[])[] = [];
     for (const entry of paths.split(before.includes("export") ? ":" : ";")) {
       if (entry === "$NODE_PATH" || entry === "%NODE_PATH%") relative.push(entry);
-      else if (known.has(entry) && (path.dirname(entry) === packageDir || !entry.startsWith(packageDir + path.sep) || !exists(entry))) relative.push([path.relative(store, entry)]);
+      else if (known.has(entry) && (path.dirname(entry) === packageDir || !entry.startsWith(packageDir + path.sep) || !exists(entry))) {
+        relative.push([path.relative(store, entry)]);
+        searchPaths.add(entry);
+      }
       else return undefined;
     }
     lines.push(JSON.stringify([before, relative, after]));
   }
-  return { digest: sha(...lines), extra: ambient.filter((dir) => !known.has(dir)) };
+  return { digest: sha(...lines), searchPaths: [...searchPaths, ...ambient.filter((directory) => !searchPaths.has(directory))] };
 }
 
 type Stamps = Iterable<readonly [string, string]>;
@@ -366,6 +369,24 @@ function packageGraph(exe: string, name: string) {
     if (present && path.basename(file) !== "package.json" && fs.lstatSync(file).isSymbolicLink()) links.set(file, fileStamp(file, false));
     return present;
   };
+  const exposedLauncher = (file: string, store: string | undefined) => {
+    const text = fs.readFileSync(file, "utf8");
+    if (!store || !text.startsWith("#!/bin/sh\n")) return undefined;
+    const script = /^  exec node  "\$basedir\/([^"$`\r\n]+)" "\$@"$/m.exec(text)?.[1];
+    if (!script) return undefined;
+    const entry = path.resolve(path.dirname(file), script);
+    if (!observeLocation(entry)) return undefined;
+    const target = fs.realpathSync(entry);
+    if (virtualStore(target) !== store) return undefined;
+    for (let dir = path.dirname(target); dir.startsWith(store + path.sep); dir = path.dirname(dir)) {
+      const manifest = path.join(dir, "package.json");
+      if (!observed(manifest)) continue;
+      const { bin } = JSON.parse(fs.readFileSync(manifest, "utf8"));
+      const declared = typeof bin === "string" ? bin : bin?.[path.basename(file)];
+      if (typeof declared === "string" && path.resolve(dir, declared) === target) return launcherInputs(file, dir, observeLocation, []);
+      return undefined;
+    }
+  };
   const seen = new Map<string, number>();
   const graph: { dir: string; version: string; dependencies: [string, number | null][] }[] = [];
   const visit = (dir: string): number => {
@@ -386,22 +407,39 @@ function packageGraph(exe: string, name: string) {
     return index;
   };
   const exposed = (dirs: string[]) => {
-    const search: [string, number][][] = [];
-    for (const directory of dirs) {
-      const entries: [string, number][] = [];
+    const search: [string, number | string][][] = [];
+    const directories = new Set(dirs);
+    for (const directory of directories) {
+      const entries: [string, number | string][] = [];
       search.push(entries);
       if (!observeLocation(directory)) continue;
+      const store = virtualStore(directory);
+      if (!fs.statSync(directory).isDirectory() || virtualStore(fs.realpathSync(directory)) !== store) return undefined;
       for (const first of fs.readdirSync(directory).sort()) {
-        if (first === ".bin") continue;
         const scope = path.join(directory, first);
         if (!observeLocation(scope)) return undefined;
+        if (first === ".bin" && fs.statSync(scope).isDirectory()) {
+          for (const bin of fs.readdirSync(scope).sort()) {
+            const file = path.join(scope, bin);
+            if (!observeLocation(file) || !fs.statSync(file).isFile()) return undefined;
+            const launcher = exposedLauncher(file, store);
+            entries.push([`.bin/${bin}`, launcher?.digest ?? executableDigest(file)]);
+            for (const directory of launcher?.searchPaths ?? []) directories.add(directory);
+          }
+          continue;
+        }
         const names = first.startsWith("@") && fs.statSync(scope).isDirectory()
           ? fs.readdirSync(scope).sort().map((next) => `${first}/${next}`) : [first];
         for (const name of names) {
           const file = path.join(directory, name);
-          if (!observeLocation(file) || !observed(path.join(file, "package.json"))) return undefined;
+          if (!observeLocation(file)) return undefined;
+          if (fs.statSync(file).isFile()) {
+            entries.push([name, executableDigest(file)]);
+            continue;
+          }
+          if (!fs.statSync(file).isDirectory() || !observed(path.join(file, "package.json"))) return undefined;
           const target = fs.realpathSync(file);
-          if (virtualStore(target) !== virtualStore(directory)) return undefined;
+          if (virtualStore(target) !== store) return undefined;
           entries.push([name, visit(target)]);
         }
       }
@@ -440,9 +478,12 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
     let installed = unsure || previous?.exe === exe ? undefined : readProgram(index, key);
     if (!installed) {
       const { graph, roots, main, contents, observeLocation, exposed, files, links, unchanged } = packageGraph(exe, TOOL_PACKAGES[tool]);
-      const launcher = launcherInputs(exe, main, observeLocation);
-      const search = launcher && exposed(launcher.extra);
-      const id = launcher && search && sha(launcher.digest, JSON.stringify([roots, ...search, graph.map(({ dir, version, dependencies }) => [version, contents(dir), dependencies])]), `node@${process.versions.node}:${process.platform}:${process.arch}`);
+      let id: string | undefined;
+      try {
+        const launcher = launcherInputs(exe, main, observeLocation);
+        const search = launcher && exposed(launcher.searchPaths);
+        if (launcher && search) id = sha(launcher.digest, JSON.stringify([roots, ...search, graph.map(({ dir, version, dependencies }) => [version, contents(dir), dependencies])]), `node@${process.versions.node}:${process.platform}:${process.arch}`);
+      } catch { /* A search path that cannot be inventoried leaves the program runnable without cache reuse. */ }
       installed = { id, unchanged };
       if (id && !unsure) {
         try {
