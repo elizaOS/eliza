@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { gunzipSync, gzipSync } from "node:zlib";
+import { gunzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import { filesUnder, sha, tokenize, writeWhole } from "./util.ts";
 import { NEEDS_DAFNY, findBin, exec, onPath, stamp } from "./run.ts";
 
@@ -406,39 +406,63 @@ async function toolchainId(root: string, stage: Stage): Promise<string> {
 export interface Memory { root: string; fresh: boolean; used: Set<string> }
 /** An entry of `.spec-cache`: JSON, compressed, since a run of the simulator says megabytes. */
 interface Entry { name: string; file: string }
-const cacheDir = (root: string) => path.join(root, ".spec-cache");
+const formats = [["zst", zstdDecompressSync], ["gz", gunzipSync]] as const;
+const primaryExtension = `.${formats[0][0]}`;
+const localCache = (root: string) => path.join(root, ".spec-cache");
+const formalCache = new AsyncLocalStorage<{ directory: string; used: Set<string> }>();
+const sharedCache = (name: string) => isActionEntry(name) ? formalCache.getStore() : undefined;
+const cacheFile = (root: string, name: string) => path.join(sharedCache(name)?.directory ?? localCache(root), name);
+
+export async function withFormalCache<T>(directory: string, run: () => Promise<T>): Promise<T> {
+  const scope = { directory: path.resolve(directory), used: new Set<string>() };
+  try {
+    return await formalCache.run(scope, run);
+  } finally {
+    pruneCache(scope.directory, scope.used, true);
+  }
+}
+
 export async function entry(root: string, stage: Stage, key: string[]): Promise<Entry> {
-  const name = `${stage}-${sha(await toolchainId(root, stage), ...key).slice(0, 24)}.json.gz`;
-  return { name, file: path.join(cacheDir(root), name) };
+  const name = `${stage}-${sha(await toolchainId(root, stage), ...key).slice(0, 24)}.json${primaryExtension}`;
+  return { name, file: cacheFile(root, name) };
 }
 /** Entries are deleted when unused for a while (see collectGarbage), so a hit says the entry is in use. */
 function use(memory: Memory, name: string) {
   memory.used.add(name);
-  try { const now = new Date(); fs.utimesSync(path.join(cacheDir(memory.root), name), now, now); } catch { /* still a hit */ }
+  sharedCache(name)?.used.add(name);
+  try { const now = new Date(); fs.utimesSync(cacheFile(memory.root, name), now, now); } catch { /* still a hit */ }
 }
 /** What an entry holds, or undefined. An entry that cannot be read, cut short by a kill or a full disk, is deleted and is a miss. */
 export function recall<T>(memory: Memory, { name, file }: Entry): T | undefined {
   memory.used.add(name);
   if (memory.fresh) return undefined;
-  let bytes: Buffer;
-  try {
-    bytes = fs.readFileSync(file);
-  } catch {
-    return undefined;
+  const fileBase = file.slice(0, -primaryExtension.length);
+  const nameBase = name.slice(0, -primaryExtension.length);
+  for (const [extension, decompress] of formats) {
+    const stored = `${fileBase}.${extension}`;
+    let bytes: Buffer;
+    try {
+      bytes = fs.readFileSync(stored);
+    } catch {
+      continue;
+    }
+    try {
+      const value = JSON.parse(decompress(bytes).toString("utf8")) as T;
+      use(memory, `${nameBase}.${extension}`);
+      return value;
+    } catch {
+      fs.rmSync(stored, { force: true });
+    }
   }
-  try {
-    const value = JSON.parse(gunzipSync(bytes).toString("utf8")) as T;
-    use(memory, name);
-    return value;
-  } catch {
-    fs.rmSync(file, { force: true });
-    return undefined;
-  }
+  return undefined;
 }
 /** Remember `value` under an entry, unless this process cannot say which tools computed it: then the next check computes it again. */
 export function store(memory: Memory, { name, file }: Entry, value: unknown) {
   memory.used.add(name);
-  if (!unsure && !checking.getStore()?.changed) writeWhole(file, gzipSync(JSON.stringify(value)));
+  if (!unsure && !checking.getStore()?.changed) {
+    writeWhole(file, zstdCompressSync(JSON.stringify(value)));
+    sharedCache(name)?.used.add(name);
+  }
 }
 
 /**
@@ -463,17 +487,23 @@ export async function remembered<T>(memory: Memory, at: Entry | Promise<Entry>, 
   return result;
 }
 
-const ENTRY = new RegExp(`^(${STAGES.join("|")})-(?:.*-)?[a-f0-9]{24}\\.json\\.gz$`);
+const ENTRY = new RegExp(`^(${STAGES.join("|")})-(?:.*-)?[a-f0-9]{24}\\.json\\.(?:${formats.map(([extension]) => extension).join("|")})$`);
+export const isActionEntry = (name: string) => name.startsWith("action-") && ENTRY.test(name);
 /** Keep recent branches and profiles for a month, within 256 MiB; never evict this check's entries. */
 export function collectGarbage(memory: Memory) {
-  const directory = cacheDir(memory.root);
+  pruneCache(localCache(memory.root), memory.used, false);
+}
+
+function pruneCache(directory: string, inUse: ReadonlySet<string>, shared: boolean) {
+  if (!fs.existsSync(directory)) return;
   const expired = Date.now() - 30 * 24 * 60 * 60 * 1000;
   const retained: { file: string; size: number; touched: number; used: boolean }[] = [];
   for (const name of fs.readdirSync(directory)) {
-    if (name === "lock") continue;
+    if (name === "lock" || (shared && !isActionEntry(name))) continue;
     const file = path.join(directory, name);
-    const stat = fs.lstatSync(file);
-    const used = memory.used.has(name);
+    const stat = fs.lstatSync(file, { throwIfNoEntry: false });
+    if (!stat) continue;
+    const used = inUse.has(name);
     if (!used && (!ENTRY.test(name) || !stat.isFile() || stat.mtimeMs < expired))
       fs.rmSync(file, { recursive: true, force: true });
     else retained.push({ file, size: stat.size, touched: stat.mtimeMs, used });
