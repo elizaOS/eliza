@@ -3510,7 +3510,7 @@ function theCommandLine() {
           log(line);
         };
         await main(["check", "--json"]);
-        assert.equal(attempts.size, 2);
+        assert.equal(attempts.size, ${changedModel ? 3 : 2});
       `], root);
       assert.equal(retry.status, 1, retry.stdout + retry.stderr);
       const rows = retry.stdout.trimEnd().split("\n").map((line) => JSON.parse(line));
