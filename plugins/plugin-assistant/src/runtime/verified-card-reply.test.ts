@@ -151,31 +151,38 @@ describe("verified tool text that carries a client-rendered card", () => {
     expect(output.finalMessage).toBe(placeCard);
   });
 
-  it("still fences multiline command output and keeps the evaluator's answer", async () => {
-    const table =
-      "Filesystem Size Used Avail Use%\n/dev/sda1 450G 428G 22G 95%";
-    const output = await run(
-      "BASH",
-      {
-        success: true,
-        text: table,
-        userFacingText: table,
-        verifiedUserFacing: true,
-        data: { actionName: "BASH" },
-      },
-      "The disk is still 95% full with 22G free.",
-    );
-    expect(output.finalMessage).toBe(
-      `\`\`\`\n${table}\n\`\`\`\n\nThe disk is still 95% full with 22G free.`,
-    );
-  });
+  it.each([
+    "Filesystem Size Used Avail Use%\n/dev/sda1 450G 428G 22G 95%",
+    'Filesystem metadata:\n[REPORT]\n{"available":"22G"}\n[/REPORT]',
+  ])(
+    "still fences multiline command output and keeps the evaluator's answer: %s",
+    async (table) => {
+      const output = await run(
+        "BASH",
+        {
+          success: true,
+          text: table,
+          userFacingText: table,
+          verifiedUserFacing: true,
+          data: { actionName: "BASH" },
+        },
+        "The disk is still 95% full with 22G free.",
+      );
+      expect(output.finalMessage).toBe(
+        `\`\`\`\n${table}\n\`\`\`\n\nThe disk is still 95% full with 22G free.`,
+      );
+    },
+  );
 });
 
 describe("containsRenderedCardBlock", () => {
-  it("recognizes a well-formed JSON-bodied block of any tag", () => {
+  it("recognizes the supported JSON-bodied card blocks", () => {
     expect(containsRenderedCardBlock(VERIFIED)).toBe(true);
     expect(
       containsRenderedCardBlock('[CHECKLIST]\n{"items":[]}\n[/CHECKLIST]'),
+    ).toBe(true);
+    expect(
+      containsRenderedCardBlock('[WORKFLOW]\n{"steps":[]}\n[/WORKFLOW]'),
     ).toBe(true);
   });
 

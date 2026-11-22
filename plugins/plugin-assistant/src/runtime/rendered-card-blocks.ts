@@ -9,13 +9,12 @@
  * it in a Markdown code fence hides it from the card parser's intent and shows
  * the user literal ``` lines around a duplicated list.
  *
- * Detection is purely structural (marker tag, JSON body that parses to an
- * object, matching close tag) so it holds for every card vocabulary without
- * naming one, and a literal, unclosed or non-JSON bracket never qualifies.
+ * Match only tags that a client renders. Other bracketed JSON may be
+ * ordinary command output and still needs its fence and evaluator reply.
  */
 
 const CARD_BLOCK_RE =
-  /(?:^|\n)[ \t]*\[([A-Z][A-Z0-9_]*)\][ \t]*\r?\n[ \t]*(\{[^\n]*\})[ \t]*\r?\n[ \t]*\[\/\1\][ \t]*(?=\r?\n|$)/g;
+  /(?:^|\n)[ \t]*\[(MAPSCARD|CHECKLIST|WORKFLOW)\][ \t]*\r?\n[ \t]*(\{[^\n]*\})[ \t]*\r?\n[ \t]*\[\/\1\][ \t]*(?=\r?\n|$)/g;
 
 /** True when `text` carries at least one well-formed client-rendered card block. */
 export function containsRenderedCardBlock(text: string): boolean {
