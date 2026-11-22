@@ -1,5 +1,5 @@
 // spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/agent/conversation/planning.md, "After the reply is stored, each evaluator that opts in runs in priority order, and one evaluator's failure stops neither its peers nor the turn"
-import { type AgentRuntime, type Memory, type RegisteredEvaluator, type State, logger, ModelType } from "@elizaos/core"
+import { type AgentRuntime, type Memory, type RegisteredEvaluator, type State, isTextGenerationModelType, logger, ModelType } from "@elizaos/core"
 import { runsNext } from "../../gen/agent__conversation__planning.ts"
 
 const defaultPriority = 100
@@ -37,9 +37,13 @@ async function runOne(runtime: AgentRuntime, evaluator: RegisteredEvaluator, mes
   const prepared = evaluator.prepare === undefined ? undefined : await evaluator.prepare({ ...context, state })
   const prompted = { ...context, state, prepared }
   const resolved = evaluator.resolveOutput !== undefined && (evaluator.resolveOutputWhen?.(prompted) ?? true)
-  const raw = resolved && evaluator.resolveOutput !== undefined
-    ? evaluator.resolveOutput(prompted)
-    : outputOf(await runtime.useModel(evaluator.modelType ?? ModelType.TEXT_SMALL, { prompt: evaluator.prompt(prompted), responseSchema: evaluator.schema, signal }))
+  let raw: unknown
+  if (resolved && evaluator.resolveOutput !== undefined) raw = evaluator.resolveOutput(prompted)
+  else {
+    const model = evaluator.modelType?.trim().toUpperCase() ?? ModelType.TEXT_SMALL
+    if (!isTextGenerationModelType(model)) throw new Error("A turn evaluator needs a text generation model")
+    raw = outputOf(await runtime.useModel(model, { prompt: evaluator.prompt(prompted), responseSchema: evaluator.schema, signal }))
+  }
   const output = evaluator.parse === undefined ? raw : evaluator.parse(raw, { ...prompted, outputSource: resolved ? "resolved" : "model" })
   if (output === null || output === undefined) return
   for (const processor of byPriority(evaluator.processors ?? [])) {

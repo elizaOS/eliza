@@ -48,7 +48,7 @@ export interface PlanInput {
   readonly onReplyRestart?: (fullText: string) => void
   readonly onPlanningAcknowledgment?: (text: string) => void | Promise<void>
   readonly onActivityStatus?: (activity: { actionName: string; label: string }) => void | Promise<void>
-  readonly onStepResult?: (result: ActionResult) => void
+  readonly onStepResult?: (result: ActionResult) => Promise<void>
 }
 
 /** The registered actions this turn may offer the model: allowed by the launch's gate, valid for this message, and nameable as a tool. */
@@ -231,7 +231,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
             return []
           },
         }, { id: call.id, name: call.name, params }, { abortSignal: signal })
-        input.onStepResult?.(result)
+        await input.onStepResult?.(result)
         steps.push({ action: call.name, params, result, shown: shownBy(result, captured), outcomes: planStepsOf(call.name, params, result) })
         conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(result) })
       }
