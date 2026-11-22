@@ -246,8 +246,8 @@ pure def add(a: int, b: int): int = a + b`);
 pure val common: Set[Field] = Set(First)
 pure def required(includeSecond: bool): Set[Field] = common.union(if (includeSecond) Set(Second) else Set())
 pure def selected(which: bool): Set[Field] = {
-  val fields = if (which) Set(First) else Set(Second)
-  fields.union(Set(Second))
+  val choices = if (which) Set(First) else Set(Second)
+  choices.union(Set(Second))
 }`);
     const model = await gen(root, parseSpec(root, "spec/fields.md"));
     const checked = await tool("vibelang", ["--noEmit", "--strict", "--target", "es2023", "gen/fields.ts"], root);
