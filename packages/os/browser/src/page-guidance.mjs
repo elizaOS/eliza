@@ -115,13 +115,77 @@ export function pageGuidance(request) {
   const scrollGuide =
     request.action === "scroll" ||
     snapshot.nodes.get(request.nodeId)?.scrollOnly === true;
-  if (!target?.isConnected || target.getRootNode() !== document)
-    return fail("missing-target");
+  const chain = (node) => {
+    const roots = [];
+    const frames = [];
+    let anchor = node;
+    for (let root = node.getRootNode(); root !== document; ) {
+      roots.push(root);
+      if (root.host) anchor = root.host;
+      else {
+        const element = root.defaultView?.frameElement ?? null;
+        if (
+          !element?.isConnected ||
+          element.contentDocument !== root ||
+          root.defaultView.origin !== location.origin
+        )
+          return null;
+        frames.push(element);
+        anchor = element;
+      }
+      root = anchor.getRootNode();
+    }
+    return { roots, frames, anchor };
+  };
+  const path = target?.isConnected ? chain(target) : null;
+  if (!path) return fail("missing-target");
+  const locate = (node, frames) => {
+    const local =
+      node === node.ownerDocument.scrollingElement
+        ? new DOMRect(
+            0,
+            0,
+            node.ownerDocument.defaultView.innerWidth,
+            node.ownerDocument.defaultView.innerHeight,
+          )
+        : node.getBoundingClientRect();
+    let { x, y, width, height } = local;
+    let inside = true;
+    for (const element of frames) {
+      const view = element.contentDocument.defaultView;
+      inside &&=
+        x >= 0 &&
+        y >= 0 &&
+        x + width <= view.innerWidth &&
+        y + height <= view.innerHeight;
+      const box = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const scale =
+        element.offsetWidth > 0 ? box.width / element.offsetWidth : 1;
+      x =
+        box.x +
+        (element.clientLeft + Number.parseFloat(style.paddingLeft || "0")) *
+          scale +
+        x * scale;
+      y =
+        box.y +
+        (element.clientTop + Number.parseFloat(style.paddingTop || "0")) *
+          scale +
+        y * scale;
+      width *= scale;
+      height *= scale;
+    }
+    return { rect: new DOMRect(x, y, width, height), inside };
+  };
   // Controls the label must not cover, for example the button she presses
   // next. A control that is gone is simply not avoided.
   const clear = keepClear
     .map((id) => snapshot.nodes.get(id)?.node)
-    .filter((node) => node?.isConnected && node !== target);
+    .filter((node) => node?.isConnected && node !== target)
+    .map((node) => ({ node, path: chain(node) }))
+    .filter(({ path }) => path !== null);
+  const clearRects = () =>
+    clear.map(({ node, path }) => locate(node, path.frames).rect);
   // The person's Dismiss holds for this step, also after a reload of the
   // page (the extension remembers it), until she asks to see it again.
   const dismissed =
@@ -141,7 +205,7 @@ export function pageGuidance(request) {
   // needs the page exactly as observed.
   const targetRect = () => {
     if (target !== document.scrollingElement)
-      return target.getBoundingClientRect();
+      return locate(target, path.frames).rect;
     // Native panes and page zoom can make the visible viewport fractional.
     // Rounded layout bounds would center the tall document as an off-screen
     // target, scrolling before the separately authorized action.
@@ -153,6 +217,8 @@ export function pageGuidance(request) {
       view?.height ?? innerHeight,
     );
   };
+  const insideFrames = () =>
+    path.frames.length === 0 || locate(target, path.frames).inside;
   const placed = targetRect();
   const view0 = window.visualViewport;
   const placement =
@@ -160,7 +226,8 @@ export function pageGuidance(request) {
     placed.height <= 0 ||
     getComputedStyle(target).visibility !== "visible"
       ? "hidden"
-      : placed.left >= (view0?.offsetLeft ?? 0) &&
+      : insideFrames() &&
+          placed.left >= (view0?.offsetLeft ?? 0) &&
           placed.top >= (view0?.offsetTop ?? 0) &&
           placed.right <=
             (view0?.offsetLeft ?? 0) + (view0?.width ?? innerWidth) &&
@@ -368,7 +435,8 @@ export function pageGuidance(request) {
   monitor.ownedHosts.add(host);
   // Keep guidance above a website modal and inside its non-inert subtree.
   // A manual popover does not dismiss the site's dialog or steal its modality.
-  const parent = target.closest("dialog:modal") ?? document.documentElement;
+  const parent =
+    path.anchor.closest("dialog:modal") ?? document.documentElement;
   if (typeof host.showPopover === "function")
     host.setAttribute("popover", "manual");
   parent.append(host);
@@ -489,20 +557,22 @@ export function pageGuidance(request) {
     )
       invalidate();
   });
-  observer.observe(document, {
-    subtree: true,
-    childList: true,
-    attributes: true,
-    characterData: true,
-  });
+  for (const root of [document, ...path.roots]) {
+    observer.observe(root, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      characterData: true,
+    });
+    root.addEventListener("beforeinput", invalidate, true);
+    root.addEventListener("change", invalidate, true);
+  }
   const viewport = window.visualViewport;
   window.addEventListener("scroll", moving, true);
   window.addEventListener("resize", moving);
   viewport?.addEventListener("resize", moving);
   viewport?.addEventListener("scroll", moving);
   window.addEventListener("pagehide", invalidate);
-  document.addEventListener("beforeinput", invalidate, true);
-  document.addEventListener("change", invalidate, true);
   // The navigation bar's inset last seen without a keyboard, kept for this document in the
   // isolated world: a guide shown after the keyboard opened (each show is a new renderer) still
   // knows it.
@@ -566,8 +636,10 @@ export function pageGuidance(request) {
       viewport?.removeEventListener("resize", moving);
       viewport?.removeEventListener("scroll", moving);
       window.removeEventListener("pagehide", invalidate);
-      document.removeEventListener("beforeinput", invalidate, true);
-      document.removeEventListener("change", invalidate, true);
+      for (const root of [document, ...path.roots]) {
+        root.removeEventListener("beforeinput", invalidate, true);
+        root.removeEventListener("change", invalidate, true);
+      }
       host.remove();
       state.visible = false;
     },
@@ -619,7 +691,8 @@ export function pageGuidance(request) {
       (request.action && Date.now() >= request.expiresAt) ||
       location.href !== snapshot.url ||
       !host.isConnected ||
-      !target.isConnected
+      !target.isConnected ||
+      (path.roots.length > 0 && !chain(target))
     ) {
       state.destroy();
       return;
@@ -680,6 +753,7 @@ export function pageGuidance(request) {
       rect.height > 0 &&
       css.visibility === "visible" &&
       css.display !== "none" &&
+      insideFrames() &&
       rect.left >= view.left &&
       rect.top >= view.top &&
       rect.right <= view.left + view.width &&
@@ -712,10 +786,7 @@ export function pageGuidance(request) {
           (p) =>
             p.y >= view.top + 8 &&
             p.y + height <= view.top + view.height - 8 &&
-            [
-              ...(scrollGuide ? [] : [rect]),
-              ...clear.map((node) => node.getBoundingClientRect()),
-            ].every(
+            [...(scrollGuide ? [] : [rect]), ...clearRects()].every(
               (avoid) =>
                 p.x + width <= avoid.left - 8 ||
                 p.x >= avoid.right + 8 ||

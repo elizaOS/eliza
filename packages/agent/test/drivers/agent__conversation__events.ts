@@ -87,7 +87,6 @@ function dispatch(key: string, event: Event): "accepted" | "refused" {
     case "closeFeed": return accepted(hub.close(event.feed));
     case "backlog": return accepted(hub.backlog(event.feed, event.queuedBytes, event.frameBytes) !== "refused");
     case "stop": return accepted(hub.stop());
-    case "withStrikes": return "refused";
     case "expireStrike": return accepted(expire(found, event.code));
     case "reportError": return accepted(hub.reportError(event.code, event.cause, event.quiet));
     default: {

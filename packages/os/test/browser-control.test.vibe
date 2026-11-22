@@ -52,6 +52,7 @@ it('Observe field edits and form membership before guiding a person (spec/os/bro
       "External field": [false, false, false, "html"], "HTML link": [null, null, false, "html"],
       "Semantic link": [null, null, false, "semantic"], "Owned link": [null, null, false, "semantic"],
       "Public link": [null, null, false, "outside"],
+      "Frame field": [null, false, false, "outside"],
     })
     await page.evaluate('document.querySelector("form").insertAdjacentHTML("beforeend", "<label>Dynamic field<input></label>")')
     await page.getByLabel("Dynamic field").fill("sample")
