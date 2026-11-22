@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { gunzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
-import { filesUnder, sha, tokenize, writeWhole } from "./util.ts";
+import { sha, tokenize, writeWhole } from "./util.ts";
 import { evaluatorIdentity, packageLocation, packageRoots } from "./installed.ts";
 import { NEEDS_DAFNY, findBin, exec, onPath, stamp } from "./run.ts";
 
@@ -75,7 +75,10 @@ export function executableDigest(file: string): string {
   return value ?? keep(createHash("sha256").update(fs.readFileSync(file)).digest("hex"));
 }
 
-const treeFiles = (directory: string) => filesUnder(directory, ".").filter((file) => fs.statSync(path.join(directory, file)).isFile());
+const treeFiles = (directory: string) => fs.readdirSync(directory, { recursive: true, withFileTypes: true })
+  .filter((entry) => entry.isFile() || (entry.isSymbolicLink() && fs.statSync(path.join(entry.parentPath, entry.name)).isFile()))
+  .map((entry) => path.relative(directory, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"))
+  .sort();
 /** Runtime files are keyed by relative name and bytes, never their installation directory. */
 const treeDigest = (directory: string) => sha(...treeFiles(directory).map((file) => `${file}\0${executableDigest(path.join(directory, file))}`));
 
