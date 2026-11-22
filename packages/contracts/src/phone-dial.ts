@@ -45,7 +45,9 @@ const WRITTEN_NANP_NUMBER =
  * separators ("415-555 0100"), as people type it.
  */
 export function phoneDialNumber(value: unknown): string {
-  const written = typeof value === "string" ? value.trim() : "";
+  const written = (typeof value === "string" ? value.trim() : "")
+    .replace(/^\+(44|49|41)( ?)\(0\) ?(?=\d)/, "+$1$2")
+    .replace(/^\+(39|378|225)( ?)\(0\) ?(?=\d)/, (_, code: string, space: string) => `+${code}${space}0`);
   const number = written.replace(/[ ().-]/g, "");
   if (
     !PHONE_DIAL_NUMBER.test(number) ||
