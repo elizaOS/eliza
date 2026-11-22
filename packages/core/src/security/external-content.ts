@@ -87,6 +87,7 @@ export type ExternalContentSource =
 	| "channel_metadata"
 	| "web_search"
 	| "web_fetch"
+	| "browser_page"
 	| "unknown";
 
 const EXTERNAL_SOURCE_LABELS: Record<ExternalContentSource, string> = {
@@ -96,6 +97,7 @@ const EXTERNAL_SOURCE_LABELS: Record<ExternalContentSource, string> = {
 	channel_metadata: "Channel metadata",
 	web_search: "Web Search",
 	web_fetch: "Web Fetch",
+	browser_page: "Browser page open on the owner's phone",
 	unknown: "External",
 };
 
