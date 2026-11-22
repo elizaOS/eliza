@@ -179,7 +179,7 @@ export interface RuntimeModelDispatchHost {
 	invokePipelineHooks(
 		...args: Parameters<RuntimePipelineHooks["invokePipelineHooks"]>
 	): ReturnType<RuntimePipelineHooks["invokePipelineHooks"]>;
-	/** `conversation` is the turn's room. Stable references and pseudonyms need one; see SECRET_SWAP_STABLE_REFERENCES_SETTING. */
+	/** `conversation` is the turn's room. With secret swap on, references and pseudonyms stay stable within it; a call without one gets fresh ones. */
 	createSecretSwapSession(conversation?: string): SecretSwapSession;
 	createPiiSwapSession(conversation?: string): PseudonymSession;
 	initResolver(): ((value?: void | PromiseLike<void>) => void) | undefined;

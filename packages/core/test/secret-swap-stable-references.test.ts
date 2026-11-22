@@ -1,8 +1,9 @@
 /**
  * A fresh nonce per turn rewrote every contact and credential reference in the
  * system prompt and the transcript, so a provider's prefix cache matched about
- * a tenth of a phone conversation's request. A host can opt into references
- * that stay the same for one conversation.
+ * a tenth of a phone conversation's request. With secret swap on, references
+ * stay the same for one conversation by default; a call outside a
+ * conversation, and a fresh process, still get fresh ones.
  */
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
@@ -126,18 +127,9 @@ async function sentReferences(
 	);
 }
 
-it("is off unless the host turns it on, and needs a conversation", async () => {
-	const rotating = await sentReferences({ ELIZA_SECRET_SWAP_ENABLED: "true" }, [
-		"room-a",
-		"room-a",
-	]);
-	expect(rotating[0]).toBeDefined();
-	expect(rotating[1]).not.toBe(rotating[0]);
+it("is on whenever secret swap is, and needs a conversation", async () => {
 	const [first, again, otherRoom, noRoom, noRoomAgain] = await sentReferences(
-		{
-			ELIZA_SECRET_SWAP_ENABLED: "true",
-			ELIZA_SECRET_SWAP_STABLE_REFERENCES: "true",
-		},
+		{ ELIZA_SECRET_SWAP_ENABLED: "true" },
 		["room-a", "room-a", "room-b", undefined, undefined],
 	);
 	expect(first).toBeDefined();
@@ -146,6 +138,91 @@ it("is off unless the host turns it on, and needs a conversation", async () => {
 	// A call outside a conversation has no later turn to match: fresh each time.
 	expect(noRoom).not.toBe(first);
 	expect(noRoomAgain).not.toBe(noRoom);
+	// The former opt-in variable no longer turns it off.
+	const [kept, keptAgain] = await sentReferences(
+		{
+			ELIZA_SECRET_SWAP_ENABLED: "true",
+			ELIZA_SECRET_SWAP_STABLE_REFERENCES: "false",
+		},
+		["room-a", "room-a"],
+	);
+	expect(keptAgain).toBe(kept);
+});
+
+it("draws a fresh key in a fresh process", async () => {
+	// The key lives only in the runtime's memory: a new runtime, as a restarted
+	// process has, gives the same conversation other references.
+	const [before] = await sentReferences({ ELIZA_SECRET_SWAP_ENABLED: "true" }, [
+		"room-a",
+	]);
+	const [after] = await sentReferences({ ELIZA_SECRET_SWAP_ENABLED: "true" }, [
+		"room-a",
+	]);
+	expect(before).toBeDefined();
+	expect(after).toBeDefined();
+	expect(after).not.toBe(before);
+});
+
+it("restores only references this session wrote, at the default", async () => {
+	const runtime = createSQLiteTestRuntime({
+		character: {
+			name: "A",
+			bio: "t",
+			settings: {
+				ELIZA_SECRET_SWAP_ENABLED: "true",
+				secrets: { SERVICE_KEY: "zx81-not-a-real-key-1234" },
+			},
+		} as Character,
+		logLevel: "fatal",
+	});
+	const sent: string[] = [];
+	runtime.registerModel(
+		ModelType.TEXT_LARGE,
+		async (_runtime, params) => {
+			sent.push(JSON.stringify(params));
+			return "ok";
+		},
+		"p",
+	);
+	const turn = async (content: string) => {
+		const context: { roomId: string; secretSwapSession?: SecretSwapSession } = {
+			roomId: "room-a",
+		};
+		await runWithTrajectoryContext(context, () =>
+			runtime.useModel(ModelType.TEXT_LARGE, {
+				messages: [{ role: "user", content }],
+			} as never),
+		);
+		const session = context.secretSwapSession;
+		if (!session) throw new Error("expected the turn's secret swap session");
+		return session;
+	};
+	const earlierTurn = await turn(
+		"use zx81-not-a-real-key-1234 and call 415-555-0100",
+	);
+	expect(earlierTurn.stable).toBe(true);
+	const [secretReference, contactReference] =
+		sent[0]?.match(/__ELIZA_(?:SECRET|CONTACT)_[0-9a-f]{16}_\d+__/g) ?? [];
+	expect(secretReference).toMatch(/^__ELIZA_SECRET_/);
+	expect(contactReference).toMatch(/^__ELIZA_CONTACT_/);
+	expect(sent[0]).not.toContain("zx81");
+
+	// A later turn of the same conversation knows the secret but never shows it.
+	const laterTurn = await turn("what time is it?");
+	expect(laterTurn).not.toBe(earlierTurn);
+	for (const replayed of [secretReference, contactReference]) {
+		expect(laterTurn.restoreText(`fetch ${replayed}`)).toBe(
+			`fetch ${replayed}`,
+		);
+		expect(() =>
+			laterTurn.restoreText(`fetch ${replayed}`, { failOnUnresolved: true }),
+		).toThrow(SecretSwapUnresolvedPlaceholderError);
+	}
+	// Once a turn shows the contact again, it carries the same reference.
+	const shownAgain = await turn("call 415-555-0100");
+	expect(sent[2]).toContain(String(contactReference));
+	expect(shownAgain.restoreText(String(contactReference))).toBe("415-555-0100");
+	await runtime.stop();
 });
 
 type Sent = {
@@ -158,6 +235,7 @@ type Sent = {
 async function sentRequests(
 	settings: Record<string, string>,
 	requests: Record<string, unknown>[],
+	roomId: string | null = "room-a",
 ): Promise<Sent[]> {
 	const runtime = createSQLiteTestRuntime({
 		character: { name: "A", bio: "t", settings } as Character,
@@ -173,17 +251,14 @@ async function sentRequests(
 		"p",
 	);
 	for (const request of requests)
-		await runWithTrajectoryContext({ roomId: "room-a" }, () =>
+		await runWithTrajectoryContext(roomId ? { roomId } : undefined, () =>
 			runtime.useModel(ModelType.TEXT_LARGE, request as never),
 		);
 	await runtime.stop();
 	return sent;
 }
 
-const stableSettings = {
-	ELIZA_SECRET_SWAP_ENABLED: "true",
-	ELIZA_SECRET_SWAP_STABLE_REFERENCES: "true",
-};
+const stableSettings = { ELIZA_SECRET_SWAP_ENABLED: "true" };
 const hello = { role: "user", content: "hello" };
 const reply = { role: "assistant", content: "hi" };
 
@@ -226,10 +301,9 @@ it("keeps the tools and the system prompt the same for a conversation and lists 
 	);
 	expect(stable[2].messages?.[2].content).toBe(`text ${phone} saying hi`);
 
-	const rotating = await sentRequests(
-		{ ELIZA_SECRET_SWAP_ENABLED: "true" },
-		turns,
-	);
+	// Outside a conversation each request has its own references, and the
+	// system prompt lists their kinds.
+	const rotating = await sentRequests(stableSettings, turns, null);
 	expect(rotating[0].system).toBe("Be brief.");
 	expect(rotating[1].system).toContain("Current contact reference kinds: ");
 	expect(rotating[1].messages?.[2].content).toMatch(/^text \S+ saying hi$/);
@@ -309,9 +383,7 @@ it("adds the reference kinds to the prompt segments that stand for the leading u
 	expect(unsegmented.promptSegments).toHaveLength(2);
 	expect(unsegmented.messages?.[0].content).toBe(first.messages?.[0].content);
 
-	const [rotating] = await sentRequests({ ELIZA_SECRET_SWAP_ENABLED: "true" }, [
-		leading,
-	]);
+	const [rotating] = await sentRequests(stableSettings, [leading], null);
 	expect(rotating.promptSegments).toHaveLength(2);
 	expect(rotating.system).toContain("Current contact reference kinds: ");
 
