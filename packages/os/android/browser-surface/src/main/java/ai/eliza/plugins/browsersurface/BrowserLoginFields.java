@@ -84,12 +84,18 @@ public final class BrowserLoginFields {
 
       const tokens = el => String(el.getAttribute('autocomplete') || '').toLowerCase().split(/\\s+/).filter(Boolean);
       const named = el => tokens(el).some(t => t === 'username' || t === 'email');
-      const isPassword = el => el instanceof HTMLInputElement && (el.type === 'password' || passwordFields.has(el));
-      const textual = el => el instanceof HTMLInputElement && !passwordFields.has(el) && (el.type === 'text' || el.type === 'email' || el.type === 'tel');
+      const codeFields = new WeakSet();
+      const isCode = el => {
+        if (!(el instanceof HTMLInputElement)) return false;
+        if (tokens(el).includes('one-time-code')) codeFields.add(el);
+        return codeFields.has(el);
+      };
+      const isPassword = el => el instanceof HTMLInputElement && !isCode(el) && (el.type === 'password' || passwordFields.has(el));
+      const textual = el => el instanceof HTMLInputElement && !isCode(el) && !passwordFields.has(el) && (el.type === 'text' || el.type === 'email' || el.type === 'tel');
       const usable = el => el instanceof HTMLInputElement && el.isConnected && !el.disabled && !el.readOnly && el.getClientRects().length > 0;
       // May be read for Save but is never filled: a shown read-only or disabled username, or a
       // hidden input the page marks as the username.
-      const readable = el => el instanceof HTMLInputElement && el.isConnected && !usable(el)
+      const readable = el => el instanceof HTMLInputElement && !isCode(el) && el.isConnected && !usable(el)
         && (textual(el) && el.getClientRects().length > 0 || el.type === 'hidden' && tokens(el).includes('username'));
       const keyOf = el => {
         let key = keys.get(el);
@@ -173,6 +179,13 @@ public final class BrowserLoginFields {
           }
         }
         const target = path[0];
+        if (isCode(target) && usable(target) && tokens(target).join(' ') === 'one-time-code'
+            && target.type === 'text' && target.inputMode === 'numeric' && window === window.top
+            && location.origin === 'https://westvaleelectric.com' && /^grace_verification_[0-9a-f]{32}$/.test(target.name)) {
+          reported = {};
+          send(`inbox|${documentId}|${target.name.slice(19)}`);
+          return;
+        }
         const found = login(target);
         const where = found && box(target);
         if (!found || !where) { if (reported) { reported = null; send(`blur|${documentId}`); } return; }
@@ -235,7 +248,7 @@ public final class BrowserLoginFields {
         for (const [key, value] of targets) {
           if (typeof value !== 'string' || !Number.isInteger(key)) continue;
           const el = field(key);
-          if (!el) continue;
+          if (!el || isCode(el)) continue;
           valueSetter.call(el, value);
           el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
           el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -315,13 +328,27 @@ public final class BrowserLoginFields {
       boolean isMainFrame, JavaScriptReplyProxy reply) {
     if (closed || view != web || message == null || message.getType() != WebMessageCompat.TYPE_STRING)
       return;
-    BrowserFieldOrigin.Report report = BrowserFieldOrigin.Report.parse(message.getData());
+    String data = message.getData();
+    if (web instanceof InboxAutofillWebView inbox && data != null && data.startsWith("inbox|")) {
+      if (isMainFrame && InboxFieldStructure.ORIGIN.equals(BrowserFieldOrigin.exactHttps(sourceOrigin == null ? null : sourceOrigin.toString()))
+          && data.matches("inbox[|][0-9a-f]{24}[|][0-9a-f]{32}")) {
+        revoke(true);
+        inbox.focused(host, data.substring(6, 30), data.substring(31));
+      }
+      return;
+    }
+    BrowserFieldOrigin.Report report = BrowserFieldOrigin.Report.parse(data);
     if (report == null)
       return;
     BrowserFieldOrigin.TabSnapshot now = host.snapshot();
     // The only origin source: what WebView reported for the posting frame.
     BrowserFieldOrigin.EngineSource engine = new BrowserFieldOrigin.EngineSource(
         sourceOrigin == null ? null : sourceOrigin.toString(), isMainFrame);
+    if (web instanceof InboxAutofillWebView inbox) {
+      if (report.kind == BrowserFieldOrigin.Kind.FOCUS) inbox.forget();
+      else if ((report.kind == BrowserFieldOrigin.Kind.BLUR || report.kind == BrowserFieldOrigin.Kind.GONE)
+          && isMainFrame && InboxFieldStructure.ORIGIN.equals(BrowserFieldOrigin.exactHttps(engine.sourceOrigin))) inbox.left(report.document);
+    }
     switch (report.kind) {
       case FOCUS:
         focus(engine, report, reply, now);
@@ -455,6 +482,7 @@ public final class BrowserLoginFields {
    * AutofillManager#cancel}; a committed session needs nothing more.
    */
   public void revoke(boolean exit) {
+    if (web instanceof InboxAutofillWebView inbox) inbox.forget();
     BrowserFieldOrigin.Binding old = binding;
     BrowserFieldOrigin.Report focused = focus;
     binding = null;

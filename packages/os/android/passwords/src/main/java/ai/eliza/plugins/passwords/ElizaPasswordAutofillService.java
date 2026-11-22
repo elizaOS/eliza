@@ -34,6 +34,9 @@ import java.util.List;
 public class ElizaPasswordAutofillService extends AutofillService {
   /** A request the host's admission rule refuses gets no dataset and no token, as if nothing were saved. */
   @Override public void onFillRequest(FillRequest request, CancellationSignal cancellation, FillCallback callback) {
+    try {
+      if (InboxAutofill.handle(this, latest(request.getFillContexts()), cancellation, callback)) return;
+    } catch (RuntimeException unsupported) { callback.onSuccess(null); return; }
     if (!PasswordVaultAccess.admitted(this)) { callback.onSuccess(null); return; }
     FillResponse response = null;
     try { response = fillResponse(this, latest(request.getFillContexts()), cancellation); }
