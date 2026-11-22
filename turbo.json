@@ -120,6 +120,8 @@
       "inputs": [
         "vibestack/**",
         "!vibestack/selftest.ts",
+        "!vibestack/{testing,stories,design}/test/**",
+        "!vibestack/fixtures/**",
         "!vibestack/examples/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
         "!**/.DS_Store",
