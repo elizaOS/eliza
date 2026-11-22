@@ -72,7 +72,7 @@ function configure(
       sources: readFileSync(sourcesFile, "utf8"),
       template: readFileSync(template, "utf8"),
       mirrors: read("etc/apt/eliza-ubuntu-mirrors.txt"),
-      ipv4: read("etc/apt/apt.conf.d/99-eliza-ci-force-ipv4"),
+      network: read("etc/apt/apt.conf.d/99-eliza-ci-network"),
     };
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -99,10 +99,15 @@ test("every known Ubuntu archive URI fails over across the ordered mirror list",
   );
   assert.deepEqual(result.mirrors?.trim().split("\n"), [
     "http://azure.archive.ubuntu.com/ubuntu/",
-    "https://mirrors.kernel.org/ubuntu/",
     "http://archive.ubuntu.com/ubuntu/",
   ]);
-  assert.equal(result.ipv4, 'Acquire::ForceIPv4 "true";\n');
+  assert.deepEqual(result.network?.trim().split("\n"), [
+    'Acquire::ForceIPv4 "true";',
+    'Acquire::http::Timeout "20";',
+    'Acquire::https::Timeout "20";',
+    'Acquire::Retries "1";',
+    'Acquire::Languages "none";',
+  ]);
 });
 
 test("re-running keeps the same sources, and unrelated feeds are left alone", () => {
@@ -121,4 +126,5 @@ test("other distributions and releases are not changed", () => {
   assert.equal(result.first.status, 0, result.first.stderr);
   assert.equal(result.sources, original);
   assert.equal(result.mirrors, null);
+  assert.equal(result.network, null);
 });
