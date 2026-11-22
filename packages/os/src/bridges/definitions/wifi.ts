@@ -64,7 +64,7 @@ export interface WiFiPermissionStatus {
 }
 
 export interface ApprovedJoinResult {
-  status: "connected" | "captivePortal" | "declined" | "unverified" | "notConnected" | "wrongPassword";
+  status: "connected" | "captivePortal" | "declined" | "unverified" | "notConnected" | "wrongPassword" | "savedNetwork";
 }
 
 export interface WiFiPlugin {

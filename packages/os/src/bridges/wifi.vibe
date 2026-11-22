@@ -51,7 +51,7 @@ schema Connected { network: Network | null }
 schema Scan { networks: Offer[] }
 schema Change { success: boolean; message?: string }
 schema Connectivity { online: boolean; validated: boolean; captivePortal: boolean; ssid: string | null }
-schema Join { status: "connected" | "captivePortal" | "declined" | "unverified" | "notConnected" | "wrongPassword" }
+schema Join { status: "connected" | "captivePortal" | "declined" | "unverified" | "notConnected" | "wrongPassword" | "savedNetwork" }
 
 function offers(found: readonly (WiFiNetwork & { security: WiFiSecurity })[], options: ListNetworksOptions | undefined): ListNetworksResult {
   const byRow = new Map(found.map((network): [ScanRow, WiFiNetwork] => [{ network: network.ssid, strength: network.rssi, security: SECURITY[network.security] }, network]))

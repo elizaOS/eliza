@@ -65,6 +65,17 @@ class ApprovedJoinTrackerTest {
     }
 
     @Test
+    fun alreadySaved_waitsOnlyForPositiveEvidenceOfTheRequestedNetwork() {
+        val saved = ApprovedJoinTracker("cafe", secured = true, alreadySaved = true)
+        assertNull(saved.observe(networkSsid = "home", validated = true, captivePortal = false))
+        assertNull(saved.observe(networkSsid = null, validated = true, captivePortal = false))
+        assertNull(saved.authenticationFailed())
+        assertEquals("savedNetwork", saved.timeoutStatus())
+        assertEquals("connected", saved.observe(networkSsid = "cafe", validated = true, captivePortal = false))
+        assertEquals("captivePortal", saved.observe(networkSsid = "cafe", validated = false, captivePortal = true))
+    }
+
+    @Test
     fun disclosedSsid_rejectsHiddenPlaceholders() {
         assertEquals("cafe", WiFiStateReader.disclosedSsid("\"cafe\""))
         assertNull(WiFiStateReader.disclosedSsid("<unknown ssid>"))
