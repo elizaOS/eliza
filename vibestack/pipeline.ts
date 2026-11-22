@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { evaluatorIdentity } from "./installed.ts";
 // The spec pipeline and command line, which spec.ts runs. Parsing, review, generation, simulation and proof each have one implementation.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -744,7 +746,7 @@ export async function main(argv = process.argv.slice(2)) {
       const text = JSON.stringify(await steady(toolchainFingerprint)) + "\n";
       fs.mkdirSync(path.dirname(fingerprint), { recursive: true });
       if (!fs.existsSync(fingerprint) || fs.readFileSync(fingerprint, "utf8") !== text) fs.writeFileSync(fingerprint, text);
-      let env: NodeJS.ProcessEnv = { ...process.env, TURBO_TELEMETRY_DISABLED: "1" };
+      let env: NodeJS.ProcessEnv = { ...process.env, TURBO_TELEMETRY_DISABLED: "1", VIBESTACK_QUINT_EVALUATOR: evaluatorIdentity(root) ?? randomUUID() };
       const credentials = path.join(os.homedir(), ".config", "vibestack", "turbo-cache.json");
       if (env.TURBO_TOKEN === undefined && fs.existsSync(credentials)) {
         const cache = JSON.parse(fs.readFileSync(credentials, "utf8"));

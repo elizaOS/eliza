@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { gunzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import { filesUnder, sha, tokenize, writeWhole } from "./util.ts";
+import { evaluatorIdentity, packageLocation, packageRoots } from "./installed.ts";
 import { NEEDS_DAFNY, findBin, exec, onPath, stamp } from "./run.ts";
 
 /** Load an operator's publishing credential only for the exact cache endpoint it belongs to. */
@@ -115,17 +116,17 @@ const dafnySaid = (version: string | undefined, stopped?: string, out = "") => {
   return { version, problem: stopped ?? (problem && `${problem}: ${NEEDS_DAFNY}`) };
 };
 /**
- * Dafny's files and their stamps with Z3's on the PATH, as installed now: read once for each check (`steady`), and on
+ * Dafny's files and their stamps, as installed now: read once for each check (`steady`), and on
  * every call outside one.
  */
-const checking = new AsyncLocalStorage<{ installation?: { files?: string[]; at: string }; programs: Map<string, Program | undefined>; changed?: boolean }>();
+interface Check { installation?: { files?: string[]; at: string }; programs: Map<string, Program | undefined>; evaluators: Map<string, string>; changed?: boolean }
+const checking = new AsyncLocalStorage<Check>();
 function installation() {
   const now = () => {
     const files = dafnyFiles();
     if (!files) return { at: "" };
     try {
-      const z3 = onPath("z3");
-      return { files, at: [...files, ...z3 ? [z3, fs.realpathSync(z3)] : []].map((file) => `${file}=${stamp([file])}`).join("\0") };
+      return { files, at: files.map((file) => `${file}=${stamp([file])}`).join("\0") };
     } catch (e) {
       return { files, at: (e as Error).message };
     }
@@ -134,7 +135,18 @@ function installation() {
   return scope ? (scope.installation ??= now()) : now();
 }
 /** Run a check, which reads Dafny's installation once: a reinstall during it is seen by the next check, and by `verifiedNow`. */
-export const steady = <T>(run: () => Promise<T>) => checking.run({ programs: new Map() }, run);
+export const steady = <T>(run: () => Promise<T>) => checking.run({ programs: new Map(), evaluators: new Map() }, run);
+
+function perCheck<T>(read: () => Promise<T>): () => Promise<T> {
+  const known = new WeakMap<Check, Promise<T>>();
+  return () => {
+    const scope = checking.getStore();
+    if (!scope) return read();
+    let result = known.get(scope);
+    if (!result) known.set(scope, result = read().catch((e) => { known.delete(scope); throw e; }));
+    return result;
+  };
+}
 
 const TOOL_PACKAGES = { quint: "@informalsystems/quint", lsc: "lemmascript" } as const;
 type Program = { exe: string; id: string; unchanged: () => boolean };
@@ -150,16 +162,6 @@ function packageGraph(exe: string, name: string) {
     if (!observations.has(file)) observations.set(file, state(file));
     return observations.get(file) !== "";
   };
-  const installed = (dependency: string, from: string) => {
-    for (let dir = from; ; dir = path.dirname(dir)) {
-      const at = path.join(dir, "node_modules", dependency);
-      if (path.basename(dir) !== "node_modules" && observed(path.join(at, "package.json"))) {
-        observed(at);
-        return fs.realpathSync(at);
-      }
-      if (dir === path.dirname(dir)) return undefined;
-    }
-  };
   const seen = new Map<string, number>();
   const graph: { version: string; dependencies: [string, number | null][] }[] = [];
   const visit = (dir: string): number => {
@@ -174,14 +176,13 @@ function packageGraph(exe: string, name: string) {
     const dependencies: [string, number | null][] = [];
     graph.push({ version: `${pkg.name}@${pkg.version}`, dependencies });
     for (const dependency of Object.keys({ ...pkg.dependencies, ...pkg.optionalDependencies, ...pkg.peerDependencies }).sort()) {
-      const at = installed(dependency, dir);
+      const at = packageLocation(dependency, dir, observed);
       dependencies.push([dependency, at ? visit(at) : null]);
     }
     return index;
   };
   observed(exe);
-  const loaded = installed(name, import.meta.dirname);
-  const main = installed(name, path.resolve(exe, "../../..")) ?? loaded;
+  const [main, loaded] = packageRoots(exe, name, observed);
   if (!main) throw new Error(`no ${name} with a version is installed beside ${exe} or these tools; run pnpm install`);
   const roots = [visit(main), loaded && visit(loaded)];
   return { graph, roots, unchanged: () => [...observations].every(([file, at]) => state(file) === at) };
@@ -210,6 +211,15 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
   return program;
 }
 
+export function evaluatorForCheck(root: string): string | undefined {
+  const scope = checking.getStore();
+  const known = scope?.evaluators.get(root);
+  if (known) return known;
+  const id = evaluatorIdentity(root);
+  if (id) scope?.evaluators.set(root, id);
+  return id;
+}
+
 export function stableInstallation(same: boolean) {
   const scope = checking.getStore();
   if (!same && scope) scope.changed = true;
@@ -217,7 +227,7 @@ export function stableInstallation(same: boolean) {
 }
 
 /**
- * What is read of Dafny once for its installation as it is now: its launchers, its assemblies and Z3 on the PATH. A
+ * What is read of Dafny once for its installation as it is now: its launchers and its assemblies. A
  * process that outlives a reinstall, as `watch` does, reads it again. A value `kept` refuses is read again next time.
  */
 function perDafny<T>(read: () => Promise<T>, kept: (value: T) => boolean = () => true): () => Promise<T> {
@@ -253,7 +263,7 @@ export const dafnyIdentity = perDafny(async () => {
 });
 
 /** Dafny, told apart by its installation and the solver it is given. */
-export const verifierIdentity = perDafny(async () => {
+export const verifierIdentity = perCheck(async () => {
   const [dafny, z3] = await Promise.all([dafnyIdentity(), solver()]);
   return JSON.stringify({ dafny, z3: `${z3.version}:${executableDigest(z3.path)}`, platform: `${process.platform}:${process.arch}` });
 });
@@ -262,41 +272,35 @@ export const verifiedNow = () => checking.exit(verifierIdentity);
 
 /**
  * The solver selected by Dafny's installation, pinned for every proof and recorded in its cache key; selected again once
- * Dafny or Z3 on the PATH is another or installed again. A candidate's version is asked of it only once it changed.
+ * per check from the bundled candidates and Z3 on the PATH. A candidate's version is asked of it only once it changed.
  */
-const selected = new Map<string, Promise<{ path: string; version: string }>>();
-export function solver(): Promise<{ path: string; version: string }> {
+export const solver = perCheck(async () => {
   const dafny = onPath("dafny");
   const z3 = onPath("z3");
-  const installed = [dafny, z3].map((f) => f ? `${f}=${stamp([f, fs.realpathSync(f)])}` : "").join("\0");
-  let chosen = selected.get(installed);
-  if (!chosen) selected.set(installed, chosen = (async () => {
-    const candidates: string[] = [];
-    if (dafny) {
-      const real = fs.realpathSync(dafny);
-      for (const dir of [path.dirname(real), path.join(path.dirname(real), "..", "libexec")]) {
-        const bundled = path.join(dir, "z3", "bin");
-        if (!fs.existsSync(bundled)) continue;
-        const preferred = (name: string) => name.includes("4.12.1") ? 0 : name.includes("4.8.5") ? 1 : 2;
-        candidates.push(...fs.readdirSync(bundled).filter((name) => /^z3(-\d+(\.\d+)*)?(\.exe)?$/.test(name))
-          .sort((a, b) => preferred(a) - preferred(b) || a.localeCompare(b)).map((name) => path.join(bundled, name)));
-      }
+  const candidates: string[] = [];
+  if (dafny) {
+    const real = fs.realpathSync(dafny);
+    for (const dir of [path.dirname(real), path.join(path.dirname(real), "..", "libexec")]) {
+      const bundled = path.join(dir, "z3", "bin");
+      if (!fs.existsSync(bundled)) continue;
+      const preferred = (name: string) => name.includes("4.12.1") ? 0 : name.includes("4.8.5") ? 1 : 2;
+      candidates.push(...fs.readdirSync(bundled).filter((name) => /^z3(-\d+(\.\d+)*)?(\.exe)?$/.test(name))
+        .sort((a, b) => preferred(a) - preferred(b) || a.localeCompare(b)).map((name) => path.join(bundled, name)));
     }
-    if (z3) candidates.push(z3);
-    for (const candidate of candidates) {
-      try {
-        const real = fs.realpathSync(candidate);
-        const { value, keep } = lasting(`z3 --version ${candidate}`, [candidate, real]);
-        if (value) return { path: real, version: value };
-        const result = await exec(candidate, ["--version"], path.dirname(candidate));
-        const version = result.status === 0 && !result.stopped && result.stdout.match(/Z3 version (\d+\.\d+\.\d+)/)?.[1];
-        if (version) return { path: real, version: keep(version) };
-      } catch { /* try the next solver supplied by this installation */ }
-    }
-    throw new Error("the proof stage needs the Z3 solver bundled with Dafny or on the PATH");
-  })().catch((e) => { selected.delete(installed); throw e; }));
-  return chosen;
-}
+  }
+  if (z3) candidates.push(z3);
+  for (const candidate of candidates) {
+    try {
+      const real = fs.realpathSync(candidate);
+      const { value, keep } = lasting(`z3 --version ${candidate}`, [candidate, real]);
+      if (value) return { path: real, version: value };
+      const result = await exec(candidate, ["--version"], path.dirname(candidate));
+      const version = result.status === 0 && !result.stopped && result.stdout.match(/Z3 version (\d+\.\d+\.\d+)/)?.[1];
+      if (version) return { path: real, version: keep(version) };
+    } catch { /* try the next solver supplied by this installation */ }
+  }
+  throw new Error("the proof stage needs the Z3 solver bundled with Dafny or on the PATH");
+});
 /** The native toolchain that a Turbo task's inputs cannot read from the repository. */
 export async function toolchainFingerprint() {
   const z3 = await solver();
@@ -405,7 +409,7 @@ async function toolchainId(root: string, stage: Stage): Promise<string> {
 /** The remembered results of one check: whether it may read them, and every entry it read or wrote. */
 export interface Memory { root: string; fresh: boolean; used: Set<string> }
 /** An entry of `.spec-cache`: JSON, compressed, since a run of the simulator says megabytes. */
-interface Entry { name: string; file: string }
+interface Entry { name: string; file: string; evaluator?: string | null }
 const formats = [["zst", zstdDecompressSync], ["gz", gunzipSync]] as const;
 const primaryExtension = `.${formats[0][0]}`;
 const localCache = (root: string) => path.join(root, ".spec-cache");
@@ -422,9 +426,10 @@ export async function withFormalCache<T>(directory: string, run: () => Promise<T
   }
 }
 
-export async function entry(root: string, stage: Stage, key: string[]): Promise<Entry> {
-  const name = `${stage}-${sha(await toolchainId(root, stage), ...key).slice(0, 24)}.json${primaryExtension}`;
-  return { name, file: cacheFile(root, name) };
+export async function entry(root: string, stage: Stage, key: string[], evaluates = ["simulate", "tests", "traces", "explore"].includes(stage)): Promise<Entry> {
+  const evaluator = evaluates ? evaluatorForCheck(root) ?? null : undefined;
+  const name = `${stage}-${sha(await toolchainId(root, stage), ...evaluator ? [evaluator] : [], ...key).slice(0, 24)}.json${primaryExtension}`;
+  return { name, file: cacheFile(root, name), evaluator };
 }
 /** Entries are deleted when unused for a while (see collectGarbage), so a hit says the entry is in use. */
 function use(memory: Memory, name: string) {
@@ -433,9 +438,9 @@ function use(memory: Memory, name: string) {
   try { const now = new Date(); fs.utimesSync(cacheFile(memory.root, name), now, now); } catch { /* still a hit */ }
 }
 /** What an entry holds, or undefined. An entry that cannot be read, cut short by a kill or a full disk, is deleted and is a miss. */
-export function recall<T>(memory: Memory, { name, file }: Entry): T | undefined {
+export function recall<T>(memory: Memory, { name, file, evaluator }: Entry): T | undefined {
   memory.used.add(name);
-  if (memory.fresh) return undefined;
+  if (memory.fresh || evaluator === null) return undefined;
   const fileBase = file.slice(0, -primaryExtension.length);
   const nameBase = name.slice(0, -primaryExtension.length);
   for (const [extension, decompress] of formats) {
@@ -457,9 +462,9 @@ export function recall<T>(memory: Memory, { name, file }: Entry): T | undefined 
   return undefined;
 }
 /** Remember `value` under an entry, unless this process cannot say which tools computed it: then the next check computes it again. */
-export function store(memory: Memory, { name, file }: Entry, value: unknown) {
+export function store(memory: Memory, { name, file, evaluator }: Entry, value: unknown) {
   memory.used.add(name);
-  if (!unsure && !checking.getStore()?.changed) {
+  if (!unsure && !checking.getStore()?.changed && evaluator !== null && (evaluator === undefined || stableInstallation(evaluatorIdentity(memory.root) === evaluator))) {
     writeWhole(file, zstdCompressSync(JSON.stringify(value)));
     sharedCache(name)?.used.add(name);
   }

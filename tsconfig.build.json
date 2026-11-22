@@ -23,6 +23,7 @@
   },
   "include": [
     "vibestack/spec.ts",
+    "vibestack/formal.ts",
     "vibestack/studio/src/main.vibe",
     "vibestack/studio/gen/*.vibe",
     "vibestack/testing/index.ts",

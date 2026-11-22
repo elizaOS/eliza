@@ -117,8 +117,6 @@ jobs:
         include:
           - name: verify
             tasks: build typecheck test test:browser check //#lint:js //#lint:css //#analyze //#selftest:docs //#selftest:examples
-          - name: selftest-rest
-            tasks: //#selftest:tools:rest
     env: &cache-env
       TURBO_CACHE: local:rw
     steps: &verification-steps
@@ -127,7 +125,7 @@ jobs:
         uses: ./.github/actions/setup
         with:
           job: ${{ matrix.name }}
-      - run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue --summarize
+      - run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize
       - name: Report Turbo task timings
         if: ${{ !cancelled() }}
         run: |
@@ -211,6 +209,8 @@ jobs:
             tasks: //#selftest:tools:a
           - name: selftest-b
             tasks: //#selftest:tools:b
+          - name: selftest-rest
+            tasks: //#selftest:tools:rest
     concurrency: *verification-concurrency
     env: *cache-env
     steps: *verification-steps
