@@ -4278,22 +4278,36 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
   const big = "x".repeat(8 * 1024 * 1024)
   const overlapScript = `
     import fs from "node:fs"
+    import fsp from "node:fs/promises"
     const [state, dir] = process.argv.slice(1)
     const { writeJsonAtomic, writeJsonAtomicSync } = await import(${JSON.stringify(core)})
     const big = "x".repeat(8 * 1024 * 1024)
-    const queued = Array.from({ length: 10 }, (_, index) => writeJsonAtomic(state, { index, big }))
-    while (!fs.readdirSync(dir).some((name) => name.includes(".tmp-"))) await new Promise((resolve) => setImmediate(resolve))
+    const beforeRename = Promise.withResolvers()
+    const releaseRename = Promise.withResolvers()
+    const rename = fsp.rename
+    fsp.rename = async (from, to) => {
+      if (to === state) {
+        beforeRename.resolve()
+        await releaseRename.promise
+      }
+      await rename(from, to)
+    }
+    const queued = Promise.all(Array.from({ length: 10 }, (_, index) => writeJsonAtomic(state, { index, big })))
+    await Promise.race([beforeRename.promise, queued])
     const overlapped = []
     const synced = Array.from({ length: 10 }, (_, index) => {
       overlapped.push(fs.readdirSync(dir).some((name) => name.includes(".tmp-")))
       return writeJsonAtomicSync(state, { sync: index })
     })
-    console.log(JSON.stringify({ receipts: [await Promise.all(queued), synced].map((list) => list.map((receipt) => receipt === undefined ? "undefined" : receipt)), overlapped }))
+    fsp.rename = rename
+    releaseRename.resolve()
+    console.log(JSON.stringify({ receipts: [await queued, synced].map((list) => list.map((receipt) => receipt === undefined ? "undefined" : receipt)), overlapped }))
   `
   const overlapRun = try host(() => runNode({ script: overlapScript, args: [state, dir], vibe: true }))
   const overlap = try Effect.try(() => JSON.parse(overlapRun.stdout.trim().split("\n").at(-1) ?? "") as { receipts: unknown[][]; overlapped: boolean[] })
   const finalState = try host(() => readJsonFile<{ index: number; big: string }>(state))
-  const concurrent = [overlapRun.status, overlap.receipts, overlap.overlapped, finalState === null ? null : finalState.index, try inspect(dir)]
+  try Effect.try(() => assert.deepStrictEqual(overlap.overlapped, Array.from({ length: 10 }, () => true)))
+  const concurrent = [overlapRun.status, overlap.receipts, finalState === null ? null : finalState.index, try inspect(dir)]
 
   const shared = `${dir}/shared.json`
   try host(() => writeJsonAtomic(shared, { writer: "initial", revision: -1, payload: "" }))
@@ -4362,7 +4376,6 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
     concurrent: [
       0,
       [Array.from({ length: 10 }, () => "undefined"), Array.from({ length: 10 }, () => "undefined")],
-      Array.from({ length: 10 }, () => true),
       9,
       { "state.json": { mode: "600", text: JSON.stringify({ index: 9, big }, null, 2) } },
     ],
