@@ -668,7 +668,7 @@ describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/regis
 
   it.live("Tell an app that Google sign-in is off (spec/cloud/nativeClients/registry.md, \"Story: Tell a client exactly why it was refused\")", () => scoped(effect {
     const googleOff: ProfileEdit = (profile) => {
-      const { google, ...staging } = profile.environments.staging
+      const { google: _google, ...staging } = profile.environments.staging
       return { ...profile, environments: { ...profile.environments, staging: { ...staging, capabilities: staging.capabilities.filter((capability) => capability !== "managedGoogle") } } }
     }
     const cloud = try testCloud({ edit: googleOff })
@@ -691,7 +691,7 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
   const person: GooglePerson = { subject: "google-native-1", email: "native@example.com", emailVerified: true, givenName: "Native" }
   const scopes = ["openid", "email", "https://www.googleapis.com/auth/gmail.readonly"]
   const googleOff: ProfileEdit = (profile) => {
-    const { google, ...staging } = profile.environments.staging
+    const { google: _google, ...staging } = profile.environments.staging
     return { ...profile, environments: { ...profile.environments, staging: { ...staging, capabilities: staging.capabilities.filter((capability) => capability !== "managedGoogle") } } }
   }
 
@@ -2199,7 +2199,7 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
     const unchanged = try sql(cloud, "SELECT key, revision, last_used_at FROM google_connections WHERE user_id = $1 ORDER BY key", [caller.userId])
 
     const off = try serveOnStore(cloud, areas.flatMap((area) => area.routes), (profile) => {
-      const { google, ...staging } = profile.environments.staging
+      const { google: _google, ...staging } = profile.environments.staging
       return { ...profile, environments: { ...profile.environments, staging: { ...staging, capabilities: staging.capabilities.filter((capability) => capability !== "managedGoogle") } } }
     })
     const [offStatus, offAccounts] = try promise(() => Promise.all([
@@ -3576,9 +3576,11 @@ module node {
       const api = "https://api.example.test"
       const providerInputs: string[] = []
       let chosen = "hours"
+      /* eslint-disable no-redeclare -- Both Worker AI call signatures use this fake. */
       async function run(id: string, input: Record<string, unknown>, options: { returnRawResponse: true; signal: AbortSignal }): Promise<Response>
       async function run(id: string, input: unknown): Promise<unknown>
       async function run(id: string, input: unknown, options?: unknown): Promise<unknown> {
+        /* eslint-enable no-redeclare */
         if (options) return Response.json({ error: "unexpected inference request" }, { status: 500 })
         providerInputs.push(JSON.stringify({ id, input }))
         if (providerInputs.length === 1) await Effect.runPromise(Effect.sleep(4_250))
