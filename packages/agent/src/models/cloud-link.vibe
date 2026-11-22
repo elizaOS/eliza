@@ -2,7 +2,7 @@
 import { Service, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import type { Backend, GoogleConsent } from "../../gen/agent__host__launch.ts"
-import { googleAdmitted, type GoogleOperation } from "../../gen/agent__models__binding.effect.vibe"
+import { googleAdmitted, pluginCloudPathAllowed, type GoogleOperation } from "../../gen/agent__models__binding.effect.vibe"
 import type { LaunchDocument } from "../host/launch.vibe"
 import { backendOf } from "../host/status.vibe"
 
@@ -122,7 +122,7 @@ export function cloudLinkServices(launch: LaunchDocument, credential: () => Reda
 
     request(request: CloudLinkRequest): Promise<CloudLinkReply> {
       const target = targetOf(link.origin, request.path)
-      if (target === undefined) return Promise.reject(new CloudLinkRequestRefused({ path: request.path, reason: "path" }))
+      if (target === undefined || !pluginCloudPathAllowed(target.pathname)) return Promise.reject(new CloudLinkRequestRefused({ path: request.path, reason: "path" }))
       const change = googleChangeOf(request.method, target.pathname)
       if (change !== undefined && admitGoogle(change).kind === "refused") return Promise.resolve({ kind: "changes-off", operation: change })
       return run(Effect.provide(send(link, request, target), FetchHttpClient.layer), request.signal)

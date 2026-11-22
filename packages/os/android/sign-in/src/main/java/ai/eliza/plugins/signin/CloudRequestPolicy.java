@@ -316,6 +316,7 @@ public final class CloudRequestPolicy {
       route(get, google("gmail", "triage"), key),
       route(get, google("gmail", "search"), key),
       route(get, google("gmail", "read"), key),
+      route(get, google("gmail", "inbox-v1", "arrival"), key),
       route(get, google("gmail", "inbox-v1", "capabilities"), key),
       route(get, google("gmail", "inbox-v1", "thread"), key),
       route(get, google("gmail", "inbox-v1", "attachment"), key),

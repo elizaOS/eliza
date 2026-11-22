@@ -113,10 +113,10 @@ export function sessionAccount(request: Request, db: Client): Promise<string | n
 effect function requestCredential(request: Request) {
   if (request.headers.has("authorization")) {
     const hash = try deviceDigest(request)
-    return hash ? { kind: "device", hash } : null
+    return hash ? { kind: "device", hash } as const : null
   }
   const hash = try accessDigest(request)
-  return hash ? { kind: "browser", hash } : null
+  return hash ? { kind: "browser", hash } as const : null
 }
 
 export function cloudCredential(request: Request) {

@@ -3,13 +3,13 @@ import { WorkerResponse, WorkerHeaders, withRequestBody, workerFetch, type Worke
 import type { Client } from "pg"
 import { withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
 import { sweepUsage } from "./worker-metering.vibe"
-import { identityRequest, nativeGooglePath, inferenceAccount, sessionAccount, type IdentityEnv } from "./identity.vibe"
+import { cloudCredential, identityRequest, nativeGooglePath, inferenceAccount, sessionAccount, type IdentityEnv } from "./identity.vibe"
 import { nativeAssetLinks } from "./native-registry.vibe"
 import { ownsPasswordBackupPath } from "./password-backup.vibe"
 export { nativeAssetLinks }
 export { SpeechRelayCoordinator } from "./speech-relay.vibe"
 import { speechRequest, speechRoute, speechWebSocket, type SpeechEnv } from "./speech.vibe"
-import { deviceAttachmentPath, googleRequest, reminderSchedule, type GoogleEnv } from "./google.vibe"
+import { deviceAttachmentPath, inboxArrivalPath, googleRequest, reminderSchedule, type GoogleEnv } from "./google.vibe"
 import { billingRequest, refreshPaidAccess, stripeWebhook, stripeWebhookRoute, sweepSubscriptions, type BillingEnv } from "./billing.vibe"
 import { CLEF_DECISIONS_PATH } from "./clef-decisions.vibe"
 import { clefRequest, type ClefEnv } from "./clef-worker.vibe"
@@ -47,6 +47,16 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
     const response = await googleRequest(withRequestBody(request, bytes), env, db, owner, providerFetch)
     if (response.ok && await inferenceAccount(request, db, env) !== owner) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
     return response
+  }
+  if (path === inboxArrivalPath) {
+    if (request.method !== "GET") return WorkerResponse.json({ error: "method_not_allowed" }, { status: 405 })
+    const owner = await inferenceAccount(request, db, env)
+    const credential = owner ? await cloudCredential(request) : null
+    if (!owner || !credential) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+    return googleRequest(request, env, db, owner, providerFetch, {
+      credential,
+      current: async () => await inferenceAccount(request, db, env) === owner,
+    })
   }
   const decisions = path === CLEF_DECISIONS_PATH
   const inference = path === "/api/v1/chat/completions" || path === "/api/v1/embeddings"

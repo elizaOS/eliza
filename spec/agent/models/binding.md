@@ -284,8 +284,9 @@ The runtime service `cloud` hands plugins the authenticated cloud client;
 no plugin reads the credential. A managed Gmail change needs
 `launch.google.gmailChanges`, a calendar edit `launch.google.calendarEdits`
 (a refusal is `changes-off`, before any cloud call); reads need only the
-link. No plugin, native module or managed-Google host is a precondition of
-a cloud backend.
+link for ordinary reads. The link refuses the private inbox arrival route
+before any cloud call. No plugin, native module or managed-Google host is a
+precondition of a cloud backend.
 
 ```quint
 type GoogleOperation = GmailChange | CalendarEdit | GoogleRead
@@ -295,4 +296,9 @@ pure val consentValues = Set({ gmailChanges: false, calendarEdits: false }, { gm
 pure def lawGoogleChangeNeedsConsent(backend: Backend, consent: GoogleConsent): bool =
   (googleAdmitted(backend, consent, GmailChange) implies consent.gmailChanges) and (googleAdmitted(backend, consent, CalendarEdit) implies consent.calendarEdits)
 pure def lawGoogleReadNeedsOnlyTheLink(backend: Backend, consent: GoogleConsent): bool = googleAdmitted(backend, consent, GoogleRead) iff isCloud(backend)
+pure val privateInboxArrivalPath = "/api/v1/eliza/google/gmail/inbox-v1/arrival"
+pure def pluginCloudPathAllowed(pathname: str): bool = pathname != privateInboxArrivalPath
+pure val pathnameValues = Set(privateInboxArrivalPath, "/api/v1/eliza/google/gmail/read")
+pure def lawPrivateInboxArrivalStaysOffThePluginLink(pathname: str): bool =
+  pathname == privateInboxArrivalPath implies not(pluginCloudPathAllowed(pathname))
 ```
