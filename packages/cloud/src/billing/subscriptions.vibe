@@ -15,8 +15,8 @@ import { readStripeSubscriptionFromCatalog, stripeClient } from "./stripe-observ
 
 export error ProviderSubscriptionInvalid { organizationId: string; problem: string }
 
-export const staleAfterMs = 300_000
-export const sweepEveryMs = 60_000
+const staleAfterMs = 300_000
+const sweepEveryMs = 60_000
 const sweepBatch = 25
 
 const wireStatus: Readonly<Record<SubscriptionStatus, string>> = {
