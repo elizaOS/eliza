@@ -75,14 +75,26 @@ effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknow
 }
 
 describe("WP0 Foundation", () => {
-  it.live("Refuse a profile that breaks a rule and a catalog the provider does not sell, then serve the public documents (spec/cloud/deployment.md, \"Story: Configure a deployment from one reviewed profile\"; spec/cloud/billing/plans.md, \"Story: Offer the paid plans as the provider sells them\")", () => scoped(effect {
-    const sharedOrigin = try failureTag(scoped(testCloud({
-      edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, api: profile.environments.production.api } } })
-    })))
-    const wrongPrice = try failureTag(scoped(testCloud({ prices: [{ ...catalogPrices[0], unitAmount: 2_999 }, catalogPrices[1]] })))
-    const liveModePrice = try failureTag(scoped(testCloud({ prices: catalogPrices.map((price) => ({ ...price, livemode: true })) })))
-    try check(() => assert.deepStrictEqual([sharedOrigin, wrongPrice, liveModePrice], ["ProfileInvalid", "CatalogMismatch", "CatalogMismatch"]))
+  const wrongPrices = [{ ...catalogPrices[0], unitAmount: 2_999 }, catalogPrices[1]]
 
+  it.live("Refuse a profile with the same API origin in staging and production (spec/cloud/deployment.md, \"Story: Configure a deployment from one reviewed profile\")", () => scoped(effect {
+    const sharedOrigin = try failureTag(testCloud({
+      edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, api: profile.environments.production.api } } })
+    }))
+    try check(() => assert.strictEqual(sharedOrigin, "ProfileInvalid"))
+  }))
+
+  it.live("Refuse a provider price that differs from the reviewed catalog (spec/cloud/billing/plans.md, \"Story: Offer the paid plans as the provider sells them\")", () => scoped(effect {
+    const wrongPrice = try failureTag(testCloud({ prices: wrongPrices }))
+    try check(() => assert.strictEqual(wrongPrice, "CatalogMismatch"))
+  }))
+
+  it.live("Refuse live provider prices in staging (spec/cloud/billing/plans.md, \"Story: Offer the paid plans as the provider sells them\")", () => scoped(effect {
+    const liveModePrice = try failureTag(testCloud({ prices: catalogPrices.map((price) => ({ ...price, livemode: true })) }))
+    try check(() => assert.strictEqual(liveModePrice, "CatalogMismatch"))
+  }))
+
+  it.live("Serve public documents and plans from the reviewed profile (spec/cloud/deployment.md, \"Story: Configure a deployment from one reviewed profile\"; spec/cloud/billing/plans.md, \"Story: Offer the paid plans as the provider sells them\")", () => scoped(effect {
     const cloud = try testCloud()
     const health = try cloud.call("/api/health", { headers: { "x-request-id": "journey-request-0001" } })
     const service = try cloud.call("/api/public/service")
@@ -185,7 +197,6 @@ describe("WP0 Foundation", () => {
   }))
 
   const withoutLoopback: ProfileEdit = (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, mail: profile.environments.production.mail, sms: { kind: "none" } } } })
-  const wrongPrices = [{ ...catalogPrices[0], unitAmount: 2_999 }, catalogPrices[1]]
 
   it.live("Refuse an unreadable or different deployment database before reading the catalog (spec/cloud/deployment.md, \"Story: Configure a deployment from one reviewed profile\")", () => scoped(effect {
     const productionDigest = "b".repeat(64)
