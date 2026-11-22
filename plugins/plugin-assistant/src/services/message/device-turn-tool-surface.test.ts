@@ -256,7 +256,7 @@ async function plannerTools(turn: {
   }
   return requests;
 }
-/** RESTORE_CONTEXT follows REPLY when the planner offers it; it is not part of the action surface. */
+/** RESTORE_CONTEXT is the planner's own tool, offered on every request; it is not part of the action surface. */
 const names = (tools: ToolDefinition[]) =>
   tools.map((tool) => tool.name).filter((name) => name !== "RESTORE_CONTEXT");
 
