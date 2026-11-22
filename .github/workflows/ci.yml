@@ -49,6 +49,28 @@ jobs:
         with:
           job: ${{ matrix.name }}
       - run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue --summarize
+      - name: Report Turbo task timings
+        if: ${{ !cancelled() }}
+        run: |
+          for report in .turbo/runs/*.json; do
+            [[ -f "$report" ]] || continue
+            jq -r '
+              select(.version == "1" and (.tasks | type == "array"))
+              | .execution as $run
+              | select([$run.startTime, $run.endTime, $run.cached, $run.attempted] | all(type == "number"))
+              | "### Turbo task timings", "",
+                "Wall time \(($run.endTime - $run.startTime) / 1000) s. Cache hits \($run.cached) of \($run.attempted) attempted tasks.",
+                "",
+                "| Task | Wall time (s) | Cache | Exit code |",
+                "| --- | ---: | --- | ---: |",
+                ([.tasks[]
+                  | select([.execution.startTime, .execution.endTime] | all(type == "number"))
+                  | {id: .taskId, elapsed: ((.execution.endTime - .execution.startTime) / 1000), cache: .cache.status, exit: .execution.exitCode}]
+                  | sort_by(-.elapsed) | .[]
+                  | "| \(.id) | \(.elapsed) | \(.cache // "-") | \(.exit // "-") |"),
+                ""
+            ' "$report" >> "$GITHUB_STEP_SUMMARY" || echo "::warning::Could not read the Turbo run summary"
+          done
       - if: always() && steps.setup.outputs.spec-cache-key != ''
         uses: actions/cache/save@v6
         with:
