@@ -3291,7 +3291,7 @@ describe("WP4 Subscriptions and entitlements: allowance", () => {
 module node {
   import { Effect, Schema } from "effect"
   import { SecureRandom } from "effect/crypto"
-  import { createCipheriv, createHash } from "node:crypto"
+  import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto"
   import { exportJWK, generateKeyPair, SignJWT } from "jose"
   import { CLEF_DECISIONS_PATH, createClefDecisionsClient, type ClefDecisionRequest } from "../src/clef-decisions.vibe"
   import { signInWithProof } from "../src/identity-store.vibe"
@@ -3511,11 +3511,35 @@ module node {
       const webHeaders = { origin: web, cookie: "__Host-eliza-session=" + owner.access }
       const webNoGrant = await arrival(webHeaders)
       const webBaseline = await decision(await arrival(webHeaders, undefined, true))
+      const beforeBaseline = Date.now()
       const baseline = await decision(await arrival(ownDevice))
+      const afterBaseline = Date.now()
       const cursor = baseline.body.cursor
       const emptyArrival = await decision(await arrival(ownDevice, cursor))
       mailArrived = true
       const freshArrival = await decision(await arrival(ownDevice, cursor))
+      const organization = (await fixture.db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1", [owner.account.id])).rows[0]?.organization_id
+      const callerHash = createHash("sha256").update(ownDevice.authorization.slice("Bearer ".length)).digest("hex")
+      const binding = Buffer.from(JSON.stringify(["cloud-google-inbox-arrival-v1", api, owner.account.id, organization, grant, "device", callerHash]))
+      const sealed = Buffer.from(cursor, "hex")
+      const open = createDecipheriv("aes-256-gcm", Buffer.from(key, "hex"), sealed.subarray(0, 12))
+      open.setAAD(binding)
+      open.setAuthTag(sealed.subarray(-16))
+      const claims = Schema.decodeUnknownSync(Schema.Struct({ historyId: Schema.String, expiresAt: Schema.Number }))(
+        JSON.parse(Buffer.concat([open.update(sealed.subarray(12, -16)), open.final()]).toString("utf8")),
+      )
+      const expiredNonce = randomBytes(12)
+      const expiredCipher = createCipheriv("aes-256-gcm", Buffer.from(key, "hex"), expiredNonce)
+      expiredCipher.setAAD(binding)
+      const expiredBody = expiredCipher.update(JSON.stringify({ ...claims, expiresAt: beforeBaseline - 1 }))
+      const expiredCursor = Buffer.concat([expiredNonce, expiredBody, expiredCipher.final(), expiredCipher.getAuthTag()]).toString("hex")
+      const beforeDenied = providerCalls.length
+      const elapsedWatch = await arrival(ownDevice, expiredCursor)
+      const differentGrant = "10213243-5465-7687-98a9-bacbdcedfe0f"
+      await fixture.db.query("UPDATE cloud_google_connections SET id = $1 WHERE account_id = $2", [differentGrant, owner.account.id])
+      const replacedGrant = await arrival(ownDevice, cursor)
+      await fixture.db.query("UPDATE cloud_google_connections SET id = $1 WHERE account_id = $2", [grant, owner.account.id])
+      const deniedBeforeProvider = providerCalls.length === beforeDenied
       const foreignArrival = await arrival(otherDevice, cursor, true)
       const replayAcrossCredentials = await arrival(webHeaders, cursor, true)
       const anonymousArrival = await arrival(undefined, cursor)
@@ -3536,6 +3560,8 @@ module node {
         baseline: [baseline.status, baseline.cache, baseline.body.arrived, !cursor.includes("10000000000000000001") && cursor.length > 20, webBaseline.status, webBaseline.body.arrived],
         polling: [emptyArrival.body.cursor === cursor, emptyArrival.body.arrived, freshArrival.body.cursor === cursor, freshArrival.body.arrived],
         denied: [webNoGrant, replayAcrossCredentials, foreignArrival, anonymousArrival, fabricatedArrival, expiredArrival, providerRevokedArrival, malformedHistory, deviceRevokedArrival].map(({ status }) => status),
+        timerAndGrant: [claims.expiresAt >= beforeBaseline + 300000 && claims.expiresAt <= afterBaseline + 300000,
+          elapsedWatch.status, replacedGrant.status, deniedBeforeProvider],
         requests: arrivalRequests,
         exposedOnlyHistory: providerCalls.every((call) => [
           "POST https://oauth2.googleapis.com/token",
@@ -3603,7 +3629,7 @@ module node {
       return {
         arrivalResult, mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
         refused, beforeDeviceRead, deviceStatus: onDevice.status, deviceReceipt, changed: changed.status, revoked: revoked.status,
-        organization: (await fixture.db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1", [owner.account.id])).rows[0]?.organization_id, grant, manifest, readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
+        organization, grant, manifest, readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
         cache: downloaded.headers.get("cache-control"), owner: owner.account.id, expectedHash: createHash("sha256").update(bytes).digest("hex"),
         expectedData: bytes.toString("base64"), size: bytes.length, rejectedRedirect: rejectedRedirect.status, providerRequestsValid, attachmentFetches,
       }
@@ -3643,6 +3669,7 @@ it.live('Open the selected named attachment and watch for new mail (spec/cloud/i
         polling: [true, false, true, true],
         denied: [400, 409, 409, 401, 409, 404, 409, 502, 401],
         exposedOnlyHistory: true,
+        timerAndGrant: [true, 409, 409, true],
         requests: [
           "/gmail/v1/users/me/profile?fields=historyId",
           "/gmail/v1/users/me/profile?fields=historyId",
