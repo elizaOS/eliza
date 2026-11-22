@@ -426,6 +426,57 @@ it.each([
     ],
     failureClaim(),
   ],
+  [
+    "a cited receipt-less failure superseded by a successful retry",
+    [
+      FAILED_NAVIGATION,
+      {
+        success: true,
+        text: "Opened Maps.",
+        data: { actionName: "OPEN_VIEW" },
+        effectReceipts: [appliedReceipt("view-open-retry")],
+      },
+    ],
+    failureClaim(),
+  ],
+  [
+    "a cited receipt-less failure followed by a bare successful retry",
+    [
+      FAILED_NAVIGATION,
+      {
+        success: true,
+        text: "Opened Maps.",
+        data: { actionName: "OPEN_VIEW" },
+      },
+    ],
+    failureClaim(),
+  ],
+  [
+    "a cited rejected receipt whose operation and resource a retry applied",
+    [
+      {
+        success: true,
+        text: "Opened Maps.",
+        data: { actionName: "OPEN_VIEW" },
+        effectReceipts: [appliedReceipt("view-open-retry")],
+      },
+      {
+        ...FAILED_NAVIGATION,
+        effectReceipts: [
+          {
+            ...receiptBase("view-open-rejected"),
+            outcome: "failed",
+            failure: {
+              code: "HTTP_409",
+              retryable: false,
+              acceptance: "rejected",
+            },
+          },
+        ],
+      },
+    ],
+    failureClaim({ failedResult: 2 }),
+  ],
 ] as [string, ActionResult[], RecoveredReplyClaim][])(
   "rejects a did-not-happen claim with %s",
   async (_label, results, claim) => {
@@ -444,6 +495,34 @@ it.each([
     expect(f.reviewPrompts).toHaveLength(2);
   },
 );
+
+it("delivers a failure report when only a different action succeeded later", async () => {
+  const f = fixture(
+    [{ response: HONEST_FAILURE }],
+    [{ grounded: true, claims: [failureClaim()] }],
+  );
+  await expect(
+    f.recover([
+      FAILED_NAVIGATION,
+      {
+        success: true,
+        text: "Read the view list.",
+        data: { actionName: "LIST_VIEWS" },
+      },
+    ]),
+  ).resolves.toEqual({ text: HONEST_FAILURE, effectReceiptIds: [] });
+});
+
+it("tells the reviewer a successful retry supersedes a failed attempt", async () => {
+  const f = fixture(
+    [{ response: HONEST_FAILURE }],
+    [{ grounded: true, claims: [failureClaim()] }],
+  );
+  await f.recover([FAILED_NAVIGATION]);
+  expect(f.reviewPrompts[0]).toContain(
+    "a later successful retry supersedes the failed attempt",
+  );
+});
 
 it("still degrades a false completion claim after a failed action", async () => {
   const done = "opened the map for you.";
