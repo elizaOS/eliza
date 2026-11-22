@@ -2,7 +2,7 @@
 import { Schema } from "effect";
 
 const text = (maximum: number) =>
-  Schema.String.check(Schema.isMaxLength(maximum), Schema.isPattern(/^[^\u0000-\u0008\u000b\u000c\u000e-\u001f]*\S[^\u0000-\u0008\u000b\u000c\u000e-\u001f]*$/));
+  Schema.String.check(Schema.isMaxLength(maximum), Schema.isPattern(/^[\t\n\r\u0020-\uffff]*\S[\t\n\r\u0020-\uffff]*$/));
 const between = (minimum: number, maximum: number) => Schema.Finite.check(Schema.isBetween({ minimum, maximum }));
 const int = (minimum: number, maximum: number) => Schema.Int.check(Schema.isBetween({ minimum, maximum }));
 const nonNegative = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
