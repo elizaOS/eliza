@@ -31,7 +31,7 @@ export interface StripeMutation extends StripeRead {
   readonly idempotencyKey: string
 }
 
-export const webhookTolerance = 300_000
+const webhookTolerance = 300_000
 
 export schema StripeCustomer { readonly id: string; readonly livemode: boolean; readonly metadata: Record<string, string> }
 
@@ -132,7 +132,6 @@ export schema StripeEvent {
   readonly data: { readonly object: Schema.Unknown }
 }
 
-export schema StripePortalSession { readonly id: string; readonly url: string }
 
 schema ErrorBody { readonly error: { readonly type: string; readonly code?: string | null; readonly decline_code?: string | null } }
 
@@ -253,7 +252,7 @@ function returnParams(returns: CheckoutReturns): Params {
   }
 }
 
-export function checkoutParams(terms: CheckoutTerms): Params {
+function checkoutParams(terms: CheckoutTerms): Params {
   const identity: Params = [["organizationId", terms.organizationId], ["commandId", terms.commandId]]
   return [
     ["mode", "subscription"],
@@ -290,7 +289,7 @@ export effect function retrieveCheckoutSession(sessionId: string, call: StripeRe
   return try read(StripeCheckoutSession, { method: "GET", path: `/v1/checkout/sessions/${id(sessionId)}`, params: [], timeout: call.timeout })
 }
 
-export effect function listCheckoutSessions(customerId: string, call: StripeRead): ReadonlyArray<StripeCheckoutSession>!StripeFailure!StripeContext {
+effect function listCheckoutSessions(customerId: string, call: StripeRead): ReadonlyArray<StripeCheckoutSession>!StripeFailure!StripeContext {
   return try everyPage(StripeCheckoutSession, "/v1/checkout/sessions", [["customer", customerId]], call.timeout)
 }
 
@@ -716,24 +715,6 @@ export effect function retrieveCharge(chargeId: string, call: StripeRead): Strip
   return try read(StripeCharge, { method: "GET", path: `/v1/charges/${id(chargeId)}`, params: [], timeout: call.timeout })
 }
 
-export interface PortalTerms {
-  readonly customerId: string
-  readonly returnUrl: string
-  readonly configurationId?: string
-}
-
-export effect function createPortalSession(terms: PortalTerms, mutation: StripeMutation): StripePortalSession!StripeFailure!StripeContext {
-  const path = "/v1/billing_portal/sessions"
-  const session = try read(StripePortalSession, {
-    method: "POST",
-    path,
-    ...mutation,
-    params: [["customer", terms.customerId], ["return_url", terms.returnUrl], ...(terms.configurationId === undefined ? [] : [["configuration", terms.configurationId] as const])]
-  })
-  if (!session.url.startsWith("https://")) throw new StripeInvalidResponse({ path, status: 200 })
-  return session
-}
-
 export function verifiedWebhookTime(raw: string, header: string, secret: string, now: number): number | undefined {
   const fields = header.split(",").map((field) => {
     const at = field.indexOf("=")
@@ -770,16 +751,4 @@ export effect function providerReply<A, R>(call: A!StripeFailure!R): ProviderRep
     onFailure: (failure): ProviderReply<A> => failureReply(failure),
     onSuccess: (value): ProviderReply<A> => ({ kind: "applied", value })
   })
-}
-
-export function lookupOf<A>(reply: ProviderReply<A | undefined>): ProviderReply<LookupResult> {
-  switch (reply.kind) {
-    case "applied": return { kind: "applied", value: reply.value === undefined ? { tag: "NothingSeen" } : { tag: "EffectSeen" } }
-    case "refused": return reply.code === "NotFoundAtProvider" ? { kind: "applied", value: { tag: "RefusalSeen", cause: "NotFoundAtProvider" } } : { kind: "unknown", cause: reply.code }
-    case "unknown": return reply
-    default: {
-      const _exhaustive: never = reply
-      return _exhaustive
-    }
-  }
 }

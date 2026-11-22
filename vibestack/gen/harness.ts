@@ -203,6 +203,7 @@ export function harness(
       ...sampled.map(lawAction),
       ...evals.map((v) => evalAction(v)),
       `  action step = ${settled(any(events))}`,
+      // Half events, half evaluations, so that definitions are evaluated on states well into a trace and not just near its start.
       `  action probe = ${settled(events.length && evals.length ? `any { ${any(events)}, ${any(evals.map((v) => `eval_${v.name}`))} }` : any([...events, ...evals.map((v) => `eval_${v.name}`)]))}`,
     ]),
     `  val inv = ${opaques.length ? "not(settled) or " : ""}and { lawsHold, ${[...(refines ? ["refined"] : []), ...always.map((a) => `M::${a}(state)`), ...steps.map((r) => `(not(moved) or M::${r.name}(prev, ${r.via ? "last, " : ""}state${r.out ? ", emitted" : ""}))`), "true"].join(", ")} }`,
@@ -218,7 +219,7 @@ export function harness(
     ]),
   ];
   const targets = new Set(transitions.map((t) => t.guard));
-  const focused = witnesses ? [] : evals.filter((v) => targets.has(v.name)).flatMap((v) => [
+  const focused = (witnesses ? [] : evals).filter((v) => targets.has(v.name)).flatMap((v) => [
     evalAction(v, true),
     `  action ${positiveGuardProbe(v.name)} = ${settled(any(["step", positiveGuardEvaluation(v.name)]))}`,
   ]);

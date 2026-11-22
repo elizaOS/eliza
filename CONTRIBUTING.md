@@ -164,6 +164,15 @@ so three at once ask about three times what one does: on a machine too small for
 `pnpm selftest --concurrency=1` runs one shard at a time. What a change to the
 tools owes it, and the sync skill, is in [AGENTS.md, "Definition of done"](AGENTS.md#definition-of-done).
 
+For phase timings, subscribe to the Node diagnostics channel `vibestack:check:phase` before running `spec check`.
+Each message has `root`, `checkStartedAt` (Unix milliseconds), `phase`, `event` (`start` or `end`) and
+`elapsedMs` (milliseconds measured by a monotonic clock since the check acquired its project lock). Phases
+can overlap. The simulation end records when the last simulation settled. Its message can arrive later,
+once generation has scheduled every simulation. An ordinary exception closes open phases as the check
+unwinds. If the process is interrupted, only events already delivered are available. The check's results
+and exit code still come from its normal output. Keep subscribers' output outside the project and catch
+errors in subscribers, since Node reports a thrown subscriber error as an uncaught exception.
+
 ## Releasing
 
 Set `version` in the root `package.json`, merge to `vibestack`, and push the tag `vibestack-v<version>` from it.

@@ -184,11 +184,13 @@ pure def alwaysNoSpeechDuringCall(s: SpeechOutput): bool = s.mode == CallAudio i
 ### The first write of an utterance is reported once, and no other write is
 
 The report is made as the first sample is handed to the output, before the
-write, so the time to first audio is measured from the write.
+write, so the time to first audio is measured from the write. A speaking
+reply keeps the positive utterance ID that admitted it.
 
 ```quint
 pure def writtenOf(speech: Speech): int = match speech { | Speaking(u) => u.written | _ => -1 }
 pure def speakingId(speech: Speech): int = match speech { | Speaking(u) => u.utteranceId | _ => 0 }
+pure def alwaysSpeakingHasPositiveUtteranceId(s: SpeechOutput): bool = isSilent(s.speech) or speakingId(s.speech) > 0
 pure def canWriteSpeech(s: SpeechOutput): bool = not(isSilent(s.speech))
 pure def writeSpeech(s: SpeechOutput): OutputStep = {
   val speech = s.speech

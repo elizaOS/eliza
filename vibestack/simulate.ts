@@ -133,6 +133,7 @@ function compiled(harness: Harness): Promise<Record<string, Input> | undefined> 
 export async function simulate(harness: Harness, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1, sampleLimit = samples): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
   const { memory, model, files, main = `${model.name}.run.qnt` } = harness;
   const dir = `${SIMULATIONS}/${model.name}.${invariant}.${step}`;
+  const witness = main === witnessFile(model.name);
   const parts = await compiled(harness);
   const needed = [TABLE, ...["init", step, invariant].map(compiledAs)];
   const direct = parts && needed.every((f) => Object.hasOwn(parts, f)) ? Object.fromEntries(needed.map((f) => [f, parts[f]])) : undefined;
@@ -151,7 +152,7 @@ export async function simulate(harness: Harness, invariant: string, traces: numb
     const again = `seed ${derivedSeed}; to simulate again: pnpm exec quint run gen/${main} ${args.join(" ")}`;
     // Anything other than "held" or "violated", each with a trace, is Quint failing to run.
     if ((!r.ok && !broken) || !written.length) throw new Error(`quint run did not complete (${again}):\n${r.out.trim()}`);
-    return { broken, traces: written.map((f) => readTrace(r.files[f], model, main === witnessFile(model.name))).filter((t) => t.length), again };
+    return { broken, traces: written.map((f) => readTrace(r.files[f], model, witness)).filter((t) => t.length), again };
   });
   // Every run finishes before anything is said, so that none is left writing into gen/.
   const done = await allDone(runs);
