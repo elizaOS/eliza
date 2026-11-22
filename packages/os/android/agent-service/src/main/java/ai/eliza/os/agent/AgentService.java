@@ -77,6 +77,7 @@ public class AgentService extends Service {
   private static final Pattern VARIABLE = Pattern.compile("[A-Z][A-Z0-9_]*");
   private static final Pattern RESERVED = Pattern.compile("(ELIZA_AGENT_|ELIZA_CLOUD_|ELIZA_OWN_|LD_|NODE_).*|PATH|HOME|TMPDIR");
   private static final Object LOCK = new Object();
+  private static final Object EPOCH_LOCK = new Object();
   private static final AgentChannel CHANNEL = new AgentChannel(new ChannelPolicy(), AgentSocketClient.android());
   private static final Set<Runnable> observers = new CopyOnWriteArraySet<>();
   private static final Set<Runnable> readyObservers = new CopyOnWriteArraySet<>();
@@ -99,7 +100,6 @@ public class AgentService extends Service {
   private final RecoveryArchive recoveryArchive = new RecoveryArchive();
   private final List<ScheduledFuture<?>> timers = new ArrayList<>();
   private volatile AgentPolicy policy = new AgentPolicy(null, null);
-  private volatile long base;
   private int appliedStartId;
   private boolean foreground;
   private String initFailure;
@@ -172,7 +172,7 @@ public class AgentService extends Service {
     AgentPolicy.Status status = service == null ? new AgentPolicy(null, null).status(REQUEST_BODY_LIMIT) : service.policy.status(REQUEST_BODY_LIMIT);
     try {
       JSONObject out = new JSONObject().put("available", status.available()).put("state", status.state())
-        .put("epoch", status.epoch() == 0 ? 0 : service.base + status.epoch()).put("requestBodyLimit", status.requestBodyLimit());
+        .put("epoch", status.epoch()).put("requestBodyLimit", status.requestBodyLimit());
       if (status.failure() != null) out.put("failure", status.failure());
       if (status.error() != null) out.put("error", status.error());
       return out;
@@ -296,21 +296,24 @@ public class AgentService extends Service {
     }
     synchronized (LOCK) {
       AgentCredentials.Active active = null;
-      AgentPolicy.UpdateTarget held = null;
-      try {
-        directories = new AgentDirectories(getFilesDir().toPath(), AndroidRuntimeDirectories::syncRuntimeDirectory);
-        journal = new ChildJournal(directories.journal(), new AndroidChildProcesses(), directories.sync());
-        hold = UpdateHold.of(this);
-        base = journal.lastEpoch();
-        held = hold.held();
-      } catch (IOException | RuntimeException unreadable) {
-        initFailure = "The agent's private storage could not be read: " + unreadable.getMessage();
-        Log.e(TAG, initFailure, unreadable);
-      }
       try { active = credentials().current(); }
       catch (Exception unreadable) { Log.w(TAG, "The device credential could not be read", unreadable); }
-      policy = new AgentPolicy(active == null ? null : remember(active.account()), held);
-      live = this;
+      synchronized (EPOCH_LOCK) {
+        AgentPolicy.UpdateTarget held = null;
+        ChildJournal.LaunchState launch = new ChildJournal.LaunchState(0, 0);
+        try {
+          directories = new AgentDirectories(getFilesDir().toPath(), AndroidRuntimeDirectories::syncRuntimeDirectory);
+          journal = new ChildJournal(directories.journal(), new AndroidChildProcesses(), directories.sync());
+          hold = UpdateHold.of(this);
+          launch = journal.restoreLaunch();
+          held = hold.held();
+        } catch (IOException | RuntimeException unreadable) {
+          initFailure = "The agent's private storage could not be read: " + unreadable.getMessage();
+          Log.e(TAG, initFailure, unreadable);
+        }
+        policy = new AgentPolicy(active == null ? null : remember(active.account()), held, launch.epoch(), launch.staleEpoch(), this::reserveLaunch);
+        live = this;
+      }
     }
     later(() -> settled(this::syncCredential));
     changed();
@@ -331,7 +334,9 @@ public class AgentService extends Service {
   }
 
   @Override public void onDestroy() {
-    synchronized (LOCK) { if (live == this) live = null; }
+    synchronized (LOCK) {
+      synchronized (EPOCH_LOCK) { if (live == this) live = null; }
+    }
     later(() -> {
       cancelTimers();
       if (child != null) {
@@ -447,6 +452,14 @@ public class AgentService extends Service {
     return publish(policy.step(event));
   }
 
+  private void reserveLaunch(long epoch) throws IOException {
+    synchronized (EPOCH_LOCK) {
+      if (live != this) throw new IOException("The agent service has ended");
+      if (initFailure != null) throw new IOException(initFailure);
+      journal.reserveLaunch(epoch);
+    }
+  }
+
   private AgentPolicy.Step publish(AgentPolicy.Step step) {
     if (!step.accepted()) return step;
     for (Effect effect : step.effects()) carryOut(effect);
@@ -459,7 +472,7 @@ public class AgentService extends Service {
     else if (effect instanceof AgentPolicy.Kill kill) {
       cancelTimers();
       AgentSupervisor.Child target = child;
-      if (target != null && target.epoch == base + kill.epoch()) work.execute(target::stop);
+      if (target != null && target.epoch == kill.epoch()) work.execute(target::stop);
     } else if (effect instanceof AgentPolicy.PushCredential push) push(push);
     else if (effect instanceof AgentPolicy.RecoveryReview recovery) {
       if (review != null) {
@@ -471,9 +484,9 @@ public class AgentService extends Service {
 
   private void check(AgentPolicy.Check check) {
     AgentPolicy.State state = policy.state();
-    if (state.phase() != Phase.CHECKING || state.epoch() != check.epoch()) return;
-    long epoch = base + check.epoch();
-    if (state.staleEpoch() != 0 && owns(base + state.staleEpoch())) {
+    if (live != this || state.phase() != Phase.CHECKING || state.epoch() != check.epoch()) return;
+    long epoch = check.epoch();
+    if (state.staleEpoch() != 0 && owns(state.staleEpoch())) {
       checkAfterReap = check;
       return;
     }
@@ -522,7 +535,7 @@ public class AgentService extends Service {
       return;
     }
     sync(active);
-    if (policy.state().phase() != Phase.CHECKING || policy.state().epoch() != check.epoch()) return;
+    if (live != this || policy.state().phase() != Phase.CHECKING || policy.state().epoch() != check.epoch()) return;
     Map<String, String> variables = new LinkedHashMap<>();
     String document = null;
     String refusal = null;
@@ -549,13 +562,16 @@ public class AgentService extends Service {
       byte[] frame = LaunchFrame.first(launchToken, epoch, LaunchFrame.Credential.of(active), storageKey).encode();
       AgentSupervisor.Command command = new AgentSupervisor.Command(prepared.node(), prepared.bundleDir(), launch, stateDir, agentSocket,
         directories.runtime().resolve("agent.log"));
-      spawned = AgentSupervisor.spawn(epoch, command, frame, (spawnedEpoch, pid) -> journal.record(Math.toIntExact(pid), spawnedEpoch),
-        readyEpoch -> HealthPolicy.classify(probe(agentSocket, launchToken, () -> true), readyEpoch) == HealthPolicy.Probe.OK,
-        new AgentSupervisor.Listener() {
-          @Override public void ready(long readyEpoch) { later(() -> settled(() -> ready(readyEpoch))); }
-          @Override public void readinessTimedOut(long timedOut) { later(() -> settled(() -> { if (owns(timedOut)) step(new AgentPolicy.ReadyTimeout()); })); }
-          @Override public void exited(long exitedEpoch, int code) { later(() -> settled(() -> exited(exitedEpoch, code))); }
-        });
+      synchronized (EPOCH_LOCK) {
+        if (live != this) return;
+        spawned = AgentSupervisor.spawn(epoch, command, frame, (spawnedEpoch, pid) -> journal.record(Math.toIntExact(pid), spawnedEpoch),
+          readyEpoch -> HealthPolicy.classify(probe(agentSocket, launchToken, () -> true), readyEpoch) == HealthPolicy.Probe.OK,
+          new AgentSupervisor.Listener() {
+            @Override public void ready(long readyEpoch) { later(() -> settled(() -> ready(readyEpoch))); }
+            @Override public void readinessTimedOut(long timedOut) { later(() -> settled(() -> { if (owns(timedOut)) step(new AgentPolicy.ReadyTimeout()); })); }
+            @Override public void exited(long exitedEpoch, int code) { later(() -> settled(() -> exited(exitedEpoch, code))); }
+          });
+      }
       socket = agentSocket;
     } catch (IOException | RuntimeException failed) {
       step(new AgentPolicy.SpawnFailed("The agent could not be started: " + failed.getMessage()));
@@ -571,7 +587,7 @@ public class AgentService extends Service {
   private void ready(long launchEpoch) {
     if (!owns(launchEpoch) || policy.state().phase() != Phase.SPAWNED) return;
     CHANNEL.open(launchEpoch, token, socket);
-    if (!step(new AgentPolicy.ObserveReady(launchEpoch - base)).accepted()) {
+    if (!step(new AgentPolicy.ObserveReady(launchEpoch)).accepted()) {
       CHANNEL.retire(launchEpoch);
       return;
     }
@@ -588,10 +604,9 @@ public class AgentService extends Service {
     token = null;
     cancelTimers();
     CHANNEL.retire(launchEpoch);
-    long relativeEpoch = launchEpoch - base;
-    boolean stale = policy.state().staleEpoch() == relativeEpoch;
+    boolean stale = policy.state().staleEpoch() == launchEpoch;
     try {
-      if (stale) clearStaleChild(relativeEpoch);
+      if (stale) clearStaleChild(launchEpoch);
       else journal.clear(launchEpoch);
     }
     catch (IOException failed) { Log.e(TAG, "The agent child journal could not be cleared", failed); }
@@ -607,7 +622,7 @@ public class AgentService extends Service {
   private void clearStaleChild(long epoch) throws IOException {
     if (journal.observe() instanceof ChildJournal.Journaled observed && observed.alive())
       throw new IOException("The journaled agent child is still running");
-    journal.clear(base + epoch);
+    journal.clear(epoch);
     step(new AgentPolicy.StaleChildReaped(epoch));
   }
 
@@ -740,7 +755,7 @@ public class AgentService extends Service {
     int count;
     try {
       count = recoveryArchive.archive(recoveryAccount(archive.account()), directories, retained(archive.account()),
-        base + archive.token().epoch(), System.currentTimeMillis());
+        archive.token().epoch(), System.currentTimeMillis());
     } catch (IOException | RuntimeException failed) {
       Log.e(TAG, "The agent's records could not be moved aside", failed);
       step(new AgentPolicy.ArchiveFinished(archive.token(), false));
@@ -752,7 +767,7 @@ public class AgentService extends Service {
   private void hold(AgentPolicy.UpdateTarget target) throws IOException {
     if (hold == null) throw new IOException("The update hold storage could not be opened");
     AgentPolicy.State state = policy.state();
-    if (state.staleEpoch() != 0 && !owns(base + state.staleEpoch())) clearStaleChild(state.staleEpoch());
+    if (state.staleEpoch() != 0 && !owns(state.staleEpoch())) clearStaleChild(state.staleEpoch());
     try {
       if (publish(hold.acquire(policy, journal, target)).accepted()) {
         pendingHold = null;
