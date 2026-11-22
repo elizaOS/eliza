@@ -325,6 +325,9 @@ importers:
       '@electric-sql/pglite':
         specifier: 'catalog:'
         version: 0.4.6
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -362,9 +365,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
-      '@types/pg':
-        specifier: ^8.23.1
-        version: 8.23.1
       '@types/react':
         specifier: 'catalog:'
         version: 19.3.0
