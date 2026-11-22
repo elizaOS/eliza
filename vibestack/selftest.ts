@@ -722,6 +722,29 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.equal(result.traces[0]?.at(-1)?.state, 38);
   });
 
+  test("simulation and probes preserve guarded transitions and outputs when only the state enables an event", async () => {
+    const root = oneRule("counter", "Open and commit", `type Change = { state: int, out: List[str] }
+pure val initial: int = 0
+pure def canOpen(n: int): bool = n == 0
+pure def open(n: int, label: bool): Change = { state: 1, out: List(if (label) "yes" else "no") }
+pure def canCommit(n: int, approved: bool): bool = n == 1 and approved
+pure def commit(n: int, approved: bool): Change = if (approved) { state: 2, out: List("saved") } else { state: 3, out: List("wrong") }
+pure def alwaysValid(n: int): bool = n <= 2`);
+    const spec = readSpecs(root)[0];
+    const model = await gen(root, spec);
+    const domain = await import(pathToFileURL(path.join(root, "gen", "counter.ts")).href);
+    const harness = { memory: { root, fresh: true, used: new Set<string>() }, model, files: harnessFiles(spec, [spec], model) };
+    const [safety, probe] = await Promise.all(["step", "probe"].map((step) => simulate(harness, "inv", 64, 64, step)));
+    assert.equal(safety.broken, false);
+    assert.equal(probe.broken, false);
+    for (const trace of [...safety.traces, ...probe.traces]) replay(domain, trace, model);
+    const emitted = safety.traces.flat().flatMap((step) => step.out ?? []);
+    assert.deepEqual(new Set(emitted), new Set(["yes", "no", "saved"]));
+    const commits = probe.traces.flat().flatMap(({ evaluated }) => evaluated?.name === "commit" ? [{ picks: evaluated.picks, result: evaluated.result }] : []);
+    assert.ok(commits.length > 0);
+    assert.ok(commits.every(({ picks, result }) => picks.approved === true && JSON.stringify(result) === '{"state":2,"out":["saved"]}'));
+  });
+
   test("a concrete witness uses the original guards and rules and supplies its steps to replay", async () => {
     const modelSource = `pure val initial: int = 0
 pure def publish(n: int, amount: int): int = amount

@@ -121,6 +121,10 @@ export function harness(
   /** An action body: the given conditions and assignments, with every other variable left as it is. */
   const frame = (conditions: string[], set: Record<string, string>) =>
     `all { ${[...conditions, ...vars.map((v) => `${v}' = ${set[v] ?? v}`)].join(", ")} }`;
+  const guarded = (params: Param[], name: string, guard: string | undefined, stateOnly: boolean, set: Record<string, string>) => {
+    if (guard && stateOnly && params.length) return `all { ${guard}, ${braces(params, name, frame([], set))} }`;
+    return braces(params, name, frame(guard ? [guard] : [], set));
+  };
   const call = (fn: string, params: string[], from = "state") => `M::${fn}(${[from, ...params].join(", ")})`;
   /** The step from `state` to `after` leaves the abstract state as it was, or is the abstract step of its name (SPEC.md, "Refinement"; gen/typescript.ts). */
   const refined = (t: Transition, after: string) => {
@@ -139,12 +143,14 @@ export function harness(
     const params = sentBy(t);
     const result = call(t.name, t.params.map((p) => p.name));
     const after = t.emits ? `${result}.state` : result;
-    const body = frame(t.guard ? [call(t.guard, t.guardParams)] : [], {
+    const guard = t.guard && call(t.guard, t.guardParams);
+    const changes = {
       state: after, emitted: t.emits ? `${result}.out` : "List()", refined: refines ? refined(t, after) : "",
       prev: "state", moved: "true", last: JSON.stringify(t.name), fairEnabled: `fairOn(${after})`,
-      ...(guide ? { [WITNESS_INDEX]: String(guide.index + 1) } : {}),
-    });
-    if (!guide || !params.length) return braces(params, t.name, body);
+    };
+    if (!guide) return guarded(params, t.name, guard, !t.guardParams.length, changes);
+    const body = frame(guard ? [guard] : [], { ...changes, [WITNESS_INDEX]: String(guide.index + 1) });
+    if (!params.length) return body;
     return `{ ${params.map((p, i) => `nondet ${p.name} = Set(${i >= t.params.length ? `${WITNESS_SENDER}(${guide.args[i]})` : guide.args[i]}).oneOf()`).join(" ")} ${body} }`;
   };
 
@@ -167,8 +173,8 @@ export function harness(
     // A law evaluated on a reachable state must hold there too: a false result breaks `inv`, as a picked one does.
     const result = `M::${v.name}(${args})`;
     const law: Record<string, string> = laws.some((l) => l.name === v.name) ? { lawsHold: result } : {};
-    const guard = transition ? [call(transition.guard!, transition.guardParams.map((name) => argument(v.params.find((p) => p.name === name)!)), argument(v.params[0]))] : [];
-    return `  action eval_${v.name} = ${braces(v.params.filter((p) => p.from === "pick"), v.name, frame(guard, { outcome: `Out_${v.name}(${result})`, ...law }))}`;
+    const guard = transition && call(transition.guard!, transition.guardParams.map((name) => argument(v.params.find((p) => p.name === name)!)), argument(v.params[0]));
+    return `  action eval_${v.name} = ${guarded(v.params.filter((p) => p.from === "pick"), v.name, guard, !transition?.guardParams.length, { outcome: `Out_${v.name}(${result})`, ...law })}`;
   };
   // An event of weight n is offered n times, so the simulator, which tries what it is offered in random order, picks it n times as often.
   const events = [...transitions.flatMap((t) => Array(weights.get(t.name) ?? 1).fill(t.name)), ...sampled.map((l) => l.name)];
