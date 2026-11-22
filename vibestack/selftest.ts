@@ -4110,6 +4110,13 @@ test("the lint refuses, in a project's own code, a comment that is neither a cit
   const hiding = [["useEffect(() => {}, []); // eslint-disable-line"], ["/* eslint-disable */", "// a note"], ["/* eslint-disable code/comments, code/effects -- it must */", "setTimeout(() => {}, 1);"], ["/* eslint code/comments: off, no-console: off */", `console.log("seen");`], ["// eslint-disable-next-line no-console -- it must", `console.log("seen");`]];
   assert.deepEqual(await Promise.all(hiding.map((lines) => found("apps/app/src/probe.vibe", lines))), hiding.map(() => ["1 inline config"]));
   assert.deepEqual(await found("packages/ui/src/components/probe.vibe", ["/** What a component takes, which the stories generator reads. */", "export function Probe() {", "  /** inside it */", "  return 1;", "}", "// a note"]), ["3 code/comments", "6 code/comments"]);
+  const consoleLines = (count: number) => Array.from({ length: count }, () => 'console.warn("seen");');
+  const logger = "packages/core/src/logger.vibe";
+  assert.deepEqual(await found(logger, consoleLines(3)), []);
+  assert.deepEqual(await found(logger, consoleLines(4)), ["1 code/console", "2 code/console", "3 code/console", "4 code/console"]);
+  const message = async (file: string) => (await eslint.lintText(consoleLines(4).join("\n"), { filePath: path.join(project, file) }))[0]!.messages
+    .filter((m) => m.ruleId === "no-console" || m.ruleId === "code/console").map((m) => m.message);
+  assert.deepEqual(await message(logger), await message("apps/app/src/probe.vibe"));
   const { default: config } = await import(path.join(project, "eslint.config.js"));
   const [file, left] = Object.entries(config.find((block: { rules?: Record<string, unknown> }) => block.rules?.["code/comments"]).rules["code/comments"][1].left as Record<string, number>).find(([file]) => file.endsWith(".vibe"))!;
   const notes = (n: number) => Array.from({ length: n }, () => "// a note");
