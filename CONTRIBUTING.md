@@ -110,6 +110,8 @@ files and the `vibestack/fixtures/` they read, besides the tools every task is k
 `check` rewrites its owners' `gen/` too, so it waits for their tasks: name each owner's in `//#check` of `turbo.json`,
 as `@elizaos/core`'s are. `pnpm lint:js` on its own needs what `gen` and `typecheck` write (`gen/`, `.vibe/declarations`);
 `pnpm lint` runs them first.
+`pnpm all //#analyze` also runs or restores the application and Studio generators,
+the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
