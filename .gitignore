@@ -24,6 +24,7 @@ generated/
 storybook-static/
 .vibe/
 *.d.vibe.ts
+packages/*/src/**/*.d.ts
 .vibelang-sidecar-*
 build/
 !spec/**/build/

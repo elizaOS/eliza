@@ -29,7 +29,19 @@ needs a live binding and its scope: the exact task context, a deadline
 command has none) still ahead, the page's current origin among the
 binding's, and a reviewed target when the command names one. Finally the
 named page must still be the selected one, or the request is stale.
-Commands run one at a time.
+Commands run one at a time. A verification-code fill reaches a single box
+the page marks for a one-time code. With a commit grant for that fill it
+also reaches a box whose words or the text just before it name a code, or
+the group the named box starts: the only run of one-character boxes in its
+form (or among the controls in no form) and its document, one box per
+character, each a reviewed target, empty, enabled and unchanged since the
+snapshot, and named a code by the first box's words, the group's name or the
+text just before it. A box that takes one character is reached only in such
+a group, also when the page marks it. Never a card, PIN, password, bank or ID
+box, a box or group whose words, name or nearby text name one of those or a
+postal, area, promo, coupon, gift, referral, discount, voucher or invitation
+code, marked or not, and never a box or group in a form that asks for a card
+or a bank account.
 
 ```quint
 import address.* from "./address"
@@ -98,7 +110,11 @@ A click, fill or select that commits something the person approved carries
 a grant the task host issued for this task, epoch, origin, reviewed
 control and value. The peer spends it at admission, after the scope and
 before the page check; a grant already spent, or one that does not match,
-is refused. The page itself refuses to press a commit control without the
+is refused. In the WebView the page's own channel is that peer: it spends a
+grant once for the life of its document and admits a fill or select only
+when the text hashes to the grant's value hash. The page itself refuses to
+press a commit control (a submit button, or a control whose words commit,
+such as pay, confirm, send, sign in, sign on, log in or log on) without the
 grant it carries, which the peer reports as `Unknown`.
 
 ```quint
@@ -166,8 +182,26 @@ pure val weight_settleBinding = 4
 A snapshot drops the page's old observation before the native read, and
 keeps the new one only while the same binding is live and native returned
 a complete main-frame result for the scoped origin; each node is then
-named by snapshot, main frame and node. Dispatching an input consumes the
-observation, so the next input needs a new read.
+named by snapshot, main frame and node. The main frame's read covers its
+document, the open shadow roots in it and the frames on its own origin that
+the page shows, with the same rules: private boxes marked, no values,
+blockers found in every part read, and a change in any part read makes the
+observation stale. A closed shadow root, a frame on another origin and a
+frame the page does not show (no size, hidden, or wholly outside the page)
+are never read or watched; such a frame is listed as unread, with the
+reason. A click, fill, select or verification-code fill reaches a control in
+a frame read by the same rules as one in the document; a follow inside a
+frame is refused. A
+control that would send its form says where (`sends`: the http(s) origin,
+the method and whether it opens another window, the page's base target
+included), and a form's field says where Enter would send it, or nothing
+when Enter would not submit it. The hint describes only the browser's own
+form submission, never a request a page script sends; it names no path or
+query, and it is never authority to act. Each blocker the read reports says
+whether it is a layer over the page (a modal dialog, or it or a box it sits
+in is positioned fixed, absolute or sticky, other than the site's own
+full-page frame) or part of the page itself (`overlay`). Dispatching an input
+consumes the observation, so the next input needs a new read.
 
 ```quint
 pure def canSettleRead(s: SurfaceReceiver): bool = s.phase == ReceiverReading
@@ -225,7 +259,13 @@ The input is `Dispatched` only with the same live binding, a current
 guidance ticket and document, native confirming the dispatch and guidance
 cleanup confirmed. With no native return, a changed binding or a failed
 cleanup after input it is `Unknown`, never an error the task host could
-retry.
+retry. The next read says once whether a fill took (for a code, within
+fifteen minutes, and for those fifteen minutes later reads hide the code
+wherever the page shows it): every box shows exactly what was written. A
+box that shows the digits typed alone (2 to 32) in the same order with only
+spaces, dashes, brackets or slashes added takes them as written, marked
+formatted; a dot or comma, a plus, a placeholder, a lost or extra digit,
+marks that were typed, a code box and every private box never do.
 
 ```quint
 pure def canSettleInput(s: SurfaceReceiver): bool = s.phase == ReceiverSending
