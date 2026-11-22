@@ -139,7 +139,7 @@ export interface LauncherDescriptor {
   readonly companions?: readonly CompanionDescriptor[]
 }
 
-export interface NativeEntry {
+interface NativeEntry {
   readonly library: NativeLibrary
   readonly entry: string
   readonly data: Uint8Array
@@ -152,7 +152,7 @@ export interface NativeOverlay {
   readonly libraries: readonly { readonly name: string; readonly sha256: string }[]
 }
 
-export interface NativeRecord {
+interface NativeRecord {
   readonly apkEntry: string
   readonly path: string
   readonly installPath: string
@@ -160,7 +160,7 @@ export interface NativeRecord {
   readonly sha256: string
 }
 
-export interface SoongPatchReceipt {
+interface SoongPatchReceipt {
   readonly name: "soong-app-native"
   readonly project: string
   readonly revision: string
@@ -186,13 +186,13 @@ export interface StageOptions {
   readonly env?: Environment
 }
 
-export interface StagedLauncher {
+interface StagedLauncher {
   readonly output: string
   readonly provisioning: ProvisioningAdmitted | null
   readonly evidence: StagingEvidence
 }
 
-export interface LauncherRecord {
+interface LauncherRecord {
   readonly descriptor: LauncherDescriptor
   readonly development: boolean
   readonly evidence: StagingEvidence
@@ -422,7 +422,7 @@ effect function packageRoot() {
   return directory
 }
 
-export effect function soongPatchReceipt() {
+effect function soongPatchReceipt() {
   const files = try FileSystem.FileSystem
   const path = try Path.Path
   const root = try packageRoot()
