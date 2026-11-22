@@ -3,29 +3,18 @@ import { assert, it } from "@effect/vitest"
 
 module node {
   import { execFileSync } from "node:child_process"
-  import { existsSync, readdirSync } from "node:fs"
-  import { homedir } from "node:os"
   import path from "node:path"
-  import { compileAdapter } from "./drivers/jvm-adapter.ts"
+  import { orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts"
 
   export type Check =
     | "TrashDeleteRequestTest" | "PermittedMediaTest" | "PhotoCropTest" | "SelectedDocumentsTest" | "PhotoLibraryAccessTest"
     | "OwnedMediaTest" | "RecordingStoreTest" | "FolderSessionTest" | "DocumentExportTest" | "OwnedCapturesTest"
 
-  const ORG_JSON = path.join(homedir(), ".gradle", "caches", "modules-2", "files-2.1", "org.json", "json", "20250517")
   const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
-
-  function orgJson(): string {
-    const jar = existsSync(ORG_JSON)
-      ? readdirSync(ORG_JSON).map((hash) => path.join(ORG_JSON, hash, "json-20250517.jar")).find((candidate) => existsSync(candidate))
-      : undefined
-    if (jar === undefined) throw new Error(`org.json 20250517 is required at runtime: resolve it once with Gradle into ${ORG_JSON}`)
-    return jar
-  }
 
   export async function passed(check: Check): Promise<number> {
     const main = `ai.eliza.plugins.media.${check}`
-    const answer = execFileSync(java, ["-cp", [compileAdapter(main), orgJson()].join(path.delimiter), main], { encoding: "utf8", timeout: 120_000 })
+    const answer = execFileSync(java, ["-cp", await orgJsonAdapterClasspath(main), main], { encoding: "utf8", timeout: 120_000 })
     const count = /^(\d+) [\w ]*passed|checks: (\d+)/m.exec(answer)
     if (count === null) throw new Error(`${check} reported no passed checks: ${answer}`)
     return Number(count[1] ?? count[2])

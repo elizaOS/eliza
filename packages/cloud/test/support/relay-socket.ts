@@ -8,6 +8,7 @@ export type Received =
 
 export interface RelaySocket {
   send(frame: Readonly<Record<string, unknown>> | Uint8Array): void;
+  close(): void;
   next(): Promise<Received>;
   until(done: (received: Received) => boolean): Promise<ReadonlyArray<Received>>;
 }
@@ -18,6 +19,7 @@ export function openRelay(base: string, sessionId: string): Promise<RelaySocket>
   socket.binaryType = "arraybuffer";
   const arrived: Received[] = [];
   const waiting: Array<(received: Received) => void> = [];
+  let terminal: Extract<Received, { readonly kind: "close" }> | undefined;
   const deliver = (received: Received) => {
     const waiter = waiting.shift();
     if (waiter === undefined) arrived.push(received);
@@ -28,13 +30,17 @@ export function openRelay(base: string, sessionId: string): Promise<RelaySocket>
       ? { kind: "text", frame: JSON.parse(event.data) as Record<string, unknown> }
       : { kind: "binary", bytes: new Uint8Array(event.data as ArrayBuffer) });
   });
-  socket.addEventListener("close", (event) => deliver({ kind: "close", code: event.code }));
+  socket.addEventListener("close", (event) => {
+    terminal = { kind: "close", code: event.code };
+    for (const waiter of waiting.splice(0)) waiter(terminal);
+  });
   const next = () => {
-    const ready = arrived.shift();
+    const ready = arrived.shift() ?? terminal;
     return ready === undefined ? new Promise<Received>((resolve) => waiting.push(resolve)) : Promise.resolve(ready);
   };
   const relay: RelaySocket = {
     send: (frame) => socket.send(frame instanceof Uint8Array ? Uint8Array.from(frame) : JSON.stringify(frame)),
+    close: () => socket.close(),
     next,
     until: async (done) => {
       const seen: Received[] = [];

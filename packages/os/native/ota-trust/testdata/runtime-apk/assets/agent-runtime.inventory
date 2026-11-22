@@ -1,0 +1,8 @@
+eliza-runtime-v1
+asset	24	22fafbb6acd078589cc873fb39a39d35305626c47a3610f96982c170bdd5a752	agent/agent-bundle.js	bundle/agent-bundle.js
+asset	29	edd5032db8e8d8c70e1b1d7a6d00b77413152430925ecfd09c8e77440cfe021e	runtime-blobs/edd5032db8e8d8c70e1b1d7a6d00b77413152430925ecfd09c8e77440cfe021e.bin	extension.tar.gz
+asset	20	c4ccf519dd95a3f790e5f4e439910f5d85e4dd3b9ba8824cdb8d1746fdb4bed5	agent/gateway/bootstrap.mjs	bundle/gateway/bootstrap.mjs
+asset	18	673abc16cba76fd81b32bb9f544192c895d58aae4ab60d9af6f7adfc34d72863	agent/gateway/local-agent-gateway.mjs	bundle/gateway/local-agent-gateway.mjs
+asset	22	2fef1837f8cb07113ed829c0e2daa39bd65ffe5ce9cfa9555346fffbf6905e4f	agent/gateway/task-runtime.mjs	bundle/gateway/task-runtime.mjs
+native	120	97db7c873757a81688d2e5b691b23a22a6677ea6824fce37d41515814527f86a	libeliza_bun.so	-
+native	120	97db7c873757a81688d2e5b691b23a22a6677ea6824fce37d41515814527f86a	libeliza_ld_musl_aarch64.so	-

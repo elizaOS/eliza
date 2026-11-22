@@ -1,6 +1,4 @@
-// spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"; spec/cloud/services/google/connection.md, "Story: See my Google connection as the cloud holds it"; spec/cloud/services/google/connection.md, "Story: Disconnect it"; spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; spec/cloud/services/google/calendar.md, "Story: Read my calendar for a window"; spec/cloud/services/google/calendar.md, "Story: Change an event only at the revision I read"
-import { SecureRandom } from "effect/crypto"
-import { Base64Url } from "effect/encoding"
+// spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"; spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once, as I reviewed it"; spec/cloud/services/google/calendar.md, "Story: Change an event only at the revision I read"
 import type { IdempotencyKey } from "../services/maps.schema.ts"
 import { answerOf, queryOf, type CallOptions } from "./answer.vibe"
 import type { CloudTransport } from "./client.vibe"
@@ -41,30 +39,9 @@ export function isConnectState(value: string): value is ConnectState {
   return /^[A-Za-z0-9_-]{43}$/.test(value)
 }
 
-export function newConnectState(): ConnectState {
-  return Base64Url.encode(SecureRandom.randomBytesUnsafe(32)) as ConnectState
-}
-
 export interface ConnectRequest {
   readonly capabilities: ReadonlyArray<GoogleCapability>
   readonly redirect?: { readonly connectReturn: string; readonly state: ConnectState }
-}
-
-export type ConnectReturn =
-  | { readonly kind: "connected"; readonly connectionId: string }
-  | { readonly kind: "denied" }
-  | { readonly kind: "failed" }
-  | { readonly kind: "foreign" }
-
-export function connectReturnOf(returned: string, expected: ConnectState): ConnectReturn {
-  const fragment = new URLSearchParams(new URL(returned).hash.slice(1))
-  if (fragment.get("state") !== expected) return { kind: "foreign" }
-  const connectionId = fragment.get("connectionId") ?? ""
-  switch (fragment.get("result")) {
-    case "connected": return /^[A-Za-z0-9_-]{1,128}$/.test(connectionId) ? { kind: "connected", connectionId } : { kind: "failed" }
-    case "denied": return { kind: "denied" }
-    default: return { kind: "failed" }
-  }
 }
 
 const MailCard = Schema.Struct({
@@ -143,7 +120,7 @@ export type MailProposal =
   | { readonly kind: LabelKind; readonly messageId: string; readonly expectedHistoryId: string }
   | { readonly kind: "draft-delete"; readonly draftId: string; readonly expectedDigest: string; readonly confirmPermanentDelete: true }
 
-schema AttachmentReview { name: string; mimeType: string; size: number; sha256: string }
+const AttachmentReview = Schema.Struct({ name: Schema.String, mimeType: Schema.String, size: Schema.Number, sha256: Schema.String })
 
 const MailReview = Schema.Union([
   Schema.Struct({
@@ -220,7 +197,7 @@ export type CalendarEvent = typeof CalendarEvent.Type
 const CalendarFeed = Schema.Struct({ calendarId: Schema.String, events: Schema.Array(CalendarEvent), syncedAt: Schema.String })
 export type CalendarFeed = typeof CalendarFeed.Type
 
-schema EventAnswer { event: CalendarEvent }
+const EventAnswer = Schema.Struct({ event: CalendarEvent })
 
 export interface EventFields {
   readonly title: string
@@ -246,14 +223,13 @@ export function googleCalls(transport: CloudTransport) {
     async googleConnect(request: ConnectRequest, options: CallOptions = {}): Promise<ConnectStart> {
       const redirect = request.redirect
       const json = {
-        side: "owner",
         capabilities: request.capabilities,
         ...(redirect === undefined ? {} : { redirectUrl: `${redirect.connectReturn}?${new URLSearchParams({ state: redirect.state })}` })
       }
       return answerOf(await transport.call(routesByName.googleConnect, { json, signal: options.signal }), ConnectStart)
     },
-    async googleDisconnect(choice: { readonly connectionId?: string } = {}, options: CallOptions = {}): Promise<void> {
-      await transport.call(routesByName.googleDisconnect, { json: { side: "owner", ...choice }, signal: options.signal })
+    async googleDisconnect(choice: GrantChoice = {}, options: CallOptions = {}): Promise<void> {
+      await transport.call(routesByName.googleDisconnect, { json: choice, signal: options.signal })
     },
     async gmailTriage(request: GrantChoice & { readonly maxResults?: number } = {}, options: CallOptions = {}): Promise<MailTriage> {
       return answerOf(await transport.call(routesByName.gmailTriage, { query: queryOf(request), signal: options.signal }), MailTriage)

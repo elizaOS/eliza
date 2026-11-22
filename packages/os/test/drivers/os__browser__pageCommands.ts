@@ -1,9 +1,20 @@
 // spec/os/browser/pageCommands.md, "Story: Run a website task step only on the page it was planned for"
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createSurfaceTaskHandler, type SurfaceControlReply, type SurfacePage, type SurfaceTaskHandler } from "@elizaos/os/browser/runtime/surface-task-handler.mjs";
 import { COMMIT_GRANT_MAX_MS } from "@elizaos/os/browser/runtime/task-bindings.mjs";
 import type { Driver, Options } from "../../gen/os__browser__pageCommands.conformance.ts";
 import type { BindingOffer, CommandScope, Event, PageRequest, ReceiverPhase, Reply, RequestedAction, SurfaceReceiver } from "../../gen/os__browser__pageCommands.ts";
+
+export function nativeControlProgram(): string {
+  const source = new URL("../../android/browser-surface/native-control-channel.mjs", import.meta.url);
+  return execFileSync(process.execPath, [
+    "--input-type=module",
+    "--eval",
+    "const { nativeControlProgram } = await import(process.argv[1]); process.stdout.write(nativeControlProgram());",
+    source.href,
+  ], { encoding: "utf8" });
+}
 
 export interface PeerView {
   readonly retired: boolean;
@@ -83,8 +94,11 @@ function track(promise: Promise<unknown>): () => Settlement {
       settlement = { kind: "resolved", value };
     },
     (error: unknown) => {
-      const coded = error as { code?: unknown; kind?: unknown } | undefined;
-      settlement = { kind: "rejected", code: String(coded?.code ?? coded?.kind ?? "UNKNOWN"), error };
+      const fields = typeof error === "object" && error !== null ? error : {};
+      const code = "code" in fields ? fields.code : undefined;
+      const kind = "kind" in fields ? fields.kind : undefined;
+      const tag = typeof code === "string" ? code : typeof kind === "string" ? kind : "UNKNOWN";
+      settlement = { kind: "rejected", code: tag, error };
     },
   );
   return () => settlement;
@@ -104,9 +118,10 @@ class Peer {
   inFlight: InFlight | undefined;
   native: Gate<SurfaceControlReply> | undefined;
   held: Held | undefined;
-  binding: { readonly lost: { value: boolean }; readonly landed: boolean } | undefined;
+  binding: { readonly lost: { value: boolean }; readonly revoked: boolean; readonly settlement: () => Settlement } | undefined;
   bindGate: BindGate | undefined;
   cleanupOkay = true;
+  validationDocument = DOCUMENT;
   binds = 0;
   readonly snapshots = new Map<string, string>();
   readonly realNow = Date.now;
@@ -115,10 +130,10 @@ class Peer {
   constructor() {
     Date.now = () => this.clock;
     this.handler = createSurfaceTaskHandler({
-      getPage: async () => this.admissionPage ?? this.page,
-      listPages: async () => [{ id: PAGE }],
+      getPage: () => Promise.resolve(this.admissionPage ?? this.page),
+      listPages: () => Promise.resolve([{ id: PAGE }]),
       isCurrent: () => true,
-      cleanup: async () => this.cleanup(),
+      cleanup: () => Promise.resolve(this.cleanup()),
       control: async (_page, request) => this.control(request),
     });
   }
@@ -130,7 +145,7 @@ class Peer {
       if (guidance.kind !== "action-status") return { documentId: request.documentId, result: { accepted: true, visible: false } };
       return this.hold("status");
     }
-    if (command.validateOnly === true) return { documentId: request.documentId, result: { validated: true } };
+    if (command.validateOnly === true) return { frameScope: "main", documentId: this.validationDocument, result: { validated: true } };
     return this.hold(command.subaction === "snapshot" ? "snapshot" : "input");
   }
 
@@ -149,7 +164,7 @@ class Peer {
     return native;
   }
 
-  cleanup(): Promise<unknown> | unknown {
+  cleanup(): unknown {
     const bindGate = this.bindGate;
     if (bindGate?.armed === true) {
       bindGate.armed = false;
@@ -240,13 +255,12 @@ class Peer {
   }
 
   async bindTask(offer: BindingOffer): Promise<Outcome> {
-    if (this.binding !== undefined) return "refused";
+    const alreadyReplacing = this.binding !== undefined;
     const before = this.clock;
     const previous = this.bound;
     if (previous !== undefined) this.clock = offer.renewsExpired ? previous.expiresAt : previous.expiresAt - 10;
     const expiresAt = this.clock + 10;
-    const guided = this.inFlight !== undefined && !this.inFlight.spentStale && (this.held === "status" || this.held === "input");
-    this.bindGate = guided ? { armed: true, released: false, gate: undefined } : undefined;
+    if (!alreadyReplacing) this.bindGate = { armed: true, released: false, gate: undefined };
     const lost = { value: false };
     this.binds += 1;
     const targets = ["click", "fill", "select", "scroll", "follow"].map((action) => ({ selector: REVIEWED, action }));
@@ -257,11 +271,13 @@ class Peer {
     if (settled.kind === "rejected") {
       if (settled.code !== "POLICY_BLOCKED") throw unexpected("refused a binding in an unknown way", settled);
       this.clock = before;
-      this.bindGate = undefined;
+      if (!alreadyReplacing) this.bindGate = undefined;
       return "refused";
     }
+    if (alreadyReplacing) throw unexpected("admitted a second binding before its predecessor settled", settled);
+    if (settled.kind !== "pending") throw unexpected("settled a binding before native cleanup", settled);
     this.bound = { taskId: offer.taskId, epoch: offer.epoch, expiresAt };
-    this.binding = { lost, landed: settled.kind === "resolved" };
+    this.binding = { lost, revoked: offer.revoke, settlement };
     return "accepted";
   }
 
@@ -269,10 +285,17 @@ class Peer {
     const binding = this.binding;
     if (binding === undefined) return "refused";
     this.binding = undefined;
-    if (!binding.landed) {
-      binding.lost.value = !storedWhileCurrent;
-      this.openBindGate();
-      await idle();
+    binding.lost.value = !storedWhileCurrent;
+    this.openBindGate();
+    await idle();
+    const settled = binding.settlement();
+    if (storedWhileCurrent) {
+      if (settled.kind !== "resolved" || typeof settled.value !== "object" || settled.value === null
+          || !("bound" in settled.value) || settled.value.bound !== !binding.revoked) {
+        throw unexpected("did not acknowledge the same binding", settled);
+      }
+    } else if (settled.kind !== "rejected" || settled.code !== "POLICY_BLOCKED") {
+      throw unexpected("kept a retired binding", settled);
     }
     return "accepted";
   }
@@ -351,6 +374,38 @@ class Peer {
     return "accepted";
   }
 
+  checkTarget(selectorRef: string, id: string, grantId?: string): () => Settlement {
+    const bound = this.bound;
+    const command = {
+      subaction: "click" as const,
+      id: PAGE,
+      taskContext: { ...OWNER, taskId: bound?.taskId ?? "task1", epoch: bound?.epoch ?? 0 },
+      selector: `${snapshotId(selectorRef)}:0:${NODE}`,
+      expectedSelector: REVIEWED,
+      ...(grantId === undefined || bound === undefined ? {} : {
+        commitGrant: {
+          grantId, taskId: bound.taskId, epoch: bound.epoch, origin: ORIGIN,
+          targetRef: `${snapshotId(selectorRef)}:0:${NODE}`, selector: REVIEWED,
+          subaction: "click", expiresAt: this.clock + COMMIT_GRANT_MAX_MS / 2,
+        },
+      }),
+    };
+    return track(this.handler({ type: "validate-target", id, command }));
+  }
+
+  async validateTarget(selectorRef: string): Promise<Outcome> {
+    if (this.retired || this.inFlight !== undefined) return "refused";
+    const settlement = this.checkTarget(selectorRef, "validate-target");
+    await idle();
+    const checked = settlement();
+    if (checked.kind === "resolved" && typeof checked.value === "object" && checked.value !== null
+        && "validated" in checked.value && checked.value.validated === true) this.reply = { tag: "TargetChecked" };
+    else if (checked.kind === "rejected" && (checked.code === "STALE_REF" || checked.code === "POLICY_BLOCKED")) {
+      this.reply = { tag: "Refused", refusal: "RefusedStale" };
+    } else throw unexpected("did not settle native target validation", checked);
+    return "accepted";
+  }
+
   async retire(): Promise<Outcome> {
     if (this.retired) return "refused";
     this.retired = true;
@@ -395,7 +450,7 @@ export const driver: Driver<PeerView> & AsyncDisposable = {
       case "settleInput":
         return live().settleInput(event.confirmed, event.cleanupOkay);
       case "validateTarget":
-        throw new Error("the surface peer takes no validate-only command of its own; it validates a target only inside an input's preview");
+        return live().validateTarget(event.selectorRef);
       case "retire":
         return live().retire();
     }
@@ -409,6 +464,16 @@ export const driver: Driver<PeerView> & AsyncDisposable = {
 
 export const options: Options<PeerView> = {
   keys: ["peer"],
-  walks: 0,
   view: (state: SurfaceReceiver): PeerView => ({ retired: state.retired, phase: state.phase, reply: state.reply }),
 };
+
+export async function reviewedTarget(input: { readonly selectorRef: string; readonly id: string; readonly grant?: string; readonly currentDocument?: boolean }) {
+  const active = live();
+  active.validationDocument = input.currentDocument === false ? "changed-document" : DOCUMENT;
+  const outcome = active.checkTarget(input.selectorRef, input.id, input.grant);
+  await idle();
+  active.validationDocument = DOCUMENT;
+  const completed = outcome();
+  if (completed.kind === "pending") throw unexpected("did not answer target validation", completed);
+  return completed.kind === "resolved" ? { result: completed.value } : { code: completed.code };
+}

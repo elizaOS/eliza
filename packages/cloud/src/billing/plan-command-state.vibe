@@ -1,0 +1,112 @@
+// spec/cloud/billing/subscriptionCommands.md, "Story: Change or cancel my plan without paying twice"; spec/cloud/billing/subscriptionCommands.md, "Story: See my commands"
+import { attachmentReceipt, commandStatus, elapse, parseState, type Command } from "../../gen/cloud__billing__subscriptionCommands.effect.vibe"
+import { StripePlanBinding, StripeScheduleBinding, StripeScheduleOrigin, type StripeUpgradeOrigin, type StripeUpgradeTerms } from "../providers/stripe.vibe"
+import { toText, type Tx } from "../store/connection.vibe"
+import { RowCorrupt } from "../store/rows.vibe"
+
+export interface PlanCommandRecord {
+  readonly organizationId: string
+  readonly command: Command
+  readonly binding: StripePlanBinding
+  readonly origin?: StripeUpgradeOrigin
+  readonly schedule?: StripeScheduleBinding
+  readonly attachOrigin?: StripeScheduleOrigin
+  readonly configureOrigin?: StripeScheduleOrigin
+  readonly confirmationDigest?: string
+}
+
+export function commandAt(command: Command, now: number): Command {
+  return now > command.receipt.session.now ? elapse(command, now - command.receipt.session.now) : command
+}
+
+export function planCommandStatusAt(command: Command, now: number) {
+  const wire = {
+    NotListed: "prepared", ShowDispatched: "dispatched", ShowUnknown: "unknown",
+    ShowAwaitingPayment: "awaiting_payment", ShowSucceeded: "succeeded", ShowRejected: "rejected"
+  } as const
+  return wire[commandStatus(commandAt(command, now))]
+}
+
+export function planCommandView(row: PlanCommandRecord, now: number) {
+  const command = row.command
+  const kind: "undo" | "downgrade" | "upgrade" = command.kind === "UndoCommand" ? "undo" : command.kind === "DowngradeCommand" ? "downgrade" : "upgrade"
+  return {
+    commandId: command.commandId, kind, subscriptionId: command.subscriptionId,
+    status: planCommandStatusAt(command, now), expectedRevision: command.expectedRevision, resultRevision: command.resultRevision === 0 ? null : command.resultRevision,
+    createdAt: command.createdAt
+  }
+}
+
+export function upgradeTerms(row: PlanCommandRecord): StripeUpgradeTerms {
+  return {
+    subscriptionId: row.command.subscriptionId, binding: row.binding, effectiveAt: row.command.quote.effectiveAt,
+    periodStart: row.command.quote.periodStart, periodEnd: row.command.quote.periodEnd,
+    dueNowCents: row.command.quote.dueNowCents, sentAt: row.command.receipt.sentAt
+  }
+}
+
+export function planCommandActor(command: Command) {
+  return command.schedule.tag === "Attaching" || command.schedule.tag === "ScheduleVerified"
+    ? attachmentReceipt(command).session.owner : command.receipt.session.owner
+}
+
+export effect function lockOrganization(tx: Tx, organizationId: string) {
+  try tx.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [organizationId])
+}
+
+export effect function readPlanCommand(tx: Tx, commandId: string, lock: boolean) {
+  const row = (try tx.query(
+    `SELECT organization_id, state, stripe_plan_binding, stripe_invoice_id, stripe_request_id, stripe_schedule_binding,
+      stripe_schedule_attach_origin, stripe_schedule_configure_origin, quote_confirmation_digest FROM subscription_commands
+      WHERE key=$1 AND stripe_plan_binding IS NOT NULL${lock ? " FOR UPDATE" : ""}`, [commandId]
+  ))[0]
+  if (row === undefined) return undefined
+  const command = parseState(row.state)
+  const organizationId = toText(row.organization_id)
+  const invoiceId = toText(row.stripe_invoice_id)
+  const requestId = toText(row.stripe_request_id)
+  const binding = Schema.decodeUnknownOption(StripePlanBinding)(row.stripe_plan_binding)
+  const schedule = Schema.decodeUnknownOption(StripeScheduleBinding)(row.stripe_schedule_binding)
+  const attachOrigin = Schema.decodeUnknownOption(StripeScheduleOrigin)(row.stripe_schedule_attach_origin)
+  const configureOrigin = Schema.decodeUnknownOption(StripeScheduleOrigin)(row.stripe_schedule_configure_origin)
+  const confirmationDigest = toText(row.quote_confirmation_digest)
+  const expectedScheduleId = command?.schedule.tag === "ReviewedExisting" || command?.schedule.tag === "ScheduleVerified"
+    ? command.schedule.scheduleId : undefined
+  if (command === undefined || (command.kind !== "UpgradeCommand" && command.kind !== "DowngradeCommand" && command.kind !== "UndoCommand") || command.commandId !== commandId ||
+      planCommandActor(command).agentId !== organizationId || planCommandActor(command).actorId === "" ||
+      (command.kind === "DowngradeCommand" && (confirmationDigest === undefined ||
+        (Option.isSome(schedule) ? schedule.value.scheduleId : undefined) !== expectedScheduleId)) ||
+      (row.stripe_schedule_binding != null && Option.isNone(schedule)) ||
+      (row.stripe_schedule_attach_origin != null && Option.isNone(attachOrigin)) ||
+      (row.stripe_schedule_configure_origin != null && Option.isNone(configureOrigin)) ||
+      organizationId === undefined || Option.isNone(binding) ||
+      (invoiceId === undefined) !== (requestId === undefined))
+    throw new RowCorrupt({ table: "subscription_commands", key: commandId, cause: "reviewed plan command" })
+  return {
+    organizationId, command, binding: binding.value,
+    ...(invoiceId !== undefined && requestId !== undefined ? { origin: { invoiceId, requestId } } : {}),
+    ...(Option.isSome(schedule) ? { schedule: schedule.value } : {}),
+    ...(Option.isSome(attachOrigin) ? { attachOrigin: attachOrigin.value } : {}),
+    ...(Option.isSome(configureOrigin) ? { configureOrigin: configureOrigin.value } : {}),
+    ...(confirmationDigest !== undefined ? { confirmationDigest } : {})
+  } satisfies PlanCommandRecord
+}
+
+export effect function insertPlanCommand(tx: Tx, row: PlanCommandRecord, now: number) {
+  const view = planCommandView(row, now)
+  try tx.query(
+    "INSERT INTO subscription_commands (key, state, revision, organization_id, kind, status, expected_revision, created_at, updated_at, stripe_plan_binding, stripe_schedule_binding, quote_confirmation_digest) VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+    [view.commandId, JSON.stringify(row.command), row.organizationId, view.kind, view.status, view.expectedRevision, view.createdAt, now,
+      JSON.stringify(row.binding), row.schedule === undefined ? null : JSON.stringify(row.schedule), row.confirmationDigest ?? null]
+  )
+}
+
+export effect function savePlanCommand(tx: Tx, row: PlanCommandRecord, now: number) {
+  const view = planCommandView(row, now)
+  try tx.query(
+    "UPDATE subscription_commands SET state=$2, revision=revision+1, status=$3, result_revision=$4, updated_at=$5, stripe_invoice_id=$6, stripe_request_id=$7, stripe_schedule_binding=$8, stripe_schedule_attach_origin=$9, stripe_schedule_configure_origin=$10 WHERE key=$1",
+    [view.commandId, JSON.stringify(row.command), view.status, view.resultRevision, now, row.origin?.invoiceId ?? null, row.origin?.requestId ?? null,
+      row.schedule === undefined ? null : JSON.stringify(row.schedule), row.attachOrigin === undefined ? null : JSON.stringify(row.attachOrigin),
+      row.configureOrigin === undefined ? null : JSON.stringify(row.configureOrigin)]
+  )
+}

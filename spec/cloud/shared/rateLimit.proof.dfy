@@ -1,41 +1,48 @@
-// The group's retry time is at or after now and at or after every refused
-// window's end, by induction over the fold.
-lemma RetryAtOfAllBounds(checks: seq<Check>, now: int, t: int)
-  ensures Std.Collections.Seq.FoldLeft((t: int, c: Check) => laterRetryAt(request(c.window, c.rule, now).last, t), t, checks) >= t
-  ensures forall c :: c in checks && request(c.window, c.rule, now).last.Refused? ==> Std.Collections.Seq.FoldLeft((t: int, c: Check) => laterRetryAt(request(c.window, c.rule, now).last, t), t, checks) >= request(c.window, c.rule, now).last.retryAt
+lemma RetryFoldCoversRefusedWindow(checks: seq<Check>, now: int, current: int, index: int)
+  requires 0 <= index < |checks|
+  requires request(checks[index].window, checks[index].rule, now).last.Refused?
+  ensures Std.Collections.Seq.FoldLeft((t: int, c: Check) => laterRetryAt(request(c.window, c.rule, now).last, t), current, checks) >=
+    request(checks[index].window, checks[index].rule, now).last.retryAt
   decreases |checks|
 {
-  if |checks| > 0 {
-    var t2 := laterRetryAt(request(checks[0].window, checks[0].rule, now).last, t);
-    RetryAtOfAllBounds(checks[1..], now, t2);
-    assert forall c :: c in checks ==> c == checks[0] || c in checks[1..];
+  var advance := (t: int, c: Check) => laterRetryAt(request(c.window, c.rule, now).last, t);
+  var next := advance(current, checks[0]);
+  if index == 0 {
+    assert next >= request(checks[0].window, checks[0].rule, now).last.retryAt;
+    ProofLib.FoldLeftInflationary(advance, next, checks[1..]);
+  } else {
+    assert checks[1..][index - 1] == checks[index];
+    RetryFoldCoversRefusedWindow(checks[1..], now, next, index - 1);
   }
-}
-
-// A window that was countable and within its limit at now, and whose
-// refusal (if any) ends by later, is admitted at later.
-lemma AdmittedAtLater(c: Check, now: int, later: int)
-  requires canRequest(c.window, c.rule, now)
-  requires alwaysWindowsStayWithinTheirLimit(c.window)
-  requires later >= now
-  requires request(c.window, c.rule, now).last.Refused? ==> later >= request(c.window, c.rule, now).last.retryAt
-  ensures canRequest(c.window, c.rule, later)
-  ensures request(c.window, c.rule, later).last.Admitted?
-{
 }
 
 lemma lawAGroupRetryAtItsTimeIsAdmitted_ensures(checks: seq<Check>, now: int)
   ensures (lawAGroupRetryAtItsTimeIsAdmitted(checks, now) == true)
 {
-  var later := retryAtOfAll(checks, now);
-  RetryAtOfAllBounds(checks, now, now);
-  if allCountable(checks, now) && !((exists c :: c in checks && !(alwaysWindowsStayWithinTheirLimit(c.window)))) {
+  if allCountable(checks, now) &&
+    (forall c :: c in checks ==> alwaysWindowsStayWithinTheirLimit(c.window)) &&
+    !admitsAll(checks, now)
+  {
+    var retry := retryAtOfAll(checks, now);
+    ProofLib.FoldLeftInflationary((t: int, c: Check) => laterRetryAt(request(c.window, c.rule, now).last, t), now, checks);
+    assert retry >= now;
     forall c | c in checks
-      ensures canRequest(c.window, c.rule, later) && request(c.window, c.rule, later).last.Admitted?
+      ensures canRequest(c.window, c.rule, retry)
+      ensures request(c.window, c.rule, retry).last.Admitted?
     {
-      AdmittedAtLater(c, now, later);
+      assert canRequest(c.window, c.rule, now);
+      assert c.window.start <= c.window.clock <= now <= retry;
+      var first := request(c.window, c.rule, now).last;
+      if first.Refused? {
+        var index :| 0 <= index < |checks| && checks[index] == c;
+        RetryFoldCoversRefusedWindow(checks, now, now, index);
+        assert first.retryAt == c.window.end;
+        assert retry >= c.window.end;
+      } else if retry < c.window.end {
+        assert now < c.window.end;
+        assert admits(c.window.count, c.rule);
+      }
     }
-    assert allCountable(checks, later);
-    assert admitsAll(checks, later);
+    assert admitsAll(checks, retry);
   }
 }

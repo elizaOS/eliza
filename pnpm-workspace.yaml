@@ -19,6 +19,7 @@ catalog:
   "@vitest/browser-playwright": 5.1.0
   esbuild: ^0.28.2
   eslint: ^10.14.0
+  eslint-import-resolver-typescript: 4.4.5
   eslint-plugin-boundaries: ^7.4.3
   eslint-plugin-react-hooks: ^7.1.1
   happy-dom: ^21.0.4

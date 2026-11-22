@@ -1,6 +1,6 @@
 // spec/os/image/product.md, "Story: Compose my product from a pinned device profile"; spec/os/image/product.md, "Story: Enroll my product's update channel"; spec/os/image/firstRun.md, "First run requires Home, the assistant the image declares, and the dialer and SMS app only where the image declares them and the device has telephony"
 import { parseDigest } from "./apk.vibe"
-import { finalizeNative } from "./stage-launcher.vibe"
+import { finalizeNative, inspectPublishedLauncher } from "./stage-launcher.vibe"
 import { hexOf, type Digest } from "../../gen/os__image__apk.effect.vibe"
 import { stagedDescriptor } from "../../gen/os__image__firstRun.effect.vibe"
 import {
@@ -10,6 +10,7 @@ import {
   enrollmentProblems,
   isPixel,
   lunchChoices,
+  lockTarget,
   lunchFor,
   recordAdmitted,
   type BootArchive,
@@ -30,7 +31,6 @@ import {
 } from "../../gen/os__image__product.effect.vibe"
 import type { DefaultRole, ProvisioningRequest } from "../../gen/os__image__provisioning.effect.vibe"
 import { admitProduct, canAdmitProduct, type BuildPurpose, type ProductName, type SourceVerdict } from "../../gen/os__image__sourceLock.effect.vibe"
-import { decodeState } from "../../gen/os__image__staging.effect.vibe"
 
 module node {
   import { X509Certificate, createHash } from "node:crypto"
@@ -615,15 +615,6 @@ effect function readBootAnimation(input: BootAnimationInput) {
   return read
 }
 
-effect function stagedLauncher(output: string) {
-  const path = try Path.Path
-  const place = path.join(output, "launcher.json")
-  const recorded = parseJson(textOf(try readBytes(place)))
-  const state = try mapError(decodeState(isRecord(recorded) ? recorded.state : undefined), () => new ProductInputUnreadable({ place, message: "The launcher record holds no launcher staging state" }))
-  if (state.phase.tag !== "Published") throw new ProductInputUnreadable({ place, message: "The launcher in this overlay was not published by launcher staging" })
-  return state
-}
-
 effect function consumerMakefiles(output: string, d: ProductDescriptor) {
   const files = try FileSystem.FileSystem
   const path = try Path.Path
@@ -671,7 +662,12 @@ export effect function composeProduct(request: ComposeRequest) {
   for (const output of ALL_OUTPUTS) {
     if (try files.exists(path.join(request.output, outputName(d, output)))) existing.push(output)
   }
-  const staged = try stagedLauncher(request.output)
+  const brandToken = d.brand.toLowerCase()
+  const named = productName(d.productName)
+  const namesPinnedTarget = named.brand === brandToken && named.target === lockTarget(d)
+  const staged = try mapError(inspectPublishedLauncher(request.output), (cause) => new ProductInputUnreadable({ place: request.output, message: cause.message }))
+  if (request.purpose === "Production" && staged.call.stagingMode !== "StageProduction")
+    throw new ProductRefused({ product: d.productName, problems: ["LauncherDiffers"], message: `${d.productName} needs a production launcher staging record` })
   const launcher = staged.call.descriptor
   const consumer = try consumerMakefiles(request.output, d)
   const boot = try readBootAnimation(request.bootAnimation ?? { kind: "stock" })
@@ -691,9 +687,7 @@ export effect function composeProduct(request: ComposeRequest) {
   for (const file of firstRun) add(`first-run/${file.path}`, file.bytes, file.mode)
   if (d.firstRun) add(`first-run/overlay/vendor/${d.vendorDirectory}/first-run/res/values/config.xml`, utf8(firstRunOverlay(roles)))
   const composed = [...planned].filter(([relative]) => relative.endsWith(".mk")).map(([, file]) => textOf(file.bytes))
-  const brandToken = d.brand.toLowerCase()
-  const named = productName(d.productName)
-  const source = canAdmitProduct(request.source, brandToken, named, request.purpose) ? admitProduct(request.source, brandToken, named, request.purpose) : request.source
+  const source = namesPinnedTarget && canAdmitProduct(request.source, brandToken, named, request.purpose) ? admitProduct(request.source, brandToken, named, request.purpose) : request.source
   const call: CompositionCall = {
     descriptor: d,
     purpose: request.purpose,
@@ -707,7 +701,9 @@ export effect function composeProduct(request: ComposeRequest) {
     updater: d.systemUpdater ? updaterState(updater) : "ReviewedDisabledUpdater",
   }
   const problems = compositionProblems(call)
+  if (!namesPinnedTarget && !problems.includes("SourceNotAdmitted")) problems.push("SourceNotAdmitted")
   if (problems.length) throw new ProductRefused({ product: d.productName, problems, message: `${d.productName} cannot be composed: ${problems.join(", ")}` })
+  if (staged.conversion === "ConversionPending") try finalizeNative(request.output)
   try publish(request.output, planned)
   const digest: Digest = { tag: "Sha256", hex: descriptorSha256 }
   const artifacts: StagedArtifact[] = [...planned.keys()].map((relative) => ({ path: relative, descriptorDigest: digest }))
@@ -732,7 +728,6 @@ export effect function composeProduct(request: ComposeRequest) {
     claims,
   }
   try mapError(files.writeFileString(path.join(request.output, "physical-product.json"), `${JSON.stringify(record, null, 2)}\n`, { flag: "wx" }), (cause) => new ProductInputUnreadable({ place: request.output, message: cause.message }))
-  if (staged.conversion === "ConversionPending") try finalizeNative(request.output)
   return record
 }
 

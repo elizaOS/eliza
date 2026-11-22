@@ -754,6 +754,8 @@ export function createStripeFake(options: StripeFakeOptions = {}): StripeFake {
         return read(find("charge", id), "charge");
       case "GET refunds/:id":
         return read(find("refund", id), "refund");
+      case "GET disputes":
+        return { status: 200, body: list("dispute", form, url, (dispute) => equalsQuery(form, "charge", dispute.charge)) };
       case "GET disputes/:id":
         return read(find("dispute", id), "dispute");
       case "POST billing_portal/:id": {

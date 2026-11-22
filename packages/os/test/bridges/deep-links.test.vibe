@@ -54,6 +54,15 @@ effect function settle(check: () => boolean) {
   return check()
 }
 
+effect function settledFailure(state: () => Promise<{ readonly running: readonly number[]; readonly waiting: readonly number[] }>) {
+  for (let round = 0; round < 200; round += 1) {
+    const current = try promise(state)
+    if (!current.running.includes(1) && !current.waiting.includes(1)) return true
+    try sleep("5 millis")
+  }
+  return false
+}
+
 it.live("Open the link I followed exactly once, even across a cold start (spec/os/android/deepLinks.md, \"Story: Open the link I followed exactly once, even across a cold start\"; spec/os/android/deepLinks.md, \"A link waits until the renderer is ready, then starts once\"; spec/os/android/deepLinks.md, \"The native slot clears only after the renderer applied or rejected the link\")", () => effect {
   const slot = nativeSlot()
   follow(slot, "https://links.example.test/open/cold")
@@ -65,9 +74,11 @@ it.live("Open the link I followed exactly once, even across a cold start (spec/o
   try promise(() => links.ready())
   assert.isTrue(try settle(() => opened.length === 1))
   assert.isTrue(try settle(() => slot.heard !== undefined))
-  try sleep("20 millis")
+  const failed = try settledFailure(() => links.state())
+  assert.isTrue(failed)
   assert.deepStrictEqual([slot.pending, slot.acks], [1, []])
   try promise(() => links.stop())
+  assert.isUndefined(slot.heard)
   const reopened: string[] = []
   const relaunched = deepLinksClient(opener(reopened, ["LinkRejected"]), nativeLinks(slot))
   try promise(() => relaunched.start())
@@ -75,7 +86,6 @@ it.live("Open the link I followed exactly once, even across a cold start (spec/o
   assert.isTrue(try settle(() => slot.pending === 0))
   assert.deepStrictEqual([reopened, slot.acks], [["https://links.example.test/open/cold"], [1]])
   try promise(() => relaunched.poll())
-  try sleep("20 millis")
   assert.deepStrictEqual(reopened.length, 1)
   try promise(() => relaunched.stop())
 })

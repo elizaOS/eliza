@@ -1,10 +1,8 @@
 // spec/agent/schedule/triggers.md, "Story: Run a trigger now or on schedule without losing my edits"; spec/agent/schedule/triggers.md, "Story: Deliver a prompt only to the conversation I chose"; spec/agent/access/routes.md, "A request matches a route by method, delivery, every segment and every query key"
 import { assert, it } from "@effect/vitest"
-import type { ModuleFactory } from "../src/host/module.vibe"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { startAgent } from "../src/host/process.vibe"
-import { triggersModule, triggersModuleName } from "../src/schedule/trigger-routes.vibe"
-import { openPromptTriggers } from "../src/schedule/triggers.vibe"
+import { triggersModuleName } from "../src/schedule/trigger-routes.vibe"
 import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
 import { launchDocument, launchFrame, type Scratch } from "./support/scratch.ts"
 import type { CloudFake } from "./support/cloud-fake.ts"
@@ -191,14 +189,18 @@ module node {
     const id = created.body.trigger.id
     bench.cloud.script(text("Plants watered."))
     const first = await ask<Replies["execute"]>(bench, "POST", `/api/triggers/${id}/execute`, {})
-    await bench.running.runtime.deleteRoom(await roomOf(bench.running, chosen))
+    const roomId = await roomOf(bench.running, chosen)
+    const { runtime } = bench.running
+    const messages = await runtime.getMemories({ tableName: "messages", roomId, count: 10 })
+    const author = messages.find((message) => message.content.text === "Water the plants")?.entityId
+    await runtime.deleteRoom(roomId)
     const before = inferences(bench.cloud)
     const gone = await ask<Replies["execute"]>(bench, "POST", `/api/triggers/${id}/execute`, {})
     for (let run = 1; run < 100; run++) await ask<Replies["execute"]>(bench, "POST", `/api/triggers/${id}/execute`, {})
     const runs = (await runsOf(bench, id)).body.runs
     const conversations = await bench.running.runtime.getRooms(ownerOf(bench.running.runtime.agentId).world)
     return {
-      chosen: created.body.deliveryConversationId === chosen,
+      chosen: created.body.deliveryConversationId === chosen, authoredByCaller: author === ownerOf(runtime.agentId).user,
       first: first.body.result, gone: gone.body.result,
       kept: runs.length, statuses: [...new Set(runs.map((run) => run.status))], inferences: inferences(bench.cloud) - before,
       fellBackTo: conversations.filter((room) => (room.metadata?.deviceConversation as { id?: string } | undefined)?.id === chosen).length,
@@ -267,20 +269,16 @@ module node {
   }
 }
 
-import { fakeClock, missedAfterRestart, ownerOf, planMissed, realClock, triggerJourney, type Bench } from node
+import { fakeClock, missedAfterRestart, planMissed, realClock, triggerJourney, type Bench } from node
 
-const modules: ReadonlyMap<string, ModuleFactory<never>> = new Map([
-  [triggersModuleName, triggersModule(effect (context) => openPromptTriggers(context.runtime, ownerOf(context.runtime.agentId)))],
-])
-
-effect function agent(state: Scratch, cloud: CloudFake, socket: string) {
+effect function agent(state: Scratch, cloud: CloudFake, socket: string, callerRole: "owner" | "user" = "owner") {
   const frame = launchFrame({ credential: { version: 1, value: deviceKey } })
   const config = try Effect.try(() => launchDocument({
-    callerRole: "owner", persistMemory: true, load: [triggersModuleName], backend: { kind: "cloud", origin: cloud.origin },
+    callerRole, persistMemory: true, load: [triggersModuleName], backend: { kind: "cloud", origin: cloud.origin },
   }))
   const parsed = try parseLaunch(JSON.stringify(config), JSON.stringify(frame))
   const running = try acquireRelease(
-    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: state.file(socket) }, modules }),
+    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: state.file(socket) } }),
     (started) => orDie(host("retire agent", () => started.stop())),
   )
   return { running, cloud, socket: state.file(socket), frame } satisfies Bench
@@ -291,7 +289,7 @@ const unavailable = "Prompt automation delivery conversation is unavailable"
 it.effect('A trigger is saved disabled, fires once on schedule, keeps edits made during its run, runs now while disabled, runs once per event, fails without its conversation and keeps 100 records (spec/agent/schedule/triggers.md, "Story: Run a trigger now or on schedule without losing my edits")', effect () => {
   const state = try scratch("schedule-triggers")
   const cloud = try cloudFake(deviceKey)
-  const bench = try agent(state, cloud, "agent.sock")
+  const bench = try agent(state, cloud, "agent.sock", "user")
   const observed = try host("trigger journey", () => triggerJourney(bench))
   try Effect.try(() => assert.deepStrictEqual(observed, {
     refused: [
@@ -318,7 +316,7 @@ it.effect('A trigger is saved disabled, fires once on schedule, keeps edits made
     },
     event: { runs: [{ status: "success", source: "event" }], inferences: 1 },
     gone: {
-      chosen: true, first: { status: "success" }, gone: { status: "error", error: unavailable },
+      chosen: true, authoredByCaller: true, first: { status: "success" }, gone: { status: "error", error: unavailable },
       kept: 100, statuses: ["error"], inferences: 0, fellBackTo: 0,
     },
     limit: { accepted: 100, refused: [429], listed: 104 },

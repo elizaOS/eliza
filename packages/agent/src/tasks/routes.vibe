@@ -1,11 +1,13 @@
 // spec/agent/tasks/wire.md, "Story: Admit only the documented task commands"; spec/agent/tasks/wire.md, "Every refusal is one documented code with a fixed status"; spec/agent/tasks/wire.md, "Each route names one command and the one method it answers"; spec/agent/tasks/wire.md, "A command body has exactly the fields its command names"; spec/agent/tasks/wire.md, "Only the event page takes a query, and its cursor is canonical"; spec/agent/tasks/wire.md, "Only the launch account reaches a serving host, and the storage probe needs neither"; spec/agent/tasks/wire.md, "A repeated start of the running task's goal returns that task"; spec/agent/tasks/wire.md, "A reply after the host stopped serving says whether a change was saved"; spec/agent/tasks/wire.md, "The storage probe reports unavailable for a poisoned host"; spec/agent/tasks/wire.md, "A view shows six public fields of the held task, or null"
 import { TASK_ID_PATTERN, type InteractiveTask, type TaskEventPage } from "@elizaos/core"
 import { serves, type TaskHost as TaskHostModel } from "../../gen/agent__tasks.effect.vibe"
+import type { Caller } from "../../gen/agent__access__auth.ts"
 import {
   admit, afterWrite, cursorFits, httpStatus, refusalOf, storageProbe,
   type Body, type Field, type HostFailure, type Method, type Query, type RouteMatch, type StartReply, type TaskCommand, type TaskError, type TaskStorage,
 } from "../../gen/agent__tasks__wire.effect.vibe"
 import type { LocalRoute, Route, RouteInput } from "../access/routes.vibe"
+import { registerCallerRoute } from "../access/router.vibe"
 import type { TaskStorageStatus, UnreadableTaskRecord } from "./store.vibe"
 
 export type PauseReason = "close"
@@ -65,6 +67,7 @@ const reservedIds = new Set(["current", "storage"])
 
 type Verb = (typeof verbs)[number]
 type Reply = { readonly status: number; readonly body: object }
+type Owner = Parameters<typeof serves>[1]
 
 const endpoints: readonly { readonly path: string; readonly command: TaskCommand }[] = [
   { path: "/api/tasks", command: "StartCommand" },
@@ -157,28 +160,27 @@ function routeOf(command: TaskCommand, verb: Verb, id: string | undefined): Rout
 
 const sentBody = (input: RouteInput) => input.body as Readonly<{ goalRef?: string; reason?: PauseReason; expectedRevision?: number }>
 
-effect function stillServing(host: TaskRoutesHost) {
-  const state = try host.state()
-  return serves(state, state.owner)
+effect function stillServing(host: TaskRoutesHost, owner: Owner) {
+  return serves(try host.state(), owner)
 }
 
-effect function written(host: TaskRoutesHost, saved: boolean, cleanupConfirmed: boolean, answer: () => Reply) {
-  const reply = afterWrite(saved, try stillServing(host), cleanupConfirmed)
+effect function written(host: TaskRoutesHost, owner: Owner, saved: boolean, cleanupConfirmed: boolean, answer: () => Reply) {
+  const reply = afterWrite(saved, try stillServing(host, owner), cleanupConfirmed)
   switch (reply.tag) {
     case "WriteAnswered": return answer()
     case "WriteRefused": return refused(reply.error)
   }
 }
 
-effect function writeReply(host: TaskRoutesHost, write: TaskWrite) {
-  return try written(host, write.saved, write.cleanupConfirmed, () => taskReply(200, write.task))
+effect function writeReply(host: TaskRoutesHost, owner: Owner, write: TaskWrite) {
+  return try written(host, owner, write.saved, write.cleanupConfirmed, () => taskReply(200, write.task))
 }
 
-effect function started(host: TaskRoutesHost, goalRef: string) {
+effect function started(host: TaskRoutesHost, owner: Owner, goalRef: string) {
   const start = try host.create(goalRef)
   switch (start.reply.tag) {
-    case "ExistingTask": return try written(host, false, true, () => taskReply(200, start.task))
-    case "NewTask": return try written(host, true, true, () => taskReply(201, start.task))
+    case "ExistingTask": return try written(host, owner, false, true, () => taskReply(200, start.task))
+    case "NewTask": return try written(host, owner, true, true, () => taskReply(201, start.task))
     case "StartRefused": return refused(start.reply.error)
   }
 }
@@ -188,53 +190,55 @@ effect function eventPage(host: TaskRoutesHost, taskId: string, query: Query) {
   return cursorFits(query, page.task.revision) ? { status: 200, body: page } : refused("TaskInvalid")
 }
 
-effect function serve(host: TaskRoutesHost, command: TaskCommand, verb: Verb, input: RouteInput): Reply!unknown {
+effect function serve(host: TaskRoutesHost, owner: Owner | undefined, caller: Caller, command: TaskCommand, verb: Verb, input: RouteInput): Reply!unknown {
   const id = input.parameters.get("id")
   const state = try host.state()
   const query = queryOf(input)
-  const admission = admit(true, serves(state, state.owner), routeOf(command, verb, id), try host.helperReady(), bodyOf(input), query)
+  const bound = caller === "Root" ? owner : undefined
+  const admission = admit(bound !== undefined, bound !== undefined && serves(state, bound), routeOf(command, verb, id), try host.helperReady(), bodyOf(input), query)
   if (admission.tag === "Refused") return refused(admission.error)
+  if (admission.command === "StorageCommand") {
+    const probed = storageProbe(state, modelStorage[try host.storageProbe()])
+    return { status: 200, body: { schemaVersion: 1, taskStorage: wireStorage[probed] } }
+  }
+  if (bound === undefined) return refused("TaskUnauthorized")
   const taskId = id ?? ""
   const sent = sentBody(input)
   switch (admission.command) {
-    case "StartCommand": return try started(host, sent.goalRef ?? "")
+    case "StartCommand": return try started(host, bound, sent.goalRef ?? "")
     case "CurrentCommand": return taskReply(200, try host.current())
     case "UnreadableCommand": return { status: 200, body: { records: try host.unreadable() } }
-    case "PauseCurrentCommand": return try writeReply(host, try host.pauseCurrent(sent.reason))
+    case "PauseCurrentCommand": return try writeReply(host, bound, try host.pauseCurrent(sent.reason))
     case "ViewCommand": return taskReply(200, try host.view(taskId))
     case "EventsCommand": return try eventPage(host, taskId, query)
-    case "PauseCommand": return try writeReply(host, try host.pause(taskId, sent.expectedRevision ?? 0, sent.reason))
-    case "CancelCommand": return try writeReply(host, try host.cancel(taskId, sent.expectedRevision ?? 0))
-    case "ResumeCommand": return try writeReply(host, try host.resume(taskId, sent.expectedRevision ?? 0))
+    case "PauseCommand": return try writeReply(host, bound, try host.pause(taskId, sent.expectedRevision ?? 0, sent.reason))
+    case "CancelCommand": return try writeReply(host, bound, try host.cancel(taskId, sent.expectedRevision ?? 0))
+    case "ResumeCommand": return try writeReply(host, bound, try host.resume(taskId, sent.expectedRevision ?? 0))
     case "AcknowledgeUnknownCommand": {
       const write = try host.acknowledgeUnknown(taskId, sent.expectedRevision ?? 0)
-      return try written(host, write.saved, write.cleanupConfirmed, () =>
+      return try written(host, bound, write.saved, write.cleanupConfirmed, () =>
         write.task === null ? taskReply(200, null) : { status: 200, body: { revision: write.task.revision, status: write.task.status } })
     }
     case "AcknowledgeUnreadableCommand": {
       try host.acknowledgeUnreadable(taskId)
       const records = try host.unreadable()
-      return try written(host, true, true, () => ({ status: 200, body: { records } }))
-    }
-    case "StorageCommand": {
-      const probed = storageProbe(state, modelStorage[try host.storageProbe()])
-      return { status: 200, body: { schemaVersion: 1, taskStorage: wireStorage[probed] } }
+      return try written(host, bound, true, true, () => ({ status: 200, body: { records } }))
     }
   }
 }
 
-effect function answer(host: TaskRoutesHost, command: TaskCommand, verb: Verb, input: RouteInput): Reply!! {
-  const ran = try exit(serve(host, command, verb, input))
+effect function answer(host: TaskRoutesHost, owner: Owner | undefined, caller: Caller, command: TaskCommand, verb: Verb, input: RouteInput): Reply!! {
+  const ran = try exit(serve(host, owner, caller, command, verb, input))
   return Exit.isSuccess(ran) ? ran.value : hostRefusal(Cause.squash(ran.cause))
 }
 
-export function taskRoutes(host: TaskRoutesHost): LocalRoute[] {
+export function taskRoutes(host: TaskRoutesHost, owner: Owner | undefined): LocalRoute[] {
   return endpoints.flatMap(({ path, command }) => verbs.map((verb): LocalRoute => {
     const route: Route = {
       method: verb, path,
       query: [{ key: "after", accepts: { kind: "any" } }],
       ...(verb === "GET" || verb === "DELETE" ? {} : { maxBodyBytes: bodyLimit }),
     }
-    return { ...route, handler: (input) => runPromise(answer(host, command, verb, input)) }
+    return registerCallerRoute(route, (input, caller) => runPromise(answer(host, owner, caller, command, verb, input)))
   }))
 }

@@ -6,12 +6,12 @@ import {
 import type { Need, Negotiation } from "../../gen/agent__deviceActions__capabilities.effect.vibe"
 import type { ReceiptOutcome } from "../../gen/agent__deviceActions.effect.vibe"
 import type { FamilySchemas, OperationOf, OperationSchema } from "./operation-schemas/family.vibe"
-import { personalOperations } from "./operation-schemas/personal.schema.vibe"
+import { personalFamilies } from "./operation-schemas/personal.schema.vibe"
 import { deviceOperations } from "./operation-schemas/device.schema.vibe"
 
 export type { Classification, Evidence, FamilySchemas, OperationSchema } from "./operation-schemas/family.vibe"
 
-const families = { ...personalOperations, ...deviceOperations } satisfies FamilySchemas
+const families = { ...personalFamilies, ...deviceOperations } satisfies FamilySchemas
 
 export type DeviceOperation = OperationOf<typeof families>
 export type DeviceOperationType = DeviceOperation["type"]
@@ -93,7 +93,7 @@ function evidenceOf(checked: CheckedOperation, receipt: DeviceReceipt): { readon
   const decoded = reader?.result === undefined ? Option.none() : reader.result(receipt.result)
   const shown = reader === undefined || reader.schema.result === undefined || Option.isNone(decoded)
     ? undefined
-    : reader.schema.evidence(decoded.value, checked.operation)
+    : reader.schema.evidence(decoded.value, checked.operation, { operationId: receipt.operationId })
   return shown === undefined
     ? { evidence: { tag: "InvalidResult" }, result: undefined }
     : { evidence: { tag: "ValidResult", shows: shown.shows, nothingSubmitted: shown.nothingSubmitted }, result: Option.getOrUndefined(decoded) }

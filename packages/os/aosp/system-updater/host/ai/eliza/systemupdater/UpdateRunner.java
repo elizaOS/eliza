@@ -11,7 +11,7 @@ import android.os.BatteryManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
-import android.os.SystemProperties;
+import android.os.UpdateEngine;
 import android.os.UserManager;
 import android.provider.Settings;
 import android.telecom.TelecomManager;
@@ -23,7 +23,6 @@ import java.security.GeneralSecurityException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.function.Supplier;
 
 /** A single host worker owns discovery, verification, apply and reboot admission. */
 final class UpdateRunner {
@@ -75,7 +74,6 @@ final class UpdateRunner {
         Log.i("ElizaSystemUpdater", message);
     }
 
-    // spec/os/update/updater.md, "Story: Install a verified update once"
     private void execute(Run run) {
         try {
             // Android exposes app storage through /data/user/0 as well as /data/data.
@@ -85,13 +83,10 @@ final class UpdateRunner {
             if (!context.getResources().getBoolean(R.bool.os_update_enabled)) {
                 finish(run, "System updates are not configured"); return;
             }
-            if (!conditions().downloadAllowed()) { finish(run, "Waiting for enough battery and an unmetered network"); return; }
-            UpdateAdmission.Release installed = installed();
+            if (!downloadAllowed()) { finish(run, "Waiting for enough battery and an unmetered network"); return; }
             UpdateJournal current = store.read();
-            if (current.phase != UpdateJournal.Phase.IDLE) {
-                UpdateJournal observed = current.reconcile(installed.fingerprint(), boot());
-                if (!observed.same(current)) { store.write(current, observed); current = observed; }
-            }
+            UpdateJournal observed = current.reconcile(android.os.Build.FINGERPRINT, boot());
+            if (observed != current) { store.write(current, observed); current = observed; }
             if (current.phase == UpdateJournal.Phase.UNKNOWN
                     || (current.phase == UpdateJournal.Phase.FAILED && !current.intentBoot.isEmpty())
                     || current.phase == UpdateJournal.Phase.REBOOT_INTENT) {
@@ -100,10 +95,14 @@ final class UpdateRunner {
             UpdateChannel channel = new UpdateChannel(context.getString(R.string.os_update_manifest),
                     context.getResources().getStringArray(R.array.os_update_hosts),
                     context.getString(R.string.os_update_product), context.getString(R.string.os_update_device));
-            if (current.phase == UpdateJournal.Phase.REBOOT_READY) {
-                restartIfAllowed(run, store, channel, installed); return;
+            UpdateChannel.Candidate candidate;
+            try {
+                candidate = channel.discover();
+            } catch (IOException unavailable) {
+                if (current.phase != UpdateJournal.Phase.REBOOT_READY) throw unavailable;
+                heldOfferUnavailable(run, unavailable);
+                return;
             }
-            UpdateChannel.Candidate candidate = channel.discover(installed);
             if ((current.isUnapplied()
                     || (current.phase == UpdateJournal.Phase.FAILED && current.intentBoot.isEmpty()))
                     && (candidate == null || !current.targetBuild.equals(candidate.fingerprint)
@@ -111,21 +110,27 @@ final class UpdateRunner {
                 UpdateJournal idle = current.cancelUnapplied();
                 store.write(current, idle); current = idle;
             }
-            if (candidate == null) { finish(run, "No newer system update was offered"); return; }
+            if (candidate == null) {
+                finish(run, current.phase == UpdateJournal.Phase.REBOOT_READY
+                        ? heldOfferStatus(null) : "No newer system update was offered");
+                return;
+            }
             if (current.phase == UpdateJournal.Phase.FAILED) {
                 finish(run, "The rejected system update needs review"); return;
             }
             if (current.phase == UpdateJournal.Phase.IDLE || current.phase == UpdateJournal.Phase.COMPLETE
                     || current.phase == UpdateJournal.Phase.SOURCE_RETAINED) {
-                UpdateJournal next = current.download(installed, candidate.release, candidate.sha256,
-                        candidate.manifest, conditions());
+                UpdateJournal next = current.download(android.os.Build.FINGERPRINT,
+                        candidate.fingerprint, candidate.sha256);
                 store.write(current, next); current = next;
             }
             if (!current.targetBuild.equals(candidate.fingerprint)
                     || !current.packageSha256.equals(candidate.sha256)) {
-                finish(run, "The current offer differs from the journaled system update"); return;
+                finish(run, heldOfferStatus(candidate)); return;
             }
-            Path scratch = PackageVerifier.reclaimExtractionScratch(directory.toPath());
+            boolean unapplied = current.isUnapplied();
+            Path scratch = unapplied
+                    ? PackageVerifier.reclaimExtractionScratch(directory.toPath()) : null;
             File ota = new File(directory, candidate.sha256 + ".zip");
             if (!ota.exists()) {
                 if (current.phase != UpdateJournal.Phase.DOWNLOADING) {
@@ -135,28 +140,35 @@ final class UpdateRunner {
                 ota = channel.download(candidate, directory);
             }
             status(context, "Verifying system update");
-            run.verifying = true;
+            run.verifying = unapplied;
             VerifiedPayload payload = PackageVerifier.verify(ota, directory,
                     candidate.sha256, candidate.bytes, candidate.fingerprint, candidate.timestamp,
-                    installed, context.getString(R.string.os_update_ota_certificate), scratch);
+                    context.getString(R.string.os_update_product), context.getString(R.string.os_update_device),
+                    context.getString(R.string.os_update_ota_certificate), scratch);
             run.verifying = false;
             if (current.phase == UpdateJournal.Phase.DOWNLOADING) {
-                UpdateJournal next = current.verified(installed, payload.release, payload.otaSha256);
+                UpdateJournal next = current.verified(android.os.Build.FINGERPRINT,
+                        payload.targetBuild, payload.otaSha256);
                 store.write(current, next); current = next;
             }
             if (run.stopped) { finish(run, "System update check paused"); return; }
-            if (!conditions().installAllowed()) {
+            if (current.phase == UpdateJournal.Phase.REBOOT_READY) {
+                rebootIfAllowed(run, store, channel, candidate); return;
+            }
+            if (current.phase != UpdateJournal.Phase.VERIFIED || !installAllowed()) {
                 SystemUpdateJob.schedule(context, true, false);
                 finish(run, "System update will install when the phone is idle"); return;
             }
-            UpdateAdmission.Offer offer = offerOf(channel, installed);
+            if (!same(candidate, channel.discover())) {
+                finish(run, "The update offer changed before installation"); return;
+            }
             run.installer = new EngineInstaller(store, serial, this::boot);
             run.applying = true;
             status(context, "Installing system update");
-            run.installer.apply(payload, this::conditions, offer, (result, message) -> {
+            run.installer.apply(payload, () -> !run.stopped && installAllowed(), (result, message) -> {
                 run.applying = false;
                 if (result == EngineInstaller.Result.REBOOT_READY) {
-                    try { restartIfAllowed(run, store, channel, installed); }
+                    try { rebootIfAllowed(run, store, channel, candidate); }
                     catch (Exception failure) { failure(run, failure); }
                 } else finish(run, message);
             });
@@ -167,29 +179,36 @@ final class UpdateRunner {
         } catch (Exception error) { failure(run, error); }
     }
 
-    // spec/os/update/updater.md, "A restart is requested only while the phone, the offer and the engine all allow it"
-    private void restartIfAllowed(Run run, JournalStore store, UpdateChannel channel,
-            UpdateAdmission.Release installed) throws IOException {
-        if (run.stopped) { finish(run, "System update check paused"); return; }
-        UpdateJournal current = store.read();
-        UpdateAdmission.Conditions conditions = conditions();
-        Supplier<UpdateAdmission.Offer> offer = once(() -> offerOf(channel, installed));
-        Supplier<UpdateAdmission.Engine> engine = once(UpdateRunner::engineStatus);
-        UpdateJournal.RestartHold hold = current.restartBlocker(conditions, offer, engine);
-        if (hold != UpdateJournal.RestartHold.NOT_HELD) {
-            UpdateJournal held = current.holdRestart(conditions, offer, engine);
-            if (!held.same(current)) store.write(current, held);
-            if (hold == UpdateJournal.RestartHold.CONDITIONS || hold == UpdateJournal.RestartHold.OFFER_CHANGED) {
-                SystemUpdateJob.schedule(context, true, false);
-            }
-            finish(run, heldStatus(hold)); return;
+    private void rebootIfAllowed(Run run, JournalStore store, UpdateChannel channel,
+            UpdateChannel.Candidate candidate) throws IOException {
+        if (run.stopped || !installAllowed()) {
+            SystemUpdateJob.schedule(context, true, false);
+            finish(run, "System update is ready; waiting for idle restart conditions"); return;
         }
-        UpdateJournal intent = current.rebootIntent(conditions, offer, engine);
+        UpdateChannel.Candidate offered;
+        try {
+            offered = channel.discover();
+        } catch (IOException unavailable) {
+            heldOfferUnavailable(run, unavailable);
+            return;
+        }
+        if (!same(candidate, offered)) {
+            SystemUpdateJob.schedule(context, true, false);
+            finish(run, heldOfferStatus(offered)); return;
+        }
+        if (EngineInstaller.observeStatus() != UpdateEngine.UpdateStatusConstants.UPDATED_NEED_REBOOT) {
+            finish(run, "System update engine state needs review"); return;
+        }
+        if (run.stopped || !installAllowed()) {
+            SystemUpdateJob.schedule(context, true, false);
+            finish(run, "Waiting for idle restart conditions"); return;
+        }
+        UpdateJournal current = store.read();
+        UpdateJournal intent = current.rebootIntent(true, true);
         store.write(current, intent);
-        UpdateAdmission.Conditions now = conditions();
-        if (intent.rebootIntentStale(now)) {
-            // The system reboot was not called; keep the applied candidate ready.
-            store.write(intent, intent.withdrawRebootIntent(now));
+        if (run.stopped || !installAllowed()) {
+            // The system reboot was not called; keep the verified ready state.
+            store.write(intent, current);
             SystemUpdateJob.schedule(context, true, false);
             finish(run, "Restart conditions changed"); return;
         }
@@ -200,88 +219,51 @@ final class UpdateRunner {
         finish(run, "System restart requested");
     }
 
-    private static UpdateAdmission.Engine engineStatus() {
-        try { return EngineInstaller.engineOf(EngineInstaller.observeStatus()); }
-        catch (IOException unavailable) {
-            Log.w("ElizaSystemUpdater", "Update engine status is unavailable", unavailable);
-            return UpdateAdmission.Engine.UNAVAILABLE;
-        }
-    }
-
-    private static UpdateAdmission.Offer offerOf(UpdateChannel channel, UpdateAdmission.Release installed) {
-        try {
-            UpdateChannel.Candidate offered = channel.discover(installed);
-            return offered == null ? UpdateAdmission.Offer.NONE
-                    : UpdateAdmission.Offer.of(offered.fingerprint, offered.sha256);
-        } catch (IOException unavailable) {
-            Log.w("ElizaSystemUpdater", "Could not check the system update offer", unavailable);
-            return UpdateAdmission.Offer.UNAVAILABLE;
-        }
-    }
-
-    private static <T> Supplier<T> once(Supplier<T> read) {
-        Object[] held = new Object[1];
-        return () -> {
-            if (held[0] == null) held[0] = read.get();
-            @SuppressWarnings("unchecked") T value = (T) held[0];
-            return value;
-        };
-    }
-
-    private static String heldStatus(UpdateJournal.RestartHold hold) {
-        return switch (hold) {
-            case CONDITIONS -> "System update is ready; waiting for idle restart conditions";
-            case OFFER_UNAVAILABLE -> "Could not check the offer for the applied system update. Automatic restart is on hold.";
-            case NO_OFFER -> "No matching offer for the applied system update. Automatic restart is on hold.";
-            case OFFER_CHANGED -> "The current offer differs from the applied system update. Automatic restart is on hold.";
-            case ENGINE -> "System update engine state needs review";
-            case NOT_HELD -> throw new IllegalArgumentException("The restart is not held");
-        };
-    }
-
-    // spec/os/update/updater.md, "A download needs the download conditions and an install or restart also needs an idle phone"
-    private UpdateAdmission.Conditions conditions() {
+    private boolean downloadAllowed() {
         UserManager users = context.getSystemService(UserManager.class);
         BatteryManager battery = context.getSystemService(BatteryManager.class);
         ConnectivityManager connectivity = context.getSystemService(ConnectivityManager.class);
         DevicePolicyManager policy = context.getSystemService(DevicePolicyManager.class);
-        PowerManager power = context.getSystemService(PowerManager.class);
-        TelecomManager phone = context.getSystemService(TelecomManager.class);
-        NetworkCapabilities network = connectivity == null ? null
-                : connectivity.getNetworkCapabilities(connectivity.getActiveNetwork());
-        boolean phoneState = phone != null && context.checkSelfPermission(Manifest.permission.READ_PHONE_STATE)
-                == PackageManager.PERMISSION_GRANTED;
-        boolean inCall;
-        try { inCall = !phoneState || phone.isInCall(); }
-        catch (SecurityException unavailable) { inCall = true; }
-        return new UpdateAdmission.Conditions(
-                users != null && users.isSystemUser(), users != null && users.isUserUnlocked(),
-                users == null || users.isManagedProfile(),
-                battery != null && battery.isCharging(),
-                battery == null ? 0 : battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY),
-                network != null && network.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                        && network.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-                        && network.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED),
-                policy == null || policy.getSystemUpdatePolicy() != null,
-                power == null || power.isInteractive(), phoneState, inCall);
+        if (users == null || !users.isSystemUser() || !users.isUserUnlocked() || users.isManagedProfile()
+                || battery == null || (!battery.isCharging() && battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) < 50) || connectivity == null || policy == null
+                || policy.getSystemUpdatePolicy() != null) return false;
+        NetworkCapabilities network = connectivity.getNetworkCapabilities(connectivity.getActiveNetwork());
+        return network != null && network.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                && network.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                && network.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED);
     }
 
-    // spec/os/update/updater.md, "A candidate is admitted only for the same product and device, with a newer build and no lower patch levels"
-    private UpdateAdmission.Release installed() {
-        return new UpdateAdmission.Release(android.os.Build.FINGERPRINT,
-                context.getString(R.string.os_update_product), context.getString(R.string.os_update_device),
-                android.os.Build.TIME / 1000,
-                UpdateAdmission.patchLevel(android.os.Build.VERSION.SECURITY_PATCH),
-                UpdateAdmission.patchLevel(SystemProperties.get("ro.vendor.build.security_patch")));
+    private boolean installAllowed() {
+        PowerManager power = context.getSystemService(PowerManager.class);
+        TelecomManager phone = context.getSystemService(TelecomManager.class);
+        if (!downloadAllowed() || power == null || power.isInteractive() || phone == null
+                || context.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) return false;
+        try { return !phone.isInCall(); }
+        catch (SecurityException unavailable) { return false; }
     }
 
     private String boot() {
         int count = Settings.Global.getInt(context.getContentResolver(), Settings.Global.BOOT_COUNT, -1);
-        return count < 0 ? "" : "boot-" + count;
+        if (count < 0) throw new IllegalStateException("Boot identity unavailable");
+        return "boot-" + count;
     }
 
+    private static String heldOfferStatus(UpdateChannel.Candidate offered) {
+        return offered == null
+                ? "No matching offer for the applied system update. Automatic restart is on hold."
+                : "The current offer differs from the applied system update. Automatic restart is on hold.";
+    }
 
+    private void heldOfferUnavailable(Run run, IOException unavailable) {
+        Log.w("ElizaSystemUpdater", "Could not check the applied system update offer", unavailable);
+        finish(run, "Could not check the offer for the applied system update. Automatic restart is on hold.");
+    }
 
+    private static boolean same(UpdateChannel.Candidate first, UpdateChannel.Candidate next) {
+        return next != null && first.sha256.equals(next.sha256)
+                && first.fingerprint.equals(next.fingerprint) && first.timestamp == next.timestamp
+                && first.bytes == next.bytes;
+    }
 
     private void failure(Run run, Exception failure) {
         Log.w("ElizaSystemUpdater", "System update operation stopped", failure);

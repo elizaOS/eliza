@@ -3,11 +3,9 @@ import { assert, describe, it } from "@effect/vitest"
 import { Refused, refusalBody } from "../../src/http/refusal.vibe"
 import { parseProfile } from "../../src/profile/profile.vibe"
 import { billedFromUsage, callCostFor, checkPrices, chooseFor, pricesFromSeed, setModelPrice, type InferenceSettings } from "../../src/services/models.vibe"
-import { tokenDigest } from "../../src/shared/sealing.vibe"
-import { organization, testCloud, type ProfileEdit, type TestCloud } from "../support/cloud.vibe"
+import { signedCaller } from "../support/caller.vibe"
+import { testCloud, type ProfileEdit, type TestCloud } from "../support/cloud.vibe"
 import { testProfile } from "../support/profile.ts"
-
-const day = 24 * 60 * 60_000
 
 const offers = [
   { id: "test-chat", provider: "llm", upstreamModel: "upstream-chat", vision: true },
@@ -34,17 +32,6 @@ effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknow
   return try cloud.store.transaction((tx) => tx.query(text, params))
 }
 
-effect function liveDeviceKey(cloud: TestCloud, user: string) {
-  const now = try Clock.currentTimeMillis
-  const token = `eliza_mobile_${tokenDigest(user)}`
-  try organization(cloud, `org-${user}`)
-  try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [user, `org-${user}`, `${user}@example.com`, now])
-  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'test-client', 'active', $3, $4, $5, $6, $5, $5)", [
-    `grant-${user}`, user, `cred-${user}`, tokenDigest(token), now, now + day
-  ])
-  return token
-}
-
 effect function settingsOf(cloud: TestCloud, edit: ProfileEdit) {
   const profile = try parseProfile(try sync(() => edit(testProfile(cloud.fakes.url))))
   const settings = profile.environments.staging.inference
@@ -66,12 +53,12 @@ function listed(body: unknown): ReadonlyArray<string> {
 describe("WP5 Inference: models", () => {
   it.live("Learn which models my key can call (spec/cloud/services/models.md, \"Story: Learn which models my key can call\"; spec/cloud/services/models.md, \"Story: Price a model call before it runs\")", () => scoped(effect {
     const off = try testCloud({ edit: inferenceOff })
-    const offKey = try liveDeviceKey(off, "off-user")
+    const { bearer: offKey } = try signedCaller(off, "off-user")
     const disabled = try off.call("/api/v1/models", { headers: { authorization: `Bearer ${offKey}` } })
 
     const cloud = try testCloud({ edit: withOffers })
     const settings = try settingsOf(cloud, withOffers)
-    const key = try liveDeviceKey(cloud, "owner")
+    const { bearer: key } = try signedCaller(cloud, "owner")
     const models = (token?: string) => cloud.call("/api/v1/models", token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } })
     const anonymous = try models()
     const unknownKey = try models(`eliza_mobile_${"0".repeat(64)}`)

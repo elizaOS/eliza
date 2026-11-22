@@ -1,0 +1,14 @@
+{
+  "origin": "journey \"Story: Create and find my conversations\" / \"The list shows only published conversations, most recently updated first\"",
+  "seed": 1,
+  "trace": [
+    [
+      "owner",
+      {
+        "type": "create",
+        "title": "",
+        "titleUnits": 5
+      }
+    ]
+  ]
+}

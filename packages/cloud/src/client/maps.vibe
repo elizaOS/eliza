@@ -1,8 +1,7 @@
 // spec/cloud/services/maps.md, "Story: Answer a maps request once and pay for it once"; spec/cloud/client.md, "Story: Use the cloud from the device as configured"
-import { SecureRandom } from "effect/crypto"
 import type { RefusalCode } from "../../gen/cloud__shared__types.ts"
 import {
-  type IdempotencyKey, MapsCapabilities, MapsPlaceResponse, MapsPlacesResponse, MapsRoutesResponse, MapsViewportResponse,
+  MapsCapabilities, MapsPlaceResponse, MapsPlacesResponse, MapsRoutesResponse, MapsViewportResponse,
   type PlaceDetailsRequest, type ReverseRequest, type RoutesRequest, type TextSearchRequest, type TileAddress, type ViewportRequest
 } from "../services/maps.schema.ts"
 import { answerOf, bytesOf, type CallOptions } from "./answer.vibe"
@@ -10,8 +9,16 @@ import type { CloudTransport } from "./client.vibe"
 import type { CloudError } from "./errors.vibe"
 import { idempotencyKey, routesByName, type DeviceRoute } from "./routes.vibe"
 
+module browser {
+  /** @throws {never} */
+  export function freshRequestId(): string {
+    return globalThis.crypto.randomUUID()
+  }
+}
+import { freshRequestId } from browser
+
 export type {
-  IdempotencyKey, MapsCapabilities, MapsPlaceResponse, MapsPlacesResponse, MapsRoutesResponse, MapsViewportResponse,
+  MapsCapabilities, MapsPlaceResponse, MapsPlacesResponse, MapsRoutesResponse, MapsViewportResponse,
   PlaceDetailsRequest, ReverseRequest, RoutesRequest, TextSearchRequest, TileAddress, ViewportRequest
 }
 
@@ -35,38 +42,34 @@ export function mapsRefusalOf(error: CloudError): MapsRefusal | undefined {
   }
 }
 
-export interface MapsCallOptions extends CallOptions {
-  readonly idempotencyKey?: IdempotencyKey
-}
-
-function keyOf(route: DeviceRoute, options: MapsCallOptions): Readonly<Record<string, string>> {
-  return route.headers.includes(idempotencyKey) ? { [idempotencyKey]: options.idempotencyKey ?? SecureRandom.uuidV4Unsafe() } : {}
+function freshKey(route: DeviceRoute): Readonly<Record<string, string>> {
+  return route.headers.includes(idempotencyKey) ? { [idempotencyKey]: freshRequestId() } : {}
 }
 
 export function mapsCalls(transport: CloudTransport) {
-  async function post<A>(route: DeviceRoute, schema: Schema.Codec<A>, json: unknown, options: MapsCallOptions): Promise<A> {
-    return answerOf(await transport.call(route, { json, headers: keyOf(route, options), signal: options.signal }), schema)
+  async function post<A>(route: DeviceRoute, schema: Schema.Codec<A>, json: unknown, options: CallOptions): Promise<A> {
+    return answerOf(await transport.call(route, { json, headers: freshKey(route), signal: options.signal }), schema)
   }
   return {
     async mapsCapabilities(options: CallOptions = {}): Promise<MapsCapabilities> {
       return answerOf(await transport.call(routesByName.mapsCapabilities, { signal: options.signal }), MapsCapabilities)
     },
-    mapsGeocode: (request: TextSearchRequest, options: MapsCallOptions = {}): Promise<MapsPlacesResponse> =>
+    mapsGeocode: (request: TextSearchRequest, options: CallOptions = {}): Promise<MapsPlacesResponse> =>
       post(routesByName.mapsGeocode, MapsPlacesResponse, request, options),
-    mapsReverse: (request: ReverseRequest, options: MapsCallOptions = {}): Promise<MapsPlaceResponse> =>
+    mapsReverse: (request: ReverseRequest, options: CallOptions = {}): Promise<MapsPlaceResponse> =>
       post(routesByName.mapsReverse, MapsPlaceResponse, request, options),
-    mapsPlacesSearch: (request: TextSearchRequest, options: MapsCallOptions = {}): Promise<MapsPlacesResponse> =>
+    mapsPlacesSearch: (request: TextSearchRequest, options: CallOptions = {}): Promise<MapsPlacesResponse> =>
       post(routesByName.mapsPlacesSearch, MapsPlacesResponse, request, options),
-    mapsPlaceDetails: (request: PlaceDetailsRequest, options: MapsCallOptions = {}): Promise<MapsPlaceResponse> =>
+    mapsPlaceDetails: (request: PlaceDetailsRequest, options: CallOptions = {}): Promise<MapsPlaceResponse> =>
       post(routesByName.mapsPlaceDetails, MapsPlaceResponse, request, options),
-    mapsRoutes: (request: RoutesRequest, options: MapsCallOptions = {}): Promise<MapsRoutesResponse> =>
+    mapsRoutes: (request: RoutesRequest, options: CallOptions = {}): Promise<MapsRoutesResponse> =>
       post(routesByName.mapsRoutes, MapsRoutesResponse, request, options),
-    mapsViewport: (request: ViewportRequest, options: MapsCallOptions = {}): Promise<MapsViewportResponse> =>
+    mapsViewport: (request: ViewportRequest, options: CallOptions = {}): Promise<MapsViewportResponse> =>
       post(routesByName.mapsViewport, MapsViewportResponse, request, options),
-    async mapsTile(tile: TileAddress, options: MapsCallOptions = {}): Promise<MapsTile> {
+    async mapsTile(tile: TileAddress, options: CallOptions = {}): Promise<MapsTile> {
       const route = routesByName.mapsTile
       const answer = await transport.call(route, {
-        params: { z: String(tile.z), x: String(tile.x), y: String(tile.y) }, headers: keyOf(route, options), signal: options.signal
+        params: { z: String(tile.z), x: String(tile.x), y: String(tile.y) }, headers: freshKey(route), signal: options.signal
       })
       return { contentType: answer.headers.get("content-type") ?? "application/octet-stream", bytes: await bytesOf(answer) }
     }

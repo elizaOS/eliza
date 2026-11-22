@@ -4,13 +4,12 @@ import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import { addCredits } from "../../src/billing/funds.vibe"
 import { parseProfile } from "../../src/profile/profile.vibe"
 import { setModelPrice } from "../../src/services/models.vibe"
-import { tokenDigest } from "../../src/shared/sealing.vibe"
 import { Store } from "../../src/store/store.vibe"
-import { organization, testCloud, type TestCloud } from "../support/cloud.vibe"
+import { testCloud, type TestCloud } from "../support/cloud.vibe"
 import { llmFake, replyText, upstreamModel, type LlmFake } from "../support/llm-fake.ts"
+import { signedCaller } from "../support/caller.vibe"
 import { testProfile } from "../support/profile.ts"
 
-const day = 24 * 60 * 60_000
 const prompt = "Please say hello to me now, thank you ok"
 const request = { model: "test-chat", messages: [{ role: "user", content: prompt }], max_tokens: 16 }
 
@@ -22,17 +21,6 @@ effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknow
   return try cloud.store.transaction((tx) => tx.query(text, params))
 }
 
-effect function liveDeviceKey(cloud: TestCloud, user: string) {
-  const now = try Clock.currentTimeMillis
-  const token = `eliza_mobile_${tokenDigest(user)}`
-  try organization(cloud, `org-${user}`)
-  try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [user, `org-${user}`, `${user}@example.com`, now])
-  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'test-client', 'active', $3, $4, $5, $6, $5, $5)", [
-    `grant-${user}`, user, `cred-${user}`, tokenDigest(token), now, now + day
-  ])
-  return token
-}
-
 effect function chatCloud() {
   const llm: LlmFake = try sync(() => llmFake())
   const cloud = try testCloud({ mount: (fakes) => fakes.mount("/llm/", llm.handler) })
@@ -40,7 +28,7 @@ effect function chatCloud() {
   const settings = profile.environments.staging.inference
   if (settings === undefined) return try Effect.die("the test profile offers no inference")
   try cloud.store.transaction((tx) => setModelPrice(tx, settings, { modelId: "test-chat", inputPer1K: 1000, outputPer1K: 2000 }))
-  const key = try liveDeviceKey(cloud, "owner")
+  const { bearer: key } = try signedCaller(cloud, "owner")
   provide Store = cloud.store {
     try addCredits({ organizationId: "org-owner", amount: 1_000_000, requestKey: "operator-1" })
   }
@@ -97,11 +85,11 @@ describe("WP5 Inference: chat completions", () => {
   it.live("Answer a chat completion once and charge it once (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\")", () => scoped(effect {
     const { cloud, llm, chat } = try chatCloud()
     const unknownModel = try chat({ ...request, model: "missing-chat" })
-    const broke = try liveDeviceKey(cloud, "broke")
+    const { bearer: broke } = try signedCaller(cloud, "broke")
     const unfunded = try chat(request, {}, broke)
     const callsBeforeAdmission = llm.bodies.length
-    const whole = try chat(request, { "idempotency-key": "same-key" })
-    const again = try chat(request, { "idempotency-key": "same-key" })
+    const whole = try chat(request, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
+    const again = try chat(request, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
     try sync(() => llm.script({ kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }))
     const refusedByProvider = try chat(request)
     const unreadable = try chat(request)
@@ -115,7 +103,7 @@ describe("WP5 Inference: chat completions", () => {
         unknownModel: status(unknownModel),
         unfunded: status(unfunded),
         callsBeforeAdmission,
-        whole: [whole.status, answer.model, answer.choices[0]?.message.content, whole.headers["cache-control"], again.status],
+        whole: [whole.status, answer.model, answer.choices[0]?.message.content, whole.headers["cache-control"], status(again)],
         upstream: llm.bodies.map((body) => [body.model, body.stream ?? false, body.max_tokens]),
         idempotencyForwarded: llm.headers.some((headers) => headers["idempotency-key"] !== undefined),
         refusedByProvider: status(refusedByProvider),
@@ -129,22 +117,22 @@ describe("WP5 Inference: chat completions", () => {
         unknownModel: [400, "model_unavailable", undefined],
         unfunded: [402, "insufficient_credits", undefined],
         callsBeforeAdmission: 0,
-        whole: [200, "test-chat", replyText, "no-store", 200],
-        upstream: [[upstreamModel, false, 16], [upstreamModel, false, 16], [upstreamModel, false, 16], [upstreamModel, false, 16]],
+        whole: [200, "test-chat", replyText, "no-store", [409, "already_dispatched", undefined]],
+        upstream: [[upstreamModel, false, 16], [upstreamModel, false, 16], [upstreamModel, false, 16]],
         idempotencyForwarded: false,
         refusedByProvider: [503, "provider_unavailable", "7"],
         unreadable: [502, "provider_invalid_response", undefined],
-        usage: [["known", 50, 31], ["known", 50, 31], ["known", 50, 0], ["unknown", 50, 50]],
+        usage: [["known", 50, 31], ["known", 50, 0], ["unknown", 50, 50]],
         brokeUsage: [],
-        holds: ["settled", "settled", "settled", "settled"],
-        balance: 1_000_000 - 31 - 31 - 50
+        holds: ["settled", "settled", "settled"],
+        balance: 1_000_000 - 31 - 50
       }
     ))
-  }))
+  }), 90_000)
 
   it.live("Stream a reply in the shape clients read (spec/cloud/services/inference.md, \"Story: Stream a reply in the shape clients read\")", () => scoped(effect {
     const { cloud, llm, key, chat } = try chatCloud()
-    const streamed = try chat({ ...request, stream: true })
+    const streamed = try chat({ ...request, stream: true, stream_options: { include_usage: true } })
     try sync(() => llm.script({ kind: "streamWithoutUsage" }, { kind: "hang", after: 2 }))
     const withoutUsage = try chat({ ...request, stream: true })
     const hungUp = try hangUpAfterFirstBytes(cloud.url, key)
@@ -177,8 +165,8 @@ describe("WP5 Inference: chat completions", () => {
         upstream: [[upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }]],
         hungUp: [200, "text/event-stream", true],
         aborted: 1,
-        usage: [["known", 50, 31], ["known", 50, 50], ["known", 50, 12]]
+        usage: [["known", 50, 31], ["unknown", 50, 50], ["known", 50, 14]]
       }
     ))
-  }))
+  }), 90_000)
 })

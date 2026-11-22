@@ -1,0 +1,262 @@
+// spec/notes/read.md, "Story: Search private notes and share only what I select"; spec/notes/read.md, "A query receipt carries the original query, an allowed basis and a record only on a match"; spec/notes/read.md, "Wire and authored content have different boundaries"
+import { canRetireQuery, initial, machineOver, notesBasis, transferFieldsAdmitted, type Event } from "../gen/notes__read.effect.vibe"
+import { decodeDocument, digest, type Note } from "./document.vibe"
+
+const Id = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/))
+const Revision = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const TitleQuery = Schema.Struct({
+  kind: Schema.Literal("title"),
+  text: Schema.String.check(Schema.isMaxLength(256), Schema.makeFilter((text) => text.trim() !== "" && !text.includes("\0"))),
+})
+schema LatestQuery { kind: "latest"; by: "created" | "updated" }
+const NotesTarget = Schema.Struct({ sourceId: Id, sourceRevision: Revision, noteId: Id, revision: Revision })
+const ReadOperation = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("notes_query"), query: Schema.Union([TitleQuery, LatestQuery]) }),
+  Schema.Struct({ type: Schema.Literal("notes_read_selected"), target: NotesTarget }),
+])
+const decodeOperation = Schema.decodeUnknownEffect(ReadOperation, { onExcessProperty: "error" })
+const validId = Schema.is(Id)
+
+type TitleQuery = typeof TitleQuery.Type
+type Query = TitleQuery | LatestQuery
+type SearchHit =
+  | { readonly query: TitleQuery; readonly basis: "title-match" }
+  | { readonly query: LatestQuery; readonly basis: "latest-created" | "latest-updated" | "only-note" | "owner-choice-uncertain" }
+export type NotesTarget = typeof NotesTarget.Type
+export type NotesReadOperation = typeof ReadOperation.Type
+
+type Fields = { readonly title: string; readonly body: string }
+type RecordReceipt = {
+  readonly version: 1
+  readonly kind: "notes_read_selected"
+  readonly sourceId: string
+  readonly noteId: string
+  readonly revision: string
+  readonly fields: Fields
+}
+export type NotesReadReceipt =
+  | RecordReceipt
+  | { readonly version: 1; readonly kind: "notes_query"; readonly query: Query; readonly basis: "no-match" }
+  | ({ readonly version: 1; readonly kind: "notes_query"; readonly target: NotesTarget; readonly record: RecordReceipt } & SearchHit)
+
+export interface NotesOwner {
+  readonly ownerId: string
+  readonly agentId: string
+  readonly installationId: string
+  readonly enrollmentId: string
+  readonly origin: string
+  readonly scope: string
+}
+export interface NotesProposal {
+  readonly proposalId: string
+  readonly operationId: string
+  readonly digest: string
+  readonly owner: NotesOwner
+}
+export interface NotesClaim {
+  readonly proposalId: string
+  readonly operationId: string
+  readonly attemptId: number
+}
+export interface NotesAuthority extends NotesProposal {
+  readonly viewRevision: number
+  readonly view: "home" | "notes" | "sensitive"
+  readonly foreground: boolean
+  readonly permitted: boolean
+  readonly selected?: NotesTarget
+}
+export interface NotesDocument {
+  readonly revision: string
+  readonly raw: string
+}
+type Candidate = { readonly id: string; readonly title: string }
+type Review = { readonly target: NotesTarget; readonly fields: Fields }
+type Reason = "invalid_request" | "not_current" | "unavailable" | "source_changed" | "not_shareable" | "oversize" | "cancelled"
+export error NotesReadRefused { code: Reason }
+export interface NotesReadPorts {
+  readonly current: () => NotesAuthority | undefined
+  readonly readCommitted: (owner: NotesOwner) => (NotesDocument | undefined)!NotesReadRefused
+  readonly choose: (choices: readonly Candidate[]) => (string | undefined)!NotesReadRefused
+  readonly review: (exact: Review) => boolean!NotesReadRefused
+  readonly hasClaim: (proposal: NotesProposal, call: NotesClaim) => boolean
+}
+export interface PreparedNotesRead {
+  execute(call: NotesClaim): NotesReadReceipt!NotesReadRefused
+}
+
+const fold = (title: string) => title.normalize("NFKC").toLowerCase()
+
+function instant(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && Number.isFinite(new Date(value).getTime())) return value
+  if (typeof value !== "string" || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/.test(value)) return undefined
+  const stamp = Date.parse(value)
+  return Number.isFinite(stamp) && new Date(stamp).toISOString().replace(".000Z", "Z") === value.replace(".000Z", "Z") ? stamp : undefined
+}
+
+type Candidates = { readonly notes: readonly Note[]; readonly hit: SearchHit } | undefined
+
+function candidates(notes: readonly Note[], query: Query): Candidates {
+  if (query.kind === "title") {
+    const needle = fold(query.text).trim()
+    const matches = notes.filter((note) => fold(note.title).includes(needle))
+    return notesBasis("ByTitle", notes.length, matches.length, false, 0) === "NoMatch" ? undefined : { notes: matches, hit: { query, basis: "title-match" } }
+  }
+  const stamp = notes.map((note) => instant(query.by === "created" ? note.createdAt : note.modifiedAt ?? note.updatedAt))
+  const known = stamp.every((value) => value !== undefined)
+  const latest = known ? Math.max(...stamp) : undefined
+  const matches = known ? notes.filter((_, index) => stamp[index] === latest) : notes
+  const basis = notesBasis("ByLatest", notes.length, 0, known, matches.length)
+  if (basis === "NoMatch") return undefined
+  return { notes: basis === "OnlyNote" ? notes : matches, hit: {
+    query,
+    basis: basis === "OnlyNote" ? "only-note" : basis === "Uncertain" ? "owner-choice-uncertain" : query.by === "created" ? "latest-created" : "latest-updated",
+  } }
+}
+
+function sameTarget(a: NotesTarget | undefined, b: NotesTarget): boolean {
+  return a !== undefined && a.sourceId === b.sourceId && a.sourceRevision === b.sourceRevision && a.noteId === b.noteId && a.revision === b.revision
+}
+
+function sameOwner(a: NotesOwner, b: NotesOwner): boolean {
+  return a.ownerId === b.ownerId && a.agentId === b.agentId && a.origin === b.origin && a.installationId === b.installationId
+    && a.enrollmentId === b.enrollmentId && a.scope === b.scope
+}
+
+function sameProposal(a: NotesProposal, b: NotesProposal): boolean {
+  return a.proposalId === b.proposalId && a.operationId === b.operationId && a.digest === b.digest && sameOwner(a.owner, b.owner)
+}
+
+function stillCurrent(now: NotesAuthority | undefined, held: NotesAuthority, op: NotesReadOperation): boolean {
+  return now !== undefined && now.foreground && now.permitted && now.view !== "sensitive" && now.view === held.view
+    && now.viewRevision === held.viewRevision && sameProposal(now, held)
+    && (op.type === "notes_query" || (now.view === "notes" && sameTarget(now.selected, op.target)))
+}
+
+function fields(note: Note): Fields {
+  return { title: note.title, body: note.body ?? "" }
+}
+
+effect function reviewedFields(note: Note): Fields!NotesReadRefused {
+  const value = fields(note)
+  if (note.kind === "list" || (value.title.trim() === "" && value.body.trim() === "")) throw new NotesReadRefused({ code: "not_shareable" })
+  if (!transferFieldsAdmitted(value.title.length, value.body.length, new TextEncoder().encode(JSON.stringify(value)).byteLength,
+    !value.title.includes("\0") && !value.body.includes("\0"))) throw new NotesReadRefused({ code: "oversize" })
+  return value
+}
+
+effect function targetFor(sourceId: string, note: Note): NotesTarget!NotesReadRefused {
+  if (!validId(note.id)) throw new NotesReadRefused({ code: "not_shareable" })
+  const sourceRevision = try mapError(tryPromise(() => digest(["notes.local-record.v1", sourceId])), () => new NotesReadRefused({ code: "unavailable" }))
+  const revision = try mapError(tryPromise(() => digest([sourceId, note])), () => new NotesReadRefused({ code: "unavailable" }))
+  return { sourceId, sourceRevision, noteId: note.id, revision }
+}
+
+export effect function selectedNotes(ports: NotesReadPorts) {
+  const state = try Ref.make(initial)
+  const machine = try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))
+  const serialize = (try Semaphore.make(1)).withPermits(1)
+
+  effect function send(event: Event) {
+    return try mapError(machine.send(event), () => new NotesReadRefused({ code: "not_current" }))
+  }
+
+  effect function retire(): void!! {
+    if (canRetireQuery(try machine.get())) try orDie(machine.send({ type: "retireQuery" }))
+  }
+
+  effect function prepare(input: NotesReadOperation, proposal: NotesProposal): PreparedNotesRead!NotesReadRefused {
+    const op = try mapError(decodeOperation(input), () => new NotesReadRefused({ code: "invalid_request" }))
+    const authority = ports.current()
+    if (authority === undefined || !Number.isSafeInteger(authority.viewRevision) || authority.viewRevision < 1 || !sameProposal(authority, proposal)) throw new NotesReadRefused({ code: "not_current" })
+    const held = structuredClone(authority)
+
+    effect function current(): void!NotesReadRefused {
+      if (!stillCurrent(ports.current(), held, op)) throw new NotesReadRefused({ code: "not_current" })
+    }
+
+    effect function read() {
+      try current()
+      const committed = try ports.readCommitted(held.owner)
+      try current()
+      if (committed === undefined || committed.revision === "") throw new NotesReadRefused({ code: "unavailable" })
+      return { revision: committed.revision, raw: committed.raw }
+    }
+
+    try current()
+    try retire()
+    const base = try read()
+    const document = try mapError(decodeDocument(base.raw), () => new NotesReadRefused({ code: "unavailable" }))
+
+    effect function unchanged(): void!NotesReadRefused {
+      const now = try read()
+      if (now.revision !== base.revision || now.raw !== base.raw) throw new NotesReadRefused({ code: "source_changed" })
+    }
+
+    effect function checkClaim(call: NotesClaim, generation: number): void!NotesReadRefused {
+      try current()
+      if (call.proposalId !== held.proposalId || call.operationId !== held.operationId || !Number.isSafeInteger(call.attemptId)
+        || call.attemptId < 1 || generation !== (try machine.get()).generation || !ports.hasClaim(held, call)) {
+        throw new NotesReadRefused({ code: "not_current" })
+      }
+    }
+
+    const revision = (try machine.get()).generation + 1
+    const found = op.type === "notes_query" ? candidates(document.records, op.query) : undefined
+    if (op.type === "notes_query" && found === undefined) {
+      try unchanged()
+      const empty = try send({ type: "startQuery", revision, candidateId: 0 })
+      const receipt: NotesReadReceipt = { version: 1, kind: "notes_query", query: op.query, basis: "no-match" }
+      return {
+        execute: (input) => serialize(effect {
+          const call = structuredClone(input)
+          try checkClaim(call, empty.generation)
+          try unchanged()
+          try checkClaim(call, empty.generation)
+          return structuredClone(receipt)
+        }),
+      }
+    }
+
+    const choices = found?.notes ?? document.records
+    const id = op.type === "notes_read_selected" ? op.target.noteId
+      : choices.length === 1 ? choices[0].id
+      : try ports.choose(choices.map(({ id, title }) => ({ id, title })))
+    try current()
+    if (id === undefined) throw new NotesReadRefused({ code: "cancelled" })
+    const note = choices.find((item) => item.id === id)
+    if (note === undefined) throw new NotesReadRefused({ code: "not_shareable" })
+    const target = try targetFor(document.collectionId, note)
+    if (op.type === "notes_read_selected" && !sameTarget(target, op.target)) throw new NotesReadRefused({ code: "source_changed" })
+    const content = try reviewedFields(note)
+    try unchanged()
+
+    const binding = try send({ type: "startQuery", revision, candidateId: document.records.indexOf(note) + 1 })
+    const reviewed = { noteId: binding.candidate, generationId: binding.generation, revision: binding.queryRevision }
+    try onExit(effect {
+      const confirmed = try ports.review(structuredClone({ target, fields: content }))
+      try current()
+      if (!confirmed) throw new NotesReadRefused({ code: "cancelled" })
+      try unchanged()
+      try send({ type: "approveShare", ...reviewed })
+    }, (exit) => Exit.isSuccess(exit) ? Effect.void : retire())
+
+    const record: RecordReceipt = { version: 1, kind: "notes_read_selected", sourceId: target.sourceId, noteId: target.noteId, revision: target.revision, fields: content }
+    const receipt: NotesReadReceipt = found === undefined ? record : { version: 1, kind: "notes_query", ...found.hit, target, record }
+    return {
+      execute: (input) => serialize(effect {
+        const call = structuredClone(input)
+        try checkClaim(call, binding.generation)
+        return try ensuring(effect {
+          if ((try machine.get()).phase !== "Approved") throw new NotesReadRefused({ code: "not_current" })
+          try unchanged()
+          try checkClaim(call, binding.generation)
+          try send({ type: "finishShare", ...reviewed, exactFields: true })
+          try checkClaim(call, binding.generation)
+          return structuredClone(receipt)
+        }, retire())
+      }),
+    }
+  }
+
+  return { prepare: (operation: NotesReadOperation, proposal: NotesProposal) => serialize(prepare(operation, proposal)) }
+}

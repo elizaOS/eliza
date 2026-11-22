@@ -12,6 +12,7 @@ export interface MachineRows<S, Ev, Out, Rejected, Corrupt> {
   readonly decodeState: (input: unknown) => S!Corrupt
   readonly apply: (state: S, event: Ev) => Out!Rejected
   readonly next: (out: Out) => S
+  readonly encodeState?: (state: S) => unknown
 }
 
 export interface Loaded<S> {
@@ -60,14 +61,15 @@ export effect function stepRow<S, Ev, Out, Rejected, Corrupt>(
   const out = try rows.apply(loaded.state, event)
   const state = rows.next(out)
   const extra = Object.entries(columns(state))
+  const stored = JSON.stringify(rows.encodeState === undefined ? state : rows.encodeState(state))
   const written = loaded.found
     ? try tx.query(
         `UPDATE ${rows.table} SET state = $2::jsonb, revision = revision + 1${extra.map(([name], index) => `, ${name} = $${index + 4}`).join("")} WHERE key = $1 AND revision = $3 RETURNING revision`,
-        [key, JSON.stringify(state), loaded.revision, ...extra.map(([, value]) => value)]
+        [key, stored, loaded.revision, ...extra.map(([, value]) => value)]
       )
     : try tx.query(
         `INSERT INTO ${rows.table} (key, state, revision${extra.map(([name]) => `, ${name}`).join("")}) VALUES ($1, $2::jsonb, 1${extra.map((_, index) => `, $${index + 3}`).join("")}) ON CONFLICT (key) DO NOTHING RETURNING revision`,
-        [key, JSON.stringify(state), ...extra.map(([, value]) => value)]
+        [key, stored, ...extra.map(([, value]) => value)]
       )
   if (written.length !== 1) throw new RowConflict({ table: rows.table, key })
   return { state, out, revision: toInt(written[0].revision) }

@@ -1,4 +1,4 @@
-// spec/cloud/services/inference.md, "Story: Answer a chat completion once and charge it once"
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"
 import { Schema } from "effect";
 
 const tokens = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1));
@@ -40,6 +40,7 @@ export const ChatRequest = Schema.Struct({
   model: Schema.String.check(Schema.isMinLength(1)),
   messages: Schema.NonEmptyArray(ChatMessage),
   stream: Schema.optionalKey(Schema.Boolean),
+  stream_options: Schema.optionalKey(Schema.Struct({ include_usage: Schema.optionalKey(Schema.Boolean) })),
   temperature: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 2 }))),
   max_tokens: Schema.optionalKey(tokens),
   max_completion_tokens: Schema.optionalKey(tokens),

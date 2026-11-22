@@ -1,10 +1,8 @@
 // spec/agent/surfaceChannel.md, "Story: Retire delivered page commands without repeating a possible effect"
 import { assert, it } from "@effect/vitest"
 import { commandTimeoutMs, connectionTtlMs, maxPending } from "../gen/agent__surfaceChannel.effect.vibe"
-import type { ModuleFactory } from "../src/host/module.vibe"
-import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import {
-  SurfaceRefused, openSurfaceChannel, pullHoldMs, surfaceChannelServiceType, surfaceModule, surfaceModuleName,
+  SurfaceRefused, openSurfaceChannel, pullHoldMs, surfaceChannelServiceType, surfaceModuleName,
   type SurfaceAnswer, type SurfaceChannel, type SurfaceChannelService,
 } from "../src/tasks/surface-channel.vibe"
 import { call, host, startInProcess, type InProcess } from "./support/kernel.vibe"
@@ -13,7 +11,6 @@ import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
 const loaded = {
   http: true,
   launch: { load: [surfaceModuleName] },
-  modules: new Map<string, ModuleFactory<never>>([...builtinModuleFactories, [surfaceModuleName, surfaceModule]]),
 }
 
 interface Reply { readonly status: number; readonly body: unknown }
@@ -51,6 +48,7 @@ it.live('A browser task sends a command over the real transport, the page pulls 
   const agent = try startInProcess(loaded)
   const service = try channelService(agent)
   const before = try host("no connection", () => service.currentConnection())
+  const unauthorized = answerOf(try call(agent, { method: "POST", path: "/api/surface/connect", token: "other-launch", body: { clientId: "page-1", epoch: 1 } }))
   const opened = try surface(agent, "connect", { clientId: "page-1", epoch: 1 })
   const connectionId = idOf(opened)
   const observed = try host("current connection", () => service.currentConnection())
@@ -65,6 +63,10 @@ it.live('A browser task sends a command over the real transport, the page pulls 
   const malformed = try surface(agent, "connect", { clientId: "page 1", epoch: 2 })
   const extraKey = try surface(agent, "pull", { connectionId, extra: true })
   const oversized = try surface(agent, "pull", { connectionId: "x".repeat(5000) })
+  const raw = `{${" ".repeat(5000)}"connectionId":"${connectionId}"}`
+  const rawOversize = answerOf(try call(agent, {
+    method: "POST", path: "/api/surface/pull", headers: { "content-type": "application/json" }, body: raw,
+  }))
   const bothAnswers = try surface(agent, "reply", { connectionId, id: "c1", result: 1, error: { code: "PAGE_GONE", message: "gone" } })
   const badCode = try surface(agent, "reply", { connectionId, id: "c1", error: { code: "page-gone", message: "gone" } })
 
@@ -85,6 +87,7 @@ it.live('A browser task sends a command over the real transport, the page pulls 
   const reconnect = try surface(agent, "connect", { clientId: "page-1", epoch: 3 })
   try Effect.try(() => {
     assert.isNull(before)
+    assert.deepStrictEqual(unauthorized, { status: 401, body: { error: "unauthorized" } })
     assert.strictEqual(opened.status, 200)
     assert.match(connectionId, /^[A-Za-z0-9_.:-]{1,128}$/)
     assert.strictEqual(observed, connectionId)
@@ -98,7 +101,7 @@ it.live('A browser task sends a command over the real transport, the page pulls 
     assert.deepStrictEqual(answered, { kind: "answered", result: { saved: true } })
     assert.deepStrictEqual(codeOf(repeatedEpoch), [409, "STALE_REF"])
     assert.deepStrictEqual([codeOf(malformed), codeOf(extraKey), codeOf(bothAnswers), codeOf(badCode)], [[400, "INVALID_REQUEST"], [400, "INVALID_REQUEST"], [400, "INVALID_REQUEST"], [400, "INVALID_REQUEST"]])
-    assert.deepStrictEqual(codeOf(oversized), [413, "INVALID_REQUEST"])
+    assert.deepStrictEqual([codeOf(oversized), codeOf(rawOversize)], [[413, "INVALID_REQUEST"], [413, "INVALID_REQUEST"]])
     assert.deepStrictEqual([handed?.sequence, handedRead?.sequence], [2, 3])
     assert.deepStrictEqual(closed, { status: 200, body: { closed: true } })
     assert.deepStrictEqual([uncertain.kind, (uncertain as { code?: string }).code], ["refused", "UNCERTAIN_OUTCOME"])
@@ -126,12 +129,21 @@ it.effect('A pull waits for work, only one waits at a time, and a page refusal r
   const delivered = commandOf(try join woken)
   const refusal = try routeCall(channel, "reply", { connectionId, id: delivered?.id ?? "", error: { code: "PAGE_CHANGED", message: "The page moved" } })
   const pageAnswer = try join refusedLater
+  const stopping = new AbortController()
+  const heldPull = try fork exit(routeCall(channel, "pull", { connectionId }, stopping.signal))
+  try settle()
+  const whileHeld = try routeCall(channel, "pull", { connectionId })
+  try Effect.sync(() => stopping.abort())
+  try join heldPull
+  const dropped = try channel.currentConnection()
+  const afterDrop = try routeCall(channel, "close", { connectionId })
   try Effect.try(() => {
     assert.deepStrictEqual(codeOf(second), [409, "BUSY"])
     assert.deepStrictEqual(empty, { status: 200, body: { command: null, cancellations: [] } })
     assert.deepStrictEqual([delivered?.sequence, delivered?.input], [1, { read: "url" }])
     assert.deepStrictEqual(refusal, { status: 200, body: { accepted: true } })
     assert.deepStrictEqual(pageAnswer, { kind: "refused", code: "PAGE_CHANGED", message: "The page moved" })
+    assert.deepStrictEqual([codeOf(whileHeld), dropped, codeOf(afterDrop)], [[409, "BUSY"], null, [409, "STALE_REF"]])
   })
 })
 

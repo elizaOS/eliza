@@ -1,7 +1,7 @@
 # Account deletion
 
 An account is deleted only by the operator, through `elizaos-cloud account
-delete <user>`, after the operator has confirmed the request with the person
+delete --user <user> --confirmed-with-owner`, after the operator has confirmed the request with the person
 (no app has a deletion route; the person asks support). There is no recovery
 window and no cancel. Sources are develop
 `lib/services/account-deletion-saga.ts`,
@@ -43,6 +43,7 @@ import dispatchOnce as D from "../shared/dispatchOnce"
 type SagaStep = CancelBilling | RevokeGoogle | EraseData
 type DeletionPhase = NotRequested | Running({ at: SagaStep }) | ActionNeeded({ at: SagaStep }) | Erased
 type StepResult = Open | NothingToDo | Applied
+type BillingBoundary = BillingUnsettled | BillingShared | BillingCheckoutSettled | BillingSettled
 type Deletion = { phase: DeletionPhase, userId: str, organizationId: str, attemptBudget: int, attempts: int, receipt: D::Receipt, usedKeys: List[ProviderKey], billing: StepResult, google: StepResult }
 type DeletionEffect = Fence({ sessions: Iss::SessionEffect, deviceKeys: DK::DeviceKeysRevoked }) | EraseAccount({ userId: str, organizationId: str })
 type DeletionStep = { state: Deletion, out: List[DeletionEffect] }
@@ -63,8 +64,14 @@ pure def stepEffectsOnlyAtFenceAndErasure(before: Deletion, via: str, after: Del
 
 ### The steps run in order, and a step is finished only once every step before it is
 
-Cancelling billing comes first, so nothing is charged after the fence;
-revoking Google comes next; erasing comes last, so a provider is never left
+Resolving the person's exclusively owned billing comes first. An issued
+checkout can still charge until the provider confirms an end. Before the
+shell chooses which subscription to cancel, it resolves an opening checkout
+or obtains a terminal result for an issued session. It reuses the checkout's
+stable expiry key and reads back an uncertain result. An already paid
+checkout identifies the exact subscription for cancellation. Billing for
+another account sharing the organization stays in place.
+Revoking Google comes next. Erasing comes last, so a provider is never left
 holding a grant or a subscription for an account that no longer exists here.
 
 ```quint
@@ -85,6 +92,11 @@ pure def stepStepsAdvanceOneAtATime(before: Deletion, after: Deletion): bool =
 Cancelling billing is a `SubscriptionUpdate` (cancel now, no proration);
 revoking Google is a `GoogleGrant` per connection. The shell derives each
 provider key from the request, the step, the connection and a call number.
+Before sending, the shell records the exact Stripe subscription and its
+customer or the exact Google connection and its storage format. Stripe
+lookup and retry use that recorded subscription. An unresolved older receipt
+holding only an organization id needs operator diagnosis because it does
+not identify what was sent. A completed older receipt can finish its step.
 Claiming, sending, a reply, a lost sender and a lookup are those of
 `shared/dispatchOnce`, so each call reaches the provider at most once and an
 unknown outcome is settled only by a lookup.
@@ -97,11 +109,17 @@ pure def noCall(r: D::Receipt): bool = D::receiptStatus(r) == D::StatusAbsent
 pure def fresh(r: D::Receipt): D::Receipt = { ...D::initial, session: { ...D::initial.session, now: r.session.now } }
 pure def ownerFor(d: Deletion, kind: ProviderKind): S::SessionOwner = { agentId: d.organizationId, actorId: d.userId, connector: D::connectorOf(kind) }
 pure def callBase(d: Deletion): D::Receipt = if (noCall(d.receipt)) d.receipt else fresh(d.receipt)
-pure def canPrepareCall(d: Deletion, digest: str, providerKey: ProviderKey, staleAfter: Millis, expiresAt: Millis): bool =
-  isCalling(d) and providerKey.providerKind == kindFor(currentStep(d.phase)) and d.attempts < d.attemptBudget and not(d.usedKeys.includes(providerKey))
+pure def checkoutSettled(billingBoundary: BillingBoundary): bool =
+  billingBoundary == BillingCheckoutSettled or billingBoundary == BillingSettled
+pure def billingSettled(billingBoundary: BillingBoundary): bool =
+  billingBoundary == BillingShared or billingBoundary == BillingSettled
+pure val billingBoundaryValues = Set(BillingUnsettled, BillingShared, BillingCheckoutSettled, BillingSettled)
+pure def canPrepareCall(d: Deletion, digest: str, providerKey: ProviderKey, staleAfter: Millis, expiresAt: Millis, billingBoundary: BillingBoundary): bool =
+  isCalling(d) and (if (isRunning(d, CancelBilling)) checkoutSettled(billingBoundary) else billingSettled(billingBoundary))
+  and providerKey.providerKind == kindFor(currentStep(d.phase)) and d.attempts < d.attemptBudget and not(d.usedKeys.includes(providerKey))
   and (noCall(d.receipt) or (callFailed(currentStep(d.phase), d.receipt) and D::mayFollowWith(d.receipt, providerKey)))
   and D::canPrepare(callBase(d), ownerFor(d, providerKey.providerKind), digest, providerKey, staleAfter, expiresAt)
-pure def prepareCall(d: Deletion, digest: str, providerKey: ProviderKey, staleAfter: Millis, expiresAt: Millis): Deletion =
+pure def prepareCall(d: Deletion, digest: str, providerKey: ProviderKey, staleAfter: Millis, expiresAt: Millis, billingBoundary: BillingBoundary): Deletion =
   { ...d, attempts: d.attempts + 1, usedKeys: d.usedKeys.append(providerKey), receipt: D::prepare(callBase(d), ownerFor(d, providerKey.providerKind), digest, providerKey, staleAfter, expiresAt) }
 pure def canClaimCall(d: Deletion): bool = isCalling(d) and D::canClaim(d.receipt, d.receipt.session.owner)
 pure def claimCall(d: Deletion): Deletion = { ...d, receipt: D::claim(d.receipt, d.receipt.session.owner) }
@@ -122,7 +140,7 @@ pure val expiresAtValues = Set(100)
 pure def alwaysReceiptBelongsToItsStep(d: Deletion): bool =
   D::alwaysPreparedIsBound(d.receipt) and D::alwaysSessionIsSound(d.receipt) and D::alwaysSentBeforeStale(d.receipt) and D::alwaysOutcomeFollowsTheSession(d.receipt)
   and (noCall(d.receipt) or (
-    onProviderStep(d.phase) and D::kindOf(d.receipt) == kindFor(currentStep(d.phase)) and d.usedKeys.includes(d.receipt.providerKey)
+    onProviderStep(d.phase) and D::kindOf(d.receipt) == kindFor(currentStep(d.phase)) and d.usedKeys.some(key => D::usesProviderKey(d.receipt, key))
     and d.receipt.session.owner.agentId == d.organizationId and d.receipt.session.owner.actorId == d.userId))
 pure def alwaysNoProviderKeyIsUsedTwice(d: Deletion): bool = d.usedKeys.every(k => d.usedKeys.select(j => j == k).length() == 1)
 ```
@@ -131,11 +149,14 @@ pure def alwaysNoProviderKeyIsUsedTwice(d: Deletion): bool = d.usedKeys.every(k 
 
 A refusal because the subscription or grant is already gone at the provider
 counts as done, and for Google so does a token Google already treats as
-revoked. The shell reads `workLeft` in the finishing transaction: a live
-subscription for billing, an unrevoked connection for Google. After a
-connection is revoked, the shell erases its sealed tokens in the same
-transaction, and the next connection starts a fresh budget; billing holds
-one subscription.
+revoked. Before a step finishes, the shell confirms that no owned checkout
+or its linked subscription can still charge, or that the billing is shared.
+After a connection is revoked, the shell erases its sealed tokens in the
+same transaction. If another connection remains, it starts with a fresh
+budget. The shell checks both server and legacy Worker token
+custody with their original keys and OAuth client configuration. A missing
+required credential leaves the cleanup unresolved and preserves the sealed
+record for recovery.
 
 ```quint
 pure def alreadyGone(s: SagaStep, cause: D::RefusalCause): bool = cause == D::NotFoundAtProvider or (s == RevokeGoogle and cause == D::AuthorizationLost)
@@ -143,9 +164,9 @@ pure def callSucceeded(s: SagaStep, r: D::Receipt): bool = r.settlement == D::Su
 pure def callFailed(s: SagaStep, r: D::Receipt): bool = r.settlement == D::NotApplied or (r.settlement == D::Refused and not(alreadyGone(s, r.refusal)))
 pure def resultFor(s: SagaStep, d: Deletion): StepResult = if (s == CancelBilling) d.billing else d.google
 pure def recordResult(s: SagaStep, result: StepResult, d: Deletion): Deletion = if (s == CancelBilling) { ...d, billing: result } else { ...d, google: result }
-pure def canCompleteStep(d: Deletion, workLeft: bool): bool =
-  isCalling(d) and (if (workLeft) (isRunning(d, RevokeGoogle) and callSucceeded(RevokeGoogle, d.receipt)) else (noCall(d.receipt) or callSucceeded(currentStep(d.phase), d.receipt)))
-pure def completeStep(d: Deletion, workLeft: bool): Deletion = {
+pure def canCompleteStep(d: Deletion, workLeft: bool, billingBoundary: BillingBoundary): bool =
+  isCalling(d) and billingSettled(billingBoundary) and (if (workLeft) (isRunning(d, RevokeGoogle) and callSucceeded(RevokeGoogle, d.receipt)) else (noCall(d.receipt) or callSucceeded(currentStep(d.phase), d.receipt)))
+pure def completeStep(d: Deletion, workLeft: bool, billingBoundary: BillingBoundary): Deletion = {
   val s = currentStep(d.phase)
   val result = if (callSucceeded(s, d.receipt) or resultFor(s, d) == Applied) Applied else NothingToDo
   val recorded = recordResult(s, result, d)
@@ -191,6 +212,9 @@ pure def resume(d: Deletion, attemptBudget: int): Deletion =
 
 ### The account's data is erased once, last, and the erased deletion never changes again
 
+Erasure needs a settled billing result or shared billing. The same check
+applies to a retained deletion that had already advanced under an earlier
+version. Unresolved billing keeps its recorded phase and receipts.
 In the erasing transaction the shell applies `erase` of `identity/accounts`
 to the account (identities and referral code removed, user and organization
 ids kept) and deletes the person's personal data and sealed secrets: device
@@ -199,8 +223,10 @@ connections and their sealed tokens, mail and calendar receipts. It keeps
 the ledger and invoices, keyed by the organization id.
 
 ```quint
-pure def canEraseData(d: Deletion): bool = isRunning(d, EraseData)
-pure def eraseData(d: Deletion): DeletionStep =
+pure def canEraseData(d: Deletion, billingBoundary: BillingBoundary): bool = isRunning(d, EraseData) and billingSettled(billingBoundary)
+pure def eraseData(d: Deletion, billingBoundary: BillingBoundary): DeletionStep =
   { state: { ...d, phase: Erased }, out: List(EraseAccount({ userId: d.userId, organizationId: d.organizationId })) }
 pure def stepErasedIsFinal(before: Deletion, after: Deletion): bool = before.phase == Erased implies after == before
+pure def lawUnsettledBillingBlocksProgress(d: Deletion): bool =
+  not(canCompleteStep(d, false, BillingUnsettled)) and not(canCompleteStep(d, true, BillingUnsettled)) and not(canEraseData(d, BillingUnsettled))
 ```

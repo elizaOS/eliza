@@ -1,11 +1,10 @@
 // spec/agent/deviceActions/execution.md, "Story: Approve a device operation on the screen that reviewed it"; spec/agent/deviceActions/execution.md, "Story: Preserve a device result when the screen retires"
 import { assert, it } from "@effect/vitest"
-import type { IDatabaseAdapter } from "@elizaos/core"
-import type { Event, ReviewOutcome } from "../gen/agent__deviceActions.effect.vibe"
+import type { ReviewOutcome } from "../gen/agent__deviceActions.effect.vibe"
 import type { SessionOwner } from "../gen/core__sessions.effect.vibe"
-import { DeviceExecution, type DeviceAgent, type DeviceExecutionPorts, type DeviceProposal, type DeviceReview, type ExecutorCall, type JournalIdentity, type ScreenCheck } from "../src/client/device-execution.vibe"
-import { readOperation, receiptOutcome, type CheckedOperation, type DeviceOperation, type DeviceReceipt } from "../src/device-actions/operations.schema.vibe"
-import { changeEnrollment, offerRequest, openRequest, type RequestTerms, type RequestWrite } from "../src/device-actions/store.vibe"
+import { DeviceExecution, NOT_DISPATCHED, type DeviceReceipt, type DeviceAgent, type DeviceExecutionPorts, type DeviceProposal, type DeviceReview, type ExecutorCall, type JournalIdentity, type ScreenCheck } from "../src/client/device-execution.vibe"
+import { notDispatchedCode, readOperation, receiptOutcome, type CheckedOperation, type DeviceOperation } from "../src/device-actions/operations.schema.vibe"
+import { changeEnrollment, offerRequest, openRequest, recordRequestDecision, recordRequestClaim, recordRequestReceipt, type RequestTerms } from "../src/device-actions/store.vibe"
 import { openDeviceStorage } from "../src/storage/index.vibe"
 import { fileJournal } from "./support/device-journal.ts"
 import { host, scratch } from "./support/kernel.vibe"
@@ -46,35 +45,43 @@ effect function rigged(name: string) {
 
 type Rig = Effect.Success<ReturnType<typeof rigged>>
 
-function sendTo(adapter: IDatabaseAdapter, proposalId: string, event: Event, write: RequestWrite = {}) {
-  return runPromise(effect {
-    const record = try openRequest(adapter, proposalId, write)
-    if (record === undefined) return try die(new Error(`No device request ${proposalId}`))
-    return try record.machine.send(event, owner)
-  })
-}
-
 function agentOver(rig: Rig): DeviceAgent {
   const { adapter, checked, faults, device } = rig
   return {
-    decide: (proposalId, body) => {
+    decide: async (proposalId, body) => {
       faults.decides -= 1
-      return faults.decides >= 0 ? Promise.reject(new Error("The agent is unreachable")) : sendTo(adapter, proposalId, { type: "decide", ...body })
+      if (faults.decides >= 0) throw new Error("The agent is unreachable")
+      const kept = await runPromise(recordRequestDecision(adapter, { proposalId, by: owner, ...body }))
+      if (kept.kind !== "decided") throw new Error("The agent refused the decision")
+      return kept.state
     },
     claim: async (proposalId, body) => {
       await faults.beforeClaim(proposalId)
-      const state = await sendTo(adapter, proposalId, { type: "claim", digest: body.digest })
-      return { attemptId: state.session.currentClaim }
+      const kept = await runPromise(recordRequestClaim(adapter, { proposalId, by: owner, ...body }))
+      if (kept.kind !== "claimed") throw new Error("The agent refused the claim")
+      return { attemptId: kept.binding.modelAttemptId }
     },
-    receipt: (proposalId, body) => {
+    receipt: async (proposalId, body) => {
       faults.receipts -= 1
-      if (faults.receipts >= 0) return Promise.reject(new Error("The agent is unreachable"))
+      if (faults.receipts >= 0) throw new Error("The agent is unreachable")
       device.receipts.push(body.receipt)
-      const verdict = receiptOutcome(checked, body.receipt, proposalId)
-      if (verdict.kind === "refused") return Promise.reject(new Error("The agent refused the receipt"))
-      return sendTo(adapter, proposalId, { type: "receipt", digest: body.digest, attemptId: body.attemptId, reportedOutcome: verdict.reported }, { result: verdict.result })
+      const { reported, code, ...evidence } = body.receipt
+      const verdict = receiptOutcome(checked, {
+        ...evidence, outcome: reported, ...(code === undefined ? {} : { code: code === NOT_DISPATCHED ? notDispatchedCode : code }),
+      }, proposalId)
+      if (verdict.kind === "refused") throw new Error("The agent refused the receipt")
+      const kept = await runPromise(recordRequestReceipt(adapter, {
+        proposalId, by: owner, providerReceipt: verdict.receipt,
+        event: { type: "receipt", digest: body.digest, attemptId: body.attemptId, reportedOutcome: verdict.reported },
+      }))
+      if (kept.kind !== "recorded") throw new Error("The agent refused the stored receipt")
+      return kept.state
     },
-    reconcile: (proposalId, body) => sendTo(adapter, proposalId, { type: "reconcile", digest: body.digest, attemptId: body.attemptId, review: reviews[body.review] }),
+    reconcile: (proposalId, body) => runPromise(effect {
+      const record = try openRequest(adapter, proposalId)
+      if (record === undefined) return try die(new Error("The request was not stored"))
+      return try record.machine.send({ type: "reconcile", digest: body.digest, attemptId: body.attemptId, review: reviews[body.review] }, owner)
+    }),
   }
 }
 
@@ -130,7 +137,7 @@ it.live('Approve a device operation on the screen that reviewed it, once (spec/a
   const approved = try host("approve again", () => execution.approve(proposal, reviewed))
   assert.deepStrictEqual(approved, { kind: "settled", result: { tag: "Applied" }, synced: true })
   assert.deepStrictEqual(rig.device.calls, [{ proposalId: "proposal-1", operationId: "proposal-1", attemptId: 1 }])
-  assert.deepStrictEqual(rig.device.receipts, [{ outcome: "applied", operationId: "proposal-1" }])
+  assert.deepStrictEqual(rig.device.receipts, [{ reported: "applied", operationId: "proposal-1" }])
   assert.deepStrictEqual(try phase(rig, "proposal-1"), { tag: "Receipted", reported: "ReportedApplied" })
   assert.isTrue(try acknowledged(journal, "proposal-1"))
 
@@ -157,14 +164,14 @@ it.live('A refused, lost or retired call reports exactly what happened (spec/age
   const refusedProposal = try offered(rig, "refused")
   const refused = try host("approve a refused operation", () => execution.approve(refusedProposal, reviewed))
   assert.deepStrictEqual(refused, { kind: "settled", result: { tag: "NoEffect", proof: "RefusedByExecutor" }, synced: true })
-  assert.deepStrictEqual(rig.device.receipts.at(-1), { outcome: "failed", operationId: "refused", code: "NOTES_UNAVAILABLE" })
+  assert.deepStrictEqual(rig.device.receipts.at(-1), { reported: "failed", operationId: "refused", code: "NOTES_UNAVAILABLE" })
 
   rig.faults.beforeClaim = (proposalId) => execution.retire(proposalId)
   const retiring = try offered(rig, "retired")
   const calls = rig.device.calls.length
   const retired = try host("close the screen while the claim is in flight", () => execution.approve(retiring, reviewed))
   assert.deepStrictEqual([retired, rig.device.calls.length], [{ kind: "settled", result: { tag: "NoEffect", proof: "NeverCalled" }, synced: true }, calls])
-  assert.deepStrictEqual(rig.device.receipts.at(-1), { outcome: "failed", operationId: "retired", code: "DEVICE_NOT_DISPATCHED" })
+  assert.deepStrictEqual(rig.device.receipts.at(-1), { reported: "failed", operationId: "retired", code: NOT_DISPATCHED })
   assert.deepStrictEqual(try phase(rig, "retired"), { tag: "Receipted", reported: "ReportedNothingRan" })
 })
 
@@ -188,9 +195,12 @@ it.live('A saved result survives a restart and is sent again without running aga
   const abandoned = try offered(rig, "abandoned")
   const unclaimed = try host("reserve while the agent is unreachable", () => first.execution.approve(abandoned, reviewed))
   assert.strictEqual(unclaimed.kind, "unclaimed")
-  try host("approve and claim on the agent", () => sendTo(rig.adapter, "abandoned", { type: "decide", digest: "digest-abandoned", approved: true }))
-  const claimed = try host("claim on the agent", () => sendTo(rig.adapter, "abandoned", { type: "claim", digest: "digest-abandoned" }))
-  const recovered = try host("recover the abandoned entry", () => restarted.execution.recover("abandoned", claimed.session.currentClaim))
+  const agent = agentOver(rig)
+  try host("approve and claim on the agent", () => agent.decide("abandoned", { digest: "digest-abandoned", approved: true }))
+  const claimed = try Schema.decodeUnknownEffect(Schema.Struct({ attemptId: Schema.Int }))(
+    try host("claim on the agent", () => agent.claim("abandoned", { digest: "digest-abandoned" })),
+  )
+  const recovered = try host("recover the abandoned entry", () => restarted.execution.recover("abandoned", claimed.attemptId))
   assert.deepStrictEqual([recovered, rig.device.calls.length], [{ kind: "settled", result: { tag: "NoEffect", proof: "NeverCalled" }, synced: true }, 1])
   assert.deepStrictEqual(try phase(rig, "abandoned"), { tag: "Receipted", reported: "ReportedNothingRan" })
 })

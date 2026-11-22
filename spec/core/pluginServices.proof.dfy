@@ -2257,25 +2257,78 @@ lemma skipMissingStop_ensures(s: PluginServices, epochId: int)
     var g := r.groups[r.cursor];
     assert g in r.groups && r in s.retirements;
     var id := currentInstance(s, epochId);
-    var g2 := advanceInstanceSlot(g.(observedStops := (g.observedStops + [observedInstanceSlot(id, InstanceStopObservation.MissingStopSlot)])));
-    GroupsDistinct(r);
-    PutAt(s, epochId, g2, k);
+    var added := observedInstanceSlot(id, InstanceStopObservation.MissingStopSlot);
+    var g2 := advanceInstanceSlot(g.(observedStops := g.observedStops + [added]));
     var r2 := r.(groups := r.groups[r.cursor := g2]);
     var after := skipMissingStop(s, epochId);
-    assert after == s.(retirements := s.retirements[k := r2]);
-    StopsValid(g2, after.services);
+    assert after == s.(retirements := s.retirements[k := r2]) by {
+      GroupsDistinct(r);
+      PutAt(s, epochId, g2, k);
+    }
+    assert 0 <= g.instanceCursor < |g.instances|;
+    PluginAppendObservedInstanceSlot(g, g2, s.services, after.services, added);
     UAt(s, after, k, r2);
-    ShapeReplaceCurrent(r, r2, g2);
-    ShapeAt(s, after, k, r2);
-    StopsValid(g, s.services);
-    SlotsAtGroup(s, after, k, r.cursor, g2, r2);
+    assert alwaysRetirementFollowsPlan(after) by {
+      ShapeReplaceCurrent(r, r2, g2);
+      ShapeAt(s, after, k, r2);
+    }
+    assert alwaysStopObservationsFollowSlots(after) by {
+      SlotsAtGroup(s, after, k, r.cursor, g2, r2);
+    }
     OwnsOpen(s, k);
-    NoResourcesAt(s, after, k, r2);
-    OrphanAt(s, after, k, r.cursor, g2, r2);
+    assert alwaysRetiredEpochHasNoResources(after) by {
+      NoResourcesAt(s, after, k, r2);
+    }
+    assert alwaysNoOrphanInstance(after) by {
+      OrphanAt(s, after, k, r.cursor, g2, r2);
+    }
     StepSameObjects(s.services, after.services);
-    ReachAt(s, after, k, r.cursor, g2, r2);
-    UndeclaredAt(s, after, k, r.cursor, g2, r2);
+    assert alwaysLiveInstanceReachable(after) by {
+      ReachAt(s, after, k, r.cursor, g2, r2);
+    }
+    assert alwaysRetiredUndeclaredTypeIsUnknown(after) by {
+      UndeclaredAt(s, after, k, r.cursor, g2, r2);
+    }
     ClassShape(s, after);
+  }
+}
+
+lemma PluginAppendObservedInstanceSlot(g: RetirementGroup, after: RetirementGroup, services: core__serviceInstances_ServiceInstances, next: core__serviceInstances_ServiceInstances, added: InstanceSlot)
+  requires g.phase.GroupStoppingInstances? && 0 <= g.instanceCursor < |g.instances|
+  requires |g.observedStops| == g.instanceCursor && allStopObservationsValid(g, services)
+  requires after.instances == g.instances && after.observedStops == g.observedStops + [added]
+  requires added.instanceId == g.instances[g.instanceCursor]
+  requires (added.observed.MissingStopSlot? && after.instanceCursor == g.instanceCursor + 1 && after.phase == (if after.instanceCursor == |g.instances| then RetirementGroupPhase.GroupStoppingClasses else RetirementGroupPhase.GroupStoppingInstances)) ||
+    (added.observed.AwaitedStopSlot? && after.instanceCursor == g.instanceCursor && after.phase.GroupStoppingInstances?)
+  requires forall slot :: stopSlotSettled(slot, services) ==> stopSlotSettled(slot, next)
+  ensures 0 <= after.instanceCursor <= |after.instances|
+  ensures after.instanceCursor <= |after.observedStops| <= |after.instances|
+  ensures |after.observedStops| <= after.instanceCursor + 1
+  ensures classPhaseFollowsInstances(after)
+  ensures forall i :: 0 <= i < |after.observedStops| ==> validStopObservation(after, i, after.observedStops[i], next)
+{
+  StopsValid(g, services);
+  forall i | 0 <= i < |after.observedStops|
+    ensures validStopObservation(after, i, after.observedStops[i], next)
+  {
+    if i < |g.observedStops| {
+      assert i < g.instanceCursor;
+      assert after.observedStops[i] == g.observedStops[i];
+      assert validStopObservation(g, i, g.observedStops[i], services);
+      assert stopSlotSettled(g.observedStops[i], services);
+      assert stopSlotSettled(after.observedStops[i], next);
+      assert i < after.instanceCursor;
+    } else {
+      assert i == g.instanceCursor;
+      assert after.observedStops[i] == added;
+      if added.observed.MissingStopSlot? {
+        assert i < after.instanceCursor;
+        assert stopSlotSettled(added, next);
+      } else {
+        assert i == after.instanceCursor;
+        assert after.phase.GroupStoppingInstances? && added.observed.AwaitedStopSlot?;
+      }
+    }
   }
 }
 

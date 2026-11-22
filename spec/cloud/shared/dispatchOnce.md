@@ -28,16 +28,13 @@ Preparing creates the session. A second prepare with the same request key
 finds this receipt: with the same owner and digest it answers the receipt as
 it stands, in whatever state it has reached; another owner, kind or digest is
 `409 idempotency_conflict` and leaves it unchanged.
-A receipt names its provider key `ReceiptKey`, the shared `ProviderKey` under
-this module's own name.
 
 ```quint
 import types.* from "./types"
 import sessions as S from "../../core/sessions"
 type Settlement = Unsettled | Succeeded | Refused | NotApplied
 type RefusalCause = NoRefusal | NotFoundAtProvider | AuthorizationLost | OtherRefusal
-type ReceiptKey = ProviderKey
-type Receipt = { session: S::Session, digest: str, providerKey: ReceiptKey, staleAfter: Millis, preparedAt: Millis, claimedAt: Millis, sentAt: Millis, settledAt: Millis, settlement: Settlement, refusal: RefusalCause }
+type Receipt = { session: S::Session, digest: str, providerKey: ProviderKey, staleAfter: Millis, preparedAt: Millis, claimedAt: Millis, sentAt: Millis, settledAt: Millis, settlement: Settlement, refusal: RefusalCause }
 pure val initial: Receipt = { session: S::initial, digest: "", providerKey: { providerKind: CheckoutSession, providerId: "" }, staleAfter: 0, preparedAt: 0, claimedAt: 0, sentAt: 0, settledAt: 0, settlement: Unsettled, refusal: NoRefusal }
 pure val byValues = Set({ agentId: "org1", actorId: "user1", connector: "checkout_session" }, { agentId: "org1", actorId: "user1", connector: "gmail_operation" })
 pure val digestValues = Set("d1", "d2")
@@ -52,13 +49,14 @@ pure def connectorOf(kind: ProviderKind): str = match kind {
   | GoogleGrant => "google_grant"
 }
 pure def kindOf(r: Receipt): ProviderKind = r.providerKey.providerKind
+pure def usesProviderKey(r: Receipt, key: ProviderKey): bool = kindOf(r) == key.providerKind and r.providerKey.providerId == key.providerId
 pure def isConflict(r: Receipt, by: S::SessionOwner, digest: str): bool = r.session.phase != S::Absent and not(r.session.owner == by and r.digest == digest)
 pure val conflictRefusal: Refusal = refuse(IdempotencyConflict)
-pure def canPrepare(r: Receipt, by: S::SessionOwner, digest: str, providerKey: ReceiptKey, staleAfter: Millis, expiresAt: Millis): bool =
+pure def canPrepare(r: Receipt, by: S::SessionOwner, digest: str, providerKey: ProviderKey, staleAfter: Millis, expiresAt: Millis): bool =
   if (r.session.phase == S::Absent) S::canCreate(r.session, by, expiresAt) and digest != "" and providerKey.providerId != "" and by.connector == connectorOf(providerKey.providerKind) and staleAfter > 0
   else not(isConflict(r, by, digest))
-pure def prepare(r: Receipt, by: S::SessionOwner, digest: str, providerKey: ReceiptKey, staleAfter: Millis, expiresAt: Millis): Receipt =
-  if (r.session.phase == S::Absent) { ...r, session: S::create(r.session, by, expiresAt), digest: digest, providerKey: providerKey, staleAfter: staleAfter, preparedAt: r.session.now }
+pure def prepare(r: Receipt, by: S::SessionOwner, digest: str, providerKey: ProviderKey, staleAfter: Millis, expiresAt: Millis): Receipt =
+  if (r.session.phase == S::Absent) { ...r, session: S::create(r.session, by, expiresAt), digest: digest, providerKey: { providerKind: providerKey.providerKind, providerId: providerKey.providerId }, staleAfter: staleAfter, preparedAt: r.session.now }
   else r
 pure def alwaysPreparedIsBound(r: Receipt): bool =
   r.session.phase != S::Absent implies (r.session.owner.connector == connectorOf(kindOf(r)) and r.digest != "" and r.providerKey.providerId != "" and r.staleAfter > 0)
@@ -211,5 +209,5 @@ receipt; it derives each provider key from the request and an attempt number,
 so no two attempts share a key. Nothing else is ever sent again.
 
 ```quint
-pure def mayFollowWith(old: Receipt, providerKey: ReceiptKey): bool = (old.settlement == Refused or old.settlement == NotApplied) and providerKey != old.providerKey
+pure def mayFollowWith(old: Receipt, providerKey: ProviderKey): bool = (old.settlement == Refused or old.settlement == NotApplied) and not(usesProviderKey(old, providerKey))
 ```

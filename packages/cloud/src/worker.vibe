@@ -18,7 +18,7 @@ import { inferenceRequest, limitedBody, type InferenceEnv } from "./inference.vi
 export type CloudBindings = ClefEnv & IdentityEnv & GoogleEnv & InferenceEnv & SpeechEnv & BillingEnv & WorkerDatabase
 type DeploymentExtension<E extends CloudBindings> = (request: Request, env: E, db: Client, account: string) => Promise<Response>
 
-async function route<E extends CloudBindings>(request: Request, env: E, db: Client, extension?: DeploymentExtension<E>) {
+async function route<E extends CloudBindings>(request: Request, env: E, db: Client, extension: DeploymentExtension<E> | undefined, providerFetch: typeof fetch) {
   const path = new URL(request.url).pathname
   if (path === stripeWebhookRoute && request.method === "POST") {
     const bytes = await limitedBody(request, 256 * 1024)
@@ -44,7 +44,7 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
     if (!owner) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
     const bytes = await limitedBody(request, 8704)
     if (!bytes) return WorkerResponse.json({ error: "request_too_large" }, { status: 413 })
-    const response = await googleRequest(withRequestBody(request, bytes), env, db, owner)
+    const response = await googleRequest(withRequestBody(request, bytes), env, db, owner, providerFetch)
     if (response.ok && await inferenceAccount(request, db, env) !== owner) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
     return response
   }
@@ -55,20 +55,19 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
   const billing = path.startsWith("/api/v1/billing/")
   const reminders = path === "/api/v1/calendar-reminders/device"
   const google = path.startsWith("/api/v1/eliza/google/")
+  const nativeConnect = path === "/api/v1/eliza/google/connect/native"
   if (!reminders && !decisions && !inference && !speech && !billing && !google && !(extension && path.startsWith("/api/product/"))) return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
-  const account = reminders || decisions || inference || speech ? await inferenceAccount(request, db, env) : await sessionAccount(request, db)
+  const account = reminders || decisions || inference || speech || nativeConnect ? await inferenceAccount(request, db, env) : await sessionAccount(request, db)
   if (!account) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
-  if (reminders) {
-    if (!request.headers.has("authorization")) return WorkerResponse.json({ error: "device_required" }, { status: 403 })
-    return reminderSchedule(request, env, db, account)
-  }
+  if ((reminders || nativeConnect) && !request.headers.has("authorization")) return WorkerResponse.json({ error: "device_required" }, { status: 403 })
+  if (reminders) return reminderSchedule(request, env, db, account)
   if (decisions) return clefRequest(request, env, db, account)
   if (inference || path === speechRoute + "/session") await refreshPaidAccess(env, db, account)
   if (speech) return speechRequest(request, env, db, account)
   if (inference) return inferenceRequest(request, env, db, account, workerFetch)
   if (google) {
-    const response = await googleRequest(request, env, db, account)
-    if (response.ok && path === "/api/v1/eliza/google/gmail/attachment" && await sessionAccount(request, db) !== account)
+    const response = await googleRequest(request, env, db, account, providerFetch)
+    if (response.ok && request.method === "GET" && path.startsWith("/api/v1/eliza/google/gmail/") && await sessionAccount(request, db) !== account)
       return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
     return response
   }
@@ -77,7 +76,7 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
   return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
 }
 
-export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExtension<E>) {
+export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExtension<E>, providerFetch = workerFetch) {
   return {
     scheduled(_event: unknown, env: E) {
       return withCloudDatabase(env, async (db) => {
@@ -109,7 +108,7 @@ export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExten
         return WorkerResponse.json({ error: "origin_required" }, { status: 403, headers: cors })
       }
       try {
-        const result = await withCloudDatabase(env, (db) => route(request, env, db, extension))
+        const result = await withCloudDatabase(env, (db) => route(request, env, db, extension, providerFetch))
         if (result.status === 101) return result
         const headers = new WorkerHeaders(result.headers)
         for (const [key, value] of cors) headers.set(key, value)

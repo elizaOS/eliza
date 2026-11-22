@@ -1,4 +1,3 @@
-// spec/os/android/secureStore.md, "A slot is absent only when none of its files exists, and an unreadable slot is never treated as absent"; spec/os/android/secureStore.md, "A value above the current limit may only shrink a value stored under an older, larger limit"
 package ai.eliza.plugins.securestore.nativeonly;
 
 import android.security.keystore.KeyGenParameterSpec;

@@ -1,8 +1,5 @@
 // spec/agent/voice/session.md, "A session owns one microphone capture, and a half-duplex session reopens it only after the turn"; spec/agent/voice/session.md, "Only a complete end-of-turn score submits before the 1,200 ms long gap, which always submits"; spec/agent/voice/session.md, "A turn is sent once, and a half-duplex turn only after the capture confirmed its close"; spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or missing answer, and its outcomes stay distinct"
 import type { Duplex, EndOfTurnReply, InputMode } from "../../gen/agent__voice__session.ts"
-import type { HeardBody } from "./heuristics.vibe"
-
-export type { HeardBody }
 
 export interface CaptureEvents {
   opened(info: { readonly echoCancelled: boolean }): void
@@ -44,6 +41,8 @@ export interface TurnPort {
   abort(roomId: string, reason: string): Promise<void>
 }
 
+export type HeardBody = { readonly heardText: string } | { readonly nothingHeard: true }
+
 export interface HeardAnswer {
   readonly status: number
   readonly body: unknown
@@ -66,11 +65,6 @@ export interface ClockPort {
   after(ms: number, run: () => void): void
 }
 
-export interface VoiceFailure {
-  readonly kind: "capture" | "turn" | "abort" | "playback"
-  readonly cause: unknown
-}
-
 export interface VoiceSessionPorts {
   readonly conversationId: string
   readonly roomId: string
@@ -84,5 +78,4 @@ export interface VoiceSessionPorts {
   voiceUi?(): VoiceUi | undefined
   onDraft?(text: string): void
   onPartial?(text: string): void
-  onFailure?(failure: VoiceFailure): void
 }

@@ -1,0 +1,128 @@
+// spec/os/build/sourceIntegrity.md, "A tracked entry is admitted only with its committed bytes, kind and execute bits"; spec/os/image/sourceLock.md, "Every observed platform project and manifest input is bound by the lock"
+module node {
+  import { constants } from "node:fs"
+  import { lstat, open, readlink, realpath } from "node:fs/promises"
+  import { createHash } from "node:crypto"
+  import { dirname, isAbsolute, join, relative, sep } from "node:path"
+  import { visit } from "jsonc-parser"
+  import type { EntryMode } from "../../gen/os__build__sourceIntegrity.effect.vibe"
+  export interface ArtifactBytes {
+    readonly bytes: Uint8Array
+    readonly sha256: string
+    readonly size: number
+  }
+
+  export interface CommittedEntry {
+    readonly path: string
+    readonly mode: EntryMode
+    readonly oid: string
+  }
+  export type CommittedObservation =
+    | { readonly kind: "RegularFile"; readonly sha256: string; readonly gitBlobSha1: string; readonly execBits: number; readonly size: number }
+    | { readonly kind: "LinkFile"; readonly sha256: string; readonly gitBlobSha1: string; readonly execBits: number; readonly size: number; readonly target: Uint8Array }
+    | { readonly kind: "MissingFile" }
+    | { readonly kind: "OtherFile" }
+    | { readonly kind: "OpaqueGitlink" }
+
+  async function artifactDigests(file: string, maximum: number) {
+    if (!Number.isSafeInteger(maximum) || maximum <= 0) throw new Error("An artifact hash needs a positive safe byte budget")
+    const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW)
+    try {
+      const before = await handle.stat({ bigint: true })
+      if (!before.isFile() || before.size < 0n || before.size > BigInt(maximum)) throw new Error(`Not a bounded regular artifact: ${file}`)
+      const hash = createHash("sha256")
+      const blob = createHash("sha1").update(`blob ${before.size}\0`)
+      const buffer = new Uint8Array(64 * 1024)
+      let observed = 0
+      while (true) {
+        const read = await handle.read(buffer, 0, buffer.length, null)
+        if (read.bytesRead === 0) break
+        observed += read.bytesRead
+        if (observed > maximum || BigInt(observed) > before.size) throw new Error(`Artifact grew while hashing: ${file}`)
+        hash.update(buffer.subarray(0, read.bytesRead))
+        blob.update(buffer.subarray(0, read.bytesRead))
+      }
+      const after = await handle.stat({ bigint: true })
+      if (BigInt(observed) !== before.size || before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) throw new Error(`Artifact changed while hashing: ${file}`)
+      return { sha256: hash.digest("hex"), gitBlobSha1: blob.digest("hex"), size: observed, execBits: Number(before.mode) & 0o111 }
+    } finally { await handle.close() }
+  }
+
+  export async function hashArtifact(file: string, maximum: number): Promise<Pick<ArtifactBytes, "sha256" | "size">> {
+    const observed = await artifactDigests(file, maximum)
+    return { sha256: observed.sha256, size: observed.size }
+  }
+
+  export async function observeCommittedEntry(directory: string, entry: Pick<CommittedEntry, "path" | "mode">, maximum: number): Promise<CommittedObservation> {
+    if (entry.mode === "SubmoduleEntry") return { kind: "OpaqueGitlink" }
+    if (isAbsolute(entry.path) || entry.path.includes("\0") || entry.path.split(sep).join("/") !== entry.path || entry.path.split("/").some((part) => !part || part === "." || part === "..")) throw new Error("A committed entry needs an explicit relative path")
+    const root = await realpath(directory)
+    const file = join(root, entry.path)
+    try {
+      const parent = relative(root, await realpath(dirname(file)))
+      if (isAbsolute(parent) || parent === ".." || parent.startsWith("../") || parent.startsWith("..\\")) throw new Error("A committed entry parent escapes its source root")
+      const before = await lstat(file, { bigint: true })
+      if (before.isFile()) return { kind: "RegularFile", ...await artifactDigests(file, maximum) }
+      if (before.isSymbolicLink()) {
+        const bytes = new Uint8Array(await readlink(file, { encoding: "buffer" }))
+        const after = await lstat(file, { bigint: true })
+        const target = new Uint8Array(await readlink(file, { encoding: "buffer" }))
+        if (!after.isSymbolicLink() || before.ino !== after.ino || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs || bytes.length !== target.length || bytes.some((value, index) => value !== target[index])) throw new Error("A committed source link changed during observation")
+        return { kind: "LinkFile", sha256: createHash("sha256").update(bytes).digest("hex"), gitBlobSha1: createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex"), execBits: 0, size: bytes.length, target: bytes }
+      }
+      return { kind: "OtherFile" }
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error) {
+        if (error.code === "ENOENT") return { kind: "MissingFile" }
+        if (error.code === "ENOTDIR") return { kind: "OtherFile" }
+      }
+      throw error
+    }
+  }
+
+  export async function readArtifact(file: string, maximum: number): Promise<ArtifactBytes> {
+    const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW)
+    try {
+      const before = await handle.stat({ bigint: true })
+      if (!before.isFile() || before.size > BigInt(maximum) || before.size < 0n) throw new Error(`Not a bounded regular artifact: ${file}`)
+      const bytes = new Uint8Array(Number(before.size))
+      let offset = 0
+      while (offset < bytes.length) {
+        const read = await handle.read(bytes, offset, bytes.length - offset, offset)
+        if (read.bytesRead === 0) throw new Error(`Artifact shortened while reading: ${file}`)
+        offset += read.bytesRead
+      }
+      const after = await handle.stat({ bigint: true })
+      if (before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) throw new Error(`Artifact changed while reading: ${file}`)
+      return { bytes, sha256: createHash("sha256").update(bytes).digest("hex"), size: bytes.length }
+    } finally { await handle.close() }
+  }
+
+  export function artifactJson(bytes: Uint8Array): unknown {
+    const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)
+    if (text.charCodeAt(0) === 0xfeff) throw new Error("Artifact JSON has a byte-order mark")
+    const frames: (Set<string> | undefined)[] = []
+    const enter = (keys: Set<string> | undefined) => {
+      frames.push(keys)
+      if (frames.length > 64) throw new Error("Artifact JSON exceeds its nesting budget")
+    }
+    visit(text, {
+      onObjectBegin: () => enter(new Set()),
+      onArrayBegin: () => enter(undefined),
+      onObjectEnd: () => { frames.pop() },
+      onArrayEnd: () => { frames.pop() },
+      onObjectProperty: (key) => {
+        const keys = frames[frames.length - 1]
+        if (keys === undefined || keys.has(key)) throw new Error(`Duplicate artifact JSON key: ${key}`)
+        keys.add(key)
+      },
+      onLiteralValue: (value: unknown, offset, length) => {
+        if (typeof value === "number" && (!Number.isSafeInteger(value) || !/^(0|[1-9][0-9]*)$/.test(text.slice(offset, offset + length)))) throw new Error("Artifact JSON requires canonical nonnegative safe integers")
+      },
+      onError: (code) => { throw new Error(`Invalid artifact JSON: ${code}`) },
+    }, { disallowComments: true, allowTrailingComma: false, allowEmptyContent: false })
+    return JSON.parse(text)
+  }
+
+}
+export { artifactJson, readArtifact, hashArtifact, observeCommittedEntry, type CommittedEntry } from node

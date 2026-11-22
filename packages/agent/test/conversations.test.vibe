@@ -20,7 +20,8 @@ module node {
 
   export async function pendingBeside(runtime: AgentRuntime, roomId: UUID, title: string) {
     const [room] = await runtime.adapter.getRoomsByIds([roomId])
-    const owner = { user: freshId(), world: room?.worldId ?? freshId() }
+    if (!room?.worldId) throw new Error("The published conversation has no world")
+    const owner = { user: freshId(), world: room.worldId }
     return conversationStore(runtime, owner).createPending(title)
   }
 }
@@ -49,12 +50,14 @@ effect function search(agent: InProcess, query: string) {
 
 effect function seed(agent: InProcess, roomId: UUID, rows: readonly { readonly text: string; readonly at: number }[]) {
   const runtime = agent.agent.runtime
-  const memories = rows.map(({ text, at }, index): Memory => ({
-    id: freshId(), roomId, agentId: runtime.agentId, createdAt: at,
-    entityId: index % 2 === 0 ? freshId() : runtime.agentId, content: { text, source: "device" },
-  }))
-  try host("seed messages", () => runtime.adapter.createMemories(memories.map((memory) => ({ memory, tableName: "messages" }))))
-  return memories
+  return try host("seed messages", async () => {
+    const memories = rows.map(({ text, at }, index): Memory => ({
+      id: freshId(), roomId, agentId: runtime.agentId, createdAt: at,
+      entityId: index % 2 === 0 ? freshId() : runtime.agentId, content: { text, source: "device" },
+    }))
+    await runtime.adapter.createMemories(memories.map((memory) => ({ memory, tableName: "messages" })))
+    return memories
+  })
 }
 
 const inOrder = (memories: readonly Memory[]) => memories.map((memory) => ({ id: String(memory.id), at: memory.createdAt ?? 0 }))

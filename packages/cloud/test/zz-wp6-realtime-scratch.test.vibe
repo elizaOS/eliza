@@ -1,47 +1,11 @@
+import { reservedFor } from "../gen/cloud__shared__metering.effect.vibe"
 import { assert, describe, it } from "@effect/vitest"
 import { addCredits } from "../src/billing/funds.vibe"
-import { refusalBody } from "../src/http/refusal.vibe"
-import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
-import { Store, type Tx } from "../src/store/store.vibe"
-import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
-import type { FakeRequest } from "./support/fakes.ts"
-import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.ts"
-import { periodRows } from "../src/shared/metering.vibe"
-import { tokenDigest } from "../src/shared/sealing.vibe"
-import { stepRow } from "../src/store/rows.vibe"
-import { verifyEntitlement, type PublishedKey } from "./support/entitlement.ts"
-import { decodeRegistration, disableClient, registerClient, updateClient } from "../src/native-clients/registry.vibe"
-import { seedClients } from "../src/operator/clients.vibe"
-import { deviceKey, openAccount, printed } from "./support/operator.vibe"
-import { operator } from "./support/operator.vibe"
-import { chooseFor } from "../src/services/models.vibe"
-import { forwardScriptHash } from "../src/pages/forward-script.ts"
-import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
-import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
-import { revokeAll, sweepGrants } from "../src/native-clients/device-keys.vibe"
-import { s256, signedIn } from "./support/identity.ts"
-import { connectionColumns, connectionRows, scopeFor, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
-import { sealTokens } from "../src/providers/google.vibe"
-import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
-import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/google-calendar.ts"
-import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
-import { gmailChanges, gmailChangeSwitches } from "./support/fakes/google-gmail-changes.ts"
-import { sha256Hex } from "../src/shared/sealing.vibe"
-import { secrets } from "./support/profile.ts"
+import { testCloud, type TestCloud } from "./support/cloud.vibe"
 import { signedCaller } from "./support/caller.vibe"
-import { callDeclaring } from "./support/http.ts"
 import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
-import { recordingBytes, recordingForm } from "./support/recording.ts"
 import { openRelay, upgradeStatus, type Received } from "./support/relay-socket.ts"
 import { realtimeSpeechPerDay, utcDayStart } from "../gen/cloud__billing__plans.ts"
-import { googleMapsFake } from "./support/maps-fake.ts"
-
-effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
-  return match (try exit(program)) {
-    when Exit.Success(let value): `succeeded with ${JSON.stringify(value)}`;
-    when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => error._tag), Option.getOrElse(() => "defect"));
-  }
-}
 
 effect function check(run: () => void) {
   try Effect.try(run)
@@ -59,13 +23,13 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
     try TestClock.adjust(Duration.seconds(5))
     const caller = try signedCaller(cloud, "talker")
-    const windowQuote = 60 * 100 + 4096 * 30
-    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 2 * windowQuote + 1_000, requestKey: "talk-funding" }))
+    const reservedPerWindow = reservedFor(60 * 100) + reservedFor(4096 * 30)
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 2 * reservedPerWindow + 1_000, requestKey: "talk-funding" }))
     const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
     const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
     const session = minted.body as { readonly sessionId: string; readonly token: string; readonly expiresAt: string; readonly wsUrl: string }
     const mintedAt = Date.parse(session.expiresAt) - 60_000
-    const socket = try promise(() => openRelay(cloud.url, session.sessionId))
+    const socket = try acquireRelease(promise(() => openRelay(cloud.url, session.sessionId)), (relay) => sync(() => relay.close()))
     const second = try promise(() => upgradeStatus(cloud.url, session.sessionId))
     try sync(() => socket.send({ t: "hello", token: session.token, errorReasons: true, extend: true }))
     const opened = try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "stt"))
@@ -91,7 +55,10 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
       phase = (try sql(cloud, "SELECT phase FROM speech_sessions WHERE key = $1", [session.sessionId]))[0]?.phase
     }
     const windows = try sql(cloud, "SELECT number, expires_at, settled_at IS NOT NULL AS settled FROM speech_windows WHERE session_id = $1 ORDER BY number", [session.sessionId])
-    const usage = try sql(cloud, "SELECT quote, outcome FROM usage_records WHERE organization_id = $1 ORDER BY hold_key", [caller.organizationId])
+    const usage = try sql(cloud, `SELECT w.number, u.quote, u.outcome,
+      CASE WHEN u.hold_key = w.transcribe_hold THEN 'transcribe' ELSE 'synthesize' END AS direction
+      FROM speech_windows w JOIN usage_records u ON u.hold_key IN (w.transcribe_hold, w.synthesize_hold)
+      WHERE w.session_id = $1 AND u.organization_id = $2 ORDER BY w.number, direction DESC`, [session.sessionId, caller.organizationId])
 
     const spender = try signedCaller(cloud, "spender")
     const now = try Clock.currentTimeMillis
@@ -113,7 +80,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
         forwarded: speech.sttPcmBytes,
         phase,
         windows: windows.map((row) => [Number(row.number), Number(row.expires_at) - mintedAt, row.settled]),
-        usage: usage.map((row) => [Number(row.quote), row.outcome]),
+        usage: usage.map((row) => [Number(row.number), row.direction, Number(row.quote), row.outcome]),
         spent: [spent.status, (spent.body as { readonly error?: string }).error]
       },
       {
@@ -139,7 +106,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
         forwarded: 3_200,
         phase: "closed",
         windows: [[1, 60_000, true], [2, 120_000, true]],
-        usage: [[6_000, "unknown"], [122_880, "unknown"], [6_000, "unknown"], [122_880, "unknown"]],
+        usage: [[1, "transcribe", 6_000, "unknown"], [1, "synthesize", 122_880, "unknown"], [2, "transcribe", 6_000, "unknown"], [2, "synthesize", 122_880, "unknown"]],
         spent: [402, "allowance_exhausted"]
       }
     ))

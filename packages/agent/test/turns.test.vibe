@@ -16,11 +16,9 @@ interface Reply {
 }
 
 module node {
-  import type { AgentRuntime, Memory, UUID } from "@elizaos/core"
+  import { ChannelType, conversationClientUserMemoryId, hashStableJson, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"
   import type { CloudFake } from "./support/cloud-fake.ts"
   import { request, type LocalAnswer, type Refusal } from "./support/socket-client.ts"
-  import { userMessageIdOf, type ClientMessageId } from "../src/conversation/idempotency.vibe"
-  import { turnInput } from "../src/conversation/turns.vibe"
 
   /** @throws {never} */
   export function completions(cloud: CloudFake): number {
@@ -30,25 +28,24 @@ module node {
   export async function overlapping(socket: string, token: string, cloud: CloudFake, id: string, release: () => void) {
     const ask = (body: object): Promise<LocalAnswer | Refusal> =>
       request(socket, { method: "POST", path: `/api/conversations/${id}/messages`, token, body })
-    const before = completions(cloud)
+    const started = cloud.nextCompletion()
     const owner = ask({ text: "Take your time.", clientMessageId: "m-2" })
-    while (completions(cloud) === before) await new Promise((resolve) => setTimeout(resolve, 20))
+    await started
     const joined = ask({ text: "Take your time.", clientMessageId: "m-2" })
-    await new Promise((resolve) => setTimeout(resolve, 50))
     const busy = await ask({ text: "Are you there?" })
     const otherBody = await ask({ text: "Something else.", clientMessageId: "m-2" })
     release()
     return { owner: await owner, joined: await joined, busy, otherBody }
   }
 
-  export async function cutTurn(runtime: AgentRuntime, roomId: UUID, world: UUID | undefined, user: UUID, body: object) {
-    const parsed = turnInput(body, new Map())
-    if (parsed.kind !== "Input" || parsed.input.key === undefined) throw new Error("The cut message did not parse with a key")
-    const id = userMessageIdOf(roomId, parsed.input.key.clientMessageId as ClientMessageId)
+  export async function cutTurn(runtime: AgentRuntime, roomId: UUID, world: UUID | undefined, user: UUID, body: { text: string; clientMessageId: string }) {
+    const scope = JSON.stringify([runtime.agentId, user, roomId])
+    const id = conversationClientUserMemoryId(scope, body.clientMessageId)
+    const fingerprint = hashStableJson({ text: body.text, channelType: ChannelType.DM, metadata: undefined })
     const memory: Memory = {
-      id, roomId, entityId: user, agentId: runtime.agentId, createdAt: Date.now(), content: { text: parsed.input.text, source: "device" },
+      id, roomId, entityId: user, agentId: runtime.agentId, createdAt: Date.now(),
       ...(world === undefined ? {} : { worldId: world }),
-      metadata: { type: "custom", clientMessageId: parsed.input.key.clientMessageId, fingerprint: parsed.input.key.fingerprint },
+      content: { text: body.text, source: "device", chatIdempotency: { version: 1, scope, clientMessageId: body.clientMessageId, fingerprint } },
     }
     await runtime.createMessageMemory(memory)
     return id
@@ -87,7 +84,7 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
   const { id, roomId } = try conversation(first)
 
   try Effect.sync(() => cloud.script(text("Hello ", "there.")))
-  const plain = try send(first, id, { text: "Hi", mode: "simple" })
+  const plain = try send(first, id, { text: "Hi" })
 
   try Effect.sync(() => cloud.script(text("Keyed answer.")))
   const keyed = try send(first, id, { text: "Once only.", clientMessageId: "m-1" })

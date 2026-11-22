@@ -5,8 +5,8 @@ import { browserAddressInput, type BrowserAddressInput } from "./address-input.t
 export type { AddressRefusalReason, BrowserAddressInput } from "./address-input.ts";
 export type { AddressFacts, DefaultProtocol, WebAddress, WebScheme } from "../../gen/os__browser__address.ts";
 
-const UNREADABLE = /[\u0000-\u001f\u007f\\]/;
-const UNCLEAN = /[\s\u0000-\u001f\u007f\\]/;
+const UNREADABLE = /(?=\p{ASCII})\p{Cc}|\\/u;
+const WHITESPACE = /\s/;
 const SEARCH_OPERATOR = /^(?:site|define|filetype|before|after):(?!\/\/)\S/i;
 const HOST_PORT = /^[^\s/:]+:\d+(?:[/?#]|$)/;
 const BRACKETED_HOST = /^\[[0-9a-fA-F.%]*:[0-9a-fA-F:.%]*\](?::\d+)?(?:[/?#]|$)/;
@@ -59,7 +59,7 @@ export function webAddress(href: string): WebAddress {
   return {
     href,
     units: href.length,
-    cleanText: !UNCLEAN.test(href),
+    cleanText: !UNREADABLE.test(href) && !WHITESPACE.test(href),
     scheme: schemeOf(url),
     validHost: authority !== undefined && SERVER.test(authority) && url !== null && url.hostname !== "",
     userInfo: authority?.includes("@") === true || hasUserInfo(url),

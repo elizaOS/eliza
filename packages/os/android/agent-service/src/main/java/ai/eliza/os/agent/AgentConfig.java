@@ -34,9 +34,8 @@ public final class AgentConfig {
   private static final Pattern VIEW_ALIAS = Pattern.compile("[a-z](?:[a-z0-9 _-]{0,30}[a-z0-9])?");
   private static final int MAX_VIEWS = 32, MAX_VIEW_BYTES = 16384;
   private static final BigDecimal SAFE_INTEGER = BigDecimal.valueOf(9007199254740991L);
-  private static final Set<String> HOST_KEYS = Set.of("schema", "service", "notification", "routes", "nativeRoutes", "model", "embeddings",
+  private static final Set<String> HOST_KEYS = Set.of("schema", "service", "notification", "routes", "nativeRoutes", "cloud", "model", "embeddings",
     "embeddingDimensions", "persistMemory", "callerRole", "views", "timeZone", "privacy", "google", "retention", "environment");
-  private static final Set<String> POLICY_KEYS = Set.of("schema", "actions", "plugins");
   private static final Set<String> CHARACTER_KEYS = Set.of("name", "system", "bio", "adjectives", "style", "messageExamples");
 
   public static final class Refused extends Exception {
@@ -164,12 +163,18 @@ public final class AgentConfig {
   }
 
   private static Map<String, Object> policy(Map<String, Object> policy) throws Refused {
-    known(policy, POLICY_KEYS, "policy");
-    Map<String, Object> actions = exact(policy.get("actions"), Set.of("allowed"), "policy actions");
+    if (!(policy.get("actions") instanceof Map<?, ?> actionsRaw)) throw new Refused("The agent policy needs actions");
+    Map<String, Object> actions = cast(actionsRaw);
     Object allowedRaw = actions.get("allowed");
     List<Object> allowed = allowedRaw instanceof Map<?, ?> named ? new ArrayList<>(new TreeSet<>(cast(named).keySet())) : list(allowedRaw);
     if (allowed == null || allowed.isEmpty() || !names(allowed, true)) throw new Refused("The agent policy allows a nonempty set of named actions");
-    Map<String, Object> plugins = exactOptional(policy.get("plugins"), Set.of("load", "product"), "policy plugins");
+    Object refused = actions.get("refused");
+    if (refused != null) {
+      if (!(refused instanceof Map<?, ?> refusedNames)) throw new Refused("The agent policy refuses actions by name");
+      for (Object action : allowed) if (refusedNames.containsKey(action)) throw new Refused("Action " + action + " is both allowed and refused");
+    }
+    if (!(policy.get("plugins") instanceof Map<?, ?> pluginsRaw)) throw new Refused("The agent policy needs a plugin load list");
+    Map<String, Object> plugins = cast(pluginsRaw);
     if (!names(plugins.get("load"), true)) throw new Refused("The agent policy loads unique plugins by name");
     Map<String, Object> load = ordered("load", plugins.get("load"));
     if (plugins.containsKey("product")) {
@@ -182,7 +187,8 @@ public final class AgentConfig {
 
   private static Map<String, Object> launch(Map<String, Object> host) throws Refused {
     Map<String, Object> launch = new LinkedHashMap<>();
-    launch.put("model", model(host.get("model")));
+    if (host.containsKey("cloud") == host.containsKey("model")) throw new Refused("The agent host names its model once, as model or as the schema 1 cloud record");
+    launch.put("model", host.containsKey("model") ? model(host.get("model")) : cloudRecord(host.get("cloud")));
     Object embeddings = host.getOrDefault("embeddings", "none");
     if (!"none".equals(embeddings) && !"local".equals(embeddings)) throw new Refused("The agent embeddings are local or none");
     launch.put("embeddings", embeddings);
@@ -228,6 +234,14 @@ public final class AgentConfig {
       return ordered("backend", "none");
     }
     throw new Refused("The agent model backend is cloud, own-key or none");
+  }
+
+  private static Map<String, Object> cloudRecord(Object value) throws Refused {
+    Map<String, Object> cloud = exactOptional(value, Set.of("baseUrl", "smallModel", "largeModel"), "cloud");
+    origin(cloud.get("baseUrl"));
+    for (String key : List.of("smallModel", "largeModel")) if (cloud.containsKey(key) && !(cloud.get(key) instanceof String)) throw new Refused("The agent cloud " + key + " is text");
+    return ordered("backend", "cloud", "cloudBaseUrl", cloud.get("baseUrl"), "smallModel", cloud.getOrDefault("smallModel", ""),
+      "largeModel", cloud.getOrDefault("largeModel", ""), "imageModel", "");
   }
 
   private static void origin(Object value) throws Refused {

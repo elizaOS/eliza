@@ -49,7 +49,6 @@ android {
   res.srcDirs = [new File(source, 'src/main/res')]
   if (project.hasProperty('elizaSenseNativeDir')) jniLibs.srcDirs += [file(project.elizaSenseNativeDir)]
  }
- sourceSets.test.java.srcDirs = [new File(source, 'src/test/java')]
  signingConfigs {
   if (signingReady) release {
    storeFile file(envValue('ELIZAOS_KEYSTORE_PATH'))
@@ -69,7 +68,4 @@ android {
  lint { abortOnError true; disable 'ProtectedPermissions', 'SystemPermissionTypo' }
  compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
 }
-dependencies {
- implementation project(project.elizaSenseSpeechProject)
- testImplementation 'junit:junit:4.13.2'
-}
+dependencies { implementation project(project.elizaSenseSpeechProject) }

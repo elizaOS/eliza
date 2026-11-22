@@ -55,7 +55,7 @@ that os replaced is sent on the next call by the same client.
 ```quint
 type HttpMethod = Get | Post | Patch | Delete
 type Segment = Literal({ text: str }) | Param({ name: str })
-type AuthClass = Public | KeyOrSession | Session | FreshSession | StepUp
+type AuthClass = Public | KeyOrSession | Session | SessionFamily | FreshSession | StepUp
 type DeviceRoute = { method: HttpMethod, path: List[Segment], auth: AuthClass, headers: Set[str] }
 type DeviceCall = { route: DeviceRoute, bearer: str }
 pure def callOf(route: DeviceRoute, credentialNow: str): DeviceCall = { route: route, bearer: credentialNow }
@@ -94,12 +94,17 @@ pure def lawNoCapabilityNeedsManagedGoogle(setup: CloudSetup, wanted: CloudCapab
 `deviceRoutes` is every route a device may call. Every route admits
 `Authorization`, `Content-Type`, `X-Request-ID`, `Traceparent` and
 `Tracestate`; a route's `headers` names the others it admits:
-`Idempotency-Key` on subscription checkout, redeem, every metered maps
-operation and calendar create, `If-Match` on calendar change and delete. The
-auth classes are those of the cloud's request authentication. A sign-in
+`Idempotency-Key` on subscription checkout, redeem, chat completions,
+every metered maps operation and calendar create, `If-Match` on calendar change and delete. The
+auth classes are those of the cloud's request authentication. Enrollment
+and confirmation use a signed session. Their handlers apply the
+[second-factor policy](./identity/secondFactor.md) for a fresh first setup
+or a recent step-up for later changes. A sign-in
 route marked `Public` carries its proof in the body (code, verifier,
-challenge or refresh token); the speech socket carries the session token in
-its `hello`. Routes the cloud calls itself, provider callbacks, the payment
+challenge or refresh token). `SessionFamily` is logout: the handler checks
+the presented access or refresh digest for the family it will end. The
+speech socket carries the session token in its `hello`. Routes the cloud
+calls itself, provider callbacks, the payment
 webhook and the loopback test inbox are not device routes.
 
 ```quint
@@ -125,13 +130,13 @@ pure val signInRoutes: List[DeviceRoute] = List(
   route(Post, api(List("auth", "mfa", "complete")), Public),
   route(Post, api(List("auth", "mfa", "sms", "send")), Public),
   route(Post, api(List("auth", "refresh")), Public),
-  route(Post, api(List("auth", "logout")), Session),
+  route(Post, api(List("auth", "logout")), SessionFamily),
   route(Post, api(List("auth", "mfa", "step-up")), Session),
   route(Get, api(List("auth", "mfa")), Session),
-  route(Post, api(List("auth", "mfa", "totp", "enroll")), StepUp),
-  route(Post, api(List("auth", "mfa", "totp", "confirm")), StepUp),
-  route(Post, api(List("auth", "mfa", "sms", "enroll")), StepUp),
-  route(Post, api(List("auth", "mfa", "sms", "confirm")), StepUp),
+  route(Post, api(List("auth", "mfa", "totp", "enroll")), Session),
+  route(Post, api(List("auth", "mfa", "totp", "confirm")), Session),
+  route(Post, api(List("auth", "mfa", "sms", "enroll")), Session),
+  route(Post, api(List("auth", "mfa", "sms", "confirm")), Session),
   route(Delete, apiWith(List("auth", "mfa"), List(Param({ name: "factorId" }))), StepUp),
   route(Get, api(List("user", "methods")), Session),
   route(Post, api(List("user", "methods", "phone", "code", "send")), Session),
@@ -174,7 +179,7 @@ pure val billingRoutes: List[DeviceRoute] = List(
   route(Get, apiWith(List("billing", "invoices"), List(Param({ name: "invoiceId" }))), KeyOrSession))
 pure val serviceRoutes: List[DeviceRoute] = List(
   route(Get, api(List("models")), KeyOrSession),
-  route(Post, api(List("chat", "completions")), KeyOrSession),
+  keyed(Post, api(List("chat", "completions")), Set(idempotencyKey)),
   route(Post, api(List("voice", "tts")), KeyOrSession),
   route(Post, api(List("voice", "stt")), KeyOrSession),
   route(Post, api(List("voice", "speech", "consent")), KeyOrSession),
@@ -212,7 +217,8 @@ pure val googleRoutes: List[DeviceRoute] = List(
   keyed(Post, google(List("calendar", "events")), Set("Idempotency-Key")),
   keyed(Patch, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Set("If-Match")),
   keyed(Delete, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Set("If-Match")))
-pure val deviceRoutes: List[DeviceRoute] = signInRoutes.concat(billingRoutes).concat(serviceRoutes).concat(googleRoutes)
+pure def joinRouteGroups(earlier: List[DeviceRoute], later: List[DeviceRoute]): List[DeviceRoute] = earlier.concat(later)
+pure val deviceRoutes: List[DeviceRoute] = joinRouteGroups(joinRouteGroups(signInRoutes, billingRoutes), joinRouteGroups(serviceRoutes, googleRoutes))
 pure def admitsHeader(r: DeviceRoute, header: str): bool = baseHeaders.contains(header) or r.headers.contains(header)
 pure def routesOf(method: HttpMethod): List[DeviceRoute] = deviceRoutes.select(d => d.method == method)
 pure def lawEveryRouteIsUnderApi(method: HttpMethod): bool =

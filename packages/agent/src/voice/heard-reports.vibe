@@ -1,118 +1,90 @@
 // spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or missing answer, and its outcomes stay distinct"
 module node {
   import {
-    heardRetryMs, initial, step,
-    type Event, type HeardBody as HeardAnswerBody, type HeardReceipt, type ReportOutcome, type VoiceSession,
+    heardRetryMs, type Event, type HeardReceipt, type ReportOutcome, type VoiceSession,
   } from "../../gen/agent__voice__session.effect.vibe"
-  import { decodeHeardResult, heardBody, type HeardBody } from "./heuristics.vibe"
-  import type { ClockPort, HeardPort } from "./ports.vibe"
+  import { decodeHeardResult, heardBody } from "./heuristics.vibe"
+  import type { ClockPort, HeardBody, HeardPort } from "./ports.vibe"
 
   export interface HeardReport {
+    readonly reply: number
     readonly conversationId: string
     readonly messageId: string
     readonly heardText: string
     readonly nothingHeard: boolean
   }
 
-  export type HeardEvent =
-    | { readonly type: "dispatchHeard"; readonly reply: number; readonly waitedMs: number }
-    | { readonly type: "heardAnswered"; readonly reply: number; readonly status: number; readonly body: HeardAnswerBody }
+  export type SettledHeard = ReportOutcome
 
   export interface HeardReportsOptions {
     readonly heard: HeardPort
     readonly clock: ClockPort
-    onEvent?(report: HeardReport, event: HeardEvent): void
-    onOutcome?(report: HeardReport, outcome: ReportOutcome): void
+    readonly machine: { read(): VoiceSession; send(event: Event): boolean }
+    onOutcome?(report: HeardReport, outcome: SettledHeard): void
   }
 
   export interface HeardReports {
-    report(report: HeardReport, reply?: number): Promise<ReportOutcome>
-    receipt(conversationId: string, messageId: string): HeardReceipt | undefined
+    report(report: HeardReport): Promise<SettledHeard>
+    receipt(reply: number): HeardReceipt | undefined
   }
-
-  interface Entry {
-    readonly report: HeardReport
-    readonly reply: number
-    readonly body: HeardBody
-    readonly settled: Promise<ReportOutcome>
-    readonly settle: (outcome: ReportOutcome) => void
-  }
-
-  const keyOf = (conversationId: string, messageId: string) => `${conversationId}\n${messageId}`
 
   export function createHeardReports(options: HeardReportsOptions): HeardReports {
-    const { clock } = options
-    const entries = new Map<string, Entry>()
-    let reports: VoiceSession = { ...initial, receipts: [] }
+    const { clock, machine } = options
+    const pending = new Map<number, Promise<SettledHeard>>()
+    const receipt = (reply: number) => machine.read().receipts.find((item) => item.reply === reply)
 
-    const receiptOf = (reply: number) => reports.receipts.find((receipt) => receipt.reply === reply)
-
-    function apply(entry: Entry, event: HeardEvent): HeardReceipt | undefined {
-      const before = receiptOf(entry.reply)
-      reports = step(reports, event as Event)
-      const after = receiptOf(entry.reply)
-      if (after !== before) options.onEvent?.(entry.report, event)
-      return after
-    }
-
-    function post(entry: Entry, waitedMs: number): boolean {
-      const receipt = apply(entry, { type: "dispatchHeard", reply: entry.reply, waitedMs })
-      if (receipt?.phase.tag !== "ReportPosting") return false
-      const { conversationId, messageId } = entry.report
-      options.heard(conversationId, messageId, entry.body).then(
-        (answer) => ({ status: answer.status, body: decodeHeardResult(messageId, answer.body) }),
-        () => ({ status: 0, body: "BodyOther" as const }),
-      ).then((answer) => answered(entry, answer.status, answer.body))
-      return true
-    }
-
-    function retry(entry: Entry, since: number): void {
-      const waitedMs = clock.now() - since
-      if (!post(entry, waitedMs)) clock.after(Math.max(1, heardRetryMs - waitedMs), () => retry(entry, since))
-    }
-
-    function answered(entry: Entry, status: number, body: HeardAnswerBody): void {
-      const receipt = apply(entry, { type: "heardAnswered", reply: entry.reply, status, body })
-      if (receipt === undefined) return
-      const { phase } = receipt
-      switch (phase.tag) {
-        case "ReportDue": {
-          const since = clock.now()
-          clock.after(heardRetryMs, () => retry(entry, since))
-          return
-        }
-        case "ReportSettled":
-          options.onOutcome?.(entry.report, phase.outcome)
-          entry.settle(phase.outcome)
-          return
-        case "ReportPosting":
-          return
+    function report(asked: HeardReport): Promise<SettledHeard> {
+      const { conversationId, messageId, reply } = asked
+      const repeated = pending.get(reply)
+      if (repeated !== undefined) return repeated
+      const reserved = receipt(reply)
+      if (reserved?.phase.tag === "ReportSettled") return Promise.resolve(reserved.phase.outcome)
+      const payload: HeardBody = asked.nothingHeard ? { nothingHeard: true } : heardBody(asked.heardText)
+      if (reserved?.phase.tag !== "ReportDue" || reserved.attempts !== 0 ||
+          reserved.nothingHeard !== ("nothingHeard" in payload)) {
+        return Promise.reject(new Error("The report does not match a reserved reply"))
       }
+      const complete = Promise.withResolvers<SettledHeard>()
+      pending.set(reply, complete.promise)
+      void complete.promise.then(() => pending.delete(reply), () => pending.delete(reply))
+
+      function wait(since: number): void {
+        const waitedMs = clock.now() - since
+        if (waitedMs >= heardRetryMs) post(waitedMs)
+        else clock.after(heardRetryMs - waitedMs, () => wait(since))
+      }
+
+      function post(waitedMs: number): void {
+        if (!machine.send({ type: "dispatchHeard", reply, waitedMs })) {
+          complete.reject(new Error("The reserved report could not be dispatched"))
+          return
+        }
+        Promise.resolve().then(() => options.heard(conversationId, messageId, payload)).then(
+          (answer) => ({ status: answer.status, body: decodeHeardResult(messageId, answer.body) }),
+          () => ({ status: 0, body: "BodyOther" as const }),
+        ).then((answer) => {
+          if (!machine.send({ type: "heardAnswered", reply, ...answer })) {
+            complete.reject(new Error("The reserved report could not accept its answer"))
+            return
+          }
+          const phase = receipt(reply)?.phase
+          if (phase?.tag === "ReportDue") {
+            const since = clock.now()
+            clock.after(heardRetryMs, () => wait(since))
+          } else if (phase?.tag === "ReportSettled") {
+            complete.resolve(phase.outcome)
+            options.onOutcome?.(asked, phase.outcome)
+          } else {
+            complete.reject(new Error("The heard report did not settle or schedule its retry"))
+          }
+        }).catch(complete.reject)
+      }
+
+      void Promise.resolve().then(() => post(0)).catch(complete.reject)
+      return complete.promise
     }
 
-    return {
-      report(report, reply) {
-        const key = keyOf(report.conversationId, report.messageId)
-        const known = entries.get(key)
-        if (known !== undefined) return known.settled
-        const body: HeardBody = report.nothingHeard ? { nothingHeard: true } : heardBody(report.heardText)
-        let settle: (outcome: ReportOutcome) => void = () => undefined
-        const settled = new Promise<ReportOutcome>((resolve) => { settle = resolve })
-        const number = reply ?? Math.max(0, ...reports.receipts.map((receipt) => receipt.reply)) + 1
-        const entry: Entry = { report, reply: number, body, settled, settle }
-        entries.set(key, entry)
-        reports = {
-          ...reports,
-          receipts: [...reports.receipts, { reply: number, attempts: 0, phase: { tag: "ReportDue" }, nothingHeard: "nothingHeard" in body }],
-        }
-        post(entry, 0)
-        return settled
-      },
-      receipt(conversationId, messageId) {
-        const entry = entries.get(keyOf(conversationId, messageId))
-        return entry === undefined ? undefined : receiptOf(entry.reply)
-      },
-    }
+    return { report, receipt }
   }
 }
-export { createHeardReports, type HeardEvent, type HeardReport, type HeardReports, type HeardReportsOptions } from node
+export { createHeardReports, type HeardReport, type HeardReports, type HeardReportsOptions, type SettledHeard } from node

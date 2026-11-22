@@ -60,7 +60,7 @@ pure def showsReturnToApp(answer: PageAnswer): bool = match answer { | Shows(s) 
 pure def readOf(registry: List[Registration], readable: bool): RegistryRead = if (readable) ReadRegistry({ registrations: registry }) else UnreadableRegistry
 pure val rowValues: Set[EnvironmentProfile] = {
   val doc: LegalDocument = { title: "Terms", revision: "1", sections: List({ title: "Use", paragraphs: List("Plain text.") }) }
-  val row: EnvironmentProfile = { name: "Cloud", api: "https://api.one", web: "https://www.one", audience: "aud", mailSender: "m@one", databaseDigest: "d1", firstPartyOrigins: List("https://www.one"), capabilities: Set(BillingCapability), mapsProvider: NoMaps, signIn: { mail: HttpsDelivery, sms: NoDelivery, google: GoogleOn }, terms: doc, privacy: doc }
+  val row: EnvironmentProfile = { name: "Cloud", api: "https://api.one", web: "https://www.one", audience: "aud", mailSender: "m@one", databaseDigest: "d1", firstPartyOrigins: List("https://www.one"), capabilities: Set(BillingCapability), signIn: { mail: HttpsDelivery, sms: NoDelivery, google: GoogleOn }, terms: doc, privacy: doc }
   Set(row).union(Set({ ...row, capabilities: Set(InferenceCapability) }))
 }
 pure def lawReturnToAppExactlyForAnEnabledWebReturn(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, reported: str): bool =
@@ -107,7 +107,12 @@ pure def lawAReturnPageOpensItsOwnApp(row: EnvironmentProfile, registry: List[Re
 registration names no connect return; with a connect return it redirects
 there instead, so this page is never shown.
 
+A browser connection with no app return shows the same connected page under
+the service name, with no action.
+
 ```quint
+pure def connectedOnCloud(row: EnvironmentProfile): PageAnswer =
+  Shows({ page: ReturnToApp({ serviceName: row.name, appName: row.name, purpose: ConnectedPage, offer: NoAction }) })
 pure def connectedAnswer(row: EnvironmentProfile, r: Registration): PageAnswer =
   if (r.enabled and r.connectReturn == NoConnectReturn) Shows({ page: ReturnToApp({ serviceName: row.name, appName: r.displayName, purpose: ConnectedPage, offer: NoAction }) })
   else notFoundAnswer
@@ -147,9 +152,9 @@ pure def textOf(v: ParamValue): List[str] = match v { | WellFormed(w) => List(w.
 pure def named(name: str, v: ParamValue): List[Forwarded] = textOf(v).listMap(t => { name: name, value: t })
 pure def connectForwarded(params: ReturnParams): List[Forwarded] = {
   val result = textOf(params.resultParam)
-  val connected = result == List("connected")
-  val idFits = if (connected) textOf(params.connectionIdParam).length() == 1 else params.connectionIdParam == MissingValue
-  if (textOf(params.stateParam).length() == 1 and result.length() == 1 and connectResults.includes(result.foldl("", (acc, t) => t)) and idFits)
+  val resultName = result.foldl("", (acc, t) => t)
+  val idFits = if (resultName == "connected") textOf(params.connectionIdParam).length() == 1 else params.connectionIdParam == MissingValue
+  if (textOf(params.stateParam).length() == 1 and result.length() == 1 and connectResults.includes(resultName) and idFits)
     named("state", params.stateParam).concat(named("result", params.resultParam)).concat(named("connectionId", params.connectionIdParam))
   else List()
 }

@@ -39,6 +39,7 @@ export interface CloudFake {
   readonly ownKeyBaseUrl: string;
   readonly ownKey: string;
   acceptKey(key: string): void;
+  nextCompletion(): Promise<CloudCall>;
   script(...replies: CloudReply[]): void;
   route(method: string, path: string, reply: RouteReply): void;
   close(): Promise<void>;
@@ -125,30 +126,6 @@ function imageUrls(body: unknown): string[] {
     .flatMap((part) => part.type === "image_url" && typeof part.image_url?.url === "string" ? [part.image_url.url] : []);
 }
 
-const acceptedFields = new Set(["model", "messages", "stream", "temperature", "max_tokens", "max_completion_tokens", "reasoning_effort", "response_format"]);
-const acceptedRoles = new Set(["system", "developer", "user", "assistant"]);
-const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-
-function acceptedPart(part: unknown): boolean {
-  if (!record(part)) return false;
-  if (part.type === "text") return Object.keys(part).every((key) => key === "type" || key === "text") && typeof part.text === "string";
-  if (part.type !== "image_url" || !record(part.image_url) || Object.keys(part).some((key) => key !== "type" && key !== "image_url")) return false;
-  const url = part.image_url.url;
-  return typeof url === "string" && /^(?:https?:\/\/\S+|data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)$/.test(url);
-}
-
-function acceptedMessage(message: unknown): boolean {
-  if (!record(message) || Object.keys(message).some((key) => key !== "role" && key !== "content")) return false;
-  if (typeof message.role !== "string" || !acceptedRoles.has(message.role)) return false;
-  return typeof message.content === "string" || (Array.isArray(message.content) && message.content.length > 0 && message.content.every(acceptedPart));
-}
-
-function acceptedChat(body: unknown): boolean {
-  if (!record(body) || Object.keys(body).some((key) => !acceptedFields.has(key))) return false;
-  if (typeof body.model !== "string" || body.model === "") return false;
-  return Array.isArray(body.messages) && body.messages.length > 0 && body.messages.every(acceptedMessage);
-}
-
 function answerCompletion(response: ServerResponse, reply: CloudReply, body: unknown, dialect: Dialect): void {
   switch (reply.kind) {
     case "hang":
@@ -220,6 +197,7 @@ export async function startCloudFake(options: { deviceKey: string; ownKey?: stri
   const directory = await mkdtemp(join(tmpdir(), "agent-cloud-fake-"));
   const { key, cert, caFile } = await selfSigned(directory);
   const calls: CloudCall[] = [];
+  const completions: ((call: CloudCall) => void)[] = [];
   const queue: CloudReply[] = [];
   const keys = new Set([options.deviceKey]);
   const ownKey = options.ownKey ?? "own-key-1";
@@ -230,8 +208,10 @@ export async function startCloudFake(options: { deviceKey: string; ownKey?: stri
     const body = await readBody(request);
     const aborted = new Promise<void>((resolve) => response.once("close", () => resolve()));
     const authorization = request.headers.authorization;
-    calls.push({ method: request.method ?? "", path: request.url ?? "", authorization, body, aborted });
+    const call = { method: request.method ?? "", path: request.url ?? "", authorization, body, aborted };
+    calls.push(call);
     const pathname = new URL(request.url ?? "/", "https://localhost").pathname;
+    if (call.method === "POST" && pathname.endsWith("/chat/completions")) completions.shift()?.(call);
     if (pathname.startsWith(`${ownKeyPrefix}/`)) {
       if (authorization !== `Bearer ${ownKey}`) {
         return json(response, 401, { error: { message: "Incorrect API key provided", type: "invalid_request_error", code: "invalid_api_key" } });
@@ -249,7 +229,6 @@ export async function startCloudFake(options: { deviceKey: string; ownKey?: stri
     const route = (request.url ?? "").replace(/^\/api(?=\/v1\/)/, "");
     if (request.method === "GET" && route === "/v1/models") return json(response, 200, models());
     if (request.method === "POST" && route === "/v1/chat/completions") {
-      if (!acceptedChat(body)) return json(response, 400, { error: "invalid_request", errorDescription: "invalid_request", retryable: false });
       return answerCompletion(response, queue.shift() ?? text("ok"), body, "cloud");
     }
     return json(response, 404, { error: "not_found", errorDescription: "not_found", retryable: false });
@@ -268,6 +247,7 @@ export async function startCloudFake(options: { deviceKey: string; ownKey?: stri
     origin: `https://localhost:${port}`,
     caFile,
     calls,
+    nextCompletion: () => new Promise<CloudCall>((resolve) => { completions.push(resolve); }),
     ownKeyBaseUrl: `https://localhost:${port}${ownKeyPrefix}`,
     ownKey,
     route: (method, path, reply) => {

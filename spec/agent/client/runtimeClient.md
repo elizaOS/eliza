@@ -327,8 +327,9 @@ pure def leadsToRequestSettles(c: RuntimeClient, later: RuntimeClient): bool =
 ### A refusal is a non-2xx status, and keeps retry advice only from a 429 with a safe whole number of seconds
 
 A 2xx answer is the reply, or for a stream its head. The refusal error also carries the body's `error`
-and `code` strings, which the shell keeps and the machine does not see; a
-`retryAfter` that is not a whole number is dropped by the shell.
+and `code` strings, which the shell keeps and the machine does not see. The
+shell drops a `retryAfter` outside the safely representable whole numbers
+before passing retry advice to the machine.
 
 ```quint
 pure def admitAdvice(httpStatus: int, retry: RetryAdvice): RetryAdvice = match retry {

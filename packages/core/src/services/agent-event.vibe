@@ -47,6 +47,8 @@ function subscribeListener<Listener>(
   return unsubscribe
 }
 
+export type AgentEventObserver = (coordinates: Readonly<Pick<AgentEventPayload, "runId" | "seq">>) => void
+
 export class AgentEventService extends Service {
   static serviceType: string = ServiceType.AGENT_EVENT
   capabilityDescription =
@@ -120,7 +122,7 @@ export class AgentEventService extends Service {
     this.seqByRun.delete(runId)
   }
 
-  emit(event: AgentEventInput): void {
+  emit(event: AgentEventInput, observed?: AgentEventObserver): void {
     const nextSeq = (this.seqByRun.get(event.runId) ?? 0) + 1
     this.seqByRun.set(event.runId, nextSeq)
 
@@ -137,6 +139,9 @@ export class AgentEventService extends Service {
     }
 
     const errors: unknown[] = []
+    if (observed !== undefined) {
+      try { observed({ runId: event.runId, seq: nextSeq }) } catch (error) { errors.push(error) }
+    }
     for (const listener of this.eventListeners.keys()) {
       try {
         listener(enriched)

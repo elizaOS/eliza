@@ -185,20 +185,3 @@ it.live("Show only the methods the cloud is ready for (spec/os/signIn/readiness.
   const broken = try failure(() => client.serviceDocument({ environment: "broken" as EnvironmentName }))
   assert.instanceOf(broken, MalformedReply)
 })
-
-it.live("Hear a browser sign-in adopted after the app restarted (spec/os/signIn/browserReturn.md, \"Story: Complete a browser sign-in only for the client that started it\"; spec/os/signIn/browserReturn.md, \"After process death a return is adopted only if no credential action was reserved since its record was written\")", () => effect {
-  const phone = device()
-  const client = signInClient(androidSignIn(phone))
-  const changes: unknown[] = []
-  try promise(() => client.addListener("signInAccountChanged", (event) => { changes.push(event) }))
-
-  const account = { signedIn: true, userId: "user-1", organizationId: "org-1", credentialId: "key-1", keyExpiresAt: 1900000000000 }
-  announce(phone, "signInAccountChanged", { environment: "production", account })
-  announce(phone, "signInAccountChanged", { environment: "production", account: { signedIn: false }, problem: "expired" })
-  announce(phone, "signInAccountChanged", { environment: "production", account: { signedIn: false }, problem: "held" })
-  try sleep("10 millis")
-  assert.deepStrictEqual(changes, [
-    { environment: PRODUCTION, account: { kind: "signedIn", userId: "user-1", organizationId: "org-1", credentialId: "key-1" as CredentialId, keyExpiresAt: 1900000000000 } },
-    { environment: PRODUCTION, account: { kind: "signedOut" }, problem: "Expired" },
-  ])
-})

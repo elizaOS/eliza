@@ -4,5 +4,31 @@
   "private": true,
   "type": "module",
   "description": "Notes, their trash and recorded audio custody.",
-  "license": "MIT"
+  "license": "MIT",
+  "scripts": {
+    "build": "vibelang -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "vibelang --noEmit -p ."
+  },
+  "dependencies": {
+    "effect": "4.1.1",
+    "vibelang-runtime": "0.0.13"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "4.1.1",
+    "@effect/vitest": "4.1.1",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13",
+    "vibestack": "workspace:*",
+    "vitest": "catalog:"
+  },
+  "exports": {
+    "./selected-read": {
+      "eliza-source": "./src/selected-read.vibe",
+      "types": "./dist/src/selected-read.d.ts",
+      "import": "./dist/src/selected-read.js",
+      "default": "./dist/src/selected-read.js"
+    }
+  }
 }

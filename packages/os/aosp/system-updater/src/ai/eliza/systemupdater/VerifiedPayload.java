@@ -9,14 +9,17 @@ import java.io.IOException;
 /** Constructed only by the package verifier. The engine receives a read-only file descriptor. */
 final class VerifiedPayload {
     final File file;
-    final UpdateAdmission.Release release;
+    final String targetBuild;
     final String otaSha256;
+    final long targetTimestamp;
     private final String[] headers;
 
-    VerifiedPayload(File file, UpdateAdmission.Release release, String otaSha256, String[] headers) {
+    VerifiedPayload(File file, String targetBuild, String otaSha256,
+            long targetTimestamp, String[] headers) {
         this.file = file;
-        this.release = release;
+        this.targetBuild = targetBuild;
         this.otaSha256 = otaSha256;
+        this.targetTimestamp = targetTimestamp;
         this.headers = headers.clone();
     }
 

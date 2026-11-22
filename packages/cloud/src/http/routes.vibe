@@ -4,7 +4,7 @@ import type { RateClass } from "../billing/plans.vibe"
 import type { Capability, Deployment } from "../profile/profile.vibe"
 import type { Store } from "../store/connection.vibe"
 import { refused, type Refused } from "./refusal.vibe"
-import type { Caller, RouteClass } from "./request-auth.vibe"
+import type { Caller, RouteAuth } from "./request-auth.vibe"
 
 export type { RouteArea }
 
@@ -26,7 +26,7 @@ export type Handler = (context: RouteContext) => HttpServerResponse.HttpServerRe
 export interface Route {
   readonly method: Method
   readonly path: `/${string}`
-  readonly auth: RouteClass
+  readonly auth: RouteAuth
   readonly area?: RouteArea
   readonly capability?: Capability
   readonly rateClass?: RateClass

@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,6 +29,7 @@ public final class InstallJournalAdapter {
     @Override public boolean awaitHeld(UpdateJournal.Identity target, long timeoutMillis) { return true; }
     @Override public void release(UpdateJournal.Identity installed) { announced.add("{\"tag\":\"Release\",\"installed\":" + artifact(installed.digest) + "}"); }
   };
+  private Path directory;
   private UpdateJournal journal;
   private Map<String, Object> staged;
   private long uptime;
@@ -36,18 +38,31 @@ public final class InstallJournalAdapter {
     InstallJournalAdapter adapter = new InstallJournalAdapter();
     BufferedReader input = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
     PrintStream output = new PrintStream(System.out, true, StandardCharsets.UTF_8);
-    for (String line; (line = input.readLine()) != null;) {
-      if (line.isBlank()) continue;
-      try { output.println(adapter.answer(line)); }
-      catch (Exception failure) { output.println("{\"error\":" + quote(String.valueOf(failure)) + "}"); }
+    try {
+      for (String line; (line = input.readLine()) != null;) {
+        if (line.isBlank()) continue;
+        try { output.println(adapter.answer(line)); }
+        catch (Exception failure) { output.println("{\"error\":" + quote(String.valueOf(failure)) + "}"); }
+      }
+    } finally {
+      adapter.discard();
     }
+  }
+
+  private void discard() throws IOException {
+    if (directory == null) return;
+    try (var walk = Files.walk(directory)) {
+      for (Path entry : walk.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(entry);
+    }
+    directory = null;
   }
 
   private String answer(String line) throws IOException {
     Map<String, Object> request = object(Json.parse(line));
     if (!request.containsKey("event")) {
-      Path directory = Files.createTempDirectory("install-journal-");
-      directory.toFile().deleteOnExit();
+      discard();
+      directory = Files.createTempDirectory("install-journal-");
+      artifacts.clear();
       journal = new UpdateJournal(directory.resolve("journal"), path -> {}, holds);
       staged = null;
       uptime = 0;
@@ -79,7 +94,7 @@ public final class InstallJournalAdapter {
       case "verify" -> {
         if (staged == null || !planId(whole(staged.get("id"))).equals(planId(whole(event.get("planId"))))) return false;
         UpdateJournal.Plan plan = plan(staged, now.channel);
-        return journal.beginValidated(plan, plan.baseline, now.channelGeneration, () -> {}).applied;
+        return journal.verifyStaged(plan, plan.baseline, whole(staged.get("generation")), () -> {}).applied;
       }
       case "dropPlan" -> {
         String plan = planId(whole(event.get("planId")));

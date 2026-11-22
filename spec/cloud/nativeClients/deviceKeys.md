@@ -46,35 +46,46 @@ import rateLimit as R from "../shared/rateLimit"
 import registry as N from "./registry"
 import sessions as Iss from "../identity/sessions"
 import federatedSignIn as G from "../identity/federatedSignIn"
+import deployment as D from "../deployment"
 type EndCause = NeverExchanged | NeverAcknowledged | SelfRevoked
-type GrantPhase = Unissued | CodeIssued | Exchanged | Active({ ackedAt: Millis, keyExpiresAt: Millis }) | Expired | Ended({ endedBy: EndCause })
+type GrantPhase = Unissued | CodeIssued | Exchanged | Active({ ackedAt: Millis, keyExpiresAt: Millis }) | LegacyActive({ keyExpiresAt: Millis }) | Expired | Ended({ endedBy: EndCause })
 type GoogleLink = NoServerCode | WithServerCode
-type GrantOrigin = NotConnected | Connected | NativeGoogle({ serverCode: GoogleLink })
-type Grant = { phase: GrantPhase, origin: GrantOrigin, codeExpiresAt: Millis, credentialTtl: Millis, credentialId: str, epoch: int, now: Millis }
+type GrantOrigin = NotConnected | Connected | NativeGoogle({ serverCode: GoogleLink }) | LegacyGrant
+type ClientBinding = { clientId: str, environment: D::Environment, signInReturn: N::ReturnUrl }
+type GrantClient = UnrecordedClient | BoundClient(ClientBinding)
+type Grant = { phase: GrantPhase, origin: GrantOrigin, client: GrantClient, codeExpiresAt: Millis, credentialTtl: Millis, credentialId: str, epoch: int, now: Millis }
 type GrantEffect = MintSealedKey | AnswerFromSealedCopy | EraseSealedCopy | LinkGoogle
 type GrantStep = { state: Grant, out: List[GrantEffect] }
 type CodeRequest = { client: N::ClientCheck, method: G::PkceMethod, hasState: bool }
 pure val codeLifetime: Millis = 5 * millisPerMinute
-pure val initial: Grant = { phase: Unissued, origin: NotConnected, codeExpiresAt: 0, credentialTtl: 0, credentialId: "", epoch: 0, now: 0 }
+pure val initial: Grant = { phase: Unissued, origin: NotConnected, client: UnrecordedClient, codeExpiresAt: 0, credentialTtl: 0, credentialId: "", epoch: 0, now: 0 }
 pure def codeRequestFits(r: CodeRequest): bool = r.client == N::ClientAdmitted and r.method == G::S256 and r.hasState
 pure def ttlFits(ttl: Millis): bool = ttl >= N::minCredentialTtl and ttl <= N::maxCredentialTtl
-pure def canConnect(g: Grant, view: Iss::CredentialView, codeRequest: CodeRequest, credentialTtl: Millis): bool =
-  g.phase == Unissued and Iss::admitRequest(view, Iss::SignedSession, g.now) == Iss::CredentialAccepted and codeRequestFits(codeRequest) and ttlFits(credentialTtl)
-pure def connect(g: Grant, view: Iss::CredentialView, codeRequest: CodeRequest, credentialTtl: Millis, deviceEpoch: int): Grant =
-  { ...g, phase: CodeIssued, origin: Connected, codeExpiresAt: g.now + codeLifetime, credentialTtl: credentialTtl, epoch: deviceEpoch }
+pure def bindingValid(clientBinding: ClientBinding): bool = clientBinding.clientId != "" and clientBinding.signInReturn.origin != "" and clientBinding.signInReturn.path != ""
+pure def recordedClient(clientBinding: ClientBinding): GrantClient = BoundClient({ clientId: clientBinding.clientId, environment: clientBinding.environment, signInReturn: clientBinding.signInReturn })
+pure def grantBindingMatches(g: Grant, clientBinding: ClientBinding): bool = g.client == recordedClient(clientBinding)
+pure def hasRecordedClient(g: Grant): bool = {
+  val client = g.client
+  match client { | BoundClient(b) => bindingValid({ clientId: b.clientId, environment: b.environment, signInReturn: b.signInReturn }) | UnrecordedClient => false }
+}
+pure def canConnect(g: Grant, view: Iss::CredentialView, codeRequest: CodeRequest, clientBinding: ClientBinding, credentialTtl: Millis): bool =
+  g.phase == Unissued and Iss::admitRequest(view, Iss::SignedSession, g.now) == Iss::CredentialAccepted and codeRequestFits(codeRequest) and bindingValid(clientBinding) and ttlFits(credentialTtl)
+pure def connect(g: Grant, view: Iss::CredentialView, codeRequest: CodeRequest, clientBinding: ClientBinding, credentialTtl: Millis, deviceEpoch: int): Grant =
+  { ...g, phase: CodeIssued, origin: Connected, client: recordedClient(clientBinding), codeExpiresAt: g.now + codeLifetime, credentialTtl: credentialTtl, epoch: deviceEpoch }
 pure def canElapse(g: Grant, elapsed: Millis): bool = elapsed > 0
 pure def elapse(g: Grant, elapsed: Millis): Grant = { ...g, now: g.now + elapsed }
 pure val codeRequestValues: Set[CodeRequest] = {
   val ok: CodeRequest = { client: N::ClientAdmitted, method: G::S256, hasState: true }
   Set(ok, { ...ok, method: G::PlainMethod }, { ...ok, client: N::ClientRefused({ fault: N::DisabledClient }) })
 }
+pure val clientBindingValues: Set[ClientBinding] = Set({ clientId: "app.one", environment: D::Staging, signInReturn: { origin: "https://www.staging.example.com", path: "/apps/conformance-1/sign-in" } })
 pure val credentialTtlValues = Set(N::minCredentialTtl, N::defaultCredentialTtl)
 pure val deviceEpochValues = Set(0, 1)
 pure val elapsedValues = Set(1, 300000, 2592000000)
 pure val weight_connect = 3
 pure def alwaysAGrantKeepsItsClientsLifetimes(g: Grant): bool =
   g.now >= 0 and ((g.phase == Unissued) iff (g.origin == NotConnected))
-  and (g.phase != Unissued implies (g.codeExpiresAt <= g.now + codeLifetime and ttlFits(g.credentialTtl)))
+  and (g.phase != Unissued implies (g.codeExpiresAt <= g.now + codeLifetime and (g.origin == LegacyGrant or ttlFits(g.credentialTtl))))
 ```
 
 ### The device's own Google account signs in with one call that connects and exchanges at once, or asks for the second factor
@@ -104,10 +115,10 @@ pure def nativeOutcome(codeRequest: CodeRequest, nativeGoogle: N::NativeGoogleCh
   else if (yielded == G::SecondFactorYield) NativeMfaRequired
   else if (yielded == G::DeviceKeyYield) NativeSignedIn
   else NativeRefused({ refusal: refuse(InvalidRequest) })
-pure def canSignInNatively(g: Grant, codeRequest: CodeRequest, nativeGoogle: N::NativeGoogleCheck, verdict: G::NativeVerdict, yielded: G::SignInYield, credentialTtl: Millis, credentialId: str): bool =
-  g.phase == Unissued and nativeOutcome(codeRequest, nativeGoogle, verdict, yielded) == NativeSignedIn and ttlFits(credentialTtl) and credentialId != ""
-pure def signInNatively(g: Grant, codeRequest: CodeRequest, nativeGoogle: N::NativeGoogleCheck, verdict: G::NativeVerdict, yielded: G::SignInYield, serverCode: GoogleLink, credentialTtl: Millis, credentialId: str, deviceEpoch: int): GrantStep =
-  { state: { ...g, phase: Exchanged, origin: NativeGoogle({ serverCode: serverCode }), codeExpiresAt: g.now + codeLifetime, credentialTtl: credentialTtl, credentialId: credentialId, epoch: deviceEpoch },
+pure def canSignInNatively(g: Grant, codeRequest: CodeRequest, clientBinding: ClientBinding, nativeGoogle: N::NativeGoogleCheck, verdict: G::NativeVerdict, yielded: G::SignInYield, credentialTtl: Millis, credentialId: str): bool =
+  g.phase == Unissued and nativeOutcome(codeRequest, nativeGoogle, verdict, yielded) == NativeSignedIn and bindingValid(clientBinding) and ttlFits(credentialTtl) and credentialId != ""
+pure def signInNatively(g: Grant, codeRequest: CodeRequest, clientBinding: ClientBinding, nativeGoogle: N::NativeGoogleCheck, verdict: G::NativeVerdict, yielded: G::SignInYield, serverCode: GoogleLink, credentialTtl: Millis, credentialId: str, deviceEpoch: int): GrantStep =
+  { state: { ...g, phase: Exchanged, origin: NativeGoogle({ serverCode: serverCode }), client: recordedClient(clientBinding), codeExpiresAt: g.now + codeLifetime, credentialTtl: credentialTtl, credentialId: credentialId, epoch: deviceEpoch },
     out: if (serverCode == WithServerCode) List(MintSealedKey, LinkGoogle) else List(MintSealedKey) }
 pure val nativeGoogleValues = Set(N::NativeGoogleOpen, N::GoogleNotOffered)
 pure val verdictValues = Set(G::NativeAccepted, G::NativeProofWrong)
@@ -193,6 +204,9 @@ pure def ackOutcome(g: Grant, client: N::ClientCheck, proofMatches: bool, device
   else match p {
     | Exchanged => if (g.now >= g.codeExpiresAt) refusedFor(CredentialExpired) else if (revokedSince(g, deviceEpoch)) refusedFor(CredentialRevoked)
         else if (proofMatches) Granted else GrantRefused({ refusal: refuse(CredentialProofInvalid) })
+    | LegacyActive(a) => if (revokedSince(g, deviceEpoch)) refusedFor(CredentialRevoked) else if (g.now >= a.keyExpiresAt) refusedFor(CredentialExpired)
+        else if (not(hasRecordedClient(g))) refusedFor(CredentialUnknown)
+        else if (proofMatches) Granted else GrantRefused({ refusal: refuse(CredentialProofInvalid) })
     | Active(a) => if (revokedSince(g, deviceEpoch)) refusedFor(CredentialRevoked) else if (g.now >= a.keyExpiresAt) refusedFor(CredentialExpired)
         else if (proofMatches) Granted else GrantRefused({ refusal: refuse(CredentialProofInvalid) })
     | CodeIssued => if (g.now >= g.codeExpiresAt) refusedFor(CredentialExpired) else GrantRefused({ refusal: refuse(CredentialProofInvalid) })
@@ -205,9 +219,9 @@ pure def canAck(g: Grant, client: N::ClientCheck, proofMatches: bool, deviceEpoc
 pure def ack(g: Grant, client: N::ClientCheck, proofMatches: bool, deviceEpoch: int): GrantStep =
   if (g.phase == Exchanged) { state: { ...g, phase: Active({ ackedAt: g.now, keyExpiresAt: g.now + g.credentialTtl }) }, out: List(EraseSealedCopy) }
   else { state: g, out: List() }
-pure def ackAnswer(g: Grant): AckAnswer = { val p = g.phase  { credentialId: g.credentialId, expiresAt: match p { | Active(a) => a.keyExpiresAt | _ => 0 } } }
-pure def isActivePhase(g: Grant): bool = { val p = g.phase  match p { | Active(a) => true | _ => false } }
-pure def isLive(g: Grant): bool = { val p = g.phase  match p { | Active(a) => g.now < a.keyExpiresAt | _ => false } }
+pure def ackAnswer(g: Grant): AckAnswer = { val p = g.phase  { credentialId: g.credentialId, expiresAt: match p { | Active(a) => a.keyExpiresAt | LegacyActive(a) => a.keyExpiresAt | _ => 0 } } }
+pure def isActivePhase(g: Grant): bool = { val p = g.phase  match p { | Active(a) => true | LegacyActive(a) => true | _ => false } }
+pure def isLive(g: Grant): bool = { val p = g.phase  match p { | Active(a) => g.now < a.keyExpiresAt | LegacyActive(a) => g.now < a.keyExpiresAt | _ => false } }
 pure val weight_ack = 3
 pure def alwaysAKeyWasAcknowledgedInTime(g: Grant): bool = {
   val p = g.phase
@@ -222,10 +236,97 @@ pure def lawEveryExchangeAndAcknowledgementRefusalIsFinal(g: Grant, client: N::C
   and (match k { | GrantRefused(y) => wellFormed(y.refusal) and not(retryableOf(y.refusal)) | Granted => true })
 }
 pure val gValues: Set[Grant] = {
-  val live: Grant = { phase: Active({ ackedAt: 0, keyExpiresAt: 86400000 }), origin: Connected, codeExpiresAt: 300000, credentialTtl: 86400000, credentialId: "k1", epoch: 0, now: 0 }
+  val live: Grant = { phase: Active({ ackedAt: 0, keyExpiresAt: 86400000 }), origin: Connected, client: BoundClient({ clientId: "app.one", environment: D::Staging, signInReturn: { origin: "https://www.staging.example.com", path: "/apps/conformance-1/sign-in" } }), codeExpiresAt: 300000, credentialTtl: 86400000, credentialId: "k1", epoch: 0, now: 0 }
   Set(live, { ...live, phase: Exchanged }, { ...live, phase: Expired }, { ...live, phase: Ended({ endedBy: SelfRevoked }) }, { ...live, phase: CodeIssued, credentialId: "" }, { ...live, epoch: 1 })
 }
 pure def sometimesKeyActive(g: Grant): bool = isLive(g) and g.origin == Connected
+```
+
+
+### An issued grant keeps the exact admitted client, environment and return
+
+A newly issued grant captures the admitted registration's client id,
+environment and sign-in return together. No later transition changes that
+binding. Token and acknowledgement compare any offered binding with this
+snapshot, and the shell admits that exact snapshot against the current
+registry before revealing a key. Omitting optional acknowledgement fields
+uses the stored snapshot; a supplied field is never ignored.
+
+```quint
+pure def alwaysCurrentGrantsKeepTheirClient(g: Grant): bool = {
+  g.origin != LegacyGrant and g.phase != Unissued implies hasRecordedClient(g)
+}
+pure def alwaysOnlyAnImportedKeyHasALegacyLifetime(g: Grant): bool = {
+  val p = g.phase
+  match p { | LegacyActive(a) => g.origin == LegacyGrant | _ => true }
+}
+pure def stepIssuedClientNeverChanges(before: Grant, after: Grant): bool = before.phase != Unissued implies after.client == before.client
+```
+
+### An older active key keeps its recorded expiry, while a pending grant without its original binding must restart
+
+The migration preserves the old timestamp-based revocation decision once,
+then uses a separate account device generation. It never interprets a
+timestamp as a generation. A row that already recorded a complete binding
+keeps it. An older acknowledged key with no recoverable acknowledgement
+time keeps its exact recorded expiry as `LegacyActive`; it remains usable
+until that expiry or revocation, but its missing binding cannot authorize an
+exchange or acknowledgement replay. No migration invents an old return or
+acknowledgement time. A pending row without a complete original binding is
+retired, and its recoverable key copy is erased.
+
+Some older active rows recorded only their phase in JSON. Their actual row
+still records the final expiry. A migration-backed row that was already
+active can keep basic credential authority even if its nullable credential
+id was never recorded. This recorded authority is separate from an
+enrollment grant: it cannot exchange or acknowledge without the full
+original evidence, and no migration invents an id or lifetime. Zero represents an unrecorded historical
+lifetime only on an imported grant; a pending grant still needs its
+recorded valid lifetime before it can finish enrollment.
+An older active key with a recovered exact binding can replay its
+acknowledgement after the current registry and proof are checked; the reply
+keeps its recorded expiry and does not create an acknowledgement time.
+
+```quint
+type LegacyGrantPhase = OldCodeIssued | OldExchanged | OldActive | OldExpired | OldEnded
+type LegacyBindingFacts = { rowClientId: str, flat: GrantClient, nested: GrantClient }
+pure def bindingForRow(rowClientId: str, candidate: GrantClient): GrantClient = match candidate {
+  | BoundClient(b) => if (b.clientId == rowClientId) BoundClient({ ...b }) else UnrecordedClient
+  | UnrecordedClient => UnrecordedClient
+}
+pure def legacyBinding(recorded: LegacyBindingFacts): GrantClient = {
+  val flat = bindingForRow(recorded.rowClientId, recorded.flat)
+  val nested = bindingForRow(recorded.rowClientId, recorded.nested)
+  if (flat != UnrecordedClient and nested != UnrecordedClient and flat != nested) UnrecordedClient
+  else if (nested != UnrecordedClient) nested else flat
+}
+pure def lawALegacyClientSnapshotIsNeverInvented(recorded: LegacyBindingFacts): bool = {
+  val chosen = legacyBinding(recorded)
+  (chosen == UnrecordedClient or chosen == recorded.flat or chosen == recorded.nested)
+  and (match chosen { | BoundClient(b) => b.clientId == recorded.rowClientId | UnrecordedClient => true })
+}
+pure val recordedValues: Set[LegacyBindingFacts] = {
+  val client = BoundClient({ clientId: "app.one", environment: D::Staging, signInReturn: { origin: "https://www.staging.example.com", path: "/apps/conformance-1/sign-in" } })
+  Set({ rowClientId: "app.one", flat: client, nested: UnrecordedClient }, { rowClientId: "app.one", flat: client, nested: client }, { rowClientId: "other.app", flat: client, nested: UnrecordedClient })
+}
+type LegacyGrantFacts = { phase: LegacyGrantPhase, client: GrantClient, codeExpiresAt: Millis, credentialTtl: Millis, credentialId: str, keyExpiresAt: Millis, epoch: int, now: Millis }
+pure def legacyGrant(f: LegacyGrantFacts): Grant = {
+  val bound = f.client != UnrecordedClient and ttlFits(f.credentialTtl)
+  val phase = if (f.credentialId == "" and f.phase != OldCodeIssued) Ended({ endedBy: NeverExchanged })
+    else if (f.phase == OldActive) LegacyActive({ keyExpiresAt: f.keyExpiresAt })
+    else if (f.phase == OldCodeIssued) (if (bound) CodeIssued else Ended({ endedBy: NeverExchanged }))
+    else if (f.phase == OldExchanged) (if (bound) Exchanged else Ended({ endedBy: NeverAcknowledged }))
+    else if (f.credentialId == "") Ended({ endedBy: NeverExchanged })
+    else if (f.phase == OldExpired) Expired else Ended({ endedBy: SelfRevoked })
+  { phase: phase, origin: LegacyGrant, client: f.client, codeExpiresAt: f.codeExpiresAt, credentialTtl: f.credentialTtl,
+    credentialId: f.credentialId, epoch: f.epoch, now: f.now }
+}
+pure val fValues: Set[LegacyGrantFacts] = Set({ phase: OldActive, client: UnrecordedClient, codeExpiresAt: 300000, credentialTtl: 86400000, credentialId: "k1", keyExpiresAt: 86400000, epoch: 1, now: 0 }, { phase: OldExchanged, client: UnrecordedClient, codeExpiresAt: 300000, credentialTtl: 86400000, credentialId: "k1", keyExpiresAt: 0, epoch: 1, now: 0 })
+pure def lawMigrationKeepsAnActiveKeysRecordedExpiry(f: LegacyGrantFacts): bool =
+  (f.phase == OldActive and f.credentialId != "") implies legacyGrant(f).phase == LegacyActive({ keyExpiresAt: f.keyExpiresAt })
+pure def lawMigrationRefusesAnUnboundPendingGrant(f: LegacyGrantFacts): bool =
+  ((f.phase == OldCodeIssued or f.phase == OldExchanged) and f.client == UnrecordedClient) implies not(isCodePending(legacyGrant(f)))
+pure def alwaysAPendingGrantHasItsRecordedInputs(g: Grant): bool = isCodePending(g) implies (ttlFits(g.credentialTtl) and hasRecordedClient(g))
 ```
 
 ### A client address may exchange or acknowledge ten times a minute
@@ -252,16 +353,60 @@ the person's current device epoch is revoked, and an acknowledged key past
 its lifetime is expired. The shell answers `credential_unknown` for a key
 whose row is gone.
 
+The independent Worker enrollment records `FlatTokenStarted` on each new
+row. Its credential lifetime starts when the token is exchanged; its real
+acknowledgement activates that same recorded expiry without extending it.
+Both protocols use the same account device generation for basic authority.
+Only imported, previously active rows and explicitly marked Worker rows
+use recorded authority. An imported row that claims to have exchanged a
+code but has no credential id is retired. An unmodified old server ignores
+that generation, so it must stop serving and writing before
+generation-based revocation is activated.
+
 ```quint
+type KeyLifetime = { epoch: int, keyExpiresAt: Millis }
+type RecordedKeyPhase = RecordedPending | RecordedActive | RecordedExpired | RecordedRevoked
+type RecordedKey = { phase: RecordedKeyPhase, lifetime: KeyLifetime }
+type KeyAuthority = GrantAuthority({ grant: Grant }) | RecordedAuthority({ key: RecordedKey })
+pure def lifetimeRefusal(lifetime: KeyLifetime, now: Millis, deviceEpoch: int): RefusalReason =
+  if (lifetime.epoch < deviceEpoch) CredentialRevoked else if (now >= lifetime.keyExpiresAt) CredentialExpired else NoReason
+pure def recordedKeyRefusal(key: RecordedKey, now: Millis, deviceEpoch: int): RefusalReason = {
+  val phase = key.phase
+  match phase {
+  | RecordedActive => if (key.lifetime.epoch != deviceEpoch) CredentialRevoked else lifetimeRefusal(key.lifetime, now, deviceEpoch)
+  | RecordedExpired => if (key.lifetime.epoch != deviceEpoch) CredentialRevoked else CredentialExpired
+  | RecordedRevoked => CredentialRevoked
+  | RecordedPending => CredentialUnknown
+  }
+}
 pure def keyRefusal(g: Grant, now: Millis, deviceEpoch: int): RefusalReason = {
   val p = g.phase
   match p {
-    | Active(a) => if (revokedSince(g, deviceEpoch)) CredentialRevoked else if (now >= a.keyExpiresAt) CredentialExpired else NoReason
+    | Active(a) => lifetimeRefusal({ epoch: g.epoch, keyExpiresAt: a.keyExpiresAt }, now, deviceEpoch)
+    | LegacyActive(a) => lifetimeRefusal({ epoch: g.epoch, keyExpiresAt: a.keyExpiresAt }, now, deviceEpoch)
     | Expired => if (revokedSince(g, deviceEpoch)) CredentialRevoked else CredentialExpired
     | Ended(e) => if (e.endedBy == SelfRevoked) CredentialRevoked else CredentialUnknown
     | _ => CredentialUnknown
   }
 }
+pure def recordedExpiryReached(key: RecordedKey, now: Millis): bool = key.phase == RecordedActive and now >= key.lifetime.keyExpiresAt
+pure def authorityRefusal(authority: KeyAuthority, now: Millis, deviceEpoch: int): RefusalReason = match authority {
+  | GrantAuthority(a) => keyRefusal(a.grant, now, deviceEpoch)
+  | RecordedAuthority(a) => recordedKeyRefusal(a.key, now, deviceEpoch)
+}
+pure def authorityExpiry(authority: KeyAuthority): Millis = match authority {
+  | GrantAuthority(a) => ackAnswer(a.grant).expiresAt
+  | RecordedAuthority(a) => a.key.lifetime.keyExpiresAt
+}
+pure val keyValues: Set[RecordedKey] = Set(
+  { phase: RecordedPending, lifetime: { epoch: 0, keyExpiresAt: 10 } },
+  { phase: RecordedActive, lifetime: { epoch: 0, keyExpiresAt: 10 } },
+  { phase: RecordedActive, lifetime: { epoch: 1, keyExpiresAt: 10 } },
+  { phase: RecordedExpired, lifetime: { epoch: 0, keyExpiresAt: 10 } },
+  { phase: RecordedRevoked, lifetime: { epoch: 0, keyExpiresAt: 10 } })
+pure def lawRecordedAuthorityKeepsItsLifetime(key: RecordedKey, now: Millis, deviceEpoch: int): bool =
+  (recordedKeyRefusal(key, now, deviceEpoch) == NoReason) iff
+    (key.phase == RecordedActive and key.lifetime.epoch == deviceEpoch and now < key.lifetime.keyExpiresAt)
 pure def lawNoLaterEpochRevivesAKey(g: Grant, now: Millis, deviceEpoch: int, laterEpoch: int): bool =
   (laterEpoch >= deviceEpoch and keyRefusal(g, now, deviceEpoch) == CredentialRevoked) implies keyRefusal(g, now, laterEpoch) == CredentialRevoked
 ```
@@ -312,7 +457,7 @@ pure def canLapse(g: Grant): bool = isCodePending(g) and g.now >= g.codeExpiresA
 pure def lapse(g: Grant): GrantStep =
   if (g.phase == Exchanged) { state: { ...g, phase: Ended({ endedBy: NeverAcknowledged }) }, out: List(EraseSealedCopy) }
   else { state: { ...g, phase: Ended({ endedBy: NeverExchanged }) }, out: List() }
-pure def canExpire(g: Grant): bool = { val p = g.phase  match p { | Active(a) => g.now >= a.keyExpiresAt | _ => false } }
+pure def canExpire(g: Grant): bool = { val p = g.phase  match p { | Active(a) => g.now >= a.keyExpiresAt | LegacyActive(a) => g.now >= a.keyExpiresAt | _ => false } }
 pure def expire(g: Grant): Grant = { ...g, phase: Expired }
 pure def isClosed(g: Grant): bool = { val p = g.phase  match p { | Expired => true | Ended(e) => true | _ => false } }
 pure def stepOnlySigningOutEndsALiveKey(before: Grant, via: str, after: Grant): bool =

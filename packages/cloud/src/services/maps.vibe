@@ -3,14 +3,14 @@ import { answerKeptFor, courseOf, entryOf, keepsAnswer, limitOf, mapsHoldKey, ma
 import { planRpm } from "../billing/plans.vibe"
 import { laneFor, readPolicy } from "../billing/policy.vibe"
 import { refused, Refused } from "../http/refusal.vibe"
-import { recheck, signed, type Signed } from "../http/request-auth.vibe"
+import { recheckServiceAccess, signed, type Signed } from "../http/request-auth.vibe"
 import { json, jsonBody, type CloudContext, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import { Deployment } from "../profile/profile.vibe"
 import { describeMaps, mapsProvider, providerKindOf, specModeOf, type MapsContext, type MapsProvider, type MapsReply, type MapsTile, type ProviderRefusal } from "../providers/maps.vibe"
 import { requestDigest } from "../shared/dispatch-once.vibe"
-import { markDispatched, reserveIn, settle, type MeteringFailure, type Settlement } from "../shared/metering.vibe"
-import { admitAll, minute, perWindow } from "../shared/rate-limit.vibe"
-import { Store, toInt, toText, type StoreFailure, type Tx } from "../store/connection.vibe"
+import { markDispatched, reserveIn, settle, type HoldTicket, type MeteringFailure, type Settlement } from "../shared/metering.vibe"
+import { admitCheck, admitAll, minute, perWindow } from "../shared/rate-limit.vibe"
+import { Store, toInt, toText, type Tx } from "../store/connection.vibe"
 import { IdempotencyKey, PlaceDetailsRequest, ReverseRequest, RoutesRequest, TextSearchRequest, ViewportRequest, tileAddressOf } from "./maps.schema.ts"
 
 type Metered = Exclude<MapsOperation, "Capabilities" | "Viewport">
@@ -45,12 +45,11 @@ export error KeptAnswerCorrupt { holdKey: string }
 
 const wireOperation: Readonly<Record<Metered, string>> = { Geocode: "geocode", Reverse: "reverse", PlacesSearch: "places_search", PlaceDetails: "place_details", Routes: "routes", Tile: "tile" }
 const providerPause = 5_000
-const planRateClass = "StandardRequests"
 const decodeKey = Schema.decodeUnknownOption(IdempotencyKey)
 
 function credentialOf(caller: Signed): string {
   switch (caller.kind) {
-    case "deviceKey": return `key:${caller.credentialId}`
+    case "deviceKey": return `key:${caller.credentialScope}`
     case "session": return `session:${caller.sessionKey}`
     default: {
       const _exhaustive: never = caller
@@ -127,14 +126,14 @@ function asJson<A>(reply: MapsReply<A>!!MapsContext): MapsReply<Answer>!!MapsCon
 }
 
 effect function admitLimits(caller: Signed, credential: string, op: MapsOperation): void!Refused!Store {
+  const operation = { subject: credential, rule: limitOf(op) }
+  if (op === "Tile") return try admitCheck(operation)
   const store = try Store
   const now = try Clock.currentTimeMillis
   const policy = store.transaction((tx) => readPolicy(tx, caller.organizationId, now)) catch () => undefined
   if (policy === undefined) throw refused("ServiceUnavailable", "NoReason", now + providerPause)
-  try admitAll([
-    { subject: caller.organizationId, rule: perWindow(`plan-${planRateClass}`, planRpm(policy.planKey, planRateClass), minute) },
-    { subject: credential, rule: limitOf(op) }
-  ])
+  const plan = { subject: caller.organizationId, rule: perWindow("plan-StandardRequests", planRpm(policy.planKey, "StandardRequests"), minute) }
+  try admitAll([plan, operation])
 }
 
 effect function enter(context: RouteContext, op: MapsOperation): Entered!Refused!(Store | Deployment) {
@@ -153,26 +152,23 @@ effect function enter(context: RouteContext, op: MapsOperation): Entered!Refused
   return { caller, credential, provider, kind, key }
 }
 
-interface Opened {
-  readonly holdKey: string
-  readonly replayed: boolean
-  readonly digest: string | undefined
-  readonly answer: unknown
-}
+type OpenRequest =
+  | { readonly kind: "fresh"; readonly ticket: Extract<HoldTicket, { replayed: false }> }
+  | { readonly kind: "prior"; readonly digest: string | undefined; readonly answer: unknown; readonly key: string }
 
-effect function openRequest(tx: Tx, entered: Entered, key: string, call: Call, quote: number, digest: string, now: number): Opened!MeteringFailure {
-  const owner = { organizationId: entered.caller.organizationId, userId: entered.caller.userId }
-  const ticket = try reserveIn(tx, owner, mapsHoldKey(entered.credential, key), quote, now)
+effect function openRequest(tx: Tx, entered: Entered, id: string, call: Call, quote: number, digest: string, now: number): OpenRequest!MeteringFailure {
+  const caller = entered.caller
+  const ticket = try reserveIn(tx, caller, mapsHoldKey(entered.credential, id), quote, now)
   if (!ticket.replayed) {
     try tx.query(
       "INSERT INTO maps_requests (hold_key, operation, request_digest, status, created_at) VALUES ($1, $2, $3, 'running', $4)",
       [ticket.key, wireOperation[call.op], digest, now]
     )
-    return { holdKey: ticket.key, replayed: false, digest: undefined, answer: undefined }
+    return { kind: "fresh", ticket }
   }
   const row = (try tx.query("SELECT request_digest, result, kept_at FROM maps_requests WHERE hold_key = $1", [ticket.key]))[0]
   const answer = row?.result === undefined || row.result === null || !stillKept(toInt(row.kept_at), now) ? undefined : row.result
-  return { holdKey: ticket.key, replayed: true, digest: toText(row?.request_digest), answer }
+  return { kind: "prior", key: ticket.key, digest: toText(row?.request_digest), answer }
 }
 
 effect function repeatKept(holdKey: string, stored: unknown, now: number): Answer!(Refused | KeptAnswerCorrupt) {
@@ -181,21 +177,12 @@ effect function repeatKept(holdKey: string, stored: unknown, now: number): Answe
   return { kind: "json", body: answer.body }
 }
 
-effect function laneKept(tx: Tx, organizationId: string, holdKey: string, now: number): boolean!StoreFailure {
-  const lane = try laneFor(tx, organizationId, "MeteredMaps", now)
-  const reservedPeriod = toText((try tx.query("SELECT allowance_period FROM holds WHERE key = $1", [holdKey]))[0]?.allowance_period)
-  const openPeriod = lane !== "AllowanceThenCredits" ? undefined : toText((try tx.query(
-    "SELECT key FROM allowance_periods WHERE organization_id = $1 AND status = 'open' AND period_start <= $2 AND $2 < period_end ORDER BY period_end LIMIT 1",
-    [organizationId, now]
-  ))[0]?.key)
-  return lane !== "Refused" && reservedPeriod === openPeriod
-}
-
-effect function keepStanding(context: RouteContext, caller: Signed, holdKey: string): void!(Refused | StoreFailure)!Store {
-  try recheck(context.request.headers.authorization, "ServiceAccess")
+effect function keepStanding(context: RouteContext, caller: Signed, ticket: Extract<HoldTicket, { replayed: false }>) {
+  try recheckServiceAccess(context.request.headers.authorization, caller)
   const store = try Store
   const now = try Clock.currentTimeMillis
-  const laneUnchanged = try store.transaction((tx) => laneKept(tx, caller.organizationId, holdKey, now))
+  const lane = try store.transaction((tx) => laneFor(tx, caller.organizationId, "MeteredMaps", now))
+  const laneUnchanged = lane === ticket.lane
   if (!mayDispatch(true, true, laneUnchanged)) throw refused("BillingStateConflict")
 }
 
@@ -207,7 +194,7 @@ effect function record(holdKey: string, status: string, answer: KeptAnswer | und
   ))
 }
 
-effect function metered(context: RouteContext, entered: Entered, call: Call): Answer!(MeteringFailure | KeptAnswerCorrupt)!CloudContext {
+effect function metered(context: RouteContext, entered: Entered, call: Call): Answer!{ readonly _tag: string }!CloudContext {
   const key = entered.key
   if (key === undefined) throw refused("InvalidRequest")
   const quote = providerQuote(entered.kind, call.op, call.preferPlace, call.mode)
@@ -215,36 +202,32 @@ effect function metered(context: RouteContext, entered: Entered, call: Call): An
   const store = try Store
   const reservedAt = try Clock.currentTimeMillis
   const opened = try store.transaction((tx) => openRequest(tx, entered, key, call, quote, digest, reservedAt))
-  const holdKey = opened.holdKey
-  const course = courseOf(opened.replayed, opened.digest === digest, opened.answer !== undefined)
-  switch (course) {
-    case "RepeatKept": return try repeatKept(holdKey, opened.answer, context.now)
-    case "RefuseRepeat": throw refused("IdempotencyConflict")
-    case "RunFresh": break
-    default: {
-      const _exhaustive: never = course
-      return _exhaustive
+  if (opened.kind === "prior") {
+    if (courseOf(true, opened.digest === digest, opened.answer !== undefined) === "RepeatKept") {
+      return try repeatKept(opened.key, opened.answer, reservedAt)
     }
+    throw refused("IdempotencyConflict")
   }
-  keepStanding(context, entered.caller, holdKey) catch effect (failure) => {
-    try settle(holdKey, meteringOf(settlementOf(false, { tag: "ReplyLost" }, quote, 0)))
-    try record(holdKey, "released", undefined, context.now)
+  const ticket = opened.ticket
+  keepStanding(context, entered.caller, ticket) catch effect (failure) => {
+    try settle(ticket.key, meteringOf(settlementOf(false, { tag: "ReplyLost" }, quote, 0)))
+    try record(ticket.key, "released", undefined, context.now)
     throw failure
   }
-  try markDispatched(holdKey)
+  try markDispatched(ticket.key)
   const reply = try call.run
   const now = try Clock.currentTimeMillis
   const outcome = outcomeOf(reply)
   const observed = reply.kind === "unknown" ? 0 : reply.observedMicros
   if (observed > quote) {
-    try annotateLogs(logError("a maps provider observed more than its quote"), { holdKey, operation: call.op, observed, quote })
+    try annotateLogs(logError("a maps provider observed more than its quote"), { holdKey: ticket.key, operation: call.op, observed, quote })
   }
-  try settle(holdKey, meteringOf(settlementOf(true, outcome, quote, observed)))
+  try settle(ticket.key, meteringOf(settlementOf(true, outcome, quote, observed)))
   const keep: KeptAnswer | undefined = !keepsAnswer(call.op, outcome) ? undefined
     : reply.kind === "refused" ? { kind: "refused", code: reply.code }
     : reply.kind === "answered" && reply.value.kind === "json" ? { kind: "answered", body: reply.value.body }
     : undefined
-  try record(holdKey, statusOf(outcome), keep, now)
+  try record(ticket.key, statusOf(outcome), keep, now)
   return try answerOf(reply, now)
 }
 

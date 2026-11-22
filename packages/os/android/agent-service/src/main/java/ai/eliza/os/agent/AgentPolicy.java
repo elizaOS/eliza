@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "A start begins a new launch only from Stopped or Failed, and a start asked during a stop runs after the exit"; spec/os/agentService/lifecycle.md, "A child is spawned only after the stale child is reaped, a key is held and every check passed"; spec/os/agentService/lifecycle.md, "The agent runs only once it answers ready for this launch, and a launch that never does fails as Agent"; spec/os/agentService/lifecycle.md, "A stop before the spawn spawns nothing, and a stop of a live child waits for its exit"; spec/os/agentService/lifecycle.md, "The service restarted by Android keeps the epoch, the key and the hold, and leaves its old child to be reaped"; spec/os/agentService/lifecycle.md, "The status names a failure exactly when the service failed, and the notification is up in every state but Stopped"; spec/os/agentService/lifecycle.md, "Any exit after readiness is a crash, restarted after the health delay while fewer than five restarts were made"; spec/os/agentService/lifecycle.md, "An unhealthy verdict kills the child and counts as a crash"; spec/os/agentService/lifecycle.md, "Five minutes of running renew the restart budget"; spec/os/agentService/lifecycle.md, "Sign-out or an expired key fails the agent as Credential, and a key that arrives then starts it"; spec/os/agentService/lifecycle.md, "Another account's key restarts the agent on that account's directory"; spec/os/agentService/lifecycle.md, "A newer key of the same account is pushed to a running agent and never changes the phase"; spec/os/agentService/lifecycle.md, "Only the exact review token of this failure moves the data aside, and then the agent may start"; spec/os/agentService/lifecycle.md, "A hold is taken only with no child, blocks every start and is released only for its target or an ended attempt"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 package ai.eliza.os.agent;
 
 import java.util.ArrayList;
@@ -10,30 +10,23 @@ public final class AgentPolicy {
 
   public enum Phase { STOPPED, CHECKING, SPAWNED, RUNNING, STOPPING, FAILED }
   public enum Cause { PAYLOAD, STORAGE, CONFIG, CREDENTIAL, AGENT, CRASHED, RUNTIME }
-  public enum AfterExit { TO_STOPPED, TO_START, TO_RESTART, TO_CREDENTIAL_FAILURE }
+  public enum AfterExit { STOP, START, RESTART, FAIL }
   public enum ExitClass { CLEAN, RELEASE_FAILED, CONFIG, CREDENTIAL, STORAGE, AGENT, CRASH }
 
-  public sealed interface Child permits NoChild, Owned, Stale {}
-  public record NoChild() implements Child {}
-  public record Owned(long epoch) implements Child {}
-  public record Stale(long epoch) implements Child {}
-
-  public record Key(long version, String account) {}
   public record UpdateTarget(long code, String digest) {}
-  public record RecoveryToken(long token, String nonce) {}
-  public record Review(RecoveryToken token, long epoch) {}
+  public record RecoveryToken(long epoch, String nonce) {}
 
-  public record State(Phase phase, Cause failure, AfterExit onExit, String error, long epoch, int attempt, Child child, long readyEpoch,
-    Key key, long newestVersion, long delivered, String launched, HealthPolicy.HealthWatch watch, Review review, long tokens, UpdateTarget hold) {
-    public boolean live() { return child instanceof Owned; }
-    public boolean credentialHeld() { return key != null; }
+  public record State(Phase phase, Cause failure, String error, long epoch, int attempt, boolean reaped, boolean hookRan,
+    boolean credentialHeld, long credentialVersion, long delivered, String account, AfterExit afterExit, Cause afterExitCause,
+    UpdateTarget hold, RecoveryToken recovery) {
+    public boolean child() { return phase == Phase.SPAWNED || phase == Phase.RUNNING || phase == Phase.STOPPING; }
   }
 
   public record Status(boolean available, String state, String failure, String error, long epoch, long requestBodyLimit) {}
 
   public sealed interface Event permits Start, Stop, ReapStale, LaunchHook, Refuse, Spawned, SpawnFailed, ObserveReady, ReadyTimeout,
-    ObserveExit, ObserveHealth, RestartUnhealthy, StableReset, CredentialArrived, CredentialReplaced, CredentialWithdrawn, AccountChanged,
-    ReviewRecovery, ArchiveRecovery, HoldForUpdate, ReleaseUpdate {}
+    ObserveExit, FailUnclassified, RestartUnhealthy, StableReset, CredentialArrived, CredentialReplaced, SignedOut, CredentialExpired,
+    AccountChanged, ReviewRecovery, ArchiveRecovery, HoldForUpdate, ReleaseUpdate {}
   public record Start() implements Event {}
   public record Stop() implements Event {}
   public record ReapStale() implements Event {}
@@ -42,60 +35,44 @@ public final class AgentPolicy {
   public record Spawned() implements Event {}
   public record SpawnFailed(String reason) implements Event {}
   public record ObserveReady(long epoch) implements Event {}
-  public record ReadyTimeout(String reason) implements Event {}
+  public record ReadyTimeout() implements Event {}
   public record ObserveExit(int code) implements Event {}
-  public record ObserveHealth(HealthPolicy.Observation observed) implements Event {}
-  public record RestartUnhealthy(HealthPolicy.Observation observed) implements Event {}
+  public record FailUnclassified(String reason) implements Event {}
+  public record RestartUnhealthy() implements Event {}
   public record StableReset() implements Event {}
-  public record CredentialArrived(long version, String account) implements Event {}
+  public record CredentialArrived(long version) implements Event {}
   public record CredentialReplaced(long version) implements Event {}
-  public record CredentialWithdrawn(String reason) implements Event {}
-  public record AccountChanged(long version, String account) implements Event {}
+  public record SignedOut() implements Event {}
+  public record CredentialExpired() implements Event {}
+  public record AccountChanged(String account) implements Event {}
   public record ReviewRecovery(boolean focused, String nonce) implements Event {}
   public record ArchiveRecovery(RecoveryToken token) implements Event {}
   public record HoldForUpdate(UpdateTarget target) implements Event {}
   public record ReleaseUpdate(long installedCode, String installedDigest, boolean attemptEnded) implements Event {}
 
   public sealed interface Effect permits Check, Kill, PushCredential, RecoveryReview, Archive {}
-  public record Check(long epoch, long delayMs) implements Effect {}
+  public record Check(long epoch, String account, long delayMs) implements Effect {}
   public record Kill(long epoch) implements Effect {}
   public record PushCredential(long epoch, long version) implements Effect {}
   public record RecoveryReview(RecoveryToken token) implements Effect {}
-  public record Archive(long epoch) implements Effect {}
+  public record Archive(long epoch, String account) implements Effect {}
 
   public record Step(boolean accepted, State state, List<Effect> effects) {}
 
-  private static final Child NO_CHILD = new NoChild();
-
   private Phase phase = Phase.STOPPED;
-  private Cause failure;
-  private AfterExit onExit;
-  private String error, launched;
-  private long epoch, readyEpoch, newestVersion, delivered, tokens;
+  private Cause failure, afterExitCause;
+  private String error, account;
+  private long epoch, credentialVersion, delivered;
   private int attempt;
-  private Child child = NO_CHILD;
-  private Key key;
-  private HealthPolicy.HealthWatch watch = HealthPolicy.HealthWatch.FRESH;
-  private Review review;
+  private boolean reaped, hookRan, credentialHeld;
+  private AfterExit afterExit = AfterExit.STOP;
   private UpdateTarget hold;
+  private RecoveryToken recovery;
   private final List<Effect> effects = new ArrayList<>();
 
-  public AgentPolicy(UpdateTarget hold) {
+  public AgentPolicy(String account, UpdateTarget hold) {
+    this.account = account;
     this.hold = hold;
-  }
-
-  public static AgentPolicy restore(State saved) {
-    AgentPolicy back = new AgentPolicy(saved.hold());
-    back.epoch = saved.epoch();
-    back.attempt = saved.attempt();
-    back.readyEpoch = saved.readyEpoch();
-    back.key = saved.key();
-    back.newestVersion = saved.newestVersion();
-    back.delivered = saved.delivered();
-    back.launched = saved.launched();
-    back.tokens = saved.tokens();
-    back.child = saved.child() instanceof Owned owned ? new Stale(owned.epoch()) : saved.child();
-    return back;
   }
 
   public static ExitClass exitClass(int code) {
@@ -110,17 +87,9 @@ public final class AgentPolicy {
     };
   }
 
-  static Cause startupCause(int code) {
-    return switch (exitClass(code)) {
-      case CONFIG -> Cause.CONFIG;
-      case STORAGE -> Cause.STORAGE;
-      case CLEAN, RELEASE_FAILED, CREDENTIAL, AGENT, CRASH -> Cause.AGENT;
-    };
-  }
-
   public synchronized State state() {
-    return new State(phase, failure, onExit, error, epoch, attempt, child, readyEpoch, key, newestVersion, delivered, launched, watch, review,
-      tokens, hold);
+    return new State(phase, failure, error, epoch, attempt, reaped, hookRan, credentialHeld, credentialVersion, delivered, account,
+      afterExit, afterExitCause, hold, recovery);
   }
 
   public synchronized Status status(long requestBodyLimit) {
@@ -130,8 +99,8 @@ public final class AgentPolicy {
       case RUNNING -> "running";
       case FAILED -> "failed";
     };
-    boolean failed = phase == Phase.FAILED;
-    return new Status(true, state, failed ? failure.name().toLowerCase(Locale.ROOT) : null, failed ? error : null, epoch, requestBodyLimit);
+    String named = failure == null ? null : failure.name().toLowerCase(Locale.ROOT);
+    return new Status(true, state, named, error, epoch, requestBodyLimit);
   }
 
   public synchronized Step step(Event event) {
@@ -143,260 +112,264 @@ public final class AgentPolicy {
   }
 
   private boolean apply(Event event) {
-    return switch (event) {
-      case Start ignored -> hold == null && (phase == Phase.STOPPED || phase == Phase.FAILED || phase == Phase.STOPPING) && start();
-      case Stop ignored -> phase != Phase.STOPPED && stop();
-      case ReapStale ignored -> child instanceof Stale && reapStale();
-      case LaunchHook hook -> checking() && launchHook(hook.refused(), hook.reason());
-      case Refuse refused -> refusable(refused.cause()) && enterFailed(refused.cause(), refused.reason());
-      case Spawned ignored -> spawnable() && spawned();
-      case SpawnFailed failed -> spawnable() && enterFailed(Cause.AGENT, failed.reason());
-      case ObserveReady ready -> phase == Phase.SPAWNED && ready.epoch() == epoch && observeReady();
-      case ReadyTimeout timedOut -> phase == Phase.SPAWNED && readinessTimedOut(timedOut.reason());
-      case ObserveExit exit -> child instanceof Owned && observeExit(exit.code());
-      case ObserveHealth health -> phase == Phase.RUNNING && verdict(health.observed()) == HealthPolicy.Verdict.KEEP_RUNNING && observeHealth(health.observed());
-      case RestartUnhealthy unhealthy -> phase == Phase.RUNNING && verdict(unhealthy.observed()) == HealthPolicy.Verdict.RESTART && restartUnhealthy();
-      case StableReset ignored -> phase == Phase.RUNNING && attempt > 0 && stableRun();
-      case CredentialArrived arrived -> key == null && arrived.version() > newestVersion && named(arrived.account())
-        && credentialArrived(arrived.version(), arrived.account());
-      case CredentialReplaced replaced -> key != null && replaced.version() > newestVersion && credentialReplaced(replaced.version());
-      case CredentialWithdrawn withdrawn -> key != null && credentialWithdrawn(withdrawn.reason());
-      case AccountChanged changed -> key != null && named(changed.account()) && !key.account().equals(changed.account())
-        && changed.version() > newestVersion && accountChanged(changed.version(), changed.account());
-      case ReviewRecovery asked -> asked.focused() && storageFailed() && child instanceof NoChild && asked.nonce() != null && !asked.nonce().isEmpty()
-        && reviewRecovery(asked.nonce());
-      case ArchiveRecovery archive -> storageFailed() && review != null && review.epoch() == epoch && review.token().equals(archive.token())
-        && archiveRecovery();
-      case HoldForUpdate holding -> holdable(holding.target()) && holdForUpdate(holding.target());
-      case ReleaseUpdate release -> hold != null && (release.attemptEnded()
-        || (release.installedCode() == hold.code() && hold.digest().equals(release.installedDigest()))) && releaseUpdate();
-    };
+    if (event instanceof Start) return start();
+    if (event instanceof Stop) return stop();
+    if (event instanceof ReapStale) return reapStale();
+    if (event instanceof LaunchHook hook) return launchHook(hook.refused(), hook.reason());
+    if (event instanceof Refuse refuse) return refuse(refuse.cause(), refuse.reason());
+    if (event instanceof Spawned) return spawned();
+    if (event instanceof SpawnFailed failed) return phase == Phase.CHECKING && fail(Cause.AGENT, failed.reason());
+    if (event instanceof ObserveReady ready) return observeReady(ready.epoch());
+    if (event instanceof ReadyTimeout) return phase == Phase.SPAWNED && kill(AfterExit.FAIL, Cause.AGENT, "not ready within 60 s");
+    if (event instanceof ObserveExit exit) return observeExit(exit.code());
+    if (event instanceof FailUnclassified unclassified) return failUnclassified(unclassified.reason());
+    if (event instanceof RestartUnhealthy) return phase == Phase.RUNNING && kill(AfterExit.RESTART, null, null);
+    if (event instanceof StableReset) return stableReset();
+    if (event instanceof CredentialArrived arrived) return credentialArrived(arrived.version());
+    if (event instanceof CredentialReplaced replaced) return credentialReplaced(replaced.version());
+    if (event instanceof SignedOut || event instanceof CredentialExpired) return credentialLost();
+    if (event instanceof AccountChanged changed) return accountChanged(changed.account());
+    if (event instanceof ReviewRecovery review) return reviewRecovery(review.focused(), review.nonce());
+    if (event instanceof ArchiveRecovery archive) return archiveRecovery(archive.token());
+    if (event instanceof HoldForUpdate holding) return holdForUpdate(holding.target());
+    ReleaseUpdate release = (ReleaseUpdate) event;
+    return releaseUpdate(release.installedCode(), release.installedDigest(), release.attemptEnded());
   }
 
-  private static boolean named(String account) { return account != null && !account.isEmpty(); }
-
-  private boolean checking() { return phase == Phase.CHECKING && child instanceof NoChild; }
-
-  private boolean spawnable() { return checking() && key != null; }
-
-  private boolean storageFailed() { return phase == Phase.FAILED && failure == Cause.STORAGE; }
-
-  private boolean childPhase() { return phase == Phase.SPAWNED || phase == Phase.RUNNING || phase == Phase.STOPPING; }
-
-  private boolean refusable(Cause cause) {
-    if (!checking()) return false;
-    return switch (cause) {
-      case PAYLOAD, CONFIG, STORAGE, RUNTIME -> true;
-      case CREDENTIAL -> key == null;
-      case AGENT, CRASHED -> false;
-    };
-  }
-
-  private boolean holdable(UpdateTarget target) {
-    return hold == null && target != null && target.code() >= 1 && target.digest() != null && child instanceof NoChild
-      && (phase == Phase.STOPPED || phase == Phase.FAILED);
-  }
-
-  private HealthPolicy.Verdict verdict(HealthPolicy.Observation observed) {
-    return HealthPolicy.verdict(watch, observed, epoch);
-  }
-
-  private void enter(Phase next) {
-    phase = next;
-    failure = null;
-    onExit = null;
-    error = null;
-    review = null;
-  }
-
-  private boolean enterStopped() {
-    enter(Phase.STOPPED);
-    return true;
-  }
-
-  private boolean enterFailed(Cause cause, String reason) {
-    enter(Phase.FAILED);
-    failure = cause;
-    error = reason;
-    return true;
-  }
-
-  private boolean enterStopping(AfterExit then) {
-    enter(Phase.STOPPING);
-    onExit = then;
-    return true;
-  }
-
-  private void kill() {
-    long target = switch (child) {
-      case Owned owned -> owned.epoch();
-      case Stale stale -> stale.epoch();
-      case NoChild none -> epoch;
-    };
-    effects.add(new Kill(target));
-  }
-
-  private boolean launch(int nextAttempt, long delayMs) {
-    enter(Phase.CHECKING);
+  private boolean begin(int nextAttempt, long delayMs) {
+    phase = Phase.CHECKING;
     epoch++;
     attempt = nextAttempt;
-    watch = HealthPolicy.HealthWatch.FRESH;
-    effects.add(new Check(epoch, delayMs));
+    reaped = false;
+    hookRan = false;
+    failure = null;
+    error = null;
+    recovery = null;
+    afterExit = AfterExit.STOP;
+    afterExitCause = null;
+    effects.add(new Check(epoch, account, delayMs));
     return true;
   }
 
-  private boolean restartOrFail() {
-    if (attempt < HealthPolicy.RESTART_BUDGET) return launch(attempt + 1, HealthPolicy.restartDelay(attempt));
-    return enterFailed(Cause.CRASHED, "restarted " + HealthPolicy.RESTART_BUDGET + " times without a stable run");
+  private boolean fail(Cause cause, String reason) {
+    phase = Phase.FAILED;
+    failure = cause;
+    error = reason;
+    afterExit = AfterExit.STOP;
+    afterExitCause = null;
+    return true;
+  }
+
+  private boolean stopped() {
+    phase = Phase.STOPPED;
+    failure = null;
+    error = null;
+    afterExit = AfterExit.STOP;
+    afterExitCause = null;
+    return true;
+  }
+
+  private boolean kill(AfterExit then, Cause cause, String reason) {
+    phase = Phase.STOPPING;
+    afterExit = then;
+    afterExitCause = cause;
+    error = reason;
+    effects.add(new Kill(epoch));
+    return true;
+  }
+
+  private boolean crash() {
+    if (attempt < HealthPolicy.RESTART_BUDGET) return begin(attempt + 1, HealthPolicy.restartDelay(attempt));
+    return fail(Cause.CRASHED, "restarted " + HealthPolicy.RESTART_BUDGET + " times without a stable run");
+  }
+
+  private boolean startable() {
+    return hold == null && (phase == Phase.STOPPED || (phase == Phase.FAILED && failure != Cause.STORAGE));
   }
 
   private boolean start() {
     if (phase == Phase.STOPPING) {
-      onExit = AfterExit.TO_START;
+      afterExit = AfterExit.START;
+      afterExitCause = null;
       return true;
     }
-    return launch(0, 0);
+    return startable() && begin(0, 0);
   }
 
   private boolean stop() {
-    if (phase == Phase.STOPPING) {
-      onExit = AfterExit.TO_STOPPED;
-      return true;
-    }
-    if (childPhase()) {
-      kill();
-      return enterStopping(AfterExit.TO_STOPPED);
-    }
-    return enterStopped();
+    return switch (phase) {
+      case CHECKING -> stopped();
+      case SPAWNED, RUNNING -> kill(AfterExit.STOP, null, null);
+      case STOPPING -> {
+        afterExit = AfterExit.STOP;
+        afterExitCause = null;
+        yield true;
+      }
+      case FAILED -> failure != Cause.STORAGE && stopped();
+      case STOPPED -> false;
+    };
   }
 
   private boolean reapStale() {
-    child = NO_CHILD;
+    if (phase != Phase.CHECKING || reaped) return false;
+    reaped = true;
     return true;
   }
 
   private boolean launchHook(boolean refused, String reason) {
-    if (key == null) return enterFailed(Cause.CREDENTIAL, "no device credential is held");
-    return !refused || enterFailed(Cause.CONFIG, reason);
+    if (phase != Phase.CHECKING || !reaped || hookRan) return false;
+    if (!credentialHeld) return fail(Cause.CREDENTIAL, "no device credential is held");
+    hookRan = true;
+    return !refused || fail(Cause.CONFIG, reason);
+  }
+
+  private boolean refuse(Cause cause, String reason) {
+    if (phase != Phase.CHECKING || cause == Cause.AGENT || cause == Cause.CRASHED || cause == Cause.RUNTIME) return false;
+    if (cause == Cause.STORAGE && !reaped) return false;
+    if (cause == Cause.CREDENTIAL && credentialHeld) return false;
+    return fail(cause, reason);
   }
 
   private boolean spawned() {
+    if (phase != Phase.CHECKING || !reaped || !hookRan || !credentialHeld || hold != null) return false;
     phase = Phase.SPAWNED;
-    child = new Owned(epoch);
-    delivered = key.version();
-    launched = key.account();
+    delivered = Math.max(delivered, credentialVersion);
     return true;
   }
 
-  private boolean observeReady() {
-    long version = key == null ? 0 : key.version();
-    if (version > delivered) effects.add(new PushCredential(epoch, version));
+  private boolean observeReady(long readyEpoch) {
+    if (phase != Phase.SPAWNED || readyEpoch != epoch) return false;
     phase = Phase.RUNNING;
-    readyEpoch = epoch;
-    delivered = version;
-    watch = HealthPolicy.HealthWatch.FRESH;
+    push();
     return true;
   }
 
-  private boolean readinessTimedOut(String reason) {
-    kill();
-    enterFailed(Cause.AGENT, reason);
-    child = new Stale(epoch);
-    return true;
+  private void push() {
+    if (credentialHeld && credentialVersion > delivered) {
+      delivered = credentialVersion;
+      effects.add(new PushCredential(epoch, delivered));
+    }
   }
 
   private boolean observeExit(int code) {
-    child = NO_CHILD;
+    String exited = "the agent exited with code " + code;
     return switch (phase) {
-      case CHECKING, SPAWNED -> enterFailed(startupCause(code), "the agent exited with code " + code + " before it was ready");
-      case RUNNING -> restartOrFail();
-      case STOPPING -> switch (onExit) {
-        case TO_STOPPED -> enterStopped();
-        case TO_START -> launch(0, 0);
-        case TO_RESTART -> restartOrFail();
-        case TO_CREDENTIAL_FAILURE -> enterFailed(Cause.CREDENTIAL, "the device credential is no longer held");
+      case SPAWNED -> switch (exitClass(code)) {
+        case CONFIG -> fail(Cause.CONFIG, exited);
+        case STORAGE -> fail(Cause.STORAGE, exited);
+        default -> fail(Cause.AGENT, exited);
       };
-      case STOPPED, FAILED -> true;
+      case RUNNING -> crash();
+      case STOPPING -> switch (afterExit) {
+        case STOP -> stopped();
+        case START -> begin(0, 0);
+        case RESTART -> crash();
+        case FAIL -> fail(afterExitCause, error);
+      };
+      case STOPPED, CHECKING, FAILED -> false;
     };
   }
 
-  private boolean observeHealth(HealthPolicy.Observation observed) {
-    watch = HealthPolicy.afterObservation(watch, observed, epoch);
-    return true;
+  private boolean failUnclassified(String reason) {
+    return switch (phase) {
+      case CHECKING -> fail(Cause.RUNTIME, reason);
+      case SPAWNED, RUNNING -> kill(AfterExit.FAIL, Cause.RUNTIME, reason);
+      case STOPPED, STOPPING, FAILED -> false;
+    };
   }
 
-  private boolean restartUnhealthy() {
-    kill();
-    enterStopping(AfterExit.TO_RESTART);
-    watch = HealthPolicy.HealthWatch.FRESH;
-    return true;
-  }
-
-  private boolean stableRun() {
+  private boolean stableReset() {
+    if (phase != Phase.RUNNING || attempt == 0) return false;
     attempt = 0;
     return true;
   }
 
-  private boolean credentialArrived(long version, String account) {
-    key = new Key(version, account);
-    newestVersion = version;
-    if (phase == Phase.FAILED && failure == Cause.CREDENTIAL) return hold == null ? launch(0, 0) : enterStopped();
-    if (phase == Phase.STOPPING && onExit == AfterExit.TO_CREDENTIAL_FAILURE) onExit = AfterExit.TO_START;
+  private boolean credentialArrived(long version) {
+    if (version <= 0) return false;
+    if (credentialHeld) return credentialReplaced(version);
+    credentialHeld = true;
+    credentialVersion = Math.max(credentialVersion, version);
+    if (phase == Phase.FAILED && failure == Cause.CREDENTIAL) return hold == null ? begin(attempt, 0) : stopped();
+    if (phase == Phase.STOPPING && afterExit == AfterExit.FAIL && afterExitCause == Cause.CREDENTIAL) {
+      afterExit = AfterExit.START;
+      afterExitCause = null;
+      error = null;
+    }
     return true;
   }
 
   private boolean credentialReplaced(long version) {
-    key = new Key(version, key.account());
-    newestVersion = version;
-    if (phase == Phase.RUNNING) {
-      effects.add(new PushCredential(epoch, version));
-      delivered = version;
+    if (!credentialHeld || version <= credentialVersion || version <= delivered) return false;
+    credentialVersion = version;
+    if (phase == Phase.RUNNING) push();
+    return true;
+  }
+
+  private boolean credentialLost() {
+    if (!credentialHeld) return false;
+    credentialHeld = false;
+    String reason = "the device credential is no longer held";
+    switch (phase) {
+      case CHECKING -> fail(Cause.CREDENTIAL, reason);
+      case SPAWNED, RUNNING -> kill(AfterExit.FAIL, Cause.CREDENTIAL, reason);
+      case STOPPING -> {
+        if (afterExit == AfterExit.START || afterExit == AfterExit.RESTART) {
+          afterExit = AfterExit.FAIL;
+          afterExitCause = Cause.CREDENTIAL;
+          error = reason;
+        }
+      }
+      case STOPPED, FAILED -> { }
     }
     return true;
   }
 
-  private boolean credentialWithdrawn(String reason) {
-    key = null;
-    if (phase == Phase.SPAWNED || phase == Phase.RUNNING) {
-      kill();
-      return enterStopping(AfterExit.TO_CREDENTIAL_FAILURE);
+  private boolean accountChanged(String next) {
+    if (next == null || next.isEmpty() || next.equals(account)) return false;
+    account = next;
+    switch (phase) {
+      case CHECKING -> begin(0, 0);
+      case SPAWNED, RUNNING -> kill(AfterExit.START, null, null);
+      case FAILED -> {
+        if (failure == Cause.STORAGE) stopped();
+      }
+      case STOPPED, STOPPING -> { }
     }
-    if (phase == Phase.STOPPING) {
-      if (onExit != AfterExit.TO_STOPPED) onExit = AfterExit.TO_CREDENTIAL_FAILURE;
-      return true;
-    }
-    return phase == Phase.STOPPED || enterFailed(Cause.CREDENTIAL, reason);
-  }
-
-  private boolean accountChanged(long version, String account) {
-    key = new Key(version, account);
-    newestVersion = version;
-    if (phase == Phase.SPAWNED || phase == Phase.RUNNING) {
-      kill();
-      return enterStopping(AfterExit.TO_START);
-    }
-    if (phase == Phase.STOPPING && onExit == AfterExit.TO_RESTART) onExit = AfterExit.TO_START;
+    recovery = null;
     return true;
   }
 
-  private boolean reviewRecovery(String nonce) {
-    tokens++;
-    review = new Review(new RecoveryToken(tokens, nonce), epoch);
-    effects.add(new RecoveryReview(review.token()));
+  private boolean reviewRecovery(boolean focused, String nonce) {
+    if (phase != Phase.FAILED || failure != Cause.STORAGE || !focused || nonce == null || nonce.isEmpty()) return false;
+    recovery = new RecoveryToken(epoch, nonce);
+    effects.add(new RecoveryReview(recovery));
     return true;
   }
 
-  private boolean archiveRecovery() {
-    effects.add(new Archive(epoch));
-    return enterStopped();
+  private boolean archiveRecovery(RecoveryToken token) {
+    if (phase != Phase.FAILED || failure != Cause.STORAGE || recovery == null || !recovery.equals(token)) return false;
+    effects.add(new Archive(epoch, account));
+    recovery = null;
+    return stopped();
   }
 
   private boolean holdForUpdate(UpdateTarget target) {
+    if (hold != null || target == null || target.digest() == null) return false;
+    switch (phase) {
+      case CHECKING -> stopped();
+      case STOPPED, FAILED -> { }
+      case SPAWNED, RUNNING, STOPPING -> {
+        return false;
+      }
+    }
     hold = target;
     return true;
   }
 
-  private boolean releaseUpdate() {
+  private boolean releaseUpdate(long installedCode, String installedDigest, boolean attemptEnded) {
+    if (hold == null) return false;
+    boolean successor = installedCode == hold.code() && hold.digest().equals(installedDigest);
+    if (!successor && !attemptEnded) return false;
     hold = null;
     return true;
   }

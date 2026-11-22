@@ -94,7 +94,7 @@ function isCommit(value: string): value is Commit {
   return /^[0-9a-f]{40}$/.test(value)
 }
 
-export effect function parseCommit(value: string) {
+effect function parseCommit(value: string) {
   if (!isCommit(value)) throw new NotACommit({ value })
   return value
 }

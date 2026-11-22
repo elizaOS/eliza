@@ -1,3 +1,7 @@
+import javax.inject.Inject
+
+import org.gradle.process.ExecOperations
+
 ext {
     junitVersion = project.hasProperty('junitVersion') ? rootProject.ext.junitVersion : '4.13.2'
     androidxAppCompatVersion = project.hasProperty('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.6.1'
@@ -14,9 +18,51 @@ apply plugin: 'com.android.library'
 // absent from the release dex. Applying the standard plugin wires Kotlin into
 // both debug and release jar-bundling.
 apply plugin: 'org.jetbrains.kotlin.android'
+
+abstract class GenerateBrowserControlAssets extends DefaultTask {
+    @InputFile
+    @PathSensitive(PathSensitivity.RELATIVE)
+    abstract RegularFileProperty getControlModule()
+
+    @InputFiles
+    @PathSensitive(PathSensitivity.RELATIVE)
+    abstract ConfigurableFileCollection getPageModules()
+
+    @InputFile
+    @PathSensitive(PathSensitivity.RELATIVE)
+    abstract RegularFileProperty getReadPage()
+
+    @OutputDirectory
+    abstract DirectoryProperty getAssets()
+
+    @Inject
+    abstract ExecOperations getExecOperations()
+
+    @TaskAction
+    void generate() {
+        def output = assets.get().asFile
+        output.mkdirs()
+        java.nio.file.Files.copy(
+                readPage.get().asFile.toPath(),
+                new File(output, 'read-page.js').toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        new File(output, 'control-channel.js').withOutputStream { stream ->
+            execOperations.exec {
+                workingDir controlModule.get().asFile.parentFile
+                commandLine 'node', '--input-type=module', '--eval',
+                        "import { nativeControlProgram } from './native-control-channel.mjs'; process.stdout.write(nativeControlProgram());"
+                standardOutput = stream
+            }
+        }
+    }
+}
+
+def controlModule = layout.projectDirectory.file('native-control-channel.mjs')
+def hasControlSource = controlModule.asFile.isFile()
+
 android {
     namespace = "ai.eliza.plugins.browsersurface"
-    sourceSets.main.assets.srcDirs += ['resources']
+    if (!hasControlSource) sourceSets.main.assets.srcDirs += ['resources']
     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 34
 
     buildFeatures {
@@ -56,6 +102,18 @@ android {
 
     kotlinOptions {
         jvmTarget = "21"
+    }
+}
+
+if (hasControlSource) {
+    def controlAssets = tasks.register('generateBrowserControlAssets', GenerateBrowserControlAssets) {
+        it.controlModule.set(controlModule)
+        it.pageModules.from('../../browser/src/page-command.mjs', '../../browser/src/page-guidance.mjs')
+        it.readPage.set(layout.projectDirectory.file('resources/read-page.js'))
+        it.assets.set(layout.buildDirectory.dir('generated/browserControlAssets'))
+    }
+    androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+        variant.sources.assets.addGeneratedSourceDirectory(controlAssets) { task -> task.assets }
     }
 }
 

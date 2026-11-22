@@ -59,7 +59,8 @@ effect function conversation(agent: InProcess) {
 }
 
 effect function streamed(agent: InProcess, id: string, body: object, abortAfterChunks?: number) {
-  const answer = try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, body }, abortAfterChunks)
+  const cut = abortAfterChunks === undefined ? undefined : try Effect.sync(() => ({ afterChunks: abortAfterChunks, ready: Promise.resolve() }))
+  const answer = try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, body }, cut)
   return answer.chunks
 }
 
@@ -125,13 +126,13 @@ for (const transport of ["socket", "http"] as const) {
 
 describe('Frames the agent never writes (spec/agent/conversation/replyStream.md, "Story: See a reply as it is written")', () => {
   it.live('A malformed frame fails the read, an error frame is Failed with its code, and only a whole text clears the provisional mark (spec/agent/conversation/replyStream.md, "A frame marks its text provisional while any of it may be taken back, and only a whole text clears the mark")', effect () => {
-    const malformed = try read(frames(`{"type":"token","text":"hi"}`, `{"type":"token"}`), 3)
+    const malformed = try read(frames(`{"type":"token","text":"hi"}`, `{"type":"token","text":"more","fullText":42}`), 3)
     const failed = try read(frames(`{"type":"tool","name":"CALCULATE"}`, `{"type":"error","code":"ASSISTANT_RESPONSE_UNAVAILABLE","message":"The turn left no reply"}`), 4)
-    const marked = try read(frames(`{"type":"token","fullText":"Checking é","provisional":true}`, `{"type":"token","text":" now 🙂","provisional":true}`, `{"type":"token","fullText":"Done."}`), 9)
+    const marked = try read(frames(`{"type":"token","fullText":"Checking é","provisional":true}`, `{"type":"token","text":" now 🙂","provisional":true}`, `{"type":"token","text":" soon"}`, `{"type":"token","fullText":"Done."}`), 9)
     try Effect.try(() => assert.deepStrictEqual({ malformed: malformed.outcome, failed: failed.outcome, marked: marked.previews }, {
       malformed: { kind: "Failed", code: REPLY_STREAM_PROTOCOL, message: "A reply stream frame does not match the reply protocol" },
       failed: { kind: "Failed", code: "ASSISTANT_RESPONSE_UNAVAILABLE", message: "The turn left no reply" },
-      marked: [{ text: "Checking é", provisional: true }, { text: "Checking é now 🙂", provisional: true }, { text: "Done.", provisional: false }],
+      marked: [{ text: "Checking é", provisional: true }, { text: "Checking é now 🙂", provisional: true }, { text: "Checking é now 🙂 soon", provisional: true }, { text: "Done.", provisional: false }],
     }))
   })
 

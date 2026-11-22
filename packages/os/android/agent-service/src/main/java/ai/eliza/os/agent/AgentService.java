@@ -37,6 +37,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -69,13 +70,12 @@ public class AgentService extends Service {
   public static final String ACTION_START = "ai.eliza.os.agent.action.START";
   public static final String ACTION_RESTART = "ai.eliza.os.agent.action.RESTART";
   public static final String ACTION_STOP = "ai.eliza.os.agent.action.STOP";
+  public static final long REQUEST_BODY_LIMIT = 16L * 1024 * 1024;
   private static final String TAG = "ElizaAgent";
   private static final String NOTIFICATION_CHANNEL = "eliza-agent";
   private static final int NOTIFICATION_ID = 7301;
   private static final long CALL_TIMEOUT_MS = 30_000L;
   private static final String HEALTH = "/api/health";
-  private static final String STATUS = "/api/status";
-  private static final String AWAITING_KEY = "agent-awaiting-key";
   private static final Pattern VARIABLE = Pattern.compile("[A-Z][A-Z0-9_]*");
   private static final Pattern RESERVED = Pattern.compile("(ELIZA_AGENT_|ELIZA_CLOUD_|ELIZA_OWN_|LD_|NODE_).*|PATH|HOME|TMPDIR");
   private static final Object LOCK = new Object();
@@ -99,7 +99,7 @@ public class AgentService extends Service {
   private final Handler main = new Handler(Looper.getMainLooper());
   private final Map<String, AgentCredentials.Account> accounts = new HashMap<>();
   private final List<ScheduledFuture<?>> timers = new ArrayList<>();
-  private volatile AgentPolicy policy = new AgentPolicy(null);
+  private volatile AgentPolicy policy = new AgentPolicy(null, null);
   private volatile long base;
   private volatile int lastStartId;
   private boolean foreground;
@@ -110,10 +110,10 @@ public class AgentService extends Service {
   private AgentSupervisor.Child child;
   private String token;
   private Path socket;
+  private HealthPolicy.HealthWatch watch = HealthPolicy.HealthWatch.FRESH;
   private CompletableFuture<Review> review;
   private int archived = -1;
-  private volatile long bodyLimit;
-  private Boolean awaitingWritten;
+  private AgentPolicy.UpdateTarget pendingHold;
 
   public static void useCredentials(AgentCredentials source) { registered = Objects.requireNonNull(source); }
 
@@ -169,11 +169,10 @@ public class AgentService extends Service {
       try { return new JSONObject().put("available", false).put("state", "unavailable").put("epoch", 0).put("requestBodyLimit", 0); }
       catch (JSONException impossible) { throw new IllegalStateException(impossible); }
     }
-    AgentPolicy.Status status = service == null ? new AgentPolicy(null).status(0)
-      : service.policy.status(service.policy.state().phase() == Phase.RUNNING ? service.bodyLimit : 0);
+    AgentPolicy.Status status = service == null ? new AgentPolicy(null, null).status(REQUEST_BODY_LIMIT) : service.policy.status(REQUEST_BODY_LIMIT);
     try {
       JSONObject out = new JSONObject().put("available", status.available()).put("state", status.state())
-        .put("epoch", service == null ? 0 : service.base + status.epoch()).put("requestBodyLimit", status.requestBodyLimit());
+        .put("epoch", status.epoch() == 0 ? 0 : service.base + status.epoch()).put("requestBodyLimit", status.requestBodyLimit());
       if (status.failure() != null) out.put("failure", status.failure());
       if (status.error() != null) out.put("error", status.error());
       return out;
@@ -197,14 +196,7 @@ public class AgentService extends Service {
       service.later(() -> service.settled(service::syncCredential));
       return;
     }
-    if (!Files.exists(awaitingKey(context), LinkOption.NOFOLLOW_LINKS) || !signedIn()) return;
-    try { start(context); }
-    catch (IllegalStateException refused) { Log.w(TAG, "The agent was not started for the arriving device key", refused); }
-  }
-
-  static void awaitKey(Context context) {
-    try { markAwaitingKey(context, true); }
-    catch (IOException failed) { Log.w(TAG, "The wait for a device key could not be recorded", failed); }
+    if (signedIn()) start(context);
   }
 
   static boolean signedIn() {
@@ -253,47 +245,40 @@ public class AgentService extends Service {
     }
   }
 
-  static boolean holdForUpdate(Context context, AgentPolicy.UpdateTarget target) throws IOException {
-    AgentService service;
+  static void holdForUpdate(Context context, AgentPolicy.UpdateTarget target) throws IOException {
     synchronized (LOCK) {
-      service = live;
+      AgentService service = live;
       if (service == null) {
         UpdateHold store = UpdateHold.of(context);
-        AgentPolicy.UpdateTarget held = store.held();
-        if (target.equals(held)) return true;
-        if (!new AgentPolicy(held).step(new AgentPolicy.HoldForUpdate(target)).accepted()) return false;
-        store.save(target);
-        return true;
+        if (new AgentPolicy(null, store.held()).step(new AgentPolicy.HoldForUpdate(target)).accepted()) store.save(target);
+        return;
       }
-    }
-    return service.call(() -> {
-      boolean[] taken = new boolean[1];
-      service.settled(() -> {
-        try { taken[0] = service.hold(target); }
-        catch (IOException failed) { throw new IllegalStateException(failed); }
+      service.call(() -> {
+        service.settled(() -> {
+          try { service.hold(target); }
+          catch (IOException failed) { throw new IllegalStateException(failed); }
+        });
+        return null;
       });
-      return taken[0];
-    });
+    }
   }
 
   static boolean releaseUpdate(Context context, long installedCode, String installedDigest, boolean attemptEnded) throws IOException {
     AgentPolicy.ReleaseUpdate release = new AgentPolicy.ReleaseUpdate(installedCode, installedDigest, attemptEnded);
-    AgentService service;
     synchronized (LOCK) {
-      service = live;
+      AgentService service = live;
       if (service == null) {
         UpdateHold store = UpdateHold.of(context);
-        if (!new AgentPolicy(store.held()).step(release).accepted()) return false;
+        if (!new AgentPolicy(null, store.held()).step(release).accepted()) return false;
         store.save(null);
         return true;
       }
+      return service.call(() -> {
+        if (!service.step(release).accepted()) return false;
+        service.hold.save(null);
+        return true;
+      });
     }
-    return service.call(() -> {
-      UpdateHold store = service.holdStore();
-      if (!service.step(release).accepted()) return false;
-      store.save(null);
-      return true;
-    });
   }
 
   public static AgentConfig config(Context context) throws AgentConfig.Refused, IOException {
@@ -312,6 +297,7 @@ public class AgentService extends Service {
       return;
     }
     synchronized (LOCK) {
+      AgentCredentials.Active active = null;
       AgentPolicy.UpdateTarget held = null;
       try {
         directories = new AgentDirectories(getFilesDir().toPath(), AndroidRuntimeDirectories::syncRuntimeDirectory);
@@ -323,7 +309,9 @@ public class AgentService extends Service {
         initFailure = "The agent's private storage could not be read: " + unreadable.getMessage();
         Log.e(TAG, initFailure, unreadable);
       }
-      policy = new AgentPolicy(held);
+      try { active = credentials().current(); }
+      catch (Exception unreadable) { Log.w(TAG, "The device credential could not be read", unreadable); }
+      policy = new AgentPolicy(active == null ? null : remember(active.account()), held);
       live = this;
     }
     later(() -> settled(this::syncCredential));
@@ -370,14 +358,6 @@ public class AgentService extends Service {
     } catch (AgentConfig.Refused | IOException | PackageManager.NameNotFoundException absent) {
       return false;
     }
-  }
-
-  private static Path awaitingKey(Context context) { return context.getNoBackupFilesDir().toPath().resolve(AWAITING_KEY); }
-
-  private static void markAwaitingKey(Context context, boolean awaiting) throws IOException {
-    Path marker = awaitingKey(context);
-    if (awaiting) Files.write(marker, new byte[0], StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.SYNC);
-    else Files.deleteIfExists(marker);
   }
 
   private static void command(Context context, String action) {
@@ -442,22 +422,13 @@ public class AgentService extends Service {
     }
   }
 
-  private void offload(Runnable task) {
-    try { work.execute(task); }
-    catch (RejectedExecutionException closed) { Log.d(TAG, "The agent service has ended and runs no more checks"); }
-  }
-
   private void settled(Runnable steps) {
     steps.run();
     AgentPolicy.State state = policy.state();
-    boolean awaiting = state.phase() == Phase.FAILED && state.failure() == AgentPolicy.Cause.CREDENTIAL;
-    if (!Boolean.valueOf(awaiting).equals(awaitingWritten)) {
-      try {
-        markAwaitingKey(this, awaiting);
-        awaitingWritten = awaiting;
-      } catch (IOException failed) {
-        Log.w(TAG, "The wait for a device key could not be recorded", failed);
-      }
+    if (pendingHold != null && !state.child()) {
+      try { hold(pendingHold); }
+      catch (IOException failed) { Log.e(TAG, "The update hold could not be saved", failed); }
+      state = policy.state();
     }
     boolean stopped = state.phase() == Phase.STOPPED;
     int startId = lastStartId;
@@ -485,87 +456,62 @@ public class AgentService extends Service {
     else if (effect instanceof AgentPolicy.Kill kill) {
       cancelTimers();
       AgentSupervisor.Child target = child;
-      if (target != null && target.epoch == base + kill.epoch()) offload(target::stop);
+      if (target != null && target.epoch == base + kill.epoch()) work.execute(target::stop);
     } else if (effect instanceof AgentPolicy.PushCredential push) push(push);
     else if (effect instanceof AgentPolicy.RecoveryReview recovery) {
-      if (review != null) review.complete(new Review(recovery.token().token() + "." + recovery.token().nonce(), retained()));
+      if (review != null) review.complete(new Review(recovery.token().epoch() + "." + recovery.token().nonce(), retained()));
     } else archive((AgentPolicy.Archive) effect);
   }
 
-  private boolean checking(long launch) {
-    AgentPolicy.State state = policy.state();
-    return state.phase() == Phase.CHECKING && state.epoch() == launch;
-  }
-
   private void check(AgentPolicy.Check check) {
-    long launch = check.epoch();
-    if (!checking(launch)) return;
+    AgentPolicy.State state = policy.state();
+    if (state.phase() != Phase.CHECKING || state.epoch() != check.epoch()) return;
+    long epoch = base + check.epoch();
     if (initFailure != null) {
-      step(new AgentPolicy.Refuse(AgentPolicy.Cause.RUNTIME, initFailure));
+      step(new AgentPolicy.FailUnclassified(initFailure));
       return;
     }
-    offload(() -> {
-      String failure = null;
-      try { journal.reapStale(base + launch); }
-      catch (IOException failed) { failure = "The previous agent could not be ended: " + failed.getMessage(); }
-      String reapFailure = failure;
-      later(() -> settled(() -> reaped(launch, reapFailure)));
-    });
-  }
-
-  private void reaped(long launch, String failure) {
-    if (!checking(launch)) return;
-    if (failure != null) {
-      step(new AgentPolicy.Refuse(AgentPolicy.Cause.RUNTIME, failure));
+    try { journal.reapStale(epoch); }
+    catch (IOException failed) {
+      step(new AgentPolicy.FailUnclassified("The previous agent could not be ended: " + failed.getMessage()));
       return;
     }
-    if (policy.state().child() instanceof AgentPolicy.Stale) step(new AgentPolicy.ReapStale());
+    if (!step(new AgentPolicy.ReapStale()).accepted()) return;
     AgentConfig config;
     try { config = config(this); }
     catch (AgentConfig.Refused | IOException refused) {
       step(new AgentPolicy.Refuse(AgentPolicy.Cause.CONFIG, refused.getMessage()));
       return;
     }
-    List<RouteGate.Group> nativeRoutes = config.routes(CallerKind.NATIVE);
-    boolean rendererLoaded = CHANNEL.policy().loadRoutes(CallerKind.RENDERER, config.routes(CallerKind.RENDERER));
-    boolean nativeLoaded = CHANNEL.policy().loadRoutes(CallerKind.NATIVE, nativeRoutes);
-    if (!rendererLoaded || (!nativeLoaded && !nativeRoutes.isEmpty())) {
+    if (!CHANNEL.policy().loadRoutes(CallerKind.RENDERER, config.routes(CallerKind.RENDERER))
+        || !CHANNEL.policy().loadRoutes(CallerKind.NATIVE, config.routes(CallerKind.NATIVE))) {
       step(new AgentPolicy.Refuse(AgentPolicy.Cause.CONFIG, "The agent's route lists could not be loaded"));
       return;
     }
-    offload(() -> {
-      PayloadCheck.Check payload = null;
-      String verifyFailure = null;
-      try {
-        payload = PayloadCheck.prepare(name -> getAssets().open(name), versionCode(), List.of(Build.SUPPORTED_ABIS),
-          Paths.get(getApplicationInfo().nativeLibraryDir), directories.runtime(), directories.sync());
-      } catch (IOException | PackageManager.NameNotFoundException | RuntimeException failed) {
-        verifyFailure = "The agent runtime could not be verified: " + failed.getMessage();
-      }
-      PayloadCheck.Check checked = payload;
-      String prepareFailure = verifyFailure;
-      later(() -> settled(() -> prepared(launch, config, checked, prepareFailure)));
-    });
-  }
-
-  private void prepared(long launch, AgentConfig config, PayloadCheck.Check payload, String failure) {
-    if (!checking(launch)) return;
-    if (failure != null || payload instanceof PayloadCheck.Failed) {
-      step(new AgentPolicy.Refuse(AgentPolicy.Cause.PAYLOAD, failure != null ? failure : String.join("; ", ((PayloadCheck.Failed) payload).errors())));
+    PayloadCheck.Check payload;
+    try {
+      payload = PayloadCheck.prepare(name -> getAssets().open(name), versionCode(), List.of(Build.SUPPORTED_ABIS),
+        Paths.get(getApplicationInfo().nativeLibraryDir), directories.runtime(), directories.sync());
+    } catch (IOException | PackageManager.NameNotFoundException failed) {
+      step(new AgentPolicy.Refuse(AgentPolicy.Cause.PAYLOAD, "The agent runtime could not be verified: " + failed.getMessage()));
+      return;
+    }
+    if (payload instanceof PayloadCheck.Failed failed) {
+      step(new AgentPolicy.Refuse(AgentPolicy.Cause.PAYLOAD, String.join("; ", failed.errors())));
       return;
     }
     PayloadCheck.PreparedPayload prepared = ((PayloadCheck.Ready) payload).payload();
     AgentCredentials.Active active;
     String storageKey;
     try {
-      active = currentKey();
+      active = credentials().current();
       storageKey = active == null ? null : credentials().storageKey(active.account());
     } catch (Exception unreadable) {
-      step(new AgentPolicy.Refuse(AgentPolicy.Cause.RUNTIME, "The device credential could not be read: " + unreadable.getMessage()));
+      step(new AgentPolicy.FailUnclassified("The device credential could not be read: " + unreadable.getMessage()));
       return;
     }
     sync(active);
-    if (!checking(launch)) return;
+    if (policy.state().phase() != Phase.CHECKING || policy.state().epoch() != check.epoch()) return;
     Map<String, String> variables = new LinkedHashMap<>();
     String document = null;
     String refusal = null;
@@ -575,104 +521,48 @@ public class AgentService extends Service {
     } catch (LaunchRefused | IllegalArgumentException refused) {
       refusal = refused.getMessage();
     }
-    if (!step(new AgentPolicy.LaunchHook(refusal != null, refusal)).accepted() || !checking(launch)) return;
-    if (active == null) {
-      step(new AgentPolicy.Refuse(AgentPolicy.Cause.CREDENTIAL, "no device credential is held"));
-      return;
-    }
+    if (!step(new AgentPolicy.LaunchHook(refusal != null, refusal)).accepted() || policy.state().phase() != Phase.CHECKING) return;
     Path stateDir;
     try { stateDir = directories.state(active.account().userId(), active.account().organizationId()); }
     catch (IOException failed) {
       step(new AgentPolicy.Refuse(AgentPolicy.Cause.STORAGE, "The agent's state directory is not usable: " + failed.getMessage()));
       return;
     }
-    long epoch = base + launch;
+    AgentSupervisor.Child spawned;
     String launchToken = LaunchFrame.newToken();
-    String launchDocument = document;
-    AgentCredentials.Active key = active;
-    offload(() -> {
-      AgentSupervisor.Child spawned = null;
-      Path agentSocket = null;
-      String spawnFailure = null;
-      try {
-        byte[] frame = LaunchFrame.first(launchToken, epoch, LaunchFrame.Credential.of(key), storageKey).encode();
-        Path launchFile = writeLaunch(launchDocument);
-        agentSocket = directories.prepareSocket();
-        AgentSupervisor.Command command = new AgentSupervisor.Command(prepared.node(), prepared.bundleDir(), launchFile, stateDir, agentSocket,
-          directories.runtime().resolve("agent.log"));
-        spawned = AgentSupervisor.spawn(epoch, command, frame, (spawnedEpoch, pid) -> journal.record(Math.toIntExact(pid), spawnedEpoch));
-      } catch (IOException | RuntimeException failed) {
-        spawnFailure = "The agent could not be started: " + failed.getMessage();
-      }
-      AgentSupervisor.Child started = spawned;
-      Path startedSocket = agentSocket;
-      String startFailure = spawnFailure;
-      later(() -> settled(() -> spawned(launch, launchToken, startedSocket, started, startFailure)));
-    });
-  }
-
-  private void spawned(long launch, String launchToken, Path agentSocket, AgentSupervisor.Child spawned, String failure) {
-    if (spawned == null) {
-      if (checking(launch)) step(new AgentPolicy.SpawnFailed(failure));
-      return;
-    }
-    if (!checking(launch)) {
-      discard(spawned);
+    try {
+      Path launch = writeLaunch(document);
+      Path agentSocket = directories.prepareSocket();
+      byte[] frame = LaunchFrame.first(launchToken, epoch, LaunchFrame.Credential.of(active), storageKey).encode();
+      AgentSupervisor.Command command = new AgentSupervisor.Command(prepared.node(), prepared.bundleDir(), launch, stateDir, agentSocket,
+        directories.runtime().resolve("agent.log"));
+      spawned = AgentSupervisor.spawn(epoch, command, frame, (spawnedEpoch, pid) -> journal.record(Math.toIntExact(pid), spawnedEpoch),
+        readyEpoch -> HealthPolicy.classify(probe(agentSocket, launchToken, () -> true), readyEpoch) == HealthPolicy.Probe.OK,
+        new AgentSupervisor.Listener() {
+          @Override public void ready(long readyEpoch) { later(() -> settled(() -> ready(readyEpoch))); }
+          @Override public void readinessTimedOut(long timedOut) { later(() -> settled(() -> { if (owns(timedOut)) step(new AgentPolicy.ReadyTimeout()); })); }
+          @Override public void exited(long exitedEpoch, int code) { later(() -> settled(() -> exited(exitedEpoch, code))); }
+        });
+      socket = agentSocket;
+    } catch (IOException | RuntimeException failed) {
+      step(new AgentPolicy.SpawnFailed("The agent could not be started: " + failed.getMessage()));
       return;
     }
     child = spawned;
     token = launchToken;
-    socket = agentSocket;
-    if (!step(new AgentPolicy.Spawned()).accepted()) {
-      child = null;
-      token = null;
-      socket = null;
-      discard(spawned);
-      return;
-    }
-    spawned.watch(readyEpoch -> HealthPolicy.classify(probe(agentSocket, launchToken, () -> true), readyEpoch) == HealthPolicy.Probe.OK,
-      new AgentSupervisor.Listener() {
-        @Override public void ready(long readyEpoch) { later(() -> settled(() -> ready(readyEpoch))); }
-        @Override public void readinessTimedOut(long timedOut) { later(() -> settled(() -> { if (owns(timedOut)) step(new AgentPolicy.ReadyTimeout("The agent did not answer ready within " + AgentPolicy.READY_TIMEOUT_MS / 1000 + " s")); })); }
-        @Override public void exited(long exitedEpoch, int code) { later(() -> settled(() -> exited(exitedEpoch, code))); }
-      });
-  }
-
-  private void discard(AgentSupervisor.Child spawned) {
-    offload(() -> {
-      spawned.stop();
-      try { journal.clear(spawned.epoch); }
-      catch (IOException failed) { Log.w(TAG, "The discarded agent child stays journaled until it is reaped", failed); }
-    });
+    if (!step(new AgentPolicy.Spawned()).accepted()) spawned.kill();
   }
 
   private boolean owns(long launchEpoch) { return child != null && child.epoch == launchEpoch; }
 
   private void ready(long launchEpoch) {
-    if (!owns(launchEpoch) || policy.state().phase() != Phase.SPAWNED) return;
-    Path agentSocket = socket;
-    String launchToken = token;
-    offload(() -> {
-      long limit = requestBodyLimit(agentSocket, launchToken);
-      later(() -> settled(() -> serve(launchEpoch, limit)));
-    });
-  }
-
-  private void serve(long launchEpoch, long limit) {
-    if (!owns(launchEpoch) || policy.state().phase() != Phase.SPAWNED) return;
-    if (limit <= 0) {
-      step(new AgentPolicy.ReadyTimeout("The agent did not report its request body limit"));
-      return;
-    }
-    if (!CHANNEL.open(launchEpoch, token, socket)) {
-      step(new AgentPolicy.ReadyTimeout("The agent channel could not be opened for launch " + launchEpoch));
-      return;
-    }
-    bodyLimit = limit;
+    if (!owns(launchEpoch)) return;
+    CHANNEL.open(launchEpoch, token, socket);
     if (!step(new AgentPolicy.ObserveReady(launchEpoch - base)).accepted()) {
       CHANNEL.retire(launchEpoch);
       return;
     }
+    watch = HealthPolicy.HealthWatch.FRESH;
     timers.add(effects.scheduleWithFixedDelay(() -> health(launchEpoch, true), HealthPolicy.PROBE_INTERVAL_MS, HealthPolicy.PROBE_INTERVAL_MS, TimeUnit.MILLISECONDS));
     timers.add(effects.scheduleWithFixedDelay(() -> health(launchEpoch, false), HealthPolicy.CONNECT_CHECK_INTERVAL_MS, HealthPolicy.CONNECT_CHECK_INTERVAL_MS, TimeUnit.MILLISECONDS));
     timers.add(effects.schedule(() -> settled(() -> { if (owns(launchEpoch)) step(new AgentPolicy.StableReset()); }), HealthPolicy.STABLE_RUN_MS, TimeUnit.MILLISECONDS));
@@ -696,7 +586,7 @@ public class AgentService extends Service {
     Path agentSocket = socket;
     String launchToken = token;
     if (!owns(launchEpoch) || policy.state().phase() != Phase.RUNNING) return;
-    offload(() -> {
+    work.execute(() -> {
       HealthPolicy.Observation seen;
       if (probe) seen = new HealthPolicy.Probed(probe(agentSocket, launchToken, running::alive));
       else {
@@ -711,28 +601,26 @@ public class AgentService extends Service {
       }
       later(() -> settled(() -> {
         if (!owns(launchEpoch) || policy.state().phase() != Phase.RUNNING) return;
-        if (!step(new AgentPolicy.ObserveHealth(seen)).accepted()) step(new AgentPolicy.RestartUnhealthy(seen));
+        HealthPolicy.Verdict verdict = HealthPolicy.verdict(watch, seen, launchEpoch);
+        watch = HealthPolicy.afterObservation(watch, seen, launchEpoch);
+        if (verdict == HealthPolicy.Verdict.RESTART) step(new AgentPolicy.RestartUnhealthy());
       }));
     });
   }
 
-  private AgentSocketClient.Result get(Path agentSocket, String launchToken, String path, AtomicBoolean connected) {
+  private HealthPolicy.ProbeReply probe(Path agentSocket, String launchToken, BooleanSupplier alive) {
+    AtomicBoolean connected = new AtomicBoolean();
     AtomicReference<AgentSocketClient.Result> answer = new AtomicReference<>();
     try {
-      client.exchange(agentSocket, launchToken, path.substring(5) + "-" + UUID.randomUUID(), new AgentSocketClient.HttpCall("GET", path, null, false),
+      client.exchange(agentSocket, launchToken, "health-" + UUID.randomUUID(), new AgentSocketClient.HttpCall("GET", HEALTH, null, false),
         link -> connected.set(true), frame -> {
           if (frame instanceof AgentSocketClient.Result result) answer.set(result);
           return false;
         });
     } catch (IOException | RuntimeException unanswered) {
-      Log.d(TAG, "The agent did not answer " + path + ": " + unanswered.getMessage());
+      Log.d(TAG, "The agent did not answer its health probe: " + unanswered.getMessage());
     }
-    return answer.get();
-  }
-
-  private HealthPolicy.ProbeReply probe(Path agentSocket, String launchToken, BooleanSupplier alive) {
-    AtomicBoolean connected = new AtomicBoolean();
-    AgentSocketClient.Result result = get(agentSocket, launchToken, HEALTH, connected);
+    AgentSocketClient.Result result = answer.get();
     if (result == null) return new HealthPolicy.Unanswered(alive.getAsBoolean(), connected.get());
     HealthPolicy.HealthBody body;
     try {
@@ -742,13 +630,6 @@ public class AgentService extends Service {
       body = null;
     }
     return new HealthPolicy.Answered(result.status(), body);
-  }
-
-  private long requestBodyLimit(Path agentSocket, String launchToken) {
-    AgentSocketClient.Result result = get(agentSocket, launchToken, STATUS, new AtomicBoolean());
-    if (result == null || result.status() != 200) return 0;
-    try { return new JSONObject(new String(result.body(), StandardCharsets.UTF_8)).optLong("requestBodyLimit", 0); }
-    catch (JSONException malformed) { return 0; }
   }
 
   private static boolean accepts(Path agentSocket) {
@@ -761,30 +642,24 @@ public class AgentService extends Service {
     }
   }
 
-  private AgentCredentials.Active currentKey() throws Exception {
-    try { return credentials().current(); }
-    catch (IllegalArgumentException unnamed) {
-      Log.w(TAG, "The device credential names no usable account", unnamed);
-      return null;
-    }
-  }
-
   private void syncCredential() {
-    try { sync(currentKey()); }
+    try { sync(credentials().current()); }
     catch (Exception unreadable) { Log.w(TAG, "The device credential could not be read", unreadable); }
   }
 
   private void sync(AgentCredentials.Active active) {
-    AgentPolicy.Key key = policy.state().key();
+    AgentPolicy.State state = policy.state();
     boolean expired = active != null && active.expiresAt() > 0 && active.expiresAt() <= System.currentTimeMillis();
     if (active == null || expired) {
-      if (key != null) step(new AgentPolicy.CredentialWithdrawn(expired ? "The device credential expired" : "The device was signed out"));
+      if (state.credentialHeld()) step(expired ? new AgentPolicy.CredentialExpired() : new AgentPolicy.SignedOut());
       return;
     }
     String account = remember(active.account());
-    if (key == null) step(new AgentPolicy.CredentialArrived(active.version(), account));
-    else if (!account.equals(key.account())) step(new AgentPolicy.AccountChanged(active.version(), account));
-    else if (active.version() > key.version()) step(new AgentPolicy.CredentialReplaced(active.version()));
+    if (!account.equals(state.account())) {
+      if (state.credentialHeld()) step(new AgentPolicy.SignedOut());
+      step(new AgentPolicy.AccountChanged(account));
+    }
+    step(new AgentPolicy.CredentialArrived(active.version()));
   }
 
   private String remember(AgentCredentials.Account account) {
@@ -794,46 +669,30 @@ public class AgentService extends Service {
   }
 
   private void push(AgentPolicy.PushCredential push) {
-    long launchEpoch = base + push.epoch();
     AgentCredentials.Active active;
-    try { active = currentKey(); }
+    try { active = credentials().current(); }
     catch (Exception unreadable) {
       Log.w(TAG, "The device credential could not be read for the push", unreadable);
-      later(() -> settled(() -> pushFailed(launchEpoch, push.version())));
       return;
     }
     if (active == null || active.version() != push.version()) {
-      later(() -> settled(this::syncCredential));
+      Log.w(TAG, "The device credential changed before version " + push.version() + " could be pushed");
       return;
     }
-    AgentSocketClient.CredentialPush body = new AgentSocketClient.CredentialPush(active.version(), active.value(), active.expiresAt(),
-      new AgentSocketClient.Account(active.account().userId(), active.account().organizationId()));
-    offload(() -> {
-      AgentSocketClient.PushResult result;
-      try { result = CHANNEL.pushCredential(body); }
-      catch (IOException failed) {
+    AgentSocketClient.CredentialPush body = new AgentSocketClient.CredentialPush(active.version(), active.value(),
+      Instant.ofEpochMilli(active.expiresAt()).toString(), new AgentSocketClient.Account(active.account().userId(), active.account().organizationId()));
+    work.execute(() -> {
+      try {
+        AgentSocketClient.PushResult result = CHANNEL.pushCredential(body);
+        if (!(result instanceof AgentSocketClient.PushAccepted)) Log.w(TAG, "The agent did not take credential version " + push.version() + ": " + result);
+      } catch (IOException failed) {
         Log.w(TAG, "Credential version " + push.version() + " could not be pushed to the agent", failed);
-        later(() -> settled(() -> pushFailed(launchEpoch, push.version())));
-        return;
       }
-      if (result instanceof AgentSocketClient.PushAccepted) return;
-      Log.w(TAG, "The agent did not take credential version " + push.version() + ": " + result);
-      if (result instanceof AgentSocketClient.PushRefused refused && ("stale_version".equals(refused.reason()) || "not_cloud".equals(refused.reason()))) return;
-      later(() -> settled(() -> pushFailed(launchEpoch, push.version())));
     });
   }
 
-  private void pushFailed(long launchEpoch, long version) {
-    AgentPolicy.State state = policy.state();
-    if (!owns(launchEpoch) || state.phase() != Phase.RUNNING || state.delivered() != version) return;
-    Log.w(TAG, "Restarting the agent so that its launch frame carries credential version " + version);
-    step(new AgentPolicy.Stop());
-    step(new AgentPolicy.Start());
-  }
-
   private Path accountState() throws IOException {
-    AgentPolicy.State state = policy.state();
-    AgentCredentials.Account account = accounts.get(state.key() != null ? state.key().account() : state.launched());
+    AgentCredentials.Account account = accounts.get(policy.state().account());
     if (account == null) throw new IOException("The agent's account is not known to this service");
     return directories.state(account.userId(), account.organizationId());
   }
@@ -858,25 +717,19 @@ public class AgentService extends Service {
     }
   }
 
-  private UpdateHold holdStore() throws IOException {
-    if (hold == null) throw new IOException(initFailure);
-    return hold;
-  }
-
-  private boolean hold(AgentPolicy.UpdateTarget target) throws IOException {
-    if (target.equals(policy.state().hold())) return true;
-    UpdateHold store = holdStore();
-    if (policy.state().child() instanceof AgentPolicy.Stale) {
-      journal.reapStale(base + policy.state().epoch());
-      step(new AgentPolicy.ReapStale());
+  private void hold(AgentPolicy.UpdateTarget target) throws IOException {
+    if (step(new AgentPolicy.HoldForUpdate(target)).accepted()) {
+      pendingHold = null;
+      try { hold.save(target); }
+      catch (IOException failed) {
+        step(new AgentPolicy.ReleaseUpdate(target.code(), target.digest(), true));
+        throw failed;
+      }
+      return;
     }
-    if (!step(new AgentPolicy.HoldForUpdate(target)).accepted()) return false;
-    try {
-      store.save(target);
-      return true;
-    } catch (IOException | RuntimeException failed) {
-      step(new AgentPolicy.ReleaseUpdate(target.code(), target.digest(), true));
-      throw failed;
+    if (policy.state().child() && !target.equals(policy.state().hold())) {
+      pendingHold = target;
+      step(new AgentPolicy.Stop());
     }
   }
 

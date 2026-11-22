@@ -1,4 +1,4 @@
-// spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Connect my Google mail and calendar with the same sign-in"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"
+// spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Connect my Google mail and calendar with the same sign-in"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.signin.CodeSignIn.Checked;
@@ -33,10 +33,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
-import android.content.pm.verify.domain.DomainVerificationManager;
-import android.content.pm.verify.domain.DomainVerificationUserState;
 import android.net.Uri;
-import android.os.Build;
 import android.os.CancellationSignal;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -113,19 +110,7 @@ public class ElizaSignInPlugin extends Plugin {
 
   protected DeviceFacts deviceFacts() {
     Context context = getContext();
-    boolean verified = true;
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      Map<String, Integer> hosts;
-      try {
-        DomainVerificationUserState user = context.getSystemService(DomainVerificationManager.class).getDomainVerificationUserState(context.getPackageName());
-        hosts = user == null ? Map.of() : user.getHostToStateMap();
-      } catch (PackageManager.NameNotFoundException missing) {
-        hosts = Map.of();
-      }
-      for (SignInRegistration.Environment environment : registration.environments()) {
-        verified &= hosts.getOrDefault(environment.appLinkHost, -1) == DomainVerificationUserState.DOMAIN_STATE_VERIFIED;
-      }
-    }
+    boolean verified = registration.environments().stream().allMatch(environment -> BrowserSignIn.appLinkVerified(context, environment));
     Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(registration.production().apiOrigin)).addCategory(Intent.CATEGORY_BROWSABLE);
     boolean browserApp = context.getPackageManager().resolveActivity(view, PackageManager.MATCH_DEFAULT_ONLY) != null;
     return new DeviceFacts(registration.googleMode, verified, browserApp);
@@ -133,7 +118,8 @@ public class ElizaSignInPlugin extends Plugin {
 
   @Override public void load() {
     BuildKind build = (getContext().getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0 ? BuildKind.DEBUG_BUILD : BuildKind.RELEASE_BUILD;
-    registration = registration(getConfig().getConfigJSON());
+    try { registration = SignInRegistration.parse(map(getConfig().getConfigJSON())); }
+    catch (SignInRegistration.Refused refused) { registration = null; }
     Registration loaded = registration == null ? new Registration(false, false, false)
       : new Registration(true, !registration.googleScopes().isEmpty(), registration.testEnvironmentsEnabled);
     dispatch(new Event.Load(loaded, build));
@@ -141,10 +127,6 @@ public class ElizaSignInPlugin extends Plugin {
     codes = new CodeSignIn(http(), registration.clientId);
     google = new GoogleSignIn(http(), registration);
     custody = custody(getContext(), registration);
-    BrowserSignIn.notices(new BrowserSignIn.Notices() {
-      @Override public void incomplete(String environment, String code) { accountChanged(environment, code); }
-      @Override public void signedIn(String environment, String credentialId) { accountChanged(environment, null); }
-    });
     browser = browser(registration, custody);
     SharedPreferences preferences = getContext().getSharedPreferences("eliza-sign-in-readiness", Context.MODE_PRIVATE);
     CodeSignIn.Http http = http();
@@ -308,7 +290,15 @@ public class ElizaSignInPlugin extends Plugin {
     Attempt opened = open(call, event, new Attempt(0, environment, method, reauthenticating, null), false);
     if (opened == null) return;
     if (method == Method.GOOGLE_BROWSER) {
-      browser.open(opened.number, environment, reauthenticating, (credentialAttempt, answer) -> run(() -> checked(opened, answer, credentialAttempt)));
+      browser.open(opened.number, environment, reauthenticating, new GoogleSignIn.Returned() {
+        @Override public void exchanged(int credentialAttempt, Checked answer) {
+          run(() -> checked(opened, answer, credentialAttempt));
+        }
+
+        @Override public void refused(Failure problem) {
+          run(() -> browserRefused(opened, problem));
+        }
+      });
       return;
     }
     run(() -> {
@@ -357,6 +347,20 @@ public class ElizaSignInPlugin extends Plugin {
       attempt.resendAt = sendAllowedAt.getOrDefault(attempt.method, 0L);
     }
     dispatch(new Event.CloudAnswered(attempt.number, sent.reply()));
+  }
+
+  private void browserRefused(Attempt attempt, Failure problem) {
+    if (problem == Failure.CANCELLED) {
+      dispatch(new Event.Cancel(attempt.number));
+      return;
+    }
+    CloudReply failure = switch (problem) {
+      case EXPIRED -> new CloudReply.Refused(SignInPolicy.RefusalCode.AUTHENTICATION_REQUIRED, CredentialPolicy.Reason.NO_REASON);
+      case GOOGLE_UNAVAILABLE -> new CloudReply.Refused(SignInPolicy.RefusalCode.PROVIDER_UNAVAILABLE, CredentialPolicy.Reason.NO_REASON);
+      case REJECTED -> new CloudReply.Refused(SignInPolicy.RefusalCode.ACCESS_DENIED, CredentialPolicy.Reason.NO_REASON);
+      default -> new CloudReply.Unanswered();
+    };
+    dispatch(new Event.CloudAnswered(attempt.number, failure));
   }
 
   private void checked(Attempt attempt, Checked answer, int reserved) {
@@ -582,13 +586,6 @@ public class ElizaSignInPlugin extends Plugin {
     catch (RejectedExecutionException closed) { return; }
   }
 
-  private void accountChanged(String name, String problem) {
-    SignInRegistration.Environment environment = registration.environment(name);
-    if (environment == null) return;
-    JSObject changed = new JSObject().put("environment", environment.name).put("account", account(environment));
-    notifyListeners("signInAccountChanged", problem == null ? changed : changed.put("problem", problem));
-  }
-
   private SignInRegistration.Environment environment(PluginCall call) {
     if (registration == null) { reject(call, Failure.REJECTED); return null; }
     SignInRegistration.Environment environment = registration.environment(call.getString("environment"));
@@ -614,11 +611,6 @@ public class ElizaSignInPlugin extends Plugin {
   private static void reject(PluginCall call, Failure failure, long resendAt) {
     if (resendAt > 0) call.reject(failure.wire, failure.wire, new JSObject().put("resendAt", resendAt));
     else call.reject(failure.wire, failure.wire);
-  }
-
-  static SignInRegistration registration(JSONObject config) {
-    try { return SignInRegistration.parse(map(config)); }
-    catch (SignInRegistration.Refused refused) { return null; }
   }
 
   private static Map<String, Object> map(JSONObject object) {

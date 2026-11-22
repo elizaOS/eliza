@@ -59,7 +59,7 @@ public final class BrowserReturnReplay {
 
   private static final BrowserReturns.Port QUIET = new BrowserReturns.Port() {
     @Override public void handed(BrowserReturns.Handoff handoff) {}
-    @Override public void ended(String client, BrowserReturns.Ended why) {}
+    @Override public void ended(String client, int generation, BrowserReturns.Ended why) {}
     @Override public void incomplete(String client) {}
   };
 
@@ -124,7 +124,7 @@ public final class BrowserReturnReplay {
     switch (type) {
       case "start" -> {
         return returns.start(client(CredentialJson.whole(e, "client")), nonce(CredentialJson.whole(e, "nonce")), VERIFIER,
-          checks(CredentialJson.object(e.get("checks"), "checks")));
+          BrowserReturns.Purpose.SIGN_IN, checks(CredentialJson.object(e.get("checks"), "checks"))) != null;
       }
       case "returned" -> {
         slots.failDelete = burnFails(e);

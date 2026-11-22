@@ -1,4 +1,3 @@
-// spec/os/android/secureStore.md, "A slot is absent only when none of its files exists, and an unreadable slot is never treated as absent"
 package ai.eliza.plugins.securestore.nativeonly;
 
 import android.security.keystore.KeyGenParameterSpec;

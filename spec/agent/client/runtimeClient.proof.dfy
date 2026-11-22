@@ -640,4 +640,3 @@ lemma startupFailed_ensures(c: RuntimeClient, ofGen: int)
     SettleSteps(false, c);
   }
 }
-

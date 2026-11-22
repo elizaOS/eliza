@@ -65,6 +65,10 @@ module node {
     status: Schema.Int.check(Schema.isGreaterThanOrEqualTo(100), Schema.isLessThanOrEqualTo(599)),
     headers: Schema.Record(Schema.String, Schema.String),
   }))
+  const decodeStreamFrame = Schema.decodeUnknownSync(Schema.Union([
+    Schema.Struct({ kind: Schema.Literal("chunk"), data: Schema.Uint8Array }),
+    Schema.Struct({ kind: Schema.Literals(["end", "error", "aborted", "head"]) }),
+  ]))
   const refusal = Schema.decodeUnknownOption(Schema.Struct({
     error: Schema.optionalKey(Schema.String), code: Schema.optionalKey(Schema.String),
     retryAfter: Schema.optionalKey(Schema.Number),
@@ -113,17 +117,41 @@ module node {
     readonly status: number
     readonly headers: Readonly<Record<string, string>>
     readonly chunks: AsyncIterator<Uint8Array>
+    readonly close: () => void
   }
 
-  interface Pending {
+  interface PendingRequest {
     path: string
     body: unknown
-    delivery: Delivery
-    resolve: (data: unknown) => void
     reject: (reason: unknown) => void
     bridge?: RuntimeJsonBridge
-    stop?: AbortController
+  }
+
+  interface PlainRequest extends PendingRequest {
+    delivery: Extract<Delivery, "Plain">
+    resolve: (data: unknown) => void
+  }
+
+  interface StreamRequest extends PendingRequest {
+    delivery: Extract<Delivery, "Stream">
+    resolve: (stream: RuntimeStream) => void
+    stop: AbortController
     opened?: RuntimeStream
+  }
+
+  type Pending = PlainRequest | StreamRequest
+
+  function closeOnce(signal: AbortSignal, source: AsyncIterator<unknown>): () => void {
+    let closed = false
+    const close = () => {
+      if (closed) return
+      closed = true
+      signal.removeEventListener("abort", close)
+      void Promise.resolve().then(() => source.return?.()).catch(() => undefined)
+    }
+    if (signal.aborted) close()
+    else signal.addEventListener("abort", close, { once: true })
+    return close
   }
 
   export function createRuntimeJsonClient(options: RuntimeClientOptions) {
@@ -158,12 +186,13 @@ module node {
         switch (command.tag) {
           case "Send": {
             const input = pending.get(command.request)
-            if (input) void (input.delivery === "Stream" ? open : dispatch)(command.request, input, command.over, generation.signal)
+            if (input?.delivery === "Stream") void open(command.request, input, command.over, generation.signal)
+            else if (input) void dispatch(command.request, input, command.over, generation.signal)
             break
           }
           case "Open": {
             const input = pending.get(command.id)
-            if (input?.opened) input.resolve(input.opened)
+            if (input?.delivery === "Stream" && input.opened !== undefined) input.resolve(input.opened)
             break
           }
           case "Probe": {
@@ -176,10 +205,10 @@ module node {
             if (!input) break
             pending.delete(command.id)
             const stage = command.stage
-            input.stop?.abort(new Error(stage.tag === "Failed" ? stage.why : "Settled"))
+            if (input.delivery === "Stream") input.stop.abort(new Error(stage.tag === "Failed" ? stage.why : "Settled"))
             if (stage.tag === "Failed") {
               input.reject(new Error(stage.why))
-            } else if (answer && stage.tag === "Replied") {
+            } else if (answer && stage.tag === "Replied" && input.delivery === "Plain") {
               input.resolve(answer.data)
             } else if (answer && stage.tag === "Refused") {
               const data = refusal(answer.data)
@@ -231,7 +260,7 @@ module node {
       }
     }
 
-    async function dispatch(id: number, input: Pending, route: "Bridge" | "Http", signal: AbortSignal) {
+    async function dispatch(id: number, input: PlainRequest, route: Route, signal: AbortSignal) {
       try {
         const deadline = AbortSignal.any([signal, AbortSignal.timeout(options.requestTimeoutMs)])
         const method = input.body === undefined ? "GET" : "POST"
@@ -258,32 +287,36 @@ module node {
       }
     }
 
-    async function connect(input: Pending, route: Route, signal: AbortSignal): Promise<Wire> {
+    async function connect(input: StreamRequest, route: Route, signal: AbortSignal): Promise<Wire> {
       const body = input.body === undefined ? {} : { body: input.body }
       if (route === "Bridge" && input.bridge) {
         if (!input.bridge.requestStream) throw new Error("NoRoute")
         const frames = input.bridge.requestStream({ path: input.path, method: "POST", ...body }, signal)[Symbol.asyncIterator]()
-        const first = await frames.next()
-        if (first.done || first.value.kind !== "head") throw new Error("TransportFailed")
-        const head = decodeHead(first.value)
-        const chunks: AsyncIterator<Uint8Array> = {
-          async next() {
-            const frame = await frames.next()
-            if (frame.done) throw new Error("TransportFailed")
-            switch (frame.value.kind) {
-              case "chunk": return { done: false, value: frame.value.data }
-              case "end": return { done: true, value: undefined }
-              case "head":
-              case "error":
-              case "aborted": throw new Error("TransportFailed")
-            }
-          },
-          async return() {
-            await frames.return?.()
-            return { done: true, value: undefined }
-          },
+        const close = closeOnce(signal, frames)
+        try {
+          const first = await frames.next()
+          if (first.done || first.value?.kind !== "head") throw new Error("TransportFailed")
+          const head = decodeHead(first.value)
+          return {
+            ...head, close, chunks: {
+              async next() {
+                const frame = await frames.next()
+                if (frame.done) throw new Error("TransportFailed")
+                const item = decodeStreamFrame(frame.value)
+                switch (item.kind) {
+                  case "chunk": return { done: false, value: item.data }
+                  case "end": return { done: true, value: undefined }
+                  case "head":
+                  case "error":
+                  case "aborted": throw new Error("TransportFailed")
+                }
+              },
+            },
+          }
+        } catch (error) {
+          close()
+          throw error
         }
-        return { ...head, chunks }
       }
       if (route !== "Http" || !httpOrigin) throw new Error("NoRoute")
       const url = new URL(input.path, httpOrigin)
@@ -292,30 +325,32 @@ module node {
         method: "POST", signal, credentials: "omit", redirect: "manual",
         ...(input.body === undefined ? {} : { body: JSON.stringify(input.body), headers: { "Content-Type": "application/json" } }),
       })
-      const head = decodeHead({ status: response.status, headers: Object.fromEntries(response.headers) })
       const reader = response.body?.getReader()
-      return {
-        ...head,
-        chunks: {
-          async next() {
-            const read = reader ? await reader.read() : { done: true as const, value: undefined }
-            return read.done ? { done: true, value: undefined } : { done: false, value: read.value }
-          },
-          async return() {
-            await reader?.cancel()
-            return { done: true, value: undefined }
-          },
+      const chunks: AsyncIterator<Uint8Array> = {
+        async next() {
+          const read = reader ? await reader.read() : { done: true as const, value: undefined }
+          return read.done ? { done: true, value: undefined } : { done: false, value: read.value }
         },
+        async return() {
+          if (reader !== undefined) {
+            try { await reader.cancel() } finally { reader.releaseLock() }
+          }
+          return { done: true, value: undefined }
+        },
+      }
+      const close = closeOnce(signal, chunks)
+      try {
+        const head = decodeHead({ status: response.status, headers: Object.fromEntries(response.headers) })
+        return { ...head, chunks, close }
+      } catch (error) {
+        close()
+        throw error
       }
     }
 
     function body(id: number, wire: Wire, live: AbortSignal, stop: AbortController): AsyncIterable<Uint8Array> {
       let taken = false
       let finished = false
-      const close = () => {
-        finished = true
-        void wire.chunks.return?.().catch(() => undefined)
-      }
       return {
         [Symbol.asyncIterator]() {
           if (taken) throw new Error("StreamAlreadyRead")
@@ -329,10 +364,11 @@ module node {
                 live.throwIfAborted()
                 if (!step.done) return step
                 finished = true
+                wire.close()
                 send({ type: "streamEnded", id })
                 return { done: true, value: undefined }
               } catch (error) {
-                close()
+                wire.close()
                 if (live.aborted) throw live.reason
                 send({ type: "transportFailed", id })
                 throw new Error("TransportFailed", { cause: error })
@@ -340,7 +376,8 @@ module node {
             },
             async return(): Promise<IteratorResult<Uint8Array>> {
               if (!finished) {
-                close()
+                finished = true
+                wire.close()
                 stop.abort(new Error("Cancelled"))
                 send({ type: "cancel", id })
               }
@@ -351,23 +388,23 @@ module node {
       }
     }
 
-    async function open(id: number, input: Pending, route: Route, signal: AbortSignal) {
-      const stop = input.stop ?? new AbortController()
+    async function open(id: number, input: StreamRequest, route: Route, signal: AbortSignal) {
+      const stop = input.stop
       const live = AbortSignal.any([signal, stop.signal])
-      const head = new AbortController()
-      const timer = setTimeout(() => head.abort(new Error("TransportFailed")), options.requestTimeoutMs)
+      const deadline = AbortSignal.any([live, AbortSignal.timeout(options.requestTimeoutMs)])
+      let wire: Wire | undefined
       try {
-        const wire = await abortable(AbortSignal.any([live, head.signal]), () => connect(input, route, AbortSignal.any([live, head.signal])))
-        clearTimeout(timer)
+        const connected = await abortable(deadline, () => connect(input, route, live))
+        wire = connected
         if (wire.status >= 200 && wire.status < 300) {
           input.opened = { status: wire.status, headers: wire.headers, body: body(id, wire, live, stop) }
           send({ type: "reply", id, httpStatus: wire.status, retry: { tag: "NoAdvice" } })
-          if (current().requests.find((entry) => entry.id === id)?.stage.tag !== "Streaming") void wire.chunks.return?.().catch(() => undefined)
+          if (current().requests.find((entry) => entry.id === id)?.stage.tag === "Streaming") wire = undefined
           return
         }
         const decoder = new TextDecoder()
         let text = ""
-        for (let step = await abortable(live, () => wire.chunks.next()); !step.done; step = await abortable(live, () => wire.chunks.next())) {
+        for (let step = await abortable(deadline, () => connected.chunks.next()); !step.done; step = await abortable(deadline, () => connected.chunks.next())) {
           text += decoder.decode(step.value, { stream: true })
         }
         const data = parsedOrNull(text + decoder.decode())
@@ -375,7 +412,7 @@ module node {
       } catch {
         send({ type: "transportFailed", id })
       } finally {
-        clearTimeout(timer)
+        wire?.close()
       }
     }
 
@@ -432,7 +469,7 @@ module node {
         }
         signal?.addEventListener("abort", cancel, { once: true })
         stop.signal.addEventListener("abort", () => signal?.removeEventListener("abort", cancel), { once: true })
-        pending.set(id, { path, body, delivery: "Stream", stop, resolve: (opened) => resolve(opened as RuntimeStream), reject })
+        pending.set(id, { path, body, delivery: "Stream", stop, resolve, reject })
         send({ type: "submit", path: "Rooted", delivery: "Stream" })
       })
     }
@@ -442,9 +479,10 @@ module node {
 }
 
 export { createRuntimeJsonClient, RuntimeRequestError, type RuntimeClientOptions, type RuntimeJsonBridge, type RuntimeJsonResponse, type RuntimeStatus, type RuntimeStream, type RuntimeStreamFrame } from node
-export { DeviceExecution, type ApproveResult, type DeviceAgent, type DeviceExecutionPorts, type DeviceJournal, type DeviceProposal, type DeviceReview, type ExecutorCall, type JournalEntry, type JournalIdentity, type RecoverResult, type ReviewResult, type ScreenCheck } from "./device-execution.vibe"
+export { DeviceExecution, NOT_DISPATCHED, type ApproveResult, type DeviceAgent, type DeviceClaim, type DeviceExecutionPorts, type DeviceJournal, type DeviceProposal, type DeviceReceipt, type DeviceReview, type ExecutorCall, type JournalEntry, type JournalIdentity, type RecoverResult, type ReviewResult, type ScreenCheck } from "./device-execution.vibe"
+export { readReplyStream, REPLY_STREAM_PROTOCOL, type ReplyOutcome, type ReplyStreamHooks, type StreamedReply } from "./stream-reader.vibe"
 export { TaskLifecycle, TaskView, TASK_PAUSE_TIMEOUT_MS, type TaskLifecycleCommand, type TaskLifecycleMessages, type TaskLifecycleRequest, type TaskLifecycleState } from "./task-lifecycle.vibe"
 export { createSurfaceClient, SurfaceProtocol, SurfaceTransport, type SurfaceClient, type SurfaceClientOptions, type SurfaceCommandContext, type SurfaceFailure, type SurfaceRequest } from "./surface-client.vibe"
 export { TASK_ID_PATTERN } from "@elizaos/core/task-events"
-export { readReplyStream, REPLY_STREAM_PROTOCOL, type ReplyOutcome, type ReplyStreamHooks, type StreamedReply } from "./stream-reader.vibe"
+
 export { TurnController, ConversationRecord, InvalidConversation, findStoppedUserTurn, type ClientMessageId, type HistoryMessage, type StopResult, type StoppedConversationTurn, type TurnMessage, type TurnOptions, type TurnRefusal, type TurnReply, type TurnResult, type TurnTransport } from "./turn-controller.vibe"

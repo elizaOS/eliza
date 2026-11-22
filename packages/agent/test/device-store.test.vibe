@@ -1,22 +1,50 @@
 // spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it"; spec/agent/deviceActions/index.md, "A revoked enrollment never returns and retires every open offer"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"
 import { assert, it } from "@effect/vitest"
 import type { IDatabaseAdapter } from "@elizaos/core"
-import type { Event } from "../gen/agent__deviceActions.effect.vibe"
+import { apply } from "../gen/agent__deviceActions.effect.vibe"
 import type { SessionOwner } from "../gen/core__sessions.effect.vibe"
 import {
-  changeEnrollment, changeViewProfile, enrollment, listRequests, offerRequest, openRequest, viewProfile,
-  type OfferEvent, type RequestTerms,
+  changeEnrollment, changeViewProfile, enrollment, listRequests, offerRequest, openRequest, recordRequestClaim, recordRequestDecision, recordRequestReceipt, viewProfile,
+  type AdmittedRequestReceipt, type OfferEvent, type RequestEvent, type RequestTerms,
 } from "../src/device-actions/store.vibe"
 import { openDeviceStorage } from "../src/storage/index.vibe"
 import { migrations } from "../src/storage/schema.vibe"
 import { host, scratch } from "./support/kernel.vibe"
 
+module node {
+  import { PGlite } from "@electric-sql/pglite"
+  import type { IDatabaseAdapter } from "@elizaos/core"
+  import type { DeviceRequest } from "../gen/agent__deviceActions.ts"
+  import type { RequestTerms } from "../src/device-actions/store.vibe"
+
+  export async function seedLegacyWorkflow(adapter: IDatabaseAdapter, state: DeviceRequest, terms: RequestTerms) {
+    const db = await adapter.getConnection()
+    if (!(db instanceof PGlite)) throw new Error("The migration fixture needs the real device database")
+    await db.query(
+      `INSERT INTO device_requests (proposal_id, revision, state, settled, operation, binding, bound_profile, need, created_at)
+        VALUES ($1, 1, $2::jsonb, false, $3::jsonb, 'WorkflowBinding', $4::jsonb, $5::jsonb, $6)`,
+      [state.proposalId, JSON.stringify(state), JSON.stringify(terms.operation), JSON.stringify(terms.boundProfile),
+        JSON.stringify(terms.need), state.createdAt],
+    )
+  }
+}
+
+import { seedLegacyWorkflow } from node
+
 const capability = "calendar.create.v1"
 const owner: SessionOwner = { agentId: "agent-1", actorId: "owner-1", connector: "agent-1" }
-const register: Event = { type: "registerDevice", keyHash: "key-hash-1", capabilities: [capability], workflowProtocol: 1 }
+const register: RequestEvent = { type: "registerDevice", keyHash: "key-hash-1", capabilities: [capability], workflowProtocol: 1 }
 const terms: RequestTerms = {
   operation: { type: "calendar.create.v1", title: "Dentist" }, binding: "NoBinding",
   boundProfile: { tag: "NoRevisionRead" }, need: { required: ["CalendarCreateV1"], oneOf: [] },
+}
+const workflowTerms: RequestTerms = {
+  operation: { type: "speak_text", text: "The reviewed notice" },
+  binding: {
+    kind: "WorkflowBinding", workflowId: "workflow-1", versionId: "version-1",
+    runId: "run-1", stepId: "step-1", specDigest: "a".repeat(64),
+  },
+  boundProfile: { tag: "NoRevisionRead" }, need: { required: [], oneOf: ["CalendarCreateV1"] },
 }
 const result = { kind: "calendar", eventId: "event-1" }
 
@@ -35,15 +63,7 @@ effect function closed(adapter: IDatabaseAdapter) {
 
 effect function failure<A, E extends { readonly _tag: string }>(work: A!E) {
   const done = try exit(work)
-  if (Exit.isSuccess(done)) return undefined
-  const error = Cause.squash(done.cause)
-  return { _tag: typeof error === "object" && error !== null && "_tag" in error ? String(error._tag) : "Defect" }
-}
-
-effect function send(adapter: IDatabaseAdapter, proposalId: string, events: readonly Event[], write = {}) {
-  const record = try openRequest(adapter, proposalId, write)
-  if (record === undefined) return try die(new Error(`No device request ${proposalId}`))
-  for (const event of events) try record.machine.send(event, owner)
+  return Exit.isFailure(done) ? Option.getOrUndefined(Cause.findErrorOption(done.cause)) : undefined
 }
 
 effect function listed(adapter: IDatabaseAdapter) {
@@ -53,7 +73,7 @@ effect function listed(adapter: IDatabaseAdapter) {
   return { open: try phases("open"), settled: try phases("settled") }
 }
 
-it.live('Enroll my device, offer requests from its enrollment and revoke it for good, across a restart (spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it")', effect () => {
+it.live('Keep accepted device receipts across a restart and revoke the enrollment for good (spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it")', effect () => {
   const state = try scratch("device-store")
   const before = try Clock.currentTimeMillis
   const first = try open(state.file("state"), true)
@@ -62,28 +82,68 @@ it.live('Enroll my device, offer requests from its enrollment and revoke it for 
   assert.isAtLeast(enrolled.session.now, before)
   const otherKey = try failure(changeEnrollment(first.adapter, { ...register, keyHash: "key-hash-2" }, owner))
   assert.strictEqual(otherKey?._tag, "Rejected")
-  for (const id of ["p1", "p2", "p3"]) try offerRequest(first.adapter, offerOf(id, try Clock.currentTimeMillis), owner, terms)
+  for (const id of ["p1", "p2", "p3", "p-without-result"]) try offerRequest(first.adapter, offerOf(id, try Clock.currentTimeMillis), owner, id === "p3" ? workflowTerms : terms)
   const taken = try failure(offerRequest(first.adapter, offerOf("p1", try Clock.currentTimeMillis), owner, terms))
   assert.strictEqual(taken?._tag, "ProposalIdTaken")
-  try send(first.adapter, "p1", [{ type: "decide", digest: "digest-p1", approved: true }, { type: "claim", digest: "digest-p1" }])
-  try send(first.adapter, "p1", [{ type: "receipt", digest: "digest-p1", attemptId: 1, reportedOutcome: "ReportedApplied" }], { result })
-  try send(first.adapter, "p2", [{ type: "decide", digest: "digest-p2", approved: false }])
+  assert.strictEqual((try recordRequestDecision(first.adapter, { proposalId: "p1", digest: "digest-p1", by: owner, approved: true })).kind, "decided")
+  const claimRequest = { proposalId: "p1", digest: "digest-p1", by: owner }
+  const claimed = try recordRequestClaim(first.adapter, claimRequest)
+  if (claimed.kind !== "claimed") return try die(new Error("The device claim was refused"))
+  assert.strictEqual((try recordRequestClaim(first.adapter, claimRequest)).kind, "refused")
+  const receipt: AdmittedRequestReceipt = {
+    proposalId: "p1", by: owner, result,
+    event: { type: "receipt", digest: "digest-p1", attemptId: claimed.binding.modelAttemptId, reportedOutcome: "ReportedApplied" },
+  }
+  const competingResult = { ...result, eventId: "event-2" }
+  const [firstResult, secondResult] = try all([
+    recordRequestReceipt(first.adapter, receipt),
+    recordRequestReceipt(first.adapter, { ...receipt, result: competingResult }),
+  ], { concurrency: "unbounded" })
+  assert.deepStrictEqual([firstResult.kind, secondResult.kind].sort(), ["recorded", "refused"])
+  const keptResult = firstResult.kind === "recorded" ? result : competingResult
+  const refusedResult = firstResult.kind === "recorded" ? competingResult : result
+  const noResult: AdmittedRequestReceipt = {
+    proposalId: "p-without-result", by: owner, result: undefined,
+    event: { type: "receipt", digest: "digest-p-without-result", attemptId: 1, reportedOutcome: "ReportedNothingRan" },
+  }
+  assert.strictEqual((try recordRequestDecision(first.adapter, {
+    proposalId: noResult.proposalId, digest: noResult.event.digest, by: owner, approved: true,
+  })).kind, "decided")
+  assert.strictEqual((try recordRequestClaim(first.adapter, {
+    proposalId: noResult.proposalId, digest: noResult.event.digest, by: owner,
+  })).kind, "claimed")
+  assert.strictEqual((try recordRequestReceipt(first.adapter, noResult)).kind, "recorded")
+  assert.strictEqual((try recordRequestDecision(first.adapter, { proposalId: "p2", digest: "digest-p2", by: owner, approved: false })).kind, "decided")
   try closed(first.adapter)
 
   const second = try open(state.file("state"), true)
   assert.deepStrictEqual(try listed(second.adapter), {
     open: [["p3", "Offered", "Enrolled"]],
-    settled: [["p1", "Receipted", "Enrolled"], ["p2", "Declined", "Enrolled"]],
+    settled: [["p1", "Receipted", "Enrolled"], ["p2", "Declined", "Enrolled"], ["p-without-result", "Receipted", "Enrolled"]],
   })
+  const same = try recordRequestReceipt(second.adapter, { ...receipt, result: { eventId: keptResult.eventId, kind: keptResult.kind } })
+  const changed = try recordRequestReceipt(second.adapter, { ...receipt, result: refusedResult })
+  const wrongAttempt = try recordRequestReceipt(second.adapter, { ...receipt, result: keptResult, event: { ...receipt.event, attemptId: 2 } })
+  const changedOutcome = try recordRequestReceipt(second.adapter, {
+    ...receipt, result: keptResult, event: { ...receipt.event, reportedOutcome: "ReportedUnknown" },
+  })
+  const sameAbsent = try recordRequestReceipt(second.adapter, noResult)
+  const changedToNull = try recordRequestReceipt(second.adapter, { ...noResult, result: null })
+  assert.deepStrictEqual([same.kind, changed.kind, wrongAttempt.kind, changedOutcome.kind, sameAbsent.kind, changedToNull.kind], [
+    "recorded", "refused", "refused", "refused", "recorded", "refused",
+  ])
   const applied = try openRequest(second.adapter, "p1")
-  assert.deepStrictEqual({ result: applied?.result, terms: applied?.terms }, { result, terms })
+  assert.deepStrictEqual({ result: applied?.result, terms: applied?.terms, claim: applied?.claim, providerReceipt: applied?.providerReceipt }, {
+    result: keptResult, terms, claim: claimed.binding, providerReceipt: undefined,
+  })
+  assert.deepStrictEqual((try openRequest(second.adapter, "p3"))?.terms, workflowTerms)
   assert.isUndefined(try openRequest(second.adapter, "missing"))
 
   const revoked = try changeEnrollment(second.adapter, { type: "revokeEnrollment" }, owner)
   assert.strictEqual(revoked.enrollment.tag, "Revoked")
   assert.deepStrictEqual(try listed(second.adapter), {
     open: [],
-    settled: [["p1", "Receipted", "Revoked"], ["p2", "Declined", "Revoked"], ["p3", "Retired", "Revoked"]],
+    settled: [["p1", "Receipted", "Revoked"], ["p2", "Declined", "Revoked"], ["p3", "Retired", "Revoked"], ["p-without-result", "Receipted", "Revoked"]],
   })
   const lateOffer = try failure(offerRequest(second.adapter, offerOf("p4", try Clock.currentTimeMillis), owner, terms))
   const reEnroll = try failure(changeEnrollment(second.adapter, register, owner))
@@ -113,8 +173,14 @@ it.effect('A version 2 store gains the device request tables, and a closed store
   const state = try scratch("device-store-migrate")
   const older = try open(state.file("state"), true, migrations.slice(0, 2))
   try closed(older.adapter)
+  const beforeAuthority = try open(state.file("state"), true, migrations.slice(0, 3))
+  const enrolled = try changeEnrollment(beforeAuthority.adapter, register, owner)
+  const legacy = try apply(enrolled, offerOf("legacy-workflow", try Clock.currentTimeMillis), owner)
+  try host("persist the prior workflow row", () => seedLegacyWorkflow(beforeAuthority.adapter, legacy, workflowTerms))
+  try closed(beforeAuthority.adapter)
   const upgraded = try open(state.file("state"), true)
-  assert.deepStrictEqual(try listRequests(upgraded.adapter, "open"), [])
+  assert.deepStrictEqual((try listRequests(upgraded.adapter, "open")).map(({ proposalId }) => proposalId), ["legacy-workflow"])
+  assert.deepStrictEqual((try openRequest(upgraded.adapter, "legacy-workflow"))?.terms, { ...workflowTerms, binding: "WorkflowBinding" })
   assert.deepStrictEqual(try viewProfile(upgraded.adapter), { tag: "NoProfile" })
   try closed(upgraded.adapter)
   const fault = try failure(enrollment(upgraded.adapter))

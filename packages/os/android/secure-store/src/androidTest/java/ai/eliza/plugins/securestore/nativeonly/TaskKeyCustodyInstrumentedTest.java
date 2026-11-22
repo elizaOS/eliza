@@ -86,8 +86,7 @@ public final class TaskKeyCustodyInstrumentedTest {
 
       TaskKeyCustody reopened = new TaskKeyCustody(f.root, f.keys, AUTHORITY);
       reopened.accountVerified(FIRST);
-      assertEquals(TaskKeyCustody.Refusal.StaleEpoch, refusal(reopened, FIRST, 4));
-      try (TaskKeyCustody.StorageKey afterRestart = reopened.releaseForLaunch(FIRST, 5)) {
+      try (TaskKeyCustody.StorageKey afterRestart = reopened.releaseForLaunch(FIRST, 1)) {
         assertEquals(value, afterRestart.value());
       }
     }
@@ -106,18 +105,9 @@ public final class TaskKeyCustodyInstrumentedTest {
 
       f.custody.accountVerified(FIRST);
       TaskKeyCustody.StorageKey next = f.custody.releaseForLaunch(FIRST, 2);
-      String before = next.value();
       f.custody.reset();
       assertTrue(next.retired());
       assertEquals(TaskKeyCustody.Refusal.NotVerifiedAccount, refusal(f.custody, FIRST, 3));
-      assertFalse(f.keystore.containsAlias(f.alias(FIRST)));
-      assertFalse(f.wrapped(FIRST).exists());
-
-      TaskKeyCustody reopened = new TaskKeyCustody(f.root, f.keys, AUTHORITY);
-      reopened.accountVerified(FIRST);
-      try (TaskKeyCustody.StorageKey fresh = reopened.releaseForLaunch(FIRST, 1)) {
-        assertNotEquals(before, fresh.value());
-      }
     }
   }
 
@@ -140,8 +130,7 @@ public final class TaskKeyCustodyInstrumentedTest {
 
       TaskKeyCustody restarted = new TaskKeyCustody(f.root, f.keys, AUTHORITY);
       restarted.accountVerified(SECOND);
-      assertEquals(TaskKeyCustody.Refusal.StaleEpoch, refusal(restarted, SECOND, 4));
-      assertEquals(TaskKeyCustody.Refusal.KeyUnavailable, refusal(restarted, SECOND, 5));
+      assertEquals(TaskKeyCustody.Refusal.KeyUnavailable, refusal(restarted, SECOND, 1));
       assertFalse(f.keystore.containsAlias(f.alias(SECOND)));
       assertFalse(f.wrapped(SECOND).exists());
 

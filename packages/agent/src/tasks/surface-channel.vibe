@@ -198,20 +198,27 @@ export effect function openSurfaceChannel() {
 
   effect function pull(body: unknown) {
     const sent = try parsed(decodeConnection, body, requestLimitBytes, "Invalid surface pull")
-    const opened = try serial(effect {
-      const state = try serving()
-      const conn = modelConnection(sent.connectionId)
-      if (!isCurrent(state, conn)) throw stale("The surface connection is no longer current")
-      if (state.holding) throw busy("Only one surface pull may wait at a time")
-      if (hasWork(state)) return { conn, answer: try handOver(state, { type: "pull", connection: conn }) }
-      try stepped({ type: "pull", connection: conn })
-      return { conn, answer: undefined }
+    return try uninterruptibleMask((restore) => effect {
+      const opened = try serial(effect {
+        const state = try serving()
+        const conn = modelConnection(sent.connectionId)
+        if (!isCurrent(state, conn)) throw stale("The surface connection is no longer current")
+        if (state.holding) throw busy("Only one surface pull may wait at a time")
+        if (hasWork(state)) return { conn, answer: try handOver(state, { type: "pull", connection: conn }) }
+        try stepped({ type: "pull", connection: conn })
+        return { conn, answer: undefined }
+      })
+      if (opened.answer !== undefined) return opened.answer
+      const { conn } = opened
+      const woken = Stream.runHead(Stream.filter(model.changes, (state) => !canAnswerHeldPull(state, conn) || hasWork(state)))
+      return try onInterrupt(restore(effect {
+        try timeoutOption(woken, Duration.millis(pullHoldMs))
+        return try serial(answerHeld(conn))
+      }), () => serial(effect {
+        const state = try tick()
+        if (canAnswerHeldPull(state, conn)) try stepped({ type: "closeConnection", connection: conn })
+      }))
     })
-    if (opened.answer !== undefined) return opened.answer
-    const { conn } = opened
-    const woken = Stream.runHead(Stream.filter(model.changes, (state) => !canAnswerHeldPull(state, conn) || hasWork(state)))
-    try onInterrupt(timeoutOption(woken, Duration.millis(pullHoldMs)), () => Effect.ignore(serial(answerHeld(conn))))
-    return try serial(answerHeld(conn))
   }
 
   effect function reply(body: unknown) {
@@ -257,30 +264,33 @@ export effect function openSurfaceChannel() {
   effect function send(command: SurfaceCommand): SurfaceAnswer!SurfaceRefused {
     const input = try copied(command.input, replyLimitBytes, "The surface command input")
     const answer = try Deferred.make<SurfaceAnswer>()
-    const id = try serial(effect {
-      const state = try serving()
-      const conn = modelConnection(command.connectionId)
-      if (!isCurrent(state, conn)) throw stale("The surface connection was replaced")
-      if (!canSend(state, conn)) throw busy("The surface command limit is reached")
-      const next = try stepped({ type: "send", connection: conn, effect: command.effect })
-      const queuedId = next.state.nextId - 1
-      const wireId = opaqueId()
-      queued.set(queuedId, { wireId, input, answer })
-      wireIds.set(queuedId, wireId)
-      byWire.set(wireId, queuedId)
-      return queuedId
+    return try uninterruptibleMask((restore) => effect {
+      const id = try serial(effect {
+        const state = try serving()
+        const conn = modelConnection(command.connectionId)
+        if (!isCurrent(state, conn)) throw stale("The surface connection was replaced")
+        if (!canSend(state, conn)) throw busy("The surface command limit is reached")
+        const next = try stepped({ type: "send", connection: conn, effect: command.effect })
+        const queuedId = next.state.nextId - 1
+        const wireId = opaqueId()
+        queued.set(queuedId, { wireId, input, answer })
+        wireIds.set(queuedId, wireId)
+        byWire.set(wireId, queuedId)
+        return queuedId
+      })
+      return try onInterrupt(restore(settled(id, answer)), () => serial(giveUp(id, () => true)))
     })
-    return try onInterrupt(settled(id, answer), () => serial(giveUp(id, () => true)))
   }
 
-  effect function answered(handle: (body: unknown) => object!SurfaceRefused, body: unknown) {
-    return { status: 200, body: try handle(body) }
+  effect function answered(handle: (body: unknown) => object!SurfaceRefused, input: RouteInput, limit: number) {
+    if ((input.rawBodyBytes ?? 0) > limit) throw invalid("The surface request exceeds its size limit", 413)
+    return { status: 200, body: try handle(input.body) }
   }
 
-  const route = (path: string, handle: (body: unknown) => object!SurfaceRefused): LocalRoute => ({
+  const route = (path: string, handle: (body: unknown) => object!SurfaceRefused, limit = requestLimitBytes): LocalRoute => ({
     method: "POST", path,
     handler: (input: RouteInput) => run(effect {
-      return answered(handle, input.body) catch (refused) => ({ status: refused.refusal.status, body: { code: refused.refusal.code, message: refused.message } })
+      return answered(handle, input, limit) catch (refused) => ({ status: refused.refusal.status, body: { code: refused.refusal.code, message: refused.message } })
     }, { signal: input.signal }),
   })
 
@@ -299,7 +309,7 @@ export effect function openSurfaceChannel() {
     routes: [
       route("/api/surface/connect", connect),
       route("/api/surface/pull", pull),
-      route("/api/surface/reply", reply),
+      route("/api/surface/reply", reply, replyLimitBytes),
       route("/api/surface/close", close),
     ],
     run,

@@ -2,7 +2,7 @@
 import { ChildProcess } from "effect/process"
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
 import {
-  Machine,
+  type Machine,
   assemble,
   canAdmit,
   canArchiveSet,
@@ -374,7 +374,7 @@ export effect function openAndroidBuild(options: BuildAndroid) {
   return run
 }
 
-export effect function admitAndroidBuild(run: AndroidBuildRun) {
+effect function admitAndroidBuild(run: AndroidBuildRun) {
   try guard(run, "admit", canAdmit)
   const options = run.options
   const problems = optionProblems(options)
@@ -466,7 +466,7 @@ effect function copyOut(run: AndroidBuildRun, request: BuildRequest, set: readon
   return true
 }
 
-export effect function assembleAndroidBuild(run: AndroidBuildRun) {
+effect function assembleAndroidBuild(run: AndroidBuildRun) {
   const state = try guard(run, "assemble", canAssemble)
   const request = state.request
   const failed = { succeeded: false, apksPresent: false, releaseSigned: false, copied: false }
@@ -520,7 +520,7 @@ effect function carriesNoInference(run: AndroidBuildRun, apks: readonly string[]
   return true
 }
 
-export effect function verifyAndroidBuild(run: AndroidBuildRun) {
+effect function verifyAndroidBuild(run: AndroidBuildRun) {
   const state = try guard(run, "verify", canVerify)
   const path = try Path.Path
   const next = path.join(run.work, NEXT)
@@ -563,14 +563,14 @@ effect function tidy(places: readonly string[], destination: string | undefined,
   } catch () => false)
 }
 
-export effect function publishAndroidBuild(run: AndroidBuildRun) {
+effect function publishAndroidBuild(run: AndroidBuildRun) {
   try guard(run, "publishSet", canPublishSet)
   const path = try Path.Path
   const ok = (swap(path.join(run.work, NEXT), run.output, path.join(run.work, PREVIOUS)) catch () => false)
   return try send(run, { type: "publishSet", ok }, ok ? "" : `The verified set could not replace ${run.output}`)
 }
 
-export effect function cleanAndroidSet(run: AndroidBuildRun) {
+effect function cleanAndroidSet(run: AndroidBuildRun) {
   try guard(run, "cleanSet", canCleanSet)
   const path = try Path.Path
   const removed = try tidy([path.join(run.work, NEXT)], run.output, path.join(run.work, PREVIOUS))
@@ -612,7 +612,7 @@ effect function stageArchive(run: AndroidBuildRun, archive: AndroidArchive, name
   return next
 }
 
-export effect function archiveAndroidBuild(run: AndroidBuildRun) {
+effect function archiveAndroidBuild(run: AndroidBuildRun) {
   const state = try guard(run, "archiveSet", canArchiveSet)
   const path = try Path.Path
   const archive = run.options.archive ?? null
@@ -631,7 +631,7 @@ export effect function archiveAndroidBuild(run: AndroidBuildRun) {
   return try send(run, { type: "archiveSet", filesMatch: true, ok }, ok ? "" : `The archive could not replace ${destination}`)
 }
 
-export effect function cleanAndroidArchive(run: AndroidBuildRun) {
+effect function cleanAndroidArchive(run: AndroidBuildRun) {
   try guard(run, "cleanArchive", canCleanArchive)
   const path = try Path.Path
   const removed = try tidy([path.join(run.work, ARCHIVE_NEXT)], run.archive, path.join(run.work, ARCHIVE_PREVIOUS))

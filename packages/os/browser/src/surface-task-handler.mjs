@@ -31,8 +31,7 @@ export function createSurfaceTaskHandler({
     records = new Map(),
     observations = new Map();
   let retired = false,
-    processing = Promise.resolve(),
-    bindingQueue = Promise.resolve();
+    processing = Promise.resolve();
   const alive = () => !retired && isCurrent();
   const api = {
     storage: {
@@ -101,9 +100,13 @@ export function createSurfaceTaskHandler({
     },
     clearGuidance: async (id) => {
       observations.delete(id);
-      await guidance.clearTab(id);
+      await guidance.clearTab(id, { confirmHidden: true });
     },
-    getUrl: async (id) => (await getPage(id)).url,
+    getUrl: async (id) => {
+      const page = await getPage(id);
+      if (page?.id !== id) throw stale();
+      return page.url;
+    },
     validTabId: validPageId,
   });
   const guidance = createTaskGuidance(api, authority.scope, {
@@ -146,8 +149,9 @@ export function createSurfaceTaskHandler({
         throw failure("UNSUPPORTED", "Answers belong in the trusted host.");
       return guidance.handle(message, current);
     }
+    const checking = message.type === "validate-target";
     if (
-      message.type !== "command" ||
+      (message.type !== "command" && !checking) ||
       Object.keys(message).some(
         (key) => !["type", "id", "command"].includes(key),
       )
@@ -161,6 +165,12 @@ export function createSurfaceTaskHandler({
       !["snapshot", "click", "fill", "select", "scroll", "follow"].includes(
         command.subaction,
       ) ||
+      (checking &&
+        (command.subaction === "snapshot" ||
+          typeof command.selector !== "string" ||
+          typeof command.expectedSelector !== "string" ||
+          !command.expectedSelector ||
+          Object.hasOwn(command, "commitGrant"))) ||
       Object.keys(command).some(
         (key) =>
           ![
@@ -181,8 +191,8 @@ export function createSurfaceTaskHandler({
         "POLICY_BLOCKED",
         "A fixed command with a bound task is required.",
       );
-    const key = `request:${message.id}`;
-    if (records.has(key))
+    const key = checking ? undefined : `request:${message.id}`;
+    if (key !== undefined && records.has(key))
       throw failure(
         "UNCERTAIN_OUTCOME",
         "This request was already admitted; observe without replaying it.",
@@ -192,10 +202,10 @@ export function createSurfaceTaskHandler({
     const valid = () =>
       current() &&
       scoped.current() &&
-      page.id === command.id &&
+      page?.id === command.id &&
       page.isCurrent();
     requireCurrent(valid);
-    records.set(key, "admitted");
+    if (key !== undefined) records.set(key, "admitted");
     if (command.subaction === "snapshot") {
       observations.delete(page.id);
       const reply = await control(
@@ -255,6 +265,31 @@ export function createSurfaceTaskHandler({
       match[1] !== observation.snapshotId
     )
       throw stale();
+    if (checking) {
+      const reply = await control(
+        page,
+        {
+          documentId: observation.documentId,
+          command: {
+            ...scoped.command,
+            snapshotId: match[1],
+            nodeId: match[2],
+            validateOnly: true,
+          },
+        },
+        signal,
+      );
+      if (
+        !valid() ||
+        observations.get(page.id) !== observation ||
+        !observation.page.isCurrent() ||
+        reply.frameScope !== "main" ||
+        reply.documentId !== observation.documentId ||
+        reply.result?.validated !== true
+      )
+        throw stale();
+      return { validated: true };
+    }
     let feedback,
       outcome,
       fault,
@@ -298,7 +333,7 @@ export function createSurfaceTaskHandler({
     } catch (error) {
       fault = {
         error:
-          inputDispatched
+          inputDispatched && error?.code !== "UNCERTAIN_OUTCOME"
             ? failure(
                 "UNCERTAIN_OUTCOME",
                 "The page effect needs fresh readback; do not replay it.",
@@ -328,22 +363,16 @@ export function createSurfaceTaskHandler({
     const message = structuredClone(input);
     const invoke = async () => {
       try {
+        if (message?.type === "task-bind") {
+          return await authority.bind(message, () => alive() && !signal?.aborted);
+        }
         return await run(message, signal);
       } catch (error) {
         if (error?.kind && !error.code) error.code = error.kind;
         throw error;
       }
     };
-    if (message?.type === "task-bind") {
-      const bound = bindingQueue.then(() =>
-        authority.bind(message, () => alive() && !signal?.aborted),
-      );
-      bindingQueue = bound.catch(() => {});
-      return bound.catch((error) => {
-        if (error?.kind && !error.code) error.code = error.kind;
-        throw error;
-      });
-    }
+    if (message?.type === "task-bind") return invoke();
     const next = processing.then(invoke);
     processing = next.catch(() => {});
     return next;

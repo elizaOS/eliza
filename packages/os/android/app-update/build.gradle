@@ -6,7 +6,7 @@ android {
  compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
 }
 dependencies {
- api project(':runtime-files')
+ api project(':eliza-runtime-files')
  androidTestImplementation 'androidx.test:runner:1.6.2'
  androidTestImplementation 'androidx.test.ext:junit:1.3.0'
 }

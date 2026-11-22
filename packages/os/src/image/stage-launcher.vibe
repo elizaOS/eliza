@@ -25,6 +25,7 @@ import {
 import type { Abi } from "../../gen/os__build__runtimePayload.effect.vibe"
 import { hexOf, type ApkBuildType, type SignerObservation } from "../../gen/os__image__apk.effect.vibe"
 import type { ProvisioningRequest } from "../../gen/os__image__provisioning.effect.vibe"
+import { artifactJson, hashArtifact, readArtifact } from "./artifact.vibe"
 import { aaptManifestTree, manifestFacts, parseDigest, parseXmlTree, readApkSigner, readApkSignerDigest, type Environment, type ManifestNode } from "./apk.vibe"
 import { provisioningComponents, writeProvisioningOverlay, type ProvisioningAdmitted } from "./provisioning.vibe"
 
@@ -671,50 +672,120 @@ export effect function stageLauncher(options: StageOptions) {
   })
 }
 
-effect function stagedIntact(output: string, state: LauncherStaging, abi: NativeAbi) {
+effect function publishedRecord(directory: string) {
+  const path = try Path.Path
+  const file = path.join(directory, RECORD)
+  const refused = () => new NativeFinalizeRefused({ output: directory, message: `${RECORD} is not a complete published launcher staging record` })
+  const bytes = try tryPromise({ try: () => readArtifact(file, Number.MAX_SAFE_INTEGER), catch: refused })
+  const recorded = try Effect.try({ try: () => artifactJson(bytes.bytes), catch: refused })
+  if (!isRecord(recorded)) throw refused()
+  const state = try mapError(decodeState(recorded.state), refused)
+  if (state.phase.tag !== "Published" || state.publication.phase !== "Settled" || state.publication.receipt !== "SuccessReceipt") throw refused()
+  return { recorded, state }
+}
+
+type ObservedOverlay =
+  | { readonly kind: "plain" }
+  | { readonly kind: "native"; readonly native: NativeOverlay; readonly report: Readonly<Record<string, unknown>> }
+
+effect function artifactMatches(file: string, digest: string): boolean!! {
+  const observed = tryPromise(() => hashArtifact(file, Number.MAX_SAFE_INTEGER)) catch () => undefined
+  return observed?.sha256 === digest
+}
+
+effect function contentOf(file: string): (Uint8Array | undefined)!! {
+  return (tryPromise(() => readArtifact(file, Number.MAX_SAFE_INTEGER)) |> map(%, (artifact) => artifact.bytes)) catch () => undefined
+}
+
+function sameNativeReport(value: unknown, expected: ReadonlyArray<NativeRecord>): boolean {
+  return Array.isArray(value) && value.length === expected.length && expected.every((record, index) => {
+    const current: unknown = value[index]
+    return isRecord(current) && Object.keys(current).length === Object.keys(record).length
+      && Object.entries(record).every(([key, field]) => current[key] === field)
+  })
+}
+
+effect function observeStagedOverlay(output: string, state: LauncherStaging): (ObservedOverlay | undefined)!!(FileSystem.FileSystem | Path.Path) {
   const files = try FileSystem.FileSystem
   const path = try Path.Path
-  const apk = (files.readFile(path.join(output, LAUNCHER_APK)) catch () => undefined)
-  if (apk === undefined || sha256Hex(apk) !== hexOf(state.call.apk.sha256)) return { intact: false, libraries: [] }
-  const directory = `native-${NATIVE_TARGETS[abi].arch}`
-  const expected = (try readNativeLibraries(apk, LAUNCHER_APK)).filter((entry) => entry.library.abi === NATIVE_TARGETS[abi].abi)
-  const present = ((files.readDirectory(path.join(output, directory)) catch (): string[] => [])).sort()
-  const libraries = expected.map((entry) => ({ name: entry.library.name, sha256: entry.sha256 }))
-  if (present.join("/") !== libraries.map((library) => library.name).sort().join("/")) return { intact: false, libraries }
-  for (const library of libraries) {
-    const staged = (files.readFile(path.join(output, directory, library.name)) catch () => undefined)
-    if (staged === undefined || sha256Hex(staged) !== library.sha256) return { intact: false, libraries }
+  const apkFile = path.join(output, LAUNCHER_APK)
+  const { call } = state
+  const request = call.nativeRequest
+  if (request.tag === "NoNatives" && !(try artifactMatches(apkFile, hexOf(call.apk.sha256)))) return undefined
+  for (const companion of call.companions)
+    if (!(try artifactMatches(path.join(output, `${companion.moduleName}.apk`), hexOf(companion.apk.sha256)))) return undefined
+
+  let native: NativeOverlay | undefined
+  if (request.tag === "NativeFor") {
+    const abi = (Object.keys(NATIVE_TARGETS) as NativeAbi[]).find((key) => NATIVE_TARGETS[key].abi === request.abi)
+    const apk = try contentOf(apkFile)
+    if (abi === undefined || apk === undefined || sha256Hex(apk) !== hexOf(call.apk.sha256)) return undefined
+    const expected = readNativeLibraries(apk, LAUNCHER_APK) catch () => undefined
+    if (expected === undefined) return undefined
+    const staged = path.join(output, `native-${NATIVE_TARGETS[abi].arch}`)
+    const directory = (files.lstat(staged) catch () => undefined)
+    if (directory?.type !== "Directory") return undefined
+    const libraries = expected.filter((entry) => entry.library.abi === request.abi).map((entry) => ({ name: entry.library.name, sha256: entry.sha256 }))
+    const names = (files.readDirectory(staged) catch (): string[] => [])
+    if (names.sort().join("/") !== libraries.map((library) => library.name).sort().join("/")) return undefined
+    for (const library of libraries)
+      if (!(try artifactMatches(path.join(staged, library.name), library.sha256))) return undefined
+    const rule = request.install === "SoongRules" || state.conversion === "Converted" ? "soong" : "make"
+    native = { abi, rule, libraries }
   }
-  const deferred = overlayFiles(state.call.descriptor, overlayPlan(state.call), { abi, rule: "make", libraries })
-  for (const name of ["Android.bp", "Android.mk"]) {
-    const current = (files.readFileString(path.join(output, name)) catch () => undefined)
-    if (current !== deferred.files[name]) return { intact: false, libraries }
+
+  const expected = overlayFiles(call.descriptor, overlayPlan(call), native)
+  const decoder = new TextDecoder()
+  for (const [name, content] of Object.entries(expected.files)) {
+    const file = path.join(output, name)
+    const bytes = try contentOf(file)
+    if (bytes === undefined || decoder.decode(bytes) !== content) return undefined
   }
-  return { intact: true, libraries }
+  if (expected.files["Android.mk"] === undefined && (files.lstat(path.join(output, "Android.mk")) catch () => undefined) !== undefined) return undefined
+  if (native === undefined || request.tag !== "NativeFor") return { kind: "plain" }
+
+  const bytes = try contentOf(path.join(output, REPORT))
+  if (bytes === undefined) return undefined
+  const report = Effect.try(() => artifactJson(bytes)) catch () => undefined
+  const install = request.install === "MakeRules" ? "android-mk" : "soong-app-native"
+  if (!isRecord(report) || report.schemaVersion !== 1 || report.apkSha256 !== hexOf(call.apk.sha256) || report.abi !== native.abi
+      || report.moduleName !== call.descriptor.moduleName || report.installRule !== install || report.deferred !== (state.conversion === "ConversionPending")
+      || !sameNativeReport(report.libraries, expected.records)) return undefined
+  return { kind: "native", native, report }
+}
+
+export effect function inspectPublishedLauncher(output: string) {
+  const { state } = try publishedRecord(output)
+  if (state.conversion === "ConversionRefused" || (try observeStagedOverlay(output, state)) === undefined) {
+    throw new NativeFinalizeRefused({ output, message: `The admitted launcher overlay at ${output} is incomplete or has changed` })
+  }
+  return state
 }
 
 export effect function finalizeNative(output: string) {
   const files = try FileSystem.FileSystem
   const path = try Path.Path
   const directory = path.resolve(output)
-  const recorded = try readJson(path.join(directory, RECORD))
-  if (!isRecord(recorded)) throw new NativeFinalizeRefused({ output: directory, message: `${RECORD} is not a staging record` })
+  const { recorded, state: start } = try publishedRecord(directory)
   const descriptor = try validateDescriptor(recorded.descriptor)
-  const start = try mapError(decodeState(recorded.state), () => new NativeFinalizeRefused({ output: directory, message: `${RECORD} does not hold a staging state` }))
   const request = start.call.nativeRequest
-  const abi = request.tag === "NativeFor" ? (Object.keys(NATIVE_TARGETS) as NativeAbi[]).find((key) => NATIVE_TARGETS[key].abi === request.abi) : undefined
-  if (abi === undefined) throw new NativeFinalizeRefused({ output: directory, message: `${directory} staged no native libraries` })
-  const checked = try stagedIntact(directory, start, abi)
+  if (request.tag !== "NativeFor") throw new NativeFinalizeRefused({ output: directory, message: `${directory} staged no native libraries` })
+  const checked = try observeStagedOverlay(directory, start)
   provide machine(start) {
     const staging = try Machine
-    const finalized = try mapError(staging.send({ type: "finalizeNative", intact: checked.intact }), () => new NativeFinalizeRefused({ output: directory, message: `${directory} is not a published overlay waiting for its deferred Soong conversion` }))
-    try record(directory, { descriptor, development: recorded.development === true, evidence: evidenceOf(finalized), state: finalized })
-    if (finalized.conversion !== "Converted") throw new NativeFinalizeRefused({ output: directory, message: `The admitted launcher or native bytes in ${directory} changed; this output must not be built` })
-    const converted = overlayFiles(finalized.call.descriptor, overlayPlan(finalized.call), { abi, rule: "soong", libraries: checked.libraries })
-    const report = parseJson(try files.readFileString(path.join(directory, REPORT)))
+    const finalized = try mapError(staging.send({ type: "finalizeNative", intact: checked?.kind === "native" }), () => new NativeFinalizeRefused({ output: directory, message: `${directory} is not a published overlay waiting for its deferred Soong conversion` }))
+    const result = { descriptor, development: recorded.development === true, evidence: evidenceOf(finalized), state: finalized }
+    if (finalized.conversion !== "Converted" || checked?.kind !== "native") {
+      try record(directory, result)
+      throw new NativeFinalizeRefused({ output: directory, message: `The admitted launcher or native bytes in ${directory} changed; this output must not be built` })
+    }
+    const converted = overlayFiles(finalized.call.descriptor, overlayPlan(finalized.call), { ...checked.native, rule: "soong" })
     try files.writeFileString(path.join(directory, "Android.bp"), converted.files["Android.bp"] ?? "")
     try files.remove(path.join(directory, "Android.mk"))
-    try files.writeFileString(path.join(directory, REPORT), `${JSON.stringify({ ...(isRecord(report) ? report : {}), installRule: "soong-app-native", deferred: false, libraries: converted.records }, null, 2)}\n`)
-    return { output: directory, evidence: evidenceOf(finalized) }
+    try files.writeFileString(path.join(directory, REPORT), `${JSON.stringify({ ...checked.report, installRule: "soong-app-native", deferred: false, libraries: converted.records }, null, 2)}\n`)
+    if ((try observeStagedOverlay(directory, finalized)) === undefined)
+      throw new NativeFinalizeRefused({ output: directory, message: `The converted launcher overlay could not be read back at ${directory}` })
+    try record(directory, result)
+    return { output: directory, evidence: result.evidence }
   }
 }

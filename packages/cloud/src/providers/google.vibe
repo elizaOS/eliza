@@ -45,7 +45,7 @@ const tokenMaxBytes = 64 * 1024
 
 schema TokenReply { access_token: string; expires_in: number; refresh_token?: string; scope?: string }
 schema SealedTokens { refreshToken: string; accessToken: string; expiresAt: number }
-schema OAuthError { error: string }
+schema OAuthError { error: string; error_subtype?: string }
 
 function decoded<A>(schema: Schema.Codec<A>, raw: unknown): A | undefined {
   return Option.getOrUndefined(Schema.decodeUnknownOption(schema)(raw))
@@ -142,20 +142,29 @@ export effect function openTokens(sealed: string): GoogleTokens!SealingFailed!De
   return tokens
 }
 
+export effect function refreshWith(refreshToken: string, clientId: string, clientSecret: string) {
+  const google = try googleProfile()
+  const answer = try tokenForm(google.tokenUrl, new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: clientId,
+    client_secret: clientSecret
+  }))
+  if (answer.status === 400 || answer.status === 401) {
+    const error = decoded(OAuthError, answer.body)
+    throw error?.error === "invalid_grant" && error.error_subtype === undefined ? new InvalidGrant() : new Unavailable()
+  }
+  if (answer.status < 200 || answer.status >= 300) throw failureOf(answer.status)
+  const reply = decoded(TokenReply, answer.body)
+  if (reply === undefined || reply.access_token === "" || !(reply.expires_in > 0)) throw new InvalidResponse()
+  return reply
+}
+
 export effect function refreshAccess(sealedTokens: string): Refreshed!(GoogleFailure | SealingFailed)!GoogleContext {
   const google = try googleProfile()
   const held = try openTokens(sealedTokens)
   const secret = try orDie((try Deployment).secret(google.clientSecretEnv))
-  const answer = try tokenForm(google.tokenUrl, new URLSearchParams({
-    grant_type: "refresh_token",
-    refresh_token: held.refreshToken,
-    client_id: google.clientId,
-    client_secret: secret
-  }))
-  if (answer.status === 400 || answer.status === 401) throw oauthError(answer.body) === "invalid_grant" ? new InvalidGrant() : new Unavailable()
-  if (answer.status < 200 || answer.status >= 300) throw failureOf(answer.status)
-  const reply = decoded(TokenReply, answer.body)
-  if (reply === undefined || reply.access_token === "" || !(reply.expires_in > 0)) throw new InvalidResponse()
+  const reply = try refreshWith(held.refreshToken, google.clientId, secret)
   const now = try Clock.currentTimeMillis
   const tokens: GoogleTokens = { refreshToken: reply.refresh_token ?? held.refreshToken, accessToken: reply.access_token, expiresAt: now + reply.expires_in * millisPerSecond }
   return { tokens, sealed: try sealTokens(tokens), scopes: reply.scope?.split(/\s+/).filter((scope) => scope !== "") }

@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent within a budget"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"
+// spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 package ai.eliza.os.agent;
 
 import java.io.BufferedReader;
@@ -8,14 +8,14 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public final class LifecycleAdapter {
   private static final BigDecimal SAFE = BigDecimal.valueOf(9_007_199_254_740_991L);
-  private static final String NONCE = "review";
-  private static final String DIGEST = "artifact";
+  private static final String ACCOUNT = "account-a";
 
-  private AgentPolicy policy = new AgentPolicy(null);
+  private AgentPolicy policy = new AgentPolicy(ACCOUNT, null);
 
   public static void main(String[] args) throws Exception {
     LifecycleAdapter adapter = new LifecycleAdapter();
@@ -31,162 +31,100 @@ public final class LifecycleAdapter {
   private String answer(String line) {
     Map<String, Object> request = object(RouteGate.Json.parse(line));
     if (!request.containsKey("event") && !request.containsKey("raw")) {
-      policy = new AgentPolicy(null);
+      policy = new AgentPolicy(ACCOUNT, null);
       return "{\"state\":" + state(policy.state()) + ",\"out\":[]}";
     }
-    Map<String, Object> event;
-    try { event = object(request.containsKey("event") ? request.get("event") : request.get("raw")); }
-    catch (IllegalArgumentException malformed) { return refused(); }
-    if ("processRestarted".equals(event.get("type"))) {
-      policy = AgentPolicy.restore(policy.state());
-      return "{\"outcome\":\"accepted\",\"state\":" + state(policy.state()) + ",\"out\":[]}";
-    }
-    AgentPolicy.Event decoded;
-    try { decoded = decode(event); }
-    catch (IllegalArgumentException | ArithmeticException malformed) { return refused(); }
-    AgentPolicy.Step step = policy.step(decoded);
+    Object event = request.containsKey("event") ? request.get("event") : request.get("raw");
+    AgentPolicy.Step step;
+    try { step = policy.step(decode(object(event))); }
+    catch (IllegalArgumentException | ArithmeticException malformed) { step = new AgentPolicy.Step(false, policy.state(), List.of()); }
     return "{\"outcome\":\"" + (step.accepted() ? "accepted" : "refused") + "\",\"state\":" + state(step.state()) + ",\"out\":" + effects(step.effects()) + "}";
-  }
-
-  private String refused() {
-    return "{\"outcome\":\"refused\",\"state\":" + state(policy.state()) + ",\"out\":[]}";
   }
 
   private static AgentPolicy.Event decode(Map<String, Object> event) {
     return switch (text(event.get("type"))) {
       case "start" -> new AgentPolicy.Start();
-      case "reapStale" -> new AgentPolicy.ReapStale();
-      case "refuse" -> new AgentPolicy.Refuse(cause(text(event.get("cause"))), "a start check refused");
-      case "spawn" -> flag(event.get("ok")) ? new AgentPolicy.Spawned() : new AgentPolicy.SpawnFailed("the agent could not be spawned");
-      case "readinessTimedOut" -> new AgentPolicy.ReadyTimeout("the agent did not answer ready within 60 s");
-      case "observeReady" -> new AgentPolicy.ObserveReady(readyEpoch(reply(object(event.get("reply")))));
       case "stop" -> new AgentPolicy.Stop();
+      case "reapStale" -> new AgentPolicy.ReapStale();
+      case "launchHook" -> new AgentPolicy.LaunchHook(flag(event.get("refused")), "the launch hook refused");
+      case "refuse" -> new AgentPolicy.Refuse(named(AgentPolicy.Cause.values(), event.get("cause")), "a start check refused");
+      case "spawn" -> new AgentPolicy.Spawned();
+      case "spawnFailed" -> new AgentPolicy.SpawnFailed("the agent could not be spawned");
+      case "observeReady" -> new AgentPolicy.ObserveReady(whole(event.get("epoch")));
+      case "timeout" -> new AgentPolicy.ReadyTimeout();
       case "observeExit" -> new AgentPolicy.ObserveExit(Math.toIntExact(whole(event.get("code"))));
-      case "observeHealth" -> new AgentPolicy.ObserveHealth(observation(object(event.get("observed"))));
-      case "restartUnhealthy" -> new AgentPolicy.RestartUnhealthy(observation(object(event.get("observed"))));
-      case "stableRun" -> new AgentPolicy.StableReset();
-      case "credentialWithdrawn" -> new AgentPolicy.CredentialWithdrawn("the device credential was withdrawn");
-      case "credentialArrived" -> new AgentPolicy.CredentialArrived(whole(event.get("version")), account(object(event.get("account"))));
-      case "accountChanged" -> new AgentPolicy.AccountChanged(whole(event.get("version")), account(object(event.get("account"))));
+      case "failUnclassified" -> new AgentPolicy.FailUnclassified("an unclassified failure");
+      case "restartUnhealthy" -> new AgentPolicy.RestartUnhealthy();
+      case "stableReset" -> new AgentPolicy.StableReset();
+      case "credentialArrived" -> new AgentPolicy.CredentialArrived(whole(event.get("version")));
       case "credentialReplaced" -> new AgentPolicy.CredentialReplaced(whole(event.get("version")));
-      case "reviewRecovery" -> new AgentPolicy.ReviewRecovery(flag(event.get("focused")), NONCE);
-      case "archiveRecovery" -> new AgentPolicy.ArchiveRecovery(new AgentPolicy.RecoveryToken(whole(event.get("token")), NONCE));
-      case "holdForUpdate" -> new AgentPolicy.HoldForUpdate(new AgentPolicy.UpdateTarget(whole(event.get("target")), DIGEST));
-      case "releaseUpdate" -> release(object(event.get("result")));
+      case "signedOut" -> new AgentPolicy.SignedOut();
+      case "credentialExpired" -> new AgentPolicy.CredentialExpired();
+      case "accountChanged" -> new AgentPolicy.AccountChanged(text(event.get("account")));
+      case "reviewRecovery" -> new AgentPolicy.ReviewRecovery(flag(event.get("focused")), event.containsKey("nonce") ? text(event.get("nonce")) : "review");
+      case "archiveRecovery" -> {
+        Map<String, Object> token = object(event.get("token"));
+        yield new AgentPolicy.ArchiveRecovery(new AgentPolicy.RecoveryToken(whole(token.get("epoch")), text(token.get("nonce"))));
+      }
+      case "holdForUpdate" -> new AgentPolicy.HoldForUpdate(new AgentPolicy.UpdateTarget(whole(event.get("targetCode")), text(event.get("targetDigest"))));
+      case "releaseUpdate" -> new AgentPolicy.ReleaseUpdate(whole(event.get("installedCode")), text(event.get("installedDigest")), flag(event.get("attemptEnded")));
       default -> throw new IllegalArgumentException("not an event of the agent service");
     };
-  }
-
-  private static long readyEpoch(HealthPolicy.ProbeReply reply) {
-    if (reply instanceof HealthPolicy.Answered answered && answered.body() != null
-      && HealthPolicy.classify(reply, answered.body().epoch()) == HealthPolicy.Probe.OK) return answered.body().epoch();
-    return -1;
-  }
-
-  private static AgentPolicy.ReleaseUpdate release(Map<String, Object> result) {
-    return switch (text(result.get("tag"))) {
-      case "Installed" -> new AgentPolicy.ReleaseUpdate(whole(result.get("artifact")), DIGEST, false);
-      case "AttemptEnded" -> new AgentPolicy.ReleaseUpdate(0, null, true);
-      default -> throw new IllegalArgumentException("not an update outcome");
-    };
-  }
-
-  private static HealthPolicy.Observation observation(Map<String, Object> observed) {
-    return switch (text(observed.get("tag"))) {
-      case "Probed" -> new HealthPolicy.Probed(reply(object(observed.get("reply"))));
-      case "ConnectChecked" -> {
-        Map<String, Object> child = object(observed.get("child"));
-        HealthPolicy.JournaledChild journaled = switch (text(child.get("tag"))) {
-          case "NoJournal" -> null;
-          case "Journaled" -> new HealthPolicy.JournaledChild(whole(child.get("childEpoch")), flag(child.get("alive")));
-          default -> throw new IllegalArgumentException("not a journaled child");
-        };
-        yield new HealthPolicy.ConnectChecked(flag(observed.get("refused")), journaled);
-      }
-      default -> throw new IllegalArgumentException("not a health observation");
-    };
-  }
-
-  private static HealthPolicy.ProbeReply reply(Map<String, Object> reply) {
-    return switch (text(reply.get("tag"))) {
-      case "Answered" -> {
-        Map<String, Object> body = object(reply.get("body"));
-        HealthPolicy.HealthBody parsed = switch (text(body.get("tag"))) {
-          case "Unparsed" -> null;
-          case "Parsed" -> new HealthPolicy.HealthBody(flag(body.get("ready")), text(body.get("runtime")), text(body.get("agentState")), whole(body.get("epoch")));
-          default -> throw new IllegalArgumentException("not a health body");
-        };
-        yield new HealthPolicy.Answered(Math.toIntExact(whole(reply.get("status"))), parsed);
-      }
-      case "Unanswered" -> new HealthPolicy.Unanswered(flag(reply.get("childAlive")), flag(reply.get("socketAccepts")));
-      default -> throw new IllegalArgumentException("not a probe reply");
-    };
-  }
-
-  private static String account(Map<String, Object> account) {
-    String user = text(account.get("userId"));
-    String organization = text(account.get("organizationId"));
-    return user.isEmpty() || organization.isEmpty() ? "" : user.length() + ":" + user + organization;
-  }
-
-  private static String accountJson(String account) {
-    if (account == null || account.isEmpty()) return "{\"userId\":\"\",\"organizationId\":\"\"}";
-    int colon = account.indexOf(':');
-    int length = Integer.parseInt(account.substring(0, colon));
-    String rest = account.substring(colon + 1);
-    return "{\"userId\":" + quote(rest.substring(0, length)) + ",\"organizationId\":" + quote(rest.substring(length)) + "}";
-  }
-
-  private static AgentPolicy.Cause cause(String name) {
-    for (AgentPolicy.Cause candidate : AgentPolicy.Cause.values()) if (pascal(candidate.name()).equals(name)) return candidate;
-    throw new IllegalArgumentException("unknown cause " + name);
   }
 
   private static String state(AgentPolicy.State s) {
     String phase = switch (s.phase()) {
       case STOPPED -> "{\"tag\":\"Stopped\"}";
-      case CHECKING -> "{\"tag\":\"Starting\",\"step\":\"Checking\"}";
-      case SPAWNED -> "{\"tag\":\"Starting\",\"step\":\"Spawned\"}";
+      case CHECKING -> "{\"tag\":\"Starting\",\"stage\":\"Checking\"}";
+      case SPAWNED -> "{\"tag\":\"Starting\",\"stage\":\"Spawned\"}";
       case RUNNING -> "{\"tag\":\"Running\"}";
-      case STOPPING -> "{\"tag\":\"Stopping\",\"onExit\":" + quote(pascal(s.onExit().name())) + "}";
-      case FAILED -> "{\"tag\":\"Failed\",\"cause\":" + quote(pascal(s.failure().name())) + "}";
+      case STOPPING -> "{\"tag\":\"Stopping\"}";
+      case FAILED -> "{\"tag\":\"Failed\",\"cause\":" + quote(tag(s.failure())) + "}";
     };
-    String child = switch (s.child()) {
-      case AgentPolicy.NoChild none -> "{\"tag\":\"NoChild\"}";
-      case AgentPolicy.Owned owned -> "{\"tag\":\"Owned\",\"ownedEpoch\":" + owned.epoch() + "}";
-      case AgentPolicy.Stale stale -> "{\"tag\":\"Stale\",\"staleEpoch\":" + stale.epoch() + "}";
-    };
-    String key = s.key() == null ? "{\"tag\":\"NoKey\"}"
-      : "{\"tag\":\"Key\",\"version\":" + s.key().version() + ",\"account\":" + accountJson(s.key().account()) + "}";
-    HealthPolicy.HealthWatch w = s.watch();
-    String watch = "{\"strikes\":" + w.strikes() + ",\"busyTicks\":" + w.busyTicks() + ",\"refusals\":" + w.refusals() + "}";
-    String review = s.review() == null ? "{\"tag\":\"NoReview\"}"
-      : "{\"tag\":\"Reviewed\",\"token\":" + s.review().token().token() + ",\"reviewEpoch\":" + s.review().epoch() + "}";
-    String hold = s.hold() == null ? "{\"tag\":\"NotHeld\"}" : "{\"tag\":\"HeldFor\",\"target\":" + s.hold().code() + "}";
-    return "{\"phase\":" + phase + ",\"epoch\":" + s.epoch() + ",\"attempt\":" + s.attempt() + ",\"child\":" + child
-      + ",\"readyEpoch\":" + s.readyEpoch() + ",\"key\":" + key + ",\"newestVersion\":" + s.newestVersion() + ",\"delivered\":" + s.delivered()
-      + ",\"launched\":" + accountJson(s.launched()) + ",\"watch\":" + watch + ",\"review\":" + review + ",\"tokens\":" + s.tokens()
-      + ",\"hold\":" + hold + "}";
+    String afterExit = s.afterExit() == AgentPolicy.AfterExit.FAIL
+      ? "{\"tag\":\"Fail\",\"cause\":" + quote(tag(s.afterExitCause())) + "}"
+      : "{\"tag\":" + quote(tag(s.afterExit())) + "}";
+    String hold = s.hold() == null ? "{\"tag\":\"NotHeld\"}"
+      : "{\"tag\":\"Held\",\"targetCode\":" + s.hold().code() + ",\"targetDigest\":" + quote(s.hold().digest()) + "}";
+    String recovery = s.recovery() == null ? "{\"tag\":\"NoReview\"}"
+      : "{\"tag\":\"Reviewing\",\"token\":" + token(s.recovery()) + "}";
+    return "{\"phase\":" + phase + ",\"epoch\":" + s.epoch() + ",\"attempt\":" + s.attempt() + ",\"child\":" + s.child()
+      + ",\"reaped\":" + s.reaped() + ",\"hookRan\":" + s.hookRan() + ",\"credentialHeld\":" + s.credentialHeld()
+      + ",\"credentialVersion\":" + s.credentialVersion() + ",\"delivered\":" + s.delivered() + ",\"account\":" + quote(s.account())
+      + ",\"afterExit\":" + afterExit + ",\"hold\":" + hold + ",\"recovery\":" + recovery + "}";
   }
 
   private static String effects(List<AgentPolicy.Effect> effects) {
     List<String> written = new ArrayList<>();
     for (AgentPolicy.Effect effect : effects) {
-      switch (effect) {
-        case AgentPolicy.Check check -> written.add("{\"tag\":\"BeginCheck\",\"epoch\":" + check.epoch() + ",\"delayMs\":" + check.delayMs() + "}");
-        case AgentPolicy.Kill kill -> written.add("{\"tag\":\"KillChild\"}");
-        case AgentPolicy.PushCredential push -> written.add("{\"tag\":\"PushCredential\",\"pushEpoch\":" + push.epoch() + ",\"version\":" + push.version() + "}");
-        case AgentPolicy.Archive archive -> written.add("{\"tag\":\"ArchiveData\"}");
-        case AgentPolicy.RecoveryReview review -> { }
-      }
+      if (effect instanceof AgentPolicy.Check check)
+        written.add("{\"tag\":\"Check\",\"epoch\":" + check.epoch() + ",\"account\":" + quote(check.account()) + ",\"delayMs\":" + check.delayMs() + "}");
+      else if (effect instanceof AgentPolicy.Kill kill)
+        written.add("{\"tag\":\"Kill\",\"epoch\":" + kill.epoch() + "}");
+      else if (effect instanceof AgentPolicy.PushCredential push)
+        written.add("{\"tag\":\"PushCredential\",\"epoch\":" + push.epoch() + ",\"version\":" + push.version() + "}");
+      else if (effect instanceof AgentPolicy.RecoveryReview review)
+        written.add("{\"tag\":\"RecoveryReview\",\"token\":" + token(review.token()) + "}");
+      else if (effect instanceof AgentPolicy.Archive archive)
+        written.add("{\"tag\":\"Archive\",\"epoch\":" + archive.epoch() + ",\"account\":" + quote(archive.account()) + "}");
     }
     return "[" + String.join(",", written) + "]";
   }
 
-  private static String pascal(String constant) {
+  private static String token(AgentPolicy.RecoveryToken token) {
+    return "{\"epoch\":" + token.epoch() + ",\"nonce\":" + quote(token.nonce()) + "}";
+  }
+
+  private static String tag(Enum<?> value) {
     StringBuilder out = new StringBuilder();
-    for (String word : constant.split("_")) out.append(word.charAt(0)).append(word.substring(1).toLowerCase(java.util.Locale.ROOT));
+    for (String word : value.name().split("_")) out.append(word.charAt(0)).append(word.substring(1).toLowerCase(Locale.ROOT));
     return out.toString();
+  }
+
+  private static <E extends Enum<E>> E named(E[] values, Object value) {
+    String wanted = text(value);
+    for (E candidate : values) if (tag(candidate).equals(wanted)) return candidate;
+    throw new IllegalArgumentException("unknown name " + wanted);
   }
 
   @SuppressWarnings("unchecked")

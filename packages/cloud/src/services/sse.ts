@@ -1,5 +1,5 @@
 //@ backend dafny
-// spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"; spec/cloud/services/inference.md, "Reading the provider's stream yields the same events however its bytes were split"
+// spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"
 
 export interface Segmenter {
   line: number[]
@@ -16,18 +16,21 @@ export interface Fed {
 
 export const doneFrame = "data: [DONE]\n\n"
 
+/** @throws {never} */
 export function segmenter(): Segmenter {
   //@ ensures !\result.terminal && !\result.hasData && \result.line.length === 0
   return { line: [], cr: false, data: [], hasData: false, terminal: false }
 }
 
 //@ pure
+/** @throws {never} */
 export function chunkFrame(json: string): string {
   //@ ensures \result.startsWith("data: ") && \result.endsWith("\n\n")
   return "data: " + json + "\n\n"
 }
 
 //@ pure
+/** @throws {never} */
 export function isDone(event: number[]): boolean {
   return event.length === 6 && event[0] === 91 && event[1] === 68 && event[2] === 79 && event[3] === 78 && event[4] === 69 && event[5] === 93
 }
@@ -80,6 +83,7 @@ export function lawEventsDoNotDependOnChunking(s: Segmenter, a: number[], b: num
   return true
 }
 
+/** @throws {never} */
 export function feed(s: Segmenter, chunk: number[]): Fed {
   //@ ensures \result === fed(s, chunk)
   let cr = s.cr
@@ -111,6 +115,7 @@ export function feed(s: Segmenter, chunk: number[]): Fed {
   return { segmenter: { line: line, cr: cr, data: data, hasData: hasData, terminal: s.terminal }, events: events }
 }
 
+/** @throws {never} */
 export function finish(s: Segmenter): Fed {
   //@ ensures \result.segmenter.terminal && \result.events.length <= 1
   //@ ensures s.terminal ==> \result.events.length === 0
@@ -133,6 +138,7 @@ export function usageFrame(json: string): string {
 }
 
 //@ pure
+/** @throws {never} */
 export function errorFrame(refusalJson: string): string {
   //@ ensures \result === chunkFrame(refusalJson)
   return chunkFrame(refusalJson)

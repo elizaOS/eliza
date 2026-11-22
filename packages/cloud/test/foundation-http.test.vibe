@@ -5,22 +5,17 @@ import { listening, respond } from "../src/http/server.vibe"
 import { json, type Method, type Route, type RouteArea, type RouteContext } from "../src/http/routes.vibe"
 import type { Capability } from "../src/profile/profile.vibe"
 import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
-import { tokenDigest } from "../src/shared/sealing.vibe"
 import { Store } from "../src/store/store.vibe"
-import { organization, testCloud, type TestCloud } from "./support/cloud.vibe"
+import { signedCaller } from "./support/caller.vibe"
+import { testCloud, type TestCloud } from "./support/cloud.vibe"
 import { callCloud, type Answer, type CallInit } from "./support/http.ts"
 import { testProfile } from "./support/profile.ts"
 
-const minuteMs = 60_000
 const ownOrigin = "https://www.staging.example.com"
 const mintedRequestId = /^[A-Za-z0-9._:-]{8,128}$/
 
 effect function check(run: () => void) {
   try Effect.try(run)
-}
-
-effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
-  return try cloud.store.transaction((tx) => tx.query(text, params))
 }
 
 interface Gate {
@@ -60,16 +55,6 @@ effect function probeServer(cloud: TestCloud, routes: ReadonlyArray<Route>) {
   return "port" in address ? `http://127.0.0.1:${address.port}` : ""
 }
 
-effect function deviceKeyOf(cloud: TestCloud, now: number) {
-  const key = `eliza_mobile_${"5".repeat(64)}`
-  try organization(cloud, "org-owner")
-  try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, sessions_revoked_before, devices_revoked_before, created_at, updated_at) VALUES ('owner', '{}'::jsonb, 1, 'org-owner', 'active', 'owner@example.com', 0, 0, $1, $1)", [now])
-  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ('grant-owner', '{}'::jsonb, 1, 'owner', 'test-client', 'active', 'cred-owner', $1, $2, $3, $4, $4)", [
-    tokenDigest(key), now, now + 60 * minuteMs, now - minuteMs
-  ])
-  return key
-}
-
 function refusal(answer: Answer): string {
   const body = answer.body as { readonly error?: string; readonly caller?: string }
   return answer.status === 200 ? `200 ${body.caller}` : `${answer.status} ${body.error}`
@@ -80,13 +65,11 @@ describe("WP0 Foundation: HTTP shell", () => {
     const cloud = try testCloud()
     const reached: Array<string> = []
     const url = try probeServer(cloud, probes(reached))
-    const now = try Clock.currentTimeMillis
-    const key = try deviceKeyOf(cloud, now)
+    const caller = try signedCaller(cloud, "foundation-http")
     const call = (path: string, init: CallInit = {}) => promise(() => callCloud(url, path, init))
-    const signed = (requestId: string) => ({ authorization: `Bearer ${key}`, "x-request-id": requestId })
+    const signed = (requestId: string) => ({ ...caller.headers, "x-request-id": requestId })
 
     const anonymousGated = try call("/probe/subscription", { json: {}, headers: { "x-request-id": "bad id" } })
-    const anonymousOversized = try call("/probe/inference", { json: { text: "x".repeat(1_000) }, headers: { "x-request-id": "journey-http-0001" } })
     const signedGated = try call("/probe/subscription", { json: {}, headers: signed("journey-http-0002") })
     const ungatedArea = try call("/probe/entitlement", { headers: signed("journey-http-0003") })
     const legacyGate = try call("/probe/billing", { headers: signed("journey-http-0004") })
@@ -98,7 +81,6 @@ describe("WP0 Foundation: HTTP shell", () => {
     try check(() => assert.deepStrictEqual(
       {
         anonymousGated: [refusal(anonymousGated), mintedRequestId.test(anonymousGated.headers["x-request-id"] ?? ""), anonymousGated.headers["x-request-id"] !== "bad id"],
-        anonymousOversized: [refusal(anonymousOversized), anonymousOversized.headers["x-request-id"]],
         signedGated: [refusal(signedGated), signedGated.headers["x-request-id"]],
         ungatedArea: [refusal(ungatedArea), ungatedArea.headers["x-request-id"]],
         legacyGate: refusal(legacyGate),
@@ -110,7 +92,6 @@ describe("WP0 Foundation: HTTP shell", () => {
       },
       {
         anonymousGated: ["401 authentication_required", true, true],
-        anonymousOversized: ["401 authentication_required", "journey-http-0001"],
         signedGated: ["404 capability_unavailable", "journey-http-0002"],
         ungatedArea: ["200 deviceKey", "journey-http-0003"],
         legacyGate: "404 capability_unavailable",

@@ -97,8 +97,8 @@ public abstract class NativeHealthService extends Service {
     try {
       long left = request.deadline - SystemClock.elapsedRealtime();
       if (closed || left <= 0) return;
-      LocalRuntimeHealth runtime = new LocalRuntimeHealth(agent());
-      LocalRuntimeHealth.Reading reading = runtime.read(left);
+      LocalRuntimeHealth runtime = new LocalRuntimeHealth(agent(), Math.toIntExact(left));
+      LocalRuntimeHealth.Reading reading = runtime.readBefore(request.deadline);
       Screen screen = screen(observer(), HealthWork.uiDeadline(SystemClock.elapsedRealtime(), request.deadline));
       Optional<Verdict> verdict = HealthWork.conclude(reading.agent, reading.storage, screen, runtime.sameLaunch(reading));
       long observed = SystemClock.elapsedRealtime();

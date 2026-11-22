@@ -22,6 +22,12 @@ interface Grant {
   readonly clientId: string;
   readonly redirectUri: string;
   readonly challenge: string;
+  readonly scopes: ReadonlyArray<string>;
+}
+
+interface NativeCodeOptions {
+  readonly identity?: IdTokenClaims | null;
+  readonly refreshToken?: boolean;
 }
 
 export interface GoogleIdentityFake {
@@ -29,8 +35,9 @@ export interface GoogleIdentityFake {
   readonly tokenRequests: URLSearchParams[];
   signInAs(person: GooglePerson): void;
   denyNext(): void;
+  managedScopes(scopes: ReadonlyArray<string>): void;
   idToken(person: GooglePerson, claims: IdTokenClaims): Promise<string>;
-  serverAuthCode(person: GooglePerson, scopes: ReadonlyArray<string>): string;
+  serverAuthCode(person: GooglePerson, scopes: ReadonlyArray<string>, options?: NativeCodeOptions): string;
 }
 
 const keyId = "google-identity-test";
@@ -48,9 +55,11 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
   const jwk = exportJWK(publicKey).then((key) => ({ ...key, kid: keyId, alg: "RS256", use: "sig" }));
   const grants = new Map<string, Grant>();
   const tokenRequests: URLSearchParams[] = [];
-  const serverCodes = new Map<string, { readonly person: GooglePerson; readonly scopes: ReadonlyArray<string> }>();
+  const serverCodes = new Map<string, { readonly person: GooglePerson; readonly scopes: ReadonlyArray<string>; readonly options: NativeCodeOptions }>();
+  const nativeAccess = new Map<string, GooglePerson>();
   let person: GooglePerson = { subject: "google-subject-1", email: "Person@Example.com", emailVerified: true, givenName: "Person" };
   let deny = false;
+  let managedScopes: ReadonlyArray<string> | undefined;
 
   const idToken = (who: GooglePerson, claims: IdTokenClaims) =>
     new SignJWT({ email: who.email, email_verified: who.emailVerified, ...(who.givenName === undefined ? {} : { given_name: who.givenName }), ...(claims.nonce === undefined ? {} : { nonce: claims.nonce }) })
@@ -71,7 +80,8 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
       return back(redirectUri, { error: "access_denied", state });
     }
     const code = randomBytes(16).toString("base64url");
-    grants.set(code, { person, clientId: query.get("client_id") ?? "", redirectUri, challenge: query.get("code_challenge") ?? "" });
+    const scopes = managedScopes ?? (query.get("scope") ?? "").split(/\s+/).filter(Boolean);
+    grants.set(code, { person, clientId: query.get("client_id") ?? "", redirectUri, challenge: query.get("code_challenge") ?? "", scopes });
     return back(redirectUri, { code, state });
   };
 
@@ -84,24 +94,39 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
     const server = serverCodes.get(form.get("code") ?? "");
     serverCodes.delete(form.get("code") ?? "");
     if (server !== undefined) {
-      if (form.get("redirect_uri") !== "" || form.has("code_verifier")) return { status: 400, body: { error: "invalid_grant" } };
+      if (form.get("client_id") !== "google-server-client" || form.get("redirect_uri") !== "" || form.has("code_verifier")) return { status: 400, body: { error: "invalid_grant" } };
+      const access = `access-${server.person.subject}`;
+      nativeAccess.set(access, server.person);
+      const { identity, refreshToken } = server.options;
       return {
         status: 200,
         body: {
-          access_token: `access-${server.person.subject}`, token_type: "Bearer", expires_in: 3600, refresh_token: `refresh-${server.person.subject}`,
-          scope: server.scopes.join(" "), id_token: await idToken(server.person, { audience: form.get("client_id") ?? "" }),
+          access_token: access, token_type: "Bearer", expires_in: 3600,
+          ...(refreshToken === false ? {} : { refresh_token: `refresh-${server.person.subject}` }),
+          scope: server.scopes.join(" "),
+          ...(identity === null ? {} : { id_token: await idToken(server.person, identity ?? { audience: "google-server-client" }) }),
         },
       };
     }
     if (grant === undefined || grant.clientId !== form.get("client_id") || grant.redirectUri !== form.get("redirect_uri") || grant.challenge !== s256(form.get("code_verifier") ?? "")) {
       return { status: 400, body: { error: "invalid_grant" } };
     }
-    return { status: 200, body: { access_token: "unused", token_type: "Bearer", expires_in: 3600, id_token: await idToken(grant.person, { audience: grant.clientId }) } };
+    const access = grant.redirectUri.endsWith("/api/v1/oauth/google/callback") ? `access-${grant.person.subject}` : "unused";
+    return { status: 200, body: {
+      access_token: access, token_type: "Bearer", expires_in: 3600, id_token: await idToken(grant.person, { audience: grant.clientId }),
+      ...(access === "unused" ? {} : { refresh_token: `refresh-${grant.person.subject}`, scope: grant.scopes.join(" ") }),
+    } };
   };
 
   const handler: FakeHandler = async (request) => {
     if (request.method === "GET" && request.path === "/accounts") return accounts(request);
     if (request.method === "GET" && request.path === "/jwks") return { status: 200, body: { keys: [await jwk] } };
+    if (request.method === "GET" && request.path === "/api/oauth2/v2/userinfo") {
+      const bearer = typeof request.headers.authorization === "string" ? /^Bearer (.+)$/.exec(request.headers.authorization) : null;
+      const user = bearer === null ? undefined : nativeAccess.get(bearer[1] ?? "");
+      if (user === undefined) return { status: 401, body: { error: "invalid_token" } };
+      return { status: 200, body: { id: user.subject, email: user.email, verified_email: user.emailVerified, name: user.givenName } };
+    }
     if (request.method === "POST" && request.path === "/token" && new URLSearchParams(request.body).get("grant_type") === "authorization_code") return token(request);
     return undefined;
   };
@@ -111,10 +136,11 @@ export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
     tokenRequests,
     signInAs: (next) => { person = next; },
     denyNext: () => { deny = true; },
+    managedScopes: (scopes) => { managedScopes = [...scopes]; },
     idToken,
-    serverAuthCode: (who, scopes) => {
+    serverAuthCode: (who, scopes, options = {}) => {
       const code = `4/${randomBytes(16).toString("base64url")}`;
-      serverCodes.set(code, { person: who, scopes });
+      serverCodes.set(code, { person: who, scopes, options });
       return code;
     },
   };

@@ -74,10 +74,10 @@ public final class IndicatorLease {
  }
 
  public record Observation(boolean latches,ListenerPolicy.IndicatorPause pause){}
- public static Observation observe(boolean microphoneHeld,ListenerPolicy.IndicatorPause was,Loss loss){
-  boolean latches=!sleepLapse(microphoneHeld,was,loss)
-   &&ListenerPolicy.latchesIndicatorLoss(microphoneHeld||was!=ListenerPolicy.IndicatorPause.NONE,loss==Loss.NONE,loss.pause());
-  return new Observation(latches,pauseFor(loss));
+ public static Observation observe(boolean microphoneHeld,ListenerPolicy.IndicatorPause previous,Loss loss,boolean screenInteractive){
+  boolean asleep=sleepLapse(microphoneHeld,previous,loss);
+  boolean latches=!asleep&&ListenerPolicy.latchesIndicatorLoss(microphoneHeld||previous!=ListenerPolicy.IndicatorPause.NONE,loss==Loss.NONE,loss.pause());
+  return new Observation(latches,asleep&&!screenInteractive?ListenerPolicy.IndicatorPause.DISPLAY_OFF:pauseFor(loss));
  }
 
  private long generation;

@@ -1,11 +1,9 @@
 // spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"
 export { type LaunchDocument, type LaunchFrame } from "./launch.schema.vibe"
-import type { LaunchFrame as FrameModel } from "../../gen/agent__host__launch.ts"
-import { exitCode, frameAdmitted, launchVerdict } from "../../gen/agent__host__launch.effect.vibe"
+import { exitCode } from "../../gen/agent__host__launch.effect.vibe"
 export { exitClass, exitCode, type BootFailure, type ExitClass } from "../../gen/agent__host__launch.effect.vibe"
 import { Stdio } from "effect/Stdio"
-import { launchModel } from "../models/binding.vibe"
-import { decodeLaunchDocument, decodeLaunchFrame, LaunchDocumentRejected, LaunchFrameRejected, type LaunchFrame } from "./launch.schema.vibe"
+import { decodeLaunchDocument, decodeLaunchFrame, LaunchDocumentRejected, LaunchFrameRejected } from "./launch.schema.vibe"
 
 export error LaunchCredentialMissing
 
@@ -48,23 +46,9 @@ export effect function readLaunch() {
   return { ...(try parseLaunch(document, frame.slice(0, -1))), binding, stateDirectory }
 }
 
-export function frameModel(frame: LaunchFrame): FrameModel {
-  return {
-    version: frame.version, token: String(frame.token), epoch: frame.epoch,
-    credential: frame.credential === undefined ? { tag: "NoCredential" } : { tag: "Keyed", version: frame.credential.version, value: String(frame.credential.value) },
-    storageKey: frame.storageKey === undefined ? { tag: "NoStorageKey" } : { tag: "StorageKey", key: String(frame.storageKey) },
-  }
-}
-
 export effect function parseLaunch(document: string, frame: string) {
   const launch = try decodeLaunchDocument(document)
   const authority = try decodeLaunchFrame(frame)
-  const model = frameModel(authority)
-  const verdict = launchVerdict(launchModel(launch), model)
-  if (verdict.tag === "LaunchRefused") {
-    if (verdict.cause === "Credential") throw new LaunchCredentialMissing()
-    if (!frameAdmitted(model)) throw new LaunchFrameRejected()
-    throw new LaunchDocumentRejected()
-  }
+  if (launch.model.backend !== "none" && authority.credential === undefined) throw new LaunchCredentialMissing()
   return { launch, authority }
 }

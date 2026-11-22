@@ -1,934 +1,265 @@
-// spec/os/update/operator.md, "Story: Update a device by cable"
-import { ChildProcess } from "effect/process"
-import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+// spec/os/update/operator.md, "Story: Update a device by cable"; spec/os/update/operator.md, "Story: Get back if the update fails"
 import {
-  Machine,
-  Rejected,
-  canReleaseLock,
-  decodeState,
-  fallingBackOrAfter,
-  initial,
-  lockHeld,
-  machineOver,
-  nextStep,
-  recordAdmitted,
-  rollbackNotLower,
-  startsFrom,
-  startsFromInstalled,
-  updateAdmitted,
-  type AndroidReading,
+  begin, bootRestored, canBegin, canEnterSideload, canFallback, canFallbackEnded, canTransferEnded, canVerifyBoot,
+  enterSideload, fallback, fallbackAdmitted, fallbackEnded, fallbackPhase, fallingBackOrAfter, initial, nextStep, startsFrom, transferEnded, verifyBoot,
   type DeviceObservation,
-  type NextStep,
-  type OperatorJournal,
-  type OperatorPhase,
-  type OperatorRelease,
-  type RollbackIndex,
-  type SlotReading,
-  type StartFacts,
 } from "../../gen/os__update__operator.effect.vibe"
-import { candidateAdmitted } from "../../gen/os__update__updater.effect.vibe"
-import { FallbackUnconfirmed, RecoveryInputUnreadable, RetentionWriteFailed, fallbackToOriginalSlot, retainKnownGood, stockRecoveryPlan, verifyStockRecovery, type RecoveryProblem } from "./ota-recovery.vibe"
-import type { Digest } from "../../gen/os__image__apk.ts"
-import type { ReleaseChannel } from "../../gen/os__image__signing.ts"
-import type { BootState } from "../../gen/os__image__verification.ts"
+import { captureCommand } from "./device.vibe"
+import { deviceTools, observeDevice, observeSlots, slotArgument, verifyStockRecovery, type DeviceTools } from "./ota-device.vibe"
+import { openOperatorJournal, readOperatorJournal, readOperatorStatus, sameJournalBinding, type JournalAdoption, type JournalBinding } from "./ota-journal.vibe"
+import { OtaRefused, loadUpdate, stockRecoveryPlan, verifyCandidateOta } from "./ota-records.vibe"
+import { knownGoodRecoveryPlan, retainKnownGood } from "./ota-retention.vibe"
 
-module node {
-  import { createHash } from "node:crypto"
-  import fs from "node:fs"
-  import os from "node:os"
-  import path from "node:path"
-
-  export interface FileDigest {
-    readonly sha256: string
-    readonly sizeBytes: number
-  }
-
-  export interface HeldLock {
-    readonly kind: "held"
-    readonly fd: number
-    readonly path: string
-    readonly dev: number
-    readonly ino: number
-  }
-
-  export type OpenedLock = HeldLock | { readonly kind: "locked"; readonly path: string }
-
-  const EXCLUSIVE = fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW
-
-  /** @throws {never} */
-  export function processId(): number {
-    return process.pid
-  }
-
-  /** @throws {never} */
-  export function defaultLockDirectory(): string {
-    return path.join(os.homedir(), ".local", "state", "eliza", "android-install-locks")
-  }
-
-  /** @throws {never} */
-  export function absolute(file: string): string {
-    return path.resolve(file)
-  }
-
-  /** @throws {never} */
-  export function sha256Hex(bytes: Uint8Array | string): string {
-    return createHash("sha256").update(bytes).digest("hex")
-  }
-
-  /** @throws {never} */
-  export function hashFile(file: string): Promise<FileDigest> {
-    return new Promise((resolve, reject) => {
-      const hash = createHash("sha256")
-      let sizeBytes = 0
-      fs.createReadStream(file)
-        .on("data", (chunk) => {
-          hash.update(chunk)
-          sizeBytes += chunk.length
-        })
-        .on("error", reject)
-        .on("end", () => resolve({ sha256: hash.digest("hex"), sizeBytes }))
-    })
-  }
-
-  /** @throws {Error} */
-  function syncDirectory(directory: string): void {
-    const fd = fs.openSync(directory, fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW)
-    try {
-      fs.fsyncSync(fd)
-    } finally {
-      fs.closeSync(fd)
-    }
-  }
-
-  /** @throws {Error} */
-  function syncDirectoryTree(directory: string): void {
-    let current = path.resolve(directory)
-    while (true) {
-      syncDirectory(current)
-      const parent = path.dirname(current)
-      if (parent === current) return
-      current = parent
-    }
-  }
-
-  /** @throws {Error} */
-  export function readPrivate(file: string): string | undefined {
-    let stat: fs.Stats
-    try {
-      stat = fs.lstatSync(file)
-    } catch (failure) {
-      if ((failure as { code?: string }).code === "ENOENT") return undefined
-      throw failure
-    }
-    if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0) throw new Error(`${file} must be a private regular file`)
-    return fs.readFileSync(file, "utf8")
-  }
-
-  /** @throws {Error} */
-  export function replacePrivate(file: string, content: string): void {
-    const directory = path.dirname(path.resolve(file))
-    const temporary = path.join(directory, `.${path.basename(file)}.${process.pid}.tmp`)
-    const fd = fs.openSync(temporary, EXCLUSIVE, 0o600)
-    try {
-      fs.writeFileSync(fd, content)
-      fs.fsyncSync(fd)
-    } catch (failure) {
-      fs.closeSync(fd)
-      fs.rmSync(temporary, { force: true })
-      throw failure
-    }
-    fs.closeSync(fd)
-    fs.renameSync(temporary, file)
-    syncDirectory(directory)
-  }
-
-  /** @throws {never} */
-  export function lockPath(directory: string, serial: string): string {
-    return path.join(directory, `${createHash("sha256").update(serial).digest("hex")}.jsonl`)
-  }
-
-  /** @throws {Error} */
-  export function openLock(directory: string, serial: string): OpenedLock {
-    fs.mkdirSync(directory, { recursive: true, mode: 0o700 })
-    const owner = fs.lstatSync(directory)
-    if (!owner.isDirectory() || owner.isSymbolicLink() || owner.uid !== process.getuid?.() || (owner.mode & 0o077) !== 0)
-      throw new Error("the installation lock directory must be private and owned by the operator")
-    const file = lockPath(directory, serial)
-    let fd: number
-    try {
-      fd = fs.openSync(file, EXCLUSIVE, 0o600)
-    } catch (failure) {
-      if ((failure as { code?: string }).code === "EEXIST") return { kind: "locked", path: file }
-      throw failure
-    }
-    const identity = fs.fstatSync(fd)
-    return { kind: "held", fd, path: file, dev: identity.dev, ino: identity.ino }
-  }
-
-  /** @throws {Error} */
-  export function markLock(lock: HeldLock, entry: Readonly<Record<string, unknown>>): void {
-    fs.writeFileSync(lock.fd, `${JSON.stringify(entry)}\n`)
-    fs.fsyncSync(lock.fd)
-    syncDirectoryTree(path.dirname(lock.path))
-  }
-
-  /** @throws {Error} */
-  export function closeLock(lock: HeldLock, remove: boolean): void {
-    fs.closeSync(lock.fd)
-    if (!remove) return
-    const current = fs.lstatSync(lock.path)
-    if (current.dev !== lock.dev || current.ino !== lock.ino) throw new Error(`the installation lock ${lock.path} changed identity; it is left in place`)
-    fs.unlinkSync(lock.path)
-    syncDirectory(path.dirname(lock.path))
-  }
-}
-import { absolute, closeLock, defaultLockDirectory, hashFile, markLock, openLock, processId, readPrivate, replacePrivate, sha256Hex, type HeldLock } from node
-
-export const JOURNAL_KIND = "aosp-ota-update-journal"
-export const RECORD_KIND = "aosp-release-compatibility"
-export const OPERATOR_STEPS = {
-  enterSideload: 'On the device, in recovery, choose "Apply update from ADB" with the volume and power keys; the update waits for the device to enter sideload.',
-  rebootAfterSideload: 'When recovery reports that the installation finished, choose "Reboot system now" if the device does not reboot by itself.',
-} as const
-
-const SERIAL = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/
-const HEX64 = /^[0-9a-f]{64}$/
-const PATCH = /^\d{4}-\d{2}-\d{2}$/
-const TOOL_MS = 60_000
-const RECORD_CLAIMS = ["imageBooted", "signedUpdateApplied", "releaseQualified", "deviceAcceptanceVerified"] as const
-const BOOT_STATES: Readonly<Record<string, BootState>> = { green: "Green", yellow: "Yellow", orange: "Orange", red: "Red" }
-
-export error OtaUsageError { message: string }
-export error RecordUnreadable { file: string; reason: string }
-export error JournalUnreadable { file: string; reason: string }
-export error DeviceLocked { lockPath: string }
-export error LockFailed { reason: string }
-export error ConfirmationRequired { flag: string }
-export error UpdateRefused { problems: readonly string[] }
-export error UpdateStopped { reason: string; observed: DeviceObservation }
-export error TransferFailed { code: number; stderr: string }
-export error VerificationFailed { observed: DeviceObservation; start: StartFacts }
-export error ToolFailed { tool: string; args: readonly string[]; code: number; stderr: string }
-
-const RecordFile = Schema.Struct({
-  schema: Schema.Number,
-  kind: Schema.String,
-  product: Schema.String,
-  device: Schema.String,
-  channel: Schema.String,
-  build: Schema.Struct({ fingerprint: Schema.String, dateUtc: Schema.String, securityPatch: Schema.String, vendorSecurityPatch: Schema.optionalKey(Schema.String) }),
-  artifacts: Schema.Struct({
-    signedTargetFiles: Schema.Struct({ file: Schema.optionalKey(Schema.String), sha256: Schema.String, sizeBytes: Schema.optionalKey(Schema.Number) }),
-    ota: Schema.Struct({
-      file: Schema.optionalKey(Schema.String),
-      sha256: Schema.String,
-      sizeBytes: Schema.Number,
-      type: Schema.Literals(["full", "incremental"]),
-      incrementalFrom: Schema.optionalKey(Schema.NullOr(Schema.Struct({ sha256: Schema.String }))),
-    }),
-  }),
-  verifiedBoot: Schema.Struct({
-    publicKeySha256: Schema.String,
-    rollbackIndexes: Schema.Array(Schema.Struct({ location: Schema.Number, index: Schema.String })),
-    images: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-  }),
-  payload: Schema.optionalKey(Schema.Struct({ metadata: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)) })),
-  certificates: Schema.Struct({ releasekey: Schema.String, platform: Schema.optionalKey(Schema.String) }),
-  problems: Schema.Array(Schema.Unknown),
-  imageBooted: Schema.Boolean,
-  signedUpdateApplied: Schema.Boolean,
-  releaseQualified: Schema.Boolean,
-  deviceAcceptanceVerified: Schema.Boolean,
-})
-export type ReleaseRecordJson = typeof RecordFile.Type
-
-const ChannelFile = Schema.Struct({
-  channel: Schema.String,
-  product: Schema.String,
-  device: Schema.String,
-  otaCertificateSha256: Schema.String,
-  avbPublicKeySha256: Schema.String,
-  downgradeAllowed: Schema.optionalKey(Schema.Boolean),
-  recovery: Schema.optionalKey(Schema.Struct({ stockFactoryImage: Schema.optionalKey(Schema.Struct({ filename: Schema.String, sha256: Schema.String })) })),
-})
-export type ChannelJson = typeof ChannelFile.Type
-
-export schema JournalBinding {
-  readonly serial: string
-  readonly otaSha256: string
-  readonly candidateRecordSha256: string
-  readonly installedRecordSha256: string
-}
-
-const JournalFile = Schema.Struct({
-  schema: Schema.Literal(2),
-  kind: Schema.Literal(JOURNAL_KIND),
-  binding: JournalBinding,
-  state: Schema.Unknown,
-  history: Schema.Array(Schema.Unknown),
-})
-
-const decodeRecord = Schema.decodeUnknownOption(RecordFile)
-const decodeChannel = Schema.decodeUnknownOption(ChannelFile)
-const decodeJournal = Schema.decodeUnknownOption(JournalFile)
-
-export interface ReleaseRecord {
-  readonly file: string
-  readonly sha256: string
-  readonly json: ReleaseRecordJson
-  readonly release: OperatorRelease
-  readonly problems: readonly string[]
-}
-
-export interface Channel {
-  readonly file: string
-  readonly json: ChannelJson
-  readonly channel: ReleaseChannel
-}
-
-export interface ToolResult {
-  readonly code: number
-  readonly stdout: string
-  readonly stderr: string
-}
-
-export interface DeviceRunner {
-  readonly serial: string
-  adb(args: readonly string[], timeoutMs?: number): ToolResult!!
-  fastboot(args: readonly string[], timeoutMs?: number): ToolResult!!
-  fastbootDevices(): ToolResult!!
-}
-
-export interface DeviceTools {
-  readonly serial: string
-  readonly adb?: string
-  readonly fastboot?: string
-}
-
-export interface Observed {
-  readonly state: string
-  readonly observation: DeviceObservation
-}
-
-export interface Bootloader {
-  readonly variables: Readonly<Record<string, string | null>>
-  readonly slots: SlotReading
-}
-
-export interface Timing {
-  readonly rebootMs?: number
-  readonly operatorMs?: number
-  readonly sideloadMs?: number
-  readonly pollMs?: number
-}
-
-export interface JournalRead {
-  readonly binding: JournalBinding
-  readonly state: OperatorJournal
-}
-
-export interface InstallLockHandle {
-  beforeWrites(): void!(LockFailed | Rejected)
-}
-
-export interface ApplyRequest {
-  readonly device: DeviceRunner
-  readonly channel: ReleaseChannel
-  readonly from: string
-  readonly to: string
-  readonly ota: string
-  readonly journal: string
-  readonly execute?: boolean
-  readonly confirm?: boolean
-  readonly timing?: Timing
-  readonly lockDirectory?: string
-  readonly notify?: (message: string) => void!!
-}
-
-export interface UpdatePlan {
-  readonly serial: string
-  readonly from: string
-  readonly to: string
-  readonly otaSha256: string
-  readonly ota: "full" | "incremental"
-  readonly deviceState: string
-  readonly observed: DeviceObservation
-  readonly phase: OperatorPhase
-  readonly next: NextStep
-}
-
-export interface ApplyResult {
-  readonly executed: boolean
-  readonly plan: UpdatePlan
-  readonly problems: readonly string[]
-  readonly journal: OperatorJournal
-}
-
-export interface UpdateStatus {
-  readonly phase: OperatorPhase
-  readonly lock: OperatorJournal["lock"]
-  readonly deviceState: string
-  readonly observed: DeviceObservation
-  readonly bootloader: Bootloader | null
-  readonly next: NextStep
-}
-
-export type OtaCommand = "check" | "apply" | "status" | "fallback" | "stock-archive" | "verify-stock" | "retain-known-good"
-
-export interface OtaOptions {
-  readonly command: OtaCommand
-  readonly values: Readonly<Record<string, string>>
+type Command = "check" | "apply" | "status" | "fallback" | "stock-archive" | "verify-stock" | "retain-known-good"
+interface Arguments {
+  readonly command: Command
+  readonly values: ReadonlyMap<string, string>
   readonly execute: boolean
-  readonly confirmUpdate: boolean
-  readonly confirmFallback: boolean
 }
-
-const digestOf = (hex: string | undefined): Digest => (hex !== undefined && HEX64.test(hex) ? { tag: "Sha256", hex } : { tag: "NotADigest" })
-const patchLevel = (text: string | undefined) => (text !== undefined && PATCH.test(text) ? Number(text.replaceAll("-", "")) : 0)
-const wholeNumber = (text: string | undefined) => (text !== undefined && /^\d{1,15}$/.test(text) ? Number(text) : 0)
-
-export function parseGetprop(text: string): Record<string, string> {
-  const values: Record<string, string> = {}
-  for (const match of text.matchAll(/^\[([^\]]+)\]: \[([^\]]*)\]$/gm)) values[match[1] ?? ""] = match[2] ?? ""
-  return values
+interface Timings {
+  readonly recoveryMs: number
+  readonly bootMs: number
+  readonly pollMs: number
 }
-
-export function operatorRelease(json: ReleaseRecordJson): { readonly release: OperatorRelease; readonly problems: readonly string[] } {
-  const rows = json.verifiedBoot.rollbackIndexes
-  const indexes: RollbackIndex[] = rows.map((row) => ({ location: row.location, index: wholeNumber(row.index) }))
-  const metadata = json.payload?.metadata ?? {}
-  const problems = [
-    ...(json.schema === 1 && json.kind === RECORD_KIND ? [] : [`the record is not a schema 1 ${RECORD_KIND} record`]),
-    ...json.problems.map((problem) => `the record lists a problem: ${JSON.stringify(problem)}`),
-    ...RECORD_CLAIMS.filter((claim) => json[claim]).map((claim) => `the record claims ${claim}; records never do`),
-    ...(rows.every((row) => Number.isSafeInteger(row.location) && row.location >= 0 && /^\d{1,15}$/.test(row.index)) ? [] : ["the record has a malformed AVB rollback index"]),
-  ]
-  const release: OperatorRelease = {
-    release: {
-      fingerprint: json.build.fingerprint,
-      product: json.product,
-      device: json.device,
-      buildDate: wholeNumber(json.build.dateUtc),
-      securityPatch: patchLevel(json.build.securityPatch),
-      vendorPatch: patchLevel(json.build.vendorSecurityPatch),
-    },
-    channel: json.channel,
-    problems: problems.length,
-    otaCertificate: digestOf(json.certificates.releasekey),
-    avbKey: digestOf(json.verifiedBoot.publicKeySha256),
-    rollbackIndexes: indexes,
-    postTimestamp: wholeNumber(metadata["post-timestamp"]),
-    ota: json.artifacts.ota.type === "full"
-      ? { tag: "FullOta" }
-      : { tag: "IncrementalOta", preBuild: metadata["pre-build"] ?? "", fromTargetFiles: digestOf(json.artifacts.ota.incrementalFrom?.sha256) },
-    otaPackage: digestOf(json.artifacts.ota.sha256),
-    signedTargetFiles: digestOf(json.artifacts.signedTargetFiles.sha256),
-  }
-  return { release, problems }
+interface OperatorOptions {
+  readonly leaseDirectory?: string
+  readonly timings?: Timings
 }
-
-export function releaseChannel(json: ChannelJson): ReleaseChannel {
-  return {
-    name: json.channel,
-    product: json.product,
-    device: json.device,
-    otaCertificate: digestOf(json.otaCertificateSha256),
-    avbPublicKey: digestOf(json.avbPublicKeySha256),
-    downgradeAllowed: json.downgradeAllowed ?? true,
-    stockFactoryImage: digestOf(json.recovery?.stockFactoryImage?.sha256),
-  }
-}
-
-effect function readJson(file: string) {
-  const files = try FileSystem.FileSystem
-  const bytes = files.readFile(file) catch effect (failure) => {
-    throw new RecordUnreadable({ file, reason: failure.message })
-  }
-  const value = try Effect.try({ try: () => JSON.parse(new TextDecoder().decode(bytes)) as unknown, catch: () => new RecordUnreadable({ file, reason: "not JSON" }) })
-  return { bytes, value }
-}
-
-export effect function readRecord(file: string) {
-  const read = try readJson(file)
-  const json = decodeRecord(read.value)
-  if (Option.isNone(json)) throw new RecordUnreadable({ file, reason: `not a ${RECORD_KIND} record` })
-  const parsed = operatorRelease(json.value)
-  const record: ReleaseRecord = { file, sha256: sha256Hex(read.bytes), json: json.value, release: parsed.release, problems: parsed.problems }
-  return record
-}
-
-export effect function readChannel(file: string) {
-  const read = try readJson(file)
-  const json = decodeChannel(read.value)
-  if (Option.isNone(json)) throw new RecordUnreadable({ file, reason: "not an update channel" })
-  const channel: Channel = { file, json: json.value, channel: releaseChannel(json.value) }
-  return channel
-}
-
-export function admissionProblems(channel: ReleaseChannel, installed: ReleaseRecord, candidate: ReleaseRecord): string[] {
-  if (updateAdmitted(channel, installed.release, candidate.release)) return []
-  const where = `${channel.name} release of ${channel.product} on ${channel.device} under the channel's OTA certificate and AVB key`
-  const found = [
-    ...(channel.downgradeAllowed ? ["the update channel must refuse downgrades (downgradeAllowed false)"] : []),
-    ...installed.problems.map((problem) => `installed: ${problem}`),
-    ...candidate.problems.map((problem) => `candidate: ${problem}`),
-    ...(recordAdmitted(channel, installed.release) ? [] : [`the installed record is not a clean ${where}`]),
-    ...(recordAdmitted(channel, candidate.release) ? [] : [`the candidate record is not a clean ${where}`]),
-    ...(candidateAdmitted(installed.release.release, candidate.release.release) ? [] : ["the candidate is not a newer build of the installed product and device with no lower patch level; downgrades are refused"]),
-    ...(rollbackNotLower(installed.release, candidate.release) ? [] : ["an AVB rollback index of the installed release is missing or lower in the candidate; the device would refuse to boot it"]),
-    ...(startsFromInstalled(installed.release, candidate.release) ? [] : ["the incremental package does not start from exactly the installed build and its signed target files"]),
-  ]
-  return found.length > 0 ? found : ["the OTA post-timestamp is not the candidate build date"]
-}
-
-effect function runTool(binary: string, args: readonly string[], timeoutMs: number) {
-  const spawner = try ChildProcessSpawner
-  const run = scoped(effect {
-    const child = try spawner.spawn(ChildProcess.make(binary, [...args], { stdin: "ignore", extendEnv: true }))
-    const [stdout, stderr] = try.all [Stream.mkString(Stream.decodeText(child.stdout)), Stream.mkString(Stream.decodeText(child.stderr))]
-    const code: number = try child.exitCode
-    const result: ToolResult = { code, stdout, stderr }
-    return result
-  })
-  return timeout(run, timeoutMs) catch (failure) => {
-    const result: ToolResult = { code: -1, stdout: "", stderr: failure.message }
-    return result
-  }
-}
-
-export effect function deviceRunner(tools: DeviceTools) {
-  if (!SERIAL.test(tools.serial)) throw new OtaUsageError({ message: "an explicit --serial is required" })
-  const spawner = try ChildProcessSpawner
-  const adb = tools.adb ?? "adb"
-  const fastboot = tools.fastboot ?? "fastboot"
-  const runner: DeviceRunner = {
-    serial: tools.serial,
-    adb: (args, timeoutMs = TOOL_MS) => Effect.provideService(runTool(adb, ["-s", tools.serial, ...args], timeoutMs), ChildProcessSpawner, spawner),
-    fastboot: (args, timeoutMs = TOOL_MS) => Effect.provideService(runTool(fastboot, ["-s", tools.serial, ...args], timeoutMs), ChildProcessSpawner, spawner),
-    fastbootDevices: () => Effect.provideService(runTool(fastboot, ["devices"], TOOL_MS), ChildProcessSpawner, spawner),
-  }
-  return runner
-}
-
-export effect function required(result: ToolResult, tool: string, args: readonly string[]) {
-  if (result.code !== 0) throw new ToolFailed({ tool, args, code: result.code, stderr: result.stderr.trim().slice(0, 1024) })
-  return result.stdout
-}
-
-export effect function deviceState(device: DeviceRunner) {
-  const reported = try device.adb(["get-state"])
-  const state = reported.code === 0 ? reported.stdout.trim() : ""
-  if (["device", "recovery", "sideload", "rescue"].includes(state)) return state
-  const listed = try device.fastbootDevices()
-  if (listed.stdout.split(/\r?\n/).some((line) => line.trim().split(/\s+/)[0] === device.serial)) return "bootloader"
-  return state === "offline" || state === "unauthorized" ? state : "absent"
-}
-
-export function androidReading(props: Readonly<Record<string, string>>, enforce: string): AndroidReading {
-  const suffix = props["ro.boot.slot_suffix"]
-  const named = props["ro.boot.verifiedbootstate"] ?? ""
-  const booted: BootState | undefined = Object.hasOwn(BOOT_STATES, named) ? BOOT_STATES[named] : undefined
-  const selinux = enforce.trim()
-  return {
-    device: props["ro.product.device"] ?? "",
-    fingerprint: props["ro.build.fingerprint"] ?? "",
-    slot: suffix === "_a" ? "SlotA" : suffix === "_b" ? "SlotB" : "NoSlot",
-    selinux: selinux === "Enforcing" ? "Enforcing" : selinux === "Permissive" ? "Permissive" : "SelinuxUnread",
-    verifiedBoot: booted === undefined ? { tag: "BootUnread" } : { tag: "BootRead", booted },
-    flashLocked: props["ro.boot.flash.locked"] === "1",
-    securityPatch: patchLevel(props["ro.build.version.security_patch"]),
-    virtualAb: props["ro.virtual_ab.enabled"] === "true",
-  }
-}
-
-effect function observationIn(device: DeviceRunner, state: string): DeviceObservation!! {
-  switch (state) {
-    case "sideload":
-      return { tag: "InSideload" }
-    case "recovery":
-    case "rescue":
-      return { tag: "InRecovery" }
-    case "bootloader":
-      return { tag: "InBootloader" }
-    case "device": {
-      const props = try device.adb(["shell", "getprop"])
-      if (props.code !== 0) return { tag: "Unreachable" }
-      const values = parseGetprop(props.stdout)
-      if (values["sys.boot_completed"] !== "1") return { tag: "StillBooting" }
-      const enforce = try device.adb(["shell", "getenforce"])
-      return { tag: "OnAndroid", ...androidReading(values, enforce.code === 0 ? enforce.stdout : "") }
-    }
-    default:
-      return { tag: "Unreachable" }
-  }
-}
-
-export effect function observeDevice(device: DeviceRunner) {
-  const state = try deviceState(device)
-  const observed: Observed = { state, observation: try observationIn(device, state) }
-  return observed
-}
-
-export effect function observeBootloader(device: DeviceRunner, start: StartFacts) {
-  const original = start.originalSlot === "SlotA" ? "a" : start.originalSlot === "SlotB" ? "b" : ""
-  const updated = original === "a" ? "b" : original === "b" ? "a" : ""
-  const names = ["product", "current-slot", "unlocked", "snapshot-update-status", `slot-successful:${updated}`, `slot-unbootable:${original}`, `slot-retry-count:${updated}`]
-  const variables: Record<string, string | null> = {}
-  for (const name of names) {
-    const out = try device.fastboot(["getvar", name])
-    const match = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:\\s*(\\S+)\\s*$`, "m").exec(`${out.stdout}\n${out.stderr}`)
-    variables[name] = out.code === 0 && match ? match[1] ?? null : null
-  }
-  const current = variables["current-slot"]
-  const snapshot = variables["snapshot-update-status"]
-  const found: Bootloader = {
-    variables,
-    slots: {
-      currentSlot: current === "a" ? "SlotA" : current === "b" ? "SlotB" : "NoSlot",
-      updatedUnconfirmed: variables[`slot-successful:${updated}`] === "no",
-      originalBootable: variables[`slot-unbootable:${original}`] === "no",
-      snapshot: snapshot === "snapshotted" ? "Snapshotted" : snapshot === "merging" ? "Merging" : snapshot === "none" ? "NoSnapshot" : "SnapshotUnread",
-    },
-  }
-  return found
-}
-
-export effect function waitFor(device: DeviceRunner, until: (observation: DeviceObservation) => boolean, timeoutMs: number, pollMs: number) {
-  const deadline = (try Clock.currentTimeMillis) + timeoutMs
-  while (true) {
-    const observed = try observeDevice(device)
-    if (until(observed.observation) || (try Clock.currentTimeMillis) >= deadline) return observed
-    try sleep(pollMs)
-  }
-}
-
-const sameBinding = (a: JournalBinding, b: JournalBinding) =>
-  a.serial === b.serial && a.otaSha256 === b.otaSha256 && a.candidateRecordSha256 === b.candidateRecordSha256 && a.installedRecordSha256 === b.installedRecordSha256
-
-effect function journalEnvelope(file: string) {
-  const text = try Effect.try({ try: () => readPrivate(file), catch: (cause) => new JournalUnreadable({ file, reason: String(cause) }) })
-  if (text === undefined) return undefined
-  const value = try Effect.try({ try: () => JSON.parse(text) as unknown, catch: () => new JournalUnreadable({ file, reason: "not JSON" }) })
-  const found = decodeJournal(value)
-  if (Option.isNone(found)) throw new JournalUnreadable({ file, reason: `not a schema 2 ${JOURNAL_KIND}` })
-  return found.value
-}
-
-effect function journalState(file: string, state: unknown) {
-  return decodeState(state) catch effect () => {
-    throw new JournalUnreadable({ file, reason: "the journal state breaks the update rules" })
-  }
-}
-
-export effect function readJournal(file: string) {
-  const found = try journalEnvelope(file)
-  if (found === undefined) throw new JournalUnreadable({ file, reason: "no journal" })
-  const read: JournalRead = { binding: found.binding, state: try journalState(file, found.state) }
-  return read
-}
-
-export effect function journalMachine(file: string, binding: JournalBinding) {
-  effect function load() {
-    const found = try journalEnvelope(file)
-    if (found === undefined) return initial
-    if (!sameBinding(found.binding, binding)) throw new JournalUnreadable({ file, reason: "the journal belongs to another device, package or release" })
-    return try journalState(file, found.state)
-  }
-  effect function keep(next: OperatorJournal) {
-    const at = new Date(try Clock.currentTimeMillis).toISOString()
-    const found = try orDie(journalEnvelope(file))
-    const history = [...(found?.history ?? []), { at, phase: next.phase, lock: next.lock }]
-    try orDie(Effect.try(() => replacePrivate(file, `${JSON.stringify({ schema: 2, kind: JOURNAL_KIND, binding, state: next, history }, null, 2)}\n`)))
-  }
-  return try machineOver(load, keep)
-}
-
-export effect function withInstallLock<A, E, R>(journal: Machine.Shape, serial: string, operation: string, directory: string, body: (lock: InstallLockHandle) => A!E!R) {
-  const opened = try Effect.try({ try: () => openLock(directory, serial), catch: (cause) => new LockFailed({ reason: String(cause) }) })
-  if (opened.kind === "locked") throw new DeviceLocked({ lockPath: opened.path })
-  const held: HeldLock = opened
-  const mark = effect (phase: string) => {
-    const time = new Date(try Clock.currentTimeMillis).toISOString()
-    try Effect.try({ try: () => markLock(held, { operation, serial, pid: processId(), phase, time }), catch: (cause) => new LockFailed({ reason: String(cause) }) })
-  }
-  const release = effect {
-    if (canReleaseLock(try journal.get())) try journal.send({ type: "releaseLock" })
-    const settled = try journal.get()
-    try Effect.try({ try: () => closeLock(held, settled.lock.tag === "Unlocked"), catch: (cause) => new LockFailed({ reason: String(cause) }) })
-  }
-  const run = effect {
-    if (lockHeld((try journal.get()).lock)) try journal.send({ type: "releaseLock" })
-    if ((try journal.get()).lock.tag === "LeftLocked") try journal.send({ type: "removeLeftLock" })
-    try journal.send({ type: "acquireLock" })
-    try mark("preflight")
-    const handle: InstallLockHandle = {
-      beforeWrites: effect () => {
-        try mark("writes-started")
-        try journal.send({ type: "beginWrites" })
-      },
-    }
-    return try body(handle)
-  }
-  const result = run catch effect (failure) => {
-    try release
-    throw failure
-  }
-  try release
-  return result
-}
-
-const shown = (observed: Observed) => `${observed.state} ${JSON.stringify(observed.observation)}`
-
-export effect function checkUpdate(channel: ReleaseChannel, from: string, to: string) {
-  const installed = try readRecord(from)
-  const candidate = try readRecord(to)
-  return { from: installed.release.release.fingerprint, to: candidate.release.release.fingerprint, problems: admissionProblems(channel, installed, candidate) }
-}
-
-export effect function applyUpdate(request: ApplyRequest) {
-  const device = request.device
-  const rebootMs = request.timing?.rebootMs ?? 10 * 60_000
-  const operatorMs = request.timing?.operatorMs ?? 10 * 60_000
-  const sideloadMs = request.timing?.sideloadMs ?? 60 * 60_000
-  const pollMs = request.timing?.pollMs ?? 2_000
-  const notify = request.notify ?? ((message: string) => Console.error(message))
-  const installed = try readRecord(request.from)
-  const candidate = try readRecord(request.to)
-  const owned = try tryPromise({ try: () => hashFile(request.ota), catch: (cause) => new RecordUnreadable({ file: request.ota, reason: String(cause) }) })
-  const problems = admissionProblems(request.channel, installed, candidate)
-  if (owned.sha256 !== candidate.json.artifacts.ota.sha256 || owned.sizeBytes !== candidate.json.artifacts.ota.sizeBytes)
-    problems.push("the OTA package is not the one the candidate record describes")
-  const binding: JournalBinding = { serial: device.serial, otaSha256: owned.sha256, candidateRecordSha256: candidate.sha256, installedRecordSha256: installed.sha256 }
-  const existing = try journalEnvelope(request.journal)
-  const bound = existing === undefined || sameBinding(existing.binding, binding)
-  if (!bound) problems.push("the journal belongs to another device, package or release; start a new journal")
-  const state = existing !== undefined && bound ? try journalState(request.journal, existing.state) : initial
-  const seen = try observeDevice(device)
-  const fresh = state.phase === "Unstarted"
-  const next: NextStep = fresh ? (startsFrom(seen.observation, request.channel, installed.release) ? "Sideload" : "Refuse") : nextStep(state.start, seen.observation)
-  if (fresh && next === "Refuse")
-    problems.push(`a new update starts from booted Android running the installed build ${installed.release.release.fingerprint} on a known slot, enforcing, with a read verified boot state; the device shows ${shown(seen)}`)
-  if (!fresh && next === "Refuse") problems.push(`refusing to continue: the device shows ${shown(seen)}, neither the candidate nor the installed build on its original slot`)
-  if (fallingBackOrAfter(state.phase)) problems.push("the journal records a fallback to the original slot; start a new journal to update again")
-  const plan: UpdatePlan = {
-    serial: device.serial,
-    from: installed.release.release.fingerprint,
-    to: candidate.release.release.fingerprint,
-    otaSha256: owned.sha256,
-    ota: candidate.json.artifacts.ota.type,
-    deviceState: seen.state,
-    observed: seen.observation,
-    phase: state.phase,
-    next,
-  }
-  const unchanged: ApplyResult = { executed: false, plan, problems, journal: state }
-  if (request.execute !== true || problems.length > 0) return unchanged
-  if (request.confirm !== true) throw new ConfirmationRequired({ flag: "--confirm-update" })
-  if (state.phase === "Verified") return unchanged
-  const journal = try journalMachine(request.journal, binding)
-
-  effect function sideload(lock: InstallLockHandle) {
-    try lock.beforeWrites()
-    let current = seen
-    if (current.observation.tag !== "InSideload") {
-      if (current.observation.tag === "OnAndroid") try required(try device.adb(["reboot", "recovery"]), "adb", ["reboot", "recovery"])
-      try notify(OPERATOR_STEPS.enterSideload)
-      current = try waitFor(device, (observation) => observation.tag === "InSideload", rebootMs + operatorMs, pollMs)
-      if (current.observation.tag !== "InSideload")
-        throw new UpdateStopped({
-          reason: `the device did not enter recovery sideload (it is ${current.state}); nothing was sent. The installation lock stays in place because the device was rebooted: inspect it and the journal, remove the lock, then choose "Apply update from ADB" in recovery and run apply again, or reboot the device`,
-          observed: current.observation,
-        })
-    }
-    try journal.send({ type: "enterSideload", observed: current.observation })
-    const transfer = try device.adb(["sideload", absolute(request.ota)], sideloadMs)
-    try journal.send({ type: "transferEnded", sent: transfer.code === 0 })
-    if (transfer.code !== 0) throw new TransferFailed({ code: transfer.code, stderr: transfer.stderr.trim().slice(0, 1024) })
-    try device.adb(["reboot"])
-    try notify(OPERATOR_STEPS.rebootAfterSideload)
-    const booted = try waitFor(device, (observation) => observation.tag === "OnAndroid", rebootMs + operatorMs, pollMs)
-    const after = nextStep((try journal.get()).start, booted.observation)
-    switch (after) {
-      case "Verify":
-        return booted.observation
-      case "Retry":
-        throw new UpdateStopped({ reason: "the device rebooted into the installed build; the update did not take effect", observed: booted.observation })
-      case "Refuse":
-        throw new UpdateStopped({ reason: "the device booted neither the candidate nor the installed build on its original slot; inspect it", observed: booted.observation })
-      case "Sideload":
-      case "Bootloader":
-      case "Absent":
-        throw new UpdateStopped({ reason: `Android did not finish booting after the update (device ${booted.state}); run status`, observed: booted.observation })
-    }
-  }
-
-  try withInstallLock(journal, device.serial, "ota-update", request.lockDirectory ?? defaultLockDirectory(), effect (lock) => {
-    if ((try journal.get()).phase === "Unstarted")
-      try journal.send({ type: "begin", channel: request.channel, fromRelease: installed.release, toRelease: candidate.release, observed: seen.observation })
-    const step = nextStep((try journal.get()).start, seen.observation)
-    if (step === "Bootloader" || step === "Absent")
-      throw new UpdateStopped({ reason: `the device is ${seen.state}; the update outcome cannot be observed: run status, then reboot or fall back explicitly`, observed: seen.observation })
-    if (step === "Refuse") throw new UpdateStopped({ reason: "the device shows a build this journal does not describe", observed: seen.observation })
-    const booted = step === "Verify" ? seen.observation : try sideload(lock)
-    try journal.send({ type: "verifyBoot", observed: booted })
-    const verdict = try journal.get()
-    if (verdict.phase !== "Verified") throw new VerificationFailed({ observed: booted, start: verdict.start })
-  })
-  const result: ApplyResult = { executed: true, plan, problems: [], journal: try journal.get() }
-  return result
-}
-
-export effect function updateStatus(device: DeviceRunner, journalFile: string) {
-  const journal = try readJournal(journalFile)
-  if (journal.binding.serial !== device.serial) throw new JournalUnreadable({ file: journalFile, reason: "the journal belongs to another device" })
-  const seen = try observeDevice(device)
-  const status: UpdateStatus = {
-    phase: journal.state.phase,
-    lock: journal.state.lock,
-    deviceState: seen.state,
-    observed: seen.observation,
-    bootloader: seen.observation.tag === "InBootloader" ? try observeBootloader(device, journal.state.start) : null,
-    next: nextStep(journal.state.start, seen.observation),
-  }
-  return status
-}
-
-const VALUED: Readonly<Record<string, string>> = {
-  "--serial": "serial",
-  "--channel": "channel",
-  "--from": "from",
-  "--to": "to",
-  "--ota": "ota",
-  "--journal": "journal",
-  "--source-lock": "sourceLock",
-  "--archive": "archive",
-  "--adb": "adb",
-  "--fastboot": "fastboot",
-  "--record": "record",
-  "--signed-target-files": "signedTargetFiles",
-  "--signed-image": "signedImage",
-  "--archive-dir": "archiveDir",
-  "--known-good": "knownGood",
-}
-const SWITCHES = ["--execute", "--confirm-update", "--confirm-fallback"] as const
-const REQUIRED: Readonly<Record<OtaCommand, readonly string[]>> = {
+const commands = new Map<string, Command>([
+  ["check", "check"], ["apply", "apply"], ["status", "status"], ["fallback", "fallback"],
+  ["stock-archive", "stock-archive"], ["verify-stock", "verify-stock"], ["retain-known-good", "retain-known-good"],
+])
+const needs: Readonly<Record<Command, readonly string[]>> = {
   check: ["channel", "from", "to"],
   apply: ["serial", "channel", "from", "to", "ota", "journal"],
   status: ["serial", "journal"],
   fallback: ["serial", "journal"],
-  "stock-archive": ["channel", "sourceLock", "archive"],
-  "verify-stock": ["serial", "sourceLock"],
-  "retain-known-good": ["channel", "record", "signedTargetFiles", "signedImage", "archiveDir"],
+  "stock-archive": ["channel", "source-lock", "archive"],
+  "verify-stock": ["serial", "source-lock"],
+  "retain-known-good": ["channel", "record", "signed-target-files", "signed-image", "archive-dir"],
+}
+const extra: Readonly<Record<Command, readonly string[]>> = {
+  check: [], apply: ["adb", "fastboot"], status: ["adb", "fastboot"], fallback: ["adb", "fastboot"],
+  "stock-archive": ["known-good"], "verify-stock": ["adb", "fastboot"], "retain-known-good": [],
+}
+const switches = new Set(["execute", "confirm-update", "confirm-fallback"])
+const ordinary: Timings = { recoveryMs: 2 * 60_000, bootMs: 10 * 60_000, pollMs: 1_500 }
+const deviceStates: Readonly<Record<DeviceObservation["tag"], string>> = {
+  OnAndroid: "device", InSideload: "sideload", InRecovery: "recovery", InBootloader: "bootloader", StillBooting: "booting", Unreachable: "absent",
 }
 
-const isCommand = (value: string | undefined): value is OtaCommand => value !== undefined && Object.hasOwn(REQUIRED, value)
-
-export effect function parseOtaArgs(argv: readonly string[]) {
-  const [command, ...rest] = argv
-  if (!isCommand(command)) throw new OtaUsageError({ message: "ota takes check | apply | status | fallback | stock-archive | verify-stock | retain-known-good" })
-  const values: Record<string, string> = {}
-  const switches = new Set<string>()
-  for (let index = 0; index < rest.length; index++) {
-    const argument = rest[index] ?? ""
-    if ((SWITCHES as readonly string[]).includes(argument)) {
-      if (switches.has(argument)) throw new OtaUsageError({ message: `${argument} is given twice` })
-      switches.add(argument)
+effect function parse(argv: readonly string[]) {
+  const command = commands.get(argv[0] ?? "")
+  if (command === undefined) throw new OtaRefused({ reason: "Choose check, apply, status, fallback, stock-archive, verify-stock, or retain-known-good" })
+  const values = new Map<string, string>()
+  const flags = new Set<string>()
+  for (let i = 1; i < argv.length; i++) {
+    const arg = argv[i] ?? ""
+    const name = arg.startsWith("--") ? arg.slice(2) : ""
+    if (switches.has(name)) {
+      if (flags.has(name)) throw new OtaRefused({ reason: `${arg} was given twice` })
+      flags.add(name)
       continue
     }
-    const name = Object.hasOwn(VALUED, argument) ? VALUED[argument] : undefined
-    if (name === undefined) throw new OtaUsageError({ message: `unsupported option ${argument}` })
-    if (Object.hasOwn(values, name)) throw new OtaUsageError({ message: `${argument} is given twice` })
-    const value = rest[index + 1]
-    if (value === undefined || value === "" || value.startsWith("--")) throw new OtaUsageError({ message: `${argument} needs a value` })
-    values[name] = value
-    index++
+    const value = argv[i + 1]
+    if ((!needs[command].includes(name) && !extra[command].includes(name)) || values.has(name) || value === undefined || value === "" || value.startsWith("--")) {
+      throw new OtaRefused({ reason: `Invalid, incomplete, or repeated option ${arg}` })
+    }
+    i++
+    values.set(name, value)
   }
-  for (const name of REQUIRED[command])
-    if (values[name] === undefined) throw new OtaUsageError({ message: `${command} requires --${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}` })
-  const execute = switches.has("--execute")
-  if (switches.has("--confirm-update") && (command !== "apply" || !execute)) throw new OtaUsageError({ message: "--confirm-update belongs to apply --execute" })
-  if (switches.has("--confirm-fallback") && (command !== "fallback" || !execute)) throw new OtaUsageError({ message: "--confirm-fallback belongs to fallback --execute" })
-  if (execute && command !== "apply" && command !== "fallback") throw new OtaUsageError({ message: `${command} is read-only` })
-  if (values.knownGood !== undefined && command !== "stock-archive") throw new OtaUsageError({ message: "--known-good belongs to stock-archive" })
-  const options: OtaOptions = { command, values, execute, confirmUpdate: switches.has("--confirm-update"), confirmFallback: switches.has("--confirm-fallback") }
-  return options
+  const absent = needs[command].find((name) => !values.has(name))
+  if (absent !== undefined) throw new OtaRefused({ reason: `${command} requires --${absent}` })
+  const execute = flags.has("execute")
+  if ((execute && command !== "apply" && command !== "fallback") ||
+      (flags.has("confirm-update") && (command !== "apply" || !execute)) ||
+      (flags.has("confirm-fallback") && (command !== "fallback" || !execute)) ||
+      (execute && command === "apply" && !flags.has("confirm-update")) ||
+      (execute && command === "fallback" && !flags.has("confirm-fallback"))) {
+    throw new OtaRefused({ reason: "Device writes require apply --execute --confirm-update or fallback --execute --confirm-fallback" })
+  }
+  return { command, values, execute } satisfies Arguments
 }
 
-export effect function optionDevice(options: OtaOptions) {
-  return try deviceRunner({ serial: options.values.serial ?? "", adb: options.values.adb, fastboot: options.values.fastboot })
+function value(args: Arguments, name: string): string {
+  return args.values.get(name) ?? ""
 }
 
-effect function refusedWhen<A extends { readonly problems: readonly (string | RecoveryProblem)[] }>(result: A) {
-  if (result.problems.length > 0) throw new UpdateRefused({ problems: result.problems.map((problem) => (typeof problem === "string" ? problem : `${problem.kind}: ${problem.detail}`)) })
-  return result
+effect function using(args: Arguments) {
+  return try deviceTools(value(args, "serial"), args.values.get("adb"), args.values.get("fastboot"))
 }
 
-effect function fallback(options: OtaOptions) {
-  const file = options.values.journal ?? ""
-  const device = try optionDevice(options)
-  const read = try readJournal(file)
-  if (read.binding.serial !== device.serial) throw new JournalUnreadable({ file, reason: "the journal belongs to another device" })
-  const journal = try journalMachine(file, read.binding)
-  if (!options.execute) return try Effect.provideService(fallbackToOriginalSlot({ device, execute: false, confirm: false }), Machine, journal)
-  if (!options.confirmFallback) throw new ConfirmationRequired({ flag: "--confirm-fallback" })
-  return try withInstallLock(journal, device.serial, "ota-fallback", defaultLockDirectory(), (lock) =>
-    Effect.provideService(fallbackToOriginalSlot({ device, execute: true, confirm: true, lock }), Machine, journal))
+effect function waitFor(tool: DeviceTools, need: (observation: DeviceObservation) => boolean, budget: number, pollMs: number) {
+  const starts = try Clock.currentTimeMillis
+  let reading = try observeDevice(tool)
+  while (!need(reading)) {
+    const remaining = starts + budget - (try Clock.currentTimeMillis)
+    if (remaining <= 0) return reading
+    try sleep(Math.min(pollMs, remaining))
+    reading = try observeDevice(tool)
+  }
+  return reading
 }
 
-export type OtaFailure =
-  | ConfirmationRequired
-  | DeviceLocked
-  | JournalUnreadable
-  | LockFailed
-  | OtaUsageError
-  | RecordUnreadable
-  | Rejected
-  | ToolFailed
-  | TransferFailed
-  | UpdateRefused
-  | UpdateStopped
-  | VerificationFailed
-  | FallbackUnconfirmed
-  | RecoveryInputUnreadable
-  | RetentionWriteFailed
+effect function deviceWrite(tool: DeviceTools, kind: "adb" | "fastboot", args: readonly string[], timeoutMs: number) {
+  const result = try captureCommand(tool[kind], ["-s", tool.serial, ...args], timeoutMs)
+  if (result.code !== 0) throw new OtaRefused({ reason: `${kind} ${args[0] ?? "operation"} failed: ${result.stderr.trim().slice(0, 512)}` })
+}
 
-export effect function otaMain(argv: readonly string[]): unknown!OtaFailure!(ChildProcessSpawner | FileSystem.FileSystem | Path.Path) {
-  const options = try parseOtaArgs(argv)
-  const value = (name: string) => options.values[name] ?? ""
-  switch (options.command) {
-    case "check":
-      return try refusedWhen(try checkUpdate((try readChannel(value("channel"))).channel, value("from"), value("to")))
-    case "apply":
-      return try refusedWhen(try applyUpdate({
-        device: try optionDevice(options),
-        channel: (try readChannel(value("channel"))).channel,
-        from: value("from"),
-        to: value("to"),
-        ota: value("ota"),
-        journal: value("journal"),
-        execute: options.execute,
-        confirm: options.confirmUpdate,
-      }))
-    case "status":
-      return try updateStatus(try optionDevice(options), value("journal"))
-    case "fallback":
-      return try refusedWhen(try fallback(options))
-    case "stock-archive":
-      return try refusedWhen(try stockRecoveryPlan({
-        channel: (try readChannel(value("channel"))).channel,
-        sourceLock: value("sourceLock"),
-        archive: value("archive"),
-        ...(options.values.knownGood === undefined ? {} : { knownGood: options.values.knownGood }),
-      }))
-    case "verify-stock":
-      return try refusedWhen(try verifyStockRecovery({ device: try optionDevice(options), sourceLock: value("sourceLock") }))
-    case "retain-known-good":
-      return try refusedWhen(try retainKnownGood({
-        channel: (try readChannel(value("channel"))).channel,
-        recordFile: value("record"),
-        signedTargetFiles: value("signedTargetFiles"),
-        signedImage: value("signedImage"),
-        archiveDir: value("archiveDir"),
-      }))
+effect function applyUpdate(args: Arguments, options: OperatorOptions) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const tool = try using(args)
+  const input = try loadUpdate(value(args, "channel"), value(args, "from"), value(args, "to"))
+  const originalOta = path.resolve(value(args, "ota"))
+  const inspected = try verifyCandidateOta(originalOta, input.to.record)
+  const journalFile = value(args, "journal")
+  const binding: JournalBinding = { serial: tool.serial, channel: input.channelSha256, installedRecord: input.from.sha256, candidateRecord: input.to.sha256, ota: inspected.sha256 }
+  const adoption: JournalAdoption = { binding, name: input.channel.name, product: input.channel.product, device: input.channel.device,
+    installedBuild: input.fromRelease.release.fingerprint, candidateBuild: input.toRelease.release.fingerprint, candidatePatch: input.toRelease.release.securityPatch }
+  const timings = options.timings ?? ordinary
+  if (!args.execute) {
+    const existing = try readOperatorJournal(journalFile, tool.serial, adoption)
+    if (existing !== undefined && !sameJournalBinding(existing.binding, binding)) {
+      throw new OtaRefused({ reason: "The selected OTA records or bytes do not match the journal" })
+    }
+    const observed = try observeDevice(tool)
+    return { executed: false, observed, next: existing === undefined ? (startsFrom(observed, input.channel, input.fromRelease) ? "Begin" : "Refuse") : nextStep(existing.state.start, observed),
+      state: existing?.state ?? initial, ota: inspected }
+  }
+  return try scoped(effect {
+    const session = try openOperatorJournal(journalFile, tool.serial, binding, options.leaseDirectory, adoption)
+    const operation = effect {
+      let observed = try observeDevice(tool)
+      if (session.state().phase === "Unstarted") {
+        if (!canBegin(session.state(), input.channel, input.fromRelease, input.toRelease, observed)) {
+          throw new OtaRefused({ reason: "Booted Android is not the installed release on a known slot with enforcing SELinux" })
+        }
+        try session.store(begin(session.state(), input.channel, input.fromRelease, input.toRelease, observed))
+      }
+      const start = session.state().start
+      if (start.device !== input.channel.device || start.installedBuild !== input.fromRelease.release.fingerprint ||
+          start.candidateBuild !== input.toRelease.release.fingerprint || start.candidatePatch !== input.toRelease.release.securityPatch ||
+          fallingBackOrAfter(session.state().phase)) throw new OtaRefused({ reason: "This journal cannot apply the selected release" })
+      if (session.state().phase === "Verified") return { observed, next: "Verify" as const, sent: false }
+      let next = nextStep(start, observed)
+      if (next === "Refuse") throw new OtaRefused({ reason: "The device shows a foreign build or the original build on the wrong slot" })
+      if (next === "Verify") {
+        if (canVerifyBoot(session.state(), observed)) try session.store(verifyBoot(session.state(), observed))
+        return { observed, next, sent: false }
+      }
+      if (next !== "Sideload" && next !== "Retry") return { observed, next, sent: false }
+      const privateDir = try files.makeTempDirectoryScoped()
+      const packageFile = path.join(privateDir, "candidate.zip")
+      try files.copyFile(originalOta, packageFile)
+      try verifyCandidateOta(packageFile, input.to.record)
+      if (next === "Retry") {
+        try session.beforeWrites()
+        try deviceWrite(tool, "adb", ["reboot", "recovery"], 30_000)
+      }
+      if (observed.tag !== "InSideload") try Console.error("In recovery on the device, choose Apply update from ADB.")
+      observed = try waitFor(tool, (reading) => reading.tag === "InSideload", timings.recoveryMs, timings.pollMs)
+      if (observed.tag !== "InSideload") return { observed, next: nextStep(start, observed), sent: false }
+      try session.beforeWrites()
+      if (!canEnterSideload(session.state(), observed)) throw new OtaRefused({ reason: "The journal cannot begin sideload" })
+      try session.store(enterSideload(session.state(), observed))
+      const sent = (deviceWrite(tool, "adb", ["sideload", packageFile], 60 * 60_000) |> map(%, () => true)) catch () => false
+      if (!canTransferEnded(session.state(), sent)) throw new OtaRefused({ reason: "The journal cannot settle the observed transfer" })
+      try session.store(transferEnded(session.state(), sent))
+      if (!sent) throw new OtaRefused({ reason: "The OTA transfer did not complete" })
+      observed = try waitFor(tool, (reading) => reading.tag === "OnAndroid", timings.bootMs, timings.pollMs)
+      next = nextStep(start, observed)
+      if (next === "Refuse") throw new OtaRefused({ reason: "The device booted an unexpected build or slot" })
+      if (canVerifyBoot(session.state(), observed)) try session.store(verifyBoot(session.state(), observed))
+      return { observed, next, sent }
+    } catch effect (failure) => {
+      try session.finish()
+      throw failure
+    }
+    try session.finish()
+    return { executed: true, ...operation, state: session.state(), ota: inspected }
+  })
+}
+
+effect function fallbackUpdate(args: Arguments, options: OperatorOptions) {
+  const tool = try using(args)
+  const journal = value(args, "journal")
+  const timings = options.timings ?? ordinary
+  if (!args.execute) {
+    const stored = try readOperatorStatus(journal, tool.serial)
+    if (stored === undefined) throw new OtaRefused({ reason: "No OTA journal exists for fallback" })
+    const observed = try observeDevice(tool)
+    const slots = observed.tag === "InBootloader" ? (try observeSlots(tool, stored.start.originalSlot, stored.start.device)) : null
+    return { executed: false, observed, state: stored, slots }
+  }
+  return try scoped(effect {
+    const session = try openOperatorJournal(journal, tool.serial, undefined, options.leaseDirectory)
+    const operation = effect {
+      const state = session.state()
+      if (!(fallbackPhase(state.phase)) || (try observeDevice(tool)).tag !== "InBootloader") {
+        throw new OtaRefused({ reason: "Fallback requires a transferred update and a device in its bootloader" })
+      }
+      const slots = try observeSlots(tool, state.start.originalSlot, state.start.device)
+      const selected = slotArgument(state.start.originalSlot)
+      if (selected === null || slots.snapshot === "SnapshotUnread" || !fallbackAdmitted(state.start, slots)) {
+        throw new OtaRefused({ reason: "The updated slot is not safely reversible to the original slot" })
+      }
+      try session.beforeWrites()
+      if (!canFallback(session.state(), slots)) throw new OtaRefused({ reason: "The journal cannot begin fallback" })
+      try session.store(fallback(session.state(), slots))
+      const observed = effect {
+        try deviceWrite(tool, "fastboot", ["set_active", selected], 30_000)
+        try deviceWrite(tool, "fastboot", ["reboot"], 30_000)
+        return try waitFor(tool, (reading) => bootRestored(state.start, reading), timings.bootMs, timings.pollMs)
+      } catch effect (failure) => {
+        const unknown = { tag: "Unreachable" } as const
+        if (canFallbackEnded(session.state(), unknown)) try session.store(fallbackEnded(session.state(), unknown))
+        throw failure
+      }
+      if (canFallbackEnded(session.state(), observed)) try session.store(fallbackEnded(session.state(), observed))
+      return observed
+    } catch effect (failure) => {
+      try session.finish()
+      throw failure
+    }
+    try session.finish()
+    return { executed: true, observed: operation, state: session.state() }
+  })
+}
+
+export effect function otaMain(argv: readonly string[], options: OperatorOptions = {}) {
+  const args = try parse(argv)
+  const timings = options.timings
+  if (timings !== undefined && (!Number.isSafeInteger(timings.recoveryMs) || timings.recoveryMs < 0 ||
+      !Number.isSafeInteger(timings.bootMs) || timings.bootMs < 0 || !Number.isSafeInteger(timings.pollMs) || timings.pollMs <= 0)) {
+    throw new OtaRefused({ reason: "OTA waiting times must be nonnegative milliseconds with a positive polling interval" })
+  }
+  switch (args.command) {
+    case "check": {
+      const checked = try loadUpdate(value(args, "channel"), value(args, "from"), value(args, "to"))
+      return { admitted: true, installed: checked.fromRelease.release, candidate: checked.toRelease.release, executed: false }
+    }
+    case "apply": return try applyUpdate(args, options)
+    case "fallback": return try fallbackUpdate(args, options)
+    case "status": {
+      const tool = try using(args)
+      const stored = try readOperatorStatus(value(args, "journal"), tool.serial)
+      if (stored === undefined) throw new OtaRefused({ reason: "No OTA journal exists for this device" })
+      const observed = try observeDevice(tool)
+      const slots = observed.tag === "InBootloader" ? (try observeSlots(tool, stored.start.originalSlot, stored.start.device)) : null
+      return { executed: false, observed, state: stored, deviceState: deviceStates[observed.tag], next: nextStep(stored.start, observed).toLowerCase(), slots }
+    }
+    case "stock-archive": {
+      const channel = value(args, "channel")
+      const plan = try stockRecoveryPlan(channel, value(args, "source-lock"), value(args, "archive"))
+      const directory = args.values.get("known-good")
+      return { ...plan, knownGood: directory === undefined ? null : (knownGoodRecoveryPlan(channel, directory) catch (failure) =>
+        ({ executed: false, steps: [], problems: [failure._tag === "OtaRefused" ? failure.reason : failure.message] })) }
+    }
+    case "verify-stock": return try verifyStockRecovery(try using(args), value(args, "source-lock"))
+    case "retain-known-good": return try retainKnownGood({
+      channel: value(args, "channel"), record: value(args, "record"), signedTargetFiles: value(args, "signed-target-files"),
+      signedImage: value(args, "signed-image"), archiveDir: value(args, "archive-dir"),
+    })
   }
 }

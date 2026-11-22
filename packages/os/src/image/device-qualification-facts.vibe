@@ -1,0 +1,352 @@
+// spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/image/qualification.md, "Story: Read the verdict against my requirements"
+import { normalizeVendorApiLevel, type DeviceCommand } from "../../gen/os__image__qualification.effect.vibe"
+
+type ReadKey = Extract<DeviceCommand, { tag: "AdbShellRead" }>["key"]
+
+export const readOnlyCommands = {
+  getprop: "getprop",
+  uname: "uname -r",
+  meminfo: "cat /proc/meminfo",
+  dfData: "df -k /data",
+  wmSize: "wm size",
+  wmDensity: "wm density",
+  getenforce: "getenforce",
+  cameras: "dumpsys media.camera",
+  audioPolicy: "dumpsys media.audio_policy",
+  mediaCodecs: "cat /apex/com.android.media.swcodec/etc/media_codecs*.xml /system/etc/media_codecs*.xml /vendor/etc/media_codecs*.xml /odm/etc/media_codecs*.xml 2>/dev/null",
+  wifiCountry: "cmd wifi get-country-code",
+  wifiStatus: "cmd wifi status",
+  wifiDump: "dumpsys wifi | grep -E 'supported_sta_bands|is5GHzBandSupported' | head -10",
+  chargeControl: "ls -d /sys/class/power_supply/*/charge_control* /sys/class/power_supply/*/charge_*_threshold /sys/class/power_supply/*/charging_policy /sys/class/power_supply/*/input_suspend 2>/dev/null",
+  battery: "dumpsys battery",
+  wlanCountryProc: "ls -l /proc/net/wlan/country 2>&1",
+  vendorFirmware: "ls -l /vendor/firmware/ 2>/dev/null",
+  vintfManifest: "cat /vendor/etc/vintf/manifest.xml 2>/dev/null",
+  vintfFragments: "ls /vendor/etc/vintf/manifest/ 2>/dev/null",
+  vintfMatrix: "cat /vendor/etc/vintf/compatibility_matrix.xml 2>/dev/null",
+} as const satisfies Readonly<Record<ReadKey, string>>
+
+export type RawAdbCaptures = Partial<Record<keyof typeof readOnlyCommands, string>>
+export type DeviceFacts = Partial<ReturnType<typeof deriveFacts>> & { readonly fastboot?: Readonly<Record<string, string>> }
+
+function propertyFlag(props: ReadonlyMap<string, string>, property: string): boolean | null {
+  return props.size === 0 ? null : props.get(property) === "true"
+}
+
+function parseGetprop(text = "") {
+  const props = new Map<string, string>()
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^\[([^\]]+)\]: \[(.*)\]$/.exec(line.trim())
+    if (match?.[1] !== undefined && match[2] !== undefined) props.set(match[1], match[2])
+  }
+  return props
+}
+
+function parseMeminfoGiB(text = "") {
+  const kb = /^MemTotal:\s+(\d+)\s+kB/m.exec(text)?.[1]
+  return kb ? round(Number(kb) / 1024 ** 2) : null
+}
+
+function parseDfGiB(text = "") {
+  const lines = text.trim().split(/\r?\n/).filter(Boolean)
+  const fields = lines.at(-1)?.trim().split(/\s+/) ?? []
+  const blocks = Number(fields[1])
+  return Number.isFinite(blocks) && blocks > 0
+    ? round(blocks / 1024 ** 2)
+    : null
+}
+
+function parseWmSize(text = "") {
+  const match = /Physical size:\s*(\d+)x(\d+)/.exec(text)
+  if (!match) return null
+  const [w, h] = [Number(match[1]), Number(match[2])]
+  return {
+    width: w,
+    height: h,
+    longEdge: Math.max(w, h),
+    shortEdge: Math.min(w, h),
+  }
+}
+
+function parseWmDensity(text = "") {
+  const value = /Physical density:\s*(\d+)/.exec(text)?.[1]
+  return value ? Number(value) : null
+}
+
+function parseKernelVersion(text = "") {
+  const release = text.trim()
+  const match = /^(\d+)\.(\d+)(?:\.(\d+))?/.exec(release)
+  if (!match) return null
+  const gki = /-(android\d+)-(\d+)/.exec(release)
+  return {
+    release,
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: match[3] ? Number(match[3]) : null,
+    gkiBranch: gki ? `${gki[1]}-${match[1]}.${match[2]}` : null,
+  }
+}
+
+const AF_MODES: Readonly<Record<string, string>> = {
+  0: "OFF",
+  1: "AUTO",
+  2: "MACRO",
+  3: "CONTINUOUS_VIDEO",
+  4: "CONTINUOUS_PICTURE",
+  5: "EDOF",
+}
+
+interface CameraFact {
+  readonly id: string | null
+  readonly facing: string
+  readonly afModes: readonly string[]
+  readonly minimumFocusDistance: number | null
+  readonly autofocus: boolean | null
+  readonly megapixels: number | null
+}
+
+function parseCameras(text = "") {
+  const blocks = text.split(/^\s*== Camera HAL device /m).slice(1)
+  const cameras: CameraFact[] = []
+  for (const block of blocks) {
+    const id = /^([^\s]+)/.exec(block)?.[1] ?? null
+    const facing =
+      /android\.lens\.facing \([0-9a-f]+\): byte\[1\]\s*\[\s*(\w+)\s*\]/i
+        .exec(block)?.[1]
+        ?.toLowerCase()
+    if (!facing) continue
+    const afModes = (
+      /android\.control\.afAvailableModes \([0-9a-f]+\): byte\[\d+\]\s*\[([^\]]*)\]/i.exec(
+        block,
+      )?.[1] ?? ""
+    )
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((m) => AF_MODES[m] ?? m.toUpperCase())
+    const minFocus =
+      /android\.lens\.info\.minimumFocusDistance \([0-9a-f]+\): float\[1\]\s*\[\s*([0-9.]+)\s*\]/i.exec(
+        block,
+      )?.[1]
+    const parsedFocus = Number(minFocus)
+    const minimumFocusDistance = Number.isFinite(parsedFocus) ? parsedFocus : null
+    const autofocus = minimumFocusDistance === 0 ? false
+      : minimumFocusDistance === null || afModes.length === 0 ? null
+        : afModes.some((mode) => ["AUTO", "CONTINUOUS_PICTURE", "CONTINUOUS_VIDEO", "MACRO"].includes(mode))
+    const pixelArray =
+      /android\.sensor\.info\.pixelArraySize \([0-9a-f]+\): int32\[2\]\s*\[\s*(\d+)\s+(\d+)\s*\]/i.exec(
+        block,
+      )
+    const megapixels = pixelArray
+      ? round((Number(pixelArray[1]) * Number(pixelArray[2])) / 1e6, 1)
+      : null
+    if (!cameras.some((c) => c.id === id))
+      cameras.push({
+        id,
+        facing,
+        afModes,
+        minimumFocusDistance,
+        autofocus,
+        megapixels,
+      })
+  }
+  return cameras
+}
+
+function parseMicrophoneCount(text = "") {
+  const seen = new Set<string>()
+  const pattern =
+    /AUDIO_DEVICE_IN_(BUILTIN|BACK)_MIC[^\n]*?(?:@:?\s*"?([^",\s)]*)"?)?/g
+  for (const match of text.matchAll(pattern))
+    seen.add(`${match[1]}:${match[2] ?? ""}`)
+  return seen.size
+}
+
+function parseMediaCodecs(text = "") {
+  const decoders = new Set<string>()
+  const encoders = new Set<string>()
+  let section: "Decoders" | "Encoders" | null = null
+  for (const token of text.matchAll(
+    /<(\/?)(Decoders|Encoders|MediaCodec|Type)\b([^>]*)>/g,
+  )) {
+    const [, closing, tag, attrs] = token
+    if (tag === "Decoders" || tag === "Encoders") {
+      section = closing ? null : tag
+      continue
+    }
+    if (closing || !section) continue
+    const type = /\b(?:type|name)="([a-z]+\/[^"]+)"/.exec(attrs ?? "")?.[1]
+    if (type)
+      (section === "Decoders" ? decoders : encoders).add(type.toLowerCase())
+  }
+  return { decoders: [...decoders].sort(), encoders: [...encoders].sort() }
+}
+
+function parseWifiCountry(text = "") {
+  return (
+    /country code[^A-Z]*([A-Z]{2})\b/i.exec(text)?.[1]?.toUpperCase() ?? null
+  )
+}
+
+function parseWifiBands(text = "") {
+  const mask = /wifi_native_supported_sta_bands=(\d+)/.exec(text)?.[1]
+  if (mask === undefined) return null
+  const bits = Number(mask)
+  return {
+    mask: bits,
+    ghz2_4: Boolean(bits & 1),
+    ghz5: Boolean(bits & 6),
+    ghz6: Boolean(bits & 8),
+  }
+}
+
+function parseWifi5GHz(text = "") {
+  const bands = parseWifiBands(text)
+  if (bands) return bands.ghz5
+  if (
+    /(5\s?GHz|5G)[^\n]{0,40}(supported|band)[^\n]{0,20}(true|yes)/i.test(text)
+  )
+    return true
+  if (/is5GHzBandSupported\s*[:=]\s*true/i.test(text)) return true
+  if (
+    /(5\s?GHz|5G)[^\n]{0,40}(supported|band)[^\n]{0,20}(false|no)/i.test(text)
+  )
+    return false
+  return null
+}
+
+function parseLsMode(text = "") {
+  const match = /^([-dlcbps][-rwxsStT]{9})\S*\s/m.exec(text)
+  return match?.[1] ?? null
+}
+
+function parseVintfTargetLevel(text = "") {
+  return (
+    /<manifest\b[^>]*\btype="device"[^>]*\btarget-level="([^"]+)"/.exec(
+      text,
+    )?.[1] ??
+    /<manifest\b[^>]*\btarget-level="([^"]+)"[^>]*\btype="device"/.exec(
+      text,
+    )?.[1] ??
+    null
+  )
+}
+
+export function parseFastbootVars(text = "") {
+  const vars = new Map<string, string>()
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^\(bootloader\)\s+([^:]+(?::[^:\s]+)?):\s*(.*)$/.exec(
+      line.trim(),
+    )
+    if (match?.[1] !== undefined && match[2] !== undefined) vars.set(match[1].trim(), match[2].trim())
+  }
+  return Object.fromEntries(vars)
+}
+
+export function deriveFacts(raw: RawAdbCaptures) {
+  const props = parseGetprop(raw.getprop)
+  const kernel = parseKernelVersion(raw.uname ?? "")
+  const display = parseWmSize(raw.wmSize ?? "")
+  const codecs = parseMediaCodecs(raw.mediaCodecs ?? "")
+  const vendorApiRaw = firstInt(
+    props.get("ro.vendor.api_level"),
+    props.get("ro.board.api_level"),
+    props.get("ro.board.first_api_level"),
+    props.get("ro.vendor.build.version.sdk"),
+  )
+  const vendorApi = vendorApiRaw === null ? null : normalizeVendorApiLevel(vendorApiRaw)
+  const chargeNodes = (raw.chargeControl ?? "")
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter((s) => s.startsWith("/"))
+  const platform = (
+    props.get("ro.board.platform") ||
+    props.get("ro.hardware") ||
+    ""
+  ).toLowerCase()
+  const selinux = raw.getenforce?.trim()
+  return {
+    emulator: props.get("ro.kernel.qemu") === "1" || props.get("ro.boot.qemu") === "1",
+    manufacturer: props.get("ro.product.manufacturer") ?? null,
+    model: props.get("ro.product.model") ?? null,
+    device: props.get("ro.product.device") ?? null,
+    fingerprint: props.get("ro.build.fingerprint") ?? null,
+    vendorFingerprint: props.get("ro.vendor.build.fingerprint") ?? null,
+    androidRelease: firstInt(props.get("ro.build.version.release")),
+    sdk: firstInt(props.get("ro.build.version.sdk")),
+    securityPatch: props.get("ro.build.version.security_patch") ?? null,
+    vendorSecurityPatch: props.get("ro.vendor.build.security_patch") ?? null,
+    firstApiLevel: firstInt(props.get("ro.product.first_api_level")),
+    vendorApiLevel: vendorApi,
+    vendorApiLevelRaw: vendorApiRaw,
+    vndkVersion: props.get("ro.vndk.version") ?? null,
+    treble: propertyFlag(props, "ro.treble.enabled"),
+    abi: props.get("ro.product.cpu.abi") ?? null,
+    platform: platform || null,
+    socManufacturer: props.get("ro.soc.manufacturer") ?? null,
+    socModel: props.get("ro.soc.model") ?? null,
+    mediatek:
+      /^mt\d/.test(platform) ||
+      /mediatek/i.test(props.get("ro.soc.manufacturer") ?? ""),
+    kernel,
+    ramGiB: parseMeminfoGiB(raw.meminfo ?? ""),
+    dataGiB: parseDfGiB(raw.dfData ?? ""),
+    display,
+    densityDpi: parseWmDensity(raw.wmDensity ?? ""),
+    cameras: parseCameras(raw.cameras ?? ""),
+    microphoneCount: raw.audioPolicy
+      ? parseMicrophoneCount(raw.audioPolicy)
+      : null,
+    codecs,
+    wifiCountry: parseWifiCountry(raw.wifiCountry ?? ""),
+    wifi5GHz: parseWifi5GHz(`${raw.wifiStatus ?? ""}\n${raw.wifiDump ?? ""}`),
+    wifiBands: parseWifiBands(raw.wifiDump ?? ""),
+    bluetooth: {
+      leAudio:
+        props.get("ro.bluetooth.leaudio_switcher.supported") === "true" ||
+        props.get("bluetooth.profile.bap.unicast.client.enabled") === "true",
+      asha: props.get("bluetooth.profile.asha.central.enabled") === "true",
+    },
+    dynamicPartitions: propertyFlag(props, "ro.boot.dynamic_partitions"),
+    abUpdates: propertyFlag(props, "ro.build.ab_update"),
+    virtualAb: props.get("ro.virtual_ab.enabled") === "true",
+    slotSuffix: props.get("ro.boot.slot_suffix") ?? null,
+    verifiedBootState: props.get("ro.boot.verifiedbootstate") ?? null,
+    vbmetaDeviceState: props.get("ro.boot.vbmeta.device_state") ?? null,
+    flashLocked: props.get("ro.boot.flash.locked") ?? null,
+    selinux: selinux === "Enforcing" || selinux === "Permissive" || selinux === "Disabled" ? selinux : null,
+    chargeControlNodes: chargeNodes,
+    wlanCountryProcMode: parseLsMode(raw.wlanCountryProc ?? ""),
+    regulatoryFirmwareFiles: (raw.vendorFirmware ?? "")
+      .split(/\r?\n/)
+      .map((s) => s.trim().split(/\s+/).at(-1))
+      .filter(
+        (name) =>
+          name && /TxPwrLimit|wifi\.cfg|WIFI_RAM_CODE|WMT|\.dat$/i.test(name),
+      ),
+    vintfTargetLevel: parseVintfTargetLevel(raw.vintfManifest ?? ""),
+  }
+}
+
+export function compareVersion(a: string, b: string) {
+  const pa = String(a).split(".").map(Number)
+  const pb = String(b).split(".").map(Number)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0)
+    if (d) return d
+  }
+  return 0
+}
+
+function firstInt(...values: readonly (string | undefined)[]) {
+  for (const value of values) {
+    const n = Number.parseInt(value ?? "", 10)
+    if (Number.isSafeInteger(n)) return n
+  }
+  return null
+}
+
+function round(value: number, digits = 2) {
+  const factor = 10 ** digits
+  return Math.round(value * factor) / factor
+}

@@ -109,6 +109,10 @@ module android {
         const found = Object.entries(phone.nearby).filter(([, network]) => options?.joinable !== true || (network.security !== "eap" && network.security !== "wep"))
         return { networks: [...found, ...phone.echoes].map(([ssid, network]) => row(ssid, network)) }
       },
+      connectToNetwork: async (options) => {
+        await admit()
+        return join(options) === "notConnected" ? { success: false, message: `Failed to request connection to ${options.ssid}` } : { success: true }
+      },
       disconnectFromNetwork: async () => {
         await admit()
         if (!phone.acceptsDisconnect) return { success: false, message: "WifiManager.disconnect() returned false" }
@@ -162,6 +166,7 @@ it.live("Find the networks around me, join one through Android's approval, see w
   const afterLeft = try promise(() => wifi.getConnectivity())
   const portal = try promise(() => wifi.addNetworkWithApproval({ ssid: "cafe", security: "open" }))
   const signIn = try promise(() => wifi.getConnectivity())
+  const suggested = try promise(() => wifi.connectToNetwork({ ssid: "nowhere" }))
   phone.connectivityReply = { online: false, validated: true, captivePortal: true, ssid: "cafe" }
   const flagsWithoutInternet = try promise(() => wifi.getConnectivity())
   phone.connectivityReply = { online: true, ssid: "cafe" }
@@ -185,7 +190,7 @@ it.live("Find the networks around me, join one through Android's approval, see w
   const onHome = { online: true, validated: true, captivePortal: false, ssid: "home" }
   const offline = { online: false, validated: false, captivePortal: false, ssid: null }
   try Effect.try(() => assert.deepStrictEqual(
-    { capabilities, asked, ungranted, granted, offers, strongestTwo, mistyped, idle, joined, online, radio, connected, panel, afterPanel, held, afterHeld, left, afterLeft, portal, signIn, flagsWithoutInternet, unknownValidation, refused, panelOpens: phone.panelOpens, joins: phone.joins },
+    { capabilities, asked, ungranted, granted, offers, strongestTwo, mistyped, idle, joined, online, radio, connected, panel, afterPanel, held, afterHeld, left, afterLeft, portal, signIn, suggested, flagsWithoutInternet, unknownValidation, refused, panelOpens: phone.panelOpens, joins: phone.joins },
     {
       capabilities: { sdk: 34, approvedJoin: true, internetPanel: true },
       asked: { location: "prompt" },
@@ -207,6 +212,7 @@ it.live("Find the networks around me, join one through Android's approval, see w
       afterLeft: offline,
       portal: { status: "captivePortal" },
       signIn: { online: true, validated: false, captivePortal: true, ssid: "cafe" },
+      suggested: { success: false, message: "Failed to request connection to nowhere" },
       flagsWithoutInternet: { online: false, validated: false, captivePortal: false, ssid: "cafe" },
       unknownValidation: "malformed getConnectivity",
       refused: { olderPanel: "Refused", olderJoin: "UNSUPPORTED", turnedOffPanel: "Refused", turnedOffRead: "DISABLED", absentPanel: "Refused", absentRead: "unavailable DeviceWifi.getConnectivity" },

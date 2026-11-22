@@ -114,11 +114,12 @@ const ProviderAlignment = Schema.Struct({
   character_end_times_seconds: Schema.Array(Schema.Number)
 })
 const TimedLine = Schema.Struct({ audio_base64: Schema.String, alignment: Schema.optionalKey(Schema.NullOr(ProviderAlignment)) })
+const ProviderSpan = Schema.Struct({ start: Schema.Number, end: Schema.Number })
 const ProviderTranscript = Schema.Struct({
   text: Schema.String,
   duration: Schema.Number,
-  words: Schema.optionalKey(Schema.Array(Schema.Struct({ start: Schema.Number, end: Schema.Number, word: Schema.String }))),
-  segments: Schema.optionalKey(Schema.Array(Schema.Struct({ start: Schema.Number, end: Schema.Number, text: Schema.String })))
+  words: Schema.optionalKey(Schema.Array(Schema.Struct({ ...ProviderSpan.fields, word: Schema.String }))),
+  segments: Schema.optionalKey(Schema.Array(Schema.Struct({ ...ProviderSpan.fields, text: Schema.String })))
 })
 const SttMessage = Schema.Struct({ type: Schema.String, transcript: Schema.optionalKey(Schema.String) })
 const TtsMessage = Schema.Struct({ type: Schema.String, context_id: Schema.optionalKey(Schema.String), data: Schema.optionalKey(Schema.String) })

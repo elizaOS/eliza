@@ -204,7 +204,7 @@ export error NodeBuildRefused { reason: string }
 export error NodeBuildFailed { command: string; code: number; output: string }
 
 export const INVENTORY_ASSET = "assets/agent/inventory.json"
-export const WORKER_RUNTIME_DIR = "agent/workflow-worker"
+const WORKER_RUNTIME_DIR = "agent/workflow-worker"
 
 const ANDROID_MAIN = "android/app/src/main"
 export const INFERENCE_LIBRARY = /^(?:lib(?:llama|llama-common|ggml|mtmd|eliza-llama|elizainference)[^/]*\.so(?:\.\d[^/]*)?|llama-server|llama-omnivoice-server)$/

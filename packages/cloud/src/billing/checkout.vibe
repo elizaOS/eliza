@@ -4,14 +4,14 @@ import {
   type Checkout, type CheckoutEffect, type CheckoutPhase, type CheckoutReturn, type CheckoutStep, type Event, type Presentation
 } from "../../gen/cloud__billing__checkout.effect.vibe"
 import { isConflict } from "../../gen/cloud__shared__dispatchOnce.effect.vibe"
-import { apply as stepSubscription, isLive, type Rejected as SubscriptionRejected } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+import { apply as stepSubscription, isLive } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import type { ReturnUrl } from "../../gen/cloud__nativeClients__registry.ts"
 import { payerPath } from "../../gen/cloud__returnPages.effect.vibe"
 import { refused, type Refused } from "../http/refusal.vibe"
 import type { Signed } from "../http/request-auth.vibe"
 import { json, jsonBody, type Route, type RouteContext } from "../http/routes.vibe"
 import { readClient } from "../native-clients/registry.vibe"
-import { Deployment, type SecretMissing } from "../profile/profile.vibe"
+import { Deployment } from "../profile/profile.vibe"
 import {
   createCheckoutSession, createCustomer, expireCheckoutSession, providerReply, retrieveCheckoutSession,
   type CheckoutReturns, type StripeCheckoutSession, type StripeContext
@@ -19,16 +19,14 @@ import {
 import { dispatchOnce, receiptOwner, renderProviderKey, replyOf, requestDigest, staleAt, type ProviderReply, type SessionOwner } from "../shared/dispatch-once.vibe"
 import { sha256Hex } from "../shared/sealing.vibe"
 import { foreign, Store, toText, type StoreFailure, type Tx } from "../store/connection.vibe"
-import { loadRow, RowCorrupt, stepRow, type Columns, type MachineRows, type RowConflict } from "../store/rows.vibe"
+import { loadRow, RowCorrupt, stepRow, type Columns, type MachineRows } from "../store/rows.vibe"
 import { idempotencyKeyPattern } from "./commands.vibe"
 import { parsePlanKey, wirePlanKey, type PaidPlanKey, type PlanKey } from "./plans.vibe"
-import type { Rejected as AllowanceRejected } from "../../gen/cloud__billing__allowance.effect.vibe"
-import type { InvalidAllowancePeriod } from "./stripe-ledger.vibe"
 import { readStripeSubscription, stripeClient } from "./stripe-observation.vibe"
 import { claimLiveCommand, readSubscription, reconcileSubscription, releaseLiveCommand } from "./subscriptions.vibe"
 
 export const providerTimeout = 30_000
-export const retryAfterMs = 5_000
+const retryAfterMs = 5_000
 
 export interface CheckoutSent {
   readonly event: Event
@@ -61,11 +59,14 @@ export type CheckoutAnswer =
     }
   | { readonly status: "completed" | "stale_intent" | "expired"; readonly commandId: string }
 
+type CheckoutAnswerFailure = Refused | StoreFailure |
+  Effect.Error<ReturnType<typeof readSubscription>> | Effect.Error<ReturnType<typeof applyCheckoutEvent>>
+
 const wireStatus: Readonly<Record<CheckoutPhase, string>> = { NotStarted: "not_started", Opening: "opening", Open: "open", Completed: "completed", Expired: "expired" }
 const wirePresentation: Readonly<Record<Presentation, "mobile" | "embedded" | "shared">> = { Mobile: "mobile", Embedded: "embedded", Shared: "shared" }
 const noReturn: ReturnUrl = { origin: "", path: "" }
 
-export function parsePresentation(input: string): Presentation | undefined {
+function parsePresentation(input: string): Presentation | undefined {
   switch (input) {
     case "mobile": return "Mobile"
     case "embedded": return "Embedded"
@@ -79,7 +80,7 @@ function paidWire(planKey: PlanKey): PaidPlanKey | undefined {
   return wire === "free" ? undefined : wire
 }
 
-export function checkoutIdOf(organizationId: string, idempotencyKey: string): string {
+function checkoutIdOf(organizationId: string, idempotencyKey: string): string {
   return `cmd_${sha256Hex(`${organizationId}\n${idempotencyKey}`).slice(0, 32)}`
 }
 
@@ -92,7 +93,7 @@ effect function applyAt(state: Checkout, sent: CheckoutSent): CheckoutStep!Rejec
   return try apply(current, sent.event, sent.by)
 }
 
-export const checkoutRows: MachineRows<Checkout, CheckoutSent, CheckoutStep, Rejected, NotAState> = {
+const checkoutRows: MachineRows<Checkout, CheckoutSent, CheckoutStep, Rejected, NotAState> = {
   table: "checkouts", initial, decodeState, apply: applyAt, next: (stepped) => stepped.state
 }
 
@@ -138,11 +139,11 @@ effect function perform(tx: Tx, organizationId: string, out: CheckoutEffect, now
   switch (out.tag) {
     case "ClaimSlot": {
       const subscription = try readSubscription(tx, organizationId)
-      try claimLiveCommand(tx, organizationId, "CheckoutCommand", out.commandId, subscription.revision)
+      try claimLiveCommand(tx, organizationId, "CheckoutCommand", out.commandId, subscription.revision, now)
       return
     }
     case "ReleaseSlot":
-      try releaseLiveCommand(tx, organizationId, out.commandId)
+      try releaseLiveCommand(tx, organizationId, out.commandId, now)
       return
     case "CheckoutPaid": {
       const customerId = try pinnedCustomer(tx, organizationId)
@@ -150,7 +151,7 @@ effect function perform(tx: Tx, organizationId: string, out: CheckoutEffect, now
       if (customerId === undefined || plan === undefined) throw new RowCorrupt({ table: "checkouts", key: out.commandId, cause: "a paid checkout has no pinned customer or paid plan" })
       const observed = try observeCheckout(customerId, plan)
       if (observed.subscriptionId !== out.subscriptionId) throw new RowCorrupt({ table: "checkouts", key: out.commandId, cause: "the provider does not show the subscription the checkout bought" })
-      try reconcileSubscription(tx, organizationId, observed, now, out.commandId)
+      try reconcileSubscription(tx, organizationId, observed, now, { kind: "Checkout", checkoutId: out.commandId })
       return
     }
     default: {
@@ -170,6 +171,7 @@ export effect function applyCheckoutEvent(tx: Tx, session: StripeCheckoutSession
   const commandId = session.metadata?.commandId
   const organizationId = session.metadata?.organizationId
   if (commandId === undefined || organizationId === undefined || session.client_reference_id !== commandId) return undefined
+  try tx.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [organizationId])
   const stored = try loadCheckout(tx, commandId)
   const customerId = try pinnedCustomer(tx, organizationId)
   if (stored === undefined || stored.organizationId !== organizationId || session.customer !== customerId) return undefined
@@ -281,8 +283,7 @@ effect function verdictOf(stored: StoredCheckout) {
   return answerOf(stored.state, isLive(subscription.status) && subscription.subscriptionId === stored.state.subscriptionId)
 }
 
-effect function settledAnswer(stored: StoredCheckout, now: number) {
-  const answer = try verdictOf(stored)
+effect function settledAnswer(stored: StoredCheckout, answer: ReturnType<typeof answerOf>, now: number) {
   switch (answer) {
     case "AnswerCompleted": return { status: "completed", commandId: stored.commandId } satisfies CheckoutAnswer
     case "AnswerStaleIntent": return { status: "stale_intent", commandId: stored.commandId } satisfies CheckoutAnswer
@@ -296,17 +297,19 @@ effect function settledAnswer(stored: StoredCheckout, now: number) {
   }
 }
 
-export effect function answerCheckout(stored: StoredCheckout, known: StripeCheckoutSession | undefined) {
+effect function answerCheckout(stored: StoredCheckout, known: StripeCheckoutSession | undefined): CheckoutAnswer!CheckoutAnswerFailure!(Store | StripeContext) {
   const store = try Store
   const now = try Clock.currentTimeMillis
-  if ((try verdictOf(stored)) !== "AnswerOpen") return try settledAnswer(stored, now)
+  const answer = try verdictOf(stored)
+  if (answer !== "AnswerOpen") return try settledAnswer(stored, answer, now)
   const fresh = known?.id === stored.state.sessionId && known.status === "open" ? known : undefined
   const seen = fresh === undefined ? try readSession(stored.state.sessionId, now) : { kind: "applied", value: fresh } as const
   if (seen.kind !== "applied") throw providerRefusal(seen, now)
   if (seen.value.status === "open") return try openAnswer(stored, seen.value, now)
   const after = try store.transaction((tx) => applyCheckoutEvent(tx, seen.value, now))
   if (after === undefined || after.phase === "Open") throw unavailable(now)
-  return try settledAnswer({ ...stored, state: after }, now)
+  const current = { ...stored, state: after }
+  return try settledAnswer(current, try verdictOf(current), now)
 }
 
 effect function replaceLive(live: StoredCheckout) {
@@ -330,6 +333,7 @@ effect function customerFor(organizationId: string, pinned: string | undefined) 
 }
 
 effect function recordReply(tx: Tx, organizationId: string, commandId: string, reply: ProviderReply<StripeCheckoutSession>, now: number) {
+  try tx.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [organizationId])
   const stored = try loadCheckout(tx, commandId)
   if (stored === undefined) throw new RowCorrupt({ table: "checkouts", key: commandId, cause: "a dispatched checkout disappeared" })
   const verdict = replyOf(reply)
@@ -348,7 +352,7 @@ effect function admitted(caller: Signed, commandId: string, by: SessionOwner, di
   return second
 }
 
-export effect function startCheckout(caller: Signed, request: StartRequest) {
+effect function startCheckout(caller: Signed, request: StartRequest) {
   const store = try Store
   const deployment = try Deployment
   const billing = deployment.settings.billing
@@ -385,7 +389,7 @@ export effect function startCheckout(caller: Signed, request: StartRequest) {
   let state = opened.stored.state
   const deadline = staleAt(state.receipt)
   const terms = { organizationId, commandId, customerId, priceId, expiresAt: state.sessionExpiresAt, returns: providerReturns(state.returns, deployment.settings.api) }
-  const reply = try dispatchOnce<StripeCheckoutSession, StoreFailure | RowCorrupt | RowConflict | NotAState | Rejected | SubscriptionRejected | AllowanceRejected | Refused | SecretMissing | InvalidAllowancePeriod, Store | StripeContext | Deployment>({
+  const reply = try dispatchOnce<StripeCheckoutSession, StoreFailure | Effect.Error<ReturnType<typeof recordReply>>, Store | StripeContext>({
     claim: Effect.void,
     send: providerReply(createCheckoutSession(terms, { idempotencyKey: renderProviderKey(state.receipt.providerKey), timeout: Math.max(1, Math.min(providerTimeout, deadline - now)) })),
     record: effect (seen: ProviderReply<StripeCheckoutSession>, at: number) => {
@@ -395,7 +399,7 @@ export effect function startCheckout(caller: Signed, request: StartRequest) {
   return try answerCheckout({ commandId, organizationId, state }, reply.kind === "applied" ? reply.value : undefined)
 }
 
-export effect function confirmCheckout(caller: Signed, sessionId: string) {
+effect function confirmCheckout(caller: Signed, sessionId: string) {
   const store = try Store
   const now = try Clock.currentTimeMillis
   const seen = try readSession(sessionId, now)

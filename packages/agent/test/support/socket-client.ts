@@ -117,19 +117,31 @@ export async function request(socketPath: string, call: LocalRequest): Promise<L
   return { status: Number(answer.result.status), headers: headersOf(answer.result), text, json: parseJson(text) };
 }
 
-export async function requestStream(socketPath: string, call: LocalRequest, abortAfterChunks?: number): Promise<StreamedAnswer> {
+export interface StreamCut {
+  readonly afterChunks: number;
+  readonly ready: Promise<unknown>;
+}
+
+export async function requestStream(socketPath: string, call: LocalRequest, cut?: StreamCut, opened?: (status: number) => void): Promise<StreamedAnswer> {
   const id = randomUUID();
   const chunks: string[] = [];
   let head: Frame | undefined;
   let terminal: Frame | undefined;
+  let cutting = false;
   const socket = open(socketPath, JSON.stringify({ id, method: "http_request_stream", payload: payloadOf(call) }));
   await frames(socket, (frame) => {
     if (frame.id !== id) throw new TypeError(`frame for another request ${JSON.stringify(frame)}`);
     if (terminal !== undefined) throw new TypeError(`frame after the terminal frame ${JSON.stringify(frame)}`);
-    if (frame.stream === "response") head = frame;
+    if (frame.stream === "response") {
+      head = frame;
+      opened?.(Number(frame.status));
+    }
     else if (frame.stream === "chunk") {
       chunks.push(typeof frame.dataBase64 === "string" ? Buffer.from(frame.dataBase64, "base64").toString("utf8") : (typeof frame.data === "string" ? frame.data : ""));
-      if (abortAfterChunks !== undefined && chunks.length >= abortAfterChunks) socket.destroy();
+      if (!cutting && cut !== undefined && chunks.length >= cut.afterChunks) {
+        cutting = true;
+        void cut.ready.then(() => socket.destroy(), (cause: unknown) => socket.destroy(new Error("Stream disconnect failed", { cause })));
+      }
     } else if (frame.stream === "complete") terminal = frame;
     else throw new TypeError(`unknown stream frame ${JSON.stringify(frame)}`);
   });

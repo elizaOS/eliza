@@ -2,7 +2,7 @@
 module node {
   import { createHash } from "node:crypto"
   import { Schema } from "effect"
-  import { stringToUuid, type AgentRuntime, type Memory, type MemoryMetadata, type UUID } from "@elizaos/core"
+  import { stringToUuid, type AgentRuntime, type IDatabaseAdapter, type Memory, type MemoryMetadata, type UUID } from "@elizaos/core"
   import { fork, forkAnswer, type Conversations, type Fork, type Message } from "../../gen/agent__conversation__conversations.ts"
   import type { LocalRoute } from "../access/routes.vibe"
   import { conversationView, type ConversationRecord, type ConversationStore } from "./conversations.vibe"
@@ -56,15 +56,15 @@ module node {
   export const textDigest = (text: string) => createHash("sha256").update(text).digest("hex")
   const failure = (status: number, error: string) => ({ status, body: { error } })
 
-  export async function placedMessages(runtime: AgentRuntime, record: ConversationRecord): Promise<Placed[]> {
-    const stored = (await runtime.adapter.getMemories({ roomId: record.roomId, tableName: "messages" }))
+  export async function placedMessages(adapter: IDatabaseAdapter, ownerId: UUID, record: ConversationRecord): Promise<Placed[]> {
+    const stored = (await adapter.getMemories({ roomId: record.roomId, tableName: "messages" }))
       .flatMap((memory) => memory.id === undefined ? [] : [memory as StoredMessage])
       .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     return stored.map((memory, index) => ({
       memory,
       message: {
         id: index + 1, conversationId: sourceId, at: memory.createdAt ?? 0,
-        author: memory.entityId === runtime.agentId ? "Agent" : "User", body: bodyOf(memory), origin: { tag: "Original" },
+        author: memory.entityId === ownerId ? "User" : "Agent", body: bodyOf(memory), origin: { tag: "Original" },
       },
     }))
   }
@@ -116,9 +116,9 @@ module node {
     return pending
   }
 
-  export function forkService(runtime: AgentRuntime, store: ConversationStore) {
+  export function forkService(runtime: AgentRuntime, store: ConversationStore, ownerId: UUID) {
     const begin = async (source: ConversationRecord, request: ForkRequest): Promise<ForkResult> => {
-      const placed = await placedMessages(runtime, source)
+      const placed = await placedMessages(runtime.adapter, ownerId, source)
       const priors = await forkRecords(runtime, source)
       const digest = textDigest(request.expectedText)
       const asked = modelIdOf(placed, request.messageId)
@@ -157,8 +157,8 @@ module node {
     }
   }
 
-  export function forkRoutes(runtime: AgentRuntime, store: ConversationStore): LocalRoute[] {
-    const forks = forkService(runtime, store)
+  export function forkRoutes(runtime: AgentRuntime, store: ConversationStore, ownerId: UUID): LocalRoute[] {
+    const forks = forkService(runtime, store, ownerId)
     return [{
       method: "POST", path: "/api/conversations/{id}/fork",
       handler: async ({ parameters, body, signal }) => {

@@ -66,15 +66,16 @@ effect function dispatch(routes: ReadonlyArray<Route>, fallback: Route | undefin
   if (matched.kind !== "route") throw refused("NotFound")
   const { route, params } = matched
   if (route.ingressPerMinute !== undefined) try admit({ subject: Option.getOrElse(request.remoteAddress, () => "unknown"), scope: `ingress-${route.path}`, limit: route.ingressPerMinute, widthMs: minute })
+  const offered = routeOffered(deployment.settings, route)
+  const limit = route.maxBodyBytes ?? defaultMaxBodyBytes
+  const declared = Number(request.headers["content-length"] ?? "0")
+  if (offered && (!Number.isSafeInteger(declared) || declared > limit)) throw refused("ContentTooLarge")
   const caller = authenticate(request.headers.authorization, route.auth) catch effect (failure) => match (failure) {
     when Refused: throw failure;
     default: throw refused("ServiceUnavailable", "NoReason", now + 5000);
   }
-  if (!routeOffered(deployment.settings, route)) throw refused("CapabilityUnavailable")
+  if (!offered) throw refused("CapabilityUnavailable")
   try admitPlanRate(route, caller, now)
-  const limit = route.maxBodyBytes ?? defaultMaxBodyBytes
-  const declared = Number(request.headers["content-length"] ?? "0")
-  if (!Number.isSafeInteger(declared) || declared > limit) throw refused("ContentTooLarge")
   const response = provideService(
     route.handler({ request, params, query: url.searchParams, caller, requestId, now }),
     HttpServerRequest.MaxBodySize,
@@ -97,7 +98,7 @@ export effect function respond(routes: ReadonlyArray<Route>, fallback?: Route): 
   const response = request.method === "OPTIONS" && request.headers["access-control-request-method"] !== undefined
     ? HttpServerResponse.empty({ status: 204, headers: preflightHeaders(origin, deployment.settings) })
     : HttpServerResponse.setHeaders(
-        dispatch(routes, fallback, requestId, now) catch (failure) => refusalResponse(failure.refusal, now),
+        dispatch(routes, fallback, requestId, now) catch effect (failure) => refusalResponse(failure.refusal, try Clock.currentTimeMillis),
         corsHeaders(origin, deployment.settings)
       )
   return HttpServerResponse.setHeader(response, "x-request-id", requestId)

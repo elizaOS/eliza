@@ -23,6 +23,7 @@ module node {
     readonly body: string
     readonly length?: number
     readonly location?: string
+    readonly open?: boolean
   }
 
   export async function serve(pages: Readonly<Record<string, Page>>): Promise<Site> {
@@ -38,7 +39,8 @@ module node {
         ...(page.length === undefined ? {} : { "content-length": String(page.length) }),
         ...(page.location === undefined ? {} : { location: page.location }),
       })
-      response.end(page.length === undefined ? page.body : page.body.slice(0, page.length))
+      if (page.open === true) response.write(page.body)
+      else response.end(page.length === undefined ? page.body : page.body.slice(0, page.length))
     })
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
     return { server, base: `http://127.0.0.1:${(server.address() as AddressInfo).port}` }
@@ -241,14 +243,19 @@ it.live("Ask about a page even when it cannot be read privately: the public page
     "/notes": { type: "text/plain", body: "Water daily.\n\n\n\nHarvest in fall." },
     "/form": { type: "text/html", body: "<main><p>Welcome back</p><input type=\"password\" name=\"pw\"></main>" },
     "/huge": { type: "text/html", body: "<p>x</p>", length: 300_000 },
+    "/stream-huge": { type: "text/html", body: "x".repeat(270_000) },
+    "/unfinished": { type: "text/plain", body: "Partial article", open: true },
     "/data": { type: "application/json", body: "{}" },
     "/moved": { status: 302, type: "text/html", body: "", location: "/article" },
     "/code": { type: "text/plain", body: "Your code is 4829131" },
   }
   const served = try promise(() => serve(site))
-  const read = (path: string, signal = new AbortController().signal) => outcome(() => readPublicPageSource(`${served.base}${path}`, signal, { parseHtml }))
+  const read = (path: string, timeoutMs?: number) => outcome(() => readPublicPageSource(`${served.base}${path}`, new AbortController().signal, { parseHtml, timeoutMs }))
   const results = try ensuring(
-    promise(() => Promise.all(["/article", "/notes", "/form", "/huge", "/data", "/moved", "/code", "/missing"].map((path) => read(path)))),
+    promise(() => Promise.all([
+      ...["/article", "/notes", "/form", "/huge", "/stream-huge", "/data", "/moved", "/code", "/missing"].map((path) => read(path)),
+      read("/unfinished", 250),
+    ])),
     promise(() => close(served)),
   )
   assert.deepStrictEqual(results, [
@@ -256,9 +263,11 @@ it.live("Ask about a page even when it cannot be read privately: the public page
     { ok: { text: "Water daily.\n\nHarvest in fall.", truncated: false } },
     { ok: { blocked: true } },
     { ok: { blocked: true } },
+    { ok: { blocked: true } },
     { ok: undefined },
     { ok: undefined },
     { ok: { blocked: true } },
+    { ok: undefined },
     { ok: undefined },
   ])
   const aborted = new AbortController()

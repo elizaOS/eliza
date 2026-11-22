@@ -1,0 +1,26 @@
+// spec/agent/tasks/store.md, "Story: Keep records a build cannot read"
+module node {
+  import { join } from "node:path"
+  import { DatabaseSync } from "node:sqlite"
+  import { createTaskSealer, deriveTaskKeys, type TaskPurpose } from "../../src/tasks/sealing.vibe"
+
+  export function sealedFor(key: string, account: string, purpose: TaskPurpose, record: unknown): string {
+    const sealer = createTaskSealer(deriveTaskKeys(Buffer.from(key, "base64"), { account, namespace: "agent" }))
+    try {
+      return sealer.seal(JSON.stringify(record), purpose)
+    } finally {
+      sealer.wipe()
+    }
+  }
+
+  export function copyIn(directory: string, id: string, payload: string, unfinished = true): void {
+    const db = new DatabaseSync(join(directory, "tasks.sqlite"))
+    try {
+      db.prepare("INSERT INTO task_records_v1 (id, revision, unfinished, hold, updated_at, payload) VALUES (?, 0, ?, 'readable', 1, ?)").run(id, unfinished ? 1 : 0, payload)
+    } finally {
+      db.close()
+    }
+  }
+}
+
+export { copyIn, sealedFor } from node

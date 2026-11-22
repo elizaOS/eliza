@@ -73,10 +73,11 @@ final class Listener {
  static boolean observeIndicatorLease(Context context,long now){synchronized(leaseLock){
   boolean held=microphoneHeld;
   long since=unsilencedSince;
-  IndicatorLease.Loss loss=lease.verdict(now,leaseBoot(context),IndicatorLease.requiresAttribution(held&&since>=0,since,now),screenInteractive);
-  IndicatorLease.Observation seen=IndicatorLease.observe(held,indicatorPause,loss);
-  if(seen.latches())indicatorLost=true;
-  indicatorPause=seen.pause();
+  boolean interactive=screenInteractive;
+  IndicatorLease.Loss loss=lease.verdict(now,leaseBoot(context),IndicatorLease.requiresAttribution(held&&since>=0,since,now),interactive);
+  IndicatorLease.Observation observation=IndicatorLease.observe(held,indicatorPause,loss,interactive);
+  if(observation.latches())indicatorLost=true;
+  indicatorPause=observation.pause();
   return loss==IndicatorLease.Loss.NONE;
  }}
 

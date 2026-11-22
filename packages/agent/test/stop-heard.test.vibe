@@ -51,7 +51,7 @@ effect function cloudAgent() {
   return { cloud, agent }
 }
 
-const receipt = (roomId: string, outcome: string) => ({ status: 200, body: { aborted: true, roomId, reason: "client-stop", outcome } })
+const receipt = (roomId: string, outcome: string) => ({ status: 200, body: { aborted: outcome !== "nothingRunning", roomId, reason: "client-stop", outcome } })
 
 it.live('Stop a streaming turn: confirmed when it ends in time, nothing running after, and only an owned room (spec/agent/conversation/turns.md, "A Stop is confirmed only when its turn ends within five seconds, and is otherwise uncertain")', effect () => {
   const { cloud, agent } = try cloudAgent()
@@ -66,11 +66,13 @@ it.live('Stop a streaming turn: confirmed when it ends in time, nothing running 
   const idle = try stop(agent, chat.roomId)
   const unowned = try stop(agent, fresh[0])
   const malformed = try stop(agent, "not-a-room")
-  const noReason = try stop(agent, chat.roomId, {})
+  const noReason = try stop(agent, chat.roomId, { reason: "" })
+  const omittedReason = try stop(agent, chat.roomId, {})
   try Effect.try(() => assert.deepStrictEqual({
-    confirmed, idle, streamed: streamed.status, refused: [unowned.status, malformed.status, noReason.status],
+    confirmed, idle, omittedReason, streamed: streamed.status, refused: [unowned.status, malformed.status, noReason.status],
   }, {
-    confirmed: receipt(chat.roomId, "stopConfirmed"), idle: receipt(chat.roomId, "nothingRunning"), streamed: 200, refused: [404, 404, 400],
+    confirmed: receipt(chat.roomId, "stopped"), idle: receipt(chat.roomId, "nothingRunning"),
+    omittedReason: { status: 200, body: { aborted: false, roomId: chat.roomId, reason: "owner_requested_abort", outcome: "nothingRunning" } }, streamed: 200, refused: [404, 404, 400],
   }))
 }, 120_000)
 
@@ -89,8 +91,8 @@ it.live('A turn that does not stop within five seconds is uncertain, a second St
   try host("held turn ended", () => holding.ended)
   const idle = try stop(agent, chat.roomId)
   try Effect.try(() => assert.deepStrictEqual({ pair, waitedEnough: waited >= 5000, after, idle }, {
-    pair: [receipt(chat.roomId, "stopUncertain"), receipt(chat.roomId, "stopUncertain")], waitedEnough: true,
-    after: receipt(chat.roomId, "stopConfirmed"), idle: receipt(chat.roomId, "nothingRunning"),
+    pair: [receipt(chat.roomId, "uncertain"), receipt(chat.roomId, "uncertain")], waitedEnough: true,
+    after: receipt(chat.roomId, "stopped"), idle: receipt(chat.roomId, "nothingRunning"),
   }))
 }, 120_000)
 
@@ -101,7 +103,7 @@ it.live('Report what of a spoken reply was heard: prefix, nothing heard, 409 and
   const whole = "Hello there. More words."
   const at = Date.now()
   const said: Memory = { id: fresh[1], entityId: fresh[2], agentId: runtime.agentId, roomId: chat.roomId, createdAt: at, content: { text: "Say hello.", source: "device" } }
-  const answered: Memory = { id: fresh[3], entityId: runtime.agentId, agentId: runtime.agentId, roomId: chat.roomId, createdAt: at + 1, content: { text: whole, source: "device" } }
+  const answered: Memory = { id: fresh[3], entityId: runtime.agentId, agentId: runtime.agentId, roomId: chat.roomId, createdAt: at + 1, content: { text: whole, inReplyTo: said.id, source: "device" } }
   try host("seed reply", () => runtime.adapter.createMemories([said, answered].map((memory) => ({ memory, tableName: "messages" }))))
   const heard = (messageId: string, body: object, conversation = chat.id) =>
     ask(agent, { method: "POST", path: `/api/conversations/${conversation}/messages/${messageId}/heard`, body })

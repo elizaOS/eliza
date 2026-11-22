@@ -20,7 +20,6 @@ public class AgentStartReceiver extends BroadcastReceiver {
     Thread starter = new Thread(() -> {
       try {
         if (AgentService.signedIn()) AgentService.start(app);
-        else AgentService.awaitKey(app);
       } catch (Exception refused) {
         Log.w(TAG, "The agent was not started after " + action, refused);
       } finally {

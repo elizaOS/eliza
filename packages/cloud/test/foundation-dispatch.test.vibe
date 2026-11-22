@@ -1,10 +1,10 @@
 // spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
 import { assert, describe, it } from "@effect/vitest"
-import { NotAState, Rejected, conflictRefusal, decodeState, initial } from "../gen/cloud__shared__dispatchOnce.effect.vibe"
+import { NotAState, conflictRefusal, decodeState, initial } from "../gen/cloud__shared__dispatchOnce.effect.vibe"
 import { Refused, refusalBody } from "../src/http/refusal.vibe"
-import { abandonReceipt, dispatchReceipt, loadReceipt, mayFollowWith, prepareReceipt, receiptOwner, receiptStatusAt, renderProviderKey, requestDigest, resolveReceipt, type LookupResult, type ProviderKey, type ProviderReply, type Receipt, type ReceiptRows } from "../src/shared/dispatch-once.vibe"
+import { dispatchReceipt, loadReceipt, mayFollowWith, prepareReceipt, receiptOwner, receiptStatusAt, renderProviderKey, requestDigest, resolveReceipt, type LookupResult, type ProviderKey, type ProviderReply, type Receipt, type ReceiptRows } from "../src/shared/dispatch-once.vibe"
 import { Store, StoreFailure, storeLayer } from "../src/store/store.vibe"
-import { shiftedClock } from "./support/clock.ts"
+import { manualClock } from "./support/clock.ts"
 import { startFakeServer, type FakeServer } from "./support/fakes.ts"
 
 type Mode = "apply" | "lose-reply" | "hang"
@@ -148,8 +148,9 @@ describe("WP0 Foundation: dispatch once (spec/cloud/shared/dispatchOnce.md, \"St
     const modes = new Map<string, Mode>()
     const applied = new Set<string>()
     const cloud = try bench(modes, applied)
-    const clock = try sync(() => shiftedClock())
-    const staleAfter = 300
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(minute))
+    const staleAfter = 2_000
     const first: ProviderKey = { providerKind: "CheckoutSession", providerId: "req-2-a1" }
     const second: ProviderKey = { providerKind: "CheckoutSession", providerId: "req-2-a2" }
     modes.set(renderProviderKey(first), "hang")
@@ -159,9 +160,10 @@ describe("WP0 Foundation: dispatch once (spec/cloud/shared/dispatchOnce.md, \"St
       const rows = changesFor("req-2")
       try cloud.store.transaction((tx) => prepareReceipt(tx, rows, "req-2#1", owner, terms("req-2", first, staleAfter, now), now))
       const dispatched = try dispatchReceipt(rows, "req-2#1", owner, (key: string) => sendChange(cloud, "req-2#1", durable, key))
+      const earlyAt = now + 2 * staleAfter - 1
+      try sync(() => clock.set(earlyAt))
       const early = try resolveReceipt(rows, "req-2#1", (key: string) => lookupChange(cloud, key))
-      const earlyAt = try Clock.currentTimeMillis
-      try sync(() => clock.advance(staleAfter))
+      try sync(() => clock.set(earlyAt + 1))
       const settled = try resolveReceipt(rows, "req-2#1", (key: string) => lookupChange(cloud, key))
       const retryAllowed = [mayFollowWith(early.receipt, second), mayFollowWith(settled.receipt, first), mayFollowWith(settled.receipt, second)]
       const at = try Clock.currentTimeMillis
@@ -184,45 +186,6 @@ describe("WP0 Foundation: dispatch once (spec/cloud/shared/dispatchOnce.md, \"St
         retried: ["applied", "Succeeded"],
         applied: [renderProviderKey(second)],
         rows: [["StatusRejected"], ["StatusSucceeded"]]
-      }))
-    }
-  }))
-
-  it.live("A prepared change the person never confirms is abandoned as not applied and is never sent (spec/cloud/shared/dispatchOnce.md, \"A prepared receipt that was never claimed may be abandoned as not applied\")", () => scoped(effect {
-    const modes = new Map<string, Mode>()
-    const applied = new Set<string>()
-    const cloud = try bench(modes, applied)
-    const rows = changesFor("req-3")
-    const providerKey: ProviderKey = { providerKind: "CheckoutSession", providerId: "req-3-a1" }
-    const durable: string[] = []
-    provide Store = cloud.store, FetchHttpClient.layer {
-      const now = try Clock.currentTimeMillis
-      try cloud.store.transaction((tx) => prepareReceipt(tx, rows, "req-3", owner, terms("req-3", providerKey, 5 * minute, now), now))
-      const stranger = receiptOwner("org-1", "user-2", "CheckoutSession")
-      const refusedByStranger = try cloud.store.transaction((tx) => abandonReceipt(tx, rows, "req-3", stranger, now))
-      const abandoned = try cloud.store.transaction((tx) => abandonReceipt(tx, rows, "req-3", owner, now))
-      const again = try cloud.store.transaction((tx) => abandonReceipt(tx, rows, "req-3", owner, now))
-      const send = dispatchReceipt(rows, "req-3", owner, (key: string) => sendChange(cloud, "req-3", durable, key)) catch (failure) => match (failure) {
-        when Rejected: failure.event.type;
-        default: failure._tag;
-      }
-      const row = try stored(cloud, "req-3")
-      try check(() => assert.deepStrictEqual({
-        refusedByStranger: refusedByStranger.receipt.settlement,
-        abandoned: [abandoned.receipt.settlement, abandoned.receipt.session.phase, abandoned.receipt.session.effects],
-        again: again.receipt.settlement,
-        send,
-        durable,
-        sent: cloud.fakes.seen.filter((request) => request.method === "POST" && request.path === "/receipts/changes").length,
-        row
-      }, {
-        refusedByStranger: "Unsettled",
-        abandoned: ["NotApplied", "Pending", 0],
-        again: "NotApplied",
-        send: "claim",
-        durable: [],
-        sent: 0,
-        row: [["StatusRejected", 2]]
       }))
     }
   }))

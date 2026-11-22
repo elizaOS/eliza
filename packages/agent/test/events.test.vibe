@@ -1,15 +1,11 @@
 // spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"; spec/agent/conversation/events.md, "Story: Stop hearing when I leave"; spec/agent/conversation/events.md, "Story: Learn when something keeps going wrong"; spec/agent/access/transport.md, "A subscription is confirmed once, carries events in order, and at most two are open"
 module node {
-  import { existsSync } from "node:fs"
   import { connect } from "node:net"
   import { Effect } from "effect"
   import { ElizaError, stringToUuid, type AgentRuntime, type UUID } from "@elizaos/core"
+  import { publishEventServiceType, type PublishEventService } from "../src/index.vibe"
   import type { ModuleFactory, PublishEvent } from "../src/host/module.vibe"
   import type { Subscription } from "./support/socket-client.ts"
-
-  export function written(path: string, base: string): boolean {
-    return existsSync(new URL(path, base))
-  }
 
   export interface AgentEventFrame {
     readonly stream: string
@@ -27,10 +23,10 @@ module node {
     return event !== undefined && event.stream === stream && JSON.stringify(event.payload).includes(marker)
   }
 
-  export function publishTranscript(runtime: AgentRuntime, payload: unknown): void {
-    const service = runtime.getService("publishEvent") as unknown as { publish(stream: string, payload: unknown): void } | null
+  export function publishTranscript(runtime: AgentRuntime, payload: unknown, stream = "voice-transcript"): boolean {
+    const service = runtime.getService<PublishEventService>(publishEventServiceType)
     if (service === null) throw new Error("The agent offers no publishEvent service")
-    service.publish("voice-transcript", payload)
+    return service.publish(stream, payload)
   }
 
   export function failRepeatedly(runtime: AgentRuntime, times: number): void {
@@ -118,15 +114,13 @@ module node {
   }
 }
 
-import { endsOnStop, failRepeatedly, heardCount, loopback, nextEvent, publishPartials, publishTranscript, stalledFeed, storedBeyond, subscribed, viewProbe, within, written } from node
+import { endsOnStop, failRepeatedly, heardCount, loopback, nextEvent, publishPartials, publishTranscript, stalledFeed, storedBeyond, subscribed, viewProbe, within } from node
 import { assert, it } from "@effect/vitest"
 import { text } from "./support/cloud-fake.ts"
 import { call, events, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 import { sendRaw, type LocalAnswer, type Refusal } from "./support/socket-client.ts"
 
-const hubWritten = (): boolean => written("../src/conversation/events.vibe", import.meta.url)
 const viewsModule = "@elizaos/agent/views"
-const pending = hubWritten() ? "" : ": pending until the event hub is written"
 
 const statusOf = (answer: LocalAnswer | Refusal) => "status" in answer ? answer.status : answer.refused
 
@@ -138,7 +132,7 @@ effect function created(agent: InProcess, title: string) {
   })
 }
 
-it.live.skipIf(!hubWritten())(`Hear conversation, view, transcript and notice events over the socket, and close a slow reader (spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"; spec/agent/conversation/events.md, "Story: Stop hearing when I leave"; spec/agent/conversation/events.md, "Story: Learn when something keeps going wrong"; spec/agent/access/transport.md, "A subscription is confirmed once, carries events in order, and at most two are open")${pending}`, effect () => {
+it.live(`Hear conversation, view, transcript and notice events over the socket, and close a slow reader (spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"; spec/agent/conversation/events.md, "Story: Stop hearing when I leave"; spec/agent/conversation/events.md, "Story: Learn when something keeps going wrong"; spec/agent/access/transport.md, "A subscription is confirmed once, carries events in order, and at most two are open")`, effect () => {
   const probe = try Effect.try(() => viewProbe(viewsModule))
   const agent = try startInProcess({ cloud: true, launch: { callerRole: "owner", load: [viewsModule] }, modules: probe.modules })
   const { runtime } = agent.agent
@@ -167,7 +161,10 @@ it.live.skipIf(!hubWritten())(`Hear conversation, view, transcript and notice ev
   try Effect.sync(() => screen.close())
   const voice = try events(agent, ["voice-transcript"])
   try host("voice subscribed", () => subscribed(voice))
-  try Effect.try(() => publishTranscript(runtime, { kind: "final", text: "remind me at noon" }))
+  const published = try Effect.try(() => [
+    publishTranscript(runtime, { kind: "final", text: "remind me at noon" }),
+    publishTranscript(runtime, { type: "conversation-updated" }, "conversation"),
+  ])
   const transcript = try host("voice transcript", () => nextEvent(voice, "voice-transcript", "remind me at noon"))
 
   try Effect.try(() => failRepeatedly(runtime, 3))
@@ -196,6 +193,7 @@ it.live.skipIf(!hubWritten())(`Hear conversation, view, transcript and notice ev
     assert.strictEqual(updated?.stream, "conversation")
     assert.strictEqual(interaction?.stream, "view-interact")
     assert.strictEqual(strayed, 0)
+    assert.deepStrictEqual(published, [true, false])
     assert.strictEqual(transcript?.stream, "voice-transcript")
     assert.strictEqual(notice?.stream, "conversation")
     assert.strictEqual(noticesHeard, 1)
@@ -205,7 +203,7 @@ it.live.skipIf(!hubWritten())(`Hear conversation, view, transcript and notice ev
   })
 }, 180_000)
 
-it.live.skipIf(!hubWritten())(`Hear a plugin transcript over loopback server-sent events and refuse a third feed (spec/agent/conversation/events.md, "Subscribing answers with one subscribed frame and replays nothing"; spec/agent/conversation/events.md, "Only the voice-transcript stream is open to plugins"; spec/agent/access/transport.md, "A subscription is confirmed once, carries events in order, and at most two are open")${pending}`, effect () => {
+it.live(`Hear a plugin transcript over loopback server-sent events and refuse a third feed (spec/agent/conversation/events.md, "Subscribing answers with one subscribed frame and replays nothing"; spec/agent/conversation/events.md, "Only the voice-transcript stream is open to plugins"; spec/agent/access/transport.md, "A subscription is confirmed once, carries events in order, and at most two are open")`, effect () => {
   const agent = try startInProcess({ http: true, launch: { callerRole: "owner" } })
   const { runtime } = agent.agent
   const port = agent.transport.kind === "http" ? agent.transport.port : 0

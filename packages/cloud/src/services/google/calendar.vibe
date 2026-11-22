@@ -1,5 +1,5 @@
 // spec/cloud/services/google/calendar.md, "Story: Read my calendar for a window"; spec/cloud/services/google/calendar.md, "Story: Change an event only at the revision I read"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
-import { type Rejected, type NotAState, apply, decodeState, initial, isUnknown, canElapse, canReceiveReply, canResolve, receiptStatus, type Event, type LookupResult, type ProviderReply, type Receipt } from "../../../gen/cloud__shared__dispatchOnce.effect.vibe"
+import { type Rejected, type NotAState, apply, decodeState, initial, isUnknown, canElapse, canReceiveReply, canResolve, connectorOf, receiptStatus, type Event, type LookupResult, type ProviderReply, type Receipt } from "../../../gen/cloud__shared__dispatchOnce.effect.vibe"
 import { millisPerDay, millisPerSecond, statusOf, type Refusal, type RefusalCode } from "../../../gen/cloud__shared__types.effect.vibe"
 import type { SessionOwner } from "../../../gen/core__sessions.ts"
 import { refusalBody, refused, Refused } from "../../http/refusal.vibe"
@@ -179,7 +179,7 @@ function validZone(name: string): boolean {
 }
 
 function senderOf(owner: Owner): SessionOwner {
-  return { agentId: owner.organizationId, actorId: owner.userId, connector: "calendar_write" }
+  return { agentId: owner.organizationId, actorId: owner.userId, connector: connectorOf("CalendarEvent") }
 }
 
 export function writeRows(by: SessionOwner) {
@@ -569,6 +569,7 @@ effect function performWrite(owner: Owner, grant: Grant, planned: Planned, diges
     }
     const providerId = planned.kind === "create" ? `${planned.calendarId}/${planned.eventId}` : `${planned.calendarId}/${planned.eventId}/${planned.key}`
     const write = try advance(tx, fresh, [
+      (receipt) => at(receipt, claimedAt),
       () => ({ type: "prepare", digest, providerKey: { providerKind: "CalendarEvent", providerId }, staleAfter, expiresAt: claimedAt + preparedFor }),
       () => ({ type: "claim" }),
       (receipt) => ({ type: "send", claimToken: receipt.session.currentClaim })

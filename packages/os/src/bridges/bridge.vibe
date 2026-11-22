@@ -43,11 +43,11 @@ export effect function nativeCall(plugin: string, method: string, call: () => Pr
   })
 }
 
-export effect function decoded<A>(plugin: string, method: string, shape: Schema.Codec<A>, raw: unknown): A!MalformedReply {
+export effect function decoded<A>(plugin: string, method: string, shape: Schema.ConstraintDecoder<A>, raw: unknown): A!MalformedReply {
   return try mapError(Schema.decodeUnknownEffect(shape)(raw), (refusal) => new MalformedReply({ plugin, method, issue: refusal.message }))
 }
 
-export effect function nativeReply<A>(plugin: string, method: string, shape: Schema.Codec<A>, call: () => Promise<unknown>): A!BridgeFailure {
+export effect function nativeReply<A>(plugin: string, method: string, shape: Schema.ConstraintDecoder<A>, call: () => Promise<unknown>): A!BridgeFailure {
   return try decoded(plugin, method, shape, try nativeCall(plugin, method, call))
 }
 

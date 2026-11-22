@@ -39,9 +39,12 @@ const sourceKinds = ["java", "kotlin", "assets", "res", "jniLibs"];
 const EMBEDDED_AGENT_MODULE = "eliza-embedded-agent";
 const EMBEDDED_AGENT_JAVA = "packages/os/android/embedded-agent/src/main/java";
 const SECURE_STORE_JAVA = "packages/os/android/secure-store/src/main/java";
-const SECURE_ACCOUNT_SOURCES = ["JsonCredentialSlots", "CloudDeviceAccount", "PasswordBackupApproval", "CloudPasswordBackup"].map(
-  (name) => `ai/eliza/plugins/securestore/nativeonly/${name}.java`,
-);
+const SECURE_ACCOUNT_SOURCES = [
+  ...["JsonCredentialSlots", "CloudDeviceAccount", "PasswordBackupApproval", "CloudPasswordBackup"].map(
+    (name) => `ai/eliza/plugins/securestore/nativeonly/${name}.java`,
+  ),
+  "ai/eliza/plugins/securestore/google/NativeGoogleAuthorization.java",
+];
 /** The Java closure of the embedded agent service and bridge: no Kotlin, no local inference or voice class. */
 export const EMBEDDED_AGENT_SOURCES = Object.freeze([
   ...["EmbeddedAgentConfig", "EmbeddedAgentPlugin", "EmbeddedAgentService"].map(

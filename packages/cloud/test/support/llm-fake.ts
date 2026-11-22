@@ -1,4 +1,4 @@
-// spec/cloud/services/inference.md, "Story: Answer a chat completion once and charge it once"; spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"
 import type { FakeAnswer, FakeHandler } from "./fakes.ts";
 import { secrets } from "./profile.ts";
 
@@ -6,8 +6,11 @@ export const upstreamModel = "upstream-chat";
 
 export type LlmScript =
   | { readonly kind: "whole" }
-  | { readonly kind: "stream" }
+  | { readonly kind: "stream"; readonly duplicateUsage?: boolean }
   | { readonly kind: "streamWithoutUsage" }
+  | { readonly kind: "truncated"; readonly reportUsage?: boolean }
+  | { readonly kind: "malformedFrame" }
+  | { readonly kind: "oversizedFrame" }
   | { readonly kind: "refuse"; readonly retryAfterSeconds?: number }
   | { readonly kind: "hang"; readonly after: number }
   | { readonly kind: "notJson" };
@@ -76,9 +79,15 @@ function answerFor(script: LlmScript, cut: () => void): FakeAnswer {
     case "whole":
       return { status: 200, body: wholeAnswer };
     case "stream":
-      return { status: 200, chunks: streamChunks };
+      return { status: 200, chunks: script.duplicateUsage ? splitMidCodePoint([...contentFrames, usageFrame, usageFrame, doneFrame, doneFrame].join("")) : streamChunks };
     case "streamWithoutUsage":
       return { status: 200, chunks: [...contentFrames, doneFrame] };
+    case "truncated":
+      return { status: 200, chunks: script.reportUsage ? [...contentFrames, usageFrame] : contentFrames };
+    case "malformedFrame":
+      return { status: 200, chunks: [contentFrames[0] + frame("not JSON"), doneFrame] };
+    case "oversizedFrame":
+      return { status: 200, chunks: [frame({ choices: [], unused: "a".repeat(256 * 1024) }), doneFrame] };
     case "refuse":
       return {
         status: 429,

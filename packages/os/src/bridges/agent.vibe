@@ -1,7 +1,6 @@
 // spec/os/agentService/channel.md, "Story: Ask the agent only on the routes my app allows"; spec/os/agentService/channel.md, "Story: Stream a reply and stop it"; spec/os/agentService/channel.md, "Story: Receive the agent's live events for my screen"
 import { BridgeUnavailable, nativeReply, settled } from "./bridge.vibe"
-import type { AgentEvents, AgentFailCode, AgentStatus, ElizaAgentPlugin } from "./definitions/agent.ts"
-import type { FailureCause } from "../../gen/os__agentService__lifecycle.ts"
+import type { AgentEvents, AgentStatus, ElizaAgentPlugin } from "./definitions/agent.ts"
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
@@ -17,22 +16,14 @@ export { agentPlugin }
 
 const PLUGIN = "ElizaAgent"
 
-const failCodes: { readonly [Code in AgentFailCode]: Code } = {
-  NotReady: "NotReady", RouteRefused: "RouteRefused", TooLarge: "TooLarge", IdInUse: "IdInUse",
-  TopicInUse: "TopicInUse", Busy: "Busy", Restarted: "Restarted", Broken: "Broken",
-}
-const failures: { readonly [Cause in FailureCause]: Lowercase<Cause> } = {
-  Payload: "payload", Storage: "storage", Config: "config", Credential: "credential", Agent: "agent", Crashed: "crashed", Runtime: "runtime",
-}
-const FailCode = Schema.Literals(Object.values(failCodes))
-const Failure = Schema.Literals(Object.values(failures))
+const FailCode = Schema.Literals(["NotReady", "RouteRefused", "TooLarge", "IdInUse", "TopicInUse", "Busy", "Restarted", "Broken"])
 const statusFacts = { available: Schema.Boolean, epoch: Schema.Int, requestBodyLimit: Schema.Int }
 const Status = Schema.Union([
   Schema.Struct({ ...statusFacts, state: Schema.Literals(["unavailable", "stopped", "starting", "running"]) }),
   Schema.Struct({
     ...statusFacts,
     state: Schema.Literal("failed"),
-    failure: Failure,
+    failure: Schema.Literals(["payload", "storage", "config", "credential", "agent", "crashed", "runtime"]),
     error: Schema.optionalKey(Schema.String),
   }),
 ])

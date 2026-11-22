@@ -28,6 +28,12 @@
       "import": "./dist/src/profile/profile.js",
       "default": "./dist/src/profile/profile.js"
     },
+    "./client": {
+      "eliza-source": "./src/client/index.vibe",
+      "types": "./dist/src/client/index.d.ts",
+      "import": "./dist/src/client/index.js",
+      "default": "./dist/src/client/index.js"
+    },
     "./worker": {
       "eliza-source": "./src/worker.vibe",
       "types": "./dist/src/worker.d.ts",
@@ -52,14 +58,13 @@
     "typecheck": "vibelang --noEmit -p .",
     "test": "vitest run",
     "test:browser": "vitest run --project browser",
-    "start": "node -e \"const fs=require('node:fs');fs.rmSync('.cache/cloud.pglite',{recursive:true,force:true});fs.mkdirSync('.cache',{recursive:true})\" && node --import vibelang/register test/support/web-front.vibe",
+    "start": "vite build && node --import vibelang/register test/support/web-front.vibe",
     "build:worker": "vibelang -p tsconfig.worker.json && node -e \"require('node:fs').cpSync('src/store/migrations','dist/src/store/migrations',{recursive:true})\""
   },
   "dependencies": {
     "@effect/platform-node": "4.1.1",
     "@effect/platform-node-shared": "4.1.1",
     "@electric-sql/pglite": "catalog:",
-    "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
     "jose": "6.2.17",
     "pg": "8.23.1",

@@ -1,0 +1,117 @@
+// spec/os/update/operator.md, "A release is retained as known-good only from an admitted release-keys record with no placeholder, whose target files and image are the bytes it names"
+import { retentionAdmitted, type BuildKeys } from "../../gen/os__update__operator.effect.vibe"
+import type { ReleaseChannel } from "../../gen/os__image__signing.effect.vibe"
+import { parseDigest } from "./apk.vibe"
+import { OtaRefused, projectRelease } from "./ota-records.vibe"
+import { archiveDigest, archiveEntries } from "./signing-archive.vibe"
+import { readSigningJson } from "./signing-keys.vibe"
+import { loadReleaseRecord, releaseArtifact, releaseChannel } from "./signing-record.vibe"
+
+export interface RetainKnownGoodOptions {
+  readonly channel: string
+  readonly record: string
+  readonly signedTargetFiles: string
+  readonly signedImage: string
+  readonly archiveDir: string
+}
+
+const manifestFile = "known-good.json"
+const label = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/))
+const digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const count = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER))
+const file = Schema.Struct({ file: label, sha256: digest, sizeBytes: count })
+const retained = Schema.Struct({
+  schema: Schema.Literal(1),
+  kind: Schema.Literal("aosp-known-good-retention"),
+  product: label,
+  device: label,
+  channel: label,
+  fingerprint: Schema.String.check(Schema.isMinLength(1)),
+  record: file,
+  signedTargetFiles: file,
+  signedImage: Schema.Struct({ ...file.fields, vbmetaSha256: digest }),
+  imageBooted: Schema.Literal(false),
+  recoveryDrilled: Schema.Literal(false),
+})
+const decodeManifest = Schema.decodeUnknownEffect(retained)
+const utf8 = new TextEncoder()
+
+function placeholders(value: unknown): number {
+  if (typeof value === "string") return /^\s*(?:UNSET|TBD|PENDING|PLACEHOLDER|<[^>]+>)\s*$/i.test(value) ? 1 : 0
+  if (value === null || typeof value !== "object") return 0
+  return Object.values(value).reduce((count: number, field: unknown) => count + placeholders(field), 0)
+}
+
+function buildKeys(fingerprint: string): BuildKeys {
+  return fingerprint.endsWith(":user/release-keys") ? "ReleaseKeys" : fingerprint.endsWith("/test-keys") ? "TestKeys" : "DevKeys"
+}
+
+effect function inspect(channel: ReleaseChannel, recordFile: string, signedTargetFiles: string, signedImage: string) {
+  const release = try loadReleaseRecord(recordFile, channel)
+  const wire = release.record
+  const record = try releaseArtifact(recordFile)
+  const targetFiles = try releaseArtifact(signedTargetFiles)
+  const image = try releaseArtifact(signedImage)
+  const expected = wire.artifacts.signedTargetFiles
+  if (!(try archiveEntries(signedImage)).includes("vbmeta.img")) throw new OtaRefused({ reason: "Signed recovery image has no root vbmeta.img" })
+  const member = try archiveDigest(signedImage, "vbmeta.img")
+  const observed = {
+    record: try projectRelease(wire), placeholders: placeholders(wire), keys: buildKeys(wire.build.fingerprint),
+    targetFiles: parseDigest(targetFiles.sha256), recordVbmeta: parseDigest(wire.verifiedBoot.images?.vbmeta), imageVbmeta: parseDigest(member.sha256),
+  }
+  if (wire.certificates.platform === undefined || !retentionAdmitted(channel, observed) || record.sha256 !== release.sha256 ||
+    targetFiles.file !== expected.file || (expected.sizeBytes !== undefined && targetFiles.sizeBytes !== expected.sizeBytes) ||
+    (try releaseArtifact(signedImage)).sha256 !== image.sha256) throw new OtaRefused({ reason: "Recovery files are not the signed release's measured record, target files, and verified-boot image" })
+  return { record, signedTargetFiles: targetFiles, signedImage: { ...image, vbmetaSha256: member.sha256 }, fingerprint: wire.build.fingerprint }
+}
+
+export effect function retainKnownGood(options: RetainKnownGoodOptions) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const { model: channel } = try releaseChannel((try readSigningJson(options.channel)).value)
+  const source = try inspect(channel, options.record, options.signedTargetFiles, options.signedImage)
+  const archive = path.resolve(options.archiveDir)
+  if (try files.exists(archive)) throw new OtaRefused({ reason: "Retain known-good bytes in a new directory" })
+  const expected = [source.record, source.signedTargetFiles, source.signedImage]
+  if (new Set([...expected.map((part) => part.file), manifestFile]).size !== expected.length + 1 ||
+      expected.some(({ file }) => !/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(file))) throw new OtaRefused({ reason: "Recovery filenames collide or are not plain basenames" })
+  const manifest = { schema: 1, kind: "aosp-known-good-retention", product: channel.product, device: channel.device, channel: channel.name,
+    ...source, imageBooted: false, recoveryDrilled: false }
+  const pinned = try decodeManifest(manifest)
+  try files.makeDirectory(archive, { mode: 0o700 })
+  try Effect.onError(effect {
+    const inputs = [options.record, options.signedTargetFiles, options.signedImage]
+    for (const [index, part] of expected.entries()) {
+      const input = inputs[index]
+      if (input === undefined) throw new OtaRefused({ reason: "Recovery artifact inputs are incomplete" })
+      const target = path.join(archive, part.file)
+      try files.copyFile(input, target)
+      const copied = try releaseArtifact(target)
+      if (copied.sha256 !== part.sha256 || copied.sizeBytes !== part.sizeBytes) throw new OtaRefused({ reason: "Recovery bytes changed during retention" })
+      try files.chmod(target, 0o444)
+    }
+    try files.writeFile(path.join(archive, manifestFile), utf8.encode(`${JSON.stringify(pinned, null, 2)}\n`), { flag: "wx", mode: 0o444 })
+    try files.chmod(archive, 0o555)
+  }, () => ignore(files.remove(archive, { recursive: true, force: true })))
+  return { retained: true, archiveDir: archive, manifest: pinned, executed: false }
+}
+
+export effect function knownGoodRecoveryPlan(channelFile: string, archive: string) {
+  const path = try Path.Path
+  const { model: channel } = try releaseChannel((try readSigningJson(channelFile)).value)
+  const manifest = try decodeManifest((try readSigningJson(path.join(archive, manifestFile))).value)
+  const locate = (file: string) => path.join(archive, file)
+  const source = try inspect(channel, locate(manifest.record.file), locate(manifest.signedTargetFiles.file), locate(manifest.signedImage.file))
+  const expected = [manifest.record, manifest.signedTargetFiles, manifest.signedImage]
+  const observed = [source.record, source.signedTargetFiles, source.signedImage]
+  if (manifest.product !== channel.product || manifest.device !== channel.device || manifest.channel !== channel.name || manifest.fingerprint !== source.fingerprint ||
+      manifest.signedImage.vbmetaSha256 !== source.signedImage.vbmetaSha256 || !expected.every((part, index) =>
+        part.sha256 === observed[index]?.sha256 && part.sizeBytes === observed[index]?.sizeBytes)) {
+    throw new OtaRefused({ reason: "Retained recovery data changed or belongs to another channel" })
+  }
+  return { executed: false, fingerprint: source.fingerprint, steps: [
+    ["adb", "-s", "SERIAL", "reboot", "bootloader"],
+    ["fastboot", "-s", "SERIAL", "flashing", "unlock"],
+    ["fastboot", "-s", "SERIAL", "-w", "update", locate(manifest.signedImage.file)],
+  ], notes: ["Unlocking and the update erase user data.", "The bootloader verifies the retained image against its enrolled key and rollback indexes."] }
+}

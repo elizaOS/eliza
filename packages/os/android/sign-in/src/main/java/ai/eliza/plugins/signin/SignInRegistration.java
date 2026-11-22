@@ -28,23 +28,41 @@ public final class SignInRegistration {
     }
   }
 
+  /** One cloud route the host lets {@code ElizaCloud} send; {@code *} in a path matches exactly one segment. */
+  public static final class Route {
+    public final String method, path;
+    private Route(String method, String path) { this.method = method; this.path = path; }
+    public boolean admits(String requestMethod, String requestPath) {
+      if (!method.equals(requestMethod)) return false;
+      String[] want = path.split("/", -1), have = requestPath.split("/", -1);
+      if (want.length != have.length) return false;
+      for (int i = 0; i < want.length; i++) {
+        if (want[i].equals("*") ? have[i].isEmpty() : !want[i].equals(have[i])) return false;
+      }
+      return true;
+    }
+  }
+
   public static final String PRODUCTION = "production";
   private static final Pattern CLIENT_ID = Pattern.compile("(?=.{1,200}$)[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+");
   private static final Pattern NAME = Pattern.compile("[a-z][a-z0-9-]{0,31}");
   private static final Pattern HOST = Pattern.compile("[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+");
   private static final Pattern PATH = Pattern.compile("(/[A-Za-z0-9._~-]+)+");
   private static final Pattern SCOPE = Pattern.compile("[A-Za-z0-9._:/-]{1,200}");
+  private static final Pattern ROUTE_PATH = Pattern.compile("(/([A-Za-z0-9._~-]+|\\*))+");
+  private static final List<String> METHODS = List.of("GET", "POST", "PUT", "PATCH", "DELETE");
 
   public final String clientId;
   public final boolean testEnvironmentsEnabled;
   public final GoogleMode googleMode;
   private final Map<String, Environment> environments;
   private final List<String> googleScopes;
+  private final List<Route> routes;
 
   private SignInRegistration(String clientId, boolean testEnvironmentsEnabled, GoogleMode googleMode,
-      Map<String, Environment> environments, List<String> googleScopes) {
+      Map<String, Environment> environments, List<String> googleScopes, List<Route> routes) {
     this.clientId = clientId; this.testEnvironmentsEnabled = testEnvironmentsEnabled; this.googleMode = googleMode;
-    this.environments = environments; this.googleScopes = googleScopes;
+    this.environments = environments; this.googleScopes = googleScopes; this.routes = routes;
   }
 
   /** The registered cloud named {@code name}; {@code null} (or absent) names production. Unknown: {@code null}. */
@@ -52,11 +70,17 @@ public final class SignInRegistration {
   public Environment production() { return environments.get(PRODUCTION); }
   public List<Environment> environments() { return List.copyOf(environments.values()); }
   public List<String> googleScopes() { return googleScopes; }
+  public List<Route> routes() { return routes; }
+
+  public boolean admitsRoute(String method, String path) {
+    for (Route route : routes) if (route.admits(method, path)) return true;
+    return false;
+  }
 
   /**
    * Parses the host's registration from plain maps and lists, as the plugin reads them from its
    * configuration: {clientId, testEnvironments?, googleMode, googleScopes?, environments: [{name,
-   * apiOrigin, appLinkHost, redirectPath}]}. The redirect is always
+   * apiOrigin, appLinkHost, redirectPath}], routes?: [{method, path}]}. The redirect is always
    * https://appLinkHost + redirectPath, so a redirect can never leave its own App Link host.
    */
   public static SignInRegistration parse(Map<String, ?> config) {
@@ -91,8 +115,15 @@ public final class SignInRegistration {
       if (!(scope instanceof String s) || !SCOPE.matcher(s).matches() || scopes.contains(s)) throw new Refused("googleScopes");
       scopes.add(s);
     }
+    List<Route> routes = new ArrayList<>();
+    for (Object row : list(config, "routes", false)) {
+      Map<String, ?> entry = map(row, "routes");
+      String method = text(entry, "method"), path = text(entry, "path");
+      if (!METHODS.contains(method) || !path.startsWith("/api/") || !ROUTE_PATH.matcher(path).matches()) throw new Refused("route " + method + " " + path);
+      routes.add(new Route(method, path));
+    }
     return new SignInRegistration(clientId, tests, mode, Collections.unmodifiableMap(environments),
-      List.copyOf(scopes));
+      List.copyOf(scopes), List.copyOf(routes));
   }
 
   private static String text(Map<String, ?> source, String key) {

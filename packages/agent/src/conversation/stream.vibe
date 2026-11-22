@@ -52,14 +52,13 @@ module node {
 
   export type StreamStart = { readonly kind: "refused"; readonly status: number; readonly error: string } | AdmittedStream
 
-  export type StartStream = (conversationId: string, body: unknown, headers: ReadonlyMap<string, string>) => Promise<StreamStart>
+  export type StartStream = (conversationId: string, body: unknown, headers: ReadonlyMap<string, string>, signal: AbortSignal) => Promise<StreamStart>
 
   export interface ReplySink {
     readonly write: (frame: ReplyFrame) => void
     readonly abortTurn: () => void
   }
 
-  export const responseUnavailable: ErrorFrame = { type: "error", code: "ASSISTANT_RESPONSE_UNAVAILABLE", message: "The turn left no reply" }
   const serverFailure: ErrorFrame = { type: "error", code: "SERVER_ERROR", message: "The turn failed" }
 
   const unitsOf = (text: string): number[] => Array.from({ length: text.length }, (_, at) => text.charCodeAt(at))
@@ -209,7 +208,7 @@ module node {
       method: "POST", path: "/api/conversations/{id}/messages/stream", stream: true,
       handler: async ({ parameters, body, headers, signal }) => {
         if (hasStreamProtocol(body)) return { status: 400, body: { error: "stream_protocol_unsupported" } }
-        const started = await startStream(parameters.get("id") ?? "", body, headers)
+        const started = await startStream(parameters.get("id") ?? "", body, headers, signal)
         if (started.kind === "refused") return { status: started.status, body: { error: started.error } }
         return roleFor(started.verdict) === "Refused" ? refusal(started.verdict) : writeReplyStream(started, signal)
       },
@@ -217,7 +216,7 @@ module node {
   }
 }
 export {
-  ReplyWire, responseUnavailable, streamRoutes, writeReplyStream,
+  ReplyWire, streamRoutes, writeReplyStream,
   type Activity, type ActionResultFrame, type AdmittedStream, type DoneFrame, type ErrorFrame, type ReplyFrame, type ReplySink, type ReplyWriter,
   type StartStream, type StreamStart, type TurnEnd,
 } from node

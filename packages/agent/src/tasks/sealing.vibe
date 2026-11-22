@@ -10,7 +10,7 @@ module node {
 
   export type TaskPurpose = Purpose
 
-  export const taskPurposes: readonly TaskPurpose[] = ["TaskRecord", "TaskEvidence", "OutcomeJournal"]
+  const taskPurposes: readonly TaskPurpose[] = ["TaskRecord", "TaskEvidence", "OutcomeJournal"]
 
   const NAMESPACE = /^[a-z][a-z0-9-]{0,31}$/
   const KEY_BYTES = 32
@@ -213,6 +213,6 @@ module node {
 }
 export {
   createTaskSealer, deriveTaskKeys, isPrivateFile, privateDirectory, sealedEvidenceCodec, sealedFilePorts, sealedPrefix,
-  sealedTextCodec, storageCorrupt, storageUnavailable, syncDirectory, taskPurposes, writePrivateFile, writePrivateFileSync,
+  sealedTextCodec, storageCorrupt, storageUnavailable, syncDirectory, writePrivateFile, writePrivateFileSync,
   type TaskKeys, type TaskPurpose, type TaskSealer,
 } from node

@@ -66,7 +66,7 @@ function urlShape(url: string): UrlShape {
   return parsed.origin === url ? "HttpsOrigin" : "HttpsWithPath"
 }
 
-export function backendOf(model: LaunchDocument["model"]): Backend {
+function backendOf(model: LaunchDocument["model"]): Backend {
   return match (model) {
     when { backend: "cloud" }: { tag: "CloudBackend", baseUrl: model.cloudBaseUrl, baseUrlShape: urlShape(model.cloudBaseUrl), smallModel: model.smallModel, largeModel: model.largeModel, imageModel: model.imageModel };
     when { backend: "own-key" }: { tag: "OwnKeyBackend", baseUrl: model.ownKeyBaseUrl, baseUrlShape: urlShape(model.ownKeyBaseUrl), smallModel: model.ownKeySmall, largeModel: model.ownKeyLarge };
@@ -90,8 +90,8 @@ export function launchModel(launch: LaunchDocument): LaunchModel {
     callerRole: launch.callerRole === "owner" ? "ChatAsOwner" : "ChatAsUser",
     google: { gmailChanges: launch.google?.gmailChanges ?? false, calendarEdits: launch.google?.calendarEdits ?? false },
     retention: retention === undefined ? { tag: "KeepLogs" }
-      : { tag: "PruneLogs", dayThousandths: Math.round(retention.days * 1000), maxRowsPerRoom: retention.maxRowsPerRoom, intervalMinutes: retention.intervalMinutes },
-    environment: Object.entries(launch.environment ?? {}).map(([key, value]) => ({ key, keyKind: "PluginSetting", singleLine: !/[\r\n]/.test(value) })),
+      : { tag: "PruneLogs", dayThousandths: Math.ceil(retention.days * 1000), maxRowsPerRoom: retention.maxRowsPerRoom, intervalMinutes: retention.intervalMinutes },
+    environment: Object.keys(launch.environment ?? {}).map((key) => ({ key, keyKind: "PluginSetting", singleLine: true })),
   }
 }
 
@@ -99,10 +99,10 @@ function lastFailureOf(state: ModelBinding): LastCloudFailure | undefined {
   const last = state.lastCloudFailure
   if (last.tag === "NoCloudFailure") return undefined
   const retryAt = retryAtOf(last.failure)
-  return { kind: kindOf(last.failure), at: last.at, ...(retryAt < 0 ? {} : { retryAt }) }
+  return { kind: failureKindName(last.failure), at: last.at, ...(retryAt < 0 ? {} : { retryAt }) }
 }
 
-function kindOf(failure: AccountFailure): FailureKind {
+export function failureKindName(failure: AccountFailure): FailureKind {
   return failureName(failure) as FailureKind
 }
 
@@ -118,7 +118,6 @@ export effect function bindModels(launch: LaunchDocument, frame: LaunchFrame) {
   const bound = models.send({ type: "bind", doc, view: { epoch: frame.epoch, credentialVersion: frame.credential?.version ?? 0 } })
     catch effect () => { throw new BindRefused() }
   let key: HeldCredential = frame.credential ?? { version: 0, value: Redacted.make("") }
-  const pending = new Map<number, HeldCredential>()
 
   effect function read() {
     const state = try models.get()
@@ -134,19 +133,18 @@ export effect function bindModels(launch: LaunchDocument, frame: LaunchFrame) {
 
   effect function push(body: unknown) {
     const parsed = decodePush(body)
-    if (parsed._tag !== "Some") return { status: 409, body: { error: "credential_refused", reason: "malformed" } }
+    if (parsed._tag !== "Some") return { status: 400, body: { error: "malformed" } }
     const { version, credential, expiresAt, account } = parsed.value
     const owner = { tag: "SignedIn", userId: account.userId, organizationId: account.organizationId } as const
     const verdict = pushVerdict(try models.get(), version, owner)
     if (verdict !== "PushAccepted") return { status: 409, body: { error: "credential_refused", reason: refusals[verdict] } }
-    pending.set(version, { version, value: credential, expiresAt })
+    const previous = key
+    key = { version, value: credential, expiresAt }
     const refused = models.send({ type: "pushCredential", version, account: owner }) catch effect (rejected) => {
+      key = previous
       const late = pushVerdict(rejected.state, version, owner)
       return late === "PushAccepted" ? "PushStaleVersion" : late
     }
-    const held = (try models.get()).credentialVersion
-    key = pending.get(held) ?? key
-    for (const stale of pending.keys()) if (stale <= held || stale === version) pending.delete(stale)
     if (typeof refused === "string") return { status: 409, body: { error: "credential_refused", reason: refusals[refused] } }
     return { status: 200, body: { version, accountState: accountStateName(refused.accountState) } }
   }

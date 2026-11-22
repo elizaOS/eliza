@@ -203,7 +203,7 @@ export effect function decodeVoiceUiContext(input: unknown, clientId?: string) {
   return decided.value
 }
 
-export function readTurnContext(message: { readonly content: Content }): TurnContext {
+export function readTurnContext(message: { readonly content: Content | { readonly metadata: unknown } }): TurnContext {
   const metadata = table(message.content.metadata)
   const observation = metadata?.observation === undefined ? undefined : decideObservation(metadata.observation)
   const voiceUi = metadata?.voiceUi === undefined ? undefined : decideVoiceUi(metadata.voiceUi, undefined)

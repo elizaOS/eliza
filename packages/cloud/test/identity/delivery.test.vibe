@@ -1,4 +1,4 @@
-// spec/cloud/identity/codeChallenges.md, "A challenge sends one code, only to an email address or to a phone in a country the deployment allows"; spec/cloud/deployment.md, "An instance starts only for an accepted profile, on its environment's own readable database, seeded only in staging, with loopback delivery and its test inbox only on PGlite"
+// spec/cloud/identity/codeChallenges.md, "A challenge sends one code, only to an email address or to a phone in a country the deployment allows"; spec/cloud/deployment.md, "An instance starts only for an accepted profile, on its environment's own readable database, seeded only in staging, with loopback delivery only on PGlite"
 import { assert, describe, it } from "@effect/vitest"
 import type { Refused } from "../../src/http/refusal.vibe"
 import { deliverMail } from "../../src/providers/mail.vibe"

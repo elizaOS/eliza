@@ -16,15 +16,15 @@ import {
 } from "../../gen/os__browser__chromium.effect.vibe"
 import { Machine as Publication, machine as publication } from "../../gen/core__atomicPublication.effect.vibe"
 import { dumpAndroidArtifactBadging, manifestFacts, readApkSigner, resolveAndroidBuildTools, snapshotAndroidArtifact } from "../image/apk.vibe"
-import { EXTENSION_ID, pin as reviewedChromium } from "../../browser/chromium/component/chromium-component.mjs"
+import { EXTENSION_ID, pin as reviewedChromium } from "#chromium-component"
 
-export { assetNames } from "../../browser/chromium/component/chromium-component.mjs"
+export { assetNames } from "#chromium-component"
 export { buildChromium, prepareAndroidConsumerInputs, prepareChromium } from "./chromium-build.vibe"
 
 module node {
   import { createHash } from "node:crypto"
-  import { androidNativeHost } from "../../browser/chromium/component/android-host.mjs"
-  import { componentAssetNames, validateAssets } from "../../browser/chromium/component/chromium-component.mjs"
+  import { androidNativeHost } from "#chromium-android-host"
+  import { componentAssetNames, validateAssets } from "#chromium-component"
 
   /** @throws {never} */
   export function sha256Hex(bytes: Uint8Array): string {
@@ -150,8 +150,8 @@ export error BrowserAppRefused { app: BrowserApp; why: AppRefusal; detail: strin
 export error BrowserOverlayRefused { reason: OverlayRefusal; detail: string }
 error ProvenanceProblem { reason: string }
 
-export const OWNED_BROWSER_PACKAGE = "ai.elizaos.chromium"
-export const UPSTREAM_BROWSER_PACKAGE = "org.chromium.chrome"
+const OWNED_BROWSER_PACKAGE = "ai.elizaos.chromium"
+const UPSTREAM_BROWSER_PACKAGE = "org.chromium.chrome"
 export const WEBVIEW_CONFIG = "overlay/frameworks/base/core/res/res/xml/config_webview_packages.xml"
 
 const PINS_FILE = "manifests/browser-apps.json"
@@ -241,7 +241,7 @@ function moduleName(prefix: string, role: ModuleRole): string {
   return `${prefix}${MODULE_FILE[role].suffix}`
 }
 
-export function browserOverlayModules(descriptor: BrowserOverlayDescriptor): BrowserOverlayModules {
+function browserOverlayModules(descriptor: BrowserOverlayDescriptor): BrowserOverlayModules {
   return {
     browser: moduleName(descriptor.modulePrefix, "BrowserModule"),
     ...(descriptor.webview === null ? {} : { webview: moduleName(descriptor.modulePrefix, "WebViewProviderModule") }),

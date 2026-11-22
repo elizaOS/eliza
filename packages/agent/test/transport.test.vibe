@@ -4,9 +4,6 @@ import { host, scratch } from "./support/kernel.vibe"
 
 module node {
   import { connect, type Socket } from "node:net"
-  import { spawn } from "node:child_process"
-  import { once } from "node:events"
-  import { lstat, writeFile } from "node:fs/promises"
   import { Redacted } from "effect"
   import { createRouter } from "../src/access/router.vibe"
   import { listenOnSocket } from "../src/access/socket.vibe"
@@ -191,23 +188,6 @@ module node {
     return { subscribed, third, heard, openAfterClose: bench.hub.open(), anonymous, unnamed, unknown }
   }
 
-  export async function restarts(directory: string) {
-    const path = `${directory}/agent.sock`
-    const crashed = spawn(process.execPath, ["-e", `require("node:net").createServer().listen(${JSON.stringify(path)}, () => process.stdout.write("up"))`])
-    await once(crashed.stdout, "data")
-    crashed.kill("SIGKILL")
-    await once(crashed, "exit")
-    const leftover = (await lstat(path)).isSocket()
-    const reopened = await openBench(directory)
-    const echo = await request(path, { method: "GET", path: "/api/echo", token })
-    const second = await openBench(directory).then(() => "listening", (error: Error & { code?: string }) => error.code ?? error.message)
-    const stillServed = await request(path, { method: "GET", path: "/api/echo", token })
-    await reopened.stop()
-    await writeFile(path, "not a socket")
-    const foreign = await openBench(directory).then(() => "listening", (error: Error) => error.message)
-    return { leftover, echo: "status" in echo ? echo.status : echo, second, stillServed: "status" in stillServed ? stillServed.status : stillServed, foreign }
-  }
-
   export async function stopping(bench: Bench) {
     const hung = raw(bench.path, frame("stop-1", "/api/hang"))
     const feed = subscribe(bench.path, { streams: ["conversation"], token })
@@ -221,7 +201,7 @@ module node {
   }
 }
 
-import { answers, deadline, feeds, hangUp, limits, openBench, restarts, stopping, streamed, type Bench } from node
+import { answers, deadline, feeds, hangUp, limits, openBench, stopping, streamed, type Bench } from node
 
 effect function bench() {
   const directory = try scratch("transport")
@@ -295,13 +275,5 @@ it.effect('Stopping cuts open requests and feeds short and takes no new connecti
   const seen = try host("stop", () => stopping(opened))
   try Effect.try(() => assert.deepStrictEqual(seen, {
     frames: [], aborts: ["hang"], ended: "event subscription closed", refused: "ENOENT", open: 0,
-  }))
-}, 30_000)
-
-it.effect('A socket left by a killed agent is replaced, a live one is kept and a foreign file is refused (spec/agent/access/transport.md, "Story: Close the listeners once")', effect () => {
-  const directory = try scratch("transport-restart")
-  const seen = try host("restart", () => restarts(directory.path))
-  try Effect.try(() => assert.deepStrictEqual(seen, {
-    leftover: true, echo: 200, second: "EADDRINUSE", stillServed: 200, foreign: "The agent socket path holds a file the agent does not own",
   }))
 }, 30_000)

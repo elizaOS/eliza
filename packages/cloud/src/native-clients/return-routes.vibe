@@ -1,5 +1,5 @@
 // spec/cloud/returnPages.md, "Story: Bring me back to the app when its link did not open"; spec/cloud/returnPages.md, "Story: Tell a payer the checkout ended"
-import { answerAt, connectedAnswer, isPayerUrl, pageHeaders, payerPath, readOf, type Page, type PageAnswer, type PagePurpose, type RegistryRead } from "../../gen/cloud__returnPages.effect.vibe"
+import { answerAt, connectedAnswer, connectedOnCloud, pageHeaders, payerPath, readOf, type Page, type PageAnswer, type PagePurpose } from "../../gen/cloud__returnPages.effect.vibe"
 import type { Registration, ReturnPurpose } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import { Refused } from "../http/refusal.vibe"
 import type { Route, RouteContext } from "../http/routes.vibe"
@@ -17,26 +17,31 @@ module node {
     readonly styleHashes: ReadonlyArray<string>
   }
 
-  const templates = new Map<string, Template>()
+  const templates = new Map<string, Promise<Template | undefined>>()
 
   /** @throws {unknown} */
-  async function load(root: URL, file: string): Promise<Template | undefined> {
+  async function source(root: URL, file: string): Promise<string | undefined> {
     for (const base of ["pages/", "dist/pages/"]) {
       const text = await readFile(new URL(base + file, root), "utf8").catch(() => undefined)
-      if (text === undefined) continue
-      const styles = [...text.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((found) => `'sha256-${createHash("sha256").update(found[1] ?? "").digest("base64")}'`)
-      return { source: text, styleHashes: styles }
+      if (text !== undefined) return text
     }
-    return undefined
+    const { renderPages } = await import("../pages/render.tsx")
+    return renderPages("").find((page) => page.fileName === file)?.source
   }
 
   /** @throws {unknown} */
-  export async function pageTemplate(root: URL, file: string): Promise<Template | undefined> {
-    const known = templates.get(file)
-    if (known !== undefined) return known
-    const loaded = await load(root, file)
-    if (loaded !== undefined) templates.set(file, loaded)
-    return loaded
+  async function load(root: URL, file: string): Promise<Template | undefined> {
+    const text = await source(root, file)
+    if (text === undefined) return undefined
+    const styles = [...text.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((found) => `'sha256-${createHash("sha256").update(found[1] ?? "").digest("base64")}'`)
+    return { source: text, styleHashes: styles }
+  }
+
+  /** @throws {unknown} */
+  export function pageTemplate(root: URL, file: string): Promise<Template | undefined> {
+    const known = templates.get(file) ?? load(root, file)
+    templates.set(file, known)
+    return known
   }
 }
 import { pageTemplate, type Template } from node
@@ -50,9 +55,6 @@ const returnPurpose: Readonly<Record<Exclude<PagePurpose, "ConnectedPage">, Retu
   BillingPage: "BillingPurpose",
   ConnectPage: "ConnectPurpose"
 }
-
-const slotOf: ReadonlyMap<string, PageSlot> = new Map(Object.entries(pageSlots).map(([slot, token]) => [token, slot as PageSlot]))
-const slotPattern = new RegExp([...slotOf.keys()].map((token) => token.replace(/[{}]/g, "\\$&")).join("|"), "g")
 
 function escaped(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'", "&#39;")
@@ -86,16 +88,12 @@ function contentPolicy(page: Page, template: Template): string {
 
 effect function pageResponse(answer: PageAnswer) {
   if (answer.tag === "Refused") throw new Refused({ refusal: answer.refusal })
-  const page = answer.page
+  const { page } = answer
   const { template, slots } = shown(page)
   const file = try sync(() => pageFile(template))
   const loaded = try tryPromise({ try: () => pageTemplate(packageRoot, file), catch: () => new PageTemplateMissing({ file }) })
   if (loaded === undefined) throw new PageTemplateMissing({ file })
-  const html = loaded.source.replace(slotPattern, (token) => {
-    const slot = slotOf.get(token)
-    const value = slot === undefined ? undefined : slots[slot]
-    return value === undefined ? token : escaped(value)
-  })
+  const html = Object.entries(slots).reduce((text, [slot, value]) => text.replaceAll(pageSlots[slot as PageSlot], escaped(value)), loaded.source)
   const headers = pageHeaders(page)
   return HttpServerResponse.text(html, {
     contentType: "text/html; charset=utf-8",
@@ -110,34 +108,31 @@ effect function pageResponse(answer: PageAnswer) {
   })
 }
 
-function requestOrigin(context: RouteContext, api: string): string {
-  const { host, "x-forwarded-host": forwarded } = context.request.headers
-  const direct = `https://${host ?? ""}`
-  if (direct === api) return api
-  return `https://${(forwarded ?? host ?? "").split(",")[0]?.trim() ?? ""}`
-}
-
-effect function registryRead(): RegistryRead!!(Store | Deployment) {
-  const registry = (try Store).transaction((tx) => readRegistry(tx)) catch effect (failure) => {
-    try annotateLogs(logWarning("the native client registry could not be read"), { cause: failure._tag })
-    return undefined
-  }
-  return registry === undefined ? readOf([], false) : readOf([...registry], true)
+function forwardedOrigin(context: RouteContext): string {
+  const host = (context.request.headers["x-forwarded-host"] ?? context.request.headers.host ?? "").split(",")[0]?.trim() ?? ""
+  return `https://${host}`
 }
 
 effect function servePage(context: RouteContext) {
   const deployment = try Deployment
   const { web, api } = deployment.settings
-  const row = rowOf(deployment.settings.name, deployment.settings)
-  const url = { origin: requestOrigin(context, api), path: new URL(context.request.url, api).pathname }
-  const read = url.origin === web && !isPayerUrl(row, url) ? try registryRead() : readOf([], false)
+  const onWeb = forwardedOrigin(context) === web
+  const registry = onWeb ? (try Store).transaction((tx) => readRegistry(tx)) catch () => undefined : []
+  const path = new URL(context.request.url, api).pathname
   const served = deployment.environment === "production" ? "Production" : "Staging"
-  return try pageResponse(answerAt(row, read, served, url, context.query.get("outcome") ?? ""))
+  const read = readOf(registry === undefined ? [] : [...registry], registry !== undefined)
+  const answer = answerAt(rowOf(deployment.settings.name, deployment.settings), read, served, { origin: onWeb ? web : api, path }, context.query.get("outcome") ?? "")
+  return try pageResponse(answer)
 }
 
 export effect function connectedReturnPage(registration: Registration) {
   const deployment = try Deployment
   return try pageResponse(connectedAnswer(rowOf(deployment.settings.name, deployment.settings), registration))
+}
+
+export effect function connectedBrowserPage() {
+  const deployment = try Deployment
+  return try pageResponse(connectedOnCloud(rowOf(deployment.settings.name, deployment.settings)))
 }
 
 export const returnPageRoute: Route = { method: "GET", path: "/*", auth: "Public", handler: servePage }

@@ -72,4 +72,11 @@ export const migrations: readonly Migration[] = [
     revision text NOT NULL CHECK (length(revision) > 0),
     views jsonb NOT NULL
   );` },
+  { kind: "Additive", sql: `ALTER TABLE device_requests ADD COLUMN binding_authority jsonb
+    CHECK (binding_authority IS NULL OR
+      (jsonb_typeof(binding_authority) = 'object' AND binding <> 'NoBinding'
+        AND (binding_authority->>'kind') IS NOT DISTINCT FROM binding));` },
+  { kind: "Additive", sql: `ALTER TABLE device_requests ADD COLUMN wire_attempt_id uuid UNIQUE;` },
+  { kind: "Additive", sql: `ALTER TABLE device_requests ADD COLUMN provider_receipt jsonb
+    CHECK (provider_receipt IS NULL OR jsonb_typeof(provider_receipt) = 'object');` },
 ]

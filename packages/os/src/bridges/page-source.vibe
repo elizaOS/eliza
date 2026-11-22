@@ -135,11 +135,12 @@ export async function readPublicPageSource(address: string, signal: AbortSignal,
   if (!isWebAddress(address)) return undefined
   let source: PageSource | undefined
   try {
-    source = await publicSource(address, requestSignal(signal, ports.timeoutMs ?? PAGE_SOURCE_TIMEOUT_MS), ports)
+    const request = requestSignal(signal, ports.timeoutMs ?? PAGE_SOURCE_TIMEOUT_MS)
+    source = await publicSource(address, request, ports)
+    request.throwIfAborted()
   } catch (failure) {
     if (signal.aborted) throw failure
     return undefined
   }
-  signal.throwIfAborted()
   return source
 }

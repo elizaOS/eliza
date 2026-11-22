@@ -89,6 +89,7 @@ public final class CloudRequests {
       if (body != null) {
         if (!planned.headers().containsKey("Content-Type")) connection.setRequestProperty("Content-Type", "application/json");
         connection.setDoOutput(true);
+        connection.setFixedLengthStreamingMode(body.length);
         try (OutputStream out = connection.getOutputStream()) { out.write(body); }
       }
       int status = connection.getResponseCode();

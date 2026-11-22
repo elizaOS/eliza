@@ -28,15 +28,16 @@ import java.util.concurrent.TimeUnit;
 public final class NativeHealthClient {
   private NativeHealthClient() {}
 
-  public static Optional<NativeHealthEvidence> read(Context context, String target, String serviceClass, String planId, long generation, long revision, long requestBudgetMillis) throws Exception {
+  public static Optional<NativeHealthEvidence> read(Context context, String target, String serviceClass, NativeHealthEvidence.Subject subject, long requestBudgetMillis) throws Exception {
     if (requestBudgetMillis <= 0 || requestBudgetMillis > HealthWork.MAX_REQUEST_MS) throw new IllegalArgumentException("Health request budget must be positive and at most 20 s");
     if (Looper.myLooper() == Looper.getMainLooper()) throw new IOException("Health probe cannot block the main thread");
-    Objects.requireNonNull(target); Objects.requireNonNull(serviceClass);
+    Objects.requireNonNull(target); Objects.requireNonNull(serviceClass); Objects.requireNonNull(subject);
     PackageManager packages = context.getPackageManager();
     if (packages.checkSignatures(context.getPackageName(), target) != PackageManager.SIGNATURE_MATCH) throw new IOException("Health peer signer mismatch");
     UpdateJournal.Identity before = PackageInstallCoordinator.installed(context, target);
     int expectedUid = packages.getApplicationInfo(target, 0).uid;
-    NativeHealthEvidence.Subject subject = new NativeHealthEvidence.Subject(planId, generation, revision, before.code, before.digest);
+    if (before.code != subject.versionCode || !before.digest.equals(subject.installed))
+      throw new IOException("Installed app does not match the requested health subject");
     String nonce = nonce();
     long started = SystemClock.elapsedRealtime(), deadline = Math.addExact(started, requestBudgetMillis);
     CompletableFuture<IBinder> connection = new CompletableFuture<>();

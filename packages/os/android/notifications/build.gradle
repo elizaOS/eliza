@@ -2,8 +2,8 @@ apply plugin: 'com.android.library'
 android {
  namespace 'ai.eliza.plugins.notifications'
  compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
- // API 29 matches agent-service, which the notice projection reads through.
- defaultConfig { minSdk 29; targetSdk project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36 }
+ // Signing-certificate pinning (GET_SIGNING_CERTIFICATES) and listener rebind require API 28+.
+ defaultConfig { minSdk 28; targetSdk project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36 }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
  // The Capacitor bridge (NotificationsHostPlugin) is built only for a Capacitor host. A host
  // without a ':capacitor-android' project keeps the framework-free library unchanged.
@@ -13,7 +13,7 @@ android {
 }
 repositories { google(); mavenCentral() }
 dependencies {
- implementation project(':agent-service')
+ implementation "androidx.core:core:${rootProject.ext.has('androidxCoreVersion') ? rootProject.ext.androidxCoreVersion : '1.16.0'}"
  if (rootProject.findProject(':capacitor-android') != null) {
   implementation project(':capacitor-android')
   // Plugin.getActivity() exposes AppCompatActivity in Capacitor's Java API.

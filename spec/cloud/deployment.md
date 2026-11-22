@@ -1,19 +1,21 @@
 # Deployment profile
 
-One reviewed profile describes a deployment's production and staging
-environments: the callers, capabilities, sign-in methods and public documents
-of each. An instance serves the one environment it was started with, and
-starts only when the profile, the database and the payment catalog agree.
+One reviewed profile describes a deployment of the cloud: its production and
+staging environments, the callers each one answers, the capabilities it
+enables, the sign-in methods it offers and the public documents it serves.
+One instance serves the one environment it was started with, and it starts
+only when the profile, the database and the payment provider's catalog all
+agree with it. Sources are develop `packages/cloud/deploy/src`,
+`shared/src/lib/services/subscription-catalog.ts` (`verifyPlan`),
+`shared/src/lib/cors/` and `api/src/public/service/route.ts`; downstream
+readers are the products' deployment scripts, readiness checks and the
+service-information parser.
 
 This library has no state. The profile's Effect Schema
-(`src/profile/profile.schema.ts`) owns every string format and names the
-secrets read from the environment; no rule sees a secret. An origin (`api`,
-`web` and each `firstPartyOrigins` entry) is an HTTPS URL equal to its own
-serialized origin: lower-case host, no default port, no path, query,
-fragment or credentials, so string equality below is origin equality. The
-display name has 1 to 80 characters and no control or format character. The
-name and every title, revision, section title and paragraph are trimmed and
-must not be blank; the Quint receives the trimmed values.
+(`src/profile/profile.schema.ts`) owns every string format (an origin is
+HTTPS with no path or credentials; a display name has 1 to 80 characters and
+no control character) and names the secrets read from the environment; no
+rule sees a secret.
 
 ## Story: Configure a deployment from one reviewed profile
 
@@ -21,98 +23,90 @@ must not be blank; the Quint receives the trimmed values.
 > once and start each instance from that description, so that no instance
 > trusts an authority, a database or a price the profile does not name.
 
-### A profile is accepted only when its two environments share no origin or database, production uses no loopback adapter, and each environment offers a sign-in method, a consistent maps provider and complete documents
+### A profile is accepted only when its two environments share no origin or database, production uses no loopback adapter, and each environment offers a sign-in method and complete documents
 
 Each environment names its display name, API and web origins, entitlement
 audience, mail sender, expected database identity digest, exact first-party
-origins, enabled capabilities, maps provider, sign-in adapters and legal
-documents. There is no tenant, no third environment and no credential
-namespace. No API or web origin of one environment is an origin of the
-other, and no origin is first party in both; one environment may serve API
-and web on one origin, as local development does. The `maps` capability is
-on exactly when the maps provider is not `none`. Each terms and privacy
-document has a title, a revision and at least one section, each section a
-title and at least one paragraph, none of them blank. The schema also
-carries the parts `services/models`, `identity/codeChallenges` and
-`nativeClients/registry` read.
+origins, enabled capabilities, sign-in adapters and legal documents. There is
+no tenant, no third origin and no credential namespace. The four API and web
+origins are all different, and neither environment lists an origin of the
+other as first party. Each display name is not empty, and each terms and
+privacy document has a title, a revision and at least one section, each
+section a title and at least one paragraph, none of them empty.
+
+The profile's schema composes the parts other specs own and read from it:
+the models and their prices (`services/models`), the maps provider
+(`services/maps`; the `maps` capability is on exactly when the provider is
+not `none`), the SMS countries (`identity/codeChallenges`), the Google client
+ids (`nativeClients/registry`, `identity/federatedSignIn`), the provider base
+URLs, and each paid plan's provider price and product id, which the catalog
+check below reads.
 
 ```quint
 import types.* from "./shared/types"
 import plans.* from "./billing/plans"
 type Environment = Production | Staging
 type Capability = InferenceCapability | SpeechCapability | MapsCapability | ManagedGoogleCapability | BillingCapability
-type MapsProvider = GoogleMaps | OsmMaps | NoMaps
 type DeliveryAdapter = HttpsDelivery | LoopbackDelivery | NoDelivery
 type GoogleSetup = GoogleOff | GoogleOn
 type SignInSetup = { mail: DeliveryAdapter, sms: DeliveryAdapter, google: GoogleSetup }
 type DocumentSection = { title: str, paragraphs: List[str] }
 type LegalDocument = { title: str, revision: str, sections: List[DocumentSection] }
-type EnvironmentProfile = { name: str, api: str, web: str, audience: str, mailSender: str, databaseDigest: str, firstPartyOrigins: List[str], capabilities: Set[Capability], mapsProvider: MapsProvider, signIn: SignInSetup, terms: LegalDocument, privacy: LegalDocument }
+type EnvironmentProfile = { name: str, api: str, web: str, audience: str, mailSender: str, databaseDigest: str, firstPartyOrigins: List[str], capabilities: Set[Capability], signIn: SignInSetup, terms: LegalDocument, privacy: LegalDocument }
 type Profile = { production: EnvironmentProfile, staging: EnvironmentProfile }
 pure def rowOf(p: Profile, environment: Environment): EnvironmentProfile = if (environment == Production) p.production else p.staging
 pure def otherEnvironment(environment: Environment): Environment = if (environment == Production) Staging else Production
 pure def usesLoopback(row: EnvironmentProfile): bool = row.signIn.mail == LoopbackDelivery or row.signIn.sms == LoopbackDelivery
-pure def someMethodOffered(setup: SignInSetup): bool = methodOffered(setup, EmailSignIn) or methodOffered(setup, PhoneSignIn) or methodOffered(setup, GoogleSignIn)
+pure def someMethodOffered(setup: SignInSetup): bool = setup.mail != NoDelivery or setup.sms != NoDelivery or setup.google == GoogleOn
 pure def documentComplete(d: LegalDocument): bool =
   d.title != "" and d.revision != "" and d.sections.length() > 0
   and d.sections.every(x => x.title != "" and x.paragraphs.length() > 0 and x.paragraphs.every(t => t != ""))
 pure def environmentAccepted(row: EnvironmentProfile, other: EnvironmentProfile): bool =
   row.name != "" and not(row.firstPartyOrigins.includes(other.api)) and not(row.firstPartyOrigins.includes(other.web))
-  and row.firstPartyOrigins.every(o => not(other.firstPartyOrigins.includes(o)))
-  and (row.capabilities.contains(MapsCapability) iff row.mapsProvider != NoMaps)
   and someMethodOffered(row.signIn) and documentComplete(row.terms) and documentComplete(row.privacy)
 pure def profileAccepted(p: Profile): bool = {
   val a = p.production
   val b = p.staging
-  a.api != b.api and a.api != b.web and a.web != b.api and a.web != b.web
+  a.api != a.web and a.api != b.api and a.api != b.web and a.web != b.api and a.web != b.web and b.api != b.web
   and a.databaseDigest != b.databaseDigest and not(usesLoopback(a))
   and environmentAccepted(a, b) and environmentAccepted(b, a)
 }
 pure val pValues: Set[Profile] = {
   val doc: LegalDocument = { title: "Terms", revision: "1", sections: List({ title: "Use", paragraphs: List("Plain text.") }) }
-  val prod: EnvironmentProfile = { name: "Cloud", api: "https://api.one", web: "https://www.one", audience: "aud", mailSender: "m@one", databaseDigest: "d1", firstPartyOrigins: List("https://www.one"), capabilities: Set(InferenceCapability, SpeechCapability, MapsCapability, ManagedGoogleCapability, BillingCapability), mapsProvider: GoogleMaps, signIn: { mail: HttpsDelivery, sms: HttpsDelivery, google: GoogleOn }, terms: doc, privacy: doc }
-  val stag: EnvironmentProfile = { ...prod, api: "https://api.two", web: "https://www.two", databaseDigest: "d2", firstPartyOrigins: List("https://www.two"), capabilities: Set(InferenceCapability), mapsProvider: NoMaps, signIn: { mail: LoopbackDelivery, sms: LoopbackDelivery, google: GoogleOff } }
-  val ok: Profile = { production: prod, staging: stag }
-  Set(ok)
-    .union(Set({ ...ok, staging: { ...stag, web: "https://api.two", firstPartyOrigins: List("https://api.two") } }))
-    .union(Set({ ...ok, staging: { ...stag, databaseDigest: "d1" } }))
-    .union(Set({ ...ok, staging: { ...stag, api: "https://api.one" } }))
-    .union(Set({ ...ok, staging: { ...stag, firstPartyOrigins: List("https://www.one") } }))
-    .union(Set({ production: { ...prod, firstPartyOrigins: List("https://www.one", "https://shared.dev") }, staging: { ...stag, firstPartyOrigins: List("https://shared.dev") } }))
-    .union(Set({ ...ok, production: { ...prod, signIn: { mail: HttpsDelivery, sms: LoopbackDelivery, google: GoogleOn } } }))
-    .union(Set({ ...ok, staging: { ...stag, signIn: { mail: NoDelivery, sms: NoDelivery, google: GoogleOff } } }))
-    .union(Set({ ...ok, staging: { ...stag, mapsProvider: OsmMaps } }))
-    .union(Set({ ...ok, production: { ...prod, terms: { ...doc, sections: List() } } }))
-    .union(Set({ ...ok, production: { ...prod, name: "" } }))
+  val prod: EnvironmentProfile = { name: "Cloud", api: "https://api.one", web: "https://www.one", audience: "aud", mailSender: "m@one", databaseDigest: "d1", firstPartyOrigins: List("https://www.one"), capabilities: Set(InferenceCapability, SpeechCapability, MapsCapability, ManagedGoogleCapability, BillingCapability), signIn: { mail: HttpsDelivery, sms: HttpsDelivery, google: GoogleOn }, terms: doc, privacy: doc }
+  val stag: EnvironmentProfile = { ...prod, api: "https://api.two", web: "https://www.two", databaseDigest: "d2", firstPartyOrigins: List("https://www.two"), capabilities: Set(InferenceCapability), signIn: { mail: LoopbackDelivery, sms: LoopbackDelivery, google: GoogleOff } }
+  Set({ production: prod, staging: stag })
+    .union(Set({ production: prod, staging: { ...stag, databaseDigest: "d1" } }))
+    .union(Set({ production: prod, staging: { ...stag, api: "https://api.one" } }))
+    .union(Set({ production: prod, staging: { ...stag, web: "https://api.one" } }))
+    .union(Set({ production: prod, staging: { ...stag, firstPartyOrigins: List("https://www.one") } }))
+    .union(Set({ production: prod, staging: { ...stag, firstPartyOrigins: List("https://api.one") } }))
+    .union(Set({ production: { ...prod, signIn: { mail: HttpsDelivery, sms: LoopbackDelivery, google: GoogleOn } }, staging: stag }))
+    .union(Set({ production: prod, staging: { ...stag, signIn: { mail: NoDelivery, sms: NoDelivery, google: GoogleOff } } }))
+    .union(Set({ production: { ...prod, terms: { ...doc, sections: List() } }, staging: stag }))
+    .union(Set({ production: { ...prod, name: "" }, staging: stag }))
 }
 ```
 
-### An instance starts only for an accepted profile, on its environment's own readable database, seeded only in staging, with loopback delivery and its test inbox only on PGlite
+### An instance starts only for an accepted profile, on its environment's own readable database, seeded only in staging, with loopback delivery only on PGlite
 
 `elizaos-cloud serve --environment <e>` refuses to start, naming the first
-problem in this order. The database identity digest is SHA-256 over
-`eliza-postgres-authority-v1`, the environment, the cluster
-`system_identifier`, the role name and the database name, each followed by
-a NUL byte, read by the same query on `pg` and PGlite; an identity the shell
-cannot read and another database's identity are distinct problems. A
-harness that creates a new PGlite store reads its digest and writes it into
-the profile it then starts with. `--seed` (registrations and prices) is
-refused outside staging. With billing enabled, the payment catalog must also
-fit (next rule). With the loopback adapter, `GET /api/test/inbox/:destination`
-answers the latest message per destination only on the loopback interface;
-otherwise it answers `404 not_found`.
+problem in this order. The shell reads the connected database's identity
+digest as `operator` describes; an identity it cannot read and another
+database's identity are distinct problems. `--seed` (registrations and
+prices) is refused outside staging. With billing enabled, the payment catalog
+must also fit (next rule).
 
 ```quint
 type StoreKind = PostgresStore | PgliteStore
 type StoreIdentity = MatchingDatabase | OtherDatabase | UnreadableDatabase
 type IdentityRead = UnreadableIdentity | ReadDigest({ digest: str })
-type StartProblem = StartsCleanly | ProfileRefused | DatabaseUnreadable | DatabaseMismatch | SeedOutsideStaging | LoopbackOutsidePglite | CatalogMissing | CatalogMismatch({ plan: PlanKey, mismatch: PriceMismatch })
+type StartProblem = NoProblem | ProfileRefused | DatabaseUnreadable | DatabaseMismatch | SeedOutsideStaging | LoopbackOutsidePglite | CatalogMissing | CatalogMismatch({ plan: PlanKey, mismatch: PriceMismatch })
 pure def identityOf(p: Profile, environment: Environment, read: IdentityRead): StoreIdentity = match read {
   | ReadDigest(r) => if (r.digest == rowOf(p, environment).databaseDigest) MatchingDatabase else OtherDatabase
   | UnreadableIdentity => UnreadableDatabase
 }
 pure def loopbackAllowed(store: StoreKind): bool = store == PgliteStore
-pure def inboxOpen(row: EnvironmentProfile, store: StoreKind, fromLoopbackInterface: bool): bool = usesLoopback(row) and loopbackAllowed(store) and fromLoopbackInterface
 pure def startProblem(p: Profile, environment: Environment, store: StoreKind, read: IdentityRead, seeded: bool, catalog: CatalogObservation): StartProblem = {
   val row = rowOf(p, environment)
   val identity = identityOf(p, environment, read)
@@ -122,64 +116,58 @@ pure def startProblem(p: Profile, environment: Environment, store: StoreKind, re
   else if (seeded and environment != Staging) SeedOutsideStaging
   else if (usesLoopback(row) and not(loopbackAllowed(store))) LoopbackOutsidePglite
   else if (row.capabilities.contains(BillingCapability)) catalogProblem(environment, catalog)
-  else StartsCleanly
+  else NoProblem
 }
-pure def canServe(p: Profile, environment: Environment, store: StoreKind, read: IdentityRead, seeded: bool, catalog: CatalogObservation): bool = startProblem(p, environment, store, read, seeded, catalog) == StartsCleanly
-pure val readValues: Set[IdentityRead] = Set(UnreadableIdentity).union(Set(ReadDigest({ digest: "d1" }))).union(Set(ReadDigest({ digest: "d2" }))).union(Set(ReadDigest({ digest: "d3" })))
+pure def canServe(p: Profile, environment: Environment, store: StoreKind, read: IdentityRead, seeded: bool, catalog: CatalogObservation): bool = startProblem(p, environment, store, read, seeded, catalog) == NoProblem
+pure val readValues: Set[IdentityRead] = Set(UnreadableIdentity, ReadDigest({ digest: "d1" }), ReadDigest({ digest: "d2" }), ReadDigest({ digest: "d3" }))
 pure def lawAnInstanceNeverOpensTheOtherEnvironmentsDatabase(p: Profile, environment: Environment, store: StoreKind, read: IdentityRead, seeded: bool, catalog: CatalogObservation): bool =
   canServe(p, environment, store, read, seeded, catalog) implies read != ReadDigest({ digest: rowOf(p, otherEnvironment(environment)).databaseDigest })
 ```
 
-### Each paid plan's provider price must be active, in US dollars, the catalog amount, monthly per seat, without trial, on its product and in the environment's mode
+### Each paid plan's provider price must be active, in US dollars, the catalog amount, monthly, licensed, without trial, on its product and in the environment's mode
 
 The check runs at `serve` start and in `elizaos-cloud prices check`. The
-catalog is missing when a paid plan's price or product id is not configured
-or the provider cannot be read. Otherwise the shell reduces what it reads:
-active means the price and its product are both active; any currency option
-other than US dollars is `OtherCurrency`; `MonthlyPerSeat` means type
-`recurring`, one month, licensed, billing scheme `per_unit` and no quantity
-transform; the mode is live or test when price and product agree and
-`MixedMode` when they do not. Production sells only live prices and staging
-only test prices. Any mismatch refuses the start; nothing is published from
-a partial catalog.
+shell reads each paid plan's configured price and product from the provider
+and reports any currency option other than US dollars as `OtherCurrency`;
+recurrence fits only for one month, per unit and no quantity transform.
+Production sells only live prices and staging only test prices. Any mismatch
+refuses the start; nothing is published from a partial catalog.
 
 ```quint
-type PriceCurrency = UsdCurrency | OtherCurrency
-type PriceRecurrence = MonthlyPerSeat | OtherRecurrence
-type PriceMode = LivePrice | TestPrice | MixedMode
-type ProviderPrice = { active: bool, currency: PriceCurrency, amountCents: int, recurrence: PriceRecurrence, trial: bool, sameProduct: bool, mode: PriceMode }
+type PriceCurrency = Usd | OtherCurrency
+type PriceInterval = OneMonth | OtherInterval
+type PriceUsage = Licensed | Metered
+type PriceMode = LivePrice | TestPrice
+type ProviderPrice = { active: bool, productActive: bool, currency: PriceCurrency, amountCents: int, interval: PriceInterval, usage: PriceUsage, perUnit: bool, trial: bool, sameProduct: bool, mode: PriceMode }
 type PaidPrices = { plus: ProviderPrice, pro: ProviderPrice }
-type CatalogObservation = NoCatalog | CatalogObserved(PaidPrices)
+type CatalogObservation = NoCatalog | Observed(PaidPrices)
 type PriceMismatch = PriceInactive | WrongCurrency | WrongAmount | WrongRecurrence | HasTrial | OtherProduct | WrongMode
+type PriceCheck = PriceFits | PriceRefused({ mismatch: PriceMismatch })
 pure def modeOf(environment: Environment): PriceMode = if (environment == Production) LivePrice else TestPrice
-pure def priceCheck(key: PlanKey, observed: ProviderPrice, environment: Environment): StartProblem =
-  if (not(observed.active)) CatalogMismatch({ plan: key, mismatch: PriceInactive })
-  else if (observed.currency != UsdCurrency) CatalogMismatch({ plan: key, mismatch: WrongCurrency })
-  else if (observed.amountCents != amountCentsOf(key)) CatalogMismatch({ plan: key, mismatch: WrongAmount })
-  else if (observed.recurrence != MonthlyPerSeat) CatalogMismatch({ plan: key, mismatch: WrongRecurrence })
-  else if (observed.trial) CatalogMismatch({ plan: key, mismatch: HasTrial })
-  else if (not(observed.sameProduct)) CatalogMismatch({ plan: key, mismatch: OtherProduct })
-  else if (observed.mode != modeOf(environment)) CatalogMismatch({ plan: key, mismatch: WrongMode })
-  else StartsCleanly
+pure def priceCheck(key: PlanKey, observed: ProviderPrice, environment: Environment): PriceCheck =
+  if (not(observed.active and observed.productActive)) PriceRefused({ mismatch: PriceInactive })
+  else if (observed.currency != Usd) PriceRefused({ mismatch: WrongCurrency })
+  else if (observed.amountCents != amountCentsOf(key)) PriceRefused({ mismatch: WrongAmount })
+  else if (observed.interval != OneMonth or observed.usage != Licensed or not(observed.perUnit)) PriceRefused({ mismatch: WrongRecurrence })
+  else if (observed.trial) PriceRefused({ mismatch: HasTrial })
+  else if (not(observed.sameProduct)) PriceRefused({ mismatch: OtherProduct })
+  else if (observed.mode != modeOf(environment)) PriceRefused({ mismatch: WrongMode })
+  else PriceFits
+pure def planProblem(key: PlanKey, observed: ProviderPrice, environment: Environment): StartProblem =
+  val checked = priceCheck(key, observed, environment)
+  match checked { | PriceRefused(r) => CatalogMismatch({ plan: key, mismatch: r.mismatch }) | PriceFits => NoProblem }
 pure def pricesProblem(environment: Environment, plusPrice: ProviderPrice, proPrice: ProviderPrice): StartProblem = {
-  val plus = priceCheck(PlusMonthly, plusPrice, environment)
-  if (plus != StartsCleanly) plus else priceCheck(ProMonthly, proPrice, environment)
+  val plus = planProblem(PlusMonthly, plusPrice, environment)
+  if (plus != NoProblem) plus else planProblem(ProMonthly, proPrice, environment)
 }
 pure def catalogProblem(environment: Environment, catalog: CatalogObservation): StartProblem =
-  match catalog { | CatalogObserved(c) => pricesProblem(environment, c.plus, c.pro) | NoCatalog => CatalogMissing }
+  match catalog { | Observed(c) => pricesProblem(environment, c.plus, c.pro) | NoCatalog => CatalogMissing }
+pure val basePrice: ProviderPrice = { active: true, productActive: true, currency: Usd, amountCents: 3000, interval: OneMonth, usage: Licensed, perUnit: true, trial: false, sameProduct: true, mode: LivePrice }
+pure val observedValues: Set[ProviderPrice] =
+  Set(basePrice).union(Set({ ...basePrice, amountCents: 10000 })).union(Set({ ...basePrice, mode: TestPrice })).union(Set({ ...basePrice, trial: true })).union(Set({ ...basePrice, currency: OtherCurrency }))
 pure val catalogValues: Set[CatalogObservation] = {
-  val plus: ProviderPrice = { active: true, currency: UsdCurrency, amountCents: 3000, recurrence: MonthlyPerSeat, trial: false, sameProduct: true, mode: LivePrice }
-  val pro: ProviderPrice = { ...plus, amountCents: 10000 }
-  Set(NoCatalog)
-    .union(Set(CatalogObserved({ plus: plus, pro: pro })))
-    .union(Set(CatalogObserved({ plus: { ...plus, mode: TestPrice }, pro: { ...pro, mode: TestPrice } })))
-    .union(Set(CatalogObserved({ plus: { ...plus, mode: MixedMode }, pro: pro })))
-    .union(Set(CatalogObserved({ plus: pro, pro: pro })))
-    .union(Set(CatalogObserved({ plus: { ...plus, active: false }, pro: pro })))
-    .union(Set(CatalogObserved({ plus: { ...plus, currency: OtherCurrency }, pro: pro })))
-    .union(Set(CatalogObserved({ plus: plus, pro: { ...pro, recurrence: OtherRecurrence } })))
-    .union(Set(CatalogObserved({ plus: { ...plus, trial: true }, pro: pro })))
-    .union(Set(CatalogObserved({ plus: plus, pro: { ...pro, sameProduct: false } })))
+  val pro: ProviderPrice = { ...basePrice, amountCents: 10000 }
+  Set(NoCatalog).union(Set(Observed({ plus: basePrice, pro: pro }))).union(Set(Observed({ plus: { ...basePrice, mode: TestPrice }, pro: { ...pro, mode: TestPrice } }))).union(Set(Observed({ plus: pro, pro: pro })))
 }
 ```
 
@@ -190,39 +178,38 @@ pure val catalogValues: Set[CatalogObservation] = {
 > when a service is not offered, so that no other site acts with my session
 > and my app knows what it cannot use.
 
-### A route of a capability the environment does not enable is refused for good as 404 capability_unavailable
+### A route of a capability the environment does not enable is refused as 404 capability_unavailable
 
 The shell applies the gate after it parses the credential (a refused
 credential answers `401` first) and before it reads the body. Billing gates
 only what needs the payment provider: subscriptions with their plan list,
-checkout, the payer page `/api/v1/subscriptions/checkout/payer` and the
-portal, invoices, grant redemption and the provider webhook. The billing
-snapshot and the entitlement with its keys stay open, so an account funded
-only by `credits add` still shows its balance. The maps capabilities route
-stays open and answers `{available: false}` with maps off (`services/maps`).
-Managed Google gates the Google routes and their callback. Text inference
-needs only inference. Sign-in, native client, public service and return page
-routes (ReturnToApp pages only) need none.
+checkout, payer page and portal, invoices, grant redemption and the provider
+webhook. The billing snapshot and the entitlement with its keys stay open, so
+an account funded only by `credits add` still shows its balance. The maps
+capabilities route stays open and answers `{available: false}` with maps off
+(`services/maps`). Managed Google gates the Google routes and their callback.
+Text inference needs no capability but inference. Sign-in, native client,
+public service and return page routes need none.
 
 ```quint
 type RouteArea =
   ChatCompletionRoutes | ModelListRoutes | BatchSpeechRoutes | SpeechRelayRoutes | MapsCapabilityRoute | MapsOperationRoutes | GoogleRoutes
   | SubscriptionRoutes | InvoiceRoutes | GrantRedemptionRoutes | ProviderWebhookRoutes | BillingSnapshotRoutes | EntitlementRoutes
   | IdentityRoutes | NativeClientRoutes | PublicServiceRoutes | ReturnPageRoutes
-type RouteGate = NoCapabilityGate | CapabilityGated({ capability: Capability })
+type RouteGate = Ungated | Gated({ capability: Capability })
 pure def gateOf(area: RouteArea): RouteGate =
-  if (Set(ChatCompletionRoutes, ModelListRoutes).contains(area)) CapabilityGated({ capability: InferenceCapability })
-  else if (Set(BatchSpeechRoutes, SpeechRelayRoutes).contains(area)) CapabilityGated({ capability: SpeechCapability })
-  else if (area == MapsOperationRoutes) CapabilityGated({ capability: MapsCapability })
-  else if (area == GoogleRoutes) CapabilityGated({ capability: ManagedGoogleCapability })
-  else if (Set(SubscriptionRoutes, InvoiceRoutes, GrantRedemptionRoutes, ProviderWebhookRoutes).contains(area)) CapabilityGated({ capability: BillingCapability })
-  else NoCapabilityGate
-pure def routeOpen(offered: Set[Capability], gate: RouteGate): bool = match gate { | CapabilityGated(g) => offered.contains(g.capability) | NoCapabilityGate => true }
+  if (Set(ChatCompletionRoutes, ModelListRoutes).contains(area)) Gated({ capability: InferenceCapability })
+  else if (Set(BatchSpeechRoutes, SpeechRelayRoutes).contains(area)) Gated({ capability: SpeechCapability })
+  else if (area == MapsOperationRoutes) Gated({ capability: MapsCapability })
+  else if (area == GoogleRoutes) Gated({ capability: ManagedGoogleCapability })
+  else if (Set(SubscriptionRoutes, InvoiceRoutes, GrantRedemptionRoutes, ProviderWebhookRoutes).contains(area)) Gated({ capability: BillingCapability })
+  else Ungated
+pure def routeOpen(offered: Set[Capability], gate: RouteGate): bool = match gate { | Gated(g) => offered.contains(g.capability) | Ungated => true }
 pure val capabilityRefusal: Refusal = refuse(CapabilityUnavailable)
 pure val alwaysOpenAreas: Set[RouteArea] = Set(MapsCapabilityRoute, BillingSnapshotRoutes, EntitlementRoutes, IdentityRoutes, NativeClientRoutes, PublicServiceRoutes, ReturnPageRoutes)
+pure def lawTextInferenceNeedsOnlyInference(area: RouteArea): bool =
+  Set(ChatCompletionRoutes, ModelListRoutes).contains(area) implies routeOpen(Set(InferenceCapability), gateOf(area))
 pure def lawBalanceAndSignInNeedNoCapability(area: RouteArea): bool = routeOpen(Set(), gateOf(area)) iff alwaysOpenAreas.contains(area)
-pure def lawAClosedRouteIsRefusedForGood(area: RouteArea): bool =
-  not(routeOpen(Set(), gateOf(area))) implies (statusOf(capabilityRefusal.code) == 404 and wellFormed(capabilityRefusal) and not(retryableOf(capabilityRefusal)))
 ```
 
 ### The entitlement's services claim names the enabled capabilities in one fixed order
@@ -244,28 +231,29 @@ A request whose `Origin` is in the environment's `firstPartyOrigins` gets
 that origin reflected with credentials allowed; any other origin gets no CORS
 grant, never a wildcard. A request without `Origin` (a native client) needs
 none. A preflight admits only the listed methods and request headers, and an
-answer exposes only the listed response headers. Under an accepted profile
-no origin gets credentials from both environments.
+answer exposes only the listed response headers.
 
 ```quint
-type RequestOrigin = NoRequestOrigin | FromRequestOrigin({ origin: str })
+type RequestOrigin = NoOrigin | FromOrigin({ origin: str })
 type CorsGrant = NoCorsGrant | CredentialedGrant
 pure def corsGrant(row: EnvironmentProfile, requestOrigin: RequestOrigin): CorsGrant =
-  match requestOrigin { | FromRequestOrigin(o) => if (row.firstPartyOrigins.includes(o.origin)) CredentialedGrant else NoCorsGrant | NoRequestOrigin => NoCorsGrant }
+  match requestOrigin { | FromOrigin(o) => if (row.firstPartyOrigins.includes(o.origin)) CredentialedGrant else NoCorsGrant | NoOrigin => NoCorsGrant }
 pure val allowedMethods: List[str] = List("GET", "POST", "PATCH", "DELETE")
 pure val allowedRequestHeaders: List[str] = List("Authorization", "Idempotency-Key", "If-Match", "X-Request-Id", "Traceparent", "Tracestate", "Content-Type")
 pure val exposedResponseHeaders: List[str] = List("X-Request-Id", "ETag", "Retry-After", "X-Eliza-Speech-Extend", "X-Eliza-TTS-Provider", "X-Eliza-STT-Provider", "X-Eliza-TTS-Speed", "X-Eliza-TTS-Timing")
-pure val originValues: Set[str] = Set("https://www.one", "https://www.two", "https://api.one", "https://shared.dev")
-pure def lawNoCredentialsAcrossEnvironments(p: Profile, origin: str): bool =
-  profileAccepted(p) implies not(corsGrant(p.production, FromRequestOrigin({ origin: origin })) == CredentialedGrant and corsGrant(p.staging, FromRequestOrigin({ origin: origin })) == CredentialedGrant)
+pure def lawNoCredentialsAcrossEnvironments(p: Profile, environment: Environment): bool = {
+  val row = rowOf(p, environment)
+  val other = rowOf(p, otherEnvironment(environment))
+  profileAccepted(p) implies (corsGrant(row, FromOrigin({ origin: other.web })) == NoCorsGrant and corsGrant(row, FromOrigin({ origin: other.api })) == NoCorsGrant)
+}
 ```
 
-### A sign-in method is offered only when its adapter is configured and its routes are mounted
+### A sign-in method is offered only when its adapter is configured
 
 `GET /api/v1/auth/methods` answers `{email, sms, google}`. Email needs a mail
 adapter, SMS an SMS adapter, Google configured Google clients; an accepted
 profile configures at least one. A host advertises a configured method only
-when it mounts that method's start and verification routes. A route of a
+when it mounts that method’s start and verification routes. A route of a
 method not offered is refused for good. Google returns
 `503 provider_unavailable` with reason `google_not_configured` (the registry's
 config read says the same). Email and SMS return `404 capability_unavailable`.
@@ -275,24 +263,45 @@ type MethodsAnswer = { email: bool, sms: bool, google: bool }
 pure def methodOffered(setup: SignInSetup, m: SignInMethod): bool =
   if (m == EmailSignIn) setup.mail != NoDelivery else if (m == PhoneSignIn) setup.sms != NoDelivery else setup.google == GoogleOn
 pure def methodsAnswer(setup: SignInSetup): MethodsAnswer = { email: methodOffered(setup, EmailSignIn), sms: methodOffered(setup, PhoneSignIn), google: methodOffered(setup, GoogleSignIn) }
+pure def lawAnAcceptedProfileOffersSomeMethod(p: Profile, environment: Environment): bool = {
+  val answer = methodsAnswer(rowOf(p, environment).signIn)
+  profileAccepted(p) implies (answer.email or answer.sms or answer.google)
+}
 pure def mountedMethodsAnswer(setup: SignInSetup, mounted: MethodsAnswer): MethodsAnswer = {
   email: mounted.email and methodOffered(setup, EmailSignIn),
   sms: mounted.sms and methodOffered(setup, PhoneSignIn),
   google: mounted.google and methodOffered(setup, GoogleSignIn)
 }
+pure val deliverySetupValues: Set[SignInSetup] = Set(
+  { mail: HttpsDelivery, sms: NoDelivery, google: GoogleOff },
+  { mail: HttpsDelivery, sms: HttpsDelivery, google: GoogleOn }
+)
+pure val mountedValues: Set[MethodsAnswer] = Set(
+  { email: false, sms: false, google: false },
+  { email: true, sms: true, google: true }
+)
+pure def lawUnservedMethodsAreNotOffered(deliverySetup: SignInSetup, mounted: MethodsAnswer): bool = {
+  val offered = mountedMethodsAnswer(deliverySetup, mounted)
+  (offered.email implies mounted.email) and (offered.sms implies mounted.sms) and (offered.google implies mounted.google)
+}
 pure def methodRefusal(m: SignInMethod): Refusal = if (m == GoogleSignIn) refuseFor(ProviderUnavailable, GoogleNotConfigured) else capabilityRefusal
 pure def lawAMissingMethodIsRefusedForGood(m: SignInMethod): bool = wellFormed(methodRefusal(m)) and not(retryableOf(methodRefusal(m)))
 ```
 
-### The public service document carries the served environment's name, terms and privacy, version 1
+### The public service document carries the environment's name and complete terms and privacy
 
 `GET /api/public/service` answers `{success: true, version: 1, service:
-{name, terms, privacy}}` with `Cache-Control: no-store`; an accepted profile
-holds nothing blank the products' parser refuses. `GET /api/health` answers
-without reading any store.
+{name, terms, privacy}}` with `Cache-Control: no-store`; the products' parser
+refuses an empty name, title, section list or paragraph, so an accepted
+profile never serves one. `GET /api/health` answers without reading any
+store.
 
 ```quint
 type ServiceDocument = { name: str, terms: LegalDocument, privacy: LegalDocument }
 pure val serviceDocumentVersion = 1
 pure def serviceDocument(row: EnvironmentProfile): ServiceDocument = { name: row.name, terms: row.terms, privacy: row.privacy }
+pure def lawAnAcceptedProfileServesCompleteDocuments(p: Profile, environment: Environment): bool = {
+  val d = serviceDocument(rowOf(p, environment))
+  profileAccepted(p) implies (d.name != "" and documentComplete(d.terms) and documentComplete(d.privacy))
+}
 ```

@@ -63,9 +63,8 @@ public final class DownloadReplay {
     private static boolean attempt(String name, String operation, Path directory, UpdateChannel channel)
             throws Exception {
         try {
-            channel.download(new UpdateChannel.Candidate(new URL("https://updates.test/payload"), DIGEST,
-                    new UpdateAdmission.Release("target", "fixture", "fixture", 1, 0, 0), BODY.length,
-                    new UpdateAdmission.ManifestFacts(1, true, true, false, 0, BODY.length)), directory.toFile());
+            channel.download(new UpdateChannel.Candidate(new URL("https://updates.test/payload"),
+                    DIGEST, "target", BODY.length, 1), directory.toFile());
             observe(name, operation, directory, true, null);
             return true;
         } catch (IOException refused) {
@@ -104,7 +103,7 @@ public final class DownloadReplay {
         require(ranges.get() == expectedRanges, name + " real Range request count differs");
     }
 
-    static void replay(String[] args) throws Exception {
+    public static void main(String[] args) throws Exception {
         Path directory = Path.of(args[0]), keyStore = Path.of(args[1]), output = Path.of(args[2]);
         Files.createDirectories(directory);
         KeyStore keys = KeyStore.getInstance("PKCS12");

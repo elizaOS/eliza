@@ -1,0 +1,10 @@
+{
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "lib": ["es2024", "webworker"],
+    "types": []
+  },
+  "files": ["capture.worklet.mjs", "capture.worklet.global.d.mts"]
+}

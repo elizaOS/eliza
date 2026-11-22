@@ -1,9 +1,14 @@
 // spec/agent/tasks/index.md, "Story: Run one task operation without losing or repeating its effect"; spec/agent/tasks/index.md, "Story: Finish a task and wait for its actuator to let go"
 import { assert, it } from "@effect/vitest"
+import { TaskView } from "../src/client/task-lifecycle.vibe"
+import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { createTaskHost, type TaskHostHandle } from "../src/tasks/host.vibe"
+import { tasksModule, tasksModuleName } from "../src/tasks/module.vibe"
 import type { TaskRoutesHost } from "../src/tasks/routes.vibe"
 import { createTaskStore } from "../src/tasks/store.vibe"
-import { scratch, SupportFailed } from "./support/kernel.vibe"
+import { call, host, scratch, startInProcess, SupportFailed, type InProcess } from "./support/kernel.vibe"
+import type { LocalRequest } from "./support/socket-client.ts"
+import { copyIn, sealedFor } from "./support/task-record.vibe"
 
 module node {
   import { randomBytes } from "node:crypto"
@@ -49,6 +54,7 @@ module node {
 
   export function fixture() {
     let clock = 1_000
+    let accountId = ""
     let version = 0
     let held: (() => void) | undefined
     const behaviours: Behaviour[] = []
@@ -56,6 +62,7 @@ module node {
     let failQuiesce = 0
     let readback: TaskOutcome = { status: "unknown" }
     let entered: () => void = () => undefined
+    let quiescence: { readonly began: () => void; readonly release: Promise<void> } | undefined
     const actuator: TaskActuator = {
       capabilities: ["read"],
       async observe() {
@@ -79,10 +86,17 @@ module node {
           failQuiesce -= 1
           throw new Error("guide still shown")
         }
+        const pending = quiescence
+        quiescence = undefined
+        if (pending !== undefined) {
+          pending.began()
+          await pending.release
+        }
       },
     }
     const goals: TaskGoalAuthorizer = {
-      async authorize(goalRef) {
+      async authorize(goalRef, caller) {
+        accountId = caller.connector.accountId
         const goal: AuthorizedTaskGoal = {
           id: `task-${goalRef}`, goalRef,
           authorization: { decisionId: `decision-${goalRef}`, policyRevision: "1", decidedAt: "2026-01-01T00:00:00.000Z", state: "active", revokedAt: null },
@@ -93,6 +107,7 @@ module node {
     }
     return {
       actuator, goals, seen,
+      accountId: () => accountId,
       now: () => clock,
       advance: (by: number) => { clock += by },
       reply: (behaviour: Behaviour) => { behaviours.push(behaviour) },
@@ -111,6 +126,12 @@ module node {
       release: () => held?.(),
       readback: (outcome: TaskOutcome) => { readback = outcome },
       failQuiesce: (times: number) => { failQuiesce = times },
+      holdQuiesce: () => {
+        const entered = Promise.withResolvers<void>()
+        const done = Promise.withResolvers<void>()
+        quiescence = { began: entered.resolve, release: done.promise }
+        return { entered: entered.promise, release: done.resolve }
+      },
     }
   }
 
@@ -132,6 +153,150 @@ module node {
   }
 }
 import { clockOf, failingDatabase, fixture, keyFor, newKey, operationStatuses, owner, proposal } from node
+
+effect function onSocket(running: InProcess, request: LocalRequest) {
+  const reply = try call(running, request)
+  if (!("status" in reply)) throw new SupportFailed({ step: request.path, cause: reply })
+  return { status: reply.status, body: reply.json }
+}
+
+const get = (path: string): LocalRequest => ({ method: "GET", path })
+const post = (path: string, body: unknown): LocalRequest => ({ method: "POST", path, body })
+const readTask = Schema.decodeUnknownSync(Schema.Struct({ task: Schema.NullOr(TaskView) }), { onExcessProperty: "error" })
+const readPage = Schema.decodeUnknownSync(Schema.Struct({
+  cursor: Schema.Int, hasMore: Schema.Boolean, events: Schema.Array(Schema.Struct({ sequence: Schema.Int })),
+}))
+const wireCodeOf = (answer: { readonly status: number; readonly body: unknown }) =>
+  [answer.status, typeof answer.body === "object" && answer.body !== null && "code" in answer.body ? answer.body.code : undefined]
+const recordsOf = Schema.decodeUnknownSync(Schema.Struct({ records: Schema.Array(Schema.Struct({
+  taskId: Schema.String, releasedAt: Schema.NullOr(Schema.Number), reason: Schema.String,
+})) }))
+
+it.effect('Only the launch owner can start or inspect the durable task over its socket (spec/agent/tasks/index.md, "Every task request comes from the launch account of a started host"; spec/agent/tasks/wire.md, "Only the launch account reaches a serving host, and the storage probe needs neither"; spec/agent/tasks/wire.md, "A repeated start of the running task\'s goal returns that task"; spec/agent/tasks/wire.md, "A view shows six public fields of the held task, or null"; spec/agent/tasks/wire.md, "A command body has exactly the fields its command names"; spec/agent/tasks/wire.md, "Only the event page takes a query, and its cursor is canonical"; spec/agent/tasks/wire.md, "Each route names one command and the one method it answers"; spec/agent/tasks/wire.md, "A reply after the host stopped serving says whether a change was saved")', effect () => {
+  const state = try scratch("task-owner-socket")
+  const frame = { storageKey: try support("task key", () => newKey()) }
+  const enabled = { load: [tasksModuleName], callerRole: "owner" as const }
+  const fx = try support("task helper fixture", () => fixture())
+  const modules = new Map(builtinModuleFactories)
+  modules.set(tasksModuleName, tasksModule({ actuator: fx.actuator, authorizer: fx.goals }))
+  const running = try startInProcess({ state, cloud: true, frame, launch: enabled, modules })
+  const first = try onSocket(running, get("/api/tasks/current"))
+  const created = try onSocket(running, post("/api/tasks", { goalRef: "agenda" }))
+  const again = try onSocket(running, post("/api/tasks", { goalRef: "agenda" }))
+  const collision = try onSocket(running, post("/api/tasks", { goalRef: "another" }))
+  const task = (try support("created task", () => readTask(created.body))).task
+  if (task === null) throw new SupportFailed({ step: "created task", cause: created })
+  const route = `/api/tasks/${task.id}`
+  const attempts: readonly LocalRequest[] = [
+    get(`${route}/pause`), { method: "DELETE", path: route }, post("/api/tasks/current", {}),
+    get("/api/tasks/current/events"), get(`${route}/events?after=01`), get(`${route}/events?after=-2`),
+    get(`${route}/events?after=${task.revision + 1}`), get(`${route}?after=0`),
+    post("/api/tasks", { goalRef: "-starts-with-dash" }), post("/api/tasks", { goalRef: "agenda", reason: "close" }),
+    post(`${route}/cancel`, { expectedRevision: task.revision, extra: true }),
+    post(`${route}/cancel`, { expectedRevision: -1 }), post(`${route}/cancel`, { expectedRevision: 1.5 }),
+    post(`${route}/cancel`, { expectedRevision: task.revision, reason: "close" }),
+    post(`${route}/pause`, { expectedRevision: task.revision, reason: "open" }),
+    post(`${route}/acknowledge-unreadable`, { expectedRevision: task.revision }),
+    post("/api/tasks/current/pause", { expectedRevision: task.revision }),
+    { ...post(`${route}/resume`, { expectedRevision: task.revision }), headers: { "content-type": "text/plain" } },
+  ]
+  const refusals = try Effect.forEach(attempts, (request) => onSocket(running, request))
+  const unchanged = try onSocket(running, get(route))
+  const unreadable = try onSocket(running, get("/api/tasks/current/unreadable"))
+  const notFound = try onSocket(running, get("/api/tasks/task-none"))
+  const paused = try onSocket(running, post(`${route}/pause`, { expectedRevision: task.revision, reason: "close" }))
+  const stale = try onSocket(running, post(`${route}/cancel`, { expectedRevision: task.revision }))
+  const page = try onSocket(running, get(`${route}/events?after=-1`))
+  const pausedView = (try support("paused task", () => readTask(paused.body))).task
+  const events = try support("owner event page", () => readPage(page.body))
+  const later = try onSocket(running, get(`${route}/events?after=${task.revision}`))
+  const laterEvents = try support("remaining owner events", () => readPage(later.body))
+  try support("owner task responses", () => {
+    assert.deepStrictEqual(first, { status: 200, body: { task: null } })
+    assert.deepStrictEqual([created.status, again.status, again.body], [201, 200, created.body])
+    assert.deepStrictEqual(Object.keys(task).sort(), ["epoch", "hasUnknownOutcome", "id", "revision", "schemaVersion", "status"])
+    assert.deepStrictEqual(collision, { status: 409, body: { code: "TASK_CONFLICT" } })
+    assert.deepStrictEqual(refusals.map(wireCodeOf), [
+      ...Array.from({ length: 3 }, () => [405, "TASK_METHOD_NOT_ALLOWED"]), [404, "TASK_NOT_FOUND"],
+      ...Array.from({ length: 14 }, () => [400, "TASK_INVALID"]),
+    ])
+    assert.deepStrictEqual(unchanged, { status: 200, body: created.body })
+    assert.deepStrictEqual(unreadable, { status: 200, body: { records: [] } })
+    assert.deepStrictEqual(notFound, { status: 404, body: { code: "TASK_NOT_FOUND" } })
+    assert.deepStrictEqual(stale, { status: 409, body: { code: "TASK_CONFLICT" } })
+    assert.deepStrictEqual([paused.status, pausedView?.status, pausedView?.revision, fx.seen.quiesced], [200, "paused", task.revision + 1, ["close"]])
+    assert.deepStrictEqual([page.status, events.cursor, events.events.map(({ sequence }) => sequence)], [200, task.revision + 1, [task.revision, task.revision + 1]])
+    assert.deepStrictEqual([later.status, laterEvents.cursor, laterEvents.hasMore, laterEvents.events.map(({ sequence }) => sequence)],
+      [200, task.revision + 1, false, [task.revision + 1]])
+  })
+  const resumed = try onSocket(running, post(`${route}/resume`, { expectedRevision: task.revision + 1 }))
+  try support("reject one actuator cleanup", () => fx.failQuiesce(1))
+  const unconfirmed = try onSocket(running, post("/api/tasks/current/pause", { reason: "close" }))
+  const recoveredPause = try onSocket(running, get(route))
+  try support("show durable pause and retry cleanup", () => {
+    assert.deepStrictEqual([resumed.status, readTask(resumed.body).task?.status], [200, "active"])
+    assert.deepStrictEqual(wireCodeOf(unconfirmed), [503, "TASK_CLEANUP_UNCONFIRMED"])
+    assert.deepStrictEqual([recoveredPause.status, readTask(recoveredPause.body).task?.status], [200, "paused"])
+  })
+  const resumedAgain = try onSocket(running, post(`${route}/resume`, { expectedRevision: task.revision + 3 }))
+  try support("verify task eligible for in-flight pause", () => assert.strictEqual(readTask(resumedAgain.body).task?.status, "active"))
+  const held = try support("hold the actuator cleanup", () => fx.holdQuiesce())
+  const stopping = fork onSocket(running, post("/api/tasks/current/pause", { reason: "close" }))
+  try host("wait for committed pause to reach the actuator", () => held.entered)
+  const service = running.agent.runtime.getService(tasksModuleName)
+  if (service === null) throw new SupportFailed({ step: "loaded task service", cause: tasksModuleName })
+  try host("retire the live task service", () => service.stop())
+  try Effect.sync(() => held.release())
+  const retired = join stopping
+  const afterRetirement = try onSocket(running, get("/api/tasks/current"))
+  const retiredProbe = try onSocket(running, get("/api/tasks/storage"))
+  try support("reply truthfully after the saved write outlived its host", () => {
+    assert.deepStrictEqual(wireCodeOf(retired), [409, "TASK_ACCOUNT_CHANGED"])
+    assert.deepStrictEqual(wireCodeOf(afterRetirement), [503, "TASK_UNAVAILABLE"])
+    assert.deepStrictEqual(retiredProbe, { status: 200, body: { schemaVersion: 1, taskStorage: "unavailable" } })
+  })
+  try host("stop the owner launch", () => running.agent.stop())
+
+  const unbound = try startInProcess({ state, cloud: true, frame, launch: { ...enabled, callerRole: "user" }, modules })
+  const unboundRead = try onSocket(unbound, get(route))
+  const unboundWrite = try onSocket(unbound, post("/api/tasks", { goalRef: "another" }))
+  const unboundProbe = try onSocket(unbound, get("/api/tasks/storage"))
+  try support("unbound supervisor responses", () => {
+    const unauthorized = { status: 401, body: { code: "TASK_UNAUTHORIZED" } }
+    assert.deepStrictEqual([unboundRead, unboundWrite], [unauthorized, unauthorized])
+    assert.deepStrictEqual(unboundProbe, { status: 200, body: { schemaVersion: 1, taskStorage: "deferred" } })
+  })
+  try host("stop the unbound launch", () => unbound.agent.stop())
+
+  const future = "task-later-build"
+  try support("retain an older launch's unfamiliar task record", () => {
+    const payload = sealedFor(frame.storageKey, fx.accountId(), "TaskRecord", { task: { id: future, schemaVersion: 2 }, events: [] })
+    copyIn(state.file("tasks"), future, payload, false)
+  })
+  const reopened = try startInProcess({ state, cloud: true, frame, launch: enabled })
+  const restored = try onSocket(reopened, get("/api/tasks/current"))
+  const staleToken = try onSocket(reopened, { ...get(route), token: running.frame.token })
+  const noHelper = try onSocket(reopened, post("/api/tasks", { goalRef: "another" }))
+  const noHelperBadBody = try onSocket(reopened, post("/api/tasks", { goalRef: "" }))
+  const reopenedProbe = try onSocket(reopened, get("/api/tasks/storage"))
+  const futureView = try onSocket(reopened, get(`/api/tasks/${future}`))
+  const heldRecords = try onSocket(reopened, get("/api/tasks/current/unreadable"))
+  const accepted = try onSocket(reopened, post(`/api/tasks/${future}/acknowledge-unreadable`, {}))
+  try support("resumed custody responses", () => {
+    const recovered = readTask(restored.body).task
+    assert.deepStrictEqual([restored.status, recovered?.id, recovered?.status], [200, task.id, "paused"])
+    assert.isAbove(recovered?.epoch ?? 0, pausedView?.epoch ?? 0)
+    assert.deepStrictEqual(staleToken, { status: 401, body: { error: "unauthorized" } })
+    assert.deepStrictEqual(noHelper, { status: 503, body: { code: "TASK_HELPER_UNAVAILABLE" } })
+    assert.deepStrictEqual(noHelperBadBody, noHelper)
+    assert.deepStrictEqual(reopenedProbe, { status: 200, body: { schemaVersion: 1, taskStorage: "ok" } })
+    const [record] = recordsOf(heldRecords.body).records
+    const [released] = recordsOf(accepted.body).records
+    assert.deepStrictEqual([wireCodeOf(futureView), heldRecords.status, record?.taskId, record?.releasedAt],
+      [[409, "TASK_UNREADABLE"], 200, future, null])
+    assert.deepStrictEqual([accepted.status, released?.taskId, typeof released?.releasedAt], [200, future, "number"])
+  })
+}, 120_000)
 
 effect function support<A>(step: string, call: () => A) {
   return try Effect.try({ try: call, catch: (cause) => new SupportFailed({ step, cause }) })

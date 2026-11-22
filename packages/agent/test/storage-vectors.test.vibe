@@ -24,19 +24,20 @@ module node {
     const opened = await openDeviceStorage({ stateDirectory: directory, persistMemory: true, account: null, embeddingDimensions: 3 })
     try {
       const [, far] = await opened.adapter.createMemories([
-        memory("near", [1, 0, 0]), memory("far", [0, 1, 0]), memory("elsewhere", [1, 0, 0], other),
+        memory("near", [1, 0, 0]), memory("far", [0, 1, 0]), memory("elsewhere", [1, 0, 0], other), memory("opposite", [-1, 0, 0]),
       ])
       const search = async (scope: { roomId?: UUID; match_threshold?: number }) =>
         texts(await opened.adapter.searchMemories({ tableName: "messages", embedding: [1, 0.1, 0], ...scope }))
       const inRoom = await search({ roomId, match_threshold: 0.5 })
       const everywhere = (await search({ match_threshold: 0.5 })).sort()
+      const nonnegative = await search({ roomId, match_threshold: 0 })
       const all = await search({ roomId })
       const expected = { agentId: opened.agentId, roomId, entityId, text: "far" }
       const stale = await opened.adapter.updateMemoryEmbedding({ id: far, embedding: [1, 0.2, 0], expected: { ...expected, text: "changed" } })
       const updated = await opened.adapter.updateMemoryEmbedding({ id: far, embedding: [1, 0.2, 0], expected })
       const afterUpdate = await search({ roomId, match_threshold: 0.5 })
       const wrongSize = await opened.adapter.createMemories([memory("bad", [1, 0])]).then(() => "stored", () => "refused")
-      return { inRoom, everywhere, all, stale, updated, afterUpdate, wrongSize }
+      return { inRoom, everywhere, nonnegative, all, stale, updated, afterUpdate, wrongSize }
     } finally { await opened.adapter.close() }
   }
 
@@ -66,7 +67,8 @@ it.effect('Local embeddings are searched by cosine within the room, above the th
   const found = try host("vector search", () => searchJourney(state.file("local")))
   assert.deepStrictEqual(found.inRoom, ["near"])
   assert.deepStrictEqual(found.everywhere, ["elsewhere", "near"])
-  assert.deepStrictEqual(found.all, ["near", "far"])
+  assert.deepStrictEqual(found.nonnegative, ["near", "far"])
+  assert.deepStrictEqual(found.all, ["near", "far", "opposite"])
   assert.strictEqual(found.stale, false)
   assert.strictEqual(found.updated, true)
   assert.deepStrictEqual(found.afterUpdate.sort(), ["far", "near"])

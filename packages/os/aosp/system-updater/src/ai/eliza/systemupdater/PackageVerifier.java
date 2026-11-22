@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 package ai.eliza.systemupdater;
 
+import android.os.Build;
 import android.os.RecoverySystem;
 import android.system.ErrnoException;
 import android.system.Os;
@@ -35,14 +36,12 @@ import java.util.zip.ZipOutputStream;
 /** Validate the complete OTA and its signed A/B payload. Only a pre-apply scratch owner can extract. */
 final class PackageVerifier {
     private static final int METADATA_LIMIT = 64 * 1024;
-    private static final long MAX_PACKAGE = UpdateAdmission.MAX_PACKAGE_BYTES;
+    private static final long MAX_PACKAGE = 12L * 1024 * 1024 * 1024;
 
-    // spec/os/update/updater.md, "A candidate is admitted only for the same product and device, with a newer build and no lower patch levels"
     static VerifiedPayload verify(File ota, File outputDirectory, String expectedSha256,
             long expectedLength, String expectedFingerprint, long expectedTimestamp,
-            UpdateAdmission.Release installed, String otaCertificateSha256, Path scratch)
+            String product, String device, String otaCertificateSha256, Path scratch)
             throws IOException, GeneralSecurityException {
-        String product = installed.product(), device = installed.device();
         if (!expectedSha256.matches("[0-9a-f]{64}")
                 || !otaCertificateSha256.matches("[0-9a-f]{64}")
                 || expectedLength <= 0 || expectedLength > MAX_PACKAGE
@@ -71,22 +70,17 @@ final class PackageVerifier {
                 throw new IOException("OTA is not a preserving update for this product");
             }
             String previous = metadata.get("pre-build");
-            if (previous != null && !previous.equals(installed.fingerprint())) {
+            if (previous != null && !previous.equals(Build.FINGERPRINT)) {
                 throw new IOException("Incremental OTA does not match the installed build");
             }
             long timestamp = positive(metadata.get("post-timestamp"));
-            if (timestamp != expectedTimestamp) throw new IOException("OTA build time differs from the offer");
-            final UpdateAdmission.Release release;
-            try {
-                release = new UpdateAdmission.Release(expectedFingerprint, productOf(expectedFingerprint),
-                        metadata.get("pre-device"), timestamp,
-                        UpdateAdmission.patchLevel(metadata.get("post-security-patch-level")),
-                        UpdateAdmission.patchLevel(metadata.get("post-vendor-security-patch-level")));
-            } catch (IllegalArgumentException omitted) {
-                throw new IOException("OTA omits its security or vendor patch level", omitted);
+            if (timestamp != expectedTimestamp || timestamp <= Build.TIME / 1000) {
+                throw new IOException("OTA is not newer than the installed build");
             }
-            if (!UpdateAdmission.candidateAdmitted(installed, release)) {
-                throw new IOException("OTA is not newer or lowers the security or vendor patch level");
+            String patch = metadata.get("post-security-patch-level");
+            if (patch == null || !patch.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}")
+                    || patch.compareTo(Build.VERSION.SECURITY_PATCH) < 0) {
+                throw new IOException("OTA lowers or omits the security patch level");
             }
             Map<String, String> payload = properties(zip, "payload_properties.txt");
             long size = positive(payload.get("FILE_SIZE"));
@@ -118,7 +112,8 @@ final class PackageVerifier {
             String[] headers = {"FILE_HASH=" + fileHash, "FILE_SIZE=" + size,
                     "METADATA_HASH=" + metadataHash, "METADATA_SIZE=" + metadataSize,
                     "SWITCH_SLOT_ON_REBOOT=1"};
-            return new VerifiedPayload(destination, release, expectedSha256, headers);
+            return new VerifiedPayload(destination, expectedFingerprint, expectedSha256,
+                    timestamp, headers);
         }
     }
 

@@ -1,90 +1,67 @@
-// spec/agent/conversation/turns.md, "Story: Remember what of a spoken reply was heard"; spec/agent/conversation/turns.md, "A heard report only moves the heard boundary of an agent reply back, and never changes the reply"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"
+// spec/agent/conversation/turns.md, "A heard report only moves the heard boundary of an agent reply back, and never changes the reply", "The heard part and the unheard remainder together are the whole reply"
 module node {
   import { Schema } from "effect"
-  import { RoomHandlerQueueGlobalSaturatedError, RoomHandlerQueueSaturatedError, validateUuid, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"
-  import { heardPart, initial, noReply, reportHeard, unheardPart, type Heard, type HeardReport, type HeardVerdict, type Reply } from "../../gen/agent__conversation__turns.ts"
-  import type { LocalRoute } from "../access/routes.vibe"
-  import type { ConversationStore } from "./conversations.vibe"
+  import type { AgentRuntime, Memory, UUID } from "@elizaos/core"
+  import { heardVerdict, initial, reportedUnits, type HeardReport, type Reply } from "../../gen/agent__conversation__turns.ts"
 
-  export interface HeardView {
-    readonly heard: string
-    readonly unheard: string
-  }
-
-  const reply = 1
-  const room = 1
-  const Report = Schema.Union([
+  const reportBody = Schema.decodeUnknownOption(Schema.Union([
     Schema.Struct({ heardText: Schema.String }),
     Schema.Struct({ nothingHeard: Schema.Literal(true) }),
-  ])
-  const reportBody = Schema.decodeUnknownOption(Report, { onExcessProperty: "error" })
-  const Mark = Schema.Struct({ heardBoundary: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)) })
-  const markOf = Schema.decodeUnknownOption(Mark)
-  const failure = (status: number, error: string) => ({ status, body: { error } })
+  ]), { onExcessProperty: "error" })
+  const messageId = Schema.decodeUnknownOption(Schema.String.check(Schema.isGUID()))
+  const units = (text: string) => Array.from({ length: text.length }, (_, index) => text.charCodeAt(index))
+  const error = (status: number, code: string) => ({ status, body: { error: code } })
 
-  const unitsOf = (text: string) => Array.from({ length: text.length }, (_, index) => text.charCodeAt(index))
-  const textOf = (units: readonly number[]) => units.map((unit) => String.fromCharCode(unit)).join("")
-
-  function replyOf(memory: Memory): Reply {
-    const units = unitsOf(memory.content.text ?? "")
-    const mark = markOf(memory.content)
-    const heard: Heard = mark._tag === "Some" && mark.value.heardBoundary <= units.length
-      ? { tag: "HeardUpTo", boundary: mark.value.heardBoundary }
-      : { tag: "NotReported" }
-    return { ...noReply, id: reply, room, units, heard }
+  function boundaryOf(memory: Memory, length: number): number | undefined {
+    const boundary = memory.content.heardBoundary
+    if (typeof boundary === "number" && Number.isSafeInteger(boundary) && boundary >= 0 && boundary < length) return boundary
+    return undefined
   }
 
-  export function heardView(memory: Memory): HeardView {
-    const stored = replyOf(memory)
-    return { heard: textOf(heardPart(stored)), unheard: textOf(unheardPart(stored)) }
+  export function heardView(memory: Memory) {
+    const text = memory.content.text ?? ""
+    const boundary = boundaryOf(memory, text.length) ?? text.length
+    return { heard: text.slice(0, boundary), unheard: text.slice(boundary) }
   }
 
-  type Recorded =
-    | { readonly kind: "notAgentReply" }
-    | { readonly kind: "busy" }
-    | { readonly kind: "answered"; readonly verdict: HeardVerdict }
+  export function textForTurn(memory: Memory): string | undefined {
+    const text = memory.content.text
+    const boundary = text === undefined ? undefined : boundaryOf(memory, text.length)
+    return boundary === undefined || text === undefined
+      ? text
+      : `${text.slice(0, boundary)}\n[Unheard remainder: ${text.slice(boundary)}]`
+  }
 
-  const saturated = (error: unknown) => error instanceof RoomHandlerQueueSaturatedError || error instanceof RoomHandlerQueueGlobalSaturatedError
-
-  export function heardRoutes(runtime: AgentRuntime, store: ConversationStore): LocalRoute[] {
-    const recordHeard = async (roomId: UUID, messageId: UUID, report: HeardReport): Promise<Recorded> => {
-      const [memory] = await runtime.adapter.getMemoriesByIds([messageId], "messages")
-      if (memory?.id === undefined || memory.roomId !== roomId || memory.entityId !== runtime.agentId) return { kind: "notAgentReply" }
-      const step = reportHeard({ ...initial, replies: [replyOf(memory)] }, room, reply, report)
-      const verdict = step.out.flatMap((answer) => answer.tag === "HeardAnswered" ? [answer.verdict] : [])[0] ?? "HeardNotAgentReply"
-      const [after] = step.state.replies
-      if (verdict === "HeardRecorded" && after?.heard.tag === "HeardUpTo") {
-        await runtime.adapter.updateMemories([{ id: memory.id, content: { ...memory.content, heardBoundary: after.heard.boundary } }])
+  export async function recordHeard(runtime: AgentRuntime, roomId: UUID, id: string | undefined, body: unknown) {
+    const decoded = reportBody(body)
+    if (decoded._tag !== "Some") return error(400, "invalid_heard_report")
+    const key = messageId(id)
+    if (key._tag !== "Some") return error(404, "unknown_message")
+    const report: HeardReport = "heardText" in decoded.value
+      ? { tag: "HeardText", text: units(decoded.value.heardText) }
+      : { tag: "NothingHeard" }
+    return runtime.adapter.transaction(async (tx) => {
+      const [reply] = await tx.getMemoriesByIds([key.value], "messages")
+      if (reply?.roomId !== roomId || reply.entityId !== runtime.agentId) {
+        return error(404, "unknown_message")
       }
-      return { kind: "answered", verdict }
-    }
-    const record = (roomId: UUID, messageId: UUID, report: HeardReport, signal: AbortSignal) =>
-      runtime.roomHandlerQueue.withLease(roomId, () => recordHeard(roomId, messageId, report), { signal })
-        .catch((error: unknown): Recorded => { if (saturated(error)) return { kind: "busy" }; throw error })
-
-    return [{
-      method: "POST", path: "/api/conversations/{id}/messages/{messageId}/heard",
-      handler: async ({ parameters, body, signal }) => {
-        const conversation = await store.find(parameters.get("id") ?? "")
-        if (conversation === undefined) return failure(404, "unknown_conversation")
-        const payload = reportBody(body)
-        if (payload._tag !== "Some") return failure(400, "invalid_heard")
-        const messageId = validateUuid(parameters.get("messageId"))
-        if (messageId === null) return failure(404, "unknown_message")
-        const report: HeardReport = "heardText" in payload.value
-          ? { tag: "HeardText", text: unitsOf(payload.value.heardText) }
-          : { tag: "NothingHeard" }
-        const result = await record(conversation.roomId, messageId, report, signal)
-        if (result.kind === "notAgentReply") return failure(404, "unknown_message")
-        if (result.kind === "busy") return failure(429, "CONVERSATION_BUSY")
-        switch (result.verdict) {
-          case "HeardRecorded": return { status: 200, body: { ok: true, messageId, changed: true } }
-          case "HeardUnchanged": return { status: 200, body: { ok: true, messageId, changed: false } }
-          case "HeardConflict": return failure(409, "CONVERSATION_HEARD_NOT_PREFIX")
-          case "HeardNotAgentReply": return failure(404, "unknown_message")
-        }
-      },
-    }]
+      const { text, inReplyTo, actions, systemNotice } = reply.content
+      if (typeof text !== "string" || systemNotice !== undefined || (!inReplyTo && !actions?.includes("REPLY"))) {
+        return error(404, "unknown_message")
+      }
+      const boundary = boundaryOf(reply, text.length)
+      const held: Reply = {
+        id: 1, room: 1, userMessage: 0, units: units(text), kind: { tag: "Answered" },
+        heard: boundary === undefined ? { tag: "NotReported" } : { tag: "HeardUpTo", boundary },
+      }
+      const verdict = heardVerdict({ ...initial, replies: [held] }, held.room, held.id, report)
+      if (verdict === "HeardNotAgentReply") return error(404, "unknown_message")
+      if (verdict === "HeardConflict") return error(409, "CONVERSATION_HEARD_NOT_PREFIX")
+      const changed = verdict === "HeardRecorded"
+      if (changed) await tx.updateMemories([{ id: key.value, content: { ...reply.content, heardBoundary: reportedUnits(report) } }])
+      return { status: 200, body: { ok: true, messageId: key.value, changed } }
+    })
   }
 }
-export { heardRoutes, heardView, type HeardView } from node
+
+export { heardView, recordHeard, textForTurn } from node

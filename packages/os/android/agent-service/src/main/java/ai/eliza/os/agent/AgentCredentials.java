@@ -4,10 +4,9 @@ package ai.eliza.os.agent;
 public interface AgentCredentials {
   record Account(String userId, String organizationId) {
     public Account {
-      if (!named(userId) || !named(organizationId)) throw new IllegalArgumentException("An account needs a user and an organization");
+      if (userId == null || userId.isEmpty() || organizationId == null || organizationId.isEmpty())
+        throw new IllegalArgumentException("An account needs a user and an organization");
     }
-
-    private static boolean named(String id) { return id != null && !id.trim().isEmpty() && id.indexOf('\n') < 0; }
   }
 
   record Active(long version, String value, long expiresAt, Account account) {

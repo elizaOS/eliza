@@ -11,7 +11,6 @@ import { CloudError, type CloudFailure } from "./errors.vibe"
 
 export type { PlanAdmission, PlanView }
 export { planAdmission }
-export { normalizeSubscriptionCode } from "../billing/grant-code.ts"
 
 const millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const micros = Schema.Int

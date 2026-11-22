@@ -2,10 +2,10 @@
 import { assert, it } from "@effect/vitest"
 import { family, wireType } from "../gen/agent__deviceActions__operations.effect.vibe"
 import type { Classification, Evidence, OperationSchema } from "../src/device-actions/operation-schemas/family.vibe"
-import { personalOperations, reminderScheduleAt } from "../src/device-actions/operation-schemas/personal.schema.vibe"
+import { personalFamilies, reminderScheduleAt } from "../src/device-actions/operation-schemas/personal.schema.vibe"
 
 const strict = { onExcessProperty: "error" } as const
-const families: Readonly<Record<string, OperationSchema>> = personalOperations
+const families: Readonly<Record<string, OperationSchema>> = personalFamilies
 type Wire = { readonly type: string } & Record<string, unknown>
 
 function schemaOf(type: string): OperationSchema {
@@ -25,7 +25,7 @@ function shown(op: Wire, result: unknown): Evidence | undefined {
   const operation = Schema.decodeUnknownOption(schema.operation, strict)(op)
   if (Option.isNone(operation) || schema.result === undefined) return assert.fail(`Operation ${op.type} does not decode or has no result`)
   const decoded = Schema.decodeUnknownOption(schema.result, strict)(result)
-  return Option.isSome(decoded) ? schema.evidence(decoded.value, operation.value) : undefined
+  return Option.isSome(decoded) ? schema.evidence(decoded.value, operation.value, { operationId: undefined }) : undefined
 }
 
 const rev = (digit: string) => digit.repeat(64)

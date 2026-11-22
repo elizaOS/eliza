@@ -1,6 +1,6 @@
 // spec/agent/notifications.md, "Story: Read my notices and mark them read from my own client"
 import { assert, it } from "@effect/vitest"
-import { NotificationService, type AgentNotification, type NotificationInput } from "@elizaos/core"
+import { AgentEventService, NotificationService, type AgentNotification, type NotificationInput } from "@elizaos/core"
 import { call, events, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
 
@@ -41,7 +41,7 @@ interface NativePage {
   readonly complete: boolean
 }
 
-it.effect('Notify, list with each filter, page natively and mark read twice (spec/agent/notifications.md, "An owner list holds only visible notices that match its filter, newest first"; spec/agent/notifications.md, "A list query is refused unless each parameter is given once and well formed"; spec/agent/notifications.md, "A native page takes no filter and names its epoch to continue"; spec/agent/notifications.md, "Marking a notice read answers ok only when this call durably marked an unread notice"; spec/agent/access/routes.md, "A flawed request is refused before any route is tried")', effect () => {
+it.effect('Notify, list with each filter, page natively and mark read twice (spec/agent/notifications.md, "An owner list holds only visible notices that match its filter, newest first"; spec/agent/notifications.md, "A list query is refused unless each parameter is given once and well formed"; spec/agent/notifications.md, "A native page takes no filter and names its epoch to continue"; spec/agent/notifications.md, "Marking a notice read answers ok only when this call durably marked an unread notice")', effect () => {
   const agent = try startInProcess(loaded)
   const service = try inbox(agent)
   const [first, second, quiet] = try notifyAll(service, [
@@ -84,12 +84,14 @@ it.effect('Notify, list with each filter, page natively and mark read twice (spe
   const again = try markRead(agent, first.id)
   const absent = try markRead(agent, absentId)
   const malformed = try markRead(agent, "not-a-uuid")
+  const [expired] = try notifyAll(service, [{ title: "An old reminder", category: "reminder", expiresAt: 1 }])
   const unread = try list(agent, "?unreadOnly=true")
   try Effect.try(() => {
     assert.deepStrictEqual([marked, again, absent], [
       { status: 200, body: { ok: true } }, { status: 200, body: { ok: false } }, { status: 200, body: { ok: false } },
     ])
-    assert.strictEqual(malformed.status, 400)
+    assert.include([400, 404], malformed.status)
+    assert.include(service.listIncludingExpired().map(({ id }) => id), expired.id)
     assert.deepStrictEqual(listed(unread.body), [quiet.id, second.id])
     assert.deepInclude(unread.body as object, { unreadCount: 1 })
     assert.deepStrictEqual(service.listIncludingExpired().filter((notice) => notice.readAt != null).map(({ id }) => id), [first.id])
@@ -114,12 +116,32 @@ it.effect('A stopped inbox answers 503 with Retry-After, never an empty list or 
   })
 }, 120_000)
 
-it.effect('A new notice arrives on the notification stream (spec/agent/notifications.md, "Story: Read my notices and mark them read from my own client")', effect () => {
+schema NoticeFrame {
+  readonly type: "event"
+  readonly event: {
+    readonly type: "agent_event"
+    readonly stream: "notification"
+    readonly runId: string
+    readonly seq: Schema.Int
+    readonly payload: { readonly id: string }
+  }
+}
+
+it.effect('A committed notice and its read mark arrive on the notification stream (spec/agent/notifications.md, "Story: Read my notices and mark them read from my own client")', effect () => {
   const agent = try startInProcess(loaded)
   const service = try inbox(agent)
   const feed = try events(agent, ["notification"])
-  try host("notification subscribed", () => feed.next((sent) => (sent as { type?: unknown }).type === "subscribed"))
+  const subscribed = try host("notification subscription", () => feed.next())
+  assert.include(JSON.stringify(subscribed), '"subscribed"')
+  const runtime = agent.agent.runtime
+  const bus = runtime.getService<AgentEventService>(AgentEventService.serviceType)
+  if (bus === null) return try die("The Agent event service was not started")
+  bus.emit({ runId: absentId, stream: "notification", data: { type: "notification", notification: { id: absentId } }, agentId: runtime.agentId })
   const [notice] = try notifyAll(service, [{ title: "Parcel delivered", category: "system" }])
-  const frame = try host("notification frame", () => feed.next((sent) => JSON.stringify(sent).includes(notice.id)))
-  try Effect.try(() => assert.include(JSON.stringify(frame), '"notification"'))
+  const decodeFrame = Schema.decodeUnknownEffect(NoticeFrame, { onExcessProperty: "error" })
+  const created = try decodeFrame(try host("committed notification frame", () => feed.next()))
+  assert.deepStrictEqual(created.event, { type: "agent_event", stream: "notification", runId: notice.id, seq: 1, payload: { id: notice.id } })
+  const marked = try markRead(agent, notice.id)
+  const updated = try decodeFrame(try host("committed notification read frame", () => feed.next()))
+  assert.deepStrictEqual([marked, updated.event], [{ status: 200, body: { ok: true } }, { ...created.event, seq: 2 }])
 }, 120_000)

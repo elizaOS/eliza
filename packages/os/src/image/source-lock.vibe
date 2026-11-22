@@ -1,638 +1,382 @@
-// spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"; spec/os/image/sourceLock.md, "A verdict is Match only when the checkout shows no problem against its lock"; spec/os/image/sourceLock.md, "A physical device matches only with its factory archive and the vendor API level its stock vendor declares"; spec/os/image/sourceLock.md, "A reviewed patch is admitted only when every file has its preimage at the pinned revision and its postimage in the checkout"; spec/os/image/sourceLock.md, "Only the operator's sync changes the checkout, and it retires the verdict and every admission"
-import { ChildProcess } from "effect/process"
-import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
-import {
-  Machine,
-  expectedChange,
-  machine,
-  noFacts,
-  patchAdmitted,
-  patchesDisjoint,
-  problemsOf,
-  stockVendorProblems,
-  type PatchEnvelope,
-  type PatchFile,
-  type Problem,
-  type Project,
-  type SourceFacts,
-  type SourceFile,
-  type SourceLock,
-  type SourceVerdict,
-} from "../../gen/os__image__sourceLock.effect.vibe"
+// spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"; spec/os/image/sourceLock.md, "Every observed platform project and manifest input is bound by the lock"
+import * as Source from "../../gen/os__image__sourceLock.effect.vibe"
 
 module node {
-  import { createHash, type Hash } from "node:crypto"
+  import { execFile } from "node:child_process"
+  import { createHash } from "node:crypto"
+  import { lstat, readlink, readdir, realpath } from "node:fs/promises"
+  import { createRequire } from "node:module"
+  import { basename, dirname, isAbsolute, join, relative } from "node:path"
+  import { promisify } from "node:util"
+  import { Schema } from "effect"
+  import { artifactJson, hashArtifact, observeCommittedEntry, readArtifact, type CommittedEntry } from "./artifact.vibe"
+  import { trackedEntryAdmitted } from "../../gen/os__build__sourceIntegrity.effect.vibe"
+  import type * as S from "../../gen/os__image__sourceLock.effect.vibe"
 
-  export interface Hasher {
-    readonly hash: Hash
-    size: number
-  }
-
-  /** @throws {never} */
-  export function sha256Hex(bytes: Uint8Array | string): string {
-    return createHash("sha256").update(bytes).digest("hex")
-  }
-
-  /** @throws {never} */
-  export function newHasher(): Hasher {
-    return { hash: createHash("sha256"), size: 0 }
-  }
-
-  /** @throws {never} */
-  export function feed(hasher: Hasher, chunk: Uint8Array): Hasher {
-    hasher.hash.update(chunk)
-    hasher.size += chunk.byteLength
-    return hasher
-  }
-
-  /** @throws {never} */
-  export function finish(hasher: Hasher): { readonly sizeBytes: number; readonly sha256: string } {
-    return { sizeBytes: hasher.size, sha256: hasher.hash.digest("hex") }
-  }
-
-  /** @throws {never} */
-  export function parseJson(text: string): unknown {
-    try {
-      return JSON.parse(text)
-    } catch {
-      return undefined
-    }
-  }
-}
-import { feed, finish, newHasher, parseJson, sha256Hex } from node
-
-export type RawRecord = Readonly<Record<string, unknown>>
-
-export interface FileHash {
-  readonly sizeBytes: number
-  readonly sha256: string
-}
-
-export interface ManifestPin {
-  readonly url: string
-  readonly tag: string
-  readonly tagObject: string
-  readonly commit: string
-}
-
-export type SourceProfile =
-  | {
-      readonly kind: "physical"
-      readonly name: string
-      readonly lock: SourceLock
-      readonly manifest: ManifestPin
-      readonly codename: string
-      readonly configuration: readonly SourceFile[]
-      readonly generatedRoot: string
-    }
-  | {
-      readonly kind: "virtual"
-      readonly name: string
-      readonly lock: SourceLock
-      readonly manifest: ManifestPin
-      readonly requiredSourceFiles: readonly string[]
-    }
-
-export type PhysicalProfile = Extract<SourceProfile, { readonly kind: "physical" }>
-
-export interface Checkout {
-  readonly aospRoot: string
-  readonly patches?: readonly PatchEnvelope[]
-  readonly archive?: string
-  readonly releaseConfig?: string
-}
-
-export interface DeviceCheckout extends Checkout {
-  readonly archive: string
-  readonly releaseConfig: string
-}
-
-export interface VerifiedSource {
-  readonly source: SourceVerdict
-  readonly problems: readonly Problem[]
-  readonly differences: readonly string[]
-}
-
-export interface StockVendorApi {
-  readonly codename: string
-  readonly releaseConfig: string
-  readonly vendorApiLevel: number
-}
-
-export interface AdmittedPatch {
-  readonly envelope: PatchEnvelope
-  readonly patchFile: string
-  readonly manifest: RawRecord
-}
-
-interface Located {
-  readonly path: string
-  readonly digest: string
-}
-
-interface ProjectRead {
-  readonly revision: string
-  readonly changes: readonly SourceFile[]
-  readonly ignored: readonly SourceFile[]
-}
-
-export error SourceLockInvalid { lock: string; profile: string; message: string }
-export error SourceUnreadable { place: string; message: string }
-export error CheckoutIncomplete { profile: string; message: string }
-export error StockVendorApiDiffers { codename: string; problems: readonly Problem[]; boardApi: number; vintfApi: number; vendorApiLevel: number; message: string }
-export error PatchEnvelopeRefused { directory: string; message: string }
-
-export const LOCK_FILE = "aosp.lock.json"
-const HEX40 = /^[0-9a-f]{40}$/
-const HEX64 = /^[0-9a-f]{64}$/
-const API_LEVEL = /^[0-9]{6}$/
-const TOKEN = /^[a-z0-9_]+$/
-const LOCAL_MANIFESTS = ".repo/local_manifests"
-const REQUIRED_CONFIGURATION = [".repo/manifest.xml", ".repo/project.list"]
-const GIT_ENVIRONMENT = { GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0" }
-
-function isRecord(value: unknown): value is RawRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
-function filled(value: unknown): value is string {
-  return typeof value === "string" && value.trim() !== ""
-}
-
-export function safePath(value: unknown): value is string {
-  return typeof value === "string" && value !== "" && !value.includes("\\") && !value.includes("\0") && !value.startsWith("/") && value.split("/").every((part) => part !== "" && part !== "." && part !== "..")
-}
-
-function order(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0
-}
-
-function byPath(a: SourceFile, b: SourceFile): number {
-  return a.project === b.project ? order(a.path, b.path) : order(a.project, b.project)
-}
-
-function unique(values: readonly string[]): boolean {
-  return new Set(values).size === values.length
-}
-
-function pinnedDigest(entry: unknown): Located | undefined {
-  if (!isRecord(entry) || !safePath(entry.path)) return undefined
-  if (typeof entry.link === "string" && entry.link !== "") return { path: entry.path, digest: `link:${entry.link}` }
-  return typeof entry.sha256 === "string" && HEX64.test(entry.sha256) ? { path: entry.path, digest: entry.sha256 } : undefined
-}
-
-function pinnedList(value: unknown): Located[] | undefined {
-  if (!Array.isArray(value)) return undefined
-  const pinned: Located[] = []
-  for (const entry of value) {
-    const read = pinnedDigest(entry)
-    if (read === undefined) return undefined
-    pinned.push(read)
-  }
-  return unique(pinned.map((entry) => entry.path)) ? pinned : undefined
-}
-
-function manifestPin(value: unknown): ManifestPin | undefined {
-  if (!isRecord(value) || !filled(value.url) || !filled(value.tag) || typeof value.tagObject !== "string" || typeof value.commit !== "string") return undefined
-  return HEX40.test(value.tagObject) && HEX40.test(value.commit) ? { url: value.url, tag: value.tag, tagObject: value.tagObject, commit: value.commit } : undefined
-}
-
-function targetList(value: unknown): string[] | undefined {
-  if (!Array.isArray(value) || value.length === 0) return undefined
-  const targets = value.filter((target): target is string => typeof target === "string" && TOKEN.test(target))
-  return targets.length === value.length && unique(targets) ? targets : undefined
-}
-
-function projectList(value: unknown): Project[] | undefined {
-  if (!Array.isArray(value) || value.length === 0) return undefined
-  const projects: Project[] = []
-  for (const entry of value) {
-    if (!isRecord(entry) || !safePath(entry.path) || typeof entry.commit !== "string" || !HEX40.test(entry.commit)) return undefined
-    projects.push({ path: entry.path, revision: entry.commit })
-  }
-  return unique(projects.map((project) => project.path)) ? projects : undefined
-}
-
-export function owningProject(projects: readonly Project[], file: string): string | undefined {
-  return projects.map((project) => project.path).filter((root) => file.startsWith(`${root}/`)).sort((a, b) => b.length - a.length)[0]
-}
-
-function inProject(projects: readonly Project[], file: string, digest: string): SourceFile | undefined {
-  const project = owningProject(projects, file)
-  return project === undefined ? undefined : { project, path: file.slice(project.length + 1), digest }
-}
-
-export effect function aospDirectory() {
-  const files = try FileSystem.FileSystem
-  const path = try Path.Path
-  let directory = try path.fromFileUrl(new URL(".", import.meta.url))
-  while (!(try files.exists(path.join(directory, "aosp", LOCK_FILE)))) {
-    const parent = path.dirname(directory)
-    if (parent === directory) throw new SourceLockInvalid({ lock: LOCK_FILE, profile: "", message: `No aosp/${LOCK_FILE} above ${directory}` })
-    directory = parent
-  }
-  return path.join(directory, "aosp")
-}
-
-export effect function hashFile(file: string) {
-  const files = try FileSystem.FileSystem
-  const hashed: FileHash = finish(try mapError(Stream.runFold(files.stream(file), newHasher, feed), (cause) => new SourceUnreadable({ place: file, message: cause.message })))
-  return hashed
-}
-
-effect function readPhysical(name: string, raw: RawRecord, lockFile: string, manifest: ManifestPin, targets: readonly string[], developmentOnly: boolean) {
-  const files = try FileSystem.FileSystem
-  const path = try Path.Path
-  const invalid = (message: string) => new SourceLockInvalid({ lock: lockFile, profile: name, message })
-  const device = raw.device
-  const reference = raw.sourceInventory
-  if (!isRecord(device) || typeof device.codename !== "string" || !TOKEN.test(device.codename) || !filled(device.sourceTarget) || !filled(device.androidRelease) || typeof device.vendorApiLevel !== "string" || !API_LEVEL.test(device.vendorApiLevel))
-    throw invalid("the device needs a source target, codename, Android release and six-digit vendor API level")
-  if (!isRecord(reference) || !safePath(reference.path) || typeof reference.sha256 !== "string" || !HEX64.test(reference.sha256)) throw invalid("the source inventory reference needs a relative path and a SHA-256")
-  const inventoryFile = path.join(path.dirname(lockFile), reference.path)
-  const bytes = try mapError(files.readFile(inventoryFile), (cause) => invalid(`cannot read the source inventory ${inventoryFile}: ${cause.message}`))
-  if (sha256Hex(bytes) !== reference.sha256) throw invalid(`the source inventory ${reference.path} differs from its pinned SHA-256`)
-  const inventory = parseJson(new TextDecoder().decode(bytes))
-  if (!isRecord(inventory) || inventory.schema !== 1 || inventory.target !== device.sourceTarget || !isRecord(inventory.device) || inventory.device.codename !== device.codename || inventory.device.androidRelease !== device.androidRelease)
-    throw invalid("the source inventory names another target, codename or Android release")
-  const pinned = isRecord(inventory.manifest) ? inventory.manifest : {}
-  if (pinned.tag !== manifest.tag || pinned.tagObject !== manifest.tagObject || pinned.commit !== manifest.commit) throw invalid("the source inventory pins another manifest")
-  if (inventory.developmentOnly !== developmentOnly) throw invalid("the profile and its source inventory disagree on developmentOnly")
-  const factory = inventory.factory
-  if (!isRecord(factory) || typeof factory.sha256 !== "string" || !HEX64.test(factory.sha256)) throw invalid("the source inventory has no factory archive SHA-256")
-  const projects = projectList(inventory.projects)
-  if (projects === undefined) throw invalid("the source inventory needs unique locked projects with full commits")
-  const configuration = pinnedList(pinned.configuration)
-  if (configuration === undefined || !REQUIRED_CONFIGURATION.every((file) => configuration.some((entry) => entry.path === file)) || !configuration.every((entry) => entry.path.startsWith(".repo/")))
-    throw invalid("the manifest configuration must pin .repo/manifest.xml, .repo/project.list and only .repo files")
-  const overrides: SourceFile[] = []
-  for (const entry of pinnedList(inventory.overrides) ?? []) {
-    const located = inProject(projects, entry.path, entry.digest)
-    if (located === undefined) throw invalid(`override ${entry.path} is outside every locked project`)
-    overrides.push(located)
-  }
-  if (!Array.isArray(inventory.overrides) || overrides.length !== inventory.overrides.length) throw invalid("every override must be a unique pinned file")
-  const generated = isRecord(inventory.generated) ? inventory.generated : {}
-  const root = safePath(generated.root) ? generated.root : ""
-  const generatedFiles = pinnedList(generated.files)
-  if (root === "" || generatedFiles === undefined || generatedFiles.length === 0 || generatedFiles.some((entry) => !entry.path.startsWith(`${root}/`))) throw invalid("the generated vendor inventory needs files under its root")
-  const ignored: SourceFile[] = []
-  for (const entry of Array.isArray(inventory.ignoredInputs) ? inventory.ignoredInputs : []) {
-    if (!isRecord(entry) || typeof entry.project !== "string" || !projects.some((project) => project.path === entry.project) || !Number.isInteger(entry.files) || Number(entry.files) < 1 || typeof entry.sha256 !== "string" || !HEX64.test(entry.sha256))
-      throw invalid("each ignored input names a locked project, its file count and its tree SHA-256")
-    ignored.push({ project: entry.project, path: "", digest: entry.sha256 })
-  }
-  if (!unique(ignored.map((entry) => entry.project))) throw invalid("an ignored input names a project twice")
-  const lock: SourceLock = {
-    name,
-    digest: reference.sha256,
-    device: { tag: "PhysicalDevice", archive: factory.sha256, vendorApiLevel: Number(device.vendorApiLevel) },
-    developmentOnly,
-    manifest: manifest.commit,
-    projects,
-    overrides: overrides.sort(byPath),
-    ignored: ignored.sort(byPath),
-    generated: generatedFiles.map((entry) => ({ project: root, path: entry.path.slice(root.length + 1), digest: entry.digest })).sort(byPath),
-    targets: [...targets],
-  }
-  const profile: SourceProfile = {
-    kind: "physical",
-    name,
-    lock,
-    manifest,
-    codename: device.codename,
-    configuration: configuration.map((entry) => ({ project: "", path: entry.path, digest: entry.digest })),
-    generatedRoot: root,
-  }
-  return profile
-}
-
-export effect function loadProfile(name: string, lockPath?: string) {
-  const files = try FileSystem.FileSystem
-  const path = try Path.Path
-  const lockFile = lockPath ?? path.join(try aospDirectory(), LOCK_FILE)
-  const invalid = (message: string) => new SourceLockInvalid({ lock: lockFile, profile: name, message })
-  const document = parseJson(try mapError(files.readFileString(lockFile), (cause) => invalid(cause.message)))
-  if (!isRecord(document) || document.schemaVersion !== 1 || !isRecord(document.profiles)) throw invalid(`${lockFile} is not an AOSP lock schemaVersion 1 document`)
-  const raw = Object.hasOwn(document.profiles, name) ? document.profiles[name] : undefined
-  if (!isRecord(raw)) throw invalid(`unknown profile ${name}`)
-  const manifest = manifestPin(raw.manifest)
-  if (manifest === undefined) throw invalid("the manifest needs a URL, a tag and full tag object and commit IDs")
-  const targets = targetList(raw.targets)
-  if (targets === undefined) throw invalid("targets must be a non-empty list of unique lowercase target names")
-  if (typeof raw.developmentOnly !== "boolean") throw invalid("developmentOnly must be true or false")
-  if (raw.kind === "physical") return try readPhysical(name, raw, lockFile, manifest, targets, raw.developmentOnly)
-  if (raw.kind !== "virtual") throw invalid("kind must be physical or virtual")
-  const projects = projectList(raw.projects)
-  if (projects === undefined) throw invalid("a virtual profile needs unique locked projects with full commits")
-  const required = Array.isArray(raw.requiredSourceFiles) ? raw.requiredSourceFiles.filter(safePath) : []
-  if (!Array.isArray(raw.requiredSourceFiles) || required.length !== raw.requiredSourceFiles.length || required.some((file) => owningProject(projects, file) === undefined))
-    throw invalid("required source files must be relative paths inside locked projects")
-  const lock: SourceLock = {
-    name,
-    digest: sha256Hex(JSON.stringify(raw)),
-    device: { tag: "VirtualDevice" },
-    developmentOnly: raw.developmentOnly,
-    manifest: manifest.commit,
-    projects,
-    overrides: [],
-    ignored: [],
-    generated: [],
-    targets,
-  }
-  const profile: SourceProfile = { kind: "virtual", name, lock, manifest, requiredSourceFiles: required }
-  return profile
-}
-
-export effect function loadProfiles(lockPath?: string) {
-  const files = try FileSystem.FileSystem
-  const path = try Path.Path
-  const lockFile = lockPath ?? path.join(try aospDirectory(), LOCK_FILE)
-  const document = parseJson(try mapError(files.readFileString(lockFile), (cause) => new SourceLockInvalid({ lock: lockFile, profile: "", message: cause.message })))
-  const names = isRecord(document) && isRecord(document.profiles) ? Object.keys(document.profiles) : []
-  const profiles: SourceProfile[] = []
-  for (const name of names) profiles.push(try loadProfile(name, lockFile))
-  return profiles
-}
-
-effect function gitRun(directory: string, args: readonly string[]) {
-  const spawner = try ChildProcessSpawner
-  return try mapError(scoped(effect {
-    const child = try spawner.spawn(ChildProcess.make("git", ["-C", directory, ...args], { extendEnv: true, env: GIT_ENVIRONMENT, stdin: "ignore" }))
-    const [stdout, stderr] = try.all [Stream.mkUint8Array(child.stdout), Stream.mkString(Stream.decodeText(child.stderr))]
-    const code: number = try child.exitCode
-    return { code, stdout, stderr }
-  }), (cause) => new SourceUnreadable({ place: directory, message: `git ${args.join(" ")} could not run: ${cause.message}` }))
-}
-
-effect function gitText(directory: string, args: readonly string[]) {
-  const result = try gitRun(directory, args)
-  return result.code === 0 ? new TextDecoder().decode(result.stdout) : ""
-}
-
-effect function isDirectory(directory: string) {
-  const files = try FileSystem.FileSystem
-  const type = (files.stat(directory) |> map(%, (read) => read.type)) catch () => "Missing"
-  return type === "Directory"
-}
-
-effect function entryDigest(root: string, relative: string) {
-  const files = try FileSystem.FileSystem
-  const path = try Path.Path
-  const file = path.join(root, relative)
-  const type = ((files.lstat(file) |> map(%, (info) => info.type)) catch () => "Missing")
-  if (type === "Missing") return ""
-  if (type === "SymbolicLink") {
-    const target = (files.readLink(file) catch () => "")
-    const real = (files.realPath(file) catch () => "")
-    const inside = path.relative(root, real)
-    return real !== "" && inside !== ".." && !inside.startsWith(`..${path.sep}`) && !path.isAbsolute(inside) ? `link:${target}` : `escaping-link:${target}`
-  }
-  if (type !== "File") return `not-a-file:${type}`
-  return (try hashFile(file)).sha256
-}
-
-effect function entryRecord(root: string, relative: string, named: string) {
-  const files = try FileSystem.FileSystem
-  const path = try Path.Path
-  const file = path.join(root, relative)
-  const type = ((files.lstat(file) |> map(%, (info) => info.type)) catch () => "Missing")
-  if (type === "SymbolicLink") return JSON.stringify({ path: named, link: (files.readLink(file) catch () => "") })
-  if (type !== "File") return JSON.stringify({ path: named, type })
-  const hashed = try hashFile(file)
-  return JSON.stringify({ path: named, sizeBytes: hashed.sizeBytes, sha256: hashed.sha256 })
-}
-
-function nulFields(text: string): string[] {
-  return text.split("\0").filter((field) => field !== "")
-}
-
-function statusPaths(porcelain: string): string[] {
-  const fields = nulFields(porcelain)
-  const paths: string[] = []
-  for (let index = 0; index < fields.length; index++) {
-    const row = fields[index] ?? ""
-    paths.push(row.slice(3))
-    if (row[0] === "R" || row[0] === "C") index++
-  }
-  return paths
-}
-
-effect function listTree(root: string, relative: string) {
-  const files = try FileSystem.FileSystem
-  const path = try Path.Path
-  const directory = path.join(root, relative)
-  if (!(try isDirectory(directory))) return []
-  const found: string[] = []
-  for (const entry of try mapError(files.readDirectory(directory, { recursive: true }), (cause) => new SourceUnreadable({ place: directory, message: cause.message }))) {
-    const type = ((files.lstat(path.join(directory, entry)) |> map(%, (info) => info.type)) catch () => "Missing")
-    if (type !== "Directory" && type !== "Missing") found.push(entry.split(path.sep).join("/"))
-  }
-  return found.sort(order)
-}
-
-effect function readProject(root: string, project: Project) {
-  const path = try Path.Path
-  const directory = path.join(root, project.path)
-  const revision = (try isDirectory(directory)) ? (try gitText(directory, ["rev-parse", "--verify", "HEAD"])).trim() : ""
-  if (revision === "") {
-    const missing: ProjectRead = { revision, changes: [], ignored: [] }
-    return missing
-  }
-  const changes: SourceFile[] = []
-  for (const row of nulFields(try gitText(directory, ["ls-files", "-v", "-z"]))) {
-    if (row[0] !== "H") changes.push({ project: project.path, path: row.slice(2), digest: `index-flag:${row[0] ?? ""}` })
-  }
-  for (const file of statusPaths(try gitText(directory, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]))) {
-    changes.push({ project: project.path, path: file, digest: try entryDigest(directory, file) })
-  }
-  const records: string[] = []
-  for (const name of nulFields(try gitText(directory, ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"])).sort(order)) {
-    records.push(`${try entryRecord(directory, name, `${project.path}/${name}`)}\n`)
-  }
-  const read: ProjectRead = { revision, changes, ignored: records.length === 0 ? [] : [{ project: project.path, path: "", digest: sha256Hex(records.join("")) }] }
-  return read
-}
-
-effect function headDigest(root: string, project: string, file: PatchFile) {
-  const path = try Path.Path
-  const result = try gitRun(path.join(root, project), ["cat-file", "blob", `HEAD:${file.path}`])
-  const head: SourceFile = { project, path: file.path, digest: result.code === 0 ? sha256Hex(result.stdout) : "" }
-  return head
-}
-
-effect function manifestRead(root: string, configuration: readonly SourceFile[]) {
-  const path = try Path.Path
-  const manifests = path.join(root, ".repo", "manifests")
-  const head = (try isDirectory(manifests)) ? (try gitText(manifests, ["rev-parse", "--verify", "HEAD"])).trim() : ""
-  const differences: string[] = []
-  if (head === "") differences.push(`${manifests} is not a repo manifest checkout`)
-  else {
-    const hidden = nulFields(try gitText(manifests, ["ls-files", "-v", "-z"])).some((row) => row[0] !== "H")
-    const dirty = statusPaths(try gitText(manifests, ["status", "--porcelain=v1", "-z", "--untracked-files=all"])).length > 0
-    if (hidden || dirty) differences.push("the manifest checkout has local changes")
-  }
-  for (const entry of configuration) {
-    if ((try entryDigest(root, entry.path)) !== entry.digest) differences.push(`${entry.path} differs from the pinned manifest configuration`)
-  }
-  const listed = configuration.map((entry) => entry.path).filter((file) => file.startsWith(`${LOCAL_MANIFESTS}/`)).sort(order)
-  const present = (try listTree(root, LOCAL_MANIFESTS)).map((file) => `${LOCAL_MANIFESTS}/${file}`)
-  if (present.join("\n") !== listed.join("\n")) differences.push(`the local manifests are ${present.join(", ") || "none"}; the lock lists ${listed.join(", ") || "none"}`)
-  return { manifest: differences.length === 0 ? head : `${head}+differs`, differences }
-}
-
-export effect function readStockVendorApi(aospRoot: string, codename: string, releaseConfig: string) {
-  const files = try FileSystem.FileSystem
-  const path = try Path.Path
-  const board = TOKEN.test(releaseConfig) ? (files.readFileString(path.join(aospRoot, "build/release/flag_values", releaseConfig, "RELEASE_BOARD_API_LEVEL.textproto")) catch () => "") : ""
-  const vintf = TOKEN.test(codename) ? (files.readFileString(path.join(aospRoot, "vendor/google_devices", codename, "vintf/vendor/manifest.xml")) catch () => "") : ""
-  const boardValues = [...board.matchAll(/string_value:\s*"([0-9]+)"/g)]
-  const vintfValues = [...vintf.matchAll(/<sepolicy>\s*<version>([0-9]+)<\/version>\s*<\/sepolicy>/g)]
-  return {
-    boardApi: boardValues.length === 1 ? Number(boardValues[0]?.[1]) : 0,
-    vintfApi: vintfValues.length === 1 ? Number(vintfValues[0]?.[1]) : 0,
-  }
-}
-
-export effect function assertStockVendorApi(aospRoot: string, api: StockVendorApi) {
-  const read = try readStockVendorApi(aospRoot, api.codename, api.releaseConfig)
-  const problems = stockVendorProblems({ tag: "PhysicalDevice", archive: "", vendorApiLevel: api.vendorApiLevel }, { ...noFacts, boardApi: read.boardApi, vintfApi: read.vintfApi })
-  if (problems.length > 0)
-    throw new StockVendorApiDiffers({
-      codename: api.codename,
-      problems,
-      boardApi: read.boardApi,
-      vintfApi: read.vintfApi,
-      vendorApiLevel: api.vendorApiLevel,
-      message: `Release ${api.releaseConfig} declares board API ${read.boardApi || "none"} and the generated ${api.codename} vendor VINTF declares ${read.vintfApi || "none"}; both must be the stock vendor API ${api.vendorApiLevel}. Correct the release configuration, never the vendor manifest`,
-    })
-  return api
-}
-
-function label(file: SourceFile): string {
-  return file.project === "" ? file.path : `${file.project}/${file.path}`
-}
-
-function sourceDifferences(lock: SourceLock, facts: SourceFacts, patches: readonly PatchEnvelope[]): string[] {
-  const differences: string[] = []
-  if (facts.manifest !== lock.manifest) differences.push(`the manifest checkout reads as ${facts.manifest || "none"}; the lock pins ${lock.manifest}`)
-  lock.projects.forEach((project, index) => {
-    const read = facts.projects[index]?.revision ?? ""
-    if (read !== project.revision) differences.push(`${project.path} is at ${read || "no checkout"}; the lock pins ${project.revision}`)
+  const execute = promisify(execFile)
+  const utf8 = new TextDecoder("utf-8", { fatal: true })
+  const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
+  const Commit = Schema.String.check(Schema.isPattern(/^[a-f0-9]{40}$/))
+  const Digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+  const ExplicitPath = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_@.+-]+(?:\/[A-Za-z0-9_@.+-]+)*$/))
+  const NonBlank = Schema.Trimmed.check(Schema.isMinLength(1))
+  const Count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER))
+  const WireFile = Schema.Union([
+    Schema.Struct({ path: ExplicitPath, sha256: Digest, sizeBytes: Count }),
+    Schema.Struct({ path: ExplicitPath, link: Schema.String }),
+  ])
+  const Manifest = Schema.Struct({ commit: Commit, tag: NonBlank, tagObject: Commit })
+  const Project = Schema.Struct({ path: ExplicitPath, commit: Commit })
+  const Profile = Schema.Struct({
+    kind: Schema.Literals(["physical", "virtual"]), manifest: Manifest,
+    targets: Schema.Array(NonBlank).check(Schema.isMinLength(1)),
+    projects: Schema.optional(Schema.Array(Project)),
+    manifestConfiguration: Schema.optional(Schema.Array(WireFile)),
+    developmentOnly: Schema.optional(Schema.Boolean),
+    sourceInventory: Schema.optional(Schema.Struct({ path: ExplicitPath, sha256: Digest })),
+    device: Schema.optional(Schema.Struct({ sourceTarget: NonBlank, codename: NonBlank, androidRelease: NonBlank, vendorApiLevel: Schema.String.check(Schema.isPattern(/^[0-9]{6}$/)) })),
   })
-  for (const change of facts.changes) if (!expectedChange(lock, [...patches], change)) differences.push(`${label(change)} has an unrecorded change`)
-  for (const override of lock.overrides)
-    if (!facts.changes.some((change) => change.project === override.project && change.path === override.path && change.digest === override.digest)) differences.push(`${label(override)} does not hold its recorded override`)
-  const ignoredText = (list: readonly SourceFile[]) => list.map((entry) => `${entry.project}:${entry.digest}`).join(", ")
-  if (ignoredText(facts.ignored) !== ignoredText(lock.ignored)) differences.push(`the ignored inputs are ${ignoredText(facts.ignored) || "none"}; the lock records ${ignoredText(lock.ignored) || "none"}`)
-  const read = new Map(facts.generated.map((entry) => [entry.path, entry.digest]))
-  const pinned = new Map(lock.generated.map((entry) => [entry.path, entry.digest]))
-  for (const [file, digest] of pinned) if (read.get(file) !== digest) differences.push(`generated vendor file ${file} is missing or differs`)
-  for (const file of read.keys()) if (!pinned.has(file)) differences.push(`generated vendor file ${file} is not in the lock`)
-  const device = lock.device
-  if (device.tag === "PhysicalDevice") {
-    if (facts.archive !== device.archive) differences.push(`the factory archive is ${facts.archive || "unreadable"}; the lock pins ${device.archive}`)
-    if (facts.boardApi !== device.vendorApiLevel) differences.push(`RELEASE_BOARD_API_LEVEL is ${facts.boardApi || "not one value"}; the stock vendor API is ${device.vendorApiLevel}`)
-    if (facts.vintfApi !== device.vendorApiLevel) differences.push(`the generated vendor VINTF sepolicy version is ${facts.vintfApi || "not one value"}; the stock vendor API is ${device.vendorApiLevel}`)
-  }
-  if (!patchesDisjoint([...patches])) differences.push("two patches change the same file")
-  for (const envelope of patches)
-    if (!patchAdmitted(lock, facts, envelope)) differences.push(`patch ${envelope.name} is not reviewed against this lock, or a file lacks its preimage at HEAD or its postimage in the checkout`)
-  return differences
-}
+  const Inventory = Schema.Struct({
+    schema: Schema.Literal(1), target: NonBlank, device: Schema.Struct({ codename: NonBlank, androidRelease: NonBlank }),
+    developmentOnly: Schema.Boolean, releaseQualified: Schema.Literal(false),
+    manifest: Schema.Struct({ ...Manifest.fields, configuration: Schema.Array(WireFile) }),
+    factory: Schema.Struct({ filename: NonBlank, sha256: Digest, sizeBytes: Count }),
+    projects: Schema.Array(Project).check(Schema.isMinLength(1)), overrides: Schema.Array(WireFile),
+    generated: Schema.Struct({ root: ExplicitPath, files: Schema.Array(WireFile).check(Schema.isMinLength(1)) }),
+    ignoredInputs: Schema.Array(Schema.Struct({ project: ExplicitPath, files: Count, sha256: Digest })),
+  })
+  const PatchName = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_@.+-]+\.patch$/))
+  const PatchManifest = Schema.Struct({ schema: Schema.optional(Schema.Literal(1)), patch: Schema.optional(PatchName), baselineLockSha256: Digest, project: ExplicitPath, revision: Commit,
+    files: Schema.Array(Schema.Struct({ path: ExplicitPath, beforeSha256: Schema.Union([Digest, Schema.Null]), afterSha256: Digest })).check(Schema.isMinLength(1)), patchSha256: Digest })
+  const Ref = Schema.Struct({ name: NonBlank, file: NonBlank, sha256: Digest })
+  const Load = Schema.Struct({ name: NonBlank, lockFile: Schema.optional(NonBlank) })
+  const PatchReference = Schema.Struct({ name: NonBlank, manifestFile: NonBlank, manifestSha256: Digest, patchFile: NonBlank })
+  const Verify = Schema.Struct({ profile: Ref, sourceRoot: NonBlank, factory: Schema.optional(NonBlank),
+    boardConfiguration: Schema.optional(ExplicitPath), vendorManifest: Schema.optional(ExplicitPath),
+    patches: Schema.optional(Schema.Array(PatchReference)) })
+  const decodeProfiles = Schema.decodeUnknownSync(Schema.Struct({ schemaVersion: Schema.Literal(1), profiles: Schema.Record(Schema.String, Profile) }))
+  const decodeInventory = Schema.decodeUnknownSync(Inventory)
+  const decodePatch = Schema.decodeUnknownSync(PatchManifest)
+  const decodeLoad = Schema.decodeUnknownSync(Load, { onExcessProperty: "error" })
+  const decodeVerify = Schema.decodeUnknownSync(Verify, { onExcessProperty: "error" })
+  const decodeRef = Schema.decodeUnknownSync(Ref, { onExcessProperty: "error" })
+  const decodePatchReference = Schema.decodeUnknownSync(PatchReference, { onExcessProperty: "error" })
+  export type SourceProfileRef = typeof Ref.Type
+  export type LoadProfileOptions = typeof Load.Type
+  export type VerifySourceOptions = typeof Verify.Type
+  export type PatchReference = typeof PatchReference.Type
+  type Inventory = typeof Inventory.Type
+  type WireFile = typeof WireFile.Type
+  interface Expected { readonly ref: SourceProfileRef; readonly profile: typeof Profile.Type; readonly inventory: Inventory | undefined; readonly lock: S.SourceLock }
+  export interface SourceObservation { readonly lock: S.SourceLock; readonly facts: S.SourceFacts; readonly patches: S.PatchEnvelope[]; readonly reference: SourceProfileRef; readonly projectCount: number; readonly releaseQualified: false }
 
-effect function readFacts(profile: SourceProfile, checkout: Checkout, archive: string, boardApi: number, vintfApi: number) {
-  const files = try FileSystem.FileSystem
-  const root = try mapError(files.realPath(checkout.aospRoot), (cause) => new SourceUnreadable({ place: checkout.aospRoot, message: cause.message }))
-  const lock = profile.lock
-  const manifest = try manifestRead(root, profile.kind === "physical" ? profile.configuration : [])
-  const reads: ProjectRead[] = lock.projects.map((): ProjectRead => ({ revision: "", changes: [], ignored: [] }))
-  for concurrent(8) (const [index, project] of lock.projects.entries()) {
-    reads[index] = try readProject(root, project)
+  function pathWithin(root: string, file: string): string {
+    if (!file || file.includes("\\") || file.includes("\0") || isAbsolute(file) || file.split("/").some((part) => !part || part === "." || part === "..")) throw new Error(`Source path must be explicit: ${file}`)
+    return join(root, file)
   }
-  const changes = reads.flatMap((read) => read.changes)
-  if (profile.kind === "virtual") {
-    for (const file of profile.requiredSourceFiles) {
-      const located = inProject(lock.projects, file, "")
-      if (located !== undefined && (try entryDigest(root, file)) === "") changes.push(located)
+  function inside(root: string, file: string): void {
+    const name = relative(root, file)
+    if (isAbsolute(name) || name === ".." || name.startsWith("../") || name.startsWith("..\\")) throw new Error(`Source input escapes its named root: ${file}`)
+  }
+  function unique(values: readonly string[], label: string): void { if (new Set(values).size !== values.length) throw new Error(`Duplicate ${label}`) }
+  async function git(root: string, args: readonly string[], signal: AbortSignal): Promise<Uint8Array> {
+    return new Uint8Array((await execute("git", ["--no-replace-objects", "--literal-pathspecs", "-c", "core.fsmonitor=false", "-C", root, ...args],
+      { signal, encoding: "buffer", maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" } })).stdout)
+  }
+  async function head(root: string, signal: AbortSignal): Promise<string> {
+    if (await realpath(utf8.decode(await git(root, ["rev-parse", "--show-toplevel"], signal)).trim()) !== await realpath(root)) throw new Error("A platform project must name its exact Git checkout root")
+    const value = utf8.decode(await git(root, ["rev-parse", "HEAD"], signal)).trim()
+    if (!/^[a-f0-9]{40}$/.test(value) || utf8.decode(await git(root, ["cat-file", "-t", value], signal)).trim() !== "commit") throw new Error("A platform project must have a real full commit HEAD")
+    return value
+  }
+  async function tree(root: string, revision: string, signal: AbortSignal): Promise<CommittedEntry[]> {
+    const text = utf8.decode(await git(root, ["ls-tree", "-r", "-z", revision], signal))
+    if (text !== "" && !text.endsWith("\0")) throw new Error("The platform committed tree is incomplete")
+    const entries = text.split("\0").filter(Boolean).map((row): CommittedEntry => {
+      const found = /^(100644|100755|120000|160000) (blob|commit) ([a-f0-9]{40})\t([\s\S]+)$/.exec(row)
+      const path = found?.[4]
+      const oid = found?.[3]
+      const mode = found?.[1]
+      if (path === undefined || oid === undefined || (mode === "160000") !== (found?.[2] === "commit")) throw new Error("The platform tree has an unsupported committed entry")
+      pathWithin(root, path)
+      return { path, oid, mode: mode === "100644" ? "RegularEntry" : mode === "100755" ? "ExecutableEntry" : mode === "120000" ? "LinkEntry" : "SubmoduleEntry" }
+    })
+    unique(entries.map((entry) => entry.path), "committed source path")
+    return entries
+  }
+  async function indexChanges(root: string, project: string, signal: AbortSignal): Promise<{ changes: S.SourceChange[]; added: string[] }> {
+    const fields = utf8.decode(await git(root, ["diff", "--cached", "--raw", "--no-abbrev", "--no-renames", "-z", "HEAD", "--"], signal)).split("\0")
+    if (fields.pop() !== "" || fields.length % 2 !== 0) throw new Error("The platform index change inventory is incomplete")
+    const changes: S.SourceChange[] = []
+    const added: string[] = []
+    for (let index = 0; index < fields.length; index += 2) {
+      const path = fields[index + 1]
+      const row = /^:(000000|100644|100755|120000|160000) (000000|100644|100755|120000|160000) ([a-f0-9]{40}) ([a-f0-9]{40}) ([AMDTUXB])$/.exec(fields[index] ?? "")
+      if (path === undefined || row === null) throw new Error("The platform index contains an unsupported change")
+      pathWithin(root, path)
+      const before = row[1]
+      const after = row[2]
+      const oid = row[4]
+      if (before === "000000") added.push(path)
+      if (after === "000000") { changes.push({ tag: "DeletedFile", project, path }); continue }
+      if (row[5] === "U" || before !== "000000" && before !== after || before === "000000" && after !== "100644") { changes.push({ tag: "ChangedKind", project, path }); continue }
+      if (after === "160000") { changes.push({ tag: "ChangedGitlink", project, path }); continue }
+      if (oid === undefined || /^0+$/.test(oid)) throw new Error("An indexed source blob has no object identity")
+      const bytes = await git(root, ["cat-file", "blob", oid], signal)
+      if (createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex") !== oid) throw new Error("The indexed source bytes differ from their Git object identity")
+      changes.push({ tag: "ChangedFile", file: { project, path, digest: digest(bytes) } })
     }
+    return { changes, added }
   }
-  const heads: SourceFile[] = []
-  for (const envelope of checkout.patches ?? []) for (const file of envelope.files) heads.push(try headDigest(root, envelope.project, file))
-  const generated: SourceFile[] = []
-  if (profile.kind === "physical") {
-    for (const file of try listTree(root, profile.generatedRoot)) generated.push({ project: profile.generatedRoot, path: file, digest: try entryDigest(root, `${profile.generatedRoot}/${file}`) })
-  }
-  const facts: SourceFacts = {
-    manifest: manifest.manifest,
-    projects: lock.projects.map((project, index) => ({ path: project.path, revision: reads[index]?.revision ?? "" })),
-    changes,
-    ignored: reads.flatMap((read) => read.ignored).sort(byPath),
-    generated: generated.sort(byPath),
-    heads,
-    archive,
-    boardApi,
-    vintfApi,
-  }
-  return { facts, differences: manifest.differences }
-}
-
-effect function decide(profile: SourceProfile, facts: SourceFacts, patches: readonly PatchEnvelope[], differences: readonly string[]) {
-  provide machine() {
-    const verdicts = try Machine
-    const source = try mapError(verdicts.send({ type: "verify", lock: profile.lock, facts, patches: [...patches] }), () => new SourceLockInvalid({ lock: LOCK_FILE, profile: profile.name, message: `The ${profile.name} lock is not well formed` }))
-    const verified: VerifiedSource = { source, problems: problemsOf(source.lock, source.read, source.patches), differences: [...differences, ...sourceDifferences(source.lock, source.read, source.patches)] }
-    return verified
-  }
-}
-
-export effect function verifyDeviceSource(profile: PhysicalProfile, checkout: DeviceCheckout) {
-  const archive = (hashFile(checkout.archive) |> map(%, (hashed) => hashed.sha256)) catch () => ""
-  const api = try readStockVendorApi(checkout.aospRoot, profile.codename, checkout.releaseConfig)
-  const read = try readFacts(profile, checkout, archive, api.boardApi, api.vintfApi)
-  return try decide(profile, read.facts, checkout.patches ?? [], read.differences)
-}
-
-export effect function verifySource(profile: SourceProfile, checkout: Checkout) {
-  switch (profile.kind) {
-    case "physical": {
-      const { archive, releaseConfig } = checkout
-      if (archive === undefined || releaseConfig === undefined)
-        throw new CheckoutIncomplete({ profile: profile.name, message: `The ${profile.name} profile is verified only with its factory archive and the release configuration the product is lunched with` })
-      return try verifyDeviceSource(profile, { ...checkout, archive, releaseConfig })
+  async function workingChanges(root: string, project: string, entries: readonly CommittedEntry[], added: readonly string[], signal: AbortSignal): Promise<S.SourceChange[]> {
+    const changes: S.SourceChange[] = []
+    for (const entry of entries) {
+      const observed = await observeCommittedEntry(root, entry, Number.MAX_SAFE_INTEGER)
+      if (observed.kind === "OpaqueGitlink") continue
+      if (observed.kind === "MissingFile") { changes.push({ tag: "DeletedFile", project, path: entry.path }); continue }
+      if (observed.kind === "OtherFile") { changes.push({ tag: "ChangedKind", project, path: entry.path }); continue }
+      if (!trackedEntryAdmitted(entry.mode, observed.kind, true, observed.execBits)) changes.push({ tag: "ChangedKind", project, path: entry.path })
+      else if (observed.gitBlobSha1 !== entry.oid) changes.push({ tag: "ChangedFile", file: { project, path: entry.path, digest: observed.sha256 } })
     }
-    case "virtual": {
-      const read = try readFacts(profile, checkout, "", 0, 0)
-      return try decide(profile, read.facts, checkout.patches ?? [], read.differences)
+    const extra = new Set([...added, ...utf8.decode(await git(root, ["ls-files", "--others", "--exclude-standard", "-z"], signal)).split("\0").filter(Boolean)])
+    const known = new Set(entries.map((entry) => entry.path))
+    for (const path of [...extra].sort()) {
+      if (known.has(path)) continue
+      pathWithin(root, path)
+      const observed = await observeCommittedEntry(root, { path, mode: "RegularEntry" }, Number.MAX_SAFE_INTEGER)
+      if (observed.kind === "MissingFile") changes.push({ tag: "DeletedFile", project, path })
+      else if (observed.kind !== "RegularFile" || !trackedEntryAdmitted("RegularEntry", observed.kind, true, observed.execBits)) changes.push({ tag: "ChangedKind", project, path })
+      else changes.push({ tag: "ChangedFile", file: { project, path, digest: observed.sha256 } })
     }
+    return changes
+  }
+  function expectedDigest(file: WireFile): string { return "link" in file ? digest(new TextEncoder().encode(file.link)) : file.sha256 }
+  function owningProject(path: string, projects: readonly { path: string }[]): { project: string; path: string } {
+    const owner = [...projects].sort((a, b) => b.path.length - a.path.length).find((project) => path.startsWith(project.path + "/"))
+    if (owner === undefined) throw new Error(`A source entry has no locked project: ${path}`)
+    return { project: owner.path, path: path.slice(owner.path.length + 1) }
+  }
+  async function expected(reference: SourceProfileRef): Promise<Expected> {
+    const bytes = await readArtifact(reference.file, 2 * 1024 * 1024)
+    if (bytes.sha256 !== reference.sha256) throw new Error("The selected source profile lock changed")
+    const profiles = decodeProfiles(artifactJson(bytes.bytes)).profiles
+    if (!Object.hasOwn(profiles, reference.name)) throw new Error(`Unknown source profile: ${reference.name}`)
+    const profile = profiles[reference.name]
+    if (profile === undefined) throw new Error("The source profile is missing")
+    unique(profile.targets, "source target")
+    let inventory: Inventory | undefined
+    if (profile.sourceInventory !== undefined) {
+      const parent = await realpath(dirname(reference.file))
+      const file = pathWithin(parent, profile.sourceInventory.path)
+      inside(parent, await realpath(file))
+      const source = await readArtifact(file, 16 * 1024 * 1024)
+      if (source.sha256 !== profile.sourceInventory.sha256) throw new Error("The source inventory differs from the profile pin")
+      inventory = decodeInventory(artifactJson(source.bytes))
+      const device = profile.device
+      if (profile.kind !== "physical" || device === undefined || inventory.target !== device.sourceTarget || inventory.device.codename !== device.codename || inventory.device.androidRelease !== device.androidRelease
+        || inventory.manifest.commit !== profile.manifest.commit || inventory.manifest.tag !== profile.manifest.tag || inventory.manifest.tagObject !== profile.manifest.tagObject) throw new Error("The source inventory and device profile identify different inputs")
+    }
+    if (profile.kind === "physical" && (inventory === undefined || profile.device === undefined)) throw new Error("A physical profile needs its complete source inventory")
+    const projects = inventory?.projects ?? profile.projects ?? []
+    unique(projects.map((project) => project.path), "source project")
+    for (const project of projects) pathWithin("/", project.path)
+    const configuration = inventory?.manifest.configuration ?? profile.manifestConfiguration ?? []
+    unique(configuration.map((file) => file.path), "manifest input")
+    const overrides = (inventory?.overrides ?? []).map((file) => ({ ...owningProject(file.path, projects), digest: expectedDigest(file) }))
+    const ignored = (inventory?.ignoredInputs ?? []).map((row) => ({ project: row.project, files: row.files, digest: row.sha256 })).sort((a, b) => a.project < b.project ? -1 : a.project > b.project ? 1 : 0)
+    unique(overrides.map((file) => file.project + "/" + file.path), "source override")
+    unique(ignored.map((row) => row.project), "ignored input inventory")
+    const generated = [...(inventory?.generated.files ?? [])].sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+    unique(generated.map((file) => file.path), "generated source file")
+    if (inventory !== undefined && generated.some((file) => !file.path.startsWith(inventory.generated.root + "/"))) throw new Error("A generated source file escapes its inventory root")
+    const lock: S.SourceLock = { name: reference.name, digest: inventory === undefined ? reference.sha256 : profile.sourceInventory?.sha256 ?? "", device: inventory === undefined ? { tag: "VirtualDevice" }
+      : { tag: "PhysicalDevice", archive: inventory.factory.sha256, archiveSize: inventory.factory.sizeBytes, vendorApiLevel: Number(profile.device?.vendorApiLevel) },
+      developmentOnly: inventory?.developmentOnly ?? profile.developmentOnly ?? true, manifest: profile.manifest.commit,
+      manifestConfiguration: configuration.map((file) => ({ path: file.path, digest: expectedDigest(file) })),
+      projects: projects.map((project) => ({ path: project.path, revision: project.commit })), overrides, ignored,
+      generated: generated.map((file) => ({ project: "", path: file.path, digest: expectedDigest(file) })), targets: [...profile.targets] }
+    return { ref: reference, profile, inventory, lock }
+  }
+  export function sealedSourceOptions(input: VerifySourceOptions): VerifySourceOptions { return decodeVerify(structuredClone(input)) }
+  export function sealedPatchReference(input: PatchReference): PatchReference { return decodePatchReference(structuredClone(input)) }
+  export async function selectProfile(options: LoadProfileOptions, moduleUrl: string): Promise<SourceProfileRef> {
+    const parsed = decodeLoad(structuredClone(options))
+    const file = await realpath(parsed.lockFile ?? createRequire(moduleUrl).resolve("@elizaos/os/aosp/aosp.lock.json"))
+    const ref = { name: parsed.name, file, sha256: (await readArtifact(file, 2 * 1024 * 1024)).sha256 }
+    await expected(ref)
+    return ref
+  }
+  export async function selectedLock(reference: SourceProfileRef): Promise<S.SourceLock> { return (await expected(decodeRef(structuredClone(reference)))).lock }
+
+  async function observedFile(root: string, path: string): Promise<{ path: string; digest: string; size: number; link?: string }> {
+    const absolute = pathWithin(root, path)
+    const info = await lstat(absolute)
+    if (info.isSymbolicLink()) {
+      const target = await readlink(absolute)
+      inside(root, await realpath(absolute))
+      const after = await lstat(absolute)
+      if (!after.isSymbolicLink() || info.ino !== after.ino || info.mtimeMs !== after.mtimeMs || info.ctimeMs !== after.ctimeMs || target !== await readlink(absolute)) throw new Error(`Source link changed while reading: ${path}`)
+      return { path, digest: digest(new TextEncoder().encode(target)), size: new TextEncoder().encode(target).length, link: target }
+    }
+    inside(root, await realpath(dirname(absolute)))
+    const bytes = await hashArtifact(absolute, Number.MAX_SAFE_INTEGER)
+    return { path, digest: bytes.sha256, size: bytes.size }
+  }
+  async function inventoryPaths(root: string, directory: string): Promise<string[]> {
+    const absolute = pathWithin(root, directory)
+    const info = await lstat(absolute)
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`Source inventory root is not a real directory: ${directory}`)
+    const pending = [directory]
+    const found: string[] = []
+    while (pending.length) {
+      const parent = pending.pop()
+      if (parent === undefined) break
+      for (const entry of await readdir(pathWithin(root, parent), { withFileTypes: true })) {
+        const file = parent + "/" + entry.name
+        pathWithin(root, file)
+        if (entry.isDirectory()) pending.push(file)
+        else if (entry.isFile() || entry.isSymbolicLink()) found.push(file)
+        else throw new Error(`Source inventory contains a special file: ${file}`)
+      }
+    }
+    return found.sort()
+  }
+  async function indexVisible(root: string, signal: AbortSignal): Promise<boolean> {
+    return utf8.decode(await git(root, ["ls-files", "-v", "-z"], signal)).split("\0").every((row) => row === "" || row[0] === "H")
+  }
+  async function patch(reference: PatchReference): Promise<S.PatchEnvelope> {
+    const manifest = await readArtifact(reference.manifestFile, 2 * 1024 * 1024)
+    if (manifest.sha256 !== reference.manifestSha256) throw new Error("The patch manifest differs from its reviewed pin")
+    const parsed = decodePatch(artifactJson(manifest.bytes))
+    if (parsed.patch !== undefined && basename(reference.patchFile) !== parsed.patch) throw new Error("The supplied patch name differs from its reviewed manifest")
+    if ((await hashArtifact(reference.patchFile, 32 * 1024 * 1024)).sha256 !== parsed.patchSha256) throw new Error("The patch bytes differ from their manifest")
+    unique(parsed.files.map((file) => file.path), "patch path")
+    return { name: reference.name, project: parsed.project, revision: parsed.revision, baseline: parsed.baselineLockSha256,
+      files: parsed.files.map((file) => ({ path: file.path, pre: file.beforeSha256 ?? "", post: file.afterSha256 })), manifestSha256: manifest.sha256 }
+  }
+  export async function readPatch(reference: PatchReference): Promise<S.PatchEnvelope> {
+    return patch(decodePatchReference(structuredClone(reference)))
+  }
+  function apiFrom(text: string, pattern: RegExp): number {
+    const values = [...text.matchAll(pattern)].map((match) => Number(match[1]))
+    return values.length === 1 && Number.isSafeInteger(values[0]) ? values[0] ?? 0 : 0
+  }
+  function boardApiFrom(file: string, text: string): number {
+    if (basename(file) === "RELEASE_BOARD_API_LEVEL.textproto") {
+      const flag = /^\s*name\s*:\s*"RELEASE_BOARD_API_LEVEL"\s*value\s*:?\s*\{\s*string_value\s*:\s*"([0-9]{6})"\s*\}\s*$/g
+      return apiFrom(text.replace(/^\s*#.*$/gm, ""), flag)
+    }
+    return apiFrom(text, /^\s*RELEASE_BOARD_API_LEVEL\s*:?=\s*([0-9]{6})\s*$/gm)
+  }
+  export async function observeSource(input: VerifySourceOptions, signal: AbortSignal): Promise<SourceObservation> {
+    const selected = await expected(input.profile)
+    const root = await realpath(input.sourceRoot)
+    const projectsFile = (await readArtifact(pathWithin(root, ".repo/project.list"), 4 * 1024 * 1024)).bytes
+    const actualPaths = utf8.decode(projectsFile).split(/\r?\n/).filter(Boolean)
+    unique(actualPaths, "observed manifest project")
+    for (const path of actualPaths) pathWithin(root, path)
+    const known = selected.lock.projects.map((project) => project.path)
+    const ordered = [...known.filter((path) => actualPaths.includes(path)), ...actualPaths.filter((path) => !known.includes(path)).sort()]
+    const manifestRoot = pathWithin(root, ".repo/manifests")
+    const manifestHead = await head(manifestRoot, signal)
+    const manifestIndex = await indexChanges(manifestRoot, "", signal)
+    const manifestExtras = utf8.decode(await git(manifestRoot, ["ls-files", "--others", "-z"], signal)).split("\0").filter(Boolean)
+    const manifestWorktree = await workingChanges(manifestRoot, "", await tree(manifestRoot, manifestHead, signal), [...manifestIndex.added, ...manifestExtras], signal)
+    const facts: S.SourceFacts = { manifest: manifestHead, manifestClean: manifestIndex.changes.length === 0 && manifestWorktree.length === 0, manifestConfiguration: [], indexVisible: await indexVisible(manifestRoot, signal), projects: [], changes: [], indexChanges: [], ignored: [], generated: [], heads: [], archive: "", archiveBytes: 0, boardApi: 0, vintfApi: 0 }
+    const config = [...selected.lock.manifestConfiguration.map((file) => file.path)]
+    const localRoot = pathWithin(root, ".repo/local_manifests")
+    try {
+      await lstat(localRoot)
+      for (const file of await inventoryPaths(root, ".repo/local_manifests")) if (!config.includes(file)) config.push(file)
+    } catch (error) { if (typeof error !== "object" || error === null || !("code" in error) || error.code !== "ENOENT") throw error }
+    for (const path of config) { const file = await observedFile(root, path); facts.manifestConfiguration.push({ path, digest: file.digest }) }
+    const patches: S.PatchEnvelope[] = []
+    for (const reference of input.patches ?? []) patches.push(await patch(reference))
+    for (const project of ordered) {
+      const directory = await realpath(pathWithin(root, project))
+      inside(root, directory)
+      const revision = await head(directory, signal)
+      facts.projects.push({ path: project, revision })
+      facts.indexVisible = await indexVisible(directory, signal) && facts.indexVisible
+      const index = await indexChanges(directory, project, signal)
+      facts.indexChanges.push(...index.changes)
+      facts.changes.push(...await workingChanges(directory, project, await tree(directory, revision, signal), index.added, signal))
+      const ignored = utf8.decode(await git(directory, ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"], signal)).split("\0").filter(Boolean).sort()
+      if (ignored.length || selected.lock.ignored.some((row) => row.project === project)) {
+        const hash = createHash("sha256")
+        for (const name of ignored) {
+          const file = await observedFile(root, project + "/" + name)
+          const record = file.link === undefined ? { path: file.path, sizeBytes: file.size, sha256: file.digest } : { path: file.path, link: file.link }
+          hash.update(JSON.stringify(record) + "\n")
+        }
+        facts.ignored.push({ project, files: ignored.length, digest: hash.digest("hex") })
+      }
+      for (const envelope of patches.filter((envelope) => envelope.project === project)) for (const file of envelope.files) {
+        let pre = ""
+        const entry = utf8.decode(await git(directory, ["ls-tree", "-z", revision, "--", file.path], signal))
+        if (entry !== "") {
+          const identity = /^100(?:644|755) blob ([a-f0-9]{40})\t/.exec(entry)?.[1]
+          if (identity === undefined || !entry.endsWith("\t" + file.path + "\0") || entry.split("\0").length !== 2) throw new Error("A patch preimage is not one regular committed file")
+          pre = digest(await git(directory, ["cat-file", "blob", identity], signal))
+        }
+        facts.heads.push({ project, path: file.path, digest: pre })
+      }
+    }
+    if (selected.inventory !== undefined) {
+      const inventory = selected.inventory
+      for (const path of await inventoryPaths(root, inventory.generated.root)) { const file = await observedFile(root, path); facts.generated.push({ project: "", path, digest: file.digest }) }
+      facts.generated.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+      if (input.factory === undefined || input.boardConfiguration === undefined || input.vendorManifest === undefined) throw new Error("Physical source verification requires its local factory, release board configuration and vendor VINTF manifest")
+      const factory = await hashArtifact(input.factory, Number.MAX_SAFE_INTEGER)
+      facts.archive = factory.sha256
+      facts.archiveBytes = factory.size
+      const boardPath = pathWithin(root, input.boardConfiguration)
+      const vendorPath = pathWithin(root, input.vendorManifest)
+      inside(root, await realpath(boardPath))
+      inside(root, await realpath(vendorPath))
+      const board = utf8.decode((await readArtifact(boardPath, 2 * 1024 * 1024)).bytes)
+      const vendor = utf8.decode((await readArtifact(vendorPath, 4 * 1024 * 1024)).bytes)
+      facts.boardApi = boardApiFrom(boardPath, board)
+      facts.vintfApi = apiFrom(vendor, /<sepolicy>\s*<version>([0-9]{6})<\/version>\s*<\/sepolicy>/g)
+    }
+    facts.ignored.sort((a, b) => a.project < b.project ? -1 : a.project > b.project ? 1 : 0)
+    if ((await readArtifact(input.profile.file, 2 * 1024 * 1024)).sha256 !== input.profile.sha256) throw new Error("The source profile changed during verification")
+    return { lock: selected.lock, facts, patches, reference: selected.ref, projectCount: facts.projects.length, releaseQualified: false }
   }
 }
+import { observeSource, readPatch, sealedPatchReference, sealedSourceOptions, selectedLock, selectProfile, type LoadProfileOptions, type PatchReference, type VerifySourceOptions } from node
+export type { LoadProfileOptions, PatchReference, SourceProfileRef, VerifySourceOptions } from node
 
-export effect function admitPatchEnvelope(name: string, directory: string) {
-  const files = try FileSystem.FileSystem
-  const path = try Path.Path
-  const refused = (message: string) => new PatchEnvelopeRefused({ directory, message: `Patch ${name}: ${message}` })
-  const manifestBytes = try mapError(files.readFile(path.join(directory, "manifest.json")), (cause) => refused(`cannot read manifest.json: ${cause.message}`))
-  const manifest = parseJson(new TextDecoder().decode(manifestBytes))
-  if (!isRecord(manifest) || manifest.schema !== 1) throw refused("manifest.json is not a schema 1 patch manifest")
-  const { project, revision, baselineLockSha256, patch, patchSha256 } = manifest
-  if (!safePath(project) || typeof revision !== "string" || !HEX40.test(revision)) throw refused("the manifest needs a relative project path and a full revision")
-  if (typeof baselineLockSha256 !== "string" || !HEX64.test(baselineLockSha256)) throw refused("the manifest needs the SHA-256 of the source lock it was reviewed against")
-  if (!safePath(patch) || patch.includes("/") || typeof patchSha256 !== "string" || !HEX64.test(patchSha256)) throw refused("the manifest needs a patch file beside it and its SHA-256")
-  const patchFiles: PatchFile[] = []
-  for (const file of Array.isArray(manifest.files) ? manifest.files : []) {
-    if (!isRecord(file) || !safePath(file.path) || !(file.beforeSha256 === null || (typeof file.beforeSha256 === "string" && HEX64.test(file.beforeSha256))) || typeof file.afterSha256 !== "string" || !HEX64.test(file.afterSha256))
-      throw refused("each listed file needs a relative path, a preimage SHA-256 or null for a new file, and a postimage SHA-256")
-    patchFiles.push({ path: file.path, pre: typeof file.beforeSha256 === "string" ? file.beforeSha256 : "", post: file.afterSha256 })
-  }
-  if (patchFiles.length === 0 || !unique(patchFiles.map((file) => file.path))) throw refused("the manifest must list each patched file once")
-  const patchFile = path.join(directory, patch)
-  const patchBytes = try mapError(files.readFile(patchFile), (cause) => refused(`cannot read ${patch}: ${cause.message}`))
-  if (sha256Hex(patchBytes) !== patchSha256) throw refused(`${patch} differs from the manifest's patchSha256`)
-  const admitted: AdmittedPatch = {
-    envelope: { name, project, revision, baseline: baselineLockSha256, files: patchFiles, manifestSha256: sha256Hex(manifestBytes) },
-    patchFile,
-    manifest,
-  }
-  return admitted
+export error SourceLockReadFailed { cause: unknown }
+export error SourceLockRefused { reason: string }
+
+export effect function loadProfile(options: LoadProfileOptions) {
+  return try tryPromise({ try: () => selectProfile(options, import.meta.url), catch: (cause) => new SourceLockReadFailed({ cause }) })
+}
+export effect function verifySource(options: VerifySourceOptions) {
+  const input = try Effect.try({ try: () => sealedSourceOptions(options), catch: (cause) => new SourceLockReadFailed({ cause }) })
+  const lock = try tryPromise({ try: () => selectedLock(input.profile), catch: (cause) => new SourceLockReadFailed({ cause }) })
+  if (!Source.canVerify(Source.initial, lock)) throw new SourceLockRefused({ reason: "The selected profile has no complete reviewed platform source inventory" })
+  const observed = try tryPromise({ try: (signal) => observeSource(input, signal), catch: (cause) => new SourceLockReadFailed({ cause }) })
+  const state = Source.verify(Source.initial, observed.lock, observed.facts, observed.patches)
+  return { reference: observed.reference, state, problems: Source.problemsOf(observed.lock, observed.facts, observed.patches), projectsChecked: observed.projectCount, releaseQualified: observed.releaseQualified }
+}
+export effect function verifyDeviceSource(options: VerifySourceOptions) {
+  const input = try Effect.try({ try: () => sealedSourceOptions(options), catch: (cause) => new SourceLockReadFailed({ cause }) })
+  const lock = try tryPromise({ try: () => selectedLock(input.profile), catch: (cause) => new SourceLockReadFailed({ cause }) })
+  if (lock.device.tag !== "PhysicalDevice") throw new SourceLockRefused({ reason: "Device source verification requires a physical profile" })
+  return try verifySource(input)
+}
+export effect function assertStockVendorApi(options: VerifySourceOptions) {
+  const checked = try verifyDeviceSource(options)
+  if (Source.stockVendorProblems(checked.state.lock.device, checked.state.read).length > 0) throw new SourceLockRefused({ reason: "The stock vendor archive or board/VINTF API differs from its source pin" })
+  return checked
+}
+export effect function admitPatchEnvelope(options: VerifySourceOptions, reference: PatchReference) {
+  const input = try Effect.try({ try: () => sealedSourceOptions(options), catch: (cause) => new SourceLockReadFailed({ cause }) })
+  const pinnedPatch = try Effect.try({ try: () => sealedPatchReference(reference), catch: (cause) => new SourceLockReadFailed({ cause }) })
+  const envelope = try tryPromise({ try: () => readPatch(pinnedPatch), catch: (cause) => new SourceLockReadFailed({ cause }) })
+  const checked = try verifySource({ ...input, patches: [...(input.patches ?? []), pinnedPatch] })
+  if (!Source.patchAdmitted(checked.state.lock, checked.state.read, envelope) || !Source.patchesDisjoint(checked.state.patches)) throw new SourceLockRefused({ reason: "The patch is not bound to disjoint reviewed preimages and actual source postimages" })
+  return { envelope, source: checked }
 }

@@ -80,18 +80,11 @@ public final class PayloadCheck {
 
     Path releases = runtimeDir.resolve("releases");
     Path release = releases.resolve(versionCode + "-" + AgentDirectories.hex(sha256().digest(inventory)));
-    verifyNative(device, nativeLibraryDir, errors);
-    if (!errors.isEmpty()) return new Failed(errors);
-    boolean extracted = !Files.isDirectory(release, LinkOption.NOFOLLOW_LINKS);
-    if (extracted) extract(assets, device, releases, release, sync, errors);
-    if (!errors.isEmpty()) return new Failed(errors);
-    verifyTree(device, release, errors);
-    if (!errors.isEmpty() && !extracted) {
-      errors.clear();
+    if (!Files.isDirectory(release, LinkOption.NOFOLLOW_LINKS)) {
       extract(assets, device, releases, release, sync, errors);
       if (!errors.isEmpty()) return new Failed(errors);
-      verifyTree(device, release, errors);
     }
+    verify(device, nativeLibraryDir, release, errors);
     if (!errors.isEmpty()) return new Failed(errors);
     Optional<WorkflowWorker> worker = worker(release, device, errors);
     if (!errors.isEmpty()) return new Failed(errors);
@@ -201,42 +194,34 @@ public final class PayloadCheck {
     }
   }
 
-  private static void verifyNative(List<Row> device, Path nativeLibraryDir, List<String> errors) throws IOException {
-    Path libraries;
+  private static void verify(List<Row> device, Path nativeLibraryDir, Path release, List<String> errors) throws IOException {
+    Path libraries, extracted;
     try { libraries = nativeLibraryDir.toRealPath(); }
     catch (IOException missing) { errors.add("The native library directory " + nativeLibraryDir + " is missing"); return; }
-    for (Row row : device) if (row.tree() == Tree.NATIVE) verifyFile(row, libraries, errors);
-  }
-
-  private static void verifyTree(List<Row> device, Path release, List<String> errors) throws IOException {
-    Path extracted;
     try { extracted = release.toRealPath(); }
     catch (IOException missing) { errors.add("The extracted payload " + release + " is missing"); return; }
     Set<Path> listed = new HashSet<>();
-    for (Row row : device) if (row.tree() != Tree.NATIVE) {
-      listed.add(extracted.resolve(row.location()));
-      verifyFile(row, extracted, errors);
+    for (Row row : device) {
+      Path root = row.tree() == Tree.NATIVE ? libraries : extracted;
+      Path file = root.resolve(row.location());
+      if (row.tree() != Tree.NATIVE) listed.add(file);
+      if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || !file.toRealPath().startsWith(root)) {
+        errors.add("Missing " + row.path() + " at " + file);
+        continue;
+      }
+      long size = Files.size(file);
+      if (size != row.size()) {
+        errors.add("Size of " + row.path() + " differs: expected " + row.size() + ", found " + size);
+        continue;
+      }
+      String digest = digest(file);
+      if (!digest.equals(row.sha256())) errors.add("Digest of " + row.path() + " differs: expected " + row.sha256() + ", found " + digest);
     }
     try (Stream<Path> tree = Files.walk(extracted)) {
       for (Path path : tree.collect(Collectors.toList()))
         if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) && !listed.contains(path))
           errors.add("Unlisted file " + extracted.relativize(path) + " in the extracted payload");
     }
-  }
-
-  private static void verifyFile(Row row, Path root, List<String> errors) throws IOException {
-    Path file = root.resolve(row.location());
-    if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || !file.toRealPath().startsWith(root)) {
-      errors.add("Missing " + row.path() + " at " + file);
-      return;
-    }
-    long size = Files.size(file);
-    if (size != row.size()) {
-      errors.add("Size of " + row.path() + " differs: expected " + row.size() + ", found " + size);
-      return;
-    }
-    String digest = digest(file);
-    if (!digest.equals(row.sha256())) errors.add("Digest of " + row.path() + " differs: expected " + row.sha256() + ", found " + digest);
   }
 
   private static Optional<WorkflowWorker> worker(Path release, List<Row> device, List<String> errors) throws IOException {

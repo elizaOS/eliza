@@ -1,9 +1,10 @@
 // spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"; spec/agent/voice/session.md, "Only a complete end-of-turn score submits before the 1,200 ms long gap, which always submits"; spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or missing answer, and its outcomes stay distinct"
 import {
-  endOfTurnMaxUnits, isEcho, reportOutcomeOf, turnAccepted,
-  type EndOfTurnReply, type HeardBody as HeardResult, type HeardTurn, type ReportOutcome,
+  echoWindowOpen, endOfTurnSendable, reportOutcomeOf, turnAccepted,
+  type EndOfTurnReply, type HeardBody as HeardReplyBody, type HeardTurn, type ReportOutcome,
 } from "../../gen/agent__voice__session.effect.vibe"
 import type { ReplyWindow } from "./echo-filter.ts"
+import type { HeardBody } from "./ports.vibe"
 
 module proved {
   import { heardTurn, type ReplyWindow } from "./echo-filter.ts"
@@ -60,7 +61,7 @@ export interface ShouldRespondContext {
   readonly echoCancelled?: boolean
 }
 
-export function replyWindowOf(context: ShouldRespondContext): ReplyWindow {
+function replyWindowOf(context: ShouldRespondContext): ReplyWindow {
   const started = context.turnStartedAfterReplyEndMs
   const startKnown = typeof started === "number" && Number.isFinite(started)
   return {
@@ -97,9 +98,9 @@ export interface BuildVoiceTurnSignalContext extends ShouldRespondContext {
   readonly selfVoiceThreshold?: number
 }
 
-export const SERVER_EOT_SUPPRESS_THRESHOLD = 0.4
-export const BYSTANDER_SUPPRESS_CONFIDENCE = 0.7
-export const AGENT_SELF_VOICE_THRESHOLD = 0.7
+const SERVER_EOT_SUPPRESS_THRESHOLD = 0.4
+const BYSTANDER_SUPPRESS_CONFIDENCE = 0.7
+const AGENT_SELF_VOICE_THRESHOLD = 0.7
 export const AGENT_SELF_VOICE_IMPRINT_THRESHOLD = 0.28
 
 function confidentBystander(speaker: VoiceTurnSpeakerAttribution, known: readonly string[]): boolean {
@@ -113,7 +114,7 @@ export function buildVoiceTurnSignal(transcript: string, context: BuildVoiceTurn
   const wakeWord = context.wakeWordActive === true
   const speaker = context.speaker
   const bystander = speaker !== undefined && !wakeWord && confidentBystander(speaker, context.knownSpeakerEntityIds ?? [])
-  const selfVoice = context.selfVoiceSimilarity !== undefined && isEcho({ ...heard, words: 2, overlapPercent: 100 }) &&
+  const selfVoice = context.selfVoiceSimilarity !== undefined && echoWindowOpen(heard) &&
     context.selfVoiceSimilarity >= (context.selfVoiceThreshold ?? AGENT_SELF_VOICE_THRESHOLD)
   const addressed = wakeWord ? !isNonSpeechVoiceTranscript(transcript) :turnAccepted(heard) && !bystander
   const agentShouldSpeak = addressed && !selfVoice
@@ -175,7 +176,7 @@ export interface EndOfTurnText {
 
 export function endOfTurnText(text: string): EndOfTurnText {
   const collapsed = text.replace(/\s+/g, " ").trim()
-  return { text: collapsed, units: collapsed.length, sendable: collapsed.length >= 1 && collapsed.length <= endOfTurnMaxUnits }
+  return { text: collapsed, units: collapsed.length, sendable: endOfTurnSendable(collapsed.length) }
 }
 
 const decodeScore = Schema.decodeUnknownOption(Schema.Union([
@@ -191,22 +192,25 @@ export function decodeEndOfTurnReply(status: number, body: unknown): EndOfTurnRe
   return score.complete ? "ScoredComplete" : "ScoredIncomplete"
 }
 
+export function endOfTurnAnswer(units: number, status: number, body: unknown): EndOfTurnReply | undefined {
+  return endOfTurnSendable(units) ? decodeEndOfTurnReply(status, body) : undefined
+}
+
 export function heardPath(conversationId: string, messageId: string): string {
   return `/api/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/heard`
 }
 
-export type HeardBody = { readonly heardText: string } | { readonly nothingHeard: true }
+export type { HeardBody }
 
 export function heardBody(heardText: string): HeardBody {
-  const text = heardText.replace(/\s+/g, " ").trim()
-  return text.length > 0 ? { heardText: text } : { nothingHeard: true }
+  return heardText.trim().length > 0 ? { heardText } : { nothingHeard: true }
 }
 
 const decodeRecorded = Schema.decodeUnknownOption(Schema.Struct({
   ok: Schema.Literal(true), messageId: Schema.String, changed: Schema.Boolean,
 }))
 
-export function decodeHeardResult(messageId: string, body: unknown): HeardResult {
+export function decodeHeardResult(messageId: string, body: unknown): HeardReplyBody {
   const found = Option.getOrUndefined(decodeRecorded(body))
   if (found === undefined || found.messageId !== messageId) return "BodyOther"
   return found.changed ? "BodyRecorded" : "BodyUnchanged"

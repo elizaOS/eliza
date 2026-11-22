@@ -21,7 +21,7 @@ public final class CloudRequestPolicy {
   public static final String IDEMPOTENCY_KEY = "Idempotency-Key", IF_MATCH = "If-Match", IF_NONE_MATCH = "If-None-Match", ACCEPT = "Accept", AUTHORIZATION = "Authorization";
   public static final List<String> BASE_HEADERS = List.of(AUTHORIZATION, "Content-Type", "X-Request-ID", "Traceparent", "Tracestate");
 
-  public enum Auth { PUBLIC, KEY_OR_SESSION, SESSION, FRESH_SESSION, STEP_UP }
+  public enum Auth { PUBLIC, KEY_OR_SESSION, SESSION, SESSION_FAMILY, FRESH_SESSION, STEP_UP }
   public enum Refusal { NO_ORIGIN, NOT_LISTED, BODY_TOO_LARGE, HEADER_REFUSED, SIGN_IN_REQUIRED, REAUTH_REQUIRED }
   public enum Handoff { INLINE_BODY, CACHED_BODY, REPLY_TOO_LARGE }
   public enum Scheme { HTTPS, HTTP, OTHER_SCHEME }
@@ -124,7 +124,9 @@ public final class CloudRequestPolicy {
     return true;
   }
 
-  public static boolean sessionOnly(Auth auth) { return auth == Auth.SESSION || auth == Auth.FRESH_SESSION || auth == Auth.STEP_UP; }
+  public static boolean sessionOnly(Auth auth) {
+    return auth == Auth.SESSION || auth == Auth.SESSION_FAMILY || auth == Auth.FRESH_SESSION || auth == Auth.STEP_UP;
+  }
 
   public static CallPlan attachFor(Holding h, Auth auth) {
     if (auth == Auth.PUBLIC) return new Send(new Bare());
@@ -244,13 +246,13 @@ public final class CloudRequestPolicy {
       route(post, api("auth", "mfa", "complete"), pub),
       route(post, api("auth", "mfa", "sms", "send"), pub),
       route(post, api("auth", "refresh"), pub),
-      route(post, api("auth", "logout"), session),
+      route(post, api("auth", "logout"), Auth.SESSION_FAMILY),
       route(post, api("auth", "mfa", "step-up"), session),
       route(get, api("auth", "mfa"), session),
-      route(post, api("auth", "mfa", "totp", "enroll"), stepUp),
-      route(post, api("auth", "mfa", "totp", "confirm"), stepUp),
-      route(post, api("auth", "mfa", "sms", "enroll"), stepUp),
-      route(post, api("auth", "mfa", "sms", "confirm"), stepUp),
+      route(post, api("auth", "mfa", "totp", "enroll"), session),
+      route(post, api("auth", "mfa", "totp", "confirm"), session),
+      route(post, api("auth", "mfa", "sms", "enroll"), session),
+      route(post, api("auth", "mfa", "sms", "confirm"), session),
       route(delete, api("auth", "mfa", ":factorId"), stepUp),
       route(get, api("user", "methods"), session),
       route(post, api("user", "methods", "phone", "code", "send"), session),

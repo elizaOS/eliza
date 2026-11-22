@@ -1,14 +1,11 @@
 // spec/cloud/services/maps.md, "A deployment answers capabilities always, and any other operation only when its provider serves it"; spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"; spec/cloud/services/maps.md, "A tile is never stored, and none is sent without a freshly admitted hold"
-import { type HttpClient, HttpClientRequest } from "effect/http"
-import { billingOf, detailsPrice, geocodePrice, nearbyPrice, offerOf, placeLookup, quoteOf, searchPrice, supportsMode, tilePrice, type MapsProvider as ProviderKind } from "../../gen/cloud__services__maps.effect.vibe"
+import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
+import { billingOf, detailsPrice, geocodePrice, nearbyPrice, offerOf, placeLookup, quoteOf, searchPrice, supportsMode, tilePrice, upstreamBodyCap, upstreamTimeout, type MapsProvider as ProviderKind, type TravelMode as SpecMode } from "../../gen/cloud__services__maps.effect.vibe"
 import type { Micros } from "../../gen/cloud__shared__types.ts"
 import type { MapsSettings as MapsSettingsSchema } from "../profile/profile.schema.ts"
 import { Deployment } from "../profile/profile.vibe"
 import { MapsPlace, MapsRoute, tileUrlTemplate, type Coordinate, type MapsCapabilities, type MapsPlaceResponse, type MapsPlacesResponse, type MapsRouteStep, type MapsRoutesResponse, type MapsTransitDetails, type MapsViewportResponse, type Maneuver, type PlaceDetailsRequest, type ReverseRequest, type RoutesRequest, type TextSearchRequest, type TileAddress, type TravelMode, type ViewportRequest } from "../services/maps.schema.ts"
-import { decoded, metered, Refused, Rejected, routeId, send, specModeOf, type Meter } from "./maps-exchange.vibe"
 import { osmAttribution, osmMapsProvider } from "./maps-osm.vibe"
-
-export { specModeOf }
 
 export type MapsSettings = typeof MapsSettingsSchema.Type
 export type GoogleSettings = Extract<MapsSettings, { readonly provider: "google" }>
@@ -31,6 +28,7 @@ export interface MapsProvider {
 }
 
 export const providerKindOf: Readonly<Record<MapsSettings["provider"], ProviderKind>> = { google: "GoogleMaps", osm: "OsmMaps", none: "NoMaps" }
+export const specModeOf: Readonly<Record<TravelMode, SpecMode>> = { drive: "Drive", walk: "Walk", bicycle: "Bicycle", transit: "Transit" }
 
 export function mapsProvider(settings: MapsSettings | undefined): MapsProvider | undefined {
   if (settings === undefined) return undefined
@@ -77,6 +75,62 @@ export function describeMaps(settings: MapsSettings | undefined, operator: strin
   }
 }
 
+error Refused { code: ProviderRefusal }
+error Rejected { status: number }
+error Lost { cause: string }
+type Stop = Refused | Rejected | Lost
+type Meter = { observed: Micros }
+type Got = { readonly status: number; readonly bytes: Uint8Array; readonly contentType: string | undefined }
+
+effect function capped(response: HttpClientResponse.HttpClientResponse): Uint8Array!(Refused | Lost) {
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for try (const chunk of Stream.mapError(response.stream, (cause) => new Lost({ cause: cause._tag }))) {
+    size += chunk.length
+    if (size > upstreamBodyCap) break
+    chunks.push(chunk)
+  }
+  if (size > upstreamBodyCap) throw new Refused({ code: "ProviderUnavailable" })
+  const bytes = new Uint8Array(size)
+  chunks.reduce((offset, chunk) => { bytes.set(chunk, offset); return offset + chunk.length }, 0)
+  return bytes
+}
+
+effect function send(meter: Meter, request: HttpClientRequest.HttpClientRequest, price: Micros): Got!Stop!HttpClient.HttpClient {
+  const exchange = effect {
+    const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect (cause) => { throw new Lost({ cause: cause._tag }) }
+    const billing = billingOf(response.status)
+    if (billing === "CallBilled") meter.observed += price
+    if (billing !== "CallBilled") {
+      Stream.runHead(response.stream) catch () => undefined
+      if (billing === "CallNotBilled") throw new Rejected({ status: response.status })
+      throw new Lost({ cause: `status ${response.status}` })
+    }
+    return { status: response.status, bytes: try capped(response), contentType: response.headers["content-type"] }
+  }
+  return try timeoutOrElse(exchange, { duration: upstreamTimeout, orElse: () => fail(new Lost({ cause: "timeout" })) })
+}
+
+effect function decoded<A>(got: Got, schema: Schema.Decoder<A>): A!Refused {
+  if (got.status !== 200) throw new Refused({ code: "ProviderInvalidResponse" })
+  const text = new TextDecoder().decode(got.bytes)
+  const json = try Effect.try({ try: () => JSON.parse(text) as unknown, catch: () => new Refused({ code: "ProviderInvalidResponse" }) })
+  return Schema.decodeUnknownEffect(schema)(json) catch effect () => { throw new Refused({ code: "ProviderInvalidResponse" }) }
+}
+
+effect function metered<A>(work: (meter: Meter) => A!Stop!MapsContext): MapsReply<A>!!MapsContext {
+  const meter: Meter = { observed: 0 }
+  const answered = effect {
+    const value = try work(meter)
+    return { kind: "answered", value, observedMicros: meter.observed } satisfies MapsReply<A>
+  }
+  return answered catch (stop): MapsReply<A> => match (stop) {
+    when Refused: { kind: "refused", code: stop.code, observedMicros: meter.observed };
+    when Rejected: { kind: "refused", code: "ProviderUnavailable", observedMicros: meter.observed };
+    when Lost: { kind: "unknown", cause: stop.cause };
+  }
+}
+
 schema LatLng { latitude: number; longitude: number }
 schema DisplayName { text: string }
 schema OpeningHours { weekdayDescriptions?: Array<string> }
@@ -118,8 +172,7 @@ const vehicles: Readonly<Record<string, string>> = {
 }
 const isPlace = Schema.is(MapsPlace)
 const isRoute = Schema.is(MapsRoute)
-const geocodeOutages: Readonly<Record<string, number>> = { OVER_QUERY_LIMIT: 429, REQUEST_DENIED: 403, UNKNOWN_ERROR: 500 }
-const tileSessions = new WeakMap<object, { readonly token: string; readonly expiresAt: number; readonly format: MapsTile["contentType"] }>()
+const tileSessions = new Map<string, { readonly token: string; readonly expiresAt: number; readonly format: MapsTile["contentType"] }>()
 
 function covered(point: Coordinate): boolean {
   return Math.abs(point.latitude) <= world[3]
@@ -185,6 +238,16 @@ function simplified(geometry: ReadonlyArray<Coordinate>, steps: ReadonlyArray<Ma
     return kept.length > 10_000 && kept.length > anchors.length ? pass(tolerance * 2) : kept
   }
   return geometry.length <= 2 ? [...geometry] : pass(5)
+}
+
+function routeId(parts: string): string {
+  let low = 0x811c9dc5
+  let high = 0x01000193
+  for (let index = 0; index < parts.length; index += 1) {
+    low = Math.imul(low ^ parts.charCodeAt(index), 0x01000193) >>> 0
+    high = Math.imul(high ^ parts.charCodeAt(parts.length - 1 - index), 0x01000193) >>> 0
+  }
+  return `route_${low.toString(16).padStart(8, "0")}${high.toString(16).padStart(8, "0")}`
 }
 
 function transitOf(reply: TransitReply | undefined): MapsTransitDetails | undefined {
@@ -254,11 +317,6 @@ export function googleMapsProvider(settings: GoogleSettings): MapsProvider {
     const request = HttpClientRequest.get(url("maps", "/maps/api/geocode/json"), { urlParams: { ...params, key: try apiKey() } })
     const reply = try decoded(try send(meter, request, geocodePrice), GeocodeReply)
     if (reply.status === "ZERO_RESULTS") return []
-    const outage = geocodeOutages[reply.status]
-    if (outage !== undefined && billingOf(outage) === "CallNotBilled") {
-      meter.observed -= geocodePrice
-      throw new Rejected({ status: outage })
-    }
     if (reply.status !== "OK") throw new Refused({ code: reply.status === "INVALID_REQUEST" ? "ProviderInvalidResponse" : "ProviderUnavailable" })
     return try places((reply.results ?? []).map((result) => ({
       id: result.place_id, formattedAddress: result.formatted_address, displayName: { text: result.formatted_address.split(",")[0].trim() }, location: { latitude: result.geometry.location.lat, longitude: result.geometry.location.lng },
@@ -269,16 +327,15 @@ export function googleMapsProvider(settings: GoogleSettings): MapsProvider {
   const single = (place: MapsPlace | undefined): MapsPlaceResponse => ({ providerId: "google", attribution: googleAttribution, place: place ?? null })
 
   effect function tileSession(meter: Meter, renew: boolean) {
-    const deployment = try Deployment
-    const key = try orDie(deployment.secret(settings.apiKeyEnv))
+    const key = try apiKey()
     const now = try Clock.currentTimeMillis
-    const held = tileSessions.get(deployment)
+    const held = tileSessions.get(base)
     if (!renew && held !== undefined && held.expiresAt - 3_600_000 > now) return held
     const request = HttpClientRequest.post(url("tile", "/v1/createSession"), { urlParams: { key } }).pipe(
       HttpClientRequest.bodyText(JSON.stringify({ mapType: "roadmap", language: "en-US", region: "US", scale: "scaleFactor2x", highDpi: true }), "application/json"))
     const reply = try decoded(try send(meter, request, 0), SessionReply)
     const session = { token: reply.session, expiresAt: Number(reply.expiry) * 1000, format: reply.imageFormat === "jpeg" ? "image/jpeg" : reply.imageFormat === "webp" ? "image/webp" : "image/png" } as const
-    tileSessions.set(deployment, session)
+    tileSessions.set(base, session)
     return session
   }
 

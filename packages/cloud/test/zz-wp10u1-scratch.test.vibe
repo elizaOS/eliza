@@ -57,5 +57,5 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
         entries: 1
       }
     ))
-  }), 30_000)
+  }))
 })

@@ -1,4 +1,3 @@
-// spec/os/android/secureStore.md, "A slot is absent only when none of its files exists, and an unreadable slot is never treated as absent"; spec/os/android/secureStore.md, "A value above the current limit may only shrink a value stored under an older, larger limit"
 package ai.eliza.plugins.securestore.nativeonly;
 
 import android.content.Context;
@@ -35,6 +34,9 @@ public final class NativeSecureStore {
     private static final Object LOCK = new Object();
     private static final String CLOCK_DEVICE_SLOT = SecureSlotPolicy.CLOCK_DEVICE_SLOT;
     private static long generation;
+    private static final String[] SNAPSHOT_KEYS = {
+        "runtime.active_server", "session.device_auth", "session.cloud_token", "runtime.agent_profiles", CLOCK_DEVICE_SLOT
+    };
     private final File directory;
     private final SecureSlotPolicy policy;
 
@@ -137,12 +139,10 @@ public final class NativeSecureStore {
             throw new IllegalArgumentException("Secure-store key is not allowed");
     }
     public long getGeneration() { synchronized (LOCK) { return generation; } }
-    public Snapshot snapshot(String... keys) throws Exception {
-        for (String key : keys) requireKey(key, SecureSlotPolicy.SlotRequest.ReadRequest);
+    public Snapshot snapshot() throws Exception {
         synchronized (LOCK) {
             Map<String, String> values = new LinkedHashMap<>();
-            values.put(CLOCK_DEVICE_SLOT, readValue(CLOCK_DEVICE_SLOT));
-            for (String key : keys) values.put(key, readValue(key));
+            for (String key : SNAPSHOT_KEYS) values.put(key, readValue(key));
             return new Snapshot(directory.getCanonicalFile(), generation, values);
         }
     }

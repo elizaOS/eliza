@@ -15,7 +15,7 @@ device does with a claimed request and its execution journal are
 
 The routes are `POST /api/client-devices/{register,revoke}`,
 `GET /api/client-devices/context`, `GET /api/client-devices/proposals` and
-`POST /api/client-devices/proposals/:id/{decide,claim,receipt,reconcile,read-completion,cancel-read-completion}`.
+`POST /api/client-devices/proposals/:id/{decision,claim,receipt,reconcile,read-completion,cancel-read-completion}`.
 The shell checks the device key in constant time and passes the sender as a
 session owner: the agent's id, the owner's user id and the installation id.
 A refused event answers 409 and changes nothing; a store failure answers 503.
@@ -250,6 +250,7 @@ pure def retainedHint(d: DeviceRequest): CompletionHint = { proposalId: d.propos
 pure def completionDeadline(d: DeviceRequest): int = if (d.claimedAt + completionAfterClaimMs < d.createdAt + completionAfterOfferMs) d.claimedAt + completionAfterClaimMs else d.createdAt + completionAfterOfferMs
 pure def completionOpen(d: DeviceRequest): bool = d.session.now < completionDeadline(d)
 pure val hintValues = Set({ proposalId: "p1", digest: "d1", attemptId: 1, requestId: "r1", conversationId: "c1", inReplyTo: "m1" }, { proposalId: "p1", digest: "d1", attemptId: 1, requestId: "r1", conversationId: "c2", inReplyTo: "m1" }, { proposalId: "p1", digest: "d1", attemptId: 2, requestId: "r1", conversationId: "c1", inReplyTo: "m1" })
+pure val weight_claimCompletion = 6
 pure def canClaimCompletion(d: DeviceRequest, by: S::SessionOwner, hint: CompletionHint): bool = exactBinding(d, by, hint.digest) and hint == retainedHint(d) and d.phase == Receipted({ reported: ReportedApplied }) and completionOpen(d) and (d.completion == CompletionPending or d.completion == CompletionPrepared or d.completion == CompletionDelivered)
 pure def claimCompletion(d: DeviceRequest, by: S::SessionOwner, hint: CompletionHint): DeviceRequest = if (d.completion == CompletionPending) { ...d, completion: CompletionClaimed, inferences: d.inferences + 1 } else d
 pure def canPrepareCompletion(d: DeviceRequest): bool = d.completion == CompletionClaimed and completionOpen(d)
@@ -269,6 +270,7 @@ failure after the claim ends cancelled when the turn was aborted and unknown
 otherwise; neither admits a new inference.
 
 ```quint
+pure val weight_failCompletion = 2
 pure def canFailCompletion(d: DeviceRequest): bool = d.completion == CompletionClaimed
 pure def failCompletion(d: DeviceRequest, aborted: bool): DeviceRequest = { ...d, completion: if (aborted) CompletionCancelled else CompletionUnknown }
 pure def alwaysOneInferencePerCompletion(d: DeviceRequest): bool = d.inferences >= 0 and d.inferences <= 1 and (completionStarted(d.completion) implies d.inferences == 1) and ((d.completion == NoCompletion or d.completion == CompletionPending) implies d.inferences == 0)

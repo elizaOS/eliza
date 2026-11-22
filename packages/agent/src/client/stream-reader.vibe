@@ -20,7 +20,7 @@ export type ReplyOutcome =
 
 error StreamBroken { cause: unknown }
 
-const decodeFrame = Schema.decodeUnknownOption(Schema.fromJsonString(ReplyFrame))
+const decodeFrame = Schema.decodeUnknownOption(Schema.fromJsonString(ReplyFrame), { onExcessProperty: "error" })
 const malformed: ReplyOutcome = { kind: "Failed", code: REPLY_STREAM_PROTOCOL, message: "A reply stream frame does not match the reply protocol" }
 const afterEnd: ReplyOutcome = { kind: "Failed", code: REPLY_STREAM_PROTOCOL, message: "A reply stream frame came after its terminal frame" }
 
@@ -52,6 +52,7 @@ function field(line: string): { readonly name: string; readonly value: string } 
 
 effect function read(bytes: AsyncIterable<Uint8Array>, hooks: ReplyStreamHooks): ReplyOutcome!! {
   let shown: number[] = []
+  let provisional = false
   let data: string[] | undefined
   let ending: ReplyOutcome | undefined
   let refused: ReplyOutcome | undefined
@@ -70,7 +71,8 @@ effect function read(bytes: AsyncIterable<Uint8Array>, hooks: ReplyStreamHooks):
       case "token": {
         const wire = textFrame(frame)
         shown = applyFrame(shown, wire)
-        hooks.onPreview?.(textOf(shown), markOf(wire))
+        provisional = markOf(wire) || (wire.tag === "Token" && provisional)
+        hooks.onPreview?.(textOf(shown), provisional)
         break
       }
       case "status": hooks.onStatus?.(frame.activity); break

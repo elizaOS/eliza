@@ -141,7 +141,13 @@ it.effect("Each broken rule refuses the profile by name (spec/os/build/androidHo
   try Effect.try(() => assert.deepStrictEqual(seen, Object.fromEntries(Object.keys(cases).map((refusal) => [refusal, refusal]))))
   const partial = try refusalDetail({ ...PROFILE, signing: { storeFile: "APP_STORE", keyAlias: "APP_KEY_ALIAS" } })
   try Effect.try(() => assert.match(partial, /missing storePassword, keyPassword$/))
+  const cloudAuth = defined({ ...PROFILE, agent: undefined, agentService: undefined, osModules: [{ module: "cloud-auth" }], modules: [] })
   const more = {
+    cloudAuthWithoutCapacitor: try outcome(cloudAuth),
+    cloudAuthWithAlias: try outcome({ ...cloudAuth, modules: PROFILE.modules.map((module) => ({ ...module, name: "capacitor-alias" })) }),
+    cloudAuthTestsOnly: try outcome({ ...cloudAuth, osModules: [{ module: "cloud-auth", sources: ["src/androidTest/java"] }] }),
+    cloudAuthWithTransitiveCapacitor: try outcome({ ...cloudAuth, modules: PROFILE.modules.map((module) => ({ ...module, appDependency: false })) }),
+    cloudAuthMainSourcesOnly: try outcome({ ...cloudAuth, osModules: [{ module: "cloud-auth", sources: ["src/main/java"] }] }),
     relativeRoot: try outcome(PROFILE, { ...SETTING, osRoot: "vendor/eliza/packages/os" }),
     moduleWithoutNeeds: try outcome({ ...PROFILE, osModules: [{ module: "agent-service" }] }),
     emptyArgument: try outcome({ ...PROFILE, admission: [{ name: "verifyDeployment", command: ["node", ""], directory: consumer(".") }] }),
@@ -151,6 +157,11 @@ it.effect("Each broken rule refuses the profile by name (spec/os/build/androidHo
     badLaunchHook: try outcome({ ...PROFILE, agentService: { launchHook: { class: "example..Launch", method: "configure" } } }),
   }
   try Effect.try(() => assert.deepStrictEqual(more, {
+    cloudAuthWithoutCapacitor: "ProjectsInvalid",
+    cloudAuthWithAlias: "ProjectsInvalid",
+    cloudAuthTestsOnly: "ProjectsInvalid",
+    cloudAuthWithTransitiveCapacitor: "HostAdmitted",
+    cloudAuthMainSourcesOnly: "HostAdmitted",
     relativeRoot: "OutputMisplaced",
     moduleWithoutNeeds: "OsModulesInvalid",
     emptyArgument: "ExtrasInvalid",
@@ -240,6 +251,15 @@ it.effect("Keep my schema-1 profile readable through one fixed map: profiles sha
       launchHook: { class: "ProductAgentPlugin", method: "configureEnvironment" },
     },
     admission: ["settingsAdmission1: node scripts/android-host.mjs --check-identity", "stageLocalAgentSources: node scripts/stage-local-agent-sources.mjs"],
+  }))
+  const relocated = try admitHostProfile({
+    ...resident,
+    modules: resident.modules.map((module) => module.name === "eliza-cloud-auth"
+      ? { ...module, source: upstream("packages/os/android/cloud-auth") }
+      : module),
+  }, SETTING)
+  try Effect.try(() => assert.deepStrictEqual(relocated.osModules.find(({ module }) => module === "cloud-auth"), {
+    module: "cloud-auth", directory: `${SETTING.osRoot}/android/cloud-auth`, project: "eliza-cloud-auth", sources: [],
   }))
   const dropped = try refusalDetail({ ...resident, preserveRuntimeBytes: true, residentHost: { ...resident.residentHost, sockets: { agent: "example.agent.v1" }, classes: ["Inbox"] } })
   try Effect.try(() => assert.match(dropped, /: preserveRuntimeBytes, residentHost\.classes, residentHost\.sockets$/))

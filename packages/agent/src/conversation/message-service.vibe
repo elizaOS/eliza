@@ -5,13 +5,17 @@ import {
   executePlannedToolCall, ModelType, RunTerminalOwner, withActionGatePolicy, withRoomDeliverySettlement,
 } from "@elizaos/core"
 import type { BindingView, FailureKind } from "../models/binding.vibe"
-import { heardView } from "./heard.vibe"
+import { textForTurn } from "./heard.vibe"
+import { ModelRefusal } from "../models/chat.vibe"
 import { readTurnContext } from "./turn-context.schema.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 type ContentPart = Exclude<NonNullable<ChatMessage["content"]>, string>[number]
 
 export type AccountFailureSince = (since: number) => FailureKind | undefined
+export interface AgentTurnProcessingOptions extends MessageProcessingOptions {
+  readonly taskContext?: string
+}
 
 export const accountFailureOf = (read: () => BindingView): AccountFailureSince => (since) => {
   const view = read()
@@ -65,8 +69,7 @@ export function ownerMessageService(
 
 function spoken(runtime: AgentRuntime, memory: Memory): string {
   if (memory.entityId !== runtime.agentId) return memory.content.text ?? ""
-  const { heard, unheard } = heardView(memory)
-  return unheard === "" ? heard : `${heard}\n[The person did not hear the rest of this reply: ${unheard}]`
+  return textForTurn(memory) ?? ""
 }
 
 function partOf(media: Media): ContentPart {
@@ -94,7 +97,7 @@ async function respond(
   actionGate: (action: { name: string }) => string | undefined,
   accountFailure: AccountFailureSince,
   callback?: HandlerCallback,
-  options?: MessageProcessingOptions,
+  options?: AgentTurnProcessingOptions,
 ): Promise<MessageProcessingResult> {
   const asked = message.content.text ?? ""
   if (!asked.trim() && (message.content.attachments ?? []).length === 0)
@@ -121,7 +124,7 @@ async function respond(
           examples.flatMap(({ name, content }) => content.text ? [`${name}: ${content.text}`] : []).join("\n"))
           .filter(Boolean)
         const system = [character.system, ...(character.bio ?? []), ...(character.style?.all ?? []),
-          ...(character.style?.chat ?? []), ...examples, contextNote(message)].filter(Boolean).join("\n\n")
+          ...(character.style?.chat ?? []), ...examples, contextNote(message), options?.taskContext].filter(Boolean).join("\n\n")
         const text = await runtime.useModel(ModelType.TEXT_LARGE, {
           system, messages, maxTokens: 1024, signal,
           ...(onStreamChunk === undefined ? {} : {
@@ -150,13 +153,15 @@ async function respond(
           : { status: "denied" as const, reason: "reply_not_admitted", effects: terminal.effects }
         await terminal.request(outcome)
         return { didRespond: result.success, responseContent: result.success ? { text: replyText } : null, responseMessages, actionResults: [result], outcome }
-      } catch {
-        const kind = signal.aborted ? undefined : accountFailure(began)
+      } catch (error: unknown) {
+        const kind = signal.aborted ? undefined : error instanceof ModelRefusal ? error.failureKind : accountFailure(began)
         const outcome = signal.aborted
           ? { status: "cancelled" as const, reason: "aborted", effects: terminal.effects }
           : { status: "failed" as const, error: { kind: kind ?? "generation", transient: kind === undefined, message: "The reply could not be generated" }, effects: terminal.effects }
+        const content = { text: written, ...(kind === undefined ? {} : { failureKind: kind }) }
+        if (kind !== undefined && callback !== undefined) responseMessages.push(...await callback(content))
         await terminal.request(outcome)
-        return { didRespond: false, responseContent: { text: written }, responseMessages, outcome }
+        return { didRespond: false, responseContent: content, responseMessages, outcome }
       } finally {
         runtime.endRun()
       }

@@ -23,7 +23,7 @@ export async function reserveUsage(db: Client, input: Usage): Promise<Reservatio
   if (!owner) return { kind: "inactive" }
   const key: HoldKey = {
     service: input.service === "inference" ? "MeteredInference" : "MeteredSpeech",
-    caller: input.account, requestId: input.requestId, part: input.part ?? { tag: "WholeRequest" }
+    caller: owner.organization_id, requestId: input.requestId, part: input.part ?? { tag: "WholeRequest" }
   }
   const admission = effect {
     const ticket = try reserve({ organizationId: owner.organization_id, userId: input.account }, key, input.quoteMicros)

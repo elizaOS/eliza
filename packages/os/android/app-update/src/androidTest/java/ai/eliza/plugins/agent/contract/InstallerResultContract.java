@@ -6,9 +6,14 @@ public final class InstallerResultContract {
  /** A plan that is still fresh: these cases are about the install, not commit freshness. */
  private static final UpdateJournal.FreshnessCheck FRESH=(plan,generation)->{};
  private InstallerResultContract() {}
+ private static void admitHeld(UpdateJournal journal,UpdateJournal.Plan plan)throws Exception {
+  journal.begin(plan,plan.baseline,journal.read().channelGeneration);
+  journal.requestHold(plan.id);
+  journal.acknowledgeHold(plan.id,plan.candidate);
+ }
  private static void check(boolean condition,String message){if(!condition)throw new AssertionError(message);}
  public static void run(Context app,UpdateJournal journal,UpdateJournal.Plan plan,String target,String action)throws Exception {
-  GrantedHolds.admitHeld(journal,plan);
+  admitHeld(journal,plan);
   android.content.pm.PackageInstaller installer=app.getPackageManager().getPackageInstaller();
   android.content.pm.PackageInstaller.SessionParams params=new android.content.pm.PackageInstaller.SessionParams(android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
   params.setAppPackageName(target);
@@ -63,7 +68,7 @@ public final class InstallerResultContract {
   * timeout have passed, so a later
   * release can install. Needs API 29 or later. */
  public static void runUncommittedSession(Context app,UpdateJournal journal,UpdateJournal.Plan plan,String target)throws Exception {
-  GrantedHolds.admitHeld(journal,plan);
+  admitHeld(journal,plan);
   android.content.pm.PackageInstaller installer=app.getPackageManager().getPackageInstaller();
   android.content.pm.PackageInstaller.SessionParams params=new android.content.pm.PackageInstaller.SessionParams(android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
   params.setAppPackageName(target);
@@ -82,7 +87,7 @@ public final class InstallerResultContract {
    UpdateJournal.Snapshot after=PackageInstallCoordinator.reconcilePending(app,target,journal,1);
    check(!PackageInstallCoordinator.hasPendingSession(app,target,session),"Uncommitted session was kept");
    check(after.phase==UpdateJournal.Phase.IDLE&&UpdateJournal.INSTALL_RELEASED.equals(after.reason)&&after.quarantine.isEmpty(),"Uncommitted session was not released");
-   GrantedHolds.admit(journal,plan);check(journal.read().phase==UpdateJournal.Phase.VERIFIED,"Released plan was not admitted again");
+   journal.begin(plan,plan.baseline,0);check(journal.read().phase==UpdateJournal.Phase.VERIFIED,"Released plan was not admitted again");
   } finally {try{installer.abandonSession(session);}catch(Exception ignored){}}
  }
 }

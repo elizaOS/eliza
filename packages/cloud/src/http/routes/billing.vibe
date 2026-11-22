@@ -2,11 +2,12 @@
 import type { Area } from "../routes.vibe"
 import { routes as entitlements } from "../../billing/entitlements.vibe"
 import { routes as commands, sweeps as commandSweeps } from "../../billing/commands.vibe"
+import { routes as upgrades, sweeps as upgradeSweeps } from "../../billing/upgrade-commands.vibe"
+import { routes as downgrades, sweeps as downgradeSweeps } from "../../billing/downgrade-commands.vibe"
 import { routes as snapshot } from "../../billing/snapshot.vibe"
 import { routes as invoices } from "../../billing/invoices.vibe"
-import { sweeps as allowanceSweeps } from "../../billing/allowance.vibe"
+import { routes as grants } from "../../billing/grant-codes.vibe"
 import { sweeps as subscriptionSweeps } from "../../billing/subscriptions.vibe"
-import { routes as grantCodes } from "../../billing/grant-codes.vibe"
-import { routes as planChanges, sweeps as planChangeSweeps } from "../../billing/plan-change.vibe"
+import { sweeps as allowanceSweeps } from "../../billing/allowance.vibe"
 
-export const area: Area = { routes: [...entitlements, ...snapshot, ...invoices, ...commands, ...grantCodes, ...planChanges], sweeps: [...commandSweeps, ...allowanceSweeps, ...subscriptionSweeps, ...planChangeSweeps] }
+export const area: Area = { routes: [...entitlements, ...snapshot, ...invoices, ...grants, ...commands, ...upgrades, ...downgrades], sweeps: [...commandSweeps, ...upgradeSweeps, ...downgradeSweeps, ...subscriptionSweeps, ...allowanceSweeps] }

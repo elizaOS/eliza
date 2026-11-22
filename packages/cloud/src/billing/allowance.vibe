@@ -1,11 +1,12 @@
 // spec/cloud/billing/allowance.md, "Story: Spend my plan's allowance before my credits, and never carry it over"; spec/cloud/billing/allowance.md, "Story: Get more allowance when I upgrade mid-period"; spec/cloud/billing/allowance.md, "Story: Lose the allowance of a refunded invoice, and get it back if I win the dispute"
-import { enabled, type ClawbackCause, type CloseReason, type Event, type Period, type PeriodPhase, type Rejected } from "../../gen/cloud__billing__allowance.effect.vibe"
+import { enabled, type ClawbackCause, type CloseReason, type Event, type Period, type Rejected } from "../../gen/cloud__billing__allowance.effect.vibe"
 import type { PlanKey } from "../../gen/cloud__billing__plans.effect.vibe"
 import type { Sweep } from "../http/routes.vibe"
-import { Deployment } from "../profile/profile.vibe"
-import { periodRows, stepPeriod } from "../shared/metering.vibe"
+import { Deployment, type CloudEnvironment } from "../profile/profile.vibe"
+import { allowanceStatus, periodRows, stepPeriod, type WireAllowanceState } from "../shared/metering.vibe"
 import { loadRow, RowCorrupt, stepRow, type RowConflict } from "../store/rows.vibe"
 import { type Row, Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
+import { existingRenewalPeriod, InvalidAllowancePeriod, renewalKey } from "./stripe-ledger.vibe"
 import { parsePlanKey } from "./plans.vibe"
 import { readPolicy, type PolicyUnreadable } from "./policy.vibe"
 
@@ -34,11 +35,11 @@ export interface GrantTerm {
 }
 
 export type Closing =
-  | { readonly kind: "SubscriptionEnded" }
+  | { readonly kind: "SubscriptionEnded"; readonly environment?: CloudEnvironment }
   | { readonly kind: "SupersededByPaid" }
   | { readonly kind: "GrantRevoked"; readonly grantId: string }
 
-export type WireAllowanceState = "open" | "expired" | "closed" | "clawed_back"
+export type { WireAllowanceState }
 
 export interface AllowanceView {
   readonly state: WireAllowanceState
@@ -51,10 +52,6 @@ export interface AllowanceView {
   readonly clawedBack: number
   readonly periodStart: number
   readonly resetsAt: number
-}
-
-export function renewalKey(environment: string, invoiceId: string): string {
-  return `renewal/${environment}/${invoiceId}`
 }
 
 export function grantMonthKey(grantId: string, month: number): string {
@@ -97,23 +94,12 @@ export function grantMonths(grant: GrantTerm, now: number): ReadonlyArray<GrantM
   return months
 }
 
-const wireStates: Readonly<Record<Exclude<PeriodPhase, "PeriodUnopened">, WireAllowanceState>> = {
-  PeriodOpen: "open",
-  PeriodExpired: "expired",
-  PeriodClosed: "closed",
-  PeriodClawedBack: "clawed_back"
-}
-
 function opening(organizationId: string, now: number) {
   return (period: Period) => ({ organization_id: organizationId, status: "open", period_start: period.startsAt, period_end: period.endsAt, updated_at: now })
 }
 
 effect function lockOrganization(tx: Tx, organizationId: string) {
   try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId])
-}
-
-effect function lockOwnerOf(tx: Tx, key: string) {
-  try tx.query("SELECT o.id FROM organizations o JOIN allowance_periods p ON o.id = p.organization_id WHERE p.key = $1 FOR UPDATE OF o", [key])
 }
 
 effect function stepWhenEnabled(tx: Tx, key: string, event: Event, now: number): PeriodStep!AllowanceFailure {
@@ -128,9 +114,15 @@ effect function openOnce(tx: Tx, organizationId: string, key: string, event: Eve
   return { key, period: (try stepRow(tx, periodRows, key, event, opening(organizationId, now))).state, moved: true }
 }
 
-export effect function openRenewal(tx: Tx, organizationId: string, invoice: RenewalInvoice, now: number): PeriodStep!AllowanceFailure!Deployment {
+export effect function openRenewal(tx: Tx, organizationId: string, invoice: RenewalInvoice, now: number): PeriodStep!(AllowanceFailure | InvalidAllowancePeriod)!Deployment {
   const deployment = try Deployment
   try lockOrganization(tx, organizationId)
+  const existing = try existingRenewalPeriod(tx, organizationId, invoice.invoiceId, deployment.environment)
+  if (existing !== undefined) {
+    if (existing.period.startsAt !== invoice.startsAt || existing.period.endsAt !== invoice.endsAt)
+      throw new InvalidAllowancePeriod({ key: existing.key })
+    return { ...existing, moved: false }
+  }
   return try openOnce(tx, organizationId, renewalKey(deployment.environment, invoice.invoiceId), { type: "openRenewal", ...invoice }, now)
 }
 
@@ -151,7 +143,7 @@ export effect function openGrantMonth(tx: Tx, organizationId: string, grant: Pic
 
 function closingPrefix(closing: Closing): string {
   switch (closing.kind) {
-    case "SubscriptionEnded": return "renewal/"
+    case "SubscriptionEnded": return closing.environment === undefined ? "renewal/" : renewalKey(closing.environment, "")
     case "SupersededByPaid": return "grant/"
     case "GrantRevoked": return `grant/${closing.grantId}/`
     default: {
@@ -175,12 +167,23 @@ export effect function closePeriods(tx: Tx, organizationId: string, closing: Clo
   return closed
 }
 
-export effect function adjustForUpgrade(tx: Tx, organizationId: string, target: PlanKey, effectiveAt: number, reviewed: number, now: number): PeriodStep!AllowanceFailure {
+interface UpgradePeriod {
+  readonly periodStart: number
+  readonly periodEnd: number
+  readonly sourcePlanKey: PlanKey
+}
+
+export effect function adjustForUpgrade(tx: Tx, organizationId: string, target: PlanKey, effectiveAt: number, reviewed: number, now: number, period?: UpgradePeriod): PeriodStep!AllowanceFailure {
   try lockOrganization(tx, organizationId)
-  const key = toText((try tx.query(
-    "SELECT key FROM allowance_periods WHERE organization_id = $1 AND starts_with(key, 'renewal/') AND status IN ('open', 'expired') AND period_start <= $2 AND $2 < period_end ORDER BY period_end DESC, key LIMIT 1 FOR UPDATE",
-    [organizationId, effectiveAt]
-  ))[0]?.key)
+  const rows = try tx.query(
+    `SELECT key FROM allowance_periods WHERE organization_id = $1 AND status IN ('open', 'expired')
+      AND period_start <= $2 AND $2 < period_end
+      AND (starts_with(key, 'renewal/') OR ($3::bigint IS NOT NULL AND starts_with(key, 'invoice/')))
+      AND ($3::bigint IS NULL OR (period_start = $3 AND period_end = $4 AND state->>'planKey' = $5))
+      ORDER BY period_end DESC, key LIMIT 2 FOR UPDATE`,
+    [organizationId, effectiveAt, period?.periodStart ?? null, period?.periodEnd ?? null, period?.sourcePlanKey ?? null]
+  )
+  const key = toText((period !== undefined && rows.length !== 1 ? undefined : rows[0])?.key)
   const step = key === undefined
     ? { key: "", period: periodRows.initial, moved: false }
     : try stepWhenEnabled(tx, key, { type: "adjustForUpgrade", target, effectiveAt, reviewed, now }, now)
@@ -190,16 +193,19 @@ export effect function adjustForUpgrade(tx: Tx, organizationId: string, target: 
   return step
 }
 
-export effect function clawBackInvoice(tx: Tx, invoiceId: string, cause: Exclude<ClawbackCause, "NoClawback">, now: number): PeriodStep!AllowanceFailure!Deployment {
-  const key = renewalKey((try Deployment).environment, invoiceId)
-  try lockOwnerOf(tx, key)
-  return try stepWhenEnabled(tx, key, { type: "clawBack", cause }, now)
+export type InvoiceAllowanceChange = Extract<Event, { readonly type: "clawBack" | "restore" }>
+
+interface InvoiceOwner {
+  readonly organizationId: string
+  readonly invoiceId: string
 }
 
-export effect function restoreInvoice(tx: Tx, invoiceId: string, now: number): PeriodStep!AllowanceFailure!Deployment {
-  const key = renewalKey((try Deployment).environment, invoiceId)
-  try lockOwnerOf(tx, key)
-  return try stepWhenEnabled(tx, key, { type: "restore", now }, now)
+export effect function changeInvoiceAllowance(tx: Tx, owner: InvoiceOwner, change: InvoiceAllowanceChange, now: number): PeriodStep!(AllowanceFailure | InvalidAllowancePeriod)!Deployment {
+  const environment = (try Deployment).environment
+  try lockOrganization(tx, owner.organizationId)
+  const existing = try existingRenewalPeriod(tx, owner.organizationId, owner.invoiceId, environment)
+  if (existing === undefined) return { key: renewalKey(environment, owner.invoiceId), period: periodRows.initial, moved: false }
+  return try stepWhenEnabled(tx, existing.key, change, now)
 }
 
 export effect function allowanceView(tx: Tx, organizationId: string, now: number): (AllowanceView | null)!(StoreFailure | RowCorrupt) {
@@ -209,9 +215,10 @@ export effect function allowanceView(tx: Tx, organizationId: string, now: number
   ))[0]?.key)
   if (key === undefined) return null
   const period = (try loadRow(tx, periodRows, key, false)).state
-  if (period.phase === "PeriodUnopened") throw new RowCorrupt({ table: periodRows.table, key, cause: "an allowance row holds an unopened period" })
+  const state = allowanceStatus(period.phase)
+  if (state === null) throw new RowCorrupt({ table: periodRows.table, key, cause: "an allowance row holds an unopened period" })
   return {
-    state: wireStates[period.phase],
+    state,
     granted: period.granted,
     adjustment: period.adjustment,
     available: period.available,

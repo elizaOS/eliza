@@ -90,7 +90,7 @@ function routeFor(owner: NoticeOwnerIdentity | null, versionId: string): Workflo
   return { scope: SCOPE, origin: owner?.origin ?? "", ownerId: owner?.ownerId ?? "", agentId: owner?.agentId ?? "", workflowId: "w1", runId: "r1", versionId }
 }
 
-it.effect("An approval notice has one identity per approval, bound to its exact run route", () => effect {
+it.effect('An approval notice has one identity per approval, bound to its exact run route (spec/os/android/noticeRoutes.md, "An approval notice has one identity per approval, bound to its exact run route")', () => effect {
   const route = routeFor(noticeOwnerOf({ userId: "u1", organizationId: "org-1" }, "agent-1"), "v1")
   const first = try promise(() => workflowApprovalNoticeIdentity(route, "p1"))
   const nextVersion = try promise(() => workflowApprovalNoticeIdentity({ ...route, versionId: "v2" }, "p1"))
@@ -105,7 +105,7 @@ it.effect("An approval notice has one identity per approval, bound to its exact 
   })
 })
 
-it.effect("Keep my notices to the account I am signed in to", () => effect {
+it.effect('Keep my notices to the account I am signed in to (spec/os/android/noticeRoutes.md, "Story: Keep my notices to the account I am signed in to")', () => effect {
   const device = phone()
   const client = noticesClient({ plugin: plugin(device) })
   const owner = noticeOwnerOf({ userId: "u1", organizationId: "org-1" }, "agent-1")
@@ -148,7 +148,7 @@ it.effect("Keep my notices to the account I am signed in to", () => effect {
   }))
 })
 
-it.effect("A tap opens only its exact route, in the account it belongs to, and only with the current tap token", () => effect {
+it.effect('A tap opens only its exact route, in the account it belongs to, and only with the current tap token (spec/os/android/noticeRoutes.md, "A tap opens only its exact route, in the account it belongs to, and only with the current tap token")', () => effect {
   const device = phone()
   const client = noticesClient({ plugin: plugin(device) })
   const owner = noticeOwnerOf({ userId: "u1", organizationId: "org-1" }, "agent-1")

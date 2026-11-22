@@ -12,10 +12,12 @@ and the Quint models `ChatSdkStreamSettlement` and `sse_segmentation`.
 The shell runs the deployment's `inference` capability gate
 ([the deployment](../deployment.md)), `admitCompletion`, `dispatchVerdict`,
 `M::markDispatched`, the provider and one `closeHold`, each stage's store
-work in its own transaction. The hold's caller is the organization and its
-key the server request id, so an `Idempotency-Key` is ignored and a retry is
-a new call (D16). Wire shapes are the Effect Schemas of
-`src/services/inference.schema.ts`; every answer is `Cache-Control: no-store`.
+work in its own transaction. The hold's caller is the organization. The
+shell supplies the validated `Idempotency-Key` UUID, or the server request
+ID when absent, as the model's `requestId`. A repeated key returns
+`409 already_dispatched` before another provider call can start. Wire shapes
+are the Effect Schemas of `src/services/chat-request.schema.ts`. Every
+answer is `Cache-Control: no-store`.
 
 ## Story: Answer a chat completion once and charge it once
 
@@ -280,7 +282,8 @@ pure def lawFailureRefusalsAreWellFormed(status: int, delivered: bool): bool = {
 
 A whole reply is one `chat.completion`. A streamed reply is
 `text/event-stream` of `data:` lines, each a `chat.completion.chunk` whose
-deltas carry text and tool calls as the provider sent them. It starts only
+deltas carry text and tool calls as the provider sent them. Both response
+shapes name the cloud's listed model ID. A stream starts only
 once the provider accepted the call; a failure before that is a refusal.
 
 ### A stream ends in exactly one [DONE] unless the caller hung up, and completes only when the provider finished

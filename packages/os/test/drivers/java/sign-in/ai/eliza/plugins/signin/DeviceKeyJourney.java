@@ -1,4 +1,4 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
@@ -15,6 +15,9 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -186,7 +189,6 @@ public final class DeviceKeyJourney {
     seen.add(take("firstHeld", held()));
     seen.add(take("lostReplyAskedAgainWithSameProof", cloud.proofs.size() == 2 && cloud.proofs.get(0).equals(cloud.proofs.get(1))));
     seen.add(take("keyHiddenFromText", !store.current().toString().contains(store.current().value())));
-    seen.add(take("unknownAckRefusal", client.ack("cred-unknown", "eliza_unknown") instanceof DeviceKeyClient.Answer.Refused<?> r ? r.status() + "/" + r.error() : "answered"));
 
     seen.add(take("secondSignIn", signIn()));
     seen.add(take("secondHeld", held()));
@@ -245,8 +247,113 @@ public final class DeviceKeyJourney {
     return "{" + String.join(",", seen) + "}";
   }
 
+  private record FilesystemSlots(Path directory) implements SecureSlot, DeviceCredentialStore.Slots {
+    @Override public String read() throws IOException { return read("browser"); }
+    @Override public boolean compareExchange(String expected, String value) throws IOException {
+      if (!java.util.Objects.equals(read(), expected)) return false;
+      if (value == null) remove("browser");
+      else write("browser", value);
+      return true;
+    }
+
+    @Override public String read(String slot) throws IOException {
+      Path file = directory.resolve(slot);
+      return Files.exists(file) ? Files.readString(file) : null;
+    }
+
+    @Override public void write(String slot, String value) throws IOException {
+      Path work = Files.createTempFile(directory, "pending-", ".tmp");
+      try {
+        Files.writeString(work, value);
+        Files.move(work, directory.resolve(slot), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+      } finally {
+        Files.deleteIfExists(work);
+      }
+    }
+
+    @Override public void remove(String slot) throws IOException { Files.deleteIfExists(directory.resolve(slot)); }
+  }
+
+  private static final class ObservedReturns implements BrowserReturns.Port {
+    BrowserReturns.Handoff handoff;
+    int lastEnded;
+    int incomplete;
+    @Override public void handed(BrowserReturns.Handoff received) { handoff = received; }
+    @Override public void ended(String client, int generation, BrowserReturns.Ended why) { lastEnded = generation; }
+    @Override public void incomplete(String client) { incomplete++; }
+  }
+
+  private static String browserReturn() throws Exception {
+    Path directory = Files.createTempDirectory("device-browser-return-");
+    try {
+      var slots = new FilesystemSlots(directory);
+      var clock = Instant.parse("2026-11-19T12:00:00Z");
+      final String authority = DeviceCredentialStore.authorityDigest("https://staging.example.test");
+      final var checks = new BrowserReturnPolicy.StartChecks(true, true, true, true);
+      final var signIn = BrowserReturns.Purpose.SIGN_IN;
+      final var reauthenticate = BrowserReturns.Purpose.REAUTHENTICATE;
+      var first = new DeviceCredentialStore(slots, authority, clock::toEpochMilli);
+      var before = new BrowserReturns(slots, first, new ObservedReturns());
+      String firstState = SignInPolicy.newState();
+      var opened = before.start("staging", firstState, SignInPolicy.newVerifier(), signIn, checks);
+      var restored = new DeviceCredentialStore(slots, authority, clock::toEpochMilli);
+      var observed = new ObservedReturns();
+      var returns = new BrowserReturns(slots, restored, observed);
+      var code = new BrowserReturnPolicy.Callback.Code("staging", firstState, "fixture-code");
+      boolean adopted = returns.returned(code) == BrowserReturns.Return.HANDED &&
+        observed.handoff.owner() == BrowserReturnPolicy.Owner.ADOPTED && observed.handoff.generation() == opened.generation() &&
+        restored.state().attempt().equals(new CredentialPolicy.Attempt.Exchanging(opened.generation())) && returns.takeExchange(observed.handoff);
+      boolean oneUse = !returns.takeExchange(observed.handoff) && returns.returned(code) == BrowserReturns.Return.IGNORED && slots.read() == null;
+      restored.signInEnded(opened.generation());
+
+      String oldState = SignInPolicy.newState(), newerState = SignInPolicy.newState();
+      var previous = returns.start("staging", oldState, SignInPolicy.newVerifier(), signIn, checks);
+      var newer = returns.start("staging", newerState, SignInPolicy.newVerifier(), signIn, checks);
+      returns.cancel(previous);
+      boolean isolated = observed.lastEnded == previous.generation() &&
+        returns.returned(new BrowserReturnPolicy.Callback.Code("staging", oldState, "old")) == BrowserReturns.Return.IGNORED &&
+        returns.returned(new BrowserReturnPolicy.Callback.Code("staging", newerState, "current")) == BrowserReturns.Return.HANDED &&
+        observed.handoff.owner() == BrowserReturnPolicy.Owner.LIVE && observed.handoff.generation() == newer.generation();
+      int concurrent = restored.beginSignIn();
+      boolean drift = !returns.mayExchange(observed.handoff) && !returns.takeExchange(observed.handoff);
+      returns.exchangeEnded(newer.generation());
+      drift &= restored.state().attempt().equals(new CredentialPolicy.Attempt.Exchanging(concurrent));
+      restored.signInEnded(concurrent);
+
+      int installing = restored.beginSignIn();
+      long keyExpiry = clock.plusSeconds(3600).toEpochMilli();
+      if (restored.tokenAnswered(installing, new DeviceCredentialStore.Token("active", "eliza_mobile_fixture", ACCOUNT, keyExpiry)) != DeviceCredentialStore.Kept.KEPT ||
+          restored.acknowledged(installing, "active", keyExpiry) != DeviceCredentialStore.Outcome.ACCEPTED) {
+        throw new IllegalStateException("The device credential fixture did not commit");
+      }
+      String liveState = SignInPolicy.newState();
+      var liveReauth = returns.start("staging", liveState, SignInPolicy.newVerifier(), reauthenticate, checks);
+      boolean keptAccount = returns.returned(new BrowserReturnPolicy.Callback.Code("staging", liveState, "reauth")) == BrowserReturns.Return.HANDED &&
+        observed.handoff.purpose() == reauthenticate && returns.mayExchange(observed.handoff) && returns.takeExchange(observed.handoff);
+      restored.signInEnded(liveReauth.generation());
+      keptAccount &= CredentialPolicy.activeVersion(restored.state()) == 1 && CredentialPolicy.accountOf(restored.state()).equals(ACCOUNT);
+
+      String reauthState = SignInPolicy.newState();
+      var asked = returns.start("staging", reauthState, SignInPolicy.newVerifier(), reauthenticate, checks);
+      var restarted = new DeviceCredentialStore(slots, authority, clock::toEpochMilli);
+      var cold = new ObservedReturns();
+      var newProcess = new BrowserReturns(slots, restarted, cold);
+      boolean reauthClosed = newProcess.returned(new BrowserReturnPolicy.Callback.Code("staging", reauthState, "reauthentication")) == BrowserReturns.Return.NOT_ADMITTED &&
+        cold.handoff == null && cold.incomplete == 1 && restarted.generation() == asked.generation() &&
+        CredentialPolicy.activeVersion(restarted.state()) == 1 && slots.read() == null;
+      return "{\"adopted\":" + adopted + ",\"oneUse\":" + oneUse + ",\"isolated\":" + isolated +
+        ",\"drift\":" + drift + ",\"reauthClosed\":" + reauthClosed + ",\"keptAccount\":" + keptAccount + "}";
+    } finally {
+      try (var files = Files.list(directory)) {
+        for (Path file : files.toList()) Files.delete(file);
+      }
+      Files.delete(directory);
+    }
+  }
+
   public static void main(String[] args) throws Exception {
-    System.out.println(new DeviceKeyJourney().run());
+    if (args.length == 1 && args[0].equals("browser")) System.out.println(browserReturn());
+    else System.out.println(new DeviceKeyJourney().run());
     System.exit(0);
   }
 }

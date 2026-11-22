@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /** The only applyPayload call site. Journal intent precedes the Binder effect. */
@@ -31,16 +32,8 @@ final class EngineInstaller {
         this.journal = journal; this.serial = serial; this.currentBoot = currentBoot;
     }
 
-    static UpdateAdmission.Engine engineOf(int status) {
-        if (status == UpdateEngine.UpdateStatusConstants.IDLE) return UpdateAdmission.Engine.IDLE;
-        if (status == UpdateEngine.UpdateStatusConstants.UPDATED_NEED_REBOOT) return UpdateAdmission.Engine.NEEDS_REBOOT;
-        return status < 0 ? UpdateAdmission.Engine.UNAVAILABLE : UpdateAdmission.Engine.BUSY;
-    }
-
     /** Called on the host's serial worker; listener calls use that same worker. */
-    // spec/os/update/updater.md, "An apply intent is persisted before the one apply call, and only for a verified candidate the offer still matches"
-    void apply(VerifiedPayload payload, Supplier<UpdateAdmission.Conditions> conditions,
-            UpdateAdmission.Offer offer, Listener listener) {
+    void apply(VerifiedPayload payload, BooleanSupplier eligible, Listener listener) {
         if (engine != null || ownsAttempt) {
             listener.complete(Result.DEFERRED, "An update operation is already attached");
             return;
@@ -50,7 +43,7 @@ final class EngineInstaller {
         try {
             UpdateJournal before = journal.read();
             if (before.phase != UpdateJournal.Phase.VERIFIED
-                    || !before.targetBuild.equals(payload.release.fingerprint())
+                    || !before.targetBuild.equals(payload.targetBuild)
                     || !before.packageSha256.equals(payload.otaSha256)) {
                 throw new IOException("Payload differs from the verified journal");
             }
@@ -68,20 +61,16 @@ final class EngineInstaller {
                 finish(Result.DEFERRED, "Update engine did not provide a current status");
                 return;
             }
-            attemptBoot = currentBoot.get();
-            final UpdateJournal intent;
-            try {
-                intent = before.applyIntent(attemptBoot, engineOf(engineStatus), conditions.get(), offer);
-            } catch (IllegalStateException held) {
+            if (engineStatus != UpdateEngine.UpdateStatusConstants.IDLE || !eligible.getAsBoolean()) {
                 finish(Result.DEFERRED, "Waiting for update conditions");
                 return;
             }
+            attemptBoot = currentBoot.get();
+            UpdateJournal intent = before.applyIntent(attemptBoot, true);
             journal.write(before, intent);
-            String boot = currentBoot.get();
-            UpdateAdmission.Conditions now = conditions.get();
-            if (intent.applyIntentStale(boot, now)) {
+            if (!eligible.getAsBoolean() || !attemptBoot.equals(currentBoot.get())) {
                 // No Binder apply was made. Return to the verified state only if the intent is still ours.
-                journal.write(intent, intent.withdrawApplyIntent(boot, now));
+                journal.write(intent, before);
                 finish(Result.DEFERRED, "Update conditions changed before apply");
                 return;
             }
@@ -99,12 +88,12 @@ final class EngineInstaller {
         }
     }
 
-    // spec/os/update/updater.md, "Only the attempt's own result ends an apply, and a stopped job never cancels it"
     private void applied(int errorCode) {
         if (!ownsAttempt) return;
         try {
             UpdateJournal before = journal.read();
-            UpdateJournal after = before.completedApply(currentBoot.get(), errorCode);
+            UpdateJournal after = before.completedApply(currentBoot.get(),
+                    attemptBoot.equals(currentBoot.get()), errorCode);
             journal.write(before, after);
             ownsAttempt = false;
             finish(after.phase == UpdateJournal.Phase.REBOOT_READY ? Result.REBOOT_READY

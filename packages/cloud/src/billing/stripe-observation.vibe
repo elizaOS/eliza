@@ -64,21 +64,31 @@ async function paidWindow(stripe: Stripe, priceId: string, customer: string, inv
 }
 
 export async function readStripeSubscription(stripe: Stripe, env: StripeCatalog, customer: string) {
+  return observeCatalog(stripe, [env], customer, env.STRIPE_PRICE_ID)
+}
+
+export async function readStripeSubscriptionFromCatalog(stripe: Stripe, catalog: readonly [StripeCatalog, ...StripeCatalog[]], customer: string) {
+  return observeCatalog(stripe, catalog, customer)
+}
+
+async function observeCatalog(stripe: Stripe, catalog: readonly [StripeCatalog, ...StripeCatalog[]], customer: string, price?: string) {
+  const live = catalog[0].CLOUD_ENVIRONMENT === "production"
   let last: Stripe.Subscription | undefined
   let current: Stripe.Subscription | undefined
-  for await (const subscription of stripe.subscriptions.list({ customer, price:env.STRIPE_PRICE_ID, status:"all", limit:100 })) {
-    if (resourceId(subscription.customer) !== customer || subscription.livemode !== (env.CLOUD_ENVIRONMENT === "production")) throw new Error("Unexpected subscription owner or environment")
+  for await (const subscription of stripe.subscriptions.list({ customer, ...(price === undefined ? {} : { price }), status:"all", limit:100 })) {
+    if (resourceId(subscription.customer) !== customer || subscription.livemode !== live) throw new Error("Unexpected subscription owner or environment")
     if (!last || last.created < subscription.created) last = subscription
     if (subscription.status === "canceled" || subscription.status === "incomplete_expired") continue
     if (current) throw new Error("Multiple current subscriptions for this customer")
     current = subscription
   }
   const subscription = current ?? last
-  const item = subscription?.items.data.find((item) => item.price.id === env.STRIPE_PRICE_ID && item.quantity === 1)
-  if (subscription && (!item || subscription.items.has_more || subscription.items.data.length !== 1)) throw new Error("Unexpected subscription items")
+  const item = subscription?.items.data[0]
+  const env = catalog.find((entry) => entry.STRIPE_PRICE_ID === item?.price.id)
+  if (subscription && (!item || !env || item.quantity !== 1 || subscription.items.has_more || subscription.items.data.length !== 1)) throw new Error("Unexpected subscription items")
   let chargeIds: string[] = []
   let observation: SubscriptionObservation = {customerId:customer, subscriptionId:null, plan:"free", status:"none", startsAt:0, endsAt:0, cancelAtPeriodEnd:false, latestInvoice:"PeriodInvoiceOpen"}
-  if (subscription && item) {
+  if (subscription && item && env) {
     if (!await catalogMatches(stripe, env, false)) throw new Error("Unexpected subscription catalog terms")
     const states = {active:"active", canceled:"canceled", incomplete:"incomplete", incomplete_expired:"incomplete_expired", past_due:"past_due", unpaid:"unpaid", trialing:"incomplete", paused:"incomplete"} as const
     const status = Object.entries(states).find(([name]) => name === subscription.status)?.[1]

@@ -42,6 +42,13 @@ type releaseCompatibility struct {
 type releaseRuntime struct {
 	Inventory string            `json:"inventorySha256"`
 	Agent     string            `json:"agentSha256"`
+	Gateway   string            `json:"gatewaySha256,omitempty"`
+	Policy    string            `json:"policySha256,omitempty"`
+	Libraries map[string]string `json:"nativeLibraries"`
+}
+type nodeReleaseRuntime struct {
+	Inventory string            `json:"inventorySha256"`
+	Agent     string            `json:"agentSha256"`
 	Libraries map[string]string `json:"nativeLibraries"`
 }
 type releaseArtifact struct {
@@ -312,7 +319,7 @@ func validateNativeRelease(d releaseDescriptor, hosts []string) error {
 		return bad()
 	}
 	for _, a := range []releaseArtifact{d.Candidate, d.Recovery} {
-		if err := validateNativeArtifact(a, hosts); err != nil {
+		if err := validateNativeArtifact(a, hosts, host); err != nil {
 			return err
 		}
 		prefix := "https://github.com/" + d.Source.Repository + "/releases/download/" + d.Source.Tag + "/"
@@ -335,7 +342,7 @@ func validateNativeRelease(d releaseDescriptor, hosts []string) error {
 	}
 	return nil
 }
-func validateNativeArtifact(a releaseArtifact, hosts []string) error {
+func validateNativeArtifact(a releaseArtifact, hosts []string, host hostPolicy) error {
 	bad := func() error { return errors.New("invalid native artifact contract") }
 	if !validHex(a.SHA256) || !validHex(a.Signer) || !bounded(a.Length, 1, maxArtifactBytes) || !bounded(a.VersionCode, 1, 2100000000) || !matches(a.VersionName, `^[a-zA-Z0-9][a-zA-Z0-9.+_-]{0,63}$`) || !bounded(a.SecurityEpoch, 1, 2147483647) || !artifactURL(a.URL, hosts) || !stringList(a.Mirrors, 0, 8, func(s string) bool { return artifactURL(s, hosts) }) || contains(a.Mirrors, a.URL) {
 		return bad()
@@ -354,14 +361,17 @@ func validateNativeArtifact(a releaseArtifact, hosts []string) error {
 	if !validHex(r.Inventory) || !validHex(r.Agent) || len(r.Libraries) < 1 || len(r.Libraries) > 128 {
 		return bad()
 	}
-	for name, hash := range r.Libraries {
-		parts := strings.Split(name, "/")
-		if len(parts) != 3 || parts[0] != "lib" || runtimeMachines[parts[1]] == 0 || !contains(platform.ABIs, parts[1]) || !matches(parts[2], `^lib[a-zA-Z0-9_.+-]+\.so$`) || !validHex(hash) {
+	if host.Schema == 3 {
+		if !nodeRuntimeDeclared(a) {
 			return bad()
 		}
+		return nil
 	}
-	for _, abi := range platform.ABIs {
-		if r.Libraries["lib/"+abi+"/"+nodeLibraryName] == "" {
+	if !validHex(r.Gateway) || !validHex(r.Policy) || r.Libraries["libeliza_bun.so"] == "" {
+		return bad()
+	}
+	for name, hash := range r.Libraries {
+		if !matches(name, `^lib[a-zA-Z0-9_-]+\.so$`) || !validHex(hash) {
 			return bad()
 		}
 	}
@@ -412,6 +422,15 @@ func decodeAdmission(data []byte, destination any) error {
 	return json.Unmarshal(data, destination)
 }
 func admissionShape(value any, typ reflect.Type) bool {
+	if typ == reflect.TypeFor[releaseRuntime]() {
+		host, err := requiredHostPolicy()
+		if err != nil {
+			return false
+		}
+		if host.Schema == 3 {
+			typ = reflect.TypeFor[nodeReleaseRuntime]()
+		}
+	}
 	switch typ.Kind() {
 	case reflect.Struct:
 		object, ok := value.(map[string]any)
@@ -422,7 +441,7 @@ func admissionShape(value any, typ reflect.Type) bool {
 		stored := 0
 		for i := 0; i < typ.NumField(); i++ {
 			field := typ.Field(i)
-			name := field.Tag.Get("json")
+			name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 			if name == "-" {
 				continue
 			}

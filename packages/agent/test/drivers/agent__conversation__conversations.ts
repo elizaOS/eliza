@@ -57,7 +57,7 @@ async function fresh(): Promise<World> {
   const owner = { user: randomUUID() as UUID, world: randomUUID() as UUID };
   const store = conversationStore(runtime, owner);
   return {
-    runtime, owner, store, forks: forkService(runtime, store), routes: [...conversationRecordRoutes(store), ...redactRoutes(runtime, store)],
+    runtime, owner, store, forks: forkService(runtime, store, owner.user), routes: [...conversationRecordRoutes(store), ...redactRoutes(runtime, store, owner.user)],
     messageIds: new Map(), digests: new Map(), base: wallClock(), now: 0, tick: 0, nextMessage: 1,
   };
 }
@@ -97,7 +97,7 @@ async function send(event: Event): Promise<"accepted" | "refused"> {
   const w = await current();
   switch (event.type) {
     case "create": {
-      const title = event.titleUnits > event.title.length ? event.title.padEnd(event.titleUnits, "x") : event.title;
+      const title = event.titleUnits > 200 ? event.title.padEnd(201, "x") : event.title;
       return accepted((await route(w, "/api/conversations", {}, { title })).status === 201);
     }
     case "receive": {

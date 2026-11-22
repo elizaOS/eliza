@@ -6,21 +6,14 @@ import type { Scratch } from "./support/scratch.ts"
 import type { LocalRequest } from "./support/socket-client.ts"
 
 module node {
-  import { Effect } from "effect"
-  import { deviceEnrollment } from "../src/device-actions/enrollment.vibe"
-  import type { ModuleFactory } from "../src/host/module.vibe"
+  import { createHash } from "node:crypto"
 
-  export const moduleName = "@elizaos/agent/device-actions"
-
-  const factory: ModuleFactory<never> = (context) => Effect.succeed({
-    name: moduleName,
-    plugin: { name: moduleName, description: "Device enrollment", routes: deviceEnrollment(context).routes },
-  })
-
-  export const modules = new Map([[moduleName, factory]])
+  export function priorScope(identity: { readonly agentId: string; readonly enrollmentId: string; readonly installationId: string; readonly subjectUserId: string }): string {
+    return createHash("sha256").update(JSON.stringify(identity)).digest("hex")
+  }
 }
 
-import { moduleName, modules } from node
+import { priorScope } from node
 
 const key = "a".repeat(64)
 const otherKey = "b".repeat(64)
@@ -29,7 +22,7 @@ const vocabulary = allCapabilities.map(capabilityName)
 type Asked = Omit<LocalRequest, "headers">
 
 effect function booted(persistMemory: boolean, state?: Scratch) {
-  return try startInProcess({ launch: { callerRole: "owner", load: [moduleName], persistMemory }, modules, ...(state === undefined ? {} : { state }) })
+  return try startInProcess({ launch: { callerRole: "owner", persistMemory }, ...(state === undefined ? {} : { state }) })
 }
 
 effect function device(reachable: Reachable, agentId: string, asked: Asked, deviceKey: string | null = key, deviceId: string = agentId) {
@@ -59,7 +52,7 @@ it.live('Enroll my device under its own key, read its context and revoke it for 
   )
 
   const registered = try device(first, agentId, { method: "POST", path: "/api/client-devices/register", body: { label: "Phone", workflowProtocol: 1 } })
-  const enrollmentId = registered.json.enrollmentId
+  const enrollmentId = try Schema.decodeUnknownEffect(Schema.String)(registered.json.enrollmentId)
   assert.strictEqual(registered.status, 200)
   assert.deepStrictEqual(registered.json, { installationId: agentId, enrollmentId, capabilities: vocabulary, viewProfileVersion: 1 })
   assert.match(String(enrollmentId), /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/)
@@ -69,10 +62,12 @@ it.live('Enroll my device under its own key, read its context and revoke it for 
   assert.deepStrictEqual([again.status, again.json.enrollmentId, anotherKey.status, anotherKeyContext.status], [200, enrollmentId, 409, 401])
 
   const served = try device(first, agentId, context)
-  const { subjectUserId, scope } = served.json
+  const subjectUserId = try Schema.decodeUnknownEffect(Schema.String)(served.json.subjectUserId)
+  const { scope } = served.json
   assert.deepStrictEqual([served.status, served.json], [200, { agentId, installationId: agentId, enrollmentId, subjectUserId, scope }])
   assert.isTrue(typeof subjectUserId === "string" && subjectUserId !== "")
-  assert.match(String(scope), /^[a-f0-9]{64}$/)
+  const pinnedScope = try Effect.try(() => priorScope({ agentId, enrollmentId, installationId: agentId, subjectUserId }))
+  assert.strictEqual(scope, pinnedScope)
   try host("first agent stop", () => first.agent.stop())
 
   const second = try booted(true, state)

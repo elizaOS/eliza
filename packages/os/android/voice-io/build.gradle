@@ -7,9 +7,6 @@ android {
  testOptions { unitTests.returnDefaultValues = true }
 }
 dependencies {
- implementation project(':capacitor-android')
- implementation project(':sign-in')
- implementation 'com.squareup.okhttp3:okhttp:5.3.2'
  testImplementation 'junit:junit:4.13.2'
  testImplementation 'org.json:json:20250517'
 }

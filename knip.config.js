@@ -112,7 +112,9 @@ export default {
       ]
     },
     "packages/agent": {
+      "vitest": { "config": [] },
       "entry": [
+        "vitest.config.ts",
         "src/{index,bin}.vibe",
         "src/{client,voice,tasks}/index.vibe",
         "test/**/*.test.{ts,vibe}",
@@ -129,6 +131,7 @@ export default {
         "src/{index,cli}.vibe",
         "src/{image,build,browser,app-update}/index.vibe",
         "src/bridges/*.vibe",
+        "src/bridges/passwords-client.ts",
         "src/bridges/definitions/*.ts",
         "test/**/*.test.{ts,vibe}",
         "test/drivers/*.ts",
@@ -143,6 +146,9 @@ export default {
       ],
       "ignoreBinaries": [
         "ruby"
+      ],
+      "ignoreUnresolved": [
+        "./runtime-config.mjs"
       ]
     }
   }

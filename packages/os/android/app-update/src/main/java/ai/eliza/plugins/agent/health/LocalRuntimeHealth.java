@@ -4,20 +4,20 @@ package ai.eliza.plugins.agent.health;
 import ai.eliza.plugins.agent.health.HealthWork.Agent;
 import ai.eliza.plugins.agent.health.HealthWork.Probe;
 import ai.eliza.plugins.agent.health.HealthWork.Storage;
+import android.os.SystemClock;
 import java.io.IOException;
+import java.util.function.IntSupplier;
 import java.util.Objects;
-import java.util.Optional;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 public final class LocalRuntimeHealth {
   public static final String HEALTH_ROUTE = "/api/health";
   public static final String STORAGE_ROUTE = "/api/tasks/storage";
-  public static final int STORAGE_SCHEMA = 1;
 
   public interface AgentPort {
-    Optional<Launch> launch();
-    Reply get(long epoch, String route, long timeoutMillis) throws IOException;
+    Launch launch();
+    Reply get(long epoch, String route, int timeoutMillis) throws IOException;
     boolean childAlive(long epoch);
     boolean socketAccepts(long epoch);
   }
@@ -50,27 +50,40 @@ public final class LocalRuntimeHealth {
   }
 
   private final AgentPort agent;
+  private final int timeoutMillis;
 
-  public LocalRuntimeHealth(AgentPort agent) {
-    this.agent = Objects.requireNonNull(agent);
+  public LocalRuntimeHealth(AgentPort agent, int timeoutMillis) {
+    if (timeoutMillis <= 0) throw new IllegalArgumentException("Positive probe budget required");
+    this.agent = Objects.requireNonNull(agent); this.timeoutMillis = timeoutMillis;
   }
 
-  public Reading read(long timeoutMillis) {
-    if (timeoutMillis <= 0) throw new IllegalArgumentException("Positive probe budget required");
-    Optional<Launch> current = agent.launch();
-    if (current.isEmpty()) return new Reading(0, Agent.WAITING, Storage.UNAVAILABLE);
-    Launch launch = current.get();
-    Agent half = HealthWork.agentHalf(probe(launch, timeoutMillis), launch.strikes, launch.busyTicks);
-    return new Reading(launch.epoch, half, half == Agent.HEALTHY ? tasks(launch, timeoutMillis) : Storage.UNAVAILABLE);
+  public Reading read() {
+    return read(() -> timeoutMillis);
+  }
+
+  Reading readBefore(long deadline) {
+    return read(() -> (int) Math.min(timeoutMillis, Math.max(0, deadline - SystemClock.elapsedRealtime())));
+  }
+
+  private Reading read(IntSupplier remaining) {
+    Launch launch = agent.launch();
+    if (launch == null) return new Reading(0, Agent.WAITING, Storage.UNAVAILABLE);
+    int probeBudget = remaining.getAsInt();
+    if (probeBudget <= 0) return new Reading(launch.epoch, Agent.WAITING, Storage.UNAVAILABLE);
+    Agent half = HealthWork.agentHalf(probe(launch, probeBudget), launch.strikes, launch.busyTicks);
+    int storageBudget = remaining.getAsInt();
+    Storage storage = half == Agent.HEALTHY && storageBudget > 0 ? tasks(launch, storageBudget) : Storage.UNAVAILABLE;
+    return new Reading(launch.epoch, half, HealthWork.storage(half, storage));
   }
 
   public boolean sameLaunch(Reading reading) {
-    return agent.launch().map(now -> now.epoch).orElse(0L) == reading.epoch;
+    Launch now = agent.launch();
+    return (now == null ? 0 : now.epoch) == reading.epoch;
   }
 
-  private Probe probe(Launch launch, long timeoutMillis) {
+  private Probe probe(Launch launch, int budget) {
     try {
-      Reply reply = agent.get(launch.epoch, HEALTH_ROUTE, timeoutMillis);
+      Reply reply = agent.get(launch.epoch, HEALTH_ROUTE, budget);
       return reply.status >= 200 && reply.status < 300 && ready(reply.body, launch.epoch) ? Probe.OK : Probe.DEAD;
     } catch (IOException unanswered) {
       return agent.childAlive(launch.epoch) || agent.socketAccepts(launch.epoch) ? Probe.BUSY : Probe.DEAD;
@@ -88,13 +101,12 @@ public final class LocalRuntimeHealth {
     }
   }
 
-  private Storage tasks(Launch launch, long timeoutMillis) {
+  private Storage tasks(Launch launch, int budget) {
     if (!launch.tasksLoaded) return Storage.NOT_LOADED;
     try {
-      Reply reply = agent.get(launch.epoch, STORAGE_ROUTE, timeoutMillis);
-      if (reply.status != 200) return Storage.UNAVAILABLE;
+      Reply reply = agent.get(launch.epoch, STORAGE_ROUTE, budget);
       JSONObject value = new JSONObject(reply.body);
-      if (!Integer.valueOf(STORAGE_SCHEMA).equals(value.opt("schemaVersion"))) return Storage.UNAVAILABLE;
+      if (reply.status != 200 || !Integer.valueOf(1).equals(value.opt("schemaVersion"))) return Storage.UNAVAILABLE;
       Object observed = value.opt("taskStorage");
       return "ok".equals(observed) ? Storage.OK : "deferred".equals(observed) ? Storage.DEFERRED : Storage.UNAVAILABLE;
     } catch (IOException | JSONException unread) {

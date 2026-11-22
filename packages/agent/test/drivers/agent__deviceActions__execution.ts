@@ -2,7 +2,7 @@
 import { Cause, Effect, Exit } from "effect";
 import type { Driver, Options } from "../../gen/agent__deviceActions__execution.conformance.ts";
 import type { DeviceAttempt, DeviceEffect, Event, JournalAnswer } from "../../gen/agent__deviceActions__execution.ts";
-import { openAttempt, reserve, type AttemptBinding, type JournaledAttempt, type JournalEntry, type JournalIdentity } from "../../src/client/device-execution.vibe";
+import { openAttempt, reserve, type AttemptBinding, type JournaledAttempt, type JournalIdentity } from "../../src/client/device-execution.vibe";
 import { fileJournal, type FileJournal } from "../support/device-journal.ts";
 import { scratchDirectory, type Scratch } from "../support/scratch.ts";
 
@@ -64,11 +64,7 @@ async function send(key: string, event: Event): Promise<"accepted" | "refused"> 
 
 async function observe(key: string): Promise<DeviceAttempt> {
   const attempt = await attemptFor(key);
-  if (!attempt.slot.written) return await Effect.runPromise(attempt.machine.get());
-  const store = await journal();
-  const entry = (await store.get(attempt.slot.binding.proposalId)) as JournalEntry;
-  const reopened = await Effect.runPromise(openAttempt(store, identity, attempt.slot.binding, entry));
-  return await Effect.runPromise(reopened.machine.get());
+  return await Effect.runPromise(attempt.machine.get());
 }
 
 export const driver: Driver & { [Symbol.asyncDispose](): Promise<void> } = {

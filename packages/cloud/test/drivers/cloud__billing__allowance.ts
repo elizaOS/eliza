@@ -2,7 +2,8 @@
 import { ConfigProvider, Effect, Layer } from "effect";
 import type { Driver, Options } from "../../gen/cloud__billing__allowance.conformance.ts";
 import type { Event, Period } from "../../gen/cloud__billing__allowance.ts";
-import { adjustForUpgrade, clawBackInvoice, closePeriods, grantMonthKey, openGrantMonth, openRenewal, renewalKey, restoreInvoice, sweepAllowance, type Closing, type PeriodStep } from "../../src/billing/allowance.vibe";
+import { adjustForUpgrade, changeInvoiceAllowance, closePeriods, grantMonthKey, openGrantMonth, openRenewal, sweepAllowance, type Closing, type PeriodStep } from "../../src/billing/allowance.vibe";
+import { InvalidAllowancePeriod, renewalKey } from "../../src/billing/stripe-ledger.vibe";
 import { Deployment, deploymentLayer, parseProfile } from "../../src/profile/profile.vibe";
 import { periodRows, stepPeriod } from "../../src/shared/metering.vibe";
 import { loadRow } from "../../src/store/rows.vibe";
@@ -44,10 +45,10 @@ async function observe(key: string): Promise<Period> {
   return must("reading the period", await cloud.run(within((tx) => loadRow(tx, periodRows, period, false)))).state;
 }
 
-async function opened(key: string, period: string, open: () => Promise<Settled<PeriodStep>>) {
+async function opened(key: string, period: string, open: () => Promise<"accepted" | "refused">) {
   const known = periods.get(key);
   if (known !== undefined && known !== period) return "refused";
-  const outcome = moved("opening a period", await open());
+  const outcome = await open();
   if (outcome === "accepted") periods.set(key, period);
   return outcome;
 }
@@ -70,10 +71,20 @@ async function dispatch(key: string, event: Event): Promise<"accepted" | "refuse
   const organizationId = organization(key);
   const period = await observe(key);
   switch (event.type) {
-    case "openRenewal":
-      return opened(key, renewalKey(environment, event.invoiceId), () => run(deployed((tx) => openRenewal(tx, organizationId, event, 0))));
+    case "openRenewal": {
+      const row = renewalKey(environment, event.invoiceId);
+      return opened(key, row, async () => {
+        const result = await run(deployed((tx) => openRenewal(tx, organizationId, event, 0)));
+        if (result.kind === "failed" && result.error instanceof InvalidAllowancePeriod && result.error.key === row &&
+            period.source.tag === "RenewalInvoice" && period.source.invoiceId === event.invoiceId &&
+            (period.startsAt !== event.startsAt || period.endsAt !== event.endsAt)) return "refused";
+        return moved("opening a period", result);
+      });
+    }
     case "openGrantMonth":
-      return opened(key, grantMonthKey(event.grantId, event.month), () => run(within((tx) => openGrantMonth(tx, organizationId, { id: event.grantId, planKey: event.planKey }, event, 0))));
+      return opened(key, grantMonthKey(event.grantId, event.month), async () => moved("opening a period", await run(
+        within((tx) => openGrantMonth(tx, organizationId, { id: event.grantId, planKey: event.planKey }, event, 0)),
+      )));
     case "reserveHold":
     case "settleHold": {
       const done = await cloud.run(within((tx) => stepPeriod(tx, periods.get(key) ?? `none/${key}`, event, event.now)));
@@ -90,13 +101,10 @@ async function dispatch(key: string, event: Event): Promise<"accepted" | "refuse
       return moved("closing", await run(within((tx) => closePeriods(tx, organizationId, closingOf(period, event), 0))));
     case "adjustForUpgrade":
       return moved("adjusting for an upgrade", await run(within((tx) => adjustForUpgrade(tx, organizationId, event.target, event.effectiveAt, event.reviewed, event.now))));
-    case "clawBack": {
-      if (event.cause === "NoClawback") return "refused";
-      const cause = event.cause;
-      return moved("clawing back", await run(deployed((tx) => clawBackInvoice(tx, invoiceOf(period), cause, 0))));
-    }
+    case "clawBack":
     case "restore":
-      return moved("restoring", await run(deployed((tx) => restoreInvoice(tx, invoiceOf(period), event.now))));
+      return moved(event.type, await run(deployed((tx) => changeInvoiceAllowance(tx, { organizationId, invoiceId: invoiceOf(period) }, event,
+        event.type === "restore" ? event.now : 0))));
     default: {
       const unknown: never = event;
       throw new Error(`not an allowance event: ${JSON.stringify(unknown)}`);

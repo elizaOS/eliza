@@ -64,9 +64,7 @@ public final class ChildJournal {
     if (pid < 1) throw new IllegalArgumentException("A child pid is positive");
     long last = read().epoch();
     if (epoch < last) throw new IOException("Epoch " + epoch + " is earlier than the journaled epoch " + last);
-    OptionalLong started = processes.startTime(pid);
-    if (!started.isPresent()) throw new IOException("The start time of agent child " + pid + " could not be read");
-    write(new Entry(epoch, pid, started.getAsLong()));
+    write(new Entry(epoch, pid, processes.startTime(pid).orElse(-1)));
   }
 
   public synchronized void clear(long epoch) throws IOException {

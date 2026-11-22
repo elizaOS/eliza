@@ -101,8 +101,8 @@ The command requires `--confirmed-with-owner`. On an active account it starts
 the saga of `identity/deletion`. On an account already deleting or erased it
 starts nothing and answers the existing deletion's phase (Fenced to Erased, or
 ActionNeeded) and the last receipt of its current phase, by the operator's
-identifiers only. A deletion in ActionNeeded is resolved outside this command
-line.
+identifiers only. After correcting the cause of ActionNeeded, the operator
+repeats the confirmed command to resume that step with a fresh budget.
 
 ```quint
 pure def lawOnlyConfirmedDeletionsStart(accepted: bool, identity: StoreIdentity, account: A::AccountStatus, confirmed: bool, count: int): bool = {

@@ -151,8 +151,8 @@ export type DeviceRouteName = keyof typeof routesByName
 
 export const unlistedRoutes: ReadonlyArray<UnlistedRoute> = unlisted
 
-export function isListed(route: DeviceRoute): boolean {
-  return deviceRoutes.some((listed) => sameRoute(listed, route.method, route.path))
+export function listedRoute(route: DeviceRoute): DeviceRoute | undefined {
+  return deviceRoutes.find((listed) => sameRoute(listed, route.method, route.path))
 }
 
 export function httpVerb(method: HttpMethod): "GET" | "POST" | "PATCH" | "DELETE" {
@@ -165,7 +165,10 @@ export function httpVerb(method: HttpMethod): "GET" | "POST" | "PATCH" | "DELETE
 }
 
 export function pathOf<R extends NamedRoute<string>>(route: R, ...[params]: R extends NamedRoute<never> ? [] : [ParamsOf<R>]): string {
-  const values: Readonly<Record<string, string>> = params ?? {}
+  return renderPath(route, params ?? {})
+}
+
+export function renderPath(route: DeviceRoute, values: Readonly<Record<string, string>>): string {
   return route.path.map((segment) => `/${segment.tag === "Param" ? encodeURIComponent(values[segment.name] ?? "") : segment.text}`).join("")
 }
 

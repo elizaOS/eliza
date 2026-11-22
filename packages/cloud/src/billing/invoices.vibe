@@ -45,10 +45,10 @@ export interface InvoicePage {
   readonly nextCursor: string | null
 }
 
-export const invoicePageDefault = 20
-export const invoicePageMax = 100
-export const portalConfigurationKey = "cloud_portal_configuration"
-export const portalConfigurationVersion = "subscription-v1"
+const invoicePageDefault = 20
+const invoicePageMax = 100
+const portalConfigurationKey = "cloud_portal_configuration"
+const portalConfigurationVersion = "subscription-v1"
 
 const invoiceIdPattern = /^in_[A-Za-z0-9_]{1,250}$/
 
@@ -181,7 +181,7 @@ effect function pinned(organizationId: string): Subscription!(StoreFailure | Row
   return try store.transaction((tx) => readSubscription(tx, organizationId))
 }
 
-export effect function listInvoices(organizationId: string, limit: number, cursor: string | undefined): InvoicePage!(StoreFailure | RowCorrupt | ProviderMissing | ProviderFailed)!(Store | Deployment | HttpClient.HttpClient) {
+effect function listInvoices(organizationId: string, limit: number, cursor: string | undefined): InvoicePage!(StoreFailure | RowCorrupt | ProviderMissing | ProviderFailed)!(Store | Deployment | HttpClient.HttpClient) {
   const subscription = try pinned(organizationId)
   if (!invoiceVisible(subscription, customerIdOf(subscription))) return { invoices: [], nextCursor: null }
   const listed = try provider({
@@ -211,7 +211,7 @@ effect function remainingLines(invoiceId: string, after: string): ReadonlyArray<
   return lines
 }
 
-export effect function readInvoice(organizationId: string, invoiceId: string): InvoiceDetail!(StoreFailure | RowCorrupt | ProviderFailed | Refused)!(Store | Deployment | HttpClient.HttpClient) {
+effect function readInvoice(organizationId: string, invoiceId: string): InvoiceDetail!(StoreFailure | RowCorrupt | ProviderFailed | Refused)!(Store | Deployment | HttpClient.HttpClient) {
   if (!invoiceIdPattern.test(invoiceId)) throw refused("NotFound")
   const subscription = try pinned(organizationId)
   if (!invoiceVisible(subscription, customerIdOf(subscription))) throw refused("NotFound")
@@ -246,7 +246,7 @@ export effect function readInvoice(organizationId: string, invoiceId: string): I
   }
 }
 
-export function portalLocked(configuration: PortalConfigurationRead, livemode: boolean): boolean {
+function portalLocked(configuration: PortalConfigurationRead, livemode: boolean): boolean {
   const features = configuration.features
   return configuration.active && configuration.livemode === livemode &&
     configuration.metadata?.[portalConfigurationKey] === portalConfigurationVersion &&
@@ -285,7 +285,7 @@ effect function lockedConfiguration(): string!(ProviderMissing | ProviderFailed)
   return configuration.id
 }
 
-export effect function openPortal(organizationId: string): { readonly url: string }!(StoreFailure | RowCorrupt | ProviderMissing | ProviderFailed | Refused)!(Store | Deployment | HttpClient.HttpClient) {
+effect function openPortal(organizationId: string): { readonly url: string }!(StoreFailure | RowCorrupt | ProviderMissing | ProviderFailed | Refused)!(Store | Deployment | HttpClient.HttpClient) {
   const subscription = try pinned(organizationId)
   if (!portalAllowed(subscription, true)) throw refused("BillingStateConflict")
   const deployment = try Deployment
@@ -317,14 +317,14 @@ export const routes: ReadonlyArray<Route> = [
   },
   {
     method: "GET",
-    path: "/api/v1/billing/invoices/:id",
+    path: "/api/v1/billing/invoices/:invoiceId",
     auth: "ServiceAccess",
     capability: "billing",
     rateClass: "StandardRequests",
     handler: (context) => effect {
       const signed = owner(context.caller)
       if (signed === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
-      return json(try readInvoice(signed.organizationId, context.params.id ?? ""))
+      return json(try readInvoice(signed.organizationId, context.params.invoiceId ?? ""))
     }
   },
   {

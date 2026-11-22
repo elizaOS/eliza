@@ -422,7 +422,7 @@ func mustPolicy(t *testing.T, data []byte) admissionPolicy {
 func TestQuintFreshAdmission(t *testing.T) {
 	name := os.Getenv("OTA_FRESH_QUINT_VECTORS")
 	if name == "" {
-		t.Skip("OTA_FRESH_QUINT_VECTORS names no trace file: no vibestack driver for spec/os/appUpdate/admission.md writes the fresh-admission traces yet")
+		t.Skip("run bun run test:quint OtaFreshAdmission for generated trace replay")
 	}
 	data, err := os.ReadFile(name)
 	if err != nil {

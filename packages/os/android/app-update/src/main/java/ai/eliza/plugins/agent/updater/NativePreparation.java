@@ -220,7 +220,7 @@ public final class NativePreparation implements PreparationFlow.Ports,AutoClosea
   Pair pair=(Pair)staged;Observed observed=observe(fence);
   Enrollment current=trust.readEnrollment(path("ota-enrollment"));
   if(!Arrays.equals(enrollment.getConfig(),current.getConfig())||!Arrays.equals(enrollment.getRoot(),current.getRoot())||!enrollment.getCohortID().equals(current.getCohortID()))throw new IOException("Enrollment changed before admission");
-  journal.beginValidated(pair.plan,PackageInstallCoordinator.installed(context,targetPackage),fence.generation,()->{
+  journal.verifyStaged(pair.plan,PackageInstallCoordinator.installed(context,targetPackage),fence.generation,()->{
    PreparationFlow.check(cancellation);
    try {
     QualifiedClockAnchor.Interval time=currentTime();

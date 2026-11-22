@@ -301,6 +301,7 @@
         "@elizaos/cloud#typecheck",
         "@elizaos/agent#typecheck",
         "@elizaos/os#typecheck",
+        "@elizaos/plugin-notes#typecheck",
         "vibestack-studio#typecheck"
       ],
       "inputs": [

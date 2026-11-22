@@ -11,11 +11,6 @@ module node {
   export function sameHash(presented: string, kept: string): boolean {
     return timingSafeEqual(sha256(presented), sha256(kept))
   }
-
-  /** @throws {never} */
-  export function digestOf(parts: readonly string[]): string {
-    return hashOf(JSON.stringify(parts))
-  }
 }
 
 import type { AgentRuntime } from "@elizaos/core"
@@ -25,8 +20,8 @@ import type { SessionOwner } from "../../gen/core__sessions.effect.vibe"
 import type { LocalRoute, RouteInput } from "../access/routes.vibe"
 import type { ModuleContext } from "../host/module.vibe"
 import { readViewProfileChange, supportedViews, viewProfileWire } from "./capabilities.vibe"
-import { changeEnrollment, changeViewProfile, enrollment, viewProfile, type DeviceStoreUnavailable, type EnrollmentEvent } from "./store.vibe"
-import { digestOf, hashOf, sameHash } from node
+import { changeEnrollment, changeViewProfile, enrollment, viewProfile, DeviceStoreUnavailable, type EnrollmentEvent } from "./store.vibe"
+import { hashOf, sameHash } from node
 
 export const deviceIdHeader = "x-eliza-device-id"
 export const deviceKeyHeader = "x-eliza-device-key"
@@ -47,12 +42,17 @@ type Answer = { readonly status: number; readonly body: object }
 const failure = (status: number, error: string): Answer => ({ status, body: { error } })
 
 export interface DeviceEnrollment {
-  readonly deviceSender: (input: RouteInput) => (SessionOwner | undefined)!DeviceStoreUnavailable
+  readonly deviceSender: (input: Pick<RouteInput, "headers">) => Effect.Effect<SessionOwner | undefined, DeviceStoreUnavailable>
   readonly routes: LocalRoute[]
 }
 
 function sameOwner(a: SessionOwner, b: SessionOwner): boolean {
   return a.agentId === b.agentId && a.actorId === b.actorId && a.connector === b.connector
+}
+
+export function enrollmentId(state: DeviceRequest): string {
+  const by = enrolledOwner(state.enrollment)
+  return hashOf(JSON.stringify([by.agentId, by.actorId, by.connector, enrolledKey(state.enrollment)]))
 }
 
 export function deviceEnrollment(context: Pick<ModuleContext, "runtime" | "launch" | "ownerEntityId">): DeviceEnrollment {
@@ -62,7 +62,7 @@ export function deviceEnrollment(context: Pick<ModuleContext, "runtime" | "launc
   const owner: SessionOwner = { agentId, actorId: context.launch.account?.userId ?? context.ownerEntityId, connector: agentId }
   const lock = Semaphore.makeUnsafe(1)
 
-  function presentedKeyHash(input: RouteInput): string | undefined {
+  function presentedKeyHash(input: Pick<RouteInput, "headers">): string | undefined {
     const key = input.headers.get(deviceKeyHeader)
     return input.headers.get(deviceIdHeader) === agentId && key !== undefined && deviceKeyPattern.test(key) ? hashOf(key) : undefined
   }
@@ -71,26 +71,17 @@ export function deviceEnrollment(context: Pick<ModuleContext, "runtime" | "launc
     return isEnrolled(state.enrollment) && sameOwner(enrolledOwner(state.enrollment), owner) && sameHash(keyHash, enrolledKey(state.enrollment))
   }
 
-  function enrollmentId(state: DeviceRequest): string {
-    const by = enrolledOwner(state.enrollment)
-    return digestOf([by.agentId, by.actorId, by.connector, enrolledKey(state.enrollment)])
-  }
-
-  effect function deviceSender(input: RouteInput): (SessionOwner | undefined)!DeviceStoreUnavailable {
+  effect function deviceSender(input: Pick<RouteInput, "headers">): (SessionOwner | undefined)!DeviceStoreUnavailable {
     const keyHash = presentedKeyHash(input)
     if (keyHash === undefined) return undefined
     return liveFor(try enrollment(adapter), keyHash) ? owner : undefined
   }
 
-  effect function admitted(event: EnrollmentEvent, by: SessionOwner): (DeviceRequest | undefined)!DeviceStoreUnavailable {
-    return changeEnrollment(adapter, event, by) catch effect (error) => match (error) {
+  effect function changed(event: EnrollmentEvent, by: SessionOwner): (DeviceRequest | undefined)!DeviceStoreUnavailable {
+    return lock.withPermits(1)(changeEnrollment(adapter, event, by)) catch effect (error) => match (error) {
       when Rejected: undefined;
       default: throw error;
     }
-  }
-
-  effect function changed(event: EnrollmentEvent, by: SessionOwner): (DeviceRequest | undefined)!DeviceStoreUnavailable {
-    return try lock.withPermits(1)(admitted(event, by))
   }
 
   effect function register(input: RouteInput): Answer!DeviceStoreUnavailable {
@@ -124,7 +115,11 @@ export function deviceEnrollment(context: Pick<ModuleContext, "runtime" | "launc
       case "ContextRefused": return failure(401, "device_unauthorized")
       case "ContextServed": {
         const identity = { agentId: reply.agentId, enrollmentId: enrollmentId(state), installationId: reply.installationId, subjectUserId: reply.subjectUserId }
-        return { status: 200, body: { ...identity, scope: digestOf([identity.agentId, identity.subjectUserId, identity.installationId, identity.enrollmentId]) } }
+        const scope = try Effect.try({
+          try: () => hashOf(JSON.stringify(identity)),
+          catch: (cause) => new DeviceStoreUnavailable({ step: "device context", cause })
+        })
+        return { status: 200, body: { ...identity, scope } }
       }
     }
   }

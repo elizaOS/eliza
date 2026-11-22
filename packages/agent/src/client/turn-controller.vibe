@@ -4,9 +4,10 @@ import {
   type Attempt, type ClientCall, type ClientStep, type Event, type StopReceipt, type StreamEnd, type TurnClient,
 } from "../../gen/agent__client__turns.effect.vibe"
 import type { RuntimeStream } from "./index.vibe"
+import type { TaskPresentation } from "../tasks/chat-task.vibe"
 import { ActionResultFrame } from "./reply-frame.schema.vibe"
 import { readReplyStream, type ReplyOutcome, type ReplyStreamHooks, type StreamedReply } from "./stream-reader.vibe"
-import { newClientMessageId, type ClientMessageId } from "./stopped-turn.ts"
+import { newClientMessageId, type ClientMessageId } from "./stopped-turn.vibe"
 
 export schema ConversationRecord { readonly id: Schema.NonEmptyString; readonly roomId: Schema.NonEmptyString }
 schema Created { readonly conversation: ConversationRecord }
@@ -19,7 +20,7 @@ schema BufferedReply {
   readonly taskChoices?: readonly Schema.Unknown[]
   readonly failureKind?: Schema.NonEmptyString
 }
-schema StopAnswer { readonly aborted: true; readonly roomId: string; readonly reason: string; readonly outcome: "stopConfirmed" | "nothingRunning" | "stopUncertain" }
+schema StopAnswer { readonly aborted: boolean; readonly roomId: string; readonly reason: string; readonly outcome: "stopped" | "nothingRunning" | "uncertain" }
 schema RefusedRequest { readonly name: "RuntimeRequestError"; readonly status: Schema.Int; readonly message: string; readonly code?: string }
 
 export error InvalidConversation { input: unknown }
@@ -31,6 +32,7 @@ export interface TurnMessage {
   readonly channelType?: "DM" | "VOICE_DM"
   readonly metadata?: Readonly<Record<string, unknown>>
   readonly images?: readonly unknown[]
+  readonly task?: { readonly taskId: TaskPresentation["taskId"]; readonly expectedEpoch: TaskPresentation["epoch"] }
 }
 
 export interface TurnOptions { readonly stream?: ReplyStreamHooks }
@@ -76,7 +78,7 @@ export type TurnSession = Session
 const idle: StopResult = { kind: "Idle" }
 const replyProtocol = "REPLY_PROTOCOL"
 const unsent = new Set(["NoRoute", "InvalidPath", "StartupFailed", "RefreshFailed"])
-const stopOutcome = { stopConfirmed: "StopConfirmed", nothingRunning: "NothingRunning", stopUncertain: "StopUncertain" } as const
+const stopOutcome = { stopped: "StopConfirmed", nothingRunning: "NothingRunning", uncertain: "StopUncertain" } as const
 const decodeRecord = Schema.decodeUnknownOption(ConversationRecord)
 const decodeCreated = Schema.decodeUnknownOption(Created)
 const decodeReply = Schema.decodeUnknownOption(BufferedReply)
@@ -122,7 +124,8 @@ effect function owns(session: Session, turn: number) {
 function receiptOf(session: Session, answer: unknown): StopReceipt {
   const found = decodeStop(answer)
   if (Option.isNone(found)) return { tag: "NoReceipt" }
-  const { roomId, reason, outcome } = found.value
+  const { roomId, reason, outcome, aborted } = found.value
+  if (aborted !== (outcome !== "nothingRunning")) return { tag: "NoReceipt" }
   return { tag: "Receipt", room: session.roomIds.get(roomId) ?? 0, reason, outcome: stopOutcome[outcome] }
 }
 
@@ -331,4 +334,4 @@ export class TurnController {
   }
 }
 
-export { findStoppedUserTurn, type ClientMessageId, type HistoryMessage } from "./stopped-turn.ts"
+export { findStoppedUserTurn, type ClientMessageId, type HistoryMessage } from "./stopped-turn.vibe"

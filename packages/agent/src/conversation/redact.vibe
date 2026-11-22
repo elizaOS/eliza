@@ -1,7 +1,7 @@
 // spec/agent/conversation/conversations.md, "Story: Remove private text I sent by mistake"; spec/agent/conversation/conversations.md, "Redacting replaces the message and every exact copy of its text in its conversation with a fixed notice"; spec/agent/conversation/conversations.md, "No message is ever removed, and only redaction changes one"
 module node {
   import { Schema } from "effect"
-  import type { AgentRuntime, Log, LogBody, UUID } from "@elizaos/core"
+  import type { AgentRuntime, IDatabaseAdapter, Log, LogBody, UUID } from "@elizaos/core"
   import { privateNotice, redact, redactAnswer } from "../../gen/agent__conversation__conversations.ts"
   import type { LocalRoute } from "../access/routes.vibe"
   import type { ConversationRecord, ConversationStore } from "./conversations.vibe"
@@ -31,17 +31,18 @@ module node {
       : value !== null && typeof value === "object" ? Object.values(value).some((item) => holds(item, text))
       : false
 
-  async function scrubLogs(runtime: AgentRuntime, record: ConversationRecord, text: string): Promise<number> {
-    const held = (await runtime.adapter.getLogs({ roomId: record.roomId })).filter((row): row is Log & { id: UUID } => row.id !== undefined && holds(row.body, text))
+  async function scrubLogs(adapter: IDatabaseAdapter, record: ConversationRecord, text: string): Promise<number> {
+    const held = (await adapter.getLogs({ roomId: record.roomId })).filter((row): row is Log & { id: UUID } =>
+      row.id !== undefined && row.type.startsWith("useModel:") && holds(row.body, text))
     if (held.length === 0) return 0
-    await runtime.adapter.createLogs(held.map(({ type, entityId, createdAt, body }) => ({ type, entityId, roomId: record.roomId, createdAt, body: scrubbed(body, text) as LogBody })))
-    await runtime.adapter.deleteLogs(held.map(({ id }) => id))
+    await adapter.createLogs(held.map(({ type, entityId, createdAt, body }) => ({ type, entityId, roomId: record.roomId, createdAt, body: scrubbed(body, text) as LogBody })))
+    await adapter.deleteLogs(held.map(({ id }) => id))
     return held.length
   }
 
-  export function redactService(runtime: AgentRuntime) {
-    const run = async (record: ConversationRecord, messageId: string, expectedText: string): Promise<RedactResult> => {
-      const placed = await placedMessages(runtime, record)
+  export function redactService(runtime: AgentRuntime, ownerId: UUID) {
+    const run = (record: ConversationRecord, messageId: string, expectedText: string): Promise<RedactResult> => runtime.adapter.transaction(async (adapter) => {
+      const placed = await placedMessages(adapter, ownerId, record)
       const model = conversationModel(record, placed)
       const asked = modelIdOf(placed, messageId)
       const answer = redactAnswer(model, 1, asked, expectedText)
@@ -52,20 +53,20 @@ module node {
         case "RedactNow": {
           const after = redact(model, 1, asked, expectedText).messages
           const changed = placed.filter(({ message }, index) => message.body.tag !== after[index].body.tag)
-          const logs = await scrubLogs(runtime, record, expectedText)
-          await runtime.adapter.updateMemories(changed.map(({ memory }) => ({
+          const logs = await scrubLogs(adapter, record, expectedText)
+          await adapter.updateMemories(changed.map(({ memory }) => ({
             id: memory.id, content: { ...memory.content, text: privateNotice }, embedding: undefined,
           })))
           return { kind: "redacted", messages: changed.length, logs }
         }
       }
-    }
+    })
     return (record: ConversationRecord, messageId: string, expectedText: string, signal?: AbortSignal) =>
       runtime.roomHandlerQueue.withLease(record.roomId, () => run(record, messageId, expectedText), signal === undefined ? undefined : { signal })
   }
 
-  export function redactRoutes(runtime: AgentRuntime, store: ConversationStore): LocalRoute[] {
-    const redactMessage = redactService(runtime)
+  export function redactRoutes(runtime: AgentRuntime, store: ConversationStore, ownerId: UUID): LocalRoute[] {
+    const redactMessage = redactService(runtime, ownerId)
     return [{
       method: "POST", path: "/api/conversations/{id}/messages/{messageId}/redact",
       handler: async ({ parameters, body, signal }) => {

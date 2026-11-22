@@ -1,6 +1,7 @@
 // spec/os/browser/tabHost/document.md, "Only a later event from this live tab replaces its document"; spec/os/browser/tabHost/document.md, "A tab reserves an identity only in the session the host bound"; spec/os/browser/tabHost/document.md, "A private tab stays private for as long as it is held"; spec/os/browser/tabHost/document.md, "Every new address moves the document revision forward, and it never moves back"; spec/os/browser/tabHost/document.md, "A captured page is current only for the selected foreground tab, its navigation and its revision"; spec/os/browser/tabHost/document.md, "Only a bound normal tab whose address storage admits contributes to the saved session"; spec/os/browser/tabHost/document.md, "A pop-up opens only from a tap on the selected settled tab, in its opener's privacy"
 import { boundPage, enabled, held, initial, isCurrentPage, isPrivate, mayOpenInAnotherBrowser, mayPersist, step, type BrowserTab, type Event, type PageIdentity } from "../../gen/os__browser__tabHost__document.effect.vibe"
-import { isSecureWebAddress, type WebAddress } from "../../gen/os__browser__address.effect.vibe"
+import { isSecureWebAddress } from "../../gen/os__browser__address.effect.vibe"
+import { webAddress } from "../browser/address.ts"
 import type { BrowserFindOutcome, BrowserPageBinding, BrowserPageGuard, BrowserTabInfo, BrowserTabSelection, BrowserTabSessionOptions, BrowserTabStateChange } from "./definitions/tab-host.ts"
 
 export type * from "./definitions/tab-host.ts"
@@ -13,14 +14,17 @@ module capacitor {
   export function tabHostPlugin(name: string): BrowserTabHostPlugin {
     return registerPlugin<BrowserTabHostPlugin>(name)
   }
+}
+import { tabHostPlugin } from capacitor
+export { tabHostPlugin }
 
+module browser {
   /** @throws {never} */
-  export function randomId(): string {
+  export function newSessionId(): string {
     return globalThis.crypto.randomUUID()
   }
 }
-import { randomId, tabHostPlugin } from capacitor
-export { tabHostPlugin }
+import { newSessionId } from browser
 
 export type TabRefusal = "browser-closed" | "invalid-tab" | "tab-limit" | "invalid-session" | "invalid-tab-limit"
 
@@ -40,7 +44,6 @@ const BOUND = 1
 const FOREIGN = 2
 const TAB_ID = /^[A-Za-z0-9_-]{1,80}$/
 const NAVIGATION_ID = /^[1-9][0-9]{0,15}$/
-const UNCLEAN_TEXT = /[\s\u0000-\u001f\u007f\\]/
 
 schema TabState {
   session: string
@@ -70,19 +73,7 @@ export function validBrowserTabId(id: unknown): id is string {
 }
 
 export function newBrowserTabId(): string {
-  return `b${randomId().replace(/-/g, "")}`
-}
-
-function webAddressOf(href: string): WebAddress {
-  const parsed = URL.parse(href)
-  return {
-    href,
-    units: href.length,
-    cleanText: !UNCLEAN_TEXT.test(href),
-    scheme: parsed?.protocol === "https:" ? "HttpsScheme" : parsed?.protocol === "http:" ? "HttpScheme" : "OtherScheme",
-    validHost: parsed !== null && parsed.hostname !== "",
-    userInfo: parsed !== null && (parsed.username !== "" || parsed.password !== ""),
-  }
+  return `b${newSessionId().replace(/-/g, "")}`
 }
 
 function navigationId(navigation: string | undefined): number {
@@ -109,7 +100,7 @@ export class BrowserTabSession {
   private readonly invalid: TabRefusal | undefined
 
   constructor(options: BrowserTabSessionOptions = {}) {
-    this.session = options.session ?? randomId()
+    this.session = options.session ?? newSessionId()
     this.maxTabs = options.maxTabs ?? DEFAULT_MAX_TABS
     this.invalid = this.session === "" || this.session.length > 100 ? "invalid-session" : !Number.isInteger(this.maxTabs) || this.maxTabs < 1 ? "invalid-tab-limit" : undefined
   }
@@ -178,7 +169,7 @@ export class BrowserTabSession {
   }
 
   beginNavigation(id: string, url: string): number | undefined {
-    const next = this.advance(id, { type: "beginNavigation", url: webAddressOf(url) })
+    const next = this.advance(id, { type: "beginNavigation", url: webAddress(url) })
     if (next === undefined) return undefined
     this.annotate(id, { url, loading: true, committed: false, error: "" })
     return next.revision
@@ -196,7 +187,7 @@ export class BrowserTabSession {
         tab,
         seq: event.sequence,
         navId: navigationId(event.navigation),
-        url: webAddressOf(event.url ?? ""),
+        url: webAddress(event.url ?? ""),
         loading: event.loading === true,
         failed: (event.error ?? "") !== "",
         externalOnly: event.externalOnly === true,

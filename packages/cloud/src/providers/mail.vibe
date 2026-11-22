@@ -1,4 +1,4 @@
-// spec/cloud/identity/codeChallenges.md, "A challenge sends one code, only to an email address or to a phone in a country the deployment allows"; spec/cloud/deployment.md, "A sign-in method is offered only when its adapter is configured and its routes are mounted"
+// spec/cloud/identity/codeChallenges.md, "A challenge sends one code, only to an email address or to a phone in a country the deployment allows"; spec/cloud/deployment.md, "A sign-in method is offered only when its adapter is configured"
 import { HttpClientRequest } from "effect/http"
 import { refused, type Refused } from "../http/refusal.vibe"
 import { Deployment } from "../profile/profile.vibe"

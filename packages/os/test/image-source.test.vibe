@@ -1,313 +1,194 @@
 // spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"; spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed"; spec/os/image/listener.md, "Story: Activate the listener only on a qualified image"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { listenerGates, listenerPrivilegedPermissions } from "../gen/os__image__listener.effect.vibe"
-import type { PatchEnvelope, Problem, SourceVerdict, Verdict } from "../gen/os__image__sourceLock.effect.vibe"
-import { listenerPermissions, prepareListenerSystemui, stageListener, verifyListenerSystemui, type StageListenerOptions, type SystemuiBundle } from "../src/image/listener.vibe"
-import { admitPatchEnvelope, assertStockVendorApi, loadProfile, verifySource, type Checkout, type SourceProfile } from "../src/image/source-lock.vibe"
-import { androidTools, testSigner } from "./support/android-tools.ts"
+import { listenerGates, type ListenerRequest } from "../gen/os__image__listener.effect.vibe"
+import { parseDigest, readApkSigner } from "../src/image/apk.vibe"
+import { prepareListenerSystemui, prepareListenerSystemuiSet, stageListener, verifyListenerQualification, verifyListenerSystemui } from "../src/image/listener.vibe"
+import { packageParts, wakeWords } from "../src/image/listener-admission.vibe"
+import { admitPatchEnvelope, assertStockVendorApi, loadProfile, verifySource } from "../src/image/source-lock.vibe"
+import { androidTools, buildApk, testSigner } from "./support/android-tools.ts"
 import { commitTree, fixture, git, scratch, writeTree, type Tree } from "./support/scratch.vibe"
 
 module node {
-  import { execFileSync } from "node:child_process"
   import { createHash } from "node:crypto"
-  import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-  import path from "node:path"
-  import type { AndroidTools, TestSigner } from "./support/android-tools.ts"
-
-  export const LAUNCHER = "com.example.launcher"
-  export const HOTWORD_PERMISSIONS = [
-    "android.permission.CAPTURE_AUDIO_HOTWORD",
-    "android.permission.START_ACTIVITIES_FROM_BACKGROUND",
-    "android.permission.RECORD_AUDIO",
-    "android.permission.FOREGROUND_SERVICE",
-    "android.permission.FOREGROUND_SERVICE_MICROPHONE",
-  ]
 
   /** @throws {never} */
-  export function sha256(bytes: Uint8Array | string): string {
-    return createHash("sha256").update(bytes).digest("hex")
-  }
-
-  /** @throws {never} */
-  export function ignoredTree(rows: readonly { readonly path: string; readonly content: string }[]): string {
-    return sha256(rows.map((row) => `${JSON.stringify({ path: row.path, sizeBytes: Buffer.byteLength(row.content), sha256: sha256(row.content) })}\n`).join(""))
-  }
-
-  /** @throws {Error} when an Android tool refuses the fixture */
-  export function buildListener(tools: Extract<AndroidTools, { kind: "present" }>, directory: string, name: string, signer: TestSigner, permissions: readonly string[], speech: string): string {
-    mkdirSync(directory, { recursive: true })
-    const work = mkdtempSync(path.join(directory, `.${name}-`))
-    try {
-      const uses = permissions.map((permission) => `  <uses-permission android:name="${permission}" />\n`).join("")
-      writeFileSync(path.join(work, "AndroidManifest.xml"), `<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${LAUNCHER}.sense">\n${uses}  <permission android:name="${LAUNCHER}.sense.CONTROL" />\n  <uses-permission android:name="${LAUNCHER}.sense.CONTROL" />\n  <application android:label="Listener" android:debuggable="false" />\n</manifest>\n`)
-      mkdirSync(path.join(work, "assets", "speech"), { recursive: true })
-      writeFileSync(path.join(work, "assets", "speech", "model.bin"), speech)
-      writeFileSync(path.join(work, "classes.dex"), "dex\n035\0")
-      mkdirSync(path.join(work, "lib", "x86_64"), { recursive: true })
-      writeFileSync(path.join(work, "lib", "x86_64", "libwake.so"), "ELF")
-      const linked = path.join(work, "linked.apk")
-      execFileSync(tools.aapt2, ["link", "--manifest", path.join(work, "AndroidManifest.xml"), "-I", tools.androidJar, "-A", path.join(work, "assets"), "--min-sdk-version", "31", "--target-sdk-version", "36", "-o", linked], { stdio: "pipe" })
-      execFileSync(tools.aapt, ["add", "-0", "", linked, "classes.dex", "lib/x86_64/libwake.so"], { cwd: work, stdio: "pipe" })
-      const aligned = path.join(work, "aligned.apk")
-      execFileSync(tools.zipalign, ["-f", "-P", "16", "4", linked, aligned], { stdio: "pipe" })
-      const apk = path.join(directory, `${name}.apk`)
-      execFileSync(tools.apksigner, ["sign", "--ks", signer.keystore, "--ks-type", "PKCS12", "--ks-pass", `pass:${signer.password}`, "--ks-key-alias", signer.alias, "--out", apk, aligned], { stdio: "pipe" })
-      rmSync(`${apk}.idsig`, { force: true })
-      return apk
-    } finally {
-      rmSync(work, { recursive: true, force: true })
-    }
-  }
-
-  /** @throws {Error} when keytool cannot export the certificate */
-  export function certificatePem(tools: Extract<AndroidTools, { kind: "present" }>, signer: TestSigner, file: string): string {
-    writeFileSync(file, execFileSync(tools.keytool, ["-exportcert", "-rfc", "-keystore", signer.keystore, "-storetype", "PKCS12", "-storepass", signer.password, "-alias", signer.alias]))
-    return file
-  }
-
-  /** @throws {Error} when the APK cannot be read */
-  export function fileSha256(file: string): string {
-    return sha256(readFileSync(file))
+  export function sha256(value: string | Uint8Array) {
+    return createHash("sha256").update(value).digest("hex")
   }
 }
-import { HOTWORD_PERMISSIONS, LAUNCHER, buildListener, certificatePem, fileSha256, ignoredTree, sha256 } from node
+import { sha256 } from node
 
 const tools = androidTools()
 const skipped = tools.kind === "missing" ? tools.reason : null
-const MATCHED: { readonly verdict: Verdict; readonly problems: readonly Problem[]; readonly differences: readonly string[] } = { verdict: "Match", problems: [], differences: [] }
+const tagObject = "7a9e46ba6ed424f922a3457f4964e67e0b966201"
+const manifestTag = { tag: "android-17.0.0_r1", tagObject, url: "https://android.example.invalid/platform/manifest" }
+const asFile = (path: string, content: string) => ({ path, sizeBytes: new TextEncoder().encode(content).length, sha256: sha256(content) })
 
-effect function repoAt(root: string, relative: string, tree: Tree) {
+effect function repoAt(directory: string, tree: Tree) {
   const files = try FileSystem.FileSystem
-  const path = try Path.Path
-  const directory = path.join(root, relative)
   try files.makeDirectory(directory, { recursive: true })
   try git(directory, ["init", "--quiet", "--initial-branch=main"])
-  return try commitTree(directory, tree, `Pin ${relative}`)
+  return try commitTree(directory, tree, "Pin resettable platform source")
 }
 
-effect function verdictOf(profile: SourceProfile, checkout: Checkout) {
-  const verified = try verifySource(profile, checkout)
-  return { verdict: verified.source.verdict, problems: verified.problems, differences: verified.differences }
+effect function checkout(work: string) {
+  const path = try Path.Path
+  const board = 'name: "RELEASE_BOARD_API_LEVEL"\nvalue: { string_value: "202604" }\n'
+  const boardConfiguration = "build/release/flag_values/rel_fixture/RELEASE_BOARD_API_LEVEL.textproto"
+  const stockVendor = "<manifest><sepolicy><version>202604</version></sepolicy></manifest>\n"
+  const vendorManifest = "vendor/google_devices/fixture/vintf/vendor/manifest.xml"
+  const aosp = path.join(work, "aosp")
+  const commit = try repoAt(path.join(aosp, ".repo/manifests"), { "default.xml": "<manifest />\n" })
+  const project = "build/release"
+  const revision = try repoAt(path.join(aosp, project), { [boardConfiguration.slice(project.length + 1)]: board, "etc/rules": "stable\n" })
+  const configuration: Readonly<Record<string, string>> = {
+    ".repo/manifest.xml": "<manifest><include name=\"default.xml\" /></manifest>\n",
+    ".repo/project.list": `${project}\n`,
+  }
+  const manifest = { ...manifestTag, commit, configuration: Object.entries(configuration).map(([name, content]) => asFile(name, content)) }
+  const projects = [{ path: project, commit: revision }]
+  const factoryName = "fixture-factory.zip"
+  const factoryBytes = "factory archive bytes\n"
+  const inventory = { schema: 1, target: "fixture", device: { codename: "fixture", androidRelease: "17" }, developmentOnly: false, releaseQualified: false,
+    manifest, factory: { filename: factoryName, ...asFile(factoryName, factoryBytes) }, projects, overrides: [], ignoredInputs: [],
+    generated: { root: "vendor/google_devices/fixture", files: [asFile(vendorManifest, stockVendor)] } }
+  const inventoryText = JSON.stringify(inventory)
+  const physical = {
+    kind: "physical", manifest, targets: ["fixture"], sourceInventory: { path: "sources/fixture.json", sha256: sha256(inventoryText) },
+    device: { sourceTarget: "fixture", codename: "fixture", androidRelease: "17", vendorApiLevel: "202604" },
+  }
+  const virtual = { kind: "virtual", manifest, manifestConfiguration: manifest.configuration, projects, targets: ["cf_x86_64_phone"], developmentOnly: true }
+  const lockFile = path.join(work, "aosp.lock.json")
+  const factory = path.join(work, factoryName)
+  try writeTree(work, { "aosp.lock.json": JSON.stringify({ schemaVersion: 1, profiles: { physical, virtual } }), [factoryName]: factoryBytes, "sources/fixture.json": inventoryText })
+  try writeTree(aosp, { ...configuration, [vendorManifest]: stockVendor })
+  const profile = try loadProfile({ name: "physical", lockFile })
+  return { aosp, project, revision, board, lockFile, options: { profile, sourceRoot: aosp, boardConfiguration, vendorManifest, factory } }
 }
 
-effect function writePatchBundle(directory: string, project: string, revision: string, baseline: string, file: string, before: string, after: string, extra: Readonly<Record<string, unknown>> = {}) {
-  const patch = `--- a/${file}\n+++ b/${file}\n@@ -1 +1 @@\n-${before.trimEnd()}\n+${after.trimEnd()}\n`
-  const manifest = { schema: 1, project, revision, baselineLockSha256: baseline, patch: "change.patch", patchSha256: sha256(patch), files: [{ path: file, beforeSha256: sha256(before), afterSha256: sha256(after) }], ...extra }
-  try writeTree(directory, { "change.patch": patch, "manifest.json": JSON.stringify(manifest, null, 2) })
-}
-
-effect function stageProblem(options: StageListenerOptions) {
-  return (stageListener(options) |> map(%, (staged) => (staged.activated ? "Activated" : "Inert"))) catch (error) => (error._tag === "ListenerRefused" ? error.problem : error._tag)
-}
-
-it.effect('Verify a pinned physical and virtual checkout read-only and refuse every drift (spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"; spec/os/image/sourceLock.md, "A verdict is Match only when the checkout shows no problem against its lock"; spec/os/image/sourceLock.md, "A physical device matches only with its factory archive and the vendor API level its stock vendor declares"; spec/os/image/sourceLock.md, "A reviewed patch is admitted only when every file has its preimage at the pinned revision and its postimage in the checkout")', effect () => {
+it.live('Verify actual release flags against pinned physical and virtual sources without mutating the checkout (spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"; spec/os/image/sourceLock.md, "A physical device matches only with its factory archive and the vendor API level its stock vendor declares"; spec/os/image/sourceLock.md, "A reviewed patch is admitted only when every file has its preimage at the pinned revision and its postimage in the checkout")', effect () => {
   provide NodeServices.layer {
     const files = try FileSystem.FileSystem
     const path = try Path.Path
     const work = try scratch("image-source")
-    const aosp = path.join(work, "aosp")
-    const manifestRepo = try repoAt(aosp, ".repo/manifests", { "default.xml": "<manifest />\n" })
-    const configuration = { ".repo/manifest.xml": "<manifest><include name=\"default.xml\" /></manifest>\n", ".repo/project.list": "build/soong\nframeworks/base\n" }
-    try writeTree(aosp, configuration)
-    const base = try repoAt(aosp, "frameworks/base", { "tools/o.mk": "stock\n", "core/Ui.java": "class Ui {}\n" })
-    const soong = try repoAt(aosp, "build/soong", { ".gitignore": "out/\n", "etc/a.go": "package etc\n" })
-    const override = "override\n"
-    const vintf = (api: string) => `<manifest><sepolicy>\n  <version>${api}</version>\n</sepolicy></manifest>\n`
-    const generated: Tree = { "vendor/google_devices/fixture/Android.mk": "LOCAL_PATH := $(call my-dir)\n", "vendor/google_devices/fixture/vintf/vendor/manifest.xml": vintf("202604") }
-    try writeTree(aosp, { "frameworks/base/tools/o.mk": override, "build/soong/out/x.o": "object\n", ...generated, "build/release/flag_values/rel_fixture/RELEASE_BOARD_API_LEVEL.textproto": 'name: "RELEASE_BOARD_API_LEVEL"\nvalue: { string_value: "202604" }\n' })
-    const archive = path.join(work, "fixture-factory.zip")
-    try files.writeFileString(archive, "factory archive bytes\n")
-    const inventory = {
-      schema: 1,
-      target: "fixture",
-      device: { codename: "fixture", androidRelease: "17" },
-      developmentOnly: false,
-      manifest: {
-        commit: manifestRepo,
-        tag: "android-17.0.0_r1",
-        tagObject: "7a9e46ba6ed424f922a3457f4964e67e0b966201",
-        configuration: Object.entries(configuration).map(([file, content]) => ({ path: file, sizeBytes: content.length, sha256: sha256(content) })),
-      },
-      factory: { sha256: sha256("factory archive bytes\n") },
-      projects: [{ path: "build/soong", commit: soong }, { path: "frameworks/base", commit: base }],
-      overrides: [{ path: "frameworks/base/tools/o.mk", sha256: sha256(override) }],
-      generated: { root: "vendor/google_devices/fixture", files: Object.entries(generated).map(([file, content]) => ({ path: file, sha256: sha256(typeof content === "string" ? content : "") })) },
-      ignoredInputs: [{ project: "build/soong", files: 1, sha256: ignoredTree([{ path: "build/soong/out/x.o", content: "object\n" }]) }],
-    }
-    const inventoryText = JSON.stringify(inventory, null, 2)
-    const lockFile = path.join(work, "lock", "aosp.lock.json")
-    const pin = { url: "https://android.example.invalid/platform/manifest", tag: "android-17.0.0_r1", tagObject: "7a9e46ba6ed424f922a3457f4964e67e0b966201" }
-    const lock = JSON.stringify({
-      schemaVersion: 1,
-      profiles: {
-        fixture: {
-          kind: "physical",
-          device: { sourceTarget: "fixture", codename: "fixture", androidRelease: "17", vendorApiLevel: "202604" },
-          manifest: { ...pin, commit: manifestRepo },
-          developmentOnly: false,
-          targets: ["fixture"],
-          sourceInventory: { path: "sources/fixture.json", sha256: sha256(inventoryText) },
-        },
-        virtual: { kind: "virtual", manifest: { ...pin, commit: manifestRepo }, projects: [{ path: "build/soong", name: "build/soong", commit: soong }], requiredSourceFiles: ["build/soong/etc/a.go"], developmentOnly: true, targets: ["cf_x86_64_phone"] },
-      },
-    })
-    try writeTree(path.join(work, "lock"), { "sources/fixture.json": inventoryText, "aosp.lock.json": lock })
+    const { aosp, project, revision, board, lockFile, options } = try checkout(work)
+    const observed = try verifySource(options)
+    assert.deepStrictEqual([observed.state.verdict, observed.problems, observed.state.read.boardApi, observed.releaseQualified], ["Match", [], 202604, false])
+    assert.strictEqual((try exit(verifySource({ ...options, factory: undefined })))._tag, "Failure")
 
-    const physical = try loadProfile("fixture", lockFile)
-    assert.strictEqual(physical.lock.digest, sha256(inventoryText))
-    const checkout: Checkout = { aospRoot: aosp, archive, releaseConfig: "rel_fixture" }
-    const readOnly = try git(path.join(aosp, "frameworks/base"), ["status", "--porcelain"])
-    assert.deepStrictEqual((verdictOf(physical, { ...checkout, archive: undefined }) |> map(%, (read) => read.verdict)) catch (error) => error._tag, "CheckoutIncomplete")
-    assert.deepStrictEqual(try verdictOf(physical, checkout), MATCHED)
-    assert.strictEqual(try git(path.join(aosp, "frameworks/base"), ["status", "--porcelain"]), readOnly, "verification never writes to the checkout")
+    try writeTree(aosp, { [options.boardConfiguration]: board.replace("202604", "202504"), [`${project}/etc/rules`]: "different\n" })
+    const dirty = try git(path.join(aosp, project), ["status", "--porcelain"])
+    const drifted = try verifySource(options)
+    assert.deepStrictEqual(drifted.problems, ["SourceChangeDiffers", "BoardApiDiffers"])
+    assert.strictEqual((try exit(assertStockVendorApi(options)))._tag, "Failure")
+    assert.strictEqual(try git(path.join(aosp, project), ["status", "--porcelain"]), dirty)
+    try writeTree(aosp, { [options.boardConfiguration]: board, [`${project}/etc/rules`]: "stable\n" })
 
-    try files.writeFileString(path.join(aosp, "build/soong/etc/a.go"), "package drifted\n")
-    const drifted = try verdictOf(physical, checkout)
-    assert.deepStrictEqual([drifted.verdict, drifted.problems], ["Mismatch", ["SourceChangeDiffers"]])
-    assert.include(drifted.differences.join("\n"), "build/soong/etc/a.go has an unrecorded change")
-    try files.writeFileString(path.join(aosp, "build/soong/etc/a.go"), "package etc\n")
+    const patch = "--- a/etc/rules\n+++ b/etc/rules\n@@ -1 +1 @@\n-stable\n+reviewed\n"
+    const manifest = JSON.stringify({ schema: 1, baselineLockSha256: observed.state.lock.digest, project, revision, patch: "review.patch", patchSha256: sha256(patch),
+      files: [{ path: "etc/rules", beforeSha256: sha256("stable\n"), afterSha256: sha256("reviewed\n") }] })
+    try writeTree(work, { "review.patch": patch, "patch.json": manifest, "different.patch": patch })
+    const pinned = { name: "review", manifestFile: path.join(work, "patch.json"), manifestSha256: sha256(manifest), patchFile: path.join(work, "review.patch") }
+    try writeTree(aosp, { [`${project}/etc/rules`]: "reviewed\n" })
+    assert.deepStrictEqual((try verifySource(options)).problems, ["SourceChangeDiffers"])
+    const admitted = try admitPatchEnvelope(options, pinned)
+    assert.deepStrictEqual([admitted.source.state.verdict, admitted.source.state.patches.map((one) => one.name)], ["Match", ["review"]])
+    assert.strictEqual((try exit(admitPatchEnvelope(options, { ...pinned, patchFile: path.join(work, "different.patch") })))._tag, "Failure")
+    try writeTree(work, { "review.patch": "tampered\n" })
+    assert.strictEqual((try exit(admitPatchEnvelope(options, pinned)))._tag, "Failure")
 
-    try writeTree(aosp, { "build/release/flag_values/rel_fixture/RELEASE_BOARD_API_LEVEL.textproto": 'value: { string_value: "202504" }\n', "frameworks/base/tools/o.mk": "stock\n", "build/soong/out/y.o": "new\n" })
-    try files.writeFileString(archive, "another archive\n")
-    const everything = try verdictOf(physical, checkout)
-    assert.deepStrictEqual(everything.problems, ["SourceChangeDiffers", "ArchiveDiffers", "BoardApiDiffers"], "every problem is reported, not only the first")
-    const stock = (assertStockVendorApi(aosp, { codename: "fixture", releaseConfig: "rel_fixture", vendorApiLevel: 202604 }) |> map(%, () => "Matched")) catch (error) => `${error._tag} ${error.problems.join(",")}`
-    assert.strictEqual(stock, "StockVendorApiDiffers BoardApiDiffers")
-    try writeTree(aosp, { "build/release/flag_values/rel_fixture/RELEASE_BOARD_API_LEVEL.textproto": 'value: { string_value: "202604" }\n', "frameworks/base/tools/o.mk": override })
-    try files.remove(path.join(aosp, "build/soong/out/y.o"))
-    try files.writeFileString(archive, "factory archive bytes\n")
-    assert.deepStrictEqual(try verdictOf(physical, checkout), MATCHED)
-
-    try writePatchBundle(path.join(work, "bundles", "soong"), "build/soong", soong, physical.lock.digest, "etc/a.go", "package etc\n", "package patched\n")
-    const admitted = try admitPatchEnvelope("soong", path.join(work, "bundles", "soong"))
-    try files.writeFileString(path.join(aosp, "build/soong/etc/a.go"), "package patched\n")
-    assert.deepStrictEqual((try verdictOf(physical, checkout)).problems, ["SourceChangeDiffers"], "a patched file is not admitted without its envelope")
-    const patched = try verifySource(physical, { ...checkout, patches: [admitted.envelope] })
-    assert.deepStrictEqual([patched.source.verdict, patched.source.patches.map((envelope) => envelope.name)], ["Match", ["soong"]])
-    const stale: PatchEnvelope = { ...admitted.envelope, baseline: "0".repeat(64) }
-    assert.deepStrictEqual((try verdictOf(physical, { ...checkout, patches: [stale] })).problems, ["PatchRefused"])
-    try files.writeFileString(path.join(work, "bundles", "soong", "change.patch"), "tampered\n")
-    assert.strictEqual(admitPatchEnvelope("soong", path.join(work, "bundles", "soong")) |> map(%, () => "Admitted") catch (error) => error._tag, "PatchEnvelopeRefused")
-
-    const virtual = try loadProfile("virtual", lockFile)
-    try files.writeFileString(path.join(aosp, "build/soong/etc/a.go"), "package etc\n")
-    assert.deepStrictEqual(try verdictOf(virtual, { aospRoot: aosp }), { verdict: "Mismatch", problems: ["SourceChangeDiffers"], differences: [`the ignored inputs are build/soong:${inventory.ignoredInputs[0]?.sha256}; the lock records none`] })
-    try files.remove(path.join(aosp, "build/soong/out"), { recursive: true })
-    assert.deepStrictEqual(try verdictOf(virtual, { aospRoot: aosp }), MATCHED)
+    try writeTree(aosp, { [`${project}/etc/rules`]: "stable\n" })
+    const virtual = { profile: try loadProfile({ name: "virtual", lockFile }), sourceRoot: aosp }
+    const real = try verifySource(virtual)
+    assert.deepStrictEqual([real.state.verdict, real.state.lock.developmentOnly, real.state.lock.targets], ["Match", true, ["cf_x86_64_phone"]])
     try writeTree(aosp, { ".repo/local_manifests/extra.xml": "<manifest />\n" })
-    assert.deepStrictEqual((try verdictOf(virtual, { aospRoot: aosp })).problems, ["ManifestDiffers"], "an unlisted local manifest reads as another manifest")
-
-    const pixel = try loadProfile("pixel10a")
-    const cuttlefish = try loadProfile("cuttlefish")
-    assert.deepStrictEqual([pixel.kind, pixel.lock.targets, pixel.lock.developmentOnly, pixel.lock.digest], ["physical", ["stallion"], false, "b7041cce4faf186f5c6e410694b52d8ee4ef2edab8edbef58119e943089d2ce3"])
-    assert.deepStrictEqual([cuttlefish.kind, cuttlefish.lock.targets], ["virtual", ["cf_arm64_phone", "cf_x86_64_phone"]])
-  }
-}, 300_000)
-
-it.effect('Prepare the reviewed SystemUI patches outside the source and refuse power together with assist (spec/os/image/listener.md, "A listener is staged only from a matched source that carries the chip and ops SystemUI patches")', effect () => {
-  provide NodeServices.layer {
-    const files = try FileSystem.FileSystem
-    const path = try Path.Path
-    const work = try scratch("listener-systemui")
-    const root = path.join(work, "aosp")
-    try files.makeDirectory(path.join(root, "frameworks"), { recursive: true })
-    try files.copy(try fixture("sense-systemui"), path.join(root, "frameworks", "base"))
-    const before = try verifyListenerSystemui({ source: root, state: "before", bundle: "chip" })
-    assert.deepStrictEqual([before.project, before.files.length], ["frameworks/base", 9])
-    const output = path.join(work, "chip")
-    const inside = (prepareListenerSystemui({ source: root, output: path.join(root, "out"), bundles: ["chip"] }) |> map(%, () => "Prepared")) catch (error) => error._tag
-    assert.strictEqual(inside, "ListenerOptionsInvalid", "the prepared output never lands inside the source")
-    const receipts = try prepareListenerSystemui({ source: root, output, bundles: ["chip"] })
-    assert.deepStrictEqual(receipts.map((receipt) => [receipt.bundle, receipt.state]), [["chip", "after"]])
-    assert.strictEqual((try verifyListenerSystemui({ source: output, state: "after", bundle: "chip" })).files.length, 9)
-    assert.strictEqual((try verifyListenerSystemui({ source: root, state: "before", bundle: "chip" })).state, "before", "the source is never patched")
-    assert.isTrue(try files.exists(path.join(output, "derived-source.json")))
-    const again = (prepareListenerSystemui({ source: root, output, bundles: ["chip"] }) |> map(%, () => "Prepared")) catch (error) => error._tag
-    assert.strictEqual(again, "ListenerOutputExists")
-    const both: SystemuiBundle[] = ["assist", "power"]
-    const exclusive = (prepareListenerSystemui({ source: root, output: path.join(work, "both"), bundles: both }) |> map(%, () => "Prepared")) catch (error) => error._tag
-    assert.strictEqual(exclusive, "SystemuiRefused")
-    assert.deepStrictEqual((try prepareListenerSystemui({ source: root, output: path.join(work, "power"), bundles: ["power"] })).map((receipt) => receipt.files.length), [2])
+    assert.deepStrictEqual((try verifySource(virtual)).problems, ["ManifestConfigurationDiffers"])
+    assert.isFalse(try files.exists(path.join(aosp, "review.patch")))
   }
 })
 
-it.effect.skipIf(skipped !== null)(`Stage the launcher's reviewed listener inert for development and activated only with the enrolled record${skipped === null ? "" : ` (skipped: ${skipped})`} (spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed"; spec/os/image/listener.md, "Story: Activate the listener only on a qualified image"; spec/os/image/listener.md, "Staging names the first problem it finds, and activates the listener only with a qualification record"; spec/os/image/listener.md, "A qualification record counts only when its bytes are the enrolled ones and it names every input of this image")`, effect () => {
+it.live(`Stage reviewed SystemUI patches away from the source and refuse exclusive combinations (spec/os/image/listener.md, "A listener is staged only from a matched source that carries the chip and ops SystemUI patches"; spec/os/image/provisioning.md, "Listener activation enables exactly the launcher's disabled plain assist activity and, for power voice, its protected power child, given the power bundle without the assist bundle and the long-press overlay")`, effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const original = try fixture("sense-systemui")
+    const work = try scratch("listener-systemui")
+    const source = path.join(work, "aosp")
+    try files.makeDirectory(source)
+    try files.copy(original, path.join(source, "frameworks", "base"))
+    const before = try verifyListenerSystemui(source, "before", "chip")
+    assert.strictEqual(before.files.length, 9)
+    const inside = path.join(source, "refused-output")
+    assert.strictEqual((try exit(prepareListenerSystemui(source, inside, "chip")))._tag, "Failure")
+    assert.isFalse(try files.exists(inside))
+    const output = path.join(work, "chip")
+    const staged = try prepareListenerSystemui(source, output, "chip")
+    assert.deepStrictEqual(try verifyListenerSystemui(output, "after", "chip"), staged)
+    assert.deepStrictEqual(try verifyListenerSystemui(source, "before", "chip"), before)
+    assert.strictEqual((try exit(prepareListenerSystemui(source, output, "chip")))._tag, "Failure")
+    const both = path.join(work, "both")
+    assert.strictEqual((try exit(prepareListenerSystemuiSet(source, both, ["assist", "power"])))._tag, "Failure")
+    assert.isFalse(try files.exists(both))
+    const power = path.join(work, "power")
+    assert.strictEqual((try prepareListenerSystemui(source, power, "power")).files.length, 2)
+    assert.strictEqual((try verifyListenerSystemui(power, "after", "power")).files.length, 2)
+    const together = try prepareListenerSystemuiSet(source, path.join(work, "chip-power"), ["chip", "power"])
+    assert.deepStrictEqual(together.map((one) => [one.bundle, one.state]), [["chip", "after"], ["power", "after"]])
+  }
+})
+
+it.live.skipIf(skipped !== null)(`Bind qualification to observed APK, package and source bytes${skipped === null ? "" : ` (skipped: ${skipped})`} (spec/os/image/listener.md, "Story: Activate the listener only on a qualified image"; spec/os/image/listener.md, "A qualification record counts only when its bytes are the enrolled ones and it names every input of this image")`, effect () => {
   provide NodeServices.layer {
     if (tools.kind === "missing") return
     const files = try FileSystem.FileSystem
     const path = try Path.Path
-    const work = try scratch("listener-stage")
-    const aosp = path.join(work, "aosp")
-    const manifestRepo = try repoAt(aosp, ".repo/manifests", { "default.xml": "<manifest />\n" })
-    const project = "device/google/cuttlefish"
-    const revision = try repoAt(aosp, project, { "chip.txt": "chip before\n", "ops.txt": "ops before\n" })
-    const lockFile = path.join(work, "aosp.lock.json")
-    try files.writeFileString(lockFile, JSON.stringify({ schemaVersion: 1, profiles: { cuttlefish: { kind: "virtual", manifest: { url: "https://android.example.invalid/m", tag: "t", tagObject: "7a9e46ba6ed424f922a3457f4964e67e0b966201", commit: manifestRepo }, projects: [{ path: project, commit: revision }], requiredSourceFiles: [], developmentOnly: false, targets: ["cf_x86_64_phone"] } } }))
-    const profile = try loadProfile("cuttlefish", lockFile)
-    const envelopes: PatchEnvelope[] = []
-    for (const name of ["chip", "ops"]) {
-      try writePatchBundle(path.join(work, "bundles", name), project, revision, profile.lock.digest, `${name}.txt`, `${name} before\n`, `${name} after\n`)
-      try files.writeFileString(path.join(aosp, project, `${name}.txt`), `${name} after\n`)
-      envelopes.push((try admitPatchEnvelope(name, path.join(work, "bundles", name))).envelope)
-    }
-    const source: SourceVerdict = (try verifySource(profile, { aospRoot: aosp, patches: envelopes })).source
-    assert.strictEqual(source.verdict, "Match")
-
+    const work = try scratch("listener-qualification")
+    const { options } = try checkout(work)
+    const source = (try verifySource(options)).state
+    const name = "com.example.launcher"
     const signer = try Effect.try(() => testSigner(tools, work, "launcher"))
-    const other = try Effect.try(() => testSigner(tools, work, "other"))
-    const speech = "wake model bytes\n"
-    const apk = try Effect.try(() => buildListener(tools, path.join(work, "apks"), "listener", signer, HOTWORD_PERMISSIONS, speech))
-    const certificate = try Effect.try(() => certificatePem(tools, signer, path.join(work, "release.x509.pem")))
-    const apkSha256 = try Effect.try(() => fileSha256(apk))
-    const descriptor = path.join(work, "listener-descriptor.json")
-    try files.writeFileString(descriptor, JSON.stringify({ packageName: `${LAUNCHER}.sense`, apkSha256, certificateSha256: signer.certificateSha256 }))
-    const launcher = { packageName: LAUNCHER, signerSha256: signer.certificateSha256, apkSha256: "a".repeat(64), descriptorSha256: "d".repeat(64) }
-    const base: StageListenerOptions = { apk, output: path.join(work, "inert"), moduleName: "Listener", launcher, wakeNames: ["hey", "eliza"], certificate, source, development: true, speech: [{ entry: "assets/speech/model.bin", sha256: sha256(speech) }] }
+    const manifest = (id: string) => `<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${id}"><application android:label="fixture"/></manifest>\n`
+    const { apk: launcher } = try Effect.try(() => buildApk(tools, { directory: work, name: "launcher", manifest: manifest(name), signer }))
+    const { apk: listener } = try Effect.try(() => buildApk(tools, { directory: work, name: "listener", manifest: manifest(`${name}.sense`), signer }))
+    const launcherDigest = sha256(try files.readFile(launcher))
+    const listenerDigest = sha256(try files.readFile(listener))
+    const launcherSigner = try readApkSigner(launcher, { apksigner: tools.apksigner })
+    const listenerSigner = try readApkSigner(listener, { apksigner: tools.apksigner })
+    const product = path.join(work, "product")
+    try writeTree(product, { "product.mk": "# Existing product\n" })
+    const refused = try Effect.flip(stageListener({ apk: listener, componentPackage: `${name}.sense`, launcher: { apk: launcher, descriptor: path.join(work, "launcher.json") },
+      moduleName: "Listener", output: product, wakeNames: ["hey"], policyCertificate: path.join(work, "public.pem"), sdkCommit: "e".repeat(40), source: options }))
+    assert.strictEqual(refused._tag, "ListenerAdmissionRefused")
+    assert.strictEqual(try files.readFileString(path.join(product, "product.mk")), "# Existing product\n")
+    assert.isFalse(try files.exists(path.join(product, "listener")))
 
-    const inert = try stageListener(base)
-    assert.deepStrictEqual([inert.activated, inert.speechIncluded, inert.packageName], [false, true, `${LAUNCHER}.sense`])
-    const staged = (name: string) => files.readFileString(path.join(inert.output, name))
-    assert.strictEqual(try staged(`permissions/privapp-permissions-${LAUNCHER}.sense.xml`), listenerPermissions(LAUNCHER).xml)
-    assert.deepStrictEqual(listenerPermissions(LAUNCHER).privileged, listenerPrivilegedPermissions)
-    assert.include(try staged("sepolicy/seapp_contexts"), `name=${LAUNCHER}.sense isPrivApp=true domain=eliza_sense_app`)
-    assert.include(try staged("sepolicy/mac_permissions.xml"), `<package name="${LAUNCHER}.sense">`)
-    assert.strictEqual(sha256(try files.readFile(path.join(inert.output, "Listener.apk"))), apkSha256, "the signed APK is staged unchanged")
-    const evidence = try staged("evidence.json")
-    assert.strictEqual(try Effect.try(() => JSON.parse(evidence).reach), "ListenerInert")
-    assert.strictEqual(try stageProblem(base), "ListenerOutputExists")
-
-    const at = (name: string) => path.join(work, name)
-    assert.strictEqual(try stageProblem({ ...base, output: at("production"), development: false, descriptor }), "QualificationMissing")
-    assert.strictEqual(try stageProblem({ ...base, output: at("short-source"), source: { ...source, patches: source.patches.filter((envelope) => envelope.name === "chip") } }), "SourceNotAdmitted")
-    assert.strictEqual(try stageProblem({ ...base, output: at("other-signer"), launcher: { ...launcher, signerSha256: other.certificateSha256 } }), "SignerNotTheLaunchers")
-    assert.strictEqual(try stageProblem({ ...base, output: at("wake"), wakeNames: ["hey", "hey"] }), "WakeNamesInvalid")
-    const network = try Effect.try(() => buildListener(tools, path.join(work, "apks"), "network", signer, [...HOTWORD_PERMISSIONS, "android.permission.INTERNET"], speech))
-    assert.strictEqual(try stageProblem({ ...base, apk: network, output: at("network") }), "PermissionsUnreviewed")
-    assert.strictEqual(try stageProblem({ ...base, output: at("descriptor"), descriptor, apk: try Effect.try(() => buildListener(tools, path.join(work, "apks"), "rebuilt", signer, HOTWORD_PERMISSIONS, "other model\n")) }), "DescriptorMismatch")
-
-    const record = (sepolicySha256: string) => JSON.stringify({
-      schemaVersion: 1,
-      qualified: true,
-      packageName: `${LAUNCHER}.sense`,
-      launcherSha256: launcher.apkSha256,
-      listenerSha256: apkSha256,
-      launcherDescriptorSha256: launcher.descriptorSha256,
-      listenerDescriptorSha256: sha256(JSON.stringify({ packageName: `${LAUNCHER}.sense`, apkSha256, certificateSha256: signer.certificateSha256 })),
-      certificateSha256: signer.certificateSha256,
-      sourceLockSha256: source.lock.digest,
-      sdkCommit: "e".repeat(40),
-      sepolicySha256,
-      patchManifests: Object.fromEntries(source.patches.map((envelope) => [envelope.name, envelope.manifestSha256])),
-      gates: Object.fromEntries(listenerGates.map((gate) => [gate, { status: "passed", evidenceSha256: sha256(gate) }])),
-    })
-    const qualified = at("qualification.json")
-    try files.writeFileString(qualified, record(inert.sepolicySha256))
-    const enrolled = sha256(try files.readFile(qualified))
-    const production: StageListenerOptions = { ...base, output: at("activated"), development: false, descriptor, sdkCommit: "e".repeat(40), qualification: { record: qualified, enrolledSha256: enrolled } }
-    assert.strictEqual(try stageProblem(production), "Activated")
-    assert.strictEqual(try stageProblem({ ...production, output: at("not-enrolled"), qualification: { record: qualified, enrolledSha256: "f".repeat(64) } }), "QualificationMismatch")
-    try files.writeFileString(qualified, record("0".repeat(64)))
-    assert.strictEqual(try stageProblem({ ...production, output: at("other-policy"), qualification: { record: qualified, enrolledSha256: sha256(try files.readFile(qualified)) } }), "QualificationMismatch")
+    const signing = parseDigest(signer.certificateSha256)
+    assert.deepStrictEqual([launcherSigner, listenerSigner], [{ tag: "OneSigner", certificate: signing }, { tag: "OneSigner", certificate: signing }])
+    const sdkCommit = "e".repeat(40)
+    const sepolicy = sha256("policy bytes")
+    const launcherDescriptor = sha256(JSON.stringify({ packageName: name, apkSha256: launcherDigest }))
+    const listenerDescriptor = sha256(JSON.stringify({ packageName: `${name}.sense`, apkSha256: listenerDigest }))
+    const request: Omit<ListenerRequest, "qualification" | "enrolledQualification"> = {
+      launcherPackage: name, launcherSigner: signing, launcherApk: parseDigest(launcherDigest), launcherDescriptor: parseDigest(launcherDescriptor),
+      descriptor: { tag: "ListenerReviewed", packageName: packageParts(`${name}.sense`), apk: parseDigest(listenerDigest),
+        certificate: signing, bytes: parseDigest(listenerDescriptor) },
+      listener: { packageName: packageParts(`${name}.sense`), sha256: parseDigest(listenerDigest), signer: listenerSigner,
+        buildType: "ReleaseBuild", requested: [], layout: "ZipAligned", speech: "SpeechNotPinned" },
+      wakeNames: wakeWords(["hey"]), overlay: { roles: [], microphoneToggle: false },
+      policyCertificate: signing, sepolicy: parseDigest(sepolicy), sdkCommit,
+    }
+    const record = (policy: string) => JSON.stringify({ schemaVersion: 1, qualified: true,
+      inputs: { packageName: `${name}.sense`, launcher: launcherDigest, listener: listenerDigest, launcherDescriptor, listenerDescriptor,
+        certificate: signer.certificateSha256, sourceLock: source.lock.digest, sdkCommit, sepolicy: policy, patches: [] },
+      gates: listenerGates.map((gate) => ({ gate, result: { status: "pass", evidenceSha256: sha256(gate) } })) })
+    const file = path.join(work, "qualification.json")
+    try files.writeFileString(file, record(sepolicy))
+    const pin = { file, sha256: sha256(record(sepolicy)) }
+    const reviewed = try verifyListenerQualification(pin, request, source, true)
+    assert.strictEqual(reviewed.qualification.tag, "QualificationRecord")
+    assert.strictEqual((try exit(verifyListenerQualification({ ...pin, sha256: "f".repeat(64) }, request, source, true)))._tag, "Failure")
+    try files.writeFileString(file, record("0".repeat(64)))
+    assert.strictEqual((try exit(verifyListenerQualification({ file, sha256: sha256(record("0".repeat(64))) }, request, source, true)))._tag, "Failure")
   }
-}, 300_000)
+}, 240_000)

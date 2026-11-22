@@ -109,7 +109,7 @@ pure def link(m: Methods, reviewId: str, now: Millis, proof: LinkProof, holder: 
   val decided = linkAttempt(proof, holder, kindHeld)
   { state: { ...m, used: true, outcome: decided }, out: if (decided == MethodLinked) List(LinkIdentity) else List() }
 }
-pure val openCode: C::Challenge = { ...C::initial, method: PhoneSignIn, purpose: C::LinkPhoneCode({ userId: "u1" }), clientId: "app.one", phase: C::Open, expiresAt: 300000 }
+pure val openCode: C::Challenge = C::send(C::initial, PhoneSignIn, C::LinkPhoneCode({ userId: "u1" }), "app.one", true).state
 pure val cValues = Set(openCode).union(Set({ ...openCode, phase: C::Consumed({ yields: C::PhoneProofYield }) })).union(Set({ ...openCode, phase: C::Locked, failures: 5 }))
 pure val openNative: G::GoogleAttempt = { ...G::initial, native: G::ChallengeOpen({ purpose: G::NativeLink({ userId: "u1" }), openUntil: 300000 }) }
 pure val attemptValues = Set(openNative).union(Set({ ...openNative, native: G::ChallengeUsed({ purpose: G::NativeLink({ userId: "u1" }), usedAs: G::GoogleProofYield }) }))
