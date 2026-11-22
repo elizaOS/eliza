@@ -85,6 +85,12 @@ function endsWithTheCheck(child: ChildProcess, name: NodeJS.Signals) {
   for (const over of ["close", "error"] as const) child.once(over, () => ending.delete(child));
 }
 
+export function startAttached(exe: string, args: string[], cwd: string) {
+  const child = spawn(exe, args, { cwd, stdio: "inherit", detached: !WINDOWS });
+  endsWithTheCheck(child, "SIGTERM");
+  return child;
+}
+
 /** How many programs run at once; the others wait for one to end. */
 const SLOTS = availableParallelism();
 let busy = 0;
