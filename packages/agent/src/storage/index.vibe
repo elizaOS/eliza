@@ -11,9 +11,9 @@ module node {
   } from "@elizaos/core"
   import { seedable } from "../../gen/agent__storage__database.ts"
   import { commitReadCompletion, readCompletionPublication } from "../device-actions/store.vibe"
-  import { migrations as shipped, type Migration } from "./schema.vibe"
+  import { migrations as shipped, type DeviceStorageSnapshot, type Migration } from "./schema.vibe"
   import { claimDeviceState } from "./identity.vibe"
-  import { migrate, seedDurableStore, startStore, storeBundle, type DeviceStorageSnapshot } from "./migrate.vibe"
+  import { migrate, seedDurableStore, startStore, storeBundle } from "./migrate.vibe"
 
   export interface DeviceStorageOptions {
     stateDirectory: string
@@ -597,6 +597,18 @@ module node {
     readonly deletePairingAllowlistEntries = unsupported("deletePairingAllowlistEntries")
   }
 
+  export async function createDeviceStorageSnapshot(list: readonly Migration[] = shipped): Promise<DeviceStorageSnapshot> {
+    const db = await PGlite.create()
+    try {
+      await db.transaction(async (tx) => {
+        for (const migration of list) await tx.exec(migration.sql)
+        await tx.exec("CREATE TABLE device_snapshot (version integer NOT NULL)")
+        await tx.query("INSERT INTO device_snapshot VALUES ($1)", [list.length])
+      })
+      return { schemaVersion: list.length, bytes: new Uint8Array(await (await db.dumpDataDir("none")).arrayBuffer()) }
+    } finally { await db.close() }
+  }
+
   export async function openDeviceStorage(options: DeviceStorageOptions): Promise<{ agentId: UUID; adapter: IDatabaseAdapter }> {
     if (!Number.isSafeInteger(options.embeddingDimensions) || options.embeddingDimensions < 0 ||
       (options.account !== null && (!options.account.userId.trim() || !options.account.organizationId.trim()))) {
@@ -626,5 +638,5 @@ module node {
     }
   }
 }
-export { openDeviceStorage, type DeviceStorageOptions } from node
-export { createDeviceStorageSnapshot, type DeviceStorageSnapshot } from "./migrate.vibe"
+export { createDeviceStorageSnapshot, openDeviceStorage, type DeviceStorageOptions } from node
+export type { DeviceStorageSnapshot } from "./schema.vibe"
