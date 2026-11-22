@@ -28,11 +28,9 @@ test("a written number becomes the exact dial form or is rejected with the forma
   for (const [written, exact] of [
     ["555-0100", "5550100"],
     ["+1 (415) 555-0100", "+14155550100"],
-    // A trunk "(0)" after the country code is not dialed with it.
     ["+44 (0)20 7946 0958", "+442079460958"],
     ["+49(0)30 1234567", "+49301234567"],
     ["+41 (0) 44 668 18 00", "+41446681800"],
-    // Italy, San Marino and Côte d'Ivoire dial the 0 with the country code.
     ["+39 (0)55 123 4567", "+390551234567"],
     ["+39 (0)6 1234 5678", "+390612345678"],
     ["+378 (0)549 882 123", "+3780549882123"],
@@ -42,6 +40,12 @@ test("a written number becomes the exact dial form or is rejected with the forma
     ["+1 415 555-0100", "+14155550100"],
     ["(415)555-0100", "4155550100"],
     [" 01.23.45.67.89 ", "0123456789"],
+    // One North American number typed with mixed separators, which the
+    // secret-swap phone detector restores whole.
+    ["415-555 0100", "4155550100"],
+    ["415.555 0100", "4155550100"],
+    ["+1 415-555 0100", "+14155550100"],
+    ["(415) 555 0100", "4155550100"],
   ])
     assert.equal(phoneDialNumber(written), exact);
   for (const bad of [
@@ -53,6 +57,8 @@ test("a written number becomes the exact dial form or is rejected with the forma
     "+44 (0)",
     // More than one number, a range, a date or an address is not one number.
     "555-0100 555-0199",
+    "415-555 0100 0199",
+    "415-555-0100 415-555-0199",
     "5550100\n5550101",
     "+1 415 555 0100 - 0105",
     "415 555 0100 415 555 0199",

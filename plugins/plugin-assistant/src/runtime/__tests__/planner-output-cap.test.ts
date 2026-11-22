@@ -411,6 +411,93 @@ describe("default cap through AgentRuntime model dispatch", () => {
       { provider: "eliza-aosp-llama", maxTokens: undefined, omitted: true },
     ]);
   });
+
+  it("sends no cap to a remote registration, failover attempts included, when ELIZA_PLANNER_MAX_TOKENS=model", async () => {
+    vi.stubEnv("ELIZA_PLANNER_MAX_TOKENS", "model");
+    const refused = Object.assign(new Error("connect ECONNREFUSED"), {
+      code: "ECONNREFUSED",
+    });
+    await expect(
+      plan([
+        {
+          modelType: ModelType.ACTION_PLANNER,
+          provider: "openai",
+          fail: refused,
+        },
+        { modelType: ModelType.TEXT_SMALL, provider: "elizaOSCloud" },
+      ]),
+    ).resolves.toEqual([
+      { provider: "openai", maxTokens: undefined, omitted: true },
+      { provider: "elizaOSCloud", maxTokens: undefined, omitted: true },
+    ]);
+  });
+});
+
+describe("host opt-out with ELIZA_PLANNER_MAX_TOKENS=model", () => {
+  /** What an adapter throws when a call that sent no cap stops at the model's limit. */
+  const atModelLimit = () =>
+    new ElizaError(
+      "[cerebras] Model output did not complete successfully (length).",
+      {
+        code: "MODEL_OUTPUT_INCOMPLETE",
+        context: { finishReason: "length", maxTokens: null },
+      },
+    );
+
+  it("does not re-send a planning round that stopped at the model's limit under =model", async () => {
+    vi.stubEnv("ELIZA_PLANNER_MAX_TOKENS", "model");
+    const failure = atModelLimit();
+    const { result, requests, stages } = await run([failure, reply()]);
+    await expect(result).rejects.toBe(failure);
+    await expect(result).rejects.toMatchObject({
+      code: "MODEL_OUTPUT_INCOMPLETE",
+    });
+    expect(requests).toEqual([{ maxTokens: undefined, omitted: true }]);
+    expect(
+      stages
+        .filter((stage) => stage.kind === "planner")
+        .map((stage) => stage.retryIdx),
+    ).toEqual([undefined]);
+  });
+
+  it("keeps the one rate-limit re-send under =model", async () => {
+    vi.stubEnv("ELIZA_PLANNER_MAX_TOKENS", "model");
+    const rateLimited = Object.assign(new Error("Too Many Requests"), {
+      status: 429,
+      retryAfterMs: 1,
+    });
+    const { result, requests, inputs } = await run([rateLimited, reply()]);
+    expect((await result).finalMessage).toBe(ANSWER);
+    expect(requests).toEqual([
+      { maxTokens: undefined, omitted: true },
+      { maxTokens: undefined, omitted: true },
+    ]);
+    expect(inputs[1]).toBe(inputs[0]);
+  });
+
+  it("sends the coding planner no cap under ELIZA_CODING_PLANNER_MAX_TOKENS=model", async () => {
+    vi.stubEnv("ELIZA_CODING_PLANNER_MAX_TOKENS", "model");
+    const { result, requests } = await run([capped(), reply()], {
+      codingMode: true,
+    });
+    expect((await result).terminalFailure?.code).toBe(
+      "MODEL_OUTPUT_INCOMPLETE",
+    );
+    expect(requests).toEqual([{ maxTokens: undefined, omitted: true }]);
+  });
+
+  it.each(["max", "Model", " model", "40960k"])(
+    "still rejects another non-numeric value (%j)",
+    async (value) => {
+      vi.stubEnv("ELIZA_PLANNER_MAX_TOKENS", value);
+      const { result, requests } = await run([reply()]);
+      await expect(result).rejects.toMatchObject({
+        code: "PLANNER_BUDGET_ENV_INVALID",
+        context: { setting: "ELIZA_PLANNER_MAX_TOKENS", received: value },
+      });
+      expect(requests).toEqual([]);
+    },
+  );
 });
 
 describe("requests outside the non-coding planning cap", () => {

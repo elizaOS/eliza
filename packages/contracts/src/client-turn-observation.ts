@@ -5,7 +5,9 @@
  * A renderer reports which screen and optional Calendar day are visible and which record, if any, is
  * selected, using opaque identifiers only. The observation is untrusted data
  * for the message it accompanies: it carries no record contents, it is not an
- * instruction, and it grants no device access. Device-action admission,
+ * instruction, and it grants no device access. A phone that holds the
+ * platform location permission may also report its last known position, so
+ * the agent knows where the phone is without asking. Device-action admission,
  * planner hints and prompt assembly read it through this one contract, so a
  * client does not wrap the user's authored text in its own instruction
  * envelope. Product hosts may apply narrower view and selection allowlists
@@ -40,15 +42,35 @@ export interface ClientCalendarDayObservation {
   readonly timeZone: string;
 }
 
+/**
+ * The phone's last known position. The client sends it only while the
+ * platform location permission is granted and the owner has location on.
+ */
+export interface ClientLocationObservation {
+  readonly latitude: number;
+  readonly longitude: number;
+  /** Horizontal accuracy radius in meters, when the platform reports one. */
+  readonly accuracyMeters?: number;
+  /** When the platform took the fix, in epoch milliseconds. */
+  readonly capturedAt: number;
+}
+
+/** Optional observation fields a peer may declare it reads. */
+export type ClientTurnObservationOptionalField = "calendarDay" | "location";
+const OPTIONAL_FIELDS: readonly ClientTurnObservationOptionalField[] = [
+  "calendarDay",
+  "location",
+];
+
 /** Data-format support, never a device or Calendar permission. */
 export interface ClientTurnObservationSupport {
   readonly version: 1;
-  readonly optionalFields: readonly "calendarDay"[];
+  readonly optionalFields: readonly ClientTurnObservationOptionalField[];
 }
 export const CLIENT_TURN_OBSERVATION_SUPPORT: ClientTurnObservationSupport =
   Object.freeze({
     version: 1,
-    optionalFields: Object.freeze(["calendarDay"] as const),
+    optionalFields: Object.freeze([...OPTIONAL_FIELDS]),
   });
 
 export interface ClientTurnObservation {
@@ -62,6 +84,7 @@ export interface ClientTurnObservation {
   readonly timeZone?: string;
   readonly selectedObject?: ClientSelectedObject;
   readonly calendarDay?: ClientCalendarDayObservation;
+  readonly location?: ClientLocationObservation;
 }
 
 const NAME = /^[a-z][a-z0-9-]{0,63}$/;
@@ -79,6 +102,13 @@ const OBSERVATION_KEYS = new Set([
   "timeZone",
   "selectedObject",
   "calendarDay",
+  "location",
+]);
+const LOCATION_KEYS = new Set([
+  "latitude",
+  "longitude",
+  "accuracyMeters",
+  "capturedAt",
 ]);
 const CALENDAR_DAY_KEYS = new Set(["date", "timeZone"]);
 const SUPPORT_KEYS = new Set(["version", "optionalFields"]);
@@ -150,16 +180,24 @@ export function readClientTurnObservationSupport(
   try {
     const input = plainRecord(value, "Client observation support");
     onlyKeys(input, SUPPORT_KEYS, "Client observation support");
+    const fields = input.optionalFields;
     if (
       input.version !== 1 ||
-      !Array.isArray(input.optionalFields) ||
-      input.optionalFields.length > 1 ||
-      !input.optionalFields.every((field) => field === "calendarDay")
+      !Array.isArray(fields) ||
+      fields.length > OPTIONAL_FIELDS.length ||
+      new Set(fields).size !== fields.length ||
+      !fields.every((field) =>
+        OPTIONAL_FIELDS.includes(field as ClientTurnObservationOptionalField),
+      )
     )
       return;
-    return input.optionalFields.length
-      ? CLIENT_TURN_OBSERVATION_SUPPORT
-      : Object.freeze({ version: 1, optionalFields: Object.freeze([]) });
+    // Canonical order, so equal declarations compare equal.
+    return Object.freeze({
+      version: 1,
+      optionalFields: Object.freeze(
+        OPTIONAL_FIELDS.filter((field) => fields.includes(field)),
+      ),
+    });
   } catch {
     return;
   }
@@ -207,6 +245,44 @@ export function parseClientCalendarDayObservation(
   if (!isClientTimeZone(input.timeZone))
     throw new ClientTurnObservationError("Calendar day time zone is invalid");
   return Object.freeze({ date, timeZone: input.timeZone });
+}
+
+/** Browser-safe validation of a reported device position. */
+export function parseClientLocationObservation(
+  value: unknown,
+): ClientLocationObservation {
+  const input = plainRecord(value, "Device location");
+  onlyKeys(input, LOCATION_KEYS, "Device location");
+  const finite = (field: unknown, min: number, max: number, what: string) => {
+    if (
+      typeof field !== "number" ||
+      !Number.isFinite(field) ||
+      field < min ||
+      field > max
+    )
+      throw new ClientTurnObservationError(
+        `Device location ${what} is invalid`,
+      );
+    return field;
+  };
+  const latitude = finite(input.latitude, -90, 90, "latitude");
+  const longitude = finite(input.longitude, -180, 180, "longitude");
+  const accuracyMeters =
+    input.accuracyMeters === undefined
+      ? undefined
+      : finite(input.accuracyMeters, 0, 1_000_000, "accuracy");
+  if (
+    typeof input.capturedAt !== "number" ||
+    !Number.isSafeInteger(input.capturedAt) ||
+    input.capturedAt < 0
+  )
+    throw new ClientTurnObservationError("Device location time is invalid");
+  return Object.freeze({
+    latitude,
+    longitude,
+    ...(accuracyMeters === undefined ? {} : { accuracyMeters }),
+    capturedAt: input.capturedAt,
+  });
 }
 
 function selectedObject(value: unknown): ClientSelectedObject {
@@ -300,6 +376,10 @@ export function parseClientTurnObservation(
     throw new ClientTurnObservationError(
       "Calendar day requires the current non-sensitive Calendar and matching time zone",
     );
+  const location =
+    input.location === undefined
+      ? undefined
+      : parseClientLocationObservation(input.location);
   const observation: ClientTurnObservation = Object.freeze({
     view,
     revision: input.revision,
@@ -309,6 +389,7 @@ export function parseClientTurnObservation(
       : { timeZone: input.timeZone as string }),
     ...(selection ? { selectedObject: selection } : {}),
     ...(calendarDay ? { calendarDay } : {}),
+    ...(location ? { location } : {}),
   });
   if (
     new TextEncoder().encode(JSON.stringify(observation)).byteLength >

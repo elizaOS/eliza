@@ -125,11 +125,11 @@ const tools: ToolDefinition[] = [
   },
 ];
 
-it("retries a planner call cut off at the default cap and completes the turn", async () => {
-  finishes = ["length", "tool_calls"];
-  const errors: unknown[] = [];
-  // Dispatch through the runtime as the registered openai provider: the
-  // planner's default cap is set per resolved registration, as it is live.
+/**
+ * Plan one turn through the runtime as the registered openai provider: the
+ * planner's default cap is set per resolved registration, as it is live.
+ */
+function planThroughRuntime(errors: unknown[]) {
   const runtime = new AgentRuntime({ character: { name: "Ada", bio: [] }, logLevel: "fatal" });
   runtime.registerDatabaseAdapter({ createLogs: async () => undefined } as never);
   runtime.registerModel(
@@ -144,7 +144,7 @@ it("retries a planner call cut off at the default cap and completes the turn", a
     },
     "openai"
   );
-  const result = await runPlannerLoop({
+  return runPlannerLoop({
     runtime: {
       useModel: (type, params, provider) => runtime.useModel(type, params as never, provider),
     },
@@ -158,6 +158,12 @@ it("retries a planner call cut off at the default cap and completes the turn", a
       messageToUser: "Created qa dinner.",
     }),
   }).finally(() => runtime.stop());
+}
+
+it("retries a planner call cut off at the default cap and completes the turn", async () => {
+  finishes = ["length", "tool_calls"];
+  const errors: unknown[] = [];
+  const result = await planThroughRuntime(errors);
 
   expect(result.finalMessage).toBe("Created qa dinner.");
   expect(requests.map((body) => body.max_tokens)).toEqual([8192, 8192]);
@@ -166,6 +172,37 @@ it("retries a planner call cut off at the default cap and completes the turn", a
   expect(errors[0]).toMatchObject({
     code: "MODEL_OUTPUT_INCOMPLETE",
     context: { finishReason: "length", maxTokens: 8192 },
+  });
+});
+
+it("sends Cerebras no output cap under ELIZA_PLANNER_MAX_TOKENS=model", async () => {
+  vi.stubEnv("ELIZA_PLANNER_MAX_TOKENS", "model");
+  finishes = ["tool_calls"];
+  const result = await planThroughRuntime([]);
+
+  expect(result.finalMessage).toBe("Created qa dinner.");
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).not.toHaveProperty("max_tokens");
+  expect(requests[0]).not.toHaveProperty("max_completion_tokens");
+});
+
+it("does not re-send a planner call stopped at the model's limit under =model", async () => {
+  vi.stubEnv("ELIZA_PLANNER_MAX_TOKENS", "model");
+  finishes = ["length", "tool_calls"];
+  const errors: unknown[] = [];
+  await expect(planThroughRuntime(errors)).rejects.toMatchObject({
+    code: "MODEL_OUTPUT_INCOMPLETE",
+  });
+
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).not.toHaveProperty("max_tokens");
+  expect(requests[0]).not.toHaveProperty("max_completion_tokens");
+  // The adapter records the omitted cap as null, the evidence a caller reads
+  // to tell the model's own limit from a cap it sent.
+  expect(errors).toHaveLength(1);
+  expect(errors[0]).toMatchObject({
+    code: "MODEL_OUTPUT_INCOMPLETE",
+    context: { finishReason: "length", maxTokens: null },
   });
 });
 

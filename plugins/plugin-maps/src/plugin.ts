@@ -599,7 +599,9 @@ export const mapsPlugin: Plugin = {
         "Explore places, compare route alternatives, and hand off map actions to Eliza.",
       icon: "Map",
       path: "/maps",
-      responseContext: { primaryContext: "world" },
+      // The context every Maps operation declares: a turn asked from the map
+      // starts with them instead of finding them through discovery.
+      responseContext: { primaryContext: "maps" },
       order: 925,
       viewKind: "release",
       modalities: ["gui"],

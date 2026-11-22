@@ -19,6 +19,7 @@ import {
   prepareCloudLivePersonalIdentity,
   waitForCloudLivePersonalIdentity,
 } from "../cloud-live-optional-action";
+import { waitForRendererCloudApiOrigin } from "../cloud-live-renderer-api-readiness";
 
 test.describe("Cloud live optional action boundary", () => {
   test.use({ serviceWorkers: "block" });
@@ -1184,6 +1185,59 @@ test.describe("Cloud live optional action boundary", () => {
     expect(String(result.error)).not.toMatch(/data-testid|Retry|locator/);
     expect(Date.now() - startedAt).toBeLessThan(2_000);
   });
+});
+
+test("the renderer waits for its exact origin across a document navigation", async ({
+  page,
+}) => {
+  const expectedApiOrigin = "https://renderer.test";
+  await page.route(`${expectedApiOrigin}/**`, (route) =>
+    route.fulfill({ contentType: "text/html", body: "<main></main>" }),
+  );
+  await page.goto(`${expectedApiOrigin}/boot`);
+  const readCloudBase = () =>
+    page.evaluate(() => {
+      if (location.pathname === "/boot") {
+        return new Promise<string>(() => location.replace("/ready"));
+      }
+      return location.origin;
+    });
+  expect(
+    await waitForRendererCloudApiOrigin({
+      mode: "same-origin",
+      readCloudBase,
+      expectedApiOrigin,
+    }),
+  ).toEqual({
+    cloudBase: expectedApiOrigin,
+    apiOrigin: expectedApiOrigin,
+  });
+  await expect(
+    waitForRendererCloudApiOrigin({
+      mode: "same-origin",
+      readCloudBase,
+      expectedApiOrigin: "https://other.test",
+      timeoutMs: 0,
+    }),
+  ).rejects.toThrow("expected https://other.test");
+  await page.goto(`${expectedApiOrigin}/boot`);
+  await expect(
+    waitForRendererCloudApiOrigin({
+      mode: "same-origin",
+      readCloudBase,
+      expectedApiOrigin,
+      timeoutMs: 0,
+    }),
+  ).rejects.toThrow("did not become ready within 0ms");
+  await page.close();
+  await expect(
+    waitForRendererCloudApiOrigin({
+      mode: "same-origin",
+      readCloudBase,
+      expectedApiOrigin,
+      timeoutMs: 0,
+    }),
+  ).rejects.toThrow(/page, context or browser has been closed/i);
 });
 
 test("the staging browser opens join with an issued same-origin session", async ({

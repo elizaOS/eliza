@@ -337,27 +337,29 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
+  /** Fetch staking yields, logging and answering `[]` when the Kamino API fails. */
   async getStakingYields(): Promise<StakingYield[]> {
     try {
-      logger.log("Fetching staking yields from Kamino API...");
-      const yields =
-        await this.makeApiRequest<StakingYield[]>("/v2/staking-yields");
-      logger.log(`Found ${yields.length} staking yields`);
-      return yields;
+      return await this.getStakingYieldsStrict();
     } catch (error) {
       logger.error("Error fetching staking yields:", formatLogError(error));
       return [];
     }
   }
 
+  /** Fetch staking yields, propagating API failures to callers that must fail closed. */
+  async getStakingYieldsStrict(): Promise<StakingYield[]> {
+    logger.log("Fetching staking yields from Kamino API...");
+    const yields =
+      await this.makeApiRequest<StakingYield[]>("/v2/staking-yields");
+    logger.log(`Found ${yields.length} staking yields`);
+    return yields;
+  }
+
+  /** Fetch median staking yields, logging and answering `[]` when the API fails. */
   async getMedianStakingYields(): Promise<StakingYield[]> {
     try {
-      logger.log("Fetching median staking yields from Kamino API...");
-      const yields = await this.makeApiRequest<StakingYield[]>(
-        "/v2/staking-yields/median",
-      );
-      logger.log(`Found ${yields.length} median staking yields`);
-      return yields;
+      return await this.getMedianStakingYieldsStrict();
     } catch (error) {
       logger.error(
         "Error fetching median staking yields:",
@@ -367,29 +369,48 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
+  /** Fetch median staking yields, propagating API failures to fail-closed callers. */
+  async getMedianStakingYieldsStrict(): Promise<StakingYield[]> {
+    logger.log("Fetching median staking yields from Kamino API...");
+    const yields = await this.makeApiRequest<StakingYield[]>(
+      "/v2/staking-yields/median",
+    );
+    logger.log(`Found ${yields.length} median staking yields`);
+    return yields;
+  }
+
+  /** Fetch Limo trades, logging and answering `[]` when the Kamino API fails. */
   async getLimoTrades(
     inTokenMint?: string,
     outTokenMint?: string,
   ): Promise<LimoTrade[]> {
     try {
-      let endpoint = "/limo/trades";
-      const params = new URLSearchParams();
-
-      if (inTokenMint) params.append("in", inTokenMint);
-      if (outTokenMint) params.append("out", outTokenMint);
-
-      if (params.toString()) {
-        endpoint += `?${params.toString()}`;
-      }
-
-      logger.log(`Fetching Limo trades from Kamino API: ${endpoint}`);
-      const trades = await this.makeApiRequest<LimoTrade[]>(endpoint);
-      logger.log(`Found ${trades.length} Limo trades`);
-      return trades;
+      return await this.getLimoTradesStrict(inTokenMint, outTokenMint);
     } catch (error) {
       logger.error("Error fetching Limo trades:", formatLogError(error));
       return [];
     }
+  }
+
+  /** Fetch Limo trades, propagating API failures to callers that must fail closed. */
+  async getLimoTradesStrict(
+    inTokenMint?: string,
+    outTokenMint?: string,
+  ): Promise<LimoTrade[]> {
+    let endpoint = "/limo/trades";
+    const params = new URLSearchParams();
+
+    if (inTokenMint) params.append("in", inTokenMint);
+    if (outTokenMint) params.append("out", outTokenMint);
+
+    if (params.toString()) {
+      endpoint += `?${params.toString()}`;
+    }
+
+    logger.log(`Fetching Limo trades from Kamino API: ${endpoint}`);
+    const trades = await this.makeApiRequest<LimoTrade[]>(endpoint);
+    logger.log(`Found ${trades.length} Limo trades`);
+    return trades;
   }
 
   async getMarketStatistics(): Promise<KaminoMarketStatistics | null> {
@@ -397,9 +418,9 @@ export class KaminoLiquidityService extends Service {
       logger.log("Fetching real-time market statistics from Kamino API...");
 
       const [stakingYields, medianYields, limoTrades] = await Promise.all([
-        this.getStakingYields(),
-        this.getMedianStakingYields(),
-        this.getLimoTrades(),
+        this.getStakingYieldsStrict(),
+        this.getMedianStakingYieldsStrict(),
+        this.getLimoTradesStrict(),
       ]);
 
       const stats = {
@@ -990,7 +1011,7 @@ export class KaminoLiquidityService extends Service {
       };
 
       try {
-        const stakingYields = await this.getStakingYields();
+        const stakingYields = await this.getStakingYieldsStrict();
         results.connectionTest = true;
         results.stakingYieldsTest = true;
         logger.log(
@@ -1001,7 +1022,7 @@ export class KaminoLiquidityService extends Service {
       }
 
       try {
-        const limoTrades = await this.getLimoTrades();
+        const limoTrades = await this.getLimoTradesStrict();
         results.limoTradesTest = true;
         logger.log(
           `Limo trades test passed. Found ${limoTrades.length} trades`,

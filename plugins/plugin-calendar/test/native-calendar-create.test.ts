@@ -53,17 +53,16 @@ function plan(guestIntent: Record<string, unknown>) {
   };
 }
 
-function runtimeWith(parsed: Record<string, unknown>) {
+function runtimeWith(parsed: Record<string, unknown> | null) {
   const reportError = vi.fn();
   const runtime = {
     agentId: "00000000-0000-4000-8000-000000000001",
     getService: () => null,
     reportError,
   } as unknown as IAgentRuntime;
-  const runJsonModel = vi.fn(async () => ({
-    rawResponse: JSON.stringify(parsed),
-    parsed,
-  }));
+  const runJsonModel = vi.fn(async () =>
+    parsed === null ? null : { rawResponse: JSON.stringify(parsed), parsed },
+  );
   registerCalendarActionHostAdapter(runtime, {
     runJsonModel: runJsonModel as unknown as HostAdapter["runJsonModel"],
     recentConversationTexts: async () => [],
@@ -144,6 +143,14 @@ describe("native phone Calendar create", () => {
       2,
       expect.objectContaining({ prompt: expect.stringContaining(REQUEST) }),
     );
+    expect(runJsonModel).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        prompt: expect.stringContaining(
+          "Preserve the original evidence quotes. If a required detail is still missing, return a clarification object.",
+        ),
+      }),
+    );
     expect(reportError).not.toHaveBeenCalled();
   });
 
@@ -192,5 +199,40 @@ describe("native phone Calendar create", () => {
     const draft = await infer(runtime);
     expect(draft.fields).toBeUndefined();
     expect(draft.text).toContain("guest's valid email address");
+  });
+
+  it("reads a string or null preparation/review flag as before, in one call", async () => {
+    // Consumers already normalize these: the string flag through
+    // normalizeIsShortPreparationFlag, a null review flag as "no review".
+    const { runtime, reportError, runJsonModel } = runtimeWith({
+      ...plan({}),
+      isShortPreparation: "false",
+      reviewBeforeCreate: null,
+    });
+    const draft = await infer(runtime);
+    expect(draft.fields).toMatchObject({
+      title: "Lunch with Sam",
+      start: "2026-09-19T16:00:00.000Z",
+      end: "2026-09-19T17:00:00.000Z",
+    });
+    expect(runJsonModel).toHaveBeenCalledTimes(1);
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it("reports a model call that returns nothing as a provider failure without rephrase coaching", async () => {
+    const { runtime, reportError, runJsonModel } = runtimeWith(null);
+    const draft = await infer(runtime);
+    expect(draft.fields).toBeUndefined();
+    expect(draft.text).toBe(
+      "The calendar model did not respond, so the event request was not read. No event was created. This is a service problem, not a problem with the request.",
+    );
+    expect(reportError).toHaveBeenCalledWith(
+      "calendar:native-create",
+      expect.objectContaining({
+        code: "CALENDAR_EXTRACTION_MODEL_UNAVAILABLE",
+      }),
+      { code: "CALENDAR_EXTRACTION_MODEL_UNAVAILABLE" },
+    );
+    expect(runJsonModel).toHaveBeenCalledTimes(1);
   });
 });

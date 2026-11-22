@@ -92,8 +92,15 @@ function listContainersFromBinary(binary: string, prefix: string): string[] {
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-  } catch {
-    return [];
+  } catch (error) {
+    // A listing that failed is not an empty listing: start/recover use the
+    // result for orphan cleanup (sandbox-manager.ts:356/:408), so returning []
+    // hid a dead/denied daemon and then collided with the leftover container's
+    // name. No containers matched still reads as [] (handled above).
+    throw new ElizaError(`Container inventory failed: ${binary} ps`, {
+      code: "SANDBOX_ENGINE_INVENTORY_FAILED",
+      cause: error,
+    });
   }
 }
 

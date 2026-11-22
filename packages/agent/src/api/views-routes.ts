@@ -63,6 +63,7 @@ import { normalizeWsClientId } from "./server-helpers-auth.ts";
 import { handleViewAssetRequest } from "./view-asset-routes.ts";
 import { assertRuntimeViewEntry } from "./view-installations.ts";
 import {
+  NAVIGATION_BUSY_WAIT_MS,
   type RendererViewInteractResult,
   viewInteractionHost,
 } from "./view-interaction-host.ts";
@@ -939,7 +940,16 @@ export async function handleViewsRoutes(
           ? resolveViewNavigationTargets([entry], body.resolvedAlias)[0]
               ?.resolvedAlias
           : undefined;
-      const preparedBase = currentViewState;
+      // A claimed navigation for this renderer must settle before another is
+      // prepared. Wait briefly for it (its claim lease bounds a lost one)
+      // instead of refusing a turn that arrives just after a renderer report.
+      await viewInteractionHost(viewRuntime, ctx.hostKey).navigationIdle(
+        originatingClientId,
+        ownerId,
+        NAVIGATION_BUSY_WAIT_MS,
+      );
+      // The settled navigation may have committed; prepare against fresh state.
+      const preparedBase = getCurrentViewState(viewRuntime, scope);
       let settled: Promise<ViewInteractResult>;
       try {
         settled = viewInteractionHost(viewRuntime, ctx.hostKey).waitFor(

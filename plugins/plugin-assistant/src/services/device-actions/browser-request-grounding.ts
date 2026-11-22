@@ -9,6 +9,7 @@ export {
   directBrowserSearchQuery,
   groundBrowserDestination,
   groundBrowserSearchQuery,
+  spokenBrowserOpen,
 } from "@elizaos/contracts/browser-request-grounding";
 
 /** Policy refusal before persistence; never represents a human review decision. */

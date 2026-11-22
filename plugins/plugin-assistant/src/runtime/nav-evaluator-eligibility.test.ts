@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
+import type { ContextObject, PlannerTrajectory } from "@elizaos/core";
 import { expect, test } from "vitest";
-import { isDeliveredNavigationOnlyTurn } from "./nav-evaluator-eligibility";
+import { runEvaluator } from "./evaluator.ts";
+import {
+  isDeliveredNavigationOnlyTurn,
+  requiredViewNavigationStatus,
+} from "./nav-evaluator-eligibility";
 import fixture from "./navigation-replay.fixture.json";
 
 const replay = () => structuredClone(fixture.trajectory);
@@ -63,7 +68,93 @@ test("historical same-view delivery, mixed work and pending effects preserve unr
     expect(eligible(t)).toBe(false);
   }
 });
-test("actual evaluator changes only cloned eligibility enum; raw applied verdict is never silently repaired", () => {
+
+test("requires a matching view and installation, and treats active preparation as pending", () => {
+  const t = replay();
+  const result = t.steps[0].result;
+  const required = {
+    viewId: "notes",
+    clientId: "client-1",
+    installationId: "install-1",
+  };
+  Object.assign(t.context, { metadata: { requiredViewNavigation: required } });
+  Object.assign(result.data.view, { installationId: "install-1" });
+  const status = () =>
+    Reflect.apply(requiredViewNavigationStatus, undefined, [t]);
+  expect(status()).toBe("delivered");
+  required.viewId = "inbox";
+  expect(status()).toBe("missing");
+  required.viewId = "notes";
+  required.installationId = "install-2";
+  expect(status()).toBe("missing");
+  required.installationId = "install-1";
+  result.data.navigation.status = "prepared";
+  Object.assign(result.data, { awaitingDeviceExecution: true });
+  Object.assign(result.data.values, {
+    completedActionDelivered: false,
+    navigationPrepared: true,
+    navigationBinding: {
+      requestId: result.data.navigation.handoffId,
+      viewId: "notes",
+      viewType: "gui",
+      clientId: "client-1",
+      installationId: "install-1",
+    },
+  });
+  expect(status()).toBe("prepared");
+  required.clientId = "client-2";
+  expect(status()).toBe("missing");
+  required.clientId = "client-1";
+  Object.assign(t, { archivedSteps: t.steps, steps: [] });
+  expect(status()).toBe("missing");
+});
+/** The decision state the real evaluator sends the model for this turn. */
+async function decisionState(
+  trajectory: Replay,
+  hasUnresolvedToolFailure = false,
+): Promise<string> {
+  const context: ContextObject = {
+    id: "turn",
+    events: [
+      {
+        id: "current",
+        type: "message",
+        message: {
+          id: "current",
+          role: "user",
+          content: "Open the Notes view",
+        },
+      },
+    ],
+  };
+  let sent = "";
+  await runEvaluator({
+    context,
+    trajectory: {
+      ...trajectory,
+      context,
+      modelBaseContext: context,
+    } as unknown as PlannerTrajectory,
+    ...(hasUnresolvedToolFailure ? { hasUnresolvedToolFailure } : {}),
+    runtime: {
+      useModel: async (
+        _type: unknown,
+        request: { messages: { content: unknown }[] },
+      ) => {
+        sent = String(request.messages.at(-1)?.content);
+        return JSON.stringify({
+          thought: "The view opened.",
+          success: true,
+          decision: "FINISH",
+          replyEffectStatus: "none",
+          messageToUser: "Notes is open.",
+        });
+      },
+    },
+  } as never);
+  return sent;
+}
+test("actual evaluator leaves the cloned status enum complete and tells only an eligible turn that applied has no proof; raw applied verdict is never silently repaired", async () => {
   const source = readFileSync(
     new URL("./evaluator.ts", import.meta.url),
     "utf8",
@@ -74,11 +165,9 @@ test("actual evaluator changes only cloned eligibility enum; raw applied verdict
   const end = source.indexOf("  const initialBudgetOptions", start);
   const apply = new Function(
     "evaluatorSchema",
-    "availableReceiptIds",
     "params",
-    "isDeliveredNavigationOnlyTurn",
     "decisionState = { intents: [] }",
-    source.slice(start, end) + "return responseSchema;",
+    `${source.slice(start, end)}return responseSchema;`,
   );
   const original = {
     properties: {
@@ -87,43 +176,60 @@ test("actual evaluator changes only cloned eligibility enum; raw applied verdict
     },
   };
   const before = JSON.stringify(original);
-  const schema = apply(
-    original,
-    [],
-    { context: { metadata: {} }, trajectory: replay() },
-    isDeliveredNavigationOnlyTurn,
-  );
+  const schema = apply(original, {
+    context: { metadata: {} },
+    trajectory: replay(),
+  });
+  // The schema is the same on every turn: the decision state tells an eligible
+  // turn that applied has no proof, and the receipt guard enforces it.
   expect(schema.properties.replyEffectStatus.enum).toEqual([
     "none",
+    "applied",
     "non_applied",
   ]);
-  expect(schema.properties.replyEffectStatus.enum).not.toContain(
-    fixture.rawEvaluator.replyEffectStatus,
-  );
   expect(JSON.stringify(original)).toBe(before);
   expect(schema.properties.effectReceiptIds).toEqual(
     original.properties.effectReceiptIds,
   );
-  expect(
-    apply(
-      original,
-      ["real-mutation-receipt"],
-      { context: { metadata: {} }, trajectory: replay() },
-      isDeliveredNavigationOnlyTurn,
-    ).properties.replyEffectStatus.enum,
-  ).toContain("applied");
-  expect(
-    apply(
-      original,
-      [],
+  const noProofLine =
+    "replyEffectStatus: none or non_applied. This turn delivered view navigation only and committed no effect receipt, so applied has no proof.";
+  expect(await decisionState(replay())).toContain(noProofLine);
+  // A commit recorded beside the navigation: the navigation is still the only
+  // executed step, and the turn has proof an applied reply can select.
+  const committedAt = "2026-11-20T21:25:00.000Z";
+  const withCommit = replay();
+  Object.assign(withCommit, {
+    steps: [
+      ...withCommit.steps,
       {
-        context: { metadata: {} },
-        trajectory: replay(),
-        hasUnresolvedToolFailure: true,
+        terminalOnly: true,
+        result: {
+          success: true,
+          effectReceipts: [
+            {
+              receiptId: "real-mutation-receipt",
+              operation: "notes.note.create",
+              resource: { kind: "notes.note", id: "note-1" },
+              artifacts: [],
+              idempotency: { key: "create-key", replayed: false },
+              observedAt: committedAt,
+              outcome: "applied",
+              commit: { kind: "durable", id: "note-1", committedAt },
+            },
+          ],
+        },
       },
-      isDeliveredNavigationOnlyTurn,
-    ).properties.replyEffectStatus.enum,
-  ).toContain("applied");
+    ],
+  });
+  expect(eligible(withCommit)).toBe(true);
+  const withCommitState = await decisionState(withCommit);
+  expect(withCommitState).toContain(
+    'Committed effect receipt IDs: ["real-mutation-receipt"]',
+  );
+  expect(withCommitState).not.toContain("replyEffectStatus:");
+  expect(await decisionState(replay(), true)).not.toContain(
+    "replyEffectStatus:",
+  );
   expect(source).toContain(
     '"The reply claims a completed change without committed receipt evidence.',
   );

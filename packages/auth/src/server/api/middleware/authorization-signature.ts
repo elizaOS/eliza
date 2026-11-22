@@ -1028,16 +1028,18 @@ export function authorizationSignature(
     const expectedSignatures = await Promise.all(
       candidateSecrets.map((secret) => hmacSha256Hex(secret, canonical)),
     );
-    const valid = expectedSignatures.some((expected) =>
+    const matched = expectedSignatures.findIndex((expected) =>
       timingSafeEqualHex(expected, signature),
     );
-    if (!valid) {
+    if (matched === -1) {
       return c.json<ApiResponse>(
         { ok: false, error: "Invalid request signature" },
         401,
       );
     }
 
+    if (!signingKeyId && matched < secrets.length)
+      c.set("serviceSignatureVerified", true);
     c.set("requestSignatureVerified", true);
     return next();
   });

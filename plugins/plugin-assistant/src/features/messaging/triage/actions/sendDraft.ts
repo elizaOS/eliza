@@ -28,6 +28,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger, ModelType, parseKeyValueXml } from "@elizaos/core";
+import { currentGmailComposeOrigin } from "../../../../services/device-actions/service.ts";
 import {
   draftConsentDigest,
   pendingSendDraft,
@@ -43,6 +44,7 @@ import {
   parseSendDraftParams,
   validateMessageAction,
 } from "./_shared.ts";
+import { deviceEmailDraft } from "./device-email-draft.ts";
 
 const OUTBOUND_DRAFT_PARAMETERS: ActionParameter[] = [
   {
@@ -107,7 +109,9 @@ function nonEmptyString(value: unknown): string | undefined {
     : undefined;
 }
 
-function normalizeSource(value: unknown): string | undefined {
+export function normalizeOutboundDraftSource(
+  value: unknown,
+): string | undefined {
   const raw = nonEmptyString(value)?.toLowerCase();
   if (!raw) return undefined;
   if (raw === "x" || raw === "twitter") return "twitter";
@@ -173,7 +177,7 @@ export async function outboundDraftOptionsFromMessage(
 
   // Structured params from the planner/tool-call win; only invoke the model to
   // fill the gaps (cheap no-LLM fast path when they are already complete).
-  const paramSource = normalizeSource(
+  const paramSource = normalizeOutboundDraftSource(
     params.source ?? params.platform ?? params.connector ?? params.service,
   );
   const paramBody = nonEmptyString(
@@ -194,7 +198,7 @@ export async function outboundDraftOptionsFromMessage(
       ? {}
       : await extractOutboundDraftFromText(runtime, text);
 
-  const source = paramSource ?? normalizeSource(extracted.source);
+  const source = paramSource ?? normalizeOutboundDraftSource(extracted.source);
   const body = paramBody ?? extracted.body;
   const subject = nonEmptyString(params.subject) ?? extracted.subject;
   const rawTo = paramTo ?? extracted.recipient;
@@ -315,6 +319,18 @@ export const sendDraftAction: Action = {
         };
       }
 
+      const local = await deviceEmailDraft(
+        runtime,
+        _message,
+        draftParsed,
+        options?.parameters,
+      );
+      if (local) {
+        if (callback && local.text)
+          await callback({ text: local.text, action: "MESSAGE" });
+        return local;
+      }
+
       // Refuse before the preview: a draft that no adapter can deliver would
       // ask the user to confirm a send that then fails.
       const adapter = service.getAdapter(draftParsed.source);
@@ -400,6 +416,16 @@ export const sendDraftAction: Action = {
       return { success: false, text: msg, error: msg };
     }
 
+    // A newer phone confirms new mail from its own editor. Never create a second send
+    // or silently consume a pending review prepared by an older client.
+    if (
+      existing.source === "gmail" &&
+      (await currentGmailComposeOrigin(runtime, _message))
+    ) {
+      const text =
+        "Check the original email review in Inbox before attempting another send.";
+      return { success: false, text, error: text, continueChain: false };
+    }
     const consentDigest = draftConsentDigest(existing);
     const consent = currentRequestConfirmed
       ? "confirmed"

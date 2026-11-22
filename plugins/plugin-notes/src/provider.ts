@@ -24,6 +24,7 @@ import {
 } from "@elizaos/core";
 
 import { noteFolderId, readNoteFolders } from "./note-folders.js";
+import { ownerRequestText } from "./owner-text.js";
 import { getNotesService } from "./service.js";
 import type { StickyNote } from "./types.js";
 
@@ -158,13 +159,11 @@ export const notesProvider: Provider = {
 function namedNotesSnapshot(runtime: IAgentRuntime, message: Memory) {
   const service = getNotesService(runtime);
   const snapshot = service.snapshot();
-  const notes = service.findNotesNamedInText(
-    message.content.text ?? "",
-    snapshot,
-  );
+  const ownerText = ownerRequestText(message);
+  const notes = service.findNotesNamedInText(ownerText, snapshot);
   const deletedIds = new Set(
     service
-      .findNotesNamedInText(message.content.text ?? "", {
+      .findNotesNamedInText(ownerText, {
         ...snapshot,
         notes: (snapshot.trash ?? []).map((entry) => entry.note),
       })
@@ -239,8 +238,7 @@ export const namedNotesRoutingProvider: Provider = {
     "Fresh authorized exact-name availability for lean context routing.",
   alwaysInResponseState: false,
   get: async (runtime, message) => {
-    if (!message.content.text?.trim())
-      return { text: "", values: {}, data: {} };
+    if (!ownerRequestText(message)) return { text: "", values: {}, data: {} };
     try {
       const { notes, deletedNotes } = namedNotesSnapshot(runtime, message);
       const available = notes.length > 0 || deletedNotes.length > 0;

@@ -1,0 +1,44 @@
+{
+  "sources": [
+    "plugins/plugin-personal-assistant/src/lifeops/schedule-state.ts",
+    "plugins/plugin-personal-assistant/test/schedule-bucket-repeated-hour.test.ts",
+    "plugins/plugin-personal-assistant/quint/check-schedule-bucket-repeated-hour.mjs"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-schedule-bucket-repeated-hour.mjs",
+  "bounds": "One device syncs up to four sleeping rows on 2026-11-01 in America/New_York, the night clocks fall back at 06:00 UTC (02:00 EDT -> 01:00 EST). The first row starts at 01:30, 01:45 or 01:50 EDT and each later row 10, 15 or 20 minutes after the previous one, so rows land in the first and the repeated 01:xx hour, on and between half-hour boundaries, including the 15-minute rounding tie. Every row lasts 15 minutes. The conformance script replays every generated four-row sequence (all 81) through the production ingestScheduleObservations on a PGlite-backed runtime, one device id per sequence, and compares the device's stored rows (bucketed window start and end, observed time, snapshot sleep start and last-active time) after every sync. Other time zones, spring-forward gaps, zones with 30- or 45-minute offsets, other circadian states, meal rows, the local schedule tick (bucketSnapshot, which uses the same bucketIso), the merged state and several devices are not covered by this model; one focused test checks the merged sleep start a sync returns. Under weak fairness of the store step every sent row is eventually stored. Explicit stuttering lets the route never store it, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "schedule-bucket-repeated-hour",
+      "main": "ScheduleBucketRepeatedHour",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "CeilNotBefore",
+        "EveryBucketKept",
+        "FloorWithinBucket",
+        "NearestWithinHalf",
+        "RowsOnLocalBuckets",
+        "TypeOK"
+      ],
+      "temporal": ["Settles", "SettlesWithoutFairness"],
+      "maxSteps": 20,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "Settles",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled store step eventually runs (weak fairness). This checks that every sent row is then stored, not how long the database work takes."
+          ]
+        },
+        {
+          "property": "SettlesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The route may never store a sent row, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}
