@@ -36,11 +36,11 @@ import { bytesOf, es256Verifies, jsonOf } from web
 
 export { nextRefreshDelay }
 
-export const entitlementType = "eliza-entitlement+jwt"
-export const entitlementVersion = 3
-export const maxEntitlementLength = 8192
-export const maxEntitlementKeys = 16
-export const maxEntitlementLifetimeSeconds = 60 * 60
+const entitlementType = "eliza-entitlement+jwt"
+const entitlementVersion = 3
+const maxEntitlementLength = 8192
+const maxEntitlementKeys = 16
+const maxEntitlementLifetimeSeconds = 60 * 60
 export const clockSkewSeconds = 60
 
 export type EntitlementKey = typeof entitlementKeySchema.Type
