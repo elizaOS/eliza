@@ -7,16 +7,18 @@ import { fail, type Json, type Types } from "./types.ts";
 export interface Eval { name: string; params: (Param & { from: "state" | "prev" | "emitted" | "pick" })[]; result: Json }
 
 export interface WitnessStep { transition: Transition; args: string[] }
-export const witnessAction = (goal: string) => `witnessStep_${goal}`;
+export const witnessAction = (goal: string) => `eval_witnessStep_${goal}`;
 export const witnessFile = (model: string) => `${model}.witness.qnt`;
+const WITNESS_INDEX = "x2";
+const WITNESS_SENDER = "eval_witnessSender";
 
 /** A fair event cannot be put off for ever: weakly, while it stays possible; strongly, while it keeps becoming possible. */
 export type Fairness = "weak" | "strong";
 
 /** The harness's variables, in the order it declares them. */
-const VARS = ["state", "prev", "moved", "last", "lawsHold", "outcome", "emitted", "refined", "fairEnabled", "settled", "witnessIndex"];
+const VARS = ["state", "prev", "moved", "last", "lawsHold", "outcome", "emitted", "refined", "fairEnabled", "settled", WITNESS_INDEX];
 /** Every name the harness binds itself, which a spec parameter would hide (TAKEN in gen.ts). */
-export const HARNESS = [...VARS, "fairOn", "init", "settle", "step", "probe", "inv", "Out", "Nothing", "witnessSender"];
+export const HARNESS = [...VARS, "fairOn", "init", "settle", "step", "probe", "inv", "Out", "Nothing"];
 
 /** Values the simulator tries for a parameter of each scalar type (the proof covers all values). */
 const TRIED: Record<string, string> = { int: "(-1).to(6)", bool: "Set(true, false)", str: 'Set("", "a", "b")' };
@@ -112,7 +114,7 @@ export function harness(
     `{ nondet table_${o.name} = setOfMaps(${keys(o)}, ${results(o)}).oneOf() nondet else_${o.name} = table_${o.name}.keys().map(k => table_${o.name}.get(k)).oneOf() ${rest} }`, inner);
   const settled = (action: string) => (opaques.length ? `if (settled) ${action} else settle` : action);
 
-  const declared: Record<string, unknown> = { state: stateType, prev: stateType, moved: stateType, last: stateType, lawsHold: true, outcome: !witnesses && evals.length, emitted: output, refined: refines, fairEnabled: fair.size, settled: opaques.length, witnessIndex: witnesses };
+  const declared: Record<string, unknown> = { state: stateType, prev: stateType, moved: stateType, last: stateType, lawsHold: true, outcome: !witnesses && evals.length, emitted: output, refined: refines, fairEnabled: fair.size, settled: opaques.length, [WITNESS_INDEX]: witnesses };
   const vars = [...VARS.filter((v) => declared[v]), ...tables];
   /** What the initial state starts, which may call an opaque function, and so waits for `settle` if there are any. */
   const start = { refined: refines ? `M::${refines.fn}(M::initial) == D_${refines.of.module}::initial` : "", fairEnabled: "fairOn(M::initial)" };
@@ -140,10 +142,10 @@ export function harness(
     const body = frame(t.guard ? [call(t.guard, t.guardParams)] : [], {
       state: after, emitted: t.emits ? `${result}.out` : "List()", refined: refines ? refined(t, after) : "",
       prev: "state", moved: "true", last: JSON.stringify(t.name), fairEnabled: `fairOn(${after})`,
-      ...(guide ? { witnessIndex: String(guide.index + 1) } : {}),
+      ...(guide ? { [WITNESS_INDEX]: String(guide.index + 1) } : {}),
     });
     if (!guide || !params.length) return braces(params, t.name, body);
-    return `{ ${params.map((p, i) => `nondet ${p.name} = Set(${i >= t.params.length ? `witnessSender(${guide.args[i]})` : guide.args[i]}).oneOf()`).join(" ")} ${body} }`;
+    return `{ ${params.map((p, i) => `nondet ${p.name} = Set(${i >= t.params.length ? `${WITNESS_SENDER}(${guide.args[i]})` : guide.args[i]}).oneOf()`).join(" ")} ${body} }`;
   };
 
   /** Whether a fair event is possible in state `x0`: its guard allows it for some value the simulator tries. */
@@ -181,17 +183,17 @@ export function harness(
     ...(output ? [`  var emitted: ${qType(output.out)}`] : []),
     ...(refines ? [`  var refined: bool`] : []),
     `  var lawsHold: bool`,
-    ...(witnesses ? [`  var witnessIndex: int`] : []),
-    ...(witnesses && sender ? [`  pure def witnessSender(by: ${qType(sender)}): ${qType(sender)} = by`] : []),
+    ...(witnesses ? [`  var ${WITNESS_INDEX}: int`] : []),
+    ...(witnesses && sender ? [`  pure def ${WITNESS_SENDER}(by: ${qType(sender)}): ${qType(sender)} = by`] : []),
     ...(opaques.length ? [`  var settled: bool`] : []),
     ...(fair.size ? [`  var fairEnabled: Set[str]`,
       `  def fairOn(x0: ${qType(stateType)}): Set[str] = Set(${[...fair.keys()].map((e) => JSON.stringify(e)).join(", ")}).filter(x1 => or { ${transitions.filter((t) => fair.has(t.name)).map((t) => `x1 == ${JSON.stringify(t.name)} and ${possible(t)}`).join(", ")} })`] : []),
-    `  action init = ${choose(frame([], { state: "M::initial", prev: "M::initial", moved: "false", last: '""', lawsHold: "true", outcome: "Nothing", emitted: "List()", witnessIndex: "0",
+    `  action init = ${choose(frame([], { state: "M::initial", prev: "M::initial", moved: "false", last: '""', lawsHold: "true", outcome: "Nothing", emitted: "List()", [WITNESS_INDEX]: "0",
       ...(opaques.length ? { refined: "true", fairEnabled: "Set()", settled: "false", ...chosen } : start) }))}`,
     ...(opaques.length ? [`  action settle = ${frame(assumed, { ...start, settled: "true" })}`] : []),
     ...(witnesses ? [...witnesses].map(([goal, steps]) =>
       `  action ${witnessAction(goal)} = ${settled(steps.reduceRight((rest, { transition: event, args }, index) =>
-        `if (witnessIndex == ${index}) ${transition(event, { index, args })} else ${rest}`, frame(["false"], {})))}`) : [
+        `if (${WITNESS_INDEX} == ${index}) ${transition(event, { index, args })} else ${rest}`, frame(["false"], {})))}`) : [
       ...transitions.map((t) => `  action ${t.name} = ${transition(t)}`),
       ...sampled.map(lawAction),
       ...evals.map(evalAction),

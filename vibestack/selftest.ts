@@ -729,12 +729,18 @@ pure def canPublish(n: int, amount: int): bool = n == 0 and amount > 0
 pure def finish(n: int): int = n + 1
 pure def canFinish(n: int): bool = n > 0 and n < 42
 pure def alwaysSafe(n: int): bool = n <= 42
-pure def sometimesDone(n: int): bool = n == 42`;
+pure def sometimesDone(n: int): bool = n == 42
+pure val witnessIndex = 3
+pure val witnessSender = 4
+pure val witness_fixture = 5
+pure val witness_sometimesDone = 6
+pure def witnessStep_sometimesDone(n: int): int = n`;
     const simulateExample = async (source: string, example: string) => {
-      const root = oneRule("journey", "Publish then finish", `${source}\npure val witness_sometimesDone = ${example}`);
+      const root = oneRule("journey", "Publish then finish", `${source}\npure val eval_witness_sometimesDone = ${example}`);
       const spec = readSpecs(root)[0];
       const model = await gen(root, spec);
       const domain = await import(pathToFileURL(path.join(root, "gen", "journey.ts")).href);
+      assert.deepEqual([domain.witnessIndex, domain.witnessSender, domain.witness_fixture, domain.witness_sometimesDone, domain.witnessStep_sometimesDone(7)], [3, 4, 5, 6, 7]);
       return simulation({ root, fresh: false, used: new Set() }, spec, [spec], model, domain, 1);
     };
     const [reached, denied, unsafe, mistyped] = await Promise.all([

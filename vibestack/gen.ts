@@ -61,15 +61,16 @@ const TAKEN = new Set([...EMITTED, ...HARNESS, ...`
   eval arguments implements interface package private protected public
 `.split(/\s+/).filter(Boolean)]);
 const RULE_OR_GUARD = new RegExp(`^(${[...ROLES, "can"].join("|")})[A-Z]`);
-const GENERATED = new RegExp(`^(${[...HELPERS, "eval", "Out", "set", "opaque", "table", "else", "witnessStep"].join("|")})_|^x\\d+$|__\\d+$`);
+const GENERATED = new RegExp(`^(${[...HELPERS, "eval", "Out", "set", "opaque", "table", "else"].join("|")})_|^x\\d+$|__\\d+$`);
+const WITNESS_PREFIX = "eval_witness_";
 
 function concreteWitnesses(defs: Json[], roles: Roles, at: (name: string) => string): Map<string, WitnessStep[]> {
   const tuple = (value: Json): Json[] | undefined => value.kind === "app" && value.opcode === "Tup" ? value.args : undefined;
   const transitions = new Map(roles.transitions.map((t) => [t.name, t]));
   const count = (t: Roles["transitions"][number]) => t.params.length + Number(!!roles.sender && !t.params.some((p) => p.name === SENDER));
   const stepsFor = (def: Json) => {
-    const target: string = def.name.slice("witness_".length);
-    if (!roles.sometimes.includes(target)) fail(`${at(def.name)}: name a declared \`sometimes\` rule after \`witness_\``);
+    const target: string = def.name.slice(WITNESS_PREFIX.length);
+    if (!roles.sometimes.includes(target)) fail(`${at(def.name)}: name a declared \`sometimes\` rule after \`${WITNESS_PREFIX}\``);
     const items = tuple(def.expr);
     const first = items?.[0];
     const event = first?.kind === "str" && transitions.get(first.value);
@@ -133,7 +134,7 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
   // cannot put off for ever and how soon a `leadsTo` rule is met (SPEC.md, "What goes in the Quint blocks"); like
   // sample sets, they never reach TypeScript.
   const settings = defs.filter((d) => d.qualifier === "pureval" && /^(weight|fair|within)_/.test(d.name));
-  const examples = defs.filter((d) => d.qualifier === "pureval" && d.name.startsWith("witness_"));
+  const examples = defs.filter((d) => d.qualifier === "pureval" && d.name.startsWith(WITNESS_PREFIX));
   const code = defs.filter((d) => !isSampleSet(d) && !settings.includes(d) && !examples.includes(d));
   /** Names only the simulator reads; a definition that used one would refer to nothing in TypeScript. */
   const simulatorOnly = new Set([...ownSamples, ...settings, ...examples, ...links.flatMap((l) => l.exports.samples.map((s) => ({ name: qualify(l.alias, s.name) })))].map((d) => d.name as string));
@@ -144,14 +145,14 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
   const beneath = (m: string): string[] => [m, ...deps.get(m)!.imports.flatMap(beneath)];
   const prefixes = [...new Set(imports.flatMap(beneath))];
   /** A name the spec binds (a type, definition, parameter or local `val`) must survive translation unchanged. */
-  const bind = (n: string): string => {
+  const bind = (n: string, witness = false): string => {
     const owner = prefixes.find((m) => n.startsWith(`${m}_`));
-    return TAKEN.has(n) || GENERATED.test(n) ? fail(`\`${n}\` cannot be used as a name: TypeScript or the generated code uses it`)
+    return TAKEN.has(n) || (!witness && GENERATED.test(n)) ? fail(`\`${n}\` cannot be used as a name: TypeScript or the generated code uses it`)
       : variants.has(n) ? fail(`\`${n}\` is a variant of a type and cannot also name a parameter or value`)
       : owner ? fail(`\`${n}\` cannot be used as a name: names beginning ${owner}_ are how the generated code refers to that module`)
       : n;
   };
-  [...defs, ...localTypedefs, ...consts].forEach((d) => bind(d.name));
+  [...defs, ...localTypedefs, ...consts].forEach((d) => bind(d.name, examples.includes(d)));
 
   // --- types: the module's own, and those of what it imports under the names it knows them by ---
   /** A type from a module imported under a name, with the types it mentions renamed the same way. */

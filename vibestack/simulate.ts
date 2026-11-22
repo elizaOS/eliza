@@ -39,14 +39,14 @@ export interface Step {
 }
 
 /** A simulated trace; with opaque functions, from the step that settled their tables (gen/harness.ts), and empty if none did. */
-function readTrace(itf: string, model: Model): Step[] {
+function readTrace(itf: string, model: Model, witness?: true): Step[] {
   const states = JSON.parse(itf).states.filter((st: any) => !model.opaques.length || st.settled);
   return states.map((st: any, i: number): Step => {
     // Values are decoded by their type, and sets put in a fixed order, so that they compare equal to TypeScript's.
     const read = (type: any, itf: any) => model.canon(type, model.decode(type, itf));
     const picked = (ps: { name: string; type: any }[]) => Object.fromEntries(ps.map((p) => [p.name, read(p.type, st["mbt::nondetPicks"][p.name].value)]));
     const action: string = st["mbt::actionTaken"];
-    const taken: string = action?.startsWith(witnessAction("")) ? st.last : action;
+    const taken: string = witness && action?.startsWith(witnessAction("")) ? st.last : action;
     const t = model.transitions.find((t) => t.name === taken);
     const v = model.evals.find((v) => `eval_${v.name}` === taken);
     const l = model.laws.find((l) => l.name === taken);
@@ -153,7 +153,7 @@ export async function simulate(harness: Harness, invariant: string, traces: numb
     const again = `seed ${derivedSeed}; to simulate again: pnpm exec quint run gen/${main} ${args.join(" ")}`;
     // Anything other than "held" or "violated", each with a trace, is Quint failing to run.
     if ((!r.ok && !broken) || !written.length) throw new Error(`quint run did not complete (${again}):\n${r.out.trim()}`);
-    return { broken, traces: written.map((f) => readTrace(r.files[f], model)).filter((t) => t.length), again };
+    return { broken, traces: written.map((f) => readTrace(r.files[f], model, witness)).filter((t) => t.length), again };
   });
   // Every run finishes before anything is said, so that none is left writing into gen/.
   const done = await allDone(runs);
