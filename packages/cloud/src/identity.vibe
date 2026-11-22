@@ -1,6 +1,6 @@
-// spec/cloud/index.md, "Story: Sign in to the Cloud"
+// spec/cloud/index.md, "Story: Sign in to the Cloud"; spec/cloud/index.md, "Google sign-in for backup returns to the protected approval page"
 import type { Client } from "pg"
-import { mayIssueAccountBoundDeviceGrant } from "../gen/cloud.effect.vibe"
+import { browserGoogleReturn, mayIssueAccountBoundDeviceGrant, type BrowserGooglePurpose } from "../gen/cloud.effect.vibe"
 import type { JWTVerifyGetKey } from "jose"
 import { Digest, Mac, SecureRandom } from "effect/crypto"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpIncomingMessage, HttpServerRequest, HttpServerResponse } from "effect/http"
@@ -16,7 +16,7 @@ import { endKey, inspectKey } from "./native-clients/grants.vibe"
 import { browserNativeRegistration, mobileRegistration, type NativeRegistryEnv } from "./native-registry.vibe"
 import { googleServerClientId, verifyNativeGoogle } from "./native-google.vibe"
 import { connectSignedInGoogle, nativeGoogleScopes, type GoogleEnv } from "./google.vibe"
-import { ownsPasswordBackupPath, passwordBackupRequest } from "./password-backup.vibe"
+import { ownsPasswordBackupPath, passwordBackupApprovalPath, passwordBackupRequest } from "./password-backup.vibe"
 
 export type IdentityEnv = NativeRegistryEnv & GoogleEnv & {
   SIGN_IN_EMAIL?: { send(message: { from: string; to: string; subject: string; text: string }): Promise<unknown> }
@@ -31,6 +31,8 @@ export type IdentityEnv = NativeRegistryEnv & GoogleEnv & {
   SMS_ALLOWED_COUNTRY_CODES?: string
   SMS_HOURLY_BUDGET?: string
 }
+
+type BrowserGoogleFlow = { state: string; verifier: string; purpose: BrowserGooglePurpose }
 
 type Destination = "email" | "sms"
 
@@ -50,6 +52,8 @@ schema SmsReceipt { status: string; to?: string; channel?: string; service_sid?:
 schema BlooioReceipt { id: string; channel_id: string; status: string; channel_type?: string; to?: string; direction?: string; dry_run?: boolean }
 
 const flowCookie = "__Host-eliza-google"
+const backupFlowMarker = "password_backup"
+const browserGoogleFlow = /^([a-f0-9]{64})\.([a-f0-9]{64})(?:\.(password_backup))?$/
 const codeSeconds = 10 * 60
 const smsCodeSeconds = 5 * 60
 const deviceGrantSeconds = 2 * 60
@@ -166,7 +170,16 @@ effect function external(url: string, input: { authorization?: string; form?: UR
   return timeout(result, "10 seconds") catch effect () => { throw new ProviderUnavailable() }
 }
 
-effect function googleStart(env: IdentityEnv, chooseAccount: boolean) {
+function readBrowserGoogleFlow(request: Request): BrowserGoogleFlow | null {
+  const cookie = readCookie(request, flowCookie)
+  const matched = cookie === null ? null : browserGoogleFlow.exec(cookie)
+  const state = matched?.[1]
+  const verifier = matched?.[2]
+  if (!state || !verifier) return null
+  return { state, verifier, purpose: matched?.[3] === backupFlowMarker ? "GooglePasswordBackup" : "GoogleAccount" }
+}
+
+effect function googleStart(env: IdentityEnv, purpose: BrowserGooglePurpose) {
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) throw new ProviderUnavailable()
   const state = try token()
   const verifier = try token()
@@ -181,15 +194,16 @@ effect function googleStart(env: IdentityEnv, chooseAccount: boolean) {
     code_challenge: challenge,
     code_challenge_method: "S256"
   })
-  if (chooseAccount) params.set("prompt", "select_account")
-  return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + params, [cookieValue(flowCookie, state + "." + verifier, codeSeconds)])
+  const backup = purpose === "GooglePasswordBackup"
+  if (backup) params.set("prompt", "select_account")
+  const flow = state + "." + verifier + (backup ? "." + backupFlowMarker : "")
+  return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + params, [cookieValue(flowCookie, flow, codeSeconds)])
 }
 
-effect function googleIdentity(request: Request, url: URL, env: IdentityEnv) {
+effect function googleIdentity(flow: BrowserGoogleFlow | null, url: URL, env: IdentityEnv) {
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) throw new ProviderUnavailable()
-  const flow = readCookie(request, flowCookie)
-  if (flow === null || !/^[a-f0-9]{64}\.[a-f0-9]{64}$/.test(flow)) throw new Unauthorized()
-  const [state, verifier] = flow.split(".")
+  if (flow === null) throw new Unauthorized()
+  const { state, verifier } = flow
   const code = url.searchParams.get("code")
   if (!code || code.length > 2048 || url.searchParams.get("state") !== state || url.searchParams.has("error")) throw new Unauthorized()
   const response = try external("https://oauth2.googleapis.com/token", {
@@ -612,14 +626,17 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client, k
         return json(200, { account: account ? { id: account.id, email: account.email } : null })
       }
       case "/api/auth/google/start":
-        return try googleStart(env, url.searchParams.get("password_backup") === "1")
+        return try googleStart(env, url.searchParams.get(backupFlowMarker) === "1" ? "GooglePasswordBackup" : "GoogleAccount")
       case callbackPath: {
+        const flow = readBrowserGoogleFlow(request)
+        const backup = browserGoogleReturn(flow?.purpose ?? "GoogleAccount") === "GoogleBackupApprovalPage"
+        const resume = passwordBackupApprovalPath + "?resume=google"
         const clear = cookieValue(flowCookie, "", 0)
         return effect {
-          const identity = try googleIdentity(request, url, env)
+          const identity = try googleIdentity(flow, url, env)
           const session = try signInWithProof(db, identity)
-          return redirect(env.WEB_ORIGIN + "/#account", [clear, ...sessionCookies(session)])
-        } catch () => redirect(env.WEB_ORIGIN + "/?authError=google_failed#account", [clear])
+          return redirect(env.WEB_ORIGIN + (backup ? resume : "/#account"), [clear, ...sessionCookies(session)])
+        } catch () => redirect(env.WEB_ORIGIN + (backup ? resume + "&authError=google_failed" : "/?authError=google_failed#account"), [clear])
       }
     }
   }
