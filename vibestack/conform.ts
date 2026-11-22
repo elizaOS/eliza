@@ -213,12 +213,13 @@ export async function conformance(root: string, machines: Map<string, Machine>, 
       wrote.set(file, text);
     }
   }
-  let inputs: string | undefined;
-  for (const file of filesUnder(root, DRIVERS).filter((f) => /^test\/drivers\/\w+\.ts$/.test(f))) {
+  const drivers = filesUnder(root, DRIVERS).filter((f) => /^test\/drivers\/\w+\.ts$/.test(f));
+  const inputs = drivers.length ? testInputs(root, mode) : undefined;
+  for (const file of drivers) {
     const name = path.basename(file, ".ts"), machine = machines.get(name);
-    const { problem, summary } = machine
-      ? await remember(JSON.stringify([name, inputs ??= testInputs(root, mode), sha(JSON.stringify(machine.found))]), () => driven(root, name, machine, mode, wrote), (r) => !r.problem)
-      : { problem: "no state-machine spec has this name" };
+    if (!machine) { add(file, undefined, "no state-machine spec has this name", ""); continue; }
+    const run = () => driven(root, name, machine, mode, wrote);
+    const { problem, summary } = await (inputs === undefined ? run() : remember(JSON.stringify([name, inputs, sha(JSON.stringify(machine.found))]), run, (r) => !r.problem));
     add(file, machine, problem, summary!);
   }
   const dir = path.join(root, TRACES);

@@ -128,7 +128,7 @@ jobs:
         uses: ./.github/actions/setup
         with:
           job: ${{ matrix.name }}
-      - run: node vibestack/spec.ts tasks ${{ matrix.tasks }} --continue --summarize
+      - run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue --summarize
       - if: always() && steps.setup.outputs.spec-cache-key != ''
         uses: actions/cache/save@v6
         with:

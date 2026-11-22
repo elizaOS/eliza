@@ -95,7 +95,9 @@
       "inputs": [
         "spec/**",
         "apps/*/package.json",
+        "apps/*/spec/**",
         "packages/*/package.json",
+        "packages/*/spec/**",
         "package.json"
       ],
       "outputs": [
@@ -147,6 +149,7 @@
       ],
       "inputs": [
         "*",
+        "!.git",
         "!*.md",
         "vibestack/**",
         "!vibestack/{examples,studio}/**",

@@ -195,19 +195,28 @@ export function proofUnits(root: string, models: Model[], srcFiles: SrcFile[] = 
     return { kept, from: imports.map((d) => (d.moduleSpecifier as TS.StringLiteral).text) };
   };
   const withoutObligations = (text: string) => text.replace(/^\s*\/\/@ ensures .*\n/gm, "");
+  const renderings = new Map<string, string>();
+  const rendered = (name: string, prefix: string, docs: boolean) => {
+    const key = `${name}:${prefix}:${docs}`;
+    const known = renderings.get(key);
+    if (known !== undefined) return known;
+    const text = byName.get(name)!.render(prefix, docs);
+    renderings.set(key, text);
+    return text;
+  };
   /** The modules a module needs beside it, dependencies first. */
   const needs = (m: Model, seen: string[] = []): string[] => {
     for (const dep of m.imports) if (!seen.includes(dep)) { needs(byName.get(dep)!, seen); seen.push(dep); }
     return seen;
   };
-  const asDependency = (name: string, docs: boolean) => withoutObligations(withoutImports(byName.get(name)!.render(`${name}_`, docs)).kept);
+  const asDependency = (name: string, docs: boolean) => withoutObligations(rendered(name, `${name}_`, docs));
   /** A module after what it needs, in its own names; `docs` keeps the doc comments, which the cache key leaves out. */
-  const bundle = (m: Model, docs: boolean) => [...needs(m).map((n) => asDependency(n, docs)), withoutImports(m.render("", docs)).kept];
+  const bundle = (m: Model, docs: boolean) => [...needs(m).map((n) => asDependency(n, docs)), m.render("", docs)];
   /** The definitions whose `_ensures` lemma a module's own unit proves (gen/typescript.ts). */
   const proving = (m: Model) => [...m.laws.map((l) => l.name), ...(m.stateType ? [...m.transitions.map((t) => t.name), "step", "initialHolds"] : [])];
   /** Modules placed beside a unit, each with the prefix the unit spells it with: their text with their obligations, and those lemmas. */
   const imported = (beside: [string, string][]): Unit["imports"] => ({
-    text: beside.map(([n, prefix]) => withoutImports(byName.get(n)!.render(prefix, false)).kept).join("\n"),
+    text: beside.map(([n, prefix]) => rendered(n, prefix, false)).join("\n"),
     lemmas: beside.flatMap(([n, prefix]) => proving(byName.get(n)!).map((def) => ({ fn: `${prefix}${def}`, def, from: `${n}.ts` }))),
   });
   const prefixed = (names: string[]) => names.map((n): [string, string] => [n, `${n}_`]);
