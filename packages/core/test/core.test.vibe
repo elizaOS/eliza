@@ -903,6 +903,11 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
     try confirm("j02-c6", dm, "yes, actually no", "again"),
   ]
   try Effect.try(() => assert.deepStrictEqual(decisions, [{ status: "pending" }, { status: "pending" }, { status: "pending" }, { status: "confirmed", metadata: { scope: "all" } }, { status: "pending" }, { status: "cancelled", metadata: { scope: "all" } }]))
+  for (const [i, refusal] of ["だめ", "やめて", "算了"].entries()) {
+    const offered = try confirm(`j02-offer-${i}`, dm, "delete all my notes", refusal)
+    const declined = try confirm(`j02-refuse-${i}`, dm, refusal, refusal)
+    try Effect.try(() => assert.deepStrictEqual([offered, declined], [{ status: "pending" }, { status: "cancelled", metadata: { scope: "all" } }]))
+  }
 
   // spec/core/responseEvaluation.md, "Story: Apply response evaluator decisions in priority order"; spec/core/diagnostics.md, "Story: Observe a failure without failing the reporting path"
   const classifierError = new Error("classifier offline")
