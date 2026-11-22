@@ -370,9 +370,14 @@ async function fixture(capabilities: readonly string[] = CAPABILITIES) {
                   ? camera
                   : undefined;
             if (!action?.handler) return { success: true, text: "done" };
+            // Core decodes a string `operation` only into the arguments it
+            // dispatches (validate-tool-args); the queued call keeps it.
+            const { operation } = call.params as { operation?: unknown };
             return actionResultToPlannerToolResult(
               await action.handler(runtime, original, undefined, {
-                parameters: call.params as JsonValue,
+                parameters: (typeof operation === "string"
+                  ? { ...call.params, operation: JSON.parse(operation) }
+                  : call.params) as JsonValue,
               }),
             );
           },
@@ -698,9 +703,23 @@ it.each(
   },
 );
 
-it.each(["direct-request", "ask-before"] as const)(
-  "leaves a photo and a text as today (%s)",
-  async (mode) => {
+/** The planner's `operation` as the direct route sends it, and as the phone's
+ * Cloud route does: its planner tools go out non-strict, and the model then
+ * writes `operation` as a JSON string, which core decodes only at dispatch. */
+const FORMS = [
+  ["object", (operation: object): unknown => operation],
+  ["JSON string", (operation: object): unknown => JSON.stringify(operation)],
+] as const;
+const PHOTO = { type: "camera_capture_photo" };
+const MODES_AND_FORMS = FORMS.flatMap(([form, write]) =>
+  (["direct-request", "ask-before"] as const).map(
+    (mode) => [mode, form, write] as const,
+  ),
+);
+
+it.each(MODES_AND_FORMS)(
+  "records a text behind a photo's review card (%s, %s)",
+  async (mode, _form, write) => {
     const f = await fixture();
     try {
       const outcome = await f.turn(
@@ -710,11 +729,15 @@ it.each(["direct-request", "ask-before"] as const)(
           {
             id: "photo",
             name: DEVICE_CAMERA_CAPTURE_ACTION,
-            operation: { type: "camera_capture_photo" },
+            operation: write(PHOTO),
           },
-          { id: "text", name: "PROPOSE_DEVICE_ACTION", operation: TEXT_MOM },
+          {
+            id: "text",
+            name: "PROPOSE_DEVICE_ACTION",
+            operation: write(TEXT_MOM),
+          },
         ],
-        // A later model call (the no-tools reply synthesis) gets no tools to run.
+        // A later model call would propose the text again; none is made.
         [
           [
             {
@@ -725,22 +748,187 @@ it.each(["direct-request", "ask-before"] as const)(
           ],
         ],
       );
-      expect(outcome.executed).toEqual(["photo"]);
-      expect(await f.rows()).toEqual([
-        {
-          operation: { type: "camera_capture_photo" },
-          state: "pending",
-        },
-      ]);
-      // The photo keeps its review card in both modes: only a whole-message
-      // photo command runs without one (camera-request.ts), and this message
-      // also asks for a text. The turn pauses on the photo's card; the text
-      // stays queued and unrun, because the same-reply recorder follows only
-      // a PROPOSE_DEVICE_ACTION review.
+      // Only a whole-message photo command runs without its card
+      // (camera-request.ts), so in both modes the photo is a review here, and
+      // the text queued behind it in the same reply gets its own card.
       expectPause(outcome);
+      expect(outcome.executed).toEqual(["photo", "text"]);
+      expect(outcome.result.trajectory.plannedQueue).toEqual([]);
+      expect(await f.rows()).toEqual([
+        { operation: PHOTO, state: "pending" },
+        { operation: TEXT_MOM, state: "pending" },
+      ]);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+
+it.each(FORMS)(
+  "records a text and an alarm written as %s as two reviews",
+  async (_form, write) => {
+    const f = await fixture();
+    try {
+      const outcome = await f.turn(
+        "Text Sam I'll be late, and set an alarm for 7am.",
+        "direct-request",
+        [
+          {
+            id: "text",
+            name: "PROPOSE_DEVICE_ACTION",
+            operation: write(TEXT_SAM),
+          },
+          {
+            id: "alarm",
+            name: "PROPOSE_DEVICE_ACTION",
+            operation: write(ALARM_7),
+          },
+        ],
+      );
+      expectPause(outcome);
+      expect(outcome.executed).toEqual(["text", "alarm"]);
+      expect(await f.rows()).toEqual([
+        { operation: TEXT_SAM, state: "pending" },
+        { operation: ALARM_7, state: "pending" },
+      ]);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+
+it.each(FORMS)(
+  "records a repeated text behind a photo's card once (%s)",
+  async (_form, write) => {
+    const f = await fixture();
+    try {
+      const outcome = await f.turn(
+        "Take a picture and text mom that I'm here.",
+        "direct-request",
+        [
+          {
+            id: "photo",
+            name: DEVICE_CAMERA_CAPTURE_ACTION,
+            operation: write(PHOTO),
+          },
+          {
+            id: "text",
+            name: "PROPOSE_DEVICE_ACTION",
+            operation: write(TEXT_MOM),
+          },
+          // The same text again, in the other form: approving two cards
+          // would send it twice.
+          {
+            id: "text-again",
+            name: "PROPOSE_DEVICE_ACTION",
+            operation: TEXT_MOM,
+          },
+        ],
+      );
+      expectPause(outcome);
+      expect(outcome.executed).toEqual(["photo", "text"]);
+      expect(await f.rows()).toEqual([
+        { operation: PHOTO, state: "pending" },
+        { operation: TEXT_MOM, state: "pending" },
+      ]);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+
+it("records a first text written as a JSON string once when it is repeated", async () => {
+  const f = await fixture();
+  try {
+    const outcome = await f.turn("Text Sam I'll be late.", "direct-request", [
+      {
+        id: "text",
+        name: "PROPOSE_DEVICE_ACTION",
+        operation: JSON.stringify(TEXT_SAM),
+      },
+      // The same text as an object: the first card's key must read the
+      // string the same way, or approving both cards would send it twice.
+      { id: "text-again", name: "PROPOSE_DEVICE_ACTION", operation: TEXT_SAM },
+    ]);
+    expectPause(outcome);
+    expect(outcome.executed).toEqual(["text"]);
+    expect(await f.rows()).toEqual([{ operation: TEXT_SAM, state: "pending" }]);
+  } finally {
+    await f.pg.close();
+  }
+});
+
+it("keeps the first card's pause when a queued operation string is nested past dispatch's budget", async () => {
+  const f = await fixture();
+  try {
+    // Hostile or degenerate model output: valid JSON nested 4,000 levels.
+    const deep = `{"type":"sms_compose","target":{"kind":"contact","query":"mom"},"body":"I'm here.","x":${"[".repeat(4000)}${"]".repeat(4000)}}`;
+    const outcome = await f.turn(
+      "Take a picture and text mom that I'm here.",
+      "direct-request",
+      [
+        { id: "photo", name: DEVICE_CAMERA_CAPTURE_ACTION, operation: PHOTO },
+        { id: "text", name: "PROPOSE_DEVICE_ACTION", operation: deep },
+      ],
+    );
+    expectPause(outcome);
+    expect(outcome.executed).toEqual(["photo"]);
+    expect(
+      outcome.result.trajectory.plannedQueue.map((call) => call.id),
+    ).toEqual(["text"]);
+    expect(await f.rows()).toEqual([{ operation: PHOTO, state: "pending" }]);
+  } finally {
+    await f.pg.close();
+  }
+});
+
+it.each(["direct-request", "ask-before"] as const)(
+  "keeps the photo's card when the text behind it cannot be proposed (%s)",
+  async (mode) => {
+    // A phone with no messaging capability refuses the text.
+    const f = await fixture(
+      CAPABILITIES.filter((capability) => !capability.startsWith("sms.")),
+    );
+    try {
+      const outcome = await f.turn(
+        "Take a picture and text mom that I'm here.",
+        mode,
+        [
+          { id: "photo", name: DEVICE_CAMERA_CAPTURE_ACTION, operation: PHOTO },
+          { id: "text", name: "PROPOSE_DEVICE_ACTION", operation: TEXT_MOM },
+        ],
+      );
+      // The turn pauses on the photo's card with the review text: it never
+      // reaches an evaluator that could claim the text was sent.
+      expectPause(outcome);
+      expect(await f.rows()).toEqual([{ operation: PHOTO, state: "pending" }]);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+
+it.each(["direct-request", "ask-before"] as const)(
+  "records only the photo's card on the messages screen (%s)",
+  async (mode) => {
+    const f = await fixture();
+    try {
+      const outcome = await f.turn(
+        "Take a picture and text mom that I'm here.",
+        mode,
+        [
+          { id: "photo", name: DEVICE_CAMERA_CAPTURE_ACTION, operation: PHOTO },
+          { id: "text", name: "PROPOSE_DEVICE_ACTION", operation: TEXT_MOM },
+        ],
+        [],
+        screen("messages"),
+      );
+      expectPause(outcome);
+      expect(outcome.executed).toEqual(["photo"]);
       expect(
         outcome.result.trajectory.plannedQueue.map((call) => call.id),
       ).toEqual(["text"]);
+      expect(await f.rows()).toEqual([{ operation: PHOTO, state: "pending" }]);
     } finally {
       await f.pg.close();
     }
