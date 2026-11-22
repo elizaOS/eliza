@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# Fresh GitHub Ubuntu 24 x64 runners can lose access to one Ubuntu mirror (a
-# Canonical DNS outage on 2026-11-11, then mirrors.kernel.org timing out on
-# 2026-11-17). Point the Ubuntu sources at an ordered mirror list so apt fails
-# over between hosts instead of depending on any single one. Every entry serves
-# the same signed release and security pockets; the keyring is unchanged.
+# GitHub-hosted Ubuntu 24 x64 runners can lose access to an archive mirror.
+# Use the Azure and Canonical mirrors for the same signed release and security
+# pockets. The kernel.org mirror has repeatedly stalled apt during CI setup.
 # Persistent runners and ARM's ports archive retain their own configuration.
 set -euo pipefail
 
@@ -26,7 +24,6 @@ fi
 mirror_list=/etc/apt/eliza-ubuntu-mirrors.txt
 printf '%s\n' \
   'http://azure.archive.ubuntu.com/ubuntu/' \
-  'https://mirrors.kernel.org/ubuntu/' \
   'http://archive.ubuntu.com/ubuntu/' \
   | sudo -n tee "$root$mirror_list" >/dev/null
 
@@ -46,9 +43,13 @@ sudo -n sed -i \
   -e "s#http[s]*://archive\\.ubuntu\\.com/ubuntu/#mirror+file:${mirror_list}#g" \
   -e "s#https://mirrors\\.kernel\\.org/ubuntu/#mirror+file:${mirror_list}#g" \
   "${source_files[@]}"
-# Some mirrors publish IPv6 addresses and hosted runners have no IPv6 route, so
-# a plain `apt-get update` in a later step failed with "Network is
-# unreachable". Make every apt call on this runner use IPv4.
-printf 'Acquire::ForceIPv4 "true";\n' \
-  | sudo -n tee "$root/etc/apt/apt.conf.d/99-eliza-ci-force-ipv4" >/dev/null
+# Playwright starts apt internally, so set timeouts for its spawned apt too.
+# Hosted runners use IPv4 and do not need translated package indexes.
+printf '%s\n' \
+  'Acquire::ForceIPv4 "true";' \
+  'Acquire::http::Timeout "20";' \
+  'Acquire::https::Timeout "20";' \
+  'Acquire::Retries "1";' \
+  'Acquire::Languages "none";' \
+  | sudo -n tee "$root/etc/apt/apt.conf.d/99-eliza-ci-network" >/dev/null
 echo "GitHub-hosted Ubuntu packages fail over across signed Ubuntu mirrors"
