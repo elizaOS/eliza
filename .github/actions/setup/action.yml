@@ -41,8 +41,8 @@ runs:
     # Turborepo skips a task whose inputs it has seen; spec skips a simulation or proof it has seen, and the selftest's
     # shared projects skip a tool run an earlier selftest made (nightly, fuzz.yml runs it without them).
     # Quint downloads its evaluator to ~/.quint from GitHub's rate-limited API: once per cache, not per run.
-    # Only restored here: a job saves it at its end whatever the outcome (ci.yml), since a failed or cancelled run
-    # still checked most of what the next one would. A job restores what a job of its name last saved, else another's
+    # Only restored here: ci.yml saves it at the end, including failures, except cancelled verification of a superseded
+    # default-branch push. A job restores what a job of its name last saved, else another's
     # that holds the same paths: a selftest-* job holds the selftest's tool runs, which no other job adds to, and any
     # other job the spec caches of the projects, which no selftest-* job checks.
     - id: spec-cache
