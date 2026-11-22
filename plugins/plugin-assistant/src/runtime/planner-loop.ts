@@ -4279,13 +4279,18 @@ function appendPendingToolQueueFeedbackEvent(
   });
 }
 
+// One definition on every non-coding request with tools: what is deferred is
+// said only by the request's own notices. A form chosen per request was the
+// only tool change between 10.8% of consecutive planner requests in the
+// context audit, and a prompt cache reads tool definitions before the system
+// prompt.
 const RESTORE_CONTEXT_TOOL = {
   name: "RESTORE_CONTEXT",
   // An unflagged tool disables request-wide strictness on Cerebras, including
   // required turn-scope arguments on the surrounding action tools.
   strict: true,
   description:
-    "Read deferred original dialogue, retrieval diagnostics or provider bodies using only the available scopes in this schema. scope=full (default) restores all remaining deferred context. Complete inline provider evidence is already visible; do not restore it again. Restore only deferred or missing context needed for this request. Restoration is not a live saved-record read: use the registered read tool when the user requests current saved records. A note-read tool already supplies note bodies. This performs no domain action and emits no user reply. Call it alone before planning effects; other calls in the same response will not execute.",
+    "Read deferred original dialogue, retrieval diagnostics or provider bodies. Only context a notice in this request names as deferred can be restored: scope=history for earlier dialogue and retrieval diagnostics, scope=providers for provider references, scope=full (default) for all of it. Without such a notice nothing is deferred; do not call it. Complete inline provider evidence is already visible; do not restore it again. Restore only deferred or missing context needed for this request. Restoration is not a live saved-record read: use the registered read tool when the user requests current saved records. A note-read tool already supplies note bodies. This performs no domain action and emits no user reply. Call it alone before planning effects; other calls in the same response will not execute.",
   parameters: {
     type: "object",
     additionalProperties: false,
@@ -4296,6 +4301,27 @@ const RESTORE_CONTEXT_TOOL = {
     required: ["reason"],
   },
 } satisfies ToolDefinition;
+
+/** Places RESTORE_CONTEXT with the tools every request leads with: after the
+ * terminals IGNORE and STOP and discovery, ahead of the device tool, whose
+ * schema varies by request. REPLY stays last: its schema changes within a
+ * turn. */
+function withRestoreContextTool(
+  tools: ToolDefinition[] | undefined,
+  restore: ToolDefinition | undefined,
+): ToolDefinition[] | undefined {
+  if (!restore) return tools;
+  const offered = tools ?? [];
+  const at = offered.findIndex(
+    (tool) =>
+      tool.name !== "IGNORE" &&
+      tool.name !== "STOP" &&
+      !isDiscoveryActionName(tool.name),
+  );
+  return at < 0
+    ? [...offered, restore]
+    : [...offered.slice(0, at), restore, ...offered.slice(at)];
+}
 
 function renderPlannerModelInput(params: {
   context: ContextObject;
@@ -4445,7 +4471,7 @@ function renderPlannerModelInput(params: {
       label: "planner_context",
       stable: false,
       content:
-        "The tokenized retrieval query is referenced by exact source event, count and hash. It is derived search diagnostics, not additional user instructions. All routing decisions remain inline. Call RESTORE_CONTEXT alone if the original diagnostic array is needed; it restores the complete list together with original dialogue before any effects.",
+        "The tokenized retrieval query is referenced by exact source event, count and hash. It is derived search diagnostics, not additional user instructions. All routing decisions remain inline. Call RESTORE_CONTEXT alone with scope=history if the original diagnostic array is needed; it restores the complete list together with original dialogue before any effects.",
     });
   if (background.applied)
     renderedContext.promptSegments.push({
@@ -4564,28 +4590,9 @@ function renderPlannerModelInput(params: {
       stepMessages: completeStepMessages,
     }),
   );
-  const historyRestorable =
-    selected.applied || background.applied || diagnosticProjection.applied;
-  const providersRestorable = deferred.available.length > 0;
-  const restoreContextTool: ToolDefinition | undefined =
-    historyRestorable || providersRestorable
-      ? {
-          ...RESTORE_CONTEXT_TOOL,
-          parameters: {
-            ...RESTORE_CONTEXT_TOOL.parameters,
-            properties: {
-              ...RESTORE_CONTEXT_TOOL.parameters.properties,
-              scope: {
-                type: "string",
-                enum: [
-                  ...(historyRestorable ? ["history"] : []),
-                  ...(providersRestorable ? ["providers"] : []),
-                  "full",
-                ],
-              },
-            },
-          },
-        }
+  const restoreContextTool =
+    params.tools?.length && !params.codingMode && !params.replyOnly
+      ? RESTORE_CONTEXT_TOOL
       : undefined;
   return {
     messages,
@@ -4714,9 +4721,10 @@ export function buildInitialPlannerModelInputBudget(params: {
   return buildModelInputBudget({
     messages: renderedInput.messages,
     promptSegments: renderedInput.promptSegments,
-    tools: renderedInput.restoreContextTool
-      ? [...(params.tools ?? []), renderedInput.restoreContextTool]
-      : params.tools,
+    tools: withRestoreContextTool(
+      params.tools,
+      renderedInput.restoreContextTool,
+    ),
     modelName: config.contextWindowModelName,
     ...(config.contextWindowTokens
       ? { contextWindowTokens: config.contextWindowTokens }
@@ -5528,9 +5536,7 @@ async function dispatchPlannerModelCall(params: {
     // envelope has no `completed` field (#17034); `parsePlannerOutput`
     // strips it before dispatch.
     modelParams.tools = withTurnScopeToolArg(
-      renderedInput.restoreContextTool
-        ? [...(params.tools ?? []), renderedInput.restoreContextTool]
-        : params.tools,
+      withRestoreContextTool(params.tools, renderedInput.restoreContextTool),
       renderedInput.messages[0]?.role === "system" &&
         typeof renderedInput.messages[0].content === "string"
         ? renderedInput.messages[0].content
@@ -6215,7 +6221,7 @@ async function callPlanner(
         : readHistory
           ? "history"
           : "providers";
-    if (
+    const malformed =
       params.trajectory.codingMode ||
       (!params.tools?.length && !params.allowReplyContextProjection) ||
       !validScopes ||
@@ -6223,19 +6229,41 @@ async function callPlanner(
         (call) =>
           typeof call.params?.reason !== "string" || !call.params.reason.trim(),
       ) ||
-      (!readHistory && !readProviders) ||
-      (!(
-        readHistory &&
+      (!readHistory && !readProviders);
+    const deferredForScope =
+      (readHistory &&
         (selectCompletionContext(original).applied ||
           projectBackgroundHistory(original).applied ||
-          referencePlannerQueryTokens(original).applied)
-      ) &&
-        !(
-          readProviders &&
-          (projectDeferredProviders(original).available.length ||
-            ownedSourcesRestorable)
-        ))
-    ) {
+          referencePlannerQueryTokens(original).applied)) ||
+      (readProviders &&
+        (projectDeferredProviders(original).available.length > 0 ||
+          ownedSourcesRestorable));
+    if (malformed || !deferredForScope) {
+      // The native tool is offered whether or not anything is deferred, so a
+      // read of a scope with nothing deferred, or a repeated read, is answered
+      // once per turn. Marking the turn before replanning bounds the recursion.
+      if (
+        !malformed &&
+        params.tools?.length &&
+        original.metadata?.plannerContextRestoreAnswered !== true
+      ) {
+        params.trajectory.modelBaseContext = appendContextEvent(
+          {
+            ...original,
+            metadata: {
+              ...original.metadata,
+              plannerContextRestoreAnswered: true,
+            },
+          },
+          {
+            id: "planner-context-restore-empty",
+            type: "instruction",
+            source: "planner-loop",
+            content: `Requested context restore (${scope}): nothing deferred for that scope. No tool from that response executed. Plan from the supplied context and settled receipts; restore only a scope a notice in this request names as deferred.`,
+          },
+        );
+        return await callPlanner(params);
+      }
       throw new ElizaError(
         "Original planner context is already complete; repeated restoration is invalid",
         { code: "PLANNER_CONTEXT_RESTORE_INVALID" },

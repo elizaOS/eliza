@@ -191,7 +191,12 @@ it("names required native scope in the system rule and keeps its meaning on ever
     instructions.split(`- Batch scope: ${plannerBatchScopeDescription}`),
   ).toHaveLength(2);
   const tools = requests[0]?.tools ?? [];
-  expect(tools.map(({ name }) => name)).toEqual(["SETTINGS", "REPLY"]);
+  // The planner's own context restore is offered on every request with tools.
+  expect(tools.map(({ name }) => name)).toEqual([
+    "RESTORE_CONTEXT",
+    "SETTINGS",
+    "REPLY",
+  ]);
   expect(instructions).toContain(
     'Every native tool call must include "eliza_turn_scope"',
   );
