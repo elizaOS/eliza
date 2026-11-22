@@ -20,9 +20,9 @@ Everything is built on [the stack](AGENTS.md#the-stack): Node 26, pnpm, VibeLang
   before and after the change under comparable conditions. For UI changes,
   attach screenshots of the same flow and state before and after.
 - Keep the diff tidy and focused. Remove unnecessary files and dead,
-  redundant, or superseded code and legacy paths. Prose comments in code
-  are banned. Keep only required machine-readable directives in comment
-  syntax.
+  redundant, or superseded code and legacy paths. Follow the code comment
+  rule in AGENTS.md; keep only its permitted machine-readable directives
+  and generated component metadata.
 - Satisfy all Vibestack requirements and TypeScript conventions before
   merging. [Vibestack spec reference](SPEC.md) · [Required stack](AGENTS.md#the-stack) · [TypeScript conventions](AGENTS.md#typescript-best-practices)
 
@@ -113,6 +113,9 @@ as `@elizaos/core`'s are. `pnpm lint:js` on its own needs what `gen` and `typech
 `pnpm all //#analyze` also runs or restores the application and Studio generators,
 the UI stories and the design theme before analysis reads their outputs.
 
+Pull requests go to `vibestack`, the primary branch; what CI runs on them is in
+[CI](#ci).
+
 ## Changing the tools
 
 Eliza's vendored toolchain incorporates upstream changes through [Vibestack `1c40171`](https://github.com/lalalune/vibestack/commit/1c40171d189e9a450a37cfe25e0c831efe550852).
@@ -154,8 +157,9 @@ it is reported, then that object as its last line. Each result has `ok`, `stage`
 line ends with. `pnpm selftest` builds scratch projects from this project's spec or from `vibestack/fixtures/`, breaks
 one thing at a time and asserts which stage catches each. It runs as five cached tasks, each keyed by what its tests
 read: `selftest:docs` the documents against every file they can name, `selftest:examples` each standalone example
-against its own files and the tools, and `selftest:tools:a`, `selftest:tools:b` and `selftest:tools:rest` everything
-else, which no example but the order one reaches. The first two each run one shard of the kinds of mistake, the
+against its own files and the tools. `selftest:tools:a` and `selftest:tools:b` build scratch projects from the order
+example and fixtures. `selftest:tools:rest` also rebuilds the packaged CLI from the workspace, so changes under
+`apps/`, `packages/` and `spec/` invalidate its isolated CI run. The first two each run one shard of the kinds of mistake, the
 `describe` named `in shard a` or `in shard b` in `vibestack/selftest.ts`; the third skips what the other four name, so
 a new test runs there unless it is written into a shard. Keep the longest tests spread over the three.
 The two suites of the tools, the command line and each kind of mistake, run side by side under one parent, each at most four tests at a time. The order project the
@@ -181,7 +185,8 @@ errors in subscribers, since Node reports a thrown subscriber error as an uncaug
 ## Releasing
 
 Set `version` in the root `package.json`, merge to `vibestack`, and push the tag `vibestack-v<version>` from it.
-`.github/workflows/release.yml` builds, packs with `pnpm pack`, materializes the shard prerequisites and runs `pnpm selftest --only --concurrency=1` using the same keys as CI, and attaches the tarball to a GitHub release of that tag.
+`.github/workflows/release.yml` reuses the `build` task when it runs `pnpm pack`. Then it runs the remaining shard prerequisites
+and `pnpm selftest --only --concurrency=1` with the CI cache keys and attaches the tarball to a GitHub release of that tag.
 A project installs it as [the Vibestack guide, "Using it from another package"](vibestack/README.md#using-it-from-another-package) says.
 ## Architecture
 
@@ -413,7 +418,13 @@ compare screenshots.
 Asynchronous Effect programs are tested, not proved. Each `proof` line says
 how many obligations are proved and how many are simulated only.
 
-ESLint enforces package exports and the stack boundaries. Knip finds unused
+ESLint enforces package exports and the stack boundaries, and in `apps/` and
+`packages/` the code rules of AGENTS.md, "Writing code": no comment but a spec
+citation or tool directive, no effect hook, timer or `console`, and no inline
+config but a reasoned `eslint-disable` of another rule. `commented` and
+`scheduled` in `eslint.config.js` give each file that still breaks them the
+count it may keep; one more fails, and cleaning a file lowers or deletes its
+entry. Knip finds unused
 files, exports and dependencies, reading `.vibe` and `.vibex` through VibeLang's
 compiler. Madge checks cycles in `.ts` and `.tsx` imports. jscpd fails on any
 duplicated block of code outside the examples and test fixtures. Their
@@ -424,7 +435,7 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 
 | When | Runs |
 |---|---|
-| Pull request or push to `vibestack` | The tasks of `pnpm verify`, with `--continue`, over four jobs side by side: `verify` runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
+| Pull request or push to `vibestack` | The tasks of `pnpm verify`, with `--continue=dependencies-successful`, over four jobs side by side: `verify` runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
 | Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into `vibestack`. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
 | A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
 

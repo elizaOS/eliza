@@ -247,6 +247,7 @@
         "vibestack-studio#test:browser"
       ],
       "inputs": [
+        "eslint.config.js",
         "vibestack/**",
         "!vibestack/examples/{assistant,dashboard,fullstack}/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static,__traces__}/**",
@@ -469,14 +470,6 @@
       "outputs": [
         "generated/**",
         "design.md"
-      ]
-    },
-    "@repo/ui#gen": {
-      "dependsOn": [
-        "//#gen"
-      ],
-      "outputs": [
-        "generated/**"
       ]
     }
   },
