@@ -8,7 +8,10 @@ import {
   normalizeEffectReceipt,
   type PlannerToolResult,
 } from "@elizaos/core";
-import type { ApprovalEnqueueResult } from "../approval/types.ts";
+import type {
+  ApprovalEnqueueResult,
+  ApprovalRequest,
+} from "../approval/types.ts";
 import { type DeviceOperation, validateDevicePayload } from "./contract.ts";
 import { namedTargetValidators } from "./foreground-review-contract.ts";
 import {
@@ -251,12 +254,26 @@ export function deviceActionEffectReceipts(
       operation: "device." + operation.type,
       idempotency: { key: request.idempotencyKey, replayed: false },
       outcome: "noop",
-      reason:
-        "No verified completed device effect is available; durable proposal state is " +
-        request.state +
-        ".",
+      reason: endedProposalReason(request),
     }),
   ];
+}
+
+/** A proposal that ended unrun says so first: only the phone's review rejects
+ * a device action, and it rejects or expires only one that was never claimed,
+ * so a rejected or expired request with no execution never ran. The receipt
+ * stays a noop: its outcome is the core proof discriminant every receipt
+ * reader switches on, and a later step reads the state from this reason. */
+function endedProposalReason(request: ApprovalRequest) {
+  if (!request.execution && request.state === "rejected")
+    return "Rejected by the owner on the phone; it never ran.";
+  if (!request.execution && request.state === "expired")
+    return "Expired; it never ran.";
+  return (
+    "No verified completed device effect is available; durable proposal state is " +
+    request.state +
+    "."
+  );
 }
 
 /** Persisted approval metadata is deliberately NOT a planner completion receipt. */

@@ -144,6 +144,10 @@ const observed = (id: string) =>
     outcome: "noop",
     reason: "Observed without changes.",
   });
+const REJECTED = "Rejected by the owner on the phone; it never ran.";
+const EXPIRED = "Expired; it never ran.";
+const ENDED_PROPOSAL =
+  "a later proposal state takes its place. Rejected or expired means the owner declined it or it expired, and it never ran; that final state answers whether the request happened, and the scope's current-state limit does not apply to it.";
 const navigation = (index: number) => ({
   actionName: "VIEWS_SHOW",
   success: true,
@@ -451,10 +455,10 @@ describe("records a later step can act on", () => {
       if (receipt.outcome === "failed") return "failed";
       if (outcome.success === true && receipt.outcome === "applied")
         return "done";
-      const reason = String(receipt.reason ?? "");
-      if (outcome.success === false && reason.endsWith("state is rejected."))
+      // An ended proposal's row states its end first.
+      if (outcome.success === false && receipt.reason === REJECTED)
         return "rejected";
-      if (outcome.success === false && reason.endsWith("state is expired."))
+      if (outcome.success === false && receipt.reason === EXPIRED)
         return "expired";
       return "unknown";
     };
@@ -484,10 +488,119 @@ describe("records a later step can act on", () => {
       );
     }
   });
+
+  it("states in the row and the legend that a text the owner rejected never ran", async () => {
+    // Two texts, each rejected on the phone, and one request whose two texts
+    // were both rejected; then the owner asks whether the first went out.
+    const sam = "e0000000-0000-4000-8000-000000000001",
+      alex = "e0000000-0000-4000-8000-000000000002",
+      both = [
+        "e0000000-0000-4000-8000-000000000003",
+        "e0000000-0000-4000-8000-000000000004",
+      ];
+    const text = (query: string) => ({
+      type: "sms_compose",
+      query,
+      body: "The keys are under the mat.",
+    });
+    const memories = [
+      ["sam", "Text Sam that the keys are under the mat.", [sam]],
+      ["alex", "Send the same message to Alex.", [alex]],
+      ["both", "Text Sam and Alex that the keys are under the mat.", both],
+    ].flatMap(([key, words, proposals], index) => [
+      requestMemory(
+        `keys-${key}`,
+        words as string,
+        T0 + index * 5_000,
+        (proposals as string[]).map((id) =>
+          result("PROPOSE_DEVICE_ACTION", preview(id, "device.sms_compose")),
+        ),
+      ),
+      replyMemory(
+        `keys-${key}`,
+        "Review this request on your phone before it can run.",
+        T0 + index * 5_000 + 300,
+      ),
+    ]);
+    mocks.read.mockResolvedValue(
+      [
+        [sam, 0, "Sam"],
+        [alex, 2, "Alex"],
+        [both[0], 4, "Sam"],
+        [both[1], 4, "Alex"],
+      ].map(([id, at, query]) =>
+        approvalRow(
+          id as string,
+          String(memories[at as number].id),
+          "rejected",
+          text(query as string),
+        ),
+      ),
+    );
+    const base = contextOf(memories, T0 + 60_000);
+    const context = {
+      ...base,
+      events: await reconcileHistoricalProposalTerminals(
+        runtime,
+        current(T0 + 60_000),
+        base.events,
+        memories,
+      ),
+    };
+    const rejected = (id: string) => ({
+      actionName: "PROPOSE_DEVICE_ACTION",
+      success: false,
+      receipt: {
+        operation: "device.sms_compose",
+        resource: { kind: "device.approval", id },
+        outcome: "noop",
+        reason: REJECTED,
+      },
+    });
+    const layouts: ContextObjectPromptSegment[][] = [
+      table(context),
+      positioned(context),
+    ];
+    for (const segments of layouts) {
+      const printed = decode(segments);
+      expect(printed.map((row) => row.key)).toEqual([
+        "history:h1",
+        "history:h3",
+        "history:h5",
+      ]);
+      expect(printed.map((row) => row.outcomes)).toEqual([
+        [rejected(sam)],
+        [rejected(alex)],
+        both.map(rejected),
+      ]);
+      const legends = segments.flatMap((segment) =>
+        segment.label === "runtime:historical_effects_table" ||
+        segment.label === "runtime:historical_receipt_encoding"
+          ? [JSON.parse(segment.content)]
+          : [],
+      );
+      expect(legends).toHaveLength(1);
+      expect(legends[0].encoding).toContain(ENDED_PROPOSAL);
+      expect(legends[0].scope).toContain("do not prove current resource state");
+      const records = recordText(segments);
+      expect(records).not.toContain("No verified completed device effect");
+      expect(records).not.toContain("Authoritative later proposal state");
+      expect(records.split(REJECTED)).toHaveLength(5);
+    }
+  });
 });
 
-/** An approval-store row the terminal reconciler accepts for a browser open. */
-function approvalRow(id: string, requestMessageId: string, state: string) {
+/** An approval-store row the terminal reconciler accepts, by default for a
+ * browser open. */
+function approvalRow(
+  id: string,
+  requestMessageId: string,
+  state: string,
+  operation: Record<string, unknown> = {
+    type: "browser_navigate",
+    url: "https://example.test/",
+  },
+) {
   return {
     id,
     requestedBy: agent,
@@ -502,7 +615,7 @@ function approvalRow(id: string, requestMessageId: string, state: string) {
       installationId: "installation",
       enrollmentId: "enrollment",
       requestMessageId,
-      operation: { type: "browser_navigate", url: "https://example.test/" },
+      operation,
     },
     execution:
       state === "done"
