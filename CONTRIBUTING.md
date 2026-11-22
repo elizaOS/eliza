@@ -280,9 +280,12 @@ an identical installation does not invalidate it and replacing an executable
 with the same version does; tests, drivers and explorations are keyed by the
 verifier too, since they may run proofs, as Studio's do. A process that
 outlives a reinstall, as `spec watch` does, reads the installed toolchain
-again on the next check. Simulations and proofs include the resolved package
-versions and dependency links for Quint and LemmaScript respectively. Each
-check reads each package graph once and shares it with all runs of that tool. A
+again on the next check. Simulations and proofs include the resolved package files
+and dependency links for Quint and LemmaScript. Each check shares an installation
+inventory across runs of the same tool and validates its files before publishing a batch.
+The first action, long actions, completed stages and the end of the check flush pending results.
+If a concurrent installation changes these files, the check discards the pending results
+and retries under the same project lock. It stops after two unsuccessful retries. A
 simulation also depends on the bytes of Quint's installed Rust evaluator. A
 run that installs its evaluator can produce a result; the next run records it
 against the installed binary. The task runner supplies the evaluator fingerprint
