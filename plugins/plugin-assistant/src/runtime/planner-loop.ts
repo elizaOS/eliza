@@ -183,6 +183,7 @@ import {
   plannerToolScopedRules,
 } from "../prompts/planner.ts";
 import { withDialNumber } from "../services/device-actions/action.ts";
+import { isCameraCapture } from "../services/device-actions/camera-contract.ts";
 import { validateDeviceOperation } from "../services/device-actions/contract.ts";
 import {
   DEVICE_APPROVAL_REVIEW_TEXT,
@@ -3717,11 +3718,14 @@ async function runPlannerLoopIterations(
     // "Text Sam I'll be late, and set an alarm for 7am": the planner's one
     // reply holds both proposals, and the turn pauses at the first review
     // with the second still queued, which nothing runs later. Record the other
-    // owner reviews already queued in that reply before the one pause.
+    // owner reviews already queued in that reply before the one pause. A
+    // photo in a compound request ("Take a picture and text mom that I'm
+    // here.") is a review card too (camera-request.ts), so the same holds.
     if (
       !requestedHandoff &&
       isPersistedDeviceApprovalPause(latestResult) &&
-      sameReplyDeviceReviewOperation(toolCall, trajectory) !== undefined
+      (sameReplyDeviceReviewOperation(toolCall, trajectory) !== undefined ||
+        isCameraCapture(plannerCallOperation(toolCall)))
     )
       await recordSameReplyDeviceReviews({
         params,
@@ -6882,6 +6886,27 @@ function currentOwnerRequestText(
   return undefined;
 }
 
+/** A planner call's `operation` as the handler receives it, or undefined. The
+ * phone's Cloud route sends planner tools non-strict, and the model then
+ * writes `operation` as a JSON string (117 of 121 calls in the token audit's
+ * decode-mode run); core decodes it only into the copy it dispatches
+ * (validate-tool-args normalizeModelParameters). The queued call keeps the
+ * string, so every check on it here decodes it the same way. */
+function plannerCallOperation(
+  call: PlannerToolCall | undefined,
+): Record<string, unknown> | undefined {
+  let operation = call?.params?.operation;
+  if (typeof operation === "string") {
+    try {
+      operation = JSON.parse(operation);
+    } catch {
+      // Malformed model JSON fails the operation schema at dispatch.
+      return undefined;
+    }
+  }
+  return isObjectRecord(operation) ? operation : undefined;
+}
+
 /** The review key of a PROPOSE_DEVICE_ACTION call that can only end as an
  * owner review card, or undefined for every other call. */
 function sameReplyDeviceReviewOperation(
@@ -6889,10 +6914,9 @@ function sameReplyDeviceReviewOperation(
   trajectory: PlannerTrajectory,
 ): string | undefined {
   if (call.name !== "PROPOSE_DEVICE_ACTION") return undefined;
-  const operation = call.params?.operation;
-  if (!operation || typeof operation !== "object" || Array.isArray(operation))
-    return undefined;
-  const { type, action, draft } = operation as Record<string, unknown>;
+  const operation = plannerCallOperation(call);
+  if (!operation) return undefined;
+  const { type, action, draft } = operation;
   if (typeof type !== "string" || !SAME_REPLY_DEVICE_REVIEW_TYPES.has(type))
     return undefined;
   // A draft for a typed number or the open thread runs without a card. The
@@ -7000,8 +7024,8 @@ function isViewHandoffStep(step: PlannerStep): boolean {
 }
 
 /**
- * After a queued phone proposal became a recorded owner review, record the
- * other owner reviews queued behind it from the same planner reply, in order,
+ * After a queued phone proposal or photo became a recorded owner review, record
+ * the other owner reviews queued behind it from the same planner reply, in order,
  * so the one pause covers all of them. No planner or evaluator call is made.
  * A call that repeats an operation already awaiting review this turn is
  * dropped and the next one is tried; the first call that is not an owner
@@ -7030,13 +7054,22 @@ async function recordSameReplyDeviceReviews(args: {
   if (turnSteps.some(isViewHandoffStep)) return;
   const awaiting = new Set<string>();
   for (const step of turnSteps) {
-    const operation = step.toolCall?.params?.operation;
+    const operation = plannerCallOperation(step.toolCall);
     if (operation !== undefined && isPersistedDeviceApprovalPause(step.result))
       awaiting.add(deviceOperationReviewKey(operation));
   }
   while (trajectory.plannedQueue.length > 0) {
     const next = trajectory.plannedQueue[0];
-    const operation = sameReplyDeviceReviewOperation(next, trajectory);
+    let operation: string | undefined;
+    try {
+      operation = sameReplyDeviceReviewOperation(next, trajectory);
+    } catch {
+      // An operation dispatch would refuse (a decoded model string nested
+      // past its walk budget can overflow the review key): stop here and keep
+      // the pause on the reviews already recorded, as for any call that does
+      // not end as a review.
+      return;
+    }
     if (operation === undefined) return;
     if (awaiting.has(operation)) {
       // A second card for the same text would be a second send if approved.
