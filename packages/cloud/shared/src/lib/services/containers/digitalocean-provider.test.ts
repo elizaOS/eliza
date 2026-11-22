@@ -30,7 +30,7 @@ function volume(id: string) {
   };
 }
 
-function pages<T>(url: URL, collection: string, pageOne: T[], pageTwo: T[], page: number) {
+function pages<T>(collection: string, pageOne: T[], pageTwo: T[], page: number) {
   const next = page === 1 ? `https://api.digitalocean.com/v2/${collection}?page=2` : null;
   return Response.json({
     [collection]: page === 1 ? pageOne : pageTwo,
@@ -60,7 +60,7 @@ describe("DigitalOcean list pagination", () => {
     const second = Array.from({ length: 50 }, (_, i) => droplet(201 + i));
     const client = provider((url) => {
       const page = Number(url.searchParams.get("page") ?? "1");
-      return pages(url, "droplets", first, second, page);
+      return pages("droplets", first, second, page);
     }, requests);
 
     const servers = await client.listServers({ "managed-by": "eliza-cloud" });
@@ -78,7 +78,7 @@ describe("DigitalOcean list pagination", () => {
     const second = [volume("vol-201")];
     const client = provider((url) => {
       const page = Number(url.searchParams.get("page") ?? "1");
-      return pages(url, "volumes", first, second, page);
+      return pages("volumes", first, second, page);
     });
 
     const volumes = await client.listVolumes({ location: "nyc3" });
@@ -91,7 +91,7 @@ describe("DigitalOcean list pagination", () => {
     const first = Array.from({ length: 200 }, (_, i) => droplet(i + 1));
     const client = provider((url) => {
       const page = Number(url.searchParams.get("page") ?? "1");
-      return pages(url, "droplets", first, [droplet(200)], page);
+      return pages("droplets", first, [droplet(200)], page);
     });
 
     const error = await client.listServers().catch((caught: unknown) => caught);
@@ -102,12 +102,11 @@ describe("DigitalOcean list pagination", () => {
     );
   });
 
-  test("a list response without pagination metadata is a typed error", async () => {
+  test("a single page can omit the next link", async () => {
     const client = provider(() => Response.json({ droplets: [droplet(1)] }));
 
-    const error = await client.listServers().catch((caught: unknown) => caught);
+    const servers = await client.listServers();
 
-    expect(error).toBeInstanceOf(DigitalOceanComputeError);
-    expect((error as DigitalOceanComputeError).message).toContain("missing pagination metadata");
+    expect(servers.map(({ id }) => id)).toEqual([1]);
   });
 });

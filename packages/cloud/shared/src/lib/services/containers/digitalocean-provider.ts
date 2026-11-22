@@ -62,7 +62,7 @@ const LIST_PER_PAGE = 200;
 /** Hard stop for a pagination cycle that never reports a last page. */
 const LIST_MAX_PAGES = 100;
 
-/** DO list responses link the following page; `next` is null on the last one. */
+/** DO links the following page when one exists. */
 interface DOListLinks {
   pages?: { next?: string | null } | null;
 }
@@ -508,10 +508,8 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
 
   /**
    * Read every page of a paginated DO list endpoint. DO answers a page with
-   * `links.pages.next` for the following page and `null` on the last one. A
-   * response without that metadata cannot prove completeness, and a repeated
-   * resource ID means the page chain restarted, so both are typed errors: a
-   * partial list must never be returned as the whole inventory.
+   * `links.pages.next` when a following page exists. A repeated resource ID
+   * means the page chain restarted, so refuse that incomplete inventory.
    */
   private async listPages<T>(
     path: string,
@@ -533,12 +531,6 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
           `DigitalOcean API ${path} response is missing the ${collection} array`,
         );
       }
-      if (!pages || typeof pages !== "object") {
-        throw new DigitalOceanComputeError(
-          "server_error",
-          `DigitalOcean API ${path} response is missing pagination metadata`,
-        );
-      }
       for (const row of rows as T[]) {
         const key = String((row as { id: string | number }).id);
         if (seen.has(key)) {
@@ -550,7 +542,14 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
         seen.add(key);
         items.push(row);
       }
-      if (pages.next === null || pages.next === undefined) return items;
+      const next = pages?.next;
+      if (next === undefined || next === null) return items;
+      if (typeof next !== "string" || next.length === 0) {
+        throw new DigitalOceanComputeError(
+          "server_error",
+          `DigitalOcean API ${path} response has an invalid next page link`,
+        );
+      }
     }
     throw new DigitalOceanComputeError(
       "server_error",
