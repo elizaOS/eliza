@@ -298,5 +298,7 @@ pure def lawGoogleChangeNeedsConsent(backend: Backend, consent: GoogleConsent): 
 pure def lawGoogleReadNeedsOnlyTheLink(backend: Backend, consent: GoogleConsent): bool = googleAdmitted(backend, consent, GoogleRead) iff isCloud(backend)
 pure val privateInboxArrivalPath = "/api/v1/eliza/google/gmail/inbox-v1/arrival"
 pure def pluginCloudPathAllowed(pathname: str): bool = pathname != privateInboxArrivalPath
-pure def lawPrivateInboxArrivalStaysOffThePluginLink: bool = not(pluginCloudPathAllowed(privateInboxArrivalPath))
+pure val pathnameValues = Set(privateInboxArrivalPath, "/api/v1/eliza/google/gmail/read")
+pure def lawPrivateInboxArrivalStaysOffThePluginLink(pathname: str): bool =
+  pathname == privateInboxArrivalPath implies not(pluginCloudPathAllowed(pathname))
 ```
