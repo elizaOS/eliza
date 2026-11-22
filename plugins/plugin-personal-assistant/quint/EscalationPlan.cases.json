@@ -1,0 +1,43 @@
+{
+  "sources": [
+    "plugins/plugin-personal-assistant/src/actions/lib/owner-policy-writes.ts",
+    "plugins/plugin-personal-assistant/src/actions/escalation-plan-model.pglite.integration.test.ts",
+    "plugins/plugin-personal-assistant/quint/check-escalation-plan.mjs"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-escalation-plan.mjs",
+  "bounds": "One saved reminder whose plan holds at most one step per channel: in-app at +0, sms at +10 and a call at +60, in any non-empty combination, with or without quiet hours (22:00-07:00 UTC) and with or without a mute policy: 28 saved plans. The owner then makes at most two escalation requests: call after 30 minutes, the same with replace, an explicit sms step at +15, or call after a 20-minute timeout. The conformance script replays every generated sequence through the OWNER_REMINDERS policy_configure_escalation subaction on a real PGlite-backed runtime, reads the stored definition after each request and compares the step per channel, the step order, the quiet hours and the mute policy. It requires all 112 pairs of saved plan and first request. Target resolution, unknown channels, missing timings, the global-rule refusal and reminder dispatch inside quiet hours are covered by other tests, not by this model. Under weak fairness of the write, a request is eventually applied. Explicit stuttering lets the write never run, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "escalation-requests",
+      "main": "EscalationPlan",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "QuietHoursKept",
+        "MutePolicyKept",
+        "RequestedStepsSet",
+        "OtherStepsFollowRequest",
+        "TypeOK"
+      ],
+      "temporal": ["RequestApplied", "RequestAppliedWithoutFairness"],
+      "maxSteps": 4,
+      "samples": 3000,
+      "temporalChecks": [
+        {
+          "property": "RequestApplied",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled escalation write eventually runs (weak fairness). This checks that a request is applied to the stored plan, not how long the write takes."
+          ]
+        },
+        {
+          "property": "RequestAppliedWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No write fairness is assumed. The write may never run after the owner asks, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}
