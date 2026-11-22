@@ -965,14 +965,15 @@ test("a send that throws after dispatch at the next STT budget keeps that budget
     await session.close();
     expect(attempted).toBe(windowBytes + SPEECH_RELAY_BUDGET.chunkBytes);
     expect(f.settled).toHaveLength(2);
+    // The first window settled at its own end, before its last chunk arrived.
     expect(f.settled[0]).toMatchObject({
-      pcmBytes: windowBytes,
+      pcmBytes: windowBytes - SPEECH_RELAY_BUDGET.chunkBytes,
       dispatched: { stt: true },
-      outcomes: { stt: "unknown" },
+      accountingBasis: "submitted_counter_provider_unconfirmed",
     });
-    // Confirmed bytes did not advance, but the attempted send may have billed.
+    // Confirmed bytes stopped at that chunk, but the attempted send may have billed.
     expect(f.settled[1]).toMatchObject({
-      pcmBytes: 0,
+      pcmBytes: SPEECH_RELAY_BUDGET.chunkBytes,
       dispatched: { stt: true },
       outcomes: { stt: "unknown" },
     });
@@ -987,7 +988,7 @@ test("a send that throws after dispatch at the next STT budget keeps that budget
   }
 });
 
-test("complete STT drain splits a full, partial and unused budget without changing usage", async () => {
+test("complete STT drain splits a frozen, partial and unused budget without changing usage", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(1_000);
   let delivered = 0;
@@ -1023,16 +1024,28 @@ test("complete STT drain splits a full, partial and unused budget without changi
     f.advance(39_900);
     await vi.advanceTimersByTimeAsync(39_900);
     expect(f.events.filter(isExtended)).toHaveLength(2);
+    // The first window settled at its own end, at the counter it had then;
+    // the drain cannot change that share, and later bytes fill the second.
+    expect(f.settled).toEqual([
+      {
+        pcmBytes: windowBytes - SPEECH_RELAY_BUDGET.chunkBytes,
+        ttsCharacters: 0,
+        providerMayHaveStarted: true,
+        dispatched: { stt: true, tts: false },
+        outcome: "unknown",
+        outcomes: { stt: "unknown", tts: "unknown" },
+        accountingBasis: "submitted_counter_provider_unconfirmed",
+      },
+    ]);
     await session.close();
     expect(f.settled).toHaveLength(3);
     expect(f.settled).toMatchObject([
       {
-        pcmBytes: windowBytes,
-        outcomes: { stt: "complete" },
+        pcmBytes: windowBytes - SPEECH_RELAY_BUDGET.chunkBytes,
         dispatched: { stt: true },
       },
       {
-        pcmBytes: SPEECH_RELAY_BUDGET.chunkBytes,
+        pcmBytes: 2 * SPEECH_RELAY_BUDGET.chunkBytes,
         outcomes: { stt: "complete" },
         dispatched: { stt: true },
       },
@@ -1050,7 +1063,7 @@ test("complete STT drain splits a full, partial and unused budget without changi
 });
 
 for (const windows of [3, 10]) {
-  test(`zero PCM with ${windows} granted STT windows retains only the initial unknown risk`, async () => {
+  test(`zero PCM with ${windows} granted STT windows retains one unknown risk on the oldest held window`, async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
     let session:
@@ -1070,19 +1083,27 @@ for (const windows of [3, 10]) {
         await vi.advanceTimersByTimeAsync(50_000);
       }
       expect(f.events.filter(isExtended)).toHaveLength(windows - 1);
+      // Each window whose end passed settled at zero, before close.
+      expect(f.settled).toHaveLength(windows - 2);
+      for (const receipt of f.settled)
+        expect(receipt).toMatchObject({
+          pcmBytes: 0,
+          dispatched: { stt: false, tts: false },
+          accountingBasis: "submitted_counter_provider_unconfirmed",
+        });
       await session.close();
       expect(f.settled).toHaveLength(windows);
-      expect(f.settled[0]).toMatchObject({
+      // The still-open STT stream's closure risk moved with the oldest held window.
+      expect(f.settled[windows - 2]).toMatchObject({
         pcmBytes: 0,
         dispatched: { stt: true },
         outcomes: { stt: "unknown" },
       });
-      for (const receipt of f.settled.slice(1))
-        expect(receipt).toMatchObject({
-          pcmBytes: 0,
-          dispatched: { stt: false },
-          outcomes: { stt: "unknown" },
-        });
+      expect(f.settled[windows - 1]).toMatchObject({
+        pcmBytes: 0,
+        dispatched: { stt: false },
+        outcomes: { stt: "unknown" },
+      });
       await session.close();
       expect(f.settled).toHaveLength(windows);
     } finally {
