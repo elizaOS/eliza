@@ -732,28 +732,15 @@ it.each(["direct-request", "ask-before"] as const)(
           state: "pending",
         },
       ]);
-      if (mode === "direct-request") {
-        // The phone takes the photo right after the reply, with no review. A
-        // handoff drops the calls queued behind it, so the text is neither
-        // proposed nor left queued; the evaluator then finishes the turn and a
-        // no-tools synthesis writes the reply.
-        expect(outcome.result.trajectory.steps[0]?.result?.data).toMatchObject({
-          directRequest: true,
-          awaitingDeviceExecution: true,
-        });
-        expect(outcome.result.trajectory.plannedQueue).toEqual([]);
-        expect(outcome.evaluate).toHaveBeenCalledTimes(1);
-        expect(outcome.plans).toBe(2);
-        expect(outcome.result.finalMessage).toBe(
-          "Opening Camera to take the photo.",
-        );
-      } else {
-        // The photo is a review card; the text stays queued and unrun.
-        expectPause(outcome);
-        expect(
-          outcome.result.trajectory.plannedQueue.map((call) => call.id),
-        ).toEqual(["text"]);
-      }
+      // The photo keeps its review card in both modes: only a whole-message
+      // photo command runs without one (camera-request.ts), and this message
+      // also asks for a text. The turn pauses on the photo's card; the text
+      // stays queued and unrun, because the same-reply recorder follows only
+      // a PROPOSE_DEVICE_ACTION review.
+      expectPause(outcome);
+      expect(
+        outcome.result.trajectory.plannedQueue.map((call) => call.id),
+      ).toEqual(["text"]);
     } finally {
       await f.pg.close();
     }
