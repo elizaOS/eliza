@@ -29,7 +29,6 @@ public final class RecoveryArchive {
       Path source = state(account, directories);
       Path archive = move(source, directories.recoveryArchive(), epoch, nowMillis);
       moved = new Moved(source, archive, retainedCount);
-      // A retry must sync this receipt without moving a later state directory.
       pending.put(account, moved);
     }
     if (!Files.isDirectory(moved.archive(), LinkOption.NOFOLLOW_LINKS)) throw new IOException("The moved records could not be found");
