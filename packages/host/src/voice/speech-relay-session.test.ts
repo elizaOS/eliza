@@ -718,8 +718,19 @@ test("a refused extension or quota keeps the original end and never emits a rene
               },
             },
     );
+    const report = vi.fn();
+    f.ports.onRenewal = report;
     const session = await f.open();
-    await sleep(60);
+    await until(() => report.mock.calls.length === 1);
+    expect(report).toHaveBeenCalledWith(
+      expect.objectContaining(
+        mode === "extend"
+          ? { phase: "extend", result: "declined" }
+          : mode === "quota"
+            ? { phase: "quota", result: "quota_denied" }
+            : { phase: "reserve", result: "error" },
+      ),
+    );
     expect(f.events.some((event) => isExtended(event))).toBe(false);
     expect(f.extensions).toEqual([]);
     if (mode === "credits") expect(f.order).toContain("quota-release");
