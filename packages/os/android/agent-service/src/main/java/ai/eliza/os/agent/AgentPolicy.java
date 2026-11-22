@@ -1,4 +1,4 @@
-// spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/os/agentService/lifecycle.md, "The agent runs only once it answers ready for this launch, and a launch that never does fails as Agent"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 package ai.eliza.os.agent;
 
 import java.util.ArrayList;
@@ -19,18 +19,19 @@ public final class AgentPolicy {
 
   public record State(Phase phase, Cause failure, String error, long epoch, int attempt, boolean reaped, boolean hookRan,
     boolean credentialHeld, long credentialVersion, long delivered, String account, AfterExit afterExit, Cause afterExitCause,
-    UpdateTarget hold, Recovery recovery) {
-    public boolean child() { return phase == Phase.SPAWNED || phase == Phase.RUNNING || phase == Phase.STOPPING; }
+    UpdateTarget hold, Recovery recovery, long staleEpoch) {
+    public boolean child() { return staleEpoch != 0 || phase == Phase.SPAWNED || phase == Phase.RUNNING || phase == Phase.STOPPING; }
   }
 
   public record Status(boolean available, String state, String failure, String error, long epoch, long requestBodyLimit) {}
 
-  public sealed interface Event permits Start, Stop, ReapStale, LaunchHook, Refuse, Spawned, SpawnFailed, ObserveReady, ReadyTimeout,
+  public sealed interface Event permits Start, Stop, ReapStale, StaleChildReaped, LaunchHook, Refuse, Spawned, SpawnFailed, ObserveReady, ReadyTimeout,
     ObserveExit, FailUnclassified, RestartUnhealthy, StableReset, CredentialArrived, CredentialReplaced, SignedOut, CredentialExpired,
     AccountChanged, ReviewRecovery, ArchiveRecovery, ArchiveFinished, HoldForUpdate, ReleaseUpdate {}
   public record Start() implements Event {}
   public record Stop() implements Event {}
   public record ReapStale() implements Event {}
+  public record StaleChildReaped(long epoch) implements Event {}
   public record LaunchHook(boolean refused, String reason) implements Event {}
   public record Refuse(Cause cause, String reason) implements Event {}
   public record Spawned() implements Event {}
@@ -64,7 +65,7 @@ public final class AgentPolicy {
   private Phase phase = Phase.STOPPED;
   private Cause failure, afterExitCause;
   private String error, account;
-  private long epoch, credentialVersion, delivered;
+  private long epoch, credentialVersion, delivered, staleEpoch;
   private int attempt;
   private boolean reaped, hookRan, credentialHeld;
   private AfterExit afterExit = AfterExit.STOP;
@@ -91,7 +92,7 @@ public final class AgentPolicy {
 
   public synchronized State state() {
     return new State(phase, failure, error, epoch, attempt, reaped, hookRan, credentialHeld, credentialVersion, delivered, account,
-      afterExit, afterExitCause, hold, recovery);
+      afterExit, afterExitCause, hold, recovery, staleEpoch);
   }
 
   public synchronized Status status(long requestBodyLimit) {
@@ -117,12 +118,13 @@ public final class AgentPolicy {
     if (event instanceof Start) return start();
     if (event instanceof Stop) return stop();
     if (event instanceof ReapStale) return reapStale();
+    if (event instanceof StaleChildReaped reapedChild) return staleChildReaped(reapedChild.epoch());
     if (event instanceof LaunchHook hook) return launchHook(hook.refused(), hook.reason());
     if (event instanceof Refuse refuse) return refuse(refuse.cause(), refuse.reason());
     if (event instanceof Spawned) return spawned();
-    if (event instanceof SpawnFailed failed) return phase == Phase.CHECKING && fail(Cause.AGENT, failed.reason());
+    if (event instanceof SpawnFailed failed) return phase == Phase.CHECKING && staleEpoch == 0 && fail(Cause.AGENT, failed.reason());
     if (event instanceof ObserveReady ready) return observeReady(ready.epoch());
-    if (event instanceof ReadyTimeout) return phase == Phase.SPAWNED && kill(AfterExit.FAIL, Cause.AGENT, "not ready within 60 s");
+    if (event instanceof ReadyTimeout) return readyTimeout();
     if (event instanceof ObserveExit exit) return observeExit(exit.code());
     if (event instanceof FailUnclassified unclassified) return failUnclassified(unclassified.reason());
     if (event instanceof RestartUnhealthy) return phase == Phase.RUNNING && kill(AfterExit.RESTART, null, null);
@@ -214,8 +216,14 @@ public final class AgentPolicy {
   }
 
   private boolean reapStale() {
-    if (phase != Phase.CHECKING || reaped) return false;
+    if (phase != Phase.CHECKING || reaped || staleEpoch != 0) return false;
     reaped = true;
+    return true;
+  }
+
+  private boolean staleChildReaped(long reapedEpoch) {
+    if (staleEpoch == 0 || staleEpoch != reapedEpoch) return false;
+    staleEpoch = 0;
     return true;
   }
 
@@ -227,7 +235,7 @@ public final class AgentPolicy {
   }
 
   private boolean refuse(Cause cause, String reason) {
-    if (phase != Phase.CHECKING || cause == Cause.AGENT || cause == Cause.CRASHED || cause == Cause.RUNTIME) return false;
+    if (phase != Phase.CHECKING || staleEpoch != 0 || cause == Cause.AGENT || cause == Cause.CRASHED || cause == Cause.RUNTIME) return false;
     if (cause == Cause.STORAGE && !reaped) return false;
     if (cause == Cause.CREDENTIAL && credentialHeld) return false;
     return fail(cause, reason);
@@ -245,6 +253,13 @@ public final class AgentPolicy {
     phase = Phase.RUNNING;
     push();
     return true;
+  }
+
+  private boolean readyTimeout() {
+    if (phase != Phase.SPAWNED) return false;
+    staleEpoch = epoch;
+    effects.add(new Kill(epoch));
+    return fail(Cause.AGENT, "not ready within 60 s");
   }
 
   private void push() {
@@ -371,7 +386,7 @@ public final class AgentPolicy {
   }
 
   private boolean holdForUpdate(UpdateTarget target) {
-    if (hold != null || target == null || target.digest() == null) return false;
+    if (hold != null || target == null || target.digest() == null || staleEpoch != 0) return false;
     switch (phase) {
       case CHECKING -> stopped();
       case STOPPED, FAILED -> { }
