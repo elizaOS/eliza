@@ -19,8 +19,9 @@ module node {
 
   /** @throws {never} */
   export function eliza(packageDir: string, args: readonly string[]): Promise<Run> {
+    const env = { ...process.env, VIBELANG_PROJECT: path.join(packageDir, "tsconfig.build.json") }
     return new Promise((resolve) => {
-      execFile(process.execPath, ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", path.join(packageDir, "src/cli.vibe"), ...args], { cwd: packageDir, encoding: "utf8", timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }, (failure, stdout, stderr) => {
+      execFile(process.execPath, ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", path.join(packageDir, "src/cli.vibe"), ...args], { cwd: packageDir, env, encoding: "utf8", timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }, (failure, stdout, stderr) => {
         resolve({ status: failure === null ? 0 : typeof failure.code === "number" ? failure.code : null, stdout, stderr })
       })
     })
