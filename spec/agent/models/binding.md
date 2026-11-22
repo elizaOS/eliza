@@ -87,6 +87,7 @@ pure def lawImageDescriptionOnlyFromTheCloud(backend: Backend, embeddings: Embed
 
 A launch with no backend never calls a model, so its account state stays
 usable. Each call remembers the credential version it was sent with.
+The next call number starts at zero and advances for each admitted call.
 
 ```quint
 pure val nowValues = Set(0, 5, 10)
@@ -101,7 +102,7 @@ pure def canStartCall(s: ModelBinding, handler: ModelHandler, now: int): bool =
 pure def startCall(s: ModelBinding, handler: ModelHandler, now: int): ModelBinding =
   { ...s, calls: s.calls.append({ id: s.nextCall, credentialVersion: s.credentialVersion }), nextCall: s.nextCall + 1, clock: clockAt(s, now) }
 pure def alwaysCallsUseAHeldCredential(s: ModelBinding): bool =
-  s.calls.every(c => c.id >= 0 and c.id < s.nextCall and c.credentialVersion >= 1 and c.credentialVersion <= s.credentialVersion)
+  s.nextCall >= 0 and s.calls.every(c => c.id >= 0 and c.id < s.nextCall and c.credentialVersion >= 1 and c.credentialVersion <= s.credentialVersion)
 pure def alwaysNoBackendNeverCalls(s: ModelBinding): bool = s.backend == NoBackend implies
   (s.nextCall == 0 and s.accountState == Usable and s.lastCloudFailure == NoCloudFailure)
 pure def stepClockNeverGoesBack(before: ModelBinding, after: ModelBinding): bool = after.clock >= before.clock
@@ -186,6 +187,7 @@ pure def sometimesProviderIssue(s: ModelBinding): bool = s.accountState == Faili
 A refused credential, spent credits or a newer limit replace a limit.
 
 ```quint
+pure val eValues = C::eValues.union(Set(C::CloudRateLimited({ retryAt: 20 })))
 pure def limitedBy(f: AccountFailure, t: int): bool = match f { | LimitReached(x) => t < x.retryAt | _ => false }
 pure def limitedAt(st: AccountState, t: int): bool = match st { | Failing(x) => limitedBy(x.failure, t) | Usable => false }
 pure def afterFailure(st: AccountState, failure: AccountFailure, t: int): AccountState =
