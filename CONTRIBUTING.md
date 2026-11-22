@@ -70,7 +70,7 @@ Pull requests go to `main`, the only long-lived branch; what CI runs on them is 
 | `vibestack/explore.ts` | the `explore` stage: serves a package's page with its app script, runs Bombadil on it, and replays and removes a saved run |
 | `vibestack/conformance.ts` | the comparing: journeys, malformed-input probes, walks, shrinking and replay; copied into `gen/` for a driver's types |
 | `vibestack/testing/` | what packages import: `project()` (the Vitest configuration), the property-test generator, `effectDriver` |
-| `vibestack/stories/`, `vibestack/design/` | generated stories and their tests; design tokens and their lint rules |
+| `vibestack/stories/`, `vibestack/design/` | generated stories and their tests; design tokens and their lint rules. Build or check several token directories in one process with `buildTokenProject` or `checkTokenProject` from `vibestack/design/project`. |
 | `vibestack/gen.ts` | the translator: reads what a module imports and defines |
 | `vibestack/gen/types.ts` | everything decided by a type |
 | `vibestack/gen/print.ts` | expressions |
