@@ -1,5 +1,6 @@
 // spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
+import { PseudonymSession } from "../src/security/pii-pseudonymizer.vibe"
 import { type Action, addLogListener, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
 import { coreDir, freezeCore, installPacked, packCandidate, runNode, sha256File, spawnNode } from "./support/child.ts"
 import { removeScratch } from "./support/files.ts"
@@ -762,7 +763,14 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
   child.release.resolve()
   const juiceTurn = try host(() => juicePending)
   unsubscribe?.()
-  try host(() => runtime.sendMessageToTarget({ source: "chat", roomId: dm, accountId: "acct-other" }, { text: "fallback route" }))
+  const contactText = "Call Maria Gonzalez before noon."
+  const pii = try Effect.try(() => new PseudonymSession({ salt: "connector-journey" }))
+  pii.learnSpans(contactText, [{ kind: "person", value: "Maria Gonzalez", start: 5, end: 19 }])
+  const substituteText = pii.substituteText(contactText)
+  try Effect.try(() => assert.notStrictEqual(substituteText, contactText))
+  try host(() => runWithTrajectoryContext({ piiSwapSession: pii }, () =>
+    runtime.sendMessageToTarget({ source: "chat", roomId: dm, accountId: "acct-other" }, { text: substituteText, agentVoiced: true }),
+  ))
   const missing = try host(() => runtime.sendMessageToTarget({ source: "nowhere", roomId: dm }, { text: "lost" }).then(() => "sent", (error: unknown) => error instanceof ElizaError ? error.code : String(error)))
   const editOutcome = (accountId: string) => host(() => runtime.editMessageOnTarget({ source: "chat", roomId: dm, accountId }, "j02-sent-1", { text: "edited" }).then(() => "edited", (error: unknown) => error instanceof Error ? error.message : String(error)))
   const edits = [try editOutcome("acct-primary"), try editOutcome("acct-other"), log.filter((entry) => entry === "edit:default").length]
@@ -776,7 +784,7 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
     whileChildPending,
     terminalMarks(),
   ], [
-    [["account", "acct-primary", "Saved: juice"], ["default", "acct-other", "fallback route"]],
+    [["account", "acct-primary", "Saved: juice"], ["default", "acct-other", contactText]],
     "SEND_HANDLER_NOT_FOUND",
     ["Connector does not support edit_message (source: chat accountId: acct-primary)", "edited", 1],
     ["run_start", "action_start", "action_end", "run_end"],

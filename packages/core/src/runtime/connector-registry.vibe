@@ -252,21 +252,20 @@ export effect function sendMessageToTarget(
 
   const voicedContent = try ensureAgentVoice(tables.runtime, content, { source })
   try foreign(() => Promise.resolve())
-  const secretSession = getTrajectoryContext()?.secretSwapSession
-  const outboundContent = typeof voicedContent.text === "string"
-    ? {
+  let outboundContent = voicedContent
+  if (typeof voicedContent.text === "string") {
+    const context = getTrajectoryContext()
+    const restored = context?.piiSwapSession?.restoreText(voicedContent.text) ?? voicedContent.text
+    const redacted = context?.secretSwapSession?.redactRestoredSecretValues(restored) ?? restored
+    outboundContent = {
       ...voicedContent,
       text: guardOutboundEnvelopeText(
         tables.runtime,
-        try sanitizeOutboundText(
-          secretSession
-            ? secretSession.redactRestoredSecretValues(voicedContent.text)
-            : voicedContent.text,
-        ),
+        try sanitizeOutboundText(redacted),
         "sendMessageToTarget",
       ),
     }
-    : voicedContent
+  }
   return try foreign(() => handler(tables.runtime, target, outboundContent))
 }
 
