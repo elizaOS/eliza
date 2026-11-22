@@ -20,6 +20,12 @@ import {
 	modelProviderErrorStatus,
 } from "../utils/model-errors.ts";
 import {
+	isPermanentQuotaError,
+	providerAlreadyResent,
+	providerRateLimitRetryAt,
+	readProviderRateLimit,
+} from "../utils/model-retry.ts";
+import {
 	findNextCloseTag,
 	REASONING_TAG_ALTERNATION,
 	stripPairedTagBlocks,
@@ -225,6 +231,41 @@ export function isInsufficientCreditsError(error: unknown): boolean {
 	const message = unwrapped instanceof Error ? unwrapped.message : "";
 	if (isInsufficientCreditsMessage(message)) return true;
 	return hasHttpStatus(error, [429]) && BILLING_KEYWORDS_RE.test(message);
+}
+
+/** Longest wait before a turn's re-send. Buckets refill continuously; a
+ * longer wait would stall the visible turn. */
+export const TURN_RATE_LIMIT_RESEND_MAX_WAIT_MS = 5_000;
+
+/**
+ * Wait before the one re-send a chat turn's Stage 1, planner, evaluator or
+ * extractor makes of a call refused with a structural 429: the provider's
+ * hint, capped, or the cap when it carries none. Spent credit, permanent
+ * quota, a used-up period allowance and a rate limit named only in prose get
+ * none. Neither does a refusal the provider adapter already re-sent
+ * (`MODEL_PROVIDER_RESENDS`): the turn's re-send would start a fresh
+ * adapter budget, and one call Cerebras kept refusing with no wait hint went
+ * out 8 times on plugin-openai's generate lane and 12 on its stream lanes.
+ */
+export function turnRateLimitResendWaitMs(
+	error: unknown,
+	now = Date.now(),
+): number | undefined {
+	if (
+		modelProviderErrorStatus(error) !== 429 ||
+		isInsufficientCreditsError(error) ||
+		isPermanentQuotaError(error) ||
+		providerAlreadyResent(error)
+	)
+		return undefined;
+	const reported = readProviderRateLimit(error);
+	if (reported?.scope === "period") return undefined;
+	const retryAt = providerRateLimitRetryAt(error, now);
+	const hintMs = retryAt === undefined ? reported?.retryAfterMs : retryAt - now;
+	return Math.min(
+		Math.ceil(hintMs ?? TURN_RATE_LIMIT_RESEND_MAX_WAIT_MS),
+		TURN_RATE_LIMIT_RESEND_MAX_WAIT_MS,
+	);
 }
 
 /**

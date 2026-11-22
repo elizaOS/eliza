@@ -49,6 +49,7 @@ import {
 	type GenerateTextParams,
 	getModelFallbackChain,
 	MODEL_PROVIDER_ATTEMPTS,
+	MODEL_PROVIDER_RESENDS,
 	type ModelAttemptContext,
 	type ModelHandler,
 	type ModelParamsMap,
@@ -79,8 +80,10 @@ import {
 	assertModelOutputComplete,
 	modelOutputIncompleteEvidence,
 	modelProviderErrorDetail,
+	modelProviderErrorStatus,
 } from "../utils/model-errors";
 import { captureModelLookupCaller } from "../utils/model-lookup-caller";
+import { providerResendCount } from "../utils/model-retry";
 import { ResponseSkeletonStreamExtractor } from "../utils/streaming";
 import { isPlainObject } from "../utils/type-guards";
 import {
@@ -672,7 +675,23 @@ export class RuntimeModelDispatch {
 	rethrowModelFailoverError(
 		error: unknown,
 		failed?: { modelKey: string; provider: string },
+		attempts: readonly ModelProviderAttempt[] = [],
 	): never {
+		// A later registration's 429 can end a call an earlier provider adapter
+		// already re-sent. It carries that count, or the turn's re-send rule
+		// would start the adapter's whole budget again.
+		if (
+			typeof error === "object" &&
+			error !== null &&
+			modelProviderErrorStatus(error) === 429 &&
+			providerResendCount(error) === 0
+		) {
+			const resends = Math.max(
+				0,
+				...attempts.map((attempt) => providerResendCount(attempt.error)),
+			);
+			if (resends > 0) Reflect.set(error, MODEL_PROVIDER_RESENDS, resends);
+		}
 		if (error instanceof Error && error.message.trim().length > 0) {
 			throw error;
 		}
@@ -2590,7 +2609,11 @@ export class RuntimeModelDispatch {
 					if (requestedProvider !== undefined) throw error;
 					if (!nextAfterPreparation) {
 						if (rejectedLocalAdmission) {
-							this.rethrowModelFailoverError(lastModelError, lastFailedModel);
+							this.rethrowModelFailoverError(
+								lastModelError,
+								lastFailedModel,
+								providerAttempts,
+							);
 						}
 						throw error;
 					}
@@ -2674,7 +2697,11 @@ export class RuntimeModelDispatch {
 					providerAttemptStartedOutput ||
 					!this.shouldFailOverModelProvider(error, requestedModelKey)
 				) {
-					this.rethrowModelFailoverError(lastModelError, lastFailedModel);
+					this.rethrowModelFailoverError(
+						lastModelError,
+						lastFailedModel,
+						providerAttempts,
+					);
 				}
 				this.logModelProviderFailover({
 					requestedModelKey,
@@ -2692,6 +2719,7 @@ export class RuntimeModelDispatch {
 			lastModelError ??
 				new Error(`No handler found for delegate type: ${requestedModelKey}`),
 			lastFailedModel,
+			providerAttempts,
 		);
 	}
 
