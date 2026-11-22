@@ -1,0 +1,43 @@
+{
+  "sources": [
+    "plugins/plugin-health/src/sleep/awake-probability.ts",
+    "plugins/plugin-personal-assistant/test/schedule-hid-idle-shared-device.test.ts",
+    "plugins/plugin-personal-assistant/quint/check-hid-idle-shared-device.mjs"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-hid-idle-shared-device.mjs",
+  "bounds": "One agent at 03:00 in America/Los_Angeles. The macOS activity collector reports one HID idle sample or none; the sample reports 5, 60, 61, 1500 or 10800 idle seconds and is taken 20, 300 or 360 seconds before the inspection. A client app resumes 10 seconds before the inspection, so its active app_lifecycle report is the newest signal. The conformance script replays all 16 generated cases through the production ActivityTrackerService (with the native collector process replaced by its sample callback), LifeOpsService.captureActivitySignal and LifeOpsService.inspectSchedule on a fresh PGlite-backed runtime per case and compares the resume's log-likelihood ratio with and without the shared-device discount. Other concurrent-interaction sources (active mobile devices, manual overrides, app signals that report idle time), several HID samples, a newest signal other than the resume, other platforms and the rest of the awake-probability score are not covered by this model. Under weak fairness of the replay step the inspection runs. Explicit stuttering lets the replay stop before it, so the same claim without fairness must fail. No time bound is proved.",
+  "cases": [
+    {
+      "name": "hid-idle-shared-device",
+      "main": "HidIdleSharedDevice",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "IdleSampleKeepsDiscount",
+        "NoSampleKeepsDiscount",
+        "RecentInputLiftsDiscount",
+        "StaleSampleKeepsDiscount",
+        "TypeOK"
+      ],
+      "temporal": ["ReplayEnds", "ReplayEndsWithoutFairness"],
+      "maxSteps": 8,
+      "samples": 20000,
+      "temporalChecks": [
+        {
+          "property": "ReplayEnds",
+          "expect": "holds",
+          "assumptions": [
+            "A continuously enabled replay step eventually runs (weak fairness). This checks that the replay then reaches the inspection, not how long the database work takes."
+          ]
+        },
+        {
+          "property": "ReplayEndsWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. The replay may stop before the inspection, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}
