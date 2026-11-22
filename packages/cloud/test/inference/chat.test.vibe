@@ -179,7 +179,7 @@ module node {
   import { Effect, Schema } from "effect"
   import { SecureRandom } from "effect/crypto"
   import { startFakeServer } from "../support/fakes.ts"
-  import { llmFake } from "../support/llm-fake.ts"
+  import { llmFake, replyText } from "../support/llm-fake.ts"
   import { openBackupDatabase } from "../support/password-backup.ts"
   import { secrets } from "../support/profile.ts"
 
@@ -262,7 +262,8 @@ module node {
                    u.hold_key AS "usageKey", u.quote, u.charged, u.outcome
               FROM holds h LEFT JOIN usage_records u ON u.hold_key=h.key WHERE h.organization_id=$1 ORDER BY request`, [organizationId])).rows
         llm.script({ kind: "stream", duplicateUsage: true }, { kind: "stream", duplicateUsage: true },
-          { kind: "truncated" }, { kind: "truncated", reportUsage: true }, { kind: "refuse" }, { kind: "hang", after: 2 })
+          { kind: "truncated" }, { kind: "truncated", reportUsage: true }, { kind: "refuse" }, { kind: "hang", after: 2 },
+          { kind: "hang", after: 0 })
         const asked = await streamSummary(await call(1, true))
         const notAsked = await streamSummary(await call(2))
         const truncated = await streamSummary(await call(3))
@@ -290,6 +291,13 @@ module node {
         await Promise.all(retained.get(7) ?? [])
         await (await earlyResponse).text()
         releaseHeaders.resolve()
+        const idleAbort = new AbortController()
+        const idle = await call(8, false, idleAbort.signal)
+        const beforeIdleCancel = (await ledger()).find((row) => row.request === keyOf(8))
+        idleAbort.abort()
+        const retainedIdle = retained.get(8) ?? []
+        await Promise.all(retainedIdle)
+        await llm.untilAborted(2)
         const settled = await ledger()
         const duplicate = await call(6)
         await duplicate.text()
@@ -300,11 +308,13 @@ module node {
             && !second.done && new TextDecoder().decode(second.value).includes(replyText.slice(0, 2)),
           beforeCancel: beforeCancel !== undefined && beforeCancel.phase === "dispatched" && beforeCancel.usageKey === null,
           beforeEarlyCancel: beforeEarlyCancel !== undefined && beforeEarlyCancel.phase === "dispatched" && beforeEarlyCancel.usageKey === null,
+          idleDispatched: idle.status === 200 && beforeIdleCancel !== undefined && beforeIdleCancel.phase === "dispatched" && beforeIdleCancel.usageKey === null,
           holds: settled.map((row, index) => [row.request === keyOf(index + 1), row.phase, row.usageKey === row.key, row.outcome,
             row.outcome === "unknown" ? row.charged === row.quote : index >= 5 ? Number(row.quote) - Number(row.charged) : Number(row.charged)]),
           cancelSameKey: beforeCancel !== undefined && settled.find((row) => row.request === keyOf(6))?.key === beforeCancel.key,
           earlyCancelSameKey: beforeEarlyCancel !== undefined && settled.find((row) => row.request === keyOf(7))?.key === beforeEarlyCancel.key,
-          retainedStream: retainedStream.length, retainedBeforeHeaders,
+          idleCancelSameKey: beforeIdleCancel !== undefined && settled.find((row) => row.request === keyOf(8))?.key === beforeIdleCancel.key,
+          retainedStream: retainedStream.length, retainedBeforeHeaders, retainedIdle: retainedIdle.length,
           cancelledUpstream: llm.aborted, providerCalls: llm.bodies.length, duplicate: duplicate.status,
           replayUnchanged: JSON.stringify(settled) === JSON.stringify(replayed),
         }
@@ -325,7 +335,7 @@ it.live('Worker streams complete frames and settles the original hold (spec/clou
   const answer = { status: 200, content: replyText, models: ["test-chat"], usage: 0, errors: 0, done: 1, terminal: true, complete: true }
   try check(() => assert.deepStrictEqual(got, {
     asked: { ...answer, usage: 1 }, notAsked: answer, truncated: { ...answer, errors: 1 },
-    usedBeforeFailure: { ...answer, errors: 1 }, preHeader: true, hangingStatus: 200, liveCompleteFrame: true, beforeCancel: true, beforeEarlyCancel: true,
+    usedBeforeFailure: { ...answer, errors: 1 }, preHeader: true, hangingStatus: 200, liveCompleteFrame: true, beforeCancel: true, beforeEarlyCancel: true, idleDispatched: true,
     holds: [
       [true, "settled", true, "known", 31],
       [true, "settled", true, "known", 31],
@@ -334,8 +344,10 @@ it.live('Worker streams complete frames and settles the original hold (spec/clou
       [true, "settled", true, "known", 0],
       [true, "settled", true, "known", 36],
       [true, "settled", true, "known", 38],
+      [true, "settled", true, "known", 38],
     ],
-    cancelSameKey: true, earlyCancelSameKey: true, retainedStream: 1, retainedBeforeHeaders: 1,
-    cancelledUpstream: 1, providerCalls: 6, duplicate: 409, replayUnchanged: true,
+    cancelSameKey: true, earlyCancelSameKey: true, idleCancelSameKey: true,
+    retainedStream: 1, retainedBeforeHeaders: 1, retainedIdle: 1,
+    cancelledUpstream: 2, providerCalls: 7, duplicate: 409, replayUnchanged: true,
   }))
 }, 60_000)
