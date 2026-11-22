@@ -1764,6 +1764,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
   it.live("Triage, search and read my mail at the history Google answered, refusing a stale attachment and an oversized body (spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
     const google = try Effect.try(() => googleFakeState())
     const now = try Clock.currentTimeMillis
+    const wholeText = "é".repeat(4 * 1024 * 1024)
     const mailbox = try Effect.try(() => readableMailbox([
       {
         id: "msg-direct", threadId: "thr-direct", labelIds: ["INBOX", "UNREAD", "IMPORTANT"], internalDate: now - 60_000,
@@ -1778,7 +1779,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       },
       {
         id: "msg-digest", threadId: "thr-digest", labelIds: ["INBOX"], internalDate: now - 120_000,
-        headers: { From: "News <noreply@news.example>", To: "conn-mail@example.com", Subject: "Weekly digest", "List-Id": "<digest.news.example>" }, snippet: "digest", bodyText: "x".repeat(300 * 1024)
+        headers: { From: "News <noreply@news.example>", To: "conn-mail@example.com", Subject: "Weekly digest", "List-Id": "<digest.news.example>" }, snippet: "digest", bodyText: wholeText
       },
       {
         id: "msg-trashed", threadId: "thr-trashed", labelIds: ["TRASH"], internalDate: now - 30_000,
@@ -1788,7 +1789,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           { name: "Authentication-Results", value: "mx.google.com; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example" }
         ],
         headers: { From: "ada@example.org", Subject: "Old plan" }, snippet: "plan"
-      }
+      },
+      { id: "msg-oversized", threadId: "thr-oversized", labelIds: ["TRASH"], internalDate: now, bodyText: wholeText + "x" }
     ]))
     const draftRaw = btoa("To: ada@example.org\r\nSubject: Re: Quarterly plan\r\n\r\nLooks good.").replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")
     mailbox.drafts.set("draft-1", { id: "draft-1", messageId: "msg-draft-1", raw: draftRaw })
@@ -1813,7 +1815,10 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const read = try gmail("/read?messageId=msg-direct")
     const fetched = try gmail("/read?messageId=msg-trashed")
     const decoded = try promise(() => readMailThroughClient(cloud.url, token, "msg-direct"))
-    const oversized = try gmail("/read?messageId=msg-digest")
+    const client = try sync(() => createCloudClient({ baseUrl: cloud.url, credential: () => token }))
+    const whole = try promise(() => client.gmailRead({ messageId: "msg-digest" }))
+    const snippet = try promise(() => client.gmailRead({ messageId: "msg-trashed" }))
+    const oversized = try gmail("/read?messageId=msg-oversized")
     const capabilities = try gmail("/inbox-v1/capabilities")
     const attachment = try gmail("/inbox-v1/attachment?messageId=msg-direct&partId=1&historyId=1001")
     const thread = try gmail("/inbox-v1/thread?threadId=thr-direct&historyId=1001")
@@ -1839,6 +1844,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         read: [read.status, readBody.message.id, readBody.message.to, readBody.bodyText, readBody.bodyHtml, readBody.bodyHtmlStatus, readBody.attachments, readBody.authenticationResults],
         fetched: [fetched.status, (fetched.body as { readonly authenticationResults: string | null }).authenticationResults],
         client: decoded,
+        text: [whole.message.id, whole.bodyText === wholeText, snippet.bodyText],
         oversized: errorOf(oversized),
         capabilities: [capabilities.status, capabilities.body],
         attachment: [attachment.status, file.name, file.mimeType, file.size, file.dataBase64, file.sha256, file.supported],
@@ -1849,16 +1855,17 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         anonymous: errorOf(anonymous)
       },
       {
-        triage: [200, "1003", [
+        triage: [200, "1004", [
           ["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"],
           ["msg-digest", 0, "directly addressed, automated sender", false, false, "1002"]
         ]],
-        search: [200, "1003", null, [["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"]]],
+        search: [200, "1004", null, [["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"]]],
         tooMany: [400, "invalid_request"],
         read: [200, "msg-direct", ["conn-mail@example.com"], "Please review the plan.", null, "none", [{ partId: "1", name: "plan.pdf", mimeType: "application/pdf", size: pdf.length, supported: true }],
           "mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org"],
         fetched: [200, null],
         client: ["mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org", undefined],
+        text: ["msg-digest", true, "plan"],
         oversized: [413, "content_too_large"],
         capabilities: [200, { version: 1, from: "conn-mail@example.com", kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 } }],
         attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
@@ -3412,7 +3419,7 @@ module node {
   import { signInWithProof } from "../src/identity-store.vibe"
   import { cloudWorker, type CloudBindings } from "../src/worker.vibe"
   import { googleRequest } from "../src/google.vibe"
-  import { createCloudClient } from "../src/client/index.vibe"
+  import { CloudError, createCloudClient } from "../src/client/index.vibe"
   import { openBackupDatabase } from "./support/password-backup.ts"
 
   export async function readMailThroughClient(baseUrl: string, token: string, messageId: string) {
@@ -3513,6 +3520,8 @@ module node {
       const encrypted = Buffer.concat([nonce, cipher.update("fixture-refresh"), cipher.final(), cipher.getAuthTag()]).toString("hex")
       await fixture.db.query("INSERT INTO cloud_google_connections (account_id, id, subject, email, mail, calendar, refresh_cipher) VALUES ($1, $2, $3, $4, true, false, $5)",
         [owner.account.id, grant, subject, "attachment-owner@example.test", encrypted])
+      const wholeText = "x".repeat(8 * 1024 * 1024)
+      const externalText = "é".repeat(450 * 1024)
       const bytes = Buffer.from("%PDF-local-fixture")
       const part = { partId: "1", filename: "fixture.pdf", mimeType: "application/pdf", body: { attachmentId: "fixture-attachment", size: bytes.length } }
       const unsupported = { partId: "2", filename: "fixture.html", mimeType: "text/html", body: { attachmentId: "never-fetch", size: 10 } }
@@ -3581,6 +3590,19 @@ module node {
           const id = url.pathname.split("/").at(-1)
           const labelIds = id === "moved-to-trash" ? ["TRASH", "INBOX"] : [id === "trashed-message" ? "TRASH" : "INBOX"]
           return Response.json({ id, threadId: "trash-thread", internalDate: "1760000000000", labelIds })
+        }
+        if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/mail-external/attachments/plain") {
+          return Response.json({ data: Buffer.from(externalText).toString("base64url") })
+        }
+        if (url.origin === "https://gmail.googleapis.com" && url.pathname.startsWith("/gmail/v1/users/me/messages/mail-")) {
+          const id = url.pathname.split("/").at(-1)
+          const message = { id, threadId: "fixture-thread", internalDate: "1760000000000", snippet: "Preview only" }
+          if (id === "mail-envelope") return Response.json({ ...message, extra: "x".repeat(11_250_348) })
+          if (id === "mail-snippet") return Response.json(message)
+          const body = id === "mail-external" ? { attachmentId: "plain", size: Buffer.byteLength(externalText) } : {
+            data: id === "mail-malformed" ? "x=" : Buffer.from(wholeText + (id === "mail-oversized" ? "x" : "")).toString("base64url"),
+          }
+          return Response.json({ ...message, payload: { mimeType: "text/plain", body } })
         }
         if (url.hostname === "gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/fixture-message")
           return Response.json({ id: "fixture-message", threadId: "fixture-thread", internalDate: "1760000000000", historyId: "789", labelIds: ["INBOX"],
@@ -3710,6 +3732,18 @@ module node {
           "GET https://gmail.googleapis.com/gmail/v1/users/me/history",
         ].includes(call)),
       }
+      const client = createCloudClient({ baseUrl: api, credential: () => owner.access, fetch: (input, init) => {
+        const request = new Request(input, init)
+        request.headers.set("cookie", "__Host-eliza-session=" + owner.access)
+        return worker.fetch(request, env)
+      } })
+      const readMail = (messageId: string) => client.gmailRead({ messageId, grantId: grant })
+      const whole = await readMail("mail-whole")
+      const external = await readMail("mail-external")
+      const snippet = await readMail("mail-snippet")
+      const readFailure = (messageId: string) => readMail(messageId).then(() => null, (error: unknown) => error instanceof CloudError ? error.failure : String(error))
+      const mailText = [whole.message.id, whole.bodyText === wholeText, external.bodyText === externalText, snippet.bodyText,
+        await readFailure("mail-oversized"), await readFailure("mail-envelope"), (await get("read?messageId=mail-malformed&grantId=" + grant, owner.access)).status]
       const query = "grantId=" + grant + "&messageId=fixture-message"
       const folder = "triage?" + new URLSearchParams({ grantId: grant, folder: "trash", q: "  subject:plan & dates ", counts: "1" })
       const readFolder = async (path: string) => {
@@ -3770,7 +3804,7 @@ module node {
       return {
         arrivalResult, mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
         refused, beforeDeviceRead, deviceStatus: onDevice.status, deviceReceipt, changed: changed.status, revoked: revoked.status,
-        organization, grant, manifest, readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
+        organization, grant, manifest, mailText, readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
         cache: downloaded.headers.get("cache-control"), owner: owner.account.id, expectedHash: createHash("sha256").update(bytes).digest("hex"),
         expectedData: bytes.toString("base64"), size: bytes.length, rejectedRedirect: rejectedRedirect.status, providerRequestsValid, attachmentFetches,
       }
@@ -3792,11 +3826,12 @@ it.live('A reviewed link decision stays within the current account and candidate
 }, 30_000)
 
 
-it.live('Open the selected named attachment and watch for new mail (spec/cloud/index.md, "Story: Connect Google mail and calendar"; spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately")', () => effect {
+it.live('Read complete mail text, open the selected named attachment and watch for new mail (spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; "Story: Notice new mail while I sign in privately")', () => effect {
   const got = try tryPromise(() => readSelectedAttachment())
   try check(() => assert.deepStrictEqual(
     {
       arrivals: got.arrivalResult,
+      text: got.mailText,
       read: [got.readStatus, got.manifest.historyId, got.manifest.bodyText, got.manifest.attachments, got.manifest.authenticationResults],
       refuse: [got.guardStatuses, got.guardedDownloads, got.rejectedRedirect],
       file: [got.fileStatus, got.cache, got.file],
@@ -3825,6 +3860,8 @@ it.live('Open the selected named attachment and watch for new mail (spec/cloud/i
           }),
         ],
       },
+      text: ["mail-whole", true, true, "Preview only",
+        { tag: "CloudRefused", code: "ContentTooLarge", reason: "NoReason" }, { tag: "CloudRefused", code: "ContentTooLarge", reason: "NoReason" }, 502],
       read: [200, "789", "hello", [
         { partId: "1", name: "fixture.pdf", mimeType: "application/pdf", size: got.size, supported: true },
         { partId: "2", name: "fixture.html", mimeType: "text/html", size: 10, supported: false },
