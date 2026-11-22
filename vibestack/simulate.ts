@@ -1,13 +1,9 @@
-import fs from "node:fs";
-import path from "node:path";
 import os from "node:os";
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import type { Model } from "./gen.ts";
 import { SENDER } from "./gen/classify.ts";
 import { act, completed, violated, type Input } from "./action.ts";
-import { entry, remembered, type Memory } from "./cache.ts";
+import { entry, evaluatorForCheck, remembered, type Memory } from "./cache.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
 import { simulated } from "./gen/harness.ts";
 import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
@@ -54,7 +50,8 @@ function readTrace(itf: string, model: Model): Step[] {
     const v = model.evals.find((v) => `eval_${v.name}` === taken);
     const l = model.laws.find((l) => l.name === taken);
     return {
-      event: t && { type: t.name, ...picked(t.params) },
+      // Once any transition takes a sender, every event has one: the harness picks it for those that do not take it too (gen/harness.ts).
+      event: t && { type: t.name, ...picked(model.sender && !t.params.some((p) => p.name === SENDER) ? [...t.params, { name: SENDER, type: model.sender }] : t.params) },
       evaluated: v && { name: v.name, picks: picked(v.params.filter((p) => p.from === "pick")), result: read(v.result, st.outcome.value) },
       law: l && { name: l.name, args: picked(l.params) },
       state: model.stateType ? read(model.stateType, st.state) : undefined,
@@ -87,24 +84,12 @@ const seedFor = (seed: number, ...what: string[]) => String(parseInt(digest([Str
  * Quint installs its evaluator the first time it simulates, and runs started together would race to. Until it is
  * installed, the first run in this process goes alone and the others wait for it; once it is, nothing waits.
  */
-let evaluatorInstalled = false;
 let firstRun: Promise<void> | undefined;
-function evaluatorIsInstalled(root: string): boolean {
-  if (evaluatorInstalled) return true;
-  for (const from of [import.meta.url, pathToFileURL(path.join(root, "package.json")).href]) {
-    let version: string | undefined;
-    try { version = fs.readFileSync(createRequire(from).resolve("@informalsystems/quint/dist/src/rust/binaryManager.js"), "utf8").match(/QUINT_EVALUATOR_VERSION = '([^']+)'/)?.[1]; } catch { continue; }
-    const home = process.env.QUINT_HOME ?? path.join(os.homedir(), ".quint");
-    const exe = process.platform === "win32" ? "quint_evaluator.exe" : "quint_evaluator";
-    if (version && fs.existsSync(path.join(home, `rust-evaluator-${version}`, exe))) return (evaluatorInstalled = true);
-  }
-  return false;
-}
 async function simulating<T>(root: string, go: () => Promise<T>): Promise<T> {
-  if (evaluatorIsInstalled(root)) return go();
+  if (evaluatorForCheck(root)) return go();
   if (firstRun) { await firstRun; return go(); }
   const run = go();
-  firstRun = run.then(() => {}, () => {});
+  firstRun = run.then(() => {}, () => {}).finally(() => { firstRun = undefined; });
   return run;
 }
 
@@ -318,6 +303,21 @@ const COULD_NOT_RUN = "the simulator could not run";
 /** What simulating a spec found: the `always`, `sometimes` and `replay` results, and what the traces stage checks programs against. */
 export interface Simulation { said: Result[]; tested?: Simulated }
 
+const SPECS_AT_ONCE = 2 * os.availableParallelism();
+let specsSimulating = 0;
+const specsWaiting: (() => void)[] = [];
+async function inTurn<T>(go: () => Promise<T>): Promise<T> {
+  if (specsSimulating < SPECS_AT_ONCE) specsSimulating++;
+  else await new Promise<void>((start) => specsWaiting.push(start));
+  try {
+    return await go();
+  } finally {
+    const next = specsWaiting.shift();
+    if (next) next();
+    else specsSimulating--;
+  }
+}
+
 /**
  * Simulate one spec and replay its traces through `domain`, its generated module. A spec is not simulated again while
  * what Quint reads is unchanged, and its results are not said again while its rules keep their names and the
@@ -335,7 +335,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
   const files = harnessFiles(spec, specs, model);
   const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), spec.file, spec.rules.map((r) => `${r.key}\0${r.defs.join(" ")}`).join("\n"),
     String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
-  return remembered<Simulation>(memory, entry(memory.root, "simulate", key), async (memory) => {
+  return remembered<Simulation>(memory, entry(memory.root, "simulate", key), (memory) => inTurn(async () => {
     const harness: Harness = { memory, model, files };
     const said: Result[] = [];
     let tested: Simulated | undefined;
@@ -457,7 +457,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       say(false, mismatch ? "replay" : "always", mismatch ? "this is a bug in the generator (vibestack/gen.ts, vibestack/gen/), not in the spec" : COULD_NOT_RUN, indent((e as Error).message));
     }
     return { said, tested };
-  }, ({ said }) => !said.some((r) => r.summary === COULD_NOT_RUN)).then(({ said, tested }) => {
+  }), ({ said }) => !said.some((r) => r.summary === COULD_NOT_RUN)).then(({ said, tested }) => {
     const lines = new Map(spec.rules.map((r) => [r.key, r.line]));
     const placed = (text: string) => text.replace(/\0([^\0]*)\0/g, (_, key: string) => String(lines.get(key)));
     return { said: said.map((r) => ({ ...r, summary: placed(r.summary), detail: placed(r.detail) })), tested };

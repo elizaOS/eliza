@@ -21,8 +21,8 @@
     "selftest:examples": "node --test --test-name-pattern=\"^the standalone examples \" vibestack/selftest.ts",
     "build": "node vibestack/spec.ts tasks vibestack-studio#build && node -e \"fs.rmSync('dist', { recursive: true, force: true })\" && vibelang -p tsconfig.build.json && node -e \"fs.chmodSync('dist/spec.js', 0o755); fs.mkdirSync('dist/proof', { recursive: true }); fs.copyFileSync('vibestack/proof/lib.dfy', 'dist/proof/lib.dfy'); fs.cpSync('vibestack/studio/dist/page', 'dist/studio/dist/page', { recursive: true }); fs.cpSync('vibestack/std', 'dist/std', { recursive: true }); fs.copyFileSync('vibestack/conformance.ts', 'dist/conformance.ts')\"",
     "pnpm:devPreinstall": "node vibestack/skill-links.ts",
-    "prepare": "node vibestack/spec.ts tasks //#build && node vibestack/spec.ts gen --if-valid",
-    "prepack": "pnpm build",
+    "prepare": "node vibestack/spec.ts tasks //#build && node vibestack/spec.ts gen --install",
+    "prepack": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
     "test:browser": "node vibestack/spec.ts tasks test:browser",
     "test:models": "node vibestack/spec.ts tasks check",
@@ -117,22 +117,26 @@
   },
   "packageManager": "pnpm@10.24.0",
   "exports": {
+    "./formal": "./vibestack/formal.ts",
     "./testing": "./vibestack/testing/index.ts",
     "./testing/vitest": "./vibestack/testing/vitest.ts",
     "./testing/generate": "./vibestack/testing/generate.ts",
     "./stories": "./vibestack/stories/meta.ts",
     "./stories/storybook": "./vibestack/stories/storybook.ts",
     "./design/eslint": "./vibestack/design/eslint.ts",
+    "./design/project": "./vibestack/design/project.ts",
     "./package.json": "./package.json"
   },
   "publishConfig": {
     "exports": {
+      "./formal": "./dist/formal.js",
       "./testing": "./dist/testing/index.js",
       "./testing/vitest": "./dist/testing/vitest.js",
       "./testing/generate": "./dist/testing/generate.js",
       "./stories": "./dist/stories/meta.js",
       "./stories/storybook": "./dist/stories/storybook.js",
       "./design/eslint": "./dist/design/eslint.js",
+      "./design/project": "./dist/design/project.js",
       "./package.json": "./package.json"
     }
   }

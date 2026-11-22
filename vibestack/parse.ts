@@ -328,8 +328,9 @@ export function specFiles(root: string): string[] {
 }
 
 /** Every spec after its imports; text snapshots also support Studio's unpublished changes. */
-export function readSpecs(root: string, texts?: Record<string, string>): Spec[] {
+export function readSpecs(root: string, texts?: Record<string, string>, ownerName?: string): Spec[] {
   const files = texts ? Object.keys(texts).sort() : specFiles(root);
+  const available = new Set(files);
   if (!files.length) throw new Error(`there are no specs: ${path.join(root, "spec")} holds no .md file`);
   const all: Spec[] = [];
   const byFile = new Map<string, Spec>();
@@ -342,7 +343,10 @@ export function readSpecs(root: string, texts?: Record<string, string>): Spec[] 
     byName.set(spec.name, spec);
     return spec;
   };
-  for (const file of files) add(parseSpec(root, file, texts?.[file]));
+  for (const file of files)
+    if (ownerName === undefined || file.startsWith(`spec/${ownerName}/`)) add(parseSpec(root, file, texts?.[file]));
+  if (!all.length) throw new Error(`${ownerName}: no specs under spec/${ownerName}/`);
+  const roots = all.slice();
   const resolve = (spec: Spec, target: string, line: number, library = false): Spec => {
     const fail = (reason: string): never => { throw new Error(`${spec.file}:${line}: ${target}: ${reason}`); };
     let link: string;
@@ -352,7 +356,11 @@ export function readSpecs(root: string, texts?: Record<string, string>): Spec[] 
     const dest = path.posix.normalize(path.posix.join(path.posix.dirname(spec.file), link)).replace(/\/$/, "");
     if (dest !== scope && !dest.startsWith(`${scope}/`)) return fail(`the target must stay within ${scope}/`);
     const candidates = path.posix.extname(dest) ? [dest] : [`${dest}.md`, `${dest}/index.md`];
-    const found = candidates.map((file) => byFile.get(file)).filter((s) => s !== undefined);
+    const found = candidates.flatMap((file) => {
+      const existing = byFile.get(file);
+      if (existing !== undefined) return [existing];
+      return ownerName !== undefined && available.has(file) ? [add(parseSpec(root, file, texts?.[file]))] : [];
+    });
     if (!found.length && (library || isStd(spec.file))) {
       // A bare sibling import may name a library shipped with the tools, after the local path was tried.
       const sibling = link.match(/^(?:\.\/)?([a-z][A-Za-z0-9]*)(?:\.md)?$/);
@@ -387,6 +395,8 @@ export function readSpecs(root: string, texts?: Record<string, string>): Spec[] 
     for (const name of spec.imports) visit(byName.get(name)!, [...trail, spec.name]);
     ordered.push(spec);
   };
-  all.forEach((spec) => visit(spec, []));
-  return ordered;
+  roots.forEach((spec) => visit(spec, []));
+  const ownersAndImports = ordered.length;
+  all.slice(roots.length).forEach((spec) => visit(spec, []));
+  return ownerName === undefined ? ordered : ordered.slice(0, ownersAndImports);
 }
