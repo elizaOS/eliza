@@ -62,10 +62,8 @@ public final class LifecycleAdapter {
       case "credentialExpired" -> new AgentPolicy.CredentialExpired();
       case "accountChanged" -> new AgentPolicy.AccountChanged(text(event.get("account")));
       case "reviewRecovery" -> new AgentPolicy.ReviewRecovery(flag(event.get("focused")), event.containsKey("nonce") ? text(event.get("nonce")) : "review");
-      case "archiveRecovery" -> {
-        Map<String, Object> token = object(event.get("token"));
-        yield new AgentPolicy.ArchiveRecovery(new AgentPolicy.RecoveryToken(whole(token.get("epoch")), text(token.get("nonce"))));
-      }
+      case "archiveRecovery" -> new AgentPolicy.ArchiveRecovery(readToken(event.get("token")));
+      case "archiveFinished" -> new AgentPolicy.ArchiveFinished(readToken(event.get("token")), flag(event.get("archiveSucceeded")));
       case "holdForUpdate" -> new AgentPolicy.HoldForUpdate(new AgentPolicy.UpdateTarget(whole(event.get("targetCode")), text(event.get("targetDigest"))));
       case "releaseUpdate" -> new AgentPolicy.ReleaseUpdate(whole(event.get("installedCode")), text(event.get("installedDigest")), flag(event.get("attemptEnded")));
       default -> throw new IllegalArgumentException("not an event of the agent service");
@@ -87,7 +85,7 @@ public final class LifecycleAdapter {
     String hold = s.hold() == null ? "{\"tag\":\"NotHeld\"}"
       : "{\"tag\":\"Held\",\"targetCode\":" + s.hold().code() + ",\"targetDigest\":" + quote(s.hold().digest()) + "}";
     String recovery = s.recovery() == null ? "{\"tag\":\"NoReview\"}"
-      : "{\"tag\":\"Reviewing\",\"token\":" + token(s.recovery()) + "}";
+      : "{\"tag\":\"" + (s.recovery().archiving() ? "Archiving" : "Reviewing") + "\",\"token\":" + token(s.recovery().token()) + "}";
     return "{\"phase\":" + phase + ",\"epoch\":" + s.epoch() + ",\"attempt\":" + s.attempt() + ",\"child\":" + s.child()
       + ",\"reaped\":" + s.reaped() + ",\"hookRan\":" + s.hookRan() + ",\"credentialHeld\":" + s.credentialHeld()
       + ",\"credentialVersion\":" + s.credentialVersion() + ",\"delivered\":" + s.delivered() + ",\"account\":" + quote(s.account())
@@ -106,9 +104,14 @@ public final class LifecycleAdapter {
       else if (effect instanceof AgentPolicy.RecoveryReview review)
         written.add("{\"tag\":\"RecoveryReview\",\"token\":" + token(review.token()) + "}");
       else if (effect instanceof AgentPolicy.Archive archive)
-        written.add("{\"tag\":\"Archive\",\"epoch\":" + archive.epoch() + ",\"account\":" + quote(archive.account()) + "}");
+        written.add("{\"tag\":\"Archive\",\"token\":" + token(archive.token()) + ",\"account\":" + quote(archive.account()) + "}");
     }
     return "[" + String.join(",", written) + "]";
+  }
+
+  private static AgentPolicy.RecoveryToken readToken(Object value) {
+    Map<String, Object> token = object(value);
+    return new AgentPolicy.RecoveryToken(whole(token.get("epoch")), text(token.get("nonce")));
   }
 
   private static String token(AgentPolicy.RecoveryToken token) {

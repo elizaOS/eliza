@@ -15,10 +15,11 @@ public final class AgentPolicy {
 
   public record UpdateTarget(long code, String digest) {}
   public record RecoveryToken(long epoch, String nonce) {}
+  public record Recovery(RecoveryToken token, boolean archiving) {}
 
   public record State(Phase phase, Cause failure, String error, long epoch, int attempt, boolean reaped, boolean hookRan,
     boolean credentialHeld, long credentialVersion, long delivered, String account, AfterExit afterExit, Cause afterExitCause,
-    UpdateTarget hold, RecoveryToken recovery) {
+    UpdateTarget hold, Recovery recovery) {
     public boolean child() { return phase == Phase.SPAWNED || phase == Phase.RUNNING || phase == Phase.STOPPING; }
   }
 
@@ -26,7 +27,7 @@ public final class AgentPolicy {
 
   public sealed interface Event permits Start, Stop, ReapStale, LaunchHook, Refuse, Spawned, SpawnFailed, ObserveReady, ReadyTimeout,
     ObserveExit, FailUnclassified, RestartUnhealthy, StableReset, CredentialArrived, CredentialReplaced, SignedOut, CredentialExpired,
-    AccountChanged, ReviewRecovery, ArchiveRecovery, HoldForUpdate, ReleaseUpdate {}
+    AccountChanged, ReviewRecovery, ArchiveRecovery, ArchiveFinished, HoldForUpdate, ReleaseUpdate {}
   public record Start() implements Event {}
   public record Stop() implements Event {}
   public record ReapStale() implements Event {}
@@ -47,6 +48,7 @@ public final class AgentPolicy {
   public record AccountChanged(String account) implements Event {}
   public record ReviewRecovery(boolean focused, String nonce) implements Event {}
   public record ArchiveRecovery(RecoveryToken token) implements Event {}
+  public record ArchiveFinished(RecoveryToken token, boolean archiveSucceeded) implements Event {}
   public record HoldForUpdate(UpdateTarget target) implements Event {}
   public record ReleaseUpdate(long installedCode, String installedDigest, boolean attemptEnded) implements Event {}
 
@@ -55,7 +57,7 @@ public final class AgentPolicy {
   public record Kill(long epoch) implements Effect {}
   public record PushCredential(long epoch, long version) implements Effect {}
   public record RecoveryReview(RecoveryToken token) implements Effect {}
-  public record Archive(long epoch, String account) implements Effect {}
+  public record Archive(RecoveryToken token, String account) implements Effect {}
 
   public record Step(boolean accepted, State state, List<Effect> effects) {}
 
@@ -67,7 +69,7 @@ public final class AgentPolicy {
   private boolean reaped, hookRan, credentialHeld;
   private AfterExit afterExit = AfterExit.STOP;
   private UpdateTarget hold;
-  private RecoveryToken recovery;
+  private Recovery recovery;
   private final List<Effect> effects = new ArrayList<>();
 
   public AgentPolicy(String account, UpdateTarget hold) {
@@ -131,6 +133,7 @@ public final class AgentPolicy {
     if (event instanceof AccountChanged changed) return accountChanged(changed.account());
     if (event instanceof ReviewRecovery review) return reviewRecovery(review.focused(), review.nonce());
     if (event instanceof ArchiveRecovery archive) return archiveRecovery(archive.token());
+    if (event instanceof ArchiveFinished finished) return archiveFinished(finished.token(), finished.archiveSucceeded());
     if (event instanceof HoldForUpdate holding) return holdForUpdate(holding.target());
     ReleaseUpdate release = (ReleaseUpdate) event;
     return releaseUpdate(release.installedCode(), release.installedDigest(), release.attemptEnded());
@@ -289,6 +292,7 @@ public final class AgentPolicy {
     if (credentialHeld) return credentialReplaced(version);
     credentialHeld = true;
     credentialVersion = Math.max(credentialVersion, version);
+    if (phase == Phase.FAILED && failure == Cause.STORAGE) recovery = null;
     if (phase == Phase.FAILED && failure == Cause.CREDENTIAL) return hold == null ? begin(attempt, 0) : stopped();
     if (phase == Phase.STOPPING && afterExit == AfterExit.FAIL && afterExitCause == Cause.CREDENTIAL) {
       afterExit = AfterExit.START;
@@ -341,16 +345,29 @@ public final class AgentPolicy {
 
   private boolean reviewRecovery(boolean focused, String nonce) {
     if (phase != Phase.FAILED || failure != Cause.STORAGE || !focused || nonce == null || nonce.isEmpty()) return false;
-    recovery = new RecoveryToken(epoch, nonce);
-    effects.add(new RecoveryReview(recovery));
+    if (recovery != null && recovery.archiving()) return false;
+    RecoveryToken token = new RecoveryToken(epoch, nonce);
+    recovery = new Recovery(token, false);
+    effects.add(new RecoveryReview(token));
     return true;
   }
 
   private boolean archiveRecovery(RecoveryToken token) {
-    if (phase != Phase.FAILED || failure != Cause.STORAGE || recovery == null || !recovery.equals(token)) return false;
-    effects.add(new Archive(epoch, account));
+    if (phase != Phase.FAILED || failure != Cause.STORAGE || !recoveryMatches(token, false)) return false;
+    recovery = new Recovery(token, true);
+    effects.add(new Archive(token, account));
+    return true;
+  }
+
+  private boolean archiveFinished(RecoveryToken token, boolean archiveSucceeded) {
+    if (phase != Phase.FAILED || failure != Cause.STORAGE || !recoveryMatches(token, true)) return false;
     recovery = null;
-    return stopped();
+    if (archiveSucceeded) stopped();
+    return true;
+  }
+
+  private boolean recoveryMatches(RecoveryToken token, boolean archiving) {
+    return recovery != null && recovery.archiving() == archiving && recovery.token().equals(token);
   }
 
   private boolean holdForUpdate(UpdateTarget target) {

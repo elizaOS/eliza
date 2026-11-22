@@ -18,6 +18,7 @@ export type LifecycleEvent =
   | { readonly type: "accountChanged"; readonly account: string }
   | { readonly type: "reviewRecovery"; readonly focused: boolean; readonly nonce?: string }
   | { readonly type: "archiveRecovery"; readonly token: RecoveryToken }
+  | { readonly type: "archiveFinished"; readonly token: RecoveryToken; readonly archiveSucceeded: boolean }
   | { readonly type: "holdForUpdate"; readonly targetCode: number; readonly targetDigest: string }
   | { readonly type: "releaseUpdate"; readonly installedCode: number; readonly installedDigest: string; readonly attemptEnded: boolean };
 

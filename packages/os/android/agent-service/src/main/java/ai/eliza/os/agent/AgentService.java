@@ -459,7 +459,10 @@ public class AgentService extends Service {
       if (target != null && target.epoch == base + kill.epoch()) work.execute(target::stop);
     } else if (effect instanceof AgentPolicy.PushCredential push) push(push);
     else if (effect instanceof AgentPolicy.RecoveryReview recovery) {
-      if (review != null) review.complete(new Review(recovery.token().epoch() + "." + recovery.token().nonce(), retained()));
+      if (review != null) {
+        String token = recovery.token().epoch() + "." + recovery.token().nonce();
+        review.complete(new Review(token, retained(policy.state().account())));
+      }
     } else archive((AgentPolicy.Archive) effect);
   }
 
@@ -691,14 +694,14 @@ public class AgentService extends Service {
     });
   }
 
-  private Path accountState() throws IOException {
-    AgentCredentials.Account account = accounts.get(policy.state().account());
+  private Path accountState(String accountKey) throws IOException {
+    AgentCredentials.Account account = accounts.get(accountKey);
     if (account == null) throw new IOException("The agent's account is not known to this service");
     return directories.state(account.userId(), account.organizationId());
   }
 
-  private int retained() {
-    try (Stream<Path> files = Files.walk(accountState())) {
+  private int retained(String accountKey) {
+    try (Stream<Path> files = Files.walk(accountState(accountKey))) {
       return (int) files.filter(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)).count();
     } catch (IOException | RuntimeException unreadable) {
       Log.w(TAG, "The agent's records could not be counted", unreadable);
@@ -707,14 +710,16 @@ public class AgentService extends Service {
   }
 
   private void archive(AgentPolicy.Archive archive) {
+    int count = retained(archive.account());
     try {
-      int count = retained();
-      RecoveryArchive.archive(accountState(), directories.recoveryArchive(), base + archive.epoch(), System.currentTimeMillis(), directories.sync());
-      archived = count;
-    } catch (IOException failed) {
+      RecoveryArchive.archive(accountState(archive.account()), directories.recoveryArchive(), base + archive.token().epoch(),
+        System.currentTimeMillis(), directories.sync());
+    } catch (IOException | RuntimeException failed) {
       Log.e(TAG, "The agent's records could not be moved aside", failed);
-      archived = -1;
+      step(new AgentPolicy.ArchiveFinished(archive.token(), false));
+      return;
     }
+    if (step(new AgentPolicy.ArchiveFinished(archive.token(), true)).accepted()) archived = count;
   }
 
   private void hold(AgentPolicy.UpdateTarget target) throws IOException {
