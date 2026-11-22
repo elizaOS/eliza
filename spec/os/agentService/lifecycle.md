@@ -309,7 +309,7 @@ pure def alwaysLaunchCarriesTheNewestKey(s: AgentService): bool = s.delivered >=
   and (s.phase == Running implies s.delivered == keyVersion(s.key))
 pure def sometimesWaitingForSignIn(s: AgentService): bool = s.phase == Failed({ cause: Credential }) and s.newestVersion >= 1
 pure def sometimesStartedBySignIn(s: AgentService): bool = s.phase == Running and s.newestVersion >= 2 and s.attempt == 0 and s.epoch >= 2
-pure val weight_credentialArrived = 4
+pure val weight_credentialArrived = 18
 ```
 
 ### Another account's key restarts the agent on that account's directory
