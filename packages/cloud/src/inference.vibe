@@ -9,6 +9,17 @@ import { billedUsage, sideCost, isValidPrice, sideInBound } from "../gen/cloud__
 import { ProviderUnreachable } from "./providers/llm.vibe"
 import { meteredChatStream } from "./services/chat-stream.vibe"
 
+export interface WorkerLifetime {
+  waitUntil(work: Promise<unknown>): void
+}
+
+function retainStream<A, E>(stream: Stream.Stream<A, E>, lifetime?: WorkerLifetime): Stream.Stream<A, E> {
+  if (lifetime === undefined) return stream
+  const completion = Deferred.makeUnsafe<void>()
+  lifetime.waitUntil(Effect.runPromise(Deferred.await(completion)))
+  return Stream.ensuring(stream, Effect.asVoid(Deferred.succeed(completion, undefined)))
+}
+
 type WorkersAI = {
   run(model: string, input: Record<string, unknown>, options: { returnRawResponse: true; signal: AbortSignal }): Promise<Response>
 }
@@ -64,7 +75,7 @@ function record(input: unknown): input is Record<string, unknown> {
   return typeof input === "object" && input !== null && !Array.isArray(input)
 }
 
-export async function inferenceRequest(request: Request, env: InferenceEnv, db: Client, account: string, send: typeof fetch) {
+export async function inferenceRequest(request: Request, env: InferenceEnv, db: Client, account: string, send: typeof fetch, lifetime?: WorkerLifetime) {
   const path = new URL(request.url).pathname
   const embedding = path === "/api/v1/embeddings"
   if (request.method !== "POST" || (!embedding && path !== "/api/v1/chat/completions")) return jsonError(404, "route_not_found")
@@ -171,7 +182,7 @@ export async function inferenceRequest(request: Request, env: InferenceEnv, db: 
         catch: (cause) => new WorkerSettlementFailed({ cause })
       })
     })
-    return new WorkerResponse(Stream.toReadableStreamWith(framed, Context.empty(), {
+    return new WorkerResponse(Stream.toReadableStreamWith(retainStream(framed, lifetime), Context.empty(), {
       strategy: { highWaterMark: 0 }, signal: request.signal
     }), { headers })
   }
