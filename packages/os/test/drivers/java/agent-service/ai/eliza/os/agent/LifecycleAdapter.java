@@ -49,10 +49,14 @@ public final class LifecycleAdapter {
       case "reapStale" -> new AgentPolicy.ReapStale();
       case "launchHook" -> new AgentPolicy.LaunchHook(flag(event.get("refused")), "the launch hook refused");
       case "refuse" -> new AgentPolicy.Refuse(named(AgentPolicy.Cause.values(), event.get("cause")), "a start check refused");
-      case "spawn" -> new AgentPolicy.Spawned();
+      case "spawn" -> spawnEvent(event, direct);
       case "spawnFailed" -> new AgentPolicy.SpawnFailed("the agent could not be spawned");
       case "observeReady" -> readyEvent(event, direct);
-      case "timeout" -> new AgentPolicy.ReadyTimeout();
+      case "readinessTimedOut" -> new AgentPolicy.ReadyTimeout();
+      case "timeout" -> {
+        if (!direct) throw new IllegalArgumentException("not an event of the agent service");
+        yield new AgentPolicy.ReadyTimeout();
+      }
       case "observeExit" -> new AgentPolicy.ObserveExit(Math.toIntExact(whole(event.get("code"))));
       case "failUnclassified" -> new AgentPolicy.FailUnclassified("an unclassified failure");
       case "restartUnhealthy" -> new AgentPolicy.RestartUnhealthy();
@@ -69,6 +73,13 @@ public final class LifecycleAdapter {
       case "releaseUpdate" -> new AgentPolicy.ReleaseUpdate(whole(event.get("installedCode")), text(event.get("installedDigest")), flag(event.get("attemptEnded")));
       default -> throw new IllegalArgumentException("not an event of the agent service");
     };
+  }
+
+  private AgentPolicy.Event spawnEvent(Map<String, Object> event, boolean direct) {
+    if ((direct && !event.containsKey("ok")) || flag(event.get("ok"))) return new AgentPolicy.Spawned();
+    AgentPolicy.State state = policy.state();
+    if (!state.reaped() || !state.hookRan()) throw new IllegalArgumentException("the launch prechecks did not complete");
+    return new AgentPolicy.SpawnFailed("the agent could not be spawned");
   }
 
   private AgentPolicy.ObserveReady readyEvent(Map<String, Object> event, boolean direct) {
