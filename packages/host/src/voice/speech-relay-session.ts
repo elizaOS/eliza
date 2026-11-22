@@ -33,6 +33,9 @@ export type SpeechRelayBudget = typeof SPEECH_RELAY_BUDGET;
 /** A window is renewed this long before it ends, so the next fence and
  * reservation are in place before the current one lapses. */
 export const SPEECH_RELAY_RENEW_LEAD_MS = 10_000;
+/** A renewal joins superseded-window settlement for at most this long. That
+ * settlement starts when each window ends, about 40 s before the renewal. */
+export const SPEECH_RELAY_SETTLE_WAIT_MS = 2_000;
 /** Settlement of a reservation no provider could have used. */
 const UNGRANTED_SETTLEMENT = Object.freeze({
   pcmBytes: 0,
@@ -170,7 +173,9 @@ export interface SpeechRelayPorts {
 }
 
 export interface SpeechRelayRenewalResult {
-  phase: "quota" | "reserve" | "dispatch" | "extend";
+  /** "settle" reports a superseded window whose settlement failed; the next
+   * renewal and close retry it with the same frozen target. */
+  phase: "quota" | "reserve" | "dispatch" | "extend" | "settle";
   result:
     | "extended"
     | "quota_denied"
@@ -286,27 +291,59 @@ export async function createSpeechRelaySession(
     outputBytes = 0,
     quota = false;
   const uplink = new UplinkReframer();
+  // `live` is the latest granted window's reservation, never settled while open.
   let credits: SpeechRelayCreditReservation | undefined,
+    live: SpeechRelayCreditReservation | undefined,
     stt: ReturnType<SpeechRelayPorts["openStt"]> | undefined,
     unsubscribe: (() => void) | undefined,
     timer: ReturnType<typeof setTimeout> | undefined,
     renewTimer: ReturnType<typeof setTimeout> | undefined,
+    supersedeTimer: ReturnType<typeof setTimeout> | undefined,
     closing: Promise<void> | undefined;
   // Every window's reservation, oldest first. Settlement fills each to its
   // own budget in order, so no reservation is charged above what it admitted.
   const reservations: SpeechRelayCreditReservation[] = [];
   // Windows settled while the session stays open, oldest first, each frozen at
-  // its metered share when a renewal began after its end. Later usage fills
-  // only the windows still held, so the session caps shrink by what they gave up.
+  // its metered share once its end passed. Later usage fills only the windows
+  // still held, so the session caps shrink by the budget they gave up.
   const superseded: Parameters<SpeechRelayCreditReservation["settle"]>[0][] =
     [];
   let supersededPcmBytes = 0,
     supersededTtsCharacters = 0;
+  // Superseded windows without an acknowledged settlement, retried in order.
+  const unsettled = new Map<
+    number,
+    [
+      SpeechRelayCreditReservation,
+      Parameters<SpeechRelayCreditReservation["settle"]>[0],
+    ]
+  >();
+  let superseding: Promise<void> = Promise.resolve();
   const pcmWindow =
     (SPEECH_RELAY_BUDGET.pcmBytesPerSecond * SPEECH_RELAY_BUDGET.durationMs) /
     1000;
   const capacity = (size: number, settled: number) =>
     settled + size * (windows - superseded.length);
+  /** A held window's share of the usage beyond what superseded windows froze. */
+  const heldShare = (
+    total: number,
+    settled: number,
+    size: number,
+    index: number,
+  ) =>
+    speechWindowShare(
+      Math.max(0, total - settled),
+      size,
+      index - superseded.length,
+      windows - superseded.length,
+    );
+  const report = (result: SpeechRelayRenewalResult) => {
+    try {
+      ports.onRenewal?.(result);
+    } catch {
+      // Telemetry must not change provider settlement or quota release.
+    }
+  };
   const legacySettlements = new Map<
     SpeechRelayCreditReservation,
     Promise<void | Partial<SpeechSettlementOutcome>>
@@ -344,20 +381,15 @@ export async function createSpeechRelaySession(
     if (frozen) return frozen;
     // The oldest window still held carries the open transports' unconfirmed
     // closure, as the first window did before any window was superseded.
-    const oldest = index === superseded.length;
+    const firstHeld = index === superseded.length;
     const pcm = (total: number) =>
-      speechWindowShare(
-        Math.max(0, total - supersededPcmBytes),
-        pcmWindow,
-        index - superseded.length,
-        windows - superseded.length,
-      );
+      heldShare(total, supersededPcmBytes, pcmWindow, index);
     const tts = (total: number) =>
-      speechWindowShare(
-        Math.max(0, total - supersededTtsCharacters),
+      heldShare(
+        total,
+        supersededTtsCharacters,
         SPEECH_RELAY_BUDGET.ttsCharacters,
-        index - superseded.length,
-        windows - superseded.length,
+        index,
       );
     return {
       ...details,
@@ -366,10 +398,10 @@ export async function createSpeechRelaySession(
       dispatched: {
         stt:
           details.dispatched?.stt === true &&
-          (oldest || pcm(attemptedPcmBytes) > 0),
+          (firstHeld || pcm(attemptedPcmBytes) > 0),
         tts:
           details.dispatched?.tts === true &&
-          (oldest || tts(details.ttsCharacters) > 0),
+          (firstHeld || tts(details.ttsCharacters) > 0),
       },
     };
   }
@@ -417,8 +449,8 @@ export async function createSpeechRelaySession(
     return settlement;
   }
   /** Settles one window before close: an ungranted renewal at zero, or a
-   * superseded window at its frozen share. Close retries a failed kind with
-   * the same frozen target. */
+   * superseded window at its frozen share. A retry reuses each kind's frozen
+   * target; a generic reservation keeps its first attempt. */
   async function settleWindow(
     index: number,
     reservation: SpeechRelayCreditReservation,
@@ -436,61 +468,55 @@ export async function createSpeechRelaySession(
     if (failures.length)
       throw new AggregateError(failures, "Speech window was not settled");
   }
-  let superseding: Promise<unknown> | undefined;
   /**
-   * Settles every window the current one superseded, so a renewal needs
-   * headroom for one more window instead of for every window held so far.
-   * Each is frozen at its metered share and labelled with the submitted-counter
-   * basis: its usage is final, but no provider has confirmed closure. The open
-   * transports' closure risk stays with the oldest window still held.
+   * Settles each window whose end passed while the session stayed open, so a
+   * renewal needs headroom for one more window, not for every window granted
+   * so far. Each is frozen at its metered share and labelled with the
+   * submitted-counter basis: its usage is final, but no provider has confirmed
+   * closure. That risk stays with the oldest window still held. A failure is
+   * reported and retried by the next call and by close, with the same target.
+   * Calls run one at a time; close joins the last one.
    */
   function settleSuperseded() {
-    // Text admitted but not yet dispatched could land in a superseded window.
-    if (closed || admittedTtsCharacters !== ttsCharacters) return superseding;
-    const settling: [
-      number,
-      SpeechRelayCreditReservation,
-      Parameters<SpeechRelayCreditReservation["settle"]>[0],
-    ][] = [];
-    for (const [index, reservation] of reservations.entries()) {
-      if (index < superseded.length || index >= windows - 1) continue;
-      const pcm = speechWindowShare(
-          pcmBytes - supersededPcmBytes,
-          pcmWindow,
-          0,
-          windows - index,
-        ),
-        tts = speechWindowShare(
-          ttsCharacters - supersededTtsCharacters,
-          SPEECH_RELAY_BUDGET.ttsCharacters,
-          0,
-          windows - index,
-        );
-      const target = {
-        pcmBytes: pcm,
-        ttsCharacters: tts,
-        providerMayHaveStarted,
-        dispatched: {
-          stt: dispatched.stt && pcm > 0,
-          tts: dispatched.tts && tts > 0,
-        },
-        outcome: "unknown" as const,
-        outcomes: { stt: "unknown" as const, tts: "unknown" as const },
-        accountingBasis: "submitted_counter_provider_unconfirmed" as const,
-      };
-      superseded.push(target);
-      supersededPcmBytes += pcm;
-      supersededTtsCharacters += tts;
-      settling.push([index, reservation, target]);
-    }
-    if (!settling.length) return superseding;
-    const previous = superseding;
-    // A failed kind stays open for close, which retries the same frozen target.
-    superseding = (async () => {
-      await previous;
-      for (const [index, reservation, target] of settling)
-        await settleWindow(index, reservation, target).catch(() => {});
-    })();
+    superseding = superseding.then(async () => {
+      if (closed) return;
+      // Text admitted but not yet dispatched could land in a superseded
+      // window; the next call freezes it instead.
+      if (admittedTtsCharacters === ttsCharacters)
+        for (const [index, reservation] of reservations.entries()) {
+          if (index !== superseded.length || index >= windows - 1) continue;
+          const pcm = heldShare(pcmBytes, supersededPcmBytes, pcmWindow, index),
+            tts = heldShare(
+              ttsCharacters,
+              supersededTtsCharacters,
+              SPEECH_RELAY_BUDGET.ttsCharacters,
+              index,
+            );
+          const target = {
+            pcmBytes: pcm,
+            ttsCharacters: tts,
+            providerMayHaveStarted,
+            dispatched: {
+              stt: dispatched.stt && pcm > 0,
+              tts: dispatched.tts && tts > 0,
+            },
+            outcome: "unknown" as const,
+            outcomes: { stt: "unknown" as const, tts: "unknown" as const },
+            accountingBasis: "submitted_counter_provider_unconfirmed" as const,
+          };
+          superseded.push(target);
+          supersededPcmBytes += pcm;
+          supersededTtsCharacters += tts;
+          unsettled.set(index, [reservation, target]);
+        }
+      for (const [index, [reservation, target]] of unsettled)
+        try {
+          await settleWindow(index, reservation, target);
+          unsettled.delete(index);
+        } catch (error) {
+          report({ phase: "settle", result: "error", error });
+        }
+    });
     return superseding;
   }
   const streams = new Map<string, ReturnType<SpeechRelayPorts["openTts"]>>(),
@@ -506,6 +532,7 @@ export async function createSpeechRelaySession(
     if (streams.size) ttsUncertain = true;
     if (timer) clearTimeout(timer);
     if (renewTimer) clearTimeout(renewTimer);
+    if (supersedeTimer) clearTimeout(supersedeTimer);
     closingSettled = false;
     closing = Promise.resolve().then(async () => {
       const failures: unknown[] = [];
@@ -580,9 +607,11 @@ export async function createSpeechRelaySession(
         ttsStopped === "unknown"
       )
         failures.push(Error("TTS transport retirement remains unconfirmed"));
-      // Stop providers before joining a slow renewal, then retain every returned
-      // reservation until its settlement is acknowledged.
+      // Stop providers before joining a slow renewal and any superseded-window
+      // settlement, then retain every reservation until its settlement is
+      // acknowledged.
       await renewal?.catch((error) => failures.push(error));
+      await superseding;
       for (const [reservation, settlement] of ungrantedSettlements) {
         // The owner below retries failed per-kind cleanup using its frozen
         // zero target. Generic reservations retain their original promise.
@@ -621,16 +650,8 @@ export async function createSpeechRelaySession(
         // have carried any usage, so it is released whatever the drain outcome.
         // Superseded windows keep their frozen share; the rest fill the windows
         // still held, and the oldest of those carries the open STT risk.
-        const granted = windows,
-          oldest = superseded.length;
+        const granted = windows;
         for (const [index, reservation] of reservations.entries()) {
-          const share = (total: number, settled: number, size: number) =>
-            speechWindowShare(
-              Math.max(0, total - settled),
-              size,
-              index - oldest,
-              granted - oldest,
-            );
           try {
             let settlement = legacySettlements.get(reservation);
             if (!settlement) {
@@ -639,26 +660,29 @@ export async function createSpeechRelaySession(
                   superseded[index] ??
                     (index < granted
                       ? {
-                          pcmBytes: share(
+                          pcmBytes: heldShare(
                             pcmBytes,
                             supersededPcmBytes,
                             pcmWindow,
+                            index,
                           ),
-                          ttsCharacters: share(
+                          ttsCharacters: heldShare(
                             ttsCharacters,
                             supersededTtsCharacters,
                             ttsWindow,
+                            index,
                           ),
                           providerMayHaveStarted,
                           dispatched: {
                             ...dispatched,
                             stt:
                               dispatched.stt &&
-                              (index === oldest ||
-                                share(
+                              (index === superseded.length ||
+                                heldShare(
                                   attemptedPcmBytes,
                                   supersededPcmBytes,
                                   pcmWindow,
+                                  index,
                                 ) > 0),
                           },
                           ...(sttDrain ? { sttDrain } : {}),
@@ -720,6 +744,15 @@ export async function createSpeechRelaySession(
           }
         }
       }
+      // A frozen submitted counter is final once the transport that carried it
+      // is confirmed stopped: the trusted STT drain of all sent audio, or a TTS
+      // transport that closed or never dispatched.
+      const final = (
+        outcome: SpeechSettlementOutcome["stt" | "tts"],
+        stopped: boolean,
+      ) =>
+        outcome.state === "actual" ||
+        (outcome.basis === "submitted_counter_provider_unconfirmed" && stopped);
       const canonicalActualMoney =
         requireRetirementProof &&
         reservations.length >= windows &&
@@ -733,21 +766,12 @@ export async function createSpeechRelaySession(
               `speech:${scope.cloudSessionId}:stt${suffix}` &&
             accounting.tts.requestId ===
               `speech:${scope.cloudSessionId}:tts${suffix}` &&
-            // The session's trusted drain covers every superseded window's audio.
-            (accounting.stt.state === "actual" ||
-              (accounting.stt.state === "conservative" &&
-                accounting.stt.basis ===
-                  "submitted_counter_provider_unconfirmed" &&
-                sttDrained)) &&
+            final(accounting.stt, sttDrained) &&
+            final(accounting.tts, ttsStopped !== "unknown") &&
             (index < windows ||
               (accounting.tts.state === "actual" &&
                 accounting.stt.amountUsd === "0" &&
-                accounting.tts.amountUsd === "0")) &&
-            (accounting.tts.state === "actual" ||
-              (accounting.tts.state === "conservative" &&
-                accounting.tts.basis ===
-                  "submitted_counter_provider_unconfirmed" &&
-                ttsStopped === "transport_closed"))
+                accounting.tts.amountUsd === "0"))
           );
         });
       const noDispatchProof =
@@ -942,9 +966,17 @@ export async function createSpeechRelaySession(
   async function renew() {
     const extend = ports.extend;
     if (closed || windows >= maxWindows || !extend) return;
-    // Release every superseded window's hold first, so this reservation needs
-    // headroom for one more window, not for all windows granted so far.
-    await settleSuperseded();
+    // Join superseded-window settlement only briefly, so a slow settlement
+    // cannot carry this renewal past `deadline`; it keeps running behind.
+    let wait: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      settleSuperseded(),
+      new Promise<void>((resolve) => {
+        wait = setTimeout(resolve, SPEECH_RELAY_SETTLE_WAIT_MS);
+        wait.unref?.();
+      }),
+    ]);
+    clearTimeout(wait);
     if (closed) return;
     // The renewal's quota minute and reservation belong to a window only once
     // `extend` has moved the authoritative end. Until then a refusal returns
@@ -1003,10 +1035,19 @@ export async function createSpeechRelaySession(
         result = "declined";
         return;
       }
+      const ended = deadline;
       deadline = accepted;
       windows++;
+      live = reservation;
       recorded = false;
       arm();
+      // The window this one superseded settles once its own end passes.
+      if (supersedeTimer) clearTimeout(supersedeTimer);
+      supersedeTimer = setTimeout(
+        () => void settleSuperseded(),
+        Math.max(1, ended - now()),
+      );
+      supersedeTimer.unref?.();
       emit({ t: "extended", expiresAt: new Date(deadline).toISOString() });
       result = "extended";
     } catch (error) {
@@ -1018,11 +1059,7 @@ export async function createSpeechRelaySession(
         if (index >= windows) held = reservations.splice(index, 1)[0];
       }
     } finally {
-      try {
-        ports.onRenewal?.({ phase, result, error: failure });
-      } catch {
-        // Telemetry must not change provider settlement or quota release.
-      }
+      report({ phase, result, error: failure });
       if (held) {
         const index = reservations.push(held) - 1;
         if (!closed) {
@@ -1061,7 +1098,7 @@ export async function createSpeechRelaySession(
         throw new SpeechRelayError("quota", "Speech quota exhausted");
       quota = true;
       current();
-      credits = await ports.reserveCredits(scope, SPEECH_RELAY_BUDGET);
+      credits = live = await ports.reserveCredits(scope, SPEECH_RELAY_BUDGET);
       reservations.push(credits);
     })();
     await preparation;
@@ -1239,12 +1276,12 @@ export async function createSpeechRelaySession(
       // provider dispatch once the session's admission and budget allow it.
       let attemptedProviderForFrame = false;
       try {
-        if (!credits)
+        if (!live)
           throw new SpeechRelayError(
             "closed",
             "Speech credits were not reserved",
           );
-        await credits.beforeProviderDispatch("tts");
+        await live.beforeProviderDispatch("tts");
         current();
         if (cancelledIds.has(frame.id)) {
           // Never dispatched: the text holds no window budget.

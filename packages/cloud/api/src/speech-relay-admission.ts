@@ -296,9 +296,7 @@ export async function reserveSpeechRelayAdmission(input: {
                     : "unconfirmed",
               requestId,
               amountUsd: outcome.amountUsd,
-              ...("basis" in outcome && outcome.basis
-                ? { basis: outcome.basis }
-                : {}),
+              ...(outcome.basis ? { basis: outcome.basis } : {}),
             });
           })();
           pending.set(kind, attempt);

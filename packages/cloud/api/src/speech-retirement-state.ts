@@ -241,7 +241,8 @@ export function completeSpeechRetirement<T extends SpeechLifecycleRecord>(
       (index > 0 && progress.state === "not_reserved") ||
       progress.state === "settled_actual";
     // A frozen submitted counter becomes final once the transport that carried
-    // it is confirmed closed: the TTS socket, or the STT drain of all sent audio.
+    // it is confirmed stopped: the STT drain of all sent audio, or a TTS
+    // transport that closed or never dispatched.
     const closedFrozenCounter = (
       progress: SettlementProgress,
       closed: boolean,
@@ -254,7 +255,11 @@ export function completeSpeechRetirement<T extends SpeechLifecycleRecord>(
       (terminal(stt) ||
         closedFrozenCounter(stt, evidence?.stt === "gracefully_drained")) &&
       (terminal(tts) ||
-        closedFrozenCounter(tts, evidence?.tts === "transport_closed"))
+        closedFrozenCounter(
+          tts,
+          evidence?.tts === "transport_closed" ||
+            evidence?.tts === "not_dispatched",
+        ))
     );
   });
   const liveOwner =

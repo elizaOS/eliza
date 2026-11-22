@@ -28,8 +28,14 @@ const cases = [
     "src/voice/speech-retirement-session.test.ts",
     [
       "paid renewal retains one STT connection and settles each window once",
-      "superseded windows settle at renewal so two holds of balance renew every window",
+      "superseded windows settle once their end passes so two holds of balance renew every window",
+      "a failed superseded settlement is reported and retried with its frozen target before the next reservation",
       "an unsettled superseded window refuses renewal at the current end and close retries its frozen target",
+      "a slow superseded settlement neither holds renewal past its bound nor escapes close",
+      ...["dispatched", "cancelled"].map(
+        (outcome) =>
+          `text in flight when a window ends is frozen by the next renewal once ${outcome}`,
+      ),
       "a nonzero unused settlement proof cannot confirm retirement",
       "close retries a transient unused settlement once and keeps its zero target",
       "late unused stt settlement stays owned across retirement retry",
