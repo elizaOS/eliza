@@ -29,7 +29,19 @@ needs a live binding and its scope: the exact task context, a deadline
 command has none) still ahead, the page's current origin among the
 binding's, and a reviewed target when the command names one. Finally the
 named page must still be the selected one, or the request is stale.
-Commands run one at a time.
+Commands run one at a time. A verification-code fill reaches a single box
+the page marks for a one-time code. With a commit grant for that fill it
+also reaches a box whose words or the text just before it name a code, or
+the group the named box starts: the only run of one-character boxes in its
+form (or among the controls in no form) and its document, one box per
+character, each a reviewed target, empty, enabled and unchanged since the
+snapshot, and named a code by the first box's words, the group's name or the
+text just before it. A box that takes one character is reached only in such
+a group, also when the page marks it. Never a card, PIN, password, bank or ID
+box, a box or group whose words, name or nearby text name one of those or a
+postal, area, promo, coupon, gift, referral, discount, voucher or invitation
+code, marked or not, and never a box or group in a form that asks for a card
+or a bank account.
 
 ```quint
 import address.* from "./address"
@@ -234,7 +246,13 @@ The input is `Dispatched` only with the same live binding, a current
 guidance ticket and document, native confirming the dispatch and guidance
 cleanup confirmed. With no native return, a changed binding or a failed
 cleanup after input it is `Unknown`, never an error the task host could
-retry.
+retry. The next read says once whether a fill took (for a code, within
+fifteen minutes, and for those fifteen minutes later reads hide the code
+wherever the page shows it): every box shows exactly what was written. A
+box that shows the digits typed alone (2 to 32) in the same order with only
+spaces, dashes, brackets or slashes added takes them as written, marked
+formatted; a dot or comma, a plus, a placeholder, a lost or extra digit,
+marks that were typed, a code box and every private box never do.
 
 ```quint
 pure def canSettleInput(s: SurfaceReceiver): bool = s.phase == ReceiverSending

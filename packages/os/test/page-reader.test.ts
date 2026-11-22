@@ -39,10 +39,15 @@ const page = (body: string) =>
   `<!doctype html><html lang="en"><style>body{font:18px system-ui;margin:16px}label,button,input{display:block;margin:6px 0}</style>${body}${pressed}</html>`;
 const cardForm = (words: string, money = "<p>Total $84.20</p>") =>
   page(`<form action="/paid" method="get"><label>Card number <input id="card" autocomplete="cc-number"></label><label>Security code <input id="cvc"></label><button type="button" id="details">Show details</button><button id="frame-pay">Pay now</button></form>${money}<p>${words}</p>`);
+const codes = "https://codes.example";
 const secure = "https://secure.codes.example";
 const field = `<script>customElements.define("bank-field", class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = '<label for="input">' + this.getAttribute("label") + '</label><input id="input" name="' + this.id + '" type="' + (this.getAttribute("type") ?? "text") + '">'; } });</script>`;
 const logon = (frame: string) =>
   page(`<h1>Sign in</h1><iframe name="logonbox" title="logon" src="${frame}?fromOrigin=${secure}" style="position:absolute;left:0;top:0;width:100%;height:100%;border:0"></iframe><iframe title="empty" src="/empty" style="position:absolute;left:0;top:-5000px;width:0;height:0;border:0"></iframe>`);
+const digits = (prefix: string, count: number, from = 1, extra = (_: number) => "") =>
+  Array.from({ length: count }, (_, index) => `<input id="${prefix}${from + index}" aria-label="Digit ${from + index}" maxlength="1" inputmode="numeric"${extra(from + index)}>`).join("");
+const moveOn = (form: string) =>
+  `<script>const boxes=[...document.querySelectorAll('#${form} input')];boxes.forEach((box,i)=>box.addEventListener('input',()=>{if(box.value.length===1&&boxes[i+1])boxes[i+1].focus()}));</script>`;
 const pages: Record<string, string> = {
   [`${shop}/signin`]: page(`<h1>Welcome back</h1><northfield-login></northfield-login><sealed-box></sealed-box><script>
     customElements.define("northfield-login", class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = '<form><label>Username <input id="shadow-user" name="username"></label><label>Password <input id="shadow-pass" type="password"></label><button type="button" id="shadow-next">Next</button><p id="echo"></p></form>'; } });
@@ -61,6 +66,25 @@ const pages: Record<string, string> = {
   [`${shop}/covered`]: page(`<iframe id="plain-frame" src="/plain-frame" title="Sign up form" style="width:400px;height:200px"></iframe><p>Below the frame are our opening hours, our address and a map of the branch offices.</p><div role="dialog" aria-label="Notice" style="position:fixed;left:0;top:0;width:440px;height:240px;background:#fff">Please read this notice<button type="button" id="close-notice">Close</button></div>`),
   [`${secure}/dashboard`]: logon("/auth/"),
   [`${secure}/auth/`]: `<form id="logon" action="/auth/logon" method="post"><bank-field id="userId" label="Username"></bank-field><bank-field id="password" label="Password" type="password"></bank-field><label>Sign in with <select id="token"><option>Password</option><option>Token</option></select></label><a id="forgot" href="/auth/forgot">Forgot username or password?</a><button type="button" id="signin">Sign in</button></form>${field}`,
+  [`${codes}/label`]: `<form action="/done" method="post"><label>Verification code <input id="code" name="code" inputmode="numeric"></label><label>Name <input id="name"></label><label>Enter the 6-digit code <input id="six"></label><button id="verify">Verify</button></form><form action="/a"><label>Enter code <input id="enter"></label></form><form action="/b"><label>Temporary identification code <input id="temporary"></label></form><form action="/c"><p>We emailed you a 6-digit code.</p><label>Confirmation code <input id="confirm"></label></form>`,
+  [`${codes}/marked`]: `<form action="/done" method="post"><input id="marked" aria-label="Code" autocomplete="one-time-code"></form>`,
+  [`${codes}/refused`]: `<form action="/a"><label>Card verification code <input id="cvv" name="cvv"></label></form><form action="/b"><label>Security code <input id="csc"></label></form><form action="/c"><label>Verification code <input id="paycode"></label><label>Card number <input id="card" autocomplete="cc-number"></label></form><form action="/d"><label>Password <input id="pw" type="password"></label><label>PIN <input id="pin"></label><label>Verification code <input id="cccode" autocomplete="cc-csc"></label></form><form action="/e"><label>Routing number <input id="routing"></label></form><form action="/f"><label>Verification code <input id="bankcode"></label><label>Bank account number <input id="acct"></label></form><form action="/g"><label>Social Security number <input id="ssn"></label></form><form action="/h"><label>Passport number <input id="passport"></label></form><form action="/i"><label>Card security code <input id="markedcvv" autocomplete="one-time-code"></label></form><form action="/j"><p>Enter the security code on the back of your card</p><input id="nearcvv" aria-label="Code" autocomplete="one-time-code"></form><form action="/k"><label>Code <input id="formcvv" autocomplete="one-time-code"></label><label>Card number <input autocomplete="cc-number"></label></form><form action="/l"><label>Promo code <input id="promo"></label></form><form action="/m"><label>Coupon code <input id="coupon"></label></form><form action="/n"><label>Referral code <input id="referral"></label></form><form action="/o"><label>ZIP code <input id="zip"></label></form><form action="/p"><label>Area code <input id="area"></label></form><form action="/q"><label>Code <input id="markedpromo" name="promo_code" autocomplete="one-time-code"></label></form>`,
+  [`${codes}/paying-groups`]: `<form action="/a"><p>Enter the code we sent.</p>${digits("q", 6)}<label>Card number <input autocomplete="cc-number"></label></form><form action="/b"><p>Enter the code we sent.</p>${digits("w", 6)}<label>Bank account number <input></label></form><p>Redeem a gift code.</p><form action="/c">${digits("v", 6)}</form>`,
+  [`${codes}/digits`]: `<p>Enter the 6-digit code we emailed you.</p><form id="f" action="/account" method="get">${digits("d", 6)}<button id="verify">Verify</button></form>${moveOn("f")}`,
+  [`${codes}/unnamed`]: `<p>Enter the last six digits of your number.</p><form id="f" action="/account" method="get">${digits("u", 6)}</form>`,
+  [`${codes}/card-digits`]: `<p>Enter the code for the last 4 of your card.</p><form id="f" action="/account" method="get">${digits("k", 4)}</form>`,
+  [`${codes}/split`]: `<p>Enter the code we sent.</p><form action="/a">${digits("a", 3)}</form><form action="/b">${digits("b", 3, 4)}</form>`,
+  [`${codes}/two-runs`]: `<p>Enter the code we sent.</p><form action="/a">${digits("x", 3)}<input id="mid" aria-label="Middle">${digits("y", 3, 4)}</form>`,
+  [`${codes}/pin`]: `<p>Enter the code we sent.</p><form action="/a"><fieldset><legend>Enter your PIN</legend>${digits("p", 4)}</fieldset></form>`,
+  [`${codes}/grouped`]: `<div role="group" aria-label="Enter the code we sent">${digits("g", 4)}</div>`,
+  [`${codes}/hidden-digit`]: `<p>Enter the code we sent.</p><form action="/a">${digits("h", 6, 1, (n) => (n === 3 ? ' type="password"' : ""))}</form>`,
+  [`${codes}/states`]: `<p>Enter the code we sent.</p><form action="/a">${digits("o", 6, 1, (n) => (n === 4 ? " disabled" : ""))}</form><p>Enter the code we sent.</p><form action="/b">${digits("r", 6, 1, (n) => (n === 5 ? " readonly" : ""))}</form>`,
+  [`${codes}/number-digits`]: `<p>Enter the code we sent.</p><form action="/a">${digits("n", 6, 1, () => ' type="number"')}</form><form action="/b"><label>Verification code <input id="ncode" type="number"></label></form>`,
+  [`${codes}/marked-digits`]: `<p>Enter the code we sent.</p><form action="/a">${digits("m", 6, 1, () => ' autocomplete="one-time-code"')}</form>`,
+  [`${codes}/otp-shadow`]: `<p>Sign in</p><form id="f" action="/account"><otp-input></otp-input><button id="verify">Verify</button></form><script>customElements.define("otp-input", class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = '<div role="group" aria-labelledby="otp-name">' + [1, 2, 3, 4, 5, 6].map((n) => '<input id="d' + n + '" aria-label="Digit ' + n + '" maxlength="1" inputmode="numeric">').join("") + '</div><span id="otp-name">Enter the code we sent</span>'; } });</script>`,
+  [`${codes}/autosubmit`]: `<p>Enter the code we sent.</p><form id="f" action="/account" method="get">${digits("s", 6)}</form><script>document.getElementById('s6').addEventListener('input',e=>e.target.form.requestSubmit())</script>`,
+  [`${codes}/clearing`]: `<p>Enter the code we sent.</p><form id="f" action="/account" method="get">${digits("c", 6)}</form><script>document.getElementById('c3').addEventListener('input',()=>{document.getElementById('c1').value=''})</script>`,
+  [`${codes}/mask`]: `<label>Phone <input id="phone" type="tel"></label><label>Date <input id="date"></label><label>Amount <input id="amount"></label><label>Note <input id="note"></label><label>Verification code <input id="mcode"></label><label>Mobile <input id="plus" type="tel"></label><label>Home phone <input id="blanks" type="tel"></label><label>Office phone <input id="lose" type="tel"></label><label>Other phone <input id="gain" type="tel"></label><label>Extension <input id="short"></label><label>Member number <input id="long"></label><script>const masks={phone:d=>d.length===10?'('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6):d,date:d=>d.length===8?d.slice(0,2)+'/'+d.slice(2,4)+'/'+d.slice(4):d,amount:d=>d.length>2?d.slice(0,-2)+'.'+d.slice(-2):d,mcode:d=>d.length===6?d.slice(0,3)+'-'+d.slice(3):d,plus:d=>'+'+d.slice(0,1)+' ('+d.slice(1,4)+') '+d.slice(4,7)+'-'+d.slice(7),blanks:d=>'('+d.slice(0,3)+') '+(d.slice(3)+'____').slice(0,3)+'-____',lose:d=>'('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6,9),gain:d=>'1 ('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6),short:d=>'('+d+')',long:d=>d.match(/.{1,4}/g).join(' ')};for(const [id,mask] of Object.entries(masks))document.getElementById(id).addEventListener('input',e=>{e.target.value=mask(e.target.value.replace(/\\D/g,''))});</script>`,
   [`${secure}/empty`]: `<title>empty</title><button type="button" id="beacon">Telemetry</button><script>document.body.style.width = "4000px";</script>`,
 };
 
@@ -408,3 +432,194 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
   });
 });
 
+interface CodeFill { readonly text?: string; readonly targets?: readonly Fields[]; readonly grant?: boolean; readonly protect?: boolean; readonly node?: string; readonly origin?: string; readonly between?: () => Promise<unknown> }
+const codePolicy = (targets: readonly Fields[], extra: Fields = {}, origin = codes) => ({ origin, expiresAt: Date.now() + 60_000, guidanceScope: "50", targets, ...extra });
+const codeFill = async (selector: string, { text: typed = "123456", targets = [{ selector, action: "fill-code" }], grant = true, protect = true, node = selector, origin = codes, between }: CodeFill = {}): Promise<Fields> => {
+  const id = `codes-${++sequence}`;
+  const read = Schema.decodeUnknownSync(Read)(await call(pageCommand, [{ subaction: "snapshot", taskPolicy: codePolicy(targets, {}, origin) }, id]));
+  const element = fields(read.elements.find((value) => value.targetSelector === node));
+  await between?.();
+  const commitGrant = { grantId: `code-grant-${++sequence}`, selector, expiresAt: Date.now() + 30_000 };
+  const taskPolicy = codePolicy(targets, { expectedSelector: selector, ...(protect ? { protectedValueKind: "verification-code" } : {}), ...(grant ? { commitGrant } : {}) }, origin);
+  const result = fields(await call(pageCommand, [{ subaction: "fill", snapshotId: id, nodeId: element.id, text: typed, taskPolicy }, null]));
+  return { ...result, targetRef: `${id}:0:${String(element.id)}` };
+};
+const codeRead = async (origin = codes) => fields(await call(pageCommand, [{ subaction: "snapshot", taskPolicy: codePolicy([], {}, origin) }, `codes-${++sequence}`]));
+const kindOf = (result: Fields) => fields(result.error).kind;
+const valueOf = (selector: string) => tab.locator(selector).inputValue();
+const group = (prefix: string, count: number, from = 1) => Array.from({ length: count }, (_, index) => ({ selector: `#${prefix}${from + index}`, action: "fill-code" }));
+const sensitives = async (selectors: readonly string[]) => {
+  const elements = Schema.decodeUnknownSync(Schema.Array(Fields))((await codeRead()).elements);
+  return selectors.map((selector) => elements.find((element) => element.targetSelector === selector)?.sensitive);
+};
+
+describe('A consented code reaches a code box by its label or one box per digit (spec/os/browser/pageCommands.md, "The peer takes only the fixed page commands, and a request needs a live binding and its scope")', () => {
+  it("fills a box its words name a code only with the host's marker, the grant and the reviewed box, and reads it back once", async () => {
+    await open(`${codes}/label`);
+    expect(await sensitives(["#code", "#six"])).toEqual(["one-time-code", null]);
+    expect(kindOf(await codeFill("#code", { protect: false, grant: false, targets: [{ selector: "#code", action: "fill" }] }))).toBe("POLICY_BLOCKED");
+    expect(kindOf(await codeFill("#code", { grant: false }))).toBe("POLICY_BLOCKED");
+    expect(kindOf(await codeFill("#code", { node: "#name" }))).toBe("POLICY_BLOCKED");
+    expect([await valueOf("#name"), await valueOf("#code")]).toEqual(["", ""]);
+    const filled = await codeFill("#code");
+    expect(filled.dispatched).toBe(true);
+    expect(await valueOf("#code")).toBe("123456");
+    const after = await codeRead();
+    expect(after.codeReadback).toEqual({ targetRef: filled.targetRef, boxes: 1, matches: true });
+    expect(after.inputReadback).toBeUndefined();
+    expect(JSON.stringify(after)).not.toContain("123456");
+    expect((await codeRead()).codeReadback).toBeUndefined();
+    expect(kindOf(await codeFill("#name"))).toBe("POLICY_BLOCKED");
+    expect(kindOf(await codeFill("#enter", { grant: false }))).toBe("POLICY_BLOCKED");
+    for (const selector of ["#six", "#enter", "#temporary", "#confirm"]) {
+      expect((await codeFill(selector)).dispatched, selector).toBe(true);
+      expect([await valueOf(selector), fields((await codeRead()).codeReadback).matches], selector).toEqual(["123456", true]);
+    }
+    await open(`${codes}/marked`);
+    expect((await codeFill("#marked", { grant: false })).dispatched).toBe(true);
+    expect(fields((await codeRead()).codeReadback).matches).toBe(true);
+  });
+
+  it("never fills a card, CVV, PIN, password, bank, ID, payment-form, promo, coupon, referral, ZIP or area-code box as a code, marked or not", async () => {
+    await open(`${codes}/refused`);
+    expect(await sensitives(["#cvv", "#csc", "#paycode", "#pin", "#routing", "#bankcode", "#ssn", "#passport"])).toEqual(["payment-card", "payment-card", "payment-card", "password", "bank-account", "one-time-code", "government-id", "government-id"]);
+    for (const selector of ["#cvv", "#csc", "#paycode", "#pw", "#pin", "#cccode", "#routing", "#bankcode", "#ssn", "#passport", "#markedcvv", "#nearcvv", "#formcvv", "#promo", "#coupon", "#referral", "#zip", "#area", "#markedpromo"]) {
+      expect(kindOf(await codeFill(selector)), selector).toBe("POLICY_BLOCKED");
+      expect(await valueOf(selector), selector).toBe("");
+    }
+    for (const selector of ["#markedcvv", "#nearcvv", "#formcvv", "#markedpromo"])
+      expect(kindOf(await codeFill(selector, { grant: false })), selector).toBe("POLICY_BLOCKED");
+  });
+
+  it("writes one digit to each box of the one group in a form, and never returns the joined code", async () => {
+    await open(`${codes}/digits`);
+    const six = group("d", 6);
+    for (const [why, options] of [
+      ["no grant", { grant: false }],
+      ["a shorter code", { text: "12345" }],
+      ["a longer code", { text: "1234567" }],
+      ["a box not reviewed", { targets: six.filter((_, index) => index !== 3) }],
+      ["only the first box reviewed", { targets: six.slice(0, 1) }],
+    ] as const)
+      expect(kindOf(await codeFill("#d1", { targets: six, ...options })), why).toBe("POLICY_BLOCKED");
+    expect(kindOf(await codeFill("#d2", { targets: six }))).toBe("POLICY_BLOCKED");
+    expect(await Promise.all(six.map(({ selector }) => valueOf(selector)))).toEqual(["", "", "", "", "", ""]);
+    await tab.evaluate(`document.getElementById("d4").animate([{ transform: "translateX(0)" }, { transform: "translateX(40px)" }], { duration: 1, delay: 3000, fill: "forwards" })`);
+    const moved = await codeFill("#d1", { targets: six, between: () => tab.waitForFunction(`document.getElementById("d4").getAnimations().every((animation) => animation.playState === "finished")`) });
+    expect(kindOf(moved), "a box moved since the snapshot").toBe("POLICY_BLOCKED");
+    await tab.evaluate(`document.getElementById("d4").getAnimations().forEach((animation) => animation.cancel())`);
+    await tab.locator("#d3").fill("9");
+    expect(kindOf(await codeFill("#d1", { targets: six })), "a box already filled").toBe("POLICY_BLOCKED");
+    expect(await Promise.all(six.map(({ selector }) => valueOf(selector)))).toEqual(["", "", "9", "", "", ""]);
+    await open(`${codes}/digits`);
+    const filled = await codeFill("#d1", { targets: six });
+    expect(filled.dispatched).toBe(true);
+    expect(await Promise.all(six.map(({ selector }) => valueOf(selector)))).toEqual(["1", "2", "3", "4", "5", "6"]);
+    const after = await codeRead();
+    expect(after.codeReadback).toEqual({ targetRef: filled.targetRef, boxes: 6, matches: true });
+    expect(after.effectViolation).toBeUndefined();
+    await tab.evaluate(`(() => { const echo = document.createElement("p"); echo.textContent = "You entered 123456."; document.body.append(echo); document.title = "Code 123456"; })()`);
+    const echoed = await codeRead();
+    expect(JSON.stringify(echoed)).not.toContain("123456");
+    expect(echoed.text).toMatch(/You entered \[hidden\]\./);
+    expect(echoed.title).toBe("Code [hidden]");
+  });
+
+  it("refuses a group across forms, in two runs, unnamed as a code, named as a PIN, card or gift code, in a form that asks for a card or bank account, holding a password, disabled or read-only box, or given letters for number boxes, and takes a code group in no form", async () => {
+    for (const [path, first, targets, typed] of [
+      ["/split", "#a1", [...group("a", 3), ...group("b", 3, 4)], "123456"],
+      ["/two-runs", "#x1", [...group("x", 3), ...group("y", 3, 4)], "123456"],
+      ["/unnamed", "#u1", group("u", 6), "123456"],
+      ["/card-digits", "#k1", group("k", 4), "1234"],
+      ["/pin", "#p1", group("p", 4), "1234"],
+      ["/hidden-digit", "#h1", group("h", 6), "123456"],
+      ["/states", "#o1", group("o", 6), "123456"],
+      ["/states", "#r1", group("r", 6), "123456"],
+      ["/number-digits", "#n1", group("n", 6), "12A456"],
+      ["/number-digits", "#ncode", [{ selector: "#ncode", action: "fill-code" }], "AB12CD"],
+      ["/marked-digits", "#m1", group("m", 6), "123456"],
+      ["/paying-groups", "#q1", group("q", 6), "123456"],
+      ["/paying-groups", "#w1", group("w", 6), "123456"],
+      ["/paying-groups", "#v1", group("v", 6), "123456"],
+    ] as const) {
+      await open(`${codes}${path}`);
+      expect(kindOf(await codeFill(first, { targets, text: typed, grant: first !== "#m1" })), `${path} ${first}`).toBe("POLICY_BLOCKED");
+      expect(await Promise.all(targets.map(({ selector }) => valueOf(String(selector)))), path).toEqual(targets.map(() => ""));
+    }
+    await open(`${codes}/marked-digits`);
+    expect((await codeFill("#m1", { targets: group("m", 6) })).dispatched).toBe(true);
+    await open(`${codes}/grouped`);
+    expect((await codeFill("#g1", { targets: group("g", 4), text: "4321" })).dispatched).toBe(true);
+    expect(fields((await codeRead()).codeReadback).matches).toBe(true);
+  });
+
+  it("writes a code to an open root's digit boxes, named by a label inside the root, in no form", async () => {
+    await open(`${codes}/otp-shadow`);
+    const elements = Schema.decodeUnknownSync(Schema.Array(Fields))((await codeRead()).elements);
+    const boxes = [1, 2, 3, 4, 5, 6].map((n) => ({ selector: text(elements.find((element) => element.label === `Digit ${n}`)?.targetSelector), action: "fill-code" }));
+    expect(boxes.map(({ selector }) => selector.split(" >>> ").at(-1))).toEqual(["#d1", "#d2", "#d3", "#d4", "#d5", "#d6"]);
+    const filled = await codeFill(boxes[0].selector, { targets: boxes });
+    expect(filled.dispatched).toBe(true);
+    expect(await Promise.all([1, 2, 3, 4, 5, 6].map((n) => tab.locator(`otp-input #d${n}`).inputValue()))).toEqual(["1", "2", "3", "4", "5", "6"]);
+    expect((await codeRead()).codeReadback).toEqual({ targetRef: filled.targetRef, boxes: 6, matches: true });
+  });
+
+  it("reads a code back and hides it in the page for fifteen minutes, and not after", async () => {
+    const after = async (minutes: number) => {
+      await open(`${codes}/label`);
+      expect((await codeFill("#code")).dispatched).toBe(true);
+      await evaluate(`(() => { const now = Date.now.bind(Date); Date.now = () => now() + ${minutes * 60_000}; })()`);
+      const read = async () => fields(await call(pageCommand, [{ subaction: "snapshot", taskPolicy: { ...codePolicy([]), expiresAt: Date.now() + 60 * 60_000 } }, `codes-${++sequence}`]));
+      const readback = (await read()).codeReadback;
+      const matches = readback === undefined ? undefined : fields(readback).matches;
+      await tab.evaluate(`(() => { document.getElementById("code").value = ""; const echo = document.createElement("p"); echo.textContent = "You entered 123456."; document.body.append(echo); })()`);
+      return { matches, text: text((await read()).text).match(/You entered (\S+)\./)?.[1] };
+    };
+    expect(await after(14)).toEqual({ matches: true, text: "[hidden]" });
+    expect(await after(16)).toEqual({ matches: undefined, text: "123456" });
+  });
+
+  it("stops a group that sends its form on the last digit, and reads back unknown when the page clears a box", async () => {
+    await open(`${codes}/autosubmit`);
+    expect((await codeFill("#s1", { targets: group("s", 6) })).dispatched).toBe(true);
+    await expect.poll(async () => (await codeRead()).effectViolation).toBe("submit");
+    expect(tab.url()).toBe(`${codes}/autosubmit`);
+    await open(`${codes}/clearing`);
+    expect((await codeFill("#c1", { targets: group("c", 6) })).dispatched).toBe(true);
+    expect(fields((await codeRead()).codeReadback).matches).toBe(false);
+  });
+});
+
+describe('A masked field reads back what was typed only with the mask\'s own marks (spec/os/browser/pageCommands.md, "An input is Dispatched only when the page confirms it, and Unknown otherwise")', () => {
+  it("takes digits shown with spaces, dashes, brackets or slashes, and nothing else", async () => {
+    await open(`${codes}/mask`);
+    const masked = async (selector: string, typed: string) => {
+      const result = await codeFill(selector, { text: typed, protect: false, grant: false, targets: [{ selector, action: "fill" }] });
+      expect(result.dispatched, selector).toBe(true);
+      const readback = fields((await codeRead()).inputReadback);
+      expect(readback.targetRef).toBe(result.targetRef);
+      return { shown: await valueOf(selector), matches: readback.matches, formatted: readback.formatted };
+    };
+    expect(await masked("#phone", "5551234567")).toEqual({ shown: "(555) 123-4567", matches: true, formatted: true });
+    expect(await masked("#date", "10012026")).toEqual({ shown: "10/01/2026", matches: true, formatted: true });
+    expect(await masked("#note", "Leave at the door")).toEqual({ shown: "Leave at the door", matches: true, formatted: undefined });
+    expect(await masked("#phone", "555-123-4567")).toEqual({ shown: "(555) 123-4567", matches: false, formatted: undefined });
+    expect(await masked("#amount", "1234")).toEqual({ shown: "12.34", matches: false, formatted: undefined });
+    expect(await masked("#plus", "15551234567")).toEqual({ shown: "+1 (555) 123-4567", matches: false, formatted: undefined });
+    expect(await masked("#blanks", "555123")).toEqual({ shown: "(555) 123-____", matches: false, formatted: undefined });
+    expect(await masked("#lose", "5551234567")).toEqual({ shown: "(555) 123-456", matches: false, formatted: undefined });
+    expect(await masked("#gain", "5551234567")).toEqual({ shown: "1 (555) 123-4567", matches: false, formatted: undefined });
+    expect(await masked("#short", "7")).toEqual({ shown: "(7)", matches: false, formatted: undefined });
+    expect(await masked("#short", "12")).toEqual({ shown: "(12)", matches: true, formatted: true });
+    expect(await masked("#long", "1".repeat(32))).toEqual({ shown: "1111 ".repeat(8).trim(), matches: true, formatted: true });
+    expect(await masked("#long", "1".repeat(33))).toEqual({ shown: `${"1111 ".repeat(8)}1`, matches: false, formatted: undefined });
+    expect(kindOf(await codeFill("#mcode", { protect: false, grant: false, targets: [{ selector: "#mcode", action: "fill" }] }))).toBe("POLICY_BLOCKED");
+    const filled = await codeFill("#mcode");
+    expect(filled.dispatched).toBe(true);
+    expect(await valueOf("#mcode")).toBe("123-456");
+    const after = await codeRead();
+    expect(after.codeReadback).toEqual({ targetRef: filled.targetRef, boxes: 1, matches: false });
+    expect(after.inputReadback).toBeUndefined();
+    expect(JSON.stringify(after)).not.toContain("123456");
+  });
+});
