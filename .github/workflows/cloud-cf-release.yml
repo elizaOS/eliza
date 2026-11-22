@@ -190,6 +190,8 @@ on:
         required: false
       STEWARD_PLATFORM_KEYS:
         required: false
+      STAGING_STEWARD_PRODUCT_OPERATOR_KEY:
+        required: false
       STEWARD_REQUEST_SIGNING_SECRET:
         required: false
       STEWARD_SESSION_SECRET:
@@ -1511,7 +1513,7 @@ jobs:
           # shared default tenant (#11461). queue_secret no-ops with a notice
           # while unset, so this is safe before ops adds the GH env secret and
           # keeps it published on every redeploy once they do.
-          STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
+          STEWARD_PLATFORM_KEYS: ${{ inputs.target_environment == 'staging' && secrets.STAGING_STEWARD_PRODUCT_OPERATOR_KEY || secrets.STEWARD_PLATFORM_KEYS }}
           STEWARD_TENANT_API_KEY: ${{ secrets.STEWARD_TENANT_API_KEY }}
           OIDC_SIGNING_JWKS: ${{ secrets.OIDC_SIGNING_JWKS }}
           # Subscription entitlement signing and grant-code pepper. Optional: the
@@ -1605,7 +1607,7 @@ jobs:
           DISCORD_GATEWAY_URL: ${{ vars.ELIZA_DISCORD_GATEWAY_URL }}
           GATEWAY_DISCORD_BOOTSTRAP_SECRET: ${{ secrets.GATEWAY_DISCORD_BOOTSTRAP_SECRET }}
           GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET }}
-          STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
+          STEWARD_PLATFORM_KEYS: ${{ inputs.target_environment == 'staging' && secrets.STAGING_STEWARD_PRODUCT_OPERATOR_KEY || secrets.STEWARD_PLATFORM_KEYS }}
           STEWARD_TENANT_ID: elizacloud-staging
         run: |
           set -euo pipefail

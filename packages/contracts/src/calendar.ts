@@ -973,6 +973,32 @@ export interface LifeOpsCalendarEventUpdate {
 export interface LifeOpsCalendarEventMutationResult {
   event: LifeOpsCalendarEvent;
 }
+/** An invitee's answer to a calendar invitation. */
+export type LifeOpsCalendarInvitationResponse =
+  | "accepted"
+  | "tentative"
+  | "declined";
+/**
+ * Owner-editor RSVP. `declined` uses the same reviewed `decline_invitation`
+ * cancellation as the DELETE route; `accepted` and `tentative` are reviewed
+ * invitation-response modifications. `this_and_following` is not a valid
+ * response scope.
+ */
+export interface RespondLifeOpsCalendarEventRequest {
+  side?: LifeOpsConnectorSide;
+  grantId?: string;
+  calendarId?: string;
+  responseStatus: LifeOpsCalendarInvitationResponse;
+  recurrenceScope?: Exclude<
+    LifeOpsCalendarRecurrenceScope,
+    "this_and_following"
+  >;
+  notifyAttendees?: boolean;
+  /** Provider ETag/version the owner reviewed. */
+  expectedProviderVersion: string;
+  /** Stable owner-editor operation key used by the durable mutation ledger. */
+  idempotencyKey: string;
+}
 export type LifeOpsCalendarCancellationMode =
   | "organizer_cancel"
   | "decline_invitation"

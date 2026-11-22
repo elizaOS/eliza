@@ -25,6 +25,7 @@ import {
 } from "./calendar-contract.ts";
 import {
   CAMERA_LENS_CAPABILITY,
+  CAMERA_LIBRARY_ID_CAPABILITY,
   DEVICE_CAMERA_CAPTURE_ACTION,
   isCameraCapture,
   validateCameraCaptureResult,
@@ -55,6 +56,8 @@ import {
   FILES_CAPABILITY,
   FILES_OPERATION_SCHEMAS,
   FILES_OPERATION_TYPES,
+  FILES_SHOWN_TARGET_CAPABILITY,
+  FILES_SHOWN_TARGET_GUIDANCE,
   isFilesOperation,
 } from "./files-browser-contract.ts";
 import {
@@ -78,11 +81,18 @@ import {
   phoneDialResultText,
   validatePhoneDialResult,
 } from "./phone-dial-contract.ts";
-import { LIBRARY_LIMITS } from "./photo-library-contract.ts";
+import {
+  isLibraryOperation,
+  LIBRARY_LIMITS,
+  LIBRARY_OPERATION_TYPES,
+  REVIEWED_LIBRARY_ACTIONS,
+  validateLibraryResult,
+} from "./photo-library-contract.ts";
 import {
   isPhotosViewOperation,
   isPhotosViewType,
   PHOTOS_FILTER_ALBUMS,
+  PHOTOS_SELECTED_CAPABILITY,
   PHOTOS_SHARE_MAX,
   PHOTOS_VIEW_TYPES,
   validatePhotosViewResult,
@@ -392,6 +402,12 @@ const photosIdsSchema = (max: number) => ({
   items: { type: "string" },
   description: `1 to ${max} distinct library ids the phone returned; never guessed`,
 });
+/** In place of ids: the one item the owner has open in the Photos viewer. */
+const photosSelectedSchema = {
+  type: "boolean",
+  enum: [true],
+  description: "true: the item the owner has open in the Photos viewer",
+};
 const photosViewSchemas: ActionParameterSchema[] = [
   {
     type: "object",
@@ -435,10 +451,88 @@ const photosViewSchemas: ActionParameterSchema[] = [
   {
     type: "object",
     additionalProperties: false,
+    required: ["type", "name", "selected"],
+    properties: {
+      type: { type: "string", enum: ["photos_album_create"] },
+      name: { type: "string", description: "Album name, 1 to 80 characters" },
+      selected: photosSelectedSchema,
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
     required: ["type", "ids"],
     properties: {
       type: { type: "string", enum: ["photos_share"] },
       ids: photosIdsSchema(PHOTOS_SHARE_MAX),
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "selected"],
+    properties: {
+      type: { type: "string", enum: ["photos_share"] },
+      selected: photosSelectedSchema,
+    },
+  },
+];
+const libraryIdsSchema = {
+  ...photosIdsSchema(LIBRARY_LIMITS.action),
+  description: `1 to ${LIBRARY_LIMITS.action} distinct library ids the phone returned; never guessed`,
+};
+const photoLibrarySchemas: ActionParameterSchema[] = [
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type"],
+    properties: {
+      type: { type: "string", enum: ["photo_library_search"] },
+      kind: { type: "string", enum: ["image", "video", "all"] },
+      from: { type: "integer", description: "Taken from, epoch milliseconds" },
+      to: { type: "integer", description: "Taken until, epoch milliseconds" },
+      favorites: { type: "boolean" },
+      limit: { type: "integer", minimum: 1, maximum: 50 },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "id"],
+    properties: {
+      type: { type: "string", enum: ["photo_library_inspect"] },
+      id: { type: "string", description: "One library id" },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "ids"],
+    properties: {
+      type: { type: "string", enum: ["photo_library_select"] },
+      ids: libraryIdsSchema,
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "action", "items"],
+    properties: {
+      type: { type: "string", enum: ["photo_library_review"] },
+      action: { type: "string", enum: [...REVIEWED_LIBRARY_ACTIONS] },
+      items: {
+        type: "array",
+        description: `1 to ${LIBRARY_LIMITS.action} items, each with the id and revision a search or inspect returned`,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["id", "revision"],
+          properties: {
+            id: { type: "string" },
+            revision: { type: "string" },
+          },
+        },
+      },
     },
   },
 ];
@@ -1139,6 +1233,11 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
     text: "camera_capture_photo takes one still image and saves it in Photos; it is how a request to take a picture, photo or selfie is done. Opening the Camera view with VIEWS never takes a photo, and the owner is never asked to press the shutter instead. The photo is taken on the visible Camera viewfinder: when another view is showing, the requesting phone opens Camera itself before it takes a photo the owner asked for, so no VIEWS step is needed; if you do show Camera with VIEWS in the same turn, propose camera_capture_photo as the last step. It sends no pixels to the model. A saved-photo receipt proves the capture.",
   },
   {
+    types: ["camera_capture_photo"],
+    capability: CAMERA_LIBRARY_ID_CAPABILITY,
+    text: "The saved-photo receipt also has libraryId, the photo's library id. When Photos operations are offered, use that id with them for the photo just taken.",
+  },
+  {
     types: [
       "create_note",
       "notes_read_selected",
@@ -1332,8 +1431,23 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
     text: "With photos.library.v1 and photos.view.v1: photos_filter {from, to: epoch ms; kind image|video; favorite; album favorites|videos|camera|screenshots|custom:<id>; text} narrows the phone Photos grid behind a clearable chip and returns only how many items it shows; photos_open {id} opens one item in the Photos viewer; both run directly only when the owner's current message asked for them. photos_album_create {name, ids} and photos_share {ids} are reviewed by the owner in Photos; a share then opens Android's share sheet, and review_opened proves neither a created album nor a share. Use only library ids the phone returned; never guess them.",
   },
   {
-    types: NOTES_ORGANIZE_TYPES.filter((type) => type !== "notes_list_filter"),
-    text: "With notes.organize.v1: notes_filter {text, folder name and/or kind text|list|voice|link} filters the phone Notes list and returns no note content; notes_record {action: start|stop} starts or stops a voice note in the open Notes view; both run directly only when the owner's current message asked for them. notes_move {target: exact selected note identity/revision, folder: folder name or null for no folder}, notes_folder_create {name} and notes_restore {noteId of a note in Recently deleted} are reviewed by the owner. Folder names are at most 40 characters. Never guess note IDs, revisions or folder names.",
+    types: ["photos_album_create", "photos_share"],
+    capability: PHOTOS_SELECTED_CAPABILITY,
+    text: "With photos.view-selected.v1, photos_album_create {name, selected: true} and photos_share {selected: true} use the one item the owner has open in the Photos viewer instead of ids. Use it when the owner says this photo, this video or the open one; the phone shows that item in the review.",
+  },
+  {
+    types: LIBRARY_OPERATION_TYPES,
+    text: "photo_library_search {kind image|video|all, from, to: epoch ms taken, favorites, limit 1-50} lists items Android lets the phone read and returns their id, revision, kind, dates, size in pixels and video length only: no file or album names, no place, no pixels. photo_library_inspect {id} returns the same details for one item. photo_library_select {ids} selects items in Photos and runs directly only when the owner's current message asked for it. photo_library_review {action trash|share|favorite|unfavorite, items: [{id, revision}]} opens a review the owner confirms in the phone and then in Android; review_opened proves no change and no share. Search takes no words: find items by date, kind or favorite. Use only ids and revisions the phone returned; never guess them.",
+  },
+  {
+    types: NOTES_ORGANIZE_TYPES.filter(
+      (type) => type !== "notes_list_filter" && type !== "notes_record",
+    ),
+    text: "With notes.organize.v1: notes_filter {text, folder name and/or kind text|list|voice|link} filters the phone Notes list and returns no note content; it runs directly only when the owner's current message asked for it. notes_move {target: exact selected note identity/revision, folder: folder name or null for no folder}, notes_folder_create {name} and notes_restore {noteId of a note in Recently deleted} are reviewed by the owner. Folder names are at most 40 characters. Never guess note IDs, revisions or folder names.",
+  },
+  {
+    types: ["notes_record"],
+    text: "notes_record {action: start|stop} starts or stops a voice note in the open Notes view. It runs directly only when the owner's current message asked for it.",
   },
   {
     types: ["notes_list_filter"],
@@ -1368,6 +1482,11 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   {
     types: ["clock_alarm", "clock_handoff"],
     text: "A request to be woken at a time is an alarm set, not a reminder.",
+  },
+  {
+    types: ["files_share", "files_move", "files_trash"],
+    capability: FILES_SHOWN_TARGET_CAPABILITY,
+    text: FILES_SHOWN_TARGET_GUIDANCE,
   },
   { types: ["clock_alarm"], text: CLOCK_ALARM_GUIDANCE },
   {
@@ -1556,6 +1675,7 @@ export const proposeDeviceAction: Action = {
           ...notesSchemas,
           ...notesOrganizeSchemas,
           ...photosViewSchemas,
+          ...photoLibrarySchemas,
           ...browserControlSchemas,
           notesQuerySchema,
           notesSearchSchema,
@@ -2009,6 +2129,7 @@ export const proposeDeviceAction: Action = {
         isNotesOperation(payload.operation) ||
         isNativeNotesQuery(payload.operation) ||
         isPhotosViewOperation(payload.operation) ||
+        isLibraryOperation(payload.operation) ||
         isForegroundReviewOperation(payload.operation)) &&
       receipt &&
       typeof receipt === "object" &&
@@ -2045,10 +2166,15 @@ export const proposeDeviceAction: Action = {
                           payload.operation,
                           receipt.result,
                         )
-                      : validateCalendarResult(
-                          payload.operation,
-                          receipt.result,
-                        );
+                      : isLibraryOperation(payload.operation)
+                        ? validateLibraryResult(
+                            payload.operation,
+                            receipt.result,
+                          )
+                        : validateCalendarResult(
+                            payload.operation,
+                            receipt.result,
+                          );
       return {
         success: true,
         transcriptVisibility: "internal",
@@ -2235,6 +2361,30 @@ function usesCompletedActionNavigation(
   );
 }
 
+/** The single-operation Photos album and share tools offer the open-item form (`selected`) only
+ * to a phone that negotiated photos.view-selected.v1, as PROPOSE_DEVICE_ACTION does. */
+const PHOTOS_SELECTED_TOOLS = new Set([
+  "DEVICE_PHOTOS_ALBUM_CREATE",
+  "DEVICE_PHOTOS_SHARE",
+]);
+function photosSelectedToolForCapabilities(
+  action: Action,
+  capabilities?: readonly string[],
+): Action {
+  if (capabilities?.includes(PHOTOS_SELECTED_CAPABILITY)) return action;
+  return {
+    ...action,
+    parameters: action.parameters?.map((parameter) => {
+      if (parameter.name !== "operation") return parameter;
+      const schema = structuredClone(parameter.schema);
+      schema.anyOf = schema.anyOf?.filter(
+        (branch) => !branch.properties?.selected,
+      );
+      return { ...parameter, schema };
+    }),
+  };
+}
+
 /** The camera tool offers a phone exactly one capture form, as PROPOSE_DEVICE_ACTION does. */
 function cameraCaptureToolForCapabilities(
   action: Action,
@@ -2291,6 +2441,8 @@ export function offeredDeviceOperations(
     ).flatMap(byOperationType);
   if (action.name === DEVICE_CAMERA_CAPTURE_ACTION)
     return declared(cameraCaptureToolForCapabilities(action, capabilities));
+  if (PHOTOS_SELECTED_TOOLS.has(action.name))
+    return declared(photosSelectedToolForCapabilities(action, capabilities));
   if (action.name !== "PROPOSE_DEVICE_ACTION") return declared(action);
   const navigation = usesCompletedActionNavigation(messageMetadata);
   const current = getDeviceActionTurn();
@@ -2334,7 +2486,22 @@ export function offeredDeviceOperations(
             capabilities.includes(CONTACT_UPDATE_VALUES_CAPABILITY)))
     )
       return false;
+    // The open-item Photos form needs its own capability; the ids form stays.
+    if (
+      branch.properties?.selected &&
+      types?.some(isPhotosViewType) &&
+      !capabilities?.includes(PHOTOS_SELECTED_CAPABILITY)
+    )
+      return false;
     if (!files && types?.some((type) => isFilesOperation({ type })))
+      return false;
+    // Shown positions on a share, move or trash only for a phone that resolves them.
+    if (
+      branch.properties?.shown &&
+      !types?.includes("files_open") &&
+      capabilities !== undefined &&
+      !capabilities.includes(FILES_SHOWN_TARGET_CAPABILITY)
+    )
       return false;
     const runtime = binding?.runtime ?? current?.runtime;
     if (
@@ -2393,6 +2560,7 @@ export function offeredDeviceOperations(
               type !== "notes_query" &&
               !isNotesOrganizeType(type) &&
               !isPhotosViewType(type) &&
+              !isLibraryOperation({ type }) &&
               !isBrowserControlType(type) &&
               !isForegroundReviewType(type)
             : deviceOperationSupportedByCapabilities(
@@ -2434,6 +2602,8 @@ export function deviceActionForCapabilities(
 ): Action {
   if (action.name === DEVICE_CAMERA_CAPTURE_ACTION)
     return cameraCaptureToolForCapabilities(action, capabilities);
+  if (PHOTOS_SELECTED_TOOLS.has(action.name))
+    return photosSelectedToolForCapabilities(action, capabilities);
   if (action.name !== "PROPOSE_DEVICE_ACTION") return action;
   const offered = offeredDeviceOperations(
     action,
