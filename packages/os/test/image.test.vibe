@@ -881,4 +881,3 @@ it.live('Run a scenario in a fresh Android user and keep the user when the scena
     })
   }
 })
-

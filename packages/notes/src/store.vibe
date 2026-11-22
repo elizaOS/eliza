@@ -160,4 +160,3 @@ export function cacheStorage(cache: { getCache<T>(key: string): Promise<T | unde
     set: (document) => cache.setCache(key, document),
   }
 }
-

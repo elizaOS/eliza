@@ -385,6 +385,7 @@
       "inputs": [
         "**/*.css",
         "!.claude/**",
+        "!packages/os/android/**/build/**",
         "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static}/**",
         "!**/.DS_Store",
         "!{apps,packages,vibestack/studio}/**/gen/**",

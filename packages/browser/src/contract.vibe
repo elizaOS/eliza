@@ -211,4 +211,3 @@ export function describeBrowserControl(operation: BrowserControlOperation): { re
       return { title: HISTORY_TITLES[operation.action], description: "Acts on the tab that is showing in Browser." }
   }
 }
-

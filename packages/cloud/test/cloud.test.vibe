@@ -760,7 +760,7 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
     ))
 
     const connect = (serverAuthCode: string) => cloud.call("/api/v1/eliza/google/connect/native", {
-      json: { serverAuthCode }, headers: bearer(body.secret)
+      json: { serverAuthCode }, headers: { authorization: `Bearer ${body.secret}` }
     })
     const otherPerson = { ...person, subject: "another-google-subject" }
     const wrongSubject = try connect(try sync(() => google.serverAuthCode(otherPerson, scopes)))
