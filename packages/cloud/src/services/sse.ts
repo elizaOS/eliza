@@ -77,9 +77,9 @@ export function fed(s: Segmenter, bytes: number[]): Fed {
 }
 
 //@ pure
-export function lawEventsDoNotDependOnChunking(s: Segmenter, a: number[], b: number[]): boolean {
-  //@ ensures fed(s, a.concat(b)).segmenter === fed(fed(s, a).segmenter, b).segmenter
-  //@ ensures fed(s, a.concat(b)).events === fed(s, a).events.concat(fed(fed(s, a).segmenter, b).events)
+export function lawEventsDoNotDependOnChunking(_s: Segmenter, _a: number[], _b: number[]): boolean {
+  //@ ensures fed(_s, _a.concat(_b)).segmenter === fed(fed(_s, _a).segmenter, _b).segmenter
+  //@ ensures fed(_s, _a.concat(_b)).events === fed(_s, _a).events.concat(fed(fed(_s, _a).segmenter, _b).events)
   return true
 }
 
@@ -230,9 +230,9 @@ export function decoded(d: Utf8, bytes: number[]): Decoded {
 }
 
 //@ pure
-export function lawDecodingDoesNotDependOnChunking(d: Utf8, a: number[], b: number[]): boolean {
-  //@ ensures decoded(d, a.concat(b)).decoder === decoded(decoded(d, a).decoder, b).decoder
-  //@ ensures decoded(d, a.concat(b)).codePoints === decoded(d, a).codePoints.concat(decoded(decoded(d, a).decoder, b).codePoints)
+export function lawDecodingDoesNotDependOnChunking(_d: Utf8, _a: number[], _b: number[]): boolean {
+  //@ ensures decoded(_d, _a.concat(_b)).decoder === decoded(decoded(_d, _a).decoder, _b).decoder
+  //@ ensures decoded(_d, _a.concat(_b)).codePoints === decoded(_d, _a).codePoints.concat(decoded(decoded(_d, _a).decoder, _b).codePoints)
   return true
 }
 
@@ -241,7 +241,7 @@ export function decode(d: Utf8, chunk: number[]): Decoded {
   //@ ensures utf8Ok(d) ==> utf8Ok(\result.decoder)
   //@ ensures utf8Ok(d) ==> forall(k, 0 <= k && k < \result.codePoints.length ==> isScalar(\result.codePoints[k]))
   let current = d
-  let out: number[] = []
+  const out: number[] = []
   let i = 0
   while (i < chunk.length) {
     //@ invariant 0 <= i && i <= chunk.length

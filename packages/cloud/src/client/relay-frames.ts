@@ -74,8 +74,8 @@ export function audioFrameFits(frame: number[]): boolean {
 }
 
 //@ pure
-export function lawEncodedAudioFits(id: number[], pcm: number[]): boolean {
-  //@ ensures audioFrameFits(encodeAudio(id, pcm)) === validDownlinkAudio(id.length, pcm.length)
+export function lawEncodedAudioFits(_id: number[], _pcm: number[]): boolean {
+  //@ ensures audioFrameFits(encodeAudio(_id, _pcm)) === validDownlinkAudio(_id.length, _pcm.length)
   return true
 }
 
@@ -153,7 +153,7 @@ export function utf8Valid(b: number[]): boolean {
 }
 
 function ascii(s: string): number[] {
-  let out: number[] = []
+  const out: number[] = []
   let i = 0
   while (i < s.length) {
     //@ invariant 0 <= i && i <= s.length
@@ -329,7 +329,7 @@ function readObject(b: number[], start: number, depth: number): ReadFields {
   //@ ensures \result.ok ==> start < \result.at && \result.at <= b.length
   //@ decreases 2 * depth + 1
   if (start >= b.length || b[start] !== 123) return { ok: false, at: start, fields: [] }
-  let fields: JsonField[] = []
+  const fields: JsonField[] = []
   let i = skipSpace(b, start + 1)
   if (i < b.length && b[i] === 125) return { ok: true, at: i + 1, fields: fields }
   while (i < b.length) {
@@ -465,14 +465,14 @@ export function readAudio(frame: number[]): RelayWire {
 }
 
 //@ pure
-export function lawAudioRoundTrips(id: number[], pcm: number[]): boolean {
-  //@ ensures (idBytesValid(id) && validPcm(pcm.length, maxDownlinkPcmBytes)) ==> (readAudio(encodeAudio(id, pcm)).kind === "Audio" && readAudio(encodeAudio(id, pcm)).id === id && readAudio(encodeAudio(id, pcm)).pcm === pcm)
+export function lawAudioRoundTrips(_id: number[], _pcm: number[]): boolean {
+  //@ ensures (idBytesValid(_id) && validPcm(_pcm.length, maxDownlinkPcmBytes)) ==> (readAudio(encodeAudio(_id, _pcm)).kind === "Audio" && readAudio(encodeAudio(_id, _pcm)).id === _id && readAudio(encodeAudio(_id, _pcm)).pcm === _pcm)
   return true
 }
 
 //@ pure
-export function lawReadAudioIsCanonical(frame: number[]): boolean {
-  //@ ensures readAudio(frame).kind === "Audio" ==> encodeAudio(readAudio(frame).id, readAudio(frame).pcm) === frame
+export function lawReadAudioIsCanonical(_frame: number[]): boolean {
+  //@ ensures readAudio(_frame).kind === "Audio" ==> encodeAudio(readAudio(_frame).id, readAudio(_frame).pcm) === _frame
   return true
 }
 
