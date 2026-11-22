@@ -23,7 +23,13 @@ const COURTESY = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:
 const END = String.raw`(?:,?\s+(?:please|for\s+me))?[.!?]*$`;
 // A short name, optionally quoted. Clauses after it ("that runs every
 // morning", "and turn it on") are more than a name and keep the planner path.
-const NAME = String.raw`["“'‘]?([\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?)["”'’]?`;
+const NAME = String.raw`(["“'‘]?[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?)["”'’]?`;
+const CLOSING_QUOTE: Readonly<Record<string, RegExp>> = {
+  '"': /["”]$/u,
+  '“': /["”]$/u,
+  "'": /['’]$/u,
+  '‘': /['’]$/u,
+};
 // "delete the new workflow", "remove this workflow" and "the workflow I just
 // created" describe a workflow instead of naming it. Read as a name, "new"
 // matched "Morning news" and "this" matched nothing, and the owner's request
@@ -61,7 +67,9 @@ const WHAT_DO_I_HAVE = new RegExp(`${COURTESY}what\\s+workflows\\s+do\\s+i\\s+ha
 
 function name(value: string | undefined): string | undefined {
   // The sentence's own full stop is not part of the name ("v1.2" keeps its dot).
-  const trimmed = value?.trim().replace(/[.]+$/u, '');
+  const written = value?.trim().replace(/[.]+$/u, '');
+  const closing = written ? CLOSING_QUOTE[written.charAt(0)] : undefined;
+  const trimmed = closing && written ? written.slice(1).replace(closing, '') : written;
   if (!trimmed || trimmed.length > 80 || NOT_A_NAME.test(trimmed)) return undefined;
   // "the Alpha check workflow" and "workflow Alpha check" name the same one.
   if (/^(?:the|my|a|an)$/iu.test(trimmed) || /^workflows?$/iu.test(trimmed)) return undefined;

@@ -16,6 +16,17 @@ test.each([
   ['create a workflow called Alpha device test', { op: 'create', name: 'Alpha device test' }],
   ['Create a workflow called Alpha device test.', { op: 'create', name: 'Alpha device test' }],
   ['please make a new workflow named “Morning brief”', { op: 'create', name: 'Morning brief' }],
+  ["create a workflow called 'Morning brief'", { op: 'create', name: 'Morning brief' }],
+  ['Create a workflow called ‘Morning brief’.', { op: 'create', name: 'Morning brief' }],
+  ['create a workflow called Mom’s birthday', { op: 'create', name: 'Mom’s birthday' }],
+  ["create a workflow called Parents' Day", { op: 'create', name: "Parents' Day" }],
+  ["create a workflow called Parents'", { op: 'create', name: "Parents'" }],
+  ["delete the workflow 'Parents' Day'", { op: 'remove', workflowName: "Parents' Day" }],
+  [
+    "rename the workflow 'Morning brief' to 'Evening brief'",
+    { op: 'rename', workflowName: 'Morning brief', name: 'Evening brief' },
+  ],
+  ["delete the workflow 'Alpha check'", { op: 'remove', workflowName: 'Alpha check' }],
   ['can you create a workflow titled Q3 review?', { op: 'create', name: 'Q3 review' }],
   [
     'rename the workflow Alpha device test to Alpha check',
