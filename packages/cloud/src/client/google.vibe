@@ -4,15 +4,15 @@ import { answerOf, queryOf, type CallOptions } from "./answer.vibe"
 import type { CloudTransport } from "./client.vibe"
 import { idempotencyKey, ifMatch, routesByName } from "./routes.vibe"
 
-const GoogleCapability = Schema.Literals([
+const googleCapabilitySchema = Schema.Literals([
   "google.basic_identity", "google.gmail.triage", "google.gmail.send", "google.gmail.manage", "google.gmail.drafts",
   "google.gmail.mailbox", "google.calendar.read", "google.calendar.write"
 ])
-export type GoogleCapability = typeof GoogleCapability.Type
+export type GoogleCapability = typeof googleCapabilitySchema.Type
 
 const optionalText = Schema.NullOr(Schema.String)
 
-const GoogleStatus = Schema.Struct({
+const googleStatusSchema = Schema.Struct({
   provider: Schema.Literal("google"),
   side: Schema.Literal("owner"),
   mode: Schema.String,
@@ -20,7 +20,7 @@ const GoogleStatus = Schema.Struct({
   connected: Schema.Boolean,
   reason: Schema.Literals(["connected", "disconnected", "config_missing", "token_missing", "needs_reauth"]),
   identity: Schema.NullOr(Schema.Struct({ email: Schema.String })),
-  grantedCapabilities: Schema.Array(GoogleCapability),
+  grantedCapabilities: Schema.Array(googleCapabilitySchema),
   grantedScopes: Schema.Array(Schema.String),
   expiresAt: optionalText,
   hasRefreshToken: Schema.Boolean,
@@ -28,10 +28,10 @@ const GoogleStatus = Schema.Struct({
   linkedAt: optionalText,
   lastUsedAt: optionalText
 })
-export type GoogleStatus = typeof GoogleStatus.Type
+export type GoogleStatus = typeof googleStatusSchema.Type
 
-const ConnectStart = Schema.Struct({ authUrl: Schema.String, appReturn: Schema.optionalKey(Schema.Literal(2)) })
-export type ConnectStart = typeof ConnectStart.Type
+const connectStartSchema = Schema.Struct({ authUrl: Schema.String, appReturn: Schema.optionalKey(Schema.Literal(2)) })
+export type ConnectStart = typeof connectStartSchema.Type
 
 export type ConnectState = string & { readonly __brand: "ConnectState" }
 
@@ -44,7 +44,7 @@ export interface ConnectRequest {
   readonly redirect?: { readonly connectReturn: string; readonly state: ConnectState }
 }
 
-const MailCard = Schema.Struct({
+const mailCardSchema = Schema.Struct({
   id: Schema.String,
   threadId: Schema.String,
   subject: Schema.String,
@@ -61,22 +61,22 @@ const MailCard = Schema.Struct({
   triageReason: Schema.String,
   metadata: Schema.Struct({ historyId: optionalText })
 })
-export type MailCard = typeof MailCard.Type
+export type MailCard = typeof mailCardSchema.Type
 
-const MailTriage = Schema.Struct({ messages: Schema.Array(MailCard), syncedAt: Schema.String, mailboxHistoryId: Schema.String })
-export type MailTriage = typeof MailTriage.Type
+const mailTriageSchema = Schema.Struct({ messages: Schema.Array(mailCardSchema), syncedAt: Schema.String, mailboxHistoryId: Schema.String })
+export type MailTriage = typeof mailTriageSchema.Type
 
-const MailSearch = Schema.Struct({
-  messages: Schema.Array(MailCard),
+const mailSearchSchema = Schema.Struct({
+  messages: Schema.Array(mailCardSchema),
   nextPageToken: optionalText,
   syncedAt: Schema.String,
   mailboxHistoryId: Schema.String,
   supportsSpamTrash: Schema.Boolean
 })
-export type MailSearch = typeof MailSearch.Type
+export type MailSearch = typeof mailSearchSchema.Type
 
-const MailMessage = Schema.Struct({
-  message: MailCard,
+const mailMessageSchema = Schema.Struct({
+  message: mailCardSchema,
   bodyText: Schema.String,
   bodyHtml: optionalText,
   bodyHtmlStatus: Schema.Literals(["available", "none"]),
@@ -85,20 +85,20 @@ const MailMessage = Schema.Struct({
   })),
   authenticationResults: Schema.optionalKey(optionalText)
 })
-export type MailMessage = typeof MailMessage.Type
+export type MailMessage = typeof mailMessageSchema.Type
 
-const MailKind = Schema.Literals([
+const mailKindSchema = Schema.Literals([
   "send", "draft-create", "draft-replace", "draft-delete", "archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"
 ])
-export type MailKind = typeof MailKind.Type
+export type MailKind = typeof mailKindSchema.Type
 
-const MailCapabilities = Schema.Struct({
+const mailCapabilitiesSchema = Schema.Struct({
   version: Schema.Literal(1),
   from: Schema.String,
-  kinds: Schema.Array(MailKind),
+  kinds: Schema.Array(mailKindSchema),
   attachmentPolicy: Schema.Struct({ mimeTypes: Schema.Array(Schema.String), maxBytes: Schema.Number })
 })
-export type MailCapabilities = typeof MailCapabilities.Type
+export type MailCapabilities = typeof mailCapabilitiesSchema.Type
 
 export type LabelKind = Exclude<MailKind, "send" | "draft-create" | "draft-replace" | "draft-delete">
 
@@ -122,7 +122,7 @@ export type MailProposal =
 
 const AttachmentReview = Schema.Struct({ name: Schema.String, mimeType: Schema.String, size: Schema.Number, sha256: Schema.String })
 
-const MailReview = Schema.Union([
+const mailReviewSchema = Schema.Union([
   Schema.Struct({
     from: Schema.String,
     to: Schema.Array(Schema.String),
@@ -133,14 +133,14 @@ const MailReview = Schema.Union([
     attachments: Schema.Array(AttachmentReview),
     forwardedAttachments: Schema.Array(Schema.Struct({ ...AttachmentReview.fields, partId: Schema.String }))
   }),
-  Schema.Struct({ kind: MailKind, messageId: Schema.String, expectedHistoryId: Schema.String, from: Schema.String }),
+  Schema.Struct({ kind: mailKindSchema, messageId: Schema.String, expectedHistoryId: Schema.String, from: Schema.String }),
   Schema.Struct({ kind: Schema.Literal("draft-delete"), draftId: Schema.String, expectedDigest: Schema.String, from: Schema.String, permanent: Schema.Literal(true) })
 ])
-export type MailReview = typeof MailReview.Type
+export type MailReview = typeof mailReviewSchema.Type
 
-const MailReceipt = Schema.Struct({
+const mailReceiptSchema = Schema.Struct({
   requestId: Schema.String,
-  kind: MailKind,
+  kind: mailKindSchema,
   reviewDigest: Schema.String,
   state: Schema.Literals(["prepared", "dispatched", "outcome-unknown", "succeeded", "rejected"]),
   providerResult: Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown)),
@@ -149,17 +149,17 @@ const MailReceipt = Schema.Struct({
   dispatchedAt: optionalText,
   finishedAt: optionalText
 })
-export type MailReceipt = typeof MailReceipt.Type
+export type MailReceipt = typeof mailReceiptSchema.Type
 
-const MailOperation = Schema.Struct({
+const mailOperationSchema = Schema.Struct({
   version: Schema.Literal(1),
-  receipt: MailReceipt,
-  review: Schema.optionalKey(MailReview),
+  receipt: mailReceiptSchema,
+  review: Schema.optionalKey(mailReviewSchema),
   providerExactlyOnce: Schema.Literal(false)
 })
-export type MailOperation = typeof MailOperation.Type
+export type MailOperation = typeof mailOperationSchema.Type
 
-const CalendarRow = Schema.Struct({
+const calendarRowSchema = Schema.Struct({
   calendarId: Schema.String,
   accountId: Schema.String,
   accountEmail: Schema.String,
@@ -168,9 +168,9 @@ const CalendarRow = Schema.Struct({
   read: Schema.Boolean,
   write: Schema.Boolean
 })
-export type CalendarRow = typeof CalendarRow.Type
+export type CalendarRow = typeof calendarRowSchema.Type
 
-const CalendarEvent = Schema.Struct({
+const calendarEventSchema = Schema.Struct({
   externalId: Schema.String,
   calendarId: Schema.String,
   title: Schema.String,
@@ -192,12 +192,12 @@ const CalendarEvent = Schema.Struct({
   })),
   metadata: Schema.Struct({ iCalUID: optionalText, createdAt: optionalText, updatedAt: optionalText })
 })
-export type CalendarEvent = typeof CalendarEvent.Type
+export type CalendarEvent = typeof calendarEventSchema.Type
 
-const CalendarFeed = Schema.Struct({ calendarId: Schema.String, events: Schema.Array(CalendarEvent), syncedAt: Schema.String })
-export type CalendarFeed = typeof CalendarFeed.Type
+const calendarFeedSchema = Schema.Struct({ calendarId: Schema.String, events: Schema.Array(calendarEventSchema), syncedAt: Schema.String })
+export type CalendarFeed = typeof calendarFeedSchema.Type
 
-const EventAnswer = Schema.Struct({ event: CalendarEvent })
+const EventAnswer = Schema.Struct({ event: calendarEventSchema })
 
 export interface EventFields {
   readonly title: string
@@ -218,7 +218,7 @@ type EventRevision = CalendarWrite & { readonly eventId: string; readonly ifMatc
 export function googleCalls(transport: CloudTransport) {
   return {
     async googleStatus(choice: GrantChoice = {}, options: CallOptions = {}): Promise<GoogleStatus> {
-      return answerOf(await transport.call(routesByName.googleStatus, { query: queryOf({ grantId: choice.grantId }), signal: options.signal }), GoogleStatus)
+      return answerOf(await transport.call(routesByName.googleStatus, { query: queryOf({ grantId: choice.grantId }), signal: options.signal }), googleStatusSchema)
     },
     async googleConnect(request: ConnectRequest, options: CallOptions = {}): Promise<ConnectStart> {
       const redirect = request.redirect
@@ -226,40 +226,40 @@ export function googleCalls(transport: CloudTransport) {
         capabilities: request.capabilities,
         ...(redirect === undefined ? {} : { redirectUrl: `${redirect.connectReturn}?${new URLSearchParams({ state: redirect.state })}` })
       }
-      return answerOf(await transport.call(routesByName.googleConnect, { json, signal: options.signal }), ConnectStart)
+      return answerOf(await transport.call(routesByName.googleConnect, { json, signal: options.signal }), connectStartSchema)
     },
     async googleDisconnect(choice: GrantChoice = {}, options: CallOptions = {}): Promise<void> {
       await transport.call(routesByName.googleDisconnect, { json: choice, signal: options.signal })
     },
     async gmailTriage(request: GrantChoice & { readonly maxResults?: number } = {}, options: CallOptions = {}): Promise<MailTriage> {
-      return answerOf(await transport.call(routesByName.gmailTriage, { query: queryOf(request), signal: options.signal }), MailTriage)
+      return answerOf(await transport.call(routesByName.gmailTriage, { query: queryOf(request), signal: options.signal }), mailTriageSchema)
     },
     async gmailSearch(request: GrantChoice & { readonly query: string; readonly maxResults?: number; readonly pageToken?: string }, options: CallOptions = {}): Promise<MailSearch> {
-      return answerOf(await transport.call(routesByName.gmailSearch, { query: queryOf(request), signal: options.signal }), MailSearch)
+      return answerOf(await transport.call(routesByName.gmailSearch, { query: queryOf(request), signal: options.signal }), mailSearchSchema)
     },
     async gmailRead(request: GrantChoice & { readonly messageId: string }, options: CallOptions = {}): Promise<MailMessage> {
-      return answerOf(await transport.call(routesByName.gmailRead, { query: queryOf(request), signal: options.signal }), MailMessage)
+      return answerOf(await transport.call(routesByName.gmailRead, { query: queryOf(request), signal: options.signal }), mailMessageSchema)
     },
     async gmailCapabilities(choice: GrantChoice = {}, options: CallOptions = {}): Promise<MailCapabilities> {
-      return answerOf(await transport.call(routesByName.inboxCapabilities, { query: queryOf({ grantId: choice.grantId }), signal: options.signal }), MailCapabilities)
+      return answerOf(await transport.call(routesByName.inboxCapabilities, { query: queryOf({ grantId: choice.grantId }), signal: options.signal }), mailCapabilitiesSchema)
     },
     async gmailPrepare(request: { readonly grantId: string; readonly requestId: string; readonly proposal: MailProposal }, options: CallOptions = {}): Promise<MailOperation> {
-      return answerOf(await transport.call(routesByName.inboxOperationPrepare, { json: request, signal: options.signal }), MailOperation)
+      return answerOf(await transport.call(routesByName.inboxOperationPrepare, { json: request, signal: options.signal }), mailOperationSchema)
     },
     async gmailDispatch(request: { readonly grantId: string; readonly requestId: string; readonly reviewDigest: string; readonly proposal: MailProposal }, options: CallOptions = {}): Promise<MailOperation> {
       const { requestId, ...json } = request
-      return answerOf(await transport.call(routesByName.inboxOperationDispatch, { params: { requestId }, json, signal: options.signal }), MailOperation)
+      return answerOf(await transport.call(routesByName.inboxOperationDispatch, { params: { requestId }, json, signal: options.signal }), mailOperationSchema)
     },
     async gmailReceipt(request: { readonly grantId: string; readonly requestId: string }, options: CallOptions = {}): Promise<MailOperation> {
       return answerOf(await transport.call(routesByName.inboxOperation, {
         params: { requestId: request.requestId }, query: queryOf({ grantId: request.grantId }), signal: options.signal
-      }), MailOperation)
+      }), mailOperationSchema)
     },
     async calendarCalendars(choice: GrantChoice = {}, options: CallOptions = {}): Promise<ReadonlyArray<CalendarRow>> {
-      return answerOf(await transport.call(routesByName.calendars, { query: queryOf({ grantId: choice.grantId }), signal: options.signal }), Schema.Array(CalendarRow))
+      return answerOf(await transport.call(routesByName.calendars, { query: queryOf({ grantId: choice.grantId }), signal: options.signal }), Schema.Array(calendarRowSchema))
     },
     async calendarFeed(request: CalendarTarget & { readonly timeMin: string; readonly timeMax: string; readonly timeZone?: string }, options: CallOptions = {}): Promise<CalendarFeed> {
-      return answerOf(await transport.call(routesByName.calendarFeed, { query: queryOf(request), signal: options.signal }), CalendarFeed)
+      return answerOf(await transport.call(routesByName.calendarFeed, { query: queryOf(request), signal: options.signal }), calendarFeedSchema)
     },
     async calendarEvent(request: CalendarTarget & { readonly eventId: string }, options: CallOptions = {}): Promise<CalendarEvent> {
       const { eventId, ...target } = request

@@ -45,7 +45,8 @@ type ReturnTarget = AppReturnUrl | CloudPage
 type AppReturn = NotReturned | ReturnsCode | ReturnsError({ error: ReturnError })
 type SignInYield = SessionYield | SecondFactorYield | DeviceKeyYield | GoogleProofYield
 type CodePhase = NoCode | CodeIssued({ redeemBy: Millis }) | CodeRedeemed({ redeemedAs: SignInYield }) | CodeExpired
-type NativePurpose = NativeSignIn | NativeLink({ userId: str })
+type NativeBackupBinding = { requestDigest: str, subject: str }
+type NativePurpose = NativeSignIn | NativeLink({ userId: str }) | NativeBackup({ binding: NativeBackupBinding })
 type NativePhase = NoChallenge | ChallengeOpen({ purpose: NativePurpose, openUntil: Millis }) | ChallengeUsed({ purpose: NativePurpose, usedAs: SignInYield }) | ChallengeExpired
 type GoogleAttempt = { flow: O::OAuthFlow, stateExpiresAt: Millis, failure: Failure, target: ReturnTarget, returned: AppReturn, code: CodePhase, native: NativePhase, now: Millis }
 type SignInEffect = FirstSightOfGoogle | BeginSession | BeginSecondFactor | MintDeviceKey
@@ -217,15 +218,23 @@ pure def sometimesBrowserSecondFactor(a: GoogleAttempt): bool = a.code == CodeRe
 
 The client is first admitted with its sign-in return and native Google
 (`nativeClients/registry`); the row keeps the nonce, client and verifier
-digest, and a link challenge names the signed-in user who opened it.
+digest, and a link challenge names the signed-in user who opened it. A
+backup challenge additionally names its device-bound recovery request and
+the current account’s Google subject.
 
 ```quint
 pure val nativeLifetime: Millis = 5 * millisPerMinute
-pure def purposeFits(purpose: NativePurpose): bool = match purpose { | NativeLink(l) => l.userId != "" | NativeSignIn => true }
+pure def validNativeBackupBinding(binding: NativeBackupBinding): bool = binding.requestDigest != "" and binding.subject != ""
+pure def purposeFits(purpose: NativePurpose): bool = match purpose {
+  | NativeLink(l) => l.userId != ""
+  | NativeBackup(b) => validNativeBackupBinding(b.binding)
+  | NativeSignIn => true
+}
 pure def canIssueNative(a: GoogleAttempt, purpose: NativePurpose, method: PkceMethod): bool =
   a.flow.phase == O::FlowIdle and a.native == NoChallenge and method == S256 and purposeFits(purpose)
 pure def issueNative(a: GoogleAttempt, purpose: NativePurpose, method: PkceMethod): GoogleAttempt = { ...a, native: ChallengeOpen({ purpose: purpose, openUntil: a.now + nativeLifetime }) }
-pure val purposeValues = Set(NativeSignIn, NativeLink({ userId: "user1" }))
+pure val backupBinding: NativeBackupBinding = { requestDigest: "registered-backup-request", subject: "google-owner" }
+pure val purposeValues = Set(NativeSignIn, NativeLink({ userId: "user1" }), NativeBackup({ binding: backupBinding }))
 pure val methodValues = Set(S256, PlainMethod)
 pure def alwaysOneRoute(a: GoogleAttempt): bool = a.native != NoChallenge implies (a.flow.phase == O::FlowIdle and a.code == NoCode)
 ```
@@ -244,16 +253,21 @@ or used challenge answers `401 authentication_required` reason
 type NativeProof = { clientMatches: bool, verifierMatches: bool, signatureOk: bool, issuerOk: bool, audienceOk: bool, nonceMatches: bool }
 type NativeVerdict = NativeAccepted | NativeUnknown | NativeExpired | NativeProofWrong
 pure def tokenValid(p: NativeProof): bool = p.signatureOk and p.issuerOk and p.audienceOk and p.nonceMatches
-pure def nativeVerdict(n: NativePhase, now: Millis, p: NativeProof): NativeVerdict = match n {
+pure def nativeProofVerdict(n: NativePhase, now: Millis, p: NativeProof): NativeVerdict = match n {
   | ChallengeOpen(c) => if (now >= c.openUntil) NativeExpired else if (p.clientMatches and p.verifierMatches and tokenValid(p)) NativeAccepted else NativeProofWrong
   | ChallengeExpired => NativeExpired
   | _ => NativeUnknown
+}
+pure def isNativeBackup(purpose: NativePurpose): bool = match purpose { | NativeBackup(_) => true | _ => false }
+pure def nativeVerdict(n: NativePhase, now: Millis, p: NativeProof): NativeVerdict = match n {
+  | ChallengeOpen(c) => if (isNativeBackup(c.purpose)) NativeProofWrong else nativeProofVerdict(n, now, p)
+  | _ => nativeProofVerdict(n, now, p)
 }
 pure def nativeRefusal(v: NativeVerdict): Refusal =
   if (v == NativeExpired) refuseFor(AuthenticationRequired, CredentialExpired)
   else if (v == NativeProofWrong) refuse(CredentialProofInvalid) else refuseFor(AuthenticationRequired, CredentialUnknown)
 pure def nativeYield(purpose: NativePurpose, factorOutcome: F::FirstFactorOutcome): SignInYield =
-  match purpose { | NativeLink(l) => GoogleProofYield | NativeSignIn => if (factorOutcome == F::SecondFactorRequired) SecondFactorYield else DeviceKeyYield }
+  match purpose { | NativeLink(l) => GoogleProofYield | NativeBackup(_) => GoogleProofYield | NativeSignIn => if (factorOutcome == F::SecondFactorRequired) SecondFactorYield else DeviceKeyYield }
 pure def isOpen(n: NativePhase): bool = match n { | ChallengeOpen(c) => true | _ => false }
 pure def nativeLive(n: NativePhase, now: Millis): bool = match n { | ChallengeOpen(c) => now < c.openUntil | _ => false }
 pure def isUsed(n: NativePhase): bool = match n { | ChallengeUsed(c) => true | _ => false }
@@ -275,9 +289,9 @@ pure val weight_presentIdToken = 3
 pure def lawANativeRefusalIsFinal(v: NativeVerdict): bool = v != NativeAccepted implies (wellFormed(nativeRefusal(v)) and not(retryableOf(nativeRefusal(v))))
 pure def stepAChallengeIsSpentOnceWhileLive(before: GoogleAttempt, via: str, after: GoogleAttempt, out: List[SignInEffect]): bool = {
   val spends = isOpen(before.native) and isUsed(after.native)
-  (spends implies (via == "presentIdToken" and nativeLive(before.native, before.now)))
+  (spends implies ((via == "presentIdToken" or via == "presentNativeBackup") and nativeLive(before.native, before.now)))
   and (isUsed(before.native) implies after.native == before.native)
-  and ((via == "presentIdToken" and not(spends)) implies (after == before and out == List()))
+  and (((via == "presentIdToken" or via == "presentNativeBackup") and not(spends)) implies (after == before and out == List()))
 }
 pure def sometimesDeviceKeyMinted(a: GoogleAttempt): bool = a.native == ChallengeUsed({ purpose: NativeSignIn, usedAs: DeviceKeyYield })
 pure def sometimesNativeSecondFactor(a: GoogleAttempt): bool = a.native == ChallengeUsed({ purpose: NativeSignIn, usedAs: SecondFactorYield })
@@ -301,6 +315,76 @@ pure def sometimesCodeExpired(a: GoogleAttempt): bool = a.code == CodeExpired
 pure def canExpireNative(a: GoogleAttempt): bool = isOpen(a.native) and not(nativeLive(a.native, a.now))
 pure def expireNative(a: GoogleAttempt): GoogleAttempt = { ...a, native: ChallengeExpired }
 pure def sometimesNativeExpired(a: GoogleAttempt): bool = a.native == ChallengeExpired
+```
+
+## Story: Confirm a shared password backup with the device’s Google account
+
+> As the owner of a signed-in device, I want to confirm the specific backup
+> action in native UI and prove that I still control the same Google account.
+
+### A backup challenge yields only a proof for its current device and confirmed recovery action
+
+The challenge belongs to the registered client, environment and return, the
+current acknowledged device grant, its account and organization, and one
+recovery purpose, state and backup PKCE challenge. The shell admits that
+device and registration before opening the challenge, binds these facts in
+one canonical request digest, and checks them again using the current device
+credential when the proof is presented. The verified Google subject must
+equal the subject recorded for that same account. Native confirmation is
+for the bound recovery action. The usual Google PKCE, issuer, audience,
+signature, nonce and expiration checks also apply. For this purpose, the
+client match also checks the signed Google authorized presenter against
+the Android OAuth clients registered for the app. The audience remains
+the Cloud server client. Existing sign-in and link proofs keep their
+own checks.
+
+Only the backup presenter can spend a backup challenge. The successful
+outcome is a Google proof for the bound request. It has no sign-in, linking,
+device enrollment, second factor or provider authorization effects.
+
+```quint
+type NativeBackupPresenter = { binding: NativeBackupBinding, deviceCurrent: bool, confirmed: bool }
+pure def nativeBackupVerdict(n: NativePhase, now: Millis, p: NativeProof, presenter: NativeBackupPresenter): NativeVerdict = {
+  val proof = nativeProofVerdict(n, now, p)
+  if (proof != NativeAccepted) proof
+  else match n {
+    | ChallengeOpen(c) =>
+      if (c.purpose == NativeBackup({ binding: presenter.binding }) and validNativeBackupBinding(presenter.binding)
+        and presenter.deviceCurrent and presenter.confirmed) NativeAccepted else NativeProofWrong
+    | _ => NativeUnknown
+  }
+}
+pure def canPresentNativeBackup(a: GoogleAttempt): bool = {
+  val phase = a.native
+  match phase {
+    | ChallengeOpen(c) => isNativeBackup(c.purpose)
+    | _ => false
+  }
+}
+pure def presentNativeBackup(a: GoogleAttempt, proof: NativeProof, presenter: NativeBackupPresenter): AttemptStep =
+  if (nativeBackupVerdict(a.native, a.now, proof, presenter) != NativeAccepted) { state: a, out: List() }
+  else { state: { ...a, native: ChallengeUsed({ purpose: NativeBackup({ binding: presenter.binding }), usedAs: GoogleProofYield }) }, out: List() }
+pure val presenterValues: Set[NativeBackupPresenter] = {
+  val right: NativeBackupPresenter = { binding: backupBinding, deviceCurrent: true, confirmed: true }
+  Set(right, { ...right, binding: { ...backupBinding, requestDigest: "other-request" } },
+    { ...right, binding: { ...backupBinding, subject: "other-google-owner" } },
+    { ...right, deviceCurrent: false }, { ...right, confirmed: false })
+}
+pure def lawBackupProofRequiresItsCurrentConfirmedBinding(proof: NativeProof, presenter: NativeBackupPresenter): bool = {
+  val challenge = ChallengeOpen({ purpose: NativeBackup({ binding: backupBinding }), openUntil: nativeLifetime })
+  nativeVerdict(challenge, 0, proof) == NativeProofWrong
+  and ((nativeBackupVerdict(challenge, 0, proof, presenter) == NativeAccepted) iff
+    (nativeProofVerdict(challenge, 0, proof) == NativeAccepted and presenter.binding == backupBinding and presenter.deviceCurrent and presenter.confirmed))
+}
+pure def alwaysBackupHasNoSignInYield(a: GoogleAttempt): bool = {
+  val phase = a.native
+  match phase {
+    | ChallengeUsed(c) => isNativeBackup(c.purpose) implies c.usedAs == GoogleProofYield
+    | _ => true
+  }
+}
+pure def sometimesNativeBackupProven(a: GoogleAttempt): bool =
+  a.native == ChallengeUsed({ purpose: NativeBackup({ binding: backupBinding }), usedAs: GoogleProofYield })
 ```
 
 ## Story: Connect mail and calendar from the same Google sheet
