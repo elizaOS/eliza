@@ -38,7 +38,7 @@ describe("Sign out or reset cleanly", () => {
   it("stores the revoke duty with the sign-out, asks three times offline and once more at the next start", () => {
     const seen = journey();
     expect([seen.dutyStoredWithSignOut, seen.offlineRevokeAsks, seen.dutiesKeptOffline]).toEqual([true, 3, 1]);
-    expect([seen.triesAtStart, seen.revokedAfterStart, seen.dutiesAfterStart]).toEqual([1, "cred-2,cred-4", 0]);
+    expect([seen.triesAtStart, seen.onlineRevokeAsks, seen.revokedAfterStart, seen.dutiesAfterStart, seen.alreadyRevoked]).toEqual([1, 1, "cred-2,cred-4", 0, true]);
   });
 });
 
