@@ -196,8 +196,11 @@ the method and whether it opens another window, the page's base target
 included), and a form's field says where Enter would send it, or nothing
 when Enter would not submit it. The hint describes only the browser's own
 form submission, never a request a page script sends; it names no path or
-query, and it is never authority to act. Dispatching an input consumes the
-observation, so the next input needs a new read.
+query, and it is never authority to act. Each blocker the read reports says
+whether it is a layer over the page (a modal dialog, or it or a box it sits
+in is positioned fixed, absolute or sticky, other than the site's own
+full-page frame) or part of the page itself (`overlay`). Dispatching an input
+consumes the observation, so the next input needs a new read.
 
 ```quint
 pure def canSettleRead(s: SurfaceReceiver): bool = s.phase == ReceiverReading

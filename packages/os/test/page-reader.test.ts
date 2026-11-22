@@ -66,6 +66,12 @@ const pages: Record<string, string> = {
   [`${shop}/modal-frame`]: page(`<form><label>Email <input id="email" type="email"></label><button type="button" id="details">Show details</button></form><div role="dialog" aria-modal="true" aria-label="Session" style="position:fixed;left:0;top:0;right:0;bottom:0;background:#fff">Your session is about to end.<button type="button" id="stay">Close</button></div>`),
   [`${shop}/shadow-consent`]: page(`<h1>Opening hours</h1><p>Our branches open at nine.</p><consent-layer></consent-layer><script>customElements.define("consent-layer", class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = '<div id="cookie-banner" style="position:fixed;left:0;right:0;bottom:0;height:140px;background:#eee">We use cookies.<button type="button" id="reject">Reject all</button><button type="button" id="accept">Accept all</button></div>'; } });</script>`),
   [`${shop}/sign-on`]: page(`<h1>Online banking</h1><button type="button" id="sign-on">Sign On</button><button type="button" id="log-on">Log on</button><button type="button" id="hours">Branch hours</button>`),
+  [`${shop}/wall`]: page(`<h1>Your statements</h1><p>Statements for the last seven years are kept here, with the notices we sent about each account and the letters about changes to its terms.</p><section><p>Please sign in to continue.</p><a href="/signin">Sign in</a></section>`),
+  [`${shop}/static-dialog`]: page(`<h1>Opening hours</h1><div role="dialog" aria-label="Notice">We changed our opening hours for the holidays.<button type="button" id="close-notice">Close</button></div><p>Our branches open at nine.</p>`),
+  [`${shop}/absolute-wall`]: page(`<h1>Your statements</h1><p>Statements for the last seven years are kept here, with the notices we sent about each account and the letters about changes to its terms.</p><div style="position:absolute;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,.6)"><section><p>Please sign in to continue.</p><a href="/signin">Sign in</a></section></div>`),
+  [`${shop}/fixed-banner`]: page(`<h1>Opening hours</h1><p>Our branches open at nine.</p><div style="position:fixed;left:0;right:0;bottom:0;height:140px;background:#eee">We use cookies to improve your visit.<button type="button" id="cookies-ok">Accept</button></div>`),
+  [`${shop}/fixed-shell`]: page(`<div id="app" style="position:fixed;left:0;top:0;right:0;bottom:0;overflow:auto"><h1>Your statements</h1><p>Statements for the last seven years are kept here, with the notices we sent about each account and the letters about changes to its terms.</p><section><p>Please sign in to continue.</p><a href="/signin">Sign in</a></section></div>`),
+  [`${shop}/absolute-shell`]: page(`<div id="app" style="position:absolute;left:0;top:0;width:100%;min-height:100%"><h1>Your statements</h1><p>Statements for the last seven years are kept here, with the notices we sent about each account and the letters about changes to its terms.</p><section><p>Please sign in to continue.</p><a href="/signin">Sign in</a></section></div>`),
   [`${shop}/covered`]: page(`<iframe id="plain-frame" src="/plain-frame" title="Sign up form" style="width:400px;height:200px"></iframe><p>Below the frame are our opening hours, our address and a map of the branch offices.</p><div role="dialog" aria-label="Notice" style="position:fixed;left:0;top:0;width:440px;height:240px;background:#fff">Please read this notice<button type="button" id="close-notice">Close</button></div>`),
   [`${secure}/dashboard`]: logon("/auth/"),
   [`${secure}/auth/`]: `<form id="logon" action="/auth/logon" method="post"><bank-field id="userId" label="Username"></bank-field><bank-field id="password" label="Password" type="password"></bank-field><label>Sign in with <select id="token"><option>Password</option><option>Token</option></select></label><a id="forgot" href="/auth/forgot">Forgot username or password?</a><button type="button" id="signin">Sign in</button></form>${field}`,
@@ -344,16 +350,30 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
   it("reports a page layer over a frame's control as covering the target", async () => {
     await open(`${shop}/covered`);
     const state = await snapshot();
-    expect(state.value.blockers).toEqual([expect.objectContaining({ kind: "modal", covers: "target", ref: find(state, "Close").id })]);
+    expect(state.value.blockers).toEqual([expect.objectContaining({ kind: "modal", covers: "target", overlay: true, ref: find(state, "Close").id })]);
+  });
+
+  it("says a sign-in wall or a dialog written into the page, or into the site's full-page app frame, is not a layer over it, and a positioned one is", async () => {
+    for (const [path, blocker] of [
+      ["/wall", { kind: "login-wall", overlay: false }],
+      ["/fixed-shell", { kind: "login-wall", overlay: false }],
+      ["/absolute-shell", { kind: "login-wall", overlay: false }],
+      ["/static-dialog", { kind: "modal", overlay: false }],
+      ["/absolute-wall", { kind: "login-wall", overlay: true }],
+      ["/fixed-banner", { kind: "cookie-consent", overlay: true }],
+    ] as const) {
+      await open(`${shop}${path}`);
+      expect((await snapshot()).value.blockers, path).toEqual([expect.objectContaining(blocker)]);
+    }
   });
 
   it("finds a dialog in a frame and a consent layer in an open root, with the controls that close them", async () => {
     await open(`${shop}/framed-modal`);
     let state = await snapshot();
-    expect(state.value.blockers).toEqual([expect.objectContaining({ kind: "modal", covers: "viewport", ref: find(state, "Close").id })]);
+    expect(state.value.blockers).toEqual([expect.objectContaining({ kind: "modal", covers: "viewport", overlay: true, ref: find(state, "Close").id })]);
     await open(`${shop}/shadow-consent`);
     state = await snapshot();
-    expect(state.value.blockers).toEqual([expect.objectContaining({ kind: "cookie-consent", rejectRef: find(state, "Reject all").id })]);
+    expect(state.value.blockers).toEqual([expect.objectContaining({ kind: "cookie-consent", overlay: true, rejectRef: find(state, "Reject all").id })]);
   });
 
   it("rings a shadow root's box and a bordered frame's box where they are, and scrolls a frame's box into view", async () => {
