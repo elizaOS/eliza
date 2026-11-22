@@ -30,7 +30,7 @@ const Package = /^[A-Za-z][\w]*(?:\.[A-Za-z][\w]*)+$/
 const Permission = Schema.String.check(Schema.makeFilter((name) => Package.test(name)))
 const Sha256 = Schema.String.check(Schema.makeFilter((value) => isDigest(parseDigest(value))))
 const SystemApk = /^\/(?:product|system|system_ext)\/(app|priv-app)\/[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+\.apk$/
-const StagedImage = Schema.Struct({
+const StagedImageSchema = Schema.Struct({
   packageName: Schema.String,
   apkSha256: Sha256,
   certificateSha256: Sha256,
@@ -41,8 +41,8 @@ const StagedImage = Schema.Struct({
   privilegedPermissions: Schema.optionalKey(Schema.Array(Permission)),
   listener: Schema.optionalKey(Schema.Boolean),
 })
-const decodeImage = Schema.decodeUnknownOption(StagedImage)
-type StagedImage = typeof StagedImage.Type
+const decodeImage = Schema.decodeUnknownOption(StagedImageSchema)
+type StagedImage = typeof StagedImageSchema.Type
 
 export type VerifyImageTarget = "cuttlefish" | "pixel10a"
 export interface VerifyImageOptions {

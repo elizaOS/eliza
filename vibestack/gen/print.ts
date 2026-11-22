@@ -36,6 +36,8 @@ export interface Scope {
   types: Types;
   /** The type the checker inferred for an expression or parameter, if it recorded one. */
   inferred: (id: number) => Json | undefined;
+  /** The declaring module's type for an imported constant, as it appears in a proof bundle. */
+  importedConstantType: (name: string) => string | undefined;
   /** A reference to a definition, as TypeScript spells it. */
   ref: (name: string) => string;
   /** The name of a helper function the module carries for itself (HELPERS in typescript.ts). */
@@ -105,7 +107,7 @@ const negative = (e: Json): Json | undefined => (e.kind === "app" && e.opcode ==
 /** Puts a binding back as it was before an inner scope shadowed it. */
 const restore = <V>(m: Map<string, V>, k: string, v: V | undefined) => (v === undefined ? m.delete(k) : m.set(k, v));
 
-export function printer({ types, inferred, ref, helper, bind, variants, definitions, simulatorOnly, proof }: Scope) {
+export function printer({ types, inferred, importedConstantType, ref, helper, bind, variants, definitions, simulatorOnly, proof }: Scope) {
   const { resolve, tagged, isScalar, setElem, keyOf, storedKey, holdsSet, named, ownerOf, typeName, tsType } = types;
   const typeOf = typeOfIn(inferred);
   const forSimulator = (n: string): never => fail(`\`${n}\` is for the simulator only (a sample set or a weight_, fair_ or within_ setting) and cannot be used in a definition`);
@@ -227,7 +229,11 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
         if (!locals.has(e.name) && simulatorOnly.has(e.name)) return forSimulator(e.name);
         if (renamed.has(e.name)) return fail(`\`${e.name}\` is what a match arm carries; use its fields (${e.name}.field), or rebuild the variant, rather than the value as a whole`);
         // Inside a module-level value, the prover knows another one's type only where it is expected (Expected).
-        if (!variants.has(e.name)) return [proof && constant && expected !== "typed" && !locals.has(e.name) ? ascribe(reference(e.name), tsType(typeOf(e.id))) : reference(e.name), ATOM];
+        if (!variants.has(e.name)) {
+          const name = reference(e.name);
+          return [proof && constant && expected !== "typed" && !locals.has(e.name)
+            ? ascribe(name, importedConstantType(e.name) ?? tsType(typeOf(e.id))) : name, ATOM];
+        }
         const owner = ownerOf(e.name);
         return variant(tagged(owner.type) ? `({ tag: ${tag(e.name)} } as ${typeName(owner)})` : tag(e.name), owner);
       }

@@ -45,6 +45,7 @@ type StopFailure = Effect.Error<ReturnType<typeof disposeBatchQueue<PiiScrubQueu
 
 interface Scrub {
   readonly runtime: IAgentRuntime
+  readonly corpusMapWrites: Semaphore.Semaphore
   batchQueue: BatchQueue<PiiScrubQueueItem> | null
   drainStart: Deferred.Deferred<void, DrainStartFailure> | null
   stopping: boolean
@@ -57,6 +58,7 @@ function scrubState(runtime: () => IAgentRuntime): Scrub {
     get runtime() {
       return runtime()
     },
+    corpusMapWrites: Semaphore.makeUnsafe(1),
     batchQueue: null,
     drainStart: null,
     stopping: false,
@@ -81,8 +83,11 @@ function initializeScrub(scrub: Scrub): void {
     getPriority: (item) => item.priority,
     maxParallel: 2,
     maxRetriesAfterFailure: 3,
-    process: (item) =>
-      runDetached(asLegacy(Error, scrubItem(scrub, item), ElizaError, PiiScrubFabricationError, PseudonymMapIntegrityError, PseudonymMapStoreError)),
+    process: (item) => {
+      const attempt = scrubItem(scrub, item)
+      const owned = assemblesCorpusMap(item) ? scrub.corpusMapWrites.withPermit(attempt) : attempt
+      return runDetached(asLegacy(Error, owned, ElizaError, PiiScrubFabricationError, PseudonymMapIntegrityError, PseudonymMapStoreError))
+    },
     onExhausted: (item, error) => runDetached(emitFailure(scrub, item, error)),
   })
   runtime.registerEvent(EventType.PII_SCRUB_REQUESTED, scrub.onScrubRequest)
@@ -202,12 +207,18 @@ effect function scrubItem(scrub: Scrub, item: PiiScrubQueueItem) {
     )
 }
 
+function assemblesCorpusMap(item: PiiScrubQueueItem): boolean {
+  return item.contextPack === undefined
+    && item.pseudonymAssignments === undefined
+    && item.candidateSpans.length > 0
+}
+
 effect function scrubWithContext(runtime: IAgentRuntime, item: PiiScrubQueueItem) {
   let contextPack = item.contextPack
   let pseudonymAssignments = item.pseudonymAssignments
   let candidateSpans = item.candidateSpans
   let stage: { key: Uint8Array; map: CorpusPseudonymMap } | null = null
-  if (contextPack === undefined && pseudonymAssignments === undefined && candidateSpans.length > 0) {
+  if (assemblesCorpusMap(item)) {
     const assembled = try assembleContextStage(runtime, item)
     stage = assembled
     contextPack = assembled.pack.contextPack
