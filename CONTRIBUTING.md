@@ -333,8 +333,7 @@ Studio tests. In CI, the verify job owns those integration tests. Each dedicated
 Release runs the prerequisite tasks once, then uses the same isolated shard keys as CI.
 Pull requests read shared results; only branch pushes receive the publishing
 credential, protected by the `turbo-cache-publish` environment's branch
-policy. The B tool shard runs without a browser, so setup skips its Chromium installation.
-A pull request keeps its own Turborepo results in the GitHub cache
+policy. A pull request keeps its own Turborepo results in the GitHub cache
 instead, which only that pull request reads, so its next push reuses them. Newer commits replace an older run of the same pull request.
 Branch pushes configured with `TURBO_CACHE=local:rw` also restore and save the job's GitHub cache.
 Every pushed commit can finish. Completed tasks are shared through the cache.
