@@ -2269,15 +2269,23 @@ function eachCheck() {
       fs.copyFileSync(path.join(nodeModules, ".bin/quint"), shim);
       const retry = await exec(process.execPath, ["--input-type=module", "--eval", `
         import fs from "node:fs";
+        import path from "node:path";
         import { check } from "./vibestack/formal.ts";
+        let attempts = 0;
+        const copy = fs.copyFileSync;
+        fs.copyFileSync = (from, to, ...args) => {
+          const result = copy(from, to, ...args);
+          if (path.basename(to) === "highest.ts" && path.basename(path.dirname(to)).startsWith("run-") && ++attempts <= 2) fs.linkSync("node_modules/.bin/quint", "concurrent-install-" + attempts);
+          return result;
+        };
         let models = 0;
         const result = await check(".", false, (step) => {
-          if (step.stage === "model" && ++models <= 2) fs.linkSync("node_modules/.bin/quint", "concurrent-install-" + models);
+          if (step.stage === "model") models++;
         });
-        console.log(JSON.stringify([models, result.results.filter(s => s.stage === "model").length, result.results.filter(s => !s.ok).map(s => s.stage)]));
+        console.log(JSON.stringify([attempts, models, result.results.filter(s => s.stage === "model").length, result.results.filter(s => !s.ok).map(s => s.stage)]));
       `], root);
       assert.equal(retry.status, 0, retry.stderr);
-      assert.deepEqual(JSON.parse(retry.stdout), [3, 1, ["review"]]);
+      assert.deepEqual(JSON.parse(retry.stdout), [3, 1, 1, ["review"]]);
     }
     fs.writeFileSync(path.join(root, "tsconfig.json"), '{"compilerOptions":{"noEmit":true},"include":["gen/*.ts"]}');
     if (process.platform !== "win32") {
@@ -3474,6 +3482,51 @@ describe("the documents name what exists", () => {
 });
 
 function theCommandLine() {
+  test("a concurrent verifier install retries once without duplicating the check JSON stream", { skip: process.platform === "win32" }, async () => {
+    for (const changedModel of [false, true]) {
+      const root = toolchain(oneRule("value", "A value", "pure val answer = 42"), "quint", "lsc");
+      const shim = path.join(root, "node_modules/.bin/quint");
+      fs.unlinkSync(shim);
+      fs.copyFileSync(path.join(nodeModules, ".bin/quint"), shim);
+      const retry = await exec(process.execPath, ["--input-type=module", "--eval", `
+        import assert from "node:assert/strict";
+        import fs from "node:fs";
+        import path from "node:path";
+        import { main } from "./vibestack/pipeline.ts";
+        const attempts = new Set();
+        const { mkdirSync } = fs;
+        fs.mkdirSync = (dir, ...args) => {
+          if (typeof dir === "string" && path.basename(dir).startsWith("run-")) attempts.add(dir);
+          return mkdirSync(dir, ...args);
+        };
+        const { log } = console;
+        let linked = false;
+        console.log = (line) => {
+          if (JSON.parse(line).stage === "model" && !linked) {
+            linked = true;
+            fs.linkSync("node_modules/.bin/quint", "second-install-quint");
+            if (${changedModel}) fs.renameSync("spec/value.md", "spec/renamed.md");
+          }
+          log(line);
+        };
+        await main(["check", "--json"]);
+        assert.equal(attempts.size, 2);
+      `], root);
+      assert.equal(retry.status, 1, retry.stdout + retry.stderr);
+      const rows = retry.stdout.trimEnd().split("\n").map((line) => JSON.parse(line));
+      if (changedModel) {
+        assert.match(retry.stderr.trim(), /^a tool installation changed during this check; run the check again$/);
+        assert.ok(rows.every((row) => typeof row.stage === "string"), "a changed prefix never gets a final answer");
+      } else {
+        assert.equal(retry.stderr, "");
+        assert.deepEqual(rows.slice(0, -1), rows.at(-1).results);
+        assert.ok(rows.at(-1).results.some((r: Result) => r.stage === "proof" && r.ok), retry.stdout);
+      }
+      assert.equal(rows.filter((row) => row.stage === "model").length, 1);
+      assert.ok(!fs.existsSync(path.join(root, ".spec-cache/lock")));
+    }
+  });
+
   test("usage lists every command, check --json prints a line for each result and then the whole answer, and gen runs under the project's lock", async () => {
     const script = path.join(project, "vibestack/spec.ts");
     const root = oneRule("value", "A value", "pure val answer = 42");
