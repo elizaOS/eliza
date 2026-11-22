@@ -15,7 +15,7 @@ import { bin, run } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
 import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
-import { generated, mirrorGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
+import { generated, mirrorGen, publishGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
 import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, UNREAD, workspacePackages, type Reported, type SrcFile } from "./util.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
@@ -104,14 +104,14 @@ function lockProject(root: string): () => void {
  * Each spec's module written to gen/: its model as it is generated, or why it has none. The owners' gen/ follows once
  * every module is written (units.ts, `mirrorGen`).
  */
-async function* generating(memory: Memory, specs: Spec[], output = memory.root): AsyncGenerator<{ spec: Spec; model: Model; error?: undefined } | { spec: Spec; model?: undefined; error: Error }> {
+async function* generating(memory: Memory, specs: Spec[], output = memory.root, staged?: Map<string, string>): AsyncGenerator<{ spec: Spec; model: Model; error?: undefined } | { spec: Spec; model?: undefined; error: Error }> {
   const models = new Map<string, Model>();
-  const typed = typecheckAll(memory, specs, output);
+  const typed = typecheckAll(memory, specs, output, staged);
   try {
     for (const spec of specs) {
       const missing = spec.imports.find((i) => !models.has(i));
       yield missing ? { spec, error: new Error(`it imports ${missing}, which is not a valid model`) }
-        : await typed.get(spec.name)!.then((ir) => ({ spec, model: generated(output, spec, ir, models) })).catch((error: Error) => ({ spec, error }));
+        : await typed.get(spec.name)!.then((ir) => ({ spec, model: generated(output, spec, ir, models, staged) })).catch((error: Error) => ({ spec, error }));
     }
   } finally {
     // A caller that stops early must not restore gen/ while a typecheck still writes into it.
@@ -764,20 +764,11 @@ export async function main(argv = process.argv.slice(2)) {
       try {
         release = lockProject(root);
         const specs = readSpecs(root);
-        // gen/ is written as a check writes it, but put back as it was unless every spec is valid.
-        const [gen, before] = [path.join(root, "gen"), path.join(root, ".spec-cache/gen")];
-        fs.rmSync(before, { recursive: true, force: true });
-        if (fs.existsSync(gen)) fs.cpSync(gen, before, { recursive: true, preserveTimestamps: true });
-        try {
-          await steady(async () => {
-            for await (const { error } of generating({ root, fresh: false, used: new Set() }, specs)) if (error) throw error;
-          });
-        } catch (e) {
-          fs.rmSync(gen, { recursive: true, force: true });
-          if (fs.existsSync(before)) fs.renameSync(before, gen);
-          throw e;
-        }
-        fs.rmSync(before, { recursive: true, force: true });
+        const staged = new Map<string, string>();
+        await steady(async () => {
+          for await (const { error } of generating({ root, fresh: false, used: new Set() }, specs, root, staged)) if (error) throw error;
+        });
+        publishGen(root, staged);
         mirrorGen(root, specs);
       } catch (e) {
         if (!args.length) throw e;

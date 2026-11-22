@@ -3344,13 +3344,46 @@ function theCommandLine() {
     assert.match(answer(broken.stdout).results[0].summary, /package\.json: /);
     assert.deepEqual(fs.readdirSync(path.join(root, "gen")).filter((f) => f.startsWith("run-")), []);
     fs.rmSync(path.join(root, "package.json"));
+    const generatedFile = path.join(root, "gen/value.ts");
+    const generatedBefore = () => {
+      const { ino, mtimeNs } = fs.statSync(generatedFile, { bigint: true });
+      return [ino, mtimeNs, fs.readFileSync(generatedFile, "utf8")];
+    };
+    const stable = generatedBefore();
     fs.writeFileSync(path.join(root, "gen/stale.ts"), "");
     assert.equal((await runCli(script, root, "gen")).status, 0);
-    assert.deepEqual([fs.existsSync(path.join(root, "gen/stale.ts")), fs.existsSync(path.join(root, "gen/value.ts"))], [false, true]);
+    assert.equal(fs.existsSync(path.join(root, "gen/stale.ts")), false);
+    assert.deepEqual(generatedBefore(), stable);
+    fs.mkdirSync(path.join(root, "gen/proof"), { recursive: true });
+    fs.writeFileSync(path.join(root, "gen/proof/value.log"), "prior proof");
+    fs.writeFileSync(path.join(root, "spec/value.md"), ruleSpec("pure val answer = 43", "A value"));
+    const invalidLater = path.join(root, "spec/zBroken.md");
+    fs.writeFileSync(invalidLater, ruleSpec("pure val answer = nope", "A value"));
+    const strict = await runCli(script, root, "gen");
+    assert.equal(strict.status, 1, strict.stdout + strict.stderr);
+    assert.deepEqual(generatedBefore(), stable);
+    assert.equal(fs.readFileSync(path.join(root, "gen/proof/value.log"), "utf8"), "prior proof");
+    fs.rmSync(invalidLater);
+    if (process.platform !== "win32" && process.getuid?.() !== 0) {
+      const traces = path.join(root, "gen/traces");
+      const trace = path.join(traces, "previous.itf.json");
+      fs.mkdirSync(traces, { recursive: true });
+      fs.writeFileSync(trace, "{}");
+      fs.chmodSync(traces, 0o500);
+      try {
+        const failed = await runCli(script, root, "gen");
+        assert.equal(failed.status, 1, failed.stdout + failed.stderr);
+        assert.match(failed.stderr, /(?:EACCES|EPERM|ENOTEMPTY).*gen\/traces/);
+        assert.deepEqual(generatedBefore(), stable);
+        assert.equal(fs.readFileSync(trace, "utf8"), "{}");
+      } finally {
+        fs.chmodSync(traces, 0o700);
+      }
+    }
     // A spec invalid in the middle of an edit leaves gen/ as it was.
     fs.writeFileSync(path.join(root, "spec/value.md"), ruleSpec("pure val answer = nope", "A value"));
     assert.match((await runCli(script, root, "gen", "--if-valid")).stdout, /gen\/ was not generated/);
-    assert.ok(fs.existsSync(path.join(root, "gen/value.ts")));
+    assert.deepEqual(generatedBefore(), stable);
     fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "install-gen", packageManager: JSON.parse(read("package.json")).packageManager, scripts: { gen: "node vibestack/spec.ts gen" } }));
     fs.writeFileSync(path.join(root, "turbo.json"), JSON.stringify({ tasks: { "//#gen": { inputs: ["spec/**"], outputs: ["gen/**"] } } }));
     fs.writeFileSync(path.join(root, "pnpm-workspace.yaml"), "packages: [packages/*]\n");
