@@ -33,7 +33,7 @@ import { s256, signedIn } from "./support/identity-fixture.ts"
 import { connectionColumns, connectionRows, scopeFor, storeGrant, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
 import { issueSession } from "../src/identity/sessions.vibe"
 import { sealTokens } from "../src/providers/google.vibe"
-import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
+import { bearerGrant, googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
 import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/google-calendar.ts"
 import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
 import { gmailChanges, gmailChangeSwitches, sentTexts } from "./support/fakes/google-gmail-changes.ts"
@@ -1657,6 +1657,110 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
   }), 60_000)
 })
 describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => {
+  it.live('Notice new inbox mail through the Node service (spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately")', () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    const now = 1_800_000_000_000
+    try sync(() => clock.set(now))
+    provide Clock.Clock = clock.clock {
+      const google = try sync(() => googleFakeState())
+      const started = Promise.withResolvers<void>()
+      const closed = Promise.withResolvers<boolean>()
+      const historyRead = Promise.withResolvers<void>()
+      const releaseHistory = Promise.withResolvers<void>()
+      let provider = "empty"
+      const cloud = try testCloud({ mount: (fakes) => {
+        fakes.mount("/google/", mountGoogleToken(google))
+        fakes.mount("/google/api/", (request) => {
+          if (bearerGrant(google, request) === undefined) return { status: 401 }
+          if (request.path === "/gmail/v1/users/me/profile") return { status: 200, body: { historyId: "1000" } }
+          if (request.path !== "/gmail/v1/users/me/history") return undefined
+          if (provider === "hanging") {
+            started.resolve()
+            return { status: 200, chunks: ["{"], hangAfter: 1, onClose: closed.resolve }
+          }
+          if (provider === "held") {
+            historyRead.resolve()
+            return releaseHistory.promise.then(() => ({ status: 200, body: { historyId: "1001", history: [] } }))
+          }
+          if (provider === "arrived" && !request.query.has("pageToken")) return { status: 200, body: { historyId: "1001", nextPageToken: "more" } }
+          const history = provider === "arrived" ? [{ id: "1001", messagesAdded: [{ message: { id: "new-mail" } }] }] : []
+          return { status: 200, body: { historyId: "1001", history } }
+        })
+      } })
+      const device = try signedCaller(cloud, "mail-arrival")
+      const other = try signedCaller(cloud, "other-mail-arrival")
+      const browser = try cloud.store.transaction((tx) => issueSession(tx, { ...device, assurance: "SingleFactor", accountCreated: false, now }))
+      const freshSession = try cloud.store.transaction((tx) => issueSession(tx, { ...device, assurance: "SingleFactor", accountCreated: false, now }))
+      const web = { authorization: `Bearer ${browser.accessToken}` }
+      const otherSession = { authorization: `Bearer ${freshSession.accessToken}` }
+      const grant = "a82cab0c-2443-4d7d-b7c3-d77142db3478"
+      const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
+      const refresh = try sync(() => seedGrant(google, { subject: `subject-${grant}`, email: `${grant}@example.com`, scopes }))
+      try cloud.inside(linkedGrant(cloud, device, grant, refresh, scopes, now - 1000))
+
+      const path = "/api/v1/eliza/google/gmail/inbox-v1/arrival"
+      const selected = `?grantId=${grant}`
+      const baseline = try cloud.call(path, { headers: device.headers })
+      const browserBaseline = try cloud.call(path + selected, { headers: web })
+      const cursorOf = (answer: { readonly body: unknown }) => (answer.body as { readonly cursor: string }).cursor
+      const cursor = cursorOf(baseline)
+      const webCursor = cursorOf(browserBaseline)
+      try check(() => { assert.match(cursor, /^[a-f0-9]+$/); assert.match(webCursor, /^[a-f0-9]+$/) })
+      const poll = `${path}?cursor=${cursor}`
+      const empty = try cloud.call(poll, { headers: device.headers })
+      provider = "arrived"
+      const arrived = try cloud.call(poll, { headers: device.headers })
+      const history = cloud.fakes.seen.filter((request) => request.path.endsWith("/history"))
+      const beforeRefusals = cloud.fakes.seen.length
+      const anonymous = try cloud.call(path)
+      const unspecified = try cloud.call(path, { headers: web })
+      const foreign = try cloud.call(path + selected, { headers: other.headers })
+      const acrossSessions = try cloud.call(`${path}${selected}&cursor=${webCursor}`, { headers: otherSession })
+      const malformed = try cloud.call(poll + "0", { headers: device.headers })
+      try check(() => assert.equal(cloud.fakes.seen.length, beforeRefusals))
+
+      provider = "hanging"
+      const cancelled = try timeout(promise(async () => {
+        const controller = new AbortController()
+        const pending = openCloud(cloud.url, poll, { headers: device.headers, signal: controller.signal }).then(
+          () => false, (failure: unknown) => failure instanceof Error && failure.name === "AbortError"
+        )
+        await started.promise
+        controller.abort()
+        return [await pending, await closed.promise]
+      }), "5 seconds")
+
+      try sync(() => clock.set(now + 300_000))
+      const beforeExpiry = cloud.fakes.seen.length
+      const expired = try cloud.call(poll, { headers: device.headers })
+      try check(() => assert.equal(cloud.fakes.seen.length, beforeExpiry))
+
+      const fresh = try cloud.call(path, { headers: device.headers })
+      const freshPoll = `${path}?cursor=${cursorOf(fresh)}`
+      provider = "held"
+      const reading = try forkChild(cloud.call(freshPoll, { headers: device.headers }))
+      try timeout(promise(() => historyRead.promise), "5 seconds")
+      const disconnected = try cloud.call("/api/v1/eliza/google/disconnect", { headers: device.headers, json: { grantId: grant } })
+      try sync(() => releaseHistory.resolve())
+      const lostDuringRead = try Fiber.join(reading)
+      const beforeRevoked = cloud.fakes.seen.length
+      const lostBeforeRead = try cloud.call(freshPoll, { headers: device.headers })
+      try check(() => {
+        assert.deepStrictEqual([baseline.body, browserBaseline.body, empty.body, arrived.body], [
+          { cursor, arrived: false }, { cursor: webCursor, arrived: false }, { cursor, arrived: false }, { cursor, arrived: true }
+        ])
+        assert.deepStrictEqual([baseline.status, browserBaseline.status, empty.status, arrived.status, baseline.headers["cache-control"]], [200, 200, 200, 200, "no-store"])
+        assert.deepStrictEqual(history.map(({ query }) => [query.get("startHistoryId"), query.get("labelId"), query.get("historyTypes"), query.get("pageToken")]),
+          [["1000", "INBOX", "messageAdded", null], ["1000", "INBOX", "messageAdded", null], ["1000", "INBOX", "messageAdded", "more"]])
+        assert.deepStrictEqual([anonymous.status, unspecified.status, foreign.status, acrossSessions.status, malformed.status, expired.status], [401, 400, 404, 409, 409, 409])
+        assert.deepStrictEqual(cancelled, [true, false])
+        assert.deepStrictEqual([disconnected.status, errorOf(lostDuringRead), errorOf(lostBeforeRead)],
+          [200, [409, "google_reauth_required"], [409, "google_reauth_required"]])
+        assert.equal(cloud.fakes.seen.length, beforeRevoked)
+      })
+    }
+  }))
+
   it.live("Triage, search and read my mail at the history Google answered, refusing a stale attachment and an oversized body (spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
     const google = try Effect.try(() => googleFakeState())
     const now = try Clock.currentTimeMillis

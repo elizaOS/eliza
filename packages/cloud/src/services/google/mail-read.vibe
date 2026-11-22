@@ -1,9 +1,14 @@
 // spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"
+// spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately"
+import { inboxWatchCanAnswer } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
 import { refused, type Refused } from "../../http/refusal.vibe"
 import { json, owner as ownerOf, type Route, type RouteContext } from "../../http/routes.vibe"
-import { sha256Hex } from "../../shared/sealing.vibe"
+import { bearerToken, recheckServiceAccess, signed } from "../../http/request-auth.vibe"
+import { Deployment } from "../../profile/profile.vibe"
+import { seal, sha256Hex, tokenDigest, unseal } from "../../shared/sealing.vibe"
 import { googleJson, type GoogleFailure } from "../../providers/google.vibe"
-import { holds, useGrant, type GoogleCapability } from "./grant-access.vibe"
+import { holds, readGrantStatus, useGrant, type GoogleCapability } from "./grant-access.vibe"
+import { decodeInboxWatch, inboxArrivalBodyLimit, inboxArrivalPath, inboxWatchBinding, inboxWatchInput, observeInboxWatch } from "./inbox-arrival.vibe"
 import { attachmentDescriptor, attachmentMaxBytes, attachmentMimeTypes, receivedAuthentication } from "../../google-read.vibe"
 import type { OperationKind } from "./mail-operations.vibe"
 
@@ -33,8 +38,20 @@ module node {
   export function utf8Length(text: string): number {
     return Buffer.byteLength(text, "utf8")
   }
+
+  /** @throws {never} */
+  export function encodeCursor(value: string): string {
+    return Buffer.from(value, "utf8").toString("hex")
+  }
+
+  /** @throws {never} */
+  export function cursorEnvelope(cursor: string): string {
+    if (cursor.length % 2 !== 0) return ""
+    const envelope = Buffer.from(cursor, "hex").toString("utf8")
+    return /^v1\.[^.]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(envelope) ? envelope : ""
+  }
 }
-import { decodePart, partBytes, utf8Length } from node
+import { cursorEnvelope, decodePart, encodeCursor, partBytes, utf8Length } from node
 
 schema Header { name: string; value: string }
 schema PartBody { data?: string; attachmentId?: string; size?: number }
@@ -371,6 +388,51 @@ effect function capabilitiesRoute(context: RouteContext) {
   return json({ version: 1, from: grant.email, kinds, attachmentPolicy: { mimeTypes: attachmentMimeTypes, maxBytes: attachmentMaxBytes } })
 }
 
+effect function arrivalRoute(context: RouteContext) {
+  const caller = signed(context.caller)
+  const authorization = context.request.headers.authorization
+  const token = bearerToken(authorization)
+  if (caller === undefined || token === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const mode = caller.kind === "deviceKey" ? "DeviceWatch" : "BrowserWatch"
+  const input = inboxWatchInput(context.query, mode) catch effect () => { throw refused("InvalidRequest") }
+  const now = try Clock.currentTimeMillis
+  const selection = try readGrantStatus(caller, input.grant, context.query.get("side"), now)
+  const grantId = selection.connectionId
+  const subject = selection.identity?.id
+  const capability = "google.gmail.triage"
+  if (!grantId || !subject || !selection.grantedCapabilities.includes(capability)) throw refused("GoogleReauthRequired")
+  const { settings } = try Deployment
+  const identity = JSON.stringify([grantId, subject])
+  const binding = sha256Hex(inboxWatchBinding(settings.api, caller.userId, caller.organizationId, identity, {
+    kind: mode === "DeviceWatch" ? "device" : "browser", hash: tokenDigest(token)
+  })) + ":"
+  const presentedCursor = input.cursor
+  const watch = presentedCursor === undefined ? undefined : try (effect {
+    const claim = unseal("gmail-arrival", cursorEnvelope(presentedCursor)) catch effect () => { throw refused("GoogleReauthRequired") }
+    if (!claim.startsWith(binding)) throw refused("GoogleReauthRequired")
+    return decodeInboxWatch(claim.slice(binding.length), now) catch effect () => { throw refused("GoogleReauthRequired") }
+  })
+  const grant = try useGrant(caller, grantId, capability, subject)
+  // Grant refresh must settle before the HTTP server can interrupt this read.
+  return try Effect.interruptible(effect {
+    const answer = observeInboxWatch(watch, now, effect (path) => {
+      return googleJson(grant.accessToken, "GET", gmail + path, { maxBytes: inboxArrivalBodyLimit }) catch effect (failure) => {
+        if (failure._tag === "Rejected" && failure.status === 403) throw refused("GoogleReauthRequired")
+        throw googleRefused(failure)
+      }
+    }) catch effect (failure) => {
+      if (failure._tag === "InboxHistoryInvalid") throw refused("ProviderInvalidResponse")
+      throw failure
+    }
+    const cursor = presentedCursor ?? encodeCursor(try seal("gmail-arrival", binding + JSON.stringify(answer.watch)))
+    const current = try readGrantStatus(caller, grantId, null, try Clock.currentTimeMillis)
+    try recheckServiceAccess(authorization, caller)
+    const grantCurrent = current.connected && current.connectionId === grantId && current.identity?.id === subject && current.grantedCapabilities.includes(capability)
+    if (!inboxWatchCanAnswer(answer.watch, try Clock.currentTimeMillis, grantCurrent, true, true)) throw refused("GoogleReauthRequired")
+    return json({ cursor, arrived: answer.arrived })
+  })
+}
+
 effect function threadRoute(context: RouteContext) {
   const threadId = try param(context, "threadId", providerId)
   const offset = Number(context.query.get("offset") ?? "0")
@@ -455,6 +517,7 @@ export const mailReadRoutes: ReadonlyArray<Route> = [
   { method: "GET", path: `${gmailPath}/triage`, auth: "ServiceAccess", capability: "managedGoogle", handler: triageRoute },
   { method: "GET", path: `${gmailPath}/search`, auth: "ServiceAccess", capability: "managedGoogle", handler: searchRoute },
   { method: "GET", path: `${gmailPath}/read`, auth: "ServiceAccess", capability: "managedGoogle", handler: readRoute },
+  { method: "GET", path: inboxArrivalPath, auth: "ServiceAccess", capability: "managedGoogle", handler: arrivalRoute },
   { method: "GET", path: `${gmailPath}/inbox-v1/capabilities`, auth: "ServiceAccess", capability: "managedGoogle", handler: capabilitiesRoute },
   { method: "GET", path: `${gmailPath}/inbox-v1/thread`, auth: "ServiceAccess", capability: "managedGoogle", handler: threadRoute },
   { method: "GET", path: `${gmailPath}/inbox-v1/attachment`, auth: "ServiceAccess", capability: "managedGoogle", handler: attachmentRoute },

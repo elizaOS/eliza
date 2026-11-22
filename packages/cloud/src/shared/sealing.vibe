@@ -31,7 +31,7 @@ module node {
 import { hmacHex, sealWith, unsealWith } from node
 export { newId, secretText, tokenDigest, sameText, sha256Hex } from "./credential-crypto.vibe"
 
-export type SealPurpose = "device-key" | "google-tokens" | "totp-secret" | "provider-secret"
+export type SealPurpose = "device-key" | "google-tokens" | "gmail-arrival" | "totp-secret" | "provider-secret"
 
 export error SealingFailed { purpose: SealPurpose; cause: unknown }
 

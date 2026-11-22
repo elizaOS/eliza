@@ -358,7 +358,7 @@ repeated continuation or exhausted page budget refuses instead of reporting
 false. Each provider request and body read has a timeout, so progress does
 not require another client poll or an unlimited provider response.
 
-The Worker rechecks the grant and the caller after the provider returns. It
+The service rechecks the grant and the caller after the provider returns. It
 answers successfully only before the original deadline and while the
 request is live. The shell checks the cryptographic binding, provider
 payload and authorization. The model represents these checks by their

@@ -12,6 +12,7 @@ export interface CallInit {
   readonly headers?: Readonly<Record<string, string>>;
   readonly json?: unknown;
   readonly form?: FormData;
+  readonly signal?: AbortSignal;
 }
 
 export function openCloud(base: string, path: string, init: CallInit = {}): Promise<Response> {
@@ -19,6 +20,7 @@ export function openCloud(base: string, path: string, init: CallInit = {}): Prom
     method: init.method ?? (init.json === undefined && init.form === undefined ? "GET" : "POST"),
     headers: { ...(init.json === undefined ? {} : { "content-type": "application/json" }), ...init.headers },
     body: init.form ?? (init.json === undefined ? undefined : JSON.stringify(init.json)),
+    signal: init.signal,
   });
 }
 
