@@ -717,9 +717,9 @@ ${error.message}`);
 }
 
 /** The `spec` command, on `process.argv`. */
-export async function main() {
+export async function main(argv = process.argv.slice(2)) {
   let root = process.cwd();
-  let [command, ...args] = process.argv.slice(2);
+  let [command, ...args] = argv;
   const installing = command === "gen" && args.length === 1 && args[0] === "--install";
   if (installing) [command, ...args] = process.env.GITHUB_ACTIONS === "true" ? ["tasks", "//#gen"] : ["gen", "--if-valid"];
   const takes = (...allowed: string[][]) => allowed.some((a) => a.length === args.length && a.every((x, i) => x === "*" || x === args[i]));
