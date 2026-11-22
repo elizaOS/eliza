@@ -887,12 +887,28 @@ export class SpeechRelayCoordinator {
               usageLimits: resolveVoiceUsageLimits(this.env),
               expiresAt: ledger.expiresAt,
               maxWindows,
-              onRenewal: ({ phase, result, error }) =>
+              onRenewal: ({ phase, result, error }) => {
+                const code = renewalFailureCode(error);
+                // A credit refusal carries the amounts the gate compared.
+                const refusal =
+                  code === "insufficient_credits"
+                    ? (error as {
+                        required?: number;
+                        available?: number;
+                        reason?: string;
+                      })
+                    : undefined;
                 logger.warn("[SpeechRelay] renewal outcome", {
                   phase,
                   result,
-                  code: renewalFailureCode(error),
-                }),
+                  code,
+                  ...(refusal && {
+                    requiredUsd: refusal.required,
+                    availableUsd: refusal.available,
+                    reason: refusal.reason,
+                  }),
+                });
+              },
               ...(maxWindows > 1
                 ? {
                     extend: (_identity, expiresAt) =>

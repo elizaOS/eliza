@@ -320,7 +320,7 @@ test("unknown-provider submitted TTS counter settles once without becoming actua
   const value = {
     ...details(),
     ttsCharacters: 3,
-    ttsAccountingBasis: "submitted_counter_provider_unconfirmed" as const,
+    accountingBasis: "submitted_counter_provider_unconfirmed" as const,
   };
   const result = await admission.settle(value, ["tts"]);
   expect(result?.tts).toMatchObject({
@@ -333,6 +333,31 @@ test("unknown-provider submitted TTS counter settles once without becoming actua
   expect(state.unknown).toEqual([0, 0]);
   await expect(
     admission.settle({ ...value, ttsCharacters: 4 }, ["tts"]),
+  ).rejects.toThrow("target changed");
+});
+
+test("a superseded window settles both submitted counters once, never the full STT hold", async () => {
+  const admission = await reserve();
+  const value = {
+    ...details(),
+    outcomes: { stt: "unknown", tts: "unknown" } as const,
+    accountingBasis: "submitted_counter_provider_unconfirmed" as const,
+  };
+  const frozen = {
+    state: "conservative",
+    amountUsd: "0.0036",
+    terminal: true,
+    basis: "submitted_counter_provider_unconfirmed",
+  };
+  expect(await admission.settle(value)).toMatchObject({
+    stt: frozen,
+    tts: frozen,
+  });
+  await admission.settle(value);
+  expect(state.effects).toEqual([1, 1]);
+  expect(state.unknown).toEqual([0, 0]);
+  await expect(
+    admission.settle({ ...value, accountingBasis: undefined }, ["stt"]),
   ).rejects.toThrow("target changed");
 });
 
@@ -554,12 +579,12 @@ test("D3 frozen TTS target cannot change count basis or dispatch state after fin
   const frozen = {
     ...details(),
     ttsCharacters: 5,
-    ttsAccountingBasis: "submitted_counter_provider_unconfirmed" as const,
+    accountingBasis: "submitted_counter_provider_unconfirmed" as const,
   };
   await admission.settle(frozen, ["tts"]);
   for (const changed of [
     { ...frozen, ttsCharacters: 6 },
-    { ...frozen, ttsAccountingBasis: undefined },
+    { ...frozen, accountingBasis: undefined },
     { ...frozen, dispatched: { stt: true, tts: false } },
     {
       ...frozen,

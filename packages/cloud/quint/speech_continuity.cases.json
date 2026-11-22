@@ -16,6 +16,7 @@
   "bounds": {
     "assumptions": [
       "Three billing windows, one owner and one transport, with idempotent per-kind settlement. Safety does not assume provider success or eventual settlement. Conditional progress uses the explicit fair-completion assumptions below.",
+      "While open, a renewal settles only windows a later granted window superseded; the live window stays held. A failed superseded settlement retains that window for idempotent retry after Stop.",
       "A stopped renewal returns without granting its window. Failed credit settlement retains that window for idempotent retry. An additive quota refund with unknown acknowledgement is retained without replay; confirmed independent money remains separate.",
       "A settled window abstracts matching terminal receipts; an ungranted window requires actual zero receipts. Missing, nonzero or mismatched receipts are failed settlement and retain ownership."
     ],

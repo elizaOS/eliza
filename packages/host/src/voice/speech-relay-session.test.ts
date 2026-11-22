@@ -1023,14 +1023,23 @@ test("complete STT drain splits a full, partial and unused budget without changi
     f.advance(39_900);
     await vi.advanceTimersByTimeAsync(39_900);
     expect(f.events.filter(isExtended)).toHaveLength(2);
+    // The third window's renewal first settled the superseded first window
+    // at its frozen counter; the drain cannot change that share.
+    expect(f.settled).toEqual([
+      {
+        pcmBytes: windowBytes,
+        ttsCharacters: 0,
+        providerMayHaveStarted: true,
+        dispatched: { stt: true, tts: false },
+        outcome: "unknown",
+        outcomes: { stt: "unknown", tts: "unknown" },
+        accountingBasis: "submitted_counter_provider_unconfirmed",
+      },
+    ]);
     await session.close();
     expect(f.settled).toHaveLength(3);
     expect(f.settled).toMatchObject([
-      {
-        pcmBytes: windowBytes,
-        outcomes: { stt: "complete" },
-        dispatched: { stt: true },
-      },
+      { pcmBytes: windowBytes, dispatched: { stt: true } },
       {
         pcmBytes: SPEECH_RELAY_BUDGET.chunkBytes,
         outcomes: { stt: "complete" },
@@ -1050,7 +1059,7 @@ test("complete STT drain splits a full, partial and unused budget without changi
 });
 
 for (const windows of [3, 10]) {
-  test(`zero PCM with ${windows} granted STT windows retains only the initial unknown risk`, async () => {
+  test(`zero PCM with ${windows} granted STT windows retains one unknown risk on the oldest held window`, async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
     let session:
@@ -1070,19 +1079,27 @@ for (const windows of [3, 10]) {
         await vi.advanceTimersByTimeAsync(50_000);
       }
       expect(f.events.filter(isExtended)).toHaveLength(windows - 1);
+      // Each renewal settled the windows it superseded at zero, before close.
+      expect(f.settled).toHaveLength(windows - 2);
+      for (const receipt of f.settled)
+        expect(receipt).toMatchObject({
+          pcmBytes: 0,
+          dispatched: { stt: false, tts: false },
+          accountingBasis: "submitted_counter_provider_unconfirmed",
+        });
       await session.close();
       expect(f.settled).toHaveLength(windows);
-      expect(f.settled[0]).toMatchObject({
+      // The still-open STT stream's closure risk moved with the oldest held window.
+      expect(f.settled[windows - 2]).toMatchObject({
         pcmBytes: 0,
         dispatched: { stt: true },
         outcomes: { stt: "unknown" },
       });
-      for (const receipt of f.settled.slice(1))
-        expect(receipt).toMatchObject({
-          pcmBytes: 0,
-          dispatched: { stt: false },
-          outcomes: { stt: "unknown" },
-        });
+      expect(f.settled[windows - 1]).toMatchObject({
+        pcmBytes: 0,
+        dispatched: { stt: false },
+        outcomes: { stt: "unknown" },
+      });
       await session.close();
       expect(f.settled).toHaveLength(windows);
     } finally {
