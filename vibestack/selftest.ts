@@ -2370,7 +2370,7 @@ function eachCheck() {
     const checked = await exec(process.execPath, ["--input-type=module", "--eval", [
       'const fs = await import("node:fs");',
       `const { act } = await import(${JSON.stringify(path.join(project, "vibestack/action.ts"))});`,
-      `const { entry, steady } = await import(${JSON.stringify(path.join(project, "vibestack/cache.ts"))});`,
+      `const { entry, steady, solver } = await import(${JSON.stringify(path.join(project, "vibestack/cache.ts"))});`,
       'const memory = { root: ".", fresh: false, used: new Set() };',
       'const proof = async () => (await entry(".", "prove", ["same obligation"])).name;',
       'const kept = async () => { await steady(() => act(memory, "dafny", ["audit", "a.dfy"], "audited", { "a.dfy": { text: "", key: "a" } })); return fs.existsSync(".spec-cache") ? fs.readdirSync(".spec-cache").filter((f) => f.startsWith("action-")).length : 0; };',
@@ -2379,13 +2379,22 @@ function eachCheck() {
       'process.env.REWRITE = "1";',
       'const rewritten = await kept();',
       'delete process.env.REWRITE;',
-      'console.log(JSON.stringify({ within, after, kept: [rewritten, await kept()] }));',
+      'const keptAfter = await kept();',
+      'const choose = () => steady(async () => [(await solver()).version, await proof()]);',
+      'const bundled = "libexec/z3/bin/z3-4.12.1"; fs.mkdirSync("libexec/z3/bin", { recursive: true });',
+      'const install = (v) => fs.writeFileSync(bundled, ["#!/bin/sh", "echo Z3 version " + v, ""].join(String.fromCharCode(10)), { mode: 0o755 });',
+      'const fallback = await choose(); install("4.12.0"); const preferred = await choose(); install("4.12.2"); const replaced = await choose(); fs.unlinkSync(bundled);',
+      'console.log(JSON.stringify({ within, after, kept: [rewritten, keptAfter], selected: [fallback, preferred, replaced, await choose()] }));',
     ].join("\n")], root, { ...process.env, XDG_CACHE_HOME: path.join(root, "cache"), PATH: `${audit}${path.delimiter}${process.env.PATH ?? ""}` });
     assert.equal(checked.status, 0, checked.stderr);
     const steadily = JSON.parse(checked.stdout);
     assert.equal(steadily.within[1], steadily.within[0], "a check reads Dafny's installation once");
     assert.notEqual(steadily.after, steadily.within[0], "and the next reads it again");
     assert.deepEqual(steadily.kept, [0, 1], "a run of Dafny during which it was installed again is not remembered, though its check read the installation before");
+    const selected: [string, string][] = steadily.selected;
+    assert.deepEqual(selected.map(([version]) => version), ["4.12.1", "4.12.0", "4.12.2", "4.12.1"], "a preferred bundled solver is discovered, updated, and removed between checks");
+    assert.equal(new Set(selected.map(([, proof]) => proof)).size, 3, "each installed solver has its own proof identity");
+    assert.deepEqual(selected[0], selected[3], "removing the preferred solver restores the previous proof identity");
   });
 
   test("the shared task cache restores artifacts and metadata and refuses unauthorized or oversized writes", async () => {
