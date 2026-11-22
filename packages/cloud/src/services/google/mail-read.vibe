@@ -1,6 +1,6 @@
 // spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"
 // spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately"
-import { inboxWatchCanAnswer, mailMaxBytes, mebibyte, threadMaxMessages, threadOutcome, threadPageMax, type ThreadAsk } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
+import { htmlMaxBytes, inboxWatchCanAnswer, mailMaxBytes, mebibyte, threadMaxMessages, threadOutcome, threadPageMax, type ThreadAsk } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
 import { refused, Refused } from "../../http/refusal.vibe"
 import { json, owner as ownerOf, type Route, type RouteContext } from "../../http/routes.vibe"
 import { bearerToken, recheckServiceAccess, signed } from "../../http/request-auth.vibe"
@@ -9,7 +9,7 @@ import { seal, sha256Hex, tokenDigest, unseal } from "../../shared/sealing.vibe"
 import { googleJson, type GoogleFailure } from "../../providers/google.vibe"
 import { holds, readGrantStatus, useGrant, type GoogleCapability } from "./grant-access.vibe"
 import { decodeInboxWatch, inboxArrivalBodyLimit, inboxArrivalPath, inboxWatchBinding, inboxWatchInput, observeInboxWatch } from "./inbox-arrival.vibe"
-import { attachmentDescriptor, attachmentMaxBytes, attachmentMimeTypes, decodeMailText, GoogleReadTooLarge, htmlText, receivedAuthentication } from "../../google-read.vibe"
+import { attachmentDescriptor, attachmentMaxBytes, attachmentMimeTypes, decodeMailText, GoogleReadTooLarge, htmlText, mailHtmlView, receivedAuthentication } from "../../google-read.vibe"
 import type { OperationKind } from "./mail-operations.vibe"
 
 module node {
@@ -71,7 +71,6 @@ export interface Attachment {
   readonly sha256: string
 }
 
-type HtmlStatus = "available" | "none"
 type Format = "metadata" | "full"
 
 export { attachmentMaxBytes, attachmentMimeTypes }
@@ -85,7 +84,6 @@ const searchMax = 100
 const threadPageMaxBytes = 1.5 * mebibyte
 const draftPage = 25
 const maxParts = 200
-const bodyHtmlMaxBytes = 512 * 1024
 const messageMaxBytes = Math.ceil(attachmentMaxBytes / 3) * 4 + 65536
 const threadMaxBytes = 12 * 1024 * 1024
 const metadataHeaders = ["From", "To", "Cc", "Subject", "Reply-To", "Message-ID", "Precedence", "List-Id", "Auto-Submitted"]
@@ -258,15 +256,16 @@ effect function messageView(grant: ReadGrant, message: MailMessage, selfEmail: s
   const parts = try partsOf(message.payload)
   const inline = parts.filter((part) => (part.filename ?? "") === "")
   const plain = try bodyPart(grant, message.id, inline.find((part) => part.mimeType?.toLowerCase() === "text/plain"), mailMaxBytes)
-  const html = try bodyPart(grant, message.id, inline.find((part) => part.mimeType?.toLowerCase() === "text/html"), bodyHtmlMaxBytes)
-  const bodyText = plain ?? (html === undefined ? message.snippet ?? "" : htmlText(html))
+  const html = bodyPart(grant, message.id, inline.find((part) => part.mimeType?.toLowerCase() === "text/html"), plain === undefined ? mailMaxBytes : htmlMaxBytes) catch effect (failure) => {
+    if (plain !== undefined && failure.refusal.code === "ContentTooLarge") return null
+    throw failure
+  }
+  const bodyText = plain ?? (typeof html === "string" ? htmlText(html) : message.snippet ?? "")
   if (utf8Length(bodyText) > mailMaxBytes) throw refused("ContentTooLarge")
-  const bodyHtmlStatus: HtmlStatus = html === undefined ? "none" : "available"
   return {
     message: try mailCard(message, selfEmail),
     bodyText,
-    bodyHtml: html ?? null,
-    bodyHtmlStatus,
+    ...mailHtmlView(html),
     attachments: attachmentDescriptors(parts),
     authenticationResults: receivedAuthentication(message.payload?.headers ?? [])
   }

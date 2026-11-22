@@ -1819,6 +1819,20 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const whole = try promise(() => client.gmailRead({ messageId: "msg-digest" }))
     const snippet = try promise(() => client.gmailRead({ messageId: "msg-trashed" }))
     const oversized = try gmail("/read?messageId=msg-oversized")
+    const htmlTextAtLimit = "é".repeat(256 * 1024 - 4) + "x"
+    const htmlAtLimit = `<p>${htmlTextAtLimit}</p>`
+    const htmlOverLimit = `<p>${htmlTextAtLimit}y</p>`
+    try sync(() => {
+      const message = { labelIds: ["TRASH"], historyId: String(mailbox.history), internalDate: now, snippet: "Preview only" }
+      mailbox.messages.set("html-at-limit", { ...message, id: "html-at-limit", threadId: "html-at-limit", bodyHtml: htmlAtLimit })
+      mailbox.messages.set("html-alternative", { ...message, id: "html-alternative", threadId: "html-alternative", bodyText: "Plain alternative", bodyHtml: htmlOverLimit })
+      mailbox.messages.set("html-over-limit", { ...message, id: "html-over-limit", threadId: "html-over-limit", bodyHtml: htmlOverLimit })
+    })
+    const htmlReads = try promise(() => Promise.all(["html-at-limit", "html-alternative", "html-over-limit"].map((messageId) => client.gmailRead({ messageId }))))
+    const html = htmlReads.map((message, index) => [
+      message.bodyHtmlStatus, index === 0 ? message.bodyHtml === htmlAtLimit : message.bodyHtml,
+      message.bodyText === [htmlTextAtLimit, "Plain alternative", htmlTextAtLimit + "y"][index],
+    ])
     const capabilities = try gmail("/inbox-v1/capabilities")
     const attachment = try gmail("/inbox-v1/attachment?messageId=msg-direct&partId=1&historyId=1001")
     const thread = try gmail("/inbox-v1/thread?threadId=thr-direct&historyId=1001")
@@ -1868,6 +1882,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         fetched: [fetched.status, (fetched.body as { readonly authenticationResults: string | null }).authenticationResults],
         client: decoded,
         text: [whole.message.id, whole.bodyText === wholeText, snippet.bodyText],
+        html,
         oversized: errorOf(oversized),
         capabilities: [capabilities.status, capabilities.body],
         attachment: [attachment.status, file.name, file.mimeType, file.size, file.dataBase64, file.sha256, file.supported],
@@ -1891,6 +1906,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         fetched: [200, null],
         client: ["mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org", undefined],
         text: ["msg-digest", true, "plan"],
+        html: [["available", true, true], ["too_large", null, true], ["too_large", null, true]],
         oversized: [413, "content_too_large"],
         capabilities: [200, { version: 1, from: "conn-mail@example.com", kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 } }],
         attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
@@ -3549,6 +3565,9 @@ module node {
         [owner.account.id, grant, subject, "attachment-owner@example.test", encrypted])
       const wholeText = "x".repeat(8 * 1024 * 1024)
       const externalText = "é".repeat(450 * 1024)
+      const htmlTextAtLimit = "é".repeat(256 * 1024 - 4) + "x"
+      const htmlAtLimit = `<p>${htmlTextAtLimit}</p>`
+      const htmlOverLimit = `<p>${htmlTextAtLimit}y</p>`
       const bytes = Buffer.from("%PDF-local-fixture")
       const part = { partId: "1", filename: "fixture.pdf", mimeType: "application/pdf", body: { attachmentId: "fixture-attachment", size: bytes.length } }
       const unsupported = { partId: "2", filename: "fixture.html", mimeType: "text/html", body: { attachmentId: "never-fetch", size: 10 } }
@@ -3626,6 +3645,14 @@ module node {
           const message = { id, threadId: "fixture-thread", internalDate: "1760000000000", snippet: "Preview only" }
           if (id === "mail-envelope") return Response.json({ ...message, extra: "x".repeat(11_250_348) })
           if (id === "mail-snippet") return Response.json(message)
+          if (id?.startsWith("mail-html-")) {
+            const data = (text: string) => ({ data: Buffer.from(text).toString("base64url"), size: Buffer.byteLength(text) })
+            const html = id === "mail-html-at-limit" ? htmlAtLimit : htmlOverLimit
+            return Response.json({ ...message, payload: { parts: [
+              { mimeType: "text/html", body: data(html) },
+              ...(id === "mail-html-alternative" ? [{ mimeType: "text/plain", body: data("Plain alternative") }] : []),
+            ] } })
+          }
           const body = id === "mail-external" ? { attachmentId: "plain", size: Buffer.byteLength(externalText) } : {
             data: id === "mail-malformed" ? "x=" : Buffer.from(wholeText + (id === "mail-oversized" ? "x" : "")).toString("base64url"),
           }
@@ -3771,6 +3798,11 @@ module node {
       const readFailure = (messageId: string) => readMail(messageId).then(() => null, (error: unknown) => error instanceof CloudError ? error.failure : String(error))
       const mailText = [whole.message.id, whole.bodyText === wholeText, external.bodyText === externalText, snippet.bodyText,
         await readFailure("mail-oversized"), await readFailure("mail-envelope"), (await get("read?messageId=mail-malformed&grantId=" + grant, owner.access)).status]
+      const htmlReads = await Promise.all(["mail-html-at-limit", "mail-html-alternative", "mail-html-over-limit"].map(readMail))
+      const html = htmlReads.map((message, index) => [
+        message.bodyHtmlStatus, index === 0 ? message.bodyHtml === htmlAtLimit : message.bodyHtml,
+        message.bodyText === [htmlTextAtLimit, "Plain alternative", htmlTextAtLimit + "y"][index],
+      ])
       const query = "grantId=" + grant + "&messageId=fixture-message"
       const folder = "triage?" + new URLSearchParams({ grantId: grant, folder: "trash", q: "  subject:plan & dates ", counts: "1" })
       const readFolder = async (path: string) => {
@@ -3831,7 +3863,7 @@ module node {
       return {
         arrivalResult, mailboxes, deniedFolders, signedOut: signedOut.status, disconnected: disconnected.status,
         refused, beforeDeviceRead, deviceStatus: onDevice.status, deviceReceipt, changed: changed.status, revoked: revoked.status,
-        organization, grant, manifest, mailText, readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
+        organization, grant, manifest, mailText, html, readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
         cache: downloaded.headers.get("cache-control"), owner: owner.account.id, expectedHash: createHash("sha256").update(bytes).digest("hex"),
         expectedData: bytes.toString("base64"), size: bytes.length, rejectedRedirect: rejectedRedirect.status, providerRequestsValid, attachmentFetches,
       }
@@ -3859,6 +3891,7 @@ it.live('Read complete mail text, open the selected named attachment and watch f
     {
       arrivals: got.arrivalResult,
       text: got.mailText,
+      html: got.html,
       read: [got.readStatus, got.manifest.historyId, got.manifest.bodyText, got.manifest.attachments, got.manifest.authenticationResults],
       refuse: [got.guardStatuses, got.guardedDownloads, got.rejectedRedirect],
       file: [got.fileStatus, got.cache, got.file],
@@ -3889,6 +3922,7 @@ it.live('Read complete mail text, open the selected named attachment and watch f
       },
       text: ["mail-whole", true, true, "Preview only",
         { tag: "CloudRefused", code: "ContentTooLarge", reason: "NoReason" }, { tag: "CloudRefused", code: "ContentTooLarge", reason: "NoReason" }, 502],
+      html: [["available", true, true], ["too_large", null, true], ["too_large", null, true]],
       read: [200, "789", "hello", [
         { partId: "1", name: "fixture.pdf", mimeType: "application/pdf", size: got.size, supported: true },
         { partId: "2", name: "fixture.html", mimeType: "text/html", size: 10, supported: false },
