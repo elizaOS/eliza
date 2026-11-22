@@ -330,7 +330,9 @@ simulation also depends on the bytes of Quint's installed Rust evaluator. A
 run that installs its evaluator can produce a result; the next run records it
 against the installed binary. The task runner supplies the evaluator fingerprint
 to simulation-capable tests and selftests, leaving generation, builds and
-typechecks reusable before and after installation. In CI, a Turborepo cache entry is
+typechecks reusable before and after installation. Turbo passes `QUINT_HOME`
+to tasks so they use the selected evaluator. Its bytes determine the fingerprint.
+In CI, a Turborepo cache entry is
 kept for seven days after its last hit, which the run summary names.
 
 ### Seeds and budgets

@@ -1,5 +1,6 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
+  "globalPassThroughEnv": ["QUINT_HOME"],
   "globalDependencies": [
     ".nvmrc",
     "pnpm-workspace.yaml",

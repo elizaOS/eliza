@@ -3385,7 +3385,7 @@ describe("the documents name what exists", () => {
   });
 
   test("tasks wait for the root's gen where needed; selftest edits keep the CLI build cached, and Studio only reacts to its inputs", async () => {
-    const scripts = Object.fromEntries(["build", "typecheck", "test", "test:browser"].map((task) => [task, "true"]));
+    const scripts = { build: "true", typecheck: "true", test: 'node -p "process.env.QUINT_HOME"', "test:browser": "true" };
     const root = scratch({
       "spec/app/index.md": "# App\n",
       "apps/app/package.json": JSON.stringify({ name: "@repo/app", scripts }),
@@ -3399,6 +3399,11 @@ describe("the documents name what exists", () => {
       fs.cpSync(path.join(project, file), path.join(root, file), { verbatimSymlinks: true });
     }
     await exec("git", ["init", "-q"], root);
+    const evaluatorHome = path.join(root, "custom quint home");
+    const child = await exec(turbo, ["run", "@repo/kit#test", "--only", "--env-mode=strict", "--cache=local:rw", "--output-logs=full"], root,
+      { ...process.env, QUINT_HOME: evaluatorHome, TURBO_TELEMETRY_DISABLED: "1" });
+    assert.equal(child.status, 0, child.stderr);
+    assert.ok(child.stdout.includes(evaluatorHome), child.stdout);
     const plan = async () => {
       const dry = await exec(turbo, ["run", "build", "typecheck", "test", "test:browser", "vibestack-studio#dev", "//#lint:js", "//#lint:css", "//#analyze", "//#selftest:tools:a", "//#selftest:tools:b", "//#selftest:tools:rest", "//#selftest:docs", "//#selftest:examples", "--dry=json"], root, { ...process.env, TURBO_TELEMETRY_DISABLED: "1" });
       assert.equal(dry.status, 0, dry.stderr);
