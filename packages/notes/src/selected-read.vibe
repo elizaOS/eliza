@@ -4,25 +4,25 @@ import { decodeDocument, digest, type Note } from "./document.vibe"
 
 const Id = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/))
 const Revision = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
-const TitleQuery = Schema.Struct({
+const TitleQuerySchema = Schema.Struct({
   kind: Schema.Literal("title"),
   text: Schema.String.check(Schema.isMaxLength(256), Schema.makeFilter((text) => text.trim() !== "" && !text.includes("\0"))),
 })
 schema LatestQuery { kind: "latest"; by: "created" | "updated" }
-const NotesTarget = Schema.Struct({ sourceId: Id, sourceRevision: Revision, noteId: Id, revision: Revision })
+const NotesTargetSchema = Schema.Struct({ sourceId: Id, sourceRevision: Revision, noteId: Id, revision: Revision })
 const ReadOperation = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("notes_query"), query: Schema.Union([TitleQuery, LatestQuery]) }),
-  Schema.Struct({ type: Schema.Literal("notes_read_selected"), target: NotesTarget }),
+  Schema.Struct({ type: Schema.Literal("notes_query"), query: Schema.Union([TitleQuerySchema, LatestQuery]) }),
+  Schema.Struct({ type: Schema.Literal("notes_read_selected"), target: NotesTargetSchema }),
 ])
 const decodeOperation = Schema.decodeUnknownEffect(ReadOperation, { onExcessProperty: "error" })
 const validId = Schema.is(Id)
 
-type TitleQuery = typeof TitleQuery.Type
+type TitleQuery = typeof TitleQuerySchema.Type
 type Query = TitleQuery | LatestQuery
 type SearchHit =
   | { readonly query: TitleQuery; readonly basis: "title-match" }
   | { readonly query: LatestQuery; readonly basis: "latest-created" | "latest-updated" | "only-note" | "owner-choice-uncertain" }
-export type NotesTarget = typeof NotesTarget.Type
+export type NotesTarget = typeof NotesTargetSchema.Type
 export type NotesReadOperation = typeof ReadOperation.Type
 
 type Fields = { readonly title: string; readonly body: string }
