@@ -48,6 +48,7 @@ jobs:
         uses: ./.github/actions/setup
         with:
           job: ${{ matrix.name }}
+          browser: ${{ matrix.name != 'selftest-b' }}
       - run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue --summarize
       - if: always() && steps.setup.outputs.spec-cache-key != ''
         uses: actions/cache/save@v6

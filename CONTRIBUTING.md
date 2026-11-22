@@ -104,7 +104,8 @@ tools owes it, and the sync skill, is in [AGENTS.md, "Definition of done"](AGENT
 ## Releasing
 
 Set `version` in the root `package.json`, merge to `main`, and push the tag `v<version>` from it.
-`.github/workflows/release.yml` builds, packs with `pnpm pack`, materializes the shard prerequisites and runs `pnpm selftest --only --concurrency=1` using the same keys as CI, and attaches the tarball to a GitHub release of that tag.
+`.github/workflows/release.yml` reuses the `build` task when it runs `pnpm pack`. Then it runs the remaining shard prerequisites
+and `pnpm selftest --only --concurrency=1` with the CI cache keys and attaches the tarball to a GitHub release of that tag.
 A project installs it as [README.md, "Using it from another package"](README.md#using-it-from-another-package) says.
 ## Architecture
 
@@ -332,7 +333,8 @@ Studio tests. In CI, the verify job owns those integration tests. Each dedicated
 Release runs the prerequisite tasks once, then uses the same isolated shard keys as CI.
 Pull requests read shared results; only branch pushes receive the publishing
 credential, protected by the `turbo-cache-publish` environment's branch
-policy. A pull request keeps its own Turborepo results in the GitHub cache
+policy. The B tool shard runs without a browser, so setup skips its Chromium installation.
+A pull request keeps its own Turborepo results in the GitHub cache
 instead, which only that pull request reads, so its next push reuses them. Newer commits replace an older run of the same pull request.
 Branch pushes configured with `TURBO_CACHE=local:rw` also restore and save the job's GitHub cache.
 Every pushed commit can finish. Completed tasks are shared through the cache.

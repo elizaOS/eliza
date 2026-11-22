@@ -7,6 +7,9 @@ inputs:
   verification:
     description: Set up the tools pnpm verify needs beyond Node and pnpm.
     default: "true"
+  browser:
+    description: Install Chromium for verification tasks that launch a browser.
+    default: "true"
 outputs:
   spec-cache-path:
     description: What the spec cache holds, for the step that saves it at the end of a job.
@@ -100,7 +103,7 @@ runs:
         "$evaluator_dir/quint_evaluator" --help
       shell: bash
     # Studio's journeys and every test:browser drive a real Chromium.
-    - if: inputs.verification == 'true'
+    - if: inputs.verification == 'true' && inputs.browser == 'true'
       run: |
         pnpm exec playwright install-deps chromium & deps=$!
         pnpm exec playwright install chromium
