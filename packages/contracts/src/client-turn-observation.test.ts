@@ -281,7 +281,14 @@ test("Calendar day parsing rejects invalid civil dates, zones and undeclared dat
 test("optional observation fields require an exact read-only peer schema declaration", () => {
   assert.deepEqual(
     readClientTurnObservationSupport(CLIENT_TURN_OBSERVATION_SUPPORT),
-    { version: 1, optionalFields: ["calendarDay", "location"] },
+    { version: 1, optionalFields: ["calendarDay", "location", "browserPage"] },
+  );
+  assert.deepEqual(
+    readClientTurnObservationSupport({
+      version: 1,
+      optionalFields: ["browserPage", "calendarDay"],
+    }),
+    { version: 1, optionalFields: ["calendarDay", "browserPage"] },
   );
   assert.deepEqual(
     readClientTurnObservationSupport({
@@ -314,6 +321,7 @@ test("optional observation fields require an exact read-only peer schema declara
     { version: 1, optionalFields: "calendarDay" },
     { version: 1, optionalFields: ["calendarDay", "calendarDay"] },
     { version: 1, optionalFields: ["location", "location"] },
+    { version: 1, optionalFields: ["browserPage", "browserPage"] },
     { version: 1, optionalFields: ["unknown"] },
     { version: 1, optionalFields: ["calendarDay"], permission: true },
   ]) {
