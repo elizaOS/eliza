@@ -1794,9 +1794,17 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     ]))
     const draftRaw = btoa("To: ada@example.org\r\nSubject: Re: Quarterly plan\r\n\r\nLooks good.").replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")
     mailbox.drafts.set("draft-1", { id: "draft-1", messageId: "msg-draft-1", raw: draftRaw })
+    const metadataScope = "https://www.googleapis.com/auth/gmail.metadata"
     const cloud = try testCloud({ mount: (fakes) => {
+      const mailProvider = gmailReads(mailbox)
       fakes.mount("/google/", mountGoogleToken(google))
-      fakes.mount("/google/api/", gmailReads(mailbox))
+      fakes.mount("/google/api/", (request) => {
+        const grant = bearerGrant(google, request)
+        if (grant?.scopes.includes(metadataScope) && request.path.endsWith("/messages") && request.query.has("q")) {
+          return { status: 400, body: { error: { status: "INVALID_ARGUMENT" } } }
+        }
+        return mailProvider(request)
+      })
     } })
     const token = try entitledDevice(cloud, "mail", now)
     const owner: Owner = { organizationId: "org-mail", userId: "user-mail" }
@@ -1873,6 +1881,57 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const drafts = try gmail("/inbox-v1/drafts")
     const draft = try gmail("/inbox-v1/draft?draftId=draft-1")
     const anonymous = try cloud.call("/api/v1/eliza/google/gmail/triage")
+    const restricted = [
+      { id: "metadata", scopes: [metadataScope] },
+      { id: "readonly", scopes: scopeFor("google.gmail.triage") },
+      { id: "compose", scopes: scopeFor("google.gmail.drafts") },
+      { id: "send", scopes: scopeFor("google.gmail.send") },
+    ]
+    for (const grant of restricted) {
+      const refresh = try sync(() => seedGrant(google, { subject: "subject-" + grant.id, email: grant.id + "@example.com", scopes: grant.scopes }))
+      try cloud.inside(linkedGrant(cloud, owner, grant.id, refresh, grant.scopes, now - 1000))
+    }
+    const surfaces = ["/triage", "/search?query=plan", "/read?messageId=msg-trashed",
+      "/inbox-v1/thread?threadId=thr-direct", "/inbox-v1/attachment?messageId=mime-over-limit&partId=2&historyId=" + (mailbox.messages.get("mime-over-limit")?.historyId ?? ""),
+      "/inbox-v1/drafts", "/inbox-v1/draft?draftId=draft-1", "/inbox-v1/capabilities"]
+    const atSurface = (path: string, grantId: string, side = "owner") => gmail(path + (path.includes("?") ? "&" : "?") + new URLSearchParams({ grantId, side }))
+    const decisions = try all(restricted.map((grant) => effect {
+      const replies = try all(surfaces.map((path) => atSurface(path, grant.id)))
+      return replies.map((reply) => {
+        const value = reply.body as { readonly reason?: string; readonly kinds?: ReadonlyArray<string> }
+        return reply.status === 200 ? value.kinds ?? 200 : [...errorOf(reply), value.reason]
+      })
+    }))
+    const advertised = try promise(() => Promise.all(restricted.map(async (grant) => {
+      const value = await client.gmailCapabilities({ grantId: grant.id })
+      return ["reads" in value ? value.reads : undefined, "providerExactlyOnce" in value ? value.providerExactlyOnce : undefined]
+    })))
+    const beforeRejected = cloud.fakes.seen.length
+    const wrongSides = try all(surfaces.map((path) => atSurface(path, "metadata", "other")))
+    const foreign = try atSurface("/read?messageId=msg-direct", "no-held-grant")
+    const ambiguous = try gmail("/triage")
+    const afterRejected = cloud.fakes.seen.length
+    const missing = [403, "access_denied", "capability_missing"]
+    try check(() => assert.deepStrictEqual({
+      decisions, advertised, wrongSides: wrongSides.map(errorOf), selection: [errorOf(foreign), errorOf(ambiguous)],
+      providerCallsOnRejectedSelection: afterRejected - beforeRejected,
+    }, {
+      decisions: [
+        [200, missing, missing, missing, missing, missing, missing, []],
+        [200, 200, 200, 200, 200, missing, missing, []],
+        [missing, missing, missing, missing, missing, 200, 200, ["draft-create", "draft-replace", "draft-delete"]],
+        [missing, missing, missing, missing, missing, missing, missing, ["send"]],
+      ],
+      advertised: [
+        [["triage", "capabilities"], false],
+        [["triage", "search", "read", "thread", "attachment", "capabilities"], false],
+        [["drafts", "draft", "capabilities"], false],
+        [["capabilities"], false],
+      ],
+      wrongSides: surfaces.map(() => [400, "invalid_request"]),
+      selection: [[404, "not_found"], [400, "invalid_request"]],
+      providerCallsOnRejectedSelection: 0,
+    }))
     const pdf = new TextEncoder().encode("%PDF-plan")
     type Card = { readonly id: string; readonly triageScore: number; readonly triageReason: string; readonly isImportant: boolean; readonly likelyReplyNeeded: boolean; readonly to: ReadonlyArray<string>; readonly metadata: { readonly historyId: string } }
     const cards = (answer: { readonly body: unknown }) => (answer.body as { readonly messages: ReadonlyArray<Card> }).messages.map((card) => [card.id, card.triageScore, card.triageReason, card.isImportant, card.likelyReplyNeeded, card.metadata.historyId])
@@ -1920,7 +1979,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           ["too_large", null, "Complete plain text", ["first.txt", "last.txt"]],
           ["too_large", null, "HTML after the attachments", ["first.txt", "last.txt"]]], 200, btoa("last.txt"), 502],
         oversized: [413, "content_too_large"],
-        capabilities: [200, { version: 1, from: "conn-mail@example.com", kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 } }],
+        capabilities: [200, { version: 1, from: "conn-mail@example.com", reads: ["triage", "search", "read", "thread", "attachment", "drafts", "draft", "capabilities"],
+          kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 }, providerExactlyOnce: false }],
         attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
         thread: [200, "1001", 1, ["Please review the plan."]],
         pages: [true, [200, true, 2, 0, 1, [["page-earlier", "1006", true]]], [200, true, 2, 1, null, [["page-later", "1005", true]]]],

@@ -128,6 +128,9 @@ async function withStableInstallation<T>(attempt: () => Promise<T>): Promise<T> 
   }
 }
 
+const CHECK_RUN = Symbol.for("vibestack.checkRun");
+const checkRuns = globalThis as typeof globalThis & { [CHECK_RUN]?: number };
+
 /**
  * Run every check, cheapest first, and return what each found and the next
  * thing to do; `log` hears of each result as it arrives. Stages after a broken
@@ -147,9 +150,12 @@ export async function check(root: string, accept: false | "reviews" | "unproved"
   const phases = observePhases(root);
   const wrote = new Map<string, string>();
   const attempt = async () => {
-    const loaded = path.join(root, ".spec-cache", `run-${randomUUID()}`);
+    const run = (checkRuns[CHECK_RUN] ?? 0) + 1;
+    checkRuns[CHECK_RUN] = run;
+    const loaded = path.join(root, ".spec-cache", `run-${run}`);
     const results: Result[] = [];
     try {
+      fs.rmSync(loaded, { recursive: true, force: true });
       await checkLocked(root, accept, loaded, (r) => { results.push(r); log(r); }, mode, wrote, phases?.start);
       return { ok: results.every((r) => r.ok), results, next: nextStep(results), wrote };
     } finally {

@@ -221,7 +221,8 @@ sources have gone: a check that changes no spec leaves `gen/` and the owners'
 `gen/` untouched, so nothing that watches them rebuilds. Whole-tree `spec gen`
 keeps the generated files in memory until every model is valid, then updates
 changed files. An invalid edit leaves the existing outputs in use. A check loads
-each generated module from its own `.spec-cache/run-<time>/`, removed when it ends. `.spec-cache/`
+each generated module from its own `.spec-cache/run-<number>/`, removed when it ends. The first check in a new
+process uses the same path so Node can reuse compiled modules. `.spec-cache/`
 remembers each run of Quint (which parses and typechecks a harness once for all its simulations, each run by Quint's
 evaluator on the result: `vibestack/simulator.ts`), and of LemmaScript and Dafny on a proof, under the program as installed, its arguments and
 the files it reads, without their prose, comments and layout (`vibestack/action.ts`),
@@ -434,6 +435,9 @@ tool runs, any other the spec cache of the root, each workspace package and each
 the commit: what a job of the same name last saved, or else another job's that holds the same.
 Nightly jobs restore the pinned Quint evaluator and run with fresh verification
 results.
+The default branch's `verify` job publishes the pnpm store after the frozen
+install. All jobs can restore it by the same lockfile key. This cache holds
+public packages only because fork pull requests can read it.
 Verification and release install both Chromium executables. In CI and nightly
 runs, shard A needs full Chromium for Bombadil. The other self-test shards
 run without a browser.
@@ -452,9 +456,6 @@ Release materializes the prerequisites before running the isolated shards.
 Packing the Vibestack CLI builds the toolchain and Studio. The package's
 prepare script uses `--skip-gen-on-pack` to skip Eliza application generation because
 the tool archive does not include those generated files.
-The default branch's `verify` job publishes the pnpm store after the frozen
-install. All jobs can restore it by the same lockfile key. This cache holds
-public packages only because fork pull requests can read it.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
 are never part of a task fingerprint.
