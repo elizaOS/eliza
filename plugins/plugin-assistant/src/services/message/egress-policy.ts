@@ -16,10 +16,12 @@ import type {
   StateData,
 } from "@elizaos/core";
 import {
+  activeCommittedEffectReceipts,
   composeToolDiagnosticRedactor,
   ElizaError,
   effectDeliveryBindingIsValid,
   effectDeliveryBindingProvesApplication,
+  getActionResultActionName,
   getEffectDeliveryBinding,
   getStreamingContext,
   getTrustedDeliveryAudience,
@@ -1165,11 +1167,70 @@ export async function resolvePlannedReplyEgress(args: {
     )
       return fail("Recovered reply asserts an unsupported outcome");
     // The judge attributes each claim; only the assistant's own changes need
-    // this turn's receipt, and that proof stays in code.
+    // this turn's proof, and that proof stays in code. A change that occurred
+    // needs a selected applied receipt. A change reported as not having
+    // occurred needs the cited result of this turn to have failed or left its
+    // effect unapplied: an honest failure report has no applied receipt to
+    // cite, while a failure no result records stays unsupported. A receipt
+    // whose provider acceptance is unknown proves neither polarity. The cited
+    // attempt must also not be superseded within the turn: a committed receipt
+    // for the same operation and resource, or (for a receipt-less attempt)
+    // another result of the same action that succeeded or committed, means the
+    // change did happen and the failure report would be false.
+    const results = actionResults();
+    const committedReceipts = activeCommittedEffectReceipts(
+      mergeEffectReceipts(...results.map((result) => result.effectReceipts)),
+    );
+    const committed = new Set(
+      committedReceipts.map((receipt) => receipt.receiptId),
+    );
+    const targetKey = (receipt: {
+      operation: string;
+      resource: { kind: string; id: string };
+    }) =>
+      JSON.stringify([
+        receipt.operation,
+        receipt.resource.kind,
+        receipt.resource.id,
+      ]);
+    const committedTargets = new Set(committedReceipts.map(targetKey));
+    const reportsUnappliedResult = (claim: RecoveredReplyClaim) => {
+      const index =
+        typeof claim.failedResult === "number" ? claim.failedResult - 1 : -1;
+      const result = index >= 0 ? results[index] : undefined;
+      if (result === undefined) return false;
+      const receipts = result.effectReceipts ?? [];
+      if (result.success !== false && receipts.length === 0) return false;
+      if (
+        receipts.some(
+          (receipt) =>
+            committed.has(receipt.receiptId) ||
+            committedTargets.has(targetKey(receipt)) ||
+            (receipt.outcome === "failed" &&
+              receipt.failure.acceptance === "unknown"),
+        )
+      )
+        return false;
+      if (receipts.length > 0) return true;
+      const actionName = getActionResultActionName(result);
+      return !results.some((other, otherIndex) => {
+        if (otherIndex === index) return false;
+        if (getActionResultActionName(other) !== actionName) return false;
+        const otherReceipts = other.effectReceipts ?? [];
+        return (
+          (other.success !== false && otherReceipts.length === 0) ||
+          otherReceipts.some((receipt) => committed.has(receipt.receiptId))
+        );
+      });
+    };
     const unsupportedClaims = grounding.claims.filter(
       (claim) =>
         !claim.supported ||
-        (claim.change && claim.actor === "assistant" && !finalProof),
+        (claim.change &&
+          claim.actor === "assistant" &&
+          (claim.outcome === "not_occurred"
+            ? !reportsUnappliedResult(claim)
+            : !finalProof)),
     );
     return unsupportedClaims.length === 0
       ? {
