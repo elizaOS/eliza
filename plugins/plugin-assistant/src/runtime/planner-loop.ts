@@ -11251,10 +11251,10 @@ function combinedVerifiedToolTextAndProse(
   if (parseInteractionBlocks(verified).blocks.length > 0) return undefined;
   // A client-rendered card block ([MAPSCARD]{json}[/MAPSCARD]) makes the
   // verified text the action's own presentation, not command output: fencing
-  // it shows literal ``` lines around the card's list, and evaluator prose
-  // appended after it re-narrates the same places or route (Pixel v620,
-  // "find coffee near the Ferry Building"). The verified text stands alone.
-  if (containsRenderedCardBlock(verified)) return undefined;
+  // it shows literal ``` lines around the card's list (Pixel v620, "find
+  // coffee near the Ferry Building"). It is delivered unfenced; evaluator
+  // prose still follows, since it may answer more than the card shows.
+  const presentsCard = containsRenderedCardBlock(verified);
   const prose = modelText.trim();
   // Combining must preserve the same user-safety boundary as selecting model
   // text directly; evaluator channels can contain serialized tool invocations.
@@ -11265,7 +11265,7 @@ function combinedVerifiedToolTextAndProse(
   // can distinguish units, identifiers, or quoted source values.
   if (verified.includes(prose)) return undefined;
   const fenced =
-    verified.includes("\n") && !verified.includes("```")
+    !presentsCard && verified.includes("\n") && !verified.includes("```")
       ? `\`\`\`\n${verified}\n\`\`\``
       : verified;
   return `${fenced}\n\n${prose}`;

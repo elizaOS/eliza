@@ -3,8 +3,9 @@
  * with verified user-facing text (a nearest-first list plus a `[MAPSCARD]`
  * places card) and the evaluator also wrote a short grounded answer. The
  * planner composed `"```\n<list + card>\n```\n\n<prose>"` — fencing the
- * card's wire markup as if it were multiline command output and repeating the
- * list in prose. The device model's completion (133 tokens) could not have
+ * card's wire markup as if it were multiline command output, so the user saw
+ * literal ``` lines around the list. The card is now delivered unfenced, and
+ * the evaluator's prose still follows it (it may answer more than the card). The device model's completion (133 tokens) could not have
  * carried the ~3 KB card: the fence came from the composition step. These
  * tests drive the real planner loop and evaluator with a scripted model.
  */
@@ -119,7 +120,7 @@ async function run(toolName: string, result: unknown, evaluatorProse: string) {
 }
 
 describe("verified tool text that carries a client-rendered card", () => {
-  it("never fences the card and never appends a re-narrated list", async () => {
+  it("never fences the card and keeps the evaluator's prose after it", async () => {
     const output = await run(
       "MAPS_PLACE",
       mapsPlaceResult(VERIFIED),
@@ -128,11 +129,13 @@ describe("verified tool text that carries a client-rendered card", () => {
     expect(output.status).toBe("finished");
     const reply = output.finalMessage ?? "";
     expect(reply).not.toContain("```");
-    expect(reply).toBe(VERIFIED);
-    // The list appears once: the card's own lead, not again in prose.
-    const visible = reply.replace(/\[MAPSCARD\][\s\S]*?\[\/MAPSCARD\]/g, "");
-    expect(visible.split("Blue Bottle Coffee").length - 1).toBe(1);
-    expect(reply).not.toContain(EVALUATOR_PROSE);
+    expect(reply).toBe(`${VERIFIED}\n\n${EVALUATOR_PROSE}`);
+  });
+
+  it("keeps an answer the card does not show", async () => {
+    const answer = "Of those, Blue Bottle Coffee opens earliest, at 6:30.";
+    const output = await run("MAPS_PLACE", mapsPlaceResult(VERIFIED), answer);
+    expect(output.finalMessage).toBe(`${VERIFIED}\n\n${answer}`);
   });
 
   it("keeps a single-place card unfenced too", async () => {
@@ -148,7 +151,9 @@ describe("verified tool text that carries a client-rendered card", () => {
       mapsPlaceResult(placeCard),
       "You're at 579 Hayes St in San Francisco.",
     );
-    expect(output.finalMessage).toBe(placeCard);
+    expect(output.finalMessage).toBe(
+      `${placeCard}\n\nYou're at 579 Hayes St in San Francisco.`,
+    );
   });
 
   it.each([
