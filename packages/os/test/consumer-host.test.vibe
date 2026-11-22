@@ -19,11 +19,11 @@ const PROFILE = {
   flavors: [{ name: "standalone" }],
 }
 
-effect function generateFor(consumerRoot: string, dependencyRoot: string) {
+effect function generateFor(consumerRoot: string, dependencyRoot: string, profile: object = PROFILE, runtimeDirectory?: string) {
   const path = try Path.Path
   const host: ConsumerHost = try Effect.promise(() => import(path.join(import.meta.dirname, "../android/consumer-host.mjs")))
   try writeTree(consumerRoot, { "main.xml": '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application/></manifest>' })
-  const options = { consumerRoot, upstreamRoot: path.resolve(import.meta.dirname, "../../.."), dependencyRoot, output: path.join(consumerRoot, "android"), identity: IDENTITY, profile: PROFILE }
+  const options = { consumerRoot, upstreamRoot: path.resolve(import.meta.dirname, "../../.."), dependencyRoot, output: path.join(consumerRoot, "android"), identity: IDENTITY, profile, runtimeDirectory }
   return (effect {
     try Effect.try({ try: () => host.generateAndroidConsumerHost(options), catch: (cause) => (cause instanceof Error ? cause.message : String(cause)) })
     return "generated"
@@ -50,5 +50,43 @@ it.effect('Build and register only the plugins my host selected: a parent pnpm w
     const member = path.join(workspace, "apps/consumer")
     assert.strictEqual(try generateFor(member, dependencyRoot), "generated")
     assert.isTrue(try files.exists(path.join(member, "android/.eliza-consumer-host.json")))
+
+    const payload = path.join(member, "runtime")
+    try writeTree(member, {
+      "runtime/android/app/src/main/assets/agent/agent.mjs": "",
+      "runtime/android/app/src/main/assets/agent/inventory.json": "{}",
+      "agent/host.json": JSON.stringify({
+        schema: 1, service: "example.consumer.EmbeddedService", persistMemory: false,
+        notification: { channel: "Agent", title: "Agent", text: "Running" },
+        cloud: { baseUrl: "https://cloud.example.invalid", smallModel: "small", largeModel: "large" },
+        routes: [{ method: "GET", path: "/api/health", stream: false }],
+      }),
+      "agent/character.json": JSON.stringify({ name: "Fixture", system: "You are the fixture agent." }),
+      "agent/policy.json": JSON.stringify({ schema: 1, actions: { allowed: { REPLY: {} } }, plugins: { load: [] } }),
+    })
+    const embedded = { ...PROFILE, embeddedAgent: {
+      host: { root: "consumer", path: "agent/host.json" },
+      character: { root: "consumer", path: "agent/character.json" },
+      policy: { root: "consumer", path: "agent/policy.json" },
+    } }
+    const java = path.join(member, "android/eliza-embedded-agent/src/main/java")
+    const copied = [
+      "ai/eliza/plugins/agent/runtime/AndroidRuntimeDirectories.java",
+      "ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java",
+      "ai/eliza/plugins/securestore/nativeonly/CloudDeviceAccount.java",
+      "ai/eliza/plugins/securestore/nativeonly/PasswordBackupApproval.java",
+      "ai/eliza/plugins/securestore/nativeonly/CloudPasswordBackup.java",
+      "ai/eliza/plugins/securestore/google/NativeGoogleAuthorization.java",
+    ]
+    assert.strictEqual(try generateFor(member, dependencyRoot, embedded, payload), "generated")
+    for (const entry of copied) assert.isTrue(try files.exists(path.join(java, entry)), entry)
+    const canonical = ["sign-in", "secure-store", "agent-service", "runtime-files"].map((module) => ({
+      name: `eliza-${module}`, source: { root: "upstream", path: `packages/os/android/${module}` },
+    }))
+    assert.strictEqual(try generateFor(member, dependencyRoot, { ...embedded, modules: [CAPACITOR, ...canonical] }, payload), "generated")
+    for (const entry of copied) assert.isFalse(try files.exists(path.join(java, entry)), entry)
+    const normalized = try files.readFileString(path.join(member, "android/.eliza-consumer-profile.json"))
+    assert.match(normalized, /"embeddedAgentProjects":\s*\[\s*"eliza-runtime-files",\s*"eliza-secure-store"\s*\]/)
+    assert.isTrue(try files.exists(path.join(java, "ai/eliza/plugins/agent/embedded/EmbeddedAgentService.java")))
   }
 })

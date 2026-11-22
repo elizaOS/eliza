@@ -46,9 +46,13 @@ public final class ReadinessPolicy {
 
   public static final class DeviceFacts {
     public final GoogleMode googleMode;
-    public final boolean appLinkVerified, externalBrowser;
+    public final boolean appLinkVerified, externalBrowser, browserFallback;
     public DeviceFacts(GoogleMode googleMode, boolean appLinkVerified, boolean externalBrowser) {
+      this(googleMode, appLinkVerified, externalBrowser, false);
+    }
+    public DeviceFacts(GoogleMode googleMode, boolean appLinkVerified, boolean externalBrowser, boolean browserFallback) {
       this.googleMode = googleMode; this.appLinkVerified = appLinkVerified; this.externalBrowser = externalBrowser;
+      this.browserFallback = browserFallback;
     }
   }
 
@@ -104,6 +108,12 @@ public final class ReadinessPolicy {
         return method.mode == device.googleMode && m.google
           && (method.mode == GoogleMode.PICKER ? m.nativeSignIn && m.serverClientId : device.appLinkVerified && device.externalBrowser);
     }
+  }
+
+  public static boolean canStartMethod(Readiness readiness, DeviceFacts device, SignInMethod method) {
+    return offered(readiness, device, method) || (device.browserFallback && device.googleMode == GoogleMode.PICKER
+      && method.tag == MethodTag.GOOGLE && method.mode == GoogleMode.BROWSER
+      && readiness.tag == ReadinessTag.KNOWN && readiness.methods.google && device.appLinkVerified && device.externalBrowser);
   }
 
   public static boolean answerFresh(Answer cached, long now) {

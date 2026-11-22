@@ -216,7 +216,7 @@ public final class SignInPolicy {
   }
 
   public static boolean canStart(State s, Environment environment, Method method, Readiness readiness, DeviceFacts device) {
-    return !isBusy(s.phase()) && admits(s.plugin(), environment) && ReadinessPolicy.offered(readiness, device, method.readiness());
+    return !isBusy(s.phase()) && admits(s.plugin(), environment) && ReadinessPolicy.canStartMethod(readiness, device, method.readiness());
   }
 
   public static boolean canReauthenticate(State s, Environment environment, Method method, Readiness readiness, DeviceFacts device, Account account) {

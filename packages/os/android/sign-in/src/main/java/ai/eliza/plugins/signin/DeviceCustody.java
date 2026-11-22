@@ -38,6 +38,12 @@ public final class DeviceCustody implements SignInCustody {
     return authority(context, apiOrigin).store();
   }
 
+  public static boolean deviceOnly(Context context, String apiOrigin) {
+    CredentialPolicy.State state = authority(context, apiOrigin).store().state();
+    return state.custody() instanceof CredentialPolicy.Custody.SignedOut
+      && state.attempt() instanceof CredentialPolicy.Attempt.NoAttempt;
+  }
+
   public static CloudRequests.Custody cloud(Context context, String apiOrigin) {
     Authority authority = authority(context, apiOrigin);
     return new CloudRequests.Custody(authority.store(), authority.session());

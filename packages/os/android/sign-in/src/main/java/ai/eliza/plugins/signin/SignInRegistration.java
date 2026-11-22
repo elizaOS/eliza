@@ -55,13 +55,15 @@ public final class SignInRegistration {
   public final String clientId;
   public final boolean testEnvironmentsEnabled;
   public final GoogleMode googleMode;
+  public final boolean googleBrowserFallback;
   private final Map<String, Environment> environments;
   private final List<String> googleScopes;
   private final List<Route> routes;
 
-  private SignInRegistration(String clientId, boolean testEnvironmentsEnabled, GoogleMode googleMode,
+  private SignInRegistration(String clientId, boolean testEnvironmentsEnabled, GoogleMode googleMode, boolean googleBrowserFallback,
       Map<String, Environment> environments, List<String> googleScopes, List<Route> routes) {
     this.clientId = clientId; this.testEnvironmentsEnabled = testEnvironmentsEnabled; this.googleMode = googleMode;
+    this.googleBrowserFallback = googleBrowserFallback;
     this.environments = environments; this.googleScopes = googleScopes; this.routes = routes;
   }
 
@@ -94,6 +96,10 @@ public final class SignInRegistration {
       case "browser" -> GoogleMode.BROWSER;
       default -> throw new Refused("googleMode");
     };
+    Object fallbackFlag = config.get("googleBrowserFallback");
+    if (fallbackFlag != null && !(fallbackFlag instanceof Boolean)) throw new Refused("googleBrowserFallback");
+    boolean browserFallback = Boolean.TRUE.equals(fallbackFlag);
+    if (browserFallback && mode != GoogleMode.PICKER) throw new Refused("googleBrowserFallback needs picker");
     Map<String, Environment> environments = new LinkedHashMap<>();
     List<String> hosts = new ArrayList<>();
     for (Object row : list(config, "environments", true)) {
@@ -122,7 +128,7 @@ public final class SignInRegistration {
       if (!METHODS.contains(method) || !path.startsWith("/api/") || !ROUTE_PATH.matcher(path).matches()) throw new Refused("route " + method + " " + path);
       routes.add(new Route(method, path));
     }
-    return new SignInRegistration(clientId, tests, mode, Collections.unmodifiableMap(environments),
+    return new SignInRegistration(clientId, tests, mode, browserFallback, Collections.unmodifiableMap(environments),
       List.copyOf(scopes), List.copyOf(routes));
   }
 

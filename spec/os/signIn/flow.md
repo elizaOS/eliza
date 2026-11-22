@@ -63,10 +63,11 @@ pure def sometimesRegistrationRefused(s: SignIn): bool = s.plugin == Registratio
 pure def sometimesTestEnvironmentInUse(s: SignIn): bool = s.phase != Idle and s.environment == Staging
 ```
 
-### A sign-in starts only a method the readiness answer offers, and Google in the host's mode
+### A sign-in starts an offered method or an eligible browser fallback
 
 Email and SMS send a code first; the picker opens Android's account
-picker; the browser path waits for its return. A start replaces a sign-in
+picker; the browser path waits for its return. A start may use the default
+method or an explicitly admitted browser fallback. A start replaces a sign-in
 that waits for the person, never one waiting for an answer.
 
 ```quint
@@ -76,7 +77,7 @@ pure def opened(environment: Environment, method: SignInMethod, purpose: Purpose
   { ...s, lastRequest: s.lastRequest + 1, open: s.lastRequest + 1, lastAttempt: s.lastAttempt + 1, attempt: s.lastAttempt + 1, environment: environment,
     method: method, purpose: purpose, phase: firstStep(method), serverCode: NoServerCode, google: GoogleNotRequested, credentialId: "" }
 pure def canStart(s: SignIn, environment: Environment, method: SignInMethod, readiness: Readiness, device: DeviceFacts): bool =
-  not(isBusy(s.phase)) and admits(s.plugin, environment) and offered(readiness, device, method)
+  not(isBusy(s.phase)) and admits(s.plugin, environment) and canStartMethod(readiness, device, method)
 pure def start(s: SignIn, environment: Environment, method: SignInMethod, readiness: Readiness, device: DeviceFacts): SignIn = opened(environment, method, SignInPurpose, s)
 pure def isCodeMethod(method: SignInMethod): bool = method == EmailCode or method == SmsCode
 pure def fitsMethod(phase: SignInPhase, method: SignInMethod): bool = match phase {

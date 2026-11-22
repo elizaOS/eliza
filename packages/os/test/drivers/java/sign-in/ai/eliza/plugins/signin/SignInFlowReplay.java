@@ -68,7 +68,7 @@ public final class SignInFlowReplay {
   }
 
   private static DeviceFacts device(Map<String, Object> raw) {
-    return new DeviceFacts(named(GoogleMode.class, raw.get("googleMode")), CredentialJson.flag(raw, "appLinkVerified"), CredentialJson.flag(raw, "externalBrowser"));
+    return new DeviceFacts(named(GoogleMode.class, raw.get("googleMode")), CredentialJson.flag(raw, "appLinkVerified"), CredentialJson.flag(raw, "externalBrowser"), CredentialJson.flag(raw, "browserFallback"));
   }
 
   private static Account account(Map<String, Object> raw) { return new Account(CredentialJson.text(raw, "userId"), CredentialJson.text(raw, "organizationId")); }

@@ -45,7 +45,7 @@ public final class CloudDeviceAccount {
   slots = new JsonCredentialSlots(new File(host.getNoBackupFilesDir(), "eliza-cloud-device-account"), "eliza-cloud-device-account.v1", slot -> 1024);
  }
 
- private static URI origin(String input) {
+ static URI origin(String input) {
   URI result = URI.create(input);
   if (!"https".equals(result.getScheme()) || result.getHost() == null || result.getRawUserInfo() != null
       || result.getPort() != -1 || result.getRawQuery() != null || result.getRawFragment() != null
@@ -190,7 +190,7 @@ public final class CloudDeviceAccount {
   }
  }
 
- URI passwordBackupEndpoint(String path) { return cloud.resolve(path); }
+ URI passwordBackupOrigin() { return cloud; }
  Uri passwordBackupCallback() { return callback; }
 
  private static String challenge(JSONObject pending) throws Exception {
@@ -198,7 +198,9 @@ public final class CloudDeviceAccount {
   return base64Url(MessageDigest.getInstance("SHA-256").digest(verifier));
  }
 
- public boolean handles(Uri data) {
+ public boolean handles(Uri data) { return matchesCallback(callback, data); }
+
+ static boolean matchesCallback(Uri callback, Uri data) {
   return data != null && callback.getScheme().equals(data.getScheme()) && callback.getAuthority().equals(data.getEncodedAuthority())
       && callback.getPath().equals(data.getEncodedPath()) && data.getEncodedFragment() == null;
  }
