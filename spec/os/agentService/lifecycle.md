@@ -267,6 +267,16 @@ pure def alwaysCrashedOnlyAfterTheBudget(s: AgentService): bool = s.attempt >= 0
   and (s.phase == Failed({ cause: Crashed }) implies (s.attempt == H::restartBudget and s.readyEpoch == s.epoch))
 pure def sometimesRestartedAfterCrash(s: AgentService): bool = s.phase == Running and s.attempt >= 1
 pure def sometimesCrashed(s: AgentService): bool = s.phase == Failed({ cause: Crashed })
+pure val eval_witness_sometimesCrashed = (
+  ("credentialArrived", 1, { userId: "u1", organizationId: "o1" }),
+  "start",
+  ("spawn", true), ("observeReady", readyReply(1)), ("observeExit", 1),
+  ("spawn", true), ("observeReady", readyReply(2)), ("observeExit", 1),
+  ("spawn", true), ("observeReady", readyReply(3)), ("observeExit", 1),
+  ("spawn", true), ("observeReady", readyReply(4)), ("observeExit", 1),
+  ("spawn", true), ("observeReady", readyReply(5)), ("observeExit", 1),
+  ("spawn", true), ("observeReady", readyReply(6)), ("observeExit", 1)
+)
 ```
 
 ### An unhealthy verdict kills the child and counts as a crash
