@@ -832,7 +832,10 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     fs.writeFileSync(path.join(workspace, "kit/a.ts"), 'export * from "./gen/a.ts";\n');
     assert.deepEqual(changed("kit/gen/a.ts"), [true, true], "a dependency's gen/ is read once its code imports it");
     fs.writeFileSync(path.join(workspace, "kit/package.json"), '{"dependencies":{"linked":"link:../runtime"}}');
-    assert.deepEqual(inputs(), [undefined, undefined], "a linked checkout reached through a workspace dependency can change independently of the lockfile");
+    for (const group of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
+      fs.writeFileSync(path.join(workspace, "package.json"), JSON.stringify({ [group]: { kit: "workspace:*" } }));
+      assert.deepEqual(inputs(), [undefined, undefined], `a link reached through ${group} can change independently of the lockfile`);
+    }
   });
 
   test("an exploration is remembered under what its page reads: its code and what that names, what a workspace package it imports or runs offers, the generated modules it imports, and no test, contract, proof, spec or tool it does not run", () => {

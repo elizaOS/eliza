@@ -217,7 +217,7 @@ export function workspacePackages(root: string): { directory: string; name: stri
     if (found.has(from)) continue;
     found.set(from, name);
     const pkg = manifest(from);
-    for (const [dependency, version] of Object.entries({ ...pkg.dependencies, ...pkg.devDependencies }).sort(([a], [b]) => a.localeCompare(b))) {
+    for (const [dependency, version] of Object.entries({ ...pkg.peerDependencies, ...pkg.devDependencies, ...pkg.dependencies, ...pkg.optionalDependencies }).sort(([a], [b]) => a.localeCompare(b))) {
       const at = path.join(from, "node_modules", dependency);
       if (String(version).startsWith("workspace:") && fs.existsSync(at)) pending.push({ directory: at, name: dependency });
     }
