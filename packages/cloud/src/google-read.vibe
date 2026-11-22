@@ -1,7 +1,7 @@
 // spec/cloud/index.md, "Story: Connect Google mail and calendar"
 import { Result } from "effect"
 import { Base64Url } from "effect/encoding"
-import { mailMaxBytes } from "../gen/cloud__services__google__mailRead.effect.vibe"
+import { htmlMaxBytes, htmlViewOf, mailMaxBytes } from "../gen/cloud__services__google__mailRead.effect.vibe"
 
 export type GoogleReadApi<E, R> = (url: string, maxBytes?: number) => unknown!E!R
 export error GoogleReadInput
@@ -15,8 +15,8 @@ schema MessageId { id: string }
 schema MessageList { messages?: MessageId[]; nextPageToken?: string }
 schema MailLabel { id: string; messagesUnread?: number; messagesTotal?: number }
 schema Header { name: string; value: string }
-schema MessageBody { data?: string; attachmentId?: string; size?: number }
-schema MailPart { partId?: string; mimeType?: string; filename?: string; headers?: Header[]; body?: MessageBody; parts?: Schema.Unknown[] }
+export schema MessageBody { data?: string; attachmentId?: string; size?: number }
+export schema MailPart { partId?: string; mimeType?: string; filename?: string; headers?: Header[]; body?: MessageBody; parts?: Schema.Unknown[] }
 schema MailMessage {
   id: string; threadId: string; historyId?: string; snippet?: string; internalDate?: string; labelIds?: string[]; payload?: MailPart
 }
@@ -45,8 +45,7 @@ const partIdPattern = /^[0-9.]{1,32}$/
 const mimeToken = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i
 export const attachmentMaxBytes = 8 * 1024 * 1024
 export const attachmentMimeTypes: ReadonlyArray<string> = ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"]
-const maxParts = 200
-const encodedMailBound = Math.ceil(mailMaxBytes / 3) * 4
+export const mailMaxParts = 200
 const encoder = new TextEncoder()
 const encodedAttachmentBound = Math.ceil(attachmentMaxBytes / 3) * 4
 const fullMessageBound = encodedAttachmentBound + 65536
@@ -147,21 +146,21 @@ export effect function decodeMailText(data: string, charset: string, maxBytes: n
   return text
 }
 
-effect function bodyPart<E, R>(api: GoogleReadApi<E, R>, messageId: string, part: MailPart) {
+effect function bodyPart<E, R>(api: GoogleReadApi<E, R>, messageId: string, part: MailPart, maxBytes: number) {
   const body = part.body
   if (body === undefined) throw new GoogleReadResponse()
-  if ((body.size ?? 0) > mailMaxBytes) throw new GoogleReadTooLarge()
+  if ((body.size ?? 0) > maxBytes) throw new GoogleReadTooLarge()
   let data = body.data
   if (data === undefined && body.attachmentId !== undefined) {
     if (!attachments.test(body.attachmentId)) throw new GoogleReadResponse()
-    const raw = try api(`${gmail}/messages/${messageId}/attachments/${body.attachmentId}?fields=data`, encodedMailBound + 4096)
+    const raw = try api(`${gmail}/messages/${messageId}/attachments/${body.attachmentId}?fields=data`, Math.ceil(maxBytes / 3) * 4 + 4096)
     const result = Schema.decodeUnknownOption(MessageBody)(raw)
     if (Option.isNone(result) || result.value.data === undefined) throw new GoogleReadResponse()
     data = result.value.data
   }
   if (data === undefined && body.size !== 0) throw new GoogleReadResponse()
   const charset = /charset="?([^";\s]+)"?/i.exec(headerMap(part).get("content-type") ?? "")?.[1] ?? "utf-8"
-  return try decodeMailText(data ?? "", charset, mailMaxBytes)
+  return try decodeMailText(data ?? "", charset, maxBytes)
 }
 
 export function htmlText(html: string): string {
@@ -173,6 +172,15 @@ export function htmlText(html: string): string {
     .replace(/&nbsp;/gi, " ").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, "\"").replace(/&#39;|&apos;/gi, "'").replace(/&amp;/gi, "&")
     .replace(/\r/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ")
     .trim()
+}
+
+export function mailHtmlView(html: string | null | undefined, partsWithinLimit: boolean) {
+  const bytes = !partsWithinLimit || html === undefined ? 0 : html === null ? htmlMaxBytes + 1 : encoder.encode(html).length
+  switch (htmlViewOf(bytes, partsWithinLimit)) {
+    case "HtmlAvailable": return { bodyHtml: html ?? null, bodyHtmlStatus: "available" as const }
+    case "HtmlTooLarge": return { bodyHtml: null, bodyHtmlStatus: "too_large" as const }
+    case "HtmlAbsent": return { bodyHtml: null, bodyHtmlStatus: "none" as const }
+  }
 }
 
 export function attachmentDescriptor(part: MailPart) {
@@ -188,23 +196,38 @@ export function attachmentDescriptor(part: MailPart) {
   return { partId, name, mimeType, size: size !== undefined && Number.isSafeInteger(size) && size >= 0 ? size : 0, supported }
 }
 
-effect function partsOf(root: MailPart | undefined) {
-  const found: MailPart[] = []
-  const pending: unknown[] = root === undefined ? [] : [root]
-  let seen = 0
-  while (pending.length > 0) {
-    seen += 1
-    if (seen + pending.length - 1 > maxParts) throw new GoogleReadResponse()
-    const candidate = Schema.decodeUnknownOption(MailPart)(pending.shift())
+export effect function scanMailParts(root: MailPart | undefined, order: "breadth-first" | "depth-first", traversalLimit = Number.POSITIVE_INFINITY) {
+  const pending: Array<{ readonly parts: ReadonlyArray<unknown>; next: number }> = root === undefined ? [] : [{ parts: [root], next: 0 }]
+  const attachments: MailPart[] = []
+  let plain: MailPart | undefined
+  let html: MailPart | undefined
+  let count = 0
+  let firstGroup = 0
+  const depthFirst = order === "depth-first"
+  const decodePart = Schema.decodeUnknownOption(MailPart)
+  // The provider JSON byte envelope bounds the traversal. Queue groups keep their original arrays.
+  while (firstGroup < pending.length) {
+    const frame = pending[depthFirst ? pending.length - 1 : firstGroup]
+    if (frame.next === frame.parts.length) {
+      if (depthFirst) pending.pop()
+      else firstGroup += 1
+      continue
+    }
+    count += 1
+    if (count > traversalLimit) throw new GoogleReadTooLarge()
+    const candidate = decodePart(frame.parts[frame.next])
+    frame.next += 1
     if (Option.isNone(candidate)) throw new GoogleReadResponse()
     const part = candidate.value
-    found.push(part)
-    if (part.parts) {
-      if (seen + pending.length + part.parts.length > maxParts) throw new GoogleReadResponse()
-      pending.push(...part.parts)
+    if (part.filename) attachments.push(part)
+    else {
+      const mime = part.mimeType?.toLowerCase()
+      if (mime === "text/plain") plain ??= part
+      else if (mime === "text/html") html ??= part
     }
+    if (part.parts?.length) pending.push({ parts: part.parts, next: 0 })
   }
-  return found
+  return { attachments, plain, html, partsWithinLimit: count <= mailMaxParts }
 }
 
 export function attachmentSelection(params: URLSearchParams) {
@@ -218,7 +241,7 @@ export effect function googleGmailAttachment<E, R>(api: GoogleReadApi<E, R>, sel
   const { messageId, partId, historyId } = selection
   const message = try readMessage(api, messageId, "full")
   if (message.historyId !== historyId) throw new GoogleAttachmentStale()
-  const matched = (try partsOf(message.payload)).filter((part) => part.filename && part.partId === partId)
+  const matched = (try scanMailParts(message.payload, "breadth-first")).attachments.filter((part) => part.partId === partId)
   const part = matched[0]
   if (matched.length !== 1 || !part) throw new GoogleAttachmentMissing()
   const descriptor = attachmentDescriptor(part)
@@ -282,22 +305,25 @@ export effect function googleGmailMessage<E, R>(api: GoogleReadApi<E, R>, url: U
   const id = url.searchParams.get("messageId")
   if (!id) throw new GoogleReadInput()
   const message = try readMessage(api, id, "full")
-  const parts = try partsOf(message.payload)
-  const inline = parts.filter((part) => !part.filename)
-  const plain = inline.find((part) => part.mimeType?.toLowerCase() === "text/plain")
-  const html = inline.find((part) => part.mimeType?.toLowerCase() === "text/html")
-  const text = plain ? try bodyPart(api, message.id, plain) : html ? htmlText(try bodyPart(api, message.id, html)) : message.snippet
-  if (plain === undefined && text !== undefined && textTooLarge(text, mailMaxBytes)) throw new GoogleReadTooLarge()
+  const parts = try scanMailParts(message.payload, "breadth-first")
+  const plainText = parts.plain ? try bodyPart(api, message.id, parts.plain, mailMaxBytes) : undefined
+  const omitHtml = plainText !== undefined && !parts.partsWithinLimit
+  const html = parts.html === undefined || omitHtml ? undefined : bodyPart(api, message.id, parts.html, plainText === undefined ? mailMaxBytes : htmlMaxBytes) catch effect (failure) => {
+    if (plainText !== undefined && failure instanceof GoogleReadTooLarge) return null
+    throw failure
+  }
+  const text = plainText ?? (typeof html === "string" ? htmlText(html) : message.snippet)
+  if (plainText === undefined && text !== undefined && textTooLarge(text, mailMaxBytes)) throw new GoogleReadTooLarge()
   const target = replyTarget(message)
   const reply = target && { recipient: target.recipient, subject: target.subject }
   const historyId = message.historyId && revision.test(message.historyId) ? message.historyId : null
-  const manifest = parts.filter((part) => part.filename).map(attachmentDescriptor)
+  const manifest = parts.attachments.map(attachmentDescriptor)
   const counts = new Map<string, number>()
   for (const part of manifest) counts.set(part.partId, (counts.get(part.partId) ?? 0) + 1)
   const attachments = manifest.map((part) => ({ ...part, supported: part.supported && historyId !== null && counts.get(part.partId) === 1 }))
   const authenticationResults = receivedAuthentication(message.payload?.headers ?? [])
   const card = try mailCard(message)
-  return { historyId, attachments, message: { ...card, id: card.externalId }, reply, bodyText: text ?? "", bodyTextAvailable: text !== undefined, bodyHtml: null, bodyHtmlStatus: "none", authenticationResults }
+  return { historyId, attachments, message: { ...card, id: card.externalId }, reply, bodyText: text ?? "", bodyTextAvailable: text !== undefined, ...mailHtmlView(html, parts.partsWithinLimit), authenticationResults }
 }
 
 export function receivedAuthentication(headers: ReadonlyArray<{ readonly name: string; readonly value: string }>): string | null {
