@@ -1162,7 +1162,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 return@runOnUiThread
             }
             val container = OccludingSurfaceLayout(activity, layer)
-            val webView = WebView(activity)
+            val webView = if (manualSignIn && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) InboxAutofillWebView(activity) else WebView(activity)
             val gate = BrowserMainFrameGate()
             // The latest main-frame address requested (any thread), which tells a page's own
             // certificate error from a subresource's.
