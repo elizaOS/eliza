@@ -41,7 +41,8 @@
         "notes organize contract is admitted by the device contract and wraps its errors",
         "notes organize contract is offered only when the phone negotiated notes.organize.v1",
         "notes organize contract describes each change for the review card",
-        "notes organize contract allows review only on the unlocked phone in Home or Notes, recording only in Notes"
+        "notes organize contract allows review only on the unlocked phone in Home or Notes, recording only in Notes",
+        "notes organize contract offers voice recording alone with notes.record.v1"
       ]
     },
     {
@@ -158,7 +159,13 @@
         "browser control operations describes a new tab to the owner without tool names",
         "browser control operations always reviews closing a tab",
         "browser control operations searches without a review only when the whole current message is that search",
-        "browser control operations is not reviewed on a locked phone"
+        "browser control operations is not reviewed on a locked phone",
+        "DeviceActionCoordinator sends the photo's library id only to an agent that negotiated it",
+        "notes organize operations records a voice note with only the recording capability",
+        "files shown targets shows the owner the files a shown position names and acts on those paths",
+        "files shown targets shares shown items without binding identities",
+        "files shown targets offers no card when the phone cannot resolve the positions",
+        "files shown targets refuses shown items the agent did not negotiate"
       ]
     },
     {
