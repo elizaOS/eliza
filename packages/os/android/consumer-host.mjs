@@ -39,6 +39,7 @@ const sourceKinds = ["java", "kotlin", "assets", "res", "jniLibs"];
 const EMBEDDED_AGENT_MODULE = "eliza-embedded-agent";
 const EMBEDDED_AGENT_JAVA = "packages/os/android/embedded-agent/src/main/java";
 const SECURE_STORE_JAVA = "packages/os/android/secure-store/src/main/java";
+const RUNTIME_DIRECTORIES = "ai/eliza/plugins/agent/runtime/AndroidRuntimeDirectories.java";
 const SECURE_ACCOUNT_SOURCES = [
   ...["JsonCredentialSlots", "CloudDeviceAccount", "PasswordBackupApproval", "CloudPasswordBackup"].map(
     (name) => `ai/eliza/plugins/securestore/nativeonly/${name}.java`,
@@ -50,8 +51,8 @@ export const EMBEDDED_AGENT_SOURCES = Object.freeze([
   ...["EmbeddedAgentConfig", "EmbeddedAgentPlugin", "EmbeddedAgentService"].map(
     (name) => `ai/eliza/plugins/agent/embedded/${name}.java`,
   ),
+  RUNTIME_DIRECTORIES,
   ...[
-    "AndroidRuntimeDirectories",
     "EmbeddedRuntimeGroup",
     "EmbeddedRuntimeLaunch",
     "EmbeddedRuntimeService",
@@ -659,6 +660,7 @@ export function generateAndroidConsumerHost({
   // The embedded agent: its data files become assets, and a generated library
   // module compiles its sources and declares its service, permissions and type.
   let embeddedAgent = null;
+  const embeddedAgentProjects = [];
   if (profile.embeddedAgent !== undefined) {
     onlyKeys(
       profile.embeddedAgent,
@@ -730,9 +732,18 @@ export function generateAndroidConsumerHost({
       relocateBuild: false,
     });
     // Copied, since AGP ignores source-set filters; a changed upstream source makes the host stale.
+    const usesUpstreamProject = (module) => modules.some(({ name, directory }) =>
+      name === `eliza-${module}` && directory === path.join(upstreamRoot, "packages/os/android", module),
+    );
+    const runtimeFiles = usesUpstreamProject("runtime-files");
+    const secureStore = usesUpstreamProject("secure-store");
+    if (runtimeFiles) embeddedAgentProjects.push("eliza-runtime-files");
+    if (secureStore) embeddedAgentProjects.push("eliza-secure-store");
     const javaSources = [
-      ...EMBEDDED_AGENT_SOURCES.map((relative) => ({ relative, directory: EMBEDDED_AGENT_JAVA })),
-      ...SECURE_ACCOUNT_SOURCES.map((relative) => ({ relative, directory: SECURE_STORE_JAVA })),
+      ...EMBEDDED_AGENT_SOURCES.filter((relative) => !runtimeFiles || relative !== RUNTIME_DIRECTORIES)
+        .map((relative) => ({ relative, directory: EMBEDDED_AGENT_JAVA })),
+      ...(secureStore ? [] : SECURE_ACCOUNT_SOURCES)
+        .map((relative) => ({ relative, directory: SECURE_STORE_JAVA })),
     ];
     const sources = javaSources.map(({ relative, directory }) => {
       const file = input(
@@ -812,6 +823,7 @@ export function generateAndroidConsumerHost({
     modules,
     manifest,
     embeddedServiceManifest: embeddedAgent?.serviceManifest ?? null,
+    embeddedAgentProjects,
     identityResources: path.join(output, CONSUMER_IDENTITY_RESOURCES),
     flavors,
     sourceSets,
