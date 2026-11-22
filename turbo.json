@@ -274,7 +274,7 @@
         "package.json"
       ],
       "outputs": [
-        "vibestack/examples/*/.spec-cache/tests-*.json.gz"
+        "vibestack/examples/*/.spec-cache/tests-*.json.{gz,zst}"
       ]
     },
     "//#check": {
