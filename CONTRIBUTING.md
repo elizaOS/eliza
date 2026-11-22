@@ -181,6 +181,9 @@ typecheck, a driver's run and an exploration by VibeLang's version and bytes.
 An exploration is keyed by the code that explores and what its page reads
 (`pageInputs` in `vibestack/explore.ts`), which holds every tool when the
 page runs one, as Studio's does.
+Vitest stores transformed test modules per package. That package's installed
+lockfile controls when its transforms are cleared.
+
 It also remembers a package's passing test run under a hash of what its tests
 read; a driver's passing run under the same hash and the events the simulator
 found; and a passing typecheck under the package's files without its Markdown,
