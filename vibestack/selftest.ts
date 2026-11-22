@@ -3989,6 +3989,7 @@ test("the same installed Quint shares verification results across checkouts and 
     if (value === "loaded") manifest.version = "2.0.0";
     fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify(manifest));
   }
+  fs.unlinkSync(loadedVersion.shim);
   fs.writeFileSync(path.join(loadedVersion.root, "vibestack/simulator.ts"), `
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -4000,6 +4001,7 @@ if (import.meta.main) fs.writeFileSync(TABLE, JSON.stringify(createRequire(impor
     import assert from "node:assert/strict";
     import { act } from ${JSON.stringify(path.join(loadedVersion.root, "vibestack/action.ts"))};
     import { installedProgram } from ${JSON.stringify(path.join(loadedVersion.root, "vibestack/cache.ts"))};
+    assert.equal(installedProgram(${JSON.stringify(mainVersion.root)}, "quint").exe, ${JSON.stringify(mainVersion.shim)});
     assert.ok(installedProgram(${JSON.stringify(mainVersion.root)}, "quint").id);
     const memory = { root: ${JSON.stringify(mainVersion.root)}, fresh: false, used: new Set() };
     const cli = await act(memory, "quint", ["typecheck"], "cli", {});
