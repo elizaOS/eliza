@@ -137,12 +137,14 @@ export async function check(root: string, accept: false | "reviews" | "unproved"
   const release = lockProject(root);
   // Node caches imported modules by path, so each run loads its generated code from a directory of its own, out of gen/.
   const loaded = path.join(root, ".spec-cache", `run-${Date.now()}`);
+  const phases = observePhases(root);
   try {
     const results: Result[] = [];
     const wrote = new Map<string, string>();
-    await steady(() => checkLocked(root, accept, loaded, (r) => { results.push(r); log(r); }, mode, wrote));
+    await steady(() => checkLocked(root, accept, loaded, (r) => { results.push(r); log(r); }, mode, wrote, phases?.start));
     return { ok: results.every((r) => r.ok), results, next: nextStep(results), wrote };
   } finally {
+    phases?.finish();
     fs.rmSync(loaded, { recursive: true, force: true });
     release();
   }
@@ -278,21 +280,30 @@ async function typecheck(memory: Memory, root: string, dir: string): Promise<{ o
 }
 
 type CheckPhase = "generation" | "simulation" | "types" | "proof" | "tests" | "traces" | "explore" | "review";
+type EndPhase = (at?: number) => void;
+type StartPhase = (phase: CheckPhase) => EndPhase;
 const checkPhases = channel("vibestack:check:phase");
 
-function observePhases(root: string) {
+function observePhases(root: string): { start: StartPhase; finish: () => void } | undefined {
   if (!checkPhases.hasSubscribers) return;
   const started = performance.now();
   const checkStartedAt = performance.timeOrigin + started;
-  return (phase: CheckPhase) => {
-    const publish = (event: "start" | "end") => checkPhases.publish({ root, checkStartedAt, phase, event, elapsedMs: performance.now() - started });
-    publish("start");
-    return () => publish("end");
+  const open = new Set<EndPhase>();
+  return {
+    start(phase) {
+      const publish = (event: "start" | "end", at: number) => checkPhases.publish({ root, checkStartedAt, phase, event, elapsedMs: at - started });
+      const end = (at = performance.now()) => {
+        if (open.delete(end)) publish("end", at);
+      };
+      open.add(end);
+      publish("start", performance.now());
+      return end;
+    },
+    finish: () => { for (const end of open) end(); },
   };
 }
 
-async function checkLocked(root: string, accept: false | "reviews" | "unproved", loaded: string, log: (result: Result) => void, mode: TestProfile, wrote: Map<string, string>) {
-  const observe = observePhases(root);
+async function checkLocked(root: string, accept: false | "reviews" | "unproved", loaded: string, log: (result: Result) => void, mode: TestProfile, wrote: Map<string, string>, observe?: StartPhase) {
   const generated = observe?.("generation");
   const { seed } = profile(mode);
   let allOk = true;
@@ -324,7 +335,9 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
   const machines = new Map<string, Machine>();
   /** Each spec's simulation starts once its model is generated; they run at once and are reported in the specs' order. */
   const simulations: { spec: Spec; model: Model; domain: any; simulated: Promise<Simulation> }[] = [];
-  let simulatedAll: (() => void) | undefined;
+  let simulatedAll: EndPhase | undefined;
+  let lastSimulation: number | undefined;
+  const simulationSettled = observe && (() => { lastSimulation = performance.now(); });
 
   for await (const { spec, model, error } of generating(memory, specs)) {
     let domain: any;
@@ -345,7 +358,9 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
     if (!model.stateType && !model.laws.length && !model.evals.length) continue;
     if (observe && !simulations.length) simulatedAll = observe("simulation");
     const simulated = simulation(memory, spec, specs, model, domain, seed);
-    simulated.catch(() => {}); // a failure is reported in its turn, not as an unhandled rejection
+    // Report a rejected simulation in the same order as other results.
+    if (simulationSettled) void simulated.then(simulationSettled, simulationSettled);
+    else simulated.catch(() => {});
     simulations.push({ spec, model, domain, simulated });
   }
   /** A result about an owner's code names its package; the root's own reads as it always has. */
@@ -355,7 +370,10 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
   let ledger: Record<string, Accepted> | undefined;
   // None is left writing into gen/ when the check goes on or returns.
   const running: Promise<unknown>[] = simulations.map((s) => s.simulated);
-  if (simulatedAll) void Promise.allSettled(running).then(simulatedAll);
+  if (simulatedAll) {
+    const end = simulatedAll;
+    void Promise.allSettled(running).then(() => end(lastSimulation));
+  }
   try {
     mirrorGen(root, specs);
     generated?.();
@@ -365,10 +383,10 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
     const started = allOk ? (() => {
       const typed = observe?.("types");
       const typechecks = dirs.map(async (dir) => fs.existsSync(path.join(root, dir, "tsconfig.json")) ? typecheck(memory, root, dir) : undefined);
-      if (typed) void Promise.allSettled(typechecks).then(typed);
+      if (typed) void Promise.allSettled(typechecks).then(() => typed());
       const proved = observe?.("proof");
       const proving = proofStage(root, memory, specs, models, srcFiles, lock.unproved, accept);
-      if (proved) void proving.then(proved, proved);
+      if (proved) void proving.then(() => proved(), () => proved());
       return { typechecks, proving };
     })() : undefined;
     if (started) for (const p of [...started.typechecks, started.proving]) running.push(p.catch(() => {}));
