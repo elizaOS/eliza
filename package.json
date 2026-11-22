@@ -117,6 +117,7 @@
   },
   "packageManager": "pnpm@10.24.0",
   "exports": {
+    "./formal": "./vibestack/formal.ts",
     "./testing": "./vibestack/testing/index.ts",
     "./testing/vitest": "./vibestack/testing/vitest.ts",
     "./testing/generate": "./vibestack/testing/generate.ts",
@@ -128,6 +129,7 @@
   },
   "publishConfig": {
     "exports": {
+      "./formal": "./dist/formal.js",
       "./testing": "./dist/testing/index.js",
       "./testing/vitest": "./dist/testing/vitest.js",
       "./testing/generate": "./dist/testing/generate.js",

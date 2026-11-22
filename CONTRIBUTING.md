@@ -199,9 +199,11 @@ loads the pipeline, and hands its directory to every process a check starts,
 so each `spec` process, Studio's checks, Turborepo's tasks and the tests and
 drivers they run included, compiles only the code that changed.
 
-An integration that checks disposable project directories can wrap those
-commands in `withFormalCache(directory, run)` from `vibestack/cache.ts`.
-Use a persistent directory that is writable only by trusted runs. It holds
+An integration checking disposable project directories can import `check`
+and `withFormalCache` from [vibestack/formal](vibestack/formal.ts). Run
+`await withFormalCache(cacheDirectory, () => check(projectDirectory))`
+in the same Node process. Use a persistent cache directory writable only
+by trusted runs. It holds
 the completed Quint, LemmaScript, and Dafny actions, keyed by the installed
 tools and their inputs. The project directory holds its lock, generated files,
 and stage results. An acceptance or nightly check always reads fresh inputs.
@@ -260,7 +262,12 @@ verifier too, since they may run proofs, as Studio's do. A process that
 outlives a reinstall, as `spec watch` does, reads the installed toolchain
 again on the next check. Simulations and proofs include the resolved package
 versions and dependency links for Quint and LemmaScript respectively. Each
-check reads each package graph once and shares it with all runs of that tool. In CI, a Turborepo cache entry is
+check reads each package graph once and shares it with all runs of that tool. A
+simulation also depends on the bytes of Quint's installed Rust evaluator. A
+run that installs its evaluator can produce a result; the next run records it
+against the installed binary. The task runner supplies the evaluator fingerprint
+to simulation-capable tests and selftests, leaving generation, builds and
+typechecks reusable before and after installation. In CI, a Turborepo cache entry is
 kept for seven days after its last hit, which the run summary names.
 
 ### Seeds and budgets

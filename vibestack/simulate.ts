@@ -1,13 +1,9 @@
-import fs from "node:fs";
-import path from "node:path";
 import os from "node:os";
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import type { Model } from "./gen.ts";
 import { SENDER } from "./gen/classify.ts";
 import { act, completed, violated, type Input } from "./action.ts";
-import { entry, remembered, type Memory } from "./cache.ts";
+import { entry, evaluatorForCheck, remembered, type Memory } from "./cache.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
 import { simulated } from "./gen/harness.ts";
 import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
@@ -88,24 +84,12 @@ const seedFor = (seed: number, ...what: string[]) => String(parseInt(digest([Str
  * Quint installs its evaluator the first time it simulates, and runs started together would race to. Until it is
  * installed, the first run in this process goes alone and the others wait for it; once it is, nothing waits.
  */
-let evaluatorInstalled = false;
 let firstRun: Promise<void> | undefined;
-function evaluatorIsInstalled(root: string): boolean {
-  if (evaluatorInstalled) return true;
-  for (const from of [import.meta.url, pathToFileURL(path.join(root, "package.json")).href]) {
-    let version: string | undefined;
-    try { version = fs.readFileSync(createRequire(from).resolve("@informalsystems/quint/dist/src/rust/binaryManager.js"), "utf8").match(/QUINT_EVALUATOR_VERSION = '([^']+)'/)?.[1]; } catch { continue; }
-    const home = process.env.QUINT_HOME ?? path.join(os.homedir(), ".quint");
-    const exe = process.platform === "win32" ? "quint_evaluator.exe" : "quint_evaluator";
-    if (version && fs.existsSync(path.join(home, `rust-evaluator-${version}`, exe))) return (evaluatorInstalled = true);
-  }
-  return false;
-}
 async function simulating<T>(root: string, go: () => Promise<T>): Promise<T> {
-  if (evaluatorIsInstalled(root)) return go();
+  if (evaluatorForCheck(root)) return go();
   if (firstRun) { await firstRun; return go(); }
   const run = go();
-  firstRun = run.then(() => {}, () => {});
+  firstRun = run.then(() => {}, () => {}).finally(() => { firstRun = undefined; });
   return run;
 }
 
