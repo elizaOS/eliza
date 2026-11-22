@@ -116,6 +116,8 @@ export const BLOCKED_SPAWN_ENV_KEYS: ReadonlySet<string> = new Set([
 	// not an execution primitive. VISUAL is absent because git does not consult
 	// it. Both verified against git 2.50.1.
 	"GIT_SSH_COMMAND",
+	"GIT_PROXY_COMMAND",
+	"GIT_EXEC_PATH",
 	"GIT_EXTERNAL_DIFF",
 	"GIT_SSH",
 	"GIT_ASKPASS",
