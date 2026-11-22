@@ -31,8 +31,8 @@ export function meteredChatStream({ upstream, publicModelId, quoted, holdKey, pr
   readonly publicModelId: string
   readonly quoted: TokenCounts
   readonly holdKey: string
-  readonly price: (counts: TokenCounts) => Effect.Effect<number>
-  readonly finishHold: (settlement: ChatSettlement) => Effect.Effect<void, { readonly _tag: string }>
+  readonly price: (counts: TokenCounts) => number!!
+  readonly finishHold: (settlement: ChatSettlement) => void!({ readonly _tag: string })
   readonly includeUsage: boolean
 }) {
   let pending = segmenter()
