@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { exec } from "./run.ts";
+import { evaluatorIdentity } from "./installed.ts";
 import { heading, isStd, type Spec } from "./parse.ts";
 import type { Result } from "./pipeline.ts";
 import ts from "typescript";
@@ -236,7 +237,9 @@ const SPECIFIER = /(?:\bfrom\s+|\bimport\s*\(\s*|^\s*import\s+)["'](\.\.?\/[^"']
  * scripts or its manifest reach into it.
  */
 export function testInputs(root: string, mode: TestProfile = "normal", read: Inputs = "tests"): string | undefined {
-  const hash = createHash("sha256").update(JSON.stringify(["tests-v6", read, process.versions.node, process.platform, process.arch, profile(mode)]));
+  const evaluator = read === "tests" ? evaluatorIdentity(root) : undefined;
+  if (read === "tests" && !evaluator) return undefined;
+  const hash = createHash("sha256").update(JSON.stringify(["tests-v6", read, process.versions.node, process.platform, process.arch, profile(mode), ...evaluator ? [evaluator] : []]));
   const served = (file: string) => !isTestFile(file) && ![DRIVERS, TRACES, COUNTEREXAMPLES].some((dir) => file.startsWith(`${dir}/`));
   const reads: Record<Inputs, (file: string) => boolean> = {
     tests: (file) => !PROSE.test(file) && !file.startsWith(`${SIMULATIONS}/`),

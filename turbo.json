@@ -62,6 +62,9 @@
       ],
       "outputs": [
         ".cache/test-result-*.json"
+      ],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
       ]
     },
     "test:browser": {
@@ -70,7 +73,10 @@
         "//#gen",
         "^build"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "check": {
       "dependsOn": [
@@ -162,6 +168,9 @@
       ],
       "outputs": [
         ".cache/test-result-*.json"
+      ],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
       ]
     },
     "//#selftest:tools:a": {
@@ -189,7 +198,10 @@
         "tsconfig.json",
         "tsconfig.build.json"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "//#selftest:tools:b": {
       "dependsOn": [
@@ -216,7 +228,10 @@
         "tsconfig.json",
         "tsconfig.build.json"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "//#selftest:tools:rest": {
       "dependsOn": [
@@ -246,7 +261,10 @@
         "tsconfig.json",
         "tsconfig.build.json"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "//#selftest:docs": {
       "inputs": [
@@ -267,7 +285,10 @@
         "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
         "package.json"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "//#check": {
       "dependsOn": [
@@ -383,6 +404,9 @@
       ],
       "outputs": [
         ".cache/test-result-*.json"
+      ],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
       ]
     },
     "vibestack-studio#test:browser": {
@@ -390,7 +414,10 @@
         "gen",
         "^build"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
     },
     "@repo/ui#build": {
       "dependsOn": [

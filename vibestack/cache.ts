@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { filesUnder, sha, tokenize, writeWhole } from "./util.ts";
+import { evaluatorIdentity, packageLocation, packageRoots } from "./installed.ts";
 import { NEEDS_DAFNY, findBin, exec, onPath, stamp } from "./run.ts";
 
 /** Load an operator's publishing credential only for the exact cache endpoint it belongs to. */
@@ -118,7 +119,7 @@ const dafnySaid = (version: string | undefined, stopped?: string, out = "") => {
  * Dafny's files and their stamps, as installed now: read once for each check (`steady`), and on
  * every call outside one.
  */
-interface Check { installation?: { files?: string[]; at: string }; programs: Map<string, Program | undefined>; changed?: boolean }
+interface Check { installation?: { files?: string[]; at: string }; programs: Map<string, Program | undefined>; evaluators: Map<string, string>; changed?: boolean }
 const checking = new AsyncLocalStorage<Check>();
 function installation() {
   const now = () => {
@@ -134,7 +135,7 @@ function installation() {
   return scope ? (scope.installation ??= now()) : now();
 }
 /** Run a check, which reads Dafny's installation once: a reinstall during it is seen by the next check, and by `verifiedNow`. */
-export const steady = <T>(run: () => Promise<T>) => checking.run({ programs: new Map() }, run);
+export const steady = <T>(run: () => Promise<T>) => checking.run({ programs: new Map(), evaluators: new Map() }, run);
 
 function perCheck<T>(read: () => Promise<T>): () => Promise<T> {
   const known = new WeakMap<Check, Promise<T>>();
@@ -161,16 +162,6 @@ function packageGraph(exe: string, name: string) {
     if (!observations.has(file)) observations.set(file, state(file));
     return observations.get(file) !== "";
   };
-  const installed = (dependency: string, from: string) => {
-    for (let dir = from; ; dir = path.dirname(dir)) {
-      const at = path.join(dir, "node_modules", dependency);
-      if (path.basename(dir) !== "node_modules" && observed(path.join(at, "package.json"))) {
-        observed(at);
-        return fs.realpathSync(at);
-      }
-      if (dir === path.dirname(dir)) return undefined;
-    }
-  };
   const seen = new Map<string, number>();
   const graph: { version: string; dependencies: [string, number | null][] }[] = [];
   const visit = (dir: string): number => {
@@ -185,14 +176,13 @@ function packageGraph(exe: string, name: string) {
     const dependencies: [string, number | null][] = [];
     graph.push({ version: `${pkg.name}@${pkg.version}`, dependencies });
     for (const dependency of Object.keys({ ...pkg.dependencies, ...pkg.optionalDependencies, ...pkg.peerDependencies }).sort()) {
-      const at = installed(dependency, dir);
+      const at = packageLocation(dependency, dir, observed);
       dependencies.push([dependency, at ? visit(at) : null]);
     }
     return index;
   };
   observed(exe);
-  const loaded = installed(name, import.meta.dirname);
-  const main = installed(name, path.resolve(exe, "../../..")) ?? loaded;
+  const [main, loaded] = packageRoots(exe, name, observed);
   if (!main) throw new Error(`no ${name} with a version is installed beside ${exe} or these tools; run pnpm install`);
   const roots = [visit(main), loaded && visit(loaded)];
   return { graph, roots, unchanged: () => [...observations].every(([file, at]) => state(file) === at) };
@@ -219,6 +209,15 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
   const program = { exe, id, unchanged: () => findBin(tool, root) === exe && unchanged() };
   scope?.programs.set(key, program);
   return program;
+}
+
+export function evaluatorForCheck(root: string): string | undefined {
+  const scope = checking.getStore();
+  const known = scope?.evaluators.get(root);
+  if (known) return known;
+  const id = evaluatorIdentity(root);
+  if (id) scope?.evaluators.set(root, id);
+  return id;
 }
 
 export function stableInstallation(same: boolean) {
@@ -410,11 +409,12 @@ async function toolchainId(root: string, stage: Stage): Promise<string> {
 /** The remembered results of one check: whether it may read them, and every entry it read or wrote. */
 export interface Memory { root: string; fresh: boolean; used: Set<string> }
 /** An entry of `.spec-cache`: JSON, compressed, since a run of the simulator says megabytes. */
-interface Entry { name: string; file: string }
+interface Entry { name: string; file: string; evaluator?: string | null }
 const cacheDir = (root: string) => path.join(root, ".spec-cache");
-export async function entry(root: string, stage: Stage, key: string[]): Promise<Entry> {
-  const name = `${stage}-${sha(await toolchainId(root, stage), ...key).slice(0, 24)}.json.gz`;
-  return { name, file: path.join(cacheDir(root), name) };
+export async function entry(root: string, stage: Stage, key: string[], evaluates = ["simulate", "tests", "traces", "explore"].includes(stage)): Promise<Entry> {
+  const evaluator = evaluates ? evaluatorForCheck(root) ?? null : undefined;
+  const name = `${stage}-${sha(await toolchainId(root, stage), ...evaluator ? [evaluator] : [], ...key).slice(0, 24)}.json.gz`;
+  return { name, file: path.join(cacheDir(root), name), evaluator };
 }
 /** Entries are deleted when unused for a while (see collectGarbage), so a hit says the entry is in use. */
 function use(memory: Memory, name: string) {
@@ -422,9 +422,9 @@ function use(memory: Memory, name: string) {
   try { const now = new Date(); fs.utimesSync(path.join(cacheDir(memory.root), name), now, now); } catch { /* still a hit */ }
 }
 /** What an entry holds, or undefined. An entry that cannot be read, cut short by a kill or a full disk, is deleted and is a miss. */
-export function recall<T>(memory: Memory, { name, file }: Entry): T | undefined {
+export function recall<T>(memory: Memory, { name, file, evaluator }: Entry): T | undefined {
   memory.used.add(name);
-  if (memory.fresh) return undefined;
+  if (memory.fresh || evaluator === null) return undefined;
   let bytes: Buffer;
   try {
     bytes = fs.readFileSync(file);
@@ -441,9 +441,9 @@ export function recall<T>(memory: Memory, { name, file }: Entry): T | undefined 
   }
 }
 /** Remember `value` under an entry, unless this process cannot say which tools computed it: then the next check computes it again. */
-export function store(memory: Memory, { name, file }: Entry, value: unknown) {
+export function store(memory: Memory, { name, file, evaluator }: Entry, value: unknown) {
   memory.used.add(name);
-  if (!unsure && !checking.getStore()?.changed) writeWhole(file, gzipSync(JSON.stringify(value)));
+  if (!unsure && !checking.getStore()?.changed && evaluator !== null && (evaluator === undefined || stableInstallation(evaluatorIdentity(memory.root) === evaluator))) writeWhole(file, gzipSync(JSON.stringify(value)));
 }
 
 /**
