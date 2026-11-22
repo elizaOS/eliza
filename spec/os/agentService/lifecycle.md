@@ -20,7 +20,8 @@ the current launch did.
 
 ### A start begins a new launch only from Stopped or Failed, and a start asked during a stop runs after the exit
 
-No start is taken while an update holds the agent. The shell runs the
+No start is taken while an update holds the agent or its records need
+recovery after a storage failure. The shell runs the
 check (`BeginCheck`) after the delay it names; an explicit start (also on
 boot or package replacement) renews the restart budget.
 
@@ -34,9 +35,9 @@ type AfterExit = ToStopped | ToStart | ToRestart | ToCredentialFailure
 type ServicePhase = Stopped | Starting({ step: StartStep }) | Running | Stopping({ onExit: AfterExit }) | Failed({ cause: FailureCause })
 type Child = NoChild | Owned({ ownedEpoch: int }) | Stale({ staleEpoch: int })
 type KeyView = NoKey | Key({ version: int, account: C::Account })
-type Review = NoReview | Reviewed({ token: int, reviewEpoch: int })
+type Review = NoReview | Reviewed({ token: int, reviewEpoch: int }) | Archiving({ token: int, reviewEpoch: int })
 type UpdateHold = NotHeld | HeldFor({ target: int })
-type ServiceEffect = BeginCheck({ epoch: int, delayMs: int }) | KillChild | PushCredential({ pushEpoch: int, version: int }) | ArchiveData
+type ServiceEffect = BeginCheck({ epoch: int, delayMs: int }) | KillChild | PushCredential({ pushEpoch: int, version: int }) | ArchiveData({ token: int, archiveEpoch: int })
 type AgentService = { phase: ServicePhase, epoch: int, attempt: int, child: Child, readyEpoch: int, key: KeyView, newestVersion: int,
   delivered: int, launched: C::Account, watch: H::HealthWatch, review: Review, tokens: int, hold: UpdateHold }
 type ServiceStep = { state: AgentService, out: List[ServiceEffect] }
@@ -45,13 +46,14 @@ pure val initial: AgentService = { phase: Stopped, epoch: 0, attempt: 0, child: 
 pure def isFailed(p: ServicePhase): bool = match p { | Failed(_) => true | _ => false }
 pure def isStopping(p: ServicePhase): bool = match p { | Stopping(_) => true | _ => false }
 pure def isStarting(p: ServicePhase): bool = match p { | Starting(_) => true | _ => false }
+pure def storageFailed(s: AgentService): bool = s.phase == Failed({ cause: Storage })
 pure def enter(p: ServicePhase, s: AgentService): AgentService = { ...s, phase: p, review: NoReview }
 pure def emit(out: List[ServiceEffect], s: AgentService): ServiceStep = { state: s, out: out }
 pure def launch(attempt: int, delayMs: int, s: AgentService): ServiceStep = {
   val entered = enter(Starting({ step: Checking }), s)
   emit(List(BeginCheck({ epoch: s.epoch + 1, delayMs: delayMs })), { ...entered, epoch: s.epoch + 1, attempt: attempt, watch: H::freshWatch })
 }
-pure def canStart(s: AgentService): bool = s.hold == NotHeld and (s.phase == Stopped or isFailed(s.phase) or isStopping(s.phase))
+pure def canStart(s: AgentService): bool = s.hold == NotHeld and not(storageFailed(s)) and (s.phase == Stopped or isFailed(s.phase) or isStopping(s.phase))
 pure def start(s: AgentService): ServiceStep =
   if (isStopping(s.phase)) emit(List(), { ...s, phase: Stopping({ onExit: ToStart }) }) else launch(0, 0, s)
 pure def isBeginCheck(e: ServiceEffect): bool = match e { | BeginCheck(_) => true | _ => false }
@@ -139,10 +141,10 @@ pure def leadsToReadinessWaitSettles(s: AgentService, later: AgentService): bool
 ### A stop before the spawn spawns nothing, and a stop of a live child waits for its exit
 
 A later start or stop only changes what follows the exit. A stop of a
-failed service clears the failure.
+failed service clears the failure except when its records need recovery.
 
 ```quint
-pure def canStop(s: AgentService): bool = s.phase != Stopped
+pure def canStop(s: AgentService): bool = s.phase != Stopped and not(storageFailed(s))
 pure def stop(s: AgentService): ServiceStep =
   if (isStopping(s.phase)) emit(List(), { ...s, phase: Stopping({ onExit: ToStopped }) })
   else if (childPhase(s.phase)) emit(List(KillChild), enter(Stopping({ onExit: ToStopped }), s))
@@ -288,6 +290,7 @@ pure def credentialArrived(s: AgentService, version: int, account: C::Account): 
   val keyed = { ...s, key: Key({ version: version, account: account }), newestVersion: version }
   if (s.phase == Failed({ cause: Credential })) (if (s.hold == NotHeld) launch(0, 0, keyed) else emit(List(), enter(Stopped, keyed)))
   else if (s.phase == Stopping({ onExit: ToCredentialFailure })) emit(List(), { ...keyed, phase: Stopping({ onExit: ToStart }) })
+  else if (storageFailed(s)) emit(List(), { ...keyed, review: NoReview })
   else emit(List(), keyed)
 }
 pure def canCredentialWithdrawn(s: AgentService): bool = s.key != NoKey
@@ -295,7 +298,7 @@ pure def credentialWithdrawn(s: AgentService): ServiceStep = {
   val keyless = { ...s, key: NoKey }
   if (childPhase(s.phase) and not(isStopping(s.phase))) emit(List(KillChild), enter(Stopping({ onExit: ToCredentialFailure }), keyless))
   else if (isStopping(s.phase)) emit(List(), { ...keyless, phase: if (s.phase == Stopping({ onExit: ToStopped })) s.phase else Stopping({ onExit: ToCredentialFailure }) })
-  else if (s.phase == Stopped) emit(List(), keyless)
+  else if (s.phase == Stopped or storageFailed(s)) emit(List(), keyless)
   else emit(List(), enter(Failed({ cause: Credential }), keyless))
 }
 pure def alwaysCredentialFailureHoldsNoKey(s: AgentService): bool =
@@ -306,7 +309,7 @@ pure def alwaysLaunchCarriesTheNewestKey(s: AgentService): bool = s.delivered >=
   and (s.phase == Running implies s.delivered == keyVersion(s.key))
 pure def sometimesWaitingForSignIn(s: AgentService): bool = s.phase == Failed({ cause: Credential }) and s.newestVersion >= 1
 pure def sometimesStartedBySignIn(s: AgentService): bool = s.phase == Running and s.newestVersion >= 2 and s.attempt == 0 and s.epoch >= 2
-pure val weight_credentialArrived = 4
+pure val weight_credentialArrived = 18
 ```
 
 ### Another account's key restarts the agent on that account's directory
@@ -322,6 +325,7 @@ pure def accountChanged(s: AgentService, version: int, account: C::Account): Ser
   val keyed = { ...s, key: Key({ version: version, account: account }), newestVersion: version }
   if (childPhase(s.phase) and not(isStopping(s.phase))) emit(List(KillChild), enter(Stopping({ onExit: ToStart }), keyed))
   else if (s.phase == Stopping({ onExit: ToRestart })) emit(List(), { ...keyed, phase: Stopping({ onExit: ToStart }) })
+  else if (storageFailed(s)) emit(List(), enter(Stopped, keyed))
   else emit(List(), keyed)
 }
 pure def sometimesRestartingForAnotherAccount(s: AgentService): bool = s.phase == Stopping({ onExit: ToStart }) and keyAccount(s.key) != s.launched
@@ -364,21 +368,47 @@ pure def sometimesKeyPushedWithoutRestart(s: AgentService): bool = s.phase == Ru
 A review needs `Failed(Storage)`, no child left and a focused foreground
 screen; its token is bound to the epoch and replaces any earlier one, and
 any change of phase drops it. Archiving moves the account's state
-directory aside, never deletes it, and leaves the service `Stopped`.
+directory aside and preserves its files. While the move is in progress, the
+service stays `Failed(Storage)` and refuses another review, start, or stop.
+For this account and service run, only a successful result for that token
+clears the failure. If the move or directory sync fails, the service
+consumes the review and keeps the failure so the owner can review and try
+again. Selecting another account or signing in after a withdrawal drops
+the old review.
+
+If the rename succeeds, the shell keeps the exact moved directory for this
+account until both parent directories sync. A new review reports the
+records in that move. Its retry syncs those directories and skips the
+rename. The shell refuses to open the account's state for a launch until
+that receipt settles.
 
 ```quint
-pure def canReviewRecovery(s: AgentService, focused: bool): bool = focused and s.phase == Failed({ cause: Storage }) and s.child == NoChild
+pure def isArchiving(r: Review): bool = match r { | Archiving(_) => true | _ => false }
+pure def canReviewRecovery(s: AgentService, focused: bool): bool =
+  focused and storageFailed(s) and s.child == NoChild and not(isArchiving(s.review))
 pure def reviewRecovery(s: AgentService, focused: bool): AgentService =
   { ...s, review: Reviewed({ token: s.tokens + 1, reviewEpoch: s.epoch }), tokens: s.tokens + 1 }
 pure def canArchiveRecovery(s: AgentService, token: int): bool =
-  s.phase == Failed({ cause: Storage }) and s.review == Reviewed({ token: token, reviewEpoch: s.epoch })
-pure def archiveRecovery(s: AgentService, token: int): ServiceStep = emit(List(ArchiveData), enter(Stopped, s))
+  storageFailed(s) and s.review == Reviewed({ token: token, reviewEpoch: s.epoch })
+pure def archiveRecovery(s: AgentService, token: int): ServiceStep =
+  emit(List(ArchiveData({ token: token, archiveEpoch: s.epoch })), { ...s, review: Archiving({ token: token, reviewEpoch: s.epoch }) })
+pure def canArchiveFinished(s: AgentService, token: int, archiveSucceeded: bool): bool =
+  storageFailed(s) and s.review == Archiving({ token: token, reviewEpoch: s.epoch })
+pure def archiveFinished(s: AgentService, token: int, archiveSucceeded: bool): AgentService =
+  if (archiveSucceeded) enter(Stopped, s) else { ...s, review: NoReview }
 pure val tokenValues = Set(1, 2)
 pure def alwaysReviewBelongsToThisFailure(s: AgentService): bool = s.tokens >= 0 and (s.review == NoReview
-  or (s.review == Reviewed({ token: s.tokens, reviewEpoch: s.epoch }) and s.phase == Failed({ cause: Storage }) and s.child == NoChild))
-pure def stepDataMovedAsideOnlyByItsReview(before: AgentService, via: str, after: AgentService, out: List[ServiceEffect]): bool =
-  out.includes(ArchiveData) implies (before.review == Reviewed({ token: before.tokens, reviewEpoch: before.epoch }) and after.phase == Stopped)
-pure def sometimesRecoveryReviewed(s: AgentService): bool = s.review != NoReview
+  or ((s.review == Reviewed({ token: s.tokens, reviewEpoch: s.epoch }) or s.review == Archiving({ token: s.tokens, reviewEpoch: s.epoch }))
+    and storageFailed(s) and s.child == NoChild))
+pure def stepArchiveRequiresItsReview(before: AgentService, via: str, after: AgentService, out: List[ServiceEffect]): bool =
+  via == "archiveRecovery" implies (before.review == Reviewed({ token: before.tokens, reviewEpoch: before.epoch })
+    and after.review == Archiving({ token: before.tokens, reviewEpoch: before.epoch }) and storageFailed(after)
+    and out == List(ArchiveData({ token: before.tokens, archiveEpoch: before.epoch })))
+pure def stepStorageFailureRemainsFenced(before: AgentService, via: str, after: AgentService): bool =
+  (storageFailed(before) and not(storageFailed(after))) implies (via == "processRestarted" or via == "accountChanged"
+    or (via == "archiveFinished" and isArchiving(before.review) and after.phase == Stopped and after.review == NoReview))
+pure def sometimesRecoveryReviewed(s: AgentService): bool = s.review == Reviewed({ token: s.tokens, reviewEpoch: s.epoch })
+pure def sometimesArchiveInFlight(s: AgentService): bool = isArchiving(s.review)
 pure val weight_reviewRecovery = 3
 pure val weight_archiveRecovery = 3
 ```
