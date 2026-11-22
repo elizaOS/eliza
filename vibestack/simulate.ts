@@ -1,4 +1,3 @@
-import path from "node:path";
 import os from "node:os";
 import { isDeepStrictEqual } from "node:util";
 import type { Model } from "./gen.ts";
