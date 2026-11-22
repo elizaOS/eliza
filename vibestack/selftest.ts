@@ -2250,7 +2250,8 @@ function eachCheck() {
       '});',
       'const bootstrap = await simulate(), installed = await simulate(), warm = await simulate();',
       'fs.writeFileSync(native, "replacement"); const replaced = await simulate(); fs.writeFileSync(native, "replacement");',
-      'console.log(JSON.stringify({ ...said, ...reinstalled, dependency, evaluations: [bootstrap, installed, warm, replaced, await simulate()] }));',
+      'const identical = await simulate(); process.env.QUINT_HOME = "quint-home";',
+      'console.log(JSON.stringify({ ...said, ...reinstalled, dependency, evaluations: [bootstrap, installed, warm, replaced, identical, await simulate()] }));',
     ].join("\n");
     const r = await exec(process.execPath, ["--input-type=module", "--eval", script], root);
     assert.equal(r.status, 0, r.stderr);
@@ -2263,7 +2264,7 @@ function eachCheck() {
     assert.equal(said.dependency.proof, said.proof, "the independent LemmaScript proof stays current");
     assert.deepEqual(said.dependency.runs, [["first", "second", "second"], ["first", "second", "second"]], "Quint runs again for the changed dependency, once");
 
-    const [bootstrap, installed, warm, replaced, identical] = said.evaluations;
+    const [bootstrap, installed, warm, replaced, identical, relative] = said.evaluations;
     assert.equal(bootstrap.saved, false, "a simulation that installed its own evaluator is not a receipt for a missing evaluator");
     assert.equal(installed.saved, true);
     assert.equal(installed.runs, bootstrap.runs + 1, "the installed evaluator runs once for its own identity");
@@ -2271,6 +2272,7 @@ function eachCheck() {
     assert.equal(replaced.runs, warm.runs + 1);
     assert.notEqual(replaced.key, warm.key, "changing only evaluator bytes changes the simulation identity");
     assert.deepEqual(identical, replaced, "identical executable bytes still reuse the result");
+    assert.equal(relative.saved, false, "a relative QUINT_HOME resolves in the child's working directory and cannot use the supervisor's evaluator");
 
     const shims = path.join(scratch({}), "node_modules/.bin");
     fs.mkdirSync(shims, { recursive: true });

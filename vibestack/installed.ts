@@ -40,6 +40,7 @@ export function evaluatorIdentity(root: string): string | undefined {
   if (!exe) return undefined;
   const roots = new Set(packageRoots(exe, "@informalsystems/quint"));
   const home = process.env.QUINT_HOME ?? path.join(os.homedir(), ".quint");
+  if (!path.isAbsolute(home)) return undefined;
   const binary = process.platform === "win32" ? "quint_evaluator.exe" : "quint_evaluator";
   const digests = new Set<string>();
   for (const location of roots) {
