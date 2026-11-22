@@ -756,6 +756,7 @@ type Stage = (typeof STAGES)[number];
 const toolchains = new Map<string, Promise<string>>();
 async function toolchainId(root: string, stage: Stage): Promise<string | undefined> {
   const everything = stage === "tests" || stage === "traces" || stage === "explore";
+  const proofVerifier = stage === "prove" ? await verifierIdentity() : "";
   const versions = (stage === "action" || stage === "prove" || stage === "simulate" ? []
     : ["@informalsystems/quint", "typescript", "vibelang", ...everything ? ["lemmascript"] : []]).map(packageVersion);
   for (const tool of ["quint", "lsc"] as const) {
@@ -764,7 +765,7 @@ async function toolchainId(root: string, stage: Stage): Promise<string | undefin
     if (program && !program.id) return undefined;
     versions.push(program?.id ?? `no ${tool} launcher`);
   }
-  const verifier = stage === "prove" ? await verifierIdentity() : everything ? await verifierIdentity().catch(() => "no verifier") : "";
+  const verifier = everything ? await verifierIdentity().catch(() => "no verifier") : proofVerifier;
   const known = [stage, ...versions, verifier].join(" ");
   let id = toolchains.get(known);
   if (id) return id;
