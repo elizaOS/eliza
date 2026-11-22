@@ -55,11 +55,18 @@ export interface ClientLocationObservation {
   readonly capturedAt: number;
 }
 
-/** Optional observation fields a peer may declare it reads. */
-export type ClientTurnObservationOptionalField = "calendarDay" | "location";
+/**
+ * Optional observation fields a peer may declare it reads. `browserPage` is
+ * carried beside the observation, as `clientDevice.browserPage`.
+ */
+export type ClientTurnObservationOptionalField =
+  | "calendarDay"
+  | "location"
+  | "browserPage";
 const OPTIONAL_FIELDS: readonly ClientTurnObservationOptionalField[] = [
   "calendarDay",
   "location",
+  "browserPage",
 ];
 
 /** Data-format support, never a device or Calendar permission. */
@@ -416,6 +423,266 @@ export function readClientTurnObservation(
     return parseClientTurnObservation(
       (device as Record<string, unknown>).context,
     );
+  } catch {
+    return undefined;
+  }
+}
+
+/** Upper bound for the serialized Browser page, in UTF-8 bytes. */
+export const CLIENT_BROWSER_PAGE_MAX_BYTES = 16_384;
+/** The longest page text a client sends; it keeps the head and tail of a longer page. */
+export const CLIENT_BROWSER_PAGE_TEXT_MAX = 6_000;
+export const CLIENT_BROWSER_PAGE_TITLE_MAX = 300;
+export const CLIENT_BROWSER_PAGE_SELECTION_MAX = 1_000;
+export const CLIENT_BROWSER_PAGE_URL_MAX = 2_048;
+export const CLIENT_BROWSER_PAGE_LINKS_MAX = 20;
+export const CLIENT_BROWSER_PAGE_LINK_TEXT_MAX = 120;
+/** Why a client left the page text out; the address and title are still the page's. */
+export const CLIENT_BROWSER_PAGE_WITHHELD_REASONS = [
+  "sensitive-page",
+  "unreadable",
+] as const;
+export type ClientBrowserPageWithheldReason =
+  (typeof CLIENT_BROWSER_PAGE_WITHHELD_REASONS)[number];
+
+export interface ClientBrowserPageLink {
+  /** The link's visible words. */
+  readonly text: string;
+  /** Absolute HTTPS target, without credentials or fragment. */
+  readonly url: string;
+}
+
+/**
+ * The public web page open in the phone's Browser when the owner sent the
+ * message, carried as `clientDevice.browserPage` beside the observation. It is
+ * web content: untrusted data the owner is looking at, never instructions and
+ * never a grant to act. A client sends it only while Browser shows that tab,
+ * never for a private tab, and only to a peer that declares `browserPage`. It
+ * is bound to the observation's selected `browser-tab` by id and revision, so
+ * a page from an earlier load is never shown as the current one.
+ */
+export interface ClientBrowserPageObservation {
+  readonly tabId: string;
+  readonly revision: string;
+  readonly url: string;
+  readonly title: string;
+  /** When the client read the page, in epoch milliseconds. */
+  readonly capturedAt: number;
+  /** Present when the client sent no page text, selection or links. */
+  readonly withheld?: ClientBrowserPageWithheldReason;
+  /** Visible page text; a cut is marked in the text and by `truncated`. */
+  readonly text?: string;
+  readonly truncated?: boolean;
+  /** Text the owner selected on the page. */
+  readonly selection?: string;
+  /** Links the page shows, in page order. */
+  readonly links?: readonly ClientBrowserPageLink[];
+}
+
+const BROWSER_PAGE_KEYS = new Set([
+  "tabId",
+  "revision",
+  "url",
+  "title",
+  "capturedAt",
+  "withheld",
+  "text",
+  "truncated",
+  "selection",
+  "links",
+]);
+const BROWSER_LINK_KEYS = new Set(["text", "url"]);
+// Page text keeps line breaks and tabs; every other control character is refused.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: page text must reject control characters.
+const PAGE_CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029]/;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: single-line fields reject every control character.
+const LINE_CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+
+function pageString(
+  value: unknown,
+  max: number,
+  multiline: boolean,
+  what: string,
+): string {
+  if (
+    typeof value !== "string" ||
+    value.length > max ||
+    (multiline ? PAGE_CONTROL : LINE_CONTROL).test(value) ||
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+      value,
+    )
+  )
+    throw new ClientTurnObservationError(`Browser page ${what} is invalid`);
+  return value;
+}
+
+/** An absolute HTTPS address without credentials or fragment, in its parsed form. */
+function pageUrl(value: unknown, what: string): string {
+  if (typeof value !== "string" || value.length > CLIENT_BROWSER_PAGE_URL_MAX)
+    throw new ClientTurnObservationError(`Browser page ${what} is invalid`);
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ClientTurnObservationError(`Browser page ${what} is invalid`);
+  }
+  if (
+    url.protocol !== "https:" ||
+    !url.hostname ||
+    url.username ||
+    url.password ||
+    url.hash ||
+    value.includes("#") ||
+    url.href !== value
+  )
+    throw new ClientTurnObservationError(`Browser page ${what} is invalid`);
+  return value;
+}
+
+/** Browser-safe validation of the open Browser page a client reports. */
+export function parseClientBrowserPageObservation(
+  value: unknown,
+): ClientBrowserPageObservation {
+  const input = plainRecord(value, "Browser page");
+  onlyKeys(input, BROWSER_PAGE_KEYS, "Browser page");
+  const tabId = matching(input.tabId, TOKEN, "Browser page tab");
+  const revision = matching(input.revision, TOKEN, "Browser page revision");
+  const url = pageUrl(input.url, "address");
+  const title = pageString(
+    input.title,
+    CLIENT_BROWSER_PAGE_TITLE_MAX,
+    false,
+    "title",
+  );
+  if (
+    typeof input.capturedAt !== "number" ||
+    !Number.isSafeInteger(input.capturedAt) ||
+    input.capturedAt < 0
+  )
+    throw new ClientTurnObservationError("Browser page time is invalid");
+  let withheld: ClientBrowserPageWithheldReason | undefined;
+  if (input.withheld !== undefined) {
+    withheld = CLIENT_BROWSER_PAGE_WITHHELD_REASONS.find(
+      (reason) => reason === input.withheld,
+    );
+    if (!withheld)
+      throw new ClientTurnObservationError(
+        "Browser page withheld reason is invalid",
+      );
+    if (
+      input.text !== undefined ||
+      input.truncated !== undefined ||
+      input.selection !== undefined ||
+      input.links !== undefined
+    )
+      throw new ClientTurnObservationError(
+        "A withheld Browser page carries no page content",
+      );
+    return Object.freeze({
+      tabId,
+      revision,
+      url,
+      title,
+      capturedAt: input.capturedAt,
+      withheld,
+    });
+  }
+  const text = pageString(
+    input.text,
+    CLIENT_BROWSER_PAGE_TEXT_MAX,
+    true,
+    "text",
+  );
+  if (typeof input.truncated !== "boolean")
+    throw new ClientTurnObservationError("Browser page truncation is invalid");
+  const selection =
+    input.selection === undefined
+      ? undefined
+      : pageString(
+          input.selection,
+          CLIENT_BROWSER_PAGE_SELECTION_MAX,
+          true,
+          "selection",
+        );
+  let links: readonly ClientBrowserPageLink[] | undefined;
+  if (input.links !== undefined) {
+    if (
+      !Array.isArray(input.links) ||
+      input.links.length > CLIENT_BROWSER_PAGE_LINKS_MAX
+    )
+      throw new ClientTurnObservationError("Browser page links are invalid");
+    links = Object.freeze(
+      input.links.map((entry) => {
+        const link = plainRecord(entry, "Browser page link");
+        onlyKeys(link, BROWSER_LINK_KEYS, "Browser page link");
+        const words = pageString(
+          link.text,
+          CLIENT_BROWSER_PAGE_LINK_TEXT_MAX,
+          false,
+          "link text",
+        );
+        if (!words.trim())
+          throw new ClientTurnObservationError(
+            "Browser page link text is empty",
+          );
+        return Object.freeze({ text: words, url: pageUrl(link.url, "link") });
+      }),
+    );
+  }
+  const page: ClientBrowserPageObservation = Object.freeze({
+    tabId,
+    revision,
+    url,
+    title,
+    capturedAt: input.capturedAt,
+    text,
+    truncated: input.truncated,
+    ...(selection === undefined ? {} : { selection }),
+    ...(links === undefined ? {} : { links }),
+  });
+  if (
+    new TextEncoder().encode(JSON.stringify(page)).byteLength >
+    CLIENT_BROWSER_PAGE_MAX_BYTES
+  )
+    throw new ClientTurnObservationError("Browser page is too large");
+  return page;
+}
+
+/**
+ * True when the page is the one the observation shows: the non-sensitive
+ * Browser view with that tab selected at that revision.
+ */
+export function browserPageMatchesObservation(
+  page: ClientBrowserPageObservation,
+  observation: ClientTurnObservation,
+): boolean {
+  const selected = observation.selectedObject;
+  return (
+    observation.view === "browser" &&
+    !observation.sensitive &&
+    selected?.kind === "browser-tab" &&
+    selected.id === page.tabId &&
+    selected.revision === page.revision
+  );
+}
+
+/**
+ * Reads `clientDevice.browserPage` when it is valid and bound to the valid
+ * observation of the same message. Never throws.
+ */
+export function readClientBrowserPage(
+  metadata: unknown,
+): ClientBrowserPageObservation | undefined {
+  const observation = readClientTurnObservation(metadata);
+  if (!observation) return undefined;
+  const device = (metadata as Record<string, unknown>).clientDevice as Record<
+    string,
+    unknown
+  >;
+  if (device.browserPage === undefined) return undefined;
+  try {
+    const page = parseClientBrowserPageObservation(device.browserPage);
+    return browserPageMatchesObservation(page, observation) ? page : undefined;
   } catch {
     return undefined;
   }
