@@ -13,6 +13,7 @@ import { pathToFileURL } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
+import { parse as parseYaml } from "yaml";
 import { cacheCredentials, collectGarbage, entry, isActionEntry, recall, store, withFormalCache } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
 import { exec, run as tool } from "./run.ts";
@@ -2569,7 +2570,7 @@ function eachCheck() {
       'const keptAfter = await kept();',
       'const choose = () => steady(async () => [(await solver()).version, await proof()]);',
       'const bundled = "libexec/z3/bin/z3-4.12.1"; fs.mkdirSync("libexec/z3/bin", { recursive: true });',
-      'const install = (v) => fs.writeFileSync(bundled, ["#!/bin/sh", "echo Z3 version " + v, ""].join(String.fromCharCode(10)), { mode: 0o755 });',
+      'const install = (v) => { fs.writeFileSync(bundled + ".next", ["#!/bin/sh", "echo Z3 version " + v, ""].join(String.fromCharCode(10)), { mode: 0o755 }); fs.renameSync(bundled + ".next", bundled); };',
       'const fallback = await choose(); install("4.12.0"); const preferred = await choose(); install("4.12.2"); const replaced = await choose(); fs.unlinkSync(bundled);',
       'console.log(JSON.stringify({ within, after, kept: [rewritten, keptAfter], selected: [fallback, preferred, replaced, await choose()] }));',
     ].join("\n")], root, { ...process.env, XDG_CACHE_HOME: path.join(root, "cache"), PATH: `${audit}${path.delimiter}${process.env.PATH ?? ""}` });
@@ -2783,7 +2784,13 @@ function eachCheck() {
     for (const directory of ["vibestack/studio", ...fs.readdirSync(path.join(copy, "packages")).map((name) => `packages/${name}`)])
       for (const output of ["gen", "dist", "generated", "node_modules", ".spec-cache", ".cache", ".vibe", ".turbo", "storybook-static"])
         assert.ok(!fs.existsSync(path.join(copy, directory, output)), `${directory}/${output} is produced by the scratch build`);
-    const dependencies = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["install", "--offline", "--frozen-lockfile", "--ignore-scripts"], copy);
+    // The scratch workspace may be on another volume or outside the store configuration of this checkout.
+    const modulesManifest = path.join(nodeModules, ".modules.yaml");
+    assert.ok(fs.existsSync(modulesManifest), "The packaged command selftest needs a pnpm workspace install. Run pnpm install.");
+    const storeDir = (parseYaml(fs.readFileSync(modulesManifest, "utf8")) as { storeDir?: unknown } | null)?.storeDir;
+    assert.ok(typeof storeDir === "string" && path.isAbsolute(storeDir), `Missing absolute pnpm store path in ${modulesManifest}`);
+    const dependencies = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm",
+      ["install", "--offline", "--frozen-lockfile", "--ignore-scripts", `--store-dir=${storeDir}`], copy);
     assert.equal(dependencies.status, 0, dependencies.stdout + dependencies.stderr);
     const built = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["run", "build"], copy, { ...process.env, TURBO_CACHE: "local:rw" });
     assert.equal(built.status, 0, built.stdout + built.stderr);
@@ -3355,7 +3362,7 @@ describe("the documents name what exists", () => {
     const release = read(".github/workflows/release.yml");
     assert.match(release, /^ +- run: pnpm selftest --only --concurrency=1$/m);
     const releasePrerequisites = release.match(/^ +- run: pnpm all (.+) --concurrency=1$/m)?.[1].split(" ").sort();
-    assert.match(scripts.prepare, /^node vibestack\/spec\.ts gen --install \/\/#build(?: |$)/);
+    assert.match(scripts.prepare, /^node vibestack\/spec\.ts gen --install --skip-gen-on-pack \/\/#build(?: |$)/);
     assert.deepEqual(["//#build", ...releasePrerequisites ?? []].sort(), JSON.parse(read("turbo.json")).tasks["//#selftest:tools:a"].dependsOn.toSorted(), "pack and the release tasks materialize every prerequisite before using the isolated CI shard cache");
     assert.deepEqual(read(".github/workflows/fuzz.yml").match(/^ +shard: \[(.+)\]$/m)?.[1].split(", "), shards.map((task) => task.split(":")[2]), "the nightly run names every shard");
     const [first, ...others] = shards.map((task) => JSON.parse(read("turbo.json")).tasks[`//#${task}`].dependsOn);
@@ -3542,9 +3549,18 @@ function theCommandLine() {
       assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
     }
     fs.writeFileSync(path.join(root, "owner-source"), "external owner");
-    const installed = await prepare(true, "verify", ...prerequisites);
+    const packable = ["--skip-gen-on-pack", ...prerequisites];
+    const packed = await exec(process.execPath, [script, "gen", "--install", ...packable], root, {
+      ...process.env, GITHUB_ACTIONS: "true", GITHUB_JOB: "verify",
+      npm_command: "pack", npm_lifecycle_event: "prepare", TURBO_CACHE: "local:rw", TURBO_TOKEN: "",
+    });
+    assert.equal(packed.status, 0, packed.stderr);
     assert.equal(fs.readFileSync(path.join(root, "owner-generated"), "utf8"), "external owner");
+    assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
+    fs.writeFileSync(path.join(root, "owner-source"), "installed owner");
+    const installed = await prepare(true, "verify", ...packable);
     assert.equal(installed.status, 0, installed.stderr);
+    assert.equal(fs.readFileSync(path.join(root, "owner-generated"), "utf8"), "installed owner");
     assert.doesNotMatch(installed.stdout, /gen\/ was not generated/);
     assert.equal((await import(path.join(root, "gen/value.ts") + "?installed")).answer, 43);
     fs.rmSync(path.join(root, "gen/value.ts"));

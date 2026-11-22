@@ -105,7 +105,7 @@ public class AgentService extends Service {
   private String initFailure;
   private AgentDirectories directories;
   private ChildJournal journal;
-  private UpdateHold hold;
+  private UpdateHoldFile hold;
   private AgentSupervisor.Child child;
   private AgentPolicy.Check checkAfterReap;
   private String token;
@@ -249,11 +249,11 @@ public class AgentService extends Service {
     synchronized (LOCK) {
       AgentService service = live;
       if (service == null) {
-        UpdateHold store = UpdateHold.of(context);
-        if (new AgentPolicy(null, store.held()).step(new AgentPolicy.HoldForUpdate(target)).accepted()) {
+        UpdateHoldFile store = UpdateHold.of(context);
+        AgentPolicy policy = new AgentPolicy(null, store.held());
+        if (policy.state().hold() == null) {
           AgentDirectories dirs = new AgentDirectories(context.getFilesDir().toPath(), AndroidRuntimeDirectories::syncRuntimeDirectory);
-          requireNoJournaledChild(new ChildJournal(dirs.journal(), new ChildJournal.AndroidProcesses(), dirs.sync()));
-          store.save(target);
+          store.acquire(policy, new ChildJournal(dirs.journal(), new AndroidChildProcesses(), dirs.sync()), target);
         }
         return;
       }
@@ -272,16 +272,10 @@ public class AgentService extends Service {
     synchronized (LOCK) {
       AgentService service = live;
       if (service == null) {
-        UpdateHold store = UpdateHold.of(context);
-        if (!new AgentPolicy(null, store.held()).step(release).accepted()) return false;
-        store.save(null);
-        return true;
+        UpdateHoldFile store = UpdateHold.of(context);
+        return store.releaseSaved(release);
       }
-      return service.call(() -> {
-        if (!service.step(release).accepted()) return false;
-        service.hold.save(null);
-        return true;
-      });
+      return service.call(() -> service.publish(service.hold.release(service.policy, release)).accepted());
     }
   }
 
@@ -305,7 +299,7 @@ public class AgentService extends Service {
       AgentPolicy.UpdateTarget held = null;
       try {
         directories = new AgentDirectories(getFilesDir().toPath(), AndroidRuntimeDirectories::syncRuntimeDirectory);
-        journal = new ChildJournal(directories.journal(), new ChildJournal.AndroidProcesses(), directories.sync());
+        journal = new ChildJournal(directories.journal(), new AndroidChildProcesses(), directories.sync());
         hold = UpdateHold.of(this);
         base = journal.lastEpoch();
         held = hold.held();
@@ -450,7 +444,10 @@ public class AgentService extends Service {
 
   private AgentPolicy.Step step(AgentPolicy.Event event) {
     if (pendingHold != null && event instanceof AgentPolicy.Start) return new AgentPolicy.Step(false, policy.state(), List.of());
-    AgentPolicy.Step step = policy.step(event);
+    return publish(policy.step(event));
+  }
+
+  private AgentPolicy.Step publish(AgentPolicy.Step step) {
     if (!step.accepted()) return step;
     for (Effect effect : step.effects()) carryOut(effect);
     changed();
@@ -753,27 +750,22 @@ public class AgentService extends Service {
   }
 
   private void hold(AgentPolicy.UpdateTarget target) throws IOException {
+    if (hold == null) throw new IOException("The update hold storage could not be opened");
     AgentPolicy.State state = policy.state();
     if (state.staleEpoch() != 0 && !owns(base + state.staleEpoch())) clearStaleChild(state.staleEpoch());
-    if (!policy.state().child()) requireNoJournaledChild(journal);
-    if (step(new AgentPolicy.HoldForUpdate(target)).accepted()) {
-      pendingHold = null;
-      try { hold.save(target); }
-      catch (IOException failed) {
-        step(new AgentPolicy.ReleaseUpdate(target.code(), target.digest(), true));
-        throw failed;
+    try {
+      if (publish(hold.acquire(policy, journal, target)).accepted()) {
+        pendingHold = null;
+        return;
       }
-      return;
+    } catch (IOException failed) {
+      if (target.equals(policy.state().hold())) pendingHold = null;
+      throw failed;
     }
-    if (policy.state().child() && !target.equals(policy.state().hold())) {
+    if (policy.state().child() && target.valid() && !target.equals(policy.state().hold())) {
       pendingHold = target;
       step(new AgentPolicy.Stop());
     }
-  }
-
-  static void requireNoJournaledChild(ChildJournal journal) throws IOException {
-    if (journal == null || journal.observe() instanceof ChildJournal.Journaled)
-      throw new IOException("The previous agent must be reaped before taking an update hold");
   }
 
   private Path writeLaunch(String document) throws IOException {

@@ -434,6 +434,9 @@ root and Studio tests. In CI, the verify job runs those integration tests once.
 Each dedicated shard uses Turbo's `--only` after setup builds the toolchain.
 All three tool shards skip workspace generation. The two fixture shards use their scratch inputs, and the packaged CLI test builds its workspace copy.
 Release materializes the prerequisites before running the isolated shards.
+Packing the Vibestack CLI builds the toolchain and Studio. The package's
+prepare script skips Eliza application generation for `pnpm pack` because
+the tool archive does not include those generated files.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
 are never part of a task fingerprint.

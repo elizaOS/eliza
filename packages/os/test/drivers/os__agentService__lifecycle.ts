@@ -1,8 +1,9 @@
-// spec/os/agentService/lifecycle.md, "A stop before the spawn spawns nothing, and a stop of a live child waits for its exit"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/os/agentService/lifecycle.md, "A stop before the spawn spawns nothing, and a stop of a live child waits for its exit"; spec/os/agentService/lifecycle.md, "A hold is taken only with no child, blocks every start and is released only for its target or an ended attempt"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+import { createHash } from "node:crypto";
 import readline from "node:readline";
 import type { Driver } from "../../gen/_conformance.ts";
 import type { Options } from "../../gen/os__agentService__lifecycle.conformance.ts";
-import type { Event, ServiceEffect } from "../../gen/os__agentService__lifecycle.ts";
+import type { AgentService, Event, ServiceEffect } from "../../gen/os__agentService__lifecycle.ts";
 import { jvmDriver } from "./jvm-adapter.ts";
 
 const KEY = "device";
@@ -15,7 +16,7 @@ export type LifecycleEvent =
   | { readonly type: "launchHook"; readonly refused: boolean }
   | { readonly type: "refuse"; readonly cause: Cause }
   | { readonly type: "observeReady"; readonly epoch: number }
-  | Extract<Event, { type: "observeReady" | "readinessTimedOut" | "spawn" }>
+  | Extract<Event, { type: "observeReady" | "readinessTimedOut" | "spawn" | "holdForUpdate" | "holdWriteFailed" | "observeHoldGrant" | "releaseUpdate" | "releaseUpdateFailed" }>
   | { readonly type: "observeExit"; readonly code: number }
   | { readonly type: "credentialArrived" | "credentialReplaced"; readonly version: number }
   | { readonly type: "accountChanged"; readonly account: string }
@@ -34,25 +35,35 @@ export interface LifecycleView {
   readonly phase: LifecyclePhase;
   readonly epoch: number;
   readonly attempt: number;
-  readonly held: boolean;
+  readonly hold: { readonly tag: "NotHeld" } | { readonly tag: "Held" | "Unconfirmed"; readonly targetCode: number; readonly targetDigest: string };
   readonly credentialHeld: boolean;
   readonly delivered: number;
 }
 
-interface AdapterState extends Omit<LifecycleView, "held"> {
+interface AdapterState extends LifecycleView {
   readonly account: string | null;
   readonly child: boolean;
-  readonly hold: { readonly tag: "NotHeld" | "Held" };
 }
 
 const nativeView = (state: AdapterState): LifecycleView => ({
   phase: state.phase,
   epoch: state.epoch,
   attempt: state.attempt,
-  held: state.hold.tag === "Held",
+  hold: state.hold,
   credentialHeld: state.credentialHeld,
   delivered: state.delivered,
 });
+
+function expectedHold(hold: AgentService["hold"]): LifecycleView["hold"] {
+  if (hold.tag === "NotHeld") return hold;
+  const unconfirmed = hold.tag === "UnconfirmedHold";
+  const targetCode = unconfirmed ? hold.pendingTarget : hold.target;
+  return {
+    tag: unconfirmed ? "Unconfirmed" : "Held",
+    targetCode,
+    targetDigest: createHash("sha256").update(`artifact:${targetCode}`).digest("hex"),
+  };
+}
 
 function nativeEffects(output: unknown, state: AdapterState): ServiceEffect[] {
   if (!Array.isArray(output)) throw new Error("The native lifecycle adapter did not return an effect list");
@@ -89,7 +100,7 @@ export const options: Options<LifecycleView> = {
       : phase,
     epoch,
     attempt,
-    held: hold.tag === "HeldFor",
+    hold: expectedHold(hold),
     credentialHeld: key.tag === "Key",
     delivered,
   }),

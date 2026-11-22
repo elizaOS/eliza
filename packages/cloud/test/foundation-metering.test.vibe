@@ -288,7 +288,7 @@ module node {
       await fixture.db.query("INSERT INTO subscriptions (key,state,revision,status,plan_key,customer_id,provider_subscription_id,period_end,updated_at) VALUES ('legacy',$1,7,'active','plus_monthly','cus_legacy','sub_legacy',$2,1)",
         [JSON.stringify({ customerId: "cus_legacy", subscriptionId: "sub_legacy", planKey: "plus_monthly", status: "active", periodEnd: last * 1000 }), last * 1000])
       let matched = false
-      let periodPaid = false
+      let renewalState: "plan-change" | "failed" | "paid" = "plan-change"
       let refunded = false
       let dispute: "needs_response" | "won" = "needs_response"
       let providerCalls = 0
@@ -306,7 +306,8 @@ module node {
           const customer = url.searchParams.get("customer")
           const suffix = customer === "cus_new" ? "new" : "legacy"
           return Response.json({ data: [{
-            id: "sub_" + suffix, customer, livemode: false, created: first, status: "active", latest_invoice: "in_" + suffix,
+            id: "sub_" + suffix, customer, livemode: false, created: first,
+            status: suffix === "new" && renewalState === "failed" ? "past_due" : "active", latest_invoice: "in_" + suffix,
             cancel_at_period_end: false, items: { has_more: false, data: [{ id: "si_fixture", price, quantity: 1, current_period_start: first, current_period_end: last }] },
           }], has_more: false })
         }
@@ -315,7 +316,7 @@ module node {
           const id = url.pathname.split("/").at(-1) ?? ""
           const suffix = id.slice(3)
           const owner = { id, customer: "cus_" + suffix, livemode: false, parent: { subscription_details: { subscription: "sub_" + suffix } } }
-          if (periodPaid && suffix === "new")
+          if (renewalState === "paid" && suffix === "new")
             return Response.json({ ...owner, status: "paid", amount_paid: 3000, currency: "usd", billing_reason: "subscription_cycle",
               lines: { data: [{ pricing: { price_details: { price: price.id } }, parent: { subscription_item_details: { subscription_item: "si_fixture", proration: false } },
                 quantity: 1, period: { start: first, end: last } }] } })
@@ -362,8 +363,15 @@ module node {
       const paid = await read("new")
       const legacy = await read("legacy")
       const beforeRenewal = await fixture.db.query("SELECT key FROM allowance_periods")
-      periodPaid = true
-      const renewal = await read("new")
+      renewalState = "failed"
+      const failed = await read("new")
+      const dunning = async () => (await fixture.db.query("SELECT status,dunning_started_at,dunning_ends_at FROM subscriptions WHERE key='new'")).rows[0]
+      const firstDunning = await dunning()
+      renewalState = "plan-change"
+      const planChange = await read("new")
+      const afterPlanChange = await dunning()
+      renewalState = "paid"
+      const disputedRenewal = await read("new")
       const beforeResolution = (await fixture.db.query("SELECT key FROM allowance_periods")).rows
       dispute = "won"
       const resolved = await mappedDispute("closed")
@@ -382,7 +390,9 @@ module node {
       const mappedRefund = await deliver("refund.updated", { object: "refund", charge: "ch_fixture" })
       const seen = await fixture.db.query("SELECT charge_id,customer_id FROM cloud_stripe_charge_owners")
       const refundClawback = await allowanceStatus()
-      return { unrelated, paid, legacy, renewal, paidReplay, beforeRenewal: beforeRenewal.rows, rows: rows.rows, allowances: allowances.rows,
+      return { unrelated, paid, legacy, disputedRenewal, paidReplay, beforeRenewal: beforeRenewal.rows, rows: rows.rows, allowances: allowances.rows,
+        failed, planChange, stableDunning: firstDunning?.status === "dunning" && afterPlanChange?.status === "dunning" &&
+          firstDunning.dunning_started_at === afterPlanChange.dunning_started_at && firstDunning.dunning_ends_at === afterPlanChange.dunning_ends_at,
         unknownStatuses, unknownProviderCalls, beforeResolution, deliveries: [resolved, replay, reopened, restored, mappedRefund], owners: seen.rows, outcomes: [disputeClawback, disputeRestore, refundClawback] }
     } finally {
       globalThis.fetch = original
@@ -395,9 +405,11 @@ import { reconcileManagedCheckout } from node
 it.live('Follow the verified Checkout and scope shared charge events (spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"; spec/cloud/billing/providerEvents.md, "Each event type has one owner, and an event of any other type is done at its first handling")', () => effect {
   const result = try tryPromise(() => reconcileManagedCheckout())
   const entitled = { status: 200, body: { status: "active", canManage: true, canCheckout: false } }
+  const unpaid = { status: 200, body: { status: "inactive", canManage: true, canCheckout: false } }
   try check(() => assert.deepStrictEqual(result, {
     unrelated: { status: 200, body: { status: "inactive", canManage: true, canCheckout: false } },
-    paid: entitled, legacy: entitled, renewal: entitled, paidReplay: entitled, beforeRenewal: [],
+    paid: entitled, legacy: entitled, paidReplay: entitled, beforeRenewal: [],
+    failed: unpaid, planChange: unpaid, disputedRenewal: unpaid, stableDunning: true,
     rows: [{ key: "legacy", status: "active", provider_subscription_id: "sub_legacy", renewal: "" },
       { key: "new", status: "active", provider_subscription_id: "sub_new", renewal: "in_new" }],
     allowances: [{ key: "invoice/in_new" }], unknownStatuses: [204, 204, 204], unknownProviderCalls: 0, beforeResolution: [],
