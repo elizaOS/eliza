@@ -2755,7 +2755,15 @@ function eachCheck() {
     for (const directory of ["vibestack/studio", ...fs.readdirSync(path.join(copy, "packages")).map((name) => `packages/${name}`)])
       for (const output of ["gen", "dist", "generated", "node_modules", ".spec-cache", ".cache", ".vibe", ".turbo", "storybook-static"])
         assert.ok(!fs.existsSync(path.join(copy, directory, output)), `${directory}/${output} is produced by the scratch build`);
-    const dependencies = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["install", "--offline", "--frozen-lockfile", "--ignore-scripts"], copy);
+    const modulesManifest = path.join(nodeModules, ".modules.yaml");
+    assert.ok(fs.existsSync(modulesManifest), "The packaged command selftest needs a pnpm workspace install. Run pnpm install.");
+    const { parse: parseYaml } = await import("yaml");
+    const storeDir = (parseYaml(fs.readFileSync(modulesManifest, "utf8")) as { storeDir?: unknown } | null)?.storeDir;
+    assert.ok(typeof storeDir === "string" && path.isAbsolute(storeDir), `Missing absolute pnpm store path in ${modulesManifest}`);
+    const installEnv = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toLowerCase().replaceAll("-", "_") !== "npm_config_store_dir"));
+    installEnv.npm_config_store_dir = storeDir;
+    const dependencies = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm",
+      ["install", "--offline", "--frozen-lockfile", "--ignore-scripts"], copy, installEnv);
     assert.equal(dependencies.status, 0, dependencies.stdout + dependencies.stderr);
     const built = await exec(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["run", "build"], copy, { ...process.env, TURBO_CACHE: "local:rw" });
     assert.equal(built.status, 0, built.stdout + built.stderr);
