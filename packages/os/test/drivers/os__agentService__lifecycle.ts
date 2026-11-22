@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import readline from "node:readline";
 import type { Driver } from "../../gen/_conformance.ts";
 import type { Options } from "../../gen/os__agentService__lifecycle.conformance.ts";
-import type { Event, ServiceEffect } from "../../gen/os__agentService__lifecycle.ts";
+import type { AgentService, Event, ServiceEffect } from "../../gen/os__agentService__lifecycle.ts";
 import { jvmDriver } from "./jvm-adapter.ts";
 
 const KEY = "device";
@@ -35,7 +35,7 @@ export interface LifecycleView {
   readonly phase: LifecyclePhase;
   readonly epoch: number;
   readonly attempt: number;
-  readonly hold: { readonly tag: "NotHeld" } | { readonly tag: "Held"; readonly targetCode: number; readonly targetDigest: string };
+  readonly hold: { readonly tag: "NotHeld" } | { readonly tag: "Held" | "Unconfirmed"; readonly targetCode: number; readonly targetDigest: string };
   readonly credentialHeld: boolean;
   readonly delivered: number;
 }
@@ -53,6 +53,17 @@ const nativeView = (state: AdapterState): LifecycleView => ({
   credentialHeld: state.credentialHeld,
   delivered: state.delivered,
 });
+
+function expectedHold(hold: AgentService["hold"]): LifecycleView["hold"] {
+  if (hold.tag === "NotHeld") return hold;
+  const unconfirmed = hold.tag === "UnconfirmedHold";
+  const targetCode = unconfirmed ? hold.pendingTarget : hold.target;
+  return {
+    tag: unconfirmed ? "Unconfirmed" : "Held",
+    targetCode,
+    targetDigest: createHash("sha256").update(`artifact:${targetCode}`).digest("hex"),
+  };
+}
 
 function nativeEffects(output: unknown, state: AdapterState): ServiceEffect[] {
   if (!Array.isArray(output)) throw new Error("The native lifecycle adapter did not return an effect list");
@@ -89,9 +100,7 @@ export const options: Options<LifecycleView> = {
       : phase,
     epoch,
     attempt,
-    hold: hold.tag === "HeldFor"
-      ? { tag: "Held", targetCode: hold.target, targetDigest: createHash("sha256").update(`artifact:${hold.target}`).digest("hex") }
-      : { tag: "NotHeld" },
+    hold: expectedHold(hold),
     credentialHeld: key.tag === "Key",
     delivered,
   }),

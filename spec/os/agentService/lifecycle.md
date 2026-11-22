@@ -36,7 +36,7 @@ type ServicePhase = Stopped | Starting({ step: StartStep }) | Running | Stopping
 type Child = NoChild | Owned({ ownedEpoch: int }) | Stale({ staleEpoch: int })
 type KeyView = NoKey | Key({ version: int, account: C::Account })
 type Review = NoReview | Reviewed({ token: int, reviewEpoch: int }) | Archiving({ token: int, reviewEpoch: int })
-type UpdateHold = NotHeld | HeldFor({ target: int })
+type UpdateHold = NotHeld | HeldFor({ target: int }) | UnconfirmedHold({ pendingTarget: int })
 type ServiceEffect = BeginCheck({ epoch: int, delayMs: int }) | KillChild | PushCredential({ pushEpoch: int, version: int }) | ArchiveData({ token: int, archiveEpoch: int })
 type AgentService = { phase: ServicePhase, epoch: int, attempt: int, child: Child, readyEpoch: int, key: KeyView, newestVersion: int,
   delivered: int, launched: C::Account, watch: H::HealthWatch, review: Review, tokens: int, hold: UpdateHold }
@@ -424,27 +424,50 @@ pure val weight_archiveRecovery = 3
 The install journal (`appUpdate/install.md`) takes the hold after the
 agent stopped. A release counts only when the installed code and digest
 equal the target, or the attempt is proven ended (baseline installed, no
-session pending). The shell clears and syncs the saved hold before opening
-the launch gate. A failed write keeps the gate closed. On restart, the shell
-keeps the hold or confirms a visible release by syncing its directory.
+session pending). A failed grant write opens the launch gate only after the
+shell confirms no grant is saved. If it cannot confirm absence, it keeps
+the target fenced. The updater sees a grant only after the shell confirms
+the saved record. The shell clears and syncs the saved hold before opening
+the launch gate. On restart, it confirms a visible release by syncing its
+directory, and resolves an unconfirmed grant only from the synced record
+or confirmed absence.
 
 ```quint
 type UpdateOutcome = Installed({ artifact: int }) | AttemptEnded
 pure def canHoldForUpdate(s: AgentService, target: int): bool =
   s.hold == NotHeld and target >= 1 and s.child == NoChild and (s.phase == Stopped or isFailed(s.phase))
 pure def holdForUpdate(s: AgentService, target: int): AgentService = { ...s, hold: HeldFor({ target: target }) }
+pure def canHoldWriteFailed(s: AgentService, target: int, absenceConfirmed: bool): bool = canHoldForUpdate(s, target)
+pure def holdWriteFailed(s: AgentService, target: int, absenceConfirmed: bool): AgentService =
+  if (absenceConfirmed) s else { ...s, hold: UnconfirmedHold({ pendingTarget: target }) }
+pure def holdTarget(hold: UpdateHold): int = match hold {
+  | NotHeld => 0
+  | HeldFor(saved) => saved.target
+  | UnconfirmedHold(unknown) => unknown.pendingTarget
+}
+pure def unconfirmed(hold: UpdateHold): bool = match hold { | UnconfirmedHold(_) => true | _ => false }
+pure def canObserveHoldGrant(s: AgentService, grantSaved: bool): bool = s.phase == Stopped and unconfirmed(s.hold)
+pure def observeHoldGrant(s: AgentService, grantSaved: bool): AgentService =
+  { ...s, hold: if (grantSaved) HeldFor({ target: holdTarget(s.hold) }) else NotHeld }
 pure def canReleaseUpdate(s: AgentService, result: UpdateOutcome): bool = { val h = s.hold
-  match h { | HeldFor(x) => result == Installed({ artifact: x.target }) or result == AttemptEnded | NotHeld => false } }
+  h != NotHeld and (result == Installed({ artifact: holdTarget(h) }) or result == AttemptEnded) }
 pure def releaseUpdate(s: AgentService, result: UpdateOutcome): AgentService = { ...s, hold: NotHeld }
 pure def canReleaseUpdateFailed(s: AgentService, result: UpdateOutcome): bool = canReleaseUpdate(s, result)
 pure def releaseUpdateFailed(s: AgentService, result: UpdateOutcome): AgentService = s
 pure val targetValues = Set(1, 2)
+pure val absenceConfirmedValues = Set(true, false)
+pure val grantSavedValues = Set(true, false)
 pure val resultValues = Set(Installed({ artifact: 1 }), Installed({ artifact: 2 }), AttemptEnded)
-pure def alwaysHeldMeansNoAgent(s: AgentService): bool = s.hold != NotHeld implies (s.child == NoChild and (s.phase == Stopped or isFailed(s.phase)))
-pure def stepHoldEndsOnlyByRelease(before: AgentService, via: str, after: AgentService): bool =
-  (before.hold != NotHeld and after.hold != before.hold) implies via == "releaseUpdate"
+pure def alwaysHeldMeansNoAgent(s: AgentService): bool =
+  s.hold != NotHeld implies (holdTarget(s.hold) >= 1 and s.child == NoChild and (s.phase == Stopped or isFailed(s.phase)))
+pure def stepHoldChangesOnlyByReleaseOrReadback(before: AgentService, via: str, after: AgentService): bool =
+  (before.hold != NotHeld and after.hold != before.hold) implies
+    (via == "releaseUpdate" or (via == "observeHoldGrant" and unconfirmed(before.hold)
+      and (after.hold == NotHeld or holdTarget(before.hold) == holdTarget(after.hold))))
+pure def stepFailedGrantChangesOnlyFence(before: AgentService, via: str, after: AgentService): bool =
+  via == "holdWriteFailed" implies { ...after, hold: before.hold } == before
 pure def stepFailedReleaseKeepsState(before: AgentService, via: str, after: AgentService): bool =
   via == "releaseUpdateFailed" implies after == before
-pure def sometimesHeldForUpdate(s: AgentService): bool = s.hold != NotHeld and s.key != NoKey
+pure def sometimesHeldForUpdate(s: AgentService): bool = s.hold != NotHeld and not(unconfirmed(s.hold)) and s.key != NoKey
 pure val weight_holdForUpdate = 2
 ```

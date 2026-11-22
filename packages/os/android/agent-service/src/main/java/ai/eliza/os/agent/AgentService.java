@@ -753,9 +753,14 @@ public class AgentService extends Service {
     if (hold == null) throw new IOException("The update hold storage could not be opened");
     AgentPolicy.State state = policy.state();
     if (state.staleEpoch() != 0 && !owns(base + state.staleEpoch())) clearStaleChild(state.staleEpoch());
-    if (publish(hold.acquire(policy, journal, target)).accepted()) {
-      pendingHold = null;
-      return;
+    try {
+      if (publish(hold.acquire(policy, journal, target)).accepted()) {
+        pendingHold = null;
+        return;
+      }
+    } catch (IOException failed) {
+      if (target.equals(policy.state().hold())) pendingHold = null;
+      throw failed;
     }
     if (policy.state().child() && target.valid() && !target.equals(policy.state().hold())) {
       pendingHold = target;

@@ -37,17 +37,23 @@ final class UpdateHoldFile {
   }
 
   AgentPolicy.Step acquire(AgentPolicy policy, ChildJournal journal, AgentPolicy.UpdateTarget target) throws IOException {
-    if (!policy.state().child() && (journal == null || journal.hasRecordedChild()))
-      throw new IOException("The previous agent must be reaped before taking an update hold");
-    AgentPolicy.Step step = policy.step(new AgentPolicy.HoldForUpdate(target));
-    if (step.accepted()) {
-      try { save(target); }
-      catch (IOException failed) {
-        policy.step(new AgentPolicy.ReleaseUpdate(target.code(), target.digest(), true));
-        throw failed;
+    synchronized (policy) {
+      if (!policy.state().child() && (journal == null || journal.hasRecordedChild()))
+        throw new IOException("The previous agent must be reaped before taking an update hold");
+      AgentPolicy.Step step = policy.step(new AgentPolicy.HoldForUpdate(target));
+      if (step.accepted()) {
+        synchronized (LOCK) {
+          try { write(target); }
+          catch (IOException failed) {
+            try {
+              if (load() == null) policy.step(new AgentPolicy.ReleaseUpdate(target.code(), target.digest(), true));
+            } catch (IOException unknown) { failed.addSuppressed(unknown); }
+            throw failed;
+          }
+        }
       }
+      return step;
     }
-    return step;
   }
 
   AgentPolicy.Step release(AgentPolicy policy, AgentPolicy.ReleaseUpdate event) throws IOException {
@@ -72,13 +78,16 @@ final class UpdateHoldFile {
     Path path = directory.resolve("hold");
     BasicFileAttributes attributes;
     try { attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS); }
-    catch (NoSuchFileException absent) { return null; }
+    catch (NoSuchFileException absent) {
+      sync.directory(directory);
+      return null;
+    }
     if (!attributes.isRegularFile() || attributes.size() > 256) throw new IOException("Invalid update hold record");
     try (DataInputStream in = new DataInputStream(Files.newInputStream(path))) {
       if (in.readInt() != MAGIC) throw new IOException("Invalid update hold record");
       AgentPolicy.UpdateTarget target = in.readBoolean() ? new AgentPolicy.UpdateTarget(in.readLong(), in.readUTF()) : null;
       if (in.read() != -1) throw new IOException("Invalid update hold record");
-      if (target == null) sync.directory(directory);
+      sync.directory(directory);
       return target;
     }
   }
