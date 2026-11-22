@@ -260,9 +260,9 @@ pure def lawMissingRecordRefusesRowAction(selection: RowSelection): bool =
 
 ### Shared backup is offered only when its exact native app is ready
 
-Grace checks that the selected deployment serves version 2 of the backup
-contract and that Steward reports native Google eligibility for the exact
-registered app client. Checking eligibility does not open a challenge.
+The device checks that the selected deployment serves version 2 of the
+backup contract and that the cloud reports native Google eligibility for
+the exact registered app client. Checking eligibility does not open a challenge.
 
 ```quint
 pure def sharedBackupServiceReady(version2Available: bool, exactNativeAppReady: bool): bool =
