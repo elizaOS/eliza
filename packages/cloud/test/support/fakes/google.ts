@@ -240,7 +240,7 @@ export function interceptGoogle(state: GoogleFakeState): () => void {
 
 export interface NativeIdTokens {
   readonly keys: JWTVerifyGetKey;
-  issue(subject: string, nonce: string, email?: string): Promise<string>;
+  issue(subject: string, nonce: string, email?: string, authorizedPresenter?: string): Promise<string>;
 }
 
 export async function nativeIdTokens(audience: string): Promise<NativeIdTokens> {
@@ -248,7 +248,9 @@ export async function nativeIdTokens(audience: string): Promise<NativeIdTokens> 
   const keys = createLocalJWKSet({ keys: [{ ...await exportJWK(publicKey), kid: "native-google", alg: "RS256" }] });
   return {
     keys,
-    issue: (subject, nonce, email = subject + "@gmail.com") => new SignJWT({ nonce, email, email_verified: true })
+    issue: (subject, nonce, email = subject + "@gmail.com", authorizedPresenter) => new SignJWT({
+      nonce, email, email_verified: true, ...(authorizedPresenter === undefined ? {} : { azp: authorizedPresenter }),
+    })
       .setProtectedHeader({ alg: "RS256", kid: "native-google" }).setIssuer("https://accounts.google.com").setAudience(audience)
       .setSubject(subject).setIssuedAt().setExpirationTime("5m").sign(privateKey),
   };

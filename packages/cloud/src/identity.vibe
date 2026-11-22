@@ -674,7 +674,7 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client, k
 }
 
 export function identityRequest(request: Request, env: IdentityEnv, db: Client, keys?: JWTVerifyGetKey): Promise<Response> {
-  if (ownsPasswordBackupPath(new URL(request.url).pathname)) return passwordBackupRequest(request, env, db)
+  if (ownsPasswordBackupPath(new URL(request.url).pathname)) return passwordBackupRequest(request, env, db, keys)
   return runPromise(Effect.provide(effect {
     const response = handleIdentity(request, env, db, keys) catch (error) => match (error) {
       when InvalidRequest: json(400, { error: "invalid_request" });

@@ -13,6 +13,8 @@ export error GoogleCredentialRejected
 export interface VerifiedNativeGoogle {
   readonly identity: Identity
   readonly nonce: string
+  readonly authorizedPresenter: string | undefined
+  readonly expiresAt: number
 }
 
 export effect function verifyNativeGoogle(idToken: string, audience: string, keys: JWTVerifyGetKey = signingKeys): VerifiedNativeGoogle!GoogleCredentialRejected {
@@ -25,10 +27,15 @@ export effect function verifyNativeGoogle(idToken: string, audience: string, key
   const claims = verified.payload
   if (claims.aud !== audience || typeof claims.sub !== "string" || !subject.test(claims.sub) ||
       typeof claims.nonce !== "string" || !nonce.test(claims.nonce) ||
-      !Number.isSafeInteger(claims.exp) || !Number.isSafeInteger(claims.iat)) throw new GoogleCredentialRejected()
+      typeof claims.exp !== "number" || !Number.isSafeInteger(claims.exp) || !Number.isSafeInteger(claims.iat)) throw new GoogleCredentialRejected()
   const address = typeof claims.email === "string" ? claims.email.trim().toLowerCase() : ""
   const authoritative = address.endsWith("@gmail.com") || (typeof claims.hd === "string" && claims.hd.length > 0)
   const email = claims.email_verified === true && authoritative && address.length <= 254 &&
     /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address) ? address : null
-  return { identity: { provider: "google", subject: claims.sub, email }, nonce: claims.nonce }
+  return {
+    identity: { provider: "google", subject: claims.sub, email },
+    nonce: claims.nonce,
+    authorizedPresenter: typeof claims.azp === "string" ? claims.azp : undefined,
+    expiresAt: claims.exp * 1000,
+  }
 }
