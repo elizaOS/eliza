@@ -7,6 +7,7 @@ import { FetchHttpClient, HttpClient, HttpClientRequest, HttpServerResponse, Htt
 import { attachmentSelection, googleCalendarFeed, googleCalendarItem, googleGmailAttachment, googleGmailMessage, googleGmailTriage, googleReplyTarget, hasControlCharacter, mailAddress, GoogleAttachmentMissing, GoogleAttachmentStale, GoogleAttachmentUnsupported, GoogleReadInput, type GoogleReadApi } from "./google-read.vibe"
 
 import { boundedText } from "./providers/bounded-body.vibe"
+import { googleInboxMessage, type InboxMessageSelection } from "./google-read.vibe"
 
 export type GoogleEnv = {
   PUBLIC_API_ORIGIN: string
@@ -644,6 +645,15 @@ effect function mailGrant(db: Client, account: string, grant: string | null) {
     WHERE a.key = $1 AND a.status = 'active' AND ($2::text IS NULL OR c.id::text = $2) AND c.mail`, [account, grant])
   if (!rows[0]?.organization_id) throw new ConnectionUnavailable()
   return rows[0]
+}
+
+export function readConnectedInboxMessage(env: GoogleEnv, db: Client, account: string, grant: string, selection: InboxMessageSelection) {
+  return runPromise(Effect.provide(effect {
+    const api = googleReadApi(try accessFor(env, db, account, "mail", grant))
+    const result = try googleInboxMessage(api, selection)
+    try mailGrant(db, account, grant)
+    return result
+  }, providerLayer))
 }
 
 effect function selectedAttachment(env: GoogleEnv, db: Client, account: string, grant: string, selection: { messageId: string; partId: string; historyId: string }) {
