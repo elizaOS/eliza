@@ -14,7 +14,7 @@ import { ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, type Offered, type 
 import { bin, run } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, citationLookup, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
-import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
+import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, publishChecked, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, publishGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
 import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, UNREAD, workspacePackages, type Reported, type SrcFile } from "./util.ts";
@@ -393,6 +393,7 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
   const review = (ok: boolean, summary: string, detail = "", where?: string, rules: Result["rules"] = []) =>
     report({ ok, stage: "review", summary, detail: ok ? "" : detail, ...(where ? { where } : {}), ...(rules.length ? { rules } : {}) });
   if (accept) {
+    publishChecked(true);
     try {
       if (JSON.stringify(readSpecs(root)) !== JSON.stringify(specs) || JSON.stringify(readSrc(root)) !== JSON.stringify(srcFiles)
         || JSON.stringify(proofInputs()) !== JSON.stringify(proofsRead))

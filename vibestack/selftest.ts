@@ -12,7 +12,7 @@ import { after, before, describe, test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
-import { cacheCredentials, collectGarbage, entry, isActionEntry, recall, store, withFormalCache } from "./cache.ts";
+import { cacheCredentials, collectGarbage, entry, isActionEntry, recall, store, withFormalCache, type installedProgram as lookupTool } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
 import { exec, run as tool } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
@@ -2264,6 +2264,8 @@ function eachCheck() {
     const dependency = path.join(scope, "quint/node_modules/quint-dependency/package.json");
     fs.mkdirSync(path.dirname(dependency), { recursive: true });
     fs.writeFileSync(dependency, JSON.stringify({ name: "quint-dependency", version: "1.0.0" }));
+    const source = path.join(path.dirname(dependency), "index.js");
+    fs.writeFileSync(source, "export const version = 1;\n");
     const manager = path.join(scope, "quint/dist/src/rust/binaryManager.js");
     fs.mkdirSync(path.dirname(manager), { recursive: true });
     fs.writeFileSync(manager, "exports.QUINT_EVALUATOR_VERSION = 'v1';");
@@ -2284,6 +2286,8 @@ function eachCheck() {
       'const reinstalled = await steady(async () => ({ after: [await runs(), await runs()], reinstalled: await simulation(), proof: (await entry(".", "prove", ["same"])).name }));',
       `fs.writeFileSync(${JSON.stringify(dependency)}, JSON.stringify({ name: "quint-dependency", version: "1.0.1" }));`,
       'const dependency = await steady(async () => ({ runs: [await runs(), await runs()], simulation: await simulation(), proof: (await entry(".", "prove", ["same"])).name }));',
+      `fs.writeFileSync(${JSON.stringify(source)}, "export const version = 2;\\n");`,
+      'const patched = await steady(async () => ({ runs: [await runs(), await runs()], simulation: await simulation() }));',
       `process.env.QUINT_HOME = ${JSON.stringify(path.join(root, "quint-home"))};`,
       `const native = ${JSON.stringify(native)};`,
       'const simulate = () => steady(async () => {',
@@ -2294,7 +2298,7 @@ function eachCheck() {
       'const bootstrap = await simulate(), installed = await simulate(), warm = await simulate();',
       'fs.writeFileSync(native, "replacement"); const replaced = await simulate(); fs.writeFileSync(native, "replacement");',
       'const identical = await simulate(); process.env.QUINT_HOME = "quint-home";',
-      'console.log(JSON.stringify({ ...said, ...reinstalled, dependency, evaluations: [bootstrap, installed, warm, replaced, identical, await simulate()] }));',
+      'console.log(JSON.stringify({ ...said, ...reinstalled, dependency, patched, evaluations: [bootstrap, installed, warm, replaced, identical, await simulate()] }));',
     ].join("\n");
     const r = await exec(process.execPath, ["--input-type=module", "--eval", script], root);
     assert.equal(r.status, 0, r.stderr);
@@ -2306,6 +2310,9 @@ function eachCheck() {
     assert.notEqual(said.dependency.simulation, said.reinstalled, "a dependency reinstalled under the same Quint launcher changes the simulation identity");
     assert.equal(said.dependency.proof, said.proof, "the independent LemmaScript proof stays current");
     assert.deepEqual(said.dependency.runs, [["first", "second", "second"], ["first", "second", "second"]], "Quint runs again for the changed dependency, once");
+
+    assert.notEqual(said.patched.simulation, said.dependency.simulation, "a same-version change to installed dependency code invalidates the simulation");
+    assert.deepEqual(said.patched.runs, [said.dependency.runs[1].concat("second"), said.dependency.runs[1].concat("second")]);
 
     const [bootstrap, installed, warm, replaced, identical, relative] = said.evaluations;
     assert.equal(bootstrap.saved, false, "a simulation that installed its own evaluator is not a receipt for a missing evaluator");
@@ -3690,6 +3697,95 @@ const SHARDS = { "in shard a": eachCheckA, "in shard b": eachCheckB };
 describe("the tools", { concurrency: true }, () => {
   describe("the command line and what a failed proof leaves to start from", { concurrency: LANES }, theCommandLine);
   describe("each check catches its own kind of mistake", { concurrency: LANES }, eachCheck);
+});
+
+test("the same installed Quint shares verification results across checkouts and distinct launchers and patches keep their own", { skip: process.platform === "win32" }, async () => {
+  const install = (patch: string, fallback?: string) => {
+    const root = toolchain(scratch({}));
+    const modules = path.join(root, "node_modules");
+    const store = path.join(modules, ".pnpm");
+    const locator = `@informalsystems+quint@1.0.0_patch_hash=${patch}/node_modules`;
+    const dir = path.join(store, locator, "@informalsystems/quint");
+    fs.unlinkSync(store);
+    fs.unlinkSync(path.join(modules, "@informalsystems"));
+    fs.mkdirSync(dir, { recursive: true });
+    fs.symlinkSync(path.dirname(dir), path.join(modules, "@informalsystems"));
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "@informalsystems/quint", version: "1.0.0", bin: "cli.cjs", dependencies: { values: "1.0.0" } }));
+    fs.writeFileSync(path.join(dir, "cli.cjs"), 'require("node:fs").writeFileSync("ir.json", JSON.stringify(require("values")));\n');
+    const lookup = fallback ? "secondary/node_modules" : locator;
+    const values = path.join(store, lookup, "values");
+    fs.mkdirSync(values, { recursive: true });
+    fs.writeFileSync(path.join(values, "package.json"), JSON.stringify({ name: "values", version: "1.0.0" }));
+    fs.writeFileSync(path.join(values, "index.js"), `module.exports = ${JSON.stringify(fallback ?? "default")};\n`);
+    const shim = path.join(modules, ".bin/quint");
+    fs.writeFileSync(shim, `#!/bin/sh\nexport NODE_PATH="${store}/${lookup}:${store}/node_modules:$NODE_PATH"\nexec node "$(dirname "$0")/../.pnpm/${locator}/@informalsystems/quint/cli.cjs" "$@"\n`, { mode: 0o755 });
+    return { root, shim, values };
+  };
+  const identity = async (root: string) => {
+    const { installedProgram }: { installedProgram: typeof lookupTool } = await import(path.join(root, "vibestack/cache.ts"));
+    const program = installedProgram(root, "quint");
+    assert.ok(program);
+    return program.id;
+  };
+  const left = install("first");
+  const right = install("first");
+  const expected = await identity(left.root);
+  assert.equal(await identity(right.root), expected);
+  assert.notEqual(await identity(install("second").root), expected);
+  const launcher = fs.readFileSync(right.shim, "utf8");
+  for (const changed of [launcher.replace("exec node", "exec node --no-warnings"), launcher.replace("/node_modules:$NODE_PATH", "/another-module-path:$NODE_PATH")]) {
+    fs.writeFileSync(right.shim, changed);
+    assert.notEqual(await identity(right.root), expected);
+  }
+  const publication = await exec(process.execPath, ["--input-type=module", "--eval", `
+    import assert from "node:assert/strict";
+    import fs from "node:fs";
+    import { entry, installedProgram, recall, steady, store } from "./vibestack/cache.ts";
+    const memory = { root: ".", fresh: false, used: new Set() };
+    const [first, next, tainted] = await Promise.all(["first", "next", "tainted"].map(key => entry(".", "action", [key])));
+    const aggregate = await entry(".", "types", ["together"]);
+    const program = installedProgram(".", "quint");
+    const write = to => store(memory, to, to.name, { program, began: performance.now() });
+    await steady(async () => {
+      write(first);
+      assert.ok(fs.existsSync(first.file), "the first completed action survives interruption");
+      write(next);
+      assert.equal(recall(memory, next), next.name, "the check can use its own completed action");
+      store(memory, aggregate, [first.name, next.name]);
+      assert.ok([first, next, aggregate].every(item => fs.existsSync(item.file)), "a stage publishes its verified actions");
+    });
+    await assert.rejects(steady(async () => {
+      write(first);
+      const source = "node_modules/@informalsystems/quint/cli.cjs";
+      const original = fs.readFileSync(source);
+      fs.appendFileSync(source, "export const changed = true;");
+      fs.writeFileSync(source, original);
+      write(tainted);
+    }), /tool installation changed/);
+    assert.equal(fs.existsSync(tainted.file), false, "an edit and restore cannot publish a stale action");
+    assert.equal(recall(memory, first), first.name, "the prior verified action survives");
+    await assert.rejects(steady(async () => {
+      installedProgram(".", "quint");
+      assert.equal(recall(memory, first), first.name);
+      fs.appendFileSync("node_modules/@informalsystems/quint/cli.cjs", " ");
+    }), /tool installation changed/);
+  `], left.root);
+  assert.equal(publication.status, 0, publication.stderr);
+  const results = [];
+  for (const selection of ["left", "right"]) {
+    const project = install("first", selection);
+    const child = await exec(process.execPath, ["--input-type=module", "--eval", `
+      import fs from "node:fs";
+      import { act } from "./vibestack/action.ts";
+      const run = async () => (await act({ root: ".", fresh: false, used: new Set() }, "quint", ["typecheck"], "run", {})).files["ir.json"];
+      const first = await run();
+      fs.writeFileSync(${JSON.stringify(path.join(project.values, "index.js"))}, 'module.exports = "revised";');
+      console.log(JSON.stringify([first, await run()]));
+    `], project.root);
+    assert.equal(child.status, 0, child.stderr);
+    results.push([...JSON.parse(child.stdout), toolRuns(path.join(project.root, ".spec-cache"))]);
+  }
+  assert.deepEqual(results, [['"left"', '"revised"', []], ['"right"', '"revised"', []]]);
 });
 
 test("a trace integer of 16 or more digits that Quint wrote as a BigNumber decodes to the same integer", () => {

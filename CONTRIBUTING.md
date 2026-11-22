@@ -266,7 +266,9 @@ verifier too, since they may run proofs, as Studio's do. A process that
 outlives a reinstall, as `spec watch` does, reads the installed toolchain
 again on the next check. Simulations and proofs include the resolved package
 versions and dependency links for Quint and LemmaScript respectively. Each
-check reads each package graph once and shares it with all runs of that tool. A
+check reads each package graph once and shares it with all runs of that tool. Short actions share an installation
+check before their results reach disk. The first action, long actions, completed stages and the end of the
+check flush pending results. A changed installation discards the pending results and stops the check. A
 simulation also depends on the bytes of Quint's installed Rust evaluator. A
 run that installs its evaluator can produce a result; the next run records it
 against the installed binary. The task runner supplies the evaluator fingerprint
