@@ -51,7 +51,7 @@ final class AutofillStructures {
       if (top != null) node.topOrigin = String.valueOf(top);
       node.fieldOrigin = extras.getString(PasswordAutofillPolicy.FIELD_ORIGIN);
     }
-    if (forSave) {
+    if (forSave && !node.hints.contains("one-time-code")) {
       AutofillValue value = view.getAutofillValue();
       if (value != null && value.isText()) node.value = value.getTextValue().toString();
     }
