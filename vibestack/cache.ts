@@ -444,14 +444,13 @@ function packageGraph(exe: string, name: string) {
   const [main, loaded] = packageRoots(exe, name, observeLocation);
   if (!main) throw new Error(`no ${name} with a version is installed beside ${exe} or these tools; run pnpm install`);
   const roots = [visit(main), loaded && visit(loaded)];
-  const isolate = (id: string, entry: string): Isolated => {
+  const isolate = (id: string, entry: string, expected: readonly string[]): Isolated => {
     if (!complete) throw new Error("a declared dependency needs ambient resolution");
     const script = path.join(import.meta.dirname, `simulator${path.extname(import.meta.filename)}`);
     observed(script);
     const scriptId = executableDigest(script);
     const directory = path.join(path.dirname(LASTING), "programs", "1");
     const view = path.join(directory, `${id}-${scriptId.slice(0, 12)}`);
-    const expected = graph.map(({ dir }) => contents(dir));
     const dependencies = graph.map((node, index): [string, number | null][] => node.dependencies.some(([name]) => name === node.name) ? node.dependencies : [...node.dependencies, [node.name, index]]);
     fs.mkdirSync(directory, { recursive: true });
     if (!fs.existsSync(view)) {
@@ -556,8 +555,9 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
       try {
         const launcher = launcherInputs(exe, main, observeLocation);
         if (launcher) {
-          const id = sha(launcher.digest, JSON.stringify([roots, graph.map(({ dir, version, dependencies }) => [version, contents(dir), dependencies])]), `node@${process.versions.node}:${process.platform}:${process.arch}`);
-          const isolated = isolate(id, launcher.entry);
+          const expected = graph.map(({ dir }) => contents(dir));
+          const id = sha(launcher.digest, JSON.stringify([roots, graph.map(({ version, dependencies }, index) => [version, expected[index], dependencies])]), `node@${process.versions.node}:${process.platform}:${process.arch}`);
+          const isolated = isolate(id, launcher.entry, expected);
           installed = { id, isolated, unchanged };
           if (!unsure) {
             try {
