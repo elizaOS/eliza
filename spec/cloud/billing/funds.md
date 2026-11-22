@@ -93,7 +93,7 @@ settlement they are its `creditFree`, with the hold's credit part still held.
 
 ```quint
 pure def lawMeteredChargeFitsTheFunds(lane: M::FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros, actual: Micros, creditFree: Micros): bool = {
-  val reserved = M::reserve(M::initial, M::initial.key, quote, lane, allowanceAvailable, creditAvailable, 0)
+  val reserved = M::reserve(M::initial, M::holdKeyOf(M::initial), quote, lane, allowanceAvailable, creditAvailable, 0)
   val fc = reserved.fromCredits
   val dispatched = M::markDispatched(reserved, 0)
   val known = M::creditCharge(M::settleKnown(dispatched, actual, creditFree))

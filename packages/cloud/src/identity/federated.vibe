@@ -1,8 +1,8 @@
 // spec/cloud/identity/federatedSignIn.md, "Story: Sign in with Google in the browser"; spec/cloud/identity/federatedSignIn.md, "Story: Sign in with the device's Google account"; spec/cloud/identity/federatedSignIn.md, "A code is redeemed once, while live, only with its own return and verifier, and starts a session or a second-factor challenge, never both"
 import { methodRefusal } from "../../gen/cloud__deployment.effect.vibe"
 import {
-  apply, authorizeRefusal, canBegin, canExchange, canExpireCode, canExpireNative, canIssueNative, codeRefusal, decodeState, elapse, initial, isIssued, isOpen, lateCallbackError, nativeRefusal, nativeVerdict,
-  Rejected, type AttemptStep, type AuthorizeRequest, type CodeBinding, type Event, type GoogleAttempt, type GoogleCallback, type NativeProof, type NativePurpose, type NativeVerdict, type NotAState, type PkceMethod, type ReturnError
+  apply, authorizeRefusal, canBegin, canExchange, canExpireCode, canExpireNative, canIssueNative, codeRefusal, decodeState, elapse, initial, isIssued, isOpen, lateCallbackError, nativeBackupVerdict, nativeRefusal, nativeVerdict,
+  type AttemptStep, type AuthorizeRequest, type CodeBinding, type Event, type GoogleAttempt, type GoogleCallback, type NativeBackupBinding, type NativeBackupPresenter, type NativeProof, type NativePurpose, type NativeVerdict, type NotAState, type PkceMethod, type Rejected, type ReturnError
 } from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
 import { clientCheck, nativeGoogleCheck, nativeGoogleRefusal, type ClientRequest } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import type { FirstFactorOutcome } from "../../gen/cloud__identity__secondFactor.effect.vibe"
@@ -43,6 +43,12 @@ export interface NativeChallenge {
   readonly nonce: string
   readonly serverClientId: string
   readonly expiresAt: number
+}
+
+interface NativeBackupAttempt {
+  readonly clientId: string
+  readonly redirectUri: string
+  readonly binding: NativeBackupBinding
 }
 
 interface Timed {
@@ -330,6 +336,44 @@ effect function openNative(purpose: NativePurpose, request: typeof NativeBody.Ty
     })
     return { challengeId: key, nonce, serverClientId: google.serverClientId, expiresAt: dueAt(issued.state) } satisfies NativeChallenge
   })
+}
+
+export effect function issueNativeBackupChallenge(tx: Tx, attempt: NativeBackupAttempt & {
+  readonly accountId: string
+  readonly codeChallenge: string
+  readonly audience: string
+}, now: number) {
+  const purpose: NativePurpose = { tag: "NativeBackup", binding: attempt.binding }
+  if (!challengePattern.test(attempt.codeChallenge) || !canIssueNative(initial, purpose, "S256")) throw refused("InvalidRequest")
+  const key = newId()
+  const nonce = secretText("", 32, "hex")
+  const issued = try step(tx, key, { type: "issueNative", purpose, method: "S256" }, now, {
+    route: "native", client_id: attempt.clientId, redirect_uri: attempt.redirectUri,
+    challenge_digest: tokenDigest(attempt.codeChallenge), nonce_digest: tokenDigest(nonce), link_user_id: attempt.accountId
+  })
+  return { challengeId: key, nonce, serverClientId: attempt.audience, expiresAt: dueAt(issued.state) } satisfies NativeChallenge
+}
+
+export effect function spendNativeBackupChallenge(tx: Tx, attempt: NativeBackupAttempt & {
+  readonly challengeId: string
+  readonly codeVerifier: string
+  readonly nonce: string
+  readonly tokenExpiresAt: number
+  readonly presenterRegistered: boolean
+}, now: number) {
+  const row = (try tx.query("SELECT client_id, redirect_uri, challenge_digest, nonce_digest FROM oauth_attempts WHERE key = $1 AND route = 'native' FOR UPDATE", [attempt.challengeId]))[0]
+  if (row === undefined) return false
+  const before = try current(tx, attempt.challengeId, now)
+  const proof: NativeProof = {
+    clientMatches: attempt.presenterRegistered && toText(row.client_id) === attempt.clientId && toText(row.redirect_uri) === attempt.redirectUri,
+    verifierMatches: verifierPattern.test(attempt.codeVerifier) && sameText(tokenDigest(s256(attempt.codeVerifier)), toText(row.challenge_digest) ?? ""),
+    signatureOk: now < attempt.tokenExpiresAt, issuerOk: true, audienceOk: true,
+    nonceMatches: sameText(tokenDigest(attempt.nonce), toText(row.nonce_digest) ?? "")
+  }
+  const presenter: NativeBackupPresenter = { binding: attempt.binding, deviceCurrent: true, confirmed: true }
+  if (nativeBackupVerdict(before.native, before.now, proof, presenter) !== "NativeAccepted") return false
+  const next = try step(tx, attempt.challengeId, { type: "presentNativeBackup", proof, presenter }, now)
+  return next.state.native.tag === "ChallengeUsed" && next.state.native.usedAs === "GoogleProofYield"
 }
 
 function presenterMatches(row: Row, presenter: Presenter): Pick<NativeProof, "clientMatches" | "verifierMatches"> {

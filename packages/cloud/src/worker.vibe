@@ -1,15 +1,15 @@
 // spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "Story: Sign in to the Cloud"
-import { WorkerResponse, WorkerHeaders, withRequestBody, workerFetch } from "./worker-platform.ts"
+import { WorkerResponse, WorkerHeaders, withRequestBody, workerFetch, type WorkerLifetime } from "./worker-platform.ts"
 import type { Client } from "pg"
 import { withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
 import { sweepUsage } from "./worker-metering.vibe"
-import { identityRequest, nativeGooglePath, inferenceAccount, sessionAccount, type IdentityEnv } from "./identity.vibe"
+import { cloudCredential, identityRequest, nativeGooglePath, inferenceAccount, sessionAccount, type IdentityEnv } from "./identity.vibe"
 import { nativeAssetLinks } from "./native-registry.vibe"
 import { ownsPasswordBackupPath } from "./password-backup.vibe"
 export { nativeAssetLinks }
 export { SpeechRelayCoordinator } from "./speech-relay.vibe"
 import { speechRequest, speechRoute, speechWebSocket, type SpeechEnv } from "./speech.vibe"
-import { deviceAttachmentPath, googleRequest, reminderSchedule, type GoogleEnv } from "./google.vibe"
+import { deviceAttachmentPath, inboxArrivalPath, googleRequest, reminderSchedule, type GoogleEnv } from "./google.vibe"
 import { billingRequest, refreshPaidAccess, stripeWebhook, stripeWebhookRoute, sweepSubscriptions, type BillingEnv } from "./billing.vibe"
 import { CLEF_DECISIONS_PATH } from "./clef-decisions.vibe"
 import { clefRequest, type ClefEnv } from "./clef-worker.vibe"
@@ -18,7 +18,7 @@ import { inferenceRequest, limitedBody, type InferenceEnv } from "./inference.vi
 export type CloudBindings = ClefEnv & IdentityEnv & GoogleEnv & InferenceEnv & SpeechEnv & BillingEnv & WorkerDatabase
 type DeploymentExtension<E extends CloudBindings> = (request: Request, env: E, db: Client, account: string) => Promise<Response>
 
-async function route<E extends CloudBindings>(request: Request, env: E, db: Client, extension: DeploymentExtension<E> | undefined, providerFetch: typeof fetch) {
+async function route<E extends CloudBindings>(request: Request, env: E, db: Client, extension: DeploymentExtension<E> | undefined, providerFetch: typeof fetch, lifetime?: WorkerLifetime) {
   const path = new URL(request.url).pathname
   if (path === stripeWebhookRoute && request.method === "POST") {
     const bytes = await limitedBody(request, 256 * 1024)
@@ -48,6 +48,16 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
     if (response.ok && await inferenceAccount(request, db, env) !== owner) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
     return response
   }
+  if (path === inboxArrivalPath) {
+    if (request.method !== "GET") return WorkerResponse.json({ error: "method_not_allowed" }, { status: 405 })
+    const owner = await inferenceAccount(request, db, env)
+    const credential = owner ? await cloudCredential(request) : null
+    if (!owner || !credential) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+    return googleRequest(request, env, db, owner, providerFetch, {
+      credential,
+      current: async () => await inferenceAccount(request, db, env) === owner,
+    })
+  }
   const decisions = path === CLEF_DECISIONS_PATH
   const inference = path === "/api/v1/chat/completions" || path === "/api/v1/embeddings"
   if (path === speechRoute + "/ws") return speechWebSocket(request, env, db)
@@ -64,7 +74,7 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
   if (decisions) return clefRequest(request, env, db, account)
   if (inference || path === speechRoute + "/session") await refreshPaidAccess(env, db, account)
   if (speech) return speechRequest(request, env, db, account)
-  if (inference) return inferenceRequest(request, env, db, account, workerFetch)
+  if (inference) return inferenceRequest(request, env, db, account, workerFetch, lifetime)
   if (google) {
     const response = await googleRequest(request, env, db, account, providerFetch)
     if (response.ok && request.method === "GET" && path.startsWith("/api/v1/eliza/google/gmail/") && await sessionAccount(request, db) !== account)
@@ -84,7 +94,7 @@ export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExten
         await sweepSubscriptions(env, db)
       })
     },
-    async fetch(request: Request, env: E): Promise<Response> {
+    async fetch(request: Request, env: E, lifetime?: WorkerLifetime): Promise<Response> {
       if (new URL(request.url).origin === env.PUBLIC_API_ORIGIN && new URL(request.url).pathname === "/.well-known/assetlinks.json" && request.method === "GET") return nativeAssetLinks(env)
       const origin = request.headers.get("origin")
       if (origin && origin !== env.WEB_ORIGIN && origin !== env.PUBLIC_API_ORIGIN) {
@@ -108,7 +118,7 @@ export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExten
         return WorkerResponse.json({ error: "origin_required" }, { status: 403, headers: cors })
       }
       try {
-        const result = await withCloudDatabase(env, (db) => route(request, env, db, extension, providerFetch))
+        const result = await withCloudDatabase(env, (db) => route(request, env, db, extension, providerFetch, lifetime))
         if (result.status === 101) return result
         const headers = new WorkerHeaders(result.headers)
         for (const [key, value] of cors) headers.set(key, value)

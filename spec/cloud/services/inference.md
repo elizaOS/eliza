@@ -151,7 +151,7 @@ pure def lawAnAdmittedCallIsHeldAtItsQuote(ingress: R::Window, auth: RA::Admissi
         and bodyAccepted(body) and x.call.model.id == body.model and (hasImage(body) implies x.call.model.vision)
         and Mo::countsInBound(x.call.counts) and x.call.quote == Mo::callCost(x.call.model, x.call.counts) and x.call.lane == E::fundingLane(policy)
         and x.call.hold.phase == M::Reserved and x.call.hold.quote == x.call.quote and x.call.hold.reserved >= x.call.quote
-        and x.call.hold.key == inferenceHoldKey(a.organization, a.requestId)
+        and M::holdKeyOf(x.call.hold) == inferenceHoldKey(a.organization, a.requestId)
     | RefusedAt(r) => wellFormed(r.refusal)
   }
 }
@@ -183,15 +183,16 @@ pure def lawAWithdrawnCallIsAnsweredWellFormed(standing: RA::Admission, heldLane
 
 ### A dispatched call is charged its reported usage, what it delivered when the caller hung up, and its quote when nothing was reported
 
-A finish with no usage, or usage `Mo::billedUsage` cannot read, and any
-failure after dispatch but a rejection, is charged the quote: a missing
-report is no evidence of no cost. A hang-up cancels the provider call itself
+A finished response or a failed stream is charged any usable usage report
+already received. When either has no such report, including a provider
+connection failure before streaming begins, it is charged the quote.
+A hang-up cancels the provider call itself
 and is charged the larger of the quoted and reported input tokens and a
 token per four delivered characters, each capped at `Mo::maxTokensPerSide`.
 
 ```quint
 type UsageReport = NoUsage | Usage({ usage: Mo::ProviderUsage })
-type CompletionEnd = Finished({ report: UsageReport }) | HungUp({ reportedInput: int, deliveredChars: CharCount }) | ProviderRejected({ status: int }) | ProviderFailed
+type CompletionEnd = Finished({ report: UsageReport }) | HungUp({ reportedInput: int, deliveredChars: CharCount }) | ProviderRejected({ status: int }) | ProviderFailed({ report: UsageReport })
 type CompletionCharge = ChargeCounts({ counts: Mo::TokenCounts }) | ChargeQuote | ReleaseHold
 pure val noTokens: Mo::TokenCounts = { inputTokens: 0, outputTokens: 0 }
 pure def chargeOfUsage(u: Mo::ProviderUsage): CompletionCharge = {
@@ -207,7 +208,7 @@ pure def chargeOf(dispatched: bool, end: CompletionEnd, quoted: Mo::TokenCounts)
     | Finished(f) => chargeOfReport(f.report)
     | HungUp(h) => ChargeCounts({ counts: hangUpCounts(quoted, h.reportedInput, h.deliveredChars) })
     | ProviderRejected(r) => ChargeCounts({ counts: noTokens })
-    | ProviderFailed => ChargeQuote
+    | ProviderFailed(f) => chargeOfReport(f.report)
   }
 pure def closeHold(h: M::Hold, charge: CompletionCharge, model: Mo::Model, creditFree: Micros): M::Hold = match charge {
   | ChargeCounts(c) => M::settleKnown(h, Mo::callCost(model, c.counts), creditFree)
@@ -220,12 +221,19 @@ pure def closeAllowed(h: M::Hold, charge: CompletionCharge, model: Mo::Model, cr
   | ReleaseHold => M::canRelease(h)
 }
 pure def lawAMissingReportChargesTheQuote(dispatched: bool, end: CompletionEnd, quoted: Mo::TokenCounts): bool =
-  (dispatched and (end == Finished({ report: NoUsage }) or end == ProviderFailed)) implies chargeOf(dispatched, end, quoted) == ChargeQuote
+  (dispatched and (end == Finished({ report: NoUsage }) or end == ProviderFailed({ report: NoUsage }))) implies chargeOf(dispatched, end, quoted) == ChargeQuote
+pure def lawAProviderReportDeterminesTheCharge(u: Mo::ProviderUsage, quoted: Mo::TokenCounts): bool = {
+  val report = Usage({ usage: u })
+  val billed = Mo::billedUsage(u)
+  val expected = match billed { | Reported(r) => ChargeCounts({ counts: r.counts }) | Unreadable => ChargeQuote }
+  chargeOf(true, Finished({ report: report }), quoted) == expected and chargeOf(true, ProviderFailed({ report: report }), quoted) == expected
+}
 pure val quotedValues: Set[Mo::TokenCounts] = Set(noTokens, { inputTokens: 10, outputTokens: 500 })
 pure val endValues: Set[CompletionEnd] = {
   val used = { promptTokens: 10, cachedTokens: 0, completionTokens: 7, reasoningTokens: 2 }
   Set(Finished({ report: NoUsage }), Finished({ report: Usage({ usage: used }) }), Finished({ report: Usage({ usage: { ...used, promptTokens: -1 } }) }),
-    HungUp({ reportedInput: 12, deliveredChars: 9 }), HungUp({ reportedInput: 0, deliveredChars: 0 }), ProviderRejected({ status: 400 }), ProviderFailed)
+    HungUp({ reportedInput: 12, deliveredChars: 9 }), HungUp({ reportedInput: 0, deliveredChars: 0 }), ProviderRejected({ status: 400 }),
+    ProviderFailed({ report: NoUsage }), ProviderFailed({ report: Usage({ usage: used }) }), ProviderFailed({ report: Usage({ usage: { ...used, promptTokens: -1 } }) }))
 }
 pure def lawAHangUpPaysForWhatItGot(reportedInput: int, deliveredChars: CharCount, quoted: Mo::TokenCounts): bool = {
   val c = hangUpCounts(quoted, reportedInput, deliveredChars)
@@ -241,15 +249,18 @@ pure val deliveredCharsValues = Set(-1, 0, 9, 9000000)
 
 A rejection is a provider answer with a status of `rejectionStatuses`
 before any byte was delivered; any other failure after dispatch (a 5xx, the
-timeout, the network, a failure mid-stream) is `ProviderFailed`. A provider
+timeout, the network, a failure mid-stream) is `ProviderFailed`. A mid-stream
+failure retains any usage report received before it. A provider
 `400` or `422` (a parameter or a strict `json_schema` it cannot serve)
 answers `400 invalid_request`, a `413` answers `413 content_too_large`, any
 other failure `503 provider_unavailable`, the only retryable one.
+Closure preserves the original hold key. A closed hold refuses a second
+settlement or release.
 
 ```quint
 pure val rejectionStatuses: Set[int] = Set(400, 401, 402, 403, 404, 405, 406, 409, 410, 413, 415, 422, 429)
 pure def endOfFailure(status: int, delivered: bool): CompletionEnd =
-  if (not(delivered) and rejectionStatuses.contains(status)) ProviderRejected({ status: status }) else ProviderFailed
+  if (not(delivered) and rejectionStatuses.contains(status)) ProviderRejected({ status: status }) else ProviderFailed({ report: NoUsage })
 pure val pricedModel: Mo::Model = { id: "m1", provider: "p1", upstreamModel: "u1", vision: false, inputPer1K: 3, outputPer1K: 15 }
 pure def lawEveryCallClosesItsHoldOnce(lane: M::FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros, dispatched: bool, end: CompletionEnd, quoted: Mo::TokenCounts, creditFree: Micros): bool = {
   val held = M::reserve(M::initial, inferenceHoldKey("o1", "r1"), quote, lane, allowanceAvailable, creditAvailable, 0)
@@ -258,7 +269,8 @@ pure def lawEveryCallClosesItsHoldOnce(lane: M::FundingLane, quote: Micros, allo
   val closed = closeHold(sent, charge, pricedModel, creditFree)
   (M::fundable(lane, quote, allowanceAvailable, creditAvailable) and creditFree >= 0 and Mo::countsInBound(quoted)) implies
     (closeAllowed(sent, charge, pricedModel, creditFree) and (closed.phase == M::Released iff not(dispatched)) and (closed.phase == M::Settled iff dispatched)
-     and (closed.phase == M::Released implies closed.charged == 0) and (charge == ChargeQuote implies closed.charged == quote))
+     and (closed.phase == M::Released implies closed.charged == 0) and (charge == ChargeQuote implies closed.charged == quote)
+     and closed.key == held.key and not(M::canRelease(closed) or M::canSettleUnknown(closed) or M::canSettleKnown(closed, 0, creditFree)))
 }
 pure val statusValues = Set(0, 400, 413, 429, 500)
 pure def lawOnlyAnUndeliveredRejectionIsFree(status: int, delivered: bool, quoted: Mo::TokenCounts): bool =
@@ -296,26 +308,29 @@ A finished stream sends its chunks, one usage chunk when the request asked
 ```quint
 type StreamEnding = StreamFinished | StreamFailed | StreamHungUp
 type Frame = Delta({ seq: int }) | UsageChunk | ErrorChunk | Done
+pure val errorFrame: Frame = ErrorChunk
 pure def streamFrames(deltas: List[int], ending: StreamEnding, usageAsked: bool, usageReported: bool): List[Frame] = {
   val body = deltas.listMap(d => Delta({ seq: d }))
   if (ending == StreamFinished) body.concat(if (usageAsked and usageReported) List(UsageChunk, Done) else List(Done))
   else if (ending == StreamFailed) body.concat(List(ErrorChunk, Done))
   else body
 }
-pure def completes(frames: List[Frame]): bool = frames.length() > 0 and frames.nthOr(frames.length() - 1, ErrorChunk) == Done and not(frames.includes(ErrorChunk))
+pure def completes(frames: List[Frame]): bool = frames.length() > 0 and frames.nthOr(frames.length() - 1, errorFrame) == Done and not(frames.includes(ErrorChunk))
 pure def countOf(frames: List[Frame], f: Frame): int = frames.select(g => g == f).length()
 pure val deltasValues = Set(List(), List(1), List(1, 2, 3))
 pure def lawEveryUnbrokenStreamEndsInOneDone(deltas: List[int], ending: StreamEnding, usageAsked: bool, usageReported: bool): bool = {
   val frames = streamFrames(deltas, ending, usageAsked, usageReported)
-  (ending != StreamHungUp implies (frames.nthOr(frames.length() - 1, ErrorChunk) == Done and countOf(frames, Done) == 1))
+  (ending != StreamHungUp implies (frames.nthOr(frames.length() - 1, errorFrame) == Done and countOf(frames, Done) == 1))
     and (ending == StreamHungUp implies countOf(frames, Done) == 0)
 }
 pure def lawOnlyAFinishedStreamCompletes(deltas: List[int], ending: StreamEnding, usageAsked: bool, usageReported: bool): bool =
   completes(streamFrames(deltas, ending, usageAsked, usageReported)) iff ending == StreamFinished
 pure def lawUsageIsSentOnceAndOnlyAsReported(deltas: List[int], ending: StreamEnding, usageAsked: bool, usageReported: bool): bool = {
   val n = countOf(streamFrames(deltas, ending, usageAsked, usageReported), UsageChunk)
-  n <= 1 and (n == 1 iff (ending == StreamFinished and usageAsked and usageReported)) and countOf(streamFrames(deltas, ending, usageAsked, usageReported), ErrorChunk) <= 1
+  n <= 1 and (n == 1 iff (ending == StreamFinished and usageAsked and usageReported))
 }
+pure def lawOnlyAFailedStreamSendsAnError(deltas: List[int], ending: StreamEnding, usageAsked: bool, usageReported: bool): bool =
+  countOf(streamFrames(deltas, ending, usageAsked, usageReported), ErrorChunk) == (if (ending == StreamFailed) 1 else 0)
 ```
 
 ### Reading the provider's stream yields the same events however its bytes were split
