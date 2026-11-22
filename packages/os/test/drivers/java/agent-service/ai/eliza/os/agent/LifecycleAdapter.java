@@ -1,4 +1,4 @@
-// spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/os/agentService/health.md, "A probe is Ok only for a ready answer of the current launch"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 package ai.eliza.os.agent;
 
 import java.io.BufferedReader;
@@ -34,14 +34,15 @@ public final class LifecycleAdapter {
       policy = new AgentPolicy(ACCOUNT, null);
       return "{\"state\":" + state(policy.state()) + ",\"out\":[]}";
     }
-    Object event = request.containsKey("event") ? request.get("event") : request.get("raw");
+    boolean direct = request.containsKey("event");
+    Object event = direct ? request.get("event") : request.get("raw");
     AgentPolicy.Step step;
-    try { step = policy.step(decode(object(event))); }
+    try { step = policy.step(decode(object(event), direct)); }
     catch (IllegalArgumentException | ArithmeticException malformed) { step = new AgentPolicy.Step(false, policy.state(), List.of()); }
     return "{\"outcome\":\"" + (step.accepted() ? "accepted" : "refused") + "\",\"state\":" + state(step.state()) + ",\"out\":" + effects(step.effects()) + "}";
   }
 
-  private static AgentPolicy.Event decode(Map<String, Object> event) {
+  private AgentPolicy.Event decode(Map<String, Object> event, boolean direct) {
     return switch (text(event.get("type"))) {
       case "start" -> new AgentPolicy.Start();
       case "stop" -> new AgentPolicy.Stop();
@@ -50,7 +51,7 @@ public final class LifecycleAdapter {
       case "refuse" -> new AgentPolicy.Refuse(named(AgentPolicy.Cause.values(), event.get("cause")), "a start check refused");
       case "spawn" -> new AgentPolicy.Spawned();
       case "spawnFailed" -> new AgentPolicy.SpawnFailed("the agent could not be spawned");
-      case "observeReady" -> new AgentPolicy.ObserveReady(whole(event.get("epoch")));
+      case "observeReady" -> readyEvent(event, direct);
       case "timeout" -> new AgentPolicy.ReadyTimeout();
       case "observeExit" -> new AgentPolicy.ObserveExit(Math.toIntExact(whole(event.get("code"))));
       case "failUnclassified" -> new AgentPolicy.FailUnclassified("an unclassified failure");
@@ -67,6 +68,29 @@ public final class LifecycleAdapter {
       case "holdForUpdate" -> new AgentPolicy.HoldForUpdate(new AgentPolicy.UpdateTarget(whole(event.get("targetCode")), text(event.get("targetDigest"))));
       case "releaseUpdate" -> new AgentPolicy.ReleaseUpdate(whole(event.get("installedCode")), text(event.get("installedDigest")), flag(event.get("attemptEnded")));
       default -> throw new IllegalArgumentException("not an event of the agent service");
+    };
+  }
+
+  private AgentPolicy.ObserveReady readyEvent(Map<String, Object> event, boolean direct) {
+    if (direct && !event.containsKey("reply")) return new AgentPolicy.ObserveReady(whole(event.get("epoch")));
+    Map<String, Object> wire = object(event.get("reply"));
+    HealthPolicy.ProbeReply reply = switch (text(wire.get("tag"))) {
+      case "Answered" -> new HealthPolicy.Answered(Math.toIntExact(whole(wire.get("status"))), healthBody(wire.get("body")));
+      case "Unanswered" -> new HealthPolicy.Unanswered(flag(wire.get("childAlive")), flag(wire.get("socketAccepts")));
+      default -> throw new IllegalArgumentException("not a probe reply");
+    };
+    if (HealthPolicy.classify(reply, policy.state().epoch()) == HealthPolicy.Probe.OK && reply instanceof HealthPolicy.Answered answered)
+      return new AgentPolicy.ObserveReady(answered.body().epoch());
+    throw new IllegalArgumentException("the current launch did not report readiness");
+  }
+
+  private static HealthPolicy.HealthBody healthBody(Object value) {
+    Map<String, Object> body = object(value);
+    return switch (text(body.get("tag"))) {
+      case "Unparsed" -> null;
+      case "Parsed" -> new HealthPolicy.HealthBody(flag(body.get("ready")), text(body.get("runtime")),
+        text(body.get("agentState")), whole(body.get("epoch")));
+      default -> throw new IllegalArgumentException("not a health body");
     };
   }
 

@@ -1,8 +1,8 @@
-// spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/os/agentService/lifecycle.md, "A stop before the spawn spawns nothing, and a stop of a live child waits for its exit"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 import readline from "node:readline";
 import type { Driver } from "../../gen/_conformance.ts";
 import type { Options } from "../../gen/os__agentService__lifecycle.conformance.ts";
-import type { ServiceEffect } from "../../gen/os__agentService__lifecycle.ts";
+import type { Event, ServiceEffect } from "../../gen/os__agentService__lifecycle.ts";
 import { jvmDriver } from "./jvm-adapter.ts";
 
 const KEY = "device";
@@ -15,6 +15,7 @@ export type LifecycleEvent =
   | { readonly type: "launchHook"; readonly refused: boolean }
   | { readonly type: "refuse"; readonly cause: Cause }
   | { readonly type: "observeReady"; readonly epoch: number }
+  | Extract<Event, { type: "observeReady" }>
   | { readonly type: "observeExit"; readonly code: number }
   | { readonly type: "credentialArrived" | "credentialReplaced"; readonly version: number }
   | { readonly type: "accountChanged"; readonly account: string }
@@ -40,6 +41,7 @@ export interface LifecycleView {
 
 interface AdapterState extends Omit<LifecycleView, "held"> {
   readonly account: string | null;
+  readonly child: boolean;
   readonly hold: { readonly tag: "NotHeld" | "Held" };
 }
 
@@ -52,15 +54,19 @@ const nativeView = (state: AdapterState): LifecycleView => ({
   delivered: state.delivered,
 });
 
-function nativeEffects(output: unknown, selectedAccount: AdapterState["account"]): ServiceEffect[] {
+function nativeEffects(output: unknown, state: AdapterState): ServiceEffect[] {
   if (!Array.isArray(output)) throw new Error("The native lifecycle adapter did not return an effect list");
   return output.map((value: unknown) => {
     if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid native lifecycle effect");
     const { tag, epoch, delayMs, account } = value as Record<string, unknown>;
-    if (tag !== "Check") throw new Error(`Unsupported native lifecycle effect ${JSON.stringify(tag)}`);
-    if (typeof epoch !== "number" || !Number.isSafeInteger(epoch) || epoch < 1
-      || typeof delayMs !== "number" || !Number.isSafeInteger(delayMs) || delayMs < 0
-      || (typeof account !== "string" && account !== null) || account !== selectedAccount) {
+    if (tag !== "Check" && tag !== "Kill") throw new Error(`Unsupported native lifecycle effect ${JSON.stringify(tag)}`);
+    if (typeof epoch !== "number" || !Number.isSafeInteger(epoch) || epoch < 1) throw new Error("Invalid native lifecycle effect epoch");
+    if (tag === "Kill") {
+      if (epoch !== state.epoch || state.child !== true) throw new Error("Native kill does not own the observed launch");
+      return { tag: "KillChild" };
+    }
+    if (typeof delayMs !== "number" || !Number.isSafeInteger(delayMs) || delayMs < 0
+      || (typeof account !== "string" && account !== null) || account !== state.account) {
       throw new Error("Invalid native lifecycle check effect");
     }
     return { tag: "BeginCheck", epoch, delayMs };
@@ -72,7 +78,7 @@ const adapter = jvmDriver<LifecycleEvent, AdapterState>("ai.eliza.os.agent.Lifec
 export const driver: Driver<LifecycleEvent, LifecycleView> & AsyncDisposable = {
   ...adapter,
   observe: async (key) => nativeView(await adapter.observe(key)),
-  observeOutput: async (key) => nativeEffects(await adapter.observeOutput?.(key), (await adapter.observe(key)).account),
+  observeOutput: async (key) => nativeEffects(await adapter.observeOutput?.(key), await adapter.observe(key)),
 };
 
 export const options: Options<LifecycleView> = {
