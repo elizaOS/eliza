@@ -273,7 +273,9 @@
         "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
         "package.json"
       ],
-      "outputs": []
+      "outputs": [
+        "vibestack/examples/*/.spec-cache/tests-*.json.gz"
+      ]
     },
     "//#check": {
       "dependsOn": [
