@@ -88,12 +88,12 @@ pure def refusalOf(s: AgentChannel, kind: CallerKind, id: str, request: Routes::
   else if (a == Routes::TooLarge) List(TooLarge)
   else List()
 }
-pure def admitEntry(id: str, owner: str, mode: Mode, s: AgentChannel): ChannelStep =
+pure def admitEntry(id: str, s: AgentChannel, owner: str, mode: Mode): ChannelStep =
   emit(List(Accepted({ id: id, seq: s.nextSeq })), { ...s, nextSeq: s.nextSeq + 1, pending: s.pending.append({ seq: s.nextSeq, id: id, owner: owner, mode: mode, epoch: servingEpoch(s), delivered: 0 }) })
 pure def ask(s: AgentChannel, kind: CallerKind, owner: str, id: str, request: Routes::Request): ChannelStep = {
   val refused = refusalOf(s, kind, id, request)
   if (refused.length() > 0) emit(List(Refused({ id: id, code: refused.nthOr(0, NotReady) })), s)
-  else admitEntry(id, owner, if (request.delivery == Routes::Streamed) Stream else Plain, s)
+  else admitEntry(id, s, owner, if (request.delivery == Routes::Streamed) Stream else Plain)
 }
 pure val idValues = Set("call1", "call2", "call3")
 pure val ownerValues = Set("screen1", "screen2")
@@ -248,7 +248,7 @@ pure def subscribe(s: AgentChannel, owner: str, id: str, topic: Topic): ChannelS
   else if (id == "" or idPending(s, id)) emit(List(Refused({ id: id, code: IdInUse })), s)
   else if (topicOpen(s, topic)) emit(List(Refused({ id: id, code: TopicInUse })), s)
   else if (feeds(s) >= Tr::feedLimit) emit(List(Refused({ id: id, code: Busy })), s)
-  else admitEntry(id, owner, Watch({ topic: topic }), s)
+  else admitEntry(id, s, owner, Watch({ topic: topic }))
 pure def alwaysOneSubscriptionPerTopic(s: AgentChannel): bool = feeds(s) <= Tr::feedLimit and s.pending.every(e => not(isWatch(e.mode)) or s.pending.select(o => o.mode == e.mode).length() == 1)
 pure def sometimesTopicInUse(s: AgentChannel): bool = s.recent.some(o => match o { | Refused(r) => r.code == TopicInUse | _ => false })
 pure def sometimesFeedsFull(s: AgentChannel): bool = s.recent.some(o => match o { | Refused(r) => r.code == Busy | _ => false })

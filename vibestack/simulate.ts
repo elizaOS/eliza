@@ -370,9 +370,12 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
         if (!bad) return false;
         const lastEvent = bad.t.findLast((s) => s.event)?.event?.type;
         const guard = model.transitions.find((t) => t.name === lastEvent)?.guard;
+        const callers = lastEvent && !guard ? [...spec.qnt.matchAll(/^pure def (\w+)[^]*?(?=^pure |(?![^]))/gm)]
+          .filter(([text, name]) => name !== lastEvent && new RegExp(`\\b${lastEvent}\\(`).test(text)).map(([, name]) => name) : [];
         // One repair is always available: refuse the event when its result would break the rule. A reason is better.
         const brokenRule = lastEvent ? model.always.find((a) => !standIn(domain, bad.t)[a](bad.t[bad.t.length - 1].state)) : undefined;
         const hint = lastEvent && !bad.why.startsWith("the law") ? `\n      the last event is ${cite(lastEvent)}${guard ? `; its guard ${guard} let it through` : "; it has no guard"}`
+          + (callers.length ? `\n      ${callers.join(", ")} call${callers.length > 1 ? "" : "s"} it, so it may be a helper taken for an event because it takes the state first and returns it: give it the state as its second parameter, or return something smaller` : "")
           + (brokenRule ? `\n      if no better reason can be found: refuse ${lastEvent} when its result would break ${brokenRule}` : "") : "";
         say(false, "always", `${bad.why}: fix the model, or add the rule that forbids this trace`, `${showTrace(bad.t)}${hint}\n      ${bad.again}`);
         return true;

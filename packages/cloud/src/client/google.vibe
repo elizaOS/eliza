@@ -82,7 +82,8 @@ const MailMessage = Schema.Struct({
   bodyHtmlStatus: Schema.Literals(["available", "none"]),
   attachments: Schema.Array(Schema.Struct({
     partId: Schema.String, name: Schema.String, mimeType: Schema.String, size: Schema.Number, supported: Schema.Boolean
-  }))
+  })),
+  authenticationResults: Schema.optionalKey(optionalText)
 })
 export type MailMessage = typeof MailMessage.Type
 
