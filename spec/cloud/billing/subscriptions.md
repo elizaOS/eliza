@@ -112,7 +112,7 @@ pure def observedStatus(s: Subscription, providerStatus: ProviderStatus, latestI
   else if (providerStatus == ProviderCanceled) Canceled
   else if (providerStatus == ProviderIncompleteExpired) IncompleteExpired
   else if (providerStatus == ProviderUnpaid) Unpaid
-  else if (providerStatus == ProviderActive and latestInvoice != PeriodInvoiceFailed) Active
+  else if (providerStatus == ProviderActive and (latestInvoice == PeriodInvoicePaid or (latestInvoice != PeriodInvoiceFailed and not(inDunning(s.status))))) Active
   else if (s.status == PastDue or s.status == Unpaid or now >= dunningEndsAt(windowFrom(s, now))) PastDue
   else Dunning
 pure def keepPlanned(planned: PlannedChange, status: SubscriptionStatus, planKey: PlanKey): PlannedChange = match planned {
@@ -145,9 +145,10 @@ pure def sometimesSetToCancelAtPeriodEnd(s: Subscription): bool = s.status == Ac
 ### A failed payment opens one dunning window of three days, set once, after which the subscription is past due
 
 The window starts at the period end when that has passed, else at the
-observation, and is kept until a paid invoice makes the subscription Active.
-A past due or unpaid subscription never returns to dunning, so only a paid
-invoice entitles it again. The shell's schedule expires ended windows.
+observation. A verified, paid period invoice can return the subscription to
+Active and clear the window. A plan-change invoice or an open period invoice
+cannot restore Active. A past due or unpaid subscription never returns to
+dunning. The shell's schedule expires ended windows.
 
 ```quint
 pure def canExpireDunning(s: Subscription, now: Millis): bool = s.status == Dunning and now >= dunningEndsAt(s.dunning)
@@ -156,6 +157,8 @@ pure def windowIsThreeDays(w: DunningWindow): bool = match w { | DunningSince(x)
 pure def alwaysDunningWindowOnlyWhileDunning(s: Subscription): bool = ((s.dunning != NotDunning) iff inDunning(s.status)) and windowIsThreeDays(s.dunning)
 pure def stepDunningWindowSetOnce(before: Subscription, after: Subscription): bool = (before.dunning != NotDunning and after.dunning != NotDunning) implies after.dunning == before.dunning
 pure def stepLapsedNeverReturnsToDunning(before: Subscription, after: Subscription): bool = (before.status == PastDue or before.status == Unpaid) implies after.status != Dunning
+pure def lawOnlyPaidPeriodRestoresActive(s: Subscription, providerStatus: ProviderStatus, latestInvoice: LatestInvoice, now: Millis): bool =
+  (inDunning(s.status) and observedStatus(s, providerStatus, latestInvoice, now) == Active) implies latestInvoice == PeriodInvoicePaid
 pure def sometimesDunning(s: Subscription): bool = s.status == Dunning
 pure def sometimesPastDue(s: Subscription): bool = s.status == PastDue
 ```
