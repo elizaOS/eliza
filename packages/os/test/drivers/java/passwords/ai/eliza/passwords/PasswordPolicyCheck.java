@@ -297,7 +297,7 @@ public final class PasswordPolicyCheck {
   private static final byte[] SNAPSHOT = { 7, 8, 9 };
   private static final AtomicBoolean CURRENT = new AtomicBoolean(true);
   private static boolean retireOnDownload;
-  private static int writes, reads;
+  private static int connections, writes, reads;
 
   private static Grant grant(Object code, String owner, Object organization) {
     return new Grant(code, "a".repeat(64), owner, organization, "\"1\"", true);
@@ -307,9 +307,16 @@ public final class PasswordPolicyCheck {
     return PasswordBackupApproval.admit(BACKUP, purpose, STATE, VERIFIER, OWNER, grant, CURRENT::get);
   }
 
+  private static PasswordBackupApproval approveNative(Purpose purpose, Grant grant) throws Exception {
+    return PasswordBackupApproval.admitNative(BACKUP, purpose, STATE, VERIFIER, OWNER, grant, CURRENT::get);
+  }
+
   private void backup() throws Exception {
     URL.setURLStreamHandlerFactory(scheme -> "https".equals(scheme) ? new URLStreamHandler() {
-      @Override protected URLConnection openConnection(URL url) { return new BackupEndpoint(url); }
+      @Override protected URLConnection openConnection(URL url) {
+        connections++;
+        return new BackupEndpoint(url);
+      }
     } : null);
     rejects("another account's approval", null, () -> approve(Purpose.SAVE, grant(PROOF, "account-2", "organization-1")));
     rejects("another organization's approval", null, () -> approve(Purpose.SAVE, grant(PROOF, "account-1", "organization-2")));
@@ -319,6 +326,13 @@ public final class PasswordPolicyCheck {
     PasswordBackupApproval verified = approve(Purpose.VERIFY, grant(null, "account-1", "organization-1"));
     check("a verification names the current owner", "account-1".equals(verified.ownerId()) && "organization-1".equals(verified.organizationId()));
     rejects("a verification transfers nothing", null, () -> verified.run(null, null));
+    rejects("a native approval for another account", null, () -> approveNative(Purpose.SAVE, grant(PROOF, "account-2", "organization-1")));
+    rejects("a native approval for another organization", null, () -> approveNative(Purpose.SAVE, grant(PROOF, "account-1", "organization-2")));
+    rejects("a native verification without its wire proof", null, () -> approveNative(Purpose.VERIFY, grant(null, "account-1", "organization-1")));
+    var nativeVerified = approveNative(Purpose.VERIFY, new Grant(PROOF, "a".repeat(64), "account-1", "organization-1", null, false));
+    check("native verification names the current owner", OWNER.accountId().equals(nativeVerified.ownerId()) && OWNER.organizationId().equals(nativeVerified.organizationId()));
+    rejects("native verification cannot transfer the backup", null, () -> nativeVerified.run(null, null));
+    check("verification and refused grants never connect to the backup endpoint", connections == 0);
     CURRENT.set(false);
     rejects("an approval for a replaced account", null, () -> approve(Purpose.SAVE, grant(PROOF, "account-1", "organization-1")));
     CURRENT.set(true);
