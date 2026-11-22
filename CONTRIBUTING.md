@@ -345,7 +345,9 @@ Pull requests read shared results; only branch pushes receive the publishing
 credential, protected by the `turbo-cache-publish` environment's branch
 policy. A pull request keeps its own Turborepo results in the GitHub cache
 instead, which only that pull request reads, so its next push reuses them. Newer commits replace an older run of the same pull request.
-Branch pushes configured with `TURBO_CACHE=local:rw` also restore and save the job's GitHub cache.
+When `TURBO_TOKEN` is unavailable, CI uses Turborepo's local cache. Branch
+pushes also restore and save that cache in GitHub Actions, so a new template
+repository can reuse completed tasks before configuring a remote cache.
 Every pushed commit can finish. Completed tasks are shared through the cache.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
