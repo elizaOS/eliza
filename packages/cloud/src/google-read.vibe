@@ -85,14 +85,38 @@ effect function mailCard(message: MailMessage) {
   }
 }
 
-effect function readMessage<E, R>(api: GoogleReadApi<E, R>, id: string, format: "metadata" | "full") {
+effect function readMessage<E, R>(api: GoogleReadApi<E, R>, id: string, format: "metadata" | "full", headers: readonly string[] = headerNames) {
   if (!attachments.test(id)) throw new GoogleReadInput()
   const query = new URLSearchParams({ format })
-  if (format === "metadata") for (const header of headerNames) query.append("metadataHeaders", header)
+  if (format === "metadata") for (const header of headers) query.append("metadataHeaders", header)
   const raw = try api(`${gmail}/messages/${id}?${query}`, format === "full" ? fullMessageBound : undefined)
   const result = Schema.decodeUnknownOption(MailMessage)(raw)
   if (Option.isNone(result) || result.value.id !== id) throw new GoogleReadResponse()
   return result.value
+}
+
+export type InboxMessageSelection = { sender: string; subject: string; headers: readonly string[]; selected?: string }
+
+export effect function googleInboxMessage<E, R>(api: GoogleReadApi<E, R>, selection: InboxMessageSelection) {
+  if (!/^[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+$/.test(selection.sender) || !/^[A-Za-z0-9 -]{1,150}$/.test(selection.subject) ||
+      selection.headers.some((name) => !/^[A-Za-z0-9-]{1,64}$/.test(name))) throw new GoogleReadInput()
+  const query = new URLSearchParams({ q: "from:" + selection.sender + ' subject:"' + selection.subject + '"', maxResults: "2", labelIds: "INBOX" })
+  const matches = Schema.decodeUnknownOption(MessageList)(try api(gmail + "/messages?" + query, 4096))
+  if (Option.isNone(matches)) throw new GoogleReadResponse()
+  const ids = matches.value.messages ?? []
+  if (ids.length !== 1 || matches.value.nextPageToken) return null
+  const id = ids[0].id
+  if (selection.selected !== undefined && selection.selected !== id) return null
+  const message = try readMessage(api, id, selection.selected === undefined ? "metadata" : "full", ["Message-ID", ...selection.headers])
+  const headers = message.payload?.headers ?? []
+  const references = headers.filter((entry) => entry.name.toLowerCase() === "message-id")
+  if (references.length !== 1 || references[0].value.length > 250 || !rfcMessageId.test(references[0].value) || !message.labelIds?.includes("INBOX") ||
+      message.labelIds.includes("SPAM") || message.labelIds.includes("TRASH")) return null
+  const receivedAt = isoMailDate(message.internalDate)
+  if (!receivedAt) return null
+  const wanted = new Set(selection.headers.map((name) => name.toLowerCase()))
+  return { id, rfcId: references[0].value, receivedAt, headers: headers.filter((entry) => wanted.has(entry.name.toLowerCase())),
+    text: selection.selected === undefined ? null : try bodyText(api, message) }
 }
 
 function replyTarget(message: MailMessage) {

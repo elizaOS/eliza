@@ -7,6 +7,9 @@ import { identityRequest, nativeGooglePath, inferenceAccount, sessionAccount, ty
 import { nativeAssetLinks } from "./native-registry.vibe"
 import { ownsPasswordBackupPath } from "./password-backup.vibe"
 export { nativeAssetLinks }
+export { cloudCredential } from "./identity.vibe"
+export { s256, tokenDigest } from "./shared/credential-crypto.vibe"
+export { readConnectedInboxMessage } from "./google.vibe"
 export { SpeechRelayCoordinator } from "./speech-relay.vibe"
 import { speechRequest, speechRoute, speechWebSocket, type SpeechEnv } from "./speech.vibe"
 import { deviceAttachmentPath, googleRequest, reminderSchedule, type GoogleEnv } from "./google.vibe"
@@ -18,8 +21,21 @@ import { inferenceRequest, limitedBody, type InferenceEnv } from "./inference.vi
 export type CloudBindings = ClefEnv & IdentityEnv & GoogleEnv & InferenceEnv & SpeechEnv & BillingEnv & WorkerDatabase
 type DeploymentExtension<E extends CloudBindings> = (request: Request, env: E, db: Client, account: string) => Promise<Response>
 
-async function route<E extends CloudBindings>(request: Request, env: E, db: Client, extension?: DeploymentExtension<E>) {
+async function route<E extends CloudBindings>(request: Request, env: E, db: Client, extension: DeploymentExtension<E> | undefined, nativeProductPaths: readonly string[]) {
   const path = new URL(request.url).pathname
+  if (extension && path.startsWith("/api/product/") && nativeProductPaths.includes(path)) {
+    if (request.method !== "POST") return WorkerResponse.json({ error: "method_not_allowed" }, { status: 405 })
+    if (!request.headers.has("authorization") || request.headers.has("origin") || request.headers.has("cookie"))
+      return WorkerResponse.json({ error: "device_required" }, { status: 403 })
+    const owner = await inferenceAccount(request, db, env)
+    if (!owner) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+    const bytes = await limitedBody(request, 4096)
+    if (!bytes) return WorkerResponse.json({ error: "invalid_request" }, { status: 400 })
+    const response = await extension(withRequestBody(request, bytes), env, db, owner)
+    if (response.ok && await inferenceAccount(request, db, env) !== owner)
+      return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+    return response
+  }
   if (path === stripeWebhookRoute && request.method === "POST") {
     const bytes = await limitedBody(request, 256 * 1024)
     return bytes ? stripeWebhook(request, bytes, env, db) : WorkerResponse.json({ error: "request_too_large" }, { status: 413 })
@@ -77,7 +93,7 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
   return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
 }
 
-export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExtension<E>) {
+export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExtension<E>, nativeProductPaths: readonly string[] = []) {
   return {
     scheduled(_event: unknown, env: E) {
       return withCloudDatabase(env, async (db) => {
@@ -109,7 +125,7 @@ export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExten
         return WorkerResponse.json({ error: "origin_required" }, { status: 403, headers: cors })
       }
       try {
-        const result = await withCloudDatabase(env, (db) => route(request, env, db, extension))
+        const result = await withCloudDatabase(env, (db) => route(request, env, db, extension, nativeProductPaths))
         if (result.status === 101) return result
         const headers = new WorkerHeaders(result.headers)
         for (const [key, value] of cors) headers.set(key, value)
