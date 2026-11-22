@@ -243,6 +243,8 @@ describe("standalone Calendar availability", () => {
     "Check today or tomorrow morning.",
     "Do I have time after tomorrow morning?",
     "Is Friday or tomorrow morning free?",
+    "Am I free tomorrow morning from 10 to 12:30?",
+    "Am I free tomorrow morning until 13:00?",
   ])("reads the window for a wider request: %s", async (text) => {
     const { call, handler, feed } = fixture();
     const wideEnd = "2026-11-07T04:00:00.000Z";

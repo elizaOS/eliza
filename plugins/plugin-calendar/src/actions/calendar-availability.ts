@@ -74,7 +74,10 @@ export function asksOnlyAboutTomorrowMorning(
     !/\b(?:morning|afternoon|evening|tonight|night|noon|midday|lunch(?:time)?|all\s+day|whole\s+day|full\s+day|rest\s+of\s+the\s+day|week)\b/i.test(
       otherPeriods,
     ) &&
-    !/\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*p\.?\s*m\b/i.test(otherPeriods)
+    // An afternoon clock time: 1-12 pm, 12:01-12:59 without "am", or 13:00-23:59.
+    !/\b(?:(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*p\.?\s*m|12:(?:0[1-9]|[1-5]\d)(?!\s*a\.?\s*m)|(?:1[3-9]|2[0-3]):[0-5]\d)\b/i.test(
+      otherPeriods,
+    )
   );
 }
 
