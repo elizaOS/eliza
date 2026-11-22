@@ -7,6 +7,7 @@ import { cloudWorker, type CloudBindings } from "../../src/worker.vibe"
 import { fakeServer } from "../support/cloud.vibe"
 import { serveDatabase } from "../support/database.ts"
 import { stripeCatalog } from "../support/fakes.ts"
+import { webRequest } from "../support/password-backup.ts"
 import { catalogPrices, secrets, testDatabaseIdentity, testProfile } from "../support/profile.ts"
 
 const api = "https://api.staging.example.com"
@@ -76,7 +77,7 @@ describe('Serve the deployment from a Worker (spec/cloud/deployment.md, "Story: 
       CLOUD_IDENTITY_DIGEST: testDatabaseIdentity, PUBLIC_API_ORIGIN: api, WEB_ORIGIN: web, ...secrets
     } satisfies CloudBindings
     const worker = cloudWorker<CloudBindings>()
-    const call = (path: string, bindings: CloudBindings = env, init?: RequestInit) => tryPromise(() => worker.fetch(new Request(api + path, init), bindings))
+    const call = (path: string, bindings: CloudBindings = env, init?: RequestInit) => tryPromise(() => worker.fetch(webRequest(api + path, init), bindings))
 
     const config = try body(try call("/api/v1/app-auth/mobile/config?" + new URLSearchParams({ clientId: phone.clientId, environment: "staging", redirectUri: phone.signInReturn }).toString()))
     const links = try body(try call("/.well-known/assetlinks.json"))

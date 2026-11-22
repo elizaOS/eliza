@@ -446,7 +446,8 @@ it.live('Turn on generated code only after review and resume it without repeatin
   if (wakeup === undefined) return try die(new Error("The timer was not armed"))
   try rig.service.fire(wakeup.metadata, rig.digests.fire)
   const done = try settled(rig.client, sleeping)
-  try check(() => assert.deepStrictEqual([done.status, drafts, JSON.parse(done.output ?? "null")], ["finished", 1, { text: "Your summary", signal: { received: true, payload: { ok: true } } }]))
+  const result: unknown = try Effect.try(() => JSON.parse(done.output ?? "null"))
+  try check(() => assert.deepStrictEqual([done.status, drafts, result], ["finished", 1, { text: "Your summary", signal: { received: true, payload: { ok: true } } }]))
 
   const edited = try rig.request(`/api/workflow/workflows/${receipt.workflowId}`, { name: "Summary", description: "", source: "export default async function () { for (;;) {} }", mutationId: "55555555-5555-4555-8555-555555555555", expectedVersionId: on.versionId })
   const after = try rig.client.detail(receipt.workflowId)
@@ -500,12 +501,13 @@ it.live('Import only complete reviewed workflow source, and run only a worker bu
     ]))
     const identity = { sourceStampSha256: "a".repeat(64), lockSha256: "b".repeat(64) }
     const provenance = try workerProvenance()
-    const output = joinPath(worker.path, "artifact")
+    const output = try Effect.try(() => joinPath(worker.path, "artifact"))
+    const stagedDirectory = try Effect.try(() => joinPath(worker.path, "staged"))
     const built = try provenance.build({ packageDir: worker.path, outputDir: output, identity, observeIdentity: () => succeed(identity) })
-    const staged = try provenance.stage(output, joinPath(worker.path, "staged"), "apk-current", identity)
+    const staged = try provenance.stage(output, stagedDirectory, "apk-current", identity)
     const index = (try verifyWorkerArtifact(output, identity)).files.length - 1
-    const listing = try promise(() => readText(joinPath(worker.path, "staged", "files.sha256")))
-    const installed = try provenance.install(joinPath(worker.path, "staged"), "apk-current", listing)
+    const listing = try promise(() => readText(joinPath(stagedDirectory, "files.sha256")))
+    const installed = try provenance.install(stagedDirectory, "apk-current", listing)
     try check(() => assert.deepStrictEqual([built.phase, staged.files, installed.phase, installed.enabled], ["WorkerBuilt", index + 1, "WorkerInstalled", true]))
     try promise(() => writeTree(output, { "src/worker/main.js": "tampered\n" }))
     const tampered = try Effect.flip(verifyWorkerArtifact(output, identity))

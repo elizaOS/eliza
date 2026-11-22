@@ -85,6 +85,7 @@ describe("Device key renewal (spec/cloud/nativeClients/deviceKeys.md)", () => {
     const recorded = try sql(cloud, "SELECT g.sign_in_at, g.renewed_from = p.key AS linked FROM device_grants g JOIN device_grants p ON p.credential_id = $2 WHERE g.credential_id = $1", [successor.key.credentialId, old.credentialId])
     const bothUsable = [try usable(cloud, old.secret), try usable(cloud, successor.key.secret)]
     const retired = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: { ...bearer(old.secret), "x-renewed-credential-id": successor.key.credentialId } })
+    const afterRetirement = [try usable(cloud, old.secret), try usable(cloud, successor.key.secret)]
     try check(() => assert.deepStrictEqual({
       bySession: [bySession.answer.status, failure(bySession.answer.body)],
       renewed: [renewed.answer.status, /^emac_[0-9a-f]{64}$/.test(opened.code), opened.codeType, opened.expiresIn, opened.renewableUntil],
@@ -92,7 +93,7 @@ describe("Device key renewal (spec/cloud/nativeClients/deviceKeys.md)", () => {
       recorded: [Number(recorded[0]?.sign_in_at), recorded[0]?.linked],
       bothUsable,
       retired: retired.status,
-      afterRetirement: [try usable(cloud, old.secret), try usable(cloud, successor.key.secret)]
+      afterRetirement
     }, {
       bySession: [401, ["authentication_required", "credential_unknown"]],
       renewed: [200, true, "mobile_app_auth_code", 300, new Date(start + renewalCap).toISOString()],
@@ -118,11 +119,12 @@ describe("Device key renewal (spec/cloud/nativeClients/deviceKeys.md)", () => {
     const stale = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...binding, grantType: "authorization_code", code: (superseded.answer.body as { readonly code: string }).code, state: superseded.state, codeVerifier: superseded.verifier } })
     const successor = try finish(cloud, (renewed.answer.body as { readonly code: string }).code, renewed.state, renewed.verifier)
     const reused = try renew(cloud, old.secret, "e")
+    const after = [try usable(cloud, old.secret), try usable(cloud, successor.key.secret)]
     try check(() => assert.deepStrictEqual({
       superseded: [superseded.answer.status, stale.status],
       successor: [successor.minted.status, successor.acked.status],
       reused: [reused.answer.status, failure(reused.answer.body)],
-      after: [try usable(cloud, old.secret), try usable(cloud, successor.key.secret)]
+      after
     }, {
       superseded: [200, 401],
       successor: [200, 200],
@@ -148,12 +150,13 @@ describe("Device key renewal (spec/cloud/nativeClients/deviceKeys.md)", () => {
     const last = try renew(cloud, old.secret, "g")
     const successor = try finish(cloud, (last.answer.body as { readonly code: string }).code, last.state, last.verifier)
     const signedOut = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(old.secret) })
+    const after = [try usable(cloud, old.secret), try usable(cloud, successor.key.secret)]
     try check(() => assert.deepStrictEqual({
       closed: [closed.answer.status, failure(closed.answer.body)],
       last: [last.answer.status, (last.answer.body as { readonly renewableUntil: string }).renewableUntil],
       shortened: (successor.acked.body as { readonly expiresAt: string }).expiresAt,
       signedOut: signedOut.status,
-      after: [try usable(cloud, old.secret), try usable(cloud, successor.key.secret)]
+      after
     }, {
       closed: [409, ["renewal_window_closed", undefined]],
       last: [200, new Date(start + 35 * day).toISOString()],

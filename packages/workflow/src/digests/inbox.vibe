@@ -453,7 +453,7 @@ export effect function digestInbox(scope: string, afterCommit?: DigestAfterCommi
       const recovered = (map(recoverJournal(index), (next) => { index = next; return true }) catch () => false)
       try step({ type: "beginDigestPoll", generation, client: index.clientId, recoveredAtStart: recovered })
       if (!recovered) throw failed("The removal journal could not be recovered")
-      index = (settleNotices(index) catch effect () => abort("A delivered notice could not be recorded"))
+      index = (settleNotices(index) catch effect () => try abort("A delivered notice could not be recorded"))
       while ((try inbox.get()).phase === "FetchingPage") {
         const entries = (protocol.results(index.clientId) catch effect (error) => {
           try step({ type: "receiveDigestPage", entries: [], validEnvelope: false })

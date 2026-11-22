@@ -168,7 +168,7 @@ export effect function publishWorkflowSource(directory: string, name: string, by
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(name) || sourceKey === "") throw new SourceRefused({ reason: "Invalid source name" })
   const publication = try sourcePublication()
   const send = (event: Parameters<typeof publication.send>[0]) => mapError(publication.send(event), () => new SourceRefused({ reason: "The source publication is out of step" }))
-  const file = sourceFile(directory, name)
+  const file = try Effect.try({ try: () => sourceFile(directory, name), catch: () => new SourceRefused({ reason: "Invalid source path" }) })
   const admitted = try io(() => parentAdmitted(directory))
   if (!admitted) throw new SourceRefused({ reason: "The source directory is not private to this worker" })
   const found = try io(() => existing(file, bytes))

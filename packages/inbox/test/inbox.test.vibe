@@ -146,11 +146,13 @@ function fakeCloud() {
           content: { to: ["bo@example.com"], cc: [], bcc: [], subject: "Plan", bodyText: "Draft text", plainText: true, threaded: false, attachmentCount: 0 } }
       }
       if (at === "/gmail/inbox-v1/operations") return try prepare(body)
-      const dispatched = /^\/gmail\/inbox-v1\/operations\/([^/]+)\/dispatch$/.exec(at)
-      if (dispatched !== null) return try dispatch(decodeURIComponent(dispatched[1] ?? ""))
-      const read = /^\/gmail\/inbox-v1\/operations\/([^/]+)$/.exec(at)
-      if (read !== null) {
-        const requestId = decodeURIComponent(read[1] ?? "")
+      const operationPath = /^\/gmail\/inbox-v1\/operations\/([^/]+)(\/dispatch)?$/.exec(at)
+      if (operationPath !== null) {
+        const requestId = try Effect.try({
+          try: () => decodeURIComponent(operationPath[1] ?? ""),
+          catch: () => new MailProtocolFailed({ code: "http", status: 400, reason: "invalid_request" }),
+        })
+        if (operationPath[2] !== undefined) return try dispatch(requestId)
         const operation = state.operations.get(requestId)
         if (operation === undefined) throw new MailProtocolFailed({ code: "http", status: 404, reason: "not_found" })
         return answer(requestId, operation)

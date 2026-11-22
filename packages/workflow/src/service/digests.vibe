@@ -64,7 +64,7 @@ export function hostedDigests(service: WorkflowService) {
       id, kind, label: try refused(digestText(v.label, 200)),
       text: live === undefined ? try refused(digestText(v.text, 12000)) : "Fresh selected-account read is resolved only at the scheduled occurrence.",
       ...(live === undefined ? {} : { live }), observedAt, expiresAt,
-    }
+    } satisfies Omit<DigestSourceRecord, "revision" | "revoked">
     if (phoneWorkflowBytes(fields) > 15000) throw new WorkflowRefused({ status: 400, message: "Encoded snapshot exceeds the reviewed byte bound" })
     const source: DigestSourceRecord = { ...fields, revision: try workflowSha(fields), revoked: false }
     return try lock(effect {

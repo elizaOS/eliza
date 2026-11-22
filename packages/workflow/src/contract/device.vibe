@@ -159,7 +159,7 @@ export effect function parseWorkflowReminderRead(value: unknown): WorkflowRemind
   try exact(p, ["type", "window", "day", "timeZone", "maximumItems"])
   if (!isPhoneWorkflowLocalDay(p.day)) return try refuse()
   const scope = (validatePhoneSelectedRemindersScope({ window: p.window, timeZone: p.timeZone, maximumItems: p.maximumItems })
-    catch effect () => refuse())
+    catch effect () => try refuse())
   return { type: "read_selected_reminders", window: scope.window, day: p.day, timeZone: scope.timeZone, maximumItems: scope.maximumItems }
 }
 
@@ -224,7 +224,7 @@ export effect function checkWorkflowReminderRows(operation: WorkflowReminderRead
   const p = try object(value)
   try exact(p, ["kind", "reminders"])
   if (p.kind !== "reminders" || !Array.isArray(p.reminders) || p.reminders.length > operation.maximumItems) return try refuse()
-  const day = (phoneWorkflowLocalDayBounds(operation.day, operation.timeZone) catch effect () => refuse())
+  const day = (phoneWorkflowLocalDayBounds(operation.day, operation.timeZone) catch effect () => try refuse())
   const rows: WorkflowReminderRow[] = []
   for (const raw of p.reminders) {
     const r = try object(raw)

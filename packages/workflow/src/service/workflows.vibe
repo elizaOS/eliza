@@ -222,7 +222,7 @@ export effect function openWorkflows(host: WorkflowHost) {
   effect function validate(input: unknown) {
     const p = try body(input, ["spec", "catalogRevision", "compilerRevision"])
     const spec = try normalized(p.spec)
-    try checkDraft(spec, p.spec, p)
+    try checkDraft(spec, p.spec, { catalogRevision: p.catalogRevision, compilerRevision: p.compilerRevision })
     return { spec, specDigest: try workflowSha(spec), catalogRevision: PHONE_CATALOG_REVISION, compilerRevision: PHONE_COMPILER_REVISION, active: false }
   }
 
@@ -315,7 +315,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
         if (!replay) return try refuse(409, "This save identity was used for another change", notApplied)
         return { receipt: prior.receipt as PhoneWorkflowSaveReceipt }
       }
-      try checkDraft(spec, p.spec, p)
+      try checkDraft(spec, p.spec, { catalogRevision: p.catalogRevision, compilerRevision: p.compilerRevision })
       const at = iso(try now)
       const trigger = timeTrigger(spec)
       if (workflowId === undefined) {
@@ -811,7 +811,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
       return current
       }, connection.close)
       if (row.finished) try resultNotice(row)
-    } catch effect (error) => log("workflow run could not continue", runId, error))
+    } catch effect (error) => try log("workflow run could not continue", runId, error))
   }
 
   effect function launch(runId: string, resume?: WorkerResume): void!! {
@@ -1020,7 +1020,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
         return
       }
       try host.scheduler.set(key, due, { workflowId: row.id, armVersion: row.admission.version, scheduledAt: due })
-    } catch effect (error) => log("workflow schedule could not be armed", row.id, error))
+    } catch effect (error) => try log("workflow schedule could not be armed", row.id, error))
   }
 
   effect function recordOccurrence(row: DefinitionRow, occurrence: NonNullable<RunRow["occurrence"]>, status: "missed" | "overlap", text: string, extra: Bag = {}) {
@@ -1070,7 +1070,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     if (typeof metadata.runId === "string" && typeof metadata.wakeId === "number") {
       const runId = metadata.runId
       const wakeId = metadata.wakeId
-      return void (wake(runId, wakeId) catch effect (error) => log("workflow wakeup could not resume its run", runId, error))
+      return void (wake(runId, wakeId) catch effect (error) => try log("workflow wakeup could not resume its run", runId, error))
     }
     const workflowId = metadata.workflowId
     const armVersion = metadata.armVersion
@@ -1081,7 +1081,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
       if (current.row.origin === "digest") try digestFire(current.row, armVersion, scheduledAt)
       else try fireTyped(current.row, armVersion, scheduledAt)
       try arm((try definitionOf(workflowId)).row, scheduledAt)
-    } catch effect (error) => log("workflow occurrence could not be admitted", workflowId, error))
+    } catch effect (error) => try log("workflow occurrence could not be admitted", workflowId, error))
   }
 
   effect function start(): void!! {
@@ -1124,7 +1124,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
         try arm(stored.row)
         if (stored.row.lifecycleState.removed && !stored.row.lifecycleState.cleaned) (cleanup(stored.row.id) catch () => undefined)
       }
-    } catch effect (error) => log("workflow service could not recover its runs", "start", error))
+    } catch effect (error) => try log("workflow service could not recover its runs", "start", error))
   }
 
   effect function stop(): void!! {
