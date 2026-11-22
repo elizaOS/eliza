@@ -260,15 +260,24 @@ pure def lawMissingRecordRefusesRowAction(selection: RowSelection): bool =
 
 ### Shared backup is offered only when its exact native app is ready
 
-The device checks that the selected deployment serves version 2 of the
-backup contract and that the cloud reports native Google eligibility for
-the exact registered app client. Checking eligibility does not open a challenge.
+The device prefers the canonical native contract when the selected cloud
+advertises version 3 for the exact app, environment and callback. On the
+deployed Steward contract it requires both version 2 and native Google
+eligibility for the exact registered app client. Checking eligibility does
+not open a challenge.
 
 ```quint
+type SharedBackupService = SharedBackupUnavailable | SharedBackupSteward | SharedBackupCanonical
 pure def sharedBackupServiceReady(version2Available: bool, exactNativeAppReady: bool): bool =
   version2Available and exactNativeAppReady
+pure def selectSharedBackupService(exactCanonicalAppReady: bool, version2Available: bool, exactNativeAppReady: bool): SharedBackupService =
+  if (exactCanonicalAppReady) SharedBackupCanonical
+  else if (sharedBackupServiceReady(version2Available, exactNativeAppReady)) SharedBackupSteward
+  else SharedBackupUnavailable
 pure def lawSharedBackupNeedsItsOwnNativeApp(version2Available: bool): bool =
-  not(sharedBackupServiceReady(version2Available, false))
+  selectSharedBackupService(false, version2Available, false) == SharedBackupUnavailable
+pure def lawSharedBackupPrefersTheCanonicalApp(version2Available: bool, exactNativeAppReady: bool): bool =
+  selectSharedBackupService(true, version2Available, exactNativeAppReady) == SharedBackupCanonical
 ```
 
 ### Shared approval requires the registered cloud and the current owner
@@ -276,7 +285,10 @@ pure def lawSharedBackupNeedsItsOwnNativeApp(version2Available: bool): bool =
 The device asks for an approval with its registered client and environment
 and the acknowledged device credential of the current cloud account. Each
 backup action needs a fresh confirmation by the account holder at that
-cloud. The approval counts only when it names the account and organization
+cloud. Canonical approval sends that device credential with a fresh
+device-bound Google challenge and separate backup PKCE proof. Steward
+approval uses the live native owner for the request and verifies the
+returned account and organization. The approval counts only when it names the account and organization
 of that credential, and only while the same credential is still the active
 one and the request is still open; a renewed or replaced credential, a
 closed request, or a locked device ends the attempt.

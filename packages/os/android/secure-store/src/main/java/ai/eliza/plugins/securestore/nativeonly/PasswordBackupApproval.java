@@ -77,9 +77,13 @@ public final class PasswordBackupApproval {
   }
 
   public static boolean advertisesNativeV2(URI endpoint) throws IOException {
+    return advertisesNative(endpoint, "2");
+  }
+
+  public static boolean advertisesNative(URI endpoint, String version) throws IOException {
     HttpsURLConnection request = connect(endpoint, "GET", null);
     try {
-      return request.getResponseCode() == 204 && "2".equals(request.getHeaderField("X-Password-Backup-Version"));
+      return request.getResponseCode() == 204 && version.equals(request.getHeaderField("X-Password-Backup-Version"));
     } finally {
       request.disconnect();
     }
