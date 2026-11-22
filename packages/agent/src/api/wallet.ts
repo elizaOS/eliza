@@ -624,9 +624,9 @@ function readPersistedStewardCredentials(): {
   let parsed: PersistedStewardCredentials;
   try {
     parsed = JSON.parse(raw) as PersistedStewardCredentials;
-  } catch (err) {
+  } catch {
     logger.error(
-      `[wallet] persisted Steward credentials are corrupt at ${credentialsPath}: ${err instanceof Error ? err.message : String(err)}`,
+      `[wallet] persisted Steward credentials are corrupt at ${credentialsPath}: invalid JSON`,
     );
     return null;
   }
