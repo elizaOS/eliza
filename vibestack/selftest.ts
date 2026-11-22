@@ -1609,68 +1609,6 @@ function eachCheck() {
   });
   for (const [shard, tests] of Object.entries(SHARDS)) describe(shard, { concurrency: LANES }, tests);
 
-  test("event weights, fairness and bounds name real events and rules and stay outside generated code; a weight repeats its event in the simulator's choice", async () => {
-    const base = "type S = { n: int }\npure val initial: S = { n: 0 }\npure def add(s: S, k: int): S = { n: s.n + k }\npure def leadsToSome(s: S, later: S): bool = later.n >= s.n\n";
-    const model = (quint: string) => { const root = oneRule("w", "Weights", base + quint); return gen(root, parseSpec(root, "spec/w.md")); };
-    const cases: [string, RegExp][] = [
-      ["pure val weight_nope = 2", /weight_nope .*no transition named nope/],
-      ["pure val weight_add = 0", /weight_add .*a whole number from 1 to 100/],
-      ['pure val fair_add = "always"', /fair_add .*"weak"/],
-      ["pure val within_nope = 2", /within_nope .*no leadsTo rule named nope/],
-      ["pure val within_leadsToSome = 0", /within_leadsToSome .*a whole number from 1 to 100/],
-      ["pure val within_leadsToSome = 101", /within_leadsToSome .*a whole number from 1 to 100/],
-      ["pure def leadsToOne(s: S): bool = true", /leadsToOne: a `leadsTo` rule takes a state and a later state/],
-    ];
-    for (const [quint, message] of cases) await assert.rejects(model(quint), message, quint);
-    const weighted = await model('pure val weight_add = 3\npure val fair_add = "weak"\npure val within_leadsToSome = 2');
-    assert.match(weighted.harness, /action step = any \{ add, add, add \}/);
-    assert.deepEqual(weighted.within, new Map([["leadsToSome", 2]]));
-    assert.doesNotMatch(weighted.ts + weighted.harness, /weight_|fair_|within_/);
-    const lone = oneRule("f", "Fair", 'type S = { n: int }\npure val initial: S = { n: 0 }\npure def add(s: S): S = { n: s.n + 1 }\npure val fair_add = "weak"');
-    await assert.rejects(gen(lone, parseSpec(lone, "spec/f.md")), /fairness matters only to `leadsTo` rules/);
-  });
-
-  test("a `leadsTo` rule is broken by a fair run that stops or loops, until the events it waits on are fair; std/net is imported, simulated and proved beside the spec", async () => {
-    const ping = (edit: (s: string) => string = (s) => s) => fixtures(["ping"], (f) => { f["spec/ping.md"] = edit(f["spec/ping.md"]); });
-    const [ok, weak, unfair] = await Promise.all([
-      run(ping()),
-      // A copy lost and sent again for ever is a fair loop unless delivery is strongly fair.
-      run(ping((s) => s.replace('fair_deliver = "strong"', 'fair_deliver = "weak"'))),
-      // With nothing fair, a run may stop as soon as the question is asked.
-      run(ping((s) => s.replace(/pure val fair_\w+ = "\w+"\n/g, ""))),
-    ]);
-    assert.deepEqual(ok.failed, ["review"], ok.text);
-    assert.ok(ok.said("always", /no fair run that stops or loops in \d+ of them breaks a `leadsTo` rule \([1-9]\d* loops found\)/), ok.text);
-    assert.ok(ok.said("proof", /^net\.ts: all \d+ obligations proved/), ok.text);
-    assert.ok(!ok.said("review", /^std\/net\.md:/), ok.text);
-    assert.ok(weak.said("always", /a fair run breaks "Story: Ask until answered \/ A question asked is answered".*may repeat its loop for ever[\s\S]*the run goes round from here/), weak.text);
-    assert.ok(unfair.said("always", /a fair run breaks .*may stop at the last state, since no fair event is possible there/), unfair.text);
-  });
-
-  test("a `leadsTo` rule with a bound is broken by a run that takes that many events without meeting it", async () => {
-    const serve = (tick: string) => oneRule("serve", "Served at once", [
-      "type S = { asked: bool, served: bool, n: int }",
-      "pure val initial: S = { asked: false, served: false, n: 0 }",
-      "pure def canAsk(s: S): bool = not(s.asked)",
-      "pure def ask(s: S): S = { ...s, asked: true }",
-      "pure def canServe(s: S): bool = s.asked and not(s.served)",
-      "pure def serve(s: S): S = { ...s, served: true }",
-      tick,
-      "pure def tick(s: S): S = { ...s, n: s.n + 1 }",
-      "pure def leadsToServed(s: S, later: S): bool = s.asked implies later.served",
-      'pure val fair_serve = "weak"',
-      "pure val within_leadsToServed = 1",
-    ].join("\n"));
-    // A clock that may tick between a question and its answer delays the answer past the bound.
-    const [ok, late] = await Promise.all([run(serve("pure def canTick(s: S): bool = s.served or not(s.asked)")), run(serve(""))]);
-    assert.equal(ok.said("always", /no rule broken/)?.ok, true, ok.text);
-    assert.ok(late.said("always", /a run breaks "Story \/ Served at once" \(spec\/serve\.md:5\) within its bound \(`within_leadsToServed = 1`\)[\s\S]*ask .*<- leadsToServed is owed from here\n.*tick .*<- the bound runs out here/), late.text);
-    const longer = (delay: number) => oneRule("longer", "A bounded wait", `pure val initial: int = 0\npure def tick(n: int): int = n + 1\npure def leadsToAhead(n: int, later: int): bool = later >= n + ${delay}\npure val fair_tick = "weak"\npure val within_leadsToAhead = 21`);
-    const [onTime, tooLate] = await Promise.all([run(longer(21)), run(longer(22))]);
-    assert.deepEqual(onTime.failed, ["review"], onTime.text);
-    assert.ok(tooLate.said("always", /within its bound \(`within_leadsToAhead = 21`\)/), tooLate.text);
-  });
-
   test("install creates ignored agent aliases inside the checkout and recreates them on reinstall", () => {
     const { packageManager, scripts } = JSON.parse(read("package.json"));
     const hook = "pnpm:devPreinstall";
@@ -3364,7 +3302,12 @@ describe("the documents name what exists", () => {
     const each = "the tools each check catches its own kind of mistake";
     const inShards = Object.fromEntries(Object.keys(SHARDS).map((shard) => [`${each} ${shard}`, `selftest:tools:${shard.at(-1)}`]));
     const elsewhere: Record<string, string> = { "the documents name what exists": "selftest:docs", "the standalone examples": "selftest:examples", ...inShards };
-    const titles = [...[...read("vibestack/selftest.ts").matchAll(/^(?:describe|test)\("([^"]+)"/gm)].map(([, title]) => title), ...Object.keys(inShards),
+    const selftestSource = read("vibestack/selftest.ts");
+    const registered = selftestSource.split(/^function /m)
+      .filter((block) => /^eachCheck[AB]?\(\)/.test(block))
+      .flatMap((block) => [...block.matchAll(/^  test\("([^"]+)"/gm)].map(([, title]) => title));
+    assert.deepEqual(registered.filter((title, index) => registered.indexOf(title) !== index), [], "each check fixture is registered once");
+    const titles = [...[...selftestSource.matchAll(/^(?:describe|test)\("([^"]+)"/gm)].map(([, title]) => title), ...Object.keys(inShards),
       "a new test", "the tools a new suite", "the tools the command line and what a failed proof leaves to start from a new test", `${each} a new test`];
     const ranBy = (title: string) => selftests.filter((task) => {
       const [, kind, pattern] = scripts[task].match(/--test-(name|skip)-pattern="([^"]+)"/)!;
