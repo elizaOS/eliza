@@ -239,12 +239,18 @@ export function hasEmbeddedProvisioningEntitlement(
     resolveBundleContentsDir(execPath),
     "embedded.provisionprofile",
   );
-  if (!existsSync(embedded)) return false;
-
   let profile: Buffer;
   try {
     profile = readFileSync(embedded);
   } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return false;
+    }
     throw new ElizaError(
       `Could not read the embedded provisioning profile at ${embedded}`,
       {
