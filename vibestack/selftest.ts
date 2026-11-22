@@ -798,6 +798,15 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     fs.writeFileSync(path.join(root, "src/door.ts"), "export const door = 3;\n");
     await run(root);
     assert.equal(runs(), 4, "a receipt for older source cannot suppress the tests");
+    const linked = scratch({ "package.json": '{"name":"linked","type":"module","main":"./dist/run.js"}', "dist/run.js": "export default true;" });
+    const consumer = fixtures(["door"]);
+    fs.mkdirSync(path.join(consumer, "node_modules"));
+    fs.symlinkSync(linked, path.join(consumer, "node_modules", "linked"), "dir");
+    fs.writeFileSync(path.join(consumer, "package.json"), JSON.stringify({ dependencies: { linked: `link:${path.relative(consumer, linked)}` },
+      scripts: { test: `node --input-type=module -e "import ok from 'linked'; process.exit(ok ? 0 : 1)"` } }));
+    assert.ok((await run(consumer)).said("tests", /^pass\n$/));
+    fs.writeFileSync(path.join(linked, "dist/run.js"), "export default false;");
+    assert.equal((await run(consumer)).said("tests", /^fail/)?.ok, false, "a passing run cannot mask a change in a linked package's built code");
     const workspace = scratch({ "tsconfig.json": "{}", "package.json": JSON.stringify({ devDependencies: { kit: "workspace:*" } }),
       ...Object.fromEntries(["src/a.ts", "test/a.test.ts", "test/drivers/a.ts", "test/traces/a.jsonl", "test/counterexamples/a.json", "test/bombadil.ts", "test/fixtures/p/package.json",
         "test/fixtures/p/a.ts", "apps/other/package.json", "apps/other/a.ts", "kit/package.json", "kit/a.ts", "kit/spec/a.md", "kit/nested/package.json", "kit/nested/a.ts", "kit/README.md", "kit/fixtures/a.md", "kit/test/a.test.ts", "kit/gen/a.ts", "notes.md", "README.md", "AGENTS.md", "style.css", "gen/a.qnt", "gen/traces/a.b.0/0.itf.json",
@@ -822,6 +831,11 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     }, "the tests read the package, its test fixtures, what its workspace dependencies ship to it and the fixtures they keep; the typecheck reads only scripts and JSON, and no traces or counterexamples; neither reads a spec's prose or its Quint copy, the prose kept for people and agents, the simulations' traces or the stories' bookkeeping");
     fs.writeFileSync(path.join(workspace, "kit/a.ts"), 'export * from "./gen/a.ts";\n');
     assert.deepEqual(changed("kit/gen/a.ts"), [true, true], "a dependency's gen/ is read once its code imports it");
+    fs.writeFileSync(path.join(workspace, "kit/package.json"), '{"dependencies":{"linked":"link:../runtime"}}');
+    for (const group of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
+      fs.writeFileSync(path.join(workspace, "package.json"), JSON.stringify({ [group]: { kit: "workspace:*" } }));
+      assert.deepEqual(inputs(), [undefined, undefined], `a link reached through ${group} can change independently of the lockfile`);
+    }
   });
 
   test("an exploration is remembered under what its page reads: its code and what that names, what a workspace package it imports or runs offers, the generated modules it imports, and no test, contract, proof, spec or tool it does not run", () => {
@@ -2647,6 +2661,46 @@ function eachCheck() {
     assert.match(proof.summary, /all 1 obligations proved/);
   });
 
+  test("owner generation mirrors the same artifact as the whole tree and checks its dependency closure", async () => {
+    const script = path.join(project, "vibestack/spec.ts");
+    const root = scratch({
+      "package.json": PACKAGE["package.json"],
+      "packages/target/package.json": JSON.stringify({ name: "@repo/target" }),
+      "packages/other/package.json": JSON.stringify({ name: "@repo/other" }),
+      "spec/index.md": "# Project",
+      "spec/target/index.md": ruleSpec('import lib.* from "../lib"\npure val targetValue = baseValue'),
+      "spec/lib.md": ruleSpec("pure val baseValue = 1"),
+      "spec/other/index.md": ruleSpec("pure val otherValue = 2"),
+    });
+    const all = await runCli(script, root, "gen");
+    assert.equal(all.status, 0, all.stdout + all.stderr);
+    const target = path.join(root, "packages/target/gen");
+    const outputs = () => fs.readdirSync(target).sort().map((name) => [name, fs.readFileSync(path.join(target, name), "utf8")]);
+    const expected = outputs();
+    const unrelated = path.join(root, "packages/other/gen/other.ts");
+    const before = fs.readFileSync(unrelated, "utf8");
+    fs.rmSync(target, { recursive: true });
+    fs.appendFileSync(path.join(root, "spec/other/index.md"), "\n[Missing](./missing.md)\n");
+    const scoped = await runCli(script, root, "gen", "--owner", "target");
+    assert.equal(scoped.status, 0, scoped.stdout + scoped.stderr);
+    assert.deepEqual(outputs(), expected);
+    assert.equal(fs.readFileSync(unrelated, "utf8"), before);
+    const fullCheck = await runCli(script, root, "check");
+    assert.equal(fullCheck.status, 1, fullCheck.stdout + fullCheck.stderr);
+    assert.match(fullCheck.stdout, /spec\/other\/index\.md.*no spec at this path/);
+    fs.appendFileSync(path.join(root, "spec/lib.md"), "\n[Missing](./missing.md)\n");
+    const broken = await runCli(script, root, "gen", "--owner", "target");
+    assert.equal(broken.status, 1, broken.stdout + broken.stderr);
+    assert.match(broken.stderr, /spec\/lib\.md.*no spec at this path/);
+    assert.deepEqual(outputs(), expected);
+    fs.writeFileSync(path.join(root, "spec/lib.md"), ruleSpec("pure val baseValue = 2"));
+    fs.writeFileSync(path.join(root, "spec/target/invalid.md"), ruleSpec('pure val invalid: int = "s"'));
+    const invalid = await runCli(script, root, "gen", "--owner", "target");
+    assert.equal(invalid.status, 1, invalid.stdout + invalid.stderr);
+    assert.match(invalid.stderr, /spec\/target\/invalid\.md/);
+    assert.deepEqual(outputs(), expected);
+  });
+
   test("the command line checks, generates and watches a project directory from its parent", async () => {
     const script = path.join(project, "vibestack/spec.ts");
     const cli = (root: string, ...args: string[]) => runCli(script, root, ...args);
@@ -3064,6 +3118,10 @@ describe("the documents name what exists", () => {
       prose: [studio(prose), prose.includes("@repo/app#test")],
       selftest: [studio(selftest), ["a", "b", "rest"].every((shard) => selftest.includes(`//#selftest:tools:${shard}`))],
       fixture: studio(fixture),
+      independentOwner: (await changedBy(() => {
+        fs.mkdirSync(path.join(root, "packages/kit/spec"));
+        fs.writeFileSync(path.join(root, "packages/kit/spec/index.md"), "# Standalone kit\n");
+      })).includes("//#gen"),
       leftovers: await changedBy(async () => {
         for (const dir of ["", "packages/ui/", "vibestack/fixtures/"]) fs.writeFileSync(path.join(root, `${dir}.DS_Store`), "\0");
         fs.mkdirSync(path.join(root, "packages/ui/.cache/vitest/attachments"), { recursive: true });
@@ -3072,7 +3130,7 @@ describe("the documents name what exists", () => {
       }),
     }, {
       notWaiting: ["//#analyze", "//#build", "//#lint:css", "//#selftest:docs", "//#selftest:examples", "@repo/design-system#build", "@repo/ui#typecheck", "vibestack-studio#build", "vibestack-studio#dev", "vibestack-studio#test", "vibestack-studio#typecheck"],
-      lintWaitsFor: vibeDeclared, devWaitsFor: tasks.get("vibestack-studio#build")!.dependencies.toSorted(), prose: [[], true], selftest: [[], true], fixture: ["vibestack-studio#test"], leftovers: [],
+      lintWaitsFor: vibeDeclared, devWaitsFor: tasks.get("vibestack-studio#build")!.dependencies.toSorted(), prose: [[], true], selftest: [[], true], fixture: ["vibestack-studio#test"], independentOwner: true, leftovers: [],
     }, "the owners' tasks, @repo/kit's among them, wait for the root's gen, and install's //#build does not, so `gen --if-valid` after it keeps a half-edited spec from failing install");
   });
 });
@@ -3103,6 +3161,29 @@ function theCommandLine() {
     fs.writeFileSync(path.join(root, "spec/value.md"), ruleSpec("pure val answer = nope", "A value"));
     assert.match((await runCli(script, root, "gen", "--if-valid")).stdout, /gen\/ was not generated/);
     assert.ok(fs.existsSync(path.join(root, "gen/value.ts")));
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "install-gen", packageManager: JSON.parse(read("package.json")).packageManager, scripts: { gen: "node vibestack/spec.ts gen" } }));
+    fs.writeFileSync(path.join(root, "turbo.json"), JSON.stringify({ tasks: { "//#gen": { inputs: ["spec/**"], outputs: ["gen/**"] } } }));
+    fs.writeFileSync(path.join(root, "pnpm-workspace.yaml"), "packages: [packages/*]\n");
+    fs.mkdirSync(path.join(root, "packages/app"), { recursive: true });
+    fs.writeFileSync(path.join(root, "packages/app/package.json"), JSON.stringify({ name: "app" }));
+    fs.symlinkSync(nodeModules, path.join(root, "node_modules"), "dir");
+    fs.symlinkSync(path.dirname(script), path.join(root, "vibestack"), "dir");
+    const prepare = (hosted: boolean) => exec(process.execPath, [script, "gen", "--install"], root, { ...process.env, GITHUB_ACTIONS: String(hosted), TURBO_CACHE: "local:rw", TURBO_TOKEN: "" });
+    for (const hosted of [false, true]) {
+      const invalid = await prepare(hosted);
+      assert.equal(invalid.status, 0, invalid.stderr);
+      assert.match(invalid.stdout, /gen\/ was not generated/);
+      assert.equal((await import(path.join(root, "gen/value.ts"))).answer, 42);
+    }
+    fs.writeFileSync(path.join(root, "spec/value.md"), ruleSpec("pure val answer = 43", "A value"));
+    const installed = await prepare(true);
+    assert.equal(installed.status, 0, installed.stderr);
+    assert.doesNotMatch(installed.stdout, /gen\/ was not generated/);
+    assert.equal((await import(path.join(root, "gen/value.ts") + "?installed")).answer, 43);
+    fs.rmSync(path.join(root, "gen/value.ts"));
+    const restored = await prepare(true);
+    assert.match(restored.stdout, /cache hit/);
+    assert.equal((await import(path.join(root, "gen/value.ts") + "?restored")).answer, 43);
     fs.writeFileSync(path.join(root, ".spec-cache/lock"), `${process.pid}\n`);
     assert.match((await runCli(script, root, "gen")).stderr, /another check or accept is running in this project/);
   });

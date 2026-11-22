@@ -102,14 +102,14 @@ function lockProject(root: string): () => void {
  * Each spec's module written to gen/: its model as it is generated, or why it has none. The owners' gen/ follows once
  * every module is written (units.ts, `mirrorGen`).
  */
-async function* generating(memory: Memory, specs: Spec[]): AsyncGenerator<{ spec: Spec; model: Model; error?: undefined } | { spec: Spec; model?: undefined; error: Error }> {
+async function* generating(memory: Memory, specs: Spec[], output = memory.root): AsyncGenerator<{ spec: Spec; model: Model; error?: undefined } | { spec: Spec; model?: undefined; error: Error }> {
   const models = new Map<string, Model>();
-  const typed = typecheckAll(memory, specs);
+  const typed = typecheckAll(memory, specs, output);
   try {
     for (const spec of specs) {
       const missing = spec.imports.find((i) => !models.has(i));
       yield missing ? { spec, error: new Error(`it imports ${missing}, which is not a valid model`) }
-        : await typed.get(spec.name)!.then((ir) => ({ spec, model: generated(memory.root, spec, ir, models) })).catch((error: Error) => ({ spec, error }));
+        : await typed.get(spec.name)!.then((ir) => ({ spec, model: generated(output, spec, ir, models) })).catch((error: Error) => ({ spec, error }));
     }
   } finally {
     // A caller that stops early must not restore gen/ while a typecheck still writes into it.
@@ -263,13 +263,14 @@ async function typecheck(memory: Memory, root: string, dir: string): Promise<{ o
   const at = path.join(root, dir);
   pruneSidecars(at);
   const contents = (files: string[]) => files.map((file): [string, string] => [path.relative(root, file), fs.existsSync(file) ? digest(fs.readFileSync(file, "utf8")) : ""]);
-  const kept = await entry(root, "types", [dir, testInputs(at, "normal", "types"), JSON.stringify(contents(configured(at)))]);
-  const passed = recall<{ read: [string, string][] }>(memory, kept);
+  const inputs = testInputs(at, "normal", "types");
+  const kept = inputs === undefined ? undefined : await entry(root, "types", [dir, inputs, JSON.stringify(contents(configured(at)))]);
+  const passed = kept && recall<{ read: [string, string][] }>(memory, kept);
   if (passed && JSON.stringify(contents(passed.read.map(([file]) => path.join(root, file)))) === JSON.stringify(passed.read)) return { ok: true, out: "" };
   const r = await run("vibelang", ["--noEmit", "--listFiles", "-p", "."], at);
   const lines = r.out.split("\n");
   const local = (line: string) => path.isAbsolute(line) && fs.existsSync(line);
-  if (r.ok) store(memory, kept, { read: contents(lines.filter((line) => local(line) && !line.split(/[\\/]/).includes("node_modules"))) });
+  if (r.ok && kept) store(memory, kept, { read: contents(lines.filter((line) => local(line) && !line.split(/[\\/]/).includes("node_modules"))) });
   return { ok: r.ok, out: lines.filter((line) => !line.startsWith("bundled:///") && !local(line)).join("\n") };
 }
 
@@ -602,7 +603,7 @@ export function newSpec(root: string, name = ""): string {
 const COMMANDS = [
   ["check", "[<directory>] [--json] [--nightly]", "run every stage; --json prints each result as one line of JSON, then { ok, results, next }; --nightly uses the nightly test profile"],
   ["watch", "[<directory>]", "check again whenever spec/, src/, test/ or tsconfig.json changes"],
-  ["gen", "[<directory>] [--if-valid]", "write gen/ from the spec"],
+  ["gen", "[<directory>] [--if-valid] or --owner <name> [<directory>] or --install", "write gen/ from the spec; --install prepares a template checkout"],
   ["accept", "[<directory>] [unproved]", "record what was reviewed, or the obligations that are simulated only"],
   ["new", "[<path>]", "fill an empty spec/index.md, or write a starter spec/<path>/index.md"],
   ["init", "[<directory>]", "add what a project is missing"],
@@ -691,13 +692,42 @@ async function watch(root: string) {
   await once();
 }
 
+async function generateOwner(root: string, name: string) {
+  const ownerDir = codeDirs(root).find((dir) => path.basename(dir) === name);
+  if (!ownerDir) throw new Error(`${name}: no package owns spec/${name}/`);
+  const release = lockProject(root);
+  try {
+    const specs = readSpecs(root, undefined, name);
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "vibestack-owner-gen-"));
+    try {
+      const errors: string[] = [];
+      for await (const { spec, error } of generating({ root, fresh: false, used: new Set() }, specs, scratch)) {
+        if (error) errors.push(`${spec.file}:
+${error.message}`);
+      }
+      if (errors.length) throw new Error(errors.join("\n"));
+      mirrorGen(root, specs, { scratch, ownerDir });
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  } finally {
+    release();
+  }
+}
+
 /** The `spec` command, on `process.argv`. */
 export async function main() {
   let root = process.cwd();
-  const [command, ...args] = process.argv.slice(2);
+  let [command, ...args] = process.argv.slice(2);
+  const installing = command === "gen" && args.length === 1 && args[0] === "--install";
+  if (installing) [command, ...args] = process.env.GITHUB_ACTIONS === "true" ? ["tasks", "//#gen"] : ["gen", "--if-valid"];
   const takes = (...allowed: string[][]) => allowed.some((a) => a.length === args.length && a.every((x, i) => x === "*" || x === args[i]));
   try {
     if (Number(process.versions.node.split(".")[0]) < NODE) throw new Error(`spec needs Node ${NODE} or later; this is Node ${process.versions.node}`);
+    if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {
+      await generateOwner(args[2] === undefined ? root : projectRoot(args[2]), args[1]);
+      return;
+    }
     const options: Record<string, string[]> = { check: ["--json", "--nightly"], gen: ["--if-valid"], accept: ["unproved"], watch: [], init: [] };
     if (Object.hasOwn(options, command)) {
       const directories = args.filter((arg) => !options[command].includes(arg));
@@ -709,7 +739,7 @@ export async function main() {
     if (command === "--help" && takes([])) console.log(USAGE);
     else if (command === "tasks") {
       const fingerprint = path.join(root, ".cache", "toolchain.json");
-      const text = JSON.stringify(await toolchainFingerprint()) + "\n";
+      const text = JSON.stringify(await steady(toolchainFingerprint)) + "\n";
       fs.mkdirSync(path.dirname(fingerprint), { recursive: true });
       if (!fs.existsSync(fingerprint) || fs.readFileSync(fingerprint, "utf8") !== text) fs.writeFileSync(fingerprint, text);
       let env: NodeJS.ProcessEnv = { ...process.env, TURBO_TELEMETRY_DISABLED: "1" };
@@ -720,7 +750,10 @@ export async function main() {
         env = cacheCredentials(env, args, declared, cache);
       }
       const child = spawn(bin("turbo", root), ["run", ...args], { cwd: root, env, stdio: "inherit" });
-      child.on("exit", (code, signal) => { process.exitCode = code ?? (signal ? 1 : 0); });
+      child.on("exit", (code, signal) => {
+        if (installing && code) console.log("note: gen/ was not generated; `pnpm check` says why");
+        else process.exitCode = code ?? (signal ? 1 : 0);
+      });
     } else if (command === "gen" && takes([], ["--if-valid"])) {
       // --if-valid is for `pnpm install`: a spec in the middle of an edit, or a check running, must not make installing fail.
       let release = () => {};

@@ -162,7 +162,7 @@ export async function tests(checking: string, dir: string, specs: Spec[], rememb
     if (!script) return said;
     const manager = packageManager(root);
     const fingerprint = testInputs(root, mode);
-    if (!fresh) {
+    if (!fresh && fingerprint !== undefined) {
       try {
         if (JSON.parse(fs.readFileSync(testReceipt(root, mode), "utf8")).fingerprint === fingerprint) {
           said.push([true, "tests", "pass: the test runner recorded success for these inputs"]);
@@ -170,7 +170,7 @@ export async function tests(checking: string, dir: string, specs: Spec[], rememb
         }
       } catch { /* no matching successful test run */ }
     }
-    said.push(await remember(fingerprint, async (): Promise<Reported<"tests">> => {
+    const runTests = async (): Promise<Reported<"tests">> => {
       const { NODE_TEST_CONTEXT: _, ...env } = process.env;
       // The root that is checking: spec.ts refuses a check of it, or of a package below it, started from these tests.
       const t = await exec(manager.name, ["run", "test", ...(mode === "nightly" ? ["--mode", "nightly"] : [])], root, { ...env, SPEC_TESTS: fs.realpathSync(checking) });
@@ -182,7 +182,8 @@ export async function tests(checking: string, dir: string, specs: Spec[], rememb
       const shown = first < 0 ? stdout.split("\n").slice(-80).join("\n") + stderr
         : [...lines.slice(first, first + 200), ...lines.length > first + 200 ? [`… ${lines.length - first - 200} more lines`] : []].join("\n");
       return [ok, "tests", ok ? "pass" : "fail", indent((shown + (t.stopped ? `\n${t.stopped}` : "")).trim()), `${manager.name} run test`];
-    }, ([ok]) => ok));
+    };
+    said.push(await (fingerprint === undefined ? runTests() : remember(fingerprint, runTests, ([ok]) => ok)));
   } catch (e) {
     said.push([false, "tests", (e as Error).message]);
   }
@@ -216,7 +217,7 @@ export function workspacePackages(root: string): { directory: string; name: stri
     if (found.has(from)) continue;
     found.set(from, name);
     const pkg = manifest(from);
-    for (const [dependency, version] of Object.entries({ ...pkg.dependencies, ...pkg.devDependencies }).sort(([a], [b]) => a.localeCompare(b))) {
+    for (const [dependency, version] of Object.entries({ ...pkg.peerDependencies, ...pkg.devDependencies, ...pkg.dependencies, ...pkg.optionalDependencies }).sort(([a], [b]) => a.localeCompare(b))) {
       const at = path.join(from, "node_modules", dependency);
       if (String(version).startsWith("workspace:") && fs.existsSync(at)) pending.push({ directory: at, name: dependency });
     }
@@ -234,7 +235,7 @@ const SPECIFIER = /(?:\bfrom\s+|\bimport\s*\(\s*|^\s*import\s+)["'](\.\.?\/[^"']
  * outside fixtures/, tests, drivers, traces or counterexamples, nor the packages nested in it, nor its gen/ unless its
  * scripts or its manifest reach into it.
  */
-export function testInputs(root: string, mode: TestProfile = "normal", read: Inputs = "tests"): string {
+export function testInputs(root: string, mode: TestProfile = "normal", read: Inputs = "tests"): string | undefined {
   const hash = createHash("sha256").update(JSON.stringify(["tests-v6", read, process.versions.node, process.platform, process.arch, profile(mode)]));
   const served = (file: string) => !isTestFile(file) && ![DRIVERS, TRACES, COUNTEREXAMPLES].some((dir) => file.startsWith(`${dir}/`));
   const reads: Record<Inputs, (file: string) => boolean> = {
@@ -251,6 +252,8 @@ export function testInputs(root: string, mode: TestProfile = "normal", read: Inp
     const own = name === ".";
     const keep = (file: string) => reads[read](file) && (own || (served(file) && !/^(?:spec|gen)\//.test(file) && (!file.endsWith(".md") || /(?:^|\/)fixtures\//.test(file))));
     const pkg = manifest(from);
+    if ([pkg.dependencies, pkg.devDependencies, pkg.optionalDependencies, pkg.peerDependencies].some((deps) =>
+      Object.values(deps ?? {}).some((version) => typeof version === "string" && version.startsWith("link:")))) return undefined;
     let gen = own || /(?:^|["/.])gen\//.test(JSON.stringify([pkg.exports, pkg.main, pkg.module, pkg.types]));
     for (const file of packageFiles(from, keep, "", own)) {
       const bytes = update(from, file);

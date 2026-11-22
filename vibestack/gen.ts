@@ -25,8 +25,7 @@ export interface Model extends Roles {
   imports: string[]; // other specs this one imports, in order
   /**
    * The module as the prover reads it, under a prefix for proof bundles; `docs = false` omits spec comments for cache
-   * keys. It differs from `ts`, which Node runs, only where `ts` checks at run time what the proof takes as given
-   * (Scope.proof in gen/print.ts).
+   * keys. Its bundle supplies its imports and omits the runtime guards the proof takes as given (Scope.proof in gen/print.ts).
    */
   render: (prefix: string, docs?: boolean) => string;
   /** Events the spec declares fair (`fair_<event>`), each "weak" or "strong". */
@@ -208,6 +207,7 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
     ...links.map(importLine),
     ...typeOnly.map((m) => `import { ${[...new Set(typedefs.filter((d) => d.module === m).map((d) => d.base as string))].map((b) => `type ${b} as ${m}_${b}`).join(", ")} } from "./${m}.ts";`),
   ];
+  const bundleHeader = links.length || typeOnly.length ? [""] : header;
   /** The module's TypeScript with its own top-level names under a prefix. */
   const render = (prefix: string, docs = true, proof = true): string => {
     const local = (n: string) => prefix + n;
@@ -216,7 +216,7 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
     const ref = (n: string) => (localNames.has(n) ? local(n) : cameFrom.has(n) ? `${cameFrom.get(n)}_${n.split("::").pop()}` : n);
     const scoped = typeWalks(typedefs, name, prefix);
     const print = printer({ types: scoped, inferred, ref, helper, bind, variants, definitions: new Set([...localNames, ...cameFrom.keys()]), simulatorOnly, proof });
-    return typescript({ header, typedefs: [...localTypedefs].sort(bySpecOrder), vals, funs, sig, typeOf, doc: docs ? doc : () => "", local, source }, roles, scoped, print, helper);
+    return typescript({ header: proof ? bundleHeader : header, typedefs: [...localTypedefs].sort(bySpecOrder), vals, funs, sig, typeOf, doc: docs ? doc : () => "", local, source }, roles, scoped, print, helper);
   };
   const ts = render("", true, false);
 
