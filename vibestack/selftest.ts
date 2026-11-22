@@ -10,9 +10,9 @@ import os from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
-import { gunzipSync } from "node:zlib";
+import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
-import { cacheCredentials, collectGarbage, entry, recall, store } from "./cache.ts";
+import { cacheCredentials, collectGarbage, entry, isActionEntry, recall, store, withFormalCache } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
 import { exec, run as tool } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
@@ -47,7 +47,7 @@ const STORE = path.join(project, ".cache/selftest/.spec-cache");
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const sharing: string[] = [];
 const attempt = (act: () => void) => { try { act(); } catch { return; } };
-const toolRuns = (dir: string) => fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /^action-[a-f0-9]{24}\.json\.gz$/.test(f)) : [];
+const toolRuns = (dir: string) => fs.existsSync(dir) ? fs.readdirSync(dir).filter(isActionEntry) : [];
 const unused = (root: string, since: number) => toolRuns(path.join(root, ".spec-cache")).filter((f) => fs.statSync(path.join(root, ".spec-cache", f)).mtimeMs < since);
 const keepRuns = (from: string, to: string) => {
   for (const name of toolRuns(from)) attempt(() => {
@@ -497,6 +497,34 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.deepEqual(again.failed, ["review"], again.text);
     assert.ok(!fs.existsSync(path.join(second, "gen/traces")) && !["gen", "check", "verify", "audit"].some((ran) => fs.existsSync(path.join(second, "gen/proof/door", ran))), again.text);
     assert.deepEqual(unused(pristine, fs.statSync(path.join(pristine, "tsconfig.json")).mtimeMs - 1000), [], "the order project keeps no run older than itself");
+  });
+
+  test("a formal cache survives a disposable project and keeps changed models fresh", async () => {
+    const cache = path.join(scratch({}), "formal-cache");
+    const first = fixtures(["door"]);
+    const initial = await withFormalCache(cache, () => run(first));
+    assert.deepEqual(initial.failed, ["review"], initial.text);
+    assert.ok(fs.existsSync(path.join(first, "gen/traces")), initial.text);
+    const entries = fs.readdirSync(cache);
+    assert.ok(entries.length > 0 && entries.every((file) => isActionEntry(file) && file.endsWith(".zst")));
+    const primary = path.join(cache, entries[0]);
+    fs.writeFileSync(primary.replace(/\.zst$/, ".gz"), gzipSync(zstdDecompressSync(fs.readFileSync(primary))));
+    fs.rmSync(primary);
+    fs.rmSync(first, { recursive: true, force: true });
+
+    const same = fixtures(["door"]);
+    const changed = fixtures(["door"], (files) => {
+      files["spec/door.md"] = files["spec/door.md"].replace("pure def canMove", "pure def !canMove");
+    });
+    const [repeated, updated] = await Promise.all([
+      withFormalCache(cache, () => run(same)),
+      withFormalCache(cache, () => run(changed)),
+    ]);
+    assert.deepEqual(repeated.results, initial.results);
+    assert.ok(!fs.existsSync(primary), "the shared legacy action was reused");
+    assert.ok(!fs.existsSync(path.join(same, "gen/traces")), repeated.text);
+    assert.ok(!fs.existsSync(path.join(same, "gen/proof/door/verify")), repeated.text);
+    assert.ok(updated.failed.includes("model"), updated.text);
   });
 
   test("a guard that never refuses its event is reported without failing", async () => {
@@ -2058,17 +2086,31 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(!fs.existsSync(sidecar));
   });
 
-  test("a truncated cache entry is recomputed and generated modules run in a CommonJS project", async () => {
+  test("gzip cache entries still work, truncated entries are recomputed and generated modules run in a CommonJS project", async () => {
     const root = fixtures(["door"], (f) => { f["package.json"] = '{"type":"commonjs"}'; });
     const before = await run(root);
     assert.deepEqual(before.failed, ["review"], before.text);
     const cache = path.join(root, ".spec-cache");
-    const entries = fs.readdirSync(cache).filter((f) => f.endsWith(".json.gz"));
-    assert.ok(entries.length > 0);
-    for (const entry of entries) fs.writeFileSync(path.join(cache, entry), "{");
+    const entries = () => fs.readdirSync(cache).filter((f) => f.endsWith(".json.zst")).sort();
+    const initial = entries();
+    assert.ok(initial.length > 0);
+    for (const entry of initial) {
+      const file = path.join(cache, entry);
+      const legacy = file.replace(/\.zst$/, ".gz");
+      fs.writeFileSync(legacy, gzipSync(zstdDecompressSync(fs.readFileSync(file))));
+      fs.rmSync(file);
+    }
+    const legacy = await run(root);
+    assert.deepEqual(legacy.results, before.results, legacy.text);
+    assert.deepEqual(entries(), []);
+    for (const entry of initial) {
+      fs.writeFileSync(path.join(cache, entry), "{");
+      fs.writeFileSync(path.join(cache, entry.replace(/\.zst$/, ".gz")), "{");
+    }
     const after = await run(root);
-    assert.deepEqual(after.failed, ["review"], after.text);
-    for (const entry of fs.readdirSync(cache).filter((f) => f.endsWith(".json.gz"))) assert.doesNotThrow(() => JSON.parse(gunzipSync(fs.readFileSync(path.join(cache, entry))).toString("utf8")));
+    assert.deepEqual(after.results, before.results, after.text);
+    assert.deepEqual(entries(), initial);
+    for (const entry of entries()) assert.doesNotThrow(() => JSON.parse(zstdDecompressSync(fs.readFileSync(path.join(cache, entry))).toString("utf8")));
   });
 
   test("changing an imported definition invalidates model and simulation results", async () => {
@@ -2553,7 +2595,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.ok(!fs.existsSync(expired), "an unused entry past retention is deleted");
     assert.ok(fs.existsSync(recent), "a recent entry from another branch remains reusable");
     assert.ok(fs.readdirSync(path.dirname(lock)).length > 0, "the entries it used are kept");
-    const newer = path.join(root, `.spec-cache/prove-${"3".repeat(24)}.json.gz`);
+    const newer = path.join(root, `.spec-cache/prove-${"3".repeat(24)}.json.zst`);
     fs.writeFileSync(newer, "{}");
     const file = fs.openSync(recent, "r+");
     fs.ftruncateSync(file, 256 * 2 ** 20);
