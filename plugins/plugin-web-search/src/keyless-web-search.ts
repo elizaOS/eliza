@@ -8,7 +8,7 @@
  * as "no results". Diagnostics never carry query text or provider payloads.
  */
 
-const PARALLEL_MCP_URL = "https://search.parallel.ai/mcp";
+const PARALLEL_MCP_URL = "https://mcp.parallel.ai/mcp";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_RESPONSE_BYTES = 256 * 1024;
 /** JSON-RPC id of the one `tools/call` request each search dispatches. */

@@ -1065,7 +1065,7 @@ describe("Shared Eliza runtime in Workerd", () => {
         outboundRequests.push(request.url);
         if (
           boundedGeneralSearch &&
-          request.url === "https://search.parallel.ai/mcp"
+          request.url === "https://mcp.parallel.ai/mcp"
         ) {
           const body = z
             .object({
@@ -1872,7 +1872,7 @@ describe("Shared Eliza runtime in Workerd", () => {
         expect(
           outboundRequests
             .slice(outboundBefore)
-            .filter((url) => url === "https://search.parallel.ai/mcp"),
+            .filter((url) => url === "https://mcp.parallel.ai/mcp"),
         ).toHaveLength(1);
       } finally {
         boundedGeneralSearch = false;
@@ -1888,9 +1888,7 @@ describe("Shared Eliza runtime in Workerd", () => {
         "https://runtime.test/search-turn",
       );
       const body = await response.text();
-      expect(outboundRequests, body).toContain(
-        "https://search.parallel.ai/mcp",
-      );
+      expect(outboundRequests, body).toContain("https://mcp.parallel.ai/mcp");
       expect(response.status, body).toBe(200);
       const result = JSON.parse(body) as {
         reply: string;

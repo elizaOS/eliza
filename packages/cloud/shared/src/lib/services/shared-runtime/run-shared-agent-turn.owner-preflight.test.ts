@@ -103,8 +103,8 @@ test("actual public preflight capture retains refused provider evidence and isol
         usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
       });
     }
-    if (target !== "https://search.parallel.ai/mcp") unexpectedHttpUrls.push(target);
-    expect(target).toBe("https://search.parallel.ai/mcp");
+    if (target !== "https://mcp.parallel.ai/mcp") unexpectedHttpUrls.push(target);
+    expect(target).toBe("https://mcp.parallel.ai/mcp");
     expect(request.params.name).toBe("web_search");
     publicCalls++;
     return Response.json({
@@ -186,9 +186,9 @@ test("actual public preflight capture retains refused provider evidence and isol
     expect(normal.degraded).toBe(false);
     expect(normal.responded).toBe(true);
     expect(attemptedHttpUrls).toEqual([
-      "https://search.parallel.ai/mcp",
+      "https://mcp.parallel.ai/mcp",
       ...Array(2).fill("https://api.cerebras.ai/v1/chat/completions"),
-      "https://search.parallel.ai/mcp",
+      "https://mcp.parallel.ai/mcp",
       ...Array(2).fill("https://api.cerebras.ai/v1/chat/completions"),
     ]);
     expect(unexpectedHttpUrls).toEqual([]);
