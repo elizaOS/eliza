@@ -653,32 +653,102 @@ describe("voice response policy", () => {
 });
 
 describe("model acknowledgment authoring grammar", () => {
-  it.each([
+  // Each cue the rule offers as something to write, listed here rather than
+  // parsed from prose so a rewording fails loudly instead of silently
+  // narrowing the check. The rule's other quotes are forms not to write.
+  const offered = [
     "Let me check.",
-    "I'll search.",
-    "Let me take a look.",
-    "I'll look into that.",
-    "Checking both.",
-    "Let me check your notes.",
-    "I'll pull up your calendar.",
-    "Let me open Calendar.",
-    "I’ll open Calendar.",
-  ])("advertises only admitted short prospective forms: %s", (cue) => {
+    "Let me check your calendar.",
+    "Let me check the weather.",
+    "Let me open Maps.",
+    "On it.",
+    "One sec.",
+  ];
+  const forbidden = ["Calling...", "Opening...", "Setting..."];
+  // The sources the rule lets stand in for "your calendar".
+  const sources = [
+    "notes",
+    "inbox",
+    "messages",
+    "reminders",
+    "tasks",
+    "files",
+    "photos",
+    "contacts",
+  ];
+  it.each(offered)("offers only cues the closed grammar speaks: %s", (cue) => {
+    expect(ACKNOWLEDGMENT_RULE).toContain(`"${cue}"`);
     expect(replyIsClaimSafeAcknowledgment(cue)).toBe(true);
   });
-  it("explains arbitrary topics through referents and forbids the incomplete live form", () => {
-    expect(ACKNOWLEDGMENT_RULE).toContain(
-      "These references work for any topic",
+  it.each(forbidden)(
+    "quotes as forbidden only forms the grammar drops: %s",
+    (form) => {
+      expect(ACKNOWLEDGMENT_RULE).toContain(`"${form}"`);
+      expect(replyIsClaimSafeAcknowledgment(form)).toBe(false);
+    },
+  );
+  it("quotes nothing but the offered cues and forbidden forms", () => {
+    const quoted = [...ACKNOWLEDGMENT_RULE.matchAll(/"([^"]+)"/gu)].map(
+      (match) => match[1],
     );
-    expect(ACKNOWLEDGMENT_RULE).toContain("a complete lookup phrase");
+    expect(new Set(quoted)).toEqual(new Set([...offered, ...forbidden]));
+  });
+  it.each(sources)(
+    "speaks the lookup cue for each listed source: %s",
+    (source) => {
+      expect(ACKNOWLEDGMENT_RULE).toContain(`(or your ${sources.join(", ")})`);
+      expect(
+        replyIsClaimSafeAcknowledgment(`Let me check your ${source}.`),
+      ).toBe(true);
+    },
+  );
+  it("keeps silence and forbids naming data or repeating the request", () => {
     expect(ACKNOWLEDGMENT_RULE).toContain(
-      "Do not invent other forms or synonyms",
+      "If the user asked for silence or no acknowledgment, leave it empty and still do the work.",
     );
     expect(ACKNOWLEDGMENT_RULE).toContain(
-      "leave it empty and still do authorized work",
+      "never name the people, items, times or outcome",
     );
+    expect(ACKNOWLEDGMENT_RULE).toContain("never repeat the request");
     expect(replyIsClaimSafeAcknowledgment("let me pull the latest.")).toBe(
       false,
+    );
+  });
+  it("leaves a navigation-only request to the held destination confirmation", () => {
+    // The cue list would otherwise contradict visualContinuation's direct
+    // disposition, which holds a destination confirmation as the final reply.
+    expect(ACKNOWLEDGMENT_RULE).toContain(
+      "A request whose only work is opening one app is not covered here: confirm that destination instead, as navigation-only replies do.",
+    );
+    expect(ACKNOWLEDGMENT_RULE).toContain(
+      'When opening an app is part of other planned work: "Let me open Maps."',
+    );
+    // visualContinuation is not in every Stage 1 schema (the phone's has none),
+    // so the rule must not send the model to a field it may never see.
+    expect(ACKNOWLEDGMENT_RULE).not.toContain("visualContinuation");
+  });
+  it("names no field, so the READ_CONTEXT acknowledgment can share it", () => {
+    // Field names are camelCase; the rule's prose has none.
+    expect(ACKNOWLEDGMENT_RULE).not.toMatch(/\b[a-z]+[A-Z]\w*\b/u);
+  });
+  it("names every app the open form accepts, and only those", () => {
+    const listed = /by its bare name: ([^;]+);/u
+      .exec(ACKNOWLEDGMENT_RULE)?.[1]
+      ?.split(/, | or /u);
+    expect(listed).toHaveLength(14);
+    for (const app of listed ?? [])
+      expect(replyIsClaimSafeAcknowledgment(`Let me open ${app}.`)).toBe(true);
+    for (const app of ["Reminders", "Google Maps", "the Camera app"])
+      expect(replyIsClaimSafeAcknowledgment(`Let me open ${app}.`)).toBe(false);
+  });
+  it("limits the no-reuse sentence to the cue", () => {
+    // A bare "never reuse an earlier reply" would contradict the "what?"
+    // source-quote repeat guidance appended after the rule.
+    expect(ACKNOWLEDGMENT_RULE).toContain(
+      "Never copy an earlier answer into the cue.",
+    );
+    expect(ACKNOWLEDGMENT_RULE).not.toMatch(
+      /\b(?:reuse|repeat|copy)\b[^.]*\b(?:earlier|previous|last) (?:reply|replies|message)/iu,
     );
   });
 });

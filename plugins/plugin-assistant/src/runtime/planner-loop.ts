@@ -12602,9 +12602,15 @@ function userSafeRefusalCandidate(
 // looksLikeProgressOnlyReply classifier (services/message.ts). Single-sourced
 // HERE because message.ts imports from this module and the reverse import
 // would be a cycle. The two consumers deliberately extend it differently —
-// see PROGRESS_ONLY_ANSWER_REJECT below.
-export const PROGRESS_ONLY_REPLY_OPENERS_PATTERN =
-  "calling|checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|let me|i(?:'|’)ll|i will";
+// see PROGRESS_ONLY_ANSWER_REJECT below. A wait cue the acknowledgment grammar
+// speaks ("On it.", "One sec.", "Just a moment.") opens progress only as the
+// whole reply, or when one of the grammar's separators leads into more
+// progress ("One sec, let me check."). Answers that open with the same words
+// ("Just a second, your dentist is Thursday.", "One second is 1,000
+// milliseconds.", "On it — the alarm is set.") stay answers.
+const WAIT_CUE_OPENER =
+  "(?:on it|(?:one|just a) (?:sec(?:ond)?|moment))(?=[.!…]*\\s*$|\\s*(?:,|[.!…]+|[—–:;]|\\s-)\\s*(?:let me|i(?:'|’)ll|i will|i(?:'|’)m going to|i am going to|checking|looking|pulling|digging|searching|reading|taking a look|having a look)\\b)";
+export const PROGRESS_ONLY_REPLY_OPENERS_PATTERN = `calling|checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|${WAIT_CUE_OPENER}|let me|i(?:'|’)ll|i will`;
 
 // Bare opener screen (no final-answer-only extensions) for text where a
 // progress-shaped opener is disqualifying but "Okay, …" openings are
