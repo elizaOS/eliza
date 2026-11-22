@@ -771,12 +771,14 @@ async function generateFiles(root: string, output = root, ownerName?: string) {
     const errors: string[] = [];
     for await (const { spec, error } of generating({ root, fresh: false, used: new Set() }, specs, output, staged)) {
       if (!error) continue;
-      if (!ownerName || error instanceof InstallationChanged) throw error;
+      if (error instanceof InstallationChanged) throw error;
+      if (!ownerName) return { error };
       errors.push(`${spec.file}:\n${error.message}`);
     }
-    if (errors.length) throw new Error(errors.join("\n"));
+    if (errors.length) return { error: new Error(errors.join("\n")) };
     return { specs, staged };
   });
+  if (generated.error) throw generated.error;
   publishGen(output, generated.staged);
   return generated.specs;
 }
