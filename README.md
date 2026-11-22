@@ -15,7 +15,7 @@ starts from elizaOS/eliza-vibestack commit
 lalalune/vibestack commit `45cc5c35d58b8dc18b0a57b116fde2386eef5528`.
 
 The vendored Vibestack toolchain is synchronized with upstream commit
-`9cf2e4468b54e5293dc52aa65e84cd3d21b9e246`.
+`093a58e282e005773ab9a0e648f7de941dba8bdc`.
 
 ## Setup and verification
 
