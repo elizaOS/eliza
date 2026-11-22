@@ -7,6 +7,7 @@
  * that declared that word, DEVICE_MAPS_READ_SELECTED.
  */
 import {
+  type Action,
   AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,
   type Memory,
@@ -15,8 +16,10 @@ import {
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { viewsAction } from "../../../../../packages/agent/src/actions/views.ts";
+import { enrichChatUiViewMetadata } from "../../../../../packages/agent/src/api/chat-view-metadata.ts";
 import {
   closeRuntimeViewRegistry,
+  listViews,
   registerBuiltinViews,
   registerPluginViews,
 } from "../../../../../packages/agent/src/api/views-registry.ts";
@@ -33,6 +36,8 @@ import {
 import { MapsService } from "../../../../plugin-maps/src/service.ts";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { deviceActionTools } from "../device-actions/tools.ts";
+import { retrieveContextualPlannerActions } from "./action-surface.ts";
+import { plannerDiscoveryContexts } from "./provider-state.ts";
 import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "./stage1-evaluators.ts";
 import { createPlannerToolDiscoveryAction } from "./tool-discovery.ts";
 
@@ -162,6 +167,62 @@ describe("discovery for a maps query loads the Maps operations", () => {
     // The phone's selected-place read was the only match before the fix.
     expect(loaded).toContain("MAPS_ROUTE");
   });
+});
+
+describe("a general turn in the Maps view starts with the Maps operations", () => {
+  // The view answered in "world" while every Maps operation declares "maps".
+  // A turn Stage 1 left in `general` was scoped to the registry's "world"
+  // member, messaging, and reached Maps only through DISCOVER_ACTIONS.
+  const messageSearch: Action = {
+    name: "MESSAGE_SEARCH",
+    description: "Search messages in rooms and channels.",
+    contexts: ["messaging", "world"],
+    validate: async () => true,
+    handler: async () => ({ success: true }),
+  };
+  it.each(["find coffee shops", "search for a place to eat"])(
+    "%s",
+    async (text) => {
+      const { runtime, message } = await fixture(text);
+      await registerPluginViews(runtime, mapsPlugin, {
+        pluginDir: process.cwd(),
+        indexEmbeddings: false,
+      });
+      // The chat route replaces renderer metadata with the registered view's
+      // facts. The phone draws Maps itself, so the view needs no hosted bundle.
+      const turnIn = (uiView: string) =>
+        ({
+          ...message,
+          content: {
+            ...message.content,
+            metadata: enrichChatUiViewMetadata(
+              {
+                viewClientId: "test-renderer",
+                uiView,
+                viewDelivery: "completed-action",
+              },
+              listViews(runtime, { viewType: "gui" }),
+            ),
+          },
+        }) as Memory;
+      // The planner's first tools when Stage 1 chose `general` and named none.
+      const loaded = (turn: Memory) =>
+        retrieveContextualPlannerActions({
+          actions: [...runtime.actions, messageSearch],
+          deferUnscopedBootstrap: true,
+          query: text,
+          message: turn,
+          intents: [text],
+          contexts: plannerDiscoveryContexts(turn, ["general"]),
+          contextAliases: (context) => runtime.contexts.get(context)?.aliases,
+        }).actions.map((action) => action.name);
+      const inMaps = loaded(turnIn("maps"));
+      expect(inMaps).toContain("MAPS_PLACE");
+      expect(inMaps).not.toContain("MESSAGE_SEARCH");
+      // The same request from Home names no domain and waits for discovery.
+      expect(loaded(turnIn("chat"))).toEqual([]);
+    },
+  );
 });
 
 describe("a directions request is routed to Maps, not only to the Maps view", () => {
@@ -539,6 +600,10 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     ["where can I get coffee nearby?", ["MAPS_PLACE", "MAPS_NAVIGATION_START"]],
     ["any good tacos around here?", ["MAPS_PLACE", "MAPS_NAVIGATION_START"]],
     ["find a pharmacy nearby", ["MAPS_PLACE", "MAPS_NAVIGATION_START"]],
+    // A named place to search around needs no position from the phone.
+    ["pharmacy near the Ferry Building", ["MAPS_PLACE"]],
+    ["find a pharmacy near the ferry building", ["MAPS_PLACE"]],
+    ["is there a pharmacy near Union Square?", ["MAPS_PLACE"]],
     [
       "Are there any coffee shops close by?",
       ["MAPS_PLACE", "MAPS_NAVIGATION_START"],

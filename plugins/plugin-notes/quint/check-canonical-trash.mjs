@@ -80,7 +80,7 @@ for (const [index, suite] of manifest.suites.entries()) {
 }
 assert.equal(
   identities.reduce((count, suite) => count + suite.tests.length, 0),
-  87,
+  93,
 );
 assert.deepEqual(hashes(), before, "Notes inputs changed during conformance");
 writeFileSync(
@@ -98,5 +98,5 @@ writeFileSync(
   )}\n`,
 );
 console.log(
-  `Canonical Notes Trash conformance passed 87 named cases including real Store and owner HTTP checks: ${directory}`,
+  `Canonical Notes Trash conformance passed 93 named cases including real Store and owner HTTP checks: ${directory}`,
 );

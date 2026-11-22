@@ -171,4 +171,56 @@ describe("rate-limit cooldown at the HTTP boundary", () => {
     await expect(invoke(agent, "qwen-3.8-27b")).rejects.toMatchObject({ statusCode: 429 });
     expect(requests).toBe(4);
   });
+
+  // Measured on Cerebras, whose per-minute allowance refills all the time: three
+  // requests refused with Retry-After 59 were admitted 5, 14 and 27 seconds
+  // later, re-sent each second. A host that knows this caps the hold.
+  it.each(["OPENAI_RATE_LIMIT_MAX_HOLD_SECONDS", "CEREBRAS_RATE_LIMIT_MAX_HOLD_SECONDS"])(
+    "holds a model no longer than the host's %s",
+    async (setting) => {
+      vi.stubEnv(setting, "5");
+      const agent = runtime();
+      const now = Date.now();
+      const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+      const invoke = () =>
+        handleTextSmall(agent, { prompt: "Probe", model: "qwen-3.8-27b", stream: false });
+      await expect(invoke()).rejects.toMatchObject({ statusCode: 429 });
+      clock.mockReturnValue(now + 4_999);
+      await expect(invoke()).rejects.toMatchObject({ name: "ProviderRateLimitCooldownError" });
+      expect(requests).toBe(1);
+      // The provider said 60 seconds; the request goes out again after five.
+      clock.mockReturnValue(now + 5_001);
+      await expect(invoke()).rejects.toMatchObject({ statusCode: 429 });
+      expect(requests).toBe(2);
+    }
+  );
+
+  it.each(["", "soon", "0", "-5"])(
+    "keeps the provider's whole delay when the cap is %j",
+    async (value) => {
+      vi.stubEnv("OPENAI_RATE_LIMIT_MAX_HOLD_SECONDS", value);
+      const agent = runtime();
+      const now = Date.now();
+      const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+      const invoke = () =>
+        handleTextSmall(agent, { prompt: "Probe", model: "qwen-3.8-27b", stream: false });
+      await expect(invoke()).rejects.toMatchObject({ statusCode: 429 });
+      clock.mockReturnValue(now + 59_000);
+      await expect(invoke()).rejects.toMatchObject({ name: "ProviderRateLimitCooldownError" });
+      expect(requests).toBe(1);
+    }
+  );
+
+  it("never holds a model longer than the provider asked", async () => {
+    vi.stubEnv("OPENAI_RATE_LIMIT_MAX_HOLD_SECONDS", "600");
+    const agent = runtime();
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    const invoke = () =>
+      handleTextSmall(agent, { prompt: "Probe", model: "qwen-3.8-27b", stream: false });
+    await expect(invoke()).rejects.toMatchObject({ statusCode: 429 });
+    clock.mockReturnValue(now + 60_001);
+    await expect(invoke()).rejects.toMatchObject({ statusCode: 429 });
+    expect(requests).toBe(2);
+  });
 });

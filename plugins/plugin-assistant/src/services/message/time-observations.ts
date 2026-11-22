@@ -53,7 +53,7 @@ const WEEKDAY_NAMES = [
 const MONTH_DAY_PATTERN =
   /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?/gi;
 const CLOCK_PATTERN =
-  /\b(\d{1,2})(?::(\d{2}))(?::\d{2})?\s*(AM|PM|a\.m\.|p\.m\.)/gi;
+  /\b(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*(AM|PM|a\.m\.|p\.m\.)/gi;
 const WEEKDAY_PATTERN =
   /\b(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b/gi;
 
@@ -287,8 +287,10 @@ export function statedTimeIsUngrounded(args: {
     .replace(MONTH_DAY_PATTERN, " ")
     .replace(WEEKDAY_PATTERN, " ")
     .replace(CLOCK_PATTERN, " ")
+    // CURRENT_TIME renders its zone with en-US `timeStyle: "long"`: a North
+    // American abbreviation or a GMT offset such as "GMT+9" or "GMT+5:30".
     .replace(
-      /\b(?:it['’]s|it is|today is|currently|right now|about|at|for you|in your local time|your local time|AM|PM|EST|EDT|CST|CDT|MST|MDT|PST|PDT|UTC|GMT)\b/gi,
+      /\b(?:it['’]s|it is|today is|currently|right now|about|at|for you|in your local time|your local time|AM|PM|EST|EDT|CST|CDT|MST|MDT|PST|PDT|AKST|AKDT|HST|HAST|HADT|AST|ADT|(?:UTC|GMT)(?:[+-]\d{1,2}(?::\d{2})?)?)\b/gi,
       " ",
     )
     .replace(/[\s,.!():]/g, "");

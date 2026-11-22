@@ -10,7 +10,6 @@
 import {
   type ActionResult,
   Service as BaseService,
-  ChannelType,
   CONVERSATION_MESSAGES_HEADER_PREFIX,
   composeToolDiagnosticRedactor,
   computePrefixHashes,
@@ -46,7 +45,6 @@ import {
   type UUID,
   withStandaloneTrajectory,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/host/protocol";
 import { v4 as uuidv4 } from "uuid";
 import { renderActionResultsForModel } from "../runtime/planner-rendering.ts";
 import { buildProviderCachePlan } from "../runtime/provider-cache-plan";
@@ -62,6 +60,7 @@ import {
   type EvaluatorProgressSnapshot,
   evaluatorSourceRevision,
   hasEvaluatorSourceProgress,
+  postTurnReviewRuns,
   prepareEvaluatorProgress,
   prepareEvaluatorProgressForTranscript,
   stageEvaluatorOutput,
@@ -827,8 +826,7 @@ export class EvaluatorService extends BaseService {
    * group voice/mobile keep their existing validation path. */
   ownsDeferredFacts(message: Memory): boolean {
     return (
-      !isMobilePlatform() &&
-      message.content.channelType !== ChannelType.VOICE_GROUP &&
+      postTurnReviewRuns(message) &&
       ["factMemory", "relationships"].every((name) =>
         this.runtime.evaluators.some(
           (entry) => entry.name === name && this.isBackground(entry),
@@ -2486,12 +2484,7 @@ export async function runPostTurnEvaluators(
   // the room occupied until the runtime watchdog fires. Voice still runs the
   // complete response/action pipeline above, including ALWAYS_AFTER actions; only
   // this post-delivery reflection call is skipped.
-  if (
-    isMobilePlatform() ||
-    message.content.channelType === ChannelType.VOICE_GROUP
-  ) {
-    return null;
-  }
+  if (!postTurnReviewRuns(message)) return null;
   try {
     const service = (await runtime.getServiceLoadPromise(
       EvaluatorService.serviceType,

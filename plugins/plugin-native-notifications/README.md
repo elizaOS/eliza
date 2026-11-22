@@ -102,6 +102,10 @@ Approval IDs have the form `approval-` plus 64 lowercase hex characters. Call `w
 if no notice was published. A withdrawal before publish stores an opaque-ID receipt
 for the configured maximum approval lifetime; it needs no missing binding or content.
 A known receipt retains its original expiry. Both forms prevent delayed publication. Expiry removes approval receipts.
+`publishApproval`, `resumeApproval` and the `NoticeCoordinator` approval calls also take an optional
+per-approval title (`null` keeps the configured one; the body is always the configured one). The title is
+part of the receipt digest, so every later call for that approval must name the same title. `recheck` and
+the owner fence match it from the title Android shows. What a title may reveal is the host's decision.
 `withdraw(id)` for a result notice not yet recorded stores a withdrawn tombstone, so a publish still
 in flight reports `withdrawn` and posts nothing.
 

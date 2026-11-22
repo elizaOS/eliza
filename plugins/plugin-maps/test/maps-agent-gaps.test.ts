@@ -637,6 +637,7 @@ describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () 
           state: "awaiting-confirmation",
           placeName: destination.name,
           travelMode,
+          route: { durationSeconds: 480, distanceMeters: 640, traffic: "none" },
         };
       },
       reroute: async () => ({ state: "navigating" }),
@@ -651,7 +652,7 @@ describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () 
     service.registerDeviceNavigation(device);
     expect(await run(service, destination)).toMatchObject({
       success: false,
-      text: "Confirm on the phone to start navigation to Port Hercule.",
+      text: "Confirm on the phone to start navigation to Port Hercule. The route is about 8 min, 640 m.",
       data: {
         action: "navigate",
         awaitingUserInput: true,
@@ -659,6 +660,26 @@ describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () 
       },
     });
     expect(started).toEqual([["Port Hercule", "walk"]]);
+  });
+
+  it("says a very short route as one minute and a long one in hours", async () => {
+    for (const [durationSeconds, distanceMeters, said] of [
+      [20, 30, "about 1 min, 30 m"],
+      [3600, 5000, "about 1 h, 5.0 km"],
+      [7500, 12_340, "about 2 h 5 min, 12.3 km"],
+    ] as const) {
+      const service = new MapsService(undefined, store([]));
+      const { device } = phone(true);
+      device.start = async () => ({
+        state: "awaiting-confirmation",
+        placeName: "Port Hercule",
+        route: { durationSeconds, distanceMeters, traffic: "none" },
+      });
+      service.registerDeviceNavigation(device);
+      expect(await run(service, destination)).toMatchObject({
+        text: `Confirm on the phone to start navigation to Port Hercule. The route is ${said}.`,
+      });
+    }
   });
 
   it("returns the directions link when the phone is not ready, refuses or does not say", async () => {
@@ -707,6 +728,26 @@ describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () 
       success: false,
       data: { awaitingUserInput: true, reason: "device_location" },
     });
+  });
+
+  it("names a missing phone location and asks for a starting place instead of failing", async () => {
+    const service = new MapsService(undefined, store([]));
+    const { device } = phone(true);
+    device.start = async ({ destination: place, travelMode }) => ({
+      state: "awaiting-location",
+      placeName: place.name,
+      travelMode,
+    });
+    service.registerDeviceNavigation(device);
+    const result = await run(service, destination);
+    expect(result).toMatchObject({
+      success: false,
+      data: { awaitingUserInput: true, reason: "device_location" },
+    });
+    expect(result?.userFacingText).toBe(
+      "The phone's location isn't available, so the route to Port Hercule isn't planned yet. Where are you starting from? You can also enter a starting point in Maps on the phone.",
+    );
+    expect(result?.userFacingText).not.toMatch(/could not complete/i);
   });
 });
 

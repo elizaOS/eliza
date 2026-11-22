@@ -1,6 +1,7 @@
 /** Implements the MAPS umbrella and its promoted place, route, save, share, and navigation actions. */
 
 import { randomUUID } from "node:crypto";
+import { readClientTurnObservation } from "@elizaos/contracts/client-turn-observation";
 import type {
   Action,
   ActionResult,
@@ -40,6 +41,7 @@ import {
   type PlaceChoiceField,
   type PlaceChoiceOperation,
   placeLabel,
+  placeNameKey,
 } from "./place-choice.js";
 import { getMapsService, type MapsService } from "./service.js";
 import {
@@ -181,8 +183,11 @@ function awaitingLocation(
   intent: MapsLocateCard["intent"],
   prompt: string,
   subject: Pick<MapsLocateCard, "query" | "destination" | "travelMode">,
+  /** What the owner can say instead when the phone has no fix; the card keeps the prompt alone. */
+  instead?: string,
 ): ActionResult {
-  const userFacingText = appendMapsCard(prompt, {
+  const reply = instead ? `${prompt} ${instead}` : prompt;
+  const userFacingText = appendMapsCard(reply, {
     kind: "locate",
     intent,
     prompt,
@@ -190,7 +195,7 @@ function awaitingLocation(
   });
   return {
     success: false,
-    text: prompt,
+    text: reply,
     userFacingText,
     verifiedUserFacing: true,
     data: {
@@ -375,6 +380,27 @@ function isReply(value: PlaceRef | ActionResult): value is ActionResult {
 }
 
 /** The owner's own words this turn, which a choice reply binds from. */
+/** A phone position older than this is not "where I am" for a nearby search. */
+const OBSERVED_POSITION_MAX_AGE_MS = 30 * 60_000;
+
+/**
+ * The position the phone reported with this message, when it holds the
+ * location permission and the fix is recent. It is the owner's own phone
+ * position for this turn only; nothing stores it.
+ */
+function observedPosition(
+  message: Memory,
+  now = Date.now(),
+): { latitude: number; longitude: number } | undefined {
+  const location = readClientTurnObservation(
+    message.content?.metadata,
+  )?.location;
+  if (!location) return undefined;
+  const age = now - location.capturedAt;
+  if (age < -60_000 || age > OBSERVED_POSITION_MAX_AGE_MS) return undefined;
+  return { latitude: location.latitude, longitude: location.longitude };
+}
+
 function replyText(message: Memory): string | undefined {
   return text(message.content?.text);
 }
@@ -443,7 +469,11 @@ async function placeFromQuery(
       data: { actionName: "MAPS", action, reason: "not_found", query },
     };
   }
-  const meant = dominantPlace(query, page.places, options.anchor?.coordinates);
+  // "here", "my current location": a provider answers these words with a
+  // business named "Here", never the phone, so the owner is asked.
+  const meant = isOwnPositionQuery(query)
+    ? undefined
+    : dominantPlace(query, page.places, options.anchor?.coordinates);
   if (meant) return meant;
   const ask = missingInput(
     action,
@@ -520,6 +550,178 @@ function namedTravelMode(params: Params): TravelMode | undefined {
     : undefined;
 }
 
+/** "nearest pharmacy" → "pharmacy", for an example the owner can say back. */
+function placeKind(query: string): string {
+  return (
+    query
+      .replace(
+        /^(?:(?:the|a|an|some|any)\s+)?(?:(?:nearest|closest)\s+)?/iu,
+        "",
+      )
+      .trim() || query
+  );
+}
+
+/** "pharmacy near the Ferry Building": a kind of place and the named place it is near. */
+export interface AnchoredPlaceQuery {
+  kind: string;
+  anchor: string;
+}
+
+/**
+ * Words after "near" that mean the owner's own position, not a named place:
+ * "near me", "close to where I am right now", "around midnight near me".
+ */
+const OWN_POSITION =
+  /^(?:me|here|us|myself|this\s+(?:place|spot|location)|(?:my|the)\s+phone)$|^(?:me|here|us|myself)\b(?=[,\s]+(?:that|which|who|where|for|to|with|and|so|if|in|at|on|by|open|right|now|tonight|today|please|thanks|thank)\b)|^(?:my\s+(?:location|position|place|current\s+location)|where\s+(?:i|we)\s+(?:am|are)|current\s+location)\b|\b(?:near|around|close\s+to|next\s+to)\s+(?:me|here|us)$/iu;
+
+/**
+ * Courtesy and timing after the place ("near the Ferry Building please",
+ * "near me, thanks", "near Union Square right now", "that's open now"): not
+ * part of the place's name.
+ */
+const ANCHOR_TAIL =
+  /(?:,?\s+(?:please|thanks|thank\s+you|for\s+me|right\s+now|now|today|tonight|(?:(?:that|which)(?:'s|’s|\s+(?:is|are))\s+)?open(?:\s+(?:now|late|today|tonight))?))+$/iu;
+
+/**
+ * The owner's own position named as a route endpoint or place: "here", "my
+ * current location", "where I am right now". A provider search for these
+ * words finds a business named "Here", not the phone.
+ */
+const OWN_POSITION_QUERY =
+  /^(?:(?:from|at)\s+)?(?:me|here|right\s+here|us|myself|(?:my|our)\s+(?:current\s+|present\s+|gps\s+)?(?:location|position)|(?:my\s+)?current\s+(?:location|position)|where\s+(?:i|we)\s+(?:am|are)(?:\s+(?:right\s+)?now)?|(?:my|the)\s+phone(?:(?:'s|’s)\s+location)?)$/iu;
+
+/** The query without trailing courtesy or punctuation. */
+function withoutTail(query: string): string {
+  return query
+    .trim()
+    .replace(/[\s?.!]+$/u, "")
+    .replace(ANCHOR_TAIL, "")
+    .trim();
+}
+
+/** True when the words name where the owner is, not a place to search for. */
+export function isOwnPositionQuery(query: string | undefined): boolean {
+  return !!query && OWN_POSITION_QUERY.test(withoutTail(query));
+}
+
+/**
+ * The kind of place a query asks for around the owner ("coffee near me
+ * please", "the nearest pharmacy", "sushi nearby"), else undefined. Such a
+ * query needs the phone's position, whether or not the planner set
+ * useCurrentLocation.
+ */
+export function nearbyPlaceKind(query: string | undefined): string | undefined {
+  if (!query) return undefined;
+  const trimmed = withoutTail(query);
+  const nearest =
+    /^(?:(?:the|a|an|any)\s+)?(?:nearest|closest)\s+(?!to\b)(\S.{0,79})$/iu.exec(
+      trimmed,
+    )?.[1];
+  if (nearest) {
+    // "the nearest pharmacy to the Ferry Building" names its own search
+    // point; only "nearest pharmacy to me" is about the owner's position.
+    const split =
+      /^(.+?)\s+(?:to|near|around|close\s+to|next\s+to|in|at|by|on)\s+(\S.*)$/iu.exec(
+        nearest,
+      );
+    if (!split) return nearest.trim();
+    return OWN_POSITION.test(withoutTail(split[2] ?? ""))
+      ? split[1]?.trim()
+      : undefined;
+  }
+  const nearby = /^(\S.{0,79}?)\s+(?:nearby|around\s+here|close\s+by)$/iu.exec(
+    trimmed,
+  )?.[1];
+  if (nearby) return placeKind(nearby);
+  const match = ANCHORED_QUERY.exec(trimmed);
+  const kind = match?.[1]?.trim();
+  const anchor = match?.[2]?.trim();
+  return kind && anchor && OWN_POSITION.test(withoutTail(anchor))
+    ? kind
+    : undefined;
+}
+
+/**
+ * "around midnight", "near 5pm", "around Christmas", "near the end": a time
+ * or a position in something, not a place to search around. "near home",
+ * "near my office" name the owner's own places, which a provider search by
+ * that word cannot find. A street address ("near 1 Market St") still counts.
+ */
+export const NEAR_NOT_A_PLACE =
+  /^(?:home|work|the\s+office|(?:my|our)\s+.+|(?:the\s+)?(?:top|bottom|end|beginning|start|middle|deadline|weekend|holidays?)|midnight|noon|midday|dawn|dusk|sunrise|sunset|lunch(?:time)?|dinner(?:time)?|breakfast|christmas(?:\s+eve)?|thanksgiving|easter|halloween|new\s+year(?:'s|’s)?(?:\s+(?:eve|day))?|(?:mon|tues|wednes|thurs|fri|satur|sun)day|january|february|march|april|june|july|august|september|october|november|december|line\s+\d+|page\s+\d+|\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.?|p\.m\.?|o'?clock)?)$/iu;
+
+/**
+ * Things the owner keeps on the phone, not kinds of places: "photos near the
+ * Ferry Building" is a Photos search, "messages around Thanksgiving" a
+ * Messages search.
+ */
+export const NEAR_NOT_A_PLACE_KIND =
+  /\b(?:photos?|pictures?|pics?|images?|videos?|clips?|selfies?|screenshots?|e-?mails?|mail|messages?|texts?|chats?|notes?|files?|documents?|docs?|songs?|music|tracks?|albums?|playlists?|podcasts?|events?|meetings?|appointments?|reminders?|alarms?|contacts?|tasks?|to-?dos?|bugs?|issues?|errors?|lines?|comments?|posts?|tweets?|results?|calls?|voicemails?)$/iu;
+
+const ANCHORED_QUERY =
+  /^\s*(?:(?:please|can\s+you|could\s+you)\s+)*(?:(?:i|we)\s+(?:need|want)\s+|(?:i'?m|i’m|we'?re|we’re)\s+looking\s+for\s+)?(?:(?:find|show|search\s+for|look\s+for|look\s+up|locate|get)\s+(?:me\s+)?)?(?:(?:is|are)\s+there\s+)?(?:(?:the|a|an|some|any)\s+)?(?:(?:nearest|closest)\s+)?(.{1,80}?)\s+(?:near|around|close\s+to|next\s+to)\s+(.{1,120}?)[\s?.!]*$/iu;
+
+/**
+ * The named place a search is near ("pharmacy near the Ferry Building"), or
+ * undefined for "near me" and for a query that names no place to search
+ * around. Such a search needs no position from the phone.
+ */
+export function anchoredPlaceQuery(
+  query: string,
+): AnchoredPlaceQuery | undefined {
+  const match = ANCHORED_QUERY.exec(query);
+  const kind = match?.[1]?.trim();
+  const anchor = match?.[2] ? withoutTail(match[2]) : undefined;
+  if (
+    !kind ||
+    !anchor ||
+    OWN_POSITION.test(anchor) ||
+    NEAR_NOT_A_PLACE.test(anchor) ||
+    NEAR_NOT_A_PLACE_KIND.test(kind)
+  )
+    return undefined;
+  return { kind, anchor };
+}
+
+/** The named place an anchored search is near, or the reply that it was not found. */
+async function searchAnchor(
+  service: MapsService,
+  anchored: AnchoredPlaceQuery,
+  params: Params,
+): Promise<PlaceRef | ActionResult> {
+  const { page } = await service.searchPlacesResult(
+    { query: anchored.anchor, limit: 5 },
+    text(params.provider),
+  );
+  const anchor =
+    dominantPlace(anchored.anchor, page.places) ??
+    (page.places.length === 1 ? page.places[0] : undefined);
+  if (anchor) return anchor;
+  const reply =
+    page.places.length === 0
+      ? `I couldn't find “${anchored.anchor}” to search near. Name another place or area to search near.`
+      : [
+          `Which “${anchored.anchor}” should I search near?`,
+          ...page.places.map(
+            (place, index) => `${index + 1}. ${placeLabel(place)}`,
+          ),
+          `Tell me which one, such as “${anchored.kind} near ${(page.places[0] as PlaceRef).formattedAddress ?? (page.places[0] as PlaceRef).name}”.`,
+        ].join("\n");
+  return {
+    success: false,
+    text: reply,
+    userFacingText: reply,
+    verifiedUserFacing: true,
+    data: {
+      actionName: "MAPS",
+      action: "place",
+      reason: page.places.length === 0 ? "anchor_not_found" : "missing_input",
+      awaitingUserInput: true,
+    },
+  };
+}
+
 /**
  * A destination that is a kind of place near the user (nearest pharmacy) is
  * not searched here: without a position the provider answers from anywhere.
@@ -537,14 +739,16 @@ function nearbyDestination(
     "route-origin",
     `I need your precise location to start the route to ${query}.`,
     { query, ...(travelMode ? { travelMode } : {}) },
+    `If the phone can't get a location fix, tell me where you're starting from, or name a place to search near, such as “${placeKind(query)} near the Ferry Building”.`,
   );
 }
 
 /** True when the request asks for a typed destination near the user's position. */
 function wantsNearbyDestination(params: Params): boolean {
+  const query = text(params.placeQuery);
   return (
-    flag(params.useCurrentLocation) &&
-    text(params.placeQuery) !== undefined &&
+    (flag(params.useCurrentLocation) || nearbyPlaceKind(query) !== undefined) &&
+    query !== undefined &&
     opaqueText(params.savedPlaceId) === undefined &&
     opaqueText(params.placeId) === undefined &&
     params.latitude === undefined &&
@@ -599,6 +803,14 @@ function distanceText(meters: number): string {
   return rounded >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${rounded} m`;
 }
 
+/** Route time in whole minutes, at least one, with hours from 60 min (as guidance shows it). */
+function durationText(seconds: number): string {
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return minutes < 60
+    ? `${minutes} min`
+    : `${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60} min` : ""}`;
+}
+
 /** Plain replies for failures whose provider message is not meant for the user. */
 function userErrorText(error: MapsError, adapterCount: number): string {
   switch (error.code) {
@@ -618,7 +830,11 @@ function userErrorText(error: MapsError, adapterCount: number): string {
     case "MAPS_AUTH_REVOKED":
       return "Sign in again to use Maps.";
     case "MAPS_NOT_ENTITLED":
-      return "Maps needs an active subscription.";
+      return /balance|choose a plan/i.test(error.message)
+        ? "Add balance or choose a plan to use Maps."
+        : "Maps needs an active subscription.";
+    case "MAPS_PROVIDER_REJECTED":
+      return "Cloud refused this Maps request.";
     case "MAPS_PROVIDER_TIMEOUT":
     case "MAPS_PROVIDER_NETWORK":
     case "MAPS_PROVIDER_FAILURE":
@@ -676,15 +892,21 @@ function deviceResult(
     });
   }
   const place = status.placeName ?? "the destination";
+  const route =
+    status.state === "awaiting-confirmation" && status.route
+      ? ` The route is about ${durationText(status.route.durationSeconds)}, ${distanceText(status.route.distanceMeters)}.`
+      : "";
   const userFacingText =
     status.state === "selected"
       ? `Selected ${place} on the map.`
       : status.state === "navigating"
         ? `Navigating to ${place}${status.travelMode ? ` by ${status.travelMode}` : ""}.`
         : status.state === "awaiting-confirmation"
-          ? `Confirm on the phone to start navigation to ${place}.`
+          ? `Confirm on the phone to start navigation to ${place}.${route}`
           : status.state === "awaiting-location"
-            ? "The phone needs location access before navigation can start."
+            ? // No fix, no permission or a fix too coarse to start from: the route sheet is
+              // open on the phone, and a starting place from the owner plans it instead.
+              `The phone's location isn't available, so the route to ${place} isn't planned yet. Where are you starting from? You can also enter a starting point in Maps on the phone.`
             : "Navigation stopped.";
   const waitingReason =
     status.state === "awaiting-confirmation"
@@ -877,26 +1099,62 @@ async function execute(
             callback,
           );
         }
-        const latitude = number(params.latitude);
-        const longitude = number(params.longitude);
-        if (
+        let latitude = number(params.latitude);
+        let longitude = number(params.longitude);
+        // "pharmacy near the Ferry Building" names its own search point, so
+        // it needs no position from the phone. A planner may pass the whole
+        // phrase as the query, or only the kind of place with
+        // useCurrentLocation; the owner's own words decide.
+        // "coffee near me please" and "the nearest pharmacy" need the
+        // phone's position even when the planner left useCurrentLocation out.
+        const nearbyKind = nearbyPlaceKind(query);
+        const nearHere = flag(params.useCurrentLocation) || !!nearbyKind;
+        const anchored =
+          latitude === undefined && longitude === undefined
+            ? (anchoredPlaceQuery(query) ??
+              (nearHere
+                ? anchoredPlaceQuery(replyText(message) ?? "")
+                : undefined))
+            : undefined;
+        // "Near me" with no named place uses the position the phone reported
+        // with this message; only without one does the phone get a locate card.
+        const phonePosition =
+          !anchored &&
           flag(params.useCurrentLocation) &&
           latitude === undefined &&
           longitude === undefined
+            ? observedPosition(message)
+            : undefined;
+        if (phonePosition) ({ latitude, longitude } = phonePosition);
+        if (
+          !anchored &&
+          nearHere &&
+          latitude === undefined &&
+          longitude === undefined
         ) {
+          const kind = nearbyKind ?? query;
           return result(
             action,
             awaitingLocation(
               action,
               "place-near",
-              `I need your precise location to search near you for “${query}”.`,
-              { query },
+              `I need your precise location to search near you for “${kind}”.`,
+              { query: kind },
+              `If the phone can't get a location fix, name a place or area to search near instead, such as “${placeKind(kind)} near the Ferry Building”.`,
             ),
             callback,
           );
         }
-        const near =
-          latitude !== undefined || longitude !== undefined
+        let anchor: PlaceRef | undefined;
+        if (anchored) {
+          const found = await searchAnchor(service, anchored, params);
+          if (!("coordinates" in found)) return result(action, found, callback);
+          anchor = found;
+        }
+        const searchQuery = anchored?.kind ?? query;
+        const near = anchor
+          ? anchor.coordinates
+          : latitude !== undefined || longitude !== undefined
             ? validated(
                 coordinatesSchema,
                 { latitude, longitude },
@@ -906,7 +1164,7 @@ async function execute(
         const { page, provider: searchProvider } =
           await service.searchPlacesResult(
             {
-              query,
+              query: searchQuery,
               near,
               // Ask the provider for the closest places, not the closest of
               // its most relevant ones.
@@ -924,36 +1182,42 @@ async function execute(
           ? [...page.places].sort((a, b) => away(a) - away(b))
           : page.places;
         const empty = places.length === 0;
+        const nearName = anchor ? ` near ${anchor.name}` : "";
+        const none = anchor
+          ? `I couldn't find “${searchQuery}” near ${anchor.name}.`
+          : "No matching places were found.";
         return result(
           action,
           {
             success: true,
             text: empty
-              ? "No matching places were found."
+              ? none
               : [
-                  `Found ${places.length} place${places.length === 1 ? "" : "s"}${near ? ", nearest first" : ""}:`,
+                  `Found ${places.length} place${places.length === 1 ? "" : "s"}${nearName}${near ? ", nearest first" : ""}:`,
                   ...places.map(
                     (place) =>
                       `${place.name}${place.formattedAddress ? `, ${place.formattedAddress}` : ""}${near ? ` (${distanceText(away(place))} away)` : ""}`,
                   ),
                 ].join("\n"),
             userFacingText: empty
-              ? "No matching places were found."
+              ? none
               : appendMapsCard(
-                  places
-                    .map(
+                  [
+                    ...(anchor ? [`Near ${anchor.name}:`] : []),
+                    ...places.map(
                       (place) =>
                         `${place.name}${near ? `, ${distanceText(away(place))} away` : ""}`,
-                    )
-                    .join("\n"),
+                    ),
+                  ].join("\n"),
                   {
                     kind: "places",
-                    query,
+                    query: searchQuery,
                     places: places
                       .slice(0, MAPS_CARD_MAX_PLACES)
                       .map(toCardPlace),
                     nextCursor: page.nextCursor,
                     attribution: searchProvider.attribution,
+                    ...(anchor ? { near: toCardPlace(anchor) } : {}),
                   },
                 ),
             verifiedUserFacing: true,
@@ -968,9 +1232,31 @@ async function execute(
         );
       }
       case "route": {
+        // "from here", "my current location": the route starts where the
+        // phone is. A provider search for those words finds a business.
+        const ownOrigin = isOwnPositionQuery(text(params.originQuery));
+        const fromHere = flag(params.useCurrentLocation) || ownOrigin;
         const choice = openChoice(service, message, "route");
         const picked = choice && chosenPlace(choice, replyText(message));
         const pending = picked ? choice : undefined;
+        // An earlier route turn settled one endpoint and asked for the other:
+        // this turn ("from Chicago") continues it, so the settled endpoint is
+        // kept unless the request names a different one.
+        const carried = pending ? undefined : choice;
+        const carriedPlace = (
+          field: "originQuery" | "destinationQuery",
+        ): PlaceRef | null => {
+          const place = carried?.resolved[field];
+          // "from where I am": the phone's position replaces a kept origin.
+          if (!place || (field === "originQuery" && fromHere)) return null;
+          const asked = text(params[field]);
+          return !asked ||
+            placeNameKey(asked) ===
+              placeNameKey(carried?.queries[field] ?? "") ||
+            placeNameKey(asked) === placeNameKey(place.name)
+            ? place
+            : null;
+        };
         const originPlaceId = opaqueText(params.originPlaceId);
         const destinationPlaceId = opaqueText(params.destinationPlaceId);
         let origin = pending
@@ -980,7 +1266,8 @@ async function execute(
           : (directPlace(params, "origin") ??
             (originPlaceId
               ? await service.getPlace(originPlaceId, text(params.provider))
-              : null));
+              : null) ??
+            carriedPlace("originQuery"));
         let destination = pending
           ? ((pending.field === "destinationQuery"
               ? picked
@@ -991,16 +1278,19 @@ async function execute(
                   destinationPlaceId,
                   text(params.provider),
                 )
-              : null));
+              : null) ??
+            carriedPlace("destinationQuery"));
         const originQuery = pending
           ? pending.queries.originQuery
-          : text(params.originQuery);
+          : ownOrigin
+            ? undefined
+            : text(params.originQuery);
         const destinationQuery = pending
           ? pending.queries.destinationQuery
           : text(params.destinationQuery);
         const requestedMode = pending
           ? pending.travelMode
-          : text(params.travelMode);
+          : (text(params.travelMode) ?? carried?.travelMode);
         const travelModeName = requestedMode
           ? validated(
               travelModeSchema,
@@ -1042,6 +1332,20 @@ async function execute(
           }
           origin = found;
         }
+        // "the nearest pharmacy" from here: the phone searches around itself.
+        // "how far is the nearest pharmacy" names no origin: it is from here.
+        if (
+          !origin &&
+          !destination &&
+          (fromHere || !originQuery) &&
+          destinationQuery &&
+          nearbyPlaceKind(destinationQuery)
+        )
+          return result(
+            action,
+            nearbyDestination(action, params, destinationQuery),
+            callback,
+          );
         if (!destination && destinationQuery) {
           const found = await placeFromQuery(
             service,
@@ -1058,11 +1362,7 @@ async function execute(
           if (isReply(found)) {
             // Several matches for a route from here: the device's position
             // picks the one meant, so the device searches around itself.
-            if (
-              !origin &&
-              flag(params.useCurrentLocation) &&
-              found.data?.reason === "missing_input"
-            )
+            if (!origin && fromHere && found.data?.reason === "missing_input")
               return result(
                 action,
                 nearbyDestination(action, params, destinationQuery),
@@ -1073,7 +1373,7 @@ async function execute(
           }
           destination = found;
         }
-        if (!origin && destination && flag(params.useCurrentLocation)) {
+        if (!origin && destination && fromHere) {
           const travelMode = travelModeName;
           return result(
             action,
@@ -1098,17 +1398,48 @@ async function execute(
               await servedTravelModes(service, text(params.provider)),
             ),
           );
+          // Keep the settled endpoint for the owner's next turn, which names
+          // only the missing one ("from Chicago").
+          const settled = origin ?? destination;
+          if (settled) {
+            service.placeChoices.set(message, {
+              operation: "route",
+              field: origin ? "destinationQuery" : "originQuery",
+              query: "",
+              places: [],
+              queries: {
+                ...(originQuery || origin
+                  ? { originQuery: originQuery ?? origin?.name }
+                  : {}),
+                ...(destinationQuery || destination
+                  ? { destinationQuery: destinationQuery ?? destination?.name }
+                  : {}),
+              },
+              resolved: origin
+                ? { originQuery: origin }
+                : { destinationQuery: settled },
+              ...(travelModeName ? { travelMode: travelModeName } : {}),
+            });
+          } else if (choice) service.placeChoices.clear(message);
+          // A pick from the list is named back, so the owner knows it took.
+          const pickedLabel = picked
+            ? (picked.formattedAddress ?? picked.name)
+            : undefined;
+          const ask =
+            !origin && !destination
+              ? "I need both a starting place and a destination."
+              : !origin
+                ? "I still need a starting place."
+                : "I still need a destination.";
           return result(
             action,
             missingInput(
               action,
               message,
               unresolvedFields,
-              !origin && !destination
-                ? "I need both a starting place and a destination."
-                : !origin
-                  ? "I still need a starting place."
-                  : "I still need a destination.",
+              pickedLabel
+                ? `${!origin ? "Going to" : "Starting from"} ${pickedLabel}. ${ask}`
+                : ask,
             ),
             callback,
           );
@@ -1602,7 +1933,8 @@ export const mapsAction: Action = {
     },
     {
       name: "originQuery",
-      description: "Route origin name or address, when no id is known.",
+      description:
+        "Route origin name or address, when no id is known. Leave it empty and set useCurrentLocation when the route starts where the user is now (here, my location).",
       required: false,
       schema: { type: "string" },
       subactions: ["route"],
@@ -1695,7 +2027,7 @@ export const mapsAction: Action = {
     {
       name: "useCurrentLocation",
       description:
-        "True when the request means the user's current position and no coordinates were supplied: near me, nearest or nearby (place), from here (route), or a navigate destination that is the nearest or a nearby kind of place (nearest pharmacy) and not one named place or address. The assistant never receives the position: the chat surface asks the user's device to use it.",
+        "True when the request means the user's current position and no coordinates were supplied: near me, nearest or nearby (place), from here (route), or a navigate destination that is the nearest or a nearby kind of place (nearest pharmacy) and not one named place or address. A place search uses the position the phone reported with this message (clientDevice.context.location) when it has a recent one; otherwise the chat surface asks the user's device to use it.",
       required: false,
       schema: { type: "boolean" },
       subactions: ["place", "route", "navigate"],
@@ -1915,7 +2247,7 @@ export const mapsNavigationAction: Action = {
     {
       name: "useCurrentLocation",
       description:
-        "True only when placeQuery is the nearest or a nearby kind of place (nearest pharmacy, a gas station near me) and not one named place or address. The phone then finds it around its own position; the assistant never receives the position.",
+        "True only when placeQuery is the nearest or a nearby kind of place (nearest pharmacy, a gas station near me) and not one named place or address. The phone then finds it around its own position.",
       required: false,
       schema: { type: "boolean" },
       subactions: ["start"],

@@ -34,7 +34,9 @@ import {
   conversationClientUserMemoryId,
   extractUserText,
   getStreamingContext,
+  getTrajectoryContext,
   getTurnActionConstraint,
+  isObjectRecord,
   readDurableConversationChatMarker,
   registerDirectActionRoutingRule,
   stableStringify,
@@ -64,6 +66,7 @@ import {
   BROWSER_OPEN_NEW_TAB_CAPABILITY,
   BROWSER_SEARCH_CAPABILITY,
   BROWSER_TABS_CAPABILITY,
+  BROWSER_TABS_CLOSE_ALL_CAPABILITY,
   isBrowserControl,
 } from "./browser-contract.ts";
 import {
@@ -75,6 +78,7 @@ import {
   directBrowserSearchQuery,
   groundBrowserDestination,
   groundBrowserSearchQuery,
+  spokenBrowserOpen,
 } from "./browser-request-grounding.ts";
 import type { CalendarFields } from "./calendar-contract.ts";
 import {
@@ -98,9 +102,11 @@ import {
 import {
   CAMERA_CAPTURE_CAPABILITY,
   CAMERA_LENS_CAPABILITY,
+  CAMERA_LIBRARY_ID_CAPABILITY,
   isCameraCapture,
   validateCameraCaptureResult,
 } from "./camera-contract.ts";
+import { requestedCameraCapture } from "./camera-request.ts";
 import {
   assertClockObservation,
   CLOCK_ALARMS_CAPABILITY,
@@ -129,6 +135,7 @@ import { deviceActionEffectReceipts } from "./effect-receipts.ts";
 import {
   FILES_CAPABILITY,
   FILES_OPERATION_TYPES,
+  FILES_SHOWN_TARGET_CAPABILITY,
   isFilesOperation,
 } from "./files-browser-contract.ts";
 import {
@@ -158,6 +165,7 @@ import {
   isNotesOrganizeOperation,
   NOTES_ORGANIZE_CAPABILITY,
   NOTES_ORGANIZE_TYPES,
+  NOTES_RECORD_CAPABILITY,
 } from "./notes-organize-contract.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import { notesUpdateAfterReadPlan } from "./notes-update-continuation.ts";
@@ -169,9 +177,15 @@ import {
   phoneDialReceiptOutcome,
   validatePhoneDialResult,
 } from "./phone-dial-contract.ts";
-import { PHOTO_LIBRARY_CAPABILITY } from "./photo-library-contract.ts";
+import {
+  isLibraryOperation,
+  LIBRARY_OPERATION_TYPES,
+  PHOTO_LIBRARY_CAPABILITY,
+  validateLibraryResult,
+} from "./photo-library-contract.ts";
 import {
   isPhotosViewOperation,
+  PHOTOS_SELECTED_CAPABILITY,
   PHOTOS_VIEW_CAPABILITY,
   PHOTOS_VIEW_TYPES,
   photosViewCapabilityAvailable,
@@ -227,12 +241,16 @@ import {
   MESSAGES_READ_CAPABILITY,
   PHONE_CALL_CAPABILITY,
   PHONE_KEYPAD_CAPABILITY,
+  requestedSmsDraftRecipient,
   SMS_COMPOSE_CAPABILITY,
   SMS_COMPOSE_TARGET_CAPABILITY,
   SMS_LATEST_SENDER_CAPABILITY,
+  SMS_SENDER_ADDRESS_CAPABILITY,
   selectedTelephonyView,
   smsComposeNotSubmitted,
+  smsDraftRequestAlsoSends,
   smsReplyNotDrafted,
+  smsSenderDisclosure,
   TELEPHONY_ACTION_OPERATION_TYPES,
   telephonyActionCapabilityAvailable,
   telephonyActionReceiptOutcome,
@@ -240,6 +258,13 @@ import {
   VOICEMAIL_READ_CAPABILITY,
   validateTelephonyActionResult,
 } from "./telephony-actions-contract.ts";
+import {
+  DeviceTelephonyTargetNotRequestedError,
+  groundTelephonyTarget,
+  namesTelephonyTarget,
+  proposesRequestedRecipient,
+  swappedPhoneReferences,
+} from "./telephony-target-grounding.ts";
 import { requireTurnObservation, turnObservation } from "./turn-observation.ts";
 import {
   type DeviceViewProfile,
@@ -1053,6 +1078,82 @@ async function freshRequestedMessageId(
   };
 }
 
+export function hasDeviceGmailComposer(): boolean {
+  return (
+    turn
+      .getStore()
+      ?.credential.capabilities?.includes("gmail.local-compose.v1") === true
+  );
+}
+
+/** Recover an explicit new draft when the first model call skips tools. */
+export function registerDeviceGmailDraftRouting(runtime: IAgentRuntime): void {
+  registerDirectActionRoutingRule(runtime, {
+    id: "device.gmail-draft",
+    actionNames: ["MESSAGE_DRAFT_FOLLOWUP"],
+    requiredActionTags: ["domain:messages", "capability:write"],
+    contexts: ["messaging", "email"],
+    matches: (text, message) => {
+      const current = getDeviceActionTurn();
+      if (
+        !message ||
+        current?.runtime !== runtime ||
+        !current.active ||
+        !current.isCurrent() ||
+        current.requestMessage?.message !== message ||
+        !isRequestOwner(current, message) ||
+        !hasDeviceGmailComposer() ||
+        message.content.source !== "client_chat" ||
+        !["DM", "VOICE_DM"].includes(String(message.content.channelType))
+      )
+        return false;
+
+      // Recognize the requested operation only. The planner owns arguments
+      // and ambiguous, conditional or combined delivery requests.
+      const request = text.trim();
+      return (
+        /^(?:(?:please|(?:can|could|would) you)\s+)*(?:(?:draft|compose)\s+(?:(?:me|us)\s+)?(?:(?:a|an|new)\s+)*(?:e-?mail|gmail(?:\s+message)?)(?!\s+(?:reply|response)\b)|(?:create|prepare|write)\s+(?:(?:a|an|new)\s+)*(?:e-?mail|gmail)\s+draft)\b/iu.test(
+          request,
+        ) &&
+        !/\b(?:if|unless|when|after|before|once|provided that|assuming that)\b/iu.test(
+          request,
+        ) &&
+        !/(?:[,;.!]\s*|\b(?:and|then|but)\s+)(?:please\s+)?(?:also\s+)?(?:send\b|(?:do not|don['’]t|never)\s+(?:draft|compose|create|prepare|write)\b)/iu.test(
+          request,
+        )
+      );
+    },
+  });
+}
+
+/** A compose handoff only fills a local editor, so it is valid with either owner action setting. */
+export async function currentGmailComposeOrigin(
+  runtime: IAgentRuntime,
+  message: Memory,
+) {
+  const current = turn.getStore();
+  if (!current || !hasDeviceGmailComposer()) return;
+  const original = current.replyContext?.message;
+  if (
+    !current.active ||
+    !current.isCurrent() ||
+    !original ||
+    original.id !== message.id ||
+    original.roomId !== message.roomId ||
+    original.entityId !== message.entityId ||
+    original.content.text !== message.content.text ||
+    !isRequestOwner(current, original)
+  )
+    throw new DeviceActionError("Reopen this email request on the phone.");
+  const origin = await freshRequestedMessageId(runtime, current.credential, {
+    allowReviewed: true,
+  });
+  if (!origin)
+    throw new DeviceActionError("Reopen this email request on the phone.");
+  origin.assertCurrent();
+  return origin.messageId;
+}
+
 export async function currentRequestedActionOrigin(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1211,6 +1312,7 @@ const readReplyControllers = new WeakMap<
  */
 export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   "gmail.request-policy.v1",
+  "gmail.local-compose.v1",
   CAMERA_CAPTURE_CAPABILITY,
   "calendar.local-event.v1",
   CALENDAR_CREATE_CAPABILITY,
@@ -1219,6 +1321,7 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   "notes.local-record.v1",
   NOTES_QUERY_CAPABILITY,
   NOTES_ORGANIZE_CAPABILITY,
+  NOTES_RECORD_CAPABILITY,
   NOTES_LIST_FILTER_CAPABILITY,
   NOTES_SEARCH_CAPABILITY,
   CALENDAR_AVAILABILITY_CAPABILITY,
@@ -1240,11 +1343,15 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   SMS_COMPOSE_CAPABILITY,
   MESSAGES_READ_CAPABILITY,
   SMS_LATEST_SENDER_CAPABILITY,
+  SMS_SENDER_ADDRESS_CAPABILITY,
   VOICEMAIL_READ_CAPABILITY,
   VOICEMAIL_DELETE_CAPABILITY,
   PHOTO_LIBRARY_CAPABILITY,
   PHOTOS_VIEW_CAPABILITY,
+  PHOTOS_SELECTED_CAPABILITY,
   CAMERA_LENS_CAPABILITY,
+  CAMERA_LIBRARY_ID_CAPABILITY,
+  FILES_SHOWN_TARGET_CAPABILITY,
   SMS_COMPOSE_TARGET_CAPABILITY,
   CONTACT_UPDATE_VALUES_CAPABILITY,
   CONTACT_SHOW_CAPABILITY,
@@ -1255,6 +1362,7 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   BROWSER_FIND_CAPABILITY,
   BROWSER_HISTORY_CAPABILITY,
   BROWSER_OPEN_NEW_TAB_CAPABILITY,
+  BROWSER_TABS_CLOSE_ALL_CAPABILITY,
   TELEPHONY_VIEWS_CAPABILITY,
 ];
 export class DeviceActionService {
@@ -2208,6 +2316,103 @@ export class DeviceActionService {
         held.controller.abort(new Error("Original read enrollment revoked"));
     }
   }
+  /** Resolve "them" from the preceding host-persisted reply and its delivered device read,
+   * not the model's proposed number or a second lookup after a newer SMS arrives. */
+  private async previousSmsSender(
+    c: DeviceCredential,
+    original: Memory,
+  ): Promise<{ number: string; threadId?: string }> {
+    const unavailable = () =>
+      new DeviceActionError(
+        "No current SMS sender for this reply. Ask who texted you or choose a recipient.",
+      );
+    const requestedAt = original.createdAt;
+    if (!original.id || !requestedAt) throw unavailable();
+    const messages = await this.runtime.getMemories({
+      tableName: "messages",
+      roomId: original.roomId,
+      agentId: this.runtime.agentId,
+      end: requestedAt,
+      count: 3,
+    });
+    const prior = messages
+      .filter(
+        (message) =>
+          message.id !== original.id &&
+          message.roomId === original.roomId &&
+          typeof message.createdAt === "number" &&
+          message.createdAt <= requestedAt,
+      )
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    const reply = prior[0];
+    if (
+      !reply?.id ||
+      reply.entityId !== this.runtime.agentId ||
+      reply.agentId !== this.runtime.agentId ||
+      prior[1]?.createdAt === reply.createdAt
+    )
+      throw unavailable();
+    const marker = (
+      reply.content.metadata as
+        | {
+            deviceReadCompletion?: {
+              proposalId?: unknown;
+              attemptId?: unknown;
+            };
+          }
+        | undefined
+    )?.deviceReadCompletion;
+    if (
+      typeof marker?.proposalId !== "string" ||
+      typeof marker.attemptId !== "string"
+    )
+      throw unavailable();
+    const { proposalId, attemptId } = marker;
+    return this.access(c, async (queue, row, tx) => {
+      const stored = await readDeviceCompletion(
+        tx,
+        this.runtime.agentId,
+        c.subjectUserId,
+        proposalId,
+      );
+      if (
+        !stored ||
+        stored.state !== "delivered" ||
+        stored.attemptId !== attemptId ||
+        !stored.reply ||
+        stored.reply.messageId !== reply.id ||
+        stored.origin.original.roomId !== original.roomId ||
+        stored.origin.original.entityId !== original.entityId ||
+        stored.reply.text !== reply.content.text ||
+        Date.parse(stored.expiresAt) <= Date.now()
+      )
+        throw unavailable();
+      const bound = await this.boundReadCompletion(
+        queue,
+        row,
+        tx,
+        c,
+        proposalId,
+        stored.digest,
+        attemptId,
+      );
+      if (!bound) throw unavailable();
+      const result = deviceReadResult(bound.request);
+      if (
+        !isObjectRecord(result) ||
+        result.kind !== "sms-latest-sender" ||
+        result.status !== "found" ||
+        typeof result.address !== "string"
+      )
+        throw unavailable();
+      return {
+        number: result.address,
+        ...(typeof result.threadId === "string"
+          ? { threadId: result.threadId }
+          : {}),
+      };
+    });
+  }
   async propose(
     c: DeviceCredential,
     operation: unknown,
@@ -2249,6 +2454,10 @@ export class DeviceActionService {
     },
   ): Promise<ApprovalEnqueueResult> {
     let validated = validateDeviceOperation(operation);
+    if (validated.type === "sms_compose" && "replyThreadId" in validated)
+      throw new DeviceActionError(
+        "Reply threads are resolved from the original sender lookup.",
+      );
     // "Open wikipedia.org in a new tab" asks for that address, not an empty
     // tab. The model still proposed browser_tab_new for it (v610, Pixel: the
     // phone showed a blank New tab and "Opened a new tab."), so the owner's own
@@ -2259,12 +2468,16 @@ export class DeviceActionService {
       const turn = getDeviceActionTurn();
       const requested =
         turn?.runtime === this.runtime ? turn.replyContext?.message : undefined;
-      const opened = requested
-        ? directBrowserOpen(
-            extractUserText(unwrapUserMessageText(requested)),
-            this.runtime.character.name,
-          )
+      const text = requested
+        ? extractUserText(unwrapUserMessageText(requested))
         : undefined;
+      // A spoken hostname ("open example dot com in a new tab") is placed the
+      // same way. That open stays reviewed: it is never a direct request.
+      const opened =
+        text === undefined
+          ? undefined
+          : (directBrowserOpen(text, this.runtime.character.name) ??
+            spokenBrowserOpen(text, this.runtime.character.name));
       if (opened?.newTab)
         validated = {
           type: "browser_navigate",
@@ -2314,6 +2527,17 @@ export class DeviceActionService {
           "The original owner request did not admit Notes deletion",
         );
     }
+    // A phone that cannot close every tab is never asked to close only the one
+    // showing instead: the agent is told why, so it can say so and offer that.
+    if (
+      validated.type === "browser_tab_close" &&
+      validated.all &&
+      deviceOperationSupportedByCapabilities(validated.type, c.capabilities) &&
+      !deviceOperationFormSupported(validated, c.capabilities)
+    )
+      throw new DeviceActionError(
+        "This phone's Browser closes one tab at a time and cannot close all tabs at once. Nothing was closed. Tell the owner, and offer to close the tab that is showing or a tab they name.",
+      );
     if (
       !deviceOperationSupportedByCapabilities(validated.type, c.capabilities) ||
       !deviceOperationFormSupported(validated, c.capabilities)
@@ -2403,6 +2627,7 @@ export class DeviceActionService {
         "calendar_update",
         "calendar_delete",
         ...PHOTOS_VIEW_TYPES,
+        ...LIBRARY_OPERATION_TYPES,
         ...FOREGROUND_REVIEW_TYPES,
       ].includes(validated.type)
     )
@@ -2411,21 +2636,139 @@ export class DeviceActionService {
     const browserRequest =
       validated.type === "browser_navigate" ||
       validated.type === "browser_search";
-    const selectedTelephony = selectedTelephonyView(validated) !== undefined;
+    const smsDraftOrRead = [
+      "sms_reply_selected",
+      "sms_compose",
+      "sms_send",
+      "sms_latest_sender",
+    ].includes(validated.type);
+    // A model-planned call, dial, text or keypad prefill names its recipient
+    // from the owner's own words in this message (telephony-target-grounding).
+    // Without a model turn (host code, tests) there is no model recipient.
+    // An empty keypad names nobody, so it needs no words to ground in: with no
+    // bound request it keeps its review card (keypad-direct), never a refusal.
+    const telephonyTarget =
+      namesTelephonyTarget(validated) &&
+      !(validated.type === "phone_keypad" && validated.number === undefined) &&
+      getDeviceActionTurn()?.runtime === this.runtime;
     const foregroundTurn =
-      isPhotosViewOperation(validated) || isFilesOperation(validated)
+      isPhotosViewOperation(validated) ||
+      isLibraryOperation(validated) ||
+      isFilesOperation(validated)
         ? getDeviceActionTurn()
         : undefined;
     const signal = foregroundTurn && getStreamingContext()?.abortSignal;
+    const cameraCapture = validated.type === "camera_capture_photo";
     const requestOrigin = await freshRequestedMessageId(this.runtime, c, {
-      allowReviewed: browserRequest || selectedTelephony,
+      allowReviewed:
+        browserRequest ||
+        cameraCapture ||
+        selectedTelephonyView(validated) !== undefined ||
+        telephonyTarget ||
+        smsDraftOrRead,
       // A tab word and find text are compared with the owner's words too.
       readText:
+        smsDraftOrRead ||
         browserRequest ||
+        cameraCapture ||
+        telephonyTarget ||
         validated.type === "browser_tab_switch" ||
         validated.type === "browser_find",
     });
-    // Reviewed Photos and Files proposals retain their foreground owner
+    let deliveredSenderDraft: typeof validated | undefined;
+    // A draft the service built from the owner's own addressing clause names
+    // the recipient the owner wrote, so it is not grounded a second time. The
+    // whole-message reading would take "to four one five ..." as a spoken
+    // "two" and hand a different number through.
+    let addressedSmsDraft: typeof validated | undefined;
+    let telephonyReason: string | undefined;
+    if (validated.type === "sms_latest_sender") {
+      const scope = requestOrigin
+        ? smsSenderDisclosure(requestOrigin.requestText)
+        : "last-four";
+      if (scope === "clarify")
+        throw new DeviceActionError(
+          "Would you like the last four digits of the SMS sender’s number? Other partial numbers are unavailable.",
+        );
+      const full =
+        scope === "address" &&
+        c.capabilities?.includes(SMS_SENDER_ADDRESS_CAPABILITY);
+      validated = full
+        ? { type: "sms_latest_sender", includeAddress: true }
+        : { type: "sms_latest_sender" };
+    }
+    if (
+      requestOrigin &&
+      (validated.type === "sms_compose" ||
+        validated.type === "sms_send" ||
+        validated.type === "sms_reply_selected")
+    ) {
+      const requested = requestedSmsDraftRecipient(requestOrigin.requestText);
+      // "Write a text to Mom ... and send it" asks for a send: the model's
+      // reviewed operation stays when it goes to the recipient the owner
+      // addressed, and that recipient is grounded as usual. A send to anyone
+      // else is still made the addressed draft, never sent elsewhere.
+      const sends =
+        (requested?.kind === "contact" || requested?.kind === "number") &&
+        validated.type !== "sms_reply_selected" &&
+        smsDraftRequestAlsoSends(requestOrigin.requestText) &&
+        proposesRequestedRecipient(validated, requested);
+      const recipient =
+        sends ||
+        (validated.type === "sms_reply_selected" &&
+          (requested?.kind === "previous-sender" ||
+            requested?.kind === "unaddressed"))
+          ? undefined
+          : requested;
+      if (recipient?.kind === "ambiguous" || recipient?.kind === "unaddressed")
+        throw new DeviceActionError(
+          "Which person should receive this draft? Give one recipient.",
+        );
+      const targets =
+        c.capabilities?.includes(SMS_COMPOSE_CAPABILITY) === true &&
+        c.capabilities.includes(SMS_COMPOSE_TARGET_CAPABILITY);
+      if (recipient) {
+        if (!targets)
+          throw new DeviceActionError(
+            "An addressed Messages draft is unavailable on this phone.",
+          );
+        const body = validated.body;
+        telephonyReason = "Draft a text to the requested recipient.";
+        if (recipient.kind === "previous-sender") {
+          requestOrigin.assertCurrent();
+          const original = getDeviceActionTurn()?.replyContext?.message;
+          if (
+            !original ||
+            !c.capabilities?.includes(SMS_SENDER_ADDRESS_CAPABILITY)
+          )
+            throw new DeviceActionError(
+              "No current SMS sender. Ask who last texted you or give one recipient.",
+            );
+          const sender = await this.previousSmsSender(c, original);
+          requestOrigin.assertCurrent();
+          deliveredSenderDraft = validateDeviceOperation({
+            type: "sms_compose",
+            target: { kind: "number", number: sender.number },
+            ...(sender.threadId ? { replyThreadId: sender.threadId } : {}),
+            body,
+            draft: true,
+          });
+          validated = deliveredSenderDraft;
+        } else {
+          addressedSmsDraft = validateDeviceOperation({
+            type: "sms_compose",
+            target: recipient,
+            body,
+            draft: true,
+          });
+          validated = addressedSmsDraft;
+        }
+      }
+    }
+    // The final operation decides whether the proposal stays bound to the
+    // owner's open item.
+    const selectedTelephony = selectedTelephonyView(validated) !== undefined;
+    // Reviewed Photos, library and Files proposals retain their foreground owner
     // even without a direct-request message binding.
     const assertCurrent =
       foregroundTurn?.runtime === this.runtime
@@ -2448,6 +2791,71 @@ export class DeviceActionService {
           }
         : requestOrigin?.assertCurrent;
     assertCurrent?.();
+    // Held, not thrown: re-proposing the exact operation of an existing
+    // record only retrieves it (a historical receipt, the same review) and
+    // never creates a new one. Anything else is refused before enqueue.
+    let telephonyRefusal: DeviceTelephonyTargetNotRequestedError | undefined;
+    // A reply thread is assigned only by the verified sender receipt above.
+    // All other model-chosen targets must be grounded in the owner's words.
+    if (
+      telephonyTarget &&
+      !(validated.type === "sms_compose" && "replyThreadId" in validated)
+    ) {
+      const proposed = validated;
+      try {
+        // No durable original request means no words to ground a recipient in.
+        if (!requestOrigin)
+          throw new DeviceTelephonyTargetNotRequestedError(
+            validated.type === "sms_compose" && "query" in validated
+              ? "contact"
+              : "number",
+          );
+        const resolved = deliveredSenderDraft ?? addressedSmsDraft;
+        const grounded = resolved
+          ? { operation: resolved, handedThrough: false }
+          : groundTelephonyTarget(
+              validated,
+              requestOrigin.requestText,
+              // The owner's numbers the planner saw only as contact references.
+              swappedPhoneReferences(
+                getTrajectoryContext()?.secretSwapSession?.entries,
+                requestOrigin.requestText,
+              ),
+            );
+        // A handed-through recipient may need a form the model's did not (a
+        // contact lookup in place of a number): the phone must have it.
+        if (
+          !deviceOperationSupportedByCapabilities(
+            grounded.operation.type,
+            c.capabilities,
+          ) ||
+          !deviceOperationFormSupported(grounded.operation, c.capabilities) ||
+          (isPhoneDial(grounded.operation) &&
+            !phoneDialCapabilityAvailable(grounded.operation, c.capabilities))
+        )
+          // An emergency keypad this phone cannot open tells the owner to
+          // dial their local emergency number, never to name a recipient.
+          throw new DeviceTelephonyTargetNotRequestedError(
+            grounded.emergency ? "emergency" : "form",
+          );
+        validated = grounded.operation;
+        if (grounded.emergency)
+          telephonyReason =
+            "Open the keypad so the owner can dial their local emergency number.";
+        // The review shows the owner's recipient; the model's reason may
+        // still name the number it invented.
+        if (grounded.handedThrough)
+          telephonyReason =
+            validated.type === "sms_compose" || validated.type === "sms_send"
+              ? "Text the recipient the owner wrote."
+              : "Call the recipient the owner wrote.";
+      } catch (error) {
+        if (!(error instanceof DeviceTelephonyTargetNotRequestedError))
+          throw error;
+        telephonyRefusal = error;
+        validated = proposed;
+      }
+    }
     if (validated.type === "browser_navigate") {
       // The durable original request owns the destination: the user's typed
       // address, never the model's spelling of it.
@@ -2488,6 +2896,31 @@ export class DeviceActionService {
       if (!query) throw new DeviceBrowserNotRequestedError("search");
       validated = { ...validated, query };
     }
+    // A photo runs without its Take photo card only when the owner's own
+    // message asks for one now ("take a picture", "can you take a selfie?").
+    // A capture the model proposed for any other message ("summarize the page
+    // I have open", "don't take a photo", or text it read in a page or email)
+    // keeps the card. The camera the owner named is the one that shoots,
+    // whichever tool proposed it and whatever lens the model chose; with no
+    // camera named, the phone uses the one showing.
+    const requestedCamera =
+      validated.type === "camera_capture_photo" && requestOrigin
+        ? requestedCameraCapture(
+            requestOrigin.requestText,
+            this.runtime.character.name,
+          )
+        : undefined;
+    if (
+      validated.type === "camera_capture_photo" &&
+      requestedCamera &&
+      c.capabilities?.includes(CAMERA_LENS_CAPABILITY)
+    )
+      validated = {
+        type: "camera_capture_photo",
+        ...(requestedCamera.lens ? { lens: requestedCamera.lens } : {}),
+      };
+    const reviewedCamera =
+      validated.type === "camera_capture_photo" && !requestedCamera;
     // An open or a search runs without a review only when the whole message
     // is that direct request. Any other typed address or query is reviewed.
     // A tab word or find text runs without a review only when the owner typed
@@ -2552,7 +2985,8 @@ export class DeviceActionService {
           "agentActionMode" in metadata &&
           metadata.agentActionMode === "direct-request-v1";
         const requestingMessage =
-          (directRequest && !reviewedBrowserRequest) || selectedTelephony
+          (directRequest && !reviewedBrowserRequest && !reviewedCamera) ||
+          selectedTelephony
             ? requestOrigin?.messageId
             : undefined;
         const payload: DeviceActionPayload = {
@@ -2579,21 +3013,45 @@ export class DeviceActionService {
         const directOpen =
           payload.requestMessageId !== undefined &&
           validated.type === "browser_navigate";
+        // A requested photo is one photo: a second capture proposed in the
+        // same turn (the routed tool beside PROPOSE_DEVICE_ACTION, each with
+        // its own key) is that same capture, never a second shot.
+        const directCapture =
+          payload.requestMessageId !== undefined &&
+          validated.type === "camera_capture_photo";
         const queuedReason = directOpen
           ? "Open the address the owner typed."
-          : text(reason, 1000);
+          : directCapture
+            ? "Take the photo the owner asked for."
+            : (telephonyReason ?? text(reason, 1000));
         // This is the canonical queue's transaction API: no notification or effect before commit.
         // A direct request binds its key to that message: a key reused in a later turn is a new review.
         const idempotencyKey = `device:${digest([
           c.subjectUserId,
           c.installationId,
           ...(payload.requestMessageId ? [payload.requestMessageId] : []),
-          directOpen ? { browserOpen: payload.operation } : requestKey,
+          directOpen
+            ? { browserOpen: payload.operation }
+            : directCapture
+              ? { cameraCapture: payload.operation }
+              : requestKey,
         ])}`;
         const existing = await queue.byIdempotencyKey(
           idempotencyKey,
           c.subjectUserId,
         );
+        if (telephonyRefusal) {
+          const prior = existing
+            ? validateDevicePayload(existing.payload)
+            : undefined;
+          if (
+            prior?.installationId !== payload.installationId ||
+            prior.enrollmentId !== payload.enrollmentId ||
+            stableStringify(prior.operation) !==
+              stableStringify(payload.operation)
+          )
+            throw telephonyRefusal;
+        }
         // A lapsed review can never run: close it here rather than offer it again under the same key.
         if (
           existing?.state === "pending" &&
@@ -3089,6 +3547,7 @@ export class DeviceActionService {
             isNativeNotesQuery(operation) ||
             isNotesOrganizeOperation(operation) ||
             isPhotosViewOperation(operation) ||
+            isLibraryOperation(operation) ||
             isBrowserControl(operation) ||
             isFilesOperation(operation) ||
             isForegroundReviewOperation(operation) ||
@@ -3170,6 +3629,11 @@ export class DeviceActionService {
       !photosViewCapabilityAvailable(c.capabilities)
     )
       throw new DeviceActionError("Photos capability unavailable");
+    if (
+      isLibraryOperation(payload.operation) &&
+      !c.capabilities?.includes(PHOTO_LIBRARY_CAPABILITY)
+    )
+      throw new DeviceActionError("Photo library capability unavailable");
     if (
       isCalendarOperation(payload.operation) &&
       !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
@@ -3359,6 +3823,11 @@ export class DeviceActionService {
         !photosViewCapabilityAvailable(c.capabilities)
       )
         throw new DeviceActionError("Photos capability unavailable");
+      if (
+        isLibraryOperation(payload.operation) &&
+        !c.capabilities?.includes(PHOTO_LIBRARY_CAPABILITY)
+      )
+        throw new DeviceActionError("Photo library capability unavailable");
       const read =
         payload.operation.type === "read_selected_notes" ||
         payload.operation.type === "read_calendar_range" ||
@@ -3553,6 +4022,18 @@ export class DeviceActionService {
           };
         } catch {
           throw new DeviceActionError("Invalid Photos receipt");
+        }
+      } else if (
+        isLibraryOperation(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validateLibraryResult(payload.operation, value.result),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid photo library receipt");
         }
       } else if (
         isCalendarOperation(payload.operation) &&
@@ -3761,6 +4242,11 @@ export class DeviceActionService {
         !photosViewCapabilityAvailable(c.capabilities)
       )
         throw new DeviceActionError("Photos capability unavailable");
+      if (
+        isLibraryOperation(payload.operation) &&
+        !c.capabilities?.includes(PHOTO_LIBRARY_CAPABILITY)
+      )
+        throw new DeviceActionError("Photo library capability unavailable");
       if (isSmsSend(payload.operation)) {
         if (receipt.operationId !== request.execution?.providerIdempotencyKey)
           throw new DeviceActionError(
@@ -3944,6 +4430,18 @@ export class DeviceActionService {
           };
         } catch {
           throw new DeviceActionError("Invalid Photos receipt");
+        }
+      } else if (
+        isLibraryOperation(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validateLibraryResult(payload.operation, value.result),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid photo library receipt");
         }
       } else if (
         isCalendarOperation(payload.operation) &&

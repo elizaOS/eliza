@@ -11,7 +11,7 @@ const UUID_RE =
 const KEY_ID_RE = /^staging-qa-v1-[A-Za-z0-9._-]{1,48}$/;
 const EXPECTED_VERSION = "v1";
 
-function exactUuidList(value) {
+export function exactUuidList(value) {
   const entries = value
     ?.split(/[\s,]+/)
     .map((entry) => entry.trim())
@@ -72,6 +72,13 @@ export function validateStagingSessionCutoverConfig(env) {
   if (!exactUuidList(env.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS)) {
     errors.push(
       "STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS must contain 1-100 exact UUIDs",
+    );
+  }
+  const subject = env.STAGING_SESSION_EXCHANGE_FIXTURE_SUBJECT?.trim();
+  const reader = env.STAGING_SESSION_EXCHANGE_GRANT_READ_KEY?.trim();
+  if ((subject || reader) && (!subject || !UUID_RE.test(subject) || !reader)) {
+    errors.push(
+      "Staging fixture enrollment requires an exact Steward subject and a grant reader",
     );
   }
   return errors;

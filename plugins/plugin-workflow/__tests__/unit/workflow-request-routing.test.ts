@@ -16,15 +16,17 @@ test.each([
   ['create a workflow called Alpha device test', { op: 'create', name: 'Alpha device test' }],
   ['Create a workflow called Alpha device test.', { op: 'create', name: 'Alpha device test' }],
   ['please make a new workflow named “Morning brief”', { op: 'create', name: 'Morning brief' }],
-  // Single quotes, typed or turned into ‘ ’ by phone keyboards, close the name too.
   ["create a workflow called 'Morning brief'", { op: 'create', name: 'Morning brief' }],
   ['Create a workflow called ‘Morning brief’.', { op: 'create', name: 'Morning brief' }],
   ['create a workflow called Mom’s birthday', { op: 'create', name: 'Mom’s birthday' }],
-  // A quote closes the name only when one opened it, so an unquoted plural
-  // possessive keeps its apostrophe and the rest of the name.
   ["create a workflow called Parents' Day", { op: 'create', name: "Parents' Day" }],
   ["create a workflow called Parents'", { op: 'create', name: "Parents'" }],
   ["delete the workflow 'Parents' Day'", { op: 'remove', workflowName: "Parents' Day" }],
+  [
+    "rename the workflow 'Morning brief' to 'Evening brief'",
+    { op: 'rename', workflowName: 'Morning brief', name: 'Evening brief' },
+  ],
+  ["delete the workflow 'Alpha check'", { op: 'remove', workflowName: 'Alpha check' }],
   ['can you create a workflow titled Q3 review?', { op: 'create', name: 'Q3 review' }],
   [
     'rename the workflow Alpha device test to Alpha check',
@@ -34,13 +36,11 @@ test.each([
     'rename the Alpha device test workflow to Alpha check',
     { op: 'rename', workflowName: 'Alpha device test', name: 'Alpha check' },
   ],
-  [
-    "rename the workflow 'Morning brief' to 'Evening brief'",
-    { op: 'rename', workflowName: 'Morning brief', name: 'Evening brief' },
-  ],
   ['delete the Alpha check workflow', { op: 'remove', workflowName: 'Alpha check' }],
-  ["delete the workflow 'Alpha check'", { op: 'remove', workflowName: 'Alpha check' }],
   ['remove workflow Alpha check', { op: 'remove', workflowName: 'Alpha check' }],
+  ['start a new workflow called Morning brief', { op: 'create', name: 'Morning brief' }],
+  // A name that merely starts with a descriptive word is still a name.
+  ['delete the New hires workflow', { op: 'remove', workflowName: 'New hires' }],
   ['list my workflows', { op: 'list', viewWording: false }],
   ['what workflows do I have?', { op: 'list', viewWording: false }],
   ['show my workflows', { op: 'list', viewWording: true }],
@@ -64,6 +64,18 @@ test.each([
   'create a note called Alpha device test',
   'call Alpha device test',
   'go to Alpha check',
+  // "start workflow named X" asks to run X.
+  'start workflow named Morning brief',
+  'start a workflow called Morning brief',
+  // These describe a workflow; the planner knows which one.
+  'delete the new workflow',
+  'remove this workflow',
+  'delete the last workflow',
+  'delete the workflow I just created',
+  'delete the other workflow',
+  'rename the old workflow to Archive',
+  'delete the one you made',
+  'remove the workflow we set up yesterday',
 ])('leaves the rest to the planner: %s', (text) => {
   expect(authoredWorkflowRequest(text)).toBeUndefined();
 });
@@ -94,4 +106,14 @@ test('registers one whole-request WORKFLOW route that replaces a view switch', (
   expect(rule.contexts).toEqual(['automation', 'general']);
   expect(rule.wholeRequest?.matches('delete the Alpha check workflow')).toBe(true);
   expect(rule.wholeRequest?.matches('open workflows')).toBe(false);
+});
+
+// A leading pronoun marks a clause only before a clause word, so these stay names.
+test.each([
+  ['delete the IT backup workflow', 'IT backup'],
+  ['delete the I/O monitor workflow', 'I/O monitor'],
+  ['delete the we-love-cats workflow', 'we-love-cats'],
+  ['delete the New hires workflow', 'New hires'],
+])('reads a pronoun-led name as a name: %s', (text, workflowName) => {
+  expect(authoredWorkflowRequest(text)).toEqual({ op: 'remove', workflowName });
 });

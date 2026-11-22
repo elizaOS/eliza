@@ -307,3 +307,255 @@ it("fails an ungrounded verdict that lists no claims", async () => {
   });
   expect(f.renderPrompts).toHaveLength(1);
 });
+
+const FAILED_NAVIGATION: ActionResult = {
+  success: false,
+  text: "Navigation rejected (HTTP 409).",
+  error: "HTTP 409",
+  data: { actionName: "OPEN_VIEW" },
+};
+const HONEST_FAILURE =
+  "the navigation didn't go through: it was rejected (HTTP 409).";
+const HONEST_FAILURE_DEGRADED = "i haven't confirmed the navigation.";
+const failureClaim = (
+  overrides: Partial<RecoveredReplyClaim> = {},
+): RecoveredReplyClaim => ({
+  quote: "the navigation didn't go through",
+  actor: "assistant",
+  change: true,
+  outcome: "not_occurred",
+  failedResult: 1,
+  supported: true,
+  evidence: "Navigation rejected (HTTP 409).",
+  ...overrides,
+});
+const OBSERVED_AT = "2026-11-21T00:00:00.000Z";
+const receiptBase = (receiptId: string) => ({
+  receiptId,
+  operation: "view.open",
+  resource: { kind: "view", id: "maps" },
+  artifacts: [],
+  idempotency: { key: receiptId, replayed: false },
+  observedAt: OBSERVED_AT,
+});
+const appliedReceipt = (receiptId: string): EffectReceipt => ({
+  ...receiptBase(receiptId),
+  outcome: "applied",
+  commit: {
+    kind: "durable",
+    id: `${receiptId}-commit`,
+    committedAt: OBSERVED_AT,
+  },
+});
+
+it("delivers an honest failure report backed by this turn's failed action", async () => {
+  const f = fixture(
+    [{ response: HONEST_FAILURE }],
+    [{ grounded: true, claims: [failureClaim()] }],
+  );
+  await expect(f.recover([FAILED_NAVIGATION])).resolves.toEqual({
+    text: HONEST_FAILURE,
+    effectReceiptIds: [],
+  });
+  expect(evidenceOf(f.reviewPrompts[0] ?? "")).toContain("- failed");
+  expect(f.renderPrompts).toHaveLength(1);
+  expect(f.reviewPrompts).toHaveLength(1);
+});
+
+it("delivers a failure report whose cited result left its effect unapplied", async () => {
+  const preview: EffectReceipt = {
+    ...receiptBase("view-preview"),
+    outcome: "preview",
+  };
+  const f = fixture(
+    [{ response: HONEST_FAILURE }],
+    [{ grounded: true, claims: [failureClaim()] }],
+  );
+  await expect(
+    f.recover([
+      { success: true, text: "Prepared.", effectReceipts: [preview] },
+    ]),
+  ).resolves.toEqual({ text: HONEST_FAILURE, effectReceiptIds: [] });
+});
+
+it.each([
+  ["no action result at all", [], failureClaim()],
+  [
+    "no cited result",
+    [FAILED_NAVIGATION],
+    failureClaim({ failedResult: null }),
+  ],
+  [
+    "a cited result outside this turn's results",
+    [FAILED_NAVIGATION],
+    failureClaim({ failedResult: 2 }),
+  ],
+  [
+    "a cited successful read with no effect",
+    [{ success: true, text: "Read the view list." }],
+    failureClaim(),
+  ],
+  [
+    "a cited failure whose provider acceptance is unknown",
+    [
+      {
+        ...FAILED_NAVIGATION,
+        effectReceipts: [
+          {
+            ...receiptBase("view-open-unknown"),
+            outcome: "failed",
+            failure: {
+              code: "TIMEOUT",
+              retryable: true,
+              acceptance: "unknown",
+            },
+          },
+        ],
+      },
+    ],
+    failureClaim(),
+  ],
+  [
+    "a cited result whose effect applied",
+    [
+      {
+        success: true,
+        text: "Opened Maps.",
+        effectReceipts: [appliedReceipt("view-open-1")],
+      },
+    ],
+    failureClaim(),
+  ],
+  [
+    "a cited receipt-less failure superseded by a successful retry",
+    [
+      FAILED_NAVIGATION,
+      {
+        success: true,
+        text: "Opened Maps.",
+        data: { actionName: "OPEN_VIEW" },
+        effectReceipts: [appliedReceipt("view-open-retry")],
+      },
+    ],
+    failureClaim(),
+  ],
+  [
+    "a cited receipt-less failure followed by a bare successful retry",
+    [
+      FAILED_NAVIGATION,
+      {
+        success: true,
+        text: "Opened Maps.",
+        data: { actionName: "OPEN_VIEW" },
+      },
+    ],
+    failureClaim(),
+  ],
+  [
+    "a cited rejected receipt whose operation and resource a retry applied",
+    [
+      {
+        success: true,
+        text: "Opened Maps.",
+        data: { actionName: "OPEN_VIEW" },
+        effectReceipts: [appliedReceipt("view-open-retry")],
+      },
+      {
+        ...FAILED_NAVIGATION,
+        effectReceipts: [
+          {
+            ...receiptBase("view-open-rejected"),
+            outcome: "failed",
+            failure: {
+              code: "HTTP_409",
+              retryable: false,
+              acceptance: "rejected",
+            },
+          },
+        ],
+      },
+    ],
+    failureClaim({ failedResult: 2 }),
+  ],
+] as [string, ActionResult[], RecoveredReplyClaim][])(
+  "rejects a did-not-happen claim with %s",
+  async (_label, results, claim) => {
+    // The judge wrongly supports both drafts; the result check is code-side.
+    const f = fixture(
+      [{ response: HONEST_FAILURE }, { response: HONEST_FAILURE }],
+      [
+        { grounded: true, claims: [claim] },
+        { grounded: true, claims: [claim] },
+      ],
+    );
+    await expect(f.recover(results)).rejects.toMatchObject({
+      code: "REPLY_GROUNDING_FAILED",
+      message: "Recovered reply asserts an unsupported outcome",
+    });
+    expect(f.reviewPrompts).toHaveLength(2);
+  },
+);
+
+it("delivers a failure report when only a different action succeeded later", async () => {
+  const f = fixture(
+    [{ response: HONEST_FAILURE }],
+    [{ grounded: true, claims: [failureClaim()] }],
+  );
+  await expect(
+    f.recover([
+      FAILED_NAVIGATION,
+      {
+        success: true,
+        text: "Read the view list.",
+        data: { actionName: "LIST_VIEWS" },
+      },
+    ]),
+  ).resolves.toEqual({ text: HONEST_FAILURE, effectReceiptIds: [] });
+});
+
+it("tells the reviewer a successful retry supersedes a failed attempt", async () => {
+  const f = fixture(
+    [{ response: HONEST_FAILURE }],
+    [{ grounded: true, claims: [failureClaim()] }],
+  );
+  await f.recover([FAILED_NAVIGATION]);
+  expect(f.reviewPrompts[0]).toContain(
+    "a later successful retry supersedes the failed attempt",
+  );
+});
+
+it("still degrades a false completion claim after a failed action", async () => {
+  const done = "opened the map for you.";
+  const doneClaim = failureClaim({
+    quote: "opened the map",
+    outcome: "occurred",
+    failedResult: null,
+  });
+  const f = fixture(
+    [{ response: done }, { response: HONEST_FAILURE_DEGRADED }],
+    [
+      { grounded: true, claims: [doneClaim] },
+      { grounded: true, claims: [] },
+    ],
+  );
+  await expect(f.recover([FAILED_NAVIGATION])).resolves.toEqual({
+    text: HONEST_FAILURE_DEGRADED,
+    effectReceiptIds: [],
+  });
+  expect(payloadOf(f.renderPrompts[1] ?? "")).toMatchObject({
+    unsupportedClaims: [{ quote: "opened the map" }],
+  });
+});
+
+it("treats a change claim without an outcome as one that occurred", async () => {
+  const f = fixture(
+    [{ response: HONEST_FAILURE }, { response: HONEST_FAILURE }],
+    [
+      { grounded: true, claims: [failureClaim({ outcome: undefined })] },
+      { grounded: true, claims: [failureClaim({ outcome: undefined })] },
+    ],
+  );
+  await expect(f.recover([FAILED_NAVIGATION])).rejects.toMatchObject({
+    code: "REPLY_GROUNDING_FAILED",
+  });
+});

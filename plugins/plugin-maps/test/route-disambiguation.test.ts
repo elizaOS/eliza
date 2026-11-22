@@ -120,6 +120,25 @@ const PARK_RESULTS = [
     { latitude: 37.7724, longitude: -122.443 },
   ),
 ];
+/**
+ * "Golden Gate Park, San Francisco" as Cloud Maps answered it on the owner's
+ * Pixel (v612, 2026-11-18): the park, then the neighbourhood Google also names
+ * "Golden Gate Park", 1.4 km apart. Neither is at a street address.
+ */
+const PARK_AND_NEIGHBOURHOOD = [
+  place(
+    "ChIJY_dFYHKHhYARMKc772iLvnE",
+    "Golden Gate Park",
+    "San Francisco, CA, USA",
+    { latitude: 37.7689203, longitude: -122.482977 },
+  ),
+  place(
+    "ChIJ4zIqV3KHhYARwAuc1mF2k4c",
+    "Golden Gate Park",
+    "Golden Gate Park, San Francisco, CA, USA",
+    { latitude: 37.7680222, longitude: -122.46700960000001 },
+  ),
+];
 /** A chain: every result is a Starbucks, blocks apart. */
 const STARBUCKS_RESULTS = [
   place(
@@ -174,6 +193,8 @@ const SEARCHES: Record<string, ReturnType<typeof place>[]> = {
   "the ferry building": FERRY_RESULTS,
   "ferry building": FERRY_RESULTS,
   "golden gate park": PARK_RESULTS,
+  "golden gate park, san francisco": PARK_AND_NEIGHBOURHOOD,
+  "golden gate park in san francisco": PARK_AND_NEIGHBOURHOOD,
   starbucks: STARBUCKS_RESULTS,
   "philz coffee": PHILZ_RESULTS,
   "union station, washington, dc": [
@@ -350,6 +371,35 @@ describe("directions between two landmarks", () => {
       },
     ]);
   });
+
+  it.each([
+    "Golden Gate Park, San Francisco",
+    "Golden Gate Park in San Francisco",
+  ])(
+    "plans to %s when Cloud also names a neighbourhood after the park",
+    async (destinationQuery) => {
+      const { service, requests } = cloud();
+      const result = await say(
+        service,
+        `directions from the Ferry Building to ${destinationQuery}`,
+        { originQuery: "the Ferry Building", destinationQuery },
+      );
+      expect(result).toMatchObject({
+        success: true,
+        data: {
+          route: {
+            origin: { name: "Ferry Building" },
+            destination: {
+              name: "Golden Gate Park",
+              providerPlaceId: "ChIJY_dFYHKHhYARMKc772iLvnE",
+            },
+          },
+        },
+      });
+      expect(result.userFacingText).not.toContain("Which one did you mean?");
+      expect(routes(requests)).toHaveLength(1);
+    },
+  );
 
   it("still asks which Starbucks, and the reply plans the route", async () => {
     const { service, requests } = cloud();
@@ -578,6 +628,62 @@ describe("dominantPlace", () => {
         ref("Ferry Building", -36.8431, 174.7672),
       ]),
     ).toBe(top);
+  });
+  it("takes a park over the same-named neighbourhood beside it", () => {
+    const area = (
+      name: string,
+      address: string,
+      latitude: number,
+      longitude: number,
+    ) => ({
+      ...ref(name, latitude, longitude),
+      formattedAddress: address,
+    });
+    const park = area(
+      "Golden Gate Park",
+      "San Francisco, CA, USA",
+      37.7689203,
+      -122.482977,
+    );
+    const neighbourhood = area(
+      "Golden Gate Park",
+      "Golden Gate Park, San Francisco, CA, USA",
+      37.7680222,
+      -122.4670096,
+    );
+    expect(
+      dominantPlace("Golden Gate Park, San Francisco", [park, neighbourhood]),
+    ).toBe(park);
+    expect(
+      dominantPlace("Golden Gate Park", [park, neighbourhood], {
+        latitude: 37.7955,
+        longitude: -122.3937,
+      }),
+    ).toBe(park);
+    // Branches at street addresses are still a question, however close.
+    expect(
+      dominantPlace("Starbucks", [
+        area(
+          "Starbucks",
+          "1 Market St, San Francisco, CA 94105, USA",
+          37.7941,
+          -122.3951,
+        ),
+        area(
+          "Starbucks",
+          "201 Powell St, San Francisco, CA 94102, USA",
+          37.7873,
+          -122.4082,
+        ),
+      ]),
+    ).toBeUndefined();
+    // Same-named areas far apart are different places.
+    expect(
+      dominantPlace("Chinatown", [
+        area("Chinatown", "San Francisco, CA, USA", 37.7941, -122.4078),
+        area("Chinatown", "Oakland, CA, USA", 37.7997, -122.2706),
+      ]),
+    ).toBeUndefined();
   });
   it("asks when a top result only contains the words and rivals stand elsewhere", () => {
     expect(

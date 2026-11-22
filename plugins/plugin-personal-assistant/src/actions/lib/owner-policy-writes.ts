@@ -301,9 +301,17 @@ export async function applyOwnerPolicyConfigureEscalation(
     target.definition.domain === "agent_ops"
       ? { domain: "agent_ops" as const, subjectType: "agent" as const }
       : { domain: "user_lifeops" as const, subjectType: "owner" as const };
+  // An update's reminderPlan replaces the whole stored plan. Carry the
+  // reminder's quiet hours and mute policy so a new step keeps to them.
   const updated = await service.updateDefinition(target.definition.id, {
     ownership,
-    reminderPlan: { steps },
+    reminderPlan: {
+      steps,
+      mutePolicy: target.reminderPlan?.mutePolicy,
+      quietHours: target.reminderPlan
+        ? { ...target.reminderPlan.quietHours }
+        : undefined,
+    },
   });
   const summary = steps
     .map((s) => `${s.channel} at +${s.offsetMinutes}m`)

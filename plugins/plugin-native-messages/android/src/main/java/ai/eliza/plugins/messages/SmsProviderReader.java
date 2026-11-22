@@ -37,9 +37,9 @@ public final class SmsProviderReader {
  static String textAt(Cursor c, String column) { int i = c.getColumnIndex(column); return i < 0 || c.isNull(i) ? null : c.getString(i); }
 
  /** A sender hint for the newest incoming SMS. This projection never requests a message body. */
- public static JSObject latestIncomingSender(Context context, CancellationSignal cancel) {
+ public static JSObject latestIncomingSender(Context context, CancellationSignal cancel, boolean includeAddress) {
   try (Cursor row = query(context.getContentResolver(), Telephony.Sms.Inbox.CONTENT_URI,
-    new String[] { Telephony.Sms.ADDRESS }, null, null, "date DESC, _id DESC", cancel)) {
+    includeAddress ? new String[] { Telephony.Sms.ADDRESS, Telephony.Sms.THREAD_ID } : new String[] { Telephony.Sms.ADDRESS }, null, null, "date DESC, _id DESC", cancel)) {
    if (row == null) throw new IllegalStateException("Messages provider unavailable");
    cancel.throwIfCanceled();
    JSObject result = new JSObject();
@@ -51,7 +51,16 @@ public final class SmsProviderReader {
    String address = textAt(row, Telephony.Sms.ADDRESS);
    if (address != null && address.matches("[0-9+(). -]+")) {
     String digits = address.replaceAll("[^0-9]", "");
-    if (digits.length() >= 4) {
+    if (includeAddress) {
+     String number = address.replaceAll("[(). -]", "");
+     if (number.matches("\\+?[0-9]{2,20}")) {
+      result.put("status", "found");
+      result.put("address", number);
+      long threadId = longAt(row, Telephony.Sms.THREAD_ID);
+      if (threadId > 0) result.put("threadId", SmsRecords.threadId(threadId));
+      return result;
+     }
+    } else if (digits.length() >= 4) {
      result.put("status", "found");
      result.put("numberEnding", digits.substring(digits.length() - 4));
      return result;
