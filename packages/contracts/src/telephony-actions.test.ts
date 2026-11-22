@@ -10,20 +10,29 @@ import {
   contactWriteCapabilityAvailable,
   contactWriteReceiptOutcome,
   contactWriteResultText,
+  directSmsRequest,
+  isSmsSenderLookup,
   isTelephonyAction,
   MESSAGES_READ_CAPABILITY,
   MESSAGES_READ_MAX,
   PHONE_CALL_CAPABILITY,
+  PHONE_KEYPAD_CAPABILITY,
   phoneCallReceiptOutcome,
   phoneCallResultText,
+  phoneKeypadResultText,
+  requestedSmsDraftRecipient,
   SMS_COMPOSE_CAPABILITY,
   SMS_COMPOSE_TARGET_CAPABILITY,
+  SMS_LATEST_SENDER_CAPABILITY,
   smsComposeCapabilityAvailable,
   smsComposeReceiptOutcome,
   smsComposeResultText,
   smsComposeTarget,
+  smsDraftRequestAlsoSends,
+  smsLatestSenderReply,
   smsReplyReceiptOutcome,
   smsReplyResultText,
+  smsSenderDisclosure,
   TELEPHONY_ACTION_OPERATION_TYPES,
   telephonyActionCapabilities,
   telephonyActionCapability,
@@ -39,8 +48,11 @@ import {
   validateMessagesReadResult,
   validatePhoneCall,
   validatePhoneCallResult,
+  validatePhoneKeypad,
+  validatePhoneKeypadResult,
   validateSmsCompose,
   validateSmsComposeResult,
+  validateSmsLatestSenderResult,
   validateSmsReply,
   validateSmsReplyResult,
   validateTelephonyAction,
@@ -755,6 +767,261 @@ test("a voicemail delete targets only the open voicemail", () => {
     assert.throws(() => validateVoicemailDeleteResult(bad), REJECTED);
 });
 
+test("latest SMS sender exposes only the reviewed suffix", () => {
+  const result = {
+    kind: "sms-latest-sender",
+    status: "found",
+    numberEnding: "0123",
+  };
+  assert.deepEqual(validateSmsLatestSenderResult(result), result);
+  assert.match(
+    smsLatestSenderReply(validateSmsLatestSenderResult(result)),
+    /ending in 0123/,
+  );
+  assert.throws(
+    () =>
+      validateSmsLatestSenderResult({ ...result, numberEnding: "5555550123" }),
+    REJECTED,
+  );
+  assert.throws(
+    () => validateSmsLatestSenderResult({ ...result, body: "private" }),
+    REJECTED,
+  );
+  assert.throws(
+    () => validateTelephonyAction({ type: "sms_latest_sender", since: 1 }),
+    REJECTED,
+  );
+});
+
+test("address lookup and a reply draft use the complete negotiated address", () => {
+  const operation = {
+    type: "sms_latest_sender",
+    includeAddress: true,
+  } as const;
+  const result = {
+    kind: "sms-latest-sender",
+    status: "found",
+    address: "+14155550123",
+  };
+  assert.deepEqual(validateTelephonyAction(operation), operation);
+  assert.deepEqual(validateSmsLatestSenderResult(result, true), result);
+  assert.match(
+    smsLatestSenderReply(validateSmsLatestSenderResult(result, true)),
+    /\+14155550123/,
+  );
+  assert.throws(() => validateSmsLatestSenderResult(result));
+  assert.throws(() =>
+    validateSmsLatestSenderResult({ ...result, address: "incorrect" }, true),
+  );
+  assert.throws(() =>
+    validateSmsLatestSenderResult({ ...result, body: "private" }, true),
+  );
+  const linked = {
+    kind: "sms-latest-sender",
+    status: "found",
+    address: "+14155550123",
+    threadId: "thread:42",
+  };
+  assert.deepEqual(validateSmsLatestSenderResult(linked, true), linked);
+  assert.throws(() =>
+    validateSmsLatestSenderResult({ ...linked, threadId: "-1" }, true),
+  );
+  const bound = {
+    type: "sms_compose",
+    target: { kind: "number", number: "+14155550123" },
+    body: "Tripod",
+    draft: true,
+    replyThreadId: "thread:42",
+  };
+  assert.deepEqual(validateTelephonyAction(bound), bound);
+  assert.throws(() => validateTelephonyAction({ ...bound, draft: false }));
+  assert.throws(() =>
+    validateTelephonyAction({
+      ...bound,
+      target: { kind: "contact", query: "Ada" },
+    }),
+  );
+  const request = "Look up the sender of my newest incoming SMS on this phone.";
+  assert.ok(directSmsRequest(operation, request));
+  assert.ok(
+    !directSmsRequest(operation, "Show a review card before you " + request),
+  );
+  assert.ok(!directSmsRequest({ type: "sms_latest_sender" }, request));
+  assert.equal(smsSenderDisclosure(request), "address");
+  assert.equal(smsSenderDisclosure("Who just texted me?"), "address");
+  assert.equal(
+    smsSenderDisclosure("Who sent my latest SMS? Last four digits only."),
+    "last-four",
+  );
+  assert.equal(
+    smsSenderDisclosure("Who sent my latest SMS? Last two digits only."),
+    "clarify",
+  );
+  assert.equal(
+    smsSenderDisclosure(
+      "Look up my latest SMS sender: ending digits, no full number.",
+    ),
+    "clarify",
+  );
+  assert.equal(
+    smsSenderDisclosure(
+      "Who sent my latest SMS? Don’t show me the last four digits.",
+    ),
+    "clarify",
+  );
+  const followUp =
+    "Draft a quick text asking them to bring the tripod tomorrow. Show me the draft here.";
+  assert.equal(requestedSmsDraftRecipient(followUp)?.kind, "previous-sender");
+  for (const request of [
+    "Draft a reply to this conversation",
+    "Write a reply for the current thread saying I’m on my way.",
+  ]) {
+    assert.equal(requestedSmsDraftRecipient(request)?.kind, "unaddressed");
+  }
+  assert.ok(
+    requestedSmsDraftRecipient(
+      "Draft a text to Ada asking them to bring the tripod.",
+    )?.kind === "contact",
+  );
+  assert.ok(
+    directSmsRequest(
+      { type: "sms_compose", draft: true, replyThreadId: "thread:42" },
+      followUp,
+    ),
+  );
+  assert.ok(!directSmsRequest({ type: "sms_compose" }, followUp));
+  assert.ok(!directSmsRequest({ type: "sms_send" }, followUp));
+  const typedRequest =
+    "Draft a text to +1 (415) 555-0124 saying call +14155550199.";
+  const typed = {
+    type: "sms_compose",
+    draft: true,
+    target: { kind: "number", number: "+14155550124" },
+  };
+  assert.ok(directSmsRequest(typed, typedRequest));
+  assert.ok(
+    !directSmsRequest(
+      { ...typed, target: { kind: "number", number: "+14155550199" } },
+      typedRequest,
+    ),
+  );
+  assert.ok(
+    !directSmsRequest(
+      typed,
+      "Draft a text to Ada asking them to call +14155550124.",
+    ),
+  );
+  for (const request of [
+    "Reply to her saying I mean it",
+    'Reply to them saying "hi, but send it to Mom"',
+  ]) {
+    assert.equal(requestedSmsDraftRecipient(request)?.kind, "previous-sender");
+  }
+  for (const request of [
+    "Draft a text to them; actually send it to Ada instead.",
+    "Write a text to them saying hi, but send it to Mom",
+    "Draft a text to them saying hi and send it to Mom",
+    "Reply to them, no wait, to Sam, saying I'm late",
+    "Reply to her. I mean Sam. Say I'm late",
+    "Draft a text to +14155550124 or +14155550199 asking about the tripod.",
+  ]) {
+    assert.equal(requestedSmsDraftRecipient(request)?.kind, "ambiguous");
+    assert.ok(!directSmsRequest(bound, request));
+  }
+  for (const request of [
+    "Look up the sender of my newest incoming SMS, last four digits only.",
+    "Who texted me last? Don't show the full number.",
+  ]) {
+    assert.ok(!directSmsRequest(operation, request));
+  }
+  // "... and send it to Sam" names the one recipient of a draft whose body
+  // came first; it corrects a recipient only when one was already named.
+  for (const [request, recipient] of [
+    [
+      "Compose a message saying I'm late and send it to Sam",
+      { kind: "contact", query: "Sam" },
+    ],
+    [
+      "Write a text saying happy birthday and send it to Mom",
+      { kind: "contact", query: "Mom" },
+    ],
+    [
+      "Write a text saying hi, then send it to 415-555-0100.",
+      { kind: "number", number: "4155550100" },
+    ],
+    [
+      "Write a text to Mom saying happy birthday and send it",
+      { kind: "contact", query: "Mom" },
+    ],
+  ] as const) {
+    assert.deepEqual(requestedSmsDraftRecipient(request), recipient, request);
+    assert.ok(smsDraftRequestAlsoSends(request), request);
+  }
+  for (const request of [
+    "Compose a message saying hi and send it to Sam and send it to Mom",
+    "Write a text saying hi, actually to Ada, and send it to Mom",
+    "Compose a message saying hi and send it to Sam or Mom",
+    "Write a text saying hi and send it to Sam instead",
+  ]) {
+    assert.equal(
+      requestedSmsDraftRecipient(request)?.kind,
+      "ambiguous",
+      request,
+    );
+  }
+  for (const request of [
+    "Draft a text to Sam saying hi",
+    "Draft a text to Sam saying I'll send it tomorrow",
+    'Draft a text to Sam saying "pack it and send it"',
+    "Draft a text to Sam saying the files are ready and don't send it yet",
+    "Send Sam a text saying hi and send it",
+  ]) {
+    assert.ok(!smsDraftRequestAlsoSends(request), request);
+  }
+  // The open or named thread a reply belongs to, or a recipient after the
+  // body, is not an addressing clause.
+  for (const request of [
+    "Draft a reply to this conversation",
+    "Reply to Sam's text saying I'm on my way",
+    "Reply to the thread with Ada saying hi",
+    "Draft a text saying I'm late to Sam",
+  ]) {
+    assert.equal(
+      requestedSmsDraftRecipient(request)?.kind,
+      "unaddressed",
+      request,
+    );
+    assert.ok(!directSmsRequest(bound, request));
+  }
+  // Only a question about the sender reads one, wherever the owner says it is
+  // on this phone. A message from a named sender or another service's inbox
+  // is the planner's.
+  for (const request of [
+    "Who was my latest text from?",
+    "What's the number on my latest text?",
+    "Who sent the last text message in my inbox?",
+    "Who sent me the latest text in the last hour?",
+    "Check who sent my latest text in Messages",
+    "Who sent my most recent text, from what number?",
+    "Who sent my latest text from this morning?",
+  ]) {
+    assert.ok(isSmsSenderLookup(request), request);
+    assert.equal(smsSenderDisclosure(request), "address", request);
+  }
+  for (const request of [
+    "What was the last message from Sam?",
+    "Show me the latest text from Mom",
+    "Who sent the latest message from Sam?",
+    "What's the number of the latest text from Sam?",
+    "Check the latest message from Sam on Slack",
+    "Who sent my latest message in Gmail?",
+    "Who sent my latest message on WhatsApp?",
+    "Who sent my latest text over email?",
+  ]) {
+    assert.ok(!isSmsSenderLookup(request), request);
+    assert.equal(smsSenderDisclosure(request), "last-four");
+  }
+});
 test("each operation type has one capability and one validator", () => {
   assert.deepEqual(
     TELEPHONY_ACTION_OPERATION_TYPES.map((type) => [
@@ -770,7 +1037,9 @@ test("each operation type has one capability and one validator", () => {
       ["contact_read_selected", CONTACT_READ_CAPABILITY],
       ["sms_compose", SMS_COMPOSE_CAPABILITY],
       ["sms_reply_selected", SMS_COMPOSE_CAPABILITY],
+      ["phone_keypad", PHONE_KEYPAD_CAPABILITY],
       ["messages_read_selected", MESSAGES_READ_CAPABILITY],
+      ["sms_latest_sender", SMS_LATEST_SENDER_CAPABILITY],
       ["voicemail_read_selected", VOICEMAIL_READ_CAPABILITY],
       ["voicemail_delete_selected", VOICEMAIL_DELETE_CAPABILITY],
     ],
@@ -785,6 +1054,7 @@ test("each operation type has one capability and one validator", () => {
     { type: "sms_compose", query: "Ada", body: "hi" },
     { type: "sms_reply_selected", body: "hi" },
     { type: "messages_read_selected" },
+    { type: "sms_latest_sender" },
     { type: "voicemail_read_selected" },
     { type: "voicemail_delete_selected" },
   ]) {
@@ -858,6 +1128,64 @@ test("capabilities follow the native profile and its parts", () => {
       sms: false,
       voicemail: false,
       contactValues: true,
+    }),
+    [],
+  );
+});
+
+test("phone_keypad opens the keypad, filled in at most, and never calls", () => {
+  assert.equal(isTelephonyAction({ type: "phone_keypad" }), true);
+  assert.equal(
+    telephonyActionCapability("phone_keypad"),
+    PHONE_KEYPAD_CAPABILITY,
+  );
+  assert.deepEqual(validatePhoneKeypad({ type: "phone_keypad" }), {
+    type: "phone_keypad",
+  });
+  assert.deepEqual(
+    validateTelephonyAction({ type: "phone_keypad", number: "+14155550100" }),
+    { type: "phone_keypad", number: "+14155550100" },
+  );
+  for (const refused of [
+    { type: "phone_keypad", number: "415-555-0100" },
+    { type: "phone_keypad", number: "" },
+    { type: "phone_keypad", number: 4155550100 },
+    { type: "phone_keypad", number: "4155550100", call: true },
+    { type: "phone_keypad", target: { kind: "number", number: "4155550100" } },
+  ])
+    assert.throws(() => validateTelephonyAction(refused), REJECTED);
+  assert.deepEqual(
+    validatePhoneKeypadResult({ kind: "phone-keypad", status: "opened" }),
+    { kind: "phone-keypad", status: "opened" },
+  );
+  for (const refused of [
+    { kind: "phone-keypad", status: "placed" },
+    { kind: "phone-keypad", status: "opened", number: "1" },
+  ])
+    assert.throws(() => validatePhoneKeypadResult(refused), REJECTED);
+  assert.match(
+    phoneKeypadResultText({ kind: "phone-keypad", status: "opened" }),
+    /Nothing was dialed or called/,
+  );
+  assert.deepEqual(
+    telephonyActionCapabilities({
+      present: true,
+      call: false,
+      contactsWrite: false,
+      sms: false,
+      voicemail: false,
+      keypad: true,
+    }),
+    [PHONE_KEYPAD_CAPABILITY],
+  );
+  assert.deepEqual(
+    telephonyActionCapabilities({
+      present: false,
+      call: true,
+      contactsWrite: true,
+      sms: true,
+      voicemail: true,
+      keypad: true,
     }),
     [],
   );

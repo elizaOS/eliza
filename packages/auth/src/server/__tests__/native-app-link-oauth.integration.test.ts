@@ -14,6 +14,7 @@ import {
   describe,
   expect,
   setSystemTime,
+  spyOn,
   test,
 } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
@@ -88,6 +89,10 @@ beforeAll(async () => {
     STEWARD_AUDIT_HMAC_KEY: randomBytes(32).toString("hex"),
     APP_URL: STEWARD_ORIGIN,
     GOOGLE_CLIENT_ID: "synthetic-google-web-client",
+    STEWARD_GOOGLE_NATIVE_CLIENT_IDS: JSON.stringify({
+      "readiness-other": ["123-other.apps.googleusercontent.com"],
+      grace: ["123-grace.apps.googleusercontent.com"],
+    }),
     STEWARD_OAUTH_APP_ERROR_REDIRECTS: EXTERNAL_LINK,
     GOOGLE_CLIENT_SECRET: "synthetic-google-secret",
     DISCORD_CLIENT_ID: "synthetic-discord-client",
@@ -201,6 +206,42 @@ function readHandOff(handOff: URL) {
 }
 
 describe("native App Link OAuth (Example Reader)", () => {
+  test("native Google readiness describes only the named app and creates no challenge", async () => {
+    const { tenantAppClients } = await import("../db/schema");
+    const { getChallengeStore } = await import(
+      "../api/services/auth-lifecycle"
+    );
+    const challenges = spyOn(getChallengeStore(), "set");
+    try {
+      await database.db.insert(tenantAppClients).values({
+        id: "readiness-other",
+        tenantId: TENANT_ID,
+        name: "Another Android app",
+      });
+      const path = `/auth/providers?tenantId=${TENANT_ID}&clientId=grace`;
+      const unavailable = await nativeGet(path);
+      expect(unavailable.status).toBe(200);
+      expect(await unavailable.json()).toMatchObject({
+        googleNative: true,
+        nativeGoogleApp: { clientId: "grace", ready: false },
+      });
+
+      await database.db.insert(tenantAppClients).values({
+        id: "grace",
+        tenantId: TENANT_ID,
+        name: "Grace",
+      });
+      const ready = await nativeGet(path);
+      expect(ready.status).toBe(200);
+      expect(await ready.json()).toMatchObject({
+        nativeGoogleApp: { clientId: "grace", ready: true },
+      });
+      expect(challenges).not.toHaveBeenCalled();
+    } finally {
+      challenges.mockRestore();
+    }
+  });
+
   test("App readiness, shared Google exchange and denial return stay bound to the app", async () => {
     const query = new URLSearchParams({
       tenant_id: TENANT_ID,

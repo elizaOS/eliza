@@ -91,7 +91,6 @@ export const healthPlugin: Plugin = {
       tags: ["health", "sleep", "screen-time", "activity"],
       relatedActions: ["OWNER_HEALTH", "OWNER_SCREENTIME"],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
   init: async (

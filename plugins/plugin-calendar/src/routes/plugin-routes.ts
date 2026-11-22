@@ -689,6 +689,18 @@ export function calendarRouteHandler(): LegacyRouteHandler {
               await requireCalendarOwnerMutationGateway(agentRuntime);
             return gateway.cancel(requestUrl, request);
           },
+          async respond(requestUrl, request) {
+            const gateway =
+              await requireCalendarOwnerMutationGateway(agentRuntime);
+            if (!gateway.respond) {
+              throw new CalendarServiceError(
+                501,
+                "The host calendar gateway does not support invitation responses.",
+                "CALENDAR_INVITATION_RESPONSE_UNSUPPORTED",
+              );
+            }
+            return gateway.respond(requestUrl, request);
+          },
           async linkCalendar(requestUrl, request) {
             const gateway =
               await requireCalendarOwnerMutationGateway(agentRuntime);

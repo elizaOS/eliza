@@ -80,6 +80,7 @@ function createEvidence(
 ) {
   const evidence = [{ sourceId: `current:${id}`, quote: text }];
   return {
+    reviewBeforeCreate: false,
     guestIntent: {
       state: guests.length ? "requested" : "none",
       evidence,
@@ -1212,6 +1213,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
                   ? null
                   : paraphrase,
             location: null,
+            reviewBeforeCreate: false,
             guestIntent: { state: "none", evidence, guests: [] },
             noteIntent: {
               state: solo || mode === "native-inline" ? "none" : "requested",
@@ -1810,6 +1812,168 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       });
     },
   );
+
+  const moveToFour = {
+    requiresInput: false,
+    clarification: null,
+    title: null,
+    description: null,
+    location: null,
+    startAt: "2026-09-18T16:00:00",
+    endAt: null,
+    allDayStartDate: null,
+    allDayEndDate: null,
+    timeZone: null,
+    recurrence: null,
+    recurrenceScope: null,
+    clearFields: [],
+    addGuests: [],
+    removeGuests: [],
+  };
+  it.each([
+    {
+      name: "applies the conforming retry after an empty update extraction",
+      responses: [{}, { startAt: "2026-09-18T16:00:00", requiresInput: false }],
+      outcome: "applied",
+    },
+    {
+      name: "applies a first-call move with null guest and clear-field arrays",
+      responses: [
+        {
+          ...moveToFour,
+          clearFields: null,
+          addGuests: null,
+          removeGuests: null,
+        },
+      ],
+      outcome: "applied",
+    },
+    {
+      name: "applies a first-call move with a null requiresInput",
+      responses: [{ ...moveToFour, requiresInput: null }],
+      outcome: "applied",
+    },
+    {
+      name: "applies a first-call move with a string requiresInput",
+      responses: [{ ...moveToFour, requiresInput: "false" }],
+      outcome: "applied",
+    },
+    {
+      name: "fails the update explicitly, without a write, after two empty extractions",
+      responses: [{}, {}],
+      outcome: "invalid",
+    },
+    {
+      name: "reports a model call that returns nothing as a provider failure, without a write",
+      responses: [null],
+      outcome: "unavailable",
+    },
+  ] as Array<{
+    name: string;
+    responses: Array<Record<string, unknown> | null>;
+    outcome: "applied" | "invalid" | "unavailable";
+  }>)("$name", async ({ responses, outcome }) => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "V619 check",
+      startAt: "2026-09-18T19:00:00.000Z",
+      endAt: "2026-09-18T19:30:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "calendar-update-extraction-conformance",
+    });
+    if (!created.event)
+      throw new Error("Calendar fixture event was not created");
+    const updateResponses = [...responses];
+    const runJsonModel = vi.fn(async ({ actionType }) => {
+      if (actionType !== "lifeops.calendar.extract_update_event") return null;
+      if (updateResponses.length === 0)
+        throw new Error("unexpected extra update extraction");
+      const parsed = updateResponses.shift() ?? null;
+      return parsed === null
+        ? null
+        : { rawResponse: JSON.stringify(parsed), parsed };
+    });
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel,
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: "00000000-0000-0000-0000-000000000303",
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-09-15T22:00:00.000Z"),
+        content: { text: "move v619 check to 4pm" },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          subaction: "update_event",
+          query: "v619 check",
+          details: {
+            eventId: created.event.id,
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            timeZone: "America/New_York",
+          },
+        },
+      },
+    );
+    const updateCalls = runJsonModel.mock.calls.filter(
+      ([args]) => args.actionType === "lifeops.calendar.extract_update_event",
+    );
+    expect(updateCalls).toHaveLength(responses.length);
+    const stored = await service.getCalendarEventById(created.event.id);
+    if (outcome === "applied") {
+      expect(result?.success, JSON.stringify(result)).toBe(true);
+      expect(stored).toMatchObject({
+        startAt: "2026-09-18T20:00:00.000Z",
+        endAt: "2026-09-18T20:30:00.000Z",
+      });
+      return;
+    }
+    expect(stored).toMatchObject({
+      startAt: "2026-09-18T19:00:00.000Z",
+      endAt: "2026-09-18T19:30:00.000Z",
+    });
+    if (outcome === "unavailable") {
+      expect(result?.success).toBe(false);
+      expect(result?.data?.error).toBe("CALENDAR_EXTRACTION_MODEL_UNAVAILABLE");
+      // A provider failure is not a request the owner should rephrase.
+      expect(result?.data?.coachingFailure).toBeUndefined();
+      const reply = JSON.stringify(result?.data?.replyContext);
+      expect(reply).toContain("The calendar model did not respond");
+      expect(reply).not.toContain("Tell me the event and timing again");
+      expect(result?.effectReceipts?.[0]).toMatchObject({
+        outcome: "failed",
+        failure: {
+          code: "CALENDAR_EXTRACTION_MODEL_UNAVAILABLE",
+          acceptance: "rejected",
+          retryable: true,
+        },
+      });
+      return;
+    }
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        coachingFailure: true,
+        error: "CALENDAR_UPDATE_EXTRACTION_INVALID",
+      },
+    });
+    expect(result?.effectReceipts?.[0]).toMatchObject({
+      outcome: "failed",
+      failure: {
+        code: "CALENDAR_UPDATE_EXTRACTION_INVALID",
+        acceptance: "rejected",
+      },
+    });
+    expect(stored).toMatchObject({
+      startAt: "2026-09-18T19:00:00.000Z",
+      endAt: "2026-09-18T19:30:00.000Z",
+    });
+  });
 
   it.each([{ explicitEnd: "16:30:00" }, { explicitEnd: "17:00:00" }])(
     "preserves stored duration despite a planner end of $explicitEnd",
@@ -3332,6 +3496,162 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
     expect(named?.success, JSON.stringify(named)).toBe(true);
     expect(await augustEvents()).toHaveLength(0);
+  });
+
+  // v617 on the owner's Pixel (2026-11-20, America/New_York): with Contacts in
+  // front in direct-request mode, "add an event called v617 check tomorrow at
+  // 3pm" ran CALENDAR_CREATE_EVENT and replied with an applied receipt for
+  // eliza-calendar/primary, the Agent Calendar source Alpha's Calendar view
+  // reads through this feed. Twelve minutes later "delete the calendar event
+  // v617 check" deleted it (applied receipt) but its reply was lost to a 429,
+  // so the retry found nothing and Saturday showed "Free all day". That delete
+  // receipt carried the event's creation time as its commit time.
+  it("replays the v617 create and delete against the calendar the Agent Calendar view reads", async () => {
+    const zone = "America/New_York";
+    const window = {
+      timeMin: "2026-11-21T05:00:00.000Z",
+      timeMax: "2026-11-22T05:00:00.000Z",
+    };
+    // The turn metadata the phone sent for each v617 message.
+    const metadata = {
+      uiView: "contacts",
+      uiViewPath: "/contacts",
+      uiTimeZone: zone,
+      clientDevice: {
+        context: {
+          view: "contacts",
+          revision: 3,
+          timeZone: zone,
+          sensitive: false,
+        },
+      },
+      notesFolders: [],
+      viewDelivery: "completed-action",
+      userTextFormat: "plain-v1",
+      agentActionMode: "direct-request-v1",
+      uiViewActionNames: [],
+      uiViewCapabilities: [],
+    };
+    const send = (
+      id: string,
+      text: string,
+      at: string,
+      parameters: Record<string, unknown>,
+    ) => {
+      const messageId = `00000000-0000-0000-0000-0000000617${id}`;
+      return createCalendarActionRunner({
+        runTextModel: vi.fn(async () => null),
+        runJsonModel: vi.fn(async ({ actionType }) =>
+          actionType === "lifeops.calendar.extract_create_event"
+            ? {
+                rawResponse: "{}",
+                parsed: {
+                  ...createEvidence(messageId, text),
+                  title: "v617 check",
+                  grantId: ELIZA_CALENDAR_GRANT_ID,
+                  calendarId: ELIZA_CALENDAR_ID,
+                  startAt: "2026-11-21T15:00:00",
+                  endAt: "2026-11-21T16:00:00",
+                  timeZone: null,
+                },
+              }
+            : null,
+        ),
+        recentConversationTexts: vi.fn(async () => []),
+      }).handler(
+        runtime,
+        {
+          id: messageId,
+          entityId: "00000000-0000-0000-0000-000000000102",
+          roomId: "00000000-0000-0000-0000-000000000103",
+          createdAt: Date.parse(at),
+          content: { text, source: "client_chat", metadata },
+        } as Memory,
+        undefined,
+        { parameters },
+      );
+    };
+    const agentCalendar = async () =>
+      (await service.getCalendarFeed(INTERNAL_URL, window)).events;
+
+    const created = await send(
+      "01",
+      "add an event called v617 check tomorrow at 3pm",
+      "2026-11-20T22:23:52.000Z",
+      { subaction: "create_event", title: "v617 check", details: {} },
+    );
+    expect(created?.success, JSON.stringify(created)).toBe(true);
+    const [createReceipt] = created?.effectReceipts ?? [];
+    expect(createReceipt).toMatchObject({
+      operation: "calendar.event.create",
+      outcome: "applied",
+      commit: { kind: "durable" },
+    });
+    // The receipt names the event the Agent Calendar view now lists.
+    const [shown] = await agentCalendar();
+    expect(shown).toMatchObject({
+      id: createReceipt?.resource.id,
+      provider: "eliza",
+      grantId: ELIZA_CALENDAR_GRANT_ID,
+      calendarId: ELIZA_CALENDAR_ID,
+      title: "v617 check",
+      startAt: "2026-11-21T20:00:00.000Z",
+      endAt: "2026-11-21T21:00:00.000Z",
+      timezone: zone,
+    });
+    expect(await agentCalendar()).toHaveLength(1);
+    // The phone's event was written at 22:24:19Z, twelve minutes before the delete.
+    await pg.query(
+      "UPDATE app_calendar.life_calendar_events SET updated_at = $1, synced_at = $1 WHERE id = $2",
+      ["2026-11-20T22:24:19.045Z", shown?.id],
+    );
+
+    const removeParameters = {
+      subaction: "delete_event",
+      query: "v617 check",
+      details: { timeZone: zone, ...window },
+    };
+    const deleteStarted = Date.now();
+    const removed = await send(
+      "02",
+      "delete the calendar event v617 check",
+      "2026-11-20T22:35:50.000Z",
+      removeParameters,
+    );
+    expect(removed?.success, JSON.stringify(removed)).toBe(true);
+    const [deleteReceipt] = removed?.effectReceipts ?? [];
+    expect(deleteReceipt).toMatchObject({
+      operation: "calendar.event.delete",
+      outcome: "applied",
+      resource: { id: shown?.id, version: `deleted:${'"eliza-1"'}` },
+      commit: { kind: "durable", id: shown?.id },
+    });
+    // The delete committed when it ran, not when the event was created.
+    const committedAt = Date.parse(
+      (deleteReceipt as { commit?: { committedAt?: string } }).commit
+        ?.committedAt ?? "",
+    );
+    expect(committedAt).toBeGreaterThanOrEqual(deleteStarted);
+    expect(deleteReceipt?.observedAt).toBe(
+      (deleteReceipt as { commit?: { committedAt?: string } }).commit
+        ?.committedAt,
+    );
+    expect(await agentCalendar()).toEqual([]);
+
+    // The retry finds nothing and claims no deletion.
+    const retried = await send(
+      "03",
+      "delete the calendar event v617 check",
+      "2026-11-20T22:38:43.000Z",
+      removeParameters,
+    );
+    expect(retried?.success).not.toBe(true);
+    expect(
+      (retried?.effectReceipts ?? []).filter(
+        (receipt) => receipt.outcome === "applied",
+      ),
+    ).toEqual([]);
+    expect(await agentCalendar()).toEqual([]);
   });
 });
 

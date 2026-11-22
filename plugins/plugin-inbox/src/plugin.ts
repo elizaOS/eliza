@@ -12,6 +12,7 @@ import {
   ElizaError,
   OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   promoteSubactionsToActions,
+  registerDirectActionRoutingRule,
 } from "@elizaos/core";
 import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { getDefaultTriageService } from "@elizaos/plugin-assistant";
@@ -22,6 +23,22 @@ import { InboxMigrationService } from "./inbox/migration.ts";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.ts";
 import { inboxTriageProvider } from "./providers/inbox-triage.ts";
 import { inboxRoutes } from "./routes/inbox-routes.ts";
+
+// Claim only a complete, direct read. Recipient, date and compound requests
+// stay with the general planner, where their full filters remain available.
+const mailReadPrefix =
+  /^(?:what(?:['’]?s|\s+(?:is|was|are|were))|which(?:\s+(?:is|was|are|were))?|(?:please\s+)?(?:show(?:\s+me)?|find|list|read|check|look\s+up))\s+/iu;
+const sentMailSubject =
+  /^(?:(?:the|my|our)\s+)?(?:(?:latest|last|most\s+recent|recent|\d+)\s+)?(?:sent\s+(?:e-?mails?|mail)|(?:e-?mails?|mail)\s+(?:that\s+)?(?:i|we)\s+sent)[?.!]?$/iu;
+
+function isSentMailRead(text: string): boolean {
+  const request = text.trim();
+  return (
+    mailReadPrefix.test(request) &&
+    sentMailSubject.test(request.replace(mailReadPrefix, ""))
+  );
+}
+
 export const inboxPlugin: Plugin = {
   name: "@elizaos/plugin-inbox",
   description:
@@ -32,7 +49,7 @@ export const inboxPlugin: Plugin = {
   // The adapter verifies the live owner action for every read. It supports
   // standard MESSAGE reads and INBOX fan-out. Separate host settings admit
   // reviewed new sends and owner-scoped mailbox changes.
-  init: async () => {
+  init: async (_config, runtime) => {
     const gmail = new ManagedGmailAdapter();
     if (gmail.isAvailable()) {
       const registry = getDefaultTriageService();
@@ -43,6 +60,14 @@ export const inboxPlugin: Plugin = {
           { code: "MANAGED_GMAIL_SOURCE_CONFLICT" },
         );
       registry.register(gmail);
+      registerDirectActionRoutingRule(runtime, {
+        id: "inbox.gmail.sent",
+        actionNames: ["MESSAGE_SEARCH_INBOX"],
+        replacesActionNames: ["MESSAGE", "MESSAGE_LIST_INBOX"],
+        requiredActionTags: ["domain:messages", "capability:read"],
+        contexts: ["email"],
+        matches: isSentMailRead,
+      });
     }
   },
   // Promote the INBOX_* subaction virtuals here so they exist wherever the
@@ -102,7 +127,6 @@ export const inboxPlugin: Plugin = {
       tags: ["inbox", "triage", "communication", "email", "mail", "messages"],
       relatedActions: ["INBOX"],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
 };

@@ -139,3 +139,78 @@ test("the Cloud login proxy signs only the edge-observed address", async () => {
     globalThis.fetch = previousFetch;
   }
 });
+
+test("the Cloud login proxy serves scoped provider discovery outside the aggregate cache", async () => {
+  const upstreamRequests: Array<string | null> = [];
+  const upstream = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      const clientId = new URL(request.url).searchParams.get("clientId");
+      upstreamRequests.push(clientId);
+      const providers = {
+        passkey: false,
+        email: true,
+        siwe: false,
+        siws: false,
+        google: true,
+        discord: false,
+        github: false,
+        twitter: false,
+        oauth: ["google"],
+        googleNative: true,
+      };
+      if (clientId === null) return Response.json({ ok: true, ...providers });
+      return Response.json({
+        ok: true,
+        data: {
+          ...providers,
+          nativeGoogleApp: { clientId, ready: clientId === "grace" },
+        },
+      });
+    },
+  });
+  try {
+    const app = new Hono<AppEnv>();
+    app.all("/steward/*", embeddedStewardHandler);
+    const env = { LOGIN_API_URL: upstream.url.origin } as AppEnv["Bindings"];
+    const url = "https://cloud.example.test/steward/auth/providers";
+    const aggregate = await app.request(url, {}, env);
+    expect(aggregate.headers.get("x-eliza-providers-cache")).toBe("miss");
+    expect(await aggregate.json()).not.toHaveProperty("nativeGoogleApp");
+
+    const [grace, other] = await Promise.all([
+      app.request(`${url}?clientId=grace`, {}, env),
+      app.request(`${url}?clientId=other`, {}, env),
+    ]);
+    for (const [response, clientId, ready] of [
+      [grace, "grace", true],
+      [other, "other", false],
+    ] as const) {
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.has("x-eliza-providers-cache")).toBe(false);
+      expect(await response.json()).toMatchObject({
+        ok: true,
+        data: { nativeGoogleApp: { clientId, ready } },
+      });
+    }
+
+    const head = await app.request(
+      `${url}?clientId=grace`,
+      { method: "HEAD" },
+      env,
+    );
+    expect(head.headers.get("cache-control")).toBe("no-store");
+    expect(await head.text()).toBe("");
+    const cachedAggregate = await app.request(url, {}, env);
+    expect(cachedAggregate.headers.get("x-eliza-providers-cache")).toBe("hit");
+    expect(await cachedAggregate.json()).not.toHaveProperty("nativeGoogleApp");
+    expect(upstreamRequests).toHaveLength(4);
+    expect(upstreamRequests.filter((id) => id === null)).toHaveLength(1);
+    expect(upstreamRequests.filter((id) => id === "grace")).toHaveLength(2);
+    expect(upstreamRequests.filter((id) => id === "other")).toHaveLength(1);
+  } finally {
+    await upstream.stop(true);
+  }
+});

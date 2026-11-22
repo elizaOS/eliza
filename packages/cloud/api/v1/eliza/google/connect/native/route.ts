@@ -8,9 +8,9 @@
  * with its own web client (empty redirect_uri) and stores the connection
  * exactly as the OAuth callback does, with the scopes Google reports granted.
  *
- * Body: `{ "serverAuthCode": string }`. Owner credentials only (a session or
- * the owner's `eliza_mobile_` key); agent-side connections stay on the
- * browser flow.
+ * A sign-in continuation can require the Google subject returned before MFA.
+ * This route accepts the owner's session or `eliza_mobile_` key. Agent-side
+ * connections use the browser flow.
  */
 
 import {
@@ -44,6 +44,10 @@ const requestSchema = z
       .min(10)
       .max(2048)
       .regex(/^[A-Za-z0-9/_.~-]+$/),
+    expectedGoogleSubject: z
+      .string()
+      .regex(/^[0-9]{1,64}$/)
+      .optional(),
   })
   .strict();
 
@@ -88,6 +92,9 @@ app.post("/", async (c) => {
         organizationId: user.organization_id,
         userId: user.id,
         serverAuthCode: parsed.data.serverAuthCode,
+        ...(parsed.data.expectedGoogleSubject
+          ? { expectedPlatformUserId: parsed.data.expectedGoogleSubject }
+          : {}),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
@@ -103,6 +110,15 @@ app.post("/", async (c) => {
           NO_STORE,
         );
       }
+      if (message === "GOOGLE_SERVER_AUTH_CODE_ACCOUNT_MISMATCH")
+        return c.json(
+          {
+            error: "Google authorized a different account.",
+            code: "google_account_mismatch",
+          },
+          400,
+          NO_STORE,
+        );
       if (message === "GOOGLE_GRANTED_SCOPES_REQUIRED")
         return c.json(
           {

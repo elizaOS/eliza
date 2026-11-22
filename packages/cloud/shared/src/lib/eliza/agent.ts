@@ -1,3 +1,4 @@
+import { DEFAULT_ELEVENLABS_VOICE_ID } from "@elizaos/host/protocol";
 /** Wires the hosted Eliza character and runtime settings for Cloud services. */
 import {
   buildCloudElizaPersona,
@@ -62,7 +63,7 @@ const character = {
     // Note: ELIZAOS_API_KEY will be set at runtime with user's auto-generated key
     // ElevenLabs Voice Configuration
     ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY!,
-    ELEVENLABS_VOICE_ID: process.env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL", // Rachel voice (default)
+    ELEVENLABS_VOICE_ID: process.env.ELEVENLABS_VOICE_ID || DEFAULT_ELEVENLABS_VOICE_ID,
     ELEVENLABS_MODEL_ID: process.env.ELEVENLABS_MODEL_ID || "eleven_multilingual_v2",
     ELEVENLABS_VOICE_STABILITY: process.env.ELEVENLABS_VOICE_STABILITY || "0.5",
     ELEVENLABS_VOICE_SIMILARITY_BOOST: process.env.ELEVENLABS_VOICE_SIMILARITY_BOOST || "0.75",

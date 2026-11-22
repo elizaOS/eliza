@@ -35,6 +35,8 @@ import {
 export interface CharacterFailureTemplates {
   /** Provider rejected the credentials (invalid or unauthorized key). */
   authFailedReply?: string;
+  /** The connection to the model provider dropped before any reply arrived. */
+  connectionFailedReply?: string;
   /** Provider is out of credits or quota; waiting will not clear it. */
   insufficientCreditsReply?: string;
   /** No LLM provider plugin is registered at all. */

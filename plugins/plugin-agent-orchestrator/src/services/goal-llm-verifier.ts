@@ -40,7 +40,7 @@ import {
   type RecordedStage,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { createJsonFileTrajectoryRecorder } from "@elizaos/plugin-assistant";
+import { createTrajectoryRecorder } from "@elizaos/plugin-assistant";
 import type { EvidenceCapabilities } from "./producible-evidence.js";
 
 /** Stable identifier the verifier stamps onto the `validateTask` payload so
@@ -529,7 +529,7 @@ async function recordVerifierBoundary(
 ): Promise<void> {
   if (!context || !isTrajectoryRecordingEnabled()) return;
   try {
-    const recorder = createJsonFileTrajectoryRecorder();
+    const recorder = createTrajectoryRecorder({ runtime });
     const trajectoryId = recorder.startTrajectory({
       agentId: runtime.agentId || GOAL_VERIFIER_TRAJECTORY_AGENT,
       roomId: context.roomId,

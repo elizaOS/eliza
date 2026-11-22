@@ -14,6 +14,7 @@ import type {
   LifeOpsCalendarCancellationMode,
   LifeOpsCalendarEvent,
   LifeOpsCalendarEventCancellationResult,
+  LifeOpsCalendarInvitationResponse,
   LifeOpsCalendarRecurrenceScope,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
@@ -73,6 +74,28 @@ export interface CalendarOwnerMutationGateway {
       idempotencyKey: string;
     },
   ): Promise<LifeOpsCalendarEventCancellationResult>;
+  /**
+   * Owner RSVP to an invitation, through the same approval queue and durable
+   * ledger as `update` and `cancel`. Optional so an older host gateway keeps
+   * working; the route answers 501 when it is absent.
+   */
+  respond?(
+    requestUrl: URL,
+    request: {
+      side?: LifeOpsConnectorSide | null;
+      grantId?: string;
+      calendarId?: string | null;
+      eventId: string;
+      responseStatus: LifeOpsCalendarInvitationResponse;
+      recurrenceScope?: Exclude<
+        LifeOpsCalendarRecurrenceScope,
+        "this_and_following"
+      > | null;
+      notifyAttendees: boolean;
+      expectedProviderVersion: string;
+      idempotencyKey: string;
+    },
+  ): Promise<LifeOpsCalendarEvent>;
   linkCalendar(
     requestUrl: URL,
     request: CreateLifeOpsLinkedCalendarLinkRequest,

@@ -782,7 +782,10 @@ export const voiceCallAction: Action & {
   contexts: ["contacts", "messaging", "phone", "tasks", "automation"],
   roleGate: { minRole: "OWNER" },
 
-  validate: async () => true,
+  // Offered only where it can place a call. Unconfigured, it was still offered
+  // for every "call ..." turn and won over the phone's own reviewed phone_call
+  // (PROPOSE_DEVICE_ACTION), then failed with TWILIO_NOT_CONFIGURED.
+  validate: async () => readTwilioCredentialsFromEnv() !== null,
 
   parameters: [
     {

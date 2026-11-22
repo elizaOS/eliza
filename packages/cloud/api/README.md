@@ -214,6 +214,13 @@ hosted fallback read the same rows, so changes take effect without a release.
 Unknown or disabled clients fail closed. No deployment secret stores client
 registration, and the app-creator API cannot create this authority.
 
+Native password backup approval returns the user and organization IDs that the
+approval covers. The registered-client readiness endpoint returns
+`X-Password-Backup-Version: 2` when storage and this response contract are
+available. Clients that bind a local vault to the organization require this
+header and verify both IDs against the signed-in account before using the
+approval.
+
 ### App-owned managed Google returns
 
 App-owned connector callbacks use `APP_OAUTH_RETURN_URLS` for exact HTTPS

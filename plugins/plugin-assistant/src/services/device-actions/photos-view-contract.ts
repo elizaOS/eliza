@@ -10,7 +10,11 @@
  * otherwise they are reviewed. `photos_album_create` is a data change and `photos_share` sends
  * media out of the phone, so the owner reviews each in Photos first; a share then opens
  * Android's share sheet, and nothing leaves the phone before the owner picks a target there.
- * All four require both `photos.library.v1` and `photos.view.v1`. */
+ * All four require both `photos.library.v1` and `photos.view.v1`.
+ *
+ * With `photos.view-selected.v1` an album or share may name `{selected: true}` in place of
+ * library ids: the one item the owner has open in the Photos viewer. The phone resolves it at
+ * review time, so the agent never needs (or guesses) that item's library id. */
 import {
   isLibraryId,
   LIBRARY_APP_NAME,
@@ -21,6 +25,8 @@ import {
 } from "./photo-library-contract.ts";
 
 export const PHOTOS_VIEW_CAPABILITY = "photos.view.v1";
+/** photos_album_create / photos_share may target the item open in the viewer (`selected`). */
+export const PHOTOS_SELECTED_CAPABILITY = "photos.view-selected.v1";
 /** Album keys photos_filter accepts besides a custom album id ("custom:<id>"). */
 export const PHOTOS_FILTER_ALBUMS = [
   "favorites",
@@ -48,8 +54,14 @@ export type PhotosViewOperation =
       text?: string;
     }
   | { type: "photos_open"; id: string }
-  | { type: "photos_album_create"; name: string; ids: string[] }
-  | { type: "photos_share"; ids: string[] };
+  /** With `selected`, `ids` is empty and the target is the item open in the viewer. */
+  | {
+      type: "photos_album_create";
+      name: string;
+      ids: string[];
+      selected?: true;
+    }
+  | { type: "photos_share"; ids: string[]; selected?: true };
 export type PhotosViewType = PhotosViewOperation["type"];
 
 export const PHOTOS_VIEW_TYPES: readonly PhotosViewType[] = [
@@ -74,6 +86,22 @@ export function isPhotosViewOperation(
     !!value &&
     typeof value === "object" &&
     isPhotosViewType((value as { type?: unknown }).type)
+  );
+}
+/** The items an album or share names: its library ids, or the one open item. */
+function targetCount(op: { ids: string[]; selected?: true }): number {
+  return op.selected ? 1 : op.ids.length;
+}
+/** A `selected` target is never sent to a phone that did not negotiate
+ * `photos.view-selected.v1`; every other form needs only the view capability. */
+export function photosViewFormSupported(
+  op: PhotosViewOperation,
+  capabilities?: readonly string[],
+): boolean {
+  return (
+    photosViewCapabilityAvailable(capabilities) &&
+    (!("selected" in op && op.selected) ||
+      capabilities?.includes(PHOTOS_SELECTED_CAPABILITY) === true)
   );
 }
 /** Both the library and the view capability must have been negotiated. */
@@ -106,6 +134,23 @@ function libraryIds(value: unknown, max: number, message: string): string[] {
   )
     throw Error(message);
   return [...value] as string[];
+}
+/** Library ids, or `selected: true` in their place (exactly one of the two). The validated
+ * open-item form carries `ids: []`, so an empty list is accepted beside `selected` and a stored or
+ * relayed operation validates again unchanged; any library id beside it is refused. */
+function targets(
+  op: Bag,
+  max: number,
+  message: string,
+): { ids: string[]; selected?: true } {
+  if (op.selected === undefined)
+    return { ids: libraryIds(op.ids, max, message) };
+  if (
+    op.selected !== true ||
+    (op.ids !== undefined && !(Array.isArray(op.ids) && op.ids.length === 0))
+  )
+    throw Error(message);
+  return { ids: [], selected: true };
 }
 
 export function validatePhotosViewOperation(
@@ -169,7 +214,7 @@ export function validatePhotosViewOperation(
     return { type: "photos_open", id: op.id };
   }
   if (op.type === "photos_album_create") {
-    allowed(["type", "name", "ids"]);
+    allowed(["type", "name", "ids", "selected"]);
     if (
       typeof op.name !== "string" ||
       op.name.trim().length < 1 ||
@@ -180,14 +225,14 @@ export function validatePhotosViewOperation(
     return {
       type: "photos_album_create",
       name: op.name.trim(),
-      ids: libraryIds(op.ids, LIBRARY_LIMITS.kept, "Invalid album items"),
+      ...targets(op, LIBRARY_LIMITS.kept, "Invalid album items"),
     };
   }
   if (op.type === "photos_share") {
-    allowed(["type", "ids"]);
+    allowed(["type", "ids", "selected"]);
     return {
       type: "photos_share",
-      ids: libraryIds(op.ids, PHOTOS_SHARE_MAX, "Invalid share items"),
+      ...targets(op, PHOTOS_SHARE_MAX, "Invalid share items"),
     };
   }
   throw Error("Unsupported Photos operation");
@@ -238,10 +283,12 @@ export function describePhotosViewOperation(
   if (op.type === "photos_album_create")
     return {
       title: `Create album ${quoted(op.name)}`,
-      description: items(op.ids.length),
+      description: op.selected ? "The open item" : items(op.ids.length),
     };
   return {
-    title: `Share ${items(op.ids.length)}`,
+    title: op.selected
+      ? "Share the open item"
+      : `Share ${items(op.ids.length)}`,
     description: "Android share sheet",
   };
 }
@@ -298,7 +345,7 @@ export function validatePhotosViewResult(
     row.status !== "review_opened" ||
     !count(row.count, 1) ||
     !count(row.missing, 0) ||
-    (row.count as number) + (row.missing as number) !== op.ids.length
+    (row.count as number) + (row.missing as number) !== targetCount(op)
   )
     throw Error(
       op.type === "photos_share"

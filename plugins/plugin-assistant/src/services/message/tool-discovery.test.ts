@@ -134,9 +134,13 @@ describe("canonical discovery surface", () => {
     const forward = await load(["LEDGER_CREATE", "LEDGER"]);
     const reverse = await load(["LEDGER", "LEDGER_CREATE"]);
     expect(JSON.stringify(forward)).toBe(JSON.stringify(reverse));
-    expect(forward.map((tool) => tool.name)).toEqual(
-      [...forward.map((tool) => tool.name)].sort(),
-    );
+    expect(forward.map((tool) => tool.name)).toEqual([
+      "IGNORE",
+      "STOP",
+      "LEDGER",
+      "LEDGER_CREATE",
+      "REPLY",
+    ]);
     expect(
       forward.find((tool) => tool.name === "LEDGER_CREATE")?.parameters
         .properties?.action.enum,
@@ -1026,10 +1030,10 @@ describe("planner tool discovery", () => {
     const tools = collectPlannerTools(context, initial);
     expect(tools.map((tool) => tool.name)).toEqual([
       "IGNORE",
-      "NOTES_LIST",
-      "REPLY",
       "STOP",
+      "NOTES_LIST",
       "VIEWS_SHOW",
+      "REPLY",
     ]);
     expect(tools.every((tool) => tool.strict === true)).toBe(true);
     const before = structuredClone(tools);

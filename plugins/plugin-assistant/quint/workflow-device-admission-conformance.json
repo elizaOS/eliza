@@ -19,7 +19,8 @@
         "device Notes/Calendar admission treats a reminder selection in Calendar as no Calendar selection",
         "device Notes/Calendar admission treats a clock-draft selection in Calendar as no Calendar selection",
         "device Notes/Calendar admission keeps a malformed Calendar selection unavailable",
-        "device Notes/Calendar admission leaves a new event to the canonical CALENDAR action unless a phone calendar is selected"
+        "device Notes/Calendar admission leaves a new event to the canonical CALENDAR action unless a phone calendar is selected",
+        "device Notes/Calendar admission keeps a v617 create from Contacts on the canonical Calendar"
       ]
     },
     {
@@ -127,6 +128,7 @@
         "shared phone and reminder-read parity refuses a telephony result that contradicts the reviewed operation or its status",
         "shared phone and reminder-read parity uploads a settled telephony refusal with its typed result",
         "shared phone and reminder-read parity places a reply draft without a review only for the requesting message",
+        "shared phone and reminder-read parity opens the keypad without a review only for the requesting message and never calls",
         "shared phone and reminder-read parity leaves a contact SMS with an unknown outcome unresolved and never sends it again",
         "shared phone and reminder-read parity retains uncertain contact writes across receipt recovery without repeating or guessing",
         "shared phone and reminder-read parity does not reconcile a lost call result from the owner's guess",
@@ -145,8 +147,15 @@
         "opt-in current telephony request policy keeps voicemail_read_selected bound to the first reviewed selection and screen revision",
         "opt-in current telephony request policy keeps voicemail_delete_selected bound to the first reviewed selection and screen revision",
         "opt-in current telephony request policy keeps contact_read_selected bound to the first reviewed selection and screen revision",
+        "a requested photo on the phone keeps the card for a capture \"don't take a photo\" never asked for",
+        "a requested photo on the phone keeps the card for a capture \"summarize the page I have open\" never asked for",
+        "a requested photo on the phone keeps the card for a capture \"did you take a photo?\" never asked for",
+        "a requested photo on the phone keeps the card when the host passes no proof of the owner's words",
+        "a requested photo on the phone takes one photo for \"take a photo\" however many captures were bound",
+        "a requested photo on the phone takes one photo for \"can you take a selfie?\" however many captures were bound",
         "browser control operations refuses a Browser control the phone did not negotiate",
         "browser control operations runs search, tab, find and history controls directly for the requesting message and shows Browser",
+        "browser control operations describes a new tab to the owner without tool names",
         "browser control operations always reviews closing a tab",
         "browser control operations searches without a review only when the whole current message is that search",
         "browser control operations is not reviewed on a locked phone"

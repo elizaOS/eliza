@@ -6,6 +6,7 @@ import {
 import {
   type Action,
   type ActionResult,
+  extractUserText,
   getStreamingContext,
   hasRoleAccess,
   type IAgentRuntime,
@@ -13,8 +14,20 @@ import {
   type Memory,
   normalizeEffectReceipt,
   stringToUuid,
+  unwrapUserMessageText,
 } from "@elizaos/core";
-import { calendarRangeFitsLocalDays } from "../internal/time.js";
+import {
+  ELIZA_CALENDAR_GRANT_ID,
+  ELIZA_CALENDAR_ID,
+} from "../internal/eliza-calendar.js";
+import { parseExplicitLocalDate } from "../internal/request-time.js";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  calendarRangeFitsLocalDays,
+  getZonedDateParts,
+} from "../internal/time.js";
+import { boundCalendarReadSource } from "../search-filter-evidence.js";
 import { evaluateCalendarAvailability } from "../service/availability.js";
 import {
   feedSourcesForAvailability,
@@ -31,6 +44,38 @@ function unavailable(code: string, text: string): ActionResult {
     text,
     data: { code, definitive: false },
   };
+}
+
+/**
+ * True when the owner's request names tomorrow morning and no other period
+ * or afternoon/evening clock time, whatever the phrasing ("Am I free tomorrow
+ * morning?", "Do I have 20 minutes tomorrow morning?"). A request that also
+ * names another period ("tomorrow morning or afternoon") is not clamped.
+ */
+export function asksOnlyAboutTomorrowMorning(
+  request: string,
+  timeZone = "UTC",
+  requestTime?: Date,
+): boolean {
+  const morning = /\btomorrow\s+morning\b/i;
+  const remainder = request.replace(morning, "");
+  if (
+    request === remainder ||
+    /\b(?:after|before|except|not)\s+tomorrow\s+morning\b/i.test(request)
+  )
+    return false;
+  // A noon end bound is still inside the morning. A separate noon option is not.
+  const otherPeriods = remainder.replace(
+    /\b(?:until|through|to|by|before)\s+(?:noon|midday|12(?::00)?\s*p\.?\s*m)\b/gi,
+    "",
+  );
+  return (
+    !parseExplicitLocalDate(remainder, timeZone, requestTime) &&
+    !/\b(?:morning|afternoon|evening|tonight|night|noon|midday|lunch(?:time)?|all\s+day|whole\s+day|full\s+day|rest\s+of\s+the\s+day|week)\b/i.test(
+      otherPeriods,
+    ) &&
+    !/\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*p\.?\s*m\b/i.test(otherPeriods)
+  );
 }
 
 /** Compute availability from the standalone Calendar's exact owner-bound feed. */
@@ -50,8 +95,8 @@ export function calendarAvailabilityActions(
       name: CALENDAR_READ_ACTIONS[operation],
       similes: [],
       description: propose
-        ? "Find concrete slots of the requested duration in the exact Calendar window. Use for a request for free time or suggested times. Does not book or edit anything."
-        : "Check whether the entire specified Calendar interval is free. Does not book or edit anything.",
+        ? "Find concrete slots of the requested duration in the exact Calendar window. Use when the owner asks if there is time for a duration within a longer period, such as 20 minutes tomorrow morning. Keep the search within the requested period and give an actual returned slot. Does not book or edit anything."
+        : "Check whether the entire specified Calendar interval is free. Use CALENDAR_PROPOSE_TIMES when the owner asks for a shorter slot within that interval. Does not book or edit anything.",
       contexts: ["calendar", "scheduling"],
       tags: ["domain:calendar", "capability:read", "effect:receipt-required"],
       roleGate: { minRole: "OWNER" },
@@ -65,7 +110,8 @@ export function calendarAvailabilityActions(
         },
         {
           name: "windowEnd",
-          description: "Requested end, RFC 3339 with explicit offset.",
+          description:
+            "Requested end, RFC 3339 with explicit offset. A morning-only request ends no later than noon in the requested timezone.",
           required: true,
           schema: { type: "string" },
         },
@@ -78,7 +124,7 @@ export function calendarAvailabilityActions(
         {
           name: "grantId",
           description:
-            "Exact connected grant from CALENDAR_SOURCES when the user named a source. Pair with calendarId.",
+            "For built-in Calendar use eliza-calendar and primary. For a connected calendar, use its exact grant and calendar IDs from CALENDAR_SOURCES.",
           schema: { type: "string" },
         },
         {
@@ -128,15 +174,39 @@ export function calendarAvailabilityActions(
           grantId,
           calendarId,
         } = isObjectRecord(params) ? params : {};
-        const selectedSource =
+        const requestedSource =
           typeof grantId === "string" &&
           grantId.trim() &&
           typeof calendarId === "string" &&
           calendarId.trim()
             ? { grantId, calendarId }
             : undefined;
+        const scope = boundCalendarReadSource(
+          getStreamingContext()?.actionConstraints,
+          message,
+          String(runtime.agentId),
+          operation,
+        );
         if (
-          (grantId !== undefined || calendarId !== undefined) &&
+          scope === "builtin" &&
+          grantId !== undefined &&
+          grantId !== ELIZA_CALENDAR_GRANT_ID
+        )
+          return unavailable(
+            "CALENDAR_SOURCE_CONFLICT",
+            "The selected source disagrees with the requested built-in Calendar.",
+          );
+        const selectedSource =
+          scope === "builtin" || grantId === ELIZA_CALENDAR_GRANT_ID
+            ? {
+                grantId: ELIZA_CALENDAR_GRANT_ID,
+                calendarId: ELIZA_CALENDAR_ID,
+              }
+            : requestedSource;
+        if (
+          (scope === "explicit" ||
+            grantId !== undefined ||
+            calendarId !== undefined) &&
           !selectedSource
         )
           return unavailable(
@@ -161,6 +231,7 @@ export function calendarAvailabilityActions(
           );
         if (
           !message.id ||
+          typeof message.createdAt !== "number" ||
           !Number.isFinite(message.createdAt) ||
           !calendar.handler
         )
@@ -173,6 +244,39 @@ export function calendarAvailabilityActions(
           start: new Date(windowStart).toISOString(),
           end: new Date(windowEnd).toISOString(),
         };
+        const requestTime = new Date(message.createdAt);
+        if (
+          asksOnlyAboutTomorrowMorning(
+            extractUserText(unwrapUserMessageText(message)),
+            timeZone,
+            requestTime,
+          )
+        ) {
+          const tomorrow = addDaysToLocalDate(
+            getZonedDateParts(requestTime, timeZone),
+            1,
+          );
+          const midnight = buildUtcDateFromLocalParts(timeZone, {
+            ...tomorrow,
+            hour: 0,
+            minute: 0,
+            second: 0,
+          });
+          const noon = buildUtcDateFromLocalParts(timeZone, {
+            ...tomorrow,
+            hour: 12,
+            minute: 0,
+            second: 0,
+          });
+          if (
+            Date.parse(range.start) < midnight.getTime() ||
+            Date.parse(range.end) > noon.getTime()
+          )
+            return unavailable(
+              "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD",
+              "The owner asked about tomorrow morning. Keep the search on tomorrow's date and end it by noon in the requested timezone. For a shorter slot within the morning, use CALENDAR_PROPOSE_TIMES.",
+            );
+        }
         signal?.throwIfAborted();
         const read = await calendar.handler(runtime, message, state, {
           ...options,
@@ -244,6 +348,39 @@ export function calendarAvailabilityActions(
           resource: receipt.resource,
           observedAt: receipt.observedAt,
         };
+        const slots =
+          propose && typeof durationMinutes === "number"
+            ? findCalendarFreeSlots({
+                range,
+                timeZone,
+                sources,
+                durationMs: durationMinutes * 60_000,
+              }).map((slot) => ({
+                startAt: slot.start,
+                endAt: slot.end,
+                durationMinutes,
+                timeZone,
+              }))
+            : undefined;
+        let slotReply: string | undefined;
+        if (slots?.length) {
+          const formatter = new Intl.DateTimeFormat("en-US", {
+            timeZone,
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            timeZoneName: "short",
+          });
+          slotReply = new Intl.ListFormat("en-US", {
+            type: "conjunction",
+          }).format(
+            slots.map(({ startAt, endAt }) =>
+              formatter.formatRange(new Date(startAt), new Date(endAt)),
+            ),
+          );
+        }
         const effect = {
           ...snapshot,
           receiptId: stringToUuid(
@@ -280,22 +417,21 @@ export function calendarAvailabilityActions(
             windowStart: range.start,
             windowEnd: range.end,
             timeZone,
-            ...(propose && typeof durationMinutes === "number"
+            ...(slots
               ? {
                   durationMinutes,
                   availabilityEvidence:
                     "Slots are quarter-hour-aligned suggestions from this exact snapshot. An empty list does not rule out an off-grid time.",
-                  slots: findCalendarFreeSlots({
-                    range,
-                    timeZone,
-                    sources,
-                    durationMs: durationMinutes * 60_000,
-                  }).map((slot) => ({
-                    startAt: slot.start,
-                    endAt: slot.end,
-                    durationMinutes,
-                    timeZone,
-                  })),
+                  slots,
+                  ...(slotReply
+                    ? {
+                        replyContext: {
+                          domain: "calendar",
+                          scenario: "propose_times",
+                          userFacingFacts: `I found these ${durationMinutes}-minute openings. ${slotReply}.`,
+                        },
+                      }
+                    : {}),
                 }
               : {
                   isFree: evaluation.conflicts.length === 0,

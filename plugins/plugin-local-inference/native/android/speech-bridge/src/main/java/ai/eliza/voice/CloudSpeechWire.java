@@ -39,5 +39,6 @@ final class CloudSpeechWire {
   if(next<=current||next>now+MAX_WINDOW_MS)throw new IllegalArgumentException("Invalid renewal");
   return next;
  }
+ static long millis(long pcmBytes){return pcmBytes/2*1000/RATE;}
  static double peak(byte[] pcm,int size){double peak=0;for(int i=0;i+1<size;i+=2){int sample=(short)((pcm[i]&255)|(pcm[i+1]<<8));peak=Math.max(peak,Math.abs(sample)/32768.0);}return Math.min(1,peak);}
 }
