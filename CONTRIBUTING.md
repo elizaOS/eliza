@@ -196,6 +196,13 @@ loads the pipeline, and hands its directory to every process a check starts,
 so each `spec` process, Studio's checks, Turborepo's tasks and the tests and
 drivers they run included, compiles only the code that changed.
 
+An integration that checks disposable project directories can wrap those
+commands in `withFormalCache(directory, run)` from `vibestack/cache.ts`.
+Use a persistent directory that is writable only by trusted runs. It holds
+the completed Quint, LemmaScript, and Dafny actions, keyed by the installed
+tools and their inputs. The project directory holds its lock, generated files,
+and stage results. An acceptance or nightly check always reads fresh inputs.
+
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
 to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3
 and their runtime files before Turbo hashes its inputs. What it reads of an
@@ -210,8 +217,9 @@ again during the run. The template install generates locally with `gen --if-vali
 remaining checks runnable and is retried by verification. Generated stories,
 browser build artifacts, compiler declarations and successful test receipts
 are restored with their owning task. `check` is never skipped whole: its
-`driver:` programs run the real application in `traces` every time. Standalone examples install and check
-separately, outside the workspace cache.
+`driver:` programs run the real application in `traces` every time. Standalone examples install and check separately. The selftest keeps a complete passing run for each example
+under its own inputs and the shared toolchain and sources. After an edit to one example, the other examples
+can reuse their passing runs. Use `pnpm selftest:examples` to run every install and check directly.
 
 A complete passing Vitest run records its input fingerprint. `check` reuses
 that result only while its source, generated core, transitive workspace

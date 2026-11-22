@@ -285,7 +285,9 @@
         "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
         "package.json"
       ],
-      "outputs": [],
+      "outputs": [
+        "vibestack/examples/*/.spec-cache/tests-*.json.{gz,zst}"
+      ],
       "env": [
         "VIBESTACK_QUINT_EVALUATOR"
       ]
