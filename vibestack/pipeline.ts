@@ -726,7 +726,7 @@ export async function main() {
   try {
     if (Number(process.versions.node.split(".")[0]) < NODE) throw new Error(`spec needs Node ${NODE} or later; this is Node ${process.versions.node}`);
     if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {
-      await generateOwner(args[2] === undefined ? root : projectRoot(args[2]), args[1]);
+      await steady(() => generateOwner(args[2] === undefined ? root : projectRoot(args[2]), args[1]));
       return;
     }
     const options: Record<string, string[]> = { check: ["--json", "--nightly"], gen: ["--if-valid"], accept: ["unproved"], watch: [], init: [] };
