@@ -193,11 +193,23 @@ export function typecheckAll(memory: Memory, specs: Spec[], output = memory.root
   for (const spec of specs) put(output, path.join(dir, `${spec.name}.qnt`), spec.qnt, staged);
   return new Map(specs.map((spec) => {
     const ir = (async () => {
+      let decoded: any;
+      const readIr = (text?: string) => {
+        try { return text === undefined ? undefined : JSON.parse(text); } catch { return undefined; }
+      };
+      const cacheValue = (value: unknown) => {
+        if (!value || typeof value !== "object" || !("ok" in value) || value.ok !== true || !("files" in value) ||
+            !value.files || typeof value.files !== "object" || !("ir.json" in value.files) || typeof value.files["ir.json"] !== "string") return value;
+        decoded = readIr(value.files["ir.json"]);
+        if (!Array.isArray(decoded?.modules) || !decoded.types || decoded.errors?.length) return value;
+        const { modules, types } = decoded;
+        decoded = { modules, types };
+        return { ...value, files: { ...value.files, "ir.json": JSON.stringify(decoded) } };
+      };
       const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "vibestack-typecheck-"));
-      const typed = await act(memory, "quint", ["typecheck", "--out", "ir.json", `${spec.name}.qnt`], scratch, modules(spec, specs))
+      const typed = await act({ ...memory, cacheValue }, "quint", ["typecheck", "--out", "ir.json", `${spec.name}.qnt`], scratch, modules(spec, specs))
         .finally(() => fs.rmSync(scratch, { recursive: true, force: true }));
-      let ir: any;
-      try { ir = JSON.parse(typed.files["ir.json"]); } catch { ir = undefined; }
+      const ir = decoded ?? readIr(typed.files["ir.json"]);
       if (!typed.ok || !ir || ir.errors?.length) throw typeErrors(spec, ir, typed.out, specs);
       return { modules: ir.modules, types: ir.types };
     })();

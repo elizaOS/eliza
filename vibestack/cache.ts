@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { gunzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
-import { filesUnder, sha, tokenize, writeWhole } from "./util.ts";
+import { sha, tokenize, writeWhole } from "./util.ts";
 import { evaluatorIdentity, packageLocation, packageRoots } from "./installed.ts";
 import { NEEDS_DAFNY, findBin, exec, onPath, stamp } from "./run.ts";
 
@@ -75,7 +75,10 @@ export function executableDigest(file: string): string {
   return value ?? keep(createHash("sha256").update(fs.readFileSync(file)).digest("hex"));
 }
 
-const treeFiles = (directory: string) => filesUnder(directory, ".").filter((file) => fs.statSync(path.join(directory, file)).isFile());
+const treeFiles = (directory: string) => fs.readdirSync(directory, { recursive: true, withFileTypes: true })
+  .filter((entry) => entry.isFile() || (entry.isSymbolicLink() && fs.statSync(path.join(entry.parentPath, entry.name)).isFile()))
+  .map((entry) => path.relative(directory, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"))
+  .sort();
 /** Runtime files are keyed by relative name and bytes, never their installation directory. */
 const treeDigest = (directory: string) => sha(...treeFiles(directory).map((file) => `${file}\0${executableDigest(path.join(directory, file))}`));
 
@@ -626,7 +629,7 @@ async function toolchainId(root: string, stage: Stage): Promise<string | undefin
 }
 
 /** The remembered results of one check: whether it may read them, and every entry it read or wrote. */
-export interface Memory { root: string; fresh: boolean; used: Set<string> }
+export interface Memory { root: string; fresh: boolean; used: Set<string>; cacheValue?: (value: unknown) => unknown }
 /** An entry of `.spec-cache`: JSON, compressed, since a run of the simulator says megabytes. */
 interface Entry { name: string; file: string; reusable: boolean; evaluator?: string }
 const formats = [["zst", zstdDecompressSync], ["gz", gunzipSync]] as const;
@@ -690,7 +693,7 @@ export function store(memory: Memory, { name, file, evaluator, reusable }: Entry
   if (unsure || check?.changed || check?.closed || !reusable) return;
   if (evaluator !== undefined && !stableInstallation(evaluatorIdentity(memory.root) === evaluator)) return;
   if (action && !check && !action.program.unchanged()) return;
-  const bytes = zstdCompressSync(JSON.stringify(value));
+  const bytes = zstdCompressSync(JSON.stringify(memory.cacheValue ? memory.cacheValue(value) : value));
   sharedCache(name)?.used.add(name);
   if (action) check?.verify.add(action.program);
   else if (check) includePrograms(check);
