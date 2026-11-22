@@ -41,6 +41,13 @@ const terminals = CORE_PLANNER_TERMINALS.map((tool) => tool.name);
 // reply may be released with no text), so it follows every other tool.
 const steady = terminals.filter((name) => name !== "REPLY");
 const head = [...steady, DISCOVER_ACTIONS_NAME, proposeDeviceAction.name];
+// The planner adds RESTORE_CONTEXT, one definition on every request, after discovery.
+const sentHead = [
+  ...steady,
+  DISCOVER_ACTIONS_NAME,
+  "RESTORE_CONTEXT",
+  proposeDeviceAction.name,
+];
 
 function contextFor(actions: readonly Action[]): ContextObject {
   return {
@@ -187,9 +194,10 @@ describe("planner tool wire order", () => {
     const sent = await sentTools(
       toolsFor([calendar, singleOperation, discovery, proposeDeviceAction]),
     );
-    expect(names(sent).slice(0, head.length)).toEqual(head);
-    expect(JSON.stringify(sent.slice(0, head.length))).toBe(
-      JSON.stringify(alone.slice(0, head.length)),
+    expect(names(sent).slice(0, sentHead.length)).toEqual(sentHead);
+    expect(names(sent).at(-1)).toBe("REPLY");
+    expect(JSON.stringify(sent.slice(0, sentHead.length))).toBe(
+      JSON.stringify(alone.slice(0, sentHead.length)),
     );
     // The repeated description is stated on the head tool, so the per-request
     // tool is the one that refers to it.

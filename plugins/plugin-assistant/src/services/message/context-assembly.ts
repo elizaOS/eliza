@@ -406,7 +406,7 @@ export async function createV5MessageContextObject(args: {
             "clock_alarm",
             authenticatedDeviceTurn.credential.capabilities,
           )
-            ? "Eliza-owned alarms are available. Read CurrentElizaOwnedAlarmSnapshot through READ_CONTEXT before listing alarms or choosing alarm parameters; planning can restore provider context. The declared device tool creates a proposal, not a completed alarm. Native owner approval and a typed receipt remain required. "
+            ? "Eliza-owned alarms are available. Read CurrentElizaOwnedAlarmSnapshot through READ_CONTEXT before listing alarms or choosing alarm parameters. The declared device tool creates a proposal, not a completed alarm. Native owner approval and a typed receipt remain required. "
             : "") +
           (deviceOperationSupportedByCapabilities(
             "clock_handoff",
