@@ -21,6 +21,7 @@ package ai.eliza.plugins.wifi
 internal class ApprovedJoinTracker(
     private val requestedSsid: String,
     private val secured: Boolean = false,
+    private val alreadySaved: Boolean = false,
 ) {
     private var sawUnidentified = false
 
@@ -45,16 +46,21 @@ internal class ApprovedJoinTracker(
      *
      * @return `wrongPassword` for a secured request, or null to keep waiting.
      */
-    fun authenticationFailed(): String? = if (secured) STATUS_WRONG_PASSWORD else null
+    fun authenticationFailed(): String? = if (secured && !alreadySaved) STATUS_WRONG_PASSWORD else null
 
     /** The status when no network matching [requestedSsid] was confirmed in time. */
-    fun timeoutStatus(): String = if (sawUnidentified) STATUS_UNVERIFIED else STATUS_NOT_CONNECTED
+    fun timeoutStatus(): String = when {
+        alreadySaved -> STATUS_SAVED_NETWORK
+        sawUnidentified -> STATUS_UNVERIFIED
+        else -> STATUS_NOT_CONNECTED
+    }
 
     companion object {
         const val STATUS_CONNECTED = "connected"
         const val STATUS_CAPTIVE_PORTAL = "captivePortal"
         const val STATUS_UNVERIFIED = "unverified"
         const val STATUS_NOT_CONNECTED = "notConnected"
+        const val STATUS_SAVED_NETWORK = "savedNetwork"
         const val STATUS_DECLINED = "declined"
         const val STATUS_WRONG_PASSWORD = "wrongPassword"
     }

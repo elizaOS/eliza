@@ -93,16 +93,17 @@ with no security named, a passphrase means WPA2 and none means open. The
 passphrase goes from the masked field to Android's "Save this network?"
 dialog and is removed from the saved bridge call; the join keeps only whether
 there was one. The dialog needs Android 11 or later (the call's feature).
-Android's answer is saved (success, already saved or no per-network code),
-declined (the owner closed the dialog) or not saved (any other code).
+Android's answer is saved (success or no per-network code), already saved
+(the requested configuration already exists), declined (the owner closed the
+dialog) or not saved (any other code).
 
 ```quint
 type SecurityAsk = NamedSecurity({ named: WifiSecurity }) | ByPassphrase
 type JoinAsk = { network: str, nameBytes: int, securityAsk: SecurityAsk, passphraseLength: int, printable: bool }
-type SaveAnswer = SaveAccepted | SaveDeclined | SaveNotDone
-type JoinStatus = Connected | CaptivePortal | Declined | Unverified | NotConnected | WrongPassword
+type SaveAnswer = SaveAccepted | SaveAlreadyExists | SaveDeclined | SaveNotDone
+type JoinStatus = Connected | CaptivePortal | Declined | Unverified | NotConnected | WrongPassword | SavedNetwork
 type JoinRefusal = JoinUnsupported | JoinInvalid | JoinNotSaved
-type JoinPhase = JoinIdle | AwaitingApproval | Watching | JoinAnswered({ status: JoinStatus }) | JoinRefused({ refusal: JoinRefusal })
+type JoinPhase = JoinIdle | AwaitingApproval | Watching | CheckingSaved | JoinAnswered({ status: JoinStatus }) | JoinRefused({ refusal: JoinRefusal })
 type WifiJoin = { phase: JoinPhase, network: str, secured: bool, sawWithheld: bool }
 pure val initial: WifiJoin = { phase: JoinIdle, network: "", secured: false, sawWithheld: false }
 pure val joinCall: BridgeCall = { need: Anytime, needsGrant: false, needsFeature: true }
@@ -117,7 +118,7 @@ pure def passphraseFits(security: WifiSecurity, characters: int, printable: bool
   else false
 pure def joinAskValid(joinAsk: JoinAsk): bool =
   joinAsk.network != "" and joinAsk.nameBytes >= 1 and joinAsk.nameBytes <= 32 and passphraseFits(joinSecurity(joinAsk), joinAsk.passphraseLength, joinAsk.printable)
-pure def waitsOnAndroid(phase: JoinPhase): bool = phase == AwaitingApproval or phase == Watching
+pure def waitsOnAndroid(phase: JoinPhase): bool = phase == AwaitingApproval or phase == Watching or phase == CheckingSaved
 pure def canRequestJoin(s: WifiJoin): bool = not(waitsOnAndroid(s.phase))
 pure def requestJoin(s: WifiJoin, presence: PluginPresence, facts: HostFacts, joinAsk: JoinAsk): WifiJoin =
   if (admitCall(presence, joinCall, facts) != CallAdmitted) { ...initial, phase: JoinRefused({ refusal: JoinUnsupported }) }
@@ -126,6 +127,7 @@ pure def requestJoin(s: WifiJoin, presence: PluginPresence, facts: HostFacts, jo
 pure def canAnswerSave(s: WifiJoin): bool = s.phase == AwaitingApproval
 pure def answerSave(s: WifiJoin, saveAnswer: SaveAnswer): WifiJoin =
   if (saveAnswer == SaveAccepted) { ...s, phase: Watching }
+  else if (saveAnswer == SaveAlreadyExists) { ...s, phase: CheckingSaved }
   else if (saveAnswer == SaveDeclined) { ...s, phase: JoinAnswered({ status: Declined }) }
   else { ...s, phase: JoinRefused({ refusal: JoinNotSaved }) }
 pure val joinAskValues = Set(
@@ -169,7 +171,7 @@ pure def joinEvidence(requested: str, seen: NetworkReport): WifiJoinEvidence =
   else if (requested == "" or seen.reportedName != requested) OtherWifi
   else if (seen.validated) NamedWifiValidated else NamedWifiPortal
 pure def confirmsJoin(evidence: WifiJoinEvidence): bool = approvedWifiJoinConnected(true, evidence) or approvedWifiJoinNeedsPortal(true, evidence)
-pure def canObserveNetwork(s: WifiJoin): bool = s.phase == Watching
+pure def canObserveNetwork(s: WifiJoin): bool = s.phase == Watching or s.phase == CheckingSaved
 pure def observeNetwork(s: WifiJoin, seen: NetworkReport): WifiJoin = {
   val evidence = joinEvidence(s.network, seen)
   if (approvedWifiJoinConnected(true, evidence)) { ...s, phase: JoinAnswered({ status: Connected }) }
@@ -192,16 +194,20 @@ pure def sometimesCaptivePortal(s: WifiJoin): bool = s.phase == JoinAnswered({ s
 
 ### Without a confirmation in 30 seconds the join is unverified or not connected, and a wrong password needs a passphrase
 
-At the deadline the join is `Unverified` when a working network with a
+After a fresh save, at the deadline the join is `Unverified` when a working network with a
 withheld name was reported, so it may be the requested one, and
 `NotConnected` otherwise. Android's authentication failure names no network,
 so it answers `WrongPassword` only for a join that carried a passphrase and is
 ignored otherwise; not every Android build sends it. An answer is final: only
-a new request starts another join.
+a new request starts another join. If Android reports the configuration
+already exists, the bridge gives current network reports one second to
+confirm the selected network or its sign-in page. Otherwise it returns
+`SavedNetwork` so the owner can select it in Android's Internet panel.
+An authentication error does not identify a saved network.
 
 ```quint
-pure def canReachDeadline(s: WifiJoin): bool = s.phase == Watching
-pure def reachDeadline(s: WifiJoin): WifiJoin = { ...s, phase: JoinAnswered({ status: if (s.sawWithheld) Unverified else NotConnected }) }
+pure def canReachDeadline(s: WifiJoin): bool = s.phase == Watching or s.phase == CheckingSaved
+pure def reachDeadline(s: WifiJoin): WifiJoin = { ...s, phase: JoinAnswered({ status: if (s.phase == CheckingSaved) SavedNetwork else if (s.sawWithheld) Unverified else NotConnected }) }
 pure def canObserveAuthFailure(s: WifiJoin): bool = s.phase == Watching
 pure def observeAuthFailure(s: WifiJoin): WifiJoin = if (s.secured) { ...s, phase: JoinAnswered({ status: WrongPassword }) } else s
 pure def alwaysTheDeadlineReportsWhatWasSeen(s: WifiJoin): bool =
@@ -211,6 +217,7 @@ pure def stepAnAnswerIsFinal(before: WifiJoin, via: str, after: WifiJoin): bool 
   not(waitsOnAndroid(before.phase) or before.phase == JoinIdle or via == "requestJoin") implies after == before
 pure def sometimesUnverified(s: WifiJoin): bool = s.phase == JoinAnswered({ status: Unverified })
 pure def sometimesNotConnected(s: WifiJoin): bool = s.phase == JoinAnswered({ status: NotConnected })
+pure def sometimesSavedNetwork(s: WifiJoin): bool = s.phase == JoinAnswered({ status: SavedNetwork })
 pure def sometimesWrongPassword(s: WifiJoin): bool = s.phase == JoinAnswered({ status: WrongPassword })
 ```
 
