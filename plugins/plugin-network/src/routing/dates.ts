@@ -89,13 +89,13 @@ const startOfDay = (now: Date) =>
 const addDays = (d: Date, n: number) => new Date(d.getTime() + n * 86_400_000);
 const monthIndex = (s: string) => MONTHS.indexOf(s.slice(0, 3).toLowerCase());
 
-/** Next calendar day (today excluded) with this day-of-month. */
+/** Next calendar day with this day-of-month, including today. */
 function nextDayOfMonth(n: number, today: Date): Date | null {
   if (n < 1 || n > 31) return null;
   for (let k = 0; k < 13; k++) {
     const m = today.getUTCMonth() + k;
     const d = day(today.getUTCFullYear(), m, n);
-    if (d.getUTCDate() === n && d > today) return d;
+    if (d.getUTCDate() === n && d >= today) return d;
   }
   return null;
 }
@@ -216,14 +216,13 @@ export function parseDateExpr(expr: string, now: Date): Date | null {
     // "Friday next week" names the Friday of the next calendar week. The bare
     // weekday branch resolved it to this week's Friday, ending the window six
     // days early; "next Friday" already resolved to that date.
-    if (/^,?\s+(?:of\s+)?next\s+week\b/.test(rest))
-      return nextWeekday(
-        WEEKDAYS.indexOf(m[8].slice(0, 3).toLowerCase()),
-        today,
-        true,
-      );
     const w = WEEKDAYS.indexOf(m[8].slice(0, 3).toLowerCase());
-    return nextWeekday(w, today, Boolean(m[7]));
+    const before = expr.slice(0, m.index);
+    const nextWeek =
+      Boolean(m[7]) ||
+      /(?:^|[\s,])next\s+week(?:['’]s)?,?\s*(?:on\s+)?$/i.test(before) ||
+      /^,?\s+(?:of\s+)?next\s+week\b/i.test(rest);
+    return nextWeekday(w, today, nextWeek);
   }
   if (m[9]) return nextMonthDay(monthIndex(m[9]), 1, today);
   if (m[10] && m[11]) {
