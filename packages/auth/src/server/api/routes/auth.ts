@@ -51,7 +51,16 @@ import { buildOAuthAppErrorReturn } from "./oauth-app-error-return";
 
 import { randomBytes } from "node:crypto";
 import { assertPublicHttpsEndpoint, ElizaError, logger } from "@elizaos/core";
-import { and, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
+import {
+  and,
+  arrayContains,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  sql,
+} from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { errors as joseErrors } from "jose";
 import { generateNonce, SiweMessage } from "siwe";
@@ -89,6 +98,7 @@ import {
   revocationStore,
   type StoredRecoveryCode,
   signIdentityJwtPayload,
+  supportsPinnedDnsTransport,
   type TelegramLoginPayload,
   uint8ArrayToBase64url,
   unusedRecoveryCodeCount,
@@ -107,6 +117,7 @@ import {
   getDb,
   hasTenantTransactionDatabase,
   refreshTokens,
+  tenantAppClients,
   tenantContextFromAuthenticatedPrincipal,
   tenantSamlAssertionReplays,
   tenantSamlAuthnRequests,
@@ -139,7 +150,7 @@ import {
   validateWalletAbusePolicy,
   verifyCaptchaToken,
 } from "../services/auth-abuse";
-import { verifySessionToken } from "../services/context";
+import { tenantAuth, verifySessionToken } from "../services/context";
 import { defaultAuthTenantId } from "../services/default-auth-tenant";
 import { verifyEip1271 } from "../services/eip1271";
 import {
@@ -4229,6 +4240,190 @@ auth.get("/providers", async (c) => {
     captcha: publicAuthAbuseConfig(authAbuseConfig).captcha,
   });
 });
+
+auth.post(
+  "/oauth/google/native/backup/:operation",
+  async (c, next) => {
+    if (
+      !c.get("serviceSignatureVerified") ||
+      !c.req.header("X-Steward-Key") ||
+      !isValidTenantId(c.req.header("X-Steward-Tenant")) ||
+      c.req.raw.headers.has("authorization") ||
+      c.req.raw.headers.has("origin") ||
+      c.req.raw.headers.has("cookie")
+    )
+      return c.json({ error: "service_approval_required" }, 401);
+    return tenantAuth(c, next);
+  },
+  async (c) => {
+    setAuthNoStoreHeaders(c);
+    const operation = c.req.param("operation");
+    if (!["registration", "verify", "current"].includes(operation))
+      return c.notFound();
+    const tenantId = c.get("tenantId");
+    if (
+      c.get("authType") !== "api-key" ||
+      !tenantId ||
+      tenantId !== c.req.header("X-Steward-Tenant")
+    )
+      return c.json({ error: "service_approval_required" }, 403);
+    const body = await safeJsonParse<Record<string, unknown>>(c);
+    const denied = () => c.json({ error: "native_approval_unavailable" }, 403);
+    if (!body) return denied();
+    const { packageName, environment, redirectUri } = body;
+    if (
+      typeof packageName !== "string" ||
+      normalizeNativePackageName(packageName) !== packageName ||
+      typeof redirectUri !== "string" ||
+      (environment !== "production" && environment !== "staging")
+    )
+      return denied();
+    const [app, duplicate] = await getDb()
+      .select({ id: tenantAppClients.id })
+      .from(tenantAppClients)
+      .where(
+        and(
+          eq(tenantAppClients.tenantId, tenantId),
+          eq(tenantAppClients.enabled, true),
+          eq(tenantAppClients.environment, environment),
+          arrayContains(tenantAppClients.allowedPackageNames, [packageName]),
+          arrayContains(tenantAppClients.allowedRedirectUrls, [redirectUri]),
+        ),
+      )
+      .limit(2);
+    if (
+      !app ||
+      duplicate ||
+      !getEnabledProviders().includes("google") ||
+      !supportsPinnedDnsTransport()
+    )
+      return denied();
+    if (
+      await requireTenantLoginMethodAllowed(
+        c,
+        tenantId,
+        "oauth",
+        "google",
+        app.id,
+      )
+    )
+      return denied();
+    const presenters = googleNativeClientIds(app.id);
+    const serverClientId = getProviderConfig("google").clientId;
+    if (!presenters.length || !serverClientId) return denied();
+    if (operation === "registration" && body.ownerId === undefined)
+      return c.json({ serverClientId });
+    const ownerId = body.ownerId;
+    if (
+      typeof ownerId !== "string" ||
+      !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(ownerId)
+    )
+      return denied();
+    const linked = await getDb()
+      .select({
+        subject: accounts.providerAccountId,
+        linkId: accounts.id,
+        membershipId: userTenants.id,
+        email: users.email,
+      })
+      .from(accounts)
+      .innerJoin(users, eq(accounts.userId, users.id))
+      .innerJoin(userTenants, eq(userTenants.userId, users.id))
+      .where(
+        and(
+          eq(users.id, ownerId),
+          eq(users.isGuest, false),
+          isNull(users.deactivatedAt),
+          eq(userTenants.tenantId, tenantId),
+          eq(accounts.provider, "google"),
+        ),
+      );
+    const owner = linked[0];
+    if (
+      !owner?.email ||
+      (await isSsoRequiredForEmailDomain(tenantId, owner.email)) ||
+      validateEmailAbusePolicy(
+        owner.email,
+        await getTenantAuthAbuseConfig(tenantId),
+      ) ||
+      (await hasTotpEnabled(ownerId)) ||
+      (await getSmsMfa(ownerId))
+    )
+      return denied();
+    const ownerBinding = hashSha256Hex(
+      JSON.stringify([
+        "native-password-backup-owner",
+        tenantId,
+        app.id,
+        packageName,
+        redirectUri,
+        environment,
+        serverClientId,
+        ownerId,
+        [...new Set(presenters)].sort(),
+        owner.membershipId,
+        linked.map((row) => JSON.stringify([row.linkId, row.subject])).sort(),
+      ]),
+    );
+    if (operation === "registration")
+      return c.json({ serverClientId, ownerBinding });
+    const binding = (subject: string, presenter: string) =>
+      hashSha256Hex(
+        JSON.stringify([
+          "native-password-backup-proof",
+          ownerBinding,
+          subject,
+          presenter,
+        ]),
+      );
+    if (operation === "current") {
+      if (
+        !linked.some(({ subject }) =>
+          presenters.some(
+            (presenter) => binding(subject, presenter) === body.proofBinding,
+          ),
+        )
+      )
+        return denied();
+      return c.json({ verified: true, serverClientId });
+    }
+    if (
+      body.ownerBinding !== ownerBinding ||
+      typeof body.idToken !== "string" ||
+      typeof body.nonce !== "string" ||
+      !/^[A-Za-z0-9_-]{43}$/.test(body.nonce)
+    )
+      return denied();
+    let identity: Awaited<ReturnType<typeof verifyGoogleNativeIdToken>>;
+    try {
+      identity = await verifyGoogleNativeIdToken(
+        body.idToken,
+        serverClientId,
+        presenters,
+        body.nonce,
+      );
+    } catch {
+      return denied();
+    }
+    if (
+      typeof identity.claims.azp !== "string" ||
+      !linked.some(({ subject }) => subject === identity.subject)
+    )
+      return denied();
+    const used = await markOidcIdTokenUsedOnce(
+      tenantId,
+      "google",
+      body.idToken,
+      identity.claims.exp,
+    );
+    if (!used.ok) return denied();
+    return c.json({
+      verified: true,
+      serverClientId,
+      proofBinding: binding(identity.subject, identity.claims.azp),
+    });
+  },
+);
 
 type GoogleNativeChallenge = {
   tenantId: string;
