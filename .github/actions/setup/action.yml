@@ -7,12 +7,15 @@ inputs:
   verification:
     description: Set up the tools pnpm verify needs beyond Node and pnpm.
     default: "true"
+  cache-verification:
+    description: Restore prior verification results. Nightly checks run fresh.
+    default: "true"
 outputs:
   spec-cache-path:
     description: What the spec cache holds, for the step that saves it at the end of a job.
     value: ${{ steps.spec-cache.outputs.path }}
   spec-cache-key:
-    description: The key to save the spec cache under, unique to this run attempt; empty without verification.
+    description: The key to save the spec cache under, unique to this run attempt and present when verification results are restored.
     value: ${{ steps.spec-cache.outputs.key }}
   turbo-cache-key:
     description: The key for Turborepo's local cache on pull requests and local-only branch pushes, unique to this run attempt.
@@ -43,7 +46,7 @@ runs:
     # that holds the same paths: a selftest-* job holds the selftest's tool runs, which no other job adds to, and any
     # other job the spec caches of the projects, which no selftest-* job checks.
     - id: spec-cache
-      if: inputs.verification == 'true'
+      if: inputs.verification == 'true' && inputs.cache-verification == 'true'
       shell: bash
       env:
         JOB: ${{ inputs.job }}
@@ -64,7 +67,7 @@ runs:
           echo '~/.quint'
           echo "EOF"
         } >> "$GITHUB_OUTPUT"
-    - if: inputs.verification == 'true'
+    - if: steps.spec-cache.outputs.key != ''
       uses: actions/cache/restore@v6
       with:
         path: ${{ steps.spec-cache.outputs.path }}
@@ -86,19 +89,38 @@ runs:
           turbo-${{ runner.os }}-${{ runner.arch }}-
     - run: pnpm install --frozen-lockfile
       shell: bash
+    - name: Read the pinned Quint evaluator version
+      id: quint-evaluator
+      if: inputs.verification == 'true'
+      shell: bash
+      run: |
+        version=$(node -p "require('@informalsystems/quint/dist/src/rust/binaryManager.js').QUINT_EVALUATOR_VERSION")
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+    - id: quint-cache
+      if: inputs.verification == 'true' && inputs.cache-verification == 'false'
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/.quint/rust-evaluator-${{ steps.quint-evaluator.outputs.version }}
+        key: quint-evaluator-${{ runner.os }}-${{ runner.arch }}-${{ steps.quint-evaluator.outputs.version }}
     # Quint's first-run downloader uses the unauthenticated GitHub API.
     # Fetch its pinned release directly before concurrent checks need it.
     - name: Install Quint evaluator
       if: inputs.verification == 'true'
+      env:
+        EVALUATOR_VERSION: ${{ steps.quint-evaluator.outputs.version }}
       run: |
-        evaluator_version=$(node -p "require('@informalsystems/quint/dist/src/rust/binaryManager.js').QUINT_EVALUATOR_VERSION")
-        evaluator_dir="$HOME/.quint/rust-evaluator-$evaluator_version"
+        evaluator_dir="$HOME/.quint/rust-evaluator-$EVALUATOR_VERSION"
         if [ ! -x "$evaluator_dir/quint_evaluator" ]; then
           mkdir -p "$evaluator_dir"
-          curl --fail --location --retry 3 "https://github.com/quint-co/quint/releases/download/evaluator/$evaluator_version/quint_evaluator-x86_64-unknown-linux-gnu.tar.gz" | tar -xz -C "$evaluator_dir"
+          curl --fail --location --retry 3 "https://github.com/quint-co/quint/releases/download/evaluator/$EVALUATOR_VERSION/quint_evaluator-x86_64-unknown-linux-gnu.tar.gz" | tar -xz -C "$evaluator_dir"
         fi
         "$evaluator_dir/quint_evaluator" --help
       shell: bash
+    - if: inputs.job == 'verify' && steps.quint-cache.outputs.cache-primary-key != '' && steps.quint-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ~/.quint/rust-evaluator-${{ steps.quint-evaluator.outputs.version }}
+        key: ${{ steps.quint-cache.outputs.cache-primary-key }}
     # Studio's journeys and every test:browser drive a real Chromium.
     - if: inputs.verification == 'true'
       run: |

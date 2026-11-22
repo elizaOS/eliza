@@ -381,15 +381,25 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/`, where a broken
 exploration is, as an artifact.
+The run summary lists Turbo task times, cache status and exit codes.
 
 Each run installs Dafny from its pinned release, checked against its SHA-256,
 and restores pnpm's store, Quint's evaluator, and what the job adds to: a `selftest-*` job the selftest's shared
 tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job and
 the commit: what a job of the same name last saved, or else another job's that holds the same.
+Nightly jobs restore the pinned Quint evaluator and run with fresh verification
+results.
 CI sets `TURBO_CACHE=local:rw` and restores each job's Turbo task results from GitHub's cache.
 Branch pushes save results that later pushes and pull requests can restore. A pull request's
 own saves are scoped to that pull request. Newer commits replace an older run of the same pull
-request. Every pushed commit can finish. The task entry point disables Turbo telemetry. Local `selftest:tools` tasks wait for the root and Studio tests. In CI, the verify job runs those integration tests once; each dedicated shard uses Turbo's `--only` after setup builds the toolchain. Release materializes the prerequisites before running the isolated shards.
+request. Every branch push runs application verification and the Android Node lock check.
+Each tool self-test shard can finish and save its cache. The last job to enter
+its queue replaces any pending job for the same shard. Re-run a specific
+commit when you need the tool self-test results for that revision.
+The task entry point disables Turbo telemetry. Local `selftest:tools` tasks wait for the
+root and Studio tests. In CI, the verify job runs those integration tests once.
+Each dedicated shard uses Turbo's `--only` after setup builds the toolchain.
+Release materializes the prerequisites before running the isolated shards.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
 are never part of a task fingerprint.
