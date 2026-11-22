@@ -60,6 +60,8 @@ export const CORS_ALLOW_HEADER_NAMES = [
   "X-Eliza-Client-Id",
   "X-ElizaOS-UI-Language",
   "X-Eliza-UI-Language",
+  // First-party clients report user activity for the agent idle timeout.
+  "X-Eliza-Last-Activity",
   // Privacy-safe shared-turn baseline correlation. The first-party client
   // sends an opaque UUID plus a bounded attempt ordinal; the server validates
   // both before emitting measurement logs (#22814).

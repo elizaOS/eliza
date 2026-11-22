@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { Hono } from "hono";
 import { APP_SCHEME_ORIGIN_RE, CAPACITOR_WEBVIEW_ORIGIN } from "../cors-constants";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { getCorsHeaders as getProxyCorsHeaders, isAppOrigin } from "../services/proxy/cors";
 import { getCorsHeaders as getAuthCorsHeaders } from "../utils/cors";
+import { corsMiddleware } from "./cloud-api-hono-cors";
 import { isFirstPartyOrigin } from "./first-party-origin";
 
 /** Run `fn` as an Eliza production Worker request. */
@@ -62,4 +64,42 @@ describe("credentialed app-scheme CORS", () => {
       }
     });
   });
+});
+
+test("staging Personal chat preflights its user activity header", async () => {
+  const origin = "https://cloud-staging.eliza.app";
+  const app = new Hono();
+  app.use("*", corsMiddleware);
+
+  const response = await runWithCloudBindings(
+    {
+      CLOUD_DEPLOYMENT_ID: "",
+      CLOUD_WEB_ORIGIN: "",
+      NEXT_PUBLIC_APP_URL: "",
+      NEXT_PUBLIC_API_URL: "",
+      CLOUD_FIRST_PARTY_ORIGINS: "",
+      ENVIRONMENT: "staging",
+    },
+    () =>
+      app.request(
+        "/api/v1/eliza/agents/personal%3Atest/api/conversations/personal%3Atest/messages/stream",
+        {
+          method: "OPTIONS",
+          headers: {
+            Origin: origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type,x-eliza-last-activity",
+          },
+        },
+      ),
+  );
+
+  expect(response.status).toBe(204);
+  expect(response.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+  expect(response.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+  const allowedHeaders = response.headers
+    .get("Access-Control-Allow-Headers")
+    ?.toLowerCase()
+    .split(/,\s*/);
+  expect(allowedHeaders).toContain("x-eliza-last-activity");
 });
