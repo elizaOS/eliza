@@ -123,7 +123,7 @@ read. A missed `once` trigger stays listed, disabled, so the owner can still
 run it now. A stop aborts a run in progress first (core scheduling).
 
 ```quint
-pure val dtValues = Set(1000, 1800001)
+pure val dtValues = Set(1000, 1800001, 1000 + WS::missedWindowMs + 1)
 pure val nextInstantValues = Set(2000, 1802000, 3700000)
 pure val processStartedAtValues = Set(0, 1801001)
 pure def canTick(t: Trigger, dt: int): bool = dt > 0
