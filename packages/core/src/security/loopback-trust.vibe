@@ -132,12 +132,10 @@ function extractProxyClientAddressCandidates(
     return extractForwardedForCandidates(raw)
   }
 
-  const forwardedCandidates = raw.toLowerCase().includes("for=")
-    ? extractForwardedForCandidates(raw)
-    : []
-  if (forwardedCandidates.length > 0) return forwardedCandidates
-
-  return raw.split(",")
+  return raw.split(",").flatMap((element) => {
+    const forwardedCandidates = extractForwardedForCandidates(element)
+    return forwardedCandidates.length > 0 ? forwardedCandidates : [element]
+  })
 }
 
 function stripMatchingQuotes(value: string): string {
