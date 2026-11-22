@@ -2193,12 +2193,12 @@ function eachCheck() {
         import { check } from "./vibestack/formal.ts";
         let models = 0;
         const result = await check(".", false, (step) => {
-          if (step.stage === "model" && ++models === 1) fs.linkSync("node_modules/.bin/quint", "second-install-quint");
+          if (step.stage === "model" && ++models <= 2) fs.linkSync("node_modules/.bin/quint", "concurrent-install-" + models);
         });
         console.log(JSON.stringify([models, result.results.filter(s => s.stage === "model").length, result.results.filter(s => !s.ok).map(s => s.stage)]));
       `], root);
       assert.equal(retry.status, 0, retry.stderr);
-      assert.deepEqual(JSON.parse(retry.stdout), [2, 1, ["review"]]);
+      assert.deepEqual(JSON.parse(retry.stdout), [3, 1, ["review"]]);
     }
     fs.writeFileSync(path.join(root, "tsconfig.json"), '{"compilerOptions":{"noEmit":true},"include":["gen/*.ts"]}');
     if (process.platform !== "win32") {
@@ -3838,9 +3838,10 @@ test("the lint refuses, in a project's own code, a comment that is neither a cit
   const eslint = new ESLint({ cwd: project });
   const found = async (file: string, lines: string[]) => (await eslint.lintText(lines.join("\n"), { filePath: path.join(project, file) }))[0]!.messages
     .filter((m) => m.fatal || m.ruleId === "no-console" || m.ruleId?.startsWith("code/")).map((m) => `${m.line} ${m.ruleId ?? "inline config"}`);
+  const specFile = "spec/app/index.md";
   assert.deepEqual(await found("apps/app/src/probe.vibe", [
-    `// spec/app/index.md, "Story: Say hello"; spec/app/index.md, "The number of greetings is never negative"`,
-    `/* spec/app/index.md, "Story: Say hello" */`,
+    `// ${specFile}, "Story: Say hello"; ${specFile}, "The number of greetings is never negative"`,
+    `/* ${specFile}, "Story: Say hello" */`,
     "//@ ghost",
     "/** @model spec/app/index.md */",
     "// a note",

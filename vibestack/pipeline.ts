@@ -147,10 +147,11 @@ export async function check(root: string, accept: false | "reviews" | "unproved"
     }
   };
   try {
-    return await attempt().catch((error: unknown) => {
-      if (!(error instanceof InstallationChanged)) throw error;
-      return attempt();
-    });
+    for (let retries = 0; ; retries++) {
+      try { return await attempt(); } catch (error) {
+        if (!(error instanceof InstallationChanged) || retries === 2) throw error;
+      }
+    }
   } finally {
     release();
   }

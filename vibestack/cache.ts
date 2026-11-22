@@ -403,8 +403,10 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
   let previous = latest.get(tool);
   if (previous?.exe !== exe || !previous.unchanged()) {
     const searchPath = process.env.NODE_PATH;
-    const index = path.join(path.dirname(LASTING), `installed-${tool}${searchPath ? "-host" : ""}.json.zst`);
     const key = sha(programSource ??= code(closure("cache")), import.meta.dirname, path.resolve(exe), searchPath ?? "", process.version, process.platform, process.arch);
+    const name = `installed-${key.slice(0, 24)}.json.zst`;
+    const directory = path.join(path.dirname(LASTING), "installations");
+    const index = path.join(directory, name);
     let installed = unsure || previous?.exe === exe ? undefined : readProgram(index, key);
     if (!installed) {
       const { graph, roots, main, contents, observed, exposed, files, links, unchanged } = packageGraph(exe, TOOL_PACKAGES[tool]);
@@ -413,7 +415,10 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
       const id = launcher && search && sha(launcher.digest, JSON.stringify([roots, ...search, graph.map(({ dir, version, dependencies }) => [version, contents(dir), dependencies])]), `node@${process.versions.node}:${process.platform}:${process.arch}`);
       installed = { id, unchanged };
       if (id && !unsure) {
-        try { writeWhole(index, zstdCompressSync(JSON.stringify([key, id, [...files], [...links]]))); } catch { /* optional cache */ }
+        try {
+          writeWhole(index, zstdCompressSync(JSON.stringify([key, id, [...files], [...links]])));
+          pruneCache(directory, new Set([name]), (file) => /^installed-[a-f0-9]{24}\.json\.zst$/.test(file));
+        } catch { /* optional cache */ }
       }
     }
     const { id, unchanged } = installed;
@@ -644,7 +649,7 @@ export async function withFormalCache<T>(directory: string, run: () => Promise<T
   try {
     return await formalCache.run(scope, run);
   } finally {
-    pruneCache(scope.directory, scope.used, true);
+    pruneCache(scope.directory, scope.used, isActionEntry);
   }
 }
 
@@ -733,20 +738,20 @@ const ENTRY = new RegExp(`^(${STAGES.join("|")})-(?:.*-)?[a-f0-9]{24}\\.json\\.(
 export const isActionEntry = (name: string) => name.startsWith("action-") && ENTRY.test(name);
 /** Keep recent branches and profiles for a month, within 256 MiB; never evict this check's entries. */
 export function collectGarbage(memory: Memory) {
-  pruneCache(localCache(memory.root), memory.used, false);
+  pruneCache(localCache(memory.root), memory.used);
 }
 
-function pruneCache(directory: string, inUse: ReadonlySet<string>, shared: boolean) {
+function pruneCache(directory: string, inUse: ReadonlySet<string>, owns?: (name: string) => boolean) {
   if (!fs.existsSync(directory)) return;
   const expired = Date.now() - 30 * 24 * 60 * 60 * 1000;
   const retained: { file: string; size: number; touched: number; used: boolean }[] = [];
   for (const name of fs.readdirSync(directory)) {
-    if (name === "lock" || (shared && !isActionEntry(name))) continue;
+    if (name === "lock" || (owns && !owns(name))) continue;
     const file = path.join(directory, name);
     const stat = fs.lstatSync(file, { throwIfNoEntry: false });
     if (!stat) continue;
     const used = inUse.has(name);
-    if (!used && (!ENTRY.test(name) || !stat.isFile() || stat.mtimeMs < expired))
+    if (!used && ((!owns && !ENTRY.test(name)) || !stat.isFile() || stat.mtimeMs < expired))
       fs.rmSync(file, { recursive: true, force: true });
     else retained.push({ file, size: stat.size, touched: stat.mtimeMs, used });
   }
