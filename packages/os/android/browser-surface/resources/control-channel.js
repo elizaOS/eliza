@@ -1951,11 +1951,11 @@
       if (
         command.subaction === "fill" &&
         (!(
-          node instanceof HTMLInputElement ||
-          node instanceof HTMLTextAreaElement ||
-          node instanceof HTMLSelectElement
+          is(node, "HTMLInputElement") ||
+          is(node, "HTMLTextAreaElement") ||
+          is(node, "HTMLSelectElement")
         ) ||
-          (node instanceof HTMLInputElement &&
+          (is(node, "HTMLInputElement") &&
             ![
               "text",
               "email",
@@ -1966,7 +1966,7 @@
               "date",
             ].includes(node.type)) ||
           // A date field takes only a real calendar day, as YYYY-MM-DD.
-          (node instanceof HTMLInputElement &&
+          (is(node, "HTMLInputElement") &&
             node.type === "date" &&
             (!/^\d{4}-\d{2}-\d{2}$/.test(command.text) ||
               command.text.startsWith("0000-") ||
@@ -1981,7 +1981,7 @@
         return denied();
     }
     const selectedOptions =
-      command.subaction === "select" && node instanceof HTMLSelectElement
+      command.subaction === "select" && is(node, "HTMLSelectElement")
         ? [...node.options].filter(
             (option) =>
               option.label.replace(/\s+/g, " ").trim() === command.text,
@@ -1989,7 +1989,7 @@
         : [];
     if (
       command.subaction === "select" &&
-      (!(node instanceof HTMLSelectElement) ||
+      (!is(node, "HTMLSelectElement") ||
         node.multiple ||
         sensitivity(node) !== null ||
         selectedOptions.length !== 1 ||
@@ -1999,7 +1999,7 @@
       return denied();
     if (
       ["fill", "select"].includes(command.subaction) &&
-      (frameOf(node) !== null || node.disabled || node.readOnly)
+      (node.disabled || node.readOnly)
     )
       return denied();
     // A control the provider disabled stays as the provider left it. A script
@@ -2707,31 +2707,26 @@
           after: readVisibleText(document.body ?? document.documentElement),
         };
     } else if (command.subaction === "fill") {
-      if (
-        !(
-          node instanceof HTMLInputElement ||
-          node instanceof HTMLTextAreaElement ||
-          node instanceof HTMLSelectElement
-        ) ||
-        node.disabled ||
-        node.readOnly
-      )
+      const type = [
+        "HTMLInputElement",
+        "HTMLTextAreaElement",
+        "HTMLSelectElement",
+      ].find((name) => is(node, name));
+      if (!type || node.disabled || node.readOnly)
         return {
           error: {
             kind: "UNSUPPORTED",
             message: "The target is not an editable form control.",
           },
         };
-      const prototype =
-        node instanceof HTMLInputElement
-          ? HTMLInputElement.prototype
-          : node instanceof HTMLTextAreaElement
-            ? HTMLTextAreaElement.prototype
-            : HTMLSelectElement.prototype;
+      const view = realmOf(node);
       const write = (box, text) => {
-        Object.getOwnPropertyDescriptor(prototype, "value").set.call(box, text);
-        box.dispatchEvent(new Event("input", { bubbles: true }));
-        box.dispatchEvent(new Event("change", { bubbles: true }));
+        Object.getOwnPropertyDescriptor(view[type].prototype, "value").set.call(
+          box,
+          text,
+        );
+        box.dispatchEvent(new view.Event("input", { bubbles: true }));
+        box.dispatchEvent(new view.Event("change", { bubbles: true }));
       };
       const targetRef = `${state.snapshotId}:0:${command.nodeId}`;
       if (codeBoxes) {
@@ -2769,12 +2764,13 @@
           };
       }
     } else if (command.subaction === "select") {
+      const view = realmOf(node);
       Object.getOwnPropertyDescriptor(
-        HTMLSelectElement.prototype,
+        view.HTMLSelectElement.prototype,
         "selectedIndex",
       ).set.call(node, selectedOptions[0].index);
-      node.dispatchEvent(new Event("input", { bubbles: true }));
-      node.dispatchEvent(new Event("change", { bubbles: true }));
+      node.dispatchEvent(new view.Event("input", { bubbles: true }));
+      node.dispatchEvent(new view.Event("change", { bubbles: true }));
     } else if (command.subaction === "scroll") {
       node.scrollBy({
         top:

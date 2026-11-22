@@ -100,6 +100,8 @@ const pages: Record<string, string> = {
   [`${bank}/base`]: page(`<base target="_blank"><form action="https://pay.bank.example/form-path/receipt?form-query=1" method="post"><label>Note <input id="note" name="note"></label><button id="send-note">Send note</button></form>`),
   [`${bank}/no-enter`]: page(`<form action="/form-path/two?form-query=1"><label>First name <input id="first" name="first"></label><label>Last name <input id="last" name="last"></label></form><form action="/form-path/off?form-query=1"><label>Account nickname <input id="nickname" name="nickname"></label><button id="off" disabled>Save</button></form><form action="https://pay.bank.example/form-path/one?form-query=1"><label>Search <input id="one" name="q"></label></form>`),
   [`${bank}/other`]: page(`<form action="javascript:void 0"><button id="script">Run script</button></form><form action="mailto:help@bank.example?subject=form-query" method="post" target="_blank"><input type="submit" id="mail" value="Write to us"></form><form action="https://pay.bank.example/form-path/receipt?form-query=1" method="post" target="receipt"><button id="receipt">Open receipt</button></form><dialog open><form method="dialog"><button id="close">Close</button></form></dialog>`),
+  [`${secure}/verify`]: logon("/auth/verify"),
+  [`${secure}/auth/verify`]: `<form id="verify" action="/auth/verify" method="post"><bank-field id="otp" label="One-time code"></bank-field><button type="button" id="next">Next</button></form>${field}`,
   [`${secure}/empty`]: `<title>empty</title><button type="button" id="beacon">Telemetry</button><script>document.body.style.width = "4000px";</script>`,
 };
 
@@ -309,7 +311,7 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
     expect(await presses()).toEqual([]);
   });
 
-  it("clicks in the frame only, refuses a fill, select or follow there, and stops the frame's own page change", async () => {
+  it("clicks, fills and selects in the frame only, reads the fill back, refuses a follow there and stops the frame's own page change", async () => {
     await open(`${shop}/framed-plain`);
     let state = await snapshot();
     const details = find(state, "Show details");
@@ -317,11 +319,14 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
     expect(await act(state, "click", "Show details", { taskPolicy: policy(selectorOf(details)) })).toMatchObject({ dispatched: true });
     expect(await presses()).toEqual(["details"]);
     state = await snapshot();
-    expect(await refusal(state, "fill", "Email", { text: "reader@example.test", taskPolicy: policy(selectorOf(find(state, "Email")), "fill") })).toBe("POLICY_BLOCKED");
-    expect(await refusal(state, "select", "How often", { text: "Monthly", taskPolicy: policy(selectorOf(find(state, "How often")), "select") })).toBe("POLICY_BLOCKED");
+    expect(await act(state, "fill", "Email", { text: "reader@example.test", taskPolicy: policy(selectorOf(find(state, "Email")), "fill") })).toMatchObject({ dispatched: true });
+    state = await snapshot({ taskPolicy: policy("#none") });
+    expect(fields(state.value.inputReadback).matches).toBe(true);
+    expect(await act(state, "select", "How often", { text: "Monthly", taskPolicy: policy(selectorOf(find(state, "How often")), "select") })).toMatchObject({ dispatched: true });
+    state = await snapshot();
     expect(await refusal(state, "follow", "Our terms", { taskPolicy: policy(selectorOf(find(state, "Our terms")), "follow") })).toBe("POLICY_BLOCKED");
     const frame = tab.frameLocator("#plain-frame");
-    expect([await frame.locator("#email").inputValue(), await frame.locator("#often").inputValue(), tab.frames()[1]?.url()]).toEqual(["", "Weekly", `${shop}/plain-frame`]);
+    expect([await frame.locator("#email").inputValue(), await frame.locator("#often").inputValue(), tab.frames()[1]?.url()]).toEqual(["reader@example.test", "Monthly", `${shop}/plain-frame`]);
     await tab.evaluate(`document.getElementById("plain-frame").contentWindow.location.assign("/paid")`);
     await expect.poll(async () => (await snapshot({ taskPolicy: policy("#none") })).value.effectViolation).toBe("navigation");
     expect(tab.frames().find((frame) => frame.parentFrame() !== null)?.url()).toBe(`${shop}/plain-frame`);
@@ -410,9 +415,9 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
     }
   });
 
-  it("reads a sign-in in a full-page frame's open root, refuses a fill there, and is not made stale by a hidden frame", async () => {
+  it("fills a sign-in identifier in a full-page frame's open root, never its password, and is not made stale by a hidden frame", async () => {
     await open(`${secure}/dashboard`);
-    const state = await snapshot({ taskPolicy: policy("#none", "click", secure) });
+    let state = await snapshot({ taskPolicy: policy("#none", "click", secure) });
     const user = find(state, "Username");
     expect(user).toMatchObject({ inShadowRoot: true, sensitive: null, frame: { index: 1, origin: secure, title: "logon" } });
     expect(find(state, "Password")).toMatchObject({ inShadowRoot: true, sensitive: "password" });
@@ -423,8 +428,21 @@ describe('A task reads open shadow roots and frames on the page\'s origin (spec/
     expect(state.elements.filter((element) => element.label === "empty" || element.label === "Telemetry")).toEqual([]);
     expect(state.value.omitted).toContain("frames the page does not show (childFrames)");
     await tab.evaluate(`new Promise((resolve) => { const frame = document.querySelector('iframe[title="empty"]'); frame.contentDocument.body.append("ping"); frame.addEventListener("load", resolve, { once: true }); frame.contentWindow.location.assign("/empty?again"); })`);
-    expect(await refusal(state, "fill", "Username", { text: "reader-id", taskPolicy: policy(selectorOf(user), "fill", secure) })).toBe("POLICY_BLOCKED");
-    expect(await tab.frameLocator('iframe[name="logonbox"]').locator("#userId #input").inputValue()).toBe("");
+    expect(await refusal(state, "fill", "Password", { text: "not-a-password", taskPolicy: policy(selectorOf(find(state, "Password")), "fill", secure) })).toBe("POLICY_BLOCKED");
+    expect(await act(state, "fill", "Username", { text: "reader-id", taskPolicy: policy(selectorOf(user), "fill", secure) })).toMatchObject({ dispatched: true });
+    state = await snapshot({ taskPolicy: policy("#none", "click", secure) });
+    expect(fields(state.value.inputReadback).matches).toBe(true);
+    expect(await act(state, "select", "Sign in with", { text: "Token", taskPolicy: policy(selectorOf(find(state, "Sign in with")), "select", secure) })).toMatchObject({ dispatched: true });
+    state = await snapshot();
+    expect(await refusal(state, "follow", "Forgot username or password?", { taskPolicy: policy(selectorOf(find(state, "Forgot username or password?")), "follow", secure) })).toBe("POLICY_BLOCKED");
+    const frame = tab.frameLocator('iframe[name="logonbox"]');
+    expect([await frame.locator("#userId #input").inputValue(), await frame.locator("#password #input").inputValue(), await frame.locator("#token").inputValue()]).toEqual(["reader-id", "", "Token"]);
+    await open(`${secure}/verify`);
+    const code = selectorOf(find(await snapshot(), "One-time code"));
+    expect(code).toMatch(/^iframe.* >>> .* >>> #input$/);
+    expect((await codeFill(code, { origin: secure })).dispatched).toBe(true);
+    expect(await tab.frameLocator('iframe[name="logonbox"]').locator("#otp #input").inputValue()).toBe("123456");
+    expect(fields((await codeRead(secure)).codeReadback).matches).toBe(true);
   });
 
   it("through the browser host, presses a bound frame control once and never reads a partner origin's frame", async () => {
