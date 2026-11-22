@@ -22,7 +22,7 @@ const headers = { "cache-control": "no-store" }
 const DeltaText = Schema.Struct({ delta: Schema.optionalKey(Schema.Struct({ content: Schema.optionalKey(Schema.NullOr(Schema.String)) })) })
 const readDeltaText = Schema.decodeUnknownOption(DeltaText)
 
-function providerBody({ max_tokens, max_completion_tokens, ...body }: ChatRequest, model: string, max: number) {
+function providerBody({ max_tokens: _maxTokens, max_completion_tokens, ...body }: ChatRequest, model: string, max: number) {
   return { ...body, model, ...(max_completion_tokens === undefined ? { max_tokens: max } : { max_completion_tokens: max }) }
 }
 

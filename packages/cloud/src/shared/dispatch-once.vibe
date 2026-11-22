@@ -1,5 +1,5 @@
 // spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
-import { NotAState, Rejected, apply, initial, canReceiveReply, canResolve, conflictRefusal, connectorOf, decodeState, elapse, isConflict, isUnknown, mayFollowWith, receiptStatus, staleAt, type Event, type LookupResult, type ProviderReply as Reply, type Receipt, type ReceiptStatus, type RefusalCause } from "../../gen/cloud__shared__dispatchOnce.effect.vibe"
+import { type NotAState, type Rejected, apply, initial, canReceiveReply, canResolve, conflictRefusal, connectorOf, decodeState, elapse, isConflict, isUnknown, mayFollowWith, receiptStatus, staleAt, type Event, type LookupResult, type ProviderReply as Reply, type Receipt, type ReceiptStatus, type RefusalCause } from "../../gen/cloud__shared__dispatchOnce.effect.vibe"
 import type { ProviderKey, ProviderKind } from "../../gen/cloud__shared__types.ts"
 import type { SessionOwner } from "../../gen/core__sessions.ts"
 import { Refused, wireName } from "../http/refusal.vibe"

@@ -17,7 +17,7 @@ const ReverseDns = Schema.String.check(Schema.isMaxLength(200), Schema.isPattern
 const Fingerprint = Schema.String.check(Schema.isPattern(/^[0-9A-F]{2}(?::[0-9A-F]{2}){31}$/))
 const ReturnText = Schema.String.check(Schema.isMaxLength(1024))
 
-export const RegistrationFields = Schema.Struct({
+const RegistrationFieldsSchema = Schema.Struct({
   clientId: ReverseDns,
   environment: Schema.Literals(["production", "staging"]),
   displayName: Schema.String.check(Schema.isTrimmed(), Schema.isMinLength(1), Schema.isMaxLength(80)),
@@ -30,7 +30,8 @@ export const RegistrationFields = Schema.Struct({
   nativeGoogle: Schema.Boolean,
   enabled: Schema.Boolean
 })
-export type RegistrationFields = typeof RegistrationFields.Encoded
+
+export type RegistrationFields = typeof RegistrationFieldsSchema.Encoded
 
 const environments: Readonly<Record<string, Environment | undefined>> = { production: "Production", staging: "Staging" }
 const wireEnvironment: Readonly<Record<Environment, "production" | "staging">> = { Production: "production", Staging: "staging" }
@@ -52,7 +53,7 @@ export effect function servedEnvironment() {
 }
 
 export effect function decodeRegistration(input: unknown): Registration!RegistrationInvalid {
-  const fields = Schema.decodeUnknownEffect(RegistrationFields, { onExcessProperty: "error" })(input) catch effect (failure) => {
+  const fields = Schema.decodeUnknownEffect(RegistrationFieldsSchema, { onExcessProperty: "error" })(input) catch effect (failure) => {
     throw new RegistrationInvalid({ problem: failure.message })
   }
   const signInReturn = parseReturn(fields.signInReturn)

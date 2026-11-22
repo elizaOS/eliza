@@ -116,7 +116,9 @@ const referenceChain = /^(?:<[^<>\s]+@[^<>\s]+>\s*)+$/
 const mailbox = /^(?:"(?:[^"\\]|\\.)*"|[^<>,@"]*)\s*<([^<>]+)>$/
 const headerUnsafe = /[\r\n\0]/
 const mimeToken = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i
-const fileName = /^[^\\/\x00-\x1f\x7f]{1,120}$/
+function safeFileName(name: string): boolean {
+  return /^[^\\/]{1,120}$/.test(name) && !/(?=\p{ASCII})\p{Cc}/u.test(name)
+}
 const replyHeaders = ["From", "Reply-To", "To", "Cc", "Subject", "Message-ID", "References"]
 const sendable: Readonly<Record<string, RegExp>> = {
   "text/plain": /\.txt$/i,
@@ -127,7 +129,7 @@ const sendable: Readonly<Record<string, RegExp>> = {
 }
 
 const Address = Schema.String.check(Schema.isMaxLength(254), Schema.isPattern(mailAddress))
-const Proposal = Schema.Struct({
+const ProposalSchema = Schema.Struct({
   kind: Schema.Literals(["send", "draft-create", "draft-replace"]),
   mode: Schema.Literals(["compose", "reply", "reply-all", "forward"]),
   to: Schema.optionalKey(Schema.Array(Address)),
@@ -148,7 +150,7 @@ const RepliedMessage = Schema.Struct({
   payload: Schema.Struct({ headers: Schema.optionalKey(Schema.Array(Schema.Struct({ name: Schema.String, value: Schema.String }))) })
 })
 
-type Proposal = typeof Proposal.Type
+type Proposal = typeof ProposalSchema.Type
 type Replied = typeof RepliedMessage.Type
 
 function headerValues(message: Replied, name: string): ReadonlyArray<string> {
@@ -236,7 +238,7 @@ effect function replyBinding(context: ComposeContext, messageId: string, subject
 }
 
 effect function localFile(file: { readonly name: string; readonly mimeType: string; readonly dataBase64: string }) {
-  if (!fileName.test(file.name) || file.name.trim() === "" || !(sendable[file.mimeType]?.test(file.name) ?? false)) throw refused("InvalidRequest")
+  if (!safeFileName(file.name) || file.name.trim() === "" || !(sendable[file.mimeType]?.test(file.name) ?? false)) throw refused("InvalidRequest")
   const facts = inspectBase64(file.dataBase64)
   if (!facts.canonical || facts.size === 0 || facts.content !== file.mimeType) throw refused("InvalidRequest")
   return { name: file.name, mimeType: file.mimeType, size: facts.size, sha256: facts.sha256, dataBase64: file.dataBase64 } satisfies File
@@ -245,7 +247,7 @@ effect function localFile(file: { readonly name: string; readonly mimeType: stri
 effect function forwardedFile(part: ForwardedPart) {
   const facts = inspectBase64(part.dataBase64)
   if (!facts.canonical || facts.sha256 !== part.sha256) throw refused("ProviderInvalidResponse")
-  const name = fileName.test(part.name) && part.name.trim() !== "" && part.name !== "." && part.name !== ".." ? part.name : "attachment"
+  const name = safeFileName(part.name) && part.name.trim() !== "" && part.name !== "." && part.name !== ".." ? part.name : "attachment"
   const mimeType = mimeToken.test(part.mimeType) ? part.mimeType.toLowerCase() : "application/octet-stream"
   return { partId: part.partId, name, mimeType, size: facts.size, sha256: facts.sha256, dataBase64: part.dataBase64 } satisfies File & ForwardedReview
 }
@@ -315,7 +317,7 @@ function attachmentReview(file: File): AttachmentReview {
 }
 
 export effect function composeMessage(raw: unknown, context: ComposeContext) {
-  const decoded = Schema.decodeUnknownOption(Proposal, { onExcessProperty: "error" })(raw)
+  const decoded = Schema.decodeUnknownOption(ProposalSchema, { onExcessProperty: "error" })(raw)
   if (Option.isNone(decoded)) throw refused("InvalidRequest")
   const proposal: Proposal = decoded.value
   const replying = proposal.mode === "reply" || proposal.mode === "reply-all"
