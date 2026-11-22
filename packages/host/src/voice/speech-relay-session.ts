@@ -163,8 +163,22 @@ export interface SpeechRelayPorts {
     identity: Readonly<SpeechRelayIdentity>,
     expiresAt: number,
   ) => Promise<number>;
+  onRenewal?: (result: SpeechRelayRenewalResult) => void;
   now?: () => number;
 }
+
+export interface SpeechRelayRenewalResult {
+  phase: "quota" | "reserve" | "dispatch" | "extend";
+  result:
+    | "extended"
+    | "quota_denied"
+    | "closed"
+    | "deadline"
+    | "declined"
+    | "error";
+  error?: unknown;
+}
+
 export class SpeechRelayError extends Error {
   constructor(
     readonly code:
@@ -829,15 +843,22 @@ export async function createSpeechRelaySession(
     // both; the current end and every granted window's settlement are unchanged.
     let recorded = false,
       held: SpeechRelayCreditReservation | undefined;
+    let phase: SpeechRelayRenewalResult["phase"] = "quota";
+    let result: SpeechRelayRenewalResult["result"] = "closed";
+    let failure: unknown;
     try {
       const usage = await ports.usageStore.checkAndRecord(
         scope,
         1,
         ports.usageLimits,
       );
-      if (!usage.allowed) return;
+      if (!usage.allowed) {
+        result = "quota_denied";
+        return;
+      }
       recorded = true;
       if (closed) return;
+      phase = "reserve";
       held = await ports.reserveCredits(scope, SPEECH_RELAY_BUDGET);
       if (closed) return;
       if (requireRetirementProof && !held.supportsPerKindSettlement)
@@ -845,14 +866,20 @@ export async function createSpeechRelaySession(
           "identity",
           "Speech renewal requires per-kind settlement",
         );
+      phase = "dispatch";
       await held.beforeProviderDispatch("stt");
       await held.beforeProviderDispatch("tts");
-      if (closed || now() >= deadline) return;
+      if (closed) return;
+      if (now() >= deadline) {
+        result = "deadline";
+        return;
+      }
       // From here closing owns this reservation (and settles it to zero
       // unless the window was granted first).
       reservations.push(held);
       const reservation = held;
       held = undefined;
+      phase = "extend";
       const accepted = await extend(
         scope,
         // One window past the current end at most, even if renewal ran late.
@@ -865,6 +892,7 @@ export async function createSpeechRelaySession(
       if (!Number.isFinite(accepted) || accepted <= deadline) {
         reservations.splice(reservations.indexOf(reservation), 1);
         held = reservation;
+        result = "declined";
         return;
       }
       deadline = accepted;
@@ -872,13 +900,21 @@ export async function createSpeechRelaySession(
       recorded = false;
       arm();
       emit({ t: "extended", expiresAt: new Date(deadline).toISOString() });
-    } catch {
+      result = "extended";
+    } catch (error) {
+      result = "error";
+      failure = error;
       // Refused or failed: the current window still ends at `deadline`.
       if (!closed) {
         const index = reservations.length - 1;
         if (index >= windows) held = reservations.splice(index, 1)[0];
       }
     } finally {
+      try {
+        ports.onRenewal?.({ phase, result, error: failure });
+      } catch {
+        // Telemetry must not change provider settlement or quota release.
+      }
       if (held) {
         const index = reservations.push(held) - 1;
         if (!closed) {
