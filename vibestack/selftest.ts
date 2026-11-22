@@ -847,7 +847,9 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
       "app/src/main.css": '@source "../../kit/scanned";\n',
       "app/src/a.contract.ts": 'import "unused";\n', "app/src/a.proof.dfy": "lemma A() {}\n", "app/spec/a.md": "# A\n", "app/test/a.test.ts": 'import "unused";\n',
       "app/vitest.config.ts": 'import "unused";\n', "app/test/bombadil.ts": "export {};\n", "app/gen/a.ts": "export const a = 1;\n", "app/gen/a.qnt": "module a {}\n",
-      "kit/package.json": JSON.stringify({ exports: { ".": "./src/index.ts" } }), "kit/src/index.ts": 'export * from "./b.ts";\n', "kit/src/b.ts": "export const b = 1;\n",
+      "kit/package.json": JSON.stringify({ exports: { ".": "./src/index.ts", "./items/*": { browser: "./parts/item-*.js", default: "./build/items/*.js" } } }),
+      "kit/src/index.ts": 'export * from "./b.ts";\n', "kit/src/b.ts": "export const b = 1;\n",
+      "kit/parts/item-one.js": "export default 1;\n", "kit/parts/item-/nested.txt": "\n",
       "kit/src/c.ts": "export const c = 1;\n", "kit/README.md": "# Kit\n", "kit/scanned/x.ts": 'import "unused";\n',
       "served/package.json": JSON.stringify({ bin: { "served-cli": "./cli.js" } }), "served/cli.js": "\n",
       "unused/package.json": JSON.stringify({ exports: "./index.ts" }), "unused/index.ts": "\n",
@@ -865,14 +867,32 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
       ...Object.fromEntries(["app/src/main.ts", "app/src/main.css", "app/src/a.contract.ts", "app/src/a.proof.dfy", "app/spec/a.md", "app/test/a.test.ts", "app/vitest.config.ts",
         "app/test/bombadil.ts", "app/gen/a.qnt", "kit/src/b.ts", "kit/src/c.ts", "kit/README.md", "kit/scanned/x.ts", "served/cli.js", "unused/index.ts",
         "shared/b.ts", "shared/c.ts", "shared/copied.txt"].map((f) => [f, changed(f)])),
+      "kit/parts/item-one.js": changed("kit/parts/item-one.js"),
+      "kit/package.json": changed("kit/package.json", (text) => text.replace('"./items/*"', '"./renamed/*"')),
       "app/gen/a.ts": changed("app/gen/a.ts"), "app/gen/b.ts": changed("app/gen/b.ts"),
       "aliased/gen/a.ts": (() => { const before = pageInputs(path.join(workspace, "aliased")); fs.appendFileSync(path.join(workspace, "aliased/gen/a.ts"), " "); return pageInputs(path.join(workspace, "aliased")) !== before; })(),
     }, {
       "app/src/main.ts": true, "app/src/main.css": true, "app/src/a.contract.ts": false, "app/src/a.proof.dfy": false, "app/spec/a.md": false, "app/test/a.test.ts": false,
       "app/vitest.config.ts": false, "app/test/bombadil.ts": true, "app/gen/a.qnt": false, "kit/src/b.ts": true, "kit/src/c.ts": false, "kit/README.md": false,
       "kit/scanned/x.ts": true, "served/cli.js": true, "unused/index.ts": false, "shared/b.ts": true, "shared/c.ts": false, "shared/copied.txt": true,
+      "kit/parts/item-one.js": true, "kit/package.json": true,
       "app/gen/a.ts": true, "app/gen/b.ts": false, "aliased/gen/a.ts": true,
     }, "the page reads its code, the files and directories it names, what the packages it imports or runs export, and the generated modules it imports, or all of them where it names none; not what only its checks read, nor what a file it only scans imports");
+    const beforeBuild = pageInputs(page);
+    const build = path.join(workspace, "kit/build");
+    fs.mkdirSync(build);
+    fs.writeFileSync(path.join(build, "sibling.js"), "export default 0;\n");
+    assert.equal(pageInputs(page), beforeBuild, "a sibling of an absent wildcard directory is outside the offered tree");
+    const items = path.join(build, "items");
+    fs.mkdirSync(items);
+    const built = path.join(items, "one.js");
+    fs.writeFileSync(built, "export default 2;\n");
+    assert.notEqual(pageInputs(page), beforeBuild, "an export appearing under a previously absent directory invalidates the exploration");
+    fs.unlinkSync(built);
+    assert.equal(pageInputs(page), beforeBuild);
+    fs.rmdirSync(items);
+    fs.symlinkSync("items", items, "dir");
+    assert.throws(() => pageInputs(page), { code: "ELOOP" });
   });
 
   test("a rule whose prose or model changed names the code that cites it, for a person to read again", () => {
