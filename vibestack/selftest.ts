@@ -10,9 +10,9 @@ import os from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
-import { gunzipSync } from "node:zlib";
+import { gzipSync, zstdDecompressSync } from "node:zlib";
 import { Miniflare } from "miniflare";
-import { cacheCredentials, collectGarbage, entry, recall, store } from "./cache.ts";
+import { cacheCredentials, collectGarbage, entry, isActionEntry, recall, store, withFormalCache } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
 import { exec, run as tool } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
@@ -47,7 +47,7 @@ const STORE = path.join(project, ".cache/selftest/.spec-cache");
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const sharing: string[] = [];
 const attempt = (act: () => void) => { try { act(); } catch { return; } };
-const toolRuns = (dir: string) => fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /^action-[a-f0-9]{24}\.json\.gz$/.test(f)) : [];
+const toolRuns = (dir: string) => fs.existsSync(dir) ? fs.readdirSync(dir).filter(isActionEntry) : [];
 const unused = (root: string, since: number) => toolRuns(path.join(root, ".spec-cache")).filter((f) => fs.statSync(path.join(root, ".spec-cache", f)).mtimeMs < since);
 const keepRuns = (from: string, to: string) => {
   for (const name of toolRuns(from)) attempt(() => {
@@ -508,6 +508,34 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.deepEqual(again.failed, ["review"], again.text);
     assert.ok(!fs.existsSync(path.join(second, "gen/traces")) && !["gen", "check", "verify", "audit"].some((ran) => fs.existsSync(path.join(second, "gen/proof/door", ran))), again.text);
     assert.deepEqual(unused(pristine, fs.statSync(path.join(pristine, "tsconfig.json")).mtimeMs - 1000), [], "the order project keeps no run older than itself");
+  });
+
+  test("a formal cache survives a disposable project and keeps changed models fresh", async () => {
+    const cache = path.join(scratch({}), "formal-cache");
+    const first = fixtures(["door"]);
+    const initial = await withFormalCache(cache, () => run(first));
+    assert.deepEqual(initial.failed, ["review"], initial.text);
+    assert.ok(fs.existsSync(path.join(first, "gen/traces")), initial.text);
+    const entries = fs.readdirSync(cache);
+    assert.ok(entries.length > 0 && entries.every((file) => isActionEntry(file) && file.endsWith(".zst")));
+    const primary = path.join(cache, entries[0]);
+    fs.writeFileSync(primary.replace(/\.zst$/, ".gz"), gzipSync(zstdDecompressSync(fs.readFileSync(primary))));
+    fs.rmSync(primary);
+    fs.rmSync(first, { recursive: true, force: true });
+
+    const same = fixtures(["door"]);
+    const changed = fixtures(["door"], (files) => {
+      files["spec/door.md"] = files["spec/door.md"].replace("pure def canMove", "pure def !canMove");
+    });
+    const [repeated, updated] = await Promise.all([
+      withFormalCache(cache, () => run(same)),
+      withFormalCache(cache, () => run(changed)),
+    ]);
+    assert.deepEqual(repeated.results, initial.results);
+    assert.ok(!fs.existsSync(primary), "the shared legacy action was reused");
+    assert.ok(!fs.existsSync(path.join(same, "gen/traces")), repeated.text);
+    assert.ok(!fs.existsSync(path.join(same, "gen/proof/door/verify")), repeated.text);
+    assert.ok(updated.failed.includes("model"), updated.text);
   });
 
   test("a guard that never refuses its event is reported without failing", async () => {
@@ -1073,105 +1101,6 @@ export effect function probe() {
     assert.ok(said("proof", /^sys\.ts: all \d+ obligations proved/), text);
   });
 
-  test("event weights, fairness and bounds name real events and rules and stay outside generated code; a weight repeats its event in the simulator's choice", async () => {
-    const base = "type S = { n: int }\npure val initial: S = { n: 0 }\npure def add(s: S, k: int): S = { n: s.n + k }\npure def leadsToSome(s: S, later: S): bool = later.n >= s.n\n";
-    const model = (quint: string) => { const root = oneRule("w", "Weights", base + quint); return gen(root, parseSpec(root, "spec/w.md")); };
-    const cases: [string, RegExp][] = [
-      ["pure val weight_nope = 2", /weight_nope .*no transition named nope/],
-      ["pure val weight_add = 0", /weight_add .*a whole number from 1 to 100/],
-      ['pure val fair_add = "always"', /fair_add .*"weak"/],
-      ["pure val within_nope = 2", /within_nope .*no leadsTo rule named nope/],
-      ["pure val within_leadsToSome = 0", /within_leadsToSome .*a whole number from 1 to 100/],
-      ["pure val within_leadsToSome = 101", /within_leadsToSome .*a whole number from 1 to 100/],
-      ["pure def leadsToOne(s: S): bool = true", /leadsToOne: a `leadsTo` rule takes a state and a later state/],
-    ];
-    for (const [quint, message] of cases) await assert.rejects(model(quint), message, quint);
-    const weighted = await model('pure val weight_add = 3\npure val fair_add = "weak"\npure val within_leadsToSome = 2');
-    assert.match(weighted.harness, /action step = any \{ add, add, add \}/);
-    assert.deepEqual(weighted.within, new Map([["leadsToSome", 2]]));
-    assert.doesNotMatch(weighted.ts + weighted.harness, /weight_|fair_|within_/);
-    const lone = oneRule("f", "Fair", 'type S = { n: int }\npure val initial: S = { n: 0 }\npure def add(s: S): S = { n: s.n + 1 }\npure val fair_add = "weak"');
-    await assert.rejects(gen(lone, parseSpec(lone, "spec/f.md")), /fairness matters only to `leadsTo` rules/);
-  });
-
-  test("a `leadsTo` rule is broken by a fair run that stops or loops, until the events it waits on are fair; std/net is imported, simulated and proved beside the spec", async () => {
-    const ping = (edit: (s: string) => string = (s) => s) => fixtures(["ping"], (f) => { f["spec/ping.md"] = edit(f["spec/ping.md"]); });
-    const [ok, weak, unfair] = await Promise.all([
-      run(ping()),
-      // A copy lost and sent again for ever is a fair loop unless delivery is strongly fair.
-      run(ping((s) => s.replace('fair_deliver = "strong"', 'fair_deliver = "weak"'))),
-      // With nothing fair, a run may stop as soon as the question is asked.
-      run(ping((s) => s.replace(/pure val fair_\w+ = "\w+"\n/g, ""))),
-    ]);
-    assert.deepEqual(ok.failed, ["review"], ok.text);
-    assert.ok(ok.said("always", /no fair run that stops or loops in \d+ of them breaks a `leadsTo` rule \([1-9]\d* loops found\)/), ok.text);
-    assert.ok(ok.said("proof", /^net\.ts: all \d+ obligations proved/), ok.text);
-    assert.ok(!ok.said("review", /^std\/net\.md:/), ok.text);
-    assert.ok(weak.said("always", /a fair run breaks "Story: Ask until answered \/ A question asked is answered".*may repeat its loop for ever[\s\S]*the run goes round from here/), weak.text);
-    assert.ok(unfair.said("always", /a fair run breaks .*may stop at the last state, since no fair event is possible there/), unfair.text);
-  });
-
-  test("a `leadsTo` rule with a bound is broken by a run that takes that many events without meeting it", async () => {
-    const serve = (tick: string) => oneRule("serve", "Served at once", [
-      "type S = { asked: bool, served: bool, n: int }",
-      "pure val initial: S = { asked: false, served: false, n: 0 }",
-      "pure def canAsk(s: S): bool = not(s.asked)",
-      "pure def ask(s: S): S = { ...s, asked: true }",
-      "pure def canServe(s: S): bool = s.asked and not(s.served)",
-      "pure def serve(s: S): S = { ...s, served: true }",
-      tick,
-      "pure def tick(s: S): S = { ...s, n: s.n + 1 }",
-      "pure def leadsToServed(s: S, later: S): bool = s.asked implies later.served",
-      'pure val fair_serve = "weak"',
-      "pure val within_leadsToServed = 1",
-    ].join("\n"));
-    // A clock that may tick between a question and its answer delays the answer past the bound.
-    const [ok, late] = await Promise.all([run(serve("pure def canTick(s: S): bool = s.served or not(s.asked)")), run(serve(""))]);
-    assert.equal(ok.said("always", /no rule broken/)?.ok, true, ok.text);
-    assert.ok(late.said("always", /a run breaks "Story \/ Served at once" \(spec\/serve\.md:5\) within its bound \(`within_leadsToServed = 1`\)[\s\S]*ask .*<- leadsToServed is owed from here\n.*tick .*<- the bound runs out here/), late.text);
-    const longer = (delay: number) => oneRule("longer", "A bounded wait", `pure val initial: int = 0\npure def tick(n: int): int = n + 1\npure def leadsToAhead(n: int, later: int): bool = later >= n + ${delay}\npure val fair_tick = "weak"\npure val within_leadsToAhead = 21`);
-    const [onTime, tooLate] = await Promise.all([run(longer(21)), run(longer(22))]);
-    assert.deepEqual(onTime.failed, ["review"], onTime.text);
-    assert.ok(tooLate.said("always", /within its bound \(`within_leadsToAhead = 21`\)/), tooLate.text);
-  });
-
-  test("nested set samples stay bounded, an inner lambda may shadow a match binder, forall and subseteq keep their meaning as quantifiers, and a variant names its own module's type before one an import brings", async () => {
-    // A set's `forall` and `subseteq` are printed negated (print.ts, SET_OPS): the laws are sampled, compared with Quint and proved.
-    const quantifiers = "\npure def positive(x: int): bool = x > 0\npure def lawQuantifiers(xs: Set[int]): bool = xs.subseteq(xs) and (xs.forall(positive) or xs.exists(x => x <= 0)) and not(xs.exists(x => x > 0) and xs.forall(x => x <= 0))";
-    const root = oneRule("nested", "Nested values", "type P = A({ xs: List[int] }) | B\npure def sum(p: P): int = match p { | A(x) => x.xs.foldl(0, (n, x) => n + x) | _ => 0 }\npure def lawSum(k: int): bool = sum(A({ xs: List(1, 2) })) == 3\npure def lawCount(xs: List[Set[int]]): bool = xs.length() >= 0\npure def zeros(n: int): Set[int] = Set(n * 0)\npure def lawZeros(n: int): bool = zeros(n).contains(0)" + quantifiers);
-    const { failed, text } = await run(root);
-    assert.deepEqual(failed, ["review"], text);
-    const scoped = libAndUse(ruleSpec("pure val value = 1"), ruleSpec(`import lib.* from "./lib"
-pure val own = 2
-pure def echo(value: int): int = value
-pure def echoLocal(n: int): int =
-  val value = n
-  value
-pure def sum(xs: List[int]): int = xs.foldl(0, (acc, value) => acc + value)
-pure def shadowOwn(own: int): int = own
-pure def paramShadow(value: int): int =
-  val value = 7
-  value
-pure def nestedShadow(value: int): int =
-  val value = 7
-  val value = 8
-  value
-pure def lawEcho(value: int): bool = echo(value) == value
-pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
-    const checked = await run(scoped);
-    assert.deepEqual(checked.failed, ["review"], checked.text);
-    const domain = await import(path.join(scoped, "gen/use.ts"));
-    assert.deepEqual([domain.echo(7), domain.echoLocal(8), domain.sum([2, 3]), domain.shadowOwn(9), domain.paramShadow(1), domain.nestedShadow(1)], [7, 8, 5, 9, 7, 8]);
-    const deep = scratch({
-      "spec/codes.md": ruleSpec("type Code = Spent | Fine\npure val code: Code = Spent"),
-      "spec/lib.md": ruleSpec('import codes.* from "./codes"\npure val value = 1'),
-      "spec/use.md": ruleSpec('import lib.* from "./lib"\ntype Failure = Limited({ at: int }) | Spent\npure val spent: Failure = Spent\npure def lawSpent(n: int): bool = spent != Limited({ at: n })'),
-    });
-    const owned = await run(deep);
-    assert.deepEqual(owned.failed, ["review"], owned.text);
-    assert.deepEqual((await import(path.join(deep, "gen/use.ts"))).spent, { tag: "Spent" });
-  });
-
   test("local enums and records keep their Quint types in generated code and proof", async () => {
     const root = oneRule("choice", "Choose", "type Choice = Left | Right\ntype Pick = { side: Choice, n: int }\npure def read(p: Pick): int = if (p.side == Left) p.n else 0\npure def record(n: int, b: bool): int =\n  val p = { side: if (b) Left else Right, n: n }\n  read(p)\npure def updated(p: Pick): int =\n  val changed = p.with(\"side\", Left)\n  read(changed)\npure def choices(b: bool): List[Choice] = if (b) List(Left) else List(Right)\npure def use(c: Choice): int = if (c == Left) 1 else 2\npure def chosen(b: bool): int =\n  val c = if (b) Left else Right\n  use(c)\npure def lawChosen(b: bool): bool = chosen(b) == (if (b) 1 else 2)");
     const { failed, text } = await run(root);
@@ -1561,6 +1490,105 @@ function eachCheck() {
     for (const name of unused(pristine, began)) fs.rmSync(path.join(pristine, ".spec-cache", name));
   });
   for (const [shard, tests] of Object.entries(SHARDS)) describe(shard, { concurrency: LANES }, tests);
+
+  test("event weights, fairness and bounds name real events and rules and stay outside generated code; a weight repeats its event in the simulator's choice", async () => {
+    const base = "type S = { n: int }\npure val initial: S = { n: 0 }\npure def add(s: S, k: int): S = { n: s.n + k }\npure def leadsToSome(s: S, later: S): bool = later.n >= s.n\n";
+    const model = (quint: string) => { const root = oneRule("w", "Weights", base + quint); return gen(root, parseSpec(root, "spec/w.md")); };
+    const cases: [string, RegExp][] = [
+      ["pure val weight_nope = 2", /weight_nope .*no transition named nope/],
+      ["pure val weight_add = 0", /weight_add .*a whole number from 1 to 100/],
+      ['pure val fair_add = "always"', /fair_add .*"weak"/],
+      ["pure val within_nope = 2", /within_nope .*no leadsTo rule named nope/],
+      ["pure val within_leadsToSome = 0", /within_leadsToSome .*a whole number from 1 to 100/],
+      ["pure val within_leadsToSome = 101", /within_leadsToSome .*a whole number from 1 to 100/],
+      ["pure def leadsToOne(s: S): bool = true", /leadsToOne: a `leadsTo` rule takes a state and a later state/],
+    ];
+    for (const [quint, message] of cases) await assert.rejects(model(quint), message, quint);
+    const weighted = await model('pure val weight_add = 3\npure val fair_add = "weak"\npure val within_leadsToSome = 2');
+    assert.match(weighted.harness, /action step = any \{ add, add, add \}/);
+    assert.deepEqual(weighted.within, new Map([["leadsToSome", 2]]));
+    assert.doesNotMatch(weighted.ts + weighted.harness, /weight_|fair_|within_/);
+    const lone = oneRule("f", "Fair", 'type S = { n: int }\npure val initial: S = { n: 0 }\npure def add(s: S): S = { n: s.n + 1 }\npure val fair_add = "weak"');
+    await assert.rejects(gen(lone, parseSpec(lone, "spec/f.md")), /fairness matters only to `leadsTo` rules/);
+  });
+
+  test("a `leadsTo` rule is broken by a fair run that stops or loops, until the events it waits on are fair; std/net is imported, simulated and proved beside the spec", async () => {
+    const ping = (edit: (s: string) => string = (s) => s) => fixtures(["ping"], (f) => { f["spec/ping.md"] = edit(f["spec/ping.md"]); });
+    const [ok, weak, unfair] = await Promise.all([
+      run(ping()),
+      // A copy lost and sent again for ever is a fair loop unless delivery is strongly fair.
+      run(ping((s) => s.replace('fair_deliver = "strong"', 'fair_deliver = "weak"'))),
+      // With nothing fair, a run may stop as soon as the question is asked.
+      run(ping((s) => s.replace(/pure val fair_\w+ = "\w+"\n/g, ""))),
+    ]);
+    assert.deepEqual(ok.failed, ["review"], ok.text);
+    assert.ok(ok.said("always", /no fair run that stops or loops in \d+ of them breaks a `leadsTo` rule \([1-9]\d* loops found\)/), ok.text);
+    assert.ok(ok.said("proof", /^net\.ts: all \d+ obligations proved/), ok.text);
+    assert.ok(!ok.said("review", /^std\/net\.md:/), ok.text);
+    assert.ok(weak.said("always", /a fair run breaks "Story: Ask until answered \/ A question asked is answered".*may repeat its loop for ever[\s\S]*the run goes round from here/), weak.text);
+    assert.ok(unfair.said("always", /a fair run breaks .*may stop at the last state, since no fair event is possible there/), unfair.text);
+  });
+
+  test("a `leadsTo` rule with a bound is broken by a run that takes that many events without meeting it", async () => {
+    const serve = (tick: string) => oneRule("serve", "Served at once", [
+      "type S = { asked: bool, served: bool, n: int }",
+      "pure val initial: S = { asked: false, served: false, n: 0 }",
+      "pure def canAsk(s: S): bool = not(s.asked)",
+      "pure def ask(s: S): S = { ...s, asked: true }",
+      "pure def canServe(s: S): bool = s.asked and not(s.served)",
+      "pure def serve(s: S): S = { ...s, served: true }",
+      tick,
+      "pure def tick(s: S): S = { ...s, n: s.n + 1 }",
+      "pure def leadsToServed(s: S, later: S): bool = s.asked implies later.served",
+      'pure val fair_serve = "weak"',
+      "pure val within_leadsToServed = 1",
+    ].join("\n"));
+    // A clock that may tick between a question and its answer delays the answer past the bound.
+    const [ok, late] = await Promise.all([run(serve("pure def canTick(s: S): bool = s.served or not(s.asked)")), run(serve(""))]);
+    assert.equal(ok.said("always", /no rule broken/)?.ok, true, ok.text);
+    assert.ok(late.said("always", /a run breaks "Story \/ Served at once" \(spec\/serve\.md:5\) within its bound \(`within_leadsToServed = 1`\)[\s\S]*ask .*<- leadsToServed is owed from here\n.*tick .*<- the bound runs out here/), late.text);
+    const longer = (delay: number) => oneRule("longer", "A bounded wait", `pure val initial: int = 0\npure def tick(n: int): int = n + 1\npure def leadsToAhead(n: int, later: int): bool = later >= n + ${delay}\npure val fair_tick = "weak"\npure val within_leadsToAhead = 21`);
+    const [onTime, tooLate] = await Promise.all([run(longer(21)), run(longer(22))]);
+    assert.deepEqual(onTime.failed, ["review"], onTime.text);
+    assert.ok(tooLate.said("always", /within its bound \(`within_leadsToAhead = 21`\)/), tooLate.text);
+  });
+
+  test("nested set samples stay bounded, an inner lambda may shadow a match binder, forall and subseteq keep their meaning as quantifiers, and a variant names its own module's type before one an import brings", async () => {
+    // A set's `forall` and `subseteq` are printed negated (print.ts, SET_OPS): the laws are sampled, compared with Quint and proved.
+    const quantifiers = "\npure def positive(x: int): bool = x > 0\npure def lawQuantifiers(xs: Set[int]): bool = xs.subseteq(xs) and (xs.forall(positive) or xs.exists(x => x <= 0)) and not(xs.exists(x => x > 0) and xs.forall(x => x <= 0))";
+    const root = oneRule("nested", "Nested values", "type P = A({ xs: List[int] }) | B\npure def sum(p: P): int = match p { | A(x) => x.xs.foldl(0, (n, x) => n + x) | _ => 0 }\npure def lawSum(k: int): bool = sum(A({ xs: List(1, 2) })) == 3\npure def lawCount(xs: List[Set[int]]): bool = xs.length() >= 0\npure def zeros(n: int): Set[int] = Set(n * 0)\npure def lawZeros(n: int): bool = zeros(n).contains(0)" + quantifiers);
+    const { failed, text } = await run(root);
+    assert.deepEqual(failed, ["review"], text);
+    const scoped = libAndUse(ruleSpec("pure val value = 1"), ruleSpec(`import lib.* from "./lib"
+pure val own = 2
+pure def echo(value: int): int = value
+pure def echoLocal(n: int): int =
+  val value = n
+  value
+pure def sum(xs: List[int]): int = xs.foldl(0, (acc, value) => acc + value)
+pure def shadowOwn(own: int): int = own
+pure def paramShadow(value: int): int =
+  val value = 7
+  value
+pure def nestedShadow(value: int): int =
+  val value = 7
+  val value = 8
+  value
+pure def lawEcho(value: int): bool = echo(value) == value
+pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
+    const checked = await run(scoped);
+    assert.deepEqual(checked.failed, ["review"], checked.text);
+    const domain = await import(path.join(scoped, "gen/use.ts"));
+    assert.deepEqual([domain.echo(7), domain.echoLocal(8), domain.sum([2, 3]), domain.shadowOwn(9), domain.paramShadow(1), domain.nestedShadow(1)], [7, 8, 5, 9, 7, 8]);
+    const deep = scratch({
+      "spec/codes.md": ruleSpec("type Code = Spent | Fine\npure val code: Code = Spent"),
+      "spec/lib.md": ruleSpec('import codes.* from "./codes"\npure val value = 1'),
+      "spec/use.md": ruleSpec('import lib.* from "./lib"\ntype Failure = Limited({ at: int }) | Spent\npure val spent: Failure = Spent\npure def lawSpent(n: int): bool = spent != Limited({ at: n })'),
+    });
+    const owned = await run(deep);
+    assert.deepEqual(owned.failed, ["review"], owned.text);
+    assert.deepEqual((await import(path.join(deep, "gen/use.ts"))).spent, { tag: "Spent" });
+  });
 
   test("install creates ignored agent aliases inside the checkout and recreates them on reinstall", () => {
     const { packageManager, scripts } = JSON.parse(read("package.json"));
@@ -2109,17 +2137,31 @@ function eachCheck() {
     assert.ok(!fs.existsSync(sidecar));
   });
 
-  test("a truncated cache entry is recomputed and generated modules run in a CommonJS project", async () => {
+  test("gzip cache entries still work, truncated entries are recomputed and generated modules run in a CommonJS project", async () => {
     const root = fixtures(["door"], (f) => { f["package.json"] = '{"type":"commonjs"}'; });
     const before = await run(root);
     assert.deepEqual(before.failed, ["review"], before.text);
     const cache = path.join(root, ".spec-cache");
-    const entries = fs.readdirSync(cache).filter((f) => f.endsWith(".json.gz"));
-    assert.ok(entries.length > 0);
-    for (const entry of entries) fs.writeFileSync(path.join(cache, entry), "{");
+    const entries = () => fs.readdirSync(cache).filter((f) => f.endsWith(".json.zst")).sort();
+    const initial = entries();
+    assert.ok(initial.length > 0);
+    for (const entry of initial) {
+      const file = path.join(cache, entry);
+      const legacy = file.replace(/\.zst$/, ".gz");
+      fs.writeFileSync(legacy, gzipSync(zstdDecompressSync(fs.readFileSync(file))));
+      fs.rmSync(file);
+    }
+    const legacy = await run(root);
+    assert.deepEqual(legacy.results, before.results, legacy.text);
+    assert.deepEqual(entries(), []);
+    for (const entry of initial) {
+      fs.writeFileSync(path.join(cache, entry), "{");
+      fs.writeFileSync(path.join(cache, entry.replace(/\.zst$/, ".gz")), "{");
+    }
     const after = await run(root);
-    assert.deepEqual(after.failed, ["review"], after.text);
-    for (const entry of fs.readdirSync(cache).filter((f) => f.endsWith(".json.gz"))) assert.doesNotThrow(() => JSON.parse(gunzipSync(fs.readFileSync(path.join(cache, entry))).toString("utf8")));
+    assert.deepEqual(after.results, before.results, after.text);
+    assert.deepEqual(entries(), initial);
+    for (const entry of entries()) assert.doesNotThrow(() => JSON.parse(zstdDecompressSync(fs.readFileSync(path.join(cache, entry))).toString("utf8")));
   });
 
   test("changing an imported definition invalidates model and simulation results", async () => {
@@ -2604,7 +2646,7 @@ function eachCheck() {
     assert.ok(!fs.existsSync(expired), "an unused entry past retention is deleted");
     assert.ok(fs.existsSync(recent), "a recent entry from another branch remains reusable");
     assert.ok(fs.readdirSync(path.dirname(lock)).length > 0, "the entries it used are kept");
-    const newer = path.join(root, `.spec-cache/prove-${"3".repeat(24)}.json.gz`);
+    const newer = path.join(root, `.spec-cache/prove-${"3".repeat(24)}.json.zst`);
     fs.writeFileSync(newer, "{}");
     const file = fs.openSync(recent, "r+");
     fs.ftruncateSync(file, 256 * 2 ** 20);
