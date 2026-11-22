@@ -233,6 +233,33 @@ function pnpmSearchPaths(from: string, store: string): string[] {
   return paths;
 }
 
+function shimNode(exe: string, text: string, observe: (file: string) => boolean): string | undefined {
+  const windows = process.platform === "win32";
+  const guard = windows ? '@IF EXIST "%~dp0\\node.exe" (' : 'if [ -x "$basedir/node" ]; then';
+  const adjacentCall = windows ? /^  "%~dp0\\node\.exe" /m : /^  exec "\$basedir\/node" /m;
+  const pathCall = windows ? /^  node /m : /^  exec node /m;
+  if (!text.split(/\r?\n/).includes(guard) || !adjacentCall.test(text) || !pathCall.test(text) || /^ *(?:export |@SET "?)?PATH=/im.test(text)) return undefined;
+  const executable = (file: string) => {
+    if (!observe(file)) return false;
+    if (windows) return true;
+    try { fs.accessSync(file, fs.constants.X_OK); return true; } catch { return false; }
+  };
+  const adjacent = path.join(path.dirname(exe), windows ? "node.exe" : "node");
+  let chosen = executable(adjacent) ? adjacent : undefined;
+  if (!chosen) {
+    // cmd.exe also searches the spawned working directory and PATHEXT.
+    if (windows) return undefined;
+    for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+      if (!path.isAbsolute(dir)) return undefined;
+      const candidate = path.join(dir, "node");
+      if (executable(candidate)) { chosen = candidate; break; }
+    }
+  }
+  if (!chosen) return undefined;
+  const resolved = fs.realpathSync(chosen);
+  return resolved === fs.realpathSync(process.execPath) && observe(resolved) ? executableDigest(resolved) : undefined;
+}
+
 function launcherInputs(exe: string, packageDir: string, exists: (file: string) => boolean): { digest: string; extra: string[] } | undefined {
   const ambient = process.env.NODE_PATH?.split(path.delimiter) ?? [];
   const fallback = () => ambient.length ? undefined : { digest: executableDigest(exe), extra: [] };
@@ -243,12 +270,14 @@ function launcherInputs(exe: string, packageDir: string, exists: (file: string) 
   const store = virtualStore(packageDir);
   const text = bytes.toString("utf8");
   if (!store) return /\bNODE_PATH\s*=/.test(text) ? undefined : fallback();
+  const node = shimNode(exe, text, exists);
+  if (node === undefined) return undefined;
   const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, "package.json"), "utf8"));
   const name = path.basename(exe).replace(/\.cmd$/i, "");
   const bin = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.[name];
   const known = new Set(pnpmSearchPaths(bin ? path.dirname(path.resolve(packageDir, bin)) : packageDir, store));
   if (ambient.length && ambient.join(path.delimiter) !== pnpmSearchPaths(path.dirname(ambient[0]), store).join(path.delimiter)) return undefined;
-  const lines: string[] = [];
+  const lines = [node];
   for (const line of text.split("\n")) {
     const assignment = /^( *export NODE_PATH="| *@SET "NODE_PATH=)([^"\r]*)("\r?)$/.exec(line);
     if (!assignment) {
@@ -385,7 +414,7 @@ function packageGraph(exe: string, name: string) {
   const [main, loaded] = packageRoots(exe, name, observeLocation);
   if (!main) throw new Error(`no ${name} with a version is installed beside ${exe} or these tools; run pnpm install`);
   const roots = [visit(main), loaded && visit(loaded)];
-  return { graph, roots, main, contents, observed, exposed, files: observations, links, unchanged: () => sameFiles(observations, links) };
+  return { graph, roots, main, contents, observeLocation, exposed, files: observations, links, unchanged: () => sameFiles(observations, links) };
 }
 
 export const installedPackages = (exe: string, name: string) => packageGraph(exe, name).graph.map((p) => p.version).sort();
@@ -403,14 +432,15 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
   let previous = latest.get(tool);
   if (previous?.exe !== exe || !previous.unchanged()) {
     const searchPath = process.env.NODE_PATH;
-    const key = sha(programSource ??= code(closure("cache")), import.meta.dirname, path.resolve(exe), searchPath ?? "", process.version, process.platform, process.arch);
+    const commandPath = process.env.PATH;
+    const key = sha(programSource ??= code(closure("cache")), import.meta.dirname, path.resolve(exe), searchPath ?? "", commandPath ?? "", process.execPath, process.version, process.platform, process.arch);
     const name = `installed-${key.slice(0, 24)}.json.zst`;
     const directory = path.join(path.dirname(LASTING), "installations");
     const index = path.join(directory, name);
     let installed = unsure || previous?.exe === exe ? undefined : readProgram(index, key);
     if (!installed) {
-      const { graph, roots, main, contents, observed, exposed, files, links, unchanged } = packageGraph(exe, TOOL_PACKAGES[tool]);
-      const launcher = launcherInputs(exe, main, observed);
+      const { graph, roots, main, contents, observeLocation, exposed, files, links, unchanged } = packageGraph(exe, TOOL_PACKAGES[tool]);
+      const launcher = launcherInputs(exe, main, observeLocation);
       const search = launcher && exposed(launcher.extra);
       const id = launcher && search && sha(launcher.digest, JSON.stringify([roots, ...search, graph.map(({ dir, version, dependencies }) => [version, contents(dir), dependencies])]), `node@${process.versions.node}:${process.platform}:${process.arch}`);
       installed = { id, unchanged };
@@ -422,7 +452,7 @@ export function installedProgram(root: string, tool: keyof typeof TOOL_PACKAGES)
       }
     }
     const { id, unchanged } = installed;
-    latest.set(tool, previous = { exe, id, unchanged: () => process.env.NODE_PATH === searchPath && unchanged() });
+    latest.set(tool, previous = { exe, id, unchanged: () => process.env.NODE_PATH === searchPath && process.env.PATH === commandPath && unchanged() });
   }
   const { id, unchanged } = previous;
   const program = { exe, id, unchanged: () => findBin(tool, root) === exe && unchanged() };
