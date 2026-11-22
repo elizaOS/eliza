@@ -735,6 +735,32 @@
         return "government-id";
       return null;
     };
+    const submitControl = (element) =>
+      (is(element, "HTMLButtonElement") && element.type === "submit") ||
+      (is(element, "HTMLInputElement") &&
+        ["submit", "image"].includes(element.type));
+    // The request a submit sends: a submitter's form* attributes override
+    // the form's action, method, target and encoding.
+    const requestOf = (submitter, form) => {
+      const own = (attribute, value, fallback) =>
+        submitter?.hasAttribute(attribute) ? value : fallback;
+      return {
+        action: own("formaction", submitter?.formAction, form.action),
+        method: own("formmethod", submitter?.formMethod, form.method),
+        target: own(
+          "formtarget",
+          submitter?.formTarget,
+          form.hasAttribute("target")
+            ? form.target
+            : (form.ownerDocument.querySelector("base[target]")?.target ?? ""),
+        ),
+        enctype: own("formenctype", submitter?.formEnctype, form.enctype),
+      };
+    };
+    const defaultButton = (form) =>
+      [...form.getRootNode().querySelectorAll("button,input")].find(
+        (element) => element.form === form && submitControl(element),
+      ) ?? null;
     // A control whose effect the browser defines, whatever the page's words.
     // A link to the page it is on (href="#") runs only the page's handlers.
     // A disclosure (a plain button with aria-expanded) or a tab is the page's
@@ -1070,6 +1096,58 @@
           return null;
         }
       };
+      const sendsOf = (submitter, form) => {
+        const { action, method, target } = requestOf(submitter, form);
+        if (method === "dialog")
+          return { origin: null, method, newWindow: false };
+        const origin = (() => {
+          try {
+            const url = new URL(action, form.baseURI);
+            return /^https?:$/.test(url.protocol) ? url.origin : null;
+          } catch {
+            return null;
+          }
+        })();
+        return {
+          origin,
+          method,
+          newWindow: !["", "_self", "_parent", "_top"].includes(
+            target.toLowerCase(),
+          ),
+        };
+      };
+      const implicitSends = new Map();
+      const formSends = (form) => {
+        if (!implicitSends.has(form)) {
+          const button = defaultButton(form);
+          implicitSends.set(
+            form,
+            button?.matches(":disabled") ||
+              (!button &&
+                [...form.elements].filter(
+                  (field) =>
+                    is(field, "HTMLInputElement") &&
+                    [
+                      "text",
+                      "search",
+                      "url",
+                      "tel",
+                      "email",
+                      "password",
+                      "date",
+                      "month",
+                      "week",
+                      "time",
+                      "datetime-local",
+                      "number",
+                    ].includes(field.type),
+                ).length > 1)
+              ? null
+              : sendsOf(button, form),
+          );
+        }
+        return implicitSends.get(form);
+      };
       for (const node of candidates) {
         if (!node.checkVisibility({ checkVisibilityCSS: true })) continue;
         const id = String(nodes.size);
@@ -1089,6 +1167,8 @@
         });
         const state = controlState(node);
         const form = node.form ?? node.closest("form");
+        // A button that sends its form when pressed.
+        const submits = submitControl(node) && node.form !== null;
         const hint = (value) => withoutSecrets(value?.trim() || null);
         const frame = frameOf(node);
         elements.push({
@@ -1142,14 +1222,15 @@
             })(),
           ),
           form: form
-            ? { index: forms.indexOf(form), name: hint(groupName(form)) }
+            ? {
+                index: forms.indexOf(form),
+                name: hint(groupName(form)),
+                sends: formSends(form),
+              }
             : null,
           group: hint(groupName(node.closest("fieldset,[role=group]"))),
-          // A button that sends its form when pressed.
-          submits:
-            (is(node, "HTMLButtonElement") || is(node, "HTMLInputElement")) &&
-            node.form !== null &&
-            ["submit", "image"].includes(node.type),
+          submits,
+          sends: submits ? sendsOf(node, node.form) : null,
           pressable: custom.has(node)
             ? node.matches("[onclick]")
               ? "click-handler"
@@ -2047,28 +2128,12 @@
       const grantedForm = grant
         ? (node.form ?? node.closest("form") ?? null)
         : null;
-      const submitControl = (element) =>
-        (is(element, "HTMLButtonElement") && element.type === "submit") ||
-        (is(element, "HTMLInputElement") &&
-          ["submit", "image"].includes(element.type));
       const overrides = [
         "formaction",
         "formmethod",
         "formtarget",
         "formenctype",
       ];
-      // The request a submit sends: a submitter's form* attributes override
-      // the form's action, method, target and encoding.
-      const requestOf = (submitter, form) => {
-        const own = (attribute, value, fallback) =>
-          submitter?.hasAttribute(attribute) ? value : fallback;
-        return {
-          action: own("formaction", submitter?.formAction, form.action),
-          method: own("formmethod", submitter?.formMethod, form.method),
-          target: own("formtarget", submitter?.formTarget, form.target),
-          enctype: own("formenctype", submitter?.formEnctype, form.enctype),
-        };
-      };
       const sameRequest = (a, b) =>
         a.action === b.action &&
         a.method === b.method &&
@@ -2085,9 +2150,7 @@
       // control is the form's default button and overrides nothing.
       const implicitAllowed =
         grantedRequest !== null &&
-        [...node.getRootNode().querySelectorAll("button,input")].find(
-          (element) => element.form === grantedForm && submitControl(element),
-        ) === node &&
+        defaultButton(grantedForm) === node &&
         !overrides.some((attribute) => node.hasAttribute(attribute));
       // The one request the grant consents besides its form's page load. A
       // declared target is matched exactly; a GET form's action by origin and
