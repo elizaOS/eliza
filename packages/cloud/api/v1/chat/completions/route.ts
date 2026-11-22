@@ -2368,32 +2368,48 @@ export async function handleChatCompletionsPOST(
     const status = isInsufficientCredits
       ? 402
       : (providerStatus ?? getErrorStatusCode(error));
-    const errorType = openAiErrorTypeForStatus(status);
-    const { message: providerMessage, ...providerFields } =
-      status === 400
-        ? getProviderRequestErrorFields(error, promptCacheKeyForRedaction)
-        : {};
-
     return attachPreforwardTelemetry(
       addCorsHeaders(
         Response.json(
-          {
-            error: {
-              // Ahead of the message, which a client may cut short.
-              ...providerFields,
-              message: errorMessage,
-              type: errorType,
-              ...(isInsufficientCredits && { code: "insufficient_credits" }),
-              ...(providerMessage === undefined
-                ? {}
-                : { provider_message: providerMessage }),
-            },
-          },
+          bufferedErrorBody(
+            error,
+            errorMessage,
+            status,
+            isInsufficientCredits,
+            promptCacheKeyForRedaction,
+          ),
           { status },
         ),
       ),
     );
   }
+}
+
+/**
+ * The body of a failed buffered request. A provider 400 carries its listed
+ * code and param ahead of the message, which a client may cut short, and its
+ * own redacted text as `provider_message`; `message` stays the gateway's.
+ */
+function bufferedErrorBody(
+  error: unknown,
+  message: string,
+  status: number,
+  insufficientCredits: boolean,
+  promptCacheKey: string | undefined,
+): { error: Record<string, string> } {
+  const { message: providerMessage, ...providerFields } =
+    status === 400 ? getProviderRequestErrorFields(error, promptCacheKey) : {};
+  return {
+    error: {
+      ...providerFields,
+      message,
+      type: openAiErrorTypeForStatus(status),
+      ...(insufficientCredits && { code: "insufficient_credits" }),
+      ...(providerMessage === undefined
+        ? {}
+        : { provider_message: providerMessage }),
+    },
+  };
 }
 
 /**
@@ -4120,6 +4136,7 @@ export const __streamingCreditTestHooks = {
   handleStreamingRequest,
   getRecoverableProviderErrorStatus,
   getProviderRequestErrorFields,
+  bufferedErrorBody,
 } as const;
 
 export const __billingBranchTestHooks = {

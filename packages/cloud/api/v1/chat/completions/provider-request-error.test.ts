@@ -239,3 +239,53 @@ test("the terminal stream chunk carries the fields ahead of the message", async 
   expect(text).not.toContain("PRIVATE_FAILED_GENERATION");
   expect(text.trimEnd().endsWith("data: [DONE]")).toBe(true);
 });
+
+test("the buffered body carries the fields ahead of the message", async () => {
+  const error = await providerError(400, PARSER_ERROR);
+  const body = hooks.bufferedErrorBody(
+    error,
+    "Bad Request",
+    400,
+    false,
+    undefined,
+  );
+  expect(body).toEqual({
+    error: {
+      code: "parser_error",
+      param: "tool_calls",
+      message: "Bad Request",
+      type: "invalid_request_error",
+      provider_message: PARSER_ERROR.message,
+    },
+  });
+  expect(Object.keys(body.error)).toEqual([
+    "code",
+    "param",
+    "message",
+    "type",
+    "provider_message",
+  ]);
+  expect(JSON.stringify(body)).not.toContain("PRIVATE_FAILED_GENERATION");
+  // Any other status keeps the gateway's own body.
+  const upstream = await providerError(500, PARSER_ERROR);
+  expect(
+    hooks.bufferedErrorBody(upstream, "Upstream failed", 503, false, undefined),
+  ).toEqual({
+    error: { message: "Upstream failed", type: "service_unavailable" },
+  });
+  expect(
+    hooks.bufferedErrorBody(
+      error,
+      "Insufficient credits",
+      402,
+      true,
+      undefined,
+    ),
+  ).toEqual({
+    error: {
+      message: "Insufficient credits",
+      type: "insufficient_quota",
+      code: "insufficient_credits",
+    },
+  });
+});
