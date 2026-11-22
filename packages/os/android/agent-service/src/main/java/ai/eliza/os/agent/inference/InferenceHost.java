@@ -48,6 +48,10 @@ public final class InferenceHost {
     Refusal(String code, String message) { super(message); this.code = code; }
   }
 
+  private static final class SpeechRequest {
+    boolean disconnected;
+  }
+
   private final String socketName;
   private final String speechBundle;
   private final File modelRoot;
@@ -69,8 +73,9 @@ public final class InferenceHost {
   private String verifiedDigest;
   private long verifiedLength;
   private long verifiedModified;
-  private volatile Pass pass = Pass.NONE;
-  private volatile boolean cancelAsked;
+  private Pass pass = Pass.NONE;
+  private SpeechRequest activeSpeech;
+  private boolean cancelAsked;
 
   /**
    * A host on the consumer's socket name, speech bundle and model storage. {@code idleUnloadMs} of 0 keeps
@@ -112,7 +117,7 @@ public final class InferenceHost {
   /** Stops accepting, cancels a running speech pass and frees both contexts once it ends. */
   public synchronized void stop() {
     running.set(false);
-    signalCancel();
+    signalCancel(null);
     ScheduledExecutorService ticks = idle;
     idle = null;
     if (ticks != null) ticks.shutdownNow();
@@ -201,12 +206,13 @@ public final class InferenceHost {
           continue;
         }
         if (op == InferencePolicy.Op.SYNTHESIZE || op == InferencePolicy.Op.TRANSCRIBE) {
-          Thread watch = hangUpWatch(in);
-          write(out, answer(op, request));
+          SpeechRequest speech = new SpeechRequest();
+          Thread watch = hangUpWatch(in, speech);
+          write(out, answer(op, request, speech));
           watch.interrupt();
           return;
         }
-        write(out, answer(op, request));
+        write(out, answer(op, request, null));
       }
     } catch (IOException e) {
       Log.w(TAG, "connection error", e);
@@ -215,12 +221,12 @@ public final class InferenceHost {
     }
   }
 
-  private Thread hangUpWatch(InputStream in) {
+  private Thread hangUpWatch(InputStream in, SpeechRequest speech) {
     Thread watch = new Thread(() -> {
       try {
-        if (in.read() < 0 && pass == Pass.SPEECH) signalCancel();
+        if (in.read() < 0) signalCancel(speech);
       } catch (IOException closed) {
-        if (pass == Pass.SPEECH) signalCancel();
+        signalCancel(speech);
       }
     }, "eliza-inference-hangup");
     watch.setDaemon(true);
@@ -237,7 +243,7 @@ public final class InferenceHost {
     return paths;
   }
 
-  private String answer(InferencePolicy.Op op, JSONObject request) {
+  private String answer(InferencePolicy.Op op, JSONObject request, SpeechRequest speech) {
     try {
       switch (op) {
         case CAPABILITIES: return ok().put("synthesis", engine.synthesisReady(speechBundle)).put("transcription", engine.transcriptionReady(speechBundle)).toString();
@@ -245,9 +251,9 @@ public final class InferenceHost {
         case UNLOAD: return unload();
         case WARM_EMBEDDING: return warm(request);
         case EMBED: return embed(request);
-        case SYNTHESIZE: return synthesize(request.optString("text", ""));
-        case TRANSCRIBE: return transcribe(request.optString("pcmBase64", ""), request.optInt("sampleRate", 0));
-        case CANCEL_SPEECH: return ok().put("signalled", signalCancel()).toString();
+        case SYNTHESIZE: return synthesize(request.optString("text", ""), speech);
+        case TRANSCRIBE: return transcribe(request.optString("pcmBase64", ""), request.optInt("sampleRate", 0), speech);
+        case CANCEL_SPEECH: return ok().put("signalled", signalCancel(null)).toString();
         case END_OF_TURN: return endOfTurn(request.optString("transcript", ""));
         default: return refusal("OP_REFUSED", "the operation is not offered");
       }
@@ -313,13 +319,13 @@ public final class InferenceHost {
     }
   }
 
-  private String synthesize(String text) throws JSONException, Refusal {
+  private String synthesize(String text, SpeechRequest speech) throws JSONException, Refusal {
     byte[] utf8 = wellFormed(text);
     if (text.trim().isEmpty()) throw new Refusal("FAILED", "there is no text to speak");
     synchronized (passLock) {
       if (!engine.synthesisReady(speechBundle)) throw new Refusal("UNAVAILABLE", "on-device speech synthesis is not ready");
       ensureResidentLocked();
-      beginLocked(Pass.SPEECH);
+      beginSpeechLocked(speech);
       try {
         float[] pcm = engine.synthesize(resident, utf8);
         int rate = engine.sampleRate(resident);
@@ -342,7 +348,7 @@ public final class InferenceHost {
     }
   }
 
-  private String transcribe(String pcmBase64, int sampleRate) throws JSONException, Refusal {
+  private String transcribe(String pcmBase64, int sampleRate, SpeechRequest speech) throws JSONException, Refusal {
     if (sampleRate <= 0) throw new Refusal("FAILED", "the audio has no sample rate");
     final byte[] raw;
     try {
@@ -356,7 +362,7 @@ public final class InferenceHost {
     synchronized (passLock) {
       if (!engine.transcriptionReady(speechBundle)) throw new Refusal("UNAVAILABLE", "on-device transcription is not ready");
       ensureResidentLocked();
-      beginLocked(Pass.SPEECH);
+      beginSpeechLocked(speech);
       try {
         String text = engine.transcribe(resident, pcm, sampleRate);
         Log.i(TAG, "transcribed " + pcm.length + " samples at " + sampleRate + " Hz into " + (text == null ? 0 : text.length()) + " characters");
@@ -446,9 +452,18 @@ public final class InferenceHost {
     }
   }
 
+  private void beginSpeechLocked(SpeechRequest speech) throws Refusal {
+    synchronized (cancelLock) {
+      if (speech.disconnected || !running.get()) throw new Refusal("CANCELLED", "the speech request ended before its pass");
+      beginLocked(Pass.SPEECH);
+      activeSpeech = speech;
+    }
+  }
+
   private void endLocked() {
     synchronized (cancelLock) {
       pass = Pass.NONE;
+      activeSpeech = null;
       cancelAsked = false;
     }
     lastPassAt = android.os.SystemClock.elapsedRealtime();
@@ -459,8 +474,12 @@ public final class InferenceHost {
     else closeResidentLocked();
   }
 
-  private boolean signalCancel() {
+  private boolean signalCancel(SpeechRequest speech) {
     synchronized (cancelLock) {
+      if (speech != null) {
+        speech.disconnected = true;
+        if (activeSpeech != speech) return false;
+      }
       if (pass != Pass.SPEECH || cancelAsked || resident == 0L) return false;
       cancelAsked = true;
       engine.cancelSpeech(resident);

@@ -58,11 +58,12 @@ consumer's speech bundle when no model is loaded, and the end-of-turn
 score needs a loaded model. Embeddings run on their own session, opened
 when it is warmed or first used. A pass holds the host until it ends, so
 loading, unloading and the idle or memory-pressure release wait for it.
-A cancel, from the caller hanging up or a cancel request on another
-connection, reaches only a running synthesis or transcription, which
-then ends as `CANCELLED`. A pass the native library rejected for its
-input leaves its context; any other failure drops it, so the next pass
-opens it again.
+A caller hanging up cancels only its own speech pass. A queued speech
+request whose disconnect is observed before admission never starts. An
+explicit cancel request can target the active synthesis or transcription.
+A cancelled pass ends as `CANCELLED`. A pass the native library rejected for
+its input leaves its context; any other failure drops it, so the next
+pass opens it again.
 
 ```quint
 type PassKind = NoPass | SpeechPass | EmbeddingPass | EndOfTurnPass
@@ -79,6 +80,9 @@ pure def canStartPass(s: InferenceHost, kind: PassKind): bool =
 pure def startPass(s: InferenceHost, kind: PassKind): InferenceHost =
   { ...s, pass: kind, resident: s.resident or kind == SpeechPass, embedding: s.embedding or kind == EmbeddingPass }
 pure def canAskCancel(s: InferenceHost): bool = s.pass == SpeechPass and not(s.cancelAsked)
+pure def cancelsSpeechPass(s: InferenceHost, callerOwnsPass: bool, explicit: bool): bool =
+  canAskCancel(s) and (callerOwnsPass or explicit)
+pure def lawAnotherCallerHangingUpCannotCancel(s: InferenceHost): bool = not(cancelsSpeechPass(s, false, false))
 pure def askCancel(s: InferenceHost): InferenceHost = { ...s, cancelAsked: true }
 pure def canFinishPass(s: InferenceHost): bool = s.pass != NoPass
 pure def finishPass(s: InferenceHost): InferenceHost = { ...s, pass: NoPass, cancelAsked: false }
