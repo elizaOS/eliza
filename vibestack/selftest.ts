@@ -3446,14 +3446,16 @@ function theCommandLine() {
     fs.writeFileSync(path.join(root, "owner-source"), "external owner");
     const packable = ["--skip-gen-on-pack", ...prerequisites];
     const packed = await exec(process.execPath, [script, "gen", "--install", ...packable], root, {
-      ...process.env, npm_command: "pack", npm_lifecycle_event: "prepare", TURBO_CACHE: "local:rw", TURBO_TOKEN: "",
+      ...process.env, GITHUB_ACTIONS: "true", GITHUB_JOB: "verify",
+      npm_command: "pack", npm_lifecycle_event: "prepare", TURBO_CACHE: "local:rw", TURBO_TOKEN: "",
     });
     assert.equal(packed.status, 0, packed.stderr);
     assert.equal(fs.readFileSync(path.join(root, "owner-generated"), "utf8"), "external owner");
     assert.ok(!fs.existsSync(path.join(root, "gen/value.ts")));
+    fs.writeFileSync(path.join(root, "owner-source"), "installed owner");
     const installed = await prepare(true, "verify", ...packable);
-    assert.equal(fs.readFileSync(path.join(root, "owner-generated"), "utf8"), "external owner");
     assert.equal(installed.status, 0, installed.stderr);
+    assert.equal(fs.readFileSync(path.join(root, "owner-generated"), "utf8"), "installed owner");
     assert.doesNotMatch(installed.stdout, /gen\/ was not generated/);
     assert.equal((await import(path.join(root, "gen/value.ts") + "?installed")).answer, 43);
     fs.rmSync(path.join(root, "gen/value.ts"));
