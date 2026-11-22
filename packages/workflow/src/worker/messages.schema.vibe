@@ -15,4 +15,13 @@ export const ParentLine = Schema.Union([
   Schema.Struct({ type: Schema.Literal("draft"), stepId: Schema.String, text: Schema.String }),
   Schema.Struct({ type: Schema.Literal("draftFailed"), stepId: Schema.String, message: Schema.String }),
   Schema.Struct({ type: Schema.Literal("cancel") }),
+  Schema.Struct({ type: Schema.Literal("check"), source: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("startGenerated"), runId: Schema.String, js: Schema.String, jsDigest: Schema.String, input: Schema.Unknown,
+    journal: Schema.Array(Schema.Struct({
+      call: Schema.String, digest: Schema.String, kind: Schema.Literals(["StepCall", "EffectCall", "ApprovalCall", "SignalCall", "TimerCall"]), value: Schema.Unknown,
+    })),
+  }),
+  Schema.Struct({ type: Schema.Literal("effect"), call: Schema.String, text: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("effectFailed"), call: Schema.String, message: Schema.String }),
 ])

@@ -106,10 +106,10 @@ its latest user message.
 
 ```quint
 type ReferenceSource = FreshNonce | ConversationKey({ derived: str })
-pure def referenceNonce(source: ReferenceSource, fresh: str): str = match source { | ConversationKey(k) => k.derived | FreshNonce => fresh }
-pure def referenceNumber(source: ReferenceSource, order: int, digested: int): int = match source { | ConversationKey(k) => digested | FreshNonce => order }
+pure def referenceNonce(referenceSource: ReferenceSource, fresh: str): str = match referenceSource { | ConversationKey(k) => k.derived | FreshNonce => fresh }
+pure def referenceNumber(referenceSource: ReferenceSource, order: int, digested: int): int = match referenceSource { | ConversationKey(k) => digested | FreshNonce => order }
 pure def referenceRestorable(written: Set[str], reference: str): bool = written.contains(reference)
-pure val sourceValues = Set(FreshNonce, ConversationKey({ derived: "k1" }))
+pure val referenceSourceValues = Set(FreshNonce, ConversationKey({ derived: "k1" }))
 pure def lawAStableNumberIgnoresTheOrderValuesArrive(derived: str, earlier: int, later: int, digested: int): bool =
   referenceNumber(ConversationKey({ derived: derived }), earlier, digested) == referenceNumber(ConversationKey({ derived: derived }), later, digested)
 pure def lawAStableNonceIsTheSameInEverySession(derived: str, one: str, other: str): bool =

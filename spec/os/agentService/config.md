@@ -175,7 +175,8 @@ pure def lawOnlyACloudLaunchIsFramedWithTheDeviceKey(d: AgentData, cred: C::Devi
   framesDeviceKey(framedKey(d, cred, providerVersion)) implies needsAccount(d.host.launch.backend)
 pure def lawOwnKeyLaunchIsFramedWithTheProviderKeyOrNone(d: AgentData, cred: C::DeviceCredential, providerVersion: int): bool = {
   val b = d.host.launch.backend
-  (not(needsAccount(b)) and Launch::needsCredential(b))
+  val ownKeyLaunch = not(needsAccount(b)) and Launch::needsCredential(b)
+  ownKeyLaunch
     implies framedKey(d, cred, providerVersion) == (if (providerVersion >= 1) ProviderKey({ version: providerVersion }) else NoFramedKey)
 }
 pure val providerVersionValues = Set(0, 1, 2)

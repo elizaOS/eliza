@@ -18,10 +18,20 @@ const binding = Schema.Struct({
   ota: digest,
 })
 export type JournalBinding = typeof binding.Type
+const journalEvent = Schema.Struct({
+  at: identity,
+  phase: identity,
+  lock: identity,
+  observed: Schema.optionalKey(Schema.Unknown),
+  note: Schema.optionalKey(Schema.String),
+})
+export type JournalEvent = typeof journalEvent.Type
 const contents = Schema.Struct({
   schema: Schema.Literal(1),
   kind: Schema.Literal("aosp-ota-update-journal"),
   binding,
+  createdAt: Schema.optionalKey(identity),
+  events: Schema.optionalKey(Schema.Array(journalEvent)),
   state: Schema.Unknown,
 })
 const decodeContents = Schema.decodeUnknownEffect(contents, { onExcessProperty: "error" })
@@ -64,7 +74,7 @@ effect function readStored(file: string, serial: string) {
     const stored = try decodeContents(raw)
     const state = try decodeState(stored.state)
     if (stored.binding.serial !== serial || !inv(state) || state.phase === "Unstarted") throw new OtaRefused({ reason: "OTA journal is invalid or belongs to a different device" })
-    return { kind: "bound", binding: stored.binding, state } as const
+    return { kind: "bound", binding: stored.binding, state, createdAt: stored.createdAt, events: stored.events ?? [] } as const
   }
   const legacy = try decodeLegacy(raw)
   const phase = legacyPhases.get(legacy.state)
@@ -77,7 +87,7 @@ effect function readStored(file: string, serial: string) {
     originalSlot: legacy.from.slot === "a" ? "SlotA" : "SlotB", originalBoot: bootStates[legacy.from.verifiedBootState],
     wasLocked: legacy.from.flashLocked === true || legacy.from.flashLocked === "1", virtualAb: legacy.from.virtualAb } }
   if (!inv(state)) throw new OtaRefused({ reason: "Earlier OTA journal has an invalid state" })
-  return { kind: "legacy", state, legacy } as const
+  return { kind: "legacy", state, legacy, createdAt: undefined, events: [] } as const
 }
 
 export effect function readOperatorStatus(file: string, serial: string) {
@@ -87,7 +97,7 @@ export effect function readOperatorStatus(file: string, serial: string) {
 export effect function readOperatorJournal(file: string, serial: string, adoption?: JournalAdoption) {
   const stored = try readStored(file, serial)
   if (stored === undefined) return undefined
-  if (stored.kind === "bound") return { binding: stored.binding, state: stored.state, adopted: false }
+  if (stored.kind === "bound") return { binding: stored.binding, state: stored.state, adopted: false, createdAt: stored.createdAt, events: stored.events }
   const { legacy, state } = stored
   if (adoption === undefined || adoption.binding.serial !== serial || adoption.binding.installedRecord !== legacy.from.recordSha256 ||
       adoption.binding.candidateRecord !== legacy.release.recordSha256 || adoption.binding.ota !== legacy.release.otaSha256 ||
@@ -95,7 +105,7 @@ export effect function readOperatorJournal(file: string, serial: string, adoptio
       adoption.installedBuild !== state.start.installedBuild || adoption.candidateBuild !== state.start.candidateBuild || adoption.candidatePatch !== state.start.candidatePatch) {
     throw new OtaRefused({ reason: "Use apply with the original signed records and OTA bytes to resume this earlier journal" })
   }
-  return { binding: adoption.binding, state, adopted: true }
+  return { binding: adoption.binding, state, adopted: true, createdAt: undefined, events: [] as readonly JournalEvent[] }
 }
 
 export function sameJournalBinding(stored: JournalBinding, expected: JournalBinding): boolean {
@@ -120,16 +130,21 @@ export effect function openOperatorJournal(file: string, serial: AdbSerial, expe
   const closed = lockHeld(loaded.lock) ? releaseLock(loaded) : loaded
   let current = acquireLock(closed.lock.tag === "LeftLocked" ? removeLeftLock(closed) : closed)
   let reserved = previous !== undefined
+  const createdAt = previous?.createdAt ?? new Date(try Clock.currentTimeMillis).toISOString()
+  const events: JournalEvent[] = [...(previous?.events ?? [])]
   const state = () => current
-  const store = (next: OperatorJournal) => effect {
+  const history = () => [...events]
+  const store = (next: OperatorJournal, detail: { readonly observed?: unknown; readonly note?: string } = {}) => effect {
     if (!inv(next) || next.phase === "Unstarted") throw new OtaRefused({ reason: "Cannot persist an invalid OTA journal transition" })
     if (!reserved) {
-      try (files.writeFileString(target, "", { flag: "wx", mode: 0o600 }) catch effect () => {
+      files.writeFileString(target, "", { flag: "wx", mode: 0o600 }) catch effect () => {
         throw new OtaRefused({ reason: "Another OTA journal appeared at this path; inspect it before starting a new update" })
-      })
+      }
       reserved = true
     }
-    try writeDurableDeviceState(target, `${JSON.stringify({ schema: 1, kind: "aosp-ota-update-journal", binding: identity, state: next }, null, 2)}\n`)
+    const recorded: JournalEvent = { at: new Date(try Clock.currentTimeMillis).toISOString(), phase: next.phase, lock: next.lock.tag, ...detail }
+    try writeDurableDeviceState(target, `${JSON.stringify({ schema: 1, kind: "aosp-ota-update-journal", binding: identity, createdAt, events: [...events, recorded], state: next }, null, 2)}\n`)
+    events.push(recorded)
     current = next
   }
   const beforeWrites = () => effect {
@@ -145,5 +160,5 @@ export effect function openOperatorJournal(file: string, serial: AdbSerial, expe
     try store(next)
     if (wrote && next.lock.tag === "Unlocked") try settleDeviceLease(held)
   }
-  return { state, store, beforeWrites, finish }
+  return { state, history, store, beforeWrites, finish }
 }

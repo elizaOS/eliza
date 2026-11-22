@@ -11,7 +11,7 @@ import {
 import { digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT } from "../src/digests/index.vibe"
 import { checkWorkflowScope as scopeEntry } from "../src/scope.vibe"
 import { importWorkflowSource, publishWorkflowSource, verifyWorkerArtifact, workerArtifactClosure, workerProvenance, SourceRefused, WorkerArtifactRefused } from "../src/worker/index.vibe"
-import { hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
+import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
 import { inProcessWorkerPort } from "../src/service/host.vibe"
 import { workflowRoutes } from "../src/routes.vibe"
 import { workflowHttpError } from "../src/client/workflow-client.vibe"
@@ -56,9 +56,8 @@ module node {
 
   export async function call(routes: readonly LocalRoute[], target: string, body: unknown): Promise<Answer> {
     const [path, search = ""] = target.split("?")
-    const method = body === undefined ? "GET" : "POST"
     for (const route of routes) {
-      if (route.method !== method) continue
+      if (body === undefined ? route.method !== "GET" : route.method !== "POST" && route.method !== "PUT") continue
       const names: string[] = []
       const pattern = new RegExp("^" + route.path.replace(/\{([a-zA-Z]+)\}/g, (_all, name: string) => { names.push(name); return "([^/]+)" }) + "$")
       const found = pattern.exec(path)
@@ -117,13 +116,14 @@ effect function harness(options: { readonly phone?: Phone; readonly draft?: (pro
   const digests = hostedDigests(service)
   try service.start()
   try addFinalizer(() => service.stop())
-  const routes = workflowRoutes(() => ({ service, digests }))
+  const generated = generatedWorkflows(service)
+  const routes = workflowRoutes(() => ({ service, digests, generated }))
   const request: WorkflowRequest = effect (path, body) => {
     const answer = try promise(() => call(routes, path, body))
     if (answer.status >= 300) throw workflowHttpError(answer.status, answer.body)
     return answer.body
   }
-  return { service, digests, wakeups, notices, request, client: workflowClient(request), routes }
+  return { service, digests, generated, wakeups, notices, request, client: workflowClient(request), routes }
 }
 
 type Harness = Effect.Success<ReturnType<typeof harness>>
@@ -214,7 +214,7 @@ it.live('Run the version I reviewed, and turn a schedule on or off only at that 
   try check(() => assert.equal(refused._tag === "WorkflowHttpError" ? refused.code : undefined, "WORKFLOW_VERSION_NOT_ADMITTED"))
 
   const runtime = {} as IAgentRuntime
-  workflowInstances.set(runtime, { service: rig.service, digests: rig.digests })
+  workflowInstances.set(runtime, { service: rig.service, digests: rig.digests, generated: rig.generated })
   const act = (parameters: Record<string, unknown>) => promise(() => workflowAction.handler(runtime, { content: { text: "" } } as Memory, undefined, { parameters }) as Promise<ActionResult>)
   const read = try act({ action: "list" })
   const malformed = try act({ action: "deactivate", workflowId: receipt.workflowId, versionId: "" })
@@ -396,6 +396,61 @@ it.live('Run a digest over a live Google source read through managed Google (spe
   }
 })
 
+const generatedSource = `import type { WorkflowContext } from "eliza-workflow"
+export default async function (ctx: WorkflowContext) {
+  const count = await ctx.step("count", () => 2)
+  const approved = await ctx.approval("review", { title: "Draft a summary", summary: "Ask the model for a summary", operation: "Draft", target: "Run history", account: "This agent" })
+  if (!approved) return "skipped"
+  const text = await ctx.generate("draft", { prompt: "Summarize " + String(count) })
+  const signal = await ctx.signal("ready", "go", { timeoutMs: 60000 })
+  await ctx.sleep("pause", 1)
+  return { text, signal }
+}
+`
+
+it.live('Turn on generated code only after review and resume it without repeating an effect (spec/workflow/generated.md, "Story: Turn on generated code only after I review exactly what it does"; spec/workflow/generated.md, "Story: Resume generated code after a wait without repeating what it already did"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes")', effect () => {
+  let drafts = 0
+  const rig = try harness({ draft: () => { drafts += 1; return "Your summary" } })
+  const refusedImport = try Effect.flip(rig.request("/api/workflow/workflows", { name: "Leaky", source: `import { readFileSync } from "node:fs"\n${generatedSource}`, mutationId: "33333333-3333-4333-8333-333333333333" }))
+  const refusedGlobal = try Effect.flip(rig.request("/api/workflow/workflows", { name: "Exit", source: generatedSource.replace("return { text, signal }", "process.exit(0)"), mutationId: "33333333-3333-4333-8333-333333333334" }))
+  try check(() => assert.deepStrictEqual([refusedImport._tag === "WorkflowHttpError" ? refusedImport.status : 0, refusedGlobal._tag === "WorkflowHttpError" ? refusedGlobal.status : 0], [422, 422]))
+  const created = try rig.request("/api/workflow/workflows", { name: "Summary", description: "Drafts a summary", source: generatedSource, mutationId: "44444444-4444-4444-8444-444444444444" })
+  const receipt = (created as { readonly receipt: { readonly workflowId: string; readonly versionId: string; readonly sourceDigest: string } }).receipt
+  const replay = try rig.request("/api/workflow/workflows", { name: "Summary", description: "Drafts a summary", source: generatedSource, mutationId: "44444444-4444-4444-8444-444444444444" })
+  const listed = try rig.client.detail(receipt.workflowId)
+  try check(() => assert.deepStrictEqual([(replay as { readonly receipt: unknown }).receipt, listed.steps.map((step) => step.label), listed.active],
+    [receipt, ["step: count", "approval: review", "generate: draft", "signal: ready", "sleep: pause"], false]))
+  const unreviewed = try Effect.flip(rig.request(`/api/workflow/workflows/${receipt.workflowId}/activate`, { expectedVersionId: receipt.versionId }))
+  const wrongDigest = try Effect.flip(rig.request(`/api/workflow/workflows/${receipt.workflowId}/review`, { expectedVersionId: receipt.versionId, sourceDigest: "0".repeat(64) }))
+  try check(() => assert.deepStrictEqual([unreviewed._tag === "WorkflowHttpError" ? unreviewed.code : "", wrongDigest._tag === "WorkflowHttpError" ? wrongDigest.code : ""], ["WORKFLOW_ACTIVATION_NOT_APPLIED", "WORKFLOW_REVIEW_NOT_APPLIED"]))
+  try rig.request(`/api/workflow/workflows/${receipt.workflowId}/review`, { expectedVersionId: receipt.versionId, sourceDigest: receipt.sourceDigest })
+  const on = try rig.client.activate(receipt.workflowId, receipt.versionId)
+  try check(() => assert.isTrue(on.active))
+
+  const run = try rig.client.run(receipt.workflowId, on.versionId, () => succeed(undefined))
+  const asking = try settled(rig.client, run, (found) => found.status === "waiting-approval")
+  const approval = (try rig.client.approvals(asking))?.approvals[0]
+  if (approval === undefined) return try die(new Error("The generated approval was not requested"))
+  try rig.client.decideApproval(asking, approval, true)
+  const waiting = try settled(rig.client, asking, (found) => found.status === "waiting-event")
+  const early = try Effect.flip(rig.request(`/api/workflow/executions/${waiting.id}/signals/other`, { payload: null }))
+  try check(() => assert.equal(early._tag === "WorkflowHttpError" ? early.status : 0, 409))
+  try rig.request(`/api/workflow/executions/${waiting.id}/signals/go`, { payload: { ok: true } })
+  const sleeping = try settled(rig.client, waiting, (found) => found.status === "waiting-timer")
+  try sleep("10 millis")
+  const wakeup = rig.wakeups.get(`run:${sleeping.id}`)
+  if (wakeup === undefined) return try die(new Error("The timer was not armed"))
+  try rig.service.fire(wakeup.metadata, rig.digests.fire)
+  const done = try settled(rig.client, sleeping)
+  try check(() => assert.deepStrictEqual([done.status, drafts, JSON.parse(done.output ?? "null")], ["finished", 1, { text: "Your summary", signal: { received: true, payload: { ok: true } } }]))
+
+  const edited = try rig.request(`/api/workflow/workflows/${receipt.workflowId}`, { name: "Summary", description: "", source: generatedSource.replace("Summarize ", "Summarise "), mutationId: "55555555-5555-4555-8555-555555555555", expectedVersionId: on.versionId })
+  const after = try rig.client.detail(receipt.workflowId)
+  const editedVersion = (edited as { readonly receipt: { readonly versionId: string } }).receipt.versionId
+  const stale = try Effect.flip(rig.request(`/api/workflow/workflows/${receipt.workflowId}/activate`, { expectedVersionId: editedVersion }))
+  try check(() => assert.deepStrictEqual([after.active, after.versionId === editedVersion, stale._tag === "WorkflowHttpError" ? stale.code : ""], [false, true, "WORKFLOW_ACTIVATION_NOT_APPLIED"]))
+})
+
 it.live('Import only complete reviewed workflow source, and run only a worker built and installed intact (spec/workflow/sourcePublication.md, "Story: Import only complete reviewed workflow source"; spec/workflow/worker.md, "Story: Run workflows from the reviewed source and signed device assets")', effect () => {
   {
     const dir = try acquireRelease(promise(() => scratch("workflow-source-")), (made) => promise(() => made.remove()))
@@ -411,7 +466,13 @@ it.live('Import only complete reviewed workflow source, and run only a worker bu
     try promise(() => writeTree(worker.path, {
       "package.json": JSON.stringify({ name: "fake-workflow", type: "module" }),
       "dist/src/worker/main.js": "import { serve } from \"./protocol.js\"\nimport { Effect } from \"dep-a\"\nserve(Effect)\n",
-      "dist/src/worker/protocol.js": "export { helper } from \"../../gen/helper.js\"\nexport const serve = () => undefined\n",
+      "dist/src/worker/protocol.js": "export { helper } from \"../../gen/helper.js\"\nimport \"./compiler.js\"\nimport \"./engine.js\"\nexport const serve = () => undefined\n",
+      "dist/src/worker/compiler.js": "export const load = () => import(\"typescript\")\n",
+      "dist/src/worker/engine.js": "export const engine = 1\n",
+      "node_modules/typescript/package.json": JSON.stringify({ name: "typescript", version: "6.0.3", main: "./lib/typescript.js" }),
+      "node_modules/typescript/lib/typescript.js": "module.exports = {}\n",
+      "node_modules/typescript/lib/lib.es2022.d.ts": "interface Array<T> {}\n",
+      "node_modules/typescript/lib/lib.es5.d.ts": "interface Object {}\n",
       "dist/gen/helper.js": "export const helper = 1\n",
       "dist/src/unused.js": "export const unused = 1\n",
       "node_modules/dep-a/package.json": JSON.stringify({ name: "dep-a", version: "1.2.3", type: "module", exports: { ".": { types: "./index.d.ts", import: "./dist/index.js" } } }),
@@ -420,14 +481,15 @@ it.live('Import only complete reviewed workflow source, and run only a worker bu
     }))
     const closure = try workerArtifactClosure(worker.path)
     try check(() => assert.deepStrictEqual([closure.entries.map((entry) => entry.path).sort(), closure.dependencies], [
-      ["gen/helper.js", "node_modules/dep-a/dist/index.js", "node_modules/dep-a/package.json", "src/worker/main.js", "src/worker/protocol.js"], { "dep-a": "1.2.3" },
+      ["gen/helper.js", "node_modules/dep-a/dist/index.js", "node_modules/dep-a/package.json", "node_modules/typescript/lib/typescript.js", "node_modules/typescript/package.json",
+        "src/worker/compiler.js", "src/worker/engine.js", "src/worker/main.js", "src/worker/protocol.js"], { "dep-a": "1.2.3", typescript: "6.0.3" },
     ]))
     const identity = { sourceStampSha256: "a".repeat(64), lockSha256: "b".repeat(64) }
     const provenance = try workerProvenance()
     const output = joinPath(worker.path, "artifact")
     const built = try provenance.build({ packageDir: worker.path, outputDir: output, identity, observeIdentity: () => succeed(identity) })
     const staged = try provenance.stage(output, joinPath(worker.path, "staged"), "apk-current", identity)
-    const index = closure.entries.length + 3
+    const index = (try verifyWorkerArtifact(output, identity)).files.length - 1
     const listing = try promise(() => readText(joinPath(worker.path, "staged", "files.sha256")))
     const installed = try provenance.install(joinPath(worker.path, "staged"), "apk-current", listing)
     try check(() => assert.deepStrictEqual([built.phase, staged.files, installed.phase, installed.enabled], ["WorkerBuilt", index + 1, "WorkerInstalled", true]))

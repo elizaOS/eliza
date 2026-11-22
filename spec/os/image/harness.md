@@ -6,7 +6,7 @@ the isolated test user. Sources: develop's `packages/app/scripts/lib/`
 `device-lease.ts`, `instrumentation-result.mjs`, `isolated-android-test.mjs`
 and `isolated-android-user.mjs`, with `artifact-inspection/android-tools.ts`
 for the runner evidence. The shell is `src/image/device.vibe`, exported from
-`@elizaos/os/image`: `acquireDeviceLease`, `readDeviceLease`,
+`@elizaos/os/image`: `acquireDeviceLease`, `readDeviceLease`, `leaseStateDirectory`,
 `requireInstrumentationSuccess`, `requireInstrumentationInterruption`,
 `runIsolatedAndroidTest` and `withIsolatedAndroidUser`. A consumer keeps
 its own fixtures around them (hosted emulator display, WebView
@@ -47,6 +47,30 @@ pure val liveLease: LeaseReading = { present: true, parsed: true, writeMarked: f
 pure val leaseValues = Set(liveLease, { ...liveLease, present: false }, { ...liveLease, parsed: false }, { ...liveLease, holderAlive: false }, { ...liveLease, withinTime: false, writeMarked: true }, { ...liveLease, withinTime: false })
 pure def lawLeaseHeldOnlyByALiveTimelyHolderOrAWrite(lease: LeaseReading): bool =
   leaseHeld(lease) iff (lease.present and lease.parsed and (lease.writeMarked or (lease.withinTime and lease.holderAlive)))
+```
+
+### A lease lives in the caller's directory, else the one the environment names, in a real directory the operator owns
+
+An explicit state directory wins. Otherwise `ELIZA_DEVICE_LEASE_DIR`
+names the lease directory, else `ELIZA_STATE_DIR` names the state
+directory whose `device-leases` holds them, else
+`~/.local/state/eliza/device-leases`; a variable that is empty or only
+spaces names nothing. The shell creates each missing directory owner-only
+and syncs its parent, narrows an existing one it owns to owner-only, and
+refuses a symbolic link or a directory another user owns. A new lease file
+is synced before it is linked into place and its directory after.
+
+```quint
+type LeaseDirectory = ExplicitDirectory | LeaseDirectoryVariable | StateDirectoryVariable | HomeStateDirectory
+pure def leaseDirectoryOf(explicitGiven: bool, leaseVariableSet: bool, stateVariableSet: bool): LeaseDirectory =
+  if (explicitGiven) ExplicitDirectory else if (leaseVariableSet) LeaseDirectoryVariable else if (stateVariableSet) StateDirectoryVariable else HomeStateDirectory
+pure def leaseDirectoryAdmitted(realDirectory: bool, ownedByOperator: bool): bool = realDirectory and ownedByOperator
+pure def lawAnExplicitDirectoryWins(leaseVariableSet: bool, stateVariableSet: bool): bool =
+  leaseDirectoryOf(true, leaseVariableSet, stateVariableSet) == ExplicitDirectory
+pure def lawTheLeaseVariableOutranksTheStateVariable(stateVariableSet: bool): bool =
+  leaseDirectoryOf(false, true, stateVariableSet) == LeaseDirectoryVariable
+pure def lawNoLeaseInALinkOrAnotherUsersDirectory(realDirectory: bool, ownedByOperator: bool): bool =
+  leaseDirectoryAdmitted(realDirectory, ownedByOperator) implies (realDirectory and ownedByOperator)
 ```
 
 ### A test APK declares exactly the reviewed runners, each aimed at the app under test

@@ -251,6 +251,28 @@ public final class VoicemailStore {
   * {@code "unconfirmed"} when the provider took the change but the readback does not show it, {@code "not-found"}
   * when no such voicemail exists.
   */
+ /** Whether a voicemail is there to stage for deletion: null when it is, otherwise {@code not-found}. Nothing is written. */
+ public static String inspectDeletion(Context context, long id) { return own(context, id) == null ? "not-found" : null; }
+ /**
+  * The Undo window's provider call for a staged {@code {id}}: one {@link #delete}, answered as
+  * {@code deleted}, {@code conflict} (gone meanwhile), {@code unknown} (marked but still listed, or
+  * no answer) or, without the voicemail grant or dialer role, {@code permission-required}.
+  */
+ public static JSObject dispatchDeletion(Context context, JSONObject staged, java.util.function.BooleanSupplier writable) {
+  JSObject value = new JSObject();
+  long id = staged == null || staged.length() != 1 ? -1 : row(staged.optString("id", null));
+  String status;
+  if (id < 0) status = "conflict";
+  else if (!writable.getAsBoolean()) status = "permission-required";
+  else {
+   try {
+    String deleted = delete(context, id);
+    status = "deleted".equals(deleted) ? "deleted" : "not-found".equals(deleted) ? "conflict" : "unknown";
+   } catch (RuntimeException lostReply) { status = "unknown"; }
+  }
+  value.put("status", status);
+  return value;
+ }
  public static String markHeard(Context context, long id) {
   Boolean own = own(context, id);
   if (own == null) return "not-found";

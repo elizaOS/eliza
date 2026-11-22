@@ -22,7 +22,7 @@ import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 import static org.junit.Assert.*;
 
-/** Whole production deletion helper against actual SQLite predicates through a ContentProvider. */
+/** Whole production message and conversation deletion helpers against actual SQLite predicates through a ContentProvider. */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk=29,manifest=Config.NONE)
 public final class MessageDeletionTest {
@@ -39,7 +39,8 @@ public final class MessageDeletionTest {
   @Override public int update(Uri uri,ContentValues values,String selection,String[]args){throw new UnsupportedOperationException();}
   @Override public Cursor query(Uri uri,String[]projection,String selection,String[]args,String order){
    queries++;
-   assertArrayEquals(new String[]{"_id","thread_id","date",box(uri.getAuthority())},projection);
+   if(projection.length!=1)assertArrayEquals(new String[]{"_id","thread_id","date",box(uri.getAuthority())},projection);
+   else assertArrayEquals(new String[]{"_id"},projection);
    if(nullQuery)return null;
    Cursor result=db.query(uri.getAuthority(),projection,selection,args,null,null,order);
    Runnable action=afterQuery;afterQuery=null;if(action!=null)action.run();
@@ -146,6 +147,41 @@ public final class MessageDeletionTest {
   assertEquals("not-settled",delete(reference("sms",7,9,1700000000123L)).getString("status"));assertTrue(exists("sms",7));assertEquals(1,deletes);
   beforeDelete=()->db.execSQL("UPDATE mms SET msg_box="+SmsRecords.OUTBOX+" WHERE _id=8");
   assertEquals("not-settled",delete(reference("mms",8,9,1700000000000L)).getString("status"));assertTrue(exists("mms",8));
+ }
+ @Test public void inspectionBeforeStagingNamesOnlyTheSettledRowTheOwnerSawAndWritesNothing()throws Exception{
+  row("sms",7,9,1700000000123L);row("sms",8,9,1700000000124L,SmsRecords.OUTBOX);row("sms",9,10,1700000000125L);
+  String[] answers=off(()->new String[]{
+   MessageDeletion.inspect(RuntimeEnvironment.getApplication(),reference("sms",7,9,1700000000123L),new CancellationSignal(),access::get),
+   MessageDeletion.inspect(RuntimeEnvironment.getApplication(),reference("sms",8,9,1700000000124L),new CancellationSignal(),access::get),
+   MessageDeletion.inspect(RuntimeEnvironment.getApplication(),reference("sms",9,9,1700000000125L),new CancellationSignal(),access::get),
+   MessageDeletion.inspect(RuntimeEnvironment.getApplication(),reference("sms",6,9,1700000000123L),new CancellationSignal(),access::get)});
+  assertArrayEquals(new String[]{null,"not-settled","stale","not-found"},answers);assertEquals(0,deletes);assertTrue(exists("sms",7));
+  access.set(false);
+  try{off(()->MessageDeletion.inspect(RuntimeEnvironment.getApplication(),reference("sms",7,9,1700000000123L),new CancellationSignal(),access::get));fail("access changed");}
+  catch(MessageDeletion.Refused expected){assertEquals("unavailable",expected.code);}
+ }
+ String dispatch(MessageDeletion.Reference ref)throws Exception{return off(()->MessageDeletion.dispatch(RuntimeEnvironment.getApplication(),ref.json(),access::get)).getString("status");}
+ @Test public void theUndoWindowsProviderCallAnswersInTheJournalsVocabulary()throws Exception{
+  row("sms",7,9,1700000000123L);row("sms",8,9,1700000000124L);
+  assertEquals("deleted",dispatch(reference("sms",7,9,1700000000123L)));assertFalse(exists("sms",7));
+  assertEquals("conflict",dispatch(reference("sms",7,9,1700000000123L)));
+  access.set(false);assertEquals("permission-required",dispatch(reference("sms",8,9,1700000000124L)));assertTrue(exists("sms",8));
+  access.set(true);lostReply=true;assertEquals("unknown",dispatch(reference("sms",8,9,1700000000124L)));
+ }
+ ThreadDeletion.Reference conversation(long thread,long through)throws Exception{return ThreadDeletion.reference(new JSONObject().put("threadId","thread:"+thread).put("through",through));}
+ @Test public void aConversationDeletionRemovesOnlyItsSettledRowsUpToTheNewestTheOwnerSaw()throws Exception{
+  row("sms",1,9,1000);row("sms",2,9,2000,SmsRecords.OUTBOX);row("sms",3,9,3000);row("mms",4,9,2,SmsRecords.SENT);row("sms",5,10,1000);
+  ThreadDeletion.Reference seen=conversation(9,2500);
+  assertNull(off(()->ThreadDeletion.inspect(RuntimeEnvironment.getApplication(),seen,new CancellationSignal(),access::get)));assertEquals(0,deletes);
+  assertEquals("deleted",off(()->ThreadDeletion.dispatch(RuntimeEnvironment.getApplication(),seen.json(),access::get)).getString("status"));
+  assertFalse(exists("sms",1));assertFalse(exists("mms",4));assertTrue(exists("sms",2));assertTrue(exists("sms",3));assertTrue(exists("sms",5));
+  assertEquals("not-settled",off(()->ThreadDeletion.inspect(RuntimeEnvironment.getApplication(),seen,new CancellationSignal(),access::get)));
+  assertEquals("conflict",off(()->ThreadDeletion.dispatch(RuntimeEnvironment.getApplication(),seen.json(),access::get)).getString("status"));
+  assertEquals("not-found",off(()->ThreadDeletion.inspect(RuntimeEnvironment.getApplication(),conversation(11,2500),new CancellationSignal(),access::get)));
+  access.set(false);assertEquals("permission-required",off(()->ThreadDeletion.dispatch(RuntimeEnvironment.getApplication(),conversation(10,2500).json(),access::get)).getString("status"));assertTrue(exists("sms",5));
+  for(JSONObject bad:new JSONObject[]{new JSONObject().put("threadId","9").put("through",1),new JSONObject().put("threadId","thread:9").put("through",0),new JSONObject().put("threadId","thread:9").put("through",1).put("extra",true)}){
+   try{ThreadDeletion.reference(bad);fail("bad conversation");}catch(IllegalArgumentException expected){}
+  }
  }
  @Test public void malformedIdentityNeverReachesTheProvider()throws Exception{
   for(JSONObject bad:new JSONObject[]{new JSONObject().put("id","mms:7").put("kind","sms").put("threadId","thread:9").put("date",0),

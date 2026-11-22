@@ -91,6 +91,12 @@ The lock is a private file per serial, created exclusively for the run and
 marked before the first device write. A run that ends without writes, or
 settles the journal, removes it; any other end, a process death included,
 leaves it for the operator to remove by hand, since the device state is unknown.
+The lock is the device lease of [the test harness](../image/harness.md),
+held for the whole run in a real directory the operator owns, created
+owner-only with each new directory and the lock itself synced to disk. A
+new journal file is created exclusively, and every journal change is
+written with the time, the phase, the lock and what the shell observed or
+why a transfer failed, so the journal keeps the whole history of the run.
 
 ```quint
 type InstallLock = Unlocked | Locked({ writing: bool }) | LeftLocked
@@ -163,7 +169,12 @@ installed build on its original slot: the update did not take effect, so
 send again. The bootloader: inspect the slots. No device, or Android still
 booting: nothing can be seen. Anything else is refused. A user build cannot
 enter sideload itself: the shell reboots to recovery and the operator
-chooses "Apply update from ADB". A failed transfer is sent again.
+chooses "Apply update from ADB". A failed transfer is sent again. After a
+complete transfer the shell asks the device to reboot and tells the
+operator to choose the reboot where recovery stays open. Each wait, for
+sideload and for the updated boot, gives the operator twenty minutes. A run
+that ends without a verified update, and a check whose next step would
+refuse, exit with status 1 naming the journal's phase and the next step.
 
 ```quint
 type NextStep = Verify | Sideload | Retry | Bootloader | Absent | Refuse
@@ -246,6 +257,12 @@ pure def lawConfirmedOrMergingSlotNeverFallsBack(start: StartFacts, slots: SlotR
 ```
 
 ### A fallback rolls back only when the installed build boots enforcing on the original slot, and a journal that started a fallback is never updated again
+
+After switching the active slot the shell reads the current slot again; a
+bootloader that did not switch ends the fallback as failed before any
+reboot. A reboot command's own exit status is not taken as the outcome: the
+boot that follows is. A fallback that is not admitted, or a run that does
+not end rolled back, exits with status 1.
 
 ```quint
 pure def bootRestored(start: StartFacts, observed: DeviceObservation): bool = match observed {

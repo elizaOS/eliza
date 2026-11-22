@@ -105,8 +105,8 @@ pure def canPark(r: GeneratedRun, wait: Wait): bool = r.phase == Replaying and r
 pure def park(r: GeneratedRun, wait: Wait): GeneratedRun = { ...r, phase: Waiting, wait: wait }
 pure def canResumeWait(r: GeneratedRun, call: str, digest: str): bool = r.phase == Waiting and call != "" and call == waitCall(r.wait)
 pure def resumeWait(r: GeneratedRun, call: str, digest: str): GeneratedRun = { ...r, phase: Replaying, wait: NoWait, journal: r.journal.append({ call: call, digest: digest, kind: waitKind(r.wait) }) }
-pure def canSettle(r: GeneratedRun): bool = r.phase == Replaying and r.pending == ""
-pure def settle(r: GeneratedRun): GeneratedRun = { ...r, phase: Settled }
+pure def canSettleRun(r: GeneratedRun): bool = r.phase == Replaying and r.pending == ""
+pure def settleRun(r: GeneratedRun): GeneratedRun = { ...r, phase: Settled }
 pure val waitValues = Set(WaitApproval({ call: "review" }), WaitSignal({ call: "ready", signal: "go" }), WaitTimer({ call: "pause", due: 1000 }), NoWait)
 pure def alwaysWaitingHasOneWait(r: GeneratedRun): bool = (r.phase == Waiting) == (r.wait != NoWait) and (r.phase == Waiting implies not(journaled(r, waitCall(r.wait))))
 pure def stepEndedRunStaysEnded(before: GeneratedRun, after: GeneratedRun): bool =

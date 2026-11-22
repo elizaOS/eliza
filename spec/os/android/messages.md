@@ -11,8 +11,9 @@ their shape checks and the capabilities `sms.send.v1`, `mms.send.v1` and
 [capabilities](../../agent/deviceActions/capabilities.md)); a request for the
 default SMS role is [system](./system.md)'s. This spec keeps what Android must
 confirm before a send, what the send journal answers, what a status may
-claim, what a new-message notice action may write and what a deletion may
-report. Carrier delivery is never inferred. Calls and voicemail are
+claim, what a new-message notice action may write, and what a deletion of a
+message or a conversation may stage in the
+[deletion journal](./deferredDeletion.md) and report. Carrier delivery is never inferred. Calls and voicemail are
 [phone](./phone.md)'s and [voicemail](./voicemail.md)'s. A new-message
 notice is this module's own: it is posted for an incoming message, not for
 an agent result, so the account fence and tap tokens of
@@ -264,22 +265,28 @@ pure def lawPartialProviderFailureKeepsNotice(work: NoticeWork): bool =
 ## Story: Delete one message I chose
 
 > As the person, I want to delete exactly the message I selected and
-> confirmed, and be told it is gone only when it is.
+> confirmed, with ten seconds to undo it, and be told it is gone only when
+> it is.
 
 ### A deletion removes only the selected settled row and confirms only a removal Android reported
 
-The bridge reads the row's identity (thread, date, box) and checks
-authority again before one conditional delete in the row's own table. A row
-that is gone answers not-found, one whose identity changed answers stale,
-and a draft, queued, outbox or failed row belongs to a send and answers
-not-settled; none of these is deleted. Only a removal Android reported is
-`MessageDeleted`; a delete that removed nothing is explained by a second
-read, and a lost reply or an unexplained count is unknown, never deleted.
+The owner confirms on the app's screen, with the SMS role and read grant on
+the unlocked phone in front. The bridge reads the row's identity (thread,
+date, box) and checks authority again before it stages anything. A row that
+is gone answers not-found, one whose identity changed answers stale, and a
+draft, queued, outbox or failed row belongs to a send and answers
+not-settled; none of these is staged. A settled row is staged as a message
+record (`DeleteQueued`) and leaves the thread until its window settles. At
+expiry the journal's provider call, under the role and read grant held then,
+reads the identity again and makes one conditional delete in the row's own
+table. Only a removal Android reported is `MessageDeleted`; a delete that
+removed nothing is explained by a second read, and a lost reply or an
+unexplained count is unknown, never deleted.
 
 ```quint
 type RowSeen = RowMissing | RowMoved | RowInSend | RowSettled
 type DeleteReply = ProviderRemoved | ProviderRemovedNothing | ProviderSilent
-type DeleteStatus = MessageDeleted | MessageNotFound | MessageStale | MessageNotSettled | DeleteUnknown | DeleteRefused
+type DeleteStatus = DeleteQueued | MessageDeleted | MessageNotFound | MessageStale | MessageNotSettled | DeleteUnknown | DeleteRefused
 pure def deleteDispatched(allowed: bool, seen: RowSeen): bool = allowed and seen == RowSettled
 pure def explainNothingRemoved(after: RowSeen): DeleteStatus =
   if (after == RowMissing) MessageNotFound else if (after == RowMoved) MessageStale else if (after == RowInSend) MessageNotSettled else DeleteUnknown
@@ -295,6 +302,58 @@ pure def lawRowInASendIsNeverDeleted(allowed: bool, reply: DeleteReply, after: R
   not(deleteDispatched(allowed, RowInSend)) and deleteStatus(allowed, RowInSend, reply, after) != MessageDeleted
 pure def lawRefusalNeverDispatches(seen: RowSeen, reply: DeleteReply, after: RowSeen): bool =
   not(deleteDispatched(false, seen)) and deleteStatus(false, seen, reply, after) == DeleteRefused
+pure def stagedStatus(allowed: bool, seen: RowSeen): DeleteStatus =
+  if (not(allowed)) DeleteRefused else if (seen == RowSettled) DeleteQueued else explainNothingRemoved(seen)
+pure def lawOnlyASettledRowIsQueued(allowed: bool, seen: RowSeen, reply: DeleteReply, after: RowSeen): bool =
+  (stagedStatus(allowed, seen) == DeleteQueued iff deleteDispatched(allowed, seen)) and deleteStatus(allowed, seen, reply, after) != DeleteQueued
+```
+
+## Story: Delete a conversation I chose
+
+> As the person, I want to delete a whole conversation I confirmed, with
+> ten seconds to undo it, without losing a text that arrives meanwhile or
+> one that is still being sent.
+
+### A conversation deletion removes only its settled rows up to the newest one I saw
+
+The owner confirms with the same authority as a message deletion. The
+boundary is the date of the newest row the owner saw in the conversation.
+The bridge counts the conversation's rows at or before it: with a settled
+row among them the conversation is staged as a thread record
+(`DeleteQueued`); with only rows that belong to a send it answers
+not-settled; with none, not-found. At expiry the provider call deletes, in
+SMS and then MMS, only the settled rows of that thread at or before the
+boundary. A text that arrived after the boundary and every row of a send
+stay. The conversation is `MessageDeleted` only when Android reported a
+removal and a second read finds no settled row left at or before the
+boundary; a removal of nothing with none left is not-found, and a lost reply
+or any other count is unknown.
+
+```quint
+type ThreadSeen = { settledThrough: int, inSendThrough: int }
+type ThreadReply = ThreadRemoved({ count: int }) | ThreadSilent
+pure def threadStaged(allowed: bool, held: ThreadSeen): DeleteStatus =
+  if (not(allowed)) DeleteRefused
+  else if (held.settledThrough > 0) DeleteQueued
+  else if (held.inSendThrough > 0) MessageNotSettled
+  else MessageNotFound
+pure def threadDeleteStatus(allowed: bool, held: ThreadSeen, threadReply: ThreadReply, left: ThreadSeen): DeleteStatus =
+  if (threadStaged(allowed, held) != DeleteQueued) threadStaged(allowed, held)
+  else match threadReply {
+    | ThreadRemoved(r) =>
+      if (r.count >= 1 and r.count <= held.settledThrough and left.settledThrough == 0) MessageDeleted
+      else if (r.count == 0 and left.settledThrough == 0) MessageNotFound
+      else DeleteUnknown
+    | ThreadSilent => DeleteUnknown
+  }
+pure val heldValues = Set({ settledThrough: 0, inSendThrough: 0 }, { settledThrough: 0, inSendThrough: 1 }, { settledThrough: 2, inSendThrough: 1 }, { settledThrough: 1, inSendThrough: 0 })
+pure val leftValues = heldValues
+pure val threadReplyValues = Set(ThreadSilent, ThreadRemoved({ count: 0 }), ThreadRemoved({ count: 1 }), ThreadRemoved({ count: 2 }), ThreadRemoved({ count: 3 }))
+pure def lawAConversationIsDeletedOnlyWhenAndroidRemovedItsSettledRows(allowed: bool, held: ThreadSeen, threadReply: ThreadReply, left: ThreadSeen): bool =
+  threadDeleteStatus(allowed, held, threadReply, left) == MessageDeleted implies
+    (allowed and held.settledThrough > 0 and left.settledThrough == 0 and threadReply != ThreadSilent and threadReply != ThreadRemoved({ count: 0 }))
+pure def lawAConversationOfOnlySendsIsNeverStaged(allowed: bool, held: ThreadSeen): bool =
+  held.settledThrough == 0 implies threadStaged(allowed, held) != DeleteQueued
 ```
 
 ## Story: Name the sender of my latest text without reading it

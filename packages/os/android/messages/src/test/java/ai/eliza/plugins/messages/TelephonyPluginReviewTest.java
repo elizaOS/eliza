@@ -100,7 +100,15 @@ public final class TelephonyPluginReviewTest {
   static final class Host extends TelephonyPlugin {
     final AppCompatActivity activity;
     boolean imageAllowed=true, smsAllowed=true;
+    final java.util.List<org.json.JSONObject> staged=new java.util.ArrayList<>();
+    Runnable onStage;
     Host(AppCompatActivity activity) { this.activity = activity; }
+    @Override protected DeletionWindow deletionWindow() {
+      return (kind, target) -> {
+        org.json.JSONObject row=new org.json.JSONObject().put("id","staged-"+staged.size()).put("kind",kind).put("target",target).put("deadline",new org.json.JSONObject().put("expiresAt",1700000010000L));
+        staged.add(row);Runnable action=onStage;onStage=null;if(action!=null)action.run();return row;
+      };
+    }
     @Override public Context getContext() { return activity; }
     @Override public AppCompatActivity getActivity() { return activity; }
     @Override public PermissionState getPermissionState(String alias) { return alias.equals("sms") && !smsAllowed ? PermissionState.DENIED : PermissionState.GRANTED; }
@@ -423,12 +431,14 @@ public final class TelephonyPluginReviewTest {
     Host locked=host("delete-locked");Shadows.shadowOf(locked.getContext().getSystemService(KeyguardManager.class)).setIsDeviceLocked(true);call=deleteCall();locked.deleteMessage(call);assertEquals("unavailable",call.error);
     assertEquals(0,DeleteProvider.reads);assertEquals(0,DeleteProvider.writes);
   }
-  @Test public void deleteRechecksLifecycleBeforeEffectAndKeepsKnownContentFreeOutcomeAfterwards()throws Exception{
+  @Test public void deleteRechecksLifecycleBeforeStagingAndKeepsTheStagedOutcomeAfterwards()throws Exception{
     deleteProvider();Host before=host("delete-race");Shadows.shadowOf(before.getContext().getSystemService(RoleManager.class)).addHeldRole(RoleManager.ROLE_SMS);
     DeleteProvider.onRead=before::pause;Call denied=deleteCall();before.deleteMessage(denied);settleDeletion(before);
-    assertEquals("unavailable",denied.error);assertEquals(0,DeleteProvider.writes);
-    Host after=host("delete-known");DeleteProvider.onDelete=()->{after.smsAllowed=false;after.pause();};Call known=deleteCall();after.deleteMessage(known);settleDeletion(after);
-    assertNull(known.error);assertEquals("deleted",known.result.getString("status"));assertEquals(1,DeleteProvider.writes);
+    assertEquals("unavailable",denied.error);assertEquals(0,DeleteProvider.writes);assertTrue(before.staged.isEmpty());
+    Host after=host("delete-known");Shadows.shadowOf(after.getContext().getSystemService(RoleManager.class)).addHeldRole(RoleManager.ROLE_SMS);
+    after.onStage=()->{after.smsAllowed=false;after.pause();};Call known=deleteCall();after.deleteMessage(known);settleDeletion(after);
+    assertNull(known.error);assertEquals("queued",known.result.getString("status"));assertEquals("staged-0",known.result.getJSONObject("deletion").getString("id"));
+    assertEquals("message",after.staged.get(0).getString("kind"));assertEquals(0,DeleteProvider.writes);
   }
 
   @Test @Config(sdk=36) public void deleteRefusesANonForegroundAndroidUserProfile()throws Exception{

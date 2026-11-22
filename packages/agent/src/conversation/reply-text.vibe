@@ -116,5 +116,5 @@ export function asksForVerbatim(request: string): boolean {
 /** The action label a voice turn's answer carries, or `undefined` for a text turn or one that ran no action. */
 export function voiceActionLabel(voice: boolean, request: string, reply: string, ran: readonly string[]): VoiceAction | undefined {
   const label: ActionLabel = actionLabel(voice, [...ran], containsRenderedCard(reply), asksForVerbatim(request))
-  return label.tag === "Labelled" ? label.action : undefined
+  return label.tag === "Labelled" ? label.label : undefined
 }

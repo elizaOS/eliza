@@ -7,7 +7,7 @@ import { scratch, scratchRepo, writeTree, type Tree } from "./support/scratch.vi
 
 module node {
   import { execFile } from "node:child_process"
-  import { createPrivateKey, X509Certificate } from "node:crypto"
+  import { createHash, createPrivateKey, X509Certificate } from "node:crypto"
   import path from "node:path"
   import { androidTools, type AndroidTools } from "./support/android-tools.ts"
 
@@ -35,6 +35,11 @@ module node {
     }
   }
 
+  /** @throws {never} */
+  export function textSha256(text: string): string {
+    return createHash("sha256").update(text).digest("hex")
+  }
+
   /** @throws {Error} */
   export function certificateSha256(pem: string): string {
     return new X509Certificate(pem).fingerprint256.replaceAll(":", "").toLowerCase()
@@ -50,7 +55,8 @@ module node {
     return import(path.join(packageDir, "browser/chromium/component/chromium-component.mjs")).then((component: { assetNames: readonly string[] }) => component.assetNames)
   }
 }
-import { certificateSha256, eliza, extensionAssets, pairsWithCertificate, sdk, type Run } from node
+import { certificateSha256, eliza, extensionAssets, pairsWithCertificate, sdk, textSha256, type Run } from node
+import { qualificationGateProblems } from "../src/image/index.vibe"
 
 export error ChildFailed { step: string; cause: unknown }
 
@@ -125,6 +131,8 @@ it.live("Refuse a malformed command line with exit 2 and write nothing (spec/os/
     ["chromium without a subcommand", ["chromium"], "chromium takes prepare or build, not nothing"],
     ["chromium with an unknown subcommand", ["chromium", "clean"], "chromium takes prepare or build, not clean"],
     ["chromium prepare without a certificate", ["chromium", "prepare", "--source", `${root}/src`, "--extension", `${root}/ext`, "--out", out], "--certificate required"],
+    ["sign-release without a request", ["sign-release"], "--request required"],
+    ["release-record with a switch it does not take", ["release-record", "--request", `${root}/request.json`, "--dry-run"], "unknown argument --dry-run"],
   ]
   const results = try Effect.forEach(refusals, ([, argv]) => run(...argv), { concurrency: 8 })
   refusals.forEach(([name, , message], index) => {
@@ -300,6 +308,62 @@ it.live("Read an update's status from the device by cable (spec/os/update/operat
   assert.isTrue(calls.every((call) => call.args[0] === "-s" && call.args[1] === serial &&
     (call.tool === "adb" ? call.args[2] === "get-state" : call.args[2] === "getvar")))
   assert.deepStrictEqual(calls.slice(beforeForeign).filter((call) => call.tool === "fastboot").map((call) => call.args[3]), ["product", "product"])
+
+  const interrupted = { ...journal, state: "interrupted", from: { ...journal.from, flashLocked: "1" } }
+  try files.writeFileString(`${root}/interrupted.json`, JSON.stringify(interrupted), { mode: 0o600 })
+  try Effect.try({ try: () => phone.set({ mode: "sideload", variables: {} }), catch: failed("return to sideload") })
+  const earlierArgs = ["--serial", serial, "--journal", `${root}/interrupted.json`, "--adb", phone.adb, "--fastboot", phone.fastboot]
+  const earlier = try run("ota", "status", ...earlierArgs)
+  assert.strictEqual(earlier.status, 0, earlier.stderr)
+  assert.deepNestedInclude(try parsed("ota status of an interrupted earlier journal", earlier), { next: "sideload", "state.phase": "AwaitingSideload", "state.start.wasLocked": true })
+  const refusedFallback = try run("ota", "fallback", ...earlierArgs)
+  assert.strictEqual(refusedFallback.status, 1, refusedFallback.stdout)
+  assert.include(refusedFallback.stderr, "Fallback is not done")
+}))
+
+it.live("Refuse a malformed signing request and judge the release gates by their evidence (spec/os/image/signing.md, \"Story: Sign a release only with keys I enrolled\"; spec/os/image/signing.md, \"Story: Record my release's qualification gates honestly\"; spec/os/image/signing.md, \"A gate passes only on release evidence, source admission only for the pinned production lock, signed-update recovery only for a distributable channel, and user acceptance last\")", () => journey(effect {
+  const root = try scratch("cli-release")
+  const files = try FileSystem.FileSystem
+  try writeTree(root, { "request.json": JSON.stringify({ descriptor: "descriptor.json" }) })
+  const signing = try run("sign-release", "--request", `${root}/request.json`, "--dry-run")
+  const recording = try run("release-record", "--request", `${root}/request.json`)
+  assert.deepStrictEqual([signing.status, recording.status, signing.stdout, recording.stdout], [1, 1, "", ""])
+  assert.include(signing.stderr, "Invalid signing request")
+  assert.include(recording.stderr, "Invalid release record request")
+
+  const lock = JSON.stringify({ developmentOnly: false })
+  const lockSha256 = textSha256(lock)
+  try writeTree(root, {
+    "locks/source.json": lock,
+    "evidence/source-admission.json": JSON.stringify({ sourceLockSha256: lockSha256, developmentOnly: false }),
+    "evidence/run.json": "{}",
+  })
+  const release = (ref: string) => ({ status: "passed", evidence: [{ level: "release", ref }] })
+  const gates = {
+    sourceAdmission: release("evidence/source-admission.json"),
+    apkVariants: release("evidence/run.json"),
+    cuttlefishBoot: release("evidence/run.json"),
+    physicalDevice: { status: "development", evidence: [{ level: "development", ref: "evidence/run.json" }] },
+    signedUpdateRecovery: release("https://example.invalid/drills"),
+    userAcceptance: { status: "not run", evidence: [] },
+  }
+  const channel = {
+    recovery: { knownGoodRelease: { buildFingerprint: "acme/stallion:17/BP1A/1:user/release-keys", recordFile: "known-good/release-record.json", otaSha256: "a".repeat(64) } },
+    drills: { signedUpdate: "passed", interruptedUpdate: "passed", compatibleRollback: "passed", stockRecovery: "passed" },
+  }
+  const review = (record: unknown, recordChannel: unknown = channel) => qualificationGateProblems({ record, root, product: "acme", target: "pixel10a", sourceLock: { file: "locks/source.json", sha256: lockSha256 }, channel: recordChannel })
+  const record = { schema: 1, target: "pixel10a", product: "acme", gates }
+  const consistent = try review(record)
+  const acceptedEarly = try review({ ...record, gates: { ...gates, userAcceptance: release("evidence/run.json") } })
+  const developmentPass = try review({ ...record, gates: { ...gates, physicalDevice: { status: "passed", evidence: [{ level: "development", ref: "evidence/run.json" }] } } })
+  const undrilled = try review(record, { ...channel, drills: { ...channel.drills, stockRecovery: "not run" } })
+  const missingEvidence = try review({ ...record, gates: { ...gates, apkVariants: release("evidence/absent.json") } })
+  try files.writeFileString(`${root}/locks/source.json`, JSON.stringify({ developmentOnly: true }))
+  const developmentLock = try review(record)
+  assert.deepStrictEqual([consistent, acceptedEarly, developmentPass, undrilled, missingEvidence, developmentLock].map((result) => result.problems), [
+    [], ["AcceptanceBeforeGates"], ["GatePassedOnDevelopment"], ["RecoveryUndistributable"], ["GateEvidenceUnread"], ["SourceAdmissionUnproved"],
+  ])
+  assert.deepStrictEqual(consistent.gates, ["sourceAdmission", "apkVariants", "cuttlefishBoot", "physicalDevice", "signedUpdateRecovery", "userAcceptance"])
 }))
 
 it.live("Prepare the owned browser's component against the pinned sources (spec/os/browser/chromium.md, \"Story: Use the owned browser only with its expected identity\")", () => journey(effect {

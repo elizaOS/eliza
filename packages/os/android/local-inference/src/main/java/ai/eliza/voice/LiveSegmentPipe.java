@@ -1,3 +1,4 @@
+// spec/os/voice/liveCapture.md, "A routed capture sends its segments only to the owner's agent, in order and bounded, and a stop cuts them off"
 package ai.eliza.voice;
 
 import java.util.ArrayDeque;
@@ -17,25 +18,24 @@ import org.json.*;
  * captured tail is sent and the server close is acknowledged through the returned future.
  * Failures are reported once as BUSY, BACKPRESSURE, INVALID_AUDIO, TRANSPORT or ASR_FAILED.
  */
-public final class LiveSegmentPipe {
+public final class LiveSegmentPipe implements LiveCaptureController.Pipe {
  public interface Transport {void check()throws Exception;JSONObject post(JSONObject body)throws Exception;default void cancelInFlight(){}}
- public interface Sink {void result(JSONObject value);void failed(String code);}
  // The queue holds about 4 s of 32 ms frames, so a slow final (the POST carrying speech-end waits for
  // it) does not end the capture, with a hard cap on queued JSON.
  public static final int MAX_QUEUED_FRAMES=4000/32,MAX_QUEUED_CHARS=1024*1024,MAX_BATCH_CHARS=128*1024;
- private final Transport transport;private final Sink sink;private final String sessionId,roomId;
+ private final Transport transport;private final LiveCaptureController.Pipe.Sink sink;private final String sessionId,roomId;
  private final ArrayDeque<String> queued=new ArrayDeque<>();
  private int queuedFrames,queuedChars;
  private final CompletableFuture<Boolean> closed=new CompletableFuture<>(),ready=new CompletableFuture<>();
- public CompletableFuture<Boolean> ready(){return ready;}
+ @Override public CompletableFuture<Boolean> ready(){return ready;}
  private boolean closing,cancelled,finished;private double cutoff=Double.POSITIVE_INFINITY;
- public LiveSegmentPipe(Transport transport,Sink sink,String sessionId,String roomId){
+ public LiveSegmentPipe(Transport transport,LiveCaptureController.Pipe.Sink sink,String sessionId,String roomId){
   if(!sessionId.matches("[a-fA-F0-9-]{36}")||roomId!=null&&roomId.length()>128)throw new IllegalArgumentException("Invalid voice identity");
   this.transport=transport;this.sink=sink;this.sessionId=sessionId;this.roomId=roomId;
  }
  /** Starts draining on the executor; false (and BUSY) when it refuses the work. */
- public boolean start(Executor executor){try{executor.execute(this::drain);return true;}catch(RejectedExecutionException stopped){fail("BUSY");return false;}}
- public boolean offer(JSONArray frames,JSONArray vad){
+ @Override public boolean start(Executor executor){try{executor.execute(this::drain);return true;}catch(RejectedExecutionException stopped){fail("BUSY");return false;}}
+ @Override public boolean offer(JSONArray frames,JSONArray vad){
   if(frames.length()==0&&vad.length()==0)return true;
   try{
    JSONObject batch=new JSONObject().put("frames",frames).put("vad",vad);
@@ -49,8 +49,8 @@ public final class LiveSegmentPipe {
    fail("BACKPRESSURE");return false;
   }catch(Exception invalid){fail("INVALID_AUDIO");return false;}
  }
- public synchronized void cutoff(double at){cutoff=Math.min(cutoff,at);}
- public CompletableFuture<Boolean> close(boolean discard,double at){
+ @Override public synchronized void cutoff(double at){cutoff=Math.min(cutoff,at);}
+ @Override public CompletableFuture<Boolean> close(boolean discard,double at){
   synchronized(this){cutoff=Math.min(cutoff,at);closing=true;cancelled|=discard;if(cancelled)clearQueue();notifyAll();}
   if(discard)transport.cancelInFlight();return closed;
  }

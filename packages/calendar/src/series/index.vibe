@@ -17,3 +17,4 @@ export {
   type DeviceCalendar, type DeviceCalendarPort, type DeviceInspection, type DeviceRead, type DeviceRemoval, type DeviceRow, type DeviceSave,
   type DeviceSession, type DeviceTicket, type DeviceWriteResult,
 } from "./device.vibe"
+export { deleteScope, readClearsHold, type DeleteScope } from "../../gen/calendar__seriesScope.effect.vibe"

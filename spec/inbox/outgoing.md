@@ -34,8 +34,8 @@ pure def outgoingCheck(files: int, distinctNames: bool, totalBytes: int, policyF
   else if (totalBytes > smaller(policyBytes, maximumTotalBytes)) TooManyBytes
   else OutgoingFits
 pure def encodedBytes(encodedLength: int, padding: int): int = {
-  val raw = encodedLength * 3 / 4 - padding
-  if (raw < 0) 0 else raw
+  val decodedBytes = encodedLength * 3 / 4 - padding
+  if (decodedBytes < 0) 0 else decodedBytes
 }
 pure val filesValues = Set(0, 1, 2, 10, 11)
 pure val totalBytesValues = Set(0, 5242880, 5242881)
@@ -85,10 +85,10 @@ repaired, and an encoded copy is checked by reading it back.
 type RetainedFacts = { bytes: int, versionOne: bool, sameOwner: bool, knownFields: bool, subjectUnits: int, bodyUnits: int,
   longestList: int, longestRecipient: int, attachmentCount: int, searchUnits: int }
 pure val retainedLimit: int = 8372224
-pure def retainedAdmitted(facts: RetainedFacts): bool =
-  facts.bytes >= 0 and facts.bytes <= retainedLimit and facts.versionOne and facts.sameOwner and facts.knownFields and
-  facts.subjectUnits <= 4096 and facts.bodyUnits <= 64000 and facts.longestList <= 20 and facts.longestRecipient <= 4096 and
-  facts.attachmentCount <= 20 and facts.searchUnits <= 4096
+pure def retainedAdmitted(retained: RetainedFacts): bool =
+  retained.bytes >= 0 and retained.bytes <= retainedLimit and retained.versionOne and retained.sameOwner and retained.knownFields and
+  retained.subjectUnits <= 4096 and retained.bodyUnits <= 64000 and retained.longestList <= 20 and retained.longestRecipient <= 4096 and
+  retained.attachmentCount <= 20 and retained.searchUnits <= 4096
 pure val okRetained: RetainedFacts = { bytes: 100, versionOne: true, sameOwner: true, knownFields: true, subjectUnits: 4, bodyUnits: 10,
   longestList: 1, longestRecipient: 12, attachmentCount: 0, searchUnits: 0 }
 pure val retainedValues = Set(okRetained, { ...okRetained, sameOwner: false }, { ...okRetained, bytes: 8372225 },

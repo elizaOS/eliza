@@ -157,8 +157,9 @@ app. `agent-service` and `app-update` share `runtime-files`, so an updater
 builds without the agent service. `sign-in` uses the agent service and
 secure store. `voice-io` needs `sign-in`. `local-inference`, the native
 speech, embedding and engine bindings over the consumer's pinned
-`libelizainference` build, serves the agent service's inference host and
-needs `agent-service`.
+`libelizainference` build and the speech bridges a consumer subclasses,
+serves the agent service's inference host and runs on `voice-io`, so it
+needs `agent-service` and `voice-io`.
 
 ```quint
 pure val osModuleNames = List("agent-service", "runtime-files", "sign-in", "secure-store", "system", "camera", "browser-surface", "calendar", "contacts", "reminders",
@@ -169,7 +170,7 @@ pure def moduleNeeds(osModule: str): List[str] =
   if (osModule == "agent-service" or osModule == "app-update") List("runtime-files")
   else if (osModule == "sign-in") List("agent-service", "secure-store")
   else if (osModule == "voice-io") List("sign-in")
-  else if (osModule == "local-inference") List("agent-service") else List()
+  else if (osModule == "local-inference") List("agent-service", "voice-io") else List()
 pure def osModulesAdmitted(entries: List[OsModuleEntry]): bool = {
   val selected = entries.listMap(e => e.osModule)
   distinctNames(selected) and selected.every(m => moduleNeeds(m).every(n => selected.includes(n))) and

@@ -61,8 +61,8 @@ export effect function mailReadStateGuard(): MailReadStateGuard!! {
     return try orDie(view.send(event))
   }
 
-  effect function settle(key: string, settled: ChangeSettle): void!! {
-    try step({ type: "settleChange", key, settled })
+  effect function settle(key: string, settlement: ChangeSettle): void!! {
+    try step({ type: "settleChange", key, settlement })
   }
 
   return {

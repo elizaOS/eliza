@@ -116,7 +116,26 @@ preBuild.doFirst {
     }
 }
 
-// The agent service's inference host is served by SessionInferenceNative over this module's session.
+// The agent service's inference host is served by HostInferenceNative over this module's natives;
+// live capture and speech output run on the os voice-io module.
 if (!assetsOnly) {
-    dependencies { implementation project(':eliza-agent-service') }
+    dependencies {
+        implementation project(':eliza-agent-service')
+        api project(':eliza-voice-io')
+        testImplementation 'junit:junit:4.13.2'
+        testImplementation 'org.json:json:20250517'
+    }
+}
+
+// The product-subclassable on-device and Cloud speech bridges (LocalSpeechBridgePlugin,
+// SpeechStreamBridgePlugin). The host enables them with elizaSpeechBridgeCapacitor=true and
+// registers its own @CapacitorPlugin subclasses.
+def speechBridgeEnabled = project.findProperty('elizaSpeechBridgeCapacitor')?.toString() == 'true'
+if (speechBridgeEnabled && !assetsOnly) {
+    android.sourceSets.main.java.srcDir new File(paradeeSource, 'speech-bridge/src/main/java')
+    android.sourceSets.test.java.srcDir new File(paradeeSource, 'speech-bridge/src/test/java')
+    dependencies {
+        compileOnly project(':capacitor-android')
+        implementation 'com.squareup.okhttp3:okhttp:5.3.2'
+    }
 }

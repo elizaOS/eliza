@@ -36,6 +36,13 @@ pure def mapsRouteOf(r: MapsRequest): RoutedTo =
   else if (r.shape == NearbyKind or r.shape == KindNearNamedPlace) ToPlaceSearch
   else if (r.shape == ChoiceReply) ToChoice
   else ToPlanner
+pure val plainMapsRequest: MapsRequest = { ownerTurn: true, shape: DirectionsRequest, compound: false, webAddress: false, appDestination: false, namesView: false }
+pure val rValues = Set(plainMapsRequest, { ...plainMapsRequest, ownerTurn: false }, { ...plainMapsRequest, compound: true },
+  { ...plainMapsRequest, webAddress: true }, { ...plainMapsRequest, appDestination: true }, { ...plainMapsRequest, shape: PlaceOnMap },
+  { ...plainMapsRequest, shape: TravelTo }, { ...plainMapsRequest, shape: TravelTo, namesView: true },
+  { ...plainMapsRequest, shape: GoToNamedPlace, namesView: true }, { ...plainMapsRequest, shape: KindNearNamedPlace },
+  { ...plainMapsRequest, shape: ChoiceReply }, { ...plainMapsRequest, shape: OtherRequest },
+  { ...plainMapsRequest, shape: OtherRequest, ownerTurn: false, namesView: true })
 pure def lawOnlyTheOwnersTurnIsRouted(r: MapsRequest): bool = not(r.ownerTurn) implies mapsRouteOf(r) == ToPlanner
 pure def lawAViewDestinationStaysViewNavigation(r: MapsRequest): bool =
   (r.namesView and (r.shape == TravelTo or r.shape == GoToNamedPlace)) implies mapsRouteOf(r) != ToTravel

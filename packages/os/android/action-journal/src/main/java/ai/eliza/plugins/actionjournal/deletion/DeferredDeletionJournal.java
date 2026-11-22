@@ -12,8 +12,10 @@ import org.json.JSONObject;
 
 /**
  * Single-process durable admission for delayed provider deletions (the reviewed Undo window).
- * Rows move queued -> (undone | paused | dispatching -> deleted | conflict | unknown) and a
- * dispatching write is never retried: after process death it reads back as {@code unknown}.
+ * Each row names its {@code kind} (calendar, message, thread, voicemail or contact; a row written
+ * before kinds were recorded is a calendar row). Rows move queued -> (undone | paused |
+ * dispatching -> deleted | conflict | unknown) and a dispatching write is never retried: after
+ * process death it reads back as {@code unknown}.
  *
  * <p>{@link Store#save} must commit atomically or throw; callers share one journal instance per
  * slot so its monitor serializes Undo against expiry. No Android types: host-tested by javac.
@@ -48,6 +50,9 @@ public final class DeferredDeletionJournal {
  }
 
  private static JSONObject copy(JSONObject value) throws Exception { return new JSONObject(value.toString()); }
+
+ /** The record kind a stored row belongs to. */
+ public static String kindOf(JSONObject row) { return row.optString("kind", "calendar"); }
 
  /** Exact structural JSON equality (key order ignored). */
  public static boolean same(Object a, Object b) throws Exception {
@@ -108,12 +113,13 @@ public final class DeferredDeletionJournal {
   store.save(data.toString());
  }
 
- /** Stages one exact reviewed target. Restaging the same id with the same owner and target is idempotent. */
- public synchronized JSONObject stage(String id, JSONObject owner, JSONObject target, DeletionDeadline deadline) throws Exception {
+ /** Stages one exact reviewed target of {@code kind}. Restaging the same id with the same kind, owner and target is idempotent. */
+ public synchronized JSONObject stage(String id, String kind, JSONObject owner, JSONObject target, DeletionDeadline deadline) throws Exception {
   if (id == null || !id.matches("[A-Za-z0-9_-]{1,128}")) throw new IllegalArgumentException("Deletion identity required");
+  if (kind == null || !kind.matches("[a-z]{1,16}")) throw new IllegalArgumentException("Deletion kind required");
   JSONObject data = read(), records = data.getJSONObject("records"), prior = records.optJSONObject(id);
   if (prior != null) {
-   if (!same(owner, prior.getJSONObject("owner")) || !same(target, prior.getJSONObject("target"))) throw new IllegalArgumentException("Deletion identity changed");
+   if (!kind.equals(kindOf(prior)) || !same(owner, prior.getJSONObject("owner")) || !same(target, prior.getJSONObject("target"))) throw new IllegalArgumentException("Deletion identity changed");
    return copy(prior);
   }
   // Terminal entries may retire only after a new explicit review reaches stage.
@@ -132,7 +138,7 @@ public final class DeferredDeletionJournal {
   int retired = 0;
   while (retired < terminal.size() && (retired < terminal.size() - RETAINED_TERMINAL || records.length() >= MAX_ROWS)) records.remove(terminal.get(retired++));
   if (records.length() >= MAX_ROWS) throw new IllegalStateException("Too many unresolved deletions. Resolve pending deletions before deleting more.");
-  JSONObject row = new JSONObject().put("version", 1).put("id", id).put("owner", copy(owner)).put("target", copy(target)).put("phase", "queued")
+  JSONObject row = new JSONObject().put("version", 1).put("id", id).put("kind", kind).put("owner", copy(owner)).put("target", copy(target)).put("phase", "queued")
    .put("deadline", new JSONObject().put("continuity", deadline.continuity).put("createdElapsed", deadline.createdElapsed).put("expiresElapsed", deadline.expiresElapsed).put("expiresAt", deadline.expiresAt));
   records.put(id, row);
   // Count alone is insufficient when a retained event has a large description.
@@ -143,7 +149,7 @@ public final class DeferredDeletionJournal {
   return copy(row);
  }
 
- /** Every row; queued rows carry their window and a dispatching row reads as unknown. */
+ /** Every row with its kind; queued rows carry their window and a dispatching row reads as unknown. */
  public synchronized JSONArray list(String continuity, long elapsed) throws Exception { return list(read(), continuity, elapsed); }
 
  private static JSONArray list(JSONObject data, String continuity, long elapsed) throws Exception {
@@ -151,6 +157,7 @@ public final class DeferredDeletionJournal {
   JSONArray rows = new JSONArray();
   for (Iterator<String> i = records.keys(); i.hasNext();) {
    JSONObject row = copy(records.getJSONObject(i.next()));
+   row.put("kind", kindOf(row));
    if ("queued".equals(row.getString("phase"))) row.put("window", window(row, continuity, elapsed));
    else if ("dispatching".equals(row.getString("phase"))) row.put("phase", "unknown");
    rows.put(row);

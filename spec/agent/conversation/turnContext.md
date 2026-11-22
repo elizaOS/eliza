@@ -96,7 +96,8 @@ pure def lawACivilDayNeedsTheCalendarInAKnownZone(o: ObservationFacts): bool =
   o.day != NoDay implies (not(observationAccepted({ ...o, view: View({ viewName: "notes" }) })) and not(observationAccepted({ ...o, sensitivity: SensitivityUnstated })) and not(observationAccepted({ ...o, zone: NoZone })))
 pure def lawTheCalendarDayIsAcceptedInItsOwnZone(o: ObservationFacts): bool = {
   val zone = o.zone
-  (observationAccepted(withoutOptionalFields(o)) and o.view == calendarView and o.sensitivity == NotSensitive and o.coreBytes < observationMaxBytes) implies
+  val calendarCoreAccepted = observationAccepted(withoutOptionalFields(o)) and o.view == calendarView and o.sensitivity == NotSensitive and o.coreBytes < observationMaxBytes
+  calendarCoreAccepted implies
     match zone { | Zone(z) => observationAccepted({ ...o, location: NoLocation, day: Day({ dayZone: z.zoneName, dayBytes: observationMaxBytes - o.coreBytes }) }) | _ => true }
 }
 pure def lawWithoutOptionalFieldsTheObservationStaysAccepted(o: ObservationFacts): bool =

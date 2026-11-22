@@ -52,6 +52,7 @@
     "@elizaos/cloud": "workspace:*",
     "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
+    "typescript": "catalog:",
     "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
@@ -59,7 +60,6 @@
     "@effect/vitest": "4.1.1",
     "@electric-sql/pglite": "catalog:",
     "@types/node": "catalog:",
-    "typescript": "catalog:",
     "vibelang": "0.0.13",
     "vibestack": "workspace:*",
     "vitest": "catalog:"

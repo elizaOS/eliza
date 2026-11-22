@@ -1,13 +1,15 @@
-// spec/os/android/deletionWindow.md, "Story: Undo a reviewed deletion before it is sent"; spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"
+// spec/os/android/deletionWindow.md, "Story: Undo a reviewed deletion before it is sent"; spec/os/android/deletionWindow.md, "A record waiting in its window is hidden from its list until Undo or the provider settles it"; spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"; spec/os/android/deferredDeletion.md, "Story: Undo a deleted message, conversation, voicemail or contact"
 import type { DeletionHold, DeletionKind } from "../../gen/os__android__deferredDeletion.ts"
-import { clockUsable, deletionDeadline, deletionNotice, offersUndo } from "../../gen/os__android__deletionWindow.effect.vibe"
+import { clockUsable, deletionDeadline, deletionNotice, hiddenFromList, offersUndo } from "../../gen/os__android__deletionWindow.effect.vibe"
 import type { DeletionClock, DeletionDeadline, DeletionNotice, DeletionPhase, WindowState } from "../../gen/os__android__deletionWindow.ts"
-import { decoded, type MalformedReply } from "./bridge.vibe"
+import { MalformedReply, decoded } from "./bridge.vibe"
 import type {
   DeferredDeletionEntry,
   DeferredDeletionsPending,
   DeletionNoticeView,
   DeletionRecordKind,
+  StagedDeletion,
+  StagedRecordKind,
 } from "./definitions/action-journal.ts"
 
 export type {
@@ -29,9 +31,11 @@ export type {
   DeletionNoticeView,
   DeletionRecordKind,
   DismissOutcome,
+  StagedDeletion,
+  StagedRecordKind,
   UndoOutcome,
 } from "./definitions/action-journal.ts"
-export { claimDeletion, clockUsable, deleteUndoMs, deletionDeadline, deletionWindow, offersUndo, undoConfirmed } from "../../gen/os__android__deletionWindow.effect.vibe"
+export { claimDeletion, clockUsable, deleteUndoMs, deletionDeadline, deletionWindow, hiddenFromList, offersUndo, undoConfirmed } from "../../gen/os__android__deletionWindow.effect.vibe"
 
 module renderer {
   import type { DeletionClock } from "../../gen/os__android__deletionWindow.ts"
@@ -86,13 +90,39 @@ const PHASES: Readonly<Record<WirePhase, DeletionPhase>> = {
 
 const WINDOWS: Readonly<Record<WireWindow, WindowState>> = { open: "WindowOpen", expired: "WindowExpired", "clock-changed": "ClockChanged" }
 
-const KINDS: Readonly<Record<DeletionRecordKind, DeletionKind>> = { calendar: "CalendarEvent", reminder: "ReminderOccurrence" }
+const WIRE_KINDS = ["calendar", "reminder", "message", "thread", "voicemail", "contact"] as const satisfies readonly DeletionRecordKind[]
+
+const KINDS: Readonly<Record<DeletionRecordKind, DeletionKind>> = {
+  calendar: "CalendarEvent",
+  reminder: "ReminderOccurrence",
+  message: "MessageRecord",
+  thread: "ThreadRecord",
+  voicemail: "VoicemailRecord",
+  contact: "ContactRecord",
+}
+
+const NOUNS: Readonly<Record<DeletionRecordKind, string>> = {
+  calendar: "calendar",
+  reminder: "reminder",
+  message: "message",
+  thread: "conversation",
+  voicemail: "voicemail",
+  contact: "contact",
+}
 
 export function recordKindOf(kind: DeletionKind): DeletionRecordKind {
   return match (kind) {
     when "CalendarEvent": "calendar";
     when "ReminderOccurrence": "reminder";
+    when "MessageRecord": "message";
+    when "ThreadRecord": "thread";
+    when "VoicemailRecord": "voicemail";
+    when "ContactRecord": "contact";
   }
+}
+
+function isStagedRecordKind(kind: DeletionRecordKind): kind is StagedRecordKind {
+  return kind === "message" || kind === "thread" || kind === "voicemail" || kind === "contact"
 }
 
 function holdOf(blocked: string | undefined): DeletionHold {
@@ -105,21 +135,38 @@ function holdOf(blocked: string | undefined): DeletionHold {
   }
 }
 
+const OPERATION_ID = /^[A-Za-z0-9_-]{1,128}$/
 const Titled = Schema.Struct({ title: Schema.optionalKey(Schema.String) })
 const WireEntry = Schema.Struct({
-  id: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{1,128}$/)),
-  kind: Schema.Literals(["calendar", "reminder"]),
+  id: Schema.String.check(Schema.isPattern(OPERATION_ID)),
+  kind: Schema.Literals(WIRE_KINDS),
   phase: Schema.Literals(WIRE_PHASES),
   window: Schema.optionalKey(Schema.Literals(["open", "expired", "clock-changed"])),
   blocked: Schema.optionalKey(Schema.String),
   expiresAt: Schema.optionalKey(Schema.Number),
   deadline: Schema.optionalKey(Schema.Struct({ expiresAt: Schema.Number })),
-  target: Schema.optionalKey(Schema.Struct({ row: Schema.optionalKey(Titled), fields: Schema.optionalKey(Titled) })),
+  target: Schema.optionalKey(Schema.Struct({
+    row: Schema.optionalKey(Titled),
+    fields: Schema.optionalKey(Titled),
+    id: Schema.optionalKey(Schema.Unknown),
+    threadId: Schema.optionalKey(Schema.Unknown),
+  })),
   original: Schema.optionalKey(Titled),
 })
 schema WireOrigin { kind: "event" | "reminder"; id: string }
 const WirePending = Schema.Struct({ pending: Schema.Array(WireEntry), deletedNoteOrigins: Schema.optionalKey(Schema.Array(WireOrigin)) })
 const WireReceipt = Schema.Struct({ phase: Schema.Literals(WIRE_PHASES) })
+const WireStaged = Schema.Struct({
+  id: Schema.String.check(Schema.isPattern(OPERATION_ID)),
+  kind: Schema.Literals(WIRE_KINDS),
+  deadline: Schema.Struct({ expiresAt: Schema.Int }),
+})
+
+function recordOf(row: typeof WireEntry.Type): string | null {
+  if (!isStagedRecordKind(row.kind)) return null
+  const key = row.kind === "thread" ? row.target?.threadId : row.target?.id
+  return typeof key === "string" && key.length <= 64 ? key : null
+}
 
 function entryOf(row: typeof WireEntry.Type): DeferredDeletionEntry {
   const phase = PHASES[row.phase]
@@ -131,6 +178,7 @@ function entryOf(row: typeof WireEntry.Type): DeferredDeletionEntry {
     hold: phase === "Paused" ? holdOf(row.blocked) : "NotHeld",
     expiresAt: row.expiresAt ?? row.deadline?.expiresAt ?? null,
     title: row.target?.row?.title || row.target?.fields?.title || row.original?.title || null,
+    record: recordOf(row),
   }
 }
 
@@ -141,6 +189,17 @@ export effect function parseDeletionsPending(raw: unknown): DeferredDeletionsPen
 
 export effect function receiptPhase(method: "undo" | "dismiss", raw: unknown): DeletionPhase!MalformedReply {
   return PHASES[(try decoded("ElizaActionJournal", method, WireReceipt, raw)).phase]
+}
+
+export effect function parseStagedDeletion(plugin: string, method: string, kind: StagedRecordKind, raw: unknown): StagedDeletion!MalformedReply {
+  const row = try decoded(plugin, method, WireStaged, raw)
+  if (row.kind !== kind) throw new MalformedReply({ plugin, method, issue: "The staged deletion belongs to another kind of record" })
+  return { kind: KINDS[row.kind], id: row.id, expiresAt: row.deadline.expiresAt }
+}
+
+export function hiddenRecords(entries: readonly DeferredDeletionEntry[], kind: StagedRecordKind): ReadonlySet<string> {
+  const wanted = KINDS[kind]
+  return new Set(entries.flatMap((entry) => (entry.kind === wanted && entry.record !== null && hiddenFromList(entry.phase, entry.window) ? [entry.record] : [])))
 }
 
 export function noticeOf(entry: DeferredDeletionEntry): DeletionNotice {
@@ -162,7 +221,7 @@ export function deletionNoticeOf(entry: DeferredDeletionEntry): DeletionNoticeVi
   const kind = recordKindOf(entry.kind)
   return {
     key: `${kind}:${entry.id}`,
-    title: entry.title ?? `Selected ${kind}`,
+    title: entry.title ?? `Selected ${NOUNS[kind]}`,
     notice,
     message: messageOf(notice),
     canUndo: offersUndo(notice),

@@ -32,12 +32,13 @@ type Turn = NoTurn | TurnOf({ capture: int })
 type Reply = NoReply | Playing({ utteranceId: str, pace: int, receivedMs: Millis, playedMs: Millis, completed: bool })
 type BatchVerdict = BatchPending | BatchDone | BatchCancelled | BatchFailed({ failure: Cr::Failure, wait: WaitTime })
 type BatchRequest = { requestId: int, direction: SpeechDirection, version: int, verdict: BatchVerdict }
-type CloudSpeech = { credential: int, bound: int, phase: Phase, audioStarted: bool, capture: Capture, generation: int, turn: Turn, reply: Reply, batches: List[BatchRequest] }
+type DeviceCause = NoDeviceCause | DevicePaused | PlaybackStuck | MicrophoneLost | CallBeforeLive
+type CloudSpeech = { credential: int, bound: int, phase: Phase, audioStarted: bool, capture: Capture, generation: int, turn: Turn, reply: Reply, batches: List[BatchRequest], endedBy: DeviceCause }
 type SpeechNotice = AskConsent | ReserveLiveCapture | ReleaseLiveCapture | RevokeSession | CancelUtterance({ utteranceId: str })
   | ReportRefusedKey({ version: int, reason: RefusalReason, on: C::RejectedOn }) | SessionFailed({ failure: Cr::Failure, beforeAudio: bool, wait: WaitTime })
   | Heard({ final: bool, capture: int }) | ReplySettled({ utteranceId: str, completed: bool }) | BatchSettled({ requestId: int, verdict: BatchVerdict })
 type SpeechStep = { state: CloudSpeech, out: List[SpeechNotice] }
-pure val initial: CloudSpeech = { credential: 0, bound: 0, phase: Idle, audioStarted: false, capture: Muted, generation: 0, turn: NoTurn, reply: NoReply, batches: List() }
+pure val initial: CloudSpeech = { credential: 0, bound: 0, phase: Idle, audioStarted: false, capture: Muted, generation: 0, turn: NoTurn, reply: NoReply, batches: List(), endedBy: NoDeviceCause }
 pure val consentDeadline: Millis = 30 * millisPerSecond
 pure def speechStep(out: List[SpeechNotice], s: CloudSpeech): SpeechStep = { state: s, out: out }
 pure def noticeIf(c: bool, n: SpeechNotice): List[SpeechNotice] = if (c) List(n) else List()
@@ -266,6 +267,33 @@ pure def alwaysAnEndingSaysWhetherAudioStarted(s: CloudSpeech): bool =
   and ((failedBeforeAudio(endingOf(s.phase)) or failedAfterAudio(endingOf(s.phase))) implies failureOfEnding(endingOf(s.phase)) != Cr::NoFailure)
 pure def sometimesFailedBeforeAudio(s: CloudSpeech): bool = failedBeforeAudio(endingOf(s.phase)) and hasEnded(s.phase)
 pure def sometimesFailedAfterAudio(s: CloudSpeech): bool = failedAfterAudio(endingOf(s.phase)) and hasEnded(s.phase)
+```
+
+### A device that can no longer hold an open session ends it as a failure that names its cause
+
+Leaving the foreground or closing (`DevicePaused`), a reply's speaker that
+fails or stalls (`PlaybackStuck`), a microphone lost while capture is on
+(`MicrophoneLost`) and a call starting before the session is live
+(`CallBeforeLive`) each end the open session as `CapabilityUnavailable`,
+closing it as every other failure does. A call once the session is live is
+`O::StopCapture`. The cause is kept until the next session begins.
+
+```quint
+pure def deviceFailure(cause: DeviceCause): Cr::Failure = Cr::CapabilityUnavailable
+pure def canDeviceEnded(s: CloudSpeech, cause: DeviceCause): bool = match cause {
+  | DevicePaused => isOpen(s.phase)
+  | PlaybackStuck => s.phase == Live
+  | MicrophoneLost => s.phase == Live and s.capture != Muted
+  | CallBeforeLive => isOpen(s.phase) and s.phase != Live
+  | NoDeviceCause => false
+}
+pure def deviceEnded(s: CloudSpeech, cause: DeviceCause): SpeechStep = { val ended = failWith(deviceFailure(cause), s, List(), NoWait)
+  { state: { ...ended.state, endedBy: cause }, out: ended.out } }
+pure val causeValues = Set(DevicePaused, PlaybackStuck, MicrophoneLost, CallBeforeLive)
+pure def alwaysADeviceEndIsAFailure(s: CloudSpeech): bool = s.endedBy != NoDeviceCause implies
+  (hasEnded(s.phase) and failureOfEnding(endingOf(s.phase)) == Cr::CapabilityUnavailable)
+pure def sometimesCallEndedBeforeLive(s: CloudSpeech): bool = s.endedBy == CallBeforeLive and hasEnded(s.phase)
+pure def sometimesPlaybackStuckAfterAudio(s: CloudSpeech): bool = s.endedBy == PlaybackStuck and failedAfterAudio(endingOf(s.phase))
 ```
 
 ## Story: Transcribe a recording or hear a reply with one cloud request

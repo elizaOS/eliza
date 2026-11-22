@@ -289,17 +289,17 @@ launch's policy (`host/launch.md`): every entry is bundled and named once.
 
 ```quint
 type DeviceVariant = AospImage | StockAndroid
-pure def variantLoadList(groups: ProfileGroups, variant: DeviceVariant, chosen: Set[str]): List[str] =
-  groups.core.concat(groups.views).concat(if (variant == AospImage) groups.aospOnly else List()).concat(groups.optional.select(n => chosen.contains(n)))
+pure def variantLoadList(groups: ProfileGroups, deviceVariant: DeviceVariant, chosen: Set[str]): List[str] =
+  groups.core.concat(groups.views).concat(if (deviceVariant == AospImage) groups.aospOnly else List()).concat(groups.optional.select(n => chosen.contains(n)))
 pure val chosenValues = Set(Set(), Set("o"), Set("o", "a"))
-pure def lawDerivedLoadListNamesOnlyCarriedPluginsOnce(groups: ProfileGroups, carried: List[str], variant: DeviceVariant, chosen: Set[str]): bool = {
-  val load = variantLoadList(groups, variant, chosen)
+pure def lawDerivedLoadListNamesOnlyCarriedPluginsOnce(groups: ProfileGroups, carried: List[str], deviceVariant: DeviceVariant, chosen: Set[str]): bool = {
+  val load = variantLoadList(groups, deviceVariant, chosen)
   profilesWellFormed(groups, carried) implies load.every(n => carried.includes(n) and load.select(m => m == n).length() == 1)
 }
 pure def lawStockAndroidNeverLoadsAnAospOnlyPlugin(groups: ProfileGroups, carried: List[str], chosen: Set[str]): bool =
   profilesWellFormed(groups, carried) implies not(variantLoadList(groups, StockAndroid, chosen).some(n => groups.aospOnly.includes(n)))
-pure def lawOptionalPluginLoadsOnlyWhenChosen(groups: ProfileGroups, carried: List[str], variant: DeviceVariant, chosen: Set[str]): bool =
-  profilesWellFormed(groups, carried) implies groups.optional.every(n => variantLoadList(groups, variant, chosen).includes(n) iff chosen.contains(n))
+pure def lawOptionalPluginLoadsOnlyWhenChosen(groups: ProfileGroups, carried: List[str], deviceVariant: DeviceVariant, chosen: Set[str]): bool =
+  profilesWellFormed(groups, carried) implies groups.optional.every(n => variantLoadList(groups, deviceVariant, chosen).includes(n) iff chosen.contains(n))
 ```
 
 ## Story: Start the agent from my own entry with my device's services

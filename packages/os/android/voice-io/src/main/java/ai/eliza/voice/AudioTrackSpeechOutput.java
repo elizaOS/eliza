@@ -4,6 +4,7 @@ package ai.eliza.voice;
 import android.media.AudioFormat;
 import android.media.AudioTimestamp;
 import android.media.AudioTrack;
+import android.media.PlaybackParams;
 import android.os.Build;
 import android.os.Process;
 
@@ -54,6 +55,19 @@ public final class AudioTrackSpeechOutput implements StreamingSpeechPlayback.Out
       }
     }
     return new AudioTrackSpeechOutput(track, rate);
+  }
+
+  /** As {@link #open(int)}, played at {@code pace} (clamped to 0.5..2) at the same pitch; an output that refuses the pace speaks at the normal one. */
+  public static AudioTrackSpeechOutput open(int rate, float pace) {
+    AudioTrackSpeechOutput output = open(rate);
+    float speed = Float.isFinite(pace) ? Math.max(0.5f, Math.min(2f, pace)) : 1f;
+    if (speed != 1f) {
+      try {
+        output.track.setPlaybackParams(new PlaybackParams().setSpeed(speed).setPitch(1f));
+      } catch (RuntimeException normalPace) {
+      }
+    }
+    return output;
   }
 
   @Override

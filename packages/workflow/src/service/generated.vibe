@@ -1,0 +1,165 @@
+// spec/workflow/generated.md, "Story: Turn on generated code only after I review exactly what it does"; spec/workflow/generated.md, "Activation needs a passing check and a review of the current source digest"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"
+import * as A from "../../gen/workflow__admission.effect.vibe"
+import * as L from "../../gen/workflow__lifecycle.effect.vibe"
+import { phoneTimeTriggerCron, validatePhoneWorkflowTrigger, workflowSha, workflowUuid, type PhoneWorkflowSpec, type PhoneWorkflowTrigger } from "../contract/phone.vibe"
+import { GENERATED_ENGINE_DECLARATION } from "../worker/compiler.vibe"
+import type { DefinitionRow, GeneratedDefinition } from "./store.vibe"
+import { versionId, WorkflowRefused, type WorkflowService } from "./workflows.vibe"
+
+type Bag = Record<string, unknown>
+const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+function versionOf(id: unknown): number | undefined {
+  if (typeof id !== "string") return undefined
+  const found = /^v([1-9][0-9]{0,14})$/.exec(id)
+  return found === null ? undefined : Number(found[1])
+}
+
+effect function body(value: unknown, allowed: readonly string[]): Bag!WorkflowRefused {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new WorkflowRefused({ status: 400, message: "Expected a JSON object" })
+  if (Object.keys(value).some((key) => !allowed.includes(key))) throw new WorkflowRefused({ status: 400, message: "Unsupported workflow field" })
+  return value as Bag
+}
+
+effect function text(value: unknown, maximum: number, empty = false): string!WorkflowRefused {
+  if (typeof value !== "string" || value.length > maximum || value.includes("\0") || (!empty && value.trim() === "")) throw new WorkflowRefused({ status: 400, message: "Complete the workflow text fields within their stated limits" })
+  return value
+}
+
+/** The model prompt that drafts generated workflow code; the request is data, never permission to widen the engine. */
+export function generatedDraftPrompt(request: string, existing?: { readonly name: string; readonly source: string }): string {
+  return `Write one TypeScript module for a workflow, or return {"unsupported":"brief reason"} when the request needs anything the engine below cannot do. Return exactly one JSON object {"name":"1–200 chars","description":"0–4000 chars","source":"the module"} and nothing else.
+The module may import only types from "eliza-workflow" and must export default an async function taking ctx: WorkflowContext. Its declarations are:
+${GENERATED_ENGINE_DECLARATION}
+Rules: give every ctx call a unique literal id; do all computation that must not repeat inside ctx.step and keep it synchronous and deterministic; use ctx.generate for model text, ctx.approval before anything the owner should confirm, ctx.signal to wait for a named signal and ctx.sleep to wait. Never use host globals, network, files, timers, dynamic imports, eval, reflection or casts to any. The workflow cannot message, notify or remind the owner; its output appears only in its run history.
+` + JSON.stringify({ request, existing: existing ?? null })
+}
+
+/** Authoring of untyped definitions over the opened workflow service: generation, checked saves, review and the source view. */
+export function generatedWorkflows(service: WorkflowService) {
+  const { host, store, owner, lock, now, db } = service
+
+  function placeholderSpec(name: string, description: string, trigger: PhoneWorkflowTrigger): PhoneWorkflowSpec {
+    return { version: 1, name, description, trigger, steps: [{ id: "code", kind: "Read", operation: "supplied_text", text: "" }] }
+  }
+
+  effect function checked(source: string) {
+    const result = try service.checkSource(source)
+    if (!result.ok) throw new WorkflowRefused({ status: 422, message: `Workflow code failed its check: ${result.diagnostics.join("; ")}`.slice(0, 1100), code: "WORKFLOW_CODE_REFUSED" })
+    return result
+  }
+
+  effect function draft(input: unknown) {
+    const p = try body(input, ["prompt", "workflowId"])
+    const request = try text(p.prompt, 4000)
+    const generate = host.draft
+    if (generate === undefined) throw new WorkflowRefused({ status: 409, message: "Workflow generation needs a text model on this agent" })
+    const existing = typeof p.workflowId === "string" ? (try service.definitionOf(p.workflowId)).row : undefined
+    const answer = try mapError(generate(generatedDraftPrompt(request, existing?.generated === undefined ? undefined : { name: existing.name, source: existing.generated.source })),
+      () => new WorkflowRefused({ status: 502, message: "The agent could not draft workflow code" }))
+    const start = answer.indexOf("{")
+    const end = answer.lastIndexOf("}")
+    const parsed: unknown = start < 0 || end < start ? undefined : (Effect.try({ try: () => JSON.parse(answer.slice(start, end + 1)) as unknown, catch: () => "unparsed" }) catch () => undefined)
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new WorkflowRefused({ status: 502, message: "The model did not return a workflow draft" })
+    const draftBag = parsed as Bag
+    if (typeof draftBag.unsupported === "string" && draftBag.unsupported.trim() !== "") throw new WorkflowRefused({ status: 422, message: "Workflow needs clarification: " + draftBag.unsupported.slice(0, 1000) })
+    const source = try text(draftBag.source, 65_536)
+    const result = try service.checkSource(source)
+    return {
+      name: try text(draftBag.name ?? existing?.name ?? "Workflow", 200), description: try text(draftBag.description ?? "", 4000, true), source,
+      sourceDigest: try workflowSha(source), ok: result.ok, diagnostics: result.diagnostics, calls: result.calls, compilerRevision: result.compilerRevision,
+    }
+  }
+
+  effect function receiptOf(mutationId: string): (Bag | undefined)!WorkflowRefused {
+    const found = try db(store.receipt(mutationId))
+    return found === undefined || found.owner !== owner || found.kind !== "generated" ? undefined : found.data.receipt as Bag
+  }
+
+  effect function save(input: unknown, workflowId?: string) {
+    const p = try body(input, ["name", "description", "source", "trigger", "mutationId", ...(workflowId === undefined ? [] : ["expectedVersionId"])])
+    const mutationId = p.mutationId
+    if (typeof mutationId !== "string" || !uuidV4.test(mutationId)) throw new WorkflowRefused({ status: 400, message: "Invalid workflow mutation identity" })
+    const notApplied = { code: "WORKFLOW_GENERATED_NOT_APPLIED", mutationId, ...(workflowId === undefined ? {} : { workflowId, ...(typeof p.expectedVersionId === "string" ? { expectedVersionId: p.expectedVersionId } : {}) }) }
+    const name = (try text(p.name, 200)).trim()
+    const description = try text(p.description ?? "", 4000, true)
+    const source = try text(p.source, 65_536)
+    const trigger = try mapError(validatePhoneWorkflowTrigger(p.trigger ?? { kind: "manual" }), (error) => new WorkflowRefused({ status: 400, message: error.message }))
+    const sourceDigest = try workflowSha(source)
+    const prior = try receiptOf(mutationId)
+    if (prior !== undefined) {
+      if (prior.sourceDigest !== sourceDigest || prior.operation !== (workflowId === undefined ? "create" : "edit") || (workflowId !== undefined && prior.workflowId !== workflowId)) {
+        throw new WorkflowRefused({ status: 409, message: "This save identity was used for another change", ...notApplied })
+      }
+      return { receipt: prior }
+    }
+    const result = try checked(source)
+    const code: GeneratedDefinition = {
+      source, sourceDigest, js: result.js, jsDigest: try workflowSha(result.js), compilerRevision: result.compilerRevision, calls: result.calls, reviewedDigest: "", reviewedVersion: 0,
+    }
+    const spec = placeholderSpec(name, description, trigger)
+    const specDigest = try workflowSha([spec, sourceDigest])
+    const timed = trigger.kind === "time"
+    const scheduleMatches = trigger.kind !== "time" || host.nextCron(phoneTimeTriggerCron(trigger), 0, trigger.timeZone) !== undefined
+    return try lock(effect {
+      const at = new Date(try now).toISOString()
+      if (workflowId === undefined) {
+        const id = try workflowUuid()
+        const fresh: DefinitionRow = {
+          id, owner, admission: A.initial, lifecycleState: { ...L.initial, owner, version: 1 }, revisions: [], name, description, spec, specDigest, origin: "generated", generated: code,
+          createdAt: at, updatedAt: at, armedVersion: 0,
+        }
+        const defined = try service.admitted(fresh, { type: "defineWorkflow", typed: false, timed, scheduleMatches })
+        const receipt = { mutationId, workflowId: id, operation: "create", previousVersionId: null, versionId: versionId(defined.version), sourceDigest, compilerRevision: code.compilerRevision, appliedAt: at }
+        try service.writeDefinition(undefined, { ...fresh, admission: defined }, { mutationId, owner, kind: "generated", data: { receipt } })
+        return { receipt }
+      }
+      const current = try service.definitionOf(workflowId)
+      if (current.row.origin !== "generated" || current.row.lifecycleState.removed || versionId(current.row.admission.version) !== p.expectedVersionId) {
+        throw new WorkflowRefused({ status: 409, message: "Workflow changed before this edit was saved", ...notApplied })
+      }
+      const edited = try service.admitted(current.row, { type: "editWorkflow" })
+      const changed: DefinitionRow = { ...current.row, admission: edited, name, description, spec, specDigest, generated: code, updatedAt: at }
+      const settled = edited.active ? try service.admitted(changed, { type: "changeActivation", form: "ExactRequest", expected: edited.version, enable: false }) : edited
+      const next = { ...changed, admission: { ...settled, timed, scheduleMatches } }
+      const receipt = { mutationId, workflowId, operation: "edit", previousVersionId: p.expectedVersionId, versionId: versionId(settled.version), sourceDigest, compilerRevision: code.compilerRevision, appliedAt: at }
+      try service.writeDefinition(current, next, { mutationId, owner, kind: "generated", data: { receipt } })
+      try service.arm(next)
+      return { receipt }
+    })
+  }
+
+  effect function saveReceipt(mutationId: string) {
+    if (!uuidV4.test(mutationId)) throw new WorkflowRefused({ status: 400, message: "Invalid workflow mutation identity" })
+    return { mutationId, receipt: (try receiptOf(mutationId)) ?? null }
+  }
+
+  effect function review(id: string, input: unknown) {
+    const p = try body(input, ["expectedVersionId", "sourceDigest"])
+    const notApplied = { code: "WORKFLOW_REVIEW_NOT_APPLIED", workflowId: id, ...(typeof p.expectedVersionId === "string" ? { expectedVersionId: p.expectedVersionId } : {}) }
+    return try lock(effect {
+      const current = try service.definitionOf(id)
+      const code = current.row.generated
+      const expected = versionOf(p.expectedVersionId)
+      if (code === undefined || expected !== current.row.admission.version || p.sourceDigest !== code.sourceDigest || current.row.lifecycleState.removed) {
+        throw new WorkflowRefused({ status: 409, message: "The reviewed code is not the current version", ...notApplied })
+      }
+      const next: DefinitionRow = { ...current.row, generated: { ...code, reviewedDigest: code.sourceDigest, reviewedVersion: current.row.admission.version } }
+      try service.writeDefinition(current, next)
+      return { workflowId: id, versionId: versionId(current.row.admission.version), sourceDigest: code.sourceDigest, reviewed: true }
+    })
+  }
+
+  effect function source(id: string) {
+    const current = try service.definitionOf(id)
+    const code = current.row.generated
+    if (code === undefined) throw new WorkflowRefused({ status: 404, message: "This workflow has no generated code", workflowId: id })
+    return {
+      workflowId: id, versionId: versionId(current.row.admission.version), source: code.source, sourceDigest: code.sourceDigest, compiledDigest: code.jsDigest,
+      compilerRevision: code.compilerRevision, calls: code.calls, trigger: current.row.spec.trigger,
+      reviewed: code.reviewedDigest === code.sourceDigest && code.reviewedVersion === current.row.admission.version,
+    }
+  }
+
+  return { draft, save, saveReceipt, review, source }
+}

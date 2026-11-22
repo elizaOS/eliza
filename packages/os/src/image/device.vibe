@@ -3,6 +3,8 @@ import { ChildProcess } from "effect/process"
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
 import {
   interruptionProven,
+  leaseDirectoryAdmitted,
+  leaseDirectoryOf,
   leaseHeld,
   leaseStatusOf,
   runnersAdmitted,
@@ -20,6 +22,7 @@ module node {
   import path from "node:path"
   import { Buffer } from "node:buffer"
   import { createHash, randomUUID } from "node:crypto"
+  import { chmod, lstat, mkdir, open } from "node:fs/promises"
 
   export interface SingleDeviceServer {
     readonly host: string
@@ -48,9 +51,61 @@ module node {
     return createHash("sha256").update(bytes).digest("hex")
   }
 
+  export interface LeaseDirectories {
+    readonly leaseVariable: string | undefined
+    readonly stateVariable: string | undefined
+    readonly home: string
+  }
+
   /** @throws {never} */
-  export function defaultLeaseDirectory(): string {
-    return path.join(os.homedir(), ".local", "state", "eliza", "device-leases")
+  export function leaseDirectories(): LeaseDirectories {
+    const lease = process.env.ELIZA_DEVICE_LEASE_DIR?.trim()
+    const state = process.env.ELIZA_STATE_DIR?.trim()
+    return {
+      leaseVariable: lease ? path.resolve(lease) : undefined,
+      stateVariable: state ? path.resolve(state, "device-leases") : undefined,
+      home: path.join(os.homedir(), ".local", "state", "eliza", "device-leases"),
+    }
+  }
+
+  async function syncPath(directory: string): Promise<void> {
+    const handle = await open(directory, "r")
+    try {
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
+  }
+
+  export async function syncDirectory(directory: string): Promise<void> {
+    await syncPath(directory)
+  }
+
+  export async function preparePrivateDirectory(directory: string): Promise<{ readonly realDirectory: boolean; readonly ownedByOperator: boolean }> {
+    const target = path.resolve(directory)
+    const missing: string[] = []
+    for (let probe = target; ; probe = path.dirname(probe)) {
+      const found = await lstat(probe).then(() => true, (failure: { code?: string }) => {
+        if (failure.code === "ENOENT") return false
+        throw failure
+      })
+      if (found || path.dirname(probe) === probe) break
+      missing.unshift(probe)
+    }
+    for (const created of missing) {
+      await mkdir(created, { mode: 0o700 }).catch((failure: { code?: string }) => {
+        if (failure.code !== "EEXIST") throw failure
+      })
+      await syncPath(path.dirname(created))
+    }
+    const info = await lstat(target)
+    const realDirectory = info.isDirectory() && !info.isSymbolicLink()
+    const ownedByOperator = info.uid === process.getuid?.()
+    if (realDirectory && ownedByOperator && (info.mode & 0o077) !== 0) {
+      await chmod(target, 0o700)
+      await syncPath(path.dirname(target))
+    }
+    return { realDirectory, ownedByOperator }
   }
 
   /** @throws {never} */
@@ -161,7 +216,7 @@ module node {
     })
   }
 }
-import { defaultLeaseDirectory, hostName, listenSingleDevice, processAlive, processId, sha256Hex, uniqueToken } from node
+import { hostName, leaseDirectories, listenSingleDevice, preparePrivateDirectory, processAlive, processId, sha256Hex, syncDirectory, uniqueToken } from node
 export { legacyInstallLockPath } from node
 
 export type AdbSerial = string & { readonly __brand: "AdbSerial" }
@@ -178,6 +233,7 @@ export error LeaseLockConflict { lockPath: string }
 export error InstrumentationRefused { reason: string }
 export error FixtureRefused { reason: string }
 export error IsolatedTestFailed { reason: string; report: string }
+export error LeaseDirectoryRefused { directory: string; reason: string }
 
 export type AdbFailure = AdbFailed | AdbTimedOut
 export type AdbRun = (...args: readonly string[]) => string!AdbFailure
@@ -285,11 +341,22 @@ export effect function startSingleDeviceAdb(serial: string, options: { readonly 
   return endpoint
 }
 
+/** The directory device leases live in: the caller's explicit one, else `ELIZA_DEVICE_LEASE_DIR`, else `ELIZA_STATE_DIR/device-leases`, else `~/.local/state/eliza/device-leases`. */
+export function leaseStateDirectory(explicit?: string): string {
+  const found = leaseDirectories()
+  switch (leaseDirectoryOf(explicit !== undefined, found.leaseVariable !== undefined, found.stateVariable !== undefined)) {
+    case "ExplicitDirectory": return explicit ?? found.home
+    case "LeaseDirectoryVariable": return found.leaseVariable ?? found.home
+    case "StateDirectoryVariable": return found.stateVariable ?? found.home
+    case "HomeStateDirectory": return found.home
+  }
+}
+
 export function deviceLeaseKey(value: string): string {
   return value.replace(/[^A-Za-z0-9_.-]+/g, "_").slice(0, 180)
 }
 
-export function deviceLeasePath(deviceKey: string, stateDir: string = defaultLeaseDirectory()): string {
+export function deviceLeasePath(deviceKey: string, stateDir: string = leaseStateDirectory()): string {
   return `${stateDir}/${deviceLeaseKey(deviceKey)}.json`
 }
 
@@ -415,6 +482,7 @@ effect function claim(deviceKey: string, leasePath: string, options: LeaseOption
       throw failure
     }
     if (linked) {
+      try tryPromise({ try: () => syncDirectory(leasePath.slice(0, leasePath.lastIndexOf("/")) || "/"), catch: (cause) => new LeaseDirectoryRefused({ directory: leasePath, reason: String(cause) }) })
       const held: DeviceLease = { lease, path: leasePath }
       return held
     }
@@ -488,21 +556,24 @@ export effect function settleDeviceLease(held: DeviceLease) {
 
 export effect function acquireDeviceLease(deviceKey: string, options: LeaseOptions = {}) {
   const files = try FileSystem.FileSystem
-  const stateDir = options.stateDir ?? defaultLeaseDirectory()
-  try files.makeDirectory(stateDir, { recursive: true, mode: 0o700 })
+  const stateDir = leaseStateDirectory(options.stateDir)
+  const prepared = try tryPromise({ try: () => preparePrivateDirectory(stateDir), catch: (cause) => new LeaseDirectoryRefused({ directory: stateDir, reason: String(cause) }) })
+  if (!leaseDirectoryAdmitted(prepared.realDirectory, prepared.ownedByOperator)) {
+    throw new LeaseDirectoryRefused({ directory: stateDir, reason: "Device leases live only in a real directory the operator owns" })
+  }
   const leasePath = deviceLeasePath(deviceKey, stateDir)
   return try acquireRelease(claim(deviceKey, leasePath, options), (held) => releaseLease(held).pipe(Effect.provideService(FileSystem.FileSystem, files), Effect.orDie))
 }
 
 /** A device's lease as it reads now: its path, the parsed lease if any, and the first reason it does not hold the device. */
 export effect function readDeviceLease(deviceKey: string, options: { readonly stateDir?: string } = {}) {
-  const path = deviceLeasePath(deviceKey, options.stateDir ?? defaultLeaseDirectory())
+  const path = deviceLeasePath(deviceKey, leaseStateDirectory(options.stateDir))
   const found = try snapshot(path)
   const status: LeaseStatus = leaseStatusOf(leaseReading(found, try Clock.currentTimeMillis))
   return { path, status, lease: found.kind === "parsed" ? found.lease : undefined }
 }
 
-export effect function requireCallerLease(held: DeviceLease, deviceKey: string, stateDir: string = defaultLeaseDirectory()) {
+export effect function requireCallerLease(held: DeviceLease, deviceKey: string, stateDir: string = leaseStateDirectory()) {
   const now = try Clock.currentTimeMillis
   const current = try snapshot(deviceLeasePath(deviceKey, stateDir))
   try refuse(held.path === deviceLeasePath(deviceKey, stateDir), "the lease is not this device's")

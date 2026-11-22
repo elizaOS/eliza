@@ -1,11 +1,14 @@
 // spec/workflow/worker.md, "Story: Run workflows from the reviewed source and signed device assets"; spec/workflow/worker.md, "Producer, package and installed tree must each prove their own identity"
+import { GENERATED_ENGINE_DECLARATION } from "./compiler.vibe"
 import { initial, machineOver, type Worker } from "../../gen/workflow__worker.effect.vibe"
 
 /** A staged package's bounded extraction index. */
 export interface StagedWorkerArtifact { readonly files: number; readonly bytes: number; readonly indexSha256: string }
 
 /** The worker program and engine a device needs before it enables workflows. */
-export const WORKER_REQUIRED_FILES: readonly string[] = ["src/worker/main.js", "src/worker/protocol.js", "workflow-worker.json", "dependencies.json"]
+export const WORKER_REQUIRED_FILES: readonly string[] = [
+  "src/worker/main.js", "src/worker/protocol.js", "src/worker/engine.js", "src/worker/compiler.js", "workflow-worker.json", "dependencies.json", "compiler/compiler.json", "compiler/eliza-workflow.d.ts",
+]
 /** The built worker program inside a package's dist and an artifact. */
 export const WORKER_EXECUTABLE = "src/worker/main.js"
 
@@ -21,7 +24,7 @@ module node {
   /** The provenance a consumer binds the producer to. */
   export interface WorkerIdentity { readonly sourceStampSha256: string; readonly lockSha256: string }
   /** The manifest an artifact carries beside its files. */
-  export interface WorkerManifest extends WorkerIdentity { readonly version: 1; readonly files: Readonly<Record<string, string>> }
+  export interface WorkerManifest extends WorkerIdentity { readonly version: 1; readonly compiler?: unknown; readonly files: Readonly<Record<string, string>> }
   /** A verified artifact: its manifest, every listed file with its digest, the manifest digest and the total size. */
   export interface VerifiedWorkerArtifact {
     readonly manifest: WorkerManifest
@@ -101,6 +104,8 @@ module node {
         files.push([path, hash])
       }
       if (required.some((path) => !seen.has(path)) || !await dependenciesStaged(root, seen)) return refuse("Worker dependency missing")
+      const compiler = await compilerStaged(root, seen, manifest)
+      if (!compiler.typescript || !compiler.engine) return refuse("The worker's compiler assets are missing or not bound to its manifest")
       const manifestHash = sha256(manifestBytes)
       files.push(["manifest.json", manifestHash])
       return { ok: true, value: { manifest, files, manifestHash, bytes: total } }
@@ -215,7 +220,7 @@ module node {
     return { ok: true, value: { entries: unique, dependencies } }
   }
 
-  export async function build(input: { outputDir: string; identity: WorkerIdentity; entries: readonly { readonly path: string; readonly from: string }[]; generated: Readonly<Record<string, string>> }): Promise<Checked<string>> {
+  export async function build(input: { outputDir: string; identity: WorkerIdentity; entries: readonly { readonly path: string; readonly from: string }[]; generated: Readonly<Record<string, string>>; compiler: CompilerDescriptor }): Promise<Checked<string>> {
     const output = resolve(input.outputDir)
     if (!isAbsolute(input.outputDir) || await exists(output)) return refuse("The worker artifact output must be fresh")
     if (input.entries.some((entry) => entry.from === output || entry.from.startsWith(`${output}/`))) return refuse("The worker artifact cannot replace its source")
@@ -234,7 +239,7 @@ module node {
         } else await writeFile(join(output, entry.path), entry.text ?? "")
         listed[entry.path] = sha256(await readFile(join(output, entry.path)))
       }
-      const manifest: WorkerManifest = { version: 1, ...input.identity, files: listed }
+      const manifest: WorkerManifest = { version: 1, ...input.identity, compiler: input.compiler, files: listed }
       const bytes = Buffer.from(JSON.stringify(manifest, null, 2) + "\n")
       await writeFile(join(output, "manifest.json"), bytes)
       return { ok: true, value: sha256(bytes) }
@@ -249,6 +254,41 @@ module node {
       return Object.keys(declared).every((name) => seen.has(`node_modules/${name}/package.json`))
     } catch {
       return false
+    }
+  }
+
+  export interface CompilerDescriptor { readonly compilerModule: string; readonly engineDeclaration: string; readonly declarationFiles: number; readonly packages: Readonly<Record<string, string>> }
+
+  export async function compilerFiles(entries: readonly { readonly path: string; readonly from: string }[], dependencies: Readonly<Record<string, string>>): Promise<Checked<{ entries: { path: string; from: string }[]; descriptor: CompilerDescriptor }>> {
+    const manifest = entries.find((entry) => entry.path === "node_modules/typescript/package.json")
+    const version = dependencies.typescript
+    if (manifest === undefined || version === undefined) return refuse("The worker does not import the TypeScript compiler")
+    const root = dirname(manifest.from)
+    const pkg = JSON.parse(await readFile(manifest.from, "utf8")) as { main?: string }
+    const compilerModule = `node_modules/typescript/${(pkg.main ?? "./lib/typescript.js").replace(/^\.\//, "")}`
+    if (!entries.some((entry) => entry.path === compilerModule)) return refuse("The staged TypeScript compiler module is missing")
+    const libraries = (await readdir(join(root, "lib"))).filter((name) => /^lib\.[A-Za-z0-9.]+\.d\.ts$/.test(name) || name === "lib.d.ts").sort()
+    if (!libraries.includes("lib.es2022.d.ts")) return refuse("The staged TypeScript compiler has no ES2022 declarations")
+    return {
+      ok: true,
+      value: {
+        entries: libraries.map((name) => ({ path: `node_modules/typescript/lib/${name}`, from: join(root, "lib", name) })),
+        descriptor: { compilerModule, engineDeclaration: "compiler/eliza-workflow.d.ts", declarationFiles: libraries.length, packages: { typescript: version } },
+      },
+    }
+  }
+
+  export async function compilerStaged(root: string, seen: ReadonlySet<string>, manifest: { readonly compiler?: unknown }): Promise<{ readonly typescript: boolean; readonly engine: boolean }> {
+    try {
+      const descriptor = JSON.parse(await readFile(join(root, "compiler/compiler.json"), "utf8")) as CompilerDescriptor
+      const libraries = [...seen].filter((path) => /^node_modules\/typescript\/lib\/lib\..*\.d\.ts$|^node_modules\/typescript\/lib\/lib\.d\.ts$/.test(path))
+      const bound = JSON.stringify(manifest.compiler) === JSON.stringify(descriptor)
+      return {
+        typescript: bound && seen.has(descriptor.compilerModule) && libraries.length === descriptor.declarationFiles && seen.has("node_modules/typescript/lib/lib.es2022.d.ts"),
+        engine: bound && seen.has(descriptor.engineDeclaration) && seen.has("src/worker/compiler.js") && seen.has("src/worker/engine.js"),
+      }
+    } catch {
+      return { typescript: false, engine: false }
     }
   }
 
@@ -310,13 +350,15 @@ module node {
       const present = await listFiles(root)
       if (present === undefined || present.some((path) => path !== "files.sha256" && !listed.has(path))) filesMatch = false
       const manifestDigest = sha256(await readFile(join(root, "manifest.json")))
-      return { ok: true, value: { manifestDigest, exactIndex: exactIndex && packageStamp !== "", filesMatch, pathSafe, program: listed.has("src/worker/main.js"), engine: listed.has("src/worker/protocol.js") } }
+      const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8")) as { readonly compiler?: unknown }
+      const compiler = await compilerStaged(root, new Set([...listed].flatMap((path) => path === undefined ? [] : [path])), manifest)
+      return { ok: true, value: { manifestDigest, exactIndex: exactIndex && packageStamp !== "", filesMatch, pathSafe, program: compiler.typescript && listed.has("src/worker/main.js"), engine: compiler.engine && listed.has("src/worker/protocol.js") } }
     } catch {
       return refuse("The installed worker tree is unreadable")
     }
   }
 }
-import { build, closure, installed, sha256Of, stage, verify, type VerifiedWorkerArtifact, type WorkerClosure, type WorkerIdentity } from node
+import { build, closure, compilerFiles, installed, sha256Of, stage, verify, type VerifiedWorkerArtifact, type WorkerClosure, type WorkerIdentity } from node
 export type { VerifiedWorkerArtifact, WorkerClosure, WorkerIdentity, WorkerManifest } from node
 
 /** The worker program's module closure inside a built package and every runtime dependency it imports, each staged under `node_modules/<name>`. */
@@ -354,12 +396,16 @@ export effect function workerProvenance(start: Worker = initial) {
         const found = try workerArtifactClosure(input.packageDir)
         const program = found.entries.find((entry) => entry.path === WORKER_EXECUTABLE)
         if (program === undefined) throw new WorkerArtifactRefused({ reason: "The built worker program is missing" })
+        const compiler = try checked(() => compilerFiles(found.entries, found.dependencies))
         const generated = {
+          "compiler/compiler.json": JSON.stringify(compiler.descriptor, null, 2) + "\n",
+          "compiler/eliza-workflow.d.ts": GENERATED_ENGINE_DECLARATION,
           "package.json": JSON.stringify({ name: "workflow-worker", private: true, type: "module", dependencies: found.dependencies }, null, 2) + "\n",
           "dependencies.json": JSON.stringify(found.dependencies, null, 2) + "\n",
           "workflow-worker.json": JSON.stringify({ executable: WORKER_EXECUTABLE, sha256: try promise(() => sha256Of(program.from)) }) + "\n",
         }
-        return try checked(() => build({ outputDir: input.outputDir, identity: input.identity, entries: found.entries.filter((entry) => !(entry.path in generated)), generated }))
+        const entries = [...found.entries, ...compiler.entries.filter((extra) => !found.entries.some((entry) => entry.path === extra.path))]
+        return try checked(() => build({ outputDir: input.outputDir, identity: input.identity, entries: entries.filter((entry) => !(entry.path in generated)), generated, compiler: compiler.descriptor }))
       } catch effect (error) => {
         try send({ type: "observeArtifact", build: { sourceStamp: "", lockDigest: "", manifestDigest: "", treeMatches: false, pathSafe: false, requiredFiles: false } })
         throw error

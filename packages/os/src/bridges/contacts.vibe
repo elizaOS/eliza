@@ -1,16 +1,24 @@
-// spec/os/android/contacts.md, "Story: Read my contacts only while I am looking at them"; spec/os/android/contacts.md, "Story: Change only the contact I reviewed"; spec/os/android/contacts.md, "A contact write runs only on a writing install that can advertise contacts.write.v1, in front with focus"; spec/os/android/paging.md, "Story: Page my records without repeats or gaps"; spec/agent/deviceActions/capabilities.md, "The capability vocabulary is closed and versioned, with one wire name per capability"
+// spec/os/android/contacts.md, "Story: Read my contacts only while I am looking at them"; spec/os/android/deletionWindow.md, "A record waiting in its window is hidden from its list until Undo or the provider settles it"; spec/os/android/contacts.md, "Story: Change only the contact I reviewed"; spec/os/android/contacts.md, "A contact write runs only on a writing install that can advertise contacts.write.v1, in front with focus"; spec/os/android/contacts.md, "A removal the owner confirmed waits in the deletion window, and only its expiry runs the editor's removal"; spec/os/android/contacts.md, "Story: Name the numbers I am already looking at"; spec/os/android/deferredDeletion.md, "A message, conversation, voicemail or contact is staged only while Android still holds it as I reviewed it"; spec/os/android/paging.md, "Story: Page my records without repeats or gaps"; spec/agent/deviceActions/capabilities.md, "The capability vocabulary is closed and versioned, with one wire name per capability"
 import type { Admission, HandoffOutcome, HostFacts, ProviderReply, ReadKind, WriteGate } from "../../gen/os__android__bridge.ts"
 import {
   Machine,
   advertisesContactWrite,
+  answerMatchesAsk,
   machine,
+  maxNamedNumbers,
+  namesAnswer,
+  namesShown,
   pageAskAdmitted,
   readAdmission,
   writeAdmission,
   type ContactsInstall,
+  type NamesAnswer,
   type PageAsk,
 } from "../../gen/os__android__contacts.effect.vibe"
 import { noRow, startOf, type CursorRefusal, type PageCursor, type PageStart } from "../../gen/os__android__paging.effect.vibe"
+import { actionJournalPlugin, queuedDeletions } from "./action-journal.vibe"
+import { hiddenRecords, parseStagedDeletion } from "./deletion-window.vibe"
+import type { ActionJournalPlugin } from "./definitions/action-journal.ts"
 import type {
   AddressBookClient,
   AddressBookClientOptions,
@@ -25,6 +33,8 @@ import type {
   ContactDraftProblem,
   ContactEmailKind,
   ContactId,
+  ContactName,
+  ContactNamesClient,
   ContactPageAsk,
   ContactPhoneKind,
   ContactRemoveResult,
@@ -32,7 +42,10 @@ import type {
   ContactSaveResult,
   ContactVersion,
   ContactsPlugin,
+  DisplayOnlyName,
   ListContactsOptions,
+  NameScreen,
+  NameSurface,
   ReviewedContact,
 } from "./definitions/contacts.ts"
 
@@ -95,6 +108,8 @@ export const CONTACT_MAX_LABEL = 64
 export const CONTACT_MAX_NOTES = 8192
 export const ADDRESS_BOOK_MAX_PAGE = 200
 export const ADDRESS_BOOK_DEFAULT_PAGE = 50
+export const CONTACT_NAMES_MAX = maxNamedNumbers
+export const CONTACT_PHOTO_MAX = 48 * 1024
 
 export type ContactsMethod = keyof AddressBookNativePlugin | keyof ContactsPlugin
 
@@ -105,6 +120,8 @@ export error ContactCursorRefused { reason: CursorRefusal }
 export error ContactReadRefused { viewOpen: boolean; admission: Admission }
 export error ContactReadDropped { ticket: number }
 export error ContactWriteRefused { viewOpen: boolean; gate: WriteGate; admission: Admission }
+export error ContactNamesRefused { answer: NamesAnswer }
+export error ContactNamesDropped { surface: NameSurface }
 
 export type AddressBookFailure =
   | MalformedContactReply
@@ -114,6 +131,8 @@ export type AddressBookFailure =
   | ContactReadRefused
   | ContactReadDropped
   | ContactWriteRefused
+  | ContactNamesRefused
+  | ContactNamesDropped
 
 const ID = /^[1-9]\d{0,17}$/
 const VERSION = /^[0-9a-f]{64}$/
@@ -121,6 +140,9 @@ const CURSOR = /^v1\.([1-9]\d{0,8})\.([1-9]\d{0,17})\.(.*)$/s
 const CONTROL = /\p{Cc}/u
 const NOTE_CONTROL = /[^\P{Cc}\t\n\r]/u
 const CURSOR_MAX = 1024
+const DIAL_SEPARATORS = /[\s().-]/g
+const DIALABLE = /^\+?[0-9]{2,20}$/
+const PHOTO = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/
 const ONE_CONTACT: PageAsk = { queryLength: 0, hasNul: false, limit: 1 }
 const strict = { onExcessProperty: "error" } as const
 
@@ -219,7 +241,17 @@ const Saved = Schema.Union([
   Schema.Struct({ status: Schema.Literal("saved"), id: Schema.Null, version: Schema.Null }),
   Schema.Struct({ status: Schema.Literals(["stale", "not-found", "failed", "unknown"]) }),
 ])
-schema Removed { status: "deleted" | "stale" | "not-found" | "failed" | "unknown" }
+const Removed = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("queued"), deletion: Schema.Unknown }),
+  Schema.Struct({ status: Schema.Literals(["stale", "not-found", "failed"]) }),
+])
+const Named = Schema.Struct({
+  names: Schema.Array(Schema.Struct({
+    number: Schema.String,
+    name: Schema.NullOr(text(CONTACT_MAX_NAME)),
+    photo: Schema.NullOr(Schema.String.check(Schema.isMaxLength(CONTACT_PHOTO_MAX)).check(Schema.isPattern(PHOTO))),
+  })).check(Schema.isMaxLength(maxNamedNumbers)),
+})
 schema Returned { status: "returned" }
 schema Permission { contacts: "granted" | "denied" | "prompt" | "prompt-with-rationale" }
 const Summaries = Schema.Struct({
@@ -302,7 +334,31 @@ export effect function parseContactSave(value: unknown, updated?: ContactId): Co
 }
 
 export effect function parseContactRemove(value: unknown): ContactRemoveResult!MalformedContactReply {
-  return try decoded("remove", Removed, value)
+  const removed = try decoded("remove", Removed, value)
+  if (removed.status !== "queued") return { status: removed.status }
+  const deletion = try mapError(parseStagedDeletion("ElizaContacts", "remove", "contact", removed.deletion), (bad) => new MalformedContactReply({ method: "remove", issue: bad.issue }))
+  return { status: "queued", deletion }
+}
+
+export function dialableNumber(number: string): string | null {
+  const bare = number.replace(DIAL_SEPARATORS, "")
+  return DIALABLE.test(bare) ? bare : null
+}
+
+export function screenNumbers(numbers: readonly string[]): string[] {
+  const asked = new Set<string>()
+  for (const number of numbers) {
+    const dialable = dialableNumber(number)
+    if (dialable !== null && asked.size < maxNamedNumbers) asked.add(dialable)
+  }
+  return [...asked]
+}
+
+export effect function parseContactNames(value: unknown, asked: readonly string[]) {
+  const { names } = try decoded("resolveNames", Named, value)
+  const answer = names.map((one) => ({ asked: asked.indexOf(one.number), named: one.name !== null, photo: one.photo !== null }))
+  if (!answerMatchesAsk(asked.map((_, at) => at), answer)) throw new MalformedContactReply({ method: "resolveNames", issue: "The names do not follow the numbers asked" })
+  return new Map(names.map((one) => [one.number, { name: one.name === null || one.name.trim() === "" ? null : (one.name as DisplayOnlyName), photo: one.photo }]))
 }
 
 export function contactDraftProblem(draft: ContactDraft, { create = false }: { create?: boolean } = {}): ContactDraftProblem | null {
@@ -352,16 +408,6 @@ function payloadOf(draft: ContactDraft): ContactDraft {
 function saveReply(result: ContactSaveResult): ProviderReply {
   return match (result.status) {
     when "saved": result.id === null ? "CommittedNotReadBack" : "CommittedAndReadBack";
-    when "stale": "RevisionMismatch";
-    when "not-found": "NothingWritten";
-    when "failed": "NothingWritten";
-    when "unknown": "NoReply";
-  }
-}
-
-function removeReply(result: ContactRemoveResult): ProviderReply {
-  return match (result.status) {
-    when "deleted": "CommittedAndReadBack";
     when "stale": "RevisionMismatch";
     when "not-found": "NothingWritten";
     when "failed": "NothingWritten";
@@ -424,7 +470,7 @@ effect function read<A>(
   return try outcome
 }
 
-effect function list(book: Book, plugin: AddressBookNativePlugin, ask: ContactPageAsk) {
+effect function list(book: Book, plugin: AddressBookNativePlugin, journal: ActionJournalPlugin, ask: ContactPageAsk) {
   const limit = ask.limit ?? ADDRESS_BOOK_DEFAULT_PAGE
   const page = pageAsk(ask.query, limit)
   const resume = ask.cursor === undefined ? undefined : resumeOf(ask.cursor)
@@ -433,8 +479,10 @@ effect function list(book: Book, plugin: AddressBookNativePlugin, ask: ContactPa
   const start = startOf(resume === undefined ? { tag: "FirstRequest" } : { tag: "ContinueRequest", resume }, ask.query, true)
   if (start.tag === "Refused") throw new ContactCursorRefused({ reason: start.reason })
   const options = { query: ask.query, limit, ...(ask.cursor === undefined ? {} : { cursor: ask.cursor }) }
-  return try read(book, plugin, ask.kind ?? "AutomaticRead", page, start, effect () =>
+  const listed = try read(book, plugin, ask.kind ?? "AutomaticRead", page, start, effect () =>
     try parseAddressBookPage(try called("list", () => plugin.list(options)), { query: ask.query, limit, start }))
+  const hidden = hiddenRecords(try queuedDeletions(journal), "contact")
+  return { ...listed, contacts: listed.contacts.filter((row) => !hidden.has(row.id)) }
 }
 
 effect function get(book: Book, plugin: AddressBookNativePlugin, id: ContactId, kind: ReadKind) {
@@ -492,13 +540,19 @@ effect function save(book: Book, plugin: AddressBookNativePlugin, install: Conta
 effect function remove(book: Book, plugin: AddressBookNativePlugin, install: ContactsInstall, reviewed: ReviewedContact) {
   const problem = reviewProblem(reviewed)
   if (problem !== null) throw new InvalidContactRequest({ problem })
-  const lost: ContactRemoveResult = { status: "unknown" }
-  return try write(book, plugin, install, removeReply, effect () =>
-    (effect { return try parseContactRemove(try called("remove", () => plugin.remove({ id: reviewed.id, version: reviewed.version }))) } catch () => lost))
+  const facts = reportedFacts(try observe(book, "status", () => plugin.status()))
+  book.send({ type: "stageRemoval", install, facts }) catch effect (refused) => {
+    throw new ContactWriteRefused({
+      viewOpen: refused.state.viewOpen,
+      gate: refused.state.gate,
+      admission: writeAdmission(install, refused.state.grants, facts),
+    })
+  }
+  return try parseContactRemove(try called("remove", () => plugin.remove({ id: reviewed.id, version: reviewed.version })))
 }
 
 export function createAddressBookClient(options: AddressBookClientOptions): AddressBookClient {
-  const { install, plugin = addressBookPlugin() } = options
+  const { install, plugin = addressBookPlugin(), journal = actionJournalPlugin() } = options
   const book = Effect.runSync(held())
   return {
     open: () => settled(open(book, plugin)),
@@ -507,13 +561,49 @@ export function createAddressBookClient(options: AddressBookClientOptions): Addr
     state: () => settled(book.get()),
     status: () => settled(observe(book, "status", () => plugin.status())),
     requestPermissions: () => settled(prompt(book, plugin)),
-    list: (ask) => settled(list(book, plugin, ask)),
+    list: (ask) => settled(list(book, plugin, journal, ask)),
     get: (id, kind = "AutomaticRead") => settled(get(book, plugin, id, kind)),
     create: () => settled(handoff(book, "create", () => plugin.create())),
     edit: (contact) => settled(edit(book, plugin, contact)),
     createContact: (draft) => settled(save(book, plugin, install, draft)),
     updateContact: (reviewed, draft) => settled(save(book, plugin, install, draft, reviewed)),
     remove: (reviewed) => settled(remove(book, plugin, install, reviewed)),
+  }
+}
+
+type Screens = Ref.Ref<ReadonlyMap<NameSurface, number>>
+
+effect function advance(screens: Screens, surface: NameSurface) {
+  return try Ref.modify(screens, (open): [number, ReadonlyMap<NameSurface, number>] => {
+    const next = (open.get(surface) ?? 0) + 1
+    return [next, new Map(open).set(surface, next)]
+  })
+}
+
+effect function resolveNames(screens: Screens, plugin: AddressBookNativePlugin, screen: NameScreen) {
+  const asked = screenNumbers(screen.numbers)
+  const generation = try advance(screens, screen.surface)
+  if (asked.length === 0) return []
+  const seen = try reply("status", Status, () => plugin.status())
+  const grants = { readGranted: seen.readable, writeGranted: seen.writable }
+  const nameAsk = { screenOpen: true, numbers: asked.length, distinct: true, dialShaped: true }
+  const admitted = namesAnswer(grants, reportedFacts(seen), nameAsk, true)
+  if (admitted.tag !== "NamesRead") throw new ContactNamesRefused({ answer: admitted })
+  const found = try parseContactNames(try called("resolveNames", () => plugin.resolveNames({ numbers: asked })), asked)
+  const current = (try Ref.get(screens)).get(screen.surface) ?? 0
+  if (!namesShown(admitted, generation, current, "BesideTheRows")) throw new ContactNamesDropped({ surface: screen.surface })
+  return screen.numbers.flatMap((number): ContactName[] => {
+    const dialable = dialableNumber(number)
+    const one = dialable === null ? undefined : found.get(dialable)
+    return one === undefined || (one.name === null && one.photo === null) ? [] : [{ number, name: one.name, photo: one.photo }]
+  })
+}
+
+export function createContactNames(plugin: AddressBookNativePlugin = addressBookPlugin()): ContactNamesClient {
+  const screens: Screens = Effect.runSync(Ref.make<ReadonlyMap<NameSurface, number>>(new Map()))
+  return {
+    resolve: (screen) => settled(resolveNames(screens, plugin, screen)),
+    close: (surface) => settled(effect { try advance(screens, surface) }),
   }
 }
 

@@ -10,7 +10,7 @@ export {
   validateDescriptor,
   type LauncherDescriptor,
 } from "./stage-launcher.vibe"
-export { admitPatchEnvelope, assertStockVendorApi, loadProfile, verifyDeviceSource, verifySource } from "./source-lock.vibe"
+export { admitPatchEnvelope, assertStockVendorApi, boardConfigurationPath, loadProfile, vendorManifestPath, verifyDeviceSource, verifySource } from "./source-lock.vibe"
 export {
   aaptManifestTree,
   admitImageApk,
@@ -59,18 +59,24 @@ export {
   generate,
   loadKeyManifest,
   parseArgs,
+  qualificationGateProblems,
   releaseDescriptorProblems,
   releaseRecordProblems,
   signRelease,
+  signReleaseRequest,
+  writeReleaseRecord,
+  type GateReview,
 } from "./signing.vibe"
 export { otaMain } from "./ota-operator.vibe"
 export { evaluate, main, qualifyDevice, validateRequirements, verifyImage } from "./verify-device.vibe"
 export {
   HELD_FOR_THE_RUN,
   IsolatedUserKept,
+  LeaseDirectoryRefused,
   acquireDeviceLease,
   androidFixtureObserver,
   deviceLeasePath,
+  leaseStateDirectory,
   readDeviceLease,
   rebootAndroidFixture,
   requireCallerLease,

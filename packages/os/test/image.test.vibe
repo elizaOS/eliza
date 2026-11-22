@@ -1,4 +1,4 @@
-// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"
+// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/image/harness.md, "Story: Run instrumentation on a device I hold alone"; spec/os/image/harness.md, "Story: Run a test in a fresh Android user that is removed afterwards"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { NATIVE_TARGETS, createDevelopmentLauncherDescriptor, finalizeNative, readNativeLibraries, renderOverlay, stageLauncher, validateDescriptor, type LauncherDescriptor } from "../src/image/stage-launcher.vibe"
@@ -12,15 +12,28 @@ import { readOnlyCommands } from "../src/image/device-qualification-facts.vibe"
 import { verifyImage } from "../src/image/verify-device.vibe"
 import { listenerPermissions, prepareListenerSystemui, verifyListenerSystemui } from "../src/image/listener.vibe"
 import { captureCommand } from "../src/image/device.vibe"
+import {
+  HELD_FOR_THE_RUN, acquireDeviceLease, instrumentationDeclarations, leaseStateDirectory, readDeviceLease,
+  requireInstrumentationInterruption, requireInstrumentationSuccess, withIsolatedAndroidUser,
+} from "../src/image/index.vibe"
 
 module node {
   import { createHash } from "node:crypto"
-  import { chmod, cp, mkdir, readFile, stat, utimes, writeFile } from "node:fs/promises"
+  import { chmod, cp, mkdir, readFile, stat, symlink, utimes, writeFile } from "node:fs/promises"
   import { join } from "node:path"
   import type { Tree } from "./support/scratch.vibe"
   const sourceDigest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
   const sourceText = (value: string) => new TextEncoder().encode(value)
   export async function changeMode(file: string, mode: number): Promise<void> { await chmod(file, mode) }
+  /** @throws {never} */
+  export function swapVariable(name: string, value: string | undefined): string | undefined {
+    const previous = process.env[name]
+    if (value === undefined) delete process.env[name]
+    else process.env[name] = value
+    return previous
+  }
+  export async function directoryMode(directory: string): Promise<number> { return (await stat(directory)).mode & 0o777 }
+  export async function linkTo(target: string, link: string): Promise<void> { await symlink(target, link) }
   export async function copySystemui(folder: string, fixture: string): Promise<string> {
     const source = join(folder, "source")
     const project = join(source, "frameworks/base")
@@ -175,7 +188,7 @@ module node {
 }
 import { ARM_ELF, X86_ELF, companionManifest, launcherManifest, parsed, runtimeNatives } from node
 
-import { changeMode, copySystemui, fixedSourceStat, patchFixture, platformProjectTree, qualificationBinary, rewriteWithSameStat, sourceLockFixture, verificationBinary, virtualCompositionLock } from node
+import { changeMode, copySystemui, directoryMode, linkTo, swapVariable, fixedSourceStat, patchFixture, platformProjectTree, qualificationBinary, rewriteWithSameStat, sourceLockFixture, verificationBinary, virtualCompositionLock } from node
 
 const tools = androidTools()
 const skipped = tools.kind === "missing" ? tools.reason : null
@@ -696,6 +709,8 @@ it.live('Check the exact booted image and report a change during readback (spec/
         [`pm list packages --user 0 -s -e ${camera}`]: `package:${camera}`,
         "cmd overlay lookup --user 0 android android:bool/config_cameraDoubleTapPowerGestureEnabled": "true",
         "cmd overlay lookup --user 0 com.android.systemui com.android.systemui:string/config_cameraGesturePackage": camera,
+        "settings --user 0 get secure camera_double_tap_power_gesture_disabled": "null",
+        "pm list features": "feature:android.hardware.camera.any\nfeature:android.hardware.wifi",
       }
       for (const action of ["SET_ALARM", "SHOW_ALARMS", "SNOOZE_ALARM", "DISMISS_ALARM"]) {
         responses[`${query} android.intent.action.${action} ${defaultCategory} -p com.android.deskclock`] = "com.android.deskclock/.HandleApiCalls"
@@ -706,6 +721,7 @@ it.live('Check the exact booted image and report a change during readback (spec/
       }
       const healthy = try tryPromise(() => verificationBinary(work, "healthy", responses))
       const changed = try tryPromise(() => verificationBinary(work, "changed", { ...responses, [sum]: [`${apkSha256}  ${apkPath}`, `${"b".repeat(64)}  ${apkPath}`], [provider]: "Unrecognized provider status" }))
+      const gestureOff = try tryPromise(() => verificationBinary(work, "gesture-off", { ...responses, "settings --user 0 get secure camera_double_tap_power_gesture_disabled": "1" }))
       const options = { serial: "127.0.0.1:6520", user: "0", target: "cuttlefish" as const, expected }
       const serial = "FAKEPIXEL01"
       const badBoot = try tryPromise(() => verificationBinary(work, "pixel-weak-boot", {
@@ -714,10 +730,11 @@ it.live('Check the exact booted image and report a change during readback (spec/
         [sum]: `${"c".repeat(64)}  ${apkPath}`,
       }, serial))
       const wrongTarget = try exit(verifyImage({ ...options, target: "pixel10a", adb: badBoot.binary }))
-      const [stable, raced, pixel] = try.all [
+      const [stable, raced, pixel, cameraOff] = try.all [
         verifyImage({ ...options, adb: healthy.binary }),
         verifyImage({ ...options, adb: changed.binary }),
         verifyImage({ ...options, serial, target: "pixel10a", adb: badBoot.binary }),
+        verifyImage({ ...options, adb: gestureOff.binary }),
       ]
       try Effect.try(() => assert.deepStrictEqual({
         staged: stable.passed,
@@ -729,12 +746,139 @@ it.live('Check the exact booted image and report a change during readback (spec/
         boot: pixel.verifiedBoot,
         weakened: pixel.checks.filter(({ outcome }) => outcome !== "pass"),
         changed: raced.checks.filter(({ outcome }) => outcome !== "pass"),
+        gestureTurnedOff: cameraOff.checks.filter(({ outcome }) => outcome !== "pass"),
       }, {
         staged: true, checks: true, capture: true, measuredTwice: 2, actual: "fail", wrongTarget: "Failure",
         boot: { state: "orange", slotSuffix: "_b" },
         weakened: [{ check: "LauncherBytes", outcome: "fail" }, { check: "SelinuxEnforcing", outcome: "fail" }, { check: "VerifiedBoot", outcome: "fail" }],
         changed: [{ check: "WebViewProvider", outcome: "unknown" }, { check: "SameBootThroughout", outcome: "fail" }],
+        gestureTurnedOff: [{ check: "SecureCamera", outcome: "fail" }],
       }))
     })
   }
 })
+
+const RUNNER_TREE = [
+  "N: android=http://schemas.android.com/apk/res/android",
+  "  E: manifest (line=2)",
+  '    A: package="ai.example.app.test" (Raw: "ai.example.app.test")',
+  "    E: instrumentation (line=7)",
+  '      A: android:name(0x01010003)="androidx.test.runner.AndroidJUnitRunner" (Raw: "androidx.test.runner.AndroidJUnitRunner")',
+  '      A: android:targetPackage(0x01010021)="ai.example.app" (Raw: "ai.example.app")',
+  "    E: instrumentation (line=9)",
+  '      A: android:name(0x01010003)="ai.example.app.ProcessRunner" (Raw: "ai.example.app.ProcessRunner")',
+  '      A: android:targetPackage(0x01010021)="ai.example.app" (Raw: "ai.example.app")',
+  "    E: application (line=11)",
+  "      A: android:debuggable(0x0101000f)=(type 0x12)0xffffffff",
+].join("\n")
+
+function statusBlock(code: number, stream: string): string {
+  return ["class=ai.example.app.FlowTest", "current=1", "id=AndroidJUnitRunner", "numtests=1", `stream=${stream}`, "test=opensHome"]
+    .map((field) => `INSTRUMENTATION_STATUS: ${field}`).join("\n") + `\nINSTRUMENTATION_STATUS_CODE: ${code}\n`
+}
+
+const PASSED_RUN = `${statusBlock(1, "")}${statusBlock(0, ".")}INSTRUMENTATION_RESULT: stream=\n\nTime: 0.1\n\nOK (1 test)\n\n\nINSTRUMENTATION_CODE: -1\n`
+const CRASHED_RUN = `${statusBlock(1, "")}INSTRUMENTATION_RESULT: shortMsg=Process crashed.\nINSTRUMENTATION_CODE: 0\n`
+
+it.live('Hold one device alone in a private lease directory the caller or the environment names (spec/os/image/harness.md, "Story: Run instrumentation on a device I hold alone"; spec/os/image/harness.md, "A lease lives in the caller\'s directory, else the one the environment names, in a real directory the operator owns"; spec/os/image/harness.md, "A lease is active only while its holder lives within its time, or while it is marked for writes")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const files = try FileSystem.FileSystem
+      const work = try scratch("device-lease")
+      const fresh = `${work}/state/leases`
+      const key = "android:emulator-5554"
+      const during = try scoped(effect {
+        try acquireDeviceLease(key, { stateDir: fresh, waitMs: 0 })
+        return (try readDeviceLease(key, { stateDir: fresh })).status
+      })
+      const after = (try readDeviceLease(key, { stateDir: fresh })).status
+      const loose = `${work}/loose`
+      try files.makeDirectory(loose, { mode: 0o755 })
+      try tryPromise(() => changeMode(loose, 0o755))
+      try scoped(effect { try acquireDeviceLease(key, { stateDir: loose, waitMs: 0 }) })
+      try tryPromise(() => linkTo(loose, `${work}/linked`))
+      const linked = try exit(scoped(effect { try acquireDeviceLease(key, { stateDir: `${work}/linked`, waitMs: 0 }) }))
+      try acquireRelease(sync(() => ({ lease: swapVariable("ELIZA_DEVICE_LEASE_DIR", `${work}/from-lease`), state: swapVariable("ELIZA_STATE_DIR", `${work}/from-state`) })),
+        (previous) => sync(() => { swapVariable("ELIZA_DEVICE_LEASE_DIR", previous.lease); swapVariable("ELIZA_STATE_DIR", previous.state) }))
+      const byLeaseVariable = leaseStateDirectory()
+      const explicit = leaseStateDirectory(`${work}/explicit`)
+      try sync(() => swapVariable("ELIZA_DEVICE_LEASE_DIR", "  "))
+      const byStateVariable = leaseStateDirectory()
+      const freshMode = try tryPromise(() => directoryMode(fresh))
+      const narrowed = try tryPromise(() => directoryMode(loose))
+      try Effect.try(() => assert.deepStrictEqual({
+        during, after, freshMode, narrowed, linked: linked._tag, byLeaseVariable, explicit, byStateVariable,
+      }, {
+        during: "LeaseActive", after: "LeaseMissing", freshMode: 0o700, narrowed: 0o700,
+        linked: "Failure", byLeaseVariable: `${work}/from-lease`, explicit: `${work}/explicit`, byStateVariable: `${work}/from-state/device-leases`,
+      }))
+    })
+  }
+})
+
+it.effect('Tell a passing run, an interrupted test and the reviewed runners apart (spec/os/image/harness.md, "A run passes only when every requested class completes its advertised tests with no failure, skip or crash"; spec/os/image/harness.md, "An interruption is one started test ended by a process crash, and is never a pass"; spec/os/image/harness.md, "A test APK declares exactly the reviewed runners, each aimed at the app under test")', effect () => {
+  const passed = try requireInstrumentationSuccess(PASSED_RUN, ["ai.example.app.FlowTest"])
+  const interrupted = try requireInstrumentationInterruption(CRASHED_RUN, "ai.example.app.FlowTest", "opensHome")
+  const crashedAsPass = try exit(requireInstrumentationSuccess(CRASHED_RUN, ["ai.example.app.FlowTest"]))
+  const passAsInterruption = try exit(requireInstrumentationInterruption(PASSED_RUN, "ai.example.app.FlowTest", "opensHome"))
+  const otherMethod = try exit(requireInstrumentationInterruption(CRASHED_RUN, "ai.example.app.FlowTest", "closesHome"))
+  try Effect.try(() => assert.deepStrictEqual({
+    passed: passed.cases, interrupted: interrupted.case, crashedAsPass: crashedAsPass._tag, passAsInterruption: passAsInterruption._tag, otherMethod: otherMethod._tag,
+    runners: instrumentationDeclarations(RUNNER_TREE),
+  }, {
+    passed: ["ai.example.app.FlowTest#opensHome"], interrupted: "ai.example.app.FlowTest#opensHome",
+    crashedAsPass: "Failure", passAsInterruption: "Failure", otherMethod: "Failure",
+    runners: [{ name: "androidx.test.runner.AndroidJUnitRunner", targetPackage: "ai.example.app" }, { name: "ai.example.app.ProcessRunner", targetPackage: "ai.example.app" }],
+  }))
+})
+
+it.live('Run a scenario in a fresh Android user and keep the user when the scenario does not prove its packages clean (spec/os/image/harness.md, "Story: Run a test in a fresh Android user that is removed afterwards"; spec/os/image/harness.md, "A test user is created only on a leased emulator with the owner in the foreground"; spec/os/image/harness.md, "The owner is restored first, and the test user is removed only when the run proved its packages clean")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const work = try scratch("isolated-user")
+      const serial = "emulator-5554"
+      const home = "com.android.launcher3/.uioverrides.QuickstepLauncher"
+      const phone = { current: "0", users: ["0"], next: 10, calls: [] as string[] }
+      const run = effect (...args: readonly string[]) => {
+        const command = args.join(" ")
+        phone.calls.push(command)
+        const switched = /^shell am switch-user (\d+)$/.exec(command)?.[1]
+        if (switched !== undefined) phone.current = switched
+        const removed = /^shell pm remove-user --wait (\d+)$/.exec(command)?.[1]
+        if (removed !== undefined) phone.users = phone.users.filter((user) => user !== removed)
+        if (command === "emu avd name") return "fixture_avd\nOK"
+        if (command === "shell am get-current-user") return phone.current
+        if (command.startsWith("shell pm create-user ")) {
+          const id = String(phone.next++)
+          phone.users.push(id)
+          return `Success: created user id ${id}`
+        }
+        if (command.startsWith("shell cmd package resolve-activity ")) return `priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true\n${home}`
+        if (command.startsWith("shell cmd package set-home-activity ")) return "Success"
+        if (command === "shell dumpsys activity activities") return `  topResumedActivity=ActivityRecord{1f2e u${phone.current} ${home} t12}`
+        if (command.startsWith("shell am is-user-stopped ")) return "true"
+        if (removed !== undefined) return "Success: removed user"
+        if (command === "shell pm list users") return `Users:\n${phone.users.map((user) => `\tUserInfo{${user}:${user === "0" ? "Owner" : "isolated-test"}:400}`).join("\n")}\n`
+        return ""
+      }
+      const deviceLease = try acquireDeviceLease(`android:${serial}`, { stateDir: `${work}/leases`, ttlMs: HELD_FOR_THE_RUN, waitMs: 0 })
+      const reports: unknown[] = []
+      const options = { run, serial, deviceLease, stateDir: `${work}/leases`, expectedAvdName: "fixture_avd", homePackage: "com.android.launcher3", name: "isolated-test",
+        record: (report: unknown) => effect { reports.push(report) }, waitMs: 1000, homeWaitMs: 1000, pollMs: 1 }
+      const clean = try withIsolatedAndroidUser({ ...options, scenario: (user: number) => effect { return { cleaned: true, user } } })
+      const afterClean = { current: phone.current, users: [...phone.users] }
+      const kept = try exit(withIsolatedAndroidUser({ ...options, scenario: (user: number) => effect { return { cleaned: false, user } } }))
+      const wrongAvd = try exit(withIsolatedAndroidUser({ ...options, expectedAvdName: "other_avd", scenario: (user: number) => effect { return { cleaned: true, user } } }))
+      try Effect.try(() => assert.deepStrictEqual({
+        clean: [clean.result.user, clean.removed, clean.cleanupDeferred, clean.ownerRestored], afterClean,
+        kept: kept._tag, keptUsers: phone.users, current: phone.current, wrongAvd: wrongAvd._tag, reports: reports.length,
+        removals: phone.calls.filter((call) => call.startsWith("shell pm remove-user")),
+      }, {
+        clean: [10, true, false, true], afterClean: { current: "0", users: ["0"] },
+        kept: "Failure", keptUsers: ["0", "11"], current: "0", wrongAvd: "Failure", reports: 4,
+        removals: ["shell pm remove-user --wait 10"],
+      }))
+    })
+  }
+})
+

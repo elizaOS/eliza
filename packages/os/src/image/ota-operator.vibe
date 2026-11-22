@@ -135,7 +135,7 @@ effect function applyUpdate(args: Arguments, options: OperatorOptions) {
         if (!canBegin(session.state(), input.channel, input.fromRelease, input.toRelease, observed)) {
           throw new OtaRefused({ reason: "Booted Android is not the installed release on a known slot with enforcing SELinux" })
         }
-        try session.store(begin(session.state(), input.channel, input.fromRelease, input.toRelease, observed))
+        try session.store(begin(session.state(), input.channel, input.fromRelease, input.toRelease, observed), { observed })
       }
       const start = session.state().start
       if (start.device !== input.channel.device || start.installedBuild !== input.fromRelease.release.fingerprint ||
@@ -145,7 +145,7 @@ effect function applyUpdate(args: Arguments, options: OperatorOptions) {
       let next = nextStep(start, observed)
       if (next === "Refuse") throw new OtaRefused({ reason: "The device shows a foreign build or the original build on the wrong slot" })
       if (next === "Verify") {
-        if (canVerifyBoot(session.state(), observed)) try session.store(verifyBoot(session.state(), observed))
+        if (canVerifyBoot(session.state(), observed)) try session.store(verifyBoot(session.state(), observed), { observed })
         return { observed, next, sent: false }
       }
       if (next !== "Sideload" && next !== "Retry") return { observed, next, sent: false }
@@ -162,24 +162,25 @@ effect function applyUpdate(args: Arguments, options: OperatorOptions) {
       if (observed.tag !== "InSideload") return { observed, next: nextStep(start, observed), sent: false }
       try session.beforeWrites()
       if (!canEnterSideload(session.state(), observed)) throw new OtaRefused({ reason: "The journal cannot begin sideload" })
-      try session.store(enterSideload(session.state(), observed))
-      const sent = (deviceWrite(tool, "adb", ["sideload", packageFile], 60 * 60_000) |> map(%, () => true)) catch () => false
+      try session.store(enterSideload(session.state(), observed), { observed })
+      const failure = (deviceWrite(tool, "adb", ["sideload", packageFile], 60 * 60_000) |> map(%, (): string | undefined => undefined)) catch (refusal) => refusal._tag === "OtaRefused" ? refusal.reason.slice(0, 1024) : String(refusal)
+      const sent = failure === undefined
       if (!canTransferEnded(session.state(), sent)) throw new OtaRefused({ reason: "The journal cannot settle the observed transfer" })
-      try session.store(transferEnded(session.state(), sent))
+      try session.store(transferEnded(session.state(), sent), failure === undefined ? {} : { note: failure })
       if (!sent) throw new OtaRefused({ reason: "The OTA transfer did not complete" })
       captureCommand(tool.adb, ["-s", tool.serial, "reboot"], 30_000) catch () => null
       try Console.error("If recovery stays open on the device, choose Reboot system now.")
       observed = try waitFor(tool, (reading) => reading.tag === "OnAndroid", timings.bootMs, timings.pollMs)
       next = nextStep(start, observed)
       if (next === "Refuse") throw new OtaRefused({ reason: "The device booted an unexpected build or slot" })
-      if (canVerifyBoot(session.state(), observed)) try session.store(verifyBoot(session.state(), observed))
+      if (canVerifyBoot(session.state(), observed)) try session.store(verifyBoot(session.state(), observed), { observed })
       return { observed, next, sent }
     } catch effect (failure) => {
       try session.finish()
       throw failure
     }
     try session.finish()
-    return { executed: true, ...operation, state: session.state(), ota: inspected }
+    return { executed: true, ...operation, state: session.state(), events: session.history(), ota: inspected }
   })
 }
 
@@ -209,7 +210,7 @@ effect function fallbackUpdate(args: Arguments, options: OperatorOptions) {
       }
       try session.beforeWrites()
       if (!canFallback(session.state(), slots)) throw new OtaRefused({ reason: "The journal cannot begin fallback" })
-      try session.store(fallback(session.state(), slots))
+      try session.store(fallback(session.state(), slots), { observed: slots })
       const observed = effect {
         try deviceWrite(tool, "fastboot", ["set_active", selected], 30_000)
         if (slotOf(try fastbootVariable(tool, "current-slot")) !== state.start.originalSlot) {
@@ -219,17 +220,17 @@ effect function fallbackUpdate(args: Arguments, options: OperatorOptions) {
         return try waitFor(tool, (reading) => bootRestored(state.start, reading), timings.bootMs, timings.pollMs)
       } catch effect (failure) => {
         const unknown = { tag: "Unreachable" } as const
-        if (canFallbackEnded(session.state(), unknown)) try session.store(fallbackEnded(session.state(), unknown))
+        if (canFallbackEnded(session.state(), unknown)) try session.store(fallbackEnded(session.state(), unknown), { note: failure._tag === "OtaRefused" ? failure.reason : String(failure) })
         throw failure
       }
-      if (canFallbackEnded(session.state(), observed)) try session.store(fallbackEnded(session.state(), observed))
+      if (canFallbackEnded(session.state(), observed)) try session.store(fallbackEnded(session.state(), observed), { observed })
       return observed
     } catch effect (failure) => {
       try session.finish()
       throw failure
     }
     try session.finish()
-    return { executed: true, observed: operation, state: session.state(), admitted: true }
+    return { executed: true, observed: operation, state: session.state(), events: session.history(), admitted: true }
   })
 }
 

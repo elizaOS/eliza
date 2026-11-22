@@ -69,7 +69,6 @@ the launch asks for local embeddings.
 type ModelHandler = TextSmall | TextLarge | ImageDescription | TextEmbedding
 type HandlerSource = FromCloud | FromOwnKey | FromLocalInference | NotRegistered
 pure def isCloud(backend: Backend): bool = match backend { | CloudBackend(_) => true | _ => false }
-pure def isOwnKey(backend: Backend): bool = match backend { | OwnKeyBackend(_) => true | _ => false }
 pure def handlerSource(backend: Backend, embeddings: Embeddings, handler: ModelHandler): HandlerSource =
   if (handler == TextEmbedding) (if (embeddings == NoEmbeddings) NotRegistered else FromLocalInference)
   else if (isCloud(backend)) FromCloud

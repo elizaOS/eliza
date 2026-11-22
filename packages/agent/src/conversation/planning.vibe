@@ -93,12 +93,12 @@ export function planStepsOf(action: string, params: Record<string, unknown>, res
   const receipts = result.effectReceipts ?? []
   if (receipts.length > 0) {
     return receipts.map((receipt) => ({
-      action, outcome: outcomeOf(receipt), operation: `${action}\u0000${receipt.operation}\u0000${receipt.resource.kind}\u0000${receipt.resource.id}`,
+      actionName: action, outcome: outcomeOf(receipt), operation: `${action}\u0000${receipt.operation}\u0000${receipt.resource.kind}\u0000${receipt.resource.id}`,
     }))
   }
   const operation = `${action}\u0000${canonical(params)}`
-  if (!result.success || result.error !== undefined) return [{ action, outcome: notStarted(result) ? "Rejected" : "Failed", operation }]
-  return [{ action, outcome: "NoEffect", operation }]
+  if (!result.success || result.error !== undefined) return [{ actionName: action, outcome: notStarted(result) ? "Rejected" : "Failed", operation }]
+  return [{ actionName: action, outcome: "NoEffect", operation }]
 }
 
 function paramsOf(call: ToolCall): Record<string, unknown> {
@@ -154,8 +154,8 @@ function failureNotice(step: PlannedStep): string {
   return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
 }
 
-function entryKey({ action, outcome, operation }: PlanStep): string {
-  return `${action}\u0000${outcome}\u0000${operation}`
+function entryKey({ actionName, outcome, operation }: PlanStep): string {
+  return `${actionName}\u0000${outcome}\u0000${operation}`
 }
 
 /** Composes the reply from the steps' own text, the model's prose and every failure the turn still holds open. */

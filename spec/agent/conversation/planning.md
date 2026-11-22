@@ -34,7 +34,7 @@ call returns no tool call ends planning with that text.
 
 ```quint
 type StepOutcome = Applied | Proposed | Failed | Rejected | NoEffect
-type PlanStep = { action: str, outcome: StepOutcome, operation: str }
+type PlanStep = { actionName: str, outcome: StepOutcome, operation: str }
 pure val maxPlanSteps = 8
 pure val messageServiceActions = Set("REPLY", "IGNORE", "NONE")
 pure def offered(registered: Set[str], allowed: Set[str]): Set[str] = registered.intersect(allowed).exclude(messageServiceActions)
@@ -62,16 +62,16 @@ claims.
 ```quint
 pure def supersedes(later: PlanStep, earlier: PlanStep): bool =
   (later.outcome == Applied and later.operation == earlier.operation) or
-  (earlier.outcome == Rejected and later.action == earlier.action and (later.outcome == Applied or later.outcome == NoEffect))
+  (earlier.outcome == Rejected and later.actionName == earlier.actionName and (later.outcome == Applied or later.outcome == NoEffect))
 pure def opens(o: StepOutcome): bool = o == Failed or o == Rejected or o == Proposed
-pure def settleStep(held: List[PlanStep], step: PlanStep): List[PlanStep] =
-  if (opens(step.outcome)) held.select(p => p.operation != step.operation).append(step)
-  else held.select(p => not(supersedes(step, p)))
-pure def openOutcomes(steps: List[PlanStep]): List[PlanStep] = steps.foldl(List(), (held, step) => settleStep(held, step))
+pure def settleStep(held: List[PlanStep], entry: PlanStep): List[PlanStep] =
+  if (opens(entry.outcome)) held.select(p => p.operation != entry.operation).append(entry)
+  else held.select(p => not(supersedes(entry, p)))
+pure def openOutcomes(steps: List[PlanStep]): List[PlanStep] = steps.foldl(List(), (held, entry) => settleStep(held, entry))
 pure def failedOpen(steps: List[PlanStep]): List[PlanStep] = openOutcomes(steps).select(p => p.outcome == Failed or p.outcome == Rejected)
-pure val earlierValues = Set({ action: "SEND", outcome: Failed, operation: "send:a" }, { action: "SEND", outcome: Rejected, operation: "send:x" }, { action: "SEND", outcome: Proposed, operation: "send:a" })
-pure val laterValues = Set({ action: "SEND", outcome: Applied, operation: "send:a" }, { action: "SEND", outcome: Applied, operation: "send:b" }, { action: "NOTE", outcome: Applied, operation: "note:a" }, { action: "SEND", outcome: NoEffect, operation: "send:y" })
-pure val stepsValues = Set(List(), List({ action: "NOTE", outcome: Failed, operation: "note:a" }))
+pure val earlierValues = Set({ actionName: "SEND", outcome: Failed, operation: "send:a" }, { actionName: "SEND", outcome: Rejected, operation: "send:x" }, { actionName: "SEND", outcome: Proposed, operation: "send:a" })
+pure val laterValues = Set({ actionName: "SEND", outcome: Applied, operation: "send:a" }, { actionName: "SEND", outcome: Applied, operation: "send:b" }, { actionName: "NOTE", outcome: Applied, operation: "note:a" }, { actionName: "SEND", outcome: NoEffect, operation: "send:y" })
+pure val stepsValues = Set(List(), List({ actionName: "NOTE", outcome: Failed, operation: "note:a" }))
 pure def lawTheLatestFailureIsReported(steps: List[PlanStep], earlier: PlanStep): bool =
   earlier.outcome == Failed implies failedOpen(steps.append(earlier)).includes(earlier)
 pure def lawASuccessOfTheSameOperationSupersedes(steps: List[PlanStep], earlier: PlanStep, later: PlanStep): bool =
@@ -79,7 +79,7 @@ pure def lawASuccessOfTheSameOperationSupersedes(steps: List[PlanStep], earlier:
 pure def lawASuccessOfAnotherOperationKeepsTheFailure(steps: List[PlanStep], earlier: PlanStep, later: PlanStep): bool =
   (earlier.outcome == Failed and later.operation != earlier.operation) implies failedOpen(steps.append(earlier).append(later)).includes(earlier)
 pure def lawARefusalBeforeDispatchIsClosedByTheSameActionSucceeding(steps: List[PlanStep], earlier: PlanStep, later: PlanStep): bool =
-  (earlier.outcome == Rejected and later.action == earlier.action and later.outcome == Applied) implies not(failedOpen(steps.append(earlier).append(later)).includes(earlier))
+  (earlier.outcome == Rejected and later.actionName == earlier.actionName and later.outcome == Applied) implies not(failedOpen(steps.append(earlier).append(later)).includes(earlier))
 ```
 
 ### A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole
@@ -160,15 +160,15 @@ action, carries no label.
 
 ```quint
 type VoiceAction = { kind: str, validatedCard: bool, verbatimAsked: bool }
-type ActionLabel = NoActionLabel | Labelled({ action: VoiceAction })
+type ActionLabel = NoActionLabel | Labelled({ label: VoiceAction })
 pure def actionLabel(voice: bool, ran: List[str], card: bool, verbatim: bool): ActionLabel =
-  if (voice and ran.length() > 0) Labelled({ action: { kind: ran.nthOr(ran.length() - 1, ""), validatedCard: card, verbatimAsked: verbatim } })
+  if (voice and ran.length() > 0) Labelled({ label: { kind: ran.nthOr(ran.length() - 1, ""), validatedCard: card, verbatimAsked: verbatim } })
   else NoActionLabel
 pure val ranValues = Set(List(), List("CALCULATE"), List("MAPS_SEARCH", "CALCULATE"))
 pure def lawOnlyAVoiceTurnThatRanAnActionIsLabelled(voice: bool, ran: List[str], card: bool, verbatim: bool): bool =
   (actionLabel(voice, ran, card, verbatim) != NoActionLabel) iff (voice and ran.length() > 0)
 pure def lawTheLabelNamesTheLastAction(ran: List[str], card: bool, verbatim: bool): bool =
-  ran.length() > 0 implies actionLabel(true, ran, card, verbatim) == Labelled({ action: { kind: ran.nthOr(ran.length() - 1, ""), validatedCard: card, verbatimAsked: verbatim } })
+  ran.length() > 0 implies actionLabel(true, ran, card, verbatim) == Labelled({ label: { kind: ran.nthOr(ran.length() - 1, ""), validatedCard: card, verbatimAsked: verbatim } })
 ```
 
 ## Story: Let my plugins learn from a finished turn
@@ -190,9 +190,9 @@ and are not run here.
 
 ```quint
 type EvaluatorRun = Ran | Declined | Broke
-pure def runsNext(done: int, total: int, last: EvaluatorRun): bool = done < total
+pure def runsNext(done: int, total: int, previous: EvaluatorRun): bool = done < total
 pure val totalValues = Set(0, 1, 2)
 pure val doneValues = Set(0, 1, 2)
 pure def lawABrokenEvaluatorDoesNotStopItsPeers(done: int, total: int): bool = runsNext(done, total, Broke) == runsNext(done, total, Ran)
-pure def lawEveryOptedInEvaluatorRuns(done: int, total: int, last: EvaluatorRun): bool = done < total implies runsNext(done, total, last)
+pure def lawEveryOptedInEvaluatorRuns(done: int, total: int, previous: EvaluatorRun): bool = done < total implies runsNext(done, total, previous)
 ```

@@ -3,6 +3,7 @@ import type { Lifecycle } from "../../gen/workflow__lifecycle.effect.vibe"
 import type { Workflow as Admission } from "../../gen/workflow__admission.effect.vibe"
 import type { WakeupRun } from "../../gen/workflow__execution.effect.vibe"
 import type { ApprovalRun } from "../../gen/workflow__approvals.effect.vibe"
+import type { GeneratedRun } from "../../gen/workflow__generated.effect.vibe"
 import type { PhoneScheduledOccurrence, PhoneWorkflowSpec } from "../contract/phone.vibe"
 import type { DigestSourceRecord, DigestSpec } from "../contract/digest.vibe"
 import type { WorkflowDeviceOperation } from "../contract/device.vibe"
@@ -21,11 +22,23 @@ export interface DefinitionRow {
   readonly description: string
   readonly spec: PhoneWorkflowSpec
   readonly specDigest: string
-  readonly origin: "view" | "chat" | "digest"
+  readonly origin: "view" | "digest" | "generated"
+  readonly generated?: GeneratedDefinition
   readonly hostedDigest?: DigestSpec
   readonly createdAt: string
   readonly updatedAt: string
   readonly armedVersion: number
+}
+/** The generated code of an untyped definition: its source, compiled module, check and review. */
+export interface GeneratedDefinition {
+  readonly source: string
+  readonly sourceDigest: string
+  readonly js: string
+  readonly jsDigest: string
+  readonly compilerRevision: string
+  readonly calls: readonly { readonly id: string; readonly method: string }[]
+  readonly reviewedDigest: string
+  readonly reviewedVersion: number
 }
 /** One saved version of a definition, kept so the owner can list and restore it. */
 export interface Revision {
@@ -36,6 +49,7 @@ export interface Revision {
   readonly description: string
   readonly createdAt: string
   readonly reason: string
+  readonly generated?: GeneratedDefinition
 }
 /** One step's settled result inside a run. */
 export interface StepResult { readonly id: string; readonly status: "completed" | "skipped"; readonly text: string }
@@ -87,10 +101,15 @@ export interface RunRow {
   readonly cancellationRequestedAt?: string
   readonly hostedDigest?: Readonly<Record<string, unknown>>
   readonly waitingSignal?: string
+  readonly generated?: GeneratedRun
+  readonly journalValues?: Readonly<Record<string, unknown>>
+  readonly js?: string
+  readonly jsDigest?: string
+  readonly waitDigest?: string
   readonly signals?: readonly { readonly name: string; readonly payload: unknown; readonly receivedAt: string; readonly receivedBy: string }[]
 }
 /** One retained mutation receipt, by its mutation id. */
-export interface ReceiptRow { readonly mutationId: string; readonly owner: string; readonly kind: "typed" | "metadata" | "lifecycle" | "digest"; readonly data: Readonly<Record<string, unknown>> }
+export interface ReceiptRow { readonly mutationId: string; readonly owner: string; readonly kind: "typed" | "metadata" | "lifecycle" | "digest" | "generated"; readonly data: Readonly<Record<string, unknown>> }
 /** One digest result row with its delivery cursor. */
 export interface DigestResultRow { readonly cursor: number; readonly runId: string; readonly workflowId: string; readonly result: Readonly<Record<string, unknown>> }
 

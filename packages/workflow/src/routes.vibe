@@ -2,11 +2,12 @@
 import type { LocalRoute, RouteInput } from "@elizaos/agent/routes"
 import { WorkflowRefused, type WorkflowService } from "./service/workflows.vibe"
 import type { hostedDigests } from "./service/digests.vibe"
+import type { generatedWorkflows } from "./service/generated.vibe"
 
 /** The workflow service and digest routes a runtime opened, or undefined before the plugin initialized. */
-export type WorkflowRouteTarget = () => { readonly service: WorkflowService; readonly digests: ReturnType<typeof hostedDigests> } | undefined
+export type WorkflowRouteTarget = () => { readonly service: WorkflowService; readonly digests: ReturnType<typeof hostedDigests>; readonly generated: ReturnType<typeof generatedWorkflows> } | undefined
 
-type Method = "GET" | "POST"
+type Method = "GET" | "POST" | "PUT"
 type Answer = { readonly status: number; readonly body: object }
 type Opened = NonNullable<ReturnType<WorkflowRouteTarget>>
 type Handle = (input: RouteInput, opened: Opened) => object!WorkflowRefused
@@ -77,6 +78,12 @@ export function workflowRoutes(target: WorkflowRouteTarget): LocalRoute[] {
     route("GET", "/api/workflow/workflows", (_input, { service }) => map(service.list(false), (workflows) => ({ workflows }))),
     route("GET", "/api/workflow/removed-workflows", (_input, { service }) => map(service.list(true), (workflows) => ({ workflows }))),
     route("GET", "/api/workflow/workflows/{id}", (input, { service }) => service.detail(id(input))),
+    route("POST", "/api/workflow/workflows/generate", (input, { generated }) => generated.draft(input.body), { maxBodyBytes: 8000 }),
+    route("POST", "/api/workflow/workflows", (input, { generated }) => generated.save(input.body), { maxBodyBytes: 80_000, status: 201 }),
+    route("PUT", "/api/workflow/workflows/{id}", (input, { generated }) => generated.save(input.body, id(input)), { maxBodyBytes: 80_000 }),
+    route("GET", "/api/workflow/workflows/{id}/source", (input, { generated }) => generated.source(id(input))),
+    route("POST", "/api/workflow/workflows/{id}/review", (input, { generated }) => generated.review(id(input), input.body)),
+    route("GET", "/api/workflow/generated/mutations/{mutationId}", (input, { generated }) => generated.saveReceipt(param(input, "mutationId"))),
     route("POST", "/api/workflow/workflows/{id}/activate", (input, { service }) => service.activation(id(input), input.body, true)),
     route("POST", "/api/workflow/workflows/{id}/deactivate", (input, { service }) => service.activation(id(input), input.body, false)),
     route("POST", "/api/workflow/workflows/{id}/metadata", (input, { service }) => service.metadata(id(input), input.body)),

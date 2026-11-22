@@ -5,6 +5,7 @@ import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowSta
 import { workflowRoutes } from "./routes.vibe"
 import { runtimeWorkflowHost, WORKFLOW_SCHEDULE_TASK } from "./runtime.vibe"
 import { hostedDigests } from "./service/digests.vibe"
+import { generatedWorkflows } from "./service/generated.vibe"
 import { openWorkflows } from "./service/workflows.vibe"
 import type { WorkflowInstance } from "./agent.vibe"
 
@@ -16,7 +17,7 @@ let current: WorkflowInstance | undefined
 effect function open(runtime: IAgentRuntime) {
   const service = try openWorkflows(runtimeWorkflowHost(runtime))
   const digests = hostedDigests(service)
-  const instance: WorkflowInstance = { service, digests }
+  const instance: WorkflowInstance = { service, digests, generated: generatedWorkflows(service) }
   try sync(() => runtime.registerTaskWorker({
     name: WORKFLOW_SCHEDULE_TASK,
     execute: async (_runtime, _options, task) => {
@@ -53,6 +54,7 @@ export const workflowPlugin: AgentPlugin = {
 export default workflowPlugin
 export { openWorkflows, phoneWorkflowCatalog, PHONE_CATALOG_REVISION, PHONE_COMPILER_REVISION, WorkflowRefused, type WorkflowService } from "./service/workflows.vibe"
 export { hostedDigests } from "./service/digests.vibe"
+export { generatedWorkflows, generatedDraftPrompt } from "./service/generated.vibe"
 export { type WorkflowHost, type WorkflowWorkerPort, type WorkflowDevicePort, type WorkflowNotice, type WorkflowScheduler, type WorkflowNativeDigests } from "./service/host.vibe"
 export { WORKFLOW_DEVICE_SERVICE, WORKFLOW_NATIVE_DIGEST_SERVICE, WORKFLOW_SCHEDULE_TASK, WORKFLOW_WORKER_SERVICE, runtimeWorkflowHost } from "./runtime.vibe"
 export type { WorkflowSql, WorkflowQuery } from "./service/store.vibe"

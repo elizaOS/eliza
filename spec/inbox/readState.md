@@ -37,9 +37,9 @@ pure def canBeginChange(s: ReadStateView, key: str, explicit: bool): bool =
 pure def beginChange(s: ReadStateView, key: str, explicit: bool): ReadStateView =
   { ...s, inFlight: s.inFlight.union(Set(key)), sent: s.sent + 1 }
 pure def canSettleChange(s: ReadStateView, key: str): bool = s.inFlight.contains(key)
-pure def settleChange(s: ReadStateView, key: str, settled: ChangeSettle): ReadStateView =
+pure def settleChange(s: ReadStateView, key: str, settlement: ChangeSettle): ReadStateView =
   { ...s, inFlight: s.inFlight.exclude(Set(key)),
-    unconfirmed: if (settled == ChangeConfirmed) s.unconfirmed.exclude(Set(key)) else s.unconfirmed.union(Set(key)) }
+    unconfirmed: if (settlement == ChangeConfirmed) s.unconfirmed.exclude(Set(key)) else s.unconfirmed.union(Set(key)) }
 pure def forgetKeys(s: ReadStateView): ReadStateView = { ...initial, sent: s.sent }
 pure val inFlightValues = Set(Set(), Set("grant-a/m1"), Set("grant-a/m1", "grant-b/m1"))
 pure val unconfirmedValues = inFlightValues

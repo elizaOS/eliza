@@ -1,8 +1,9 @@
-// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "A repeated operation ID answers its journal record and never sends again"; spec/os/android/messages.md, "A message's status is supported by the evidence of every part, and an interrupted send reads unknown"; spec/os/android/messages.md, "A send's provider row is written only by an approved dispatch, and an MMS only while the app holds the SMS role"; spec/os/android/messages.md, "A deletion removes only the selected settled row and confirms only a removal Android reported"; spec/os/android/messages.md, "A sender lookup reads only the newest incoming row's address, and names it whole only when asked"
+// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "A repeated operation ID answers its journal record and never sends again"; spec/os/android/messages.md, "A message's status is supported by the evidence of every part, and an interrupted send reads unknown"; spec/os/android/messages.md, "A send's provider row is written only by an approved dispatch, and an MMS only while the app holds the SMS role"; spec/os/android/messages.md, "A deletion removes only the selected settled row and confirms only a removal Android reported"; spec/os/android/messages.md, "A conversation deletion removes only its settled rows up to the newest one I saw"; spec/os/android/messages.md, "A sender lookup reads only the newest incoming row's address, and names it whole only when asked"
 import type { Receipt } from "../../../gen/core__receipts.ts";
 import type { HandoffOutcome } from "../../../gen/os__android__bridge.ts";
 import type { CallEvidence, DeleteStatus, PartEvidence, PartState, SendAnswer } from "../../../gen/os__android__messages.ts";
 import { evidenceStatus, maxPartsPerRecipient, senderNumberAdmitted, senderSuffixDigits } from "../../../gen/os__android__messages.ts";
+import type { StagedDeletion } from "./action-journal.ts";
 import { normalizePhoneNumber, type PhoneNumber, type TelephonyStatus } from "./phone.ts";
 
 export type OperationId = string & { readonly __brand: "OperationId" };
@@ -182,12 +183,28 @@ export interface MessageDeleteReference {
   date: number;
 }
 
-export type MessageDeleteStatus = "deleted" | "not-found" | "stale" | "not-settled" | "unknown";
+export type MessageDeleteStatus = "queued" | "not-found" | "stale" | "not-settled";
 
-export interface MessageDeleteResult {
-  status: MessageDeleteStatus;
+export type MessageDeleteResult =
+  | { status: "queued"; deleteStatus: DeleteStatus; message: MessageDeleteReference; deletion: StagedDeletion }
+  | { status: Exclude<MessageDeleteStatus, "queued">; deleteStatus: DeleteStatus; message: MessageDeleteReference };
+
+export interface ThreadDeleteReference {
+  threadId: ThreadId;
+  through: number;
+}
+
+export type ThreadDeleteStatus = "queued" | "not-found" | "not-settled";
+
+export type ThreadDeleteResult =
+  | { status: "queued"; deleteStatus: DeleteStatus; thread: ThreadDeleteReference; deletion: StagedDeletion }
+  | { status: Exclude<ThreadDeleteStatus, "queued">; deleteStatus: DeleteStatus; thread: ThreadDeleteReference };
+
+export interface StagingAnswer<Status, Reference> {
+  status: Status;
   deleteStatus: DeleteStatus;
-  message: MessageDeleteReference;
+  reference: Reference;
+  deletion: unknown;
 }
 
 /** What the newest incoming SMS says of its sender: a four-digit suffix, or the whole address and thread when asked for. */
@@ -216,6 +233,7 @@ export interface MessagesNativePlugin {
   latestIncomingSender(options?: { includeAddress: true }): Promise<unknown>;
   markThreadRead(options: { threadId: string; throughDate: number }): Promise<unknown>;
   deleteMessage(options: MessageDeleteReference): Promise<unknown>;
+  deleteThread(options: ThreadDeleteReference): Promise<unknown>;
   observeMessages(options: { enabled: boolean }): Promise<unknown>;
   sendSms(options: { operationId: string; recipients: string[]; body: string; subscriptionId: number }): Promise<unknown>;
   sendMms(options: {
@@ -245,6 +263,7 @@ export interface MessagesClient {
   latestIncomingSender(includeAddress?: boolean): Promise<SmsLatestSender>;
   markThreadRead(threadId: ThreadId, throughDate: number): Promise<ThreadReadMark>;
   deleteMessage(reference: MessageDeleteReference): Promise<MessageDeleteResult>;
+  deleteThread(reference: ThreadDeleteReference): Promise<ThreadDeleteResult>;
   observeMessages(
     onChange: () => void,
     onSendUpdated?: (operationId: OperationId) => void,
@@ -281,7 +300,8 @@ const THREAD_CURSOR = /^\d{1,16}:thread:[1-9]\d{0,17}$/;
 const MESSAGE_CURSOR = /^\d{1,16}:(sms|mms):[1-9]\d{0,17}$/;
 const PART_STATES: readonly SendPartState[] = ["unknown", "success", "failed"];
 const SMS_STATUSES: readonly SmsSendStatus[] = ["cancelled", "denied", "failed", "unknown", "submitted", "sent", "delivered"];
-const DELETE_STATUSES: readonly MessageDeleteStatus[] = ["deleted", "not-found", "stale", "not-settled", "unknown"];
+const DELETE_STATUSES: readonly MessageDeleteStatus[] = ["queued", "not-found", "stale", "not-settled"];
+const THREAD_DELETE_STATUSES: readonly ThreadDeleteStatus[] = ["queued", "not-found", "not-settled"];
 const INCOMING: readonly MessageStatus[] = ["received", "read"];
 const OUTGOING: readonly MessageStatus[] = ["pending", "sent", "failed", "delivered"];
 const REPORTS: readonly DeliveryReport[] = ["none", "pending", "complete", "failed"];
@@ -305,11 +325,10 @@ const SEND_RECORD: Readonly<Record<SmsSendStatus, SendAnswer>> = {
 };
 const PART_STATE: Readonly<Record<SendPartState, PartState>> = { unknown: "PartWaiting", success: "PartSucceeded", failed: "PartFailed" };
 const DELETE_STATUS: Readonly<Record<MessageDeleteStatus, DeleteStatus>> = {
-  deleted: "MessageDeleted",
+  queued: "DeleteQueued",
   "not-found": "MessageNotFound",
   stale: "MessageStale",
   "not-settled": "MessageNotSettled",
-  unknown: "DeleteUnknown",
 };
 
 type Fields = Record<string, unknown>;
@@ -640,11 +659,34 @@ export function parseMessageDeleteReference(value: unknown): MessageDeleteRefere
   return { id: data.id as MessageId, kind: data.kind, threadId, date: data.date };
 }
 
+/** The staging reply of a delete: its status, the record it names and, only when queued, the journal row to decode. @throws {never} */
+function stagingFields(value: unknown, key: string): Fields | undefined {
+  const queued = fields(value)?.status === "queued";
+  return fields(value, queued ? ["status", key, "deletion"] : ["status", key]);
+}
+
 /** @throws {never} */
-export function parseMessageDeleteResult(value: unknown, expected: MessageDeleteReference): MessageDeleteResult | undefined {
-  const data = fields(value, ["status", "message"]);
+export function parseMessageDeleteResult(value: unknown, expected: MessageDeleteReference): StagingAnswer<MessageDeleteStatus, MessageDeleteReference> | undefined {
+  const data = stagingFields(value, "message");
   const message = parseMessageDeleteReference(data?.message);
   if (!data || !oneOf(DELETE_STATUSES, data.status) || message === undefined) return undefined;
   const same = message.id === expected.id && message.kind === expected.kind && message.threadId === expected.threadId && message.date === expected.date;
-  return same ? { status: data.status, deleteStatus: DELETE_STATUS[data.status], message } : undefined;
+  return same ? { status: data.status, deleteStatus: DELETE_STATUS[data.status], reference: message, deletion: data.deletion } : undefined;
+}
+
+/** @throws {never} */
+export function parseThreadDeleteReference(value: unknown): ThreadDeleteReference | undefined {
+  const data = fields(value, ["threadId", "through"]);
+  const threadId = threadIdOf(data?.threadId);
+  if (!data || threadId === null || !count(data.through) || data.through === 0) return undefined;
+  return { threadId, through: data.through };
+}
+
+/** @throws {never} */
+export function parseThreadDeleteResult(value: unknown, expected: ThreadDeleteReference): StagingAnswer<ThreadDeleteStatus, ThreadDeleteReference> | undefined {
+  const data = stagingFields(value, "thread");
+  const thread = parseThreadDeleteReference(data?.thread);
+  if (!data || !oneOf(THREAD_DELETE_STATUSES, data.status) || thread === undefined) return undefined;
+  const same = thread.threadId === expected.threadId && thread.through === expected.through;
+  return same ? { status: data.status, deleteStatus: DELETE_STATUS[data.status], reference: thread, deletion: data.deletion } : undefined;
 }

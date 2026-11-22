@@ -65,32 +65,32 @@ type ActionGrant = ChangeGranted | ChangeNeedsUpgrade | AccountUnreadable
 type GrantTier = NoTier | ReadOnlyTier | ModifyTier
 type GmailGrant = { connected: bool, hasConnection: bool, held: Set[GmailCapability] }
 type ServerAllows = { sendAllowed: bool, draftsAllowed: bool, mailboxAllowed: bool }
-pure def requiredCapability(action: MailboxAction): GmailCapability =
-  if (action == ActSend) GmailSend
-  else if (action == ActDraftCreate or action == ActDraftReplace or action == ActDraftDelete) GmailDrafts
+pure def requiredCapability(mailboxAction: MailboxAction): GmailCapability =
+  if (mailboxAction == ActSend) GmailSend
+  else if (mailboxAction == ActDraftCreate or mailboxAction == ActDraftReplace or mailboxAction == ActDraftDelete) GmailDrafts
   else GmailMailbox
 pure def accountReadable(grant: GmailGrant): bool = grant.connected and grant.hasConnection and grant.held.contains(GmailRead)
 pure def grantTier(grant: GmailGrant): GrantTier =
   if (not(accountReadable(grant))) NoTier else if (modifyCapabilities.subseteq(grant.held)) ModifyTier else ReadOnlyTier
-pure def actionGrant(grant: GmailGrant, action: MailboxAction): ActionGrant =
+pure def actionGrant(grant: GmailGrant, mailboxAction: MailboxAction): ActionGrant =
   if (not(accountReadable(grant))) AccountUnreadable
-  else if (grant.held.contains(requiredCapability(action))) ChangeGranted
+  else if (grant.held.contains(requiredCapability(mailboxAction))) ChangeGranted
   else ChangeNeedsUpgrade
-pure def serverAllows(allows: ServerAllows, action: MailboxAction): bool =
-  if (requiredCapability(action) == GmailSend) allows.sendAllowed
-  else if (requiredCapability(action) == GmailDrafts) allows.draftsAllowed
+pure def serverAllows(allows: ServerAllows, mailboxAction: MailboxAction): bool =
+  if (requiredCapability(mailboxAction) == GmailSend) allows.sendAllowed
+  else if (requiredCapability(mailboxAction) == GmailDrafts) allows.draftsAllowed
   else allows.mailboxAllowed
 pure val grantValues = Set(
   { connected: true, hasConnection: true, held: Set(GmailRead) },
   { connected: true, hasConnection: true, held: Set(GmailRead, GmailSend, GmailDrafts, GmailMailbox) },
   { connected: true, hasConnection: false, held: Set(GmailRead, GmailSend) },
   { connected: false, hasConnection: true, held: Set(GmailRead, GmailMailbox) })
-pure def lawUnreadableAccountChangesNothing(grant: GmailGrant, action: MailboxAction): bool =
-  not(accountReadable(grant)) implies actionGrant(grant, action) == AccountUnreadable and grantTier(grant) == NoTier
-pure def lawGrantedChangeHoldsItsCapability(grant: GmailGrant, action: MailboxAction): bool =
-  actionGrant(grant, action) == ChangeGranted implies accountReadable(grant) and grant.held.contains(requiredCapability(action))
-pure def lawModifyTierGrantsEveryChange(grant: GmailGrant, action: MailboxAction): bool =
-  grantTier(grant) == ModifyTier implies actionGrant(grant, action) == ChangeGranted
+pure def lawUnreadableAccountChangesNothing(grant: GmailGrant, mailboxAction: MailboxAction): bool =
+  not(accountReadable(grant)) implies actionGrant(grant, mailboxAction) == AccountUnreadable and grantTier(grant) == NoTier
+pure def lawGrantedChangeHoldsItsCapability(grant: GmailGrant, mailboxAction: MailboxAction): bool =
+  actionGrant(grant, mailboxAction) == ChangeGranted implies accountReadable(grant) and grant.held.contains(requiredCapability(mailboxAction))
+pure def lawModifyTierGrantsEveryChange(grant: GmailGrant, mailboxAction: MailboxAction): bool =
+  grantTier(grant) == ModifyTier implies actionGrant(grant, mailboxAction) == ChangeGranted
 ```
 
 ### Cached mail and unsent reviews belong to the grant that read or prepared them

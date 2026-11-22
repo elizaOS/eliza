@@ -4,6 +4,7 @@ import * as L from "../../gen/workflow__lifecycle.effect.vibe"
 import * as X from "../../gen/workflow__execution.effect.vibe"
 import * as P from "../../gen/workflow__approvals.effect.vibe"
 import * as R from "../../gen/workflow__runScope.effect.vibe"
+import * as G from "../../gen/workflow__generated.effect.vibe"
 import { decideOccurrence } from "../../gen/workflow__schedule.effect.vibe"
 import {
   phoneDraftAccepted, phoneStepRequiredProtocol, phoneStepUsesDevice, phoneTimeTriggerCron, phoneWorkflowBytes, phoneWorkflowLocalWall, phoneWorkflowUsesDevice,
@@ -16,6 +17,7 @@ import { checkWorkflowScope, WORKFLOW_OPERATION_LABELS } from "../scope.vibe"
 import { WORKFLOW_ENGINE, WORKFLOW_PHONE_SPEC_METADATA_KEY } from "../client/workflow-client.vibe"
 import { workflowRunDeepLink } from "../client/notices.vibe"
 import { TYPED_STEPS_NODE, type WorkerMessage, type WorkerResume } from "../worker/protocol.vibe"
+import type { GeneratedEntry, GeneratedWait } from "../worker/engine.vibe"
 import { WorkflowStoreUnavailable, workflowStore, type ApprovalRow, type DefinitionRow, type ReceiptRow, type RunEvent, type RunRow, type StoredDefinition } from "./store.vibe"
 import type { WorkflowHost, WorkflowWorkerConnection } from "./host.vibe"
 
@@ -29,6 +31,8 @@ export const APPROVAL_LIFETIME_MS = 24 * 3_600_000
 export const TYPED_MISSED_TEXT = "The scheduled time passed while the agent was not running. This occurrence did not run and will not run later."
 /** The run output text of an occurrence skipped behind an unfinished run. */
 export const TYPED_OVERLAP_TEXT = "An earlier run of this workflow was still active. This occurrence did not run."
+/** The metadata key marking an untyped definition whose generated code was checked. */
+export const GENERATED_METADATA_KEY = "elizaGeneratedWorkflowV1"
 /** The run output text of a scheduled run the agent stopped before starting. */
 export const TYPED_STOPPED_TEXT = "The agent stopped before this scheduled run started. Nothing ran, and it will not run later."
 
@@ -166,13 +170,16 @@ export effect function openWorkflows(host: WorkflowHost) {
   }
 
   function definitionView(row: DefinitionRow) {
+    const generated = row.generated
     const metadata: Record<string, string> = row.origin === "digest" && row.hostedDigest !== undefined
       ? { [HOSTED_DIGEST_METADATA_KEY]: JSON.stringify(row.hostedDigest) }
-      : { [WORKFLOW_PHONE_SPEC_METADATA_KEY]: JSON.stringify(row.spec) }
+      : generated !== undefined
+        ? { [GENERATED_METADATA_KEY]: JSON.stringify({ sourceDigest: generated.sourceDigest, compilerRevision: generated.compilerRevision, reviewed: generated.reviewedDigest === generated.sourceDigest && generated.reviewedVersion === row.admission.version }) }
+        : { [WORKFLOW_PHONE_SPEC_METADATA_KEY]: JSON.stringify(row.spec) }
     return {
       id: row.id, name: row.name, description: row.description, active: row.admission.active, removed: row.lifecycleState.removed,
       triggerCleanup: row.lifecycleState.removed && !row.lifecycleState.cleaned ? "pending" : "complete", versionId: versionId(row.admission.version),
-      steps: row.spec.steps.map((step) => ({ label: stepLabel(step) })), metadata, origin: row.origin, createdAt: row.createdAt, updatedAt: row.updatedAt,
+      steps: generated === undefined ? row.spec.steps.map((step) => ({ label: stepLabel(step) })) : generated.calls.map((call) => ({ label: `${call.method}: ${call.id}` })), metadata, origin: row.origin, createdAt: row.createdAt, updatedAt: row.updatedAt,
     }
   }
 
@@ -185,8 +192,12 @@ export effect function openWorkflows(host: WorkflowHost) {
     const revisions = revised ? [...changed.revisions, {
       version: changed.admission.version, spec: changed.spec, specDigest: changed.specDigest, name: changed.name, description: changed.description,
       createdAt: changed.updatedAt, reason: read === undefined ? "create" : mutation?.kind ?? "edit",
+      ...(changed.generated === undefined ? {} : { generated: { ...changed.generated, reviewedDigest: "", reviewedVersion: 0 } }),
     }].slice(-50) : changed.revisions
-    const next = { ...changed, lifecycleState, revisions }
+    const code = changed.generated
+    const generated = code !== undefined && read?.row.generated?.sourceDigest === code.sourceDigest && code.reviewedDigest === code.sourceDigest && code.reviewedVersion === read.row.admission.version
+      ? { ...code, reviewedVersion: changed.admission.version } : code
+    const next = { ...changed, lifecycleState, revisions, ...(generated === undefined ? {} : { generated }) }
     const written = try db(store.writeDefinition(next.id, next.owner, read?.revision ?? 0, next, mutation))
     if (written === "stale") return try refuse(409, "Workflow changed while it was being saved", { workflowId: next.id })
   }
@@ -286,7 +297,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     return found === undefined || found.owner !== owner ? undefined : found.data
   }
 
-  effect function save(input: unknown, workflowId?: string, origin: "view" | "chat" = "view") {
+  effect function save(input: unknown, workflowId?: string) {
     const p = try body(input, ["spec", "catalogRevision", "compilerRevision", "mutationId", ...(workflowId === undefined ? [] : ["expectedVersionId"])])
     const mutationId = p.mutationId
     if (typeof mutationId !== "string" || !uuidV4.test(mutationId)) return try refuse(400, "Invalid typed mutation identity")
@@ -310,7 +321,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
       if (workflowId === undefined) {
         const id = try workflowUuid()
         const fresh: DefinitionRow = {
-          id, owner, admission: A.initial, lifecycleState: { ...L.initial, owner, version: 1 }, revisions: [], name: spec.name, description: spec.description, spec, specDigest, origin,
+          id, owner, admission: A.initial, lifecycleState: { ...L.initial, owner, version: 1 }, revisions: [], name: spec.name, description: spec.description, spec, specDigest, origin: "view",
           createdAt: at, updatedAt: at, armedVersion: 0,
         }
         const defined = try admitted(fresh, { type: "defineWorkflow", typed: true, timed: trigger !== undefined, scheduleMatches: true })
@@ -319,7 +330,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
         return { receipt }
       }
       const current = try definitionOf(workflowId)
-      if (current.row.origin === "digest" || current.row.lifecycleState.removed || versionId(current.row.admission.version) !== p.expectedVersionId) {
+      if (current.row.origin === "digest" || current.row.origin === "generated" || current.row.lifecycleState.removed || versionId(current.row.admission.version) !== p.expectedVersionId) {
         return try refuse(409, "Workflow changed before this edit was saved", notApplied)
       }
       const edited = try admitted(current.row, { type: "editWorkflow" })
@@ -360,6 +371,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
       const projected = try project(current.row)
       const receipt = A.activationReceipt(projected, owner, "ExactRequest", expected, enable)
       if (receipt === 0 || current.row.lifecycleState.removed || (enable && current.row.origin === "digest")) return try refuse(409, "Workflow changed before its activation", notApplied)
+      if (current.row.generated !== undefined && enable && !(try generatedActivation(current.row))) return try refuse(409, "Review the current workflow code before turning it on", notApplied)
       const changed = try admitted(current.row, { type: "changeActivation", form: "ExactRequest", expected, enable })
       const next = { ...current.row, admission: changed, updatedAt: iso(try now) }
       try writeDefinition(current, next)
@@ -386,6 +398,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
         return { receipt }
       }
       const current = try definitionOf(id)
+      if (current.row.origin !== "generated") return try refuse(409, "Typed workflows change through a full reviewed save", notApplied)
       if (current.row.lifecycleState.removed || versionId(current.row.admission.version) !== p.expectedVersionId) return try refuse(409, "Workflow changed before saving", notApplied)
       const edited = try admitted(current.row, { type: "editWorkflow" })
       const at = iso(try now)
@@ -634,14 +647,118 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
         return { row: try requestApproval(row, message.stepId, message.operation), done: true }
       }
       case "done": {
-        const done = try executed(try settledOutput({ ...row, events: [...row.events, try event("RunFinished")] }, message.text, message.steps), { type: "finishWork", succeeded: true })
+        const done = try executed(try settledOutput({ ...row, events: [...row.events, try event("RunFinished")] }, message.text, message.steps ?? []), { type: "finishWork", succeeded: true })
         return { row: try finishApprovals(done), done: true }
       }
       case "failed": {
         const failed = try executed({ ...row, error: message.message, events: [...row.events, try event(row.execution.cancelAsked ? "RunCancelled" : "RunFailed")] }, { type: "finishWork", succeeded: false })
         return { row: try finishApprovals(failed), done: true }
       }
+      default:
+        return { row: try executed({ ...row, error: `The worker sent ${message.type} to a typed run` }, { type: "finishWork", succeeded: false }), done: true }
     }
+  }
+
+  effect function journaled(row: RunRow, change: G.Event): RunRow!WorkflowRefused {
+    const generated = try mapError(G.apply(row.generated ?? G.initial, change), () => new WorkflowRefused({ status: 409, message: "The generated run is out of step" }))
+    return { ...row, generated }
+  }
+
+  function journalOf(row: RunRow): GeneratedEntry[] {
+    const values = row.journalValues ?? {}
+    return (row.generated?.journal ?? []).map((entry) => ({ ...entry, value: values[entry.call] ?? null }))
+  }
+
+  function waitOf(call: string, wait: GeneratedWait, at: number): G.Wait {
+    return wait.kind === "approval" ? { tag: "WaitApproval", call }
+      : wait.kind === "signal" ? { tag: "WaitSignal", call, signal: wait.name }
+      : { tag: "WaitTimer", call, due: at + wait.ms }
+  }
+
+  effect function armWake(row: RunRow): void!! {
+    const key = `run:${row.id}`
+    void ((row.execution.wakeId > 0
+      ? host.scheduler.set(key, row.execution.wakeDue, { runId: row.id, wakeId: row.execution.wakeId })
+      : host.scheduler.clear(key)) catch () => undefined)
+  }
+
+  effect function parkGenerated(row: RunRow, call: string, digest: string, wait: GeneratedWait): RunRow!WorkflowRefused {
+    const at = try now
+    const parked = try journaled({ ...row, waitDigest: digest }, { type: "park", wait: waitOf(call, wait, at) })
+    const clocked = try executed(parked, { type: "changeClock", now: at })
+    if (wait.kind === "approval") {
+      const request = wait.request
+      const supported = [request.title, request.summary, request.operation, request.target, request.account].every((field) => field.trim() !== "")
+      const approval: ApprovalRow = {
+        nodeId: call, iteration: 0, requestDigest: try workflowSha([row.id, versionId(row.version), call, 0, JSON.stringify(request)]), ...request,
+        request: { type: "speak_text", text: request.summary.slice(0, 5000) || call }, expiresAt: at + APPROVAL_LIFETIME_MS, machine: supported ? P.initial : P.markUnsupported(P.initial),
+      }
+      const waiting = try executed({ ...clocked, approvals: [...clocked.approvals, approval], events: [...clocked.events, try event("ApprovalRequested", call)] },
+        { type: "parkWorker", parked: "WaitingApproval", deadline: 0, hasDeadline: false })
+      const route = { workflowId: row.workflowId, runId: row.id, versionId: versionId(row.version), proposalId: `${call}:0`, expiresAt: approval.expiresAt }
+      try host.notify({ kind: "approval", title: request.title.slice(0, 200) || "Workflow approval", body: "Review this workflow step.", deepLink: workflowRunDeepLink(route), groupKey: `workflow-approval:${row.id}:${call}:0`, route })
+      return waiting
+    }
+    const deadline = wait.kind === "timer" ? at + wait.ms : wait.timeoutMs === undefined ? 0 : at + wait.timeoutMs
+    const waiting = try executed({ ...clocked, ...(wait.kind === "signal" ? { waitingSignal: wait.name } : {}), events: [...clocked.events, try event(wait.kind === "timer" ? "TimerCreated" : "SignalAwaited", call)] },
+      { type: "parkWorker", parked: wait.kind === "timer" ? "WaitingTimer" : "WaitingEvent", deadline, hasDeadline: deadline > 0 })
+    try armWake(waiting)
+    return waiting
+  }
+
+  effect function handleGenerated(row: RunRow, message: WorkerMessage | undefined, connection: WorkflowWorkerConnection): { readonly row: RunRow; readonly done: boolean }!WorkflowRefused {
+    if (message === undefined) return try handle(row, message, connection)
+    switch (message.type) {
+      case "checkpoint": {
+        const next = try journaled(row, { type: "checkpointStep", call: message.call, digest: message.digest })
+        return { row: { ...next, journalValues: { ...(row.journalValues ?? {}), [message.call]: message.value }, events: [...row.events, try event("NodeFinished", message.call)] }, done: false }
+      }
+      case "needsEffect": {
+        const pending = try journaled(row, { type: "dispatchEffect", call: message.call, digest: message.digest })
+        try persist(pending)
+        const draft = host.draft
+        const text = draft === undefined ? undefined : draft(message.request.prompt) catch () => undefined
+        const committed = try journaled(pending, { type: "commitEffect" })
+        try connection.send(text === undefined ? { type: "effectFailed", call: message.call, message: "The text model could not draft this call" } : { type: "effect", call: message.call, text })
+        return { row: { ...committed, journalValues: { ...(row.journalValues ?? {}), [message.call]: text ?? null }, events: [...row.events, try event(text === undefined ? "NodeFailed" : "NodeFinished", message.call)] }, done: false }
+      }
+      case "park": {
+        try connection.close
+        return { row: try parkGenerated(row, message.call, message.digest, message.wait), done: true }
+      }
+      case "diverged": {
+        const diverged = try journaled(row, { type: "replayCall", call: message.call, digest: "" })
+        const failed = try executed({ ...diverged, error: `The workflow code changed what the call ${message.call} asked for`, events: [...row.events, try event("RunFailed", message.call)] }, { type: "finishWork", succeeded: false })
+        return { row: try finishApprovals(failed), done: true }
+      }
+      case "done": {
+        const settled = try journaled(row, { type: "settleRun" })
+        const done = try executed({ ...settled, output: message.output ?? message.text, events: [...row.events, try event("RunFinished")] }, { type: "finishWork", succeeded: true })
+        return { row: try finishApprovals(done), done: true }
+      }
+      case "failed": return try handle(row, message, connection)
+      default:
+        return { row: try executed({ ...row, error: `The worker sent ${message.type} to a generated run` }, { type: "finishWork", succeeded: false }), done: true }
+    }
+  }
+
+  effect function resumeGenerated(runId: string, call: string, value: unknown): RunRow!WorkflowRefused {
+    return try updateRun(runId, effect (row) => {
+      const resumed = try journaled(row, { type: "resumeWait", call, digest: row.waitDigest ?? "" })
+      return { ...resumed, waitDigest: undefined, waitingSignal: undefined, journalValues: { ...(row.journalValues ?? {}), [call]: value } }
+    })
+  }
+
+  effect function wake(runId: string, wakeId: number): void!WorkflowRefused {
+    const row = try runOf(runId)
+    if (!X.canObserveWake(row.execution, wakeId) || row.generated === undefined) return
+    const at = try now
+    if (row.execution.wakeDue > at) return try armWake(row)
+    const woken = try updateRun(runId, (current) => executed(current, { type: "observeWake", wakeId }))
+    const wait = woken.generated?.wait
+    if (wait === undefined || wait.tag === "NoWait" || wait.tag === "WaitApproval") return
+    try resumeGenerated(runId, wait.call, wait.tag === "WaitTimer" ? null : { received: false })
+    try launch(runId)
   }
 
   effect function drive(runId: string, resume?: WorkerResume): void!! {
@@ -658,14 +775,17 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
         return
       }
       row = try ensuring(effect {
-      try connection.send({
-        type: "start", runId: row.id, spec: row.spec, specDigest: row.specDigest, anchorAt: row.anchorAt, values: row.values, results: row.results, next: row.next, allowed: row.allowed,
-        ...(resume === undefined ? {} : { resume }),
-      })
+      const generated = row.generated !== undefined && row.js !== undefined && row.jsDigest !== undefined
+      try connection.send(generated
+        ? { type: "startGenerated", runId: row.id, js: row.js ?? "", jsDigest: row.jsDigest ?? "", input: row.input, journal: journalOf(row) }
+        : {
+          type: "start", runId: row.id, spec: row.spec, specDigest: row.specDigest, anchorAt: row.anchorAt, values: row.values, results: row.results, next: row.next, allowed: row.allowed,
+          ...(resume === undefined ? {} : { resume }),
+        })
       let current = row
       for (;;) {
         const message = try connection.next
-        const handled = try updateRun(runId, (stored) => handle(stored, message, connection))
+        const handled = try updateRun(runId, (stored) => generated ? handleGenerated(stored, message, connection) : handle(stored, message, connection))
         current = handled.row
         if (handled.done) break
       }
@@ -689,6 +809,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
       specDigest: definition.specDigest, execution, status: "queued", finished: false, startedAt: iso(at), anchorAt: iso(anchor), values: {}, results: [], next: 0, allowed: true,
       approvals: [], events: [], ...(fields.submissionId === undefined ? {} : { submissionId: fields.submissionId }),
       ...(fields.occurrence === undefined ? {} : { occurrence: fields.occurrence }), ...(fields.hostedDigest === undefined ? {} : { hostedDigest: fields.hostedDigest }),
+      ...(definition.generated === undefined ? {} : { generated: G.initial, journalValues: {}, js: definition.generated.js, jsDigest: definition.generated.jsDigest }),
     }
   }
 
@@ -838,7 +959,10 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     if (outcome.refused) return try refuse(409, "Approval identity changed or the decision is no longer available", { code: "WORKFLOW_APPROVAL_NOT_APPLIED" })
     if (outcome.resumed) {
       const approval = outcome.row.approvals.find((candidate) => candidate.nodeId === nodeId && candidate.iteration === iteration)
-      if (approval !== undefined) {
+      if (approval !== undefined && outcome.row.generated !== undefined) {
+        try resumeGenerated(runId, nodeId, approval.machine.canonical === "ApprovedRequest")
+        try launch(runId)
+      } else if (approval !== undefined) {
         const resume: WorkerResume = approval.machine.canonical === "ApprovedRequest" ? try performDevice(outcome.row, approval) : { stepId: nodeId, outcome: "denied" }
         try launch(runId, resume)
       }
@@ -924,6 +1048,11 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
   }
 
   effect function fire(metadata: Readonly<Record<string, unknown>>, digestFire: (row: DefinitionRow, armVersion: number, scheduledAt: number) => void!WorkflowRefused): void!! {
+    if (typeof metadata.runId === "string" && typeof metadata.wakeId === "number") {
+      const runId = metadata.runId
+      const wakeId = metadata.wakeId
+      return void (wake(runId, wakeId) catch effect (error) => log("workflow wakeup could not resume its run", runId, error))
+    }
     const workflowId = metadata.workflowId
     const armVersion = metadata.armVersion
     const scheduledAt = metadata.scheduledAt
@@ -942,7 +1071,21 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
       for (const row of try db(store.runs({ owner, unfinished: true }))) {
         const restarted = row.execution.stopping ? try executed(row, { type: "restartWorkerService" }) : row
         if (restarted.execution.worker) {
-          try persist(try executed(restarted, { type: "observeUncertain", workerKnownLive: false }))
+          const recovered = restarted.generated !== undefined && restarted.generated.pending !== ""
+            ? { ...(try journaled(restarted, { type: "recoverEffect", receiptFound: false })), error: "The agent stopped while a model call was in flight, so its outcome is unknown. It was not sent again." }
+            : restarted
+          try persist(try executed(recovered, { type: "observeUncertain", workerKnownLive: false }))
+        } else if (restarted.generated !== undefined && (restarted.execution.phase === "WaitingTimer" || restarted.execution.phase === "WaitingEvent")) {
+          if (restarted !== row) try persist(restarted)
+          try armWake(restarted)
+        } else if (restarted.execution.phase === "WaitingApproval" && restarted.generated !== undefined) {
+          if (restarted !== row) try persist(restarted)
+          const decided = restarted.approvals.at(-1)
+          const wait = restarted.generated.wait
+          if (decided !== undefined && decided.machine.canonical !== "PendingApproval" && wait.tag === "WaitApproval" && wait.call === decided.nodeId) {
+            try resumeGenerated(restarted.id, decided.nodeId, decided.machine.canonical === "ApprovedRequest")
+            try launch(restarted.id)
+          }
         } else if (restarted.execution.phase === "WaitingApproval") {
           if (restarted !== row) try persist(restarted)
           const decided = restarted.approvals.at(-1)
@@ -1064,14 +1207,15 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     const at = iso(try now)
     const received = try updateRun(runId, effect (row) => {
       if (row.finished) return try refuse(409, "Workflow execution is already terminal")
-      if (row.execution.phase !== "WaitingEvent" || row.waitingSignal !== name) return try refuse(409, "This run is not waiting for that signal")
-      const wake = row.execution.wakeId
-      const woken = wake > 0 ? try executed(row, { type: "observeWake", wakeId: wake }) : row
-      return {
-        ...woken, waitingSignal: undefined, signals: [...(row.signals ?? []), { name, payload: p.payload ?? null, receivedAt: at, receivedBy: owner }].slice(-100),
-        values: { ...row.values, [`signal:${name}`]: JSON.stringify(p.payload ?? null) }, events: [...row.events, try event("SignalReceived")],
-      }
+      const wait = row.generated?.wait
+      if (row.execution.phase !== "WaitingEvent" || row.waitingSignal !== name || wait === undefined || wait.tag !== "WaitSignal" || wait.signal !== name) return try refuse(409, "This run is not waiting for that signal")
+      const pending = row.execution.wakeId
+      const woken = pending > 0 ? try executed(row, { type: "observeWake", wakeId: pending }) : row
+      const resumed = try journaled({ ...woken, signals: [...(row.signals ?? []), { name, payload: p.payload ?? null, receivedAt: at, receivedBy: owner }].slice(-100), events: [...row.events, try event("SignalReceived", wait.call)] },
+        { type: "resumeWait", call: wait.call, digest: row.waitDigest ?? "" })
+      return { ...resumed, waitingSignal: undefined, waitDigest: undefined, journalValues: { ...(row.journalValues ?? {}), [wait.call]: { received: true, payload: p.payload ?? null } } }
     })
+    try armWake(received)
     try launch(runId)
     return { execution: runView(received) }
   }
@@ -1102,8 +1246,21 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     const revision = current.row.revisions.find((candidate) => versionId(candidate.version) === wanted)
     if (revision === undefined) return try refuse(404, `Workflow revision not found: ${id}/${wanted}`, { workflowId: id })
     if (current.row.origin === "digest") return try refuse(409, "Digests are changed in the digest settings", { workflowId: id })
+    const code = revision.generated
+    if (current.row.origin === "generated" && code !== undefined) {
+      try lock(effect {
+        const fresh = try definitionOf(id)
+        const edited = try admitted(fresh.row, { type: "editWorkflow" })
+        const changed: DefinitionRow = { ...fresh.row, admission: edited, spec: { ...revision.spec, name: fresh.row.name }, specDigest: revision.specDigest, generated: code, updatedAt: iso(try now) }
+        const settled = edited.active ? try admitted(changed, { type: "changeActivation", form: "ExactRequest", expected: edited.version, enable: false }) : edited
+        const next = { ...changed, admission: settled }
+        try writeDefinition(fresh, next, { mutationId: try workflowUuid(), owner, kind: "generated", data: { receipt: { workflowId: id, operation: "restore", versionId: versionId(settled.version), sourceDigest: code.sourceDigest } } })
+        try arm(next)
+      })
+      return definitionView((try definitionOf(id)).row)
+    }
     const spec: PhoneWorkflowSpec = { ...revision.spec, name: current.row.name }
-    try save({ spec, catalogRevision: PHONE_CATALOG_REVISION, compilerRevision: PHONE_COMPILER_REVISION, mutationId: try workflowUuid(), expectedVersionId: versionId(current.row.admission.version) }, id, current.row.origin === "chat" ? "chat" : "view")
+    try save({ spec, catalogRevision: PHONE_CATALOG_REVISION, compilerRevision: PHONE_COMPILER_REVISION, mutationId: try workflowUuid(), expectedVersionId: versionId(current.row.admission.version) }, id)
     return definitionView((try definitionOf(id)).row)
   }
 
@@ -1117,12 +1274,47 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     }
   }
 
+  effect function generatedStep(runId: string, change: G.Event): G.GeneratedRun!(G.Rejected | WorkflowRefused) {
+    return try lock(effect {
+      const row = try runOrPlaceholder(runId)
+      const generated = try G.apply(row.generated ?? G.initial, change)
+      try persist({ ...row, generated })
+      return generated
+    })
+  }
+
+  effect function generatedState(runId: string): G.GeneratedRun!WorkflowRefused {
+    return (try db(store.run(runId)))?.generated ?? G.initial
+  }
+
+  effect function generatedActivation(row: DefinitionRow): boolean!WorkflowRefused {
+    const code = row.generated
+    if (code === undefined) return true
+    const checked = try checkSource(code.source)
+    return G.generatedActivationAdmitted({
+      checked: checked.ok && (try workflowSha(checked.js)) === code.jsDigest, compilerCurrent: checked.compilerRevision === code.compilerRevision,
+      sourceDigest: code.sourceDigest, reviewedDigest: code.reviewedDigest, version: row.admission.version, reviewedVersion: code.reviewedVersion,
+    }, true)
+  }
+
+  effect function checkSource(source: string) {
+    const port = host.worker
+    if (port === undefined) return try refuse(503, "No verified workflow worker is installed to check workflow code")
+    const connection = try mapError(port.open(`check-${try workflowUuid()}`), (error) => new WorkflowRefused({ status: 503, message: error.reason }))
+    return try ensuring(effect {
+      try connection.send({ type: "check", source })
+      const answer = try connection.next
+      if (answer?.type !== "checked") return try refuse(503, answer?.type === "failed" ? `The workflow compiler failed: ${answer.message}` : "The workflow compiler did not answer")
+      return answer.result
+    }, connection.close)
+  }
+
   function status() {
     const ready = host.worker !== undefined
     if (!ready) return { engine: WORKFLOW_ENGINE, status: "unavailable", reason: "No verified workflow worker is installed" }
     return {
       engine: WORKFLOW_ENGINE, status: "ready", manualSubmissionProtocol: 1, approvalReceiptProtocol: 1, approvalPresentationProtocol: 1, metadataMutationProtocol: 1,
-      lifecycleMutationProtocol: 1, typedAuthoringProtocol: 1, typedScheduleProtocol: 1, hostedDigestProtocol: 1, hostedDigestSourcePauseProtocol: 1,
+      lifecycleMutationProtocol: 1, typedAuthoringProtocol: 1, typedScheduleProtocol: 1, generatedWorkflowProtocol: 1, hostedDigestProtocol: 1, hostedDigestSourcePauseProtocol: 1,
       ...(host.nativeDigests === undefined ? {} : { hostedNativeSourceProtocol: 1, hostedNativeEveningProtocol: 1, hostedDossierProtocol: 1 }),
     }
   }
@@ -1132,6 +1324,7 @@ Only use operations in allowedOperations. Notes, Calendar and reminder reads MUS
     run, submit, launch, submission, executions, execution, cancel, approvals, decide, phoneReview, arm, fire, start, stop, definitionOf, writeDefinition, admitted,
     project, runOf, updateRun, executed, persist, finishApprovals, freshRun, definitionView, runView, recordOccurrence, deviceProtocol, refuse,
     admissionStep, admissionState, lifecycleStep, lifecycleOf, executionStep, executionState, approvalStep, approvalState, signal, runEvents, revisions, restoreRevision, evaluationSuite,
+    generatedStep, generatedState, checkSource, generatedActivation,
   }
 }
 

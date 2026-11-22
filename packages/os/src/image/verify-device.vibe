@@ -18,6 +18,7 @@ import {
   type SelinuxReading,
 } from "../../gen/os__image__verification.effect.vibe"
 import { secureCameraPackage } from "../../gen/os__image__provisioning.effect.vibe"
+import { reviewedPrivilegedPermissions } from "../../gen/os__image__staging.effect.vibe"
 import { isDigest } from "../../gen/os__image__apk.effect.vibe"
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
 import { AdbTimedOut, adbSerial, androidPackage, captureCommand, type AdbSerial } from "./device.vibe"
@@ -215,6 +216,8 @@ effect function cameraReading(read: Read, user: string, pkg: string): CameraRead
   const cameraEnabled = try enabledSystem(read, user, secureCameraPackage)
   const gesture = line(try read("cmd", "overlay", "lookup", "--user", user, "android", "android:bool/config_cameraDoubleTapPowerGestureEnabled"))
   const gesturePackage = line(try read("cmd", "overlay", "lookup", "--user", user, "com.android.systemui", "com.android.systemui:string/config_cameraGesturePackage"))
+  const gestureSetting = line(try read("settings", "--user", user, "get", "secure", "camera_double_tap_power_gesture_disabled"))
+  const features = try read("pm", "list", "features")
   const systemHandles: string[] = []
   const launcherHandles: string[] = []
   let missing = false
@@ -226,8 +229,14 @@ effect function cameraReading(read: Read, user: string, pkg: string): CameraRead
     if (system?.includes(secureCameraActivity)) systemHandles.push(action)
     if (launcher?.some((handler) => handler.startsWith(`${pkg}/`))) launcherHandles.push(action)
   }
-  if (missing || cameraEnabled === undefined || (gesture !== "true" && gesture !== "false") || gesturePackage === undefined) return { tag: "CameraUnread" }
-  return { tag: "CameraRead", cameraEnabled, systemHandles, launcherHandles, gestureEnabled: gesture === "true", gesturePackage }
+  if (missing || cameraEnabled === undefined || (gesture !== "true" && gesture !== "false") || gesturePackage === undefined || gestureSetting === undefined || features === undefined) {
+    return { tag: "CameraUnread" }
+  }
+  return {
+    tag: "CameraRead", cameraEnabled, systemHandles, launcherHandles, gestureEnabled: gesture === "true", gesturePackage,
+    gestureNotDisabled: gestureSetting === "null" || gestureSetting === "0",
+    cameraHardware: rows(features).includes("feature:android.hardware.camera.any"),
+  }
 }
 
 function userScope(raw: string | undefined, user: string): string | undefined {
@@ -345,6 +354,9 @@ export effect function verifyImage(options: VerifyImageOptions) {
   const pkg = try androidPackage(expected.packageName)
   const user = options.user
   const privileges = expected.privilegedPermissions ?? []
+  if (expected.privilegedPermissions !== undefined && (privileges.length === 0 || privileges.some((name) => !reviewedPrivilegedPermissions.includes(name)))) {
+    throw new ImageExpectationRefused({ reason: "Privileged permissions, when named, are reviewed ones" })
+  }
   if (expected.apkPath.includes("/priv-app/") !== (privileges.length > 0)) {
     throw new ImageExpectationRefused({ reason: "Only a descriptor with privileged permissions may expect a priv-app APK" })
   }

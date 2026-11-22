@@ -146,6 +146,8 @@ pure def loggedTokens(c: ProviderCount): int = match c { | CountReported(x) => i
 pure def usageLogged(prompt: ProviderCount): bool = match prompt { | CountReported(x) => x.tokens >= 0 | CountMissing => false }
 pure def toolsLogged(sent: int): int = if (sent < 0) 0 else sent
 pure val sentValues = Set(-1, 0, 3)
+pure val cValues = Set(CountReported({ tokens: 0 }), CountReported({ tokens: 12 }), CountMissing)
+pure val promptValues = Set(CountReported({ tokens: 0 }), CountReported({ tokens: 12 }), CountMissing)
 pure def lawAMissingCountIsNeverZero(c: ProviderCount): bool = c == CountMissing implies loggedTokens(c) != 0
 pure def lawUsageNeedsAReportedPromptCount(prompt: ProviderCount): bool = usageLogged(prompt) implies prompt != CountMissing
 pure def lawEveryToolSentIsLogged(sent: int): bool = sent >= 0 implies toolsLogged(sent) == sent

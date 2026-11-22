@@ -4,7 +4,10 @@ A production image is signed with the consumer's own keys and recorded by
 digest. The os package ships no key and no key manifest: a consumer passes
 its manifest to the key ceremony (`eliza-os keys generate`, then
 `keys decrypt` in the signing environment), and its release descriptor and
-update channel to `signRelease`. Sources: `generate-release-keys.ts`,
+update channel to `signRelease` (`eliza-os sign-release --request FILE`, a
+JSON request of `signRelease`'s options, with `--dry-run` for the plan).
+`eliza-os release-record --request FILE` writes the compatibility record of
+outputs signed elsewhere into a new owner-only file. Sources: `generate-release-keys.ts`,
 `decrypt-release-keys.ts`, `aosp-release-signing.mjs`,
 `aosp-release-record.mjs` and `pixel10a-release.mjs` on develop.
 
@@ -116,6 +119,50 @@ pure val mappedValues = Set(Set(), Set("testkey", "platform"), Set("testkey", "p
 pure def lawAdmittedPlanMapsEveryRequiredKey(required: Set[str], mapped: Set[str]): bool = signingPlanAdmitted(required, mapped) implies required.subseteq(mapped)
 ```
 
+### Every certificate signing uses is pinned: the release and platform keys by the channel and descriptor, every other one by the enrollment
+
+The shell reads each certificate signing will use from the key directory
+and hashes it. The release key's must be the channel's OTA certificate and
+the platform key's the descriptor's platform certificate; every other one
+must be recorded by digest in the enrollment manifest and equal that
+record. A certificate the enrollment does not pin refuses signing.
+
+```quint
+type CertificatePin = PinnedByRelease | PinnedByEnrollment | NotPinned
+type CertificateUse = { key: str, pin: CertificatePin, matches: bool }
+pure def certificatePinFor(key: str, enrolled: bool): CertificatePin =
+  if (key == "releasekey" or key == "platform") PinnedByRelease else if (enrolled) PinnedByEnrollment else NotPinned
+pure def certificatesPinned(uses: List[CertificateUse]): bool = uses.every(u => u.pin != NotPinned and u.matches)
+pure val platformUse: CertificateUse = { key: "platform", pin: PinnedByRelease, matches: true }
+pure val usesValues = Set(List(), List(platformUse), List(platformUse, { key: "media", pin: PinnedByEnrollment, matches: true }),
+  List({ key: "media", pin: PinnedByEnrollment, matches: false }))
+pure val addedValues = Set(platformUse, { key: "media", pin: NotPinned, matches: true }, { key: "media", pin: PinnedByEnrollment, matches: false })
+pure val keyValues = Set("releasekey", "platform", "media")
+pure def lawAnUnpinnedOrDifferentCertificateRefuses(uses: List[CertificateUse], added: CertificateUse): bool =
+  (added.pin == NotPinned or not(added.matches)) implies not(certificatesPinned(uses.append(added)))
+pure def lawOnlyTheReleaseKeysNeedNoEnrollmentPin(key: str): bool = (certificatePinFor(key, false) != NotPinned) iff (key == "releasekey" or key == "platform")
+```
+
+### Under managed signing the key directory holds no private key file, and every key handed to avbtool is a public key that encodes to its reviewed metadata
+
+The token holds the private keys. The shell refuses a `.pk8` file in the
+key directory, and reads the verified-boot key and each APEX payload key
+the signing command names: each must be a `PUBLIC KEY` PEM whose AVB
+encoding equals its reviewed metadata (`avb_pkmd.bin` and the payload's
+`.avbpubkey`). Signing with key files needs owner-only private keys
+instead ("The key directory used for signing is owner-only …").
+
+```quint
+type ManagedKeyFiles = { privateKeyFiles: int, verifiedBootKeyPublic: bool, payloadKeysPublic: bool }
+pure def managedKeyFilesAdmitted(managedKeys: ManagedKeyFiles): bool =
+  managedKeys.privateKeyFiles == 0 and managedKeys.verifiedBootKeyPublic and managedKeys.payloadKeysPublic
+pure val publicKeyFiles: ManagedKeyFiles = { privateKeyFiles: 0, verifiedBootKeyPublic: true, payloadKeysPublic: true }
+pure val managedKeysValues = Set(publicKeyFiles, { ...publicKeyFiles, privateKeyFiles: 1 }, { ...publicKeyFiles, verifiedBootKeyPublic: false },
+  { ...publicKeyFiles, payloadKeysPublic: false })
+pure def lawAPrivateKeyFileRefusesManagedSigning(managedKeys: ManagedKeyFiles): bool =
+  managedKeys.privateKeyFiles > 0 implies not(managedKeyFilesAdmitted(managedKeys))
+```
+
 ### Verified boot is signed with SHA256_RSA4096 and chains exactly vbmeta_system and vbmeta_vendor
 
 The release descriptor and the target files must both name this algorithm
@@ -159,7 +206,9 @@ pure def lawResignedApexCarriesThePayloadKey(p: PackageCheck): bool =
 
 ### A release descriptor is refused while a field is unset, a signer or AVB key is unpinned, the lock hash differs or the lock is development-only
 
-The shell counts the descriptor's `UNSET` and placeholder values, reads the
+The shell counts the descriptor's unset values (empty, null, `UNSET`,
+`TODO`, `TBD`, `PENDING` or `<…>`) and every value that mentions a
+placeholder, outside `description` fields, reads the
 application and platform certificate digests and the AVB public key digest
 it pins, hashes the source lock file it pins and reads whether that lock is
 still development-only. The descriptor has no qualification or acceptance
@@ -217,9 +266,11 @@ pure def lawAdmittedChannelTrustsOnlyTheProductsKeys(ch: ReleaseChannel, product
 The record names the unsigned target files' SHA-256 as given to signing,
 the signed target files' and update package's SHA-256, the release
 certificate and the verified-boot public key digest. Each must be a real
-digest equal to what signing observed. The record type has no private key,
-no passphrase and no qualification or acceptance field: a record that
-carries one is refused.
+digest equal to what signing observed. The update package's metadata names
+the signed build, its date and patch level, and no other device than the
+channel's; the signed build is the Android release the descriptor reviewed.
+The record type has no private key, no passphrase and no qualification or
+acceptance field: a record that carries one is refused.
 
 ```quint
 type RecordField = TargetFilesDigest | SignedTargetFilesDigest | UpdatePackageDigest | CertificateDigest | VerifiedBootKeyDigest | PrivateKeyBytes | KeyPassword | QualificationClaim | AcceptanceClaim
@@ -264,4 +315,59 @@ pure def lawOneDrillShortIsNotDistributable(drills: Drills, knownGood: KnownGood
     implies not(channelDistributable(drills, knownGood, testKeys))
 pure def lawTestKeysOrNoRecoveryAreNeverDistributable(drills: Drills, knownGood: KnownGood): bool =
   not(channelDistributable(drills, knownGood, true)) and not(channelDistributable(drills, NoKnownGood, false))
+```
+
+## Story: Record my release's qualification gates honestly
+
+> As a product maker, I want each distribution gate to claim only what its
+> evidence proves, so that no release is called accepted because a
+> development run, or another gate's evidence, passed.
+
+### A gate passes only on release evidence, source admission only for the pinned production lock, signed-update recovery only for a distributable channel, and user acceptance last
+
+The gate record (`qualificationGateProblems` in
+`src/image/signing-record.vibe`) is schema 1 for the descriptor's product
+and the target, and names exactly the six gates in order. Each gate has a
+status (`not run`, `development`, `failed` or `passed`) and evidence, each
+with a level (`development` or `release`) and a reference that is an HTTPS
+URL or a readable file under the record's root. A status other than
+`not run` needs evidence, and a pass needs release evidence. Source
+admission passes only while the descriptor's lock file is readable, not
+development-only and has the digest the descriptor pins, and one release
+evidence report names that digest as a production lock. Signed-update
+recovery passes only while the channel is distributable. User acceptance
+passes only after every other gate passed. No problem means the record is
+consistent, not that any gate passed.
+
+```quint
+type GateName = SourceAdmission | ApkVariants | CuttlefishBoot | PhysicalDevice | SignedUpdateRecovery | UserAcceptance
+type GateStatus = GateNotRun | GateDevelopment | GateFailed | GatePassed | GateStatusUnknown
+type GateRow = { gate: GateName, status: GateStatus, evidence: int, releaseEvidence: int, unreadEvidence: int }
+type GateRecord = { recordMatches: bool, gates: List[GateRow], lockProductionPinned: bool, lockEvidenceMatches: bool, channelReady: bool }
+type GateProblem = GateRecordForeign | GatesNotExact | GateStatusInvalid | GateEvidenceUnread | GateClaimWithoutEvidence
+  | GatePassedOnDevelopment | SourceAdmissionUnproved | RecoveryUndistributable | AcceptanceBeforeGates
+pure val gateOrder: List[GateName] = List(SourceAdmission, ApkVariants, CuttlefishBoot, PhysicalDevice, SignedUpdateRecovery, UserAcceptance)
+pure def gatePassed(gateRecord: GateRecord, name: GateName): bool = gateRecord.gates.some(g => g.gate == name and g.status == GatePassed)
+pure def gateIssueIf(found: bool, gateIssue: GateProblem): List[GateProblem] = if (found) List(gateIssue) else List()
+pure def gateProblems(gateRecord: GateRecord): List[GateProblem] =
+  gateIssueIf(not(gateRecord.recordMatches), GateRecordForeign)
+    .concat(gateIssueIf(gateRecord.gates.listMap(g => g.gate) != gateOrder, GatesNotExact))
+    .concat(gateIssueIf(gateRecord.gates.some(g => g.status == GateStatusUnknown), GateStatusInvalid))
+    .concat(gateIssueIf(gateRecord.gates.some(g => g.unreadEvidence > 0), GateEvidenceUnread))
+    .concat(gateIssueIf(gateRecord.gates.some(g => g.status != GateNotRun and g.status != GateStatusUnknown and g.evidence == 0), GateClaimWithoutEvidence))
+    .concat(gateIssueIf(gateRecord.gates.some(g => g.status == GatePassed and g.releaseEvidence == 0), GatePassedOnDevelopment))
+    .concat(gateIssueIf(gatePassed(gateRecord, SourceAdmission) and not(gateRecord.lockProductionPinned and gateRecord.lockEvidenceMatches), SourceAdmissionUnproved))
+    .concat(gateIssueIf(gatePassed(gateRecord, SignedUpdateRecovery) and not(gateRecord.channelReady), RecoveryUndistributable))
+    .concat(gateIssueIf(gatePassed(gateRecord, UserAcceptance) and not(gateOrder.every(n => n == UserAcceptance or gatePassed(gateRecord, n))), AcceptanceBeforeGates))
+pure val passedGates: List[GateRow] = gateOrder.listMap(n => { gate: n, status: GatePassed, evidence: 1, releaseEvidence: 1, unreadEvidence: 0 })
+pure val acceptedRecord: GateRecord = { recordMatches: true, gates: passedGates, lockProductionPinned: true, lockEvidenceMatches: true, channelReady: true }
+pure val gateRecordValues = Set(acceptedRecord, { ...acceptedRecord, channelReady: false }, { ...acceptedRecord, lockEvidenceMatches: false },
+  { ...acceptedRecord, gates: passedGates.listMap(g => if (g.gate == PhysicalDevice) { ...g, status: GateDevelopment } else g) },
+  { ...acceptedRecord, gates: passedGates.listMap(g => if (g.gate == ApkVariants) { ...g, releaseEvidence: 0 } else g) },
+  { ...acceptedRecord, gates: passedGates.listMap(g => { ...g, status: GateNotRun, evidence: 0, releaseEvidence: 0 }) },
+  { ...acceptedRecord, gates: passedGates.select(g => g.gate != CuttlefishBoot) })
+pure def lawAcceptanceComesLast(gateRecord: GateRecord): bool =
+  (gateProblems(gateRecord) == List() and gatePassed(gateRecord, UserAcceptance)) implies gateOrder.every(n => gatePassed(gateRecord, n))
+pure def lawNoPassOnDevelopmentEvidence(gateRecord: GateRecord): bool =
+  gateProblems(gateRecord) == List() implies gateRecord.gates.every(g => g.status == GatePassed implies g.releaseEvidence > 0)
 ```

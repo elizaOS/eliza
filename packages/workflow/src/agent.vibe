@@ -3,11 +3,13 @@ import type { Action, ActionResult, EffectReceipt, HandlerCallback, IAgentRuntim
 import { workflowSha, workflowUuid } from "./contract/phone.vibe"
 import { WorkflowRefused, type WorkflowService } from "./service/workflows.vibe"
 import type { hostedDigests } from "./service/digests.vibe"
+import type { generatedWorkflows } from "./service/generated.vibe"
 
 /** The service instances a runtime opened for the workflow plugin. */
 export interface WorkflowInstance {
   readonly service: WorkflowService
   readonly digests: ReturnType<typeof hostedDigests>
+  readonly generated: ReturnType<typeof generatedWorkflows>
 }
 
 /** The workflow instances by runtime, filled when the plugin initializes and emptied when it is disposed. */
@@ -16,7 +18,6 @@ export const workflowInstances = new WeakMap<object, WorkflowInstance>()
 const WORKFLOW_OPS = ["list", "search", "get", "create", "modify", "rename", "activate", "deactivate", "remove", "restore_removed", "run", "dossier", "cancel_run", "executions", "revisions", "restore", "eval_samples"] as const
 type WorkflowOp = (typeof WORKFLOW_OPS)[number]
 const READ_OPS: readonly WorkflowOp[] = ["list", "search", "get", "executions", "revisions", "eval_samples"]
-const CHAT_OPERATIONS = ["supplied_text", "contains", "compose_draft", "model_draft"]
 const NO_NOTIFICATION = " It can’t send you a notification: when it is on, each run’s output appears only in its run history. For a reminder that notifies you, use a phone reminder instead."
 const NOTIFY_REQUEST = /\b(?:remind\w*|notif\w*|alert\w*|(?:ping|tell|text|message|messag|email|e-mail|nudge|warn|buzz|call|sms|dm)(?:s|es|ed|ing)?\s+me|(?:let|lets|letting)\s+me\s+know|(?:send|sends|sending|sent)\s+me|push\s+(?:notification|alert|message)s?|wake\s+me)\b/i
 
@@ -98,26 +99,28 @@ effect function perform(instance: WorkflowInstance, op: WorkflowOp, params: Bag,
     }
     case "create": {
       const instruction = text(params.instruction) ?? text(params.seedPrompt) ?? request
-      const spec = try service.draftSpec({ prompt: instruction, operations: CHAT_OPERATIONS })
+      const drafted = try instance.generated.draft({ prompt: instruction })
+      if (!drafted.ok) return notApplied("WORKFLOW_CODE_REFUSED", `The drafted workflow code failed its check: ${drafted.diagnostics.join("; ")}. Nothing was saved.`, "I couldn't write workflow code that passes its check, so nothing was saved.")
       const taken = new Set(((try service.list(false)) as View[]).map((workflow) => normalizeName(workflow.name)))
-      const named = { ...spec, name: unusedName(text(params.name) ?? spec.name, taken) }
-      const saved = try service.save({ spec: named, catalogRevision: service.catalog().catalogRevision, compilerRevision: service.catalog().compilerRevision, mutationId: try workflowUuid() }, undefined, "chat")
-      const workflow = (try service.detail(saved.receipt.workflowId)) as View
+      const name = unusedName(text(params.name) ?? drafted.name, taken)
+      const saved = try instance.generated.save({ name, description: drafted.description, source: drafted.source, mutationId: try workflowUuid() })
+      const workflow = (try service.detail(String(saved.receipt.workflowId))) as View
       return {
-        success: true, text: `Created “${workflow.name}”. It is off and runs only when you start it.${NOTIFY_REQUEST.test(instruction) ? NO_NOTIFICATION : ""}`,
+        success: true, text: `Created “${workflow.name}”. It is off and runs only when you start it; review its code in Workflows before it runs on a schedule.${NOTIFY_REQUEST.test(instruction) ? NO_NOTIFICATION : ""}`,
         effectReceipts: [committed("workflow.create", "workflow.definition", workflow.id, workflow.versionId, workflow.updatedAt, at)], data: { workflow },
       }
     }
     case "modify": {
       const current = try resolve(service, params)
-      if (current.origin !== "chat") return notApplied("WORKFLOW_EDIT_IN_VIEW", `${current.name} was built in the Workflows view. Open it there to change its steps or schedule. From chat you can rename, pause, run or remove it.`)
+      if (current.origin !== "generated") return notApplied("WORKFLOW_EDIT_IN_VIEW", `${current.name} was built in the Workflows view. Open it there to change its steps or schedule. From chat you can rename, pause, run or remove it.`)
       const instruction = text(params.instruction) ?? request
-      const existing = (try service.definitionOf(current.id)).row.spec
-      const spec = try service.draftSpec({ prompt: instruction, operations: CHAT_OPERATIONS, existing })
-      const saved = try service.save({ spec: { ...spec, name: current.name }, catalogRevision: service.catalog().catalogRevision, compilerRevision: service.catalog().compilerRevision, mutationId: try workflowUuid(), expectedVersionId: current.versionId }, current.id)
-      const workflow = (try service.detail(saved.receipt.workflowId)) as View
+      const drafted = try instance.generated.draft({ prompt: instruction, workflowId: current.id })
+      if (!drafted.ok) return notApplied("WORKFLOW_CODE_REFUSED", `The revised workflow code failed its check: ${drafted.diagnostics.join("; ")}. Nothing was changed.`, "I couldn't write revised code that passes its check, so nothing was changed.")
+      const row = (try service.definitionOf(current.id)).row
+      const saved = try instance.generated.save({ name: current.name, description: drafted.description, source: drafted.source, trigger: row.spec.trigger, mutationId: try workflowUuid(), expectedVersionId: current.versionId }, current.id)
+      const workflow = (try service.detail(String(saved.receipt.workflowId))) as View
       return {
-        success: true, text: `Updated “${workflow.name}”.${current.active ? " It was on, so it is now off. Review the change, then turn it on again." : ""}${NOTIFY_REQUEST.test(instruction) ? NO_NOTIFICATION : ""}`,
+        success: true, text: `Updated “${workflow.name}”.${current.active ? " It was on, so it is now off. Review the change, then turn it on again." : " Review its code before it runs on a schedule."}${NOTIFY_REQUEST.test(instruction) ? NO_NOTIFICATION : ""}`,
         effectReceipts: [committed("workflow.modify", "workflow.definition", workflow.id, workflow.versionId, workflow.updatedAt, at)], data: { workflow },
       }
     }
@@ -128,18 +131,22 @@ effect function perform(instance: WorkflowInstance, op: WorkflowOp, params: Bag,
       if (name === current.name) return notApplied("WORKFLOW_NAME_UNCHANGED", `${current.name} already has that name. Nothing was changed.`, `${current.name} already has that name.`)
       const clash = ((try service.list(false)) as View[]).find((workflow) => workflow.id !== current.id && normalizeName(workflow.name) === normalizeName(name))
       if (clash !== undefined) return notApplied("WORKFLOW_NAME_TAKEN", `Another workflow is already named “${clash.name}”. Nothing was changed. Ask the owner for another name.`, `You already have a workflow called “${clash.name}”, so I left ${current.name} as it is. What else should I call it?`)
-      const description = (try service.definitionOf(current.id)).row.description
-      const changed = try service.metadata(current.id, { mutationId: try workflowUuid(), expectedVersionId: current.versionId, name, description })
+      const row = (try service.definitionOf(current.id)).row
+      if (row.origin === "digest") return notApplied("WORKFLOW_RENAME_IN_SETTINGS", `${current.name} is a digest. Rename it in the digest settings.`)
+      const changedVersion = row.origin === "generated"
+        ? String((try service.metadata(current.id, { mutationId: try workflowUuid(), expectedVersionId: current.versionId, name, description: row.description })).receipt.versionId)
+        : String((try service.save({ spec: { ...row.spec, name }, catalogRevision: service.catalog().catalogRevision, compilerRevision: service.catalog().compilerRevision, mutationId: try workflowUuid(), expectedVersionId: current.versionId }, current.id)).receipt.versionId)
       const workflow = (try service.detail(current.id)) as View
       return {
-        success: true, text: `Renamed ${current.name} to “${workflow.name}”.`,
-        effectReceipts: [committed("workflow.rename", "workflow.definition", workflow.id, String(changed.receipt.versionId), workflow.updatedAt, at)], data: { workflow },
+        success: true, text: `Renamed ${current.name} to “${workflow.name}”.${current.active && !workflow.active ? " Its schedule is now paused. Turn it on again in Workflows." : ""}`,
+        effectReceipts: [committed("workflow.rename", "workflow.definition", workflow.id, changedVersion, workflow.updatedAt, at)], data: { workflow },
       }
     }
     case "activate": {
       const current = try resolve(service, params)
       const definition = (try service.definitionOf(current.id)).row
       const sentence = definition.origin === "digest" ? `${current.name} is a digest. Turn it on in the digest settings.`
+        : definition.origin === "generated" ? `${current.name} runs generated code that you review in Workflows before it turns on. Open Workflows and turn it on there.`
         : definition.spec.trigger.kind === "time" ? `${current.name} runs on a schedule that you confirm on the phone. Open Workflows and turn it on there.`
         : `${current.name} has no schedule to turn on. It runs only when you start it.`
       return notApplied("WORKFLOW_ACTIVATE_IN_VIEW", `${sentence} Nothing was changed.`, sentence)

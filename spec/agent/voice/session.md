@@ -98,6 +98,10 @@ pure def profileAdmitted(p: VoiceProfile): bool =
 pure val profileValues = Set(defaultVoiceProfile,
   { shortGapMs: 0, longGapMs: 0, bargeInHoldMs: 400, stopReport: StopReportsNone },
   { shortGapMs: 500, longGapMs: 100, bargeInHoldMs: 700, stopReport: StopReportsHeard })
+pure val pValues = Set(defaultVoiceProfile,
+  { shortGapMs: 300, longGapMs: 1200, bargeInHoldMs: 700, stopReport: StopReportsNone },
+  { shortGapMs: 0, longGapMs: 0, bargeInHoldMs: 400, stopReport: StopReportsNone },
+  { shortGapMs: 500, longGapMs: 100, bargeInHoldMs: 700, stopReport: StopReportsHeard })
 pure def alwaysTheProfileIsWithinItsBounds(s: VoiceSession): bool = profileAdmitted(s.profile)
 pure def lawTheDefaultProfileIsTheUpstreamSession(p: VoiceProfile): bool =
   p == defaultVoiceProfile implies (p.shortGapMs == shortGapMs and p.longGapMs == longGapMs and p.bargeInHoldMs == bargeInHoldMs and p.stopReport == StopReportsHeard)

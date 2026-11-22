@@ -541,6 +541,48 @@ public final class ContactsEditor {
     return saved(ContentUris.withAppendedId(ContactsContract.RawContacts.CONTENT_URI, target));
   }
 
+  /**
+   * Reads the contact without changing it before its removal is staged: null when it is at
+   * {@code version}, otherwise {@code not-found}, {@code stale} or, when it cannot be read, {@code failed}.
+   */
+  public String inspectRemoval(String id, String version, CancellationSignal cancel) {
+    offMain();
+    long contact = row(id);
+    if (contact < 0 || !versionShape(version)) throw new IllegalArgumentException("Selected contact and version required");
+    final List<long[]> raws;
+    try {
+      raws = rawContacts(contact, cancel);
+    } catch (RuntimeException unreadable) {
+      return "failed";
+    }
+    if (raws.isEmpty()) return "not-found";
+    return version(raws).equals(version) ? null : "stale";
+  }
+
+  /**
+   * The Undo window's provider call for a staged {@code {id, version}}: one {@link #remove}, answered
+   * as {@code deleted}, {@code conflict} (gone, changed or not written), {@code unknown} or, without
+   * both Contacts grants, {@code permission-required}.
+   */
+  public static JSObject dispatchRemoval(Context context, JSONObject staged) {
+    JSObject value = new JSObject();
+    boolean granted = context.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+      && context.checkSelfPermission(android.Manifest.permission.WRITE_CONTACTS) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    String status;
+    if (!granted) status = "permission-required";
+    else {
+      try {
+        if (staged == null || staged.length() != 2) throw new IllegalArgumentException("Staged contact required");
+        status = new ContactsEditor(context).remove(staged.getString("id"), staged.getString("version")).optString("status", "unknown");
+      } catch (org.json.JSONException | IllegalArgumentException invalid) {
+        status = "failed";
+      }
+      status = "deleted".equals(status) || "unknown".equals(status) ? status : "conflict";
+    }
+    value.put("status", status);
+    return value;
+  }
+
   /** Deletes the contact read at {@code version}: an unknown reply may have committed the deletion. */
   public JSObject remove(String id, String version) {
     offMain();
