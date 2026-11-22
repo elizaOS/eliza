@@ -798,6 +798,15 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     fs.writeFileSync(path.join(root, "src/door.ts"), "export const door = 3;\n");
     await run(root);
     assert.equal(runs(), 4, "a receipt for older source cannot suppress the tests");
+    const linked = scratch({ "package.json": '{"name":"linked","type":"module","main":"./dist/run.js"}', "dist/run.js": "export default true;" });
+    const consumer = fixtures(["door"]);
+    fs.mkdirSync(path.join(consumer, "node_modules"));
+    fs.symlinkSync(linked, path.join(consumer, "node_modules", "linked"), "dir");
+    fs.writeFileSync(path.join(consumer, "package.json"), JSON.stringify({ dependencies: { linked: `link:${path.relative(consumer, linked)}` },
+      scripts: { test: `node --input-type=module -e "import ok from 'linked'; process.exit(ok ? 0 : 1)"` } }));
+    assert.ok((await run(consumer)).said("tests", /^pass\n$/));
+    fs.writeFileSync(path.join(linked, "dist/run.js"), "export default false;");
+    assert.equal((await run(consumer)).said("tests", /^fail/)?.ok, false, "a passing run cannot mask a change in a linked package's built code");
     const workspace = scratch({ "tsconfig.json": "{}", "package.json": JSON.stringify({ devDependencies: { kit: "workspace:*" } }),
       ...Object.fromEntries(["src/a.ts", "test/a.test.ts", "test/drivers/a.ts", "test/traces/a.jsonl", "test/counterexamples/a.json", "test/bombadil.ts", "test/fixtures/p/package.json",
         "test/fixtures/p/a.ts", "apps/other/package.json", "apps/other/a.ts", "kit/package.json", "kit/a.ts", "kit/spec/a.md", "kit/nested/package.json", "kit/nested/a.ts", "kit/README.md", "kit/fixtures/a.md", "kit/test/a.test.ts", "kit/gen/a.ts", "notes.md", "README.md", "AGENTS.md", "style.css", "gen/a.qnt", "gen/traces/a.b.0/0.itf.json",
@@ -822,6 +831,8 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     }, "the tests read the package, its test fixtures, what its workspace dependencies ship to it and the fixtures they keep; the typecheck reads only scripts and JSON, and no traces or counterexamples; neither reads a spec's prose or its Quint copy, the prose kept for people and agents, the simulations' traces or the stories' bookkeeping");
     fs.writeFileSync(path.join(workspace, "kit/a.ts"), 'export * from "./gen/a.ts";\n');
     assert.deepEqual(changed("kit/gen/a.ts"), [true, true], "a dependency's gen/ is read once its code imports it");
+    fs.writeFileSync(path.join(workspace, "kit/package.json"), '{"dependencies":{"linked":"link:../runtime"}}');
+    assert.deepEqual(inputs(), [undefined, undefined], "a linked checkout reached through a workspace dependency can change independently of the lockfile");
   });
 
   test("an exploration is remembered under what its page reads: its code and what that names, what a workspace package it imports or runs offers, the generated modules it imports, and no test, contract, proof, spec or tool it does not run", () => {

@@ -229,7 +229,11 @@ receipt matches unless another root document changed, and then `check` runs the
 root's tests itself. Generated code names each rule by its heading, not its line, so
 prose that only moves a rule changes none of these keys. Filtered, exclusive, interrupted
 and failed runs record no complete result. Acceptance and nightly checks
-bypass these receipts and the inner verification cache.
+bypass these receipts and the inner verification cache. A package that declares a `link:`
+dependency, or reaches one through a workspace dependency, runs its inner tests, typecheck and
+drivers afresh. The linked checkout can supply compiled files and resources outside the
+consumer's lockfile. Its project's Turbo tasks can cache those commands when they declare
+the external inputs and outputs they use.
 
 The spec cache retains recent branch and profile results for 30 days within
 256 MiB, evicting the oldest unused results first. A check's own entries are

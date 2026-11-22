@@ -263,13 +263,14 @@ async function typecheck(memory: Memory, root: string, dir: string): Promise<{ o
   const at = path.join(root, dir);
   pruneSidecars(at);
   const contents = (files: string[]) => files.map((file): [string, string] => [path.relative(root, file), fs.existsSync(file) ? digest(fs.readFileSync(file, "utf8")) : ""]);
-  const kept = await entry(root, "types", [dir, testInputs(at, "normal", "types"), JSON.stringify(contents(configured(at)))]);
-  const passed = recall<{ read: [string, string][] }>(memory, kept);
+  const inputs = testInputs(at, "normal", "types");
+  const kept = inputs === undefined ? undefined : await entry(root, "types", [dir, inputs, JSON.stringify(contents(configured(at)))]);
+  const passed = kept && recall<{ read: [string, string][] }>(memory, kept);
   if (passed && JSON.stringify(contents(passed.read.map(([file]) => path.join(root, file)))) === JSON.stringify(passed.read)) return { ok: true, out: "" };
   const r = await run("vibelang", ["--noEmit", "--listFiles", "-p", "."], at);
   const lines = r.out.split("\n");
   const local = (line: string) => path.isAbsolute(line) && fs.existsSync(line);
-  if (r.ok) store(memory, kept, { read: contents(lines.filter((line) => local(line) && !line.split(/[\\/]/).includes("node_modules"))) });
+  if (r.ok && kept) store(memory, kept, { read: contents(lines.filter((line) => local(line) && !line.split(/[\\/]/).includes("node_modules"))) });
   return { ok: r.ok, out: lines.filter((line) => !line.startsWith("bundled:///") && !local(line)).join("\n") };
 }
 
