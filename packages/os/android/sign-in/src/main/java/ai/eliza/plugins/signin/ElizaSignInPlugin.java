@@ -265,7 +265,14 @@ public class ElizaSignInPlugin extends Plugin {
     synchronized (lock) { current = state.attempt(); }
     if (current > 0) dispatch(new Event.Cancel(current));
     try {
-      worker.execute(() -> { custody.signOut(environment); call.resolve(new JSObject().put("account", account(environment))); });
+      worker.execute(() -> {
+        try {
+          custody.signOut(environment);
+          call.resolve(new JSObject().put("account", account(environment)));
+        } catch (RuntimeException notSettled) {
+          reject(call, Failure.UNAVAILABLE);
+        }
+      });
     } catch (RejectedExecutionException closed) {
       reject(call, Failure.UNAVAILABLE);
     }
