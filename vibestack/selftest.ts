@@ -30,7 +30,7 @@ import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, dangl
 
 const project = path.join(import.meta.dirname, "..");
 for (const name of Object.keys(process.env)) if (name.toLowerCase().replaceAll("-", "_") === "npm_config_package_import_method") delete process.env[name];
-process.env.npm_config_package_import_method = "copy";
+process.env.npm_config_package_import_method = "clone-or-copy";
 const harnessSkillPaths = [".claude/skills", ".codex/skills", ".cursor/skills", ".droid/skills", ".factory/skills", ".gemini/skills", ".grok/skills", ".grokbot/skills", ".muse/skills", ".t3/skills"];
 const scaffoldedIgnores = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/", ".cache/", ".turbo/", "test/__traces__/", "/.claude/", "/CLAUDE.md", ...harnessSkillPaths.filter((alias) => !alias.startsWith(".claude/")).map((alias) => `/${alias}`)];
 const EXAMPLES = "vibestack/examples";
