@@ -49,11 +49,14 @@ import android.graphics.RectF
 import android.graphics.Region
 import android.os.Build
 import android.util.Log
+import android.util.SparseArray
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewStructure
 import android.view.ViewTreeObserver
 import android.view.autofill.AutofillManager
+import android.view.autofill.AutofillValue
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
 import android.webkit.JsPromptResult
@@ -429,6 +432,18 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     )
 
     private class ManualSignIn(val fields: BrowserLoginFields, var committedUrl: String? = null)
+
+    private class ManualSignInWebView(context: Context) : WebView(context) {
+        override fun onProvideAutofillStructure(structure: ViewStructure, flags: Int) {
+            structure.setChildCount(0)
+        }
+
+        override fun onProvideAutofillVirtualStructure(structure: ViewStructure, flags: Int) {
+            structure.setChildCount(0)
+        }
+
+        override fun autofill(values: SparseArray<AutofillValue>) = Unit
+    }
 
     private data class Surface(
         val container: OccludingSurfaceLayout,
@@ -1162,7 +1177,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 return@runOnUiThread
             }
             val container = OccludingSurfaceLayout(activity, layer)
-            val webView = WebView(activity)
+            val webView = if (manualSignIn) ManualSignInWebView(activity) else WebView(activity)
             val gate = BrowserMainFrameGate()
             // The latest main-frame address requested (any thread), which tells a page's own
             // certificate error from a subresource's.
