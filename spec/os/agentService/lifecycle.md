@@ -376,6 +376,12 @@ consumes the review and keeps the failure so the owner can review and try
 again. Selecting another account or signing in after a withdrawal drops
 the old review.
 
+If the rename succeeds, the shell keeps the exact moved directory for this
+account until both parent directories sync. A new review reports the
+records in that move. Its retry syncs those directories and skips the
+rename. The shell refuses to open the account's state for a launch until
+that receipt settles.
+
 ```quint
 pure def isArchiving(r: Review): bool = match r { | Archiving(_) => true | _ => false }
 pure def canReviewRecovery(s: AgentService, focused: bool): bool =
