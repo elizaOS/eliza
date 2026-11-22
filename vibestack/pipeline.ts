@@ -709,7 +709,7 @@ export async function main() {
     if (command === "--help" && takes([])) console.log(USAGE);
     else if (command === "tasks") {
       const fingerprint = path.join(root, ".cache", "toolchain.json");
-      const text = JSON.stringify(await toolchainFingerprint()) + "\n";
+      const text = JSON.stringify(await steady(toolchainFingerprint)) + "\n";
       fs.mkdirSync(path.dirname(fingerprint), { recursive: true });
       if (!fs.existsSync(fingerprint) || fs.readFileSync(fingerprint, "utf8") !== text) fs.writeFileSync(fingerprint, text);
       let env: NodeJS.ProcessEnv = { ...process.env, TURBO_TELEMETRY_DISABLED: "1" };
