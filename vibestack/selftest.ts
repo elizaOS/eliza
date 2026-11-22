@@ -3362,9 +3362,11 @@ describe("the documents name what exists", () => {
     assert.deepEqual(exampleChanges, [["order"], ["order"], exampleNames]);
     assert.deepEqual({
       notWaiting: real.filter((id) => !reach(id).has("//#gen")).sort(),
+      analyzeWaitsFor: tasks.get("//#analyze")!.dependencies.toSorted(),
       lintWaitsFor: vibeDeclared.filter((id) => tasks.get("//#lint:js")!.dependencies.includes(id)),
       devWaitsFor: tasks.get("vibestack-studio#dev")!.dependencies.toSorted(),
-      prose: [studio(prose), prose.includes("@repo/app#test")],
+      prose: [studio(prose), prose.includes("@repo/app#test"), prose.includes("//#analyze")],
+      docs: (await changedBy(append("README.md"))).includes("//#analyze"),
       selftest: [studio(selftest), selftest.includes("//#build"), ["a", "b", "rest"].every((shard) => selftest.includes(`//#selftest:tools:${shard}`))],
       fixture: { studio: studio(fixture), build: fixture.includes("//#build"), selftest: fixture.includes("//#selftest:tools:a") },
       frameworkTest: { build: frameworkTest.includes("//#build"), test: frameworkTest.includes("//#test") },
@@ -3379,8 +3381,9 @@ describe("the documents name what exists", () => {
         assert.equal((await exec("git", ["add", "-A"], root)).status, 0);
       }),
     }, {
-      notWaiting: ["//#analyze", "//#build", "//#lint:css", "//#selftest:docs", "//#selftest:examples", "@repo/design-system#build", "@repo/ui#typecheck", "vibestack-studio#build", "vibestack-studio#dev", "vibestack-studio#test", "vibestack-studio#typecheck"],
-      lintWaitsFor: vibeDeclared, devWaitsFor: tasks.get("vibestack-studio#build")!.dependencies.toSorted(), prose: [[], true], selftest: [[], false, true],
+      notWaiting: ["//#build", "//#lint:css", "//#selftest:docs", "//#selftest:examples", "@repo/design-system#build", "@repo/ui#typecheck", "vibestack-studio#build", "vibestack-studio#dev", "vibestack-studio#test", "vibestack-studio#typecheck"],
+      analyzeWaitsFor: ["//#gen", "@repo/design-system#build", "@repo/ui#gen", "vibestack-studio#gen"],
+      lintWaitsFor: vibeDeclared, devWaitsFor: tasks.get("vibestack-studio#build")!.dependencies.toSorted(), prose: [[], true, true], docs: false, selftest: [[], false, true],
       fixture: { studio: ["vibestack-studio#test"], build: false, selftest: true },
       frameworkTest: { build: false, test: true },
       independentOwner: true, leftovers: [],
