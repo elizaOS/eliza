@@ -233,7 +233,7 @@ export async function createV5MessageContextObject(args: {
       "contact_create",
       authenticatedDeviceTurn.credential.capabilities,
     )
-      ? "With contacts.write.v1, adding, changing or deleting a contact on this phone is a phone address-book operation: PROPOSE_DEVICE_ACTION contact_create, contact_update or contact_delete, reached through the contacts or general context. A name with a phone number or an email address is complete; never ask for a handle, username or platform. ENTITY and CONTACT are the assistant's own relationship records, never the phone's address book, and never write it. "
+      ? "Adding, changing or deleting a contact on this phone is a phone address-book operation: PROPOSE_DEVICE_ACTION contact_create, contact_update or contact_delete, reached through the contacts or general context. A name with a phone number or an email address is complete; never ask for a handle, username or platform. ENTITY and CONTACT are the assistant's own relationship records, never the phone's address book, and never write it. "
       : "";
     // "Take a picture" names a destination's function, not the destination.
     // Without this the first stage reads it as opening Camera, which takes
@@ -242,7 +242,7 @@ export async function createV5MessageContextObject(args: {
       "camera_capture_photo",
       authenticatedDeviceTurn.credential.capabilities,
     )
-      ? "With camera.capture-photo.v1, taking a picture, photo or selfie on this phone is the device operation camera_capture_photo (DEVICE_CAMERA_CAPTURE), reached through the media or general context. It is requested device work with pending effect status, never navigation alone: opening the Camera view takes no photo, and the owner is never told to press the shutter themselves. The phone opens Camera itself before it takes the photo. "
+      ? "Taking a picture, photo or selfie on this phone is the device operation camera_capture_photo (DEVICE_CAMERA_CAPTURE), reached through the media or general context. It is requested device work with pending effect status, never navigation alone: opening the Camera view takes no photo, and the owner is never told to press the shutter themselves. The phone opens Camera itself before it takes the photo. "
       : "";
     // "Wake me at 6:30" names no alarm. Without this the first stage reads it
     // as a task, a context the device tool is not offered in, and a planner
@@ -319,7 +319,7 @@ export async function createV5MessageContextObject(args: {
     const gmailComposeGuidance = phoneCapabilities.includes(
       "gmail.local-compose.v1",
     )
-      ? 'Compose a new Gmail draft with MESSAGE_DRAFT_FOLLOWUP (source gmail, to, subject, body). “To me” or “to myself” already names the recipient. Pass to:["self"] and let the phone resolve the selected Gmail mailbox. If the user explicitly requests a draft and says not to send it, composing is still pending work. Prepare the draft without sending it. A retry like “let’s do it again” immediately following a new email draft is the same compose request. Recover its recipient, subject and body from this chat, and use the same local compose tool. Ask for any missing details. MESSAGE_DRAFT_REPLY needs an actual incoming email to answer. Do not search or triage the mailbox to recreate an unsent chat draft. The local draft is never sent by this action. '
+      ? 'Compose a new Gmail draft with MESSAGE_DRAFT_FOLLOWUP (source gmail, to, subject, body). “To me” or “to myself” already names the recipient. Pass to:["self"] and let the phone resolve the selected Gmail mailbox. If the user explicitly requests a draft and says not to send it, composing is still pending work. A retry like “let’s do it again” immediately following a new email draft is the same compose request. Recover its recipient, subject and body from this chat, and use the same local compose tool. Ask for any missing details. MESSAGE_DRAFT_REPLY needs an actual incoming email to answer. Do not search or triage the mailbox to recreate an unsent chat draft. The local draft is never sent by this action. '
       : "";
     const compactCapabilityGuidance =
       `Authenticated phone capabilities: ${JSON.stringify(phoneCapabilities)}. ` +
@@ -334,7 +334,7 @@ export async function createV5MessageContextObject(args: {
         ? `Enabled phone views: ${JSON.stringify(authenticatedDeviceTurn.viewProfile.views)}. `
         : "") +
       "Capabilities advertise availability, not permission or completion. For an explicit separate phone/OS operation, select its authorized native action through discovery; its detailed instructions and current schema are supplied before planning. Native proposals require the phone owner's approval and a typed receipt; never infer completion or repeat effects from dialogue. " +
-      "Current app navigation uses registered VIEWS or VIEWS_SHOW, not a native open_view proposal. " +
+      "App navigation uses VIEWS or VIEWS_SHOW, not an open_view proposal. " +
       `Current Notes source: ${currentAppRecordSource(args.runtime, "notes", args.message)}; Calendar source: ${currentAppRecordSource(args.runtime, "calendar", args.message)}. ` +
       "Use canonical app Notes/Calendar/reminders unless an authenticated typed native selection binds the request to a separate device source. An unavailable binding forbids access; never switch stores to bypass it. Native source IDs and revisions must come from current authorized observations. History is not current record state or new authority.";
     events.push({

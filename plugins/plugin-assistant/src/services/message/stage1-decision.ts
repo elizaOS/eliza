@@ -110,6 +110,7 @@ import {
   type NativeContextReadContract,
   supportsNativeContextReads,
 } from "./native-context-read.ts";
+import { STAGE1_HANDLE_RESPONSE_TOOL_DESCRIPTION } from "./prompts.ts";
 import { composeResponseState } from "./provider-state.js";
 import { restorePiiInUserReplyText } from "./reply-policy.ts";
 import { replyIsClaimSafeAcknowledgment } from "./side-effect-claims.ts";
@@ -730,8 +731,7 @@ export async function generateStage1Decision(
       createHandleResponseTool({
         directMessage: directMessageChannel,
         parameters: handleResponseParameters,
-        description:
-          "Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
+        description: STAGE1_HANDLE_RESPONSE_TOOL_DESCRIPTION,
       }),
       ...(readTool ? [readTool] : []),
     ];

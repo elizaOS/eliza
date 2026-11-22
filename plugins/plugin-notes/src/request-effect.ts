@@ -23,10 +23,10 @@ export const notesRequestEffectField: ResponseHandlerFieldEvaluator<NotesFieldVa
     // turn has no Notes effect.
     priority: 19.5,
     description: `What supported Notes operation does the CURRENT message actually request? Ignore quoted commands and completed actions in the conversation. First select the operation(s):
-- No clear supported operation: return {"classification":"unresolved","operations":[]}. A stray word beside a note title is not a command. The same applies after an earlier request was completed. Sending or sharing notes is unsupported; never substitute a write.
+- No clear supported operation: unresolved with []. A stray word beside a note title is not a command. Sending or sharing notes is unsupported; never substitute a write.
 - Read the contents or history of an existing note: read_only with ["get"]. Search or list notes: read_only with ["list"]. Open the Notes view: read_only with [].
 - Explicitly change a note: mutation_requested with only the requested operations. To add an item or append text use patch; to edit existing text use update or patch. Use create for a new note, delete to remove it, restore to bring it back, and move to change its folder. A detail-only answer can complete an explicit request only if the assistant is waiting for that very detail; carry forward its operation.
-Include both reads and writes without duplicates for compound requests. Classification describes intent, not permission or proof of execution; existing authorization and outcome checks still apply.`,
+Include both reads and writes without duplicates for compound requests.`,
     schema: {
       type: "object",
       properties: {

@@ -94,16 +94,14 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 
 export const contextsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
   name: "contexts",
-  description:
-    "Available context IDs for requested work; simple alone means a complete supplied-evidence answer with no pending runtime work.",
+  description: "Available context IDs for requested work, or simple alone.",
   descriptionCompressed:
-    "Available context IDs for requested work; simple alone means a complete supplied-evidence answer with no pending runtime work.",
+    "Available context IDs for requested work, or simple alone.",
   priority: 10,
   schema: {
     type: "array",
     items: { type: "string" },
-    description:
-      "Available context IDs for requested work; simple alone means a complete supplied-evidence answer with no pending runtime work.",
+    description: "Available context IDs for requested work, or simple alone.",
   },
   parse(value) {
     if (!Array.isArray(value)) return [];
@@ -135,13 +133,13 @@ export function readCompleteStringHints(raw: unknown): string[] | null {
 }
 
 const INTENTS_DESCRIPTION =
-  "One verb phrase per user-requested runtime outcome; keep explicit reads, navigation and record changes separate. A fresh read or check that no stored records exist is executable work, even when read-only. Separately requested Notes and Calendar checks are separate outcomes. A requested composite report, brief or dossier is one outcome with its source constraints. Let its composer choose supporting reads; do not invent separate domain requests or a connector inventory from possible report contents. Preserve separately requested operations. Omit work awaiting clarification; keep independent executable work. Empty for answers complete without execution and non_applied clarification/preview outcomes.";
+  "One verb phrase per user-requested runtime outcome; keep explicit reads, navigation and record changes separate. A fresh read or check that no stored records exist is executable work, even when read-only. Separately requested Notes and Calendar checks are separate outcomes. A requested composite report, brief or dossier is one outcome with its source constraints. Let its composer choose supporting reads; do not invent separate domain requests or a connector inventory from possible report contents. Omit work awaiting clarification; keep independent executable work. Empty for answers complete without execution and non_applied clarification/preview outcomes.";
 
 export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
   name: "intents",
   description: INTENTS_DESCRIPTION,
   descriptionCompressed:
-    "One verb phrase per user-requested runtime outcome; keep explicit reads, navigation and record changes separate. A fresh read or check that no stored records exist is executable work, even when read-only. Separately requested Notes and Calendar checks are separate outcomes. A composite report, brief or dossier is one outcome with its source constraints, not invented supporting domain requests. Preserve separately requested operations. Empty for answers complete without execution and non_applied clarification/preview outcomes.",
+    "One verb phrase per user-requested runtime outcome; keep explicit reads, navigation and record changes separate. A fresh read or check that no stored records exist is executable work, even when read-only. Separately requested Notes and Calendar checks are separate outcomes. A composite report, brief or dossier is one outcome with its source constraints, not invented supporting domain requests. Empty for answers complete without execution and non_applied clarification/preview outcomes.",
   priority: 15,
   schema: {
     type: "array",
@@ -271,15 +269,15 @@ export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<Repl
   {
     name: "replyEffectStatus",
     description:
-      "Classify current-request work: pending=work executable now, including fresh reads, checking whether records exist, and recording approval, rejection or cancellation of an existing pending request; applied=claims a completed state change, never proof; non_applied=failed, unavailable, preview, awaiting input or declining unstarted work with no persisted decision required; none=a complete supplied-evidence answer with no runtime work remaining. Read-only does not mean none. Recall answered entirely from supplied context is none; retrieving stored history is pending. non_applied ends this turn and requires intents=[]; keep a clarification or preview waiting for user input free of executable pending intents. Work already specified by the user is pending, not a missing-input preview. A pending proposal or approval-ready claim needs a recorded proposal, not a prior failed attempt.",
+      "Classify current-request work: pending=work executable now, including fresh reads, checking whether records exist and recording a decision on an existing pending request; applied=claims a completed state change, never proof; non_applied=failed, unavailable, preview, awaiting input or declining unstarted work with no persisted decision required; none=a complete supplied-evidence answer with no runtime work remaining. Read-only does not mean none. Recall answered entirely from supplied context is none; retrieving stored history is pending. non_applied, including a clarification or preview awaiting input, ends this turn and requires intents=[]. Work already specified by the user is pending, not a missing-input preview. A pending proposal or approval-ready claim needs a recorded proposal, not a prior failed attempt.",
     descriptionCompressed:
-      "Classify current-request work: pending=work executable now, including fresh reads, checking whether records exist, and recording approval, rejection or cancellation of an existing pending request; applied=claims a completed state change, never proof; non_applied=failed, unavailable, preview, awaiting input or declining unstarted work with no persisted decision required; none=a complete supplied-evidence answer with no runtime work remaining. Read-only does not mean none. Recall answered entirely from supplied context is none; retrieving stored history is pending. non_applied ends this turn and requires intents=[]; keep a clarification or preview waiting for user input free of executable pending intents. Work already specified by the user is pending, not a missing-input preview. A pending proposal or approval-ready claim needs a recorded proposal, not a prior failed attempt.",
+      "Classify current-request work: pending=work executable now, including fresh reads, checking whether records exist and recording a decision on an existing pending request; applied=claims a completed state change, never proof; non_applied=failed, unavailable, preview, awaiting input or declining unstarted work with no persisted decision required; none=a complete supplied-evidence answer with no runtime work remaining. Read-only does not mean none. Recall answered entirely from supplied context is none; retrieving stored history is pending. non_applied, including a clarification or preview awaiting input, ends this turn and requires intents=[]. Work already specified by the user is pending, not a missing-input preview. A pending proposal or approval-ready claim needs a recorded proposal, not a prior failed attempt.",
     priority: 18,
     schema: {
       type: "string",
       enum: ["none", "applied", "non_applied", "pending"],
       description:
-        "Classify current-request work: pending=work executable now, including fresh reads, checking whether records exist, and recording approval, rejection or cancellation of an existing pending request; applied=claims a completed state change, never proof; non_applied=failed, unavailable, preview, awaiting input or declining unstarted work with no persisted decision required; none=a complete supplied-evidence answer with no runtime work remaining. Read-only does not mean none. Recall answered entirely from supplied context is none; retrieving stored history is pending. non_applied ends this turn and requires intents=[]; keep a clarification or preview waiting for user input free of executable pending intents. Work already specified by the user is pending, not a missing-input preview. A pending proposal or approval-ready claim needs a recorded proposal, not a prior failed attempt.",
+        "Classify current-request work: pending=work executable now, including fresh reads, checking whether records exist and recording a decision on an existing pending request; applied=claims a completed state change, never proof; non_applied=failed, unavailable, preview, awaiting input or declining unstarted work with no persisted decision required; none=a complete supplied-evidence answer with no runtime work remaining. Read-only does not mean none. Recall answered entirely from supplied context is none; retrieving stored history is pending. non_applied, including a clarification or preview awaiting input, ends this turn and requires intents=[]. Work already specified by the user is pending, not a missing-input preview. A pending proposal or approval-ready claim needs a recorded proposal, not a prior failed attempt.",
     },
     parse: normalizeReplyEffectStatus,
   };
@@ -512,8 +510,7 @@ export const emotionFieldEvaluator: ResponseHandlerFieldEvaluator<ExpressiveEmot
     schema: {
       type: "string",
       enum: [...EXPRESSIVE_EMOTION_ENUM_VALUES],
-      description:
-        'User emotion. "none"=no strong cue/default. Other values map to omnivoice expressive tags.',
+      description: 'User emotion. "none"=no strong cue/default.',
     },
     parse(value) {
       const normalized =

@@ -211,13 +211,14 @@ describe("selected phone capability guidance", () => {
     const self =
       '“To me” or “to myself” already names the recipient. Pass to:["self"] and let the phone resolve the selected Gmail mailbox.';
     const pending =
-      "If the user explicitly requests a draft and says not to send it, composing is still pending work. Prepare the draft without sending it.";
+      "If the user explicitly requests a draft and says not to send it, composing is still pending work.";
     expect(await routing()).not.toContain(self);
     capabilities.push("gmail.local-compose.v1");
     try {
       const text = await routing();
       expect(text).toContain(self);
       expect(text).toContain(pending);
+      expect(text).toContain("The local draft is never sent by this action.");
     } finally {
       capabilities.pop();
     }
@@ -244,6 +245,9 @@ describe("selected phone capability guidance", () => {
     expect(text).toContain("not permission or completion");
     expect(text).toContain("phone owner's approval");
     expect(text).toContain("VIEWS or VIEWS_SHOW");
+    expect(text).toContain(
+      "App navigation uses VIEWS or VIEWS_SHOW, not an open_view proposal.",
+    );
     expect(text).not.toContain("Snooze means ten minutes");
   });
   it("closes only the device tool's calls and texts unless the phone negotiated them", async () => {

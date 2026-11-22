@@ -3,6 +3,7 @@
  * read as stale context. */
 import type { ContextEvent, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { shouldRespondFieldEvaluator } from "../../runtime/builtin-field-evaluators";
 import {
   appendPriorDialogueEvents,
   currentMessageContentForContext,
@@ -104,7 +105,15 @@ it("keeps closing replies specific to DMs and preserves group routing and explic
   });
   expect(dm).toContain("still gets RESPOND with a short, warm reply");
   expect(dm).toContain("no follow-up question or offer of more help");
-  expect(dm).toContain("Stop only on explicit disengagement");
+  // The shouldRespond field, sent on every Stage 1 call, carries the
+  // engagement rule; the DM Task paragraph does not repeat it.
+  expect(dm).not.toContain("Stop only on explicit disengagement");
+  expect(shouldRespondFieldEvaluator.schema.description).toContain(
+    "Respond to addressed questions, requests, needed corrections, and conversation that needs a reply.",
+  );
+  expect(shouldRespondFieldEvaluator.schema.description).toContain(
+    "stop only on explicit disengagement",
+  );
   expect(dm).not.toContain("Ignore side chatter");
   expect(group).toContain("Follow the room's engagement policy");
   expect(group).toContain("Ignore side chatter and unaddressed bot exchanges");
