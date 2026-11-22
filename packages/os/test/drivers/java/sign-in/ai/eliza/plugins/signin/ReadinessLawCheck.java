@@ -14,7 +14,13 @@ public final class ReadinessLawCheck {
   private static final List<Readiness> READINESS = List.of(Readiness.NOT_MEASURED, Readiness.UNKNOWN,
     Readiness.known(ALL), Readiness.known(NONE), Readiness.known(PART));
   private static final List<DeviceFacts> DEVICES = List.of(
-    new DeviceFacts(GoogleMode.PICKER, false, false), new DeviceFacts(GoogleMode.BROWSER, true, true), new DeviceFacts(GoogleMode.BROWSER, true, false));
+    new DeviceFacts(GoogleMode.PICKER, false, false),
+    new DeviceFacts(GoogleMode.PICKER, true, true),
+    new DeviceFacts(GoogleMode.PICKER, true, true, true),
+    new DeviceFacts(GoogleMode.PICKER, false, true, true),
+    new DeviceFacts(GoogleMode.PICKER, true, false, true),
+    new DeviceFacts(GoogleMode.BROWSER, true, true),
+    new DeviceFacts(GoogleMode.BROWSER, true, false));
   private static final List<Long> NOWS = List.of(0L, 29_999L, 30_000L, 600_000L, 21_600_000L);
   private static final List<Answer> CACHED = List.of(ReadinessPolicy.NO_ANSWER,
     new Answer(Readiness.known(PART), 21_600_000L, 30_000L, 120_000L, 1),
@@ -49,7 +55,7 @@ public final class ReadinessLawCheck {
   }
 
   private static String device(DeviceFacts d) {
-    return "{\"googleMode\":" + mode(d.googleMode) + ",\"appLinkVerified\":" + d.appLinkVerified + ",\"externalBrowser\":" + d.externalBrowser + "}";
+    return "{\"googleMode\":" + mode(d.googleMode) + ",\"appLinkVerified\":" + d.appLinkVerified + ",\"externalBrowser\":" + d.externalBrowser + ",\"browserFallback\":" + d.browserFallback + "}";
   }
 
   private static String method(SignInMethod m) {
@@ -80,7 +86,16 @@ public final class ReadinessLawCheck {
       for (GoogleMode m : MODES) emit("readinessComplete", ReadinessPolicy.readinessComplete(r, m), readiness(r), mode(m));
       emit("anyReady", ReadinessPolicy.anyReady(r), readiness(r));
       for (DeviceFacts d : DEVICES) {
-        for (SignInMethod m : METHODS) emit("offered", ReadinessPolicy.offered(r, d, m), readiness(r), device(d), method(m));
+        for (SignInMethod m : METHODS) {
+          boolean offered = ReadinessPolicy.offered(r, d, m);
+          boolean admitted = ReadinessPolicy.canStartMethod(r, d, m);
+          emit("offered", offered, readiness(r), device(d), method(m));
+          emit("canStartMethod", admitted, readiness(r), device(d), method(m));
+          emit("lawExtraGoogleStartNeedsBrowserFallback", implies(admitted && !offered,
+            d.browserFallback && d.googleMode == GoogleMode.PICKER && m.tag == MethodTag.GOOGLE
+              && m.mode == GoogleMode.BROWSER && d.appLinkVerified && d.externalBrowser),
+            readiness(r), device(d), method(m));
+        }
         emit("lawOneGoogleButtonAtMost", !(ReadinessPolicy.offered(r, d, SignInMethod.google(GoogleMode.PICKER))
           && ReadinessPolicy.offered(r, d, SignInMethod.google(GoogleMode.BROWSER))), readiness(r), device(d));
       }

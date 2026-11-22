@@ -180,6 +180,10 @@ public class ElizaSignInPlugin extends Plugin {
     startGoogle(call, Method.google(registration.googleMode), false);
   }
 
+  protected final void startGoogleInBrowser(PluginCall call) {
+    startGoogle(call, Method.GOOGLE_BROWSER, false);
+  }
+
   @PluginMethod public void reauthenticate(PluginCall call) {
     switch (call.getString("method", "")) {
       case "email" -> startCode(call, Method.EMAIL_CODE, true);
@@ -312,12 +316,20 @@ public class ElizaSignInPlugin extends Plugin {
 
   private Event startEvent(PluginCall call, SignInRegistration.Environment environment, Method method, boolean reauthenticating) {
     SignInPolicy.Environment named = environment.name.equals(SignInRegistration.PRODUCTION) ? SignInPolicy.Environment.PRODUCTION : SignInPolicy.Environment.STAGING;
-    DeviceFacts device = deviceFacts();
+    DeviceFacts device = startDeviceFacts(environment, method);
     ReadinessPolicy.Readiness ready = readiness.admitting(environment.name);
     if (!reauthenticating) return new Event.Start(named, method, ready, device);
     Held held = custody.held(environment);
     if (held == null) { reject(call, Failure.REJECTED); return null; }
     return new Event.Reauthenticate(named, method, ready, device, held.account());
+  }
+
+  private DeviceFacts startDeviceFacts(SignInRegistration.Environment environment, Method method) {
+    if (method != Method.GOOGLE_BROWSER || !registration.googleBrowserFallback) return deviceFacts();
+    Context context = getContext();
+    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(environment.apiOrigin)).addCategory(Intent.CATEGORY_BROWSABLE);
+    return new DeviceFacts(registration.googleMode, BrowserSignIn.appLinkVerified(context, environment),
+      context.getPackageManager().resolveActivity(view, PackageManager.MATCH_DEFAULT_ONLY) != null, true);
   }
 
   private void picked(Attempt attempt, Picked picked) {

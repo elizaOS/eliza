@@ -35,15 +35,17 @@ when the cloud's answer offers them. Google uses the account picker unless
 the host selects the browser, and is offered only in that mode: the picker
 needs the cloud's Google, its native sign-in and a configured server client
 id; the browser needs the cloud's Google, Android's verified App Link and an
-external browser. A probe that has not answered, or an unknown answer,
-offers nothing.
+external browser. A host that uses the picker may allow an explicitly
+requested browser fallback. The fallback is never a second default Google
+button and must satisfy the browser's own prerequisites. A probe that has
+not answered, or an unknown answer, offers nothing.
 
 ```quint
 type GoogleMode = Picker | Browser
 type SignInMethod = EmailCode | SmsCode | Google({ mode: GoogleMode })
 type CloudMethods = { email: bool, sms: bool, google: bool, nativeSignIn: bool, serverClientId: bool }
 type Readiness = NotMeasured | ReadinessUnknown | Known(CloudMethods)
-type DeviceFacts = { googleMode: GoogleMode, appLinkVerified: bool, externalBrowser: bool }
+type DeviceFacts = { googleMode: GoogleMode, appLinkVerified: bool, externalBrowser: bool, browserFallback: bool }
 pure def offered(readiness: Readiness, device: DeviceFacts, method: SignInMethod): bool = match readiness {
   | Known(m) => match method {
     | EmailCode => m.email
@@ -53,17 +55,28 @@ pure def offered(readiness: Readiness, device: DeviceFacts, method: SignInMethod
   }
   | _ => false
 }
+pure def canStartMethod(readiness: Readiness, device: DeviceFacts, method: SignInMethod): bool =
+  offered(readiness, device, method) or (device.browserFallback and device.googleMode == Picker
+    and method == Google({ mode: Browser }) and offered(readiness, { ...device, googleMode: Browser }, method))
 pure val readinessValues = Set(NotMeasured, ReadinessUnknown,
   Known({ email: true, sms: true, google: true, nativeSignIn: true, serverClientId: true }),
   Known({ email: false, sms: false, google: false, nativeSignIn: false, serverClientId: false }),
   Known({ email: true, sms: false, google: true, nativeSignIn: true, serverClientId: false }))
 pure val deviceValues = Set(
-  { googleMode: Picker, appLinkVerified: false, externalBrowser: false },
-  { googleMode: Browser, appLinkVerified: true, externalBrowser: true },
-  { googleMode: Browser, appLinkVerified: true, externalBrowser: false }
+  { googleMode: Picker, appLinkVerified: false, externalBrowser: false, browserFallback: false },
+  { googleMode: Picker, appLinkVerified: true, externalBrowser: true, browserFallback: false },
+  { googleMode: Picker, appLinkVerified: true, externalBrowser: true, browserFallback: true },
+  { googleMode: Picker, appLinkVerified: false, externalBrowser: true, browserFallback: true },
+  { googleMode: Picker, appLinkVerified: true, externalBrowser: false, browserFallback: true },
+  { googleMode: Browser, appLinkVerified: true, externalBrowser: true, browserFallback: false },
+  { googleMode: Browser, appLinkVerified: true, externalBrowser: false, browserFallback: false }
 )
 pure def lawOneGoogleButtonAtMost(readiness: Readiness, device: DeviceFacts): bool =
   not(offered(readiness, device, Google({ mode: Picker })) and offered(readiness, device, Google({ mode: Browser })))
+pure def lawExtraGoogleStartNeedsBrowserFallback(readiness: Readiness, device: DeviceFacts, method: SignInMethod): bool =
+  (canStartMethod(readiness, device, method) and not(offered(readiness, device, method))) implies
+    (device.browserFallback and device.googleMode == Picker and method == Google({ mode: Browser })
+      and device.appLinkVerified and device.externalBrowser)
 ```
 
 ### A fresh cached answer is served at once
