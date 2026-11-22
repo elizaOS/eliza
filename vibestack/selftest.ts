@@ -3707,6 +3707,54 @@ describe("the tools", { concurrency: true }, () => {
   describe("each check catches its own kind of mistake", { concurrency: LANES }, eachCheck);
 });
 
+test("check phase timings end a simulation before later definitions finish generating", { skip: process.platform === "win32" }, async () => {
+  const root = toolchain(scratch({
+    "spec/counter.md": ruleSpec("pure val initial: int = 0\npure def bump(n: int): int = n + 1\npure def alwaysPositive(n: int): bool = n > 0"),
+    "spec/definitions.md": ruleSpec("pure val answer: int = 42"),
+  }), "quint");
+  const shim = path.join(root, "node_modules/.bin/quint");
+  fs.renameSync(shim, `${shim}-real`);
+  fs.writeFileSync(shim, `#!/bin/sh
+basedir="$(dirname "$0")"
+if [ "$1:$4" = typecheck:definitions.qnt ]; then node "$basedir/../../wait-for-simulation.mjs" || exit $?; fi
+exec "$basedir/quint-real" "$@"
+`, { mode: 0o755 });
+  fs.writeFileSync(path.join(root, "wait-for-simulation.mjs"), `
+    import fs from "node:fs";
+    import { setTimeout } from "node:timers/promises";
+    const marker = new URL("./simulation-finished", import.meta.url);
+    const deadline = performance.now() + 60_000;
+    while (!fs.existsSync(marker) && performance.now() < deadline) await setTimeout(20);
+    if (!fs.existsSync(marker)) throw new Error("no simulation result was saved");
+    await setTimeout(300);
+  `);
+  const child = await exec(process.execPath, ["--input-type=module", "--eval", `
+    import assert from "node:assert/strict";
+    import { channel } from "node:diagnostics_channel";
+    import fs from "node:fs";
+    import path from "node:path";
+    import { check } from "./vibestack/pipeline.ts";
+    const rename = fs.renameSync;
+    fs.renameSync = (from, to) => {
+      rename(from, to);
+      if (/^simulate-.*\\.json\\./.test(path.basename(to))) fs.writeFileSync("simulation-finished", "");
+    };
+    const events = [];
+    channel("vibestack:check:phase").subscribe(event => events.push(event));
+    const result = await check(process.cwd());
+    assert.ok(result.results.some(r => r.ok && r.stage === "model" && r.where === "spec/definitions.md" && r.summary.includes("definitions only")));
+    assert.ok(result.results.some(r => !r.ok && r.stage === "always" && r.where === "spec/counter.md" && r.summary.includes("fix the model")), JSON.stringify(result.results));
+    const time = (phase, event) => events.find(e => e.phase === phase && e.event === event).elapsedMs;
+    assert.ok(time("simulation", "start") <= time("simulation", "end"));
+    assert.ok(time("generation", "end") - time("simulation", "end") >= 200, JSON.stringify(events));
+    events.length = 0;
+    const interrupted = new Error("ordinary generation failure");
+    await assert.rejects(check(process.cwd(), false, () => { throw interrupted; }), error => error === interrupted);
+    assert.deepEqual(events.map(({ phase, event }) => [phase, event]), [["generation", "start"], ["generation", "end"]]);
+  `], root);
+  assert.equal(child.status, 0, child.stdout + child.stderr);
+});
+
 test("a trace integer of 16 or more digits that Quint wrote as a BigNumber decodes to the same integer", () => {
   const n = (x: number | string) => ({ "#bigint": String(x) });
   // What quint 0.33.1 writes for the integer 10^15.

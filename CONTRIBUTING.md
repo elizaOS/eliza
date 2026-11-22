@@ -104,10 +104,12 @@ tools owes it, and the sync skill, is in [AGENTS.md, "Definition of done"](AGENT
 
 For phase timings, subscribe to the Node diagnostics channel `vibestack:check:phase` before running `spec check`.
 Each message has `root`, `checkStartedAt` (Unix milliseconds), `phase`, `event` (`start` or `end`) and
-`elapsedMs` (monotonic milliseconds since the check began). Phases can overlap. The check's results and exit
-code still come from its normal output. A subscriber can save each message as it arrives, so a stopped
-check leaves the completed phases and the starts of those still open. Keep its output outside the project
-and handle write errors in the subscriber.
+`elapsedMs` (milliseconds measured by a monotonic clock since the check acquired its project lock). Phases
+can overlap. The simulation end records when the last simulation settled. Its message can arrive later,
+once generation has scheduled every simulation. An ordinary exception closes open phases as the check
+unwinds. If the process is interrupted, only events already delivered are available. The check's results
+and exit code still come from its normal output. Keep subscribers' output outside the project and catch
+errors in subscribers, since Node reports a thrown subscriber error as an uncaught exception.
 
 ## Releasing
 
