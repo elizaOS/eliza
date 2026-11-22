@@ -1,12 +1,14 @@
 /**
  * A rate-limited extractor call waits out the refusal once and re-sends the
- * same request, like Stage 1, the planner and the evaluator. Before this, one
- * 429 on the personal assistant's create-plan call failed the action after the
- * turn's earlier model calls had already been paid for.
+ * same request, like Stage 1, the planner and the evaluator, unless the
+ * provider adapter already re-sent it. Before this, one 429 on the personal
+ * assistant's create-plan call failed the action after the turn's earlier
+ * model calls had already been paid for.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runExtractorPipeline } from "../src/actions/extractor-pipeline";
 import { runWithStreamingContext } from "../src/streaming-context";
+import { MODEL_PROVIDER_RESENDS } from "../src/types/model";
 import type { IAgentRuntime } from "../src/types/runtime";
 
 type Outcome = string | Error;
@@ -28,7 +30,7 @@ function scriptedRuntime(outcomes: Outcome[]) {
 }
 
 /** An AI SDK `APICallError` shaped like a token-bucket 429. */
-const rateLimited = (fields: Record<string, unknown> = {}) =>
+const rateLimited = (fields: Record<PropertyKey, unknown> = {}) =>
 	Object.assign(
 		new Error(
 			"Too Many Requests: Tokens per minute limit exceeded - too many tokens processed.",
@@ -192,6 +194,10 @@ describe("runExtractorPipeline rate-limit re-send", () => {
 			rateLimited({
 				rateLimit: { kind: "rate_limited", retryAfterMs: 10, scope: "period" },
 			}),
+		],
+		[
+			"a refusal the provider adapter already re-sent",
+			rateLimited({ [MODEL_PROVIDER_RESENDS]: 3 }),
 		],
 	])("does not re-send %s", async (_label, refusal) => {
 		const { runtime, calls } = scriptedRuntime([refusal, "ok"]);
