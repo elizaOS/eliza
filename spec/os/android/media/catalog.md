@@ -179,10 +179,10 @@ pure def sometimesPublishedPageOffersAContinuation(s: CatalogPaging): bool = s.r
 pure def sometimesNextPageContinuesAfterTheLastRow(s: CatalogPaging): bool = s.read.phase == ReadPublished and continued(s.read.start)
 pure def sometimesUnexposedCursorKeptAfterLibraryChange(s: CatalogPaging): bool =
   s.read.phase == ReadRefused({ reason: LibraryChanged }) and s.tokens.length() > 0
-pure val weight_requestPage = 4
-pure val weight_beginPage = 4
-pure val weight_finishPage = 4
-pure val weight_publishPage = 4
+pure val weight_requestPage = 24
+pure val weight_beginPage = 24
+pure val weight_finishPage = 24
+pure val weight_publishPage = 24
 ```
 
 ## Story: Stop reads when my photo access changes
