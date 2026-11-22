@@ -154,7 +154,8 @@ export interface ApprovedJoinResult {
     | "declined"
     | "unverified"
     | "notConnected"
-    | "wrongPassword";
+    | "wrongPassword"
+    | "savedNetwork";
 }
 
 /**

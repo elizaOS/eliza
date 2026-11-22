@@ -21,6 +21,7 @@ module android {
     nearby: Readonly<Record<string, Nearby>>
     echoes: readonly (readonly [string, Nearby])[]
     active: string | null
+    saved: ReadonlySet<string>
     acceptsDisconnect: boolean
     connectivityReply: unknown
     panelOpens: number
@@ -40,6 +41,7 @@ module android {
       },
       echoes: [],
       active: null,
+      saved: new Set(),
       acceptsDisconnect: true,
       connectivityReply: undefined,
       panelOpens: 0,
@@ -127,6 +129,7 @@ module android {
         await admit()
         if (phone.sdk < 30) throw rejection("User-approved Wi-Fi join requires Android 11 or later", "UNSUPPORTED")
         phone.joins.push(options)
+        if (phone.saved.has(options.ssid) && phone.active !== options.ssid) return { status: "savedNetwork" }
         return { status: join(options) }
       },
     }
@@ -172,6 +175,9 @@ it.live("Find the networks around me, join one through Android's approval, see w
   phone.connectivityReply = { online: true, ssid: "cafe" }
   const unknownValidation = try refusal(() => wifi.getConnectivity())
 
+  const savedAway = wifiClient(androidWifi(device({ active: "home", saved: new Set(["cafe"]) })))
+  const saved = try promise(() => savedAway.addNetworkWithApproval({ ssid: "cafe", security: "open" }))
+  const afterSaved = try promise(() => savedAway.getConnectivity())
   const older = wifiClient(androidWifi(device({ sdk: 28 })))
   const turnedOff = wifiClient(androidWifi(device({ bridge: false })))
   const absent = wifiClient(wifiPlugin("DeviceWifi"), "DeviceWifi")
@@ -190,11 +196,13 @@ it.live("Find the networks around me, join one through Android's approval, see w
   const onHome = { online: true, validated: true, captivePortal: false, ssid: "home" }
   const offline = { online: false, validated: false, captivePortal: false, ssid: null }
   try Effect.try(() => assert.deepStrictEqual(
-    { capabilities, asked, ungranted, granted, offers, strongestTwo, mistyped, idle, joined, online, radio, connected, panel, afterPanel, held, afterHeld, left, afterLeft, portal, signIn, suggested, flagsWithoutInternet, unknownValidation, refused, panelOpens: phone.panelOpens, joins: phone.joins },
+    { capabilities, asked, ungranted, granted, offers, strongestTwo, mistyped, idle, joined, online, radio, connected, panel, afterPanel, held, afterHeld, left, afterLeft, portal, signIn, suggested, flagsWithoutInternet, unknownValidation, saved, afterSaved, refused, panelOpens: phone.panelOpens, joins: phone.joins },
     {
       capabilities: { sdk: 34, approvedJoin: true, internetPanel: true },
       asked: { location: "prompt" },
       ungranted: "LOCATION_PERMISSION_REQUIRED",
+      saved: { status: "savedNetwork" },
+      afterSaved: onHome,
       granted: { location: "granted" },
       offers: { networks: [lab, { ...home, capabilities: "[WPA2][ESS]" }, cafe] },
       strongestTwo: { networks: [lab, { ...home, capabilities: "[WPA2][ESS]" }] },
