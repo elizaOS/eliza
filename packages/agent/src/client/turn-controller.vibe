@@ -63,7 +63,7 @@ type Posted =
 
 interface Session {
   readonly transport: TurnTransport
-  readonly machine: Machine.Shape
+  readonly machine: Context.Service.Shape<typeof Machine>
   readonly keys: Map<number, ClientMessageId>
   readonly conversationIds: Map<string, number>
   readonly roomIds: Map<string, number>
