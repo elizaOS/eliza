@@ -365,21 +365,13 @@ lemma batchAnswered_ensures(s: CloudSpeech, requestId: int, answer: CloudAnswer)
     var verdict := verdictOf(answer);
     var settlement := BatchSettled(requestId, verdict);
     assert answered.out == keyNotices + [settlement];
-    forall n | n in keyNotices
-      ensures n.ReportRefusedKey? && keyReportVersion(n) == s.credential && settledId(n) == 0
-    {
-    }
+    KeyReportReceiptShape(answer, s.credential);
+    assert forall n :: n in keyNotices ==> settledId(n) == 0;
     assert forall n :: n in answered.out ==> !isReplySettled(n) && failedBefore(n) == -1;
     NoReplyOrSessionEndReceipt(s, "batchAnswered", answered.state, answered.out);
     SettlePendingBatch(s, requestId, verdict, "batchAnswered", keyNotices);
 
     var reportsKey := (n: SpeechNotice) => (keyReportVersion(n) != -1);
-    ProofLib.FilterNil(reportsKey, []);
-    if |keyNotices| > 0 {
-      assert keyNotices == [keyNotices[0]];
-      ProofLib.FilterAppend(reportsKey, [], keyNotices[0]);
-    }
-    assert |ProofLib.Filter(reportsKey, keyNotices)| <= 1;
     ProofLib.FilterAppend(reportsKey, keyNotices, settlement);
   }
 }
@@ -533,9 +525,12 @@ lemma RelayCallbackReceipts(before: CloudSpeech, via: string, actual: SpeechStep
   requires closing(before, actual.state) ==> actual == closeWith(endingOf(actual.state.phase), before, [], cloud__shared__types_WaitTime.NoWait)
   requires !closing(before, actual.state) ==> before.batches == actual.state.batches
   requires !closing(before, actual.state) ==> forall n :: n in actual.out ==> keyReportVersion(n) == -1 && failedBefore(n) == -1 && settledId(n) == 0
-  requires !closing(before, actual.state) ==> (if replyId(before.reply) == replyId(actual.state.reply) then
-    (forall n :: n in actual.out ==> !isReplySettled(n))
-    else replyId(before.reply) != "" && actual.out == [ReplySettled(replyId(before.reply), true)])
+  requires !closing(before, actual.state) && replyId(before.reply) == replyId(actual.state.reply) ==>
+    forall n :: n in actual.out ==> !isReplySettled(n)
+  requires !closing(before, actual.state) && replyId(before.reply) != replyId(actual.state.reply) ==>
+    replyId(before.reply) != "" &&
+    (actual.out == [ReplySettled(replyId(before.reply), true)] ||
+     actual.out == [CancelUtterance(replyId(before.reply)), ReplySettled(replyId(before.reply), false)])
   ensures stepARefusedKeyIsReportedOnceAndEndsItsRequest(before, via, actual.state, actual.out)
   ensures stepAReplySettlesOnce(before, via, actual.state, actual.out)
   ensures stepAnEndReleasesRevokesAndReportsOnce(before, via, actual.state, actual.out)
@@ -550,11 +545,135 @@ lemma RelayCallbackReceipts(before: CloudSpeech, via: string, actual: SpeechStep
     if replyId(before.reply) == replyId(actual.state.reply) {
       ProofLib.FilterNone((n: SpeechNotice) => isReplySettled(n), out);
     } else {
-      var settled := ReplySettled(replyId(before.reply), true);
-      assert [] + [settled] == out;
-      ProofLib.FilterNil((n: SpeechNotice) => isReplySettled(n), []);
-      ProofLib.FilterAppend((n: SpeechNotice) => isReplySettled(n), [], settled);
+      var settledAt := |out| - 1;
+      ProofLib.FilterOne((n: SpeechNotice) => isReplySettled(n), out, settledAt);
     }
     UnchangedBatchSettlements(before, via, actual.state, out);
+  }
+}
+
+lemma cancelReply_ensures(s: CloudSpeech)
+  ensures (inv(s) ==> canCancelReply(s) ==> alwaysConsentIsAskedAtMostTwiceWithinItsDeadline(cancelReply(s).state))
+  ensures (inv(s) ==> canCancelReply(s) ==> alwaysOpenWorkUsesTheCurrentKey(cancelReply(s).state))
+  ensures (inv(s) ==> canCancelReply(s) ==> alwaysOnlyALiveSessionCaptures(cancelReply(s).state))
+  ensures (inv(s) ==> canCancelReply(s) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(cancelReply(s).state))
+  ensures (inv(s) ==> canCancelReply(s) ==> alwaysAnEndingSaysWhetherAudioStarted(cancelReply(s).state))
+  ensures (inv(s) ==> canCancelReply(s) ==> alwaysBatchRequestsAreDistinct(cancelReply(s).state))
+  ensures (inv(s) ==> canCancelReply(s) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "cancelReply", cancelReply(s).state, cancelReply(s).out))
+  ensures (inv(s) ==> canCancelReply(s) ==> stepTheSessionOpensInOrder(s, cancelReply(s).state))
+  ensures (inv(s) ==> canCancelReply(s) ==> stepOnlyTheCaptureATurnBeganInPublishesIt(s, "cancelReply", cancelReply(s).state, cancelReply(s).out))
+  ensures (inv(s) ==> canCancelReply(s) ==> stepAReplySettlesOnce(s, "cancelReply", cancelReply(s).state, cancelReply(s).out))
+  ensures (inv(s) ==> canCancelReply(s) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "cancelReply", cancelReply(s).state, cancelReply(s).out))
+  ensures (inv(s) ==> canCancelReply(s) ==> stepABatchRequestSettlesOnce(s, "cancelReply", cancelReply(s).state, cancelReply(s).out))
+{
+  if inv(s) && canCancelReply(s) {
+    RelayCallbackReceipts(s, "cancelReply", cancelReply(s));
+  }
+}
+
+lemma outputNotice_ensures(s: CloudSpeech, notice: os__voice__speechOutput_OutputNotice)
+  ensures (inv(s) ==> canOutputNotice(s, notice) ==> alwaysConsentIsAskedAtMostTwiceWithinItsDeadline(outputNotice(s, notice).state))
+  ensures (inv(s) ==> canOutputNotice(s, notice) ==> alwaysOpenWorkUsesTheCurrentKey(outputNotice(s, notice).state))
+  ensures (inv(s) ==> canOutputNotice(s, notice) ==> alwaysOnlyALiveSessionCaptures(outputNotice(s, notice).state))
+  ensures (inv(s) ==> canOutputNotice(s, notice) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(outputNotice(s, notice).state))
+  ensures (inv(s) ==> canOutputNotice(s, notice) ==> alwaysAnEndingSaysWhetherAudioStarted(outputNotice(s, notice).state))
+  ensures (inv(s) ==> canOutputNotice(s, notice) ==> alwaysBatchRequestsAreDistinct(outputNotice(s, notice).state))
+  ensures (inv(s) ==> canOutputNotice(s, notice) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "outputNotice", outputNotice(s, notice).state, outputNotice(s, notice).out))
+  ensures (inv(s) ==> canOutputNotice(s, notice) ==> stepTheSessionOpensInOrder(s, outputNotice(s, notice).state))
+  ensures (inv(s) ==> canOutputNotice(s, notice) ==> stepOnlyTheCaptureATurnBeganInPublishesIt(s, "outputNotice", outputNotice(s, notice).state, outputNotice(s, notice).out))
+  ensures (inv(s) ==> canOutputNotice(s, notice) ==> stepAReplySettlesOnce(s, "outputNotice", outputNotice(s, notice).state, outputNotice(s, notice).out))
+  ensures (inv(s) ==> canOutputNotice(s, notice) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "outputNotice", outputNotice(s, notice).state, outputNotice(s, notice).out))
+  ensures (inv(s) ==> canOutputNotice(s, notice) ==> stepABatchRequestSettlesOnce(s, "outputNotice", outputNotice(s, notice).state, outputNotice(s, notice).out))
+{
+  if inv(s) && canOutputNotice(s, notice) {
+    RelayCallbackReceipts(s, "outputNotice", outputNotice(s, notice));
+  }
+}
+
+lemma captureAnswered_ensures(s: CloudSpeech, slot: os__voice__microphone_Refusal)
+  ensures (inv(s) ==> canCaptureAnswered(s) ==> alwaysConsentIsAskedAtMostTwiceWithinItsDeadline(captureAnswered(s, slot).state))
+  ensures (inv(s) ==> canCaptureAnswered(s) ==> alwaysOpenWorkUsesTheCurrentKey(captureAnswered(s, slot).state))
+  ensures (inv(s) ==> canCaptureAnswered(s) ==> alwaysOnlyALiveSessionCaptures(captureAnswered(s, slot).state))
+  ensures (inv(s) ==> canCaptureAnswered(s) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(captureAnswered(s, slot).state))
+  ensures (inv(s) ==> canCaptureAnswered(s) ==> alwaysAnEndingSaysWhetherAudioStarted(captureAnswered(s, slot).state))
+  ensures (inv(s) ==> canCaptureAnswered(s) ==> alwaysBatchRequestsAreDistinct(captureAnswered(s, slot).state))
+  ensures (inv(s) ==> canCaptureAnswered(s) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "captureAnswered", captureAnswered(s, slot).state, captureAnswered(s, slot).out))
+  ensures (inv(s) ==> canCaptureAnswered(s) ==> stepTheSessionOpensInOrder(s, captureAnswered(s, slot).state))
+  ensures (inv(s) ==> canCaptureAnswered(s) ==> stepOnlyTheCaptureATurnBeganInPublishesIt(s, "captureAnswered", captureAnswered(s, slot).state, captureAnswered(s, slot).out))
+  ensures (inv(s) ==> canCaptureAnswered(s) ==> stepAReplySettlesOnce(s, "captureAnswered", captureAnswered(s, slot).state, captureAnswered(s, slot).out))
+  ensures (inv(s) ==> canCaptureAnswered(s) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "captureAnswered", captureAnswered(s, slot).state, captureAnswered(s, slot).out))
+  ensures (inv(s) ==> canCaptureAnswered(s) ==> stepABatchRequestSettlesOnce(s, "captureAnswered", captureAnswered(s, slot).state, captureAnswered(s, slot).out))
+{
+  if inv(s) && canCaptureAnswered(s) {
+    var actual := captureAnswered(s, slot);
+    if slot.NoRefusal? {
+      RelayCallbackReceipts(s, "captureAnswered", actual);
+    } else {
+      var unreserved := s.(capture := Capture.Muted);
+      RelayCallbackReceipts(unreserved, "captureAnswered", actual);
+      assert s.capture.Reserving? && !unreserved.capture.Listening?;
+      assert stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "captureAnswered", actual.state, actual.out);
+      assert stepAReplySettlesOnce(s, "captureAnswered", actual.state, actual.out);
+      assert stepAnEndReleasesRevokesAndReportsOnce(s, "captureAnswered", actual.state, actual.out);
+      assert stepABatchRequestSettlesOnce(s, "captureAnswered", actual.state, actual.out);
+    }
+  }
+}
+
+lemma minted_ensures(s: CloudSpeech, answer: CloudAnswer)
+  ensures (inv(s) ==> canMinted(s) ==> alwaysConsentIsAskedAtMostTwiceWithinItsDeadline(minted(s, answer).state))
+  ensures (inv(s) ==> canMinted(s) ==> alwaysOpenWorkUsesTheCurrentKey(minted(s, answer).state))
+  ensures (inv(s) ==> canMinted(s) ==> alwaysOnlyALiveSessionCaptures(minted(s, answer).state))
+  ensures (inv(s) ==> canMinted(s) ==> alwaysAReplyNeverPlaysAheadOfItsAudio(minted(s, answer).state))
+  ensures (inv(s) ==> canMinted(s) ==> alwaysAnEndingSaysWhetherAudioStarted(minted(s, answer).state))
+  ensures (inv(s) ==> canMinted(s) ==> alwaysBatchRequestsAreDistinct(minted(s, answer).state))
+  ensures (inv(s) ==> canMinted(s) ==> stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "minted", minted(s, answer).state, minted(s, answer).out))
+  ensures (inv(s) ==> canMinted(s) ==> stepTheSessionOpensInOrder(s, minted(s, answer).state))
+  ensures (inv(s) ==> canMinted(s) ==> stepOnlyTheCaptureATurnBeganInPublishesIt(s, "minted", minted(s, answer).state, minted(s, answer).out))
+  ensures (inv(s) ==> canMinted(s) ==> stepAReplySettlesOnce(s, "minted", minted(s, answer).state, minted(s, answer).out))
+  ensures (inv(s) ==> canMinted(s) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "minted", minted(s, answer).state, minted(s, answer).out))
+  ensures (inv(s) ==> canMinted(s) ==> stepABatchRequestSettlesOnce(s, "minted", minted(s, answer).state, minted(s, answer).out))
+{
+  if inv(s) && canMinted(s) {
+    var actual := minted(s, answer);
+    if answer.Answered? {
+      RelayCallbackReceipts(s, "minted", actual);
+    } else {
+      var prefix := keyReport(answer, s.credential);
+      var failure := SessionFailed(failureOf(answer), true, waitOf(answer));
+      var revoked := prefix + [SpeechNotice.RevokeSession];
+      assert s.capture.Muted? && s.reply.NoReply? && !s.audioStarted;
+      assert !failureOf(answer).NoFailure?;
+      assert actual.out == revoked + [failure];
+      KeyReportReceiptShape(answer, s.credential);
+      var reportsKey := (n: SpeechNotice) => (keyReportVersion(n) != -1);
+      ProofLib.FilterAppend(reportsKey, prefix, SpeechNotice.RevokeSession);
+      ProofLib.FilterAppend(reportsKey, revoked, failure);
+      assert stepARefusedKeyIsReportedOnceAndEndsItsRequest(s, "minted", actual.state, actual.out);
+      forall n | n in actual.out
+        ensures !isReplySettled(n) && settledId(n) == 0
+      {
+        assert n in prefix || n == SpeechNotice.RevokeSession || n == failure;
+      }
+      ProofLib.FilterNone((n: SpeechNotice) => isReplySettled(n), actual.out);
+      var failedAt := |actual.out| - 1;
+      assert actual.out[failedAt] == failure;
+      ProofLib.FilterOne((n: SpeechNotice) => (failedBefore(n) != -1), actual.out, failedAt);
+      assert stepAnEndReleasesRevokesAndReportsOnce(s, "minted", actual.state, actual.out);
+      UnchangedBatchSettlements(s, "minted", actual.state, actual.out);
+    }
+  }
+}
+
+lemma KeyReportReceiptShape(answer: CloudAnswer, version: int)
+  ensures forall n :: n in keyReport(answer, version) ==> n.ReportRefusedKey? && keyReportVersion(n) == version
+  ensures |ProofLib.Filter((n: SpeechNotice) => (keyReportVersion(n) != -1), keyReport(answer, version))| <= 1
+{
+  var prefix := keyReport(answer, version);
+  var reportsKey := (n: SpeechNotice) => (keyReportVersion(n) != -1);
+  ProofLib.FilterNil(reportsKey, []);
+  if |prefix| > 0 {
+    assert prefix == [prefix[0]];
+    ProofLib.FilterAppend(reportsKey, [], prefix[0]);
   }
 }
