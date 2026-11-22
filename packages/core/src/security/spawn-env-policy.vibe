@@ -40,6 +40,8 @@ export const BLOCKED_SPAWN_ENV_KEYS: ReadonlySet<string> = new Set([
   "TERMINFO_DIRS",
   "TERMCAP",
   "GIT_SSH_COMMAND",
+  "GIT_PROXY_COMMAND",
+  "GIT_EXEC_PATH",
   "GIT_EXTERNAL_DIFF",
   "GIT_SSH",
   "GIT_ASKPASS",
