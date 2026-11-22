@@ -175,3 +175,67 @@ lemma stopWarmup_ensures(s: SpeechOutput)
     WorkerMapPreservesPhaseRules(s, after);
   }
 }
+
+
+lemma WorkerUpdatePreservesOwnership(s: SpeechOutput, id: int, worker: WarmupWorker)
+  requires inv(s)
+  requires worker.workerId == id && worker.closed == workerOf(id, s).closed
+  ensures alwaysOnlyTheOwnerIsOpen(updateWorker(id, s, worker))
+  ensures alwaysWorkerIdsAreUnique(updateWorker(id, s, worker))
+  ensures forall i :: 0 <= i < |s.workers| ==> s.workers[i].workerId == updateWorker(id, s, worker).workers[i].workerId
+{
+  var after := updateWorker(id, s, worker);
+  forall i | 0 <= i < |s.workers|
+    ensures after.workers[i].workerId == s.workers[i].workerId
+    ensures after.workers[i].closed == s.workers[i].closed
+  {
+    var former := s.workers[i];
+    assert former in s.workers;
+    assert after.workers[i] == (if former.workerId == id then worker else former);
+    if former.workerId == id {
+      WorkerLookupMatchesMember(s, former);
+    }
+  }
+  forall w | w in after.workers && w.workerId != after.owner
+    ensures w.closed
+  {
+    var i :| 0 <= i < |after.workers| && after.workers[i] == w;
+    assert s.workers[i] in s.workers;
+  }
+  WorkerMapPreservesIds(s, after);
+}
+
+lemma releaseWarmup_ensures(s: SpeechOutput, id: int)
+  ensures (inv(s) ==> canReleaseWarmup(s, id) ==> alwaysWarmupOnlyWhileIdle(releaseWarmup(s, id)))
+  ensures (inv(s) ==> canReleaseWarmup(s, id) ==> alwaysOnlyTheOwnerIsOpen(releaseWarmup(s, id)))
+  ensures (inv(s) ==> canReleaseWarmup(s, id) ==> alwaysWorkerIdsAreUnique(releaseWarmup(s, id)))
+  ensures (inv(s) ==> canReleaseWarmup(s, id) ==> alwaysNoSpeechDuringCall(releaseWarmup(s, id)))
+  ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepRetiredWorkerNeverStartsPlaying(s, releaseWarmup(s, id)))
+  ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepNoWriteAfterRetireOrTimeout(s, releaseWarmup(s, id)))
+  ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepOutputReleasedOnce(s, releaseWarmup(s, id)))
+  ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepFirstAudioReportedOnce(s, "releaseWarmup", releaseWarmup(s, id), []))
+  ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepFocusAbandonedWhenSpeechStops(s, "releaseWarmup", releaseWarmup(s, id), []))
+  ensures (inv(s) ==> canReleaseWarmup(s, id) ==> stepStoppedSpeechDropsItsAudio(s, "releaseWarmup", releaseWarmup(s, id), []))
+{
+  if inv(s) && canReleaseWarmup(s, id) {
+    var matches := (x: WarmupWorker) => x.workerId == id;
+    var selected := ProofLib.Filter(matches, s.workers);
+    assert |selected| > 0;
+    ProofLib.FilterMember(matches, s.workers, selected[0]);
+    var worker := workerOf(id, s);
+    assert worker.workerId == id && worker.phase.CleaningUp?;
+    WorkerUpdatePreservesOwnership(s, id, worker.(phase := WorkerPhase.Released));
+    var after := releaseWarmup(s, id);
+    forall i | 0 <= i < |s.workers|
+      ensures after.workers[i].phase == s.workers[i].phase ||
+        (s.workers[i].phase.CleaningUp? && after.workers[i].phase.Released?)
+    {
+      var former := s.workers[i];
+      assert former in s.workers;
+      if former.workerId == id {
+        WorkerLookupMatchesMember(s, former);
+      }
+    }
+    WorkerMapPreservesPhaseRules(s, after);
+  }
+}
