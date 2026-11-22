@@ -293,9 +293,6 @@ reads those times of Dafny's installation once, and reads them again after each
 run of Dafny, so a result is not remembered when the verifier was installed
 again during the run. The template install generates locally with `gen --if-valid`.
 The install command runs its listed root prerequisite tasks together before generation.
-The tooling package sets `--skip-gen-on-pack` in its prepare script. A
-`pnpm pack` still builds the CLI and Studio. It skips the application's
-generated models, which the tools' tarball does not contain.
 The three tool selftest jobs in `ci.yml` run only the listed `//#build` task and generate their scratch
 projects on demand. The packaged CLI test rebuilds from a clean copy of the
 workspace. Other GitHub Actions jobs use the same strict root
@@ -449,7 +446,7 @@ Each dedicated shard uses Turbo's `--only` after setup builds the toolchain.
 All three tool shards skip workspace generation. The two fixture shards use their scratch inputs, and the packaged CLI test builds its workspace copy.
 Release materializes the prerequisites before running the isolated shards.
 Packing the Vibestack CLI builds the toolchain and Studio. The package's
-prepare script skips Eliza application generation for `pnpm pack` because
+prepare script uses `--skip-gen-on-pack` to skip Eliza application generation because
 the tool archive does not include those generated files.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
