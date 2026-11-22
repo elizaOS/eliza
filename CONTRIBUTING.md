@@ -98,6 +98,7 @@ The two suites of the tools, the command line and each kind of mistake, run side
 edits copy and a few long checks of fixtures are shared projects: each starts with the tool runs (`action-*` entries)
 earlier selftests kept in `.cache/selftest/.spec-cache` and leaves its own there; entries unused for a week are pruned.
 A test that observes a tool really running uses a scratch project of its own, which starts empty.
+Scratch dependency installs copy package files, so they do not change the shared store's hardlink metadata while parallel checks observe an installed verifier.
 `pnpm selftest` runs all five through Turborepo, side by side, as `pnpm verify` does. Each of the three
 `selftest:tools` processes bounds its own tests and tools to the machine and checks the order project once for itself,
 so three at once ask about three times what one does: on a machine too small for that,
