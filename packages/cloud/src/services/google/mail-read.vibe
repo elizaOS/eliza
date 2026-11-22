@@ -1,7 +1,7 @@
 // spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"
 // spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately"
-import { inboxWatchCanAnswer, mailMaxBytes } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
-import { refused, type Refused } from "../../http/refusal.vibe"
+import { inboxWatchCanAnswer, mailMaxBytes, mebibyte, threadMaxMessages, threadOutcome, threadPageMax, type ThreadAsk } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
+import { refused, Refused } from "../../http/refusal.vibe"
 import { json, owner as ownerOf, type Route, type RouteContext } from "../../http/routes.vibe"
 import { bearerToken, recheckServiceAccess, signed } from "../../http/request-auth.vibe"
 import { Deployment } from "../../profile/profile.vibe"
@@ -82,8 +82,7 @@ const partIdPattern = /^[0-9.]{1,32}$/
 const pageSize = /^[1-9]\d{0,2}$/
 const triageMax = 50
 const searchMax = 100
-const threadPage = 25
-const threadOffsetMax = 2000
+const threadPageMaxBytes = 1.5 * mebibyte
 const draftPage = 25
 const maxParts = 200
 const bodyHtmlMaxBytes = 512 * 1024
@@ -418,23 +417,38 @@ effect function threadRoute(context: RouteContext) {
   const threadId = try param(context, "threadId", providerId)
   const offset = Number(context.query.get("offset") ?? "0")
   const expected = context.query.get("historyId") ?? undefined
-  if (!Number.isSafeInteger(offset) || offset < 0 || offset > threadOffsetMax || (offset > 0 && expected === undefined) ||
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > threadMaxMessages || (offset > 0 && expected === undefined) ||
       (expected !== undefined && !historyPattern.test(expected))) throw refused("InvalidRequest")
   const grant = try grantOf(context)
   const thread = try parsed(Thread, try google(grant, `/threads/${threadId}?format=full`, threadMaxBytes))
   if (thread.id !== threadId || !historyPattern.test(thread.historyId)) throw refused("ProviderInvalidResponse")
-  if (expected !== undefined && thread.historyId !== expected) throw refused("StaleRevision")
+  const ask: ThreadAsk = { offset, asked: expected === undefined ? { tag: "AnyRevision" } : { tag: "AtRevision", historyId: expected } }
+  const snapshot = { threadRevision: thread.historyId, total: thread.messages.length, fitting: threadPageMax, oversized: false }
+  const window = threadOutcome(ask, snapshot)
+  if (window.tag === "ThreadRefused") throw new Refused({ refusal: window.refusal })
   const all = (try Effect.forEach(thread.messages, (raw) => parsed(MailMessage, raw))).toSorted((left, right) => Number(left.internalDate) - Number(right.internalDate))
   if (all.some((message) => message.threadId !== threadId)) throw refused("ProviderInvalidResponse")
-  if (offset > all.length) throw refused("InvalidRequest")
-  const page = all.slice(offset, offset + threadPage)
-  const messages = try Effect.forEach(page, effect (message) => {
-    return { ...(try messageView(grant, message, grant.email)), historyId: message.historyId ?? null }
-  })
-  return json({
-    version: 1, threadId, historyId: thread.historyId, total: all.length, offset,
-    nextOffset: offset + page.length < all.length ? offset + page.length : null, messages
-  })
+
+  const receipt = effect (messages: ReadonlyArray<unknown>) => {
+    const chosen = threadOutcome(ask, { ...snapshot, fitting: messages.length })
+    if (chosen.tag === "ThreadRefused") throw new Refused({ refusal: chosen.refusal })
+    return json({
+      version: 1, threadId, historyId: thread.historyId, total: snapshot.total, offset: chosen.first,
+      nextOffset: chosen.rest.tag === "NextAt" ? chosen.rest.nextOffset : null, messages
+    })
+  }
+  const messages: unknown[] = []
+  let served: ReturnType<typeof json> | undefined
+  for (const message of all.slice(window.first, window.first + window.count)) {
+    messages.push({ ...(try messageView(grant, message, grant.email)), historyId: message.historyId ?? null })
+    const candidate = try receipt(messages)
+    if (candidate.body._tag !== "Uint8Array" || candidate.body.contentLength > threadPageMaxBytes) {
+      if (served === undefined) throw refused("ContentTooLarge")
+      break
+    }
+    served = candidate
+  }
+  return served ?? (try receipt(messages))
 }
 
 effect function attachmentRoute(context: RouteContext) {

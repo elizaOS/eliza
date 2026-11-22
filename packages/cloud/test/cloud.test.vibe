@@ -1822,6 +1822,29 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const capabilities = try gmail("/inbox-v1/capabilities")
     const attachment = try gmail("/inbox-v1/attachment?messageId=msg-direct&partId=1&historyId=1001")
     const thread = try gmail("/inbox-v1/thread?threadId=thr-direct&historyId=1001")
+    const earlierText = "é".repeat(450 * 1024)
+    const laterText = "new " + earlierText
+    try sync(() => {
+      mailbox.messages.set("page-later", { id: "page-later", threadId: "thr-pages", labelIds: ["TRASH"], historyId: String(++mailbox.history), internalDate: now, bodyText: laterText })
+      mailbox.messages.set("page-earlier", { id: "page-earlier", threadId: "thr-pages", labelIds: ["TRASH"], historyId: String(++mailbox.history), internalDate: now - 1000, bodyText: earlierText })
+      mailbox.messages.set("page-oversized", { id: "page-oversized", threadId: "thr-indivisible", labelIds: ["TRASH"], historyId: String(++mailbox.history), internalDate: now, bodyText: "\0".repeat(300 * 1024) })
+    })
+    type Page = { readonly historyId: string; readonly total: number; readonly offset: number; readonly nextOffset: number | null; readonly messages: ReadonlyArray<{ readonly message: { readonly id: string }; readonly historyId: string; readonly bodyText: string }> }
+    const page = (suffix: string) => promise(async () => {
+      const response = await openCloud(cloud.url, "/api/v1/eliza/google/gmail/inbox-v1/thread?threadId=thr-pages" + suffix, { headers: { authorization: `Bearer ${token}` } })
+      const bytes = await response.arrayBuffer()
+      return { status: response.status, bytes: bytes.byteLength, body: JSON.parse(new TextDecoder().decode(bytes)) as Page }
+    })
+    const first = try page("")
+    const next = try page("&offset=1&historyId=" + first.body.historyId)
+    const missingRevision = try gmail("/inbox-v1/thread?threadId=thr-pages&offset=1")
+    const indivisible = try gmail("/inbox-v1/thread?threadId=thr-indivisible")
+    try sync(() => touchMessage(mailbox, "page-later"))
+    const changedPage = try gmail("/inbox-v1/thread?threadId=thr-pages&offset=1&historyId=" + first.body.historyId)
+    const pageOf = (result: { readonly status: number; readonly bytes: number; readonly body: Page }, expected: string) => [
+      result.status, result.bytes <= 1.5 * 1024 * 1024, result.body.total, result.body.offset, result.body.nextOffset,
+      result.body.messages.map((message) => [message.message.id, message.historyId, message.bodyText === expected]),
+    ]
     try Effect.try(() => touchMessage(mailbox, "msg-direct"))
     const staleAttachment = try gmail("/inbox-v1/attachment?messageId=msg-direct&partId=1&historyId=1001")
     const staleThread = try gmail("/inbox-v1/thread?threadId=thr-direct&historyId=1001")
@@ -1849,6 +1872,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         capabilities: [capabilities.status, capabilities.body],
         attachment: [attachment.status, file.name, file.mimeType, file.size, file.dataBase64, file.sha256, file.supported],
         thread: [thread.status, threadBody.historyId, threadBody.total, threadBody.messages.map((message) => message.bodyText)],
+        pages: [first.body.historyId === next.body.historyId, pageOf(first, earlierText), pageOf(next, laterText)],
+        pageRefusals: [errorOf(missingRevision), errorOf(changedPage), errorOf(indivisible)],
         stale: [errorOf(staleAttachment), errorOf(staleThread)],
         drafts: [drafts.status, draftList.drafts, draftList.nextPageToken],
         draft: [draft.status, draftBody.providerDigest, draftBody.content.to, draftBody.content.subject, draftBody.content.bodyText, draftBody.content.plainText],
@@ -1870,6 +1895,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         capabilities: [200, { version: 1, from: "conn-mail@example.com", kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 } }],
         attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
         thread: [200, "1001", 1, ["Please review the plan."]],
+        pages: [true, [200, true, 2, 0, 1, [["page-earlier", "1006", true]]], [200, true, 2, 1, null, [["page-later", "1005", true]]]],
+        pageRefusals: [[400, "invalid_request"], [409, "stale_revision"], [413, "content_too_large"]],
         stale: [[409, "stale_revision"], [409, "stale_revision"]],
         drafts: [200, [{ draftId: "draft-1", messageId: "msg-draft-1", subject: "Re: Quarterly plan", to: ["ada@example.org"], snippet: "", updatedAt: null }], null],
         draft: [200, sha256Hex(draftRaw), ["ada@example.org"], "Re: Quarterly plan", "Looks good.", true],
