@@ -606,7 +606,7 @@ export function newSpec(root: string, name = ""): string {
 const COMMANDS = [
   ["check", "[<directory>] [--json] [--nightly]", "run every stage; --json prints each result as one line of JSON, then { ok, results, next }; --nightly uses the nightly test profile"],
   ["watch", "[<directory>]", "check again whenever spec/, src/, test/ or tsconfig.json changes"],
-  ["gen", "[<directory>] [--if-valid] or --owner <name> [<directory>] or --install [//#task…]", "write gen/ from the spec; --install prepares a template checkout"],
+  ["gen", "[<directory>] [--if-valid] or --owner <name> [<directory>] or --install [--skip-gen-on-pack] [//#task…]", "write gen/ from the spec; --install prepares a template checkout"],
   ["accept", "[<directory>] [unproved]", "record what was reviewed, or the obligations that are simulated only"],
   ["new", "[<path>]", "fill an empty spec/index.md, or write a starter spec/<path>/index.md"],
   ["init", "[<directory>]", "add what a project is missing"],
@@ -743,19 +743,22 @@ async function runTasks(root: string, args: string[]): Promise<number | null> {
 export async function main(argv = process.argv.slice(2)) {
   let root = process.cwd();
   let [command, ...args] = argv;
-  const installing = command === "gen" && args[0] === "--install" && args.slice(1).every((task) => /^\/\/#[\w.:-]+$/.test(task));
+  const skipGenOnPack = args[1] === "--skip-gen-on-pack";
+  const installTasks = args.slice(skipGenOnPack ? 2 : 1);
+  const installing = command === "gen" && args[0] === "--install" && installTasks.every((task) => /^\/\/#[\w.:-]+$/.test(task));
   const takes = (...allowed: string[][]) => allowed.some((a) => a.length === args.length && a.every((x, i) => x === "*" || x === args[i]));
   try {
     if (Number(process.versions.node.split(".")[0]) < NODE) throw new Error(`spec needs Node ${NODE} or later; this is Node ${process.versions.node}`);
     if (installing) {
       const hosted = process.env.GITHUB_ACTIONS === "true";
       const fixture = hosted && process.env.GITHUB_JOB === "vibestack-fixture-selftests";
-      const prerequisites = args.slice(1).filter((task) => !fixture || task === "//#build");
+      const prerequisites = installTasks.filter((task) => !fixture || task === "//#build");
       if (prerequisites.length) {
         const code = await runTasks(root, prerequisites);
         if (code !== 0) { process.exitCode = code ?? 1; return; }
       }
-      if (fixture) return;
+      const packingTools = skipGenOnPack && process.env.npm_command === "pack" && process.env.npm_lifecycle_event === "prepare";
+      if (fixture || packingTools) return;
       [command, ...args] = hosted ? ["tasks", "//#gen"] : ["gen", "--if-valid"];
     }
     if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {

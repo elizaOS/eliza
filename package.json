@@ -21,7 +21,7 @@
     "selftest:examples": "node --test --test-name-pattern=\"^the standalone examples \" vibestack/selftest.ts",
     "build": "node vibestack/spec.ts tasks vibestack-studio#build && node -e \"fs.rmSync('dist', { recursive: true, force: true })\" && vibelang -p tsconfig.build.json && node -e \"fs.chmodSync('dist/spec.js', 0o755); fs.mkdirSync('dist/proof', { recursive: true }); fs.copyFileSync('vibestack/proof/lib.dfy', 'dist/proof/lib.dfy'); fs.cpSync('vibestack/studio/dist/page', 'dist/studio/dist/page', { recursive: true }); fs.cpSync('vibestack/std', 'dist/std', { recursive: true }); fs.copyFileSync('vibestack/conformance.ts', 'dist/conformance.ts')\"",
     "pnpm:devPreinstall": "node vibestack/skill-links.ts",
-    "prepare": "node vibestack/spec.ts gen --install //#build",
+    "prepare": "node vibestack/spec.ts gen --install --skip-gen-on-pack //#build",
     "prepack": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
     "test:browser": "node vibestack/spec.ts tasks test:browser",
