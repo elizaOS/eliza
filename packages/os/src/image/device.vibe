@@ -220,19 +220,19 @@ import { hostName, leaseDirectories, listenSingleDevice, preparePrivateDirectory
 export { legacyInstallLockPath } from node
 
 export type AdbSerial = string & { readonly __brand: "AdbSerial" }
-export type AndroidPackage = string & { readonly __brand: "AndroidPackage" }
+type AndroidPackage = string & { readonly __brand: "AndroidPackage" }
 
 export error InvalidDeviceInput { reason: string }
 export error AdbFailed { args: readonly string[]; code: number; stderr: string }
 export error AdbTimedOut { args: readonly string[]; timeoutMs: number }
-export error AdbEndpointFailed { serial: string; cause: string }
-export error DeviceLeased { deviceKey: string; holder: string; waitedMs: number }
-export error LeaseLockAbandoned { lockPath: string }
-export error LeaseLockTimedOut { lockPath: string; waitedMs: number }
-export error LeaseLockConflict { lockPath: string }
+error AdbEndpointFailed { serial: string; cause: string }
+error DeviceLeased { deviceKey: string; holder: string; waitedMs: number }
+error LeaseLockAbandoned { lockPath: string }
+error LeaseLockTimedOut { lockPath: string; waitedMs: number }
+error LeaseLockConflict { lockPath: string }
 export error InstrumentationRefused { reason: string }
-export error FixtureRefused { reason: string }
-export error IsolatedTestFailed { reason: string; report: string }
+error FixtureRefused { reason: string }
+error IsolatedTestFailed { reason: string; report: string }
 export error LeaseDirectoryRefused { directory: string; reason: string }
 
 export type AdbFailure = AdbFailed | AdbTimedOut
@@ -318,13 +318,13 @@ export effect function captureCommand(binary: string, args: readonly string[], t
   }
 }
 
-export effect function execute(binary: string, args: readonly string[], timeoutMs: number) {
+effect function execute(binary: string, args: readonly string[], timeoutMs: number) {
   const finished = try captureCommand(binary, args, timeoutMs)
   if (finished.code !== 0) throw new AdbFailed({ args, code: finished.code, stderr: finished.stderr.trim().slice(0, 1024) })
   return finished.stdout
 }
 
-export effect function adbRunner(adb: string, serial: AdbSerial, timeoutMs: (args: readonly string[]) => number) {
+effect function adbRunner(adb: string, serial: AdbSerial, timeoutMs: (args: readonly string[]) => number) {
   const spawner = try ChildProcessSpawner
   const run: AdbRun = (...args) =>
     Effect.provideService(effect { return new TextDecoder().decode(try execute(adb, ["-s", serial, ...args], timeoutMs(args))) }, ChildProcessSpawner, spawner)
@@ -352,7 +352,7 @@ export function leaseStateDirectory(explicit?: string): string {
   }
 }
 
-export function deviceLeaseKey(value: string): string {
+function deviceLeaseKey(value: string): string {
   return value.replace(/[^A-Za-z0-9_.-]+/g, "_").slice(0, 180)
 }
 
@@ -378,7 +378,7 @@ function leaseReading(found: Snapshot, now: number): LeaseReading {
 }
 
 /** Whether a parsed lease still holds its device at `now`. */
-export function leaseActive(lease: Lease, now: number): boolean {
+function leaseActive(lease: Lease, now: number): boolean {
   return leaseHeld(leaseReading({ kind: "parsed", lease, identity: "", mtime: 0 }, now))
 }
 
@@ -684,7 +684,7 @@ effect function fixtureCheck(holds: boolean, reason: string) {
 const PREFERENCE_NAME = /^[A-Za-z0-9_.:-]+$/
 const ENTITIES: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" }
 
-export effect function androidPreferenceString(xml: string, key: string) {
+effect function androidPreferenceString(xml: string, key: string) {
   try fixtureCheck(/^\s*(?:<\?xml[^?]*\?>\s*)?<map>[\s\S]*<\/map>\s*$/.test(xml), "Complete Android preference map required")
   try fixtureCheck(!/<!/.test(xml), "Unsupported XML declaration or comment")
   try fixtureCheck(PREFERENCE_NAME.test(key), "Preference key required")

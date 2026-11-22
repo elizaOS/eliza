@@ -11,12 +11,12 @@ export type Entry =
 
 export type Tree = Readonly<Record<string, Entry>>
 
-export interface ScratchRepo {
+interface ScratchRepo {
   readonly root: string
   readonly commit: string
 }
 
-export error GitFailed { args: readonly string[]; code: number; stderr: string }
+error GitFailed { args: readonly string[]; code: number; stderr: string }
 
 const GIT_ENVIRONMENT = {
   GIT_AUTHOR_NAME: "Scratch",

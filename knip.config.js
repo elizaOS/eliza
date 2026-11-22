@@ -3,6 +3,7 @@
 //   ignore vibestack/examples/**            standalone projects with their own install, outside the workspace
 //   ignore **/test/fixtures/**              inputs the tools' tests read as text, never imported
 //   ignoreIssues server.vibe exports        AGENTS is used in its own file, in a body ignoreExportsUsedInFile cannot see
+//   ignoreIssues sse.ts, relay-frames.ts exports  verified //@ modules whose laws and helpers the proof stage reads, not another module
 //   root lemmascript                       run as an executable by vibestack/prove.ts
 //   root @vitest/browser                    loaded by Vitest's browser mode, beside @vitest/browser-playwright
 //   root @repo/design-system                read as files by vibestack/design/test/design.test.ts
@@ -22,7 +23,9 @@ export default {
   ],
   "ignoreExportsUsedInFile": true,
   "ignoreIssues": {
-    "vibestack/studio/src/server.vibe": ["exports"]
+    "vibestack/studio/src/server.vibe": ["exports"],
+    "packages/cloud/src/services/sse.ts": ["exports"],
+    "packages/cloud/src/client/relay-frames.ts": ["exports"]
   },
   "workspaces": {
     ".": {
@@ -131,7 +134,6 @@ export default {
         "src/{index,cli}.vibe",
         "src/{image,build,browser,app-update}/index.vibe",
         "src/bridges/*.vibe",
-        "src/bridges/passwords-client.ts",
         "src/bridges/definitions/*.ts",
         "test/**/*.test.{ts,vibe}",
         "test/drivers/*.ts",

@@ -25,7 +25,7 @@ export interface BindingView {
   readonly lastCloudFailure?: LastCloudFailure
 }
 
-export interface HeldCredential {
+interface HeldCredential {
   readonly version: number
   readonly value: Redacted.Redacted<string>
   readonly expiresAt?: number
@@ -43,7 +43,7 @@ export interface BoundModels {
   state(): ModelBinding!!
 }
 
-export error BindRefused
+error BindRefused
 
 const Nonblank = Schema.String.check(Schema.isPattern(/\S/))
 const Push = Schema.Struct({
@@ -74,7 +74,7 @@ function backendOf(model: LaunchDocument["model"]): Backend {
   }
 }
 
-export function launchModel(launch: LaunchDocument): LaunchModel {
+function launchModel(launch: LaunchDocument): LaunchModel {
   const { character, policy, account, retention } = launch
   return {
     schema: launch.schema,

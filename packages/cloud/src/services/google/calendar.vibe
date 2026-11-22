@@ -11,11 +11,11 @@ import { Store, toText, type Row, type Tx } from "../../store/connection.vibe"
 import { googleJson } from "../../providers/google.vibe"
 import { holds, useGrant } from "./grant-access.vibe"
 
-export type WriteKind = "create" | "change" | "delete"
-export type WritePhase = "prepared" | "dispatched" | "succeeded" | "rejected" | "outcome-unknown"
-export type Outcome = "not_accepted" | "unknown"
+type WriteKind = "create" | "change" | "delete"
+type WritePhase = "prepared" | "dispatched" | "succeeded" | "rejected" | "outcome-unknown"
+type Outcome = "not_accepted" | "unknown"
 
-export interface Owner {
+interface Owner {
   readonly organizationId: string
   readonly userId: string
 }
@@ -39,7 +39,7 @@ interface AttendeeInput {
   readonly optional?: boolean
 }
 
-export interface EventBody {
+interface EventBody {
   readonly id?: string
   readonly summary?: string
   readonly description?: string
@@ -49,7 +49,7 @@ export interface EventBody {
   readonly attendees?: ReadonlyArray<AttendeeInput>
 }
 
-export interface Planned {
+interface Planned {
   readonly kind: WriteKind
   readonly key: string
   readonly idempotencyKey: string
@@ -59,7 +59,7 @@ export interface Planned {
   readonly body: EventBody | null
 }
 
-export interface Write {
+interface Write {
   readonly receipt: Receipt
   readonly owner: Owner
   readonly grantId: string
@@ -81,7 +81,7 @@ interface Seen {
   readonly event: Card | null
 }
 
-export const staleAfter = 90 * millisPerSecond
+const staleAfter = 90 * millisPerSecond
 const preparedFor = millisPerDay
 const feedLimitBytes = 512 * 1024
 const sweepBatch = 100
@@ -182,7 +182,7 @@ function senderOf(owner: Owner): SessionOwner {
   return { agentId: owner.organizationId, actorId: owner.userId, connector: connectorOf("CalendarEvent") }
 }
 
-export function writeRows(by: SessionOwner) {
+function writeRows(by: SessionOwner) {
   return machineRows<Receipt, Event, Rejected, NotAState>("calendar_writes", { initial, decodeState, apply: (state, event) => apply(state, event, by) })
 }
 
@@ -190,7 +190,7 @@ function rowKey(kind: WriteKind, owner: Owner, id: string): string {
   return [kind, owner.organizationId, owner.userId, id].map(encodeURIComponent).join("/")
 }
 
-export function phaseOf(receipt: Receipt): WritePhase {
+function phaseOf(receipt: Receipt): WritePhase {
   const status = receiptStatus(receipt)
   switch (status) {
     case "StatusAbsent":
@@ -645,7 +645,7 @@ effect function settleStale(key: string, now: number): boolean!!CloudContext {
   return settled !== undefined && phaseOf(settled.receipt) !== phaseOf(write.receipt)
 }
 
-export effect function sweepStaleWrites(): number!!CloudContext {
+effect function sweepStaleWrites(): number!!CloudContext {
   const store = try Store
   const now = try Clock.currentTimeMillis
   const stale = store.transaction((tx) => tx.query(

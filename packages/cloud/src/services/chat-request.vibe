@@ -5,7 +5,7 @@ import { refused, type Refused } from "../http/refusal.vibe"
 import type { RouteContext } from "../http/routes.vibe"
 import { acceptedFields, ChatRequest, type ChatMessage, type ResponseFormat } from "./chat-request.schema.ts"
 
-export type { ChatMessage, ChatRequest, ResponseFormat }
+export type { ChatRequest }
 
 export interface Quote {
   readonly counts: TokenCounts
@@ -13,13 +13,12 @@ export interface Quote {
 }
 
 export const chatIngressPerMinute = 600
-export { defaultOutputTokens }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-export effect function parseChat(raw: unknown): ChatRequest!Refused {
+effect function parseChat(raw: unknown): ChatRequest!Refused {
   if (isRecord(raw) && Object.keys(raw).some((field) => !acceptedFields.includes(field))) throw refused("InvalidRequest", "UnsupportedField")
   const body = Schema.decodeUnknownEffect(ChatRequest, { onExcessProperty: "error" })(raw) catch effect () => { throw refused("InvalidRequest") }
   if (!formatServable(body.response_format)) throw refused("InvalidRequest")
@@ -65,7 +64,7 @@ function textChars(message: ChatMessage): number {
   return message.content.reduce((sum, part) => sum + (part.type === "text" ? part.text.length : 0), 0)
 }
 
-export function quoteCounts(body: ChatRequest): TokenCounts {
+function quoteCounts(body: ChatRequest): TokenCounts {
   const chars = body.messages.reduce((sum, message) => sum + textChars(message), 0)
   return { inputTokens: tokensOf(chars), outputTokens: body.max_completion_tokens ?? body.max_tokens ?? defaultOutputTokens }
 }

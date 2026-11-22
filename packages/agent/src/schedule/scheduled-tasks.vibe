@@ -66,12 +66,12 @@ export type Created =
   | { readonly kind: "created"; readonly task: ScheduledTaskView }
   | { readonly kind: "existing"; readonly task: ScheduledTaskView }
 
-export error TaskRefused { reason: string }
+error TaskRefused { reason: string }
 error DeliveryFailed { cause: unknown }
 
 export const scheduledTasksTick = "AGENT_SCHEDULED_TASKS"
-export const scheduledTasksTickMs = 60_000
-export const missedOccurrenceLog = "missed_occurrence"
+const scheduledTasksTickMs = 60_000
+const missedOccurrenceLog = "missed_occurrence"
 
 const noMore: Due = { tag: "NoMoreOccurrences" }
 const delivered: Delivery = { tag: "Delivered" }
@@ -168,7 +168,7 @@ function notWaiting(task: ScheduledTask): string {
   return task.due.tag === "Manual" ? "not_waiting" : "no_more_occurrences"
 }
 
-export function notificationDelivery(runtime: IAgentRuntime): DeliveryPort {
+function notificationDelivery(runtime: IAgentRuntime): DeliveryPort {
   return async (task) => {
     const notifications = runtime.getService<NotificationService>(ServiceType.NOTIFICATION)
     if (notifications === null) return { kind: "undeliverable", error: "No notification service is registered" }

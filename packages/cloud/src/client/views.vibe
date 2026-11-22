@@ -169,7 +169,7 @@ export interface LifecycleRequest {
   readonly idempotencyKey: string
 }
 
-export type Answer = "snapshot" | "redeem" | "command" | "commands" | "review" | "payment" | "checkout"
+type Answer = "snapshot" | "redeem" | "command" | "commands" | "review" | "payment" | "checkout"
 
 function unreadable(answer: Answer, issue: unknown): CloudError {
   return new CloudError({ failure: { tag: "CloudProviderIssue" }, cause: { answer, issue } })
@@ -253,7 +253,7 @@ export function planFromSnapshot(snapshot: BillingSnapshot): PlanView {
 export const planChecking: PlanView = { tag: "PlanChecking" }
 export const planUnavailable: PlanView = { tag: "PlanUnavailable" }
 
-export const creditMaxAge: Millis = 5 * millisPerMinute
+const creditMaxAge: Millis = 5 * millisPerMinute
 
 export type CreditView =
   | { readonly kind: "funded"; readonly usdMicros: Micros; readonly observedAt: Millis }

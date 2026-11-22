@@ -186,7 +186,7 @@ module node {
 }
 import { animationParts, certificateSha256, inspectBootArchive, parseJson, sha256Hex, storedZip, textOf, urlParts, utf8, type ArchiveFile } from node
 
-export type RawRecord = Readonly<Record<string, unknown>>
+type RawRecord = Readonly<Record<string, unknown>>
 
 export type BootAnimationInput =
   | { readonly kind: "stock" }
@@ -222,7 +222,7 @@ export interface EnrollmentRequest {
   readonly aosp?: string
 }
 
-export interface ProductRecord {
+interface ProductRecord {
   readonly schema: 1
   readonly product: string
   readonly device: string
@@ -240,7 +240,7 @@ export interface ProductRecord {
   readonly claims: readonly RecordClaim[]
 }
 
-export interface EnrollmentRecord {
+interface EnrollmentRecord {
   readonly schema: 1
   readonly outcome: EnrollmentOutcome
   readonly product: string
@@ -254,11 +254,11 @@ export interface EnrollmentRecord {
   readonly files: Readonly<Record<string, string>>
 }
 
-export error ProductInputUnreadable { place: string; message: string }
-export error ProductRefused { product: string; problems: readonly CompositionProblem[]; message: string }
-export error RecordRefused { product: string; message: string }
-export error EnrollmentRefused { product: string; problems: readonly EnrollmentProblem[]; checkout: EnrollmentCheckout; message: string }
-export error EnrollmentChanged { place: string; message: string }
+error ProductInputUnreadable { place: string; message: string }
+error ProductRefused { product: string; problems: readonly CompositionProblem[]; message: string }
+error RecordRefused { product: string; message: string }
+error EnrollmentRefused { product: string; problems: readonly EnrollmentProblem[]; checkout: EnrollmentCheckout; message: string }
+error EnrollmentChanged { place: string; message: string }
 
 interface StagedFile {
   readonly bytes: Uint8Array
@@ -430,7 +430,7 @@ function assignments(makefiles: string, name: string): string[] {
   return [...makefiles.matchAll(new RegExp(`^\\s*${name}\\s*[:+?]?=\\s*(.*?)\\s*$`, "gm"))].map((found) => found[1] ?? "")
 }
 
-export function buildSettings(makefiles: readonly string[]): BuildSettings {
+function buildSettings(makefiles: readonly string[]): BuildSettings {
   const all = makefiles.map((makefile) => makefile.replace(/#.*$/gm, "")).join("\n")
   const stock = assignments(all, "USE_STOCK_KERNEL")
   const compression = assignments(all, "PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD").at(-1)

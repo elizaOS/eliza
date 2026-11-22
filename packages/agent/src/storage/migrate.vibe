@@ -151,5 +151,5 @@ module node {
   }
 }
 export {
-  migrate, seedDurableStore, startStore, storeBundle, storeRefused, type StoreOwner,
+  migrate, seedDurableStore, startStore, storeBundle, type StoreOwner,
 } from node

@@ -241,7 +241,7 @@ export function listenerZipAligned(bytes: Uint8Array): boolean {
 }
 
 export type Environment = Readonly<Record<string, string | undefined>>
-export type RawRecord = Readonly<Record<string, unknown>>
+type RawRecord = Readonly<Record<string, unknown>>
 
 const ANDROID_BUILD_TOOLS = "36.0.0"
 export const MAX_ANDROID_ARTIFACT_BYTES = 512 * 1024 * 1024
@@ -250,7 +250,6 @@ const MAX_ANDROID_EXTRACTED_ENTRY_BYTES = 256 * 1024 * 1024
 const MAX_ANDROID_EXTRACTED_TOTAL_BYTES = 512 * 1024 * 1024
 export const BUILD_FLAGS_ENTRY = "assets/public/build-flags.json"
 export const QA_EVIDENCE_FORMAT = "cloud-voice-qualification-v1"
-export const DOMAIN_SCRIPT = 'find . -type f ! -path "./cache/*" ! -path "./code_cache/*" -exec sha256sum {} + ; echo "READBACK_EXIT=$?"'
 
 const HEX64 = /^[0-9a-f]{64}$/
 const JAVA_MAJOR = 21
@@ -275,7 +274,7 @@ const UNRECORDED: ApkRow = {
   distributable: false,
 }
 
-export interface AndroidBuildTools {
+interface AndroidBuildTools {
   readonly sdk: string
   readonly aapt: string
   readonly apksigner: string
@@ -357,7 +356,7 @@ export interface ImageApkRequest extends AaptOptions, SignerOptions {
   readonly review?: ReleaseReview
 }
 
-export interface ImageApkAdmitted {
+interface ImageApkAdmitted {
   readonly sha256: string
   readonly facts: ApkFacts
   readonly row: ApkRow
@@ -386,16 +385,16 @@ export interface DomainComparison {
   readonly differences: readonly string[]
 }
 
-export error ToolchainMissing { message: string }
-export error ToolFailed { tool: string; args: readonly string[]; code: number | undefined; message: string }
-export error ArtifactUnreadable { artifact: string; message: string }
-export error ArtifactTooLarge { artifact: string; sizeBytes: number; maxBytes: number; message: string }
-export error ArtifactChanged { artifact: string; message: string }
-export error ArchiveInvalid { artifact: string; entry: string | undefined; message: string }
-export error ArchiveEntryTooLarge { artifact: string; entry: string | undefined; sizeBytes: number; maxBytes: number; message: string }
-export error ApkSignerUnread { apk: string; signer: SignerObservation; message: string }
-export error ImageApkRefused { apk: string; refusal: ImageRefusal; blockers: readonly ReleaseBlocker[]; facts: ApkFacts; message: string }
-export error IntegrityQueryRefused { message: string }
+error ToolchainMissing { message: string }
+error ToolFailed { tool: string; args: readonly string[]; code: number | undefined; message: string }
+error ArtifactUnreadable { artifact: string; message: string }
+error ArtifactTooLarge { artifact: string; sizeBytes: number; maxBytes: number; message: string }
+error ArtifactChanged { artifact: string; message: string }
+error ArchiveInvalid { artifact: string; entry: string | undefined; message: string }
+error ArchiveEntryTooLarge { artifact: string; entry: string | undefined; sizeBytes: number; maxBytes: number; message: string }
+error ApkSignerUnread { apk: string; signer: SignerObservation; message: string }
+error ImageApkRefused { apk: string; refusal: ImageRefusal; blockers: readonly ReleaseBlocker[]; facts: ApkFacts; message: string }
+error IntegrityQueryRefused { message: string }
 
 function isRecord(value: unknown): value is RawRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)

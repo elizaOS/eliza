@@ -55,7 +55,7 @@ export interface VerifyImageOptions {
   readonly adb?: string
 }
 
-export error ImageExpectationRefused { reason: string }
+error ImageExpectationRefused { reason: string }
 
 const fingerprints = { green: "Green", yellow: "Yellow", orange: "Orange", red: "Red" } as const
 const healthName = { Pass: "pass", Fail: "fail", Unknown: "unknown" } as const

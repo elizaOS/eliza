@@ -17,7 +17,6 @@ const factorySchema = Schema.Struct({
   factory: Schema.Struct({ filename: slug, sha256: digest, sizeBytes: positive, buildId: slug }),
 })
 const decodeFactory = Schema.decodeUnknownEffect(factorySchema)
-export type FactoryLock = typeof factorySchema.Type
 
 function exactNumber(value: string): number {
   const number = Number(value)

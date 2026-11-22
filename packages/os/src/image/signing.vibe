@@ -16,7 +16,7 @@ import { keyName, loadKeyManifest, readSigningJson, SigningRefused, type KeyMani
 import { channelDistributionProblems, compatibilityRecord, releaseArtifact, releaseChannel, releaseDescriptorProblems } from "./signing-record.vibe"
 import { verifySource, type VerifySourceOptions } from "./source-lock.vibe"
 
-export { generate, decrypt, type GenerateOptions, type DecryptOptions } from "./key-ceremony.vibe"
+export { generate, decrypt } from "./key-ceremony.vibe"
 export { encodeAvbPublicKey, loadKeyManifest } from "./signing-keys.vibe"
 export { channelDistributionProblems, compatibilityRecord, qualificationGateProblems, releaseDescriptorProblems, releaseRecordProblems, type GateReview } from "./signing-record.vibe"
 

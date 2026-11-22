@@ -4,7 +4,7 @@ import type { Tx } from "../../src/store/connection.vibe"
 import { organization, type TestCloud } from "./cloud.vibe"
 import { legacyGrant } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
 
-export interface SignedCaller {
+interface SignedCaller {
   readonly bearer: string
   readonly organizationId: string
   readonly userId: string

@@ -29,7 +29,7 @@ const Manifest = Schema.Struct({
 const decodeManifest = Schema.decodeUnknownEffect(Schema.fromJsonString(Manifest))
 const sourceBudget = 16 * 1024 * 1024
 
-export error ListenerSourceRefused { reason: string }
+error ListenerSourceRefused { reason: string }
 
 effect function senseRoot() {
   const files = try FileSystem.FileSystem

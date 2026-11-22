@@ -64,9 +64,7 @@ export interface BillingSnapshot {
   readonly funding: Readonly<Record<FundingClass, WireFundingLane>>
 }
 
-export type AccountUsableInputs = Pick<BillingSnapshot, "account" | "balance" | "allowance" | "funding">
-
-export error SnapshotUnreadable { organizationId: string; problem: string }
+error SnapshotUnreadable { organizationId: string; problem: string }
 
 const accountStatuses: ReadonlyArray<AccountStatus> = ["active", "deleting", "erased"]
 
@@ -74,7 +72,7 @@ const controlActions: Readonly<Record<ControlAction, WireControlAction>> = { Can
 
 const fundingLanes: Readonly<Record<FundingLane, WireFundingLane>> = { AllowanceThenCredits: "allowanceThenCredits", CreditsOnly: "creditsOnly", Refused: "refused" }
 
-export function subscriptionView(subscription: Subscription): SnapshotSubscription | null {
+function subscriptionView(subscription: Subscription): SnapshotSubscription | null {
   if (subscription.status === "NoSubscription") return null
   const control = controlOf(subscription)
   const planned = subscription.planned
@@ -138,7 +136,7 @@ effect function allowanceView(tx: Tx, organizationId: string, now: number): (Sna
   }
 }
 
-export effect function readSnapshot(tx: Tx, caller: { readonly userId: string; readonly organizationId: string }, now: number): BillingSnapshot!(StoreFailure | RowCorrupt | PolicyUnreadable | SnapshotUnreadable) {
+effect function readSnapshot(tx: Tx, caller: { readonly userId: string; readonly organizationId: string }, now: number): BillingSnapshot!(StoreFailure | RowCorrupt | PolicyUnreadable | SnapshotUnreadable) {
   const organizationId = caller.organizationId
   const status = toText((try tx.query("SELECT status FROM accounts WHERE key = $1 AND organization_id = $2", [caller.userId, organizationId]))[0]?.status)
   const account = accountStatuses.find((candidate) => candidate === status)

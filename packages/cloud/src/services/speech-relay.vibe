@@ -36,17 +36,17 @@ export interface RelaySession {
   readonly ended: (sessionId: string) => SessionEnd!!CloudContext
 }
 
-export interface SpeechLinks {
+interface SpeechLinks {
   readonly openStt: () => SttLink!Failure!(Scope.Scope | CloudContext)
   readonly openTts: () => TtsLink!Failure!(Scope.Scope | CloudContext)
 }
 
-export interface RelayPorts {
+interface RelayPorts {
   readonly session: RelaySession
   readonly links: SpeechLinks
 }
 
-export type DeviceFrame =
+type DeviceFrame =
   | { readonly kind: "hello"; readonly token: string; readonly errorReasons: boolean; readonly extend: boolean }
   | { readonly kind: "prepare"; readonly id: string }
   | { readonly kind: "tts"; readonly id: string; readonly text: string; readonly flush: boolean }
@@ -55,7 +55,7 @@ export type DeviceFrame =
   | { readonly kind: "stop" }
   | { readonly kind: "audio"; readonly pcm: Uint8Array }
 
-export const windowBudget = {
+const windowBudget = {
   pcmBytes: (windowLength / 1000) * relaySampleRate * relayChannels * 2,
   ttsChars: windowTtsChars,
   outputBytes: 8 * 1024 * 1024,
@@ -114,7 +114,7 @@ function textOf(bytes: ReadonlyArray<number>): string {
   return fromUtf8.decode(Uint8Array.from(bytes))
 }
 
-export function decodeDeviceFrame(data: string | Uint8Array): DeviceFrame | undefined {
+function decodeDeviceFrame(data: string | Uint8Array): DeviceFrame | undefined {
   if (typeof data !== "string") return validUplink(data.byteLength) ? { kind: "audio", pcm: data } : undefined
   const wire = readDevice(bytesOf(data), false)
   switch (wire.kind) {
@@ -499,7 +499,7 @@ effect function relay(ports: RelayPorts, context: RouteContext): HttpServerRespo
   return HttpServerResponse.empty()
 }
 
-export function relayRoutes(ports: RelayPorts): ReadonlyArray<Route> {
+function relayRoutes(ports: RelayPorts): ReadonlyArray<Route> {
   return [{ method: "GET", path: "/api/v1/voice/speech/ws", auth: "Public", capability: "speech", handler: (context) => relay(ports, context) }]
 }
 

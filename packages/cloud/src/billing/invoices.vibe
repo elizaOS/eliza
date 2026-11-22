@@ -7,8 +7,8 @@ import { Store, type StoreFailure } from "../store/connection.vibe"
 import type { RowCorrupt } from "../store/rows.vibe"
 import { readSubscription } from "./subscriptions.vibe"
 
-export error ProviderMissing { path: string }
-export error ProviderFailed { path: string; status: number }
+error ProviderMissing { path: string }
+error ProviderFailed { path: string; status: number }
 
 export type InvoiceStatus = "open" | "paid" | "uncollectible" | "void"
 

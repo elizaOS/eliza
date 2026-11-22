@@ -34,17 +34,17 @@ module node {
 }
 import { base64url, publicPoint, signEs256 } from node
 
-export error EntitlementUnavailable { problem: string }
+error EntitlementUnavailable { problem: string }
 
-export const entitlementType = "eliza-entitlement+jwt"
-export const entitlementVersion = 3
-export const entitlementLifetimeSeconds = 30 * 60
-export const entitlementKeysMaxAgeSeconds = 60
+const entitlementType = "eliza-entitlement+jwt"
+const entitlementVersion = 3
+const entitlementLifetimeSeconds = 30 * 60
+const entitlementKeysMaxAgeSeconds = 60
 
-export type PlanStatus = "active" | "past_due" | "none"
-export type EntitledService = Extract<Capability, "inference" | "speech" | "maps">
+type PlanStatus = "active" | "past_due" | "none"
+type EntitledService = Extract<Capability, "inference" | "speech" | "maps">
 
-export interface PlanAllowanceClaim {
+interface PlanAllowanceClaim {
   readonly unit: "usd_micros"
   readonly granted: number
   readonly remaining: number
@@ -52,7 +52,7 @@ export interface PlanAllowanceClaim {
   readonly resetsAt: number
 }
 
-export interface EntitlementClaims {
+interface EntitlementClaims {
   readonly iss: string
   readonly aud: string
   readonly sub: string
@@ -67,7 +67,7 @@ export interface EntitlementClaims {
   readonly plan_allowance: PlanAllowanceClaim | null
 }
 
-export interface EntitlementPublicKey {
+interface EntitlementPublicKey {
   readonly kid: string
   readonly kty: "EC"
   readonly crv: "P-256"
@@ -107,11 +107,11 @@ effect function allowanceClaim(tx: Tx, organizationId: string, policy: Policy, n
   return { unit: "usd_micros", granted: period.granted + period.adjustment, remaining: spendableAt(period, now), periodStart: seconds(period.startsAt), resetsAt: seconds(period.endsAt) }
 }
 
-export function publishedKeys(keys: ReadonlyArray<{ readonly kid: string; readonly x: string; readonly y: string }>): ReadonlyArray<EntitlementPublicKey> {
+function publishedKeys(keys: ReadonlyArray<{ readonly kid: string; readonly x: string; readonly y: string }>): ReadonlyArray<EntitlementPublicKey> {
   return keys.map((key) => ({ kid: key.kid, kty: "EC", crv: "P-256", x: key.x, y: key.y, alg: "ES256", use: "sig" }))
 }
 
-export effect function signEntitlement(tx: Tx, caller: { readonly userId: string; readonly organizationId: string }, now: number): string!(StoreFailure | RowCorrupt | PolicyUnreadable | SecretMissing | EntitlementUnavailable)!Deployment {
+effect function signEntitlement(tx: Tx, caller: { readonly userId: string; readonly organizationId: string }, now: number): string!(StoreFailure | RowCorrupt | PolicyUnreadable | SecretMissing | EntitlementUnavailable)!Deployment {
   const deployment = try Deployment
   const { entitlement, capabilities } = deployment.settings
   const pkcs8 = try deployment.secret(entitlement.signingKeyEnv)

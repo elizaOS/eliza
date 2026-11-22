@@ -8,7 +8,7 @@ import { MapsPlace, MapsRoute, tileUrlTemplate, type Coordinate, type MapsCapabi
 import { osmAttribution, osmMapsProvider } from "./maps-osm.vibe"
 
 export type MapsSettings = typeof MapsSettingsSchema.Type
-export type GoogleSettings = Extract<MapsSettings, { readonly provider: "google" }>
+type GoogleSettings = Extract<MapsSettings, { readonly provider: "google" }>
 export type ProviderRefusal = "NoRoute" | "UnsupportedMode" | "UnsupportedRegion" | "ProviderInvalidResponse" | "ProviderUnavailable"
 export type MapsReply<A> =
   | { readonly kind: "answered"; readonly value: A; readonly observedMicros: Micros }
@@ -293,7 +293,7 @@ function placeOf(reply: GooglePlace, fetchedAt: number): MapsPlace | undefined {
   return placeId.test(reply.id) && isPlace(place) ? place : undefined
 }
 
-export function googleMapsProvider(settings: GoogleSettings): MapsProvider {
+function googleMapsProvider(settings: GoogleSettings): MapsProvider {
   const base = settings.baseUrl.replace(/\/+$/, "")
   const url = (host: "places" | "maps" | "routes" | "tile", path: string) => `${base}/${host}${path}`
 

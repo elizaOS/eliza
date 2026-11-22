@@ -18,7 +18,7 @@ export interface LlmAnswer {
   readonly usage?: unknown
 }
 
-export const providerBudget: Millis = 800_000
+const providerBudget: Millis = 800_000
 export const maxReplyBytes = 16 * 1024 * 1024
 
 type LlmContext = Deployment | HttpClient.HttpClient

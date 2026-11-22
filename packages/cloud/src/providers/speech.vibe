@@ -83,12 +83,12 @@ export interface TtsLink {
   readonly edges: Stream.Stream<TtsEdge, SpeechFailure>
 }
 
-export const synthesisBudget: Millis = 30_000
-export const transcriptionBudget: Millis = 120_000
+const synthesisBudget: Millis = 30_000
+const transcriptionBudget: Millis = 120_000
 export const realtimeOpenBudget: Millis = 8_000
-export const drainBudget: Millis = 1_500
-export const maxProviderPcmBytes = 65_536
-export const realtimeSampleRate = 16_000
+const drainBudget: Millis = 1_500
+const maxProviderPcmBytes = 65_536
+const realtimeSampleRate = 16_000
 
 /** Opens the speech provider's realtime socket with its handshake headers on the host's platform; the default dials with the runtime's WebSocket. */
 export service ProviderSockets {

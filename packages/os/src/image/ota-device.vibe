@@ -39,7 +39,7 @@ function adbProperties(text: string): ReadonlyMap<string, string> {
   return values
 }
 
-export effect function readAdb(tool: DeviceTools, args: readonly string[]) {
+effect function readAdb(tool: DeviceTools, args: readonly string[]) {
   const receipt = captureCommand(tool.adb, ["-s", tool.serial, ...args], 30_000) catch () => null
   return receipt !== null && receipt.code === 0 ? utf8.decode(receipt.stdout).trim() : null
 }

@@ -199,15 +199,15 @@ interface LauncherRecord {
   readonly state: LauncherStaging
 }
 
-export error StagingOptionsInvalid { message: string }
-export error StagingInputUnreadable { file: string; message: string }
-export error DescriptorRefused { message: string }
-export error DevelopmentRequired { message: string }
-export error NativeArchiveInvalid { apk: string; message: string }
-export error StagingRefused { reason: StagingRefusal; message: string }
-export error OverlayWriteFailed { output: string; message: string }
-export error OutputNotPublished { output: string; message: string }
-export error NativeFinalizeRefused { output: string; message: string }
+error StagingOptionsInvalid { message: string }
+error StagingInputUnreadable { file: string; message: string }
+error DescriptorRefused { message: string }
+error DevelopmentRequired { message: string }
+error NativeArchiveInvalid { apk: string; message: string }
+error StagingRefused { reason: StagingRefusal; message: string }
+error OverlayWriteFailed { output: string; message: string }
+error OutputNotPublished { output: string; message: string }
+error NativeFinalizeRefused { output: string; message: string }
 
 const MODULE = /^[A-Z][A-Za-z0-9]*$/
 const PACKAGE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/

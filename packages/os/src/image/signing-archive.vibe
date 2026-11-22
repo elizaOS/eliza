@@ -95,7 +95,7 @@ import { newDigest, verifiedVbmeta } from node
 export type { VerifiedBootImage } from node
 
 const entryName = /^[A-Za-z0-9._+\/-]+$/
-export const metadataLimit = 2 * 1024 * 1024
+const metadataLimit = 2 * 1024 * 1024
 
 function archiveName(name: string): boolean {
   return entryName.test(name) && name.replace(/\/$/, "").split("/").every((part) => part !== "" && part !== "." && part !== "..")

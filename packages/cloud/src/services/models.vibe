@@ -31,7 +31,7 @@ const Usage = Schema.Struct({
   completion_tokens_details: Schema.optionalKey(Schema.NullOr(Schema.Struct({ reasoning_tokens: Count })))
 })
 
-export function profiledModels(settings: InferenceSettings): ProfiledModel[] {
+function profiledModels(settings: InferenceSettings): ProfiledModel[] {
   return settings.models.map((offer) => ({ id: offer.id, provider: offer.provider, upstreamModel: offer.upstreamModel, vision: offer.vision }))
 }
 

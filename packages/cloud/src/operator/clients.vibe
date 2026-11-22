@@ -8,10 +8,10 @@ import { sha256Hex } from "../shared/credential-crypto.vibe"
 import type { Tx } from "../store/store.vibe"
 import type { OperatorCommandHandler, OperatorDocument, OperatorFlags } from "./admin.vibe"
 
-export error ClientFlagsInvalid { problem: string }
-export error ClientUnknown { clientId: string }
+error ClientFlagsInvalid { problem: string }
+error ClientUnknown { clientId: string }
 
-export interface RegistrationInput {
+interface RegistrationInput {
   readonly clientId: string
   readonly environment: "production" | "staging"
   readonly displayName: string

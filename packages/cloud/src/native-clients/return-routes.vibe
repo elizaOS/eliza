@@ -1,6 +1,6 @@
 // spec/cloud/returnPages.md, "Story: Bring me back to the app when its link did not open"; spec/cloud/returnPages.md, "Story: Tell a payer the checkout ended"
-import { answerAt, connectedAnswer, connectedOnCloud, pageHeaders, payerPath, readOf, type Page, type PageAnswer, type PagePurpose } from "../../gen/cloud__returnPages.effect.vibe"
-import type { Registration, ReturnPurpose } from "../../gen/cloud__nativeClients__registry.effect.vibe"
+import { answerAt, connectedOnCloud, pageHeaders, payerPath, readOf, type Page, type PageAnswer, type PagePurpose } from "../../gen/cloud__returnPages.effect.vibe"
+import type { ReturnPurpose } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import { Refused } from "../http/refusal.vibe"
 import type { Route, RouteContext } from "../http/routes.vibe"
 import { forwardScriptHash, pageFile, pageSlots, styleHashes, type PageSlot, type PageTemplate } from "../pages/forward-script.ts"
@@ -9,7 +9,7 @@ import { Deployment, rowOf } from "../profile/profile.vibe"
 import { Store } from "../store/connection.vibe"
 import { readRegistry } from "./registry.vibe"
 
-export error PageTemplateMissing { file: string }
+error PageTemplateMissing { file: string }
 
 const returnPurpose: Readonly<Record<Exclude<PagePurpose, "ConnectedPage">, ReturnPurpose>> = {
   SignInPage: "SignInPurpose",
@@ -86,11 +86,6 @@ effect function servePage(context: RouteContext) {
   const read = readOf(registry === undefined ? [] : [...registry], registry !== undefined)
   const answer = answerAt(rowOf(deployment.settings.name, deployment.settings), read, served, { origin: onWeb ? web : api, path }, context.query.get("outcome") ?? "")
   return try pageResponse(answer)
-}
-
-export effect function connectedReturnPage(registration: Registration) {
-  const deployment = try Deployment
-  return try pageResponse(connectedAnswer(rowOf(deployment.settings.name, deployment.settings), registration))
 }
 
 export effect function connectedBrowserPage() {

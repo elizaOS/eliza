@@ -15,7 +15,7 @@ export interface Endpoint {
   readonly maxTokensField: "max_tokens" | "max_completion_tokens"
 }
 
-export interface Sink {
+interface Sink {
   readonly stream?: boolean
   readonly onStreamChunk?: StreamChunkCallback
 }
@@ -33,7 +33,7 @@ export error ModelRefusal { message: string; code: string | undefined; status: n
 
 export error Refused { cloud: CloudFailure }
 
-export error StreamConsumerFailed { cause: unknown }
+error StreamConsumerFailed { cause: unknown }
 
 const Usage = Schema.Struct({
   prompt_tokens: Schema.Number,
@@ -255,7 +255,6 @@ module wireFormat {
   }
 }
 import { conversation, description, parsedArguments, responseFormatOf, titleOf, toolChoiceOf, toolsOf } from wireFormat
-export { description, titleOf }
 
 module edge {
   import { Cause, Effect, Exit } from "effect"
