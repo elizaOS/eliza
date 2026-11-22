@@ -199,9 +199,11 @@ loads the pipeline, and hands its directory to every process a check starts,
 so each `spec` process, Studio's checks, Turborepo's tasks and the tests and
 drivers they run included, compiles only the code that changed.
 
-An integration that checks disposable project directories can wrap those
-commands in `withFormalCache(directory, run)` from `vibestack/cache.ts`.
-Use a persistent directory that is writable only by trusted runs. It holds
+An integration checking disposable project directories can import `check`
+and `withFormalCache` from [vibestack/formal](vibestack/formal.ts). Run
+`await withFormalCache(cacheDirectory, () => check(projectDirectory))`
+in the same Node process. Use a persistent cache directory writable only
+by trusted runs. It holds
 the completed Quint, LemmaScript, and Dafny actions, keyed by the installed
 tools and their inputs. The project directory holds its lock, generated files,
 and stage results. An acceptance or nightly check always reads fresh inputs.

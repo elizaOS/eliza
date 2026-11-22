@@ -2770,6 +2770,16 @@ function eachCheck() {
     const proof = answer(checked.stdout).results.find((result: Result) => result.stage === "proof");
     assert.ok(proof?.ok, checked.stdout + checked.stderr);
     assert.match(proof.summary, /all 1 obligations proved/);
+
+    const shared = path.join(consumer, ".formal-actions");
+    const api = await exec(process.execPath, ["--input-type=module", "--eval", `
+      import { check, withFormalCache } from "vibestack/formal";
+      const { results } = await withFormalCache(${JSON.stringify(shared)}, () => check(process.cwd()));
+      console.log(JSON.stringify(results.find((result) => result.stage === "proof")));
+    `], consumer);
+    assert.equal(api.status, 0, api.stderr);
+    assert.deepEqual(JSON.parse(api.stdout), proof);
+    assert.ok(fs.readdirSync(shared).some(isActionEntry), "the packed check keeps its formal actions in the caller's shared cache");
   });
 
   test("owner generation mirrors the same artifact as the whole tree and checks its dependency closure", async () => {
