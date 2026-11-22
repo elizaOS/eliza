@@ -128,8 +128,8 @@ pure def alwaysRunningWasReadyThisLaunch(s: AgentService): bool =
     and (s.phase == Stopping({ onExit: ToRestart }) implies s.readyEpoch == s.epoch)
 pure def sometimesStorageFailedAtStart(s: AgentService): bool = s.phase == Failed({ cause: Storage }) and s.readyEpoch < s.epoch
 pure def sometimesTimedOut(s: AgentService): bool = s.phase == Failed({ cause: Agent }) and s.child != NoChild
-pure val weight_spawn = 10
-pure val weight_observeReady = 10
+pure val weight_spawn = 100
+pure val weight_observeReady = 100
 pure val fair_observeReady = "weak"
 pure val fair_readinessTimedOut = "weak"
 pure def leadsToReadinessWaitSettles(s: AgentService, later: AgentService): bool =
