@@ -902,7 +902,7 @@
             is(node, "HTMLSelectElement") ||
             is(node, "HTMLTextAreaElement") ||
             node.isContentEditable) &&
-          ((monitor.fromDocumentStart && node.ownerDocument === document) ||
+          ((monitor.fromDocumentStart && node.getRootNode() === document) ||
             monitor.editedFields.has(node))
             ? { edited: monitor.editedFields.has(node) }
             : {}),
